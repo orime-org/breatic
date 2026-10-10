@@ -244,7 +244,8 @@ export function renderProductGuide(): string {
       `${String(getAgentConfig().attachment_max_items)} pictures, videos, sounds, PDF, Word (.docx), Excel or ` +
       "plain text files to the next message; pasting such files into the box (a screenshot, a copied file) " +
       "attaches them the same way. Canvas nodes are handed over with " +
-      `${quoted(t("canvas.contextMenu.addToAgent"))} on their right-click menu; if the model list cannot be read at that moment, nothing is attached and ` +
+      `${quoted(t("canvas.contextMenu.addToAgent"))} on their right-click menu, or by copying them and pasting into the box, which attaches the same chip; ` +
+      "if the model list cannot be read at that moment, nothing is attached and " +
       `${quoted(t("canvas.generatePanel.catalogUnavailable"))} shows. In a document, the selected text or a whole ` +
       "line goes in as one text attachment named after its first line, from the selection bar or the six-dot " +
       "handle's menu (see the document section); the same line handed over again leaves one chip holding what " +
@@ -312,8 +313,9 @@ export function renderProductGuide(): string {
     "- Right-click an empty spot on the canvas (inside a group's box you get the group's menu instead) and pick " +
       `${typeLabel("text")}, ${typeLabel("image")}, ${typeLabel("audio")} or ${typeLabel("video")}; the node ` +
       `appears centred where you clicked. The same menu has ${quoted(t("canvas.contextMenu.paste"))}, which puts ` +
-      "copied nodes or copied text at the spot you clicked, a step down and to the right while another node " +
-      "already starts at that spot; a copied picture, screenshot or file does nothing there, so paste those with Cmd/Ctrl+V.",
+      "copied nodes, copied text or a copied picture or screenshot at the spot you clicked, a step down and to " +
+      "the right while another node already starts at that spot; a file copied from the computer's file browser " +
+      "pastes there as its name in a text node, so paste files with Cmd/Ctrl+V.",
     "- On a canvas space a floating menu of icons runs along the left edge; each names itself when hovered. " +
       `${quoted(t("menu.item.nodes"))} (a sparkle) opens a list of the same types; the node appears in the ` +
       "middle of the view.",
@@ -391,13 +393,17 @@ export function renderProductGuide(): string {
       `holds now is marked ${quoted(t("canvas.history.current"))}, ${quoted(t("canvas.history.restore"))} puts ` +
       `an earlier one back, and a failed attempt shows ${quoted(t("canvas.history.failed"))}. The panel is headed ` +
       `${quoted(t("canvas.history.title"))} with the number of entries, closes with its X, and ends with ` +
-      `${quoted(t("canvas.history.end"))} once everything is loaded. A node with none shows ` +
+      `${quoted(t("canvas.history.end"))} once everything is loaded. A pasted or duplicated picture, video or ` +
+      `sound node that holds a file starts with one ${quoted(t("canvas.history.typeUpload"))} entry, and a text ` +
+      `node with words in it with one ` +
+      `${quoted(t("canvas.history.typeSnapshot"))} entry. A node with none shows ` +
       `${quoted(t("canvas.history.empty.title"))} and ${quoted(t("canvas.history.empty.hint"))} If it cannot ` +
       `load it says ${quoted(t("canvas.history.loadError"))} with ${quoted(t("canvas.history.retry"))}.`,
     `- On a text node, ${quoted(t("canvas.nodeMenu.snapshot"))}, greyed while the node is empty: it keeps a copy ` +
       `of the node's words in its history (words it already holds are not listed again; a snapshot row shows ` +
       `its words) and shows ${quoted(t("canvas.history.snapshotKept"))}`,
-    `- On a picture, video or sound node, ${quoted(t("canvas.nodeMenu.download"))}, which saves the file, then ` +
+    `- On a picture, video or sound node, ${quoted(t("canvas.nodeMenu.download"))}, which saves the file (on a deployment whose ` +
+      "files are served from an r2.dev address it opens the file in a new tab instead), then " +
       `${quoted(t("canvas.nodeMenu.understand"))}, which writes a description of what the node holds into a new ` +
       `text node connected to it, and ${quoted(t("canvas.nodeMenu.tools"))}, described under Mini-tools. All three ` +
       "are greyed while the node holds nothing. A reading that cannot " +
@@ -406,7 +412,10 @@ export function renderProductGuide(): string {
       "deleted as it starts, " +
       `${quoted(t("canvas.understand.sourceGone"))}`,
     `- ${quoted(t("canvas.contextMenu.copy"))} (Cmd/Ctrl+C) and ${quoted(t("canvas.contextMenu.duplicate"))} ` +
-      "(Cmd/Ctrl+D), which places a copy slightly below and to the right.",
+      "(Cmd/Ctrl+D), which places a copy slightly below and to the right, a step further while another node " +
+      "already starts there. A copy, pasted or duplicated, carries the original's content but not its history, " +
+      "its lock, its running tasks or its failure message. It comes out selected with the keyboard on it, so the arrow keys move it; " +
+      "when it lands out of view the canvas slides over to it, keeping the zoom.",
     `- ${quoted(t("canvas.contextMenu.rename"))} and ${quoted(t("canvas.nodeMenu.lock"))} or ` +
       `${quoted(t("canvas.nodeMenu.unlock"))}. A locked node or group shows a small padlock at its top-right ` +
       "corner, and a locked note shows one at the bottom right of its bubble; a locked node " +
@@ -936,7 +945,8 @@ export function renderProductGuide(): string {
       "can be dragged elsewhere. Pasting Markdown turns it into headings, lists and so on (inside a code block it " +
       "stays plain text); a table copied from a spreadsheet, a web page or Markdown arrives as a table, keeping " +
       "only the words of any list in its cells and dropping pictures; pasted with the caret in a cell, it fills " +
-      "the cells from that one instead. Pasting a picture or file does nothing.",
+      "the cells from that one instead. Pasting an image, video or audio file uploads it (see below); any other " +
+      "file is refused with a message.",
     "- Selecting text shows a bar, left to right: an icon of the current block type with a small arrow, an " +
       "alignment icon with an arrow, bold B, italic I, strikethrough S and underline U icons, a link icon, a code " +
       "icon, the letter A with an arrow (colour), a speech-bubble icon (comment), a speech bubble with a plus (add " +
@@ -968,7 +978,8 @@ export function renderProductGuide(): string {
       `${quoted(t("spaces.document.commands.colorReset"))}.`,
     "- Hovering an empty paragraph, with no text selected, shows a plus at its left; clicking it lists the " +
       `same entries as ${quoted(t("spaces.document.blockHandle.insertBelow"))}, and the one picked turns that ` +
-      "line itself into it (a divider goes above the line, which stays empty). " +
+      "line itself into it (a divider, or the files picked for an image, audio or video entry, go above the line, " +
+      "which stays empty). " +
       `${quoted(t("spaces.document.commands.quote"))} is greyed there on a line already in a quote. ` +
       `The menu ends with ${quoted(t("spaces.document.blockHandle.delete"))}, which removes that line; it is greyed ` +
       "when that line is the document's only block. Empty " +
@@ -988,9 +999,12 @@ export function renderProductGuide(): string {
       `and ${quoted(t("spaces.document.commands.color"))} open a submenu when hovered; ` +
       `${quoted(t("spaces.document.blockHandle.insertBelow"))} lists the block types other than ` +
       `${quoted(t("spaces.document.commands.paragraph"))}, then ${quoted(t("spaces.document.commands.divider"))} ` +
-      `and ${quoted(t("spaces.document.commands.table"))} on their own, and puts a new line of the one picked ` +
+      `and ${quoted(t("spaces.document.commands.table"))} on their own, then ` +
+      `${quoted(t("spaces.document.media.image"))}, ${quoted(t("spaces.document.media.audio"))} and ` +
+      `${quoted(t("spaces.document.media.video"))}, and puts a new line of the one picked ` +
       "below; the divider and the table each come with an empty line under them, and a new table puts the caret " +
-      "in its first cell. " +
+      "in its first cell. The last three open the computer's file picker for that kind; the files chosen go " +
+      "under the line, above an empty line made for the caret. " +
       `${quoted(t("spaces.document.commands.table"))} opens a grid of squares, nine across and nine down, with ` +
       `${quoted(t("spaces.document.table.pickSize"))} under it; moving over it lights the squares up to the ` +
       `pointer and the words under it change to the size, such as ${quoted(t("spaces.document.table.size", { rows: 3, cols: 4 }))}, and clicking ` +
@@ -1005,6 +1019,23 @@ export function renderProductGuide(): string {
       "plain line below, press Enter at the end of the line (Shift+Enter in a code block); if the new line kept " +
       "the list or to-do of the one above, Cmd+Alt+0 makes it plain text, and if it kept the quote, Cmd+Shift+B " +
       "takes the quote off.",
+    "- Images, videos and audio can also be dragged into the document from the computer, landing where the " +
+      "line shows, or pasted, landing under the caret's line (above it when that line is empty). Each file shows a dashed box with its name and how " +
+      "far its upload has got, which only the person uploading sees; when it is done the box becomes the picture, " +
+      "video or audio for everyone. A file that cannot be uploaded turns the box red with the reason, with " +
+      `${quoted(t("spaces.document.media.retry"))} when trying again can help, and ` +
+      `${quoted(t("spaces.document.media.remove"))}. Pictures, videos or audio inside copied web pages or ` +
+      "Markdown are not pasted with the text; drop or paste the files themselves. Hovering a picture, video or " +
+      "audio, or clicking it, shows a row of icons above it: left, centre and right alignment (only when the " +
+      "picture or video is narrower than the page; audio is always as wide as the page), " +
+      `${quoted(t("spaces.document.media.caption"))} (a T), which opens a line under it for a caption, ` +
+      `${quoted(t("spaces.document.media.fullscreen"))} (two arrows pointing out to opposite corners, pictures only; double-clicking the ` +
+      "picture does the same, and an X at the top right closes it), " +
+      `${quoted(t("spaces.document.media.download"))} (an arrow into a tray), which downloads the file, and ` +
+      `${quoted(t("spaces.document.media.delete"))} (a bin). Clicking a picture or video also shows a small square at each ` +
+      "corner; dragging one changes its width. Dragging the picture, video or audio itself moves it, like its six " +
+      "dots. Videos and audio play in place. Someone who can only view the document " +
+      "sees and plays them without the icons.",
     "- A table shows a table icon at the left of its first row instead of the six dots. Drag it to move the " +
       `whole table; click it for a menu with ${quoted(t("spaces.document.blockHandle.insertBelow"))}, ` +
       `${quoted(t("spaces.document.blockHandle.duplicate"))}, ${quoted(t("spaces.document.blockHandle.indent"))}, ` +
@@ -1118,7 +1149,8 @@ export function renderProductGuide(): string {
       `closes; the project's owner can bring the space back from ${quoted(t("activity.header"))}.`,
     `- When this chat cannot load, it is covered with ${quoted(t("chat.load.failedTitle"))} or ` +
       `${quoted(t("chat.load.refusedTitle"))} and ${quoted(t("chat.load.retry"))}.`,
-    `- ${quoted(t("canvas.upload.storageFull"))} when uploading, or ` +
+    `- ${quoted(t("canvas.upload.storageFull"))} when uploading or when pasting pictures, videos or sounds ` +
+      "into another studio, or " +
       `${quoted(t("canvas.generatePanel.errorStorageFull"))} when generating: the storage of the studio's admin ` +
       "is full, counted across every studio they administer. What is already there keeps working, but nothing " +
       "new can be uploaded or generated until they upgrade. The bell's " +

@@ -3,7 +3,9 @@
 
 /**
  * The picked piece of the canvas as "Add to agent" hands it over (#2218),
- * read fresh from the document at the press.
+ * read fresh from the document at the press. The document is the open
+ * canvas, or a throwaway one holding nodes pasted from the clipboard
+ * (inner#1349), so both give the same card.
  *
  * The catalog tells each generating node what it would run right now. An
  * audio node with no voice picked runs the first voice of its model's list,
@@ -14,8 +16,9 @@
 import type { QueryClient } from '@tanstack/react-query';
 import type { ModelCatalog, Voice } from '@breatic/shared';
 
-import { nodeDataMap, readCanvasGraph } from '@web/data/yjs/canvas-space';
-import { docName, getDoc } from '@web/data/yjs/manager';
+import type * as Y from 'yjs';
+
+import { nodeDataMap, readEdges, readNodes } from '@web/data/yjs/canvas-space';
 import { itemForPick } from '@web/spaces/canvas/attach-nodes';
 import { firstVoiceKey, firstVoiceQuery } from '@web/spaces/canvas/generate/first-voice-query';
 import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
@@ -25,8 +28,7 @@ import { attachToChat } from '@web/stores/attach-to-chat';
  * The picked piece of the canvas as one item for the agent.
  * @param queryClient - Holds each model's first voice.
  * @param catalog - The model catalog, for what each node would run.
- * @param projectId - Project the canvas space belongs to.
- * @param spaceId - The canvas space.
+ * @param doc - The canvas document holding the picked nodes.
  * @param ids - The picked node ids; a group brings its members.
  * @returns The item, or null for nothing to hand over.
  * @throws {never} Never; a first voice that cannot be read is left out.
@@ -34,18 +36,16 @@ import { attachToChat } from '@web/stores/attach-to-chat';
 export async function pickForAgent(
   queryClient: QueryClient,
   catalog: ModelCatalog,
-  projectId: string,
-  spaceId: string,
+  doc: Y.Doc,
   ids: readonly string[],
 ): Promise<ReturnType<typeof itemForPick>> {
-  const doc = getDoc(docName.canvasSpace(projectId, spaceId));
   const unknownVoices = new Set<string>();
   /**
    * The pick as the document and the cache hold it now.
    * @returns The item, or null for nothing to hand over.
    */
   const pick = (): ReturnType<typeof itemForPick> =>
-    itemForPick(readCanvasGraph(projectId, spaceId), ids, {
+    itemForPick({ nodes: readNodes(doc), edges: readEdges(doc) }, ids, {
       dataOf: (id) => nodeDataMap(doc, id),
       catalog,
       firstVoiceOf: (model) => {
@@ -68,8 +68,8 @@ export async function pickForAgent(
  * outcome above the chat box; only a catalog that cannot be read is left to
  * the caller to say.
  * @param queryClient - Holds the catalog and each model's first voice.
- * @param projectId - Project the canvas space belongs to.
- * @param spaceId - The canvas space.
+ * @param projectId - The project whose chat receives it.
+ * @param doc - The canvas document holding the picked nodes.
  * @param ids - The picked node ids; a group brings its members.
  * @returns Whether the catalog was read.
  * @throws {never} Never.
@@ -77,7 +77,7 @@ export async function pickForAgent(
 export async function handToAgent(
   queryClient: QueryClient,
   projectId: string,
-  spaceId: string,
+  doc: Y.Doc,
   ids: readonly string[],
 ): Promise<boolean> {
   let catalog: ModelCatalog;
@@ -86,7 +86,7 @@ export async function handToAgent(
   } catch {
     return false;
   }
-  const item = await pickForAgent(queryClient, catalog, projectId, spaceId, ids);
+  const item = await pickForAgent(queryClient, catalog, doc, ids);
   await attachToChat(projectId, item ? [item] : []);
   return true;
 }

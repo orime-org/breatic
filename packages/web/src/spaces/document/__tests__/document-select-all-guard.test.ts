@@ -69,6 +69,8 @@ function open(
     { type: 'paragraph', content: 'beta' },
     { type: 'paragraph', content: 'gamma' },
   ] as never);
+  // A press, a paste or a key in the body lands while it holds the focus.
+  editor.prosemirrorView!.focus();
   return editor;
 }
 

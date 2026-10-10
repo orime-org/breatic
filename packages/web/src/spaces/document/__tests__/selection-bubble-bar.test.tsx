@@ -347,6 +347,7 @@ describe('the selection bubble bar', () => {
       editor.toggleStyles({ underline: true } as never);
     });
     await waitFor(() => expect(button).toHaveAttribute('aria-pressed', 'true'));
+    expect(button.className).toContain('bg-accent-strong');
 
     act(() => {
       editor.toggleStyles({ underline: true } as never);

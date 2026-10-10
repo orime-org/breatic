@@ -8,8 +8,14 @@ import type {
   UploadTicketResponse,
 } from '@web/data/upload/ingest-upload';
 
+/** The upload knobs, and what every address of ours starts with. */
+export interface UploadConfig extends UploadClientConfig {
+  /** What every stored object's public URL starts with. */
+  assetUrlPrefix: string;
+}
+
 /** Session cache for the upload knobs (one fetch per session). */
-let uploadConfigCache: UploadClientConfig | null = null;
+let uploadConfigCache: UploadConfig | null = null;
 
 export const assetsApi = {
   /**
@@ -66,11 +72,22 @@ export const assetsApi = {
    * the next caller retries.
    * @returns The upload knobs (cap, attempts, backoff, timeouts).
    */
-  async fetchUploadConfig(): Promise<UploadClientConfig> {
+  async fetchUploadConfig(): Promise<UploadConfig> {
     if (uploadConfigCache) return uploadConfigCache;
-    const cfg = await apiGet<UploadClientConfig>('/assets/upload-config');
+    const cfg = await apiGet<UploadConfig>('/assets/upload-config');
     uploadConfigCache = cfg;
     return cfg;
+  },
+
+  /**
+   * The upload knobs if this session has fetched them, read at once.
+   *
+   * For a reader that cannot wait: a paste is judged synchronously
+   * (inner#1127 A18), and the body fetches the knobs when it opens.
+   * @returns The cached knobs, or null before the first fetch lands.
+   */
+  cachedUploadConfig(): UploadConfig | null {
+    return uploadConfigCache;
   },
 
   /**

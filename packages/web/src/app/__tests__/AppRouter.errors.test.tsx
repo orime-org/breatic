@@ -8,10 +8,12 @@ import { createMemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { AppRouter } from '@web/app/AppRouter';
+import { behindLoadingScreen } from '@web/app/loading-boundary';
 
 vi.mock('@sentry/react', async (original) => ({
   ...await original<typeof import('@sentry/react')>(),
-  captureException: vi.fn(),
+  captureException: vi.fn(() => 'route-event-id'),
+  getClient: vi.fn(() => ({ getDsn: () => ({}), getOptions: () => ({}) })),
 }));
 
 afterEach(() => {
@@ -29,7 +31,7 @@ describe('AppRouter error reporting', () => {
       if (closed) throw error;
       return <button onClick={() => setClosed(true)}>Close</button>;
     }
-    const router = createMemoryRouter([{ path: '/', element: <Page /> }]);
+    const router = createMemoryRouter(behindLoadingScreen([{ path: '/', element: <Page /> }]));
     const view = render(
       <React.StrictMode>
         <ErrorBoundary fallback={<div>Outer fallback</div>} onError={outerError}>
@@ -40,9 +42,13 @@ describe('AppRouter error reporting', () => {
     try {
       expect(captureException).not.toHaveBeenCalled();
       fireEvent.click(screen.getByRole('button', { name: 'Close' }));
-      expect(await screen.findByText('Unexpected Application Error!')).toBeInTheDocument();
-      await waitFor(() => expect(captureException).toHaveBeenCalledExactlyOnceWith(error));
+      expect(await screen.findByText('Something went wrong')).toBeInTheDocument();
+      expect(screen.queryByText(error.message)).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Reload page' })).toBeEnabled();
+      expect(screen.getByRole('link', { name: 'Back to home' })).toHaveAttribute('href', '/');
+      await waitFor(() => expect(captureException).toHaveBeenCalledExactlyOnceWith(error, { tags: { error_boundary: 'route' } }));
       expect(outerError).not.toHaveBeenCalled();
+      expect(await screen.findByText('Error reference: route-event-id')).toBeInTheDocument();
       expect(screen.queryByText('Outer fallback')).not.toBeInTheDocument();
     } finally {
       view.unmount();
@@ -54,14 +60,17 @@ describe('AppRouter error reporting', () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     const error = new Error('Synthetic route module failure');
     const Page = React.lazy(async () => { throw error; });
-    const router = createMemoryRouter([{
+    const router = createMemoryRouter(behindLoadingScreen([{
       path: '/',
       element: <React.Suspense fallback={<div>Loading</div>}><Page /></React.Suspense>,
-    }]);
+    }]));
     const view = render(<AppRouter router={router} />);
     try {
-      expect(await screen.findByText('Unexpected Application Error!')).toBeInTheDocument();
-      await waitFor(() => expect(captureException).toHaveBeenCalledExactlyOnceWith(error));
+      expect(await screen.findByText('Something went wrong')).toBeInTheDocument();
+      expect(screen.queryByText(error.message)).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Reload page' })).toBeEnabled();
+      expect(screen.getByRole('link', { name: 'Back to home' })).toHaveAttribute('href', '/');
+      await waitFor(() => expect(captureException).toHaveBeenCalledExactlyOnceWith(error, { tags: { error_boundary: 'route' } }));
     } finally {
       view.unmount();
       router.dispose();

@@ -18,6 +18,7 @@ export {
   taskCreateSchema,
   understandSchema,
   nodeHistorySnapshotSchema,
+  canvasPasteSchema,
   projectCreateSchema,
   checkoutSchema,
   paymentConfirmSchema,

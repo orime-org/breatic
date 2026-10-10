@@ -11,6 +11,7 @@ import { describe, it, expect, vi } from 'vitest';
 import {
   runFocusCrop,
   focusCropFilename,
+  focusFailureMessageKey,
   type FocusCropDeps,
 } from '@web/spaces/canvas/focus/run-focus-crop';
 
@@ -185,5 +186,17 @@ describe('focusCropFilename', () => {
     expect(focusCropFilename('//\\\\')).toBe('focus-crop.png');
     const long = 'x'.repeat(300);
     expect(focusCropFilename(long).length).toBeLessThanOrEqual(255);
+  });
+});
+
+describe('focusFailureMessageKey', () => {
+  it('says what went wrong for every reason a crop can end in', () => {
+    expect(focusFailureMessageKey('export')).toBe('canvas.generatePanel.focusExportFailed');
+    expect(focusFailureMessageKey('upload')).toBe('canvas.generatePanel.focusUploadFailed');
+    expect(focusFailureMessageKey('transfer')).toBe('canvas.generatePanel.focusUploadFailed');
+    expect(focusFailureMessageKey('hash')).toBe('canvas.upload.hashUnavailable');
+    expect(focusFailureMessageKey('storage')).toBe('canvas.upload.storageFull');
+    expect(focusFailureMessageKey('rateLimited')).toBe('canvas.upload.rateLimited');
+    expect(focusFailureMessageKey('unsupportedType')).toBe('canvas.upload.unsupportedType');
   });
 });

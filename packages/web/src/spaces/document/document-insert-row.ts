@@ -16,11 +16,13 @@
 import type { BlockTypeId } from '@web/spaces/document/document-block-ticks';
 import { runBlockType } from '@web/spaces/document/document-block-run';
 import { DIVIDER } from '@web/spaces/document/document-divider';
+import { rowById } from '@web/spaces/document/document-row-by-id';
 import {
   type HandleEditor,
   type PressedBlock,
 } from '@web/spaces/document/document-handle-commands';
 import { QUOTED } from '@web/spaces/document/document-list-block';
+import type { UploadGap } from '@web/spaces/document/document-upload-slots';
 
 /** How many rows and columns a new table has. */
 export interface TableSize {
@@ -129,6 +131,53 @@ export function insertBelow(
   } else {
     runBlockType(editor, choice, insertRowForMenu(editor, row), false);
   }
+}
+
+/**
+ * The gap the insert-below submenu's media entries upload into
+ * (inner#1127 A1).
+ *
+ * The row a divider or a table gets under it is made here, at the pick, with
+ * the caret in it; the files go above that row. The upload finishing later
+ * then only adds blocks — it moves no caret and makes no row, so the reader
+ * typing elsewhere meanwhile is left where they are, and a batch of files
+ * lands with nothing between them.
+ * @param editor - The editor to write to.
+ * @param row - The block the menu was opened on.
+ * @returns The gap.
+ * @throws {Error} `Block with ID … not found`, from BlockNote's
+ *   `insertBlocks`, when the pressed block is no longer in the document.
+ */
+export function mediaGapBelow(editor: HandleEditor, row: PressedBlock): UploadGap {
+  return gapAbove(editor, insertRowForMenu(editor, row));
+}
+
+/**
+ * The gap the plus menu's media entries upload into: above the empty line it
+ * was opened on, which keeps the caret (inner#1127 A1).
+ * @param editor - The editor to write to.
+ * @param row - The empty paragraph the plus is on.
+ * @returns The gap.
+ * @throws {Error} `Block with ID … not found`, from BlockNote, when the row is
+ *   no longer in the document.
+ */
+export function mediaGapOnRow(editor: HandleEditor, row: PressedBlock): UploadGap {
+  const gap = gapAbove(editor, row.id);
+  editor.setTextCursorPosition(row.id, 'start');
+  return gap;
+}
+
+/**
+ * The gap just above a block.
+ * @param editor - The editor.
+ * @param id - The block the gap is above.
+ * @returns The gap.
+ * @throws {Error} When the document no longer holds the block.
+ */
+function gapAbove(editor: HandleEditor, id: string): UploadGap {
+  const row = rowById(editor.prosemirrorState.doc, id);
+  if (row === undefined) throw new Error(`Block with ID ${id} not found`);
+  return row.from;
 }
 
 /**

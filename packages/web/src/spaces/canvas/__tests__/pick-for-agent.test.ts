@@ -13,7 +13,7 @@ import type { ModelCatalog, ModelEntry } from '@breatic/shared';
 
 import { voicesApi } from '@web/data/api/voices';
 import { addNode, setNodeMode } from '@web/data/yjs/canvas-space';
-import { _resetForTests } from '@web/data/yjs/manager';
+import { _resetForTests, docName, getDoc } from '@web/data/yjs/manager';
 import { firstVoiceKey } from '@web/spaces/canvas/generate/first-voice-query';
 import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
 import { handToAgent, pickForAgent } from '@web/spaces/canvas/pick-for-agent';
@@ -77,7 +77,7 @@ describe('handing an audio node to the agent', () => {
     const queryClient = client();
     queryClient.setQueryData(firstVoiceKey('speech'), { id: 'cached', name: 'Cached' });
 
-    const item = await pickForAgent(queryClient, CATALOG, PID, SID, ['a1']);
+    const item = await pickForAgent(queryClient, CATALOG, getDoc(docName.canvasSpace(PID, SID)), ['a1']);
 
     expect(list).not.toHaveBeenCalled();
     expect(speechEntry(item)?.current).toMatchObject({ params: { voice_id: 'cached' } });
@@ -86,7 +86,7 @@ describe('handing an audio node to the agent', () => {
   it('asks for the first voice when it is not cached, then names it', async () => {
     const list = vi.spyOn(voicesApi, 'list').mockResolvedValue({ voices: [{ id: 'first', name: 'First' }] } as never);
 
-    const item = await pickForAgent(client(), CATALOG, PID, SID, ['a1']);
+    const item = await pickForAgent(client(), CATALOG, getDoc(docName.canvasSpace(PID, SID)), ['a1']);
 
     expect(list).toHaveBeenCalledTimes(1);
     expect(speechEntry(item)?.current).toMatchObject({ params: { voice_id: 'first' } });
@@ -95,7 +95,7 @@ describe('handing an audio node to the agent', () => {
   it('leaves the voice out when the list cannot be read', async () => {
     vi.spyOn(voicesApi, 'list').mockRejectedValue(new Error('down'));
 
-    const item = await pickForAgent(client(), CATALOG, PID, SID, ['a1']);
+    const item = await pickForAgent(client(), CATALOG, getDoc(docName.canvasSpace(PID, SID)), ['a1']);
 
     expect(speechEntry(item)?.current).not.toHaveProperty('params.voice_id');
   });
@@ -107,7 +107,7 @@ describe('handing an audio node to the agent', () => {
       return { voices: [{ id: 'first', name: 'First' }] } as never;
     });
 
-    const entry = speechEntry(await pickForAgent(client(), CATALOG, PID, SID, ['a1']));
+    const entry = speechEntry(await pickForAgent(client(), CATALOG, getDoc(docName.canvasSpace(PID, SID)), ['a1']));
 
     expect(entry?.data).toMatchObject({ mode: 'sfx' });
     expect(entry?.current).toMatchObject({ mode: 'sfx' });
@@ -134,7 +134,7 @@ describe('handing a pick over', () => {
     const queryClient = client();
     queryClient.setQueryData(modelCatalogQuery().queryKey, CATALOG);
 
-    await expect(handToAgent(queryClient, PID, SID, ['a1'])).resolves.toBe(true);
+    await expect(handToAgent(queryClient, PID, getDoc(docName.canvasSpace(PID, SID)), ['a1'])).resolves.toBe(true);
     expect(attached).toHaveBeenCalledTimes(1);
   });
 
@@ -143,7 +143,7 @@ describe('handing a pick over', () => {
     const queryClient = client();
     vi.spyOn(queryClient, 'ensureQueryData').mockRejectedValue(new Error('down'));
 
-    await expect(handToAgent(queryClient, PID, SID, ['a1'])).resolves.toBe(false);
+    await expect(handToAgent(queryClient, PID, getDoc(docName.canvasSpace(PID, SID)), ['a1'])).resolves.toBe(false);
     expect(attached).not.toHaveBeenCalled();
   });
 });

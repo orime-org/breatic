@@ -136,8 +136,7 @@
     },
     "storage": {
       "quota_exceeded_upload": "Studio 存储已满，当前无法上传。",
-      "quota_exceeded_generate": "Studio 存储已满，当前无法生成。",
-      "download_not_downloadable": "这个文件无法下载。"
+      "quota_exceeded_generate": "Studio 存储已满，当前无法生成。"
     },
     "purchase_mail": {
       "subject": "积分已到账",
@@ -247,7 +246,7 @@
       "attach": "添加文件",
       "removeAttachment": "移除 {name}",
       "attachmentUploading": "上传中",
-      "attachmentFailed": "{reason, select, upload {上传失败} extract {读取失败} too_long {太长} other {失败}}",
+      "attachmentFailed": "{reason, select, upload {上传失败} rate_limited {上传太频繁，请稍后重试} extract {读取失败} too_long {太长} other {失败}}",
       "attachFull": "最多附带 {limit, number} 项",
       "attachTooLong": "附带的内容太多了，请少挂几项或换短一点的文件。",
       "attachUnsupported": "{filename} 不能附带",
@@ -723,8 +722,12 @@
       "empty": "{filename} 是空文件，没有内容可以添加。",
       "hashUnavailable": "无法校验此文件，请刷新页面后重试。",
       "storageFull": "Studio 存储已满，当前无法上传。",
+      "rateLimited": "上传太频繁，请稍后重试。",
       "failed": "上传失败。",
       "extractionFailed": "无法读取 {filename} 中的文字。"
+    },
+    "paste": {
+      "failed": "粘贴失败。"
     },
     "minimap": {
       "label": "画布缩略图"
@@ -1055,7 +1058,7 @@
       "noAccount": "还没有账号?",
       "forgotPassword": "忘记密码?",
       "googleLoading": "正在加载 Google 登录…",
-      "googleFailed": "Google 登录暂不可用，请重试或使用邮箱登录。",
+      "googleFailed": "Google 登录暂不可用，请刷新页面或使用邮箱登录。",
       "failed": "登录失败,请重试。"
     },
     "register": {
@@ -1451,6 +1454,23 @@
         "splitCell": "拆分单元格",
         "mergeCells": "合并单元格",
         "textHighlight": "背景（高亮文字）"
+      },
+      "media": {
+        "image": "图片",
+        "audio": "音频",
+        "video": "视频",
+        "uploading": "上传中",
+        "uploadingPercent": "上传中 {percent}%",
+        "readOnly": "当前只读。",
+        "retry": "重试",
+        "remove": "移除",
+        "caption": "说明",
+        "captionPlaceholder": "添加说明",
+        "fullscreen": "全屏查看",
+        "close": "关闭",
+        "download": "下载",
+        "delete": "删除",
+        "leftOut": "{count} 个图片、视频或音频没有粘贴进来，可以直接拖入或粘贴文件。"
       }
     },
     "readOnlyReconnect": "重新连接"
@@ -1840,7 +1860,8 @@
         "not_an_image": "无法把这个文件读成图片。",
         "encode_failed": "无法处理这张图片，请换一张试试。",
         "unsupported_type": "这个文件的格式不支持。",
-        "hash_unavailable": "无法校验此文件，请刷新页面后重试。"
+        "hash_unavailable": "无法校验此文件，请刷新页面后重试。",
+        "rate_limited": "上传太频繁，请稍后重试。"
       },
       "cropRegion": "裁剪区域 — 可用方向键移动",
       "cover": {
@@ -2239,6 +2260,13 @@
     "heading": "页面未找到",
     "body": "你访问的页面不存在或已经移动。我们带你回首页。",
     "cta": "返回首页"
+  },
+  "applicationError": {
+    "title": "页面出现了问题",
+    "message": "当前页面无法继续运行。请重新加载或返回首页。如果开启了浏览器翻译，请关闭它并使用产品的语言切换。",
+    "reload": "重新加载",
+    "home": "返回首页",
+    "reference": "错误编号：{id}"
   },
   "pageLoadError": {
     "message": "页面加载失败，请重试。",

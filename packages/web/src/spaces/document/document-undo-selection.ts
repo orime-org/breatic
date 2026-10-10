@@ -60,15 +60,29 @@
  * caret at, so replaying it lands the caret where it already is, and a single
  * selection-only dispatch clears it before a remote change can arrive. No
  * mutation of this file turns a test red for the want of it, so it is not here.
+ *
+ * ## Other values kept on the stack
+ *
+ * The same handover carries other plugins' Yjs names across undo and redo:
+ * `keepOnUndoStack` keeps any value on each stack item, and `namesOnUndoStack`
+ * takes a plugin's names when a Yjs transaction begins and hands them back on
+ * the undo or redo of that edit. The upload placeholders keep their gaps this
+ * way (`document-upload-slots.ts`), the comment draft its range
+ * (`document-comment-draft-range.ts`).
  */
 
-import { Plugin, PluginKey } from '@tiptap/pm/state';
+import { Plugin, PluginKey, type EditorState, type Transaction } from '@tiptap/pm/state';
+import type { EditorView } from '@tiptap/pm/view';
 import { ySyncPluginKey, yUndoPluginKey } from 'y-prosemirror';
+
+import { undoRedo } from '@web/spaces/document/document-yjs-origin';
 
 /** The bound Yjs document, carrying the transaction-lifecycle events. */
 interface YDocLike {
   on(event: 'beforeObserverCalls', handler: (transaction: YTransactionLike) => void): void;
+  on(event: 'beforeAllTransactions', handler: () => void): void;
   off(event: 'beforeObserverCalls', handler: (transaction: YTransactionLike) => void): void;
+  off(event: 'beforeAllTransactions', handler: () => void): void;
 }
 
 /** The sync binding fields this fix touches. */
@@ -79,6 +93,18 @@ interface SyncBinding {
   doc: YDocLike;
 }
 
+/**
+ * The sync binding and the undo manager of a body.
+ * @param state - The editor state.
+ * @returns Both, or null before the Yjs plugins are set up.
+ */
+function undoStackOf(state: EditorState): { binding: SyncBinding; undoManager: UndoManagerLike } | null {
+  const binding = (ySyncPluginKey.getState(state) as { binding?: SyncBinding } | undefined)?.binding;
+  const undoManager = (yUndoPluginKey.getState(state) as { undoManager?: UndoManagerLike } | undefined)
+    ?.undoManager;
+  return binding == null || undoManager == null ? null : { binding, undoManager };
+}
+
 /** What `stack-item-added` hands its listeners. */
 interface StackItemEvent {
   /** The item just pushed. */
@@ -86,7 +112,7 @@ interface StackItemEvent {
 }
 
 /** The undo manager fields this fix reads. */
-export interface UndoManagerLike {
+interface UndoManagerLike {
   /** The item being popped, set for the duration of the undo transact. */
   readonly currStackItem: { readonly meta: Map<unknown, unknown> } | null;
   on(event: 'stack-item-added', handler: (event: StackItemEvent) => void): void;
@@ -112,7 +138,7 @@ interface YTransactionLike {
  *   undefined when it has none; called on every undo and redo transaction.
  * @returns A function that stops keeping and handing back.
  */
-export function keepOnUndoStack(
+function keepOnUndoStack(
   doc: YDocLike,
   undoManager: UndoManagerLike,
   key: unknown,
@@ -141,6 +167,57 @@ export function keepOnUndoStack(
   return (): void => {
     undoManager.off('stack-item-added', onAdded);
     doc.off('beforeObserverCalls', onBeforeObserverCalls);
+  };
+}
+
+/** A plugin's Yjs names, kept on each undo stack item and handed back on its undo or redo. */
+export interface NamesOnUndoStack<T> {
+  /**
+   * The names as they stood before the edit an undo or redo takes back.
+   * @param tr - The transaction being applied.
+   * @returns Those names on the reader's undo or redo of an edit that kept
+   *   some; null for every other transaction.
+   */
+  readonly handedFor: (tr: Transaction) => T | null;
+  /**
+   * Starts keeping names for a view's undo stack.
+   * @param view - The editor view.
+   * @returns The function that stops it.
+   */
+  readonly attach: (view: EditorView) => () => void;
+}
+
+/**
+ * Keeps a plugin's Yjs names for what it tracks on every undo stack item, the
+ * way y-prosemirror's undo plugin keeps the selection: the names are taken
+ * when a Yjs transaction begins (`beforeAllTransactions`), which is before the
+ * plugin's view retakes them against the edited body, and the item that edit
+ * pushes keeps them.
+ * @param current - The names in this state, or null to keep none.
+ * @returns The handover for the plugin's state and its view.
+ */
+export function namesOnUndoStack<T>(current: (state: EditorState) => T | null): NamesOnUndoStack<T> {
+  let before: T | null = null;
+  let handed: T | null = null;
+  return {
+    handedFor: (tr) => (undoRedo(tr) ? handed : null),
+    attach: (view) => {
+      const stack = undoStackOf(view.state);
+      if (stack === null) return () => undefined;
+      const { doc } = stack.binding;
+      const stopKeeping = keepOnUndoStack(doc, stack.undoManager, {}, () => before, (stored) => {
+        handed = (stored as T | undefined) ?? null;
+      });
+      /** Takes the names as they stand before a Yjs transaction. */
+      const onBeforeAll = (): void => {
+        before = current(view.state);
+      };
+      doc.on('beforeAllTransactions', onBeforeAll);
+      return () => {
+        stopKeeping();
+        doc.off('beforeAllTransactions', onBeforeAll);
+      };
+    },
   };
 }
 
@@ -198,17 +275,11 @@ export function documentUndoSelectionPlugin(): Plugin<PreEditState> {
      * @returns The plugin view, whose destroy unsubscribes them.
      */
     view: (view) => {
-      const binding = (
-        ySyncPluginKey.getState(view.state) as { binding?: SyncBinding }
-      )?.binding;
-      const undoManager = (
-        yUndoPluginKey.getState(view.state) as {
-          undoManager?: UndoManagerLike;
-        }
-      )?.undoManager;
-      if (!binding || !undoManager) {
+      const stack = undoStackOf(view.state);
+      if (stack === null) {
         return {};
       }
+      const { binding, undoManager } = stack;
 
       // Keyed by the binding, which is where upstream keeps the selection, so
       // this overwrites what it stored.

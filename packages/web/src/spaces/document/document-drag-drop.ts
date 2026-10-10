@@ -22,8 +22,7 @@ import { createExtension } from '@blocknote/core';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 
 import {
-  caretAtStartOf,
-  restoreReaderPlace,
+  restoreAfterRowDrag,
   type ReaderPlace,
 } from '@web/spaces/document/document-drag-selection';
 import { moveRowTo } from '@web/spaces/document/document-drag-move';
@@ -106,7 +105,7 @@ export const documentDragDropExtension = createExtension(() => ({
           // the reader never selected — reported 2026-09-18. A
           // selection-only transaction writes nothing to the
           // document, so it adds no undo item of its own.
-          restoreReaderPlace(view, row.place ?? caretAtStartOf(row.blockId));
+          restoreAfterRowDrag(view, row.place, row.blockId);
 
           // ProseMirror resolved these same coordinates before it asked this
           // prop, and returned when they did not resolve

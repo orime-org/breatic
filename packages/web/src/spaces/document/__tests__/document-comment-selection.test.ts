@@ -375,3 +375,41 @@ describe('resting on a card in the panel', () => {
     expect(first).not.toBe(second);
   });
 });
+
+describe('a click beside a picture', () => {
+  it('closes the comment that was open, and lets the body go with its selection where it was (inner#1127 A20)', async () => {
+    const { attachBodyScroller } = await import('@web/spaces/document/document-body-press');
+    const { bodyHolds } = await import('@web/spaces/document/document-body-focus');
+    const editor = open();
+    const threadId = await comment(editor, 0, 5);
+    press(editor, 2);
+    expect(selectedThreadsIn(editor.prosemirrorState)).toEqual([threadId]);
+    editor.insertBlocks(
+      [
+        { type: 'image', props: { url: 'https://cdn.example/a.png', name: 'a.png' } },
+        { type: 'paragraph', content: 'delta' },
+      ] as never,
+      (editor.document as { id: string }[])[0]!.id,
+      'after',
+    );
+    const view = editor.prosemirrorView!;
+    // The body scroller the editor sits in, where a blank press leaves the focus.
+    const scroller = document.createElement('div');
+    const host = view.dom.parentElement === document.body ? view.dom : view.dom.parentElement!;
+    host.parentElement!.insertBefore(scroller, host);
+    scroller.appendChild(host);
+    const detach = attachBodyScroller(view, scroller, editor);
+    view.focus();
+    const before = view.state.selection;
+    const row = view.dom.querySelector('[data-content-type="image"]')!;
+
+    row.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }));
+    row.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0 }));
+
+    expect(selectedThreadsIn(editor.prosemirrorState)).toEqual([]);
+    expect(view.state.selection.eq(before)).toBe(true);
+    expect(bodyHolds(view.state)).toBe(false);
+    detach();
+  });
+});
+

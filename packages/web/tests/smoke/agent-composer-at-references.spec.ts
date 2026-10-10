@@ -17,18 +17,30 @@ const MARKER = '__breatic_canvas_nodes__:';
 
 /** A picture as the copy button in a reply writes it. */
 const PICTURE = {
+  id: 'picture',
   type: 'image',
   position: { x: 0, y: 0 },
-  name: 'Neon street',
-  content: 'https://img.example.com/neon-street.jpg',
+  data: { name: 'Neon street', content: 'https://img.example.com/neon-street.jpg' },
   external: true,
 };
 
 /** Two nodes from some other canvas, a group and its member. */
 const ELSEWHERE = [
-  { type: 'group', position: { x: 0, y: 0 }, name: 'Shot list', id: 'g-elsewhere' },
-  { type: 'text', position: { x: 10, y: 10 }, content: 'Opening shot', id: 't-elsewhere', parentId: 'g-elsewhere' },
+  { type: 'group', position: { x: 0, y: 0 }, data: { name: 'Shot list' }, id: 'g-elsewhere' },
+  { type: 'text', position: { x: 10, y: 10 }, data: { content: 'Opening shot' }, id: 't-elsewhere', parentId: 'g-elsewhere' },
 ];
+
+/**
+ * The canvas's clipboard text (version 2) for these nodes; the picked ones
+ * are those whose group is not among them.
+ * @param nodes - The nodes.
+ * @returns The clipboard text.
+ */
+function canvasText(nodes: ReadonlyArray<{ id: string; parentId?: string }>): string {
+  const ids = new Set(nodes.map((n) => n.id));
+  const picked = nodes.filter((n) => n.parentId === undefined || !ids.has(n.parentId)).map((n) => n.id);
+  return MARKER + JSON.stringify({ version: 2, picked, nodes, edges: [] });
+}
 
 /**
  * Paste text into the box the way the browser does: one paste event.
@@ -53,21 +65,21 @@ test.beforeEach(async ({ page }) => {
 });
 
 test('a pasted picture is attached rather than pasted as text', async ({ page }) => {
-  await pasteText(page, MARKER + JSON.stringify([PICTURE]));
+  await pasteText(page, canvasText([PICTURE]));
 
   await expect(page.getByTestId('chat-composer-chips')).toContainText('Neon street');
   await expect(page.getByTestId('chat-composer-box')).toHaveText('');
 });
 
 test('nodes from another canvas are attached as one piece named after the group', async ({ page }) => {
-  await pasteText(page, MARKER + JSON.stringify(ELSEWHERE));
+  await pasteText(page, canvasText(ELSEWHERE));
 
   await expect(page.getByTestId('chat-composer-chips')).toContainText('Shot list');
 });
 
 test('@ lists the attachment just above the @, and the pick goes out as a reference', async ({ page, context }) => {
   await context.grantPermissions(['clipboard-read', 'clipboard-write']);
-  await pasteText(page, MARKER + JSON.stringify([PICTURE]));
+  await pasteText(page, canvasText([PICTURE]));
   await expect(page.getByTestId('chat-composer-chips')).toContainText('Neon street');
 
   const box = page.getByTestId('chat-composer-box');
@@ -131,8 +143,8 @@ test('@ lists the attachment just above the @, and the pick goes out as a refere
 });
 
 test('a long name in a sent message ends in an ellipsis inside its block', async ({ page }) => {
-  const long = { ...PICTURE, name: 'A much longer attachment name for truncation checks' };
-  await pasteText(page, MARKER + JSON.stringify([long]));
+  const long = { ...PICTURE, data: { ...PICTURE.data, name: 'A much longer attachment name for truncation checks' } };
+  await pasteText(page, canvasText([long]));
   await expect(page.getByTestId('chat-composer-chips')).toContainText('A much longer');
   const box = page.getByTestId('chat-composer-box');
   await box.pressSequentially('see @');
@@ -141,7 +153,7 @@ test('a long name in a sent message ends in an ellipsis inside its block', async
   await box.press('Enter');
 
   const block = page.getByTestId('message-reference');
-  await expect(block).toHaveText(long.name, { timeout: 20_000 });
+  await expect(block).toHaveText(long.data.name, { timeout: 20_000 });
   const look = await block.evaluate((el) => ({
     overflow: getComputedStyle(el).textOverflow,
     cut: el.scrollWidth > el.clientWidth,
@@ -152,7 +164,7 @@ test('a long name in a sent message ends in an ellipsis inside its block', async
 for (const theme of ['light', 'dark'] as const) {
   test(`a block in the box and in the sent message has the colour of the attachment chip (${theme})`, async ({ page }) => {
     await page.evaluate((t) => document.documentElement.setAttribute('data-theme', t), theme);
-    await pasteText(page, MARKER + JSON.stringify([PICTURE]));
+    await pasteText(page, canvasText([PICTURE]));
     await expect(page.getByTestId('chat-composer-chips')).toContainText('Neon street');
     const box = page.getByTestId('chat-composer-box');
     await box.pressSequentially('see @');
@@ -174,7 +186,7 @@ for (const theme of ['light', 'dark'] as const) {
 }
 
 test('text pasted after an @ that names no attachment opens no list', async ({ page }) => {
-  await pasteText(page, MARKER + JSON.stringify([PICTURE]));
+  await pasteText(page, canvasText([PICTURE]));
   await expect(page.getByTestId('chat-composer-chips')).toContainText('Neon street');
   await pasteText(page, '第三方的@撒发的多少是收到');
   await page.getByTestId('chat-composer-box').pressSequentially('多少');
@@ -185,7 +197,7 @@ test('text pasted after an @ that names no attachment opens no list', async ({ p
 });
 
 test('the full-width at sign a CJK input method types opens the list too', async ({ page }) => {
-  await pasteText(page, MARKER + JSON.stringify([PICTURE]));
+  await pasteText(page, canvasText([PICTURE]));
   const box = page.getByTestId('chat-composer-box');
   await box.pressSequentially('写真の＠');
   await expect(page.locator('[data-testid^="reference-mention-option-"]').first()).toContainText('Neon street');
@@ -196,7 +208,7 @@ test('the full-width at sign a CJK input method types opens the list too', async
 });
 
 test('Shift+Tab out of an open @ list hides it and leaves the focused control uncovered', async ({ page }) => {
-  await pasteText(page, MARKER + JSON.stringify([PICTURE]));
+  await pasteText(page, canvasText([PICTURE]));
   const box = page.getByTestId('chat-composer-box');
   await box.pressSequentially('look at @');
   const option = page.locator('[data-testid^="reference-mention-option-"]').first();
@@ -227,7 +239,7 @@ test('keys typed while a new conversation opens land in the box', async ({ page 
 });
 
 test('a new conversation opens on its own empty draft, not the words left in the last one', async ({ page }) => {
-  await pasteText(page, MARKER + JSON.stringify([PICTURE]));
+  await pasteText(page, canvasText([PICTURE]));
   const box = page.getByTestId('chat-composer-box');
   await box.pressSequentially('look at @');
   await expect(page.locator('[data-testid^="reference-mention-option-"]').first()).toBeVisible();
@@ -243,7 +255,7 @@ test('a new conversation opens on its own empty draft, not the words left in the
 });
 
 test('removing the attachment takes its block out of the words', async ({ page }) => {
-  await pasteText(page, MARKER + JSON.stringify([PICTURE]));
+  await pasteText(page, canvasText([PICTURE]));
   const box = page.getByTestId('chat-composer-box');
   await box.pressSequentially('look at @');
   await expect(page.locator('[data-testid^="reference-mention-option-"]').first()).toBeVisible();

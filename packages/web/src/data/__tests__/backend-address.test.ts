@@ -12,14 +12,12 @@ vi.mock('@hocuspocus/provider', () => ({ HocuspocusProviderWebsocket: class {
 } }));
 vi.mock('@microsoft/fetch-event-source', () => ({ fetchEventSource: transports.stream }));
 afterEach(() => { vi.unstubAllEnvs(); vi.resetModules(); vi.clearAllMocks(); });
-it('uses the configured backend for API, streams and download links', async () => {
+it('uses the configured backend for API and streams', async () => {
   vi.stubEnv('VITE_API_BASE_URL', 'https://backend.example.com/api/v1/');
   const { request } = await import('../api/request');
-  const { downloadHref } = await import('../api/download-href');
   const { textToolsApi } = await import('../api/text-tools');
   expect(request.defaults.baseURL).toBe('https://backend.example.com/api/v1');
   expect(request.defaults.withCredentials).toBe(true);
-  expect(downloadHref('https://media.example.com/a')).toBe('https://backend.example.com/api/v1/assets/download?url=https%3A%2F%2Fmedia.example.com%2Fa');
   await textToolsApi.stream({ toolId: 'polish', document: 'text' }, { onEvent: () => undefined });
   expect(transports.stream.mock.calls[0]?.[0]).toBe('https://backend.example.com/api/v1/mini-tools/text');
   expect(transports.stream.mock.calls[0]?.[1]).toMatchObject({ credentials: 'include' });

@@ -19,6 +19,8 @@ declare module '*.worker.ts' {
 }
 
 interface ImportMetaEnv {
+  /** Readable product release, also written to app-version.json at build time. */
+  readonly VITE_RELEASE_VERSION?: string;
   /** API base including its version prefix; empty means same-origin /api/v1. */
   readonly VITE_API_BASE_URL?: string;
   /** WebSocket URL; empty means same-origin /ws. */

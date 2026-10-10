@@ -35,15 +35,15 @@ const ENABLED = [
   'checkListItem',
   'divider',
   'table',
+  'image',
+  'video',
+  'audio',
 ] as const;
 
 /** Turned off this version, so they fall into the fallback path instead. */
 const DISABLED = [
   'quote',
   'toggleListItem',
-  'image',
-  'video',
-  'audio',
   'file',
 ] as const;
 
@@ -88,19 +88,34 @@ describe('the document schema', () => {
     expect(props).toContain('number');
   });
 
-  it('lets the divider be the only block with no content that carries `quoted`', () => {
+  it('gives image and video a width and an alignment, and audio neither (inner#1127 A8, A9)', () => {
+    const schema = buildDocumentSchema();
+    for (const type of ['image', 'video'] as const) {
+      const props = Object.keys(schema.blockSchema[type].propSchema);
+      expect(props).toEqual(
+        expect.arrayContaining(['url', 'name', 'caption', 'previewWidth', 'textAlignment']),
+      );
+    }
+    const audio = Object.keys(schema.blockSchema.audio.propSchema);
+    expect(audio).toEqual(expect.arrayContaining(['url', 'name', 'caption']));
+    expect(audio).not.toContain('previewWidth');
+    expect(audio).not.toContain('textAlignment');
+  });
+
+  it('lets only the divider and the three media blocks be blocks with no content that carry `quoted`', () => {
     // `handleQuotedEnter`'s empty branch reads the caret's offset off the
     // block it is in, and reads it as 0 without asking. A block with no
     // content never gets there: the only selection it can hold is a node
     // selection, and Enter over one goes to `handleWholeBlockEnter` first
-    // (`document-enter.ts`). That was checked for the divider (#124). Another
-    // such block has to be checked the same way before it joins this list.
+    // (`document-enter.ts`). That was checked for the divider (#124) and for
+    // the media blocks (inner#1127). Another such block has to be checked the
+    // same way before it joins this list.
     const schema = buildDocumentSchema();
     const noContentCarriers = Object.entries(schema.blockSchema)
       .filter(([, config]) => 'quoted' in config.propSchema)
       .filter(([, config]) => config.content === 'none')
       .map(([type]) => type);
-    expect(noContentCarriers).toEqual(['divider']);
+    expect(noContentCarriers.sort()).toEqual(['audio', 'divider', 'image', 'video']);
   });
 
   it('gives a numbered list item the settable-number prop', () => {

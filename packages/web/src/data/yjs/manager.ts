@@ -58,6 +58,16 @@ export function getDoc(name: string): Y.Doc {
 }
 
 /**
+ * Whether a document is open in this tab: created and not yet destroyed. A
+ * Space hidden behind another tab is still open; a closed one is not.
+ * @param name - Canonical document name.
+ * @returns True while the document is in the cache.
+ */
+export function hasDoc(name: string): boolean {
+  return docs.has(name);
+}
+
+/**
  * Destroy and remove a document from the cache. Called when the user
  * navigates away from a project / space so memory can be reclaimed.
  *

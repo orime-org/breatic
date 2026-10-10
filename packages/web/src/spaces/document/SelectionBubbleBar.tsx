@@ -84,6 +84,7 @@ import { commentTool } from '@web/spaces/document/document-comment-entries';
 import { addToAgentTool } from '@web/spaces/document/document-to-agent';
 import { mergeCellsTool } from '@web/spaces/document/document-table-tools';
 import {
+  BUBBLE_BAR_CLASS,
   ToolButton,
   type ToolDef,
 } from '@web/spaces/document/document-tool-button';
@@ -102,6 +103,8 @@ import { onEditorSettled } from '@web/spaces/document/use-editor-snapshot';
 import { Separator } from '@web/components/ui/separator';
 import { usePressKeepsFocus } from '@web/lib/use-press-keeps-focus';
 import { cn } from '@web/lib/utils';
+import { setBubbleBarUp, textBarsStandAside, useDocumentBars } from '@web/spaces/document/document-bars';
+import { bodyFocusStore, bodyHolds, bodyLayerMark } from '@web/spaces/document/document-body-focus';
 
 /** The document editor, as far as the bar needs to know. */
 type BubbleEditor = ViewedEditor;
@@ -494,6 +497,10 @@ function BubbleBar({
   // instead, which put focus outside the bar's subtree, which took the bar off
   // the screen — measured, hovering a slot removed the whole bar.
   const [barEl, setBarEl] = React.useState<HTMLDivElement | null>(null);
+  // A media block under the pointer owns the one bar the document shows
+  // (`document-bars.ts`); this one steps aside, keeping its state, and is
+  // back when the pointer leaves.
+  const standingAside = textBarsStandAside(useDocumentBars(editor));
   const barRef = React.useRef<HTMLDivElement | null>(null);
   // Whether one of the bar's own overlays — a slot menu or the link panel — is
   // open. Read by `isWarranted`, written just below where both are tracked.
@@ -565,6 +572,11 @@ function BubbleBar({
     // the `blur`, and in a test environment with no layout the panel is not
     // focusable at all, so it stays `<body>` — measured both ways, reading the
     // DOM took the bar off screen the moment an overlay opened.
+    // The body holds the focus, and the focus is in the editable element or in
+    // one of the bar's own overlays (inner#1127, design 3.5.1): a press on
+    // blank space lets the body go and the bar with it; the focus in another
+    // of the body's layers — a row's menu — keeps the body but not the bar.
+    if (!bodyHolds(view.state)) return false;
     if (!view.hasFocus() && !overlayOpenRef.current) return false;
     // Selected cells are something to act on even with no words in them: the
     // bar is where they are aligned, filled and merged (inner#1126 A9).
@@ -1054,6 +1066,9 @@ function BubbleBar({
       ask();
     };
     const stopSettled = onEditorSettled(editor, ask);
+    // Whether the body holds the focus moves with no transaction the editor
+    // reports as a change (`document-body-focus.ts`).
+    const stopFocus = bodyFocusStore.subscribe(editor, ask);
     // Focus is a DOM fact here. BlockNote publishes no focus or blur event, so
     // these come off the editable element itself; `relatedTarget` reads the
     // same on `focusout` as it did on the editor's `blur`.
@@ -1063,15 +1078,27 @@ function BubbleBar({
     ask();
     return () => {
       stopSettled();
+      stopFocus();
       body?.removeEventListener('focusin', ask);
       body?.removeEventListener('focusout', askOnFocusOut);
     };
   }, [editor, shouldShow, pinnedPoint, update]);
 
+  // Up or not, for the controls that stand aside for the bar rather than for a
+  // selection the body may no longer draw (`document-bars.ts`).
+  React.useEffect(() => {
+    setBubbleBarUp(editor, warranted);
+    return () => {
+      setBubbleBarUp(editor, false);
+    };
+  }, [editor, warranted]);
+
   // The controls are built only while the bar is on screen, which is what the
   // early return below makes true: each of them runs its command's dry run on
   // every transaction, and the bar spends almost all of its life away.
   if (!warranted) return null;
+  const held = viewOf(editor)?.state.selection;
+  const barMark = bodyLayerMark(editor, { from: held?.from ?? 0, to: held?.to ?? 0 });
 
   return (
     // `FloatingPortal`, the same one the link panel uses. It mounts a
@@ -1087,13 +1114,17 @@ function BubbleBar({
         ref={takeBarNode}
         style={floatingStyles}
         data-testid='doc-selection-bubble-bar'
+        data-standing-aside={standingAside ? 'true' : undefined}
+        // A layer of the body, belonging where the selection is.
+        {...barMark}
         // Above the whole-document entry. The bar is the transient one, summoned
         // by a selection the reader just made, and its horizontal position
         // follows that selection far enough to reach the entry's corner. The
         // editor shell is `isolate`, so this number is compared against the
         // entry's and nothing else on the page.
         className={cn(
-          'z-20 flex items-center gap-0.5 rounded-overlay border border-border bg-popover px-1.5 py-1 shadow-md',
+          'z-20',
+          BUBBLE_BAR_CLASS,
           // `isPositioned` is the third term, and it is about the bar's first
           // frame. floating-ui has to have the element in the document before
           // it can measure it, so the bar enters carrying whatever offsets the
@@ -1101,7 +1132,7 @@ function BubbleBar({
           // selection, that is the scroller's own top left corner (320, 80),
           // one frame before the real place (616, 290). A mouse selection hides
           // this behind the press gate; the keyboard has no such gate.
-          (panelOpen || pointerDown || !isPositioned)
+          (panelOpen || pointerDown || !isPositioned || standingAside)
             && 'invisible pointer-events-none',
         )}
       >

@@ -51,16 +51,26 @@ export const NodeZoomedPastPreviewContext: React.Context<boolean> =
   React.createContext(false);
 
 /**
- * Whether this node should show its original. Once true it stays true for that
- * image while the node is mounted: its original is already in the browser, and
- * switching back to the preview would gain nothing. A new image in the node is
- * judged afresh, since nothing of it has loaded.
+ * Whether a picture should show its original. Once true it stays true for that
+ * image while the caller is mounted: its original is already in the browser,
+ * and switching back to the preview would gain nothing. A new image is judged
+ * afresh, since nothing of it has loaded.
+ * @param image - The address of the image shown.
+ * @param past - Whether the image is shown past its preview right now.
+ * @returns True once the image has been shown past its preview.
+ */
+export function useLatchedFor(image: string | undefined, past: boolean): boolean {
+  const [seenFor, setSeenFor] = React.useState(past ? image : undefined);
+  if (past && seenFor !== image) setSeenFor(image);
+  return past || (seenFor !== undefined && seenFor === image);
+}
+
+/**
+ * Whether this node should show its original, kept once true
+ * ({@link useLatchedFor}).
  * @param image - The address of the image the node shows.
  * @returns True once the canvas has zoomed this image past its preview.
  */
 export function useZoomedPastPreview(image: string | undefined): boolean {
-  const past = React.useContext(NodeZoomedPastPreviewContext);
-  const [seenFor, setSeenFor] = React.useState(past ? image : undefined);
-  if (past && seenFor !== image) setSeenFor(image);
-  return past || (seenFor !== undefined && seenFor === image);
+  return useLatchedFor(image, React.useContext(NodeZoomedPastPreviewContext));
 }

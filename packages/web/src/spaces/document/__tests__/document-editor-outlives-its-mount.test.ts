@@ -34,12 +34,31 @@ import {
 } from '@web/spaces/document/document-undo-blocknote';
 
 const mounted: ReturnType<typeof buildDocumentEditor>[] = [];
+/** The views a second mount replaced, which nothing else ever destroys. */
+const replaced: { destroy: () => void; isDestroyed: boolean }[] = [];
 
 afterEach(() => {
   mounted.splice(0).forEach((editor) => {
     editor.unmount();
   });
+  // A replaced view keeps its plugin views, page listeners among them, until
+  // it is destroyed; left alive, they act on the editors of later files.
+  replaced.splice(0).forEach((view) => {
+    if (!view.isDestroyed) view.destroy();
+  });
 });
+
+/**
+ * Mounts an editor that is already mounted, keeping the view it replaces for
+ * the teardown.
+ * @param editor - The editor.
+ * @param element - Where to mount it.
+ */
+function remount(editor: ReturnType<typeof buildDocumentEditor>, element: HTMLElement): void {
+  const before = editor.prosemirrorView;
+  editor.mount(element);
+  if (before !== undefined && before !== editor.prosemirrorView) replaced.push(before);
+}
 
 /**
  * Opens an editor over a fresh document, with its own undo manager.
@@ -83,7 +102,7 @@ describe('mounting the same editor into a second container', () => {
     expect(root.textContent).toContain('written before the switch');
 
     const next = container();
-    editor.mount(next);
+    remount(editor, next);
 
     expect(next.textContent).toContain('written before the switch');
     expect(editor.prosemirrorView).not.toBeUndefined();
@@ -99,7 +118,7 @@ describe('mounting the same editor into a second container', () => {
     });
     expect(manager.undoStack.length).toBeGreaterThan(0);
 
-    editor.mount(container());
+    remount(editor, container());
 
     expect(manager.undoStack.length).toBeGreaterThan(0);
     editor.undo();
@@ -123,7 +142,7 @@ describe('mounting the same editor into a second container', () => {
       setTimeout(resolve, 40);
     });
 
-    editor.mount(root);
+    remount(editor, root);
 
     expect(root.textContent).toContain('written once');
     // One paragraph, one block — a second mount must not leave two copies.
@@ -132,7 +151,7 @@ describe('mounting the same editor into a second container', () => {
 
   it('is still bound to the shared document afterwards', async () => {
     const { editor, doc } = open();
-    editor.mount(container());
+    remount(editor, container());
 
     editor.replaceBlocks(editor.document, [
       { type: 'paragraph', content: 'written after the switch' },

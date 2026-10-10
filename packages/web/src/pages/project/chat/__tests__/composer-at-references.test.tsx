@@ -14,7 +14,16 @@ import { attachmentMarker, getLocale, messageLength, setLocale } from '@breatic/
 
 import { ChatComposer } from '@web/pages/project/chat/ChatComposer';
 import { HOVER_OPEN_DELAY_MS } from '@web/spaces/canvas/nodes/_shared/hover-preview-timing';
+import { CLIPBOARD_VERSION, serializeClipboard } from '@web/spaces/canvas/node-clipboard';
 import type { TrayItem } from '@web/stores/chat-attachments';
+
+/** The canvas's clipboard text for one picture node. */
+const CANVAS_TEXT = serializeClipboard({
+  version: CLIPBOARD_VERSION,
+  picked: ['x'],
+  nodes: [{ id: 'x', type: 'image', position: { x: 0, y: 0 }, data: { content: 'https://x/y.png' }, external: true }],
+  edges: [],
+});
 
 const cover: TrayItem = {
   id: 'a1',
@@ -344,7 +353,7 @@ describe('@ in the chat box', () => {
     try {
       setup({ turnPhase: 'sending', onPasteCanvas });
       fireEvent.paste(box().view.dom, {
-        clipboardData: { files: [], getData: (type: string) => (type === 'text/plain' ? '__breatic_canvas_nodes__:[]' : '') },
+        clipboardData: { files: [], getData: (type: string) => (type === 'text/plain' ? CANVAS_TEXT : '') },
       });
     } finally {
       document.removeEventListener('paste', outside);

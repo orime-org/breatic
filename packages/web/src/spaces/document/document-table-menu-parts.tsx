@@ -35,6 +35,7 @@ import {
   type CellScope,
 } from '@web/spaces/document/document-table-run';
 import { tableTargetOf } from '@web/spaces/document/document-table-target';
+import { useDocumentBars } from '@web/spaces/document/document-bars';
 import { useEditorSnapshot } from '@web/spaces/document/use-editor-snapshot';
 
 /** A cell's fill when it has none, as the table schema writes it. */
@@ -52,16 +53,14 @@ interface WithState {
 }
 
 /**
- * Whether the reader holds a selection that is not empty.
+ * Whether the bubble bar is up, which the table handles stand aside for: a
+ * selection the body let go of is not drawn, and nothing stands over it
+ * (inner#1127, `document-bars.ts`).
  * @param editor - The editor.
- * @returns True while one is held.
+ * @returns True while the bubble bar is up.
  */
 export function useHoldsSelection(editor: HandleEditor): boolean {
-  return useEditorSnapshot(
-    editor as never,
-    (current: { prosemirrorState: { selection: { empty: boolean } } }) =>
-      !current.prosemirrorState.selection.empty,
-  );
+  return useDocumentBars(editor).bubbleBarUp;
 }
 
 /**

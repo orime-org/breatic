@@ -30,11 +30,13 @@ import { hashFile } from '@web/data/upload/hash';
 
 /**
  * What the server filed a finished upload under, when it said: the address,
- * and the ledger row a cover or an avatar is then pointed at.
+ * the ledger row a cover or an avatar is then pointed at, and the kind it read
+ * off the stored bytes.
  */
 export interface StoredUpload {
   fileUrl: string | undefined;
   assetId: string | undefined;
+  kind: string | undefined;
 }
 
 /**
@@ -50,6 +52,8 @@ export interface StoredUpload {
  * `storage` — the studio's account is out of room (#89), which no retry fixes
  * either, for the opposite reason: nothing is broken, there is simply nowhere
  * to put the bytes until the admin acts.
+ * `rateLimited` — the reader went over a per-user limit on the upload routes
+ * (tickets, or finishing uploads) in its window. A retry once the window has passed goes through.
  * `unsupportedType` — the edge read the stored bytes and turned them down.
  * The bytes are what they are, so re-sending them meets the same refusal.
  * `transfer` — the transfer half ended without our server hearing anything:
@@ -63,6 +67,7 @@ export interface StoredUpload {
 export const UPLOAD_FAILURE_REASONS = [
   'hash',
   'storage',
+  'rateLimited',
   'unsupportedType',
   'transfer',
   'upload',
@@ -102,10 +107,14 @@ export interface UploadFailure {
   taskId?: string;
 }
 
-/** The statuses that say something other than "try again". */
-const FINAL_BY_STATUS: ReadonlyMap<number, UploadFailureReason> = new Map([
+/** Too Many Requests (RFC 6585 §4): a per-user limit on the upload routes. */
+const RATE_LIMITED_STATUS = 429;
+
+/** The statuses that name their own reason; whether a retry helps is `uploadRetryCanChange`'s call. */
+const REASON_BY_STATUS: ReadonlyMap<number, UploadFailureReason> = new Map([
   [STORAGE_FULL_STATUS, 'storage'],
   [UNSUPPORTED_TYPE_STATUS, 'unsupportedType'],
+  [RATE_LIMITED_STATUS, 'rateLimited'],
 ]);
 
 /**
@@ -113,9 +122,7 @@ const FINAL_BY_STATUS: ReadonlyMap<number, UploadFailureReason> = new Map([
  *
  * Read off the status because the sentence beside it is localized on the server
  * and matching on the copy would break the moment anyone edits it or a reader
- * switches language. Two statuses say something a retry cannot change: the
- * account is full, and the stored bytes are not a format we keep. Everything
- * else is about this attempt.
+ * switches language. A status with no reason of its own is the catch-all.
  *
  * Hashing is not read off an error at all — it is refused before anything is
  * sent.
@@ -128,7 +135,7 @@ function failureOf(err: unknown): UploadFailureReason {
   // refusal from it reaches here with a status that says nothing about whether
   // anyone will end the row — and nobody will.
   if (err instanceof BytesNotDelivered) return 'transfer';
-  return FINAL_BY_STATUS.get(errorStatus(err) ?? -1) ?? 'upload';
+  return REASON_BY_STATUS.get(errorStatus(err) ?? -1) ?? 'upload';
 }
 
 /** Injected dependencies for {@link runMediaUpload} (network + result sinks). */
@@ -148,7 +155,10 @@ export interface MediaUploadDeps {
     file: File,
     ticket: UploadTicket,
     cfg: UploadClientConfig,
+    onPartLanded?: (bytesLanded: number) => void,
   ) => Promise<IngestOutcome>;
+  /** Told the share of the file that has landed, from 0 to 1, after each part. */
+  onProgress?: (fraction: number) => void;
   /**
    * The bytes are delivered and the server has them.
    *
@@ -231,15 +241,22 @@ export async function runMediaUpload(
     // Nothing moves. When a node is behind this upload, the server has already
     // written its history and published what ends its handling; an upload with
     // no node reads what the answer names.
-    deps.onSuccess({ fileUrl: answer.fileUrl, assetId: answer.assetId });
+    deps.onSuccess({ fileUrl: answer.fileUrl, assetId: answer.assetId, kind: answer.kind });
     return;
   }
 
   try {
-    const outcome = await deps.sendToIngest(file, answer, cfg);
+    const { onProgress } = deps;
+    const outcome =
+      onProgress === undefined
+        ? await deps.sendToIngest(file, answer, cfg)
+        : await deps.sendToIngest(file, answer, cfg, (landed) => {
+          onProgress(landed / file.size);
+        });
     deps.onSuccess({
       fileUrl: outcome.fileUrl,
       assetId: outcome.assetId ?? undefined,
+      kind: outcome.kind,
     });
   } catch (err) {
     deps.onFailure({
@@ -266,16 +283,22 @@ export class UploadFailedError extends Error {
  * behind it — it reads its result here rather than from Yjs.
  * @param file - The file to upload.
  * @param context - Where it lands and what it is for.
+ * @param onProgress - Told the share of the file that has landed, after each part.
  * @returns What the server filed the upload under.
  * @throws {UploadFailedError} When the upload does not complete.
  */
-export function uploadMedia(file: File, context: UploadContext): Promise<StoredUpload> {
+export function uploadMedia(
+  file: File,
+  context: UploadContext,
+  onProgress?: (fraction: number) => void,
+): Promise<StoredUpload> {
   return new Promise((resolve, reject) => {
     void runMediaUpload(file, context, {
       getUploadConfig: assetsApi.fetchUploadConfig,
       hashFile,
       requestTicket: assetsApi.requestUploadTicket,
       sendToIngest: sendFileAndFinish,
+      ...(onProgress !== undefined && { onProgress }),
       onSuccess: resolve,
       onFailure: (outcome) => reject(new UploadFailedError(outcome.reason)),
     });

@@ -209,6 +209,12 @@ const ScrollArea = React.forwardRef<
 ScrollArea.displayName = ScrollAreaPrimitive.Root.displayName;
 
 /**
+ * The attribute every scrollbar carries, for the code that must tell a press
+ * on a scrollbar from a press on what the scroller holds.
+ */
+export const SCROLLBAR_MARK = 'data-scroll-area-scrollbar';
+
+/**
  * The overlay scrollbar: a fixed-thickness rail whose thumb brightens on
  * hover — color is the ONLY hover response; width and shape never change
  * (#1773).
@@ -410,6 +416,7 @@ const ScrollBar = React.forwardRef<
       ref={setRailRef}
       orientation={orientation}
       {...props}
+      {...{ [SCROLLBAR_MARK]: '' }}
       data-scrollable={scrollable ? 'true' : 'false'}
       data-revealed={showing ? 'true' : 'false'}
       // The input-state contract covers every button. `takeOverDrag` cancels

@@ -80,7 +80,7 @@ This guide assumes one local instance. Required free ports are `5432`, `6379`, `
 
 1. Create a dedicated development bucket, for example `breatic-local-yourname`; do not use an existing production bucket.
 2. Create **Object Read & Write** R2 S3 credentials scoped to that bucket. Save the Access Key ID, Secret Access Key and account S3 endpoint. These are separate from Wrangler login credentials.
-3. Enable the bucket's **Public Development URL**, such as `https://pub-....r2.dev`. Files are publicly readable through their URLs; do not upload confidential material.
+3. Enable the bucket's **Public Development URL**, such as `https://pub-....r2.dev`. Files are publicly readable through their URLs; do not upload confidential material. On an `r2.dev` address the canvas node menu's **Download** opens the file in a new tab; saving it needs a custom domain with the response header rule described in [LOCAL.md](LOCAL.md).
 4. Save this bucket CORS rule:
 
 ```json

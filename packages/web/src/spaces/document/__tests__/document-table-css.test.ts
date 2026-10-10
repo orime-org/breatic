@@ -28,7 +28,7 @@ describe('a table in the body', () => {
     expect(ruleBody('[data-content-type=\'table\'] td')).toContain('padding: var(--space-3) var(--space-5)');
     expect(ruleBody('[data-content-type=\'table\'] th')).toContain('padding: var(--space-3) var(--space-5)');
     expect(ruleBody('[data-content-type=\'table\'] th')).toContain('background-color: var(--color-muted)');
-    expect(ruleBody('.selectedCell::after')).toContain('background: var(--color-selection)');
+    expect(ruleBody('.doc-body .selectedCell::after')).toContain('background: var(--color-selection)');
     expect(ruleBody('.column-resize-handle')).toContain('background-color: var(--color-ring)');
   });
 
@@ -45,7 +45,7 @@ describe('a table in the body', () => {
 
   it('paints the cells a row or column menu acts on the way selected cells are painted (A6)', () => {
     // One rule for both, so the two can never look different.
-    expect(selectorEndingIn('.doc-table-target::after')).toBe(selectorEndingIn('.selectedCell::after'));
+    expect(selectorEndingIn('.doc-table-target::after')).toBe(selectorEndingIn('.doc-body .selectedCell::after'));
     expect(selectorEndingIn('.doc-table-target > p')).toBe(selectorEndingIn('.selectedCell > p'));
     // The library draws the layer for `.selectedCell` only, so the shared
     // rule draws it whole.
@@ -55,6 +55,10 @@ describe('a table in the body', () => {
     expect(layer).toContain('inset: 0');
     expect(layer).toContain('z-index: 2');
     expect(layer).toContain('pointer-events: none');
+  });
+
+  it('draws no selected cells while an editable body does not hold the focus (inner#1127 A21)', () => {
+    expect(ruleBody(':not([data-body-holds]) .selectedCell::after')).toContain('content: none');
   });
 
   it('lets a table whose every column has a stored width grow to the sum of its columns (A12)', () => {
