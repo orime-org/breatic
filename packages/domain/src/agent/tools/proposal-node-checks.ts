@@ -45,7 +45,8 @@ function carriedMarks(node: ProposalNode): string[] {
  * Whether the material a node names is this studio's, and of the node's kind.
  *
  * An address in our storage with no live registration in this studio is
- * most likely mistyped, and is told to be copied again.
+ * refused with where material comes from: it may be mistyped or copied from
+ * another studio, and each is put right differently.
  * @param node - The node being judged.
  * @param at - The node, as a fix names it.
  * @param materials - The registration behind each address.
@@ -66,7 +67,8 @@ export function checkMaterial(node: ProposalNode, at: NodeLabel, materials: Mate
       : refuse("material-not-ours-media", `"${node.name}" holds an address that is not in our storage. ${capitalised(aNode(node.type))} takes material only from our storage: a file the user uploaded in the chat.`);
   }
   if (facts === "missing") {
-    return refuse("material-missing", `"${node.name}" holds an address in our storage that does not exist, most likely mistyped.`, fixOn(at, `copy it again exactly as the attachment or the ${SAVE_IMAGE} answer gives it.`));
+    // A mistyped address and one copied from another studio read the same here.
+    return refuse("material-missing", `"${node.name}" holds an address in our storage that is not registered in this studio. Material comes only from this studio's storage: files the user uploaded in the chat and pictures saved with ${SAVE_IMAGE}.`);
   }
   if (facts.kind !== node.type) {
     return refuse("material-wrong-kind", `"${node.name}" is ${aNode(node.type)} and its material is ${facts.kind}.`);

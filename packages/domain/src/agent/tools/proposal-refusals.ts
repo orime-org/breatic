@@ -65,7 +65,7 @@ export const REFUSALS = {
   "material-not-source": false,
   "material-not-ours": "node",
   "material-not-ours-media": false,
-  "material-missing": "node",
+  "material-missing": false,
   "material-wrong-kind": false,
   "text-source": false,
   "source-configured": false,

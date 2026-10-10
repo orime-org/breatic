@@ -168,15 +168,15 @@ describe("the address is ours (A5)", () => {
     expect(reason).toContain("save_image");
   });
 
-  it("refuses an address in our storage that does not exist, asking for it to be copied again", () => {
+  it("refuses an address in our storage this studio has not registered, stating where material comes from", () => {
     const typo = "https://resource.example/image/2026-10-08/1_portrait-typo.png";
     const materials: MaterialTable = new Map<string, MaterialFacts | "missing">([...FACTS, [typo, "missing"]]);
     const verdict = checkProposal(group([held("image", "Portrait", typo), talkingHead({ image: [0] })]), materials);
     if (verdict.ok) throw new Error("expected a refusal");
 
-    expect(verdict.reason).toContain("does not exist");
-    expect(verdict.reason).toContain("exactly");
-    expect(verdict.reason).not.toContain("first");
+    expect(verdict.reason).toContain("not registered in this studio");
+    expect(verdict.reason).toContain("files the user uploaded in the chat and pictures saved with save_image");
+    expect(verdict.reason).not.toContain("On node");
   });
 
   it("refuses material of another kind than its node", () => {

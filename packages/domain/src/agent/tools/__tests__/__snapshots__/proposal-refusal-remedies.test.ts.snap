@@ -84,7 +84,7 @@ exports[`every refusal states its fault, its rule and its facts > mark-typed (0)
 
 exports[`every refusal states its fault, its rule and its facts > mark-typed (1): is met and says what is wrong 1`] = `""Gen" types 1 mark(s) into its words as text: "[📎 {"ref": 0}]". A mark works only as a segment of its own, with the text segments kept to plain words: {"ref": <index>} for a node."`;
 
-exports[`every refusal states its fault, its rule and its facts > material-missing (0): is met and says what is wrong, and its one fix clears it 1`] = `""Pic" holds an address in our storage that does not exist, most likely mistyped. On node 0 ("Pic"), copy it again exactly as the attachment or the save_image answer gives it."`;
+exports[`every refusal states its fault, its rule and its facts > material-missing (0): is met and says what is wrong 1`] = `""Pic" holds an address in our storage that is not registered in this studio. Material comes only from this studio's storage: files the user uploaded in the chat and pictures saved with save_image."`;
 
 exports[`every refusal states its fault, its rule and its facts > material-not-ours (0): is met and says what is wrong, and its one fix clears it 1`] = `""Pic" holds an address that is not in our storage. On node 0 ("Pic"), save a picture found on the web with save_image first and use the address it answers with."`;
 
