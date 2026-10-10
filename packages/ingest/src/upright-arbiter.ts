@@ -46,6 +46,12 @@ export interface ArbiterAsk {
   receivedSha256: string;
   /** Whether a WebP's image data is lossless. */
   lossless: boolean;
+  /** What the stored bytes read as; decides the encoder. */
+  contentType: string;
+  /** JPEG and lossy WebP quality. */
+  quality: number;
+  /** How long one tool inside the run may take. */
+  toolTimeoutMs: number;
   /** Epoch ms after which this finish stops waiting. */
   waitBy: number;
 }
@@ -63,6 +69,9 @@ export interface UprightRunRequest {
   storageKey: string;
   receivedSha256: string;
   lossless: boolean;
+  contentType: string;
+  quality: number;
+  toolTimeoutMs: number;
   /** The original object's HTTP metadata, written back unchanged. */
   httpMetadata: R2HTTPMetadata;
   /** Epoch ms by which the run has to have answered. */
@@ -185,6 +194,9 @@ export class UprightArbiter {
           storageKey,
           receivedSha256: ask.receivedSha256,
           lossless: ask.lossless,
+          contentType: ask.contentType,
+          quality: ask.quality,
+          toolTimeoutMs: ask.toolTimeoutMs,
           httpMetadata: original.httpMetadata ?? {},
           deadlineAt: ask.waitBy,
         });

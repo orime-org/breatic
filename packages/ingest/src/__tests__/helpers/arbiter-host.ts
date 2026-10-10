@@ -87,6 +87,18 @@ export class ArbiterHost extends DurableObject<HostEnv> {
   }
 
   /**
+   * What the write-back handler calls.
+   * @param commit - The staged write-back.
+   * @param commit.storageKey - The key it writes to.
+   * @param commit.uploadId - R2's id for the multipart upload.
+   * @param commit.parts - The parts that landed.
+   * @returns Whether it now stands.
+   */
+  commitUpright(commit: { storageKey: string; uploadId: string; parts: R2UploadedPart[] }): Promise<boolean> {
+    return this.#arbiter.commit(commit);
+  }
+
+  /**
    * How many container runs were started, and what was logged.
    * @returns The counts.
    */

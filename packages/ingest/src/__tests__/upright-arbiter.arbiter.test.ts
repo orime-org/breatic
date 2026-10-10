@@ -11,6 +11,8 @@ import { describe, expect, it } from "vitest";
 import { previewKeyFor } from "@breatic/shared";
 import type { ArbiterHost, HostEnv } from "./helpers/arbiter-host.js";
 import { MEDIA_DIMENSIONS_STUB, PREVIEW_STUB, UPRIGHT_BYTES } from "./helpers/arbiter-fixtures.js";
+import { uprightObjectUrl } from "@ingest/upright-run.js";
+import { writeUprightVia, type UprightWrite } from "@ingest/upright-write.js";
 
 const host = env as unknown as HostEnv;
 const ORIGINAL = new TextEncoder().encode("original bytes");
@@ -24,7 +26,16 @@ async function seeded(): Promise<{ key: string; stub: DurableObjectStub<ArbiterH
 }
 
 function askFor(key: string, kind: "request" | "seal" = "request", waitMs = 5_000) {
-  return { kind, storageKey: key, receivedSha256: RECEIVED, lossless: false, waitBy: Date.now() + waitMs };
+  return {
+    kind,
+    storageKey: key,
+    receivedSha256: RECEIVED,
+    lossless: false,
+    contentType: "image/png",
+    quality: 90,
+    toolTimeoutMs: 1_000,
+    waitBy: Date.now() + waitMs,
+  };
 }
 
 async function bodyOf(key: string): Promise<{ text: string; type: string | undefined; mark: string | undefined }> {
@@ -94,5 +105,62 @@ describe("upright arbiter", () => {
     expect(await stub.commitAlreadyCompleted({ storageKey: key, receivedSha256: RECEIVED, httpMetadata: { contentType: "image/png" } })).toBe(true);
     await stub.release();
     expect((await asked).phase).toBe("done");
+  });
+
+  describe("the write-back handler", () => {
+    function contextFor(key: string): { containerId: string; className: string; params: UprightWrite } {
+      return {
+        containerId: "host",
+        className: "MediaContainer",
+        params: { key, receivedSha256: RECEIVED, httpMetadata: { contentType: "image/png" } },
+      };
+    }
+
+    it("stages the body with the original metadata and the mark, then has the arbiter complete it", async () => {
+      const { key, stub } = await seeded();
+      await stub.setScript("holdsUntilReleased");
+      const asked = stub.ask(askFor(key));
+      const handler = writeUprightVia(() => stub);
+      const answered = await handler(
+        new Request(uprightObjectUrl(key), { method: "PUT", body: UPRIGHT_BYTES }),
+        { BUCKET: host.BUCKET },
+        contextFor(key),
+      );
+      expect(answered.status).toBe(200);
+      expect(await bodyOf(key)).toEqual({ text: "upright bytes", type: "image/png", mark: RECEIVED });
+      await stub.release();
+      expect((await asked).phase).toBe("done");
+    });
+
+    it("answers 409 and leaves the object alone once the key is abandoned", async () => {
+      const { key, stub } = await seeded();
+      await stub.ask(askFor(key, "seal"));
+      const handler = writeUprightVia(() => stub);
+      const answered = await handler(
+        new Request(uprightObjectUrl(key), { method: "PUT", body: UPRIGHT_BYTES }),
+        { BUCKET: host.BUCKET },
+        contextFor(key),
+      );
+      expect(answered.status).toBe(409);
+      expect(await bodyOf(key)).toEqual({ text: "original bytes", type: "image/png", mark: undefined });
+    });
+
+    it("refuses a key other than the one it was set for", async () => {
+      const { key, stub } = await seeded();
+      const handler = writeUprightVia(() => stub);
+      const answered = await handler(
+        new Request(uprightObjectUrl(`${key}.other`), { method: "PUT", body: UPRIGHT_BYTES }),
+        { BUCKET: host.BUCKET },
+        contextFor(key),
+      );
+      expect(answered.status).toBe(403);
+    });
+
+    it("refuses anything but a PUT", async () => {
+      const { key, stub } = await seeded();
+      const handler = writeUprightVia(() => stub);
+      const answered = await handler(new Request(uprightObjectUrl(key)), { BUCKET: host.BUCKET }, contextFor(key));
+      expect(answered.status).toBe(405);
+    });
   });
 });
