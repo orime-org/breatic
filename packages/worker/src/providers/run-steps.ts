@@ -25,7 +25,7 @@ import { planSteps } from "@worker/providers/plan-steps.js";
 import { upstreamBody } from "@worker/providers/upstream-body.js";
 import { runPrediction, type PredictionRun } from "@worker/providers/wavespeed.js";
 import { queryBilling, UpstreamTaskFailed } from "@worker/providers/http.js";
-import { assertBeforeDeadline } from "@worker/providers/still-running.js";
+import { assertBeforeDeadline, deadlineSignal } from "@worker/providers/still-running.js";
 
 type Step = upstreamStepRepo.UpstreamStep;
 type CloneKind = upstreamCloneRepo.UpstreamCloneKind;
@@ -244,6 +244,7 @@ function warnAheadOfPaidCall(ctx: RunTaskContext, step: Step): RunTaskContext {
  * @param prompt - The reader's prompt.
  * @param params - The run's params.
  * @param carried - What earlier steps answered.
+ * @param deadlineAt - When the task runs out; a family's own call is cut there.
  * @returns The body.
  * @throws {Error} when the model's family fails to prepare the prompt.
  */
@@ -252,11 +253,14 @@ async function generateBody(
   prompt: string,
   params: Readonly<Record<string, unknown>>,
   carried: Carried,
+  deadlineAt: number,
 ): Promise<Record<string, unknown>> {
   const family = FAMILIES.get(entry.name);
   const withIds: Record<string, unknown> = { ...params, ...carried.ids };
   if (carried.elementIds.length > 0) withIds.elements = carried.elementIds.map((id) => ({ element_id: id }));
-  const prepared = family ? await family.prepare(prompt, withIds) : { prompt, fields: {} };
+  const prepared = family
+    ? await family.prepare(prompt, withIds, deadlineSignal(deadlineAt))
+    : { prompt, fields: {} };
   return { ...upstreamBody(entry, withIds, prepared.prompt, family?.CONSUMES), ...prepared.fields };
 }
 
@@ -325,7 +329,7 @@ async function runStep(
       let body: Record<string, unknown> = {};
       if (step.predictionId === null) {
         if (FAMILIES.get(entry.name)?.PREPARE_IS_PAID) submitCtx = warnAheadOfPaidCall(ctx, step);
-        body = await generateBody(entry, prompt, params, carried);
+        body = await generateBody(entry, prompt, params, carried, ctx.deadlineAt);
       }
       const run = await predict(deps, submitCtx, resolved, step, body);
       return { urls: outputUrls(run), prediction: run.taskId };

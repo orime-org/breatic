@@ -40,9 +40,11 @@ export interface ModelFamily {
   CONSUMES: ReadonlySet<string>;
   /** Whether `prepare` makes a paid call of its own, which a retry repeats. */
   PREPARE_IS_PAID: boolean;
+  /** `signal` is the run's deadline, for a family whose preparing makes a call. */
   prepare(
     prompt: string,
     params: Readonly<Record<string, unknown>>,
+    signal: AbortSignal,
   ): Promise<{ prompt: string; fields: Record<string, unknown> }>;
 }
 
