@@ -214,7 +214,7 @@ export function SpaceTab({
 
   // Ending the name from the keyboard gives the keyboard to the content of
   // this Space, as a press beside the document body does. Every key stays in
-  // the field: the tab around it reads keys for dragging.
+  // the field, which sits inside the tab button.
   const exit = useInlineEditExit({
     editing,
     target: () => spaceFocusRoot(id),

@@ -18,7 +18,7 @@ export interface InlineEditExitOptions {
   commit: () => void;
   /** The site's own cancel; it closes the box. */
   cancel: () => void;
-  /** Stop every key at the box, for a box inside a control that reads keys. */
+  /** Stop every key at the box, for a box that sits inside another control. */
   isolate?: boolean;
 }
 
@@ -31,11 +31,50 @@ export interface InlineEditExit {
 }
 
 /**
+ * Swallows the auto-repeats of a key that is still held, until it is released
+ * or the window loses focus. The key that ended an edit keeps repeating after
+ * the keyboard has moved on, and the element it moved to may act on that key
+ * (a title opens for editing on Enter, a text node opens its body); one press
+ * acts once, as the canvas's own one-shot keys do.
+ * @param key - The `KeyboardEvent.key` being held.
+ * @returns The function that stops swallowing.
+ */
+function swallowRepeatsOf(key: string): () => void {
+  /**
+   * Swallows a repeat of the held key before anything below the window sees it.
+   * @param event - The keydown.
+   */
+  const onKeyDown = (event: KeyboardEvent): void => {
+    if (event.key !== key || !event.repeat) return;
+    event.preventDefault();
+    event.stopPropagation();
+  };
+  /**
+   * Stops on the release of the held key.
+   * @param event - The keyup.
+   */
+  const onKeyUp = (event: KeyboardEvent): void => {
+    if (event.key === key) release();
+  };
+  /** Removes the listeners. */
+  const release = (): void => {
+    window.removeEventListener('keydown', onKeyDown, true);
+    window.removeEventListener('keyup', onKeyUp, true);
+    window.removeEventListener('blur', release);
+  };
+  window.addEventListener('keydown', onKeyDown, true);
+  window.addEventListener('keyup', onKeyUp, true);
+  window.addEventListener('blur', release);
+  return release;
+}
+
+/**
  * How an inline rename box ends from the keyboard, the same for every one of
  * them: Enter commits and Escape cancels, both consume the key, and the
  * keyboard then goes to `target` -- the box unmounts while holding the focus,
  * and nothing else would put it anywhere. Consuming Enter also keeps the
- * browser from turning the keystroke into a click on whatever takes the focus.
+ * browser from turning the keystroke into a click on whatever takes the focus,
+ * and the key's auto-repeats are kept from reaching it while the key is held.
  *
  * A key that belongs to an input method (accepting a candidate, closing the
  * candidate list) is consumed and ends nothing. Leaving the box ends the edit
@@ -56,17 +95,18 @@ export function useInlineEditExit({
   isolate = false,
 }: InlineEditExitOptions): InlineEditExit {
   const ended = React.useMemo(compositionEnd, []);
+  // Set only by a key that ends the edit, and every commit and cancel closes
+  // the box, so a close that finds it set was caused by that key.
   const handBack = React.useRef(false);
-  const wasEditing = React.useRef(editing);
+  const releaseHeld = React.useRef<(() => void) | null>(null);
 
   React.useEffect(() => {
-    const closed = wasEditing.current && !editing;
-    wasEditing.current = editing;
-    if (!closed) return;
-    const byKey = handBack.current;
+    if (editing || !handBack.current) return;
     handBack.current = false;
-    if (byKey) target()?.focus({ preventScroll: true });
+    target()?.focus({ preventScroll: true });
   }, [editing, target]);
+
+  React.useEffect(() => () => releaseHeld.current?.(), []);
 
   const onKeyDown = React.useCallback(
     (event: React.KeyboardEvent<HTMLInputElement>): void => {
@@ -75,6 +115,8 @@ export function useInlineEditExit({
       event.preventDefault();
       if (keyBelongsToInputMethod(event.nativeEvent, ended)) return;
       handBack.current = true;
+      releaseHeld.current?.();
+      releaseHeld.current = swallowRepeatsOf(event.key);
       if (event.key === 'Enter') commit();
       else cancel();
     },
