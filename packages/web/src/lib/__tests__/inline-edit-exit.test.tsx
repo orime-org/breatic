@@ -223,6 +223,40 @@ describe('useInlineEditExit', () => {
     expect(reached).toHaveBeenCalledTimes(1);
   });
 
+  it.each([
+    ['Enter', 13],
+    ['Escape', 27],
+  ])('consumes a repeated %s at the box without ending the edit', (key, keyCode) => {
+    const { onCommit, onCancel } = setup();
+    const field = screen.getByTestId('field');
+    const notCancelled = fireEvent.keyDown(field, { key, keyCode, repeat: true });
+    expect(notCancelled).toBe(false);
+    expect(onCommit).not.toHaveBeenCalled();
+    expect(onCancel).not.toHaveBeenCalled();
+    expect(screen.getByTestId('field')).toBe(field);
+  });
+
+  it('lets a later hold of the key repeat when the release of the first one never arrived', () => {
+    const { onParentKey } = setup();
+    fireEvent.keyDown(screen.getByTestId('field'), { key: 'Enter', keyCode: 13 });
+    // No keyup: macOS sends none for a key released while Command is held.
+    onParentKey.mockClear();
+    fireEvent.keyDown(document.body, { key: 'Enter', keyCode: 13 });
+    const notCancelled = fireEvent.keyDown(document.body, { key: 'Enter', keyCode: 13, repeat: true });
+    expect(notCancelled).toBe(true);
+    expect(onParentKey).toHaveBeenCalledTimes(2);
+  });
+
+  it('stops holding the key back once the box owner unmounts', () => {
+    const { onParentKey } = setup();
+    fireEvent.keyDown(screen.getByTestId('field'), { key: 'Enter', keyCode: 13 });
+    cleanup();
+    onParentKey.mockClear();
+    const notCancelled = fireEvent.keyDown(document.body, { key: 'Enter', keyCode: 13, repeat: true });
+    expect(notCancelled).toBe(true);
+    expect(onParentKey).toHaveBeenCalledTimes(1);
+  });
+
   it('does not carry a missing-target hand-back over to a later edit that ends by leaving', () => {
     let present = false;
     setup({ targetPresent: () => present });

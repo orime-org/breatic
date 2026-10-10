@@ -156,19 +156,22 @@ describe('naming a conversation from its row', () => {
   });
 
   it.each([
-    ['Enter', 'Storyboard notes{Enter}'],
-    ['Escape', 'never mind{Escape}'],
-  ])('hands the keyboard to the row menu on %s and keeps the conversation on screen', async (_, keys) => {
-    const { onPick } = renderSheet();
+    ['Enter', { key: 'Enter', keyCode: 13 }],
+    ['Escape', { key: 'Escape', keyCode: 27 }],
+  ])('consumes the %s that ends the box and hands the keyboard to the row menu', async (_, init) => {
+    // The consumed keydown is what keeps the keystroke from becoming a click on
+    // whatever takes the focus; the browser walk checks the conversation on
+    // screen end to end.
+    renderSheet();
 
     await userEvent.click(screen.getByTestId('conversation-menu-c2'));
     await userEvent.click(await screen.findByTestId('conversation-rename-c2'));
     const box = await screen.findByTestId('conversation-rename-input');
-    await userEvent.type(box, keys);
+    const notCancelled = fireEvent.keyDown(box, init);
 
+    expect(notCancelled).toBe(false);
     expect(screen.queryByTestId('conversation-rename-input')).toBeNull();
     expect(document.activeElement).toBe(screen.getByTestId('conversation-menu-c2'));
-    expect(onPick).not.toHaveBeenCalled();
   });
 
   it.each([
