@@ -358,15 +358,15 @@ describe("search_images: what the model reads", () => {
     expect(text).toMatch(/\b3\b/);
   });
 
-  it("spends no tokens on addresses the model has no use for", async () => {
-    // Nothing downstream asks the model for an address: the panel reads the
-    // structured answer. Two long URLs per result would be the bulk of this
-    // text and would buy nothing.
+  it("gives one address per picture and leaves out the page it was found on", async () => {
+    // save_image takes one address; the page and the second picture address
+    // would be the bulk of this text and nothing the model does takes them.
     httpRequestMock.mockImplementation(async () => imagesOk([braveResult()]));
 
     const text = await runForModel({ query: "cyberpunk city" });
 
-    expect(text).not.toContain("http");
+    expect(text.match(/https?:\/\//g)).toHaveLength(1);
+    expect(text).not.toContain("www.magnific.com/free-photos-vectors");
   });
 
   it("numbers each result and names it", async () => {

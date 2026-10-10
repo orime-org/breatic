@@ -9,18 +9,19 @@
  * model. Nothing is copied between the two, so nothing can be copied wrongly:
  * an address the panel draws from is the address the service sent.
  *
- * What the model is handed carries no addresses at all. It has no use for one
- * -- it does not pass them on -- and two long URLs per result would be most of
- * the text. It is told, in that text, that it has not seen the pictures: it
- * has their titles and nothing else, and a reply comparing what is in them is
- * a reply the reader can see is invented.
+ * What the model is handed carries one address per picture, the one it gives
+ * save_image to use that picture. It is told, in that text, that it has not
+ * seen the pictures: it has their titles and addresses and nothing else, and
+ * a reply comparing what is in them is a reply the reader can see is invented.
  */
 import { tool, type Tool } from "ai";
 import { z } from "zod";
 import { env, getAgentConfig } from "@breatic/core";
 import { FAILURE_LINES, reasonOf, toolFailureOf } from "@breatic/shared";
 
+import { readerUrlSchema } from "@domain/asset/source-url.js";
 import { braveJson } from "@domain/agent/tools/brave.js";
+import { SAVE_IMAGE } from "@domain/agent/tools/tool-names.js";
 import { usageContextSchema } from "@domain/agent/tools/usage-context.js";
 import type { UsageContext } from "@domain/agent/tools/usage-context.js";
 import {
@@ -182,6 +183,21 @@ function readImage(item: unknown): ImageResult | null {
 }
 
 /**
+ * The address the model is given for one found picture: the publishing
+ * site's original where `save_image` takes it, else the service's thumbnail,
+ * which is always https.
+ * @param image - The found picture.
+ * @param image.thumbnailUrl - The service's thumbnail.
+ * @param image.imageUrl - The publishing site's original, when the service gave it.
+ * @returns The address, held to one line.
+ * @throws {never} Never.
+ */
+function savableAddress(image: { thumbnailUrl: string; imageUrl?: string }): string {
+  const address = image.imageUrl !== undefined && readerUrlSchema.safeParse(image.imageUrl).success ? image.imageUrl : image.thumbnailUrl;
+  return keepInside(onOneLine(address));
+}
+
+/**
  * Render an image search for the model to read.
  *
  * Titles and sources come from the pages themselves, so both go through
@@ -190,10 +206,12 @@ function readImage(item: unknown): ImageResult | null {
  * could otherwise write an entry of its own into what reads as the result
  * list.
  *
- * Addresses are left out. The model does not pass them on, and two per result
- * would be the bulk of this text.
+ * Each result carries one address, the one the model hands to `save_image`
+ * to use that picture; the page it was found on is left out, since nothing
+ * the model does takes it.
  * @param answer - What the search found.
  * @returns The text handed to the model.
+ * @throws {never} Never.
  */
 export function renderImagesForModel(answer: ImageSearchAnswer): string {
   const query = keepInside(onOneLine(answer.query));
@@ -213,8 +231,8 @@ export function renderImagesForModel(answer: ImageSearchAnswer): string {
         "address this tool could draw from.";
   const header =
     `Results for: ${query}\n` +
-    `${counted} You have not seen these pictures -- you have their titles and nothing else -- ` +
-    "so do not describe, rank or compare what is in them.\n";
+    `${counted} You have not seen these pictures -- you have their titles and addresses and nothing else -- ` +
+    `so do not describe, rank or compare what is in them. To use one, give its address to ${SAVE_IMAGE} exactly as written.\n`;
 
   const lines = answer.images.map((image, i) => {
     const title = clip(keepInside(onOneLine(image.title)), TITLE_CHARS);
@@ -224,7 +242,7 @@ export function renderImagesForModel(answer: ImageSearchAnswer): string {
     // A line that is a number and nothing else says less than the header just
     // promised, which was that the model has their titles.
     const named = `${title}${source}`.trim() || "(untitled)";
-    return `${String(i + 1)}. ${named}`;
+    return `${String(i + 1)}. ${named}\n   address: ${savableAddress(image)}`;
   });
 
   return [header, ...lines].join("\n");
@@ -242,7 +260,8 @@ export const imageSearch: Tool<z.infer<typeof inputSchema>, ImageSearchAnswer, U
   description:
     "Find pictures. One call both searches and returns what it found. Write the query the way " +
     "an image search takes one -- subject, style, lighting, composition. You will be told the " +
-    "titles of what came back; you will not see the pictures themselves.",
+    "title of each picture that came back and an address for it; you will not see the pictures " +
+    "themselves.",
   inputSchema,
   contextSchema: usageContextSchema,
   // What the panel reads about a running call. The key is resolved by the web
