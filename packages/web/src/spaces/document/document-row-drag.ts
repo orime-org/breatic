@@ -51,11 +51,6 @@ export function startRowDrag(
   const sideMenu = editor.getExtension(SideMenuExtension)!;
   sideMenu.blockDragStart(event as never, editor.getBlock(blockId) as never);
   const preview = previewRowDrag(view, event.dataTransfer);
-  // The menu is the drag's source when its handle started it. Left to itself it
-  // goes on the first scroll, and a drag whose source left the page sends its
-  // `dragend` nowhere the document can hear (inner#1350 §5.2).
-  const frozen = sideMenu.store.state !== undefined;
-  if (frozen) sideMenu.freezeMenu();
 
   const page = view.dom.ownerDocument;
   let ended = false;
@@ -66,7 +61,6 @@ export function startRowDrag(
     page.removeEventListener('drop', onDrop, true);
     rowHasLanded();
     preview?.remove();
-    if (frozen) sideMenu.unfreezeMenu();
     sideMenu.blockDragEnd();
     // A text selection goes back to whatever the reader had: the node
     // selection the library put on the row at dragstart is still there, and

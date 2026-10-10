@@ -325,11 +325,17 @@ export function DocumentBlockHandle(): React.JSX.Element | null {
               setDragActive(true);
               setMenuFace(face);
               endDrag.current = startRowDrag(editor as never, event.nativeEvent, block.id);
+              // The menu is this drag's source. Left to itself it goes on the
+              // first scroll, and a drag whose source left the page sends its
+              // `dragend` nowhere the document hears (inner#1350 §5.2); frozen,
+              // it stays put while the rows scroll, so it is hidden as well.
+              sideMenu.freezeMenu();
               source.hideAfterStart();
             }}
             onDragEnd={() => {
               setDragActive(false);
               source.show();
+              sideMenu.unfreezeMenu();
               endDrag.current?.();
               endDrag.current = null;
             }}
