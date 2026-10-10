@@ -10,8 +10,8 @@
  *
  * - It is measured on the dragged content itself: a text block has no width of
  *   its own and takes the body column's, a media block is its media box, a
- *   table is every one of its columns (its scroll frame does not clip the
- *   copy), a table line is that whole row or column.
+ *   table is its table alone, every column, out of the frame it scrolls in,
+ *   a table line is that whole row or column.
  * - It is drawn in the body's styles: it carries the editor element's classes
  *   but the three BlockNote reads as an editor's, and `index.css` gives it the
  *   table rules that hang off those three.
@@ -60,8 +60,6 @@ const EDITOR_ONLY_CLASSES = new Set(['bn-root', 'bn-editor', 'ProseMirror']);
 const MEDIA_BOX = '[data-media-box]';
 /** The controls a media block draws over its media. */
 const MEDIA_CHROME = '[data-media-chrome]';
-/** The element a table scrolls sideways in. */
-const SCROLL_VIEWPORT = '[data-radix-scroll-area-viewport]';
 /** A table block. */
 const TABLE_BLOCK = '[data-content-type="table"]';
 /** The video readiness from which a frame can be drawn (`HAVE_CURRENT_DATA`). */
@@ -139,8 +137,13 @@ function columnWidth(view: EditorView): number {
 }
 
 /**
- * Turns copied content into what the preview shows: no media controls, no
- * scroll frame clipping a table, a still of each video.
+ * Turns copied content into what the preview shows: no media toolbar, each
+ * table as its table alone, a still of each video.
+ *
+ * A table block holds its table inside the frame it scrolls in, and the frame
+ * draws a scrollbar and the edges of what is scrolled off. The preview shows
+ * every column, so none of that is true of it: the block keeps its table and
+ * nothing else.
  * @param view - The editor view, where the copied videos' originals are.
  * @param content - The copied content.
  */
@@ -148,9 +151,10 @@ function settle(view: EditorView, content: HTMLElement): void {
   content.querySelectorAll(MEDIA_CHROME).forEach((chrome) => {
     chrome.remove();
   });
-  content.querySelectorAll<HTMLElement>(SCROLL_VIEWPORT).forEach((viewport) => {
-    viewport.style.overflow = 'visible';
-    if (viewport.parentElement !== null) viewport.parentElement.style.overflow = 'visible';
+  const tables = content.matches(TABLE_BLOCK) ? [content] : [];
+  tables.push(...content.querySelectorAll<HTMLElement>(TABLE_BLOCK));
+  tables.forEach((block) => {
+    block.replaceChildren(...block.querySelectorAll('table'));
   });
   const originals = [...view.dom.querySelectorAll('video')];
   content.querySelectorAll('video').forEach((video) => {
