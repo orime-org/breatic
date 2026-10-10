@@ -196,7 +196,10 @@ export function nodeWaysSentence(
  * @throws {never} Never.
  */
 export function placedWaysSentence(proposal: CanvasProposal, nodes: readonly ProposalNode[], generation: ProposalNode, chosen: ModelInfo): string {
-  return placeEach(proposal, nodes, generation, chosen)
+  // A node that already goes in stays in once the advice is followed, so it
+  // is told nothing.
+  const arrived = new Set(arrivingInto(proposal, generation, chosen).map(({ node }) => node));
+  return placeEach(proposal, nodes.filter((node) => !arrived.has(node)), generation, chosen)
     .map(({ node, ways, before }) => (ways.length > 0 ? waysSentence(`"${node.name}"`, generation, ways) : nodeWaysSentence(proposal, node, generation, chosen, false, before)))
     .join(" ");
 }
@@ -494,7 +497,9 @@ function wayStates(
   chosen: ModelInfo,
   placed: readonly Arriving[],
 ): { open: Entry[]; closed: { entry: Entry; closed: Closed }[] } {
-  const others = [...arrivingInto(proposal, generation, chosen).filter((arrival) => arrival.node !== node), ...placed];
+  // A node the same advice sends in counts where it is sent, not also where it now arrives.
+  const moved = new Set(placed.map((arrival) => arrival.node));
+  const others = [...arrivingInto(proposal, generation, chosen).filter((arrival) => arrival.node !== node && !moved.has(arrival.node)), ...placed];
   const open: Entry[] = [];
   const closed: { entry: Entry; closed: Closed }[] = [];
   for (const entry of entriesFor(chosen, node.type, holdingOf(node))) {
@@ -591,8 +596,8 @@ export function fillsOf(
     case "not-a-slot": {
       const told = placedWaysSentence(proposal, [...new Set(problem.named)], node, chosen);
       return chosen.params[param]?.fromReferencePool === true
-        ? refuse("fill-into-pool", `"${param}" is the reference pool of "${chosen.name}", which takes no fills. Take fills "${param}" off. ${told}`)
-        : refuse("fill-not-a-slot", `"${chosen.name}" has no slot "${param}". Take fills "${param}" off. ${told}`);
+        ? refuse("fill-into-pool", `"${param}" is the reference pool of "${chosen.name}", which takes no fills. Take fills "${param}" off.${spaced(told)}`)
+        : refuse("fill-not-a-slot", `"${chosen.name}" has no slot "${param}". Take fills "${param}" off.${spaced(told)}`);
     }
     case "no-material":
       return refuse("fill-no-material", `fills "${param}" on "${node.name}" points at "${problem.from.name}", which holds no material, and fills takes only nodes holding it. Take "${problem.from.name}" out of fills "${param}". ${nodeWaysSentence(proposal, problem.from, node, chosen)}`);

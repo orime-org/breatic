@@ -38,6 +38,8 @@ exports[`every refusal's advice is a proposal the check takes > edge-self-loop (
 
 exports[`every refusal's advice is a proposal the check takes > fill-into-pool (0): is met, and each way it says to put it right is accepted 1`] = `""images" is the reference pool of "nano-banana-pro-edit-ultra", which takes no fills. Take fills "images" off. "Pic" goes into "Gen" by an edge with into: "pool" and a ref @'ing it, or through fills "style_images" on "Gen", with no edge and no ref."`;
 
+exports[`every refusal's advice is a proposal the check takes > fill-into-pool (1): is met, and each way it says to put it right is accepted 1`] = `""images" is the reference pool of "qwen-image-edit-multiple-angles", which takes no fills. Take fills "images" off. "N1" goes into "Gen" by an edge with into: "pool" and a ref @'ing it."`;
+
 exports[`every refusal's advice is a proposal the check takes > fill-no-material (0): is met, and each way it says to put it right is accepted 1`] = `"fills "style_images" on "Gen" points at "Pic", which holds no material, and fills takes only nodes holding it. Take "Pic" out of fills "style_images". "Pic" goes into "Gen" by an edge with into: "pool" and a ref @'ing it and a note saying what to do first, or by an edge with into: "style_images" and a note saying to pick it there and no ref."`;
 
 exports[`every refusal's advice is a proposal the check takes > fill-not-a-slot (0): is met, and each way it says to put it right is accepted 1`] = `""nano-banana-pro-edit-ultra" has no slot "nope". Take fills "nope" off. "Pic" goes into "Gen" by an edge with into: "pool" and a ref @'ing it, or through fills "style_images" on "Gen", with no edge and no ref."`;
