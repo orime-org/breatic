@@ -3,7 +3,7 @@
 
 /**
  * The checks a proposal answers as a whole: whether its edges run in a ring,
- * whether every empty node has a place to go, and whether every node is used.
+ * whether every source node has a place to go, and whether every node is used.
  */
 import type { CanvasProposal, ProposalNode } from "@breatic/shared";
 
@@ -65,7 +65,7 @@ export function hasRing(proposal: CanvasProposal): boolean {
  * in kinds and says nothing about how many places hold each: `first_last` has
  * two places and both take a picture.
  * @param proposal - The proposal being read.
- * @returns How many empty nodes of each kind the group can take.
+ * @returns How many source nodes of each kind the group can take.
  * @throws {never} Never.
  */
 function placesByKind(proposal: CanvasProposal): Map<string, number> {
@@ -81,7 +81,8 @@ function placesByKind(proposal: CanvasProposal): Map<string, number> {
 }
 
 /**
- * Whether every empty node the proposal places has a place to go.
+ * Whether every source node the proposal places, empty or holding material, has
+ * a place to go.
  *
  * Asked of the group rather than of one generation, because a slot is filled
  * by clicking any node of its kind: an empty node placed beside one generation
@@ -90,7 +91,7 @@ function placesByKind(proposal: CanvasProposal): Map<string, number> {
  * @returns Whether it stands, and which kind is over its room when it does not.
  * @throws {never} Never.
  */
-export function checkEmptyNodesFit(proposal: CanvasProposal): ProposalVerdict {
+export function checkSourceNodesFit(proposal: CanvasProposal): ProposalVerdict {
   const room = placesByKind(proposal);
   const placed = new Map<string, number>();
   for (const node of proposal.nodes) {

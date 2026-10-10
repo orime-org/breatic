@@ -4,7 +4,8 @@
 /**
  * What the proposal check asks of the marks now that the agent @s for the
  * reader (inner#1315): every node wired into a pool is @'d by a ref, every
- * node landing empty or going into a slot has a note, a note is never words
+ * node landing empty, or going into a slot by an edge or unwired, has a note
+ * (a slot filled through fills takes none), a note is never words
  * of a written node, and the words a wired text node holds count against the
  * cap they are @'d into.
  */

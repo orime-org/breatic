@@ -7,8 +7,9 @@
  * The same gates the canvas paste of a link goes through, in its order --
  * rate, access, storage -- and then the transfer, in this request rather than
  * through the paste's queue: the model is waiting on the answer. Each refusal
- * is handed to the tool as the kind it tells the model about, and logged here,
- * where the turn's project and reader are known.
+ * is handed to the tool as the kind it tells the model about. The rate-limit
+ * and link refusals are logged here, where the turn's project and reader are
+ * known; the storage gate logs its own, and an access refusal is not logged.
  */
 
 import { AppError, checkRateLimit, getRedis, logger } from "@breatic/core";

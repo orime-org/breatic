@@ -2245,8 +2245,9 @@ export const studioAssets = pgTable(
      * a video's first-class cover asset — a normal row that counts toward
      * storage, kind judged from the cover itself) | 'project_cover' /
      * 'studio_avatar' (a picture uploaded to be a project's cover or a
-     * studio's avatar) | 'agent' (a picture the chat agent saved from the web,
-     * inner#1315). A dedup hit keeps the first uploader's value, so this
+     * studio's avatar) | 'agent' (a link the chat agent saved for the reader,
+     * inner#1315; usually a picture, but the row keeps whatever uploadable
+     * type the link held). A dedup hit keeps the first uploader's value, so this
      * does not say what a row is used as. varchar, no schema change.
      */
     source: varchar("source", { length: 20 }).notNull(),

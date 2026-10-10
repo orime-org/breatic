@@ -11,7 +11,9 @@
  * models a mode can reach, and whether that mode needs material only the
  * reader has.
  *
- * A mode that needs material is proposed with an empty node to put it in.
+ * A mode that needs material is proposed with a source node for it: one
+ * holding the reader's material (a chat upload or a picture saved with
+ * save_image), or an empty one for the reader to fill.
  * Every way a node reaches a generation is read off the catalog (`waysIn`,
  * design 5.7): the reference pool, mentioned in the prompt by a ref; a slot
  * on the panel, which the reader picks it into; or a song model's lyrics box,
@@ -27,8 +29,9 @@
  * What this check answers is what the catalog and the product rules settle:
  * this mode exists, this model backs it, this value is one the control
  * offers, these characters fit, this line is one the canvas allows, each node
- * goes a way the model has, and the prompt carries a mark or note for each.
- * Marks are counted, never paired with nodes. How many nodes a shape takes,
+ * goes a way the model has, and the prompt carries a ref or note for each:
+ * each node in the pool is @'d by a ref naming its index, and notes are
+ * counted, never paired with nodes. How many nodes a shape takes,
  * what they are called and how they are wired is the agent's to decide: a
  * scene has more than one good answer, and a check that picked one of them
  * would be the rules written out in code.
@@ -45,7 +48,7 @@ import {
 } from "@breatic/shared";
 
 import { checkGenerateNode } from "@domain/agent/tools/proposal-generate-check.js";
-import { checkEmptyNodesFit, checkUnsentNotes, hasRing } from "@domain/agent/tools/proposal-group-checks.js";
+import { checkSourceNodesFit, checkUnsentNotes, hasRing } from "@domain/agent/tools/proposal-group-checks.js";
 import { inputSchema, type ProposalVerdict } from "@domain/agent/tools/proposal-input.js";
 import { checkMaterial, checkNodeRole, markTypedAsWords } from "@domain/agent/tools/proposal-node-checks.js";
 import { fixEdges, fixGroup, nodeLabel, refuse, type NodeLabel, type Refusal } from "@domain/agent/tools/proposal-refusals.js";
@@ -230,7 +233,7 @@ function checkResolved(proposal: CanvasProposal, materials: MaterialTable): Prop
   // catalog cannot resolve contributes none: asked before the loop above, a
   // proposal naming a model that does not exist would be answered about its
   // empty nodes rather than about the name it got wrong.
-  const fit = checkEmptyNodesFit(proposal);
+  const fit = checkSourceNodesFit(proposal);
   return fit.ok ? checkUnsentNotes(proposal) : fit;
 }
 

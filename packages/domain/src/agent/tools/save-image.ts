@@ -83,7 +83,8 @@ function refusalFailure(refused: SaveRefused): Error {
       );
     case "rate_limited":
       return toolFailed(
-        "Too many pictures were saved in a short time. Wait a minute before saving another.",
+        "Too many links were fetched into storage in a short time (saves and links pasted on the canvas count " +
+          "together). Wait a minute before saving another.",
         FAILURE_LINES.generic,
       );
     case "storage_full":

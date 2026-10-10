@@ -878,8 +878,8 @@ export function renderProductGuide(): string {
       "the same list share one heading, joined by ·. Each generating node's list ends with one of these two " +
       "lines, the second where the model has no prompt box: " +
       `${quoted(t("chat.proposal.promptReady"))} ${quoted(t("chat.proposal.settingsReady"))}`,
-    `Pressing ${quoted(t("chat.proposal.use"))} places the nodes near the middle of the reader's view, wired ` +
-      "together and grouped when there are two or more, as one step undo reverses; the button reads " +
+    `Pressing ${quoted(t("chat.proposal.use"))} places the nodes near the middle of the reader's view, joined ` +
+      "by the proposal's edges (a node filling a slot through fills gets no line) and grouped when there are two or more, as one step undo reverses; the button reads " +
       `${quoted(t("chat.proposal.building"))} meanwhile, and ${quoted(t("chat.proposal.failed"))} appears if it ` +
       "fails. A canvas has to be open: " +
       `anywhere else pressing it shows the message ${quoted(t("chat.proposal.needCanvas"))} and places nothing. ` +
@@ -902,8 +902,8 @@ export function renderProductGuide(): string {
       "those mentions in it, the same as ones typed with @. A node @'d that lands empty -- an empty node, or a " +
       "generation still to run -- comes with a note saying what to do first; generating before then sends " +
       "nothing for it, and the run stops only where nothing else in that source holds a node and the model runs " +
-      "only when one does. A prompt or shot from a template carries three kinds of mark, and one from a proposal the " +
-      "last two only. A 📎 mark in square brackets " +
+      "only when one does. A template's prompt carries 📎 and ✏️ marks; a proposal's prompt or shot carries ✏️ " +
+      "marks and notes, never a 📎 mark. A 📎 mark in square brackets " +
       "asks the reader to @ a node: at that place they type @ and pick the node -- an empty node they first put " +
       "their own file in (double-click it to pick one), a generated result, or a text node -- then delete the " +
       "bracket. A ✏️ mark in braces is words only the reader can write; they replace it with their own. An orange " +
