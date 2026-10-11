@@ -13,15 +13,14 @@
 
 import type { QueryClient } from '@tanstack/react-query';
 import { clipSpaceContent, spacesNewestFirst } from '@breatic/shared';
-import type { ChatSpace, ModelCatalog, Voice } from '@breatic/shared';
+import type { ChatSpace, ModelCatalog } from '@breatic/shared';
 
-import { nodeDataMap, readEdges, readNodes } from '@web/data/yjs/canvas-space';
+import { readNodes } from '@web/data/yjs/canvas-space';
 import { readDocFacts } from '@web/data/yjs/collab-socket';
 import { docName, getDoc, hasDoc } from '@web/data/yjs/manager';
 import type { ProjectSpace } from '@web/data/yjs/project-meta';
-import { itemForPick } from '@web/spaces/canvas/attach-nodes';
-import { firstVoiceKey } from '@web/spaces/canvas/generate/first-voice-query';
 import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
+import { readPick } from '@web/spaces/canvas/pick-for-agent';
 import { peekDocumentEditor } from '@web/spaces/document/document-editor-cache';
 import type { ChatSpaceContext } from '@web/stores/chat-sessions';
 
@@ -89,17 +88,8 @@ function canvasText(source: SpaceContextSource, space: ProjectSpace): string | n
   const catalog = source.queryClient.getQueryData<ModelCatalog>(modelCatalogQuery().queryKey);
   if (catalog === undefined) return null;
   const doc = getDoc(name);
-  const nodes = readNodes(doc);
-  const item = itemForPick(
-    { nodes, edges: readEdges(doc) },
-    nodes.map((n) => n.id),
-    {
-      dataOf: (id) => nodeDataMap(doc, id),
-      catalog,
-      // A first voice that is not cached is left out rather than asked for.
-      firstVoiceOf: (model) => source.queryClient.getQueryData<Voice | null>(firstVoiceKey(model)),
-    },
-  );
+  // A first voice that is not cached is left out: nothing is asked for here.
+  const item = readPick(source.queryClient, catalog, doc, readNodes(doc).map((n) => n.id));
   return item?.chip === undefined ? '' : JSON.stringify(item.chip.data_snapshot, null, 2);
 }
 

@@ -25,6 +25,36 @@ import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-que
 import { attachToChat } from '@web/stores/attach-to-chat';
 
 /**
+ * The picked piece of the canvas as the document and the cache hold it now,
+ * asking for nothing. The one place a pick becomes an item, so "Add to agent"
+ * and the open Space sent with a chat message (inner#1413) cannot drift apart.
+ * @param queryClient - Holds each model's first voice.
+ * @param catalog - The model catalog, for what each node would run.
+ * @param doc - The canvas document holding the picked nodes.
+ * @param ids - The picked node ids; a group brings its members.
+ * @param onUnknownVoice - Told each model whose first voice is not cached.
+ * @returns The item, or null for nothing to hand over.
+ * @throws {never} Never.
+ */
+export function readPick(
+  queryClient: QueryClient,
+  catalog: ModelCatalog,
+  doc: Y.Doc,
+  ids: readonly string[],
+  onUnknownVoice: (model: string) => void = () => undefined,
+): ReturnType<typeof itemForPick> {
+  return itemForPick({ nodes: readNodes(doc), edges: readEdges(doc) }, ids, {
+    dataOf: (id) => nodeDataMap(doc, id),
+    catalog,
+    firstVoiceOf: (model) => {
+      const first = queryClient.getQueryData<Voice | null>(firstVoiceKey(model));
+      if (first === undefined) onUnknownVoice(model);
+      return first;
+    },
+  });
+}
+
+/**
  * The picked piece of the canvas as one item for the agent.
  * @param queryClient - Holds each model's first voice.
  * @param catalog - The model catalog, for what each node would run.
@@ -45,15 +75,7 @@ export async function pickForAgent(
    * @returns The item, or null for nothing to hand over.
    */
   const pick = (): ReturnType<typeof itemForPick> =>
-    itemForPick({ nodes: readNodes(doc), edges: readEdges(doc) }, ids, {
-      dataOf: (id) => nodeDataMap(doc, id),
-      catalog,
-      firstVoiceOf: (model) => {
-        const first = queryClient.getQueryData<Voice | null>(firstVoiceKey(model));
-        if (first === undefined) unknownVoices.add(model);
-        return first;
-      },
-    });
+    readPick(queryClient, catalog, doc, ids, (model) => unknownVoices.add(model));
   const item = pick();
   if (unknownVoices.size === 0) return item;
   // A list that cannot be read leaves that voice out, as it does in the panel.
