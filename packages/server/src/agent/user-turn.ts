@@ -9,11 +9,25 @@
  * the whole turn.
  */
 
-import type { ChatAttachedChip } from "@breatic/shared";
+import type { ChatAttachedChip, ChatCurrentSpace, ChatSpace } from "@breatic/shared";
 import { attachmentSection, attachmentTitle, writeReferences } from "@breatic/shared";
 
+/**
+ * The Spaces the reader is in when they send a message (inner#1413). Sent
+ * fresh with every message and never stored, so the model always reads the
+ * project as it is now.
+ */
+export interface SpaceContext {
+  /** The project's Spaces, newest first, as many as the list may hold. */
+  spaces?: readonly ChatSpace[];
+  /** How many Spaces the project has, listed or not. */
+  spacesTotal?: number;
+  /** The Space the reader has open, when they have it turned on. */
+  current?: ChatCurrentSpace;
+}
+
 /** What one user message is made of. */
-export interface UserTurn {
+export interface UserTurn extends SpaceContext {
   /** What the user attached to the message, in order. */
   chips: readonly ChatAttachedChip[];
   /** What the user typed. */
@@ -21,14 +35,58 @@ export interface UserTurn {
 }
 
 /**
- * One user message as the model is sent it: the attachments, then the words.
+ * The project's Spaces, one line each, the open one marked.
+ * @param spaces - The Spaces listed.
+ * @param total - How many there are, listed or not.
+ * @param openId - The Space the reader has open and turned on, if any.
+ * @returns The section.
+ * @throws {never} Never.
+ */
+function spaceListSection(spaces: readonly ChatSpace[], total: number, openId: string | undefined): string {
+  const lines = spaces.map(
+    (s) => `- ${JSON.stringify(s.name)} (${s.kind})${s.id === openId ? " — the reader has this one open" : ""}`,
+  );
+  const unlisted = total - spaces.length;
+  if (unlisted > 0) lines.push(`(${String(unlisted)} more not listed)`);
+  return `## Spaces in this project\n\n${lines.join("\n")}`;
+}
+
+/**
+ * What the open Space holds, or why it holds nothing the model can read.
+ *
+ * A document's text is quoted, so a heading in it is not read as a heading of
+ * the turn; a canvas's text is indented JSON already and goes in as it is.
+ * @param current - The Space the reader has open.
+ * @returns The section.
+ * @throws {never} Never.
+ */
+function openSpaceSection(current: ChatCurrentSpace): string {
+  const heading = `## The Space the reader has open: ${JSON.stringify(current.name)} (${current.kind})`;
+  if (current.state === "loading") return `${heading}\n\nIts content has not loaded yet.`;
+  if (current.state === "unreadable") return `${heading}\n\nThe content of a ${current.kind} Space cannot be read.`;
+  if (current.content === "") return `${heading}\n\nThis Space is empty.`;
+  const body = current.kind === "document" ? JSON.stringify(current.content) : current.content;
+  const cut =
+    current.total_chars > current.content.length
+      ? `\n(Showing the first ${String(current.content.length)} of ${String(current.total_chars)} characters.)`
+      : "";
+  return `${heading}\n\n${body}${cut}`;
+}
+
+/**
+ * One user message as the model is sent it: the Spaces, the attachments, then
+ * the words under their own heading.
  * @param turn - What the message is made of.
- * @returns The typed words alone when nothing is attached.
+ * @returns The typed words alone when there is no Space and nothing attached.
  * @throws {never} Never.
  */
 export function userTurnForModel(turn: UserTurn): string {
-  const { chips, message } = turn;
-  if (chips.length === 0) return message;
+  const { chips, message, spaces = [], spacesTotal = spaces.length, current } = turn;
+  const sections: string[] = [];
+  if (spaces.length > 0) sections.push(spaceListSection(spaces, spacesTotal, current?.id));
+  if (current) sections.push(openSpaceSection(current));
+  if (chips.length > 0) sections.push(attachmentSection(chips));
+  if (sections.length === 0) return message;
   const words = writeReferences(chips, message, (chip, n) => `[Attachment ${String(n)}: ${attachmentTitle(chip)}]`);
-  return `${attachmentSection(chips)}\n\n## User message\n\n${words}`;
+  return `${sections.join("\n\n")}\n\n## User message\n\n${words}`;
 }

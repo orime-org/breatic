@@ -243,7 +243,12 @@ chat.post("/message", validate("json", chatMessageSchema), async (c) => {
   return streamTurn(
     c,
     { userId: user.id, conversationId: conversation.id, projectId: body.project_id },
-    (signal) => new MainAgent().chat(body.message, signal, body.attached_chips, body.time_zone),
+    (signal) =>
+      new MainAgent().chat(body.message, signal, body.attached_chips, body.time_zone, {
+        spaces: body.spaces,
+        spacesTotal: body.spaces_total,
+        current: body.current_space,
+      }),
   );
 });
 
