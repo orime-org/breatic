@@ -691,7 +691,9 @@ describe("what the guide says about each surface", () => {
     expect(chat).toContain(
       `at most ${getAgentConfig().current_space_max_chars.toLocaleString("en")} characters of the open Space's content`,
     );
-    expect(chat).toContain("the nodes the reader has selected are kept fullest");
+    expect(chat).toContain("then without their links, and on the largest canvases some nodes are left out");
+    expect(chat).toContain("the nodes the reader has selected go last at every step");
+    expect(chat).toContain(`the reader adds them with "${t("canvas.contextMenu.addToAgent")}"`);
     expect(renderProductGuide()).not.toMatch(/at most 50 connections/);
     // Written out by hand, the numbers would stay behind when their sources change.
     expect(source).not.toMatch(/10,000|up to ten|at most 50/);

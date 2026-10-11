@@ -132,8 +132,10 @@ function readOff(text: string, input: FitInput): Partial<ChatCanvasDetail> {
   const size = sizes(text, input);
   const groups = new Set(input.nodes.filter((n) => n.group).map((n) => n.id));
   return {
+    selected_total: input.nodes.filter((n) => n.picked).length,
+    selected_attached: input.nodes.filter((n) => n.picked && !n.selected).length,
     selected_whole: input.nodes.filter((n) => n.selected && size[n.id] === 'whole').length,
-    slim: Object.entries(size).some(([id, s]) => s === 'slim' && !groups.has(id)),
+    slim: Object.entries(size).some(([id, s]) => s === 'slim' || (groups.has(id) && s === 'named')),
     texts_cut: (text.match(/…\[\+\d+\]/g) ?? []).length,
     names_only: Object.entries(size).filter(([id, s]) => s === 'named' && !groups.has(id)).length,
     edges_not_listed: input.edges.length - got.edges.length,
@@ -229,6 +231,15 @@ describe('going slim', () => {
     const out = fit(input, max);
 
     expect(sizes(out.text, input)).toEqual({ c: 'whole', a: 'slim', b: 'whole' });
+  });
+
+  it('says nodes went slim when the only node that did is a group', () => {
+    const input = canvasOf([group('g', 0), image('a', 1)], ['a']);
+
+    const out = fit(input, lengthAt(input, (n) => (n.group ? 'slim' : 'whole')));
+
+    expect(sizes(out.text, input)).toEqual({ g: 'named', a: 'whole' });
+    expect(out.detail).toMatchObject({ slim: true, selected_whole: 1 });
   });
 
   it('orders nodes made at the same moment by id', () => {
