@@ -333,11 +333,12 @@ describe('an open canvas', () => {
         createdAt: 1,
         createdBy: AUTHOR,
         locked: false,
-        attachments: [],
         model: MODEL,
         coverUrl: `${COVER}/${id}.png`,
         prompt,
+        voice: VOICE,
         short: 'a b c d e f g h i j k l m n o p',
+        attachments: [{ id: AUTHOR, url: `${COVER}/deck.pptx`, name: 'deck', mimeType: PPTX, size: 1, uploadedAt: UPLOADED }],
       } as never,
     });
   };
@@ -348,6 +349,11 @@ describe('an open canvas', () => {
   const AUTHOR = '90000000-1111-2222-3333-444444444444';
   const MODEL = 'gemini-omni-1.1-flash-reference-to-video';
   const COVER = 'https://assets.example.com/upload/2026-10-11/1791690000000_3e8b4deb-1111-2222-3333-e4182d91161c';
+  // The longest identifiers a node holds today: a cloned voice id and an
+  // Office mime type.
+  const VOICE = 'moss_audio_cedfd4d2-736d-11f0-99be-fe40dd2a5fe8';
+  const PPTX = 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+  const UPLOADED = '2026-10-11T09:00:00.000Z';
 
   it('cuts only prose and keeps addresses, model ids and ids whole', () => {
     openCanvas();
@@ -367,8 +373,47 @@ describe('an open canvas', () => {
       expect(field(node, 'createdBy')).toBe(AUTHOR);
       expect(field(node, 'model')).toBe(MODEL);
       expect(field(node, 'coverUrl')).toBe(`${COVER}/${node.id}.png`);
+      expect(field(node, 'voice')).toBe(VOICE);
+      expect(field(node, 'attachments')).toEqual([
+        { id: AUTHOR, url: `${COVER}/deck.pptx`, name: 'deck', mimeType: PPTX, size: 1, uploadedAt: UPLOADED },
+      ]);
       expect(field(node, 'prompt')).toMatch(/^a quiet street .*…$/);
     }
+  });
+
+  it('cuts a long prompt written as tags with no spaces, keeping every node', () => {
+    openCanvas();
+    const ids = Array.from({ length: 20 }, (_, i) => `shot-${String(i)}`);
+    const prompt = 'masterpiece,best_quality,1girl,solo,looking_at_viewer,cinematic_lighting,'.repeat(4);
+    for (const id of ids) addRealNode(id, `Shot ${id}`, prompt);
+    const full = sent(100_000);
+    const rest = full.total - ids.length * prompt.length;
+
+    const { content } = sent(rest + ids.length * 37);
+
+    const got = JSON.parse(content) as { nodes: Array<Record<string, unknown> & { id: string }> };
+    expect(got.nodes.map((n) => n.id)).toEqual(ids);
+    for (const node of got.nodes) {
+      expect(field(node, 'prompt')).toMatch(/^masterpiece,.*…$/);
+      expect(field(node, 'model')).toBe(MODEL);
+    }
+  });
+
+  it('cuts a long text with no spaces, keeping its node and links', () => {
+    openCanvas();
+    addBigNode('json', 5_000, '{"k":1},');
+    addNodes(['n1', 'n2']);
+    addEdge(PID, canvas.id, { id: 'e1', source: 'json', target: 'n1' });
+    const full = sent(100_000);
+
+    const { content } = sent(2_000);
+
+    expect(content.length).toBeLessThanOrEqual(2_000);
+    const got = JSON.parse(content) as Parsed;
+    expect(got.nodes.map((n) => n.id)).toEqual(['json', 'n1', 'n2']);
+    expect(got.edges.map((e) => e.id)).toEqual(['e1']);
+    expect(nameSent(content, 'json')).toMatch(/^\{"k":1\},.*…$/);
+    expect(full.total).toBeGreaterThan(40_000);
   });
 
   it('drops whole nodes cut to the floor when that is still too long, and cuts nothing for no gain', () => {
