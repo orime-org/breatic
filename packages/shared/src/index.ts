@@ -508,9 +508,9 @@ export type {
 // through here, on both sides of the wire (decided 2026-08-02).
 //
 // Two symbols for what it does, plus one for what it demands of a caller (see
-// below). It does seven things — send, judge, wait, cap at three deliveries,
-// hand over or throw, hold nothing, stop when the caller says so — and no
-// eighth, so there is nothing else worth naming here. Everything the loop needs internally (the judgement, its
+// below). It does eight things — send, judge, wait, cap at three deliveries,
+// hand over or throw, hold nothing, stop when the caller says so, abort a send
+// that stalls — and no ninth, so there is nothing else worth naming here. Everything the loop needs internally (the judgement, its
 // vocabulary, the sleep) stays inside: an export is a promise to somebody, and
 // nobody outside this package needs those. Not even the options type: a caller
 // writes the object inline and TypeScript's structural typing does the rest,
@@ -554,7 +554,7 @@ export { reasonOf } from "@shared/http/reason.js";
 // message is only half a contract. A caller whose deadline comes from config
 // (`size / rate`) has to be able to refuse an unusable pair where the operator
 // can still read the complaint, rather than at the moment someone uploads.
-// This is not an eighth thing the transport does — it is the bound the second
+// This is not one more thing the transport does — it is the bound the second
 // parameter already had, said out loud.
 export { MAX_TIMER_MS } from "@shared/http/constants.js";
 
