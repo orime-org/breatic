@@ -525,11 +525,14 @@ async function runTaskBody(
       onMissingCost: (row) => logger.error({ row, taskId }, "agent_usage_cost_missing"),
     });
 
-  // Set before any work runs, so every still-going answer below has it. A
-  // container job keeps its own deadline, with a grace for its last report.
+  // Set before any work runs, so every still-going answer below has it.
   let deadlineAt = Number.POSITIVE_INFINITY;
+  // How long a still-going run goes back on the queue. A container job judges
+  // its own deadline, with a grace for its last report.
+  let delayUntil = Number.POSITIVE_INFINITY;
   try {
-    if (!containerRun) deadlineAt = await taskDeadline(taskId, existing?.createdAt);
+    deadlineAt = await taskDeadline(taskId, existing?.createdAt);
+    if (!containerRun) delayUntil = deadlineAt;
     if (source === "mini_tool" && toolId) {
       [providerResult, creditsUsed] = await runMiniTool({
         toolId,
@@ -580,7 +583,7 @@ async function runTaskBody(
     // its attempts — until the task's two hours are up.
     let err = thrown;
     if (err instanceof StillRunning && token !== undefined) {
-      if (Date.now() < deadlineAt) {
+      if (Date.now() < delayUntil) {
         await job.moveToDelayed(err.resumeAt, token);
         throw new DelayedError();
       }

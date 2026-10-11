@@ -22,8 +22,11 @@ const h = vi.hoisted(() => {
       super("still running");
     }
   }
+  /** Stand-in for a container job the Durable Object ended as failed. */
+  class ContainerJobFailed extends Error {}
   return {
     StillRunning,
+    ContainerJobFailed,
     warn: vi.fn(),
     runContainerJob: vi.fn(),
     runCatalogTask: vi.fn(),
@@ -47,7 +50,7 @@ vi.mock("@worker/providers/still-running.js", () => ({
 }));
 vi.mock("@worker/handlers/task-deadline.js", () => ({ taskDeadline: h.taskDeadline }));
 vi.mock("@worker/handlers/container/run-container-job.js", () => ({
-  ContainerJobFailed: class extends Error {},
+  ContainerJobFailed: h.ContainerJobFailed,
   runContainerJob: h.runContainerJob,
 }));
 vi.mock("@worker/providers/run-steps.js", () => ({ runCatalogTask: h.runCatalogTask }));
@@ -240,7 +243,7 @@ describe("an upstream prediction still running when a pickup ends", () => {
     vi.spyOn(Date, "now").mockReturnValue(DEADLINE + 1);
 
     await expect(runTask(containerJob(), "lock-token")).rejects.toBeInstanceOf(DelayedError);
-    expect(h.taskDeadline).not.toHaveBeenCalled();
+    vi.restoreAllMocks();
   });
 
   it("fails a run whose task row is gone, without putting it back on the queue", async () => {
@@ -296,6 +299,24 @@ describe("a run past its two-hour deadline", () => {
     });
 
     await runTask(jobOf({}, 2), "lock-token").catch(() => undefined);
+
+    expect(h.settleTaskForNode).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.any(String),
+      expect.objectContaining({ outcome: "expired" }),
+    );
+    vi.restoreAllMocks();
+  });
+
+  // The Durable Object ends a container job at the task's deadline and reports
+  // it failed; that ending is the deadline's.
+  it("settles a container job the Durable Object ended at the deadline as expired", async () => {
+    h.runContainerJob.mockImplementation(async () => {
+      vi.spyOn(Date, "now").mockReturnValue(DEADLINE);
+      throw new h.ContainerJobFailed("tool_failed");
+    });
+
+    await runTask(containerJob(), "lock-token").catch(() => undefined);
 
     expect(h.settleTaskForNode).toHaveBeenCalledWith(
       expect.anything(),
