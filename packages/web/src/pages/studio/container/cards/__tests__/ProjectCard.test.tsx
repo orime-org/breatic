@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -12,6 +12,7 @@ import { ProjectCard } from '@web/pages/studio/container/cards/ProjectCard';
 import type { ProjectTimeKind } from '@web/pages/studio/container/container-types';
 import type { ContainerProject } from '@web/pages/studio/container/container-types';
 import { expectNoA11yViolations } from '@web/test-utils/a11y';
+import { toast } from '@web/lib/toast';
 
 vi.mock('@web/data/api/projects', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@web/data/api/projects')>()),
@@ -22,6 +23,10 @@ vi.mock('@web/data/api/projects', async (importOriginal) => ({
     restore: vi.fn(() => Promise.resolve({ ok: true })),
     leave: vi.fn(() => Promise.resolve({ ok: true })),
   },
+}));
+
+vi.mock('@web/lib/toast', () => ({
+  toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() },
 }));
 
 vi.mock('@web/data/api/project-join-requests', () => ({
@@ -279,5 +284,45 @@ describe('ProjectCard', () => {
   it('has no a11y violations', async () => {
     const { container } = setup();
     await expectNoA11yViolations(container);
+  });
+});
+
+describe('ProjectCard — picking a cover (inner#1367 A4)', () => {
+  const RIFF_WEBP = [0x52, 0x49, 0x46, 0x46, 4, 0, 0, 0, 0x57, 0x45, 0x42, 0x50];
+  const PNG = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13];
+
+  // jsdom has no object URLs; the crop dialog asks for one to show the file.
+  beforeEach(() => {
+    vi.mocked(toast.warning).mockClear();
+    Object.assign(URL, { createObjectURL: vi.fn(() => 'blob:mock/0'), revokeObjectURL: vi.fn() });
+  });
+
+  /**
+   * Pick a file in the cover input.
+   * @param bytes - The file's first bytes.
+   * @param name - Its name.
+   * @param type - The type it claims.
+   */
+  function pick(bytes: number[], name: string, type: string): void {
+    const file = new File([new Uint8Array([...bytes, ...new Array<number>(64).fill(0)])], name, { type });
+    fireEvent.change(screen.getByTestId('project-cover-input'), { target: { files: [file] } });
+  }
+
+  it('turns away a WebP named and typed as a JPEG, before the crop', async () => {
+    setup();
+
+    pick(RIFF_WEBP, 'cover.jpg', 'image/jpeg');
+
+    await waitFor(() => expect(toast.warning).toHaveBeenCalledWith('Not a supported format. Use PNG or JPEG.'));
+    expect(screen.queryByTestId('image-crop-dialog')).toBeNull();
+  });
+
+  it('opens the crop for a PNG', async () => {
+    setup();
+
+    pick(PNG, 'cover.png', 'image/png');
+
+    await waitFor(() => expect(screen.getByTestId('image-crop-dialog')).toBeInTheDocument());
+    expect(toast.warning).not.toHaveBeenCalled();
   });
 });
