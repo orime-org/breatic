@@ -597,8 +597,8 @@ export async function fetchUrlToIngest(
  * @param init - Method, headers and body.
  * @param options - What only the caller knows about this delivery.
  * @param options.bound - How long the call may run: the task's deadline as a
- *   signal with the time left, or, for a call no deadline reaches, a timeout
- *   alone.
+ *   signal with the time left (joined with the caller's stop signal, when it
+ *   has one), or, for a call no deadline reaches, a timeout alone.
  * @param options.idleTimeoutMs - How long a delivery may go without a byte
  *   moving, in a page.
  * @param options.dispatcher - What Node sends through, when the caller times
@@ -606,7 +606,6 @@ export async function fetchUrlToIngest(
  * @param options.replaySafe - Whether sending this again produces no second
  *   side effect. The test is whether the request names the upload it writes
  *   into: a part and a completion do, and opening one does not.
- * @param options.signal - Raised when the caller no longer wants the answer.
  * @returns The parsed answer.
  * @throws {UploadHttpError} When the Worker refuses.
  */
