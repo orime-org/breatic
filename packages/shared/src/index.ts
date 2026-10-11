@@ -451,6 +451,7 @@ export {
 } from "@shared/camera-angle.js";
 export { appliesInMode, paramsForMode } from "@shared/param-modes.js";
 export {
+  MULTI_SHOT_MODE,
   storyboardSend,
   storyboardSpec,
 } from "@shared/storyboard.js";
