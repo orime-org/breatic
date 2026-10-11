@@ -505,7 +505,7 @@ describe('the Spaces a message carries (inner#1413)', () => {
   });
 
   it('sends them cut to the limits the server reads', async () => {
-    vi.mocked(chatApi.streamConfig).mockResolvedValue({
+    vi.mocked(chatApi.streamConfig).mockResolvedValueOnce({
       heartbeatIntervalMs: 5000,
       attachmentMaxChars: 200_000,
       attachmentMaxItems: 10,
@@ -533,7 +533,7 @@ describe('the Spaces a message carries (inner#1413)', () => {
   });
 
   it('sends nothing and says so beside the plus sign when the limits cannot be read', async () => {
-    vi.mocked(chatApi.streamConfig).mockRejectedValue(new Error('offline'));
+    vi.mocked(chatApi.streamConfig).mockRejectedValueOnce(new Error('offline'));
     const panel = renderHook(() => useChatSession('p-1', false, () => read));
     await waitFor(() => {
       expect(panel.result.current.status).toBe('ready');
@@ -612,5 +612,62 @@ describe('the wait for the limits before a send (inner#1413)', () => {
     });
 
     expect(wire.sent().filter((body) => body.conversation_id === 'c-1')).toHaveLength(0);
+  });
+
+  /**
+   * Press send while the limits are still on their way.
+   * @returns Answers the limits read.
+   */
+  async function pressWhileTheLimitsAreRead(): Promise<() => Promise<void>> {
+    let answer: (config: Awaited<ReturnType<typeof chatApi.streamConfig>>) => void = () => undefined;
+    vi.mocked(chatApi.streamConfig).mockReturnValueOnce(
+      new Promise((resolve) => {
+        answer = resolve;
+      }),
+    );
+    const panel = await anOpenPanel();
+    act(() => {
+      void panel.result.current.send('summarise this');
+    });
+    return async () => {
+      await act(async () => {
+        answer({
+          heartbeatIntervalMs: 5000,
+          attachmentMaxChars: 200_000,
+          attachmentMaxItems: 10,
+          currentSpaceMaxChars: 100_000,
+          spaceListMaxItems: 200,
+        });
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      });
+    };
+  }
+
+  it('sends nothing once the reader has left the project during the wait', async () => {
+    const answerTheLimits = await pressWhileTheLimitsAreRead();
+
+    act(() => {
+      conversationRuntime.leaveProject('p-1');
+    });
+    await answerTheLimits();
+
+    expect(wire.sent()).toHaveLength(0);
+    expect(chatApi.openChat).toHaveBeenCalledTimes(1);
+  });
+
+  it('sends nothing into the conversation the reader switched to during the wait', async () => {
+    vi.mocked(chatApi.readConversation).mockResolvedValue({
+      conversation: { id: 'c-2' },
+      messages: [],
+      hasMore: false,
+    } as unknown as Awaited<ReturnType<typeof chatApi.readConversation>>);
+    const answerTheLimits = await pressWhileTheLimitsAreRead();
+
+    await act(async () => {
+      await conversationRuntime.switchTo('p-1', 'c-2');
+    });
+    await answerTheLimits();
+
+    expect(wire.sent()).toHaveLength(0);
   });
 });
