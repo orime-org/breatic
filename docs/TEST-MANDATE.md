@@ -49,6 +49,8 @@
 
 服务端开着邮件时,注册要读寄到 Mailpit 的验证码,所以跑 smoke 的那套服务用 `pnpm dev:mailpit` 起:它起 Mailpit 并把服务端的 SMTP 指过去。用 `pnpm dev` 起的服务按 `.env` 里的发信方式寄信,Mailpit 开着也收不到。
 
+同一套服务同一时间只跑一组 playwright。两组共用 `playwright/.auth/` 里的账号和它们的 project:后起的那组 setup 会重写登录状态文件,两组建的 Space 会出现在对方的页面上,上传还共用同一份票据额度。
+
 ### 2.2 要外部服务的用例:声明、默认不跑、发布前必须跑(MANDATORY)
 
 一条用例真的去打模型 / 公网 / R2 / ingest Worker / 声音目录 / Stripe / Brave / 本机 ffmpeg,就在 `test()` 名字末尾挂标签:
@@ -78,7 +80,7 @@
 
 默认档的运行会印出它排除了什么(`覆盖 N 条,共 M 条;排除 K 条:@needs-… `)。**被排除的用例在报告里连一行都没有**,所以那行是唯一能让人知道这个绿盖了多少的地方。
 
-### 2.3 写一条 smoke 的七条(MANDATORY)
+### 2.3 写一条 smoke 的规则(MANDATORY)
 
 | 条 | 规则 | 守卫 |
 |---|---|---|
@@ -89,10 +91,17 @@
 | 五 | 不用条件 `test.skip`,文件作用域的也不行 | `breatic/no-runtime-test-skip` |
 | 六 | 不依赖同文件里别的用例留下的东西 | 人判 |
 | 七 | 写完做一次变异:把被测行为改坏,确认它真的红 | 人判 |
+| 八 | 页面上同时挂着几个保活的 Space,读画布或文档里的元素一律限定在当前显示的那个:`visibleSpace(page)` / `VISIBLE_SPACE`(`tests/helpers/space.ts`) | 人判 |
+| 九 | 在文档正文里写选区、按会移动浏览器原生选区的键,一律经 `tests/helpers/editor-keys.ts`:写选区用 `selectInBody`,按键用 `pressAndSettle`,点击放光标用 `clickAndSettle` | 人判 |
+| 十 | 一次交给画布多个文件之前,先 `await roomForUploads(文件数)`(`tests/helpers/upload-budget.ts`) | 人判 |
 
 第六条守卫看不见,而它是拆开共享开局时冒出来最多的一类:一条用例读上一条留在页面上或留在账号那条会话里的东西,拆开之后要么当场红,要么在什么都没发生的情况下恒为真。判定题:**这条用例断言的那个东西,是它自己放上去的吗?**
 
 第七条同理:有断言不等于断言得到东西。`expect(panelText.length).toBeGreaterThan(0)` 这种在产品坏掉时照样绿。
+
+第九条:ProseMirror 拿到焦点后会在约 20ms 后把它自己记的选区写回页面,写选区与它读回之间插进来的任何一次 dispatch 也会这样写回;脚本的下一步如果抢在读回之前,结果就被撤销,而这只在页面忙的时候发生,表现为时好时坏。`selectInBody` 等到编辑器选区等于写进去的那个范围才返回,被写回时重写。
+
+第十条:服务端每个账号每个窗口只发 `config/rate-limits.yaml` 里 `upload-ticket` 那么多张上传票据,一个文件一张。smoke 单 worker 顺序跑,上传类用例连着跑时会超过它,超出的文件拿到 429、节点一直空着。`roomForUploads` 按 `openSmokeProject` 打开的页面实际发出的票据计数,等到额度够了再交。
 
 第五条的两种落点后果一样:用例体里的那一句吃掉这一条,文件顶上的那一句吃掉整个文件,报告两次都写「skipped」而退出码是零。2026-09-19 实测:文件顶上一行 `test.skip(!email || !password, ...)` 换来 12 passed / 289 skipped 和一个零退出码。名字带 body 的 `test.skip('标题', async () => {})` 不在此列——它在报告里有自己的标题,谁都看得见。
 
