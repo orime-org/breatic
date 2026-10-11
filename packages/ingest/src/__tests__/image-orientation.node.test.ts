@@ -162,6 +162,19 @@ describe("readImageOrientation", () => {
     });
   });
 
+  // R2 refuses a range on an empty object, so an empty picture is not read.
+  it("answers 1 for an empty picture without reading it", async () => {
+    const empty = new Uint8Array(0);
+    const reader = readerOf(empty);
+    await expect(orientationOf(empty, "image/jpeg", reader)).resolves.toEqual({
+      orientation: 1,
+      lossless: false,
+      animated: false,
+      outOfBounds: false,
+    });
+    expect(reader.calls).toHaveLength(0);
+  });
+
   it("answers 1 for a JPEG with no EXIF", async () => {
     await expect(orientationOf(jpeg(null), "image/jpeg")).resolves.toEqual({
       orientation: 1,
