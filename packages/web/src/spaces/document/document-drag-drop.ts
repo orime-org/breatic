@@ -63,6 +63,14 @@ export function rowHasLanded(): void {
 }
 
 /**
+ * Whether a row drag is in flight: a block handle's or a medium's.
+ * @returns Whether one is.
+ */
+export function rowInFlight(): boolean {
+  return flying !== undefined;
+}
+
+/**
  * The extension that writes a dropped row from the document, not the payload.
  * @returns The extension, for the assembly to register.
  */

@@ -70,6 +70,8 @@ const OWN_CONTENT = ':scope > .bn-block > .bn-block-content';
 const NESTED_GROUP = ':scope > .bn-block > .bn-block-group';
 /** BlockNote's group of blocks, the context its indent rules read. */
 const BLOCK_GROUP_CLASS = 'bn-block-group';
+/** A block in the body, with the blocks nested under it. */
+const ROW = '.bn-block-outer';
 
 /**
  * The scale that brings a longest side over {@link PREVIEW_LONGEST_SIDE} down to
@@ -307,19 +309,136 @@ export function tableLinePreviewContent(
 }
 
 /**
- * Replaces the preview BlockNote set for a row drag with ours, built from the
- * blocks BlockNote copied. Called in the same `dragstart`, after the library's
- * `blockDragStart`: each `setDragImage` replaces the last one
+ * What a cell selection's preview shows: every column of the rows its cells
+ * are in, inside a copy of its table block. A cell merged across those rows'
+ * edges is cut to them the way the drag's own content is
+ * (prosemirror-tables `CellSelection.content()`): one that starts above them is
+ * an empty cell of the size it has within them, one that starts in them keeps
+ * its words and is cut at their bottom. Its columns are never cut: the rows are
+ * drawn whole.
+ * @param view - The editor view.
+ * @param cellPos - A cell of the table.
+ * @param top - The first row, by the table map.
+ * @param bottom - The row after the last one.
+ * @returns The content, detached; null when the position is not a cell.
+ */
+export function tableRowsPreviewContent(
+  view: EditorView,
+  cellPos: number,
+  top: number,
+  bottom: number,
+): HTMLElement | null {
+  const at = cellAt(view.state.doc, cellPos);
+  if (at === null) return null;
+  const { map, tableStart } = at;
+  const block = (view.nodeDOM(cellPos) as Element | null)?.closest(TABLE_BLOCK);
+  if (block === null || block === undefined) return null;
+  const copy = block.cloneNode(true) as HTMLElement;
+  // The copy has the original's structure, so a cell is at its own place.
+  const originals = [...block.querySelectorAll('td, th')];
+  const copies = [...copy.querySelectorAll('td, th')];
+  const rows = [...copy.querySelectorAll('tr')];
+  const seen = new Set<number>();
+  rows.forEach((row, index) => {
+    if (index < top || index >= bottom) {
+      row.remove();
+      return;
+    }
+    const cells: Element[] = [];
+    for (let col = 0; col < map.width; col += 1) {
+      const pos = map.map[index * map.width + col]!;
+      if (seen.has(pos)) continue;
+      seen.add(pos);
+      const rect = map.findCell(pos);
+      const drawn = copies[originals.indexOf(view.nodeDOM(tableStart + pos) as Element)];
+      if (drawn === undefined) continue;
+      const cell = rect.top < top ? (drawn.cloneNode(false) as Element) : drawn;
+      const span = Math.min(rect.bottom, bottom) - Math.max(rect.top, top);
+      if (span > 1) cell.setAttribute('rowspan', String(span));
+      else cell.removeAttribute('rowspan');
+      cells.push(cell);
+    }
+    row.replaceChildren(...cells);
+  });
+  const width = block.querySelector('table')?.getBoundingClientRect().width ?? 0;
+  if (width > 0) copy.style.width = `${width}px`;
+  settle(view, copy);
+  return copy;
+}
+
+/**
+ * What a drag of a caption field's words shows: the whole field, holding what
+ * it holds now, at the width it is drawn at and without the space above it.
+ * It is not a block, so nothing in it is the media chrome `settle` takes out.
+ * @param input - The caption field.
+ * @returns The content, detached.
+ */
+export function captionPreviewContent(input: HTMLInputElement): HTMLElement {
+  const copy = input.cloneNode(true) as HTMLInputElement;
+  copy.value = input.value;
+  const width = input.getBoundingClientRect().width;
+  if (width > 0) copy.style.width = `${width}px`;
+  copy.style.marginTop = '0px';
+  return copy;
+}
+
+/**
+ * Takes a preview off the page when its drag ends: on whichever comes first of
+ * a drop, once the drop has been handled; a `dragend`; and the first pointer
+ * move with no button held. A drag's source can leave the page before its
+ * `dragend` — a selection the drop moved, a caption field closed as the body
+ * takes the focus — and then that `dragend` reaches nothing
+ * (`document-row-drag.ts`).
+ * @param page - The page the preview is on.
+ * @param preview - The preview.
+ * @param preview.remove - Takes it off the page.
+ * @returns Takes it away now; calling it again does nothing.
+ */
+export function removeWhenDragEnds(page: Document, preview: { remove: () => void }): () => void {
+  const win = page.defaultView;
+  let done = false;
+  /** Takes the preview away, once. */
+  const remove = (): void => {
+    if (done) return;
+    done = true;
+    page.removeEventListener('drop', onDrop, true);
+    page.removeEventListener('dragend', remove, true);
+    win?.removeEventListener('mousemove', onMove, true);
+    preview.remove();
+  };
+  /** Waits for the drop's own handling, which may still read the preview's drag. */
+  const onDrop = (): void => {
+    setTimeout(remove, 0);
+  };
+  /**
+   * Takes the preview away on a move with no button held.
+   * @param event - The mousemove.
+   */
+  const onMove = (event: MouseEvent): void => {
+    if (event.buttons === 0) remove();
+  };
+  page.addEventListener('drop', onDrop, true);
+  page.addEventListener('dragend', remove, true);
+  win?.addEventListener('mousemove', onMove, true);
+  return remove;
+}
+
+/**
+ * Replaces the preview BlockNote set for a row drag with ours: the row whose
+ * handle was pressed, copied from the body. The library copies every block a
+ * selection spans, and the drop moves the pressed row alone
+ * (`document-drag-drop.ts`). Called in the same `dragstart`, after the
+ * library's `blockDragStart`: each `setDragImage` replaces the last one
  * (`data_transfer.cc`).
  * @param view - The editor view.
  * @param dataTransfer - The drag's data transfer.
- * @returns Our preview, or null when the library put none in the page.
+ * @param blockId - The row.
+ * @returns Our preview, or null when the row is not in the body.
  */
-export function previewRowDrag(view: EditorView, dataTransfer: DataTransfer | null): DragPreview | null {
-  const library = [...view.dom.ownerDocument.querySelectorAll(`body > .${LIBRARY_PREVIEW_CLASS}`)].at(-1);
-  if (library === undefined || dataTransfer === null) return null;
-  const blocks = [...library.children].map((block) => block.cloneNode(true) as Element);
-  const preview = buildDragPreview(view, blockPreviewContent(view, blocks));
+export function previewRowDrag(view: EditorView, dataTransfer: DataTransfer | null, blockId: string): DragPreview | null {
+  const row = [...view.dom.querySelectorAll(ROW)].find((outer) => outer.getAttribute('data-id') === blockId);
+  if (row === undefined || dataTransfer === null) return null;
+  const preview = buildDragPreview(view, blockPreviewContent(view, [row.cloneNode(true) as Element]));
   dataTransfer.setDragImage(preview.element, 0, 0);
   return preview;
 }

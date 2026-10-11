@@ -79,6 +79,7 @@ import { setTableTarget, tableTargetOf } from '@web/spaces/document/document-tab
 import { startTableDrag } from '@web/spaces/document/document-table-drag';
 import {
   buildDragPreview,
+  removeWhenDragEnds,
   tableLinePreviewContent,
 } from '@web/spaces/document/document-drag-preview';
 import { useDocumentBars } from '@web/spaces/document/document-bars';
@@ -414,9 +415,10 @@ export function DocumentTableHandle({
             const content = tableLinePreviewContent(view, pos, orientation);
             const preview = content === null ? null : buildDragPreview(view, content);
             if (preview !== null) event.dataTransfer.setDragImage(preview.element, 0, 0);
+            const takePreviewAway = preview === null ? null : removeWhenDragEnds(view.dom.ownerDocument, preview);
             handles.freezeHandles();
             releaseDrag.current = () => {
-              preview?.remove();
+              takePreviewAway?.();
               handles.unfreezeHandles();
             };
             source.hideAfterStart();

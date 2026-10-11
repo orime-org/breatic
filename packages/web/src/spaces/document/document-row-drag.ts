@@ -11,7 +11,7 @@ import type { BlockNoteEditor } from '@blocknote/core';
 import { SideMenuExtension } from '@blocknote/core/extensions';
 
 import { rowHasLanded, rowIsFlying } from '@web/spaces/document/document-drag-drop';
-import { previewRowDrag } from '@web/spaces/document/document-drag-preview';
+import { previewRowDrag, removeWhenDragEnds } from '@web/spaces/document/document-drag-preview';
 import {
   readerPlace,
   restoreAfterRowDrag,
@@ -50,9 +50,10 @@ export function startRowDrag(
   rowIsFlying(blockId, held);
   const sideMenu = editor.getExtension(SideMenuExtension)!;
   sideMenu.blockDragStart(event as never, editor.getBlock(blockId) as never);
-  const preview = previewRowDrag(view, event.dataTransfer);
-
   const page = view.dom.ownerDocument;
+  const preview = previewRowDrag(view, event.dataTransfer, blockId);
+  const takePreviewAway = preview === null ? null : removeWhenDragEnds(page, preview);
+
   let ended = false;
   /** Ends the drag, once. */
   const end = (): void => {
@@ -60,7 +61,7 @@ export function startRowDrag(
     ended = true;
     page.removeEventListener('drop', onDrop, true);
     rowHasLanded();
-    preview?.remove();
+    takePreviewAway?.();
     sideMenu.blockDragEnd();
     // A text selection goes back to whatever the reader had: the node
     // selection the library put on the row at dragstart is still there, and
