@@ -195,11 +195,7 @@ const chatSpaceSchema = z.object({
   kind: SpaceTypeSchema,
 });
 
-/**
- * The Space the reader has open, as the browser read it at the press. The
- * content is already cut to the limit; the server checks that limit, since
- * it lives in config this package cannot read.
- */
+/** A count of things sent or left out. */
 const count = z.number().int().nonnegative();
 
 /**
@@ -214,7 +210,7 @@ const chatCanvasDetailSchema = z
     selected_attached: count,
     /** The other selected nodes that went whole. */
     selected_whole: count,
-    /** Whether any node that is not a group went as a slim entry. */
+    /** Whether any node went as a slim entry; a group's slim entry is its name only. */
     slim: z.boolean(),
     /** How many texts end with the cut marker. */
     texts_cut: count,
@@ -241,6 +237,11 @@ const chatLoadedSpaceSchema = chatSpaceSchema
     path: ["detail"],
   });
 
+/**
+ * The Space the reader has open, as the browser read it at the press. The
+ * content is already cut to the limit; the server checks that limit, since
+ * it lives in config this package cannot read.
+ */
 const chatCurrentSpaceSchema = z.discriminatedUnion("state", [
   chatLoadedSpaceSchema,
   chatSpaceSchema.extend({ state: z.literal("loading") }),
