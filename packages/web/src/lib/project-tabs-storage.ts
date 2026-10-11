@@ -67,9 +67,9 @@ const viewportSchema = z
   .catch(null);
 
 /**
- * One account's slot for one project. `tabs` is absent while the only thing
- * stored here is whether the Agent panel is open; the strip is first stored
- * by `writeOpenTabs`. A panel value that does not parse costs that value and
+ * One account's slot for one project. `tabs` is absent while the only things
+ * stored here are the Agent panel's preferences; the strip is first stored by
+ * `writeOpenTabs`. A preference that does not parse costs that value and
  * nothing else, so it can never take the reader's tabs with it.
  */
 const slotSchema = z.object({
@@ -84,6 +84,7 @@ const slotSchema = z.object({
     .optional(),
   activeId: z.string().min(1).nullable().optional(),
   agentPanelOpen: z.boolean().optional().catch(undefined),
+  spaceContextEnabled: z.boolean().optional().catch(undefined),
 });
 
 type Slot = z.infer<typeof slotSchema>;
@@ -241,4 +242,37 @@ export function writeAgentPanelOpen(
   const account = openAccountRecord(STORAGE_KEYS.projectTabs, userId);
   if (account === null) return;
   writeSlot(account, projectId, { ...readSlot(account, projectId), agentPanelOpen: open });
+}
+
+/**
+ * Whether this account turned off sending the open Space to the Agent in this
+ * project (inner#1413).
+ * @param userId - The signed-in account; nothing is read without one.
+ * @param projectId - The project being opened.
+ * @returns The stored value, or undefined when it was never toggled here or
+ *   the stored value is unusable.
+ */
+export function readSpaceContextEnabled(
+  userId: string | undefined,
+  projectId: string,
+): boolean | undefined {
+  const account = openAccountRecord(STORAGE_KEYS.projectTabs, userId);
+  return account === null ? undefined : readSlot(account, projectId)?.spaceContextEnabled;
+}
+
+/**
+ * Store whether the open Space goes to the Agent, keeping everything else in
+ * the slot as it was.
+ * @param userId - The signed-in account; nothing is written without one.
+ * @param projectId - The project the preference belongs to.
+ * @param enabled - Whether the open Space goes with each message.
+ */
+export function writeSpaceContextEnabled(
+  userId: string | undefined,
+  projectId: string,
+  enabled: boolean,
+): void {
+  const account = openAccountRecord(STORAGE_KEYS.projectTabs, userId);
+  if (account === null) return;
+  writeSlot(account, projectId, { ...readSlot(account, projectId), spaceContextEnabled: enabled });
 }
