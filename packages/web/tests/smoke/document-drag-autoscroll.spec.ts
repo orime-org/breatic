@@ -361,3 +361,171 @@ test('A7: a column dragged along the body\'s top edge leaves the body where it i
   expect(await scrollTop(page)).toBe(before);
   await page.mouse.up();
 });
+
+/**
+ * A top-level row by the start of its text.
+ * @param p - The page.
+ * @param text - How its text starts.
+ * @returns The row's box.
+ * @throws {Error} When the row has no box.
+ */
+async function rowBox(p: Page, text: string): Promise<{ x: number; y: number; width: number; height: number }> {
+  const box = await p.locator(TOP).filter({ hasText: new RegExp(`^${text}`) }).first().boundingBox();
+  if (box === null) throw new Error(`row "${text}" has no box`);
+  return box;
+}
+
+/**
+ * The body's lines, top to bottom.
+ * @param p - The page.
+ * @returns Each top-level row's text.
+ */
+async function lines(p: Page): Promise<string[]> {
+  return p.locator(TOP).allTextContents();
+}
+
+for (const press of ['text', 'gutter', 'shift on text'] as const) {
+  for (const way of ['down', 'up'] as const) {
+    test(`A6: a selection pulled from ${press} ${way} past the body edge scrolls it that way`, async () => {
+      await openLongDocument(page);
+      const view = (await page.locator(SCROLLER).first().boundingBox())!;
+      await setScrollTop(page, way === 'down' ? 0 : 100_000);
+      // A press on a row well inside the window, far from the edge it is pulled to.
+      const rows = page.locator(TOP);
+      const pick = await rows.evaluateAll((els, downward) => {
+        const box = document.querySelector('[data-testid="document-space"] .doc-body-scroller [data-radix-scroll-area-viewport]')!.getBoundingClientRect();
+        const inside = els.filter((el) => {
+          const r = el.getBoundingClientRect();
+          return r.top > box.top + 150 && r.bottom < box.bottom - 150;
+        });
+        const el = downward ? inside[0] : inside[inside.length - 1];
+        const r = el!.getBoundingClientRect();
+        return { y: r.top + r.height / 2, x: r.left };
+      }, way === 'down');
+      const x = press === 'gutter' ? view.x + 20 : pick.x + 30;
+      if (press === 'shift on text') {
+        await page.mouse.click(pick.x + 5, pick.y);
+        await page.keyboard.down('Shift');
+      }
+      await page.mouse.move(x, pick.y);
+      await page.mouse.down();
+      await page.mouse.move(x, pick.y + (way === 'down' ? 40 : -40), { steps: 4 });
+      const before = await scrollTop(page);
+      await hold(page, view.x + 200, way === 'down' ? view.y + view.height + 30 : view.y - 30);
+      const after = await scrollTop(page);
+      await page.mouse.up();
+      if (press === 'shift on text') await page.keyboard.up('Shift');
+      if (way === 'down') expect(after).toBeGreaterThan(before + 300);
+      else expect(after).toBeLessThan(before - 300);
+    });
+  }
+}
+
+test('§5: a drag whose dragstart was cancelled does not scroll the body', async () => {
+  await openLongDocument(page);
+  await setScrollTop(page, 0);
+  await page.evaluate(() => {
+    document.addEventListener('dragstart', (event) => event.preventDefault(), true);
+  });
+  const view = (await page.locator(SCROLLER).first().boundingBox())!;
+  await liftRow(page, 0);
+  const before = await scrollTop(page);
+  await hold(page, view.x + 200, view.y + view.height - 10);
+  expect(await scrollTop(page)).toBe(before);
+  await page.mouse.up();
+});
+
+test('A4: Escape ends the scrolling, also after the body has scrolled', async () => {
+  await openLongDocument(page);
+  await setScrollTop(page, 0);
+  const view = (await page.locator(SCROLLER).first().boundingBox())!;
+  await liftRow(page, 0);
+  await hold(page, view.x + 200, view.y + view.height - 10, 800);
+  expect(await scrollTop(page)).toBeGreaterThan(100);
+  await page.keyboard.press('Escape');
+  const stopped = await scrollTop(page);
+  await hold(page, view.x + 200, view.y + view.height - 10, 800);
+  expect(await scrollTop(page)).toBe(stopped);
+  await page.mouse.up();
+});
+
+test('A4: a row dropped between two lines lands there', async () => {
+  await openLongDocument(page, 20);
+  await setScrollTop(page, 0);
+  const moved = await rowBox(page, 'line 3 of');
+  await page.mouse.move(5, 5);
+  await page.mouse.move(moved.x + 40, moved.y + moved.height / 2, { steps: 3 });
+  const grip = (await page.getByTestId('doc-block-handle').boundingBox())!;
+  await page.mouse.move(grip.x + grip.width / 2, grip.y + grip.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(grip.x + 8, grip.y + 12, { steps: 4 });
+  const target = await rowBox(page, 'line 8 of');
+  // The lower half of line 8: the drop goes after it.
+  await hold(page, target.x + 100, target.y + target.height * 0.75, 400);
+  await page.mouse.up();
+  const after = (await lines(page)).map((line) => line.replace(/ of a body.*/, ''));
+  expect(after.slice(0, 9)).toEqual(['line 1', 'line 2', 'line 4', 'line 5', 'line 6', 'line 7', 'line 8', 'line 3', 'line 9']);
+});
+
+test('A9: a table row in flight shows no drop cursor, a block in flight does', async () => {
+  await openSmokeProject(page);
+  createdSpaceIds.push(await createSpace(page, 'document', `autoscroll-${Date.now()}`));
+  const editor = page.locator(EDITOR);
+  await expect(editor).toBeVisible({ timeout: 15_000 });
+  await editor.click();
+  await page.keyboard.type('lead');
+  await insertWideTable(page, 3);
+  await page.locator(TOP).first().click();
+  await page.keyboard.press('End');
+  const cell = (await page.locator(`${EDITOR} td`).filter({ hasText: /^c1$/ }).first().boundingBox())!;
+  await page.mouse.move(5, 5);
+  await page.mouse.move(cell.x + cell.width / 2, cell.y + cell.height / 2, { steps: 4 });
+  const handle = (await page.getByTestId('doc-table-row-handle').boundingBox())!;
+  await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2 + 8, { steps: 4 });
+  await hold(page, cell.x + cell.width / 2, cell.y + cell.height + 10, 400);
+  await expect(page.locator('.prosemirror-dropcursor-block, .prosemirror-dropcursor-inline')).toHaveCount(0);
+  await page.mouse.up();
+
+  const lead = await rowBox(page, 'lead');
+  await page.mouse.move(5, 5);
+  await page.mouse.move(lead.x + 40, lead.y + lead.height / 2, { steps: 3 });
+  const grip = (await page.getByTestId('doc-block-handle').boundingBox())!;
+  await page.mouse.move(grip.x + grip.width / 2, grip.y + grip.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(grip.x + 8, grip.y + 12, { steps: 4 });
+  const table = (await page.locator(`${EDITOR} table`).first().boundingBox())!;
+  await hold(page, table.x + 100, table.y + table.height + 20, 400);
+  await expect(page.locator('.prosemirror-dropcursor-block, .prosemirror-dropcursor-inline')).not.toHaveCount(0);
+  await page.mouse.up();
+});
+
+for (const what of ['a block', 'selected text'] as const) {
+  test(`§4: ${what} released in the gutter left of the column moves to the nearest place and is kept`, async () => {
+    await openLongDocument(page, 8);
+    await setScrollTop(page, 0);
+    const view = (await page.locator(SCROLLER).first().boundingBox())!;
+    const moved = await rowBox(page, 'line 2 of');
+    if (what === 'a block') {
+      await page.mouse.move(5, 5);
+      await page.mouse.move(moved.x + 40, moved.y + moved.height / 2, { steps: 3 });
+      const grip = (await page.getByTestId('doc-block-handle').boundingBox())!;
+      await page.mouse.move(grip.x + grip.width / 2, grip.y + grip.height / 2);
+    } else {
+      // The line's whole text, then a press inside it.
+      await page.mouse.click(moved.x + 20, moved.y + moved.height / 2, { clickCount: 3 });
+      await page.mouse.move(moved.x + 40, moved.y + moved.height / 2);
+    }
+    await page.mouse.down();
+    await page.mouse.move(moved.x + 48, moved.y + moved.height / 2 + 12, { steps: 4 });
+    const target = await rowBox(page, 'line 6 of');
+    await hold(page, view.x + 20, target.y + target.height * 0.75, 400);
+    await page.mouse.up();
+    const after = await lines(page);
+    expect(after.filter((line) => line.includes('line 2 of a body'))).toHaveLength(1);
+    expect(after.findIndex((line) => line.includes('line 2 of a body'))).toBeGreaterThan(
+      after.findIndex((line) => line.includes('line 6 of a body')),
+    );
+  });
+}
