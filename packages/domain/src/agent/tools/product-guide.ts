@@ -269,7 +269,7 @@ export function renderProductGuide(): string {
       `${quoted(t("chat.composer.spaceContextOn"))}. Off, the Agent is not told which Space is open or what is ` +
       "in it; the chip has a dashed border and grey words, and hovering it shows " +
       `${quoted(t("chat.composer.spaceContextOff"))}. A timeline's content cannot be read: with a timeline ` +
-      "open and the chip on, only its name and type go, and hovering shows " +
+      "open and the chip on, the Agent is told it is open but not what is in it, and hovering shows " +
       `${quoted(t("chat.composer.spaceContextOnUnreadable"))}; off, hovering shows ` +
       `${quoted(t("chat.composer.spaceContextOffUnreadable"))}. On or off, every message tells the Agent the ` +
       `name and type of the ${String(getAgentConfig().space_list_max_items)} newest Spaces in the project, and ` +

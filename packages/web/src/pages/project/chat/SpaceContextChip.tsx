@@ -50,22 +50,19 @@ export function SpaceContextChip({ name, type, enabled, onToggle }: SpaceContext
             sum changes with them. */}
         <Button
           type='button'
-          variant='chrome-ghost'
+          variant={null}
           size={null}
           aria-pressed={enabled}
           onClick={onToggle}
           data-testid='chat-composer-space'
           className={`h-6 min-w-[calc(3em+2.125rem)] max-w-full gap-1 overflow-hidden border px-2 text-xs font-normal ${
-            // Each state says its own hover: the variant's grey hover would
-            // fill an off chip right after the press that turned it off,
-            // leaving only the dashed border to tell the two apart.
             enabled
               ? 'border-border bg-chip text-foreground hover:bg-accent'
-              : 'border-dashed border-border bg-transparent text-muted-foreground hover:bg-transparent hover:text-foreground'
+              : 'border-dashed border-border bg-transparent text-muted-foreground hover:text-foreground'
           }`}
         >
           <Icon className='h-3 w-3 shrink-0 text-muted-foreground' aria-hidden='true' />
-          <span className='min-w-[3em] truncate'>{name}</span>
+          <span className='truncate'>{name}</span>
         </Button>
       </TooltipTrigger>
       {/* Portalled: the composer card clips what overflows it, and an inline
