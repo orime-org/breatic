@@ -1934,6 +1934,25 @@ describe("a finish this server drove — the task it settles", () => {
     expect(res.outcome).not.toHaveProperty("fileUrl");
   });
 
+  // A queued finish that ran again after the first one registered, and failed
+  // this time: what the first one wrote stands (inner#1367 §4.2a).
+  it("answers an abort that arrives after the upload registered as stale, and keeps it done", async () => {
+    const seed = await seedEditor();
+    const nodeId = crypto.randomUUID();
+    const key = await mintTicket(seed, { node_id: nodeId });
+    await report(completed(key));
+
+    const res = await report({ storage_key: key, outcome: "aborted" });
+
+    expect(res.outcome.status).toBe("stale");
+    const rows = await tasksOn(nodeId);
+    expect(rows[0]!.status).toBe("done");
+    const grants = await sql<{ voided_at: Date | null }[]>`
+      SELECT voided_at FROM upload_grants WHERE storage_key = ${key}
+    `;
+    expect(grants[0]!.voided_at).toBeNull();
+  });
+
   it("settles nothing for an upload with no node behind it", async () => {
     const seed = await seedEditor();
     const key = await mintTicket(seed, { node_id: undefined, space_id: undefined });
