@@ -74,8 +74,7 @@ function holdsSynced(name: string): boolean {
 }
 
 /**
- * An open canvas's nodes and links, as indented JSON the way a canvas
- * attachment carries them.
+ * An open canvas's links and nodes, as indented JSON.
  * @param source - Where the read starts from.
  * @param space - The canvas.
  * @returns Its text, empty when nothing on it can be handed over, or null
@@ -89,7 +88,11 @@ function canvasText(source: SpaceContextSource, space: ProjectSpace): string | n
   const doc = getDoc(name);
   // A first voice that is not cached is left out: nothing is asked for here.
   const item = readPick(source.queryClient, catalog, doc, readNodes(doc).map((n) => n.id));
-  return item?.chip === undefined ? '' : JSON.stringify(item.chip.data_snapshot, null, 2);
+  if (item?.chip === undefined) return '';
+  // Links first: they are short, and a canvas past the limit is cut from the
+  // end, so it is the last nodes that go rather than every link.
+  const { nodes, edges } = item.chip.data_snapshot as { nodes: unknown; edges: unknown };
+  return JSON.stringify({ edges, nodes }, null, 2);
 }
 
 /**
