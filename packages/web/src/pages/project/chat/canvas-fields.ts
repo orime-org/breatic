@@ -12,7 +12,8 @@
 import { MULTI_SHOT_MODE } from '@breatic/shared';
 import type { CanvasNodeFields, ParamDescriptor } from '@breatic/shared';
 
-import { ATTACHMENT_NAME_CHARS } from '@web/lib/attachment-naming';
+import type { NodeView } from '@web/data/yjs/node-view';
+import { nodeNameOf } from '@web/spaces/canvas/attach-nodes';
 
 /** What a field is to the reader: who the node is, what it points at, what it says, or none of these. */
 export type FieldClass = 'identity' | 'reference' | 'content' | 'other';
@@ -32,12 +33,18 @@ type FieldRule =
   | 'shots'
   | 'each';
 
+/** Every key of every member of a union. */
+type KeysOf<T> = T extends unknown ? keyof T : never;
+
+/** Every key of every kind of node view. */
+type ViewKey = KeysOf<NodeView>;
+
 /**
  * A node's `data` keys as a snapshot carries them: what the document stores,
- * what only the canvas view adds, and what lives only in the shared map
+ * what the canvas view carries, and what lives only in the shared map
  * (`body`, and the single `prompt` of nodes older than one prompt per mode).
  */
-type FieldKey = keyof CanvasNodeFields['data'] | 'kind' | 'handling' | 'sizeBytes' | 'body' | 'prompt';
+type FieldKey = keyof CanvasNodeFields['data'] | ViewKey | 'body' | 'prompt';
 
 /** Every field a node is handed over with. A key added to a node and not named here fails the typecheck. */
 export const FIELD_RULES: { readonly [K in FieldKey]: FieldRule } = {
@@ -175,15 +182,14 @@ function keepEach(
 }
 
 /**
- * The name a node is known by: a sticky by the start of what it says, since
- * every sticky is named the same.
+ * The name a node is known by, as its attachment card names it; a sticky by
+ * the start of what it says, since every sticky is named the same.
  * @param kind - The node's kind.
  * @param data - Its data.
  * @returns The name.
  */
 function nameOf(kind: string, data: Record<string, unknown>): string {
-  if (kind === 'annotation' && typeof data.content === 'string') return data.content.trim().slice(0, ATTACHMENT_NAME_CHARS);
-  return typeof data.name === 'string' && data.name !== '' ? data.name : kind;
+  return nodeNameOf(kind === 'annotation' ? { kind, content: data.content } : { ...data, kind });
 }
 
 /**
@@ -226,12 +232,8 @@ function keepParams(
 export function fitPartsOf(entry: Entry, descriptors: Readonly<Record<string, ParamDescriptor>> | undefined): FitParts {
   const data = isRecord(entry.data) ? entry.data : {};
   const kind = typeof entry.type === 'string' ? entry.type : '';
-  const named: Record<string, unknown> = {
-    id: entry.id,
-    type: entry.type,
-    ...(entry.parentId !== undefined ? { parentId: entry.parentId } : {}),
-    name: nameOf(kind, data),
-  };
+  const head = { id: entry.id, type: entry.type, ...(entry.parentId !== undefined ? { parentId: entry.parentId } : {}) };
+  const named: Record<string, unknown> = { ...head, name: nameOf(kind, data) };
   if (kind === 'group') return { slim: named, texts: [], named };
 
   const current = isRecord(entry.current) ? entry.current : undefined;
@@ -258,12 +260,7 @@ export function fitPartsOf(entry: Entry, descriptors: Readonly<Record<string, Pa
       if (cls === 'content' && typeof value === 'string') texts.push({ path: at, text: value });
     }
   }
-  const slim: Record<string, unknown> = {
-    id: entry.id,
-    type: entry.type,
-    ...(entry.parentId !== undefined ? { parentId: entry.parentId } : {}),
-    data: kept,
-  };
+  const slim: Record<string, unknown> = { ...head, data: kept };
   if (current !== undefined) {
     slim.current = {
       mode: current.mode,
