@@ -11,7 +11,13 @@
  */
 
 import { pickMediaMetadata, NOTHING_FOUND, type ProbeReport } from "@ingest/media-metadata.js";
-import { previewArgs, probeArgs, readProbeOutput } from "@ingest/probe-command.js";
+import {
+  PREVIEW_MAX_BYTES,
+  PROBE_MAX_BYTES,
+  previewArgs,
+  probeArgs,
+  readProbeOutput,
+} from "@ingest/probe-command.js";
 import { previewSource } from "@ingest/preview-step.js";
 import {
   UPRIGHT_HEIGHT_HEADER,
@@ -21,12 +27,6 @@ import {
   type UprightOutcome,
 } from "@ingest/upright-run.js";
 import type { ToolRun } from "./run-tool.js";
-
-/** The most ffprobe's report may weigh. */
-const PROBE_MAX_BYTES = 4 * 1024 * 1024;
-
-/** The most a preview may weigh; the same ceiling the probe run's preview has. */
-const PREVIEW_MAX_BYTES = 8 * 1024 * 1024;
 
 /** What one upright run reaches out to. */
 export interface UprightDeps {

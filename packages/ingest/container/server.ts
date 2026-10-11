@@ -33,6 +33,8 @@ import {
   PROBE_PORT,
 } from "@ingest/probe-answer.js";
 import {
+  PREVIEW_MAX_BYTES,
+  PROBE_MAX_BYTES,
   probeArgs,
   coverArgs,
   previewArgs,
@@ -57,13 +59,6 @@ import { runJob, type RunBody } from "./mini-tool-run.js";
  */
 const COVER_MAX_BYTES = 10 * 1024 * 1024;
 
-/**
- * The most a preview may weigh. The largest preview is 576x16383, and that
- * size cut from pure noise came to 5,176,264 bytes (inner#1320 round 5); an
- * ordinary 576-wide frame is around 100 KB.
- */
-const PREVIEW_MAX_BYTES = 8 * 1024 * 1024;
-
 /** One run's request as it arrives: read before it is believed. */
 type IncomingRequest = Partial<Record<keyof ProbeRequest, unknown>>;
 
@@ -81,7 +76,7 @@ async function probe(
   signal: AbortSignal,
 ): Promise<{ report: ProbeReport; cover: Uint8Array | null }> {
   const probed = await runTool("ffprobe", probeArgs(objectUrl), {
-    maxBytes: 4 * 1024 * 1024,
+    maxBytes: PROBE_MAX_BYTES,
     signal,
   });
   const report =
