@@ -104,37 +104,60 @@ function readCanvas(source: SpaceContextSource, space: ProjectSpace): PickSnapsh
   return snapshot ?? '';
 }
 
+/** A canvas with nothing in it, as compact JSON. */
+const EMPTY_CANVAS = '{"edges":[],"nodes":[]}';
+
 /**
- * A canvas as compact JSON holding as many of its nodes as fit in `max`
- * characters, in order, with only the links whose two ends are among them.
- * Cut at whole nodes: a cut inside the JSON would drop either every link or
- * every node, whichever came last.
+ * A canvas as compact JSON holding every node that fits in `max` characters,
+ * taken in order, with only the links whose two ends are among them. A node
+ * that does not fit is skipped and the ones after it are still tried: the
+ * order is the document's, not one the reader chose, so one long node does
+ * not push out the rest.
  * @param canvas - The canvas.
  * @param max - How many characters may go.
  * @returns The text and the length of the whole canvas's text.
  */
 function fitCanvas(canvas: PickSnapshot, max: number): { text: string; total: number } {
   /**
-   * The text holding the first `count` nodes.
-   * @param count - How many nodes.
+   * The text holding these nodes and the links between them.
+   * @param kept - The nodes' ids.
    * @returns The compact JSON.
    */
-  const textOf = (count: number): string => {
-    const nodes = canvas.nodes.slice(0, count);
-    const kept = new Set(nodes.map((n) => n.id));
-    const edges = canvas.edges.filter((e) => kept.has(e.source) && kept.has(e.target));
-    return JSON.stringify({ edges, nodes });
-  };
-  const whole = textOf(canvas.nodes.length);
+  const textOf = (kept: ReadonlySet<string>): string =>
+    JSON.stringify({
+      edges: canvas.edges.filter((e) => kept.has(e.source) && kept.has(e.target)),
+      nodes: canvas.nodes.filter((n) => kept.has(n.id)),
+    });
+  const whole = textOf(new Set(canvas.nodes.map((n) => n.id)));
   if (whole.length <= max) return { text: whole, total: whole.length };
-  let fits = 0;
-  let over = canvas.nodes.length;
-  while (over - fits > 1) {
-    const mid = Math.floor((fits + over) / 2);
-    if (textOf(mid).length <= max) fits = mid;
-    else over = mid;
+  const linksAt = new Map<string, PickSnapshot['edges']>();
+  for (const edge of canvas.edges) {
+    for (const end of new Set([edge.source, edge.target])) {
+      const links = linksAt.get(end) ?? [];
+      links.push(edge);
+      linksAt.set(end, links);
+    }
   }
-  return { text: textOf(fits), total: whole.length };
+  const kept = new Set<string>();
+  let length = EMPTY_CANVAS.length;
+  let edgeCount = 0;
+  for (const node of canvas.nodes) {
+    // The links this node closes: to itself, or to a node already kept.
+    const links = (linksAt.get(node.id) ?? []).filter((e) => {
+      const other = e.source === node.id ? e.target : e.source;
+      return other === node.id || kept.has(other);
+    });
+    // Each entry after an array's first adds a comma.
+    const grows =
+      JSON.stringify(node).length +
+      (kept.size > 0 ? 1 : 0) +
+      links.reduce((sum, e, i) => sum + JSON.stringify(e).length + (edgeCount + i > 0 ? 1 : 0), 0);
+    if (length + grows > max) continue;
+    kept.add(node.id);
+    length += grows;
+    edgeCount += links.length;
+  }
+  return { text: textOf(kept), total: whole.length };
 }
 
 /**

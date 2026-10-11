@@ -200,7 +200,7 @@ describe('an open canvas', () => {
     });
   };
 
-  it('keeps the first nodes that fit, and the links between them, when cut to the limit', () => {
+  it('keeps every node that fits in order, and the links between them, when cut to the limit', () => {
     openCanvas();
     addNodes(['n1', 'n2', 'n3']);
     addEdge(PID, canvas.id, { id: 'e1', source: 'n1', target: 'n2' });
@@ -210,7 +210,20 @@ describe('an open canvas', () => {
     const two = keeping(parsed, ['n1', 'n2'], ['e1']);
 
     expect(sent(two.length)).toEqual({ content: two, total: full.total });
-    expect(sent(two.length - 1)).toEqual({ content: keeping(parsed, ['n1'], []), total: full.total });
+    // n2 no longer fits with its link to n1; n3 has no link to n1 and does.
+    expect(sent(two.length - 1)).toEqual({ content: keeping(parsed, ['n1', 'n3'], []), total: full.total });
+  });
+
+  it('stays within the limit when a node closes several links at once', () => {
+    openCanvas();
+    addNodes(['n1', 'n2', 'n3']);
+    addEdge(PID, canvas.id, { id: 'e1', source: 'n1', target: 'n2' });
+    addEdge(PID, canvas.id, { id: 'e2', source: 'n2', target: 'n3' });
+    addEdge(PID, canvas.id, { id: 'e3', source: 'n1', target: 'n3' });
+    const full = sent(100_000);
+    const parsed = JSON.parse(full.content) as Parsed;
+
+    expect(sent(full.total - 1)).toEqual({ content: keeping(parsed, ['n1', 'n2'], ['e1']), total: full.total });
   });
 
   it('skips a node too big for the limit and keeps every node after it that fits', () => {
