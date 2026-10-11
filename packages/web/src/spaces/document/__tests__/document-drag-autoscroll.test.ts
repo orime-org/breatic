@@ -269,7 +269,8 @@ describe('the drag session', () => {
     const view = editor.prosemirrorView!;
     drag(view.dom, 'dragstart');
     drag(scroller, 'dragenter', { x: 600, y: 400, relatedTarget: null });
-    drag(document.body, 'dragenter', { relatedTarget: null });
+    // A real dragenter carries the pointer where it is.
+    drag(document.body, 'dragenter', { x: 600, y: 420, relatedTarget: null });
     drag(window, 'dragleave', { relatedTarget: null });
     expect(autoScrollOf(view)!.state).toBe('tracking');
     drag(window, 'dragleave', { relatedTarget: null });

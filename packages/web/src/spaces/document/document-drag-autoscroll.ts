@@ -5,27 +5,30 @@
  * Wires the body's autoscroll (`document-body-autoscroll.ts`) to the page
  * (inner#1350 design §5.2).
  *
- * A drag session starts on a `dragstart` in the body nobody cancelled — a
- * cancelled one starts no drag and would never end — and on content dragged
- * in from outside the window. Every drag started on the page is noted, in or
- * out of the body: its first `dragenter` has no element left behind, like one
- * from outside. A session reads the pointer off `dragover` and ends on `drop`,
- * `dragend` or the first `mousemove` with no button held: a drag whose button is up is over, and
- * a drag whose source left the page, or one from another application, has no
- * `dragend` that reaches the document (`document-table-drag.ts` ends its drag
- * the same way). The pointer leaving the window is told the way Pragmatic drag
- * and drop tells it (`is-leaving-window.js`): a `dragleave` to nothing, and in
- * Safari, whose `relatedTarget` is always null (WebKit bug 242627), the count
- * of `dragenter` against `dragleave` coming back to nothing
- * (`count-events-for-safari.js`). A table row or column drag's drop line goes
- * with it.
+ * A drag session starts the first time a drag's pointer is over the body,
+ * whatever the drag carries and wherever it began — a block handle, a table
+ * line, selected text, text from the Agent column, a top bar link, a file from
+ * another application: every browser's own drag autoscroll goes by the
+ * scroller under the pointer (Chromium `autoscroll_controller.cc`, WebKit
+ * `AutoscrollController.cpp`, Gecko `EventStateManager.cpp`). A drag nobody
+ * cancelled is noted as started on the page. The pointer is read off
+ * `dragenter` as well as `dragover`: each drag update in Chrome fires
+ * `dragenter` when the element under the pointer changed and `dragover` only
+ * when it did not (`event_handler.cc` `UpdateDragAndDrop`). Events BlockNote
+ * re-dispatches are skipped: it marks them `synthetic` and clamps their
+ * pointer into the editor (`SideMenu.ts` `dispatchSyntheticEvent`).
  *
- * The pointer is read off `dragenter` as well as `dragover`: each drag update
- * in Chrome fires `dragenter` when the element under the pointer changed and
- * `dragover` only when it did not (`event_handler.cc` `UpdateDragAndDrop`).
- * Events BlockNote re-dispatches are skipped: it marks them `synthetic` and
- * clamps their pointer into the editor (`SideMenu.ts` `dispatchSyntheticEvent`),
- * so they would read a pointer over the Agent column as one over the body.
+ * The pointer leaving the page is told the way Pragmatic drag and drop tells
+ * it (`is-leaving-window.js`): a `dragleave` to nothing, and in Safari, whose
+ * `relatedTarget` is always null (WebKit bug 242627), the count of `dragenter`
+ * against `dragleave` coming back to nothing (`count-events-for-safari.js`).
+ * That dragleave is either the drag ending in the window — an Esc, a release
+ * nothing takes — which ends the session on the spot, or the pointer leaving
+ * the window, which goes out through the edge the last dragovers headed for
+ * (`endsWithinWindow`, `exitEdgeOf`). A table row or column drag's drop line
+ * goes with it. A session ends on `drop`, `dragend` or the first `mousemove`
+ * with no button held: a drag whose source left the page, or one from another
+ * application, has no `dragend` that reaches the document.
  *
  * A column drag scrolls the frame its table scrolls sideways in, and holds
  * the body still: the browser's own drag autoscroll scrolls any box a reader
@@ -41,7 +44,16 @@ import { createExtension } from '@blocknote/core';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 
-import { BodyAutoScroll, bodyScrollerOf, type DragTarget } from '@web/spaces/document/document-body-autoscroll';
+import {
+  BodyAutoScroll,
+  bodyScrollerOf,
+  endsWithinWindow,
+  exitEdgeOf,
+  provesExit,
+  type DragReading,
+  type DragTarget,
+  type PointerAt,
+} from '@web/spaces/document/document-body-autoscroll';
 import { clearTableDropLine, dragSourceOf, tableFrameOf } from '@web/spaces/document/document-table-drag';
 
 /**
@@ -161,6 +173,9 @@ function listen(view: EditorView, auto: BodyAutoScroll): () => void {
   const dragWindow = new DragWindow(countsDragEvents(win?.navigator.userAgent ?? ''));
   /** Gives the body back its own vertical overflow, after a column drag. */
   let releaseBody: (() => void) | null = null;
+  /** The last dragover, and the one before it at a different point. */
+  let lastOver: DragReading | null = null;
+  let prevOver: PointerAt | null = null;
   /**
    * Starts a drag session on a target, holding the body still under a column drag.
    * @param target - What it scrolls.
@@ -175,58 +190,77 @@ function listen(view: EditorView, auto: BodyAutoScroll): () => void {
       body.style.overflowY = own;
     };
   };
+  /** Forgets the pointer readings of a drag. */
+  const forgetReadings = (): void => {
+    lastOver = null;
+    prevOver = null;
+  };
   /** Ends the drag session. */
   const endDrag = (): void => {
     auto.end('drag');
     dragWindow.reset();
+    forgetReadings();
     releaseBody?.();
     releaseBody = null;
   };
   /**
-   * Starts a drag nobody cancelled.
+   * Notes a drag nobody cancelled as started on the page.
    * @param event - The dragstart.
    */
   const onDragStart = (event: Event): void => {
     if (event.defaultPrevented || isSynthetic(event)) return;
     dragWindow.start();
-    // A drag from elsewhere on the page (a top bar link) is not the body's.
-    const body = bodyScrollerOf(view);
-    if (body === null || !(event.target instanceof Node) || !body.contains(event.target)) return;
-    const target = dragTargetOf(view);
-    if (target !== null) begin(target);
+    forgetReadings();
   };
   /**
-   * Starts a drag that comes in from outside the window, and feeds the pointer.
+   * Reads the pointer, and starts a session the first time it is over the body.
+   * @param event - The dragover or dragenter.
+   */
+  const onPointer = (event: Event): void => {
+    const { clientX: x, clientY: y, buttons } = event as MouseEvent;
+    if (lastOver !== null && (lastOver.x !== x || lastOver.y !== y)) prevOver = { x: lastOver.x, y: lastOver.y };
+    lastOver = { x, y, buttons };
+    if (auto.state === 'idle') {
+      const body = bodyScrollerOf(view);
+      if (body === null || !(event.target instanceof Node) || !body.contains(event.target)) return;
+      const target = dragTargetOf(view);
+      if (target === null) return;
+      begin(target);
+    }
+    auto.follow({ x, y });
+  };
+  /**
+   * Counts an element entered, and reads the pointer.
    * @param event - The dragenter.
    */
   const onDragEnter = (event: Event): void => {
     if (isSynthetic(event)) return;
     dragWindow.enter();
-    if (auto.state === 'idle') {
-      if ((event as MouseEvent).relatedTarget !== null || dragWindow.fromPage) return;
-      const target = dragTargetOf(view);
-      if (target === null) return;
-      begin(target);
-    }
-    onDragOver(event);
+    onPointer(event);
   };
   /**
-   * Feeds the pointer.
-   * @param event - The dragover or dragenter.
+   * Reads the pointer.
+   * @param event - The dragover.
    */
-  function onDragOver(event: Event): void {
-    if (isSynthetic(event)) return;
-    const { clientX, clientY } = event as MouseEvent;
-    auto.follow({ x: clientX, y: clientY });
-  }
+  const onDragOver = (event: Event): void => {
+    if (!isSynthetic(event)) onPointer(event);
+  };
   /**
-   * Notes the pointer leaving the window, where no table drop line belongs.
+   * Tells a drag that left the page: ended in the window, or out of it. A
+   * table drop line goes either way.
    * @param event - The dragleave.
    */
   const onDragLeave = (event: Event): void => {
-    if (isSynthetic(event) || !dragWindow.leaves(event as MouseEvent)) return;
-    auto.leaveWindow(dragWindow.fromPage);
+    if (isSynthetic(event) || !dragWindow.leaves(event as MouseEvent) || auto.source !== 'drag') return;
+    const { clientX: x, clientY: y, buttons, screenX, screenY } = event as MouseEvent;
     clearTableDropLine(view);
+    if (endsWithinWindow({ x, y, buttons }, lastOver)) {
+      endDrag();
+      return;
+    }
+    const size = { width: win?.innerWidth ?? 0, height: win?.innerHeight ?? 0 };
+    const exit = exitEdgeOf(prevOver, lastOver ?? { x, y }, size);
+    auto.leaveWindow({ fromPage: dragWindow.fromPage, exit, proven: provesExit({ x, y, screenX, screenY }, exit, size) });
   };
   /**
    * Ends a drag.

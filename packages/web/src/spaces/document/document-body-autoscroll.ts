@@ -178,21 +178,134 @@ export function pressStep(box: EdgeBox, at: PointerAt): number {
   return 0;
 }
 
+/** An edge of the window. */
+export type WindowEdge = 'top' | 'bottom' | 'left' | 'right';
+
+/** The window's size, in CSS px. */
+export interface WindowSize {
+  readonly width: number;
+  readonly height: number;
+}
+
+/** A drag event's pointer and the buttons it reports. */
+export interface DragReading {
+  readonly x: number;
+  readonly y: number;
+  readonly buttons: number;
+}
+
 /**
- * Whether a drag that left the window carries on scrolling. A drag started on
- * the page carries on towards the edge it was nearing: its Esc ends it with a
- * `dragend`. For one dragged in from outside, the page gets the same
- * `dragleave` for leaving and for an Esc, so only a pointer that was past the
- * edge — or at full speed against an edge that is the window's own — counts
- * as having left.
+ * The window edge a dragged pointer went out through: the last move, from the
+ * last two dragovers at different points, extended to the edge it meets first;
+ * with no such move, the edge nearest the last point. A dragleave's own point
+ * cannot say: Chrome gives (0,0), and Firefox on Windows a point that has
+ * nothing to do with the exit (inner#1350 design §5.2).
+ * @param prev - The dragover before the last one at a different point, if any.
+ * @param last - The last dragover.
+ * @param size - The window.
+ * @returns The edge.
+ */
+export function exitEdgeOf(prev: PointerAt | null, last: PointerAt, size: WindowSize): WindowEdge {
+  const dx = prev === null ? 0 : last.x - prev.x;
+  const dy = prev === null ? 0 : last.y - prev.y;
+  const meets: [WindowEdge, number][] = [];
+  if (dy > 0) meets.push(['bottom', (size.height - last.y) / dy]);
+  if (dy < 0) meets.push(['top', -last.y / dy]);
+  if (dx > 0) meets.push(['right', (size.width - last.x) / dx]);
+  if (dx < 0) meets.push(['left', -last.x / dx]);
+  if (meets.length === 0) {
+    meets.push(['top', last.y], ['bottom', size.height - last.y], ['left', last.x], ['right', size.width - last.x]);
+  }
+  return meets.reduce((a, b) => (b[1] < a[1] ? b : a))[0];
+}
+
+/**
+ * Whether a dragleave out of the page is the drag ending inside the window — an
+ * Esc, or a release where nothing takes the drop — and not the pointer
+ * leaving it. Measured (design §5.2): Firefox and Safari give such a dragleave
+ * the last dragover's point; Chrome gives (0,0) and, after a release, no
+ * button held. Chrome's Esc keeps the button and reads as leaving; its
+ * `dragend` follows within milliseconds.
+ * @param leave - The dragleave.
+ * @param lastOver - The last dragover, if any.
+ * @returns Whether the drag ended in the window.
+ */
+export function endsWithinWindow(leave: DragReading, lastOver: DragReading | null): boolean {
+  if (lastOver === null) return false;
+  return (leave.x === lastOver.x && leave.y === lastOver.y) || leave.buttons !== lastOver.buttons;
+}
+
+/**
+ * Whether a dragleave shows the pointer left the window through an edge: its
+ * point lies beyond that edge, as Firefox's and Safari's do on macOS. The
+ * screen's origin proves nothing: Firefox on Windows sends a point it never
+ * set (`nsNativeDragTarget.cpp` `gDragLastPoint`), which is zero.
+ * @param leave - The dragleave's client and screen points.
+ * @param leave.x - Client x.
+ * @param leave.y - Client y.
+ * @param leave.screenX - Screen x.
+ * @param leave.screenY - Screen y.
+ * @param exit - The edge the dragovers headed for.
+ * @param size - The window.
+ * @returns Whether it proves the exit.
+ */
+export function provesExit(
+  leave: { x: number; y: number; screenX: number; screenY: number },
+  exit: WindowEdge,
+  size: WindowSize,
+): boolean {
+  if (leave.screenX === 0 && leave.screenY === 0) return false;
+  if (exit === 'top') return leave.y < 0;
+  if (exit === 'bottom') return leave.y > size.height;
+  if (exit === 'left') return leave.x < 0;
+  return leave.x > size.width;
+}
+
+/** How a drag left the window. */
+export interface WindowLeave {
+  /** Whether the drag started on the page. */
+  readonly fromPage: boolean;
+  /** The edge it went out through. */
+  readonly exit: WindowEdge;
+  /** Whether the dragleave proves that exit. */
+  readonly proven: boolean;
+}
+
+/**
+ * Which way along an axis an edge lies.
+ * @param edge - The window edge.
+ * @param axis - The axis.
+ * @returns 1 the end, -1 the start, 0 when the edge is across the axis.
+ */
+function towards(edge: WindowEdge, axis: ScrollAxis): -1 | 0 | 1 {
+  if (axis === 'y') return edge === 'bottom' ? 1 : edge === 'top' ? -1 : 0;
+  return edge === 'right' ? 1 : edge === 'left' ? -1 : 0;
+}
+
+/**
+ * Whether a drag that left the window carries on scrolling. It carries on only
+ * out through an edge on the axis it scrolls, with the last reading heading
+ * that way. A drag started on the page carries on: its Esc ends it with a
+ * `dragend`. One dragged in from outside sends no `dragend` on an Esc, so it
+ * carries on when the dragleave proves the exit, and otherwise only from a
+ * pointer past the edge, or at full speed against an edge that is the window's
+ * own.
  * @param last - The reading before the pointer left.
- * @param edgeIsWindowEdge - Whether that edge of the scroller is the window's.
- * @param fromPage - Whether the drag started on the page.
+ * @param how - How it left.
+ * @param how.exit - The edge it went out through.
+ * @param how.axis - The axis the target scrolls along.
+ * @param how.edgeIsWindowEdge - Whether that edge of the scroller is the window's.
+ * @param how.fromPage - Whether the drag started on the page.
+ * @param how.proven - Whether the dragleave proves the exit.
  * @returns Whether to keep scrolling.
  */
-export function carriesOutside(last: EdgeReading, edgeIsWindowEdge: boolean, fromPage: boolean): boolean {
-  if (last.dir === 0) return false;
-  return fromPage || last.beyond > 0 || (edgeIsWindowEdge && last.factor >= 1);
+export function carriesOutside(
+  last: EdgeReading,
+  how: { exit: WindowEdge; axis: ScrollAxis; edgeIsWindowEdge: boolean; fromPage: boolean; proven: boolean },
+): boolean {
+  const way = towards(how.exit, how.axis);
+  if (way === 0 || last.dir !== way) return false;
+  return how.fromPage || how.proven || last.beyond > 0 || (how.edgeIsWindowEdge && last.factor >= 1);
 }
 
 /** What a session was started by. */
@@ -285,9 +398,9 @@ export class BodyAutoScroll {
 
   /**
    * The pointer left the window during a drag.
-   * @param fromPage - Whether the drag started on the page.
+   * @param leave - How it left.
    */
-  leaveWindow(fromPage: boolean): void {
+  leaveWindow(leave: WindowLeave): void {
     const { session } = this;
     if (session === null || session.source !== 'drag') return;
     session.outside = true;
@@ -296,7 +409,13 @@ export class BodyAutoScroll {
     const { target } = session;
     const left = session.at === null ? STILL : readEdge(target.el.getBoundingClientRect(), session.at, target.axis);
     session.last = left;
-    session.carry = carriesOutside(left, this.edgeIsWindowEdge(target, left.dir), fromPage);
+    session.carry = carriesOutside(left, {
+      exit: leave.exit,
+      axis: target.axis,
+      edgeIsWindowEdge: this.edgeIsWindowEdge(target, left.dir),
+      fromPage: leave.fromPage,
+      proven: leave.proven,
+    });
   }
 
   /**
