@@ -170,16 +170,32 @@ describe("the Spaces the reader is in (inner#1413)", () => {
     expect(turn).toContain(`## The Space the reader has open: "Cast" (canvas)\n\n${content}\n\n## User message`);
   });
 
-  it("says how much of a cut Space it is shown", () => {
+  it("says how much of a cut document it is shown", () => {
     const turn = userTurnForModel({
       chips: [],
       message: "hi",
       spaces,
       spaces_total: 2,
-      current_space: { ...cast, state: "loaded", content: "{", total_chars: 250_000 },
+      current_space: { ...storyboard, state: "loaded", content: "# Sc", total_chars: 250_000 },
     });
 
-    expect(turn).toContain("{\n(Showing the first 1 of 250000 characters.)");
+    expect(turn).toContain('"# Sc"\n(Showing the first 4 of 250000 characters.)');
+  });
+
+  it("says a cut canvas shows only some of its nodes and the links between them", () => {
+    const content = '{"edges":[],"nodes":[{"id":"n1"}]}';
+    const turn = userTurnForModel({
+      chips: [],
+      message: "hi",
+      spaces,
+      spaces_total: 2,
+      current_space: { ...cast, state: "loaded", content, total_chars: 250_000 },
+    });
+
+    expect(turn).toContain(
+      `${content}\n(The canvas is over the limit, so only some of its nodes are shown, with only the links ` +
+        `between them: ${String(content.length)} of 250000 characters.)`,
+    );
   });
 
   it("says an open Space is empty when it has nothing in it", () => {
