@@ -104,12 +104,28 @@ function readCanvas(source: SpaceContextSource, space: ProjectSpace): PickSnapsh
   return snapshot ?? '';
 }
 
+/** An address: a scheme, `://`, and no whitespace. */
+const ADDRESS = /^[a-z][a-z0-9+.-]*:\/\/\S+$/i;
+
+/** One printable ASCII word: an id, a model name, a voice, a mime type. */
+const NAME = /^[\x21-\x7e]*$/;
+
 /**
- * One printable ASCII token: an address, an id, a model name, an enum value.
- * Its start alone names nothing, so it is never cut; prose has whitespace or
- * characters outside ASCII.
+ * How long a name a node holds can be. The longest today is an Office mime
+ * type (73 characters); ids are 36, model names at most 40, voice ids 47.
  */
-const IDENTIFIER = /^[\x21-\x7e]*$/;
+const NAME_MAX_LENGTH = 128;
+
+/**
+ * Whether a string only means something whole -- an address or a name -- so
+ * cutting it would leave a reference to nothing. Anything longer is what the
+ * reader wrote, whatever its shape, and its start still says something.
+ * @param value - The string.
+ * @returns True when it must go whole.
+ */
+function isReference(value: string): boolean {
+  return ADDRESS.test(value) || (value.length <= NAME_MAX_LENGTH && NAME.test(value));
+}
 
 /**
  * A value with every piece of prose in it longer than `keep` characters cut
@@ -121,7 +137,7 @@ const IDENTIFIER = /^[\x21-\x7e]*$/;
  */
 function cutTexts(value: unknown, keep: number): unknown {
   if (typeof value === 'string') {
-    return value.length > keep + 1 && !IDENTIFIER.test(value)
+    return value.length > keep + 1 && !isReference(value)
       ? `${clipSpaceContent(value, keep).text}\u2026`
       : value;
   }

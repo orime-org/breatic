@@ -337,6 +337,7 @@ describe('an open canvas', () => {
         coverUrl: `${COVER}/${id}.png`,
         prompt,
         voice: VOICE,
+        firstFrameUrl: LONG_URL,
         short: 'a b c d e f g h i j k l m n o p',
         attachments: [{ id: AUTHOR, url: `${COVER}/deck.pptx`, name: 'deck', mimeType: PPTX, size: 1, uploadedAt: UPLOADED }],
       } as never,
@@ -354,6 +355,8 @@ describe('an open canvas', () => {
   const VOICE = 'moss_audio_cedfd4d2-736d-11f0-99be-fe40dd2a5fe8';
   const PPTX = 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
   const UPLOADED = '2026-10-11T09:00:00.000Z';
+  // An address longer than any name: it goes whole because it is an address.
+  const LONG_URL = `${COVER}/frame.png?signature=${'a1b2c3d4'.repeat(16)}`;
 
   it('cuts only prose and keeps addresses, model ids and ids whole', () => {
     openCanvas();
@@ -374,6 +377,7 @@ describe('an open canvas', () => {
       expect(field(node, 'model')).toBe(MODEL);
       expect(field(node, 'coverUrl')).toBe(`${COVER}/${node.id}.png`);
       expect(field(node, 'voice')).toBe(VOICE);
+      expect(field(node, 'firstFrameUrl')).toBe(LONG_URL);
       expect(field(node, 'attachments')).toEqual([
         { id: AUTHOR, url: `${COVER}/deck.pptx`, name: 'deck', mimeType: PPTX, size: 1, uploadedAt: UPLOADED },
       ]);
