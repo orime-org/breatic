@@ -10,8 +10,8 @@
 import { QueryClient } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as Y from 'yjs';
-import type { ModelCatalog } from '@breatic/shared';
-import { documentBodyFragment } from '@breatic/shared';
+import type { ChatAttachedChip, ChatSpaceContext, ModelCatalog } from '@breatic/shared';
+import { chatMessageSchema, documentBodyFragment } from '@breatic/shared';
 
 import type { ProjectSpace } from '@web/data/yjs/project-meta';
 
@@ -27,7 +27,8 @@ vi.mock('@web/spaces/document/document-editor-cache', async (importOriginal) => 
   peekDocumentEditor: (name: string) => editors.get(name),
 }));
 
-const { addEdge, addNode } = await import('@web/data/yjs/canvas-space');
+const { addNode, setNodeName } = await import('@web/data/yjs/canvas-space');
+const { canvasGraphs } = await import('@web/stores/canvas-graph');
 const { _resetForTests, docName, getDoc, hasDoc } = await import('@web/data/yjs/manager');
 const { modelCatalogQuery } = await import('@web/spaces/canvas/generate/model-catalog-query');
 const { buildDocumentEditor } = await import('@web/spaces/document/build-document-editor');
@@ -152,7 +153,7 @@ describe('an open canvas', () => {
    * @returns The content and its full length.
    */
   const sent = (max: number): { content: string; total: number } => {
-    const current = clipSpaceContext(read(), { currentSpaceMaxChars: max, spaceListMaxItems: 200 }).current_space;
+    const current = clipSpaceContext(read(), { currentSpaceMaxChars: max, spaceListMaxItems: 200 }, []).current_space;
     return current?.state === 'loaded' ? { content: current.content, total: current.total_chars } : { content: '', total: -1 };
   };
 
@@ -167,299 +168,172 @@ describe('an open canvas', () => {
     expect(JSON.parse(content)).toMatchObject({ edges: [], nodes: [{ id: 'n1', type: 'text', data: { name: 'Node n1' } }] });
   });
 
-  /** A canvas text as parsed back. */
-  interface Parsed {
-    nodes: Array<{ id: string }>;
-    edges: Array<{ id: string; source: string; target: string }>;
-  }
-
   /**
-   * The text the cut should send when it keeps exactly these nodes and links.
-   * @param full - The whole canvas, parsed.
-   * @param nodeIds - The nodes kept.
-   * @param edgeIds - The links kept.
-   * @returns The compact JSON.
+   * The open canvas as one message carries it, with the attachments it goes with.
+   * @param max - How many characters may go.
+   * @param attached - The message's attachments.
+   * @param overrides - What the read changes.
+   * @returns What goes for the open Space.
    */
-  const keeping = (full: Parsed, nodeIds: readonly string[], edgeIds: readonly string[]): string =>
-    JSON.stringify({
-      edges: full.edges.filter((e) => edgeIds.includes(e.id)),
-      nodes: full.nodes.filter((n) => nodeIds.includes(n.id)),
-    });
+  const sentWith = (
+    max: number,
+    attached: readonly ChatAttachedChip[] = [],
+    overrides: Partial<Parameters<typeof readSpaceContext>[0]> = {},
+  ): ChatSpaceContext['current_space'] =>
+    clipSpaceContext(read(overrides), { currentSpaceMaxChars: max, spaceListMaxItems: 200 }, attached).current_space;
 
   /**
-   * Put a text node with a long name on the open canvas.
+   * Mark nodes selected on a canvas, as the canvas does when the reader selects them.
+   * @param spaceId - The canvas.
+   * @param ids - The selected nodes.
+   */
+  const select = (spaceId: string, ids: readonly string[]): void => {
+    canvasGraphs.of(spaceId).getState().setFlowNodes(() =>
+      ids.map((id) => ({ id, position: { x: 0, y: 0 }, data: {}, selected: true })),
+    );
+  };
+
+  /**
+   * Put a node with a long prompt on the open canvas.
    * @param id - Its id.
-   * @param size - How many times `unit` its name repeats.
-   * @param unit - What its name repeats.
+   * @param createdAt - When it was made.
+   * @param parentId - Its group, if any.
    */
-  const addBigNode = (id: string, size: number, unit = 'x '): void => {
+  const addLongNode = (id: string, createdAt: number, parentId?: string): void => {
     addNode(PID, canvas.id, {
       id,
       type: 'text',
       position: { x: 0, y: 0 },
-      data: { name: unit.repeat(size), createdAt: 1, createdBy: 'u1', locked: false, attachments: [] },
+      ...(parentId ? { parentId } : {}),
+      data: { name: `Node ${id}`, createdAt, createdBy: 'u1', locked: false, attachments: [], prompt: 'a quiet street '.repeat(60) } as never,
     });
   };
 
   /**
-   * The name a node was sent with.
-   * @param content - What was sent.
+   * What went for one node.
+   * @param current - What went for the open Space.
    * @param id - The node.
-   * @returns Its name.
+   * @returns Its entry.
    */
-  const nameSent = (content: string, id: string): string =>
-    ((JSON.parse(content) as { nodes: Array<{ id: string; data: { name: string } }> }).nodes.find((n) => n.id === id)
-      ?.data.name ?? '');
+  const entryOf = (current: ChatSpaceContext['current_space'], id: string): Record<string, unknown> | undefined =>
+    current?.state === 'loaded'
+      ? (JSON.parse(current.content) as { nodes: Array<Record<string, unknown>> }).nodes.find((n) => n.id === id)
+      : undefined;
 
-  it('keeps every node that fits in order, and the links between them, when cut to the limit', () => {
+  /**
+   * Whether what went for the open Space is a message the server takes.
+   * @param current - What went.
+   * @returns True when it parses.
+   */
+  const accepted = (current: ChatSpaceContext['current_space']): boolean =>
+    chatMessageSchema.safeParse({
+      message: 'hi',
+      project_id: '11111111-1111-4111-8111-111111111111',
+      conversation_id: '22222222-2222-4222-8222-222222222222',
+      current_space: current,
+    }).success;
+
+  it('says nothing was done when the canvas fits', () => {
     openCanvas();
-    addNodes(['n1', 'n2', 'n3']);
-    addEdge(PID, canvas.id, { id: 'e1', source: 'n1', target: 'n2' });
-    addEdge(PID, canvas.id, { id: 'e2', source: 'n2', target: 'n3' });
-    const full = sent(100_000);
-    const parsed = JSON.parse(full.content) as Parsed;
-    const two = keeping(parsed, ['n1', 'n2'], ['e1']);
+    addNodes(['n1']);
 
-    expect(sent(two.length)).toEqual({ content: two, total: full.total });
-    // n2 no longer fits with its link to n1; n3 has no link to n1 and does.
-    expect(sent(two.length - 1)).toEqual({ content: keeping(parsed, ['n1', 'n3'], []), total: full.total });
+    const current = sentWith(100_000);
+
+    expect(current).toMatchObject({ state: 'loaded', detail: { slim: false, texts_cut: 0, nodes_not_listed: 0 } });
+    expect(accepted(current)).toBe(true);
   });
 
-  it('stays within the limit when a node closes several links at once', () => {
+  it('keeps the nodes the reader selected whole while the others go slim', () => {
     openCanvas();
-    addNodes(['n1', 'n2', 'n3']);
-    addEdge(PID, canvas.id, { id: 'e1', source: 'n1', target: 'n2' });
-    addEdge(PID, canvas.id, { id: 'e2', source: 'n2', target: 'n3' });
-    addEdge(PID, canvas.id, { id: 'e3', source: 'n1', target: 'n3' });
-    const full = sent(100_000);
-    const parsed = JSON.parse(full.content) as Parsed;
+    addLongNode('a', 1);
+    addLongNode('b', 2);
+    addLongNode('c', 3);
+    select(canvas.id, ['b']);
+    const whole = sentWith(100_000);
+    const total = whole?.state === 'loaded' ? whole.total_chars : 0;
 
-    expect(sent(full.total - 1)).toEqual({ content: keeping(parsed, ['n1', 'n2'], ['e1']), total: full.total });
+    const current = sentWith(total - 300);
+
+    expect(current).toMatchObject({ detail: { selected_total: 1, selected_whole: 1, slim: true } });
+    expect(entryOf(current, 'b')).toEqual(entryOf(whole, 'b'));
+    expect(entryOf(current, 'a')).not.toHaveProperty('position');
+    expect(accepted(current)).toBe(true);
   });
 
-  it('keeps every node and cuts a long text to its start, ending with an ellipsis', () => {
+  it('reads the selection of the canvas that is open, not of one the reader looked at before', () => {
     openCanvas();
-    addBigNode('big', 5_000);
-    addNodes(['n1', 'n2', 'n3']);
-    addEdge(PID, canvas.id, { id: 'e1', source: 'big', target: 'n1' });
-    addEdge(PID, canvas.id, { id: 'e2', source: 'n1', target: 'n2' });
-    addEdge(PID, canvas.id, { id: 'e3', source: 'n3', target: 'n3' });
-    const full = sent(100_000);
-    const whole = JSON.parse(full.content) as Parsed;
+    addLongNode('a', 1);
+    addLongNode('b', 2);
+    select(canvas.id, ['a']);
+    select('elsewhere', ['b']);
 
-    const { content, total } = sent(2_000);
-
-    expect(total).toBe(full.total);
-    expect(content.length).toBeLessThanOrEqual(2_000);
-    const got = JSON.parse(content) as Parsed;
-    expect(got.nodes.map((n) => n.id)).toEqual(whole.nodes.map((n) => n.id));
-    expect(got.edges).toEqual(whole.edges);
-    expect(nameSent(content, 'n1')).toBe('Node n1');
-    const cut = nameSent(content, 'big');
-    expect(cut).toMatch(/^[x ]+…$/);
-    // The longest cut that fits: one more character would not.
-    const longer = content.replace(`"${cut}"`, `"x${cut}"`);
-    expect(longer.length).toBeGreaterThan(2_000);
+    expect(sentWith(100_000)).toMatchObject({ detail: { selected_total: 1, selected_whole: 1 } });
   });
 
-  it('keeps the only node of a canvas over the limit, with its text cut and its id whole', () => {
+  it('counts a selected group with its members', () => {
     openCanvas();
-    // Real node ids are UUIDs, longer than the shortest a text is cut to.
-    const id = 'big-0123456789-0123456789-0123456789';
-    addBigNode(id, 5_000);
-    const full = sent(100_000);
+    addNode(PID, canvas.id, {
+      id: 'g',
+      type: 'group',
+      position: { x: 0, y: 0 },
+      data: { name: 'Group', createdAt: 0, createdBy: 'u1', locked: false, attachments: [] },
+    });
+    addLongNode('a', 1, 'g');
+    addLongNode('b', 2);
+    select(canvas.id, ['g']);
 
-    const { content, total } = sent(2_000);
-
-    expect(total).toBe(full.total);
-    expect(content.length).toBeLessThanOrEqual(2_000);
-    expect((JSON.parse(content) as Parsed).nodes.map((n) => n.id)).toEqual([id]);
-    expect(nameSent(content, id)).toMatch(/^[x ]+…$/);
-  });
-
-  it('does not split a character in two where a text is cut', () => {
-    openCanvas();
-    addBigNode('big', 3_000, '😀 ');
-
-    const { content } = sent(2_000);
-
-    expect(content.length).toBeLessThanOrEqual(2_000);
-    expect(nameSent(content, 'big')).toMatch(/^[😀 ]+…$/u);
-  });
-
-  it('leaves texts no longer than a node name and ids as they are, and drops whole nodes when that is still too long', () => {
-    openCanvas();
-    // Real node ids are UUIDs, longer than the shortest a text is cut to.
-    const ids = Array.from({ length: 40 }, (_, i) => `node-${String(i).padStart(2, '0')}-0123456789-0123456789-0123`);
-    for (const [i, id] of ids.entries()) {
-      addNode(PID, canvas.id, {
-        id,
-        type: 'text',
-        position: { x: 0, y: 0 },
-        data: { name: `Node ${String(i)}`, createdAt: 1, createdBy: 'u1', locked: false, attachments: [] },
-      });
-    }
-    for (let i = 1; i < ids.length; i += 1) {
-      addEdge(PID, canvas.id, { id: `e${String(i)}`, source: ids[i - 1] ?? '', target: ids[i] ?? '' });
-    }
-    const full = sent(100_000);
-    const max = Math.floor(full.total / 2);
-
-    const { content } = sent(max);
-
-    expect(content.length).toBeLessThanOrEqual(max);
-    const got = JSON.parse(content) as Parsed;
-    expect(got.nodes.length).toBeGreaterThan(0);
-    expect(got.nodes.length).toBeLessThan(ids.length);
-    for (const node of got.nodes) expect(ids).toContain(node.id);
-    expect(got.edges.length).toBe(got.nodes.length - 1);
-    for (const [i, node] of got.nodes.entries()) expect(nameSent(content, node.id)).toBe(`Node ${String(i)}`);
+    expect(sentWith(100_000)).toMatchObject({ detail: { selected_total: 2, selected_whole: 2 } });
   });
 
   /**
-   * Put a node shaped like a generated one on the open canvas: an author id,
-   * a model id, a picture address and a prompt.
-   * @param id - Its id.
-   * @param name - Its name.
-   * @param prompt - Its prompt.
+   * A canvas attachment holding these nodes as they stand now.
+   * @param ids - The nodes.
+   * @returns The chip.
    */
-  const addRealNode = (id: string, name: string, prompt: string): void => {
-    addNode(PID, canvas.id, {
-      id,
-      type: 'image',
-      position: { x: 0, y: 0 },
-      data: {
-        name,
-        createdAt: 1,
-        createdBy: AUTHOR,
-        locked: false,
-        model: MODEL,
-        coverUrl: `${COVER}/${id}.png`,
-        prompt,
-        voice: VOICE,
-        firstFrameUrl: LONG_URL,
-        short: 'a b c d e f g h i j k l m n o p',
-        attachments: [{ id: AUTHOR, url: `${COVER}/deck.pptx`, name: 'deck', mimeType: PPTX, size: 1, uploadedAt: UPLOADED }],
-      } as never,
-    });
+  const attachmentOf = (ids: readonly string[]): ChatAttachedChip => {
+    const current = sentWith(100_000);
+    const nodes = ids.map((id) => entryOf(current, id));
+    return { id: 'canvas-1', type: 'canvas', name: '', data_snapshot: { nodes, edges: [] } };
   };
 
-  /** A field as sent. */
-  const field = (node: Record<string, unknown>, key: string): unknown => (node.data as Record<string, unknown>)[key];
-
-  const AUTHOR = '90000000-1111-2222-3333-444444444444';
-  const MODEL = 'gemini-omni-1.1-flash-reference-to-video';
-  const COVER = 'https://assets.example.com/upload/2026-10-11/1791690000000_3e8b4deb-1111-2222-3333-e4182d91161c';
-  // The longest identifiers a node holds today: a cloned voice id and an
-  // Office mime type.
-  const VOICE = 'moss_audio_cedfd4d2-736d-11f0-99be-fe40dd2a5fe8';
-  const PPTX = 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
-  const UPLOADED = '2026-10-11T09:00:00.000Z';
-  // An address longer than any name: it goes whole because it is an address.
-  const LONG_URL = `${COVER}/frame.png?signature=${'a1b2c3d4'.repeat(16)}`;
-
-  it('cuts only prose and keeps addresses, model ids and ids whole', () => {
+  it('sends a selected node the attachments already hold unchanged with the rest', () => {
     openCanvas();
-    const ids = Array.from({ length: 20 }, (_, i) => `shot-${String(i)}`);
-    const prompt = 'a quiet street at night with rain '.repeat(30);
-    for (const id of ids) addRealNode(id, `Shot ${id}`, prompt);
-    const full = sent(100_000);
-    // Room for each prompt's first 36 characters and its ellipsis: shorter
-    // than the model id and the address beside it.
-    const rest = full.total - ids.length * prompt.length;
+    addLongNode('a', 1);
+    addLongNode('b', 2);
+    select(canvas.id, ['a']);
+    const chip = attachmentOf(['a']);
+    const whole = sentWith(100_000);
+    const total = whole?.state === 'loaded' ? whole.total_chars : 0;
 
-    const { content } = sent(rest + ids.length * 37);
+    const current = sentWith(total - 300, [chip]);
 
-    const got = JSON.parse(content) as { nodes: Array<Record<string, unknown> & { id: string }> };
-    expect(got.nodes.map((n) => n.id)).toEqual(ids);
-    for (const node of got.nodes) {
-      expect(field(node, 'createdBy')).toBe(AUTHOR);
-      expect(field(node, 'model')).toBe(MODEL);
-      expect(field(node, 'coverUrl')).toBe(`${COVER}/${node.id}.png`);
-      expect(field(node, 'voice')).toBe(VOICE);
-      expect(field(node, 'firstFrameUrl')).toBe(LONG_URL);
-      expect(field(node, 'attachments')).toEqual([
-        { id: AUTHOR, url: `${COVER}/deck.pptx`, name: 'deck', mimeType: PPTX, size: 1, uploadedAt: UPLOADED },
-      ]);
-      expect(field(node, 'prompt')).toMatch(/^a quiet street .*…$/);
-    }
+    expect(current).toMatchObject({ detail: { selected_total: 1, selected_attached: 1, selected_whole: 0 } });
+    expect(entryOf(current, 'a')).not.toHaveProperty('position');
   });
 
-  it('cuts a long prompt written as tags with no spaces, keeping every node', () => {
+  it('keeps a selected node first when it changed after it was attached', () => {
     openCanvas();
-    const ids = Array.from({ length: 20 }, (_, i) => `shot-${String(i)}`);
-    const prompt = 'masterpiece,best_quality,1girl,solo,looking_at_viewer,cinematic_lighting,'.repeat(4);
-    for (const id of ids) addRealNode(id, `Shot ${id}`, prompt);
-    const full = sent(100_000);
-    const rest = full.total - ids.length * prompt.length;
+    addLongNode('a', 1);
+    addLongNode('b', 2);
+    select(canvas.id, ['a']);
+    const chip = attachmentOf(['a']);
+    setNodeName(PID, canvas.id, 'a', 'Renamed');
+    const whole = sentWith(100_000);
+    const total = whole?.state === 'loaded' ? whole.total_chars : 0;
 
-    const { content } = sent(rest + ids.length * 37);
+    const current = sentWith(total - 300, [chip]);
 
-    const got = JSON.parse(content) as { nodes: Array<Record<string, unknown> & { id: string }> };
-    expect(got.nodes.map((n) => n.id)).toEqual(ids);
-    for (const node of got.nodes) {
-      expect(field(node, 'prompt')).toMatch(/^masterpiece,.*…$/);
-      expect(field(node, 'model')).toBe(MODEL);
-    }
+    expect(current).toMatchObject({ detail: { selected_total: 1, selected_attached: 0, selected_whole: 1 } });
+    expect(entryOf(current, 'a')).toMatchObject({ data: { name: 'Renamed' } });
   });
 
-  it('cuts a long text with no spaces, keeping its node and links', () => {
-    openCanvas();
-    addBigNode('json', 5_000, '{"k":1},');
-    addNodes(['n1', 'n2']);
-    addEdge(PID, canvas.id, { id: 'e1', source: 'json', target: 'n1' });
-    const full = sent(100_000);
-
-    const { content } = sent(2_000);
-
-    expect(content.length).toBeLessThanOrEqual(2_000);
-    const got = JSON.parse(content) as Parsed;
-    expect(got.nodes.map((n) => n.id)).toEqual(['json', 'n1', 'n2']);
-    expect(got.edges.map((e) => e.id)).toEqual(['e1']);
-    expect(nameSent(content, 'json')).toMatch(/^\{"k":1\},.*…$/);
-    expect(full.total).toBeGreaterThan(40_000);
-  });
-
-  it('drops whole nodes cut to the floor when that is still too long, and cuts nothing for no gain', () => {
-    openCanvas();
-    const ids = Array.from({ length: 40 }, (_, i) => `shot-${String(i)}`);
-    for (const id of ids) addRealNode(id, 'shot name '.repeat(100), 'p');
-    const full = sent(100_000);
-
-    const { content } = sent(Math.floor(full.total / 4));
-
-    const got = JSON.parse(content) as { nodes: Array<Record<string, unknown> & { id: string }> };
-    expect(got.nodes.length).toBeGreaterThan(0);
-    expect(got.nodes.length).toBeLessThan(ids.length);
-    for (const node of got.nodes) {
-      expect(field(node, 'name')).toBe(`${'shot name '.repeat(3)}…`);
-      expect(field(node, 'createdBy')).toBe(AUTHOR);
-      expect(field(node, 'model')).toBe(MODEL);
-      // One character over the floor: cutting it would save nothing.
-      expect(field(node, 'short')).toBe('a b c d e f g h i j k l m n o p');
-    }
-  });
-
-  it('still carries nodes when its links alone would fill the limit', () => {
-    openCanvas();
-    const ids = ['n1', 'n2', 'n3', 'n4', 'n5', 'n6'];
-    addNodes(ids);
-    for (const source of ids) {
-      for (const target of ids) {
-        if (source !== target) addEdge(PID, canvas.id, { id: `${source}-${target}`, source, target });
-      }
-    }
-    const linksOnly = JSON.stringify(JSON.parse(sent(100_000).content).edges).length;
-
-    const { content } = sent(Math.floor(linksOnly / 2));
-
-    expect((JSON.parse(content) as { nodes: unknown[] }).nodes.length).toBeGreaterThan(0);
-  });
-
-  it('is empty when it holds nothing that can be handed over', () => {
+  it('is empty, and says nothing was done, when it holds nothing that can be handed over', () => {
     openCanvas();
 
-    expect(read().current).toMatchObject({ state: 'loaded', text: '' });
+    const current = sentWith(100_000);
+
+    expect(current).toMatchObject({ state: 'loaded', content: '', total_chars: 0, detail: { selected_total: 0, slim: false } });
+    expect(accepted(current)).toBe(true);
   });
 
   it('has not loaded while its document has not synced', () => {
@@ -532,7 +406,7 @@ describe('cutting what was read to the limits', () => {
   const limits = { currentSpaceMaxChars: 4, spaceListMaxItems: 2 };
 
   it('keeps the newest Spaces and says how many there are', () => {
-    const cut = clipSpaceContext(read({ enabled: false }), limits);
+    const cut = clipSpaceContext(read({ enabled: false }), limits, []);
 
     expect(cut.spaces?.map((s) => s.id)).toEqual(['t1', 'd1']);
     expect(cut.spaces_total).toBe(3);
@@ -543,6 +417,7 @@ describe('cutting what was read to the limits', () => {
     const cut = clipSpaceContext(
       { spaces: [], current: { id: 'd1', name: 'Storyboard', kind: 'document', state: 'loaded', text: 'abcdef' } },
       limits,
+      [],
     );
 
     expect(cut.current_space).toEqual({
@@ -564,6 +439,7 @@ describe('cutting what was read to the limits', () => {
     const current = clipSpaceContext(
       { spaces: [], current: { id: 'd1', name: 'Storyboard', kind: 'document', state: 'loaded', text } },
       limits,
+      [],
     ).current_space;
     return current?.state === 'loaded' ? { content: current.content, total: current.total_chars } : { content: '', total: -1 };
   };
@@ -584,6 +460,7 @@ describe('cutting what was read to the limits', () => {
     const cut = clipSpaceContext(
       { spaces: [], current: { id: 'c1', name: 'Cast', kind: 'canvas', state: 'loading' } },
       limits,
+      [],
     );
 
     expect(cut.current_space).toEqual({ id: 'c1', name: 'Cast', kind: 'canvas', state: 'loading' });
