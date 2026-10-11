@@ -146,13 +146,14 @@ pnpm --filter @breatic/ingest exec wrangler whoami
 | 顶层 `[[r2_buckets]]` 的 `bucket_name` | 与根目录 `.env` 的 `R2_BUCKET` 完全相同 |
 | 顶层 `[[r2_buckets]]` 的 `remote` | 保留 `true` |
 | 顶层 `[[containers]]` 的 `max_instances` | 整数 `5`，不加引号 |
+| 顶层 `[[containers]]` 的 `image_vars` | 三个块都填 `{ DEV_COPY = "breatic" }`；同一台机器上有几份仓库副本同时运行时，每份填不同的名字 |
 | `[dev]` 的 `port` | 整数 `8787` |
 | `[vars]` 的 `ALLOWED_ORIGINS` | `"http://localhost:8000"` |
 | `[env.production.vars]` 的 `ALLOWED_ORIGINS` | 此次可先填 `"http://localhost:8000"`，使模板值完整 |
 | `[[env.production.r2_buckets]]` 的 `bucket_name` | 此次可先填同一本地试用 bucket 名 |
 | `[[env.production.containers]]` 的 `max_instances` | 整数 `5` |
 
-保留两个 `image_build_context = "../.."`，以及模板原有的 `compatibility_date`、`compatibility_flags`、Durable Object 绑定和 `exports` 设置。production 部分仅补齐模板，**本文不执行 `deploy:worker`**；正式部署上传服务时，按 [Cloudflare 部署步骤](LOCAL-CN.md#cloudflare) 单独配置云端资源。
+保留每一行 `image_build_context = "../.."`，以及模板原有的 `compatibility_date`、`compatibility_flags`、Durable Object 绑定和 `exports` 设置。production 部分仅补齐模板，**本文不执行 `deploy:worker`**；正式部署上传服务时，按 [Cloudflare 部署步骤](LOCAL-CN.md#cloudflare) 单独配置云端资源。
 
 编辑 `packages/ingest/.dev.vars`：
 

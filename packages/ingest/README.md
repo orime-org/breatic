@@ -53,6 +53,17 @@ imported whether or not a DSN is set, and without the flag bundling only warns
 while the runtime refuses to load the Worker: `wrangler dev` stops with
 `No such module "node:async_hooks"`.
 
+**Each of the three top-level `[[containers]]` blocks needs
+`image_vars = { DEV_COPY = "<name>" }`**, with the same name in all three and a
+name no other copy of the repository on this machine uses. It goes into a label
+on the image, so each copy builds an image of its own. Copies that build
+identical images share one image ID, and after every build wrangler removes each
+`cloudflare-dev` tag on that ID other than its own; one copy's rebuild then
+deletes the tag another copy's Worker starts its containers from, and that
+Worker answers `No such image available named cloudflare-dev/mediacontainer:…`:
+uploads carry no media numbers and no cover, and container tools fail. The
+production blocks carry no `image_vars`.
+
 ### The server side of the same pipeline
 
 The Worker writes the bytes; the server mints the keys and resolves them into
