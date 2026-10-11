@@ -11,7 +11,7 @@
  */
 
 /** The marker an upright picture's key carries before its extension. */
-export const UPRIGHT_KEY_MARKER = "_upright";
+const UPRIGHT_KEY_MARKER = "_upright";
 
 /**
  * The key a stored picture's upright copy is written to.
