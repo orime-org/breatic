@@ -40,6 +40,7 @@ interface UnderstandCall {
   input?: { url?: unknown };
   output?: unknown;
   failureKind?: string;
+  errorText?: string;
 }
 
 let page: Page;
@@ -273,6 +274,9 @@ test('tells the user a video format it cannot watch is one to convert @needs-int
   // ending that carries the sentence telling the model to ask for a convert.
   expect(call?.state).toBe('output-error');
   expect(call?.failureKind).toBe('tool_failed');
+  // The line for a refusal of our own. The endpoint turning the file down
+  // would show the upstream line instead.
+  expect(call?.errorText).toBe('chat.tool.failure.generic');
   expect(reply.length).toBeGreaterThan(0);
 });
 
@@ -290,6 +294,7 @@ test('tells the user an image format it cannot read is one to convert @needs-int
 
   expect(call?.state).toBe('output-error');
   expect(call?.failureKind).toBe('tool_failed');
+  expect(call?.errorText).toBe('chat.tool.failure.generic');
   expect(reply.length).toBeGreaterThan(0);
 });
 

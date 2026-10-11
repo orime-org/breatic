@@ -44,20 +44,31 @@ function clockIn(at: Date, timeZone: string): { date: string; minutes: number } 
 }
 
 /** Words that put a 12-hour time in the afternoon or evening. */
-const AFTERNOON = /下午|晚上|傍晚|中午|午後|오후|p\.?m\.?/i;
+const AFTERNOON = /下午|晚上|傍晚|中午|午後|夜|오후|저녁|p\.?m\.?/i;
+
+/** Words that put a 12-hour time between midnight and noon, where 12 is 0. */
+const MORNING = /凌晨|半夜|深夜|早上|上午|午前|오전|새벽|a\.?m\.?/i;
 
 /**
  * Whether a reply states a time within the slack of the expected one.
  * @param text - The reply.
  * @param expected - Minutes since midnight on the reader's clock.
- * @returns True when some `HH:MM` in it, read on the 12-hour clock when an
- * afternoon word sits right before or after it, is close enough.
+ * @returns True when some hour and minute in it (`14:05`, `2点05分`, `2時5分`,
+ * `2시 5분`), read on the 12-hour clock when a word for the part of the day
+ * sits right before or after it, is close enough.
  */
 function statesTimeNear(text: string, expected: number): boolean {
-  return [...text.matchAll(/([^\d\s]{0,3})\s*(?<!\d)(\d{1,2})\s*[:：]\s*(\d{2})\s*([^\d\s]{0,4})/g)].some((m) => {
+  return [
+    ...text.matchAll(/([^\d\s]{0,3})\s*(?<!\d)(\d{1,2})\s*[:：点點時시]\s*(\d{1,2})(?!\d)\s*([^\d\s]{0,4})/g),
+  ].some((m) => {
     const hour = Number(m[2]);
-    const afternoon = hour < 12 && (AFTERNOON.test(m[1] ?? '') || AFTERNOON.test(m[4] ?? ''));
-    const said = (afternoon ? hour + 12 : hour) * 60 + Number(m[3]);
+    const around = `${m[1] ?? ''} ${m[4] ?? ''}`;
+    const hour24 = MORNING.test(around)
+      ? hour % 12
+      : hour < 12 && AFTERNOON.test(around)
+        ? hour + 12
+        : hour;
+    const said = hour24 * 60 + Number(m[3]);
     const apart = Math.abs(said - expected);
     return Math.min(apart, 24 * 60 - apart) <= SLACK_MINUTES;
   });
