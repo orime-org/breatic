@@ -8,10 +8,10 @@ import { Button } from '@web/components/ui/button';
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { EditorContent } from '@tiptap/react';
 import { CHAT_MESSAGE_MAX_CHARS, messageLength } from '@breatic/shared';
-import type { SpaceType } from '@breatic/shared';
 import { useTranslation } from '@web/i18n/use-translation';
 import { AttachmentChip } from '@web/pages/project/chat/AttachmentChip';
 import { SpaceContextChip } from '@web/pages/project/chat/SpaceContextChip';
+import type { SpaceContextChipProps } from '@web/pages/project/chat/SpaceContextChip';
 import { ChatAttachmentsContext } from '@web/pages/project/chat/chat-reference';
 import { useAtLimitNotice } from '@web/pages/project/chat/use-at-limit-notice';
 import { useComposerEditor } from '@web/pages/project/chat/use-composer-editor';
@@ -65,14 +65,8 @@ interface ChatComposerProps {
   onPasteCanvas?: (payload: ClipboardPayload) => void;
   /** Called with an item's id to take it out. */
   onRemoveAttachment?: (id: string) => void;
-  /** The open Space's name; no chip is drawn without one. */
-  spaceName?: string;
-  /** The open Space's type. */
-  spaceType?: SpaceType;
-  /** Whether each message carries the open Space to the Agent. */
-  spaceEnabled?: boolean;
-  /** Turns sending the open Space on or off. */
-  onToggleSpace?: () => void;
+  /** The open Space's chip beside the plus sign; none is drawn without one. */
+  space?: SpaceContextChipProps;
 }
 
 /**
@@ -107,10 +101,7 @@ interface ChatComposerProps {
  * @param root0.onAttachFiles - Called with the files the reader picked.
  * @param root0.onPasteCanvas - Called with the canvas clipboard payload pasted into the box.
  * @param root0.onRemoveAttachment - Called with an item's id to take it out.
- * @param root0.spaceName - The open Space's name; no chip is drawn without one.
- * @param root0.spaceType - The open Space's type.
- * @param root0.spaceEnabled - Whether each message carries the open Space.
- * @param root0.onToggleSpace - Turns sending the open Space on or off.
+ * @param root0.space - The open Space's chip beside the plus sign, if one is open.
  * @returns The composer card with attachments, the box, and action buttons.
  */
 function ChatComposerInner({
@@ -127,10 +118,7 @@ function ChatComposerInner({
   onAttachFiles,
   onPasteCanvas,
   onRemoveAttachment,
-  spaceName,
-  spaceType,
-  spaceEnabled = true,
-  onToggleSpace,
+  space,
 }: ChatComposerProps): React.JSX.Element {
   const t = useTranslation();
   // Held still for the same stretch the box is: between the press and the
@@ -306,9 +294,7 @@ function ChatComposerInner({
           >
             <Plus className='h-4 w-4' />
           </Button>
-          {spaceName !== undefined && spaceType !== undefined ? (
-            <SpaceContextChip name={spaceName} type={spaceType} enabled={spaceEnabled} onToggle={onToggleSpace} />
-          ) : null}
+          {space ? <SpaceContextChip {...space} /> : null}
           {attachNotice ? (
             // Beside the button that attaches: something the reader tried did
             // not go in. The icon carries the warning colour; the words stay in

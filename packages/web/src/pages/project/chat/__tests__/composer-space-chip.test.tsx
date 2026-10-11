@@ -13,14 +13,25 @@ import userEvent from '@testing-library/user-event';
 
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { ChatComposer } from '@web/pages/project/chat/ChatComposer';
+import type { SpaceContextChipProps } from '@web/pages/project/chat/SpaceContextChip';
+
+/** What a test changes about the chip, or null for no open Space. */
+interface ChipSetup {
+  space?: Partial<SpaceContextChipProps> | null;
+  turnPhase?: Parameters<typeof ChatComposer>[0]['turnPhase'];
+}
 
 /**
- * Render the composer with the chip's props.
- * @param props - What this case changes.
+ * Render the composer with an open Space's chip.
+ * @param options - What this case changes.
  * @returns The toggle handler.
  */
-function setup(props: Partial<Parameters<typeof ChatComposer>[0]> = {}): { onToggleSpace: ReturnType<typeof vi.fn> } {
+function setup(options: ChipSetup = {}): { onToggleSpace: ReturnType<typeof vi.fn> } {
   const onToggleSpace = vi.fn();
+  const space =
+    options.space === null
+      ? undefined
+      : { name: 'Storyboard', type: 'document' as const, enabled: true, onToggle: onToggleSpace, ...options.space };
   // The app's one provider lives in App.tsx; a test stands in for it.
   render(
     <TooltipProvider>
@@ -28,11 +39,8 @@ function setup(props: Partial<Parameters<typeof ChatComposer>[0]> = {}): { onTog
         draft=''
         onChange={() => undefined}
         onSubmit={() => undefined}
-        spaceName='Storyboard'
-        spaceType='document'
-        spaceEnabled
-        onToggleSpace={onToggleSpace}
-        {...props}
+        {...(space ? { space } : {})}
+        {...(options.turnPhase ? { turnPhase: options.turnPhase } : {})}
       />
     </TooltipProvider>,
   );
@@ -54,7 +62,7 @@ describe('the open Space chip', () => {
     // text, pushing it over the send button, or squeezed past its icon by a
     // long notice beside it. The floor is the padding, border, icon and gap
     // (34px) plus three characters.
-    setup({ spaceName: 'A very long space name that goes on and on and on' });
+    setup({ space: { name: 'A very long space name that goes on and on and on' } });
 
     const chip = screen.getByTestId('chat-composer-space');
     expect(chip.className).toContain('min-w-[calc(3ch+2.125rem)]');
@@ -62,7 +70,7 @@ describe('the open Space chip', () => {
   });
 
   it('is not drawn when no Space is open', () => {
-    setup({ spaceName: undefined, spaceType: undefined });
+    setup({ space: null });
 
     expect(screen.queryByTestId('chat-composer-space')).toBeNull();
   });
@@ -77,7 +85,7 @@ describe('the open Space chip', () => {
   });
 
   it('reads as not pressed while off, with a dashed border and muted words', () => {
-    setup({ spaceEnabled: false });
+    setup({ space: { enabled: false } });
 
     const chip = screen.getByTestId('chat-composer-space');
     expect(chip).toHaveAttribute('aria-pressed', 'false');
@@ -127,12 +135,12 @@ describe('the open Space chip', () => {
     });
 
     it('says a click stops it for an open timeline, of which only the name and type reach the Agent', () => {
-      setup({ spaceName: 'Edit', spaceType: 'timeline' });
+      setup({ space: { name: 'Edit', type: 'timeline' } });
       expect(hoverText()).toBe('The Agent sees only this Space\'s name and type. Click to stop');
     });
 
     it('says a click lets the Agent read it while it is off, whatever its type', () => {
-      setup({ spaceName: 'Edit', spaceType: 'timeline', spaceEnabled: false });
+      setup({ space: { name: 'Edit', type: 'timeline', enabled: false } });
       expect(hoverText()).toBe('Click to let the Agent read this Space');
     });
   });

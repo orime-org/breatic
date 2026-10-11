@@ -16,6 +16,7 @@ import type { ChatMishap } from '@web/stores/chat-mishaps';
 import { useTranslation } from '@web/i18n/use-translation';
 
 import { ChatComposer } from '@web/pages/project/chat/ChatComposer';
+import type { SpaceContextChipProps } from '@web/pages/project/chat/SpaceContextChip';
 import { usePasteCanvas } from '@web/pages/project/chat/use-paste-canvas';
 import { ChatNotice } from '@web/pages/project/chat/ChatNotice';
 import { ConversationHistorySheet } from '@web/pages/project/chat/ConversationHistorySheet';
@@ -88,6 +89,17 @@ export function ChatPanel({
   const queryClient = useQueryClient();
   const spaceContextEnabled = useUIStore((s) => s.spaceContextEnabled);
   const toggleSpace = useUIStore((s) => s.toggleSpaceContext);
+  // Built from the Space's name and type, so the memoised composer is handed
+  // the same chip when the project meta is re-read with nothing changed.
+  const spaceName = activeSpace?.name;
+  const spaceType = activeSpace?.type;
+  const spaceChip = React.useMemo(
+    (): SpaceContextChipProps | undefined =>
+      spaceName === undefined || spaceType === undefined
+        ? undefined
+        : { name: spaceName, type: spaceType, enabled: spaceContextEnabled, onToggle: toggleSpace },
+    [spaceName, spaceType, spaceContextEnabled, toggleSpace],
+  );
   // Read through a ref at the press: the project meta hands over a fresh
   // array each time anything in it changes, someone going online included,
   // and a callback rebuilt for that would reach the memoised composer as a
@@ -347,10 +359,7 @@ export function ChatPanel({
         onAttachFiles={attachFiles.attach}
         onPasteCanvas={pasteCanvas}
         onRemoveAttachment={removeAttachment}
-        spaceName={activeSpace?.name}
-        spaceType={activeSpace?.type}
-        spaceEnabled={spaceContextEnabled}
-        onToggleSpace={toggleSpace}
+        space={spaceChip}
       />
       <ConversationHistorySheet
         open={historyOpen}

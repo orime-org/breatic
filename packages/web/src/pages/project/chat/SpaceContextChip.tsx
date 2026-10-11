@@ -8,8 +8,10 @@ import { Button } from '@web/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tooltip';
 import { useTranslation } from '@web/i18n/use-translation';
 import { SPACE_TYPE_ICON } from '@web/pages/project/space-type-icon';
+import { spaceContentReadable } from '@web/pages/project/chat/space-context';
 
-interface SpaceContextChipProps {
+/** The chip's props; the composer takes all of them or none. */
+export interface SpaceContextChipProps {
   /** The open Space's name. */
   name: string;
   /** The open Space's type. */
@@ -17,7 +19,7 @@ interface SpaceContextChipProps {
   /** Whether each message carries this Space to the Agent. */
   enabled: boolean;
   /** Turns sending the open Space on or off. */
-  onToggle?: () => void;
+  onToggle: () => void;
 }
 
 /**
@@ -35,13 +37,12 @@ interface SpaceContextChipProps {
 export function SpaceContextChip({ name, type, enabled, onToggle }: SpaceContextChipProps): React.JSX.Element {
   const t = useTranslation();
   const Icon = SPACE_TYPE_ICON[type];
-  // What a click does next; the name is already on the chip. A timeline's
-  // content cannot be read, so only its name and type reach the Agent.
+  // What a click does next; the name is already on the chip.
   const said = !enabled
     ? t('chat.composer.spaceContextOff')
-    : type === 'timeline'
-      ? t('chat.composer.spaceContextOnUnreadable')
-      : t('chat.composer.spaceContextOn');
+    : spaceContentReadable(type)
+      ? t('chat.composer.spaceContextOn')
+      : t('chat.composer.spaceContextOnUnreadable');
   return (
     <Tooltip>
       <TooltipTrigger asChild>

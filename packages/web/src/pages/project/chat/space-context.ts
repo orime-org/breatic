@@ -13,7 +13,7 @@
 
 import type { QueryClient } from '@tanstack/react-query';
 import { clipSpaceContent, spacesNewestFirst } from '@breatic/shared';
-import type { ChatSpace, ChatSpaceContext, ModelCatalog } from '@breatic/shared';
+import type { ChatSpace, ChatSpaceContext, ModelCatalog, SpaceType } from '@breatic/shared';
 
 import { readNodes } from '@web/data/yjs/canvas-space';
 import { readDocFacts } from '@web/data/yjs/collab-socket';
@@ -112,6 +112,16 @@ function documentText(source: SpaceContextSource, space: ProjectSpace): string |
 }
 
 /**
+ * Whether a Space of this type has content the Agent can be sent. A timeline's
+ * cannot be read: only its name and type go.
+ * @param type - The Space's type.
+ * @returns True when its content is read.
+ */
+export function spaceContentReadable(type: SpaceType): boolean {
+  return type !== 'timeline';
+}
+
+/**
  * The open Space as the message carries it.
  * @param source - Where the read starts from.
  * @param space - The open Space.
@@ -119,7 +129,7 @@ function documentText(source: SpaceContextSource, space: ProjectSpace): string |
  */
 function readCurrent(source: SpaceContextSource, space: ProjectSpace): ReadCurrentSpace {
   const base = listed(space);
-  if (space.type === 'timeline') return { ...base, state: 'unreadable' };
+  if (!spaceContentReadable(space.type)) return { ...base, state: 'unreadable' };
   const text = space.type === 'canvas' ? canvasText(source, space) : documentText(source, space);
   return text === null ? { ...base, state: 'loading' } : { ...base, state: 'loaded', text };
 }
