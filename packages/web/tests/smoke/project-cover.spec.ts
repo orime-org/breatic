@@ -198,6 +198,8 @@ test('a WebP picked as a cover is turned away before the crop @needs-storage', a
   await page.getByRole('menuitem', { name: 'Upload cover' }).click();
   // Named and typed as a JPEG; the bytes say WebP.
   const webp = readFileSync(join(__dirname, '../fixtures/exif6-red-top.webp'));
+  // The picker offers only the two formats a cover takes; the bytes are checked as well.
+  await expect(card.getByTestId('project-cover-input')).toHaveAttribute('accept', 'image/png,image/jpeg');
   await card.getByTestId('project-cover-input').setInputFiles({ name: 'cover.jpg', mimeType: 'image/jpeg', buffer: webp });
   await expect(page.getByText('This file format is not supported.')).toBeVisible({ timeout: 10_000 });
   await expect(page.getByTestId('image-crop-dialog')).toHaveCount(0);

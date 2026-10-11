@@ -141,6 +141,8 @@ test('a WebP picked as an avatar is turned away before the crop @needs-storage',
   await page.goto(`/studio/${personal!.slug}/settings`);
   await expect(page.getByTestId('avatar-upload-open')).toBeVisible({ timeout: 15_000 });
   const webp = readFileSync(join(__dirname, '../fixtures/exif6-red-top.webp'));
+  // The picker offers only the two formats an avatar takes; the bytes are checked as well.
+  await expect(page.getByTestId('avatar-file-input')).toHaveAttribute('accept', 'image/png,image/jpeg');
   await page.getByTestId('avatar-file-input').setInputFiles({ name: 'avatar.png', mimeType: 'image/png', buffer: webp });
   await expect(page.getByText('This file format is not supported.')).toBeVisible({ timeout: 10_000 });
   await expect(page.getByTestId('image-crop-dialog')).toHaveCount(0);
