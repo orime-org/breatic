@@ -27,6 +27,7 @@ import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view';
 import type { BlockNoteEditor, ComputeDropPositionContext } from '@blocknote/core';
 
 import { followCell, renameCell, type CellName } from '@web/spaces/document/document-table-cell-name';
+import { bodyScrollerOf } from '@web/spaces/document/document-body-autoscroll';
 import { cellAt, moveLineAt } from '@web/spaces/document/document-table-run';
 
 /** Which way a drag moves cells. */
@@ -205,6 +206,51 @@ function gapUnder(view: EditorView, drag: Drag, event: MouseEvent): number | nul
 }
 
 /**
+ * Whether a drag event is over the body's gutters: inside the body scroller,
+ * beside the text column. A drag the body scrolls under reaches them, and the
+ * column's own handlers never see an event there.
+ * @param view - The editor view.
+ * @param event - The dragover or drop.
+ * @returns Whether it is.
+ */
+function overGutter(view: EditorView, event: Event): boolean {
+  const { target } = event;
+  if (!(target instanceof Node) || view.dom.contains(target)) return false;
+  return bodyScrollerOf(view)?.contains(target) ?? false;
+}
+
+/**
+ * Takes a dragover: the line is drawn at the gap under the pointer.
+ * @param view - The editor view.
+ * @param drag - The drag.
+ * @param event - The dragover.
+ */
+function trackGap(view: EditorView, drag: Drag, event: DragEvent): void {
+  event.preventDefault();
+  const gap = gapUnder(view, drag, event);
+  if (gap !== null && gap !== drag.gap) {
+    const command: DragCommand = { gap };
+    view.dispatch(view.state.tr.setMeta(tableDragKey, command).setMeta('addToHistory', false));
+  }
+}
+
+/**
+ * Takes a drop: the line moves to the gap under the pointer.
+ * @param editor - The editor to write to.
+ * @param view - The editor view.
+ * @param drag - The drag.
+ * @param event - The drop.
+ */
+function dropAtGap(editor: DropEditor, view: EditorView, drag: Drag, event: DragEvent): void {
+  event.preventDefault();
+  // Read at the drop itself: the body or the table frame can scroll the lines
+  // under a still pointer between dragovers (inner#1350).
+  const gap = gapUnder(view, drag, event) ?? drag.gap;
+  if (gap !== null) moveToGap(editor, drag.source, drag.orientation, gap);
+  endTableDrag(view);
+}
+
+/**
  * The line drawn where a drop would land.
  * @param state - The editor state.
  * @returns Decorations on the row or the cells the line runs along.
@@ -260,7 +306,8 @@ function tableDragPlugin(editor: DropEditor): Plugin<Drag | null> {
     // The handle a drag starts from can leave the page mid-drag (its table
     // can be deleted under it), and a drag from an element no longer in the page
     // fires no `dragend`. So the end is also read off the page: any drop, any
-    // drag end, and the first pointer move with no button held.
+    // drag end, and the first pointer move with no button held. The page also
+    // takes the drag over the body's gutters, beside the text column.
     view: (view) => {
       /** Ends the drag, if one is on. */
       const end = (): void => {
@@ -273,9 +320,27 @@ function tableDragPlugin(editor: DropEditor): Plugin<Drag | null> {
       const moved = (event: MouseEvent): void => {
         if (event.buttons === 0) end();
       };
+      /**
+       * Takes a dragover over the gutters.
+       * @param event - The dragover.
+       */
+      const over = (event: DragEvent): void => {
+        const drag = tableDragKey.getState(view.state);
+        if (drag != null && overGutter(view, event)) trackGap(view, drag, event);
+      };
+      /**
+       * Takes a drop over the gutters; any other drop only ends the drag.
+       * @param event - The drop.
+       */
+      const dropped = (event: DragEvent): void => {
+        const drag = tableDragKey.getState(view.state);
+        if (drag != null && overGutter(view, event)) dropAtGap(editor, view, drag, event);
+        else end();
+      };
       const page = view.dom.ownerDocument;
       page.addEventListener('dragend', end);
-      page.addEventListener('drop', end);
+      page.addEventListener('dragover', over);
+      page.addEventListener('drop', dropped);
       page.addEventListener('mousemove', moved);
       return {
         update: (current, prev): void => {
@@ -284,7 +349,8 @@ function tableDragPlugin(editor: DropEditor): Plugin<Drag | null> {
         },
         destroy: (): void => {
           page.removeEventListener('dragend', end);
-          page.removeEventListener('drop', end);
+          page.removeEventListener('dragover', over);
+          page.removeEventListener('drop', dropped);
           page.removeEventListener('mousemove', moved);
         },
       };
@@ -295,23 +361,13 @@ function tableDragPlugin(editor: DropEditor): Plugin<Drag | null> {
         dragover: (view, event): boolean => {
           const drag = tableDragKey.getState(view.state);
           if (drag == null) return false;
-          event.preventDefault();
-          const gap = gapUnder(view, drag, event);
-          if (gap !== null && gap !== drag.gap) {
-            const command: DragCommand = { gap };
-            view.dispatch(view.state.tr.setMeta(tableDragKey, command).setMeta('addToHistory', false));
-          }
+          trackGap(view, drag, event);
           return true;
         },
         drop: (view, event): boolean => {
           const drag = tableDragKey.getState(view.state);
           if (drag == null) return false;
-          event.preventDefault();
-          // Read at the drop itself: the body or the table frame can scroll the
-          // lines under a still pointer between dragovers (inner#1350).
-          const gap = gapUnder(view, drag, event) ?? drag.gap;
-          if (gap !== null) moveToGap(editor, drag.source, drag.orientation, gap);
-          endTableDrag(view);
+          dropAtGap(editor, view, drag, event);
           return true;
         },
       },

@@ -27,7 +27,7 @@ import type { EditorView } from '@tiptap/pm/view';
 
 import { MEDIA_CHROME } from '@web/spaces/document/DocumentMediaBlock';
 import type { DragOrientation } from '@web/spaces/document/document-table-drag';
-import { cellAt } from '@web/spaces/document/document-table-run';
+import { cellAt, cellsOfScope } from '@web/spaces/document/document-table-run';
 
 /** The longest a drag preview's side may be, in px (user 2026-10-10). */
 export const PREVIEW_LONGEST_SIDE = 512;
@@ -269,13 +269,8 @@ export function tableLinePreviewContent(
 ): HTMLElement | null {
   const at = cellAt(view.state.doc, cellPos);
   if (at === null) return null;
-  const rect =
-    orientation === 'row'
-      ? { left: 0, right: at.map.width, top: at.top, bottom: at.top + 1 }
-      : { left: at.left, right: at.left + 1, top: 0, bottom: at.map.height };
-  const cells = at.map
-    .cellsInRect(rect)
-    .map((rel) => view.nodeDOM(at.tableStart + rel))
+  const cells = cellsOfScope(view.state.doc, cellPos, orientation)
+    .map((pos) => view.nodeDOM(pos))
     .filter((node): node is HTMLElement => node instanceof HTMLElement);
   const block = cells[0]?.closest(TABLE_BLOCK);
   if (block === null || block === undefined) return null;

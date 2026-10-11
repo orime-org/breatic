@@ -45,7 +45,8 @@ import {
   type PointerZone,
 } from '@web/spaces/document/document-body-edge-selection';
 import { bodyHolds } from '@web/spaces/document/document-body-focus';
-import { autoScrollOf, bodyScrollerOf } from '@web/spaces/document/document-drag-autoscroll';
+import { bodyScrollerOf } from '@web/spaces/document/document-body-autoscroll';
+import { autoScrollOf } from '@web/spaces/document/document-drag-autoscroll';
 import { MEDIA_CHROME } from '@web/spaces/document/DocumentMediaBlock';
 
 /**
@@ -356,12 +357,14 @@ class PointerFollower {
   /**
    * Scrolls the body while this press is pulled past its edge. Only for a press
    * taken from the browser: one the browser keeps is scrolled by its own
-   * selection autoscroll (inner#1350 §5.2).
+   * selection autoscroll (inner#1350 §5.2), which starts when the press is
+   * dragged — so a press that has not moved gives no pointer yet.
    */
   private scrollWithPress(): void {
     const scroller = bodyScrollerOf(this.view);
     const { press } = this;
-    if (scroller !== null && press !== null) autoScrollOf(this.view)?.beginPress(scroller, { x: press.x, y: press.y });
+    if (scroller === null || press === null) return;
+    autoScrollOf(this.view)?.beginPress(scroller, press.moved ? { x: press.x, y: press.y } : null);
   }
 
   /**

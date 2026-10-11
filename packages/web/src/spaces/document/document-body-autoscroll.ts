@@ -22,6 +22,20 @@
  * Chrome's selection step alone, so it feels the same as one Chrome scrolls.
  */
 
+import type { EditorView } from '@tiptap/pm/view';
+
+/** The element a scroll area scrolls. */
+export const SCROLL_VIEWPORT = '[data-radix-scroll-area-viewport]';
+
+/**
+ * The element the body scrolls in.
+ * @param view - The editor view.
+ * @returns The scroller, or null when the body is not in one.
+ */
+export function bodyScrollerOf(view: EditorView): HTMLElement | null {
+  return view.dom.closest<HTMLElement>(SCROLL_VIEWPORT);
+}
+
 /** The box of a scroller, in client coordinates. */
 export interface EdgeBox {
   readonly top: number;
@@ -235,11 +249,12 @@ export class BodyAutoScroll {
   /**
    * Starts a pulled-selection session on the body scroller.
    * @param el - The body scroller.
-   * @param at - Where the press is.
+   * @param at - Where the press is once it has moved; null for a press that
+   * has not, which Chrome does not scroll until it is dragged.
    */
-  beginPress(el: HTMLElement, at: PointerAt): void {
+  beginPress(el: HTMLElement, at: PointerAt | null): void {
     this.start('press', { el, axis: 'y', gate: false });
-    this.follow(at);
+    if (at !== null) this.follow(at);
   }
 
   /**
@@ -258,7 +273,8 @@ export class BodyAutoScroll {
     const { session } = this;
     if (session === null || session.source !== 'drag') return;
     session.outside = true;
-    // The last dragover, which no frame may have read yet.
+    // Outside the window the loop goes on from the last dragover, which no
+    // frame may have read yet.
     if (session.at !== null) {
       const { target } = session;
       session.last = readEdge(target.el.getBoundingClientRect(), session.at, target.axis, target.gate);
@@ -314,7 +330,7 @@ export class BodyAutoScroll {
   }
 
   /**
-   * The step this frame, and the reading and ramp bookkeeping behind it.
+   * The step this frame, and the ramp bookkeeping behind it.
    * @param session - The session.
    * @param time - The frame's time.
    * @param frameMs - Time since the last frame.
@@ -325,13 +341,16 @@ export class BodyAutoScroll {
     if (session.outside) {
       // Outside the window the scroll goes on at the step past the edge, from
       // the distance the pointer had when it left.
-      return session.carry ? pastEdgeStep(session.last, rampAt(time - (session.engagedAt ?? time))) : 0;
+      if (!session.carry) return 0;
+      // A pointer flung out within one frame was never seen at the edge inside:
+      // its ramp starts as it leaves.
+      session.engagedAt ??= time;
+      return pastEdgeStep(session.last, rampAt(time - session.engagedAt));
     }
     if (session.at === null) return 0;
     const box = target.el.getBoundingClientRect();
     if (session.source === 'press') return pressStep(box, session.at);
     const reading = readEdge(box, session.at, target.axis, target.gate);
-    session.last = reading;
     if (reading.dir === 0) {
       session.engagedAt = null;
       return 0;

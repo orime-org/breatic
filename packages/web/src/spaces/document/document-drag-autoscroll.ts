@@ -38,11 +38,13 @@ import { createExtension } from '@blocknote/core';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 
-import { BodyAutoScroll, type DragTarget } from '@web/spaces/document/document-body-autoscroll';
+import {
+  BodyAutoScroll,
+  bodyScrollerOf,
+  SCROLL_VIEWPORT,
+  type DragTarget,
+} from '@web/spaces/document/document-body-autoscroll';
 import { dragSourceOf } from '@web/spaces/document/document-table-drag';
-
-/** The element a scroll area scrolls. */
-const SCROLL_VIEWPORT = '[data-radix-scroll-area-viewport]';
 
 /**
  * Whether an event is one BlockNote re-dispatched, by the mark it sets.
@@ -116,15 +118,6 @@ const sessions = new WeakMap<EditorView, BodyAutoScroll>();
  */
 export function autoScrollOf(view: EditorView): BodyAutoScroll | undefined {
   return sessions.get(view);
-}
-
-/**
- * The element the body scrolls in.
- * @param view - The editor view.
- * @returns The scroller, or null when the body is not in one.
- */
-export function bodyScrollerOf(view: EditorView): HTMLElement | null {
-  return view.dom.closest<HTMLElement>(SCROLL_VIEWPORT);
 }
 
 /**
