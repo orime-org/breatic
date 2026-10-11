@@ -38,6 +38,7 @@ import { useChatSession } from '@web/pages/project/chat/use-chat-session';
 import { _resetForTests } from '@web/stores/conversation-runtime';
 import { tell } from '@web/stores/chat-mishaps';
 import { evictAllChatSessions } from '@web/stores/chat-sessions';
+import { useChatAttachments } from '@web/stores/chat-attachments';
 import { stubChatWire, turnOpens } from '@web/test-utils/chat-wire';
 import type { WatchedWire } from '@web/test-utils/chat-wire';
 
@@ -477,5 +478,76 @@ describe('when the chat never opened', () => {
       expect(wire.sent()).toHaveLength(1);
     });
     expect(wire.sent()[0]).toMatchObject({ conversation_id: 'c-1', message: '还是想问' });
+  });
+});
+
+describe('the Spaces a message carries (inner#1413)', () => {
+  const read = {
+    spaces: [
+      { id: 's3', name: 'Edit', kind: 'timeline' as const },
+      { id: 's2', name: 'Storyboard', kind: 'document' as const },
+      { id: 's1', name: 'Cast', kind: 'canvas' as const },
+    ],
+    current: { id: 's2', name: 'Storyboard', kind: 'document' as const, state: 'loaded' as const, text: 'abcdef' },
+  };
+
+  it('reads them at the press, before anything is waited on', async () => {
+    const readSpaces = vi.fn(() => read);
+    const panel = renderHook(() => useChatSession('p-1', false, readSpaces));
+    await waitFor(() => {
+      expect(panel.result.current.status).toBe('ready');
+    });
+
+    act(() => {
+      void panel.result.current.send('summarise this');
+      expect(readSpaces).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it('sends them cut to the limits the server reads', async () => {
+    vi.mocked(chatApi.streamConfig).mockResolvedValue({
+      heartbeatIntervalMs: 5000,
+      attachmentMaxChars: 200_000,
+      attachmentMaxItems: 10,
+      currentSpaceMaxChars: 4,
+      spaceListMaxItems: 2,
+    });
+    const panel = renderHook(() => useChatSession('p-1', false, () => read));
+    await waitFor(() => {
+      expect(panel.result.current.status).toBe('ready');
+    });
+
+    act(() => {
+      void panel.result.current.send('summarise this');
+    });
+    await waitFor(() => {
+      expect(wire.sent()).toHaveLength(1);
+    });
+
+    expect(wire.sent()[0]).toMatchObject({
+      message: 'summarise this',
+      spaces: [{ id: 's3' }, { id: 's2' }],
+      spaces_total: 3,
+      current_space: { id: 's2', state: 'loaded', content: 'abcd', total_chars: 6 },
+    });
+  });
+
+  it('sends nothing and says so beside the plus sign when the limits cannot be read', async () => {
+    vi.mocked(chatApi.streamConfig).mockRejectedValue(new Error('offline'));
+    const panel = renderHook(() => useChatSession('p-1', false, () => read));
+    await waitFor(() => {
+      expect(panel.result.current.status).toBe('ready');
+    });
+    act(() => {
+      panel.result.current.setDraft('summarise this');
+    });
+
+    await act(async () => {
+      await panel.result.current.send('summarise this');
+    });
+
+    expect(wire.sent()).toHaveLength(0);
+    expect(useChatAttachments.getState().noticeByConversation['c-1']).toEqual({ key: 'unavailable' });
+    expect(panel.result.current.draft).toBe('summarise this');
   });
 });
