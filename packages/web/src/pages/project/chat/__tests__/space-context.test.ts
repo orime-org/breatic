@@ -187,18 +187,29 @@ describe('an open canvas', () => {
     });
 
   /**
-   * Put a text node whose name is `size` characters long on the open canvas.
+   * Put a text node with a long name on the open canvas.
    * @param id - Its id.
-   * @param size - How long its name is.
+   * @param size - How many times `unit` its name repeats.
+   * @param unit - What its name repeats.
    */
-  const addBigNode = (id: string, size: number): void => {
+  const addBigNode = (id: string, size: number, unit = 'x'): void => {
     addNode(PID, canvas.id, {
       id,
       type: 'text',
       position: { x: 0, y: 0 },
-      data: { name: 'x'.repeat(size), createdAt: 1, createdBy: 'u1', locked: false, attachments: [] },
+      data: { name: unit.repeat(size), createdAt: 1, createdBy: 'u1', locked: false, attachments: [] },
     });
   };
+
+  /**
+   * The name a node was sent with.
+   * @param content - What was sent.
+   * @param id - The node.
+   * @returns Its name.
+   */
+  const nameSent = (content: string, id: string): string =>
+    ((JSON.parse(content) as { nodes: Array<{ id: string; data: { name: string } }> }).nodes.find((n) => n.id === id)
+      ?.data.name ?? '');
 
   it('keeps every node that fits in order, and the links between them, when cut to the limit', () => {
     openCanvas();
@@ -226,7 +237,7 @@ describe('an open canvas', () => {
     expect(sent(full.total - 1)).toEqual({ content: keeping(parsed, ['n1', 'n2'], ['e1']), total: full.total });
   });
 
-  it('skips a node too big for the limit and keeps every node after it that fits', () => {
+  it('keeps every node and cuts a long text to its start, ending with an ellipsis', () => {
     openCanvas();
     addBigNode('big', 5_000);
     addNodes(['n1', 'n2', 'n3']);
@@ -234,29 +245,60 @@ describe('an open canvas', () => {
     addEdge(PID, canvas.id, { id: 'e2', source: 'n1', target: 'n2' });
     addEdge(PID, canvas.id, { id: 'e3', source: 'n3', target: 'n3' });
     const full = sent(100_000);
-    const parsed = JSON.parse(full.content) as Parsed;
+    const whole = JSON.parse(full.content) as Parsed;
 
-    expect(sent(2_000)).toEqual({ content: keeping(parsed, ['n1', 'n2', 'n3'], ['e2', 'e3']), total: full.total });
+    const { content, total } = sent(2_000);
+
+    expect(total).toBe(full.total);
+    expect(content.length).toBeLessThanOrEqual(2_000);
+    const got = JSON.parse(content) as Parsed;
+    expect(got.nodes.map((n) => n.id)).toEqual(whole.nodes.map((n) => n.id));
+    expect(got.edges).toEqual(whole.edges);
+    expect(nameSent(content, 'n1')).toBe('Node n1');
+    const cut = nameSent(content, 'big');
+    expect(cut).toMatch(/^x+…$/);
+    // The longest cut that fits: one more character would not.
+    const longer = content.replace(`"${cut}"`, `"x${cut}"`);
+    expect(longer.length).toBeGreaterThan(2_000);
   });
 
-  it('skips a node too big for the limit in the middle of the canvas', () => {
+  it('keeps the only node of a canvas over the limit, with its text cut', () => {
     openCanvas();
-    addNodes(['n1']);
     addBigNode('big', 5_000);
-    addNodes(['n2']);
-    addEdge(PID, canvas.id, { id: 'e1', source: 'n1', target: 'n2' });
     const full = sent(100_000);
-    const parsed = JSON.parse(full.content) as Parsed;
 
-    expect(sent(2_000)).toEqual({ content: keeping(parsed, ['n1', 'n2'], ['e1']), total: full.total });
+    const { content, total } = sent(2_000);
+
+    expect(total).toBe(full.total);
+    expect(content.length).toBeLessThanOrEqual(2_000);
+    expect((JSON.parse(content) as Parsed).nodes.map((n) => n.id)).toEqual(['big']);
+    expect(nameSent(content, 'big')).toMatch(/^x+…$/);
   });
 
-  it('sends no nodes when the only node is too big for the limit', () => {
+  it('does not split a character in two where a text is cut', () => {
     openCanvas();
-    addBigNode('big', 5_000);
-    const full = sent(100_000);
+    addBigNode('big', 3_000, '😀');
 
-    expect(sent(2_000)).toEqual({ content: '{"edges":[],"nodes":[]}', total: full.total });
+    const { content } = sent(2_000);
+
+    expect(content.length).toBeLessThanOrEqual(2_000);
+    expect(nameSent(content, 'big')).toMatch(/^(😀)+…$/u);
+  });
+
+  it('leaves texts no longer than a node name as they are, and drops whole nodes when that is still too long', () => {
+    openCanvas();
+    const ids = Array.from({ length: 40 }, (_, i) => `n${String(i)}`);
+    addNodes(ids);
+    const full = sent(100_000);
+    const max = Math.floor(full.total / 2);
+
+    const { content } = sent(max);
+
+    expect(content.length).toBeLessThanOrEqual(max);
+    const got = JSON.parse(content) as Parsed;
+    expect(got.nodes.length).toBeGreaterThan(0);
+    expect(got.nodes.length).toBeLessThan(ids.length);
+    for (const node of got.nodes) expect(nameSent(content, node.id)).toBe(`Node ${node.id}`);
   });
 
   it('still carries nodes when its links alone would fill the limit', () => {
