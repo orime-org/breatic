@@ -308,7 +308,7 @@ export function useChatSession(
         chatAttachments.say(opened, { key: 'sendUnavailable' });
         return;
       }
-      await sendInSession(opened, said, attached, clipSpaceContext(spaces, limits));
+      await sendInSession(opened, said, attached, clipSpaceContext(spaces, limits, attached));
     },
     [projectId, noteTitle, emptyTheBox, readSpaces],
   );

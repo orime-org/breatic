@@ -12,8 +12,8 @@
  */
 
 import type { QueryClient } from '@tanstack/react-query';
-import { MAX_NODE_NAME_LEN, spacesNewestFirst } from '@breatic/shared';
-import type { ChatSpace, ChatSpaceContext, ModelCatalog } from '@breatic/shared';
+import { isGenerationNodeType, spacesNewestFirst } from '@breatic/shared';
+import type { ChatAttachedChip, ChatSpace, ChatSpaceContext, ModelCatalog } from '@breatic/shared';
 
 import { readEdges, readNodes } from '@web/data/yjs/canvas-space';
 import { readDocFacts } from '@web/data/yjs/collab-socket';
@@ -21,8 +21,11 @@ import { docName, getDoc, hasDoc } from '@web/data/yjs/manager';
 import type { ProjectSpace } from '@web/data/yjs/project-meta';
 import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
 import { snapshotOfPick } from '@web/spaces/canvas/attach-nodes';
-import type { PickSnapshot } from '@web/spaces/canvas/attach-nodes';
+import { modelsForModality } from '@web/spaces/canvas/generate/modality-buckets';
 import { pickReaders } from '@web/spaces/canvas/pick-for-agent';
+import { fitCanvas, fitNodeOf } from '@web/pages/project/chat/canvas-fit';
+import type { FitInput, FitNode } from '@web/pages/project/chat/canvas-fit';
+import { canvasGraphs } from '@web/stores/canvas-graph';
 import { spaceContentReadable } from '@web/pages/project/space-type';
 import { peekDocumentEditor } from '@web/spaces/document/document-editor-cache';
 
@@ -30,7 +33,7 @@ import { peekDocumentEditor } from '@web/spaces/document/document-editor-cache';
 export type ReadCurrentSpace = ChatSpace &
   (
     | { state: 'loaded'; text: string }
-    | { state: 'loaded'; canvas: PickSnapshot }
+    | { state: 'loaded'; canvas: FitInput }
     | { state: 'loading' }
     | { state: 'unreadable' }
   );
@@ -82,13 +85,26 @@ function holdsSynced(name: string): boolean {
 }
 
 /**
- * An open canvas's nodes and the links between them.
+ * The nodes the reader has selected on a canvas, as its own render buffer
+ * holds them; a selected group brings its members.
+ * @param spaceId - The canvas.
+ * @param nodes - Every node on it.
+ * @returns The ids.
+ */
+function selectedOn(spaceId: string, nodes: ReadonlyArray<{ id: string; parentId?: string }>): Set<string> {
+  const picked = new Set(canvasGraphs.of(spaceId).getState().flowNodes.filter((n) => n.selected === true).map((n) => n.id));
+  for (const n of nodes) if (n.parentId !== undefined && picked.has(n.parentId)) picked.add(n.id);
+  return picked;
+}
+
+/**
+ * An open canvas's nodes and the links between them, each node with the run
+ * settings of the model it would run and whether the reader selected it.
  * @param source - Where the read starts from.
  * @param space - The canvas.
- * @returns The snapshot, an empty text when nothing on it can be handed over,
- *   or null while it or the model catalog has not loaded.
+ * @returns The canvas, or null while it or the model catalog has not loaded.
  */
-function readCanvas(source: SpaceContextSource, space: ProjectSpace): PickSnapshot | '' | null {
+function readCanvas(source: SpaceContextSource, space: ProjectSpace): FitInput | null {
   const name = docName.canvasSpace(source.projectId, space.id);
   if (!holdsSynced(name)) return null;
   const catalog = source.queryClient.getQueryData<ModelCatalog>(modelCatalogQuery().queryKey);
@@ -101,7 +117,19 @@ function readCanvas(source: SpaceContextSource, space: ProjectSpace): PickSnapsh
     nodes.map((n) => n.id),
     pickReaders(source.queryClient, catalog, doc),
   );
-  return snapshot ?? '';
+  if (snapshot === null) return { nodes: [], edges: [] };
+  const selected = selectedOn(space.id, nodes);
+  return {
+    nodes: snapshot.nodes.map((entry) => {
+      const kind = typeof entry.type === 'string' ? entry.type : '';
+      const model = (entry.current as { model?: unknown } | undefined)?.model;
+      const descriptors = isGenerationNodeType(kind)
+        ? modelsForModality(catalog, kind).find((m) => m.name === model)?.params
+        : undefined;
+      return fitNodeOf(entry, descriptors, selected.has(entry.id));
+    }),
+    edges: snapshot.edges,
+  };
 }
 
 /** Content kept, and how long it was before it was cut. */
@@ -126,154 +154,6 @@ function clipSpaceContent(text: string, max: number): ClippedSpaceContent {
   const last = text.charCodeAt(max - 1);
   const end = last >= 0xd800 && last <= 0xdbff ? max - 1 : max;
   return { text: text.slice(0, end), total: text.length };
-}
-
-/** An address: a scheme, `://`, and no whitespace. */
-const ADDRESS = /^[a-z][a-z0-9+.-]*:\/\/\S+$/i;
-
-/** One printable ASCII word: an id, a model name, a voice, a mime type. */
-const NAME = /^[\x21-\x7e]*$/;
-
-/**
- * How long a name a node holds can be. The longest today is an Office mime
- * type (73 characters); ids are 36, model names at most 40, voice ids 47.
- */
-const NAME_MAX_LENGTH = 128;
-
-/**
- * Whether a string only means something whole -- an address or a name -- so
- * cutting it would leave a reference to nothing. Anything longer is what the
- * reader wrote, whatever its shape, and its start still says something.
- * @param value - The string.
- * @returns True when it must go whole.
- */
-function isReference(value: string): boolean {
-  return ADDRESS.test(value) || (value.length <= NAME_MAX_LENGTH && NAME.test(value));
-}
-
-/**
- * A value with every piece of prose in it longer than `keep` characters cut
- * to its start, ending with an ellipsis. A string one character over is left
- * whole: the ellipsis would take that character's place.
- * @param value - The value.
- * @param keep - How many characters prose keeps.
- * @returns The cut value.
- */
-function cutTexts(value: unknown, keep: number): unknown {
-  if (typeof value === 'string') {
-    return value.length > keep + 1 && !isReference(value)
-      ? `${clipSpaceContent(value, keep).text}\u2026`
-      : value;
-  }
-  if (Array.isArray(value)) return value.map((v: unknown) => cutTexts(v, keep));
-  if (value !== null && typeof value === 'object') {
-    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, cutTexts(v, keep)]));
-  }
-  return value;
-}
-
-/**
- * A canvas with the prose in its nodes cut to `keep` characters.
- * @param canvas - The canvas.
- * @param keep - How many characters prose keeps.
- * @returns The cut canvas.
- */
-function cutCanvas(canvas: PickSnapshot, keep: number): PickSnapshot {
-  return {
-    edges: canvas.edges,
-    nodes: canvas.nodes.map((node) => cutTexts(node, keep) as PickSnapshot['nodes'][number]),
-  };
-}
-
-/**
- * A canvas as compact JSON holding the given nodes and the links between them.
- * @param canvas - The canvas.
- * @param kept - The nodes' ids.
- * @returns The compact JSON.
- */
-function canvasText(canvas: PickSnapshot, kept: ReadonlySet<string>): string {
-  return JSON.stringify({
-    edges: canvas.edges.filter((e) => kept.has(e.source) && kept.has(e.target)),
-    nodes: canvas.nodes.filter((n) => kept.has(n.id)),
-  });
-}
-
-/**
- * A canvas as compact JSON within `max` characters, holding every node it
- * can whole: when it is too long, every piece of prose longer than `keep` is
- * cut to the same length, the longest that lets every node and link go.
- * Prose no longer than a node's name is never cut; when the canvas is still too long
- * at that, the nodes are walked in order, each kept while it fits with the
- * links it closes and skipped when it does not -- the order is the
- * document's, not one the reader chose, so one node does not push out the
- * rest.
- * @param canvas - The canvas.
- * @param max - How many characters may go.
- * @returns The text and the length of the whole canvas's text.
- */
-function fitCanvas(canvas: PickSnapshot, max: number): ClippedSpaceContent {
-  const all = new Set(canvas.nodes.map((n) => n.id));
-  const whole = canvasText(canvas, all);
-  if (whole.length <= max) return { text: whole, total: whole.length };
-  const total = whole.length;
-  // Cutting prose shorter never makes the canvas longer, so the longest
-  // cut that fits can be searched for.
-  let fits = MAX_NODE_NAME_LEN;
-  let over = total;
-  const atFloor = cutCanvas(canvas, fits);
-  const shortest = canvasText(atFloor, all);
-  if (shortest.length > max) return { text: packNodes(atFloor, max), total };
-  let text = shortest;
-  while (over - fits > 1) {
-    const mid = Math.floor((fits + over) / 2);
-    const tried = canvasText(cutCanvas(canvas, mid), all);
-    if (tried.length <= max) {
-      fits = mid;
-      text = tried;
-    } else {
-      over = mid;
-    }
-  }
-  return { text, total };
-}
-
-/**
- * A canvas as compact JSON holding every node that fits in `max`
- * characters, taken in order, with only the links whose two ends are among
- * them.
- * @param canvas - The canvas.
- * @param max - How many characters may go.
- * @returns The compact JSON.
- */
-function packNodes(canvas: PickSnapshot, max: number): string {
-  const linksAt = new Map<string, PickSnapshot['edges']>();
-  for (const edge of canvas.edges) {
-    for (const end of edge.source === edge.target ? [edge.source] : [edge.source, edge.target]) {
-      const links = linksAt.get(end) ?? [];
-      links.push(edge);
-      linksAt.set(end, links);
-    }
-  }
-  const kept = new Set<string>();
-  let length = canvasText(canvas, kept).length;
-  let edgeCount = 0;
-  for (const node of canvas.nodes) {
-    // The links this node closes: to itself, or to a node already kept.
-    const links = (linksAt.get(node.id) ?? []).filter((e) => {
-      const other = e.source === node.id ? e.target : e.source;
-      return other === node.id || kept.has(other);
-    });
-    // Each entry after an array's first adds a comma.
-    const grows =
-      JSON.stringify(node).length +
-      (kept.size > 0 ? 1 : 0) +
-      links.reduce((sum, e, i) => sum + JSON.stringify(e).length + (edgeCount + i > 0 ? 1 : 0), 0);
-    if (length + grows > max) continue;
-    kept.add(node.id);
-    length += grows;
-    edgeCount += links.length;
-  }
-  return canvasText(canvas, kept);
 }
 
 /**
@@ -303,8 +183,7 @@ function readCurrent(source: SpaceContextSource, space: ProjectSpace): ReadCurre
   if (!spaceContentReadable(space.type)) return { ...base, state: 'unreadable' };
   if (space.type === 'canvas') {
     const canvas = readCanvas(source, space);
-    if (canvas === null) return { ...base, state: 'loading' };
-    return canvas === '' ? { ...base, state: 'loaded', text: '' } : { ...base, state: 'loaded', canvas };
+    return canvas === null ? { ...base, state: 'loading' } : { ...base, state: 'loaded', canvas };
   }
   const text = documentText(source, space);
   return text === null ? { ...base, state: 'loading' } : { ...base, state: 'loaded', text };
@@ -323,13 +202,39 @@ export function readSpaceContext(source: SpaceContextSource): ReadSpaces {
 }
 
 /**
+ * The selected nodes that a canvas attachment of this message holds exactly
+ * as they stand now: the attachment already gives them whole, so they go
+ * with the rest. An attachment is a copy taken when it was added, so a node
+ * changed since then stays selected.
+ * @param nodes - The canvas's nodes.
+ * @param attached - The message's attachments.
+ * @returns The ids.
+ */
+function heldUnchanged(nodes: readonly FitNode[], attached: readonly ChatAttachedChip[]): Set<string> {
+  const held = new Map<string, string>();
+  for (const chip of attached) {
+    if (chip.type !== 'canvas' || !Array.isArray(chip.data_snapshot.nodes)) continue;
+    for (const entry of chip.data_snapshot.nodes as Array<{ id?: unknown }>) {
+      if (typeof entry.id === 'string') held.set(entry.id, JSON.stringify(entry));
+    }
+  }
+  return new Set(nodes.filter((n) => n.selected && held.get(n.id) === JSON.stringify(n.whole)).map((n) => n.id));
+}
+
+/**
  * The read Spaces cut to the limits the server reads: the newest Spaces up to
- * the list's limit, and the start of the open Space's content up to its own.
+ * the list's limit, the start of an open document, and an open canvas fitted
+ * by level of detail.
  * @param read - What was read at the press.
  * @param limits - The limits.
+ * @param attached - The attachments the message goes with.
  * @returns What goes beside the message.
  */
-export function clipSpaceContext(read: ReadSpaces, limits: SpaceContextLimits): ChatSpaceContext {
+export function clipSpaceContext(
+  read: ReadSpaces,
+  limits: SpaceContextLimits,
+  attached: readonly ChatAttachedChip[],
+): ChatSpaceContext {
   const out: ChatSpaceContext = {
     spaces: read.spaces.slice(0, limits.spaceListMaxItems),
     spaces_total: read.spaces.length,
@@ -338,12 +243,25 @@ export function clipSpaceContext(read: ReadSpaces, limits: SpaceContextLimits): 
   if (current === undefined) return out;
   if (current.state !== 'loaded') return { ...out, current_space: current };
   const { id, name, kind } = current;
-  const clipped =
-    'canvas' in current
-      ? fitCanvas(current.canvas, limits.currentSpaceMaxChars)
-      : clipSpaceContent(current.text, limits.currentSpaceMaxChars);
+  if (!('canvas' in current)) {
+    const clipped = clipSpaceContent(current.text, limits.currentSpaceMaxChars);
+    return { ...out, current_space: { id, name, kind, state: 'loaded', content: clipped.text, total_chars: clipped.total } };
+  }
+  const held = heldUnchanged(current.canvas.nodes, attached);
+  const nodes = current.canvas.nodes.map((n) => (held.has(n.id) ? { ...n, selected: false } : n));
+  const fitted = fitCanvas({ nodes, edges: current.canvas.edges }, limits.currentSpaceMaxChars, held.size);
+  // A canvas with nothing on it goes as empty, as an empty document does.
+  const content = nodes.length === 0 ? '' : fitted.text;
   return {
     ...out,
-    current_space: { id, name, kind, state: 'loaded', content: clipped.text, total_chars: clipped.total },
+    current_space: {
+      id,
+      name,
+      kind,
+      state: 'loaded',
+      content,
+      total_chars: nodes.length === 0 ? 0 : fitted.total,
+      detail: fitted.detail,
+    },
   };
 }
