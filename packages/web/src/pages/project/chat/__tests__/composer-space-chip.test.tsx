@@ -131,22 +131,22 @@ describe('the open Space chip', () => {
 
     it('says a click stops the Agent reading the open Space while it is on', () => {
       setup();
-      expect(hoverText()).toBe('Click to stop the Agent reading this Space');
+      expect(hoverText()).toBe('The Agent reads this Space · Click to stop');
     });
 
     it('says the Agent knows an open timeline is open but cannot read it, and a click stops that', () => {
       setup({ space: { name: 'Edit', type: 'timeline' } });
-      expect(hoverText()).toBe('The Agent knows you have this Space open but can\'t read its content. Click to stop');
+      expect(hoverText()).toBe('The Agent knows this Space is open but can\'t read its content · Click to stop');
     });
 
     it('says a click lets the Agent read it while it is off', () => {
       setup({ space: { enabled: false } });
-      expect(hoverText()).toBe('Click to let the Agent read this Space');
+      expect(hoverText()).toBe('The Agent doesn\'t read this Space · Click to allow');
     });
 
     it('says a click lets the Agent know an open timeline is open while it is off', () => {
       setup({ space: { name: 'Edit', type: 'timeline', enabled: false } });
-      expect(hoverText()).toBe('Click to let the Agent know you have this Space open');
+      expect(hoverText()).toBe('The Agent doesn\'t know this Space is open · Click to allow');
     });
   });
 });
