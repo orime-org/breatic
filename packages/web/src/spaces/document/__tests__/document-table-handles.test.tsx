@@ -292,7 +292,7 @@ describe('the table handles as layers of the body (inner#1127)', () => {
 });
 
 describe('dragging a line (inner#1350)', () => {
-  it('gives back the frozen handles, the preview and the hidden strip when it unmounts mid-drag', () => {
+  it('gives back the frozen handles and the preview when it unmounts mid-drag', () => {
     openOver(0, 1);
     const handle = render(<DocumentTableHandle orientation='column' hideOtherElements={() => undefined} />);
     const setDragImage = vi.fn();

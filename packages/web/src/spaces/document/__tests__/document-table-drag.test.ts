@@ -337,7 +337,9 @@ describe('a dragged line over the gutter beside the body (inner#1350 round 3)', 
     startTableDrag(view, 'column', cellOf(editor, 'a1'));
     fire(gutter, 'dragover', 900);
     expect(view.dom.querySelectorAll('[class*="doc-table-drop-column"]').length).toBeGreaterThan(0);
-    // Over the Agent column beside the body.
+    // Over the Agent column beside the body: the browser leaves the gutter
+    // for it first.
+    gutter.dispatchEvent(new MouseEvent('dragleave', { bubbles: true, relatedTarget: outside }));
     fire(outside, 'dragover', 900);
     expect(view.dom.querySelectorAll('[class*="doc-table-drop-column"]').length).toBe(0);
     fire(outside, 'drop', 900);

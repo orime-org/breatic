@@ -244,7 +244,7 @@ describe('BodyAutoScroll', () => {
     expect(auto.state).toBe('tracking');
   });
 
-  it('a column drag scrolls the table frame sideways, whatever the pointer\'s height, and leaves the body alone', () => {
+  it('a column drag scrolls the table frame sideways whatever the pointer\'s height, and never vertically', () => {
     const clock = fakeClock();
     const auto = new BodyAutoScroll(clock.deps);
     const frame = fakeScroller({ top: 300, bottom: 500, left: 400, right: 1000 });

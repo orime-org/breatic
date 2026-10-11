@@ -120,8 +120,7 @@ export function moveToGap(
  */
 export function startTableDrag(view: EditorView, orientation: DragOrientation, cellPos: number): boolean {
   if (!canDragFrom(view.state.doc, cellPos, orientation)) return false;
-  const command: DragCommand = { start: { source: cellPos, orientation } };
-  view.dispatch(view.state.tr.setMeta(tableDragKey, command).setMeta('addToHistory', false));
+  send(view, { start: { source: cellPos, orientation } });
   return true;
 }
 
@@ -131,7 +130,15 @@ export function startTableDrag(view: EditorView, orientation: DragOrientation, c
  */
 export function endTableDrag(view: EditorView): void {
   if (tableDragKey.getState(view.state) == null || view.isDestroyed) return;
-  const command: DragCommand = { end: true };
+  send(view, { end: true });
+}
+
+/**
+ * Hands the drag a command, outside the undo history.
+ * @param view - The editor view.
+ * @param command - The command.
+ */
+function send(view: EditorView, command: DragCommand): void {
   view.dispatch(view.state.tr.setMeta(tableDragKey, command).setMeta('addToHistory', false));
 }
 
@@ -221,51 +228,40 @@ function shownRange(view: EditorView, drag: Drag): [number, number] | null {
 
 /**
  * The gap the pointer of a drag event is over, among the edges the reader
- * sees: the line is drawn on one of them, so the drop lands where it shows.
- * With none shown (a column wider than its frame), any edge.
+ * sees. The line is drawn at this gap and a drop lands at it, so with no edge
+ * shown — the table scrolled out of view, a column wider than its frame —
+ * there is neither.
  * @param view - The editor view.
  * @param drag - The drag.
  * @param event - The dragover or drop.
- * @returns The gap, or null when the table is not drawn.
+ * @returns The gap, or null when no edge is shown or the table is not drawn.
  */
 function gapUnder(view: EditorView, drag: Drag, event: MouseEvent): number | null {
   const edges = edgesOf(view, drag);
   if (edges === null) return null;
   const pointer = drag.orientation === 'row' ? event.clientY : event.clientX;
-  const shown = shownRange(view, drag);
+  const [start, end] = shownRange(view, drag) ?? [-Infinity, Infinity];
   // A pixel either way: a table flush with its frame has its outer edges on
   // the frame's own, at fractional positions.
-  const gaps = edges.map((_, gap) => gap).filter((gap) => shown !== null && edges[gap]! >= shown[0] - 1 && edges[gap]! <= shown[1] + 1);
-  if (gaps.length === 0) return dropGapAt(edges, pointer);
-  return gaps[dropGapAt(gaps.map((gap) => edges[gap]!), pointer)]!;
+  const gaps = edges.flatMap((edge, gap) => (edge >= start - 1 && edge <= end + 1 ? [gap] : []));
+  return gaps.length === 0 ? null : gaps[dropGapAt(gaps.map((gap) => edges[gap]!), pointer)]!;
 }
 
 /**
- * Whether a drag event is inside the body scroller: over the text column or
- * the gutters beside it, the area a table drag can land in.
+ * Whether a drag event is inside the body scroller — over the text column or
+ * the gutters beside it, the area a table drag can land in — or, for an editor
+ * in no scroller, inside the editor.
  * @param view - The editor view.
- * @param event - The dragover or drop.
+ * @param target - The event's target, or the element it leaves for.
  * @returns Whether it is.
  */
-function overBody(view: EditorView, event: Event): boolean {
-  const { target } = event;
-  return target instanceof Node && (bodyScrollerOf(view)?.contains(target) ?? false);
+function inBody(view: EditorView, target: EventTarget | null): boolean {
+  return target instanceof Node && (bodyScrollerOf(view) ?? view.dom).contains(target);
 }
 
 /**
- * Whether a drag event is over the body's gutters: inside the body scroller,
- * beside the text column. A drag the body scrolls under reaches them, and the
- * column's own handlers never see an event there.
- * @param view - The editor view.
- * @param event - The dragover or drop.
- * @returns Whether it is.
- */
-function overGutter(view: EditorView, event: Event): boolean {
-  return overBody(view, event) && !view.dom.contains(event.target as Node);
-}
-
-/**
- * Takes a dragover: the line is drawn at the gap under the pointer.
+ * Takes a dragover: the line is drawn at the gap under the pointer, or goes
+ * when no shown edge is there.
  * @param view - The editor view.
  * @param drag - The drag.
  * @param event - The dragover.
@@ -273,10 +269,7 @@ function overGutter(view: EditorView, event: Event): boolean {
 function trackGap(view: EditorView, drag: Drag, event: DragEvent): void {
   event.preventDefault();
   const gap = gapUnder(view, drag, event);
-  if (gap !== null && gap !== drag.gap) {
-    const command: DragCommand = { gap };
-    view.dispatch(view.state.tr.setMeta(tableDragKey, command).setMeta('addToHistory', false));
-  }
+  if (gap !== drag.gap) send(view, { gap });
 }
 
 /**
@@ -290,7 +283,7 @@ function dropAtGap(editor: DropEditor, view: EditorView, drag: Drag, event: Drag
   event.preventDefault();
   // Read at the drop itself: the body or the table frame can scroll the lines
   // under a still pointer between dragovers (inner#1350).
-  const gap = gapUnder(view, drag, event) ?? drag.gap;
+  const gap = gapUnder(view, drag, event);
   if (gap !== null) moveToGap(editor, drag.source, drag.orientation, gap);
   endTableDrag(view);
 }
@@ -348,11 +341,14 @@ function tableDragPlugin(editor: DropEditor): Plugin<Drag | null> {
         return source === null ? null : { ...value, source };
       },
     },
-    // The handle a drag starts from can leave the page mid-drag (its table
-    // can be deleted under it), and a drag from an element no longer in the page
-    // fires no `dragend`. So the end is also read off the page: any drop, any
-    // drag end, and the first pointer move with no button held. The page also
-    // takes the drag over the body's gutters, beside the text column.
+    // The drag is taken off the page, in the capture phase: over the gutters
+    // beside the text column the editor sees nothing, and over a block's own
+    // controls it lets the event go (a node view's `stopEvent`). Cancelled there,
+    // the editor leaves the event alone (`prosemirror-view` `eventBelongsToView`).
+    // The handle a drag starts from can leave the page mid-drag (its table can
+    // be deleted under it), and a drag from an element no longer in the page
+    // fires no `dragend`: the end is also read off any drop, any drag end, and
+    // the first pointer move with no button held.
     view: (view) => {
       /** Ends the drag, if one is on. */
       const end = (): void => {
@@ -366,32 +362,37 @@ function tableDragPlugin(editor: DropEditor): Plugin<Drag | null> {
         if (event.buttons === 0) end();
       };
       /**
-       * Takes a dragover over the gutters; past the body the line goes, as the
-       * editor's own drop cursor does when the pointer leaves it.
+       * Takes a dragover inside the body scroller.
        * @param event - The dragover.
        */
       const over = (event: DragEvent): void => {
         const drag = tableDragKey.getState(view.state);
-        if (drag == null) return;
-        if (overGutter(view, event)) trackGap(view, drag, event);
-        else if (!overBody(view, event) && drag.gap !== null) {
-          const command: DragCommand = { gap: null };
-          view.dispatch(view.state.tr.setMeta(tableDragKey, command).setMeta('addToHistory', false));
-        }
+        if (drag != null && inBody(view, event.target)) trackGap(view, drag, event);
       };
       /**
-       * Takes a drop over the gutters; any other drop only ends the drag.
+       * Takes the line away when the pointer leaves the body scroller — for the
+       * top bar, the Agent column or out of the window — as the editor's own
+       * drop cursor does when it leaves the editor (`prosemirror-dropcursor`).
+       * @param event - The dragleave.
+       */
+      const left = (event: DragEvent): void => {
+        const drag = tableDragKey.getState(view.state);
+        if (drag != null && drag.gap !== null && !inBody(view, event.relatedTarget)) send(view, { gap: null });
+      };
+      /**
+       * Takes a drop inside the body scroller; any other drop only ends the drag.
        * @param event - The drop.
        */
       const dropped = (event: DragEvent): void => {
         const drag = tableDragKey.getState(view.state);
-        if (drag != null && overGutter(view, event)) dropAtGap(editor, view, drag, event);
+        if (drag != null && inBody(view, event.target)) dropAtGap(editor, view, drag, event);
         else end();
       };
       const page = view.dom.ownerDocument;
       page.addEventListener('dragend', end);
-      page.addEventListener('dragover', over);
-      page.addEventListener('drop', dropped);
+      page.addEventListener('dragover', over, true);
+      page.addEventListener('dragleave', left, true);
+      page.addEventListener('drop', dropped, true);
       page.addEventListener('mousemove', moved);
       return {
         update: (current, prev): void => {
@@ -400,28 +401,15 @@ function tableDragPlugin(editor: DropEditor): Plugin<Drag | null> {
         },
         destroy: (): void => {
           page.removeEventListener('dragend', end);
-          page.removeEventListener('dragover', over);
-          page.removeEventListener('drop', dropped);
+          page.removeEventListener('dragover', over, true);
+          page.removeEventListener('dragleave', left, true);
+          page.removeEventListener('drop', dropped, true);
           page.removeEventListener('mousemove', moved);
         },
       };
     },
     props: {
       decorations: dropLine,
-      handleDOMEvents: {
-        dragover: (view, event): boolean => {
-          const drag = tableDragKey.getState(view.state);
-          if (drag == null) return false;
-          trackGap(view, drag, event);
-          return true;
-        },
-        drop: (view, event): boolean => {
-          const drag = tableDragKey.getState(view.state);
-          if (drag == null) return false;
-          dropAtGap(editor, view, drag, event);
-          return true;
-        },
-      },
     },
   });
 }
