@@ -256,6 +256,7 @@
       "attachUnsupported": "{filename} は添付できません",
       "attachTooLarge": "{filename} は大きすぎて添付できません",
       "attachUnavailable": "今は添付できません。もう一度お試しください。",
+      "sendUnavailable": "今は送信できません。もう一度お試しください。",
       "atEmpty": "参照できる添付はありません"
     },
     "empty": {

@@ -257,7 +257,9 @@ export function renderProductGuide(): string {
       "chip that could not be uploaded or read shows a red mark and says why; it has to be removed with its X before " +
       "the message can go. Something that cannot be attached at all -- too many items, a file too large or of a " +
       `kind that is not taken, or ${quoted(t("chat.composer.attachTooLong"))} -- is said on a line beside the ` +
-      "plus sign. Pasting canvas nodes copied on the canvas, or a picture copied in this chat, into the box " +
+      "plus sign. When a message cannot be sent at that moment, the same line says " +
+      `${quoted(t("chat.composer.sendUnavailable"))} and the words stay in the box. ` +
+      "Pasting canvas nodes copied on the canvas, or a picture copied in this chat, into the box " +
       "attaches them too. A sent message cannot be edited and a " +
       "reply cannot be regenerated: to ask again, send another message.",
     "Right of that plus sign, a chip shows the icon and name of the Space whose tab is active; with no tab " +

@@ -256,6 +256,7 @@
       "attachUnsupported": "{filename}은(는) 첨부할 수 없습니다",
       "attachTooLarge": "{filename}은(는) 너무 커서 첨부할 수 없습니다",
       "attachUnavailable": "지금은 첨부할 수 없습니다. 다시 시도하세요.",
+      "sendUnavailable": "지금은 보낼 수 없습니다. 다시 시도하세요.",
       "atEmpty": "참조할 첨부가 없습니다"
     },
     "empty": {

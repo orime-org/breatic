@@ -256,6 +256,7 @@
       "attachUnsupported": "{filename} can’t be attached",
       "attachTooLarge": "{filename} is too large to attach",
       "attachUnavailable": "Couldn’t attach right now. Try again.",
+      "sendUnavailable": "Couldn’t send right now. Try again.",
       "atEmpty": "No attachments to mention"
     },
     "empty": {

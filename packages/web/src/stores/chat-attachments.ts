@@ -50,7 +50,8 @@ export type TrayNotice =
   | { key: 'tooLong' }
   | { key: 'unsupported'; filename: string }
   | { key: 'tooLarge'; filename: string }
-  | { key: 'unavailable' };
+  | { key: 'unavailable' }
+  | { key: 'sendUnavailable' };
 
 interface TrayState {
   /** The list above the box in each conversation, keyed by conversation. */

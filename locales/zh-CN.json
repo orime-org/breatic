@@ -256,6 +256,7 @@
       "attachUnsupported": "{filename} 不能附带",
       "attachTooLarge": "{filename} 太大，不能附带",
       "attachUnavailable": "暂时无法添加，请重试。",
+      "sendUnavailable": "暂时无法发送，请重试。",
       "atEmpty": "没有可引用的附件"
     },
     "empty": {

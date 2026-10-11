@@ -283,6 +283,13 @@ export function useChatSession(
       // stood when send was pressed, not as it is once a conversation has
       // opened.
       const spaces = readSpaces();
+      // The Spaces are cut to the server's limits, so they cannot go without
+      // them. The first read is a request, and the send stays held for it like
+      // opening a conversation. Read before the conversation is settled, so
+      // nothing is waited on between that check and the send.
+      const limits = await conversationRuntime.whileOpening(projectId, () =>
+        chatApi.streamConfig().catch(() => null),
+      );
       // Which conversation this belongs in is settled at the press, not read
       // off the last render: a first message opens a conversation, and the
       // panel has not been told about it yet when this runs.
@@ -304,15 +311,9 @@ export function useChatSession(
       // what the reader sees there.
       const attached = chatAttachments.sendable(opened);
       if (attached === null) return;
-      // The Spaces are cut to the server's limits, so they cannot go without
-      // them. Said beside the plus sign as an attachment that cannot be
-      // measured is, and the words stay in the box. The first read is a
-      // request, and the send stays held for it like opening a conversation.
-      const limits = await conversationRuntime.whileOpening(projectId, () =>
-        chatApi.streamConfig().catch(() => null),
-      );
+      // Said beside the plus sign; the words stay in the box.
       if (limits === null) {
-        chatAttachments.say(opened, { key: 'unavailable' });
+        chatAttachments.say(opened, { key: 'sendUnavailable' });
         return;
       }
       await sendInSession(opened, said, attached, clipSpaceContext(spaces, limits));

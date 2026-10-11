@@ -38,6 +38,8 @@ function noticeText(said: TrayNotice, t: ReturnType<typeof useTranslation>): str
   switch (said.key) {
     case 'unavailable':
       return t('chat.composer.attachUnavailable');
+    case 'sendUnavailable':
+      return t('chat.composer.sendUnavailable');
     case 'full':
       return t('chat.composer.attachFull', { limit: said.limit });
     case 'tooLong':
