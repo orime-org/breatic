@@ -35,8 +35,7 @@ import { toUiMessages } from "@server/modules/conversation/message-part-mapping.
 import type { UIMessageChunk } from "ai";
 import { runWithContext, logger, getAgentConfig, ValidationError } from "@breatic/core";
 import { attachmentSection, messageLength, referenceCount, t } from "@breatic/shared";
-import type { ChatAttachedChip } from "@breatic/shared";
-import type { SpaceContext } from "@server/agent/user-turn.js";
+import type { ChatAttachedChip, ChatSpaceContext } from "@breatic/shared";
 
 /**
  * Refuse a message whose words, attachments or Spaces are past their limits.
@@ -62,7 +61,7 @@ import type { SpaceContext } from "@server/agent/user-turn.js";
 function assertSayable(
   message: string,
   chips: readonly ChatAttachedChip[],
-  space: SpaceContext,
+  space: ChatSpaceContext,
 ): void {
   const {
     user_message_max_chars,
@@ -261,12 +260,7 @@ chat.post("/message", validate("json", chatMessageSchema), async (c) => {
     body.project_id,
   );
 
-  const space: SpaceContext = {
-    spaces: body.spaces,
-    spaces_total: body.spaces_total,
-    current_space: body.current_space,
-  };
-  assertSayable(body.message, body.attached_chips, space);
+  assertSayable(body.message, body.attached_chips, body);
 
   // A turn needs a balance above zero to start (#296). Payments off: no check.
   await precheckCredits(body.project_id, user.id, SMALLEST_CREDIT);
@@ -275,7 +269,7 @@ chat.post("/message", validate("json", chatMessageSchema), async (c) => {
     c,
     { userId: user.id, conversationId: conversation.id, projectId: body.project_id },
     (signal) =>
-      new MainAgent().chat(body.message, signal, body.attached_chips, body.time_zone, space),
+      new MainAgent().chat(body.message, signal, body.attached_chips, body.time_zone, body),
   );
 });
 

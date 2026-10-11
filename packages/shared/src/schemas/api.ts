@@ -254,6 +254,12 @@ export const chatMessageSchema = z.object({
 export type ChatMessageInput = z.infer<typeof chatMessageSchema>;
 export type ChatSpace = z.infer<typeof chatSpaceSchema>;
 export type ChatCurrentSpace = z.infer<typeof chatCurrentSpaceSchema>;
+/**
+ * The reader's Spaces as one message carries them (inner#1413): the project's
+ * Spaces, and the open one when the reader has it on. Read when they pressed
+ * send and never stored, so each message says what is there now.
+ */
+export type ChatSpaceContext = Pick<ChatMessageInput, "spaces" | "spaces_total" | "current_space">;
 
 // ── Canvas ───────────────────────────────────────────────────────────
 

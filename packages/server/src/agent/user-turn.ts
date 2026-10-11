@@ -9,18 +9,11 @@
  * the whole turn.
  */
 
-import type { ChatAttachedChip, ChatCurrentSpace, ChatMessageInput, ChatSpace } from "@breatic/shared";
+import type { ChatAttachedChip, ChatCurrentSpace, ChatSpace, ChatSpaceContext } from "@breatic/shared";
 import { attachmentSection, attachmentTitle, writeReferences } from "@breatic/shared";
 
-/**
- * The Spaces the reader is in when they send a message (inner#1413). Sent
- * fresh with every message and never stored, so the model always reads the
- * project as it is now.
- */
-export type SpaceContext = Pick<ChatMessageInput, "spaces" | "spaces_total" | "current_space">;
-
 /** What one user message is made of. */
-export interface UserTurn extends SpaceContext {
+export interface UserTurn extends ChatSpaceContext {
   /** What the user attached to the message, in order. */
   chips: readonly ChatAttachedChip[];
   /** What the user typed. */

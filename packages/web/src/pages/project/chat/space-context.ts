@@ -13,7 +13,7 @@
 
 import type { QueryClient } from '@tanstack/react-query';
 import { clipSpaceContent, spacesNewestFirst } from '@breatic/shared';
-import type { ChatSpace, ModelCatalog } from '@breatic/shared';
+import type { ChatSpace, ChatSpaceContext, ModelCatalog } from '@breatic/shared';
 
 import { readNodes } from '@web/data/yjs/canvas-space';
 import { readDocFacts } from '@web/data/yjs/collab-socket';
@@ -22,7 +22,6 @@ import type { ProjectSpace } from '@web/data/yjs/project-meta';
 import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
 import { readPick } from '@web/spaces/canvas/pick-for-agent';
 import { peekDocumentEditor } from '@web/spaces/document/document-editor-cache';
-import type { ChatSpaceContext } from '@web/stores/chat-sessions';
 
 /** The open Space as read at the press, before its content is cut. */
 export type ReadCurrentSpace = ChatSpace &

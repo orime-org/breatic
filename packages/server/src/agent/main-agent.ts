@@ -28,10 +28,9 @@ import { saveToStorageFor } from "@server/agent/save-to-storage.js";
 import { turnToolsContext } from "@server/agent/turn-tools-context.js";
 import { buildTurnContext } from "@server/agent/turn-context.js";
 import { watchModelCalls, type ModelCallWatch } from "@server/agent/model-call-watch.js";
-import type { ChatAttachedChip, MessagePart, ToolFailure } from "@breatic/shared";
+import type { ChatAttachedChip, ChatSpaceContext, MessagePart, ToolFailure } from "@breatic/shared";
 import { wireLineOf, wordsForTitle } from "@breatic/shared";
 import { userTurnForModel } from "@server/agent/user-turn.js";
-import type { SpaceContext } from "@server/agent/user-turn.js";
 import * as messageRepo from "@server/modules/conversation/conversation-message.repo.js";
 import { toStoredParts } from "@server/modules/conversation/message-part-mapping.js";
 import * as conversationService from "@server/modules/conversation/conversation.service.js";
@@ -85,7 +84,7 @@ export class MainAgent {
     signal?: AbortSignal,
     attached: readonly ChatAttachedChip[] = [],
     timeZone?: string,
-    space: SpaceContext = {},
+    space: ChatSpaceContext = {},
   ): Promise<ReadableStream<UIMessageChunk>> {
     return this.runTurn(userMessage, attached, signal, timeZone, space);
   }
@@ -104,7 +103,7 @@ export class MainAgent {
     attached: readonly ChatAttachedChip[],
     signal: AbortSignal | undefined,
     timeZone: string | undefined,
-    space: SpaceContext,
+    space: ChatSpaceContext,
   ): Promise<ReadableStream<UIMessageChunk>> {
     const { conversationId } = this.ctx;
 

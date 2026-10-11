@@ -51,6 +51,7 @@ export type {
   UpdateStudioInput,
   LoginInput,
   ChatMessageInput,
+  ChatSpaceContext,
   ChatAttachedChip,
   ChatSpace,
   ChatCurrentSpace,
