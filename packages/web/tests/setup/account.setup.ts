@@ -237,6 +237,26 @@ async function personalStudio(
   return now;
 }
 
+/** The interface language every case expects to read; the specs assert English text. */
+const SUITE_LOCALE = 'en';
+
+/**
+ * Puts the account's stored language back to the one the suite reads in.
+ *
+ * The language lives on the account and every fresh page adopts it on load,
+ * so a case that switches it and does not switch it back -- or a run stopped
+ * part way through one -- leaves every later case reading another language.
+ * @param api - A signed-in request context.
+ * @param account - Which account it is, for the message.
+ * @throws {Error} When the language is not stored.
+ */
+async function resetLocale(api: APIRequestContext, account: Account): Promise<void> {
+  const set = await api.patch('/api/v1/users/me/locale', { data: { locale: SUITE_LOCALE } });
+  if (!set.ok()) {
+    throw new Error(`Could not set account ${account}'s language to ${SUITE_LOCALE} (${set.status()}).`);
+  }
+}
+
 /**
  * Creates one Project and reports its id.
  * @param api - A signed-in request context.
@@ -296,6 +316,7 @@ setup('prepare the accounts and their projects', async ({ browser, baseURL }) =>
       api = await request.newContext({ baseURL });
       await signInOrRegister(api, account);
     }
+    await resetLocale(api, account);
     const studio = await personalStudio(api, account);
     await archiveOlderRuns(api, studio.slug);
     for (let made = 0; made < PROJECTS_PER_ACCOUNT[account]; made += 1) {
