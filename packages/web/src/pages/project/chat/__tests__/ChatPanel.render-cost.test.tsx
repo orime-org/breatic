@@ -99,6 +99,45 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+describe('the project meta being re-read (inner#1413)', () => {
+  it('does not re-render the composer when the Spaces are re-read unchanged', async () => {
+    /**
+     * The panel with the Spaces as the project meta hands them: a fresh array
+     * and fresh objects each time it is re-read, as when someone goes online.
+     * @returns The panel.
+     */
+    const panel = (): React.JSX.Element => {
+      const spaces = [
+        { id: 's1', name: 'Cast', type: 'canvas' as const, createdAt: 1 },
+        { id: 's2', name: 'Storyboard', type: 'document' as const, createdAt: 2 },
+      ];
+      return (
+        <QueryClientProvider client={client}>
+          <ChatPanel
+            historyOpen={false}
+            onHistoryOpenChange={() => undefined}
+            projectId='p1'
+            activeSpace={spaces[1]}
+            spaces={spaces}
+          />
+        </QueryClientProvider>
+      );
+    };
+    const client = new QueryClient();
+    const view = render(panel());
+    await waitFor(() => expect(chatApi.openChat).toHaveBeenCalled());
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    const before = counts.composer;
+
+    view.rerender(panel());
+    view.rerender(panel());
+
+    expect(counts.composer).toBe(before);
+  });
+});
+
 describe('a reply arriving piece by piece', () => {
   it('does not re-render the composer or the history sheet', async () => {
     render(
