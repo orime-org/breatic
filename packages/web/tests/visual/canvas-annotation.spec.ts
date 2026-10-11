@@ -18,7 +18,7 @@
  *
  *   pnpm --filter @breatic/web test:visual
  */
-import { test, expect } from 'playwright/test';
+import { expect } from 'playwright/test';
 
 import {
   SETTLE_MS,
@@ -30,6 +30,7 @@ import {
   openTheNote,
   seedWiredPair,
   setZoom,
+  test,
 } from '../helpers/annotation-board';
 import { visibleSpace } from '../helpers/space';
 

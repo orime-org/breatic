@@ -541,6 +541,9 @@ export async function readStoredMediaAtIngest(
  * @param secret - The secret the Worker also holds.
  * @param run - The cover key, and the task deadline the Worker holds the
  *   transfer and the container to, and the wait ends at.
+ * @param signal - Raised when the caller no longer wants the transfer, which
+ *   a caller with a reader waiting on it passes (the agent's save stops when
+ *   the reader stops the turn).
  * @returns What the Worker measured over the object it pulled.
  * @throws {UploadHttpError} When the Worker could not store the source.
  * @throws {DeadlinePassed} When the deadline has already come.
@@ -552,7 +555,12 @@ export async function fetchUrlToIngest(
   target: IngestTarget,
   secret: string,
   run: IngestRun,
+  signal?: AbortSignal,
 ): Promise<IngestMeasurements> {
+  const deadline = untilDeadline(run.deadlineAt);
+  // A caller with a reader waiting also stops the transfer when the reader does.
+  const bound =
+    signal === undefined ? deadline : { ...deadline, signal: AbortSignal.any([deadline.signal, signal]) };
   const answered = await askWorker<unknown>(
     `${target.uploadUrl}/fetch`,
     {
@@ -573,7 +581,7 @@ export async function fetchUrlToIngest(
     // multipart upload each time it runs, so a repeat re-fetches the source,
     // writes R2 a second time, and brings an upload id the permission to
     // finish this key was not granted to.
-    { replaySafe: false, bound: untilDeadline(run.deadlineAt) },
+    { replaySafe: false, bound },
   );
   return readMeasurements(answered);
 }
@@ -598,6 +606,7 @@ export async function fetchUrlToIngest(
  * @param options.replaySafe - Whether sending this again produces no second
  *   side effect. The test is whether the request names the upload it writes
  *   into: a part and a completion do, and opening one does not.
+ * @param options.signal - Raised when the caller no longer wants the answer.
  * @returns The parsed answer.
  * @throws {UploadHttpError} When the Worker refuses.
  */

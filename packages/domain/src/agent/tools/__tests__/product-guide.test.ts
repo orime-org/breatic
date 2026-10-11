@@ -225,12 +225,16 @@ describe("what the guide says", () => {
     expect(proposals).toMatch(/orange note[^.]*it is never sent to the model/);
   });
 
-  it("says the edit-marks message shows only where the placed node has a prompt box", () => {
-    expect(section("Proposal cards")).toMatch(/When a placed node that has a prompt box carries marks, the message/);
+  it("says the reminder shows only where a placed proposal carries a mark to fill", () => {
+    expect(section("Proposal cards")).toMatch(/When a placed proposal carries a ✏️ mark \(in a prompt box or a text node's words\), the message/);
   });
 
-  it("says words bound for a song's lyrics box are @'d there, as a note asks", () => {
-    expect(section("Proposal cards")).toMatch(/Into a song model's lyrics box: a text node the reader @s in the lyrics box, as an orange note asks/);
+  it("says material wired into the pool arrives @'d in the prompt, or in the shot on a multi-shot node", () => {
+    expect(section("Proposal cards")).toMatch(/one wired into the reference pool is already @'d in its prompt, or in its shot on a node in Multi-Shot\./);
+  });
+
+  it("says words bound for a song's lyrics box arrive @'d there", () => {
+    expect(section("Proposal cards")).toMatch(/Into a song model's lyrics box: a text node @'d in the lyrics box, where a proposal arrives with it already @'d/);
   });
 
   it("says how each mark reads in text read back from a box, and that the note is not sent", () => {
@@ -240,7 +244,7 @@ describe("what the guide says", () => {
   it("says material bound for a source slot is picked in the panel, not mentioned", () => {
     // Nothing is @'d at placing; a node feeding a slot is picked in the panel.
     const proposals = section("Proposal cards");
-    expect(proposals).toMatch(/source slots: it is not @'d; an orange note says which slot to pick it into/i);
+    expect(proposals).toMatch(/source slots: it is not @'d\. A slot a proposal filled from a node holding material arrives holding it\. For an empty node an orange note says which slot to pick it into/i);
     expect(proposals).toMatch(/file or its generated result/i);
     expect(proposals).toMatch(/presses that slot's button and clicks the node/i);
   });
@@ -546,9 +550,14 @@ describe("what the guide says", () => {
     expect(proposals).toMatch(/when every generating node uses the same model and you gave a model note, a line with that model's name/);
   });
 
-  it("says nothing is @'d for the reader and a node not @'d is not used", () => {
-    const pool = section("Proposal cards").split("Into the reference list")[1] ?? "";
-    expect(pool).toMatch(/Nothing is @'d for them, and a node wired in that is not @'d is not used/);
+  it("says a proposal @s every node it wires into the pool, and a node not @'d is not used", () => {
+    const cards = section("Proposal cards");
+    expect(cards).toMatch(/A proposal @s for the reader every node it wires into the reference list/);
+    // Generating early sends nothing for it; the panel stops the run only when
+    // nothing else in that source holds a node and the model needs one there.
+    expect(cards).toMatch(/A node @'d that lands empty[^.]*comes with a note saying what to do first; generating before then sends nothing for it, and the run stops only where nothing else in that source holds a node and the model runs only when one does\./);
+    const pool = cards.split("Into the reference list")[1] ?? "";
+    expect(pool).toMatch(/by the proposal for every node it wires in[^.]*\. A node wired in that is not @'d is not used/);
   });
 
   it("says how to indent and outdent in a document", () => {

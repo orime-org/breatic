@@ -9,25 +9,16 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 
 import { loadLocales } from "@breatic/core";
-import { GENERATION_TEMPLATES, setLocale, templatePrompt, type GenerationTemplate } from "@breatic/shared";
+import { GENERATION_TEMPLATES, setLocale } from "@breatic/shared";
 
 import { restoreProcessEnv, useFullCatalog } from "@domain/model-catalog/__tests__/catalog-env.js";
 
-import { answerFor, inputSchema, makeProposeCanvasAction } from "../propose-canvas-action.js";
+import { templateSegmentsText as shown } from "@domain/agent/tools/template-expansion.js";
 
-/**
- * A template's prompt in the shape a proposal sends it: words as text
- * segments, each mark as the slot segment it reads back to.
- * @param template - The template.
- * @returns The segments, as JSON.
- */
-function shown(template: GenerationTemplate): string {
-  return JSON.stringify(
-    templatePrompt(template).map((segment) =>
-      segment.slot === undefined ? { text: segment.text } : { slot: segment.slot },
-    ),
-  );
-}
+import { answerFor, makeProposeCanvasAction } from "../propose-canvas-action.js";
+import { inputSchema } from "../proposal-input.js";
+
+const NOTE = { slot: { kind: "note" as const, label: "Put the character's picture in Character first" } };
 
 beforeEach(() => {
   loadLocales();
@@ -47,7 +38,7 @@ function proposalWith(template: string): Parameters<typeof answerFor>[0] {
   return {
     nodes: [
       { role: "source", type: "image", name: "Character" },
-      { role: "generate", type: "image", name: "Storyboard", template },
+      { role: "generate", type: "image", name: "Storyboard", template, prompt: [NOTE, { text: "A 5x5 storyboard of " }, { ref: 0 }, { text: "." }] },
     ],
     edges: [{ fromIndex: 0, toIndex: 1, into: "pool" }],
     rationale: "A 25-panel storyboard of the character.",
@@ -69,7 +60,7 @@ describe("templates in proposals", () => {
       model: "nano-banana-pro-edit-ultra",
       params: { aspect_ratio: "1:1", resolution: "4k" },
     });
-    expect(answer.nodes[1]?.prompt?.find((s) => s.slot)?.slot?.kind).toBe("asset");
+    expect(answer.nodes[1]?.prompt?.some((s) => s.ref === 0)).toBe(true);
   });
 
   it("refuses a template it does not have", () => {
@@ -94,24 +85,26 @@ describe("templates in proposals", () => {
     setLocale("en");
   });
 
-  it("tells the agent to keep each reference mark and say whether the picture is uploaded or generated", () => {
-    expect(makeProposeCanvasAction().description).toMatch(/keep each asset segment, saying in its label whether the picture is uploaded or generated/);
+  it("shows each reference in a template's prompt as the ref of the node wired in for it", () => {
+    const said = makeProposeCanvasAction().description ?? "";
+    expect(said).toContain('{"ref": <index of the node wired in for');
+    expect(said).not.toContain('"kind":"asset"');
   });
 });
 
 describe("a template drawing on work generated upstream", () => {
   /**
    * A character generated first, wired into a storyboard from the template.
-   * @param prompt - The storyboard prompt the agent sends, or none to keep the template's.
+   * @param prompt - The storyboard prompt the agent sends.
    * @returns The proposal as the agent sends it.
    */
   function chained(
-    prompt?: NonNullable<Parameters<typeof answerFor>[0]["nodes"][number]["prompt"]>,
+    prompt: NonNullable<Parameters<typeof answerFor>[0]["nodes"][number]["prompt"]>,
   ): Parameters<typeof answerFor>[0] {
     return {
       nodes: [
         { role: "generate", type: "image", name: "Character", mode: "t2i", model: "nano-banana-2", prompt: [{ text: "A young courier in a red coat." }] },
-        { role: "generate", type: "image", name: "Storyboard", template: "storyboard-grid-25", ...(prompt ? { prompt } : {}) },
+        { role: "generate", type: "image", name: "Storyboard", template: "storyboard-grid-25", prompt },
       ],
       edges: [{ fromIndex: 0, toIndex: 1, into: "pool" }],
       rationale: "Make the character, then a storyboard of it.",
@@ -119,19 +112,22 @@ describe("a template drawing on work generated upstream", () => {
     };
   }
 
-  it("is placed with the template's reference mark naming the generated character", () => {
+  it("is placed with a ref to the generated character and a note to generate it first", () => {
     const answer = answerFor(
       chained([
+        { slot: { kind: "note", label: "Generate Character first" } },
         { text: "Use " },
-        { slot: { kind: "asset", label: "the generated character", note: "@ the character generated above" } },
+        { ref: 0 },
         { text: " as the reference. A 5x5 storyboard of a courier crossing the city." },
       ]),
     );
     expect(answer.placed).toBe(true);
   });
 
-  it("is placed with the template's own prompt left as it is, its reference mark still asking for the picture", () => {
-    expect(answerFor(chained()).placed).toBe(true);
+  it("is refused with no prompt of its own, giving the template's words with a ref placeholder for the character", () => {
+    const sent = chained([]);
+    const answer = answerFor({ ...sent, nodes: [sent.nodes[0]!, { role: "generate", type: "image", name: "Storyboard", template: "storyboard-grid-25" }] });
+    expect(answer).toMatchObject({ placed: false, reason: expect.stringContaining('{"ref": <index of the node wired in for') });
   });
 });
 
@@ -155,23 +151,19 @@ describe("an empty node wired into a reference pool", () => {
 
   it("is refused when the prompt names it only in words, since the picture put there would not be sent", () => {
     const answer = answerFor(withPrompt([{ text: "Use [📎 character reference] as the reference. A 5x5 storyboard." }]));
-    expect(answer).toMatchObject({ placed: false, reason: expect.stringMatching(/types 1 mark\(s\) into its words.*"label":"character reference"/) });
+    expect(answer).toMatchObject({ placed: false, reason: expect.stringContaining('types 1 mark(s) into its words as text: "[📎 character reference]". A mark works only as a segment of its own, with the text segments kept to plain words: {"ref": <index>} for a node.') });
   });
 
-  it("is placed when a material mark mentions it", () => {
+  it("is placed when a ref mentions it", () => {
     const answer = answerFor(
-      withPrompt([
-        { text: "Use " },
-        { slot: { kind: "asset", label: "character reference", note: "Put the photo in the empty node" } },
-        { text: " as the reference. A 5x5 storyboard." },
-      ]),
+      withPrompt([NOTE, { text: "Use " }, { ref: 0 }, { text: " as the reference. A 5x5 storyboard." }]),
     );
     expect(answer.placed).toBe(true);
   });
 
   it("holds a proposal without a template to the same rule", () => {
-    const answer = answerFor(withPrompt([{ text: "A 5x5 storyboard of the character." }], false));
-    expect(answer).toMatchObject({ placed: false, reason: expect.stringMatching(/"Character".*asset mark/) });
+    const answer = answerFor(withPrompt([NOTE, { text: "A 5x5 storyboard of the character." }], false));
+    expect(answer).toMatchObject({ placed: false, reason: expect.stringMatching(/"Character".*ref/) });
   });
 });
 
@@ -192,19 +184,17 @@ describe("the template prompts the agent is shown inside a request", () => {
 describe("empty nodes counted, a slot's and an unused kind's left out", () => {
   /**
    * A first-frame slot node listed before a pool node, both empty, feeding
-   * Kling O3 image-to-video, with the given number of material marks.
-   * @param marks - How many asset marks the prompt carries.
+   * Kling O3 image-to-video, the pool node @'d by the given number of refs.
+   * @param refs - How many refs to the pool node the prompt carries.
    * @returns The proposal as the agent sends it.
    */
-  function slotThenPool(marks: number): Parameters<typeof answerFor>[0] {
-    const asset = (label: string): { slot: { kind: "asset"; label: string; note: string } } => ({
-      slot: { kind: "asset", label, note: label },
-    });
+  function slotThenPool(refs: number): Parameters<typeof answerFor>[0] {
     const prompt = [
       { slot: { kind: "note" as const, label: "Pick the first frame into the image slot" } },
+      { slot: { kind: "note" as const, label: "Put the character in Character first" } },
       { text: "She walks forward. " },
-      ...(marks >= 2 ? [asset("first frame"), { text: " opens it. " }] : []),
-      asset("character"),
+      ...(refs >= 2 ? [{ ref: 1 }, { text: " looks back. " }] : []),
+      { ref: 1 },
       { text: " stays the same." },
     ];
     return {
@@ -229,11 +219,11 @@ describe("empty nodes counted, a slot's and an unused kind's left out", () => {
     };
   }
 
-  it("places one mark for the pool node and a note for the slot's node", () => {
+  it("places one ref for the pool node and a note for each empty node", () => {
     expect(answerFor(slotThenPool(1))).toMatchObject({ placed: true });
   });
 
-  it("places a mark for each place in order", () => {
+  it("places the pool node @'d twice", () => {
     const answer = answerFor(slotThenPool(2));
     expect(answer).toMatchObject({ placed: true });
   });
@@ -248,7 +238,8 @@ describe("empty nodes counted, a slot's and an unused kind's left out", () => {
   function pictureAndVoice(voiceFirst: boolean): Parameters<typeof answerFor>[0] {
     const picture = { role: "source" as const, type: "image" as const, name: "Character" };
     const voice = { role: "source" as const, type: "audio" as const, name: "Voice" };
-    const mark = { slot: { kind: "asset" as const, label: "character", note: "character" } };
+    const picked = voiceFirst ? 1 : 0;
+    const note = { slot: { kind: "note" as const, label: "Put the character in Character first" } };
     return {
       nodes: [
         voiceFirst ? voice : picture,
@@ -259,7 +250,7 @@ describe("empty nodes counted, a slot's and an unused kind's left out", () => {
           name: "Clip",
           mode: "ref",
           model: "happyhorse-1.1-reference-to-video",
-          prompt: [mark, { text: " walks through the rain." }],
+          prompt: [note, { ref: picked }, { text: " walks through the rain." }],
         },
         {
           role: "generate",
@@ -267,7 +258,7 @@ describe("empty nodes counted, a slot's and an unused kind's left out", () => {
           name: "Talking",
           mode: "ref",
           model: "wan-3.0-reference-to-video",
-          prompt: [mark, { text: " speaks to camera in " }, { slot: { kind: "asset" as const, label: "voice", note: "voice" } }, { text: "." }],
+          prompt: [note, { slot: { kind: "note" as const, label: "Put the voice in Voice first" } }, { ref: picked }, { text: " speaks to camera in " }, { ref: voiceFirst ? 0 : 1 }, { text: "." }],
         },
       ],
       edges: [2, 3].flatMap((toIndex) => [
@@ -279,7 +270,7 @@ describe("empty nodes counted, a slot's and an unused kind's left out", () => {
     };
   }
 
-  it("needs one mark for the picture whichever order the voice is listed in", () => {
+  it("needs one ref for the picture whichever order the voice is listed in", () => {
     expect(answerFor(pictureAndVoice(false))).toMatchObject({ placed: true });
     expect(answerFor(pictureAndVoice(true))).toMatchObject({ placed: true });
   });

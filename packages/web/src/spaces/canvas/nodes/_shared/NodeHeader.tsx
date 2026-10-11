@@ -82,9 +82,9 @@ export function NodeHeader({
     inputRef,
     startEdit,
     setDraft,
-    commit,
     blur,
-    cancel,
+    onKeyDown,
+    onCompositionEnd,
   } = useInlineRename({
     current: display,
     readOnly,
@@ -116,17 +116,8 @@ export function NodeHeader({
           maxLength={MAX_NODE_NAME_LEN}
           onChange={(e) => setDraft(e.target.value)}
           onBlur={blur}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') commit();
-            else if (e.key === 'Escape') {
-              // Mark the key consumed: window-level Esc consumers (the
-              // focus-session exit, the crop overlay staging) yield on
-              // `defaultPrevented` — the same protocol every other Esc
-              // consumer follows (SpaceTab / TitleEditable, round-12).
-              e.preventDefault();
-              cancel();
-            }
-          }}
+          onKeyDown={onKeyDown}
+          onCompositionEnd={onCompositionEnd}
           // Borderless edit field matching the project-title editor
           // (TitleEditable): no input chrome box, just a subtle muted fill;
           // width follows the content length (`field-sizing`) up to the cap.

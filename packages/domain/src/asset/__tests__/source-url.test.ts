@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { extFromUrl } from "@server/modules/asset/sourceUrl.js";
+import { extFromUrl } from "@domain/asset/source-url.js";
 
 describe("extFromUrl", () => {
   it("takes the extension off the last path segment", () => {

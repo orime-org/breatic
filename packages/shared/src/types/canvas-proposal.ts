@@ -13,6 +13,7 @@
 
 import { t, tInEveryLocale } from "@shared/i18n/index.js";
 import type { GenerationNodeType } from "@shared/types/model-catalog.js";
+import type { NodeMediaFields } from "@shared/canvas/node-media.js";
 
 /**
  * What a marked spot in the prompt asks of the reader (inner#977): `asset`
@@ -21,15 +22,21 @@ import type { GenerationNodeType } from "@shared/types/model-catalog.js";
  */
 export type SlotKind = "asset" | "tweak" | "note";
 
-/** One stretch of the prompt: plain words, or a place the reader acts on. */
+/**
+ * One stretch of the prompt: plain words, a place the reader acts on, or an
+ * @ of another node in the proposal by its index (inner#1315), which lands as
+ * the same mention the reader would insert by hand.
+ */
 export type PromptSegment =
-  | { text: string; slot?: undefined }
+  | { text: string; slot?: undefined; ref?: undefined }
   | {
       text?: undefined;
+      ref?: undefined;
       slot:
         | { kind: "asset" | "tweak"; label: string; note: string }
         | { kind: "note"; label: string; note?: undefined };
-    };
+    }
+  | { ref: number; text?: undefined; slot?: undefined };
 
 /** The brackets and symbol each kind wears where it is written as words. */
 const MARK_FORM: Readonly<Record<SlotKind, { open: string; symbol: string; close: string }>> = {
@@ -118,11 +125,39 @@ function bareReferenceLabel(label: string): string {
   return label;
 }
 
+/** The mark a slot segment stands for. */
+type MarkSlot = NonNullable<PromptSegment["slot"]>;
+
+/** A mark typed into words: the mark it stands for, how it is written there and where. */
+export interface TypedMark {
+  readonly slot: MarkSlot;
+  readonly text: string;
+  /** Where in the words the mark starts. */
+  readonly at: number;
+}
+
+/**
+ * The marks a stretch of words types out, each read once: the mark it stands
+ * for, the label doubling as the card's line where the kind has one, and the
+ * mark as it is written there.
+ * @param text - The words.
+ * @returns Each typed mark, in order.
+ * @throws {never} Never.
+ */
+export function marksTypedIn(text: string): TypedMark[] {
+  return [...text.matchAll(MARK_PATTERN)].map((match) => {
+    const group = match.findIndex((captured, i) => i > 0 && captured !== undefined);
+    const kind = MARK_KINDS[group - 1] ?? "tweak";
+    const read = match[group] ?? "";
+    const label = kind === "asset" ? bareReferenceLabel(read) : read;
+    return { slot: kind === "note" ? { kind, label } : { kind, label, note: label }, text: match[0], at: match.index };
+  });
+}
+
 /**
  * Read a prompt into segments: each `[📎 …]`, `{✏️ …}` and `(💡 …)` becomes
- * the mark it stands for, the label doubling as the card's line where the
- * kind has one. The inverse of {@link writtenMark}: a template's locale
- * prompt and a prompt copied out of a box read back to the same label.
+ * the mark it stands for. The inverse of {@link writtenMark}: a template's
+ * locale prompt and a prompt copied out of a box read back to the same label.
  * @param text - The prompt as a locale file or a box writes it.
  * @returns Its segments.
  * @throws {never} Never.
@@ -130,15 +165,10 @@ function bareReferenceLabel(label: string): string {
 export function markedSegments(text: string): PromptSegment[] {
   const segments: PromptSegment[] = [];
   let at = 0;
-  for (const match of text.matchAll(MARK_PATTERN)) {
-    const [whole] = match;
-    const group = match.findIndex((captured, i) => i > 0 && captured !== undefined);
-    const kind = MARK_KINDS[group - 1] ?? "tweak";
-    const read = match[group] ?? "";
-    const label = kind === "asset" ? bareReferenceLabel(read) : read;
-    if (match.index > at) segments.push({ text: text.slice(at, match.index) });
-    segments.push({ slot: kind === "note" ? { kind, label } : { kind, label, note: label } });
-    at = match.index + whole.length;
+  for (const mark of marksTypedIn(text)) {
+    if (mark.at > at) segments.push({ text: text.slice(at, mark.at) });
+    segments.push({ slot: mark.slot });
+    at = mark.at + mark.text.length;
   }
   if (at < text.length) segments.push({ text: text.slice(at) });
   return segments;
@@ -152,12 +182,17 @@ export function markedSegments(text: string): PromptSegment[] {
  * two between blocks. Counted any other way, a proposal sits inside the
  * model's input cap here and past it by the time the reader presses Generate.
  * @param segments - The proposed prompt.
+ * @param refWords - What an @ of the node at an index sends, as the panel
+ *   serialises it.
  * @returns The text the panel will measure.
  * @throws {never} Never.
  */
-export function promptTextOf(segments: readonly PromptSegment[]): string {
+export function promptTextOf(
+  segments: readonly PromptSegment[],
+  refWords: (ref: number) => string,
+): string {
   return segments
-    .map((s) => (s.slot ? markText(s.slot) : s.text.replace(/\n/g, "\n\n")))
+    .map((s) => (s.slot ? markText(s.slot) : s.ref !== undefined ? refWords(s.ref) : s.text.replace(/\n/g, "\n\n")))
     .join("");
 }
 
@@ -177,7 +212,7 @@ export function promptTextOf(segments: readonly PromptSegment[]): string {
  * @throws {never} Never.
  */
 export function promptPlainText(segments: readonly PromptSegment[]): string {
-  return segments.map((s) => (s.slot ? markText(s.slot) : s.text)).join("");
+  return segments.map((s) => (s.slot ? markText(s.slot) : (s.text ?? ""))).join("");
 }
 
 /**
@@ -203,6 +238,23 @@ export interface ProposalNode {
   role: ProposalRole;
   type: ProposalNodeType;
   name: string;
+  /**
+   * The reader's material a source node lands holding: an address in our
+   * storage. A source node without it lands empty for the reader to fill.
+   */
+  material?: string;
+  /**
+   * What the check read off the material's registration, so the node lands
+   * with the numbers an upload would have given it. Written by the check,
+   * never by the model.
+   */
+  materialMedia?: NodeMediaFields;
+  /**
+   * The slots of a generation filled straight from material nodes: slot param
+   * name to the indices of the source nodes that fill it. The slot takes a
+   * snapshot of each, the way a pick in the panel does, and no edge is drawn.
+   */
+  fills?: Record<string, number[]>;
   mode?: string;
   model?: string;
   params?: Record<string, unknown>;
@@ -258,6 +310,23 @@ export function proposalMarkSegments(node: ProposalNode): PromptSegment[] {
 }
 
 /**
+ * Every place one node of a proposal feeds another: its edges, then each fill.
+ *
+ * A material node that fills a slot is drawn with no edge, yet it is as much
+ * part of the generation it fills as one wired in, so whatever arranges the
+ * nodes or groups them reads both through here.
+ * @param proposal - The proposal being read.
+ * @returns One pair per edge and per filled index, edges first.
+ * @throws {never} Never.
+ */
+export function feedsOf(proposal: CanvasProposal): Array<{ fromIndex: number; toIndex: number }> {
+  const fills = proposal.nodes.flatMap((node, toIndex) =>
+    Object.values(node.fills ?? {}).flatMap((indices) => indices.map((fromIndex) => ({ fromIndex, toIndex }))),
+  );
+  return [...proposal.edges.map(({ fromIndex, toIndex }) => ({ fromIndex, toIndex })), ...fills];
+}
+
+/**
  * How far downstream each node of a proposal sits, counting from what starts it.
  *
  * One further than the last thing that feeds it. Both the card's little
@@ -275,9 +344,10 @@ export function proposalMarkSegments(node: ProposalNode): PromptSegment[] {
  */
 export function layersOf(proposal: CanvasProposal): number[] {
   const depth = proposal.nodes.map(() => 0);
+  const feeds = feedsOf(proposal);
   for (let pass = 0; pass < proposal.nodes.length; pass += 1) {
     let moved = false;
-    for (const edge of proposal.edges) {
+    for (const edge of feeds) {
       const from = depth[edge.fromIndex];
       const to = depth[edge.toIndex];
       if (from === undefined || to === undefined || to > from) continue;

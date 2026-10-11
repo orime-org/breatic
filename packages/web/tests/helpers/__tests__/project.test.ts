@@ -4,7 +4,15 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { readProjects, projectId, projectUrl } from '../project';
+import {
+  archiveOlderRuns,
+  archiveProjects,
+  MADE_BY_SMOKE,
+  readProjects,
+  projectId,
+  projectUrl,
+  type ProjectApi,
+} from '../project';
 
 const made: string[] = [];
 
@@ -64,5 +72,75 @@ describe('the projects setup prepared', () => {
     expect(readProjects(one)).toEqual({ A: ['one'], B: ['two'] });
     expect(readProjects(other)).toEqual({ A: ['three'], B: ['four'] });
     expect(readProjects(one)).toEqual({ A: ['one'], B: ['two'] });
+  });
+});
+
+/** A project the fake studio lists. */
+interface Listed {
+  id: string;
+  slug: string;
+}
+
+/**
+ * A studio API that lists `pages` and answers each archive with `status`.
+ * @param pages - The live projects, one array per page.
+ * @param refuse - Project ids whose archive is answered with 409.
+ * @returns The fake, and the archive calls it saw.
+ */
+function fakeStudio(
+  pages: Listed[][],
+  refuse: string[] = [],
+): { api: ProjectApi; archived: string[]; posted: string[] } {
+  const archived: string[] = [];
+  const posted: string[] = [];
+  const answer = (status: number, body: unknown) => ({
+    ok: () => status >= 200 && status < 300,
+    status: () => status,
+    json: async () => body,
+  });
+  const api: ProjectApi = {
+    get: async (url: string) => {
+      const cursor = /[?&]cursor=([^&]+)/.exec(url)?.[1];
+      const at = cursor === undefined ? 0 : Number(cursor);
+      return answer(200, {
+        data: { items: pages[at] ?? [], nextCursor: at + 1 < pages.length ? String(at + 1) : null },
+      });
+    },
+    post: async (url: string) => {
+      posted.push(url);
+      const id = /\/api\/v1\/projects\/([^/]+)\/archive$/.exec(url)?.[1] ?? '';
+      if (refuse.includes(id)) return answer(409, {});
+      archived.push(id);
+      return answer(200, { data: { ok: true } });
+    },
+  };
+  return { api, archived, posted };
+}
+
+describe('clearing away the projects earlier runs made', () => {
+  it('archives every live project a run made, across pages, and nothing else', async () => {
+    const studio = fakeStudio([
+      [
+        { id: 'p1', slug: `${MADE_BY_SMOKE}-1-0` },
+        { id: 'mine', slug: 'my-own-work' },
+      ],
+      [{ id: 'p2', slug: `${MADE_BY_SMOKE}-2-1` }],
+    ]);
+    await archiveOlderRuns(studio.api, 'personal');
+    expect(studio.archived).toEqual(['p1', 'p2']);
+    expect(studio.posted).toEqual(['/api/v1/projects/p1/archive', '/api/v1/projects/p2/archive']);
+  });
+
+  it('names the project it could not archive', async () => {
+    const studio = fakeStudio([[{ id: 'p1', slug: `${MADE_BY_SMOKE}-1-0` }]], ['p1']);
+    await expect(archiveOlderRuns(studio.api, 'personal')).rejects.toThrow(/p1.*409/);
+  });
+});
+
+describe('archiving the projects this run made', () => {
+  it('answers with the ones that were not archived and why', async () => {
+    const studio = fakeStudio([], ['b']);
+    expect(await archiveProjects(studio.api, ['a', 'b'])).toEqual(['b (409)']);
+    expect(studio.archived).toEqual(['a']);
   });
 });

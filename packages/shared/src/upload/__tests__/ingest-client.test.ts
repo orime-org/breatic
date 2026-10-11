@@ -592,6 +592,25 @@ describe('handing the Worker a URL to fetch', () => {
     expect(optionsOf(0).replaySafe).toBe(false);
   });
 
+  // A caller with a reader watching (the agent's save, inner#1315) stops the
+  // transfer when the reader stops the turn, besides the deadline.
+  it("stops the transfer when the caller's signal is raised", async () => {
+    mockedRequest.mockResolvedValueOnce(answers(200, MEASURED));
+    const stop = new AbortController();
+
+    await fetchUrlToIngest(
+      SOURCE,
+      ticketFor(1),
+      SECRET,
+      { coverKey: COVER_KEY, deadlineAt: Date.now() + 7_200_000, limits: LIMITS },
+      stop.signal,
+    );
+
+    expect(optionsOf(0).signal?.aborted).toBe(false);
+    stop.abort();
+    expect(optionsOf(0).signal?.aborted).toBe(true);
+  });
+
   it('waits until the deadline and no shorter', async () => {
     mockedRequest.mockResolvedValueOnce(answers(200, MEASURED));
     const deadlineAt = Date.now() + 7_200_000;

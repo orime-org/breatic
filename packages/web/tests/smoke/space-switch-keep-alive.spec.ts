@@ -12,7 +12,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-import { expect, test, type Page } from 'playwright/test';
+import { expect, type Page } from 'playwright/test';
 
 import { CANVAS_SPACE, TEXT_BODY, liveModuleUrl } from '../helpers/live-module';
 import { selectFirstParagraph } from '../helpers/bubble-bar';
@@ -26,7 +26,55 @@ import {
   openFreshProject,
   projectIdOf,
   stripIds,
+  test,
 } from '../helpers/tab-restore';
+
+/** An empty node to seed: its id, type, and place in canvas coordinates. */
+interface SeedSpec {
+  id: string;
+  type: 'text' | 'image';
+  x: number;
+  y: number;
+}
+
+/**
+ * Adds empty nodes to a Space's document in one task, so the page renders
+ * them together rather than one render apart.
+ * @param p - A page with the Space open.
+ * @param projectId - The project.
+ * @param spaceId - The Space.
+ * @param nodes - The nodes to add.
+ */
+async function seedNodes(
+  p: Page,
+  projectId: string,
+  spaceId: string,
+  nodes: readonly SeedSpec[],
+): Promise<void> {
+  const canvasAt = await liveModuleUrl(p, CANVAS_SPACE);
+  await p.evaluate(
+    async ([pid, sid, canvasUrl, specs]: [string, string, string, readonly SeedSpec[]]) => {
+      const canvas = (await import(/* @vite-ignore */ canvasUrl)) as {
+        addNode: (p: string, s: string, n: unknown) => void;
+      };
+      for (const spec of specs) {
+        canvas.addNode(pid, sid, {
+          id: spec.id,
+          type: spec.type,
+          position: { x: spec.x, y: spec.y },
+          data: {
+            name: 'keep-alive',
+            createdAt: Date.now(),
+            createdBy: 'keep-alive',
+            locked: false,
+            attachments: [],
+          },
+        });
+      }
+    },
+    [projectId, spaceId, canvasAt, nodes] as [string, string, string, readonly SeedSpec[]],
+  );
+}
 
 /**
  * Adds an empty node of a type to a Space's document.
@@ -45,27 +93,7 @@ async function seedNode(
   type: 'text' | 'image',
   at: { x: number; y: number } = { x: 0, y: 0 },
 ): Promise<void> {
-  const canvasAt = await liveModuleUrl(p, CANVAS_SPACE);
-  await p.evaluate(
-    async ([pid, sid, nodeId, kind, canvasUrl, x, y]: string[]) => {
-      const canvas = (await import(/* @vite-ignore */ canvasUrl!)) as {
-        addNode: (p: string, s: string, n: unknown) => void;
-      };
-      canvas.addNode(pid!, sid!, {
-        id: nodeId,
-        type: kind,
-        position: { x: Number(x), y: Number(y) },
-        data: {
-          name: 'keep-alive',
-          createdAt: Date.now(),
-          createdBy: 'keep-alive',
-          locked: false,
-          attachments: [],
-        },
-      });
-    },
-    [projectId, spaceId, id, type, canvasAt, String(at.x), String(at.y)],
-  );
+  await seedNodes(p, projectId, spaceId, [{ id, type, ...at }]);
 }
 
 /**
@@ -169,8 +197,12 @@ test('a canvas opened empty is not framed again once it has content', async ({ p
   await expect(visibleSpace(page).locator('.react-flow__viewport')).toBeVisible({
     timeout: 20_000,
   });
-  await seedNode(page, projectIdOf(projectUrl), first, 'late-a', 'image', { x: 900, y: 700 });
-  await seedNode(page, projectIdOf(projectUrl), first, 'late-b', 'image', { x: 1600, y: 1200 });
+  // Seeded together: the canvas renders only the nodes on screen, and framing
+  // on `late-a` alone leaves `late-b` past the right edge of a 1400px window.
+  await seedNodes(page, projectIdOf(projectUrl), first, [
+    { id: 'late-a', type: 'image', x: 900, y: 700 },
+    { id: 'late-b', type: 'image', x: 1600, y: 1200 },
+  ]);
   await expect(visibleSpace(page).locator('.react-flow__node')).toHaveCount(2, {
     timeout: 20_000,
   });

@@ -5,30 +5,44 @@
  * A Document Space with a body to select in, and the readings taken off the
  * bubble bar that comes up over a selection.
  *
- * A spec importing this evaluates it in its own scope, so the hooks below
- * build that file's Spaces and remove them again, and neither file can reach
- * the other's (measured, playwright 1.62.1, 2026-09-19).
+ * A spec that opens Spaces through `openFreshDocument` imports `test` from
+ * here; the window size and the removal of those Spaces are fixtures on that
+ * `test`, so every case of every such file gets them.
  *
  * Every case opens its own Space: each wants a body it wrote itself, and the
  * cases used to share one page across the file, where a red one left the next
  * reading a document it had not built.
  */
-import { expect, test, type Locator, type Page } from 'playwright/test';
+import { expect, test as base, type Locator, type Page } from 'playwright/test';
 
 import { openSmokeProject } from './project';
 import { createSpace, deleteSpace, VISIBLE_SPACE, DOCUMENT_EDITOR } from './space';
 
-// Wide, because the column's own width decides which side the bar comes up on
-// and how far it may reach.
-test.use({ viewport: { width: 1680, height: 950 } });
-
 /** The Spaces this case made, removed when it ends. */
 const createdSpaceIds: string[] = [];
 
-test.afterEach(async ({ page }) => {
-  while (createdSpaceIds.length > 0) {
-    await deleteSpace(page, createdSpaceIds.pop() as string);
-  }
+/** Whether the fixture that removes those Spaces is running for this case. */
+let cleaning = false;
+
+/**
+ * The test a bubble-bar case runs under: a window wide enough for the bar, and
+ * the removal of every Space `openFreshDocument` made.
+ */
+export const test = base.extend<{ bubbleBarSpaces: void }>({
+  // Wide, because the column's own width decides which side the bar comes up on
+  // and how far it may reach.
+  viewport: { width: 1680, height: 950 },
+  bubbleBarSpaces: [
+    async ({ page }, use) => {
+      cleaning = true;
+      await use();
+      cleaning = false;
+      while (createdSpaceIds.length > 0) {
+        await deleteSpace(page, createdSpaceIds.pop() as string);
+      }
+    },
+    { auto: true },
+  ],
 });
 
 /**
@@ -66,8 +80,12 @@ export const HOVER_TRANSITION_MS = 150;
 /**
  * Open a Document Space this call makes, with the caret already in the body.
  * @param page - The page to open it on.
+ * @throws {Error} When the case does not run under this module's `test`, which removes the Space.
  */
 export async function openFreshDocument(page: Page): Promise<void> {
+  if (!cleaning) {
+    throw new Error('openFreshDocument needs the test from helpers/bubble-bar, which removes the Space it makes');
+  }
   await openSmokeProject(page);
 
   createdSpaceIds.push(

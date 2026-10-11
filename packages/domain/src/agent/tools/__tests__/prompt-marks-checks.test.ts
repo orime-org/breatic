@@ -2,21 +2,23 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * What the proposal check asks of the marks once the reader @s every
- * reference by hand (inner#977): no mark is paired with a node, but every
- * node they could @ has a bracket telling them to, a note is never words of a
- * written node, and the words a wired text node holds count against the cap
- * they will be @'d into.
+ * What the proposal check asks of the marks now that the agent @s for the
+ * reader (inner#1315): every node wired into a pool is @'d by a ref, every
+ * node landing empty, or going into a slot by an edge or unwired, has a note
+ * (a slot filled through fills takes none), a note is never words
+ * of a written node, and the words a wired text node holds count against the
+ * cap they are @'d into.
  */
 
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 
 import { loadLocales } from "@breatic/core";
-import { GENERATION_TEMPLATES, markText, t, templatePrompt, type CanvasProposal, type ProposalNode } from "@breatic/shared";
+import { GENERATION_TEMPLATES, markText, t, templatePrompt, type CanvasProposal, type PromptSegment, type ProposalNode } from "@breatic/shared";
 
 import { restoreProcessEnv, useFullCatalog } from "@domain/model-catalog/__tests__/catalog-env.js";
 
-import { answerFor, checkProposal, inputSchema, makeProposeCanvasAction } from "../propose-canvas-action.js";
+import { answerFor, checkProposal, makeProposeCanvasAction } from "../propose-canvas-action.js";
+import { inputSchema } from "../proposal-input.js";
 
 beforeEach(() => {
   loadLocales();
@@ -27,14 +29,11 @@ afterAll(() => {
   restoreProcessEnv();
 });
 
-/**
- * A reference mark, the bracket asking the reader to @ something.
- * @param label - What to @.
- * @returns The segment.
- */
-function reference(label: string): { slot: { kind: "asset"; label: string; note: string } } {
-  return { slot: { kind: "asset", label, note: label } };
-}
+/** The note a generation upstream asks for: it lands empty until run. */
+const RUN_IT = { slot: { kind: "note" as const, label: "Generate Character first" } };
+
+/** The character @'d where the edit speaks of it, with the note to run it first. */
+const AT_CHARACTER: PromptSegment[] = [RUN_IT, { ref: 0 }];
 
 /** A character generated first, the upstream work a later node draws on. */
 const CHARACTER: ProposalNode = {
@@ -65,29 +64,29 @@ function edit(feeders: ProposalNode[], prompt: NonNullable<ProposalNode["prompt"
 }
 
 describe("the marks a proposal sends", () => {
-  it("takes a note with a label alone, and no longer takes a ref mark", () => {
-    const base = edit([CHARACTER], [reference("the generated character"), { text: " at night" }]);
-    const withNote = { ...base, nodes: base.nodes.map((n, i) => (i === 1 ? { ...n, prompt: [{ slot: { kind: "note", label: "Pick it in the panel" } }, ...(n.prompt ?? [])] } : n)) };
-    expect(inputSchema.safeParse(withNote).success).toBe(true);
-    const withRef = { ...base, nodes: base.nodes.map((n, i) => (i === 1 ? { ...n, prompt: [{ slot: { kind: "ref", label: "x", note: "x" } }] } : n)) };
-    expect(inputSchema.safeParse(withRef).success).toBe(false);
+  it("takes a note with a label alone and a ref, and no asset mark or ref mark", () => {
+    const base = edit([CHARACTER], [...AT_CHARACTER, { text: " at night" }]);
+    expect(inputSchema.safeParse(base).success).toBe(true);
+    const withPrompt = (prompt: unknown[]): unknown => ({ ...base, nodes: base.nodes.map((n, i) => (i === 1 ? { ...n, prompt } : n)) });
+    expect(inputSchema.safeParse(withPrompt([{ slot: { kind: "asset", label: "x", note: "x" } }])).success).toBe(false);
+    expect(inputSchema.safeParse(withPrompt([{ slot: { kind: "ref", label: "x", note: "x" } }])).success).toBe(false);
   });
 });
 
-describe("every node the reader could @ has a bracket", () => {
-  it("refuses generated work wired in with no reference mark, naming it", () => {
+describe("every node in the pool is @'d", () => {
+  it("refuses generated work wired in with no ref, naming it", () => {
     const answer = checkProposal(edit([CHARACTER], [{ text: "Make it night." }]));
     expect(answer).toMatchObject({ ok: false, reason: expect.stringContaining('"Character"') });
   });
 
-  it("places it with one reference mark", () => {
-    expect(checkProposal(edit([CHARACTER], [reference("the generated character"), { text: " at night" }]))).toEqual({ ok: true });
+  it("places it with one ref and the note to generate it first", () => {
+    expect(checkProposal(edit([CHARACTER], [...AT_CHARACTER, { text: " at night" }]))).toEqual({ ok: true });
   });
 
-  it("counts empty nodes and generated work together", () => {
+  it("names every node no ref @s at once, empty nodes and generated work together", () => {
     const photo: ProposalNode = { role: "source", type: "image", name: "Photo" };
-    const answer = checkProposal(edit([photo, CHARACTER], [reference("the uploaded photo"), { text: " at night" }]));
-    expect(answer).toMatchObject({ ok: false, reason: expect.stringMatching(/"Photo".*"Character"/) });
+    const answer = checkProposal(edit([photo, CHARACTER], [{ text: "at night" }]));
+    expect(answer).toMatchObject({ ok: false, reason: expect.stringMatching(/"Photo", "Character".*\{"ref": 0\}, \{"ref": 1\}/) });
   });
 
   it("does not count a node the model's slot takes, which a note describes", () => {
@@ -117,7 +116,7 @@ describe("a written node", () => {
     const proposal: CanvasProposal = {
       nodes: [
         { role: "written", type: "text", name: "Script", prompt: [{ slot: { kind: "note", label: "Read it aloud" } }, { text: "Hello there." }] },
-        { role: "generate", type: "audio", name: "Voice", mode: "tts", model: "realtime-tts-2", prompt: [reference("the script the Agent wrote")] },
+        { role: "generate", type: "audio", name: "Voice", mode: "tts", model: "realtime-tts-2", prompt: [{ ref: 0 }] },
       ],
       edges: [{ fromIndex: 0, toIndex: 1 }],
       rationale: "",
@@ -137,7 +136,7 @@ describe("the words a wired text node holds", () => {
     return {
       nodes: [
         { role: "written", type: "text", name: "Script", prompt: [{ text: "a".repeat(length) }] },
-        { role: "generate", type: "audio", name: "Voice", mode: "tts", model: "realtime-tts-2", prompt: [reference("the script the Agent wrote")] },
+        { role: "generate", type: "audio", name: "Voice", mode: "tts", model: "realtime-tts-2", prompt: [{ ref: 0 }] },
       ],
       edges: [{ fromIndex: 0, toIndex: 1 }],
       rationale: "",
@@ -145,7 +144,7 @@ describe("the words a wired text node holds", () => {
     };
   }
 
-  it("count against the cap as if the reader @s it, and the refusal names the node", () => {
+  it("count against the cap they are @'d into, and the refusal names the node", () => {
     expect(checkProposal(speech(2100))).toMatchObject({ ok: false, reason: expect.stringContaining('"Script"') });
   });
 
@@ -165,7 +164,7 @@ describe("the words a wired text node holds", () => {
           model: "kling-v3.0-4k-text-to-video",
           params: { duration: 5 },
           shots: [
-            { prompt: [reference("the script the Agent wrote")], duration: 2 },
+            { prompt: [{ ref: 0 }], duration: 2 },
             { prompt: [{ text: "the pond at dusk" }], duration: 3 },
           ],
         },
@@ -194,8 +193,11 @@ describe("where each wired node goes, said on its edge", () => {
     return { ...base, edges: base.edges.map(({ fromIndex, toIndex }, i) => (into[i] === undefined ? { fromIndex, toIndex } : { fromIndex, toIndex, into: into[i] })) };
   }
 
-  const marks = (n: number): NonNullable<ProposalNode["prompt"]> =>
-    Array.from({ length: n }, (_, i) => reference(`picture ${String(i + 1)}`));
+  /** A note for each of the first n empty pictures, then a ref to each. */
+  const marks = (n: number): NonNullable<ProposalNode["prompt"]> => [
+    ...Array.from({ length: n }, (_, i) => ({ slot: { kind: "note" as const, label: `Put picture ${String(i + 1)} in` } })),
+    ...Array.from({ length: n }, (_, i) => ({ ref: i })),
+  ];
 
   it("asks for the way when the kind can go more than one way, naming each", () => {
     const answer = checkProposal(routed([undefined], [...marks(1), { text: " at night" }]));
@@ -207,11 +209,11 @@ describe("where each wired node goes, said on its edge", () => {
     expect(answer).toMatchObject({ ok: false, reason: expect.stringMatching(/"first_frame".*"pool".*"style_images"/s) });
   });
 
-  it("takes a picture into the pool with a reference mark", () => {
+  it("takes a picture into the pool with a ref", () => {
     expect(checkProposal(routed(["pool"], [...marks(1), { text: " at night" }]))).toEqual({ ok: true });
   });
 
-  it("takes a picture into the style slot with a note and no reference mark", () => {
+  it("takes a picture into the style slot with a note and no ref", () => {
     expect(checkProposal(routed(["style_images"], [note, { text: "A night version." }]))).toEqual({ ok: true });
   });
 
@@ -222,10 +224,10 @@ describe("where each wired node goes, said on its edge", () => {
     });
   });
 
-  it("asks for a reference mark for each picture going into the pool", () => {
+  it("asks for a ref for each picture going into the pool", () => {
     expect(checkProposal(routed(["pool", "pool"], [...marks(1), { text: " at night" }]))).toMatchObject({
       ok: false,
-      reason: expect.stringMatching(/"Picture 1".*"Picture 2"/s),
+      reason: expect.stringMatching(/"Picture 2".*\{"ref": 1\}/s),
     });
   });
 
@@ -237,7 +239,7 @@ describe("where each wired node goes, said on its edge", () => {
     expect(checkProposal(routed(style4, [note, note, note, note, { text: "A night version." }]))).toMatchObject({ ok: false, reason: expect.stringContaining("3") });
   });
 
-  it("is not thrown by a mark a storyboard repeats in a later shot", () => {
+  it("is not thrown by a ref a storyboard repeats in a later shot", () => {
     const characters = Array.from({ length: 6 }, (_, i) => picture(`Character ${String(i + 1)}`));
     const proposal: CanvasProposal = {
       nodes: [
@@ -251,8 +253,8 @@ describe("where each wired node goes, said on its edge", () => {
           model: "happyhorse-1.1-reference-to-video",
           params: { duration: 5 },
           shots: [
-            { prompt: [note, ...Array.from({ length: 6 }, (_, i) => reference(`character ${String(i + 1)}`)), { text: " meet" }], duration: 3 },
-            { prompt: [reference("character 1"), { text: " walks away" }], duration: 2 },
+            { prompt: [note, ...marks(6), { text: " meet" }], duration: 3 },
+            { prompt: [{ ref: 0 }, { text: " walks away" }], duration: 2 },
           ],
         },
       ],
@@ -280,7 +282,7 @@ describe("where each wired node goes, said on its edge", () => {
     const proposal: CanvasProposal = {
       nodes: [
         { role: "written", type: "text", name: "Script", prompt: [{ text: "Hello there." }] },
-        { role: "generate", type: "audio", name: "Voice", mode: "tts", model: "realtime-tts-2", prompt: [reference("the script the Agent wrote")] },
+        { role: "generate", type: "audio", name: "Voice", mode: "tts", model: "realtime-tts-2", prompt: [{ ref: 0 }] },
       ],
       edges: [{ fromIndex: 0, toIndex: 1, into: "pool" }],
       rationale: "",
@@ -293,7 +295,7 @@ describe("where each wired node goes, said on its edge", () => {
     const proposal: CanvasProposal = {
       nodes: [
         { role: "written", type: "text", name: "Script", prompt: [{ text: "Hello there." }] },
-        { role: "generate", type: "audio", name: "Voice", mode: "tts", model: "realtime-tts-2", prompt: [reference("the script the Agent wrote")] },
+        { role: "generate", type: "audio", name: "Voice", mode: "tts", model: "realtime-tts-2", prompt: [{ ref: 0 }] },
       ],
       edges: [{ fromIndex: 0, toIndex: 1, into: "lyrics" }],
       rationale: "",
@@ -330,10 +332,14 @@ describe("marks the reader can act on", () => {
     expect(checkProposal(proposal)).toEqual({ ok: true });
   });
 
-  it("places a lone generation whose asset mark the reader fills by wiring a node of their own", () => {
+  it("places a lone generation from a template, which the reader wires their own node into", () => {
     // The reader said they already have the material: the proposal places the
     // generation only, and the reader wires their node in and @s it.
-    const answer = answerFor({ nodes: [{ role: "generate", type: "image", name: "Grid", template: "storyboard-grid-25" }], edges: [], rationale: "" });
+    const answer = answerFor({
+      nodes: [{ role: "generate", type: "image", name: "Grid", template: "storyboard-grid-25", prompt: [{ slot: { kind: "note", label: "Wire your character in and @ it" } }, { text: "A 5x5 storyboard." }] }],
+      edges: [],
+      rationale: "",
+    });
     expect(answer.placed).toBe(true);
   });
 
@@ -355,10 +361,10 @@ describe("marks the reader can act on", () => {
     expect(edge).toMatch(/"lyrics"/);
   });
 
-  it("keeps asset marks for nodes going into the pool, and a note for every node going into a slot", () => {
+  it("asks for a ref for every node going into the pool, and a note for every node going into a slot", () => {
     const shape = inputSchema.shape.nodes.element.shape;
-    expect(JSON.stringify(inputSchema.toJSONSchema())).toMatch(/never a node going into a slot/);
-    expect(shape.prompt.description ?? "").toMatch(/a node going into a slot or the lyrics box takes a note of its own instead/);
+    expect(shape.prompt.description ?? "").toMatch(/Every node going into the pool gets a ref where the prompt, or in multi_shot a shot, speaks of it, and a note too when it lands empty/);
+    expect(shape.prompt.description ?? "").toMatch(/a node going into a slot by an edge takes a note of its own \(a slot filled through fills takes none, the lyrics box takes none\)/);
     expect(shape.prompt.description ?? "").toMatch(/an empty node no edge sends into a generation \(unwired, or wired only as a link to a model that takes nothing from it\)/);
   });
 
@@ -380,27 +386,78 @@ describe("the lyrics box a song model draws, a second way for words (table B)", 
       groupName: "Song",
     };
   }
-  const toLyrics = { slot: { kind: "note" as const, label: "@ Lyrics in the lyrics box" } };
-
-  it("places the lyrics node sent into the lyrics box with a note", () => {
-    expect(checkProposal(song([{ text: "upbeat pop" }, toLyrics], "lyrics"))).toEqual({ ok: true });
+  it("places the lyrics node sent into the lyrics box with no note, since landing @s it there", () => {
+    expect(checkProposal(song([{ text: "upbeat pop" }], "lyrics"))).toEqual({ ok: true });
   });
 
   it("asks which box when the edge does not say, naming both", () => {
-    expect(checkProposal(song([{ text: "upbeat pop" }, toLyrics]))).toMatchObject({ ok: false, reason: expect.stringMatching(/"Lyrics".*"pool".*"lyrics"/s) });
+    expect(checkProposal(song([{ text: "upbeat pop" }]))).toMatchObject({ ok: false, reason: expect.stringMatching(/"Lyrics".*"pool".*"lyrics"/s) });
   });
 
-  it("asks for a note for the node sent into the lyrics box", () => {
-    expect(checkProposal(song([{ text: "upbeat pop" }], "lyrics"))).toMatchObject({ ok: false, reason: expect.stringMatching(/"Lyrics" into lyrics.*0 note/s) });
+  it("refuses a song whose lyrics box lands empty, since Generate would refuse it too, naming the way in", () => {
+    expect(checkProposal(song([{ text: "upbeat pop, " }, { ref: 0 }], "pool"))).toMatchObject({
+      ok: false,
+      reason: expect.stringContaining('into: "lyrics"'),
+    });
   });
 
-  it("places the words sent into the prompt with an asset mark", () => {
-    expect(checkProposal(song([{ text: "upbeat pop, " }, reference("the lyrics")], "pool"))).toEqual({ ok: true });
+  it("refuses a song proposed with no lyrics node at all", () => {
+    const alone: CanvasProposal = {
+      nodes: [{ role: "generate", type: "audio", name: "Song", mode: "t2m", model: "mureka-v9.5-generate-song", prompt: [{ text: "upbeat pop" }] }],
+      edges: [],
+      rationale: "",
+    };
+    expect(checkProposal(alone)).toMatchObject({ ok: false, reason: expect.stringContaining('into: "lyrics"') });
+  });
+
+  it("tells a ref to the node in the lyrics box that it goes into the lyrics box, and only a pool node takes a ref", () => {
+    const verdict = checkProposal(song([{ text: "upbeat pop, " }, { ref: 0 }], "lyrics"));
+    expect(verdict).toMatchObject({ ok: false, refusal: "ref-arrives-otherwise", reason: expect.stringContaining('by an edge with into: "lyrics"') });
+    expect(verdict).toMatchObject({ reason: expect.stringContaining("only a node wired into the pool takes a ref") });
+    expect(verdict).not.toMatchObject({ reason: expect.stringContaining('into: "pool"') });
+  });
+});
+
+describe("a ref to a node that does not go into the pool", () => {
+  it("is told a node cannot @ itself", () => {
+    expect(checkProposal(edit([CHARACTER], [...AT_CHARACTER, { ref: 1 }, { text: " at night" }]))).toMatchObject({
+      ok: false,
+      reason: expect.stringContaining("cannot @ itself"),
+    });
+  });
+
+  it("is told a node wired into a slot goes there, and only a pool node takes a ref", () => {
+    const pick = { slot: { kind: "note" as const, label: "Pick Style into the style slot" } };
+    const proposal: CanvasProposal = {
+      nodes: [
+        { role: "source", type: "image", name: "Style" },
+        { role: "generate", type: "image", name: "Night", mode: "i2i", model: "nano-banana-pro-edit-ultra", prompt: [pick, { text: "in the style of " }, { ref: 0 }] },
+      ],
+      edges: [{ fromIndex: 0, toIndex: 1, into: "style_images" }],
+      rationale: "",
+      groupName: "Night",
+    };
+    const verdict = checkProposal(proposal);
+    expect(verdict).toMatchObject({ ok: false, reason: expect.stringMatching(/"Style".*"style_images".*only a node wired into the pool takes a ref/s) });
+    expect(verdict).not.toMatchObject({ reason: expect.stringContaining('into: "pool"') });
+  });
+});
+
+describe("a ref to no node", () => {
+  it("is turned away by the schema when the index is negative", () => {
+    expect(inputSchema.safeParse(edit([CHARACTER], [{ ref: -1 }, { text: " at night" }])).success).toBe(false);
+  });
+
+  it("is refused as pointing outside the group when the index is past the last node", () => {
+    expect(checkProposal(edit([CHARACTER], [...AT_CHARACTER, { ref: 7 }, { text: " at night" }]))).toMatchObject({
+      ok: false,
+      reason: expect.stringContaining("points outside the group"),
+    });
   });
 });
 
 describe("a kind the canvas will not wire into the node (table A, first row)", () => {
-  it("is refused with the way it does reach the node: picked into its slot, the edge left off", () => {
+  it("is refused with the edge to take off and the way it does reach the node: picked into its slot", () => {
     const answer = checkProposal({
       nodes: [
         { role: "source", type: "video", name: "Clip" },
@@ -412,7 +469,7 @@ describe("a kind the canvas will not wire into the node (table A, first row)", (
     });
     expect(answer).toMatchObject({
       ok: false,
-      reason: expect.stringContaining('"hunyuan-video-foley" takes a video node in its "video" slot, picked in the panel: leave this edge off'),
+      reason: expect.stringContaining('"Clip" goes into "Sfx" unwired, with a note saying to pick it into "video" and no ref. Take every edge from node 0 ("Clip") to node 1 ("Sfx") off.'),
     });
   });
 });
@@ -424,48 +481,45 @@ describe("the lyrics set as a parameter (table D)", () => {
       edges: [],
       rationale: "",
     });
-    expect(answer).toMatchObject({ ok: false, reason: expect.stringContaining('wired in with into: "lyrics"') });
+    expect(answer).toMatchObject({ ok: false, reason: expect.stringContaining('A written text node goes into "Song" by an edge with into: "lyrics"') });
   });
 });
 
 describe("a mark's label", () => {
-  it.each([
-    ["asset", "the hero ]"],
-    ["tweak", "the {hero}'s line"],
-  ] as const)("refuses a %s label holding the bracket that closes it, which would not read back", (kind, label) => {
-    const proposal = edit([CHARACTER], [{ slot: { kind, label, note: "x" } }, { text: " at night" }]);
+  it("refuses a tweak label holding the bracket that closes it, which would not read back", () => {
+    const proposal = edit([CHARACTER], [...AT_CHARACTER, { slot: { kind: "tweak", label: "the {hero}'s line", note: "x" } }, { text: " at night" }]);
     expect(inputSchema.safeParse(proposal).success).toBe(false);
   });
 
   it("refuses a note label holding the bracket that closes it", () => {
-    const proposal = edit([CHARACTER], [reference("the character"), { slot: { kind: "note", label: "Pick the photo (front) in the slot" } }]);
+    const proposal = edit([CHARACTER], [{ ref: 0 }, { slot: { kind: "note", label: "Pick the photo (front) in the slot" } }]);
     expect(inputSchema.safeParse(proposal).success).toBe(false);
   });
 
   it("takes a label holding another kind's bracket", () => {
-    const proposal = edit([CHARACTER], [{ slot: { kind: "asset", label: "the hero (front)", note: "x" } }, { text: " at night" }]);
+    const proposal = edit([CHARACTER], [...AT_CHARACTER, { slot: { kind: "tweak", label: "the hero (front)", note: "x" } }, { text: " at night" }]);
     expect(inputSchema.safeParse(proposal).success).toBe(true);
   });
 });
 
 describe("what the note and the capabilities say", () => {
-  it("says a note can ask for a text node @'d in the lyrics box", () => {
-    expect(JSON.stringify(inputSchema.toJSONSchema())).toMatch(/or that a text node is @'d in the lyrics box/);
+  it("says a note tells what to do first with a node the prompt @s that lands empty", () => {
+    expect(JSON.stringify(inputSchema.toJSONSchema())).toMatch(/what to do first with a node the prompt @s that lands empty/);
   });
 });
 
 describe("a way over its room (table C)", () => {
-  it("says to wire fewer, and nothing about another way, when the kind has one way", () => {
+  it("states the room and the one way the kind has, when the kind has one way", () => {
     const pictures = Array.from({ length: 4 }, (_, i): ProposalNode => ({ role: "source", type: "image", name: `P${String(i + 1)}` }));
     const proposal: CanvasProposal = {
-      nodes: [...pictures, { role: "generate", type: "image", name: "Edit", mode: "i2i", model: "qwen-image-edit-multiple-angles", prompt: [{ text: "edit " }, ...pictures.map((p) => reference(p.name))] }],
+      nodes: [...pictures, { role: "generate", type: "image", name: "Edit", mode: "i2i", model: "qwen-image-edit-multiple-angles", prompt: [{ text: "edit " }, ...pictures.map((_, i) => ({ ref: i }))] }],
       edges: pictures.map((_, i) => ({ fromIndex: i, toIndex: 4, into: "pool" })),
       rationale: "",
       groupName: "g",
     };
     const answer = checkProposal(proposal);
-    expect(answer).toMatchObject({ ok: false, reason: expect.stringContaining("Wire fewer.") });
-    expect(answer).not.toMatchObject({ reason: expect.stringContaining("another way") });
+    expect(answer).toMatchObject({ ok: false, refusal: "way-over-room", reason: expect.stringContaining('takes 3 image node(s) by "pool", and 4 are going that way') });
+    expect(answer).not.toMatchObject({ reason: expect.stringContaining("style_images") });
   });
 });
 
@@ -476,9 +530,9 @@ describe("a mark the agent writes as words", () => {
     ["a note", "(💡 pick it in the panel)"],
   ] as const;
 
-  it.each(written)("is refused when %s is typed into the words, naming the slot segment to send", (_, mark) => {
-    const answer = checkProposal(edit([CHARACTER], [reference("the generated character"), { text: ` Use ${mark} at night.` }]));
-    expect(answer).toMatchObject({ ok: false, reason: expect.stringMatching(/"Night".*"slot"/s) });
+  it.each(written)("is refused when %s is typed into the words, naming the segment to send", (name, mark) => {
+    const answer = checkProposal(edit([CHARACTER], [...AT_CHARACTER, { text: ` Use ${mark} at night.` }]));
+    expect(answer).toMatchObject({ ok: false, reason: expect.stringMatching(name === "a reference" ? /"Night".*\{"ref": <index/s : /"Night".*"slot"/s) });
   });
 
   it("is refused in a shot too", () => {
@@ -503,57 +557,56 @@ describe("a mark the agent writes as words", () => {
     expect(checkProposal(proposal)).toMatchObject({ ok: false, reason: expect.stringContaining('"Clip"') });
   });
 
-  it("hands back a mark copied from a box with its label alone, and every mark at once", () => {
-    const copied = `${markText({ kind: "asset", label: "the character photo", note: "x" })} in the rain, {✏️ the weather}`;
-    const answer = checkProposal(edit([CHARACTER], [reference("the generated character"), { text: ` ${copied}` }]));
+  it("quotes every mark typed into the words as the agent wrote it, with the segment each kind is sent as", () => {
+    const asset = markText({ kind: "asset", label: "the character photo", note: "x" });
+    const answer = checkProposal(edit([CHARACTER], [...AT_CHARACTER, { text: ` ${asset} in the rain, {✏️ the weather}` }]));
     expect(answer).toMatchObject({ ok: false });
     const reason = answer.ok ? "" : answer.reason;
-    expect(reason).toContain('"label":"the character photo"');
-    expect(reason).toContain('"label":"the weather"');
-    expect(reason).not.toContain(t("canvas.promptMark.reference", { label: "" }).trim());
-    expect(reason).not.toContain('"note":"…"');
+    expect(reason).toContain(`types 2 mark(s) into its words as text: "${asset}", "{✏️ the weather}".`);
+    expect(reason).toContain('{"ref": <index>} for a node; {"slot": {"kind": "tweak", "label": "…", "note": "…"}} for words the reader writes.');
   });
 
-  it("tells a written node to take a reference or note out, the way the role check does", () => {
+  it("tells a written node to take a typed reference or note out, the way the role check does", () => {
     const proposal: CanvasProposal = {
       nodes: [
         { role: "written", type: "text", name: "Script", prompt: [{ text: "Scene 1: [📎 the hero photo] walks in" }] },
-        { role: "generate", type: "audio", name: "Voice", mode: "tts", model: "realtime-tts-2", prompt: [reference("the script the Agent wrote")] },
+        { role: "generate", type: "audio", name: "Voice", mode: "tts", model: "realtime-tts-2", prompt: [{ ref: 0 }] },
       ],
       edges: [{ fromIndex: 0, toIndex: 1 }],
       rationale: "",
       groupName: "Voice",
     };
-    expect(checkProposal(proposal)).toMatchObject({ ok: false, reason: expect.stringContaining("takes no reference or note mark") });
+    expect(checkProposal(proposal)).toMatchObject({ ok: false, reason: expect.stringContaining("takes no ref or note") });
   });
 
   it("leaves plain brackets the prompt means as words alone", () => {
-    expect(checkProposal(edit([CHARACTER], [reference("the generated character"), { text: " at night [cinematic] {wide}" }]))).toEqual({ ok: true });
+    expect(checkProposal(edit([CHARACTER], [...AT_CHARACTER, { text: " at night [cinematic] {wide}" }]))).toEqual({ ok: true });
   });
 });
 
 describe("the templates as the agent is shown them", () => {
-  it("lists each prompt as the segments to send, labels without the words the canvas adds", () => {
+  it("lists each prompt as the segments to send, each reference as a ref, labels without the words the canvas adds", () => {
     const said = makeProposeCanvasAction().description ?? "";
     for (const template of GENERATION_TEMPLATES) {
       for (const segment of templatePrompt(template)) {
-        if (segment.slot) expect(said).toContain(JSON.stringify({ slot: segment.slot }));
+        if (segment.slot?.kind === "asset") expect(said).toContain(`{"ref": <index of the node wired in for ${segment.slot.label}>}`);
+        else if (segment.slot) expect(said).toContain(JSON.stringify({ slot: segment.slot }));
       }
     }
     expect(said).not.toContain(t("canvas.promptMark.reference", { label: "" }).trim());
   });
-
-  it("says on a reference label that the words asking the reader to @ are added for it", () => {
-    expect(JSON.stringify(inputSchema.toJSONSchema())).toMatch(/added for you/);
-  });
 });
 
 describe("what the agent is told about marks", () => {
-  it("says the reader @s by hand and keeps no pairing or ref mark", () => {
+  it("says a ref @s a node by its index, and no longer speaks of asset marks or the reader @ing by hand", () => {
     const said = JSON.stringify(inputSchema.toJSONSchema()) + (makeProposeCanvasAction().description ?? "");
-    expect(said).not.toMatch(/\bref\b|k-th|pairs with/);
-    expect(said).toMatch(/@/);
-    expect(said).toMatch(/note/);
+    expect(said).toMatch(/An @ of the node at this index in nodes/);
+    expect(said).not.toMatch(/asset mark|asset segment|@s it by hand|@s every reference by hand/);
+  });
+
+  it("asks for the prompt written up from what the reader asked, their exact words only when they ask for that", () => {
+    const prompt = inputSchema.shape.nodes.element.shape.prompt.description ?? "";
+    expect(prompt).toMatch(/Write it up from what the reader asked for; copy their words exactly only when they ask for that/);
   });
 
   it("asks for the prompt in the language the reader writes in", () => {
@@ -574,7 +627,7 @@ describe("a note for every node going into a slot (design 5.7, user 2026-10-08)"
       rationale: "",
       groupName: "Clip",
     };
-    expect(checkProposal(proposal)).toMatchObject({ ok: false, reason: expect.stringMatching(/"First frame" into image.*0 note/s) });
+    expect(checkProposal(proposal)).toMatchObject({ ok: false, reason: expect.stringMatching(/"First frame" \(going into image\), and carries 0/s) });
   });
 
   /**
@@ -613,7 +666,7 @@ describe("a note for every node going into a slot (design 5.7, user 2026-10-08)"
     const picture: ProposalNode = { role: "source", type: "image", name: "Photo" };
     const proposal = unwired(picture, {
       role: "generate", type: "image", name: "Edit", mode: "i2i", model: "qwen-image-edit-multiple-angles",
-      prompt: [{ text: "turn " }, reference("the photo")],
+      prompt: [{ text: "turn the photo" }],
     });
     expect(checkProposal(proposal)).toEqual({ ok: true });
   });
@@ -678,20 +731,20 @@ describe("notes in a multi-shot node", () => {
       rationale: "",
       groupName: "Clip",
     };
-    expect(checkProposal(proposal)).toMatchObject({ ok: false, reason: expect.stringContaining("notes into the shots") });
+    expect(checkProposal(proposal)).toMatchObject({ ok: false, reason: expect.stringContaining("its words, refs and notes go in the shots") });
     expect(inputSchema.shape.nodes.element.shape.shots.description ?? "").toMatch(/notes go in a shot too/);
   });
 });
 
 describe("a label that would not read back", () => {
   it("refuses a line break, which the box splits into two paragraphs", () => {
-    expect(inputSchema.safeParse(edit([CHARACTER], [reference("the\nhero"), { text: " at night" }])).success).toBe(false);
+    expect(inputSchema.safeParse(edit([CHARACTER], [...AT_CHARACTER, { slot: { kind: "tweak", label: "the\nhero", note: "x" } }, { text: " at night" }])).success).toBe(false);
   });
 });
 
 describe("a mark typed across two text segments", () => {
   it("is still read as a mark typed into the words", () => {
-    const answer = checkProposal(edit([CHARACTER], [reference("the generated character"), { text: " Use [📎 the " }, { text: "photo] at night." }]));
+    const answer = checkProposal(edit([CHARACTER], [...AT_CHARACTER, { text: " Use [📎 the " }, { text: "photo] at night." }]));
     expect(answer).toMatchObject({ ok: false, reason: expect.stringContaining("types 1 mark") });
   });
 });

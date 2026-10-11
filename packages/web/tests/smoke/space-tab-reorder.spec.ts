@@ -16,9 +16,9 @@
  *
  *   pnpm --filter @breatic/web test:smoke
  */
-import { expect, test } from 'playwright/test';
+import { expect } from 'playwright/test';
 
-import { dragTabOnto, tabOrder } from '../helpers/tab-strip';
+import { dragTabOnto, tabOrder, test } from '../helpers/tab-strip';
 
 test('reopening the project comes back to the order the drag produced', async ({
   page,

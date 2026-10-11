@@ -11,7 +11,7 @@ import { resolve } from "node:path";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import { setLocale, setLocaleMessages } from "@shared/i18n/index.js";
-import { markText, markedSegments, promptPlainText, promptTextOf } from "@shared/types/canvas-proposal";
+import { markText, markedSegments, marksTypedIn, promptPlainText, promptTextOf } from "@shared/types/canvas-proposal";
 
 beforeAll(() => {
   for (const locale of ["en", "zh-CN"]) {
@@ -79,7 +79,35 @@ describe("markedSegments", () => {
 describe("promptTextOf and promptPlainText", () => {
   it("measure the reference and fill-in marks and leave the note out", () => {
     const segments = markedSegments("(💡 Pick a frame)She walks in [📎 the photo]. {✏️ mood}");
-    expect(promptTextOf(segments)).toBe("She walks in [📎 Use @ to pick the photo]. {✏️ mood}");
+    expect(promptTextOf(segments, () => "")).toBe("She walks in [📎 Use @ to pick the photo]. {✏️ mood}");
     expect(promptPlainText(segments)).toBe("She walks in [📎 Use @ to pick the photo]. {✏️ mood}");
+  });
+});
+
+describe("a reference to a proposed node (inner#1315)", () => {
+  it("counts each @ as the words it sends, as often as it is written", () => {
+    const segments = [{ text: "Sing " }, { ref: 0 }, { text: " then " }, { ref: 0 }];
+
+    expect(promptTextOf(segments, (ref) => (ref === 0 ? "la la" : ""))).toBe("Sing la la then la la");
+  });
+
+  it("counts an @ as the empty words it is given", () => {
+    expect(promptTextOf([{ text: "Look at " }, { ref: 1 }], () => "")).toBe("Look at ");
+  });
+});
+
+describe("marksTypedIn", () => {
+  it("gives each mark typed into words, read as markedSegments reads it and as it is written there, in order", () => {
+    const words = "(💡 Pick a frame) Use [📎 a photo] to show {✏️ the story}.";
+    expect(marksTypedIn(words)).toEqual([
+      { slot: { kind: "note", label: "Pick a frame" }, text: "(💡 Pick a frame)", at: 0 },
+      { slot: { kind: "asset", label: "a photo", note: "a photo" }, text: "[📎 a photo]", at: 22 },
+      { slot: { kind: "tweak", label: "the story", note: "the story" }, text: "{✏️ the story}", at: 43 },
+    ]);
+    expect(marksTypedIn(words).map(({ slot }) => slot)).toEqual(markedSegments(words).flatMap((part) => (part.slot ? [part.slot] : [])));
+  });
+
+  it("gives nothing for words with no mark", () => {
+    expect(marksTypedIn("Plain words (and a bracket).")).toEqual([]);
   });
 });

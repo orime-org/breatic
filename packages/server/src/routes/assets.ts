@@ -42,7 +42,7 @@ import {
 } from "@breatic/domain";
 import { openUpload } from "@server/modules/asset/upload-opening.js";
 import { noteIngestSideEffects } from "@server/modules/asset/ingest-side-effects.js";
-import { safeExt } from "@server/modules/asset/sourceUrl.js";
+import { safeExt } from "@breatic/domain";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";

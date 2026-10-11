@@ -304,10 +304,10 @@ describe("search_images: what comes back", () => {
 });
 
 describe("search_images: what the model reads", () => {
-  it("tells the model it has not seen these pictures", async () => {
-    // It has the titles and nothing else. Without this line the model writes
-    // "the second one fits your mood best" over images it never received, and
-    // the reader is looking straight at them.
+  it("tells the model it has not seen these pictures, and how one is saved", async () => {
+    // It has the titles and addresses and nothing else. Without this line the
+    // model writes "the second one fits your mood best" over images it never
+    // received, and the reader is looking straight at them.
     httpRequestMock.mockImplementation(async () => imagesOk([braveResult(), braveResult()]));
 
     const text = await runForModel({ query: "cyberpunk city" });
@@ -316,9 +316,23 @@ describe("search_images: what the model reads", () => {
     // -- "has not seen" -- is also in "the user has not seen these pictures",
     // which instructs the model in the opposite direction and would pass.
     expect(text).toContain(
-      "You have not seen these pictures -- you have their titles and nothing else -- " +
-        "so do not describe, rank or compare what is in them.",
+      "You have not seen these pictures -- you have their titles and addresses and nothing else -- " +
+        "so do not describe, rank or compare what is in them. To use one, give its address to " +
+        "save_image exactly as written.",
     );
+  });
+
+  it("gives each picture its thumbnail's address, the copy storage takes", async () => {
+    // Without an address the model has no picture it can save, and goes
+    // looking for one through page searches until the turn runs out. The
+    // original is in whatever format its site chose (a GIF or AVIF is
+    // refused); the thumbnail is the one the row shows and canvas copy saves.
+    httpRequestMock.mockImplementation(async () => imagesOk([braveResult({ title: "Neon rain", source: "magnific.com" })]));
+
+    const text = await runForModel({ query: "cyberpunk city" });
+
+    expect(text).toMatch(/^1\. Neon rain \(magnific\.com\)\n {3}address: https:\/\/imgs\.search\.brave\.com\/sig\/rs:fit:500:0:1:0\/g:ce\/aHR0cHM6$/m);
+    expect(text).not.toContain("img.magnific.com");
   });
 
   it("states the query and how many came back", async () => {
@@ -332,15 +346,15 @@ describe("search_images: what the model reads", () => {
     expect(text).toMatch(/\b3\b/);
   });
 
-  it("spends no tokens on addresses the model has no use for", async () => {
-    // Nothing downstream asks the model for an address: the panel reads the
-    // structured answer. Two long URLs per result would be the bulk of this
-    // text and would buy nothing.
+  it("gives one address per picture and leaves out the page it was found on", async () => {
+    // save_image takes one address; the page and the second picture address
+    // would be the bulk of this text and nothing the model does takes them.
     httpRequestMock.mockImplementation(async () => imagesOk([braveResult()]));
 
     const text = await runForModel({ query: "cyberpunk city" });
 
-    expect(text).not.toContain("http");
+    expect(text.match(/https?:\/\//g)).toHaveLength(1);
+    expect(text).not.toContain("www.magnific.com/free-photos-vectors");
   });
 
   it("numbers each result and names it", async () => {

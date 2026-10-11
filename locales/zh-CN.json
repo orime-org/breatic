@@ -305,6 +305,7 @@
       "searchingImages": "正在找「{query}」的图片",
       "checkingCanvas": "正在查画布能做什么",
       "proposingNodes": "正在拟一份提议",
+      "savingImage": "正在保存图片",
       "checkingModels": "正在查可用的模型",
       "readingGuide": "正在查产品怎么用",
       "understanding": "正在查看媒体",
@@ -694,6 +695,7 @@
         "loadFailed": "3D 视图加载失败，刷新页面后可用"
       },
       "editMarks": "请替换中括号和大括号里的内容。橙色的注意事项不会发给模型。",
+      "editProposalMarks": "请替换大括号里的内容。橙色的注意事项不会发给模型。",
       "notePrefix": "注意事项："
     },
     "nodeMenu": {

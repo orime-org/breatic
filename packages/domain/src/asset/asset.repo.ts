@@ -117,6 +117,36 @@ export async function findLiveInStudio(
 }
 
 /**
+ * A live asset row by its storage key, only when it belongs to `studioId`.
+ *
+ * What an address in our storage names: a key, and the ledger row registered
+ * under it. An agent's proposal hands material over by address (inner#1315),
+ * so this is how the check learns whether the address is this studio's and
+ * what it holds.
+ * @param studioId - The studio the row must belong to.
+ * @param storageKey - The object's storage key.
+ * @returns The `StudioAssetEntity`, or null when no live row of that studio
+ *   has the key.
+ */
+export async function findLiveByKeyInStudio(
+  studioId: string,
+  storageKey: string,
+): Promise<StudioAssetEntity | null> {
+  const rows = await db
+    .select()
+    .from(studioAssets)
+    .where(
+      and(
+        eq(studioAssets.storageKey, storageKey),
+        eq(studioAssets.studioId, studioId),
+        isNull(studioAssets.deletedAt),
+      ),
+    )
+    .limit(1);
+  return rows[0] ? toEntity(rows[0]) : null;
+}
+
+/**
  * An asset row by id, deleted or not.
  * @param assetId - The row's id.
  * @returns The `StudioAssetEntity`, or null when no row has that id.

@@ -23,12 +23,16 @@
  * second time.
  */
 
-import { coverKeyFor, env, getStorageConfig, idleSocketDispatcher } from "@breatic/core";
+import { budgetDeadlineFrom, coverKeyFor, env, getStorageConfig, idleSocketDispatcher } from "@breatic/core";
 import {
   fetchUrlToIngest,
   finishUploadAtIngest,
+  INGEST_NO_ANSWER,
+  INGEST_REFUSED_UNNAMED,
+  INGEST_TYPE_NOT_REPORTED,
   sendBytesToIngest,
   assertBeforeDeadline,
+  UploadHttpError,
   type IngestTarget,
   type StudioAssetEntity,
   type UploadClientConfig,
@@ -36,6 +40,8 @@ import {
 import { issueUploadGrant } from "@domain/asset/upload-grant.service.js";
 import { mediaLimits } from "@domain/asset/asset.service.js";
 import { signTicketFor } from "@domain/asset/upload-ticket.service.js";
+import { extFromUrl } from "@domain/asset/source-url.js";
+import { storedTypeOf, TYPE_UNKNOWN } from "@domain/asset/reader-source.js";
 import {
   applyIngestReport,
   type IngestReportOutcome,
@@ -121,8 +127,8 @@ export interface BackendUploadContext {
   projectId: string;
   /** Who this is attributed to. */
   actingUserId: string;
-  /** What the resulting asset is: a generation's output, or a video's cover. */
-  assetSource: Extract<StudioAssetEntity["source"], "ai" | "cover">;
+  /** What the resulting asset is: a generation's output, a video's cover, or a link the agent saved. */
+  assetSource: Extract<StudioAssetEntity["source"], "ai" | "cover" | "agent">;
   /** The generation that produced these bytes, when one did. */
   generationTaskId?: string;
   /** The key's task segment, which also decides its extension. */
@@ -148,6 +154,9 @@ export interface BackendUploadContext {
  * @param ctx - What this upload is and who it belongs to.
  * @param declaredSize - The byte size, when it is known; the ceiling on the
  *   number of parts otherwise.
+ * @param typeFromSource - Whether the Worker takes the type off the source
+ *   rather than storing what the ticket signs; set for a link nobody here has
+ *   seen into.
  * @returns The key this upload writes to, the signed ticket, and where to send
  *   it.
  * @throws {NotFoundError} When the project does not exist or is soft-deleted.
@@ -155,6 +164,7 @@ export interface BackendUploadContext {
 async function openBackendUpload(
   ctx: BackendUploadContext,
   declaredSize: number,
+  typeFromSource = false,
 ): Promise<{ storageKey: string; target: IngestTarget }> {
   const { ingest } = getStorageConfig();
   const expiresAt = Date.now() + ingest.ticket_expires_seconds * 1000;
@@ -182,6 +192,7 @@ async function openBackendUpload(
       userId: ctx.actingUserId,
       declaredSize,
       contentType: ctx.contentType,
+      ...(typeFromSource && { typeFromSource: true }),
       expiresAt,
       deadlineAt: ctx.deadlineAt,
     }),
@@ -295,4 +306,158 @@ export async function transferUrlToStorage(
     }),
     `the transfer of ${sourceUrl}`,
   );
+}
+
+/** Why a reader's link did not land: the reason the grant was settled with. */
+export class ReaderUrlTransferError extends Error {
+  /**
+   * A refusal carrying the reason its grant was settled with.
+   * @param reason - The failure reason the grant was settled with, one the
+   *   Worker named or one of the ingest failure sentinels.
+   * @param reported - The type the Worker reported, when that is what was refused.
+   * @throws {never} Never.
+   */
+  constructor(
+    readonly reason: string,
+    readonly reported?: string,
+  ) {
+    super(`the link did not land: ${reason}`);
+    this.name = "ReaderUrlTransferError";
+  }
+}
+
+/**
+ * Have the Worker pull a link somebody other than a provider handed over into
+ * R2, and wait for it (inner#1315: the agent's save).
+ *
+ * The canvas paste takes the same link through a queue because a node waits
+ * on it; the agent asks for the answer inside its turn, so this runs in the
+ * request. Nobody here knows what the link holds, so the ticket lets the
+ * Worker take the type off the source, and what is registered is the type it
+ * judged. A transfer that does not land settles its grant before it is
+ * reported, the way the queued lane settles its task.
+ * @param sourceUrl - The link, already checked against `readerUrlSchema`.
+ * @param who - The project the bytes are charged to, and who asked.
+ * @param who.projectId - The project; it decides the owner studio.
+ * @param who.actingUserId - Who the asset is attributed to.
+ * @param signal - Raised when nobody wants the answer any more.
+ * @returns The registered asset, as the report handler filed it, with the key
+ *   it was stored under for the caller's log lines.
+ * @throws {NotFoundError} When the project does not exist or is soft-deleted.
+ * @throws {ReaderUrlTransferError} When the link did not land, with the reason
+ *   its grant was settled with.
+ * @throws {Error} When the report filed nothing.
+ */
+export async function transferReaderUrlToStorage(
+  sourceUrl: string,
+  who: { projectId: string; actingUserId: string },
+  signal?: AbortSignal,
+): Promise<StoredAsset & { storageKey: string }> {
+  const { upload } = getStorageConfig();
+  // The grant this opens runs out where any upload's does: two hours on.
+  const deadlineAt = budgetDeadlineFrom(Date.now());
+  const opened = await openBackendUpload(
+    {
+      ...who,
+      assetSource: "agent",
+      taskType: "url",
+      ext: extFromUrl(sourceUrl),
+      contentType: TYPE_UNKNOWN,
+      deadlineAt,
+    },
+    upload.max_upload_bytes,
+    true,
+  );
+
+  const pulled = await pullReaderLink(opened.storageKey, opened.target, sourceUrl, deadlineAt, signal);
+  if (pulled.status === "failed") throw new ReaderUrlTransferError(pulled.reason, pulled.reported);
+  // A rejected report turned down what the link sent (nothing, or too much):
+  // the same link gets the same answer again.
+  if (pulled.outcome.status === "rejected") throw new ReaderUrlTransferError(pulled.outcome.reason);
+  const stored = landed(pulled.outcome, `the transfer of ${sourceUrl}`);
+  return { ...stored, storageKey: opened.storageKey };
+}
+
+/**
+ * Settle a grant whose transfer did not land, keeping why it did not land
+ * when settling fails too.
+ * @param storageKey - The key the grant was opened on.
+ * @param reason - Why the transfer did not land.
+ * @param cause - What the transfer threw, or what it was refused over.
+ * @returns What settling decided.
+ * @throws {AggregateError} When settling fails, carrying the transfer's cause and the settling error.
+ */
+async function settleAborted(storageKey: string, reason: string, cause: unknown): Promise<IngestReportOutcome> {
+  try {
+    return await applyIngestReport({ storageKey, outcome: "aborted", reason });
+  } catch (settleErr) {
+    throw new AggregateError([cause, settleErr], `settling the grant for ${storageKey} failed after the link did not land: ${reason}`);
+  }
+}
+
+/** How pulling a reader's link ended: settled before any bytes were judged, or reported. */
+export type ReaderLinkPull =
+  | {
+      status: "failed";
+      /** The reason the grant was settled with. */
+      reason: string;
+      /** What settling it decided. */
+      settled: IngestReportOutcome;
+      /** What the transfer threw, when it threw. */
+      err?: unknown;
+      /** The type the Worker reported, when that is what was refused. */
+      reported?: string;
+    }
+  | { status: "reported"; outcome: IngestReportOutcome };
+
+/**
+ * Have the Worker pull a reader's link into the object a ticket names, and
+ * file what came of it: the one flow both lanes for a reader's link run (the
+ * canvas paste through the worker's queue, the agent's save in its request).
+ * Either way the grant ends settled; what each lane says about it is its own.
+ * @param storageKey - The key the grant was opened on.
+ * @param target - The signed ticket.
+ * @param url - The link.
+ * @param deadlineAt - When the upload's task runs out; the transfer and the
+ *   wait for it end there.
+ * @param signal - Raised when nobody wants the answer any more.
+ * @returns How it ended.
+ * @throws {AggregateError} When settling a grant whose transfer did not land
+ *   fails, carrying why it did not land and the settling error.
+ * @throws {Error} When filing a landed outcome fails.
+ */
+export async function pullReaderLink(
+  storageKey: string,
+  target: Parameters<typeof fetchUrlToIngest>[1],
+  url: string,
+  deadlineAt: number,
+  signal?: AbortSignal,
+): Promise<ReaderLinkPull> {
+  let measured;
+  try {
+    measured = await fetchUrlToIngest(
+      url,
+      target,
+      env.INGEST_SHARED_SECRET,
+      { coverKey: coverKeyFor(storageKey), deadlineAt, limits: mediaLimits() },
+      signal,
+    );
+  } catch (err) {
+    // An UploadHttpError exists only because an answer arrived, so a missing
+    // name on it is the Worker refusing without saying why. Only the absence
+    // of any answer is the source running out of time.
+    const reason =
+      err instanceof UploadHttpError ? (err.code ?? INGEST_REFUSED_UNNAMED) : INGEST_NO_ANSWER;
+    const settled = await settleAborted(storageKey, reason, err);
+    return { status: "failed", reason, settled, err };
+  }
+
+  const storedType = storedTypeOf(measured.contentType);
+  if (storedType === null) {
+    const settled = await settleAborted(storageKey, INGEST_TYPE_NOT_REPORTED, `the Worker reported ${measured.contentType}`);
+    return { status: "failed", reason: INGEST_TYPE_NOT_REPORTED, settled, reported: measured.contentType };
+  }
+
+  const outcome = await applyIngestReport({ storageKey, outcome: "completed", ...measured, contentType: storedType });
+  return { status: "reported", outcome };
 }

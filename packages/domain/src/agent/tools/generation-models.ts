@@ -9,7 +9,6 @@ import { z } from "zod";
 
 import {
   CAMERA_COMMANDS_PER_BRACKET,
-  canConnect,
   cameraCommandBracket,
   formatCredits,
   GENERATION_NODE_MODES,
@@ -24,10 +23,10 @@ import {
   waysIn,
   type ModelInfo,
   type ModelsForMode,
-  type WayIn,
   type WayKind,
 } from "@domain/model-catalog/mode-catalog.js";
 import { estimateModelCredits } from "@domain/model-catalog/model-catalog.js";
+import { entriesFor, entryPhrase, holdingsOf, holdingSubject, type Entry } from "@domain/agent/tools/proposal-routing.js";
 import { GET_PRODUCT_GUIDE } from "@domain/agent/tools/tool-names.js";
 
 /** One model with what a run at its defaults costs, when the catalog prices it. */
@@ -86,6 +85,16 @@ function renderStoryboard(model: PricedModelInfo): string {
 }
 
 /**
+ * Where this model's words are written, and so where a mention of a node
+ * wired into it goes: in the multi-shot mode each shot holds its own words.
+ * @param model - The model.
+ * @returns "a shot" or "the prompt".
+ */
+function wordsBox(model: PricedModelInfo): string {
+  return model.storyboard ? "a shot" : "the prompt";
+}
+
+/**
  * Which camera commands this model reads out of its prompt and how to write
  * them, as MiniMax documents the syntax.
  * @param model - The model to describe.
@@ -94,29 +103,42 @@ function renderStoryboard(model: PricedModelInfo): string {
 function renderCameraCommands(model: PricedModelInfo): string {
   const commands = model.cameraCommands;
   if (!commands || commands.length === 0) return "";
-  const where = model.storyboard ? " into the shot it belongs to" : " into the prompt";
   return (
-    ` Reads camera commands written${where}: ${commands.map((c) => cameraCommandBracket([c])).join(" ")}.` +
+    ` Reads camera commands written into ${wordsBox(model)}: ${commands.map((c) => cameraCommandBracket([c])).join(" ")}.` +
     ` Commands inside one bracket, comma-separated with no space, as in ${cameraCommandBracket(["Truck left", "Push in"])}, run at the same time, at most ${CAMERA_COMMANDS_PER_BRACKET} in one bracket;` +
     ` separate brackets run in the order they appear; never put the opposite directions of one axis, or ${cameraCommandBracket([STATIC_SHOT])} with a movement, in one bracket.`
   );
 }
 
 /**
- * What one way in says about itself: where the node lands, how many it takes,
- * and what the prompt carries for each.
- * @param kind - The kind of node going this way.
- * @param way - The way.
- * @returns The words inside the brackets after its name.
+ * What a run in this mode needs before it can start, as the panel holds a
+ * run in this mode to it: each requirement as its one param, or one of its
+ * params where any one is enough.
+ * @param model - The model.
+ * @returns The sentence, or the empty string for a model that needs nothing.
  */
-function wayWords(kind: WayKind, way: WayIn): string {
+function renderNeeds(model: PricedModelInfo): string {
+  if (model.needs.length === 0) return "";
+  const each = model.needs.map((need) => `${need.length === 1 ? `"${String(need[0])}"` : `one of ${need.map((param) => `"${param}"`).join(", ")}`} holds a node`);
+  return ` It runs only when ${each.join(" and ")}.`;
+}
+
+/**
+ * One entry, as the listing says it: where the node lands, how many it takes,
+ * and how the proposal sends it, in the words the refusals use.
+ * @param kind - The kind of node going this way.
+ * @param entry - The entry, as the proposal check reads it.
+ * @param box - Where the model's words are written.
+ * @returns The phrase.
+ */
+function entryWords(kind: WayKind, entry: Entry, box: string): string {
+  const { way } = entry;
   const where =
     way.into === "pool"
-      ? kind === "text" ? "@'d into the prompt" : "the reference pool"
-      : way.into === PANEL_EDITOR_PARAM ? "@'d into the lyrics box" : "a slot";
-  const room = Number.isFinite(way.room) ? `, at most ${String(way.room)}` : "";
-  const mark = way.mark === "asset" ? "an asset mark each" : "a note each";
-  return `${where}${room}, ${mark}`;
+      ? kind === "text" ? box : "the reference pool"
+      : way.into === PANEL_EDITOR_PARAM ? "the lyrics box" : "a slot";
+  const room = Number.isFinite(way.room) ? ` (at most ${String(way.room)})` : "";
+  return `${where}${room} ${entryPhrase(entry)}`;
 }
 
 /**
@@ -153,30 +175,26 @@ function renderModel(model: PricedModelInfo): string {
   // Where a node reaching the model goes and what the prompt carries for it, read off
   // the same ways the proposal check reads (design 5.7 tables A and D).
   const ways = waysIn(model);
-  const routing = [...ways]
-    .map(([kind, list]) => {
-      const each = list.map((way) => `"${way.into}" (${wayWords(kind, way)})`);
-      // The canvas will not wire this kind into the node: its slots are
-      // filled by picking a node in the panel.
-      if (!canConnect(kind, model.nodeType)) {
-        const into = list.map((way) => `"${way.into}"`).join(" or ");
-        return ` Each ${kind} node is picked into ${into} in the panel, not wired in (${list.map((way) => wayWords(kind, way)).join("; ")}).`;
-      }
-      return list.length > 1
-        ? ` Each ${kind} node wired in goes one of ${String(list.length)} ways; say which on its edge with into: ${each.join(" or ")}.`
-        : list[0] !== undefined && list[0].into !== "pool"
-          ? ` Each ${kind} node wired in goes into ${each[0] ?? ""}.`
-          : "";
+  const routing = [...ways.keys()]
+    .map((kind) => {
+      const said = holdingsOf(kind).map((holding) => ({ holding, entries: entriesFor(model, kind, holding) }));
+      // A kind that only goes into the pool is @'d like any mention, and
+      // needs no line of its own.
+      if (said.every(({ entries }) => entries.every((entry) => entry.way.into === "pool"))) return "";
+      return said
+        .filter(({ entries }) => entries.length > 0)
+        .map(({ holding, entries }) => ` ${holdingSubject(kind, holding)} goes into ${entries.map((entry) => entryWords(kind, entry, wordsBox(model))).join(", or into ")}.`)
+        .join("");
     })
     .join("");
-  // Words wired in can always be @'d into a box that is drawn, so an asset
-  // mark on a model whose material arrives only by slot can ask for nothing else.
-  const mediaToAt = [...ways].some(([kind, list]) => kind !== "text" && list.some((way) => way.mark === "asset"));
+  // Words wired in can always be @'d into a box that is drawn, so a ref on a
+  // model whose material arrives only by slot can only @ a text node.
+  const mediaToAt = [...ways].some(([kind, list]) => kind !== "text" && list.some((way) => way.mark === "ref"));
   const wordsOnly =
     model.takesPrompt && !mediaToAt
-      ? " Nothing wired in but a text node can be @'d here, so an asset mark can only ask for words."
+      ? " Nothing wired in but a text node can be @'d here, so a ref can only @ words."
       : "";
-  const head = `- ${model.displayName} (${model.name}) (${price}up to ${model.seconds}s${cap}): ${model.what}${prompt}${unreachable}${also}${routing}${wordsOnly}${renderStoryboard(model)}${renderCameraCommands(model)}`;
+  const head = `- ${model.displayName} (${model.name}) (${price}up to ${model.seconds}s${cap}): ${model.what}${prompt}${unreachable}${also}${routing}${renderNeeds(model)}${wordsOnly}${renderStoryboard(model)}${renderCameraCommands(model)}`;
   const params = Object.entries(model.params).filter(([, spec]) => !spec.fromStoryboard).map(([name, spec]) => {
     // Shape and cap belong to the parameter, so they are stated whatever else
     // it says about itself -- including for a slot, where together they are
@@ -191,9 +209,9 @@ function renderModel(model: PricedModelInfo): string {
     // for neither, because the reader does neither -- it is the person at the
     // canvas who fills both.
     // The lyrics box is a box of its own on the panel: words reach it as a
-    // text node the reader @s there, the lyrics way of the routing line.
+    // text node @'d there at landing, the lyrics way of the routing line.
     if (name === PANEL_EDITOR_PARAM) {
-      return `    ${name}: the lyrics box on the panel, not set here; send words you wrote as a text node wired in with into: "${name}" and a note. ${spec.what}`;
+      return `    ${name}: the lyrics box on the panel, not set here; send words you wrote as a text node wired in with into: "${name}", which is @'d there for you. ${spec.what}`;
     }
     if (spec.filledBySource) {
       // Which gesture fills it is said here, since the shape a proposal takes
@@ -201,7 +219,7 @@ function renderModel(model: PricedModelInfo): string {
       // product guide the description points at. The pool is filled by an
       // edge and then a mention; a slot is picked on the canvas.
       const how = spec.fromReferencePool
-        ? "filled on the canvas, not typed here, by an edge into this node, then a mention of it in the prompt"
+        ? `filled on the canvas, not typed here, by an edge into this node, then a mention of it in ${wordsBox(model)}`
         : "filled from another node on the canvas through a source slot, not typed here; leave it unset";
       return `    ${name}:${shape}${howMany} ${how}. ${spec.what}`;
     }

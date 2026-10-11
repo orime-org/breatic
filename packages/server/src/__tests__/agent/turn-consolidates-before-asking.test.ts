@@ -287,7 +287,16 @@ async function sentLength(): Promise<number> {
   const { measureMessages } = await import("@server/agent/payload-size.js");
   const call = thisCase.sent;
   if (call === null) throw new Error("the model was never called");
-  return measureMessages(call.prompt as never) + JSON.stringify(call.tools ?? []).length;
+  // Each tool as the budget's ruler counts it -- name, description and input
+  // schema -- applied to the definitions the provider was handed. Stringifying
+  // the whole list instead adds its keys, brackets and the backslash before
+  // every quote a description holds, which the budget does not count.
+  const tools = (call.tools ?? []) as Array<{ name: string; description?: string; inputSchema?: unknown }>;
+  const toolLength = tools.reduce(
+    (sum, t) => sum + t.name.length + (t.description?.length ?? 0) + JSON.stringify(t.inputSchema ?? {}).length,
+    0,
+  );
+  return measureMessages(call.prompt as never) + toolLength;
 }
 
 describe("an ordinary turn", () => {
