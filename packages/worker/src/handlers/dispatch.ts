@@ -492,19 +492,6 @@ async function runTaskBody(
   const storedTaskId = existing?.providerTaskId ?? null;
   // Each paid call that may repeat writes its own duplicate-cost warning.
   const retryStarting = await reportRetryOnce(job, { taskId, storedTaskId });
-  /**
-   * The resume context for a run held to this deadline.
-   * @param runDeadlineAt - When the task runs out, in epoch ms.
-   * @returns The context.
-   */
-  const resumeUntil = (runDeadlineAt: number): ResumeContext => ({
-    storedTaskId,
-    persistTaskId: (id: string): Promise<void> =>
-      taskService.recordProviderTaskId(taskId, id),
-    externalTaskId: `breatic-${taskId}`,
-    retryStarting,
-    deadlineAt: runDeadlineAt,
-  });
   // A container job keeps its id from the first submit, so a pickup never submits it twice.
   const containerRun = source === "mini_tool" && toolId !== undefined && miniToolById(toolId)?.run.kind === "container";
 
@@ -533,6 +520,14 @@ async function runTaskBody(
   try {
     deadlineAt = await taskDeadline(taskId, existing?.createdAt);
     if (!containerRun) delayUntil = deadlineAt;
+    const resume: ResumeContext = {
+      storedTaskId,
+      persistTaskId: (id: string): Promise<void> =>
+        taskService.recordProviderTaskId(taskId, id),
+      externalTaskId: `breatic-${taskId}`,
+      retryStarting,
+      deadlineAt,
+    };
     if (source === "mini_tool" && toolId) {
       [providerResult, creditsUsed] = await runMiniTool({
         toolId,
@@ -541,7 +536,7 @@ async function runTaskBody(
         userId,
         projectId,
         taskId,
-        resume: resumeUntil(deadlineAt),
+        resume,
       });
     } else if (taskType === "understand") {
       // A reading answers with one piece of text, and the row on the node it
@@ -569,7 +564,7 @@ async function runTaskBody(
       );
     } else if (taskType in AIGC_TASK_TYPES) {
       [providerResult, creditsUsed] = await runAigcDirect(taskType, model, params, {
-        resume: resumeUntil(deadlineAt),
+        resume,
         taskId,
         projectId: projectId ?? undefined,
         outputCount: 1,
