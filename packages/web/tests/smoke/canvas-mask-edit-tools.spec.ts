@@ -25,7 +25,7 @@ import { CANVAS_SPACE, liveModuleUrl } from '../helpers/live-module';
 import { openTool, seedNode, setNodeContent, zoomBy } from '../helpers/mini-tool';
 import { openSmokeProject, smokeProjectId } from '../helpers/project';
 import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
-import { dropFile, storedPicture, uniqueJpeg } from '../helpers/upload';
+import { dropFile, hueOf, storedPicture, uniquePicture } from '../helpers/upload';
 
 /** A public JPEG served with CORS, 400×300. */
 const IMAGE = 'https://picsum.photos/id/237/400/300.jpg';
@@ -107,12 +107,16 @@ test.beforeEach(async ({ browser }) => {
  * Drop a phone photo on the canvas through the real upload, and wait for the
  * node it lands on.
  * @param bytes - The photo's bytes.
+ * @param file - Its name and type.
  * @returns The new node, its picture's URL and whether the ticket found it stored already.
  */
-async function dropPhoto(bytes: Buffer): Promise<{ id: string; src: string; alreadyExists: boolean }> {
+async function dropPhoto(
+  bytes: Buffer,
+  file: { name: string; type: string } = { name: 'photo.jpg', type: 'image/jpeg' },
+): Promise<{ id: string; src: string; alreadyExists: boolean }> {
   const before = await visibleSpace(page).locator('.react-flow__node').evaluateAll((els) => els.map((el) => el.getAttribute('data-id')));
   const ticket = page.waitForResponse((r) => r.url().includes('/assets/upload-ticket') && r.request().method() === 'POST');
-  await dropFile(page, 'photo.jpg', 'image/jpeg', bytes);
+  await dropFile(page, file.name, file.type, bytes);
   const answered = (await (await ticket).json()) as { data: { alreadyExists?: boolean } };
   const made = visibleSpace(page).locator(`.react-flow__node${before.map((id) => `:not([data-id="${id}"])`).join('')}`);
   await expect(made).toHaveCount(1, { timeout: 30_000 });
@@ -253,25 +257,44 @@ test('the brush ring matches the stroke at 0.5, 1 and 2 times, and zooming in sh
   }
 });
 
-// inner#1367: a phone photo is stored upright, and the same file dropped again
-// is found by the ticket before a byte moves.
-test('a phone photo is stored upright, and dropping it again uploads nothing @needs-ingest @needs-storage', async () => {
-  const bytes = uniqueJpeg(EXIF_BYTES);
+// inner#1367: a phone photo is stored upright beside the file as received,
+// and the same file dropped again is found by the ticket before a byte moves.
+test('a phone photo is stored upright beside the file as received, and dropping it again uploads nothing @needs-ingest @needs-storage', async () => {
+  const bytes = uniquePicture(EXIF_BYTES);
   const first = await dropPhoto(bytes);
   expect(first.alreadyExists).toBe(false);
+  expect(first.src).toMatch(/_upright\.[a-z]+$/);
   const stored = await storedPicture(page, first.src);
-  // Stored 768×1024 with orientation 6; read without applying any orientation,
-  // the stored pixels are now the upright 1024×768.
-  expect([stored.width, stored.height]).toEqual([1024, 768]);
+  // Received 768×1024 with orientation 6; the copy is the turned pixels, untagged.
+  expect([stored.orientation, stored.width, stored.height]).toEqual([1, 1024, 768]);
+  // The file as received stays at the key without the marker, byte for byte.
+  const received = await page.request.get(first.src.replace('_upright', ''));
+  expect(received.ok()).toBe(true);
+  expect(Buffer.compare(await received.body(), bytes)).toBe(0);
 
   const again = await dropPhoto(bytes);
   expect(again.alreadyExists).toBe(true);
   expect(again.src).toBe(first.src);
 });
 
+// inner#1367: a PNG (eXIf chunk) and a WebP (EXIF chunk) tagged to turn are
+// stored upright, and the node shows them portrait, red above blue.
+for (const format of ['png', 'webp'] as const) {
+  test(`a ${format} photo tagged to turn is stored upright and shown portrait @needs-ingest @needs-storage`, async () => {
+    const picture = uniquePicture(readFileSync(join(__dirname, `../fixtures/exif6-red-top.${format}`)));
+    const photo = await dropPhoto(picture, { name: `photo.${format}`, type: `image/${format}` });
+    expect(photo.src).toMatch(/_upright\.[a-z]+$/);
+    const stored = await storedPicture(page, photo.src);
+    expect([stored.orientation, stored.width, stored.height]).toEqual([1, 768, 1024]);
+    expect([hueOf(stored.top), hueOf(stored.bottom)]).toEqual(['red', 'blue']);
+    const box = await nodeOf(photo.id).getByTestId('image-node-img').boundingBox();
+    expect(box !== null && box.height > box.width).toBe(true);
+  });
+}
+
 // §6.4: the painter and the export, pixel by pixel, on the live modules.
 test('a mask tool exports only a mask of 0 and 255 at the stored picture\'s size, and a wiped drawing has no ink @needs-internet @needs-ingest', async () => {
-  const photo = await dropPhoto(uniqueJpeg(EXIF_BYTES));
+  const photo = await dropPhoto(uniquePicture(EXIF_BYTES));
   const stored = await storedPicture(page, photo.src);
   // The dropped photo lands over the seeded node, so the tool opens on it.
   await openTool(page, photo.id, 'image.inpaint');
@@ -474,12 +497,12 @@ test.describe('real runs @needs-internet @billed', () => {
   // Both mask tools send the node's own stored picture, so their runs start
   // from a picture this run uploaded: one turned upright on ingest.
   test('inpaint fills a new node from an uploaded phone photo', async () => {
-    const photo = await dropPhoto(uniqueJpeg(EXIF_BYTES));
+    const photo = await dropPhoto(uniquePicture(EXIF_BYTES));
     await expect(await runOn(photo.id, 'image.inpaint', 'a red ball', [imageNode, photo.id])).toContainText('INPAINT-');
   });
 
   test('erase fills a new node from an uploaded phone photo', async () => {
-    const photo = await dropPhoto(uniqueJpeg(EXIF_BYTES));
+    const photo = await dropPhoto(uniquePicture(EXIF_BYTES));
     await expect(await runOn(photo.id, 'image.erase', undefined, [imageNode, photo.id])).toContainText('ERASE-');
   });
 

@@ -21,7 +21,7 @@ import { deflateSync } from 'node:zlib';
 import { test, expect, type Page } from 'playwright/test';
 
 import { openSmokeProject, smokeProjectId } from '../helpers/project';
-import { hueOf, storedPicture, uniqueJpeg } from '../helpers/upload';
+import { hueOf, storedPicture, uniquePicture } from '../helpers/upload';
 
 /**
  * A solid-colour PNG, built here so each run can use bytes of its own.
@@ -125,6 +125,22 @@ async function uploadCover(
   return ((await answer.json()) as { data: { thumbnailUrl: string } }).data.thumbnailUrl;
 }
 
+/**
+ * Open the smoke project and wait until it is recorded as opened, so it sorts
+ * first on its studio page; the account has more projects than one page shows.
+ * @param page - The page.
+ * @returns The project's id.
+ */
+async function openToTheTop(page: Page): Promise<string> {
+  const projectId = smokeProjectId('A', 1);
+  const opened = page.waitForResponse(
+    (r) => r.url().includes(`/projects/${projectId}/opened`) && r.request().method() === 'POST',
+  );
+  await openSmokeProject(page, 'A', 1);
+  expect((await opened).ok()).toBe(true);
+  return projectId;
+}
+
 test('the owner uploads and replaces a project cover @needs-storage', async ({ page }) => {
   const projectId = smokeProjectId('A', 1);
   // Opening it puts it on the Recent page, which shows the cover too.
@@ -157,14 +173,32 @@ test('the owner uploads and replaces a project cover @needs-storage', async ({ p
 // A4 (inner#1367): a phone photo picked as a cover is stored upright. Shown at
 // its EXIF orientation the sample is red above blue; the crop keeps both.
 test('a cover cut from a phone photo is stored upright @needs-storage', async ({ page }) => {
-  const projectId = smokeProjectId('A', 1);
-  await openSmokeProject(page, 'A', 1);
+  const projectId = await openToTheTop(page);
   const slug = await studioSlugOf(page, projectId);
   await page.goto(`/studio/${slug}`);
   await expect(page.getByTestId(`project-card-${projectId}`)).toBeVisible({ timeout: 15_000 });
 
-  const photo = uniqueJpeg(readFileSync(join(__dirname, '../fixtures/exif6-red-top.jpg')));
+  const photo = uniquePicture(readFileSync(join(__dirname, '../fixtures/exif6-red-top.jpg')));
   const url = await uploadCover(page, projectId, photo, { name: 'photo.jpg', mimeType: 'image/jpeg' });
   const stored = await storedPicture(page, url);
+  expect(stored.orientation).toBe(1);
   expect([hueOf(stored.top), hueOf(stored.bottom)]).toEqual(['red', 'blue']);
+});
+
+// inner#1367 §4.8b: a cover is taken as a PNG or a JPEG only, judged by the
+// bytes; a WebP is turned away before the crop dialog opens.
+test('a WebP picked as a cover is turned away before the crop @needs-storage', async ({ page }) => {
+  const projectId = await openToTheTop(page);
+  const slug = await studioSlugOf(page, projectId);
+  await page.goto(`/studio/${slug}`);
+  const card = page.getByTestId(`project-card-${projectId}`);
+  await expect(card).toBeVisible({ timeout: 15_000 });
+  await card.hover();
+  await card.getByRole('button', { name: 'More actions' }).click();
+  await page.getByRole('menuitem', { name: 'Upload cover' }).click();
+  // Named and typed as a JPEG; the bytes say WebP.
+  const webp = readFileSync(join(__dirname, '../fixtures/exif6-red-top.webp'));
+  await card.getByTestId('project-cover-input').setInputFiles({ name: 'cover.jpg', mimeType: 'image/jpeg', buffer: webp });
+  await expect(page.getByText('This file format is not supported.')).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByTestId('image-crop-dialog')).toHaveCount(0);
 });

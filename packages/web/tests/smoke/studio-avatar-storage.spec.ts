@@ -22,7 +22,7 @@ import { join } from 'node:path';
 
 import { test, expect, type Page } from 'playwright/test';
 
-import { hueOf, storedPicture, uniqueJpeg } from '../helpers/upload';
+import { hueOf, storedPicture, uniquePicture } from '../helpers/upload';
 
 
 /** A 64x64 red PNG — square, so the crop dialog opens on a valid selection. */
@@ -125,8 +125,23 @@ async function uploadAvatar(page: Page, file: { name: string; mimeType: string; 
 // at its EXIF orientation the sample is red above blue; the square crop keeps
 // both.
 test('an avatar cut from a phone photo is stored upright @needs-storage', async ({ page }) => {
-  const photo = uniqueJpeg(readFileSync(join(__dirname, '../fixtures/exif6-red-top.jpg')));
+  const photo = uniquePicture(readFileSync(join(__dirname, '../fixtures/exif6-red-top.jpg')));
   const url = await uploadAvatar(page, { name: 'photo.jpg', mimeType: 'image/jpeg', buffer: photo });
   const stored = await storedPicture(page, url);
+  expect(stored.orientation).toBe(1);
   expect([hueOf(stored.top), hueOf(stored.bottom)]).toEqual(['red', 'blue']);
+});
+
+// inner#1367 §4.8b: an avatar is taken as a PNG or a JPEG only, judged by the
+// bytes; a WebP is turned away before the crop dialog opens.
+test('a WebP picked as an avatar is turned away before the crop @needs-storage', async ({ page }) => {
+  const listed = await page.request.get('/api/v1/studios');
+  const studios = ((await listed.json()) as { data: { slug: string; type: string }[] }).data;
+  const personal = studios.find((s) => s.type === 'personal') ?? studios[0];
+  await page.goto(`/studio/${personal!.slug}/settings`);
+  await expect(page.getByTestId('avatar-upload-open')).toBeVisible({ timeout: 15_000 });
+  const webp = readFileSync(join(__dirname, '../fixtures/exif6-red-top.webp'));
+  await page.getByTestId('avatar-file-input').setInputFiles({ name: 'avatar.png', mimeType: 'image/png', buffer: webp });
+  await expect(page.getByText('This file format is not supported.')).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByTestId('image-crop-dialog')).toHaveCount(0);
 });
