@@ -15,8 +15,9 @@ import {
   env,
   createExecutionContext,
   waitOnExecutionContext,
+  fetchMock,
 } from "cloudflare:test";
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeAll, afterAll } from "vitest";
 import {
   INGEST_FAILURE_HEADER,
   previewKeyFor,
@@ -48,6 +49,35 @@ function jpeg(orientation: number): Uint8Array {
     0xff, 0xd8, 0xff, 0xe1, length >> 8, length & 0xff, ...exif,
     0xff, 0xda, 0x00, 0x02, ...new Uint8Array(200).fill(7), 0xff, 0xd9,
   ]);
+}
+
+/** A PNG chunk, its CRC left as zeros: nothing on this path checks it. */
+function pngChunk(type: string, data: Uint8Array): Uint8Array {
+  const out = new Uint8Array(12 + data.length);
+  new DataView(out.buffer).setUint32(0, data.length);
+  out.set(new TextEncoder().encode(type), 4);
+  out.set(data, 8);
+  return out;
+}
+
+/** An animated PNG (an acTL chunk ahead of IDAT) whose eXIf says `orientation`. */
+function animatedPng(orientation: number): Uint8Array {
+  const tiff = jpeg(orientation).subarray(12, 12 + 26);
+  const parts = [
+    new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    pngChunk("IHDR", new Uint8Array(13)),
+    pngChunk("acTL", new Uint8Array(8)),
+    pngChunk("eXIf", tiff),
+    pngChunk("IDAT", new Uint8Array(64)),
+    pngChunk("IEND", new Uint8Array(0)),
+  ];
+  const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
+  let at = 0;
+  for (const part of parts) {
+    out.set(part, at);
+    at += part.length;
+  }
+  return out;
 }
 
 /** A portrait 3000x4000 picture, the shape ffprobe answers with. */
@@ -353,6 +383,19 @@ describe("a picture with an EXIF orientation", () => {
 });
 
 describe("a picture shown as it is stored", () => {
+  // vips autorot writes out only an animation's first frame, so an animated
+  // picture is filed as received whatever its orientation (A15).
+  it("is answered as received when it is animated, though its orientation says to turn it", async () => {
+    const held = await uploaded(animatedPng(6));
+    const run = uprightContainer(jpeg(1));
+
+    const response = await finish(held, { media: run.media });
+
+    expect(response.status).toBe(200);
+    expect(run.asked?.upright).toBeUndefined();
+    expect(await response.json()).toMatchObject({ contentType: "image/png", upright: null });
+  });
+
   it("is answered as received when it carries orientation 1", async () => {
     const held = await uploaded(jpeg(1));
     const run = uprightContainer(jpeg(1));
@@ -362,6 +405,63 @@ describe("a picture shown as it is stored", () => {
     expect(response.status).toBe(200);
     expect(run.asked?.upright).toBeUndefined();
     expect(await response.json()).toMatchObject({ upright: null });
+  });
+});
+
+// A3: a link handed to /fetch ends in the same finishUpload, and the limits it
+// is turned under are read from that request's own body.
+describe("a picture fetched from a link", () => {
+  beforeAll(() => {
+    fetchMock.activate();
+    fetchMock.disableNetConnect();
+  });
+  afterAll(() => {
+    fetchMock.deactivate();
+  });
+
+  it("is turned upright the same way, and answered as its upright copy", async () => {
+    const bytes = jpeg(6);
+    fetchMock
+      .get("https://provider.test.example")
+      .intercept({ path: "/out.jpg", method: "GET" })
+      .reply(200, bytes, { headers: { "content-type": "image/jpeg" } });
+    const storageKey = `image/2026-10-10/${seq++}_fetched.jpg`;
+    const ticket = await signUploadTicket(
+      {
+        storageKey,
+        studioId: "studio-1",
+        userId: "user-1",
+        totalParts: 1,
+        partSize: 5 * 1024 * 1024,
+        contentType: "image/jpeg",
+        expiresAt: Date.now() + 300_000,
+        deadlineAt: DEADLINE_AT,
+      },
+      env.INGEST_SHARED_SECRET,
+    );
+    const run = uprightContainer(jpeg(1));
+    const ctx = createExecutionContext();
+
+    const response = await worker.fetch(
+      new Request("https://ingest.example.com/fetch", {
+        method: "POST",
+        headers: { "x-ingest-secret": env.INGEST_SHARED_SECRET, "x-upload-ticket": ticket },
+        body: JSON.stringify({
+          url: "https://provider.test.example/out.jpg",
+          coverKey: storageKey.replace(/\.jpg$/, "_cover.png"),
+          deadlineAt: DEADLINE_AT,
+          limits: LIMITS,
+        }),
+      }),
+      { ...env, MEDIA: run.media },
+      ctx,
+    );
+    await waitOnExecutionContext(ctx);
+
+    expect(response.status).toBe(200);
+    const answer = await response.json<{ sha256: string; upright: { storageKey: string } | null }>();
+    expect(answer.upright?.storageKey).toBe(uprightKeyFor(storageKey));
+    expect(answer.sha256).toBe(await sha256(bytes));
   });
 });
 
