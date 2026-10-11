@@ -95,3 +95,45 @@ describe("chatMessageSchema — time_zone", () => {
     expect(chatMessageSchema.safeParse({ ...message, time_zone: "x".repeat(65) }).success).toBe(false);
   });
 });
+
+describe("chatMessageSchema — the reader's Spaces (inner#1413)", () => {
+  const message = {
+    message: "summarise this",
+    project_id: "11111111-1111-4111-8111-111111111111",
+    conversation_id: "22222222-2222-4222-8222-222222222222",
+  };
+  const space = { id: "s1", name: "Storyboard", kind: "document" as const };
+
+  it("takes the Space list, its total and the open Space", () => {
+    const parsed = chatMessageSchema.parse({
+      ...message,
+      spaces: [space, { id: "s2", name: "Cast", kind: "canvas" }],
+      spaces_total: 2,
+      current_space: { ...space, state: "loaded", content: "# Scene 1", total_chars: 9 },
+    });
+    expect(parsed.spaces).toHaveLength(2);
+    expect(parsed.spaces_total).toBe(2);
+    expect(parsed.current_space).toMatchObject({ state: "loaded", content: "# Scene 1", total_chars: 9 });
+  });
+
+  it("takes a message that carries none of them", () => {
+    const parsed = chatMessageSchema.parse(message);
+    expect(parsed.spaces).toBeUndefined();
+    expect(parsed.current_space).toBeUndefined();
+  });
+
+  it("takes an open Space whose content has not loaded or cannot be read", () => {
+    expect(chatMessageSchema.safeParse({ ...message, current_space: { ...space, state: "loading" } }).success).toBe(true);
+    expect(
+      chatMessageSchema.safeParse({ ...message, current_space: { ...space, kind: "timeline", state: "unreadable" } }).success,
+    ).toBe(true);
+  });
+
+  it("refuses a kind there is no Space type for", () => {
+    expect(chatMessageSchema.safeParse({ ...message, spaces: [{ ...space, kind: "board" }] }).success).toBe(false);
+  });
+
+  it("refuses a Space name longer than a Space can be named", () => {
+    expect(chatMessageSchema.safeParse({ ...message, spaces: [{ ...space, name: "x".repeat(81) }] }).success).toBe(false);
+  });
+});
