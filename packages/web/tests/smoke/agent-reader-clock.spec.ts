@@ -43,15 +43,21 @@ function clockIn(at: Date, timeZone: string): { date: string; minutes: number } 
   };
 }
 
+/** Words that put a 12-hour time in the afternoon or evening. */
+const AFTERNOON = /下午|晚上|傍晚|中午|午後|오후|p\.?m\.?/i;
+
 /**
  * Whether a reply states a time within the slack of the expected one.
  * @param text - The reply.
  * @param expected - Minutes since midnight on the reader's clock.
- * @returns True when some `HH:MM` in it is close enough.
+ * @returns True when some `HH:MM` in it, read on the 12-hour clock when an
+ * afternoon word sits right before or after it, is close enough.
  */
 function statesTimeNear(text: string, expected: number): boolean {
-  return [...text.matchAll(/(\d{1,2})\s*[:：]\s*(\d{2})/g)].some((m) => {
-    const said = Number(m[1]) * 60 + Number(m[2]);
+  return [...text.matchAll(/([^\d\s]{0,3})\s*(?<!\d)(\d{1,2})\s*[:：]\s*(\d{2})\s*([^\d\s]{0,4})/g)].some((m) => {
+    const hour = Number(m[2]);
+    const afternoon = hour < 12 && (AFTERNOON.test(m[1] ?? '') || AFTERNOON.test(m[4] ?? ''));
+    const said = (afternoon ? hour + 12 : hour) * 60 + Number(m[3]);
     const apart = Math.abs(said - expected);
     return Math.min(apart, 24 * 60 - apart) <= SLACK_MINUTES;
   });
