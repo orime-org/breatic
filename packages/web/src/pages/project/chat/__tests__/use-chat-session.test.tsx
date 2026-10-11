@@ -35,7 +35,7 @@ vi.mock('@web/data/api/chat', async (importOriginal) => ({
 
 import { chatApi } from '@web/data/api/chat';
 import { useChatSession } from '@web/pages/project/chat/use-chat-session';
-import { _resetForTests } from '@web/stores/conversation-runtime';
+import { _resetForTests, conversationRuntime } from '@web/stores/conversation-runtime';
 import { tell } from '@web/stores/chat-mishaps';
 import { evictAllChatSessions } from '@web/stores/chat-sessions';
 import { useChatAttachments } from '@web/stores/chat-attachments';
@@ -547,7 +547,7 @@ describe('the Spaces a message carries (inner#1413)', () => {
     });
 
     expect(wire.sent()).toHaveLength(0);
-    expect(useChatAttachments.getState().noticeByConversation['c-1']).toEqual({ key: 'unavailable' });
+    expect(useChatAttachments.getState().noticeByConversation['c-1']).toEqual({ key: 'sendUnavailable' });
     expect(panel.result.current.draft).toBe('summarise this');
   });
 });
@@ -582,5 +582,35 @@ describe('the wait for the limits before a send (inner#1413)', () => {
     await waitFor(() => {
       expect(wire.sent()).toHaveLength(1);
     });
+  });
+
+  it('sends nothing into the conversation being left when a new one is started during the wait', async () => {
+    let answer: (config: Awaited<ReturnType<typeof chatApi.streamConfig>>) => void = () => undefined;
+    vi.mocked(chatApi.streamConfig).mockReturnValue(
+      new Promise((resolve) => {
+        answer = resolve;
+      }),
+    );
+    vi.mocked(chatApi.createConversation).mockReturnValue(new Promise(() => {}));
+    const panel = await anOpenPanel();
+
+    act(() => {
+      void panel.result.current.send('summarise this');
+    });
+    act(() => {
+      void conversationRuntime.startNew('p-1');
+    });
+    await act(async () => {
+      answer({
+        heartbeatIntervalMs: 5000,
+        attachmentMaxChars: 200_000,
+        attachmentMaxItems: 10,
+        currentSpaceMaxChars: 100_000,
+        spaceListMaxItems: 200,
+      });
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+
+    expect(wire.sent().filter((body) => body.conversation_id === 'c-1')).toHaveLength(0);
   });
 });
