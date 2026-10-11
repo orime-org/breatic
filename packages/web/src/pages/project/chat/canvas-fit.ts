@@ -27,10 +27,10 @@ export interface FitNode extends FitParts {
   /** When it was made; with its id, the order nodes are reduced in. */
   createdAt: number;
   group: boolean;
-  /** Whether it is reduced with the selection: last at every step. */
-  selected: boolean;
   /** Whether the reader has it selected on screen; its entry says so. */
-  picked: boolean;
+  selected: boolean;
+  /** Whether it is reduced last at every step: selected, and not held unchanged by an attachment. */
+  last: boolean;
   /** The node as Add to Agent hands it over. */
   whole: Record<string, unknown>;
 }
@@ -67,7 +67,7 @@ export function fitNodeOf(
     createdAt: typeof data.createdAt === 'number' ? data.createdAt : 0,
     group: entry.type === 'group',
     selected,
-    picked: selected,
+    last: selected,
     whole: entry,
   };
 }
@@ -242,11 +242,11 @@ class Fitting {
     const counted = (pick: (n: FitNode, at: Level) => boolean): number =>
       this.nodes.filter((n, i) => pick(n, this.level[i] ?? 0)).length;
     return {
-      selected_total: counted((n) => n.picked),
-      selected_attached: counted((n) => n.picked && !n.selected),
-      selected_whole: counted((n, at) => n.selected && at === 0),
+      selected_total: counted((n) => n.selected),
+      selected_attached: counted((n) => n.selected && !n.last),
+      selected_whole: counted((n, at) => n.last && at === 0),
       // A group's slim entry is its name only, so a group short of left out went slim.
-      slim: counted((n, at) => at === 1 || (n.group && at === 2)) > 0,
+      slim: this.nodes.some((n, i) => this.level[i] === 1 || (n.group && this.level[i] === 2)),
       texts_cut: this.nodes.reduce((sum, n, i) => (this.level[i] === 1 ? sum + this.cutCount(n) : sum), 0),
       names_only: counted((n, at) => !n.group && at === 2),
       edges_not_listed: this.edges.length - this.count.edges,
@@ -318,7 +318,7 @@ class Fitting {
     return this.edges
       .map((e, j) => ({ e, j, first: earlier(e) }))
       .filter(({ e }) => {
-        const touches = [e.source, e.target].some((id) => this.nodes[this.index.get(id) ?? -1]?.selected === true);
+        const touches = [e.source, e.target].some((id) => this.nodes[this.index.get(id) ?? -1]?.last === true);
         return (tier === 'selected') === touches;
       })
       .sort((x, y) => (x.first && y.first ? before(x.first, y.first) : 0))
@@ -331,7 +331,7 @@ class Fitting {
    * @returns Its tier.
    */
   private tierOf(n: FitNode): Tier {
-    return n.selected ? 'selected' : 'unselected';
+    return n.last ? 'selected' : 'unselected';
   }
 
   /**
@@ -367,7 +367,7 @@ class Fitting {
     const node = this.nodes[i];
     if (node === undefined) return 0;
     const at = this.level[i];
-    const mark = node.picked ? MARK_LENGTH : 0;
+    const mark = node.selected ? MARK_LENGTH : 0;
     if (at === 0) return JSON.stringify(node.whole).length + mark;
     if (at === 1) return this.cutLength(i, this.keep[this.tierOf(node)]) + mark;
     return JSON.stringify(node.named).length + mark;
@@ -383,7 +383,7 @@ class Fitting {
     const at = this.level[i];
     const keep = this.keep[this.tierOf(n)];
     const entry = at === 0 ? n.whole : at === 1 ? (keep === Infinity ? n.slim : cutSlim(n, keep)) : n.named;
-    return n.picked ? { ...entry, selected: true } : entry;
+    return n.selected ? { ...entry, selected: true } : entry;
   }
 
   /**

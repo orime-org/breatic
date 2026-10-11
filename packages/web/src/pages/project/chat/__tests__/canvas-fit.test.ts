@@ -95,7 +95,7 @@ function lengthAt(input: FitInput, size: (n: FitNode) => 'whole' | 'slim' | 'nam
   const at = new Map(input.nodes.map((n) => [n.id, size(n)]));
   const nodes = input.nodes.map((n) => {
     const entry = at.get(n.id) === 'whole' ? n.whole : at.get(n.id) === 'slim' ? n.slim : n.named;
-    return n.picked ? { ...entry, selected: true } : entry;
+    return n.selected ? { ...entry, selected: true } : entry;
   });
   const edges = input.edges.map((e) =>
     at.get(e.source) === 'whole' && at.get(e.target) === 'whole' ? e : { source: e.source, target: e.target },
@@ -132,9 +132,9 @@ function readOff(text: string, input: FitInput): Partial<ChatCanvasDetail> {
   const size = sizes(text, input);
   const groups = new Set(input.nodes.filter((n) => n.group).map((n) => n.id));
   return {
-    selected_total: input.nodes.filter((n) => n.picked).length,
-    selected_attached: input.nodes.filter((n) => n.picked && !n.selected).length,
-    selected_whole: input.nodes.filter((n) => n.selected && size[n.id] === 'whole').length,
+    selected_total: input.nodes.filter((n) => n.selected).length,
+    selected_attached: input.nodes.filter((n) => n.selected && !n.last).length,
+    selected_whole: input.nodes.filter((n) => n.last && size[n.id] === 'whole').length,
     slim: Object.entries(size).some(([id, s]) => s === 'slim' || (groups.has(id) && s === 'named')),
     texts_cut: (text.match(/…\[\+\d+\]/g) ?? []).length,
     names_only: Object.entries(size).filter(([id, s]) => s === 'named' && !groups.has(id)).length,
@@ -179,7 +179,7 @@ describe('a canvas that fits', () => {
     const out = fit(input, 100_000);
 
     expect(out.text).toBe(
-      JSON.stringify({ edges: input.edges, nodes: input.nodes.map((n) => (n.picked ? { ...n.whole, selected: true } : n.whole)) }),
+      JSON.stringify({ edges: input.edges, nodes: input.nodes.map((n) => (n.selected ? { ...n.whole, selected: true } : n.whole)) }),
     );
     expect(out.total).toBe(out.text.length);
     expect(out.detail).toEqual({
@@ -213,7 +213,7 @@ describe('marking the selection', () => {
   });
 
   it('marks a selected node that goes with the rest because an attachment holds it', () => {
-    const held = { ...fitNodeOf(image('a', 1), {}, true), selected: false };
+    const held = { ...fitNodeOf(image('a', 1), {}, true), last: false };
     const input: FitInput = { nodes: [held, fitNodeOf(image('b', 2), {}, false)], edges: [] };
 
     const out = fit(input, lengthAt(input, (n) => (n.id === 'a' ? 'slim' : 'whole')));
@@ -378,7 +378,7 @@ describe('names only, then leaving out', () => {
   it('leaves out the earliest nodes, the selected last, and says how many groups went', () => {
     const input = canvasOf([group('g', 0), image('a', 1, 'p', { parentId: 'g' }), image('b', 2), image('c', 3)], ['a']);
     const keepOnly = (ids: readonly string[]): number =>
-      JSON.stringify({ edges: [], nodes: input.nodes.filter((n) => ids.includes(n.id)).map((n) => (n.picked ? { ...n.named, selected: true } : n.named)) }).length;
+      JSON.stringify({ edges: [], nodes: input.nodes.filter((n) => ids.includes(n.id)).map((n) => (n.selected ? { ...n.named, selected: true } : n.named)) }).length;
 
     const out = fit(input, keepOnly(['a', 'c']));
 

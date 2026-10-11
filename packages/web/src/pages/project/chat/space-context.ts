@@ -92,9 +92,9 @@ function holdsSynced(name: string): boolean {
  * @returns The ids.
  */
 function selectedOn(spaceId: string, nodes: ReadonlyArray<{ id: string; parentId?: string }>): Set<string> {
-  const picked = new Set(canvasGraphs.of(spaceId).getState().flowNodes.filter((n) => n.selected === true).map((n) => n.id));
-  for (const n of nodes) if (n.parentId !== undefined && picked.has(n.parentId)) picked.add(n.id);
-  return picked;
+  const ids = new Set(canvasGraphs.of(spaceId).getState().flowNodes.filter((n) => n.selected === true).map((n) => n.id));
+  for (const n of nodes) if (n.parentId !== undefined && ids.has(n.parentId)) ids.add(n.id);
+  return ids;
 }
 
 /**
@@ -246,7 +246,7 @@ export function clipSpaceContext(
     return { ...out, current_space: { id, name, kind, state: 'loaded', content: clipped.text, total_chars: clipped.total } };
   }
   const held = heldUnchanged(current.canvas.nodes, attached);
-  const nodes = current.canvas.nodes.map((n) => (held.has(n.id) ? { ...n, selected: false } : n));
+  const nodes = current.canvas.nodes.map((n) => (held.has(n.id) ? { ...n, last: false } : n));
   const fitted = fitCanvas({ nodes, edges: current.canvas.edges }, limits.currentSpaceMaxChars);
   // A canvas with nothing on it goes as empty, as an empty document does.
   const content = nodes.length === 0 ? '' : fitted.text;
