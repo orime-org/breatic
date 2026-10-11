@@ -142,6 +142,40 @@ export async function storedPicture(target: Page, url: string): Promise<StoredPi
   return { orientation: header.orientation, ...shown };
 }
 
+/** What a finished upload registered as, as the status query delivers it. */
+export interface DeliveredUpload {
+  fileUrl: string;
+  width: number | null;
+  height: number | null;
+}
+
+/**
+ * Watch the next upload's finish: it is queued with 202, and the status query
+ * later delivers what it registered as (inner#1367 §4.2a). Start watching
+ * before the upload begins.
+ * @param target - The page.
+ * @returns The finish's status code and the delivered result.
+ */
+export async function watchQueuedFinish(target: Page): Promise<{ queued: number; delivered: DeliveredUpload }> {
+  const finished = await target.waitForResponse(
+    (r) => /\/assets\/uploads\/[^/]+\/complete$/.test(new URL(r.url()).pathname) && r.request().method() === 'POST',
+    { timeout: 60_000 },
+  );
+  const { storageKey } = ((await finished.json()) as { data: { storageKey: string } }).data;
+  let delivered: DeliveredUpload | null = null;
+  await target.waitForResponse(
+    async (r) => {
+      if (!r.url().includes('/assets/upload-status')) return false;
+      const items = ((await r.json()) as { data: { items: { key: string; state: string; result?: DeliveredUpload }[] } }).data.items;
+      const mine = items.find((item) => item.key === storageKey && item.state === 'completed');
+      if (mine?.result !== undefined) delivered = mine.result;
+      return delivered !== null;
+    },
+    { timeout: 120_000 },
+  );
+  return { queued: finished.status(), delivered: delivered! };
+}
+
 /**
  * Whether a colour is the red or the blue of the two-colour samples.
  * @param rgb - The colour.
