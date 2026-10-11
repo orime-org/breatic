@@ -93,7 +93,7 @@ describe('the open Space chip', () => {
     expect(chip.className).toContain('text-muted-foreground');
     // Stays unfilled under the pointer, which is where it is right after the
     // press that turned it off.
-    expect(chip.className).toContain('hover:bg-transparent');
+    expect(chip.className).not.toMatch(/hover:bg-/);
     expect(chip).toHaveTextContent('Storyboard');
   });
 
@@ -134,9 +134,9 @@ describe('the open Space chip', () => {
       expect(hoverText()).toBe('Click to stop the Agent reading this Space');
     });
 
-    it('says a click stops it for an open timeline, of which only the name and type reach the Agent', () => {
+    it('says the Agent knows an open timeline is open but cannot read it, and a click stops that', () => {
       setup({ space: { name: 'Edit', type: 'timeline' } });
-      expect(hoverText()).toBe('The Agent sees only this Space\'s name and type. Click to stop');
+      expect(hoverText()).toBe('The Agent knows you have this Space open but can\'t read its content. Click to stop');
     });
 
     it('says a click lets the Agent read it while it is off', () => {
@@ -144,9 +144,9 @@ describe('the open Space chip', () => {
       expect(hoverText()).toBe('Click to let the Agent read this Space');
     });
 
-    it('says a click lets the Agent see only the name and type of an open timeline while it is off', () => {
+    it('says a click lets the Agent know an open timeline is open while it is off', () => {
       setup({ space: { name: 'Edit', type: 'timeline', enabled: false } });
-      expect(hoverText()).toBe('Click to let the Agent see this Space\'s name and type');
+      expect(hoverText()).toBe('Click to let the Agent know you have this Space open');
     });
   });
 });
