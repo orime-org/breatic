@@ -721,8 +721,8 @@ canvas.delete(
 /**
  * Take the one upload failure only the browser witnessed (#237).
  *
- * Every finish that reached the ledger settles the task row before it answers,
- * so those failures need nothing from the browser. Bytes that never reached
+ * Every finish the server queued settles the task row in its job, so those
+ * failures need nothing from the browser. Bytes that never reached
  * the edge are the exception — the finish needs an upload id
  * that only a completed transfer hands back, so it was never asked for and
  * nothing here was ever told. Without this the row runs to its budget and is

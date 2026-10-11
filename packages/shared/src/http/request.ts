@@ -5,24 +5,28 @@
  * One HTTP request, replayed when a replay is warranted.
  *
  * The whole of it: the caller says where to connect, what to send, and the
- * three things this layer cannot work out for itself — whether sending the
- * same request twice costs anything, how long one delivery may take, and
- * whether anyone still wants the answer. Everything after that is this layer's
- * own business. Network trouble is handled here. If it cannot be handled, the
+ * things this layer cannot work out for itself — whether sending the same
+ * request twice costs anything, how long one delivery may take, whether anyone
+ * still wants the answer, and, for a page sending bytes, how long a delivery
+ * may sit with nothing moving. Everything after that is this layer's own
+ * business. Network trouble is handled here. If it cannot be handled, the
  * caller is told what went wrong. If it can, the caller gets the response.
  *
  * The test for what is a parameter and what is not: could this layer work it
  * out from a url and some bytes? Replay cost, no — only the caller knows the
  * endpoint bills. Timeout, no — it comes from the model being called or the
  * size of the file being sent. Still wanted, no — only the caller knows the
- * user pressed stop or closed the page. Retry count and backoff, yes, so they
- * are compiled in.
+ * user pressed stop or closed the page. Idle window, no — only the caller
+ * knows the bytes are an upload worth watching. Retry count and backoff, yes,
+ * so they are compiled in.
  *
  * Every other knob is gone, and each removal took a pile of machinery with it:
  *
- *   - No injected fetch, so the global one is always what runs. It honours a
- *     signal, so nothing has to race it; it returns a real Response, so nothing
- *     has to check the shape of what came back.
+ *   - No injected fetch. The global one runs, except for a page's delivery
+ *     with an idle window, which goes through the page's XMLHttpRequest — the
+ *     one browser API that reports upload progress. Both honour a signal and
+ *     both hand back a real Response, so nothing has to race them or check the
+ *     shape of what came back.
  *   - No injected wait and no label. The first was a test seam on a production
  *     surface; the second was something this layer can answer for itself.
  *
