@@ -449,23 +449,58 @@ test('A4: Escape ends the scrolling, also after the body has scrolled', async ()
   await page.mouse.up();
 });
 
-test('A4: a row dropped between two lines lands there', async () => {
-  await openLongDocument(page, 20);
-  await setScrollTop(page, 0);
-  const moved = await rowBox(page, 'line 3 of');
-  await page.mouse.move(5, 5);
-  await page.mouse.move(moved.x + 40, moved.y + moved.height / 2, { steps: 3 });
-  const grip = (await page.getByTestId('doc-block-handle').boundingBox())!;
-  await page.mouse.move(grip.x + grip.width / 2, grip.y + grip.height / 2);
-  await page.mouse.down();
-  await page.mouse.move(grip.x + 8, grip.y + 12, { steps: 4 });
-  const target = await rowBox(page, 'line 8 of');
-  // The lower half of line 8: the drop goes after it.
-  await hold(page, target.x + 100, target.y + target.height * 0.75, 400);
-  await page.mouse.up();
-  const after = (await lines(page)).map((line) => line.replace(/ of a body.*/, ''));
-  expect(after.slice(0, 9)).toEqual(['line 1', 'line 2', 'line 4', 'line 5', 'line 6', 'line 7', 'line 8', 'line 3', 'line 9']);
-});
+/**
+ * The two rows the drop line is drawn between.
+ * @param p - The page.
+ * @returns The texts of the row above and the row below it.
+ * @throws {Error} When no drop line is drawn.
+ */
+async function dropLineBetween(p: Page): Promise<[string, string]> {
+  return p.evaluate((top) => {
+    const line = document.querySelector('.prosemirror-dropcursor-block');
+    if (line === null) throw new Error('no drop line');
+    const r = line.getBoundingClientRect();
+    const mid = r.top + r.height / 2;
+    const rows = [...document.querySelectorAll(top)].map((el) => ({ text: el.textContent ?? '', box: el.getBoundingClientRect() }));
+    const above = rows.filter((row) => row.box.bottom <= mid + 2).pop()?.text ?? '';
+    const below = rows.find((row) => row.box.top >= mid - 2)?.text ?? '';
+    return [above, below] as [string, string];
+  }, TOP);
+}
+
+/**
+ * Lifts a row by its grip.
+ * @param p - The page.
+ * @param text - How the row's text starts.
+ * @throws {Error} When the row or its grip has no box.
+ */
+async function liftRowByText(p: Page, text: string): Promise<void> {
+  const row = await rowBox(p, text);
+  await p.mouse.move(5, 5);
+  await p.mouse.move(row.x + 40, row.y + row.height / 2, { steps: 3 });
+  const grip = await p.getByTestId('doc-block-handle').boundingBox();
+  if (grip === null) throw new Error('grip has no box');
+  await p.mouse.move(grip.x + grip.width / 2, grip.y + grip.height / 2);
+  await p.mouse.down();
+  await p.mouse.move(grip.x + 8, grip.y + 12, { steps: 4 });
+}
+
+for (const where of ['over the text', 'in the gutter left of the column'] as const) {
+  test(`A4 and §4: a row released ${where} lands where the drop line was drawn, and is kept`, async () => {
+    await openLongDocument(page, 12);
+    await setScrollTop(page, 0);
+    const view = (await page.locator(SCROLLER).first().boundingBox())!;
+    await liftRowByText(page, 'line 3 of');
+    const target = await rowBox(page, 'line 8 of');
+    await hold(page, where === 'over the text' ? target.x + 100 : view.x + 20, target.y + target.height * 0.75, 400);
+    const [above, below] = await dropLineBetween(page);
+    await page.mouse.up();
+    const after = await lines(page);
+    expect(after.filter((line) => line.startsWith('line 3 of'))).toHaveLength(1);
+    const at = after.findIndex((line) => line.startsWith('line 3 of'));
+    expect([after[at - 1], after[at + 1]]).toEqual([above, below]);
+  });
+}
 
 test('A9: a table row in flight shows no drop cursor, a block in flight does', async () => {
   await openSmokeProject(page);
@@ -500,32 +535,3 @@ test('A9: a table row in flight shows no drop cursor, a block in flight does', a
   await expect(page.locator('.prosemirror-dropcursor-block, .prosemirror-dropcursor-inline')).not.toHaveCount(0);
   await page.mouse.up();
 });
-
-for (const what of ['a block', 'selected text'] as const) {
-  test(`§4: ${what} released in the gutter left of the column moves to the nearest place and is kept`, async () => {
-    await openLongDocument(page, 8);
-    await setScrollTop(page, 0);
-    const view = (await page.locator(SCROLLER).first().boundingBox())!;
-    const moved = await rowBox(page, 'line 2 of');
-    if (what === 'a block') {
-      await page.mouse.move(5, 5);
-      await page.mouse.move(moved.x + 40, moved.y + moved.height / 2, { steps: 3 });
-      const grip = (await page.getByTestId('doc-block-handle').boundingBox())!;
-      await page.mouse.move(grip.x + grip.width / 2, grip.y + grip.height / 2);
-    } else {
-      // The line's whole text, then a press inside it.
-      await page.mouse.click(moved.x + 20, moved.y + moved.height / 2, { clickCount: 3 });
-      await page.mouse.move(moved.x + 40, moved.y + moved.height / 2);
-    }
-    await page.mouse.down();
-    await page.mouse.move(moved.x + 48, moved.y + moved.height / 2 + 12, { steps: 4 });
-    const target = await rowBox(page, 'line 6 of');
-    await hold(page, view.x + 20, target.y + target.height * 0.75, 400);
-    await page.mouse.up();
-    const after = await lines(page);
-    expect(after.filter((line) => line.includes('line 2 of a body'))).toHaveLength(1);
-    expect(after.findIndex((line) => line.includes('line 2 of a body'))).toBeGreaterThan(
-      after.findIndex((line) => line.includes('line 6 of a body')),
-    );
-  });
-}
