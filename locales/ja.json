@@ -1776,7 +1776,7 @@
         "saveFailed": "変更を保存できませんでした。",
         "bioCount": "{count}/{max}",
         "avatarUpload": "画像をアップロード",
-        "avatarHint": "正方形の画像が最適です。一般的な画像形式に対応、20 MB まで。",
+        "avatarHint": "正方形の画像が最適です。PNG と JPEG に対応、20 MB まで。",
         "avatarRemove": "削除",
         "avatarRemoveTitle": "このアバターを削除しますか？",
         "avatarRemoveBody": "Studio はイニシャル表示に戻ります。いつでも新しい画像をアップロードできます。",

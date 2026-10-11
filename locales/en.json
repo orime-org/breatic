@@ -1776,7 +1776,7 @@
         "saveFailed": "Could not save your changes.",
         "bioCount": "{count}/{max}",
         "avatarUpload": "Upload image",
-        "avatarHint": "A square image works best. Any common image format, up to 20 MB.",
+        "avatarHint": "A square image works best. PNG or JPEG, up to 20 MB.",
         "avatarRemove": "Remove",
         "avatarRemoveTitle": "Remove this avatar?",
         "avatarRemoveBody": "The Studio falls back to its initials. You can upload a new image at any time.",

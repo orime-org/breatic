@@ -1776,7 +1776,7 @@
         "saveFailed": "변경 사항을 저장하지 못했습니다.",
         "bioCount": "{count}/{max}",
         "avatarUpload": "이미지 업로드",
-        "avatarHint": "정사각형 이미지가 가장 좋습니다. 일반적인 이미지 형식, 최대 20 MB.",
+        "avatarHint": "정사각형 이미지가 가장 좋습니다. PNG 또는 JPEG, 최대 20 MB.",
         "avatarRemove": "제거",
         "avatarRemoveTitle": "이 아바타를 제거할까요?",
         "avatarRemoveBody": "Studio는 이니셜 표시로 돌아갑니다. 언제든지 새 이미지를 업로드할 수 있습니다.",
