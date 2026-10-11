@@ -97,22 +97,35 @@ try {
 }
 import { runTask } from "@worker/handlers/dispatch.js";
 import { reclaimFailedJobById } from "@worker/handlers/failed-job-cleanup.js";
-import {
-  runUrlIngest,
-  settleStalledUrlIngest,
-  type UrlIngestJobData,
-} from "@worker/handlers/url-ingest.js";
+import { runUrlIngest, type UrlIngestJobData } from "@worker/handlers/url-ingest.js";
+import { settleStalledIngest } from "@worker/handlers/abort-ingest.js";
 import { runUsageLookup } from "@worker/handlers/usage-lookup.js";
 import { runMediaRead } from "@worker/handlers/media-read.js";
-import { runUploadFinish, settleStalledUploadFinish } from "@worker/handlers/upload-finish.js";
+import { runUploadFinish } from "@worker/handlers/upload-finish.js";
 import { runMail } from "@worker/handlers/mail.js";
 
 /** Cap graceful shutdown so a stuck drain can't hold the process. */
 const SHUTDOWN_DEADLINE_MS = 4000;
 import type { TaskJobData } from "@worker/handlers/dispatch.js";
+import type { Job } from "bullmq";
 
 // Health probe port from the validated config (default 9101).
 const HEALTH_PORT = env.WORKER_HEALTH_PORT;
+
+/**
+ * Settle a failed ingest job whose handler never ran because it stalled; a
+ * failure to settle is logged, since a failed listener has no caller to tell.
+ * @param job - The failed job, when the queue still has it.
+ */
+function settleWhenStalled(job: Job<{ storageKey: string }> | undefined): void {
+  if (job === undefined) return;
+  settleStalledIngest(job).catch((err: unknown) => {
+    logger.error(
+      { err, queue: job.queueName, jobId: job.id, key: job.data.storageKey },
+      "ingest_stalled_settle_failed",
+    );
+  });
+}
 
 /**
  * Start the worker process: install production error logging on the shared
@@ -169,17 +182,9 @@ export function startWorker(): void {
       { err, jobId: job?.id, key: job?.data.storageKey },
       "url_ingest_job_failed",
     );
-    // A job whose process went away is failed here without its handler
-    // running, so this is where its grant and row get settled. Any other
-    // failure is the handler's own settling failing; the node keeps a running
-    // row until its deadline.
-    if (job === undefined) return;
-    settleStalledUrlIngest(job).catch((settleErr: unknown) => {
-      logger.error(
-        { err: settleErr, jobId: job.id, key: job.data.storageKey },
-        "url_ingest_stalled_settle_failed",
-      );
-    });
+    // Any failure other than a stall is the handler's own settling failing;
+    // the node keeps a running row until its deadline.
+    settleWhenStalled(job);
   });
 
   // Finishing a browser upload (inner#1367 §4.2a). Delivered again after a
@@ -200,15 +205,7 @@ export function startWorker(): void {
       },
       "upload_finish_job_failed",
     );
-    // Same as url-ingest: a finish failed for having stalled never ran its
-    // handler, so its grant is settled here.
-    if (job === undefined) return;
-    settleStalledUploadFinish(job).catch((settleErr: unknown) => {
-      logger.error(
-        { err: settleErr, jobId: job.id, key: job.data.storageKey },
-        "upload_finish_stalled_settle_failed",
-      );
-    });
+    settleWhenStalled(job);
   });
 
   // The later lookup of an OpenRouter call whose cost was not in hand (#296). Its retries

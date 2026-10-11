@@ -11,7 +11,6 @@ import type { Job } from "bullmq";
 
 const h = vi.hoisted(() => ({
   finishUpload: vi.fn(),
-  settleStalledFinish: vi.fn(),
   error: vi.fn(),
   info: vi.fn(),
 }));
@@ -20,11 +19,11 @@ vi.mock("@breatic/core", () => ({
   logger: { info: h.info, warn: vi.fn(), error: h.error },
 }));
 vi.mock("@breatic/domain", () => ({
-  uploadFinishService: { finishUpload: h.finishUpload, settleStalledFinish: h.settleStalledFinish },
+  uploadFinishService: { finishUpload: h.finishUpload },
   INGEST_SIDE_EFFECT_EVENTS: { countsPublishFailed: "upload_counts_publish_failed" },
 }));
 
-const { runUploadFinish, settleStalledUploadFinish } = await import("@worker/handlers/upload-finish.js");
+const { runUploadFinish } = await import("@worker/handlers/upload-finish.js");
 
 const DATA = {
   storageKey: "image/2026-10-10/k.png",
@@ -99,26 +98,5 @@ describe("the upload-finish job", () => {
     await runUploadFinish(job() as never);
 
     expect(h.error).toHaveBeenCalledWith({ key: DATA.storageKey }, "upload_counts_publish_failed");
-  });
-});
-
-// A finish whose process went away twice is failed by the queue without its
-// handler running, so the grant is settled here or not at all: left alone,
-// the page hears "finishing" until the upload's deadline (inner#1367 §4.2a).
-describe("a finish the queue failed", () => {
-  beforeEach(() => {
-    h.settleStalledFinish.mockReset().mockResolvedValue({ status: "voided" });
-  });
-
-  it("settles the grant when its process went away", async () => {
-    const stalled = { data: DATA, deferredFailure: "job stalled more than allowable limit" };
-
-    await expect(settleStalledUploadFinish(stalled as never)).resolves.toBe(true);
-    expect(h.settleStalledFinish).toHaveBeenCalledWith(DATA.storageKey);
-  });
-
-  it("leaves a finish that failed in its own handler alone", async () => {
-    await expect(settleStalledUploadFinish(job() as never)).resolves.toBe(false);
-    expect(h.settleStalledFinish).not.toHaveBeenCalled();
   });
 });

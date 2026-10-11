@@ -49,22 +49,3 @@ export async function runUploadFinish(job: Job<UploadFinishJob>): Promise<void> 
     logger.info({ key: storageKey, status: outcome.status }, "upload_finished");
   }
 }
-
-/**
- * Settle a finish whose job ended without its handler running.
- *
- * A finish whose process went away twice is failed the next time a worker
- * picks it up, carrying the reason the queue recorded when it judged it
- * stalled. Its handler never ran that time, so this is the one place its grant
- * gets settled; without it the browser keeps asking about an upload nothing
- * will finish.
- * @param job - The failed job.
- * @returns Whether this was a stalled job, settled here.
- * @throws {Error} When settling itself fails.
- */
-export async function settleStalledUploadFinish(job: Job<UploadFinishJob>): Promise<boolean> {
-  if (!job.deferredFailure) return false;
-  const outcome = await uploadFinishService.settleStalledFinish(job.data.storageKey);
-  noteSideEffects(outcome, { key: job.data.storageKey });
-  return true;
-}

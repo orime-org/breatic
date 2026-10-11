@@ -27,6 +27,7 @@ import {
   uploadDeadlineByKey,
   uploadTicketService,
 } from "@breatic/domain";
+import { abortIngest } from "@worker/handlers/abort-ingest.js";
 import { noteSideEffects } from "@worker/handlers/side-effects.js";
 import {
   fetchUrlToIngest,
@@ -110,38 +111,6 @@ function storedTypeOf(contentType: string): string | null {
 }
 
 /**
- * Settle the grant and the node's task row on a transfer that did not finish.
- * @param storageKey - The key the grant was opened on.
- * @param reason - What the node's task list shows.
- */
-async function fail(storageKey: string, reason: string): Promise<void> {
-  const outcome = await ingestReportService.applyIngestReport({
-    storageKey,
-    outcome: "aborted",
-    reason,
-  });
-  noteSideEffects(outcome, { key: storageKey });
-}
-
-/**
- * Settle a transfer whose job ended without its handler settling it.
- *
- * The queue does not deliver a transfer twice, so a job whose process went
- * away mid-transfer (a deploy, a crash) is failed the next time a worker picks
- * it up, carrying the reason the queue recorded when it judged it stalled. The
- * handler never ran that time, so this is the one place its grant and its row
- * can be settled; without it the node shows a running task until the deadline.
- * @param job - The failed job.
- * @returns Whether this was a stalled job, settled here.
- * @throws {Error} When settling itself fails.
- */
-export async function settleStalledUrlIngest(job: Job<UrlIngestJobData>): Promise<boolean> {
-  if (!job.deferredFailure) return false;
-  await fail(job.data.storageKey, INGEST_NO_ANSWER);
-  return true;
-}
-
-/**
  * Have the ingest Worker pull the address this job names into R2.
  *
  * Never throws for a transfer that failed, from signing the ticket onward:
@@ -181,7 +150,7 @@ export async function runUrlIngest(job: Job<UrlIngestJobData>): Promise<void> {
       { err, key: storageKey, projectId, nodeId },
       "url_ingest_ticket_failed",
     );
-    await fail(storageKey, INGEST_NOT_STARTED);
+    await abortIngest(storageKey, INGEST_NOT_STARTED);
     return;
   }
 
@@ -210,7 +179,7 @@ export async function runUrlIngest(job: Job<UrlIngestJobData>): Promise<void> {
       { err, key: storageKey, projectId, nodeId, reason },
       "url_ingest_failed",
     );
-    await fail(storageKey, reason);
+    await abortIngest(storageKey, reason);
     return;
   }
 
@@ -220,7 +189,7 @@ export async function runUrlIngest(job: Job<UrlIngestJobData>): Promise<void> {
       { key: storageKey, projectId, nodeId, reported: measured.contentType },
       "url_ingest_type_not_reported",
     );
-    await fail(storageKey, INGEST_TYPE_NOT_REPORTED);
+    await abortIngest(storageKey, INGEST_TYPE_NOT_REPORTED);
     return;
   }
 
