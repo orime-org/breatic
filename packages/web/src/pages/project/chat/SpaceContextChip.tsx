@@ -36,7 +36,7 @@ export interface SpaceContextChipProps {
 export function SpaceContextChip({ name, type, enabled, onToggle }: SpaceContextChipProps): React.JSX.Element {
   const t = useTranslation();
   const Icon = SPACE_TYPE_ICON[type];
-  // What a click does next; the name is already on the chip.
+  // Whether the Agent reads it, then what a click does; the name is already on the chip.
   const readable = spaceContentReadable(type);
   const said = enabled
     ? t(readable ? 'chat.composer.spaceContextOn' : 'chat.composer.spaceContextOnUnreadable')
