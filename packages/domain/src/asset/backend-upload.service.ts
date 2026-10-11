@@ -50,11 +50,11 @@ import {
  */
 export type StoredAsset = {
   /** The ledger row these bytes landed on. */
-  assetId?: string | null;
+  assetId: string;
   /** Where the stored object is readable. */
   fileUrl: string;
   /** The kind the server filed it under. */
-  kind?: string;
+  kind: string;
   /**
    * The cover filed against this row, for a video. A backend lane has no node
    * to hear it through, so this is where it reads one.

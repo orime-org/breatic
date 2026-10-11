@@ -8,7 +8,7 @@ import {
   type UploadTicketRequest,
   type UploadTicketResponse,
 } from '@web/data/upload/ingest-upload';
-import type { UploadClientConfig } from '@breatic/shared';
+import type { UploadClientConfig, UploadStatusResult } from '@breatic/shared';
 import {
   errorStatus,
   retryTransient,
@@ -38,14 +38,7 @@ import { waitForUploadEnding, type UploadEnding } from '@web/data/upload/upload-
  * the ledger row a cover or an avatar is then pointed at, and the kind it read
  * off the stored bytes.
  */
-export interface StoredUpload {
-  fileUrl: string | undefined;
-  assetId: string | undefined;
-  kind: string | undefined;
-  /** Pixel size read off the stored bytes, when the finish read it. */
-  width?: number | null;
-  height?: number | null;
-}
+export type StoredUpload = UploadStatusResult;
 
 /**
  * Why an upload ended in `onFailure` — the caller picks the message from this.
@@ -272,8 +265,8 @@ export async function runMediaUpload(
       fileUrl: answer.fileUrl,
       assetId: answer.assetId,
       kind: answer.kind,
-      ...(answer.width !== undefined && { width: answer.width }),
-      ...(answer.height !== undefined && { height: answer.height }),
+      width: answer.width ?? null,
+      height: answer.height ?? null,
     });
     return;
   }
@@ -308,13 +301,7 @@ export async function runMediaUpload(
     deps.onFailure({ reason: failureOfEnding(end) });
     return;
   }
-  deps.onSuccess({
-    fileUrl: end.result.fileUrl,
-    assetId: end.result.assetId,
-    kind: end.result.kind,
-    width: end.result.width,
-    height: end.result.height,
-  });
+  deps.onSuccess(end.result);
 }
 
 /** Why an upload did not complete; the caller picks the message from it. */

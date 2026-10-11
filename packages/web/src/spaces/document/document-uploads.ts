@@ -133,13 +133,6 @@ export function createDocumentUploader(deps: DocumentUploaderDeps): DocumentUplo
       return;
     }
     deps.unregister(slotId);
-    if (stored.fileUrl === undefined || stored.kind === undefined) {
-      patchUploadSlot(view, slotId, {
-        phase: 'failed',
-        failure: failureOf(new UploadFailedError('upload'), file),
-      });
-      return;
-    }
     // The kind the server read off the stored bytes, not the name's guess.
     if (!isMediaBlockType(stored.kind)) {
       patchUploadSlot(view, slotId, {
