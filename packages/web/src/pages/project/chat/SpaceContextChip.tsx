@@ -35,7 +35,8 @@ interface SpaceContextChipProps {
 export function SpaceContextChip({ name, type, enabled, onToggle }: SpaceContextChipProps): React.JSX.Element {
   const t = useTranslation();
   const Icon = SPACE_TYPE_ICON[type];
-  // A timeline's content cannot be read, so only its name reaches the Agent.
+  // What a click does next; the name is already on the chip. A timeline's
+  // content cannot be read, so only its name and type reach the Agent.
   const said = !enabled
     ? t('chat.composer.spaceContextOff')
     : type === 'timeline'
@@ -66,10 +67,7 @@ export function SpaceContextChip({ name, type, enabled, onToggle }: SpaceContext
       </TooltipTrigger>
       {/* Portalled: the composer card clips what overflows it, and an inline
           tip above the chip would be cut off at the card's top edge. */}
-      <TooltipContent portal className='max-w-[240px]'>
-        <p className='break-words'>{name}</p>
-        <p>{said}</p>
-      </TooltipContent>
+      <TooltipContent portal>{said}</TooltipContent>
     </Tooltip>
   );
 }
