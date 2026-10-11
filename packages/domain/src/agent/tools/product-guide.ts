@@ -267,7 +267,9 @@ export function renderProductGuide(): string {
       "project. While it is on, each message the reader sends carries that Space's content to the Agent -- a " +
       "document's text, or a canvas's nodes and the links between them -- and hovering it shows " +
       `${quoted(t("chat.composer.spaceContextOn"))}. Off, it has a dashed border and grey words, and hovering ` +
-      `it shows ${quoted(t("chat.composer.spaceContextOff"))}. On or off, every message tells the Agent the ` +
+      `it shows ${quoted(t("chat.composer.spaceContextOff"))}. A timeline's content cannot be read: with a ` +
+      "timeline open and the chip on, only its name and type go, and hovering shows " +
+      `${quoted(t("chat.composer.spaceContextOnUnreadable"))}. On or off, every message tells the Agent the ` +
       "name and type of each Space in the project.",
     "Typing @ in the box opens a list, just above the @, of the attachments that have finished uploading; it " +
       `reads ${quoted(t("chat.composer.atEmpty"))} when there are none. Typing narrows it and the list goes away ` +

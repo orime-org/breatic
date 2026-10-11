@@ -248,6 +248,7 @@
       "attach": "파일 첨부",
       "spaceContextOn": "Agent가 메시지마다 이 Space를 읽습니다",
       "spaceContextOff": "Agent가 이 Space를 읽지 않습니다",
+      "spaceContextOnUnreadable": "Agent는 이 Space의 이름만 볼 수 있고 내용은 읽을 수 없습니다",
       "removeAttachment": "{name} 제거",
       "attachmentUploading": "업로드 중",
       "attachmentFailed": "{reason, select, upload {업로드 실패} rate_limited {업로드가 너무 잦음, 잠시 후 다시 시도} extract {읽기 실패} too_long {너무 김} other {실패}}",
