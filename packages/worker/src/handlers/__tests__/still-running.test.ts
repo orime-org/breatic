@@ -231,6 +231,12 @@ describe("an upstream prediction still running when a pickup ends", () => {
     expect(h.runCatalogTask.mock.calls[0]![1]).toMatchObject({ taskId: "task-1", deadlineAt: DEADLINE });
   });
 
+  it("hands the task's deadline to a container job", async () => {
+    await runTask(containerJob(), "lock-token").catch(() => undefined);
+
+    expect(h.runContainerJob.mock.calls[0]![2]).toMatchObject({ taskId: "task-1", deadlineAt: DEADLINE });
+  });
+
   it("hands the task's deadline to the steps of a model mini-tool", async () => {
     await runTask(jobOf({ source: "mini_tool", toolId: "image.remove-bg", model: undefined }), "lock-token").catch(
       () => undefined,

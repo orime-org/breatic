@@ -1530,6 +1530,7 @@ export async function runMiniTool(
       projectId,
       params,
       sourceKey: opts.sourceKey,
+      deadlineAt: resume.deadlineAt,
     });
   }
 

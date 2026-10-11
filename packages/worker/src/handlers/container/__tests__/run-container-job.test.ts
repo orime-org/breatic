@@ -21,7 +21,6 @@ const h = vi.hoisted(() => ({
   readMiniToolJob: vi.fn(),
   submitMiniToolJob: vi.fn(),
   recordServiceCall: vi.fn(),
-  deadlineFor: vi.fn(),
   now: { value: 0 },
 }));
 
@@ -49,7 +48,6 @@ vi.mock("@breatic/domain", async () => ({
   creditsForUsd: (usd: number, multiplier: number) => usd * 100 * multiplier,
   createUsageRecorder: () => ({ recordServiceCall: h.recordServiceCall, settle: async () => 0 }),
   ingestReportService: { applyIngestReport: h.applyIngestReport },
-  nodeTaskService: { deadlineFor: h.deadlineFor },
   openContainerOutputs: h.openContainerOutputs,
   upstreamStepRepo: {
     ensureSteps: h.ensureSteps,
@@ -74,7 +72,14 @@ import { DeadlinePassed } from "@breatic/shared";
 import { StillRunning } from "@worker/providers/still-running.js";
 
 const CUT = miniToolById("video.cut") as MiniToolSpec;
-const INPUT = { taskId: "t1", userId: "u1", projectId: "p1", params: { range: { start: 0, end: 2 } }, sourceKey: "v/src.mp4" };
+const INPUT = {
+  taskId: "t1",
+  userId: "u1",
+  projectId: "p1",
+  params: { range: { start: 0, end: 2 } },
+  sourceKey: "v/src.mp4",
+  deadlineAt: 1_800_000_000_000,
+};
 const OUT = { storageKey: "video/out.mp4", contentType: "video/mp4", coverKey: "video/out.cover.jpg" };
 const USAGE = { wallMs: 10_000, cpuUsec: 4_000_000 };
 const MEASURED = { storageKey: OUT.storageKey, sha256: "a".repeat(64), sizeBytes: 10, contentType: "video/mp4" };
@@ -97,7 +102,6 @@ beforeEach(() => {
   vi.clearAllMocks();
   h.now.value = DEADLINE - 3_600_000;
   vi.spyOn(Date, "now").mockImplementation(() => h.now.value);
-  h.deadlineFor.mockResolvedValue(DEADLINE);
   h.steps = [{ id: "s1", status: "pending", output: {} }];
   h.ensureSteps.mockImplementation(async () => h.steps);
   h.recordInline.mockImplementation(async (_id: string, output: Record<string, unknown>) => {
@@ -143,22 +147,14 @@ describe("runContainerJob", () => {
     );
   });
 
-  // Every task has one ceiling, the one its rows on the canvas count down.
-  it("gives the job the deadline its task rows run out at", async () => {
+  // Every task has one ceiling, the one the run read off its rows on the canvas.
+  it("gives the job the deadline the run hands it", async () => {
     h.readMiniToolJob.mockResolvedValueOnce(null);
     h.submitMiniToolJob.mockResolvedValueOnce({ state: "starting" });
 
     await expect(runContainerJob(CUT, "cut", INPUT)).rejects.toBeInstanceOf(StillRunning);
 
-    expect(h.deadlineFor).toHaveBeenCalledWith("t1");
     expect(h.submitMiniToolJob.mock.calls[0]![2]).toMatchObject({ deadlineAt: DEADLINE });
-  });
-
-  it("refuses to open a job for a task with no row on the canvas", async () => {
-    h.deadlineFor.mockResolvedValueOnce(null);
-
-    await expect(runContainerJob(CUT, "cut", INPUT)).rejects.toThrow(/no task row/);
-    expect(h.openContainerOutputs).not.toHaveBeenCalled();
   });
 
   // One read per pickup: the job sits delayed in the queue between reads, not in a worker slot.

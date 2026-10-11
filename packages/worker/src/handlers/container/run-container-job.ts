@@ -18,7 +18,6 @@ import {
   createUsageRecorder,
   creditsForUsd,
   ingestReportService,
-  nodeTaskService,
   openContainerOutputs,
   upstreamStepRepo,
 } from "@breatic/domain";
@@ -71,6 +70,8 @@ export interface ContainerRunInput {
   projectId: string;
   params: Record<string, unknown>;
   sourceKey: string;
+  /** When the task runs out: the job is opened with it. */
+  deadlineAt: number;
 }
 
 /**
@@ -97,7 +98,7 @@ function storedJob(output: Record<string, unknown>): StoredJob | null {
  * @param input - The run.
  * @returns The step's id and the job.
  * @throws {ContainerJobFailed} When an earlier attempt already failed the step.
- * @throws {Error} When the task opened no row on the canvas.
+ * @throws {Error} When the task has no container step.
  */
 async function jobFor(spec: MiniToolSpec, op: ContainerOp, input: ContainerRunInput): Promise<{ stepId: string; job: StoredJob }> {
   const plan = getMiniToolsConfig().ops[op];
@@ -111,8 +112,7 @@ async function jobFor(spec: MiniToolSpec, op: ContainerOp, input: ContainerRunIn
   }
   const held = storedJob(step.output);
   if (held) return { stepId: step.id, job: held };
-  const deadlineAt = await nodeTaskService.deadlineFor(input.taskId);
-  if (deadlineAt === null) throw new Error(`task ${input.taskId} has no task row to run against`);
+  const { deadlineAt } = input;
   const job: StoredJob = {
     jobId: `task:${input.taskId}`,
     containerClass: plan.container_class,
