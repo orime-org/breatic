@@ -72,7 +72,9 @@ async function aTurnThatFoundPictures(target: Page): Promise<void> {
     await composer.fill('Search the web for images: cyberpunk references, neon, a rainy night street.');
     await composer.press('Enter');
 
-    // The turn is over when the stop button goes; a search draws its row first.
+    // The turn is over once the reply is there and the stop button has gone;
+    // a search draws its row before that.
+    await expect(target.getByTestId('message-bubble')).toHaveCount(2, { timeout: TURN_MS });
     await expect(target.getByTestId('chat-composer-abort')).toHaveCount(0, { timeout: TURN_MS });
     if ((await target.getByTestId('asset-row').count()) > 0) return;
   }
