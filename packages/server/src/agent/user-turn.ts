@@ -51,11 +51,16 @@ function openSpaceSection(current: ChatCurrentSpace): string {
   if (current.state === "loading") return `${heading}\n\nIts content has not loaded yet.`;
   if (current.state === "unreadable") return `${heading}\n\nThe content of a ${current.kind} Space cannot be read.`;
   if (current.content === "") return `${heading}\n\nThis Space is empty.`;
-  const body = current.kind === "document" ? JSON.stringify(current.content) : current.content;
+  const isDocument = current.kind === "document";
+  const body = isDocument ? JSON.stringify(current.content) : current.content;
+  const shown = `${String(current.content.length)} of ${String(current.total_chars)} characters`;
+  // A document is cut to its start; a canvas keeps the whole nodes that fit.
   const cut =
-    current.total_chars > current.content.length
-      ? `\n(Showing the first ${String(current.content.length)} of ${String(current.total_chars)} characters.)`
-      : "";
+    current.total_chars <= current.content.length
+      ? ""
+      : isDocument
+        ? `\n(Showing the first ${shown}.)`
+        : `\n(The canvas is over the limit, so only some of its nodes are shown, with only the links between them: ${shown}.)`;
   return `${heading}\n\n${body}${cut}`;
 }
 
