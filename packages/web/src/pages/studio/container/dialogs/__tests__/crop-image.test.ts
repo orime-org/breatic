@@ -19,6 +19,7 @@ import {
   COVER_OUTPUT,
   MAX_PICKED_BYTES,
   MAX_PICKED_EDGE_PX,
+  checkPicked,
   checkPickedFile,
   checkPickedFormat,
   checkPickedPixels,
@@ -73,6 +74,23 @@ describe('checkPickedFormat', () => {
   it('refuses a WebP named and typed as a JPEG', async () => {
     const webp = [0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50];
     await expect(checkPickedFormat(picked(webp, 'a.jpg', 'image/jpeg'))).resolves.toBe('unsupported_type');
+  });
+});
+
+// The one check both pickers run: the size first, so a file too large to use
+// is refused before any of it is read, then the format.
+describe('checkPicked', () => {
+  it('names a size problem before reading the bytes', async () => {
+    await expect(checkPicked(new File([], 'a.png', { type: 'image/png' }))).resolves.toBe('empty');
+  });
+
+  it('then names the format a file is not taken in', async () => {
+    const webp = new File([new Uint8Array([0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50])], 'a.webp');
+    await expect(checkPicked(webp)).resolves.toBe('unsupported_type');
+  });
+
+  it('passes a JPEG of a usable size', async () => {
+    await expect(checkPicked(new File([new Uint8Array([0xff, 0xd8, 0xff, 0, 0])], 'a.jpg'))).resolves.toBeNull();
   });
 });
 

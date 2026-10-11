@@ -123,6 +123,16 @@ export async function checkPickedFormat(file: Blob): Promise<'unsupported_type' 
 }
 
 /**
+ * The check a cover or an avatar picker runs on a picked file: its size, then
+ * its format.
+ * @param file - The picked file.
+ * @returns The problem, or `null` when the file is usable.
+ */
+export async function checkPicked(file: Blob): Promise<PickedFileProblem | 'unsupported_type' | null> {
+  return checkPickedFile(file) ?? (await checkPickedFormat(file));
+}
+
+/**
  * Check a decoded image's dimensions.
  * @param width - Natural width in pixels.
  * @param height - Natural height in pixels.

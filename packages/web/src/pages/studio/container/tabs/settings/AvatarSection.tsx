@@ -18,8 +18,7 @@ import { useTranslation } from '@web/i18n/use-translation';
 import { toast } from '@web/lib/toast';
 import { ImageCropDialog } from '@web/pages/studio/container/dialogs/ImageCropDialog';
 import {
-  checkPickedFile,
-  checkPickedFormat,
+  checkPicked,
   PICKED_FORMATS,
 } from '@web/pages/studio/container/dialogs/crop-image';
 import { StudioAvatar } from '@web/ui/StudioAvatar';
@@ -81,14 +80,9 @@ export function AvatarSection({
       // Reset so picking the same file twice in a row still fires a change.
       event.target.value = '';
       if (file === null) return;
-      const problem = checkPickedFile(file);
-      if (problem !== null) {
-        toast.warning(t(`studio.container.imageError.${problem}`));
-        return;
-      }
-      void checkPickedFormat(file).then((format) => {
-        if (format !== null) {
-          toast.warning(t(`studio.container.imageError.${format}`));
+      void checkPicked(file).then((problem) => {
+        if (problem !== null) {
+          toast.warning(t(`studio.container.imageError.${problem}`));
           return;
         }
         setPicked(file);
