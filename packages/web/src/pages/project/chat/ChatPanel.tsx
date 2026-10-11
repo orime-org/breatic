@@ -91,17 +91,22 @@ export function ChatPanel({
   const queryClient = useQueryClient();
   const spaceContextEnabled = useUIStore((s) => s.spaceContextEnabled);
   const setSpaceContextEnabled = useUIStore((s) => s.setSpaceContextEnabled);
+  // Read through a ref at the press: the project meta hands over a fresh
+  // array each time anything in it changes, someone going online included,
+  // and a callback rebuilt for that would reach the memoised composer as a
+  // new onSubmit.
+  const spaceSource = React.useRef({ activeSpace, spaces });
+  spaceSource.current = { activeSpace, spaces };
   /** The reader's Spaces as they stand; called at the press. */
   const readSpaces = React.useCallback(
     (): ReadSpaces =>
       readSpaceContext({
         projectId,
-        activeSpace,
-        spaces,
+        ...spaceSource.current,
         enabled: useUIStore.getState().spaceContextEnabled,
         queryClient,
       }),
-    [projectId, activeSpace, spaces, queryClient],
+    [projectId, queryClient],
   );
   const toggleSpace = React.useCallback(
     (): void => setSpaceContextEnabled(!useUIStore.getState().spaceContextEnabled),
