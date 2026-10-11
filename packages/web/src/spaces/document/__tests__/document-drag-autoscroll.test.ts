@@ -180,7 +180,7 @@ describe('the drag session', () => {
     expect(autoScrollOf(view)!.state).toBe('outside');
   });
 
-  it('scrolls the frame of the dragged column sideways, ungated, and holds the body still until the drag ends', () => {
+  it('scrolls the frame of the dragged column sideways and holds the body still until the drag ends', () => {
     const { editor, scroller } = open([
       { type: 'table', content: { type: 'tableContent', rows: [{ cells: ['a1', 'b1'] }, { cells: ['a2', 'b2'] }] } },
     ]);
@@ -203,7 +203,6 @@ describe('the drag session', () => {
     const target = autoScrollOf(view)!.target!;
     expect(target.el).toBe(frame);
     expect(target.axis).toBe('x');
-    expect(target.gate).toBe(false);
     // The browser's own drag autoscroll scrolls any box a reader could scroll
     // that the pointer nears; a column drag leaves the body where it is (A7).
     expect(scroller.style.overflowY).toBe('hidden');

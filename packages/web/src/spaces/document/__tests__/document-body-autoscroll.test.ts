@@ -25,28 +25,28 @@ const HITBOX = 180;
 
 describe('readEdge', () => {
   it('reads nothing in the middle of the scroller', () => {
-    expect(readEdge(BOX, { x: 600, y: 490 }, 'y', true)).toEqual({ dir: 0, factor: 0, beyond: 0 });
+    expect(readEdge(BOX, { x: 600, y: 490 }, 'y')).toEqual({ dir: 0, factor: 0, beyond: 0 });
   });
 
   it('rises linearly across the inner half of the hitbox and is full in the outer half', () => {
     const innerStart = BOX.bottom - HITBOX;
-    expect(readEdge(BOX, { x: 600, y: innerStart + HITBOX / 4 }, 'y', true).factor).toBeCloseTo(0.5);
-    expect(readEdge(BOX, { x: 600, y: BOX.bottom - HITBOX / 4 }, 'y', true)).toEqual({ dir: 1, factor: 1, beyond: 0 });
-    expect(readEdge(BOX, { x: 600, y: BOX.top + 10 }, 'y', true)).toEqual({ dir: -1, factor: 1, beyond: 0 });
+    expect(readEdge(BOX, { x: 600, y: innerStart + HITBOX / 4 }, 'y').factor).toBeCloseTo(0.5);
+    expect(readEdge(BOX, { x: 600, y: BOX.bottom - HITBOX / 4 }, 'y')).toEqual({ dir: 1, factor: 1, beyond: 0 });
+    expect(readEdge(BOX, { x: 600, y: BOX.top + 10 }, 'y')).toEqual({ dir: -1, factor: 1, beyond: 0 });
   });
 
   it('reports how far past the edge the pointer is', () => {
-    expect(readEdge(BOX, { x: 600, y: 40 }, 'y', true)).toEqual({ dir: -1, factor: 1, beyond: 40 });
-    expect(readEdge(BOX, { x: 600, y: 930 }, 'y', true)).toEqual({ dir: 1, factor: 1, beyond: 30 });
+    expect(readEdge(BOX, { x: 600, y: 40 }, 'y')).toEqual({ dir: -1, factor: 1, beyond: 40 });
+    expect(readEdge(BOX, { x: 600, y: 930 }, 'y')).toEqual({ dir: 1, factor: 1, beyond: 30 });
   });
 
-  it('reads nothing when the gated other axis is outside the scroller (the Agent column)', () => {
-    expect(readEdge(BOX, { x: 200, y: 890 }, 'y', true)).toEqual({ dir: 0, factor: 0, beyond: 0 });
+  it('reads nothing for the body when the pointer is beside it (the Agent column)', () => {
+    expect(readEdge(BOX, { x: 200, y: 890 }, 'y')).toEqual({ dir: 0, factor: 0, beyond: 0 });
   });
 
-  it('ignores the other axis when not gated (a column handle sits half above its frame)', () => {
+  it('reads a table frame whatever the pointer\'s height (a column handle sits half above its frame)', () => {
     const frame: EdgeBox = { top: 300, bottom: 500, left: 400, right: 1000 };
-    expect(readEdge(frame, { x: 1040, y: 296 }, 'x', false)).toEqual({ dir: 1, factor: 1, beyond: 40 });
+    expect(readEdge(frame, { x: 1040, y: 296 }, 'x')).toEqual({ dir: 1, factor: 1, beyond: 40 });
   });
 });
 
@@ -183,7 +183,7 @@ describe('BodyAutoScroll', () => {
     const clock = fakeClock();
     const auto = new BodyAutoScroll(clock.deps);
     const body = fakeScroller();
-    auto.beginDrag({ el: body, axis: 'y', gate: true });
+    auto.beginDrag({ el: body, axis: 'y' });
     auto.follow({ x: 600, y: 890 });
     for (let i = 0; i < 40; i += 1) clock.tick();
     expect(body.scrollTop).toBeGreaterThan(300);
@@ -197,7 +197,7 @@ describe('BodyAutoScroll', () => {
     const auto = new BodyAutoScroll(clock.deps);
     const body = fakeScroller();
     body.scrollTop = 5000;
-    auto.beginDrag({ el: body, axis: 'y', gate: true });
+    auto.beginDrag({ el: body, axis: 'y' });
     auto.follow({ x: 600, y: 40 });
     for (let i = 0; i < 30; i += 1) clock.tick();
     auto.leaveWindow();
@@ -212,7 +212,7 @@ describe('BodyAutoScroll', () => {
     const auto = new BodyAutoScroll(clock.deps);
     const body = fakeScroller();
     body.scrollTop = 5000;
-    auto.beginDrag({ el: body, axis: 'y', gate: true });
+    auto.beginDrag({ el: body, axis: 'y' });
     auto.follow({ x: 600, y: BOX.top + 10 });
     for (let i = 0; i < 30; i += 1) clock.tick();
     auto.leaveWindow();
@@ -225,7 +225,7 @@ describe('BodyAutoScroll', () => {
     const clock = fakeClock();
     const auto = new BodyAutoScroll(clock.deps);
     const body = fakeScroller();
-    auto.beginDrag({ el: body, axis: 'y', gate: true });
+    auto.beginDrag({ el: body, axis: 'y' });
     auto.follow({ x: 600, y: 895 });
     for (let i = 0; i < 30; i += 1) clock.tick();
     auto.leaveWindow();
@@ -237,18 +237,18 @@ describe('BodyAutoScroll', () => {
   it('a pointer reading after leaving brings the session back to tracking', () => {
     const clock = fakeClock();
     const auto = new BodyAutoScroll(clock.deps);
-    auto.beginDrag({ el: fakeScroller(), axis: 'y', gate: true });
+    auto.beginDrag({ el: fakeScroller(), axis: 'y' });
     auto.follow({ x: 600, y: 895 });
     auto.leaveWindow();
     auto.follow({ x: 600, y: 490 });
     expect(auto.state).toBe('tracking');
   });
 
-  it('a column drag scrolls the table frame sideways, ungated, and leaves the body alone', () => {
+  it('a column drag scrolls the table frame sideways, whatever the pointer\'s height, and leaves the body alone', () => {
     const clock = fakeClock();
     const auto = new BodyAutoScroll(clock.deps);
     const frame = fakeScroller({ top: 300, bottom: 500, left: 400, right: 1000 });
-    auto.beginDrag({ el: frame, axis: 'x', gate: false });
+    auto.beginDrag({ el: frame, axis: 'x' });
     auto.follow({ x: 1040, y: 296 });
     for (let i = 0; i < 30; i += 1) clock.tick();
     expect(frame.scrollLeft).toBeGreaterThan(0);
@@ -270,7 +270,7 @@ describe('BodyAutoScroll', () => {
     const auto = new BodyAutoScroll(clock.deps);
     const body = fakeScroller();
     auto.beginPress(body, { x: 10, y: 400 });
-    auto.beginDrag({ el: body, axis: 'y', gate: true });
+    auto.beginDrag({ el: body, axis: 'y' });
     expect(auto.source).toBe('drag');
     expect(clock.pending()).toBeLessThanOrEqual(1);
   });
@@ -278,7 +278,7 @@ describe('BodyAutoScroll', () => {
   it('a press end does not end a drag session', () => {
     const clock = fakeClock();
     const auto = new BodyAutoScroll(clock.deps);
-    auto.beginDrag({ el: fakeScroller(), axis: 'y', gate: true });
+    auto.beginDrag({ el: fakeScroller(), axis: 'y' });
     auto.end('press');
     expect(auto.state).toBe('tracking');
   });
@@ -287,7 +287,7 @@ describe('BodyAutoScroll', () => {
     const clock = fakeClock();
     const auto = new BodyAutoScroll(clock.deps);
     const body = fakeScroller();
-    auto.beginDrag({ el: body, axis: 'y', gate: true });
+    auto.beginDrag({ el: body, axis: 'y' });
     // Over the middle for 640ms: past the 400ms ramp before any edge is near.
     auto.follow({ x: 600, y: 490 });
     for (let i = 0; i < 40; i += 1) clock.tick();
@@ -301,7 +301,7 @@ describe('BodyAutoScroll', () => {
     const clock = fakeClock();
     const auto = new BodyAutoScroll(clock.deps);
     const body = fakeScroller();
-    auto.beginDrag({ el: body, axis: 'y', gate: true });
+    auto.beginDrag({ el: body, axis: 'y' });
     auto.follow({ x: 600, y: 895 });
     for (let i = 0; i < 40; i += 1) clock.tick();
     auto.follow({ x: 600, y: 490 });
@@ -316,7 +316,7 @@ describe('BodyAutoScroll', () => {
     const clock = fakeClock();
     const auto = new BodyAutoScroll(clock.deps);
     const body = fakeScroller();
-    auto.beginDrag({ el: body, axis: 'y', gate: true });
+    auto.beginDrag({ el: body, axis: 'y' });
     auto.follow({ x: 600, y: 895 });
     for (let i = 0; i < 40; i += 1) clock.tick();
     auto.follow({ x: BOX.left - 100, y: 895 });
@@ -334,7 +334,7 @@ describe('BodyAutoScroll, the latest pointer (inner#1350 round 2)', () => {
     const auto = new BodyAutoScroll(clock.deps);
     const body = fakeScroller();
     body.scrollTop = 5000;
-    auto.beginDrag({ el: body, axis: 'y', gate: true });
+    auto.beginDrag({ el: body, axis: 'y' });
     auto.follow({ x: 600, y: 400 });
     clock.tick();
     // Over the top bar, and straight out of the window within the same frame.
@@ -349,7 +349,7 @@ describe('BodyAutoScroll, the latest pointer (inner#1350 round 2)', () => {
     const auto = new BodyAutoScroll(clock.deps);
     const body = fakeScroller();
     body.scrollTop = 50_000;
-    auto.beginDrag({ el: body, axis: 'y', gate: true });
+    auto.beginDrag({ el: body, axis: 'y' });
     auto.follow({ x: 600, y: 400 });
     clock.tick();
     auto.follow({ x: 600, y: 40 });
@@ -370,7 +370,7 @@ describe('BodyAutoScroll, the latest pointer (inner#1350 round 2)', () => {
     const auto = new BodyAutoScroll(clock.deps);
     const body = fakeScroller();
     body.scrollTop = 50_000;
-    auto.beginDrag({ el: body, axis: 'y', gate: true });
+    auto.beginDrag({ el: body, axis: 'y' });
     auto.follow({ x: 600, y: 40 });
     auto.leaveWindow();
     const start = body.scrollTop;

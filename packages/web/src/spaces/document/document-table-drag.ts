@@ -194,6 +194,17 @@ function edgesOf(view: EditorView, drag: Drag): number[] | null {
 }
 
 /**
+ * The frame a table scrolls sideways in.
+ * @param view - The editor view.
+ * @param cellPos - A cell of the table.
+ * @returns The frame, or null when the cell is not drawn in one.
+ */
+export function tableFrameOf(view: EditorView, cellPos: number): HTMLElement | null {
+  const cell = view.nodeDOM(cellPos);
+  return cell instanceof Element ? cell.closest<HTMLElement>(SCROLL_VIEWPORT) : null;
+}
+
+/**
  * Where on screen a drag's lines can be seen, along the axis they move on: a
  * column's within its table frame, a row's within the body scroller. Past it
  * the edges the table lays out are clipped from view.
@@ -202,21 +213,16 @@ function edgesOf(view: EditorView, drag: Drag): number[] | null {
  * @returns The start and end, or null when nothing clips them.
  */
 function shownRange(view: EditorView, drag: Drag): [number, number] | null {
-  const cell = view.nodeDOM(drag.source);
-  const clip =
-    drag.orientation === 'column'
-      ? cell instanceof Element
-        ? cell.closest<HTMLElement>(SCROLL_VIEWPORT)
-        : null
-      : bodyScrollerOf(view);
+  const clip = drag.orientation === 'column' ? tableFrameOf(view, drag.source) : bodyScrollerOf(view);
   if (clip === null) return null;
   const box = clip.getBoundingClientRect();
   return drag.orientation === 'row' ? [box.top, box.bottom] : [box.left, box.right];
 }
 
 /**
- * The gap the pointer of a drag event is over, among the lines the reader
- * sees: a pointer past them is read at the nearest one shown.
+ * The gap the pointer of a drag event is over, among the edges the reader
+ * sees: the line is drawn on one of them, so the drop lands where it shows.
+ * With none shown (a column wider than its frame), any edge.
  * @param view - The editor view.
  * @param drag - The drag.
  * @param event - The dragover or drop.
@@ -227,7 +233,23 @@ function gapUnder(view: EditorView, drag: Drag, event: MouseEvent): number | nul
   if (edges === null) return null;
   const pointer = drag.orientation === 'row' ? event.clientY : event.clientX;
   const shown = shownRange(view, drag);
-  return dropGapAt(edges, shown === null ? pointer : Math.min(Math.max(pointer, shown[0]), shown[1]));
+  // A pixel either way: a table flush with its frame has its outer edges on
+  // the frame's own, at fractional positions.
+  const gaps = edges.map((_, gap) => gap).filter((gap) => shown !== null && edges[gap]! >= shown[0] - 1 && edges[gap]! <= shown[1] + 1);
+  if (gaps.length === 0) return dropGapAt(edges, pointer);
+  return gaps[dropGapAt(gaps.map((gap) => edges[gap]!), pointer)]!;
+}
+
+/**
+ * Whether a drag event is inside the body scroller: over the text column or
+ * the gutters beside it, the area a table drag can land in.
+ * @param view - The editor view.
+ * @param event - The dragover or drop.
+ * @returns Whether it is.
+ */
+function overBody(view: EditorView, event: Event): boolean {
+  const { target } = event;
+  return target instanceof Node && (bodyScrollerOf(view)?.contains(target) ?? false);
 }
 
 /**
@@ -239,9 +261,7 @@ function gapUnder(view: EditorView, drag: Drag, event: MouseEvent): number | nul
  * @returns Whether it is.
  */
 function overGutter(view: EditorView, event: Event): boolean {
-  const { target } = event;
-  if (!(target instanceof Node) || view.dom.contains(target)) return false;
-  return bodyScrollerOf(view)?.contains(target) ?? false;
+  return overBody(view, event) && !view.dom.contains(event.target as Node);
 }
 
 /**
@@ -346,12 +366,18 @@ function tableDragPlugin(editor: DropEditor): Plugin<Drag | null> {
         if (event.buttons === 0) end();
       };
       /**
-       * Takes a dragover over the gutters.
+       * Takes a dragover over the gutters; past the body the line goes, as the
+       * editor's own drop cursor does when the pointer leaves it.
        * @param event - The dragover.
        */
       const over = (event: DragEvent): void => {
         const drag = tableDragKey.getState(view.state);
-        if (drag != null && overGutter(view, event)) trackGap(view, drag, event);
+        if (drag == null) return;
+        if (overGutter(view, event)) trackGap(view, drag, event);
+        else if (!overBody(view, event) && drag.gap !== null) {
+          const command: DragCommand = { gap: null };
+          view.dispatch(view.state.tr.setMeta(tableDragKey, command).setMeta('addToHistory', false));
+        }
       };
       /**
        * Takes a drop over the gutters; any other drop only ends the drag.

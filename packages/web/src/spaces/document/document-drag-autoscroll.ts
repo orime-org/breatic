@@ -41,10 +41,9 @@ import type { EditorView } from '@tiptap/pm/view';
 import {
   BodyAutoScroll,
   bodyScrollerOf,
-  SCROLL_VIEWPORT,
   type DragTarget,
 } from '@web/spaces/document/document-body-autoscroll';
-import { dragSourceOf } from '@web/spaces/document/document-table-drag';
+import { dragSourceOf, tableFrameOf } from '@web/spaces/document/document-table-drag';
 
 /**
  * Whether an event is one BlockNote re-dispatched, by the mark it sets.
@@ -129,12 +128,11 @@ export function autoScrollOf(view: EditorView): BodyAutoScroll | undefined {
 function dragTargetOf(view: EditorView): DragTarget | null {
   const source = dragSourceOf(view.state);
   if (source?.orientation === 'column') {
-    const cell = view.nodeDOM(source.cellPos);
-    const frame = cell instanceof Element ? cell.closest<HTMLElement>(SCROLL_VIEWPORT) : null;
-    if (frame !== null) return { el: frame, axis: 'x', gate: false };
+    const frame = tableFrameOf(view, source.cellPos);
+    if (frame !== null) return { el: frame, axis: 'x' };
   }
   const body = bodyScrollerOf(view);
-  return body === null ? null : { el: body, axis: 'y', gate: true };
+  return body === null ? null : { el: body, axis: 'y' };
 }
 
 /**

@@ -67,8 +67,6 @@ export interface EdgeReading {
 export interface DragTarget {
   readonly el: HTMLElement;
   readonly axis: ScrollAxis;
-  /** Whether the pointer must sit within the scroller across the other axis. */
-  readonly gate: boolean;
 }
 
 /** What the session needs from the page. */
@@ -101,12 +99,11 @@ const STILL: EdgeReading = { dir: 0, factor: 0, beyond: 0 };
  * @param box - The scroller's box.
  * @param at - The pointer.
  * @param axis - The axis it scrolls along.
- * @param gate - Whether a pointer outside the box across the other axis reads nothing.
  * @returns The reading.
  */
-export function readEdge(box: EdgeBox, at: PointerAt, axis: ScrollAxis, gate: boolean): EdgeReading {
+export function readEdge(box: EdgeBox, at: PointerAt, axis: ScrollAxis): EdgeReading {
   const [start, end, along] = axis === 'y' ? [box.top, box.bottom, at.y] : [box.left, box.right, at.x];
-  if (!isOver(box, at, axis, gate)) return STILL;
+  if (!isOver(box, at, axis)) return STILL;
   if (along < start) return { dir: -1, factor: 1, beyond: start - along };
   if (along > end) return { dir: 1, factor: 1, beyond: along - end };
   const hitbox = Math.min((end - start) * HITBOX_SHARE, HITBOX_CAP);
@@ -118,17 +115,17 @@ export function readEdge(box: EdgeBox, at: PointerAt, axis: ScrollAxis, gate: bo
 
 /**
  * Whether the pointer is over the scroller, or past its edge along the axis it
- * scrolls: the reach over which a drag's ramp is kept.
+ * scrolls: the reach over which a drag reads its edges and keeps its ramp. The
+ * body (vertical) needs the pointer within it across, so the Agent column
+ * beside it does not scroll it; a table frame (sideways) does not, since a
+ * column's handle sits half above the frame.
  * @param box - The scroller's box.
  * @param at - The pointer.
  * @param axis - The axis it scrolls along.
- * @param gate - Whether the pointer must sit within it across the other axis.
  * @returns Whether it is.
  */
-function isOver(box: EdgeBox, at: PointerAt, axis: ScrollAxis, gate: boolean): boolean {
-  if (!gate) return true;
-  const [crossStart, crossEnd, across] = axis === 'y' ? [box.left, box.right, at.x] : [box.top, box.bottom, at.y];
-  return across >= crossStart && across <= crossEnd;
+function isOver(box: EdgeBox, at: PointerAt, axis: ScrollAxis): boolean {
+  return axis === 'x' || (at.x >= box.left && at.x <= box.right);
 }
 
 /**
@@ -268,7 +265,7 @@ export class BodyAutoScroll {
    * moved, which Chrome does not scroll until it is dragged.
    */
   beginPress(el: HTMLElement, at: PointerAt | null): void {
-    this.start('press', { el, axis: 'y', gate: false });
+    this.start('press', { el, axis: 'y' });
     if (at !== null) this.follow(at);
   }
 
@@ -291,7 +288,7 @@ export class BodyAutoScroll {
     // Outside the window the loop goes on from the last dragover, which no
     // frame may have read yet.
     const { target } = session;
-    const left = session.at === null ? STILL : readEdge(target.el.getBoundingClientRect(), session.at, target.axis, target.gate);
+    const left = session.at === null ? STILL : readEdge(target.el.getBoundingClientRect(), session.at, target.axis);
     session.last = left;
     session.carry = carriesOutside(left, this.edgeIsWindowEdge(target, left.dir));
   }
@@ -364,14 +361,14 @@ export class BodyAutoScroll {
     if (session.at === null) return 0;
     const box = target.el.getBoundingClientRect();
     if (session.source === 'press') return pressStep(box, session.at);
-    if (!isOver(box, session.at, target.axis, target.gate)) {
+    if (!isOver(box, session.at, target.axis)) {
       session.engagedAt = null;
       return 0;
     }
     // Pragmatic starts the ramp as soon as the pointer is over the scroller,
     // not when it enters the hitbox (`try-scroll.ts`, `engagement-history.ts`).
     session.engagedAt ??= time;
-    return dragStep(readEdge(box, session.at, target.axis, target.gate), time - session.engagedAt, frameMs);
+    return dragStep(readEdge(box, session.at, target.axis), time - session.engagedAt, frameMs);
   }
 
   /**
