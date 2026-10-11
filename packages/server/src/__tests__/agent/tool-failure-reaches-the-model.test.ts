@@ -158,6 +158,7 @@ describe("what the model is handed after a tool fails", () => {
   });
 
   it("leaves a line in the log naming the tool and why it failed", async () => {
+    vi.mocked(logger.warn).mockClear();
     vi.mocked(logger.error).mockClear();
     await runWithContext({ userId: "u1", conversationId: "c1", projectId: "p1" }, async () => {
       const turn = await new MainAgent().chat("read that page", new AbortController().signal);
@@ -166,7 +167,10 @@ describe("what the model is handed after a tool fails", () => {
       }
     });
 
-    expect(logger.error).toHaveBeenCalledWith(
+    // The reader was told and the turn carried on; a fault of our own is
+    // logged as an error where it happened, not here.
+    expect(logger.error).not.toHaveBeenCalledWith(expect.anything(), "agent_tool_failed");
+    expect(logger.warn).toHaveBeenCalledWith(
       expect.objectContaining({
         toolName: "web_search",
         toolCallId: "tc-1",

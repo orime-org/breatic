@@ -505,6 +505,21 @@ describe("judge_likelihood records what the endpoint billed", () => {
 });
 
 describe("failing says what broke", () => {
+  it("keeps the transport's own error when nothing answered", async () => {
+    // The model is told the fact, not the transport's sentence; the error the
+    // turn logs is the one place left to tell a timeout from a dropped link.
+    const dropped = new TypeError("fetch failed");
+    httpRequestMock.mockRejectedValueOnce(dropped);
+    let thrown: unknown;
+    try {
+      await askAll();
+    } catch (err) {
+      thrown = err;
+    }
+    expect(toolFailureOf(thrown)?.kind).toBe("tool_failed");
+    expect((thrown as Error).cause).toBe(dropped);
+  });
+
   it("tells the model which kind of refusal a non-2xx was", async () => {
     httpRequestMock.mockResolvedValueOnce(responseOf({ error: "rate limited" }, 429));
     const { forModel, readerKey } = await failureOf(askAll);

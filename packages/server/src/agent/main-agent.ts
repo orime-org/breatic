@@ -459,9 +459,11 @@ export class MainAgent {
             // The turn carries on and the model is told why; the log is the
             // only place the reason is kept for whoever looks into the turn.
             // A call turned away to steer the model, or one the reader
-            // stopped, is not a failure.
+            // stopped, is not a failure. A warning: the reader was told, and a
+            // fault of our own inside a tool is logged as an error where it
+            // happened (`save-to-storage.ts`).
             if (ending.kind === "tool_failed") {
-              logger.error(
+              logger.warn(
                 {
                   err: toolOutput.error,
                   toolName: toolCall.toolName,

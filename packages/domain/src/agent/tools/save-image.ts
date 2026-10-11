@@ -145,6 +145,7 @@ export function makeSaveImageTool(): Tool<z.infer<typeof inputSchema>, SavedMate
         throw toolFailed(
           "Saving the picture failed on our side. Trying once more may work.",
           FAILURE_LINES.generic,
+          err,
         );
       } finally {
         running = false;

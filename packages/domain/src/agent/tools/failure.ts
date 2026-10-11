@@ -21,10 +21,12 @@ import type { FailureLine, ToolFailure } from "@breatic/shared";
  * Build the error a tool throws when it failed.
  * @param forModel - The reason, specific and actionable, for the model alone.
  * @param readerKey - Which of the coarse lines a reader is shown.
+ * @param cause - What was caught, when something was. The turn logs the error,
+ *   and a reason worded for the model can leave out what the log needs.
  * @returns The error to throw.
  */
-export function toolFailed(forModel: string, readerKey: FailureLine): Error {
-  return carrying(new Error(forModel), {
+export function toolFailed(forModel: string, readerKey: FailureLine, cause?: unknown): Error {
+  return carrying(new Error(forModel, cause === undefined ? undefined : { cause }), {
     kind: "tool_failed",
     forModel,
     readerKey,
