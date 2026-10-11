@@ -18,9 +18,9 @@
  *
  *   pnpm --filter @breatic/web test:visual
  */
-import { expect, test } from 'playwright/test';
+import { expect } from 'playwright/test';
 
-import { NARROW, WIDE, dragTabOnto, tabOrder } from '../helpers/tab-strip';
+import { NARROW, WIDE, dragTabOnto, tabOrder, test } from '../helpers/tab-strip';
 
 test('a dragged tab lands where it was dropped', async ({ page }) => {
   const before = await tabOrder(page);

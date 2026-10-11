@@ -98,7 +98,7 @@
 
 **超时只有一个数:project 的那个**(`playwright.config.ts`,两档都是 180s)。playwright 的 `test.setTimeout` 是**赋值**不是取大(`playwright/lib/common/index.js:2413`),所以一句写在文件顶上的 `test.setTimeout(90_000)` 把 180 秒降成了 90 秒,而它旁边的注释多半写着「抬高」。判定题:**我要写的这个数,比 project 的大吗?** 不大就别写;大才写,并在同一行说清哪一步要花这么久。
 
-**一台机器上一次只跑一轮。** setup 开局会把上一轮留下的 Project 扫掉(`account.setup.ts` 的 `removeOlderRuns`),而它分不出「上一轮扔下的」和「另一轮正在用的」。smoke 和 visual 同时开两个进程,后起的那个会删掉先起的那个正在用的 Project。
+**一台机器上一次只跑一轮。** setup 开局会把上一轮留下的 Project 归档(`tests/helpers/project.ts` 的 `archiveOlderRuns`),而它分不出「上一轮扔下的」和「另一轮正在用的」。smoke 和 visual 同时开两个进程,后起的那个会把先起的那个正在用的 Project 归档掉,先起的那一轮从此只能读、写不进去。
 
 ## 3. E2E(关键路径 + 核心用户流必有完整流程验证)
 
@@ -108,7 +108,8 @@
 - **核心用户流**:注册 → 登录 → 建 project → canvas 节点 create → mini-tool apply → 邀请
 - **工具**:web Playwright(`pnpm --filter @breatic/web test:smoke`)/ chrome-devtools MCP(交互式驱动)/ Yjs 协作类场景需两个会话验证多端 sync
 - **视觉改动**:必真浏览器 verify(看实际渲染,不靠文字描述),小批 ship + ground truth 对照(详见 [ARCHITECTURE.md#frontend](./ARCHITECTURE.md#frontend))
-- **建了什么就删掉什么(MANDATORY)**:spec 在套件的账号里建的东西(Space / 节点)一律在 `afterEach` 里删掉。**每条用例各建一个是对的**(不依赖上一次跑剩下的东西),但**留着就是错的** —— 一个 project 把它们全打开就每份文档占一个可写席位,collab 对此有上限(`packages/collab/src/services/connection-registry.ts`),超了那个 Space 只读、只读提示条吞掉用例的点击;而同一个账号被所有 spec 反复跑:实测一次全套建 32 个 Space,攒到 86 个时标签栏全是测试垃圾。判定题:**这条 spec 建了什么下次跑还看得见的东西吗?建了 → 它自己负责删。** 建和删走同一份实现(`packages/web/tests/helpers/space.ts`),别每个 spec 各写一遍;**删要走用户真实路径**(Space 的删除是 collab 的 `space:delete` RPC,鉴权和审计都在服务端,ADR 2026-05-23 yjs-collab-only-write-authz 禁止客户端直写 `meta.spaces`)。project 归 setup 和 teardown 管:setup 每轮建、teardown 每轮删,而且它扫掉更早的运行留下的(一轮被中断就会留下,而 project 也有上限)
+- **建了什么就删掉什么(MANDATORY)**:spec 在套件的账号里建的东西(Space / 节点)一律在用例结束时删掉 —— spec 自己建的在它的 `afterEach` 里删,经 helper 建的由那个 helper 导出的 `test` 上的 fixture 删。**每条用例各建一个是对的**(不依赖上一次跑剩下的东西),但**留着就是错的** —— 一个 project 把它们全打开就每份文档占一个可写席位,collab 对此有上限(`packages/collab/src/services/connection-registry.ts`),超了那个 Space 只读、只读提示条吞掉用例的点击;而同一个账号被所有 spec 反复跑:实测一次全套建 32 个 Space,攒到 86 个时标签栏全是测试垃圾。判定题:**这条 spec 建了什么下次跑还看得见的东西吗?建了 → 它自己负责删。** 建和删走同一份实现(`packages/web/tests/helpers/space.ts`),别每个 spec 各写一遍;**删要走用户真实路径**(Space 的删除是 collab 的 `space:delete` RPC,鉴权和审计都在服务端,ADR 2026-05-23 yjs-collab-only-write-authz 禁止客户端直写 `meta.spaces`)。project 归 setup 和 teardown 管:setup 每轮建、teardown 每轮归档(产品没有删除 project,归档后它不再占 studio 的 project 上限),setup 开局还会归档更早的运行留下的(一轮被中断就会留下);任何一个归档不成功,setup 或 teardown 当场红
+- **helper 不在模块顶层注册钩子(MANDATORY,CI 强制)**:`tests/helpers/` 下的模块顶层不写 `test.beforeEach` / `afterEach` / `beforeAll` / `afterAll` / `test.use`。模块在一个 worker 里只执行一次,顶层的钩子只挂到这个 worker 里**第一个**导入它的 spec 上,之后导入它的 spec 拿不到准备也拿不到清理,而且没有任何报错 —— 哪个 spec 排第一取决于这一轮的调度,于是同一个 spec 单跑绿、整套跑红。helper 的准备和清理(包括窗口大小)一律做成它导出的 `test` 上的 auto fixture(`base.extend({ x: [async ({ page }, use) => { …; await use(); … }, { auto: true }] })`),整个用例都不变的窗口大小可以直接写成 `extend` 里的 `viewport` 值;要用它的 spec 从 helper 导入 `test`。会建东西的 helper 函数在 fixture 没在跑时直接抛错,所以漏导 `test` 当场就红。`breatic/no-helper-module-hooks` 扫 `tests/helpers/**`。判定题:**我正要在 helper 的顶层写一个钩子吗?那就把它写成 fixture。**
 
 ## 4. 边界
 

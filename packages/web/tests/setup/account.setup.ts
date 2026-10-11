@@ -27,7 +27,13 @@ import {
 } from 'playwright/test';
 import { newCredentials, readAccounts, rememberAccount } from '../helpers/credentials';
 import { registerAccount } from '../helpers/signup';
-import { PROJECTS_FILE, STATE_FILE, type Account } from '../helpers/project';
+import {
+  archiveOlderRuns,
+  MADE_BY_SMOKE,
+  PROJECTS_FILE,
+  STATE_FILE,
+  type Account,
+} from '../helpers/project';
 import { REMOVALS_FILE } from '../helpers/space';
 
 /** How many Projects each account gets, and why it needs that many. */
@@ -39,9 +45,6 @@ const PROJECTS_PER_ACCOUNT: Readonly<Record<Account, number>> = {
   // make that case ask a membership question instead of the one it is for.
   B: 1,
 };
-
-/** Marks the Projects this suite made, so later runs can recognise them. */
-const MADE_BY_SMOKE = 'smoke-run';
 
 /**
  * Refuse to run anywhere but this machine.
@@ -235,45 +238,6 @@ async function personalStudio(
 }
 
 /**
- * Removes the Projects earlier runs left behind.
- *
- * Teardown handles the run that finishes. A run that is interrupted — and a
- * suite this long gets interrupted — leaves its Projects, and Projects have a
- * ceiling the base tier sets at ten. Without this, a few interruptions are
- * enough that setup can no longer create anything and the whole suite fails
- * for a reason that has nothing to do with the code.
- *
- * The sweep cannot tell an abandoned Project from one a run is working in
- * right now, so the two suites take turns on an account: a second run started
- * while the first is going removes the Projects that one is using, and its
- * cases then fail on a Project that is no longer there. `workers: 1` already
- * says one case at a time; this says one run at a time.
- * @param api - A signed-in request context.
- * @param studioSlug - The studio to sweep; its projects are listed by slug.
- */
-async function removeOlderRuns(
-  api: APIRequestContext,
-  studioSlug: string,
-): Promise<void> {
-  // The list comes a page at a time. Paging by creation time is unaffected by
-  // the deletes: each cursor carries the last row's own values, not an offset.
-  let cursor: string | undefined;
-  do {
-    const query = new URLSearchParams({ sort: 'created', limit: '100', ...(cursor ? { cursor } : {}) });
-    const listed = await api.get(`/api/v1/studio/${studioSlug}/projects?${query}`);
-    if (!listed.ok()) return;
-    const { data } = (await listed.json()) as {
-      data: { items: { id: string; slug: string }[]; nextCursor: string | null };
-    };
-    for (const project of data.items) {
-      if (!project.slug.startsWith(MADE_BY_SMOKE)) continue;
-      await api.delete(`/api/v1/projects/${project.id}`);
-    }
-    cursor = data.nextCursor ?? undefined;
-  } while (cursor);
-}
-
-/**
  * Creates one Project and reports its id.
  * @param api - A signed-in request context.
  * @param studioId - The studio to create it in.
@@ -333,7 +297,7 @@ setup('prepare the accounts and their projects', async ({ browser, baseURL }) =>
       await signInOrRegister(api, account);
     }
     const studio = await personalStudio(api, account);
-    await removeOlderRuns(api, studio.slug);
+    await archiveOlderRuns(api, studio.slug);
     for (let made = 0; made < PROJECTS_PER_ACCOUNT[account]; made += 1) {
       prepared[account].push(await createProject(api, studio.id, made));
     }

@@ -10,10 +10,12 @@
  * before it left — eight of the ten did, and the two that did not still needed
  * the first to have cleared the record.
  *
- * A spec importing this evaluates it in its own scope, so the hooks below
- * remove that file's Spaces and neither file can reach the other's.
+ * A spec that opens the project through `openFreshProject` or adds Spaces
+ * through `addSpaces` imports `test` from here; the window size and the
+ * removal of those Spaces are fixtures on that `test`, so every case of every
+ * such file gets them.
  */
-import { expect, test, type Page } from 'playwright/test';
+import { expect, test as base, type Page } from 'playwright/test';
 
 import { CANVAS_SPACE, liveModuleUrl } from './live-module';
 import { openSmokeProject } from './project';
@@ -22,13 +24,32 @@ import { createSpace, deleteSpace, visibleSpace, type SpaceKind } from './space'
 /** Wide enough for a strip of several tabs and a minimap beside the canvas. */
 export const VIEWPORT = { width: 1400, height: 900 };
 
-test.use({ viewport: VIEWPORT });
-
 /** The Spaces this case made, removed when it ends. */
 const mine: string[] = [];
 
-test.afterEach(async ({ page }) => {
-  while (mine.length > 0) await deleteSpace(page, mine.pop() as string);
+/** Whether the fixture that removes those Spaces is running for this case. */
+let cleaning = false;
+
+/**
+ * The test a tab-restore case runs under: a window of `VIEWPORT`, and the
+ * removal of every Space `openFreshProject` and `addSpaces` made.
+ */
+export const test = base.extend<{ restoreSpaces: void }>({
+  viewport: VIEWPORT,
+  restoreSpaces: [
+    async ({ page }, use) => {
+      cleaning = true;
+      await use();
+      cleaning = false;
+      // A case that works in a browser context of its own leaves this page
+      // where it started, outside the project the Spaces were made in.
+      if (mine.length > 0 && !page.url().includes('/project/')) {
+        await openSmokeProject(page);
+      }
+      while (mine.length > 0) await deleteSpace(page, mine.pop() as string);
+    },
+    { auto: true },
+  ],
 });
 
 /**
@@ -159,16 +180,25 @@ export async function seedImageNode(
 }
 
 /**
- * Open the account's first project from a browser that has not been here.
+ * Open the account's first project from a browser that has not been here, on
+ * an empty canvas this case made and removes when it ends.
  *
  * Clearing the record before the page paints it is what makes each case's
  * strip the one it built: with a record in place the app opens on whatever an
- * earlier visit left.
+ * earlier visit left. Without a record the app opens on the project's newest
+ * Space, so the canvas is made first to be that Space; otherwise the case
+ * seeds nodes into whichever Space the account last kept, and the next case
+ * finds them there.
  * @param p - The page to open it in.
  * @returns The project's address.
+ * @throws {Error} When the case does not run under this module's `test`, which removes the canvas.
  */
 export async function openFreshProject(p: Page): Promise<string> {
+  if (!cleaning) {
+    throw new Error('openFreshProject needs the test from helpers/tab-restore, which removes the canvas it makes');
+  }
   await openSmokeProject(p);
+  mine.push(await createSpace(p, 'canvas', `restore-${Date.now()}-open`));
   await p.evaluate(() => window.localStorage.removeItem('breatic.projectTabs'));
   await p.reload();
   await expect(visibleSpace(p).locator('.react-flow__pane:visible')).toBeVisible({ timeout: 20_000 });
@@ -182,12 +212,16 @@ export async function openFreshProject(p: Page): Promise<string> {
  * @param count - How many to make.
  * @param kind - Which kind of Space to make.
  * @returns Their ids, in the order they were made.
+ * @throws {Error} When the case does not run under this module's `test`, which removes the Spaces.
  */
 export async function addSpaces(
   p: Page,
   count: number,
   kind: SpaceKind = 'canvas',
 ): Promise<string[]> {
+  if (!cleaning) {
+    throw new Error('addSpaces needs the test from helpers/tab-restore, which removes the Spaces it makes');
+  }
   const made: string[] = [];
   for (let i = 0; i < count; i += 1) {
     const id = await createSpace(p, kind, `restore-${Date.now()}-${i}`);

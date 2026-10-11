@@ -9,9 +9,9 @@
  * Wants dev running:
  *   pnpm --filter @breatic/web test:smoke
  */
-import { test, expect, type Page } from 'playwright/test';
+import { expect, type Page } from 'playwright/test';
 
-import { openFreshDocument, selectParagraph } from '../helpers/bubble-bar';
+import { openFreshDocument, selectParagraph, test } from '../helpers/bubble-bar';
 
 const EDITOR = '[data-testid="document-space"] .ProseMirror';
 const AGENT_COLUMN = '[data-testid="agent-column"]';

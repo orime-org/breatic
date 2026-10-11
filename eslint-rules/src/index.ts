@@ -42,6 +42,7 @@ import { serviceObservability } from "#rules/rules/service-observability";
 import { singleToastEntry } from "#rules/rules/single-toast-entry";
 import { singleTooltipProvider } from "#rules/rules/single-tooltip-provider";
 import { testFileLocation } from "#rules/rules/test-file-location";
+import { noHelperModuleHooks } from "#rules/rules/no-helper-module-hooks";
 
 /**
  * The repository's own ESLint plugin.
@@ -98,5 +99,6 @@ export const breaticPlugin = {
     "storage-key-prefix": storageKeyPrefix,
     "single-tooltip-provider": singleTooltipProvider,
     "test-file-location": testFileLocation,
+    "no-helper-module-hooks": noHelperModuleHooks,
   },
 } as const;

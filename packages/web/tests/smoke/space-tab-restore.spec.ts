@@ -19,7 +19,7 @@
  *
  *   pnpm --filter @breatic/web test:smoke
  */
-import { expect, test, type Locator, type Page } from 'playwright/test';
+import { expect, type Locator, type Page } from 'playwright/test';
 
 import { credentialsFor } from '../helpers/credentials';
 import { openSmokeProject, smokeProjectUrl } from '../helpers/project';
@@ -36,6 +36,7 @@ import {
   stored,
   storedViewport,
   stripIds,
+  test,
 } from '../helpers/tab-restore';
 
 test('lands on one Space and remembers it', async ({ page }) => {
@@ -307,11 +308,7 @@ test('keeps one account’s strip out of the next account’s hands', async ({ b
   const first = credentialsFor('A');
   await signIn(page, first.email, first.password);
   const projectUrl = await openFreshProject(page);
-  // Made and removed here rather than through `addSpaces`: the shared hook
-  // removes Spaces with the page the fixture hands it, and this case works in
-  // a context of its own that hook never sees.
-  const created = await createSpace(page, 'canvas', `restore-boundary-${Date.now()}`);
-  await expect.poll(() => stripIds(page), { timeout: 20_000 }).toContain(created);
+  const [created] = (await addSpaces(page, 1)) as [string];
   const strip = await stripIds(page);
   expect(strip).toContain(created);
   // The strip is painted before it is stored, so wait for the write rather
@@ -353,7 +350,6 @@ test('keeps one account’s strip out of the next account’s hands', async ({ b
   for (const [user, projects] of Object.entries(left)) {
     expect(back[user]).toEqual(projects);
   }
-  await deleteSpace(page, created);
   await context.close();
 });
 
