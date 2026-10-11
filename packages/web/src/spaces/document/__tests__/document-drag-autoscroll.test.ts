@@ -99,6 +99,56 @@ describe('the drag session', () => {
     expect(autoScrollOf(view)!.state).toBe('idle');
   });
 
+  it('does not start on the dragenter that follows a drag from outside the body scroller', () => {
+    const { editor } = open();
+    const view = editor.prosemirrorView!;
+    const link = document.createElement('a');
+    link.href = '/studio';
+    document.body.append(link);
+    drag(link, 'dragstart');
+    // The browser enters the drag source first, with no element left behind.
+    drag(link, 'dragenter', { relatedTarget: null });
+    expect(autoScrollOf(view)!.state).toBe('idle');
+  });
+
+  it('starts for something dragged in from outside once a drag from the page ended, by its dragend or by a move with no button held', () => {
+    const { editor } = open();
+    const view = editor.prosemirrorView!;
+    const link = document.createElement('a');
+    document.body.append(link);
+    drag(link, 'dragstart');
+    drag(link, 'dragend');
+    drag(view.dom, 'dragenter', { relatedTarget: null });
+    expect(autoScrollOf(view)!.source).toBe('drag');
+    drag(view.dom, 'drop');
+    drag(link, 'dragstart');
+    window.dispatchEvent(new MouseEvent('mousemove', { buttons: 0 }));
+    drag(view.dom, 'dragenter', { relatedTarget: null });
+    expect(autoScrollOf(view)!.source).toBe('drag');
+  });
+
+  it('does not start for something dragged in from outside while its body is hidden, as a Space not on screen keeps it', () => {
+    const { editor, scroller } = open();
+    const view = editor.prosemirrorView!;
+    scroller.checkVisibility = (): boolean => false;
+    drag(document.body, 'dragenter', { relatedTarget: null });
+    expect(autoScrollOf(view)!.state).toBe('idle');
+  });
+
+  it('tells the loop a drag that leaves the window was started on the page, and one dragged in was not', () => {
+    const { editor } = open();
+    const view = editor.prosemirrorView!;
+    const auto = autoScrollOf(view)!;
+    const leave = vi.spyOn(auto, 'leaveWindow');
+    drag(view.dom, 'dragstart');
+    drag(window, 'dragleave', { relatedTarget: null });
+    expect(leave).toHaveBeenLastCalledWith(true);
+    drag(view.dom, 'dragend');
+    drag(view.dom, 'dragenter', { relatedTarget: null });
+    drag(window, 'dragleave', { relatedTarget: null });
+    expect(leave).toHaveBeenLastCalledWith(false);
+  });
+
   it('does not start on a cancelled dragstart', () => {
     const { editor } = open();
     const view = editor.prosemirrorView!;

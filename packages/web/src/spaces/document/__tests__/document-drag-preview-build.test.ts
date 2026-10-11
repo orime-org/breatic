@@ -245,14 +245,15 @@ describe('blockPreviewContent', () => {
     expect(content.querySelector('[data-overflow-edge]')).toBeNull();
   });
 
-  it('draws each video as a canvas of its own size when it has no original', () => {
+  it('draws each video as an empty canvas when it has no original to take a size and a frame from', () => {
     const editor = open([{ type: 'paragraph', content: 'x' }]);
     const view = editor.prosemirrorView!;
-    const block = blockOf('v1', 'video', '<div data-media-box=""><video width="320" height="180"></video></div>');
+    // The body's video player sets no size on the element.
+    const block = blockOf('v1', 'video', '<div data-media-box=""><video src="https://example.test/v.mp4" preload="metadata"></video></div>');
     const content = blockPreviewContent(view, [block]);
     expect(content.querySelector('video')).toBeNull();
     const canvas = content.querySelector('canvas')!;
-    expect([canvas.width, canvas.height]).toEqual([320, 180]);
+    expect([canvas.width, canvas.height]).toEqual([0, 0]);
   });
 
   it('draws a video from the copy of the block it sits in, when the same video is in the body twice', () => {

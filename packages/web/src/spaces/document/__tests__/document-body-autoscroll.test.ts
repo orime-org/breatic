@@ -200,14 +200,14 @@ describe('BodyAutoScroll', () => {
     auto.beginDrag({ el: body, axis: 'y' });
     auto.follow({ x: 600, y: 40 });
     for (let i = 0; i < 30; i += 1) clock.tick();
-    auto.leaveWindow();
+    auto.leaveWindow(false);
     expect(auto.state).toBe('outside');
     const before = body.scrollTop;
     clock.tick();
     expect(before - body.scrollTop).toBe(15 + 20 + 40);
   });
 
-  it('leaving the window from inside the top hitbox stops (Esc cannot be told apart, the top edge is not the window edge)', () => {
+  it('a drag from outside the window that leaves it again from inside the top hitbox stops (Esc cannot be told apart, the top edge is not the window edge)', () => {
     const clock = fakeClock();
     const auto = new BodyAutoScroll(clock.deps);
     const body = fakeScroller();
@@ -215,7 +215,7 @@ describe('BodyAutoScroll', () => {
     auto.beginDrag({ el: body, axis: 'y' });
     auto.follow({ x: 600, y: BOX.top + 10 });
     for (let i = 0; i < 30; i += 1) clock.tick();
-    auto.leaveWindow();
+    auto.leaveWindow(false);
     const before = body.scrollTop;
     clock.tick();
     expect(body.scrollTop).toBe(before);
@@ -228,10 +228,64 @@ describe('BodyAutoScroll', () => {
     auto.beginDrag({ el: body, axis: 'y' });
     auto.follow({ x: 600, y: 895 });
     for (let i = 0; i < 30; i += 1) clock.tick();
-    auto.leaveWindow();
+    auto.leaveWindow(false);
     const before = body.scrollTop;
     clock.tick();
     expect(body.scrollTop).toBeGreaterThan(before);
+  });
+
+  it('a drag started on the page carries on out of the window from the top hitbox, though the top edge is not the window edge', () => {
+    const clock = fakeClock();
+    const auto = new BodyAutoScroll(clock.deps);
+    const body = fakeScroller();
+    body.scrollTop = 5000;
+    auto.beginDrag({ el: body, axis: 'y' });
+    auto.follow({ x: 600, y: BOX.top + 10 });
+    for (let i = 0; i < 30; i += 1) clock.tick();
+    auto.leaveWindow(true);
+    const before = body.scrollTop;
+    clock.tick();
+    expect(body.scrollTop).toBeLessThan(before);
+  });
+
+  it('a drag started on the page carries on out of the window from the inner half of the bottom hitbox', () => {
+    const clock = fakeClock();
+    const auto = new BodyAutoScroll(clock.deps);
+    const body = fakeScroller();
+    auto.beginDrag({ el: body, axis: 'y' });
+    auto.follow({ x: 600, y: BOX.bottom - 150 });
+    for (let i = 0; i < 30; i += 1) clock.tick();
+    auto.leaveWindow(true);
+    const before = body.scrollTop;
+    clock.tick();
+    expect(body.scrollTop).toBeGreaterThan(before);
+  });
+
+  it('a column dragged on the page carries the table frame on out of the window from its hitbox, the frame inside the window', () => {
+    const clock = fakeClock();
+    const auto = new BodyAutoScroll(clock.deps);
+    const frame = fakeScroller({ top: 300, bottom: 500, left: 400, right: 968 });
+    auto.beginDrag({ el: frame, axis: 'x' });
+    auto.follow({ x: 950, y: 400 });
+    for (let i = 0; i < 30; i += 1) clock.tick();
+    auto.leaveWindow(true);
+    const before = frame.scrollLeft;
+    clock.tick();
+    expect(frame.scrollLeft).toBeGreaterThan(before);
+  });
+
+  it('a drag started on the page that leaves the window from the middle stops: there is no direction to go on in', () => {
+    const clock = fakeClock();
+    const auto = new BodyAutoScroll(clock.deps);
+    const body = fakeScroller();
+    body.scrollTop = 500;
+    auto.beginDrag({ el: body, axis: 'y' });
+    auto.follow({ x: 600, y: 490 });
+    clock.tick();
+    auto.leaveWindow(true);
+    const before = body.scrollTop;
+    clock.tick();
+    expect(body.scrollTop).toBe(before);
   });
 
   it('a pointer reading after leaving brings the session back to tracking', () => {
@@ -239,7 +293,7 @@ describe('BodyAutoScroll', () => {
     const auto = new BodyAutoScroll(clock.deps);
     auto.beginDrag({ el: fakeScroller(), axis: 'y' });
     auto.follow({ x: 600, y: 895 });
-    auto.leaveWindow();
+    auto.leaveWindow(false);
     auto.follow({ x: 600, y: 490 });
     expect(auto.state).toBe('tracking');
   });
@@ -339,7 +393,7 @@ describe('BodyAutoScroll, the latest pointer (inner#1350 round 2)', () => {
     clock.tick();
     // Over the top bar, and straight out of the window within the same frame.
     auto.follow({ x: 600, y: 40 });
-    auto.leaveWindow();
+    auto.leaveWindow(false);
     for (let i = 0; i < 10; i += 1) clock.tick();
     expect(body.scrollTop).toBeLessThan(5000);
   });
@@ -353,7 +407,7 @@ describe('BodyAutoScroll, the latest pointer (inner#1350 round 2)', () => {
     auto.follow({ x: 600, y: 400 });
     clock.tick();
     auto.follow({ x: 600, y: 40 });
-    auto.leaveWindow();
+    auto.leaveWindow(false);
     const start = body.scrollTop;
     clock.tick();
     // 16ms into the ramp: 4% of (15 + 20 + 40 past the top edge).
@@ -372,7 +426,7 @@ describe('BodyAutoScroll, the latest pointer (inner#1350 round 2)', () => {
     body.scrollTop = 50_000;
     auto.beginDrag({ el: body, axis: 'y' });
     auto.follow({ x: 600, y: 40 });
-    auto.leaveWindow();
+    auto.leaveWindow(false);
     const start = body.scrollTop;
     clock.tick();
     expect(start - body.scrollTop).toBe(1);
