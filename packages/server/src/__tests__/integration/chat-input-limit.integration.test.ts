@@ -330,3 +330,94 @@ describe("what one turn may send", () => {
     expect(res.status).toBeLessThan(500);
   });
 });
+
+describe("what one turn may carry of the reader's Spaces (inner#1413)", () => {
+  /**
+   * The Spaces a message carries, with the open one holding a given length.
+   * @param listed - How many Spaces the list holds.
+   * @param contentLength - How long the open Space's content is.
+   * @returns The fields to put on the request.
+   */
+  function spaceFields(listed: number, contentLength: number) {
+    const spaces = Array.from({ length: listed }, (_, i) => ({ id: `s${i}`, name: `Space ${i}`, kind: "canvas" }));
+    return {
+      spaces,
+      spaces_total: listed,
+      current_space: { ...spaces[0], state: "loaded", content: "x".repeat(contentLength), total_chars: contentLength + 1 },
+    };
+  }
+
+  it("admits an open Space whose content lands exactly on its limit", async () => {
+    const { projectId, conversationId, cookie } = await seedOwner();
+
+    const res = await post(
+      "/api/v1/chat/message",
+      {
+        message: "summarise this",
+        project_id: projectId,
+        conversation_id: conversationId,
+        ...spaceFields(1, getAgentConfig().current_space_max_chars),
+      },
+      cookie,
+    );
+
+    expect(res.status).toBe(200);
+  });
+
+  it("refuses an open Space whose content is past its limit", async () => {
+    const { projectId, conversationId, cookie } = await seedOwner();
+
+    const res = await post(
+      "/api/v1/chat/message",
+      {
+        message: "summarise this",
+        project_id: projectId,
+        conversation_id: conversationId,
+        ...spaceFields(1, getAgentConfig().current_space_max_chars + 1),
+      },
+      cookie,
+    );
+
+    // Named by its length, so this is the limit refusing it and not the
+    // request's shape.
+    expect(res.status).toBe(422);
+    const body = (await res.json()) as { error: { message: string } };
+    expect(body.error.message).toContain(new Intl.NumberFormat("en").format(getAgentConfig().current_space_max_chars + 1));
+  });
+
+  it("admits a Space list that lands exactly on its limit", async () => {
+    const { projectId, conversationId, cookie } = await seedOwner();
+
+    const res = await post(
+      "/api/v1/chat/message",
+      {
+        message: "which Spaces are there?",
+        project_id: projectId,
+        conversation_id: conversationId,
+        ...spaceFields(getAgentConfig().space_list_max_items, 10),
+      },
+      cookie,
+    );
+
+    expect(res.status).toBe(200);
+  });
+
+  it("refuses a Space list longer than its limit", async () => {
+    const { projectId, conversationId, cookie } = await seedOwner();
+
+    const res = await post(
+      "/api/v1/chat/message",
+      {
+        message: "which Spaces are there?",
+        project_id: projectId,
+        conversation_id: conversationId,
+        ...spaceFields(getAgentConfig().space_list_max_items + 1, 10),
+      },
+      cookie,
+    );
+
+    expect(res.status).toBe(422);
+    const body = (await res.json()) as { error: { message: string } };
+    expect(body.error.message).toContain(String(getAgentConfig().space_list_max_items + 1));
+  });
+});
