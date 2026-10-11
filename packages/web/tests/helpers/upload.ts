@@ -115,8 +115,11 @@ export async function storedPicture(target: Page, url: string): Promise<StoredPi
   if (!fetched.ok()) throw new Error(`GET ${original} answered ${fetched.status()}`);
   const bytes = await fetched.body();
   const contentType = fetched.headers()['content-type'] ?? '';
-  const header = await readImageOrientation(async (offset, length) => bytes.subarray(offset, offset + length), contentType);
-  if (header === 'unreadable') throw new Error(`could not read the orientation of ${original}`);
+  const header = await readImageOrientation(
+    async (offset, length) => bytes.subarray(offset, offset + length),
+    contentType,
+    bytes.length,
+  );
   const shown = await target.evaluate(async (data: string) => {
     const binary = atob(data);
     const buffer = new Uint8Array(binary.length);
