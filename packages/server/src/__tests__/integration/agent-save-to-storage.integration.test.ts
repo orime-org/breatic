@@ -5,31 +5,18 @@
  * The agent's save against the real gates and ledger (inner#1315).
  *
  * `saveToStorageFor` runs the gates a link pasted on the canvas runs -- rate,
- * access, storage -- and then fetches the link in the turn's request. This
- * suite drives it with the database, Redis and the report path as they are;
- * the one thing stood in for is the ingest Worker's answer, which is the only
- * call that leaves this process.
+ * access, storage -- and then has the ingest Worker pull the link within the
+ * turn's request. This suite drives it with the database, Redis and the report
+ * path as they are; the one thing stood in for is the ingest Worker's answer,
+ * which is the only call that leaves this process.
  */
 
 import { describe, it, expect, beforeAll, afterAll, afterEach, inject, vi } from "vitest";
-
-/** The canvas routes reach the agent stack on import; this keeps it inert. */
-vi.mock("ai", () => ({
-  generateText: async () => ({ text: "", steps: [], usage: { totalTokens: 0 } }),
-  streamText: () => ({
-    fullStream: (async function* () {})(),
-    text: Promise.resolve(""),
-    usage: Promise.resolve({ totalTokens: 0 }),
-  }),
-  stepCountIs: (_n: number) => () => false,
-  tool: (config: Record<string, unknown>) => config,
-}));
-
 import crypto from "node:crypto";
 import postgres from "postgres";
 import { initCore, getRedis, setSession, sessionCookieName, loadLocales } from "@breatic/core";
 import { INGEST_FAILURE_HEADER } from "@breatic/shared";
-import { SaveRefused } from "@breatic/domain";
+import { backendUploadService, SaveRefused } from "@breatic/domain";
 import type { createApp } from "@server/app.js";
 import { getRateLimit } from "@server/config/rate-limits.js";
 import { saveToStorageFor } from "@server/agent/save-to-storage.js";
@@ -116,13 +103,16 @@ function workerAnswers(answer: () => Response): void {
   );
 }
 
-/** A Worker answer for a picture that landed. */
+/**
+ * A Worker answer for a picture that landed. Its type differs from what the
+ * link's `.jpg` suggests, so a registration that read the link would show.
+ */
 function landedPicture(): Response {
   return new Response(
     JSON.stringify({
       sha256: crypto.randomBytes(32).toString("hex"),
       sizeBytes: 4096,
-      contentType: "image/jpeg",
+      contentType: "image/png",
       cover: null,
     }),
     { status: 200, headers: { "content-type": "application/json" } },
@@ -152,10 +142,17 @@ async function refusalOf(save: Promise<unknown>): Promise<SaveRefused> {
 
 describe("the agent's save — when the link lands", () => {
   it("registers the picture in the project's studio as the agent's, under the type the Worker judged", async () => {
-    const { userId, studioId, projectId } = await seedEditor();
+    // The saver is an editor in someone else's project, so the project's
+    // studio, the saver and the project's creator are three different answers.
+    const owner = await seedEditor();
+    const editor = await seedEditor();
+    await sql`
+      INSERT INTO project_members (project_id, user_id, role, added_by)
+      VALUES (${owner.projectId}, ${editor.userId}, 'editor', ${owner.userId})
+    `;
     workerAnswers(landedPicture);
 
-    const saved = await saveToStorageFor({ projectId, userId })(SOURCE);
+    const saved = await saveToStorageFor({ projectId: owner.projectId, userId: editor.userId })(SOURCE);
 
     const rows = await sql<{ studio_id: string; file_url: string; mime_type: string; kind: string; source: string; produced_by_user_id: string }[]>`
       SELECT studio_id, file_url, mime_type, kind, source, produced_by_user_id
@@ -163,13 +160,13 @@ describe("the agent's save — when the link lands", () => {
     `;
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({
-      studio_id: studioId,
-      mime_type: "image/jpeg",
+      studio_id: owner.studioId,
+      mime_type: "image/png",
       kind: "image",
       source: "agent",
-      produced_by_user_id: userId,
+      produced_by_user_id: editor.userId,
     });
-    expect(saved.mimeType).toBe("image/jpeg");
+    expect(saved.mimeType).toBe("image/png");
   });
 
   it("consumes the grant it opened", async () => {
@@ -289,8 +286,8 @@ describe("the agent's save — when the link does not land", () => {
       (e: unknown) => e,
     );
 
-    expect(err).not.toBeNull();
-    expect(err).not.toBeInstanceOf(SaveRefused);
+    expect(err).toBeInstanceOf(backendUploadService.ReaderUrlTransferError);
+    expect(err).toMatchObject({ reason: "store_failed" });
     expect((await grantsOf(projectId))[0]!.voided_at).not.toBeNull();
   });
 });
