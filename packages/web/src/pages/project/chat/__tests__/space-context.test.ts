@@ -27,7 +27,7 @@ vi.mock('@web/spaces/document/document-editor-cache', async (importOriginal) => 
   peekDocumentEditor: (name: string) => editors.get(name),
 }));
 
-const { addNode } = await import('@web/data/yjs/canvas-space');
+const { addEdge, addNode } = await import('@web/data/yjs/canvas-space');
 const { _resetForTests, docName, getDoc, hasDoc } = await import('@web/data/yjs/manager');
 const { modelCatalogQuery } = await import('@web/spaces/canvas/generate/model-catalog-query');
 const { buildDocumentEditor } = await import('@web/spaces/document/build-document-editor');
@@ -146,6 +146,25 @@ describe('an open canvas', () => {
     const text = got.current?.state === 'loaded' ? got.current.text : '';
     expect(text).toContain('\n  "nodes": [');
     expect(JSON.parse(text)).toMatchObject({ nodes: [{ id: 'n1', type: 'text', data: { name: 'Hero' } }], edges: [] });
+  });
+
+  it('keeps its links when its content is cut to the limit', () => {
+    openCanvas();
+    for (const id of ['n1', 'n2']) {
+      addNode(PID, canvas.id, {
+        id,
+        type: 'text',
+        position: { x: 0, y: 0 },
+        data: { name: `Node ${id}`, createdAt: 1, createdBy: 'u1', locked: false, attachments: [] },
+      });
+    }
+    addEdge(PID, canvas.id, { id: 'e1', source: 'n1', target: 'n2' });
+
+    const cut = clipSpaceContext(read(), { currentSpaceMaxChars: 200, spaceListMaxItems: 200 });
+
+    const current = cut.current_space;
+    expect(current?.state === 'loaded' && current.total_chars).toBeGreaterThan(200);
+    expect(current?.state === 'loaded' ? current.content : '').toContain('"source": "n1"');
   });
 
   it('is empty when it holds nothing that can be handed over', () => {
