@@ -137,6 +137,11 @@ async function jpegOrientation(source: ByteSource): Promise<ImageOrientation> {
     const header = await source.at(at, 4);
     if (header.length < 4 || header[0] !== 0xff) return UPRIGHT;
     const marker = header[1] ?? 0;
+    // A fill byte (ITU-T T.81 B.1.1.2); the marker follows it.
+    if (marker === 0xff) {
+      at += 1;
+      continue;
+    }
     // Start of scan or end of image: no metadata segment follows.
     if (marker === 0xda || marker === 0xd9) return UPRIGHT;
     const length = readU16(header, 2, false);

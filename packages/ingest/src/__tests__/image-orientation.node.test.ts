@@ -45,14 +45,15 @@ function u32le(n: number): Uint8Array {
 }
 
 /** A JPEG whose APP1 carries `exif`, after an APP0 so APP1 is not first. */
-function jpeg(exif: Uint8Array | null): Uint8Array {
+function jpeg(exif: Uint8Array | null, fillBytes = 0): Uint8Array {
+  const fill = new Uint8Array(fillBytes).fill(0xff);
   const app0 = concat(new Uint8Array([0xff, 0xe0]), u16be(16), ascii("JFIF\0"), new Uint8Array(9));
   const app1 =
     exif === null
       ? new Uint8Array(0)
       : concat(new Uint8Array([0xff, 0xe1]), u16be(2 + 6 + exif.length), ascii("Exif\0\0"), exif);
   const sos = concat(new Uint8Array([0xff, 0xda]), u16be(8), new Uint8Array(6), new Uint8Array(1000));
-  return concat(new Uint8Array([0xff, 0xd8]), app0, app1, sos, new Uint8Array([0xff, 0xd9]));
+  return concat(new Uint8Array([0xff, 0xd8]), app0, fill, app1, sos, new Uint8Array([0xff, 0xd9]));
 }
 
 function pngChunk(type: string, data: Uint8Array): Uint8Array {
@@ -173,6 +174,16 @@ describe("readImageOrientation", () => {
       outOfBounds: false,
     });
     expect(reader.calls).toHaveLength(0);
+  });
+
+  // ITU-T T.81 B.1.1.2: any marker may be preceded by 0xFF fill bytes.
+  it("reads past 0xFF fill bytes before a marker", async () => {
+    await expect(orientationOf(jpeg(tiff(6), 3), "image/jpeg")).resolves.toEqual({
+      orientation: 6,
+      lossless: false,
+      animated: false,
+      outOfBounds: false,
+    });
   });
 
   it("answers 1 for a JPEG with no EXIF", async () => {
