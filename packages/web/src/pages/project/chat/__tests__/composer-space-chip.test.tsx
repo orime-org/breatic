@@ -57,15 +57,15 @@ describe('the open Space chip', () => {
     expect(attach.compareDocumentPosition(chip) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
-  it('shrinks with a long name down to its icon and three characters, and no further', () => {
+  it('shrinks with a long name down to its icon and three full-width characters, and no further', () => {
     // Without a floor of its own the chip is either never narrower than its
     // text, pushing it over the send button, or squeezed past its icon by a
     // long notice beside it. The floor is the padding, border, icon and gap
-    // (34px) plus three characters.
+    // (34px) plus three characters, counted in em so a CJK name keeps three.
     setup({ space: { name: 'A very long space name that goes on and on and on' } });
 
     const chip = screen.getByTestId('chat-composer-space');
-    expect(chip.className).toContain('min-w-[calc(3ch+2.125rem)]');
+    expect(chip.className).toContain('min-w-[calc(3em+2.125rem)]');
     expect(chip.className).toContain('overflow-hidden');
   });
 
@@ -139,9 +139,14 @@ describe('the open Space chip', () => {
       expect(hoverText()).toBe('The Agent sees only this Space\'s name and type. Click to stop');
     });
 
-    it('says a click lets the Agent read it while it is off, whatever its type', () => {
-      setup({ space: { name: 'Edit', type: 'timeline', enabled: false } });
+    it('says a click lets the Agent read it while it is off', () => {
+      setup({ space: { enabled: false } });
       expect(hoverText()).toBe('Click to let the Agent read this Space');
+    });
+
+    it('says a click lets the Agent see only the name and type of an open timeline while it is off', () => {
+      setup({ space: { name: 'Edit', type: 'timeline', enabled: false } });
+      expect(hoverText()).toBe('Click to let the Agent see this Space\'s name and type');
     });
   });
 });
