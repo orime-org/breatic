@@ -14,7 +14,7 @@
  * Worker they never configured, so this exits 0 and says what to copy.
  */
 
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { join } from "node:path";
 
@@ -31,6 +31,35 @@ if (!existsSync(CONFIG)) {
       "    cp wrangler.toml.template wrangler.toml   # bucket, ports, addresses",
       "    cp .dev.vars.template .dev.vars           # the shared secret",
       "  then fill in the repo-root .env (see packages/ingest/README.md).",
+      "",
+      "  Everything else in `pnpm dev` is unaffected.",
+      "",
+    ].join("\n"),
+  );
+  process.exit(0);
+}
+
+// Every top-level `[[containers]]` block has to name this copy (README.md, "Each
+// of the three top-level `[[containers]]` blocks"). One left unnamed builds the
+// same image ID as any other unnamed copy on this machine, and each rebuild of
+// one removes the tag the other's containers start from. Nothing reports that
+// when it happens, so it is checked here.
+const topLevel = readFileSync(CONFIG, "utf8").split(/^\[env\./m)[0] ?? "";
+const unnamed = topLevel
+  .split(/^\[\[containers\]\]/m)
+  .slice(1)
+  .map((block) => block.split(/^\[/m)[0] ?? "")
+  .filter((block) => !/^\s*image_vars\s*=\s*\{[^}]*\bDEV_COPY\s*=\s*"[^"<]+"/m.test(block));
+if (unnamed.length > 0) {
+  process.stdout.write(
+    [
+      "",
+      `  ingest Worker: ${String(unnamed.length)} [[containers]] block(s) in wrangler.toml name no copy, so it is not starting.`,
+      "",
+      "  Add this line to each top-level [[containers]] block, with one name",
+      "  no other copy of the repository on this machine uses:",
+      '    image_vars = { DEV_COPY = "<this directory\'s name>" }',
+      "  (see packages/ingest/README.md).",
       "",
       "  Everything else in `pnpm dev` is unaffected.",
       "",

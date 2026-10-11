@@ -61,8 +61,9 @@ identical images share one image ID, and after every build wrangler removes each
 `cloudflare-dev` tag on that ID other than its own; one copy's rebuild then
 deletes the tag another copy's Worker starts its containers from, and that
 Worker answers `No such image available named cloudflare-dev/mediacontainer:…`:
-uploads carry no media numbers and no cover, and container tools fail. The
-production blocks carry no `image_vars`.
+uploads carry no media numbers and no cover, and container tools fail. `pnpm dev`
+checks for the line and, when a block lacks it, says what to add and leaves this
+Worker stopped. The production blocks carry no `image_vars`.
 
 ### The server side of the same pipeline
 

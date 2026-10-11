@@ -32,7 +32,7 @@
 
 **接入错误上报之后，顶层还要补一行 `compatibility_flags = ["nodejs_compat"]`**，放在 `compatibility_date` 旁边，它会继承进 `[env.production]`。Sentry SDK 不管填没填 DSN 都会被 import，缺这个 flag 时打包只出警告，运行时 workerd 拒绝加载 Worker：`wrangler dev` 实测报 `No such module "node:async_hooks"` 起不来。
 
-**顶层三个 `[[containers]]` 块各补一行 `image_vars = { DEV_COPY = "<名字>" }`**（inner#1435）：三处填同一个名字，本机上别的仓库副本不用这个名字，填目录名即可。它写进镜像的一个 label，让每个副本构建出自己的镜像。构建内容相同的几个副本会共用一个镜像 ID，而 wrangler 每次构建完都删掉这个 ID 上构建号跟自己不同的 `cloudflare-dev` 标签（4.127.1 `cli.js:135075`）：一个副本重建，另一个副本正在用的标签就没了，那边的 Worker 答 `No such image available named cloudflare-dev/mediacontainer:…`，上传读不到时长和封面，容器工具全部失败。production 的三个块不加。
+**顶层三个 `[[containers]]` 块各补一行 `image_vars = { DEV_COPY = "<名字>" }`**（inner#1435）：三处填同一个名字，本机上别的仓库副本不用这个名字，填目录名即可。它写进镜像的一个 label，让每个副本构建出自己的镜像。构建内容相同的几个副本会共用一个镜像 ID，而 wrangler 每次构建完都删掉这个 ID 上构建号跟自己不同的 `cloudflare-dev` 标签（4.127.1 `cli.js:135075`）：一个副本重建，另一个副本正在用的标签就没了，那边的 Worker 答 `No such image available named cloudflare-dev/mediacontainer:…`，上传读不到时长和封面，容器工具全部失败。缺这一行时 `pnpm dev` 打印要补的那行、不启动这个 Worker（`scripts/dev.mjs`）。production 的三个块不加。
 
 **一个变量只在一个文件里定义，没有覆盖**：`wrangler.toml` 装非密钥（桶名、允许的来源、错误上报的 `SENTRY_DSN` 与 `SENTRY_ENVIRONMENT`——DSN 是公开值），`.dev.vars` 只装 `INGEST_SHARED_SECRET`，两边没有同名的东西。**`.dev.vars` 只管本机那个 `wrangler dev`；部署上的那份密钥走 `npx wrangler secret put INGEST_SHARED_SECRET --env production`**，它存在 Cloudflare 上、不落任何文件，设过之后 `wrangler secret list --env production` 只列得出名字。部署输出的绑定表里看不到它是正常的，那张表只列 vars 和 bindings —— 而缺了它每个请求都答 500，所以「表里没有」和「没设」得靠 `secret list` 分辨。**这里不配我们任何一个端点的地址**——Worker 不请求它们。环境的差别只是同一组变量的不同取值——顶层给 `wrangler dev`，`[env.production]` 给部署。
 
