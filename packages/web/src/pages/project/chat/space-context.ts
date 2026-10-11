@@ -12,8 +12,8 @@
  */
 
 import type { QueryClient } from '@tanstack/react-query';
-import { MAX_NODE_NAME_LEN, clipSpaceContent, spacesNewestFirst } from '@breatic/shared';
-import type { ChatSpace, ChatSpaceContext, ClippedSpaceContent, ModelCatalog } from '@breatic/shared';
+import { MAX_NODE_NAME_LEN, spacesNewestFirst } from '@breatic/shared';
+import type { ChatSpace, ChatSpaceContext, ModelCatalog } from '@breatic/shared';
 
 import { readEdges, readNodes } from '@web/data/yjs/canvas-space';
 import { readDocFacts } from '@web/data/yjs/collab-socket';
@@ -102,6 +102,30 @@ function readCanvas(source: SpaceContextSource, space: ProjectSpace): PickSnapsh
     pickReaders(source.queryClient, catalog, doc),
   );
   return snapshot ?? '';
+}
+
+/** Content kept, and how long it was before it was cut. */
+interface ClippedSpaceContent {
+  text: string;
+  total: number;
+}
+
+/**
+ * Keep the first `max` UTF-16 code units of a text -- the unit the server's
+ * limit check counts in.
+ *
+ * A cut that falls between the two halves of a surrogate pair keeps one fewer,
+ * so the text never ends on half a character: some model providers refuse a
+ * request carrying a lone surrogate.
+ * @param text - The text.
+ * @param max - How many code units may go.
+ * @returns The text kept and its length before the cut.
+ */
+function clipSpaceContent(text: string, max: number): ClippedSpaceContent {
+  if (text.length <= max) return { text, total: text.length };
+  const last = text.charCodeAt(max - 1);
+  const end = last >= 0xd800 && last <= 0xdbff ? max - 1 : max;
+  return { text: text.slice(0, end), total: text.length };
 }
 
 /** An address: a scheme, `://`, and no whitespace. */

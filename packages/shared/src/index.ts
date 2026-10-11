@@ -489,8 +489,6 @@ export {
   writeReferences,
 } from "@shared/agent/attachments.js";
 export type { AttachmentDataPart, MessageSegment, ResolvedSegment } from "@shared/agent/attachments.js";
-export { clipSpaceContent } from "@shared/agent/space-content.js";
-export type { ClippedSpaceContent } from "@shared/agent/space-content.js";
 export {
   carrying,
   FAILURE_LINES,

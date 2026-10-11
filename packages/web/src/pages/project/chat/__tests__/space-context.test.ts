@@ -555,6 +555,31 @@ describe('cutting what was read to the limits', () => {
     });
   });
 
+  /**
+   * A document's content cut to the limit.
+   * @param text - What the document holds.
+   * @returns What goes and how long it was.
+   */
+  const cutDocument = (text: string): { content: string; total: number } => {
+    const current = clipSpaceContext(
+      { spaces: [], current: { id: 'd1', name: 'Storyboard', kind: 'document', state: 'loaded', text } },
+      limits,
+    ).current_space;
+    return current?.state === 'loaded' ? { content: current.content, total: current.total_chars } : { content: '', total: -1 };
+  };
+
+  it('keeps a document within the limit whole', () => {
+    expect(cutDocument('abc')).toEqual({ content: 'abc', total: 3 });
+  });
+
+  it('counts UTF-16 code units, as the message length is counted', () => {
+    expect(cutDocument('分镜表格子')).toEqual({ content: '分镜表格', total: 5 });
+  });
+
+  it('does not leave half of a character when the limit falls inside one', () => {
+    expect(cutDocument('abc😀d')).toEqual({ content: 'abc', total: 6 });
+  });
+
   it('passes an open Space that has not loaded as it is', () => {
     const cut = clipSpaceContext(
       { spaces: [], current: { id: 'c1', name: 'Cast', kind: 'canvas', state: 'loading' } },
