@@ -164,7 +164,7 @@ function dragStart(): { event: Event; setDragImage: ReturnType<typeof vi.fn> } {
   const setDragImage = vi.fn();
   const event = new MouseEvent('dragstart', { bubbles: true, cancelable: true, clientX: 10, clientY: 10 });
   Object.defineProperty(event, 'dataTransfer', {
-    value: { setDragImage, setData: vi.fn(), clearData: vi.fn(), getData: vi.fn(() => ''), effectAllowed: 'all' },
+    value: { setDragImage, setData: vi.fn(), clearData: vi.fn(), getData: vi.fn(() => ''), files: [], effectAllowed: 'all' },
   });
   return { event, setDragImage };
 }
@@ -173,10 +173,10 @@ describe('which drag gets the selection preview (design §4, in this order)', ()
   it('the caption field\'s words, even while the media block is selected', () => {
     const editor = open([{ type: 'paragraph', content: 'a' }]);
     const view = editor.prosemirrorView!;
+    view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, nodeOf(editor, 'blockContainer', 'a'))));
     const input = document.createElement('input');
     input.setAttribute('data-testid', 'doc-media-caption-input');
     view.dom.append(input);
-    view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, nodeOf(editor, 'blockContainer', 'a'))));
     expect(selectionDragKind(view, { target: input }, null)).toBe('caption');
   });
 
@@ -214,7 +214,7 @@ describe('which drag gets the selection preview (design §4, in this order)', ()
     expect(selectionDragKind(view, { target: view.dom }, textPos(editor, 'two') + 1)).toBe('selection');
   });
 
-  it('a press on a selected divider, and inside a cell selection', () => {
+  it('a press on a selected divider, and inside a cell selection\'s head cell, the range ProseMirror reads as the selection', () => {
     const editor = open([
       { type: 'paragraph', content: 'one' },
       { type: 'divider' },
@@ -229,7 +229,10 @@ describe('which drag gets the selection preview (design §4, in this order)', ()
     view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, divider)));
     expect(selectionDragKind(view, { target: view.dom }, divider)).toBe('selection');
     selectCells(editor, 'a1', 'b2');
-    expect(selectionDragKind(view, { target: view.dom }, textPos(editor, 'b1'))).toBe('selection');
+    // A cell selection's from and to are its head cell's (prosemirror-tables
+    // `CellSelection`, `ranges[0]`): ProseMirror drags it from there only.
+    expect(selectionDragKind(view, { target: view.dom }, textPos(editor, 'b2'))).toBe('selection');
+    expect(selectionDragKind(view, { target: view.dom }, textPos(editor, 'b1'))).toBe(null);
   });
 });
 
