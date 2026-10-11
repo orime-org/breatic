@@ -197,11 +197,37 @@ function uprightContainer(
   return run;
 }
 
+/**
+ * Stand a container in that is never reached (its call throws) or answers
+ * with an error status.
+ * @param answer - "throws", or the status it answers with.
+ * @returns The namespace to pass in.
+ */
+function brokenContainer(answer: "throws" | number): Env["MEDIA"] {
+  return {
+    idFromName: (name: string) => name,
+    get: () => ({
+      setOutboundByHost: (): Promise<void> => Promise.resolve(),
+      fetch: (): Promise<Response> =>
+        answer === "throws"
+          ? Promise.reject(new Error("container did not start"))
+          : Promise.resolve(new Response("no", { status: answer })),
+    }),
+  } as unknown as Env["MEDIA"];
+}
+
 /** Ask the Worker to finish, the way our server does. */
 async function finish(
   held: Awaited<ReturnType<typeof uploaded>>,
-  run: { media?: Env["MEDIA"]; bucket?: Env["BUCKET"]; limits?: unknown } = {},
+  run: {
+    media?: Env["MEDIA"];
+    bucket?: Env["BUCKET"];
+    limits?: unknown;
+    /** The deadline the finish names; null leaves it out of the body. */
+    deadlineAt?: number | null;
+  } = {},
 ): Promise<Response> {
+  const deadlineAt = run.deadlineAt === undefined ? DEADLINE_AT : run.deadlineAt;
   const ctx = createExecutionContext();
   const response = await worker.fetch(
     new Request(`https://ingest.example.com/uploads/${held.uploadId}/complete`, {
@@ -214,7 +240,7 @@ async function finish(
       body: JSON.stringify({
         parts: held.parts,
         coverKey: held.storageKey.replace(/\.jpg$/, "_cover.png"),
-        deadlineAt: DEADLINE_AT,
+        ...(deadlineAt !== null && { deadlineAt }),
         ...("limits" in run ? { limits: run.limits } : { limits: LIMITS }),
       }),
     }),
@@ -361,6 +387,48 @@ describe("a picture with an EXIF orientation", () => {
     expect(response.status).toBe(502);
     expect(response.headers.get(INGEST_FAILURE_HEADER)).toBe("upright_failed");
     expect(run.asked).toBeNull();
+  });
+
+  it.each([
+    ["no quality", { uprightMaxBytes: LIMITS.uprightMaxBytes }],
+    ["no ceiling", { uprightJpegQuality: LIMITS.uprightJpegQuality }],
+    ["a quality nothing encodes with", { ...LIMITS, uprightJpegQuality: 101 }],
+  ])("fails the upload when its limits carry %s", async (_name, limits) => {
+    const held = await uploaded(jpeg(6));
+    const run = uprightContainer(jpeg(1));
+
+    const response = await finish(held, { media: run.media, limits });
+
+    expect(response.status).toBe(502);
+    expect(response.headers.get(INGEST_FAILURE_HEADER)).toBe("upright_failed");
+    expect(run.asked).toBeNull();
+  });
+
+  // Every way a turn can fail ends the upload the same way, and the log names
+  // which one it was (A8).
+  it.each([
+    ["the finish names no deadline", "no_deadline", () => ({ deadlineAt: null })],
+    ["the deadline has come", "unfinished", () => ({ deadlineAt: Date.now() - 1 })],
+    ["the container cannot be reached", "start_failed", () => ({ media: brokenContainer("throws") })],
+    ["the container answers with an error", "refused", () => ({ media: brokenContainer(500) })],
+    ["the container cannot turn it", "turn_failed", () => ({ media: uprightContainer(null).media })],
+    [
+      "the upright copy cannot be written back",
+      "write_failed",
+      () => ({ media: uprightContainer(jpeg(1)).media, limits: { ...LIMITS, uprightMaxBytes: 1 } }),
+    ],
+  ] as const)("fails the upload, and writes down why, when %s", async (_name, reason, setup) => {
+    const held = await uploaded(jpeg(6));
+    const logged = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    const response = await finish(held, setup());
+
+    expect(response.status).toBe(502);
+    expect(response.headers.get(INGEST_FAILURE_HEADER)).toBe("upright_failed");
+    const noted = logged.mock.calls.find(([label]) => label === "ingest_upright_failed");
+    expect(noted?.[1]).toMatchObject({ storageKey: held.storageKey, reason });
+    expect(await env.BUCKET.head(uprightKeyFor(held.storageKey))).toBeNull();
+    logged.mockRestore();
   });
 
   it("fails the upload when its orientation cannot be read", async () => {

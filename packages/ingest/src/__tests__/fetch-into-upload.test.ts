@@ -233,6 +233,7 @@ describe("POST /fetch — the transfer", () => {
     expect(await response.json()).toMatchObject({
       sizeBytes: 0,
       contentType: "image/png",
+      upright: null,
     });
   });
 

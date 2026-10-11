@@ -38,6 +38,11 @@ describe("previewUrlFor", () => {
     );
   });
 
+  it("gives the preview address of an upright copy", () => {
+    const upright = `image/2026-09-30/1790770458755_${UUID}_upright.png`;
+    expect(previewUrlFor(`${BASE}/${upright}`)).toBe(`${BASE}/${upright}.preview.webp`);
+  });
+
   it("accepts any extension case", () => {
     const url = `${BASE}/image/2026-09-30/1_${UUID}.JPG`;
     expect(previewUrlFor(url)).toBe(`${url}.preview.webp`);

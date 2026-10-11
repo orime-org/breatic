@@ -664,6 +664,21 @@ describe("an upload whose container answers", () => {
     expect(run.asked?.objectUrl).toContain(storageKey);
   });
 
+  // Turning upright is for still pictures; a video is read, not turned (A5).
+  it("asks no turn for a video, and answers it with no upright copy", async () => {
+    const { uploadId, token, parts } = await uploadedThrough(2);
+    const coverKey = `video/2026-09-05/${seq++}_unturned_cover.png`;
+    const run = containerAnswering(FILM, null);
+
+    const response = await complete(uploadId, token, parts, env.INGEST_SHARED_SECRET, coverKey, {
+      deadlineAt: DEADLINE_AT,
+      media: run.media,
+    });
+
+    expect(run.asked?.upright).toBeUndefined();
+    expect(await response.json()).toMatchObject({ contentType: "video/mp4", upright: null });
+  });
+
   // The three numbers are the video's own; a cover is a separate asset with a
   // separate row, and no frame is one the caller never asked for.
   it("reports the numbers with no cover when the container cut none", async () => {

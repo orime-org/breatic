@@ -214,12 +214,34 @@ describe("readImageOrientation", () => {
     });
   });
 
-  it("reads a PNG eXIf chunk", async () => {
-    await expect(orientationOf(png(tiff(8)), "image/png")).resolves.toEqual({
-      orientation: 8,
+  it.each([1, 2, 3, 6, 8])("reads orientation %i from a PNG eXIf chunk", async (value) => {
+    await expect(orientationOf(png(tiff(value)), "image/png")).resolves.toEqual({
+      orientation: value,
       lossless: false,
       animated: false,
       outOfBounds: false,
+    });
+  });
+
+  it.each([1, 2, 3, 6, 8])("reads orientation %i from a WebP EXIF chunk", async (value) => {
+    const bytes = webp({ exif: tiff(value), exifFlag: true, imageBytes: 64, lossless: false });
+    await expect(orientationOf(bytes, "image/webp")).resolves.toEqual({
+      orientation: value,
+      lossless: false,
+      animated: false,
+      outOfBounds: false,
+    });
+  });
+
+  it("answers 1 for a PNG whose eXIf is cut short, and says its chunk ran past the end", async () => {
+    const whole = png(tiff(6));
+    // Signature 8 + IHDR 25, then the eXIf chunk's length, type and 4 of its bytes.
+    const cut = whole.slice(0, 8 + 25 + 8 + 4);
+    await expect(orientationOf(cut, "image/png")).resolves.toEqual({
+      orientation: 1,
+      lossless: false,
+      animated: false,
+      outOfBounds: true,
     });
   });
 
