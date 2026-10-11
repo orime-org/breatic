@@ -7,7 +7,7 @@
  * through other people's edits; a row a merged cell spans cannot be dragged.
  */
 
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as Y from 'yjs';
 import { TextSelection } from '@tiptap/pm/state';
 
@@ -28,6 +28,15 @@ import { insertRow, setCellsAttr } from '@web/spaces/document/document-table-run
 type Editor = ReturnType<typeof buildDocumentEditor>;
 
 const mounted: Editor[] = [];
+
+/** A browser whose drag events tell leaving the window by relatedTarget. */
+const CHROME = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
+/** Safari, whose dragleave relatedTarget is always null: it counts. */
+const SAFARI = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15';
+
+beforeEach(() => {
+  vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue(CHROME);
+});
 
 afterEach(() => {
   for (const editor of mounted.splice(0)) {
@@ -375,6 +384,37 @@ describe('a dragged line over the gutter beside the body (inner#1350 round 3)', 
     view.dom.ownerDocument.dispatchEvent(new Event('dragend'));
     vi.restoreAllMocks();
     expect(grid(editor).map((row) => row[0])).toEqual(['a1', 'a2', 'a3']);
+  });
+
+  it('takes the drop on the update the pointer crosses into the gutter, which only fires a dragenter', () => {
+    const editor = open();
+    const gutter = inScroller(editor);
+    const view = editor.prosemirrorView!;
+    startTableDrag(view, 'column', cellOf(editor, 'a1'));
+    expect(fire(gutter, 'dragenter', 900).defaultPrevented).toBe(true);
+    expect(view.dom.querySelectorAll('[class*="doc-table-drop-column"]').length).toBeGreaterThan(0);
+  });
+
+  it('in Safari keeps the line while the pointer crosses elements, and takes it away when the count leaves the window', () => {
+    vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue(SAFARI);
+    const editor = open();
+    const gutter = inScroller(editor);
+    const view = editor.prosemirrorView!;
+    layRows(gutter, 0);
+    startTableDrag(view, 'row', cellOf(editor, 'a1'));
+    const lines = (): number => view.dom.querySelectorAll('[class*="doc-table-drop-row"]').length;
+    gutter.dispatchEvent(new Event('dragstart', { bubbles: true }));
+    fire(gutter, 'dragenter', 900, 80);
+    fire(gutter, 'dragover', 900, 80);
+    expect(lines()).toBeGreaterThan(0);
+    // From the gutter onto a cell: Safari enters the cell, then leaves the gutter for null.
+    const cell = view.nodeDOM(cellOf(editor, 'b2')) as HTMLElement;
+    fire(cell, 'dragenter', 50, 80);
+    gutter.dispatchEvent(new MouseEvent('dragleave', { bubbles: true, relatedTarget: null }));
+    expect(lines()).toBeGreaterThan(0);
+    // Off the cell and out of the window: nothing is entered.
+    cell.dispatchEvent(new MouseEvent('dragleave', { bubbles: true, relatedTarget: null }));
+    expect(lines()).toBe(0);
   });
 
   it('draws no line and drops nothing while every edge of the table is out of view', () => {

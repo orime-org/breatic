@@ -88,6 +88,16 @@ describe('the drag session', () => {
     expect(auto.target?.axis).toBe('y');
   });
 
+  it('does not start on a drag from outside the body scroller, such as a top bar link', () => {
+    const { editor } = open();
+    const view = editor.prosemirrorView!;
+    const link = document.createElement('a');
+    link.href = '/studio';
+    document.body.append(link);
+    drag(link, 'dragstart');
+    expect(autoScrollOf(view)!.state).toBe('idle');
+  });
+
   it('does not start on a cancelled dragstart', () => {
     const { editor } = open();
     const view = editor.prosemirrorView!;

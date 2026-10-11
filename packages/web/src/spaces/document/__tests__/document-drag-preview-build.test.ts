@@ -278,11 +278,12 @@ describe('tableLinePreviewContent', () => {
   ];
 
   it('keeps the whole dragged row, inside the table block and its colgroup', () => {
-    const editor = open([{ type: 'table', content: { type: 'tableContent', rows } }]);
+    const editor = open([{ type: 'table', content: { type: 'tableContent', columnWidths: [100, 200, 300], rows } }]);
     const content = tableLinePreviewContent(editor.prosemirrorView!, cellOf(editor, 'b2'), 'row')!;
     const tableBlock = '[data-content-type="table"]';
     expect(content.querySelector(tableBlock) ?? content.matches(tableBlock)).toBeTruthy();
     expect(cellTexts(content)).toEqual([['a2', 'b2', 'c2']]);
+    expect([...content.querySelectorAll<HTMLElement>('colgroup col')].map((col) => col.style.width)).toEqual(['100px', '200px', '300px']);
   });
 
   it('keeps only the dragged column, and only its col', () => {
