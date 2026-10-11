@@ -297,6 +297,30 @@ test('A7 and A1: a column dragged past the table frame scrolls the frame sideway
   expect(ours.lift).toBeCloseTo(0, 0);
 });
 
+test('A4 and A7: a column released in the gutter past the table frame lands at the nearest end', async () => {
+  await openSmokeProject(page);
+  createdSpaceIds.push(await createSpace(page, 'document', `autoscroll-${Date.now()}`));
+  const editor = page.locator(EDITOR);
+  await expect(editor).toBeVisible({ timeout: 15_000 });
+  await editor.click();
+  await page.keyboard.type('lead');
+  await insertWideTable(page, 3);
+  await page.locator(TOP).first().click();
+  const frame = (await page.locator(`${EDITOR} [data-radix-scroll-area-viewport]`).first().boundingBox())!;
+  const c1 = (await page.locator(`${EDITOR} td`).filter({ hasText: /^c1$/ }).first().boundingBox())!;
+  await page.mouse.move(5, 5);
+  await page.mouse.move(c1.x + c1.width / 2, c1.y + c1.height / 2, { steps: 4 });
+  const handle = (await page.getByTestId('doc-table-col-handle').boundingBox())!;
+  await page.mouse.move(handle.x + handle.width / 2, handle.y + 2);
+  await page.mouse.down();
+  await page.mouse.move(handle.x + handle.width / 2 + 8, handle.y + 2, { steps: 4 });
+  // Past the frame's right edge, in the gutter beside the text column.
+  await hold(page, frame.x + frame.width + 40, c1.y + c1.height / 2, 400);
+  await page.mouse.up();
+  const first = await page.locator(`${EDITOR} tr`).first().locator('td, th').allTextContents();
+  expect(first).toEqual(['c2', 'c3', 'c1']);
+});
+
 test('A7: a column dragged along the body\'s top edge leaves the body where it is', async () => {
   await openLongDocument(page, 30);
   await page.keyboard.type('anchor');
