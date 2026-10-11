@@ -98,7 +98,7 @@ try {
   const plain = join(directory, 'plain.jpg');
   execFileSync('ffmpeg', ['-v', 'error', '-f', 'lavfi', '-i', 'color=c=red:s=64x24', '-f', 'lavfi', '-i',
     'color=c=blue:s=64x24', '-filter_complex', '[0][1]vstack', '-frames:v', '1', plain], { timeout: 30000 });
-  const shownRed = { 2: 'top', 3: 'bottom', 4: 'bottom', 5: 'left', 6: 'right', 7: 'right', 8: 'left' };
+  const shownRed = { 1: 'top', 2: 'top', 3: 'bottom', 4: 'bottom', 5: 'left', 6: 'right', 7: 'right', 8: 'left' };
   const opposite = { top: 'bottom', bottom: 'top', left: 'right', right: 'left' };
   const photoUrl = `http://127.0.0.1:${origin.address().port}/photo`;
   const writeUrl = `http://127.0.0.1:${origin.address().port}/upright`;
@@ -173,7 +173,7 @@ try {
     method: 'POST', body: '{}', signal: AbortSignal.timeout(1000),
   });
   assert.equal(invalid.status, 400);
-  console.log('Media smoke passed: HTTP video probe, PNG cover, no-cover, upright JPEG for orientations 2-8, PNG and WebP at 6, ICC kept, refused write-back and invalid request.');
+  console.log('Media smoke passed: HTTP video probe, PNG cover, no-cover, upright JPEG for orientations 1-8, PNG and WebP at 6, ICC kept, refused write-back and invalid request.');
 } finally {
   service?.kill();
   origin.closeAllConnections();
