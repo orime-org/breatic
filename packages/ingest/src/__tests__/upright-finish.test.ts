@@ -16,7 +16,7 @@ import {
   createExecutionContext,
   waitOnExecutionContext,
 } from "cloudflare:test";
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import {
   INGEST_FAILURE_HEADER,
   previewKeyFor,
@@ -325,10 +325,30 @@ describe("a picture with an EXIF orientation", () => {
       },
     });
 
+    const logged = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
     const response = await finish(held, { media: uprightContainer(jpeg(1)).media, bucket });
 
     expect(response.status).toBe(502);
     expect(response.headers.get(INGEST_FAILURE_HEADER)).toBe("upright_failed");
+    // The log carries R2's own error, so the cause can be told apart.
+    const unread = logged.mock.calls.find(([label]) => label === "ingest_orientation_unread");
+    expect(String((unread?.[1] as { err?: unknown } | undefined)?.err)).toContain("R2 range read failed");
+    logged.mockRestore();
+  });
+
+  it("files a picture whose EXIF segment runs past its end as received, and writes it down", async () => {
+    // Cut inside the Orientation entry: the segment promises more bytes than arrived.
+    const held = await uploaded(jpeg(6).slice(0, 24));
+    const run = uprightContainer(jpeg(1));
+    const logged = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    const response = await finish(held, { media: run.media });
+
+    expect(response.status).toBe(200);
+    expect(run.asked?.upright).toBeUndefined();
+    expect(logged.mock.calls.some(([label]) => label === "ingest_orientation_out_of_bounds")).toBe(true);
+    logged.mockRestore();
   });
 });
 

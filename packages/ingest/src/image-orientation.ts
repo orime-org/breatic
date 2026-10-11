@@ -4,11 +4,12 @@
 /**
  * The EXIF orientation a stored picture is to be shown at (inner#1367).
  *
- * Read with ranged reads, never the whole object: the tag sits in the first
- * segments of a JPEG or PNG, and in a WebP it sits after the image data, so a
- * WebP is walked chunk header by chunk header. A read R2 refused is answered
- * apart from a picture that carries no tag, because the caller has to log the
- * one and can trust the other.
+ * One window from the start of the object is read; segments and chunks past
+ * it are reached by ranged reads of their headers, so image data is skipped by
+ * its length and never read. Every read is held inside the object's own size:
+ * R2 refuses a range that starts at its end, and a file that promises more
+ * than it holds is a cut-short file, read as carrying no tag. A read R2
+ * refuses for any other reason rejects, for the caller to log.
  */
 
 /** Reads `length` bytes at `offset`; shorter at the end of the object. */
@@ -26,100 +27,175 @@ export interface ImageOrientation {
    * its first frame.
    */
   animated: boolean;
+  /**
+   * True when a metadata block claimed more than {@link MAX_METADATA_BYTES} or
+   * more than the object holds. Cameras and phones write a few dozen KiB; a
+   * block past either bound was made that way on purpose.
+   */
+  outOfBounds: boolean;
 }
 
-/** How much of a JPEG or PNG is read: an APP1 segment is at most 64 KiB. */
+/** The first read: the whole head of most pictures, metadata included. */
 const HEAD_WINDOW = 64 * 1024;
 
-/** The most RIFF chunks a WebP is walked through before giving up. */
-const MAX_WEBP_CHUNKS = 64;
+/**
+ * The most of one metadata block that is read. IFD0, which holds the
+ * Orientation entry, is the first thing in the block.
+ */
+const MAX_METADATA_BYTES = 64 * 1024;
+
+/** The most ranged reads past the head window before giving up. */
+const MAX_READS_PAST_HEAD = 64;
 
 const ORIENTATION_TAG = 0x0112;
 
-const UPRIGHT: ImageOrientation = { orientation: 1, lossless: false, animated: false };
+const UPRIGHT: ImageOrientation = { orientation: 1, lossless: false, animated: false, outOfBounds: false };
+
+/** Bytes of one stored object, held inside its size. */
+interface ByteSource {
+  size: number;
+  /**
+   * Bytes at `offset`, at most `length` of them and never past the end. Empty
+   * at or past the end, and once the reads past the head are spent.
+   */
+  at: (offset: number, length: number) => Promise<Uint8Array>;
+}
+
+/**
+ * A source over a stored object whose head is already read.
+ * @param read - Ranged reads of the object.
+ * @param size - The object's size in bytes.
+ * @param head - The object's first bytes.
+ * @returns The source.
+ */
+function sourceOf(read: RangeReader, size: number, head: Uint8Array): ByteSource {
+  let readsLeft = MAX_READS_PAST_HEAD;
+  return {
+    size,
+    at: async (offset, length) => {
+      const wanted = Math.min(length, size - offset);
+      if (offset < 0 || wanted <= 0) return new Uint8Array(0);
+      if (offset + wanted <= head.length) return head.subarray(offset, offset + wanted);
+      if (readsLeft === 0) return new Uint8Array(0);
+      readsLeft -= 1;
+      return read(offset, wanted);
+    },
+  };
+}
 
 /**
  * Read a stored picture's orientation.
  * @param read - Ranged reads of the stored object.
  * @param contentType - What the stored bytes read as.
- * @returns The orientation, or `unreadable` when a read failed.
+ * @param size - The object's size in bytes.
+ * @returns The orientation.
+ * @throws {Error} When R2 refuses a read.
  */
 export async function readImageOrientation(
   read: RangeReader,
   contentType: string,
-): Promise<ImageOrientation | "unreadable"> {
-  try {
-    if (contentType === "image/jpeg") {
-      return { ...UPRIGHT, orientation: jpegOrientation(await read(0, HEAD_WINDOW)) };
-    }
-    if (contentType === "image/png") return { ...UPRIGHT, ...pngOrientation(await read(0, HEAD_WINDOW)) };
-    if (contentType === "image/webp") return await webpOrientation(read);
-    return UPRIGHT;
-  } catch {
-    return "unreadable";
-  }
+  size: number,
+): Promise<ImageOrientation> {
+  const walk = WALKERS[contentType];
+  if (walk === undefined || size === 0) return UPRIGHT;
+  const head = await read(0, Math.min(HEAD_WINDOW, size));
+  return walk(sourceOf(read, size, head));
+}
+
+/** A metadata block found in a picture. */
+interface Metadata {
+  /** Its first bytes, at most {@link MAX_METADATA_BYTES}. */
+  bytes: Uint8Array;
+  outOfBounds: boolean;
 }
 
 /**
- * The orientation in a JPEG's APP1 Exif segment.
- * @param bytes - The start of the file.
- * @returns 1-8.
+ * Read a metadata block of `length` bytes at `offset`.
+ * @param source - The object.
+ * @param offset - Where the block's data starts.
+ * @param length - How long the file says it is.
+ * @returns Its first bytes, and whether its length went past either bound.
  */
-function jpegOrientation(bytes: Uint8Array): number {
-  if (bytes[0] !== 0xff || bytes[1] !== 0xd8) return 1;
+async function metadataAt(source: ByteSource, offset: number, length: number): Promise<Metadata> {
+  return {
+    bytes: await source.at(offset, Math.min(length, MAX_METADATA_BYTES)),
+    outOfBounds: length > MAX_METADATA_BYTES || offset + length > source.size,
+  };
+}
+
+/**
+ * The orientation in a JPEG's APP1 Exif segment, walked segment by segment up
+ * to the start of the scan.
+ * @param source - The object.
+ * @returns The orientation.
+ */
+async function jpegOrientation(source: ByteSource): Promise<ImageOrientation> {
+  const soi = await source.at(0, 2);
+  if (soi[0] !== 0xff || soi[1] !== 0xd8) return UPRIGHT;
   let at = 2;
-  while (at + 4 <= bytes.length) {
-    if (bytes[at] !== 0xff) return 1;
-    const marker = bytes[at + 1] ?? 0;
+  for (;;) {
+    const header = await source.at(at, 4);
+    if (header.length < 4 || header[0] !== 0xff) return UPRIGHT;
+    const marker = header[1] ?? 0;
     // Start of scan or end of image: no metadata segment follows.
-    if (marker === 0xda || marker === 0xd9) return 1;
-    const length = ((bytes[at + 2] ?? 0) << 8) | (bytes[at + 3] ?? 0);
-    if (length < 2) return 1;
-    if (marker === 0xe1 && startsWith(bytes, at + 4, "Exif\0\0")) {
-      return tiffOrientation(bytes.subarray(at + 10, at + 2 + length));
+    if (marker === 0xda || marker === 0xd9) return UPRIGHT;
+    const length = readU16(header, 2, false);
+    if (length < 2) return UPRIGHT;
+    if (marker === 0xe1) {
+      const segment = await metadataAt(source, at + 4, length - 2);
+      if (startsWith(segment.bytes, 0, "Exif\0\0")) {
+        return {
+          ...UPRIGHT,
+          orientation: tiffOrientation(segment.bytes.subarray(6)),
+          outOfBounds: segment.outOfBounds,
+        };
+      }
     }
     at += 2 + length;
   }
-  return 1;
 }
 
 /**
  * The orientation in a PNG's eXIf chunk, and whether an `acTL` chunk makes it
  * animated; the spec puts both before IDAT.
- * @param bytes - The start of the file.
- * @returns 1-8, and whether it is animated.
+ * @param source - The object.
+ * @returns The orientation and whether it is animated.
  */
-function pngOrientation(bytes: Uint8Array): { orientation: number; animated: boolean } {
-  let orientation = 1;
-  let animated = false;
+async function pngOrientation(source: ByteSource): Promise<ImageOrientation> {
+  const found = { ...UPRIGHT };
   let at = 8;
-  while (at + 8 <= bytes.length) {
-    const length = readU32(bytes, at, false);
-    const type = ascii(bytes, at + 4, 4);
-    if (type === "IDAT" || type === "IEND") break;
-    if (type === "acTL") animated = true;
-    if (type === "eXIf") orientation = tiffOrientation(bytes.subarray(at + 8, at + 8 + length));
+  for (;;) {
+    const header = await source.at(at, 8);
+    if (header.length < 8) return found;
+    const length = readU32(header, 0, false);
+    const type = ascii(header, 4, 4);
+    if (type === "IDAT" || type === "IEND") return found;
+    if (type === "acTL") found.animated = true;
+    if (type === "eXIf") {
+      const chunk = await metadataAt(source, at + 8, length);
+      found.orientation = tiffOrientation(chunk.bytes);
+      found.outOfBounds = chunk.outOfBounds;
+    }
     at += 12 + length;
   }
-  return { orientation, animated };
 }
 
 /**
  * Walk a WebP's RIFF chunks for the image type and the EXIF chunk.
- * @param read - Ranged reads of the stored object.
+ * @param source - The object.
  * @returns The orientation and whether the image data is lossless.
  */
-async function webpOrientation(read: RangeReader): Promise<ImageOrientation> {
-  const header = await read(0, 12);
+async function webpOrientation(source: ByteSource): Promise<ImageOrientation> {
+  const header = await source.at(0, 12);
   if (ascii(header, 0, 4) !== "RIFF" || ascii(header, 8, 4) !== "WEBP") return UPRIGHT;
-  const end = 8 + readU32(header, 4, true);
+  const end = Math.min(8 + readU32(header, 4, true), source.size);
   let lossless = false;
   let imageSeen = false;
   let exifExpected = false;
   let animated = false;
   let at = 12;
-  for (let i = 0; i < MAX_WEBP_CHUNKS && at + 8 <= end; i++) {
-    const chunk = await read(at, 18);
+  while (at + 8 <= end) {
+    const chunk = await source.at(at, 18);
     if (chunk.length < 8) break;
     const type = ascii(chunk, 0, 4);
     const size = readU32(chunk, 4, true);
@@ -133,14 +209,21 @@ async function webpOrientation(read: RangeReader): Promise<ImageOrientation> {
       if (!exifExpected) break;
     }
     if (type === "EXIF") {
-      const payload = await read(at + 8, size);
-      const tiff = startsWith(payload, 0, "Exif\0\0") ? payload.subarray(6) : payload;
-      return { orientation: tiffOrientation(tiff), lossless, animated };
+      const exif = await metadataAt(source, at + 8, size);
+      const tiff = startsWith(exif.bytes, 0, "Exif\0\0") ? exif.bytes.subarray(6) : exif.bytes;
+      return { orientation: tiffOrientation(tiff), lossless, animated, outOfBounds: exif.outOfBounds };
     }
     at += 8 + size + (size % 2);
   }
-  return { orientation: 1, lossless: imageSeen && lossless, animated };
+  return { ...UPRIGHT, lossless: imageSeen && lossless, animated };
 }
+
+/** How each type that can carry a tag is walked. */
+const WALKERS: Readonly<Record<string, (source: ByteSource) => Promise<ImageOrientation>>> = {
+  "image/jpeg": jpegOrientation,
+  "image/png": pngOrientation,
+  "image/webp": webpOrientation,
+};
 
 /**
  * The Orientation entry of a TIFF block's first IFD.

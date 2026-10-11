@@ -519,6 +519,7 @@ async function finishUpload(
     const turned = await turnUprightIfTagged(env, {
       storageKey,
       contentType: storedType,
+      sizeBytes: assembled.sizeBytes,
       deadlineAt,
       limits: upload.limits,
     });

@@ -90,6 +90,7 @@ async function standingCopy(bucket: R2Bucket, uprightKey: string): Promise<Uprig
  * @param about - The stored picture.
  * @param about.storageKey - Its key, which holds the bytes as received.
  * @param about.contentType - What the stored bytes read as.
+ * @param about.sizeBytes - How many bytes are stored.
  * @param about.deadlineAt - When the upload's task runs out, or null when the
  *   request named none.
  * @param about.limits - What to turn it under, or null when the request named
@@ -101,6 +102,7 @@ export async function turnUprightIfTagged(
   about: {
     storageKey: string;
     contentType: string;
+    sizeBytes: number;
     deadlineAt: number | null;
     limits: MediaLimits | null;
   },
@@ -118,6 +120,7 @@ export async function turnUprightIfTagged(
  * @param about - The stored picture.
  * @param about.storageKey - Its key.
  * @param about.contentType - What the stored bytes read as.
+ * @param about.sizeBytes - How many bytes are stored.
  * @param about.deadlineAt - When the upload's task runs out, or null.
  * @param about.limits - What to turn it under, or null.
  * @returns What was decided.
@@ -127,6 +130,7 @@ async function decide(
   about: {
     storageKey: string;
     contentType: string;
+    sizeBytes: number;
     deadlineAt: number | null;
     limits: MediaLimits | null;
   },
@@ -134,12 +138,16 @@ async function decide(
   const { storageKey, contentType } = about;
   if (!contentType.startsWith("image/")) return { kind: "as_is" };
 
-  const header = await readImageOrientation(rangeReaderOf(env.BUCKET, storageKey), contentType);
-  if (header === "unreadable") {
-    // Without the orientation nobody can say whether the picture would be
-    // shown upright, so it is not filed as it is.
-    noteFailure("ingest_orientation_unread", { storageKey });
-    return { kind: "failed", reason: "orientation_unread" };
+  const header = await readImageOrientation(
+    rangeReaderOf(env.BUCKET, storageKey),
+    contentType,
+    about.sizeBytes,
+  ).catch(noted("ingest_orientation_unread", { storageKey }));
+  // Without the orientation nobody can say whether the picture would be shown
+  // upright, so it is not filed as it is.
+  if (header === null) return { kind: "failed", reason: "orientation_unread" };
+  if (header.outOfBounds) {
+    noteFailure("ingest_orientation_out_of_bounds", { storageKey }, undefined, { userInput: true });
   }
   if (header.orientation === 1 || header.animated) return { kind: "as_is" };
 
