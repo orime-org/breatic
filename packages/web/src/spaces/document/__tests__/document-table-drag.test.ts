@@ -345,6 +345,50 @@ describe('a dragged line over the gutter beside the body (inner#1350 round 3)', 
     expect(grid(editor)[0]).toEqual(['a1', 'b1', 'c1']);
   });
 
+  /**
+   * Lays the rows out 30 tall from the top, and the body scroller from top to
+   * bottom.
+   * @param gutter - The gutter, whose parent is the body scroller.
+   * @param top - The scroller's top.
+   * @param rowsFrom - Where the first row starts.
+   */
+  function layRows(gutter: HTMLElement, top: number, rowsFrom = 0): void {
+    vi.spyOn(HTMLTableRowElement.prototype, 'getBoundingClientRect').mockImplementation(function rect(this: HTMLTableRowElement) {
+      const i = [...this.parentElement!.children].indexOf(this);
+      return { top: rowsFrom + i * 30, bottom: rowsFrom + (i + 1) * 30, left: 0, right: 300 } as DOMRect;
+    });
+    gutter.parentElement!.getBoundingClientRect = (): DOMRect => ({ top, bottom: 600, left: 0, right: 1000 }) as DOMRect;
+  }
+
+  it('takes the drop line away when the pointer leaves the window, and drops nothing outside it', () => {
+    const editor = open();
+    const gutter = inScroller(editor);
+    const view = editor.prosemirrorView!;
+    layRows(gutter, 0);
+    startTableDrag(view, 'row', cellOf(editor, 'a1'));
+    fire(gutter, 'dragover', 900, 80);
+    expect(view.dom.querySelectorAll('[class*="doc-table-drop-row"]').length).toBeGreaterThan(0);
+    gutter.dispatchEvent(new MouseEvent('dragleave', { bubbles: true, relatedTarget: null }));
+    expect(view.dom.querySelectorAll('[class*="doc-table-drop-row"]').length).toBe(0);
+    view.dom.ownerDocument.dispatchEvent(new Event('dragend'));
+    vi.restoreAllMocks();
+    expect(grid(editor).map((row) => row[0])).toEqual(['a1', 'a2', 'a3']);
+  });
+
+  it('draws no line and drops nothing while every edge of the table is out of view', () => {
+    const editor = open();
+    const gutter = inScroller(editor);
+    const view = editor.prosemirrorView!;
+    // The rows sit 0–90; the body scroller starts at 400: the table scrolled out above.
+    layRows(gutter, 400);
+    startTableDrag(view, 'row', cellOf(editor, 'a1'));
+    fire(gutter, 'dragover', 900, 500);
+    expect(view.dom.querySelectorAll('[class*="doc-table-drop-row"]').length).toBe(0);
+    fire(gutter, 'drop', 900, 500);
+    vi.restoreAllMocks();
+    expect(grid(editor).map((row) => row[0])).toEqual(['a1', 'a2', 'a3']);
+  });
+
   it('leaves a drop outside the body scroller to the browser', () => {
     const editor = open();
     inScroller(editor);
