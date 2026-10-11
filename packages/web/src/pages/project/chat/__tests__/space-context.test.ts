@@ -252,7 +252,7 @@ describe('an open canvas', () => {
     const whole = sentWith(100_000);
     const total = whole?.state === 'loaded' ? whole.total_chars : 0;
 
-    const current = sentWith(total - 300);
+    const current = sentWith(total - 50);
 
     expect(current).toMatchObject({ detail: { selected_total: 1, selected_whole: 1, slim: true } });
     expect(entryOf(current, 'b')).toEqual(entryOf(whole, 'b'));
@@ -305,7 +305,7 @@ describe('an open canvas', () => {
     const whole = sentWith(100_000);
     const total = whole?.state === 'loaded' ? whole.total_chars : 0;
 
-    const current = sentWith(total - 300, [chip]);
+    const current = sentWith(total - 50, [chip]);
 
     expect(current).toMatchObject({ detail: { selected_total: 1, selected_attached: 1, selected_whole: 0 } });
     expect(entryOf(current, 'a')).not.toHaveProperty('position');
@@ -321,7 +321,7 @@ describe('an open canvas', () => {
     const whole = sentWith(100_000);
     const total = whole?.state === 'loaded' ? whole.total_chars : 0;
 
-    const current = sentWith(total - 300, [chip]);
+    const current = sentWith(total - 50, [chip]);
 
     expect(current).toMatchObject({ detail: { selected_total: 1, selected_attached: 0, selected_whole: 1 } });
     expect(entryOf(current, 'a')).toMatchObject({ data: { name: 'Renamed' } });
