@@ -212,6 +212,36 @@ export function writeSpaceViewport(
   });
 }
 
+/** The Agent panel preferences a slot holds beside the strip. */
+type PanelPref = 'agentPanelOpen' | 'spaceContextEnabled';
+
+/**
+ * One Agent panel preference this account left in this project.
+ * @param userId - The signed-in account; nothing is read without one.
+ * @param projectId - The project being opened.
+ * @param key - Which preference.
+ * @returns The stored value, or undefined when it was never set here or the
+ *   stored value is unusable.
+ */
+function readPanelPref(userId: string | undefined, projectId: string, key: PanelPref): boolean | undefined {
+  const account = openAccountRecord(STORAGE_KEYS.projectTabs, userId);
+  return account === null ? undefined : readSlot(account, projectId)?.[key];
+}
+
+/**
+ * Store one Agent panel preference, keeping everything else in the slot as it
+ * was.
+ * @param userId - The signed-in account; nothing is written without one.
+ * @param projectId - The project the preference belongs to.
+ * @param key - Which preference.
+ * @param value - Its new value.
+ */
+function writePanelPref(userId: string | undefined, projectId: string, key: PanelPref, value: boolean): void {
+  const account = openAccountRecord(STORAGE_KEYS.projectTabs, userId);
+  if (account === null) return;
+  writeSlot(account, projectId, { ...readSlot(account, projectId), [key]: value });
+}
+
 /**
  * Whether this account left the Agent panel open in this project.
  * @param userId - The signed-in account; nothing is read without one.
@@ -223,8 +253,7 @@ export function readAgentPanelOpen(
   userId: string | undefined,
   projectId: string,
 ): boolean | undefined {
-  const account = openAccountRecord(STORAGE_KEYS.projectTabs, userId);
-  return account === null ? undefined : readSlot(account, projectId)?.agentPanelOpen;
+  return readPanelPref(userId, projectId, 'agentPanelOpen');
 }
 
 /**
@@ -239,9 +268,7 @@ export function writeAgentPanelOpen(
   projectId: string,
   open: boolean,
 ): void {
-  const account = openAccountRecord(STORAGE_KEYS.projectTabs, userId);
-  if (account === null) return;
-  writeSlot(account, projectId, { ...readSlot(account, projectId), agentPanelOpen: open });
+  writePanelPref(userId, projectId, 'agentPanelOpen', open);
 }
 
 /**
@@ -256,8 +283,7 @@ export function readSpaceContextEnabled(
   userId: string | undefined,
   projectId: string,
 ): boolean | undefined {
-  const account = openAccountRecord(STORAGE_KEYS.projectTabs, userId);
-  return account === null ? undefined : readSlot(account, projectId)?.spaceContextEnabled;
+  return readPanelPref(userId, projectId, 'spaceContextEnabled');
 }
 
 /**
@@ -272,7 +298,5 @@ export function writeSpaceContextEnabled(
   projectId: string,
   enabled: boolean,
 ): void {
-  const account = openAccountRecord(STORAGE_KEYS.projectTabs, userId);
-  if (account === null) return;
-  writeSlot(account, projectId, { ...readSlot(account, projectId), spaceContextEnabled: enabled });
+  writePanelPref(userId, projectId, 'spaceContextEnabled', enabled);
 }
