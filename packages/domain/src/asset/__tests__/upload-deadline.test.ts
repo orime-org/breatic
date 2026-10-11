@@ -13,7 +13,10 @@ const findByStorageKey = vi.fn();
 const findGrantByKey = vi.fn();
 const findOwnGrants = vi.fn();
 
-vi.mock("@domain/node-task/node-task.service.js", () => ({ findByStorageKey }));
+vi.mock("@domain/node-task/node-task.service.js", async (importOriginal) => ({
+  rowDeadline: (await importOriginal<typeof import("@domain/node-task/node-task.service.js")>()).rowDeadline,
+  findByStorageKey,
+}));
 vi.mock("@domain/asset/upload-grant.repo.js", () => ({ findGrantByKey, findOwnGrants }));
 vi.mock("@domain/asset/asset.repo.js", () => ({ findById: vi.fn() }));
 vi.mock("@breatic/core", () => ({

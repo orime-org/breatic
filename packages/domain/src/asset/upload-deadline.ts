@@ -21,7 +21,7 @@ import { findGrantByKey } from "@domain/asset/upload-grant.repo.js";
  */
 export async function uploadDeadline(grant: { storageKey: string; createdAt: Date }): Promise<number> {
   const row = await nodeTaskService.findByStorageKey(grant.storageKey);
-  if (row !== null) return row.startedAt.getTime() + row.budgetMs;
+  if (row !== null) return nodeTaskService.rowDeadline(row);
   return budgetDeadlineFrom(grant.createdAt.getTime());
 }
 

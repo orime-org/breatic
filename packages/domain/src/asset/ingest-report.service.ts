@@ -304,19 +304,11 @@ async function announceSuccess(
  * Tell the node this upload failed.
  * @param grant - The grant, which carries where the node lives.
  * @param message - What the node shows.
- * @param expired - Whether the upload ran out of its two hours.
  * @returns Whether publishing the node's numbers failed.
  */
-async function announceFailure(
-  grant: UploadGrant,
-  message: string,
-  expired = false,
-): Promise<boolean> {
+async function announceFailure(grant: UploadGrant, message: string): Promise<boolean> {
   if (!hasNode(grant)) return false;
-  return settleUploadTask(grant, {
-    outcome: expired ? "expired" : "failed",
-    errorMessage: message,
-  });
+  return settleUploadTask(grant, { outcome: "failed", errorMessage: message });
 }
 
 /**
@@ -367,8 +359,7 @@ function filedObject(
  * on — leaves nothing to settle and nothing to publish.
  * @param grant - The grant, which names the node and the key.
  * @param outcome - Where the row lands, and what rides along.
- * @param outcome.outcome - `done`, `failed`, or `expired` for a failure past
- *   the upload's deadline.
+ * @param outcome.outcome - `done` or `failed`.
  * @param outcome.nodeHistoryId - The history row holding the result.
  * @param outcome.errorMessage - What the list shows for a failure.
  * @param outcome.result - The content fields, on the transition into `done`.
@@ -378,7 +369,7 @@ function filedObject(
 async function settleUploadTask(
   grant: GrantWithNode,
   outcome: {
-    outcome: "done" | "failed" | "expired";
+    outcome: "done" | "failed";
     nodeHistoryId?: string;
     errorMessage?: string;
     result?: NodeTaskResult;
@@ -586,7 +577,7 @@ export async function applyIngestReport(
     const expired = failureOutcome(await uploadDeadline(grant)) === "expired";
     const reason = expired ? "expired" : (report.reason ?? "aborted");
     await voidGrant(grant.storageKey, reason);
-    const countsPublishFailed = await announceFailure(grant, reason, expired);
+    const countsPublishFailed = await announceFailure(grant, reason);
     return { status: "voided", ...(countsPublishFailed && { countsPublishFailed }) };
   }
 
