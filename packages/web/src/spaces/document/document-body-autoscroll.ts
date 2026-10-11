@@ -36,59 +36,6 @@ export function bodyScrollerOf(view: EditorView): HTMLElement | null {
   return view.dom.closest<HTMLElement>(SCROLL_VIEWPORT);
 }
 
-/**
- * Whether the browser's drag events leave the window only by their count:
- * Safari, the way Pragmatic drag and drop tells it (`is-safari.js`).
- * @param userAgent - The browser's user agent.
- * @returns Whether to count.
- */
-export function countsDragEvents(userAgent: string): boolean {
-  return userAgent.includes('AppleWebKit') && !userAgent.includes('Chrome');
-}
-
-/** Whether a drag's pointer is leaving the window, one `dragleave` at a time. */
-export class DragWindow {
-  private entered = 0;
-  private over = false;
-
-  /**
-   * Tells leaving the window by count or by relatedTarget.
-   * @param counts - Whether to tell it by counting (Safari).
-   */
-  constructor(private readonly counts: boolean) {}
-
-  /** A drag started in this window. */
-  start(): void {
-    this.entered = 0;
-    this.over = true;
-  }
-
-  /** A drag ended. */
-  reset(): void {
-    this.entered = 0;
-    this.over = false;
-  }
-
-  /** The pointer entered an element. */
-  enter(): void {
-    this.over = true;
-    this.entered += 1;
-  }
-
-  /**
-   * Whether this `dragleave` is the pointer leaving the window.
-   * @param event - The dragleave.
-   * @returns Whether it leaves.
-   */
-  leaves(event: MouseEvent): boolean {
-    if (!this.counts) return event.relatedTarget == null;
-    this.entered -= 1;
-    if (!this.over || this.entered > 0) return false;
-    this.over = false;
-    return true;
-  }
-}
-
 /** The box of a scroller, in client coordinates. */
 export interface EdgeBox {
   readonly top: number;
@@ -232,17 +179,20 @@ export function pressStep(box: EdgeBox, at: PointerAt): number {
 }
 
 /**
- * Whether a drag that left the window carries on scrolling. The page gets the
- * same `dragleave` for leaving and for an Esc, so only a pointer that was past
- * the edge — or at full speed against an edge that is the window's own —
- * counts as having left.
+ * Whether a drag that left the window carries on scrolling. A drag started on
+ * the page carries on towards the edge it was nearing: its Esc ends it with a
+ * `dragend`. For one dragged in from outside, the page gets the same
+ * `dragleave` for leaving and for an Esc, so only a pointer that was past the
+ * edge — or at full speed against an edge that is the window's own — counts
+ * as having left.
  * @param last - The reading before the pointer left.
  * @param edgeIsWindowEdge - Whether that edge of the scroller is the window's.
+ * @param fromPage - Whether the drag started on the page.
  * @returns Whether to keep scrolling.
  */
-export function carriesOutside(last: EdgeReading, edgeIsWindowEdge: boolean): boolean {
+export function carriesOutside(last: EdgeReading, edgeIsWindowEdge: boolean, fromPage: boolean): boolean {
   if (last.dir === 0) return false;
-  return last.beyond > 0 || (edgeIsWindowEdge && last.factor >= 1);
+  return fromPage || last.beyond > 0 || (edgeIsWindowEdge && last.factor >= 1);
 }
 
 /** What a session was started by. */
@@ -333,8 +283,11 @@ export class BodyAutoScroll {
     session.outside = false;
   }
 
-  /** The pointer left the window during a drag. */
-  leaveWindow(): void {
+  /**
+   * The pointer left the window during a drag.
+   * @param fromPage - Whether the drag started on the page.
+   */
+  leaveWindow(fromPage: boolean): void {
     const { session } = this;
     if (session === null || session.source !== 'drag') return;
     session.outside = true;
@@ -343,7 +296,7 @@ export class BodyAutoScroll {
     const { target } = session;
     const left = session.at === null ? STILL : readEdge(target.el.getBoundingClientRect(), session.at, target.axis);
     session.last = left;
-    session.carry = carriesOutside(left, this.edgeIsWindowEdge(target, left.dir));
+    session.carry = carriesOutside(left, this.edgeIsWindowEdge(target, left.dir), fromPage);
   }
 
   /**

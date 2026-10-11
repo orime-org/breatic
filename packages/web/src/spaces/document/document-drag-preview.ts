@@ -196,7 +196,7 @@ function settle(view: EditorView, content: Element): void {
 }
 
 /**
- * A canvas the size of a copied video, holding its original's current frame.
+ * A canvas the size of a copied video's original, holding its current frame.
  * A copied video starts loading from nothing, and the drag image is taken
  * before it has a frame.
  * @param copy - The copied video.
@@ -206,8 +206,8 @@ function settle(view: EditorView, content: Element): void {
 function stillOf(copy: HTMLVideoElement, original: HTMLVideoElement | null): HTMLCanvasElement {
   const box = original?.getBoundingClientRect();
   const canvas = copy.ownerDocument.createElement('canvas');
-  canvas.width = Math.round(box?.width || copy.width);
-  canvas.height = Math.round(box?.height || copy.height);
+  canvas.width = Math.round(box?.width ?? 0);
+  canvas.height = Math.round(box?.height ?? 0);
   canvas.className = copy.className;
   if (original !== null && original.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
     canvas.getContext('2d')?.drawImage(original, 0, 0, canvas.width, canvas.height);

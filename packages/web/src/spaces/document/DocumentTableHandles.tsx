@@ -76,7 +76,7 @@ import {
   type Box,
 } from '@web/spaces/document/document-table-control-place';
 import { setTableTarget, tableTargetOf } from '@web/spaces/document/document-table-target';
-import { endTableDrag, startTableDrag } from '@web/spaces/document/document-table-drag';
+import { startTableDrag } from '@web/spaces/document/document-table-drag';
 import {
   buildDragPreview,
   tableLinePreviewContent,
@@ -422,8 +422,6 @@ export function DocumentTableHandle({
             source.hideAfterStart();
           }}
           onDragEnd={() => {
-            const view = editor.prosemirrorView;
-            if (view !== undefined) endTableDrag(view);
             releaseDrag.current?.();
             releaseDrag.current = null;
             source.show();

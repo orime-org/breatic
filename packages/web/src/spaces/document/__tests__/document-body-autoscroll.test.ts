@@ -99,22 +99,30 @@ describe('pressStep', () => {
   });
 });
 
-describe('carriesOutside', () => {
+describe('carriesOutside, for a drag from outside the window', () => {
   it('carries on when the pointer left past the edge', () => {
-    expect(carriesOutside({ dir: -1, factor: 1, beyond: 30 }, false)).toBe(true);
+    expect(carriesOutside({ dir: -1, factor: 1, beyond: 30 }, false, false)).toBe(true);
   });
 
   it('stops for a full-speed reading inside the edge when the edge is not the window edge', () => {
-    expect(carriesOutside({ dir: -1, factor: 1, beyond: 0 }, false)).toBe(false);
+    expect(carriesOutside({ dir: -1, factor: 1, beyond: 0 }, false, false)).toBe(false);
   });
 
   it('carries on for a full-speed reading when the edge is the window edge', () => {
-    expect(carriesOutside({ dir: 1, factor: 1, beyond: 0 }, true)).toBe(true);
+    expect(carriesOutside({ dir: 1, factor: 1, beyond: 0 }, true, false)).toBe(true);
   });
 
   it('stops for anything slower or still', () => {
-    expect(carriesOutside({ dir: 1, factor: 0.6, beyond: 0 }, true)).toBe(false);
-    expect(carriesOutside({ dir: 0, factor: 0, beyond: 0 }, true)).toBe(false);
+    expect(carriesOutside({ dir: 1, factor: 0.6, beyond: 0 }, true, false)).toBe(false);
+    expect(carriesOutside({ dir: 0, factor: 0, beyond: 0 }, true, false)).toBe(false);
+  });
+});
+
+describe('carriesOutside, for a drag started on the page', () => {
+  it('carries on for any reading with a direction, and stops for one without', () => {
+    expect(carriesOutside({ dir: 1, factor: 0.2, beyond: 0 }, false, true)).toBe(true);
+    expect(carriesOutside({ dir: -1, factor: 1, beyond: 0 }, false, true)).toBe(true);
+    expect(carriesOutside({ dir: 0, factor: 0, beyond: 0 }, true, true)).toBe(false);
   });
 });
 

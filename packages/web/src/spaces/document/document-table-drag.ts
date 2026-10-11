@@ -27,12 +27,7 @@ import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view';
 import type { BlockNoteEditor, ComputeDropPositionContext } from '@blocknote/core';
 
 import { followCell, renameCell, type CellName } from '@web/spaces/document/document-table-cell-name';
-import {
-  bodyScrollerOf,
-  countsDragEvents,
-  DragWindow,
-  SCROLL_VIEWPORT,
-} from '@web/spaces/document/document-body-autoscroll';
+import { bodyScrollerOf, SCROLL_VIEWPORT } from '@web/spaces/document/document-body-autoscroll';
 import { cellAt, moveLineAt } from '@web/spaces/document/document-table-run';
 
 /** Which way a drag moves cells. */
@@ -127,6 +122,15 @@ export function startTableDrag(view: EditorView, orientation: DragOrientation, c
   if (!canDragFrom(view.state.doc, cellPos, orientation)) return false;
   send(view, { start: { source: cellPos, orientation } });
   return true;
+}
+
+/**
+ * Takes a row or column drag's drop line away, if one is drawn: the pointer
+ * left the window, where no dragover comes from.
+ * @param view - The editor view.
+ */
+export function clearTableDropLine(view: EditorView): void {
+  if (tableDragKey.getState(view.state)?.gap != null) send(view, { gap: null });
 }
 
 /**
@@ -290,7 +294,6 @@ function dropAtGap(editor: DropEditor, view: EditorView, drag: Drag, event: Drag
   // under a still pointer between dragovers (inner#1350).
   const gap = gapUnder(view, drag, event);
   if (gap !== null) moveToGap(editor, drag.source, drag.orientation, gap);
-  endTableDrag(view);
 }
 
 /**
@@ -367,15 +370,6 @@ function tableDragPlugin(editor: DropEditor): Plugin<Drag | null> {
         if (event.buttons === 0) end();
       };
       const page = view.dom.ownerDocument;
-      const dragWindow = new DragWindow(countsDragEvents(page.defaultView?.navigator.userAgent ?? ''));
-      /** Takes the line away, if one is drawn. */
-      const clear = (): void => {
-        if (tableDragKey.getState(view.state)?.gap != null) send(view, { gap: null });
-      };
-      /** A drag started in this window. */
-      const started = (): void => {
-        dragWindow.start();
-      };
       /**
        * Takes a dragover, or the dragenter a browser fires in its place on the
        * update the element under the pointer changes: inside the body scroller
@@ -387,28 +381,7 @@ function tableDragPlugin(editor: DropEditor): Plugin<Drag | null> {
         const drag = tableDragKey.getState(view.state);
         if (drag == null) return;
         if (inBody(view, event.target)) trackGap(view, drag, event);
-        else clear();
-      };
-      /**
-       * Counts the element entered, and takes it like a dragover.
-       * @param event - The dragenter.
-       */
-      const entered = (event: DragEvent): void => {
-        dragWindow.enter();
-        over(event);
-      };
-      /**
-       * Takes the line away when the pointer leaves the window: no dragover
-       * comes from out there. Safari tells it by count (`DragWindow`).
-       * @param event - The dragleave.
-       */
-      const left = (event: DragEvent): void => {
-        if (dragWindow.leaves(event)) clear();
-      };
-      /** Ends the drag, and the window's count with it. */
-      const finished = (): void => {
-        dragWindow.reset();
-        end();
+        else clearTableDropLine(view);
       };
       /**
        * Takes a drop inside the body scroller; any other drop only ends the drag.
@@ -417,13 +390,11 @@ function tableDragPlugin(editor: DropEditor): Plugin<Drag | null> {
       const dropped = (event: DragEvent): void => {
         const drag = tableDragKey.getState(view.state);
         if (drag != null && inBody(view, event.target)) dropAtGap(editor, view, drag, event);
-        finished();
+        end();
       };
-      page.addEventListener('dragstart', started, true);
-      page.addEventListener('dragend', finished);
-      page.addEventListener('dragenter', entered, true);
+      page.addEventListener('dragend', end);
+      page.addEventListener('dragenter', over, true);
       page.addEventListener('dragover', over, true);
-      page.addEventListener('dragleave', left, true);
       page.addEventListener('drop', dropped, true);
       page.addEventListener('mousemove', moved);
       return {
@@ -432,11 +403,9 @@ function tableDragPlugin(editor: DropEditor): Plugin<Drag | null> {
           named = renameCell(current.state, prev, source, tableDragKey.getState(prev)?.source ?? null, named);
         },
         destroy: (): void => {
-          page.removeEventListener('dragstart', started, true);
-          page.removeEventListener('dragend', finished);
-          page.removeEventListener('dragenter', entered, true);
+          page.removeEventListener('dragend', end);
+          page.removeEventListener('dragenter', over, true);
           page.removeEventListener('dragover', over, true);
-          page.removeEventListener('dragleave', left, true);
           page.removeEventListener('drop', dropped, true);
           page.removeEventListener('mousemove', moved);
         },

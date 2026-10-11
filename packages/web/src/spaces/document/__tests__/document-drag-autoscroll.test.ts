@@ -13,8 +13,7 @@ import { documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { extendFromPress, followFromPoint } from '@web/spaces/document/document-body-edge-pointer';
-import { DragWindow, countsDragEvents } from '@web/spaces/document/document-body-autoscroll';
-import { autoScrollOf } from '@web/spaces/document/document-drag-autoscroll';
+import { DragWindow, autoScrollOf, countsDragEvents } from '@web/spaces/document/document-drag-autoscroll';
 import { startTableDrag } from '@web/spaces/document/document-table-drag';
 
 type Editor = ReturnType<typeof buildDocumentEditor>;
