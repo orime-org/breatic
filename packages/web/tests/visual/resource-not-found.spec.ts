@@ -3,6 +3,10 @@
 
 import { test, expect } from 'playwright/test';
 
+// Signed out: a visitor's language is the one stored in the browser, while a
+// signed-in page follows the account's.
+test.use({ storageState: { cookies: [], origins: [] } });
+
 const headings = {
   en: 'Page not found',
   'zh-CN': '页面未找到',
