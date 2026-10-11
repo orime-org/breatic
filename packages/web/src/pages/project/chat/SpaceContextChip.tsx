@@ -7,8 +7,7 @@ import type { SpaceType } from '@breatic/shared';
 import { Button } from '@web/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tooltip';
 import { useTranslation } from '@web/i18n/use-translation';
-import { SPACE_TYPE_ICON } from '@web/pages/project/space-type-icon';
-import { spaceContentReadable } from '@web/pages/project/chat/space-context';
+import { SPACE_TYPE_ICON, spaceContentReadable } from '@web/pages/project/space-type';
 
 /** The chip's props; the composer takes all of them or none. */
 export interface SpaceContextChipProps {
@@ -38,14 +37,17 @@ export function SpaceContextChip({ name, type, enabled, onToggle }: SpaceContext
   const t = useTranslation();
   const Icon = SPACE_TYPE_ICON[type];
   // What a click does next; the name is already on the chip.
-  const said = !enabled
-    ? t('chat.composer.spaceContextOff')
-    : spaceContentReadable(type)
-      ? t('chat.composer.spaceContextOn')
-      : t('chat.composer.spaceContextOnUnreadable');
+  const readable = spaceContentReadable(type);
+  const said = enabled
+    ? t(readable ? 'chat.composer.spaceContextOn' : 'chat.composer.spaceContextOnUnreadable')
+    : t(readable ? 'chat.composer.spaceContextOff' : 'chat.composer.spaceContextOffUnreadable');
   return (
     <Tooltip>
       <TooltipTrigger asChild>
+        {/* The floor keeps the icon and three full-width characters: 2.125rem
+            is px-2 on both sides (16px) + the 1px border on both sides (2px)
+            + the h-3 icon (12px) + gap-1 (4px). Change any of those and this
+            sum changes with them. */}
         <Button
           type='button'
           variant='chrome-ghost'
@@ -53,7 +55,7 @@ export function SpaceContextChip({ name, type, enabled, onToggle }: SpaceContext
           aria-pressed={enabled}
           onClick={onToggle}
           data-testid='chat-composer-space'
-          className={`h-6 min-w-[calc(3ch+2.125rem)] max-w-full gap-1 overflow-hidden border px-2 text-xs font-normal ${
+          className={`h-6 min-w-[calc(3em+2.125rem)] max-w-full gap-1 overflow-hidden border px-2 text-xs font-normal ${
             // Each state says its own hover: the variant's grey hover would
             // fill an off chip right after the press that turned it off,
             // leaving only the dashed border to tell the two apart.
@@ -63,7 +65,7 @@ export function SpaceContextChip({ name, type, enabled, onToggle }: SpaceContext
           }`}
         >
           <Icon className='h-3 w-3 shrink-0 text-muted-foreground' aria-hidden='true' />
-          <span className='min-w-[3ch] truncate'>{name}</span>
+          <span className='min-w-[3em] truncate'>{name}</span>
         </Button>
       </TooltipTrigger>
       {/* Portalled: the composer card clips what overflows it, and an inline

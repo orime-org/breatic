@@ -266,10 +266,12 @@ export function renderProductGuide(): string {
       "open there is none. Pressing it turns it off and on, and it stays as left for this account in this " +
       "project. While it is on, each message the reader sends carries that Space's content to the Agent -- a " +
       "document's text, or a canvas's nodes and the links between them -- and hovering it shows " +
-      `${quoted(t("chat.composer.spaceContextOn"))}. Off, it has a dashed border and grey words, and hovering ` +
-      `it shows ${quoted(t("chat.composer.spaceContextOff"))}. A timeline's content cannot be read: with a ` +
-      "timeline open and the chip on, only its name and type go, and hovering shows " +
-      `${quoted(t("chat.composer.spaceContextOnUnreadable"))}. On or off, every message tells the Agent the ` +
+      `${quoted(t("chat.composer.spaceContextOn"))}. Off, the Agent is not told which Space is open or what is ` +
+      "in it; the chip has a dashed border and grey words, and hovering it shows " +
+      `${quoted(t("chat.composer.spaceContextOff"))}. A timeline's content cannot be read: with a timeline ` +
+      "open and the chip on, only its name and type go, and hovering shows " +
+      `${quoted(t("chat.composer.spaceContextOnUnreadable"))}; off, hovering shows ` +
+      `${quoted(t("chat.composer.spaceContextOffUnreadable"))}. On or off, every message tells the Agent the ` +
       `name and type of the ${String(getAgentConfig().space_list_max_items)} newest Spaces in the project, and ` +
       "how many more there are.",
     "Typing @ in the box opens a list, just above the @, of the attachments that have finished uploading; it " +

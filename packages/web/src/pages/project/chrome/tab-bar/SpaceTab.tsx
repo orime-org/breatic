@@ -19,7 +19,7 @@ import { cn } from '@web/lib/utils';
 import { useTranslation } from '@web/i18n/use-translation';
 import type { SpaceType } from '@breatic/shared';
 import { useUIStore } from '@web/stores/ui';
-import { SPACE_TYPE_ICON } from '@web/pages/project/space-type-icon';
+import { SPACE_TYPE_ICON } from '@web/pages/project/space-type';
 
 interface SpaceTabProps {
   id: string;

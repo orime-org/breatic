@@ -249,6 +249,7 @@
       "spaceContextOn": "点击禁止 Agent 读取这个 Space",
       "spaceContextOff": "点击允许 Agent 读取这个 Space",
       "spaceContextOnUnreadable": "Agent 只能看到这个 Space 的名字和类型，点击禁止",
+      "spaceContextOffUnreadable": "点击允许 Agent 看到这个 Space 的名字和类型",
       "removeAttachment": "移除 {name}",
       "attachmentUploading": "上传中",
       "attachmentFailed": "{reason, select, upload {上传失败} rate_limited {上传太频繁，请稍后重试} extract {读取失败} too_long {太长} other {失败}}",

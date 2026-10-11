@@ -249,6 +249,7 @@
       "spaceContextOn": "クリックすると Agent はこの Space を読み取らなくなります",
       "spaceContextOff": "クリックすると Agent がこの Space を読み取ります",
       "spaceContextOnUnreadable": "Agent に見えるのはこの Space の名前と種類だけです。クリックするとオフになります",
+      "spaceContextOffUnreadable": "クリックすると Agent がこの Space の名前と種類を見られるようになります",
       "removeAttachment": "{name} を外す",
       "attachmentUploading": "アップロード中",
       "attachmentFailed": "{reason, select, upload {アップロード失敗} rate_limited {アップロードが多すぎます。後でお試しください} extract {読み取り失敗} too_long {長すぎます} other {失敗}}",

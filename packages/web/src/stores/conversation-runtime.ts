@@ -624,10 +624,10 @@ function stillSendingTo(projectId: string, conversationId: string): boolean {
  * Hold the project's send mark for as long as this takes.
  *
  * For the stretches of a send with no turn to carry the wait -- opening a
- * conversation, opening a replacement for one the server no longer has, and
- * reading the chat limits the reader's Spaces are cut to (inner#1413), after
- * which {@link stillSendingTo} decides whether the send still goes. Each
- * can be a whole request long, and each would leave a live send button up.
+ * conversation, and reading the chat limits the reader's Spaces are cut to
+ * (inner#1413), after which {@link stillSendingTo} decides whether the send
+ * still goes. Each can be a whole request long, and each would leave a live
+ * send button up.
  * @param projectId - The project being sent to.
  * @param work - What to do while the mark is up. Must not reject.
  * @returns Whatever the work answered.

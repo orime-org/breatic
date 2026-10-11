@@ -239,8 +239,8 @@ export function useChatSession(
   // a project opens a conversation first, and that is a whole request during
   // which the SDK has not been asked for anything and says it is ready. Left
   // out, the composer draws a live send button through it.
-  const opening = useConversationRuntime((s) => s.sendingByProject[projectId] === true);
-  const turnPhase = opening ? 'sending' : phaseOf(status);
+  const sendHeld = useConversationRuntime((s) => s.sendingByProject[projectId] === true);
+  const turnPhase = sendHeld ? 'sending' : phaseOf(status);
   const navigating = useConversationRuntime((s) => s.navigatingByProject[projectId] === true);
   const loadingMore = useConversationRuntime((s) => s.listLoadingMore[projectId] === true);
   const hasMore = useConversationRuntime((s) =>

@@ -13,7 +13,7 @@
 
 import type { QueryClient } from '@tanstack/react-query';
 import { clipSpaceContent, spacesNewestFirst } from '@breatic/shared';
-import type { ChatSpace, ChatSpaceContext, ModelCatalog, SpaceType } from '@breatic/shared';
+import type { ChatSpace, ChatSpaceContext, ModelCatalog } from '@breatic/shared';
 
 import { readEdges, readNodes } from '@web/data/yjs/canvas-space';
 import { readDocFacts } from '@web/data/yjs/collab-socket';
@@ -23,6 +23,7 @@ import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-que
 import { snapshotOfPick } from '@web/spaces/canvas/attach-nodes';
 import type { PickSnapshot } from '@web/spaces/canvas/attach-nodes';
 import { pickReaders } from '@web/spaces/canvas/pick-for-agent';
+import { spaceContentReadable } from '@web/pages/project/space-type';
 import { peekDocumentEditor } from '@web/spaces/document/document-editor-cache';
 
 /** The open Space as read at the press, before its content is cut. */
@@ -150,16 +151,6 @@ function documentText(source: SpaceContextSource, space: ProjectSpace): string |
   if (handle === undefined) return null;
   const markdown = handle.editor.blocksToMarkdownLossy(handle.editor.document);
   return markdown.trim() === '' ? '' : markdown.trimEnd();
-}
-
-/**
- * Whether a Space of this type has content the Agent can be sent. A timeline's
- * cannot be read: only its name and type go.
- * @param type - The Space's type.
- * @returns True when its content is read.
- */
-export function spaceContentReadable(type: SpaceType): boolean {
-  return type !== 'timeline';
 }
 
 /**
