@@ -600,7 +600,7 @@ async function conversationForSending(projectId: string): Promise<string | undef
     return undefined;
   }
   if (state.currentByProject[projectId] === undefined) {
-    await whileOpening(projectId, () => ensureLoaded(projectId));
+    await whileSendHeld(projectId, () => ensureLoaded(projectId));
   }
   return useStore.getState().currentByProject[projectId];
 }
@@ -632,7 +632,7 @@ function stillSendingTo(projectId: string, conversationId: string): boolean {
  * @param work - What to do while the mark is up. Must not reject.
  * @returns Whatever the work answered.
  */
-async function whileOpening<T>(projectId: string, work: () => Promise<T>): Promise<T> {
+async function whileSendHeld<T>(projectId: string, work: () => Promise<T>): Promise<T> {
   useStore.setState((s) => ({
     sendingByProject: { ...s.sendingByProject, [projectId]: true as const },
   }));
@@ -1677,7 +1677,7 @@ export const conversationRuntime = {
   ensureLoaded,
   conversationForSending,
   stillSendingTo,
-  whileOpening,
+  whileSendHeld,
   noteActivity,
   loadEarlier,
   leaveProject,

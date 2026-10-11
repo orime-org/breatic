@@ -283,7 +283,7 @@ export function useChatSession(
       // them. The first read is a request, and the send stays held for it like
       // opening a conversation. A reader who leaves the project or moves to
       // another conversation meanwhile has taken the words with them.
-      const limits = await conversationRuntime.whileOpening(projectId, () =>
+      const limits = await conversationRuntime.whileSendHeld(projectId, () =>
         chatApi.streamConfig().catch(() => null),
       );
       if (!conversationRuntime.stillSendingTo(projectId, opened)) return;
