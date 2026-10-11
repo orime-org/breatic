@@ -201,6 +201,11 @@ describe("POST /canvas/paste", () => {
     const rows = await ledger(b.studioId);
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ content_hash: img.hash, storage_key: uprightKey });
+    // The row counts against the target studio's storage at the copy's size.
+    const [counted] = await sql<Array<{ size_bytes: string }>>`
+      SELECT size_bytes FROM studio_assets WHERE id = ${rows[0]!.id}
+    `;
+    expect(counted?.size_bytes).toBe("4096");
   });
 
   it("maps to the row the target studio already holds under another key, and history follows it", async () => {
