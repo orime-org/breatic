@@ -22,7 +22,7 @@ import * as ingestReportService from "@domain/asset/ingest-report.service.js";
 import type { IngestReportOutcome } from "@domain/asset/ingest-report.service.js";
 import { mediaLimits } from "@domain/asset/asset.service.js";
 import * as mediaReadService from "@domain/asset/media-read.service.js";
-import { uploadDeadline } from "@domain/asset/upload-deadline.js";
+import { uploadDeadlineByKey } from "@domain/asset/upload-deadline.js";
 
 /** The queue finishing jobs run on. */
 export const UPLOAD_FINISH_QUEUE = "upload-finish";
@@ -89,7 +89,7 @@ async function refuse(
  */
 export async function finishUpload(job: UploadFinishJob): Promise<UploadFinishResult> {
   const { storageKey } = job;
-  const deadlineAt = await uploadDeadline(storageKey);
+  const deadlineAt = await uploadDeadlineByKey(storageKey);
 
   let answered;
   try {

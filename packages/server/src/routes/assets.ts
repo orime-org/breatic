@@ -34,7 +34,7 @@ import {
   ingestReportService,
   mediaReadService,
   studioAuthService,
-  uploadDeadline,
+  uploadDeadlineByKey,
   uploadStatusService,
   uploadTicketService,
   UPLOAD_FINISH_QUEUE,
@@ -420,7 +420,7 @@ assets.post(
     );
     // The upload's two hours, read off the row or the grant just opened
     // (inner#1367). The ticket and every call the Worker makes for it end there.
-    const deadlineAt = await uploadDeadline(key);
+    const deadlineAt = await uploadDeadlineByKey(key);
 
     const target = await uploadTicketService.signTicketFor({
       storageKey: key,

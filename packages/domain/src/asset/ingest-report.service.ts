@@ -588,7 +588,7 @@ export async function applyIngestReport(
     if (grant.consumedAt !== null) return { status: "stale" };
     // Every call on an upload's chain is cut at its deadline, so a failure
     // that arrives past it ends the upload the way the deadline does.
-    const expired = failureOutcome(await uploadDeadline(grant.storageKey)) === "expired";
+    const expired = failureOutcome(await uploadDeadline(grant)) === "expired";
     const reason = expired ? "expired" : (report.reason ?? "aborted");
     await voidGrant(grant.storageKey, reason);
     const countsPublishFailed = await announceFailure(grant, reason, expired);

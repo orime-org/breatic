@@ -19,7 +19,7 @@ vi.mock("@breatic/core", () => ({
 }));
 vi.mock("@breatic/domain", () => ({
   ingestReportService: { applyIngestReport: h.applyIngestReport },
-  uploadDeadline: vi.fn(),
+  uploadDeadlineByKey: vi.fn(),
   uploadTicketService: {},
 }));
 vi.mock("@worker/handlers/side-effects.js", () => ({ noteSideEffects: vi.fn() }));

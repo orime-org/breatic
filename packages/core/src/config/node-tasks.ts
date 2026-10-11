@@ -38,3 +38,14 @@ export function getNodeTaskConfig(): Readonly<NodeTaskConfig> {
   _cached = Object.freeze(nodeTaskConfigSchema.parse(parse(raw) as unknown));
   return _cached;
 }
+
+/**
+ * When a task that started at `startedAt` runs out: the one place the budget
+ * is added to a start (inner#1367 §4.8c).
+ * @param startedAt - When the task started, in epoch ms.
+ * @returns Its deadline, in epoch ms.
+ * @throws {z.ZodError} When the configuration is malformed.
+ */
+export function budgetDeadlineFrom(startedAt: number): number {
+  return startedAt + getNodeTaskConfig().default_budget_ms;
+}

@@ -34,7 +34,7 @@ const core = (await import("../packages/core/dist/index.js")) as {
   initCore: (env: NodeJS.ProcessEnv) => void;
   env: { INGEST_BASE_URL: string; INGEST_SHARED_SECRET: string };
   rawPg: (s: TemplateStringsArray, ...v: unknown[]) => Promise<unknown[]>;
-  getNodeTaskConfig: () => { default_budget_ms: number };
+  budgetDeadlineFrom: (startedAt: number) => number;
 };
 core.initCore(process.env);
 const shared = (await import("../packages/shared/dist/index.js")) as {
@@ -67,7 +67,6 @@ const rows = (await core.rawPg`
 console.log(`${rows.length} stored images`);
 
 // Each read is its own task: two hours from when it starts (inner#1367).
-const budgetMs = core.getNodeTaskConfig().default_budget_ms;
 const counts = new Map<string, number>(
   [...shared.PREVIEW_OUTCOMES, "missing"].map((outcome) => [outcome, 0]),
 );
@@ -84,7 +83,7 @@ async function work(): Promise<void> {
       .readStoredMediaAtIngest(core.env.INGEST_BASE_URL, core.env.INGEST_SHARED_SECRET, {
         storageKey: row.storage_key,
         contentType: row.mime_type,
-        deadlineAt: Date.now() + budgetMs,
+        deadlineAt: core.budgetDeadlineFrom(Date.now()),
         wantPreview: true,
       })
       .catch((err: unknown) => {

@@ -24,7 +24,7 @@ import { coverKeyFor, env, getStorageConfig, logger } from "@breatic/core";
 import {
   assetService,
   ingestReportService,
-  uploadDeadline,
+  uploadDeadlineByKey,
   uploadTicketService,
 } from "@breatic/domain";
 import { noteSideEffects } from "@worker/handlers/side-effects.js";
@@ -156,7 +156,7 @@ export async function runUrlIngest(job: Job<UrlIngestJobData>): Promise<void> {
   const { storageKey, studioId, url, userId, projectId, nodeId } = job.data;
   const { upload, ingest } = getStorageConfig();
   // The end of the row the route opened on the node (inner#1367).
-  const deadlineAt = await uploadDeadline(storageKey);
+  const deadlineAt = await uploadDeadlineByKey(storageKey);
 
   let target;
   try {

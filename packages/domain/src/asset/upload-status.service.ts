@@ -47,7 +47,7 @@ async function statusOfGrant(grant: UploadGrant): Promise<UploadStatus> {
       },
     };
   }
-  return failureOutcome(await uploadDeadline(key)) === "expired"
+  return failureOutcome(await uploadDeadline(grant)) === "expired"
     ? { key, state: "failed", reason: "expired" }
     : { key, state: "finishing" };
 }

@@ -7,7 +7,7 @@
  * nothing new only asks, and a rerun makes only what a previous run could not.
  */
 
-import { getNodeTaskConfig } from "@breatic/core";
+import { budgetDeadlineFrom } from "@breatic/core";
 import type { ResumeContext } from "@worker/providers/shared.js";
 import type { VoiceSampleJob } from "@worker/voice-samples/plan.js";
 import { StillRunning } from "@worker/providers/still-running.js";
@@ -180,7 +180,7 @@ export function resumablePredict(
           externalTaskId: job.key,
           retryStarting: unsure.has(job.key),
           // A maintainer's run: each sample gets its own two hours.
-          deadlineAt: Date.now() + getNodeTaskConfig().default_budget_ms,
+          deadlineAt: budgetDeadlineFrom(Date.now()),
         });
       } catch (err) {
         if (!(err instanceof StillRunning)) {
