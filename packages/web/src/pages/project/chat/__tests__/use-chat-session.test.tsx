@@ -551,3 +551,36 @@ describe('the Spaces a message carries (inner#1413)', () => {
     expect(panel.result.current.draft).toBe('summarise this');
   });
 });
+
+describe('the wait for the limits before a send (inner#1413)', () => {
+  it('holds the send between the press and the request while the limits are read', async () => {
+    let answer: (config: Awaited<ReturnType<typeof chatApi.streamConfig>>) => void = () => undefined;
+    vi.mocked(chatApi.streamConfig).mockReturnValue(
+      new Promise((resolve) => {
+        answer = resolve;
+      }),
+    );
+    const panel = await anOpenPanel();
+
+    act(() => {
+      void panel.result.current.send('summarise this');
+    });
+    await waitFor(() => {
+      expect(panel.result.current.turnPhase).toBe('sending');
+    });
+    expect(wire.sent()).toHaveLength(0);
+
+    act(() => {
+      answer({
+        heartbeatIntervalMs: 5000,
+        attachmentMaxChars: 200_000,
+        attachmentMaxItems: 10,
+        currentSpaceMaxChars: 100_000,
+        spaceListMaxItems: 200,
+      });
+    });
+    await waitFor(() => {
+      expect(wire.sent()).toHaveLength(1);
+    });
+  });
+});
