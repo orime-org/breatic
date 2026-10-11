@@ -32,18 +32,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version-file: .nvmrc
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v6
-        with:
-          version: 9.15.0
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/setup-workspace
 
       - name: Check vite dev-proxy targets
         # The whole web package: the proxy is decided across three root
@@ -70,18 +59,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version-file: .nvmrc
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v6
-        with:
-          version: 9.15.0
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/setup-workspace
 
       - name: Scan for auth-bypass residue
         # This one check by name. The repo-wide suite includes one that
@@ -90,40 +68,18 @@ jobs:
         # quietly stop checking anything.
         run: pnpm lint:repo no-auth-bypass-residue
 
-  lint-typecheck-test:
-    name: Lint + Typecheck + Test
+  lint:
+    name: Lint
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v6
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version-file: .nvmrc
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v6
-        with:
-          version: 9.15.0
-
-      - name: Get pnpm store directory
-        id: pnpm-cache
-        shell: bash
-        run: echo "STORE_PATH=$(pnpm store path)" >> "$GITHUB_OUTPUT"
-
-      - name: Cache pnpm dependencies
-        uses: actions/cache@v5
-        with:
-          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
-          key: ${{ runner.os }}-pnpm-${{ hashFiles('**/pnpm-lock.yaml') }}
-          restore-keys: ${{ runner.os }}-pnpm-
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/setup-workspace
 
       - name: Lint
         run: pnpm turbo lint
+
 
       - name: Lint dependency-cruiser (import-boundary rules)
         # Declarative import-boundary enforcement (CI maximal-strictness
@@ -150,13 +106,25 @@ jobs:
         # doc-comment naming a banned alias.
         run: pnpm lint:dependency-cruiser
 
+
+  build-checks:
+    name: Build + repo checks
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: ./.github/actions/setup-workspace
+
       - name: Build packages
         run: pnpm turbo build
+
 
       - name: Route entries still ship as their own chunks
         # The unit tests pin how routes.tsx is written; this reads what the
         # build emitted, which is what decides a reader's download (#142).
         run: pnpm --filter @breatic/web verify:chunks
+
 
       - name: Repo-wide checks (repo-lint)
         # The invariants ESLint structurally cannot hold: they are about
@@ -170,6 +138,16 @@ jobs:
         # not be mistaken for a clean one.
         run: pnpm lint:repo
 
+
+  typecheck:
+    name: Typecheck
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: ./.github/actions/setup-workspace
+
       - name: Typecheck (all packages)
         # tsc --noEmit across every workspace package (shared / core /
         # worker / collab / server / web). Previously filtered to just
@@ -179,17 +157,58 @@ jobs:
         # in this change; backend packages already passed locally.
         run: pnpm turbo typecheck
 
-      - name: Test (all packages)
-        # Runs vitest across every workspace package (shared / core /
-        # collab / worker / server / web). vitest configs already
-        # exclude integration tests (`*.integration.test.ts`) which
-        # require live Postgres / Redis; unit tests use mocks.
-        run: pnpm turbo test
+
+  test-packages:
+    name: Test (packages other than web)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: ./.github/actions/setup-workspace
+
+      - name: Test (packages other than web)
+        # vitest across every workspace package but web, which runs in the
+        # shards below. vitest configs exclude integration tests
+        # (`*.integration.test.ts`), which need live Postgres / Redis.
+        run: pnpm turbo test --filter=!@breatic/web
         env:
           DATABASE_URL: postgres://localhost/test
           REDIS_URL: redis://localhost/0
           REDIS_QUEUE_URL: redis://localhost/1
           REDIS_STREAM_URL: redis://localhost/2
+
+  test-web:
+    name: Test (web, shard ${{ matrix.shard }}/4)
+    # web holds most of the unit tests (804 files measured 2026-10-11) and ran
+    # alone for about six minutes; four shards run side by side.
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: ./.github/actions/setup-workspace
+
+      - name: Test (web)
+        run: pnpm turbo run test --filter=@breatic/web -- --shard=${{ matrix.shard }}/4
+
+  lint-typecheck-test:
+    name: Lint + Typecheck + Test
+    # The check main's branch protection requires and the Docker jobs wait on.
+    # It passes only when every job it gathers passed; `always()` makes it
+    # report a failure, rather than be skipped, when one of them did not.
+    if: always()
+    needs: [lint, build-checks, typecheck, test-packages, test-web]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Every lint, typecheck and test job passed
+        env:
+          RESULTS: ${{ toJSON(needs.*.result) }}
+        run: echo "$RESULTS" | jq -e 'all(.[]; . == "success")'
 
   integration-tests:
     name: Integration Tests
@@ -219,30 +238,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version-file: .nvmrc
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v6
-        with:
-          version: 9.15.0
-
-      - name: Get pnpm store directory
-        id: pnpm-cache
-        shell: bash
-        run: echo "STORE_PATH=$(pnpm store path)" >> "$GITHUB_OUTPUT"
-
-      - name: Cache pnpm dependencies
-        uses: actions/cache@v5
-        with:
-          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
-          key: ${{ runner.os }}-pnpm-${{ hashFiles('**/pnpm-lock.yaml') }}
-          restore-keys: ${{ runner.os }}-pnpm-
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/setup-workspace
 
       # `turbo run test:integration` builds shared → core → domain first (the
       # integration suites import all three; test:integration dependsOn build,
