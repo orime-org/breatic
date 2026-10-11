@@ -45,7 +45,9 @@
 
 ### 2.1 套件自己准备它要的一切
 
-`pnpm --filter @breatic/web test:smoke` 不需要任何事先配置:setup 自己注册两个账号、建它们的 studio 和 project,把凭据写进 `playwright/.auth/`(已 gitignore)。第一次跑和数据库被清空之后跑走同一条路。**只对本机**——setup 会注册账号、会删 project,所以它拒绝对着 localhost 以外的地址跑。
+`pnpm --filter @breatic/web test:smoke` 不需要任何事先配置:setup 自己注册两个账号、建它们的 studio 和 project,把凭据写进 `playwright/.auth/`(已 gitignore)。第一次跑和数据库被清空之后跑走同一条路。**只对本机**——setup 会注册账号、会归档 project,所以它拒绝对着 localhost 以外的地址跑。
+
+服务端开着邮件时,注册要读寄到 Mailpit 的验证码,所以跑 smoke 的那套服务用 `pnpm dev:mailpit` 起:它起 Mailpit 并把服务端的 SMTP 指过去。用 `pnpm dev` 起的服务按 `.env` 里的发信方式寄信,Mailpit 开着也收不到。
 
 ### 2.2 要外部服务的用例:声明、默认不跑、发布前必须跑(MANDATORY)
 
