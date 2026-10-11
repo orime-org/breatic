@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { TooltipProvider } from '@web/components/ui/tooltip';
@@ -91,5 +91,39 @@ describe('the open Space chip', () => {
     await userEvent.click(screen.getByTestId('chat-composer-space'));
 
     expect(onToggleSpace).toHaveBeenCalledTimes(1);
+  });
+
+  describe('what hovering it says', () => {
+    /**
+     * Point at the chip long enough for its tooltip to open.
+     * @returns The tooltip's words.
+     */
+    const hoverText = (): string => {
+      vi.useFakeTimers();
+      fireEvent.pointerMove(screen.getByTestId('chat-composer-space'), { pointerType: 'mouse' });
+      act(() => {
+        vi.advanceTimersByTime(1_000);
+      });
+      const words = screen.getAllByRole('tooltip').map((el) => el.textContent ?? '').join(' ');
+      vi.useRealTimers();
+      return words;
+    };
+
+    it('says the Agent reads the open document while it is on', () => {
+      setup();
+      expect(hoverText()).toContain('The Agent reads this Space with each message');
+    });
+
+    it('says only the name of an open timeline reaches the Agent while it is on', () => {
+      setup({ spaceName: 'Edit', spaceType: 'timeline' });
+      const words = hoverText();
+      expect(words).toContain('The Agent sees only this Space\'s name; its content can\'t be read');
+      expect(words).not.toContain('The Agent reads this Space with each message');
+    });
+
+    it('says the Agent does not read it while it is off, whatever its type', () => {
+      setup({ spaceName: 'Edit', spaceType: 'timeline', spaceEnabled: false });
+      expect(hoverText()).toContain('The Agent does not read this Space');
+    });
   });
 });
