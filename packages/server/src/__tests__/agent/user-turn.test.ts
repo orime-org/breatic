@@ -182,7 +182,7 @@ describe("the Spaces the reader is in (inner#1413)", () => {
     expect(turn).toContain('"# Sc"\n(Showing the first 4 of 250000 characters.)');
   });
 
-  it("says a cut canvas shows only some of its nodes and the links between them", () => {
+  it("says a cut canvas has its long texts cut, and maybe some nodes left out", () => {
     const content = '{"edges":[],"nodes":[{"id":"n1"}]}';
     const turn = userTurnForModel({
       chips: [],
@@ -193,8 +193,9 @@ describe("the Spaces the reader is in (inner#1413)", () => {
     });
 
     expect(turn).toContain(
-      `${content}\n(The canvas is over the limit, so only some of its nodes are shown, with only the links ` +
-        `between them: ${String(content.length)} of 250000 characters.)`,
+      `${content}\n(The canvas is over the limit: long texts in its nodes are cut short and end with "…", and ` +
+        `if that was not enough, some nodes are left out with their links. Showing ${String(content.length)} of ` +
+        "250000 characters.)",
     );
   });
 
