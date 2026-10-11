@@ -10,6 +10,8 @@
  * so the two sides read one copy of the agreement.
  */
 
+import { objectUrlOn } from "@ingest/object-url.js";
+
 /**
  * The host the container writes an upright picture back to. Only the
  * write-back handler answers on it, and only for the one key it was set for.
@@ -55,11 +57,10 @@ export type UprightOutcome =
 /**
  * Where the container writes one key back.
  * @param storageKey - The object being turned upright.
- * @returns The URL, each path segment escaped as `mediaObjectUrl` does.
+ * @returns The URL.
  */
 export function uprightObjectUrl(storageKey: string): string {
-  const path = storageKey.split("/").map(encodeURIComponent).join("/");
-  return `http://${UPRIGHT_OBJECT_HOST}/${path}`;
+  return objectUrlOn(UPRIGHT_OBJECT_HOST, storageKey);
 }
 
 /**

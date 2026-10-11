@@ -23,6 +23,7 @@
 
 import { Container } from "@cloudflare/containers";
 import type { OutboundHandlerContext } from "@cloudflare/containers";
+import { askedKey } from "@ingest/object-url.js";
 import { serveOneObject } from "@ingest/media-object-route.js";
 import { writeStreamedObject } from "@ingest/stored-object.js";
 import {
@@ -132,7 +133,7 @@ export async function writeUpright(
   if (request.method !== "PUT" || request.body === null) {
     return new Response("Not allowed", { status: 405 });
   }
-  const asked = decodeURIComponent(new URL(request.url).pathname).slice(1);
+  const asked = askedKey(request);
   if (asked !== grant.key) return new Response("Not this object", { status: 403 });
 
   const width = pixelsStated(request.headers.get(UPRIGHT_WIDTH_HEADER));

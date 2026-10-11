@@ -27,6 +27,7 @@
     "../src/png-size.ts",
     "../src/preview-step.ts",
     "../src/upright-run.ts",
+    "../src/object-url.ts",
     "../src/jobs/op-args.ts",
     "../../shared/src/adjust-value.ts",
     "../../shared/src/mini-tools/types.ts",

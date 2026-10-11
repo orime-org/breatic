@@ -19,6 +19,7 @@ import type { OutboundHandlerContext, StopParams } from "@cloudflare/containers"
 import type { IngestMeasurements, MiniToolJobReport, MiniToolJobRequest } from "@breatic/shared";
 
 import { noteFailure } from "@ingest/error-monitoring.js";
+import { askedKey } from "@ingest/object-url.js";
 import { MEDIA_OBJECT_HOST, mediaObjectUrl, serveOneObject } from "@ingest/media-object-route.js";
 import { readContainerReport, type ContainerReportBody, type MediaOfOutput } from "@ingest/jobs/container-report.js";
 import { RUN_PATH } from "@ingest/jobs/op-args.js";
@@ -329,7 +330,7 @@ function jobObject(env: MiniToolEnv, ctx: OutboundHandlerContext): DurableObject
 async function jobObjects(request: Request, env: MiniToolEnv, ctx: OutboundHandlerContext<JobObjects>): Promise<Response> {
   if (request.method === "GET" || request.method === "HEAD") return serveOneObject(request, env.BUCKET, ctx.params.read);
   if (request.method !== "PUT" || request.body === null) return new Response("Not allowed", { status: 405 });
-  const key = decodeURIComponent(new URL(request.url).pathname).slice(1);
+  const key = askedKey(request);
   const contentType = ctx.params.writes[key];
   if (contentType === undefined) return new Response("Not this object", { status: 403 });
 
