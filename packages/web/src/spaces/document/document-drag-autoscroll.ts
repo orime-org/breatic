@@ -41,6 +41,8 @@ import type { EditorView } from '@tiptap/pm/view';
 import {
   BodyAutoScroll,
   bodyScrollerOf,
+  countsDragEvents,
+  DragWindow,
   type DragTarget,
 } from '@web/spaces/document/document-body-autoscroll';
 import { dragSourceOf, tableFrameOf } from '@web/spaces/document/document-table-drag';
@@ -52,59 +54,6 @@ import { dragSourceOf, tableFrameOf } from '@web/spaces/document/document-table-
  */
 function isSynthetic(event: Event): boolean {
   return (event as Event & { synthetic?: boolean }).synthetic === true;
-}
-
-/**
- * Whether the browser's drag events leave the window only by their count:
- * Safari, the way Pragmatic drag and drop tells it (`is-safari.js`).
- * @param userAgent - The browser's user agent.
- * @returns Whether to count.
- */
-export function countsDragEvents(userAgent: string): boolean {
-  return userAgent.includes('AppleWebKit') && !userAgent.includes('Chrome');
-}
-
-/** Whether a drag's pointer is leaving the window, one `dragleave` at a time. */
-export class DragWindow {
-  private entered = 0;
-  private over = false;
-
-  /**
-   * Tells leaving the window by count or by relatedTarget.
-   * @param counts - Whether to tell it by counting (Safari).
-   */
-  constructor(private readonly counts: boolean) {}
-
-  /** A drag started in this window. */
-  start(): void {
-    this.entered = 0;
-    this.over = true;
-  }
-
-  /** A drag ended. */
-  reset(): void {
-    this.entered = 0;
-    this.over = false;
-  }
-
-  /** The pointer entered an element. */
-  enter(): void {
-    this.over = true;
-    this.entered += 1;
-  }
-
-  /**
-   * Whether this `dragleave` is the pointer leaving the window.
-   * @param event - The dragleave.
-   * @returns Whether it leaves.
-   */
-  leaves(event: MouseEvent): boolean {
-    if (!this.counts) return event.relatedTarget == null;
-    this.entered -= 1;
-    if (!this.over || this.entered > 0) return false;
-    this.over = false;
-    return true;
-  }
 }
 
 /** Each view's session loop. */
@@ -174,6 +123,9 @@ function listen(view: EditorView, auto: BodyAutoScroll): () => void {
    */
   const onDragStart = (event: Event): void => {
     if (event.defaultPrevented || isSynthetic(event)) return;
+    // A drag from elsewhere on the page (a top bar link) is not the body's.
+    const body = bodyScrollerOf(view);
+    if (body === null || !(event.target instanceof Node) || !body.contains(event.target)) return;
     dragWindow.start();
     const target = dragTargetOf(view);
     if (target !== null) begin(target);

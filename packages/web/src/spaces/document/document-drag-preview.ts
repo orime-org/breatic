@@ -206,8 +206,8 @@ function settle(view: EditorView, content: Element): void {
 function stillOf(copy: HTMLVideoElement, original: HTMLVideoElement | null): HTMLCanvasElement {
   const box = original?.getBoundingClientRect();
   const canvas = copy.ownerDocument.createElement('canvas');
-  canvas.width = Math.round(box?.width || copy.width || copy.clientWidth);
-  canvas.height = Math.round(box?.height || copy.height || copy.clientHeight);
+  canvas.width = Math.round(box?.width || copy.width);
+  canvas.height = Math.round(box?.height || copy.height);
   canvas.className = copy.className;
   if (original !== null && original.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
     canvas.getContext('2d')?.drawImage(original, 0, 0, canvas.width, canvas.height);

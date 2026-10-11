@@ -417,8 +417,7 @@ export function DocumentTableHandle({
             handles.freezeHandles();
             releaseDrag.current = () => {
               preview?.remove();
-              // An open menu keeps the handles frozen; it lets them go itself.
-              if (!held.current.open) handles.unfreezeHandles();
+              handles.unfreezeHandles();
             };
             source.hideAfterStart();
           }}

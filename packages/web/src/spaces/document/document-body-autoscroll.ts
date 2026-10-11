@@ -36,6 +36,59 @@ export function bodyScrollerOf(view: EditorView): HTMLElement | null {
   return view.dom.closest<HTMLElement>(SCROLL_VIEWPORT);
 }
 
+/**
+ * Whether the browser's drag events leave the window only by their count:
+ * Safari, the way Pragmatic drag and drop tells it (`is-safari.js`).
+ * @param userAgent - The browser's user agent.
+ * @returns Whether to count.
+ */
+export function countsDragEvents(userAgent: string): boolean {
+  return userAgent.includes('AppleWebKit') && !userAgent.includes('Chrome');
+}
+
+/** Whether a drag's pointer is leaving the window, one `dragleave` at a time. */
+export class DragWindow {
+  private entered = 0;
+  private over = false;
+
+  /**
+   * Tells leaving the window by count or by relatedTarget.
+   * @param counts - Whether to tell it by counting (Safari).
+   */
+  constructor(private readonly counts: boolean) {}
+
+  /** A drag started in this window. */
+  start(): void {
+    this.entered = 0;
+    this.over = true;
+  }
+
+  /** A drag ended. */
+  reset(): void {
+    this.entered = 0;
+    this.over = false;
+  }
+
+  /** The pointer entered an element. */
+  enter(): void {
+    this.over = true;
+    this.entered += 1;
+  }
+
+  /**
+   * Whether this `dragleave` is the pointer leaving the window.
+   * @param event - The dragleave.
+   * @returns Whether it leaves.
+   */
+  leaves(event: MouseEvent): boolean {
+    if (!this.counts) return event.relatedTarget == null;
+    this.entered -= 1;
+    if (!this.over || this.entered > 0) return false;
+    this.over = false;
+    return true;
+  }
+}
+
 /** The box of a scroller, in client coordinates. */
 export interface EdgeBox {
   readonly top: number;
