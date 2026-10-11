@@ -192,7 +192,7 @@ describe('an open canvas', () => {
    * @param size - How many times `unit` its name repeats.
    * @param unit - What its name repeats.
    */
-  const addBigNode = (id: string, size: number, unit = 'x'): void => {
+  const addBigNode = (id: string, size: number, unit = 'x '): void => {
     addNode(PID, canvas.id, {
       id,
       type: 'text',
@@ -256,7 +256,7 @@ describe('an open canvas', () => {
     expect(got.edges).toEqual(whole.edges);
     expect(nameSent(content, 'n1')).toBe('Node n1');
     const cut = nameSent(content, 'big');
-    expect(cut).toMatch(/^x+…$/);
+    expect(cut).toMatch(/^[x ]+…$/);
     // The longest cut that fits: one more character would not.
     const longer = content.replace(`"${cut}"`, `"x${cut}"`);
     expect(longer.length).toBeGreaterThan(2_000);
@@ -274,17 +274,17 @@ describe('an open canvas', () => {
     expect(total).toBe(full.total);
     expect(content.length).toBeLessThanOrEqual(2_000);
     expect((JSON.parse(content) as Parsed).nodes.map((n) => n.id)).toEqual([id]);
-    expect(nameSent(content, id)).toMatch(/^x+…$/);
+    expect(nameSent(content, id)).toMatch(/^[x ]+…$/);
   });
 
   it('does not split a character in two where a text is cut', () => {
     openCanvas();
-    addBigNode('big', 3_000, '😀');
+    addBigNode('big', 3_000, '😀 ');
 
     const { content } = sent(2_000);
 
     expect(content.length).toBeLessThanOrEqual(2_000);
-    expect(nameSent(content, 'big')).toMatch(/^(😀)+…$/u);
+    expect(nameSent(content, 'big')).toMatch(/^[😀 ]+…$/u);
   });
 
   it('leaves texts no longer than a node name and ids as they are, and drops whole nodes when that is still too long', () => {
@@ -314,6 +314,81 @@ describe('an open canvas', () => {
     for (const node of got.nodes) expect(ids).toContain(node.id);
     expect(got.edges.length).toBe(got.nodes.length - 1);
     for (const [i, node] of got.nodes.entries()) expect(nameSent(content, node.id)).toBe(`Node ${String(i)}`);
+  });
+
+  /**
+   * Put a node shaped like a generated one on the open canvas: an author id,
+   * a model id, a picture address and a prompt.
+   * @param id - Its id.
+   * @param name - Its name.
+   * @param prompt - Its prompt.
+   */
+  const addRealNode = (id: string, name: string, prompt: string): void => {
+    addNode(PID, canvas.id, {
+      id,
+      type: 'image',
+      position: { x: 0, y: 0 },
+      data: {
+        name,
+        createdAt: 1,
+        createdBy: AUTHOR,
+        locked: false,
+        attachments: [],
+        model: MODEL,
+        coverUrl: `${COVER}/${id}.png`,
+        prompt,
+        short: 'a b c d e f g h i j k l m n o p',
+      } as never,
+    });
+  };
+
+  /** A field as sent. */
+  const field = (node: Record<string, unknown>, key: string): unknown => (node.data as Record<string, unknown>)[key];
+
+  const AUTHOR = '90000000-1111-2222-3333-444444444444';
+  const MODEL = 'gemini-omni-1.1-flash-reference-to-video';
+  const COVER = 'https://assets.example.com/upload/2026-10-11/1791690000000_3e8b4deb-1111-2222-3333-e4182d91161c';
+
+  it('cuts only prose and keeps addresses, model ids and ids whole', () => {
+    openCanvas();
+    const ids = Array.from({ length: 20 }, (_, i) => `shot-${String(i)}`);
+    const prompt = 'a quiet street at night with rain '.repeat(30);
+    for (const id of ids) addRealNode(id, `Shot ${id}`, prompt);
+    const full = sent(100_000);
+    // Room for each prompt's first 36 characters and its ellipsis: shorter
+    // than the model id and the address beside it.
+    const rest = full.total - ids.length * prompt.length;
+
+    const { content } = sent(rest + ids.length * 37);
+
+    const got = JSON.parse(content) as { nodes: Array<Record<string, unknown> & { id: string }> };
+    expect(got.nodes.map((n) => n.id)).toEqual(ids);
+    for (const node of got.nodes) {
+      expect(field(node, 'createdBy')).toBe(AUTHOR);
+      expect(field(node, 'model')).toBe(MODEL);
+      expect(field(node, 'coverUrl')).toBe(`${COVER}/${node.id}.png`);
+      expect(field(node, 'prompt')).toMatch(/^a quiet street .*…$/);
+    }
+  });
+
+  it('drops whole nodes cut to the floor when that is still too long, and cuts nothing for no gain', () => {
+    openCanvas();
+    const ids = Array.from({ length: 40 }, (_, i) => `shot-${String(i)}`);
+    for (const id of ids) addRealNode(id, 'shot name '.repeat(100), 'p');
+    const full = sent(100_000);
+
+    const { content } = sent(Math.floor(full.total / 4));
+
+    const got = JSON.parse(content) as { nodes: Array<Record<string, unknown> & { id: string }> };
+    expect(got.nodes.length).toBeGreaterThan(0);
+    expect(got.nodes.length).toBeLessThan(ids.length);
+    for (const node of got.nodes) {
+      expect(field(node, 'name')).toBe(`${'shot name '.repeat(3)}…`);
+      expect(field(node, 'createdBy')).toBe(AUTHOR);
+      expect(field(node, 'model')).toBe(MODEL);
+      // One character over the floor: cutting it would save nothing.
+      expect(field(node, 'short')).toBe('a b c d e f g h i j k l m n o p');
+    }
   });
 
   it('still carries nodes when its links alone would fill the limit', () => {
