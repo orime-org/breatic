@@ -41,7 +41,7 @@ function spaceListSection(spaces: readonly ChatSpace[], total: number, openId: s
  * What the open Space holds, or why it holds nothing the model can read.
  *
  * A document's text is quoted, so a heading in it is not read as a heading of
- * the turn; a canvas's text is indented JSON already and goes in as it is.
+ * the turn; a canvas's text is JSON on one line and goes in as it is.
  * @param current - The Space the reader has open.
  * @returns The section.
  * @throws {never} Never.

@@ -15,17 +15,24 @@ import type { QueryClient } from '@tanstack/react-query';
 import { clipSpaceContent, spacesNewestFirst } from '@breatic/shared';
 import type { ChatSpace, ChatSpaceContext, ModelCatalog, SpaceType } from '@breatic/shared';
 
-import { readNodes } from '@web/data/yjs/canvas-space';
+import { readEdges, readNodes } from '@web/data/yjs/canvas-space';
 import { readDocFacts } from '@web/data/yjs/collab-socket';
 import { docName, getDoc, hasDoc } from '@web/data/yjs/manager';
 import type { ProjectSpace } from '@web/data/yjs/project-meta';
 import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
-import { readPick } from '@web/spaces/canvas/pick-for-agent';
+import { snapshotOfPick } from '@web/spaces/canvas/attach-nodes';
+import type { PickSnapshot } from '@web/spaces/canvas/attach-nodes';
+import { pickReaders } from '@web/spaces/canvas/pick-for-agent';
 import { peekDocumentEditor } from '@web/spaces/document/document-editor-cache';
 
 /** The open Space as read at the press, before its content is cut. */
 export type ReadCurrentSpace = ChatSpace &
-  ({ state: 'loaded'; text: string } | { state: 'loading' } | { state: 'unreadable' });
+  (
+    | { state: 'loaded'; text: string }
+    | { state: 'loaded'; canvas: PickSnapshot }
+    | { state: 'loading' }
+    | { state: 'unreadable' }
+  );
 
 /** The reader's Spaces as read at the press, before they are cut. */
 export interface ReadSpaces {
@@ -74,25 +81,59 @@ function holdsSynced(name: string): boolean {
 }
 
 /**
- * An open canvas's links and nodes, as indented JSON.
+ * An open canvas's nodes and the links between them.
  * @param source - Where the read starts from.
  * @param space - The canvas.
- * @returns Its text, empty when nothing on it can be handed over, or null
- *   while it or the model catalog has not loaded.
+ * @returns The snapshot, an empty text when nothing on it can be handed over,
+ *   or null while it or the model catalog has not loaded.
  */
-function canvasText(source: SpaceContextSource, space: ProjectSpace): string | null {
+function readCanvas(source: SpaceContextSource, space: ProjectSpace): PickSnapshot | '' | null {
   const name = docName.canvasSpace(source.projectId, space.id);
   if (!holdsSynced(name)) return null;
   const catalog = source.queryClient.getQueryData<ModelCatalog>(modelCatalogQuery().queryKey);
   if (catalog === undefined) return null;
   const doc = getDoc(name);
+  const nodes = readNodes(doc);
   // A first voice that is not cached is left out: nothing is asked for here.
-  const item = readPick(source.queryClient, catalog, doc, readNodes(doc).map((n) => n.id));
-  if (item?.chip === undefined) return '';
-  // Links first: they are short, and a canvas past the limit is cut from the
-  // end, so it is the last nodes that go rather than every link.
-  const { nodes, edges } = item.chip.data_snapshot as { nodes: unknown; edges: unknown };
-  return JSON.stringify({ edges, nodes }, null, 2);
+  const snapshot = snapshotOfPick(
+    { nodes, edges: readEdges(doc) },
+    nodes.map((n) => n.id),
+    pickReaders(source.queryClient, catalog, doc),
+  );
+  return snapshot ?? '';
+}
+
+/**
+ * A canvas as compact JSON holding as many of its nodes as fit in `max`
+ * characters, in order, with only the links whose two ends are among them.
+ * Cut at whole nodes: a cut inside the JSON would drop either every link or
+ * every node, whichever came last.
+ * @param canvas - The canvas.
+ * @param max - How many characters may go.
+ * @returns The text and the length of the whole canvas's text.
+ */
+function fitCanvas(canvas: PickSnapshot, max: number): { text: string; total: number } {
+  /**
+   * The text holding the first `count` nodes.
+   * @param count - How many nodes.
+   * @returns The compact JSON.
+   */
+  const textOf = (count: number): string => {
+    const nodes = canvas.nodes.slice(0, count);
+    const kept = new Set(nodes.map((n) => n.id));
+    const edges = canvas.edges.filter((e) => kept.has(e.source) && kept.has(e.target));
+    return JSON.stringify({ edges, nodes });
+  };
+  const whole = textOf(canvas.nodes.length);
+  if (whole.length <= max) return { text: whole, total: whole.length };
+  let fits = 0;
+  let over = canvas.nodes.length;
+  while (over - fits > 1) {
+    const mid = Math.floor((fits + over) / 2);
+    if (textOf(mid).length <= max) fits = mid;
+    else over = mid;
+  }
+  return { text: textOf(fits), total: whole.length };
 }
 
 /**
@@ -130,7 +171,12 @@ export function spaceContentReadable(type: SpaceType): boolean {
 function readCurrent(source: SpaceContextSource, space: ProjectSpace): ReadCurrentSpace {
   const base = listed(space);
   if (!spaceContentReadable(space.type)) return { ...base, state: 'unreadable' };
-  const text = space.type === 'canvas' ? canvasText(source, space) : documentText(source, space);
+  if (space.type === 'canvas') {
+    const canvas = readCanvas(source, space);
+    if (canvas === null) return { ...base, state: 'loading' };
+    return canvas === '' ? { ...base, state: 'loaded', text: '' } : { ...base, state: 'loaded', canvas };
+  }
+  const text = documentText(source, space);
   return text === null ? { ...base, state: 'loading' } : { ...base, state: 'loaded', text };
 }
 
@@ -161,7 +207,13 @@ export function clipSpaceContext(read: ReadSpaces, limits: SpaceContextLimits): 
   const current = read.current;
   if (current === undefined) return out;
   if (current.state !== 'loaded') return { ...out, current_space: current };
-  const { text, ...rest } = current;
-  const clipped = clipSpaceContent(text, limits.currentSpaceMaxChars);
-  return { ...out, current_space: { ...rest, content: clipped.text, total_chars: clipped.total } };
+  const { id, name, kind } = current;
+  const clipped =
+    'canvas' in current
+      ? fitCanvas(current.canvas, limits.currentSpaceMaxChars)
+      : clipSpaceContent(current.text, limits.currentSpaceMaxChars);
+  return {
+    ...out,
+    current_space: { id, name, kind, state: 'loaded', content: clipped.text, total_chars: clipped.total },
+  };
 }

@@ -236,7 +236,7 @@ describe('an open document', () => {
     const got = read({ activeSpace: doc });
 
     expect(got.current).toMatchObject({ id: 'd1', kind: 'document', state: 'loaded' });
-    const text = got.current?.state === 'loaded' ? got.current.text : '';
+    const text = got.current?.state === 'loaded' && 'text' in got.current ? got.current.text : '';
     expect(text).toContain('# Scene 1');
     expect(text).toContain('The hero arrives.');
   });

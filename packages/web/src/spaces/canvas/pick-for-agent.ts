@@ -20,30 +20,30 @@ import type * as Y from 'yjs';
 
 import { nodeDataMap, readEdges, readNodes } from '@web/data/yjs/canvas-space';
 import { itemForPick } from '@web/spaces/canvas/attach-nodes';
+import type { NodeReaders } from '@web/spaces/canvas/attach-nodes';
 import { firstVoiceKey, firstVoiceQuery } from '@web/spaces/canvas/generate/first-voice-query';
 import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
 import { attachToChat } from '@web/stores/attach-to-chat';
 
 /**
- * The picked piece of the canvas as the document and the cache hold it now,
- * asking for nothing. The one place a pick becomes an item, so "Add to agent"
- * and the open Space sent with a chat message (inner#1413) cannot drift apart.
+ * How a pick reads what the node views do not carry: each node's stored data,
+ * what it would run from the catalog, and its model's first voice from the
+ * cache, asking for nothing. Shared by "Add to agent" and the open Space sent
+ * with a chat message (inner#1413), so the two read a node the same way.
  * @param queryClient - Holds each model's first voice.
  * @param catalog - The model catalog, for what each node would run.
- * @param doc - The canvas document holding the picked nodes.
- * @param ids - The picked node ids; a group brings its members.
+ * @param doc - The canvas document holding the nodes.
  * @param onUnknownVoice - Told each model whose first voice is not cached.
- * @returns The item, or null for nothing to hand over.
+ * @returns The readers.
  * @throws {never} Never.
  */
-export function readPick(
+export function pickReaders(
   queryClient: QueryClient,
   catalog: ModelCatalog,
   doc: Y.Doc,
-  ids: readonly string[],
   onUnknownVoice: (model: string) => void = () => undefined,
-): ReturnType<typeof itemForPick> {
-  return itemForPick({ nodes: readNodes(doc), edges: readEdges(doc) }, ids, {
+): NodeReaders {
+  return {
     dataOf: (id) => nodeDataMap(doc, id),
     catalog,
     firstVoiceOf: (model) => {
@@ -51,7 +51,7 @@ export function readPick(
       if (first === undefined) onUnknownVoice(model);
       return first;
     },
-  });
+  };
 }
 
 /**
@@ -75,7 +75,9 @@ export async function pickForAgent(
    * @returns The item, or null for nothing to hand over.
    */
   const pick = (): ReturnType<typeof itemForPick> =>
-    readPick(queryClient, catalog, doc, ids, (model) => unknownVoices.add(model));
+    itemForPick({ nodes: readNodes(doc), edges: readEdges(doc) }, ids, pickReaders(queryClient, catalog, doc, (model) => {
+      unknownVoices.add(model);
+    }));
   const item = pick();
   if (unknownVoices.size === 0) return item;
   // A list that cannot be read leaves that voice out, as it does in the panel.

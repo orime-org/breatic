@@ -115,28 +115,32 @@ export function pickId(ids: readonly string[]): string {
   return `canvas-${ids.length}-${hashOf(ids)}`;
 }
 
+/** The picked nodes and the links between them, as the agent reads them. */
+export interface PickSnapshot {
+  nodes: Array<Record<string, unknown> & { id: string }>;
+  edges: CanvasEdge[];
+}
+
 /**
- * The item handed to the chat when a piece of the canvas is added to the agent.
- *
- * One press is one item: the picked nodes as they are -- each with where it
- * sits, the group it is in and its data -- and the links between them. The
- * data is everything the node stores -- every mode's prompt and lyrics and
- * the video node's shots, whatever the model in use takes -- with fragments as plain
- * text, and a generating node also says what it would run right now
- * (#2218), so the agent can tell what is written from what is in effect. Named after the node or group when one was picked,
- * and left unnamed for several, which the card counts.
+ * The picked piece of the canvas as the agent reads it: the picked nodes as
+ * they are -- each with where it sits, the group it is in and its data -- and
+ * the links between them. The data is everything the node stores -- every
+ * mode's prompt and lyrics and the video node's shots, whatever the model in
+ * use takes -- with fragments as plain text, and a generating node also says
+ * what it would run right now (#2218), so the agent can tell what is written
+ * from what is in effect.
  * @param graph - The canvas, read fresh.
  * @param graph.nodes - Every node on it.
  * @param graph.edges - Every link on it.
- * @param picked - The ids that were picked.
+ * @param picked - The ids that were picked; a group brings its members.
  * @param readers - Reads what the view does not carry.
- * @returns The ready item, or null when nothing picked can be handed over.
+ * @returns The snapshot, or null when nothing picked can be handed over.
  */
-export function itemForPick(
+export function snapshotOfPick(
   graph: { nodes: readonly CanvasNodeView[]; edges: readonly CanvasEdge[] },
   picked: readonly string[],
   readers: NodeReaders,
-): TrayItem | null {
+): PickSnapshot | null {
   const byId = new Map(graph.nodes.map((n) => [n.id, n]));
   /**
    * Where a node sits on the canvas: a member's stored position is relative
@@ -159,7 +163,7 @@ export function itemForPick(
    * @param node - The node.
    * @returns Its snapshot entry.
    */
-  const entry = (node: CanvasNodeView): Record<string, unknown> => {
+  const entry = (node: CanvasNodeView): Record<string, unknown> & { id: string } => {
     const stored = readers.dataOf(node.id);
     const data = {
       ...(node.data as unknown as Record<string, unknown>),
@@ -183,13 +187,35 @@ export function itemForPick(
       ...(current ? { current } : {}),
     };
   };
-  const snapshot = {
+  return {
     nodes: nodes.map(entry),
     edges: graph.edges.filter((e) => ids.has(e.source) && ids.has(e.target)),
   };
-  const lead = picked.length === 1 ? byId.get(picked[0] ?? '') : undefined;
+}
+
+/**
+ * The item handed to the chat when a piece of the canvas is added to the
+ * agent. One press is one item, holding {@link snapshotOfPick}. Named after
+ * the node or group when one was picked, and left unnamed for several, which
+ * the card counts.
+ * @param graph - The canvas, read fresh.
+ * @param graph.nodes - Every node on it.
+ * @param graph.edges - Every link on it.
+ * @param picked - The ids that were picked.
+ * @param readers - Reads what the view does not carry.
+ * @returns The ready item, or null when nothing picked can be handed over.
+ */
+export function itemForPick(
+  graph: { nodes: readonly CanvasNodeView[]; edges: readonly CanvasEdge[] },
+  picked: readonly string[],
+  readers: NodeReaders,
+): TrayItem | null {
+  const snapshot = snapshotOfPick(graph, picked, readers);
+  if (snapshot === null) return null;
+  const ids = new Set(snapshot.nodes.map((n) => n.id));
+  const lead = picked.length === 1 ? graph.nodes.find((n) => n.id === picked[0]) : undefined;
   const name = lead && ids.has(lead.id) ? nodeNameOf(lead.data as { kind: string }) : '';
-  const id = pickId(nodes.map((n) => n.id));
-  const chip: ChatAttachedChip = { id, type: 'canvas', name, data_snapshot: snapshot };
+  const id = pickId([...ids]);
+  const chip: ChatAttachedChip = { id, type: 'canvas', name, data_snapshot: { ...snapshot } };
   return { id, name, type: 'canvas', status: 'ready', chip };
 }
