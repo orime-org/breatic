@@ -35,7 +35,6 @@ import {
   UploadHttpError,
   type IngestTarget,
   type StudioAssetEntity,
-  type UploadClientConfig,
 } from "@breatic/shared";
 import { issueUploadGrant } from "@domain/asset/upload-grant.service.js";
 import { mediaLimits } from "@domain/asset/asset.service.js";
@@ -200,23 +199,6 @@ async function openBackendUpload(
 }
 
 /**
- * The knobs a backend upload's parts are sent under.
- *
- * The same ones the browser is served: a part is cut once its bytes stop
- * moving for the idle window, which Node reads off the socket.
- * @returns The knobs.
- */
-function uploadKnobs(): UploadClientConfig {
-  const { upload } = getStorageConfig();
-  return {
-    maxUploadBytes: upload.max_upload_bytes,
-    clientMaxAttempts: upload.client_max_attempts,
-    clientRetryBaseDelayMs: upload.client_retry_base_delay_ms,
-    uploadIdleTimeoutMs: upload.upload_idle_timeout_seconds * 1000,
-  };
-}
-
-/**
  * Send bytes we are holding to R2 through the ingest Worker (lane ②).
  *
  * A `Blob` rather than a buffer, so a caller whose bytes are on disk can hand
@@ -237,12 +219,14 @@ export async function uploadBytesToStorage(
   ctx: BackendUploadContext,
 ): Promise<StoredAsset> {
   assertBeforeDeadline(ctx.deadlineAt);
-  const knobs = uploadKnobs();
+  // A part is cut once its bytes stop moving for the idle window, which Node
+  // reads off the socket.
+  const uploadIdleTimeoutMs = getStorageConfig().upload.upload_idle_timeout_seconds * 1000;
   const opened = await openBackendUpload(ctx, bytes.size);
   const held = await sendBytesToIngest(
     bytes,
-    { ...opened.target, dispatcher: idleSocketDispatcher(knobs.uploadIdleTimeoutMs) },
-    knobs,
+    { ...opened.target, dispatcher: idleSocketDispatcher(uploadIdleTimeoutMs) },
+    { uploadIdleTimeoutMs },
     undefined,
     ctx.deadlineAt,
   );

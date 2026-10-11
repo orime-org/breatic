@@ -338,7 +338,7 @@ function readMeasurements(answered: unknown): IngestMeasurements {
  * budget is what settles that, when somebody opens the node's task list.
  * @param bytes - What to upload. A browser's `File` is one of these.
  * @param target - What the ticket endpoint issued for it.
- * @param cfg - The upload knobs: the idle window a part is cut after.
+ * @param cfg - The idle window a part is cut after.
  * @param onPartLanded - Told how many bytes have landed so far, after each
  *   part the Worker accepts.
  * @param deadlineAt - When the upload's task runs out, in epoch ms, for a
@@ -352,7 +352,7 @@ function readMeasurements(answered: unknown): IngestMeasurements {
 export async function sendBytesToIngest(
   bytes: Blob,
   target: IngestTarget,
-  cfg: UploadClientConfig,
+  cfg: Pick<UploadClientConfig, "uploadIdleTimeoutMs">,
   onPartLanded?: (bytesLanded: number) => void,
   deadlineAt?: number,
 ): Promise<HeldUpload> {
@@ -666,7 +666,7 @@ async function openUpload(
  * @param part - This part's number, counting from one.
  * @param bytes - This part's bytes.
  * @param token - The token this part is authorised by.
- * @param cfg - The upload knobs.
+ * @param cfg - The idle window a part is cut after.
  * @param bound - The upload's deadline, when the caller holds one.
  * @returns This part's receipt and the token for the next part.
  * @throws {UploadHttpError} When the Worker refuses the part.
@@ -677,7 +677,7 @@ async function sendPart(
   part: number,
   bytes: Blob,
   token: string,
-  cfg: UploadClientConfig,
+  cfg: Pick<UploadClientConfig, "uploadIdleTimeoutMs">,
   bound: UntilDeadline | undefined,
 ): Promise<PartReceipt & { token: string }> {
   return askWorker<PartReceipt & { token: string }>(
