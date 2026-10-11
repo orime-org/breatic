@@ -292,7 +292,11 @@ describe('an open canvas', () => {
    */
   const attachmentOf = (ids: readonly string[]): ChatAttachedChip => {
     const current = sentWith(100_000);
-    const nodes = ids.map((id) => entryOf(current, id));
+    // An attachment holds the node as Add to Agent hands it over, with no selection mark.
+    const nodes = ids.map((id) => {
+      const { selected: _marked, ...entry } = entryOf(current, id) ?? {};
+      return entry;
+    });
     return { id: 'canvas-1', type: 'canvas', name: '', data_snapshot: { nodes, edges: [] } };
   };
 
@@ -309,6 +313,7 @@ describe('an open canvas', () => {
 
     expect(current).toMatchObject({ detail: { selected_total: 1, selected_attached: 1, selected_whole: 0 } });
     expect(entryOf(current, 'a')).not.toHaveProperty('position');
+    expect(entryOf(current, 'a')).toHaveProperty('selected', true);
   });
 
   it('keeps a selected node first when it changed after it was attached', () => {

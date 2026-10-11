@@ -93,7 +93,10 @@ const parsed = (text: string): Parsed => JSON.parse(text) as Parsed;
  */
 function lengthAt(input: FitInput, size: (n: FitNode) => 'whole' | 'slim' | 'named'): number {
   const at = new Map(input.nodes.map((n) => [n.id, size(n)]));
-  const nodes = input.nodes.map((n) => (at.get(n.id) === 'whole' ? n.whole : at.get(n.id) === 'slim' ? n.slim : n.named));
+  const nodes = input.nodes.map((n) => {
+    const entry = at.get(n.id) === 'whole' ? n.whole : at.get(n.id) === 'slim' ? n.slim : n.named;
+    return n.picked ? { ...entry, selected: true } : entry;
+  });
   const edges = input.edges.map((e) =>
     at.get(e.source) === 'whole' && at.get(e.target) === 'whole' ? e : { source: e.source, target: e.target },
   );
@@ -110,7 +113,8 @@ function sizes(text: string, input: FitInput): Record<string, string> {
   const out: Record<string, string> = {};
   for (const node of parsed(text).nodes) {
     const fit = input.nodes.find((n) => n.id === node.id);
-    const same = (v: unknown): boolean => JSON.stringify(v) === JSON.stringify(node);
+    const { selected: _marked, ...unmarked } = node;
+    const same = (v: unknown): boolean => JSON.stringify(v) === JSON.stringify(unmarked);
     out[node.id] = fit && same(fit.whole) ? 'whole' : fit && same(fit.named) && !('data' in node) ? 'named' : 'slim';
   }
   return out;
@@ -172,7 +176,9 @@ describe('a canvas that fits', () => {
 
     const out = fit(input, 100_000);
 
-    expect(out.text).toBe(JSON.stringify({ edges: input.edges, nodes: input.nodes.map((n) => n.whole) }));
+    expect(out.text).toBe(
+      JSON.stringify({ edges: input.edges, nodes: input.nodes.map((n) => (n.picked ? { ...n.whole, selected: true } : n.whole)) }),
+    );
     expect(out.total).toBe(out.text.length);
     expect(out.detail).toEqual({
       selected_total: 1,
@@ -185,6 +191,33 @@ describe('a canvas that fits', () => {
       nodes_not_listed: 0,
       groups_not_listed: 0,
     });
+  });
+});
+
+describe('marking the selection', () => {
+  /**
+   * The ids the sent canvas marks as selected.
+   * @param text - What was sent.
+   * @returns Their ids.
+   */
+  const marked = (text: string): string[] => parsed(text).nodes.filter((n) => n.selected === true).map((n) => n.id);
+
+  it('marks the nodes the reader selected, whole, slim or by name', () => {
+    const input = canvasOf([group('g', 0), image('a', 1), image('b', 2), image('c', 3)], ['g', 'b']);
+
+    expect(marked(fit(input, 100_000).text)).toEqual(['g', 'b']);
+    expect(marked(fit(input, lengthAt(input, () => 'slim')).text)).toEqual(['g', 'b']);
+    expect(marked(fit(input, lengthAt(input, () => 'named')).text)).toEqual(['g', 'b']);
+  });
+
+  it('marks a selected node that goes with the rest because an attachment holds it', () => {
+    const held = { ...fitNodeOf(image('a', 1), {}, true), selected: false };
+    const input: FitInput = { nodes: [held, fitNodeOf(image('b', 2), {}, false)], edges: [] };
+
+    const out = fit(input, lengthAt(input, (n) => (n.id === 'a' ? 'slim' : 'whole')));
+
+    expect(marked(out.text)).toEqual(['a']);
+    expect(sizes(out.text, input)).toEqual({ a: 'slim', b: 'whole' });
   });
 });
 
