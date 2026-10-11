@@ -687,6 +687,7 @@ describe("what the guide says about each surface", () => {
     const chat = section("The chat panel");
     expect(chat).toContain(`up to ${CHAT_MESSAGE_MAX_CHARS.toLocaleString("en")} characters`);
     expect(chat).toContain(`attaches up to ${String(getAgentConfig().attachment_max_items)} pictures`);
+    expect(chat).toContain(`the ${String(getAgentConfig().space_list_max_items)} newest Spaces`);
     expect(renderProductGuide()).not.toMatch(/at most 50 connections/);
     // Written out by hand, the numbers would stay behind when their sources change.
     expect(source).not.toMatch(/10,000|up to ten|at most 50/);

@@ -122,10 +122,10 @@ describe('the open Space chip', () => {
       expect(hoverText()).toContain('The Agent reads this Space with each message');
     });
 
-    it('says only the name of an open timeline reaches the Agent while it is on', () => {
+    it('says only the name and type of an open timeline reach the Agent while it is on', () => {
       setup({ spaceName: 'Edit', spaceType: 'timeline' });
       const words = hoverText();
-      expect(words).toContain('The Agent sees only this Space\'s name; its content can\'t be read');
+      expect(words).toContain('The Agent sees only this Space\'s name and type; its content can\'t be read');
       expect(words).not.toContain('The Agent reads this Space with each message');
     });
 
