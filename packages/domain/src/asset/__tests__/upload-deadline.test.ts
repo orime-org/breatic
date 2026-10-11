@@ -8,13 +8,14 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import type * as NodeTaskService from "@domain/node-task/node-task.service.js";
 
 const findByStorageKey = vi.fn();
 const findGrantByKey = vi.fn();
 const findOwnGrants = vi.fn();
 
 vi.mock("@domain/node-task/node-task.service.js", async (importOriginal) => ({
-  rowDeadline: (await importOriginal<typeof import("@domain/node-task/node-task.service.js")>()).rowDeadline,
+  rowDeadline: (await importOriginal<typeof NodeTaskService>()).rowDeadline,
   findByStorageKey,
 }));
 vi.mock("@domain/asset/upload-grant.repo.js", () => ({ findGrantByKey, findOwnGrants }));
