@@ -10,9 +10,10 @@
  * before it left — eight of the ten did, and the two that did not still needed
  * the first to have cleared the record.
  *
- * A spec that adds Spaces through `addSpaces` imports `test` from here; the
- * window size and the removal of those Spaces are fixtures on that `test`, so
- * every case of every such file gets them.
+ * A spec that opens the project through `openFreshProject` or adds Spaces
+ * through `addSpaces` imports `test` from here; the window size and the
+ * removal of those Spaces are fixtures on that `test`, so every case of every
+ * such file gets them.
  */
 import { expect, test as base, type Page } from 'playwright/test';
 
@@ -31,7 +32,7 @@ let cleaning = false;
 
 /**
  * The test a tab-restore case runs under: a window of `VIEWPORT`, and the
- * removal of every Space `addSpaces` made.
+ * removal of every Space `openFreshProject` and `addSpaces` made.
  */
 export const test = base.extend<{ restoreSpaces: void }>({
   viewport: VIEWPORT,
