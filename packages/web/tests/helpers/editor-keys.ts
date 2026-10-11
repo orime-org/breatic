@@ -49,7 +49,7 @@ function selectionOf(p: Page): Promise<string> {
  * task later) is the caller's to wait for first.
  * @param p - The page.
  */
-export async function focusSettled(p: Page): Promise<void> {
+async function focusSettled(p: Page): Promise<void> {
   await p.evaluate(async (selector) => {
     const { view } = (document.querySelector(selector) as unknown as {
       editor: { view: { hasFocus: () => boolean; input: { lastFocus: number } } };
