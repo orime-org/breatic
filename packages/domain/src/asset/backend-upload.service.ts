@@ -28,7 +28,7 @@ import {
   fetchUrlToIngest,
   finishUploadAtIngest,
   sendBytesToIngest,
-  signalUntil,
+  assertBeforeDeadline,
   type IngestOutcome,
   type IngestTarget,
   type StudioAssetEntity,
@@ -223,7 +223,7 @@ export async function uploadBytesToStorage(
   bytes: Blob,
   ctx: BackendUploadContext,
 ): Promise<StoredAsset> {
-  const signal = signalUntil(ctx.deadlineAt);
+  assertBeforeDeadline(ctx.deadlineAt);
   const knobs = uploadKnobs();
   const opened = await openBackendUpload(ctx, bytes.size);
   const held = await sendBytesToIngest(
@@ -231,7 +231,7 @@ export async function uploadBytesToStorage(
     { ...opened.target, dispatcher: idleSocketDispatcher(knobs.uploadIdleTimeoutMs) },
     knobs,
     undefined,
-    signal,
+    ctx.deadlineAt,
   );
   const measured = await finishUploadAtIngest(
     opened.target.uploadUrl,
@@ -241,7 +241,6 @@ export async function uploadBytesToStorage(
       coverKey: coverKeyFor(opened.storageKey),
       deadlineAt: ctx.deadlineAt,
       limits: mediaLimits(),
-      signal,
     },
   );
   return landed(
@@ -273,7 +272,7 @@ export async function transferUrlToStorage(
   sourceUrl: string,
   ctx: BackendUploadContext,
 ): Promise<StoredAsset> {
-  const signal = signalUntil(ctx.deadlineAt);
+  assertBeforeDeadline(ctx.deadlineAt);
   const { upload } = getStorageConfig();
   const opened = await openBackendUpload(ctx, upload.max_upload_bytes);
   const measured = await fetchUrlToIngest(
@@ -284,7 +283,6 @@ export async function transferUrlToStorage(
       coverKey: coverKeyFor(opened.storageKey),
       deadlineAt: ctx.deadlineAt,
       limits: mediaLimits(),
-      signal,
     },
   );
   return landed(

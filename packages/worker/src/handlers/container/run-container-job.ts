@@ -24,7 +24,8 @@ import {
 } from "@breatic/domain";
 import {
   readMiniToolJob,
-  signalUntil,
+  DeadlinePassed,
+  untilDeadlineIfAhead,
   submitMiniToolJob,
   UploadHttpError,
   type ContainerUsage,
@@ -38,7 +39,7 @@ import {
 
 import { storedAsOutput } from "@worker/handlers/persisted-output.js";
 import type { PersistedOutput } from "@worker/handlers/persisted-output.js";
-import { StillRunning, TaskDeadlinePassed } from "@worker/providers/still-running.js";
+import { StillRunning } from "@worker/providers/still-running.js";
 
 /** A container run that ended without its outputs; the message is the row's cause code. */
 export class ContainerJobFailed extends Error {
@@ -135,7 +136,7 @@ async function jobFor(spec: MiniToolSpec, op: ContainerOp, input: ContainerRunIn
  * @param job - The job.
  * @returns The report of a job that ended.
  * @throws {StillRunning} When the job is still going.
- * @throws {TaskDeadlinePassed} When the deadline has passed with the job still going.
+ * @throws {DeadlinePassed} When the deadline has passed with the job still going.
  */
 async function checkJob(op: ContainerOp, input: ContainerRunInput, job: StoredJob): Promise<EndedReport> {
   const { poll_interval_ms: poll } = getMiniToolsConfig();
@@ -143,13 +144,13 @@ async function checkJob(op: ContainerOp, input: ContainerRunInput, job: StoredJo
   // (inner#1367). Past it, the read that finds the ending still goes out, under
   // the transport's own bound.
   const endsAt = job.deadlineAt + poll * 2;
-  const signal = Date.now() < endsAt ? signalUntil(endsAt) : undefined;
+  const bound = untilDeadlineIfAhead(endsAt);
   let report = await readMiniToolJob(
     env.INGEST_BASE_URL,
     env.INGEST_SHARED_SECRET,
     job.containerClass,
     job.jobId,
-    signal,
+    bound,
   );
   if (report === null) {
     try {
@@ -161,7 +162,7 @@ async function checkJob(op: ContainerOp, input: ContainerRunInput, job: StoredJo
         params: input.params,
         input: { storageKey: input.sourceKey },
         outputs: job.outputs,
-      }, signal);
+      }, bound);
     } catch (err) {
       // The container could not start; the next pickup submits again.
       if (!(err instanceof UploadHttpError && err.status === 503)) throw err;
@@ -172,7 +173,7 @@ async function checkJob(op: ContainerOp, input: ContainerRunInput, job: StoredJo
   // The Durable Object ends the job at its deadline; two polls leave room for
   // its report to land. A job still going after that ran out of time, which
   // settles as expired like any other task (inner#1367).
-  if (Date.now() >= endsAt) throw new TaskDeadlinePassed();
+  if (Date.now() >= endsAt) throw new DeadlinePassed();
   throw new StillRunning(Date.now() + poll);
 }
 

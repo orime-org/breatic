@@ -19,6 +19,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { httpRequest } from '@shared/http/request.js';
 import { decideRetry } from '@shared/http/decide-retry.js';
+import { MAX_TIMER_MS } from '@shared/http/constants.js';
+import { DeadlinePassed } from '@shared/http/deadline.js';
 import { INGEST_FAILURE_HEADER } from '@shared/upload/ingest-failure.js';
 import {
   sendBytesToIngest,
@@ -471,14 +473,17 @@ describe('what the shared transport is told', () => {
   // A part is cut only once its bytes stop moving (inner#1367), however long
   // a slow part that keeps moving takes. In a page the transport judges that
   // from upload progress.
-  it('times each part by the idle window, with no deadline of its own', async () => {
+  // A page holds no deadline; the Worker refuses a part past the upload's own,
+  // so no total of ours is set and the transport's default never cuts a part.
+  it('times each part by the idle window, with no total of its own', async () => {
     wireOpenAndParts(2);
 
     await sendBytesToIngest(fileOf(PART_SIZE + 10), ticketFor(2), cfg);
 
     expect(optionsOf(1).idleTimeoutMs).toBe(cfg.uploadIdleTimeoutMs);
     expect(optionsOf(2).idleTimeoutMs).toBe(cfg.uploadIdleTimeoutMs);
-    expect(optionsOf(1).timeoutMs).toBeUndefined();
+    expect(optionsOf(1).timeoutMs).toBe(MAX_TIMER_MS);
+    expect(optionsOf(2).timeoutMs).toBe(MAX_TIMER_MS);
   });
 
   // Node judges the same on the socket: the caller hands in a dispatcher that
@@ -494,33 +499,48 @@ describe('what the shared transport is told', () => {
     expect(optionsOf(1).idleTimeoutMs).toBeUndefined();
   });
 
-  // Every call on an upload is bounded by its task's deadline, which arrives
-  // as a signal so a resend cannot stretch it.
-  it('passes the caller signal to every call of an upload', async () => {
+  // Every call on an upload is bounded by its task's deadline: the signal ends
+  // it and its resends there, and each delivery may run until then, so the
+  // transport's own default never cuts it sooner (inner#1367 §4.8c).
+  it('bounds every call of a backend upload by its deadline', async () => {
     wireOpenAndParts(1);
-    const signal = new AbortController().signal;
+    const deadlineAt = Date.now() + 7_200_000;
 
-    await sendBytesToIngest(fileOf(10), ticketFor(1), cfg, undefined, signal);
+    await sendBytesToIngest(fileOf(10), { ...ticketFor(1), dispatcher: {} }, cfg, undefined, deadlineAt);
 
-    expect(optionsOf(0).signal).toBe(signal);
-    expect(optionsOf(1).signal).toBe(signal);
-    expect(optionsOf(0).timeoutMs).toBeUndefined();
+    for (const nth of [0, 1]) {
+      expect(optionsOf(nth).signal).toBeInstanceOf(AbortSignal);
+      expect(optionsOf(nth).timeoutMs).toBeGreaterThan(7_190_000);
+      expect(optionsOf(nth).timeoutMs).toBeLessThanOrEqual(7_200_000);
+    }
   });
 
-  it('bounds finishing by the caller signal, and repeats it', async () => {
+  it('bounds finishing by its deadline, and repeats it', async () => {
     mockedRequest.mockResolvedValueOnce(answers(200, MEASURED));
-    const signal = new AbortController().signal;
+    const deadlineAt = Date.now() + 7_200_000;
 
     await finishUploadAtIngest(
       WORKER_URL,
       { uploadId: 'upload-1', token: 'token-3', parts: [] },
       SECRET,
-      { coverKey: COVER_KEY, deadlineAt: DEADLINE_AT, limits: LIMITS, signal },
+      { coverKey: COVER_KEY, deadlineAt, limits: LIMITS },
     );
 
     expect(optionsOf(0).replaySafe).toBe(true);
-    expect(optionsOf(0).signal).toBe(signal);
-    expect(optionsOf(0).timeoutMs).toBeUndefined();
+    expect(optionsOf(0).signal).toBeInstanceOf(AbortSignal);
+    expect(optionsOf(0).timeoutMs).toBeGreaterThan(7_190_000);
+  });
+
+  it('sends nothing once the deadline has come', async () => {
+    await expect(
+      finishUploadAtIngest(
+        WORKER_URL,
+        { uploadId: 'upload-1', token: 'token-3', parts: [] },
+        SECRET,
+        { coverKey: COVER_KEY, deadlineAt: Date.now() - 1, limits: LIMITS },
+      ),
+    ).rejects.toBeInstanceOf(DeadlinePassed);
+    expect(mockedRequest).not.toHaveBeenCalled();
   });
 });
 
@@ -572,18 +592,14 @@ describe('handing the Worker a URL to fetch', () => {
     expect(optionsOf(0).replaySafe).toBe(false);
   });
 
-  it('waits as long as the caller signal allows', async () => {
+  it('waits until the deadline and no shorter', async () => {
     mockedRequest.mockResolvedValueOnce(answers(200, MEASURED));
-    const signal = new AbortController().signal;
+    const deadlineAt = Date.now() + 7_200_000;
 
-    await fetchUrlToIngest(SOURCE, ticketFor(1), SECRET, {
-      coverKey: COVER_KEY,
-      deadlineAt: DEADLINE_AT, limits: LIMITS,
-      signal,
-    });
+    await fetchUrlToIngest(SOURCE, ticketFor(1), SECRET, { coverKey: COVER_KEY, deadlineAt, limits: LIMITS });
 
-    expect(optionsOf(0).signal).toBe(signal);
-    expect(optionsOf(0).timeoutMs).toBeUndefined();
+    expect(optionsOf(0).signal).toBeInstanceOf(AbortSignal);
+    expect(optionsOf(0).timeoutMs).toBeGreaterThan(7_190_000);
   });
 
   it('reads the same measurements a finish is read for', async () => {
@@ -627,6 +643,15 @@ describe('reading a stored object', () => {
     contentType: 'image/jpeg',
     deadlineAt: DEADLINE_AT,
   };
+
+  it('waits until the deadline and no shorter', async () => {
+    mockedRequest.mockResolvedValueOnce(answers(200, { width: 800, height: 450 }));
+
+    await readStoredMediaAtIngest(WORKER_URL, SECRET, { ...ABOUT, deadlineAt: Date.now() + 7_200_000 });
+
+    expect(optionsOf(0).signal).toBeInstanceOf(AbortSignal);
+    expect(optionsOf(0).timeoutMs).toBeGreaterThan(7_190_000);
+  });
 
   it('names the media endpoint and presents the shared secret', async () => {
     mockedRequest.mockResolvedValueOnce(answers(200, { width: 800, height: 450 }));

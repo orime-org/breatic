@@ -78,7 +78,7 @@ function getTransport(providerName: string): typeof wavespeedTransport.generate 
  *   carrying the task's two-hour deadline
  * @returns Object with url, model, and cost (actual API cost in USD)
  * @throws {StillRunning} while the task is still going
- * @throws {TaskDeadlinePassed} when the deadline has passed before a submit
+ * @throws {DeadlinePassed} when the deadline has passed before a submit
  * @throws {Error} if model or provider resolution fails
  */
 export async function generateAsync(

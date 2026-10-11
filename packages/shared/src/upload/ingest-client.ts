@@ -23,6 +23,8 @@
  */
 
 import { z } from "zod";
+import { MAX_TIMER_MS } from "@shared/http/constants.js";
+import { untilDeadline, type UntilDeadline } from "@shared/http/deadline.js";
 import { httpRequest } from "@shared/http/request.js";
 import {
   INGEST_FAILURE_HEADER,
@@ -132,8 +134,6 @@ export interface IngestRun {
   deadlineAt: number;
   /** What a picture with an EXIF orientation is turned upright under. */
   limits: MediaLimits;
-  /** The same deadline as a signal, so a resend cannot stretch it. */
-  signal?: AbortSignal;
 }
 
 /** What one part's write left behind: R2's receipt for it. */
@@ -359,12 +359,14 @@ function readMeasurements(answered: unknown): IngestMeasurements {
  * budget is what settles that, when somebody opens the node's task list.
  * @param bytes - What to upload. A browser's `File` is one of these.
  * @param target - What the ticket endpoint issued for it.
- * @param cfg - The upload knobs, which size the per-delivery deadlines.
+ * @param cfg - The upload knobs: the idle window a part is cut after.
  * @param onPartLanded - Told how many bytes have landed so far, after each
  *   part the Worker accepts.
- * @param signal - The upload's deadline, ending every call of it.
+ * @param deadlineAt - When the upload's task runs out, in epoch ms, for a
+ *   backend caller; a page holds none, and the Worker refuses a part past it.
  * @returns Everything finishing this upload will need.
  * @throws {UploadHttpError} When the Worker refuses either step.
+ * @throws {DeadlinePassed} When the deadline has already come.
  * @throws {unknown} The transport's own failure when no delivery produced a
  *   response.
  */
@@ -373,9 +375,10 @@ export async function sendBytesToIngest(
   target: IngestTarget,
   cfg: UploadClientConfig,
   onPartLanded?: (bytesLanded: number) => void,
-  signal?: AbortSignal,
+  deadlineAt?: number,
 ): Promise<HeldUpload> {
-  const opened = await openUpload(target, signal);
+  const bound = deadlineAt === undefined ? undefined : untilDeadline(deadlineAt);
+  const opened = await openUpload(target, bound);
 
   let token = opened.token;
   const parts: PartReceipt[] = [];
@@ -389,7 +392,7 @@ export async function sendBytesToIngest(
       slice,
       token,
       cfg,
-      signal,
+      bound,
     );
     token = landed.token;
     parts.push({ partNumber: landed.partNumber, etag: landed.etag });
@@ -403,8 +406,8 @@ export async function sendBytesToIngest(
  * Ask the Worker to assemble the object and measure it.
  *
  * Bounded by the upload's task deadline and nothing else (inner#1367): the
- * Worker holds its container to `deadlineAt`, and the caller's signal ends
- * the wait at the same instant. A resend brings the same upload id, for which
+ * Worker holds its container to `deadlineAt`, and the wait ends at the same
+ * instant. A resend brings the same upload id, for which
  * R2 refuses a second complete rather than writing anything.
  *
  * The secret goes with it because a session token travels to the browser —
@@ -418,6 +421,7 @@ export async function sendBytesToIngest(
  *   avatars).
  * @returns What the Worker measured over the stored object.
  * @throws {UploadHttpError} When the upload did not become an object.
+ * @throws {DeadlinePassed} When the deadline has already come.
  * @throws {unknown} The transport's own failure when no delivery produced a
  *   response.
  */
@@ -447,7 +451,7 @@ export async function finishUploadAtIngest(
     // The request names the upload it finishes, and a finished one is refused
     // by R2 rather than written twice, so a repeat answers out of the object
     // already standing on that key.
-    { replaySafe: true, ...(run.signal !== undefined && { signal: run.signal }) },
+    { replaySafe: true, bound: untilDeadline(run.deadlineAt) },
   );
   return readMeasurements(answered);
 }
@@ -498,7 +502,7 @@ const previewOutcome = z
  * thing it may write is a preview at a key derived from the object's own, and
  * one standing there is left alone, so a repeat costs one more container run
  * and nothing else. Bounded by the caller's deadline: the Worker holds its
- * container to `deadlineAt`, and the signal ends the wait at the same instant.
+ * container to `deadlineAt`, and the wait ends at the same instant.
  * @param uploadUrl - The ingest Worker's base address.
  * @param secret - The secret the Worker also holds.
  * @param about - The object to read.
@@ -507,10 +511,10 @@ const previewOutcome = z
  *   whether there is anything for the container to read.
  * @param about.deadlineAt - When the job asking runs out, in epoch ms.
  * @param about.wantPreview - Whether to cut a preview when none stands.
- * @param signal - The same deadline as a signal.
  * @returns The three numbers, each unusable one as none, and what became of
  *   the preview when one was asked for.
  * @throws {UploadHttpError} When the Worker refuses.
+ * @throws {DeadlinePassed} When the deadline has already come.
  * @throws {unknown} The transport's own failure when no delivery produced a
  *   response.
  */
@@ -523,7 +527,6 @@ export async function readStoredMediaAtIngest(
     deadlineAt: number;
     wantPreview?: boolean;
   },
-  signal?: AbortSignal,
 ): Promise<StoredMediaRead> {
   const answered = await askWorker<unknown>(
     `${uploadUrl}/media`,
@@ -535,7 +538,7 @@ export async function readStoredMediaAtIngest(
       },
       body: JSON.stringify(about),
     },
-    { replaySafe: true, ...(signal !== undefined && { signal }) },
+    { replaySafe: true, bound: untilDeadline(about.deadlineAt) },
   );
   const numbers = mediaNumbers.parse(answered ?? {});
   const preview = previewOutcome.parse(
@@ -558,9 +561,10 @@ export async function readStoredMediaAtIngest(
  * @param target - What the ticket endpoint issued for them.
  * @param secret - The secret the Worker also holds.
  * @param run - The cover key, and the task deadline the Worker holds the
- *   transfer and the container to, with the same deadline as a signal.
+ *   transfer and the container to, and the wait ends at.
  * @returns What the Worker measured over the object it pulled.
  * @throws {UploadHttpError} When the Worker could not store the source.
+ * @throws {DeadlinePassed} When the deadline has already come.
  * @throws {unknown} The transport's own failure when no delivery produced a
  *   response.
  */
@@ -590,7 +594,7 @@ export async function fetchUrlToIngest(
     // multipart upload each time it runs, so a repeat re-fetches the source,
     // writes R2 a second time, and brings an upload id the permission to
     // finish this key was not granted to.
-    { replaySafe: false, ...(run.signal !== undefined && { signal: run.signal }) },
+    { replaySafe: false, bound: untilDeadline(run.deadlineAt) },
   );
   return readMeasurements(answered);
 }
@@ -605,7 +609,9 @@ export async function fetchUrlToIngest(
  * @param url - The endpoint.
  * @param init - Method, headers and body.
  * @param options - What only the caller knows about this delivery.
- * @param options.signal - The caller's deadline, ending the whole call.
+ * @param options.bound - How long the call may run: the task's deadline as a
+ *   signal with the time left, or, for a call no deadline reaches, a timeout
+ *   alone.
  * @param options.idleTimeoutMs - How long a delivery may go without a byte
  *   moving, in a page.
  * @param options.dispatcher - What Node sends through, when the caller times
@@ -621,18 +627,18 @@ export async function askWorker<T>(
   init: RequestInit,
   options: {
     replaySafe: boolean;
-    signal?: AbortSignal;
+    bound?: UntilDeadline | { timeoutMs: number };
     idleTimeoutMs?: number;
     dispatcher?: unknown;
   },
 ): Promise<T> {
-  const { replaySafe, signal, idleTimeoutMs, dispatcher } = options;
+  const { replaySafe, bound, idleTimeoutMs, dispatcher } = options;
   const res = await httpRequest(
     url,
     dispatcher === undefined ? init : ({ ...init, dispatcher } as RequestInit),
     {
       replaySafe,
-      ...(signal !== undefined && { signal }),
+      ...bound,
       ...(idleTimeoutMs !== undefined && { idleTimeoutMs }),
     },
   );
@@ -648,13 +654,13 @@ export async function askWorker<T>(
 /**
  * Open a multipart upload for this ticket's key.
  * @param target - The signed ticket and where to send it.
- * @param signal - The upload's deadline.
+ * @param bound - The upload's deadline, when the caller holds one.
  * @returns The upload's id and its first session token.
  * @throws {UploadHttpError} When the Worker refuses the ticket.
  */
 async function openUpload(
   target: IngestTarget,
-  signal: AbortSignal | undefined,
+  bound: UntilDeadline | undefined,
 ): Promise<OpenedUpload> {
   return askWorker<OpenedUpload>(
     `${target.uploadUrl}/uploads`,
@@ -662,7 +668,7 @@ async function openUpload(
     // This request carries no upload id: it mints one, and the Worker opens a
     // fresh multipart upload on every delivery. A replay leaves the first one
     // abandoned, holding parts R2 charges for.
-    { replaySafe: false, ...(signal !== undefined && { signal }) },
+    { replaySafe: false, ...(bound !== undefined && { bound }) },
   );
 }
 
@@ -674,7 +680,7 @@ async function openUpload(
  * @param bytes - This part's bytes.
  * @param token - The token this part is authorised by.
  * @param cfg - The upload knobs.
- * @param signal - The upload's deadline.
+ * @param bound - The upload's deadline, when the caller holds one.
  * @returns This part's receipt and the token for the next part.
  * @throws {UploadHttpError} When the Worker refuses the part.
  */
@@ -685,18 +691,20 @@ async function sendPart(
   bytes: Blob,
   token: string,
   cfg: UploadClientConfig,
-  signal: AbortSignal | undefined,
+  bound: UntilDeadline | undefined,
 ): Promise<PartReceipt & { token: string }> {
   return askWorker<PartReceipt & { token: string }>(
     `${target.uploadUrl}/uploads/${uploadId}/parts/${part}`,
     { method: "PUT", body: bytes, headers: { "x-upload-token": token } },
     // Cut only once its bytes stop moving: in a page the transport reads
-    // upload progress, in Node the caller's dispatcher times the socket. The
-    // part number is in the path, so a repeat writes the same part under the
-    // same number; R2 keeps the later write of a part, never both.
+    // upload progress, in Node the caller's dispatcher times the socket. A
+    // page holds no deadline, so it sets no total of its own; the Worker
+    // refuses a part once the upload's deadline has come. The part number is
+    // in the path, so a repeat writes the same part under the same number; R2
+    // keeps the later write of a part, never both.
     {
       replaySafe: true,
-      ...(signal !== undefined && { signal }),
+      bound: bound ?? { timeoutMs: MAX_TIMER_MS },
       ...(target.dispatcher !== undefined
         ? { dispatcher: target.dispatcher }
         : { idleTimeoutMs: cfg.uploadIdleTimeoutMs }),

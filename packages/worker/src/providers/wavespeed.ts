@@ -13,9 +13,9 @@
  * from the model's declaration, not from here.
  */
 
+import { untilDeadlineIfAhead } from "@breatic/shared";
 import type { ResumeContext } from "@worker/providers/shared.js";
 import { submitOrResume } from "@worker/providers/async-resume.js";
-import { deadlineSignal } from "@worker/providers/still-running.js";
 import { bearerHeaders, requestWithRetry, pollOnce, extractNested } from "@worker/providers/http.js";
 
 /** Where predictions are sent. */
@@ -65,7 +65,10 @@ export async function runPrediction(
   resume: ResumeContext,
 ): Promise<PredictionRun> {
   const headers = bearerHeaders(endpoint.apiKey);
-  const signal = deadlineSignal(resume.deadlineAt);
+  // Past the deadline no submit starts (run-steps checks before it), and the
+  // question that finds the ending still goes out, under the transport's own
+  // bound.
+  const bound = untilDeadlineIfAhead(resume.deadlineAt);
   let syncAnswer: Record<string, unknown> | null = null;
 
   /**
@@ -78,7 +81,7 @@ export async function runPrediction(
       `${endpoint.baseUrl}/${modelId}`,
       { method: "POST", headers, body: JSON.stringify(body) },
       "wavespeed",
-      signal,
+      bound,
     );
     const taskId = extractNested(data, ["data", "id"]) as string | undefined;
     if (outputsOf(data)) {
@@ -104,7 +107,7 @@ export async function runPrediction(
         failureStatuses: new Set(["failed"]),
         errorPath: ["data", "error"],
         provider: "wavespeed",
-        signal,
+        bound,
       })),
     taskId,
   });

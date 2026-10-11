@@ -5,12 +5,12 @@
  * Pins the one stretch of a deadline's journey a reading of the call sites
  * cannot see: from `requestWithRetry`'s fourth parameter, and `queryBilling`'s
  * third, into the transport's options. A task's deadline arrives there as a
- * signal (inner#1367); sever the spread and every upstream call silently loses
- * it while tsc stays green.
+ * signal with the time left (inner#1367 §4.8c); sever the spread and every
+ * upstream call silently loses it while tsc stays green.
  *
  * `toStrictEqual` throughout, deliberately: `toEqual` treats a key holding
  * `undefined` as equal to the key's absence, which is exactly the distinction
- * the omitted-signal case exists to pin.
+ * the omitted-deadline case exists to pin.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -62,17 +62,18 @@ describe("requestWithRetry hands the deadline to the transport", () => {
     httpRequestMock.mockImplementation(async () => okJson());
   });
 
-  // A task's deadline arrives as a signal so a resend cannot stretch it
-  // (inner#1367); no per-delivery timeout of the vendor's own rides along.
-  it("forwards the fourth argument as the signal, verbatim", async () => {
-    const signal = new AbortController().signal;
-    await requestWithRetry("https://vendor.test/submit", { method: "POST" }, "vendor", signal);
+  // A task's deadline arrives as a signal, so a resend cannot stretch it, and
+  // as the time left, so the transport's own default never cuts a delivery
+  // sooner (inner#1367 §4.8c).
+  it("forwards the fourth argument as the signal and the time left, verbatim", async () => {
+    const bound = { signal: new AbortController().signal, timeoutMs: 7_000_000 };
+    await requestWithRetry("https://vendor.test/submit", { method: "POST" }, "vendor", bound);
 
     expect(httpRequestMock).toHaveBeenCalledTimes(1);
-    expect(httpRequestMock.mock.calls[0]![2]).toStrictEqual({ replaySafe: false, signal });
+    expect(httpRequestMock.mock.calls[0]![2]).toStrictEqual({ replaySafe: false, ...bound });
   });
 
-  it("omits the signal key entirely when none was given", async () => {
+  it("omits both keys entirely when no deadline was given", async () => {
     await requestWithRetry("https://vendor.test/status", { method: "GET" }, "vendor");
 
     expect(httpRequestMock.mock.calls[0]![2]).toStrictEqual({ replaySafe: false });
@@ -122,13 +123,13 @@ describe("queryBilling hands the task deadline to the transport", () => {
     );
   });
 
-  it("carries the task's signal and no figure of its own", async () => {
-    const signal = new AbortController().signal;
-    const cost = await queryBilling(RESOLVED, "task-123", signal);
+  it("carries the task's signal and the time left", async () => {
+    const bound = { signal: new AbortController().signal, timeoutMs: 7_000_000 };
+    const cost = await queryBilling(RESOLVED, "task-123", bound);
 
     expect(httpRequestMock).toHaveBeenCalledTimes(1);
     expect(httpRequestMock.mock.calls[0]![0]).toBe("https://api.vendor.test/billings/search");
-    expect(httpRequestMock.mock.calls[0]![2]).toStrictEqual({ replaySafe: false, signal });
+    expect(httpRequestMock.mock.calls[0]![2]).toStrictEqual({ replaySafe: false, ...bound });
     expect(cost).toBe(1.5);
   });
 });

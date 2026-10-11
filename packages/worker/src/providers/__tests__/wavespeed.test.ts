@@ -77,7 +77,10 @@ describe("runPrediction", () => {
     expect(submittedBody()).toEqual({ text: "hi", duration: 5 });
     // The submit is bounded by the task's deadline and nothing of the model's
     // own (inner#1367).
-    expect(requestWithRetryMock.mock.calls[0]![3]).toBeInstanceOf(AbortSignal);
+    expect(requestWithRetryMock.mock.calls[0]![3]).toEqual({
+      signal: expect.any(AbortSignal),
+      timeoutMs: expect.any(Number),
+    });
     expect(persistTaskId).toHaveBeenCalledWith("ws-1");
     expect(pollOnceMock.mock.calls[0]![0]).toBe(
       "https://api.wavespeed.test/v3/predictions/ws-1/result",

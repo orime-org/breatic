@@ -16,7 +16,7 @@
  */
 
 import { logger } from "@breatic/core";
-import { signalUntil } from "@breatic/shared";
+import { assertBeforeDeadline, untilDeadline, untilDeadlineIfAhead } from "@breatic/shared";
 import type { upstreamCloneRepo, upstreamStepRepo, FullModelEntry } from "@breatic/domain";
 
 import { acquireSemaphore, resolveModel, type ResolvedModel } from "@worker/providers/shared.js";
@@ -25,7 +25,6 @@ import { planSteps } from "@worker/providers/plan-steps.js";
 import { upstreamBody } from "@worker/providers/upstream-body.js";
 import { runPrediction, type PredictionRun } from "@worker/providers/wavespeed.js";
 import { queryBilling, UpstreamTaskFailed } from "@worker/providers/http.js";
-import { assertBeforeDeadline, deadlineSignal } from "@worker/providers/still-running.js";
 
 type Step = upstreamStepRepo.UpstreamStep;
 type CloneKind = upstreamCloneRepo.UpstreamCloneKind;
@@ -126,7 +125,7 @@ function urlOf(params: Readonly<Record<string, unknown>>, param: string): string
  * @returns The prediction's outputs and id.
  * @throws {UpstreamTaskFailed} when the upstream failed the prediction.
  * @throws {StillRunning} while the prediction is still going.
- * @throws {TaskDeadlinePassed} when the deadline has passed before a submit.
+ * @throws {DeadlinePassed} when the deadline has passed before a submit.
  * @throws {Error} when the request itself failed; the step stays retryable.
  */
 async function predict(
@@ -259,7 +258,7 @@ async function generateBody(
   const withIds: Record<string, unknown> = { ...params, ...carried.ids };
   if (carried.elementIds.length > 0) withIds.elements = carried.elementIds.map((id) => ({ element_id: id }));
   const prepared = family
-    ? await family.prepare(prompt, withIds, deadlineSignal(deadlineAt))
+    ? await family.prepare(prompt, withIds, untilDeadline(deadlineAt).signal)
     : { prompt, fields: {} };
   return { ...upstreamBody(entry, withIds, prepared.prompt, family?.CONSUMES), ...prepared.fields };
 }
@@ -438,7 +437,7 @@ async function retireGone(deps: StepDeps, ctx: RunTaskContext, carried: Carried,
  * @returns The outputs, the model and the billed cost in USD.
  * @throws {UpstreamTaskFailed} when the upstream failed a step.
  * @throws {StillRunning} while a step's prediction is still going.
- * @throws {TaskDeadlinePassed} when the deadline has passed before a step is started.
+ * @throws {DeadlinePassed} when the deadline has passed before a step is started.
  * @throws {Error} when a step already failed, cannot run, or the run answered no output.
  */
 export async function runCatalogTask(
@@ -488,9 +487,9 @@ export async function runCatalogTask(
   // lookup cut there answers 0, as any failed lookup does. Work that finished
   // right at the deadline still gets its lookup, under the transport's own
   // bound, so a run that produced its output is not charged nothing.
-  const billingSignal = Date.now() < ctx.deadlineAt ? signalUntil(ctx.deadlineAt) : undefined;
+  const billing = untilDeadlineIfAhead(ctx.deadlineAt);
   for (const prediction of carried.predictions) {
-    cost += await queryBilling(resolved, prediction, billingSignal);
+    cost += await queryBilling(resolved, prediction, billing);
   }
   const outputs = carried.urls.slice(0, outputCount).map((url) => ({ url }));
   return { outputs, model: resolved.modelName, cost };

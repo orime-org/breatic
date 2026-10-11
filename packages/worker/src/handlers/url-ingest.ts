@@ -34,7 +34,6 @@ import {
   reduceMediaType,
   isUploadableMediaType,
   UploadHttpError,
-  signalUntil,
   INGEST_REFUSED_UNNAMED,
   INGEST_NO_ANSWER,
   INGEST_NOT_STARTED,
@@ -198,7 +197,6 @@ export async function runUrlIngest(job: Job<UrlIngestJobData>): Promise<void> {
       // A transfer cut there is settled as expired by the report.
       deadlineAt,
       limits: assetService.mediaLimits(),
-      signal: signalUntil(deadlineAt),
     });
   } catch (err) {
     // An UploadHttpError exists only because an answer arrived, so a missing

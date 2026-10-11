@@ -11,7 +11,7 @@
  * canvas task and keeps its own figures from `config/agent.yaml`.
  */
 
-import { MAX_TIMER_MS, signalUntil } from "@breatic/shared";
+import { untilDeadline } from "@breatic/shared";
 import type { FetchMediaRequest, UnderstandRequest } from "@domain/understand/types.js";
 
 /** The four timing figures and the signal a reading takes. */
@@ -34,8 +34,7 @@ export function readingLimitsUntil(
   maxBytes: number,
   now: number = Date.now(),
 ): ReadingLimits {
-  const signal = signalUntil(deadlineAt, now);
-  const left = Math.min(deadlineAt - now, MAX_TIMER_MS);
+  const { signal, timeoutMs: left } = untilDeadline(deadlineAt, now);
   return {
     fetchTimeoutMs: left,
     readFloorMs: left,

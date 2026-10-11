@@ -15,7 +15,7 @@
  */
 
 import { createQueue, defaultJobOpts, env } from "@breatic/core";
-import { readStoredMediaAtIngest, signalUntil, type StudioAssetEntity } from "@breatic/shared";
+import { readStoredMediaAtIngest, type StudioAssetEntity } from "@breatic/shared";
 
 import { fillMediaNumbers, findById } from "@domain/asset/asset.repo.js";
 import { detectAssetKind } from "@domain/asset/asset.service.js";
@@ -171,7 +171,6 @@ export async function readAndFillMedia(
       // were finished without a container run, so this is where theirs is cut.
       wantPreview: row.mimeType.startsWith("image/"),
     },
-    signalUntil(deadlineAt),
   );
   if (hasNoNumbers(numbers)) return "nothing_found";
   // The write only lands on a live row that is still unmeasured, so losing it

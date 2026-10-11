@@ -70,7 +70,8 @@ import { UploadHttpError } from "@breatic/shared";
 import { miniToolById, type MiniToolSpec } from "@breatic/shared/mini-tools";
 
 import { ContainerJobFailed, runContainerJob } from "@worker/handlers/container/run-container-job.js";
-import { StillRunning, TaskDeadlinePassed } from "@worker/providers/still-running.js";
+import { DeadlinePassed } from "@breatic/shared";
+import { StillRunning } from "@worker/providers/still-running.js";
 
 const CUT = miniToolById("video.cut") as MiniToolSpec;
 const INPUT = { taskId: "t1", userId: "u1", projectId: "p1", params: { range: { start: 0, end: 2 } }, sourceKey: "v/src.mp4" };
@@ -241,7 +242,7 @@ describe("runContainerJob", () => {
     h.steps[0]!.output = { jobId: "task:t1", containerClass: "Std1", deadlineAt: h.now.value - 10_000, outputs: [OUT] };
     h.readMiniToolJob.mockResolvedValueOnce({ state: "running" });
 
-    await expect(runContainerJob(CUT, "cut", INPUT)).rejects.toBeInstanceOf(TaskDeadlinePassed);
+    await expect(runContainerJob(CUT, "cut", INPUT)).rejects.toBeInstanceOf(DeadlinePassed);
     expect(h.readMiniToolJob).toHaveBeenCalledTimes(1);
   });
 
@@ -250,7 +251,7 @@ describe("runContainerJob", () => {
     h.readMiniToolJob.mockResolvedValueOnce(null);
     h.submitMiniToolJob.mockRejectedValueOnce(new UploadHttpError(503, null));
 
-    await expect(runContainerJob(CUT, "cut", INPUT)).rejects.toBeInstanceOf(TaskDeadlinePassed);
+    await expect(runContainerJob(CUT, "cut", INPUT)).rejects.toBeInstanceOf(DeadlinePassed);
   });
 
   it("spends an attempt when submitting fails for a reason other than the container not starting", async () => {

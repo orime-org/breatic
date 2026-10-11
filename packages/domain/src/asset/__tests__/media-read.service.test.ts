@@ -233,7 +233,6 @@ describe("what a read job does with its row", () => {
         // (inner#1320); this read is where they get theirs.
         wantPreview: true,
       },
-      expect.any(AbortSignal),
     );
     expect(fillMediaNumbers).toHaveBeenCalledWith("asset-1", {
       width: 800,

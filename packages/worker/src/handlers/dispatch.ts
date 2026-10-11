@@ -15,7 +15,8 @@
 import { DelayedError, type Job } from "bullmq";
 import type { ResumeContext } from "@worker/providers/shared.js";
 import { runContainerJob } from "@worker/handlers/container/run-container-job.js";
-import { assertBeforeDeadline, StillRunning, TaskDeadlinePassed } from "@worker/providers/still-running.js";
+import { assertBeforeDeadline, DeadlinePassed } from "@breatic/shared";
+import { StillRunning } from "@worker/providers/still-running.js";
 import { taskDeadline } from "@worker/handlers/task-deadline.js";
 import { withUnderstandSlot } from "@worker/handlers/understand-slots.js";
 import { getStreamRedis, getWorkerConfig, projectActivitiesRepo, publishActivityNew } from "@breatic/core";
@@ -583,13 +584,13 @@ async function runTaskBody(
         await job.moveToDelayed(err.resumeAt, token);
         throw new DelayedError();
       }
-      err = new TaskDeadlinePassed();
+      err = new DeadlinePassed();
     }
     // Every call on the chain is bounded by the deadline (inner#1367), so a
     // run cut there fails with whatever the cut call threw. Its ending is the
     // deadline's all the same.
-    if (!(err instanceof TaskDeadlinePassed) && failureOutcome(deadlineAt) === "expired") {
-      err = new TaskDeadlinePassed();
+    if (!(err instanceof DeadlinePassed) && failureOutcome(deadlineAt) === "expired") {
+      err = new DeadlinePassed();
     }
     // Provider call failed. Safe to retry via BullMQ — no charge yet,
     // no provider_result_url recorded. The next retry enters this
@@ -613,7 +614,7 @@ async function runTaskBody(
       ...runEnd,
       errorMessage: errorMsg,
       settles: settlesNow,
-      outcome: err instanceof TaskDeadlinePassed ? "expired" : "failed",
+      outcome: err instanceof DeadlinePassed ? "expired" : "failed",
     });
     // Rethrow to let BullMQ schedule a retry, unless the verdict already
     // stands: the row is settled and the reader has been told, so another
@@ -674,7 +675,7 @@ async function runTaskBody(
       // the log's to say — it says it right above — and the reader's next
       // move is to run it again, which is what this code says to them.
       errorMessage: expired
-        ? new TaskDeadlinePassed().message
+        ? new DeadlinePassed().message
         : ("internal" satisfies TaskFailureReason),
       settles: true,
       outcome: expired ? "expired" : "failed",

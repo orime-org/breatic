@@ -14,7 +14,6 @@ import { coverKeyFor, env } from "@breatic/core";
 import {
   finishUploadAtIngest,
   INGEST_REFUSED_UNNAMED,
-  signalUntil,
   UploadHttpError,
   type PartReceipt,
   type StudioAssetEntity,
@@ -106,7 +105,6 @@ export async function finishUpload(job: UploadFinishJob): Promise<UploadFinishRe
         coverKey: coverKeyFor(storageKey),
         deadlineAt,
         limits: mediaLimits(),
-        signal: signalUntil(deadlineAt),
         deferMediaRead: !mediaReadService.readsMediaAtFinish(job.assetSource),
       },
     );

@@ -36,7 +36,8 @@ vi.mock("@worker/providers/http.js", async (importOriginal) => {
 });
 
 import { generate } from "@worker/providers/three-d/transports/wavespeed.js";
-import { StillRunning, TaskDeadlinePassed } from "@worker/providers/still-running.js";
+import { DeadlinePassed } from "@breatic/shared";
+import { StillRunning } from "@worker/providers/still-running.js";
 
 /** A deadline no case here reaches unless it says so. */
 const LATER = Number.MAX_SAFE_INTEGER;
@@ -83,7 +84,7 @@ describe("three-d wavespeed transport resume (#1628 ⑦)", () => {
     expect(submitBody).toEqual({ quality: "high", prompt: "a chair" }); // Tier B: no client id field
     expect(persistTaskId).toHaveBeenCalledWith("ws-777");
     expect(String(pollOnceMock.mock.calls[0]![0])).toContain("ws-777");
-    expect(queryBillingMock).toHaveBeenCalledWith(RESOLVED, "ws-777", expect.any(AbortSignal));
+    expect(queryBillingMock).toHaveBeenCalledWith(RESOLVED, "ws-777", { signal: expect.any(AbortSignal), timeoutMs: expect.any(Number) });
     expect(r.url).toBe("https://cdn.wavespeed.test/model.glb");
   });
 
@@ -99,7 +100,7 @@ describe("three-d wavespeed transport resume (#1628 ⑦)", () => {
     expect(requestWithRetryMock).toHaveBeenCalledTimes(0); // ⑦ core: no duplicate generation
     expect(persistTaskId).toHaveBeenCalledTimes(0);
     expect(String(pollOnceMock.mock.calls[0]![0])).toContain("ws-stored-42");
-    expect(queryBillingMock).toHaveBeenCalledWith(RESOLVED, "ws-stored-42", expect.any(AbortSignal));
+    expect(queryBillingMock).toHaveBeenCalledWith(RESOLVED, "ws-stored-42", { signal: expect.any(AbortSignal), timeoutMs: expect.any(Number) });
     expect(r.url).toBe("https://cdn.wavespeed.test/model.glb");
   });
 
@@ -109,7 +110,7 @@ describe("three-d wavespeed transport resume (#1628 ⑦)", () => {
 
       await expect(
         generate("a chair", RESOLVED, {}, { storedTaskId: null, persistTaskId, externalTaskId: "x", retryStarting: false, deadlineAt: Date.now() - 1 }),
-      ).rejects.toBeInstanceOf(TaskDeadlinePassed);
+      ).rejects.toBeInstanceOf(DeadlinePassed);
       expect(requestWithRetryMock).not.toHaveBeenCalled();
     });
 
@@ -117,7 +118,7 @@ describe("three-d wavespeed transport resume (#1628 ⑦)", () => {
     it("writes no duplicate-cost warning for a retry that submits nothing past the deadline", async () => {
       await expect(
         generate("a chair", RESOLVED, {}, { storedTaskId: null, persistTaskId: vi.fn(), externalTaskId: "x", retryStarting: true, deadlineAt: Date.now() - 1 }),
-      ).rejects.toBeInstanceOf(TaskDeadlinePassed);
+      ).rejects.toBeInstanceOf(DeadlinePassed);
       expect(warnMock).not.toHaveBeenCalledWith(expect.anything(), "provider_reinvoked_on_retry_potential_duplicate_cost");
     });
 

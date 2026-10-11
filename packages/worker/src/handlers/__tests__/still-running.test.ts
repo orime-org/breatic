@@ -22,15 +22,8 @@ const h = vi.hoisted(() => {
       super("still running");
     }
   }
-  /** Stand-in for the real class, matched by `instanceof` in the dispatcher. */
-  class TaskDeadlinePassed extends Error {
-    constructor() {
-      super("expired");
-    }
-  }
   return {
     StillRunning,
-    TaskDeadlinePassed,
     warn: vi.fn(),
     runContainerJob: vi.fn(),
     runCatalogTask: vi.fn(),
@@ -51,10 +44,6 @@ const h = vi.hoisted(() => {
 
 vi.mock("@worker/providers/still-running.js", () => ({
   StillRunning: h.StillRunning,
-  TaskDeadlinePassed: h.TaskDeadlinePassed,
-  assertBeforeDeadline: (deadlineAt: number): void => {
-    if (Date.now() >= deadlineAt) throw new h.TaskDeadlinePassed();
-  },
 }));
 vi.mock("@worker/handlers/task-deadline.js", () => ({ taskDeadline: h.taskDeadline }));
 vi.mock("@worker/handlers/container/run-container-job.js", () => ({
@@ -127,6 +116,7 @@ vi.mock("@breatic/domain", async () => ({
 
 import { DelayedError, type Job } from "bullmq";
 
+import { DeadlinePassed } from "@breatic/shared";
 import { runTask } from "@worker/handlers/dispatch.js";
 
 const DEADLINE = 1_800_000_000_000;
@@ -266,7 +256,7 @@ describe("an upstream prediction still running when a pickup ends", () => {
 
 describe("a run past its two-hour deadline", () => {
   beforeEach(() => {
-    h.runCatalogTask.mockRejectedValue(new h.TaskDeadlinePassed());
+    h.runCatalogTask.mockRejectedValue(new DeadlinePassed());
   });
 
   it("settles on the first attempt that finds it, with attempts still left", async () => {

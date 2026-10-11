@@ -74,6 +74,7 @@ vi.mock("@domain/asset/ingest-report.service.js", () => ({ applyIngestReport }))
 const { uploadBytesToStorage, transferUrlToStorage } = await import(
   "@domain/asset/backend-upload.service.js"
 );
+const { DeadlinePassed } = await import("@breatic/shared");
 
 /**
  * The deadline the last signed ticket carries.
@@ -107,7 +108,6 @@ const RUN = {
   deadlineAt: DEADLINE_AT,
   // What a tagged picture is turned upright under, off the mocked yaml.
   limits: { uprightJpegQuality: 85, uprightMaxBytes: MAX_UPLOAD },
-  signal: expect.any(AbortSignal),
 };
 
 beforeEach(() => {
@@ -194,24 +194,24 @@ describe("uploadBytesToStorage — lane ②", () => {
     await uploadBytesToStorage(new Blob(["x"]), CTX);
 
     expect(idleSocketDispatcher).toHaveBeenCalledWith(IDLE_SECONDS * 1000);
-    const [, target, knobs, onPartLanded, signal] = sendBytesToIngest.mock.calls[0] as [
+    const [, target, knobs, onPartLanded, deadlineAt] = sendBytesToIngest.mock.calls[0] as [
       Blob,
       { dispatcher?: unknown },
       { uploadIdleTimeoutMs: number },
       unknown,
-      AbortSignal,
+      number,
     ];
     expect(target.dispatcher).toBe(IDLE_DISPATCHER);
     expect(knobs.uploadIdleTimeoutMs).toBe(IDLE_SECONDS * 1000);
     expect(onPartLanded).toBeUndefined();
-    expect(signal).toBeInstanceOf(AbortSignal);
+    expect(deadlineAt).toBe(DEADLINE_AT);
     expect(signTicketDeadline()).toBe(DEADLINE_AT);
   });
 
   it("starts nothing once the generation's deadline has passed", async () => {
     await expect(
       uploadBytesToStorage(new Blob(["x"]), { ...CTX, deadlineAt: Date.now() - 1 }),
-    ).rejects.toThrow(/deadline/);
+    ).rejects.toBeInstanceOf(DeadlinePassed);
     expect(issueUploadGrant).not.toHaveBeenCalled();
   });
 
