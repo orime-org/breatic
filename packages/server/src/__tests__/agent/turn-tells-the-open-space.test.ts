@@ -83,8 +83,8 @@ async function runOneTurn(said: string, current: ChatCurrentSpace | undefined): 
   await runWithContext({ userId: "u1", conversationId: "c1", projectId: "p1" }, async () => {
     const turn = await new MainAgent().chat(said, undefined, [], "Asia/Shanghai", {
       spaces,
-      spacesTotal: spaces.length,
-      current,
+      spaces_total: spaces.length,
+      current_space: current,
     });
     for await (const _chunk of turn) void _chunk;
   });
@@ -125,8 +125,8 @@ describe("a turn tells the model about the reader's Spaces", () => {
         chips: [],
         message: "summarise this",
         spaces,
-        spacesTotal: spaces.length,
-        current: open,
+        spaces_total: spaces.length,
+        current_space: open,
       })}`,
     );
     expect(userTextsSent().at(-1)).toContain('## The Space the reader has open: "Storyboard" (document)');

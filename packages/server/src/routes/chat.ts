@@ -35,7 +35,8 @@ import { toUiMessages } from "@server/modules/conversation/message-part-mapping.
 import type { UIMessageChunk } from "ai";
 import { runWithContext, logger, getAgentConfig, ValidationError } from "@breatic/core";
 import { attachmentSection, messageLength, referenceCount, t } from "@breatic/shared";
-import type { ChatAttachedChip, ChatCurrentSpace, ChatSpace } from "@breatic/shared";
+import type { ChatAttachedChip } from "@breatic/shared";
+import type { SpaceContext } from "@server/agent/user-turn.js";
 
 /**
  * Refuse a message whose words, attachments or Spaces are past their limits.
@@ -54,8 +55,6 @@ import type { ChatAttachedChip, ChatCurrentSpace, ChatSpace } from "@breatic/sha
  * @param message - What the user typed.
  * @param chips - What the user attached.
  * @param space - The project's Spaces and the one the reader has open.
- * @param space.spaces - The Spaces listed.
- * @param space.current - The Space the reader has open.
  * @throws {AppError} With 422 when the words, the number of references, the
  *   number of attached items, the attachments' length, the open Space's
  *   content or the number of Spaces listed is over its limit.
@@ -63,7 +62,7 @@ import type { ChatAttachedChip, ChatCurrentSpace, ChatSpace } from "@breatic/sha
 function assertSayable(
   message: string,
   chips: readonly ChatAttachedChip[],
-  space: { spaces?: readonly ChatSpace[]; current?: ChatCurrentSpace },
+  space: SpaceContext,
 ): void {
   const {
     user_message_max_chars,
@@ -105,7 +104,7 @@ function assertSayable(
   if (listed > space_list_max_items) {
     throw new ValidationError(t("server.chat.spaces_too_many", { limit: space_list_max_items, actual: listed }));
   }
-  const content = space.current?.state === "loaded" ? space.current.content.length : 0;
+  const content = space.current_space?.state === "loaded" ? space.current_space.content.length : 0;
   if (content > current_space_max_chars) {
     throw new ValidationError(
       t("server.chat.current_space_too_long", { limit: current_space_max_chars, actual: content }),
@@ -262,7 +261,12 @@ chat.post("/message", validate("json", chatMessageSchema), async (c) => {
     body.project_id,
   );
 
-  assertSayable(body.message, body.attached_chips, { spaces: body.spaces, current: body.current_space });
+  const space: SpaceContext = {
+    spaces: body.spaces,
+    spaces_total: body.spaces_total,
+    current_space: body.current_space,
+  };
+  assertSayable(body.message, body.attached_chips, space);
 
   // A turn needs a balance above zero to start (#296). Payments off: no check.
   await precheckCredits(body.project_id, user.id, SMALLEST_CREDIT);
@@ -271,11 +275,7 @@ chat.post("/message", validate("json", chatMessageSchema), async (c) => {
     c,
     { userId: user.id, conversationId: conversation.id, projectId: body.project_id },
     (signal) =>
-      new MainAgent().chat(body.message, signal, body.attached_chips, body.time_zone, {
-        spaces: body.spaces,
-        spacesTotal: body.spaces_total,
-        current: body.current_space,
-      }),
+      new MainAgent().chat(body.message, signal, body.attached_chips, body.time_zone, space),
   );
 });
 

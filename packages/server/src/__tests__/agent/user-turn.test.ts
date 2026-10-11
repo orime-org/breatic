@@ -94,8 +94,8 @@ describe("the Spaces the reader is in (inner#1413)", () => {
       chips: [],
       message: "hi",
       spaces,
-      spacesTotal: 2,
-      current: { ...storyboard, state: "loaded", content: "# Scene 1", total_chars: 9 },
+      spaces_total: 2,
+      current_space: { ...storyboard, state: "loaded", content: "# Scene 1", total_chars: 9 },
     });
 
     expect(turn).toContain(
@@ -104,7 +104,7 @@ describe("the Spaces the reader is in (inner#1413)", () => {
   });
 
   it("marks none as open when the reader turned the open Space off", () => {
-    const turn = userTurnForModel({ chips: [], message: "hi", spaces, spacesTotal: 2 });
+    const turn = userTurnForModel({ chips: [], message: "hi", spaces, spaces_total: 2 });
 
     expect(turn).toContain('- "Storyboard" (document)\n- "Cast" (canvas)');
     expect(turn).not.toContain("the reader has this one open");
@@ -112,13 +112,13 @@ describe("the Spaces the reader is in (inner#1413)", () => {
   });
 
   it("says how many Spaces were left off the list", () => {
-    const turn = userTurnForModel({ chips: [], message: "hi", spaces, spacesTotal: 5 });
+    const turn = userTurnForModel({ chips: [], message: "hi", spaces, spaces_total: 5 });
 
     expect(turn).toContain('- "Cast" (canvas)\n(3 more not listed)');
   });
 
   it("puts the reader's words under their own heading after the Spaces", () => {
-    const turn = userTurnForModel({ chips: [], message: "summarise this", spaces, spacesTotal: 2 });
+    const turn = userTurnForModel({ chips: [], message: "summarise this", spaces, spaces_total: 2 });
 
     expect(turn.endsWith("\n\n## User message\n\nsummarise this")).toBe(true);
     expect(turn.startsWith("## Spaces in this project")).toBe(true);
@@ -129,8 +129,8 @@ describe("the Spaces the reader is in (inner#1413)", () => {
       chips: [image],
       message: "what is in this?",
       spaces,
-      spacesTotal: 2,
-      current: { ...cast, state: "loaded", content: '{\n  "nodes": []\n}', total_chars: 16 },
+      spaces_total: 2,
+      current_space: { ...cast, state: "loaded", content: '{\n  "nodes": []\n}', total_chars: 16 },
     });
 
     const open = turn.indexOf('## The Space the reader has open: "Cast" (canvas)');
@@ -149,8 +149,8 @@ describe("the Spaces the reader is in (inner#1413)", () => {
       chips: [],
       message: "hi",
       spaces,
-      spacesTotal: 2,
-      current: { ...storyboard, state: "loaded", content, total_chars: content.length },
+      spaces_total: 2,
+      current_space: { ...storyboard, state: "loaded", content, total_chars: content.length },
     });
 
     expect(turn).toContain(`## The Space the reader has open: "Storyboard" (document)\n\n${JSON.stringify(content)}`);
@@ -163,8 +163,8 @@ describe("the Spaces the reader is in (inner#1413)", () => {
       chips: [],
       message: "hi",
       spaces,
-      spacesTotal: 2,
-      current: { ...cast, state: "loaded", content, total_chars: content.length },
+      spaces_total: 2,
+      current_space: { ...cast, state: "loaded", content, total_chars: content.length },
     });
 
     expect(turn).toContain(`## The Space the reader has open: "Cast" (canvas)\n\n${content}\n\n## User message`);
@@ -175,8 +175,8 @@ describe("the Spaces the reader is in (inner#1413)", () => {
       chips: [],
       message: "hi",
       spaces,
-      spacesTotal: 2,
-      current: { ...cast, state: "loaded", content: "{", total_chars: 250_000 },
+      spaces_total: 2,
+      current_space: { ...cast, state: "loaded", content: "{", total_chars: 250_000 },
     });
 
     expect(turn).toContain("{\n(Showing the first 1 of 250000 characters.)");
@@ -187,8 +187,8 @@ describe("the Spaces the reader is in (inner#1413)", () => {
       chips: [],
       message: "hi",
       spaces,
-      spacesTotal: 2,
-      current: { ...cast, state: "loaded", content: "", total_chars: 0 },
+      spaces_total: 2,
+      current_space: { ...cast, state: "loaded", content: "", total_chars: 0 },
     });
 
     expect(turn).toContain('## The Space the reader has open: "Cast" (canvas)\n\nThis Space is empty.');
@@ -199,8 +199,8 @@ describe("the Spaces the reader is in (inner#1413)", () => {
       chips: [],
       message: "hi",
       spaces,
-      spacesTotal: 2,
-      current: { ...storyboard, state: "loading" },
+      spaces_total: 2,
+      current_space: { ...storyboard, state: "loading" },
     });
 
     expect(turn).toContain('## The Space the reader has open: "Storyboard" (document)\n\nIts content has not loaded yet.');
@@ -212,14 +212,14 @@ describe("the Spaces the reader is in (inner#1413)", () => {
       chips: [],
       message: "hi",
       spaces: [timeline],
-      spacesTotal: 1,
-      current: { ...timeline, state: "unreadable" },
+      spaces_total: 1,
+      current_space: { ...timeline, state: "unreadable" },
     });
 
     expect(turn).toContain('## The Space the reader has open: "Edit" (timeline)\n\nThe content of a timeline Space cannot be read.');
   });
 
   it("is the bare words when the project has no Space and nothing is attached", () => {
-    expect(userTurnForModel({ chips: [], message: "hi", spaces: [], spacesTotal: 0 })).toBe("hi");
+    expect(userTurnForModel({ chips: [], message: "hi", spaces: [], spaces_total: 0 })).toBe("hi");
   });
 });

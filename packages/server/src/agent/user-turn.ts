@@ -9,7 +9,7 @@
  * the whole turn.
  */
 
-import type { ChatAttachedChip, ChatCurrentSpace, ChatSpace } from "@breatic/shared";
+import type { ChatAttachedChip, ChatCurrentSpace, ChatMessageInput, ChatSpace } from "@breatic/shared";
 import { attachmentSection, attachmentTitle, writeReferences } from "@breatic/shared";
 
 /**
@@ -17,14 +17,7 @@ import { attachmentSection, attachmentTitle, writeReferences } from "@breatic/sh
  * fresh with every message and never stored, so the model always reads the
  * project as it is now.
  */
-export interface SpaceContext {
-  /** The project's Spaces, newest first, as many as the list may hold. */
-  spaces?: readonly ChatSpace[];
-  /** How many Spaces the project has, listed or not. */
-  spacesTotal?: number;
-  /** The Space the reader has open, when they have it turned on. */
-  current?: ChatCurrentSpace;
-}
+export type SpaceContext = Pick<ChatMessageInput, "spaces" | "spaces_total" | "current_space">;
 
 /** What one user message is made of. */
 export interface UserTurn extends SpaceContext {
@@ -81,7 +74,7 @@ function openSpaceSection(current: ChatCurrentSpace): string {
  * @throws {never} Never.
  */
 export function userTurnForModel(turn: UserTurn): string {
-  const { chips, message, spaces = [], spacesTotal = spaces.length, current } = turn;
+  const { chips, message, spaces = [], spaces_total: spacesTotal = spaces.length, current_space: current } = turn;
   const sections: string[] = [];
   if (spaces.length > 0) sections.push(spaceListSection(spaces, spacesTotal, current?.id));
   if (current) sections.push(openSpaceSection(current));

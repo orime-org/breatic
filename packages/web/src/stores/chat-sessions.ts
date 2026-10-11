@@ -23,7 +23,7 @@ import { tell } from '@web/stores/chat-mishaps';
 import { DefaultChatTransport } from 'ai';
 import type { ChatTransport, UIMessageChunk } from 'ai';
 import { SSE_HEARTBEAT_MISSES_ALLOWED, attachmentPart, chipOfPart, getLocale } from '@breatic/shared';
-import type { ChatAttachedChip, ChatCurrentSpace, ChatSpace } from '@breatic/shared';
+import type { ChatAttachedChip, ChatMessageInput } from '@breatic/shared';
 import { API_BASE_PATH } from '@web/data/api/base-path';
 import { chatApi } from '@web/data/api/chat';
 import { clearConsolidating, noteConsolidating } from '@web/stores/consolidating';
@@ -542,11 +542,7 @@ async function expectAnotherBeat(
  * Spaces, and the open one when the reader has it on. Read when they pressed
  * send and never kept, so each message says what is there now.
  */
-export interface ChatSpaceContext {
-  spaces?: ChatSpace[];
-  spaces_total?: number;
-  current_space?: ChatCurrentSpace;
-}
+export type ChatSpaceContext = Pick<ChatMessageInput, 'spaces' | 'spaces_total' | 'current_space'>;
 
 /**
  * Say one thing in a conversation, and watch the stream it comes back on.
