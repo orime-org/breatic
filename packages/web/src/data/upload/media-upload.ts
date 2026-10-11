@@ -34,9 +34,9 @@ import { waitForUploadEnding, type UploadEnding } from '@web/data/upload/upload-
  */
 
 /**
- * What the server filed a finished upload under, when it said: the address,
- * the ledger row a cover or an avatar is then pointed at, and the kind it read
- * off the stored bytes.
+ * What the server filed a finished upload as: its address, the ledger row a
+ * cover or an avatar is then pointed at, the kind it read off the stored bytes
+ * and their pixel size.
  */
 export type StoredUpload = UploadStatusResult;
 
@@ -181,7 +181,7 @@ export interface MediaUploadDeps {
   /**
    * The bytes are delivered and the server has them.
    *
-   * What the server filed the content under, when it said. A node ignores
+   * What the server filed the content as. A node ignores
    * it: the server writes the node's content through Yjs, and pinning anything
    * here would be a second writer for the one field that has one (design
    * §6.6). An upload with no node behind it has no other channel and this is

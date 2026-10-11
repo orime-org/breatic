@@ -412,10 +412,8 @@ describe("the url ingest job — when it does not", () => {
     });
   });
 
-  it("says the source was too slow when nothing answered at all", async () => {
-    // Our own deadline fires before the platform's, so this is what a transfer
-    // that outran its window looks like from here — the one failure that
-    // brings back no answer to read a name off.
+  it("records a Worker that never answered as ingest_no_answer", async () => {
+    // No response at all: the Worker or the line to it went away, which is ours.
     const job = await submitted();
     workerAnswers(new Error("http request to https://ingest.example timed out"));
 

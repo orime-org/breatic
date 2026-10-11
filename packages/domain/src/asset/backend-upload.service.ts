@@ -428,8 +428,9 @@ export async function pullReaderLink(
     );
   } catch (err) {
     // An UploadHttpError exists only because an answer arrived, so a missing
-    // name on it is the Worker refusing without saying why. Only the absence
-    // of any answer is the source running out of time.
+    // name on it is the Worker refusing without saying why. No answer at all
+    // is the Worker or the line to it going away: ours, not the link's (a cut
+    // at the deadline settles as expired).
     const reason =
       err instanceof UploadHttpError ? (err.code ?? INGEST_REFUSED_UNNAMED) : INGEST_NO_ANSWER;
     const settled = await settleAborted(storageKey, reason, err);

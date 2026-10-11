@@ -62,9 +62,9 @@ const NUMBERED_PROPS: Record<string, PropDecl> = {
 };
 
 /**
- * The pixel size of the picture or the video, read off the file as it was
- * added (inner#1127 A23): the block keeps the media's place at its final size
- * while it loads.
+ * The pixel size of the picture or the video, as the server read it off the
+ * stored file (inner#1127 A23, inner#1367): the block keeps the media's place
+ * at its final size while it loads.
  */
 const MEDIA_SIZE_PROPS: Record<string, PropDecl> = {
   mediaWidth: { default: undefined, type: 'number' },
