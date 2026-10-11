@@ -182,21 +182,99 @@ describe("the Spaces the reader is in (inner#1413)", () => {
     expect(turn).toContain('"# Sc"\n(Showing the first 4 of 250000 characters.)');
   });
 
-  it("says a cut canvas has its long texts cut, and maybe some nodes left out", () => {
+  describe("a canvas over the limit", () => {
     const content = '{"edges":[],"nodes":[{"id":"n1"}]}';
-    const turn = userTurnForModel({
-      chips: [],
-      message: "hi",
-      spaces,
-      spaces_total: 2,
-      current_space: { ...cast, state: "loaded", content, total_chars: 250_000 },
+    const whole = {
+      selected_total: 0,
+      selected_attached: 0,
+      selected_whole: 0,
+      slim: false,
+      texts_cut: 0,
+      names_only: 0,
+      edges_not_listed: 0,
+      nodes_not_listed: 0,
+      groups_not_listed: 0,
+    };
+    const lead = `${content}\n(The canvas is over the limit, so it is shown in less detail: ${String(content.length)} of 250000 characters.`;
+    const slimSentence =
+      " Nodes that are not complete carry only their id, type, name, group, texts, media addresses and the mode and model they would run.";
+
+    /**
+     * The turn for an over-limit canvas with the given reductions.
+     * @param detail - What was done, over a canvas that fits whole.
+     * @returns The turn.
+     */
+    const over = (detail: Partial<typeof whole>): string =>
+      userTurnForModel({
+        chips: [],
+        message: "hi",
+        spaces,
+        spaces_total: 2,
+        current_space: { ...cast, state: "loaded", content, total_chars: 250_000, detail: { ...whole, ...detail } },
+      });
+
+    it("writes no note when the canvas went whole, even with nodes selected", () => {
+      const turn = userTurnForModel({
+        chips: [],
+        message: "hi",
+        spaces,
+        spaces_total: 2,
+        current_space: {
+          ...cast,
+          state: "loaded",
+          content,
+          total_chars: content.length,
+          detail: { ...whole, selected_total: 2, selected_whole: 2 },
+        },
+      });
+
+      expect(turn).toContain(`${content}\n\n## User message`);
+      expect(turn).not.toContain("over the limit");
     });
 
-    expect(turn).toContain(
-      `${content}\n(The canvas is over the limit: long texts in its nodes are cut short and end with "…", and ` +
-        `if that was not enough, some nodes are left out with their links. Showing ${String(content.length)} of ` +
-        "250000 characters.)",
-    );
+    it("says only that nodes went slim, and that selecting them shows them whole", () => {
+      expect(over({ slim: true })).toContain(
+        `${lead}${slimSentence} To see nodes in full, ask the reader to select them or add them to the Agent.)`,
+      );
+    });
+
+    it("says every step that was taken, and points only to adding when selecting would not help", () => {
+      const turn = over({
+        selected_total: 5,
+        selected_attached: 1,
+        selected_whole: 2,
+        slim: true,
+        texts_cut: 7,
+        names_only: 4,
+        edges_not_listed: 3,
+        nodes_not_listed: 2,
+        groups_not_listed: 1,
+      });
+
+      expect(turn).toContain(
+        `${lead} The reader selected 5 nodes; 2 of them are complete here and 1 are complete in the attachments.` +
+          `${slimSentence}` +
+          ' 7 texts are cut short; each ends with "…[+N]", N being the characters left out.' +
+          " 4 nodes show only their id, type and name." +
+          " 3 links are not listed." +
+          " 2 nodes are not listed." +
+          " 1 groups are not listed; nodes inside them still name them as parentId." +
+          " To see nodes in full, ask the reader to add them to the Agent.)",
+      );
+    });
+
+    it("leaves out the attachments clause when no selected node is attached", () => {
+      expect(over({ selected_total: 2, selected_whole: 2, slim: true })).toContain(
+        `${lead} The reader selected 2 nodes; 2 of them are complete here.${slimSentence}` +
+          " To see nodes in full, ask the reader to select them or add them to the Agent.)",
+      );
+    });
+
+    it("points only to adding when a selected node went slim, though nothing else was cut", () => {
+      expect(over({ selected_total: 2, selected_whole: 1, slim: true })).toContain(
+        " To see nodes in full, ask the reader to add them to the Agent.)",
+      );
+    });
   });
 
   it("says an open Space is empty when it has nothing in it", () => {
