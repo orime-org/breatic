@@ -1097,6 +1097,15 @@ body {
   background-color: transparent;
 }
 
+/* A cell selection is drawn by its cells alone (`.selectedCell`). ProseMirror
+   hides the native selection when it writes a cell selection back, which
+   Chrome holds off while the mouse is down, so a pulled one would also show
+   the text the pointer swept; `data-cell-selection` (written by
+   `document-selection-paint.ts`) is set on the transaction (inner#1350 A8). */
+.doc-body[data-cell-selection] ::selection {
+  background-color: transparent;
+}
+
 @layer components {
   /* BlockNote's rule is `[data-show-selection] { background-color: highlight;
      padding: 2px 0 }` (`@blocknote/core/src/editor/editor.css:194-197`) — adding

@@ -34,6 +34,7 @@ import { ShowSelectionExtension } from '@blocknote/core/extensions';
 import type { Node as PMNode } from '@tiptap/pm/model';
 import { AllSelection, NodeSelection, Plugin, PluginKey } from '@tiptap/pm/state';
 import type { EditorState, Selection } from '@tiptap/pm/state';
+import { CellSelection } from '@tiptap/pm/tables';
 import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view';
 
 import {
@@ -48,6 +49,9 @@ import { MEDIA_BLOCK_TYPES, isMediaBlockType } from '@web/spaces/document/docume
 
 /** The class `index.css` paints a no-text block inside the selection with. */
 export const IN_SELECTION_CLASS = 'doc-in-selection';
+
+/** The body's attribute while a cell selection stands; `index.css` draws no native selection under it. */
+export const CELL_SELECTION_ATTR = 'data-cell-selection';
 
 /**
  * The class `index.css` marks an empty line with: an empty line an end of a
@@ -232,6 +236,15 @@ export const documentSelectionPaintExtension = createExtension(({ editor }) => {
             (mounted !== null && visible(mounted)) || shownByPanel()
               ? paintFor(state)
               : DecorationSet.empty,
+          // A cell selection draws its cells (`.selectedCell`) and no native
+          // selection: `CellSelection.visible` is false, and ProseMirror hides
+          // the native one when it writes the selection back. Chrome holds that
+          // write back while the mouse is down (`selectionToDOM`), so under a
+          // pulled cell selection the browser would go on drawing the text it
+          // swept; the body's own attribute takes effect on the transaction
+          // (inner#1350 design §5.7).
+          attributes: (state): Record<string, string> =>
+            state.selection instanceof CellSelection ? { [CELL_SELECTION_ATTR]: '' } : {},
         },
       }),
     ],
