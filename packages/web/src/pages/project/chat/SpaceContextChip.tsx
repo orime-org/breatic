@@ -46,9 +46,12 @@ export function SpaceContextChip({ name, type, enabled, onToggle }: SpaceContext
           onClick={onToggle}
           data-testid='chat-composer-space'
           className={`h-6 max-w-full gap-1 border px-2 text-xs font-normal ${
+            // Each state says its own hover: the variant's grey hover would
+            // fill an off chip right after the press that turned it off,
+            // leaving only the dashed border to tell the two apart.
             enabled
-              ? 'border-border bg-chip text-foreground'
-              : 'border-dashed border-border bg-transparent text-muted-foreground'
+              ? 'border-border bg-chip text-foreground hover:bg-accent'
+              : 'border-dashed border-border bg-transparent text-muted-foreground hover:bg-transparent hover:text-foreground'
           }`}
         >
           <Icon className='h-3 w-3 shrink-0 text-muted-foreground' aria-hidden='true' />

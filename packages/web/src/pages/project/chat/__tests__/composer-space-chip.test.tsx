@@ -71,6 +71,9 @@ describe('the open Space chip', () => {
     expect(chip).toHaveAttribute('aria-pressed', 'false');
     expect(chip.className).toContain('border-dashed');
     expect(chip.className).toContain('text-muted-foreground');
+    // Stays unfilled under the pointer, which is where it is right after the
+    // press that turned it off.
+    expect(chip.className).toContain('hover:bg-transparent');
     expect(chip).toHaveTextContent('Storyboard');
   });
 
