@@ -104,7 +104,7 @@ interface UIState {
   restoreAgentPanel: (userId: string | undefined, projectId: string) => void;
   setChatPanelCollapsed: (collapsed: boolean) => void;
   toggleChatPanel: () => void;
-  setSpaceContextEnabled: (enabled: boolean) => void;
+  toggleSpaceContext: () => void;
   setDrawerOpen: (open: boolean) => void;
   setSidebarOpen: (open: boolean) => void;
   pushModal: (id: string) => void;
@@ -161,12 +161,14 @@ export const useUIStore = create<UIState>()(
       const { agentPanelOwner, chatPanelCollapsed } = get();
       storeAgentPanel(agentPanelOwner, chatPanelCollapsed);
     },
-    setSpaceContextEnabled: (enabled) => {
+    toggleSpaceContext: () => {
       set((s) => {
-        s.spaceContextEnabled = enabled;
+        s.spaceContextEnabled = !s.spaceContextEnabled;
       });
-      const owner = get().agentPanelOwner;
-      if (owner !== null) writeSpaceContextEnabled(owner.userId, owner.projectId, enabled);
+      const { agentPanelOwner, spaceContextEnabled } = get();
+      if (agentPanelOwner !== null) {
+        writeSpaceContextEnabled(agentPanelOwner.userId, agentPanelOwner.projectId, spaceContextEnabled);
+      }
     },
     setDrawerOpen: (open) =>
       set((s) => {

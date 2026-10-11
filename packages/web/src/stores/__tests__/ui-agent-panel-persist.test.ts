@@ -91,21 +91,25 @@ describe('useUIStore — whether the open Space goes to the Agent (inner#1413)',
   it('writes every change to the restored account and project only', () => {
     useUIStore.getState().restoreAgentPanel(ALICE, P1);
 
-    useUIStore.getState().setSpaceContextEnabled(false);
+    useUIStore.getState().toggleSpaceContext();
     expect(useUIStore.getState().spaceContextEnabled).toBe(false);
     expect(readSpaceContextEnabled(ALICE, P1)).toBe(false);
     expect(readSpaceContextEnabled(ALICE, P2)).toBeUndefined();
     expect(readAgentPanelOpen(ALICE, P1)).toBeUndefined();
+
+    useUIStore.getState().toggleSpaceContext();
+    expect(useUIStore.getState().spaceContextEnabled).toBe(true);
+    expect(readSpaceContextEnabled(ALICE, P1)).toBe(true);
   });
 
   it('writes nothing before a project is restored', () => {
-    useUIStore.getState().setSpaceContextEnabled(false);
+    useUIStore.getState().toggleSpaceContext();
     expect(window.localStorage.length).toBe(0);
   });
 
   it('is kept when the per-project chrome state resets', () => {
     useUIStore.getState().restoreAgentPanel(ALICE, P1);
-    useUIStore.getState().setSpaceContextEnabled(false);
+    useUIStore.getState().toggleSpaceContext();
 
     useUIStore.getState().reset();
     expect(useUIStore.getState().spaceContextEnabled).toBe(false);

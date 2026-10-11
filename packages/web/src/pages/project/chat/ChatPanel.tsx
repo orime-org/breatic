@@ -90,7 +90,7 @@ export function ChatPanel({
 }: ChatPanelProps): React.JSX.Element {
   const queryClient = useQueryClient();
   const spaceContextEnabled = useUIStore((s) => s.spaceContextEnabled);
-  const setSpaceContextEnabled = useUIStore((s) => s.setSpaceContextEnabled);
+  const toggleSpace = useUIStore((s) => s.toggleSpaceContext);
   // Read through a ref at the press: the project meta hands over a fresh
   // array each time anything in it changes, someone going online included,
   // and a callback rebuilt for that would reach the memoised composer as a
@@ -107,10 +107,6 @@ export function ChatPanel({
         queryClient,
       }),
     [projectId, queryClient],
-  );
-  const toggleSpace = React.useCallback(
-    (): void => setSpaceContextEnabled(!useUIStore.getState().spaceContextEnabled),
-    [setSpaceContextEnabled],
   );
   const {
     messages,
