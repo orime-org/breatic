@@ -116,10 +116,10 @@ export function pickId(ids: readonly string[]): string {
 }
 
 /** The picked nodes and the links between them, as the agent reads them. */
-export interface PickSnapshot {
+export type PickSnapshot = {
   nodes: Array<Record<string, unknown> & { id: string }>;
   edges: CanvasEdge[];
-}
+};
 
 /**
  * The picked piece of the canvas as the agent reads it: the picked nodes as
@@ -216,6 +216,6 @@ export function itemForPick(
   const lead = picked.length === 1 ? graph.nodes.find((n) => n.id === picked[0]) : undefined;
   const name = lead && ids.has(lead.id) ? nodeNameOf(lead.data as { kind: string }) : '';
   const id = pickId([...ids]);
-  const chip: ChatAttachedChip = { id, type: 'canvas', name, data_snapshot: { ...snapshot } };
+  const chip: ChatAttachedChip = { id, type: 'canvas', name, data_snapshot: snapshot };
   return { id, name, type: 'canvas', status: 'ready', chip };
 }
