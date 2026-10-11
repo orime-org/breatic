@@ -7,8 +7,10 @@ import { STORAGE_KEYS } from '@web/lib/storage-keys';
 import {
   readAgentPanelOpen,
   readProjectTabs,
+  readSpaceContextEnabled,
   readSpaceViewport,
   writeAgentPanelOpen,
+  writeSpaceContextEnabled,
   writeOpenTabs,
   writeSpaceViewport,
 } from '@web/lib/project-tabs-storage';
@@ -386,5 +388,69 @@ describe('project tab storage — whether the Agent panel is open', () => {
     writeAgentPanelOpen(undefined, P1, false);
     expect(raw()).toBeNull();
     expect(readAgentPanelOpen(undefined, P1)).toBeUndefined();
+  });
+});
+
+describe('project tab storage — whether the open Space goes to the Agent (inner#1413)', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+  });
+
+  it('answers with nothing where it was never toggled', () => {
+    writeOpenTabs(ALICE, P1, ['s1'], 's1');
+    expect(readSpaceContextEnabled(ALICE, P1)).toBeUndefined();
+  });
+
+  it('keeps the value per account and per project', () => {
+    writeSpaceContextEnabled(ALICE, P1, false);
+    writeSpaceContextEnabled(ALICE, P2, true);
+    writeSpaceContextEnabled(BOB, P1, true);
+
+    expect(readSpaceContextEnabled(ALICE, P1)).toBe(false);
+    expect(readSpaceContextEnabled(ALICE, P2)).toBe(true);
+    expect(readSpaceContextEnabled(BOB, P1)).toBe(true);
+  });
+
+  it('survives the strip, a camera and the panel being written after it', () => {
+    writeOpenTabs(ALICE, P1, ['s1'], 's1');
+    writeSpaceContextEnabled(ALICE, P1, false);
+    writeOpenTabs(ALICE, P1, ['s1', 's2'], 's2');
+    writeSpaceViewport(ALICE, P1, 's1', { x: 1, y: 2, zoom: 1 });
+    writeAgentPanelOpen(ALICE, P1, false);
+
+    expect(readSpaceContextEnabled(ALICE, P1)).toBe(false);
+    expect(readAgentPanelOpen(ALICE, P1)).toBe(false);
+    expect(readProjectTabs(ALICE, P1)).toEqual({ openIds: ['s1', 's2'], activeId: 's2' });
+  });
+
+  it('leaves the strip and the panel as they were when written', () => {
+    writeOpenTabs(ALICE, P1, ['s1'], 's1');
+    writeAgentPanelOpen(ALICE, P1, false);
+    writeSpaceContextEnabled(ALICE, P1, false);
+
+    expect(readProjectTabs(ALICE, P1)).toEqual({ openIds: ['s1'], activeId: 's1' });
+    expect(readAgentPanelOpen(ALICE, P1)).toBe(false);
+  });
+
+  it('drops only this value when it is unusable', () => {
+    seed({
+      [ALICE]: {
+        [P1]: {
+          ...(slot([{ spaceId: 's1', viewport: null }], 's1') as object),
+          agentPanelOpen: false,
+          spaceContextEnabled: 'no',
+        },
+      },
+    });
+
+    expect(readSpaceContextEnabled(ALICE, P1)).toBeUndefined();
+    expect(readAgentPanelOpen(ALICE, P1)).toBe(false);
+    expect(readProjectTabs(ALICE, P1)).toEqual({ openIds: ['s1'], activeId: 's1' });
+  });
+
+  it('writes nothing without an account', () => {
+    writeSpaceContextEnabled(undefined, P1, false);
+    expect(raw()).toBeNull();
+    expect(readSpaceContextEnabled(undefined, P1)).toBeUndefined();
   });
 });
