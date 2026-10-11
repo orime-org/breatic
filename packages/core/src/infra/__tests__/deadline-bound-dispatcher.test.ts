@@ -9,11 +9,12 @@
  */
 
 import { describe, it, expect, vi } from "vitest";
+import type * as Undici from "undici";
 
 const h = vi.hoisted(() => ({ options: [] as unknown[] }));
 
 vi.mock("undici", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("undici")>();
+  const actual = await importOriginal<typeof Undici>();
   return {
     ...actual,
     Agent: class extends actual.Agent {
