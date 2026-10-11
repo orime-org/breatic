@@ -65,6 +65,7 @@ describe('the list of uploads still finishing', () => {
     await h.tick();
 
     await expect(ending).resolves.toEqual({
+      key: 'k1',
       state: 'completed',
       result: { assetId: 'a-k1', fileUrl: 'https://cdn/k1', kind: 'image', width: 4, height: 3 },
     });
@@ -151,7 +152,7 @@ describe('the list of uploads still finishing', () => {
     await settle();
     await h.tick();
 
-    await expect(ending).resolves.toEqual({ state: 'unknown' });
+    await expect(ending).resolves.toEqual({ key: 'k1', state: 'unknown' });
   });
 
   it('hands a failed upload its reason', async () => {
@@ -163,6 +164,6 @@ describe('the list of uploads still finishing', () => {
     await settle();
     await h.tick();
 
-    await expect(ending).resolves.toEqual({ state: 'failed', reason: 'unsupported_type' });
+    await expect(ending).resolves.toEqual({ key: 'k1', state: 'failed', reason: 'unsupported_type' });
   });
 });

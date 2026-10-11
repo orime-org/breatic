@@ -61,6 +61,7 @@ const { taskId: _noRow, ...TICKET_NO_NODE } = TICKET;
 
 /** What the status query hands a registered upload. */
 const COMPLETED = {
+  key: TICKET.storageKey,
   state: 'completed' as const,
   result: {
     assetId: 'asset-new',
@@ -169,7 +170,7 @@ describe('runMediaUpload — ask for a ticket, send the bytes, hand back the out
     });
 
     await runMediaUpload(file, context, deps);
-    end({ state: 'failed', reason: 'assemble_failed' });
+    end({ key: TICKET.storageKey, state: 'failed', reason: 'assemble_failed' });
     await Promise.resolve();
 
     expect(deps.onFailure).toHaveBeenCalledExactlyOnceWith({
@@ -191,7 +192,7 @@ describe('runMediaUpload — ask for a ticket, send the bytes, hand back the out
   it('reports an ending the server does not know as an ordinary failure', async () => {
     const deps = makeUploadDeps({
       requestTicket: vi.fn().mockResolvedValue(TICKET_NO_NODE),
-      waitForEnding: vi.fn().mockResolvedValue({ state: 'unknown' }),
+      waitForEnding: vi.fn().mockResolvedValue({ key: TICKET.storageKey, state: 'unknown' }),
     });
 
     await runMediaUpload(file, { projectId: 'p1' }, deps);
@@ -323,7 +324,7 @@ describe('runMediaUpload — ask for a ticket, send the bytes, hand back the out
   // that broke: the same file re-sent meets the same refusal every time.
   it('names a format the edge refused apart from a transfer that broke', async () => {
     const deps = makeUploadDeps({
-      waitForEnding: vi.fn().mockResolvedValue({ state: 'failed', reason: 'unsupported_type' }),
+      waitForEnding: vi.fn().mockResolvedValue({ key: TICKET.storageKey, state: 'failed', reason: 'unsupported_type' }),
     });
 
     await runMediaUpload(file, context, deps);

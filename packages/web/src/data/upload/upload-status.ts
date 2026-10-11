@@ -15,15 +15,11 @@
 import {
   UPLOAD_STATUS_MAX_KEYS,
   type UploadStatus,
-  type UploadStatusResult,
 } from '@breatic/shared';
 import { assetsApi } from '@web/data/api/assets';
 
-/** How one upload ended, as the server told it. */
-export type UploadEnding =
-  | { state: 'completed'; result: UploadStatusResult }
-  | { state: 'failed'; reason: string }
-  | { state: 'unknown' };
+/** How one upload ended, as the server told it: any status but still finishing. */
+export type UploadEnding = Exclude<UploadStatus, { state: 'finishing' }>;
 
 /** Hands one waiter its upload's ending. */
 type Resolve = (ending: UploadEnding) => void;
@@ -49,24 +45,6 @@ export interface UploadStatusList {
    * @returns Its ending, once the server has one.
    */
   waitFor: (storageKey: string) => Promise<UploadEnding>;
-}
-
-/**
- * The ending a status names, or null while it is still finishing.
- * @param status - One item of the server's answer.
- * @returns The ending, or null.
- */
-function endingOf(status: UploadStatus): UploadEnding | null {
-  switch (status.state) {
-    case 'finishing':
-      return null;
-    case 'completed':
-      return { state: 'completed', result: status.result };
-    case 'failed':
-      return { state: 'failed', reason: status.reason };
-    case 'unknown':
-      return { state: 'unknown' };
-  }
 }
 
 /**
@@ -107,11 +85,10 @@ export function createUploadStatusList(deps: UploadStatusListDeps): UploadStatus
       }
       if (answer.retryAfterSeconds !== null) retryAfterSeconds = answer.retryAfterSeconds;
       for (const status of answer.items) {
-        const ending = endingOf(status);
         const resolvers = waiting.get(status.key);
-        if (ending === null || resolvers === undefined) continue;
+        if (status.state === 'finishing' || resolvers === undefined) continue;
         waiting.delete(status.key);
-        for (const resolve of resolvers) resolve(ending);
+        for (const resolve of resolvers) resolve(status);
       }
     }
     scheduled = false;
