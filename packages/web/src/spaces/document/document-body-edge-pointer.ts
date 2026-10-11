@@ -45,7 +45,7 @@ import {
   type PointerZone,
 } from '@web/spaces/document/document-body-edge-selection';
 import { bodyHolds } from '@web/spaces/document/document-body-focus';
-import { bodyScrollerOf } from '@web/spaces/document/document-body-autoscroll';
+import { bodyScrollerOf, type PointerAt } from '@web/spaces/document/document-body-autoscroll';
 import { autoScrollOf } from '@web/spaces/document/document-drag-autoscroll';
 import { MEDIA_CHROME } from '@web/spaces/document/DocumentMediaBlock';
 
@@ -330,7 +330,7 @@ class PointerFollower {
     // ProseMirror does not focus on a Shift press: a selection set in a body
     // without the focus is neither painted nor where the next keys go.
     event.preventDefault();
-    this.scrollWithPress();
+    this.scrollWithPress(null);
     if (!view.hasFocus()) view.focus();
     const next = dragSelection(doc, { press: zone, anchor: fixed, left: true }, zone, pointer);
     if (next !== null && !next.eq(selection)) view.dispatch(view.state.tr.setSelection(next));
@@ -351,20 +351,19 @@ class PointerFollower {
     view.focus();
     const zone = zoneAt(view, y);
     this.begin({ startX: x, startY: y, x, y, zone, anchorEdge: zone === 'body' ? null : zone, left: true, moved: true, onWidget: false });
-    this.scrollWithPress();
+    this.scrollWithPress({ x, y });
   }
 
   /**
    * Scrolls the body while this press is pulled past its edge. Only for a press
    * taken from the browser: one the browser keeps is scrolled by its own
    * selection autoscroll (inner#1350 §5.2), which starts when the press is
-   * dragged — so a press that has not moved gives no pointer yet.
+   * dragged.
+   * @param at - The pointer to start from; null for a press that has not moved.
    */
-  private scrollWithPress(): void {
+  private scrollWithPress(at: PointerAt | null): void {
     const scroller = bodyScrollerOf(this.view);
-    const { press } = this;
-    if (scroller === null || press === null) return;
-    autoScrollOf(this.view)?.beginPress(scroller, press.moved ? { x: press.x, y: press.y } : null);
+    if (scroller !== null) autoScrollOf(this.view)?.beginPress(scroller, at);
   }
 
   /**
@@ -377,6 +376,9 @@ class PointerFollower {
       return;
     }
     this.moveTo(event.clientX, event.clientY);
+    // Only a pointer move tells the loop where the pointer is: a scroll moves
+    // the body under it, not the pointer.
+    autoScrollOf(this.view)?.follow({ x: event.clientX, y: event.clientY });
   };
 
   /** Re-reads where the pointer is when the body scrolls under it. */
@@ -422,7 +424,6 @@ class PointerFollower {
     if (press === null) return;
     const left = press.left || zoneAt(this.view, y) !== press.zone;
     this.press = { ...press, x, y, left, moved: press.moved || travelled(press, x, y) };
-    autoScrollOf(this.view)?.follow({ x, y });
     this.sync();
   }
 

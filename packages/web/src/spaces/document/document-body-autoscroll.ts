@@ -88,7 +88,7 @@ const FULL_SHARE = 0.5;
 const MAX_PER_SECOND = 900;
 /** The most one frame moves inside the hitbox: full speed at 60fps. */
 const MAX_STEP = MAX_PER_SECOND / 60;
-/** Time from entering the hitbox to full speed, in ms. */
+/** Time from the pointer coming over the scroller to full speed, in ms. */
 const RAMP_MS = 400;
 /** Chrome's autoscroll band, in px (`autoscroll_controller.cc`). */
 const NATIVE_BAND = 20;
@@ -106,8 +106,7 @@ const STILL: EdgeReading = { dir: 0, factor: 0, beyond: 0 };
  */
 export function readEdge(box: EdgeBox, at: PointerAt, axis: ScrollAxis, gate: boolean): EdgeReading {
   const [start, end, along] = axis === 'y' ? [box.top, box.bottom, at.y] : [box.left, box.right, at.x];
-  const [crossStart, crossEnd, across] = axis === 'y' ? [box.left, box.right, at.x] : [box.top, box.bottom, at.y];
-  if (gate && (across < crossStart || across > crossEnd)) return STILL;
+  if (!isOver(box, at, axis, gate)) return STILL;
   if (along < start) return { dir: -1, factor: 1, beyond: start - along };
   if (along > end) return { dir: 1, factor: 1, beyond: along - end };
   const hitbox = Math.min((end - start) * HITBOX_SHARE, HITBOX_CAP);
@@ -118,9 +117,24 @@ export function readEdge(box: EdgeBox, at: PointerAt, axis: ScrollAxis, gate: bo
 }
 
 /**
+ * Whether the pointer is over the scroller, or past its edge along the axis it
+ * scrolls: the reach over which a drag's ramp is kept.
+ * @param box - The scroller's box.
+ * @param at - The pointer.
+ * @param axis - The axis it scrolls along.
+ * @param gate - Whether the pointer must sit within it across the other axis.
+ * @returns Whether it is.
+ */
+function isOver(box: EdgeBox, at: PointerAt, axis: ScrollAxis, gate: boolean): boolean {
+  if (!gate) return true;
+  const [crossStart, crossEnd, across] = axis === 'y' ? [box.left, box.right, at.x] : [box.top, box.bottom, at.y];
+  return across >= crossStart && across <= crossEnd;
+}
+
+/**
  * The pixels one frame of a drag moves.
  * @param reading - Where the pointer is.
- * @param sinceEngagedMs - Time since the pointer entered the hitbox.
+ * @param sinceEngagedMs - Time since the pointer came over the scroller.
  * @param frameMs - Time since the last frame.
  * @returns The signed step.
  */
@@ -134,7 +148,7 @@ export function dragStep(reading: EdgeReading, sinceEngagedMs: number, frameMs: 
 
 /**
  * How far into the ramp a drag is.
- * @param sinceEngagedMs - Time since the pointer entered the hitbox.
+ * @param sinceEngagedMs - Time since the pointer came over the scroller.
  * @returns 0–1.
  */
 function rampAt(sinceEngagedMs: number): number {
@@ -192,6 +206,7 @@ interface Session {
   readonly source: AutoScrollSource;
   readonly target: DragTarget;
   at: PointerAt | null;
+  /** The reading the pointer left the window with. */
   last: EdgeReading;
   engagedAt: number | null;
   lastFrame: number | null;
@@ -249,8 +264,8 @@ export class BodyAutoScroll {
   /**
    * Starts a pulled-selection session on the body scroller.
    * @param el - The body scroller.
-   * @param at - Where the press is once it has moved; null for a press that
-   * has not, which Chrome does not scroll until it is dragged.
+   * @param at - The pointer to start from; null for a press that has not
+   * moved, which Chrome does not scroll until it is dragged.
    */
   beginPress(el: HTMLElement, at: PointerAt | null): void {
     this.start('press', { el, axis: 'y', gate: false });
@@ -275,11 +290,10 @@ export class BodyAutoScroll {
     session.outside = true;
     // Outside the window the loop goes on from the last dragover, which no
     // frame may have read yet.
-    if (session.at !== null) {
-      const { target } = session;
-      session.last = readEdge(target.el.getBoundingClientRect(), session.at, target.axis, target.gate);
-    }
-    session.carry = carriesOutside(session.last, this.edgeIsWindowEdge(session));
+    const { target } = session;
+    const left = session.at === null ? STILL : readEdge(target.el.getBoundingClientRect(), session.at, target.axis, target.gate);
+    session.last = left;
+    session.carry = carriesOutside(left, this.edgeIsWindowEdge(target, left.dir));
   }
 
   /**
@@ -342,33 +356,34 @@ export class BodyAutoScroll {
       // Outside the window the scroll goes on at the step past the edge, from
       // the distance the pointer had when it left.
       if (!session.carry) return 0;
-      // A pointer flung out within one frame was never seen at the edge inside:
-      // its ramp starts as it leaves.
+      // A pointer flung out before any frame saw it over the scroller starts
+      // its ramp here.
       session.engagedAt ??= time;
       return pastEdgeStep(session.last, rampAt(time - session.engagedAt));
     }
     if (session.at === null) return 0;
     const box = target.el.getBoundingClientRect();
     if (session.source === 'press') return pressStep(box, session.at);
-    const reading = readEdge(box, session.at, target.axis, target.gate);
-    if (reading.dir === 0) {
+    if (!isOver(box, session.at, target.axis, target.gate)) {
       session.engagedAt = null;
       return 0;
     }
-    if (session.engagedAt === null) session.engagedAt = time;
-    return dragStep(reading, time - session.engagedAt, frameMs);
+    // Pragmatic starts the ramp as soon as the pointer is over the scroller,
+    // not when it enters the hitbox (`try-scroll.ts`, `engagement-history.ts`).
+    session.engagedAt ??= time;
+    return dragStep(readEdge(box, session.at, target.axis, target.gate), time - session.engagedAt, frameMs);
   }
 
   /**
-   * Whether the edge the last reading pointed at is the window's own edge.
-   * @param session - The session.
+   * Whether a scroller's edge towards a direction is the window's own edge.
+   * @param target - The scroller.
+   * @param dir - Towards which edge.
    * @returns Whether it is.
    */
-  private edgeIsWindowEdge(session: Session): boolean {
-    const box = session.target.el.getBoundingClientRect();
+  private edgeIsWindowEdge(target: DragTarget, dir: EdgeReading['dir']): boolean {
+    const box = target.el.getBoundingClientRect();
     const { width, height } = this.deps.viewport();
-    const { dir } = session.last;
-    if (session.target.axis === 'y') return dir < 0 ? box.top <= 1 : box.bottom >= height - 1;
+    if (target.axis === 'y') return dir < 0 ? box.top <= 1 : box.bottom >= height - 1;
     return dir < 0 ? box.left <= 1 : box.right >= width - 1;
   }
 }

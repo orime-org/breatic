@@ -27,7 +27,7 @@ import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view';
 import type { BlockNoteEditor, ComputeDropPositionContext } from '@blocknote/core';
 
 import { followCell, renameCell, type CellName } from '@web/spaces/document/document-table-cell-name';
-import { bodyScrollerOf } from '@web/spaces/document/document-body-autoscroll';
+import { bodyScrollerOf, SCROLL_VIEWPORT } from '@web/spaces/document/document-body-autoscroll';
 import { cellAt, moveLineAt } from '@web/spaces/document/document-table-run';
 
 /** Which way a drag moves cells. */
@@ -194,7 +194,29 @@ function edgesOf(view: EditorView, drag: Drag): number[] | null {
 }
 
 /**
- * The gap the pointer of a drag event is over.
+ * Where on screen a drag's lines can be seen, along the axis they move on: a
+ * column's within its table frame, a row's within the body scroller. Past it
+ * the edges the table lays out are clipped from view.
+ * @param view - The editor view.
+ * @param drag - The drag.
+ * @returns The start and end, or null when nothing clips them.
+ */
+function shownRange(view: EditorView, drag: Drag): [number, number] | null {
+  const cell = view.nodeDOM(drag.source);
+  const clip =
+    drag.orientation === 'column'
+      ? cell instanceof Element
+        ? cell.closest<HTMLElement>(SCROLL_VIEWPORT)
+        : null
+      : bodyScrollerOf(view);
+  if (clip === null) return null;
+  const box = clip.getBoundingClientRect();
+  return drag.orientation === 'row' ? [box.top, box.bottom] : [box.left, box.right];
+}
+
+/**
+ * The gap the pointer of a drag event is over, among the lines the reader
+ * sees: a pointer past them is read at the nearest one shown.
  * @param view - The editor view.
  * @param drag - The drag.
  * @param event - The dragover or drop.
@@ -202,7 +224,10 @@ function edgesOf(view: EditorView, drag: Drag): number[] | null {
  */
 function gapUnder(view: EditorView, drag: Drag, event: MouseEvent): number | null {
   const edges = edgesOf(view, drag);
-  return edges === null ? null : dropGapAt(edges, drag.orientation === 'row' ? event.clientY : event.clientX);
+  if (edges === null) return null;
+  const pointer = drag.orientation === 'row' ? event.clientY : event.clientX;
+  const shown = shownRange(view, drag);
+  return dropGapAt(edges, shown === null ? pointer : Math.min(Math.max(pointer, shown[0]), shown[1]));
 }
 
 /**
