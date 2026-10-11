@@ -12,7 +12,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { chatMessageSchema } from '@breatic/shared';
 import type { ChatCanvasDetail } from '@breatic/shared';
 
-import { fitCanvas, fitNodeOf } from '@web/pages/project/chat/canvas-fit';
+import { cutText, fitCanvas, fitNodeOf } from '@web/pages/project/chat/canvas-fit';
 import type { FitInput, FitNode } from '@web/pages/project/chat/canvas-fit';
 
 const URL = 'https://assets.example.com/upload/2026-10-11/1791690000000_3e8b4deb.png';
@@ -270,20 +270,29 @@ describe('cutting texts', () => {
 
   it('leaves a text whole when cutting it would not make it shorter', () => {
     const input = canvasOf([image('a', 1, 'abcdef'), image('b', 2, long)]);
-    const max = lengthAt(input, () => 'slim') - long.length + 10;
+    const max = lengthAt(input, () => 'slim') - long.length + 30;
 
     const got = parsed(fit(input, max).text);
 
     expect((got.nodes[0]?.data?.prompts as Record<string, string>).t2i).toBe('abcdef');
   });
 
-  it('does not split a character in two', () => {
+  it('cuts a text before a character it would split, and counts what it left out', () => {
+    const emoji = '😀'.repeat(10);
+
+    expect(cutText(emoji, 3)).toBe('😀\u2026[+18]');
+    expect(cutText(emoji, 4)).toBe('😀😀\u2026[+16]');
+    expect(cutText('abcdef', 0)).toBe('\u2026[+6]');
+    expect(cutText('abcdef', 1)).toBe('abcdef');
+  });
+
+  it('does not split a character in two, wherever the limit falls', () => {
     const input = canvasOf([image('a', 1, '😀'.repeat(2_000))]);
-    const max = lengthAt(input, () => 'slim') - 3_000;
+    for (let max = lengthAt(input, () => 'slim') - 3_000; max < lengthAt(input, () => 'slim') - 2_960; max += 1) {
+      const prompt = (parsed(fit(input, max).text).nodes[0]?.data?.prompts as Record<string, string>).t2i;
 
-    const prompt = (parsed(fit(input, max).text).nodes[0]?.data?.prompts as Record<string, string>).t2i;
-
-    expect(prompt).toMatch(/^(😀)*…\[\+\d+\]$/u);
+      expect(prompt).toMatch(/^(😀)*…\[\+\d+\]$/u);
+    }
   });
 });
 
@@ -298,6 +307,17 @@ describe('names only, then leaving out', () => {
     expect(size.b).toBe('named');
     expect(size.a).toBe('slim');
     expect(out.detail.names_only).toBeGreaterThanOrEqual(1);
+    // Naming the others freed room: the selected node's text goes whole again.
+    const a = parsed(out.text).nodes.find((n) => n.id === 'a');
+    expect((a?.data?.prompts as Record<string, string>).t2i).toBe('a quiet street at night');
+  });
+
+  it('leaves out a link touching the selection last, even when its ends are the earliest', () => {
+    const input = canvasOf([image('a', 1), image('b', 2), image('c', 3)], ['a'], [['a', 'b'], ['b', 'c']]);
+
+    const got = parsed(fit(input, lengthAt(input, () => 'named') - 1).text);
+
+    expect(got.edges).toEqual([{ source: 'a', target: 'b' }]);
   });
 
   it('leaves out links among unselected nodes before a link that touches the selection', () => {
