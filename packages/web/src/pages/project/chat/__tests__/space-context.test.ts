@@ -131,26 +131,12 @@ describe('the Space list', () => {
 });
 
 describe('an open canvas', () => {
-  it('carries its nodes and links as indented JSON', () => {
-    openCanvas();
-    addNode(PID, canvas.id, {
-      id: 'n1',
-      type: 'text',
-      position: { x: 0, y: 0 },
-      data: { name: 'Hero', createdAt: 1, createdBy: 'u1', locked: false, attachments: [] },
-    });
-
-    const got = read();
-
-    expect(got.current).toMatchObject({ id: 'c1', name: 'Cast', kind: 'canvas', state: 'loaded' });
-    const text = got.current?.state === 'loaded' ? got.current.text : '';
-    expect(text).toContain('\n  "nodes": [');
-    expect(JSON.parse(text)).toMatchObject({ nodes: [{ id: 'n1', type: 'text', data: { name: 'Hero' } }], edges: [] });
-  });
-
-  it('keeps its links when its content is cut to the limit', () => {
-    openCanvas();
-    for (const id of ['n1', 'n2']) {
+  /**
+   * Put text nodes on the open canvas.
+   * @param ids - Their ids.
+   */
+  const addNodes = (ids: readonly string[]): void => {
+    for (const id of ids) {
       addNode(PID, canvas.id, {
         id,
         type: 'text',
@@ -158,13 +144,62 @@ describe('an open canvas', () => {
         data: { name: `Node ${id}`, createdAt: 1, createdBy: 'u1', locked: false, attachments: [] },
       });
     }
+  };
+
+  /**
+   * The open canvas as one message carries it, cut to a limit.
+   * @param max - How many characters may go.
+   * @returns The content and its full length.
+   */
+  const sent = (max: number): { content: string; total: number } => {
+    const current = clipSpaceContext(read(), { currentSpaceMaxChars: max, spaceListMaxItems: 200 }).current_space;
+    return current?.state === 'loaded' ? { content: current.content, total: current.total_chars } : { content: '', total: -1 };
+  };
+
+  it('carries its nodes and links as compact JSON', () => {
+    openCanvas();
+    addNodes(['n1']);
+
+    const { content, total } = sent(100_000);
+
+    expect(content).not.toContain('\n');
+    expect(total).toBe(content.length);
+    expect(JSON.parse(content)).toMatchObject({ edges: [], nodes: [{ id: 'n1', type: 'text', data: { name: 'Node n1' } }] });
+  });
+
+  it('keeps whole nodes, and the links between them, when cut to the limit', () => {
+    openCanvas();
+    addNodes(['n1', 'n2', 'n3']);
     addEdge(PID, canvas.id, { id: 'e1', source: 'n1', target: 'n2' });
+    addEdge(PID, canvas.id, { id: 'e2', source: 'n2', target: 'n3' });
+    const full = sent(100_000);
+    const max = Math.floor(full.total * 0.75);
 
-    const cut = clipSpaceContext(read(), { currentSpaceMaxChars: 200, spaceListMaxItems: 200 });
+    const { content, total } = sent(max);
 
-    const current = cut.current_space;
-    expect(current?.state === 'loaded' && current.total_chars).toBeGreaterThan(200);
-    expect(current?.state === 'loaded' ? current.content : '').toContain('"source": "n1"');
+    expect(total).toBe(full.total);
+    expect(content.length).toBeLessThanOrEqual(max);
+    const kept = JSON.parse(content) as { nodes: Array<{ id: string }>; edges: Array<{ source: string; target: string }> };
+    const ids = new Set(kept.nodes.map((n) => n.id));
+    expect(ids.size).toBeGreaterThan(0);
+    expect(ids.size).toBeLessThan(3);
+    for (const edge of kept.edges) expect(ids.has(edge.source) && ids.has(edge.target)).toBe(true);
+  });
+
+  it('still carries nodes when its links alone would fill the limit', () => {
+    openCanvas();
+    const ids = ['n1', 'n2', 'n3', 'n4', 'n5', 'n6'];
+    addNodes(ids);
+    for (const source of ids) {
+      for (const target of ids) {
+        if (source !== target) addEdge(PID, canvas.id, { id: `${source}-${target}`, source, target });
+      }
+    }
+    const linksOnly = JSON.stringify(JSON.parse(sent(100_000).content).edges).length;
+
+    const { content } = sent(Math.floor(linksOnly / 2));
+
+    expect((JSON.parse(content) as { nodes: unknown[] }).nodes.length).toBeGreaterThan(0);
   });
 
   it('is empty when it holds nothing that can be handed over', () => {
