@@ -97,6 +97,11 @@ describe('pressStep', () => {
   it('does not look at the horizontal position', () => {
     expect(pressStep(BOX, { x: 10, y: BOX.bottom + 30 })).toBe(50);
   });
+
+  it('scrolls on the last row of the window when the body ends where the window does (full screen)', () => {
+    // BOX.bottom is the window's 900: the pointer can get no further than 899.
+    expect(pressStep(BOX, { x: 600, y: BOX.bottom - 1 })).toBe(19);
+  });
 });
 
 describe('carriesOutside, for a drag from outside the window', () => {
