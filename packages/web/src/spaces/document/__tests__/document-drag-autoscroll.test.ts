@@ -61,16 +61,27 @@ function open(blocks: unknown[] = [{ type: 'paragraph', content: 'one' }]): { ed
  * @param init.x - Across.
  * @param init.y - Down.
  * @param init.relatedTarget - The related target.
+ * @param init.buttons - The buttons held; 1 unless given.
+ * @param init.screenX - Across the screen.
+ * @param init.screenY - Down the screen.
  * @param cancel - Whether a handler on the target cancels it first.
  * @returns The event.
  */
 function drag(
   target: EventTarget,
   type: string,
-  init: { x?: number; y?: number; relatedTarget?: EventTarget | null } = {},
+  init: { x?: number; y?: number; relatedTarget?: EventTarget | null; buttons?: number; screenX?: number; screenY?: number } = {},
   cancel = false,
 ): Event {
-  const event = new MouseEvent(type, { bubbles: true, cancelable: true, clientX: init.x ?? 0, clientY: init.y ?? 0 });
+  const event = new MouseEvent(type, {
+    bubbles: true,
+    cancelable: true,
+    clientX: init.x ?? 0,
+    clientY: init.y ?? 0,
+    buttons: init.buttons ?? 1,
+    screenX: init.screenX ?? 0,
+    screenY: init.screenY ?? 0,
+  });
   Object.defineProperty(event, 'relatedTarget', { value: init.relatedTarget ?? null });
   if (cancel) target.addEventListener(type, (e) => e.preventDefault(), { once: true });
   target.dispatchEvent(event);
@@ -78,24 +89,42 @@ function drag(
 }
 
 describe('the drag session', () => {
-  it('starts on a dragstart nobody cancelled, on the body scroller, vertically', () => {
+  it('starts when the drag first passes over the body, on the body scroller, vertically', () => {
     const { editor, scroller } = open();
     const view = editor.prosemirrorView!;
     drag(view.dom, 'dragstart');
     const auto = autoScrollOf(view)!;
+    expect(auto.state).toBe('idle');
+    drag(scroller, 'dragover', { x: 600, y: 400 });
     expect(auto.source).toBe('drag');
     expect(auto.target?.el).toBe(scroller);
     expect(auto.target?.axis).toBe('y');
   });
 
-  it('does not start on a drag from outside the body scroller, such as a top bar link', () => {
+  it('does not start on a drag that never passes over the body, such as a top bar link dragged about', () => {
     const { editor } = open();
     const view = editor.prosemirrorView!;
     const link = document.createElement('a');
     link.href = '/studio';
     document.body.append(link);
     drag(link, 'dragstart');
+    drag(link, 'dragover', { x: 40, y: 20 });
     expect(autoScrollOf(view)!.state).toBe('idle');
+  });
+
+  it.each([
+    ['a top bar link', 'a'],
+    ['text in the Agent column', 'p'],
+  ])('starts for %s once it is dragged over the body: the pointer decides, not where the drag began', (_name, tag) => {
+    const { editor, scroller } = open();
+    const view = editor.prosemirrorView!;
+    const source = document.createElement(tag);
+    document.body.append(source);
+    drag(source, 'dragstart');
+    drag(scroller, 'dragover', { x: 600, y: 400 });
+    const auto = autoScrollOf(view)!;
+    expect(auto.source).toBe('drag');
+    expect(auto.target?.el).toBe(scroller);
   });
 
   it('does not start on the dragenter that follows a drag from outside the body scroller', () => {
@@ -139,13 +168,15 @@ describe('the drag session', () => {
     const view = editor.prosemirrorView!;
     const auto = autoScrollOf(view)!;
     const leave = vi.spyOn(auto, 'leaveWindow');
+    const scroller = view.dom.closest('[data-radix-scroll-area-viewport]')!;
     drag(view.dom, 'dragstart');
+    drag(scroller, 'dragover', { x: 600, y: 700 });
     drag(window, 'dragleave', { relatedTarget: null });
-    expect(leave).toHaveBeenLastCalledWith(true);
+    expect(leave).toHaveBeenLastCalledWith(expect.objectContaining({ fromPage: true }));
     drag(view.dom, 'dragend');
-    drag(view.dom, 'dragenter', { relatedTarget: null });
+    drag(scroller, 'dragenter', { x: 600, y: 700, relatedTarget: null });
     drag(window, 'dragleave', { relatedTarget: null });
-    expect(leave).toHaveBeenLastCalledWith(false);
+    expect(leave).toHaveBeenLastCalledWith(expect.objectContaining({ fromPage: false }));
   });
 
   it('does not start on a cancelled dragstart', () => {
@@ -163,9 +194,10 @@ describe('the drag session', () => {
   });
 
   it('goes outside on a dragleave to nothing and comes back on the next dragover', () => {
-    const { editor } = open();
+    const { editor, scroller } = open();
     const view = editor.prosemirrorView!;
     drag(view.dom, 'dragstart');
+    drag(scroller, 'dragover', { x: 600, y: 700 });
     // Within the page, a dragleave names where the pointer went.
     drag(window, 'dragleave', { relatedTarget: document.body });
     expect(autoScrollOf(view)!.state).toBe('tracking');
@@ -180,18 +212,20 @@ describe('the drag session', () => {
   });
 
   it('reads the pointer off a dragenter too: Chrome sends it instead of a dragover when the element under the pointer changes', () => {
-    const { editor } = open();
+    const { editor, scroller } = open();
     const view = editor.prosemirrorView!;
     drag(view.dom, 'dragstart');
+    drag(scroller, 'dragover', { x: 600, y: 400 });
     const follow = vi.spyOn(autoScrollOf(view)!, 'follow');
     drag(document.body, 'dragenter', { x: 40, y: 890, relatedTarget: view.dom });
     expect(follow).toHaveBeenCalledWith({ x: 40, y: 890 });
   });
 
   it('ignores the library\'s synthetic drag events, which carry a pointer clamped into the editor', () => {
-    const { editor } = open();
+    const { editor, scroller } = open();
     const view = editor.prosemirrorView!;
     drag(view.dom, 'dragstart');
+    drag(scroller, 'dragover', { x: 600, y: 400 });
     const auto = autoScrollOf(view)!;
     const follow = vi.spyOn(auto, 'follow');
     // The ones BlockNote dispatches (`SideMenu.ts` `dispatchSyntheticEvent`,
@@ -208,17 +242,19 @@ describe('the drag session', () => {
   });
 
   it.each(['drop', 'dragend'])('ends on %s', (type) => {
-    const { editor } = open();
+    const { editor, scroller } = open();
     const view = editor.prosemirrorView!;
     drag(view.dom, 'dragstart');
+    drag(scroller, 'dragover', { x: 600, y: 400 });
     drag(view.dom, type);
     expect(autoScrollOf(view)!.state).toBe('idle');
   });
 
   it('ends on the first mousemove with no button held, and not on one a drag lets through', () => {
-    const { editor } = open();
+    const { editor, scroller } = open();
     const view = editor.prosemirrorView!;
     drag(view.dom, 'dragstart');
+    drag(scroller, 'dragover', { x: 600, y: 400 });
     // Firefox lets a few pointer events through after a drag starts
     // (Pragmatic drag and drop `detect-broken-drag.js`); the button is held.
     document.body.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, buttons: 1 }));
@@ -229,10 +265,10 @@ describe('the drag session', () => {
 
   it('in Safari, tells leaving the window by the count of dragenter and dragleave', () => {
     vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue(SAFARI);
-    const { editor } = open();
+    const { editor, scroller } = open();
     const view = editor.prosemirrorView!;
     drag(view.dom, 'dragstart');
-    drag(view.dom, 'dragenter', { relatedTarget: null });
+    drag(scroller, 'dragenter', { x: 600, y: 400, relatedTarget: null });
     drag(document.body, 'dragenter', { relatedTarget: null });
     drag(window, 'dragleave', { relatedTarget: null });
     expect(autoScrollOf(view)!.state).toBe('tracking');
@@ -260,6 +296,7 @@ describe('the drag session', () => {
     scroller.style.overflowY = 'scroll';
     startTableDrag(view, 'column', cellPos);
     drag(view.dom, 'dragstart');
+    drag(scroller, 'dragover', { x: 600, y: 400 });
     const target = autoScrollOf(view)!.target!;
     expect(target.el).toBe(frame);
     expect(target.axis).toBe('x');
@@ -269,6 +306,91 @@ describe('the drag session', () => {
     document.body.addEventListener('drop', (e) => e.stopPropagation(), { once: true });
     drag(document.body, 'drop');
     expect(scroller.style.overflowY).toBe('scroll');
+  });
+});
+
+describe('leaving the page (design §5.2): ended in the window, or out of it', () => {
+  /**
+   * A drag over the body, with the dragovers given.
+   * @param points - The dragovers, in order.
+   * @param from - Where the drag began: on the page, or outside the window.
+   * @returns The view.
+   */
+  function dragOver(points: { x: number; y: number }[], from: 'page' | 'outside' = 'page'): NonNullable<Editor['prosemirrorView']> {
+    const { editor, scroller } = open();
+    const view = editor.prosemirrorView!;
+    if (from === 'page') drag(view.dom, 'dragstart');
+    else drag(scroller, 'dragenter', { ...points[0], relatedTarget: null });
+    for (const point of points) drag(scroller, 'dragover', point);
+    return view;
+  }
+
+  it('ends on the spot when the dragleave is at the last dragover\'s point (Esc, or a drop nobody took, in Firefox and Safari)', () => {
+    const view = dragOver([{ x: 600, y: 400 }]);
+    const leave = vi.spyOn(autoScrollOf(view)!, 'leaveWindow');
+    drag(window, 'dragleave', { x: 600, y: 400, relatedTarget: null });
+    expect(leave).not.toHaveBeenCalled();
+    expect(autoScrollOf(view)!.state).toBe('idle');
+  });
+
+  it('ends on the spot when the buttons changed since the last dragover (a drop nobody took, in Chrome)', () => {
+    const view = dragOver([{ x: 600, y: 400 }]);
+    drag(window, 'dragleave', { x: 0, y: 0, buttons: 0, relatedTarget: null });
+    expect(autoScrollOf(view)!.state).toBe('idle');
+  });
+
+  it('otherwise leaves the window through the edge the last two different dragovers head for', () => {
+    const view = dragOver([{ x: 600, y: 700 }, { x: 600, y: 700 }, { x: 610, y: 750 }]);
+    const leave = vi.spyOn(autoScrollOf(view)!, 'leaveWindow');
+    // Chrome's: (0,0), the buttons as they were.
+    drag(window, 'dragleave', { x: 0, y: 0, relatedTarget: null });
+    expect(leave).toHaveBeenCalledWith({ fromPage: true, exit: 'bottom', proven: false });
+    expect(autoScrollOf(view)!.state).toBe('outside');
+  });
+
+  it('takes a drag from outside the window as having left when its dragleave lies beyond the exit edge (Firefox, Safari on macOS)', () => {
+    const view = dragOver([{ x: 600, y: 720 }, { x: 605, y: 750 }], 'outside');
+    const leave = vi.spyOn(autoScrollOf(view)!, 'leaveWindow');
+    drag(window, 'dragleave', { x: 610, y: 800, screenX: 730, screenY: 880, relatedTarget: null });
+    expect(leave).toHaveBeenCalledWith({ fromPage: false, exit: 'bottom', proven: true });
+  });
+
+  it('does not take the screen\'s origin as proof: Firefox on Windows sends that never-set point', () => {
+    const view = dragOver([{ x: 600, y: 40 }, { x: 600, y: 20 }], 'outside');
+    const leave = vi.spyOn(autoScrollOf(view)!, 'leaveWindow');
+    drag(window, 'dragleave', { x: -120, y: -80, screenX: 0, screenY: 0, relatedTarget: null });
+    expect(leave).toHaveBeenCalledWith({ fromPage: false, exit: 'top', proven: false });
+  });
+
+  it('in Safari, a drag from the top bar into the body leaves the page only when it leaves the window', () => {
+    vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue(SAFARI);
+    const { editor, scroller } = open();
+    const view = editor.prosemirrorView!;
+    const link = document.createElement('a');
+    document.body.append(link);
+    drag(link, 'dragstart');
+    drag(link, 'dragenter', { x: 40, y: 20, relatedTarget: null });
+    drag(scroller, 'dragenter', { x: 600, y: 700, relatedTarget: null });
+    drag(scroller, 'dragover', { x: 600, y: 740 });
+    drag(link, 'dragleave', { x: 600, y: 700, relatedTarget: null });
+    expect(autoScrollOf(view)!.state).toBe('tracking');
+    drag(window, 'dragleave', { x: 0, y: 0, relatedTarget: null });
+    expect(autoScrollOf(view)!.state).toBe('outside');
+  });
+
+  it('in Safari, counts the next drag from nothing after a drag ended with dragend', () => {
+    vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue(SAFARI);
+    const { editor, scroller } = open();
+    const view = editor.prosemirrorView!;
+    drag(view.dom, 'dragstart');
+    drag(scroller, 'dragenter', { x: 600, y: 400, relatedTarget: null });
+    drag(document.body, 'dragenter', { relatedTarget: null });
+    drag(view.dom, 'dragend');
+    drag(view.dom, 'dragstart');
+    drag(scroller, 'dragenter', { x: 600, y: 700, relatedTarget: null });
+    drag(scroller, 'dragover', { x: 600, y: 740 });
+    drag(window, 'dragleave', { x: 0, y: 0, relatedTarget: null });
+    expect(autoScrollOf(view)!.state).toBe('outside');
   });
 });
 

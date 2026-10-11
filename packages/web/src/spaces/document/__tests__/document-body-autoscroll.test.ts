@@ -13,7 +13,10 @@ import {
   BodyAutoScroll,
   carriesOutside,
   dragStep,
+  endsWithinWindow,
+  exitEdgeOf,
   pressStep,
+  provesExit,
   readEdge,
   type EdgeBox,
 } from '@web/spaces/document/document-body-autoscroll';
@@ -104,30 +107,114 @@ describe('pressStep', () => {
   });
 });
 
+/** A 1440×900 window. */
+const WINDOW = { width: 1440, height: 900 };
+
+describe('exitEdgeOf: the window edge the pointer went out through, from the last two different dragovers', () => {
+  it('extends the last move to the edge it meets first', () => {
+    expect(exitEdgeOf({ x: 600, y: 860 }, { x: 610, y: 888 }, WINDOW)).toBe('bottom');
+    expect(exitEdgeOf({ x: 600, y: 40 }, { x: 590, y: 12 }, WINDOW)).toBe('top');
+    expect(exitEdgeOf({ x: 1400, y: 450 }, { x: 1428, y: 452 }, WINDOW)).toBe('right');
+  });
+
+  it('takes the edge the line reaches first, not the nearest one, for a slanted move', () => {
+    // 20 from the right and 30 from the bottom, heading mostly down.
+    expect(exitEdgeOf({ x: 1410, y: 830 }, { x: 1420, y: 870 }, WINDOW)).toBe('bottom');
+  });
+
+  it('takes the nearest edge when there was one reading only', () => {
+    expect(exitEdgeOf(null, { x: 600, y: 885 }, WINDOW)).toBe('bottom');
+    expect(exitEdgeOf(null, { x: 8, y: 450 }, WINDOW)).toBe('left');
+  });
+});
+
+describe('endsWithinWindow: the drag ended in the window (Esc, a drop nobody took)', () => {
+  it('is so when the dragleave is at the last dragover\'s point (Firefox, Safari)', () => {
+    expect(endsWithinWindow({ x: 600, y: 400, buttons: 0 }, { x: 600, y: 400, buttons: 0 })).toBe(true);
+  });
+
+  it('is so when the buttons changed since the last dragover (Chrome, a drop nobody took)', () => {
+    expect(endsWithinWindow({ x: 0, y: 0, buttons: 0 }, { x: 600, y: 400, buttons: 1 })).toBe(true);
+  });
+
+  it('is not so for a dragleave elsewhere with the same buttons (leaving the window; Chrome\'s Esc reads the same)', () => {
+    expect(endsWithinWindow({ x: 0, y: 0, buttons: 1 }, { x: 600, y: 888, buttons: 1 })).toBe(false);
+    expect(endsWithinWindow({ x: 600, y: 930, buttons: 0 }, { x: 600, y: 888, buttons: 0 })).toBe(false);
+  });
+
+  it('is not so with no dragover yet', () => {
+    expect(endsWithinWindow({ x: 0, y: 0, buttons: 1 }, null)).toBe(false);
+  });
+});
+
+describe('provesExit: a dragleave that shows the pointer left through that edge', () => {
+  it('is so for a point outside the viewport beyond the exit edge (Firefox and Safari on macOS)', () => {
+    expect(provesExit({ x: 600, y: 930, screenX: 720, screenY: 1010 }, 'bottom', WINDOW)).toBe(true);
+    expect(provesExit({ x: 600, y: -20, screenX: 720, screenY: 60 }, 'top', WINDOW)).toBe(true);
+  });
+
+  it('is not so for Chrome\'s (0,0), which is inside the viewport', () => {
+    expect(provesExit({ x: 0, y: 0, screenX: 0, screenY: 0 }, 'top', WINDOW)).toBe(false);
+  });
+
+  it('is not so for a point on the other side of the window', () => {
+    expect(provesExit({ x: 600, y: -20, screenX: 720, screenY: 60 }, 'bottom', WINDOW)).toBe(false);
+  });
+
+  it('is not so at the screen\'s origin: Firefox on Windows sends that never-set point (nsNativeDragTarget.cpp)', () => {
+    expect(provesExit({ x: -120, y: -80, screenX: 0, screenY: 0 }, 'top', WINDOW)).toBe(false);
+  });
+});
+
+/** How a pointer left, for a body that scrolls up and down. */
+const DOWN = { exit: 'bottom' as const, axis: 'y' as const };
+const UP = { exit: 'top' as const, axis: 'y' as const };
+
 describe('carriesOutside, for a drag from outside the window', () => {
+  const external = { fromPage: false, proven: false, edgeIsWindowEdge: false };
+
   it('carries on when the pointer left past the edge', () => {
-    expect(carriesOutside({ dir: -1, factor: 1, beyond: 30 }, false, false)).toBe(true);
+    expect(carriesOutside({ dir: -1, factor: 1, beyond: 30 }, { ...external, ...UP })).toBe(true);
   });
 
   it('stops for a full-speed reading inside the edge when the edge is not the window edge', () => {
-    expect(carriesOutside({ dir: -1, factor: 1, beyond: 0 }, false, false)).toBe(false);
+    expect(carriesOutside({ dir: -1, factor: 1, beyond: 0 }, { ...external, ...UP })).toBe(false);
   });
 
   it('carries on for a full-speed reading when the edge is the window edge', () => {
-    expect(carriesOutside({ dir: 1, factor: 1, beyond: 0 }, true, false)).toBe(true);
+    expect(carriesOutside({ dir: 1, factor: 1, beyond: 0 }, { ...external, ...DOWN, edgeIsWindowEdge: true })).toBe(true);
   });
 
   it('stops for anything slower or still', () => {
-    expect(carriesOutside({ dir: 1, factor: 0.6, beyond: 0 }, true, false)).toBe(false);
-    expect(carriesOutside({ dir: 0, factor: 0, beyond: 0 }, true, false)).toBe(false);
+    expect(carriesOutside({ dir: 1, factor: 0.6, beyond: 0 }, { ...external, ...DOWN, edgeIsWindowEdge: true })).toBe(false);
+    expect(carriesOutside({ dir: 0, factor: 0, beyond: 0 }, { ...external, ...DOWN, edgeIsWindowEdge: true })).toBe(false);
+  });
+
+  it('carries on for any reading towards the exit once the dragleave proves the exit', () => {
+    expect(carriesOutside({ dir: 1, factor: 0.2, beyond: 0 }, { ...external, ...DOWN, proven: true })).toBe(true);
   });
 });
 
 describe('carriesOutside, for a drag started on the page', () => {
-  it('carries on for any reading with a direction, and stops for one without', () => {
-    expect(carriesOutside({ dir: 1, factor: 0.2, beyond: 0 }, false, true)).toBe(true);
-    expect(carriesOutside({ dir: -1, factor: 1, beyond: 0 }, false, true)).toBe(true);
-    expect(carriesOutside({ dir: 0, factor: 0, beyond: 0 }, true, true)).toBe(false);
+  const local = { fromPage: true, proven: false, edgeIsWindowEdge: false };
+
+  it('carries on for any reading towards the exit edge, and stops for one without a direction', () => {
+    expect(carriesOutside({ dir: 1, factor: 0.2, beyond: 0 }, { ...local, ...DOWN })).toBe(true);
+    expect(carriesOutside({ dir: -1, factor: 1, beyond: 0 }, { ...local, ...UP })).toBe(true);
+    expect(carriesOutside({ dir: 0, factor: 0, beyond: 0 }, { ...local, ...DOWN, edgeIsWindowEdge: true })).toBe(false);
+  });
+
+  it('stops when the pointer went out through an edge across the axis it scrolls (sideways out of the window)', () => {
+    expect(carriesOutside({ dir: 1, factor: 1, beyond: 0 }, { ...local, exit: 'right', axis: 'y' })).toBe(false);
+  });
+
+  it('stops when the exit edge is on the axis but the reading points away from it', () => {
+    expect(carriesOutside({ dir: -1, factor: 1, beyond: 0 }, { ...local, ...DOWN })).toBe(false);
+  });
+
+  it('carries a table frame sideways out through the side it was nearing', () => {
+    expect(carriesOutside({ dir: 1, factor: 1, beyond: 0 }, { ...local, exit: 'right', axis: 'x' })).toBe(true);
+    expect(carriesOutside({ dir: 1, factor: 1, beyond: 0 }, { ...local, exit: 'bottom', axis: 'x' })).toBe(false);
   });
 });
 
@@ -213,7 +300,7 @@ describe('BodyAutoScroll', () => {
     auto.beginDrag({ el: body, axis: 'y' });
     auto.follow({ x: 600, y: 40 });
     for (let i = 0; i < 30; i += 1) clock.tick();
-    auto.leaveWindow(false);
+    auto.leaveWindow({ fromPage: false, exit: 'top', proven: false });
     expect(auto.state).toBe('outside');
     const before = body.scrollTop;
     clock.tick();
@@ -228,7 +315,7 @@ describe('BodyAutoScroll', () => {
     auto.beginDrag({ el: body, axis: 'y' });
     auto.follow({ x: 600, y: BOX.top + 10 });
     for (let i = 0; i < 30; i += 1) clock.tick();
-    auto.leaveWindow(false);
+    auto.leaveWindow({ fromPage: false, exit: 'top', proven: false });
     const before = body.scrollTop;
     clock.tick();
     expect(body.scrollTop).toBe(before);
@@ -241,7 +328,7 @@ describe('BodyAutoScroll', () => {
     auto.beginDrag({ el: body, axis: 'y' });
     auto.follow({ x: 600, y: 895 });
     for (let i = 0; i < 30; i += 1) clock.tick();
-    auto.leaveWindow(false);
+    auto.leaveWindow({ fromPage: false, exit: 'bottom', proven: false });
     const before = body.scrollTop;
     clock.tick();
     expect(body.scrollTop).toBeGreaterThan(before);
@@ -255,7 +342,7 @@ describe('BodyAutoScroll', () => {
     auto.beginDrag({ el: body, axis: 'y' });
     auto.follow({ x: 600, y: BOX.top + 10 });
     for (let i = 0; i < 30; i += 1) clock.tick();
-    auto.leaveWindow(true);
+    auto.leaveWindow({ fromPage: true, exit: 'top', proven: false });
     const before = body.scrollTop;
     clock.tick();
     expect(body.scrollTop).toBeLessThan(before);
@@ -268,7 +355,7 @@ describe('BodyAutoScroll', () => {
     auto.beginDrag({ el: body, axis: 'y' });
     auto.follow({ x: 600, y: BOX.bottom - 150 });
     for (let i = 0; i < 30; i += 1) clock.tick();
-    auto.leaveWindow(true);
+    auto.leaveWindow({ fromPage: true, exit: 'bottom', proven: false });
     const before = body.scrollTop;
     clock.tick();
     expect(body.scrollTop).toBeGreaterThan(before);
@@ -281,7 +368,7 @@ describe('BodyAutoScroll', () => {
     auto.beginDrag({ el: frame, axis: 'x' });
     auto.follow({ x: 950, y: 400 });
     for (let i = 0; i < 30; i += 1) clock.tick();
-    auto.leaveWindow(true);
+    auto.leaveWindow({ fromPage: true, exit: 'right', proven: false });
     const before = frame.scrollLeft;
     clock.tick();
     expect(frame.scrollLeft).toBeGreaterThan(before);
@@ -295,7 +382,7 @@ describe('BodyAutoScroll', () => {
     auto.beginDrag({ el: body, axis: 'y' });
     auto.follow({ x: 600, y: 490 });
     clock.tick();
-    auto.leaveWindow(true);
+    auto.leaveWindow({ fromPage: true, exit: 'bottom', proven: false });
     const before = body.scrollTop;
     clock.tick();
     expect(body.scrollTop).toBe(before);
@@ -306,7 +393,7 @@ describe('BodyAutoScroll', () => {
     const auto = new BodyAutoScroll(clock.deps);
     auto.beginDrag({ el: fakeScroller(), axis: 'y' });
     auto.follow({ x: 600, y: 895 });
-    auto.leaveWindow(false);
+    auto.leaveWindow({ fromPage: false, exit: 'bottom', proven: false });
     auto.follow({ x: 600, y: 490 });
     expect(auto.state).toBe('tracking');
   });
@@ -406,7 +493,7 @@ describe('BodyAutoScroll, the latest pointer (inner#1350 round 2)', () => {
     clock.tick();
     // Over the top bar, and straight out of the window within the same frame.
     auto.follow({ x: 600, y: 40 });
-    auto.leaveWindow(false);
+    auto.leaveWindow({ fromPage: false, exit: 'top', proven: false });
     for (let i = 0; i < 10; i += 1) clock.tick();
     expect(body.scrollTop).toBeLessThan(5000);
   });
@@ -420,7 +507,7 @@ describe('BodyAutoScroll, the latest pointer (inner#1350 round 2)', () => {
     auto.follow({ x: 600, y: 400 });
     clock.tick();
     auto.follow({ x: 600, y: 40 });
-    auto.leaveWindow(false);
+    auto.leaveWindow({ fromPage: false, exit: 'top', proven: false });
     const start = body.scrollTop;
     clock.tick();
     // 16ms into the ramp: 4% of (15 + 20 + 40 past the top edge).
@@ -439,7 +526,7 @@ describe('BodyAutoScroll, the latest pointer (inner#1350 round 2)', () => {
     body.scrollTop = 50_000;
     auto.beginDrag({ el: body, axis: 'y' });
     auto.follow({ x: 600, y: 40 });
-    auto.leaveWindow(false);
+    auto.leaveWindow({ fromPage: false, exit: 'top', proven: false });
     const start = body.scrollTop;
     clock.tick();
     expect(start - body.scrollTop).toBe(1);
