@@ -3,6 +3,9 @@
 
 import { describe, it, expect, vi } from 'vitest';
 
+// A node's upload hears its ending from the page's status list; these tests stop at the send.
+vi.mock('@web/data/upload/upload-status', () => ({ waitForUploadEnding: () => new Promise(() => undefined) }));
+
 import { isUploadableMediaType } from '@breatic/shared';
 
 import {
@@ -201,10 +204,7 @@ describe('fillNodeFromFile — fill an EXISTING node from a picked file (double-
       getUploadConfig: vi.fn().mockResolvedValue(CFG),
       hashFile: vi.fn().mockResolvedValue(HASH),
       requestTicket: vi.fn().mockResolvedValue(TICKET),
-      sendToIngest: vi.fn().mockResolvedValue({
-        fileUrl: 'https://cdn/p.png',
-        kind: 'image',
-      }),
+      sendToIngest: vi.fn().mockResolvedValue({ storageKey: TICKET.storageKey }),
       extractText: vi.fn().mockResolvedValue('extracted body'),
       onTypeMismatch: vi.fn(),
       setContent: vi.fn(),
