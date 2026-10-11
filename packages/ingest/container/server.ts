@@ -115,7 +115,7 @@ async function cutPreview(
   found: { report: ProbeReport; cover: Uint8Array | null },
   signal: AbortSignal,
 ): Promise<Uint8Array | null> {
-  // One reading of the clock decides both whether there is time and how much.
+  // One reading of the clock decides whether there is time left for a preview.
   const clock = { deadlineAt: asked.deadlineAt, now: Date.now() };
   const source = previewSource({
     wantPreview: asked.wantPreview,

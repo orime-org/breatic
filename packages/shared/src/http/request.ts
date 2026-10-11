@@ -430,10 +430,10 @@ function sendWithXhr(
   signal: AbortSignal,
   watch: IdleWatch,
 ): Promise<Response> {
-  const Request = xhrConstructor();
-  if (Request === undefined) return Promise.reject(new Error("no XMLHttpRequest here"));
+  const XhrCtor = xhrConstructor();
+  if (XhrCtor === undefined) return Promise.reject(new Error("no XMLHttpRequest here"));
   return new Promise<Response>((resolve, reject) => {
-    const xhr = new Request();
+    const xhr = new XhrCtor();
     const timer = idleTimer(watch);
     /** Abort the request when this delivery's signal is raised. */
     const abort = (): void => {
