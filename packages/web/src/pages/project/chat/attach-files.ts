@@ -26,7 +26,7 @@ export interface AttachDeps {
   /** The largest file that may be uploaded, in bytes. */
   maxUploadBytes: () => Promise<number>;
   /** Upload a media file, answering the address it was filed under. */
-  upload: (file: File, projectId: string) => Promise<string | undefined>;
+  upload: (file: File, projectId: string) => Promise<string>;
   /** Read a document's text. */
   extract: (file: File) => Promise<string>;
   /** A fresh id for an item that has no canvas node behind it. */
@@ -139,9 +139,7 @@ async function fillIn(picked: Accepted, tray: Tray, projectId: string, deps: Att
   let chip: ChatAttachedChip;
   try {
     if (media) {
-      const url = await deps.upload(file, projectId);
-      if (url === undefined) throw new Error('upload answered no address');
-      chip = { ...base, data_snapshot: { url } };
+      chip = { ...base, data_snapshot: { url: await deps.upload(file, projectId) } };
     } else {
       const text = await deps.extract(file);
       // A scanned pdf has no text layer: nothing to hand the agent.
