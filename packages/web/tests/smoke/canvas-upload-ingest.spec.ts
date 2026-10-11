@@ -97,10 +97,14 @@ async function dropFile(
   );
 }
 
-/** Every image node's `src` currently on the canvas. */
+/**
+ * Every image node's `src` currently on the canvas, one per node: zoomed past
+ * the preview, a node lays the original over it as a second img, and the
+ * node's own picture is the one with this test id.
+ */
 async function imageSources(target: Page): Promise<string[]> {
   return target.evaluate((space: string) =>
-    [...document.querySelectorAll(`${space} .react-flow__node img`)].map(
+    [...document.querySelectorAll(`${space} .react-flow__node img[data-testid="image-node-img"]`)].map(
       (img) => (img as HTMLImageElement).src,
     ), VISIBLE_SPACE);
 }
