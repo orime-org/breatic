@@ -306,11 +306,12 @@ export function useChatSession(
       if (attached === null) return;
       // The Spaces are cut to the server's limits, so they cannot go without
       // them. Said beside the plus sign as an attachment that cannot be
-      // measured is, and the words stay in the box.
-      let limits: Awaited<ReturnType<typeof chatApi.streamConfig>>;
-      try {
-        limits = await chatApi.streamConfig();
-      } catch {
+      // measured is, and the words stay in the box. The first read is a
+      // request, and the send stays held for it like opening a conversation.
+      const limits = await conversationRuntime.whileOpening(projectId, () =>
+        chatApi.streamConfig().catch(() => null),
+      );
+      if (limits === null) {
         chatAttachments.say(opened, { key: 'unavailable' });
         return;
       }

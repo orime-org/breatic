@@ -609,8 +609,9 @@ async function conversationForSending(projectId: string): Promise<string | undef
  * Hold the project's send mark for as long as this takes.
  *
  * For the stretches of a send with no turn to carry the wait -- opening a
- * conversation, and opening a replacement for one the server no longer has.
- * Both are a whole request long, and both used to leave a live send button up.
+ * conversation, opening a replacement for one the server no longer has, and
+ * reading the chat limits the reader's Spaces are cut to (inner#1413). Each
+ * can be a whole request long, and each would leave a live send button up.
  * @param projectId - The project being sent to.
  * @param work - What to do while the mark is up. Must not reject.
  * @returns Whatever the work answered.
@@ -1659,6 +1660,7 @@ export const useConversationRuntime = useStore;
 export const conversationRuntime = {
   ensureLoaded,
   conversationForSending,
+  whileOpening,
   noteActivity,
   loadEarlier,
   leaveProject,
