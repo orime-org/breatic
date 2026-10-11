@@ -19,7 +19,7 @@
  * pattern) and `long1080.mp4` (60 s of 1080p with sound).
  */
 import { execFileSync } from 'node:child_process';
-import { copyFileSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
@@ -46,12 +46,24 @@ function ffmpeg(...args: string[]): void {
 /**
  * Put the run's media in a directory of their own: the fixtures copied in,
  * the rest drawn.
+ *
+ * Every file carries a mark of this run, so its bytes are ones the studio has
+ * not stored before. An upload of bytes already stored is answered with the
+ * row that holds them, media numbers and all, so a run that met a fault while
+ * those numbers were read would hand its gaps to every run after it.
  * @returns The directory.
  */
 function prepareMedia(): string {
   const dir = mkdtempSync(join(tmpdir(), 'mini-tools-real-'));
-  for (const file of ['portrait.jpg', 'driving.mp4', 'speech.mp3']) {
-    copyFileSync(join(FIXTURES, file), join(dir, file));
+  const run = Date.now();
+  const mark = ['-metadata', `comment=mini-tools-real-run ${String(run)}`];
+  const colour = (run % 0xffffff).toString(16).padStart(6, '0');
+  ffmpeg(
+    '-i', join(FIXTURES, 'portrait.jpg'),
+    '-vf', `drawbox=x=0:y=0:w=1:h=1:color=0x${colour}:thickness=fill`, '-q:v', '3', join(dir, 'portrait.jpg'),
+  );
+  for (const file of ['driving.mp4', 'speech.mp3']) {
+    ffmpeg('-i', join(FIXTURES, file), '-c', 'copy', ...mark, join(dir, file));
   }
   const pattern = (size: string, seconds: number): string[] => [
     '-f', 'lavfi', '-i', `testsrc2=size=${size}:rate=25:duration=${String(seconds)}`,
@@ -59,13 +71,13 @@ function prepareMedia(): string {
   const tone = (seconds: number): string[] => [
     '-f', 'lavfi', '-i', `sine=frequency=330:duration=${String(seconds)}`,
   ];
-  const mp4 = ['-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest'];
+  const mp4 = ['-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', ...mark];
   ffmpeg(
     '-i', join(dir, 'speech.mp3'), ...tone(8),
-    '-filter_complex', 'amix=inputs=2:duration=longest', join(dir, 'song.mp3'),
+    '-filter_complex', 'amix=inputs=2:duration=longest', ...mark, join(dir, 'song.mp3'),
   );
   ffmpeg(...pattern('1280x720', 8), ...tone(8), ...mp4, join(dir, 'short720.mp4'));
-  ffmpeg(...pattern('1280x720', 5), '-c:v', 'libx264', '-pix_fmt', 'yuv420p', join(dir, 'silent.mp4'));
+  ffmpeg(...pattern('1280x720', 5), '-c:v', 'libx264', '-pix_fmt', 'yuv420p', ...mark, join(dir, 'silent.mp4'));
   ffmpeg(
     ...pattern('1440x864', 6), ...tone(6),
     '-vf', 'crop=1280:720:x=\'80+60*sin(t*9)\':y=\'72+50*cos(t*11)\'',
