@@ -2,7 +2,7 @@
 
 [English](README.md) | **简体中文**
 
-Breatic 是一个以**项目和多个 Space（空间）**组织工作的 AI 创作平台。你可以在 Document Space 中写剧本，在不同的 Canvas Space 中创作各个场景，并在同一个项目里与 AI 和团队协作。按场景、剧集、交付内容还是创意方向拆分工作，由你决定。
+Breatic 是内容创作者的 AI 操作系统，以**项目和多个 Space（空间）**组织工作。你可以在 Document Space 中写剧本，在不同的 Canvas Space 中创作各个场景，并在同一个项目里与 AI 和团队协作。按场景、剧集、交付内容还是创意方向拆分工作，由你决定。
 
 ## 用 Space 组织一个项目
 
