@@ -7,13 +7,13 @@
  * into the per-account limit.
  *
  * The server mints one ticket per file and allows `upload-ticket` in
- * config/rate-limits.yaml per account per window. The suite runs one case at a
- * time in one process (`workers: 1`), so a record kept here sees every ticket
- * every page asked for since the run began; a case over the limit gets a 429
- * for the files past it, and those nodes never fill.
+ * config/rate-limits.yaml per account per window; a case over the limit gets a
+ * 429 for the files past it, and those nodes never fill. The record is a file,
+ * because Playwright replaces its worker process after a failing case and the
+ * server's window outlives it.
  */
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
 
 import type { Page } from 'playwright/test';
 import { parse } from 'yaml';
@@ -33,8 +33,37 @@ const LIMIT = ((): { max: number; windowMs: number } => {
   return { max: entry.max, windowMs: entry.window_seconds * 1000 };
 })();
 
-/** When each account's tickets were asked for, oldest first. */
-const asked: Record<Account, number[]> = { A: [], B: [] };
+/** Where each account's tickets are recorded, beside the suite's sign-ins. */
+const TICKETS_FILE = 'playwright/.auth/upload-tickets.json';
+
+/**
+ * When each account's tickets were asked for inside the window, oldest first.
+ * @returns The record, empty when there is none yet.
+ * @throws {Error} When the file is there and cannot be read as a record.
+ */
+function readAsked(): Record<Account, number[]> {
+  const since = Date.now() - LIMIT.windowMs;
+  let stored: Partial<Record<Account, number[]>> = {};
+  try {
+    stored = JSON.parse(readFileSync(TICKETS_FILE, 'utf8')) as Partial<Record<Account, number[]>>;
+  } catch (err) {
+    // No file yet means no ticket has been recorded.
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+  }
+  return {
+    A: (stored.A ?? []).filter((at) => at > since),
+    B: (stored.B ?? []).filter((at) => at > since),
+  };
+}
+
+/**
+ * Write the record back.
+ * @param asked - Each account's ticket times.
+ */
+function writeAsked(asked: Record<Account, number[]>): void {
+  mkdirSync(dirname(TICKETS_FILE), { recursive: true });
+  writeFileSync(TICKETS_FILE, JSON.stringify(asked), 'utf8');
+}
 
 /** The pages already being watched. */
 const watched = new WeakSet<Page>();
@@ -50,7 +79,8 @@ export function watchUploadTickets(page: Page, account: Account): void {
   watched.add(page);
   page.on('request', (req) => {
     if (req.method() === 'POST' && req.url().endsWith('/api/v1/assets/upload-ticket')) {
-      asked[account].push(Date.now());
+      const asked = readAsked();
+      writeAsked({ ...asked, [account]: [...asked[account], Date.now()] });
     }
   });
 }
@@ -65,11 +95,9 @@ export async function roomForUploads(files: number, account: Account = 'A'): Pro
   const room = LIMIT.max - HEADROOM;
   if (files > room) throw new Error(`${String(files)} files is over the ${String(room)} a window allows`);
   for (;;) {
-    const since = Date.now() - LIMIT.windowMs;
-    const recent = asked[account].filter((at) => at > since);
-    asked[account] = recent;
+    const recent = readAsked()[account];
     if (recent.length + files <= room) return;
-    const freesAt = (recent[recent.length + files - room - 1] ?? since) + LIMIT.windowMs;
+    const freesAt = (recent[recent.length + files - room - 1] ?? Date.now()) + LIMIT.windowMs;
     await new Promise((resolve) => setTimeout(resolve, Math.max(freesAt - Date.now(), 50)));
   }
 }
