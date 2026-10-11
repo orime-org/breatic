@@ -310,12 +310,25 @@ test('the controls bar hugs its content in every locale', async () => {
   // Every locale, one at a time: the bar is allowed to be a different width in
   // each, and is not allowed to leave a gap or wrap in any of them.
   const singleRow = first.rowHeight;
-  for (const label of ['English', '简体中文', '繁體中文', '日本語', '한국어']) {
+  /**
+   * Switch the interface language through the header's language menu.
+   * @param label - The language's own name as the menu lists it.
+   */
+  const switchTo = async (label: string): Promise<void> => {
     await page.locator('header button[aria-haspopup="dialog"]').nth(1).click();
     await page.getByRole('dialog').getByRole('button', { name: label }).click();
-    await expect(page.getByTestId('focus-crop-controls')).toBeVisible();
-    const m = await measureBar();
-    expect(m.gap, `${label} leaves a gap`).toBeLessThanOrEqual(1);
-    expect(m.rowHeight, `${label} wraps`).toBe(singleRow);
+  };
+  try {
+    for (const label of ['English', '简体中文', '繁體中文', '日本語', '한국어']) {
+      await switchTo(label);
+      await expect(page.getByTestId('focus-crop-controls')).toBeVisible();
+      const m = await measureBar();
+      expect(m.gap, `${label} leaves a gap`).toBeLessThanOrEqual(1);
+      expect(m.rowHeight, `${label} wraps`).toBe(singleRow);
+    }
+  } finally {
+    // The choice is stored on the account, and every later page the account
+    // opens adopts it.
+    await switchTo('English');
   }
 });
