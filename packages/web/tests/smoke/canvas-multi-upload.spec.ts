@@ -17,6 +17,7 @@ import { test, expect, type Page } from 'playwright/test';
 import { CANVAS_SPACE, liveModuleUrl } from '../helpers/live-module';
 import { STATE_FILE, openSmokeProject } from '../helpers/project';
 import { createSpace, deleteSpace, visibleSpace, VISIBLE_SPACE } from '../helpers/space';
+import { roomForUploads } from '../helpers/upload-budget';
 
 test.use({ storageState: STATE_FILE.A });
 
@@ -112,6 +113,7 @@ async function handOverFiles(
   how: 'drop' | 'paste',
   count: number,
 ): Promise<void> {
+  await roomForUploads(count);
   await page.evaluate(
     async ([entry, total, encoded, space]: [string, number, string, string]) => {
       const binary = atob(encoded);
@@ -203,6 +205,7 @@ test('the upload tool turns one batch into one Group', async ({ page }) => {
   const files = 5;
   // Two inputs carry this id and only one takes a batch: the canvas has its
   // own single-file picker. The left menu's tool clicks the multiple one.
+  await roomForUploads(files);
   await page
     .locator('input[data-testid="canvas-upload-input"][multiple]')
     .setInputFiles(Array.from({ length: files }, (_, i) => pngFile(i)));
@@ -233,14 +236,16 @@ test('a row leaves each node its task counts', async ({ page }) => {
   await handOverFiles(page, 'drop', 3);
   await theGroupOver(page, 3);
 
-  const anchors = page.locator('[data-testid="node-task-counts-anchor"]');
+  // Read in the Space on screen: the Spaces kept open behind it hold nodes of
+  // their own.
+  const anchors = visibleSpace(page).locator('[data-testid="node-task-counts-anchor"]');
   await anchors.first().waitFor({ timeout: 40_000 });
   await expect.poll(async () => anchors.count(), { timeout: 40_000 }).toBe(3);
 
-  const boxes = await page.evaluate(() =>
+  const boxes = await page.evaluate((space: string) =>
     [
       ...document.querySelectorAll(
-        '.react-flow__node:not(.react-flow__node-group)',
+        `${space} .react-flow__node:not(.react-flow__node-group)`,
       ),
     ]
       .map((el) => {
@@ -253,6 +258,7 @@ test('a row leaves each node its task counts', async ({ page }) => {
         };
       })
       .sort((a, b) => a.left - b.left),
+  VISIBLE_SPACE,
   );
 
   // Every neighbour starts to the right of the counts belonging to the node
@@ -267,6 +273,7 @@ test('the members keep the grid, and the Group takes them along', async ({
   page,
 }) => {
   const files = 5;
+  await roomForUploads(files);
   await page
     .locator('input[data-testid="canvas-upload-input"][multiple]')
     .setInputFiles(Array.from({ length: files }, (_, i) => pngFile(i)));
@@ -374,6 +381,7 @@ test('one undo takes the whole batch back', async ({ page }) => {
 });
 
 test('one file stays one node, with no Group around it', async ({ page }) => {
+  await roomForUploads(1);
   await page
     .locator('input[data-testid="canvas-upload-input"][multiple]')
     .setInputFiles([pngFile(0)]);

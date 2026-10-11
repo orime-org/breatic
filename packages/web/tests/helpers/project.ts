@@ -18,6 +18,10 @@
  */
 import { readFileSync } from 'node:fs';
 
+import type { Page } from 'playwright/test';
+
+import { watchUploadTickets } from './upload-budget';
+
 /** Which account a Project belongs to. */
 export type Account = 'A' | 'B';
 
@@ -133,6 +137,9 @@ export async function openSmokeProject(
   account: Account = 'A',
   index = 0,
 ): Promise<void> {
+  // Every page that can upload is opened here, so this is where its tickets
+  // start being counted (helpers/upload-budget.ts).
+  if ('on' in page) watchUploadTickets(page as Page, account);
   await page.goto(smokeProjectUrl(account, index));
 }
 
