@@ -16,7 +16,10 @@
  * paints only a divider: the reader makes one by clicking it or walking onto
  * it with the arrows, and the 2026-09-18 rule that the machinery's own node
  * selections are not drawn (`index.css`, "A node-selected block is not drawn") stays for every other block. A
- * media block the reader selects draws itself (see `NODE_SELECTED`).
+ * media block the reader selects draws itself (see `NODE_SELECTED`). An edge
+ * takeover (`BodyEdgeSelection`) has its text drawn here too, and the native
+ * selection hidden: during a pull the page selection is still the browser's
+ * own, not the takeover's (inner#1350 A8).
  *
  * WHEN. Only while the reader can see a selection at all. In an editable body
  * that is while it holds the focus. A read-only body never takes the focus —
@@ -38,6 +41,7 @@ import { CellSelection } from '@tiptap/pm/tables';
 import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view';
 
 import {
+  BodyEdgeSelection,
   bodyEdgeAt,
   emptyEdgeLinePos,
   type BodyEdge,
@@ -50,8 +54,12 @@ import { MEDIA_BLOCK_TYPES, isMediaBlockType } from '@web/spaces/document/docume
 /** The class `index.css` paints a no-text block inside the selection with. */
 export const IN_SELECTION_CLASS = 'doc-in-selection';
 
-/** The body's attribute while a cell selection stands; `index.css` draws no native selection under it. */
-export const CELL_SELECTION_ATTR = 'data-cell-selection';
+/**
+ * The body's attribute while the selection is one the body draws itself — a
+ * cell selection or an edge takeover; `index.css` draws no native selection
+ * under it.
+ */
+export const SELECTION_DRAWN_ATTR = 'data-selection-drawn';
 
 /**
  * The class `index.css` marks an empty line with: an empty line an end of a
@@ -145,6 +153,11 @@ function paintFor(state: EditorState): DecorationSet {
       return false;
     });
     found.push(...emptyLinesAtEnds(selection, doc));
+    // The text an edge takeover holds, in the colour the panel stand-in
+    // paints with (`index.css`, `[data-show-selection]`).
+    if (selection instanceof BodyEdgeSelection) {
+      found.push(Decoration.inline(selection.from, selection.to, { 'data-show-selection': 'true' }));
+    }
   }
   return found.length > 0 ? DecorationSet.create(doc, found) : DecorationSet.empty;
 }
@@ -236,15 +249,16 @@ export const documentSelectionPaintExtension = createExtension(({ editor }) => {
             (mounted !== null && visible(mounted)) || shownByPanel()
               ? paintFor(state)
               : DecorationSet.empty,
-          // A cell selection draws its cells (`.selectedCell`) and no native
-          // selection: `CellSelection.visible` is false, and ProseMirror hides
-          // the native one when it writes the selection back. Chrome holds that
-          // write back while the mouse is down (`selectionToDOM`), so under a
-          // pulled cell selection the browser would go on drawing the text it
-          // swept; the body's own attribute takes effect on the transaction
-          // (inner#1350 design §5.7).
+          // A cell selection draws its cells (`.selectedCell`) and an edge
+          // takeover its range (`paintFor`), and neither the native selection:
+          // the page selection is not theirs while the mouse is down, as
+          // Chrome holds ProseMirror's write back until the release
+          // (`selectionToDOM`). The attribute takes effect on the transaction,
+          // so what a pull shows is what it keeps (inner#1350 design §5.7).
           attributes: (state): Record<string, string> =>
-            state.selection instanceof CellSelection ? { [CELL_SELECTION_ATTR]: '' } : {},
+            state.selection instanceof CellSelection || state.selection instanceof BodyEdgeSelection
+              ? { [SELECTION_DRAWN_ATTR]: '' }
+              : {},
         },
       }),
     ],
