@@ -200,12 +200,49 @@ const chatSpaceSchema = z.object({
  * content is already cut to the limit; the server checks that limit, since
  * it lives in config this package cannot read.
  */
-const chatCurrentSpaceSchema = z.discriminatedUnion("state", [
-  chatSpaceSchema.extend({
+const count = z.number().int().nonnegative();
+
+/**
+ * What was done to fit an open canvas into the limit, each counted in what
+ * was sent. A canvas that fits whole has every reduction at zero.
+ */
+const chatCanvasDetailSchema = z
+  .object({
+    /** Nodes the reader has selected; a selected group counts its members. */
+    selected_total: count,
+    /** Selected nodes sent with the rest because an attachment holds them unchanged. */
+    selected_attached: count,
+    /** The other selected nodes that went whole. */
+    selected_whole: count,
+    /** Whether any node that is not a group went as a slim entry. */
+    slim: z.boolean(),
+    /** How many texts end with the cut marker. */
+    texts_cut: count,
+    /** Nodes that are not groups and show only their id, type and name. */
+    names_only: count,
+    edges_not_listed: count,
+    /** Nodes that are not groups and are left out. */
+    nodes_not_listed: count,
+    groups_not_listed: count,
+  })
+  .refine((d) => d.selected_attached + d.selected_whole <= d.selected_total, {
+    message: "selected_attached + selected_whole exceeds selected_total",
+  });
+
+const chatLoadedSpaceSchema = chatSpaceSchema
+  .extend({
     state: z.literal("loaded"),
     content: z.string(),
-    total_chars: z.number().int().nonnegative(),
-  }),
+    total_chars: count,
+    detail: chatCanvasDetailSchema.optional(),
+  })
+  .refine((s) => (s.kind === "canvas") === (s.detail !== undefined), {
+    message: "a loaded canvas carries detail and nothing else does",
+    path: ["detail"],
+  });
+
+const chatCurrentSpaceSchema = z.union([
+  chatLoadedSpaceSchema,
   chatSpaceSchema.extend({ state: z.literal("loading") }),
   chatSpaceSchema.extend({ state: z.literal("unreadable") }),
 ]);
@@ -254,6 +291,7 @@ export const chatMessageSchema = z.object({
 export type ChatMessageInput = z.infer<typeof chatMessageSchema>;
 export type ChatSpace = z.infer<typeof chatSpaceSchema>;
 export type ChatCurrentSpace = z.infer<typeof chatCurrentSpaceSchema>;
+export type ChatCanvasDetail = z.infer<typeof chatCanvasDetailSchema>;
 /**
  * The reader's Spaces as one message carries them (inner#1413): the project's
  * Spaces, and the open one when the reader has it on. Read when they pressed
