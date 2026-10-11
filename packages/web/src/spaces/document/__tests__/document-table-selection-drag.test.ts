@@ -199,8 +199,8 @@ describe('the body while a cell selection stands', () => {
     const editor = open();
     const view = editor.prosemirrorView!;
     new Pull(editor, cell(editor, 'a1')).to(cell(editor, 'b2')).release();
-    expect(view.dom.hasAttribute('data-cell-selection')).toBe(true);
+    expect(view.dom.hasAttribute('data-selection-drawn')).toBe(true);
     select(editor, textPos(editor, 'below') + 1, textPos(editor, 'below') + 1);
-    expect(view.dom.hasAttribute('data-cell-selection')).toBe(false);
+    expect(view.dom.hasAttribute('data-selection-drawn')).toBe(false);
   });
 });

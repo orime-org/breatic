@@ -1052,3 +1052,31 @@ describe('an empty line an end of the selection sits on, or one at an end of the
     expect(paragraphs(view)).toEqual(['Above:false', ':false']);
   });
 });
+
+describe('the body while an edge selection stands (inner#1350 A8)', () => {
+  it('draws the selection itself, so a pull shows the same range before and after the release', () => {
+    const view = open(ABOVE_DIVIDER);
+    view.focus();
+    view.dispatch(
+      view.state.tr.setSelection(BodyEdgeSelection.create(view.state.doc, textStart(view, 'Above'), 'end')),
+    );
+
+    expect(view.dom.hasAttribute('data-selection-drawn')).toBe(true);
+    const drawn = [...view.dom.querySelectorAll('[data-show-selection]')].map((el) => el.textContent).join('');
+    expect(drawn).toBe('Above');
+  });
+
+  it('leaves a text selection to the browser', () => {
+    const view = open(ABOVE_DIVIDER);
+    view.focus();
+    view.dispatch(
+      view.state.tr.setSelection(BodyEdgeSelection.create(view.state.doc, textStart(view, 'Above'), 'end')),
+    );
+    view.dispatch(
+      view.state.tr.setSelection(TextSelection.create(view.state.doc, textStart(view, 'Above'), textStart(view, 'Above') + 3)),
+    );
+
+    expect(view.dom.hasAttribute('data-selection-drawn')).toBe(false);
+    expect(view.dom.querySelectorAll('[data-show-selection]')).toHaveLength(0);
+  });
+});
