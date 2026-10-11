@@ -286,11 +286,12 @@ describe('tableLinePreviewContent', () => {
   });
 
   it('keeps only the dragged column, and only its col', () => {
-    const editor = open([{ type: 'table', content: { type: 'tableContent', rows } }]);
+    const editor = open([{ type: 'table', content: { type: 'tableContent', columnWidths: [100, 200, 300], rows } }]);
     const content = tableLinePreviewContent(editor.prosemirrorView!, cellOf(editor, 'c1'), 'column')!;
     expect(cellTexts(content)).toEqual([['c1'], ['c2'], ['c3']]);
-    const cols = content.querySelectorAll('colgroup col');
+    const cols = content.querySelectorAll<HTMLElement>('colgroup col');
     expect(cols.length).toBe(1);
+    expect(cols[0]!.style.width).toBe('300px');
   });
 
   it('sets a row at its table\'s width and a column at its cell\'s, the widths they are drawn at in the body', () => {

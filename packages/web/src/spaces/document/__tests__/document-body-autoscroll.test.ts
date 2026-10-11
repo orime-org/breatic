@@ -100,7 +100,7 @@ describe('pressStep', () => {
 });
 
 describe('carriesOutside', () => {
-  it('carries on when the last frame was past the edge', () => {
+  it('carries on when the pointer left past the edge', () => {
     expect(carriesOutside({ dir: -1, factor: 1, beyond: 30 }, false)).toBe(true);
   });
 
@@ -283,7 +283,21 @@ describe('BodyAutoScroll', () => {
     expect(auto.state).toBe('tracking');
   });
 
-  it('the ramp restarts after the pointer leaves the hitbox', () => {
+  it('ramps from the moment the pointer is over the scroller, as Pragmatic does, not from entering the hitbox', () => {
+    const clock = fakeClock();
+    const auto = new BodyAutoScroll(clock.deps);
+    const body = fakeScroller();
+    auto.beginDrag({ el: body, axis: 'y', gate: true });
+    // Over the middle for 640ms: past the 400ms ramp before any edge is near.
+    auto.follow({ x: 600, y: 490 });
+    for (let i = 0; i < 40; i += 1) clock.tick();
+    auto.follow({ x: 600, y: 895 });
+    const before = body.scrollTop;
+    clock.tick();
+    expect(body.scrollTop - before).toBe(15);
+  });
+
+  it('keeps the ramp while the pointer goes from the edge back to the middle and out again', () => {
     const clock = fakeClock();
     const auto = new BodyAutoScroll(clock.deps);
     const body = fakeScroller();
@@ -291,6 +305,21 @@ describe('BodyAutoScroll', () => {
     auto.follow({ x: 600, y: 895 });
     for (let i = 0; i < 40; i += 1) clock.tick();
     auto.follow({ x: 600, y: 490 });
+    clock.tick();
+    auto.follow({ x: 600, y: 895 });
+    const before = body.scrollTop;
+    clock.tick();
+    expect(body.scrollTop - before).toBe(15);
+  });
+
+  it('restarts the ramp only after the pointer leaves the scroller (over the Agent column beside it)', () => {
+    const clock = fakeClock();
+    const auto = new BodyAutoScroll(clock.deps);
+    const body = fakeScroller();
+    auto.beginDrag({ el: body, axis: 'y', gate: true });
+    auto.follow({ x: 600, y: 895 });
+    for (let i = 0; i < 40; i += 1) clock.tick();
+    auto.follow({ x: BOX.left - 100, y: 895 });
     clock.tick();
     auto.follow({ x: 600, y: 895 });
     const before = body.scrollTop;
@@ -315,7 +344,7 @@ describe('BodyAutoScroll, the latest pointer (inner#1350 round 2)', () => {
     expect(body.scrollTop).toBeLessThan(5000);
   });
 
-  it('ramps up outside the window from the moment it left, though no frame read the edge before', () => {
+  it('ramps outside the window from the moment the pointer came over the scroller, though no frame read the edge', () => {
     const clock = fakeClock();
     const auto = new BodyAutoScroll(clock.deps);
     const body = fakeScroller();
@@ -325,10 +354,31 @@ describe('BodyAutoScroll, the latest pointer (inner#1350 round 2)', () => {
     clock.tick();
     auto.follow({ x: 600, y: 40 });
     auto.leaveWindow();
+    const start = body.scrollTop;
+    clock.tick();
+    // 16ms into the ramp: 4% of (15 + 20 + 40 past the top edge).
+    expect(start - body.scrollTop).toBe(3);
     for (let i = 0; i < 60; i += 1) clock.tick();
     const before = body.scrollTop;
     clock.tick();
     // Past the top edge by 40: Chrome's selection step plus the hitbox's maximum.
+    expect(before - body.scrollTop).toBe(75);
+  });
+
+  it('starts the ramp outside the window when the pointer left before any frame', () => {
+    const clock = fakeClock();
+    const auto = new BodyAutoScroll(clock.deps);
+    const body = fakeScroller();
+    body.scrollTop = 50_000;
+    auto.beginDrag({ el: body, axis: 'y', gate: true });
+    auto.follow({ x: 600, y: 40 });
+    auto.leaveWindow();
+    const start = body.scrollTop;
+    clock.tick();
+    expect(start - body.scrollTop).toBe(1);
+    for (let i = 0; i < 60; i += 1) clock.tick();
+    const before = body.scrollTop;
+    clock.tick();
     expect(before - body.scrollTop).toBe(75);
   });
 

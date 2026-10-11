@@ -285,6 +285,18 @@ describe('the pulled-selection session', () => {
     window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
   });
 
+  it('feeds the loop from pointer moves only: a scroll elsewhere on the page leaves a still Shift press without a pointer', () => {
+    const { editor } = open();
+    const view = editor.prosemirrorView!;
+    view.focus();
+    extendFromPress(view, new MouseEvent('mousedown', { bubbles: true, cancelable: true, shiftKey: true, clientX: 10, clientY: 100 }));
+    const follow = vi.spyOn(autoScrollOf(view)!, 'follow');
+    // The Agent column scrolling to its newest line while the press is held.
+    document.body.dispatchEvent(new Event('scroll'));
+    expect(follow).not.toHaveBeenCalled();
+    window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+  });
+
   it('does not start on a plain press the browser keeps', () => {
     const { editor } = open();
     const view = editor.prosemirrorView!;

@@ -265,6 +265,9 @@ describe('a dragged line over the gutter beside the body (inner#1350 round 3)', 
       const i = [...this.parentElement!.children].indexOf(this);
       return { top: 0, bottom: 30, left: i * 100, right: (i + 1) * 100 } as DOMRect;
     });
+    // The table's frame shows the whole table.
+    const frame = view.dom.querySelector('table')!.closest<HTMLElement>('[data-radix-scroll-area-viewport]')!;
+    frame.getBoundingClientRect = (): DOMRect => ({ top: 0, bottom: 90, left: 0, right: 300 }) as DOMRect;
     return gutter;
   }
 
@@ -289,6 +292,21 @@ describe('a dragged line over the gutter beside the body (inner#1350 round 3)', 
     expect(fire(gutter, 'drop', 900).defaultPrevented).toBe(true);
     vi.restoreAllMocks();
     expect(grid(editor)[0]).toEqual(['b1', 'c1', 'a1']);
+  });
+
+  it('lands at the nearest column the table frame shows, not at one it clips under the gutter', () => {
+    const editor = open();
+    const gutter = inScroller(editor);
+    const view = editor.prosemirrorView!;
+    // The frame shows the table from 0 to 160: the third column (200–300) is
+    // clipped, and its edges sit under the gutter on screen.
+    const frame = (view.nodeDOM(cellOf(editor, 'a1')) as HTMLElement).closest<HTMLElement>('[data-radix-scroll-area-viewport]')!;
+    frame.getBoundingClientRect = (): DOMRect => ({ top: 0, bottom: 90, left: 0, right: 160 }) as DOMRect;
+    startTableDrag(view, 'column', cellOf(editor, 'a1'));
+    fire(gutter, 'dragover', 900);
+    fire(gutter, 'drop', 900);
+    vi.restoreAllMocks();
+    expect(grid(editor)[0]).toEqual(['b1', 'a1', 'c1']);
   });
 
   it('leaves a drop outside the body scroller to the browser', () => {
