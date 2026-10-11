@@ -28,6 +28,10 @@ describe("the system prompt", () => {
   // where the lines happen to break.
   const wording = (): string => buildSystemPrompt().replace(/\s+/g, " ");
 
+  it("introduces Breatic by its positioning line", () => {
+    expect(wording()).toContain("an AI operating system for content creators");
+  });
+
   it("tells the model to call tools rather than write out calls", () => {
     expect(wording()).toMatch(/do not write out what a call would look like/i);
   });
