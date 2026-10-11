@@ -110,7 +110,6 @@ describe("a part the Worker will not take", () => {
         storageKey,
         uploadId,
         contentType: "video/mp4",
-        deadlineAt: Date.now() + 7_200_000,
         expiresAt: Date.now() - 1,
         partSize: PART_SIZE,
         totalParts: 2,
@@ -217,8 +216,8 @@ describe("a part the Worker takes", () => {
       env.INGEST_SHARED_SECRET,
       Date.now(),
     );
-    expect(payload?.expiresAt).toBe(opened?.deadlineAt);
-    expect(payload?.deadlineAt).toBe(opened?.deadlineAt);
+    expect(opened?.expiresAt).toBeGreaterThan(Date.now() + 7_000_000);
+    expect(payload?.expiresAt).toBe(opened?.expiresAt);
   });
 });
 
@@ -246,7 +245,6 @@ describe("a part R2 would not accept", () => {
         storageKey: `video/2026-09-08/${seq++}_gone.mp4`,
         uploadId,
         contentType: "video/mp4",
-        deadlineAt: Date.now() + 7_200_000,
         expiresAt: Date.now() + 300_000,
         partSize: PART_SIZE,
         totalParts: 2,

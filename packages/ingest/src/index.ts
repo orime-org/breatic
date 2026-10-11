@@ -135,10 +135,11 @@ function missingSettings(env: Env): string[] {
  * Issue the token the next request carries.
  *
  * It expires at the upload's deadline, carried forward from whatever was
- * presented — the ticket on the first one, the previous token on every
- * re-issue (inner#1367): the upload is bounded by its task's deadline, which
- * our server decided, and by nothing held here.
+ * presented — the ticket's on the first one, the previous token's expiry on
+ * every re-issue (inner#1367): the upload is bounded by its task's deadline,
+ * which our server decided, and by nothing held here.
  * @param grant - What the ticket or the presented token signed.
+ * @param expiresAt - The upload's deadline, in epoch ms.
  * @param uploadId - R2's id for the multipart upload.
  * @param secret - The shared secret.
  * @returns The signed token.
@@ -149,8 +150,8 @@ async function issueToken(
     contentType: string;
     partSize: number;
     totalParts: number;
-    deadlineAt: number;
   },
+  expiresAt: number,
   uploadId: string,
   secret: string,
 ): Promise<string> {
@@ -159,8 +160,7 @@ async function issueToken(
       storageKey: grant.storageKey,
       uploadId,
       contentType: grant.contentType,
-      deadlineAt: grant.deadlineAt,
-      expiresAt: grant.deadlineAt,
+      expiresAt,
       partSize: grant.partSize,
       totalParts: grant.totalParts,
     },
@@ -205,6 +205,7 @@ async function startUpload(request: Request, env: Env): Promise<Response> {
     uploadId: created.uploadId,
     token: await issueToken(
       verified.payload,
+      verified.payload.deadlineAt,
       created.uploadId,
       env.INGEST_SHARED_SECRET,
     ),
@@ -300,7 +301,7 @@ async function uploadPart(
   return Response.json({
     partNumber,
     etag: written.etag,
-    token: await issueToken(session, uploadId, env.INGEST_SHARED_SECRET),
+    token: await issueToken(session, session.expiresAt, uploadId, env.INGEST_SHARED_SECRET),
   });
 }
 

@@ -51,12 +51,10 @@ export interface SessionTokenPayload extends PartLayout {
    */
   contentType: string;
   /**
-   * When the upload's task runs out, as the ticket signed it, in epoch ms.
-   * It rides here so the next re-issue can carry it forward without this
-   * Worker holding anything.
+   * Epoch ms after which it is refused: the upload's task deadline, as the
+   * ticket signed it. Each re-issue carries it forward, so this Worker holds
+   * nothing.
    */
-  deadlineAt: number;
-  /** Epoch ms after which it is refused. */
   expiresAt: number;
 }
 

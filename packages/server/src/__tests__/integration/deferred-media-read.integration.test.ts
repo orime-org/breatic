@@ -204,7 +204,6 @@ async function finish(
       storageKey,
       uploadId: UPLOAD_ID,
       contentType: "image/jpeg",
-      deadlineAt: Date.now() + 7_200_000,
       expiresAt: Date.now() + 900_000,
       partSize: 5 * 1024 * 1024,
       totalParts: 1,

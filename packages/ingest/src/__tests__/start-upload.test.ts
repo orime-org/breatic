@@ -140,7 +140,6 @@ describe("a ticket the Worker takes", () => {
       Date.now(),
     );
     expect(payload?.expiresAt).toBe(deadlineAt);
-    expect(payload?.deadlineAt).toBe(deadlineAt);
   });
 
   // The layout bounds what this upload may put into R2, and only the Worker
