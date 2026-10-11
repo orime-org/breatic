@@ -77,9 +77,8 @@ export async function runUpright(
   if (input === null) return failedTurn;
   const turned = await deps.runTool("vips", args, { maxBytes: order.maxBytes, signal, input });
   if (turned === null) return failedTurn;
-  const bytes = new Uint8Array(turned);
 
-  const file = await deps.writeTemp(bytes);
+  const file = await deps.writeTemp(turned);
   try {
     const probed = await deps.runTool("ffprobe", probeArgs(file.path, "own-file"), {
       maxBytes: PROBE_MAX_BYTES,
@@ -97,7 +96,7 @@ export async function runUpright(
     });
     const cut =
       source === "object"
-        ? await deps.runTool("vips", previewArgs(), { maxBytes: PREVIEW_MAX_BYTES, signal, input: bytes })
+        ? await deps.runTool("vips", previewArgs(), { maxBytes: PREVIEW_MAX_BYTES, signal, input: turned })
         : null;
 
     const { width, height } = pickMediaMetadata(report);
@@ -107,7 +106,7 @@ export async function runUpright(
         ...(width !== null && { [UPRIGHT_WIDTH_HEADER]: String(width) }),
         ...(height !== null && { [UPRIGHT_HEIGHT_HEADER]: String(height) }),
       },
-      bytes,
+      turned,
     );
     return {
       report,

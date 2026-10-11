@@ -24,7 +24,7 @@ import {
 } from "@breatic/domain";
 import {
   readMiniToolJob,
-  DeadlinePassed,
+  assertBeforeDeadline,
   untilDeadlineIfAhead,
   submitMiniToolJob,
   UploadHttpError,
@@ -173,7 +173,7 @@ async function checkJob(op: ContainerOp, input: ContainerRunInput, job: StoredJo
   // The Durable Object ends the job at its deadline; two polls leave room for
   // its report to land. A job still going after that ran out of time, which
   // settles as expired like any other task (inner#1367).
-  if (Date.now() >= endsAt) throw new DeadlinePassed();
+  assertBeforeDeadline(endsAt);
   throw new StillRunning(Date.now() + poll);
 }
 

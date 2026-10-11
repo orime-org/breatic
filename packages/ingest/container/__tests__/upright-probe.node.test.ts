@@ -60,7 +60,7 @@ function deps(over: Partial<{ turned: Buffer | null; writeStatus: number }> = {}
     },
     put: async (url: string, headers: Record<string, string>, body: Uint8Array) => {
       record.steps.push("write");
-      record.written = { url, headers, body };
+      record.written = { url, headers, body: new Uint8Array(body) };
       return over.writeStatus ?? 200;
     },
   });
