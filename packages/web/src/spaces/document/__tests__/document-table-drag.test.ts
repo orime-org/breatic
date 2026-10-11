@@ -202,6 +202,37 @@ describe('the row a drag started on', () => {
     expect(canDragFrom(editor.prosemirrorState.doc, cellOf(editor, 'b1'), 'row')).toBe(false);
     expect(canDragFrom(editor.prosemirrorState.doc, cellOf(editor, 'b1'), 'column')).toBe(true);
   });
+
+  it('cannot be the lower row of a cell merged across two rows either, which a drop would move with the upper one', () => {
+    // A1:A2 merged. `moveRow` takes both rows (`getSelectionRangeInRow`), so a
+    // row drag from the second row would move more than its preview shows.
+    const editor = open([
+      { cells: [{ type: 'tableCell', content: 'tall', props: { rowspan: 2 } }, 'b1', 'c1'] },
+      { cells: ['b2', 'c2'] },
+      { cells: ['a3', 'b3', 'c3'] },
+    ]);
+    const { doc } = editor.prosemirrorState;
+    expect(canDragFrom(doc, cellOf(editor, 'b1'), 'row')).toBe(false);
+    expect(canDragFrom(doc, cellOf(editor, 'b2'), 'row')).toBe(false);
+    expect(canDragFrom(doc, cellOf(editor, 'b3'), 'row')).toBe(true);
+    expect(canDragFrom(doc, cellOf(editor, 'tall'), 'column')).toBe(true);
+    expect(canDragFrom(doc, cellOf(editor, 'b2'), 'column')).toBe(true);
+  });
+
+  it('cannot be either column of a cell merged across two columns', () => {
+    // A1:B1 merged: the merged cell reaches across B's left edge from A.
+    const editor = open([
+      { cells: [{ type: 'tableCell', content: 'wide', props: { colspan: 2 } }, 'c1'] },
+      { cells: ['a2', 'b2', 'c2'] },
+      { cells: ['a3', 'b3', 'c3'] },
+    ]);
+    const { doc } = editor.prosemirrorState;
+    expect(canDragFrom(doc, cellOf(editor, 'a2'), 'column')).toBe(false);
+    expect(canDragFrom(doc, cellOf(editor, 'b2'), 'column')).toBe(false);
+    expect(canDragFrom(doc, cellOf(editor, 'c2'), 'column')).toBe(true);
+    expect(canDragFrom(doc, cellOf(editor, 'wide'), 'row')).toBe(true);
+    expect(canDragFrom(doc, cellOf(editor, 'b2'), 'row')).toBe(true);
+  });
 });
 
 describe('the editor\'s drop line during a row or column drag', () => {
