@@ -104,19 +104,26 @@ function readCanvas(source: SpaceContextSource, space: ProjectSpace): PickSnapsh
   return snapshot ?? '';
 }
 
-/** The fields of a canvas entry that name it, never cut. */
-const ENTRY_KEYS = new Set(['id', 'type', 'parentId']);
+/**
+ * One printable ASCII token: an address, an id, a model name, an enum value.
+ * Its start alone names nothing, so it is never cut; prose has whitespace or
+ * characters outside ASCII.
+ */
+const IDENTIFIER = /^[\x21-\x7e]*$/;
 
 /**
- * A value with every string in it longer than `keep` characters cut to its
- * start, ending with an ellipsis.
+ * A value with every piece of prose in it longer than `keep` characters cut
+ * to its start, ending with an ellipsis. A string one character over is left
+ * whole: the ellipsis would take that character's place.
  * @param value - The value.
- * @param keep - How many characters a string keeps.
+ * @param keep - How many characters prose keeps.
  * @returns The cut value.
  */
 function cutTexts(value: unknown, keep: number): unknown {
   if (typeof value === 'string') {
-    return value.length > keep ? `${clipSpaceContent(value, keep).text}\u2026` : value;
+    return value.length > keep + 1 && !IDENTIFIER.test(value)
+      ? `${clipSpaceContent(value, keep).text}\u2026`
+      : value;
   }
   if (Array.isArray(value)) return value.map((v: unknown) => cutTexts(v, keep));
   if (value !== null && typeof value === 'object') {
@@ -126,21 +133,15 @@ function cutTexts(value: unknown, keep: number): unknown {
 }
 
 /**
- * A canvas with every node's long texts cut to `keep` characters; what names
- * a node and its links stay whole.
+ * A canvas with the prose in its nodes cut to `keep` characters.
  * @param canvas - The canvas.
- * @param keep - How many characters a text keeps.
+ * @param keep - How many characters prose keeps.
  * @returns The cut canvas.
  */
 function cutCanvas(canvas: PickSnapshot, keep: number): PickSnapshot {
   return {
     edges: canvas.edges,
-    nodes: canvas.nodes.map(
-      (node) =>
-        Object.fromEntries(
-          Object.entries(node).map(([k, v]) => [k, ENTRY_KEYS.has(k) ? v : cutTexts(v, keep)]),
-        ) as PickSnapshot['nodes'][number],
-    ),
+    nodes: canvas.nodes.map((node) => cutTexts(node, keep) as PickSnapshot['nodes'][number]),
   };
 }
 
@@ -159,9 +160,9 @@ function canvasText(canvas: PickSnapshot, kept: ReadonlySet<string>): string {
 
 /**
  * A canvas as compact JSON within `max` characters, holding every node it
- * can whole: when it is too long, every text longer than `keep` is cut to
- * the same length, the longest that lets every node and link go. Texts no
- * longer than a node's name are never cut; when the canvas is still too long
+ * can whole: when it is too long, every piece of prose longer than `keep` is
+ * cut to the same length, the longest that lets every node and link go.
+ * Prose no longer than a node's name is never cut; when the canvas is still too long
  * at that, the nodes are walked in order, each kept while it fits with the
  * links it closes and skipped when it does not -- the order is the
  * document's, not one the reader chose, so one node does not push out the
@@ -175,12 +176,13 @@ function fitCanvas(canvas: PickSnapshot, max: number): ClippedSpaceContent {
   const whole = canvasText(canvas, all);
   if (whole.length <= max) return { text: whole, total: whole.length };
   const total = whole.length;
-  // Cutting every text shorter never makes the canvas longer, so the
-  // longest cut that fits can be searched for.
+  // Cutting prose shorter never makes the canvas longer, so the longest
+  // cut that fits can be searched for.
   let fits = MAX_NODE_NAME_LEN;
   let over = total;
-  const shortest = canvasText(cutCanvas(canvas, fits), all);
-  if (shortest.length > max) return { text: packNodes(cutCanvas(canvas, fits), max), total };
+  const atFloor = cutCanvas(canvas, fits);
+  const shortest = canvasText(atFloor, all);
+  if (shortest.length > max) return { text: packNodes(atFloor, max), total };
   let text = shortest;
   while (over - fits > 1) {
     const mid = Math.floor((fits + over) / 2);
