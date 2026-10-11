@@ -102,6 +102,20 @@ async function selectedOnScreen(page: Page): Promise<string[]> {
 }
 
 /**
+ * Hand a batch of files to the left menu's upload tool, as picking them does.
+ * Two inputs carry this id and only one takes a batch: the canvas has its own
+ * single-file picker. The left menu's tool clicks the multiple one.
+ * @param page - The page with the Space open.
+ * @param count - How many files the batch carries.
+ */
+async function pickFiles(page: Page, count: number): Promise<void> {
+  await roomForUploads(count);
+  await page
+    .locator('input[data-testid="canvas-upload-input"][multiple]')
+    .setInputFiles(Array.from({ length: count }, (_, i) => pngFile(i)));
+}
+
+/**
  * Hand a batch of files to the canvas the way a drag or a paste does: one
  * event carrying every file, aimed at the middle of the pane.
  * @param page - The page with the Space open.
@@ -193,7 +207,7 @@ let spaceId = '';
 
 test.beforeEach(async ({ page }) => {
   await openSmokeProject(page);
-  projectId = (/([0-9a-f-]{36})$/.exec(page.url()) ?? [])[1] as string;
+  projectId = (/([0-9a-f-]{36})$/.exec(page.url()) ?? [])[1];
   spaceId = await createSpace(page, 'canvas', `multi-upload ${Date.now()}`);
 });
 
@@ -203,12 +217,7 @@ test.afterEach(async ({ page }) => {
 
 test('the upload tool turns one batch into one Group', async ({ page }) => {
   const files = 5;
-  // Two inputs carry this id and only one takes a batch: the canvas has its
-  // own single-file picker. The left menu's tool clicks the multiple one.
-  await roomForUploads(files);
-  await page
-    .locator('input[data-testid="canvas-upload-input"][multiple]')
-    .setInputFiles(Array.from({ length: files }, (_, i) => pngFile(i)));
+  await pickFiles(page, files);
 
   // The Group is what the reader grabs next, so it is what is selected — and
   // the only thing, or a right-click routes to the selection menu (#1477).
@@ -273,10 +282,7 @@ test('the members keep the grid, and the Group takes them along', async ({
   page,
 }) => {
   const files = 5;
-  await roomForUploads(files);
-  await page
-    .locator('input[data-testid="canvas-upload-input"][multiple]')
-    .setInputFiles(Array.from({ length: files }, (_, i) => pngFile(i)));
+  await pickFiles(page, files);
   const groupId = await theGroupOver(page, files);
 
   /**
@@ -381,10 +387,7 @@ test('one undo takes the whole batch back', async ({ page }) => {
 });
 
 test('one file stays one node, with no Group around it', async ({ page }) => {
-  await roomForUploads(1);
-  await page
-    .locator('input[data-testid="canvas-upload-input"][multiple]')
-    .setInputFiles([pngFile(0)]);
+  await pickFiles(page, 1);
 
   const nodes = await settledNodes(page, 1);
   expect(nodes[0].parentId).toBeNull();
