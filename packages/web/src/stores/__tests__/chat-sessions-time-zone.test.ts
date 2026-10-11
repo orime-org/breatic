@@ -12,7 +12,7 @@ vi.mock('@web/data/api/chat', () => ({
     streamConfig: vi.fn(async () => ({
       heartbeatIntervalMs: 60_000,
       attachmentMaxChars: 200_000,
-      attachmentMaxItems: 10,
+      attachmentMaxItems: 10, currentSpaceMaxChars: 100_000, spaceListMaxItems: 200,
     })),
   },
 }));

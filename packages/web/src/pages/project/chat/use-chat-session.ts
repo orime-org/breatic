@@ -16,7 +16,10 @@ import { watchChatMishaps } from '@web/stores/chat-mishaps';
 import type { ChatMishap } from '@web/stores/chat-mishaps';
 import { chatAttachments } from '@web/stores/chat-attachments';
 import { chatSessionFor, sendInSession, stopChatSession } from '@web/stores/chat-sessions';
+import { chatApi } from '@web/data/api/chat';
 import type { StoredUiMessage } from '@web/data/api/chat';
+import { clipSpaceContext } from '@web/pages/project/chat/space-context';
+import type { ReadSpaces } from '@web/pages/project/chat/space-context';
 import type { ConversationOnTheWire } from '@web/data/api/chat';
 import type { ChatMessage } from '@web/pages/project/chat/types';
 
@@ -161,6 +164,14 @@ const NO_CONVERSATIONS: ConversationOnTheWire[] = [];
 
 
 /**
+ * The reader's Spaces for a panel that has none to tell: an empty list.
+ * @returns Nothing to carry.
+ */
+function readNoSpaces(): ReadSpaces {
+  return { spaces: [] };
+}
+
+/**
  * The chat panel's view of the conversation it is showing.
  *
  * Reading only. What is happening in the conversation — the messages, and the
@@ -173,9 +184,15 @@ const NO_CONVERSATIONS: ConversationOnTheWire[] = [];
  * @param projectId - Project whose chat this is
  * @param listOpen - Whether the conversation list is on screen, which decides
  *   where a word about one of its rows is drawn
+ * @param readSpaces - Reads the reader's Spaces as they stand, called at the
+ *   press (inner#1413)
  * @returns The messages, whether they have arrived, and what can be done
  */
-export function useChatSession(projectId: string, listOpen = false): ChatSession {
+export function useChatSession(
+  projectId: string,
+  listOpen = false,
+  readSpaces: () => ReadSpaces = readNoSpaces,
+): ChatSession {
 
   const conversationId = useConversationRuntime((s) => s.currentByProject[projectId]);
   const openStatus = useConversationRuntime((s) => s.openStatus[projectId] ?? 'idle');
@@ -262,6 +279,10 @@ export function useChatSession(projectId: string, listOpen = false): ChatSession
     async (draft: string): Promise<void> => {
       const said = draft.trim();
       if (said === '') return;
+      // Read before anything is waited on, so what goes is the Space as it
+      // stood when send was pressed, not as it is once a conversation has
+      // opened.
+      const spaces = readSpaces();
       // Which conversation this belongs in is settled at the press, not read
       // off the last render: a first message opens a conversation, and the
       // panel has not been told about it yet when this runs.
@@ -283,9 +304,19 @@ export function useChatSession(projectId: string, listOpen = false): ChatSession
       // what the reader sees there.
       const attached = chatAttachments.sendable(opened);
       if (attached === null) return;
-      await sendInSession(opened, said, attached);
+      // The Spaces are cut to the server's limits, so they cannot go without
+      // them. Said beside the plus sign as an attachment that cannot be
+      // measured is, and the words stay in the box.
+      let limits: Awaited<ReturnType<typeof chatApi.streamConfig>>;
+      try {
+        limits = await chatApi.streamConfig();
+      } catch {
+        chatAttachments.say(opened, { key: 'unavailable' });
+        return;
+      }
+      await sendInSession(opened, said, attached, clipSpaceContext(spaces, limits));
     },
-    [projectId, noteTitle, emptyTheBox],
+    [projectId, noteTitle, emptyTheBox, readSpaces],
   );
 
   const abort = React.useCallback((): void => {

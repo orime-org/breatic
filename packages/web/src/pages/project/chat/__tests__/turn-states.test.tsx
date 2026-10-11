@@ -13,6 +13,13 @@ import { renderHook, waitFor, act } from '@testing-library/react';
 
 vi.mock('@web/data/api/chat', () => ({
   chatApi: {
+    streamConfig: vi.fn(async () => ({
+      heartbeatIntervalMs: 5000,
+      attachmentMaxChars: 200_000,
+      attachmentMaxItems: 10,
+      currentSpaceMaxChars: 100_000,
+      spaceListMaxItems: 200,
+    })),
     openChat: vi.fn(),
     streamMessage: vi.fn(),
     listConversations: vi.fn(),
@@ -129,6 +136,8 @@ describe('发一条消息', () => {
       conversation_id: 'c-1',
       attached_chips: [],
       time_zone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      spaces: [],
+      spaces_total: 0,
     });
   });
 
