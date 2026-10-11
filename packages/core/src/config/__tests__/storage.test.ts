@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { parse } from "yaml";
 
 import { getStorageConfig, storageConfigSchema } from "@core/config/storage.js";
 
@@ -71,8 +74,11 @@ describe("storageConfigSchema — the ingest knobs", () => {
     expect(cfg.ingest.ticket_expires_seconds).toBe(300);
   });
 
+  // Read off disk: the schema drops keys it does not know, so a knob left in
+  // the file would never show up in what it parses.
   it("holds no time of its own for any wait on a task's chain", () => {
-    const cfg = getStorageConfig() as unknown as Record<string, Record<string, unknown>>;
+    const path = resolve(import.meta.dirname, "../../../../../config/storage.yaml");
+    const cfg = parse(readFileSync(path, "utf8")) as Record<string, Record<string, unknown>>;
     for (const key of [
       "session_token_ttl_seconds",
       "container_run_deadline_ms",

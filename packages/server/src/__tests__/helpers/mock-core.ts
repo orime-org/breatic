@@ -555,7 +555,7 @@ export const domainMock = () => ({
   SMALLEST_CREDIT: 0.000001,
   UPLOAD_FINISH_QUEUE: "upload-finish",
   uploadStatusService: { statusOf: vi.fn().mockResolvedValue([]) },
-  uploadDeadline: vi.fn().mockResolvedValue(Date.now() + 7_200_000),
+  uploadDeadlineByKey: vi.fn().mockResolvedValue(Date.now() + 7_200_000),
   assetService: mocks.assetService,
   uploadGrantService: mocks.uploadGrantService,
   uploadGrantRepo: mocks.uploadGrantRepo,
