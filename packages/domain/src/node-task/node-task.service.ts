@@ -27,6 +27,7 @@
 import { ConflictError } from "@breatic/core";
 import { t, type NodeTaskAction } from "@breatic/shared";
 import * as repo from "@domain/node-task/node-task.repo.js";
+import { failureOutcome } from "@domain/node-task/failure-outcome.js";
 import type {
   NodeTaskCounts,
   NodeTaskListRow,
@@ -133,11 +134,17 @@ export async function settle(opts: {
     throw new Error(`settle: no node_tasks row for ${opts.taskId}`);
   }
 
-  const applied = await repo.settleRunning(opts.taskId, opts.outcome, {
+  // A task that failed at or past its deadline ended there, whichever exit
+  // reports it (inner#1367): written the way the harvest writes it.
+  const expired =
+    opts.outcome === "failed" && failureOutcome(row.startedAt.getTime() + row.budgetMs) === "expired";
+  const outcome = expired ? "expired" : opts.outcome;
+  const errorMessage = expired ? "expired" : opts.errorMessage;
+  const applied = await repo.settleRunning(opts.taskId, outcome, {
     ...(opts.nodeHistoryId !== undefined && {
       nodeHistoryId: opts.nodeHistoryId,
     }),
-    ...(opts.errorMessage !== undefined && { errorMessage: opts.errorMessage }),
+    ...(errorMessage !== undefined && { errorMessage }),
   });
 
   // The row had already settled and a result turned up anyway: the deadline
@@ -149,7 +156,7 @@ export async function settle(opts: {
   }
 
   const counts = await repo.countsFor(row.projectId, row.nodeId);
-  return { applied, landed: applied || row.status === opts.outcome, counts };
+  return { applied, landed: applied || row.status === outcome, counts };
 }
 
 /**
