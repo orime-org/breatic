@@ -54,13 +54,15 @@ function openSpaceSection(current: ChatCurrentSpace): string {
   const isDocument = current.kind === "document";
   const body = isDocument ? JSON.stringify(current.content) : current.content;
   const shown = `${String(current.content.length)} of ${String(current.total_chars)} characters`;
-  // A document is cut to its start; a canvas keeps the whole nodes that fit.
+  // A document is cut to its start; a canvas keeps its nodes with their long
+  // texts cut, and leaves nodes out only when that is not enough.
   const cut =
     current.total_chars <= current.content.length
       ? ""
       : isDocument
         ? `\n(Showing the first ${shown}.)`
-        : `\n(The canvas is over the limit, so only some of its nodes are shown, with only the links between them: ${shown}.)`;
+        : '\n(The canvas is over the limit: long texts in its nodes are cut short and end with "…", and if that ' +
+          `was not enough, some nodes are left out with their links. Showing ${shown}.)`;
   return `${heading}\n\n${body}${cut}`;
 }
 
