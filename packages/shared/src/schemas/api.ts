@@ -225,8 +225,8 @@ export const chatMessageSchema = z.object({
   /**
    * The items in the composer's tray when the message was sent: files
    * picked with the attach button and pieces of the canvas added to the
-   * agent. Defaults to `[]` for callers with no tray. `userTurnForModel`
-   * puts them in front of the message, one section per item.
+   * agent. Defaults to `[]` for callers with no tray. The server puts them
+   * in front of the message, one section per item.
    */
   attached_chips: z.array(chatAttachedChipSchema).default([]),
   /**

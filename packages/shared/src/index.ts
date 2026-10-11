@@ -478,6 +478,7 @@ export {
   attachmentMarker,
   attachmentPart,
   attachmentSection,
+  attachmentTitle,
   chipOfPart,
   messageLength,
   messageSegments,
@@ -485,7 +486,6 @@ export {
   resolvedSegments,
   wordsForTitle,
   writeReferences,
-  userTurnForModel,
 } from "@shared/agent/attachments.js";
 export type { AttachmentDataPart, MessageSegment, ResolvedSegment } from "@shared/agent/attachments.js";
 export { clipSpaceContent } from "@shared/agent/space-content.js";

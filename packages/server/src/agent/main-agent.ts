@@ -29,7 +29,8 @@ import { turnToolsContext } from "@server/agent/turn-tools-context.js";
 import { buildTurnContext } from "@server/agent/turn-context.js";
 import { watchModelCalls, type ModelCallWatch } from "@server/agent/model-call-watch.js";
 import type { ChatAttachedChip, MessagePart, ToolFailure } from "@breatic/shared";
-import { userTurnForModel, wireLineOf, wordsForTitle } from "@breatic/shared";
+import { wireLineOf, wordsForTitle } from "@breatic/shared";
+import { userTurnForModel } from "@server/agent/user-turn.js";
 import * as messageRepo from "@server/modules/conversation/conversation-message.repo.js";
 import { toStoredParts } from "@server/modules/conversation/message-part-mapping.js";
 import * as conversationService from "@server/modules/conversation/conversation.service.js";
@@ -138,7 +139,7 @@ export class MainAgent {
     // so a provider's prefix cache still matches everything up to the last
     // turn's user message: that message went out with its note last time and
     // goes out without it from here on.
-    const forModel = `${readerClockNote(new Date(), timeZone)}\n\n${userTurnForModel(attached, said)}`;
+    const forModel = `${readerClockNote(new Date(), timeZone)}\n\n${userTurnForModel({ chips: attached, message: said })}`;
     return this.runStream(forModel, turnIndex, title, signal);
   }
 

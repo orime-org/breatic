@@ -21,7 +21,6 @@ import {
   messageSegments,
   wordsForTitle,
   referenceCount,
-  userTurnForModel,
 } from "@shared/agent/attachments.js";
 import type { ChatAttachedChip } from "@shared/schemas/api.js";
 
@@ -51,28 +50,6 @@ describe("attachmentSection", () => {
     expect(section).toContain("### Attachment 2: brief.pdf (type: text)");
     expect(section).toContain(JSON.stringify(doc.data_snapshot, null, 2));
   });
-
-  it("does not depend on the words typed beside it", () => {
-    // The limit on attachments is measured on this alone, so a long question
-    // must not change what the attachments weigh.
-    const before = attachmentSection([doc]);
-    userTurnForModel([doc], "y".repeat(10_000));
-    expect(attachmentSection([doc])).toBe(before);
-  });
-});
-
-describe("userTurnForModel", () => {
-  it("is the typed words unchanged when nothing is attached", () => {
-    expect(userTurnForModel([], "hello")).toBe("hello");
-  });
-
-  it("puts the attachments first and the typed words after them", () => {
-    const turn = userTurnForModel([image], "what is in this?");
-
-    expect(turn.startsWith(attachmentSection([image]))).toBe(true);
-    expect(turn.endsWith("what is in this?")).toBe(true);
-    expect(turn.indexOf("cover.png")).toBeLessThan(turn.indexOf("what is in this?"));
-  });
 });
 
 describe("an attached item on the chat wire", () => {
@@ -99,7 +76,6 @@ describe("an unnamed piece of the canvas", () => {
 });
 
 describe("a reference to an attachment inside the typed words", () => {
-  const twin: ChatAttachedChip = { ...image, id: "a3" };
   const picked: ChatAttachedChip = {
     id: "a4",
     type: "canvas",
@@ -109,33 +85,6 @@ describe("a reference to an attachment inside the typed words", () => {
 
   it("is written as a marker carrying the attachment id", () => {
     expect(attachmentMarker("a1")).toBe("@[attachment:a1]");
-  });
-
-  it("reaches the model as the numbered attachment it points at", () => {
-    const turn = userTurnForModel(
-      [image, doc],
-      `compare ${attachmentMarker("a2")} with ${attachmentMarker("a1")}`,
-    );
-
-    expect(turn.endsWith("compare [Attachment 2: brief.pdf] with [Attachment 1: cover.png]")).toBe(true);
-  });
-
-  it("tells apart two attachments with the same name and nameless canvas picks", () => {
-    const turn = userTurnForModel(
-      [image, twin, picked],
-      `${attachmentMarker("a3")} ${attachmentMarker("a4")}`,
-    );
-
-    expect(turn).toContain("### Attachment 2: cover.png (type: image)");
-    expect(turn).toContain("### Attachment 3: canvas, 2 nodes (type: canvas)");
-    expect(turn.endsWith("[Attachment 2: cover.png] [Attachment 3: canvas, 2 nodes]")).toBe(true);
-  });
-
-  it("stays as typed text when its id is not attached to this message", () => {
-    const words = `see ${attachmentMarker("elsewhere")}`;
-
-    expect(userTurnForModel([image], words).endsWith(words)).toBe(true);
-    expect(userTurnForModel([], words)).toBe(words);
   });
 
   it("reads as the attachment name in a title, and as nothing for an unnamed one", () => {
