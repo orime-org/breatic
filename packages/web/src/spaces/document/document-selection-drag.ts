@@ -127,7 +127,7 @@ export function selectionPreviewContent(view: EditorView): HTMLElement | null {
  */
 function previewSelectionDrag(view: EditorView, event: DragEvent): void {
   const { dataTransfer, target } = event;
-  if (event.defaultPrevented || dataTransfer === null || !(target instanceof Node) || !view.dom.contains(target)) return;
+  if (event.defaultPrevented || !dataTransfer || !(target instanceof Node) || !view.dom.contains(target)) return;
   const pressAt = view.state.selection.empty ? null : (view.posAtCoords({ left: event.clientX, top: event.clientY })?.pos ?? null);
   const kind = selectionDragKind(view, event, pressAt);
   if (kind === null) return;

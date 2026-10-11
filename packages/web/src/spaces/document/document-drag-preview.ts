@@ -437,7 +437,7 @@ export function removeWhenDragEnds(page: Document, preview: { remove: () => void
  */
 export function previewRowDrag(view: EditorView, dataTransfer: DataTransfer | null, blockId: string): DragPreview | null {
   const row = [...view.dom.querySelectorAll(ROW)].find((outer) => outer.getAttribute('data-id') === blockId);
-  if (row === undefined || dataTransfer === null) return null;
+  if (row === undefined || !dataTransfer) return null;
   const preview = buildDragPreview(view, blockPreviewContent(view, [row.cloneNode(true) as Element]));
   dataTransfer.setDragImage(preview.element, 0, 0);
   return preview;
