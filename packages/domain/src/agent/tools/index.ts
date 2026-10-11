@@ -8,6 +8,7 @@ import type { Tool } from "ai";
 import { env } from "@breatic/core";
 
 import { makeAskUserTool } from "@domain/agent/tools/ask-user.js";
+import { makeSaveImageTool } from "@domain/agent/tools/save-image.js";
 import {
   ASK_USER,
   GET_CANVAS_CAPABILITIES,
@@ -15,6 +16,7 @@ import {
   JUDGE_LIKELIHOOD,
   LIST_GENERATION_MODELS,
   PROPOSE_CANVAS_ACTION,
+  SAVE_IMAGE,
 } from "@domain/agent/tools/tool-names.js";
 import { imageSearch } from "@domain/agent/tools/image-search.js";
 import { makeSearchTools } from "@domain/agent/tools/web-search.js";
@@ -57,6 +59,9 @@ export const TOOL_MAP: Readonly<Record<string, () => Tool>> = {
   // Built per turn: its description quotes the template prompts in the
   // reader's language.
   [PROPOSE_CANVAS_ACTION]: () => makeProposeCanvasAction(),
+  // Built per turn: it holds whether a save is running, so one turn saves one
+  // picture at a time.
+  [SAVE_IMAGE]: () => makeSaveImageTool(),
   // Holds nothing between calls, so one object serves every turn.
   [JUDGE_LIKELIHOOD]: () => judgeLikelihood,
 } as const;
@@ -87,6 +92,7 @@ export const CANVAS_TOOLS: readonly string[] = [
   LIST_GENERATION_MODELS,
   GET_PRODUCT_GUIDE,
   PROPOSE_CANVAS_ACTION,
+  SAVE_IMAGE,
 ];
 
 export {
@@ -96,6 +102,7 @@ export {
   JUDGE_LIKELIHOOD,
   LIST_GENERATION_MODELS,
   PROPOSE_CANVAS_ACTION,
+  SAVE_IMAGE,
 } from "@domain/agent/tools/tool-names.js";
 
 /**

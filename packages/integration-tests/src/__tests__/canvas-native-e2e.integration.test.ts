@@ -191,13 +191,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
     hashInput: string,
     url: string,
     sizeBytes: number,
-    ctx: {
-      projectId: string;
-      actingUserId: string;
-      assetSource: "ai" | "cover";
-      generationTaskId?: string;
-      contentType: string;
-    },
+    ctx: Parameters<typeof orig.backendUploadService.uploadBytesToStorage>[1],
   ): Promise<{
     assetId: string;
     fileUrl: string;

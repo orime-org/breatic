@@ -7,6 +7,7 @@ import * as Y from 'yjs';
 import {
   CANVAS_NODES_KEY,
   newId,
+  PANEL_EDITOR_PARAM,
   promptPlainText,
   proposalMarkSegments,
   type CanvasProposal,
@@ -16,9 +17,11 @@ import {
   addEdge,
   addNode,
   createGroup,
+  getLyricsFragment,
   getPromptFragment,
   getTextBody,
   readNodeCorners,
+  restoreNodeMedia,
   runCanvasUndoBatch,
   setGroupBackground,
   setNodeMode,
@@ -30,7 +33,8 @@ import {
 import { docName, getDoc, hasDoc } from '@web/data/yjs/manager';
 import { setStoryboardShots } from '@web/data/yjs/node-storyboard';
 import { writePlainTextIntoBody } from '@breatic/shared/canvas/text-body';
-import { writeProposalPrompt } from '@web/spaces/canvas/generate/proposal-prompt';
+import { writeProposalFills } from '@web/spaces/canvas/generate/proposal-fills';
+import { proposalMentionOf, writeProposalPrompt } from '@web/spaces/canvas/generate/proposal-prompt';
 import { planFlowLayout, type Spot } from '@web/spaces/canvas/lib/place-flow';
 import {
   cloneForPaste,
@@ -278,6 +282,13 @@ export function useNodeCreation(
           });
           nodeIds.push(id);
           setNodeName(projectId, spaceId, id, node.name);
+          // The reader's material, with the numbers its registration holds,
+          // the same write a restored result goes through (inner#1315). The
+          // tool answers with both or neither: a material it could not read the
+          // registration of is refused before a card is drawn.
+          if (node.material !== undefined && node.materialMedia !== undefined) {
+            restoreNodeMedia(projectId, spaceId, id, { content: node.material, media: node.materialMedia });
+          }
           // Mode and model go together in one write, so a collaborator never
           // sees the proposed mode paired with whatever model the node
           // defaulted to. A source node carries neither -- it is the empty
@@ -327,10 +338,13 @@ export function useNodeCreation(
             });
           }
         });
-        // Words last, once every node and edge is in place.
+        // Words last, once every node and edge is in place: a ref lands as a
+        // mention of the node placed for it (inner#1315).
+        const mentionOf = proposalMentionOf(proposal, nodeIds);
         proposal.nodes.forEach((node, i) => {
           const id = nodeIds[i];
           if (!id) return;
+          writeProposalFills(projectId, spaceId, id, node, proposal.nodes);
           if (node.role === 'written') {
             // A written node's words are its body, not a prompt: nothing
             // generates there, and the body is what the reader reads and edits.
@@ -339,29 +353,41 @@ export function useNodeCreation(
             return;
           }
           if (!node.mode) return;
+          // Words sent into a song model's lyrics box are @'d there, the way the
+          // reader would @ them, and nowhere else.
+          const lyrics = proposal.edges.filter((edge) => edge.toIndex === i && edge.into === PANEL_EDITOR_PARAM);
+          const lyricsBox = lyrics.length > 0 ? getLyricsFragment(projectId, spaceId, id, node.mode) : null;
+          // One line each, the way a reader @'ing them by hand would: two
+          // mentions on one line send their words run together.
+          const lyricsLines = lyrics.flatMap((edge, k) =>
+            k === 0 ? [{ ref: edge.fromIndex }] : [{ text: '\n' }, { ref: edge.fromIndex }],
+          );
+          if (lyricsBox) writeProposalPrompt(lyricsBox, lyricsLines, mentionOf);
           // A model drawing no prompt box shows nothing written there; the card
           // lists its marks instead.
           if (node.takesPrompt === false) return;
           // The main prompt goes into the proposal's own mode (#2218), then
           // each shot.
           const fragment = getPromptFragment(projectId, spaceId, id, node.mode);
-          if (fragment && node.prompt) writeProposalPrompt(fragment, node.prompt);
+          if (fragment && node.prompt) writeProposalPrompt(fragment, node.prompt, mentionOf);
           if (node.shots) {
             const shotFragments = setStoryboardShots(projectId, spaceId, id, node.shots.map((shot) => shot.duration));
             node.shots.forEach((shot, k) => {
               const target = shotFragments[k];
-              if (target) writeProposalPrompt(target, shot.prompt);
+              if (target) writeProposalPrompt(target, shot.prompt, mentionOf);
             });
           }
         });
       });
-      // A mark is something the reader still does. Saying so is all: what
-      // they leave as it is goes out as it is (inner#977). Where no prompt box
-      // is drawn nothing was written, and the card is where the marks are.
-      const marked = proposal.nodes.some(
-        (node) => node.takesPrompt !== false && proposalMarkSegments(node).some((segment) => segment.slot),
+      // Words in braces are the reader's to write. Saying so is all: what
+      // they leave as it is goes out as it is (inner#977). A proposal's
+      // references land as mentions and its notes show in the box, so only
+      // braces are left to point at (inner#1315). Where no prompt box is drawn
+      // nothing was written, and the card is where the marks are.
+      const toFill = proposal.nodes.some(
+        (node) => node.takesPrompt !== false && proposalMarkSegments(node).some((segment) => segment.slot?.kind === 'tweak'),
       );
-      if (marked) toast.info(t('canvas.generatePanel.editMarks'));
+      if (toFill) toast.info(t('canvas.generatePanel.editProposalMarks'));
       return groupId === undefined ? { nodeIds } : { nodeIds, groupId };
     },
     [projectId, spaceId, createNodeAt, userId, t],

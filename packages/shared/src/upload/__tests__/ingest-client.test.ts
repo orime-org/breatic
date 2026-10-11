@@ -87,7 +87,7 @@ function headersOf(nth: number): Record<string, string> {
 }
 
 /** The transport options of the nth call. */
-function optionsOf(nth: number): { replaySafe: boolean; timeoutMs?: number } {
+function optionsOf(nth: number): { replaySafe: boolean; timeoutMs?: number; signal?: AbortSignal } {
   const options = mockedRequest.mock.calls[nth]?.[2];
   if (options === undefined) throw new Error(`no call ${nth}`);
   return options;
@@ -526,6 +526,26 @@ describe('handing the Worker a URL to fetch', () => {
   // bytes; how long the answer takes is a third party's business, and the
   // default it falls back to is the platform's own bound rather than anyone's
   // decision about this lane.
+  // A caller with a reader watching (the agent's save, inner#1315) stops the
+  // transfer when the reader stops the turn; the signal has to reach the
+  // transport, since nothing above it holds the request.
+  it("hands the caller's stop signal to the transport", async () => {
+    mockedRequest.mockResolvedValueOnce(answers(200, MEASURED));
+    const stop = new AbortController();
+
+    await fetchUrlToIngest(SOURCE, ticketFor(1), SECRET, COVER_KEY, LIMITS, DEADLINE, stop.signal);
+
+    expect(optionsOf(0).signal).toBe(stop.signal);
+  });
+
+  it('sends no stop signal when the caller has none', async () => {
+    mockedRequest.mockResolvedValueOnce(answers(200, MEASURED));
+
+    await fetchUrlToIngest(SOURCE, ticketFor(1), SECRET, COVER_KEY, LIMITS, DEADLINE);
+
+    expect(optionsOf(0)).not.toHaveProperty('signal');
+  });
+
   it('waits under the deadline its caller named', async () => {
     mockedRequest.mockResolvedValueOnce(answers(200, MEASURED));
 

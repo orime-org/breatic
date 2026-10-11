@@ -217,6 +217,9 @@ export const ProposalCard = React.memo(function ProposalCard({
           {t('chat.proposal.failed')}
         </div>
       ) : null}
+      {/* 270px is the card's inner width at the narrowest Agent column, so the
+          button fills the card there and stops growing as the column widens
+          (inner#1372). */}
       <Button
         type='button'
         variant='outline'
@@ -224,7 +227,7 @@ export const ProposalCard = React.memo(function ProposalCard({
         data-testid='proposal-use'
         disabled={building}
         onClick={onUse}
-        className='w-full'
+        className='w-full max-w-[270px] self-center'
       >
         {building ? t('chat.proposal.building') : t('chat.proposal.use')}
       </Button>

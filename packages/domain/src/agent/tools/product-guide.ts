@@ -22,6 +22,7 @@ import { z } from "zod";
 import { getAgentConfig } from "@breatic/core";
 import { CHAT_MESSAGE_MAX_CHARS, canConnect, canGenerate, t, type NodeType } from "@breatic/shared";
 import { MINI_TOOLS, type MiniToolMedium } from "@breatic/shared/mini-tools";
+import { SAVE_IMAGE } from "@domain/agent/tools/tool-names.js";
 
 const inputSchema = z.object({}).strict();
 
@@ -520,8 +521,8 @@ export function renderProductGuide(): string {
       `deployment lacks reads ${quoted(t("canvas.template.unavailable"))} and cannot be picked. Picking one sets ` +
       "the panel's mode, model and settings to the template's and replaces that mode's prompt with the " +
       "template's; nothing asks first, and " +
-      `the message ${quoted(t("canvas.generatePanel.editMarks"))} appears. Its marks work the way a ` +
-      "proposal's do (see below): the reader @s the pictures it asks for by hand, and can change anything after.",
+      `the message ${quoted(t("canvas.generatePanel.editMarks"))} appears. Its 📎 marks ask the reader to @ ` +
+      "the pictures it needs by hand (see below), and they can change anything after.",
     "Fill in what the panel asks for, then press the round button with an upward arrow at the right end of the " +
       "panel's bottom row. Usually that is the prompt; some modes also need a source slot filled, a voice or " +
       "speakers picked, or a connected node mentioned in the prompt (see Mentions). If something is missing, " +
@@ -877,8 +878,8 @@ export function renderProductGuide(): string {
       "the same list share one heading, joined by ·. Each generating node's list ends with one of these two " +
       "lines, the second where the model has no prompt box: " +
       `${quoted(t("chat.proposal.promptReady"))} ${quoted(t("chat.proposal.settingsReady"))}`,
-    `Pressing ${quoted(t("chat.proposal.use"))} places the nodes near the middle of the reader's view, wired ` +
-      "together and grouped when there are two or more, as one step undo reverses; the button reads " +
+    `Pressing ${quoted(t("chat.proposal.use"))} places the nodes near the middle of the reader's view, joined ` +
+      "by the proposal's edges (a node filling a slot through fills gets no line) and grouped when there are two or more, as one step undo reverses; the button reads " +
       `${quoted(t("chat.proposal.building"))} meanwhile, and ${quoted(t("chat.proposal.failed"))} appears if it ` +
       "fails. A canvas has to be open: " +
       `anywhere else pressing it shows the message ${quoted(t("chat.proposal.needCanvas"))} and places nothing. ` +
@@ -890,10 +891,19 @@ export function renderProductGuide(): string {
       "proposal's mode only, so switching mode shows that mode's own box. Where the model has no prompt box, a picture or video " +
       `panel shows ${quoted(t("canvas.generatePanel.promptNotUsed"))} in place of the box, and a sound panel ` +
       "still shows an empty box; nothing typed there is sent. The card lists the proposal's marks for that node. " +
+      "A node holding material the reader gave -- a file uploaded in this chat, or a picture saved with " +
+      `${SAVE_IMAGE} -- arrives with it in, and a slot the proposal filled from such a node already holds it in ` +
+      "the panel, so there is nothing to pick there; one wired into the reference pool is already @'d in its prompt, " +
+      "or in its shot on a node in Multi-Shot. " +
       "The reader generates the nodes in the order the card's arrows run, and waits for each to show its result " +
       "before generating the node it feeds: a node still generating lends nothing, or its previous result, and " +
       "where that source is optional the run goes ahead without it.",
-    "A prompt or shot from a proposal or a template carries three kinds of mark. A 📎 mark in square brackets " +
+    "A proposal @s for the reader every node it wires into the reference list: its prompt or shot arrives with " +
+      "those mentions in it, the same as ones typed with @. A node @'d that lands empty -- an empty node, or a " +
+      "generation still to run -- comes with a note saying what to do first; generating before then sends " +
+      "nothing for it, and the run stops only where nothing else in that source holds a node and the model runs " +
+      "only when one does. A template's prompt carries 📎 and ✏️ marks; a proposal's prompt or shot carries ✏️ " +
+      "marks and notes, never a 📎 mark. A 📎 mark in square brackets " +
       "asks the reader to @ a node: at that place they type @ and pick the node -- an empty node they first put " +
       "their own file in (double-click it to pick one), a generated result, or a text node -- then delete the " +
       "bracket. A ✏️ mark in braces is words only the reader can write; they replace it with their own. An orange " +
@@ -902,17 +912,17 @@ export function renderProductGuide(): string {
       "where the panel shows no prompt box, the card is the only place it appears. Read back as text, as in an " +
       "attached node's prompt, a note is (💡 …) on a line of its own and is not sent, a 📎 mark is [📎 …] and a " +
       "✏️ mark {✏️ …}. Square-bracket and brace marks " +
-      `left in a prompt are sent as they are. When a placed node that has a prompt box carries marks, the message ${quoted(t("canvas.generatePanel.editMarks"))} ` +
+      `left in a prompt are sent as they are. When a placed proposal carries a ✏️ mark (in a prompt box or a text node's words), the message ${quoted(t("canvas.generatePanel.editProposalMarks"))} ` +
       "appears; nothing checks whether they were done.",
     "How work reaches a node depends on where it goes:",
-    "- Into the reference list: the reader @s it in the prompt or a shot where a 📎 mark asks for it. Nothing " +
-      "is @'d for them, and a node wired in that is not @'d is not used.",
-    "- Into one of the mode's source slots: it is not @'d; an orange note says which slot to pick it into, " +
-      "and a required slot left empty stops the run. Once that node holds " +
-      "its file or its generated result, the reader opens the panel of the node it feeds, presses that slot's " +
-      "button and clicks the node.",
-    "- Into a song model's lyrics box: a text node the reader @s in the lyrics box, as an orange note asks; it is not " +
-      "@'d in the style prompt above it.",
+    "- Into the reference list: it is @'d in the prompt or a shot, by the proposal for every node it wires in, " +
+      "or by the reader where a template's 📎 mark asks. A node wired in that is not @'d is not used.",
+    "- Into one of the mode's source slots: it is not @'d. A slot a proposal filled from a node holding material " +
+      "arrives holding it. For an empty node an orange note says which slot to pick it into, and a required slot " +
+      "left empty stops the run. Once that node holds its file or its generated result, the reader opens the panel " +
+      "of the node it feeds, presses that slot's button and clicks the node.",
+    "- Into a song model's lyrics box: a text node @'d in the lyrics box, where a proposal arrives with it " +
+      "already @'d; it is not @'d in the style prompt above it.",
     "",
     "## Document spaces",
     "- Markdown at the start of a line: `# `, `## `, `### ` for headings; a number, a full stop and a space " +

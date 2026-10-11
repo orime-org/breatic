@@ -5,9 +5,9 @@
  * Which sources a run still needs, read off the model's own declarations.
  *
  * One rule for the generate panel, the server's pre-enqueue gate and the
- * agent's proposal check: a slot or pool the model does not mark optional has
- * to hold something, and each "one of these" group the model declares for the
- * mode has to have one member holding something.
+ * model listing the agent reads: a slot or pool the model does not mark
+ * optional has to hold something, and each "one of these" group the model
+ * declares for the mode has to have one member holding something.
  */
 
 import { appliesInMode } from "@shared/param-modes.js";

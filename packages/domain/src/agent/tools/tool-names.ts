@@ -53,6 +53,14 @@ export const GET_PRODUCT_GUIDE = "get_product_guide";
 export const PROPOSE_CANVAS_ACTION = "propose_canvas_action";
 
 /**
+ * Saves a found picture into our storage (inner#1315).
+ *
+ * Named here because the proposal check points the model at it when an
+ * address is not ours yet.
+ */
+export const SAVE_IMAGE = "save_image";
+
+/**
  * Ask for a judgement over what the model is holding, with the odds (#282).
  *
  * Written here for the reason above: the registry key, the baseline list and

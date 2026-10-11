@@ -178,6 +178,8 @@ export interface ExecuteVerdict {
   readonly limit?: number;
   /** The shot seconds and the total that do not match. */
   readonly seconds?: { shots: number; total: number };
+  /** What a storyboard refusal measured against its cap: the shots given, or the characters of the shot. */
+  readonly found?: number;
 }
 
 /**
@@ -298,11 +300,11 @@ function storyboardRefusal(
   const empty = texts.findIndex((text) => text.length === 0);
   if (empty !== -1) return { refusal: 'storyboard-shot-empty', shot: empty + 1 };
   if (maxShots !== undefined && shots.length > maxShots) {
-    return { refusal: 'storyboard-too-many', limit: maxShots };
+    return { refusal: 'storyboard-too-many', limit: maxShots, found: shots.length };
   }
   if (maxChars !== undefined) {
     const long = texts.findIndex((text) => [...text].length > maxChars);
-    if (long !== -1) return { refusal: 'storyboard-shot-too-long', shot: long + 1, limit: maxChars };
+    if (long !== -1) return { refusal: 'storyboard-shot-too-long', shot: long + 1, limit: maxChars, found: [...(texts[long] ?? '')].length };
   }
   const sum = shots.reduce((acc, shot) => acc + shot.duration, 0);
   if (sum !== total) return { refusal: 'storyboard-duration-mismatch', seconds: { shots: sum, total } };
