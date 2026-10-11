@@ -248,7 +248,7 @@
       "attach": "Attach files",
       "spaceContextOn": "The Agent reads this Space with each message",
       "spaceContextOff": "The Agent does not read this Space",
-      "spaceContextOnUnreadable": "The Agent sees only this Space's name; its content can't be read",
+      "spaceContextOnUnreadable": "The Agent sees only this Space's name and type; its content can't be read",
       "removeAttachment": "Remove {name}",
       "attachmentUploading": "Uploading",
       "attachmentFailed": "{reason, select, upload {Upload failed} rate_limited {Too many uploads, try later} extract {Couldn’t read it} too_long {Too long} other {Failed}}",

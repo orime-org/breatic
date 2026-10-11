@@ -248,7 +248,7 @@
       "attach": "ファイルを添付",
       "spaceContextOn": "Agent はメッセージごとにこの Space を読み取ります",
       "spaceContextOff": "Agent はこの Space を読み取りません",
-      "spaceContextOnUnreadable": "Agent に見えるのはこの Space の名前だけで、内容は読み取れません",
+      "spaceContextOnUnreadable": "Agent に見えるのはこの Space の名前と種類だけで、内容は読み取れません",
       "removeAttachment": "{name} を外す",
       "attachmentUploading": "アップロード中",
       "attachmentFailed": "{reason, select, upload {アップロード失敗} rate_limited {アップロードが多すぎます。後でお試しください} extract {読み取り失敗} too_long {長すぎます} other {失敗}}",

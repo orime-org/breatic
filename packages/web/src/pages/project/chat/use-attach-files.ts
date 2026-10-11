@@ -29,7 +29,7 @@ async function uploadForChat(file: File, projectId: string): Promise<string | un
 }
 
 /**
- * What the reader is told about their last attempt to attach something.
+ * What the reader is told about their last attempt to attach something or send.
  * @param said - What the tray said.
  * @param t - The translator.
  * @returns The sentence.

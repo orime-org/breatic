@@ -44,7 +44,7 @@ export interface AttachmentLimits {
 /** What adding a batch came to. */
 export type AddOutcome = 'added' | 'full' | 'too_long';
 
-/** What to say beside the attach button about the last attempt to attach. */
+/** What to say beside the attach button about the last attempt to attach or send. */
 export type TrayNotice =
   | { key: 'full'; limit: number }
   | { key: 'tooLong' }
@@ -57,7 +57,7 @@ interface TrayState {
   /** The list above the box in each conversation, keyed by conversation. */
   byConversation: Record<string, TrayItem[]>;
   /**
-   * What was said about the last attempt to attach, keyed by conversation.
+   * What was said about the last attempt to attach or send, keyed by conversation.
    *
    * Here rather than with whoever attached: the canvas attaches too, and what
    * it has to say belongs above the same box.
@@ -258,7 +258,7 @@ function forget(conversationIds: readonly string[]): void {
 }
 
 /**
- * Say something beside the attach button about the last attempt to attach, or clear it.
+ * Say something beside the attach button about the last attempt to attach or send, or clear it.
  * @param conversationId - The conversation.
  * @param notice - What to say, or null to say nothing.
  */
