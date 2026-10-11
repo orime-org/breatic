@@ -246,6 +246,8 @@
       "sending": "送信中",
       "atLimit": "{limit, number} 文字の上限に達しました",
       "attach": "ファイルを添付",
+      "spaceContextOn": "Agent はメッセージごとにこの Space を読み取ります",
+      "spaceContextOff": "Agent はこの Space を読み取りません",
       "removeAttachment": "{name} を外す",
       "attachmentUploading": "アップロード中",
       "attachmentFailed": "{reason, select, upload {アップロード失敗} rate_limited {アップロードが多すぎます。後でお試しください} extract {読み取り失敗} too_long {長すぎます} other {失敗}}",

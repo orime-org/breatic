@@ -8,14 +8,17 @@ import { useTranslation } from '@web/i18n/use-translation';
 import { useExclusiveOverlay } from '@web/features/exclusive-overlay/use-exclusive-overlay';
 import { conversationRuntime, useConversationRuntime } from '@web/stores/conversation-runtime';
 
+import type { ProjectSpace } from '@web/data/yjs/project-meta';
 import { ChatPanel } from '@web/pages/project/chat/ChatPanel';
 import { AgentColHeader } from '@web/pages/project/chrome/agent-header/AgentColHeader';
 
 interface AgentColumnProps {
   /** Project whose chat this column shows. */
   projectId: string;
-  /** The canvas on screen, when the open Space is one. */
-  canvasSpaceId?: string;
+  /** The Space whose tab is active, if any. */
+  activeSpace?: ProjectSpace | undefined;
+  /** Every Space in the project. */
+  spaces?: readonly ProjectSpace[];
 }
 
 /**
@@ -28,10 +31,11 @@ interface AgentColumnProps {
  * and the sheet it opens is down here.
  * @param root0 - The component props.
  * @param root0.projectId - Project whose chat this column shows.
- * @param root0.canvasSpaceId - The canvas on screen, when the open Space is one.
+ * @param root0.activeSpace - The Space whose tab is active, if any.
+ * @param root0.spaces - Every Space in the project.
  * @returns The column.
  */
-export function AgentColumn({ projectId, canvasSpaceId }: AgentColumnProps): React.JSX.Element {
+export function AgentColumn({ projectId, activeSpace, spaces }: AgentColumnProps): React.JSX.Element {
   const t = useTranslation();
   const [historyOpen, setHistoryOpen] = useExclusiveOverlay('conversation-history');
 
@@ -134,7 +138,8 @@ export function AgentColumn({ projectId, canvasSpaceId }: AgentColumnProps): Rea
         <ChatPanel
           projectId={projectId}
           historyOpen={historyOpen}
-          {...(canvasSpaceId === undefined ? {} : { canvasSpaceId })}
+          activeSpace={activeSpace}
+          {...(spaces === undefined ? {} : { spaces })}
           onHistoryOpenChange={setHistoryOpen}
         />
       </div>

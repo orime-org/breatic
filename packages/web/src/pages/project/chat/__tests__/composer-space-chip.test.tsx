@@ -11,6 +11,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
+import { TooltipProvider } from '@web/components/ui/tooltip';
 import { ChatComposer } from '@web/pages/project/chat/ChatComposer';
 
 /**
@@ -20,17 +21,20 @@ import { ChatComposer } from '@web/pages/project/chat/ChatComposer';
  */
 function setup(props: Partial<Parameters<typeof ChatComposer>[0]> = {}): { onToggleSpace: ReturnType<typeof vi.fn> } {
   const onToggleSpace = vi.fn();
+  // The app's one provider lives in App.tsx; a test stands in for it.
   render(
-    <ChatComposer
-      draft=''
-      onChange={() => undefined}
-      onSubmit={() => undefined}
-      spaceName='Storyboard'
-      spaceType='document'
-      spaceEnabled
-      onToggleSpace={onToggleSpace}
-      {...props}
-    />,
+    <TooltipProvider>
+      <ChatComposer
+        draft=''
+        onChange={() => undefined}
+        onSubmit={() => undefined}
+        spaceName='Storyboard'
+        spaceType='document'
+        spaceEnabled
+        onToggleSpace={onToggleSpace}
+        {...props}
+      />
+    </TooltipProvider>,
   );
   return { onToggleSpace };
 }

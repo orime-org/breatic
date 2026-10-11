@@ -70,7 +70,8 @@ interface SpaceTabProps {
  */
 export const SPACE_TAB_MAX_WIDTH = 160;
 
-const TYPE_ICON: Record<SpaceType, typeof FileText> = {
+/** Each Space type's icon, wherever a Space is named: its tab and the chat's Space chip. */
+export const SPACE_TYPE_ICON: Record<SpaceType, typeof FileText> = {
   canvas: Palette,
   document: FileText,
   timeline: Clock,
@@ -135,7 +136,7 @@ export function SpaceTab({
   // The comparison sits inside the selector so a tab subscribes to a boolean
   // and zustand bails out of every re-render where that boolean holds.
   const spaceRegionActive = useUIStore((s) => s.activeRegion === 'space');
-  const Icon = TYPE_ICON[type] ?? NODE_KIND_ICON.film ?? FileText;
+  const Icon = SPACE_TYPE_ICON[type] ?? NODE_KIND_ICON.film ?? FileText;
   const [editing, setEditing] = React.useState(false);
   const [draft, setDraft] = React.useState(name);
   const inputRef = React.useRef<HTMLInputElement>(null);

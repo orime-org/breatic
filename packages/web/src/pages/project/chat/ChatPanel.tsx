@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import * as React from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 
 import {
   conversationRuntime,
@@ -9,6 +10,8 @@ import {
 } from '@web/stores/conversation-runtime';
 import { chatAttachments, useTray } from '@web/stores/chat-attachments';
 import { useConsolidating } from '@web/stores/consolidating';
+import { useUIStore } from '@web/stores/ui';
+import type { ProjectSpace } from '@web/data/yjs/project-meta';
 import type { ChatMishap } from '@web/stores/chat-mishaps';
 import { useTranslation } from '@web/i18n/use-translation';
 
@@ -19,6 +22,8 @@ import { ConversationHistorySheet } from '@web/pages/project/chat/ConversationHi
 import { MessageList } from '@web/pages/project/chat/MessageList';
 import { useAttachFiles } from '@web/pages/project/chat/use-attach-files';
 import { useChatSession } from '@web/pages/project/chat/use-chat-session';
+import { readSpaceContext } from '@web/pages/project/chat/space-context';
+import type { ReadSpaces } from '@web/pages/project/chat/space-context';
 
 /**
  * How long a wait goes unmentioned.
@@ -47,9 +52,18 @@ interface ChatPanelProps {
    * before sending; default behaviour just sets the draft.
    */
   onQuickAction?: (label: string) => void;
-  /** The canvas on screen, when the open Space is one: pasted nodes it has are handed over from it. */
-  canvasSpaceId?: string;
+  /**
+   * The Space whose tab is active, if any. Named on the chip beside the plus
+   * sign and sent with each message while that chip is on; pasted canvas
+   * nodes it holds are handed over from it when it is a canvas.
+   */
+  activeSpace?: ProjectSpace | undefined;
+  /** Every Space in the project, listed to the Agent with each message. */
+  spaces?: readonly ProjectSpace[];
 }
+
+/** No Spaces; one array, so a panel given none keeps its identity. */
+const NO_SPACES: readonly ProjectSpace[] = [];
 
 /**
  * Project ChatPanel — private per-user agent chat. Does NOT participate
@@ -62,7 +76,8 @@ interface ChatPanelProps {
  * @param root0.historyOpen - Whether the conversation list is showing.
  * @param root0.onHistoryOpenChange - Called with the next open state for that list.
  * @param root0.onQuickAction - Called with a quick-action label from the empty state.
- * @param root0.canvasSpaceId - The canvas on screen, when the open Space is one.
+ * @param root0.activeSpace - The Space whose tab is active, if any.
+ * @param root0.spaces - Every Space in the project.
  * @returns The per-user private chat column with message list, composer, and history sheet.
  */
 export function ChatPanel({
@@ -70,8 +85,28 @@ export function ChatPanel({
   historyOpen,
   onHistoryOpenChange,
   onQuickAction,
-  canvasSpaceId,
+  activeSpace,
+  spaces = NO_SPACES,
 }: ChatPanelProps): React.JSX.Element {
+  const queryClient = useQueryClient();
+  const spaceContextEnabled = useUIStore((s) => s.spaceContextEnabled);
+  const setSpaceContextEnabled = useUIStore((s) => s.setSpaceContextEnabled);
+  /** The reader's Spaces as they stand; called at the press. */
+  const readSpaces = React.useCallback(
+    (): ReadSpaces =>
+      readSpaceContext({
+        projectId,
+        activeSpace,
+        spaces,
+        enabled: useUIStore.getState().spaceContextEnabled,
+        queryClient,
+      }),
+    [projectId, activeSpace, spaces, queryClient],
+  );
+  const toggleSpace = React.useCallback(
+    (): void => setSpaceContextEnabled(!useUIStore.getState().spaceContextEnabled),
+    [setSpaceContextEnabled],
+  );
   const {
     messages,
     status,
@@ -96,7 +131,7 @@ export function ChatPanel({
     switchTo,
     rename,
     remove,
-  } = useChatSession(projectId, historyOpen);
+  } = useChatSession(projectId, historyOpen, readSpaces);
   const t = useTranslation();
 
   // Two independent gates over one wait, because they answer different
@@ -249,7 +284,10 @@ export function ChatPanel({
     if (historyOpen) reloadList();
   }, [historyOpen, reloadList]);
 
-  const pasteCanvas = usePasteCanvas(projectId, canvasSpaceId);
+  const pasteCanvas = usePasteCanvas(
+    projectId,
+    activeSpace?.type === 'canvas' ? activeSpace.id : undefined,
+  );
 
   /** Load a quick-action label into the composer. Stable for the same reason. */
   const quickAction = React.useCallback(
@@ -311,6 +349,10 @@ export function ChatPanel({
         onAttachFiles={attachFiles.attach}
         onPasteCanvas={pasteCanvas}
         onRemoveAttachment={removeAttachment}
+        spaceName={activeSpace?.name}
+        spaceType={activeSpace?.type}
+        spaceEnabled={spaceContextEnabled}
+        onToggleSpace={toggleSpace}
       />
       <ConversationHistorySheet
         open={historyOpen}

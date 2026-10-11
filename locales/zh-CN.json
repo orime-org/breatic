@@ -246,6 +246,8 @@
       "sending": "发送中",
       "atLimit": "已达 {limit, number} 字上限",
       "attach": "添加文件",
+      "spaceContextOn": "Agent 每条消息都会读取这个 Space",
+      "spaceContextOff": "Agent 不读取这个 Space",
       "removeAttachment": "移除 {name}",
       "attachmentUploading": "上传中",
       "attachmentFailed": "{reason, select, upload {上传失败} rate_limited {上传太频繁，请稍后重试} extract {读取失败} too_long {太长} other {失败}}",
