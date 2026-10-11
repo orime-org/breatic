@@ -154,6 +154,8 @@ describe('the list of uploads still finishing', () => {
     await h.tick();
 
     await expect(ending).resolves.toEqual({ key: 'k1', state: 'unknown' });
+    // Ended, so it leaves the list and nothing is left to ask about.
+    expect(h.scheduled()).toBe(false);
   });
 
   it('hands a failed upload its reason', async () => {
@@ -166,5 +168,6 @@ describe('the list of uploads still finishing', () => {
     await h.tick();
 
     await expect(ending).resolves.toEqual({ key: 'k1', state: 'failed', reason: 'unsupported_type' });
+    expect(h.scheduled()).toBe(false);
   });
 });

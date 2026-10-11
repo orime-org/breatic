@@ -157,6 +157,24 @@ describe("runContainerJob", () => {
     expect(h.submitMiniToolJob.mock.calls[0]![2]).toMatchObject({ deadlineAt: DEADLINE });
   });
 
+  // The read and the submit wait as long as the job has, plus the room for its
+  // last report: two poll intervals past the deadline (inner#1367 §4.8c).
+  it("bounds the read and the submit by the job's deadline and the room for its report", async () => {
+    h.readMiniToolJob.mockResolvedValueOnce(null);
+    h.submitMiniToolJob.mockResolvedValueOnce({ state: "starting" });
+
+    await expect(runContainerJob(CUT, "cut", INPUT)).rejects.toBeInstanceOf(StillRunning);
+
+    const left = DEADLINE + 2 * 1000 - h.now.value;
+    const read = h.readMiniToolJob.mock.calls[0]![4] as { signal: AbortSignal; timeoutMs: number };
+    const submit = h.submitMiniToolJob.mock.calls[0]![3] as { signal: AbortSignal; timeoutMs: number };
+    for (const bound of [read, submit]) {
+      expect(bound.timeoutMs).toBe(left);
+      expect(bound.signal).toBeInstanceOf(AbortSignal);
+      expect(bound.signal.aborted).toBe(false);
+    }
+  });
+
   // One read per pickup: the job sits delayed in the queue between reads, not in a worker slot.
   it("reads a running job once and asks to come back one poll interval later", async () => {
     h.steps[0]!.output = { jobId: "task:t1", containerClass: "Std1", deadlineAt: DEADLINE, outputs: [OUT] };
