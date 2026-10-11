@@ -52,7 +52,7 @@ export function SpaceContextChip({ name, type, enabled, onToggle }: SpaceContext
           aria-pressed={enabled}
           onClick={onToggle}
           data-testid='chat-composer-space'
-          className={`h-6 min-w-0 max-w-full gap-1 border px-2 text-xs font-normal ${
+          className={`h-6 min-w-[calc(3ch+2.125rem)] max-w-full gap-1 overflow-hidden border px-2 text-xs font-normal ${
             // Each state says its own hover: the variant's grey hover would
             // fill an off chip right after the press that turned it off,
             // leaving only the dashed border to tell the two apart.
