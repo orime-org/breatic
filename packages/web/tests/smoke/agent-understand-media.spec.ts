@@ -37,6 +37,7 @@ const SVG = 'https://upload.wikimedia.org/wikipedia/commons/f/fd/Ghostscript_Tig
 /** The understand_media call of a turn, as the conversation stores it. */
 interface UnderstandCall {
   state: string;
+  input?: { url?: unknown };
   output?: unknown;
   failureKind?: string;
 }
@@ -44,16 +45,67 @@ interface UnderstandCall {
 let page: Page;
 
 /**
- * Ask about one address in a conversation of its own, and read the reply.
+ * Whether a call's address is the one asked about, written either way the
+ * model may write it (`https://example.com` and `https://example.com/`).
+ * @param url - The address in the call's input.
+ * @param asked - The address asked about, already normalised.
+ * @returns Whether they name the same resource.
+ */
+function sameAddress(url: unknown, asked: string): boolean {
+  if (typeof url !== 'string') return false;
+  try {
+    return new URL(url).href === asked;
+  } catch {
+    return false;
+  }
+}
+
+/** How many conversations a case asks in before it counts the model as not looking. */
+const TURNS_TO_LOOK = 3;
+/** The longest one turn takes: up to a minute to start, three to finish, and the reading after. */
+const TURN_MS = 240_000;
+
+test.setTimeout(TURNS_TO_LOOK * TURN_MS + 60_000);
+
+/** What one turn left: the reply, the running-tool lines, and the call made on the address. */
+interface Turn {
+  reply: string;
+  toolLines: string;
+  call: UnderstandCall | null;
+}
+
+/**
+ * Ask about one address until the model calls understand_media on it, each
+ * time in a conversation of its own.
+ *
+ * Whether to call the tool is the model's choice each turn: an address it
+ * knows (example.com) it may describe from memory, and after a refusal it may
+ * go on to look at another copy of the same picture. What these cases measure
+ * is our path for this address, so they read the call made on it, and a turn
+ * without one is asked again.
  * @param p - The page to drive.
  * @param prompt - What to type.
- * @returns The reply's text, what the running-tool line said while the turn
- * was going, and the turn's last understand_media call.
+ * @param address - The address the call has to be made on.
+ * @returns The turn that looked at the address.
+ * @throws {Error} When no turn calls the tool on the address.
  */
-async function askInFreshConversation(
-  p: Page,
-  prompt: string,
-): Promise<{ reply: string; toolLines: string; call: UnderstandCall | null }> {
+async function askInFreshConversation(p: Page, prompt: string, address: string): Promise<Turn> {
+  for (let turn = 1; turn <= TURNS_TO_LOOK; turn += 1) {
+    const result = await oneTurn(p, prompt, address);
+    if (result.call !== null) return result;
+  }
+  throw new Error(`no turn of ${String(TURNS_TO_LOOK)} called understand_media on ${address}`);
+}
+
+/**
+ * Ask once, in a new conversation, and read the reply.
+ * @param p - The page to drive.
+ * @param prompt - What to type.
+ * @param address - The address whose call is read.
+ * @returns The reply's text, what the running-tool line said while the turn
+ * was going, and the turn's last understand_media call on the address.
+ */
+async function oneTurn(p: Page, prompt: string, address: string): Promise<Turn> {
   const composer = p.getByTestId('chat-composer-box');
   await expect(composer).toBeVisible({ timeout: 20_000 });
 
@@ -106,10 +158,11 @@ async function askInFreshConversation(
   const { messages } = ((await stored.json()) as {
     data: { messages: { role: string; parts: ({ type: string } & UnderstandCall)[] }[] };
   }).data;
+  const asked = new URL(address).href;
   const call =
     messages
       .flatMap((m) => m.parts)
-      .filter((part) => part.type === 'tool-understand_media')
+      .filter((part) => part.type === 'tool-understand_media' && sameAddress(part.input?.url, asked))
       .at(-1) ?? null;
   return { reply: (await body.innerText()).trim(), toolLines, call };
 }
@@ -127,14 +180,10 @@ test.afterEach(async () => {
 });
 
 test('says what is in an image the user pasted @needs-internet @needs-model', async () => {
-  // A real turn against a real backend, and a real download for the kinds
-  // that travel inline, so the budget is the model's rather than this
-  // machine's.
-  test.setTimeout(240_000);
-
   const { toolLines, call } = await askInFreshConversation(
     page,
     `看看这张图 ${IMAGE}，用一句话说清楚里面是什么。`,
+    IMAGE,
   );
 
   // The call having run and answered is what says the address travelled our
@@ -146,11 +195,11 @@ test('says what is in an image the user pasted @needs-internet @needs-model', as
 });
 
 test('says what happens in a video the user pasted @needs-internet @needs-model', async () => {
-  test.setTimeout(240_000);
 
   const { toolLines, call } = await askInFreshConversation(
     page,
     `看看这个视频 ${VIDEO}，用一句话说清楚里面发生了什么。`,
+    VIDEO,
   );
 
   // The first ten seconds of Big Buck Bunny, which is what this clip holds:
@@ -167,11 +216,11 @@ test('says what happens in a video the user pasted @needs-internet @needs-model'
 });
 
 test('says what an audio clip sounds like @needs-internet @needs-model', async () => {
-  test.setTimeout(240_000);
 
   const { toolLines, call } = await askInFreshConversation(
     page,
     `听听这段音频 ${AUDIO}，用一句话说清楚它是什么。`,
+    AUDIO,
   );
 
   // The file is named piano2.wav and the name is in the prompt, so "piano" in
@@ -217,6 +266,7 @@ test('tells the user a video format it cannot watch is one to convert @needs-int
   const { reply, call } = await askInFreshConversation(
     page,
     `看看这个视频 ${AVI}，说说里面有什么。`,
+    AVI,
   );
 
   // Refused by our own check: the call ended as a tool failure, which is the
@@ -235,6 +285,7 @@ test('tells the user an image format it cannot read is one to convert @needs-int
   const { reply, call } = await askInFreshConversation(
     page,
     `看看这张图 ${SVG}，说说里面是什么。`,
+    SVG,
   );
 
   expect(call?.state).toBe('output-error');
@@ -247,6 +298,7 @@ test('tells the user when the address holds nothing it can look at @needs-intern
   const { reply, call } = await askInFreshConversation(
     page,
     '看看 https://example.com/ 这个地址，说说里面是什么。',
+    'https://example.com/',
   );
 
   // The address answers text/html, which is none of the three kinds: the call
