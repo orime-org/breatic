@@ -26,6 +26,7 @@ import { z } from "zod";
 import { MAX_TIMER_MS } from "@shared/http/constants.js";
 import { untilDeadline, type UntilDeadline } from "@shared/http/deadline.js";
 import { httpRequest } from "@shared/http/request.js";
+import type { UprightCopy } from "@shared/upload/upright.js";
 import {
   INGEST_FAILURE_HEADER,
   readIngestFailureCode,
@@ -93,23 +94,6 @@ export interface IngestTarget {
    * out and the transport judges the same from upload progress.
    */
   dispatcher?: unknown;
-}
-
-/**
- * What completing an upload told us.
- *
- * An upload behind a node hears its outcome through Yjs and ignores this. One
- * with no node — a focus crop, or anything the backend uploaded for itself —
- * has no other channel, so this is what it reads. The fields are optional
- * because the caller hands on whatever it filed rather than reshaping it.
- */
-export interface IngestOutcome {
-  /** The ledger row these bytes landed on. */
-  assetId?: string | null;
-  /** Where the stored object is readable. */
-  fileUrl?: string;
-  /** The kind the server filed it under. */
-  kind?: string;
 }
 
 /**
@@ -210,12 +194,7 @@ export interface IngestMeasurements {
    * the bytes as received (inner#1367). The asset is this copy; `sha256` and
    * the type stay the received bytes'.
    */
-  upright?: {
-    storageKey: string;
-    sizeBytes: number;
-    width: number | null;
-    height: number | null;
-  } | null;
+  upright?: UprightCopy | null;
 }
 
 /** Hexadecimal, as `hashStoredObject` writes it. */

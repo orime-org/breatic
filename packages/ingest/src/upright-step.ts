@@ -11,19 +11,11 @@
  * and anything that is not a picture are left as they are.
  */
 
-import { uprightKeyFor, type MediaLimits } from "@breatic/shared";
+import { uprightKeyFor, type MediaLimits, type UprightCopy } from "@breatic/shared";
 import { readImageOrientation, type RangeReader } from "@ingest/image-orientation.js";
 import { readMediaAtEdge, type MediaEnv } from "@ingest/media-read.js";
 import { noted, noteFailure } from "@ingest/error-monitoring.js";
 import { uprightObjectUrl } from "@ingest/upright-run.js";
-
-/** The upright copy as the answer states it. */
-export interface UprightCopy {
-  storageKey: string;
-  sizeBytes: number;
-  width: number | null;
-  height: number | null;
-}
 
 /** Why a picture that had to be turned upright was not. */
 export type UprightFailure =
@@ -34,6 +26,20 @@ export type UprightFailure =
   | "unfinished"
   | "turn_failed"
   | "write_failed";
+
+/** The stored picture a finish asks about. */
+export interface StoredPicture {
+  /** Its key, which holds the bytes as received. */
+  storageKey: string;
+  /** What the stored bytes read as. */
+  contentType: string;
+  /** How many bytes are stored. */
+  sizeBytes: number;
+  /** When the upload's task runs out, or null when the request named none. */
+  deadlineAt: number | null;
+  /** What to turn it under, or null when the request named none. */
+  limits: MediaLimits | null;
+}
 
 /** What the step decided. */
 export type UprightStep =
@@ -88,24 +94,11 @@ async function standingCopy(bucket: R2Bucket, uprightKey: string): Promise<Uprig
  * Turn a stored picture upright when its orientation says to.
  * @param env - The Worker's bindings.
  * @param about - The stored picture.
- * @param about.storageKey - Its key, which holds the bytes as received.
- * @param about.contentType - What the stored bytes read as.
- * @param about.sizeBytes - How many bytes are stored.
- * @param about.deadlineAt - When the upload's task runs out, or null when the
- *   request named none.
- * @param about.limits - What to turn it under, or null when the request named
- *   none.
  * @returns What was decided; a failure is written down here.
  */
 export async function turnUprightIfTagged(
   env: MediaEnv,
-  about: {
-    storageKey: string;
-    contentType: string;
-    sizeBytes: number;
-    deadlineAt: number | null;
-    limits: MediaLimits | null;
-  },
+  about: StoredPicture,
 ): Promise<UprightStep> {
   const step = await decide(env, about);
   if (step.kind === "failed" && step.reason !== "orientation_unread") {
@@ -118,22 +111,11 @@ export async function turnUprightIfTagged(
  * The decision {@link turnUprightIfTagged} writes down.
  * @param env - The Worker's bindings.
  * @param about - The stored picture.
- * @param about.storageKey - Its key.
- * @param about.contentType - What the stored bytes read as.
- * @param about.sizeBytes - How many bytes are stored.
- * @param about.deadlineAt - When the upload's task runs out, or null.
- * @param about.limits - What to turn it under, or null.
  * @returns What was decided.
  */
 async function decide(
   env: MediaEnv,
-  about: {
-    storageKey: string;
-    contentType: string;
-    sizeBytes: number;
-    deadlineAt: number | null;
-    limits: MediaLimits | null;
-  },
+  about: StoredPicture,
 ): Promise<UprightStep> {
   const { storageKey, contentType } = about;
   if (!contentType.startsWith("image/")) return { kind: "as_is" };

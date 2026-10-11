@@ -44,7 +44,7 @@ import {
   NotFoundError,
 } from "@breatic/core";
 import { canvasSpaceDocName, t, uprightKeyFor } from "@breatic/shared";
-import type { NodeTaskResult, StudioAssetEntity } from "@breatic/shared";
+import type { NodeTaskResult, StudioAssetEntity, UprightCopy } from "@breatic/shared";
 import { appendProjectActivity } from "@domain/activity/project-activity.service.js";
 import * as uploadGrantRepo from "@domain/asset/upload-grant.repo.js";
 import type {
@@ -105,12 +105,7 @@ export type IngestReport =
        * the bytes as received (inner#1367). Present, it is what is filed;
        * `sha256` and `contentType` stay the received bytes'.
        */
-      upright?: {
-        storageKey: string;
-        sizeBytes: number;
-        width: number | null;
-        height: number | null;
-      } | null;
+      upright?: UprightCopy | null;
     }
   | {
       storageKey: string;
@@ -404,9 +399,9 @@ async function settleUploadTask(
   });
 
   // The content rides along whenever the row holds this outcome, a repeated
-  // finish included — the browser delivers one again when it heard no answer,
-  // and that retry is the whole recovery for a result that never reached the
-  // node. A row that settled some OTHER way leaves the node's content alone:
+  // finish included — the queue runs a finish again when a try failed or its
+  // worker went away, and that repeat is the whole recovery for a result that
+  // never reached the node. A row that settled some OTHER way leaves the node's content alone:
   // the user may have retried, and choosing for them is not ours to do.
   const content = settled.landed ? outcome.result : undefined;
   const docName = canvasSpaceDocName(grant.projectId, grant.spaceId);
@@ -598,10 +593,10 @@ export async function applyIngestReport(
   const adapter = await getStorageAdapter();
   const contentType = report.contentType;
 
-  // A retry: the browser did not hear the answer to its finish request, so it
-  // sent the same upload again. Publishing again is the point — collab applies
-  // these last-write-wins, so a duplicate costs nothing while a lost one
-  // leaves the node spinning.
+  // A repeat: the queue ran this finish again after a try failed or its worker
+  // went away, so the same upload reports again. Publishing again is the
+  // point — collab applies these last-write-wins, so a duplicate costs
+  // nothing while a lost one leaves the node spinning.
   if (grant.consumedAt !== null) {
     const existing = await assetRepo.findByStudioAndHash(
       grant.studioId,

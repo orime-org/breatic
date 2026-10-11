@@ -515,30 +515,28 @@ async function finishUpload(
   // its upright copy, beside the bytes as received (inner#1367 §4.2). The hash
   // and the type stay the received bytes'. One that cannot be turned fails the
   // upload: filed as it is, it would be shown sideways.
-  if (storedType.startsWith("image/") && assembled.sizeBytes > 0) {
-    const turned = await turnUprightIfTagged(env, {
-      storageKey,
-      contentType: storedType,
+  const turned = await turnUprightIfTagged(env, {
+    storageKey,
+    contentType: storedType,
+    sizeBytes: assembled.sizeBytes,
+    deadlineAt,
+    limits: upload.limits,
+  });
+  if (turned.kind === "failed") {
+    return refused("upright_failed", "Could not turn the picture upright", 502);
+  }
+  if (turned.kind === "upright") {
+    if (turned.preview !== null) await storePreview(env, turned.copy.storageKey, turned.preview);
+    return Response.json({
+      sha256,
       sizeBytes: assembled.sizeBytes,
-      deadlineAt,
-      limits: upload.limits,
+      contentType: storedType,
+      width: turned.copy.width,
+      height: turned.copy.height,
+      durationSeconds: null,
+      cover: null,
+      upright: turned.copy,
     });
-    if (turned.kind === "failed") {
-      return refused("upright_failed", "Could not turn the picture upright", 502);
-    }
-    if (turned.kind === "upright") {
-      if (turned.preview !== null) await storePreview(env, turned.copy.storageKey, turned.preview);
-      return Response.json({
-        sha256,
-        sizeBytes: assembled.sizeBytes,
-        contentType: storedType,
-        width: turned.copy.width,
-        height: turned.copy.height,
-        durationSeconds: null,
-        cover: null,
-        upright: turned.copy,
-      });
-    }
   }
 
   // Read after the object stands, and never allowed to unmake it. The three

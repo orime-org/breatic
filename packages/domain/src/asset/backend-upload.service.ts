@@ -29,7 +29,6 @@ import {
   finishUploadAtIngest,
   sendBytesToIngest,
   assertBeforeDeadline,
-  type IngestOutcome,
   type IngestTarget,
   type StudioAssetEntity,
   type UploadClientConfig,
@@ -46,13 +45,16 @@ import {
 /**
  * A backend upload that reached the ledger.
  *
- * `IngestOutcome` leaves `fileUrl` optional because the browser reads its own
- * result through a different channel and can be told there is none. A backend
- * lane has no such channel: whatever it stored is what a node will point at,
- * so an answer without a url is the upload having failed.
+ * A backend lane has no node listening: whatever it stored is what a node
+ * will point at, so an answer without a url is the upload having failed.
  */
-export type StoredAsset = IngestOutcome & {
+export type StoredAsset = {
+  /** The ledger row these bytes landed on. */
+  assetId?: string | null;
+  /** Where the stored object is readable. */
   fileUrl: string;
+  /** The kind the server filed it under. */
+  kind?: string;
   /**
    * The cover filed against this row, for a video. A backend lane has no node
    * to hear it through, so this is where it reads one.

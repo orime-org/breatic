@@ -10,6 +10,14 @@
  * before the extension. Taking `_upright` off again names the original.
  */
 
+/** The upright copy as the ingest Worker answers it at a finish. */
+export interface UprightCopy {
+  storageKey: string;
+  sizeBytes: number;
+  width: number | null;
+  height: number | null;
+}
+
 /** The marker an upright picture's key carries before its extension. */
 const UPRIGHT_KEY_MARKER = "_upright";
 
