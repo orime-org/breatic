@@ -12,8 +12,8 @@
  */
 
 import type { QueryClient } from '@tanstack/react-query';
-import { clipSpaceContent, spacesNewestFirst } from '@breatic/shared';
-import type { ChatSpace, ChatSpaceContext, ModelCatalog } from '@breatic/shared';
+import { MAX_NODE_NAME_LEN, clipSpaceContent, spacesNewestFirst } from '@breatic/shared';
+import type { ChatSpace, ChatSpaceContext, ClippedSpaceContent, ModelCatalog } from '@breatic/shared';
 
 import { readEdges, readNodes } from '@web/data/yjs/canvas-space';
 import { readDocFacts } from '@web/data/yjs/collab-socket';
@@ -104,42 +104,116 @@ function readCanvas(source: SpaceContextSource, space: ProjectSpace): PickSnapsh
   return snapshot ?? '';
 }
 
-/** A canvas with nothing in it, as compact JSON. */
-const EMPTY_CANVAS = '{"edges":[],"nodes":[]}';
+/** The fields of a canvas entry that name it, never cut. */
+const ENTRY_KEYS = new Set(['id', 'type', 'parentId']);
 
 /**
- * A canvas as compact JSON holding every node that fits in `max` characters,
- * taken in order, with only the links whose two ends are among them. A node
- * that does not fit is skipped and the ones after it are still tried: the
- * order is the document's, not one the reader chose, so one long node does
- * not push out the rest.
+ * A value with every string in it longer than `keep` characters cut to its
+ * start, ending with an ellipsis.
+ * @param value - The value.
+ * @param keep - How many characters a string keeps.
+ * @returns The cut value.
+ */
+function cutTexts(value: unknown, keep: number): unknown {
+  if (typeof value === 'string') {
+    return value.length > keep ? `${clipSpaceContent(value, keep).text}\u2026` : value;
+  }
+  if (Array.isArray(value)) return value.map((v: unknown) => cutTexts(v, keep));
+  if (value !== null && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, cutTexts(v, keep)]));
+  }
+  return value;
+}
+
+/**
+ * A canvas with every node's long texts cut to `keep` characters; what names
+ * a node and its links stay whole.
+ * @param canvas - The canvas.
+ * @param keep - How many characters a text keeps.
+ * @returns The cut canvas.
+ */
+function cutCanvas(canvas: PickSnapshot, keep: number): PickSnapshot {
+  return {
+    edges: canvas.edges,
+    nodes: canvas.nodes.map(
+      (node) =>
+        Object.fromEntries(
+          Object.entries(node).map(([k, v]) => [k, ENTRY_KEYS.has(k) ? v : cutTexts(v, keep)]),
+        ) as PickSnapshot['nodes'][number],
+    ),
+  };
+}
+
+/**
+ * A canvas as compact JSON holding the given nodes and the links between them.
+ * @param canvas - The canvas.
+ * @param kept - The nodes' ids.
+ * @returns The compact JSON.
+ */
+function canvasText(canvas: PickSnapshot, kept: ReadonlySet<string>): string {
+  return JSON.stringify({
+    edges: canvas.edges.filter((e) => kept.has(e.source) && kept.has(e.target)),
+    nodes: canvas.nodes.filter((n) => kept.has(n.id)),
+  });
+}
+
+/**
+ * A canvas as compact JSON within `max` characters, holding every node it
+ * can whole: when it is too long, every text longer than `keep` is cut to
+ * the same length, the longest that lets every node and link go. Texts no
+ * longer than a node's name are never cut; when the canvas is still too long
+ * at that, the nodes are walked in order, each kept while it fits with the
+ * links it closes and skipped when it does not -- the order is the
+ * document's, not one the reader chose, so one node does not push out the
+ * rest.
  * @param canvas - The canvas.
  * @param max - How many characters may go.
  * @returns The text and the length of the whole canvas's text.
  */
-function fitCanvas(canvas: PickSnapshot, max: number): { text: string; total: number } {
-  /**
-   * The text holding these nodes and the links between them.
-   * @param kept - The nodes' ids.
-   * @returns The compact JSON.
-   */
-  const textOf = (kept: ReadonlySet<string>): string =>
-    JSON.stringify({
-      edges: canvas.edges.filter((e) => kept.has(e.source) && kept.has(e.target)),
-      nodes: canvas.nodes.filter((n) => kept.has(n.id)),
-    });
-  const whole = textOf(new Set(canvas.nodes.map((n) => n.id)));
+function fitCanvas(canvas: PickSnapshot, max: number): ClippedSpaceContent {
+  const all = new Set(canvas.nodes.map((n) => n.id));
+  const whole = canvasText(canvas, all);
   if (whole.length <= max) return { text: whole, total: whole.length };
+  const total = whole.length;
+  // Cutting every text shorter never makes the canvas longer, so the
+  // longest cut that fits can be searched for.
+  let fits = MAX_NODE_NAME_LEN;
+  let over = total;
+  const shortest = canvasText(cutCanvas(canvas, fits), all);
+  if (shortest.length > max) return { text: packNodes(cutCanvas(canvas, fits), max), total };
+  let text = shortest;
+  while (over - fits > 1) {
+    const mid = Math.floor((fits + over) / 2);
+    const tried = canvasText(cutCanvas(canvas, mid), all);
+    if (tried.length <= max) {
+      fits = mid;
+      text = tried;
+    } else {
+      over = mid;
+    }
+  }
+  return { text, total };
+}
+
+/**
+ * A canvas as compact JSON holding every node that fits in `max`
+ * characters, taken in order, with only the links whose two ends are among
+ * them.
+ * @param canvas - The canvas.
+ * @param max - How many characters may go.
+ * @returns The compact JSON.
+ */
+function packNodes(canvas: PickSnapshot, max: number): string {
   const linksAt = new Map<string, PickSnapshot['edges']>();
   for (const edge of canvas.edges) {
-    for (const end of new Set([edge.source, edge.target])) {
+    for (const end of edge.source === edge.target ? [edge.source] : [edge.source, edge.target]) {
       const links = linksAt.get(end) ?? [];
       links.push(edge);
       linksAt.set(end, links);
     }
   }
   const kept = new Set<string>();
-  let length = EMPTY_CANVAS.length;
+  let length = canvasText(canvas, kept).length;
   let edgeCount = 0;
   for (const node of canvas.nodes) {
     // The links this node closes: to itself, or to a node already kept.
@@ -157,7 +231,7 @@ function fitCanvas(canvas: PickSnapshot, max: number): { text: string; total: nu
     length += grows;
     edgeCount += links.length;
   }
-  return { text: textOf(kept), total: whole.length };
+  return canvasText(canvas, kept);
 }
 
 /**
