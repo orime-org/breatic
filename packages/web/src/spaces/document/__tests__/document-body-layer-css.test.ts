@@ -57,6 +57,7 @@ describe('the document body stylesheet', () => {
     expect(outside.map((r) => r.selector.replace(/\s+/g, ' '))).toEqual([
       '.doc-body ::selection',
       '.doc-body[contenteditable=\'true\']:not([data-body-holds]) ::selection, .doc-body[contenteditable=\'true\']:not([data-body-holds])::selection',
+      '.doc-body[data-cell-selection] ::selection',
       '.doc-body .ProseMirror-gapcursor::after',
       '.doc-body .doc-empty-line-in-selection ::selection',
     ]);
