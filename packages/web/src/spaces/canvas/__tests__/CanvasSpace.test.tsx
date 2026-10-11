@@ -71,6 +71,20 @@ vi.mock('@web/spaces/canvas/focus/run-focus-crop', async (importOriginal) => {
   return { ...actual, runFocusCrop: vi.fn(() => Promise.resolve()) };
 });
 
+// The upload pipeline's network steps, passed through unless a case stands
+// one in (inner#1367 A10).
+vi.mock('@web/data/upload/hash', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@web/data/upload/hash')>();
+  return { ...actual, hashFile: vi.fn(actual.hashFile) };
+});
+vi.mock('@web/data/upload/finish-upload', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@web/data/upload/finish-upload')>();
+  return { ...actual, sendFileAndFinish: vi.fn(actual.sendFileAndFinish) };
+});
+vi.mock('@web/data/upload/upload-status', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@web/data/upload/upload-status')>();
+  return { ...actual, waitForUploadEnding: vi.fn(actual.waitForUploadEnding) };
+});
 vi.mock('@web/components/ui/tooltip', () => ({
   Tooltip: ({ children }: { children?: React.ReactNode }) => children,
   TooltipTrigger: ({ children }: { children?: React.ReactNode }) => children,
@@ -101,6 +115,10 @@ import { runFocusCrop } from '@web/spaces/canvas/focus/run-focus-crop';
 import * as downloadLib from '@web/lib/download';
 import { canvasSessions } from '@web/stores/canvas-session';
 import { installLayout, relayout } from '@web/spaces/canvas/crop/__tests__/crop-harness';
+import { hashFile } from '@web/data/upload/hash';
+import { sendFileAndFinish } from '@web/data/upload/finish-upload';
+import { waitForUploadEnding, type UploadEnding } from '@web/data/upload/upload-status';
+import { hasRetryFile, resetRetryFilesForTests } from '@web/spaces/canvas/upload-retry-files';
 
 const mockUseCanvasSpace = vi.mocked(canvasSpace.useCanvasSpace);
 
@@ -2846,6 +2864,65 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     expect(useSpaceOperationsStore.getState().hasOperations('s')).toBe(true);
 
     configSpy.mockRestore();
+  });
+
+  // A node's upload is over for the page once its finish is queued, so the
+  // Space can close; a finish that fails later is still told to the person who
+  // dropped the file, and the File is kept for the task's Retry (inner#1367 A10).
+  it('frees the Space once a dropped file\'s finish is queued, and tells a failed finish later', async () => {
+    resetRetryFilesForTests();
+    mockUseCanvasSpace.mockReturnValue(mockSpace());
+    const storageKey = 'image/2026-10-11/1_dropped.png';
+    vi.spyOn(assetsApi, 'fetchUploadConfig').mockResolvedValue({
+      maxUploadBytes: 2147483648,
+      clientMaxAttempts: 1,
+      clientRetryBaseDelayMs: 1,
+      uploadIdleTimeoutMs: 60000,
+      uploadStatusPollSeconds: 2,
+      assetUrlPrefix: 'https://cdn/',
+    });
+    vi.mocked(hashFile).mockResolvedValueOnce('a'.repeat(64));
+    vi.spyOn(assetsApi, 'requestUploadTicket').mockResolvedValue({
+      ticket: 'signed',
+      storageKey,
+      uploadUrl: 'https://ingest.example.com',
+      kind: 'image',
+      partSize: 5 * 1024 * 1024,
+      totalParts: 1,
+      taskId: 'task-9',
+    } as Awaited<ReturnType<typeof assetsApi.requestUploadTicket>>);
+    vi.mocked(sendFileAndFinish).mockResolvedValueOnce({ storageKey });
+    let end: (ending: UploadEnding) => void = () => undefined;
+    vi.mocked(waitForUploadEnding).mockReturnValueOnce(
+      new Promise<UploadEnding>((resolve) => {
+        end = resolve;
+      }),
+    );
+    const errorSpy = vi.spyOn(toast, 'error').mockReturnValue('t');
+    renderSpace();
+
+    const file = new File(['x'], 'a.png', { type: 'image/png' });
+    const drop = new Event('drop', { bubbles: true, cancelable: true });
+    Object.defineProperty(drop, 'dataTransfer', {
+      configurable: true,
+      value: { files: [file], types: ['Files'] },
+    });
+    Object.defineProperty(drop, 'clientX', { configurable: true, value: 10 });
+    Object.defineProperty(drop, 'clientY', { configurable: true, value: 10 });
+    act(() => {
+      screen.getByTestId('canvas-space').dispatchEvent(drop);
+    });
+
+    await waitFor(() => expect(sendFileAndFinish).toHaveBeenCalled());
+    await waitFor(() => expect(useSpaceOperationsStore.getState().hasOperations('s')).toBe(false));
+    expect(errorSpy).not.toHaveBeenCalled();
+
+    await act(async () => {
+      end({ key: storageKey, state: 'failed', reason: 'assemble_failed' });
+    });
+
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    expect(hasRetryFile('p', 's', 'task-9')).toBe(true);
   });
 
   // ---- Magnetic handle (user 2026-07-11) ----
