@@ -283,18 +283,19 @@ export function useChatSession(
       // stood when send was pressed, not as it is once a conversation has
       // opened.
       const spaces = readSpaces();
-      // The Spaces are cut to the server's limits, so they cannot go without
-      // them. The first read is a request, and the send stays held for it like
-      // opening a conversation. Read before the conversation is settled, so
-      // nothing is waited on between that check and the send.
-      const limits = await conversationRuntime.whileOpening(projectId, () =>
-        chatApi.streamConfig().catch(() => null),
-      );
       // Which conversation this belongs in is settled at the press, not read
       // off the last render: a first message opens a conversation, and the
       // panel has not been told about it yet when this runs.
       const opened = await conversationRuntime.conversationForSending(projectId);
       if (opened === undefined) return;
+      // The Spaces are cut to the server's limits, so they cannot go without
+      // them. The first read is a request, and the send stays held for it like
+      // opening a conversation. A reader who leaves the project or moves to
+      // another conversation meanwhile has taken the words with them.
+      const limits = await conversationRuntime.whileOpening(projectId, () =>
+        chatApi.streamConfig().catch(() => null),
+      );
+      if (!conversationRuntime.stillSendingTo(projectId, opened)) return;
       chatSessionFor({
         projectId,
         conversationId: opened,

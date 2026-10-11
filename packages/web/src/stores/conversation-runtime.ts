@@ -606,11 +606,27 @@ async function conversationForSending(projectId: string): Promise<string | undef
 }
 
 /**
+ * Whether a send settled on this conversation may still go there, asked after
+ * anything it waited on: the same conversation is on screen and no navigation
+ * is on its way to replace it. A project left meanwhile has none on screen.
+ * @param projectId - The project being sent to.
+ * @param conversationId - What {@link conversationForSending} answered.
+ * @returns True when the send may go.
+ */
+function stillSendingTo(projectId: string, conversationId: string): boolean {
+  return (
+    useStore.getState().currentByProject[projectId] === conversationId &&
+    !awaitedNavigationInFlight(projectId)
+  );
+}
+
+/**
  * Hold the project's send mark for as long as this takes.
  *
  * For the stretches of a send with no turn to carry the wait -- opening a
  * conversation, opening a replacement for one the server no longer has, and
- * reading the chat limits the reader's Spaces are cut to (inner#1413). Each
+ * reading the chat limits the reader's Spaces are cut to (inner#1413), after
+ * which {@link stillSendingTo} decides whether the send still goes. Each
  * can be a whole request long, and each would leave a live send button up.
  * @param projectId - The project being sent to.
  * @param work - What to do while the mark is up. Must not reject.
@@ -1660,6 +1676,7 @@ export const useConversationRuntime = useStore;
 export const conversationRuntime = {
   ensureLoaded,
   conversationForSending,
+  stillSendingTo,
   whileOpening,
   noteActivity,
   loadEarlier,
