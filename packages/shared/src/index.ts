@@ -311,6 +311,8 @@ export type {
   LoginInput,
   ChatMessageInput,
   ChatAttachedChip,
+  ChatSpace,
+  ChatCurrentSpace,
   TaskCreateInput,
   UnderstandInput,
   CanvasPasteInput,
@@ -486,6 +488,8 @@ export {
   userTurnForModel,
 } from "@shared/agent/attachments.js";
 export type { AttachmentDataPart, MessageSegment, ResolvedSegment } from "@shared/agent/attachments.js";
+export { clipSpaceContent } from "@shared/agent/space-content.js";
+export type { ClippedSpaceContent } from "@shared/agent/space-content.js";
 export {
   carrying,
   FAILURE_LINES,

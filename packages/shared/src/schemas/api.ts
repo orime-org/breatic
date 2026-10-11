@@ -19,6 +19,7 @@ import {
 
 import { GENERATION_SOURCES } from "@shared/types/project-activity.js";
 import { SpaceTypeSchema } from "@shared/types/space.js";
+import { SPACE_NAME_MAX_LEN } from "@shared/types/space-rpc.js";
 
 // ── Auth ─────────────────────────────────────────────────────────────
 
@@ -187,6 +188,28 @@ export const chatAttachedChipSchema = z.object({
 });
 export type ChatAttachedChip = z.infer<typeof chatAttachedChipSchema>;
 
+/** One of the project's Spaces, as the agent is told about it (inner#1413). */
+const chatSpaceSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().max(SPACE_NAME_MAX_LEN),
+  kind: SpaceTypeSchema,
+});
+
+/**
+ * The Space the reader has open, as the browser read it at the press. The
+ * content is already cut to the limit; the server checks that limit, since
+ * it lives in config this package cannot read.
+ */
+const chatCurrentSpaceSchema = z.discriminatedUnion("state", [
+  chatSpaceSchema.extend({
+    state: z.literal("loaded"),
+    content: z.string(),
+    total_chars: z.number().int().nonnegative(),
+  }),
+  chatSpaceSchema.extend({ state: z.literal("loading") }),
+  chatSpaceSchema.extend({ state: z.literal("unreadable") }),
+]);
+
 export const chatMessageSchema = z.object({
   message: z.string().min(1),
   project_id: z.string().uuid(),
@@ -219,8 +242,18 @@ export const chatMessageSchema = z.object({
    * credit purchase's `time_zone`.
    */
   time_zone: z.string().min(1).max(64).optional(),
+  /**
+   * The project's Spaces, newest first, cut to the list limit; `spaces_total`
+   * is how many there were before the cut. Sent on every turn.
+   */
+  spaces: z.array(chatSpaceSchema).optional(),
+  spaces_total: z.number().int().nonnegative().optional(),
+  /** The Space the reader has open, when the chip beside "+" is enabled. */
+  current_space: chatCurrentSpaceSchema.optional(),
 });
 export type ChatMessageInput = z.infer<typeof chatMessageSchema>;
+export type ChatSpace = z.infer<typeof chatSpaceSchema>;
+export type ChatCurrentSpace = z.infer<typeof chatCurrentSpaceSchema>;
 
 // ── Canvas ───────────────────────────────────────────────────────────
 

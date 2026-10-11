@@ -52,6 +52,8 @@ export type {
   LoginInput,
   ChatMessageInput,
   ChatAttachedChip,
+  ChatSpace,
+  ChatCurrentSpace,
   TaskCreateInput,
   UnderstandInput,
   CanvasPasteInput,
