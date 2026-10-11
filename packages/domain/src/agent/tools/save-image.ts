@@ -64,9 +64,6 @@ const inputSchema = z.object({
   url: readerUrlSchema.describe("The https address of the picture to save, as it was found."),
 });
 
-/** The link failures that are the far side not answering. */
-const UNANSWERED: ReadonlySet<string> = new Set(["source_unreachable"]);
-
 /**
  * The failure the model and the reader are told for one refusal.
  * @param refused - What the server refused.
@@ -79,7 +76,7 @@ function refusalFailure(refused: SaveRefused): Error {
       return toolFailed(
         `The picture at that address could not be saved (${refused.detail ?? "no reason given"}). ` +
           "Pick another picture rather than trying this address again.",
-        UNANSWERED.has(refused.detail ?? "") ? FAILURE_LINES.unreachable : FAILURE_LINES.generic,
+        refused.detail === "source_unreachable" ? FAILURE_LINES.unreachable : FAILURE_LINES.generic,
       );
     case "rate_limited":
       return toolFailed(

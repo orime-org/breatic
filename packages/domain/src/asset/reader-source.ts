@@ -44,7 +44,7 @@ export function isReaderLinkFault(reason: string): boolean {
  * @throws {never} Never.
  */
 export function urlIngestFailureLevel(reason: string): "warn" | "error" {
-  return READER_SOURCE_REFUSALS.has(reason) ? "warn" : "error";
+  return isReaderLinkFault(reason) ? "warn" : "error";
 }
 
 /**
