@@ -9,20 +9,19 @@
  * result counts when the downstream node holds a stored URL.
  *
  * It spends money upstream and needs an ingest Worker serving this checkout's
- * `/jobs`; its tags keep it out of the default run. Run it with:
+ * `/jobs`; its tags keep it out of the default run.
  *
- *   MINI_TOOLS_REAL_RUN=<directory with the media below> \
- *     pnpm --filter @breatic/web exec playwright test --project=smoke canvas-mini-tools-real-run
- *
- * The directory holds `portrait.jpg` (a face), `speech.mp3` (a few seconds of
- * speech), `song.mp3` (speech over a tone), `short720.mp4` (a clip with sound),
- * `silent.mp4` (no audio stream), `shaky.mp4` (a moving crop of a still
- * pattern), `driving.mp4` (a person moving) and `long1080.mp4` (60 s of 1080p
- * with sound).
+ * The media with people in it — `portrait.jpg` (a face), `driving.mp4` (a
+ * person moving) and `speech.mp3` (a few seconds of speech) — are fixtures,
+ * made with our own generators. The rest are drawn by ffmpeg as the run
+ * starts: `song.mp3` (that speech over a tone), `short720.mp4` (a clip with
+ * sound), `silent.mp4` (no audio stream), `shaky.mp4` (a moving crop of a still
+ * pattern) and `long1080.mp4` (60 s of 1080p with sound).
  */
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { copyFileSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 
 import { test, expect, type Page } from 'playwright/test';
 
@@ -30,7 +29,51 @@ import { CANVAS_SPACE, liveModuleUrl } from '../helpers/live-module';
 import { STATE_FILE, openSmokeProject, smokeProjectId } from '../helpers/project';
 import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
 
-const MEDIA = process.env.MINI_TOOLS_REAL_RUN ?? '';
+/** The fixtures with people in them. */
+const FIXTURES = resolve(__dirname, '../fixtures/mini-tools');
+
+/** Where this run's media are put together. */
+let MEDIA = '';
+
+/**
+ * Run ffmpeg quietly, failing on any error.
+ * @param args - Its arguments after the global flags.
+ */
+function ffmpeg(...args: string[]): void {
+  execFileSync('ffmpeg', ['-v', 'error', '-y', ...args]);
+}
+
+/**
+ * Put the run's media in a directory of their own: the fixtures copied in,
+ * the rest drawn.
+ * @returns The directory.
+ */
+function prepareMedia(): string {
+  const dir = mkdtempSync(join(tmpdir(), 'mini-tools-real-'));
+  for (const file of ['portrait.jpg', 'driving.mp4', 'speech.mp3']) {
+    copyFileSync(join(FIXTURES, file), join(dir, file));
+  }
+  const pattern = (size: string, seconds: number): string[] => [
+    '-f', 'lavfi', '-i', `testsrc2=size=${size}:rate=25:duration=${String(seconds)}`,
+  ];
+  const tone = (seconds: number): string[] => [
+    '-f', 'lavfi', '-i', `sine=frequency=330:duration=${String(seconds)}`,
+  ];
+  const mp4 = ['-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest'];
+  ffmpeg(
+    '-i', join(dir, 'speech.mp3'), ...tone(8),
+    '-filter_complex', 'amix=inputs=2:duration=longest', join(dir, 'song.mp3'),
+  );
+  ffmpeg(...pattern('1280x720', 8), ...tone(8), ...mp4, join(dir, 'short720.mp4'));
+  ffmpeg(...pattern('1280x720', 5), '-c:v', 'libx264', '-pix_fmt', 'yuv420p', join(dir, 'silent.mp4'));
+  ffmpeg(
+    ...pattern('1440x864', 6), ...tone(6),
+    '-vf', 'crop=1280:720:x=\'80+60*sin(t*9)\':y=\'72+50*cos(t*11)\'',
+    ...mp4, join(dir, 'shaky.mp4'),
+  );
+  ffmpeg(...pattern('1920x1080', 60), ...tone(60), ...mp4, join(dir, 'long1080.mp4'));
+  return dir;
+}
 
 test.use({ storageState: STATE_FILE.A, actionTimeout: 20_000 });
 test.setTimeout(45 * 60_000);
@@ -236,7 +279,7 @@ const RUNS: Run[] = [
 ];
 
 test.beforeAll(async ({ browser }) => {
-  if (MEDIA === '') throw new Error('MINI_TOOLS_REAL_RUN must name the directory holding the media this run uploads');
+  MEDIA = prepareMedia();
   page = await browser.newPage({ viewport: { width: 1680, height: 950 } });
   await openSmokeProject(page);
   projectId = smokeProjectId();
@@ -245,6 +288,7 @@ test.beforeAll(async ({ browser }) => {
 
 test.afterAll(async () => {
   if (spaceId !== '') await deleteSpace(page, spaceId);
+  if (MEDIA !== '') rmSync(MEDIA, { recursive: true, force: true });
 });
 
 test('every tool runs to a result, and the silent denoise fails as such @needs-model @needs-ingest @needs-ffmpeg @needs-internet', async () => {
