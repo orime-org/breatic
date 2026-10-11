@@ -27,7 +27,9 @@ vi.mock('@web/spaces/document/document-editor-cache', async (importOriginal) => 
   peekDocumentEditor: (name: string) => editors.get(name),
 }));
 
-const { addNode, setNodeName } = await import('@web/data/yjs/canvas-space');
+const { addNode, readEdges, readNodes, setNodeName } = await import('@web/data/yjs/canvas-space');
+const { itemForPick } = await import('@web/spaces/canvas/attach-nodes');
+const { pickReaders } = await import('@web/spaces/canvas/pick-for-agent');
 const { canvasGraphs } = await import('@web/stores/canvas-graph');
 const { _resetForTests, docName, getDoc, hasDoc } = await import('@web/data/yjs/manager');
 const { modelCatalogQuery } = await import('@web/spaces/canvas/generate/model-catalog-query');
@@ -291,13 +293,14 @@ describe('an open canvas', () => {
    * @returns The chip.
    */
   const attachmentOf = (ids: readonly string[]): ChatAttachedChip => {
-    const current = sentWith(100_000);
-    // An attachment holds the node as Add to Agent hands it over, with no selection mark.
-    const nodes = ids.map((id) => {
-      const { selected: _marked, ...entry } = entryOf(current, id) ?? {};
-      return entry;
-    });
-    return { id: 'canvas-1', type: 'canvas', name: '', data_snapshot: { nodes, edges: [] } };
+    const canvasDoc = getDoc(docName.canvasSpace(PID, canvas.id));
+    const item = itemForPick(
+      { nodes: readNodes(canvasDoc), edges: readEdges(canvasDoc) },
+      ids,
+      pickReaders(warmClient(), CATALOG, canvasDoc),
+    );
+    if (item?.chip === undefined) throw new Error('nothing to attach');
+    return item.chip;
   };
 
   it('sends a selected node the attachments already hold unchanged with the rest', () => {

@@ -151,7 +151,7 @@ function readOff(text: string, input: FitInput): Partial<ChatCanvasDetail> {
  * @returns The fit.
  */
 function fit(input: FitInput, max: number): ReturnType<typeof fitCanvas> {
-  const out = fitCanvas(input, max, 0);
+  const out = fitCanvas(input, max);
   expect(out.text.length).toBeLessThanOrEqual(max);
   expect(out.detail).toMatchObject(readOff(out.text, input));
   const d = out.detail;
@@ -406,7 +406,7 @@ describe('the cost of fitting', () => {
     const input = canvasOf(ids.map((id, i) => image(id, i)), ['node-00007']);
     const stringify = vi.spyOn(JSON, 'stringify');
 
-    const out = fitCanvas(input, 100_000, 0);
+    const out = fitCanvas(input, 100_000);
 
     const whole = stringify.mock.calls.filter(([value]) => typeof value === 'object' && value !== null && 'nodes' in value && 'edges' in value);
     expect(out.detail.nodes_not_listed).toBeGreaterThan(0);

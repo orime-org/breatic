@@ -23,7 +23,7 @@ import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-que
 import { snapshotOfPick } from '@web/spaces/canvas/attach-nodes';
 import { modelsForModality } from '@web/spaces/canvas/generate/modality-buckets';
 import { pickReaders } from '@web/spaces/canvas/pick-for-agent';
-import { fitCanvas, fitNodeOf } from '@web/pages/project/chat/canvas-fit';
+import { cutEnd, fitCanvas, fitNodeOf } from '@web/pages/project/chat/canvas-fit';
 import type { FitInput, FitNode } from '@web/pages/project/chat/canvas-fit';
 import { canvasGraphs } from '@web/stores/canvas-graph';
 import { spaceContentReadable } from '@web/pages/project/space-type';
@@ -151,9 +151,7 @@ interface ClippedSpaceContent {
  */
 function clipSpaceContent(text: string, max: number): ClippedSpaceContent {
   if (text.length <= max) return { text, total: text.length };
-  const last = text.charCodeAt(max - 1);
-  const end = last >= 0xd800 && last <= 0xdbff ? max - 1 : max;
-  return { text: text.slice(0, end), total: text.length };
+  return { text: text.slice(0, cutEnd(text, max)), total: text.length };
 }
 
 /**
@@ -249,7 +247,7 @@ export function clipSpaceContext(
   }
   const held = heldUnchanged(current.canvas.nodes, attached);
   const nodes = current.canvas.nodes.map((n) => (held.has(n.id) ? { ...n, selected: false } : n));
-  const fitted = fitCanvas({ nodes, edges: current.canvas.edges }, limits.currentSpaceMaxChars, held.size);
+  const fitted = fitCanvas({ nodes, edges: current.canvas.edges }, limits.currentSpaceMaxChars);
   // A canvas with nothing on it goes as empty, as an empty document does.
   const content = nodes.length === 0 ? '' : fitted.text;
   return {

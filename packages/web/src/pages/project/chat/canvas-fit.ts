@@ -82,10 +82,22 @@ export function fitNodeOf(
  */
 export function cutText(text: string, keep: number): string {
   if (keep >= text.length) return text;
-  const last = keep > 0 ? text.charCodeAt(keep - 1) : 0;
-  const end = last >= 0xd800 && last <= 0xdbff ? keep - 1 : keep;
+  const end = cutEnd(text, keep);
   const cut = `${text.slice(0, end)}…[+${String(text.length - end)}]`;
   return cut.length < text.length ? cut : text;
+}
+
+/**
+ * Where a text is cut to keep at most `keep` UTF-16 code units: one fewer
+ * when the cut would fall between the two halves of a character, since some
+ * model providers refuse a request carrying half of one.
+ * @param text - The text.
+ * @param keep - How many code units may stay.
+ * @returns The index to cut at.
+ */
+export function cutEnd(text: string, keep: number): number {
+  const last = keep > 0 ? text.charCodeAt(keep - 1) : 0;
+  return last >= 0xd800 && last <= 0xdbff ? keep - 1 : keep;
 }
 
 /**
@@ -219,10 +231,9 @@ class Fitting {
 
   /**
    * What was done, counted in what goes.
-   * @param selectedAttached - Selected nodes held unchanged by an attachment.
    * @returns The detail.
    */
-  detail(selectedAttached: number): ChatCanvasDetail {
+  detail(): ChatCanvasDetail {
     /**
      * How many nodes pass a test.
      * @param pick - The test, given a node and its level.
@@ -231,10 +242,11 @@ class Fitting {
     const counted = (pick: (n: FitNode, at: Level) => boolean): number =>
       this.nodes.filter((n, i) => pick(n, this.level[i] ?? 0)).length;
     return {
-      selected_total: counted((n) => n.selected) + selectedAttached,
-      selected_attached: selectedAttached,
+      selected_total: counted((n) => n.picked),
+      selected_attached: counted((n) => n.picked && !n.selected),
       selected_whole: counted((n, at) => n.selected && at === 0),
-      slim: this.nodes.some((n, i) => !n.group && this.level[i] === 1),
+      // A group's slim entry is its name only, so a group short of left out went slim.
+      slim: counted((n, at) => at === 1 || (n.group && at === 2)) > 0,
       texts_cut: this.nodes.reduce((sum, n, i) => (this.level[i] === 1 ? sum + this.cutCount(n) : sum), 0),
       names_only: counted((n, at) => !n.group && at === 2),
       edges_not_listed: this.edges.length - this.count.edges,
@@ -495,12 +507,11 @@ class Fitting {
  * Fit a canvas into `max` characters.
  * @param input - The canvas.
  * @param max - How many characters may go.
- * @param selectedAttached - Selected nodes held unchanged by an attachment, which go with the rest.
  * @returns What goes, the whole canvas's length and what was done.
  */
-export function fitCanvas(input: FitInput, max: number, selectedAttached: number): FittedCanvas {
+export function fitCanvas(input: FitInput, max: number): FittedCanvas {
   const fitting = new Fitting(input, max);
   const total = fitting.length();
   fitting.fit();
-  return { text: fitting.text(), total, detail: fitting.detail(selectedAttached) };
+  return { text: fitting.text(), total, detail: fitting.detail() };
 }
