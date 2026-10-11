@@ -315,6 +315,32 @@ describe('BodyAutoScroll, the latest pointer (inner#1350 round 2)', () => {
     expect(body.scrollTop).toBeLessThan(5000);
   });
 
+  it('ramps up outside the window from the moment it left, though no frame read the edge before', () => {
+    const clock = fakeClock();
+    const auto = new BodyAutoScroll(clock.deps);
+    const body = fakeScroller();
+    body.scrollTop = 50_000;
+    auto.beginDrag({ el: body, axis: 'y', gate: true });
+    auto.follow({ x: 600, y: 400 });
+    clock.tick();
+    auto.follow({ x: 600, y: 40 });
+    auto.leaveWindow();
+    for (let i = 0; i < 60; i += 1) clock.tick();
+    const before = body.scrollTop;
+    clock.tick();
+    // Past the top edge by 40: Chrome's selection step plus the hitbox's maximum.
+    expect(before - body.scrollTop).toBe(75);
+  });
+
+  it('does not scroll a pulled selection that has no pointer yet', () => {
+    const clock = fakeClock();
+    const auto = new BodyAutoScroll(clock.deps);
+    const body = fakeScroller();
+    auto.beginPress(body, null);
+    for (let i = 0; i < 5; i += 1) clock.tick();
+    expect(body.scrollTop).toBe(0);
+  });
+
   it('starts a pulled selection from the point it was pressed at', () => {
     const clock = fakeClock();
     const auto = new BodyAutoScroll(clock.deps);

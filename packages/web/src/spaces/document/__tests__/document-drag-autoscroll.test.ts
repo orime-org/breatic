@@ -272,6 +272,19 @@ describe('the pulled-selection session', () => {
     expect(autoScrollOf(view)!.source).toBe('press');
   });
 
+  it('gives a Shift press no pointer until it moves, so a still Shift+click does not scroll', () => {
+    const { editor, scroller } = open();
+    const view = editor.prosemirrorView!;
+    view.focus();
+    const begin = vi.spyOn(autoScrollOf(view)!, 'beginPress');
+    extendFromPress(view, new MouseEvent('mousedown', { bubbles: true, cancelable: true, shiftKey: true, clientX: 10, clientY: 100 }));
+    expect(begin).toHaveBeenCalledWith(scroller, null);
+    const follow = vi.spyOn(autoScrollOf(view)!, 'follow');
+    view.root.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, buttons: 1, clientX: 12, clientY: 120 }));
+    expect(follow).toHaveBeenCalledWith({ x: 12, y: 120 });
+    window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+  });
+
   it('does not start on a plain press the browser keeps', () => {
     const { editor } = open();
     const view = editor.prosemirrorView!;

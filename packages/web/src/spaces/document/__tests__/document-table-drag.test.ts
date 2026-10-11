@@ -34,6 +34,7 @@ afterEach(() => {
     editor.unmount();
   }
   document.body.innerHTML = '';
+  vi.restoreAllMocks();
 });
 
 /**
@@ -242,5 +243,63 @@ describe('the drop of a dragged row (inner#1350 round 2)', () => {
     at('drop');
     vi.restoreAllMocks();
     expect(grid(editor).map((row) => row[0])).toEqual(['a2', 'a3', 'a1']);
+  });
+});
+
+describe('a dragged line over the gutter beside the body (inner#1350 round 3)', () => {
+  /**
+   * Puts the editor in a body scroller with a gutter beside the text column,
+   * and lays its columns out 100 wide from the left.
+   * @param editor - The editor.
+   * @returns The gutter.
+   */
+  function inScroller(editor: Editor): HTMLElement {
+    const view = editor.prosemirrorView!;
+    const scroller = document.createElement('div');
+    scroller.setAttribute('data-radix-scroll-area-viewport', '');
+    const gutter = document.createElement('div');
+    const host = [...document.body.children].find((child) => child.contains(view.dom))!;
+    document.body.append(scroller);
+    scroller.append(host, gutter);
+    vi.spyOn(HTMLTableCellElement.prototype, 'getBoundingClientRect').mockImplementation(function rect(this: HTMLTableCellElement) {
+      const i = [...this.parentElement!.children].indexOf(this);
+      return { top: 0, bottom: 30, left: i * 100, right: (i + 1) * 100 } as DOMRect;
+    });
+    return gutter;
+  }
+
+  /**
+   * Dispatches a cancelable drag event.
+   * @param target - Where.
+   * @param type - Which.
+   * @param clientX - Across.
+   * @returns The event.
+   */
+  function fire(target: EventTarget, type: string, clientX: number): MouseEvent {
+    const event = new MouseEvent(type, { bubbles: true, cancelable: true, clientX, clientY: 10 });
+    target.dispatchEvent(event);
+    return event;
+  }
+
+  it('takes the drop in the gutter and lands the column at the nearest end', () => {
+    const editor = open();
+    const gutter = inScroller(editor);
+    startTableDrag(editor.prosemirrorView!, 'column', cellOf(editor, 'a1'));
+    expect(fire(gutter, 'dragover', 900).defaultPrevented).toBe(true);
+    expect(fire(gutter, 'drop', 900).defaultPrevented).toBe(true);
+    vi.restoreAllMocks();
+    expect(grid(editor)[0]).toEqual(['b1', 'c1', 'a1']);
+  });
+
+  it('leaves a drop outside the body scroller to the browser', () => {
+    const editor = open();
+    inScroller(editor);
+    const outside = document.createElement('div');
+    document.body.append(outside);
+    startTableDrag(editor.prosemirrorView!, 'column', cellOf(editor, 'a1'));
+    expect(fire(outside, 'dragover', 900).defaultPrevented).toBe(false);
+    fire(outside, 'drop', 900);
+    vi.restoreAllMocks();
+    expect(grid(editor)[0]).toEqual(['a1', 'b1', 'c1']);
   });
 });
