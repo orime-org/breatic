@@ -144,6 +144,6 @@ test('a WebP picked as an avatar is turned away before the crop @needs-storage',
   // The picker offers only the two formats an avatar takes; the bytes are checked as well.
   await expect(page.getByTestId('avatar-file-input')).toHaveAttribute('accept', 'image/png,image/jpeg');
   await page.getByTestId('avatar-file-input').setInputFiles({ name: 'avatar.png', mimeType: 'image/png', buffer: webp });
-  await expect(page.getByText('This file format is not supported.')).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByText('Not a supported format. Use PNG or JPEG.')).toBeVisible({ timeout: 10_000 });
   await expect(page.getByTestId('image-crop-dialog')).toHaveCount(0);
 });

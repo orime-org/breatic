@@ -201,6 +201,6 @@ test('a WebP picked as a cover is turned away before the crop @needs-storage', a
   // The picker offers only the two formats a cover takes; the bytes are checked as well.
   await expect(card.getByTestId('project-cover-input')).toHaveAttribute('accept', 'image/png,image/jpeg');
   await card.getByTestId('project-cover-input').setInputFiles({ name: 'cover.jpg', mimeType: 'image/jpeg', buffer: webp });
-  await expect(page.getByText('This file format is not supported.')).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByText('Not a supported format. Use PNG or JPEG.')).toBeVisible({ timeout: 10_000 });
   await expect(page.getByTestId('image-crop-dialog')).toHaveCount(0);
 });

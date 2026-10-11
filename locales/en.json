@@ -1860,7 +1860,7 @@
         "too_many_pixels": "That image is too large to work with. Try one under 8000 pixels on each side.",
         "not_an_image": "That file could not be read as an image.",
         "encode_failed": "Could not prepare the image. Please try another one.",
-        "unsupported_type": "This file format is not supported.",
+        "unsupported_type": "Not a supported format. Use PNG or JPEG.",
         "hash_unavailable": "Couldn't verify this file. Reload the page and try again.",
         "rate_limited": "Uploading too often. Try again later."
       },

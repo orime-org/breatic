@@ -1860,7 +1860,7 @@
         "too_many_pixels": "这张图片太大了，请换一张每边都小于 8000 像素的。",
         "not_an_image": "无法把这个文件读成图片。",
         "encode_failed": "无法处理这张图片，请换一张试试。",
-        "unsupported_type": "这个文件的格式不支持。",
+        "unsupported_type": "不是支持的格式，请用 PNG 或 JPEG。",
         "hash_unavailable": "无法校验此文件，请刷新页面后重试。",
         "rate_limited": "上传太频繁，请稍后重试。"
       },
