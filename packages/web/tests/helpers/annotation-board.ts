@@ -6,9 +6,9 @@
  *
  * Both halves start here: the cases that measure what a note looks like and
  * how the board answers a pointer, and the ones that watch a note cross the
- * collab server to a second connection. A spec importing this evaluates it in
- * its own scope, so the hooks below build that file's Space and neither file
- * can reach the other's (measured, playwright 1.62.1, 2026-09-19).
+ * collab server to a second connection. A spec imports `test` from here; the
+ * board is built by an automatic fixture on that `test`, so every case of
+ * every such file gets its own.
  *
  * Each case gets its own Space. The cases used to run in order on one board,
  * which is why several of them ended by taking their own note off it again —
@@ -20,7 +20,7 @@
  * somebody else's note, A11's name — are answered by the unit tests, which
  * can hand the component any author.
  */
-import { expect, test, type Page } from 'playwright/test';
+import { expect, test as base, type Page } from 'playwright/test';
 
 import { CANVAS_SPACE, liveModuleUrl } from './live-module';
 import { openSmokeProject } from './project';
@@ -59,23 +59,30 @@ function current(): Board {
   return board;
 }
 
-test.beforeEach(async ({ page }) => {
-  // Wide, because several cases measure a sticky that hangs off its pin and a
-  // minimap in the corner, and both want the board they were written against.
-  await page.setViewportSize({ width: 1680, height: 950 });
-  await openSmokeProject(page);
-  const projectId = (/([0-9a-f-]{36})$/.exec(page.url()) ?? [])[1] ?? '';
-  if (!projectId) throw new Error(`no project id in ${page.url()}`);
-  const spaceId = await createSpace(page, 'canvas', `annotation-e2e ${Date.now()}`);
-  await expect(visibleSpace(page).locator('.react-flow')).toBeVisible({ timeout: 20_000 });
-  board = { projectId, spaceId };
-});
-
-test.afterEach(async ({ page }) => {
-  for (const peer of peers) await peer.close();
-  peers = [];
-  if (board !== null) await deleteSpace(page, board.spaceId);
-  board = null;
+/**
+ * The test an annotation case runs under: each case gets a canvas Space of its
+ * own, and its Space and any second connections are gone when it ends.
+ */
+export const test = base.extend<{ annotationBoard: void }>({
+  annotationBoard: [
+    async ({ page }, use) => {
+      // Wide, because several cases measure a sticky that hangs off its pin and a
+      // minimap in the corner, and both want the board they were written against.
+      await page.setViewportSize({ width: 1680, height: 950 });
+      await openSmokeProject(page);
+      const projectId = (/([0-9a-f-]{36})$/.exec(page.url()) ?? [])[1] ?? '';
+      if (!projectId) throw new Error(`no project id in ${page.url()}`);
+      const spaceId = await createSpace(page, 'canvas', `annotation-e2e ${Date.now()}`);
+      await expect(visibleSpace(page).locator('.react-flow')).toBeVisible({ timeout: 20_000 });
+      board = { projectId, spaceId };
+      await use();
+      for (const peer of peers) await peer.close();
+      peers = [];
+      await deleteSpace(page, spaceId);
+      board = null;
+    },
+    { auto: true },
+  ],
 });
 
 /**

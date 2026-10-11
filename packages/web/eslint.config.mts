@@ -261,6 +261,15 @@ export default [
     },
   },
   {
+    // A helper module runs once per worker, so a hook at its top level binds
+    // to the first test file that imports it and to no other.
+    files: ['tests/helpers/**/*.ts'],
+    plugins: { breatic: breaticPlugin },
+    rules: {
+      'breatic/no-helper-module-hooks': 'error',
+    },
+  },
+  {
     // Green means every case ran, which is a promise the smoke suite makes. A
     // visual case whose precondition is how many rows a vendor's catalogue
     // holds — five voices, say — has no tag that says so and no way to ask for

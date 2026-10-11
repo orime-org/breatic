@@ -12,7 +12,7 @@
  * Needs dev running and a smoke account:
  *   pnpm --filter @breatic/web test:visual
  */
-import { test, expect, type Locator } from 'playwright/test';
+import { expect, type Locator } from 'playwright/test';
 
 import {
   GAP_FROM_SELECTION_PX,
@@ -26,6 +26,7 @@ import {
   selectParagraph,
   selectWholeDocument,
   typeLongBody,
+  test,
 } from '../helpers/bubble-bar';
 import { bodyView } from '../helpers/link-panel';
 import { VISIBLE_SPACE, DOCUMENT_EDITOR } from '../helpers/space';

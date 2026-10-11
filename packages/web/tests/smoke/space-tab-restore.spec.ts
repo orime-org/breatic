@@ -19,7 +19,7 @@
  *
  *   pnpm --filter @breatic/web test:smoke
  */
-import { expect, test, type Locator, type Page } from 'playwright/test';
+import { expect, type Locator, type Page } from 'playwright/test';
 
 import { credentialsFor } from '../helpers/credentials';
 import { openSmokeProject, smokeProjectUrl } from '../helpers/project';
@@ -36,6 +36,7 @@ import {
   stored,
   storedViewport,
   stripIds,
+  test,
 } from '../helpers/tab-restore';
 
 test('lands on one Space and remembers it', async ({ page }) => {

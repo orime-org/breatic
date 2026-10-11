@@ -12,13 +12,14 @@
  * Wants dev running:
  *   pnpm --filter @breatic/web test:smoke
  */
-import { test, expect, type Page } from 'playwright/test';
+import { expect, type Page } from 'playwright/test';
 
 import {
   openFreshDocument,
   scrollBodyTo,
   selectFirstParagraph,
   selectParagraph,
+  test,
 } from '../helpers/bubble-bar';
 import { createSpace, deleteSpace, DOCUMENT_EDITOR as EDITOR, VISIBLE_SPACE } from '../helpers/space';
 

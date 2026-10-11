@@ -12,7 +12,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-import { expect, test, type Page } from 'playwright/test';
+import { expect, type Page } from 'playwright/test';
 
 import { CANVAS_SPACE, TEXT_BODY, liveModuleUrl } from '../helpers/live-module';
 import { selectFirstParagraph } from '../helpers/bubble-bar';
@@ -26,6 +26,7 @@ import {
   openFreshProject,
   projectIdOf,
   stripIds,
+  test,
 } from '../helpers/tab-restore';
 
 /**

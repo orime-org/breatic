@@ -10,10 +10,11 @@
  * before it left — eight of the ten did, and the two that did not still needed
  * the first to have cleared the record.
  *
- * A spec importing this evaluates it in its own scope, so the hooks below
- * remove that file's Spaces and neither file can reach the other's.
+ * A spec that adds Spaces through `addSpaces` imports `test` from here; the
+ * window size and the removal of those Spaces are fixtures on that `test`, so
+ * every case of every such file gets them.
  */
-import { expect, test, type Page } from 'playwright/test';
+import { expect, test as base, type Page } from 'playwright/test';
 
 import { CANVAS_SPACE, liveModuleUrl } from './live-module';
 import { openSmokeProject } from './project';
@@ -22,13 +23,27 @@ import { createSpace, deleteSpace, visibleSpace, type SpaceKind } from './space'
 /** Wide enough for a strip of several tabs and a minimap beside the canvas. */
 export const VIEWPORT = { width: 1400, height: 900 };
 
-test.use({ viewport: VIEWPORT });
-
 /** The Spaces this case made, removed when it ends. */
 const mine: string[] = [];
 
-test.afterEach(async ({ page }) => {
-  while (mine.length > 0) await deleteSpace(page, mine.pop() as string);
+/** Whether the fixture that removes those Spaces is running for this case. */
+let cleaning = false;
+
+/**
+ * The test a tab-restore case runs under: a window of `VIEWPORT`, and the
+ * removal of every Space `addSpaces` made.
+ */
+export const test = base.extend<{ restoreSpaces: void }>({
+  viewport: VIEWPORT,
+  restoreSpaces: [
+    async ({ page }, use) => {
+      cleaning = true;
+      await use();
+      cleaning = false;
+      while (mine.length > 0) await deleteSpace(page, mine.pop() as string);
+    },
+    { auto: true },
+  ],
 });
 
 /**
@@ -182,12 +197,16 @@ export async function openFreshProject(p: Page): Promise<string> {
  * @param count - How many to make.
  * @param kind - Which kind of Space to make.
  * @returns Their ids, in the order they were made.
+ * @throws {Error} When the case does not run under this module's `test`, which removes the Spaces.
  */
 export async function addSpaces(
   p: Page,
   count: number,
   kind: SpaceKind = 'canvas',
 ): Promise<string[]> {
+  if (!cleaning) {
+    throw new Error('addSpaces needs the test from helpers/tab-restore, which removes the Spaces it makes');
+  }
   const made: string[] = [];
   for (let i = 0; i < count; i += 1) {
     const id = await createSpace(p, kind, `restore-${Date.now()}-${i}`);
