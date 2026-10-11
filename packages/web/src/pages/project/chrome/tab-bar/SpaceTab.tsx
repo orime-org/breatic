@@ -68,7 +68,6 @@ function preventFocusOnPress(event: React.MouseEvent): void {
   if (document.activeElement?.closest('[data-space-outlet]')) event.preventDefault();
 }
 
-
 /**
  * Single space tab — chrome-baseline mock `.space-tab`.
  *
