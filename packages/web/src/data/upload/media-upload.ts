@@ -265,8 +265,8 @@ export async function runMediaUpload(
       fileUrl: answer.fileUrl,
       assetId: answer.assetId,
       kind: answer.kind,
-      width: answer.width ?? null,
-      height: answer.height ?? null,
+      width: answer.width,
+      height: answer.height,
     });
     return;
   }
