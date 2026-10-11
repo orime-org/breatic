@@ -117,21 +117,19 @@ describe('the open Space chip', () => {
       return words;
     };
 
-    it('says the Agent reads the open document while it is on', () => {
+    it('says a click stops the Agent reading the open Space while it is on', () => {
       setup();
-      expect(hoverText()).toContain('The Agent reads this Space with each message');
+      expect(hoverText()).toBe('Click to stop the Agent reading this Space');
     });
 
-    it('says only the name and type of an open timeline reach the Agent while it is on', () => {
+    it('says a click stops it for an open timeline, of which only the name and type reach the Agent', () => {
       setup({ spaceName: 'Edit', spaceType: 'timeline' });
-      const words = hoverText();
-      expect(words).toContain('The Agent sees only this Space\'s name and type; its content can\'t be read');
-      expect(words).not.toContain('The Agent reads this Space with each message');
+      expect(hoverText()).toBe('The Agent sees only this Space\'s name and type. Click to stop');
     });
 
-    it('says the Agent does not read it while it is off, whatever its type', () => {
+    it('says a click lets the Agent read it while it is off, whatever its type', () => {
       setup({ spaceName: 'Edit', spaceType: 'timeline', spaceEnabled: false });
-      expect(hoverText()).toContain('The Agent does not read this Space');
+      expect(hoverText()).toBe('Click to let the Agent read this Space');
     });
   });
 });
