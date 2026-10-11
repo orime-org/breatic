@@ -49,6 +49,14 @@ describe('the open Space chip', () => {
     expect(attach.compareDocumentPosition(chip) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
+  it('can shrink below its name so the notice beside it keeps its room', () => {
+    // A flex item without min-width 0 is never narrower than its text, so a
+    // long name would push the chip over the send button.
+    setup({ spaceName: 'A very long space name that goes on and on and on' });
+
+    expect(screen.getByTestId('chat-composer-space').className).toContain('min-w-0');
+  });
+
   it('is not drawn when no Space is open', () => {
     setup({ spaceName: undefined, spaceType: undefined });
 
