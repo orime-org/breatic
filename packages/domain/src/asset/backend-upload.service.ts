@@ -23,7 +23,7 @@
  * second time.
  */
 
-import { budgetDeadlineFrom, coverKeyFor, env, getStorageConfig, idleSocketDispatcher } from "@breatic/core";
+import { budgetDeadlineFrom, env, getStorageConfig, idleSocketDispatcher } from "@breatic/core";
 import {
   fetchUrlToIngest,
   finishUploadAtIngest,
@@ -37,7 +37,7 @@ import {
   type StudioAssetEntity,
 } from "@breatic/shared";
 import { issueUploadGrant } from "@domain/asset/upload-grant.service.js";
-import { mediaLimits } from "@domain/asset/asset.service.js";
+import { ingestRunFor } from "@domain/asset/asset.service.js";
 import { signTicketFor } from "@domain/asset/upload-ticket.service.js";
 import { extFromUrl } from "@domain/asset/source-url.js";
 import { storedTypeOf, TYPE_UNKNOWN } from "@domain/asset/reader-source.js";
@@ -234,11 +234,7 @@ export async function uploadBytesToStorage(
     opened.target.uploadUrl,
     held,
     env.INGEST_SHARED_SECRET,
-    {
-      coverKey: coverKeyFor(opened.storageKey),
-      deadlineAt: ctx.deadlineAt,
-      limits: mediaLimits(),
-    },
+    ingestRunFor(opened.storageKey, ctx.deadlineAt),
   );
   return landed(
     await applyIngestReport({
@@ -276,11 +272,7 @@ export async function transferUrlToStorage(
     sourceUrl,
     opened.target,
     env.INGEST_SHARED_SECRET,
-    {
-      coverKey: coverKeyFor(opened.storageKey),
-      deadlineAt: ctx.deadlineAt,
-      limits: mediaLimits(),
-    },
+    ingestRunFor(opened.storageKey, ctx.deadlineAt),
   );
   return landed(
     await applyIngestReport({
@@ -423,7 +415,7 @@ export async function pullReaderLink(
       url,
       target,
       env.INGEST_SHARED_SECRET,
-      { coverKey: coverKeyFor(storageKey), deadlineAt, limits: mediaLimits() },
+      ingestRunFor(storageKey, deadlineAt),
       signal,
     );
   } catch (err) {

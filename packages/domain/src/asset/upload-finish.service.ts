@@ -10,7 +10,7 @@
  * the object, which is bounded by the upload's two hours and nothing shorter.
  */
 
-import { coverKeyFor, env } from "@breatic/core";
+import { env } from "@breatic/core";
 import {
   finishUploadAtIngest,
   INGEST_REFUSED_UNNAMED,
@@ -20,7 +20,7 @@ import {
 } from "@breatic/shared";
 import * as ingestReportService from "@domain/asset/ingest-report.service.js";
 import type { IngestReportOutcome } from "@domain/asset/ingest-report.service.js";
-import { mediaLimits } from "@domain/asset/asset.service.js";
+import { ingestRunFor } from "@domain/asset/asset.service.js";
 import * as mediaReadService from "@domain/asset/media-read.service.js";
 import { uploadDeadlineByKey } from "@domain/asset/upload-deadline.js";
 
@@ -98,13 +98,11 @@ export async function finishUpload(job: UploadFinishJob): Promise<UploadFinishRe
       { uploadId: job.uploadId, token: job.token, parts: job.parts },
       env.INGEST_SHARED_SECRET,
       {
-        // Named unconditionally: which media have a frame to lift is decided
-        // from the type, and the type is the edge's to read off the bytes. The
-        // key is derived from the object's own, so a repeat names the same
-        // place.
-        coverKey: coverKeyFor(storageKey),
-        deadlineAt,
-        limits: mediaLimits(),
+        // The cover key is named unconditionally: which media have a frame to
+        // lift is decided from the type, and the type is the edge's to read
+        // off the bytes. It is derived from the object's own key, so a repeat
+        // names the same place.
+        ...ingestRunFor(storageKey, deadlineAt),
         deferMediaRead: !mediaReadService.readsMediaAtFinish(job.assetSource),
       },
     );

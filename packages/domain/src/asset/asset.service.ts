@@ -38,6 +38,7 @@
  */
 
 import {
+  coverKeyFor,
   getStorageConfig,
   NotFoundError,
   projectsRepo,
@@ -47,7 +48,7 @@ import {
   type RegisterAssetInput,
 } from "@domain/asset/asset.repo.js";
 import { t } from "@breatic/shared";
-import type { MediaLimits, StudioAssetEntity } from "@breatic/shared";
+import type { IngestRun, MediaLimits, StudioAssetEntity } from "@breatic/shared";
 import { queueForReclaim } from "@domain/asset/storage-reclaim.repo.js";
 
 /**
@@ -229,4 +230,15 @@ export function mediaLimits(): MediaLimits {
     // same ceiling the received bytes were.
     uprightMaxBytes: upload.max_upload_bytes,
   };
+}
+
+/**
+ * What the ingest Worker is handed for one object: where a cover would go,
+ * when the task runs out, and the limits it turns a picture under.
+ * @param storageKey - The object's key.
+ * @param deadlineAt - When its task runs out, in epoch milliseconds.
+ * @returns The run.
+ */
+export function ingestRunFor(storageKey: string, deadlineAt: number): IngestRun {
+  return { coverKey: coverKeyFor(storageKey), deadlineAt, limits: mediaLimits() };
 }
