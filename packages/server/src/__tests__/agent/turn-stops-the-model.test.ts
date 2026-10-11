@@ -80,6 +80,8 @@ vi.mock("@breatic/domain", async (importOriginal) => {
     // Real: this is what is under test.
     streamTextRetry: actual.streamTextRetry,
     finalizeTurn: actual.finalizeTurn,
+    // The studio the turn's tools read material for; the ledger is not here.
+    assetService: { ...actual.assetService, resolveOwnerStudioId: async () => "s0000000-0000-4000-8000-000000000001" },
     getModel: () =>
       new MockLanguageModelV4({
         doStream: async () => {

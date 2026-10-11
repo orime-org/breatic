@@ -2,13 +2,25 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * What an upload takes from an address a caller handed over (#207 §7.5).
+ * An address a caller hands over for us to fetch (#207 §7.5): which ones are
+ * accepted, and what an upload takes from one.
  *
  * Two things come off it and neither is the address itself: the extension that
  * goes into the storage key, and the name the node's task list shows. The
  * query string belongs to neither — it is where a presigned link carries its
  * signature, and that is a credential rather than a name.
  */
+
+import { z } from "zod";
+
+/**
+ * An address a reader or the agent hands over for us to fetch into storage.
+ *
+ * https only, and 2kB at most -- the ceiling Google Docs publishes for the
+ * same kind of input. One rule for every lane that takes such an address, so
+ * the agent's save and the canvas paste refuse the same ones.
+ */
+export const readerUrlSchema = z.string().url().max(2048).startsWith("https://");
 
 /**
  * Anything an extension may be made of, and the longest one worth keeping.

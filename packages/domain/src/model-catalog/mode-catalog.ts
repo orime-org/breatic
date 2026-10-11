@@ -9,12 +9,14 @@ import {
   canConnect,
   GENERATION_NODE_BUCKETS,
   GENERATION_NODE_MODES,
+  missingSources,
   modelLabel,
   PANEL_EDITOR_PARAM,
   paramValues,
   storyboardSpec,
   type ControlGate,
   type GenerationNodeType,
+  type MissingSource,
   type ModelEntry,
   type ParamDescriptor,
   type ReferenceKind,
@@ -204,6 +206,12 @@ export interface ModelInfo {
    * up to. Absent in every other mode.
    */
   storyboard?: StoryboardSpec;
+  /**
+   * What a run in this mode needs before it can start: each requirement is
+   * the params any one of which holding a node meets it, read off the same
+   * declarations the panel and the server's gate read.
+   */
+  needs: MissingSource[];
 }
 
 /** What one node can do in one mode: the models, or why there are none. */
@@ -428,8 +436,12 @@ function isReferenceKind(accepts: string | undefined): accepts is ReferenceKind 
   return accepts === "image" || accepts === "video" || accepts === "audio";
 }
 
-/** What the reader writes in the prompt for a node going one way in. */
-export type WayMark = "asset" | "note";
+/**
+ * How a node going one way in is used: the prompt mentions it with a ref,
+ * the reader picks it into a slot as a note asks, or landing mentions it in
+ * a box of its own (the lyrics box) with nothing asked of the prompt.
+ */
+export type WayMark = "ref" | "note" | "placed";
 
 /** One way a node reaches a generation, as the model declares it. */
 export interface WayIn {
@@ -438,9 +450,9 @@ export interface WayIn {
   /** How many nodes this way takes. */
   room: number;
   /**
-   * What the prompt carries for each node going this way: an asset mark to
-   * mention it from the pool, or a note saying which slot to pick it into or
-   * that it is mentioned in the lyrics box. A required slot gets a note too:
+   * What the prompt carries for each node going this way: a ref that
+   * mentions it from the pool, a note saying which slot to pick it into, or
+   * nothing for the lyrics box, which landing mentions it in. A required slot gets a note too:
    * the panel says the slot is empty, not which node goes there.
    */
   mark: WayMark;
@@ -451,9 +463,9 @@ export type WayKind = ReferenceKind | "text";
 
 /**
  * Every way a model takes each kind of node reaching it (design 5.7 table
- * A): its pool, which the reader mentions from in the prompt box; each slot,
- * which the reader picks into in the panel; and for words, the prompt box and
- * the lyrics box, both of which the reader mentions them into.
+ * A): its pool, mentioned in the prompt box by a ref; each slot, which the
+ * reader picks into in the panel; and for words, the prompt box, mentioned by
+ * a ref, and the lyrics box, which landing mentions them in.
  * @param chosen - The model, as the catalog projects it.
  * @returns Per kind, its ways in declaration order.
  * @throws {never} Never.
@@ -474,14 +486,17 @@ export function waysIn(chosen: ModelInfo): Map<WayKind, WayIn[]> {
   for (const [name, info] of Object.entries(chosen.params)) {
     if (info.filledBySource !== true || !isReferenceKind(info.accepts)) continue;
     if (info.fromReferencePool === true) {
-      if (chosen.takesPrompt) add(info.accepts, { into: "pool", room: info.maxItems ?? Number.POSITIVE_INFINITY, mark: "asset" });
+      if (chosen.takesPrompt) add(info.accepts, { into: "pool", room: info.maxItems ?? Number.POSITIVE_INFINITY, mark: "ref" });
     } else {
       add(info.accepts, { into: name, room: info.maxItems ?? 1, mark: "note" });
     }
   }
-  if (chosen.takesPrompt) add("text", { into: "pool", room: Number.POSITIVE_INFINITY, mark: "asset" });
-  if (chosen.params[PANEL_EDITOR_PARAM] !== undefined) {
-    add("text", { into: PANEL_EDITOR_PARAM, room: Number.POSITIVE_INFINITY, mark: "note" });
+  if (chosen.takesPrompt) add("text", { into: "pool", room: Number.POSITIVE_INFINITY, mark: "ref" });
+  // The lyrics box is drawn only in the modes its param applies in; out of
+  // them the projection marks it as nothing to set.
+  const lyrics = chosen.params[PANEL_EDITOR_PARAM];
+  if (lyrics !== undefined && lyrics.noControl !== true) {
+    add("text", { into: PANEL_EDITOR_PARAM, room: Number.POSITIVE_INFINITY, mark: "placed" });
   }
   return ways;
 }
@@ -536,6 +551,7 @@ export function modelsForMode(
         : {}),
       ...(others.length > 0 ? { alsoServes: others } : {}),
       ...(storyboard ? { storyboard } : {}),
+      needs: missingSources(entry, mode, {}),
       params: Object.fromEntries(
         reached
           // A carrier field this mode does not use belongs to another mode of

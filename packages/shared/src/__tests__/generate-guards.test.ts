@@ -549,14 +549,14 @@ describe('evaluateExecute — the multi-shot mode', () => {
     const seven = Array.from({ length: 7 }, () => ({ text: 'x', duration: 1 }));
     expect(
       evaluateExecute({ ...custom, storyboard: { ...custom.storyboard, shots: seven, total: 7 } }),
-    ).toEqual({ refusal: 'storyboard-too-many', limit: 6 });
+    ).toEqual({ refusal: 'storyboard-too-many', limit: 6, found: 7 });
   });
 
   it('names a shot longer than the model takes, counted on the cleaned text', () => {
     const long = { text: 'a'.repeat(513), duration: 3 };
     expect(
       evaluateExecute({ ...custom, storyboard: { ...custom.storyboard, shots: [shots[0]!, long] } }),
-    ).toEqual({ refusal: 'storyboard-shot-too-long', shot: 2, limit: 512 });
+    ).toEqual({ refusal: 'storyboard-shot-too-long', shot: 2, limit: 512, found: 513 });
     const atCap = { text: `${'a'.repeat(512)} `, duration: 3 };
     expect(refusalOf({ ...custom, storyboard: { ...custom.storyboard, shots: [shots[0]!, atCap] } })).toBeNull();
   });

@@ -3,13 +3,14 @@
 
 import { describe, expect, it } from "vitest";
 import { INGEST_NO_ANSWER, INGEST_REFUSED_UNNAMED } from "@breatic/shared";
-import { urlIngestFailureLevel } from "@worker/handlers/url-ingest.js";
+import { isReaderLinkFault, urlIngestFailureLevel } from "@domain/asset/reader-source.js";
 
 describe("urlIngestFailureLevel", () => {
   it("treats a link the reader handed us that cannot be taken as the reader's input", () => {
     expect(urlIngestFailureLevel("source_unreachable")).toBe("warn");
     expect(urlIngestFailureLevel("unsupported_type")).toBe("warn");
     expect(urlIngestFailureLevel("over_cap")).toBe("warn");
+    expect(urlIngestFailureLevel("empty")).toBe("warn");
   });
 
   it("treats every failure on our side as an error", () => {
@@ -17,5 +18,19 @@ describe("urlIngestFailureLevel", () => {
     expect(urlIngestFailureLevel("assemble_failed")).toBe("error");
     expect(urlIngestFailureLevel(INGEST_REFUSED_UNNAMED)).toBe("error");
     expect(urlIngestFailureLevel(INGEST_NO_ANSWER)).toBe("error");
+  });
+});
+
+describe("isReaderLinkFault", () => {
+  it("puts a link that would not answer in time, could not be reached, or held the wrong thing down to the link", () => {
+    for (const reason of ["source_unreachable", "unsupported_type", "over_cap", "empty", INGEST_NO_ANSWER]) {
+      expect(isReaderLinkFault(reason), reason).toBe(true);
+    }
+  });
+
+  it("puts a failure in storing or judging what arrived down to our side", () => {
+    for (const reason of ["store_failed", "assemble_failed", INGEST_REFUSED_UNNAMED, "type_not_reported"]) {
+      expect(isReaderLinkFault(reason), reason).toBe(false);
+    }
   });
 });

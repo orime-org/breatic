@@ -72,9 +72,9 @@ vi.mock("@breatic/shared", async (importOriginal) => ({
 vi.mock("@domain/asset/upload-grant.service.js", () => ({ issueUploadGrant }));
 vi.mock("@domain/asset/ingest-report.service.js", () => ({ applyIngestReport }));
 
-const { uploadBytesToStorage, transferUrlToStorage } = await import(
-  "@domain/asset/backend-upload.service.js"
-);
+const { uploadBytesToStorage, transferUrlToStorage, transferReaderUrlToStorage, ReaderUrlTransferError } =
+  await import("@domain/asset/backend-upload.service.js");
+const { INGEST_NO_ANSWER, INGEST_TYPE_NOT_REPORTED, UploadHttpError } = await import("@breatic/shared");
 
 /** What the Worker answers with once the object has landed. */
 const MEASURED = {
@@ -375,5 +375,108 @@ describe("what lane ② asks the Worker for", () => {
       "image/2026-01-01/k_cover.png",
       LIMITS,
     );
+  });
+});
+
+// A link somebody other than a provider handed over: the agent's save
+// (inner#1315). Nobody here knows what it holds, so the Worker reads the type
+// off the source, and a refusal is the link's, settled before it is reported.
+describe("transferReaderUrlToStorage — a reader's link (inner#1315)", () => {
+  const LINK = "https://imgs.example/photos/cat.JPG?sig=abc";
+  const WHO = { projectId: "p1", actingUserId: "u1" };
+
+  it("opens an agent grant keyed by the link's extension and lets the Worker read the type", async () => {
+    await transferReaderUrlToStorage(LINK, WHO);
+
+    expect(issueUploadGrant.mock.calls[0]?.[0]).toMatchObject({
+      projectId: "p1",
+      actingUserId: "u1",
+      declaredSize: MAX_UPLOAD,
+      taskType: "url",
+      ext: ".jpg",
+      context: { assetSource: "agent", derived: true },
+    });
+    expect(signUploadTicket.mock.calls[0]?.[0]).toMatchObject({
+      contentType: "application/octet-stream",
+      typeFromSource: true,
+    });
+  });
+
+  it("hands the stop signal to the transfer", async () => {
+    const stop = new AbortController();
+
+    await transferReaderUrlToStorage(LINK, WHO, stop.signal);
+
+    expect(fetchUrlToIngest.mock.calls[0]?.[6]).toBe(stop.signal);
+  });
+
+  it("registers the type the Worker judged, not the placeholder it was signed with", async () => {
+    fetchUrlToIngest.mockResolvedValue({ ...MEASURED, contentType: "image/jpeg; charset=binary" });
+
+    const out = await transferReaderUrlToStorage(LINK, WHO);
+
+    expect(applyIngestReport).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ outcome: "completed", contentType: "image/jpeg" }),
+    );
+    expect(out.fileUrl).toBe("https://our-bucket/k.png");
+  });
+
+  it("settles the grant and names the link's own refusal", async () => {
+    fetchUrlToIngest.mockRejectedValue(new UploadHttpError(502, "source_unreachable"));
+
+    const failed = await transferReaderUrlToStorage(LINK, WHO).catch((err: unknown) => err);
+
+    expect(failed).toBeInstanceOf(ReaderUrlTransferError);
+    expect((failed as InstanceType<typeof ReaderUrlTransferError>).reason).toBe("source_unreachable");
+    expect(applyIngestReport).toHaveBeenCalledExactlyOnceWith({
+      storageKey: "image/2026-01-01/k.png",
+      outcome: "aborted",
+      reason: "source_unreachable",
+    });
+  });
+
+  it("settles the grant when nothing answered", async () => {
+    fetchUrlToIngest.mockRejectedValue(new Error("socket hang up"));
+
+    const failed = await transferReaderUrlToStorage(LINK, WHO).catch((err: unknown) => err);
+
+    expect((failed as InstanceType<typeof ReaderUrlTransferError>).reason).toBe(INGEST_NO_ANSWER);
+    expect(applyIngestReport).toHaveBeenCalledWith(expect.objectContaining({ outcome: "aborted" }));
+  });
+
+  it("settles the grant when the stored type is not one we take", async () => {
+    fetchUrlToIngest.mockResolvedValue({ ...MEASURED, contentType: "application/octet-stream" });
+
+    const failed = await transferReaderUrlToStorage(LINK, WHO).catch((err: unknown) => err);
+
+    expect((failed as InstanceType<typeof ReaderUrlTransferError>).reason).toBe(INGEST_TYPE_NOT_REPORTED);
+    expect((failed as InstanceType<typeof ReaderUrlTransferError>).reported).toBe("application/octet-stream");
+    expect(applyIngestReport).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ outcome: "aborted", reason: INGEST_TYPE_NOT_REPORTED }),
+    );
+  });
+
+  it("keeps why the link failed when settling its grant fails too", async () => {
+    const refused = new UploadHttpError(502, "source_unreachable");
+    const unsettled = new Error("db down");
+    fetchUrlToIngest.mockRejectedValue(refused);
+    applyIngestReport.mockRejectedValue(unsettled);
+
+    const failed = await transferReaderUrlToStorage(LINK, WHO).catch((err: unknown) => err);
+
+    expect(failed).toBeInstanceOf(AggregateError);
+    expect((failed as AggregateError).errors).toEqual([refused, unsettled]);
+    expect((failed as AggregateError).message).toContain("source_unreachable");
+  });
+
+  it.each(["empty", "over_cap"])("names a %s report as the link's own refusal", async (reason) => {
+    // The report turned down what the link sent: the link is at fault, and
+    // the same link gets the same answer again.
+    applyIngestReport.mockResolvedValue({ status: "rejected", reason });
+
+    const failed = await transferReaderUrlToStorage(LINK, WHO).catch((err: unknown) => err);
+
+    expect(failed).toBeInstanceOf(ReaderUrlTransferError);
+    expect((failed as InstanceType<typeof ReaderUrlTransferError>).reason).toBe(reason);
   });
 });

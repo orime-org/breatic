@@ -23,7 +23,9 @@ import type { ResolvedAgentConfig } from "@breatic/domain";
 import { buildSystemPrompt } from "@server/agent/context.js";
 import { readerClockNote } from "@server/agent/reader-clock.js";
 import { getAgentConfig } from "@breatic/core";
-import { creditLotService, createUsageRecorder, usageContextFor } from "@breatic/domain";
+import { assetService, creditLotService, createUsageRecorder } from "@breatic/domain";
+import { saveToStorageFor } from "@server/agent/save-to-storage.js";
+import { turnToolsContext } from "@server/agent/turn-tools-context.js";
 import { buildTurnContext } from "@server/agent/turn-context.js";
 import { watchModelCalls, type ModelCallWatch } from "@server/agent/model-call-watch.js";
 import type { ChatAttachedChip, MessagePart, ToolFailure } from "@breatic/shared";
@@ -362,6 +364,9 @@ export class MainAgent {
 
       const { agentConfig, messages } = assembly;
       modelId = agentConfig.modelId;
+      // The studio whose material a proposal may name: the project's owner,
+      // which is also where a saved picture is charged.
+      const studioId = await assetService.resolveOwnerStudioId(projectId);
       const watch = watchModelCalls(usage, { model: agentConfig.modelId, description: "Agent chat" });
       calls = watch;
 
@@ -375,11 +380,16 @@ export class MainAgent {
         system: agentConfig.instructions,
         messages,
         tools: agentConfig.tools,
-        // The paying tools record their calls on this turn's recorder. Cast
-        // because the tool set arrives as a plain record, whose context type
-        // the SDK reads as absent; each paying tool's `contextSchema` is what
-        // checks this at run time, before its `execute`.
-        toolsContext: usageContextFor(agentConfig.tools, usage) as never,
+        // The paying tools record their calls on this turn's recorder, the
+        // save stores for this project and reader, and the proposal check
+        // reads material for this studio. Cast because the tool set arrives as
+        // a plain record, whose context type the SDK reads as absent; each
+        // tool's `contextSchema` is what checks this at run time, before its
+        // `execute`.
+        toolsContext: turnToolsContext(agentConfig.tools, usage, {
+          saveToStorage: saveToStorageFor({ projectId, userId }),
+          studioId,
+        }) as never,
         stopWhen: [stepCountIs(agentCfg.max_tool_iterations), stopIfItAsked],
         // Per call, which is the only unit there is: the `stopWhen` above
         // lets one turn make many, and each of them is bounded by this. An

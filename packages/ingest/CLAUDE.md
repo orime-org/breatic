@@ -3,7 +3,7 @@
 > 项目级三层边界 + 进包判定题见根 [CLAUDE.md](../../CLAUDE.md#关键规范)。本文件只写本包的边界规矩。
 
 ## 角色
-**部署在 Cloudflare 的 ingest Worker**。浏览器把文件字节直接发给它，它写进 R2、算出内容 hash，**把算出来的东西放在收尾那次请求的响应里答回去**。**它不主动请求任何地址，也不持有我们任何一个端点的地址**（#206）——收尾由我们自己的 server 发起，所以它答给谁、后果落在哪，全由发起方决定。**它是这个仓库里唯一跑在 workerd 上的包**，而它有两个运行时：`src/` 是 Worker 本身，跑在 workerd 上，没有 `node:*`、没有数据库、没有 Redis；`container/` 是它起的媒体容器（`Dockerfile` 里的 alpine + Node 24），跑 ffmpeg，用 `node:*` 起 HTTP 服务并 spawn 进程。**写 `node:*` 只在 `container/` 里成立**。
+**部署在 Cloudflare 的 ingest Worker**。浏览器把文件字节直接发给它，它写进 R2、算出内容 hash，**把算出来的东西放在收尾那次请求的响应里答回去**。**它不请求我们任何一个端点，也不持有它们的地址**（#206）；它唯一的出站请求是 `POST /fetch` 去拉请求体点名的源地址，带上 `src/source-request.ts` 里那个标明我们身份的 User-Agent（Wikimedia 这类站点拒收不带它的请求）——收尾由我们自己的 server 发起，所以它答给谁、后果落在哪，全由发起方决定。**它是这个仓库里唯一跑在 workerd 上的包**，而它有两个运行时：`src/` 是 Worker 本身，跑在 workerd 上，没有 `node:*`、没有数据库、没有 Redis；`container/` 是它起的媒体容器（`Dockerfile` 里的 alpine + Node 24），跑 ffmpeg，用 `node:*` 起 HTTP 服务并 spawn 进程。**写 `node:*` 只在 `container/` 里成立**。
 
 ## 分层(包内)
 - `src/index.ts` = fetch handler，七个端点的路由 + CORS。前四个是上传那条链路（`POST /uploads` · `POST /fetch` · `PUT` 分片 · `POST` 收尾）；第五个 `POST /media` 读一个已经落盘的对象的宽高和时长，给收尾时跳过了这一步的项目封面和 Studio 头像补读（#299）。容器还给图片和视频封面写一张缩略图（`<key>.preview.webp`，最宽 576，inner#1320）：收尾时 Worker 按落盘类型自己决定要不要，`POST /media` 由调用方带 `wantPreview: true` 要，缩略图已经在的不再写。所以 `/media` 也可能写一个对象。收尾那次请求带 `deferMediaRead: true` 时不起容器；第六、七个是容器类 mini-tool 的作业：`POST /jobs` 提交、`GET /jobs/{class}/{id}` 查询，只有我们的 worker 调（`src/jobs/`）

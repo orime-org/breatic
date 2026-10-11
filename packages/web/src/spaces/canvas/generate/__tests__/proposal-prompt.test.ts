@@ -8,8 +8,8 @@
  * The prompt is written straight into the Yjs types, without an editor, so
  * every case here reads it back through a real prompt editor bound to the same
  * fragment: a hand-built shape the schema rejects would vanish the moment the
- * reader opens the panel. Nothing is @'d for the reader; the marks only tell
- * them what to do.
+ * reader opens the panel. A proposal's ref lands as the same mention the
+ * reader would insert with @ (inner#1315); the marks only tell them what to do.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -25,17 +25,24 @@ import { PROMPT_NOTE_LABEL_ATTR, PROMPT_NOTE_NODE, PromptDocument, PromptNote } 
 import { REFERENCE_MENTION_NODE } from '@web/features/reference-mention/mention-node';
 import { ReferenceMention, serializePromptText } from '@web/spaces/canvas/generate/reference-mention';
 import { makeReferenceSuggestion } from '@web/spaces/canvas/generate/reference-mention-suggestion';
-import { writeProposalPrompt } from '@web/spaces/canvas/generate/proposal-prompt';
+import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
+import { writeProposalPrompt, type ProposalMention } from '@web/spaces/canvas/generate/proposal-prompt';
 
 /**
  * Write a prompt, then read it back through an editor bound to the fragment.
  * @param segments - The prompt as the model sent it.
+ * @param mentionOf - What each ref @s, by proposal index.
+ * @param pool - The reference pool generation reads the mentions against.
  * @returns What the editor makes of it and the string generation would get.
  */
-function roundTrip(segments: readonly PromptSegment[]): { json: JSONContent; sent: string } {
+function roundTrip(
+  segments: readonly PromptSegment[],
+  mentionOf: (index: number) => ProposalMention | undefined = () => undefined,
+  pool: ReferenceRailItem[] = [],
+): { json: JSONContent; sent: string } {
   const doc = new Y.Doc();
   const fragment = doc.getXmlFragment('prompt');
-  writeProposalPrompt(fragment, segments);
+  writeProposalPrompt(fragment, segments, mentionOf);
 
   const editor = new Editor({
     element: document.createElement('div'),
@@ -50,7 +57,7 @@ function roundTrip(segments: readonly PromptSegment[]): { json: JSONContent; sen
       Collaboration.configure({ fragment }),
     ],
   });
-  const read = { json: editor.getJSON(), sent: serializePromptText(editor, []) };
+  const read = { json: editor.getJSON(), sent: serializePromptText(editor, pool) };
   editor.destroy();
   return read;
 }
@@ -113,5 +120,32 @@ describe('a note', () => {
   it('leaves a line below it to write in when it is all there is', () => {
     const { json } = roundTrip([{ slot: { kind: 'note', label: 'Pick the first frame in the panel' } }]);
     expect(json.content?.map((block) => block.type)).toEqual([PROMPT_NOTE_NODE, 'paragraph']);
+  });
+});
+
+describe('a ref to another proposed node', () => {
+  const SCRIPT: ProposalMention = { sourceNodeId: 'n-script', label: 'Script', kind: 'text' };
+  const PHOTO: ProposalMention = { sourceNodeId: 'n-photo', label: 'Photo', kind: 'image', thumbnail: 'https://r2.example/p.png' };
+  const mentionOf = (index: number): ProposalMention | undefined => [SCRIPT, PHOTO][index];
+
+  it('lands as the mention the reader would insert with @, in the line where it was written', () => {
+    const { json } = roundTrip([{ text: 'Repaint ' }, { ref: 1 }, { text: ' as a watercolour.' }], mentionOf);
+    const line = json.content?.[0]?.content ?? [];
+    expect(line.map((part) => part.type)).toEqual(['text', REFERENCE_MENTION_NODE, 'text']);
+    expect(line[1]?.attrs).toMatchObject({ sourceNodeId: 'n-photo', label: 'Photo', kind: 'image', thumbnail: 'https://r2.example/p.png' });
+  });
+
+  it('sends a text node\'s words in its place when the run starts', () => {
+    const pool: ReferenceRailItem[] = [
+      { refId: 'e1', sourceNodeId: 'n-script', sourceNodeType: 'text', sourceNodeName: 'Script', textContent: 'Hello there.' },
+    ];
+    // The editor keeps a space after a chip ending a line, as it does for one
+    // picked with @ (reference-mention-caret.ts).
+    expect(roundTrip([{ text: 'Read: ' }, { ref: 0 }], mentionOf, pool).sent).toBe('Read: Hello there. ');
+  });
+
+  it('leaves a ref to a node that was not placed out of the prompt', () => {
+    const { json } = roundTrip([{ text: 'Repaint ' }, { ref: 5 }], mentionOf);
+    expect(typesIn(json)).not.toContain(REFERENCE_MENTION_NODE);
   });
 });

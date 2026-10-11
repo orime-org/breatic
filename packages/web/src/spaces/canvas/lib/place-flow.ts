@@ -47,6 +47,9 @@ const BODY_PADDING_PX = 24;
 const BODY_MIN_PX = 192;
 const BODY_MAX_PX = 576;
 
+// `NodeMediaInset`'s `p-1`: 4px on each side of a picture or a video.
+const MEDIA_INSET_PX = 8;
+
 // How wide one character is on that line. A full-width character is the type
 // size; everything else is taken as half of it, which is the usual reading of
 // East Asian width and close enough for deciding where a node's neighbour
@@ -61,13 +64,19 @@ const FULL_WIDTH = /[\u{1100}-\u{115F}\u{2E80}-\u{303E}\u{3041}-\u{33FF}\u{3400}
  * How tall a node will be once it is on the canvas.
  *
  * An empty node and one waiting for Generate are the standard footprint. A
- * node carrying words is as tall as the words wrap to, between the minimum its
+ * node holding the reader's picture or video is as tall as it draws at the
+ * node's width (inner#1315). A node carrying words is as tall as the words wrap to, between the minimum its
  * body declares and the height at which it starts to clip.
  * @param node - The proposed node.
  * @returns Its height in flow coordinates.
  * @throws {never} Never.
  */
 export function estimateHeight(node: ProposalNode): number {
+  const media = node.materialMedia;
+  if (media?.width && media.height && (node.type === 'image' || node.type === 'video')) {
+    // The picture fills the node's width inside `NodeMediaInset`'s `p-1`.
+    return ((EMPTY_NODE_SIZE.width - MEDIA_INSET_PX) * media.height) / media.width + MEDIA_INSET_PX;
+  }
   if (node.role !== 'written') return EMPTY_NODE_SIZE.height;
   const room = EMPTY_NODE_SIZE.width - BODY_PADDING_PX;
   const lines = promptPlainText(node.prompt ?? [])
