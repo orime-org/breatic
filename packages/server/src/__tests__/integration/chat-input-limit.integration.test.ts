@@ -332,6 +332,19 @@ describe("what one turn may send", () => {
 });
 
 describe("what one turn may carry of the reader's Spaces (inner#1413)", () => {
+  /** A loaded canvas carries what was done to fit it; these requests are over the limit by length alone. */
+  const NO_REDUCTION = {
+    selected_total: 0,
+    selected_attached: 0,
+    selected_whole: 0,
+    slim: false,
+    texts_cut: 0,
+    names_only: 0,
+    edges_not_listed: 0,
+    nodes_not_listed: 0,
+    groups_not_listed: 0,
+  };
+
   /**
    * The Spaces a message carries, with the open one holding a given length.
    * @param listed - How many Spaces the list holds.
@@ -343,7 +356,13 @@ describe("what one turn may carry of the reader's Spaces (inner#1413)", () => {
     return {
       spaces,
       spaces_total: listed,
-      current_space: { ...spaces[0], state: "loaded", content: "x".repeat(contentLength), total_chars: contentLength + 1 },
+      current_space: {
+        ...spaces[0],
+        state: "loaded",
+        content: "x".repeat(contentLength),
+        total_chars: contentLength + 1,
+        detail: NO_REDUCTION,
+      },
     };
   }
 
