@@ -7,7 +7,7 @@ import type { SpaceType } from '@breatic/shared';
 import { Button } from '@web/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tooltip';
 import { useTranslation } from '@web/i18n/use-translation';
-import { SPACE_TYPE_ICON } from '@web/pages/project/chrome/tab-bar/SpaceTab';
+import { SPACE_TYPE_ICON } from '@web/pages/project/space-type-icon';
 
 interface SpaceContextChipProps {
   /** The open Space's name. */
