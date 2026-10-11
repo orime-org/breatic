@@ -49,12 +49,16 @@ describe('the open Space chip', () => {
     expect(attach.compareDocumentPosition(chip) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
-  it('can shrink below its name so the notice beside it keeps its room', () => {
-    // A flex item without min-width 0 is never narrower than its text, so a
-    // long name would push the chip over the send button.
+  it('shrinks with a long name down to its icon and three characters, and no further', () => {
+    // Without a floor of its own the chip is either never narrower than its
+    // text, pushing it over the send button, or squeezed past its icon by a
+    // long notice beside it. The floor is the padding, border, icon and gap
+    // (34px) plus three characters.
     setup({ spaceName: 'A very long space name that goes on and on and on' });
 
-    expect(screen.getByTestId('chat-composer-space').className).toContain('min-w-0');
+    const chip = screen.getByTestId('chat-composer-space');
+    expect(chip.className).toContain('min-w-[calc(3ch+2.125rem)]');
+    expect(chip.className).toContain('overflow-hidden');
   });
 
   it('is not drawn when no Space is open', () => {
