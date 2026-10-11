@@ -112,7 +112,7 @@ vi.mock("@server/agent/turn-budget.js", () => ({
 vi.mock("@server/agent/context.js", () => ({ buildSystemPrompt: () => "system" }));
 
 const { MainAgent } = await import("@server/agent/main-agent.js");
-const { runWithContext } = await import("@breatic/core");
+const { runWithContext, logger } = await import("@breatic/core");
 
 /** The address the stubbed tool in this file is asked for, and fails on. */
 const REFUSED = "https://public.example/page";
@@ -157,4 +157,25 @@ describe("what the model is handed after a tool fails", () => {
     expect(second).toContain(REFUSED);
   });
 
+  it("leaves a line in the log naming the tool and why it failed", async () => {
+    vi.mocked(logger.error).mockClear();
+    await runWithContext({ userId: "u1", conversationId: "c1", projectId: "p1" }, async () => {
+      const turn = await new MainAgent().chat("read that page", new AbortController().signal);
+      for await (const _chunk of turn) {
+        // drained
+      }
+    });
+
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.objectContaining({
+        toolName: "web_search",
+        toolCallId: "tc-1",
+        userId: "u1",
+        conversationId: "c1",
+        projectId: "p1",
+        forModel: FOR_MODEL,
+      }),
+      "agent_tool_failed",
+    );
+  });
 });

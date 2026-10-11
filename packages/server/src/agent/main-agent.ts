@@ -454,7 +454,26 @@ export class MainAgent {
           // is this one.
           if (toolOutput.type === "tool-error") {
             if (howToolEnded.has(toolCall.toolCallId)) return;
-            howToolEnded.set(toolCall.toolCallId, endingOf(toolOutput.error));
+            const ending = endingOf(toolOutput.error);
+            howToolEnded.set(toolCall.toolCallId, ending);
+            // The turn carries on and the model is told why; the log is the
+            // only place the reason is kept for whoever looks into the turn.
+            // A call turned away to steer the model, or one the reader
+            // stopped, is not a failure.
+            if (ending.kind === "tool_failed") {
+              logger.error(
+                {
+                  err: toolOutput.error,
+                  toolName: toolCall.toolName,
+                  toolCallId: toolCall.toolCallId,
+                  userId,
+                  conversationId,
+                  projectId,
+                  forModel: ending.forModel,
+                },
+                "agent_tool_failed",
+              );
+            }
             return;
           }
           whatToolAnswered.set(toolCall.toolCallId, toolOutput.output);
