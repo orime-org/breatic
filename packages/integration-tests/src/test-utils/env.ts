@@ -21,7 +21,7 @@
  * only uses createTestDb with an explicit URL) need neither.
  */
 
-import { inject, afterAll } from "vitest";
+import { inject, afterAll, vi } from "vitest";
 
 const urls = inject("DATABASE_URL")
   ? {
@@ -122,4 +122,12 @@ afterAll(async () => {
     () => core.closeQueues(),
   ];
   await Promise.allSettled(closes.map(async (close) => close()));
+});
+
+// A file's stubbed globals end with the file. Every file in this package runs
+// in one process, and a stub left standing reaches the next file as it imports
+// its modules: a test that replaced `URL` with an object made the next file's
+// `new URL(...)` at import time throw "URL is not a constructor".
+afterAll(() => {
+  vi.unstubAllGlobals();
 });
