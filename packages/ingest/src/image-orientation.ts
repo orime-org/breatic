@@ -192,7 +192,6 @@ async function webpOrientation(source: ByteSource): Promise<ImageOrientation> {
   let lossless = false;
   let imageSeen = false;
   let exifExpected = false;
-  let animated = false;
   let at = 12;
   while (at + 8 <= end) {
     const chunk = await source.at(at, 18);
@@ -201,7 +200,11 @@ async function webpOrientation(source: ByteSource): Promise<ImageOrientation> {
     const size = readU32(chunk, 4, true);
     if (type === "VP8X") {
       exifExpected = ((chunk[8] ?? 0) & 0x08) !== 0;
-      animated = ((chunk[8] ?? 0) & 0x02) !== 0;
+      const animated = ((chunk[8] ?? 0) & 0x02) !== 0;
+      // Nothing past here can change the answer: no tag to find, or a picture
+      // kept as it is whatever its tag says. An animated one's frames sit in
+      // ANMF chunks, which the walk would otherwise read to its cap.
+      if (!exifExpected || animated) return { ...UPRIGHT, animated };
     }
     if (type === "VP8L" || type === "VP8 ") {
       lossless = type === "VP8L";
@@ -211,11 +214,11 @@ async function webpOrientation(source: ByteSource): Promise<ImageOrientation> {
     if (type === "EXIF") {
       const exif = await metadataAt(source, at + 8, size);
       const tiff = startsWith(exif.bytes, 0, "Exif\0\0") ? exif.bytes.subarray(6) : exif.bytes;
-      return { orientation: tiffOrientation(tiff), lossless, animated, outOfBounds: exif.outOfBounds };
+      return { orientation: tiffOrientation(tiff), lossless, animated: false, outOfBounds: exif.outOfBounds };
     }
     at += 8 + size + (size % 2);
   }
-  return { ...UPRIGHT, lossless: imageSeen && lossless, animated };
+  return { ...UPRIGHT, lossless: imageSeen && lossless };
 }
 
 /** How each type that can carry a tag is walked. */

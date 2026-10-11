@@ -83,6 +83,7 @@ function webp(options: {
   lossless: boolean;
   exifPrefix?: boolean;
   animated?: boolean;
+  iccBytes?: number;
 }): Uint8Array {
   const vp8x = new Uint8Array(10);
   vp8x[0] = (options.exifFlag ? 0x08 : 0) | (options.animated === true ? 0x02 : 0);
@@ -91,7 +92,20 @@ function webp(options: {
     options.exif === null
       ? new Uint8Array(0)
       : riffChunk("EXIF", options.exifPrefix === true ? concat(ascii("Exif\0\0"), options.exif) : options.exif);
-  const body = concat(ascii("WEBP"), riffChunk("VP8X", vp8x), image, exif);
+  const icc = options.iccBytes === undefined ? new Uint8Array(0) : riffChunk("ICCP", new Uint8Array(options.iccBytes));
+  const body = concat(ascii("WEBP"), riffChunk("VP8X", vp8x), icc, image, exif);
+  return concat(ascii("RIFF"), u32le(body.length), body);
+}
+
+/**
+ * An animated WebP as encoders write it: its frames sit in ANMF chunks, with
+ * no image chunk at the top level.
+ */
+function animatedWebp(options: { exifFlag: boolean; frames: number; frameBytes: number }): Uint8Array {
+  const vp8x = new Uint8Array(10);
+  vp8x[0] = 0x02 | (options.exifFlag ? 0x08 : 0);
+  const frames = Array.from({ length: options.frames }, () => riffChunk("ANMF", new Uint8Array(options.frameBytes)));
+  const body = concat(ascii("WEBP"), riffChunk("VP8X", vp8x), riffChunk("ANIM", new Uint8Array(6)), ...frames);
   return concat(ascii("RIFF"), u32le(body.length), body);
 }
 
@@ -228,14 +242,17 @@ describe("readImageOrientation", () => {
     });
   });
 
-  it("answers 1 for a WebP whose VP8X says there is no EXIF", async () => {
-    const bytes = webp({ exif: null, exifFlag: false, imageBytes: 300, lossless: false });
-    await expect(orientationOf(bytes, "image/webp")).resolves.toEqual({
+  it("answers 1 for a WebP whose VP8X says there is no EXIF, without walking on", async () => {
+    // An ICC profile ahead of the image data, as the spec orders it.
+    const bytes = webp({ exif: null, exifFlag: false, imageBytes: 300, lossless: false, iccBytes: 100_000 });
+    const reader = readerOf(bytes);
+    await expect(orientationOf(bytes, "image/webp", reader)).resolves.toEqual({
       orientation: 1,
       lossless: false,
       animated: false,
       outOfBounds: false,
     });
+    expect(reader.calls).toHaveLength(1);
   });
 
   it("answers 1 for a simple WebP and still tells lossless", async () => {
@@ -249,14 +266,18 @@ describe("readImageOrientation", () => {
 
   // An animated picture is kept as it is: vips autorot writes out only its
   // first frame (inner#1367 §4.2).
-  it("tells an animated WebP by its VP8X animation flag", async () => {
-    const bytes = webp({ exif: tiff(6), exifFlag: true, imageBytes: 300, lossless: false, animated: true });
-    await expect(orientationOf(bytes, "image/webp")).resolves.toEqual({
-      orientation: 6,
+  // Its frames sit past the head in ANMF chunks; the answer is settled at the
+  // VP8X, so none of them is read.
+  it.each([true, false])("tells an animated WebP at its VP8X and reads no frame (EXIF flag %s)", async (exifFlag) => {
+    const bytes = animatedWebp({ exifFlag, frames: 80, frameBytes: 16_000 });
+    const reader = readerOf(bytes);
+    await expect(orientationOf(bytes, "image/webp", reader)).resolves.toEqual({
+      orientation: 1,
       lossless: false,
       animated: true,
       outOfBounds: false,
     });
+    expect(reader.calls).toHaveLength(1);
   });
 
   it("tells an animated PNG by an acTL chunk ahead of its image data", async () => {
