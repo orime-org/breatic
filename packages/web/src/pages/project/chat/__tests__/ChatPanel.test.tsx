@@ -59,6 +59,8 @@ function renderPanel(
       <ChatPanel
         historyOpen={historyOpen}
         onHistoryOpenChange={() => undefined}
+        activeSpace={undefined}
+        spaces={[]}
         {...rest}
       />
     </QueryClientProvider>,
@@ -687,7 +689,7 @@ describe('opening the list', () => {
 
     const { rerender } = render(
       <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-        <ChatPanel projectId='p-open' historyOpen={false} onHistoryOpenChange={() => undefined} />
+        <ChatPanel projectId='p-open' historyOpen={false} onHistoryOpenChange={() => undefined} activeSpace={undefined} spaces={[]} />
       </QueryClientProvider>,
     );
     await waitFor(() => expect(chatApi.openChat).toHaveBeenCalled());
@@ -695,7 +697,7 @@ describe('opening the list', () => {
 
     rerender(
       <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-        <ChatPanel projectId='p-open' historyOpen onHistoryOpenChange={() => undefined} />
+        <ChatPanel projectId='p-open' historyOpen onHistoryOpenChange={() => undefined} activeSpace={undefined} spaces={[]} />
       </QueryClientProvider>,
     );
 

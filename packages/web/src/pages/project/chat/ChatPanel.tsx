@@ -57,13 +57,10 @@ interface ChatPanelProps {
    * sign and sent with each message while that chip is on; pasted canvas
    * nodes it holds are handed over from it when it is a canvas.
    */
-  activeSpace?: ProjectSpace | undefined;
+  activeSpace: ProjectSpace | undefined;
   /** Every Space in the project, listed to the Agent with each message. */
-  spaces?: readonly ProjectSpace[];
+  spaces: readonly ProjectSpace[];
 }
-
-/** No Spaces; one array, so a panel given none keeps its identity. */
-const NO_SPACES: readonly ProjectSpace[] = [];
 
 /**
  * Project ChatPanel — private per-user agent chat. Does NOT participate
@@ -86,7 +83,7 @@ export function ChatPanel({
   onHistoryOpenChange,
   onQuickAction,
   activeSpace,
-  spaces = NO_SPACES,
+  spaces,
 }: ChatPanelProps): React.JSX.Element {
   const queryClient = useQueryClient();
   const spaceContextEnabled = useUIStore((s) => s.spaceContextEnabled);

@@ -77,7 +77,7 @@ function openChatAnswers(
 function render(
   listOpen = false,
 ): ReturnType<typeof renderHook<ReturnType<typeof useChatSession>, unknown>> {
-  return renderHook(() => useChatSession('p-1', listOpen));
+  return renderHook(() => useChatSession('p-1', listOpen, () => ({ spaces: [] })));
 }
 
 /**

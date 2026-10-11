@@ -16,9 +16,9 @@ interface AgentColumnProps {
   /** Project whose chat this column shows. */
   projectId: string;
   /** The Space whose tab is active, if any. */
-  activeSpace?: ProjectSpace | undefined;
+  activeSpace: ProjectSpace | undefined;
   /** Every Space in the project. */
-  spaces?: readonly ProjectSpace[];
+  spaces: readonly ProjectSpace[];
 }
 
 /**
@@ -139,7 +139,7 @@ export function AgentColumn({ projectId, activeSpace, spaces }: AgentColumnProps
           projectId={projectId}
           historyOpen={historyOpen}
           activeSpace={activeSpace}
-          {...(spaces === undefined ? {} : { spaces })}
+          spaces={spaces}
           onHistoryOpenChange={setHistoryOpen}
         />
       </div>

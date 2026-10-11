@@ -162,15 +162,6 @@ const NO_MESSAGES: StoredUiMessage[] = [];
  */
 const NO_CONVERSATIONS: ConversationOnTheWire[] = [];
 
-
-/**
- * The reader's Spaces for a panel that has none to tell: an empty list.
- * @returns Nothing to carry.
- */
-function readNoSpaces(): ReadSpaces {
-  return { spaces: [] };
-}
-
 /**
  * The chat panel's view of the conversation it is showing.
  *
@@ -190,8 +181,8 @@ function readNoSpaces(): ReadSpaces {
  */
 export function useChatSession(
   projectId: string,
-  listOpen = false,
-  readSpaces: () => ReadSpaces = readNoSpaces,
+  listOpen: boolean,
+  readSpaces: () => ReadSpaces,
 ): ChatSession {
 
   const conversationId = useConversationRuntime((s) => s.currentByProject[projectId]);

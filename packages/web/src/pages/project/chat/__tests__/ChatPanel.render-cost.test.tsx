@@ -142,7 +142,7 @@ describe('a reply arriving piece by piece', () => {
   it('does not re-render the composer or the history sheet', async () => {
     render(
       <QueryClientProvider client={new QueryClient()}>
-        <ChatPanel historyOpen={false} onHistoryOpenChange={() => undefined} projectId='p1' />
+        <ChatPanel historyOpen={false} onHistoryOpenChange={() => undefined} projectId='p1' activeSpace={undefined} spaces={[]} />
       </QueryClientProvider>,
     );
     await waitFor(() => expect(chatApi.openChat).toHaveBeenCalled());

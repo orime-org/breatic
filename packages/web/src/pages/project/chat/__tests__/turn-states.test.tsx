@@ -87,7 +87,7 @@ function openChatAnswers(messages: Array<Record<string, unknown>>): void {
  * @returns renderHook 的结果。
  */
 function render(): ReturnType<typeof renderHook<ReturnType<typeof useChatSession>, unknown>> {
-  return renderHook(() => useChatSession('p-1'));
+  return renderHook(() => useChatSession('p-1', false, () => ({ spaces: [] })));
 }
 
 beforeEach(() => {
