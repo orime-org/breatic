@@ -79,12 +79,12 @@ function canvasNote(shown: string, detail: ChatCanvasDetail): string {
   }
   if (detail.slim) {
     parts.push(
-      " Nodes that are not complete carry only their id, type, name, group, texts, media addresses and the mode and model they would run.",
+      " Nodes that are not complete carry at most their id, type, name, group and texts, the media and nodes they refer to, who wrote their replies, how long their shots are, and the mode, model and settings they would run.",
     );
   }
   const counted: Array<[number, string]> = [
     [detail.texts_cut, ' texts are cut short; each ends with "…[+N]", N being the characters left out.'],
-    [detail.names_only, " nodes show only their id, type and name."],
+    [detail.names_only, " nodes show only their id, type, name and group."],
     [detail.edges_not_listed, " links are not listed."],
     [detail.nodes_not_listed, " nodes are not listed."],
     [detail.groups_not_listed, " groups are not listed; nodes inside them still name them as parentId."],

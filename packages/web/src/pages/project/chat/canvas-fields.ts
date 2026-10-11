@@ -6,7 +6,8 @@
  *
  * A field is judged by its key and the node's kind, never by what its value
  * looks like: who the node is, what it points at, what it says, or something
- * else. A slim entry keeps the first three; only what it says is ever cut.
+ * else. A slim entry keeps the first three, which take in the mode, model and
+ * settings it would run; only what it says is ever cut.
  */
 
 import { MULTI_SHOT_MODE } from '@breatic/shared';
@@ -118,7 +119,7 @@ export interface TextAt {
 
 /** A node at its two smaller sizes. */
 export interface FitParts {
-  /** Who it is, what it points at and what it says. */
+  /** Who it is, what it points at (the mode, model and settings it would run among them) and what it says. */
   slim: Record<string, unknown>;
   /** The texts in the slim entry that may be cut, in order. */
   texts: readonly TextAt[];

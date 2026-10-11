@@ -7,9 +7,9 @@
  * Every node goes whole, as Add to Agent hands it over. While the canvas is
  * too long, the steps below are taken in turn, each until the canvas fits:
  * nodes go slim, their texts are cut, nodes go by name only, links are left
- * out, nodes are left out. Within every step the unselected nodes go first
- * and the selected ones only once the others are done; nodes go earliest
- * first. A node is left out only when even names do not fit.
+ * out, nodes are left out. Within every step the unselected nodes go first,
+ * with the selected ones an attachment of the message holds unchanged, and
+ * the other selected ones only once those are done; nodes go earliest first. A node is left out only when even names do not fit.
  *
  * The length is kept as sums of each entry's length, so a step that changes
  * one entry costs that entry, and the whole canvas is written out once.
@@ -130,7 +130,7 @@ type Level = 0 | 1 | 2 | 3;
 /** What a selected node's entry ends with: `,"selected":true`. */
 const MARK_LENGTH = ',"selected":true'.length;
 
-/** The unselected nodes, then the selected ones. */
+/** The nodes that go first, then the selected ones no attachment holds unchanged. */
 type Tier = 'unselected' | 'selected';
 const TIERS: readonly Tier[] = ['unselected', 'selected'];
 
@@ -299,8 +299,8 @@ class Fitting {
   }
 
   /**
-   * A tier's links, by their earlier end. A link touching a selected node is
-   * in the selected tier.
+   * A tier's links, by their earlier end. A link touching a node of the selected
+   * tier is in that tier.
    * @param tier - The tier.
    * @returns Their indexes.
    */

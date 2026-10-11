@@ -456,7 +456,7 @@ describe('cutting what was read to the limits', () => {
     expect(cutDocument('abc')).toEqual({ content: 'abc', total: 3 });
   });
 
-  it('counts UTF-16 code units, as the message length is counted', () => {
+  it('cuts a CJK text by its characters', () => {
     expect(cutDocument('分镜表格子')).toEqual({ content: '分镜表格', total: 5 });
   });
 

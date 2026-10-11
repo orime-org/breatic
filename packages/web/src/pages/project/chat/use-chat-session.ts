@@ -281,8 +281,9 @@ export function useChatSession(
       if (opened === undefined) return;
       // The Spaces are cut to the server's limits, so they cannot go without
       // them. The first read is a request, and the send stays held for it like
-      // opening a conversation. A reader who leaves the project or moves to
-      // another conversation meanwhile has taken the words with them.
+      // opening a conversation. A send whose reader leaves the project or moves
+      // to another conversation meanwhile does not go; the words stay in the
+      // draft they were typed in, which leaving the project discards.
       const limits = await conversationRuntime.whileSendHeld(projectId, () =>
         chatApi.streamConfig().catch(() => null),
       );

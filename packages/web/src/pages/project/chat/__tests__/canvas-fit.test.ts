@@ -344,11 +344,12 @@ describe('names only, then leaving out', () => {
   it('names the earliest nodes only, the selected last, and never counts a group', () => {
     const input = canvasOf([group('g', 0), image('a', 1), image('b', 2), image('c', 3)], ['a']);
     const named = lengthAt(input, (n) => (n.id === 'b' || n.id === 'g' ? 'named' : n.id === 'c' ? 'named' : 'slim'));
-    // Cut to nothing, then by name: c is still sent with its texts cut.
+    // Cut to nothing, then by name: b and c go by name, the selected a stays slim.
     const out = fit(input, named + 40);
 
     const size = sizes(out.text, input);
     expect(size.b).toBe('named');
+    expect(size.c).toBe('named');
     expect(size.a).toBe('slim');
     expect(out.detail.names_only).toBeGreaterThanOrEqual(1);
     // Naming the others freed room: the selected node's text goes whole again.

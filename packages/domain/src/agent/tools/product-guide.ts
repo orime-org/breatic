@@ -278,7 +278,8 @@ export function renderProductGuide(): string {
       "longer document goes as its start, and a larger canvas goes in less detail -- nodes without their other " +
       "settings, then with their texts cut short, then by name only, then without their links, and on the largest " +
       "canvases some nodes are left out, earliest first -- and the nodes the reader has selected go last at every " +
-      `step. To show the Agent some nodes in full, the reader adds them with ${quoted(t("canvas.contextMenu.addToAgent"))}.`,
+      "step, except those an attachment on the same message already holds as they are. " +
+      `To show the Agent some nodes in full, the reader adds them with ${quoted(t("canvas.contextMenu.addToAgent"))}.`,
     "Typing @ in the box opens a list, just above the @, of the attachments that have finished uploading; it " +
       `reads ${quoted(t("chat.composer.atEmpty"))} when there are none. Typing narrows it and the list goes away ` +
       "while what is typed after the @ matches none, so the @ stays ordinary text; the arrow keys move through it, Enter or " +

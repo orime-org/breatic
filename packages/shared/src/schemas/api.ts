@@ -214,7 +214,7 @@ const chatCanvasDetailSchema = z
     slim: z.boolean(),
     /** How many texts end with the cut marker. */
     texts_cut: count,
-    /** Nodes that are not groups and show only their id, type and name. */
+    /** Nodes that are not groups and show only their id, type, name and group. */
     names_only: count,
     edges_not_listed: count,
     /** Nodes that are not groups and are left out. */

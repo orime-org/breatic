@@ -8,7 +8,9 @@
  * already holds: the project's Spaces, and the open one's content when the
  * reader has it on. Nothing is created and nothing is asked for, so what goes
  * is the Space as it stood when send was pressed. Then, once the limits are
- * read from the server, cut to them -- only a length calculation.
+ * read from the server, cut to them: a document to its start, a canvas by
+ * level of detail, with the selected nodes the message's attachments hold
+ * unchanged going with the rest. Nothing more is read from the tab.
  */
 
 import type { QueryClient } from '@tanstack/react-query';

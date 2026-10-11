@@ -197,7 +197,7 @@ describe("the Spaces the reader is in (inner#1413)", () => {
     };
     const lead = `${content}\n(The canvas is over the limit, so it is shown in less detail: ${String(content.length)} of 250000 characters.`;
     const slimSentence =
-      " Nodes that are not complete carry only their id, type, name, group, texts, media addresses and the mode and model they would run.";
+      " Nodes that are not complete carry at most their id, type, name, group and texts, the media and nodes they refer to, who wrote their replies, how long their shots are, and the mode, model and settings they would run.";
 
     /**
      * The turn for an over-limit canvas with the given reductions.
@@ -255,7 +255,7 @@ describe("the Spaces the reader is in (inner#1413)", () => {
         `${lead} The reader selected 5 nodes; 2 of them are complete here and 1 are complete in the attachments.` +
           `${slimSentence}` +
           ' 7 texts are cut short; each ends with "…[+N]", N being the characters left out.' +
-          " 4 nodes show only their id, type and name." +
+          " 4 nodes show only their id, type, name and group." +
           " 3 links are not listed." +
           " 2 nodes are not listed." +
           " 1 groups are not listed; nodes inside them still name them as parentId." +
