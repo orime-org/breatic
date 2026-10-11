@@ -56,7 +56,10 @@ type DropEditor = BlockNoteEditor<never, never, never>;
 
 /**
  * Whether a row or column can be dragged from a cell: not where a merged cell
- * reaches across its edge.
+ * reaches across its edge. Every slot of the line is read off the table map,
+ * the slots a merged cell from above or from the left covers too:
+ * `cellsInRect` skips those, and a drop moves every row such a cell spans
+ * (prosemirror-tables `getSelectionRangeInRow`), more than the line dragged.
  * @param doc - The document.
  * @param cellPos - The cell.
  * @param orientation - Its row or its column.
@@ -65,16 +68,18 @@ type DropEditor = BlockNoteEditor<never, never, never>;
 export function canDragFrom(doc: PMNode, cellPos: number, orientation: DragOrientation): boolean {
   const at = cellAt(doc, cellPos);
   if (at === null) return false;
-  const rect =
-    orientation === 'row'
-      ? { left: 0, right: at.map.width, top: at.top, bottom: at.top + 1 }
-      : { left: at.left, right: at.left + 1, top: 0, bottom: at.map.height };
-  return at.map.cellsInRect(rect).every((rel) => {
-    const cell = at.map.findCell(rel);
-    return orientation === 'row'
-      ? cell.top === rect.top && cell.bottom === rect.bottom
-      : cell.left === rect.left && cell.right === rect.right;
-  });
+  const { map } = at;
+  const slots = orientation === 'row' ? map.width : map.height;
+  for (let i = 0; i < slots; i += 1) {
+    const index = orientation === 'row' ? at.top * map.width + i : i * map.width + at.left;
+    const cell = map.findCell(map.map[index]!);
+    const fits =
+      orientation === 'row'
+        ? cell.top === at.top && cell.bottom === at.top + 1
+        : cell.left === at.left && cell.right === at.left + 1;
+    if (!fits) return false;
+  }
+  return true;
 }
 
 /**
