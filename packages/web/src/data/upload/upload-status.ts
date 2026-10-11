@@ -6,7 +6,8 @@
  *
  * Finishing an upload answers 202 and runs on the server as a job. Every
  * upload this page is waiting on goes in one list, and one timer asks the
- * server about all of them in one request — the batch shape of AWS Batch's
+ * server about all of them each round, up to `UPLOAD_STATUS_MAX_KEYS` per
+ * request — the batch shape of AWS Batch's
  * `DescribeJobs` and Google AIP-231 — taking each out as its ending arrives.
  * The interval is the one the last answer named in `Retry-After`, the way an
  * Azure Resource Manager client polls a long-running operation.
@@ -104,8 +105,9 @@ export function createUploadStatusList(deps: UploadStatusListDeps): UploadStatus
       try {
         seconds = retryAfterSeconds ?? (await deps.pollSeconds());
       } catch {
-        // The knobs are fetched before any upload reaches its finish, so this
-        // is a session that lost them since; the next upload to wait asks again.
+        // The knobs are fetched and cached before any upload reaches its
+        // finish, so this does not fail in a running session; if it ever does,
+        // the next upload to wait asks again.
         scheduled = false;
         return;
       }

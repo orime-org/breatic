@@ -14,9 +14,11 @@
  *
  * What runs in there is ffmpeg parsing bytes a user uploaded, so the container
  * is given nothing it could reach with: no credentials, no internet, and one
- * object. Three things make that true, and each of them is a separate refusal
- * — `enableInternet` off, so the only way out is the handler below; one key per
- * instance, so a request for any other key is refused by name; and ffmpeg's own
+ * object to read (plus, in an upright run, the one upright copy to write).
+ * Three things make that true, and each of them is a separate refusal —
+ * `enableInternet` off, so the only ways out are the two handlers below; each
+ * serves only the key the run was set up for, so a request for any other key
+ * is refused by name; and ffmpeg's own
  * `-protocol_whitelist http,tcp`, so a crafted file cannot even ask for a
  * protocol that reaches elsewhere (#215).
  */
@@ -118,7 +120,8 @@ function pixelsStated(stated: string | null): string | null {
  * this run was set up to write (inner#1367 §4.4).
  *
  * The pixel size the container measured goes onto the object, so a
- * re-delivery of the finish answers from the object without a second run.
+ * re-delivery of the finish answers the copy's size from the object without
+ * turning it again; it starts a run only to cut a preview that is missing.
  * @param request - The container's PUT.
  * @param env - The Worker's bindings, which is where the bucket is.
  * @param ctx - The instance's context, carrying what it may write.

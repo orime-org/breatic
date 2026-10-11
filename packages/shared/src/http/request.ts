@@ -152,8 +152,8 @@ export interface HttpRequestOptions {
    * for a request body (WHATWG fetch#577). Node pulls a streamed body into
    * memory whatever the socket is doing, so a stall there is judged on the
    * socket instead — core's `idleSocketDispatcher`, passed as the init's
-   * `dispatcher` — and naming this option where there is no
-   * `XMLHttpRequest` is refused.
+   * `dispatcher` — and naming this option for a bytes body where there is no
+   * `XMLHttpRequest` is refused. For any other body it has no effect.
    */
   idleTimeoutMs?: number;
 }

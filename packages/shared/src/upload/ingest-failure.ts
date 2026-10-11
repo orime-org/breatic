@@ -53,8 +53,9 @@ export const INGEST_REFUSED_UNNAMED = "ingest_refused";
  *
  * No answer at all, or one this side could not read. A transfer cut at the
  * task's deadline settles as expired instead (inner#1367), so what is left
- * here is the Worker or the line to it going away — our side, not the
- * address.
+ * here is our side, not the address: the ingest Worker or the line to it
+ * going away, our own job process going away before it settled, or the
+ * caller stopping the transfer.
  */
 export const INGEST_NO_ANSWER = "ingest_no_answer";
 

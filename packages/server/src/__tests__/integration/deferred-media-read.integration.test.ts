@@ -252,7 +252,8 @@ describe("which finishes ask the Worker for no media read", () => {
 
     expect(result.refused).toBeUndefined();
     expect(sent.deferMediaRead).toBe(true);
-    // The upload's two hours, signed into its token by the ticket (inner#1367).
+    // The upload's two hours, counted from when its grant was opened (a cover
+    // has no node row) and sent on the finish (inner#1367).
     expect(sent.deadlineAt as number).toBeGreaterThan(Date.now());
     expect(sent.deadlineAt as number).toBeLessThanOrEqual(
       Date.now() + getNodeTaskConfig().default_budget_ms,

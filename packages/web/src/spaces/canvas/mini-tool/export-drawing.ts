@@ -46,8 +46,10 @@ function blankCanvas(size: { width: number; height: number }): { canvas: HTMLCan
 
 /**
  * Export what a mask or sketch tool sends, at the source's own pixels as the
- * browser decodes it, which are the stored pixels: uploads are stored upright
- * (inner#1367). A mask is a black image of that size, white where painted; a
+ * browser decodes it. These are the stored pixels for anything stored since
+ * uploads are turned upright on ingest (inner#1367); a picture stored earlier
+ * with an EXIF orientation is decoded turned, so its mask does not line up
+ * with the stored pixels. A mask is a black image of that size, white where painted; a
  * sketch is the source with the drawing painted over it.
  * @param url - The source image.
  * @param kind - Mask or sketch.

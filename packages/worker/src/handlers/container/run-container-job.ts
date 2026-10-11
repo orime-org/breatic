@@ -220,7 +220,8 @@ async function recordUsage(input: ContainerRunInput, op: ContainerOp, containerC
  * @param input - The run.
  * @returns The stored outputs, in output order, and the credits to charge.
  * @throws {StillRunning} When the job is still going.
- * @throws {ContainerJobFailed} When the job failed or ran out of time, or an output was refused.
+ * @throws {ContainerJobFailed} When the job failed or an output was refused.
+ * @throws {DeadlinePassed} When the deadline and the grace for its last report have passed with the job still going.
  */
 export async function runContainerJob(
   spec: MiniToolSpec,

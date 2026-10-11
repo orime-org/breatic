@@ -25,8 +25,9 @@ upload:
   # seconds puts the result in front of the person about when it lands.
   upload_status_poll_seconds: 2
 
-# The ingest Worker (#173). Every figure it runs on is decided here and signed
-# into the ticket, because a Worker cannot read this file and a second copy in
+# The ingest Worker (#173). Every figure it runs on is decided here and sent to
+# it, signed into the ticket or carried on every finish and fetch, because a
+# Worker cannot read this file and a second copy in
 # its own deployment config is a second place for the value to drift.
 ingest:
   # One part of a multipart upload, in bytes. R2 refuses a non-final part

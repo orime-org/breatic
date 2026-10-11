@@ -5,10 +5,10 @@
  * Dispatchers for Node's `fetch` (inner#1367).
  *
  * Two of undici's defaults decide how a request on a task chain ends, and
- * neither is ours to keep: `headersTimeout` gives up on an answer after 300s
- * however much of the task's two hours is left, and nothing at all notices a
- * send whose peer stopped reading. These are the two dispatchers that replace
- * them.
+ * neither is ours to keep: `headersTimeout` gives up after 300s however much
+ * of the task's two hours is left, and it is also the only thing that ends a
+ * send whose peer stopped reading, so with it switched off nothing notices
+ * such a send. These are the two dispatchers that replace them.
  */
 
 import { Agent, buildConnector, setGlobalDispatcher } from "undici";

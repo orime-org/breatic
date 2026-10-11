@@ -3,7 +3,8 @@
 
 /**
  * The page's list of uploads still finishing (inner#1367 §4.2a): one timer,
- * one request per round carrying every upload still waiting.
+ * one round asking about every upload still waiting, at most
+ * `UPLOAD_STATUS_MAX_KEYS` per request.
  */
 
 import { describe, it, expect, vi } from 'vitest';

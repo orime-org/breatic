@@ -15,7 +15,10 @@
  *
  * It reads the object over plain HTTP from a hostname the Worker intercepts,
  * so it holds no credentials and has no route to the internet. The Worker
- * serves exactly the one key this run is about (`serveOneObject`).
+ * serves exactly the one key this run is about (`serveOneObject`). When the
+ * probe carries an upright order, the picture is first turned with vips, the
+ * turned picture is probed and previewed, and it is PUT to `upright.local`,
+ * which the Worker accepts for this run's one upright key only.
  *
  * Bundled into one file at image build time, which is why it imports from the
  * Worker's source: the argument lists and the answer format are one agreement
@@ -125,8 +128,8 @@ async function cutPreview(
     ...clock,
   });
   if (source === "late") {
-    // The Worker stops waiting at the deadline, so this run keeps the size
-    // and the cover and leaves the preview to the backfill.
+    // The deadline has come and the Worker has stopped waiting, so no preview
+    // is cut; the backfill cuts it later.
     console.error("media_preview_skipped_deadline", {
       leftMs: clock.deadlineAt - clock.now,
     });
@@ -254,8 +257,8 @@ createServer((req, res) => {
       deadlineAt: asked.deadlineAt,
     };
     // Every tool in this run is held to the task's deadline and nothing else
-    // (inner#1367). A timer cannot be set to zero, so a run that arrives at or
-    // past the deadline is cut at once.
+    // (inner#1367). A timer cannot be set to a negative span, so a run that
+    // arrives at or past the deadline is cut at once.
     const signal = AbortSignal.timeout(Math.max(1, request.deadlineAt - Date.now()));
 
     const upright = uprightOrderOf(asked.upright);

@@ -7,7 +7,8 @@
  * The turned picture is probed and previewed where it lies in the container,
  * and written back last with the pixel size measured on it. So by the time
  * the copy exists in R2 its size is on it, and a re-delivery of the finish
- * answers from the object without running again.
+ * answers the copy's size from the object without turning it again; it starts
+ * a run only to cut a preview that is missing.
  */
 
 import { pickMediaMetadata, NOTHING_FOUND, type ProbeReport } from "@ingest/media-metadata.js";

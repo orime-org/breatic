@@ -4,19 +4,21 @@
 /**
  * The wire between the media container and the Worker (#209 + #210, §4.2).
  *
- * Three things travel together and two of them are binary, so the answer is
- * `multipart/form-data`: a `meta` part naming the streams and the duration,
- * a `cover` part carrying the PNG when a frame was lifted, and a `preview` part
- * carrying the WebP when one was cut.
+ * Up to four things travel together and three of them are binary, so the
+ * answer is `multipart/form-data`: a `meta` part naming the streams and the
+ * duration, a `cover` part carrying the PNG when a frame was lifted, a
+ * `preview` part carrying the WebP when one was cut, and an `upright` part
+ * saying how turning the picture ended when the run was asked to turn it.
  *
  * Both halves live in one file because they are one agreement. The container
  * imports the writer, the Worker imports the reader, and a change to either
  * shape is a change to a function the other one calls.
  *
  * Reading is total: anything that does not parse comes back as nothing found.
- * The container's answer decides whether a node shows a resolution and a
- * poster, never whether the upload succeeded, so an unreadable one degrades
- * rather than failing anything.
+ * For a run that only reads, the answer decides whether a node shows a
+ * resolution and a poster, never whether the upload succeeded. For a run
+ * asked to turn a picture upright, an answer that cannot be read is a failed
+ * turn, and the upload fails.
  */
 
 import { NOTHING_FOUND } from "@ingest/media-metadata.js";
