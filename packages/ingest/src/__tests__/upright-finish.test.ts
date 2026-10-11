@@ -174,7 +174,7 @@ function uprightContainer(
       fetch: async (request: Request): Promise<Response> => {
         const asked = await request.json<ProbeRequest>();
         run.asked = asked;
-        if (asked.upright === undefined) return buildProbeAnswer(report, null, null);
+        if (asked.upright === undefined) return buildProbeAnswer(report, null, asked.wantPreview ? preview : null);
         if (turned === null) {
           const failed: UprightOutcome = { state: "failed", step: "turn" };
           return buildProbeAnswer({ durationSeconds: null, streams: [] }, null, null, failed);
@@ -309,6 +309,7 @@ describe("a picture with an EXIF orientation", () => {
       httpMetadata: { contentType: "image/jpeg" },
       customMetadata: { width: "3000", height: "4000" },
     });
+    await env.BUCKET.put(previewKeyFor(uprightKeyFor(held.storageKey)), new Uint8Array([1]));
     const run = uprightContainer(jpeg(1));
 
     const response = await finish(held, { media: run.media });
@@ -317,6 +318,28 @@ describe("a picture with an EXIF orientation", () => {
     expect(await response.json()).toMatchObject({
       upright: { storageKey: uprightKeyFor(held.storageKey), width: 3000, height: 4000 },
     });
+  });
+
+  // An earlier delivery wrote the upright copy and died before storing its
+  // preview; the re-delivery cuts the preview from the copy standing there.
+  it("cuts the preview a re-delivery finds missing beside the upright copy", async () => {
+    const held = await uploaded(jpeg(6));
+    const uprightKey = uprightKeyFor(held.storageKey);
+    await env.BUCKET.put(uprightKey, jpeg(1), {
+      httpMetadata: { contentType: "image/jpeg" },
+      customMetadata: { width: "3000", height: "4000" },
+    });
+    const preview = new Uint8Array([0x52, 0x49, 0x46, 0x46, 7]);
+    const run = uprightContainer(jpeg(1), PORTRAIT, preview);
+
+    const response = await finish(held, { media: run.media });
+
+    expect(run.asked?.upright).toBeUndefined();
+    expect(run.asked?.wantPreview).toBe(true);
+    expect(decodeURIComponent(new URL(run.asked!.objectUrl).pathname).slice(1)).toBe(uprightKey);
+    const stored = await env.BUCKET.get(previewKeyFor(uprightKey));
+    expect(new Uint8Array(await stored!.arrayBuffer())).toEqual(preview);
+    expect(await response.json()).toMatchObject({ upright: { storageKey: uprightKey } });
   });
 
   it("fails the upload, naming upright_failed, when the container could not turn it", async () => {

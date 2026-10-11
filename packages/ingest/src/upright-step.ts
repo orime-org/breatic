@@ -11,7 +11,7 @@
  * and anything that is not a picture are left as they are.
  */
 
-import { uprightKeyFor, type MediaLimits, type UprightCopy } from "@breatic/shared";
+import { previewKeyFor, uprightKeyFor, type MediaLimits, type UprightCopy } from "@breatic/shared";
 import { readImageOrientation, type RangeReader } from "@ingest/image-orientation.js";
 import { readMediaAtEdge, type MediaEnv } from "@ingest/media-read.js";
 import { noted, noteFailure } from "@ingest/error-monitoring.js";
@@ -91,6 +91,30 @@ async function standingCopy(bucket: R2Bucket, uprightKey: string): Promise<Uprig
 }
 
 /**
+ * Cut the preview an upright copy left standing by an earlier delivery lacks:
+ * that delivery may have written the copy and stopped before storing it.
+ * @param env - The Worker's bindings.
+ * @param about - The stored picture the copy was turned from.
+ * @param uprightKey - The copy's key.
+ * @returns The preview to store, or null when one stands or none was cut.
+ */
+async function missingPreview(
+  env: MediaEnv,
+  about: StoredPicture,
+  uprightKey: string,
+): Promise<Uint8Array | null> {
+  if (about.deadlineAt === null || (await env.BUCKET.head(previewKeyFor(uprightKey))) !== null) return null;
+  const read = await readMediaAtEdge(env, {
+    storageKey: uprightKey,
+    contentType: about.contentType,
+    wantCover: false,
+    wantPreview: true,
+    deadlineAt: about.deadlineAt,
+  });
+  return read.preview;
+}
+
+/**
  * Turn a stored picture upright when its orientation says to.
  * @param env - The Worker's bindings.
  * @param about - The stored picture.
@@ -136,7 +160,9 @@ async function decide(
   // An earlier delivery of this finish already turned it.
   const uprightKey = uprightKeyFor(storageKey);
   const standing = await standingCopy(env.BUCKET, uprightKey);
-  if (standing !== null) return { kind: "upright", copy: standing, preview: null };
+  if (standing !== null) {
+    return { kind: "upright", copy: standing, preview: await missingPreview(env, about, uprightKey) };
+  }
 
   if (about.deadlineAt === null || about.limits === null) return { kind: "failed", reason: "no_deadline" };
   const { limits } = about;
