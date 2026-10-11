@@ -1,0 +1,55 @@
+diff --git a/dist/index.cjs b/dist/index.cjs
+index d52a5260a7b9924b2865053ea1e8c6484225277b..1c38302b4c61553f81f38239044cec8c81706991 100644
+--- a/dist/index.cjs
++++ b/dist/index.cjs
+@@ -778,10 +778,16 @@ var ViewDesc = function () {
+         }
+       }
+       var atEnd;
+-      if (dom == this.dom && this.contentDOM) {
++      if (this.contentDOM && this.contentDOM != this.dom && this.dom.contains(this.contentDOM)) {
++        if (dom.contains(this.contentDOM)) {
++          var child = this.contentDOM;
++          while (child.parentNode != dom) child = child.parentNode;
++          atEnd = offset > domIndex(child);
++        } else {
++          atEnd = !!(dom.compareDocumentPosition(this.contentDOM) & 2);
++        }
++      } else if (dom == this.dom && this.contentDOM) {
+         atEnd = offset > domIndex(this.contentDOM);
+-      } else if (this.contentDOM && this.contentDOM != this.dom && this.dom.contains(this.contentDOM)) {
+-        atEnd = !!(dom.compareDocumentPosition(this.contentDOM) & 4);
+       } else if (this.dom.firstChild) {
+         if (offset == 0) for (var search = dom;; search = search.parentNode) {
+           if (search == this.dom) {
+diff --git a/dist/index.js b/dist/index.js
+index dc0d117b85e1da3eae915b4d8ff8e5e604683861..2e490288b9a501639e001a6863045472da01e178 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -846,11 +846,22 @@ class ViewDesc {
+         // parameter, to determine whether to return the position at the
+         // start or at the end of this view desc.
+         let atEnd;
+-        if (dom == this.dom && this.contentDOM) {
+-            atEnd = offset > domIndex(this.contentDOM);
++        if (this.contentDOM && this.contentDOM != this.dom && this.dom.contains(this.contentDOM)) {
++            // Compare the boundary point (dom, offset) with the content: inside
++            // an element holding the content, by the index of the child that
++            // holds it; elsewhere the content lies wholly before or after dom.
++            if (dom.contains(this.contentDOM)) {
++                let child = this.contentDOM;
++                while (child.parentNode != dom)
++                    child = child.parentNode;
++                atEnd = offset > domIndex(child);
++            }
++            else {
++                atEnd = !!(dom.compareDocumentPosition(this.contentDOM) & 2);
++            }
+         }
+-        else if (this.contentDOM && this.contentDOM != this.dom && this.dom.contains(this.contentDOM)) {
+-            atEnd = !!(dom.compareDocumentPosition(this.contentDOM) & 4);
++        else if (dom == this.dom && this.contentDOM) {
++            atEnd = offset > domIndex(this.contentDOM);
+         }
+         else if (this.dom.firstChild) {
+             if (offset == 0)

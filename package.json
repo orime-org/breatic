@@ -67,7 +67,8 @@
       "@blocknote/core@0.54.0": "patches/@blocknote__core@0.54.0.patch",
       "@radix-ui/react-popover@1.1.23": "patches/@radix-ui__react-popover@1.1.23.patch",
       "@radix-ui/react-dialog@1.1.23": "patches/@radix-ui__react-dialog@1.1.23.patch",
-      "prosemirror-tables@1.8.5": "patches/prosemirror-tables@1.8.5.patch"
+      "prosemirror-tables@1.8.5": "patches/prosemirror-tables@1.8.5.patch",
+      "prosemirror-view@1.42.6": "patches/prosemirror-view@1.42.6.patch"
     }
   }
 }
