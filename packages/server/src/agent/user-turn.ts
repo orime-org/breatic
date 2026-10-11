@@ -9,7 +9,7 @@
  * the whole turn.
  */
 
-import type { ChatAttachedChip, ChatCurrentSpace, ChatSpace, ChatSpaceContext } from "@breatic/shared";
+import type { ChatAttachedChip, ChatCanvasDetail, ChatCurrentSpace, ChatSpace, ChatSpaceContext } from "@breatic/shared";
 import { attachmentSection, attachmentTitle, writeReferences } from "@breatic/shared";
 
 /** What one user message is made of. */
@@ -54,16 +54,51 @@ function openSpaceSection(current: ChatCurrentSpace): string {
   const isDocument = current.kind === "document";
   const body = isDocument ? JSON.stringify(current.content) : current.content;
   const shown = `${String(current.content.length)} of ${String(current.total_chars)} characters`;
-  // A document is cut to its start; a canvas keeps its nodes with their long
-  // texts cut, and leaves nodes out only when that is not enough.
   const cut =
     current.total_chars <= current.content.length
       ? ""
-      : isDocument
+      : current.detail === undefined
         ? `\n(Showing the first ${shown}.)`
-        : '\n(The canvas is over the limit: long texts in its nodes are cut short and end with "…", and if that ' +
-          `was not enough, some nodes are left out with their links. Showing ${shown}.)`;
+        : `\n${canvasNote(shown, current.detail)}`;
   return `${heading}\n\n${body}${cut}`;
+}
+
+/**
+ * What was done to fit an open canvas, one sentence per step actually taken.
+ * @param shown - How many of how many characters went.
+ * @param detail - What was done.
+ * @returns The note.
+ * @throws {never} Never.
+ */
+function canvasNote(shown: string, detail: ChatCanvasDetail): string {
+  const { selected_total: total, selected_attached: attached, selected_whole: whole } = detail;
+  const parts = [`(The canvas is over the limit, so it is shown in less detail: ${shown}.`];
+  if (total > 0) {
+    const inAttachments = attached > 0 ? ` and ${String(attached)} are complete in the attachments` : "";
+    parts.push(` The reader selected ${String(total)} nodes; ${String(whole)} of them are complete here${inAttachments}.`);
+  }
+  if (detail.slim) {
+    parts.push(
+      " Nodes that are not complete carry only their id, type, name, group, texts, media addresses and the mode and model they would run.",
+    );
+  }
+  const counted: Array<[number, string]> = [
+    [detail.texts_cut, ' texts are cut short; each ends with "…[+N]", N being the characters left out.'],
+    [detail.names_only, " nodes show only their id, type and name."],
+    [detail.edges_not_listed, " links are not listed."],
+    [detail.nodes_not_listed, " nodes are not listed."],
+    [detail.groups_not_listed, " groups are not listed; nodes inside them still name them as parentId."],
+  ];
+  for (const [n, sentence] of counted) if (n > 0) parts.push(` ${String(n)}${sentence}`);
+  // Selecting a node shows it whole only when the canvas fitted once its
+  // nodes went slim and every selected node there was whole.
+  const fitAtSlim = counted.every(([n]) => n === 0) && whole + attached === total;
+  parts.push(
+    fitAtSlim
+      ? " To see nodes in full, ask the reader to select them or add them to the Agent.)"
+      : " To see nodes in full, ask the reader to add them to the Agent.)",
+  );
+  return parts.join("");
 }
 
 /**
