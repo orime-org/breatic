@@ -273,7 +273,11 @@ export function renderProductGuide(): string {
       `${quoted(t("chat.composer.spaceContextOnUnreadable"))}; off, hovering shows ` +
       `${quoted(t("chat.composer.spaceContextOffUnreadable"))}. On or off, every message tells the Agent the ` +
       `name and type of the ${String(getAgentConfig().space_list_max_items)} newest Spaces in the project, and ` +
-      "how many more there are.",
+      "how many more there are. Each message carries at most " +
+      `${getAgentConfig().current_space_max_chars.toLocaleString("en")} characters of the open Space's content: a ` +
+      "longer document goes as its start, and a larger canvas goes in less detail -- nodes without their other " +
+      "settings, then with their texts cut short, then by name only -- and the nodes the reader has selected are " +
+      "kept fullest. To show the Agent some nodes in full, the reader adds them to the Agent.",
     "Typing @ in the box opens a list, just above the @, of the attachments that have finished uploading; it " +
       `reads ${quoted(t("chat.composer.atEmpty"))} when there are none. Typing narrows it and the list goes away ` +
       "while what is typed after the @ matches none, so the @ stays ordinary text; the arrow keys move through it, Enter or " +
