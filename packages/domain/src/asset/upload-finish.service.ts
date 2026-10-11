@@ -13,6 +13,7 @@
 import { coverKeyFor, env } from "@breatic/core";
 import {
   finishUploadAtIngest,
+  INGEST_NO_ANSWER,
   INGEST_REFUSED_UNNAMED,
   UploadHttpError,
   type PartReceipt,
@@ -140,4 +141,21 @@ export async function finishUpload(job: UploadFinishJob): Promise<UploadFinishRe
     return { outcome, mediaReadNotQueued: err };
   }
   return { outcome };
+}
+
+/**
+ * Settle a finish the queue failed without running it: its process went away
+ * twice, and nothing else will settle the grant. Read as the Worker having
+ * given no answer, which is ours to own.
+ * @param storageKey - The key the finish was queued under.
+ * @returns How the grant was settled; a grant already registered is answered
+ *   as it stands.
+ * @throws {Error} When the ledger cannot be read or written.
+ */
+export async function settleStalledFinish(storageKey: string): Promise<IngestReportOutcome> {
+  return ingestReportService.applyIngestReport({
+    storageKey,
+    outcome: "aborted",
+    reason: INGEST_NO_ANSWER,
+  });
 }

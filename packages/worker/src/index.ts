@@ -104,7 +104,7 @@ import {
 } from "@worker/handlers/url-ingest.js";
 import { runUsageLookup } from "@worker/handlers/usage-lookup.js";
 import { runMediaRead } from "@worker/handlers/media-read.js";
-import { runUploadFinish } from "@worker/handlers/upload-finish.js";
+import { runUploadFinish, settleStalledUploadFinish } from "@worker/handlers/upload-finish.js";
 import { runMail } from "@worker/handlers/mail.js";
 
 /** Cap graceful shutdown so a stuck drain can't hold the process. */
@@ -200,6 +200,15 @@ export function startWorker(): void {
       },
       "upload_finish_job_failed",
     );
+    // Same as url-ingest: a finish failed for having stalled never ran its
+    // handler, so its grant is settled here.
+    if (job === undefined) return;
+    settleStalledUploadFinish(job).catch((settleErr: unknown) => {
+      logger.error(
+        { err: settleErr, jobId: job.id, key: job.data.storageKey },
+        "upload_finish_stalled_settle_failed",
+      );
+    });
   });
 
   // The later lookup of an OpenRouter call whose cost was not in hand (#296). Its retries
