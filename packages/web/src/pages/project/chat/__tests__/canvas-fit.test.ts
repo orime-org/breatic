@@ -367,7 +367,7 @@ describe('names only, then leaving out', () => {
   it('leaves out the earliest nodes, the selected last, and says how many groups went', () => {
     const input = canvasOf([group('g', 0), image('a', 1, 'p', { parentId: 'g' }), image('b', 2), image('c', 3)], ['a']);
     const keepOnly = (ids: readonly string[]): number =>
-      JSON.stringify({ edges: [], nodes: input.nodes.filter((n) => ids.includes(n.id)).map((n) => n.named) }).length;
+      JSON.stringify({ edges: [], nodes: input.nodes.filter((n) => ids.includes(n.id)).map((n) => (n.picked ? { ...n.named, selected: true } : n.named)) }).length;
 
     const out = fit(input, keepOnly(['a', 'c']));
 

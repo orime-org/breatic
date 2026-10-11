@@ -27,7 +27,10 @@ export interface FitNode extends FitParts {
   /** When it was made; with its id, the order nodes are reduced in. */
   createdAt: number;
   group: boolean;
+  /** Whether it is reduced with the selection: last at every step. */
   selected: boolean;
+  /** Whether the reader has it selected on screen; its entry says so. */
+  picked: boolean;
   /** The node as Add to Agent hands it over. */
   whole: Record<string, unknown>;
 }
@@ -64,6 +67,7 @@ export function fitNodeOf(
     createdAt: typeof data.createdAt === 'number' ? data.createdAt : 0,
     group: entry.type === 'group',
     selected,
+    picked: selected,
     whole: entry,
   };
 }
@@ -110,6 +114,9 @@ function cutSlim(node: FitNode, keep: number): Record<string, unknown> {
 
 /** Whole, slim, by name, left out. */
 type Level = 0 | 1 | 2 | 3;
+
+/** What a selected node's entry ends with: `,"selected":true`. */
+const MARK_LENGTH = ',"selected":true'.length;
 
 /** The unselected nodes, then the selected ones. */
 type Tier = 'unselected' | 'selected';
@@ -348,9 +355,10 @@ class Fitting {
     const node = this.nodes[i];
     if (node === undefined) return 0;
     const at = this.level[i];
-    if (at === 0) return JSON.stringify(node.whole).length;
-    if (at === 1) return this.cutLength(i, this.keep[this.tierOf(node)]);
-    return JSON.stringify(node.named).length;
+    const mark = node.picked ? MARK_LENGTH : 0;
+    if (at === 0) return JSON.stringify(node.whole).length + mark;
+    if (at === 1) return this.cutLength(i, this.keep[this.tierOf(node)]) + mark;
+    return JSON.stringify(node.named).length + mark;
   }
 
   /**
@@ -361,10 +369,9 @@ class Fitting {
    */
   private render(n: FitNode, i: number): Record<string, unknown> {
     const at = this.level[i];
-    if (at === 0) return n.whole;
     const keep = this.keep[this.tierOf(n)];
-    if (at === 1) return keep === Infinity ? n.slim : cutSlim(n, keep);
-    return n.named;
+    const entry = at === 0 ? n.whole : at === 1 ? (keep === Infinity ? n.slim : cutSlim(n, keep)) : n.named;
+    return n.picked ? { ...entry, selected: true } : entry;
   }
 
   /**
