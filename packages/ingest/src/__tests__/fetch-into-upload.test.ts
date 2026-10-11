@@ -32,6 +32,7 @@ import {
   type UploadTicketPayload,
 } from "@breatic/shared";
 import worker, { type Env } from "@ingest/index.js";
+import { SOURCE_USER_AGENT } from "@ingest/source-request.js";
 import type { ProbeReport } from "@ingest/media-metadata.js";
 import { head, type Sample } from "./helpers/encoder-heads.js";
 import { containerAnswering } from "./helpers/stand-in-container.js";
@@ -178,6 +179,19 @@ describe("POST /fetch — who may ask for it", () => {
 });
 
 describe("POST /fetch — the transfer", () => {
+  it("names itself to the source, which sites like Wikimedia require before they serve a file", async () => {
+    // The interceptor answers only a request carrying our User-Agent, so a
+    // request without one finds nothing to answer it and the pull fails.
+    fetchMock
+      .get(SOURCE_ORIGIN)
+      .intercept({ path: SOURCE_PATH, method: "GET", headers: { "user-agent": SOURCE_USER_AGENT } })
+      .reply(200, pattern(1024));
+
+    const { response } = await pull();
+
+    expect(response.status).toBe(200);
+  });
+
   it("stores what the source served and measures the object it wrote", async () => {
     const served = pattern(1024);
     expectSource(200, served);

@@ -14,7 +14,9 @@
  * Needs dev running and a smoke account:
  *   pnpm --filter @breatic/web test:visual
  */
-import { test, expect } from 'playwright/test';
+import { expect } from 'playwright/test';
+
+import { test } from '../helpers/bubble-bar';
 
 import {
   FAR,

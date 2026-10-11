@@ -11,8 +11,10 @@
  * with nothing in it. Worse, everything landed in the same long-lived
  * Project: one measured account had 826 Spaces in it.
  *
- * Setup creates them instead, writes down what it made, and teardown removes
- * them. A spec asks for the one it was given.
+ * Setup creates them instead, writes down what it made, and teardown archives
+ * them. A spec asks for the one it was given. Projects are archived because
+ * the product has no way to delete one; an archived Project leaves the studio's
+ * live list and stops counting against its limit.
  */
 import { readFileSync } from 'node:fs';
 
@@ -21,6 +23,9 @@ export type Account = 'A' | 'B';
 
 /** The Project ids each account owns for this run, in the order made. */
 export type PreparedProjects = Readonly<Record<Account, readonly string[]>>;
+
+/** How the slug of every Project setup makes begins, so later runs can recognise them. */
+export const MADE_BY_SMOKE = 'smoke-run';
 
 /** Where setup leaves the file, relative to the web package. */
 export const PROJECTS_FILE = 'playwright/.auth/projects.json';
@@ -167,4 +172,72 @@ export function projectUrl(
   index: number,
 ): string {
   return `/project/${projectId(prepared, account, index)}`;
+}
+
+/** One answer from the API, as much of it as clean-up reads. */
+interface ApiAnswer {
+  ok: () => boolean;
+  status: () => number;
+  json: () => Promise<unknown>;
+}
+
+/** The least a signed-in request context has to offer to archive Projects. */
+export interface ProjectApi {
+  get: (url: string) => Promise<ApiAnswer>;
+  post: (url: string) => Promise<ApiAnswer>;
+}
+
+/**
+ * Archives Projects and reports the ones that stayed live.
+ * @param api - A request context signed in as the studio's admin.
+ * @param ids - The Projects to archive.
+ * @returns Each Project that was not archived, with the status that refused it.
+ */
+export async function archiveProjects(
+  api: ProjectApi,
+  ids: readonly string[],
+): Promise<string[]> {
+  const left: string[] = [];
+  for (const id of ids) {
+    const archived = await api.post(`/api/v1/projects/${id}/archive`);
+    if (!archived.ok()) left.push(`${id} (${archived.status()})`);
+  }
+  return left;
+}
+
+/**
+ * Archives every live Project in a studio that an earlier run made.
+ *
+ * Teardown handles the run that finishes; a run that is interrupted leaves its
+ * Projects live, and they count against the studio's Project limit until
+ * setup can no longer create any.
+ *
+ * This cannot tell an abandoned Project from one a run is working in right
+ * now, so runs take turns on an account: a second run started while the first
+ * is going archives the Projects that one is using, and its cases then fail
+ * on a read-only Project.
+ * @param api - A request context signed in as the studio's admin.
+ * @param studioSlug - The studio to clear; its projects are listed by slug.
+ * @throws {Error} When the studio's projects cannot be listed, or one of them cannot be archived.
+ */
+export async function archiveOlderRuns(api: ProjectApi, studioSlug: string): Promise<void> {
+  // Paging by creation time is unaffected by the archiving: each cursor carries
+  // the last row's own values, not an offset.
+  let cursor: string | undefined;
+  do {
+    const query = new URLSearchParams({ sort: 'created', limit: '100', ...(cursor ? { cursor } : {}) });
+    const listed = await api.get(`/api/v1/studio/${studioSlug}/projects?${query}`);
+    if (!listed.ok()) {
+      throw new Error(`Could not list the projects of studio ${studioSlug} (${listed.status()}).`);
+    }
+    const { data } = (await listed.json()) as {
+      data: { items: { id: string; slug: string }[]; nextCursor: string | null };
+    };
+    const ours = data.items.filter((project) => project.slug.startsWith(MADE_BY_SMOKE));
+    const left = await archiveProjects(api, ours.map((project) => project.id));
+    if (left.length > 0) {
+      throw new Error(`Could not archive the projects an earlier run made: ${left.join(', ')}.`);
+    }
+    cursor = data.nextCursor ?? undefined;
+  } while (cursor);
 }

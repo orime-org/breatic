@@ -45,11 +45,11 @@ function model(nodeType: GenerationNodeType, mode: string, name: string): ModelI
 }
 
 describe("the ways a model takes each kind of node", () => {
-  it("asks for an asset mark on the pool and a note on every slot and the lyrics box", () => {
+  it("asks for a ref on the pool and a note on every slot, and @s the lyrics box at landing", () => {
     for (const chosen of everyModel()) {
       for (const [, ways] of waysIn(chosen)) {
         for (const way of ways) {
-          const expected = way.into === "pool" ? "asset" : "note";
+          const expected = way.into === "pool" ? "ref" : way.into === "lyrics" ? "placed" : "note";
           expect({ model: chosen.name, into: way.into, mark: way.mark }).toEqual({ model: chosen.name, into: way.into, mark: expected });
         }
       }
@@ -86,12 +86,12 @@ describe("the ways a model takes each kind of node", () => {
 
   it("reads the rows of the table off real models", () => {
     expect(waysIn(model("image", "i2i", "nano-banana-pro-edit-ultra")).get("image")).toEqual([
-      { into: "pool", room: 11, mark: "asset" },
+      { into: "pool", room: 11, mark: "ref" },
       { into: "style_images", room: 3, mark: "note" },
     ]);
     expect(waysIn(model("audio", "t2m", "mureka-v9.5-generate-song")).get("text")).toEqual([
-      { into: "pool", room: Number.POSITIVE_INFINITY, mark: "asset" },
-      { into: "lyrics", room: Number.POSITIVE_INFINITY, mark: "note" },
+      { into: "pool", room: Number.POSITIVE_INFINITY, mark: "ref" },
+      { into: "lyrics", room: Number.POSITIVE_INFINITY, mark: "placed" },
     ]);
     expect(waysIn(model("video", "i2v", "seedance-2.5-image-to-video")).get("image")).toEqual([
       { into: "image", room: 1, mark: "note" },
@@ -100,5 +100,19 @@ describe("the ways a model takes each kind of node", () => {
       { into: "video", room: 1, mark: "note" },
     ]);
     expect(waysIn(model("video", "talking_head", "omnihuman-1.5")).get("text")).toBeUndefined();
+  });
+});
+
+describe("the lyrics box as a way in", () => {
+  it("is offered only where the lyrics param applies in the mode, as the panel's lyrics box is", () => {
+    const answer = modelsForMode("audio", "t2m");
+    const song = answer.available ? answer.models.find((m) => m.name === "mureka-v9.5-generate-song") : undefined;
+    if (!song) throw new Error("the catalog serves no song model under t2m");
+    const lyrics = song.params[PANEL_EDITOR_PARAM];
+    if (!lyrics) throw new Error("the song model declares no lyrics box");
+    const elsewhere: ModelInfo = { ...song, params: { ...song.params, [PANEL_EDITOR_PARAM]: { ...lyrics, noControl: true } } };
+
+    expect((waysIn(song).get("text") ?? []).map((way) => way.into)).toContain(PANEL_EDITOR_PARAM);
+    expect((waysIn(elsewhere).get("text") ?? []).map((way) => way.into)).not.toContain(PANEL_EDITOR_PARAM);
   });
 });

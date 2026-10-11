@@ -64,6 +64,7 @@ describe("tools accept the cancellation signal", () => {
       "judge_likelihood",
       "list_generation_models",
       "propose_canvas_action",
+      "save_image",
       "search_images",
       "understand_media",
       "web_search",

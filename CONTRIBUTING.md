@@ -161,12 +161,11 @@ CI runs on every PR. The required checks:
 
 - `dev-proxy-guard` — the vite dev proxy points where it should
 - `auth-bypass-residue` — no trace of the removed dev auth bypass
-- `lint-typecheck-test` — lint, typecheck, unit tests
+- `lint-typecheck-test` — passes when lint, the build and repo checks, typecheck and the unit tests all pass; those run as parallel jobs, with web's unit tests split into four shards
 - `integration-tests` — every package declaring `test:integration`: `@breatic/server`, `@breatic/collab` and `@breatic/integration-tests` against real PG and Redis, `@breatic/shared` against real sockets on loopback
-- `docker` — Docker image builds
 - `check-authorship` — no AI author/co-author (see above)
 
-All six must pass before merging.
+All five must pass before merging. CI also builds and checks the Docker images on every PR; that check is not required, and images are published only from a `v*` tag.
 
 ---
 

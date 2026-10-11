@@ -121,11 +121,13 @@ export type {
   ProposalAnswer,
 } from "@shared/types/canvas-proposal.js";
 export {
+  feedsOf,
   layersOf,
   markReadsBack,
   markText,
   writtenMark,
   markedSegments,
+  marksTypedIn,
   proposalMarkSegments,
   promptPlainText,
   promptTextOf,

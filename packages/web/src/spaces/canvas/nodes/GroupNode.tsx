@@ -71,9 +71,9 @@ export const GroupNode = React.memo(function GroupNode({
     inputRef,
     startEdit,
     setDraft,
-    commit,
     blur,
-    cancel,
+    onKeyDown,
+    onCompositionEnd,
   } = useInlineRename({
     current: display,
     // A locked group's name is frozen with its structure (decision 2026-06-20).
@@ -136,17 +136,8 @@ export const GroupNode = React.memo(function GroupNode({
             maxLength={MAX_NODE_NAME_LEN}
             onChange={(e) => setDraft(e.target.value)}
             onBlur={blur}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') commit();
-              else if (e.key === 'Escape') {
-                // Mark the key consumed: window-level Esc consumers (the
-                // focus-session exit, the crop overlay staging) yield on
-                // `defaultPrevented` — the same protocol every other Esc
-                // consumer follows (SpaceTab / TitleEditable, round-12).
-                e.preventDefault();
-                cancel();
-              }
-            }}
+            onKeyDown={onKeyDown}
+            onCompositionEnd={onCompositionEnd}
             // `nodrag` lets a pointer press select text instead of dragging the
             // group; the input only renders while editing, so it's always safe.
             // `-ml-1` cancels the `px-1` left padding so entering edit doesn't

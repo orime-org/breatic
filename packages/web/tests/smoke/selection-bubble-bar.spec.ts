@@ -12,9 +12,9 @@
  * Needs dev running and a smoke account:
  *   pnpm --filter @breatic/web test:smoke
  */
-import { test, expect } from 'playwright/test';
+import { expect } from 'playwright/test';
 
-import { openFreshDocument, selectFirstParagraph } from '../helpers/bubble-bar';
+import { openFreshDocument, selectFirstParagraph, test } from '../helpers/bubble-bar';
 import { collapseAfterLinking, linkTheSelection } from '../helpers/link-panel';
 import { DOCUMENT_EDITOR, VISIBLE_SPACE } from '../helpers/space';
 

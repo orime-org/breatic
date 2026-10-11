@@ -552,6 +552,9 @@ export async function readStoredMediaAtIngest(
  *   Required rather than optional: the answer arrives only once the whole
  *   transfer is written, and the transport's fallback is the platform's bound
  *   rather than anyone's decision about this transfer.
+ * @param signal - Raised when the caller no longer wants the transfer, which
+ *   a caller with a reader waiting on it passes (the agent's save stops when
+ *   the reader stops the turn).
  * @returns What the Worker measured over the object it pulled.
  * @throws {UploadHttpError} When the Worker could not store the source.
  * @throws {unknown} The transport's own failure when no delivery produced a
@@ -564,6 +567,7 @@ export async function fetchUrlToIngest(
   coverKey: string,
   limits: MediaLimits,
   deadlineMs: number,
+  signal?: AbortSignal,
 ): Promise<IngestMeasurements> {
   const answered = await askWorker<unknown>(
     `${target.uploadUrl}/fetch`,
@@ -587,7 +591,7 @@ export async function fetchUrlToIngest(
     // multipart upload each time it runs, so a repeat re-fetches the source,
     // writes R2 a second time, and brings an upload id the permission to
     // finish this key was not granted to.
-    { timeoutMs: deadlineMs, replaySafe: false },
+    { timeoutMs: deadlineMs, replaySafe: false, ...(signal && { signal }) },
   );
   return readMeasurements(answered);
 }
@@ -606,17 +610,19 @@ export async function fetchUrlToIngest(
  * @param options.replaySafe - Whether sending this again produces no second
  *   side effect. The test is whether the request names the upload it writes
  *   into: a part and a completion do, and opening one does not.
+ * @param options.signal - Raised when the caller no longer wants the answer.
  * @returns The parsed answer.
  * @throws {UploadHttpError} When the Worker refuses.
  */
 export async function askWorker<T>(
   url: string,
   init: RequestInit,
-  { timeoutMs, replaySafe }: { timeoutMs?: number; replaySafe: boolean },
+  { timeoutMs, replaySafe, signal }: { timeoutMs?: number; replaySafe: boolean; signal?: AbortSignal },
 ): Promise<T> {
   const res = await httpRequest(url, init, {
     replaySafe,
     ...(timeoutMs !== undefined && { timeoutMs }),
+    ...(signal && { signal }),
   });
   if (!res.ok) {
     throw new UploadHttpError(

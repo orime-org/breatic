@@ -6,15 +6,15 @@
  *
  * Both halves of the tab-strip suite start here: the cases that measure what a
  * drag does to the strip, and the one that asks whether a reload comes back to
- * the order a drag produced. A spec importing this evaluates it in its own
- * scope, so the hooks below build that file's tabs and neither file can reach
- * the other's (measured, playwright 1.62.1, 2026-09-19).
+ * the order a drag produced. A spec that wants the strip imports `test` from
+ * here; the strip is built by an automatic fixture on that `test`, so every
+ * case of every such file gets its own.
  *
  * Each case builds its own strip. The cases used to sit in three serial
  * groups reading what the group before them left, which reports every case
  * after a red one as never run.
  */
-import { expect, test, type Page } from 'playwright/test';
+import { expect, test as base, type Page } from 'playwright/test';
 
 import { openSmokeProject } from './project';
 import { createSpace, deleteSpace } from './space';
@@ -42,27 +42,31 @@ export const WIDE = { width: 1440, height: 900 };
 /** How many tabs a case wants on the strip. */
 const TABS_WANTED = 4;
 
-/** The Spaces this case made, removed when it ends. */
-let mine: string[] = [];
-
-test.beforeEach(async ({ page }) => {
-  await page.setViewportSize(WIDE);
-  await openSmokeProject(page);
-  await expect(page.locator('[role="tab"]').first()).toBeVisible({ timeout: 20_000 });
-  // Start from a browser that has not been here (#2165), so the strip is the
-  // one this case built rather than the one an earlier run left stored.
-  await page.evaluate(() => window.localStorage.removeItem('breatic.projectTabs'));
-  await page.reload();
-  await expect(page.locator('[role="tab"]').first()).toBeVisible({ timeout: 20_000 });
-  mine = [];
-  for (let made = 1; made < TABS_WANTED; made += 1) {
-    mine.push(await createSpace(page, 'canvas', `reorder-${Date.now()}-${made}`));
-  }
-});
-
-test.afterEach(async ({ page }) => {
-  await page.setViewportSize(WIDE);
-  while (mine.length > 0) await deleteSpace(page, mine.pop() as string);
+/**
+ * The test a tab-strip case runs under: each case opens the smoke Project on a
+ * strip of four tabs it built, and removes the Spaces it made when it ends.
+ */
+export const test = base.extend<{ tabStrip: void }>({
+  tabStrip: [
+    async ({ page }, use) => {
+      await page.setViewportSize(WIDE);
+      await openSmokeProject(page);
+      await expect(page.locator('[role="tab"]').first()).toBeVisible({ timeout: 20_000 });
+      // Start from a browser that has not been here (#2165), so the strip is the
+      // one this case built rather than the one an earlier run left stored.
+      await page.evaluate(() => window.localStorage.removeItem('breatic.projectTabs'));
+      await page.reload();
+      await expect(page.locator('[role="tab"]').first()).toBeVisible({ timeout: 20_000 });
+      const mine: string[] = [];
+      for (let made = 1; made < TABS_WANTED; made += 1) {
+        mine.push(await createSpace(page, 'canvas', `reorder-${Date.now()}-${made}`));
+      }
+      await use();
+      await page.setViewportSize(WIDE);
+      while (mine.length > 0) await deleteSpace(page, mine.pop() as string);
+    },
+    { auto: true },
+  ],
 });
 
 /**

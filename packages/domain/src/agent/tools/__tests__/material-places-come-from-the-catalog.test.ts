@@ -69,8 +69,9 @@ function wiredGroup(): CanvasProposal {
         model: "pool-fed-model",
         params: {},
         prompt: [
-          { text: "a slow pan" },
-          { slot: { kind: "asset", label: "your picture", note: "Put it in the empty node" } },
+          { slot: { kind: "note", label: "Put your picture in the empty node first" } },
+          { text: "a slow pan over " },
+          { ref: 0 },
         ],
       },
     ],
@@ -164,7 +165,7 @@ describe("a template whose model this deployment does not serve (inner#977)", ()
     const answer = answerFor({
       nodes: [
         { role: "source", type: "image", name: "Character" },
-        { role: "generate", type: "image", name: "Grid", template: "storyboard-grid-25" },
+        { role: "generate", type: "image", name: "Grid", template: "storyboard-grid-25", prompt: [{ text: "A grid of " }, { ref: 0 }] },
       ],
       edges: [{ fromIndex: 0, toIndex: 1, into: "pool" }],
       rationale: "",

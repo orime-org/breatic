@@ -469,58 +469,99 @@ describe('useNodeCreation', () => {
       expect(generate.paramsByModel).toEqual({ 'some-model': { ratio: '1:1' } });
     });
 
-    it('puts the prompt in the generation node, @-ing nothing for the reader', () => {
-      const withSlot: CanvasProposal = {
+    it('puts the prompt in the generation node, @-ing the pooled node for the reader (inner#1315)', () => {
+      const withRef: CanvasProposal = {
         ...PAIR,
-        nodes: [
-          PAIR.nodes[0]!,
-          {
-            ...PAIR.nodes[1]!,
-            prompt: [
-              { text: 'white ground, ' },
-              { slot: { kind: 'asset', label: 'your photo', note: 'drop it left' } },
-            ],
-          },
-        ],
+        nodes: [PAIR.nodes[0]!, { ...PAIR.nodes[1]!, prompt: [{ text: 'white ground, ' }, { ref: 0 }] }],
       };
       const { result } = renderHook(() => useNodeCreation('p-pr', 's-pr'));
 
-      const { nodeIds: ids } = result.current.placeProposalAt(withSlot, { x: 0, y: 0 });
+      const { nodeIds: ids } = result.current.placeProposalAt(withRef, { x: 0, y: 0 });
 
-      const fragment = canvasSpace.getPromptFragment('p-pr', 's-pr', ids[1]!, 'i2i');
-      expect(fragment).not.toBeNull();
-      const written = fragment!.toJSON();
-      expect(written).toContain('white ground, [📎 Use @ to pick your photo]');
-      // The reader @s the node by hand, and sees then whether it is still empty.
-      expect(written).not.toContain('sourceNodeId');
+      const written = canvasSpace.getPromptFragment('p-pr', 's-pr', ids[1]!, 'i2i')!.toJSON();
+      expect(written).toContain('white ground, ');
+      expect(written).toContain(`sourceNodeId="${ids[0]!}"`);
+      expect(written).toContain('label="Your product photo"');
+      expect(written).toContain('kind="image"');
+      expect(written).not.toContain('thumbnail=');
     });
 
-    it('leaves the bracket alone where the reader picks material in the panel', () => {
-      // On that path a mention picks nothing: the panel's own picker refuses
-      // it (`insertRefusal`), the run reads the slot instead, and the reader
-      // is left with a chip they could not have made and a slot still empty.
-      // The bracket alone names the slot to pick it in.
-      const bySlot: CanvasProposal = {
+    it('shows a material clip\'s cover on the chip that @s it', () => {
+      const CLIP = 'https://ours.example/video/clip.mp4';
+      const COVER = 'https://ours.example/video/clip.jpg';
+      const held: CanvasProposal = {
+        nodes: [
+          { role: 'source', type: 'video', name: 'Clip', material: CLIP, materialMedia: { mimeType: 'video/mp4', width: 10, height: 10, coverUrl: COVER, duration: 3, size: 1 } },
+          { role: 'generate', type: 'video', name: 'Remix', mode: 'ref', model: 'some-model', takesPrompt: true, prompt: [{ text: 'restyle ' }, { ref: 0 }] },
+        ],
+        edges: [{ fromIndex: 0, toIndex: 1, into: 'pool' }],
+        rationale: '',
+        groupName: 'Remix',
+      };
+      const { result } = renderHook(() => useNodeCreation('p-cover', 's-cover'));
+
+      const { nodeIds: ids } = result.current.placeProposalAt(held, { x: 0, y: 0 });
+
+      expect(canvasSpace.getPromptFragment('p-cover', 's-cover', ids[1]!, 'ref')!.toJSON()).toContain(`thumbnail="${COVER}"`);
+    });
+
+    it('shows a material picture on the chip that @s it', () => {
+      const PHOTO = 'https://ours.example/image/photo.png';
+      const held: CanvasProposal = {
         ...PAIR,
         nodes: [
-          PAIR.nodes[0]!,
-          {
-            ...PAIR.nodes[1]!,
-            takesPrompt: true,
-            prompt: [
-              { text: 'animate ' },
-              { slot: { kind: 'asset', label: 'your photo', note: 'pick it in the panel' } },
-            ],
-          },
+          { ...PAIR.nodes[0]!, material: PHOTO, materialMedia: { mimeType: 'image/png', width: 10, height: 10, coverUrl: null, duration: null, size: 1 } },
+          { ...PAIR.nodes[1]!, prompt: [{ text: 'repaint ' }, { ref: 0 }] },
         ],
       };
-      const { result } = renderHook(() => useNodeCreation('p-slot', 's-slot'));
+      const { result } = renderHook(() => useNodeCreation('p-thumb', 's-thumb'));
 
-      const { nodeIds: ids } = result.current.placeProposalAt(bySlot, { x: 0, y: 0 });
+      const { nodeIds: ids } = result.current.placeProposalAt(held, { x: 0, y: 0 });
 
-      const written = canvasSpace.getPromptFragment('p-slot', 's-slot', ids[1]!, 'i2i')!.toJSON();
-      expect(written).toContain('animate [📎 Use @ to pick your photo]');
-      expect(written).not.toContain('sourceNodeId');
+      expect(canvasSpace.getPromptFragment('p-thumb', 's-thumb', ids[1]!, 'i2i')!.toJSON()).toContain(`thumbnail="${PHOTO}"`);
+    });
+
+    it('puts each text node @\'d in a song model\'s lyrics box on a line of its own', () => {
+      const song: CanvasProposal = {
+        nodes: [
+          { role: 'written', type: 'text', name: 'Verse', prompt: [{ text: 'la la' }] },
+          { role: 'written', type: 'text', name: 'Chorus', prompt: [{ text: 'oh oh' }] },
+          { role: 'generate', type: 'audio', name: 'Song', mode: 't2m', model: 'some-model', takesPrompt: true, prompt: [{ text: 'gentle pop' }] },
+        ],
+        edges: [
+          { fromIndex: 0, toIndex: 2, into: 'lyrics' },
+          { fromIndex: 1, toIndex: 2, into: 'lyrics' },
+        ],
+        rationale: '',
+        groupName: 'Song',
+      };
+      const { result } = renderHook(() => useNodeCreation('p-lyr2', 's-lyr2'));
+
+      const { nodeIds: ids } = result.current.placeProposalAt(song, { x: 0, y: 0 });
+
+      const box = canvasSpace.getLyricsFragment('p-lyr2', 's-lyr2', ids[2]!, 't2m')!;
+      const lines = box.toArray().map((line) => (line as Y.XmlElement).toString());
+      expect(lines).toHaveLength(2);
+      expect(lines[0]).toContain(`sourceNodeId="${ids[0]!}"`);
+      expect(lines[1]).toContain(`sourceNodeId="${ids[1]!}"`);
+    });
+
+    it('@s a text node in a song model\'s lyrics box, and not in its prompt', () => {
+      const song: CanvasProposal = {
+        nodes: [
+          { role: 'written', type: 'text', name: 'Lyrics', prompt: [{ text: 'la la la' }] },
+          { role: 'generate', type: 'audio', name: 'Song', mode: 't2m', model: 'some-model', takesPrompt: true, prompt: [{ text: 'gentle pop' }] },
+        ],
+        edges: [{ fromIndex: 0, toIndex: 1, into: 'lyrics' }],
+        rationale: '',
+        groupName: 'Song',
+      };
+      const { result } = renderHook(() => useNodeCreation('p-lyr', 's-lyr'));
+
+      const { nodeIds: ids } = result.current.placeProposalAt(song, { x: 0, y: 0 });
+
+      expect(canvasSpace.getLyricsFragment('p-lyr', 's-lyr', ids[1]!, 't2m')!.toJSON()).toContain(`sourceNodeId="${ids[0]!}"`);
+      expect(canvasSpace.getPromptFragment('p-lyr', 's-lyr', ids[1]!, 't2m')!.toJSON()).not.toContain('sourceNodeId');
     });
 
     it('records the model as a choice, so switching mode and back keeps it', () => {
@@ -549,7 +590,7 @@ describe('useNodeCreation', () => {
       expect(canvasSpace.getPromptFragment('p-mode', 's-mode', ids[1]!, 't2i')!.toJSON()).not.toContain('a red boat');
     });
 
-    it('lands proposed shots on the node, their marks as words', () => {
+    it('lands proposed shots on the node, each @-ing the node it names', () => {
       const shots: CanvasProposal = {
         nodes: [
           { role: 'source', type: 'image', name: 'Hero' },
@@ -558,8 +599,8 @@ describe('useNodeCreation', () => {
             role: 'generate', type: 'video', name: 'Clip', mode: 'multi_shot', model: 'some-model',
             takesPrompt: true,
             shots: [
-              { prompt: [{ text: 'first ' }, { slot: { kind: 'asset', label: 'hero', note: '' } }], duration: 2 },
-              { prompt: [{ text: 'then ' }, { slot: { kind: 'asset', label: 'extra', note: '' } }], duration: 3 },
+              { prompt: [{ text: 'first ' }, { ref: 0 }], duration: 2 },
+              { prompt: [{ text: 'then ' }, { ref: 1 }], duration: 3 },
             ],
           },
         ],
@@ -573,9 +614,8 @@ describe('useNodeCreation', () => {
 
       const landed = readShots('p-shot', 's-shot', ids[2]!);
       expect(landed?.map((shot) => shot.duration)).toEqual([2, 3]);
-      expect(landed?.[0]?.prompt.toJSON()).toContain('first [📎 Use @ to pick hero]');
-      expect(landed?.[1]?.prompt.toJSON()).toContain('then [📎 Use @ to pick extra]');
-      expect(landed?.map((shot) => shot.prompt.toJSON()).join('')).not.toContain('sourceNodeId');
+      expect(landed?.[0]?.prompt.toJSON()).toContain(`sourceNodeId="${ids[0]!}"`);
+      expect(landed?.[1]?.prompt.toJSON()).toContain(`sourceNodeId="${ids[1]!}"`);
     });
 
     describe('reminding the reader to edit the marked parts (inner#977)', () => {
@@ -588,12 +628,14 @@ describe('useNodeCreation', () => {
           ...PAIR,
           nodes: [
             PAIR.nodes[0]!,
-            { ...PAIR.nodes[1]!, prompt: [{ slot: { kind: 'asset', label: 'photo', note: '' } }] },
+            { ...PAIR.nodes[1]!, prompt: [{ slot: { kind: 'tweak', label: 'the mood', note: '' } }] },
           ],
         };
         const { result } = renderHook(() => useNodeCreation('p-mk', 's-mk'));
         result.current.placeProposalAt(marked, { x: 0, y: 0 });
-        expect(toast.info).toHaveBeenCalledWith(en.canvas.generatePanel.editMarks);
+        // A proposal lands no square brackets: its references arrive as
+        // mentions, so the reminder speaks of the braces alone.
+        expect(toast.info).toHaveBeenCalledWith(en.canvas.generatePanel.editProposalMarks);
       });
 
       it('reminds them when only a shot carries a mark', () => {
@@ -632,7 +674,7 @@ describe('useNodeCreation', () => {
         expect(canvasSpace.getPromptFragment('p-box', 's-box', ids[1]!, 'i2i')!.toJSON()).not.toContain('Pick the photo');
       });
 
-      it('reminds them when a placed prompt carries only a note', () => {
+      it('says nothing when a placed prompt carries only a note, which shows in the box already', () => {
         const noted: CanvasProposal = {
           ...PAIR,
           nodes: [
@@ -642,13 +684,163 @@ describe('useNodeCreation', () => {
         };
         const { result } = renderHook(() => useNodeCreation('p-nt', 's-nt'));
         result.current.placeProposalAt(noted, { x: 0, y: 0 });
-        expect(toast.info).toHaveBeenCalledWith(en.canvas.generatePanel.editMarks);
+        expect(toast.info).not.toHaveBeenCalled();
+      });
+
+      it('says nothing when the prompt only @s a node', () => {
+        const atOnly: CanvasProposal = {
+          ...PAIR,
+          nodes: [PAIR.nodes[0]!, { ...PAIR.nodes[1]!, prompt: [{ text: 'repaint ' }, { ref: 0 }] }],
+        };
+        const { result } = renderHook(() => useNodeCreation('p-atonly', 's-atonly'));
+        result.current.placeProposalAt(atOnly, { x: 0, y: 0 });
+        expect(toast.info).not.toHaveBeenCalled();
       });
 
       it('says nothing when the prompts are plain words', () => {
         const { result } = renderHook(() => useNodeCreation('p-plain', 's-plain'));
         result.current.placeProposalAt(PAIR, { x: 0, y: 0 });
         expect(toast.info).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('the material a reader gave, landed and filled into slots (inner#1315)', () => {
+      const PORTRAIT = 'https://ours.example/image/face.png';
+      const VOICE = 'https://ours.example/audio/voice.mp3';
+      const TALKING: CanvasProposal = {
+        nodes: [
+          {
+            role: 'source',
+            type: 'image',
+            name: 'Your portrait',
+            material: PORTRAIT,
+            materialMedia: { coverUrl: null, width: 800, height: 600, duration: null, mimeType: 'image/png', size: 10 },
+          },
+          {
+            role: 'source',
+            type: 'audio',
+            name: 'Your voice',
+            material: VOICE,
+            materialMedia: { coverUrl: null, width: null, height: null, duration: 3, mimeType: 'audio/mpeg', size: 20 },
+          },
+          {
+            role: 'generate',
+            type: 'video',
+            name: 'Talking head',
+            mode: 'talking_head',
+            model: 'a-talker',
+            takesPrompt: false,
+            fills: { image: [0], audio: [1] },
+          },
+        ],
+        edges: [],
+        rationale: '',
+      };
+
+      it('lands each material node holding the file and the numbers an upload gives it', () => {
+        const { result } = renderHook(() => useNodeCreation('p-mat', 's-mat'));
+
+        const { nodeIds: ids } = result.current.placeProposalAt(TALKING, { x: 0, y: 0 });
+
+        const { nodes } = canvasSpace.readCanvasGraph('p-mat', 's-mat');
+        const portrait = contentAt(nodes, ids[0]);
+        const voice = contentAt(nodes, ids[1]);
+        expect(portrait).toMatchObject({ kind: 'image', content: PORTRAIT, width: 800, height: 600 });
+        expect(voice).toMatchObject({ kind: 'audio', content: VOICE, duration: 3 });
+      });
+
+      it('fills the talking head the way picks in its panel would, with no wire drawn', () => {
+        const { result } = renderHook(() => useNodeCreation('p-fill', 's-fill'));
+
+        const { nodeIds: ids } = result.current.placeProposalAt(TALKING, { x: 0, y: 0 });
+
+        const { nodes, edges } = canvasSpace.readCanvasGraph('p-fill', 's-fill');
+        const head = contentAt(nodes, ids[2]);
+        // The portrait is the character, not a first frame: both slots send
+        // `image`, and only the mode's row says which one this is.
+        expect(head.characterImageUrl).toBe(PORTRAIT);
+        expect(head.firstFrameUrl).toBeUndefined();
+        expect(head.drivingAudio).toEqual({ url: VOICE, duration: 3 });
+        expect(edges).toHaveLength(0);
+      });
+
+      it('lists every picture filling a slot that holds several', () => {
+        const styled: CanvasProposal = {
+          nodes: [
+            { ...TALKING.nodes[0]! },
+            { ...TALKING.nodes[0]!, name: 'Second look', material: 'https://ours.example/image/b.png' },
+            {
+              role: 'generate',
+              type: 'image',
+              name: 'In that style',
+              mode: 't2i',
+              model: 'a-painter',
+              takesPrompt: true,
+              prompt: [{ text: 'a teapot' }],
+              fills: { style_images: [0, 1] },
+            },
+          ],
+          edges: [],
+          rationale: '',
+        };
+        const { result } = renderHook(() => useNodeCreation('p-style', 's-style'));
+
+        const { nodeIds: ids } = result.current.placeProposalAt(styled, { x: 0, y: 0 });
+
+        const { nodes } = canvasSpace.readCanvasGraph('p-style', 's-style');
+        expect(contentAt(nodes, ids[2]).styleImageUrls).toEqual([PORTRAIT, 'https://ours.example/image/b.png']);
+      });
+
+      it('fills a sound effect from a clip, carrying its poster and length the way a pick does', () => {
+        const CLIP = 'https://ours.example/video/clip.mp4';
+        const POSTER = 'https://ours.example/image/clip-cover.png';
+        const scored: CanvasProposal = {
+          nodes: [
+            {
+              role: 'source',
+              type: 'video',
+              name: 'Your clip',
+              material: CLIP,
+              materialMedia: { coverUrl: POSTER, width: 1280, height: 720, duration: 6, mimeType: 'video/mp4', size: 30 },
+            },
+            {
+              role: 'generate',
+              type: 'audio',
+              name: 'Its sound',
+              mode: 'sfx',
+              model: 'a-sounder',
+              takesPrompt: true,
+              prompt: [{ text: 'footsteps' }],
+              fills: { video: [0] },
+            },
+          ],
+          edges: [],
+          rationale: '',
+        };
+        const { result } = renderHook(() => useNodeCreation('p-sfx', 's-sfx'));
+
+        const { nodeIds: ids } = result.current.placeProposalAt(scored, { x: 0, y: 0 });
+
+        const { nodes } = canvasSpace.readCanvasGraph('p-sfx', 's-sfx');
+        expect(contentAt(nodes, ids[0])).toMatchObject({ kind: 'video', content: CLIP, coverUrl: POSTER });
+        expect(contentAt(nodes, ids[1]).soundVideo).toEqual({ url: CLIP, cover: POSTER, duration: 6 });
+      });
+
+      it('goes down as one undo entry with the material and the fills in it', () => {
+        const undo = canvasSpace.createCanvasUndoManager(
+          getDoc(docName.canvasSpace('p-mundo', 's-mundo')),
+        );
+        const { result } = renderHook(() => useNodeCreation('p-mundo', 's-mundo'));
+
+        const { nodeIds: ids } = result.current.placeProposalAt(TALKING, { x: 0, y: 0 });
+        expect(undo.undoStack).toHaveLength(1);
+        undo.undo();
+        undo.redo();
+
+        // Redone, the nodes come back holding what they were placed with.
+        const { nodes } = canvasSpace.readCanvasGraph('p-mundo', 's-mundo');
+        expect(contentAt(nodes, ids[0])).toMatchObject({ content: PORTRAIT });
+        expect(contentAt(nodes, ids[2]).characterImageUrl).toBe(PORTRAIT);
       });
     });
 

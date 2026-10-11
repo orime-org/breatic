@@ -11,23 +11,27 @@
  * models a mode can reach, and whether that mode needs material only the
  * reader has.
  *
- * A mode that needs material is proposed with an empty node to put it in.
+ * A mode that needs material is proposed with a source node for it: one
+ * holding the reader's material (a chat upload or a picture saved with
+ * save_image), or an empty one for the reader to fill.
  * Every way a node reaches a generation is read off the catalog (`waysIn`,
- * design 5.7): the reference pool, which the reader mentions it from in the
- * prompt; a slot on the panel, which the reader picks it into; or a song
- * model's lyrics box. Each edge says which on `into`.
+ * design 5.7): the reference pool, mentioned in the prompt by a ref; a slot
+ * on the panel, which the reader picks it into; or a song model's lyrics box,
+ * which landing mentions it in. Each edge says which on `into`.
  *
  * Every character of this tool's description and its field descriptions goes
  * out with every turn of every conversation, and is measured against the same
- * budget the messages are (`payload-size.ts`). The refusals below teach the
- * model at the moment it needs it, so the descriptions say the least that
- * gets a first attempt in the right shape.
+ * budget the messages are (`payload-size.ts`). The descriptions carry the
+ * rules a first attempt needs to take the right shape; a refusal below says
+ * what is wrong, the rule it breaks and the facts of the proposal (design
+ * 5.10), and the agent puts the proposal right from that.
  *
  * What this check answers is what the catalog and the product rules settle:
  * this mode exists, this model backs it, this value is one the control
  * offers, these characters fit, this line is one the canvas allows, each node
- * goes a way the model has, and the prompt carries a mark or note for each.
- * Marks are counted, never paired with nodes. How many nodes a shape takes,
+ * goes a way the model has, and the prompt carries a ref or note for each:
+ * each node in the pool is @'d by a ref naming its index, and notes are
+ * counted, never paired with nodes. How many nodes a shape takes,
  * what they are called and how they are wired is the agent's to decide: a
  * scene has more than one good answer, and a check that picked one of them
  * would be the rules written out in code.
@@ -37,228 +41,26 @@ import { z } from "zod";
 
 import {
   canConnect,
-  evaluateExecute,
   GENERATION_TEMPLATES,
-  extractPromptText,
-  markedSegments,
-  markReadsBack,
-  GENERATION_NODE_MODES,
-  MAX_NODE_NAME_LEN,
-  PANEL_EDITOR_PARAM,
-  promptPlainText,
-  promptTextOf,
-  templatePrompt,
-  proposalMarkSegments,
-  storyboardSend,
   type CanvasProposal,
-  type ControlGate,
-  type GenerationNodeType,
   type ProposalAnswer,
   type ProposalNode,
 } from "@breatic/shared";
 
-import { expandTemplate } from "@domain/agent/tools/template-expansion.js";
-import { GET_PRODUCT_GUIDE } from "@domain/agent/tools/tool-names.js";
-import {
-  modelsForMode,
-  waysIn,
-  type WayIn,
-  type WayKind,
-  type ModelInfo,
-  type ParamInfo,
-} from "@domain/model-catalog/mode-catalog.js";
-import { onStep } from "@domain/model-catalog/param-declaration.js";
+import { checkGenerateNode } from "@domain/agent/tools/proposal-generate-check.js";
+import { checkSourceNodesFit, checkUnsentNotes, hasRing } from "@domain/agent/tools/proposal-group-checks.js";
+import { inputSchema, type ProposalVerdict } from "@domain/agent/tools/proposal-input.js";
+import { checkMaterial, checkNodeRole, markTypedAsWords } from "@domain/agent/tools/proposal-node-checks.js";
+import { fixEdges, fixGroup, nodeLabel, refuse, type NodeLabel, type Refusal } from "@domain/agent/tools/proposal-refusals.js";
+import { aNode, chosenModelOf, routeEdges, spaced, waysOrNone } from "@domain/agent/tools/proposal-routing.js";
+import { expandTemplate, templateSegmentsText } from "@domain/agent/tools/template-expansion.js";
+import { GET_PRODUCT_GUIDE, SAVE_IMAGE } from "@domain/agent/tools/tool-names.js";
+import { materialFacts, type MaterialTable } from "@domain/asset/material-facts.js";
 
-const NODE_TYPES = Object.keys(GENERATION_NODE_MODES) as [
-  GenerationNodeType,
-  ...GenerationNodeType[],
-];
+export type { MaterialFacts, MaterialTable } from "@domain/asset/material-facts.js";
 
-/** Whether a proposal holds together, and what is missing when it does not. */
-export type ProposalVerdict = { ok: true } | { ok: false; reason: string };
-
-// Every string below that a card puts on screen is trimmed before it is
-// measured: one made of spaces passes a length check and then draws a bullet
-// with nothing beside it, or a mark naming nothing. The prompt's own text is
-// the exception and is left alone -- a segment of one space is how two marks
-// are kept apart, and trimming it would run them together.
-/** Why a label holding its own closing bracket or a line break is refused: written out, it would not read back. */
-const LABEL_BRACKET = "A label may not hold the bracket that closes its mark (] for asset, } for tweak, ) for note) or a line break.";
-
-const promptSegment = z.union([
-  z.object({ text: z.string().min(1) }).strict(),
-  z
-    .object({
-      slot: z.union([
-        z
-          .object({
-            kind: z
-              .enum(["asset", "tweak"])
-              .describe(
-                "asset: a node wired in that the reader @s by hand to use it, going into the pool -- " +
-                  "empty for their material, generated, or a text node; never a node going into a slot; " +
-                  "the label says which (uploaded, generated, the words you wrote). tweak: words only the reader can write",
-              ),
-            label: z
-              .string()
-              .trim()
-              .min(1)
-              .describe(
-                "What to @ or what to write, e.g. 'the uploaded character photo'; the words asking " +
-                  "the reader to @ are added for you",
-              ),
-            note: z
-              .string()
-              .trim()
-              .min(1)
-              .describe("The line this puts on the card"),
-          })
-          .strict()
-          .refine(markReadsBack, { message: LABEL_BRACKET }),
-        z
-          .object({
-            kind: z
-              .literal("note")
-              .describe(
-                "How to operate the panel, never sent to the model: e.g. which slot to pick a node " +
-                  "into, or that a text node is @'d in the lyrics box",
-              ),
-            label: z.string().trim().min(1).describe("The note, which is also the card's line"),
-          })
-          .strict()
-          .refine(markReadsBack, { message: LABEL_BRACKET }),
-      ]),
-    })
-    .strict(),
-]);
-
-const proposalNode = z
-  .object({
-    role: z
-      .enum(["source", "generate", "written"])
-      .describe("written holds finished words; source is empty for the reader to fill"),
-    type: z.enum([...NODE_TYPES, "text"]),
-    name: z
-      .string()
-      .trim()
-      .min(1)
-      .max(MAX_NODE_NAME_LEN)
-      .describe("What the reader sees on the node"),
-    template: z
-      .string()
-      .min(1)
-      .optional()
-      .describe(
-        "role generate only: start this node from a template; it fills the mode, " +
-          "model and prompt you leave out, and its params while you keep its mode and model; " +
-          "what you write wins",
-      ),
-    mode: z.string().min(1).optional().describe("role generate only"),
-    model: z.string().min(1).optional().describe("role generate only"),
-    params: z
-      .record(z.string(), z.unknown())
-      .optional()
-      .describe(
-        "role generate only. Each value has to be one its control offers. " +
-          "Leave out what a wired node, the vendor's list or the panel's own " +
-          "box fills",
-      ),
-    prompt: z
-      .array(promptSegment)
-      .optional()
-      .describe(
-        "What to generate, or a written node's words, in the language the reader " +
-          "writes in. A mark is a segment of its own ({\"slot\": …}), never typed into a text " +
-          "segment; it is words shown to the reader, nothing more: no mention is written for it, " +
-          "and the reader @s every reference by hand, so give every node going into the pool an asset " +
-          "mark; a node going into a slot or the lyrics box takes a note of its own instead, and so does " +
-          "an empty node no edge sends into a generation (unwired, or wired only as a link to a model that " +
-          "takes nothing from it), for the reader to pick into a slot",
-      ),
-    shots: z
-      .array(
-        z
-          .object({
-            prompt: z.array(promptSegment),
-            duration: z.number().int().min(1),
-          })
-          .strict(),
-      )
-      .min(1)
-      .optional()
-      .describe(
-        "role generate only, in mode multi_shot and nowhere else: each " +
-          "shot's own prompt and whole seconds, which add up to the duration. " +
-          "The main prompt is not sent then, so leave it out; notes go in a shot too",
-      ),
-  })
-  .strict();
-
-/**
- * What the tool accepts before any of the checks below run.
- *
- * Exported for the test that pins it: what the schema turns away never
- * reaches `checkProposal`, so the two halves of "a proposal the reader can
- * press" are held by one file and read by one test.
- */
-export const inputSchema = z
-  .object({
-    nodes: z
-      .array(proposalNode)
-      .min(1)
-      .describe("The nodes to place"),
-    edges: z
-      .array(
-        z
-          .object({
-            fromIndex: z.number().int(),
-            toIndex: z.number().int(),
-            into: z
-              .string()
-              .min(1)
-              .optional()
-              .describe(
-                "Where the node wired in goes: \"pool\" (the reader @s it into the prompt; an asset mark each), " +
-                  "the name of a slot the model has (the reader picks it in the panel; a note each), " +
-                  `or "${PANEL_EDITOR_PARAM}" for words the reader @s into a song model's lyrics box (a note each). Needed ` +
-                  "when the model takes that kind more than one way",
-              ),
-          })
-          .strict(),
-      )
-      .describe("Wiring inside this group; indices point into nodes"),
-    modelNote: z
-      .string()
-      .trim()
-      .min(1)
-      .optional()
-      .describe("What this model is for, in a few words; say nothing about credits or run time"),
-    rationale: z.string().trim().min(1).describe("Why this shape, in a sentence or two"),
-    groupName: z
-      .string()
-      .trim()
-      .min(1)
-      .max(MAX_NODE_NAME_LEN)
-      .optional()
-      .describe("What the group is for; needed once there are two nodes"),
-  })
-  .strict();
-
-/**
- * The model a generation node names, as the catalog serves it.
- *
- * A node the catalog cannot place -- no mode, no model, a model it does not
- * carry -- has none, and the per-generation check says what is wrong with it
- * in its own words.
- * @param node - The proposed node.
- * @returns The model, or undefined when the node generates nothing the catalog serves.
- * @throws {never} Never.
- */
-function chosenModelOf(node: ProposalNode): ModelInfo | undefined {
-  if (node.role !== "generate" || node.type === "text" || !node.mode || !node.model) return undefined;
-  const reachable = modelsForMode(node.type, node.mode);
-  return reachable.available ? reachable.models.find((m) => m.name === node.model) : undefined;
-}
+/** The table for a proposal that names no material. */
+const NO_MATERIAL: MaterialTable = new Map();
 
 /**
  * The same proposal with what the catalog says written onto each node.
@@ -281,555 +83,38 @@ function withCatalogFacts(proposal: CanvasProposal): CanvasProposal {
 }
 
 /**
- * Whether a parameter is one only the reader can fill, in the panel.
- *
- * Exported because two readings turn on it and they have to agree: a value
- * set here is refused, and the fixtures build their proposals to match.
- * Answered differently, a fixture the check would turn away is the thing the
- * cases are written against.
- * @param name - The parameter's name.
- * @param info - What the catalog says about it.
- * @returns True when the reader fills it once the group is placed.
+ * Whether two edges join the same two nodes the same way round.
+ * @param a - One edge.
+ * @param b - The other.
+ * @returns True when both run from the same node to the same node.
  * @throws {never} Never.
  */
-export function theirsToFill(name: string, info: ParamInfo): boolean {
-  return info.valuesFrom !== undefined || name === PANEL_EDITOR_PARAM;
+function sameEnds(a: CanvasProposal["edges"][number], b: CanvasProposal["edges"][number]): boolean {
+  return a.fromIndex === b.fromIndex && a.toIndex === b.toIndex;
 }
 
 /**
- * Whether the panel will draw this control for the proposal as it stands.
- *
- * A control can hang on a switch of the same model: the camera wheels appear
- * once the camera is enabled and their values are thrown away until it is, and
- * the lyrics box goes away the moment the track is marked instrumental. The
- * switch is part of the proposal, so whether the reader will see the control is
- * answered here rather than by asking whether the model declares it. A gate on
- * a source is already settled by the projection, which reports a control with
- * no slot behind it as having no control at all.
- * @param chosen - The model the proposal picked, as the catalog projects it.
- * @param params - What the proposal fills in.
- * @param info - What the catalog says about the parameter.
- * @returns True when the reader will have that control in front of them.
+ * Every edge the proposal sends the same way as this one, itself included.
+ * @param proposal - The proposal.
+ * @param edge - The edge.
+ * @returns The edges.
  * @throws {never} Never.
  */
-function isDrawn(
-  chosen: ModelInfo,
-  params: Record<string, unknown>,
-  info: ParamInfo,
-): boolean {
-  const gate = info.gate;
-  if (gate === undefined) return true;
-  const held = params[gate.param];
-  return typeof held === "boolean" ? held : chosen.params[gate.param]?.default === true;
-}
-
-/** How many values a refusal lists before it falls back to the range and step. */
-const LISTED_STEPS = 12;
-
-/**
- * Why a number sits between two steps of its slider, or null when it is on one.
- *
- * The slider only stops on steps, so a value between two is one the panel
- * cannot show and, for a model that rounds, not the one it runs with.
- * @param key - The param name, quoted in the reason.
- * @param value - The number the proposal filled in, already within range.
- * @param info - The param as the catalog projects it.
- * @returns The reason, or null.
- */
-function offStepReason(key: string, value: number, info: ParamInfo): string | null {
-  const { min, max, step } = info;
-  if (min === undefined || max === undefined || step === undefined || step <= 0) return null;
-  if (onStep(value, min, step)) return null;
-  const count = Math.floor((max - min) / step + 1e-9) + 1;
-  const takes =
-    count <= LISTED_STEPS
-      ? Array.from({ length: count }, (_, i) => Number((min + i * step).toFixed(6))).join(", ")
-      : `values from ${String(min)} to ${String(max)}`;
-  return `"${key}" moves in steps of ${String(step)} from ${String(min)}, so it takes ${takes}, not ${String(value)}.`;
+function edgesBetween(proposal: CanvasProposal, edge: CanvasProposal["edges"][number]): CanvasProposal["edges"] {
+  return proposal.edges.filter((e) => sameEnds(e, edge));
 }
 
 /**
- * Judge the values a proposal filled in against what the model declares.
- *
- * The panel offers a control per parameter and that control is what a reader
- * would have used; a value it would not have offered is one that reaches the
- * upstream unchecked.
- * @param chosen - The model the proposal picked, as the catalog projects it.
- * @param node - The node being judged.
- * @returns Whether every value stands, and which one does not.
+ * The edges between two nodes, said for the agent: how many, and each one's into.
+ * @param edges - The edges, all between the same two nodes.
+ * @param from - The node they run from.
+ * @param to - The node they run to, or the node itself.
+ * @returns The phrase.
  * @throws {never} Never.
  */
-function checkParams(chosen: ModelInfo, node: ProposalNode): ProposalVerdict {
-  const declared = Object.keys(chosen.params);
-  for (const [key, value] of Object.entries(node.params ?? {})) {
-    const info = chosen.params[key];
-    if (!info) {
-      return {
-        ok: false,
-        reason: `"${chosen.name}" declares no ${key}. It takes: ${declared.join(", ") || "no parameters"}.`,
-      };
-    }
-    if (theirsToFill(key, info)) {
-      return {
-        ok: false,
-        reason: info.valuesFrom !== undefined
-          ? `"${key}" is picked from a list only ${info.valuesFrom} holds, so it cannot be written here. Leave it out and add a note saying which one to pick.`
-          : `"${key}" is written in a box of its own on the panel, and nothing set here reaches it. Leave it out: send words you wrote as a written text node wired in with into: "${key}" and a note, or add a note saying what to write in that box.`,
-      };
-    }
-    if (info.filledBySource === true) {
-      // Two ways that material arrives, and the sentence names the one this
-      // model uses: through the pool an edge carries it, through a slot the
-      // reader clicks a node on the canvas. Said the other way round, it
-      // sends the model off to wire an edge the panel never reads.
-      return {
-        ok: false,
-        reason: info.fromReferencePool === true
-          ? `"${key}" carries the reader's own material, which arrives by wiring an empty node in. Leave it out.`
-          : `"${key}" carries the reader's own material, which they put in a slot on the panel. Leave it out.`,
-      };
-    }
-    if (info.fromStoryboard === true) {
-      return {
-        ok: false,
-        reason: `"${key}" is set by the node's shots. Leave it out of params and give shots.`,
-      };
-    }
-    if (info.noControl === true) {
-      return {
-        ok: false,
-        reason: `The panel draws no control for "${key}", so the reader can neither see it nor change it. Leave it out.`,
-      };
-    }
-    if (!isDrawn(chosen, node.params ?? {}, info)) {
-      const gate = info.gate as ControlGate;
-      return {
-        ok: false,
-        reason: `"${key}" only counts while "${gate.param}" is on, and this proposal leaves it off. Set that switch or leave "${key}" out.`,
-      };
-    }
-    const options = info.options ?? [];
-    if (options.length > 0 && !options.some((offered) => offered === value)) {
-      return {
-        ok: false,
-        reason: `The control for "${key}" offers ${options.map((o) => JSON.stringify(o)).join(", ")}, not ${JSON.stringify(value)}.`,
-      };
-    }
-    if (info.min === undefined && info.max === undefined) continue;
-    if (typeof value !== "number") {
-      return { ok: false, reason: `"${key}" takes a number, not ${JSON.stringify(value)}.` };
-    }
-    if ((info.min !== undefined && value < info.min) || (info.max !== undefined && value > info.max)) {
-      return {
-        ok: false,
-        reason: `"${key}" runs from ${String(info.min ?? "?")} to ${String(info.max ?? "?")}, and this one is ${String(value)}.`,
-      };
-    }
-    const offStep = offStepReason(key, value, info);
-    if (offStep !== null) return { ok: false, reason: offStep };
-  }
-  return { ok: true };
-}
-
-/**
- * The refusal for a wired node whose edge does not say a way this model takes.
- * @param from - The wired node.
- * @param model - The model fed.
- * @param options - The ways this model takes its kind.
- * @param into - What the edge said, if anything.
- * @returns The reason, naming every way the model takes.
- * @throws {never} Never.
- */
-function wayRefusal(from: ProposalNode, model: string, options: readonly WayIn[], into: string | undefined): string {
-  const listed = options.map((option) => `"${option.into}"`).join(" or ");
-  return into === undefined
-    ? `"${from.name}" can go into "${model}" ${String(options.length)} ways; say which on its edge with into: ${listed}.`
-    : `"${model}" takes no ${from.type} by "${into}"; set into on the edge from "${from.name}" to ${listed}.`;
-}
-
-/** A node wired into a generation, and the way it goes in. */
-interface Routed {
-  node: ProposalNode;
-  way: WayIn;
-}
-
-/**
- * Where each node wired into one generation goes, as its edge says (design
- * 5.7). The agent knows, and the marks it writes are words that name no node,
- * so nothing here can work it out from them.
- * @param proposal - The whole proposal.
- * @param index - The generation's index.
- * @param chosen - Its model.
- * @param ways - Its ways in, as `waysIn` gives them.
- * @returns Each routed node, or the refusal for the first edge that says no way the model has.
- * @throws {never} Never.
- */
-function routeEdges(
-  proposal: CanvasProposal,
-  index: number,
-  chosen: ModelInfo,
-  ways: Map<WayKind, WayIn[]>,
-): { routed: Routed[] } | { reason: string } {
-  const routed: Routed[] = [];
-  for (const edge of proposal.edges.filter((e) => e.toIndex === index)) {
-    const from = proposal.nodes[edge.fromIndex];
-    if (!from) continue;
-    // A slot of a kind the canvas will not wire in is filled by picking, and
-    // the edge itself is refused with the rest of the wiring.
-    const options = canConnect(from.type, chosen.nodeType) ? (ways.get(from.type) ?? []) : [];
-    // An edge the model takes nothing from still carries the creative link
-    // (user 2026-08-13); saying where it goes is a claim the model refutes.
-    if (options.length === 0) {
-      if (edge.into === undefined) continue;
-      return { reason: `"${chosen.name}" takes no ${from.type} node, so the edge from "${from.name}" goes nowhere in it; leave into off that edge, or propose a model that takes it.` };
-    }
-    const way = edge.into === undefined
-      ? options.length === 1 ? options[0] : undefined
-      : options.find((option) => option.into === edge.into);
-    if (way === undefined) return { reason: wayRefusal(from, chosen.name, options, edge.into) };
-    routed.push({ node: from, way });
-  }
-  return { routed };
-}
-
-/**
- * How many notes a node carries, in its prompt and every shot.
- * @param node - The node.
- * @returns The count.
- * @throws {never} Never.
- */
-function notesIn(node: ProposalNode): number {
-  return proposalMarkSegments(node).filter((segment) => segment.slot?.kind === "note").length;
-}
-
-/**
- * Judge one generation node against the catalog and its own group.
- * @param proposal - The whole proposal, for reading the group around it.
- * @param node - The node being judged.
- * @param index - Where it sits, for naming it in a refusal.
- * @returns Whether it stands, and what is missing when it does not.
- * @throws {never} Never.
- */
-function checkGenerateNode(
-  proposal: CanvasProposal,
-  node: ProposalNode,
-  index: number,
-): ProposalVerdict {
-  const { mode, model } = node;
-  if (node.type === "text") {
-    return {
-      ok: false,
-      reason: `"${node.name}" is a text node, and nothing is generated into one. Write the words yourself and send it as a written node.`,
-    };
-  }
-  const nodeType: GenerationNodeType = node.type;
-  if (!mode || !model) {
-    return { ok: false, reason: `Node ${index} generates, so it needs a mode and a model.` };
-  }
-  // A mode this node never had and a mode no model here backs are the same
-  // answer from the reader's side -- it cannot be proposed -- and
-  // `modelsForMode` already names what the node does offer instead.
-  const reachable = modelsForMode(nodeType, mode);
-  if (!reachable.available) {
-    return {
-      ok: false,
-      reason: reachable.offered.length > 0
-        ? `No model here backs "${mode}" on a ${nodeType} node. It offers: ${reachable.offered.join(", ")}.`
-        : `A ${nodeType} node can generate nothing right now.`,
-    };
-  }
-  const chosen = reachable.models.find((m) => m.name === model);
-  if (!chosen) {
-    return {
-      ok: false,
-      reason: `"${model}" does not back "${mode}". Those that do: ${reachable.models.map((m) => m.name).join(", ")}.`,
-    };
-  }
-  const values = checkParams(chosen, node);
-  if (!values.ok) return values;
-
-  // Defined in the multi-shot mode alone, for a model that takes shots there.
-  const board = chosen.storyboard;
-  if (node.shots !== undefined && board === undefined) {
-    return {
-      ok: false,
-      reason: `Shots belong to the multi_shot mode. Propose mode "multi_shot" with a model that takes them, or leave shots out.`,
-    };
-  }
-  if (board !== undefined && node.shots === undefined) {
-    return {
-      ok: false,
-      reason: `In the multi_shot mode the shots are what is generated. Give shots, each with its own prompt and seconds.`,
-    };
-  }
-  // The multi-shot run sends the shots in place of the main prompt, so marks
-  // in a main prompt beside them would be counted and priced but never sent.
-  if (node.shots !== undefined && (node.prompt?.length ?? 0) > 0) {
-    return {
-      ok: false,
-      reason: `With shots the main prompt is not sent. Put its words and notes into the shots and leave prompt out.`,
-    };
-  }
-
-  // Every segment that can carry a mark: the main prompt, then each shot.
-  const prompt = proposalMarkSegments(node);
-  // A model drawing no box mounts no editor and forces the box empty: only a
-  // note, which the reader reads on the card and which is never sent, has a
-  // place there. Words, a tweak and an @ all need a box.
-  if (!chosen.takesPrompt && prompt.some((segment) => segment.slot?.kind !== "note")) {
-    return {
-      ok: false,
-      reason: `"${model}" draws no prompt box, so words and tweak or asset marks written there reach nobody. Keep only notes saying what the reader picks in the panel.`,
-    };
-  }
-  const ways = waysIn(chosen);
-  const routing = routeEdges(proposal, index, chosen, ways);
-  if ("reason" in routing) return { ok: false, reason: routing.reason };
-  const { routed } = routing;
-  // Over a way's room is said first: the fix there is fewer nodes, and every
-  // count below would otherwise ask for a mark or note for a node to remove.
-  for (const [kind, list] of ways) {
-    for (const option of list) {
-      const going = routed.filter(({ way }) => way === option).map(({ node: n }) => n);
-      if (going.length > option.room) {
-        return {
-          ok: false,
-          reason: `"${model}" takes ${String(option.room)} ${kind} node(s) by "${option.into}", and ${String(going.length)} are wired that way (${going.map((n) => `"${n.name}"`).join(", ")}).${list.length > 1 ? " Send the rest another way it takes, or wire fewer." : " Wire fewer."}`,
-        };
-      }
-    }
-  }
-  // Counted, never paired: each way says what the prompt carries per node.
-  const asked = routed.filter(({ way }) => way.mark === "asset").map(({ node: n }) => n);
-  const marked = prompt.filter((segment) => segment.slot?.kind === "asset").length;
-  if (marked < asked.length) {
-    return {
-      ok: false,
-      reason: `"${node.name}" has ${String(asked.length)} node(s) the reader @s to use (${asked.map((n) => `"${n.name}"`).join(", ")}) and ${String(marked)} asset mark(s). Give each one an asset mark saying what to @; a node not @'d is not used.`,
-    };
-  }
-  // The panel says a slot is empty, never which node goes there, and the
-  // lyrics box is one the prompt says nothing about: a note says so.
-  const noted = routed.filter(({ way }) => way.mark === "note");
-  const notes = notesIn(node);
-  if (notes < noted.length) {
-    return {
-      ok: false,
-      reason: `"${node.name}" has ${String(noted.length)} node(s) going into a slot or the lyrics box (${noted.map(({ node: n, way }) => `"${n.name}" into ${way.into}`).join(", ")}) and ${String(notes)} note(s). Give each one a note saying where to pick or @ it.`,
-    };
-  }
-  const scripts = routed.filter(({ node: n, way }) => n.type === "text" && way.into === "pool").map(({ node: n }) => n);
-  // The words of a wired text node go in where the reader @s it, so they
-  // count once against what is sent. Measured as nothing, a script past the
-  // model's cap is placed and the reader meets the refusal at a button they
-  // cannot fix from -- the words are in another node.
-  const scriptWords = scripts.map((n) => promptPlainText(n.prompt ?? [])).join("");
-  const shotCap = board?.maxChars;
-  if (shotCap !== undefined) {
-    const long = scripts.find((n) => [...extractPromptText(promptPlainText(n.prompt ?? []))].length > shotCap);
-    if (long) {
-      return {
-        ok: false,
-        reason: `"${long.name}" is longer than the ${String(shotCap)} characters "${model}" takes for one shot, so @'ing it into a shot is refused at Generate. Shorten it, or propose a model that takes it.`,
-      };
-    }
-  }
-  // What the panel's own gate would say about the box this proposal fills in,
-  // asked with the text the box will hold. A note is left out of it.
-  const shots = (node.shots ?? []).map((shot) => ({ text: promptTextOf(shot.prompt), duration: shot.duration }));
-  const totalParam = board?.totalParam;
-  const total = totalParam === undefined
-    ? undefined
-    : Number(node.params?.[totalParam] ?? chosen.params[totalParam]?.default);
-  // What goes out as the prompt: the shots written into one, for a model with
-  // no field for them, so its length is held to the model's cap.
-  const sent = (board === undefined
-    ? promptTextOf(node.prompt ?? [])
-    : (storyboardSend(board, shots.map((shot) => ({ prompt: shot.text, duration: shot.duration }))).prompt ?? "")) + scriptWords;
-  const verdict = evaluateExecute({
-    promptText: sent,
-    model,
-    nodeExists: true,
-    isSubmitting: false,
-    promptRequired: chosen.takesPrompt,
-    ...(chosen.maxInputChars === undefined ? {} : { maxInputChars: chosen.maxInputChars }),
-    ...(node.shots !== undefined && total !== undefined
-      ? {
-          storyboard: {
-            shots,
-            total,
-            ...(board === undefined ? {} : { maxShots: board.maxShots }),
-            ...(shotCap === undefined ? {} : { maxChars: shotCap }),
-          },
-        }
-      : {}),
-  });
-  const storyboardReason = {
-    "storyboard-shot-empty": `Shot ${String(verdict?.shot)} writes nothing. Every shot needs its own words.`,
-    "storyboard-too-many": `"${model}" takes at most ${String(verdict?.limit)} shots.`,
-    "storyboard-shot-too-long": `Shot ${String(verdict?.shot)} is longer than the ${String(verdict?.limit)} characters "${model}" takes for one shot. Shorten it.`,
-    "storyboard-duration-mismatch": `The shots add up to ${String(verdict?.seconds?.shots)} seconds and ${String(totalParam)} is ${String(verdict?.seconds?.total)}. Make them match.`,
-  } as const;
-  if (verdict !== null && verdict.refusal in storyboardReason) {
-    return { ok: false, reason: storyboardReason[verdict.refusal as keyof typeof storyboardReason] };
-  }
-  if (verdict?.refusal === "prompt-missing" || verdict?.refusal === "style-missing") {
-    return {
-      ok: false,
-      reason: `"${model}" generates from what the prompt says, and this proposal writes nothing in it.`,
-    };
-  }
-  if (verdict?.refusal === "prompt-too-long") {
-    const written = [...extractPromptText(sent)].length;
-    const holding = scripts.map((n) => `"${n.name}"`);
-    return {
-      ok: false,
-      reason: `"${model}" takes ${String(chosen.maxInputChars)} characters and this prompt is ${String(written)}${board === undefined ? "" : " with the shots written into it"}${holding.length > 0 ? `, counting the words in ${holding.join(", ")}` : ""}. Shorten it, or propose a model that takes it.`,
-    };
-  }
-
-  return { ok: true };
-}
-
-/**
- * The refusal for a reference or note on a written node.
- *
- * A text node's body holds words and nothing else: a reference would ask for
- * material nothing here reads, and a note would vanish from words that are
- * kept as written. Said one way wherever it is caught, so a node is never
- * told to send the very segment the next check refuses.
- * @param node - The written node.
- * @returns The refusal.
- * @throws {never} Never.
- */
-function writtenTakesNoMark(node: ProposalNode): ProposalVerdict {
-  return {
-    ok: false,
-    reason: `"${node.name}" holds words the reader keeps as they are, so it takes no reference or note mark. Take the mark out and say what you meant in your own message.`,
-  };
-}
-
-/**
- * Whether one node is the thing its role says it is.
- *
- * The three roles differ in what they carry, not only in what they are called:
- * an empty node holds nothing, a written one holds finished words and so can
- * only be a text node, and a generation is configured. A node whose role and
- * contents disagree lands on the canvas as something the reader cannot use.
- * @param node - The node being judged.
- * @returns Whether it stands, and what is wrong with it when it does not.
- * @throws {never} Never.
- */
-function checkNodeRole(node: ProposalNode): ProposalVerdict {
-  const configured =
-    node.mode !== undefined ||
-    node.model !== undefined ||
-    node.params !== undefined ||
-    node.shots !== undefined;
-  if (node.role === "source") {
-    // Words are the one kind of material nobody has to go and find: an empty
-    // text node is a click away, so proposing one asks for work rather than
-    // saving any. Write the words instead, as a written node.
-    if (node.type === "text") {
-      return {
-        ok: false,
-        reason: `"${node.name}" is an empty text node, which the reader makes in one click. Write the words yourself and send it as a written node, or leave it out.`,
-      };
-    }
-    if (configured || node.prompt !== undefined) {
-      return {
-        ok: false,
-        reason: `"${node.name}" is an empty node for the reader to fill, so it takes no mode, model, parameters, shots or prompt.`,
-      };
-    }
-    return { ok: true };
-  }
-  if (node.role !== "written") return { ok: true };
-
-  if (node.type !== "text") {
-    return {
-      ok: false,
-      reason: `"${node.name}" carries words, and a text node is the only one that holds those.`,
-    };
-  }
-  if (configured) {
-    return {
-      ok: false,
-      reason: `"${node.name}" already holds its words, so it takes no mode, model or shots -- nothing is generated there.`,
-    };
-  }
-  // A text node's body holds words and nothing else: a reference would ask
-  // for material nothing here reads, and a note would vanish from words that
-  // are kept as written. Whatever they say belongs in the message this
-  // proposal travels with.
-  const reaching = (node.prompt ?? []).find(
-    (segment) => segment.slot?.kind === "asset" || segment.slot?.kind === "note",
-  );
-  if (reaching) return writtenTakesNoMark(node);
-  // Without them it lands as an empty text node, which is the thing a reader
-  // makes in a click and has no use for in a proposal.
-  if (promptPlainText(node.prompt ?? []).trim() === "") {
-    return { ok: false, reason: `"${node.name}" says it holds words and carries no words.` };
-  }
-  return { ok: true };
-}
-
-/**
- * Whether a node's words carry a mark typed out as text.
- *
- * Typed, the bracket is words: the reader gets no line on the card for it,
- * the canvas adds nothing to it, and it reaches the model as it stands.
- * @param node - The node being judged.
- * @returns Whether it stands, and the segment to send in its place when not.
- * @throws {never} Never.
- */
-function markTypedAsWords(node: ProposalNode): ProposalVerdict {
-  // Each prompt is read as one string, so a mark typed across two text
-  // segments is caught too. A slot stands in as one character: brackets typed
-  // around a mark read back as one mark that swallows it, as they would once
-  // written out.
-  const typed = [node.prompt ?? [], ...(node.shots ?? []).map((shot) => shot.prompt)].flatMap((segments) =>
-    markedSegments(segments.map((segment) => segment.text ?? "\u0000").join("")).flatMap((part) => (part.slot ? [part.slot] : [])),
-  );
-  if (typed.length === 0) return { ok: true };
-  if (node.role === "written" && typed.some((slot) => slot.kind !== "tweak")) return writtenTakesNoMark(node);
-  return {
-    ok: false,
-    reason: `"${node.name}" types ${String(typed.length)} mark(s) into its words. Send each as a segment of its own and keep the text segments to plain words: ${typed.map((slot) => JSON.stringify({ slot })).join(", ")}.`,
-  };
-}
-
-/**
- * Whether the edges lead anywhere, or run in a circle.
- *
- * An edge stands for one node drawing on another, so a ring of them says every
- * node waits on the next and the reader has nowhere to start.
- * @param proposal - What the model proposed.
- * @returns True when some edge leads back to where it started.
- * @throws {never} Never.
- */
-function hasRing(proposal: CanvasProposal): boolean {
-  const leadsTo = proposal.nodes.map<number[]>(() => []);
-  for (const edge of proposal.edges) leadsTo[edge.fromIndex]?.push(edge.toIndex);
-  // 0 not walked, 1 on the path being walked now, 2 walked and left behind.
-  const state = proposal.nodes.map(() => 0);
-  /**
-   * Follow every edge out of one node, looking for the way back to it.
-   * @param at - The node to walk from.
-   * @returns True when this walk meets a node already on its own path.
-   * @throws {never} Never.
-   */
-  const walk = (at: number): boolean => {
-    if (state[at] === 1) return true;
-    if (state[at] === 2) return false;
-    state[at] = 1;
-    for (const next of leadsTo[at] ?? []) {
-      if (walk(next)) return true;
-    }
-    state[at] = 2;
-    return false;
-  };
-  return proposal.nodes.some((_, at) => walk(at));
+function edgesSaid(edges: CanvasProposal["edges"], from: NodeLabel, to: NodeLabel | "itself"): string {
+  const intos = edges.map((e) => (e.into === undefined ? "no into" : `into "${e.into}"`)).join(", ");
+  return `${edges.length > 1 ? `${String(edges.length)} edges run` : "An edge runs"} from ${from} to ${to} (${intos})`;
 }
 
 /**
@@ -844,126 +129,13 @@ function hasRing(proposal: CanvasProposal): boolean {
  * node is what its role says, each edge stands for one node drawing on
  * another, and a group of two or more says what it is for.
  * @param sent - What the model proposed.
+ * @param materials - The registration behind each material address it names;
+ *   an address with no entry is not in the user's storage.
  * @returns Whether it stands, and what is missing when it does not.
  * @throws {never} Never.
  */
-export function checkProposal(sent: CanvasProposal): ProposalVerdict {
-  return checkResolved(withCatalogFacts(sent));
-}
-
-/**
- * Where the empty nodes a proposal places can go, counted by kind.
- *
- * A proposal cannot see the canvas it lands on, so it cannot know whether the
- * reader already holds a piece of material -- but it can be held to the nodes
- * it places itself. An empty node is a to-do, and a to-do the reader completes
- * and then has nowhere to put is the shape a talking head takes when it is
- * proposed with two portraits: the panel has one place for a picture and one
- * for a voice, so the second portrait can only sit there.
- *
- * Read off the places themselves rather than off the modes table, which speaks
- * in kinds and says nothing about how many places hold each: `first_last` has
- * two places and both take a picture.
- * @param proposal - The proposal being read.
- * @returns How many empty nodes of each kind the group can take.
- * @throws {never} Never.
- */
-function placesByKind(proposal: CanvasProposal): Map<string, number> {
-  const room = new Map<string, number>();
-  for (const node of proposal.nodes) {
-    const chosen = chosenModelOf(node);
-    if (!chosen) continue;
-    for (const [kind, list] of waysIn(chosen)) {
-      room.set(kind, (room.get(kind) ?? 0) + list.reduce((sum, way) => sum + way.room, 0));
-    }
-  }
-  return room;
-}
-
-/**
- * How a node of a kind the canvas will not wire in still reaches a
- * generation: picked into a slot of that kind in the panel (design 5.7 table A).
- * @param into - The generation the edge was drawn into.
- * @param kind - The kind of the node at the edge's other end.
- * @returns The sentence naming those slots, or nothing where the model has none.
- * @throws {never} Never.
- */
-function pickedInstead(into: ProposalNode, kind: string): string {
-  const chosen = chosenModelOf(into);
-  const slots = chosen ? (waysIn(chosen).get(kind as WayKind) ?? []) : [];
-  if (slots.length === 0) return "";
-  const names = slots.map((way) => `"${way.into}"`).join(" or ");
-  return ` "${into.model}" takes a ${kind} node in its ${names} slot, picked in the panel: leave this edge off, place the node unwired and add a note saying which slot.`;
-}
-
-/**
- * Whether every empty node the proposal places has a place to go.
- *
- * Asked of the group rather than of one generation, because a slot is filled
- * by clicking any node of its kind: an empty node placed beside one generation
- * is as reachable from the next one's panel.
- * @param proposal - The proposal being read.
- * @returns Whether it stands, and which kind is over its room when it does not.
- * @throws {never} Never.
- */
-function checkEmptyNodesFit(proposal: CanvasProposal): ProposalVerdict {
-  const room = placesByKind(proposal);
-  const placed = new Map<string, number>();
-  for (const node of proposal.nodes) {
-    if (node.role !== "source") continue;
-    placed.set(node.type, (placed.get(node.type) ?? 0) + 1);
-  }
-  for (const [kind, count] of placed) {
-    const takes = room.get(kind) ?? 0;
-    if (count > takes) {
-      return {
-        ok: false,
-        reason: takes === 0
-          ? `This group places ${String(count)} empty ${kind} node(s), and nothing in it takes ${kind} material.`
-          : `This group places ${String(count)} empty ${kind} node(s), and the panels in it hold ${String(takes)} at a time.`,
-      };
-    }
-  }
-  return { ok: true };
-}
-
-/**
- * Whether every empty node no edge sends into a generation has a note, where
- * some generation in the group has a slot of its kind (design 5.7 table C):
- * unwired, or wired only as a creative link to a model that takes nothing from
- * it. Such a node reaches a generation only by the reader picking it into a
- * slot, and the panel never says which node goes there.
- *
- * Counted over the group, never paired: a slot is filled by clicking any node
- * of its kind, so the notes the group's generations carry beyond those their
- * wired nodes use have to cover every such node.
- * @param proposal - The proposal, its generations already judged.
- * @returns Whether it stands, and which nodes lack a note when it does not.
- * @throws {never} Never.
- */
-function checkUnsentNotes(proposal: CanvasProposal): ProposalVerdict {
-  const sent = new Set<ProposalNode>();
-  const slotKinds = new Set<string>();
-  let spare = 0;
-  for (const [index, node] of proposal.nodes.entries()) {
-    const chosen = chosenModelOf(node);
-    if (!chosen) continue;
-    const ways = waysIn(chosen);
-    for (const [kind, list] of ways) {
-      if (list.some((way) => way.into !== "pool")) slotKinds.add(kind);
-    }
-    // Every generation passed checkGenerateNode, so its edges route.
-    const routing = routeEdges(proposal, index, chosen, ways);
-    if ("reason" in routing) continue;
-    for (const { node: from } of routing.routed) sent.add(from);
-    spare += notesIn(node) - routing.routed.filter(({ way }) => way.mark === "note").length;
-  }
-  const loose = proposal.nodes.filter((node) => node.role === "source" && !sent.has(node) && slotKinds.has(node.type));
-  if (loose.length <= spare) return { ok: true };
-  return {
-    ok: false,
-    reason: `${loose.map((n) => `"${n.name}"`).join(", ")} ${loose.length === 1 ? "goes" : "go"} into no generation, so the reader picks ${loose.length === 1 ? "it" : "each"} into a slot in the panel, and the generations here carry ${String(spare)} note(s) beyond those their wired nodes use. Give each one a note saying which slot to pick it into.`,
-  };
+export function checkProposal(sent: CanvasProposal, materials: MaterialTable = NO_MATERIAL): ProposalVerdict {
+  return checkResolved(withCatalogFacts(sent), materials);
 }
 
 /**
@@ -973,12 +145,16 @@ function checkUnsentNotes(proposal: CanvasProposal): ProposalVerdict {
  * hands back is the thing that was judged rather than a second reading of the
  * catalog taken after the verdict.
  * @param proposal - The proposal, carrying its catalog facts.
+ * @param materials - The registration behind each material address.
  * @returns Whether it stands, and what is missing when it does not.
  * @throws {never} Never.
  */
-function checkResolved(proposal: CanvasProposal): ProposalVerdict {
-  for (const node of proposal.nodes) {
-    const verdict = checkNodeRole(node);
+function checkResolved(proposal: CanvasProposal, materials: MaterialTable): ProposalVerdict {
+  for (const [index, node] of proposal.nodes.entries()) {
+    const at = nodeLabel(proposal.nodes, index);
+    const held = checkMaterial(node, at, materials);
+    if (!held.ok) return held;
+    const verdict = checkNodeRole(node, at);
     if (!verdict.ok) return verdict;
     const typed = markTypedAsWords(node);
     if (!typed.ok) return typed;
@@ -994,57 +170,57 @@ function checkResolved(proposal: CanvasProposal): ProposalVerdict {
     // words to say it about. On a group of empty nodes it would send the
     // model off to write copy nobody asked for.
     const words = proposal.nodes.some((node) => node.role === "written");
-    return {
-      ok: false,
-      reason: words
-        ? "Nothing here generates, so this is words the reader can read and take from your message. Write them in your reply instead."
-        : "Nothing here generates, so a card placed from this leaves the reader nothing to press. Propose what gets made, or say in your reply what they should do.",
-    };
+    return words
+      ? refuse("nothing-generates-words", "Nothing here generates, so these are words the reader reads and takes from your message: words with nothing generating belong in your reply.")
+      : refuse("nothing-generates", "Nothing here generates, so a card placed from this leaves the reader nothing to press.");
   }
 
+  // The canvas holds one edge between two nodes: a second drag between the
+  // same two lands on the first.
+  const pairs = new Set<string>();
   for (const edge of proposal.edges) {
     const ends = [edge.fromIndex, edge.toIndex];
-    if (ends.some((i) => i < 0 || i >= proposal.nodes.length)) {
-      return { ok: false, reason: `An edge points outside the group: ${JSON.stringify(edge)}.` };
+    // An edge is named by its two ends, and every fix takes every edge between them.
+    const between = edgesBetween(proposal, edge);
+    const from = nodeLabel(proposal.nodes, edge.fromIndex);
+    const to = nodeLabel(proposal.nodes, edge.toIndex);
+    if (ends.some((i) => proposal.nodes[i] === undefined)) {
+      return refuse("edge-outside", `${edgesSaid(between, from, to)}.`, fixEdges(from, to));
     }
     if (edge.fromIndex === edge.toIndex) {
-      return { ok: false, reason: `An edge loops node ${edge.fromIndex} onto itself.` };
+      return refuse("edge-self-loop", `${edgesSaid(between, from, "itself")}.`, fixEdges(from, "itself"));
     }
+    const pair = `${String(edge.fromIndex)}>${String(edge.toIndex)}`;
+    if (pairs.has(pair)) {
+      return refuse("edge-repeated", `${edgesSaid(between, from, to)}, and the canvas holds one edge between two nodes.`);
+    }
+    pairs.add(pair);
     // An edge is how one node draws on another's material, so it can only end
     // where something reads it. Ending anywhere else, it is drawn on the canvas
     // saying a relation that nothing acts on.
     const into = proposal.nodes[edge.toIndex];
     const outOf = proposal.nodes[edge.fromIndex];
     if (into && into.role !== "generate") {
-      return {
-        ok: false,
-        reason: `An edge flows into "${into.name}", which generates nothing, so nothing there reads what it carries.`,
-      };
+      return refuse("edge-into-nothing-generating", `An edge flows into "${into.name}", which generates nothing, so nothing there reads what it carries.`);
     }
     // The same whitelist the canvas holds a reader's own drag to. A line they
     // could not draw by hand is one the agent may not draw for them.
     if (into && outOf && !canConnect(outOf.type, into.type)) {
-      return {
-        ok: false,
-        reason: `The canvas does not let a ${outOf.type} node feed a ${into.type} node, by your hand or theirs.${pickedInstead(into, outOf.type)}`,
-      };
+      // How the node reaches the generation instead is the model's to say; a
+      // generation naming no model the catalog serves has only the canvas rule.
+      const chosen = chosenModelOf(into);
+      return refuse("edge-not-allowed", `The canvas does not let ${aNode(outOf.type)} feed ${aNode(into.type)}, by your hand or theirs. ${edgesSaid(between, from, to)}.${chosen ? spaced(waysOrNone(outOf, into, chosen)) : ""}`, fixEdges(from, to));
     }
   }
   if (hasRing(proposal)) {
-    return {
-      ok: false,
-      reason: "Those edges make a ring, and a ring says nothing about what the reader presses first.",
-    };
+    return refuse("edge-ring", "Those edges make a ring, and a ring says nothing about what the reader presses first.");
   }
 
   // Two or more nodes land inside a group, which the reader sees as one thing
   // on a ground of its own. Only the model knows what that thing is for -- it
   // just decided -- so the name comes with the proposal.
   if (proposal.nodes.length > 1 && (proposal.groupName ?? "").trim() === "") {
-    return {
-      ok: false,
-      reason: "Two or more nodes land together in a group, so give the group a name saying what it is for.",
-    };
+    return refuse("group-unnamed", "Two or more nodes land together in a group, and it has no name.", fixGroup("Give the group a name saying what it is for."));
   }
 
   for (const [index, node] of proposal.nodes.entries()) {
@@ -1057,8 +233,43 @@ function checkResolved(proposal: CanvasProposal): ProposalVerdict {
   // catalog cannot resolve contributes none: asked before the loop above, a
   // proposal naming a model that does not exist would be answered about its
   // empty nodes rather than about the name it got wrong.
-  const fit = checkEmptyNodesFit(proposal);
+  const fit = checkSourceNodesFit(proposal);
   return fit.ok ? checkUnsentNotes(proposal) : fit;
+}
+
+/**
+ * The proposal as the check judges it: every node naming a template filled
+ * in from it, and the catalog's facts written on, or the refusal a template
+ * gives.
+ * @param sent - What the model sent.
+ * @returns The resolved proposal, or the refusal.
+ * @throws {never} Never.
+ */
+function resolveSent(sent: z.infer<typeof inputSchema>): { proposal: CanvasProposal } | Refusal {
+  const nodes: ProposalNode[] = [];
+  for (const [index, node] of sent.nodes.entries()) {
+    if (node.template === undefined) {
+      const { template: _none, ...plain } = node;
+      nodes.push(plain);
+      continue;
+    }
+    const expanded = expandTemplate({ ...node, template: node.template }, nodeLabel(sent.nodes, index));
+    if (!expanded.ok) return expanded;
+    nodes.push(expanded.node);
+  }
+  return { proposal: withCatalogFacts({ ...sent, nodes }) };
+}
+
+/**
+ * Whether what the model sent stands, templates and all.
+ * @param sent - What the model sent.
+ * @param materials - The registration behind each material address it names.
+ * @returns The verdict, naming the refusal when there is one.
+ * @throws {never} Never.
+ */
+export function verdictFor(sent: z.infer<typeof inputSchema>, materials: MaterialTable = NO_MATERIAL): ProposalVerdict {
+  const resolved = resolveSent(sent);
+  return "proposal" in resolved ? checkResolved(resolved.proposal, materials) : resolved;
 }
 
 /**
@@ -1070,29 +281,37 @@ function checkResolved(proposal: CanvasProposal): ProposalVerdict {
  * Nodes naming a template are expanded first, so the check judges the node
  * that will be placed.
  * @param sent - What the model sent.
+ * @param materials - The registration behind each material address it names.
  * @returns The answer the card and the canvas read.
  * @throws {never} Never.
  */
-export function answerFor(sent: z.infer<typeof inputSchema>): ProposalAnswer {
-  const nodes: ProposalNode[] = [];
-  for (const node of sent.nodes) {
-    if (node.template === undefined) {
-      const { template: _none, ...plain } = node;
-      nodes.push(plain);
-      continue;
-    }
-    const expanded = expandTemplate({ ...node, template: node.template });
-    if (!expanded.ok) return { placed: false, reason: expanded.reason };
-    nodes.push(expanded.node);
-  }
-  const proposal: CanvasProposal = { ...sent, nodes };
-  const resolved = withCatalogFacts(proposal);
-  const verdict = checkResolved(resolved);
+export function answerFor(sent: z.infer<typeof inputSchema>, materials: MaterialTable = NO_MATERIAL): ProposalAnswer {
+  const sentResolved = resolveSent(sent);
+  if (!("proposal" in sentResolved)) return { placed: false, reason: sentResolved.reason };
+  const resolved = sentResolved.proposal;
+  const verdict = checkResolved(resolved, materials);
   if (!verdict.ok) return { placed: false, reason: verdict.reason };
   // The same resolution the check just judged against, so what the canvas
   // places is the thing that was judged. Asked again over there the catalog
-  // could be absent -- the reader may press Use before it loads.
-  return { ...resolved, placed: true };
+  // could be absent -- the reader may press Use before it loads. Each node
+  // holding material carries the numbers its registration holds, so it lands
+  // the way an upload would.
+  return {
+    ...resolved,
+    // Each edge names the way the check routed it, so landing reads one
+    // answer and never resolves an edge left without into a second time.
+    edges: resolved.edges.map((edge) => {
+      const chosen = edge.into === undefined ? chosenModelOf(resolved.nodes[edge.toIndex] as ProposalNode) : undefined;
+      const routing = chosen === undefined ? undefined : routeEdges({ ...resolved, edges: [edge] }, edge.toIndex, chosen);
+      const way = routing !== undefined && "routed" in routing ? routing.routed[0]?.entry.way : undefined;
+      return way === undefined ? edge : { ...edge, into: way.into };
+    }),
+    nodes: resolved.nodes.map((node) => {
+      const facts = node.material === undefined ? undefined : materials.get(node.material);
+      return facts === undefined || facts === "missing" ? node : { ...node, materialMedia: facts.media };
+    }),
+    placed: true,
+  };
 }
 
 /**
@@ -1124,27 +343,28 @@ function templateGuide(): string {
     "Templates a generate node can start from: " +
     GENERATION_TEMPLATES.map((template) => {
       const references = template.references;
-      const segments = templatePrompt(template).map((segment) =>
-        segment.slot === undefined
-          ? { text: segment.text }
-          : { slot: segment.slot },
-      );
-      return `${template.id} (${template.nodeType}, ${template.mode}, ${template.model}, ${references} reference${references === 1 ? "" : "s"}): ${template.agentNote}. Its prompt, as segments: ${JSON.stringify(segments)}`;
+      return `${template.id} (${template.nodeType}, ${template.mode}, ${template.model}, ${references} reference${references === 1 ? "" : "s"}): ${template.agentNote}. Its prompt, as segments: ${templateSegmentsText(template)}`;
     }).join("; ") +
-    ". Each reference is a node wired in, as with any proposal, its edge saying into: \"pool\". Name the template on the node and leave out what " +
-    "you keep. To put the reader's own story or detail in, send the template's prompt rewritten in the " +
-    "language they write in, as segments: fill a tweak segment with words or keep it for them, and keep each " +
-    "asset segment, saying in its label whether the picture is uploaded or generated, and its note field is the card's line; " +
-    "the reader @s it by hand."
+    ". Each reference is a node wired in, as with any proposal, its edge saying into: \"pool\", and @'d by its ref. " +
+    "Name the template on the node and leave out the mode and model you keep. Send the template's prompt as the " +
+    "node's own, rewritten in the language the reader writes in with their story or detail in it: fill a tweak " +
+    "segment with words or keep it for them."
   );
 }
+
+/** What this tool is handed in its context: the studio whose material counts. */
+export interface ProposeContext extends Record<string, unknown> {
+  studioId: string;
+}
+
+const proposeContextSchema: z.ZodType<ProposeContext> = z.object({ studioId: z.string().min(1) });
 
 /**
  * The proposal tool, built per turn: its description carries the template
  * prompts in the reader's language, which only a turn knows.
  * @returns The tool.
  */
-export function makeProposeCanvasAction(): Tool<z.infer<typeof inputSchema>, ProposalAnswer> {
+export function makeProposeCanvasAction(): Tool<z.infer<typeof inputSchema>, ProposalAnswer, ProposeContext> {
   return tool({
   description:
     "The canvas is where models are run and where the pieces of one job are " +
@@ -1158,6 +378,9 @@ export function makeProposeCanvasAction(): Tool<z.infer<typeof inputSchema>, Pro
     "shape: an empty node and a generation for a picture; the copy for the " +
     "same job as a written node beside them; one " +
     "empty node feeding several generations for several takes on one thing. " +
+    "A source node can hold material the user gave: a file uploaded in the chat, " +
+    `or a picture found on the web and saved with ${SAVE_IMAGE}. Give its address as material, and ` +
+    "fill a generation's slot with it through fills, or wire it into the pool. " +
     "Before proposing any shape with an empty node in it, ask_user once " +
     "whether they have that material -- you cannot see their canvas, and the " +
     "answer decides the shape. Wire an edge where a node draws on another's " +
@@ -1170,15 +393,20 @@ export function makeProposeCanvasAction(): Tool<z.infer<typeof inputSchema>, Pro
     "is placed -- what to put in, what to pick, what to press. " +
     templateGuide(),
   inputSchema,
+  contextSchema: proposeContextSchema,
   metadata: { runningLine: "chat.tool.proposingNodes" },
   toModelOutput: ({ output }) => ({ type: "text", value: renderProposalForModel(output) }),
   execute: async (
     proposal: z.infer<typeof inputSchema>,
-    // Unused: reads a cached catalog and returns, so there is nothing to
-    // abandon. Declared so every tool has the same shape.
-    _options: { abortSignal?: AbortSignal },
+    // The signal is unused: a cached catalog and at most a few ledger rows,
+    // so there is nothing worth abandoning. Declared so every tool has the
+    // same shape.
+    { context }: { abortSignal?: AbortSignal; context: ProposeContext },
   ): Promise<ProposalAnswer> => {
-    return answerFor(proposal);
+    const urls = proposal.nodes.flatMap((node) => (node.material === undefined ? [] : [node.material]));
+    // A proposal with no material asks the ledger nothing.
+    const materials = urls.length === 0 ? NO_MATERIAL : await materialFacts(context.studioId, urls);
+    return answerFor(proposal, materials);
   },
 });
 }

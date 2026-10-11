@@ -56,6 +56,7 @@ import {
 } from "@ingest/probe-command.js";
 import { partLayoutRefusal, partListRefusal } from "@ingest/part-layout.js";
 import { runWindowLeft } from "@ingest/run-window.js";
+import { SOURCE_USER_AGENT } from "@ingest/source-request.js";
 import {
   assembleObject,
   hashStoredObject,
@@ -907,7 +908,7 @@ async function fetchIntoUpload(request: Request, env: Env): Promise<Response> {
     return new Response("A https source url is required", { status: 400 });
   }
 
-  const upstream = await fetch(source).catch(
+  const upstream = await fetch(source, { headers: { "user-agent": SOURCE_USER_AGENT } }).catch(
     noted("ingest_source_unreachable", { storageKey }, fromReader),
   );
   if (upstream === null || !upstream.ok || upstream.body === null) {
