@@ -272,8 +272,8 @@ export function writeAgentPanelOpen(
 }
 
 /**
- * Whether this account turned off sending the open Space to the Agent in this
- * project (inner#1413).
+ * Whether this account has the open Space sent to the Agent in this project
+ * (inner#1413).
  * @param userId - The signed-in account; nothing is read without one.
  * @param projectId - The project being opened.
  * @returns The stored value, or undefined when it was never toggled here or
