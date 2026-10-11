@@ -260,6 +260,13 @@ export function renderProductGuide(): string {
       "plus sign. Pasting canvas nodes copied on the canvas, or a picture copied in this chat, into the box " +
       "attaches them too. A sent message cannot be edited and a " +
       "reply cannot be regenerated: to ask again, send another message.",
+    "Right of that plus sign, a chip shows the icon and name of the Space whose tab is active; with no tab " +
+      "open there is none. Pressing it turns it off and on, and it stays as left for this account in this " +
+      "project. While it is on, each message the reader sends carries that Space's content to the Agent -- a " +
+      "document's text, or a canvas's nodes and the links between them -- and hovering it shows " +
+      `${quoted(t("chat.composer.spaceContextOn"))}. Off, it has a dashed border and grey words, and hovering ` +
+      `it shows ${quoted(t("chat.composer.spaceContextOff"))}. On or off, every message tells the Agent the ` +
+      "name and type of each Space in the project.",
     "Typing @ in the box opens a list, just above the @, of the attachments that have finished uploading; it " +
       `reads ${quoted(t("chat.composer.atEmpty"))} when there are none. Typing narrows it and the list goes away ` +
       "while what is typed after the @ matches none, so the @ stays ordinary text; the arrow keys move through it, Enter or " +
