@@ -77,7 +77,7 @@ async function buildScene(browser: Browser, count: number): Promise<Scene> {
     const slug = `join-target-${stamp}-${n}`;
     const created = await dataOf<{ id: string; name: string }>(
       await a.request.post('/api/v1/projects', {
-        data: { studioId: studio.id, name: `Join target ${n}`, slug, spaceType: 'canvas' },
+        data: { studioId: studio.id, name: `Join target ${stamp} ${n}`, slug, spaceType: 'canvas' },
       }),
       `create project ${n}`,
     );
@@ -122,10 +122,15 @@ test('B asks to join from the card; A approves as Editor; B walks in', async ({ 
   const pageA = await a.newPage();
   await pageA.goto(`/studio/${studioSlug}/projects`);
   await pageA.getByTestId('bell-trigger').click();
-  const row = pageA.locator('[data-testid^="bell-open-decision-"]').first();
+  // A's bell keeps the requests earlier runs left; this run's is the one
+  // naming this run's project.
+  const row = pageA
+    .locator('li[data-testid^="bell-notification-"]', { hasText: target.name })
+    .locator('[data-testid^="bell-open-decision-"]');
   await expect(row).toBeVisible({ timeout: 15_000 });
   await row.click();
-  await expect(pageA.getByText(/asked to join Join target 1/)).toBeVisible({ timeout: 15_000 });
+  await expect(pageA.getByRole('heading', { name: 'Join request' })).toBeVisible({ timeout: 15_000 });
+  await expect(pageA.getByRole('definition').filter({ hasText: target.name })).toBeVisible();
   await expect(pageA.getByText(/I cut the trailer/)).toBeVisible();
   await pageA.getByRole('combobox', { name: 'Role' }).click();
   await pageA.getByRole('option', { name: 'Editor' }).click();
@@ -169,7 +174,7 @@ test('B opening a project address directly gets the dialog in place; Cancel goes
 
   const dialog = pageB.getByTestId('join-project-dialog');
   await expect(dialog).toBeVisible({ timeout: 20_000 });
-  await expect(dialog.getByText(/Join target 1/)).toBeVisible();
+  await expect(dialog.getByText(target.name, { exact: false })).toBeVisible();
   expect(new URL(pageB.url()).pathname).toBe(address);
 
   await dialog.getByRole('button', { name: 'Cancel' }).click();
