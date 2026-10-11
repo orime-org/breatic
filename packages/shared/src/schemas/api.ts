@@ -241,7 +241,7 @@ const chatLoadedSpaceSchema = chatSpaceSchema
     path: ["detail"],
   });
 
-const chatCurrentSpaceSchema = z.union([
+const chatCurrentSpaceSchema = z.discriminatedUnion("state", [
   chatLoadedSpaceSchema,
   chatSpaceSchema.extend({ state: z.literal("loading") }),
   chatSpaceSchema.extend({ state: z.literal("unreadable") }),
