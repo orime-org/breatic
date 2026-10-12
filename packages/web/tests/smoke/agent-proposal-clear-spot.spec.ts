@@ -7,15 +7,29 @@
  *
  * The chat answer is served here, so no model is involved: what is under test
  * is the canvas side -- where the nodes land, and that the view stays where
- * the reader left it. The node in the way is a long text placed just above
- * the centre, so that only its drawn height, not the standard footprint,
- * reaches the spot the proposal is aimed at.
+ * the reader left it. The node in the way is a text of wide letters placed
+ * just above the centre: the height its words are estimated at stops short of
+ * the spot the proposal is aimed at, and only the height it is drawn at, which
+ * the canvas measures, reaches it.
  */
 
 import { expect, type Page } from 'playwright/test';
 import { test } from '../helpers/slot';
 import { startNewConversation } from '../helpers/conversation';
 import { CANVAS_SPACE, liveModuleUrl } from '../helpers/live-module';
+
+/**
+ * The layout module, whose height estimate the blocker is placed against. The
+ * estimate is a pure function, so a copy of its own is as good as the one the
+ * canvas loaded.
+ */
+const PLACE_FLOW = '/spaces/canvas/lib/place-flow.ts';
+
+/** Wide letters: each draws about twice the width the estimate gives it. */
+const WIDE_WORDS = 'WWWW '.repeat(60);
+
+/** How far above the proposal's top edge the blocker's estimated bottom ends. */
+const ESTIMATE_CLEARANCE = 58;
 import { openSmokeProject } from '../helpers/project';
 import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
 import { projectIdOf } from '../helpers/tab-restore';
@@ -85,31 +99,23 @@ async function viewTransform(p: Page): Promise<string> {
 test('lands to the right of a node drawn over its spot, and leaves the view alone', async () => {
   const pane = visibleSpace(page).locator('.react-flow__pane');
   await expect(pane).toBeVisible({ timeout: 20_000 });
-  const paneBox = (await pane.boundingBox())!;
-  // The flow point at the middle of the pane, where an unobstructed proposal
-  // is centred.
-  const centre = await visibleSpace(page)
-    .locator('.react-flow__viewport')
-    .evaluate((el, box) => {
-      const m = new DOMMatrixReadOnly(getComputedStyle(el).transform);
-      return { x: (box.width / 2 - m.e) / m.a, y: (box.height / 2 - m.f) / m.a };
-    }, { width: paneBox.width, height: paneBox.height });
-
-  // Its standard footprint (192 tall) would end a gap and a little above the
-  // proposal's top edge; the words it holds draw it far taller than that.
+  const pid = projectIdOf(page.url());
   const canvasAt = await liveModuleUrl(page, CANVAS_SPACE);
+
+  // The note goes in first: the first node on an empty canvas makes it frame
+  // that node, so the middle of the view is only known once that is done.
   await page.evaluate(
-    async ([pid, sid, url, x, y]: [string, string, string, number, number]) => {
+    async ([p, sid, url, words]: [string, string, string, string]) => {
       const canvas = (await import(/* @vite-ignore */ url)) as {
         addNode: (p: string, s: string, n: unknown) => void;
       };
-      canvas.addNode(pid, sid, {
+      canvas.addNode(p, sid, {
         id: 'blocker',
         type: 'text',
-        position: { x, y },
+        position: { x: 0, y: 0 },
         data: {
           name: 'Long notes',
-          content: 'A long note that wraps over many lines. '.repeat(40),
+          content: words,
           createdAt: Date.now(),
           createdBy: 'clear-spot',
           locked: false,
@@ -117,7 +123,48 @@ test('lands to the right of a node drawn over its spot, and leaves the view alon
         },
       });
     },
-    [projectIdOf(page.url()), spaceId, canvasAt, centre.x - 144, centre.y - 96 - 58 - 192] as [
+    [pid, spaceId, canvasAt, WIDE_WORDS] as [string, string, string, string],
+  );
+  const blocker = visibleSpace(page).locator('.react-flow__node[data-id="blocker"]');
+  await expect(blocker).toBeVisible({ timeout: 20_000 });
+  await expect
+    .poll(async () => {
+      const before = await viewTransform(page);
+      await page.waitForTimeout(300);
+      return before === (await viewTransform(page));
+    }, { message: 'the view settles after framing the note', timeout: 10_000 })
+    .toBe(true);
+
+  // The flow point at the middle of the pane, where an unobstructed proposal
+  // is centred.
+  const paneBox = (await pane.boundingBox())!;
+  const centre = await visibleSpace(page)
+    .locator('.react-flow__viewport')
+    .evaluate((el, box) => {
+      const m = new DOMMatrixReadOnly(getComputedStyle(el).transform);
+      return { x: (box.width / 2 - m.e) / m.a, y: (box.height / 2 - m.f) / m.a, zoom: m.a };
+    }, { width: paneBox.width, height: paneBox.height });
+
+  // Its estimated height ends a gap and a little above the proposal's top
+  // edge; the words it holds draw it far taller than that.
+  const estimate = await page.evaluate(
+    async ([url, words]: [string, string]) => {
+      const layout = (await import(/* @vite-ignore */ url)) as {
+        textFootprintHeight: (text: string) => number;
+      };
+      return layout.textFootprintHeight(words);
+    },
+    [PLACE_FLOW, WIDE_WORDS] as [string, string],
+  );
+  const viewSettled = await viewTransform(page);
+  await page.evaluate(
+    async ([p, sid, url, x, y]: [string, string, string, number, number]) => {
+      const canvas = (await import(/* @vite-ignore */ url)) as {
+        setNodePosition: (p: string, s: string, id: string, at: { x: number; y: number }, parent: null) => void;
+      };
+      canvas.setNodePosition(p, sid, 'blocker', { x, y }, null);
+    },
+    [pid, spaceId, canvasAt, centre.x - 144, centre.y - 96 - ESTIMATE_CLEARANCE - estimate] as [
       string,
       string,
       string,
@@ -125,13 +172,15 @@ test('lands to the right of a node drawn over its spot, and leaves the view alon
       number,
     ],
   );
-  const blocker = visibleSpace(page).locator('.react-flow__node[data-id="blocker"]');
-  await expect(blocker).toBeVisible({ timeout: 20_000 });
+  const blockerTop = paneBox.y + (centre.y - 96 - ESTIMATE_CLEARANCE - estimate) * centre.zoom +
+    (paneBox.height / 2 - centre.y * centre.zoom);
+  await expect.poll(async () => Math.round((await blocker.boundingBox())!.y)).toBe(Math.round(blockerTop));
+  expect(await viewTransform(page), 'moving the note leaves the view where it is').toBe(viewSettled);
   const blockerBox = (await blocker.boundingBox())!;
-  const zoom = await visibleSpace(page)
-    .locator('.react-flow__viewport')
-    .evaluate((el) => new DOMMatrixReadOnly(getComputedStyle(el).transform).a);
-  expect(blockerBox.height / zoom, 'the note draws taller than the standard footprint').toBeGreaterThan(260);
+  expect(
+    blockerBox.height / centre.zoom,
+    'the note draws down into the proposal, past where its estimate ends',
+  ).toBeGreaterThan(estimate + ESTIMATE_CLEARANCE);
 
   await answerWithProposal(page);
   await startNewConversation(page);
