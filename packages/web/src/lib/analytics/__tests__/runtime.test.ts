@@ -109,6 +109,16 @@ describe('analytics runtime', () => {
     expect(sdk.init).not.toHaveBeenCalled();
   });
 
+  it('deletes the database the SDK keeps for its own diagnostics when analytics is not in force', async () => {
+    const deleteDatabase = vi.fn();
+    vi.stubGlobal('indexedDB', { deleteDatabase });
+    await startRuntime();
+    await choose(accepted);
+    expect(deleteDatabase).not.toHaveBeenCalled();
+    await choose(rejected);
+    expect(deleteDatabase).toHaveBeenCalledWith('AMP_diagnostics_test-key');
+  });
+
   it('does not start the SDK when analytics is withdrawn while it downloads', async () => {
     let release = (): void => undefined;
     sdkGate.wait = new Promise<void>((resolve) => {

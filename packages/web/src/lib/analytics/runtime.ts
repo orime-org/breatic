@@ -114,7 +114,10 @@ async function apply(next: BrowserChoice | null): Promise<void> {
   // A later choice arrived while this one waited, and applies itself.
   if (choice !== next) return;
   // Last, because opting the SDK out and sending its queue rewrite what it stores.
-  if (next?.analytics !== true) clearStorage('AMP_');
+  if (next?.analytics !== true) {
+    clearStorage('AMP_');
+    deleteDiagnostics();
+  }
 }
 
 /**
@@ -284,6 +287,19 @@ const gtag: (...args: unknown[]) => void = function () {
   // eslint-disable-next-line prefer-rest-params
   (w.dataLayer ??= []).push(arguments);
 };
+
+/**
+ * Delete the database the SDK keeps for its own diagnostics, which it creates whatever its settings.
+ * While this page's SDK holds it open, the deletion completes when the page closes.
+ */
+function deleteDiagnostics(): void {
+  if (AMPLITUDE_API_KEY === '') return;
+  try {
+    indexedDB.deleteDatabase(`AMP_diagnostics_${AMPLITUDE_API_KEY.slice(0, 10)}`);
+  } catch {
+    // IndexedDB unavailable: the SDK could not have created it either.
+  }
+}
 
 /**
  * Remove this site's cookies and local-storage entries whose names start with
