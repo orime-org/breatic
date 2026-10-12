@@ -19,9 +19,12 @@ import {
   getUploadStatus,
   initCore,
   moveUpload,
+  ADS_SWEEP_JOB,
   requeueStaleAdsUploads,
+  scheduleAdsUploadSweep,
   setAdsConversionConfigForTest,
   settleAdsUpload,
+  unscheduleAdsUploadSweep,
 } from "@breatic/core";
 import type { AdClick, ConsentSnapshot } from "@breatic/shared";
 
@@ -192,10 +195,34 @@ describe("requeueStaleAdsUploads", () => {
     expect((await jobsFor(txn)).map((j) => j.name)).toEqual(["conversion"]);
   });
 
+  it("queues again the conversion of a refund waiting on an upload whose job was lost", async () => {
+    const txn = `signup:${crypto.randomUUID()}`;
+    const key = { conversion: "signup" as const, transactionId: txn };
+    await enqueueAdsConversion({ conversion: "signup", transactionId: txn, click: clicked(1) }, ADS);
+    await moveUpload(key, ["queued"], "restate_pending");
+    for (const lost of (await queue.getJobs(["waiting", "delayed", "prioritized"])).filter((j) => j.data.transactionId === txn)) {
+      await lost.remove();
+    }
+    await sql`UPDATE ads_conversion_uploads SET updated_at = now() - interval '1 hour' WHERE transaction_id = ${txn}`;
+    await requeueStaleAdsUploads(10 * 60_000);
+    expect((await jobsFor(txn)).map((j) => j.name)).toEqual(["conversion"]);
+    expect(await getUploadStatus(key)).toBe("restate_pending");
+  });
+
   it("leaves a recently queued conversion alone", async () => {
     const txn = `signup:${crypto.randomUUID()}`;
     await enqueueAdsConversion({ conversion: "signup", transactionId: txn, click: clicked(1) }, ADS);
     await requeueStaleAdsUploads(10 * 60_000);
     expect((await jobsFor(txn)).map((j) => j.name)).toEqual(["conversion"]);
+  });
+});
+
+describe("the upload sweep", () => {
+  it("keeps no finished sweep runs, and is gone once ad conversions are switched off", async () => {
+    await scheduleAdsUploadSweep();
+    const scheduler = await queue.getJobScheduler(ADS_SWEEP_JOB);
+    expect(scheduler?.template?.opts).toMatchObject({ removeOnComplete: expect.anything(), removeOnFail: expect.anything() });
+    await unscheduleAdsUploadSweep();
+    expect(await queue.getJobScheduler(ADS_SWEEP_JOB)).toBeUndefined();
   });
 });

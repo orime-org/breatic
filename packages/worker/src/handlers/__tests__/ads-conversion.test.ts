@@ -7,7 +7,7 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { UnrecoverableError, type Job } from "bullmq";
+import { DelayedError, UnrecoverableError, type Job } from "bullmq";
 
 import type * as CoreModule from "@breatic/core";
 
@@ -53,9 +53,19 @@ const DATA: AdsConversionJob = {
  * @param attemptsMade - Attempts already made.
  * @returns The job.
  */
-function job(attemptsMade = 0, data: AdsConversionJob = DATA): Job<AdsConversionJob> {
-  return { name: data.kind, data, attemptsMade, opts: { attempts: 5 } } as Job<AdsConversionJob>;
+function job(attemptsMade = 0, data: AdsConversionJob = DATA, queuedAgoMs = 0): Job<AdsConversionJob> {
+  return {
+    name: data.kind,
+    data,
+    attemptsMade,
+    opts: { attempts: 5 },
+    timestamp: Date.now() - queuedAgoMs,
+    updateData: vi.fn(async () => undefined),
+    moveToDelayed: vi.fn(async () => undefined),
+  } as unknown as Job<AdsConversionJob>;
 }
+
+const MINUTE = 60_000;
 
 const RESTATEMENT: AdsConversionJob = {
   ...DATA,
@@ -94,11 +104,41 @@ describe("runAdsConversion", () => {
     expect(settleAdsUpload).toHaveBeenCalledWith(RESTATEMENT, true, "req-2");
   });
 
-  it("waits for the retries while the original upload is still processing", async () => {
+  it("checks again in 30 minutes while Google is still processing the original upload, spending no attempt", async () => {
     const sink = sinkWithStatus("processing");
-    await expect(runAdsConversion(job(0, RESTATEMENT), sink)).rejects.toThrow(/processing/);
+    const queued = job(0, RESTATEMENT);
+    const before = Date.now();
+    await expect(runAdsConversion(queued, sink, "token")).rejects.toBeInstanceOf(DelayedError);
+    const [until, token] = vi.mocked(queued.moveToDelayed).mock.calls[0]!;
+    expect(token).toBe("token");
+    expect(until - before).toBeGreaterThanOrEqual(30 * MINUTE);
+    expect(until - before).toBeLessThan(34 * MINUTE);
+    expect(queued.updateData).toHaveBeenCalledWith({ ...RESTATEMENT, statusChecks: 1 });
     expect(sink.upload).not.toHaveBeenCalled();
     expect(settleAdsUpload).not.toHaveBeenCalled();
+  });
+
+  it("waits longer after each check, an hour at most", async () => {
+    const sink = sinkWithStatus("processing");
+    const second = job(0, { ...RESTATEMENT, statusChecks: 1 });
+    let before = Date.now();
+    await expect(runAdsConversion(second, sink, "token")).rejects.toBeInstanceOf(DelayedError);
+    const secondWait = vi.mocked(second.moveToDelayed).mock.calls[0]![0] - before;
+    expect(secondWait).toBeGreaterThanOrEqual(39 * MINUTE);
+    const late = job(0, { ...RESTATEMENT, statusChecks: 9 });
+    before = Date.now();
+    await expect(runAdsConversion(late, sink, "token")).rejects.toBeInstanceOf(DelayedError);
+    const lateWait = vi.mocked(late.moveToDelayed).mock.calls[0]![0] - before;
+    expect(lateWait).toBeGreaterThanOrEqual(60 * MINUTE);
+    expect(lateWait).toBeLessThan(67 * MINUTE);
+  });
+
+  it("gives the restatement up when Google is still processing the original a day later", async () => {
+    const sink = sinkWithStatus("processing");
+    const queued = job(0, RESTATEMENT, 24 * 60 * MINUTE + 1);
+    await expect(runAdsConversion(queued, sink, "token")).rejects.toBeInstanceOf(UnrecoverableError);
+    expect(queued.moveToDelayed).not.toHaveBeenCalled();
+    expect(settleAdsUpload).toHaveBeenCalledWith(RESTATEMENT, false);
   });
 
   it("drops the restatement when Google rejected the original upload", async () => {

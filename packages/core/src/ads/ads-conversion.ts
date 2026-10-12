@@ -239,7 +239,8 @@ const STALE_AFTER_MS = 10 * 60_000;
  * @throws {unknown} When the database or the queue cannot be reached.
  */
 export async function requeueStaleAdsUploads(staleAfterMs: number = STALE_AFTER_MS): Promise<number> {
-  const rows = await findStaleUploads(["queued", "restating"], new Date(Date.now() - staleAfterMs));
+  // `restate_pending` waits on its conversion's upload, so the conversion is what goes back on the queue.
+  const rows = await findStaleUploads(["queued", "restate_pending", "restating"], new Date(Date.now() - staleAfterMs));
   for (const row of rows) {
     const job = row.status === "restating" ? restatementOf(row.job, row.requestId) : row.job;
     const existing = await adsQueue().getJob(jobIdOf(job));
@@ -254,7 +255,17 @@ export async function requeueStaleAdsUploads(staleAfterMs: number = STALE_AFTER_
  * across all workers. Only a deployment with ad conversions configured calls this.
  */
 export async function scheduleAdsUploadSweep(): Promise<void> {
-  await adsQueue().upsertJobScheduler(ADS_SWEEP_JOB, { every: STALE_AFTER_MS }, { name: ADS_SWEEP_JOB, data: {} });
+  const { removeOnComplete, removeOnFail } = defaultJobOpts();
+  await adsQueue().upsertJobScheduler(
+    ADS_SWEEP_JOB,
+    { every: STALE_AFTER_MS },
+    { name: ADS_SWEEP_JOB, data: {}, opts: { removeOnComplete, removeOnFail } },
+  );
+}
+
+/** Stop the sweep on a deployment whose ad conversions were switched off. */
+export async function unscheduleAdsUploadSweep(): Promise<void> {
+  await adsQueue().removeJobScheduler(ADS_SWEEP_JOB);
 }
 
 /**

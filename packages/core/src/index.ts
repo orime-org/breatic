@@ -247,6 +247,7 @@ export {
   enqueueAdsConversion,
   enqueueAdsRestatement,
   requeueStaleAdsUploads,
+  unscheduleAdsUploadSweep,
   scheduleAdsUploadSweep,
   settleAdsUpload,
   setAdsConversionConfigForTest,

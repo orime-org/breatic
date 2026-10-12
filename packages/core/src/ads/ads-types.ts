@@ -31,6 +31,8 @@ export interface AdsConversionJob {
   readonly value?: { readonly amountCents: number; readonly currency: string };
   /** On a restatement: the platform's id for the original upload, checked before restating. */
   readonly originalRequestId?: string;
+  /** On a restatement: how many times the original was found still processing. */
+  readonly statusChecks?: number;
 }
 
 /** Name of the recurring job that queues again uploads whose job was lost. */

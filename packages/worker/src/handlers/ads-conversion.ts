@@ -6,7 +6,7 @@
  * behind `AdsConversionSink`; Google's Data Manager API is the one sink today.
  */
 
-import { UnrecoverableError, type Job } from "bullmq";
+import { DelayedError, UnrecoverableError, type Job } from "bullmq";
 import { IngestionServiceClient } from "@google-ads/datamanager";
 import {
   ADS_SWEEP_JOB,
@@ -81,6 +81,44 @@ export function googleDataManagerSink(config: AdsConversionConfig): AdsConversio
   };
 }
 
+// Google's schedule for polling a request it is still processing: first check
+// 30 minutes after ingestion, backoff ×1.3 capped at an hour, give up after a
+// day, with a little jitter (Data Manager API diagnostics guide).
+const STATUS_FIRST_WAIT_MS = 30 * 60_000;
+const STATUS_MAX_WAIT_MS = 60 * 60_000;
+const STATUS_BACKOFF = 1.3;
+const STATUS_JITTER = 0.1;
+const STATUS_GIVE_UP_MS = 24 * 60 * 60_000;
+
+/**
+ * How long to wait before checking the original upload again.
+ * @param checks - Checks that already found it processing.
+ * @returns The wait in ms.
+ */
+function statusCheckWait(checks: number): number {
+  const wait = Math.min(STATUS_MAX_WAIT_MS, STATUS_FIRST_WAIT_MS * STATUS_BACKOFF ** checks);
+  return wait * (1 + Math.random() * STATUS_JITTER);
+}
+
+/**
+ * Put a restatement back on the queue until Google has processed the
+ * original upload; a delayed job spends none of its attempts.
+ * @param job - The restatement.
+ * @param token - The worker's lock token for the job.
+ * @throws {DelayedError} Always, once the job is delayed.
+ * @throws {UnrecoverableError} When the original is still processing a day on.
+ */
+async function waitForOriginal(job: Job<AdsConversionJob>, token: string | undefined): Promise<never> {
+  if (token === undefined) throw new Error("the original upload is still processing");
+  if (Date.now() - job.timestamp > STATUS_GIVE_UP_MS) {
+    throw new UnrecoverableError("the original upload was still processing a day later");
+  }
+  const checks = job.data.statusChecks ?? 0;
+  await job.updateData({ ...job.data, statusChecks: checks + 1 });
+  await job.moveToDelayed(Date.now() + statusCheckWait(checks), token);
+  throw new DelayedError();
+}
+
 /**
  * Whether the platform refused the request for good.
  * @param err - What the upload threw.
@@ -95,11 +133,17 @@ function isPermanent(err: unknown): boolean {
  * Upload one queued conversion and record how it ended.
  * @param job - The queued upload.
  * @param sink - Where it goes.
+ * @param token - The worker's lock token for the job.
  * @throws {UnrecoverableError} When ad conversions are no longer configured or
  *   the platform refused it for good.
+ * @throws {DelayedError} When a restatement waits for Google to process the original.
  * @throws {unknown} When the upload failed otherwise, so the queue retries.
  */
-export async function runAdsConversion(job: Job<AdsConversionJob>, sink: AdsConversionSink): Promise<void> {
+export async function runAdsConversion(
+  job: Job<AdsConversionJob>,
+  sink: AdsConversionSink,
+  token?: string,
+): Promise<void> {
   if (job.name === ADS_SWEEP_JOB) {
     await requeueStaleAdsUploads();
     return;
@@ -115,10 +159,11 @@ export async function runAdsConversion(job: Job<AdsConversionJob>, sink: AdsConv
     if (job.data.kind === "restatement" && job.data.originalRequestId) {
       const original = await sink.status(job.data.originalRequestId);
       if (original === "failed") throw new UnrecoverableError("the original upload was rejected");
-      if (original === "processing") throw new Error("the original upload is still processing");
+      if (original === "processing") await waitForOriginal(job, token);
     }
     requestId = await sink.upload(job.data, actionId);
   } catch (err) {
+    if (err instanceof DelayedError) throw err;
     const lastAttempt = job.attemptsMade + 1 >= (job.opts.attempts ?? 1);
     const permanent = err instanceof UnrecoverableError || isPermanent(err);
     if (permanent || lastAttempt) await settleAdsUpload(job.data, false);
