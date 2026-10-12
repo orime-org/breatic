@@ -53,28 +53,6 @@ describe('usePendingKeys', () => {
     expect(result.current.isPending('a')).toBe(false);
   });
 
-  it('keeps the key while a second press on it is still out', async () => {
-    const { result } = renderHook(() => usePendingKeys());
-    const first = deferred();
-    const second = deferred();
-
-    act(() => {
-      result.current.track('a', first.promise);
-      result.current.track('a', second.promise);
-    });
-    await act(async () => {
-      first.resolve();
-      await first.promise;
-    });
-    expect(result.current.isPending('a')).toBe(true);
-
-    await act(async () => {
-      second.resolve();
-      await second.promise;
-    });
-    expect(result.current.isPending('a')).toBe(false);
-  });
-
   it('returns the work it was handed so the caller can wait on it', async () => {
     const { result } = renderHook(() => usePendingKeys());
     const work = deferred();

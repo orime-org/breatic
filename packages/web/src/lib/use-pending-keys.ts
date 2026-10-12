@@ -14,24 +14,20 @@ export interface PendingKeys {
 /**
  * Waiting state for a list of buttons, kept per key (inner#1374): a press on
  * row B does not end row A's wait, and A spins until A's own answer is in.
- * Two presses on one key are counted, so the first to settle does not end the
- * second.
+ * A key cannot be pressed again while it waits, because its button swallows
+ * presses while `loading`.
  * @returns The keys waiting and the press entry point.
  */
 export function usePendingKeys(): PendingKeys {
-  const [counts, setCounts] = React.useState<ReadonlyMap<string, number>>(
-    () => new Map(),
-  );
+  const [keys, setKeys] = React.useState<ReadonlySet<string>>(() => new Set());
 
   const track = React.useCallback(<T,>(key: string, work: Promise<T>): Promise<T> => {
-    setCounts((prev) => new Map(prev).set(key, (prev.get(key) ?? 0) + 1));
-    /** Release one hold on the key once this press's work is over. */
+    setKeys((prev) => new Set(prev).add(key));
+    /** Release the key once this press's work is over. */
     const settle = (): void => {
-      setCounts((prev) => {
-        const next = new Map(prev);
-        const left = (prev.get(key) ?? 1) - 1;
-        if (left > 0) next.set(key, left);
-        else next.delete(key);
+      setKeys((prev) => {
+        const next = new Set(prev);
+        next.delete(key);
         return next;
       });
     };
@@ -39,10 +35,7 @@ export function usePendingKeys(): PendingKeys {
     return work;
   }, []);
 
-  const isPending = React.useCallback(
-    (key: string): boolean => counts.has(key),
-    [counts],
-  );
+  const isPending = React.useCallback((key: string): boolean => keys.has(key), [keys]);
 
   return React.useMemo(() => ({ isPending, track }), [isPending, track]);
 }
