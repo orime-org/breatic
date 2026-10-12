@@ -13,6 +13,7 @@ import 'vanilla-cookieconsent/dist/cookieconsent.css';
 import '@web/lib/analytics/consent-banner.css';
 import {
   CONSENT_COOKIE_NAME,
+  CONSENT_MAX_AGE_DAYS,
   CONSENT_REVISION,
   CONSENT_SOURCES,
   requiresOptIn,
@@ -33,9 +34,6 @@ export interface ConsentText {
     ads: { title: string; description: string };
   };
 }
-
-// Consent is asked again after this many days, as most consent banners do.
-const COOKIE_DAYS = 182;
 
 let onChoice: (choice: BrowserChoice | null) => void = ignoreChoice;
 
@@ -125,7 +123,7 @@ export async function startConsentBanner(options: {
       path: '/',
       sameSite: 'Lax',
       secure: window.location.protocol === 'https:',
-      expiresAfterDays: COOKIE_DAYS,
+      expiresAfterDays: CONSENT_MAX_AGE_DAYS,
     },
     guiOptions: {
       consentModal: { layout: 'bar', position: 'bottom', equalWeightButtons: true },

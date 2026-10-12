@@ -783,6 +783,7 @@ export {
 export { REQUEST_NOTIFICATION_TYPES, isRequestNotification } from "@shared/request-notifications.js";
 export {
   CONSENT_COOKIE_NAME,
+  CONSENT_MAX_AGE_DAYS,
   ConsentSnapshotSchema,
   CONSENT_REVISION,
   NO_CONSENT,
@@ -797,6 +798,7 @@ export {
   type AnalyticsProperties,
 } from "@shared/analytics/events.js";
 export {
+  accountConsentCurrent,
   CONSENT_SOURCES,
   mergeAccountConsent,
   type AccountConsent,

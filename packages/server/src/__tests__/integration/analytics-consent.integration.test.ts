@@ -27,7 +27,7 @@ vi.mock("ai", () => ({
 import crypto from "node:crypto";
 import postgres from "postgres";
 import { initCore, getRedis, setSession, sessionCookieName, loadLocales } from "@breatic/core";
-import { CONSENT_REVISION, type AccountConsent } from "@breatic/shared";
+import { CONSENT_MAX_AGE_DAYS, CONSENT_REVISION, type AccountConsent } from "@breatic/shared";
 import type { Hono } from "hono";
 
 try {
@@ -83,6 +83,15 @@ function choice(analytics: boolean, ads: boolean, decidedAt: string): AccountCon
 }
 
 /**
+ * A time this many hours before now, as an ISO timestamp.
+ * @param hours - How long ago.
+ * @returns The timestamp.
+ */
+function hoursAgo(hours: number): string {
+  return new Date(Date.now() - hours * 3_600_000).toISOString();
+}
+
+/**
  * Sends `PUT /users/me/analytics-consent` as the given account.
  * @param userId - The account.
  * @param body - The report.
@@ -112,22 +121,22 @@ describe("users.analytics_consent", () => {
   it("starts empty and keeps the first report", async () => {
     const id = await insertUser();
     expect(await accountConsent(id)).toBeNull();
-    const res = await putConsent(id, choice(true, false, "2026-10-12T01:00:00.000Z"));
+    const res = await putConsent(id, choice(true, false, hoursAgo(6)));
     expect(res.status).toBe(204);
     expect(await accountConsent(id)).toMatchObject({ analytics: true, ads: false });
   });
 
   it("ignores a report decided before the stored one", async () => {
     const id = await insertUser();
-    await putConsent(id, choice(false, false, "2026-10-12T02:00:00.000Z"));
-    const res = await putConsent(id, choice(true, true, "2026-10-12T01:00:00.000Z"));
+    await putConsent(id, choice(false, false, hoursAgo(5)));
+    const res = await putConsent(id, choice(true, true, hoursAgo(6)));
     expect(res.status).toBe(204);
     expect(await accountConsent(id)).toMatchObject({ analytics: false, ads: false });
   });
 
   it("keeps a category on only if both of two simultaneous reports accepted it", async () => {
     const id = await insertUser();
-    const at = "2026-10-12T03:00:00.000Z";
+    const at = hoursAgo(4);
     await Promise.all([putConsent(id, choice(true, false, at)), putConsent(id, choice(true, true, at))]);
     expect(await accountConsent(id)).toMatchObject({ analytics: true, ads: false });
   });
@@ -141,22 +150,37 @@ describe("users.analytics_consent", () => {
 
   it("ignores a report from an older policy revision", async () => {
     const id = await insertUser();
-    const res = await putConsent(id, { ...choice(true, true, "2026-10-12T04:00:00.000Z"), revision: CONSENT_REVISION - 1 });
+    const res = await putConsent(id, { ...choice(true, true, hoursAgo(3)), revision: CONSENT_REVISION - 1 });
     expect(res.status).toBe(204);
+    expect(await accountConsent(id)).toBeNull();
+  });
+
+  it("keeps an explicit choice when a regional default the person never chose arrives later", async () => {
+    const id = await insertUser();
+    await putConsent(id, choice(false, false, hoursAgo(2)));
+    const res = await putConsent(id, { ...choice(true, true, hoursAgo(1)), source: "implicit" });
+    expect(res.status).toBe(204);
+    expect(await accountConsent(id)).toMatchObject({ analytics: false, ads: false, source: "banner" });
+  });
+
+  it("reads no consent for a choice older than the consent cookie lasts", async () => {
+    const id = await insertUser();
+    const old = choice(true, true, new Date(Date.now() - (CONSENT_MAX_AGE_DAYS + 1) * 86_400_000).toISOString());
+    await sql`UPDATE users SET analytics_consent = ${sql.json(old)} WHERE id = ${id}`;
     expect(await accountConsent(id)).toBeNull();
   });
 
   it("reads no consent for a stored choice from an older policy revision", async () => {
     const id = await insertUser();
-    const stale = { ...choice(true, true, "2026-10-12T04:00:00.000Z"), revision: CONSENT_REVISION - 1 };
+    const stale = { ...choice(true, true, hoursAgo(3)), revision: CONSENT_REVISION - 1 };
     await sql`UPDATE users SET analytics_consent = ${sql.json(stale)} WHERE id = ${id}`;
     expect(await accountConsent(id)).toBeNull();
   });
 
   it("rejects a malformed report and leaves the record alone", async () => {
     const id = await insertUser();
-    await putConsent(id, choice(true, false, "2026-10-12T05:00:00.000Z"));
-    const good = choice(false, false, "2026-10-12T06:00:00.000Z");
+    await putConsent(id, choice(true, false, hoursAgo(2)));
+    const good = choice(false, false, hoursAgo(1));
     for (const bad of [
       { ...good, decidedAt: "yesterday" },
       { ...good, source: "cookie-wall" },
@@ -174,7 +198,7 @@ describe("users.analytics_consent", () => {
     const res = await app.request("/api/v1/users/me/analytics-consent", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(choice(true, true, "2026-10-12T07:00:00.000Z")),
+      body: JSON.stringify(choice(true, true, hoursAgo(1))),
     });
     expect(res.status).toBe(401);
   });

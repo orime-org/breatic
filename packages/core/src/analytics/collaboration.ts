@@ -9,7 +9,7 @@
 
 import {
   adClickFrom,
-  CONSENT_REVISION,
+  accountConsentCurrent,
   type AccountConsent,
   type ConsentSnapshot,
   type ProjectActivityType,
@@ -38,13 +38,13 @@ export function collaborationActionOf(type: ProjectActivityType): CollaborationA
 }
 
 /**
- * The account's latest consent, when it was made under the current policy.
+ * The account's latest consent, while it still counts: made under the current
+ * policy and no older than the consent cookie lasts.
  * @param userId - The account.
  * @returns The choice, or null; callers treat null as no consent.
  */
 export async function accountConsentInForce(userId: string): Promise<AccountConsent | null> {
-  const stored = await getAccountConsent(userId);
-  return stored?.revision === CONSENT_REVISION ? stored : null;
+  return accountConsentCurrent(await getAccountConsent(userId), Date.now());
 }
 
 /**

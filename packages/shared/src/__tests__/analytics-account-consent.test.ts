@@ -2,13 +2,19 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { describe, expect, it } from "vitest";
-import { type AccountConsent, mergeAccountConsent } from "../analytics/account-consent.js";
-import { CONSENT_REVISION } from "../analytics/consent.js";
+import { type AccountConsent, accountConsentCurrent, mergeAccountConsent } from "../analytics/account-consent.js";
+import { CONSENT_MAX_AGE_DAYS, CONSENT_REVISION } from "../analytics/consent.js";
 
 const at = (iso: string): AccountConsent["decidedAt"] => iso;
 
-function choice(analytics: boolean, ads: boolean, decidedAt: string, revision = CONSENT_REVISION): AccountConsent {
-  return { analytics, ads, decidedAt: at(decidedAt), source: "banner", revision };
+function choice(
+  analytics: boolean,
+  ads: boolean,
+  decidedAt: string,
+  revision = CONSENT_REVISION,
+  source: AccountConsent["source"] = "banner",
+): AccountConsent {
+  return { analytics, ads, decidedAt: at(decidedAt), source, revision };
 }
 
 describe("mergeAccountConsent", () => {
@@ -45,5 +51,41 @@ describe("mergeAccountConsent", () => {
   it("ignores a report whose decision time is not a valid date", () => {
     const stored = choice(true, true, "2026-10-12T09:00:00.000Z");
     expect(mergeAccountConsent(stored, choice(false, false, "yesterday"))).toEqual(stored);
+  });
+
+  it("never lets a default the person did not choose change the account", () => {
+    const rejected = choice(false, false, "2026-10-12T09:00:00.000Z");
+    const implicit = choice(true, true, "2026-10-13T09:00:00.000Z", CONSENT_REVISION, "implicit");
+    expect(mergeAccountConsent(rejected, implicit)).toEqual(rejected);
+    expect(mergeAccountConsent(null, implicit)).toBeNull();
+  });
+
+  it("records a choice Global Privacy Control made", () => {
+    const stored = choice(true, true, "2026-10-12T09:00:00.000Z");
+    const gpc = choice(true, false, "2026-10-13T09:00:00.000Z", CONSENT_REVISION, "gpc");
+    expect(mergeAccountConsent(stored, gpc)).toEqual(gpc);
+  });
+});
+
+describe("accountConsentCurrent", () => {
+  const day = 24 * 60 * 60 * 1000;
+  const decided = "2026-01-01T00:00:00.000Z";
+
+  it("keeps a choice for as long as the consent cookie lasts", () => {
+    const now = Date.parse(decided) + (CONSENT_MAX_AGE_DAYS - 1) * day;
+    expect(accountConsentCurrent(choice(true, true, decided), now)).toEqual(choice(true, true, decided));
+  });
+
+  it("drops a choice older than the consent cookie lasts", () => {
+    const now = Date.parse(decided) + (CONSENT_MAX_AGE_DAYS + 1) * day;
+    expect(accountConsentCurrent(choice(true, true, decided), now)).toBeNull();
+  });
+
+  it("drops a choice made under an older revision", () => {
+    expect(accountConsentCurrent(choice(true, true, decided, CONSENT_REVISION - 1), Date.parse(decided))).toBeNull();
+  });
+
+  it("treats nothing stored as no choice", () => {
+    expect(accountConsentCurrent(null, Date.parse(decided))).toBeNull();
   });
 });

@@ -23,6 +23,9 @@ export const CONSENT_COOKIE_NAME = "breatic_consent";
  */
 export const CONSENT_REVISION = 1;
 
+/** How long a choice lasts before the banner asks again, as most consent banners do. */
+export const CONSENT_MAX_AGE_DAYS = 182;
+
 /** Whether each optional category may run in this browser. */
 export interface ConsentSnapshot {
   readonly analytics: boolean;
