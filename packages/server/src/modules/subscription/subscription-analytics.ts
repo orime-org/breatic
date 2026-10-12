@@ -67,3 +67,23 @@ export async function reportSubscriptionRenewed(input: {
   if (consent === null) return;
   trackServerEvent("subscription_renewed", { userId: input.userId, insertId: input.eventId, properties }, consent);
 }
+
+/**
+ * The ad conversion the subscription return page reports through the browser
+ * tag, once the subscription is active (inner#1442 design §4.9). Shares its
+ * transaction id with the server-side upload.
+ * @param write - The stored snapshot the return page confirmed.
+ * @returns The conversion, or null while the subscription is not active.
+ */
+export function subscriptionConversion(
+  write: Pick<SubscriptionWrite, "stripeSubscriptionId" | "status" | "tier" | "period">,
+): { transactionId: string; amountCents: number; currency: string } | null {
+  if (write.status !== "active" && write.status !== "trialing") return null;
+  const properties = planProperties(write);
+  if (properties === null) return null;
+  return {
+    transactionId: `sub:${write.stripeSubscriptionId}`,
+    amountCents: properties.amount_cents as number,
+    currency: properties.currency as string,
+  };
+}

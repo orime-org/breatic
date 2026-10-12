@@ -101,7 +101,7 @@ export async function assertAccess(
  * @param spaceType - Initial Space type seeded on first open (canvas
  *   today; document/timeline accepted but disabled in the create picker)
  * @param description - Optional description
- * @returns The newly created project entity
+ * @returns The newly created project entity, and whether it is the first one the caller ever created
  * @throws {ForbiddenError} if the caller is not an `admin` or `maintainer`
  *   of `studioId` — which is also what a missing or soft-deleted studio
  *   produces, since the role lookup inner-joins a live `studios` row
@@ -115,7 +115,7 @@ export async function create(
   slug: string,
   spaceType: SpaceType,
   description?: string,
-): Promise<ProjectEntity> {
+): Promise<ProjectEntity & { isFirst: boolean }> {
   await requireStudioCreateAccess(userId, studioId);
 
   const { project, isFirst } = await db.transaction(async (tx) => {
@@ -134,7 +134,8 @@ export async function create(
   });
   reportProjectCreated(project, { via: "create", is_first: isFirst, space_type: spaceType });
   if (isFirst) await reportFirstProjectConversion(userId);
-  return project;
+  // The page reports the first-project ad conversion from this (inner#1442 §4.9).
+  return { ...project, isFirst };
 }
 
 /**
@@ -564,7 +565,7 @@ export async function setCover(
  * lock is taken.
  * @param sourceId - UUID of the project to duplicate
  * @param userId - Authenticated user UUID (becomes new project owner)
- * @returns The newly created duplicate project entity
+ * @returns The newly created duplicate, and whether it is the first project the caller ever created
  * @throws {NotFoundError} if the source project does not exist, or the caller
  *   is not in its studio
  * @throws {ForbiddenError} if the caller is neither the studio's admin nor the
@@ -575,7 +576,7 @@ export async function setCover(
 export async function duplicate(
   sourceId: string,
   userId: string,
-): Promise<ProjectEntity> {
+): Promise<ProjectEntity & { isFirst: boolean }> {
   await assertMayManage(sourceId, userId);
 
   const { project, isFirst } = await db.transaction(async (tx) => {
@@ -590,7 +591,8 @@ export async function duplicate(
   });
   reportProjectCreated(project, { via: "duplicate", is_first: isFirst });
   if (isFirst) await reportFirstProjectConversion(userId);
-  return project;
+  // The page reports the first-project ad conversion from this (inner#1442 §4.9).
+  return { ...project, isFirst };
 }
 
 /**

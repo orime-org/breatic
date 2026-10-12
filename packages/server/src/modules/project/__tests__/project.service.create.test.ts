@@ -121,7 +121,8 @@ describe("project.service.create — studio-scoped, admin/maintainer gate (spec 
     expect(args?.[4]).toBe("my-cyberpunk-idea");
     expect(args?.[5]).toBe("canvas"); // spaceType threaded to the repo
     expect(args?.[6]).toBe("a description");
-    expect(result).toEqual({ id: "p-1", name: "My Cyberpunk Idea" });
+    // The account had no project before, so this one is its first (inner#1442 §4.9).
+    expect(result).toEqual({ id: "p-1", name: "My Cyberpunk Idea", isFirst: true });
   });
 
   it("allows a maintainer to create — the gate admits both studio roles", async () => {

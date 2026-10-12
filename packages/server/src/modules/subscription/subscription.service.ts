@@ -295,6 +295,7 @@ export async function startCheckout(input: {
  * stored `observedAt` keeps from winning.
  * @param userId - The account the buyer is signed in as.
  * @param sessionId - The Checkout Session the return address named.
+ * @returns The subscription as stored.
  * @throws {NotFoundError} if the session is not a membership checkout of this
  *   account's, or Stripe has no such session.
  * @throws {AppError} `503` if the session holds no subscription yet, or holds
@@ -305,7 +306,7 @@ export async function startCheckout(input: {
 export async function confirmCheckout(
   userId: string,
   sessionId: string,
-): Promise<void> {
+): Promise<SubscriptionWrite> {
   // Stamped before the call: the moment that decides which of two writers
   // holds the newer view is when each of them asked.
   const observedAt = new Date();
@@ -343,6 +344,7 @@ export async function confirmCheckout(
     logContext: { sessionId },
   });
   if (stored === null) throw new AppError(503, t("server.membership.checkout_unconfirmed"));
+  return stored;
 }
 
 /**

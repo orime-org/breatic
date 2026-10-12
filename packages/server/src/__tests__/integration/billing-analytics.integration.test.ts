@@ -55,7 +55,7 @@ try {
 }
 loadLocales();
 
-const { fulfillPayment, handlePaymentFailed, isPaid } = await import("@server/modules/payment/payment.service.js");
+const { fulfillPayment, handlePaymentFailed, paidOrder } = await import("@server/modules/payment/payment.service.js");
 const { handleSubscriptionEvent } = await import("@server/modules/subscription/subscription-events.js");
 
 let sql: ReturnType<typeof postgres>;
@@ -158,7 +158,7 @@ describe("credit purchases", () => {
       SELECT payment_id FROM ads_conversion_uploads WHERE transaction_id = ${`purchase:${sessionId}`}
     `;
     expect(row!.payment_id).toBe(paymentId);
-    expect(await isPaid(sessionId)).toBe(true);
+    expect(await paidOrder(sessionId)).toEqual({ paid: true, amountCents: 2000, currency: "usd" });
   });
 
   it("reports nothing for an order placed without consent", async () => {
@@ -179,7 +179,7 @@ describe("credit purchases", () => {
         event_properties: { success: false, error_code: "async_payment_failed" },
       }),
     ]);
-    expect(await isPaid(sessionId)).toBe(false);
+    expect((await paidOrder(sessionId)).paid).toBe(false);
   });
 });
 
@@ -266,6 +266,17 @@ describe("subscriptions", () => {
     expect(sent).toEqual([
       expect.objectContaining({ event_type: "subscription_renewed", user_id: userId, insert_id: paid.id }),
     ]);
+  });
+
+  it("hands the return page the conversion once the subscription is active", async () => {
+    const { subscriptionConversion } = await import("@server/modules/subscription/subscription-analytics.js");
+    const write = { stripeSubscriptionId: "sub_x", status: "active", tier: "pro", period: "month" } as const;
+    expect(subscriptionConversion(write)).toEqual({
+      transactionId: "sub:sub_x",
+      amountCents: plan.priceCents,
+      currency: plan.currency,
+    });
+    expect(subscriptionConversion({ ...write, status: "incomplete" })).toBeNull();
   });
 
   it("ignores a paid invoice that is not a renewal", async () => {

@@ -202,14 +202,15 @@ describe("POST /confirm — the return from a membership checkout (#307 A5–A7)
   });
 
   it("confirms the named session for the signed-in account and answers with the panel", async () => {
-    service.confirmCheckout.mockResolvedValue(undefined);
+    // Not active yet, so no ad conversion rides along (inner#1442 §4.9).
+    service.confirmCheckout.mockResolvedValue({ stripeSubscriptionId: "sub_1", status: "incomplete", tier: "pro", period: "month" });
     membership.readAccountMembership.mockResolvedValue({ tier: "pro" });
 
     const res = await post("/confirm", { session_id: "cs_1" });
 
     expect(res.status).toBe(200);
     expect(service.confirmCheckout).toHaveBeenCalledWith("u-1", "cs_1");
-    expect(await res.json()).toEqual({ data: { tier: "pro" } });
+    expect(await res.json()).toEqual({ data: { tier: "pro", conversion: null } });
   });
 
   it("passes a refusal from the service through as it was", async () => {

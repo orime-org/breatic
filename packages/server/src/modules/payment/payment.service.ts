@@ -758,13 +758,19 @@ export async function confirmCheckout(
 }
 
 /**
- * Whether an order is paid, whichever pass granted it.
+ * Whether an order is paid, whichever pass granted it, and for how much.
  * @param stripeSessionId - The order's Checkout Session.
- * @returns True when the order row is completed.
+ * @returns `paid` from the order row, with its amount and currency.
  */
-export async function isPaid(stripeSessionId: string): Promise<boolean> {
+export async function paidOrder(
+  stripeSessionId: string,
+): Promise<{ paid: boolean; amountCents: number; currency: string }> {
   const payment = await paymentRepo.getPaymentByStripeSessionId(stripeSessionId);
-  return payment?.status === "completed";
+  return {
+    paid: payment?.status === "completed",
+    amountCents: payment?.amountCents ?? 0,
+    currency: payment?.currency ?? "",
+  };
 }
 
 /**
