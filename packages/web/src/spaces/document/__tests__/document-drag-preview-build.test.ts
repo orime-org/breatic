@@ -358,7 +358,15 @@ describe('blockPreviewContent', () => {
   });
 
   it('leaves out the columns its frame has scrolled wholly out of view on the left, nothing to the left of the preview', () => {
-    const editor = open([{ type: 'table', content: { type: 'tableContent', rows: [{ cells: ['a1', 'b1', 'c1'] }] } }]);
+    const editor = open([
+      {
+        type: 'table',
+        content: {
+          type: 'tableContent',
+          rows: [{ cells: ['a1', 'b1', 'c1'] }, { cells: [{ type: 'tableCell', content: 'ab', props: { colspan: 2 } }, 'c2'] }],
+        },
+      },
+    ]);
     const view = editor.prosemirrorView!;
     const viewport = view.dom.querySelector<HTMLElement>('[data-radix-scroll-area-viewport]')!;
     viewport.scrollLeft = 150;
@@ -366,12 +374,16 @@ describe('blockPreviewContent', () => {
     // a1 is scrolled off whole; b1 is cut by the frame's left edge and is drawn
     // whole; c1 is in view.
     const rights = [90, 230, 380];
-    view.dom.querySelectorAll<HTMLElement>('td').forEach((cell, index) => {
+    view.dom.querySelectorAll<HTMLElement>('tr:first-child td').forEach((cell, index) => {
       cell.getBoundingClientRect = () => ({ right: rights[index]!, width: 120, height: 30 }) as DOMRect;
     });
     const row = view.dom.querySelector('.bn-block-outer')!;
     const root = buildDragPreview(view, blockPreviewContent(view, [row.cloneNode(true) as Element]), () => ({ width: 100, height: 20 }));
-    expect([...root.querySelectorAll<HTMLElement>('col')].map((col) => col.style.getPropertyValue('visibility'))).toEqual(['collapse', '', '']);
+    // Taken out, not hidden by a style: WebKit draws a column set to
+    // `visibility: collapse`. A cell merged across a column left out loses it.
+    expect(cellTexts(root)).toEqual([['b1', 'c1'], ['ab', 'c2']]);
+    expect(root.querySelectorAll('col')).toHaveLength(2);
+    expect(root.querySelector('tr:last-child td')!.getAttribute('colspan')).toBe('1');
     expect(root.querySelector<HTMLElement>('[data-radix-scroll-area-viewport]')!.scrollLeft).toBe(0);
   });
 
@@ -473,7 +485,8 @@ describe('tableLinePreviewContent', () => {
       });
     });
     const content = tableLinePreviewContent(view, cellOf(editor, 'b2'), 'row')!;
-    expect([...content.querySelectorAll<HTMLElement>('col')].map((col) => col.style.getPropertyValue('visibility'))).toEqual(['collapse', '', '']);
+    expect(cellTexts(content)).toEqual([['b2', 'c2']]);
+    expect([...content.querySelectorAll<HTMLElement>('col')].map((col) => col.style.width)).toEqual(['130px', '140px']);
     expect(content.querySelector<HTMLElement>('table')!.style.width).toBe('270px');
   });
 
