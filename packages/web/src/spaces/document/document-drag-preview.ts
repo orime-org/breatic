@@ -10,9 +10,10 @@
  * hold for all of them at once:
  *
  * - It is measured on the dragged content itself: a text block has no width of
- *   its own and takes that of the group it sits in, a media block is its media box, a
- *   table is in the frame it scrolls in, scrolled as the body has it, a table
- *   row is that whole row in the same frame and a column is that column alone.
+ *   its own and takes that of the group it sits in, a media block is its media
+ *   box, a table is in the frame it scrolls in from its first column in view, a
+ *   table row is that whole row in the same frame and a column is that column
+ *   alone, at its width.
  * - It is drawn in the body's styles: each element carries, written on it, the
  *   style it takes where its content sits in the body
  *   (`document-preview-styles.ts`).
