@@ -241,6 +241,7 @@ export {
   ADS_CONVERSION_QUEUE,
   adsConversionConfig,
   adsConversionState,
+  adsConversionWanted,
   enqueueAdsConversion,
   enqueueAdsRestatement,
   setAdsConversionConfigForTest,

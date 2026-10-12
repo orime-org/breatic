@@ -21,7 +21,7 @@ import { buildPasswordResetMail } from "@server/modules/auth/auth-mail.js";
 import { isUniqueViolation } from "@server/utils/pg-error.js";
 import { getRedis } from "@breatic/core";
 import { sendMail, type SendMailResult } from "@breatic/core";
-import { currentConsent, db, env, getHonouredTierForUser, trackServerEvent } from "@breatic/core";
+import { currentConsent, db, enqueueAdsConversion, env, getHonouredTierForUser, logger, trackServerEvent } from "@breatic/core";
 import {
   setSession,
   getSession,
@@ -32,7 +32,7 @@ import {
   ConflictError,
   UnauthorizedError,
 } from "@breatic/core";
-import { CONSENT_REVISION, getActiveLocale, mergeAccountConsent, normalizeEmail, t } from "@breatic/shared";
+import { adClickFrom, CONSENT_REVISION, getActiveLocale, mergeAccountConsent, normalizeEmail, t } from "@breatic/shared";
 import type { AccountConsent, Attribution, UserEntity } from "@breatic/shared";
 
 const BCRYPT_ROUNDS = 12;
@@ -73,6 +73,13 @@ export async function createAccount(data: Parameters<typeof userRepo.createUser>
     userId: user.id,
     insertId: `signup:${user.id}`,
     properties: { method: data.googleId ? "google" : "email" },
+  });
+  enqueueAdsConversion({
+    conversion: "signup",
+    transactionId: `signup:${user.id}`,
+    click: adClickFrom(attribution, Date.now()),
+  }).catch((err: unknown) => {
+    logger.error({ err, userId: user.id }, "ads_conversion_enqueue_failed");
   });
   return user;
 }

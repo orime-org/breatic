@@ -94,6 +94,19 @@ async function addJob(job: AdsConversionJob): Promise<void> {
 }
 
 /**
+ * Whether a conversion would be queued, before its click is looked up.
+ * @param conversion - The conversion.
+ * @param consent - The choice of the browser behind it; defaults to the request's.
+ * @returns True when the browser accepted ads and the conversion has a configured action.
+ */
+export function adsConversionWanted(
+  conversion: AdsConversionName,
+  consent: ConsentSnapshot = currentConsent(),
+): boolean {
+  return consent.ads && adsConversionConfig()?.actions[conversion] !== undefined;
+}
+
+/**
  * Queue a conversion for upload, once per conversion and transaction id.
  * @param input - The conversion.
  * @param input.conversion - Which conversion action it counts toward.
@@ -117,8 +130,7 @@ export async function enqueueAdsConversion(
   },
   consent: ConsentSnapshot = currentConsent(),
 ): Promise<boolean> {
-  const config = adsConversionConfig();
-  if (config === null || !consent.ads || config.actions[input.conversion] === undefined) return false;
+  if (!adsConversionWanted(input.conversion, consent)) return false;
   const { click } = input;
   if (click === null || Date.now() - Date.parse(click.at) > CLICK_WINDOW_MS) return false;
   const job: AdsConversionJob = {

@@ -27,8 +27,10 @@ import crypto from "node:crypto";
 import postgres from "postgres";
 import {
   initCore,
+  getUploadStatus,
   initServerAnalytics,
   loadLocales,
+  setAdsConversionConfigForTest,
   resetServerAnalyticsForTest,
   runWithConsent,
   type OutgoingEvent,
@@ -105,6 +107,29 @@ describe("project_created", () => {
       [`project:${second.id}`, { studio_id: me.studioId, project_id: second.id, space_type: "canvas", via: "create", is_first: false }],
       [`project:${copy.id}`, { studio_id: me.studioId, project_id: copy.id, via: "duplicate", is_first: false }],
     ]);
+  });
+
+  it("queues the first-project conversion against the sign-up click", async () => {
+    setAdsConversionConfigForTest({
+      customerId: "1234567890",
+      actions: { first_project: "44" },
+      credentials: { client_email: "svc@example.test", private_key: "key" },
+    });
+    try {
+      const me = await member();
+      const at = new Date().toISOString();
+      await sql`UPDATE users SET attribution = ${sql.json({ first: { gclid: "g", at }, last: { gclid: "g", at } })} WHERE id = ${me.id}`;
+      const ads = { analytics: false, ads: true };
+      await runWithConsent(ads, () => projectService.create(me.id, me.studioId, "A", "a", "canvas"));
+      await runWithConsent(ads, () => projectService.create(me.id, me.studioId, "B", "b", "canvas"));
+      expect(await getUploadStatus({ conversion: "first_project", transactionId: `first-project:${me.id}` })).toBe("queued");
+      const [{ n }] = await sql<{ n: number }[]>`
+        SELECT count(*)::int AS n FROM ads_conversion_uploads WHERE transaction_id = ${`first-project:${me.id}`}
+      `;
+      expect(n).toBe(1);
+    } finally {
+      setAdsConversionConfigForTest(undefined);
+    }
   });
 
   it("sends nothing without consent", async () => {

@@ -25,8 +25,10 @@ import crypto from "node:crypto";
 import postgres from "postgres";
 import {
   initCore,
+  getUploadStatus,
   initServerAnalytics,
   loadLocales,
+  setAdsConversionConfigForTest,
   resetServerAnalyticsForTest,
   runWithConsent,
   type OutgoingEvent,
@@ -68,7 +70,12 @@ afterAll(async () => {
   await sql?.end({ timeout: 5 });
 });
 
-const AT = "2026-10-12T01:00:00.000Z";
+const AT = new Date().toISOString();
+const ADS_CONFIG = {
+  customerId: "1234567890",
+  actions: { signup: "11" },
+  credentials: { client_email: "svc@example.test", private_key: "key" },
+};
 const ATTRIBUTION = {
   first: { utm_source: "google", gclid: "click-1", landing_page: "/pricing?x=1", at: AT },
   last: { utm_source: "google", gclid: "click-1", at: AT },
@@ -137,10 +144,16 @@ describe("sign-up analytics", () => {
     expect(sent).toEqual([]);
   });
 
-  it("keeps the source for an ads-only choice but sends no analytics event", async () => {
-    const id = await register(consentCookie(["necessary", "ads"]));
-    expect(await storedAttribution(id)).not.toBeNull();
-    expect(sent).toEqual([]);
+  it("keeps the source for an ads-only choice, queues the conversion, and sends no analytics event", async () => {
+    setAdsConversionConfigForTest(ADS_CONFIG);
+    try {
+      const id = await register(consentCookie(["necessary", "ads"]));
+      expect(await storedAttribution(id)).not.toBeNull();
+      expect(sent).toEqual([]);
+      expect(await getUploadStatus({ conversion: "signup", transactionId: `signup:${id}` })).toBe("queued");
+    } finally {
+      setAdsConversionConfigForTest(undefined);
+    }
   });
 
   it("reports a first Google sign-in as a sign-up and later ones as logins", async () => {
