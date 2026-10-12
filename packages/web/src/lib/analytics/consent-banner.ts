@@ -36,6 +36,17 @@ export interface ConsentText {
 }
 
 let onChoice: (choice: BrowserChoice | null) => void = ignoreChoice;
+// The choice last handed to `onChoice`.
+let inForce: BrowserChoice | null = null;
+
+/**
+ * Hand the listener the choice now in force.
+ * @param choice - The choice.
+ */
+function report(choice: BrowserChoice | null): void {
+  inForce = choice;
+  onChoice(choice);
+}
 
 /** The listener until the banner starts. */
 function ignoreChoice(): void {
@@ -67,11 +78,13 @@ export function followPage(pathname: string): void {
 
 /**
  * The choice the cookie holds, when it holds one under the current policy.
+ * Read from the cookie itself each time, so a choice another tab or the
+ * website made is seen.
  * @returns The choice, or null.
  */
 export function readBrowserChoice(): BrowserChoice | null {
-  if (!CookieConsent.validConsent()) return null;
   const cookie = CookieConsent.getCookie();
+  if (cookie.revision !== CONSENT_REVISION || !Array.isArray(cookie.categories)) return null;
   const data = (cookie.data ?? {}) as { source?: unknown; decidedAt?: unknown };
   const source = CONSENT_SOURCES.find((s) => s === data.source) ?? 'banner';
   const decidedAt = typeof data.decidedAt === 'string' ? data.decidedAt : cookie.lastConsentTimestamp;
@@ -111,7 +124,7 @@ function onVisitorChoice(): void {
   stamp(openedModal === 'preferencesModal' ? 'settings' : 'banner', new Date().toISOString());
   openedModal = null;
   undecided = false;
-  onChoice(readBrowserChoice());
+  report(readBrowserChoice());
 }
 
 /**
@@ -182,7 +195,24 @@ export async function startConsentBanner(options: {
   if (decision.choice && decision.write) setConsent(decision.choice);
   undecided = decision.showBanner;
   placeBanner();
-  onChoice(decision.choice);
+  report(decision.choice);
+  // Another tab or the website may have changed the shared cookie while this tab was hidden.
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible') return;
+    const stored = readBrowserChoice();
+    if (!sameChoice(stored, inForce)) report(stored);
+  });
+}
+
+/**
+ * Whether two choices are the same decision.
+ * @param a - One choice.
+ * @param b - The other.
+ * @returns True when both are absent or match in every field.
+ */
+function sameChoice(a: BrowserChoice | null, b: BrowserChoice | null): boolean {
+  if (a === null || b === null) return a === b;
+  return a.analytics === b.analytics && a.ads === b.ads && a.source === b.source && a.decidedAt === b.decidedAt;
 }
 
 /**

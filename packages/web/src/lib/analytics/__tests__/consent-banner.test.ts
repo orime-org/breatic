@@ -6,9 +6,10 @@ import type * as BannerModule from '@web/lib/analytics/consent-banner';
 
 const library = vi.hoisted(() => ({
   consent: false,
+  cookie: { categories: ['necessary'], revision: 1, data: { source: 'banner', decidedAt: '2026-10-12T00:00:00.000Z' }, lastConsentTimestamp: '' },
   run: vi.fn(async () => undefined),
   validConsent: vi.fn((): boolean => library.consent),
-  getCookie: vi.fn(() => ({ categories: ['necessary'], data: { source: 'banner', decidedAt: '2026-10-12T00:00:00.000Z' }, lastConsentTimestamp: '' })),
+  getCookie: vi.fn(() => (library.consent ? library.cookie : {})),
   acceptCategory: vi.fn(),
   setCookieData: vi.fn(),
   show: vi.fn(),
@@ -39,7 +40,10 @@ const TEXT = {
  * @param country - The visitor's country.
  * @returns The module.
  */
-async function startBanner(country: string): Promise<typeof BannerModule> {
+async function startBanner(
+  country: string,
+  onChoice: (choice: unknown) => void = () => undefined,
+): Promise<typeof BannerModule> {
   vi.resetModules();
   const banner = await import('@web/lib/analytics/consent-banner');
   await banner.startConsentBanner({
@@ -49,7 +53,7 @@ async function startBanner(country: string): Promise<typeof BannerModule> {
     text: () => TEXT,
     privacyUrl: '/privacy',
     country: Promise.resolve(country),
-    onChoice: () => undefined,
+    onChoice,
   });
   return banner;
 }
@@ -64,6 +68,7 @@ function bannerShown(): boolean {
 beforeEach(() => {
   vi.clearAllMocks();
   library.consent = false;
+  library.cookie = { categories: ['necessary'], revision: 1, data: { source: 'banner', decidedAt: '2026-10-12T00:00:00.000Z' }, lastConsentTimestamp: '' };
 });
 
 describe('consent banner placement', () => {
@@ -98,5 +103,25 @@ describe('consent banner placement', () => {
     banner.followPage('/studio');
     banner.openConsentSettings();
     expect(library.showPreferences).toHaveBeenCalled();
+  });
+});
+
+describe('a choice changed in another tab', () => {
+  it('is applied when this tab is shown again', async () => {
+    library.consent = true;
+    library.cookie = { ...library.cookie, categories: ['necessary', 'analytics', 'ads'] };
+    const seen: unknown[] = [];
+    await startBanner('DE', (choice) => seen.push(choice));
+    library.cookie = { ...library.cookie, categories: ['necessary'], data: { source: 'settings', decidedAt: '2026-10-13T00:00:00.000Z' } };
+    document.dispatchEvent(new Event('visibilitychange'));
+    expect(seen.at(-1)).toMatchObject({ analytics: false, ads: false, source: 'settings' });
+  });
+
+  it('changes nothing when the stored choice is the same', async () => {
+    library.consent = true;
+    const seen: unknown[] = [];
+    await startBanner('DE', (choice) => seen.push(choice));
+    document.dispatchEvent(new Event('visibilitychange'));
+    expect(seen).toHaveLength(1);
   });
 });

@@ -5,16 +5,27 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { BrowserChoice } from '@web/lib/analytics/consent-decision';
 import type * as RuntimeModule from '@web/lib/analytics/runtime';
 
+const held = vi.hoisted(() => ({ userId: undefined as string | undefined, ready: Promise.resolve() }));
 const sdk = vi.hoisted(() => ({
-  init: vi.fn(),
+  // The real SDK finishes starting asynchronously and writes its cookie when it does.
+  init: vi.fn(() => ({
+    promise: held.ready.then(() => {
+      document.cookie = 'AMP_test=1; Path=/';
+    }),
+  })),
   // The real SDK rewrites its cookie whenever its settings change, opting out included.
   setOptOut: vi.fn(() => {
     document.cookie = 'AMP_test=1; Path=/';
   }),
-  setUserId: vi.fn(),
-  getUserId: vi.fn((): string | undefined => undefined),
+  setUserId: vi.fn((id: string | undefined) => {
+    held.userId = id;
+  }),
+  getUserId: vi.fn((): string | undefined => held.userId),
   identify: vi.fn(),
-  reset: vi.fn(),
+  // A reset starts a new device and forgets the account.
+  reset: vi.fn(() => {
+    held.userId = undefined;
+  }),
   track: vi.fn(),
   // The real SDK rewrites its stored queue after each send.
   flush: vi.fn(() => {
@@ -60,7 +71,7 @@ const rejected: BrowserChoice = { analytics: false, ads: false, source: 'banner'
 async function startRuntime(): Promise<typeof RuntimeModule> {
   vi.resetModules();
   const runtime = await import('@web/lib/analytics/runtime');
-  await runtime.start({ language: 'en', languages: ['en'], appVersion: '1', text: () => ({}) as never, privacyUrl: '/p' });
+  await runtime.start({ language: 'en', languages: ['en'], appVersion: '1', text: () => ({}) as never, privacyUrl: '/p', onError: () => undefined });
   return runtime;
 }
 
@@ -81,6 +92,8 @@ beforeEach(() => {
   }
   localStorage.clear();
   sdkGate.wait = Promise.resolve();
+  held.userId = undefined;
+  held.ready = Promise.resolve();
   (window as Window & { dataLayer?: unknown[] }).dataLayer = [];
 });
 
@@ -219,5 +232,70 @@ describe('analytics runtime', () => {
     await choose(rejected);
     expect(sdk.setOptOut.mock.invocationCallOrder.at(-1)).toBeLessThan(sdk.flush.mock.invocationCallOrder.at(-1) ?? 0);
     expect(localStorage.getItem('AMP_unsent_test')).toBeNull();
+  });
+
+  it('keeps the device of a visitor who was never signed in when the app finds no session', async () => {
+    const runtime = await startRuntime();
+    await choose(accepted);
+    runtime.reset();
+    await choose(accepted);
+    expect(sdk.reset).not.toHaveBeenCalled();
+  });
+
+  it('forgets an account the SDK still holds once the app finds nobody signed in', async () => {
+    held.userId = 'user-1';
+    const runtime = await startRuntime();
+    await choose(accepted);
+    runtime.reset();
+    await choose(accepted);
+    expect(sdk.reset).toHaveBeenCalledTimes(1);
+  });
+
+  it('starts a new device before naming a different account', async () => {
+    held.userId = 'user-a';
+    const runtime = await startRuntime();
+    runtime.identify({ id: 'user-b', membershipTier: 'free', language: 'en' });
+    await choose(accepted);
+    expect(sdk.reset).toHaveBeenCalledTimes(1);
+    expect(sdk.reset.mock.invocationCallOrder[0]).toBeLessThan(sdk.setUserId.mock.invocationCallOrder.at(-1) ?? 0);
+    expect(sdk.setUserId).toHaveBeenLastCalledWith('user-b');
+  });
+
+  it('tells listeners about a withdrawal before the SDK finishes sending what it queued', async () => {
+    const runtime = await startRuntime();
+    await choose(accepted);
+    sdk.flush.mockReturnValueOnce({ promise: new Promise<void>(() => undefined) });
+    const seen: boolean[] = [];
+    runtime.onConsentChange((consent) => seen.push(consent.analytics));
+    banner.onChoice?.(rejected);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(seen).toEqual([false]);
+  });
+
+  it('clears what the SDK stored even when sending what it queued never finishes', async () => {
+    await startRuntime();
+    await choose(accepted);
+    vi.useFakeTimers();
+    sdk.flush.mockReturnValueOnce({ promise: new Promise<void>(() => undefined) });
+    banner.onChoice?.(rejected);
+    await vi.advanceTimersByTimeAsync(10_000);
+    vi.useRealTimers();
+    expect(document.cookie).not.toMatch(/AMP_/);
+  });
+
+  it('leaves nothing stored when analytics is withdrawn while the SDK starts', async () => {
+    let started = (): void => undefined;
+    held.ready = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    await startRuntime();
+    banner.onChoice?.(accepted);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    banner.onChoice?.(rejected);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    started();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(sdk.setOptOut).toHaveBeenLastCalledWith(true);
+    expect(document.cookie).not.toMatch(/AMP_/);
   });
 });

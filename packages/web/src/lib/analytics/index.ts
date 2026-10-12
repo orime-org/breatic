@@ -87,6 +87,7 @@ export function startProductAnalytics(): void {
       appVersion: import.meta.env.VITE_APP_VERSION ?? '',
       text: consentText,
       privacyUrl: PRIVACY_URL,
+      onError: (err) => captureException(err, { tags: { area: 'product_analytics' } }),
     });
     module.followPage(pathname);
     return module;

@@ -40,12 +40,22 @@ export interface AnalyticsUser {
   readonly language: string;
 }
 
+// How long a withdrawal waits for the SDK to send what it queued before clearing its storage.
+const FLUSH_WAIT_MS = 5_000;
+
 let sdkImport: Promise<Amplitude> | null = null;
 let amplitude: Amplitude | null = null;
+// Settles once the SDK has started; calls made before then are queued by the SDK and replayed later.
+let sdkStarted: Promise<void> | null = null;
 let choice: BrowserChoice | null = null;
-let user: AnalyticsUser | null = null;
-/** An account signed out while the SDK was not running; it forgets the account when it runs again. */
-let signedOutSinceRun = false;
+/** The signed-in account; null when nobody is, undefined until the app knows. */
+let account: AnalyticsUser | null | undefined = undefined;
+let reportError: (err: unknown) => void = ignoreError;
+
+/** The error sink until `start` sets one. */
+function ignoreError(): void {
+  // Nothing reports yet.
+}
 let gtagLoaded = false;
 let country: string | null = null;
 let shared: { app_version: string; language: string; membership_tier?: string } = { app_version: '', language: '' };
@@ -59,6 +69,7 @@ const listeners = new Set<(consent: ConsentSnapshot) => void>();
  * @param options.appVersion - The build's version, sent with every event.
  * @param options.text - Reads the banner's text in the current language.
  * @param options.privacyUrl - The privacy policy.
+ * @param options.onError - Receives a failure applying a choice.
  */
 export async function start(options: {
   language: string;
@@ -66,7 +77,9 @@ export async function start(options: {
   appVersion: string;
   text: () => ConsentText;
   privacyUrl: string;
+  onError: (err: unknown) => void;
 }): Promise<void> {
+  reportError = options.onError;
   shared = { ...shared, app_version: options.appVersion, language: options.language };
   const countryLookup = fetchCountry(window.location.origin);
   await startConsentBanner({
@@ -88,15 +101,19 @@ export async function start(options: {
 async function apply(next: BrowserChoice | null): Promise<void> {
   choice = next;
   applyAds(next?.ads === true);
-  await applyAnalytics(next?.analytics === true);
-  // A later choice arrived while this one waited, and applies itself.
-  if (choice !== next) return;
   // A category not granted keeps no cookies, whether or not this page loaded its vendor.
-  // Last, because opting the SDK out and sending its queue rewrite what it stores.
-  if (next?.analytics !== true) clearStorage('AMP_');
   if (next?.ads !== true) clearStorage('_gcl_');
   const snapshot = consentSnapshot();
   for (const listener of listeners) listener(snapshot);
+  try {
+    await applyAnalytics(next?.analytics === true);
+  } catch (err) {
+    reportError(err);
+  }
+  // A later choice arrived while this one waited, and applies itself.
+  if (choice !== next) return;
+  // Last, because opting the SDK out and sending its queue rewrite what it stores.
+  if (next?.analytics !== true) clearStorage('AMP_');
 }
 
 /**
@@ -106,19 +123,21 @@ async function apply(next: BrowserChoice | null): Promise<void> {
 async function applyAnalytics(on: boolean): Promise<void> {
   if (AMPLITUDE_API_KEY === '') return;
   if (!on) {
-    if (amplitude === null) return;
+    if (amplitude === null || sdkStarted === null) return;
+    await sdkStarted;
     // Events recorded while analytics was accepted are still sent; nothing new is recorded.
     amplitude.setOptOut(true);
-    await amplitude.flush().promise;
+    await Promise.race([amplitude.flush().promise, new Promise((resolve) => setTimeout(resolve, FLUSH_WAIT_MS))]);
     return;
   }
+  // A failed download stays failed for this page (the browser keeps the failure); the next page load tries again.
   sdkImport ??= import('@amplitude/analytics-browser');
-  const module = await sdkImport;
+  const sdk = await sdkImport;
   // The choice may have been withdrawn while the SDK downloaded.
   if (choice?.analytics !== true) return;
   if (amplitude === null) {
-    amplitude = module;
-    amplitude.init(AMPLITUDE_API_KEY, undefined, {
+    amplitude = sdk;
+    sdkStarted = sdk.init(AMPLITUDE_API_KEY, undefined, {
       serverZone: 'US',
       // The domain the consent cookie uses, so withdrawal clears what the SDK wrote; empty means this host.
       cookieOptions: { domain: CONSENT_COOKIE_DOMAIN },
@@ -137,22 +156,38 @@ async function applyAnalytics(on: boolean): Promise<void> {
       },
       remoteConfig: { fetchRemoteConfig: false },
       trackingOptions: { ipAddress: false, language: true, platform: true },
-    });
+    }).promise;
   }
+  await sdkStarted;
+  if (choice?.analytics !== true) return;
   amplitude.setOptOut(false);
-  syncUser(amplitude);
+  followAccount(amplitude, false);
 }
 
 /**
- * Put the signed-in account on the SDK, or forget the one that signed out
- * while the SDK was not running.
- * @param sdk - The running SDK.
+ * Keep the SDK's account in step with the app's: an account the SDK still
+ * holds that is no longer signed in starts a new device, and the signed-in
+ * account is named. A visitor who never signed in keeps their device.
+ * @param sdk - The started SDK.
+ * @param refresh - Send the account's properties even when it is already named.
  */
-function syncUser(sdk: Amplitude): void {
-  if (user !== null) {
-    if (sdk.getUserId() !== user.id) nameUser(sdk, user);
-  } else if (signedOutSinceRun) sdk.reset();
-  signedOutSinceRun = false;
+function followAccount(sdk: Amplitude, refresh: boolean): void {
+  if (account === undefined) return;
+  const named = sdk.getUserId();
+  if (named !== undefined && named !== account?.id) sdk.reset();
+  if (account !== null && (refresh || sdk.getUserId() !== account.id)) nameUser(sdk, account);
+}
+
+/**
+ * Apply an account change to the SDK once it has started, while analytics is accepted.
+ * @param refresh - Send the account's properties even when it is already named.
+ */
+function accountChanged(refresh: boolean): void {
+  const sdk = amplitude;
+  if (sdk === null || sdkStarted === null) return;
+  void sdkStarted.then(() => {
+    if (choice?.analytics === true) followAccount(sdk, refresh);
+  });
 }
 
 /**
@@ -267,10 +302,9 @@ export function track(name: AnalyticsEventName, properties: Record<string, unkno
  * @param next - The account.
  */
 export function identify(next: AnalyticsUser): void {
-  user = next;
+  account = next;
   shared = { ...shared, membership_tier: next.membershipTier, language: next.language };
-  if (amplitude === null || choice?.analytics !== true) return;
-  nameUser(amplitude, next);
+  accountChanged(true);
 }
 
 /**
@@ -293,13 +327,11 @@ export async function setLanguage(language: string): Promise<void> {
   await setConsentLanguage(language);
 }
 
-/** Forget the account on sign-out. */
+/** Nobody is signed in: on sign-out, and when the app starts without a session. */
 export function reset(): void {
-  user = null;
+  account = null;
   shared = { app_version: shared.app_version, language: shared.language };
-  // The SDK writes its cookie on reset, so it runs only while analytics is accepted.
-  if (choice?.analytics === true && amplitude !== null) amplitude.reset();
-  else signedOutSinceRun = true;
+  accountChanged(false);
 }
 
 /**
