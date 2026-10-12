@@ -406,9 +406,9 @@ export async function startMiniToolRun(run: MiniToolRun): Promise<void> {
     const output = outputTemplateOf(spec);
     const [node] = nodes;
     const [only] = files;
-    if (files.length === 1 && node !== undefined && only !== undefined && output.modality !== 'text') {
-      run.fillUpload(node.id, only.file, output.modality, tag);
-    } else if (files.length > 1) {
+    // A grouped run's files go up in one batch, which the server takes from a
+    // grouping tool only; any other run's one file goes up on its own.
+    if (spec.groupOutputs === true) {
       run.fillUploads(
         nodes.flatMap((built, index) => {
           const made = files[index];
@@ -416,6 +416,8 @@ export async function startMiniToolRun(run: MiniToolRun): Promise<void> {
         }),
         tag,
       );
+    } else if (node !== undefined && only !== undefined && output.modality !== 'text') {
+      run.fillUpload(node.id, only.file, output.modality, tag);
     }
     return;
   }

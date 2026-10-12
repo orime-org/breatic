@@ -4,9 +4,10 @@
 import { useStore } from '@xyflow/react';
 import * as React from 'react';
 
-import { defaultParamsOf, miniToolById } from '@breatic/shared/mini-tools';
+import { gridShapeOf, miniToolById } from '@breatic/shared/mini-tools';
 
 import { useCanvasSession } from '@web/spaces/canvas/canvas-context';
+import { miniToolOpenOn } from '@web/stores/canvas-session';
 import { handleScale } from '@web/spaces/canvas/crop/crop-geometry';
 import { useMediaGeometry } from '@web/spaces/canvas/crop/media-geometry';
 
@@ -27,18 +28,14 @@ interface NodeGridLayerProps {
  * @returns The layer, or null when no grid tool is open on this node.
  */
 export function NodeGridLayer({ nodeId, wrapper }: NodeGridLayerProps): React.JSX.Element | null {
-  const draft = useCanvasSession((s) =>
-    s.panelKind === 'miniTool' && s.panelHostId === nodeId && s.pickSession === null ? s.miniTool : null,
-  );
+  const draft = useCanvasSession(miniToolOpenOn(nodeId));
   const spec = draft === null ? undefined : miniToolById(draft.toolId);
-  const grid = spec?.outputLayout === 'grid' ? spec : undefined;
-  const geometry = useMediaGeometry(wrapper, grid !== undefined);
+  const shape = spec === undefined || draft === null ? null : gridShapeOf(spec, draft.params);
+  const geometry = useMediaGeometry(wrapper, shape !== null);
   // The lines counter the zoom, as the crop frame's do.
   const scale = handleScale(useStore((s) => s.transform[2]));
-  if (grid === undefined || geometry === null || draft === null) return null;
-  const params = { ...defaultParamsOf(grid), ...draft.params };
-  const rows = params.rows as number;
-  const cols = params.cols as number;
+  if (shape === null || geometry === null) return null;
+  const { rows, cols } = shape;
   const line = 'absolute bg-background outline outline-foreground';
   return (
     <div

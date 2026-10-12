@@ -5,6 +5,7 @@ import * as React from 'react';
 
 import { useCanvasSession, useCanvasSessionStore } from '@web/spaces/canvas/canvas-context';
 import { useMediaGeometry, type MediaGeometry } from '@web/spaces/canvas/crop/media-geometry';
+import { miniToolOpenOn } from '@web/stores/canvas-session';
 import type { MarkCanvasController } from '@web/spaces/canvas/mini-tool/mark-canvas';
 
 interface NodeMarkLayerProps {
@@ -23,9 +24,7 @@ interface NodeMarkLayerProps {
  * @returns The layer, or null when markup is not open on this node.
  */
 export function NodeMarkLayer({ nodeId, wrapper }: NodeMarkLayerProps): React.JSX.Element | null {
-  const open = useCanvasSession(
-    (s) => s.panelKind === 'miniTool' && s.panelHostId === nodeId && s.pickSession === null && s.miniTool?.mark != null,
-  );
+  const open = useCanvasSession((s) => miniToolOpenOn(nodeId)(s)?.mark != null);
   const geometry = useMediaGeometry(wrapper, open);
   if (!open || geometry === null) return null;
   // A different picture under the same node starts a fresh canvas.

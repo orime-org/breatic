@@ -57,6 +57,24 @@ export function mostOutputsOf(spec: MiniToolSpec): number {
 }
 
 /**
+ * A grid tool's rows and columns: the two params its result count multiplies,
+ * each falling back to its default. The one place the grid is read from, so
+ * the cut, the layout and the lines on the node agree.
+ * @param spec - The tool.
+ * @param params - The run's params.
+ * @returns The shape, or null when the tool does not lay its results out as a grid.
+ */
+export function gridShapeOf(
+  spec: MiniToolSpec,
+  params: Readonly<Record<string, unknown>>,
+): { rows: number; cols: number } | null {
+  if (spec.outputLayout !== "grid" || spec.outputCount?.kind !== "product") return null;
+  const [rows, cols] = spec.outputCount.params;
+  if (rows === undefined || cols === undefined) return null;
+  return { rows: numberParam(spec, params, rows), cols: numberParam(spec, params, cols) };
+}
+
+/**
  * The result kind and name prefix, for a reader that needs no count.
  * @param spec - The tool.
  * @returns The first fixed output, or the variable tool's template.

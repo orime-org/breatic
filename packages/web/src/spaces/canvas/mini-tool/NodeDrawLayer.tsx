@@ -7,6 +7,7 @@ import * as React from 'react';
 import { miniToolById } from '@breatic/shared/mini-tools';
 
 import { useCanvasSession, useCanvasSessionStore } from '@web/spaces/canvas/canvas-context';
+import { miniToolOpenOn } from '@web/stores/canvas-session';
 import { handleScale } from '@web/spaces/canvas/crop/crop-geometry';
 import { useMediaGeometry, type MediaGeometry } from '@web/spaces/canvas/crop/media-geometry';
 import { paintDrawing, type DrawingKind } from '@web/spaces/canvas/mini-tool/paint-drawing';
@@ -28,9 +29,7 @@ interface NodeDrawLayerProps {
  * @returns The layer, or null when this node is not being drawn on.
  */
 export function NodeDrawLayer({ nodeId, wrapper }: NodeDrawLayerProps): React.JSX.Element | null {
-  const draft = useCanvasSession((s) =>
-    s.panelKind === 'miniTool' && s.panelHostId === nodeId && s.pickSession === null ? s.miniTool : null,
-  );
+  const draft = useCanvasSession(miniToolOpenOn(nodeId));
   const kind = draft === null ? undefined : miniToolById(draft.toolId)?.drawing?.kind;
   const drawing = kind === undefined ? null : (draft?.drawing ?? null);
   const geometry = useMediaGeometry(wrapper, drawing !== null);

@@ -7,6 +7,7 @@ import * as React from 'react';
 
 import { taskPanelStatusFor } from '@web/stores/canvas-session';
 import { useCanvasSession, useCanvasSessionStore } from '@web/spaces/canvas/canvas-context';
+import { miniToolOpenOn } from '@web/stores/canvas-session';
 import { readOccupants } from '@web/spaces/canvas/attach-occupants';
 import { useCanvasActions } from '@web/spaces/canvas/canvas-actions';
 import type { GroupResizeBound } from '@web/spaces/canvas/group-geometry';
@@ -193,9 +194,7 @@ function makeFlowNode(
         : (data.taskCounts ?? NO_TASKS);
     const taskPanelOpenHere = useCanvasSession(taskPanelStatusFor(props.id));
     // The expand frame grows past the node over where the counts stand.
-    const expanding = useCanvasSession(
-      (s) => s.panelKind === 'miniTool' && s.panelHostId === props.id && s.miniTool?.expand != null,
-    );
+    const expanding = useCanvasSession((s) => miniToolOpenOn(props.id)(s)?.expand != null);
     const openTaskPanel = useCanvasSession((s) => s.openTaskPanel);
     const closeActivePanel = useCanvasSession((s) => s.closeActivePanel);
     const onOpenTasks = React.useCallback(

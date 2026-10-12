@@ -7,6 +7,7 @@ import { parseAdjustValue, type AdjustValue } from '@breatic/shared';
 import { isModelTool, miniToolById } from '@breatic/shared/mini-tools';
 
 import { useCanvasSession } from '@web/spaces/canvas/canvas-context';
+import { miniToolOpenOn } from '@web/stores/canvas-session';
 import { useMediaGeometry } from '@web/spaces/canvas/crop/media-geometry';
 import { prepareCropSource } from '@web/spaces/canvas/focus/crop-export';
 import { drawAdjusted } from '@web/spaces/canvas/mini-tool/adjust-export';
@@ -29,9 +30,7 @@ interface NodeAdjustLayerProps {
  * @returns The layer, or null when no picture adjust is open on this node.
  */
 export function NodeAdjustLayer({ nodeId, wrapper }: NodeAdjustLayerProps): React.JSX.Element | null {
-  const draft = useCanvasSession((s) =>
-    s.panelKind === 'miniTool' && s.panelHostId === nodeId && s.pickSession === null ? s.miniTool : null,
-  );
+  const draft = useCanvasSession(miniToolOpenOn(nodeId));
   const spec = draft === null ? undefined : miniToolById(draft.toolId);
   const param =
     spec === undefined || isModelTool(spec) || spec.source !== 'image'

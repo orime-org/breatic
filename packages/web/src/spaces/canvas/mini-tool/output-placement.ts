@@ -8,9 +8,9 @@
  * their tallest tile, which needs every tile's size at once.
  */
 
-import { defaultParamsOf, outputsOf, type MiniToolOutput, type MiniToolSpec } from '@breatic/shared/mini-tools';
+import { gridShapeOf, outputsOf, type MiniToolOutput, type MiniToolSpec } from '@breatic/shared/mini-tools';
 
-import { EMPTY_NODE_SIZE } from '@web/spaces/canvas/group-geometry';
+import { EMPTY_NODE_SIZE, mediaNodeHeight } from '@web/spaces/canvas/group-geometry';
 import { GAP_PX, NODE_STEP } from '@web/spaces/canvas/drop-layout';
 import { gridTileRects } from '@web/spaces/canvas/mini-tool/grid-export';
 import { MODALITY_LABEL } from '@web/spaces/canvas/nodes/_shared/modality';
@@ -31,10 +31,6 @@ export interface PlacedOutput {
   height: number;
 }
 
-// What a media node draws around its picture: the shell's 1px border
-// (`NodeShell`) and `NodeMediaInset`'s `p-1`, on each side.
-const MEDIA_FRAME_PX = 2 * 1 + 2 * 4;
-
 /**
  * How tall a node is with this picture in it, drawn at the node's width.
  * @param size - The picture's pixels, when known.
@@ -42,7 +38,7 @@ const MEDIA_FRAME_PX = 2 * 1 + 2 * 4;
  */
 function nodeHeight(size: OutputSize | undefined): number {
   if (!size || size.width <= 0 || size.height <= 0) return EMPTY_NODE_SIZE.height;
-  return ((EMPTY_NODE_SIZE.width - MEDIA_FRAME_PX) * size.height) / size.width + MEDIA_FRAME_PX;
+  return mediaNodeHeight(size.width, size.height);
 }
 
 /**
@@ -62,9 +58,9 @@ export function plannedOutputSizes(
   params: Record<string, unknown>,
   source: { width?: number | undefined; height?: number | undefined },
 ): OutputSize[] {
-  if (spec.outputLayout !== 'grid' || source.width === undefined || source.height === undefined) return [];
-  const { rows, cols } = { ...defaultParamsOf(spec), ...params } as { rows: number; cols: number };
-  return gridTileRects(source.width, source.height, rows, cols).map(({ width, height }) => ({ width, height }));
+  const shape = gridShapeOf(spec, params);
+  if (shape === null || source.width === undefined || source.height === undefined) return [];
+  return gridTileRects(source.width, source.height, shape.rows, shape.cols).map(({ width, height }) => ({ width, height }));
 }
 
 /**
@@ -102,13 +98,14 @@ export function outputPlacementOf(
     height: heights[index]!,
   });
 
-  if (spec.outputLayout !== 'grid') {
+  const shape = gridShapeOf(spec, params);
+  if (shape === null) {
     return outputs.map((output, index) =>
       placed(output, index, spec.output ? `${index + 1}-` : '', 0, index * NODE_STEP.y),
     );
   }
 
-  const cols = outputs.length / gridRows(spec, params);
+  const { cols } = shape;
   const result: PlacedOutput[] = [];
   let top = 0;
   for (let start = 0; start < outputs.length; start += cols) {
@@ -119,18 +116,4 @@ export function outputPlacementOf(
     top += Math.max(...heights.slice(start, start + cols)) + GAP_PX;
   }
   return result;
-}
-
-/**
- * A grid tool's row count: its result count with every factor but the first
- * (rows) held at one, so a missing param falls back the way `outputsOf` does.
- * @param spec - The tool.
- * @param params - The run's params.
- * @returns The rows.
- * @throws {Error} When the tool's count is not a product.
- */
-function gridRows(spec: MiniToolSpec, params: Record<string, unknown>): number {
-  if (spec.outputCount?.kind !== 'product') throw new Error(`${spec.id} lays out a grid without a product count`);
-  const [, ...others] = spec.outputCount.params;
-  return outputsOf(spec, { ...params, ...Object.fromEntries(others.map((key) => [key, 1])) }).length;
 }

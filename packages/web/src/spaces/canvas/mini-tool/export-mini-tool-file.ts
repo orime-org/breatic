@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { parseAdjustValue } from '@breatic/shared';
-import { UPRIGHT, defaultParamsOf, outputTemplateOf, type MiniToolSnapshot, type MiniToolSpec } from '@breatic/shared/mini-tools';
+import { UPRIGHT, gridShapeOf, outputTemplateOf, type MiniToolSnapshot, type MiniToolSpec } from '@breatic/shared/mini-tools';
 
 import {
   exportCropBlob,
@@ -32,9 +32,9 @@ export async function exportMiniToolFile(
   capture?: MiniToolCapture,
 ): Promise<ExportedFile[]> {
   const source: CropSource = { url: snapshot.source.url, timeSeconds: null };
-  if (spec.id === 'image.grid') {
-    const params = { ...defaultParamsOf(spec), ...snapshot.params };
-    const tiles = await exportGridTiles(source, params.rows as number, params.cols as number);
+  const shape = gridShapeOf(spec, snapshot.params);
+  if (shape !== null) {
+    const tiles = await exportGridTiles(source, shape.rows, shape.cols);
     const prefix = outputTemplateOf(spec).namePrefix;
     return tiles.map((tile) => ({
       file: new File([tile.blob], `${prefix}.png`, { type: 'image/png' }),

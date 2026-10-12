@@ -50,6 +50,23 @@ export const GROUP_MIN_SIZE = 40;
 export const EMPTY_NODE_SIZE = { width: 288, height: 192 } as const;
 
 /**
+ * What a media node draws around its picture: the shell's 1px border
+ * (`NodeShell`) and `NodeMediaInset`'s `p-1`, on each side. A 400×300 picture's
+ * node measures 218.5 in the browser.
+ */
+const MEDIA_FRAME_PX = 2 * 1 + 2 * 4;
+
+/**
+ * How tall a node is with this picture in it, drawn at the node's width.
+ * @param width - The picture's width in pixels.
+ * @param height - Its height in pixels.
+ * @returns The node's height in flow coordinates.
+ */
+export function mediaNodeHeight(width: number, height: number): number {
+  return ((EMPTY_NODE_SIZE.width - MEDIA_FRAME_PX) * height) / width + MEDIA_FRAME_PX;
+}
+
+/**
  * The center point of a rect.
  * @param rect - The rectangle.
  * @returns Its geometric center.

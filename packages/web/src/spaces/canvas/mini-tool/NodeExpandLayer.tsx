@@ -8,6 +8,7 @@ import { miniToolById } from '@breatic/shared/mini-tools';
 
 import type { CropHandle } from '@web/lib/crop-math';
 import { useCanvasSession, useCanvasSessionStore } from '@web/spaces/canvas/canvas-context';
+import { miniToolOpenOn } from '@web/stores/canvas-session';
 import { handleScale } from '@web/spaces/canvas/crop/crop-geometry';
 import { useMediaGeometry } from '@web/spaces/canvas/crop/media-geometry';
 import { CROP_HANDLES } from '@web/spaces/canvas/focus/crop-source';
@@ -45,9 +46,7 @@ type Gesture = { pointerId: number; frame: ExpandFrame; ratio: ExpandRatio } & (
  */
 export function NodeExpandLayer({ nodeId, wrapper }: NodeExpandLayerProps): React.JSX.Element | null {
   const store = useCanvasSessionStore();
-  const draft = useCanvasSession((s) =>
-    s.panelKind === 'miniTool' && s.panelHostId === nodeId && s.pickSession === null ? s.miniTool : null,
-  );
+  const draft = useCanvasSession(miniToolOpenOn(nodeId));
   const expand = draft !== null && miniToolById(draft.toolId)?.expand !== undefined ? draft.expand : null;
   const sourceSize = draft?.sourceSize ?? null;
   const geometry = useMediaGeometry(wrapper, expand !== null);
