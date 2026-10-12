@@ -23,8 +23,8 @@ export const CONSENT_COOKIE_NAME = "breatic_consent";
  */
 export const CONSENT_REVISION = 1;
 
-/** How long a choice lasts before the banner asks again, as most consent banners do. */
-export const CONSENT_MAX_AGE_DAYS = 182;
+/** How long a choice lasts before the banner asks again: 13 months, as Google keeps a visitor's cookie choice (its SOCS cookie). */
+export const CONSENT_MAX_AGE_DAYS = 395;
 
 /** Whether each optional category may run in this browser. */
 export interface ConsentSnapshot {

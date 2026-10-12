@@ -78,6 +78,10 @@ describe("accountConsentCurrent", () => {
   const day = 24 * 60 * 60 * 1000;
   const decided = "2026-01-01T00:00:00.000Z";
 
+  it("keeps a choice for 13 months, as Google keeps a visitor's cookie choice", () => {
+    expect(CONSENT_MAX_AGE_DAYS).toBe(395);
+  });
+
   it("keeps a choice for as long as the consent cookie lasts", () => {
     const now = Date.parse(decided) + (CONSENT_MAX_AGE_DAYS - 1) * day;
     expect(accountConsentCurrent(choice(true, true, decided), now)).toEqual(choice(true, true, decided));
