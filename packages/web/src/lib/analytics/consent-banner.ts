@@ -43,6 +43,8 @@ function ignoreChoice(): void {
 }
 // Which window the visitor last opened: a change made there is filed under it.
 let openedModal: 'consentModal' | 'preferencesModal' | null = null;
+// A button in the settings window was pressed; the library reports a save only when a category changes.
+let saving = false;
 
 /** The only pages the banner appears on: signing in and signing up (user 2026-10-12). */
 const BANNER_PATHS: readonly string[] = ['/login', '/register'];
@@ -166,6 +168,14 @@ export async function startConsentBanner(options: BannerOptions): Promise<void> 
   }
   bannerOptions = options;
   currentLanguage = options.language;
+  // Capture phase: runs before the library's own handler saves and hides the window.
+  document.addEventListener(
+    'click',
+    (event) => {
+      if (event.target instanceof Element && event.target.closest('#cc-main .pm [data-role]')) saving = true;
+    },
+    true,
+  );
   await boot(options);
   // A restart while the lookup is still out would decide twice; the lookup ends within a second.
   await options.country;
@@ -223,12 +233,16 @@ async function boot(options: BannerOptions): Promise<void> {
     onModalShow: ({ modalName }) => {
       if (modalName === 'consentModal' || modalName === 'preferencesModal') openedModal = modalName;
     },
-    // A settings window closed without a choice hands back to the banner when it is still up.
-    // A choice saved in the window reports before the window hides, so it is not affected.
+    // A choice that changed a category reports before the window hides and clears openedModal.
+    // A save that changed nothing reports nothing, yet is the visitor's choice; closing the window
+    // without a save hands back to the banner when it is still up.
     onModalHide: ({ modalName }) => {
-      if (modalName === 'preferencesModal' && openedModal === 'preferencesModal') {
-        openedModal = undecided && onBannerPage ? 'consentModal' : null;
+      if (modalName !== 'preferencesModal') return;
+      if (openedModal === 'preferencesModal') {
+        if (saving) onVisitorChoice();
+        else openedModal = undecided && onBannerPage ? 'consentModal' : null;
       }
+      saving = false;
     },
     onFirstConsent: onVisitorChoice,
     onChange: onVisitorChoice,

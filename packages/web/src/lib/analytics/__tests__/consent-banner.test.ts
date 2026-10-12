@@ -187,6 +187,32 @@ describe('what counts as the visitor choosing', () => {
     expect(seen).toHaveLength(2);
   });
 
+  it('files a save in the settings window that confirms the stored choice as the visitor\'s', async () => {
+    library.consent = true;
+    library.cookie = { ...library.cookie, categories: ['necessary', 'analytics', 'ads'], data: { source: 'implicit', decidedAt: '2026-10-12T00:00:00.000Z' } };
+    const seen: unknown[] = [];
+    await startBanner('US', (choice) => seen.push(choice));
+    library.config?.onModalShow?.({ modalName: 'preferencesModal' });
+    document.body.innerHTML = '<div id="cc-main"><div class="pm"><button data-role="all"></button></div></div>';
+    try {
+      // The library saves nothing and reports nothing when no category changes; it then hides the window.
+      document.querySelector<HTMLButtonElement>('[data-role="all"]')?.click();
+      library.config?.onModalHide?.({ modalName: 'preferencesModal' });
+    } finally {
+      document.body.innerHTML = '';
+    }
+    expect(library.setCookieData).toHaveBeenCalledWith(expect.objectContaining({ value: expect.objectContaining({ source: 'settings' }) }));
+    expect(seen).toHaveLength(2);
+  });
+
+  it('does not file closing the settings window as a choice', async () => {
+    library.consent = true;
+    await startBanner('US');
+    library.config?.onModalShow?.({ modalName: 'preferencesModal' });
+    library.config?.onModalHide?.({ modalName: 'preferencesModal' });
+    expect(library.setCookieData).not.toHaveBeenCalled();
+  });
+
   it('does not file its own load decision as the visitor\'s, though a window was opened and closed without a choice', async () => {
     library.consent = true;
     await startBanner('US');
