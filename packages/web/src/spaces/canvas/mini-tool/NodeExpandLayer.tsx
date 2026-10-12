@@ -66,6 +66,15 @@ export function NodeExpandLayer({ nodeId, wrapper }: NodeExpandLayerProps): Reac
   const sourceContent = draft?.sourceContent;
   React.useEffect(() => setShift({ x: 0, y: 0 }), [sourceContent]);
 
+  // How far the frame's bottom edge reaches below the node, for the panel.
+  const bottomShare = expand === null ? null : expand.frame.y + shift.y + expand.frame.height;
+  const heldDrop = expand?.drop;
+  React.useLayoutEffect(() => {
+    if (bottomShare === null || geometry === null || wrapper === null) return;
+    const drop = Math.max(0, geometry.at.y + bottomShare * geometry.box.height - wrapper.offsetHeight);
+    if (Math.abs(drop - (heldDrop ?? 0)) > 0.5) store.getState().setExpandDrop(drop);
+  }, [bottomShare, geometry, wrapper, heldDrop, store]);
+
   if (expand === null || geometry === null || sourceSize === null || draft === null) return null;
   const { frame, ratio } = expand;
   const { box, at } = geometry;

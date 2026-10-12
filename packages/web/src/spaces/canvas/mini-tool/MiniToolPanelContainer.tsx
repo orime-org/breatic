@@ -374,7 +374,7 @@ function OpenMiniToolPanel({
 
   if (isModelTool(spec) && entry === undefined) return null;
   return (
-    <NodePanelMount nodeId={nodeId}>
+    <NodePanelMount nodeId={nodeId} drop={expandDraft?.drop ?? 0}>
       <MiniToolPanel
         spec={spec}
         modelControls={modelControls}

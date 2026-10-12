@@ -341,6 +341,8 @@ export interface CanvasSessionState {
   setExpand: (next: Pick<ExpandDraft, 'frame' | 'ratio'>) => void;
   /** Record the longest side the expand tool's model takes. */
   setExpandCap: (cap: number) => void;
+  /** Record how far the expand frame reaches below the node. */
+  setExpandDrop: (drop: number) => void;
   /** Pick the shape a press on the node draws. */
   setDrawingTool: (tool: DrawTool) => void;
   /** Set the brush diameter, in percent of the source's shorter side. */
@@ -666,6 +668,12 @@ export function createCanvasSessionStore(): CanvasSessionStore {
         set((s) => {
           if (s.miniTool?.expand) {
             s.miniTool = { ...s.miniTool, expand: castDraft({ ...s.miniTool.expand, frame: { ...next.frame }, ratio: next.ratio }) };
+          }
+        }),
+      setExpandDrop: (drop) =>
+        set((s) => {
+          if (s.miniTool?.expand && s.miniTool.expand.drop !== drop) {
+            s.miniTool = { ...s.miniTool, expand: castDraft({ ...s.miniTool.expand, drop }) };
           }
         }),
       setExpandCap: (cap) =>
