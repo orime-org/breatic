@@ -13,6 +13,19 @@ vi.mock('@web/spaces/canvas/focus/crop-export', async (original) => ({
   ...exporter,
 }));
 
+const grid = vi.hoisted(() => ({
+  exportGridTiles: vi.fn(() =>
+    Promise.resolve([
+      { blob: new Blob(['a'], { type: 'image/png' }), width: 50, height: 40 },
+      { blob: new Blob(['b'], { type: 'image/png' }), width: 51, height: 40 },
+    ]),
+  ),
+}));
+vi.mock('@web/spaces/canvas/mini-tool/grid-export', async (original) => ({
+  ...(await original<object>()),
+  ...grid,
+}));
+
 import { orientedSize } from '@web/spaces/canvas/focus/crop-export';
 import { exportMiniToolFile } from '@web/spaces/canvas/mini-tool/export-mini-tool-file';
 
@@ -55,6 +68,24 @@ describe('exportMiniToolFile', () => {
     const orient = { turns: 1, flipX: true, flipY: false };
     await exportMiniToolFile(miniToolById('image.rotate')!, snapshot({ orient }));
     expect(exporter.exportOrientedBlob).toHaveBeenCalledWith({ url: 'https://cdn/a.jpg', timeSeconds: null }, orient);
+  });
+});
+
+describe('exportMiniToolFile for a grid', () => {
+  it('exports one PNG per tile with its pixel size, cut by the rows and columns asked', async () => {
+    const made = await exportMiniToolFile(miniToolById('image.grid')!, snapshot({ rows: 1, cols: 2 }));
+
+    expect(grid.exportGridTiles).toHaveBeenCalledWith({ url: 'https://cdn/a.jpg', timeSeconds: null }, 1, 2);
+    expect(made.map((tile) => [tile.file.type, tile.size])).toEqual([
+      ['image/png', { width: 50, height: 40 }],
+      ['image/png', { width: 51, height: 40 }],
+    ]);
+  });
+
+  it('cuts by the default rows and columns when the draft left them out', async () => {
+    await exportMiniToolFile(miniToolById('image.grid')!, snapshot({}));
+
+    expect(grid.exportGridTiles).toHaveBeenCalledWith({ url: 'https://cdn/a.jpg', timeSeconds: null }, 3, 3);
   });
 });
 
