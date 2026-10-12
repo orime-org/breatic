@@ -388,3 +388,20 @@ describe("parseConfig — STORAGE_PROVIDER accepts only r2", () => {
     expect(parseConfig(baseEnv()).STORAGE_PROVIDER).toBe("r2");
   });
 });
+
+// Product analytics and ad conversions stay off on a self-hosted instance:
+// every key defaults to blank (inner#1442 design §4.3).
+describe("parseConfig — analytics and ad conversions", () => {
+  it("leaves every key blank when absent", () => {
+    const config = parseConfig(baseEnv());
+    expect(config.AMPLITUDE_API_KEY).toBe("");
+    expect(config.GOOGLE_ADS_CUSTOMER_ID).toBe("");
+    expect(config.GOOGLE_ADS_CONVERSION_ACTIONS).toBe("");
+    expect(config.GOOGLE_DATA_MANAGER_CREDENTIALS).toBe("");
+  });
+
+  it("takes the Amplitude key without surrounding whitespace", () => {
+    const config = parseConfig(baseEnv({ AMPLITUDE_API_KEY: " 0123456789abcdef0123456789abcdef\n" }));
+    expect(config.AMPLITUDE_API_KEY).toBe("0123456789abcdef0123456789abcdef");
+  });
+});
