@@ -44,6 +44,28 @@ The Update button reloads the page using the existing Project `beforeunload` gua
 
 No environment variables are added or removed. Changing `VITE_APP_VERSION` requires rebuilding the frontend, not restarting the backend.
 
+## Product analytics (off by default)
+
+A self-hosted instance sends nothing to any analytics or advertising service. With every variable below empty, the backend never starts an analytics client, the ad-conversion queue stays empty, and the web build contains no Amplitude, Google tag or consent-banner code. The hosted service at breatic.ai sets them; you only need this section to measure your own instance with your own accounts.
+
+| Variable | Where it is read | Turns on |
+|---|---|---|
+| `AMPLITUDE_API_KEY` | server, worker, collab at startup | Server-side product events (sign-up, project and Space creation, first generation, invitations, purchases, subscriptions) |
+| `GOOGLE_ADS_CUSTOMER_ID`, `GOOGLE_ADS_CONVERSION_ACTIONS`, `GOOGLE_DATA_MANAGER_CREDENTIALS` | server, worker, collab at startup | Server-side Google Ads conversion upload through the Data Manager API. Set all three or none; a partial or malformed set leaves uploads off and logs `google_ads_config_invalid` |
+| `VITE_AMPLITUDE_API_KEY` | web build | Browser product events and the consent banner |
+| `VITE_GOOGLE_ADS_TAG_ID`, `VITE_GOOGLE_ADS_CONVERSION_LABELS` | web build | The Google tag and browser conversions, deduplicated with the server upload by transaction id |
+| `VITE_CONSENT_COOKIE_DOMAIN` | web build | Where the `breatic_consent` cookie is written; empty means the current host |
+
+The `VITE_*` values are embedded in the bundle like the connection settings above: changing them means rebuilding the frontend, not restarting a container. Dockerfile.web accepts them as build arguments. When the pages and the API sit on two subdomains, set `VITE_CONSENT_COOKIE_DOMAIN` to the same parent domain as the backend `COOKIE_DOMAIN`, so the API and collab read the visitor's choice.
+
+What leaves when it is on:
+
+- Only after consent. Visitors in the EEA, the UK, Switzerland and mainland China are asked first; elsewhere both categories start on and can be turned off. A browser sending Global Privacy Control starts with advertising off. Backend events follow the choice of the browser that caused them; events without a browser (renewals) use the account's latest choice and are not sent for an account that never chose.
+- Only listed properties. Every event passes a per-event allowlist in `@breatic/shared`; prompts, document text, file names, email addresses and session ids never leave. URLs are reduced to their path. Session Replay is not installed.
+- Only to the accounts you configure. Events go to your Amplitude project in its US data centre and conversions to your Google Ads customer.
+
+To turn it off again, empty the variables, restart the backend and rebuild the frontend.
+
 ## Scope and verification
 
 This change implements the user-approved separate-frontend deployment without changing database tables, session format, task semantics or local deployment defaults. Keeping one configurable API base avoids divergent request paths; passing queue TLS/credentials fixes the lost connection options rather than weakening cloud security. Separate API and WS hostnames would require a different cookie-sharing decision and are not required.

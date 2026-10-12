@@ -152,17 +152,12 @@ function applyAds(on: boolean): void {
   if (!on) clearCookies('_gcl_');
 }
 
-/**
- * The standard `gtag` command queue.
- * @param args - The command and its arguments.
- */
-function gtag(...args: unknown[]): void {
+/** The standard `gtag` command queue; Google's loader reads `arguments` objects, not arrays. */
+const gtag: (...args: unknown[]) => void = function () {
   const w = window as Window & { dataLayer?: unknown[] };
-  // Google's loader reads `arguments` objects off the queue, not arrays.
   // eslint-disable-next-line prefer-rest-params
   (w.dataLayer ??= []).push(arguments);
-  void args;
-}
+};
 
 /**
  * Remove this site's cookies whose names start with a prefix, on the host and

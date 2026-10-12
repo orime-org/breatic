@@ -38,7 +38,7 @@ packages/
 ├── shared/   # Zod schema + 类型 + 常量 (零依赖)
 ├── core/     # 后端共享内核 barrel (@breatic/core) — 纯地基,零 AIGC 业务
 │              auth/(共享鉴权内核:projectMembers.repo + projectAuth.service〔loadProjectRole〕,collab+server 共用) ·
-│              db/(schema.ts 41 表) · i18n/(node 适配器 loadLocales/runWithLocale) · infra/(redis/pubsub/queue/storage/session-store/control-events) · config/
+│              db/(schema.ts 44 表) · i18n/(node 适配器 loadLocales/runWithLocale) · infra/(redis/pubsub/queue/storage/session-store/control-events) · config/
 ├── domain/   # server+worker 共享 AIGC 业务内核 (@breatic/domain,collab 永不碰) — asset(资产登记 / studio 内去重 / 回收队列)· auth(studio 级鉴权:studioAuth.service + studioMembers.repo)· credit · task(含 markCompletedAndBill 任务·积分跨表原子扣费 + upstreamStep.repo〔`task_upstream_steps`,一个任务的每次上游调用〕+ upstreamClone.repo〔`studio_upstream_clones`,studio 克隆过的音色 / 人声 / 元素〕)· node-history · agent(agent-config〔模型+指令+工具的唯一装配点〕/turn-finalizer/tools/llm)· model-catalog · node-task(PR4 自 core 迁入,各域 *.repo/*.service 功能文件夹)· understand(按一个地址取媒体、问模型一句话,worker 的理解那一路调它)
 ├── server/   # HTTP 壳 (Hono): routes/(account/auth/chat/canvas/credits/decisions/mini-tools/models/projects/members/project-invitations/project-join-requests/role-upgrade-requests/notifications/studios/subscription/tasks/text-tools/users/payment/activities〔project 活动流读取〕/assets〔上传握手 + 删除上报〕) + middleware/(路由层=接线员,不写业务;`rateLimitFor` 限流走 `config/rate-limits.yaml`;`validate(target, schema)` 是路由校验请求的唯一入口——包一层 `@hono/zod-validator` 把它「自己发响应」变成「抛 `ValidationError`」,于是校验失败也走 `errorHandler` 这一个出口;`localeMiddleware` 用 AsyncLocalStorage 钉住这次请求的语言,出口那里还读得到) + modules/(server 私有领域,**按域分功能文件夹**,每域 service+repo+test:account/activity〔活动流写入 + 读取〕/asset/auth〔含 user.repo + recovery-code + signup-code〔启用邮件时的待验证注册,存 Redis〕〕/conversation/credit/decision/memory/mini-tool〔`POST /mini-tools` 开跑前的判定:模型工具钉死的模型与取值、容器工具读的存储 key、积分预检额〕/notification/payment/project〔含 projectMembers〕/project-invite〔含 project-invite-mail〕/project-join-request/recent/role-upgrade-request/studio/subscription/task〔节点任务行的开启与计数发布〕/text-tool,barrel index.ts re-export) + infra/(stripe/mailer) + config/(auth/pricing/text-tools/limits/rate-limits;**运行参数一律 yaml、禁硬编码**)(healthz 走独立 :3001 进程)
 ├── worker/   # BullMQ 壳: handlers/(dispatch.ts=3 路分发 + step-deps〔多步上游调用读写的两张表 + 素材的缓存键 + 可灵元素的一句描述〕+ container/run-container-job〔容器类 mini-tool:向 ingest Worker 提交 / 查询作业,还在跑就把这次取出放回队列〕) + providers/(图片 / 视频 / 音频 / 语音同一条路,全部跑在 WaveSpeed:generate / plan-steps / run-steps / upstream-body〔按 yaml 的 `upstream` 声明拼请求体,`joins` 槽位并进它点名的池子〕/ wavespeed + families/{minimax-speech,nano-banana};three-d/ 自成一路) + 根(index 入口 / voice-samples〔维护样音的人本地跑的入口,生成固定样音地址还缺的样音〕/ bootstrap-config) + runtime/(spawn / tempdir,样音入口跑本地 ffmpeg 用)
@@ -60,7 +60,7 @@ config/ locales/ (git-tracked)
 |---|---|---|---|
 | API | 3000 | `PORT` | HTTP 请求 + Agent 聊天 SSE + Text mini-tool SSE |
 | Collab | 1234 | `COLLAB_PORT`(跟另两个服务端口一样在 core env schema;`collab.yaml` 只剩行为参数)| Yjs 文档同步 + PG 持久化 + Redis 跨实例 + 消费 Redis Streams 写 canvas 节点 |
-| Worker | — | — | BullMQ 任务执行 → 存 DB → Redis Streams publish NodeEvent → Collab 写 Yjs;另发 server 放进 `mail` 队列的通知邮件 |
+| Worker | — | — | BullMQ 任务执行 → 存 DB → Redis Streams publish NodeEvent → Collab 写 Yjs;另发 server 放进 `mail` 队列的通知邮件;配了 Google Ads 时上传 `ads-conversion` 队列里的转化(Data Manager API,失败重试 5 次,结局写回 `ads_conversion_uploads`) |
 
 三个 healthz 端口(3001 / 1235 / 9101)同样从 env 读(`SERVER_HEALTH_PORT` / `COLLAB_HEALTH_PORT` / `WORKER_HEALTH_PORT`)。**同一台机器上跑多个 worktree 时这些默认值会互撞**,尤其 BullMQ 队列共享会让一个 worktree 的任务被另一个的 worker 执行 —— 整套偏移方式见 `.env.dev` 顶部的 "Running several worktrees at once"。
 
@@ -577,6 +577,12 @@ Login and registration cards (including the signup-code step) show their build i
 | `VITE_RELEASE_VERSION` | 打包时的产品可读版本（如 `0.0.6`）；与 `app-version.json.releaseVersion` 同源，供登录/注册卡片显示 Beta 版本。开发或缺失时显示 `Dev` |
 | `GOOGLE_CLIENT_ID` | Google OAuth(可选;注入为 `__GOOGLE_CLIENT_ID__`) |
 | `VITE_SENTRY_DSN` | Sentry DSN(可选;留空不启动 Sentry)。environment 取 Vite 的 `MODE`,不是 `production` / `staging` / `development` 之一记作 `development` |
+| `VITE_AMPLITUDE_API_KEY` | Amplitude 项目 key(可选;留空不加载浏览器产品分析)。与 `VITE_GOOGLE_ADS_TAG_ID` 都空时构建常量 `__ANALYTICS_CONFIGURED__` 为假,横幅与分析代码不进产物 |
+| `VITE_GOOGLE_ADS_TAG_ID` | Google tag id `AW-…`(可选;留空不加载 Google tag) |
+| `VITE_GOOGLE_ADS_CONVERSION_LABELS` | JSON,转化名到转化标签;读不出时只关浏览器转化 |
+| `VITE_CONSENT_COOKIE_DOMAIN` | `breatic_consent` cookie 写在哪个域;空为当前主机。页面与 API 分在两个子域时与后端 `COOKIE_DOMAIN` 设成同一个父域 |
+
+产品分析与广告转化的同意、事件、出口见 [self-host/DEPLOYMENT-CONNECTIONS.md](../self-host/DEPLOYMENT-CONNECTIONS.md#product-analytics-off-by-default)。
 
 鉴权基于 cookie — 后端在登录 / 注册完成(启用邮件时是验证码输对那一刻) / OAuth 时种一个 httpOnly 的 session cookie;前端不在 JS 里读或存任何 token。**cookie 名是部署级的**(`breatic_session_{REDIS_KEY_PREFIX}`,构造在 core 的 `sessionCookieName()`,是唯一一处),因为 **cookie 不按端口隔离**(RFC 6265 §8.5)—— 同机跑两套部署时端口分得开服务、分不开 cookie jar,同名就会互相顶掉登录态。服务端环境变量 `COOKIE_DOMAIN` + `EMAIL_BACKEND` 见 [Configuration files](#configuration-files) 段(后端)。
 
