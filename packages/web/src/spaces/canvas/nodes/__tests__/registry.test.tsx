@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { describe, it, expect } from 'vitest';
-import { NODE_TYPES, NODE_KIND_LIST } from '@web/spaces/canvas/nodes/registry';
+import { NODE_TYPES, NODE_TYPE_LIST } from '@web/spaces/canvas/nodes/registry';
 
 describe('canvas NODE_TYPES registry', () => {
-  it('exposes a renderable component for every kind in NODE_KIND_LIST', () => {
-    NODE_KIND_LIST.forEach((k) => {
+  it('exposes a renderable component for every type in NODE_TYPE_LIST', () => {
+    NODE_TYPE_LIST.forEach((k) => {
       const component = NODE_TYPES[k];
       // Node bodies are React.memo-wrapped for canvas perf (#1647), and
       // React.memo returns an exotic component OBJECT (with `$$typeof`), not a
@@ -20,8 +20,8 @@ describe('canvas NODE_TYPES registry', () => {
     });
   });
 
-  it('NODE_KIND_LIST is exactly the 6 unified types + annotation + group', () => {
-    expect(NODE_KIND_LIST).toEqual([
+  it('NODE_TYPE_LIST is exactly the 6 unified types + annotation + group', () => {
+    expect(NODE_TYPE_LIST).toEqual([
       'text',
       'image',
       'audio',

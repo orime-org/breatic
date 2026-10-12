@@ -10,7 +10,7 @@
 
 import type { FocusImage, MissingSource, ModelEntry } from '@breatic/shared';
 
-import type { CanvasEdge, CanvasNodeView } from '@web/data/yjs/canvas-space';
+import type { CanvasEdge } from '@web/data/yjs/canvas-space';
 import {
   deriveReferences,
   type ReferenceRailItem,
@@ -37,7 +37,7 @@ import {
   type MentionTokens,
   type ReferenceUrls,
 } from '@web/spaces/canvas/generate/reference-urls';
-import { asContentView } from '@web/data/yjs/node-view';
+import { asContentView, type NodeRef } from '@web/data/yjs/node-view';
 import type { ImageSlot } from '@web/spaces/canvas/generate/image-slots';
 import { styleSlotsFor } from '@web/spaces/canvas/generate/style-slot';
 import { withStyleImages } from '@web/spaces/canvas/generate/style-picks';
@@ -163,7 +163,7 @@ export function selectModeModels(
  */
 export function buildGeneratePanelViewModel(input: {
   nodeId: string;
-  nodes: ReadonlyArray<Pick<CanvasNodeView, 'id' | 'data'>>;
+  nodes: ReadonlyArray<NodeRef>;
   edges: ReadonlyArray<CanvasEdge>;
   /**
    * Body text per referenced text node (#1774) — see `deriveReferences`.

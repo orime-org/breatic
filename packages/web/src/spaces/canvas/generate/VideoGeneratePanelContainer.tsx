@@ -15,7 +15,6 @@ import {
   runCanvasUndoBatch,
   setNodeParams,
   type CanvasEdge,
-  type CanvasNodeView,
 } from '@web/data/yjs/canvas-space';
 import { useTextBodies } from '@web/data/yjs/use-text-body';
 import {
@@ -64,6 +63,7 @@ import {
 import {
   asContentView,
   type ContentNodeView,
+  type NodeRef,
 } from '@web/data/yjs/node-view';
 import {
   PromptEditor,
@@ -144,7 +144,7 @@ function totalOf(spec: StoryboardSpec | undefined, params: Readonly<Record<strin
 
 interface VideoGeneratePanelContainerProps {
   /** Live canvas node views (target + reference sources). */
-  nodes: ReadonlyArray<Pick<CanvasNodeView, 'id' | 'data'>>;
+  nodes: ReadonlyArray<NodeRef>;
   /** Live canvas edges (incoming = references). */
   edges: ReadonlyArray<CanvasEdge>;
   /** Project the canvas space belongs to. */

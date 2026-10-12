@@ -63,11 +63,11 @@ function renderNode(
   type: 'image' | 'video' | 'audio',
   counts: NodeTaskCounts,
 ): HTMLElement {
-  const view = toNodeView(fields(type, counts));
-  if (view === null) throw new Error('no view');
-  if (view.kind === 'image') render(<ImageNode data={view} />);
-  else if (view.kind === 'video') render(<VideoNode data={view} />);
-  else if (view.kind === 'audio') render(<AudioNode data={view} />);
+  const typed = toNodeView(fields(type, counts));
+  if (typed === null) throw new Error('no view');
+  if (typed.type === 'image') render(<ImageNode data={typed.data} />);
+  else if (typed.type === 'video') render(<VideoNode data={typed.data} />);
+  else if (typed.type === 'audio') render(<AudioNode data={typed.data} />);
   return screen.getByTestId(`${type}-node`);
 }
 

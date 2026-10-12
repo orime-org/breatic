@@ -111,7 +111,6 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
         type: 'image',
         position: { x: 5, y: 6 },
         data: {
-          kind: 'image',
           name: 'N',
           content: 'x.png',
           handling: false,
@@ -161,8 +160,8 @@ describe('canvas-space Yjs binding — wire alignment with the backend', () => {
     });
 
     const view = readNodes(d)[0];
+    expect(view.type).toBe('image');
     expect(view.data).toEqual({
-      kind: 'image',
       name: 'N',
       content: 'result.png',
       handling: false,

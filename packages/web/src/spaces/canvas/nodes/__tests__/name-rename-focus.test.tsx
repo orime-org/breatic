@@ -55,7 +55,7 @@ const SITES = [
   {
     name: 'group name',
     mount: (onRename: (name: string) => void) =>
-      renderInShell(<GroupNode data={{ kind: 'group', name: 'Old' }} onRename={onRename} />),
+      renderInShell(<GroupNode data={{ name: 'Old' }} onRename={onRename} />),
     label: 'group-name',
     input: 'group-name-input',
   },

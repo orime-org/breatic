@@ -11,7 +11,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { findTemplate, type ModelEntry } from '@breatic/shared';
 
 vi.mock('@web/data/yjs/canvas-space', () => ({
-  readCanvasGraph: vi.fn(() => ({ nodes: [{ id: 'n1', data: { kind: 'image' } }], edges: [] })),
+  readCanvasGraph: vi.fn(() => ({ nodes: [{ id: 'n1', type: 'image', data: {} }], edges: [] })),
   setNodeMode: vi.fn(),
   setNodeModel: vi.fn(),
   getPromptFragment: vi.fn(() => null),

@@ -144,14 +144,14 @@ function nodes(): Parameters<
   return [
     {
       id: 'target',
+      type: 'video',
       data: {
-        kind: 'video',
         handling: false,
         firstFrameUrl: 'https://cdn/first.png',
         endFrameUrl: 'https://cdn/end.png',
       },
     },
-    { id: 'other', data: { kind: 'video', handling: false } },
+    { id: 'other', type: 'video', data: { handling: false } },
   ] as Parameters<typeof VideoGeneratePanelContainer>[0]['nodes'];
 }
 
@@ -301,14 +301,14 @@ describe('the container keeps its memoized children bail-able', () => {
                 [
                   {
                     id: 'target',
+                    type: 'video',
                     data: {
-                      kind: 'video',
                       handling: false,
                       firstFrameUrl: 'https://cdn/first.png',
                       endFrameUrl: 'https://cdn/OTHER.png',
                     },
                   },
-                  { id: 'other', data: { kind: 'video', handling: false } },
+                  { id: 'other', type: 'video', data: { handling: false } },
                 ] as Parameters<
                   typeof VideoGeneratePanelContainer
                 >[0]['nodes']

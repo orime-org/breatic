@@ -9,7 +9,7 @@ import {
   withListDefaultVoice,
 } from '@web/spaces/canvas/generate/audio-panel-view-model';
 import { resolveModelSwitch } from '@web/spaces/canvas/generate/model-params';
-import type { CanvasNodeView } from '@web/data/yjs/canvas-space';
+import type { AudioNodeView, NodeRef } from '@web/data/yjs/node-view';
 
 /**
  * A tts model.
@@ -55,13 +55,14 @@ const FISH = ttsModel('fish-s2-pro', {
  */
 function nodes(
   data: Record<string, unknown> = {},
-): ReadonlyArray<Pick<CanvasNodeView, 'id' | 'data'>> {
+): ReadonlyArray<NodeRef> {
   return [
     {
       id: 'n1',
-      // `status` is what marks a node view as a CONTENT one; a fixture without
+      type: 'audio',
+      // `handling` is what marks a node view as a CONTENT one; a fixture without
       // it reads as a node that carries no model, no params and no voice.
-      data: { kind: 'audio', handling: false, ...data } as CanvasNodeView['data'],
+      data: { handling: false, ...data } as AudioNodeView,
     },
   ];
 }
@@ -168,7 +169,7 @@ describe('buildAudioPanelViewModel — whether a voice has been chosen', () => {
     // hand-built record can never carry `Alice`, so a test that writes its own
     // fixture cannot see this.
     const { paramsByModel } = resolveModelSwitch(
-      { kind: 'audio', handling: false } as never,
+      {},
       ELEVEN,
     );
     const vm = buildAudioPanelViewModel({
