@@ -73,6 +73,14 @@ export interface MarkDraft {
   readonly editingText: string | null;
 }
 
+/** How the handlers outside the markup's canvas ask it to leave a text edit or drop its selection. */
+export interface MarkChannel {
+  /** Leave the text being edited, writing it back by the usual rules. */
+  exitEditing: () => void;
+  /** Drop the selection. */
+  discardSelection: () => void;
+}
+
 /** The draft the markup tool opens with. */
 export const EMPTY_MARK: Readonly<MarkDraft> = Object.freeze({
   tool: 'select',

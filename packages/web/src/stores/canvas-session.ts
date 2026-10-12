@@ -36,6 +36,7 @@ import {
   restyled,
   undoneMark,
   withObjects,
+  type MarkChannel,
   type MarkDraft,
   type MarkObject,
   type MarkTool,
@@ -218,6 +219,15 @@ export interface FocusCrop {
 
 /** One canvas's session state and its writers. */
 export interface CanvasSessionState {
+  /**
+   * How the open markup's canvas is told to leave a text edit or drop its
+   * selection, registered by that canvas while it is mounted (inner#1303
+   * §6.2). The handlers that need it run outside the canvas and cannot reach
+   * its Fabric instance.
+   */
+  markChannel: MarkChannel | null;
+  /** Register the markup canvas's channel, or null when it unmounts. */
+  registerMarkChannel: (channel: MarkChannel | null) => void;
   /**
    * Whether the annotation tool is armed: the left menu's comment button was
    * pressed and the next canvas click says where the note goes (#1881 §6.4).
@@ -599,6 +609,11 @@ export function createCanvasSessionStore(): CanvasSessionStore {
       panelKind: null,
       panelSession: 0,
       miniTool: null,
+      markChannel: null,
+      registerMarkChannel: (channel) =>
+        set((s) => {
+          s.markChannel = channel;
+        }),
       focusCrop: null,
       historyFocus: null,
       editingTextNode: null,

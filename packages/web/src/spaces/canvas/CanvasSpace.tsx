@@ -130,6 +130,7 @@ import { matchHistoryShortcut } from '@web/spaces/canvas/canvas-history-shortcut
 import {
   brushSizeStep,
   historyAvailability,
+  routeDeleteCommand,
   routeHistoryCommand,
 } from '@web/spaces/canvas/mini-tool/drawing-history';
 import { BRUSH_SIZE } from '@web/stores/drawing-draft';
@@ -1257,7 +1258,7 @@ function CanvasSpaceInner({
   // While a drawing tool is open the buttons act on the drawing (inner#1302 §6.3).
   React.useEffect(() => {
     const shown = historyAvailability(
-      miniToolDraft?.drawing ?? null,
+      miniToolDraft?.drawing ?? miniToolDraft?.mark ?? null,
       miniToolDraft?.exporting ?? false,
       canUndo,
       canRedo,
@@ -1302,10 +1303,14 @@ function CanvasSpaceInner({
       const session = sessionStore.getState();
       const step = brushSizeStep(event);
       const drawing = session.miniTool?.drawing;
-      if (step !== null && drawing != null) {
+      const mark = session.miniTool?.mark;
+      if (step !== null && (drawing != null || mark != null)) {
         event.preventDefault();
         if (session.miniTool?.exporting) return;
-        session.setDrawingSize(Math.min(BRUSH_SIZE.max, Math.max(BRUSH_SIZE.min, drawing.size + step)));
+        // Markup shares the brush's size slider and its keys (inner#1303 §6.2).
+        const size = Math.min(BRUSH_SIZE.max, Math.max(BRUSH_SIZE.min, (drawing ?? mark)!.size + step));
+        if (drawing != null) session.setDrawingSize(size);
+        else session.setMarkSize(size);
         return;
       }
       const action = matchHistoryShortcut(event);
@@ -3473,6 +3478,8 @@ function CanvasSpaceInner({
       if (isEditableTarget(event.target as Element | null)) return;
       event.preventDefault();
       if (event.repeat) return;
+      // Open markup takes the key for its own selected object or text first.
+      if (routeDeleteCommand(sessionStore.getState()) === 'mark') return;
       const { nodes, edges } = rfStoreApi.getState();
       void deleteElements({
         nodes: nodes.filter((node) => node.selected),
@@ -3482,7 +3489,7 @@ function CanvasSpaceInner({
     };
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
-  }, [readOnly, deleteElements, rfStoreApi]);
+  }, [readOnly, deleteElements, rfStoreApi, sessionStore]);
 
   // Selection-menu delete: cascade each selected Group to the WHOLE group (frame
   // + every member, via selectionDeletionIds) — the same cascade the single-node
