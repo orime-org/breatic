@@ -192,6 +192,10 @@ function makeFlowNode(
         ? null
         : (data.taskCounts ?? NO_TASKS);
     const taskPanelOpenHere = useCanvasSession(taskPanelStatusFor(props.id));
+    // The expand frame grows past the node over where the counts stand.
+    const expanding = useCanvasSession(
+      (s) => s.panelKind === 'miniTool' && s.panelHostId === props.id && s.miniTool?.expand != null,
+    );
     const openTaskPanel = useCanvasSession((s) => s.openTaskPanel);
     const closeActivePanel = useCanvasSession((s) => s.closeActivePanel);
     const onOpenTasks = React.useCallback(
@@ -281,7 +285,7 @@ function makeFlowNode(
                 the cells below the size a target may be
                 (`cellMeetsTargetSize`), the three ended states give theirs
                 up; the running one is drawn at every zoom. */}
-                {taskCounts !== null ? (
+                {taskCounts !== null && !expanding ? (
                   <div
                     data-testid='node-task-counts-anchor'
                     // `nodrag` keeps a press on a count from starting a node

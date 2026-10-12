@@ -83,7 +83,7 @@ describe('NodeExpandLayer', () => {
     mount();
     act(() => store().setExpand({ frame: { x: -0.5, y: 0, width: 2, height: 1 }, ratio: 'free' }));
     drag(screen.getByTestId('mini-tool-expand-source'), [300, 200], [340, 200]);
-    act(() => store().setExpand({ frame: { x: -0.25, y: 0, width: 1.5, height: 1 }, ratio: '2:1' }));
+    act(() => store().setExpand({ frame: { x: -0.25, y: 0, width: 1.5, height: 1 }, ratio: '16:9' }));
     // The frame wraps the picture where the node shows it: the picture's copy
     // sits at the node's own picture, 0px from it.
     const frame = screen.getByTestId('mini-tool-expand-frame');
@@ -93,7 +93,7 @@ describe('NodeExpandLayer', () => {
 
   it('keeps a moved picture where it is when Free leaves the frame as it was', () => {
     mount();
-    act(() => store().setExpand({ frame: { x: -0.5, y: 0, width: 2, height: 1 }, ratio: '2:1' }));
+    act(() => store().setExpand({ frame: { x: -0.5, y: 0, width: 2, height: 1 }, ratio: '16:9' }));
     drag(screen.getByTestId('mini-tool-expand-source'), [300, 200], [340, 200]);
     const left = screen.getByTestId('mini-tool-expand-frame').style.left;
     act(() => store().setExpand({ frame: store().miniTool!.expand!.frame, ratio: 'free' }));
