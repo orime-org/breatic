@@ -87,6 +87,7 @@ import {
   readOp,
   refundObject,
   reId,
+  giveIntentlessPaymentsAnIntent,
   parkInFlightOperations,
   seedOperation,
   seedRefundLot,
@@ -571,6 +572,7 @@ describe("step 2 — re-read Stripe for awaiting_stripe dispositions", () => {
 
 describe("step 4 — the daily reconcile runs from the loop", () => {
   it("a tick runs the reconcile when it is due", async () => {
+    await giveIntentlessPaymentsAnIntent(suite.sql);
     await suite.sql`DELETE FROM credit_refund_reconcile_status WHERE name = 'daily'`;
     await getRedis().del(`${env.ENV}:server:refund-reconcile-lock`);
     const lot = await lotOnStripe("refunding");

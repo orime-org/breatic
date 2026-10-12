@@ -563,6 +563,24 @@ export async function parkInFlightOperations(sql: Sql): Promise<void> {
 }
 
 /**
+ * Give every lot-opening payment that has no payment intent a unique
+ * placeholder one. Some suites insert such payments and move their lots by
+ * SQL (real data cannot: approve refuses a payment without an intent); the
+ * daily reconcile scans the whole table, would land on them and record them
+ * as failing. The fake Stripe answers an intent it was never told about with
+ * an empty list, so a placeholder makes them reconcile cleanly. Like
+ * {@link parkInFlightOperations}, it only touches rows of finished suites.
+ * @param sql - Raw client.
+ */
+export async function giveIntentlessPaymentsAnIntent(sql: Sql): Promise<void> {
+  await sql`
+    UPDATE payments p SET stripe_payment_intent_id = 'pi_placeholder_' || p.id
+    WHERE p.stripe_payment_intent_id IS NULL
+      AND EXISTS (SELECT 1 FROM credit_lots l WHERE l.source_id = p.id)
+  `;
+}
+
+/**
  * The database clock in epoch microseconds, for bracketing a `now()`.
  * @param sql - Raw client.
  * @returns Microseconds.

@@ -33,8 +33,10 @@
  *   The refund loop's step 4 calls it every tick (see
  *   `credit-refund-loop.integration.test.ts`).
  *
- * Every case parks dispositions other suites left in flight, deletes the
- * status row and the lock key, so a pass sees no leftover progress.
+ * Every case parks dispositions other suites left in flight, gives their
+ * intent-less lot payments a placeholder intent (the pass scans the whole
+ * table), and deletes the status row and the lock key, so a pass sees no
+ * leftover progress and no leftover row it cannot read.
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
@@ -68,6 +70,7 @@ import {
   PAID_CENTS,
   copiesOf,
   dbClockUs,
+  giveIntentlessPaymentsAnIntent,
   parkInFlightOperations,
   refundObject,
   reId,
@@ -93,6 +96,7 @@ function lockKey(): string {
 beforeEach(async () => {
   fakeStripe.reset();
   await parkInFlightOperations(suite.sql);
+  await giveIntentlessPaymentsAnIntent(suite.sql);
   await suite.sql`DELETE FROM credit_refund_reconcile_status`;
   await getRedis().del(lockKey());
 });
