@@ -226,6 +226,31 @@ describe('buildDragPreview', () => {
     expect(block.style.getPropertyPriority('width')).toBe('important');
   });
 
+  it('leaves the content its own size, which the place its styles are worked out in would stretch', () => {
+    const editor = open([{ type: 'paragraph', content: 'one' }]);
+    const view = editor.prosemirrorView!;
+    const content = blockPreviewContent(view, [view.dom.querySelector('.bn-block-outer')!.cloneNode(true) as Element]);
+    // The body's block group fills the editor element, which fills its
+    // scroller: worked out there, a one-line row is as tall as the screen.
+    const real = window.getComputedStyle.bind(window);
+    const sizes: Record<string, string> = { height: '313px', 'block-size': '313px', 'min-height': '313px', 'max-width': '768px' };
+    const computed = vi.spyOn(window, 'getComputedStyle').mockImplementation((element, pseudo) =>
+      element === content && !pseudo
+        ? ({
+          length: Object.keys(sizes).length,
+          item: (at: number) => Object.keys(sizes)[at],
+          getPropertyValue: (property: string) => sizes[property] ?? '',
+        } as unknown as CSSStyleDeclaration)
+        : real(element, pseudo),
+    );
+    try {
+      buildDragPreview(view, content, () => ({ width: 100, height: 20 }));
+    } finally {
+      computed.mockRestore();
+    }
+    expect(Object.keys(sizes).map((property) => content.style.getPropertyValue(property))).toEqual(['', '', '', '']);
+  });
+
   it('works its styles out beside the editor element and leaves nothing of that there', () => {
     const editor = open([{ type: 'paragraph', content: 'one' }]);
     const view = editor.prosemirrorView!;
