@@ -72,6 +72,7 @@ function press(over: Partial<MiniToolRun> = {}): MiniToolRun {
     fillUpload: vi.fn(),
     fillUploads: vi.fn(),
     exportDrawing: vi.fn(),
+    exportExpand: vi.fn(),
     uploadImage: vi.fn(),
     setExporting: vi.fn(),
     stillOpen: () => true,
@@ -233,6 +234,52 @@ describe('startMiniToolRun', () => {
 
   // inner#1302 §6.5: a drawing tool exports and uploads its images before
   // anything is built, and the request carries them.
+  describe('the expand tool', () => {
+    const IMAGE = { id: 'src', name: 'IMG', position: { x: 0, y: 0 }, groupOrigin: null, mimeType: 'image/png' };
+    const FRAME = { x: -0.25, y: 0, width: 1.5, height: 1 };
+    const SIZE = { width: 1600, height: 1000 };
+
+    it('uploads the padded picture and its mask together and sends both', async () => {
+      const run = press({
+        spec: tool('image.expand'),
+        source: IMAGE,
+        snapshot: { ...SNAPSHOT, source: { url: 'https://cdn/a.png' }, prompt: '' },
+        capture: { kind: 'expand', frame: FRAME, sourceSize: SIZE },
+        exportExpand: vi.fn(() =>
+          Promise.resolve({ image: new Blob(['i'], { type: 'image/png' }), mask: new Blob(['m'], { type: 'image/png' }) }),
+        ),
+        uploadImage: vi.fn((file: File) => Promise.resolve(`https://cdn/${file.name}`)),
+      });
+
+      await startMiniToolRun(run);
+
+      expect(run.exportExpand).toHaveBeenCalledWith('https://cdn/a.png', FRAME, SIZE);
+      expect(vi.mocked(run.uploadImage).mock.calls.map(([file]) => file.name).sort()).toEqual([
+        'EXPAND-image.png',
+        'EXPAND-mask.png',
+      ]);
+      expect(api.run).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tool: 'image.expand',
+          expand: { image: 'https://cdn/EXPAND-image.png', mask: 'https://cdn/EXPAND-mask.png' },
+        }),
+      );
+      expect(vi.mocked(run.setExporting).mock.calls).toEqual([[true], [false]]);
+    });
+
+    it('builds nothing and says so when the export fails', async () => {
+      const run = press({
+        spec: tool('image.expand'),
+        source: IMAGE,
+        capture: { kind: 'expand', frame: FRAME, sourceSize: SIZE },
+        exportExpand: vi.fn(() => Promise.reject(new Error('cors'))),
+      });
+      await startMiniToolRun(run);
+      expect(toast.warning).toHaveBeenCalledWith(t('canvas.miniTool.panel.exportFailed'));
+      expect(canvas.addNode).not.toHaveBeenCalled();
+    });
+  });
+
   describe('a drawing tool', () => {
     const STROKE = { kind: 'stroke', erase: false, size: 5, color: '#FF3B30', points: [[0.1, 0.1]] } as const;
     const IMAGE = { id: 'src', name: 'IMG', position: { x: 0, y: 0 }, groupOrigin: null, mimeType: 'image/jpeg' };
@@ -252,7 +299,7 @@ describe('startMiniToolRun', () => {
         spec: tool(id),
         source: IMAGE,
         snapshot: PICTURE,
-        drawing: { kind, ops: [STROKE] },
+        capture: { kind: 'strokes', ops: [STROKE] },
         exportDrawing: vi.fn(() => Promise.resolve(kind === 'mask' ? { mask } : { image })),
         uploadImage: vi.fn((file: File) => Promise.resolve(`https://cdn/${file.name}`)),
         ...over,
