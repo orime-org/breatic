@@ -19,6 +19,7 @@ import {
   toolParamKeys,
 } from "@shared/mini-tools/index.js";
 import { MINI_TOOL_JOB_MAX_OUTPUTS } from "@shared/upload/mini-tool-job.js";
+import { UPLOAD_STATUS_MAX_KEYS } from "@shared/upload/upload-status.js";
 
 
 const BATCH_ONE = {
@@ -64,6 +65,12 @@ describe("MINI_TOOLS registry", () => {
   it("gives every tool at least one output and one modality per output list", () => {
     for (const tool of MINI_TOOLS) {
       expect(outputsOf(tool, defaultParamsOf(tool)).length).toBeGreaterThan(0);
+    }
+  });
+
+  it("asks how every upload of one grouped export ended in a single status request", () => {
+    for (const tool of MINI_TOOLS.filter((t) => t.groupOutputs === true)) {
+      expect(mostOutputsOf(tool), tool.id).toBeLessThanOrEqual(UPLOAD_STATUS_MAX_KEYS);
     }
   });
 
