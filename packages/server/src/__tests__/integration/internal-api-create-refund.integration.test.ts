@@ -39,7 +39,7 @@ vi.mock("@server/infra/stripe.js", async () => {
 
 import { getCreditRefundConfig } from "@server/config/credit-refund.js";
 import { fakeStripe, stripeError } from "./fake-stripe-refunds.js";
-import { ADMIN, call, errorShape, freshKey, paths, useInternalApp } from "./internal-api-harness.js";
+import { ADMIN, call, errorShape, freshKey, mailsSettled, paths, useInternalApp } from "./internal-api-harness.js";
 import {
   CREDITS,
   PAID_CENTS,
@@ -501,6 +501,7 @@ describe("POST …/refund/approve", () => {
     expect(fakeStripe.createCalls).toHaveLength(1);
     expect(await opIdsOf(lot)).toHaveLength(1);
     await expectBookedOn(lot, fakeStripe.refundsOf(lot.paymentIntentId)[0]!.id);
+    await mailsSettled(suite.sql, lot);
   });
 });
 

@@ -102,6 +102,7 @@ import {
   call,
   freshKey,
   freshNonce,
+  mailsSettled,
   nonceKey,
   paths,
   useInternalApp,
@@ -190,6 +191,7 @@ describe("signature (§4.2): each failed step is 401 and writes nothing", () => 
     });
     expect(first.status).toBe(200);
     expect(first.json.result).toBe("rejected");
+    await mailsSettled(sql, lot);
     const after = await worldOf(sql, lot);
 
     const again = await first.replay();

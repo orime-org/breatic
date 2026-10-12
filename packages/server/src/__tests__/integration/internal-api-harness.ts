@@ -18,10 +18,11 @@ import type { AddressInfo } from "node:net";
 import { serve } from "@hono/node-server";
 import type { Hono } from "hono";
 import postgres from "postgres";
-import { afterAll, beforeAll, beforeEach, inject } from "vitest";
+import { afterAll, beforeAll, beforeEach, expect, inject, vi } from "vitest";
 import { env, getRedis, initCore, loadLocales } from "@breatic/core";
 import { signRequest } from "@server/middleware/internal-signature.js";
 import { fakeStripe } from "./fake-stripe-refunds.js";
+import { mailsOf, type SeededLot } from "./credit-refund-fixtures.js";
 
 /** The current shared secret the suites start the app with. */
 export const SECRET = "internal-secret-current-0123456789abcdef";
@@ -229,6 +230,26 @@ export function useInternalApp(appName: string): InternalSuite {
     await resetInternalRateLimit();
   });
   return holder;
+}
+
+/**
+ * Wait until every mail row of the lot has left `pending` and `sending`.
+ * Rows are claimed and sent in the background right after the request
+ * commits (§6.5 M1), so until then a row's status is still moving (a
+ * snapshot taken now differs from one taken later), a same-key resend of a
+ * `sending` row answers 409 request_in_progress, and a send still running
+ * when the suite closes its connections fails its write-back.
+ * @param sql - Raw client.
+ * @param lot - The lot.
+ */
+export async function mailsSettled(sql: ReturnType<typeof postgres>, lot: SeededLot): Promise<void> {
+  await vi.waitFor(
+    async () => {
+      const busy = (await mailsOf(sql, lot.lotId)).filter((m) => m.status === "pending" || m.status === "sending");
+      expect(busy).toEqual([]);
+    },
+    { timeout: 10_000, interval: 20 },
+  );
 }
 
 /**

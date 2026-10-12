@@ -32,7 +32,7 @@ vi.mock("@server/infra/stripe.js", async () => {
 });
 
 import { fakeStripe } from "./fake-stripe-refunds.js";
-import { ADMIN, call, errorShape, freshKey, paths, useInternalApp } from "./internal-api-harness.js";
+import { ADMIN, call, errorShape, freshKey, mailsSettled, paths, useInternalApp } from "./internal-api-harness.js";
 import {
   PAID_CENTS,
   mailsOf,
@@ -105,6 +105,7 @@ describe("same key, same request: replay", () => {
     const key = freshKey("approve");
     const first = await post(paths.approve(lot.lotId), APPROVE, key);
     expect(first.status).toBe(200);
+    await mailsSettled(suite.sql, lot);
     const after = await worldOf(suite.sql, lot);
     const listCalls = fakeStripe.listCalls.length;
 
@@ -155,6 +156,7 @@ describe("same key, same request: replay", () => {
     const key = freshKey("resend");
     const first = await post(paths.resend(rejected.json.id), { reason: "Lost in spam." }, key);
     expect([200, 202]).toContain(first.status);
+    await mailsSettled(suite.sql, lot);
 
     const again = await post(paths.resend(rejected.json.id), { reason: "Lost in spam." }, key);
 
@@ -175,6 +177,7 @@ describe("same key, different request: 422 idempotency_key_reused", () => {
     const other = await lotOnStripe("refund_pending");
     const key = freshKey("approve");
     expect((await post(paths.approve(lot.lotId), APPROVE, key)).status).toBe(200);
+    await mailsSettled(suite.sql, lot);
     const lotAfter = await worldOf(suite.sql, lot);
     const otherBefore = await worldOf(suite.sql, other);
 
@@ -194,6 +197,7 @@ describe("same key, different request: 422 idempotency_key_reused", () => {
     const key = freshKey("shared");
     const approved = await post(paths.approve(lot.lotId), APPROVE, key);
     expect(approved.status).toBe(200);
+    await mailsSettled(suite.sql, lot);
     const mailsBefore = await mailsOf(suite.sql, lot.lotId);
 
     const res = await post(paths.resend(approved.json.id), { reason: "Send it again." }, key);
@@ -311,6 +315,7 @@ describe("one key, two lots, at the same time (§9)", () => {
     expect(await worldOf(suite.sql, loserLot)).toEqual(loserLot === a ? beforeA : beforeB);
     expect((await readOp(suite.sql, winner.json.id)).idempotency_key).toBe(key);
     expect(await holdersOf(key)).toEqual({ ops: 1, mails: 0 });
+    await mailsSettled(suite.sql, winnerLot);
   });
 
   it("exactly one approval runs and Stripe sees exactly one create", async () => {
@@ -326,5 +331,7 @@ describe("one key, two lots, at the same time (§9)", () => {
     expect(answers.map((r) => r.status).sort()).toEqual([200, 422]);
     expect(fakeStripe.createCalls).toHaveLength(1);
     expect(await holdersOf(key)).toEqual({ ops: 1, mails: 0 });
+    await mailsSettled(suite.sql, a);
+    await mailsSettled(suite.sql, b);
   });
 });
