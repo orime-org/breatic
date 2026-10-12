@@ -7,8 +7,8 @@
 -- rows from before this have no choice on record and send nothing.
 -- Statement order: the migrator runs every pending migration in one
 -- transaction, so a lock taken here is held until commit. The read-only
--- backfill runs first, the new indexes next, and the ALTERs that take an
--- exclusive lock on users, upload_grants and subscriptions run last.
+-- backfills run first and the ALTERs that take an exclusive lock on users,
+-- upload_grants and subscriptions run last.
 
 -- Product milestones reported once (inner#1442 §4.8); the insert is the claim.
 CREATE TABLE "analytics_milestones" (
@@ -31,6 +31,22 @@ SELECT 'collab:' || c."project_id" || ':' || m."user_id"
   JOIN "projects" p ON p."id" = c."project_id"
   WHERE m."role" = 'user' AND m."user_id" <> p."created_by_user_id"
 ON CONFLICT DO NOTHING;--> statement-breakpoint
+-- An account that already finished an Agent turn, completed a generation or
+-- created a project before this shipped has had its first; claiming it here
+-- keeps its next one from being reported as a first (inner#1442 §4.8). A turn
+-- counts when its reply carries none of the marks a failed, stopped or blocked
+-- turn leaves; deleted projects and conversations count.
+INSERT INTO "analytics_milestones" ("key")
+SELECT 'first-agent:' || m."user_id"
+  FROM "conversation_messages" m
+  WHERE m."role" = 'assistant'
+    AND NOT (m."parts" @> '[{"type":"failed"}]' OR m."parts" @> '[{"type":"interrupted"}]'
+             OR m."parts" @> '[{"type":"blocked"}]')
+UNION
+SELECT 'first-generation:' || t."user_id" FROM "tasks" t WHERE t."status" = 'completed'
+UNION
+SELECT 'first-project:' || p."created_by_user_id" FROM "projects" p
+ON CONFLICT DO NOTHING;--> statement-breakpoint
 -- What was reported to the ad platform (inner#1442 §4.9). The key makes one
 -- conversion queue once; the status lets a refund restate only a conversion
 -- the platform received, since an unknown transaction id counts as new.
@@ -50,9 +66,6 @@ CREATE TABLE "ads_conversion_uploads" (
 ALTER TABLE "ads_conversion_uploads" ADD CONSTRAINT "ads_conversion_uploads_payment_id_payments_id_fk"
   FOREIGN KEY ("payment_id") REFERENCES "public"."payments"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "ads_conversion_uploads_payment_idx" ON "ads_conversion_uploads" USING btree ("payment_id");--> statement-breakpoint
--- Lookups the first-event checks make per user (inner#1442 §4.8).
-CREATE INDEX "conversation_messages_user_role_idx" ON "conversation_messages" USING btree ("user_id", "role");--> statement-breakpoint
-CREATE INDEX "projects_created_by_user_id_idx" ON "projects" USING btree ("created_by_user_id");--> statement-breakpoint
 ALTER TABLE "users" ADD COLUMN "analytics_consent" jsonb;--> statement-breakpoint
 ALTER TABLE "users" ADD COLUMN "attribution" jsonb;--> statement-breakpoint
 ALTER TABLE "upload_grants" ADD COLUMN "analytics_consent" jsonb;--> statement-breakpoint

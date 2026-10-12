@@ -23,6 +23,7 @@ import crypto from "node:crypto";
 import postgres from "postgres";
 import {
   ADS_CONVERSION_QUEUE,
+  claimFirstMilestone,
   createQueue,
   getUploadStatus,
   initCore,
@@ -34,7 +35,7 @@ import {
   setAdsConversionConfigForTest,
   type OutgoingEvent,
 } from "@breatic/core";
-import { taskService, uploadGrantService } from "@breatic/domain";
+import { uploadGrantService } from "@breatic/domain";
 import { CONSENT_REVISION, type ConsentSnapshot } from "@breatic/shared";
 
 try {
@@ -178,36 +179,13 @@ describe("consent snapshots", () => {
     expect(row!.analytics_consent).toEqual(ACCEPT);
   });
 
-  it("tells a first completed task from a later one", async () => {
+  it("claims each first milestone once per account, however many claim it at once", async () => {
     const me = await member();
-    const insertTask = async (status: string, completedAt: Date | null): Promise<string> => {
-      const [row] = await sql<{ id: string }[]>`
-        INSERT INTO tasks (user_id, space_id, task_type, mode, status, params, completed_at)
-        VALUES (${me.id}, gen_random_uuid(), 'image', 'append', ${status}, '{}', ${completedAt}) RETURNING id
-      `;
-      return row!.id;
-    };
-    const first = await insertTask("completed", new Date(Date.now() - 1000));
-    await insertTask("failed", null);
-    expect(await taskService.hasCompletedTaskBefore(me.id, first)).toBe(false);
-    const second = await insertTask("completed", new Date());
-    expect(await taskService.hasCompletedTaskBefore(me.id, second)).toBe(true);
-    expect(await taskService.hasCompletedTaskBefore(me.id, first)).toBe(false);
-  });
-
-  it("counts exactly one of two tasks that completed at the same instant as the first", async () => {
-    const me = await member();
-    const at = new Date();
-    const ids = await Promise.all(
-      [0, 1].map(async () => {
-        const [row] = await sql<{ id: string }[]>`
-          INSERT INTO tasks (user_id, space_id, task_type, mode, status, params, completed_at)
-          VALUES (${me.id}, gen_random_uuid(), 'image', 'append', 'completed', '{}', ${at}) RETURNING id
-        `;
-        return row!.id;
-      }),
+    const claims = await Promise.all(
+      Array.from({ length: 5 }, async () => claimFirstMilestone("first-generation", me.id)),
     );
-    const firsts = await Promise.all(ids.map(async (id) => !(await taskService.hasCompletedTaskBefore(me.id, id))));
-    expect(firsts.filter(Boolean)).toHaveLength(1);
+    expect(claims.filter(Boolean)).toHaveLength(1);
+    expect(await claimFirstMilestone("first-generation", me.id)).toBe(false);
+    expect(await claimFirstMilestone("first-agent", me.id)).toBe(true);
   });
 });

@@ -19,7 +19,7 @@
  * progress rather than hand out a number, and they do filter.
  */
 
-import { and, asc, desc, eq, inArray, isNull, lt, gt, max, not, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, lt, gt, max } from "drizzle-orm";
 import {
   db,
   conversations,
@@ -333,50 +333,4 @@ export async function cascadeDeleteMessages(
         isNull(conversationMessages.deletedAt),
       ),
     );
-}
-
-/**
- * A condition matching stored messages that carry a part of the given type.
- * @param type - The part type
- * @returns The SQL condition
- */
-function carriesPart(type: string): SQL {
-  return sql`${conversationMessages.parts} @> ${JSON.stringify([{ type }])}::jsonb`;
-}
-
-/**
- * Whether the account finished an Agent turn before the one named: a stored
- * reply carrying none of the marks a stopped, failed or blocked turn leaves
- * (`failed`, `interrupted`, `blocked`), stored before the named turn's first
- * reply. Replies are ordered by `(created_at, id)`, so of several turns
- * finishing at once exactly one is first. Deleted conversations count — the
- * question is whether it ever happened.
- * @param userId - The account
- * @param turn - The turn just stored
- * @param turn.conversationId - Its conversation
- * @param turn.turnIndex - Its turn number
- * @returns True when such a turn exists
- */
-export async function hasFinishedTurnBefore(
-  userId: string,
-  turn: { conversationId: string; turnIndex: number },
-): Promise<boolean> {
-  const firstReply = sql`(
-    SELECT m.created_at, m.id FROM conversation_messages m
-    WHERE m.conversation_id = ${turn.conversationId} AND m.turn_index = ${turn.turnIndex} AND m.role = 'assistant'
-    ORDER BY m.created_at, m.id LIMIT 1
-  )`;
-  const rows = await db
-    .select({ id: conversationMessages.id })
-    .from(conversationMessages)
-    .where(
-      and(
-        eq(conversationMessages.userId, userId),
-        eq(conversationMessages.role, "assistant"),
-        sql`(${conversationMessages.createdAt}, ${conversationMessages.id}) < ${firstReply}`,
-        not(or(carriesPart("failed"), carriesPart("interrupted"), carriesPart("blocked"))!),
-      ),
-    )
-    .limit(1);
-  return rows.length > 0;
 }

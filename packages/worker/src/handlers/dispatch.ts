@@ -21,6 +21,7 @@ import { taskDeadline } from "@worker/handlers/task-deadline.js";
 import { withUnderstandSlot } from "@worker/handlers/understand-slots.js";
 import { getStreamRedis, getWorkerConfig, projectActivitiesRepo, publishActivityNew } from "@breatic/core";
 import {
+  claimFirstMilestone,
   projectsRepo,
   reportCollaboratorFirstAction,
   runWithConsent,
@@ -299,9 +300,9 @@ async function reportFirstGeneration(task: {
   userId: string;
   projectId?: string;
 }): Promise<void> {
-  if (!serverAnalyticsWanted()) return;
   try {
-    if (await taskService.hasCompletedTaskBefore(task.userId, task.taskId)) return;
+    if (!(await claimFirstMilestone("first-generation", task.userId))) return;
+    if (!serverAnalyticsWanted()) return;
     const studioId = task.projectId ? await projectsRepo.findOwnerStudioId(task.projectId) : undefined;
     trackServerEvent("first_generation_completed", {
       userId: task.userId,

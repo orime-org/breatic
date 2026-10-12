@@ -39,7 +39,6 @@ vi.mock("ai", () => ({
 vi.mock("@server/modules/project/project.repo.js", () => ({
   createProject: vi.fn(),
   countLiveProjectsInStudio: vi.fn(async () => 0),
-  hasCreatedProject: vi.fn(async () => false),
 }));
 
 // The gate takes the studio's row before counting it. That row lock is the
@@ -60,6 +59,8 @@ vi.mock("@breatic/core", async (importActual: () => Promise<Record<string, unkno
   const actual = await importActual();
   return {
     ...actual,
+    // The account has not claimed its first project yet (inner#1442 §4.8).
+    claimFirstMilestone: vi.fn(async () => true),
     db: {
       // Pass-through transaction — runs the callback immediately with a stub tx
       // handle. createProject is mocked, so no real DB is needed.
@@ -121,7 +122,7 @@ describe("project.service.create — studio-scoped, admin/maintainer gate (spec 
     expect(args?.[4]).toBe("my-cyberpunk-idea");
     expect(args?.[5]).toBe("canvas"); // spaceType threaded to the repo
     expect(args?.[6]).toBe("a description");
-    // The account had no project before, so this one is its first (inner#1442 §4.9).
+    // The account claimed its first-project milestone, so this one is its first (inner#1442 §4.9).
     expect(result).toEqual({ id: "p-1", name: "My Cyberpunk Idea", isFirst: true });
   });
 

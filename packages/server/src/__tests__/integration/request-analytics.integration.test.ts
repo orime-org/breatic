@@ -46,7 +46,6 @@ loadLocales();
 
 const { projectService, recentService, studioService } = await import("@server/modules");
 const inviteService = await import("@server/modules/project-invite/projectInvite.service.js");
-const messageRepo = await import("@server/modules/conversation/conversation-message.repo.js");
 
 let sql: ReturnType<typeof postgres>;
 const sent: OutgoingEvent[] = [];
@@ -185,46 +184,3 @@ describe("active_project_session", () => {
   });
 });
 
-describe("hasFinishedTurnBefore", () => {
-  it("counts only replies without a stop, failure or block mark, deleted ones included", async () => {
-    const me = await member();
-    const [conv] = await sql<{ id: string }[]>`
-      INSERT INTO conversations (user_id, title) VALUES (${me.id}, 'chat') RETURNING id
-    `;
-    const reply = async (turn: number, parts: unknown[], deleted = false): Promise<void> => {
-      await sql`
-        INSERT INTO conversation_messages (conversation_id, user_id, role, turn_index, seq, parts, deleted_at)
-        VALUES (${conv!.id}, ${me.id}, 'assistant', ${turn}, 1, ${sql.json(parts as never)},
-                ${deleted ? new Date() : null})
-      `;
-    };
-    const current = { conversationId: conv!.id, turnIndex: 9 };
-
-    await reply(1, [{ type: "text", text: "x" }, { type: "failed" }]);
-    await reply(2, [{ type: "interrupted" }]);
-    await reply(3, [{ type: "blocked" }]);
-    await reply(9, [{ type: "text", text: "now" }]);
-    expect(await messageRepo.hasFinishedTurnBefore(me.id, current)).toBe(false);
-
-    // A finished turn stored after the current one does not make the current one late.
-    await reply(10, [{ type: "text", text: "later" }]);
-    expect(await messageRepo.hasFinishedTurnBefore(me.id, current)).toBe(false);
-    expect(await messageRepo.hasFinishedTurnBefore(me.id, { conversationId: conv!.id, turnIndex: 10 })).toBe(true);
-  });
-
-  it("counts a deleted finished turn stored earlier", async () => {
-    const me = await member();
-    const [conv] = await sql<{ id: string }[]>`
-      INSERT INTO conversations (user_id, title) VALUES (${me.id}, 'chat') RETURNING id
-    `;
-    await sql`
-      INSERT INTO conversation_messages (conversation_id, user_id, role, turn_index, seq, parts, deleted_at, created_at)
-      VALUES (${conv!.id}, ${me.id}, 'assistant', 4, 1, ${sql.json([{ type: "text", text: "done" }])}, now(), now() - interval '1 minute')
-    `;
-    await sql`
-      INSERT INTO conversation_messages (conversation_id, user_id, role, turn_index, seq, parts)
-      VALUES (${conv!.id}, ${me.id}, 'assistant', 9, 1, ${sql.json([{ type: "text", text: "now" }])})
-    `;
-    expect(await messageRepo.hasFinishedTurnBefore(me.id, { conversationId: conv!.id, turnIndex: 9 })).toBe(true);
-  });
-});

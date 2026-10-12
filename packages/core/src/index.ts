@@ -267,4 +267,5 @@ export {
   reportCollaboratorFirstAction,
   type CollaborationAction,
 } from "@core/analytics/collaboration.js";
+export { claimFirstMilestone, type FirstMilestone } from "@core/analytics/first-milestone.js";
 export { getAccountAttribution, getAccountConsent, setAccountConsent } from "@core/analytics/account.repo.js";

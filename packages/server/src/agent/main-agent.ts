@@ -36,7 +36,7 @@ import { toStoredParts } from "@server/modules/conversation/message-part-mapping
 import * as conversationService from "@server/modules/conversation/conversation.service.js";
 import { foldIfOverBudget } from "@server/agent/turn-budget.js";
 import type { Assembly } from "@server/agent/turn-budget.js";
-import { currentConsent, getContext, serverAnalyticsWanted, trackServerEvent } from "@breatic/core";
+import { claimFirstMilestone, currentConsent, getContext, serverAnalyticsWanted, trackServerEvent } from "@breatic/core";
 import { logger } from "@breatic/core";
 import { toModelMessages } from "@server/agent/model-messages.js";
 import { endingOf, endingWithNothingRun } from "@server/agent/tool-ending.js";
@@ -684,7 +684,7 @@ export class MainAgent {
         }
 
         if (exit === "completed") {
-          await this.reportFirstFinishedTurn({ consent, turnIndex, studioId: turnStudioId }).catch((err: unknown) =>
+          await this.reportFirstFinishedTurn({ consent, studioId: turnStudioId }).catch((err: unknown) =>
             logger.warn({ err, userId, conversationId }, "first_agent_action_report_failed"),
           );
         }
@@ -712,17 +712,12 @@ export class MainAgent {
    * finished turn (inner#1442 design §4.8).
    * @param turn - The finished turn.
    * @param turn.consent - The asking browser's choice.
-   * @param turn.turnIndex - Its number, left out of the history check.
    * @param turn.studioId - The project's owning studio.
    */
-  private async reportFirstFinishedTurn(turn: {
-    consent: ConsentSnapshot;
-    turnIndex: number;
-    studioId: string;
-  }): Promise<void> {
-    const { userId, conversationId, projectId } = this.ctx;
+  private async reportFirstFinishedTurn(turn: { consent: ConsentSnapshot; studioId: string }): Promise<void> {
+    const { userId, projectId } = this.ctx;
+    if (!(await claimFirstMilestone("first-agent", userId))) return;
     if (!serverAnalyticsWanted(turn.consent)) return;
-    if (await messageRepo.hasFinishedTurnBefore(userId, { conversationId, turnIndex: turn.turnIndex })) return;
     trackServerEvent(
       "first_agent_action_completed",
       {

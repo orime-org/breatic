@@ -22,7 +22,7 @@ import * as studioRepo from "@server/modules/studio/studio.repo.js";
 import { projectAuthService } from "@breatic/core";
 import * as studioService from "@server/modules/studio/studio.service.js";
 import { studioAuthService } from "@breatic/domain";
-import { adsConversionWanted, db, enqueueAdsConversion, getAccountAttribution, getLimitsForStudio, logger, projectEditsRepo, trackServerEvent } from "@breatic/core";
+import { adsConversionWanted, claimFirstMilestone, db, enqueueAdsConversion, getAccountAttribution, getLimitsForStudio, logger, projectEditsRepo, trackServerEvent } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 import { adClickFrom, t } from "@breatic/shared";
 import { NotFoundError, ForbiddenError, ConflictError } from "@breatic/core";
@@ -120,7 +120,7 @@ export async function create(
 
   const { project, isFirst } = await db.transaction(async (tx) => {
     await assertStudioHasProjectRoom(studioId, tx);
-    const isFirst = !(await projectRepo.hasCreatedProject(userId, tx));
+    const isFirst = await claimFirstMilestone("first-project", userId, tx);
     const created = await projectRepo.createProject(
       tx,
       studioId,
@@ -585,7 +585,7 @@ export async function duplicate(
     const source = await projectRepo.getProjectById(sourceId, tx);
     if (!source) throw new NotFoundError(t("server.error.not_found"));
     await assertStudioHasProjectRoom(source.studioId, tx);
-    const isFirst = !(await projectRepo.hasCreatedProject(userId, tx));
+    const isFirst = await claimFirstMilestone("first-project", userId, tx);
     const copy = await projectRepo.duplicateProject(tx, userId, source, copyName(source.name));
     return { project: copy, isFirst };
   });
