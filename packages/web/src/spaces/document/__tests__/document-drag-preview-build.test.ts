@@ -201,6 +201,31 @@ describe('buildDragPreview', () => {
     expect(block.style.getPropertyPriority('width')).toBe('important');
   });
 
+  it('keeps what the copy sets on itself over the same property under another name', () => {
+    const editor = open([{ type: 'paragraph', content: 'one' }]);
+    const view = editor.prosemirrorView!;
+    const content = blockPreviewContent(view, [view.dom.querySelector('.bn-block-outer')!.cloneNode(true) as Element]);
+    const block = content.querySelector<HTMLElement>('.bn-block-content')!;
+    block.style.width = '120px';
+    // `inline-size` is `width` in a horizontal writing mode; WebKit lays a
+    // collapsed table set to 120px out at 122px where its content sits.
+    const real = window.getComputedStyle.bind(window);
+    const computed = vi.spyOn(window, 'getComputedStyle').mockImplementation((element, pseudo) =>
+      element === block && !pseudo
+        ? ({ length: 1, item: () => 'inline-size', getPropertyValue: () => '122px' } as unknown as CSSStyleDeclaration)
+        : real(element, pseudo),
+    );
+    try {
+      buildDragPreview(view, content, () => ({ width: 100, height: 20 }));
+    } finally {
+      computed.mockRestore();
+    }
+    // A declaration block takes the later of two that set one value.
+    const order = Array.from({ length: block.style.length }, (_, at) => block.style.item(at));
+    expect(order.indexOf('width')).toBeGreaterThan(order.indexOf('inline-size'));
+    expect(block.style.getPropertyPriority('width')).toBe('important');
+  });
+
   it('works its styles out beside the editor element and leaves nothing of that there', () => {
     const editor = open([{ type: 'paragraph', content: 'one' }]);
     const view = editor.prosemirrorView!;
