@@ -38,6 +38,7 @@ export interface AnalyticsUser {
 
 let amplitude: Amplitude | null = null;
 let choice: BrowserChoice | null = null;
+let user: AnalyticsUser | null = null;
 let gtagLoaded = false;
 let country: string | null = null;
 let shared: { app_version: string; language: string; membership_tier?: string } = { app_version: '', language: '' };
@@ -79,6 +80,9 @@ export async function start(options: {
  */
 async function apply(next: BrowserChoice | null): Promise<void> {
   choice = next;
+  // A category not granted keeps no cookies, whether or not this page loaded its vendor.
+  if (next?.analytics !== true) clearStorage('AMP_');
+  if (next?.ads !== true) clearStorage('_gcl_');
   await applyAnalytics(next?.analytics === true);
   applyAds(next?.ads === true);
   const snapshot = consentSnapshot();
@@ -93,9 +97,14 @@ async function applyAnalytics(on: boolean): Promise<void> {
   if (AMPLITUDE_API_KEY === '') return;
   if (on) {
     if (amplitude === null) {
-      amplitude = await import('@amplitude/analytics-browser');
+      const module = await import('@amplitude/analytics-browser');
+      // The choice may have been withdrawn while the SDK downloaded.
+      if (choice?.analytics !== true) return;
+      amplitude = module;
       amplitude.init(AMPLITUDE_API_KEY, undefined, {
         serverZone: 'US',
+        // The domain the consent cookie uses, so withdrawal clears what the SDK wrote; empty means this host.
+        cookieOptions: { domain: CONSENT_COOKIE_DOMAIN },
         autocapture: {
           attribution: false,
           pageViews: false,
@@ -112,11 +121,12 @@ async function applyAnalytics(on: boolean): Promise<void> {
         remoteConfig: { fetchRemoteConfig: false },
         trackingOptions: { ipAddress: false, language: true, platform: true },
       });
+      if (user !== null) nameUser(amplitude, user);
     }
     amplitude.setOptOut(false);
   } else if (amplitude !== null) {
     amplitude.setOptOut(true);
-    clearCookies('AMP_');
+    clearStorage('AMP_');
   }
 }
 
@@ -138,6 +148,7 @@ function applyAds(on: boolean): void {
     gtag('js', new Date());
     gtag('config', GOOGLE_ADS_TAG_ID, {
       send_page_view: false,
+      cookie_domain: CONSENT_COOKIE_DOMAIN === '' ? 'none' : CONSENT_COOKIE_DOMAIN,
       page_location: window.location.origin + window.location.pathname,
     });
     const script = document.createElement('script');
@@ -149,7 +160,7 @@ function applyAds(on: boolean): void {
   if (!gtagLoaded) return;
   const state = on ? 'granted' : 'denied';
   gtag('consent', 'update', { ad_storage: state, ad_user_data: state, ad_personalization: state });
-  if (!on) clearCookies('_gcl_');
+  if (!on) clearStorage('_gcl_');
 }
 
 /** The standard `gtag` command queue; Google's loader reads `arguments` objects, not arrays. */
@@ -160,11 +171,12 @@ const gtag: (...args: unknown[]) => void = function () {
 };
 
 /**
- * Remove this site's cookies whose names start with a prefix, on the host and
- * on the consent cookie's parent domain.
- * @param prefix - The cookie name prefix.
+ * Remove this site's cookies and local-storage entries whose names start with
+ * a prefix; cookies on the host and on the consent cookie's domain, where the
+ * vendors are told to write them.
+ * @param prefix - The name prefix.
  */
-function clearCookies(prefix: string): void {
+function clearStorage(prefix: string): void {
   const names = document.cookie
     .split(';')
     .map((pair) => pair.split('=')[0]!.trim())
@@ -174,6 +186,13 @@ function clearCookies(prefix: string): void {
     for (const domain of domains) {
       document.cookie = `${name}=; Max-Age=0; Path=/${domain !== '' ? `; Domain=${domain}` : ''}`;
     }
+  }
+  try {
+    for (const key of Object.keys(localStorage)) {
+      if (key.startsWith(prefix)) localStorage.removeItem(key);
+    }
+  } catch {
+    // Storage blocked: the vendor could not have written there either.
   }
 }
 
@@ -220,16 +239,23 @@ export function track(name: AnalyticsEventName, properties: Record<string, unkno
 
 /**
  * Name the signed-in account on this browser's events.
- * @param user - The account.
+ * @param next - The account.
  */
-export function identify(user: AnalyticsUser): void {
-  shared = { ...shared, membership_tier: user.membershipTier, language: user.language };
+export function identify(next: AnalyticsUser): void {
+  user = next;
+  shared = { ...shared, membership_tier: next.membershipTier, language: next.language };
   if (amplitude === null || choice?.analytics !== true) return;
-  amplitude.setUserId(user.id);
-  const identity = new amplitude.Identify()
-    .set('membership_tier', user.membershipTier)
-    .set('language', user.language);
-  amplitude.identify(identity);
+  nameUser(amplitude, next);
+}
+
+/**
+ * Put the account on the SDK; runs again once the SDK loads after sign-in.
+ * @param sdk - The loaded SDK.
+ * @param account - The signed-in account.
+ */
+function nameUser(sdk: Amplitude, account: AnalyticsUser): void {
+  sdk.setUserId(account.id);
+  sdk.identify(new sdk.Identify().set('membership_tier', account.membershipTier).set('language', account.language));
 }
 
 /**
@@ -244,8 +270,10 @@ export async function setLanguage(language: string): Promise<void> {
 
 /** Forget the account on sign-out. */
 export function reset(): void {
+  user = null;
   shared = { app_version: shared.app_version, language: shared.language };
-  amplitude?.reset();
+  // The SDK writes its cookie on reset, so it runs only while analytics is accepted.
+  if (choice?.analytics === true) amplitude?.reset();
 }
 
 /**
