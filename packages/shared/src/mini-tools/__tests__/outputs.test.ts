@@ -3,7 +3,7 @@
 
 import { describe, it, expect } from "vitest";
 
-import { outputTemplateOf, outputsOf, type MiniToolSpec } from "@shared/mini-tools/index.js";
+import { gridShapeOf, outputTemplateOf, outputsOf, type MiniToolSpec } from "@shared/mini-tools/index.js";
 
 const TILE = { modality: "image", namePrefix: "GRID" } as const;
 
@@ -68,6 +68,23 @@ describe("outputsOf", () => {
   it("counts a list's items plus the declared extra", () => {
     expect(outputsOf(listed, { cuts: [10, 20.5, 31] })).toHaveLength(4);
     expect(outputsOf(listed, { cuts: [] })).toHaveLength(1);
+  });
+});
+
+describe("gridShapeOf", () => {
+  const grid: MiniToolSpec = { ...product, outputLayout: "grid" } as MiniToolSpec;
+
+  it("reads a grid tool's rows and columns from the params it counts by", () => {
+    expect(gridShapeOf(grid, { rows: 2, cols: 4 })).toEqual({ rows: 2, cols: 4 });
+  });
+
+  it("falls back to each param's default", () => {
+    expect(gridShapeOf(grid, {})).toEqual({ rows: 3, cols: 3 });
+  });
+
+  it("has no shape for a tool that does not lay its results out as a grid", () => {
+    expect(gridShapeOf(product, {})).toBeNull();
+    expect(gridShapeOf(fixed, {})).toBeNull();
   });
 });
 
