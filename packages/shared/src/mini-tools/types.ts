@@ -209,12 +209,21 @@ interface FixedOutputs {
   readonly outputs: readonly MiniToolOutput[];
   readonly output?: never;
   readonly outputCount?: never;
+  readonly outputLayout?: never;
+  readonly groupOutputs?: never;
 }
 
 /** A tool whose results are one template repeated as many times as its params say. */
 interface VariableOutputs {
   readonly output: MiniToolOutput;
   readonly outputCount: MiniToolOutputCount;
+  /**
+   * How the results sit on the canvas: one column when absent, or rows by
+   * columns for `"grid"`, whose count is the product of two params (rows first).
+   */
+  readonly outputLayout?: "grid";
+  /** Whether the results go into a new group of their own. */
+  readonly groupOutputs?: boolean;
   readonly outputs?: never;
 }
 
