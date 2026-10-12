@@ -39,9 +39,12 @@ export interface AnalyticsUser {
   readonly language: string;
 }
 
+let sdkImport: Promise<Amplitude> | null = null;
 let amplitude: Amplitude | null = null;
 let choice: BrowserChoice | null = null;
 let user: AnalyticsUser | null = null;
+/** An account signed out while the SDK was not running; it forgets the account when it runs again. */
+let signedOutSinceRun = false;
 let gtagLoaded = false;
 let country: string | null = null;
 let shared: { app_version: string; language: string; membership_tier?: string } = { app_version: '', language: '' };
@@ -83,10 +86,12 @@ export async function start(options: {
  */
 async function apply(next: BrowserChoice | null): Promise<void> {
   choice = next;
-  await applyAnalytics(next?.analytics === true);
   applyAds(next?.ads === true);
+  await applyAnalytics(next?.analytics === true);
+  // A later choice arrived while this one waited, and applies itself.
+  if (choice !== next) return;
   // A category not granted keeps no cookies, whether or not this page loaded its vendor.
-  // Last, because opting the SDK out rewrites its cookie.
+  // Last, because opting the SDK out and sending its queue rewrite what it stores.
   if (next?.analytics !== true) clearStorage('AMP_');
   if (next?.ads !== true) clearStorage('_gcl_');
   const snapshot = consentSnapshot();
@@ -99,38 +104,54 @@ async function apply(next: BrowserChoice | null): Promise<void> {
  */
 async function applyAnalytics(on: boolean): Promise<void> {
   if (AMPLITUDE_API_KEY === '') return;
-  if (on) {
-    if (amplitude === null) {
-      const module = await import('@amplitude/analytics-browser');
-      // The choice may have been withdrawn while the SDK downloaded.
-      if (choice?.analytics !== true) return;
-      amplitude = module;
-      amplitude.init(AMPLITUDE_API_KEY, undefined, {
-        serverZone: 'US',
-        // The domain the consent cookie uses, so withdrawal clears what the SDK wrote; empty means this host.
-        cookieOptions: { domain: CONSENT_COOKIE_DOMAIN },
-        autocapture: {
-          attribution: false,
-          pageViews: false,
-          sessions: true,
-          formInteractions: false,
-          fileDownloads: false,
-          elementInteractions: false,
-          frustrationInteractions: false,
-          webVitals: false,
-          networkTracking: false,
-          performanceTracking: false,
-          pageUrlEnrichment: false,
-        },
-        remoteConfig: { fetchRemoteConfig: false },
-        trackingOptions: { ipAddress: false, language: true, platform: true },
-      });
-      if (user !== null) nameUser(amplitude, user);
-    }
-    amplitude.setOptOut(false);
-  } else {
-    amplitude?.setOptOut(true);
+  if (!on) {
+    if (amplitude === null) return;
+    // Events recorded while analytics was accepted are still sent; nothing new is recorded.
+    amplitude.setOptOut(true);
+    await amplitude.flush().promise;
+    return;
   }
+  sdkImport ??= import('@amplitude/analytics-browser');
+  const module = await sdkImport;
+  // The choice may have been withdrawn while the SDK downloaded.
+  if (choice?.analytics !== true) return;
+  if (amplitude === null) {
+    amplitude = module;
+    amplitude.init(AMPLITUDE_API_KEY, undefined, {
+      serverZone: 'US',
+      // The domain the consent cookie uses, so withdrawal clears what the SDK wrote; empty means this host.
+      cookieOptions: { domain: CONSENT_COOKIE_DOMAIN },
+      autocapture: {
+        attribution: false,
+        pageViews: false,
+        sessions: true,
+        formInteractions: false,
+        fileDownloads: false,
+        elementInteractions: false,
+        frustrationInteractions: false,
+        webVitals: false,
+        networkTracking: false,
+        performanceTracking: false,
+        pageUrlEnrichment: false,
+      },
+      remoteConfig: { fetchRemoteConfig: false },
+      trackingOptions: { ipAddress: false, language: true, platform: true },
+    });
+  }
+  amplitude.setOptOut(false);
+  syncUser(amplitude);
+}
+
+/**
+ * Put the signed-in account on the SDK, or forget the one that signed out
+ * while the SDK was not running.
+ * @param sdk - The running SDK.
+ */
+function syncUser(sdk: Amplitude): void {
+  if (user !== null) {
+    if (sdk.getUserId() !== user.id) nameUser(sdk, user);
+  } else if (signedOutSinceRun) sdk.reset();
+  signedOutSinceRun = false;
 }
 
 /**
@@ -276,7 +297,8 @@ export function reset(): void {
   user = null;
   shared = { app_version: shared.app_version, language: shared.language };
   // The SDK writes its cookie on reset, so it runs only while analytics is accepted.
-  if (choice?.analytics === true) amplitude?.reset();
+  if (choice?.analytics === true && amplitude !== null) amplitude.reset();
+  else signedOutSinceRun = true;
 }
 
 /**

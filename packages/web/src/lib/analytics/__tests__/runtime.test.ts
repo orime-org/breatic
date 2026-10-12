@@ -12,9 +12,15 @@ const sdk = vi.hoisted(() => ({
     document.cookie = 'AMP_test=1; Path=/';
   }),
   setUserId: vi.fn(),
+  getUserId: vi.fn((): string | undefined => undefined),
   identify: vi.fn(),
   reset: vi.fn(),
   track: vi.fn(),
+  // The real SDK rewrites its stored queue after each send.
+  flush: vi.fn(() => {
+    localStorage.setItem('AMP_unsent_test', '[]');
+    return { promise: Promise.resolve() };
+  }),
   Identify: class {
     set(): this {
       return this;
@@ -159,5 +165,58 @@ describe('analytics runtime', () => {
     await choose(rejected);
     expect(sdk.setOptOut).toHaveBeenLastCalledWith(true);
     expect(document.cookie).not.toMatch(/AMP_/);
+  });
+
+  it('never loads the Google tag when ads are withdrawn while the analytics SDK downloads', async () => {
+    let release = (): void => undefined;
+    sdkGate.wait = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await startRuntime();
+    banner.onChoice?.(accepted);
+    banner.onChoice?.(rejected);
+    release();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    const granted = ((window as Window & { dataLayer?: IArguments[] }).dataLayer ?? [])
+      .map((entry) => Array.from(entry))
+      .filter((entry) => entry[0] === 'consent' && entry[1] === 'update')
+      .at(-1);
+    expect(granted?.[2]).not.toMatchObject({ ad_storage: 'granted' });
+    expect(document.cookie).not.toMatch(/AMP_/);
+  });
+
+  it('loads and starts the SDK once when analytics is accepted twice while it downloads', async () => {
+    let release = (): void => undefined;
+    sdkGate.wait = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const runtime = await startRuntime();
+    banner.onChoice?.(accepted);
+    banner.onChoice?.({ ...accepted, source: 'settings' });
+    release();
+    await vi.waitFor(() => expect(sdk.init).toHaveBeenCalled());
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(sdk.init).toHaveBeenCalledTimes(1);
+    // Events reach the SDK that was started, not a second copy.
+    runtime.track('pricing_viewed', { surface: 'credits' });
+    expect(sdk.track).toHaveBeenCalledTimes(1);
+  });
+
+  it('forgets the signed-out account when analytics is accepted again', async () => {
+    const runtime = await startRuntime();
+    runtime.identify({ id: 'user-1', membershipTier: 'free', language: 'en' });
+    await choose(accepted);
+    await choose(rejected);
+    runtime.reset();
+    await choose(accepted);
+    expect(sdk.reset).toHaveBeenCalledTimes(1);
+  });
+
+  it('sends what was queued while analytics was accepted, then leaves nothing stored', async () => {
+    await startRuntime();
+    await choose(accepted);
+    await choose(rejected);
+    expect(sdk.setOptOut.mock.invocationCallOrder.at(-1)).toBeLessThan(sdk.flush.mock.invocationCallOrder.at(-1) ?? 0);
+    expect(localStorage.getItem('AMP_unsent_test')).toBeNull();
   });
 });
