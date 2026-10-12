@@ -178,10 +178,8 @@ export function JoinProjectDialog({
             variant='outline'
             onClick={onWithdraw}
             disabled={withdrawing}
+            loading={withdrawing}
           >
-            {withdrawing ? (
-              <Loader2 aria-hidden='true' className='mr-2 h-3.5 w-3.5 animate-spin' />
-            ) : null}
             {t('projectJoin.withdraw')}
           </Button>
           <Button type='button' onClick={close} disabled={withdrawing}>
@@ -223,10 +221,12 @@ export function JoinProjectDialog({
           <Button type='button' variant='outline' onClick={close}>
             {t('projectJoin.cancel')}
           </Button>
-          <Button type='button' onClick={onSend} disabled={loading || sending}>
-            {sending ? (
-              <Loader2 aria-hidden='true' className='mr-2 h-3.5 w-3.5 animate-spin' />
-            ) : null}
+          <Button
+            type='button'
+            onClick={onSend}
+            disabled={loading || sending}
+            loading={sending}
+          >
             {t('projectJoin.request')}
           </Button>
         </DialogFooter>

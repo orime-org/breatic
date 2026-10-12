@@ -155,6 +155,7 @@ export function BellMenu(): React.JSX.Element {
                 className='text-2xs'
                 onClick={() => markAllReadMutation.mutate()}
                 disabled={markAllReadMutation.isPending}
+                loading={markAllReadMutation.isPending}
                 data-testid='bell-mark-all-read'
               >
                 {t('notifications.markAllRead')}
@@ -188,6 +189,10 @@ export function BellMenu(): React.JSX.Element {
                     navigate(`/decision?token=${token}`);
                   }}
                   onMarkRead={() => markReadMutation.mutate(n.id)}
+                  pending={
+                    markReadMutation.isPending &&
+                    markReadMutation.variables === n.id
+                  }
                 />
               </li>
             ))}
@@ -204,6 +209,8 @@ interface NotificationItemProps {
   resolved: NotificationResolved;
   onOpenDecision: (token: string) => void;
   onMarkRead: () => void;
+  /** Whether this row's mark-read is waiting on the server. */
+  pending: boolean;
 }
 
 /**
@@ -215,6 +222,7 @@ interface NotificationItemProps {
  * @param root0.resolved - Current identities for the ids it carries.
  * @param root0.onOpenDecision - Opens the shared landing page for this request.
  * @param root0.onMarkRead - Called when an informational notification is marked read.
+ * @param root0.pending - Whether this row's mark-read is waiting on the server.
  * @returns the notification row with its type-specific actions.
  */
 function NotificationItem({
@@ -222,6 +230,7 @@ function NotificationItem({
   resolved,
   onOpenDecision,
   onMarkRead,
+  pending,
 }: NotificationItemProps): React.JSX.Element {
   const t = useTranslation();
   const headline = notificationHeadline(notification, resolved, t);
@@ -280,6 +289,7 @@ function NotificationItem({
             size='sm'
             className='h-7 px-2 text-xs'
             onClick={onMarkRead}
+            loading={pending}
             data-testid={`bell-mark-read-${notification.id}`}
           >
             {t('notifications.markRead')}

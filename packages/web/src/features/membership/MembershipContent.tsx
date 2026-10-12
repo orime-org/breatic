@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import * as React from 'react';
-import { Loader2 } from 'lucide-react';
 import {
   BILLING_PERIODS,
   COMPARABLE_MEMBERSHIP_TIERS,
@@ -417,23 +416,13 @@ export function MembershipContent({
                     variant='outline'
                     size='sm'
                     disabled={busy}
+                    loading={pending?.kind === 'cancel' || pending?.kind === 'resume'}
                     data-testid={
                       actions.resume ? 'membership-resume' : 'membership-cancel'
                     }
                     onClick={actions.resume ? resume : cancel}
                     className='shrink-0'
                   >
-                    {pending?.kind === 'cancel' || pending?.kind === 'resume' ? (
-                      <Loader2
-                        data-testid={
-                          pending.kind === 'resume'
-                            ? 'membership-resume-pending'
-                            : 'membership-cancel-pending'
-                        }
-                        aria-hidden='true'
-                        className='mr-2 h-3.5 w-3.5 animate-spin'
-                      />
-                    ) : null}
                     {actions.resume ? t('membership.resume') : t('membership.cancel')}
                   </Button>
                 ) : null}

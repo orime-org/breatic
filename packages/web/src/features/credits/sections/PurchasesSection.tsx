@@ -283,6 +283,7 @@ const PurchaseLine = React.memo(function PurchaseLine({
               size='sm'
               className='mt-1'
               disabled={sending}
+              loading={sending}
               onClick={resend}
             >
               {t('credits.purchase.resend')}

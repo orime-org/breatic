@@ -18,7 +18,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, cleanup, within } from '@testing-library/react';
+import { render, screen, cleanup } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
   BILLING_PERIODS,
@@ -311,12 +311,11 @@ describe('TierCards — four cards, two periods, seven situations', () => {
       />,
     );
     const pro = screen.getByTestId('membership-choose-pro');
-    expect(within(pro).getByTestId('membership-choose-pending')).toBeInTheDocument();
-    expect(
-      within(screen.getByTestId('membership-choose-team')).queryByTestId(
-        'membership-choose-pending',
-      ),
-    ).toBeNull();
+    expect(pro).toHaveAttribute('aria-busy', 'true');
+    expect(pro).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getByTestId('membership-choose-team')).not.toHaveAttribute(
+      'aria-busy',
+    );
 
     // The same tier on the other period is a different offer.
     rerender(
@@ -333,7 +332,9 @@ describe('TierCards — four cards, two periods, seven situations', () => {
         onChoose={vi.fn()}
       />,
     );
-    expect(screen.queryByTestId('membership-choose-pending')).toBeNull();
+    expect(screen.getByTestId('membership-choose-pro')).not.toHaveAttribute(
+      'aria-busy',
+    );
   });
 });
 

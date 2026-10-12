@@ -392,3 +392,83 @@ describe('BellMenu — mark all read', () => {
     await waitFor(() => expect(notificationsApi.list).toHaveBeenCalledTimes(2));
   });
 });
+
+/** A promise and the handles that settle it. */
+interface Deferred<T> {
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+  reject: (reason: Error) => void;
+}
+
+/**
+ * A promise the test settles by hand.
+ * @returns The promise and its settlers.
+ */
+function deferred<T>(): Deferred<T> {
+  let resolve!: (value: T) => void;
+  let reject!: (reason: Error) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
+describe('BellMenu — the mark-read buttons spin while the server answers', () => {
+  const NEWS_A = '55555555-5555-4555-8555-555555555555';
+  const NEWS_B = '66666666-6666-4666-8666-666666666666';
+
+  beforeEach(() => {
+    vi.mocked(notificationsApi.list).mockResolvedValue({
+      items: [
+        fakeNotification(NEWS_A, 'studio.invite_accepted'),
+        fakeNotification(NEWS_B, 'studio.invite_accepted'),
+      ],
+      resolved: EMPTY_RESOLVED,
+    });
+  });
+
+  it.each(['answers', 'fails'] as const)(
+    'spins mark-all-read until the server %s',
+    async (outcome) => {
+      const reply = deferred<{ count: number }>();
+      vi.mocked(notificationsApi.markAllRead).mockReturnValue(reply.promise);
+      const user = userEvent.setup();
+      setup();
+      await user.click(screen.getByTestId('bell-trigger'));
+      const button = await screen.findByTestId('bell-mark-all-read');
+      await user.click(button);
+
+      await waitFor(() => expect(button).toHaveAttribute('aria-busy', 'true'));
+      expect(button).toHaveAttribute('aria-disabled', 'true');
+
+      if (outcome === 'answers') reply.resolve({ count: 2 });
+      else reply.reject(new Error('offline'));
+      await waitFor(() => expect(button).not.toHaveAttribute('aria-busy'));
+      expect(button).not.toHaveAttribute('aria-disabled');
+    },
+  );
+
+  it.each(['answers', 'fails'] as const)(
+    'spins only the row being marked read until the server %s',
+    async (outcome) => {
+      const reply = deferred<{ ok: true }>();
+      vi.mocked(notificationsApi.markRead).mockReturnValue(reply.promise);
+      const user = userEvent.setup();
+      setup();
+      await user.click(screen.getByTestId('bell-trigger'));
+      const marked = await screen.findByTestId(`bell-mark-read-${NEWS_A}`);
+      const other = screen.getByTestId(`bell-mark-read-${NEWS_B}`);
+      await user.click(marked);
+
+      await waitFor(() => expect(marked).toHaveAttribute('aria-busy', 'true'));
+      expect(marked).toHaveAttribute('aria-disabled', 'true');
+      expect(other).not.toHaveAttribute('aria-busy');
+
+      if (outcome === 'answers') reply.resolve({ ok: true });
+      else reply.reject(new Error('offline'));
+      await waitFor(() => expect(marked).not.toHaveAttribute('aria-busy'));
+      expect(marked).not.toHaveAttribute('aria-disabled');
+    },
+  );
+});
