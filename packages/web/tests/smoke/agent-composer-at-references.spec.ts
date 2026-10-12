@@ -231,7 +231,7 @@ test('Shift+Tab out of an open @ list hides it and leaves the focused control un
 
 test('keys typed while a new conversation opens land in the box', async ({ page }) => {
   const box = page.getByTestId('chat-composer-box');
-  // eslint-disable-next-line no-restricted-syntax -- this case types into the box while the new conversation is still opening, which is the window startNewConversation waits out.
+  // eslint-disable-next-line no-restricted-syntax -- this case focuses the box while the new conversation is still opening, the window startNewConversation waits out.
   await page.getByTestId('new-conversation').click();
   await box.focus();
   await expect(box).toHaveAttribute('contenteditable', 'true', { timeout: 20_000 });

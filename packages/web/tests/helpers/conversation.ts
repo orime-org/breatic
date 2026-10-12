@@ -7,11 +7,12 @@
  *
  * Pressing the header's new-conversation button posts the new conversation
  * and makes the composer read-only until the answer lands
- * (`conversationRuntime.startNew`). What is typed or pasted into it in that
- * time is dropped (inner#1477), and under load the post is slow enough for a
- * case to write into it then: Playwright's `fill` waits for the box to be
- * editable, while a dispatched paste, an editor transaction or a key press
- * does not.
+ * (`conversationRuntime.startNew`). A paste made in that time is lost: the
+ * read-only box keeps a plain-text paste out (`use-composer-editor.tsx`), and
+ * pasted canvas content goes to the tray of the conversation being left
+ * (inner#1477). Under load the post is slow enough for a case to paste then:
+ * Playwright's `fill` waits for the box to be editable, while a dispatched
+ * paste or an editor transaction does not.
  */
 import { expect, type Page } from 'playwright/test';
 
