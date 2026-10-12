@@ -2171,15 +2171,14 @@ body {
     background-clip: content-box;
   }
 
-  /* An empty line an end of a range sits on, or the empty line at an end of the
-     body that a selection past it or the whole document holds
-     (`document-selection-paint.ts`). The browser marks a selected empty line with
-     a sliver at its start, the width of a space and the height of the line; it
-     draws that one only once the range is written back, which in Chrome is not
-     until a drag ends. The sliver is drawn here from the same measures — a
-     no-break space in the line's own flow, so it stands where the caret would
-     under the line's alignment — and the browser's is cleared, so the line
-     wears one mark from the first frame of the drag. */
+  /* An empty line a selection holds (`document-selection-paint.ts`). Chromium
+     marks a selected empty line with a sliver at its start, the width of a space
+     and the height of the line, and the other browsers mark nothing; Chromium
+     draws the one at an end of the body only once the range is written back,
+     which is not until a drag ends. The sliver is drawn here from the same
+     measures — a no-break space in the line's own flow, so it stands where the
+     caret would under the line's alignment — and the browser's is cleared, so
+     the line wears one mark in every browser from the first frame of a drag. */
   .doc-body .doc-empty-line-in-selection .bn-inline-content::before {
     content: '\a0';
     display: inline-block;

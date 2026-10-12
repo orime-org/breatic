@@ -930,7 +930,7 @@ describe('Shift+Enter on a selection that reaches past the last block', () => {
   });
 });
 
-describe('an empty line an end of the selection sits on, or one at an end of the body it reaches past', () => {
+describe('an empty line a selection holds', () => {
   /**
    * Whether each paragraph's element carries the empty-line mark's class, by its text.
    * @param view - The view.

@@ -116,17 +116,6 @@ function edgeOr(doc: Node, edge: BodyEdge, otherwise: number): number {
 }
 
 /**
- * The empty line at one end of the body, if that block is one.
- * @param doc - The document.
- * @param edge - Which end.
- * @returns The position of its node, or null when that block is not an empty line.
- */
-export function emptyEdgeLinePos(doc: Node, edge: BodyEdge): number | null {
-  const block = edgeBlock(doc, edge);
-  return block?.node.isTextblock && block.node.content.size === 0 ? block.pos : null;
-}
-
-/**
  * The text position nearest to a position, looking one way first.
  * @param doc - The document.
  * @param pos - The position.
