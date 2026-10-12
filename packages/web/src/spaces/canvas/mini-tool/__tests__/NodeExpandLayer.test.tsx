@@ -94,6 +94,15 @@ describe('NodeExpandLayer', () => {
     expect(store().miniTool?.expand).toMatchObject({ frame: UNIT_FRAME, ratio: '1:1' });
   });
 
+  it('says how far the frame reaches below the node, so the panel can sit under it', () => {
+    mount();
+    const flush = store().miniTool?.expand?.drop ?? 0;
+    act(() => store().setExpand({ frame: { x: 0, y: 0, width: 1, height: 1.5 }, ratio: 'free' }));
+    expect((store().miniTool?.expand?.drop ?? 0) - flush).toBeCloseTo(150, 6);
+    act(() => store().setExpand({ frame: { x: 0, y: -0.5, width: 1, height: 1.5 }, ratio: 'free' }));
+    expect(store().miniTool?.expand?.drop ?? 0).toBeCloseTo(flush, 6);
+  });
+
   it('keeps presses inside the frame off the canvas', () => {
     mount();
     expect(screen.getByTestId('mini-tool-expand-frame')).toHaveClass('nodrag', 'nopan');
