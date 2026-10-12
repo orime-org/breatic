@@ -49,6 +49,7 @@ function renderSection(props: {
       studio={STUDIO}
       canEdit={props.canEdit ?? true}
       saving={false}
+      savingDetails={false}
       onSave={props.onSave ?? vi.fn()}
     />,
   );
@@ -101,7 +102,13 @@ describe('BasicInfoSection — the submit gate', () => {
   it('marks Save busy while the save is out, and clears it once answered', () => {
     const onSave = vi.fn();
     const tree = (saving: boolean): React.JSX.Element => (
-      <BasicInfoSection studio={STUDIO} canEdit saving={saving} onSave={onSave} />
+      <BasicInfoSection
+        studio={STUDIO}
+        canEdit
+        saving={saving}
+        savingDetails={saving}
+        onSave={onSave}
+      />
     );
     const { rerender } = render(tree(false));
     fireEvent.change(screen.getByTestId('settings-name'), {

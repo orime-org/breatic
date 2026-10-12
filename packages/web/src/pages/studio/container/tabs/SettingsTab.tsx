@@ -53,6 +53,7 @@ export function SettingsTab({
         studio={studio}
         canEdit={canEdit}
         saving={settings.saving}
+        savingDetails={settings.savingDetails}
         onSave={settings.save}
       />
       <DangerZone

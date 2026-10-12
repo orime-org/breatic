@@ -55,6 +55,11 @@ export interface StudioSettingsActions {
   /** Any studio edit is in flight — the basic-info form greys itself out. */
   saving: boolean;
   /**
+   * The in-flight edit is NOT a slug change — the name and description Save
+   * spins off this one, so a rename does not make it claim to be saving.
+   */
+  savingDetails: boolean;
+  /**
    * The in-flight edit is a SLUG change specifically.
    *
    * The rename dialog draws a spinner off this one, and holds its Confirm
@@ -113,9 +118,9 @@ export function useStudioSettings(
   /**
    * Fold a server-confirmed studio back into everything that displays it.
    * @param next - The studio as the server now has it.
-   * @returns Settles once the mounted reads have refetched; a save whose
+   * @returns Settles once the mounted studio read has refetched; a save whose
    *   button stays on screen awaits it, so the button keeps waiting until the
-   *   fields show what was saved (inner#1374).
+   *   studio shows what was saved, and not on unrelated reads (inner#1374).
    */
   const absorb = React.useCallback(
     (next: Studio): Promise<void> => {
@@ -127,8 +132,14 @@ export function useStudioSettings(
       // A studio's name, slug and avatar ride along in reads keyed by things
       // other than the studio (recent projects, the credits overlay's lists),
       // so mark everything stale: mounted reads refetch now, the rest on their
-      // next mount.
-      const refetched = queryClient.invalidateQueries();
+      // next mount. Only the studio read is waited on: it is what the settings
+      // fields and the avatar are drawn from. `cancelRefetch: false` joins the
+      // refetch the invalidation just started instead of restarting it.
+      void queryClient.invalidateQueries();
+      const refetched = queryClient.refetchQueries(
+        { queryKey: ['studio', next.slug], exact: true, type: 'active' },
+        { cancelRefetch: false },
+      );
 
       const store = useCurrentUserStore.getState();
       const user = store.user;
@@ -194,8 +205,10 @@ export function useStudioSettings(
     // a failure leaves the message set for good, and the next crop dialog opens
     // already showing an error about an upload the user has moved on from.
     onMutate: () => setAvatarError(null),
-    onSuccess: (next) => {
-      void absorb(next);
+    // Awaited: the crop dialog stays open and busy until the studio refetch
+    // shows the new avatar (inner#1374).
+    onSuccess: async (next) => {
+      await absorb(next);
       toast.success(t('studio.container.settings.avatarSaved'));
     },
     // Kept in state rather than only a toast: the crop dialog stays open on
@@ -280,6 +293,8 @@ export function useStudioSettings(
     leave,
     clearAvatarError,
     saving: updateMutation.isPending,
+    savingDetails:
+      updateMutation.isPending && updateMutation.variables?.patch.slug === undefined,
     // Read off the patch that is actually out, so this answers "a rename is
     // running" rather than "something is running". `variables` holds the
     // arguments of the request in flight.

@@ -22,6 +22,8 @@ interface BasicInfoSectionProps {
   /** Whether the viewer may edit these fields (admins only). */
   canEdit: boolean;
   saving: boolean;
+  /** Whether the in-flight save is this section's own (not a slug change). */
+  savingDetails: boolean;
   onSave: (patch: UpdateStudioInput) => void;
 }
 
@@ -40,7 +42,9 @@ interface BasicInfoSectionProps {
  * @param props - The studio, the viewer's permission and the save wiring.
  * @param props.studio - The studio being edited.
  * @param props.canEdit - Whether the fields are editable.
- * @param props.saving - Whether a save is in flight.
+ * @param props.saving - Whether any save is in flight; the fields hold still.
+ * @param props.savingDetails - Whether this section's own save is in flight;
+ *   only that one spins Save.
  * @param props.onSave - Called with the changed fields only.
  * @returns The basic-info section.
  */
@@ -48,6 +52,7 @@ export function BasicInfoSection({
   studio,
   canEdit,
   saving,
+  savingDetails,
   onSave,
 }: BasicInfoSectionProps): React.JSX.Element {
   const t = useTranslation();
@@ -123,11 +128,11 @@ export function BasicInfoSection({
           <Button
             size='form'
             disabled={!canSubmit}
-            loading={saving}
+            loading={savingDetails}
             onClick={submit}
             data-testid='settings-save'
           >
-            {saving
+            {savingDetails
               ? t('studio.container.settings.saving')
               : t('studio.container.settings.save')}
           </Button>

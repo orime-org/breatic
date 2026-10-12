@@ -224,6 +224,73 @@ describe('SettingsTab — Save waits for the studio to show the saved values (in
     await waitFor(() => expect(save).not.toHaveAttribute('aria-busy'));
     expect(save).toBeDisabled();
   });
+
+  it('stops waiting once the studio shows the new name, even while an unrelated read is still refetching', async () => {
+    vi.mocked(studiosApi.update).mockResolvedValue({ ...STUDIO, name: 'Acme Inc' } as never);
+    const fetchStudio = vi.fn(
+      (): Promise<StudioDetail> =>
+        Promise.resolve(
+          fetchStudio.mock.calls.length === 1 ? STUDIO : { ...STUDIO, name: 'Acme Inc' },
+        ),
+    );
+    let unrelatedRefetched = false;
+    const fetchUnrelated = vi.fn((): Promise<string[]> => {
+      if (fetchUnrelated.mock.calls.length === 1) return Promise.resolve([]);
+      unrelatedRefetched = true;
+      return new Promise(() => {});
+    });
+    /**
+     * Stands in for the studio page: it reads the studio, and something
+     * unrelated to the name, and hands the studio to the tab.
+     * @returns The tab once the studio is in.
+     */
+    function Page(): React.JSX.Element | null {
+      const studio = useQuery({ queryKey: ['studio', STUDIO.slug], queryFn: fetchStudio });
+      useQuery({ queryKey: ['studio', STUDIO.slug, 'members'], queryFn: fetchUnrelated });
+      return studio.data ? <SettingsTab studio={studio.data} members={[]} /> : null;
+    }
+    const qc = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    render(
+      <QueryClientProvider client={qc}>
+        <Page />
+      </QueryClientProvider>,
+    );
+    fireEvent.change(await screen.findByTestId('settings-name'), {
+      target: { value: 'Acme Inc' },
+    });
+    const save = screen.getByTestId('settings-save');
+    await waitFor(() => expect(save).toBeEnabled());
+
+    fireEvent.click(save);
+
+    await waitFor(() => expect(fetchStudio).toHaveBeenCalledTimes(2));
+    expect(unrelatedRefetched).toBe(true);
+    await waitFor(() => expect(save).not.toHaveAttribute('aria-busy'));
+  });
+
+  it('does not show Save as saving while a slug rename is in flight', async () => {
+    vi.mocked(studiosApi.update).mockReturnValue(new Promise(() => {}));
+
+    renderTab();
+    fireEvent.click(screen.getByTestId('settings-slug-open'));
+    fireEvent.change(
+      await screen.findByLabelText('studio.container.settings.slug'),
+      { target: { value: 'acme-renamed' } },
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId('settings-slug-confirm')).toBeEnabled(),
+    );
+    fireEvent.click(screen.getByTestId('settings-slug-confirm'));
+    await waitFor(() =>
+      expect(screen.getByTestId('settings-slug-confirm')).toHaveAttribute('aria-busy', 'true'),
+    );
+
+    const save = screen.getByTestId('settings-save');
+    expect(save).not.toHaveAttribute('aria-busy');
+    expect(save).not.toHaveTextContent('studio.container.settings.saving');
+  });
 });
 
 describe('SettingsTab — picking an avatar (inner#1367 A4)', () => {
