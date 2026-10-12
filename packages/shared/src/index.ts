@@ -781,3 +781,18 @@ export {
   type ReferencePool,
 } from "@shared/reference-pool.js";
 export { REQUEST_NOTIFICATION_TYPES, isRequestNotification } from "@shared/request-notifications.js";
+export {
+  CONSENT_COOKIE_NAME,
+  CONSENT_REVISION,
+  NO_CONSENT,
+  parseConsentCookie,
+  requiresOptIn,
+  type ConsentSnapshot,
+} from "@shared/analytics/consent.js";
+export {
+  ANALYTICS_EVENT_NAMES,
+  sanitizeEventProperties,
+  type AnalyticsEventName,
+  type AnalyticsProperties,
+} from "@shared/analytics/events.js";
+export { mergeAccountConsent, type AccountConsent } from "@shared/analytics/account-consent.js";
