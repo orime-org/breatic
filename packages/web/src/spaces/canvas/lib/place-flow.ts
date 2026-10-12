@@ -15,7 +15,8 @@
 
 import { layersOf, promptPlainText, type CanvasProposal, type ProposalNode } from '@breatic/shared';
 
-import { EMPTY_NODE_SIZE } from '@web/spaces/canvas/group-geometry';
+import type { NodePlacement } from '@web/data/yjs/canvas-space';
+import { EMPTY_NODE_SIZE, type Rect } from '@web/spaces/canvas/group-geometry';
 
 /** A point in flow coordinates. */
 export interface Spot {
@@ -61,12 +62,44 @@ const HALF_WIDTH_PX = 7;
 const FULL_WIDTH = /[\u{1100}-\u{115F}\u{2E80}-\u{303E}\u{3041}-\u{33FF}\u{3400}-\u{4DBF}\u{4E00}-\u{9FFF}\u{A000}-\u{A4CF}\u{AC00}-\u{D7A3}\u{F900}-\u{FAFF}\u{FE30}-\u{FE4F}\u{FF00}-\u{FF60}\u{FFE0}-\u{FFE6}]/u;
 
 /**
+ * How tall a picture or video node draws at the node's width.
+ *
+ * The picture fills the node's width inside `NodeMediaInset`'s `p-1`.
+ * @param mediaWidth - The file's pixel width.
+ * @param mediaHeight - The file's pixel height.
+ * @returns The node's height in flow coordinates.
+ * @throws {never} Never.
+ */
+export function mediaFootprintHeight(mediaWidth: number, mediaHeight: number): number {
+  return ((EMPTY_NODE_SIZE.width - MEDIA_INSET_PX) * mediaHeight) / mediaWidth + MEDIA_INSET_PX;
+}
+
+/**
+ * How tall a node carrying these words draws: as tall as they wrap to, between
+ * the minimum its body declares and the height at which it starts to clip.
+ * @param text - The words, one line per paragraph.
+ * @returns The node's height in flow coordinates.
+ * @throws {never} Never.
+ */
+export function textFootprintHeight(text: string): number {
+  const room = EMPTY_NODE_SIZE.width - BODY_PADDING_PX;
+  const lines = text.split('\n').reduce((total, line) => {
+    const width = [...line].reduce(
+      (sum, ch) => sum + (FULL_WIDTH.test(ch) ? FULL_WIDTH_PX : HALF_WIDTH_PX),
+      0,
+    );
+    return total + Math.max(1, Math.ceil(width / room));
+  }, 0);
+  const wanted = lines * BODY_LINE_PX + BODY_PADDING_PX;
+  return Math.min(BODY_MAX_PX, Math.max(BODY_MIN_PX, wanted));
+}
+
+/**
  * How tall a node will be once it is on the canvas.
  *
  * An empty node and one waiting for Generate are the standard footprint. A
  * node holding the reader's picture or video is as tall as it draws at the
- * node's width (inner#1315). A node carrying words is as tall as the words wrap to, between the minimum its
- * body declares and the height at which it starts to clip.
+ * node's width (inner#1315). A node carrying words is as tall as the words wrap to.
  * @param node - The proposed node.
  * @returns Its height in flow coordinates.
  * @throws {never} Never.
@@ -74,22 +107,10 @@ const FULL_WIDTH = /[\u{1100}-\u{115F}\u{2E80}-\u{303E}\u{3041}-\u{33FF}\u{3400}
 export function estimateHeight(node: ProposalNode): number {
   const media = node.materialMedia;
   if (media?.width && media.height && (node.type === 'image' || node.type === 'video')) {
-    // The picture fills the node's width inside `NodeMediaInset`'s `p-1`.
-    return ((EMPTY_NODE_SIZE.width - MEDIA_INSET_PX) * media.height) / media.width + MEDIA_INSET_PX;
+    return mediaFootprintHeight(media.width, media.height);
   }
   if (node.role !== 'written') return EMPTY_NODE_SIZE.height;
-  const room = EMPTY_NODE_SIZE.width - BODY_PADDING_PX;
-  const lines = promptPlainText(node.prompt ?? [])
-    .split('\n')
-    .reduce((total, line) => {
-      const width = [...line].reduce(
-        (sum, ch) => sum + (FULL_WIDTH.test(ch) ? FULL_WIDTH_PX : HALF_WIDTH_PX),
-        0,
-      );
-      return total + Math.max(1, Math.ceil(width / room));
-    }, 0);
-  const wanted = lines * BODY_LINE_PX + BODY_PADDING_PX;
-  return Math.min(BODY_MAX_PX, Math.max(BODY_MIN_PX, wanted));
+  return textFootprintHeight(promptPlainText(node.prompt ?? []));
 }
 
 /**
@@ -149,4 +170,85 @@ export function planFlowLayout(proposal: CanvasProposal, centre: Spot): Placed[]
   const leftmost = Math.min(...placed.map((p) => p.x));
   const shift = centre.x - (leftmost + widest) / 2;
   return placed.map((p) => ({ ...p, x: p.x + shift }));
+}
+
+/**
+ * How far right a batch moves so it covers nothing already on the canvas.
+ *
+ * Only rightwards, and only as far as the first clear spot: a candidate that
+ * comes within `gap` of a rect on any side is taken, and the batch jumps past
+ * the right edge of whatever took it. Every jump moves strictly right past a
+ * finite set of rects, so the walk ends.
+ * @param batch - The rect the batch would take where it was aimed.
+ * @param occupied - Rects already on the canvas.
+ * @param gap - Clear space kept on every side.
+ * @returns The distance to move right, zero when the spot is clear.
+ * @throws {never} Never.
+ */
+export function shiftRightPastOccupied(batch: Rect, occupied: readonly Rect[], gap: number): number {
+  let x = batch.x;
+  for (;;) {
+    const left = x - gap;
+    const right = x + batch.width + gap;
+    const top = batch.y - gap;
+    const bottom = batch.y + batch.height + gap;
+    const hits = occupied.filter(
+      (r) => r.x < right && r.x + r.width > left && r.y < bottom && r.y + r.height > top,
+    );
+    if (hits.length === 0) return x - batch.x;
+    x = Math.max(...hits.map((r) => r.x + r.width)) + gap;
+  }
+}
+
+/**
+ * The rect each node already on the canvas takes, for a batch looking for a
+ * clear spot.
+ *
+ * The canvas mounts only the nodes in view, so one off screen may never have
+ * been measured, or kept the size it had before its content changed. Where
+ * the document decides the size it is used: a group's own rect, and a picture
+ * or video drawn at the node's width. Text is measured when it is, and
+ * estimated from its words when not. Notes are left out: a pin draws above
+ * every node, so nothing placed over it hides it.
+ * @param placements - Every node, as the document places it.
+ * @param measuredOf - The size the canvas measured for a node, if it has one.
+ * @returns One rect per node that takes room.
+ * @throws {never} Never.
+ */
+export function occupiedRects(
+  placements: readonly NodePlacement[],
+  measuredOf: (id: string) => { width: number; height: number } | undefined,
+): Rect[] {
+  const rects: Rect[] = [];
+  for (const p of placements) {
+    if (p.type === 'annotation') continue;
+    const size = footprintOf(p, measuredOf);
+    rects.push({ x: p.x, y: p.y, width: size.width, height: size.height });
+  }
+  return rects;
+}
+
+/**
+ * The size one node takes, by the rule {@link occupiedRects} describes.
+ * @param p - The node, as the document places it.
+ * @param measuredOf - The size the canvas measured for a node, if it has one.
+ * @returns Its width and height in flow coordinates.
+ * @throws {never} Never.
+ */
+function footprintOf(
+  p: NodePlacement,
+  measuredOf: (id: string) => { width: number; height: number } | undefined,
+): { width: number; height: number } {
+  if (p.type === 'group') {
+    return { width: p.width ?? 0, height: p.height ?? 0 };
+  }
+  if ((p.type === 'image' || p.type === 'video') && p.mediaWidth && p.mediaHeight) {
+    return { width: EMPTY_NODE_SIZE.width, height: mediaFootprintHeight(p.mediaWidth, p.mediaHeight) };
+  }
+  const measured = measuredOf(p.id);
+  if (measured) return measured;
+  if (p.type === 'text') {
+    return { width: EMPTY_NODE_SIZE.width, height: textFootprintHeight(p.bodyText ?? '') };
+  }
+  return { width: EMPTY_NODE_SIZE.width, height: EMPTY_NODE_SIZE.height };
 }

@@ -35,7 +35,12 @@ import { setStoryboardShots } from '@web/data/yjs/node-storyboard';
 import { writePlainTextIntoBody } from '@breatic/shared/canvas/text-body';
 import { writeProposalFills } from '@web/spaces/canvas/generate/proposal-fills';
 import { proposalMentionOf, writeProposalPrompt } from '@web/spaces/canvas/generate/proposal-prompt';
-import { planFlowLayout, type Spot } from '@web/spaces/canvas/lib/place-flow';
+import {
+  ROW_GAP_PX,
+  planFlowLayout,
+  shiftRightPastOccupied,
+  type Spot,
+} from '@web/spaces/canvas/lib/place-flow';
 import {
   cloneForPaste,
   stepPastOccupied,
@@ -55,6 +60,7 @@ import {
   EMPTY_NODE_SIZE,
   groupRectForMembers,
   toRelativePosition,
+  type Rect,
 } from '@web/spaces/canvas/group-geometry';
 import { useCurrentUserStore } from '@web/stores/current-user';
 import { canvasApi } from '@web/data/api/canvas';
@@ -130,9 +136,10 @@ export interface NodeCreation {
    * Place a whole proposed flow around a point, wired and configured.
    * One press is ONE undo entry: a half-placed flow -- nodes without their
    * wires, or a generation node still on whatever mode it defaults to -- is
-   * worse than no flow at all.
+   * worse than no flow at all. The flow is aimed at `start` and moved right
+   * past `occupied` until it covers none of it (inner#1443).
    */
-  placeProposalAt: (proposal: CanvasProposal, start: Spot) => PlacedProposal;
+  placeProposalAt: (proposal: CanvasProposal, start: Spot, occupied: readonly Rect[]) => PlacedProposal;
 }
 
 /** What a placed proposal left on the canvas. */
@@ -265,8 +272,13 @@ export function useNodeCreation(
     [projectId, spaceId, userId, t, stepPaste],
   );
   const placeProposalAt = React.useCallback(
-    (proposal: CanvasProposal, start: Spot): PlacedProposal => {
-      const spots = planFlowLayout(proposal, start);
+    (proposal: CanvasProposal, start: Spot, occupied: readonly Rect[]): PlacedProposal => {
+      const aimed = planFlowLayout(proposal, start);
+      // Two or more nodes land as one group, so the group's rect is what has
+      // to be clear; a single node needs only its own.
+      const footprint = (aimed.length > 1 ? groupRectForMembers(aimed) : aimed[0]) ?? null;
+      const dx = footprint ? shiftRightPastOccupied(footprint, occupied, ROW_GAP_PX) : 0;
+      const spots = aimed.map((spot) => ({ ...spot, x: spot.x + dx }));
       const nodeIds: string[] = [];
       let groupId: string | undefined;
       runCanvasUndoBatch(projectId, spaceId, () => {

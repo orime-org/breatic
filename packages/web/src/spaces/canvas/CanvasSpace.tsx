@@ -107,8 +107,10 @@ import {
   readCanvasGraph,
   readTextBodies,
   readEdges,
+  readNodePlacements,
   nodeDataMap,
 } from '@web/data/yjs/canvas-space';
+import { occupiedRects } from '@web/spaces/canvas/lib/place-flow';
 import { docName, getDoc } from '@web/data/yjs/manager';
 import { handToAgent } from '@web/spaces/canvas/pick-for-agent';
 import { useConversationRuntime } from '@web/stores/conversation-runtime';
@@ -2770,7 +2772,15 @@ function CanvasSpaceInner({
     });
     if (isProposalIntent(intent)) {
       try {
-        const placed = placeProposalAt(intent.proposal, center);
+        // What is already there, by the size it is drawn at: the canvas's
+        // measurement where it has one, the document's facts where not.
+        const occupied = occupiedRects(readNodePlacements(projectId, spaceId), (id) => {
+          const measured = getInternalNode(id)?.measured;
+          return measured?.width && measured.height
+            ? { width: measured.width, height: measured.height }
+            : undefined;
+        });
+        const placed = placeProposalAt(intent.proposal, center, occupied);
         // The camera is not touched. The flow lands near the middle of what
         // the reader was already looking at, and if it runs past an edge at
         // their zoom, that is a canvas they can drag -- where they are looking
@@ -2798,6 +2808,9 @@ function CanvasSpaceInner({
     placeProposalAt,
     reportProposalOutcome,
     openGeneratePanel,
+    projectId,
+    spaceId,
+    getInternalNode,
   ]);
 
   // Whoever posts a proposal is outside the canvas and cannot see whether one

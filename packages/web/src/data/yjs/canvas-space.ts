@@ -2075,19 +2075,40 @@ export function readNodes(doc: Y.Doc): ReadonlyArray<CanvasNodeView> {
 }
 
 /**
- * Where every node of a canvas space sits on the canvas, as absolute top-lefts.
+ * What the document says about one node's place and the facts its size
+ * follows from: a Group's own rect, a picture's or video's pixel size, a text
+ * node's words.
+ */
+export interface NodePlacement {
+  id: string;
+  type: string;
+  /** Absolute left edge: a Group member's stored position plus its Group's. */
+  x: number;
+  /** Absolute top edge, likewise. */
+  y: number;
+  /** A Group's own width. */
+  width?: number;
+  /** A Group's own height. */
+  height?: number;
+  /** A picture's or video's pixel width. */
+  mediaWidth?: number;
+  /** A picture's or video's pixel height. */
+  mediaHeight?: number;
+  /** A text node's words, one line per paragraph. */
+  bodyText?: string;
+}
+
+/**
+ * Where every node of a canvas space sits, with the facts its size follows from.
  *
- * Read from the document, so a paste made a moment ago counts before it has
+ * Read from the document, so a node written a moment ago counts before it has
  * rendered. A Group member's stored position is relative to its Group, so its
  * Group's position is added.
  * @param projectId - Project the canvas space belongs to.
  * @param spaceId - Canvas space to read.
- * @returns One top-left per node, in no particular order.
+ * @returns One placement per node, in no particular order.
  */
-export function readNodeCorners(
-  projectId: string,
-  spaceId: string,
-): Array<{ x: number; y: number }> {
+export function readNodePlacements(projectId: string, spaceId: string): NodePlacement[] {
   const nodesMap = getDoc(docName.canvasSpace(projectId, spaceId)).getMap<Y.Map<unknown>>(
     NODES_KEY,
   );
@@ -2098,15 +2119,50 @@ export function readNodeCorners(
    */
   const positionOf = (node: unknown): { x: number; y: number } | undefined =>
     node instanceof Y.Map ? (node.get('position') as { x: number; y: number } | undefined) : undefined;
-  const out: Array<{ x: number; y: number }> = [];
-  nodesMap.forEach((node) => {
+  /**
+   * A number the node's data holds under this key.
+   * @param data - The node's data map, if any.
+   * @param key - The key.
+   * @returns The number, or undefined.
+   */
+  const numberIn = (data: unknown, key: string): number | undefined => {
+    const value = data instanceof Y.Map ? data.get(key) : undefined;
+    return typeof value === 'number' ? value : undefined;
+  };
+  const out: NodePlacement[] = [];
+  nodesMap.forEach((node, id) => {
     const at = positionOf(node);
     if (at === undefined) return;
     const parentId = node.get('parentId');
     const parent = typeof parentId === 'string' ? positionOf(nodesMap.get(parentId)) : undefined;
-    out.push(parent === undefined ? at : { x: at.x + parent.x, y: at.y + parent.y });
+    const data = node.get('data');
+    const body = data instanceof Y.Map ? data.get('body') : undefined;
+    out.push({
+      id,
+      type: String(node.get('type')),
+      x: parent === undefined ? at.x : at.x + parent.x,
+      y: parent === undefined ? at.y : at.y + parent.y,
+      width: numberIn(data, 'width'),
+      height: numberIn(data, 'height'),
+      mediaWidth: numberIn(data, 'mediaWidth'),
+      mediaHeight: numberIn(data, 'mediaHeight'),
+      bodyText: body instanceof Y.XmlFragment ? bodyToPlainText(body) : undefined,
+    });
   });
   return out;
+}
+
+/**
+ * Where every node of a canvas space sits on the canvas, as absolute top-lefts.
+ * @param projectId - Project the canvas space belongs to.
+ * @param spaceId - Canvas space to read.
+ * @returns One top-left per node, in no particular order.
+ */
+export function readNodeCorners(
+  projectId: string,
+  spaceId: string,
+): Array<{ x: number; y: number }> {
+  return readNodePlacements(projectId, spaceId).map(({ x, y }) => ({ x, y }));
 }
 
 /**
