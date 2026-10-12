@@ -11,14 +11,9 @@
  */
 
 import type { CropHandle } from '@web/lib/crop-math';
+import { UNIT_FRAME, type ExpandFrame, type ExpandRatio } from '@web/stores/expand-draft';
 
-/** The frame, as shares of the source. */
-export interface ExpandFrame {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-}
+export { EXPAND_RATIOS, UNIT_FRAME, type ExpandFrame, type ExpandRatio } from '@web/stores/expand-draft';
 
 /** A source's pixel size. */
 export interface PixelSize {
@@ -26,14 +21,6 @@ export interface PixelSize {
   height: number;
 }
 
-/** The ratios the frame can be held to: Free and seven fixed ones. */
-export const EXPAND_RATIOS = ['free', '1:1', '2:3', '3:2', '3:4', '4:3', '9:16', '16:9'] as const;
-
-/** One of {@link EXPAND_RATIOS}. */
-export type ExpandRatio = (typeof EXPAND_RATIOS)[number];
-
-/** The frame that is the source itself. */
-export const UNIT_FRAME: Readonly<ExpandFrame> = Object.freeze({ x: 0, y: 0, width: 1, height: 1 });
 
 /** Below this a difference in shares is rounding. */
 const EPS = 1e-6;

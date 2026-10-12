@@ -29,6 +29,7 @@ import {
   type DrawTool,
   type MaskDisplayColor,
 } from '@web/stores/drawing-draft';
+import { EMPTY_EXPAND, type ExpandDraft } from '@web/stores/expand-draft';
 import { immer } from 'zustand/middleware/immer';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 
@@ -167,6 +168,8 @@ export interface MiniToolDraft {
   readonly sourceSize: { readonly width: number; readonly height: number } | null;
   /** What the reader has drawn; null on a tool without a drawing (inner#1302 §6.1). */
   readonly drawing: DrawingDraft | null;
+  /** The expand frame and its ratio; null on a tool that does not expand (inner#1303 §6.3). */
+  readonly expand: ExpandDraft | null;
   /**
    * Run was pressed and what it makes in the browser (a browser tool's file,
    * or a drawing tool's images and their upload) is being made. Only the run
@@ -334,6 +337,8 @@ export interface CanvasSessionState {
   resetMiniToolSource: (sourceContent: string, params: Readonly<Record<string, unknown>>) => void;
   /** Record the source size the crop box read off the shown element. */
   setMiniToolSourceSize: (size: { width: number; height: number }) => void;
+  /** Set the expand frame and its ratio, on a tool that expands. */
+  setExpand: (next: ExpandDraft) => void;
   /** Pick the shape a press on the node draws. */
   setDrawingTool: (tool: DrawTool) => void;
   /** Set the brush diameter, in percent of the source's shorter side. */
@@ -612,6 +617,7 @@ export function createCanvasSessionStore(): CanvasSessionStore {
               slots: {},
               sourceSize: null,
               drawing: miniToolById(toolId)?.drawing === undefined ? null : castDraft(EMPTY_DRAWING),
+              expand: miniToolById(toolId)?.expand === undefined ? null : castDraft(EMPTY_EXPAND),
               exporting: false,
             };
           }
@@ -650,8 +656,13 @@ export function createCanvasSessionStore(): CanvasSessionStore {
               params: { ...s.miniTool.params, ...params },
               sourceSize: null,
               drawing,
+              expand: s.miniTool.expand === null ? null : castDraft(EMPTY_EXPAND),
             };
           }
+        }),
+      setExpand: (next) =>
+        set((s) => {
+          if (s.miniTool?.expand) s.miniTool = { ...s.miniTool, expand: castDraft({ frame: { ...next.frame }, ratio: next.ratio }) };
         }),
       setMiniToolSourceSize: (size) =>
         set((s) => {
