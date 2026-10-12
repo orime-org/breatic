@@ -22,7 +22,7 @@ import { afterAll, beforeAll, beforeEach, expect, inject, vi } from "vitest";
 import { env, getRedis, initCore, loadLocales } from "@breatic/core";
 import { signRequest } from "@server/middleware/internal-signature.js";
 import { fakeStripe } from "./fake-stripe-refunds.js";
-import { mailsOf, type SeededLot } from "./credit-refund-fixtures.js";
+import { expectOnlyRejudged, mailsOf, type SeededLot, type WorldState } from "./credit-refund-fixtures.js";
 
 /** The current shared secret the suites start the app with. */
 export const SECRET = "internal-secret-current-0123456789abcdef";
@@ -292,4 +292,48 @@ export function errorShape(json: { code?: unknown; reason?: unknown; detail?: un
     reason: json?.reason,
     detailTranslated: typeof detail === "string" && detail.length > 0 && !detail.startsWith("server."),
   };
+}
+
+/**
+ * The dispositions and resend rows holding an idempotency key.
+ * @param sql - Raw client.
+ * @param key - The key.
+ * @returns Counts in both tables.
+ */
+export async function holdersOf(sql: ReturnType<typeof postgres>, key: string): Promise<{ ops: number; mails: number }> {
+  const [ops] = await sql<{ n: number }[]>`
+    SELECT count(*)::int AS n FROM credit_refund_operations WHERE idempotency_key = ${key}
+  `;
+  const [mails] = await sql<{ n: number }[]>`
+    SELECT count(*)::int AS n FROM refund_mail_outbox WHERE idempotency_key = ${key}
+  `;
+  return { ops: ops!.n, mails: mails!.n };
+}
+
+/**
+ * Assert a 409 operation_in_progress that stored no disposition, held no
+ * key and created no refund, the in-flight disposition keeping its status;
+ * its re-judgement by the request's own Stripe read may add its event rows
+ * (v6 §4.6, §6.4). The one definition every endpoint family's in-flight
+ * refusal case uses.
+ * @param sql - Raw client.
+ * @param res - The answer.
+ * @param lot - The lot.
+ * @param before - The world before the request.
+ * @param inFlightId - The disposition still in flight.
+ * @param key - The request's idempotency key.
+ */
+export async function expectRefusedAroundInFlight(
+  sql: ReturnType<typeof postgres>,
+  res: CallResult,
+  lot: SeededLot,
+  before: WorldState,
+  inFlightId: string,
+  key: string,
+): Promise<void> {
+  expect(res.status).toBe(409);
+  expect(errorShape(res.json)).toEqual({ code: "operation_in_progress", reason: undefined, detailTranslated: true });
+  await expectOnlyRejudged(sql, lot, before, inFlightId);
+  expect(await holdersOf(sql, key)).toEqual({ ops: 0, mails: 0 });
+  expect(fakeStripe.createCalls).toEqual([]);
 }

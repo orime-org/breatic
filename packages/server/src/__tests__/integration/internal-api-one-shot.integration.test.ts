@@ -36,13 +36,21 @@ vi.mock("@server/infra/stripe.js", async () => {
 });
 
 import { fakeStripe, stripeError } from "./fake-stripe-refunds.js";
-import { ADMIN, call, errorShape, freshKey, paths, useInternalApp } from "./internal-api-harness.js";
+import {
+  ADMIN,
+  call,
+  errorShape,
+  expectRefusedAroundInFlight,
+  freshKey,
+  holdersOf,
+  paths,
+  useInternalApp,
+} from "./internal-api-harness.js";
 import {
   CREDITS,
   PAID_CENTS,
   bellsOf,
   copiesOf,
-  expectOnlyRejudged,
   ledgerOf,
   mailsOf,
   readLot,
@@ -115,46 +123,6 @@ async function expectRefused(
   expect(errorShape(res.json).detailTranslated).toBe(true);
   expect(exceptCopies(await worldOf(suite.sql, lot))).toEqual(exceptCopies(before));
   expect(fakeStripe.createCalls).toEqual([]);
-}
-
-/**
- * Assert a 409 operation_in_progress that stored no disposition and held no
- * key, the in-flight disposition keeping its status; its re-judgement by the
- * request's own Stripe read may add its event rows (v6 §4.6, §6.4).
- * @param res - The answer.
- * @param lot - The lot.
- * @param before - The world before.
- * @param inFlightId - The disposition still in flight.
- * @param key - The request's idempotency key.
- */
-async function expectRefusedAroundInFlight(
-  res: Awaited<ReturnType<typeof post>>,
-  lot: SeededLot,
-  before: WorldState,
-  inFlightId: string,
-  key: string,
-): Promise<void> {
-  expect(res.status).toBe(409);
-  expect(res.json.code).toBe("operation_in_progress");
-  expect(errorShape(res.json).detailTranslated).toBe(true);
-  await expectOnlyRejudged(suite.sql, lot, before, inFlightId);
-  expect(await holdersOf(key)).toEqual({ ops: 0, mails: 0 });
-  expect(fakeStripe.createCalls).toEqual([]);
-}
-
-/**
- * The dispositions and resend rows holding a key.
- * @param key - The key.
- * @returns Counts in both tables.
- */
-async function holdersOf(key: string): Promise<{ ops: number; mails: number }> {
-  const [ops] = await suite.sql<{ n: number }[]>`
-    SELECT count(*)::int AS n FROM credit_refund_operations WHERE idempotency_key = ${key}
-  `;
-  const [mails] = await suite.sql<{ n: number }[]>`
-    SELECT count(*)::int AS n FROM refund_mail_outbox WHERE idempotency_key = ${key}
-  `;
-  return { ops: ops!.n, mails: mails!.n };
 }
 
 describe("POST …/refund/reject", () => {
@@ -357,7 +325,7 @@ describe("POST …/refund/settle", () => {
       key,
     );
 
-    await expectRefusedAroundInFlight(res, lot, before, inFlight.id, key);
+    await expectRefusedAroundInFlight(suite.sql, res, lot, before, inFlight.id, key);
   });
 
   it("an active lot is 409 lot_state_changed", async () => {
@@ -392,7 +360,7 @@ describe("POST …/refund/settle", () => {
       status: "succeeded",
       ever_succeeded: true,
     });
-    expect(await holdersOf(key)).toEqual({ ops: 0, mails: 0 });
+    expect(await holdersOf(suite.sql, key)).toEqual({ ops: 0, mails: 0 });
   });
 
   it("a read older than the copy cannot turn a failed refund back to succeeded: settle on the old sum is 409 succeeded_sum_changed, nothing booked (v6 §6.4, finding [13])", async () => {
@@ -554,7 +522,7 @@ describe("POST …/refund/resolved-outside", () => {
       status: "succeeded",
       ever_succeeded: true,
     });
-    expect(await holdersOf(key)).toEqual({ ops: 0, mails: 0 });
+    expect(await holdersOf(suite.sql, key)).toEqual({ ops: 0, mails: 0 });
   });
 
   it("a body without confirmedSucceededCents is 422 invalid_body (v6 §4.5)", async () => {
@@ -769,7 +737,7 @@ describe("POST …/refund/resolved-outside on a lot not yet refunded (§5.3: it 
 
     const res = await post(paths.resolvedOutside(lot.lotId), { reason: "r", failedRefundIds: [], confirmedSucceededCents: 0 }, key);
 
-    await expectRefusedAroundInFlight(res, lot, before, inFlight.id, key);
+    await expectRefusedAroundInFlight(suite.sql, res, lot, before, inFlight.id, key);
   });
 });
 

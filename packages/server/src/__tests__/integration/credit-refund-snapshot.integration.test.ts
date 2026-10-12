@@ -54,8 +54,10 @@ import * as refundCopyRepo from "@server/modules/credit-refund/refund-copy.repo.
 import type { RefundCopy } from "@server/modules/credit-refund/types.js";
 import { pickUnresolvedFailedRefunds } from "@server/modules/credit-refund/unresolved.js";
 import {
+  REFUND_AGAIN_CENTS,
   bellsOf,
   copiesOf,
+  eventsOf,
   inTx,
   ledgerOf,
   mailsOf,
@@ -65,6 +67,7 @@ import {
   reId,
   seedCopy,
   seedOperation,
+  seedRefundAgainOn,
   seedRefundLot,
   useRefundSuite,
   worldOf,
@@ -694,6 +697,56 @@ describe("a refund_again that ends on E6 answers for its own refund (v6 §6.2, �
     expect((await copyOf(lot, original))!.resolved_by_operation_id).toBeNull();
     const unresolved = await inTx((tx) => unresolvedOf(tx, lot));
     expect(unresolved.map((r) => r.stripeRefundId)).toEqual([original]);
+  });
+});
+
+describe("a refund_again in needs_attention whose own refund is later seen succeeded (v7 §6.2 needs_attention × E2, findings [1][6][8][22])", () => {
+  it("answers for its failed refunds and closes its own attention, with one event row naming the reader; an approve in needs_attention on the lot is left alone", async () => {
+    const { lot, failed, againId } = await seedRefundAgainOn(suite.sql, {
+      status: "needs_attention",
+      attentionReason: "attempts_exhausted",
+    });
+    // An earlier approval that went to a person and was closed by the settle:
+    // its refund read again must not move it (only the copy updates).
+    const approve = await seedOperation(suite.sql, lot, {
+      kind: "approve",
+      status: "needs_attention",
+      attentionReason: "partial_refund",
+      createdSecondsAgo: 1200,
+    });
+    const approveRefund = reId("approve_own");
+    await seedCopy(suite.sql, lot, { id: approveRefund, amountCents: 780, status: "pending", operationId: approve.id });
+    const own = reId("again_own");
+    const approveBefore = await readOp(suite.sql, approve.id);
+    const before = await worldOf(suite.sql, lot);
+
+    await apply(lot, [
+      refundObject(failed, "failed", REFUND_AGAIN_CENTS),
+      refundObject(approveRefund, "succeeded", 780, approve.id),
+      refundObject(own, "succeeded", REFUND_AGAIN_CENTS, againId),
+    ]);
+
+    const again = await readOp(suite.sql, againId);
+    expect(again).toMatchObject({
+      status: "needs_attention",
+      attention_reason: "attempts_exhausted",
+      attention_closed_by: againId,
+    });
+    expect(again.attention_closed_at).not.toBeNull();
+    expect((await copyOf(lot, failed))!.resolved_by_operation_id).toBe(againId);
+    expect(await copyOf(lot, own)).toMatchObject({ status: "succeeded", operation_id: againId });
+    expect(await inTx((tx) => unresolvedOf(tx, lot))).toEqual([]);
+    expect(await newEventsOn(suite.sql, lot, before, againId)).toEqual([
+      { event: "refund_succeeded", from_status: "needs_attention", to_status: "needs_attention" },
+    ]);
+    expect((await eventsOf(suite.sql, againId)).at(-1)!.detail).toMatchObject({ actor: "webhook" });
+
+    expect(await readOp(suite.sql, approve.id)).toEqual(approveBefore);
+    expect(await newEventsOn(suite.sql, lot, before, approve.id)).toEqual([]);
+    expect(await copyOf(lot, approveRefund)).toMatchObject({ status: "succeeded", ever_succeeded: true });
+    const after = await worldOf(suite.sql, lot);
+    expect(after.lot).toEqual(before.lot);
+    expect(after.ledger).toEqual(before.ledger);
   });
 });
 

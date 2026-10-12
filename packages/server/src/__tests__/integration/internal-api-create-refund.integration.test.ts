@@ -40,13 +40,22 @@ vi.mock("@server/infra/stripe.js", async () => {
 
 import { getCreditRefundConfig } from "@server/config/credit-refund.js";
 import { fakeStripe, stripeError } from "./fake-stripe-refunds.js";
-import { ADMIN, call, errorShape, freshKey, mailsSettled, paths, useInternalApp } from "./internal-api-harness.js";
+import {
+  ADMIN,
+  call,
+  errorShape,
+  expectRefusedAroundInFlight,
+  freshKey,
+  holdersOf,
+  mailsSettled,
+  paths,
+  useInternalApp,
+} from "./internal-api-harness.js";
 import {
   CREDITS,
   PAID_CENTS,
   bellsOf,
   copiesOf,
-  expectOnlyRejudged,
   ledgerOf,
   mailsOf,
   readLot,
@@ -138,21 +147,6 @@ async function expectBuyerToldRefunded(lot: SeededLot, opId: string): Promise<vo
     expect.objectContaining({ operation_id: opId, kind: "refund_completed", origin: "auto", requested_by: null, idempotency_key: null }),
   ]);
   expect(MAIL_STATUSES_AFTER_FINISH).toContain(mails.find((m) => m.operation_id === opId)!.status);
-}
-
-/**
- * The dispositions and resend rows holding a key.
- * @param key - The key.
- * @returns Counts in both tables.
- */
-async function holdersOf(key: string): Promise<{ ops: number; mails: number }> {
-  const [ops] = await suite.sql<{ n: number }[]>`
-    SELECT count(*)::int AS n FROM credit_refund_operations WHERE idempotency_key = ${key}
-  `;
-  const [mails] = await suite.sql<{ n: number }[]>`
-    SELECT count(*)::int AS n FROM refund_mail_outbox WHERE idempotency_key = ${key}
-  `;
-  return { ops: ops!.n, mails: mails!.n };
 }
 
 /**
@@ -561,7 +555,7 @@ describe("POST …/refund/approve", () => {
         expect.objectContaining({ stripe_refund_id: external, operation_id: null, status: "succeeded", ever_succeeded: true }),
       ]);
       expect(exceptCopies(await worldOf(suite.sql, lot))).toEqual(exceptCopies(before));
-      expect(await holdersOf(key)).toEqual({ ops: 0, mails: 0 });
+      expect(await holdersOf(suite.sql, key)).toEqual({ ops: 0, mails: 0 });
       expect(fakeStripe.createCalls).toEqual([]);
     });
 
@@ -585,7 +579,7 @@ describe("POST …/refund/approve", () => {
         ].sort(),
       );
       expect(await opIdsOf(lot)).toEqual([]);
-      expect(await holdersOf(key)).toEqual({ ops: 0, mails: 0 });
+      expect(await holdersOf(suite.sql, key)).toEqual({ ops: 0, mails: 0 });
     });
 
     it("a retry refused because its read finished the awaiting approval: the approval stays booked, the retry stores nothing", async () => {
@@ -616,7 +610,7 @@ describe("POST …/refund/approve", () => {
         expect.objectContaining({ stripe_refund_id: own, status: "succeeded", ever_succeeded: true }),
       ]);
       expect(await opIdsOf(lot)).toEqual([waiting.id]);
-      expect(await holdersOf(key)).toEqual({ ops: 0, mails: 0 });
+      expect(await holdersOf(suite.sql, key)).toEqual({ ops: 0, mails: 0 });
       expect(fakeStripe.createCalls).toEqual([]);
       await mailsSettled(suite.sql, lot);
     });
@@ -709,11 +703,7 @@ describe("POST …/refund/retry", () => {
 
     const res = await post(paths.retry(lot.lotId), body, key);
 
-    expect(res.status).toBe(409);
-    expect(errorShape(res.json)).toEqual({ code: "operation_in_progress", reason: undefined, detailTranslated: true });
-    await expectOnlyRejudged(suite.sql, lot, before, inFlight.id);
-    expect(await holdersOf(key)).toEqual({ ops: 0, mails: 0 });
-    expect(fakeStripe.createCalls).toEqual([]);
+    await expectRefusedAroundInFlight(suite.sql, res, lot, before, inFlight.id, key);
   });
 
   it("a refund_pending lot is 409 lot_state_changed", async () => {
@@ -823,7 +813,7 @@ describe("POST …/refund/refund-again", () => {
     expect(errorShape(res.json)).toEqual({ code: "stripe_blocks", reason: "refund_failed", detailTranslated: true });
     expect(fakeStripe.createCalls).toEqual([]);
     expect(await opIdsOf(lot)).toEqual([approve.id]);
-    expect(await holdersOf(key)).toEqual({ ops: 0, mails: 0 });
+    expect(await holdersOf(suite.sql, key)).toEqual({ ops: 0, mails: 0 });
     expect(await copiesOf(suite.sql, lot.lotId)).toEqual([
       expect.objectContaining({ stripe_refund_id: failed, status: "failed", ever_succeeded: true, resolved_by_operation_id: null }),
     ]);

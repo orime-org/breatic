@@ -54,8 +54,10 @@ import { creditLotRepo } from "@breatic/domain";
 import {
   CREDITS,
   EVENT_NAME,
+  REFUND_AGAIN_CENTS,
   bellsOf,
   copiesOf,
+  eventsOf,
   inTx,
   ledgerOf,
   mailsOf,
@@ -65,6 +67,7 @@ import {
   reId,
   seedCopy,
   seedOperation,
+  seedRefundAgainOn,
   seedRefundLot,
   useRefundSuite,
   worldOf,
@@ -439,4 +442,40 @@ describe("a refund_again that ends on E6 answers for its own refund (v6 §6.2, f
       { event: EVENT_NAME.E6, from_status: "started", to_status: "needs_attention" },
     ]);
   });
+});
+
+describe("needs_attention × E2 for a refund_again: its own refund succeeded after all (v7 §6.2, findings [1][6][8][22])", () => {
+  it.each(["attempts_exhausted", "stripe_result_unknown"])(
+    "ended %s: its failed refunds are answered for by it and its attention is closed by itself; lot and ledger untouched, one event row",
+    async (attentionReason) => {
+      const { lot, failed, againId } = await seedRefundAgainOn(suite.sql, { status: "needs_attention", attentionReason });
+      const own = reId("again_own");
+      await seedCopy(suite.sql, lot, { id: own, amountCents: REFUND_AGAIN_CENTS, status: "succeeded", operationId: againId });
+      expect(await unresolvedIds(lot)).toEqual([failed]);
+      const before = await worldOf(suite.sql, lot);
+
+      await inTx((tx) =>
+        transitionOperation(tx, { id: againId }, {
+          type: "E2",
+          refund: refundObject(own, "succeeded", REFUND_AGAIN_CENTS, againId),
+          actor: "reconcile",
+        }),
+      );
+
+      const op = await readOp(suite.sql, againId);
+      expect(op).toMatchObject({ status: "needs_attention", attention_reason: attentionReason, attention_closed_by: againId });
+      expect(op.attention_closed_at).not.toBeNull();
+      const by = await resolvers(lot);
+      expect(by.get(failed)).toBe(againId);
+      expect(by.get(own)).toBeNull();
+      expect(await unresolvedIds(lot)).toEqual([]);
+      expect(await newEventsOn(suite.sql, lot, before, againId)).toEqual([
+        { event: EVENT_NAME.E2, from_status: "needs_attention", to_status: "needs_attention" },
+      ]);
+      expect((await eventsOf(suite.sql, againId)).at(-1)!.detail).toMatchObject({ actor: "reconcile" });
+      const after = await worldOf(suite.sql, lot);
+      expect(after.lot).toEqual(before.lot);
+      expect(after.ledger).toEqual(before.ledger);
+    },
+  );
 });

@@ -104,6 +104,7 @@ import { mailsSettled } from "./internal-api-harness.js";
 import {
   CREDITS,
   PAID_CENTS,
+  REFUND_AGAIN_CENTS,
   bellsOf,
   copiesOf,
   dbClockUs,
@@ -118,6 +119,7 @@ import {
   parkInFlightOperations,
   seedCopy,
   seedOperation,
+  seedRefundAgainOn,
   seedRefundLot,
   useRefundSuite,
   type LotState,
@@ -444,6 +446,87 @@ describe("step 1 — claim and resume a started disposition", () => {
     expect(await readLot(suite.sql, lot.lotId)).toMatchObject({ lifecycle: "refunding" });
   });
 
+  it("attempts used up and the lookup fails, but the copies hold the refund_again's own refund succeeded (copied from a create answer before an E16): judged by that copy — succeeded, its failed refund answered for, no create", async () => {
+    const { maxAttempts } = getCreditRefundConfig();
+    const { lot, failed, againId } = await seedRefundAgainOn(suite.sql, {
+      status: "started",
+      leaseExpired: true,
+      attemptCount: maxAttempts,
+      firstCalledHoursAgo: 1,
+    });
+    const own = reId("again_own");
+    await seedCopy(suite.sql, lot, { id: own, amountCents: REFUND_AGAIN_CENTS, status: "succeeded", operationId: againId });
+    fakeStripe.register(lot.paymentIntentId, PAID_CENTS, [
+      refundObject(failed, "failed", REFUND_AGAIN_CENTS),
+      refundObject(own, "succeeded", REFUND_AGAIN_CENTS, againId),
+    ]);
+    fakeStripe.failLists(stripeError(500));
+
+    await runRefundLoopOnce();
+
+    expect(createsFor(lot)).toEqual([]);
+    expect(await readOp(suite.sql, againId)).toMatchObject({
+      status: "succeeded",
+      result: "refunded",
+      stripe_refund_id: own,
+      attention_reason: null,
+    });
+    const byId = new Map((await copiesOf(suite.sql, lot.lotId)).map((c) => [c.stripe_refund_id, c]));
+    expect(byId.get(failed)!.resolved_by_operation_id).toBe(againId);
+    expect(await eventNames(againId)).toEqual(["claimed", "refund_succeeded"]);
+  });
+
+  it("attempts used up and the lookup fails, but the copies hold the approval's own refund succeeded: booked on it, no attempts_exhausted, no create", async () => {
+    const { maxAttempts } = getCreditRefundConfig();
+    const own = reId("own");
+    const lot = await seedRefundLot(suite.sql, "refunding");
+    const { id: opId } = await seedOperation(suite.sql, lot, {
+      kind: "approve",
+      status: "started",
+      leaseExpired: true,
+      attemptCount: maxAttempts,
+      firstCalledHoursAgo: 1,
+    });
+    await seedCopy(suite.sql, lot, { id: own, amountCents: PAID_CENTS, status: "succeeded", operationId: opId });
+    fakeStripe.register(lot.paymentIntentId, PAID_CENTS, [refundObject(own, "succeeded", PAID_CENTS, opId)]);
+    fakeStripe.failLists(stripeError(500));
+
+    await runRefundLoopOnce();
+
+    expect(createsFor(lot)).toEqual([]);
+    expect(await readOp(suite.sql, opId)).toMatchObject({
+      status: "succeeded",
+      result: "refunded",
+      stripe_refund_id: own,
+      attention_reason: null,
+    });
+    await expectBookedOn(lot, own);
+    expect(await eventNames(opId)).toEqual(["claimed", "refund_succeeded"]);
+  });
+
+  it("attempts used up, the lookup fails and no copy is its own: the E11 row carries the read failure, and attention_detail is its first line (findings [3][13])", async () => {
+    const { maxAttempts } = getCreditRefundConfig();
+    const { opId } = await seeded("refunding", {
+      kind: "approve",
+      status: "started",
+      leaseExpired: true,
+      attemptCount: maxAttempts,
+      firstCalledHoursAgo: 1,
+    });
+    fakeStripe.failLists(stripeError(500));
+
+    await runRefundLoopOnce();
+
+    expect(await readOp(suite.sql, opId)).toMatchObject({
+      status: "needs_attention",
+      attention_reason: "attempts_exhausted",
+      attention_detail: "synthetic 500",
+    });
+    const exhausted = (await eventsOf(suite.sql, opId)).at(-1)!;
+    expect(exhausted).toMatchObject({ event: "attempts_exhausted", to_status: "needs_attention" });
+    expect(exhausted.detail).toMatchObject({ message: "synthetic 500", httpStatus: 500, actor: "loop" });
+  });
+
   it("one attempt below the cap still calls Stripe", async () => {
     const { maxAttempts } = getCreditRefundConfig();
     const { lot, opId } = await seeded("refunding", {
@@ -692,6 +775,87 @@ describe("executeRefund — the list read after the create decides (§5.4, §6.4
     ]);
   });
 
+  /**
+   * Run `write` once, after the next `refunds.list` has read what Stripe
+   * holds and before it answers: a webhook committing between the
+   * executor's read and its answer transaction.
+   * @param write - What the webhook commits.
+   */
+  function betweenNextReadAndAnswer(write: () => Promise<void>): void {
+    const original = fakeStripe.client.refunds.list;
+    fakeStripe.client.refunds.list = (params: Record<string, unknown>) => {
+      fakeStripe.client.refunds.list = original;
+      const page = original(params) as Promise<unknown> & { autoPagingToArray: () => Promise<unknown[]> };
+      const read = page.autoPagingToArray;
+      return Object.assign(page, {
+        autoPagingToArray: async () => {
+          const data = await read();
+          await write();
+          return data;
+        },
+      });
+    };
+  }
+
+  it("approve: the list says its refund succeeded, but a webhook already copied it failed → judged by the copy: needs_attention stripe_refund_failed_later, not partial_refund (findings [7][9])", async () => {
+    const { lot, opId, op } = await startedApprove();
+    betweenNextReadAndAnswer(() =>
+      seedCopy(suite.sql, lot, {
+        id: ownOnStripe(lot, opId),
+        amountCents: PAID_CENTS,
+        status: "failed",
+        everSucceeded: true,
+        operationId: opId,
+      }),
+    );
+
+    await executeRefund(op, "loop");
+
+    const own = ownOnStripe(lot, opId);
+    expect(await readOp(suite.sql, opId)).toMatchObject({
+      status: "needs_attention",
+      attention_reason: "stripe_refund_failed_later",
+      result: null,
+    });
+    expect((await copiesOf(suite.sql, lot.lotId)).map((c) => [c.stripe_refund_id, c.status, c.ever_succeeded])).toEqual([
+      [own, "failed", true],
+    ]);
+    expect(await readLot(suite.sql, lot.lotId)).toMatchObject({ lifecycle: "refunding", remaining: `${CREDITS}.000000` });
+    expect((await ledgerOf(suite.sql, lot.lotId)).filter((r) => r.entry_type === "refund")).toEqual([]);
+    expect(await bellsOf(suite.sql, lot.userId)).toEqual([]);
+    expect(await mailsOf(suite.sql, lot.lotId)).toEqual([]);
+  });
+
+  it("refund_again: the list says its refund succeeded, but a webhook already copied it failed → judged by the copy: needs_attention stripe_declined, no bell, no mail, the failed refund still unresolved (findings [7][9])", async () => {
+    const { lot, failed, againId } = await seedRefundAgainOn(suite.sql, { status: "started", notify: true });
+    fakeStripe.register(lot.paymentIntentId, PAID_CENTS, [refundObject(failed, "failed", REFUND_AGAIN_CENTS)]);
+    betweenNextReadAndAnswer(() =>
+      seedCopy(suite.sql, lot, {
+        id: ownOnStripe(lot, againId),
+        amountCents: REFUND_AGAIN_CENTS,
+        status: "failed",
+        everSucceeded: true,
+        operationId: againId,
+      }),
+    );
+
+    await executeRefund((await findById(againId))!, "loop");
+
+    const own = ownOnStripe(lot, againId);
+    expect(createsFor(lot)).toHaveLength(1);
+    expect(await readOp(suite.sql, againId)).toMatchObject({
+      status: "needs_attention",
+      attention_reason: "stripe_declined",
+      result: null,
+      stripe_refund_id: own,
+    });
+    const byId = new Map((await copiesOf(suite.sql, lot.lotId)).map((c) => [c.stripe_refund_id, c]));
+    expect(byId.get(own)).toMatchObject({ status: "failed", ever_succeeded: true });
+    expect(byId.get(failed)!.resolved_by_operation_id).toBeNull();
+    expect(await bellsOf(suite.sql, lot.userId)).toEqual([]);
+    expect(await mailsOf(suite.sql, lot.lotId)).toEqual([]);
+  });
+
   it.each([
     { event: "E9", name: "charge_already_refunded", error: () => stripeError(400, { code: "charge_already_refunded" }) },
     { event: "E7", name: "retryable_error", error: () => stripeError(429) },
@@ -910,6 +1074,17 @@ describe("step 2 — re-read Stripe for awaiting_stripe dispositions", () => {
       to_status: "needs_attention",
     });
     expect(await readLot(suite.sql, lot.lotId)).toMatchObject({ lifecycle: "refunding" });
+  });
+
+  it("E12 after a failed read: the deadline_reached row carries the read failure (findings [3][13])", async () => {
+    const { opId } = await awaitingNoId(25);
+    fakeStripe.failLists(stripeError(500));
+
+    await runRefundLoopOnce();
+
+    const deadline = (await eventsOf(suite.sql, opId)).at(-1)!;
+    expect(deadline).toMatchObject({ event: "deadline_reached", to_status: "needs_attention" });
+    expect(deadline.detail).toMatchObject({ message: "synthetic 500", actor: "loop" });
   });
 
   it("with a refund id, 24 hours do not end the wait", async () => {

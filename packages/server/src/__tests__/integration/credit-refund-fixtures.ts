@@ -649,3 +649,53 @@ export async function refusedAndCommitted(run: (tx: DbTx) => Promise<unknown>): 
   });
   return caught;
 }
+
+/** What the refund_again of {@link seedRefundAgainOn} asks for: the failed refund's amount. */
+export const REFUND_AGAIN_CENTS = 300;
+
+/** A refunded lot with an unresolved failed refund and a refund_again sent for it. */
+export interface RefundAgainCase {
+  lot: SeededLot;
+  /** The settle that booked the lot short. */
+  settleId: string;
+  /** The external refund the lot was booked on, failed since: unresolved. */
+  failed: string;
+  /** The refund_again sent for it. */
+  againId: string;
+  /** Its lease, when seeded `started`. */
+  leaseToken: string | null;
+}
+
+/**
+ * The finding [1]/[6]/[8] world (v7 §5.2, §6.2): a settle with acceptPartial
+ * booked the lot `refunded` on an external refund of
+ * {@link REFUND_AGAIN_CENTS}, that refund failed later (its copy `failed`,
+ * once succeeded, unanswered), and a refund_again of the same amount was
+ * sent for it. Stripe is not registered: the case says what Stripe holds.
+ * @param sql - Raw client.
+ * @param again - The refund_again's status and the columns that matter for the case.
+ * @returns The ids.
+ */
+export async function seedRefundAgainOn(
+  sql: Sql,
+  again: Omit<SeedOp, "kind" | "failedRefundIds" | "refundAmountCents">,
+): Promise<RefundAgainCase> {
+  const lot = await seedRefundLot(sql, "refunded");
+  const settle = await seedOperation(sql, lot, {
+    kind: "settle",
+    status: "succeeded",
+    result: "refunded",
+    notify: false,
+    createdSecondsAgo: 900,
+  });
+  const failed = reId("failed_later");
+  await seedCopy(sql, lot, { id: failed, amountCents: REFUND_AGAIN_CENTS, status: "failed", everSucceeded: true });
+  const op = await seedOperation(sql, lot, {
+    createdSecondsAgo: 300,
+    ...again,
+    kind: "refund_again",
+    failedRefundIds: [failed],
+    refundAmountCents: REFUND_AGAIN_CENTS,
+  });
+  return { lot, settleId: settle.id, failed, againId: op.id, leaseToken: op.leaseToken };
+}
