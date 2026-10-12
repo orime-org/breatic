@@ -65,6 +65,16 @@ export function NodeExpandLayer({ nodeId, wrapper }: NodeExpandLayerProps): Reac
   }
   const sourceContent = draft?.sourceContent;
   React.useEffect(() => setShift({ x: 0, y: 0 }), [sourceContent]);
+  // The frame as this layer last saw it. A frame written by anyone but a drag
+  // here (a ratio preset, a reset) wraps the picture where the node shows it,
+  // so the picture goes back there.
+  const known = React.useRef<string | null>(null);
+  const frameKey = expand === null ? null : JSON.stringify(expand.frame);
+  React.useLayoutEffect(() => {
+    if (frameKey === null) return;
+    if (known.current !== null && known.current !== frameKey) setShift({ x: 0, y: 0 });
+    known.current = frameKey;
+  }, [frameKey]);
 
   // How far the frame's bottom edge reaches below the node, for the panel.
   const bottomShare = expand === null ? null : expand.frame.y + shift.y + expand.frame.height;
@@ -99,6 +109,7 @@ export function NodeExpandLayer({ nodeId, wrapper }: NodeExpandLayerProps): Reac
    */
   const write = (next: ExpandFrame): void => {
     ours.current = { frame: next, ratio };
+    known.current = JSON.stringify(next);
     store.getState().setExpand({ frame: next, ratio });
   };
 
