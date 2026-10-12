@@ -2,24 +2,30 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * The task rows whose Retry, Finish or Clear is still waiting for its answer
- * (inner#1374).
+ * The task-row requests still waiting for their answer (inner#1374).
  *
  * Outside the task panel so it outlives the panel: closing the list and
- * opening it again finds the row still waiting, and a Retry cannot be pressed
- * twice for one File. Keyed like the retry stash
- * (`spaces/canvas/upload-retry-files.ts`): project, space, task.
+ * opening it again finds the button still waiting, and a Retry cannot be
+ * pressed twice for one File. Keyed like the retry stash
+ * (`spaces/canvas/upload-retry-files.ts`) — project, space, task — plus the
+ * request pressed, so one row's Retry and Clear each wait on their own.
  */
 
 import { create } from 'zustand';
 
-/** The rows waiting, and the two ways a press enters and leaves. */
+/**
+ * The two requests a task row sends. Finish and Clear are the same dismiss
+ * request (§7.4); View sends nothing.
+ */
+export type TaskActionRequest = 'retry' | 'dismiss';
+
+/** The requests waiting, and the two ways a press enters and leaves. */
 interface TaskActionsInFlightState {
-  /** `${projectId}/${spaceId}/${taskId}` of every row waiting on a press. */
+  /** {@link taskActionKey} of every request waiting on the server. */
   inFlight: ReadonlySet<string>;
-  /** Mark a row as waiting. */
+  /** Mark a request as waiting. */
   start: (key: string) => void;
-  /** Mark a row as answered. */
+  /** Mark a request as answered. */
   end: (key: string) => void;
 }
 
@@ -35,19 +41,26 @@ export const useTaskActionsInFlight = create<TaskActionsInFlightState>()((set) =
 }));
 
 /**
- * The store key for one task row.
+ * The store key for one request on one task row.
  * @param projectId - Owning project.
  * @param spaceId - Space the task's node lives in.
  * @param taskId - The task.
+ * @param request - Which of the row's requests was pressed.
  * @returns The key.
  */
-export function taskActionKey(projectId: string, spaceId: string, taskId: string): string {
-  return `${projectId}/${spaceId}/${taskId}`;
+export function taskActionKey(
+  projectId: string,
+  spaceId: string,
+  taskId: string,
+  request: TaskActionRequest,
+): string {
+  return `${projectId}/${spaceId}/${taskId}/${request}`;
 }
 
 /**
- * Hold a row as waiting until the work behind its press settles, either way.
- * @param key - The row's {@link taskActionKey}.
+ * Hold a request as waiting until the work behind its press settles, either
+ * way.
+ * @param key - The request's {@link taskActionKey}.
  * @param work - The press's work.
  */
 export function trackTaskAction(key: string, work: Promise<unknown>): void {

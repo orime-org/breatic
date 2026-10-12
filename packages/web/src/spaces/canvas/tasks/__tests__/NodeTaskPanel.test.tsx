@@ -18,6 +18,7 @@ import userEvent from '@testing-library/user-event';
 import type { NodeTaskEntry } from '@breatic/shared';
 import { CollaboratorNamesProvider } from '@web/features/collab-editor/collaborator-names-context';
 import { NodeTaskPanel } from '@web/spaces/canvas/tasks/NodeTaskPanel';
+import type { TaskActionRequest } from '@web/stores/task-actions-in-flight';
 
 afterEach(cleanup);
 
@@ -74,7 +75,7 @@ function renderPanel(
         isLoading={false}
         isError={false}
         hasRetryFile={(): boolean => false}
-        isBusy={(): boolean => false}
+        isWaiting={(): boolean => false}
         readOnly={false}
         onReload={(): void => {}}
         onClose={(): void => {}}
@@ -211,18 +212,23 @@ describe('NodeTaskPanel', () => {
     expect(screen.getAllByTestId('task-action-clear')).toHaveLength(2);
   });
 
-  it('waits only on the row whose press is with the server', () => {
+  it('waits only on the button whose request is with the server', () => {
     renderPanel({
       status: 'failed',
       entries: [
         entry({ id: 'busy', status: 'failed', settledAt: '2026-09-04T10:01:00.000Z' }),
         entry({ id: 'idle', status: 'failed', label: 'second.mp4', settledAt: '2026-09-04T10:01:00.000Z' }),
       ],
-      isBusy: (taskId: string): boolean => taskId === 'busy',
+      hasRetryFile: (): boolean => true,
+      isWaiting: (taskId: string, request: TaskActionRequest): boolean =>
+        taskId === 'busy' && request === 'dismiss',
     });
 
     const [first, second] = screen.getAllByTestId('task-action-clear');
     expect(first).toHaveAttribute('aria-busy', 'true');
     expect(second).not.toHaveAttribute('aria-busy');
+    for (const retry of screen.getAllByTestId('task-action-retry')) {
+      expect(retry).not.toHaveAttribute('aria-busy');
+    }
   });
 });

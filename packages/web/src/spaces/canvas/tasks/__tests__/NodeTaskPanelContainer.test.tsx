@@ -340,6 +340,32 @@ describe('NodeTaskPanelContainer, a press waiting for the server', () => {
     await waitFor(() => expect(again).not.toHaveAttribute('aria-busy'));
   });
 
+  it('keeps Retry spinning on its own upload when Clear is pressed meanwhile', async () => {
+    const upload = deferred();
+    const request = deferred();
+    vi.mocked(canvasApi.dismissNodeTask).mockReturnValue(
+      request.promise as unknown as ReturnType<typeof canvasApi.dismissNodeTask>,
+    );
+    mount(nodes(), vi.fn(() => upload.promise));
+    const retry = await screen.findByTestId('task-action-retry');
+    const clear = screen.getByTestId('task-action-clear');
+    fireEvent.click(retry);
+    await waitFor(() => expect(retry).toHaveAttribute('aria-busy', 'true'));
+    expect(clear).not.toHaveAttribute('aria-busy');
+
+    fireEvent.click(clear);
+    expect(canvasApi.dismissNodeTask).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(clear).toHaveAttribute('aria-busy', 'true'));
+    expect(retry).toHaveAttribute('aria-busy', 'true');
+
+    await act(async () => {
+      upload.resolve();
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(retry).not.toHaveAttribute('aria-busy'));
+    expect(clear).toHaveAttribute('aria-busy', 'true');
+  });
+
   it('waits on Clear until the server takes it, and the row leaves', async () => {
     const request = deferred();
     vi.mocked(canvasApi.dismissNodeTask).mockReturnValue(

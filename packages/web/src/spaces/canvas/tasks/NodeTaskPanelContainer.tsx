@@ -33,6 +33,7 @@ import {
   taskActionKey,
   trackTaskAction,
   useTaskActionsInFlight,
+  type TaskActionRequest,
 } from '@web/stores/task-actions-in-flight';
 
 /** The media a refusal can name formats for. */
@@ -156,12 +157,12 @@ function OpenNodeTaskPanel({
     (taskId: string): boolean => hasRetryFile(projectId, spaceId, taskId),
     [projectId, spaceId],
   );
-  // Read from a store, not this panel's state: a row still waits after the
+  // Read from a store, not this panel's state: a button still waits after the
   // panel is closed and opened again.
   const inFlight = useTaskActionsInFlight((s) => s.inFlight);
-  const isBusy = React.useCallback(
-    (taskId: string): boolean =>
-      inFlight.has(taskActionKey(projectId, spaceId, taskId)),
+  const isWaiting = React.useCallback(
+    (taskId: string, request: TaskActionRequest): boolean =>
+      inFlight.has(taskActionKey(projectId, spaceId, taskId, request)),
     [inFlight, projectId, spaceId],
   );
   const reload = React.useCallback((): void => {
@@ -176,13 +177,13 @@ function OpenNodeTaskPanel({
     },
     [entries, openHistoryPanel, nodeId],
   );
-  // The row waits for the whole re-send: the failed row stays where it is
-  // (the re-send is a new task), so a second press would send the File twice.
+  // Retry waits for the whole re-send: the failed row stays where it is (the
+  // re-send is a new task), so a second press would send the File twice.
   const retry = React.useCallback(
     (taskId: string): void => {
       const work = onRetry(nodeId, taskId);
       if (work !== undefined) {
-        trackTaskAction(taskActionKey(projectId, spaceId, taskId), work);
+        trackTaskAction(taskActionKey(projectId, spaceId, taskId, 'retry'), work);
       }
     },
     [onRetry, nodeId, projectId, spaceId],
@@ -211,7 +212,7 @@ function OpenNodeTaskPanel({
         .catch(() => {
           toast.error(t('canvas.task.dismissFailed'));
         });
-      trackTaskAction(taskActionKey(projectId, spaceId, taskId), request);
+      trackTaskAction(taskActionKey(projectId, spaceId, taskId, 'dismiss'), request);
     },
     [projectId, spaceId, nodeId, queryClient, queryKey, t, closeActivePanel, status],
   );
@@ -243,7 +244,7 @@ function OpenNodeTaskPanel({
         isLoading={query.isPending}
         isError={query.isLoadingError}
         hasRetryFile={holdsFile}
-        isBusy={isBusy}
+        isWaiting={isWaiting}
         onReload={reload}
         onClose={closeActivePanel}
         onView={view}
