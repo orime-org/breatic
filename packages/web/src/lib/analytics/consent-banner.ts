@@ -127,10 +127,24 @@ function onVisitorChoice(): void {
   report(readBrowserChoice());
 }
 
+/** What the banner needs to start, kept so it can start again. */
+interface BannerOptions {
+  cookieDomain: string;
+  language: string;
+  languages: readonly string[];
+  text: () => ConsentText;
+  privacyUrl: string;
+  country: Promise<string | null>;
+  onChoice: (choice: BrowserChoice | null) => void;
+}
+
+let bannerOptions: BannerOptions | null = null;
+let currentLanguage = '';
+
 /**
  * Show the banner when the visitor has to be asked, on the pages
  * {@link followPage} allows; apply the default otherwise; and report every
- * choice in force.
+ * choice in force, including one another tab or the website makes.
  * @param options - Where to write and what to say.
  * @param options.cookieDomain - The cookie's domain; empty for the current host.
  * @param options.language - The interface language.
@@ -140,16 +154,33 @@ function onVisitorChoice(): void {
  * @param options.country - The visitor's country lookup; null asks first.
  * @param options.onChoice - Called with the choice in force, now and after each change.
  */
-export async function startConsentBanner(options: {
-  cookieDomain: string;
-  language: string;
-  languages: readonly string[];
-  text: () => ConsentText;
-  privacyUrl: string;
-  country: Promise<string | null>;
-  onChoice: (choice: BrowserChoice | null) => void;
-}): Promise<void> {
+export async function startConsentBanner(options: BannerOptions): Promise<void> {
+  bannerOptions = options;
   onChoice = options.onChoice;
+  currentLanguage = options.language;
+  await boot(options);
+  document.addEventListener('visibilitychange', () => void resync());
+}
+
+/**
+ * Pick up a choice another tab or the website wrote to the shared cookie
+ * while this tab was hidden. The library keeps its own copy of the choice,
+ * which its settings window shows and its next save compares against, so it
+ * starts again on the cookie.
+ */
+async function resync(): Promise<void> {
+  if (document.visibilityState !== 'visible' || bannerOptions === null) return;
+  if (sameChoice(readBrowserChoice(), inForce)) return;
+  CookieConsent.reset(false);
+  await boot(bannerOptions);
+}
+
+/**
+ * Start the library on the cookie, decide what is in force and report it.
+ * @param options - Where to write and what to say.
+ */
+async function boot(options: BannerOptions): Promise<void> {
+  openedModal = null;
   await CookieConsent.run({
     autoShow: false,
     revision: CONSENT_REVISION,
@@ -171,7 +202,7 @@ export async function startConsentBanner(options: {
       ads: {},
     },
     language: {
-      default: options.language,
+      default: currentLanguage,
       // Built when shown, so a language switch reads the new text.
       translations: Object.fromEntries(
         options.languages.map((language) => [language, () => toTranslation(options.text(), options.privacyUrl)]),
@@ -179,6 +210,10 @@ export async function startConsentBanner(options: {
     },
     onModalShow: ({ modalName }) => {
       if (modalName === 'consentModal' || modalName === 'preferencesModal') openedModal = modalName;
+    },
+    // The library records a choice before it hides the window, so a window closed without one leaves nothing behind.
+    onModalHide: () => {
+      openedModal = null;
     },
     onFirstConsent: onVisitorChoice,
     onChange: onVisitorChoice,
@@ -196,12 +231,6 @@ export async function startConsentBanner(options: {
   undecided = decision.showBanner;
   placeBanner();
   report(decision.choice);
-  // Another tab or the website may have changed the shared cookie while this tab was hidden.
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState !== 'visible') return;
-    const stored = readBrowserChoice();
-    if (!sameChoice(stored, inForce)) report(stored);
-  });
 }
 
 /**
@@ -250,6 +279,7 @@ function toTranslation(text: ConsentText, privacyUrl: string): CookieConsent.Tra
  * @param language - The new language.
  */
 export async function setConsentLanguage(language: string): Promise<void> {
+  currentLanguage = language;
   await CookieConsent.setLanguage(language, true);
 }
 

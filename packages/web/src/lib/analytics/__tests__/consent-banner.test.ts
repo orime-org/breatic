@@ -7,7 +7,11 @@ import type * as BannerModule from '@web/lib/analytics/consent-banner';
 const library = vi.hoisted(() => ({
   consent: false,
   cookie: { categories: ['necessary'], revision: 1, data: { source: 'banner', decidedAt: '2026-10-12T00:00:00.000Z' }, lastConsentTimestamp: '' },
-  run: vi.fn(async () => undefined),
+  config: null as null | Record<string, (arg?: unknown) => void>,
+  run: vi.fn(async (config: Record<string, (arg?: unknown) => void>) => {
+    library.config = config;
+  }),
+  reset: vi.fn(),
   validConsent: vi.fn((): boolean => library.consent),
   getCookie: vi.fn(() => (library.consent ? library.cookie : {})),
   acceptCategory: vi.fn(),
@@ -114,7 +118,7 @@ describe('a choice changed in another tab', () => {
     await startBanner('DE', (choice) => seen.push(choice));
     library.cookie = { ...library.cookie, categories: ['necessary'], data: { source: 'settings', decidedAt: '2026-10-13T00:00:00.000Z' } };
     document.dispatchEvent(new Event('visibilitychange'));
-    expect(seen.at(-1)).toMatchObject({ analytics: false, ads: false, source: 'settings' });
+    await vi.waitFor(() => expect(seen.at(-1)).toMatchObject({ analytics: false, ads: false, source: 'settings' }));
   });
 
   it('changes nothing when the stored choice is the same', async () => {
@@ -122,6 +126,49 @@ describe('a choice changed in another tab', () => {
     const seen: unknown[] = [];
     await startBanner('DE', (choice) => seen.push(choice));
     document.dispatchEvent(new Event('visibilitychange'));
+    expect(seen).toHaveLength(1);
+  });
+
+  it('restarts the banner library on the stored choice, so its settings window and its next save start from it', async () => {
+    library.consent = true;
+    await startBanner('DE');
+    library.cookie = { ...library.cookie, categories: ['necessary', 'analytics', 'ads'], data: { source: 'banner', decidedAt: '2026-10-13T00:00:00.000Z' } };
+    document.dispatchEvent(new Event('visibilitychange'));
+    await vi.waitFor(() => expect(library.reset).toHaveBeenCalledWith(false));
+    // Restarted after the reset, so the library's own copy of the choice is the cookie's.
+    await vi.waitFor(() =>
+      expect(library.run.mock.invocationCallOrder.at(-1)).toBeGreaterThan(library.reset.mock.invocationCallOrder.at(-1) ?? Infinity),
+    );
+  });
+
+  it('stops asking once another tab decided', async () => {
+    const banner = await startBanner('DE');
+    banner.followPage('/login');
+    expect(bannerShown()).toBe(true);
+    library.consent = true;
+    document.dispatchEvent(new Event('visibilitychange'));
+    await vi.waitFor(() => expect(bannerShown()).toBe(false));
+  });
+
+  it('asks again when the stored choice disappeared while the tab was hidden', async () => {
+    library.consent = true;
+    const banner = await startBanner('DE');
+    banner.followPage('/login');
+    expect(bannerShown()).toBe(false);
+    library.consent = false;
+    document.dispatchEvent(new Event('visibilitychange'));
+    await vi.waitFor(() => expect(bannerShown()).toBe(true));
+  });
+});
+
+describe('what counts as the visitor choosing', () => {
+  it('does not file a write made after the settings window closed without a choice as the visitor\'s', async () => {
+    const seen: unknown[] = [];
+    await startBanner('DE', (choice) => seen.push(choice));
+    library.config?.onModalShow?.({ modalName: 'preferencesModal' });
+    library.config?.onModalHide?.({ modalName: 'preferencesModal' });
+    library.config?.onFirstConsent?.();
+    expect(library.setCookieData).not.toHaveBeenCalled();
     expect(seen).toHaveLength(1);
   });
 });

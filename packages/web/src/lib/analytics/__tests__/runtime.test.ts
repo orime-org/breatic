@@ -298,4 +298,16 @@ describe('analytics runtime', () => {
     expect(sdk.setOptOut).toHaveBeenLastCalledWith(true);
     expect(document.cookie).not.toMatch(/AMP_/);
   });
+
+  it('lets the SDK store queued events only while analytics is accepted', async () => {
+    await startRuntime();
+    await choose(accepted);
+    const options = (sdk.init.mock.calls as unknown as unknown[][])[0]?.[2] as { storageProvider: { set(key: string, value: unknown): Promise<void> } };
+    await options.storageProvider.set('AMP_unsent_test', ['event']);
+    expect(localStorage.getItem('AMP_unsent_test')).toBe(JSON.stringify(['event']));
+    await choose(rejected);
+    // A send that finishes after the withdrawal stores what is left of its queue.
+    await options.storageProvider.set('AMP_unsent_test', ['late']);
+    expect(localStorage.getItem('AMP_unsent_test')).toBeNull();
+  });
 });

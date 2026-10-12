@@ -32,6 +32,7 @@ import { readAttribution } from '@web/lib/analytics/attribution';
 import { fetchCountry, type BrowserChoice } from '@web/lib/analytics/consent-decision';
 
 type Amplitude = typeof AmplitudeSdk;
+type EventStorage = NonNullable<NonNullable<Parameters<Amplitude['init']>[2]>['storageProvider']>;
 
 /** Who is signed in, for user properties. */
 export interface AnalyticsUser {
@@ -156,6 +157,7 @@ async function applyAnalytics(on: boolean): Promise<void> {
       },
       remoteConfig: { fetchRemoteConfig: false },
       trackingOptions: { ipAddress: false, language: true, platform: true },
+      storageProvider: consentedStorage,
     }).promise;
   }
   await sdkStarted;
@@ -163,6 +165,59 @@ async function applyAnalytics(on: boolean): Promise<void> {
   amplitude.setOptOut(false);
   followAccount(amplitude, false);
 }
+
+/**
+ * Read one stored entry.
+ * @param key - The entry's name.
+ * @returns Its raw value, or undefined when absent or storage is blocked.
+ */
+function readStored(key: string): string | undefined {
+  try {
+    return localStorage.getItem(key) ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Where the SDK keeps events it has not sent yet: this browser's storage,
+ * written only while analytics is accepted, so a send that finishes after a
+ * withdrawal cannot store its queue again.
+ */
+const consentedStorage: EventStorage = {
+  isEnabled: async () => {
+    try {
+      return typeof localStorage.length === 'number';
+    } catch {
+      return false;
+    }
+  },
+  get: async (key: string) => {
+    const raw = readStored(key);
+    try {
+      return raw === undefined ? undefined : (JSON.parse(raw) as never);
+    } catch {
+      return undefined;
+    }
+  },
+  getRaw: async (key: string) => readStored(key),
+  set: async (key: string, value: unknown) => {
+    if (choice?.analytics !== true) return;
+    try {
+      localStorage.setItem(key, JSON.stringify(value));
+    } catch {
+      // Storage blocked: the SDK keeps the queue in memory.
+    }
+  },
+  remove: async (key: string) => {
+    try {
+      localStorage.removeItem(key);
+    } catch {
+      // Storage blocked: nothing was stored.
+    }
+  },
+  reset: async () => undefined,
+};
 
 /**
  * Keep the SDK's account in step with the app's: an account the SDK still
