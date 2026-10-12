@@ -134,6 +134,11 @@ export interface FullModelEntry {
    * absent when the upstream publishes no cap.
    */
   max_input_chars?: number;
+  /**
+   * The longest side, in pixels, of a picture this model is known to take and
+   * answer at its own size (inner#1303); absent when none was measured.
+   */
+  max_output_side?: number;
   /** The camera commands this model reads out of its prompt. */
   camera_commands?: DeclaredCameraCommand[];
   /** The three params that together set one camera pose (inner#830). */
@@ -337,6 +342,8 @@ function projectModelEntry(
     // sending text the upstream will reject. Absent on models whose upstream
     // publishes no cap.
     max_input_chars: m.max_input_chars,
+    // The longest side the expand tool may grow a picture to (inner#1303).
+    max_output_side: m.max_output_side,
     camera_commands: shipCameraCommands(m.camera_commands),
     camera_angle: shipCameraAngle(m.camera_angle),
     icon: m.icon,

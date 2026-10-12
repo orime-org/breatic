@@ -660,6 +660,9 @@ models:
     description: "Repaints only the masked area"
     guide: "Inpainting: changes the area the reader painted and leaves the rest of the picture as it was."
     generation_time: 30
+    # Measured 2026-10-12: 12288x12288 comes back at its own size; a side past
+    # 14142 is refused by the upstream's validation.
+    max_output_side: 12288
     icon: "bria"
     params:
       image:
