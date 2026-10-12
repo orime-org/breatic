@@ -58,6 +58,18 @@ function consentText(): ConsentText {
   };
 }
 
+// The page the visitor is on, kept until the runtime loads.
+let pathname = '';
+
+/**
+ * Follow the page the visitor is on; the banner appears only on some pages.
+ * @param next - The page's path.
+ */
+export function followPage(next: string): void {
+  pathname = next;
+  withRuntime((module) => module.followPage(next));
+}
+
 /** Start the banner and the vendors the visitor accepts; call once at startup. */
 export function startProductAnalytics(): void {
   if (!ANALYTICS_CONFIGURED || runtime !== null) return;
@@ -76,6 +88,7 @@ export function startProductAnalytics(): void {
       text: consentText,
       privacyUrl: PRIVACY_URL,
     });
+    module.followPage(pathname);
     return module;
   });
   runtime.catch((err: unknown) => captureException(err, { tags: { area: 'product_analytics' } }));

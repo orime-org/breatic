@@ -46,6 +46,7 @@ vi.mock('@web/lib/analytics/consent-banner', () => ({
   },
   setConsentLanguage: async (): Promise<void> => undefined,
   openConsentSettings: (): void => undefined,
+  followPage: (): void => undefined,
 }));
 vi.mock('@web/lib/analytics/consent-decision', () => ({ fetchCountry: async () => 'US' }));
 

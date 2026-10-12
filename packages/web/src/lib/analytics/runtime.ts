@@ -22,6 +22,7 @@ import {
   conversionLabels,
 } from '@web/lib/analytics/build-config';
 import {
+  followPage,
   openConsentSettings,
   setConsentLanguage,
   startConsentBanner,
@@ -327,4 +328,4 @@ export function conversion(
   });
 }
 
-export { openConsentSettings as openSettings };
+export { followPage, openConsentSettings as openSettings };

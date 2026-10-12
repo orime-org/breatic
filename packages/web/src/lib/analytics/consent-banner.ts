@@ -44,6 +44,27 @@ function ignoreChoice(): void {
 // Which window the visitor last opened: a change made there is filed under it.
 let openedModal: 'consentModal' | 'preferencesModal' | null = null;
 
+/** The only pages the banner appears on: signing in and signing up (user 2026-10-12). */
+const BANNER_PATHS: readonly string[] = ['/login', '/register'];
+// An opt-in visitor who has not answered yet.
+let undecided = false;
+let onBannerPage = false;
+
+/** Show the banner while an undecided visitor is on a banner page, and hide it elsewhere. */
+function placeBanner(): void {
+  if (undecided && onBannerPage) CookieConsent.show(true);
+  else CookieConsent.hide();
+}
+
+/**
+ * Follow the page the visitor is on.
+ * @param pathname - The page's path.
+ */
+export function followPage(pathname: string): void {
+  onBannerPage = BANNER_PATHS.includes(pathname);
+  placeBanner();
+}
+
 /**
  * The choice the cookie holds, when it holds one under the current policy.
  * @returns The choice, or null.
@@ -89,12 +110,14 @@ function onVisitorChoice(): void {
   if (openedModal === null) return;
   stamp(openedModal === 'preferencesModal' ? 'settings' : 'banner', new Date().toISOString());
   openedModal = null;
+  undecided = false;
   onChoice(readBrowserChoice());
 }
 
 /**
- * Show the banner when the visitor has to be asked, apply the default
- * otherwise, and report every choice in force.
+ * Show the banner when the visitor has to be asked, on the pages
+ * {@link followPage} allows; apply the default otherwise; and report every
+ * choice in force.
  * @param options - Where to write and what to say.
  * @param options.cookieDomain - The cookie's domain; empty for the current host.
  * @param options.language - The interface language.
@@ -157,7 +180,8 @@ export async function startConsentBanner(options: {
     now: new Date().toISOString(),
   });
   if (decision.choice && decision.write) setConsent(decision.choice);
-  if (decision.showBanner) CookieConsent.show(true);
+  undecided = decision.showBanner;
+  placeBanner();
   onChoice(decision.choice);
 }
 
