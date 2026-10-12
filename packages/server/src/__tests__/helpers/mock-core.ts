@@ -610,8 +610,7 @@ export const domainMock = () => ({
   // and a copy that drifts throws nothing: the match simply never happens and
   // a turn carries on talking past the question it just asked.
   ASK_USER: REAL_ASK_USER,
-  // Read by the turn when it hands the tools their context, so this stub has
-  // to carry it or every file mocking the barrel fails to load.
+  // Read by the turn when it hands the tools their context.
   PROPOSE_CANVAS_ACTION: REAL_PROPOSE_CANVAS_ACTION,
   // Read by the turn when it hands the save its context (inner#1315).
   SAVE_IMAGE: REAL_SAVE_IMAGE,

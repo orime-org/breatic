@@ -51,11 +51,11 @@ export const DROPPED_TOOL_RESULT = "[earlier tool result omitted from context]";
  * Replace what one use of a tool gave back.
  *
  * Which field that is depends on how the call ended: a call that succeeded is
- * read off `forModel`, and one that failed is read off `failure.forModel` —
- * `toModelMessages` reads nothing else. Replacing only the first leaves every
- * failed call in the history at full length, and the text of an
- * invalid-arguments failure quotes back everything the model sent. The tool's
- * own `output` stays as it is: the model never reads it.
+ * read off `forModel`, and one that failed is read off `failure.forModel`.
+ * Replacing only the first leaves every failed call in the history at full
+ * length, and the text of an invalid-arguments failure quotes back everything
+ * the model sent. The tool's own `output` stays as it is: once `forModel` is
+ * set, `toModelMessages` does not read it.
  * @param part - The tool part to shorten.
  * @returns The same part with its account of itself replaced.
  */
