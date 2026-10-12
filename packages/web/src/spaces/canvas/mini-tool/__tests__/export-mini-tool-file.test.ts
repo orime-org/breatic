@@ -21,6 +21,10 @@ const grid = vi.hoisted(() => ({
     ]),
   ),
 }));
+const adjust = vi.hoisted(() => ({
+  exportAdjustedBlob: vi.fn(() => Promise.resolve(new Blob(['j'], { type: 'image/png' }))),
+}));
+vi.mock('@web/spaces/canvas/mini-tool/adjust-export', () => adjust);
 vi.mock('@web/spaces/canvas/mini-tool/grid-export', async (original) => ({
   ...(await original<object>()),
   ...grid,
@@ -86,6 +90,18 @@ describe('exportMiniToolFile for a grid', () => {
     await exportMiniToolFile(miniToolById('image.grid')!, snapshot({}));
 
     expect(grid.exportGridTiles).toHaveBeenCalledWith({ url: 'https://cdn/a.jpg', timeSeconds: null }, 3, 3);
+  });
+});
+
+describe('exportMiniToolFile for a picture adjust', () => {
+  it('exports the picture through the adjust at its own resolution', async () => {
+    const made = await exportMiniToolFile(miniToolById('image.adjust')!, snapshot({ value: { exposure: 30 } }));
+
+    expect(adjust.exportAdjustedBlob).toHaveBeenCalledWith(
+      { url: 'https://cdn/a.jpg', timeSeconds: null },
+      expect.objectContaining({ exposure: 30, contrast: 0 }),
+    );
+    expect(made.map((tile) => tile.file.name)).toEqual(['ADJUST.png']);
   });
 });
 

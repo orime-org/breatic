@@ -26,6 +26,7 @@ vi.mock('@web/lib/toast', () => ({
 import { UploadFailedError } from '@web/data/upload/media-upload';
 import { toast } from '@web/lib/toast';
 import { DrawingEmptyError } from '@web/spaces/canvas/mini-tool/export-drawing';
+import { ImageTooLargeError } from '@web/spaces/canvas/mini-tool/adjust-export';
 import { NODE_STEP } from '@web/spaces/canvas/drop-layout';
 import { startMiniToolRun, type MiniToolRun } from '@web/spaces/canvas/mini-tool/start-mini-tool-run';
 
@@ -190,6 +191,14 @@ describe('startMiniToolRun', () => {
     await startMiniToolRun(run);
     expect(canvas.createGroup).not.toHaveBeenCalled();
     expect(vi.mocked(run.onBuilt).mock.calls[0]![1]).toBeUndefined();
+  });
+
+  it('says the picture is too large for the adjust and builds nothing', async () => {
+    await startMiniToolRun(
+      press({ spec: tool('image.adjust'), exportFile: vi.fn(() => Promise.reject(new ImageTooLargeError())) }),
+    );
+    expect(toast.warning).toHaveBeenCalledWith(t('canvas.miniTool.panel.imageTooLarge'));
+    expect(canvas.addNode).not.toHaveBeenCalled();
   });
 
   // §7.5 2b: an export that fails builds nothing.
