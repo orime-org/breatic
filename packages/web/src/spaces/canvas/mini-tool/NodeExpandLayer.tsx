@@ -71,9 +71,10 @@ export function NodeExpandLayer({ nodeId, wrapper }: NodeExpandLayerProps): Reac
   const heldDrop = expand?.drop;
   React.useLayoutEffect(() => {
     if (bottomShare === null || geometry === null || wrapper === null) return;
-    const drop = Math.max(0, geometry.at.y + bottomShare * geometry.box.height - wrapper.offsetHeight);
+    // In screen pixels, the unit the panel's offset takes.
+    const drop = Math.max(0, geometry.at.y + bottomShare * geometry.box.height - wrapper.offsetHeight) * zoom;
     if (Math.abs(drop - (heldDrop ?? 0)) > 0.5) store.getState().setExpandDrop(drop);
-  }, [bottomShare, geometry, wrapper, heldDrop, store]);
+  }, [bottomShare, geometry, wrapper, heldDrop, zoom, store]);
 
   if (expand === null || geometry === null || sourceSize === null || draft === null) return null;
   const { frame, ratio } = expand;

@@ -30,7 +30,7 @@ export interface ExpandDraft {
   readonly ratio: ExpandRatio;
   /** The longest side the pinned model takes, in source pixels; null until the catalog is read. */
   readonly cap: number | null;
-  /** How far the frame reaches below the node, in canvas units, so the panel can hang under it. */
+  /** How far the frame reaches below the node, in screen pixels, so the panel can hang under it. */
   readonly drop: number;
 }
 
