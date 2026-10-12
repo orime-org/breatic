@@ -220,6 +220,17 @@ describe('MiniToolPanel', () => {
       expect(props.expand?.onRatio).toHaveBeenCalledWith('16:9');
     });
 
+    it('takes no ratio while the press is exporting', () => {
+      const props = mount({
+        spec: tool('image.expand'),
+        params: {},
+        refusal: 'exporting',
+        expand: { ratio: 'free', fits: () => true, onRatio: vi.fn() },
+      });
+      fireEvent.click(screen.getByTestId('mini-tool-expand-ratio-1:1'));
+      expect(props.expand?.onRatio).not.toHaveBeenCalled();
+    });
+
     it('holds back a ratio too large for the model', () => {
       const props = mountExpand((ratio) => ratio !== '9:16');
       const button = screen.getByTestId('mini-tool-expand-ratio-9:16');
