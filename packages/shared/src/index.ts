@@ -692,6 +692,7 @@ export {
   readMiniToolJob,
   readMiniToolJobReport,
   submitMiniToolJob,
+  MINI_TOOL_JOB_MAX_OUTPUTS,
   type ContainerUsage,
   type MiniToolJobOutput,
   type MiniToolJobReport,
