@@ -111,3 +111,33 @@ export function isAlreadyStored(
 ): res is UploadAlreadyStored {
   return 'alreadyExists' in res && res.alreadyExists;
 }
+
+/** The batch form's third answer: this file was turned down before any bytes moved. */
+export interface UploadRefused {
+  refused: { reason: 'storage' | 'too_large' };
+}
+
+/** What the batch form answers for each file, in the order asked. */
+export type BatchTicketAnswer = UploadTicketResponse | UploadRefused;
+
+/**
+ * One browser tool's export of many files onto one Space, each on its own node
+ * (inner#1303 §7).
+ */
+export interface BatchTicketRequest {
+  projectId: string;
+  spaceId: string;
+  source: 'mini_tool';
+  toolName: string;
+  items: { filename: string; contentType: string; size: number; hash: string; nodeId: string }[];
+}
+
+/**
+ * Tell a refusal from the other two answers.
+ * @param res - One file's answer.
+ * @returns True when the file was turned down.
+ */
+export function isRefused(res: BatchTicketAnswer): res is UploadRefused {
+  return 'refused' in res;
+}
+
