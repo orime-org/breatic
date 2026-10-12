@@ -5,6 +5,8 @@ import { apiGet, apiPost, request } from '@web/data/api/request';
 import type { ApiEnvelope } from '@web/data/api/types';
 import type { UploadClientConfig, UploadStatus } from '@breatic/shared';
 import type {
+  BatchTicketAnswer,
+  BatchTicketRequest,
   UploadTicketRequest,
   UploadTicketResponse,
 } from '@web/data/upload/ingest-upload';
@@ -70,6 +72,31 @@ export const assetsApi = {
       ...(params.derived !== undefined && { derived: params.derived }),
       ...(params.purpose !== undefined && { purpose: params.purpose }),
     });
+  },
+
+  /**
+   * Ask for every ticket of one browser tool's export in one request
+   * (inner#1303 §7).
+   * @param params - Where the files land, the tool, and each file on its node.
+   * @returns One answer per file, in order: a ticket, an existing asset to
+   *   reuse, or a refusal.
+   * @throws {ApiException} When the request fails.
+   */
+  async requestUploadTicketBatch(params: BatchTicketRequest): Promise<BatchTicketAnswer[]> {
+    const { items } = await apiPost<{ items: BatchTicketAnswer[] }>('/assets/upload-ticket', {
+      project_id: params.projectId,
+      space_id: params.spaceId,
+      source: params.source,
+      tool_name: params.toolName,
+      items: params.items.map((item) => ({
+        filename: item.filename,
+        content_type: item.contentType,
+        size: item.size,
+        client_hash: item.hash,
+        node_id: item.nodeId,
+      })),
+    });
+    return items;
   },
 
   /**
