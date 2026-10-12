@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
+import { parseAdjustValue } from '@breatic/shared';
 import { UPRIGHT, defaultParamsOf, outputTemplateOf, type MiniToolSnapshot, type MiniToolSpec } from '@breatic/shared/mini-tools';
 
 import {
@@ -9,6 +10,7 @@ import {
   type CropSource,
   type Orientation,
 } from '@web/spaces/canvas/focus/crop-export';
+import { exportAdjustedBlob } from '@web/spaces/canvas/mini-tool/adjust-export';
 import { exportGridTiles } from '@web/spaces/canvas/mini-tool/grid-export';
 import type { CropRect } from '@web/spaces/canvas/mini-tool/mini-tool-view';
 import type { ExportedFile } from '@web/spaces/canvas/mini-tool/start-mini-tool-run';
@@ -40,6 +42,8 @@ export async function exportMiniToolFile(spec: MiniToolSpec, snapshot: MiniToolS
       rect === null || rect === undefined
         ? await exportOrientedBlob(source, UPRIGHT)
         : await exportCropBlob(source, { x: rect.x, y: rect.y, width: rect.w, height: rect.h });
+  } else if (spec.id === 'image.adjust') {
+    blob = await exportAdjustedBlob(source, parseAdjustValue(snapshot.params.value));
   } else if (spec.id === 'image.rotate') {
     blob = await exportOrientedBlob(source, (snapshot.params.orient as Orientation | undefined) ?? UPRIGHT);
   } else {

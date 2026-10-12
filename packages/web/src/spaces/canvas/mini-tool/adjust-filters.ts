@@ -44,6 +44,9 @@ const SHARPEN_RADIUS = 1 / 1024;
 /** The clarity radius, as a share of the picture's width. */
 const CLARITY_RADIUS = 1 / 512;
 
+/** The grain's seed: fixed, so the preview and the export lay the same grain. */
+export const ADJUST_GRAIN_SEED = 1;
+
 /** How many grain cells fit across the picture. */
 const GRAIN_CELLS = 512;
 
@@ -194,6 +197,7 @@ class AdjustUnsharp extends filters.BaseFilter<'AdjustUnsharp', { amount: number
 class AdjustGrain extends filters.BaseFilter<'AdjustGrain', { strength: number; seed: number }> {
   declare strength: number;
   declare seed: number;
+  declare aspectRatio: number;
   static type = 'AdjustGrain';
   static defaults = { strength: 0, seed: 0 };
   static uniformLocations = ['uStrength', 'uSeed', 'uCells'];
@@ -216,6 +220,16 @@ class AdjustGrain extends filters.BaseFilter<'AdjustGrain', { strength: number; 
         float n = fract(sin((cell.x + uSeed) * 12.9898 + (cell.y + uSeed) * 78.233) * 43758.5453);
         gl_FragColor = vec4(c.rgb + (n - 0.5) * 2.0 * uStrength / 255.0, c.a);
       }`;
+  }
+
+  /**
+   * Remember the picture's shape, then run the pass.
+   * @param options - The pipeline state.
+   */
+  applyTo(options: Parameters<filters.BaseFilter<string, object>['applyTo']>[0]): void {
+    const gl = options as unknown as Partial<GLState>;
+    if (gl.sourceWidth !== undefined && gl.sourceHeight !== undefined) this.aspectRatio = gl.sourceWidth / gl.sourceHeight;
+    super.applyTo(options);
   }
 
   /**
@@ -244,8 +258,7 @@ class AdjustGrain extends filters.BaseFilter<'AdjustGrain', { strength: number; 
   sendUniformData(gl: WebGLRenderingContext, locations: Record<string, WebGLUniformLocation | null>): void {
     gl.uniform1f(locations.uStrength ?? null, this.strength);
     gl.uniform1f(locations.uSeed ?? null, this.seed);
-    const aspect = gl.drawingBufferHeight / Math.max(1, gl.drawingBufferWidth);
-    gl.uniform2fv(locations.uCells ?? null, [GRAIN_CELLS, GRAIN_CELLS * aspect]);
+    gl.uniform2fv(locations.uCells ?? null, [GRAIN_CELLS, GRAIN_CELLS / (this.aspectRatio || 1)]);
   }
 
   /**

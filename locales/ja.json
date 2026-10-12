@@ -1010,7 +1010,8 @@
         "sourceChangedByPeer": "コラボレーターが素材を変えました。",
         "couldNotStart": "ツールを開始できませんでした。もう一度お試しください。",
         "drawingEmpty": "先に画像に描いてください。",
-        "reset": "リセット"
+        "reset": "リセット",
+        "imageTooLarge": "この画像は大きすぎるため、この端末では色調整できません。"
       },
       "adjust": {
         "exposure": "露出",

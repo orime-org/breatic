@@ -1010,7 +1010,8 @@
         "sourceChangedByPeer": "공동 작업자가 소재를 바꿨습니다.",
         "couldNotStart": "도구를 시작하지 못했습니다. 다시 시도하세요.",
         "drawingEmpty": "먼저 그림 위에 그려 주세요.",
-        "reset": "초기화"
+        "reset": "초기화",
+        "imageTooLarge": "이 이미지는 너무 커서 이 기기에서 색 보정할 수 없습니다."
       },
       "adjust": {
         "exposure": "노출",

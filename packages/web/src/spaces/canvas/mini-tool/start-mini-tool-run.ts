@@ -28,6 +28,7 @@ import { UploadFailedError } from '@web/data/upload/media-upload';
 import { addEdge, addNode, runCanvasUndoBatch } from '@web/data/yjs/canvas-space';
 import { toast } from '@web/lib/toast';
 import { NODE_STEP } from '@web/spaces/canvas/drop-layout';
+import { ImageTooLargeError } from '@web/spaces/canvas/mini-tool/adjust-export';
 import { DrawingEmptyError, type DrawingExport } from '@web/spaces/canvas/mini-tool/export-drawing';
 import { exportsBeforeRun } from '@web/spaces/canvas/mini-tool/mini-tool-view';
 import { outputPlacementOf, type OutputSize, type PlacedOutput } from '@web/spaces/canvas/mini-tool/output-placement';
@@ -215,8 +216,10 @@ async function prepare(run: MiniToolRun): Promise<{ files?: ExportedFile[]; draw
   if (spec.run.kind === 'browser') {
     try {
       files = await run.exportFile(spec, snapshot);
-    } catch {
-      toast.warning(t('canvas.miniTool.panel.exportFailed'));
+    } catch (err) {
+      toast.warning(
+        t(err instanceof ImageTooLargeError ? 'canvas.miniTool.panel.imageTooLarge' : 'canvas.miniTool.panel.exportFailed'),
+      );
       return null;
     }
   }
