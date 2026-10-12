@@ -35,7 +35,6 @@ const NODES: readonly CanvasNodeView[] = [
     type: 'annotation',
     position: { x: 0, y: 0 },
     data: {
-      kind: 'annotation',
       content: 'a cooler shot here',
       createdBy: 'u-me',
       createdAt: 1_757_000_000_000,

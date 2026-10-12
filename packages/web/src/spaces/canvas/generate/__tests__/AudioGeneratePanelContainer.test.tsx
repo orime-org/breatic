@@ -56,6 +56,7 @@ import {
   readCanvasGraph,
 } from '@web/data/yjs/canvas-space';
 import { _resetForTests, docName, getDoc } from '@web/data/yjs/manager';
+import type { AudioNodeView } from '@web/data/yjs/node-view';
 import { canvasApi } from '@web/data/api/canvas';
 import { modelsApi } from '@web/data/api';
 import {
@@ -346,7 +347,8 @@ function textSource(id: string, body: string): BoardExtras {
     nodes: [
       {
         id,
-        data: { kind: 'text', handling: false, name: 'Lines' },
+        type: 'text',
+        data: { handling: false, name: 'Lines' },
       } as Parameters<typeof AudioGeneratePanelContainer>[0]['nodes'][number],
     ],
     edges: [{ id: `e-${id}`, source: id, target: 'target' }],
@@ -389,9 +391,8 @@ function panelTree(
             nodes={[
               {
                 id: 'target',
-                data: { kind: 'audio', handling: false, ...nodeData } as Parameters<
-                  typeof AudioGeneratePanelContainer
-                >[0]['nodes'][number]['data'],
+                type: 'audio',
+                data: { handling: false, ...nodeData } as AudioNodeView,
               },
               ...(board.nodes ?? []),
             ]}

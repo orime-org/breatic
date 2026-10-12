@@ -6,7 +6,7 @@ import { renderHook } from '@testing-library/react';
 import type * as Y from 'yjs';
 import type { CanvasProposal } from '@breatic/shared';
 
-import type { ContentNodeView, NodeView } from '@web/data/yjs/node-view';
+import type { ContentNodeView } from '@web/data/yjs/node-view';
 
 import * as canvasSpace from '@web/data/yjs/canvas-space';
 import { readShots } from '@web/data/yjs/node-storyboard';
@@ -407,11 +407,11 @@ describe('useNodeCreation', () => {
      * @returns Its content view.
      */
     const contentAt = (
-      nodes: ReadonlyArray<{ id: string; data: NodeView }>,
+      nodes: ReadonlyArray<canvasSpace.CanvasNodeView>,
       id: string | undefined,
     ): ContentNodeView => {
       const found = nodes.find((n) => n.id === id);
-      if (!found || found.data.kind === 'annotation' || found.data.kind === 'group') {
+      if (!found || found.type === 'annotation' || found.type === 'group') {
         throw new Error(`no content node placed at ${String(id)}`);
       }
       return found.data;
@@ -745,8 +745,10 @@ describe('useNodeCreation', () => {
         const { nodes } = canvasSpace.readCanvasGraph('p-mat', 's-mat');
         const portrait = contentAt(nodes, ids[0]);
         const voice = contentAt(nodes, ids[1]);
-        expect(portrait).toMatchObject({ kind: 'image', content: PORTRAIT, width: 800, height: 600 });
-        expect(voice).toMatchObject({ kind: 'audio', content: VOICE, duration: 3 });
+        expect(nodes.find((n) => n.id === ids[0])?.type).toBe('image');
+        expect(nodes.find((n) => n.id === ids[1])?.type).toBe('audio');
+        expect(portrait).toMatchObject({ content: PORTRAIT, width: 800, height: 600 });
+        expect(voice).toMatchObject({ content: VOICE, duration: 3 });
       });
 
       it('fills the talking head the way picks in its panel would, with no wire drawn', () => {
@@ -822,7 +824,8 @@ describe('useNodeCreation', () => {
         const { nodeIds: ids } = result.current.placeProposalAt(scored, { x: 0, y: 0 });
 
         const { nodes } = canvasSpace.readCanvasGraph('p-sfx', 's-sfx');
-        expect(contentAt(nodes, ids[0])).toMatchObject({ kind: 'video', content: CLIP, coverUrl: POSTER });
+        expect(nodes.find((n) => n.id === ids[0])?.type).toBe('video');
+        expect(contentAt(nodes, ids[0])).toMatchObject({ content: CLIP, coverUrl: POSTER });
         expect(contentAt(nodes, ids[1]).soundVideo).toEqual({ url: CLIP, cover: POSTER, duration: 6 });
       });
 
@@ -972,7 +975,7 @@ describe('useNodeCreation', () => {
       expect(groupId).toBeDefined();
       const { nodes } = canvasSpace.readCanvasGraph('p-grp', 's-grp');
       const group = nodes.find((n) => n.id === groupId);
-      if (!group || group.data.kind !== 'group') throw new Error('no group was placed');
+      if (!group || group.type !== 'group') throw new Error('no group was placed');
       expect(group.data.name).toBe('On a white ground');
       // A ground of its own, so the whole thing reads as one piece of work.
       expect(group.data.backgroundColor).toBeTruthy();
@@ -991,7 +994,7 @@ describe('useNodeCreation', () => {
       const group = canvasSpace
         .readCanvasGraph(`p-roll-${roll}`, 's-roll')
         .nodes.find((n) => n.id === groupId);
-      if (!group || group.data.kind !== 'group') throw new Error('no group was placed');
+      if (!group || group.type !== 'group') throw new Error('no group was placed');
       expect(group.data.backgroundColor).toBe(groupBackgroundFor(roll));
     });
 
@@ -1021,7 +1024,7 @@ describe('useNodeCreation', () => {
 
       const { nodes } = canvasSpace.readCanvasGraph('p-tall', 's-tall');
       const group = nodes.find((n) => n.id === groupId);
-      if (!group || group.data.kind !== 'group') throw new Error('no group was placed');
+      if (!group || group.type !== 'group') throw new Error('no group was placed');
       const wanted = planFlowLayout(long, { x: 0, y: 0 });
       const lowest = Math.max(...wanted.map((p) => p.y + p.height));
       expect(group.position.y + (group.data.height ?? 0)).toBeGreaterThanOrEqual(lowest);

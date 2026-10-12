@@ -10,7 +10,6 @@ import {
 
 import {
   deriveHandling,
-  isContentNodeView,
   toNodeView,
 } from '@web/data/yjs/node-view';
 
@@ -70,16 +69,18 @@ describe('toNodeView — wire CanvasNodeFields → narrowed view', () => {
   it('projects a text node without its body, whatever the wire data carries', () => {
     const v = toNodeView(fields('text', { content: 'hello' }));
     expect(v).toEqual({
-      kind: 'text',
-      name: 'N',
-      handling: false,
-      locked: false,
+      type: 'text',
+      data: {
+        name: 'N',
+        handling: false,
+        locked: false,
+      },
     });
   });
 
   it('projects data.name onto a content view (drives the node name header)', () => {
     const v = toNodeView(fields('image', { content: 'x', name: 'My Pic' }));
-    expect(v).toMatchObject({ kind: 'image', name: 'My Pic' });
+    expect(v).toMatchObject({ type: 'image', data: { name: 'My Pic' } });
   });
 
   // A text node's body is always there to show — an empty one is a paragraph
@@ -89,8 +90,10 @@ describe('toNodeView — wire CanvasNodeFields → narrowed view', () => {
   it('leaves a text node idle when a run on it failed', () => {
     const counts = { running: 0, done: 0, failed: 1, expired: 0 };
     expect(toNodeView(fields('text', { taskCounts: counts }))).toMatchObject({
-      kind: 'text',
-      handling: false,
+      type: 'text',
+      data: {
+        handling: false,
+      },
     });
   });
 
@@ -99,7 +102,7 @@ describe('toNodeView — wire CanvasNodeFields → narrowed view', () => {
   it('carries no display status on any node, whatever its tasks did', () => {
     const failed = counts({ failed: 1, expired: 1 });
     for (const type of ['image', 'video', 'audio', 'text'] as const) {
-      const view = toNodeView(fields(type, { taskCounts: failed }));
+      const view = toNodeView(fields(type, { taskCounts: failed }))?.data;
       expect(view).toMatchObject({ handling: false });
       expect(view).not.toHaveProperty('status');
     }
@@ -113,10 +116,10 @@ describe('toNodeView — wire CanvasNodeFields → narrowed view', () => {
     const v = toNodeView(
       fields('audio', { content: 'x', mimeType: 'audio/wav', size: 1_048_576 }),
     );
-    expect(v).toMatchObject({ kind: 'audio', mimeType: 'audio/wav', sizeBytes: 1_048_576 });
+    expect(v).toMatchObject({ type: 'audio', data: { mimeType: 'audio/wav', sizeBytes: 1_048_576 } });
 
     const bare = toNodeView(fields('audio', { content: 'x' }));
-    expect(bare).toMatchObject({ kind: 'audio', mimeType: undefined, sizeBytes: undefined });
+    expect(bare).toMatchObject({ type: 'audio', data: { mimeType: undefined, sizeBytes: undefined } });
   });
 
   it('projects the four task counts onto a content view (#186 §7.1)', () => {
@@ -125,27 +128,27 @@ describe('toNodeView — wire CanvasNodeFields → narrowed view', () => {
     const counts = { running: 2, done: 1, failed: 0, expired: 3 };
     const v = toNodeView(fields('image', { content: 'x', taskCounts: counts }));
 
-    expect(v).toMatchObject({ kind: 'image', taskCounts: counts });
+    expect(v).toMatchObject({ type: 'image', data: { taskCounts: counts } });
   });
 
   it('leaves no body field behind on a text node', () => {
-    const v = toNodeView(fields('text', {}));
+    const v = toNodeView(fields('text', {}))?.data;
     expect(v).not.toHaveProperty('content');
     expect(v).not.toHaveProperty('body');
   });
 
   it('maps the image content URL', () => {
     const v = toNodeView(fields('image', { content: 'u.jpg' }));
-    expect(v).toMatchObject({ kind: 'image', content: 'u.jpg' });
+    expect(v).toMatchObject({ type: 'image', data: { content: 'u.jpg' } });
   });
 
   it('carries the ledger dimensions onto image and video views (#209)', () => {
     expect(
       toNodeView(fields('image', { content: 'u.jpg', mediaWidth: 1920, mediaHeight: 1080 })),
-    ).toMatchObject({ kind: 'image', width: 1920, height: 1080 });
+    ).toMatchObject({ type: 'image', data: { width: 1920, height: 1080 } });
     expect(
       toNodeView(fields('video', { content: 'v.mp4', mediaWidth: 640, mediaHeight: 360 })),
-    ).toMatchObject({ kind: 'video', width: 640, height: 360 });
+    ).toMatchObject({ type: 'video', data: { width: 640, height: 360 } });
   });
 
   it('does not read a footprint as if it were the media resolution', () => {
@@ -156,12 +159,12 @@ describe('toNodeView — wire CanvasNodeFields → narrowed view', () => {
     const v = toNodeView(
       fields('image', { content: 'u.jpg', width: 400, height: 300 }),
     );
-    expect(v).toMatchObject({ kind: 'image', width: undefined, height: undefined });
+    expect(v).toMatchObject({ type: 'image', data: { width: undefined, height: undefined } });
   });
 
   it('passes audio duration through as seconds', () => {
     const v = toNodeView(fields('audio', { content: 'a.mp3', duration: 12 }));
-    expect(v).toMatchObject({ kind: 'audio', content: 'a.mp3', duration: 12 });
+    expect(v).toMatchObject({ type: 'audio', data: { content: 'a.mp3', duration: 12 } });
   });
 
   it('maps video content, cover, and duration', () => {
@@ -169,21 +172,23 @@ describe('toNodeView — wire CanvasNodeFields → narrowed view', () => {
       fields('video', { content: 'v.mp4', coverUrl: 'c.jpg', duration: 30 }),
     );
     expect(v).toMatchObject({
-      kind: 'video',
-      content: 'v.mp4',
-      coverUrl: 'c.jpg',
-      duration: 30,
+      type: 'video',
+      data: {
+        content: 'v.mp4',
+        coverUrl: 'c.jpg',
+        duration: 30,
+      },
     });
   });
 
   it('maps the 3d model URL', () => {
     const v = toNodeView(fields('3d', { content: 'm.glb' }));
-    expect(v).toMatchObject({ kind: '3d', content: 'm.glb' });
+    expect(v).toMatchObject({ type: '3d', data: { content: 'm.glb' } });
   });
 
   it('maps the web page URL', () => {
     const v = toNodeView(fields('web', { content: 'https://e.com' }));
-    expect(v).toMatchObject({ kind: 'web', content: 'https://e.com' });
+    expect(v).toMatchObject({ type: 'web', data: { content: 'https://e.com' } });
   });
 
   it('maps annotation text/author/createdAt to content/createdBy/createdAt(number)', () => {
@@ -195,15 +200,17 @@ describe('toNodeView — wire CanvasNodeFields → narrowed view', () => {
       }),
     );
     expect(v).toEqual({
-      kind: 'annotation',
-      content: 'please center this',
-      createdBy: 'alice',
-      createdAt: 5,
-      // Never edited, so no mark to draw; nobody replied, so an empty list
-      // rather than an absent one the renderer would have to guard.
-      editedAt: undefined,
-      replies: [],
-      locked: false,
+      type: 'annotation',
+      data: {
+        content: 'please center this',
+        createdBy: 'alice',
+        createdAt: 5,
+        // Never edited, so no mark to draw; nobody replied, so an empty list
+        // rather than an absent one the renderer would have to guard.
+        editedAt: undefined,
+        replies: [],
+        locked: false,
+      },
     });
   });
 
@@ -224,7 +231,7 @@ describe('toNodeView — wire CanvasNodeFields → narrowed view', () => {
         ],
       }),
     );
-    expect(v).toMatchObject({
+    expect(v?.data).toMatchObject({
       editedAt: 9,
       replies: [{ id: 'r1', content: 'agreed, slower', createdBy: 'bob' }],
     });
@@ -247,7 +254,7 @@ describe('toNodeView — wire CanvasNodeFields → narrowed view', () => {
         ],
       }),
     );
-    expect(v).toMatchObject({ replies: [{ id: 'r1' }, { id: 'r2' }] });
+    expect(v?.data).toMatchObject({ replies: [{ id: 'r1' }, { id: 'r2' }] });
   });
 
   it('settles replies stamped the same millisecond the same way everywhere', () => {
@@ -266,7 +273,7 @@ describe('toNodeView — wire CanvasNodeFields → narrowed view', () => {
             createdAt: 10,
           })),
         }),
-      );
+      )?.data;
     expect(same(['rb', 'ra'])).toMatchObject({
       replies: [{ id: 'ra' }, { id: 'rb' }],
     });
@@ -275,14 +282,18 @@ describe('toNodeView — wire CanvasNodeFields → narrowed view', () => {
     });
   });
 
-  it('maps the locked flag through to every view kind', () => {
+  it('maps the locked flag through to every view type', () => {
     expect(toNodeView(fields('image', { locked: true }))).toMatchObject({
-      kind: 'image',
-      locked: true,
+      type: 'image',
+      data: {
+        locked: true,
+      },
     });
     expect(toNodeView(fields('annotation', { locked: true }))).toMatchObject({
-      kind: 'annotation',
-      locked: true,
+      type: 'annotation',
+      data: {
+        locked: true,
+      },
     });
   });
 
@@ -292,8 +303,8 @@ describe('toNodeView — wire CanvasNodeFields → narrowed view', () => {
     const v = toNodeView(
       fields('image', { taskCounts: counts({ running: 1 }) }),
     );
-    expect(v).toMatchObject({ handling: true });
-    expect(v).not.toHaveProperty('handlingByUserId');
+    expect(v?.data).toMatchObject({ handling: true });
+    expect(v?.data).not.toHaveProperty('handlingByUserId');
   });
 
   it('projects Generate inputs (model/mode/modelByMode) onto a content view', () => {
@@ -313,11 +324,13 @@ describe('toNodeView — wire CanvasNodeFields → narrowed view', () => {
       }),
     );
     expect(v).toMatchObject({
-      kind: 'image',
-      content: 'x.png',
-      model: 'flux-dev',
-      mode: 't2i',
-      modelByMode: { t2i: 'flux-dev', i2i: 'flux-redux' },
+      type: 'image',
+      data: {
+        content: 'x.png',
+        model: 'flux-dev',
+        mode: 't2i',
+        modelByMode: { t2i: 'flux-dev', i2i: 'flux-redux' },
+      },
     });
   });
 
@@ -333,7 +346,7 @@ describe('toNodeView — wire CanvasNodeFields → narrowed view', () => {
       height: 360,
     };
     const v = toNodeView(fields('image', { focusImages: [crop] }));
-    expect(v).toMatchObject({ kind: 'image', focusImages: [crop] });
+    expect(v).toMatchObject({ type: 'image', data: { focusImages: [crop] } });
   });
 
   it('returns a group view for group nodes (name / backgroundColor)', () => {
@@ -346,9 +359,11 @@ describe('toNodeView — wire CanvasNodeFields → narrowed view', () => {
       }),
     );
     expect(v).toMatchObject({
-      kind: 'group',
-      name: 'My Group',
-      backgroundColor: '#eef',
+      type: 'group',
+      data: {
+        name: 'My Group',
+        backgroundColor: '#eef',
+      },
     });
   });
 
@@ -359,7 +374,7 @@ describe('toNodeView — wire CanvasNodeFields → narrowed view', () => {
     const v = toNodeView(
       fields('group', { name: 'My Group', width: 400, height: 300 }),
     );
-    expect(v).toMatchObject({ kind: 'group', width: 400, height: 300 });
+    expect(v).toMatchObject({ type: 'group', data: { width: 400, height: 300 } });
   });
 
   it('returns null for a dirty / unknown type instead of throwing', () => {
@@ -390,18 +405,3 @@ describe('deriveHandling — is a task writing to this node (inner#888 §7.8)', 
     expect(deriveHandling({})).toBe(false);
   });
 });
-
-describe('isContentNodeView', () => {
-  it('is true for the 6 content modalities', () => {
-    const v = toNodeView(fields('image', { content: 'x' }));
-    expect(v).not.toBeNull();
-    expect(isContentNodeView(v!)).toBe(true);
-  });
-
-  it('is false for an annotation sticky', () => {
-    const v = toNodeView(fields('annotation', { content: 'hi' }));
-    expect(v).not.toBeNull();
-    expect(isContentNodeView(v!)).toBe(false);
-  });
-});
-

@@ -43,7 +43,6 @@ describe('FLOW_NODE_TYPES', () => {
     const renameNode = vi.fn();
     const Text = FLOW_NODE_TYPES.text;
     const data: TextNodeView = {
-      kind: 'text',
       handling: false,
       name: 'Old',
     };
@@ -52,7 +51,7 @@ describe('FLOW_NODE_TYPES', () => {
         <CanvasActionsContext.Provider value={{ renameNode, deleteEdge: () => undefined,
           deleteNode: () => undefined, activateNodeUpload: () => undefined, commitGroupResize: () => undefined,
           reportGroupResize: () => undefined, beginGroupResize: () => undefined, }}>
-          <Text {...({ id: 'n1', data, selected: false } as unknown as NodeProps)} />
+          <Text {...({ id: 'n1', type: 'text', data, selected: false } as unknown as NodeProps)} />
         </CanvasActionsContext.Provider>
       </ReactFlowProvider>,
     );
@@ -68,7 +67,6 @@ describe('FLOW_NODE_TYPES', () => {
   // the shared document while the user is opening a list.
   it('keeps a press on the counts from dragging the node', () => {
     renderImage({
-      kind: 'image',
       handling: false,
       name: 'N',
       content: 'https://cdn.invalid/a.png',
@@ -87,7 +85,6 @@ describe('FLOW_NODE_TYPES', () => {
     // A node nobody has uploaded to draws no column at all, so the strip
     // beside it is bare canvas: a marquee or a pane drag can begin in it.
     renderImage({
-      kind: 'image',
       handling: false,
       name: 'N',
       content: 'https://cdn.invalid/a.png',
@@ -125,7 +122,7 @@ describe('FLOW_NODE_TYPES', () => {
     }
 
     const Text = FLOW_NODE_TYPES.text;
-    const data: TextNodeView = { kind: 'text', handling: false, name: 'N' };
+    const data: TextNodeView = { handling: false, name: 'N' };
     render(
       <ReactFlowProvider>
         <CanvasContext.Provider
@@ -137,7 +134,7 @@ describe('FLOW_NODE_TYPES', () => {
             caretProvider: null,
           }}
         >
-          <Text {...({ id: 'n2', data, selected: false } as unknown as NodeProps)} />
+          <Text {...({ id: 'n2', type: 'text', data, selected: false } as unknown as NodeProps)} />
         </CanvasContext.Provider>
       </ReactFlowProvider>,
     );
@@ -153,7 +150,6 @@ describe('FLOW_NODE_TYPES', () => {
   it('renders both handles after the node body (painted on top) in the original neutral style (#1)', () => {
     const Text = FLOW_NODE_TYPES.text;
     const data: TextNodeView = {
-      kind: 'text',
       handling: false,
       name: 'N',
     };
@@ -164,7 +160,7 @@ describe('FLOW_NODE_TYPES', () => {
             deleteNode: vi.fn(), activateNodeUpload: vi.fn(), commitGroupResize: vi.fn(),
             reportGroupResize: vi.fn(), beginGroupResize: vi.fn(), }}
         >
-          <Text {...({ id: 'n1', data, selected: false } as unknown as NodeProps)} />
+          <Text {...({ id: 'n1', type: 'text', data, selected: false } as unknown as NodeProps)} />
         </CanvasActionsContext.Provider>
       </ReactFlowProvider>,
     );
@@ -196,7 +192,6 @@ describe('FLOW_NODE_TYPES', () => {
   it('forwards isConnectable to both handles (false disables their connectable state)', () => {
     const Text = FLOW_NODE_TYPES.text;
     const data: TextNodeView = {
-      kind: 'text',
       handling: false,
       name: 'N',
     };
@@ -210,6 +205,7 @@ describe('FLOW_NODE_TYPES', () => {
           <Text
             {...({
               id: 'n1',
+              type: 'text',
               data,
               selected: false,
               isConnectable: false,
@@ -233,7 +229,6 @@ describe('FLOW_NODE_TYPES', () => {
   it('renders NO connection handles for a group node (Bug 7)', () => {
     const Group = FLOW_NODE_TYPES.group;
     const data = {
-      kind: 'group',
       name: 'G',
       groupMinWidth: 40,
       groupMinHeight: 40,
@@ -245,7 +240,7 @@ describe('FLOW_NODE_TYPES', () => {
             deleteNode: vi.fn(), activateNodeUpload: vi.fn(), commitGroupResize: vi.fn(),
             reportGroupResize: vi.fn(), beginGroupResize: vi.fn(), }}
         >
-          <Group {...({ id: 'g1', data, selected: true } as unknown as NodeProps)} />
+          <Group {...({ id: 'g1', type: 'group', data, selected: true } as unknown as NodeProps)} />
         </CanvasActionsContext.Provider>
       </ReactFlowProvider>,
     );
@@ -256,7 +251,7 @@ describe('FLOW_NODE_TYPES', () => {
     const Group = FLOW_NODE_TYPES.group;
     // A read-only viewer gets groupResizeBounds: [] (CanvasSpace renderNodes),
     // so the group shows no resize handles even though it is selected.
-    const data = { kind: 'group', name: 'G', groupResizeBounds: [] };
+    const data = { name: 'G', groupResizeBounds: [] };
     const { container } = render(
       <ReactFlowProvider>
         <CanvasActionsContext.Provider
@@ -264,7 +259,7 @@ describe('FLOW_NODE_TYPES', () => {
             deleteNode: vi.fn(), activateNodeUpload: vi.fn(), commitGroupResize: vi.fn(),
             reportGroupResize: vi.fn(), beginGroupResize: vi.fn(), }}
         >
-          <Group {...({ id: 'g1', data, selected: true } as unknown as NodeProps)} />
+          <Group {...({ id: 'g1', type: 'group', data, selected: true } as unknown as NodeProps)} />
         </CanvasActionsContext.Provider>
       </ReactFlowProvider>,
     );
@@ -277,7 +272,7 @@ describe('FLOW_NODE_TYPES', () => {
       'right', 'left', 'bottom', 'top',
       'top-left', 'top-right', 'bottom-left', 'bottom-right',
     ].map((position) => ({ position, minWidth: 40, minHeight: 40 }));
-    const data = { kind: 'group', name: 'G', groupResizeBounds: bounds };
+    const data = { name: 'G', groupResizeBounds: bounds };
     const { container } = render(
       <ReactFlowProvider>
         <CanvasActionsContext.Provider
@@ -285,7 +280,7 @@ describe('FLOW_NODE_TYPES', () => {
             deleteNode: vi.fn(), activateNodeUpload: vi.fn(), commitGroupResize: vi.fn(),
             reportGroupResize: vi.fn(), beginGroupResize: vi.fn(), }}
         >
-          <Group {...({ id: 'g1', data, selected: true } as unknown as NodeProps)} />
+          <Group {...({ id: 'g1', type: 'group', data, selected: true } as unknown as NodeProps)} />
         </CanvasActionsContext.Provider>
       </ReactFlowProvider>,
     );
@@ -310,7 +305,6 @@ describe('FLOW_NODE_TYPES', () => {
   it('feeds the canvas zoom so the content node renders a counter-scaled header anchor', () => {
     const Text = FLOW_NODE_TYPES.text;
     const data: TextNodeView = {
-      kind: 'text',
       handling: false,
       name: 'Old',
     };
@@ -319,7 +313,7 @@ describe('FLOW_NODE_TYPES', () => {
         <CanvasActionsContext.Provider value={{ renameNode: vi.fn(), deleteEdge: vi.fn(),
           deleteNode: vi.fn(), activateNodeUpload: vi.fn(), commitGroupResize: vi.fn(),
           reportGroupResize: vi.fn(), beginGroupResize: vi.fn(), }}>
-          <Text {...({ id: 'n1', data, selected: false } as unknown as NodeProps)} />
+          <Text {...({ id: 'n1', type: 'text', data, selected: false } as unknown as NodeProps)} />
         </CanvasActionsContext.Provider>
       </ReactFlowProvider>,
     );
@@ -344,7 +338,8 @@ describe('FLOW_NODE_TYPES', () => {
           <Image
             {...({
               id: 'n1',
-              data: { kind: 'image', content: '', handling: false, name: 'N' },
+              type: 'image',
+              data: { content: '', handling: false, name: 'N' },
               selected: false,
             } as unknown as NodeProps)}
           />
@@ -361,7 +356,6 @@ describe('FLOW_NODE_TYPES', () => {
     // the drop offered a control that always said no.
     const Annotation = FLOW_NODE_TYPES.annotation;
     const data: AnnotationNodeView = {
-      kind: 'annotation',
       content: 'a cooler shot here',
       createdBy: 'u1',
       createdAt: 1,
@@ -375,7 +369,7 @@ describe('FLOW_NODE_TYPES', () => {
           }
         >
           <Annotation
-            {...({ id: 'a1', data, selected: false } as unknown as NodeProps)}
+            {...({ id: 'a1', type: 'annotation', data, selected: false } as unknown as NodeProps)}
           />
         </QueryClientProvider>
       </ReactFlowProvider>,
@@ -421,7 +415,7 @@ function renderImage(data: Record<string, unknown>, zoom?: number): void {
         <CanvasActionsContext.Provider value={{ renameNode: vi.fn(), deleteEdge: () => undefined,
           deleteNode: () => undefined, activateNodeUpload: () => undefined, commitGroupResize: () => undefined,
           reportGroupResize: () => undefined, beginGroupResize: () => undefined, }}>
-          <Image {...({ id: 'n1', data, selected: false } as unknown as NodeProps)} />
+          <Image {...({ id: 'n1', type: 'image', data, selected: false } as unknown as NodeProps)} />
         </CanvasActionsContext.Provider>
       </ReactFlowProvider>
     </TooltipProvider>,
@@ -435,7 +429,6 @@ function renderImage(data: Record<string, unknown>, zoom?: number): void {
 
 /** A node with one task in each of the four states. */
 const ONE_OF_EACH = {
-  kind: 'image',
   handling: false,
   name: 'N',
   content: 'https://cdn.invalid/a.png',
@@ -534,7 +527,8 @@ describe('a stored image zoomed past its preview', () => {
               {...({
                 id: 'n1',
                 width: 288,
-                data: { kind: 'image', handling: false, name: 'N', content: STORED, ...size },
+                type: 'image',
+                data: { handling: false, name: 'N', content: STORED, ...size },
                 selected: false,
               } as unknown as NodeProps)}
             />

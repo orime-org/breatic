@@ -29,37 +29,37 @@ const CONTENT_NODES: ReadonlyArray<{
   {
     name: 'TextNode',
     Comp: TextNode as ComponentType<{ data: NodeView }>,
-    data: { kind: 'text', handling: false },
+    data: { handling: false },
     label: 'Text',
   },
   {
     name: 'ImageNode',
     Comp: ImageNode as ComponentType<{ data: NodeView }>,
-    data: { kind: 'image', handling: false },
+    data: { handling: false },
     label: 'Image',
   },
   {
     name: 'AudioNode',
     Comp: AudioNode as ComponentType<{ data: NodeView }>,
-    data: { kind: 'audio', handling: false },
+    data: { handling: false },
     label: 'Audio',
   },
   {
     name: 'VideoNode',
     Comp: VideoNode as ComponentType<{ data: NodeView }>,
-    data: { kind: 'video', handling: false },
+    data: { handling: false },
     label: 'Video',
   },
   {
     name: 'ThreeDNode',
     Comp: ThreeDNode as ComponentType<{ data: NodeView }>,
-    data: { kind: '3d', handling: false },
+    data: { handling: false },
     label: '3D',
   },
   {
     name: 'WebNode',
     Comp: WebNode as ComponentType<{ data: NodeView }>,
-    data: { kind: 'web', handling: false },
+    data: { handling: false },
     label: 'Web',
   },
 ];
@@ -74,7 +74,7 @@ describe('node name header', () => {
 
   it('content node shows its name when present', () => {
     render(
-      <ImageNode data={{ kind: 'image', handling: false, name: 'Hero shot' }} />,
+      <ImageNode data={{ handling: false, name: 'Hero shot' }} />,
     );
     expect(screen.getByTestId('node-header')).toHaveTextContent('Hero shot');
   });
@@ -91,7 +91,6 @@ describe('node name header', () => {
         <ReactFlowProvider>
           <AnnotationNode
             data={{
-              kind: 'annotation',
               replies: [],
               content: 'note',
               createdBy: 'u1',
@@ -105,7 +104,7 @@ describe('node name header', () => {
   });
 
   it('GroupNode does NOT render the name header (it is a container)', () => {
-    render(<GroupNode data={{ kind: 'group' }} />);
+    render(<GroupNode data={{ }} />);
     expect(screen.queryByTestId('node-header')).toBeNull();
   });
 });

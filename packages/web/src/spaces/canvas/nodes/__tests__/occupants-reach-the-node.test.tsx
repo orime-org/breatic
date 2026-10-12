@@ -57,8 +57,8 @@ function renderNode(
     position: { x: 0, y: 0 },
     data:
       kind === 'group'
-        ? { kind: 'group', name: 'A group' }
-        : { kind: 'image', handling: false, name: 'A node' },
+        ? { name: 'A group' }
+        : { handling: false, name: 'A node' },
   };
   const withHolders = attachOccupants(
     base as Parameters<typeof attachOccupants>[0],
