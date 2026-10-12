@@ -5,7 +5,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
+import type * as React from 'react';
 
 import { projectsApi } from '@web/data/api/projects';
 import { ProjectCard } from '@web/pages/studio/container/cards/ProjectCard';
@@ -427,5 +428,73 @@ describe('ProjectCard — confirmations that wait for the server (inner#1374)', 
       await waitFor(() => expect(confirm).not.toHaveAttribute('aria-busy'));
       expect(screen.getByTestId('leave-project-dialog')).toBeInTheDocument();
     }
+  });
+
+  /**
+   * Render the card inside a list read the way the studio page reads it, with
+   * every read after the first held until the case lands it.
+   * @param p - The card's project.
+   * @returns The function that lands the held refetch with the card gone.
+   */
+  function setupInHeldList(p: ContainerProject): { landRefetch: () => void; refetchStarted: () => boolean } {
+    let land: (() => void) | null = null;
+    const fetchList = vi.fn(
+      (): Promise<ContainerProject[]> =>
+        fetchList.mock.calls.length === 1
+          ? Promise.resolve([p])
+          : new Promise((resolve) => {
+            land = () => resolve([]);
+          }),
+    );
+    /**
+     * Stands in for the studio's project list.
+     * @returns One card per listed project.
+     */
+    function List(): React.JSX.Element {
+      const list = useQuery({ queryKey: ['studio', 'acme', 'projects', 'live'], queryFn: fetchList });
+      return <>{(list.data ?? []).map((item) => <ProjectCard key={item.id} project={item} timeKind='created' />)}</>;
+    }
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={qc}>
+        <MemoryRouter>
+          <List />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    return { landRefetch: () => land?.(), refetchStarted: () => land !== null };
+  }
+
+  it('keeps the archive confirmation busy until the list refetch takes the card away', async () => {
+    const user = userEvent.setup();
+    const list = setupInHeldList({ ...project, ...AS_STUDIO_ADMIN });
+    await user.click(await screen.findByRole('button', { name: 'More actions' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Archive' }));
+    await screen.findByTestId('archive-project-dialog');
+    const confirm = screen.getByRole('button', { name: 'Archive' });
+    await user.click(confirm);
+
+    await waitFor(() => expect(list.refetchStarted()).toBe(true));
+    expect(confirm).toHaveAttribute('aria-busy', 'true');
+    expect(screen.getByTestId('archive-project-dialog')).toBeInTheDocument();
+    list.landRefetch();
+    await waitFor(() => expect(screen.queryByTestId('archive-project-dialog')).toBeNull());
+    expect(screen.queryByTestId(`project-card-${project.id}`)).toBeNull();
+  });
+
+  it('keeps the leave confirmation busy until the list refetch takes the card away', async () => {
+    const user = userEvent.setup();
+    const list = setupInHeldList({ ...project, myRole: 'editor', ...AS_EDITOR });
+    await user.click(await screen.findByRole('button', { name: 'More actions' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Leave project' }));
+    const confirm = await screen.findByRole('button', { name: 'Leave' });
+    await user.click(confirm);
+
+    await waitFor(() => expect(list.refetchStarted()).toBe(true));
+    expect(confirm).toHaveAttribute('aria-busy', 'true');
+    expect(screen.getByTestId('leave-project-dialog')).toBeInTheDocument();
+    list.landRefetch();
+    await waitFor(() => expect(screen.queryByTestId('leave-project-dialog')).toBeNull());
+    expect(screen.queryByTestId(`project-card-${project.id}`)).toBeNull();
   });
 });

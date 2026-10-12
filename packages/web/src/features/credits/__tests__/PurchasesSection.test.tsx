@@ -518,6 +518,30 @@ describe('sending the confirmation again', () => {
     });
   });
 
+  it('keeps the button waiting until the re-read row arrives (inner#1374)', async () => {
+    const user = userEvent.setup();
+    resendConfirmation.mockResolvedValue({ sent: true });
+    let landRefetch: (() => void) | null = null;
+    history
+      .mockResolvedValueOnce({ items: [row({ canResend: true })], nextCursor: null })
+      .mockReturnValue(
+        new Promise((resolve) => {
+          landRefetch = () => resolve({ items: [row({ canResend: false })], nextCursor: null });
+        }),
+      );
+    renderHistory();
+    const button = await screen.findByTestId('resend-confirmation');
+
+    await user.click(button);
+
+    await waitFor(() => expect(landRefetch).not.toBeNull());
+    expect(button).toHaveAttribute('aria-busy', 'true');
+    landRefetch!();
+    await waitFor(() => {
+      expect(screen.queryByTestId('resend-confirmation')).toBeNull();
+    });
+  });
+
   it.each([
     ['answers', (settle: Settle): void => settle.resolve({ sent: true })],
     ['fails', (settle: Settle): void => settle.reject(new Error('offline'))],

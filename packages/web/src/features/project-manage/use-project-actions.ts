@@ -40,23 +40,29 @@ export function useProjectActions(projectId: string): ProjectActions {
   const duplicate = useMutation({
     mutationFn: () => projectsApi.duplicate(projectId),
     onSuccess: (copy) => {
-      invalidateProjectListings(queryClient, projectId);
+      void invalidateProjectListings(queryClient, projectId);
       toast.success(t('studio.container.card.duplicated', { name: copy.name }));
     },
     onError: toastFailure(t('studio.container.card.duplicateFailed')),
   });
   const archive = useMutation({
     mutationFn: () => projectsApi.archive(projectId),
-    onSuccess: () => {
-      invalidateProjectListings(queryClient, projectId);
+    // Awaited: the confirmation closes once this settles, and until the list
+    // refetch lands the card and its Archive entry are still on screen
+    // (inner#1374).
+    onSuccess: async () => {
+      await invalidateProjectListings(queryClient, projectId);
       toast.success(t('studio.container.card.archived'));
     },
     onError: toastFailure(t('studio.container.card.archiveFailed')),
   });
   const restore = useMutation({
     mutationFn: () => projectsApi.restore(projectId),
-    onSuccess: () => {
-      invalidateProjectListings(queryClient, projectId);
+    // Awaited so `isPending` lasts until the project refetch lands: the
+    // banner's restore button goes away only then, and a press in between
+    // would send a restore the server refuses (inner#1374).
+    onSuccess: async () => {
+      await invalidateProjectListings(queryClient, projectId);
       toast.success(t('studio.container.card.restored'));
     },
     onError: toastFailure(t('studio.container.card.restoreFailed')),

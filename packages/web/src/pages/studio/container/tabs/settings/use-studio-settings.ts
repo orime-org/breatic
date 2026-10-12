@@ -113,9 +113,12 @@ export function useStudioSettings(
   /**
    * Fold a server-confirmed studio back into everything that displays it.
    * @param next - The studio as the server now has it.
+   * @returns Settles once the mounted reads have refetched; a save whose
+   *   button stays on screen awaits it, so the button keeps waiting until the
+   *   fields show what was saved (inner#1374).
    */
   const absorb = React.useCallback(
-    (next: Studio): void => {
+    (next: Studio): Promise<void> => {
       const renamed = next.slug !== studio.slug;
       if (renamed) {
         // Remove, never invalidate: the old slug is already gone server-side.
@@ -125,7 +128,7 @@ export function useStudioSettings(
       // other than the studio (recent projects, the credits overlay's lists),
       // so mark everything stale: mounted reads refetch now, the rest on their
       // next mount.
-      void queryClient.invalidateQueries();
+      const refetched = queryClient.invalidateQueries();
 
       const store = useCurrentUserStore.getState();
       const user = store.user;
@@ -147,6 +150,7 @@ export function useStudioSettings(
       if (renamed) {
         navigate(studioTabPath(next.slug, 'settings'), { replace: true });
       }
+      return refetched;
     },
     [navigate, queryClient, studio.slug, studio.type],
   );
@@ -154,8 +158,10 @@ export function useStudioSettings(
   const updateMutation = useMutation({
     mutationFn: ({ patch }: StudioSave) =>
       studiosApi.update(studio.slug, patch),
-    onSuccess: (next) => {
-      absorb(next);
+    // Awaited: until the studio refetch lands the fields still differ from
+    // the stale studio, so Save would read as unsaved and live again.
+    onSuccess: async (next) => {
+      await absorb(next);
       toast.success(t('studio.container.settings.saved'));
     },
     // On the mutation itself, so it still runs after the settings tab has
@@ -189,7 +195,7 @@ export function useStudioSettings(
     // already showing an error about an upload the user has moved on from.
     onMutate: () => setAvatarError(null),
     onSuccess: (next) => {
-      absorb(next);
+      void absorb(next);
       toast.success(t('studio.container.settings.avatarSaved'));
     },
     // Kept in state rather than only a toast: the crop dialog stays open on
@@ -206,8 +212,10 @@ export function useStudioSettings(
 
   const removeAvatarMutation = useMutation({
     mutationFn: () => studiosApi.removeAvatar(studio.slug),
-    onSuccess: (next) => {
-      absorb(next);
+    // Awaited: the confirmation closes once this settles, and until the
+    // studio refetch lands the Remove entry is still on screen (inner#1374).
+    onSuccess: async (next) => {
+      await absorb(next);
       toast.success(t('studio.container.settings.avatarRemoved'));
     },
     onError: (err) => toast.error(messageFor(err)),

@@ -35,9 +35,12 @@ export function useLeaveProject(projectId: string, name: string, onLeft?: () => 
   const queryClient = useQueryClient();
   const mutation = useMutation({
     mutationFn: () => projectsApi.leave(projectId),
-    onSuccess: () => {
+    // Awaited: the confirmation closes (or the page navigates) once this
+    // settles, and until the list refetch lands the card and its Leave entry
+    // are still on screen (inner#1374).
+    onSuccess: async () => {
       queryClient.removeQueries({ queryKey: ['project', projectId] });
-      invalidateProjectListings(queryClient, projectId);
+      await invalidateProjectListings(queryClient, projectId);
       toast.success(t('project.leave.done', { name }));
       onLeft?.();
     },

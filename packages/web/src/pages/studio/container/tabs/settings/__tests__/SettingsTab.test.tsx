@@ -18,7 +18,7 @@
 import * as React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
 
 import { SettingsTab } from '@web/pages/studio/container/tabs/SettingsTab';
 import { studiosApi } from '@web/data/api/studios';
@@ -182,6 +182,50 @@ describe('SettingsTab — a save of one thing must not seize the other', () => {
   });
 });
 
+describe('SettingsTab — Save waits for the studio to show the saved values (inner#1374)', () => {
+  it('keeps Save busy until the studio refetch carrying the new name lands', async () => {
+    vi.mocked(studiosApi.update).mockResolvedValue({ ...STUDIO, name: 'Acme Inc' } as never);
+    let landRefetch: (() => void) | null = null;
+    const fetchStudio = vi.fn(
+      (): Promise<StudioDetail> =>
+        fetchStudio.mock.calls.length === 1
+          ? Promise.resolve(STUDIO)
+          : new Promise((resolve) => {
+            landRefetch = () => resolve({ ...STUDIO, name: 'Acme Inc' });
+          }),
+    );
+    /**
+     * Stands in for the studio page: it reads the studio and hands it to the tab.
+     * @returns The tab once the studio is in.
+     */
+    function Page(): React.JSX.Element | null {
+      const studio = useQuery({ queryKey: ['studio', STUDIO.slug], queryFn: fetchStudio });
+      return studio.data ? <SettingsTab studio={studio.data} members={[]} /> : null;
+    }
+    const qc = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    render(
+      <QueryClientProvider client={qc}>
+        <Page />
+      </QueryClientProvider>,
+    );
+    fireEvent.change(await screen.findByTestId('settings-name'), {
+      target: { value: 'Acme Inc' },
+    });
+    const save = screen.getByTestId('settings-save');
+    await waitFor(() => expect(save).toBeEnabled());
+
+    fireEvent.click(save);
+
+    await waitFor(() => expect(landRefetch).not.toBeNull());
+    expect(save).toHaveAttribute('aria-busy', 'true');
+    landRefetch!();
+    await waitFor(() => expect(save).not.toHaveAttribute('aria-busy'));
+    expect(save).toBeDisabled();
+  });
+});
+
 describe('SettingsTab — picking an avatar (inner#1367 A4)', () => {
   const RIFF_WEBP = [0x52, 0x49, 0x46, 0x46, 4, 0, 0, 0, 0x57, 0x45, 0x42, 0x50];
   const JPEG = [0xff, 0xd8, 0xff, 0xe0, 0, 16, 0x4a, 0x46, 0x49, 0x46, 0, 1];
@@ -260,6 +304,48 @@ describe('SettingsTab — removing the avatar (inner#1374)', () => {
     await waitFor(() =>
       expect(screen.queryByTestId('avatar-remove-dialog')).toBeNull(),
     );
+  });
+
+  it('keeps Remove busy and the confirmation open until the studio refetch drops the avatar', async () => {
+    const withAvatar: StudioDetail = { ...STUDIO, avatarUrl: 'https://cdn.example/a.webp' };
+    vi.mocked(studiosApi.removeAvatar).mockResolvedValue(
+      { ...STUDIO, avatarUrl: null } as unknown as Awaited<ReturnType<typeof studiosApi.removeAvatar>>,
+    );
+    let landRefetch: (() => void) | null = null;
+    const fetchStudio = vi.fn(
+      (): Promise<StudioDetail> =>
+        fetchStudio.mock.calls.length === 1
+          ? Promise.resolve(withAvatar)
+          : new Promise((resolve) => {
+            landRefetch = () => resolve({ ...STUDIO, avatarUrl: null });
+          }),
+    );
+    /**
+     * Stands in for the studio page: it reads the studio and hands it to the tab.
+     * @returns The tab once the studio is in.
+     */
+    function Page(): React.JSX.Element | null {
+      const studio = useQuery({ queryKey: ['studio', STUDIO.slug], queryFn: fetchStudio });
+      return studio.data ? <SettingsTab studio={studio.data} members={[]} /> : null;
+    }
+    const qc = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    render(
+      <QueryClientProvider client={qc}>
+        <Page />
+      </QueryClientProvider>,
+    );
+    fireEvent.click(await screen.findByTestId('avatar-remove-open'));
+    const confirm = await screen.findByTestId('avatar-remove-confirm');
+    fireEvent.click(confirm);
+
+    await waitFor(() => expect(landRefetch).not.toBeNull());
+    expect(confirm).toHaveAttribute('aria-busy', 'true');
+    expect(screen.getByTestId('avatar-remove-dialog')).toBeInTheDocument();
+    landRefetch!();
+    await waitFor(() => expect(screen.queryByTestId('avatar-remove-dialog')).toBeNull());
+    expect(screen.queryByTestId('avatar-remove-open')).toBeNull();
   });
 
   it('keeps the confirmation open with Remove pressable again when the removal fails', async () => {

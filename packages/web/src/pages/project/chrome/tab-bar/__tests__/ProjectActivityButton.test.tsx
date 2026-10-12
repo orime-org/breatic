@@ -185,6 +185,40 @@ describe('ProjectActivityButton (activity feed)', () => {
     await waitFor(() => expect(btn).not.toHaveAttribute('aria-busy'));
   });
 
+  it('keeps the Restore button waiting until the refetched feed shows the row restored', async () => {
+    const deleted = entry({
+      id: 'del-6',
+      type: 'space:deleted',
+      spaceId: 'sp-6',
+      payload: { spaceName: 'Back', spaceSnapshot: { id: 'sp-6' } },
+    });
+    listMock.mockResolvedValue({ items: [deleted], nextCursor: null });
+    const onRestore = vi.fn(() => Promise.resolve());
+    const user = userEvent.setup();
+    render(
+      <ProjectActivityButton projectId={PID} currentUserRole='owner' onRestore={onRestore} />,
+    );
+    await user.click(screen.getByTestId('project-activity-trigger'));
+    const btn = await screen.findByTestId('project-activity-restore-del-6');
+
+    let landRefetch!: () => void;
+    listMock.mockReturnValue(
+      new Promise((resolve) => {
+        landRefetch = () => resolve({ items: [{ ...deleted, restored: true }], nextCursor: null });
+      }),
+    );
+    await user.click(btn);
+
+    await waitFor(() => expect(onRestore).toHaveBeenCalledWith('sp-6'));
+    await waitFor(() => expect(listMock).toHaveBeenCalledTimes(2));
+    expect(btn).toHaveAttribute('aria-busy', 'true');
+    landRefetch();
+    expect(
+      await screen.findByTestId('project-activity-restored-badge-del-6'),
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId('project-activity-restore-del-6')).toBeNull();
+  });
+
   it('keeps the first Restore waiting when a second row is pressed, until its own restore lands', async () => {
     const landers = new Map<string, VoidFunction>();
     const onRestore = vi.fn(

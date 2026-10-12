@@ -4,7 +4,7 @@
 import * as React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
 
 vi.mock('@web/data/api', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@web/data/api')>()),
@@ -57,6 +57,42 @@ describe('ArchivedBanner restore button', () => {
     expect(button).toHaveAttribute('aria-disabled', 'true');
     reply.resolve();
     await waitFor(() => expect(button).not.toHaveAttribute('aria-busy'));
+  });
+
+  it('keeps reading busy until the project refetch that takes the banner away lands', async () => {
+    vi.mocked(projectsApi.restore).mockResolvedValue(undefined as never);
+    let landRefetch: (() => void) | null = null;
+    const fetchProject = vi.fn(
+      (): Promise<{ archived: boolean }> =>
+        fetchProject.mock.calls.length === 1
+          ? Promise.resolve({ archived: true })
+          : new Promise((resolve) => {
+            landRefetch = () => resolve({ archived: false });
+          }),
+    );
+    /**
+     * Stands in for the project page: it reads the project and shows the
+     * banner only while the project is archived.
+     * @returns The banner while archived, nothing after.
+     */
+    function Page(): React.JSX.Element | null {
+      const project = useQuery({ queryKey: ['project', 'p1'], queryFn: fetchProject });
+      return project.data?.archived ? <ArchivedBanner projectId='p1' canRestore /> : null;
+    }
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <Page />
+      </QueryClientProvider>,
+    );
+    const button = await screen.findByRole('button', { name: 'Restore' });
+
+    fireEvent.click(button);
+
+    await waitFor(() => expect(landRefetch).not.toBeNull());
+    expect(button).toHaveAttribute('aria-busy', 'true');
+    landRefetch!();
+    await waitFor(() => expect(screen.queryByTestId('archived-banner')).toBeNull());
   });
 
   it('stops reading busy after the restore fails', async () => {

@@ -90,13 +90,20 @@ export function isStudioProjectsListKey(key: readonly unknown[]): boolean {
  * every studio's projects lists, the recent page and the project itself.
  * @param queryClient - The app's query client.
  * @param projectId - The project that changed.
+ * @returns Settles once every refetch is in; a caller whose button must keep
+ *   waiting until the screen shows the change awaits it (inner#1374).
  */
-export function invalidateProjectListings(queryClient: QueryClient, projectId: string): void {
-  void queryClient.invalidateQueries({
-    predicate: (query) => isStudioProjectsListKey(query.queryKey),
-  });
-  void queryClient.invalidateQueries({ queryKey: ['studios', 'recent'] });
-  void queryClient.invalidateQueries({ queryKey: ['project', projectId] });
+export async function invalidateProjectListings(
+  queryClient: QueryClient,
+  projectId: string,
+): Promise<void> {
+  await Promise.all([
+    queryClient.invalidateQueries({
+      predicate: (query) => isStudioProjectsListKey(query.queryKey),
+    }),
+    queryClient.invalidateQueries({ queryKey: ['studios', 'recent'] }),
+    queryClient.invalidateQueries({ queryKey: ['project', projectId] }),
+  ]);
 }
 
 export const projectsApi = {

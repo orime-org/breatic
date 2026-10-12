@@ -360,18 +360,22 @@ export function ProjectActivityButton({
   }, [open, hasNextPage, isFetchingNextPage, fetchNextPage]);
 
   /**
-   * Restores a deleted space via `onRestore`, keeping that space's button
-   * waiting until its own restore settles (inner#1374), then refreshes the
-   * feed (the restore appends its own row).
+   * Restores a deleted space via `onRestore`, then refreshes the feed (the
+   * restore marks its row restored and appends its own row). That space's
+   * button keeps waiting until the refreshed feed is in (inner#1374): the
+   * row only turns into the restored badge then, and a press in between
+   * would send a restore the server refuses.
    * @param spaceId - Id of the deleted space to restore.
    */
   const onClickRestore = async (spaceId: string): Promise<void> => {
     if (!onRestore) return;
     try {
-      await restoring.track(spaceId, Promise.resolve(onRestore(spaceId)));
-      void queryClient.invalidateQueries({
-        queryKey: ['project-activities', projectId],
-      });
+      await restoring.track(
+        spaceId,
+        Promise.resolve(onRestore(spaceId)).then(() =>
+          queryClient.invalidateQueries({ queryKey: ['project-activities', projectId] }),
+        ),
+      );
     } catch {
       // The host has already toasted the failure (`callRpc` reports before
       // it throws); the button only has to come back for another try.
