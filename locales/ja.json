@@ -886,6 +886,9 @@
         },
         "grid": {
           "label": "グリッド分割"
+        },
+        "adjust": {
+          "label": "色調整"
         }
       },
       "video": {

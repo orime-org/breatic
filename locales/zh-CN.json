@@ -886,6 +886,9 @@
         },
         "grid": {
           "label": "九宫格切图"
+        },
+        "adjust": {
+          "label": "调色"
         }
       },
       "video": {

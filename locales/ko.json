@@ -886,6 +886,9 @@
         },
         "grid": {
           "label": "격자 분할"
+        },
+        "adjust": {
+          "label": "색 보정"
         }
       },
       "video": {

@@ -886,6 +886,9 @@
         },
         "grid": {
           "label": "Grid split"
+        },
+        "adjust": {
+          "label": "Adjust"
         }
       },
       "video": {
