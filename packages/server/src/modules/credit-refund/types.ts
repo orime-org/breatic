@@ -13,6 +13,16 @@ export type StripeRefundStatus =
   | "failed"
   | "canceled";
 
+/** A Stripe refund object, with the fields the product reads. */
+export interface StripeRefundObject {
+  id: string;
+  amount: number;
+  currency: string;
+  status: StripeRefundStatus;
+  failure_reason?: string | null;
+  metadata?: Record<string, string> | null;
+}
+
 /**
  * The product's copy of one Stripe refund (`credit_refunds`), in the column
  * names the rules read. `operationId` is null for a refund made outside the

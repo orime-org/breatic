@@ -98,6 +98,27 @@ export async function getPaymentById(id: string): Promise<PaymentEntity | null> 
 }
 
 /**
+ * What the buyer paid, tax included: `coalesce(total_cents, amount_cents)`.
+ * @param id - Payment UUID
+ * @param tx - The caller's transaction
+ * @returns The paid amount and its currency, or null if not found
+ */
+export async function readPaidAmount(
+  id: string,
+  tx: DbTx,
+): Promise<{ paidCents: number; currency: string } | null> {
+  const rows = await tx
+    .select({
+      paidCents: sql<string>`coalesce(${payments.totalCents}, ${payments.amountCents})`,
+      currency: payments.currency,
+    })
+    .from(payments)
+    .where(eq(payments.id, id))
+    .limit(1);
+  return rows[0] ? { paidCents: Number(rows[0].paidCents), currency: rows[0].currency } : null;
+}
+
+/**
  * Get a payment by Stripe session ID.
  * @param sessionId - Stripe Checkout session ID
  * @returns The payment entity, or null if no payment matches the session

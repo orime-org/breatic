@@ -269,6 +269,25 @@ export async function lockLot(
 }
 
 /**
+ * {@link lockLot}, for the lot a payment opened. `source_id` is unique, so a
+ * payment opens at most one lot.
+ * @param paymentId - The payment the lot was granted from.
+ * @param tx - The transaction holding the lock.
+ * @returns The locked lot, or null if the payment opened none.
+ */
+export async function lockLotByPayment(
+  paymentId: string,
+  tx: DbTx,
+): Promise<CreditLotEntity | null> {
+  const rows = await tx
+    .select()
+    .from(creditLots)
+    .where(eq(creditLots.sourceId, paymentId))
+    .for("update");
+  return rows[0] ? toLotEntity(rows[0]) : null;
+}
+
+/**
  * Subtract from a lot's remaining balance, in `numeric`.
  *
  * Reaching zero moves the lot to `depleted` in the same statement: a lot with
