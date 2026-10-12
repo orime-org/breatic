@@ -16,8 +16,9 @@
  * it fails: *If the tests from a dependency fails then the tests that rely on
  * this project will not be run.* That is the opposite of the silent skip.
  */
+import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
-import { dirname } from 'node:path';
+import { dirname, resolve } from 'node:path';
 import {
   expect,
   request,
@@ -31,7 +32,6 @@ import {
   readAccounts,
   rememberAccount,
 } from '../helpers/credentials';
-import { registerAccount } from '../helpers/signup';
 import {
   archiveOlderRuns,
   MADE_BY_SMOKE,
@@ -55,7 +55,7 @@ const PROJECTS_PER_ACCOUNT: Readonly<Record<Account, number>> = {
 /**
  * Refuse to run anywhere but this machine.
  *
- * Setup registers accounts and removes Projects, against whatever address the
+ * Setup creates accounts and removes Projects, against whatever address the
  * config points at. Those are writes, and the only place they belong is the
  * developer's own stack — a suite aimed at a shared deployment would be
  * making accounts and deleting other people's Projects there.
@@ -66,7 +66,7 @@ function onlyLocal(baseURL: string): void {
   const { hostname } = new URL(baseURL);
   if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]') return;
   throw new Error(
-    `This suite registers accounts and removes Projects, so it runs against the local stack only. The config points at ${baseURL}.`,
+    `This suite creates accounts and removes Projects, so it runs against the local stack only. The config points at ${baseURL}.`,
   );
 }
 
@@ -116,9 +116,8 @@ async function preflight(browser: Browser, baseURL: string): Promise<void> {
  *
  * Signing in is rate limited to five a minute (`config/rate-limits.yaml`) and
  * the limiter keys on the caller's address, so a developer running the suite
- * while fixing something spends that budget in a couple of minutes — and what
- * the sixth run then reports is an account that can neither sign in nor
- * register, which reads as a broken account rather than as a ceiling. The
+ * while fixing something spends that budget in a couple of minutes, and each
+ * sign-in past it waits out a whole window. The
  * server is the one that knows whether the old session is still its own, so it
  * is the one asked.
  * @param baseURL - Where the app is being served.
@@ -154,18 +153,18 @@ async function reuseSession(
  * what makes a first run and a wiped run the same path.
  *
  * Only a refusal of the credentials themselves means that. Signing in is
- * limited to five a minute and registering to ten an hour
- * (`config/rate-limits.yaml`), so treating a 429 as a dead account spends the
- * scarcer budget to replace an account that was working, and abandons its
- * Projects on the way. A 429 on signing in is waited out; one on registering
- * is an hour's ceiling and is reported. A server that is having trouble says
- * so with a 5xx, which is not an answer about this account either.
+ * limited to five a minute (`config/rate-limits.yaml`), so a 429 is waited
+ * out rather than taken for a dead account, which would abandon a working
+ * account and its Projects. A server that is having trouble says so with a
+ * 5xx, which is not an answer about this account either.
+ *
+ * A new account is created by `seedAccount` and then signed in like any other.
  * @param api - A request context with no cookies yet.
  * @param at - Which worker slot.
  * @param account - Which account of that slot.
  * @returns Nothing; the context carries the session from here on.
  * @throws {Error} When signing in is refused for a reason other than the
- *   credentials, or when registering a fresh pair is refused.
+ *   credentials, or when creating a fresh account fails.
  */
 async function signInOrRegister(
   api: APIRequestContext,
@@ -184,10 +183,41 @@ async function signInOrRegister(
   }
 
   const made = newCredentials(account, at);
-  // With email enabled a 2xx from register only means a code was mailed;
-  // the helper finishes the sign-up so `api` really holds a session.
-  await registerAccount(api, made);
+  seedAccount(made);
   rememberAccount(at, account, made);
+  const signedIn = await whileRateLimited(() => api.post('/api/v1/auth/login', { data: made }));
+  if (!signedIn.ok()) {
+    throw new Error(
+      `Account ${account} of slot ${String(at)} was created but could not sign in (${signedIn.status()}: ${(await signedIn.text()).slice(0, 160)}).`,
+    );
+  }
+}
+
+/** The repository root, where the account script runs from. */
+const REPO_ROOT = resolve(__dirname, '../../../..');
+
+/**
+ * Create an account directly, through the server's own `register`.
+ *
+ * The suites need accounts to run their flows with, not to test signing up,
+ * and `POST /auth/register` is limited to ten an hour per address — the
+ * budget the specs that do test signing up run on. So the account is made by
+ * `scripts/seed-smoke-account.ts`, which calls the function that route calls
+ * when email is off.
+ * @param made - The address and password to create it with.
+ * @throws {Error} When the script fails, with what it printed.
+ */
+function seedAccount(made: { email: string; password: string }): void {
+  try {
+    execFileSync(
+      'pnpm',
+      ['exec', 'tsx', '--tsconfig', 'packages/server/tsconfig.json', 'scripts/seed-smoke-account.ts'],
+      { cwd: REPO_ROOT, input: JSON.stringify(made), encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] },
+    );
+  } catch (err) {
+    const said = (err as { stderr?: string }).stderr?.trim() ?? String(err);
+    throw new Error(`Could not create ${made.email} with scripts/seed-smoke-account.ts: ${said.slice(-400)}`);
+  }
 }
 
 /** A studio as the switcher list reports it. */
@@ -254,7 +284,7 @@ async function personalStudio(
 const PREFLIGHT_MS = 20_000;
 
 /**
- * What preparing one slot's pair may take: signing in or registering each
+ * What preparing one slot's pair may take: signing in or creating each
  * account, its studio, archiving last run's Projects and making three new ones.
  */
 const PER_SLOT_MS = 60_000;
