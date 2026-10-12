@@ -10,12 +10,12 @@
  * hold for all of them at once:
  *
  * - It is measured on the dragged content itself: a text block has no width of
- *   its own and takes the body column's, a media block is its media box, a
+ *   its own and takes that of the group it sits in, a media block is its media box, a
  *   table is its table alone, every column, out of the frame it scrolls in,
  *   a table line is that whole row or column.
  * - It is drawn in the body's styles: it carries the editor element's classes
- *   but the three BlockNote reads as an editor's, and `index.css` gives it the
- *   table rules that hang off those three.
+ *   but the one BlockNote reads as an editor's, and `index.css` gives it the
+ *   table rules that hang off that one.
  * - It is scaled down as a whole when a side is longer than 512px, until the
  *   longest is 512px; content no longer than that keeps its own size. Chrome
  *   draws the image in the root element's own space, leaving out the root's
@@ -50,13 +50,12 @@ export interface PreviewSize {
 const PREVIEW_CLASS = 'doc-drag-preview';
 
 /**
- * The editor element's classes the preview leaves off: BlockNote takes any
+ * The editor element's class the preview leaves off: BlockNote takes any
  * `.bn-editor` in the page for an editor and reads its block group, the drop's
- * routing included (`SideMenu.ts` `findClosestEditorElement`), and its own
- * preview drops these three (`dragging.ts`). What the table needs from them
- * is given to the preview in `index.css`.
+ * routing included (`SideMenu.ts` `findClosestEditorElement`). What the table
+ * needs from it is given to the preview in `index.css`.
  */
-const EDITOR_ONLY_CLASSES = new Set(['bn-root', 'bn-editor', 'ProseMirror']);
+const EDITOR_CLASS = 'bn-editor';
 
 /** A media block's box: the media and nothing around it. */
 const MEDIA_BOX = '[data-media-box]';
@@ -115,7 +114,7 @@ export function buildDragPreview(
   root.className = PREVIEW_CLASS;
   root.style.overflow = 'hidden';
   const layer = page.createElement('div');
-  layer.className = [...view.dom.classList].filter((name) => !EDITOR_ONLY_CLASSES.has(name)).join(' ');
+  layer.className = [...view.dom.classList].filter((name) => name !== EDITOR_CLASS).join(' ');
   layer.style.display = 'inline-block';
   // On the root's line an inline block sits on the baseline, below the line's
   // own ascent, and the root, cut to the scaled size, would clip its foot.
@@ -123,10 +122,14 @@ export function buildDragPreview(
   layer.style.padding = '0';
   layer.style.transformOrigin = '0px 0px';
   layer.append(content);
-  // The first block stands flush against the top, as the document's first block
-  // does (`index.css`): the space every other block carries above it is the
-  // gap to the block before, and the preview has none.
-  layer.querySelector<HTMLElement>(BLOCK_CONTENT)?.style.setProperty('--doc-block-lift', '0px');
+  // The first block stands flush against the top and the last against the
+  // bottom, as the document's do (`index.css`): the space a block carries above
+  // or below it is the gap to its neighbour, and the preview has none past its
+  // ends. A quote's rule reaches over the same two spaces, so it ends at the
+  // words there too.
+  const blocks = layer.querySelectorAll<HTMLElement>(BLOCK_CONTENT);
+  blocks[0]?.style.setProperty('--doc-block-lift', '0px');
+  blocks[blocks.length - 1]?.style.setProperty('--doc-block-drop', '0px');
   root.append(layer);
   page.body.append(root);
   const size = measure(layer);
@@ -264,7 +267,8 @@ function stillOf(copy: HTMLVideoElement, original: HTMLVideoElement | null): HTM
 /**
  * What a row drag's preview shows, from the blocks BlockNote copied: a lone
  * media block with nothing nested under it is its media box; anything else is
- * the blocks, in a block group at the width of the body column.
+ * the blocks, in a block group at the width of the group the first of them
+ * sits in.
  *
  * Each copy carries what it had in the body: the width of the group it sits in,
  * and the group its nested blocks' indent is read in.
@@ -298,6 +302,20 @@ export function blockPreviewContent(view: EditorView, blocks: readonly Element[]
   content.append(...blocks);
   settle(view, content, original);
   return content;
+}
+
+/**
+ * Gives a copied table block the room its table had in the body: the width
+ * the table is drawn at, as the block's content width. A quoted block's rule
+ * stands in its padding (`[data-quoted-run]` in `index.css`), outside the room
+ * the table lays out in, as it does in the body.
+ * @param copy - The copied table block.
+ * @param width - The width the table, or the dragged cell, is drawn at.
+ */
+function giveTableRoom(copy: HTMLElement, width: number): void {
+  if (width <= 0) return;
+  copy.style.width = `${width}px`;
+  copy.style.boxSizing = 'content-box';
 }
 
 /**
@@ -348,8 +366,7 @@ export function tableLinePreviewContent(
   // and its cell's for a column: the preview wraps its content, and a table
   // with no stored widths would lay out again to whatever width it is given.
   const drawn = orientation === 'row' ? block.querySelector('table') : cells[0];
-  const width = drawn?.getBoundingClientRect().width ?? 0;
-  if (width > 0) copy.style.width = `${width}px`;
+  giveTableRoom(copy, drawn?.getBoundingClientRect().width ?? 0);
   settle(view, copy, block);
   return copy;
 }
@@ -406,8 +423,7 @@ export function tableRowsPreviewContent(
     }
     row.replaceChildren(...cells);
   });
-  const width = block.querySelector('table')?.getBoundingClientRect().width ?? 0;
-  if (width > 0) copy.style.width = `${width}px`;
+  giveTableRoom(copy, block.querySelector('table')?.getBoundingClientRect().width ?? 0);
   settle(view, copy, block);
   return copy;
 }
