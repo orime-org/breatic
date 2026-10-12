@@ -21,53 +21,12 @@ import type { ToolResultPart } from "ai";
 
 import { NOTHING_SAID_WHY } from "@breatic/shared";
 import { userTurnForModel } from "@server/agent/user-turn.js";
-import {
-  renderCapabilitiesForModel,
-  renderGenerationModelsForModel,
-  renderImagesForModel,
-  renderProposalForModel,
-  renderSearchForModel,
-  ASK_USER,
-  GET_CANVAS_CAPABILITIES,
-  LIST_GENERATION_MODELS,
-  PROPOSE_CANVAS_ACTION,
-} from "@breatic/domain";
-import type {
-  CanvasCapabilityAnswer,
-  ImageSearchAnswer,
-  ModelsForMode,
-  SearchAnswer,
-} from "@breatic/domain";
-import type { MessageData, MessagePart, ProposalAnswer } from "@breatic/shared";
+import { EARLIER_RESULT_NOTE } from "@server/agent/stored-model-output.js";
+import { ASK_USER } from "@breatic/domain";
+import type { MessageData, MessagePart } from "@breatic/shared";
 
 /** A tool part, once narrowed out of the union. */
 type ToolPart = Extract<MessagePart, { type: "tool" }>;
-
-/**
- * Tools whose answer is one thing to the panel and another to the model.
- *
- * A tool that answers with a structured object says here how that object
- * reads as text. The knowledge belongs to the tool -- what keeps page text
- * from writing markup of the tool's own is the tool's business -- and the
- * count belongs here, because only something walking the whole history knows
- * how many sources a turn has already shown.
- *
- * The SDK declares the same conversion on the tool itself, and both reach the
- * same function. A source carries the number it was given when the search
- * ran, so a replayed history reads exactly as the running turn did.
- */
-const RENDER_FOR_MODEL: Record<string, (output: unknown) => string> = {
-  web_search: (output) => renderSearchForModel(output as SearchAnswer),
-  search_images: (output) => renderImagesForModel(output as ImageSearchAnswer),
-  [GET_CANVAS_CAPABILITIES]: (output) =>
-    renderCapabilitiesForModel(output as CanvasCapabilityAnswer),
-  [LIST_GENERATION_MODELS]: (output) =>
-    renderGenerationModelsForModel(output as ModelsForMode),
-  // A proposal is the one answer the model does not need back: it sent the
-  // thing. Replaying the payload would spend the whole of it again on every
-  // later turn, and it says nothing the model does not already know.
-  [PROPOSE_CANVAS_ACTION]: (output) => renderProposalForModel(output as ProposalAnswer),
-};
 
 /**
  * Whether this use of a tool is one the model is shown.
@@ -95,28 +54,21 @@ export function reachesTheModel(part: ToolPart): boolean {
 }
 
 /**
- * Render what a tool returned in the typed form the SDK requires.
+ * What a tool returned, in the typed form the SDK requires.
  *
  * The field is a discriminated union, not a string — `ai@7.0.68` validates it
  * with `z.discriminatedUnion` before the request goes out, so handing over the
  * stored string is rejected at the door.
  *
- * Which arm depends on what the tool answered with. `web_search` and
- * `search_images` both answer with an object and both are given to the model
- * as a rendering of it -- putting either in front of it as JSON would leave it
- * reading field names where a page's text or a picture's title should be.
- * `understand_media` answers with a string, which goes on as text unchanged.
+ * A call that answered is handed back as the model was given it when the turn
+ * ran, which the turn wrote down beside the answer (`forModel`). The answer
+ * itself is never read here: it is in whatever shape the tool had when the row
+ * was written, and reading it with today's code is what made conversations
+ * fail every turn once a tool's answer gained a field (inner#1481).
  *
- * The `json` arm is what a tool reaches that answers with an object and says
- * nothing about how that object reads. `judge_likelihood` takes it on
- * purpose: its whole answer is a handful of numbers under the model's own
- * keys, so a renderer would cost more to keep true than the JSON costs to
- * carry. `ask_user` also answers with an object and names no rendering;
- * `reachesTheModel` lets it through only when its call was turned away, so it
- * arrives here as an error and never takes this arm. A tool that arrives without adding itself to
- * `RENDER_FOR_MODEL` lands here rather than failing. Putting an object in the `text` arm fails
- * validation instead, and it fails inside the stream -- nothing reaches the screen and nothing says
- * why, so a conversation goes quiet from that call onward.
+ * A row from before that copy was kept is either a string -- the model read
+ * that string -- or a structured answer, which goes back as a note saying the
+ * result is no longer available.
  *
  * Only called for parts that ended. What goes is the model's half of the
  * detail, never the key the panel translates, and a sentence saying as much
@@ -132,26 +84,15 @@ function toolOutput(part: ToolPart): ToolResultPart["output"] {
     // decided by this sentence.
     return { type: "error-text", value: part.failure?.forModel ?? NOTHING_SAID_WHY.forModel };
   }
-  // Ahead of the tool table, and that order is the whole point. `output` gets
-  // here in three shapes and only the first is what a tool just produced: a
-  // row stored before the structured output existed is a string, and so is
-  // the placeholder compaction leaves behind when a result no longer fits the
-  // window. A renderer reading `output.sources` off either of those throws
-  // while the request is being assembled -- so the turn never starts, which is
-  // what every long conversation would meet.
+  const copy = part.forModel;
+  if (copy?.type === "text") return copy;
+  if (copy?.type === "json") {
+    // Written from the SDK's own JSON arm and stored as JSON, so it reads back
+    // as the same JSON value.
+    return { type: "json", value: copy.value as Extract<ToolResultPart["output"], { type: "json" }>["value"] };
+  }
   if (typeof part.output === "string") return { type: "text", value: part.output };
-  const render = RENDER_FOR_MODEL[part.toolName];
-  if (render !== undefined) return { type: "text", value: render(part.output) };
-  // Whatever the tool answered with, as it was stored. It came out of a
-  // `JSON.stringify` on the way into the table, so it is JSON by
-  // construction -- the cast says that rather than re-deriving it.
-  return {
-    type: "json",
-    value: (part.output ?? null) as Extract<
-      ToolResultPart["output"],
-      { type: "json" }
-    >["value"],
-  };
+  return { type: "text", value: EARLIER_RESULT_NOTE };
 }
 
 /**

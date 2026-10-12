@@ -51,10 +51,11 @@ export const DROPPED_TOOL_RESULT = "[earlier tool result omitted from context]";
  * Replace what one use of a tool gave back.
  *
  * Which field that is depends on how the call ended: a call that succeeded is
- * read off `output`, and one that failed is read off `failure.forModel` —
- * `toModelMessages` never looks at `output` for a failed call. Replacing only
- * the first leaves every failed call in the history at full length, and the
- * text of an invalid-arguments failure quotes back everything the model sent.
+ * read off `forModel`, and one that failed is read off `failure.forModel` —
+ * `toModelMessages` reads nothing else. Replacing only the first leaves every
+ * failed call in the history at full length, and the text of an
+ * invalid-arguments failure quotes back everything the model sent. The tool's
+ * own `output` stays as it is: the model never reads it.
  * @param part - The tool part to shorten.
  * @returns The same part with its account of itself replaced.
  */
@@ -64,7 +65,7 @@ function withoutItsResult(part: ToolPart): ToolPart {
       ? { ...part, failure: { ...part.failure, forModel: DROPPED_TOOL_RESULT } }
       : part;
   }
-  return part.output === undefined ? part : { ...part, output: DROPPED_TOOL_RESULT };
+  return { ...part, forModel: { type: "text", value: DROPPED_TOOL_RESULT } };
 }
 
 /**

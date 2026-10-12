@@ -113,18 +113,6 @@ export {
 export type { AskUserPayload } from "@domain/agent/tools/ask-user.js";
 export { STOPPED_BY_USER } from "@domain/agent/tools/failure.js";
 export { SaveRefused, type SavedMaterial, type SaveToStorage } from "@domain/agent/tools/save-image.js";
-// The model's half of what `web_search` answers with. The panel reads the
-// structured object; the request assembler renders it, and only it knows how
-// many sources the turn has already numbered.
-export { renderSearchForModel } from "@domain/agent/tools/web-search.js";
-export { renderImagesForModel } from "@domain/agent/tools/image-search.js";
-export { renderCapabilitiesForModel } from "@domain/agent/tools/canvas-capabilities.js";
-export { renderGenerationModelsForModel } from "@domain/agent/tools/generation-models.js";
-export { renderProposalForModel } from "@domain/agent/tools/propose-canvas-action.js";
-export type { CanvasCapabilityAnswer } from "@domain/agent/tools/canvas-capabilities.js";
-export type { ModelsForMode } from "@domain/model-catalog/mode-catalog.js";
-export type { ImageResult, ImageSearchAnswer } from "@domain/agent/tools/image-search.js";
-export type { SearchAnswer, SearchSource } from "@domain/agent/tools/web-search.js";
 export { buildAgentConfig } from "@domain/agent/agent-config.js";
 export { finalizeTurn } from "@domain/agent/turn-finalizer.js";
 export type { TurnSteps, TurnStepFailure } from "@domain/agent/turn-finalizer.js";
