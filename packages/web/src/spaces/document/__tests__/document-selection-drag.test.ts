@@ -301,8 +301,10 @@ describe('the rows a cell selection preview draws (design §4)', () => {
   it('at the column widths the body draws', () => {
     const editor = open([table([{ cells: ['a1', 'b1'] }, { cells: ['a2', 'b2'] }])]);
     const widths = [400, 240];
-    editor.prosemirrorView!.dom.querySelectorAll('col').forEach((col, index) => {
-      col.getBoundingClientRect = () => ({ width: widths[index]!, height: 60 }) as DOMRect;
+    editor.prosemirrorView!.dom.querySelectorAll('tr').forEach((tr) => {
+      tr.querySelectorAll<HTMLElement>('td, th').forEach((cell, index) => {
+        cell.getBoundingClientRect = () => ({ width: widths[index]!, height: 30 }) as DOMRect;
+      });
     });
     selectCells(editor, 'a2', 'b2');
     const content = selectionPreviewContent(editor.prosemirrorView!)!;

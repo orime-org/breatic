@@ -398,9 +398,15 @@ describe('tableLinePreviewContent', () => {
   it('draws a line at the column widths the body draws, the table at their sum', () => {
     const editor = open([{ type: 'table', content: { type: 'tableContent', rows } }]);
     const view = editor.prosemirrorView!;
+    // Measured on the cells: WebKit gives a `col` no box (its rect is all 0).
     const widths = [393, 120, 140];
-    view.dom.querySelectorAll('col').forEach((col, index) => {
-      col.getBoundingClientRect = () => ({ width: widths[index]!, height: 90 }) as DOMRect;
+    view.dom.querySelectorAll('col').forEach((col) => {
+      col.getBoundingClientRect = () => ({ width: 0, height: 0 }) as DOMRect;
+    });
+    view.dom.querySelectorAll('tr').forEach((tr) => {
+      tr.querySelectorAll<HTMLElement>('td, th').forEach((cell, index) => {
+        cell.getBoundingClientRect = () => ({ width: widths[index]!, height: 30 }) as DOMRect;
+      });
     });
     const row = tableLinePreviewContent(view, cellOf(editor, 'b2'), 'row')!;
     const column = tableLinePreviewContent(view, cellOf(editor, 'b2'), 'column')!;
