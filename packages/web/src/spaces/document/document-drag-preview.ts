@@ -201,20 +201,77 @@ function columnsScrolledOff(table: Element | null | undefined): Set<number> {
   return hidden;
 }
 
+/** The columns a cell spans: its first, and the one after its last. */
+type Span = readonly [number, number];
+
 /**
- * Leaves the given columns out of a copied table, which then starts at the
- * first column in view, unscrolled. Chromium takes a drag image as the box of
- * the element handed over joined with every descendant that has a layer of
- * its own, whether clipped or not, and anchors the pointer at that box's top
- * left (`data_transfer.cc` `DraggedNodeImageBuilder`, `layout_object.cc`
- * `AddAbsoluteRectForLayer`): cells scrolled off to the left would put the
- * preview that far from the pointer.
- * @param table - The copied table.
- * @param hidden - The columns to leave out.
+ * The columns each cell of a table spans, read off its rows the way a table
+ * map is: a cell merged down from a row above holds its columns in the rows
+ * below.
+ * @param table - The table.
+ * @returns Each cell's columns.
  */
-function collapseColumns(table: Element | null | undefined, hidden: ReadonlySet<number>): void {
-  table?.querySelectorAll<HTMLElement>('col').forEach((col, index) => {
-    if (hidden.has(index)) col.style.setProperty('visibility', 'collapse', 'important');
+function spansOf(table: Element): Map<Element, Span> {
+  const spans = new Map<Element, Span>();
+  const heldUntil: number[] = [];
+  [...table.querySelectorAll('tr')].forEach((row, at) => {
+    let column = 0;
+    row.querySelectorAll<HTMLTableCellElement>(':scope > td, :scope > th').forEach((cell) => {
+      while ((heldUntil[column] ?? 0) > at) column += 1;
+      spans.set(cell, [column, column + cell.colSpan]);
+      for (let held = column; held < column + cell.colSpan; held += 1) heldUntil[held] = at + cell.rowSpan;
+      column += cell.colSpan;
+    });
+  });
+  return spans;
+}
+
+/**
+ * The columns each cell of a copied table spans, from the table it was copied
+ * from. Run while the copy still has its original's cells.
+ * @param original - The table in the body.
+ * @param copy - Its copy.
+ * @returns Each copied cell's columns.
+ */
+function copiedSpans(original: Element | null | undefined, copy: Element | null): Map<Element, Span> {
+  if (original === null || original === undefined || copy === null) return new Map();
+  const from = spansOf(original);
+  const originals = [...from.keys()];
+  const spans = new Map<Element, Span>();
+  copy.querySelectorAll('td, th').forEach((cell, index) => {
+    const span = from.get(originals[index]!);
+    if (span !== undefined) spans.set(cell, span);
+  });
+  return spans;
+}
+
+/**
+ * Takes the given columns out of a copied table: their `col`s and their
+ * cells, and from a cell merged across one of them, that column. The table
+ * then starts at the first column in view, unscrolled. Chromium takes a drag
+ * image as the box of the element handed over joined with every descendant
+ * that has a layer of its own, whether clipped or not, and anchors the
+ * pointer at that box's top left (`data_transfer.cc`
+ * `DraggedNodeImageBuilder`, `layout_object.cc` `AddAbsoluteRectForLayer`):
+ * cells scrolled off to the left would put the preview that far from the
+ * pointer. Taken out rather than hidden by a style: WebKit draws a column set
+ * to `visibility: collapse`.
+ * @param table - The copied table.
+ * @param hidden - The columns to take out.
+ * @param spans - Each copied cell's columns.
+ */
+function dropColumns(table: Element | null | undefined, hidden: ReadonlySet<number>, spans: ReadonlyMap<Element, Span>): void {
+  if (table === null || table === undefined || hidden.size === 0) return;
+  table.querySelectorAll('col').forEach((col, index) => {
+    if (hidden.has(index)) col.remove();
+  });
+  table.querySelectorAll<HTMLTableCellElement>('td, th').forEach((cell) => {
+    const span = spans.get(cell);
+    if (span === undefined) return;
+    let kept = 0;
+    for (let column = span[0]; column < span[1]; column += 1) if (!hidden.has(column)) kept += 1;
+    if (kept === 0) cell.remove();
+    else if (kept !== cell.colSpan) cell.colSpan = kept;
   });
 }
 
@@ -342,7 +399,9 @@ export function blockPreviewContent(view: EditorView, blocks: readonly Element[]
   }
   blocks.forEach((block) => {
     const tables = [...(originalRow(view, block)?.querySelectorAll('table') ?? [])];
-    block.querySelectorAll('table').forEach((table, index) => collapseColumns(table, columnsScrolledOff(tables[index])));
+    block.querySelectorAll('table').forEach((table, index) => {
+      dropColumns(table, columnsScrolledOff(tables[index]), copiedSpans(tables[index], table));
+    });
   });
   const original = blocks[0] === undefined ? null : originalRow(view, blocks[0]);
   const content = page.createElement('div');
@@ -386,16 +445,13 @@ function columnWidths(view: EditorView, at: NonNullable<ReturnType<typeof cellAt
  * own rule for a table's width is (`.bn-editor [data-content-type=table] table`).
  * @param copy - The copied table block.
  * @param widths - The kept columns' widths in the body, in order.
- * @param hidden - The columns left out, which take no width.
  */
-function holdColumns(copy: Element, widths: readonly number[], hidden: ReadonlySet<number> = new Set()): void {
+function holdColumns(copy: Element, widths: readonly number[]): void {
   const cols = [...copy.querySelectorAll<HTMLElement>('col')];
   if (widths.some((width) => width <= 0) || cols.length !== widths.length) return;
   cols.forEach((col, index) => col.style.setProperty('width', `${widths[index]}px`, 'important'));
   const table = copy.querySelector<HTMLElement>('table');
-  const width = widths.reduce((sum, each, index) => (hidden.has(index) ? sum : sum + each), 0);
-  table?.style.setProperty('width', `${width}px`, 'important');
-  collapseColumns(table, hidden);
+  table?.style.setProperty('width', `${widths.reduce((sum, width) => sum + width, 0)}px`, 'important');
   table?.style.setProperty('table-layout', 'fixed', 'important');
 }
 
@@ -425,6 +481,7 @@ export function tableLinePreviewContent(
   // The copy has the original's structure, so a cell is at its own place.
   const originals = [...block.querySelectorAll('td, th')];
   const copies = [...copy.querySelectorAll('td, th')];
+  const spans = copiedSpans(block.querySelector('table'), copy.querySelector('table'));
   const kept = new Set(cells.map((cell) => copies[originals.indexOf(cell)]));
   copy.querySelectorAll('td, th').forEach((cell) => {
     if (!kept.has(cell)) cell.remove();
@@ -445,8 +502,13 @@ export function tableLinePreviewContent(
       table.style.minWidth = '0';
     });
   }
-  if (orientation === 'column') holdColumns(copy, [widths[at.left] ?? 0]);
-  else holdColumns(copy, widths, columnsScrolledOff(block.querySelector('table')));
+  if (orientation === 'column') {
+    holdColumns(copy, [widths[at.left] ?? 0]);
+  } else {
+    const hidden = columnsScrolledOff(block.querySelector('table'));
+    dropColumns(copy.querySelector('table'), hidden, spans);
+    holdColumns(copy, widths.filter((_, column) => !hidden.has(column)));
+  }
   standsFor(copy, block);
   settle(view, copy, block);
   return copy;
@@ -483,6 +545,7 @@ export function tableRowsPreviewContent(
   const copies = [...copy.querySelectorAll('td, th')];
   const rows = [...copy.querySelectorAll('tr')];
   const seen = new Set<number>();
+  const spans = new Map<Element, Span>();
   rows.forEach((row, index) => {
     if (index < top || index >= bottom) {
       row.remove();
@@ -500,11 +563,14 @@ export function tableRowsPreviewContent(
       const span = Math.min(rect.bottom, bottom) - Math.max(rect.top, top);
       if (span > 1) cell.setAttribute('rowspan', String(span));
       else cell.removeAttribute('rowspan');
+      spans.set(cell, [rect.left, rect.right]);
       cells.push(cell);
     }
     row.replaceChildren(...cells);
   });
-  holdColumns(copy, columnWidths(view, at), columnsScrolledOff(block.querySelector('table')));
+  const hidden = columnsScrolledOff(block.querySelector('table'));
+  dropColumns(copy.querySelector('table'), hidden, spans);
+  holdColumns(copy, columnWidths(view, at).filter((_, column) => !hidden.has(column)));
   standsFor(copy, block);
   settle(view, copy, block);
   return copy;
