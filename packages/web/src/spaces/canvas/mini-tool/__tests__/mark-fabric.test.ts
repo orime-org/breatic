@@ -1,0 +1,77 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+
+/**
+ * Markup objects as Fabric draws them, and read back after the reader moves or
+ * resizes one (inner#1303 §6.2).
+ */
+
+import { describe, it, expect } from 'vitest';
+
+import { fromFabric, markStrokePx, toFabric } from '@web/spaces/canvas/mini-tool/mark-fabric';
+import type { MarkObject } from '@web/stores/mark-draft';
+
+const BOX = { width: 400, height: 300 };
+
+const OBJECTS: MarkObject[] = [
+  { id: 'r', kind: 'rect', color: '#FF3B30', size: 5, x: 0.1, y: 0.2, w: 0.3, h: 0.25 },
+  { id: 'e', kind: 'ellipse', color: '#34C759', size: 8, x: 0.4, y: 0.1, w: 0.2, h: 0.3 },
+  { id: 'l', kind: 'line', color: '#0A84FF', size: 3, x1: 0.1, y1: 0.9, x2: 0.7, y2: 0.6 },
+  { id: 'a', kind: 'arrow', color: '#FFCC00', size: 4, x1: 0.2, y1: 0.2, x2: 0.8, y2: 0.5 },
+  { id: 'p', kind: 'pen', color: '#000000', size: 2, points: [[0.1, 0.1], [0.2, 0.15], [0.3, 0.1]] },
+  { id: 't', kind: 'text', color: '#FFFFFF', size: 6, x: 0.5, y: 0.5, text: 'eye wider' },
+];
+
+/**
+ * Every number in an object, rounded, so a round trip compares without float noise.
+ * @param object - The object.
+ * @returns The same object with rounded numbers.
+ */
+function rounded(object: MarkObject): unknown {
+  return JSON.parse(JSON.stringify(object), (_key, value: unknown) =>
+    typeof value === 'number' ? Math.round(value * 1e6) / 1e6 : value,
+  );
+}
+
+describe('toFabric and fromFabric', () => {
+  it.each(OBJECTS.map((object) => [object.kind, object] as const))('round-trips a %s', (_kind, object) => {
+    expect(rounded(fromFabric(toFabric(object, BOX), BOX))).toEqual(rounded(object));
+  });
+
+  it('reads a moved rectangle back at its new place', () => {
+    const shape = toFabric(OBJECTS[0]!, BOX);
+    shape.set({ left: (shape.left ?? 0) + 40 });
+    expect(fromFabric(shape, BOX)).toMatchObject({ x: 0.2 });
+  });
+
+  it('folds a stretch into the rectangle’s size and keeps its stroke', () => {
+    const shape = toFabric(OBJECTS[0]!, BOX);
+    shape.set({ scaleX: 2 });
+    expect(fromFabric(shape, BOX)).toMatchObject({ w: 0.6, h: 0.25, size: 5 });
+    expect(shape.strokeUniform).toBe(true);
+  });
+
+  it('moves both ends of a line', () => {
+    const shape = toFabric(OBJECTS[2]!, BOX);
+    shape.set({ left: (shape.left ?? 0) + 40, top: (shape.top ?? 0) - 30 });
+    expect(rounded(fromFabric(shape, BOX))).toMatchObject({ x1: 0.2, y1: 0.8, x2: 0.8, y2: 0.5 });
+  });
+
+  it('folds a text’s scale into its size', () => {
+    const text = toFabric(OBJECTS[5]!, BOX);
+    text.set({ scaleX: 1.5, scaleY: 1.5 });
+    expect(fromFabric(text, BOX)).toMatchObject({ size: 9 });
+  });
+
+  it('turns off rotation and skew', () => {
+    const shape = toFabric(OBJECTS[0]!, BOX);
+    expect(shape.lockSkewingX && shape.lockSkewingY && shape.lockScalingFlip).toBe(true);
+    expect(shape.isControlVisible('mtr')).toBe(false);
+  });
+});
+
+describe('markStrokePx', () => {
+  it('draws a size as a share of the shorter side, so preview and export match', () => {
+    expect(markStrokePx(8, { width: 400, height: 300 }) * (3000 / 300)).toBeCloseTo(markStrokePx(8, { width: 4000, height: 3000 }), 6);
+  });
+});
