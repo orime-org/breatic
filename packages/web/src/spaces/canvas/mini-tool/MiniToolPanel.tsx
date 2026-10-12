@@ -5,6 +5,7 @@ import { ArrowUp, FlipHorizontal2, FlipVertical2, Film, ImageIcon, Loader2, Musi
 import * as React from 'react';
 
 import {
+  ADJUST_RANGES,
   defaultAdjustValue,
   parseAdjustValue,
   type AdjustValue,
@@ -507,27 +508,42 @@ function LocalParamControl({ param, spec, params, onParams, source }: LocalParam
     case 'adjust': {
       const value = parseAdjustValue(params[param.key]);
       return (
-        // The height cuts a row in half, which says the list goes on below.
-        <ScrollArea viewportClassName='max-h-72 pr-2'>
-          <div className='flex flex-col gap-2'>
-            {ADJUST_FIELDS.map((field) => (
-              <ParamSliderRow
-                key={field}
-                name={field}
-                label={t(`canvas.miniTool.adjust.${field}`)}
-                min={-100}
-                max={100}
-                step={1}
-                origin={0}
-                value={value[field]}
-                format={String}
-                onChange={(partial) => onParams({ [param.key]: { ...value, ...partial } })}
-                testIdPrefix='mini-tool-adjust'
-                className={undefined}
-              />
-            ))}
+        <div className='flex flex-col gap-1.5'>
+          <div className='flex justify-end'>
+            <Button
+              type='button'
+              variant='outline'
+              size='compact'
+              data-testid='mini-tool-adjust-reset'
+              onClick={() => onParams({ [param.key]: defaultAdjustValue })}
+              className='gap-1 text-2xs'
+            >
+              <RotateCcw className='h-3 w-3' aria-hidden='true' />
+              {t('canvas.miniTool.panel.reset')}
+            </Button>
           </div>
-        </ScrollArea>
+          {/* The height cuts a row in half, which says the list goes on below. */}
+          <ScrollArea viewportClassName='max-h-72 pr-2'>
+            <div className='flex flex-col gap-2'>
+              {ADJUST_FIELDS.map((field) => (
+                <ParamSliderRow
+                  key={field}
+                  name={field}
+                  label={t(`canvas.miniTool.adjust.${field}`)}
+                  min={ADJUST_RANGES[field].min}
+                  max={ADJUST_RANGES[field].max}
+                  step={1}
+                  origin={0}
+                  value={value[field]}
+                  format={String}
+                  onChange={(partial) => onParams({ [param.key]: { ...value, ...partial } })}
+                  testIdPrefix='mini-tool-adjust'
+                  className={undefined}
+                />
+              ))}
+            </div>
+          </ScrollArea>
+        </div>
       );
     }
     case 'orient': {

@@ -7,6 +7,8 @@
  */
 
 import {
+  isAdjustValueNeutral,
+  parseAdjustValue,
   type ModelEntry,
 } from '@breatic/shared';
 import {
@@ -59,6 +61,7 @@ export type MiniToolRefusal =
   | 'slotMissing'
   | 'slotTooLong'
   | 'drawingEmpty'
+  | 'adjustNeutral'
   | 'singleTile'
   | 'promptMissing'
   | 'exporting'
@@ -68,6 +71,7 @@ export type MiniToolRefusal =
 export const BLOCKING_REFUSALS: ReadonlySet<MiniToolRefusal> = new Set<MiniToolRefusal>([
   'slotMissing',
   'drawingEmpty',
+  'adjustNeutral',
   'singleTile',
   'promptMissing',
   'exporting',
@@ -236,6 +240,9 @@ export function miniToolRefusal(input: {
   }
   if (slotLengthCap(spec, entry, slots) !== null) return 'slotTooLong';
   if (spec.drawing !== undefined && input.inked !== true) return 'drawingEmpty';
+  // Every slider at zero changes nothing.
+  const adjust = isModelTool(spec) ? undefined : spec.params.find((param) => param.kind === 'adjust');
+  if (adjust !== undefined && isAdjustValueNeutral(parseAdjustValue(params[adjust.key]))) return 'adjustNeutral';
   // A count multiplied out of params that comes to one leaves nothing cut.
   if (spec.outputCount?.kind === 'product' && outputsOf(spec, params).length <= 1) return 'singleTile';
   if (promptRequired(spec, entry) && prompt.trim() === '') return 'promptMissing';

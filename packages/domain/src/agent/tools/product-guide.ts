@@ -792,7 +792,9 @@ export function renderProductGuide(): string {
       "required one must be filled before the arrow works; a small X on a filled box empties it), and for some " +
       "tools a text box. A crop shows a box with " +
       "eight handles on the node and takes a ratio and a size in pixels in the panel; rotating turns and flips the " +
-      "picture on the node as you press. The tools you draw with take the drawing straight on the node: drag " +
+      "picture on the node as you press. Adjusting gives a slider for each setting, starting at zero; " +
+      `${quoted(t("canvas.miniTool.panel.reset"))} above them puts every one back to zero, and the arrow stays ` +
+      "greyed out while they are all at zero. The tools you draw with take the drawing straight on the node: drag " +
       `with the left button to draw. Their panel starts with a row of icons whose names show on hover: ` +
       `${quoted(t("canvas.miniTool.draw.brush"))}, ${quoted(t("canvas.miniTool.draw.rect"))}, ` +
       `${quoted(t("canvas.miniTool.draw.ellipse"))} and ${quoted(t("canvas.miniTool.draw.eraser"))}, then ` +
