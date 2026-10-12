@@ -119,11 +119,19 @@ export function writeBodyStyles(view: EditorView, content: HTMLElement): HTMLSty
     // What the copy already says of itself is the preview's own: a width held
     // to the body's, the space taken off its ends, what was copied with it.
     // It stands as it is; a computed value can differ from it (WebKit computes
-    // a `col` at 0px).
-    const set = new Set(Array.from({ length: element.style.length }, (_, at) => element.style.item(at)));
-    set.forEach((property) => element.style.setProperty(property, element.style.getPropertyValue(property), 'important'));
+    // a `col` at 0px). It is written after the computed values, as a
+    // declaration block takes the later of two that set one value: a computed
+    // style also names it under another name (`inline-size` for `width`).
+    const mine = Array.from({ length: element.style.length }, (_, at) => element.style.item(at)).map(
+      (property): [string, string] => [property, element.style.getPropertyValue(property)],
+    );
+    const set = new Set(mine.map(([property]) => property));
     own[index]!.forEach(([property, value]) => {
       if (!set.has(property)) element.style.setProperty(property, value, 'important');
+    });
+    mine.forEach(([property, value]) => {
+      element.style.removeProperty(property);
+      element.style.setProperty(property, value, 'important');
     });
   });
   // Two previews can be on the page at once, the second built before the
