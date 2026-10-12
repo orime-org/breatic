@@ -12,28 +12,14 @@ import {
   catalogEntryOf,
   miniToolsFor,
   modelOf,
+  mostOutputsOf,
   outputsOf,
   servedMiniToolsFor,
   toolFilledParams,
   toolParamKeys,
 } from "@shared/mini-tools/index.js";
-import type { MiniToolSpec } from "@shared/mini-tools/index.js";
 import { MINI_TOOL_JOB_MAX_OUTPUTS } from "@shared/upload/mini-tool-job.js";
 
-/**
- * The most results a tool can make: every number param at its max, every list full.
- * @param tool - The tool.
- * @returns The result count at those params.
- */
-function mostOutputsOf(tool: MiniToolSpec): number {
-  const params: Record<string, unknown> = {};
-  for (const param of tool.params) {
-    if (!("kind" in param)) continue;
-    if (param.kind === "number") params[param.key] = param.max;
-    if (param.kind === "list") params[param.key] = Array.from({ length: param.maxItems }, () => param.item.min);
-  }
-  return outputsOf(tool, params).length;
-}
 
 const BATCH_ONE = {
   // The confirmed demo's order: the free and usage-billed edits first, the model tools after.

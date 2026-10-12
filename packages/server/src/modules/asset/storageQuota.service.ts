@@ -53,7 +53,7 @@ import { sendBestEffortMail } from "@server/utils/send-best-effort-mail.js";
 export type StorageWritePurpose = "upload" | "generate";
 
 /** HTTP 507 Insufficient Storage (RFC 4918 §11.5). */
-const INSUFFICIENT_STORAGE = 507;
+export const INSUFFICIENT_STORAGE = 507;
 
 /**
  * Let a write proceed, or refuse it because the owning account's storage is

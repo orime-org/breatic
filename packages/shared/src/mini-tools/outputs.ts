@@ -41,6 +41,22 @@ export function outputsOf(spec: MiniToolSpec, params: Readonly<Record<string, un
 }
 
 /**
+ * The most results the tool can make: every number param at its max, every
+ * list full. Bounds what one run may ask for at once.
+ * @param spec - The tool.
+ * @returns The result count at those params.
+ */
+export function mostOutputsOf(spec: MiniToolSpec): number {
+  const params: Record<string, unknown> = {};
+  for (const param of spec.params) {
+    if (!("kind" in param)) continue;
+    if (param.kind === "number") params[param.key] = param.max;
+    if (param.kind === "list") params[param.key] = Array.from({ length: param.maxItems }, () => param.item.min);
+  }
+  return outputsOf(spec, params).length;
+}
+
+/**
  * The result kind and name prefix, for a reader that needs no count.
  * @param spec - The tool.
  * @returns The first fixed output, or the variable tool's template.

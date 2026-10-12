@@ -12,11 +12,12 @@
  * refusal straight to the reader.
  */
 
-import { env, getNodeTaskConfig, getStorageConfig, logger } from "@breatic/core";
+import { AppError, env, getNodeTaskConfig, getStorageConfig, logger } from "@breatic/core";
 import { assetService, safeExt, uploadDeadlineByKey, uploadTicketService } from "@breatic/domain";
 import type { NodeTaskAction } from "@breatic/shared";
 
 import * as assetUploadService from "@server/modules/asset/assetUpload.service.js";
+import { INSUFFICIENT_STORAGE, assertStudioStorageAllowance } from "@server/modules/asset/storageQuota.service.js";
 import { openUpload } from "@server/modules/asset/upload-opening.js";
 
 /** One file the browser wants to upload. */
@@ -203,4 +204,52 @@ export async function issueUploadTicket(
     totalParts: target.totalParts,
     taskId,
   };
+}
+
+/** What every file of one batch shares: one browser tool's export, onto one Space. */
+export interface TicketBatchContext {
+  spaceId: string;
+  toolName: string;
+}
+
+/**
+ * Answer every file of one browser tool's export, in order. Files the studio
+ * already holds settle as hits whatever its storage; the storage allowance is
+ * asked once, at the first file that needs room, and refusing it refuses every
+ * file that needs room.
+ * @param scope - Where they go and who asked; `projectId` is required.
+ * @param context - What they share.
+ * @param items - The files, each on its own node.
+ * @returns One outcome per file, in the order given.
+ * @throws {AppError} Any storage refusal other than being full, and the errors {@link issueUploadTicket} throws.
+ */
+export async function issueUploadTicketBatch(
+  scope: TicketScope & { projectId: string },
+  context: TicketBatchContext,
+  items: readonly TicketItem[],
+): Promise<TicketOutcome[]> {
+  let admitted: Promise<boolean> | undefined;
+  /**
+   * The studio's storage answer, asked once for the whole batch.
+   * @returns Whether a file that needs room may have it.
+   */
+  const admit = (): Promise<boolean> =>
+    (admitted ??= assertStudioStorageAllowance(scope.studioId, "upload").then(
+      () => true,
+      (err: unknown) => {
+        if (err instanceof AppError && err.statusCode === INSUFFICIENT_STORAGE) return false;
+        throw err;
+      },
+    ));
+  const outcomes: TicketOutcome[] = [];
+  for (const item of items) {
+    outcomes.push(
+      await issueUploadTicket(
+        scope,
+        { ...item, space_id: context.spaceId, source: "mini_tool", tool_name: context.toolName },
+        admit,
+      ),
+    );
+  }
+  return outcomes;
 }

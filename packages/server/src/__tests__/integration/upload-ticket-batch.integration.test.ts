@@ -256,12 +256,12 @@ describe("the batch form of the upload ticket", () => {
     ]);
   });
 
-  it("refuses a caller below editor on the project", async () => {
+  it("answers a caller who is not on the project as if it did not exist", async () => {
     const a = await account();
     const b = await account();
 
     const res = await batch(b.cookie, gridBody(a.projectId, [tile()]));
 
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(404);
   });
 });

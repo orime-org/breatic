@@ -26,7 +26,9 @@ import {
   t,
 } from "@breatic/shared";
 import {
+  MINI_TOOLS,
   miniToolById,
+  mostOutputsOf,
 } from "@breatic/shared/mini-tools";
 import {
   assetService,
@@ -37,7 +39,11 @@ import {
   UPLOAD_FINISH_QUEUE,
   type UploadFinishJob,
 } from "@breatic/domain";
-import { issueUploadTicket } from "@server/modules/asset/upload-ticket.service.js";
+import {
+  issueUploadTicket,
+  issueUploadTicketBatch,
+  type TicketOutcome,
+} from "@server/modules/asset/upload-ticket.service.js";
 import { noteIngestSideEffects } from "@server/modules/asset/ingest-side-effects.js";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
@@ -240,6 +246,70 @@ const uploadTicketSchema = z
     }
   });
 
+/** The browser tools whose results land in a group: the only ones that upload many files at once. */
+const GROUPED_TOOLS = MINI_TOOLS.filter((spec) => spec.run.kind === "browser" && spec.groupOutputs === true);
+
+/**
+ * One browser tool's export of many files, each onto its own node of one
+ * Space (inner#1303 §7). A cover or an avatar is one file and uses the single
+ * form, so neither `studio_id` nor `purpose` is taken here.
+ */
+const uploadTicketBatchSchema = z
+  .strictObject({
+    project_id: z.string().uuid(),
+    space_id: z.string().uuid(),
+    source: z.literal("mini_tool"),
+    tool_name: z.string().refine((id) => GROUPED_TOOLS.some((spec) => spec.id === id)),
+    items: z
+      .array(
+        z.strictObject({
+          filename: uploadTicketFields.shape.filename,
+          content_type: uploadTicketFields.shape.content_type,
+          size: uploadTicketFields.shape.size,
+          client_hash: uploadTicketFields.shape.client_hash,
+          node_id: z.string().uuid(),
+        }),
+      )
+      .min(1)
+      .max(Math.max(...GROUPED_TOOLS.map(mostOutputsOf))),
+  })
+  .superRefine((body, ctx) => {
+    if (new Set(body.items.map((item) => item.node_id)).size !== body.items.length) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["items"], message: "each file lands on its own node" });
+    }
+  });
+
+/**
+ * The wire shape of a ticket or a dedup hit.
+ * @param outcome - The answer, other than a refusal.
+ * @returns What the browser reads.
+ */
+function ticketBody(outcome: Exclude<TicketOutcome, { kind: "refused" }>): Record<string, unknown> {
+  return outcome.kind === "alreadyExists"
+    ? {
+        alreadyExists: true,
+        // The row a cover or an avatar is then pointed at.
+        assetId: outcome.assetId,
+        fileUrl: outcome.fileUrl,
+        kind: outcome.assetKind,
+        // The picture's size, read off it when it was stored (inner#1367).
+        width: outcome.width,
+        height: outcome.height,
+      }
+    : {
+        ticket: outcome.ticket,
+        storageKey: outcome.storageKey,
+        uploadUrl: outcome.uploadUrl,
+        kind: outcome.assetKind,
+        partSize: outcome.partSize,
+        totalParts: outcome.totalParts,
+        // Which task row this upload is. The browser keys a failed upload's
+        // File by it, so two uploads onto one node each keep their own (#186
+        // §3.7.2). Absent on an upload with no node.
+        taskId: outcome.taskId,
+      };
+}
+
 /**
  * `POST /assets/upload-ticket` — the permission slip the browser carries to
  * the ingest Worker (design §4.1).
@@ -255,10 +325,28 @@ assets.post(
   "/upload-ticket",
   requireAuth,
   rateLimitFor("upload-ticket", "user"),
-  validate("json", uploadTicketSchema),
+  validate("json", z.union([uploadTicketSchema, uploadTicketBatchSchema])),
   async (c) => {
     const user = c.get("user");
     const body = c.req.valid("json");
+
+    // A batch answers every file in order, each a ticket, a hit or a refusal.
+    if ("items" in body) {
+      await projectService.assertAccess(body.project_id, user.id, "editor");
+      const studioId = await assetService.resolveOwnerStudioId(body.project_id);
+      const outcomes = await issueUploadTicketBatch(
+        { userId: user.id, studioId, projectId: body.project_id },
+        { spaceId: body.space_id, toolName: body.tool_name },
+        body.items,
+      );
+      return c.json({
+        data: {
+          items: outcomes.map((outcome) =>
+            outcome.kind === "refused" ? { refused: { reason: outcome.reason } } : ticketBody(outcome),
+          ),
+        },
+      });
+    }
 
     // Upload is a write — edit-or-above can ask for a ticket. A project's
     // cover follows the cover rule (the studio admin may set it without being
@@ -286,37 +374,7 @@ assets.post(
     if (outcome.kind === "refused") {
       return c.json({ error: { message: t("server.error.upload_too_large") } }, 413);
     }
-    if (outcome.kind === "alreadyExists") {
-      return c.json({
-        data: {
-          alreadyExists: true,
-          // The row a cover or an avatar is then pointed at.
-          assetId: outcome.assetId,
-          fileUrl: outcome.fileUrl,
-          kind: outcome.assetKind,
-          // The picture's size, read off it when it was stored (inner#1367).
-          width: outcome.width,
-          height: outcome.height,
-        },
-      });
-    }
-    return c.json(
-      {
-        data: {
-          ticket: outcome.ticket,
-          storageKey: outcome.storageKey,
-          uploadUrl: outcome.uploadUrl,
-          kind: outcome.assetKind,
-          partSize: outcome.partSize,
-          totalParts: outcome.totalParts,
-          // Which task row this upload is. The browser keys a failed upload's
-          // File by it, so two uploads onto one node each keep their own (#186
-          // §3.7.2). Absent on an upload with no node.
-          taskId: outcome.taskId,
-        },
-      },
-      201,
-    );
+    return c.json({ data: ticketBody(outcome) }, outcome.kind === "alreadyExists" ? 200 : 201);
   },
 );
 
