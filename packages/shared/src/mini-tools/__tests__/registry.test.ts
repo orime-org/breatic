@@ -46,6 +46,7 @@ const BATCH_ONE = {
     "image.inpaint",
     "image.erase",
     "image.sketch",
+    "image.grid",
   ],
   video: [
     "video.cut",
@@ -100,6 +101,18 @@ describe("MINI_TOOLS registry", () => {
         }
       }
     }
+  });
+
+  it("cuts a grid into rows times columns of tiles inside a group", () => {
+    const grid = miniToolById("image.grid");
+    expect(grid?.run.kind).toBe("browser");
+    expect(grid?.groupOutputs).toBe(true);
+    expect(grid?.outputLayout).toBe("grid");
+    expect(grid && outputsOf(grid, {}).length).toBe(9);
+    expect(grid && outputsOf(grid, { rows: 2, cols: 8 }).map((output) => output.namePrefix)).toEqual(
+      Array.from({ length: 16 }, () => "GRID"),
+    );
+    expect(grid && mostOutputsOf(grid)).toBe(64);
   });
 
   it("splits vocals and instrumental into two outputs", () => {
