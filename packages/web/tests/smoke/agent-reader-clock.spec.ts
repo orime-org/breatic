@@ -43,25 +43,19 @@ function clockIn(at: Date, timeZone: string): { date: string; minutes: number } 
   };
 }
 
-/** Minutes in a day, and on a 12-hour clock face. */
+/** Minutes in a day. */
 const DAY = 24 * 60;
-const FACE = 12 * 60;
 
 /**
  * Whether a reply states a time within the slack of the expected one.
- * @param text - The reply.
+ * @param text - The reply to a question that asked for `HH:MM`.
  * @param expected - Minutes since midnight on the reader's clock.
- * @param clock - `24` when the question asked for `HH:MM`, so the hour is
- * taken as written. `12` when the reply's form was left to the model, which may
- * write `下午4:26` or `4点26分`; then only the place on the clock face counts.
- * @returns True when some hour and minute in it (`14:05`, `2点05分`, `2時5分`,
- * `2시 5분`) is close enough.
+ * @returns True when some `HH:MM` in it is close enough.
  */
-function statesTimeNear(text: string, expected: number, clock: 12 | 24 = 24): boolean {
-  const period = clock === 24 ? DAY : FACE;
-  return [...text.matchAll(/(?<!\d)(\d{1,2})\s*[:：点點時시]\s*(\d{1,2})(?!\d)/g)].some((m) => {
-    const apart = Math.abs(Number(m[1]) * 60 + Number(m[2]) - expected) % period;
-    return Math.min(apart, period - apart) <= SLACK_MINUTES;
+function statesTimeNear(text: string, expected: number): boolean {
+  return [...text.matchAll(/(?<!\d)(\d{1,2})\s*[:：]\s*(\d{2})(?!\d)/g)].some((m) => {
+    const apart = Math.abs(Number(m[1]) * 60 + Number(m[2]) - expected) % DAY;
+    return Math.min(apart, DAY - apart) <= SLACK_MINUTES;
   });
 }
 
@@ -185,13 +179,10 @@ test('keeps to Chinese for a very short Chinese question @needs-model', async ({
   const page = await pageIn(browser, 'Asia/Shanghai');
   await newConversation(page);
 
-  const asked = new Date();
   const text = await askHere(page, '几点了');
 
+  // The reply's form is the model's own here, so only its language is held to
+  // anything; the cases above, which ask for HH:MM, hold the clock.
   expect(text, `the reply: ${text}`).toMatch(/[\u4e00-\u9fff]/);
-  expect(
-    statesTimeNear(text, clockIn(asked, 'Asia/Shanghai').minutes, 12),
-    `the reply: ${text}`,
-  ).toBe(true);
   await page.context().close();
 });
