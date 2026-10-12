@@ -29,6 +29,8 @@ import {
   startHealthServer,
   runGracefulShutdown,
   InfraNotReadyError,
+  flushServerAnalytics,
+  initServerAnalytics,
 } from "@breatic/core";
 import { buildCollabHealthChecks } from "@collab/infra/health-checks.js";
 import { createCollabServer } from "@collab/hocuspocus.js";
@@ -47,6 +49,13 @@ initLogger("collab");
 
 const logger = createLogger("main");
 if (monitoring === "invalid_dsn") logger.error({}, "sentry_dsn_invalid");
+const analytics = initServerAnalytics({
+  apiKey: env.AMPLITUDE_API_KEY,
+  onError: (message) => {
+    logger.warn({ message }, "analytics_events_rejected");
+  },
+});
+if (analytics === "invalid") logger.error({}, "amplitude_api_key_invalid");
 
 /**
  * Deadline (ms) for the teardown drains that follow the store settle.
@@ -378,6 +387,7 @@ async function main(): Promise<void> {
       releaseListenSocket: () => server.httpServer.close(),
       drains: [
         () => server.destroy(),
+        () => flushServerAnalytics(),
         () => healthServer.stop(),
         () => stopMembersSync(),
         // Stop answering demote requests. This unsubscribes and nothing more

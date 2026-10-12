@@ -32,6 +32,8 @@ import {
   getAgentConfig,
   assertKnownQueues,
   installDeadlineBoundDispatcher,
+  flushServerAnalytics,
+  initServerAnalytics,
 } from "@breatic/core";
 import {
   modelCatalog,
@@ -51,6 +53,13 @@ const monitoring = initSentry();
 
 initLogger("worker");
 if (monitoring === "invalid_dsn") logger.error({}, "sentry_dsn_invalid");
+const analytics = initServerAnalytics({
+  apiKey: env.AMPLITUDE_API_KEY,
+  onError: (message) => {
+    logger.warn({ message }, "analytics_events_rejected");
+  },
+});
+if (analytics === "invalid") logger.error({}, "amplitude_api_key_invalid");
 // i18n: register the catalogs before anything can throw. `t()` echoes the key
 // back when no catalog is loaded, so without this a failed node reads a
 // message key where a sentence belongs.
@@ -406,6 +415,7 @@ export function startWorker(): void {
         () => usageLookup.close(),
         () => mediaRead.close(),
         () => mail.close(),
+        () => flushServerAnalytics(),
       ],
       deadlineMs: SHUTDOWN_DEADLINE_MS,
     });

@@ -18,7 +18,7 @@ import { env,
   getSubscriptionPlans,
 } from "@breatic/core";
 import { getPricingTiers } from "@server/config/pricing.js";
-import { closeDb } from "@breatic/core";
+import { closeDb, flushServerAnalytics, initServerAnalytics } from "@breatic/core";
 import { closeRedis } from "@breatic/core";
 import { closeQueues } from "@breatic/core";
 import { getRedis, getQueueRedis, getStreamRedis, pingDb, pingRedis, yjsRawPg } from "@breatic/core";
@@ -43,6 +43,13 @@ const monitoring = initSentry();
 
 initLogger("server");
 if (monitoring === "invalid_dsn") logger.error({}, "sentry_dsn_invalid");
+const analytics = initServerAnalytics({
+  apiKey: env.AMPLITUDE_API_KEY,
+  onError: (message) => {
+    logger.warn({ message }, "analytics_events_rejected");
+  },
+});
+if (analytics === "invalid") logger.error({}, "amplitude_api_key_invalid");
 
 // Route the AI SDK's warnings into our logger. Without this the SDK writes
 // them to console, and our logs are JSON on disk — console output lands
@@ -280,7 +287,7 @@ async function shutdown(signal: string): Promise<void> {
       // still needs the pools, so they close once it has finished.
       () =>
         settleAfterReply().then(() =>
-          Promise.allSettled([closeDb(), closeRedis(), closeQueues()]),
+          Promise.allSettled([flushServerAnalytics(), closeDb(), closeRedis(), closeQueues()]),
         ),
     ],
     deadlineMs: SHUTDOWN_DEADLINE_MS,
