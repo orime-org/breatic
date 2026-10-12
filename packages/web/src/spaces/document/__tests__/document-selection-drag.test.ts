@@ -21,11 +21,12 @@ import { buildDocumentEditor } from '@web/spaces/document/build-document-editor'
 import { BodyEdgeSelection } from '@web/spaces/document/document-body-edge-selection';
 import { documentDecorationsExtension } from '@web/spaces/document/document-decorations';
 import { rowHasLanded, rowIsFlying } from '@web/spaces/document/document-drag-drop';
-import { captionPreviewContent } from '@web/spaces/document/document-drag-preview';
+import { captionPreviewContent, tableLinePreviewContent } from '@web/spaces/document/document-drag-preview';
 import { startRowDrag } from '@web/spaces/document/document-row-drag';
 import { selectionDragKind, selectionPreviewContent } from '@web/spaces/document/document-selection-drag';
 import { endTableDrag, startTableDrag } from '@web/spaces/document/document-table-drag';
 import { renderCollabCaret, renderCollabSelection } from '@web/features/collab-editor/caret-render';
+import { documentFallbackExtension } from '@web/spaces/document/document-unsupported-blocknote';
 import { CONTENT_DECORATION } from '@web/spaces/document/document-view-state';
 
 type Editor = ReturnType<typeof buildDocumentEditor>;
@@ -516,28 +517,74 @@ describe('a preview draws the content, not what the body shows for the moment (C
     expect(blockTexts(content)).toEqual(['one', 'two']);
   });
 
-  it('keeps what the content looks like: numbers, bullet levels and a quote\'s rule', () => {
+  /**
+   * Opens an editor with the decorations that draw how the content looks.
+   * @param blocks - What the document starts with.
+   * @returns The editor.
+   */
+  function openDressed(blocks: unknown[]): Editor {
     const editor = buildDocumentEditor({
       fragment: documentBodyFragment(new Y.Doc()),
-      extensions: [documentDecorationsExtension()],
+      extensions: [documentDecorationsExtension(), documentFallbackExtension()],
     } as never);
     const host = document.createElement('div');
     document.body.appendChild(host);
     editor.mount(host);
     mounted.push(editor);
-    editor.replaceBlocks(editor.document, [
+    editor.replaceBlocks(editor.document, blocks as never);
+    editor.prosemirrorView!.focus();
+    return editor;
+  }
+
+  /**
+   * The quote depth each quoted line carries, in order.
+   * @param content - The preview content.
+   * @returns One depth per quoted line.
+   */
+  function quoteDepths(content: HTMLElement): string[] {
+    return [content, ...content.querySelectorAll<HTMLElement>('*')]
+      .filter((el) => el.hasAttribute('data-quoted-run'))
+      .map((el) => (el as HTMLElement).style.getPropertyValue('--quote-depth'));
+  }
+
+  it('keeps what the content looks like: numbers, bullet levels, a quote\'s rule, an unsupported block\'s label', () => {
+    const editor = openDressed([
       { type: 'numberedListItem', content: 'first' },
       { type: 'bulletListItem', content: 'point' },
+      { type: 'unsupportedBlock', props: { originalName: 'future' } },
       { type: 'paragraph', content: 'said', props: { quoted: true } },
-    ] as never);
-    const view = editor.prosemirrorView!;
-    view.focus();
+    ]);
     selectText(editor, ['first', 1], ['said', 2]);
-    const content = selectionPreviewContent(view)!;
+    const content = selectionPreviewContent(editor.prosemirrorView!)!;
     expect(content.querySelector('[data-doc-number]')).not.toBeNull();
     expect(content.querySelector('[data-bullet-level]')).not.toBeNull();
-    const quoted = content.querySelector<HTMLElement>('[data-quoted-run]');
-    expect(quoted).not.toBeNull();
-    expect(quoted!.style.getPropertyValue('--quote-depth')).not.toBe('');
+    expect(content.querySelector('[data-label]')).not.toBeNull();
+    expect(quoteDepths(content)).toEqual(['0']);
+  });
+
+  it('draws an indented quote as the top of the preview, its rule beside it, at the width it has in the body', () => {
+    const editor = openDressed([
+      {
+        type: 'paragraph',
+        content: 'a',
+        children: [{ type: 'paragraph', content: 'b', props: { quoted: true }, children: [{ type: 'paragraph', content: 'c', props: { quoted: true } }] }],
+      },
+    ]);
+    const view = editor.prosemirrorView!;
+    const group = view.dom.querySelector('.bn-block-group .bn-block-group')!;
+    Object.defineProperty(group, 'getBoundingClientRect', { value: () => ({ width: 696, height: 0, top: 0, left: 0, right: 696, bottom: 0 }) });
+    selectText(editor, ['b', 0], ['b', 1]);
+    const content = selectionPreviewContent(view)!;
+    expect(quoteDepths(content)).toEqual(['0', '1']);
+    expect(content.style.width).toBe('696px');
+  });
+
+  it('draws a line of an indented quoted table with its rule beside it', () => {
+    const editor = openDressed([
+      { type: 'paragraph', content: 'a', children: [{ ...(table([{ cells: ['x1', 'y1'] }]) as object), props: { quoted: true } }] },
+    ]);
+    const view = editor.prosemirrorView!;
+    const content = tableLinePreviewContent(view, nodeOf(editor, 'tableCell', 'x1'), 'row')!;
+    expect(quoteDepths(content)).toEqual(['0']);
   });
 });
