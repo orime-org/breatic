@@ -136,8 +136,11 @@ export async function deleteSpace(page: Page, spaceId: string): Promise<void> {
     // confirmation) leaves its overlay over the drawer trigger, and the click
     // below would wait out the test's whole timeout behind it; one red then
     // leaves its Space behind and every later case that opens the Project
-    // lands on it.
-    const strayDialog = page.locator('[role="dialog"]:not([data-testid="space-drawer"])');
+    // lands on it. A confirmation is an AlertDialog, whose role is
+    // `alertdialog`.
+    const strayDialog = page.locator(
+      '[role="dialog"]:not([data-testid="space-drawer"]), [role="alertdialog"]',
+    );
     for (let tries = 0; tries < 3 && (await strayDialog.count()) > 0; tries += 1) {
       await page.keyboard.press('Escape');
     }
