@@ -231,15 +231,21 @@ function OpenMiniToolPanel({
   React.useEffect(() => {
     if (spec.expand !== undefined && cap !== undefined) setExpandCap(cap);
   }, [spec, cap, setExpandCap]);
+  // Built from the ratio alone, so dragging the frame does not re-render the
+  // panel; a ratio reads the frame as it stands when picked.
+  const expandRatio = expandDraft?.ratio;
   const expand = React.useMemo(() => {
-    if (expandDraft === null || sourceWidth === undefined || sourceHeight === undefined) return undefined;
+    if (expandRatio === undefined || sourceWidth === undefined || sourceHeight === undefined) return undefined;
     const size = { width: sourceWidth, height: sourceHeight };
     return {
-      ratio: expandDraft.ratio,
+      ratio: expandRatio,
       fits: (ratio: ExpandRatio): boolean => ratioFits(ratio, size, cap ?? Infinity),
-      onRatio: (ratio: ExpandRatio): void => setExpand({ frame: frameForRatio(ratio, size, expandDraft.frame), ratio }),
+      onRatio: (ratio: ExpandRatio): void => {
+        const frame = sessionStore.getState().miniTool?.expand?.frame;
+        if (frame !== undefined) setExpand({ frame: frameForRatio(ratio, size, frame), ratio });
+      },
     };
-  }, [expandDraft, sourceWidth, sourceHeight, cap, setExpand]);
+  }, [expandRatio, sourceWidth, sourceHeight, cap, setExpand, sessionStore]);
 
   // The source took new content while the panel was open: whatever was
   // measured on the old one is reset, and the reader is told (§7.2).

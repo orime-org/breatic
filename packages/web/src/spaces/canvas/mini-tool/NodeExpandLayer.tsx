@@ -63,8 +63,10 @@ export function NodeExpandLayer({ nodeId, wrapper }: NodeExpandLayerProps): Reac
       expand.ratio === ours.current.ratio && JSON.stringify(expand.frame) === JSON.stringify(ours.current.frame);
     if (!same) gesture.current = null;
   }
+  // A new opening of the panel, or a new picture, starts over the node.
   const sourceContent = draft?.sourceContent;
-  React.useEffect(() => setShift({ x: 0, y: 0 }), [sourceContent]);
+  const opening = useCanvasSession((s) => s.panelSession);
+  React.useEffect(() => setShift({ x: 0, y: 0 }), [sourceContent, opening]);
   // The frame as this layer last saw it. A frame written by anyone but a drag
   // here (a ratio preset, a reset) wraps the picture where the node shows it,
   // so the picture goes back there.
