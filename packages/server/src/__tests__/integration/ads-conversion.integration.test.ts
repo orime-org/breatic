@@ -218,7 +218,7 @@ describe("requeueStaleAdsUploads", () => {
     const worker = new Worker(ADS_CONVERSION_QUEUE, null, { connection: queue.opts.connection, autorun: false });
     const taken = await worker.getNextJob("audit-token");
     taken!.discard();
-    await taken!.moveToFailed(new Error("lost"), "audit-token", true);
+    await taken!.moveToFailed(new Error("lost"), "audit-token");
     await worker.close();
     expect(await (await queue.getJob(taken!.id!))!.isFailed()).toBe(true);
     await sql`UPDATE ads_conversion_uploads SET updated_at = now() - interval '1 hour' WHERE transaction_id = ${txn}`;
