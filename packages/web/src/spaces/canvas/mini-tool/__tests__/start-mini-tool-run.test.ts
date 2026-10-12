@@ -353,6 +353,14 @@ describe('startMiniToolRun', () => {
     });
   });
 
+  it('hands a browser tool its capture from the press to export from', async () => {
+    const file = new File(['x'], 'a.png', { type: 'image/png' });
+    const capture = { kind: 'mark' as const, objects: [] };
+    const run = press({ spec: tool('image.mark'), capture, exportFile: vi.fn(() => Promise.resolve([{ file }])) });
+    await startMiniToolRun(run);
+    expect(run.exportFile).toHaveBeenCalledWith(run.spec, run.snapshot, capture);
+  });
+
   it('holds a browser tool busy through its export, and a server tool not at all', async () => {
     const file = new File(['x'], 'a.png', { type: 'image/png' });
     const browser = press({ spec: tool('image.rotate'), exportFile: vi.fn(() => Promise.resolve([{ file }])) });

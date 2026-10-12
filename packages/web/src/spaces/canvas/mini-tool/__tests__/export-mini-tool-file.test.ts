@@ -25,6 +25,10 @@ const adjust = vi.hoisted(() => ({
   exportAdjustedBlob: vi.fn(() => Promise.resolve(new Blob(['j'], { type: 'image/png' }))),
 }));
 vi.mock('@web/spaces/canvas/mini-tool/adjust-export', () => adjust);
+const mark = vi.hoisted(() => ({
+  exportMarkBlob: vi.fn(() => Promise.resolve(new Blob(['m'], { type: 'image/png' }))),
+}));
+vi.mock('@web/spaces/canvas/mini-tool/mark-export', () => mark);
 vi.mock('@web/spaces/canvas/mini-tool/grid-export', async (original) => ({
   ...(await original<object>()),
   ...grid,
@@ -102,6 +106,22 @@ describe('exportMiniToolFile for a picture adjust', () => {
       expect.objectContaining({ exposure: 30, contrast: 0 }),
     );
     expect(made.map((tile) => tile.file.name)).toEqual(['ADJUST.png']);
+  });
+});
+
+describe('exportMiniToolFile for markup', () => {
+  const objects = [{ id: 'r', kind: 'rect', color: '#FF3B30', size: 5, x: 0.1, y: 0.1, w: 0.2, h: 0.2 }] as const;
+
+  it('draws the objects copied out at the press onto the picture at its own resolution', async () => {
+    const made = await exportMiniToolFile(miniToolById('image.mark')!, snapshot({}), { kind: 'mark', objects });
+
+    expect(mark.exportMarkBlob).toHaveBeenCalledWith({ url: 'https://cdn/a.jpg', timeSeconds: null }, objects);
+    expect(made.map((file) => file.file.name)).toEqual(['MARK.png']);
+  });
+
+  it('refuses without the objects copied out at the press', async () => {
+    await expect(exportMiniToolFile(miniToolById('image.mark')!, snapshot({}))).rejects.toThrow();
+    expect(mark.exportMarkBlob).not.toHaveBeenCalled();
   });
 });
 
