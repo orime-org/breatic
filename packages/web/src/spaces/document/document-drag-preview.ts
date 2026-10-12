@@ -421,7 +421,6 @@ export function tableRowsPreviewContent(
  */
 export function captionPreviewContent(input: HTMLInputElement): HTMLElement {
   const copy = input.cloneNode(true) as HTMLInputElement;
-  copy.value = input.value;
   const width = input.getBoundingClientRect().width;
   if (width > 0) copy.style.width = `${width}px`;
   copy.style.marginTop = '0px';
