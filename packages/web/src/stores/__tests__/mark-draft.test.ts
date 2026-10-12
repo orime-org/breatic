@@ -98,6 +98,16 @@ describe('the markup draft', () => {
     expect(mark(store).undo).toHaveLength(3);
   });
 
+  it('shows the selected object’s colour and size in the controls, as no step', () => {
+    const store = withMark();
+    store.getState().commitMark([A, { ...B, size: 12 }]);
+    store.getState().selectMark('b');
+    expect(mark(store)).toMatchObject({ color: INK[1], size: 12, selectedId: 'b' });
+    expect(mark(store).undo).toHaveLength(1);
+    store.getState().selectMark(null);
+    expect(mark(store)).toMatchObject({ color: INK[1], size: 12, selectedId: null });
+  });
+
   it('only changes the pen while a text is being edited', () => {
     const store = withMark();
     store.getState().commitMark([A]);

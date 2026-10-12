@@ -154,6 +154,19 @@ describe('MarkCanvasController', () => {
     expect(mark().undo).toHaveLength(1);
   });
 
+  it('keeps an existing text’s own colour through an edit with a different pen', () => {
+    store.getState().commitMark([TEXT]);
+    controller.sync();
+    const text = controller.canvas.getObjects()[0] as IText;
+    controller.canvas.setActiveObject(text);
+    text.enterEditing();
+    controller.sync();
+    expect(text.fill).toBe(INK[1]);
+    controller.channel.exitEditing();
+    expect(mark().objects[0]).toMatchObject({ color: INK[1] });
+    expect(mark().undo).toHaveLength(1);
+  });
+
   it('restyles a text being edited on the spot and writes it back once on leaving', () => {
     store.getState().setMarkTool('text');
     controller.sync();
