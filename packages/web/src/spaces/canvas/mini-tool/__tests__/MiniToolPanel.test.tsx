@@ -3,7 +3,7 @@
 
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
-import { setLocale } from '@breatic/shared';
+import { ADJUST_RANGES, defaultAdjustValue, setLocale } from '@breatic/shared';
 import { miniToolById, type MiniToolSpec } from '@breatic/shared/mini-tools';
 
 import { TooltipProvider } from '@web/components/ui/tooltip';
@@ -192,12 +192,28 @@ describe('MiniToolPanel', () => {
     expect(prompt.compareDocumentPosition(param) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
-  // The adjust values run both ways from 0, so an untouched one shows no fill.
-  it('fills each adjust slider from its middle', () => {
-    mount({ spec: tool('video.adjust'), params: {}, source: { width: 1600, height: 1000, duration: 8 } });
-    const fills = [...document.querySelectorAll<HTMLElement>('[data-slot="slider-origin-fill"]')];
-    expect(fills).toHaveLength(15);
-    expect(fills.every((fill) => fill.style.left === '50%' && fill.style.width === '0%')).toBe(true);
+  describe.each(['video.adjust', 'image.adjust'])('the %s sliders', (id) => {
+    const source = { width: 1600, height: 1000, duration: 8 };
+
+    it('runs each channel over its declared range, filled from zero', () => {
+      mount({ spec: tool(id), params: {}, source });
+      for (const field of Object.keys(ADJUST_RANGES) as (keyof typeof ADJUST_RANGES)[]) {
+        const { min, max } = ADJUST_RANGES[field];
+        const slider = screen.getByTestId(`mini-tool-adjust-${field}-slider`);
+        const thumb = slider.querySelector('[role="slider"]')!;
+        expect(thumb.getAttribute('aria-valuemin'), field).toBe(String(min));
+        expect(thumb.getAttribute('aria-valuemax'), field).toBe(String(max));
+        const fill = slider.querySelector<HTMLElement>('[data-slot="slider-origin-fill"]')!;
+        expect(fill.style.left, field).toBe(min === 0 ? '0%' : '50%');
+        expect(fill.style.width, field).toBe('0%');
+      }
+    });
+
+    it('puts every slider back to zero from Reset', () => {
+      const props = mount({ spec: tool(id), params: { value: { ...defaultAdjustValue, exposure: 40 } }, source });
+      fireEvent.click(screen.getByTestId('mini-tool-adjust-reset'));
+      expect(props.onParams).toHaveBeenLastCalledWith({ value: defaultAdjustValue });
+    });
   });
 
   // The cut's band shows what stays: the cut-away ends dimmed, the kept span framed.
