@@ -257,9 +257,29 @@ export function renderProductGuide(): string {
       "chip that could not be uploaded or read shows a red mark and says why; it has to be removed with its X before " +
       "the message can go. Something that cannot be attached at all -- too many items, a file too large or of a " +
       `kind that is not taken, or ${quoted(t("chat.composer.attachTooLong"))} -- is said on a line beside the ` +
-      "plus sign. Pasting canvas nodes copied on the canvas, or a picture copied in this chat, into the box " +
+      "plus sign. When a message cannot be sent at that moment, the same line says " +
+      `${quoted(t("chat.composer.sendUnavailable"))} and the words stay in the box. ` +
+      "Pasting canvas nodes copied on the canvas, or a picture copied in this chat, into the box " +
       "attaches them too. A sent message cannot be edited and a " +
       "reply cannot be regenerated: to ask again, send another message.",
+    "Right of that plus sign, a chip shows the icon and name of the Space whose tab is active; with no tab " +
+      "open there is none. Pressing it turns it off and on, and it stays as left for this account in this " +
+      "project. While it is on, each message the reader sends carries that Space's content to the Agent -- a " +
+      "document's text, or a canvas's nodes and the links between them -- and hovering it shows " +
+      `${quoted(t("chat.composer.spaceContextOn"))}. Off, the Agent is not told which Space is open or what is ` +
+      "in it; the chip has a dashed border and grey words, and hovering it shows " +
+      `${quoted(t("chat.composer.spaceContextOff"))}. A timeline's content cannot be read: with a timeline ` +
+      "open and the chip on, the Agent is told it is open but not what is in it, and hovering shows " +
+      `${quoted(t("chat.composer.spaceContextOnUnreadable"))}; off, hovering shows ` +
+      `${quoted(t("chat.composer.spaceContextOffUnreadable"))}. On or off, every message tells the Agent the ` +
+      `name and type of the ${String(getAgentConfig().space_list_max_items)} newest Spaces in the project, and ` +
+      "how many more there are. Each message carries at most " +
+      `${getAgentConfig().current_space_max_chars.toLocaleString("en")} characters of the open Space's content: a ` +
+      "longer document goes as its start, and a larger canvas goes in less detail -- nodes without their other " +
+      "settings, then with their texts cut short, then by name only, then without their links, and on the largest " +
+      "canvases some nodes are left out, earliest first -- and the nodes the reader has selected go last at every " +
+      "step, except those an attachment on the same message already holds as they are. " +
+      `To show the Agent some nodes in full, the reader adds them with ${quoted(t("canvas.contextMenu.addToAgent"))}.`,
     "Typing @ in the box opens a list, just above the @, of the attachments that have finished uploading; it " +
       `reads ${quoted(t("chat.composer.atEmpty"))} when there are none. Typing narrows it and the list goes away ` +
       "while what is typed after the @ matches none, so the @ stays ordinary text; the arrow keys move through it, Enter or " +

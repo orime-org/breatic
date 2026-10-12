@@ -265,7 +265,7 @@ describe('问心跳间隔的那次往返，比这一轮还长', () => {
     expect(told).toHaveLength(1);
 
     // 心跳间隔这时候才答复回来。
-    answerConfig?.({ heartbeatIntervalMs: BEAT_MS, attachmentMaxChars: 200_000, attachmentMaxItems: 10 });
+    answerConfig?.({ heartbeatIntervalMs: BEAT_MS, attachmentMaxChars: 200_000, attachmentMaxItems: 10, currentSpaceMaxChars: 100_000, spaceListMaxItems: 200 });
     await settle();
     await vi.advanceTimersByTimeAsync(BEAT_MS * 4);
     await settle();
@@ -287,7 +287,7 @@ describe('问心跳间隔的那次往返，比这一轮还长', () => {
     await settle();
 
     // 这一轮还跑着的时候心跳间隔就回来了，所以表真的装上了。
-    answerConfig?.({ heartbeatIntervalMs: BEAT_MS, attachmentMaxChars: 200_000, attachmentMaxItems: 10 });
+    answerConfig?.({ heartbeatIntervalMs: BEAT_MS, attachmentMaxChars: 200_000, attachmentMaxItems: 10, currentSpaceMaxChars: 100_000, spaceListMaxItems: 200 });
     await settle();
 
     for (const chunk of turnOpens()) wire.current()?.push(chunk);
@@ -338,7 +338,7 @@ describe('问心跳间隔的那次往返，比这一轮还长', () => {
     await settle();
 
     // 第一轮那次现在才回来，而正在跑的是第二轮。
-    answerFirstTurn?.({ heartbeatIntervalMs: BEAT_MS, attachmentMaxChars: 200_000, attachmentMaxItems: 10 });
+    answerFirstTurn?.({ heartbeatIntervalMs: BEAT_MS, attachmentMaxChars: 200_000, attachmentMaxItems: 10, currentSpaceMaxChars: 100_000, spaceListMaxItems: 200 });
     await settle();
     await vi.advanceTimersByTimeAsync(BEAT_MS * 4);
     await settle();
@@ -372,7 +372,7 @@ describe('问心跳间隔的那次往返，比这一轮还长', () => {
     expect(chat.status).toBe('ready');
 
     // 问心跳间隔的那次往返这时才回来，而这一轮早就结束了。
-    answerConfig?.({ heartbeatIntervalMs: BEAT_MS, attachmentMaxChars: 200_000, attachmentMaxItems: 10 });
+    answerConfig?.({ heartbeatIntervalMs: BEAT_MS, attachmentMaxChars: 200_000, attachmentMaxItems: 10, currentSpaceMaxChars: 100_000, spaceListMaxItems: 200 });
     await settle();
     await vi.advanceTimersByTimeAsync(BEAT_MS * 4);
     await settle();

@@ -160,6 +160,8 @@
       "message_too_long": "이 메시지는 너무 깁니다. 최대 {limit, number}자까지이며, 이 메시지는 {actual, number}자입니다.",
       "attachments_too_long": "첨부한 내용이 너무 깁니다. 최대 {limit, number}자까지이며, 현재 {actual, number}자입니다.",
       "attachments_too_many": "첨부가 너무 많습니다. 최대 {limit, number}개까지이며, 이 메시지는 {actual, number}개입니다.",
+      "current_space_too_long": "현재 Space의 내용이 너무 깁니다. 최대 {limit, number}자까지이며, 현재 {actual, number}자입니다.",
+      "spaces_too_many": "목록의 Space가 너무 많습니다. 최대 {limit, number}개까지이며, 이 메시지는 {actual, number}개입니다.",
       "references_too_many": "첨부 참조가 너무 많습니다. 메시지 하나에 최대 {limit, number}번까지이며, 이 메시지에는 {actual, number}번 있습니다."
     },
     "mail": {
@@ -243,6 +245,10 @@
       "sending": "보내는 중",
       "atLimit": "{limit, number}자 제한에 도달했습니다",
       "attach": "파일 첨부",
+      "spaceContextOn": "Agent가 이 Space를 읽습니다 · 클릭하면 끕니다",
+      "spaceContextOff": "Agent가 이 Space를 읽지 않습니다 · 클릭하면 켭니다",
+      "spaceContextOnUnreadable": "Agent는 이 Space가 열려 있다는 것을 알지만 내용은 읽을 수 없습니다 · 클릭하면 끕니다",
+      "spaceContextOffUnreadable": "Agent는 이 Space가 열려 있다는 것을 모릅니다 · 클릭하면 켭니다",
       "removeAttachment": "{name} 제거",
       "attachmentUploading": "업로드 중",
       "attachmentFailed": "{reason, select, upload {업로드 실패} rate_limited {업로드가 너무 잦음, 잠시 후 다시 시도} extract {읽기 실패} too_long {너무 김} other {실패}}",
@@ -251,6 +257,7 @@
       "attachUnsupported": "{filename}은(는) 첨부할 수 없습니다",
       "attachTooLarge": "{filename}은(는) 너무 커서 첨부할 수 없습니다",
       "attachUnavailable": "지금은 첨부할 수 없습니다. 다시 시도하세요.",
+      "sendUnavailable": "지금은 보낼 수 없습니다. 다시 시도하세요.",
       "atEmpty": "참조할 첨부가 없습니다"
     },
     "empty": {

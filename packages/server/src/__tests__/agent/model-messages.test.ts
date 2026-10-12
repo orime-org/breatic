@@ -16,7 +16,8 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { FAILURE_LINES, NOTHING_SAID_WHY, userTurnForModel } from "@breatic/shared";
+import { FAILURE_LINES, NOTHING_SAID_WHY } from "@breatic/shared";
+import { userTurnForModel } from "@server/agent/user-turn.js";
 import type { MessageData, ProposalAnswer } from "@breatic/shared";
 
 import {
@@ -666,7 +667,7 @@ describe("a user message that carried attachments", () => {
     const out = toModelMessages(history);
 
     expect(out).toEqual([
-      { role: "user", content: userTurnForModel([chip], "what is in this?") },
+      { role: "user", content: userTurnForModel({ chips: [chip], message: "what is in this?" }) },
     ]);
   });
 });

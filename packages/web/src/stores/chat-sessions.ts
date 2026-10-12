@@ -23,7 +23,7 @@ import { tell } from '@web/stores/chat-mishaps';
 import { DefaultChatTransport } from 'ai';
 import type { ChatTransport, UIMessageChunk } from 'ai';
 import { SSE_HEARTBEAT_MISSES_ALLOWED, attachmentPart, chipOfPart, getLocale } from '@breatic/shared';
-import type { ChatAttachedChip } from '@breatic/shared';
+import type { ChatAttachedChip, ChatSpaceContext } from '@breatic/shared';
 import { API_BASE_PATH } from '@web/data/api/base-path';
 import { chatApi } from '@web/data/api/chat';
 import { clearConsolidating, noteConsolidating } from '@web/stores/consolidating';
@@ -207,7 +207,7 @@ function transportFor(
     // default would leave it off in any deployment where the API is not the
     // page's own origin.
     credentials: 'include',
-    prepareSendMessagesRequest: ({ messages }) => {
+    prepareSendMessagesRequest: ({ messages, body: carried }) => {
       const last = messages[messages.length - 1];
       const said = (last?.parts ?? [])
         .filter((part): part is { type: 'text'; text: string } => part.type === 'text')
@@ -227,6 +227,9 @@ function transportFor(
         // reads this (user 2026-09-07).
         headers: { 'Accept-Language': getLocale() },
         body: {
+          // What the send was handed for this one message: the reader's
+          // Spaces, read when they pressed send (`sendInSession`).
+          ...carried,
           message: said,
           project_id: projectId,
           conversation_id: conversationId,
@@ -544,12 +547,14 @@ async function expectAnotherBeat(
  * @param conversationId - The conversation to say it in.
  * @param said - What the reader typed, trimmed.
  * @param attached - What the reader attached, carried ahead of the words.
+ * @param spaces - The reader's Spaces, sent beside the message and not kept.
  * @returns When the turn is over, however it ended.
  */
 export async function sendInSession(
   conversationId: string,
   said: string,
   attached: readonly ChatAttachedChip[] = [],
+  spaces: ChatSpaceContext = {},
 ): Promise<void> {
   const chat = sessions.get(conversationId);
   if (!chat) return;
@@ -559,12 +564,15 @@ export async function sendInSession(
   runningTurn.set(conversationId, turn);
   void expectAnotherBeat(conversationId, turn, pressedAt);
   try {
-    await chat.sendMessage({
-      parts: [
-        ...attached.map(attachmentPart),
-        { type: 'text', text: said },
-      ],
-    });
+    await chat.sendMessage(
+      {
+        parts: [
+          ...attached.map(attachmentPart),
+          { type: 'text', text: said },
+        ],
+      },
+      { body: spaces },
+    );
   } catch {
     // Already said. `Chat` hands whatever went wrong to its own `onFinish`
     // before it rethrows, and that is where the turn was settled -- so what

@@ -600,22 +600,39 @@ async function conversationForSending(projectId: string): Promise<string | undef
     return undefined;
   }
   if (state.currentByProject[projectId] === undefined) {
-    await whileOpening(projectId, () => ensureLoaded(projectId));
+    await whileSendHeld(projectId, () => ensureLoaded(projectId));
   }
   return useStore.getState().currentByProject[projectId];
+}
+
+/**
+ * Whether a send settled on this conversation may still go there, asked after
+ * anything it waited on: the same conversation is on screen and no navigation
+ * is on its way to replace it. A project left meanwhile has none on screen.
+ * @param projectId - The project being sent to.
+ * @param conversationId - What {@link conversationForSending} answered.
+ * @returns True when the send may go.
+ */
+function stillSendingTo(projectId: string, conversationId: string): boolean {
+  return (
+    useStore.getState().currentByProject[projectId] === conversationId &&
+    !awaitedNavigationInFlight(projectId)
+  );
 }
 
 /**
  * Hold the project's send mark for as long as this takes.
  *
  * For the stretches of a send with no turn to carry the wait -- opening a
- * conversation, and opening a replacement for one the server no longer has.
- * Both are a whole request long, and both used to leave a live send button up.
+ * conversation, and reading the chat limits the reader's Spaces are cut to
+ * (inner#1413), after which {@link stillSendingTo} decides whether the send
+ * still goes. Each can be a whole request long, and each would leave a live
+ * send button up.
  * @param projectId - The project being sent to.
  * @param work - What to do while the mark is up. Must not reject.
  * @returns Whatever the work answered.
  */
-async function whileOpening<T>(projectId: string, work: () => Promise<T>): Promise<T> {
+async function whileSendHeld<T>(projectId: string, work: () => Promise<T>): Promise<T> {
   useStore.setState((s) => ({
     sendingByProject: { ...s.sendingByProject, [projectId]: true as const },
   }));
@@ -1659,6 +1676,8 @@ export const useConversationRuntime = useStore;
 export const conversationRuntime = {
   ensureLoaded,
   conversationForSending,
+  stillSendingTo,
+  whileSendHeld,
   noteActivity,
   loadEarlier,
   leaveProject,

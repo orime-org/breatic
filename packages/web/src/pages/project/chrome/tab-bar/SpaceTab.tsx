@@ -1,21 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import {
-  Box,
-  Clock,
-  FileText,
-  Film,
-  Globe,
-  Image as ImageIcon,
-  LayoutGrid,
-  Lock,
-  Music,
-  Palette,
-  Type,
-  Video,
-  X,
-} from 'lucide-react';
+import { Lock, X } from 'lucide-react';
 import * as React from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { toast } from '@web/lib/toast';
@@ -33,6 +19,7 @@ import { cn } from '@web/lib/utils';
 import { useTranslation } from '@web/i18n/use-translation';
 import type { SpaceType } from '@breatic/shared';
 import { useUIStore } from '@web/stores/ui';
+import { SPACE_TYPE_ICON } from '@web/pages/project/space-type';
 
 interface SpaceTabProps {
   id: string;
@@ -70,12 +57,6 @@ interface SpaceTabProps {
  */
 export const SPACE_TAB_MAX_WIDTH = 160;
 
-const TYPE_ICON: Record<SpaceType, typeof FileText> = {
-  canvas: Palette,
-  document: FileText,
-  timeline: Clock,
-};
-
 /**
  * Keeps a press on a tab from moving focus onto it while the reader is working
  * inside a Space, so the caret is still there when that Space is shown again.
@@ -86,17 +67,6 @@ const TYPE_ICON: Record<SpaceType, typeof FileText> = {
 function preventFocusOnPress(event: React.MouseEvent): void {
   if (document.activeElement?.closest('[data-space-outlet]')) event.preventDefault();
 }
-
-const NODE_KIND_ICON: Partial<Record<string, typeof FileText>> = {
-  text: Type,
-  image: ImageIcon,
-  audio: Music,
-  video: Video,
-  '3d': Box,
-  web: Globe,
-  layers: LayoutGrid,
-  film: Film,
-};
 
 /**
  * Single space tab — chrome-baseline mock `.space-tab`.
@@ -135,7 +105,7 @@ export function SpaceTab({
   // The comparison sits inside the selector so a tab subscribes to a boolean
   // and zustand bails out of every re-render where that boolean holds.
   const spaceRegionActive = useUIStore((s) => s.activeRegion === 'space');
-  const Icon = TYPE_ICON[type] ?? NODE_KIND_ICON.film ?? FileText;
+  const Icon = SPACE_TYPE_ICON[type];
   const [editing, setEditing] = React.useState(false);
   const [draft, setDraft] = React.useState(name);
   const inputRef = React.useRef<HTMLInputElement>(null);

@@ -48,14 +48,13 @@ const { HEARTBEAT_MS, SILENCE_MS } = vi.hoisted(() => ({
   SILENCE_MS: 150,
 }));
 
-vi.mock("@breatic/shared", async (importOriginal) => ({
-  ...(await importOriginal<Record<string, unknown>>()),
-  SSE_HEARTBEAT_INTERVAL_MS: HEARTBEAT_MS,
-}));
-
 vi.mock("@breatic/core", async (importOriginal) => {
   const { coreMock } = await import("../helpers/mock-core.js");
-  return coreMock(importOriginal);
+  const base = await coreMock(importOriginal);
+  return {
+    ...base,
+    getAgentConfig: () => ({ ...base.getAgentConfig(), sse_heartbeat_interval_ms: HEARTBEAT_MS }),
+  };
 });
 
 vi.mock("@breatic/domain", async () => {

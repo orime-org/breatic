@@ -11,7 +11,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type * as CoreModule from "@breatic/core";
-import { userTurnForModel } from "@breatic/shared";
+import { userTurnForModel } from "@server/agent/user-turn.js";
 import type { ChatAttachedChip, MessageData } from "@breatic/shared";
 import { saying } from "../helpers/model-double.js";
 import type { ModelStreamPart } from "../helpers/model-double.js";
@@ -141,7 +141,7 @@ describe("a turn tells the model the reader's local time", () => {
     await runOneTurn("what is in this?", [image], "Asia/Shanghai");
 
     expect(userTextsSent().at(-1)).toBe(
-      `${SHANGHAI_NOTE}\n\n${userTurnForModel([image], "what is in this?")}`,
+      `${SHANGHAI_NOTE}\n\n${userTurnForModel({ chips: [image], message: "what is in this?" })}`,
     );
   });
 

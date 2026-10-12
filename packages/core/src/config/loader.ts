@@ -151,6 +151,19 @@ const agentConfigSchema = z.object({
    */
   attachment_max_items: z.number().int().positive().default(10),
   /**
+   * How long the open Space's content one message carries may be, in
+   * characters (inner#1413). The browser cuts the content to this before
+   * sending, reading the number from `GET /chat/stream-config`, and tells the
+   * model how long it was before the cut.
+   */
+  current_space_max_chars: z.number().int().positive().default(100000),
+  /**
+   * How many of the project's Spaces one message may list (inner#1413). The
+   * browser lists the newest this many, reading the number from
+   * `GET /chat/stream-config`, and tells the model how many it left off.
+   */
+  space_list_max_items: z.number().int().positive().default(200),
+  /**
    * How long an assembled request may be before a consolidation runs, in
    * characters.
    *

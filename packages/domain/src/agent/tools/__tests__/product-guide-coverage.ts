@@ -576,6 +576,8 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "server.canvas.voices_not_offered": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "server.chat.attachments_too_long": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "server.chat.attachments_too_many": { excluded: REASONS.SAYS_WHAT_HAPPENED },
+  "server.chat.current_space_too_long": { excluded: REASONS.SAYS_WHAT_HAPPENED },
+  "server.chat.spaces_too_many": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "server.chat.message_too_long": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "server.chat.references_too_many": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "server.conversation.attachment_limit_reached": { excluded: REASONS.NO_CALLER },

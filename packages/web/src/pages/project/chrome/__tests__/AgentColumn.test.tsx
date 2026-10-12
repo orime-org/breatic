@@ -45,7 +45,7 @@ function renderColumn(): ReturnType<typeof render> {
   return render(
     <QueryClientProvider client={new QueryClient()}>
       <TooltipProvider>
-        <AgentColumn projectId={PROJECT} />
+        <AgentColumn projectId={PROJECT} activeSpace={undefined} spaces={[]} />
       </TooltipProvider>
     </QueryClientProvider>,
   );
