@@ -4,8 +4,11 @@
 import type * as React from 'react';
 
 import { Button } from '@web/components/ui/button';
+import { Skeleton } from '@web/components/ui/skeleton';
+import { cn } from '@web/lib/utils';
 import { useTranslation } from '@web/i18n/use-translation';
 import { MODALITY_ICONS } from '@web/spaces/canvas/nodes/_shared/modality';
+import { useUploadMark } from '@web/spaces/canvas/nodes/_shared/use-upload-mark';
 import type { Modality } from '@web/data/yjs/node-view';
 
 interface NodePlaceholderProps {
@@ -53,6 +56,11 @@ export function NodePlaceholder({
 }: NodePlaceholderProps): React.JSX.Element {
   const t = useTranslation();
   const Icon = MODALITY_ICONS[modality];
+  // The uploader's own mark (inner#1303 §6.7): a skeleton while the server's
+  // answer is awaited, a line saying why when it ended before that.
+  const mark = useUploadMark();
+  const waiting = mark?.state === 'waiting';
+  const failed = mark?.state === 'failed' ? mark.message : undefined;
   return (
     <Button
       type='button'
@@ -70,10 +78,22 @@ export function NodePlaceholder({
       }}
       data-testid='node-placeholder'
       data-modality={modality}
-      className='flex h-full w-full flex-col items-center justify-center gap-2 p-4 text-center text-muted-foreground hover:text-foreground'
+      className={cn(
+        'flex h-full w-full flex-col items-center justify-center gap-2 text-center',
+        waiting ? 'p-1' : 'p-4',
+        failed ? 'text-status-error' : 'text-muted-foreground hover:text-foreground',
+      )}
     >
-      <Icon className='h-5 w-5 opacity-70' aria-hidden='true' />
-      {hint ? (
+      {waiting ? (
+        <Skeleton data-testid='node-upload-skeleton' className='h-full w-full rounded-sm' />
+      ) : (
+        <Icon className='h-5 w-5 opacity-70' aria-hidden='true' />
+      )}
+      {waiting ? null : failed ? (
+        <span data-testid='node-upload-error' className='text-xs'>
+          {t(failed.key, failed.params)}
+        </span>
+      ) : hint ? (
         <span className='text-xs'>{hint}</span>
       ) : (
         <span className='flex flex-col gap-0.5'>

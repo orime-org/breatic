@@ -3,6 +3,10 @@
 
 import * as React from 'react';
 
+import { Skeleton } from '@web/components/ui/skeleton';
+import { useTranslation } from '@web/i18n/use-translation';
+import { useUploadMark } from '@web/spaces/canvas/nodes/_shared/use-upload-mark';
+
 /** Props for `NodeMediaInset`. */
 export interface NodeMediaInsetProps {
   /** The media element (image / player) to inset. */
@@ -31,14 +35,30 @@ export interface NodeMediaInsetProps {
  * simply never engages, matching the preview card exactly.
  * @param root0 - Component props.
  * @param root0.children - The media element to inset.
- * @returns The media wrapped in the inset box.
+ * @returns The media wrapped in the inset box, with the uploader's mark over it when there is one.
  */
 export function NodeMediaInset({
   children,
 }: NodeMediaInsetProps): React.JSX.Element {
+  const t = useTranslation();
+  // The uploader's own mark on a node that already shows something (inner#1303
+  // §6.7): the skeleton covers the old media until the answer, and a failure
+  // is said along its bottom edge.
+  const mark = useUploadMark();
   return (
-    <div data-testid='node-media-inset' className='p-1'>
+    <div data-testid='node-media-inset' className='relative p-1'>
       {children}
+      {mark?.state === 'waiting' ? (
+        <Skeleton data-testid='node-upload-skeleton' className='absolute inset-1 rounded-none' />
+      ) : null}
+      {mark?.state === 'failed' ? (
+        <span
+          data-testid='node-upload-error'
+          className='absolute inset-x-1 bottom-1 bg-popover px-2 py-1 text-xs text-status-error'
+        >
+          {t(mark.message.key, mark.message.params)}
+        </span>
+      ) : null}
     </div>
   );
 }
