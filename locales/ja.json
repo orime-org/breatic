@@ -1050,6 +1050,15 @@
         "undo": "元に戻す",
         "redo": "やり直す",
         "clear": "クリア"
+      },
+      "mark": {
+        "select": "選択",
+        "arrow": "矢印",
+        "rect": "四角形",
+        "ellipse": "楕円",
+        "line": "直線",
+        "pen": "ペン",
+        "text": "テキスト"
       }
     },
     "template": {

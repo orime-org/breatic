@@ -1050,6 +1050,15 @@
         "undo": "撤销",
         "redo": "重做",
         "clear": "清空"
+      },
+      "mark": {
+        "select": "选择",
+        "arrow": "箭头",
+        "rect": "矩形",
+        "ellipse": "椭圆",
+        "line": "直线",
+        "pen": "画笔",
+        "text": "文字"
       }
     },
     "template": {

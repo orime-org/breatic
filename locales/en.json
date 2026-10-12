@@ -1050,6 +1050,15 @@
         "undo": "Undo",
         "redo": "Redo",
         "clear": "Clear"
+      },
+      "mark": {
+        "select": "Select",
+        "arrow": "Arrow",
+        "rect": "Rectangle",
+        "ellipse": "Ellipse",
+        "line": "Line",
+        "pen": "Pen",
+        "text": "Text"
       }
     },
     "template": {

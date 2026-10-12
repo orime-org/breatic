@@ -1050,6 +1050,15 @@
         "undo": "復原",
         "redo": "重做",
         "clear": "清除"
+      },
+      "mark": {
+        "select": "選取",
+        "arrow": "箭頭",
+        "rect": "矩形",
+        "ellipse": "橢圓",
+        "line": "直線",
+        "pen": "畫筆",
+        "text": "文字"
       }
     },
     "template": {

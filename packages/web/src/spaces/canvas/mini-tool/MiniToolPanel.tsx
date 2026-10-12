@@ -36,6 +36,7 @@ import { ModelParamControls } from '@web/spaces/canvas/generate/ModelParamContro
 import { PARAM_OPTION_CLASS, ParamOptionGroup } from '@web/spaces/canvas/generate/ParamOptionGroup';
 import { ParamSliderRow } from '@web/spaces/canvas/generate/ParamSliderRow';
 import { DrawingControls } from '@web/spaces/canvas/mini-tool/DrawingControls';
+import { MarkControls } from '@web/spaces/canvas/mini-tool/MarkControls';
 import { EXPAND_RATIOS, type ExpandRatio } from '@web/spaces/canvas/mini-tool/expand-frame';
 import { FilmStrip } from '@web/spaces/canvas/mini-tool/FilmStrip';
 import {
@@ -274,6 +275,7 @@ export const MiniToolPanel = React.memo(function MiniToolPanel(props: MiniToolPa
     >
       <div className='flex flex-col gap-2.5 px-3 pb-2.5'>
         {spec.drawing !== undefined ? <DrawingControls kind={spec.drawing.kind} /> : null}
+        {spec.markup === true ? <MarkControls /> : null}
         {props.expand !== undefined ? (
           <ExpandRatioGroup expand={props.expand} exporting={refusal === 'exporting'} />
         ) : null}

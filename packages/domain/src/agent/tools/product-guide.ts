@@ -806,6 +806,14 @@ export function renderProductGuide(): string {
       "the picture. A rectangle or ellipse fills on a mask and is an outline on a sketch; the eraser removes only " +
       "what was drawn. While the panel is open, Cmd+Z or Ctrl+Z and the undo and redo in the view bar step through " +
       "the drawing, and the arrow stays greyed out until something is drawn. " +
+      `${quoted(t("canvas.miniTool.image.mark.label"))} writes notes on the picture for people to read: its panel ` +
+      `starts with ${quoted(t("canvas.miniTool.mark.select"))}, ${quoted(t("canvas.miniTool.mark.arrow"))}, ` +
+      `${quoted(t("canvas.miniTool.mark.rect"))}, ${quoted(t("canvas.miniTool.mark.ellipse"))}, ` +
+      `${quoted(t("canvas.miniTool.mark.line"))}, ${quoted(t("canvas.miniTool.mark.pen"))} and ` +
+      `${quoted(t("canvas.miniTool.mark.text"))}, then undo, redo and clear, with the same size slider and colour ` +
+      "dots below. A shape or text drawn goes back to selecting; until the arrow is pressed, anything drawn can be " +
+      "selected, moved, resized, restyled or deleted with Delete or Backspace, which then deletes that object and " +
+      "not the node. The result is a plain picture. " +
       `${quoted(t("canvas.miniTool.image.upscale.label"))} for a picture offers ` +
       `three output sizes, 2K, 4K and 8K, each showing the pixel size it comes to on that picture (its long edge ` +
       "becomes 2048, 4096 or 8192); a size no larger than the picture, or past what the model makes, is greyed out, " +
