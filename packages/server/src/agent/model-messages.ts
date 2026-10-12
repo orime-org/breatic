@@ -63,7 +63,7 @@ export function reachesTheModel(part: ToolPart): boolean {
  * A call that answered is handed back as the model was given it when the turn
  * ran, which the turn wrote down beside the answer (`forModel`). A structured
  * answer is never read here: it is in whatever shape the tool had when the row
- * was written, and reading it with today's code is what made conversations
+ * was written, and reading it with the current code is what made conversations
  * fail every turn once a tool's answer gained a field (inner#1481).
  *
  * A row from before that copy was kept is either a string -- the model read

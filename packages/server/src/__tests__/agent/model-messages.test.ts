@@ -119,7 +119,7 @@ describe("history on its way to the model", () => {
 
   it("says a structured result written before the model's copy was kept is no longer available", () => {
     // A row from before `forModel` existed, written by a tool that has since
-    // been removed. Reading `output` with today's code is what made a
+    // been removed. Reading `output` with the current code is what made a
     // conversation fail every turn once a tool's answer gained a field, so a
     // structured result with no stored copy goes to the model as a note.
     const output = replayedOutput([
@@ -528,7 +528,7 @@ describe("a replayed tool result", () => {
   });
 
   it("never reads the tool's own answer when the model's copy is there", () => {
-    // An answer today's renderer would throw on: `needs` missing, which is
+    // An answer the current renderer would throw on: `needs` missing, which is
     // the row that failed every later turn of a conversation (inner#1481).
     const output = replayedOutput([
       stored("assistant", [

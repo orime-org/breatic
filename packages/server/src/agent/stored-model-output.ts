@@ -6,7 +6,7 @@
  *
  * Replay hands this back as it is. Working it out again from the tool's raw
  * answer each turn meant reading rows written by an older version of a tool
- * with today's code, and the first field a tool's answer gained after rows
+ * with the current code, and the first field a tool's answer gained after rows
  * existed made every later turn of those conversations throw (inner#1481).
  */
 
