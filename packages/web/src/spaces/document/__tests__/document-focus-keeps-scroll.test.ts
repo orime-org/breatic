@@ -5,8 +5,8 @@
  * inner#1350 design §5.5: the body gives itself the focus without moving.
  * WebKit scrolls an editable element to its selection as it takes the focus,
  * `preventScroll` or not, so every way the body is focused — a drop the editor
- * handles itself, the editor's own `focus()` — has to leave each scroller above
- * it where it was. The row drag's end is `document-row-drag-end-focus.test.ts`.
+ * handles itself, the editor's own `focus()`, the end of a row drag — has to
+ * leave each scroller above it where it was.
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -15,6 +15,7 @@ import * as Y from 'yjs';
 import { documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
+import { startRowDrag } from '@web/spaces/document/document-row-drag';
 
 type Editor = ReturnType<typeof buildDocumentEditor>;
 
@@ -49,19 +50,24 @@ function openScrolled(): { editor: Editor; box: HTMLElement } {
     { type: 'paragraph', content: 'second' },
   ] as never);
   box.scrollTop = 500;
-  // What WebKit does: it honours `preventScroll` (ProseMirror reads the option
-  // to find that out), and still scrolls the caret, up at the top, into view
-  // as the element takes the focus.
-  vi.spyOn(HTMLElement.prototype, 'focus').mockImplementation((options?: FocusOptions) => {
-    void options?.preventScroll;
+  return { editor, box };
+}
+
+/**
+ * Makes taking the focus do what WebKit does: it scrolls the caret, up at the
+ * top, into view, `preventScroll` or not.
+ * @param box - The box the caret scrolls.
+ */
+function focusScrollsToCaret(box: HTMLElement): void {
+  vi.spyOn(HTMLElement.prototype, 'focus').mockImplementation(() => {
     box.scrollTop = 0;
   });
-  return { editor, box };
 }
 
 describe('the body taking the focus', () => {
   it('stays where it is when the editor gives itself the focus', () => {
     const { editor, box } = openScrolled();
+    focusScrollsToCaret(box);
 
     editor.focus();
 
@@ -69,8 +75,22 @@ describe('the body taking the focus', () => {
     expect(box.scrollTop).toBe(500);
   });
 
+  it('stays where it is when a row drag ends', () => {
+    const { editor, box } = openScrolled();
+    const id = (editor.document[1] as unknown as { id: string }).id;
+    const dataTransfer = { setDragImage: vi.fn(), setData: vi.fn(), clearData: vi.fn(), effectAllowed: 'all' } as unknown as DataTransfer;
+    const end = startRowDrag(editor, { dataTransfer, clientY: 0 }, id);
+    focusScrollsToCaret(box);
+
+    end();
+
+    expect(HTMLElement.prototype.focus).toHaveBeenCalled();
+    expect(box.scrollTop).toBe(500);
+  });
+
   it('stays where it is when text dragged in from outside is dropped on it', () => {
     const { editor, box } = openScrolled();
+    focusScrollsToCaret(box);
     const view = editor.prosemirrorView!;
     let at = 0;
     view.state.doc.descendants((node, pos) => {
