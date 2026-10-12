@@ -560,5 +560,8 @@ function LocalParamControl({ param, spec, params, onParams, source }: LocalParam
         </div>
       );
     }
+    case 'list':
+      // No tool declares a list yet; video split (inner#1306) brings its cut-point control.
+      return null;
   }
 }

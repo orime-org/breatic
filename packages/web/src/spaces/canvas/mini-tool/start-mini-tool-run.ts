@@ -12,6 +12,7 @@ import {
   t,
 } from '@breatic/shared';
 import {
+  outputTemplateOf,
   type MiniToolRequest,
   type MiniToolRequestSlot,
   type MiniToolSlotValue,
@@ -28,6 +29,7 @@ import { toast } from '@web/lib/toast';
 import { NODE_STEP } from '@web/spaces/canvas/drop-layout';
 import { DrawingEmptyError, type DrawingExport } from '@web/spaces/canvas/mini-tool/export-drawing';
 import { exportsBeforeRun } from '@web/spaces/canvas/mini-tool/mini-tool-view';
+import { outputPlacementOf } from '@web/spaces/canvas/mini-tool/output-placement';
 import type { DrawingKind } from '@web/spaces/canvas/mini-tool/paint-drawing';
 import { createEmptyNode, type CreatableNodeType } from '@web/spaces/canvas/node-factory';
 import { resolveUploadFailure } from '@web/spaces/canvas/upload-failure';
@@ -157,7 +159,7 @@ async function uploadDrawing(run: MiniToolRun, drawing: MiniToolDrawingSnapshot)
     );
     return null;
   }
-  const prefix = run.spec.outputs[0]?.namePrefix ?? 'DRAWING';
+  const prefix = outputTemplateOf(run.spec).namePrefix;
   /**
    * A PNG file named after the tool's output and the part it is.
    * @param blob - The image.
@@ -234,10 +236,9 @@ export async function startMiniToolRun(run: MiniToolRun): Promise<void> {
     x: source.position.x + (source.groupOrigin?.x ?? 0) + NODE_STEP.x,
     y: source.position.y + (source.groupOrigin?.y ?? 0),
   };
-  const nodes = spec.outputs.map((output, index) => {
-    const built = createEmptyNode(output.modality, { x: base.x, y: base.y + index * NODE_STEP.y }, userId);
-    const name = `${output.namePrefix}-${source.name ?? built.data.name}`;
-    return { ...built, data: { ...built.data, name } };
+  const nodes = outputPlacementOf(spec, run.snapshot.params, [], source.name).map((placed) => {
+    const built = createEmptyNode(placed.output.modality, { x: base.x + placed.x, y: base.y + placed.y }, userId);
+    return { ...built, data: { ...built.data, name: placed.name } };
   });
   runCanvasUndoBatch(projectId, spaceId, () => {
     for (const node of nodes) {
@@ -254,8 +255,8 @@ export async function startMiniToolRun(run: MiniToolRun): Promise<void> {
 
   if (file !== undefined) {
     const [node] = nodes;
-    const [output] = spec.outputs;
-    if (node !== undefined && output !== undefined && output.modality !== 'text') {
+    const output = outputTemplateOf(spec);
+    if (node !== undefined && output.modality !== 'text') {
       run.fillUpload(node.id, file, output.modality, { source: 'mini_tool', toolName: spec.id });
     }
     return;

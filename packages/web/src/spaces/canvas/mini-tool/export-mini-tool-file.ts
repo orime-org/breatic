@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { UPRIGHT, type MiniToolSnapshot, type MiniToolSpec } from '@breatic/shared/mini-tools';
+import { UPRIGHT, outputTemplateOf, type MiniToolSnapshot, type MiniToolSpec } from '@breatic/shared/mini-tools';
 
 import {
   exportCropBlob,
@@ -34,6 +34,6 @@ export async function exportMiniToolFile(spec: MiniToolSpec, snapshot: MiniToolS
   } else {
     throw new Error(`no browser export for ${spec.id}`);
   }
-  const prefix = spec.outputs[0]?.namePrefix ?? 'IMAGE';
+  const prefix = outputTemplateOf(spec).namePrefix;
   return new File([blob], `${prefix}.png`, { type: 'image/png' });
 }
