@@ -235,4 +235,34 @@ describe('MiniToolPanelContainer', () => {
       });
     });
   });
+
+  describe('markup', () => {
+    const RECT = { id: 'r', kind: 'rect', color: '#FF3B30', size: 5, x: 0.1, y: 0.1, w: 0.2, h: 0.2 } as const;
+    const TEXT = { id: 't', kind: 'text', color: '#FF3B30', size: 5, x: 0.5, y: 0.5, text: 'look' } as const;
+
+    beforeEach(() => {
+      canvasSessions.of('').getState().openMiniTool('src', 'image.mark', { sourceContent: 'a.png', params: {} });
+    });
+
+    it('leaves the text being edited at the press and hands the run the objects as they then stand', () => {
+      const onRun = vi.fn(() => Promise.resolve());
+      const session = canvasSessions.of('').getState();
+      session.commitMark([RECT]);
+      session.setMarkEditingText('look');
+      // The canvas writes the text back when it leaves the edit.
+      session.registerMarkChannel({
+        exitEditing: () => {
+          canvasSessions.of('').getState().commitMark([RECT, TEXT]);
+          canvasSessions.of('').getState().setMarkEditingText(null);
+        },
+        discardSelection: () => undefined,
+      });
+      render(tree(source('a.png'), onRun));
+      fireEvent.click(screen.getByTestId('mini-tool-run'));
+      expect(onRun).toHaveBeenCalledWith('src', expect.objectContaining({ id: 'image.mark' }), expect.anything(), {
+        kind: 'mark',
+        objects: [RECT, TEXT],
+      });
+    });
+  });
 });
