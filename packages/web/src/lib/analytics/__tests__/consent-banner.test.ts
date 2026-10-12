@@ -15,7 +15,10 @@ const library = vi.hoisted(() => ({
   validConsent: vi.fn((): boolean => library.consent),
   getCookie: vi.fn(() => (library.consent ? library.cookie : {})),
   acceptCategory: vi.fn(),
-  setCookieData: vi.fn(),
+  // The library rewrites the stored cookie's data.
+  setCookieData: vi.fn(({ value }: { value: unknown }) => {
+    library.cookie = { ...library.cookie, data: value as typeof library.cookie.data };
+  }),
   show: vi.fn(),
   hide: vi.fn(),
   showPreferences: vi.fn(),
@@ -201,9 +204,12 @@ describe('what counts as the visitor choosing', () => {
     } finally {
       document.body.innerHTML = '';
     }
-    // Saving changed no category, so the choice keeps the time it was made and the cookie's lifetime.
+    // Saving changed no category, so the cookie keeps the time its lifetime counts from.
     expect(library.setCookieData).toHaveBeenCalledWith({ value: { source: 'settings', decidedAt: '2026-10-12T00:00:00.000Z' }, mode: 'overwrite' });
     expect(seen).toHaveLength(2);
+    // The account learns of the save as the latest decision, made now.
+    expect(Date.parse((seen.at(-1) as { decidedAt: string }).decidedAt)).toBeGreaterThan(Date.parse('2026-10-12T00:00:00.000Z'));
+    expect(seen.at(-1)).toMatchObject({ source: 'settings', analytics: true, ads: true });
   });
 
   it('does not carry a press from a window that never hid into the next one', async () => {
@@ -328,5 +334,7 @@ describe('a choice stored under a newer policy revision', () => {
     await startBanner('US', (choice) => seen.push(choice));
     expect(library.acceptCategory).not.toHaveBeenCalled();
     expect(seen.at(-1)).toMatchObject({ analytics: true, ads: false });
+    // The library runs on that revision too, so its settings window and its next save keep it.
+    expect(library.run).toHaveBeenCalledWith(expect.objectContaining({ revision: 2 }));
   });
 });

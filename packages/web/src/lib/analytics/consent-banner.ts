@@ -118,15 +118,28 @@ function stamp(source: ConsentSource, decidedAt: string): void {
 
 /**
  * A choice the visitor made in the banner or the settings window.
- * @param decidedAt - When; a save that changed no category keeps the time the cookie's lifetime counts from.
+ * @param keptAt - For a save that changed no category: the time the cookie's lifetime counts from, which it keeps.
  */
-function onVisitorChoice(decidedAt: string = new Date().toISOString()): void {
+function onVisitorChoice(keptAt?: string): void {
   if (openedModal === null) return;
-  stamp(openedModal === 'preferencesModal' ? 'settings' : 'banner', decidedAt);
+  const now = new Date().toISOString();
+  stamp(openedModal === 'preferencesModal' ? 'settings' : 'banner', keptAt ?? now);
   openedModal = null;
   undecided = false;
   lastSeen = readBrowserChoice();
-  onChoice(lastSeen);
+  // The account orders decisions by time, and this one was made now.
+  onChoice(lastSeen && { ...lastSeen, decidedAt: now });
+}
+
+/**
+ * The policy revision the stored cookie was written under; readable before the library runs.
+ * @returns The revision, or 0 when nothing is stored.
+ */
+function storedRevision(): number {
+  // The library's getCookie(field, cookieName) reads a named cookie before run(); its type definitions omit the name.
+  const read = CookieConsent.getCookie as (field: undefined, cookieName: string) => Partial<CookieConsent.CookieValue>;
+  const { revision } = read(undefined, CONSENT_COOKIE_NAME);
+  return typeof revision === 'number' ? revision : 0;
 }
 
 /** What the banner needs to start, kept so it can start again. */
@@ -211,7 +224,8 @@ async function boot(options: BannerOptions): Promise<void> {
   openedModal = null;
   await CookieConsent.run({
     autoShow: false,
-    revision: CONSENT_REVISION,
+    // A choice stored under a newer revision stands (readBrowserChoice); the library must hold it too.
+    revision: Math.max(CONSENT_REVISION, storedRevision()),
     cookie: {
       name: CONSENT_COOKIE_NAME,
       ...(options.cookieDomain !== '' ? { domain: options.cookieDomain } : {}),
