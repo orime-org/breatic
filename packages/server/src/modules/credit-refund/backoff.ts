@@ -34,3 +34,23 @@ export function nextAttemptDelaySeconds(
 export function attemptsExhausted(attemptCount: number, config: { maxAttempts: number }): boolean {
   return attemptCount >= config.maxAttempts;
 }
+
+/**
+ * How long until the next lookup of a disposition waiting on Stripe. These
+ * lookups are not counted, so the wait grows with the time already waited
+ * since the first call: as long again, between the backoff base and max.
+ * @param firstCalledAt - When Stripe was first called, or null.
+ * @param config - The backoff bounds from `config/credit-refund.yaml`.
+ * @param config.backoffBaseSeconds - The shortest wait.
+ * @param config.backoffMaxSeconds - The longest wait.
+ * @param nowMs - The clock, in epoch milliseconds.
+ * @returns Seconds to wait.
+ */
+export function waitedBackoffSeconds(
+  firstCalledAt: Date | null,
+  config: { backoffBaseSeconds: number; backoffMaxSeconds: number },
+  nowMs: number,
+): number {
+  const waited = firstCalledAt ? (nowMs - firstCalledAt.getTime()) / 1000 : 0;
+  return Math.min(Math.max(waited, config.backoffBaseSeconds), config.backoffMaxSeconds);
+}

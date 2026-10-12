@@ -291,6 +291,20 @@ export async function readRefundFacts(
 }
 
 /**
+ * Whether a payment opened a lot, unlocked.
+ * @param paymentId - The payment.
+ * @returns The lot's id, or null.
+ */
+export async function findLotIdByPayment(paymentId: string): Promise<string | null> {
+  const rows = await db
+    .select({ id: creditLots.id })
+    .from(creditLots)
+    .where(eq(creditLots.sourceId, paymentId))
+    .limit(1);
+  return rows[0]?.id ?? null;
+}
+
+/**
  * {@link lockLot}, for the lot a payment opened. `source_id` is unique, so a
  * payment opens at most one lot.
  * @param paymentId - The payment the lot was granted from.

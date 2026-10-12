@@ -31,6 +31,7 @@ import { renderMetrics } from "@server/infra/metrics.js";
 import { logger, initLogger } from "@breatic/core";
 import { loadLocales } from "@breatic/core";
 import { startLifecycleRelay } from "@server/modules/project/lifecycle-relay.js";
+import { startRefundLoop } from "@server/modules/credit-refund/refund-loop.js";
 import { settleAfterReply, pendingAfterReply } from "@server/utils/after-reply.js";
 import { agentModelIds, assertModelsPriced, modelCatalog } from "@breatic/domain";
 import { textToolModels } from "@server/config/text-tools.js";
@@ -219,6 +220,10 @@ server.on("error", (err) => {
 // side cannot run inside the business transaction).
 const lifecycleRelay = startLifecycleRelay();
 
+// The refund disposition loop (inner#1410 §7.1); it starts only when the
+// internal API and payments are both on.
+const refundLoop = startRefundLoop();
+
 // Health probe - separate port so probe traffic stays off the main
 // hono port and per-port failure semantics in the LB stay clean.
 // docker / k8s / LB healthcheck kills the instance on N consecutive
@@ -299,7 +304,7 @@ async function shutdown(signal: string): Promise<void> {
       // Work a route left running after its reply (a password-reset send)
       // still needs the pools, so they close once it has finished.
       () =>
-        settleAfterReply().then(() =>
+        Promise.all([settleAfterReply(), refundLoop.stop()]).then(() =>
           Promise.allSettled([closeDb(), closeRedis(), closeQueues()]),
         ),
     ],

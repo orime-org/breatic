@@ -98,6 +98,20 @@ export async function getPaymentById(id: string): Promise<PaymentEntity | null> 
 }
 
 /**
+ * The payment a Stripe payment intent belongs to.
+ * @param paymentIntent - `pi_…`.
+ * @returns The payment's id, or null when none of ours carries it.
+ */
+export async function findIdByPaymentIntent(paymentIntent: string): Promise<string | null> {
+  const rows = await db
+    .select({ id: payments.id })
+    .from(payments)
+    .where(eq(payments.stripePaymentIntentId, paymentIntent))
+    .limit(1);
+  return rows[0]?.id ?? null;
+}
+
+/**
  * What the buyer paid, tax included: `coalesce(total_cents, amount_cents)`.
  * @param id - Payment UUID
  * @param tx - The caller's transaction

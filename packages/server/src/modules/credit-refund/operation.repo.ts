@@ -240,7 +240,9 @@ export async function appendEvent(
   },
   tx: DbTx,
 ): Promise<void> {
-  await tx.insert(creditRefundOperationEvents).values(row);
+  // The wall clock, so events written in one transaction keep their order;
+  // `now()` is the same for the whole transaction.
+  await tx.insert(creditRefundOperationEvents).values({ ...row, createdAt: sql`clock_timestamp()` });
 }
 
 /**
@@ -362,6 +364,77 @@ export async function markFirstCalled(id: string, leaseToken: string): Promise<v
     .set({ firstCalledAt: sql`coalesce(${creditRefundOperations.firstCalledAt}, now())` })
     .where(
       and(eq(creditRefundOperations.id, id), eq(creditRefundOperations.leaseToken, leaseToken)),
+    );
+}
+
+/** A `started` row whose executor is gone: lease run out, attempt due. */
+const CLAIMABLE = sql`${creditRefundOperations.status} = 'started'
+  AND ${creditRefundOperations.lockedUntil} < now()
+  AND ${creditRefundOperations.nextAttemptAt} <= now()`;
+
+/**
+ * Candidates for the loop's claim (§7.1 step 1), unlocked: the claim
+ * re-checks each under the lot's lock.
+ * @param limit - How many.
+ * @returns Their ids and lots, most overdue first.
+ */
+export async function listClaimable(limit: number): Promise<{ id: string; lotId: string }[]> {
+  return db
+    .select({ id: creditRefundOperations.id, lotId: creditRefundOperations.lotId })
+    .from(creditRefundOperations)
+    .where(CLAIMABLE)
+    .orderBy(asc(creditRefundOperations.nextAttemptAt))
+    .limit(limit);
+}
+
+/**
+ * Lock a disposition if it is still claimable.
+ * @param id - The disposition.
+ * @param tx - The transaction already holding its lot's lock.
+ * @returns True when it is locked and claimable.
+ */
+export async function lockIfClaimable(id: string, tx: DbTx): Promise<boolean> {
+  const rows = await tx
+    .select({ id: creditRefundOperations.id })
+    .from(creditRefundOperations)
+    .where(and(eq(creditRefundOperations.id, id), CLAIMABLE))
+    .for("update");
+  return rows.length > 0;
+}
+
+/**
+ * Dispositions waiting on Stripe whose next lookup is due (§7.1 step 2).
+ * @param limit - How many.
+ * @returns The rows, most overdue first.
+ */
+export async function listDueAwaiting(limit: number): Promise<CreditRefundOperation[]> {
+  const rows = await db
+    .select()
+    .from(creditRefundOperations)
+    .where(
+      and(
+        eq(creditRefundOperations.status, "awaiting_stripe"),
+        sql`${creditRefundOperations.nextAttemptAt} <= now()`,
+      ),
+    )
+    .orderBy(asc(creditRefundOperations.nextAttemptAt))
+    .limit(limit);
+  return rows.map(toEntity);
+}
+
+/**
+ * Put off the next lookup of a disposition still waiting on Stripe. Progress
+ * only: the status does not move, so no event row.
+ * @param id - The disposition.
+ * @param seconds - Seconds from now.
+ * @param tx - The transaction holding its lot's lock.
+ */
+export async function scheduleNextLook(id: string, seconds: number, tx: DbTx): Promise<void> {
+  await tx
+    .update(creditRefundOperations)
+    .set({ nextAttemptAt: fromNow(seconds) })
+    .where(
+      and(eq(creditRefundOperations.id, id), eq(creditRefundOperations.status, "awaiting_stripe")),
     );
 }
 

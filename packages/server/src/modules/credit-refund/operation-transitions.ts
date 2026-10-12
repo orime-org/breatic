@@ -16,7 +16,7 @@ import type { DbTx } from "@breatic/core";
 import type { CreditLotEntity } from "@breatic/shared";
 import { creditLotRepo, creditLotService } from "@breatic/domain";
 import { getCreditRefundConfig } from "@server/config/credit-refund.js";
-import { nextAttemptDelaySeconds } from "@server/modules/credit-refund/backoff.js";
+import { nextAttemptDelaySeconds, waitedBackoffSeconds } from "@server/modules/credit-refund/backoff.js";
 import * as operationRepo from "@server/modules/credit-refund/operation.repo.js";
 import type {
   AttentionReason,
@@ -385,7 +385,7 @@ async function fromAwaiting(ctx: Ctx, event: OperationEvent): Promise<CreditRefu
       return toAttention(ctx, event, "stripe_refund_failed_later", declineDetail(event), refundIdOf(event));
     case "E10":
       if (known) break;
-      return move(ctx, EVENT_NAME.E10, { nextAttemptInSeconds: lookDelaySeconds(ctx.row) }, {});
+      return move(ctx, EVENT_NAME.E10, { nextAttemptInSeconds: waitedBackoffSeconds(ctx.row.firstCalledAt, getCreditRefundConfig(), Date.now()) }, {});
     case "E12":
       return known
         ? move(ctx, EVENT_NAME.E12, {}, {})
@@ -395,7 +395,7 @@ async function fromAwaiting(ctx: Ctx, event: OperationEvent): Promise<CreditRefu
     case "E16":
       return move(ctx, EVENT_NAME.E16, {
         lastError: event.failure.message,
-        nextAttemptInSeconds: lookDelaySeconds(ctx.row),
+        nextAttemptInSeconds: waitedBackoffSeconds(ctx.row.firstCalledAt, getCreditRefundConfig(), Date.now()),
       }, detailOf(event));
     default:
       break;
@@ -690,16 +690,4 @@ function declineDetail(event: DeclineEvent): string | null {
  */
 function firstLine(message: string): string {
   return message.split("\n")[0] ?? message;
-}
-
-/**
- * How long until the next lookup of a disposition waiting on Stripe. These
- * lookups are not counted, so the wait grows with the time already waited.
- * @param row - The disposition.
- * @returns Seconds, between the backoff base and max.
- */
-function lookDelaySeconds(row: CreditRefundOperation): number {
-  const { backoffBaseSeconds, backoffMaxSeconds } = getCreditRefundConfig();
-  const waited = row.firstCalledAt ? (Date.now() - row.firstCalledAt.getTime()) / 1000 : 0;
-  return Math.min(Math.max(waited, backoffBaseSeconds), backoffMaxSeconds);
 }
