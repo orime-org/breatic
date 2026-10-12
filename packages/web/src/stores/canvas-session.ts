@@ -731,7 +731,10 @@ export function createCanvasSessionStore(): CanvasSessionStore {
             s.miniTool = { ...s.miniTool, expand: castDraft({ ...s.miniTool.expand, frame: { ...next.frame }, ratio: next.ratio }) };
           }
         }),
-      setMarkTool: (tool) => set((s) => updateMark(s, (m) => ({ ...m, tool }))),
+      // A drawing tool lets go of the selected object, so the next colour or
+      // size is the next object's (inner#1303 §6.6).
+      setMarkTool: (tool) =>
+        set((s) => updateMark(s, (m) => ({ ...m, tool, selectedId: tool === 'select' ? m.selectedId : null }))),
       setMarkColor: (color) => set((s) => updateMark(s, (m) => restyled(m, { color }))),
       setMarkSize: (size) => set((s) => updateMark(s, (m) => restyled(m, { size }))),
       commitMark: (objects) => set((s) => updateMark(s, (m) => withObjects(m, objects))),

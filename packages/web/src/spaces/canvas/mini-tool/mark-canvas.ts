@@ -33,7 +33,8 @@ interface PointerInfo {
 interface Edit {
   id: string;
   isNew: boolean;
-  before: MarkObject | null;
+  /** The text as the edit began, which says whether leaving it changed anything. */
+  textAtEntry: string;
 }
 
 /**
@@ -137,40 +138,53 @@ export class MarkCanvasController {
     this.sync();
   }
 
-  /** Bring the canvas in line with the draft: the tool, an edited text's style, and the objects. */
+  /**
+   * Bring the canvas in line with the draft: the tool, an edited text's style,
+   * the objects and the selection. The draft alone says what is selected: undo,
+   * redo, clear and a new source drop it there, a restyle keeps it.
+   */
   sync(): void {
     const draft = this.draft();
     if (draft === null || this.disposed) return;
     this.applyTool(draft);
     this.restyleEdit(draft);
     const json = JSON.stringify(draft.objects);
-    if (json === this.shown) return;
-    const external = json !== this.lastWritten;
-    const activeId = idOf(this.canvas.getActiveObject());
     this.suppressed = true;
     try {
-      if (external) {
-        // Somebody else changed the objects: the edit and the selection go
-        // first, so neither writes back over the new list.
-        const active = this.canvas.getActiveObject();
-        if (active instanceof IText && active.isEditing) active.exitEditing();
-        this.edit = null;
+      if (json !== this.shown) {
+        if (json !== this.lastWritten) {
+          // Somebody else changed the objects: a text edit ends without
+          // writing back over the new list.
+          const active = this.canvas.getActiveObject();
+          if (active instanceof IText && active.isEditing) active.exitEditing();
+          this.edit = null;
+          if (draft.editingText !== null) this.session().setMarkEditingText(null);
+        }
         this.canvas.discardActiveObject();
-        if (draft.selectedId !== null) this.session().selectMark(null);
-        if (draft.editingText !== null) this.session().setMarkEditingText(null);
+        for (const shape of this.canvas.getObjects()) this.canvas.remove(shape);
+        for (const object of draft.objects) this.canvas.add(toFabric(object, this.box));
+        this.shown = json;
+        this.lastWritten = json;
       }
-      for (const shape of this.canvas.getObjects()) this.canvas.remove(shape);
-      for (const object of draft.objects) this.canvas.add(toFabric(object, this.box));
-      if (!external && activeId !== undefined) {
-        const again = this.canvas.getObjects().find((shape) => idOf(shape) === activeId);
-        if (again !== undefined) this.canvas.setActiveObject(again);
-      }
+      this.alignSelection(draft);
     } finally {
       this.suppressed = false;
     }
-    this.shown = json;
-    this.lastWritten = json;
     this.canvas.requestRenderAll();
+  }
+
+  /**
+   * Make the canvas's selection the draft's, unless a text is being edited.
+   * @param draft - The draft.
+   */
+  private alignSelection(draft: MarkDraft): void {
+    if (this.edit !== null) return;
+    const active = this.canvas.getActiveObject();
+    if (idOf(active) === (draft.selectedId ?? undefined)) return;
+    const wanted =
+      draft.selectedId === null ? undefined : this.canvas.getObjects().find((shape) => idOf(shape) === draft.selectedId);
+    if (wanted === undefined) this.canvas.discardActiveObject();
+    else this.canvas.setActiveObject(wanted);
   }
 
   /**
@@ -353,7 +367,7 @@ export class MarkCanvasController {
       { id, kind: 'text', color: draft.color, size: draft.size, x: at.x / this.box.width, y: at.y / this.box.height, text: '' },
       this.box,
     ) as unknown as IText;
-    this.edit = { id, isNew: true, before: null };
+    this.edit = { id, isNew: true, textAtEntry: '' };
     this.suppressed = true;
     this.canvas.add(text);
     this.canvas.setActiveObject(text);
@@ -395,7 +409,7 @@ export class MarkCanvasController {
     const id = idOf(target);
     if (id === undefined) return;
     if (this.edit === null) {
-      this.edit = { id, isNew: false, before: fromFabric(target, this.box) };
+      this.edit = { id, isNew: false, textAtEntry: target.text };
       // The text being edited is the selected one, so the controls show its style.
       this.session().selectMark(id);
       this.session().setMarkEditingText(target.text);
@@ -411,7 +425,9 @@ export class MarkCanvasController {
     const edit = this.edit;
     if (this.suppressed || edit === null) return;
     this.edit = null;
-    this.justLeft = target;
+    // Fabric follows a changed text's exit with `object:modified`, which this
+    // exit already writes back; an unchanged one sends none.
+    if (target.text !== edit.textAtEntry) this.justLeft = target;
     const draft = this.draft();
     const session = this.session();
     if (draft !== null) {
