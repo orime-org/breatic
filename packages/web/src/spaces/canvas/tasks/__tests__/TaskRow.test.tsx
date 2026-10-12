@@ -73,6 +73,7 @@ function entry(over: Partial<NodeTaskEntry> = {}): NodeTaskEntry {
  * @param props.onRetry - Send the stashed File again.
  * @param props.onDismiss - Drop the row.
  * @param props.medium - What the host node holds, for a refusal's format list.
+ * @param props.busy - Whether a press on this row waits for the server.
  * @param names - Roster, defaulting to one named person.
  */
 function renderRow(
@@ -84,6 +85,7 @@ function renderRow(
     onRetry?: (id: string) => void;
     onDismiss?: (id: string) => void;
     medium?: 'image' | 'video' | 'audio';
+    busy?: boolean;
   } = {},
   names: Record<string, string> = { 'u-1': 'Ada' },
 ): void {
@@ -96,6 +98,7 @@ function renderRow(
         now={NOW}
         hasRetryFile={props.hasRetryFile ?? false}
         readOnly={props.readOnly ?? false}
+        busy={props.busy ?? false}
         onView={props.onView ?? ((): void => {})}
         onRetry={props.onRetry ?? ((): void => {})}
         onDismiss={props.onDismiss ?? ((): void => {})}
@@ -274,6 +277,20 @@ describe('TaskRow', () => {
     renderRow({ status: 'failed' }, { hasRetryFile: false });
     expect(screen.queryByTestId('task-action-retry')).toBeNull();
     expect(screen.getByTestId('task-action-clear')).toBeInTheDocument();
+  });
+
+  it('waits on every button while a press on the row is with the server', () => {
+    renderRow({ status: 'failed' }, { hasRetryFile: true, busy: true });
+    for (const id of ['task-action-retry', 'task-action-clear']) {
+      expect(screen.getByTestId(id)).toHaveAttribute('aria-busy', 'true');
+      expect(screen.getByTestId(id)).toHaveAttribute('aria-disabled', 'true');
+    }
+
+    cleanup();
+    renderRow({ status: 'failed' }, { hasRetryFile: true, busy: false });
+    for (const id of ['task-action-retry', 'task-action-clear']) {
+      expect(screen.getByTestId(id)).not.toHaveAttribute('aria-busy');
+    }
   });
 
   it('says an expired task ran out of time', () => {

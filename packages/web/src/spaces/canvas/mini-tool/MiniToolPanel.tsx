@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { ArrowUp, FlipHorizontal2, FlipVertical2, Film, ImageIcon, Loader2, Music, RotateCcw, RotateCw, Star } from 'lucide-react';
+import { ArrowUp, FlipHorizontal2, FlipVertical2, Film, ImageIcon, Music, RotateCcw, RotateCw, Star } from 'lucide-react';
 import * as React from 'react';
 
 import {
@@ -316,15 +316,11 @@ export const MiniToolPanel = React.memo(function MiniToolPanel(props: MiniToolPa
           data-testid='mini-tool-run'
           aria-label={t('canvas.miniTool.panel.run')}
           disabled={blocked}
+          loading={refusal === 'exporting'}
+          icon={<ArrowUp className='h-4 w-4' aria-hidden='true' />}
           onClick={onRun}
           className='flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground transition-colors hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50 disabled:cursor-not-allowed'
-        >
-          {refusal === 'exporting' ? (
-            <Loader2 className='h-4 w-4 animate-spin' aria-hidden='true' />
-          ) : (
-            <ArrowUp className='h-4 w-4' aria-hidden='true' />
-          )}
-        </Button>
+        />
       </div>
     </CanvasPanel>
   );

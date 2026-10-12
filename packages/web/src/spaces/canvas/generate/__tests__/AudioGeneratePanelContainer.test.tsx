@@ -734,10 +734,64 @@ describe('AudioGeneratePanelContainer — submitting', () => {
     typePrompt('Good evening.');
     fireEvent.click(screen.getByTestId('generate-audio-execute'));
 
-    await screen.findByTestId('generate-audio-execute-pending');
-    expect(screen.getByTestId('generate-audio-execute')).toBeDisabled();
+    const btn = screen.getByTestId('generate-audio-execute');
+    await waitFor(() => expect(btn).toHaveAttribute('aria-busy', 'true'));
+    expect(btn).toHaveAttribute('aria-disabled', 'true');
 
     settle?.();
+  });
+
+  it('stops waiting once a refused submit is answered', async () => {
+    let refuse: (() => void) | undefined;
+    vi.spyOn(canvasApi, 'createTask').mockImplementation(
+      () =>
+        new Promise((_resolve, reject) => {
+          refuse = () => reject(new Error('refused'));
+        }),
+    );
+    await openPanel({
+      model: 'elevenlabs-v3',
+      paramsByModel: { 'elevenlabs-v3': { voice_id: 'Aria' } },
+    });
+    typePrompt('Good evening.');
+    const btn = screen.getByTestId('generate-audio-execute');
+    fireEvent.click(btn);
+    await waitFor(() => expect(btn).toHaveAttribute('aria-busy', 'true'));
+
+    await act(async () => {
+      refuse?.();
+      await Promise.resolve();
+    });
+
+    await waitFor(() => expect(btn).not.toHaveAttribute('aria-busy'));
+    expect(btn).not.toHaveAttribute('aria-disabled');
+  });
+
+  it('closes the panel, spinner and all, once an accepted submit is answered', async () => {
+    let accept: (() => void) | undefined;
+    vi.spyOn(canvasApi, 'createTask').mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          accept = () => resolve({} as never);
+        }),
+    );
+    await openPanel({
+      model: 'elevenlabs-v3',
+      paramsByModel: { 'elevenlabs-v3': { voice_id: 'Aria' } },
+    });
+    typePrompt('Good evening.');
+    const btn = screen.getByTestId('generate-audio-execute');
+    fireEvent.click(btn);
+    await waitFor(() => expect(btn).toHaveAttribute('aria-busy', 'true'));
+
+    await act(async () => {
+      accept?.();
+      await Promise.resolve();
+    });
+
+    await waitFor(() =>
+      expect(screen.queryByTestId('generate-audio-execute')).toBeNull(),
+    );
   });
 
   it('refuses on a locked node', async () => {

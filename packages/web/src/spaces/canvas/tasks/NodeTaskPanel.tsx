@@ -50,6 +50,8 @@ export interface NodeTaskPanelProps {
   isError: boolean;
   /** Whether this session still holds one task's File. */
   hasRetryFile: (taskId: string) => boolean;
+  /** Whether a press on one task's row is still waiting for the server. */
+  isBusy: (taskId: string) => boolean;
   /** Whether this reader may write; a read-only row carries no buttons. */
   readOnly: boolean;
   /**
@@ -80,6 +82,7 @@ export interface NodeTaskPanelProps {
  * @param props.isLoading - Whether the list is still being fetched.
  * @param props.isError - Whether the fetch failed.
  * @param props.hasRetryFile - Whether this session holds one task's File.
+ * @param props.isBusy - Whether a press on one task's row is still waiting.
  * @param props.readOnly - Whether this reader may write.
  * @param props.medium - What the host node holds, for a refusal's format list.
  * @param props.onReload - Fetch the list again.
@@ -97,6 +100,7 @@ export function NodeTaskPanel({
   isLoading,
   isError,
   hasRetryFile,
+  isBusy,
   readOnly,
   medium,
   onReload,
@@ -183,6 +187,7 @@ export function NodeTaskPanel({
                 entry={task}
                 now={now}
                 hasRetryFile={hasRetryFile(task.id)}
+                busy={isBusy(task.id)}
                 readOnly={readOnly}
                 {...(medium !== undefined && { medium })}
                 onView={onView}

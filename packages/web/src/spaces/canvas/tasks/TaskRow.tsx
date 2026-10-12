@@ -55,6 +55,8 @@ export interface TaskRowProps {
   hasRetryFile: boolean;
   /** Whether this reader may write; a read-only row carries no buttons. */
   readOnly: boolean;
+  /** Whether a press on this row is still waiting for the server. */
+  busy: boolean;
   /**
    * What the host node holds, when it holds one of the three media.
    *
@@ -104,6 +106,7 @@ function settledNote(
  * @param props.now - The reader's clock.
  * @param props.hasRetryFile - Whether this session holds the File.
  * @param props.readOnly - Whether this reader may write.
+ * @param props.busy - Whether a press on this row is still waiting.
  * @param props.medium - What the host node holds, for a refusal's format list.
  * @param props.onView - Open the node's history at the late result.
  * @param props.displayNameOf - The catalog's name for a model id.
@@ -116,6 +119,7 @@ export const TaskRow = React.memo(function TaskRow({
   now,
   hasRetryFile,
   readOnly,
+  busy,
   medium,
   onView,
   displayNameOf = NO_NAMES,
@@ -242,6 +246,7 @@ export const TaskRow = React.memo(function TaskRow({
             variant={PRIMARY_ACTIONS.has(action) ? 'default' : 'outline'}
             size='compact'
             data-testid={`task-action-${action}`}
+            loading={busy}
             onClick={(): void => run(action)}
             className='text-2xs'
           >

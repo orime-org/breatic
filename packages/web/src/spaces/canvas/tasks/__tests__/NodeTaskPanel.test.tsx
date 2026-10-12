@@ -74,6 +74,7 @@ function renderPanel(
         isLoading={false}
         isError={false}
         hasRetryFile={(): boolean => false}
+        isBusy={(): boolean => false}
         readOnly={false}
         onReload={(): void => {}}
         onClose={(): void => {}}
@@ -208,5 +209,20 @@ describe('NodeTaskPanel', () => {
 
     expect(screen.getAllByTestId('task-action-retry')).toHaveLength(1);
     expect(screen.getAllByTestId('task-action-clear')).toHaveLength(2);
+  });
+
+  it('waits only on the row whose press is with the server', () => {
+    renderPanel({
+      status: 'failed',
+      entries: [
+        entry({ id: 'busy', status: 'failed', settledAt: '2026-09-04T10:01:00.000Z' }),
+        entry({ id: 'idle', status: 'failed', label: 'second.mp4', settledAt: '2026-09-04T10:01:00.000Z' }),
+      ],
+      isBusy: (taskId: string): boolean => taskId === 'busy',
+    });
+
+    const [first, second] = screen.getAllByTestId('task-action-clear');
+    expect(first).toHaveAttribute('aria-busy', 'true');
+    expect(second).not.toHaveAttribute('aria-busy');
   });
 });
