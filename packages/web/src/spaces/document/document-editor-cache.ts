@@ -352,6 +352,15 @@ export function getDocumentEditor(
 }
 
 /**
+ * The editor already built for a document, without building one.
+ * @param name - The canonical document name.
+ * @returns The handle, or undefined when no editor has been built for it.
+ */
+export function peekDocumentEditor(name: string): DocumentEditorHandle | undefined {
+  return cache.peek(name);
+}
+
+/**
  * Destroy and drop the editor for a document. Called when a tab closes, so
  * reopening the Space starts with a fresh editor and an empty history.
  * @param name - The canonical document name to evict.

@@ -16,7 +16,10 @@ import { watchChatMishaps } from '@web/stores/chat-mishaps';
 import type { ChatMishap } from '@web/stores/chat-mishaps';
 import { chatAttachments } from '@web/stores/chat-attachments';
 import { chatSessionFor, sendInSession, stopChatSession } from '@web/stores/chat-sessions';
+import { chatApi } from '@web/data/api/chat';
 import type { StoredUiMessage } from '@web/data/api/chat';
+import { clipSpaceContext } from '@web/pages/project/chat/space-context';
+import type { ReadSpaces } from '@web/pages/project/chat/space-context';
 import type { ConversationOnTheWire } from '@web/data/api/chat';
 import type { ChatMessage } from '@web/pages/project/chat/types';
 
@@ -159,7 +162,6 @@ const NO_MESSAGES: StoredUiMessage[] = [];
  */
 const NO_CONVERSATIONS: ConversationOnTheWire[] = [];
 
-
 /**
  * The chat panel's view of the conversation it is showing.
  *
@@ -173,9 +175,15 @@ const NO_CONVERSATIONS: ConversationOnTheWire[] = [];
  * @param projectId - Project whose chat this is
  * @param listOpen - Whether the conversation list is on screen, which decides
  *   where a word about one of its rows is drawn
+ * @param readSpaces - Reads the reader's Spaces as they stand, called at the
+ *   press (inner#1413)
  * @returns The messages, whether they have arrived, and what can be done
  */
-export function useChatSession(projectId: string, listOpen = false): ChatSession {
+export function useChatSession(
+  projectId: string,
+  listOpen: boolean,
+  readSpaces: () => ReadSpaces,
+): ChatSession {
 
   const conversationId = useConversationRuntime((s) => s.currentByProject[projectId]);
   const openStatus = useConversationRuntime((s) => s.openStatus[projectId] ?? 'idle');
@@ -231,8 +239,8 @@ export function useChatSession(projectId: string, listOpen = false): ChatSession
   // a project opens a conversation first, and that is a whole request during
   // which the SDK has not been asked for anything and says it is ready. Left
   // out, the composer draws a live send button through it.
-  const opening = useConversationRuntime((s) => s.sendingByProject[projectId] === true);
-  const turnPhase = opening ? 'sending' : phaseOf(status);
+  const sendHeld = useConversationRuntime((s) => s.sendingByProject[projectId] === true);
+  const turnPhase = sendHeld ? 'sending' : phaseOf(status);
   const navigating = useConversationRuntime((s) => s.navigatingByProject[projectId] === true);
   const loadingMore = useConversationRuntime((s) => s.listLoadingMore[projectId] === true);
   const hasMore = useConversationRuntime((s) =>
@@ -262,11 +270,24 @@ export function useChatSession(projectId: string, listOpen = false): ChatSession
     async (draft: string): Promise<void> => {
       const said = draft.trim();
       if (said === '') return;
+      // Read before anything is waited on, so what goes is the Space as it
+      // stood when send was pressed, not as it is once a conversation has
+      // opened.
+      const spaces = readSpaces();
       // Which conversation this belongs in is settled at the press, not read
       // off the last render: a first message opens a conversation, and the
       // panel has not been told about it yet when this runs.
       const opened = await conversationRuntime.conversationForSending(projectId);
       if (opened === undefined) return;
+      // The Spaces are cut to the server's limits, so they cannot go without
+      // them. The first read is a request, and the send stays held for it like
+      // opening a conversation. A send whose reader leaves the project or moves
+      // to another conversation meanwhile does not go; the words stay in the
+      // draft they were typed in, which leaving the project discards.
+      const limits = await conversationRuntime.whileSendHeld(projectId, () =>
+        chatApi.streamConfig().catch(() => null),
+      );
+      if (!conversationRuntime.stillSendingTo(projectId, opened)) return;
       chatSessionFor({
         projectId,
         conversationId: opened,
@@ -283,9 +304,14 @@ export function useChatSession(projectId: string, listOpen = false): ChatSession
       // what the reader sees there.
       const attached = chatAttachments.sendable(opened);
       if (attached === null) return;
-      await sendInSession(opened, said, attached);
+      // Said beside the plus sign; the words stay in the box.
+      if (limits === null) {
+        chatAttachments.say(opened, { key: 'sendUnavailable' });
+        return;
+      }
+      await sendInSession(opened, said, attached, clipSpaceContext(spaces, limits, attached));
     },
-    [projectId, noteTitle, emptyTheBox],
+    [projectId, noteTitle, emptyTheBox, readSpaces],
   );
 
   const abort = React.useCallback((): void => {

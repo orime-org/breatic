@@ -95,3 +95,91 @@ describe("chatMessageSchema — time_zone", () => {
     expect(chatMessageSchema.safeParse({ ...message, time_zone: "x".repeat(65) }).success).toBe(false);
   });
 });
+
+describe("chatMessageSchema — the reader's Spaces (inner#1413)", () => {
+  const message = {
+    message: "summarise this",
+    project_id: "11111111-1111-4111-8111-111111111111",
+    conversation_id: "22222222-2222-4222-8222-222222222222",
+  };
+  const space = { id: "s1", name: "Storyboard", kind: "document" as const };
+
+  it("takes the Space list, its total and the open Space", () => {
+    const parsed = chatMessageSchema.parse({
+      ...message,
+      spaces: [space, { id: "s2", name: "Cast", kind: "canvas" }],
+      spaces_total: 2,
+      current_space: { ...space, state: "loaded", content: "# Scene 1", total_chars: 9 },
+    });
+    expect(parsed.spaces).toHaveLength(2);
+    expect(parsed.spaces_total).toBe(2);
+    expect(parsed.current_space).toMatchObject({ state: "loaded", content: "# Scene 1", total_chars: 9 });
+  });
+
+  it("takes a message that carries none of them", () => {
+    const parsed = chatMessageSchema.parse(message);
+    expect(parsed.spaces).toBeUndefined();
+    expect(parsed.current_space).toBeUndefined();
+  });
+
+  it("takes an open Space whose content has not loaded or cannot be read", () => {
+    expect(chatMessageSchema.safeParse({ ...message, current_space: { ...space, state: "loading" } }).success).toBe(true);
+    expect(
+      chatMessageSchema.safeParse({ ...message, current_space: { ...space, kind: "timeline", state: "unreadable" } }).success,
+    ).toBe(true);
+  });
+
+  it("refuses a kind there is no Space type for", () => {
+    expect(chatMessageSchema.safeParse({ ...message, spaces: [{ ...space, kind: "board" }] }).success).toBe(false);
+  });
+
+  it("refuses a Space name longer than a Space can be named", () => {
+    expect(chatMessageSchema.safeParse({ ...message, spaces: [{ ...space, name: "x".repeat(81) }] }).success).toBe(false);
+  });
+});
+
+describe("chatMessageSchema — how much of an open canvas is shown (inner#1413)", () => {
+  const message = {
+    message: "what is on this canvas",
+    project_id: "11111111-1111-4111-8111-111111111111",
+    conversation_id: "22222222-2222-4222-8222-222222222222",
+  };
+  const canvas = { id: "s2", name: "Cast", kind: "canvas" as const, state: "loaded" as const, content: "{}", total_chars: 2 };
+  const detail = {
+    selected_total: 3,
+    selected_attached: 1,
+    selected_whole: 2,
+    slim: false,
+    texts_cut: 0,
+    names_only: 0,
+    edges_not_listed: 0,
+    nodes_not_listed: 0,
+    groups_not_listed: 0,
+  };
+
+  it("takes a loaded canvas with what was done to fit it", () => {
+    const parsed = chatMessageSchema.parse({ ...message, current_space: { ...canvas, detail } });
+    expect(parsed.current_space).toMatchObject({ detail });
+  });
+
+  it("refuses a loaded canvas that does not say what was done to fit it", () => {
+    expect(chatMessageSchema.safeParse({ ...message, current_space: canvas }).success).toBe(false);
+  });
+
+  it("refuses a document that carries a canvas's fitting", () => {
+    const document = { ...canvas, kind: "document" as const };
+    expect(chatMessageSchema.safeParse({ ...message, current_space: { ...document, detail } }).success).toBe(false);
+    expect(chatMessageSchema.safeParse({ ...message, current_space: document }).success).toBe(true);
+  });
+
+  it("refuses counts that are negative or fractional", () => {
+    for (const bad of [{ texts_cut: -1 }, { names_only: 1.5 }, { nodes_not_listed: -2 }]) {
+      expect(chatMessageSchema.safeParse({ ...message, current_space: { ...canvas, detail: { ...detail, ...bad } } }).success).toBe(false);
+    }
+  });
+
+  it("refuses more selected nodes whole or attached than were selected", () => {
+    const over = { ...detail, selected_total: 2, selected_attached: 1, selected_whole: 2 };
+    expect(chatMessageSchema.safeParse({ ...message, current_space: { ...canvas, detail: over } }).success).toBe(false);
+  });
+});

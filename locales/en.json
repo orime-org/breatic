@@ -160,6 +160,8 @@
       "message_too_long": "This message is too long. It may hold at most {limit, number} characters; this one holds {actual, number}.",
       "attachments_too_long": "The attached content is too long. It may hold at most {limit, number} characters; this holds {actual, number}.",
       "attachments_too_many": "Too many items are attached. At most {limit, number} may be attached; this message has {actual, number}.",
+      "current_space_too_long": "The open Space's content is too long. It may hold at most {limit, number} characters; this holds {actual, number}.",
+      "spaces_too_many": "Too many Spaces are listed. At most {limit, number} may be listed; this message lists {actual, number}.",
       "references_too_many": "Too many references to attachments. A message may carry at most {limit, number}; this one carries {actual, number}."
     },
     "mail": {
@@ -243,6 +245,10 @@
       "sending": "Sending",
       "atLimit": "At the {limit, number}-character limit",
       "attach": "Attach files",
+      "spaceContextOn": "The Agent reads this Space · Click to stop",
+      "spaceContextOff": "The Agent doesn't read this Space · Click to allow",
+      "spaceContextOnUnreadable": "The Agent knows this Space is open but can't read its content · Click to stop",
+      "spaceContextOffUnreadable": "The Agent doesn't know this Space is open · Click to allow",
       "removeAttachment": "Remove {name}",
       "attachmentUploading": "Uploading",
       "attachmentFailed": "{reason, select, upload {Upload failed} rate_limited {Too many uploads, try later} extract {Couldn’t read it} too_long {Too long} other {Failed}}",
@@ -251,6 +257,7 @@
       "attachUnsupported": "{filename} can’t be attached",
       "attachTooLarge": "{filename} is too large to attach",
       "attachUnavailable": "Couldn’t attach right now. Try again.",
+      "sendUnavailable": "Couldn’t send right now. Try again.",
       "atEmpty": "No attachments to mention"
     },
     "empty": {
@@ -809,7 +816,6 @@
         "view": "View"
       },
       "elapsed": "Running {duration}",
-      "remaining": "{duration} left",
       "startedAt": "Started {when}",
       "endedAt": "Ended {when}",
       "lateResult": "Finished after it ran out of time.",
@@ -837,10 +843,10 @@
         "tool_failed": "The tool could not process this file.",
         "no_audio_track": "This video has no audio track."
       },
-      "title": {
-        "upload": "Upload · {name}",
-        "generate": "Generate · {name}",
-        "understand": "Understand · {name}"
+      "kind": {
+        "upload": "Upload",
+        "generate": "Generate",
+        "understand": "Understand"
       }
     },
     "panel": {

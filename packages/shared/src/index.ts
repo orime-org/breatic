@@ -310,7 +310,11 @@ export type {
   UpdateStudioInput,
   LoginInput,
   ChatMessageInput,
+  ChatSpaceContext,
   ChatAttachedChip,
+  ChatSpace,
+  ChatCurrentSpace,
+  ChatCanvasDetail,
   TaskCreateInput,
   UnderstandInput,
   CanvasPasteInput,
@@ -447,6 +451,7 @@ export {
 } from "@shared/camera-angle.js";
 export { appliesInMode, paramsForMode } from "@shared/param-modes.js";
 export {
+  MULTI_SHOT_MODE,
   storyboardSend,
   storyboardSpec,
 } from "@shared/storyboard.js";
@@ -476,6 +481,7 @@ export {
   attachmentMarker,
   attachmentPart,
   attachmentSection,
+  attachmentTitle,
   chipOfPart,
   messageLength,
   messageSegments,
@@ -483,7 +489,6 @@ export {
   resolvedSegments,
   wordsForTitle,
   writeReferences,
-  userTurnForModel,
 } from "@shared/agent/attachments.js";
 export type { AttachmentDataPart, MessageSegment, ResolvedSegment } from "@shared/agent/attachments.js";
 export {

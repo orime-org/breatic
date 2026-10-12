@@ -20,9 +20,39 @@ import type * as Y from 'yjs';
 
 import { nodeDataMap, readEdges, readNodes } from '@web/data/yjs/canvas-space';
 import { itemForPick } from '@web/spaces/canvas/attach-nodes';
+import type { NodeReaders } from '@web/spaces/canvas/attach-nodes';
 import { firstVoiceKey, firstVoiceQuery } from '@web/spaces/canvas/generate/first-voice-query';
 import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
 import { attachToChat } from '@web/stores/attach-to-chat';
+
+/**
+ * How a pick reads what the node views do not carry: each node's stored data,
+ * what it would run from the catalog, and its model's first voice from the
+ * cache, asking for nothing. Shared by "Add to agent" and the open Space sent
+ * with a chat message (inner#1413), so the two read a node the same way.
+ * @param queryClient - Holds each model's first voice.
+ * @param catalog - The model catalog, for what each node would run.
+ * @param doc - The canvas document holding the nodes.
+ * @param onUnknownVoice - Told each model whose first voice is not cached.
+ * @returns The readers.
+ * @throws {never} Never.
+ */
+export function pickReaders(
+  queryClient: QueryClient,
+  catalog: ModelCatalog,
+  doc: Y.Doc,
+  onUnknownVoice: (model: string) => void = () => undefined,
+): NodeReaders {
+  return {
+    dataOf: (id) => nodeDataMap(doc, id),
+    catalog,
+    firstVoiceOf: (model) => {
+      const first = queryClient.getQueryData<Voice | null>(firstVoiceKey(model));
+      if (first === undefined) onUnknownVoice(model);
+      return first;
+    },
+  };
+}
 
 /**
  * The picked piece of the canvas as one item for the agent.
@@ -45,15 +75,9 @@ export async function pickForAgent(
    * @returns The item, or null for nothing to hand over.
    */
   const pick = (): ReturnType<typeof itemForPick> =>
-    itemForPick({ nodes: readNodes(doc), edges: readEdges(doc) }, ids, {
-      dataOf: (id) => nodeDataMap(doc, id),
-      catalog,
-      firstVoiceOf: (model) => {
-        const first = queryClient.getQueryData<Voice | null>(firstVoiceKey(model));
-        if (first === undefined) unknownVoices.add(model);
-        return first;
-      },
-    });
+    itemForPick({ nodes: readNodes(doc), edges: readEdges(doc) }, ids, pickReaders(queryClient, catalog, doc, (model) => {
+      unknownVoices.add(model);
+    }));
   const item = pick();
   if (unknownVoices.size === 0) return item;
   // A list that cannot be read leaves that voice out, as it does in the panel.

@@ -29,7 +29,7 @@ async function uploadForChat(file: File, projectId: string): Promise<string> {
 }
 
 /**
- * What the reader is told about their last attempt to attach something.
+ * What the reader is told about their last attempt to attach something or send.
  * @param said - What the tray said.
  * @param t - The translator.
  * @returns The sentence.
@@ -38,6 +38,8 @@ function noticeText(said: TrayNotice, t: ReturnType<typeof useTranslation>): str
   switch (said.key) {
     case 'unavailable':
       return t('chat.composer.attachUnavailable');
+    case 'sendUnavailable':
+      return t('chat.composer.sendUnavailable');
     case 'full':
       return t('chat.composer.attachFull', { limit: said.limit });
     case 'tooLong':

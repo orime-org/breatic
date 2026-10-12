@@ -11,7 +11,8 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type * as CoreModule from "@breatic/core";
-import { attachmentMarker, userTurnForModel } from "@breatic/shared";
+import { attachmentMarker } from "@breatic/shared";
+import { userTurnForModel } from "@server/agent/user-turn.js";
 import type { ChatAttachedChip } from "@breatic/shared";
 import { saying } from "../helpers/model-double.js";
 import type { ModelStreamPart } from "../helpers/model-double.js";
@@ -148,7 +149,7 @@ describe("a turn opened by a message with attachments", () => {
     await runOneTurn("what is in this?", [image]);
 
     expect(lastUserTextSent()).toBe(
-      `${readerClockNote(new Date(), undefined)}\n\n${userTurnForModel([image], "what is in this?")}`,
+      `${readerClockNote(new Date(), undefined)}\n\n${userTurnForModel({ chips: [image], message: "what is in this?" })}`,
     );
   });
 

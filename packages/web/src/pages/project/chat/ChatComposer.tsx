@@ -10,6 +10,8 @@ import { EditorContent } from '@tiptap/react';
 import { CHAT_MESSAGE_MAX_CHARS, messageLength } from '@breatic/shared';
 import { useTranslation } from '@web/i18n/use-translation';
 import { AttachmentChip } from '@web/pages/project/chat/AttachmentChip';
+import { SpaceContextChip } from '@web/pages/project/chat/SpaceContextChip';
+import type { SpaceContextChipProps } from '@web/pages/project/chat/SpaceContextChip';
 import { ChatAttachmentsContext } from '@web/pages/project/chat/chat-reference';
 import { useAtLimitNotice } from '@web/pages/project/chat/use-at-limit-notice';
 import { useComposerEditor } from '@web/pages/project/chat/use-composer-editor';
@@ -63,6 +65,8 @@ interface ChatComposerProps {
   onPasteCanvas?: (payload: ClipboardPayload) => void;
   /** Called with an item's id to take it out. */
   onRemoveAttachment?: (id: string) => void;
+  /** The open Space's chip beside the plus sign; none is drawn without one. */
+  space?: SpaceContextChipProps;
 }
 
 /**
@@ -72,7 +76,7 @@ interface ChatComposerProps {
  *   │ [item] [item] …                   │  what is attached, only when something is
  *   │ ─────────────────────────────────── │
  *   │ describe what you want…            │  the box
- *   │ [+]                         [↑]    │  attach, and send / wait / stop
+ *   │ [+] [Space]                 [↑]    │  attach, the open Space, and send / wait / stop
  *   └───────────────────────────────────┘
  *
  * Behaviour:
@@ -97,6 +101,7 @@ interface ChatComposerProps {
  * @param root0.onAttachFiles - Called with the files the reader picked.
  * @param root0.onPasteCanvas - Called with the canvas clipboard payload pasted into the box.
  * @param root0.onRemoveAttachment - Called with an item's id to take it out.
+ * @param root0.space - The open Space's chip beside the plus sign, if one is open.
  * @returns The composer card with attachments, the box, and action buttons.
  */
 function ChatComposerInner({
@@ -113,6 +118,7 @@ function ChatComposerInner({
   onAttachFiles,
   onPasteCanvas,
   onRemoveAttachment,
+  space,
 }: ChatComposerProps): React.JSX.Element {
   const t = useTranslation();
   // Held still for the same stretch the box is: between the press and the
@@ -288,6 +294,7 @@ function ChatComposerInner({
           >
             <Plus className='h-4 w-4' />
           </Button>
+          {space ? <SpaceContextChip {...space} /> : null}
           {attachNotice ? (
             // Beside the button that attaches: something the reader tried did
             // not go in. The icon carries the warning colour; the words stay in

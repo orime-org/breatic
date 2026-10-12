@@ -87,6 +87,10 @@ export interface StreamConfig {
   attachmentMaxChars: number;
   /** How many items one message may carry. */
   attachmentMaxItems: number;
+  /** How long the open Space's content one message carries may be, in characters. */
+  currentSpaceMaxChars: number;
+  /** How many of the project's Spaces one message may list. */
+  spaceListMaxItems: number;
 }
 
 /**

@@ -30,6 +30,7 @@ import {
   isRestorable,
 } from '@web/spaces/canvas/history/history-format';
 import { MINI_TOOL_ICONS } from '@web/spaces/canvas/mini-tool/tool-icons';
+import { KindBadge } from '@web/spaces/canvas/_shared/KindBadge';
 import { PreviewImg } from '@web/components/preview-img';
 
 /** The host node's modality — picks the thumbnail treatment. */
@@ -265,23 +266,18 @@ export const NodeHistoryRow = React.memo(function NodeHistoryRow({
               never its success/failure — that is carried by the other fields
               (the red error message beside it, the "Can't restore" action
               slot). Type is type, independent of outcome (user 2026-07-22). */}
-          <span
-            className={
-              'inline-flex shrink-0 items-center gap-1 rounded-content-sm border border-border px-1.5 py-px text-2xs font-semibold leading-tight ' +
-              secondaryText
+          <KindBadge
+            icon={
+              ToolIcon ??
+              (entry.entryType === 'generation'
+                ? Sparkles
+                : entry.entryType === 'snapshot'
+                  ? Bookmark
+                  : ArrowUp)
             }
-          >
-            {ToolIcon !== undefined ? (
-              <ToolIcon className='h-2.5 w-2.5' aria-hidden='true' />
-            ) : entry.entryType === 'generation' ? (
-              <Sparkles className='h-2.5 w-2.5' aria-hidden='true' />
-            ) : entry.entryType === 'snapshot' ? (
-              <Bookmark className='h-2.5 w-2.5' aria-hidden='true' />
-            ) : (
-              <ArrowUp className='h-2.5 w-2.5' aria-hidden='true' />
-            )}
-            {t(tool?.labelKey ?? TYPE_LABEL[entry.entryType])}
-          </span>
+            label={t(tool?.labelKey ?? TYPE_LABEL[entry.entryType])}
+            colorClassName={secondaryText}
+          />
           <span
             className={
               'min-w-0 flex-1 truncate text-xs ' +

@@ -160,6 +160,8 @@
       "message_too_long": "このメッセージは長すぎます。最大 {limit, number} 文字までですが、これは {actual, number} 文字あります。",
       "attachments_too_long": "添付した内容が長すぎます。最大 {limit, number} 文字までですが、これは {actual, number} 文字あります。",
       "attachments_too_many": "添付が多すぎます。最大 {limit, number} 件までですが、これは {actual, number} 件あります。",
+      "current_space_too_long": "開いている Space の内容が長すぎます。最大 {limit, number} 文字までですが、これは {actual, number} 文字あります。",
+      "spaces_too_many": "一覧の Space が多すぎます。最大 {limit, number} 件までですが、これは {actual, number} 件あります。",
       "references_too_many": "添付の参照が多すぎます。1 件のメッセージにつき最大 {limit, number} 回までです。このメッセージには {actual, number} 回あります。"
     },
     "mail": {
@@ -243,6 +245,10 @@
       "sending": "送信中",
       "atLimit": "{limit, number} 文字の上限に達しました",
       "attach": "ファイルを添付",
+      "spaceContextOn": "Agent はこの Space を読み取ります · クリックでオフ",
+      "spaceContextOff": "Agent はこの Space を読み取りません · クリックでオン",
+      "spaceContextOnUnreadable": "Agent はこの Space が開いていることを知っていますが、内容は読み取れません · クリックでオフ",
+      "spaceContextOffUnreadable": "Agent はこの Space が開いていることを知りません · クリックでオン",
       "removeAttachment": "{name} を外す",
       "attachmentUploading": "アップロード中",
       "attachmentFailed": "{reason, select, upload {アップロード失敗} rate_limited {アップロードが多すぎます。後でお試しください} extract {読み取り失敗} too_long {長すぎます} other {失敗}}",
@@ -251,6 +257,7 @@
       "attachUnsupported": "{filename} は添付できません",
       "attachTooLarge": "{filename} は大きすぎて添付できません",
       "attachUnavailable": "今は添付できません。もう一度お試しください。",
+      "sendUnavailable": "今は送信できません。もう一度お試しください。",
       "atEmpty": "参照できる添付はありません"
     },
     "empty": {
@@ -809,7 +816,6 @@
         "view": "表示"
       },
       "elapsed": "実行時間 {duration}",
-      "remaining": "残り {duration}",
       "startedAt": "{when} 開始",
       "endedAt": "{when} 終了",
       "lateResult": "時間切れのあとに完了しました。",
@@ -837,10 +843,10 @@
         "tool_failed": "ツールでこのファイルを処理できませんでした。",
         "no_audio_track": "この動画には音声トラックがありません。"
       },
-      "title": {
-        "upload": "アップロード · {name}",
-        "generate": "生成 · {name}",
-        "understand": "内容を読み取る · {name}"
+      "kind": {
+        "upload": "アップロード",
+        "generate": "生成",
+        "understand": "内容を読み取る"
       }
     },
     "panel": {

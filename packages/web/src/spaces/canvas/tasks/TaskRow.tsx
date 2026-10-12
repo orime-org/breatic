@@ -20,13 +20,11 @@ import { useCollaboratorNames } from '@web/features/collab-editor/collaborator-n
 import { useTranslation } from '@web/i18n/use-translation';
 import { TaskStatusDot } from '@web/spaces/canvas/tasks/TaskStatusDot';
 import { formatDuration } from '@web/spaces/canvas/lib/duration';
-import {
-  elapsedMs,
-  remainingMs,
-} from '@web/spaces/canvas/tasks/task-timing';
+import { elapsedMs } from '@web/spaces/canvas/tasks/task-timing';
 import type { TaskRowAction } from '@web/spaces/canvas/tasks/task-row-actions';
 import { taskRowActions } from '@web/spaces/canvas/tasks/task-row-actions';
-import { taskRowTitle } from '@web/spaces/canvas/tasks/task-row-title';
+import { taskRowKind } from '@web/spaces/canvas/tasks/task-row-kind';
+import { KindBadge } from '@web/spaces/canvas/_shared/KindBadge';
 
 /**
  * Used when no catalog is at hand: every model shows as its id.
@@ -146,7 +144,7 @@ export const TaskRow = React.memo(function TaskRow({
     },
     [entry.id, onView, onRetry, onDismiss],
   );
-  const title = taskRowTitle(entry, t, displayNameOf);
+  const kind = taskRowKind(entry, t, displayNameOf);
 
   const note = settledNote(entry, t, medium);
   // Whichever instant this row has: a running task says when it began, a
@@ -171,14 +169,18 @@ export const TaskRow = React.memo(function TaskRow({
     >
       <div className='flex items-center gap-2'>
         <TaskStatusDot status={status} />
-        {/* What the task was doing, at the weight of context. What the reader
-            came for is the sentence below, so this sits between it and the
-            timing. */}
-        <span
-          data-testid='task-title'
-          className='min-w-0 flex-1 truncate text-2xs text-foreground-secondary'
-        >
-          {title}
+        <KindBadge
+          testId='task-kind'
+          icon={kind.icon}
+          label={kind.label}
+          colorClassName='text-foreground-secondary'
+        />
+        {/* What the task acted on, at the weight of context. What the reader
+            came for is the sentence below. */}
+        <span className='min-w-0 flex-1 truncate text-2xs text-foreground-secondary'>
+          {kind.detail !== null ? (
+            <span data-testid='task-detail'>{kind.detail}</span>
+          ) : null}
         </span>
         {starter !== null ? (
           <span className='shrink-0 text-2xs text-muted-foreground'>
@@ -192,13 +194,6 @@ export const TaskRow = React.memo(function TaskRow({
           <span data-testid='task-elapsed'>
             {t('canvas.task.elapsed', {
               duration: formatDuration(elapsedMs(entry.startedAt, now)),
-            })}
-          </span>
-          <span data-testid='task-remaining'>
-            {t('canvas.task.remaining', {
-              duration: formatDuration(
-                remainingMs(entry.startedAt, entry.budgetMs, now),
-              ),
             })}
           </span>
         </div>

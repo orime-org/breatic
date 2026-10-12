@@ -257,9 +257,29 @@ export function renderProductGuide(): string {
       "chip that could not be uploaded or read shows a red mark and says why; it has to be removed with its X before " +
       "the message can go. Something that cannot be attached at all -- too many items, a file too large or of a " +
       `kind that is not taken, or ${quoted(t("chat.composer.attachTooLong"))} -- is said on a line beside the ` +
-      "plus sign. Pasting canvas nodes copied on the canvas, or a picture copied in this chat, into the box " +
+      "plus sign. When a message cannot be sent at that moment, the same line says " +
+      `${quoted(t("chat.composer.sendUnavailable"))} and the words stay in the box. ` +
+      "Pasting canvas nodes copied on the canvas, or a picture copied in this chat, into the box " +
       "attaches them too. A sent message cannot be edited and a " +
       "reply cannot be regenerated: to ask again, send another message.",
+    "Right of that plus sign, a chip shows the icon and name of the Space whose tab is active; with no tab " +
+      "open there is none. Pressing it turns it off and on, and it stays as left for this account in this " +
+      "project. While it is on, each message the reader sends carries that Space's content to the Agent -- a " +
+      "document's text, or a canvas's nodes and the links between them -- and hovering it shows " +
+      `${quoted(t("chat.composer.spaceContextOn"))}. Off, the Agent is not told which Space is open or what is ` +
+      "in it; the chip has a dashed border and grey words, and hovering it shows " +
+      `${quoted(t("chat.composer.spaceContextOff"))}. A timeline's content cannot be read: with a timeline ` +
+      "open and the chip on, the Agent is told it is open but not what is in it, and hovering shows " +
+      `${quoted(t("chat.composer.spaceContextOnUnreadable"))}; off, hovering shows ` +
+      `${quoted(t("chat.composer.spaceContextOffUnreadable"))}. On or off, every message tells the Agent the ` +
+      `name and type of the ${String(getAgentConfig().space_list_max_items)} newest Spaces in the project, and ` +
+      "how many more there are. Each message carries at most " +
+      `${getAgentConfig().current_space_max_chars.toLocaleString("en")} characters of the open Space's content: a ` +
+      "longer document goes as its start, and a larger canvas goes in less detail -- nodes without their other " +
+      "settings, then with their texts cut short, then by name only, then without their links, and on the largest " +
+      "canvases some nodes are left out, earliest first -- and the nodes the reader has selected go last at every " +
+      "step, except those an attachment on the same message already holds as they are. " +
+      `To show the Agent some nodes in full, the reader adds them with ${quoted(t("canvas.contextMenu.addToAgent"))}.`,
     "Typing @ in the box opens a list, just above the @, of the attachments that have finished uploading; it " +
       `reads ${quoted(t("chat.composer.atEmpty"))} when there are none. Typing narrows it and the list goes away ` +
       "while what is typed after the @ matches none, so the @ stays ordinary text; the arrow keys move through it, Enter or " +
@@ -555,10 +575,12 @@ export function renderProductGuide(): string {
       `${quoted(t("canvas.task.status.running"))}, ${quoted(t("canvas.task.status.done"))}, ` +
       `${quoted(t("canvas.task.status.failed"))} or ${quoted(t("canvas.task.status.expired"))}, each row saying ` +
       "when it started or ended; the list closes with its X. Zoomed far out, only the spinning icon remains. A running task shows how long " +
-      "it has run and has left; an expired one says " +
+      "it has run; an expired one says " +
       `${quoted(t("canvas.task.expired"))} (${quoted(t("canvas.task.lateResult"))} when a result came late). ` +
-      "Each row first says what the task was doing: an upload with the file's name, a generation or a reading " +
-      "with the model's name, or the tool's name. A done row offers " +
+      "Each row opens with a small outlined badge naming the kind of task, its icon then its word: " +
+      `${quoted(t("canvas.task.kind.upload"))} with an up arrow, followed by the file's name; ` +
+      `${quoted(t("canvas.task.kind.generate"))} with a sparkle, or ${quoted(t("canvas.task.kind.understand"))}, ` +
+      "followed by the model's name; or a tool's own icon and name, with nothing after it. A done row offers " +
       `${quoted(t("canvas.task.action.finish"))}, which takes the row away (its result is already on the ` +
       `node); a failed one says why and offers ${quoted(t("canvas.task.action.retry"))} for an upload still at ` +
       `hand, and ${quoted(t("canvas.task.action.clear"))}; an expired one offers ` +

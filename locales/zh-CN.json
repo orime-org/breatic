@@ -160,6 +160,8 @@
       "message_too_long": "这条消息太长了。最多 {limit, number} 个字符，这条有 {actual, number} 个。",
       "attachments_too_long": "附带的内容太长了。最多 {limit, number} 个字符，现在有 {actual, number} 个。",
       "attachments_too_many": "附带的内容太多了。最多 {limit, number} 项，这条有 {actual, number} 项。",
+      "current_space_too_long": "当前 Space 的内容太长了。最多 {limit, number} 个字符，现在有 {actual, number} 个。",
+      "spaces_too_many": "列出的 Space 太多了。最多 {limit, number} 个，这条有 {actual, number} 个。",
       "references_too_many": "引用附件的次数太多。一条消息最多 {limit, number} 次，这条有 {actual, number} 次。"
     },
     "mail": {
@@ -243,6 +245,10 @@
       "sending": "发送中",
       "atLimit": "已达 {limit, number} 字上限",
       "attach": "添加文件",
+      "spaceContextOn": "Agent 会读到这个 Space · 点击禁止",
+      "spaceContextOff": "Agent 不会读到这个 Space · 点击允许",
+      "spaceContextOnUnreadable": "Agent 知道你开着这个 Space，但读不了它的内容 · 点击禁止",
+      "spaceContextOffUnreadable": "Agent 不知道你开着这个 Space · 点击允许",
       "removeAttachment": "移除 {name}",
       "attachmentUploading": "上传中",
       "attachmentFailed": "{reason, select, upload {上传失败} rate_limited {上传太频繁，请稍后重试} extract {读取失败} too_long {太长} other {失败}}",
@@ -251,6 +257,7 @@
       "attachUnsupported": "{filename} 不能附带",
       "attachTooLarge": "{filename} 太大，不能附带",
       "attachUnavailable": "暂时无法添加，请重试。",
+      "sendUnavailable": "暂时无法发送，请重试。",
       "atEmpty": "没有可引用的附件"
     },
     "empty": {
@@ -809,7 +816,6 @@
         "view": "查看"
       },
       "elapsed": "已运行 {duration}",
-      "remaining": "剩余 {duration}",
       "startedAt": "{when} 开始",
       "endedAt": "{when} 结束",
       "lateResult": "超时之后才完成。",
@@ -837,10 +843,10 @@
         "tool_failed": "工具没能处理这个文件。",
         "no_audio_track": "这个视频没有音轨。"
       },
-      "title": {
-        "upload": "上传 · {name}",
-        "generate": "生成 · {name}",
-        "understand": "理解 · {name}"
+      "kind": {
+        "upload": "上传",
+        "generate": "生成",
+        "understand": "理解"
       }
     },
     "panel": {
