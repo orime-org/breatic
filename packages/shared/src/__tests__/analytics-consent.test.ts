@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { describe, expect, it } from "vitest";
+import { SpaceRpcRequestSchema } from "@shared/types/space-rpc.js";
 import {
   CONSENT_COOKIE_NAME,
   CONSENT_REVISION,
@@ -85,5 +86,25 @@ describe("requiresOptIn", () => {
   it("matches country codes regardless of case", () => {
     expect(requiresOptIn("de")).toBe(true);
     expect(requiresOptIn("us")).toBe(false);
+  });
+});
+
+describe("space RPC envelope consent", () => {
+  const base = { id: "r1", type: "space:rename", payload: { spaceId: "s1", name: "x" } };
+
+  it("carries the sender's consent when attached", () => {
+    const parsed = SpaceRpcRequestSchema.parse({ ...base, analyticsConsent: { analytics: true, ads: false } });
+    expect(parsed.analyticsConsent).toEqual({ analytics: true, ads: false });
+  });
+
+  it("accepts a request without it", () => {
+    expect(SpaceRpcRequestSchema.parse(base).analyticsConsent).toBeUndefined();
+  });
+
+  it("refuses a malformed one", () => {
+    expect(SpaceRpcRequestSchema.safeParse({ ...base, analyticsConsent: { analytics: "yes" } }).success).toBe(false);
+    expect(
+      SpaceRpcRequestSchema.safeParse({ ...base, analyticsConsent: { analytics: true, ads: true, extra: 1 } }).success,
+    ).toBe(false);
   });
 });

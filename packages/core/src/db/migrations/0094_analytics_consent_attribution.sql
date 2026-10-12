@@ -34,3 +34,25 @@ CREATE TABLE "ads_conversion_uploads" (
 ALTER TABLE "ads_conversion_uploads" ADD CONSTRAINT "ads_conversion_uploads_payment_id_payments_id_fk"
   FOREIGN KEY ("payment_id") REFERENCES "public"."payments"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "ads_conversion_uploads_payment_idx" ON "ads_conversion_uploads" USING btree ("payment_id");
+--> statement-breakpoint
+-- Product milestones reported once (inner#1442 §4.8); the insert is the claim.
+CREATE TABLE "analytics_milestones" (
+  "key" varchar(255) PRIMARY KEY NOT NULL,
+  "created_at" timestamp with time zone DEFAULT now() NOT NULL
+);--> statement-breakpoint
+-- A collaborator who already acted in a project before this shipped has had
+-- their first action, so it is claimed here: their next one is not reported.
+-- The actions are those the milestone counts: a Space change, an upload, a
+-- generation, or a message in one of the project's Agent conversations.
+INSERT INTO "analytics_milestones" ("key")
+SELECT 'collab:' || a."project_id" || ':' || a."actor_user_id"
+  FROM "project_activities" a JOIN "projects" p ON p."id" = a."project_id"
+  WHERE a."actor_user_id" IS NOT NULL AND a."actor_user_id" <> p."created_by_user_id"
+    AND (a."type" LIKE 'space:%' OR a."type" = 'asset:uploaded' OR a."type" LIKE 'generation:%')
+UNION
+SELECT 'collab:' || c."project_id" || ':' || m."user_id"
+  FROM "conversation_messages" m
+  JOIN "conversations" c ON c."id" = m."conversation_id"
+  JOIN "projects" p ON p."id" = c."project_id"
+  WHERE m."role" = 'user' AND m."user_id" <> p."created_by_user_id"
+ON CONFLICT DO NOTHING;

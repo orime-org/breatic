@@ -30,6 +30,7 @@
  *   - `space:lock` / unlock - caller role ≥ editor
  *   - `space:restore`       - caller role = owner
  */
+import { ConsentSnapshotSchema } from "@shared/analytics/consent.js";
 import { z } from "zod";
 
 import { SpaceTypeSchema } from "@shared/types/space.js";
@@ -116,29 +117,36 @@ export type SpaceRestorePayload = z.infer<typeof SpaceRestorePayloadSchema>;
 
 // ── Request envelope (tagged union) ─────────────────────────────────
 
+/**
+ * Fields every request carries. `analyticsConsent` is the sending browser's
+ * analytics choice (inner#1442 §4.4.5): collab sees no cookie per message,
+ * and the choice may change while the socket stays open.
+ */
+const envelope = { id: RpcIdSchema, analyticsConsent: ConsentSnapshotSchema.optional() };
+
 export const SpaceRpcRequestSchema = z.discriminatedUnion("type", [
   z.object({
-    id: RpcIdSchema,
+    ...envelope,
     type: z.literal("space:create"),
     payload: SpaceCreatePayloadSchema,
   }),
   z.object({
-    id: RpcIdSchema,
+    ...envelope,
     type: z.literal("space:delete"),
     payload: SpaceDeletePayloadSchema,
   }),
   z.object({
-    id: RpcIdSchema,
+    ...envelope,
     type: z.literal("space:lock"),
     payload: SpaceLockPayloadSchema,
   }),
   z.object({
-    id: RpcIdSchema,
+    ...envelope,
     type: z.literal("space:rename"),
     payload: SpaceRenamePayloadSchema,
   }),
   z.object({
-    id: RpcIdSchema,
+    ...envelope,
     type: z.literal("space:restore"),
     payload: SpaceRestorePayloadSchema,
   }),

@@ -10,9 +10,8 @@
 import { eq, and, or, isNull, inArray, sql } from "drizzle-orm";
 import { db, getDefaultMembershipTier, asKnownTier } from "@breatic/core";
 import { users } from "@breatic/core";
-import type { DbTx } from "@breatic/core";
 import { normalizeEmail } from "@breatic/shared";
-import type { AccountConsent, Attribution, UserEntity } from "@breatic/shared";
+import type { Attribution, UserEntity } from "@breatic/shared";
 import { getLegalConfig } from "@server/config/legal.js";
 
 /**
@@ -181,41 +180,6 @@ export async function updateUser(
     .where(eq(users.id, userId))
     .returning();
   return rows[0] ? toEntity(rows[0]) : null;
-}
-
-/**
- * Read the latest analytics consent the account's browsers reported.
- * @param userId - The account.
- * @param tx - When given, the row is locked until the transaction ends so a
- *   concurrent report cannot interleave between read and write.
- * @returns The stored choice, or null when none is on record or the account
- *   is gone.
- */
-export async function getAnalyticsConsent(userId: string, tx?: DbTx): Promise<AccountConsent | null> {
-  const where = and(eq(users.id, userId), isNull(users.deletedAt));
-  const query = (tx ?? db).select({ consent: users.analyticsConsent }).from(users).where(where).limit(1);
-  const rows = tx ? await query.for("update") : await query;
-  return rows[0]?.consent ?? null;
-}
-
-/**
- * Read the campaign source recorded at sign-up.
- * @param userId - The account.
- * @returns It, or null when none was kept.
- */
-export async function getAttribution(userId: string): Promise<Attribution | null> {
-  const rows = await db.select({ attribution: users.attribution }).from(users).where(eq(users.id, userId)).limit(1);
-  return rows[0]?.attribution ?? null;
-}
-
-/**
- * Overwrite the account's analytics consent.
- * @param userId - The account.
- * @param consent - The merged choice to keep.
- * @param tx - The transaction holding the row lock from {@link getAnalyticsConsent}.
- */
-export async function setAnalyticsConsent(userId: string, consent: AccountConsent, tx: DbTx): Promise<void> {
-  await tx.update(users).set({ analyticsConsent: consent }).where(eq(users.id, userId));
 }
 
 /**

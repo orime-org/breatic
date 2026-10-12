@@ -218,7 +218,9 @@ export { currentConsent, runWithConsent } from "@core/analytics/consent-context.
 export {
   flushServerAnalytics,
   initServerAnalytics,
+  reportAnalyticsFailure,
   resetServerAnalyticsForTest,
+  serverAnalyticsOn,
   serverAnalyticsWanted,
   trackServerEvent,
   type AnalyticsClient,
@@ -256,3 +258,10 @@ export {
   type AdsConversionName,
   type AdsUploadStatus,
 } from "@core/ads/ads-types.js";
+export {
+  accountConsentInForce,
+  collaborationActionOf,
+  reportCollaboratorFirstAction,
+  type CollaborationAction,
+} from "@core/analytics/collaboration.js";
+export { getAccountAttribution, getAccountConsent, setAccountConsent } from "@core/analytics/account.repo.js";

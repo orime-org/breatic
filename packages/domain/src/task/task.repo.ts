@@ -284,3 +284,19 @@ export async function markCompletedAndBill(
     .returning({ id: tasks.id });
   return rows.length > 0;
 }
+
+/**
+ * Whether the account has a completed task other than the one named: the
+ * first completed one is a product milestone (inner#1442 design §4.8).
+ * @param userId - The account.
+ * @param exceptTaskId - The task that just completed.
+ * @returns True when another completed task exists.
+ */
+export async function hasOtherCompletedTask(userId: string, exceptTaskId: string): Promise<boolean> {
+  const rows = await db
+    .select({ id: tasks.id })
+    .from(tasks)
+    .where(and(eq(tasks.userId, userId), eq(tasks.status, "completed"), sql`${tasks.id} <> ${exceptTaskId}`))
+    .limit(1);
+  return rows.length > 0;
+}

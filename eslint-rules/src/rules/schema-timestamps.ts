@@ -43,6 +43,10 @@ const NO_SOFT_DELETE: ReadonlyMap<string, string> = new Map([
     "record of what was reported to an ad platform (0094, inner#1442): the platform keeps the conversion whatever happens to the row, and a refund looks the row up to restate it, so a missing row would make a refund upload a brand-new zero-value conversion instead",
   ],
   [
+    "analyticsMilestones",
+    "claims for milestones reported once (0094, inner#1442): a row is the record that the milestone already happened, so removing it would report the same milestone a second time",
+  ],
+  [
     "storageReclaimQueue",
     "internal work queue for the offline reclaim job: the physical object still needs reclaiming after its project is gone, so the row must not follow a project delete",
   ],

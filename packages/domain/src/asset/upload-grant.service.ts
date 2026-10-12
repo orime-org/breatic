@@ -23,7 +23,7 @@
  * pays for it are things the entrance knows and this does not.
  */
 
-import { storageKey } from "@breatic/core";
+import { currentConsent, storageKey } from "@breatic/core";
 import type { StudioAssetEntity } from "@breatic/shared";
 import { resolveOwnerStudioId } from "@domain/asset/asset.service.js";
 import { issueGrant } from "@domain/asset/upload-grant.repo.js";
@@ -95,6 +95,8 @@ export async function issueUploadGrant(params: UploadTarget & {
     declaredSize: params.declaredSize,
     expiresAt: params.expiresAt,
     context: { ...params.context, projectId: params.projectId ?? null },
+    // Read by the finishing paths, which run without the browser's cookie.
+    analyticsConsent: currentConsent(),
   });
   return { key, studioId };
 }

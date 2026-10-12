@@ -20,6 +20,13 @@ import { StillRunning } from "@worker/providers/still-running.js";
 import { taskDeadline } from "@worker/handlers/task-deadline.js";
 import { withUnderstandSlot } from "@worker/handlers/understand-slots.js";
 import { getStreamRedis, getWorkerConfig, projectActivitiesRepo, publishActivityNew } from "@breatic/core";
+import {
+  projectsRepo,
+  reportCollaboratorFirstAction,
+  runWithConsent,
+  serverAnalyticsWanted,
+  trackServerEvent,
+} from "@breatic/core";
 import { getStorageAdapter, getRawEnvVar, getUnderstandConfig } from "@breatic/core";
 import { failureOutcome, taskService, upstreamStepRepo } from "@breatic/domain";
 import { creditLotService, creditsForUsd, resolveActiveProvider } from "@breatic/domain";
@@ -46,7 +53,7 @@ import {
   type PersistedOutput,
 } from "@worker/handlers/persisted-output.js";
 import type { BackendUploadContext } from "@breatic/domain";
-import { canvasSpaceDocName, type GenerationSource } from "@breatic/shared";
+import { canvasSpaceDocName, NO_CONSENT, type ConsentSnapshot, type GenerationSource } from "@breatic/shared";
 import { isModelTool, miniToolById } from "@breatic/shared/mini-tools";
 import type { NodeTaskResult, TaskFailureReason } from "@breatic/shared";
 import { env } from "@breatic/core";
@@ -78,6 +85,11 @@ export interface TaskJobData {
   taskId: string;
   taskType: string;
   userId: string;
+  /**
+   * The requesting browser's analytics consent when the task was queued
+   * (inner#1442 §4.4.5). Absent on jobs queued before it existed; read as no consent.
+   */
+  analyticsConsent?: ConsentSnapshot;
   /**
    * Project the task is scoped to. Required for any task that writes
    * back to a canvas node (v10: every canvas-bound mini-tool / AIGC
@@ -272,6 +284,36 @@ function resolveCanvasDocName(
  * @returns Result dict on success, or a failure status marker
  */
 /**
+ * Send `first_generation_completed` when this is the account's first
+ * completed task (inner#1442 design §4.8). Called by the run that won the
+ * billing CAS, so a task counts once however often it is delivered.
+ * @param task - The task that just completed.
+ * @param task.taskId - Its id.
+ * @param task.taskType - What kind of generation it was.
+ * @param task.userId - Who ran it.
+ * @param task.projectId - Where it ran, when it is canvas-bound.
+ */
+async function reportFirstGeneration(task: {
+  taskId: string;
+  taskType: string;
+  userId: string;
+  projectId?: string;
+}): Promise<void> {
+  if (!serverAnalyticsWanted()) return;
+  try {
+    if (await taskService.hasOtherCompletedTask(task.userId, task.taskId)) return;
+    const studioId = task.projectId ? await projectsRepo.findOwnerStudioId(task.projectId) : undefined;
+    trackServerEvent("first_generation_completed", {
+      userId: task.userId,
+      insertId: `first-generation:${task.userId}`,
+      properties: { studio_id: studioId, project_id: task.projectId, kind: task.taskType },
+    });
+  } catch (err) {
+    logger.warn({ err, taskId: task.taskId }, "first_generation_report_failed");
+  }
+}
+
+/**
  * Public entry called by the BullMQ worker.
  *
  * A node carries several tasks at once (#186), so a job claims nothing on
@@ -286,7 +328,7 @@ export async function runTask(
   job: Job<TaskJobData>,
   token?: string,
 ): Promise<Record<string, unknown>> {
-  return await runTaskBody(job, token);
+  return await runWithConsent(job.data.analyticsConsent ?? NO_CONSENT, () => runTaskBody(job, token));
 }
 
 /**
@@ -716,6 +758,7 @@ async function runTaskBody(
   // retry (shouldn't happen given the re-entry guard above, but defense
   // in depth) reads `wasFirst = false` and skips the deduct step.
   const wasFirst = await taskService.markCompletedAndBill(taskId, result, creditsUsed, durationMs);
+  if (wasFirst) await reportFirstGeneration({ taskId, taskType, userId, projectId });
 
   const usedModel = (result.model as string | undefined) ?? model;
   const usedProvider = providerOf(taskType, usedModel);
@@ -933,7 +976,10 @@ async function recordGenerationActivity(args: {
       });
       changed = inserted !== null;
     }
-    if (changed) await publishActivityNew(args.projectId);
+    if (changed) {
+      await publishActivityNew(args.projectId);
+      await reportCollaboratorFirstAction({ projectId: args.projectId, userId: args.userId, action: "generation" });
+    }
   } catch (err) {
     logger.warn(
       { err, taskId: args.taskId, projectId: args.projectId },

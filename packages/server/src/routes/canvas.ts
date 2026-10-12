@@ -9,6 +9,7 @@
  * via Yjs document sync through the Hocuspocus collab server.
  */
 
+import { currentConsent } from "@breatic/core";
 import { Hono } from "hono";
 import { validate } from "@server/middleware/validate.js";
 
@@ -367,6 +368,8 @@ canvas.post("/tasks", validate("json", taskCreateSchema), async (c) => {
     {
       taskId: task.id,
       userId: user.id,
+      // The requesting browser's choice; the worker has no cookie (inner#1442 §4.4.5).
+      analyticsConsent: currentConsent(),
       projectId,
       spaceId,
       taskType: body.task_type,
@@ -518,6 +521,8 @@ canvas.post(
           {
             taskId: task.id,
             userId: user.id,
+            // The requesting browser's choice; the worker has no cookie (inner#1442 §4.4.5).
+            analyticsConsent: currentConsent(),
             projectId: body.project_id,
             spaceId: body.space_id,
             taskType: "understand",

@@ -9,8 +9,7 @@
  */
 
 import { adClickFrom, NO_CONSENT, type AdClick, type ConsentSnapshot } from "@breatic/shared";
-import { currentConsent } from "@breatic/core";
-import * as userRepo from "@server/modules/auth/user.repo.js";
+import { currentConsent, getAccountAttribution } from "@breatic/core";
 
 /** The consent and click an order was placed under. */
 export interface CheckoutSnapshot {
@@ -25,7 +24,7 @@ export interface CheckoutSnapshot {
  */
 export async function takeCheckoutSnapshot(userId: string): Promise<CheckoutSnapshot> {
   const consent = currentConsent();
-  const click = consent.ads ? adClickFrom(await userRepo.getAttribution(userId), Date.now()) : null;
+  const click = consent.ads ? adClickFrom(await getAccountAttribution(userId), Date.now()) : null;
   return { consent, click };
 }
 

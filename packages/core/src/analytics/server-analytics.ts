@@ -41,6 +41,12 @@ const API_KEY = /^[0-9a-f]{32}$/i;
 const MIN_USER_ID_LENGTH = 5;
 
 let client: AnalyticsClient | null = null;
+let reportFailure: (message: string) => void = ignoreFailure;
+
+/** Drop a failure report; the default until an entry passes its logger. */
+function ignoreFailure(): void {
+  // Nothing registered yet.
+}
 
 /**
  * Build the vendor client for a key.
@@ -67,7 +73,8 @@ function createAmplitudeClient(apiKey: string, onError: (message: string) => voi
  * Start backend analytics for this process.
  * @param options - Configuration from the service entry.
  * @param options.apiKey - `AMPLITUDE_API_KEY`; empty keeps analytics off.
- * @param options.onError - Called when the vendor rejects events; core cannot log.
+ * @param options.onError - Called when the vendor rejects events or a backend
+ *   report fails; core cannot log, so the entry passes its logger in.
  * @param options.createClient - Replaces the vendor client in tests.
  * @returns Whether analytics started, stayed off, or the key was malformed.
  */
@@ -76,10 +83,11 @@ export function initServerAnalytics(options: {
   onError?: (message: string) => void;
   createClient?: (apiKey: string) => AnalyticsClient;
 }): ServerAnalyticsStart {
+  const onError = options.onError ?? (() => undefined);
+  reportFailure = onError;
   const apiKey = options.apiKey.trim();
   if (apiKey === "") return "off";
   if (!API_KEY.test(apiKey)) return "invalid";
-  const onError = options.onError ?? (() => undefined);
   client = options.createClient ? options.createClient(apiKey) : createAmplitudeClient(apiKey, onError);
   return "started";
 }
@@ -121,6 +129,22 @@ export function trackServerEvent(
   });
 }
 
+/**
+ * Whether this process sends analytics at all.
+ * @returns True when a valid key started the client.
+ */
+export function serverAnalyticsOn(): boolean {
+  return client !== null;
+}
+
+/**
+ * Hand a failed backend report to the entry's error callback.
+ * @param message - What failed.
+ */
+export function reportAnalyticsFailure(message: string): void {
+  reportFailure(message);
+}
+
 /** Send whatever is queued; called on shutdown. */
 export async function flushServerAnalytics(): Promise<void> {
   await client?.flush();
@@ -129,4 +153,5 @@ export async function flushServerAnalytics(): Promise<void> {
 /** Forget the client between tests. */
 export function resetServerAnalyticsForTest(): void {
   client = null;
+  reportFailure = ignoreFailure;
 }

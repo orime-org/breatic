@@ -12,6 +12,8 @@
  */
 
 /** Name of the cookie the consent banner writes. */
+import { z } from "zod";
+
 export const CONSENT_COOKIE_NAME = "breatic_consent";
 
 /**
@@ -29,6 +31,9 @@ export interface ConsentSnapshot {
 
 /** What an absent, unreadable or outdated choice means: nothing optional runs. */
 export const NO_CONSENT: ConsentSnapshot = Object.freeze({ analytics: false, ads: false });
+
+/** A consent snapshot as a client sends it, e.g. on a collab request (design §4.4.5). */
+export const ConsentSnapshotSchema = z.object({ analytics: z.boolean(), ads: z.boolean() }).strict();
 
 /**
  * Read the consent cookie's value.

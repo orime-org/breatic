@@ -21,7 +21,18 @@ import { buildPasswordResetMail } from "@server/modules/auth/auth-mail.js";
 import { isUniqueViolation } from "@server/utils/pg-error.js";
 import { getRedis } from "@breatic/core";
 import { sendMail, type SendMailResult } from "@breatic/core";
-import { currentConsent, db, enqueueAdsConversion, env, getHonouredTierForUser, logger, trackServerEvent } from "@breatic/core";
+import {
+  accountConsentInForce,
+  currentConsent,
+  db,
+  enqueueAdsConversion,
+  env,
+  getAccountConsent,
+  getHonouredTierForUser,
+  logger,
+  setAccountConsent,
+  trackServerEvent,
+} from "@breatic/core";
 import {
   setSession,
   getSession,
@@ -295,9 +306,9 @@ export async function recordAnalyticsConsent(userId: string, incoming: AccountCo
   const now = new Date();
   const decidedAt = new Date(incoming.decidedAt) > now ? now.toISOString() : incoming.decidedAt;
   await db.transaction(async (tx) => {
-    const stored = currentRevisionOnly(await userRepo.getAnalyticsConsent(userId, tx));
+    const stored = currentRevisionOnly(await getAccountConsent(userId, tx));
     const next = mergeAccountConsent(stored, { ...incoming, decidedAt });
-    if (next !== null && next !== stored) await userRepo.setAnalyticsConsent(userId, next, tx);
+    if (next !== null && next !== stored) await setAccountConsent(userId, next, tx);
   });
 }
 
@@ -308,7 +319,7 @@ export async function recordAnalyticsConsent(userId: string, incoming: AccountCo
  *   record; callers treat null as no consent.
  */
 export async function getAnalyticsConsent(userId: string): Promise<AccountConsent | null> {
-  return currentRevisionOnly(await userRepo.getAnalyticsConsent(userId));
+  return accountConsentInForce(userId);
 }
 
 /**

@@ -79,7 +79,7 @@ const logger = createLogger("auth");
  * @param name - Name of the cookie to extract.
  * @returns The decoded value of the named cookie, or null when the header is absent or the cookie is not present.
  */
-function readCookie(header: string | undefined, name: string): string | null {
+export function readCookie(header: string | undefined, name: string): string | null {
   if (!header) return null;
   // Cookie header is `name1=val1; name2=val2`. Trim each pair so
   // leading spaces after `; ` do not break matching.

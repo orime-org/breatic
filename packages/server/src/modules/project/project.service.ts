@@ -22,10 +22,9 @@ import * as studioRepo from "@server/modules/studio/studio.repo.js";
 import { projectAuthService } from "@breatic/core";
 import * as studioService from "@server/modules/studio/studio.service.js";
 import { studioAuthService } from "@breatic/domain";
-import { adsConversionWanted, db, enqueueAdsConversion, getLimitsForStudio, logger, projectEditsRepo, trackServerEvent } from "@breatic/core";
+import { adsConversionWanted, db, enqueueAdsConversion, getAccountAttribution, getLimitsForStudio, logger, projectEditsRepo, trackServerEvent } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 import { adClickFrom, t } from "@breatic/shared";
-import * as userRepo from "@server/modules/auth/user.repo.js";
 import { NotFoundError, ForbiddenError, ConflictError } from "@breatic/core";
 import { ARCHIVED_PROJECT_SORTS, LIVE_PROJECT_SORTS, ROLE_RANK } from "@breatic/shared";
 import { getStudioProjectPageLimits } from "@server/config/limits.js";
@@ -148,7 +147,7 @@ async function reportFirstProjectConversion(userId: string): Promise<void> {
     await enqueueAdsConversion({
       conversion: "first_project",
       transactionId: `first-project:${userId}`,
-      click: adClickFrom(await userRepo.getAttribution(userId), Date.now()),
+      click: adClickFrom(await getAccountAttribution(userId), Date.now()),
     });
   } catch (err) {
     logger.error({ err, userId }, "ads_conversion_enqueue_failed");

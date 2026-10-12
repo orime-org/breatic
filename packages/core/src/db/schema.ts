@@ -2587,3 +2587,15 @@ export const adsConversionUploads = pgTable(
     ),
   ],
 );
+
+// ── Analytics milestones (0094, inner#1442 §4.8) ────────────────────
+
+/**
+ * One row per product milestone that is reported once, keyed by what it is
+ * about (`collab:<projectId>:<userId>`). The insert is the claim: the process
+ * whose insert lands reports it, every later one finds the key taken.
+ */
+export const analyticsMilestones = pgTable("analytics_milestones", {
+  key: varchar("key", { length: 255 }).primaryKey(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});

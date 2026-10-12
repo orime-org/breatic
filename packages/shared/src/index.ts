@@ -783,6 +783,7 @@ export {
 export { REQUEST_NOTIFICATION_TYPES, isRequestNotification } from "@shared/request-notifications.js";
 export {
   CONSENT_COOKIE_NAME,
+  ConsentSnapshotSchema,
   CONSENT_REVISION,
   NO_CONSENT,
   parseConsentCookie,
