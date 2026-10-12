@@ -426,6 +426,14 @@ async function insertAboveLast(
   await p.getByTestId(`doc-block-insert-${kind}`).click();
   await (await chooser).setFiles(file);
   await expect(p.locator(`${EDITOR} [data-content-type="${kind}"] [data-media-box]`)).toBeVisible({ timeout: 60_000 });
+  if (kind === 'image') {
+    // The body and the previews are compared after the drags: an image still
+    // loading then would be drawn one way in a preview and another in the body.
+    await expect(p.locator(`${EDITOR} [data-content-type="image"] .skeleton-shimmer`)).toHaveCount(0, { timeout: 60_000 });
+    await expect
+      .poll(() => p.locator(`${EDITOR} [data-content-type="image"] img`).evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth > 0))
+      .toBe(true);
+  }
 }
 
 /**
@@ -583,6 +591,22 @@ for (const theme of ['light', 'dark'] as const) {
 
     const reports = await compareKept(page);
     expect(reports.length).toBe(11);
+    // No preview carries what the body shows as selected: the drags start from
+    // selections, which the body paints over its content.
+    const painted = await page.evaluate(() => {
+      const probe = document.createElement('div');
+      probe.style.backgroundColor = 'var(--color-selection)';
+      document.body.append(probe);
+      const selection = getComputedStyle(probe).backgroundColor;
+      probe.remove();
+      const MARKS = '.doc-in-selection, .doc-media-in-selection, .doc-empty-line-in-selection, .selectedCell, [data-show-selection]';
+      return (window as unknown as { __previews: Element[] }).__previews.flatMap((root, index) =>
+        [...root.querySelectorAll('*')]
+          .filter((el) => el.matches(MARKS) || [null, '::before', '::after'].some((pseudo) => getComputedStyle(el, pseudo).backgroundColor === selection))
+          .map((el) => `preview ${index}: ${el.tagName.toLowerCase()}.${[...el.classList].join('.')}`),
+      );
+    });
+    expect(painted).toEqual([]);
     // The column's preview is as wide as the column, not as the block it is in.
     const column = await page.evaluate(() => {
       const root = (window as unknown as { __previews: Element[] }).__previews[6]!;
