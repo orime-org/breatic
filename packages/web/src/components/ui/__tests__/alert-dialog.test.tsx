@@ -161,6 +161,14 @@ describe('AlertDialogAction loading', () => {
     expect(screen.getByTestId('content')).toBeInTheDocument();
   });
 
+  it('closes on Escape while the action is waiting', async () => {
+    const user = userEvent.setup();
+    render(<Controlled loading onAction={vi.fn()} />);
+    expect(screen.getByTestId('content')).toBeInTheDocument();
+    await user.keyboard('{Escape}');
+    expect(screen.queryByTestId('content')).toBeNull();
+  });
+
   it('closes on a plain press when idle', async () => {
     const user = userEvent.setup();
     const onAction = vi.fn();

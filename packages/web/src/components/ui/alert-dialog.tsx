@@ -15,11 +15,12 @@ import { cn } from '@web/lib/utils';
  * @radix-ui/react-alert-dialog.
  *
  * Used for destructive / irreversible actions (delete, leave unsaved, etc.).
- * Unlike a regular Dialog, the user MUST pick Action or Cancel (no
- * dismissal via Escape / outside click). The vendor sets
- * `onPointerDownOutside` and `onInteractOutside` to `preventDefault` after
- * its own spread, so no outside press of any button reaches this content —
- * which is why the rail needs no veto here and `Dialog` carries one.
+ * Unlike a regular Dialog, an outside click never dismisses it: the vendor
+ * sets `onPointerDownOutside` and `onInteractOutside` to `preventDefault`
+ * after its own spread, so no outside press of any button reaches this
+ * content — which is why the rail needs no veto here and `Dialog` carries
+ * one. Action, Cancel and Escape close it, Escape also while the Action is
+ * waiting for the server.
  */
 const AlertDialog = AlertDialogPrimitive.Root;
 const AlertDialogTrigger = AlertDialogPrimitive.Trigger;
