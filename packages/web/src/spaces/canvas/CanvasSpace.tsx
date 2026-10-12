@@ -141,6 +141,7 @@ import {
   checkFileAdmission,
   uploadAcceptFor,
   refusedFormatParams,
+  markedSinks,
   fillNodeFromFile,
   fillNodesFromFiles,
   computeDeletedAssetEntries,
@@ -306,6 +307,7 @@ import { canvasGraphs } from '@web/stores/canvas-graph';
 import { useCurrentUserStore } from '@web/stores/current-user';
 import { readSpaceViewport, writeSpaceViewport } from '@web/lib/project-tabs-storage';
 import { useSpaceOperationsStore } from '@web/stores/space-operations';
+import { useUploadMarksStore } from '@web/stores/upload-marks';
 import type { CanvasSessionStore } from '@web/stores/canvas-session';
 
 /** Node types a focus pick can crop (#1782 images, #1987 video frames). */
@@ -2472,16 +2474,6 @@ function CanvasSpaceInner({
     [projectId, spaceId, t],
   );
 
-  // Text this browser could not extract never reached the server, so no task
-  // row tells of it: the person who picked the file is told, and the node is
-  // left as it was (inner#888 §7.8).
-  const failExtraction = React.useCallback(
-    (file: File): void => {
-      toast.error(t('canvas.upload.extractionFailed', { filename: file.name }));
-    },
-    [t],
-  );
-
   const processFiles = React.useCallback(
     (
       files: File[],
@@ -2597,9 +2589,13 @@ function CanvasSpaceInner({
           if (pasted) selectPasted(selectAfter);
           else setSelectAfterCreate(selectAfter);
         }
-        // The bytes travel once the canvas holds the nodes they belong to.
+        // The bytes travel once the canvas holds the nodes they belong to; the
+        // uploader sees each node wait until the server answers (inner#1303
+        // §6.7).
         for (const { file, spec, node } of jobs) {
           const nodeId = node.id;
+          const marks = useUploadMarksStore.getState();
+          const op = marks.begin(spaceId, nodeId);
           if (spec.needsUpload) {
             trackOperation(
               nodeId,
@@ -2616,12 +2612,12 @@ function CanvasSpaceInner({
                   requestTicket: assetsApi.requestUploadTicket,
                   sendToIngest: sendFileAndFinish,
                   // The bytes are delivered; the node's content arrives from
-                  // the server through Yjs. All that is left here is to stop
-                  // holding the file for a Retry that is no longer offered.
+                  // the server through Yjs.
                   onSuccess: () => undefined,
-                  // Outcome and all — `failUploadNode` above owns what each
-                  // one means for the Retry stash and the toast.
-                  onFailure: (outcome) => failUploadNode(outcome, file),
+                  // A failure before the answer is said on the node; after it,
+                  // `failUploadNode` owns what each reason means for the Retry
+                  // stash.
+                  ...markedSinks(spaceId, nodeId, op, file, failUploadNode),
                 },
               ),
             );
@@ -2629,10 +2625,16 @@ function CanvasSpaceInner({
             trackOperation(
               nodeId,
               extractText(file)
-                .then((text) =>
-                  setNodeExtractedText(projectId, spaceId, nodeId, text),
-                )
-                .catch(() => failExtraction(file)),
+                .then((text) => {
+                  setNodeExtractedText(projectId, spaceId, nodeId, text);
+                  useUploadMarksStore.getState().answer(spaceId, nodeId, op);
+                })
+                .catch(() =>
+                  useUploadMarksStore.getState().fail(spaceId, nodeId, op, {
+                    key: 'canvas.upload.extractionFailed',
+                    params: { filename: file.name },
+                  }),
+                ),
             );
           }
         }
@@ -2645,7 +2647,6 @@ function CanvasSpaceInner({
       spaceId,
       userId,
       failUploadNode,
-      failExtraction,
       createUploadNodeAt,
       stepPaste,
       t,
@@ -3639,6 +3640,9 @@ function CanvasSpaceInner({
         warnNodeGate(t(gateBlock.toastKey));
         return;
       }
+      // The uploader sees the node wait from this moment until the server
+      // answers (inner#1303 §6.7).
+      const markOp = useUploadMarksStore.getState().begin(spaceId, nodeId);
       // Register SYNCHRONOUSLY (before the config-fetch await) by making the
       // whole flow the tracked work — otherwise the tab-close guard reads "not
       // busy" during the config round-trip and a close in that window loses the
@@ -3653,12 +3657,10 @@ function CanvasSpaceInner({
         }
         const rejection = checkFileAdmission(file, maxBytes);
         if (rejection !== null) {
-          toast.warning(
-            t(`canvas.upload.${rejection}`, {
-              filename: file.name,
-              ...refusedFormatParams(file),
-            }),
-          );
+          useUploadMarksStore.getState().fail(spaceId, nodeId, markOp, {
+            key: `canvas.upload.${rejection}`,
+            params: { filename: file.name, ...refusedFormatParams(file) },
+          });
           return;
         }
         await fillNodeFromFile(nodeId, file, modality, projectId, {
@@ -3667,29 +3669,23 @@ function CanvasSpaceInner({
           requestTicket: assetsApi.requestUploadTicket,
           sendToIngest: sendFileAndFinish,
           spaceId,
+          markOp,
           ...(tag !== undefined && { tag }),
           extractText,
-          // Type gate: the picker's accept is advisory (macOS lets audio/*
-          // select .mp4) — a file that doesn't classify to the node's modality
-          // is refused with a local toast (user bug 2026-07-03).
-          onTypeMismatch: () => toast.warning(t('canvas.upload.typeMismatch')),
           // Only the text path reaches this: it reads the content here, so
           // there is nobody else to write it. A media node's content arrives
           // from the server through Yjs.
           setContent: (id, content) =>
             setNodeExtractedText(projectId, spaceId, id, content),
-          // Also the text path only, and a text-extraction failure has nothing
-          // to re-upload — every upload failure goes through `onUploadFailure`
-          // below, where the Retry stash is decided per reason.
-          onExtractionFailure: failExtraction,
-          // The same outcome as the drop path, reason for reason: one place
-          // decides the stash and says the remedy in the reader's language.
+          // A failure after the server answered has a task row: the same
+          // outcome as the drop path, reason for reason, where the Retry
+          // stash is decided.
           onUploadFailure: (outcome, f) => failUploadNode(outcome, f, tag),
         });
       })();
       trackOperation(nodeId, work);
     },
-    [projectId, spaceId, t, failUploadNode, failExtraction, trackOperation],
+    [projectId, spaceId, t, failUploadNode, trackOperation],
   );
   // Fill a browser tool's result nodes with its export in one batch upload
   // (inner#1303 §6.5): the same lock gate and busy registration as fillUpload,
