@@ -114,16 +114,28 @@ describe('TaskRow', () => {
     expect(row).toHaveTextContent('Ada');
   });
 
-  it('opens its first line with the action, in every state', () => {
-    // inner#888 §7.7: the reader tells an upload from a generation from a
-    // tool run by the first line alone, whatever state the row is in.
+  it('opens with a badge naming the kind, then what it acted on, in every state', () => {
+    // inner#1454: the reader tells an upload from a generation from a tool
+    // run by the badge alone, whatever state the row is in.
     for (const status of ['running', 'done', 'failed', 'expired'] as const) {
       renderRow({ status, settledAt: status === 'running' ? null : OPENED });
-      expect(screen.getByTestId('task-title')).toHaveTextContent(
-        'Upload · holiday.mp4',
-      );
+      expect(screen.getByTestId('task-kind')).toHaveTextContent('Upload');
+      expect(screen.getByTestId('task-detail')).toHaveTextContent('holiday.mp4');
       cleanup();
     }
+  });
+
+  it('badges a mini-tool by its own name and leaves nothing after it', () => {
+    renderRow({ kind: 'mini_tool', action: 'mini_tool', label: 'image.upscale' });
+
+    expect(screen.getByTestId('task-kind')).toHaveTextContent('Upscale');
+    expect(screen.queryByTestId('task-detail')).toBeNull();
+  });
+
+  it('draws the badge the history panel draws', () => {
+    renderRow();
+
+    expect(screen.getByTestId('task-kind').className).toContain('border border-border');
   });
 
   it('still renders a row whose starter the roster cannot name', () => {
@@ -136,13 +148,12 @@ describe('TaskRow', () => {
     );
   });
 
-  it('counts a running task up and its allowance down', () => {
+  it('counts a running task up and says nothing of its allowance', () => {
+    // The two-hour allowance is a backstop, not progress (inner#1454).
     renderRow();
 
-    const row = screen.getByTestId('node-task-row');
-    // Ten minutes in, twenty of the thirty left.
-    expect(row).toHaveTextContent('10:00');
-    expect(row).toHaveTextContent('20:00');
+    expect(screen.getByTestId('task-elapsed')).toHaveTextContent('10:00');
+    expect(screen.getByTestId('node-task-row')).not.toHaveTextContent('20:00');
   });
 
   it('offers nothing while it runs', () => {

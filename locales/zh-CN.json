@@ -816,7 +816,6 @@
         "view": "查看"
       },
       "elapsed": "已运行 {duration}",
-      "remaining": "剩余 {duration}",
       "startedAt": "{when} 开始",
       "endedAt": "{when} 结束",
       "lateResult": "超时之后才完成。",
@@ -844,10 +843,10 @@
         "tool_failed": "工具没能处理这个文件。",
         "no_audio_track": "这个视频没有音轨。"
       },
-      "title": {
-        "upload": "上传 · {name}",
-        "generate": "生成 · {name}",
-        "understand": "理解 · {name}"
+      "kind": {
+        "upload": "上传",
+        "generate": "生成",
+        "understand": "理解"
       }
     },
     "panel": {

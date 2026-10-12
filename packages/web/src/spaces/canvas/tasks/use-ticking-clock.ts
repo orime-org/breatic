@@ -2,16 +2,16 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * The clock behind a running task's two counters (#186 §7.3).
+ * The clock behind a running task's elapsed time (#186 §7.3).
  *
- * Both numbers are derived from what the server decided — the instant the
- * task opened and the allowance it was given — so all the reader's clock does
- * is decide how current the counter looks. Nothing is judged from it.
+ * The number is derived from the instant the server opened the task, so all
+ * the reader's clock does is decide how current it looks. Nothing is judged
+ * from it.
  */
 
 import * as React from 'react';
 
-/** How often a running row's counters are recomputed. */
+/** How often a running row's elapsed time is recomputed. */
 const TICK_MS = 1000;
 
 /**
