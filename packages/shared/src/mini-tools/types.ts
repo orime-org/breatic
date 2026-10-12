@@ -195,6 +195,12 @@ interface MiniToolBase {
   /** Present on a tool the reader draws on the node for. */
   readonly drawing?: MiniToolDrawing;
   /**
+   * Present on a tool the reader marks the picture up with — shapes, arrows,
+   * lines, pen strokes and text that stay selectable until the run — for
+   * people to read rather than for a model.
+   */
+  readonly markup?: true;
+  /**
    * Present on a tool that grows the picture past its edges: the run sends,
    * in place of the source, the picture padded onto the larger canvas under
    * `imageParam` and a mask of the same size, white where the canvas is new,

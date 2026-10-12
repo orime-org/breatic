@@ -893,6 +893,9 @@
         "expand": {
           "label": "Expand",
           "prompt": "Describe what to fill in, or leave it empty to extend the picture naturally"
+        },
+        "mark": {
+          "label": "Markup"
         }
       },
       "video": {
