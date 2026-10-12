@@ -8,7 +8,8 @@
 
 import { describe, it, expect } from 'vitest';
 
-import { fromFabric, markStrokePx, toFabric } from '@web/spaces/canvas/mini-tool/mark-fabric';
+import { fromFabric, markBackground, markStrokePx, toFabric } from '@web/spaces/canvas/mini-tool/mark-fabric';
+import { BRUSH_SIZE } from '@web/stores/drawing-draft';
 import type { MarkObject } from '@web/stores/mark-draft';
 
 const BOX = { width: 400, height: 300 };
@@ -63,10 +64,42 @@ describe('toFabric and fromFabric', () => {
     expect(fromFabric(text, BOX)).toMatchObject({ size: 9 });
   });
 
+  it('keeps only a text’s four corners, so it scales evenly', () => {
+    const text = toFabric(OBJECTS[5]!, BOX);
+    for (const side of ['ml', 'mr', 'mt', 'mb']) expect(text.isControlVisible(side)).toBe(false);
+    for (const corner of ['tl', 'tr', 'bl', 'br']) expect(text.isControlVisible(corner)).toBe(true);
+  });
+
+  it('holds a text’s scaled size inside the size range, in whole steps', () => {
+    const text = toFabric(OBJECTS[5]!, BOX);
+    text.set({ scaleX: 10, scaleY: 10 });
+    expect(fromFabric(text, BOX)).toMatchObject({ size: BRUSH_SIZE.max });
+    text.set({ scaleX: 1.37, scaleY: 1.37 });
+    expect(fromFabric(text, BOX)).toMatchObject({ size: 8 });
+    text.set({ scaleX: 0.01, scaleY: 0.01 });
+    expect(fromFabric(text, BOX)).toMatchObject({ size: BRUSH_SIZE.min });
+  });
+
+  it('draws an arrowhead in proportion to the picture, so the node and the export match', () => {
+    const arrow = { ...OBJECTS[3]!, size: 1 } as MarkObject;
+    const small = toFabric(arrow, BOX);
+    const large = toFabric(arrow, { width: 4000, height: 3000 });
+    expect((large.width ?? 0) / (small.width ?? 1)).toBeCloseTo(10, 5);
+    expect((large.height ?? 0) / (small.height ?? 1)).toBeCloseTo(10, 5);
+  });
+
   it('turns off rotation and skew', () => {
     const shape = toFabric(OBJECTS[0]!, BOX);
     expect(shape.lockSkewingX && shape.lockSkewingY && shape.lockScalingFlip).toBe(true);
     expect(shape.isControlVisible('mtr')).toBe(false);
+  });
+});
+
+describe('markBackground', () => {
+  it('lays the picture from the top-left corner, where the objects are measured from', () => {
+    const el = document.createElement('img');
+    const picture = markBackground(el);
+    expect([picture.left, picture.top, picture.originX, picture.originY]).toEqual([0, 0, 'left', 'top']);
   });
 });
 
