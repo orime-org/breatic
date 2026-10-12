@@ -19,6 +19,7 @@ import { NodeDrawLayer } from '@web/spaces/canvas/mini-tool/NodeDrawLayer';
 import { NodeAdjustLayer } from '@web/spaces/canvas/mini-tool/NodeAdjustLayer';
 import { NodeExpandLayer } from '@web/spaces/canvas/mini-tool/NodeExpandLayer';
 import { NodeGridLayer } from '@web/spaces/canvas/mini-tool/NodeGridLayer';
+import { NodeMarkLayer } from '@web/spaces/canvas/mini-tool/NodeMarkLayer';
 
 /** The media's box on screen, and its layout size unless {@link LAYOUT} says otherwise. Mutable. */
 export const IMG_BOX = { left: 100, top: 50, width: 400, height: 300 };
@@ -53,6 +54,7 @@ function MediaNode({ id, data }: NodeProps<Node<MediaNodeData>>): React.JSX.Elem
       <NodeGridLayer nodeId={id} wrapper={wrapper} />
       <NodeAdjustLayer nodeId={id} wrapper={wrapper} />
       <NodeExpandLayer nodeId={id} wrapper={wrapper} />
+      <NodeMarkLayer nodeId={id} wrapper={wrapper} />
     </div>
   );
 }

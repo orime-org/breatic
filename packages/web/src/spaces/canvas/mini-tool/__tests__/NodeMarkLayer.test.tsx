@@ -73,8 +73,12 @@ describe('NodeMarkLayer', () => {
 
   it('takes Escape to leave the text being edited and keeps the panel open', async () => {
     await mount();
-    const exit = vi.spyOn(store().markChannel!, 'exitEditing');
-    act(() => store().setMarkEditingText('hi'));
+    // The session freezes what it holds, so a stand-in channel is registered.
+    const exit = vi.fn();
+    act(() => {
+      store().registerMarkChannel({ exitEditing: exit, discardSelection: vi.fn() });
+      store().setMarkEditingText('hi');
+    });
     const event = pressEscape();
     expect(exit).toHaveBeenCalledTimes(1);
     expect(event.defaultPrevented).toBe(true);

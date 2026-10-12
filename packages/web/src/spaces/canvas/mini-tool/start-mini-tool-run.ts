@@ -41,6 +41,7 @@ import type { ExpandFrame, PixelSize } from '@web/spaces/canvas/mini-tool/expand
 import { createEmptyNode, type CreatableNodeType } from '@web/spaces/canvas/node-factory';
 import { resolveUploadFailure } from '@web/spaces/canvas/upload-failure';
 import type { DrawOp } from '@web/stores/drawing-draft';
+import type { MarkObject } from '@web/stores/mark-draft';
 
 /** The node a tool reads, as the canvas holds it. */
 export interface MiniToolSourceNode {
@@ -58,12 +59,13 @@ export interface MiniToolSourceNode {
 
 /**
  * What the reader made on the node, copied out at the press (inner#1303 §5):
- * a drawing tool's strokes, or an expand tool's frame with the source's pixel
- * size it was measured against.
+ * a drawing tool's strokes, an expand tool's frame with the source's pixel
+ * size it was measured against, or markup's objects.
  */
 export type MiniToolCapture =
   | { kind: 'strokes'; ops: readonly DrawOp[] }
-  | { kind: 'expand'; frame: ExpandFrame; sourceSize: PixelSize };
+  | { kind: 'expand'; frame: ExpandFrame; sourceSize: PixelSize }
+  | { kind: 'mark'; objects: readonly MarkObject[] };
 
 /** The images an expand press uploads: the padded picture and the mask of its new area. */
 export interface ExpandExport {
@@ -106,8 +108,8 @@ export interface MiniToolRun {
   source: MiniToolSourceNode;
   /** Whether the source node is still on the canvas, asked at build time. */
   sourceExists: () => boolean;
-  /** Make a browser tool's files from the snapshot, one per result in order, with their pixel size when known. */
-  exportFile: (spec: MiniToolSpec, snapshot: MiniToolSnapshot) => Promise<ExportedFile[]>;
+  /** Make a browser tool's files from the snapshot and the capture, one per result in order, with their pixel size when known. */
+  exportFile: (spec: MiniToolSpec, snapshot: MiniToolSnapshot, capture?: MiniToolCapture) => Promise<ExportedFile[]>;
   /** Upload a browser tool's one file into its node, tagged with the tool. */
   fillUpload: (nodeId: string, file: File, modality: CreatableNodeType, tag: MiniToolUploadTag) => void;
   /** Upload a browser tool's files into their nodes in one batch, tagged with the tool. */
@@ -267,7 +269,7 @@ async function prepare(run: MiniToolRun): Promise<{ files?: ExportedFile[]; uplo
   const uploads: PressUploads = {};
   if (spec.run.kind === 'browser') {
     try {
-      files = await run.exportFile(spec, snapshot);
+      files = await run.exportFile(spec, snapshot, capture);
     } catch (err) {
       toast.warning(
         t(err instanceof ImageTooLargeError ? 'canvas.miniTool.panel.imageTooLarge' : 'canvas.miniTool.panel.exportFailed'),

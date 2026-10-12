@@ -22,7 +22,7 @@ import { useTranslation } from '@web/i18n/use-translation';
 import { toast } from '@web/lib/toast';
 import { NodePanelMount } from '@web/spaces/canvas/_shared/NodePanelMount';
 import { cropSourceSelector, intrinsicSize, isCropSource } from '@web/spaces/canvas/focus/crop-source';
-import { canvasRootOf, useCanvasContext, useCanvasSession } from '@web/spaces/canvas/canvas-context';
+import { canvasRootOf, useCanvasContext, useCanvasSession, useCanvasSessionStore } from '@web/spaces/canvas/canvas-context';
 import { controlsForKeys } from '@web/spaces/canvas/generate/model-controls';
 import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
 import { useCreditText } from '@web/spaces/canvas/generate/use-credit-estimate';
@@ -176,6 +176,7 @@ function OpenMiniToolPanel({
   const setExpand = useCanvasSession((s) => s.setExpand);
   const setExpandCap = useCanvasSession((s) => s.setExpandCap);
   const setMiniToolSourceSize = useCanvasSession((s) => s.setMiniToolSourceSize);
+  const sessionStore = useCanvasSessionStore();
 
   const { data: catalog, isError } = useQuery(modelCatalogQuery());
   const entry =
@@ -361,14 +362,20 @@ function OpenMiniToolPanel({
     // What the reader made on the node is copied out now, so a later change
     // to the draft does not reach this run.
     const expandFrame = draft?.expand?.frame;
-    const capture: MiniToolCapture | undefined =
+    let capture: MiniToolCapture | undefined =
       spec.drawing !== undefined && drawingSteps !== undefined
         ? { kind: 'strokes', ops: visibleOps(drawingSteps) }
         : spec.expand !== undefined && expandFrame !== undefined && source.width !== undefined && source.height !== undefined
           ? { kind: 'expand', frame: { ...expandFrame }, sourceSize: { width: source.width, height: source.height } }
           : undefined;
+    if (spec.markup === true) {
+      // A text being edited is written back first, so the press takes it.
+      const session = sessionStore.getState();
+      if (session.miniTool?.mark?.editingText != null) session.markChannel?.exitEditing();
+      capture = { kind: 'mark', objects: sessionStore.getState().miniTool?.mark?.objects ?? [] };
+    }
     void onRun(nodeId, spec, snapshot, capture);
-  }, [refusal, onRun, nodeId, spec, entry, slots, snapshot, drawingSteps, draft?.expand?.frame, source.width, source.height, t]);
+  }, [refusal, onRun, nodeId, spec, entry, slots, snapshot, drawingSteps, draft?.expand?.frame, source.width, source.height, sessionStore, t]);
 
   // Escape closes the panel; a running pick takes the press first.
   useEscapeInSpace(pickSession === null, closeActivePanel);

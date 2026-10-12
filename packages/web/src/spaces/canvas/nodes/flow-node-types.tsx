@@ -35,6 +35,7 @@ import { NodeDrawLayer } from '@web/spaces/canvas/mini-tool/NodeDrawLayer';
 import { NodeAdjustLayer } from '@web/spaces/canvas/mini-tool/NodeAdjustLayer';
 import { NodeExpandLayer } from '@web/spaces/canvas/mini-tool/NodeExpandLayer';
 import { NodeGridLayer } from '@web/spaces/canvas/mini-tool/NodeGridLayer';
+import { NodeMarkLayer } from '@web/spaces/canvas/mini-tool/NodeMarkLayer';
 import { TaskCountColumn } from '@web/spaces/canvas/tasks/TaskCountColumn';
 import type { TaskStatus } from '@web/spaces/canvas/tasks/TaskStatusDot';
 import { typedViewOf } from '@web/data/yjs/node-view';
@@ -273,6 +274,7 @@ function makeFlowNode(
                 {takesEdges ? <NodeGridLayer nodeId={props.id} wrapper={wrapper} /> : null}
                 {takesEdges ? <NodeAdjustLayer nodeId={props.id} wrapper={wrapper} /> : null}
                 {takesEdges ? <NodeExpandLayer nodeId={props.id} wrapper={wrapper} /> : null}
+                {takesEdges ? <NodeMarkLayer nodeId={props.id} wrapper={wrapper} /> : null}
                 {/* Outside the node's own box, so it never covers content and
                 never changes what the body is sized to. It counter-scales on
                 the same factor as the name header. Once the canvas has taken
