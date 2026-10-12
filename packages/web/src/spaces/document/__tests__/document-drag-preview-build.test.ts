@@ -191,6 +191,21 @@ describe('blockPreviewContent', () => {
     expect(content.querySelector('img')).not.toBeNull();
   });
 
+  it('takes a media box without the hover and selected state its view writes on it', () => {
+    const editor = open([{ type: 'paragraph', content: 'x' }]);
+    const view = editor.prosemirrorView!;
+    const block = blockOf(
+      'm1',
+      'image',
+      '<div data-testid="doc-media-row" class="flex w-full justify-end">' +
+        '<div data-media-box="" data-hovered="true" data-selected="true" style="width: 240px"><img alt=""></div></div>',
+    );
+    const content = blockPreviewContent(view, [block]);
+    expect(content.hasAttribute('data-media-box')).toBe(true);
+    expect(content.hasAttribute('data-hovered')).toBe(false);
+    expect(content.hasAttribute('data-selected')).toBe(false);
+  });
+
   it('gives a media box the width it is drawn at in the body, where it may have none of its own', () => {
     const editor = open([{ type: 'paragraph', content: 'x' }]);
     const view = editor.prosemirrorView!;

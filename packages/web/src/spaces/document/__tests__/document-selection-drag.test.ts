@@ -19,12 +19,14 @@ import { documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { BodyEdgeSelection } from '@web/spaces/document/document-body-edge-selection';
+import { documentDecorationsExtension } from '@web/spaces/document/document-decorations';
 import { rowHasLanded, rowIsFlying } from '@web/spaces/document/document-drag-drop';
 import { captionPreviewContent } from '@web/spaces/document/document-drag-preview';
 import { startRowDrag } from '@web/spaces/document/document-row-drag';
 import { selectionDragKind, selectionPreviewContent } from '@web/spaces/document/document-selection-drag';
 import { endTableDrag, startTableDrag } from '@web/spaces/document/document-table-drag';
-import { viewState } from '@web/spaces/document/document-view-state';
+import { renderCollabCaret, renderCollabSelection } from '@web/features/collab-editor/caret-render';
+import { CONTENT_DECORATION } from '@web/spaces/document/document-view-state';
 
 type Editor = ReturnType<typeof buildDocumentEditor>;
 
@@ -478,7 +480,7 @@ describe('a preview draws the content, not what the body shows for the moment (C
     expect(statePaint(element)).toEqual([]);
   });
 
-  it('takes off what a view-state decoration adds and keeps what a content decoration adds', () => {
+  it('takes off what every decoration adds, a library\'s and a collaborator\'s included, and keeps a content decoration', () => {
     const editor = open([{ type: 'paragraph', content: 'one' }, { type: 'paragraph', content: 'two' }]);
     const view = editor.prosemirrorView!;
     const marks = new Plugin({
@@ -490,11 +492,12 @@ describe('a preview draws the content, not what the body shows for the moment (C
             return one < 0;
           });
           const size = state.doc.nodeAt(one)!.nodeSize;
+          const user = { name: 'B', color: '#30bced' } as never;
           return DecorationSet.create(state.doc, [
-            viewState.node(one, one + size, { class: 'probe-state', 'data-probe-state': '' }),
-            viewState.inline(one + 1, one + 3, { class: 'probe-state-inline' }),
-            viewState.widget(one + 1, () => document.createElement('i')),
-            Decoration.node(one, one + size, { class: 'probe-content', 'data-probe-content': '' }),
+            Decoration.node(one, one + size, { class: 'probe-state', 'data-probe-state': '', style: '--probe-state: 1' }),
+            Decoration.inline(one + 1, one + 3, renderCollabSelection(user)),
+            Decoration.widget(one + 2, () => renderCollabCaret(user, 7), { key: '7' }),
+            Decoration.node(one, one + size, { class: 'probe-content', 'data-probe-content': '', style: '--probe-content: 1' }, CONTENT_DECORATION),
           ]);
         },
       },
@@ -503,9 +506,38 @@ describe('a preview draws the content, not what the body shows for the moment (C
     view.focus();
     selectText(editor, ['one', 0], ['two', 3]);
     const content = selectionPreviewContent(view)!;
-    expect(view.dom.querySelector('.probe-state[data-probe-state] .probe-state-inline')).not.toBeNull();
-    expect(content.querySelector('.probe-state, [data-probe-state], .probe-state-inline, i')).toBeNull();
-    expect(content.querySelector('.probe-content[data-probe-content]')).not.toBeNull();
+    expect(view.dom.querySelector('.probe-state .collaboration-carets__selection')).not.toBeNull();
+    expect(view.dom.querySelector('.collaboration-carets__caret')).not.toBeNull();
+    expect(content.querySelector('.probe-state, [data-probe-state], .collaboration-carets__selection, .collaboration-carets__caret, .ProseMirror-widget')).toBeNull();
+    const kept = content.querySelector<HTMLElement>('.probe-content[data-probe-content]');
+    expect(kept).not.toBeNull();
+    expect(kept!.style.getPropertyValue('--probe-content')).toBe('1');
+    expect(kept!.style.getPropertyValue('--probe-state')).toBe('');
     expect(blockTexts(content)).toEqual(['one', 'two']);
+  });
+
+  it('keeps what the content looks like: numbers, bullet levels and a quote\'s rule', () => {
+    const editor = buildDocumentEditor({
+      fragment: documentBodyFragment(new Y.Doc()),
+      extensions: [documentDecorationsExtension()],
+    } as never);
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    editor.mount(host);
+    mounted.push(editor);
+    editor.replaceBlocks(editor.document, [
+      { type: 'numberedListItem', content: 'first' },
+      { type: 'bulletListItem', content: 'point' },
+      { type: 'paragraph', content: 'said', props: { quoted: true } },
+    ] as never);
+    const view = editor.prosemirrorView!;
+    view.focus();
+    selectText(editor, ['first', 1], ['said', 2]);
+    const content = selectionPreviewContent(view)!;
+    expect(content.querySelector('[data-doc-number]')).not.toBeNull();
+    expect(content.querySelector('[data-bullet-level]')).not.toBeNull();
+    const quoted = content.querySelector<HTMLElement>('[data-quoted-run]');
+    expect(quoted).not.toBeNull();
+    expect(quoted!.style.getPropertyValue('--quote-depth')).not.toBe('');
   });
 });
