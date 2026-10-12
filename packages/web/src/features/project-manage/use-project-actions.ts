@@ -12,7 +12,10 @@ import { toast } from '@web/lib/toast';
 /** A project's server-side management actions, each settling with a toast. */
 export interface ProjectActions {
   duplicate: () => void;
-  /** Archive; `onSuccess` runs once it lands (the confirmation closes there). */
+  /**
+   * Archive; `onSuccess` runs once the archive is in and the lists showing the
+   * project have refreshed (the confirmation closes there).
+   */
   archive: (options?: { onSuccess?: () => void }) => void;
   restore: () => void;
   /** True while any of the three is in flight. */

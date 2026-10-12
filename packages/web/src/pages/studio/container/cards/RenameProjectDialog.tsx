@@ -23,7 +23,10 @@ interface RenameProjectDialogProps {
   onOpenChange: (open: boolean) => void;
   /** The name the field starts from. */
   currentName: string;
-  /** Called with the trimmed new name; `onSuccess` runs once the rename lands. */
+  /**
+   * Called with the trimmed new name; `onSuccess` runs once the rename is in
+   * and the lists showing the name have refreshed.
+   */
   onRename: (name: string, options: { onSuccess: () => void }) => void;
   /** True while the rename request is in flight. */
   pending: boolean;
@@ -32,7 +35,8 @@ interface RenameProjectDialogProps {
 /**
  * The card menu's rename dialog: one name field, Save and Cancel. Save stays
  * off while the field is blank or unchanged. The dialog waits for the rename
- * and closes once it lands; a failure toasts and leaves the dialog open.
+ * and closes once the rename is in and the lists showing the name have
+ * refreshed; a failure toasts and leaves the dialog open.
  * @param props - Open state, the current name and the rename callback.
  * @param props.open - Whether the dialog is shown.
  * @param props.onOpenChange - Called when the dialog asks to open or close.

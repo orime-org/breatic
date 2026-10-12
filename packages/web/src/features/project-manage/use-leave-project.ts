@@ -11,7 +11,10 @@ import { toast } from '@web/lib/toast';
 
 /** Leaving one project, and whether the request is in flight. */
 export interface LeaveProject {
-  /** Leave; `onSuccess` runs once it lands, after `onLeft`. */
+  /**
+   * Leave; `onSuccess` runs once the leave is in and the lists that showed the
+   * project have refreshed, after `onLeft`.
+   */
   leave: (options?: { onSuccess?: () => void }) => void;
   pending: boolean;
 }
