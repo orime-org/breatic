@@ -132,9 +132,11 @@ export function MembersModal({
         queryKey: ['project-members', projectId],
       });
       toast.success(t('members.modal.removeSuccess'));
-      // Close the confirm dialog only on success — a failure leaves it open
-      // with the error toast so the owner can retry.
-      setConfirmRemove(null);
+      // Close the confirm dialog only on success, and only when it still shows
+      // this member — a failure leaves it open with the error toast so the
+      // owner can retry, and a confirmation opened for someone else meanwhile
+      // stays open.
+      setConfirmRemove((c) => (c?.id === member.id ? null : c));
     } catch {
       toast.error(t('members.modal.removeFailed'));
     } finally {

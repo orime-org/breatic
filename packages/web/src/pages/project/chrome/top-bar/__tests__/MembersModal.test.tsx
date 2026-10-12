@@ -41,6 +41,7 @@ import { projectsApi } from '@web/data/api/projects';
 import type { Member } from '@web/data/api/members';
 import { useUIStore } from '@web/stores/ui';
 import { expectNoA11yViolations } from '@web/test-utils/a11y';
+import { toast } from '@web/lib/toast';
 
 /**
  * Render the modal inside a fresh QueryClientProvider. The modal invalidates
@@ -253,6 +254,33 @@ describe('MembersModal waiting buttons', () => {
     reply.reject();
     await waitFor(() => expect(action).not.toHaveAttribute('aria-busy'));
     expect(screen.getByTestId('members-modal-remove-confirm')).toBeInTheDocument();
+  });
+
+  it('leaves a second member\'s remove confirmation open when the earlier removal answers', async () => {
+    const reply = deferred<void>();
+    vi.mocked(membersApi.remove).mockReturnValue(reply.promise as never);
+    const user = userEvent.setup();
+    const members: ReadonlyArray<Member> = [
+      ...REAL_MEMBERS,
+      { id: 'u-c', userId: 'u-c', name: 'Real Viewer', email: 'c@e.com', role: 'viewer' },
+    ];
+    renderModal(<MembersModal projectId='p1' members={members} currentUserId='u-a' />);
+
+    await user.click(screen.getByTestId('members-modal-remove-u-b'));
+    await user.click(screen.getByTestId('members-modal-remove-confirm-action'));
+    await waitFor(() => expect(membersApi.remove).toHaveBeenCalledTimes(1));
+    await user.keyboard('{Escape}');
+    await waitFor(() =>
+      expect(screen.queryByTestId('members-modal-remove-confirm')).not.toBeInTheDocument(),
+    );
+    await user.click(screen.getByTestId('members-modal-remove-u-c'));
+    expect(screen.getByTestId('members-modal-remove-confirm')).toHaveTextContent('Real Viewer');
+
+    reply.resolve(undefined);
+    await waitFor(() => expect(toast.success).toHaveBeenCalled());
+    expect(screen.queryByTestId('members-modal-remove-confirm')).toHaveTextContent(
+      'Real Viewer',
+    );
   });
 
   for (const outcome of ['succeeds', 'fails'] as const) {
