@@ -9,7 +9,6 @@
 import { describe, it, expect } from 'vitest';
 
 import { fromFabric, markBackground, markStrokePx, toFabric } from '@web/spaces/canvas/mini-tool/mark-fabric';
-import { BRUSH_SIZE } from '@web/stores/drawing-draft';
 import type { MarkObject } from '@web/stores/mark-draft';
 
 const BOX = { width: 400, height: 300 };
@@ -60,8 +59,8 @@ describe('toFabric and fromFabric', () => {
 
   it('folds a text’s scale into its size', () => {
     const text = toFabric(OBJECTS[5]!, BOX);
-    text.set({ scaleX: 1.5, scaleY: 1.5 });
-    expect(fromFabric(text, BOX)).toMatchObject({ size: 9 });
+    text.set({ scaleX: 10, scaleY: 10 });
+    expect(fromFabric(text, BOX)).toMatchObject({ size: 60 });
   });
 
   it('keeps only a text’s four corners, so it scales evenly', () => {
@@ -70,15 +69,6 @@ describe('toFabric and fromFabric', () => {
     for (const corner of ['tl', 'tr', 'bl', 'br']) expect(text.isControlVisible(corner)).toBe(true);
   });
 
-  it('holds a text’s scaled size inside the size range, in whole steps', () => {
-    const text = toFabric(OBJECTS[5]!, BOX);
-    text.set({ scaleX: 10, scaleY: 10 });
-    expect(fromFabric(text, BOX)).toMatchObject({ size: BRUSH_SIZE.max });
-    text.set({ scaleX: 1.37, scaleY: 1.37 });
-    expect(fromFabric(text, BOX)).toMatchObject({ size: 8 });
-    text.set({ scaleX: 0.01, scaleY: 0.01 });
-    expect(fromFabric(text, BOX)).toMatchObject({ size: BRUSH_SIZE.min });
-  });
 
   it('draws an arrowhead in proportion to the picture, so the node and the export match', () => {
     const arrow = { ...OBJECTS[3]!, size: 1 } as MarkObject;

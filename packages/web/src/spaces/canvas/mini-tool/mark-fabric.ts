@@ -12,7 +12,6 @@
 
 import { Ellipse, FabricImage, IText, Path, Point, Rect, util, type FabricObject } from 'fabric';
 
-import { BRUSH_SIZE } from '@web/stores/drawing-draft';
 import type { MarkObject } from '@web/stores/mark-draft';
 
 /** A picture's size in the pixels it is drawn at. */
@@ -246,8 +245,7 @@ export function fromFabric(shape: FabricObject, box: DrawBox): MarkObject {
         id,
         kind: 'text',
         color,
-        // Held to the size slider's range and steps, so the control can show it.
-        size: Math.min(BRUSH_SIZE.max, Math.max(BRUSH_SIZE.min, Math.round((size * (shape.scaleX ?? 1)) / BRUSH_SIZE.step) * BRUSH_SIZE.step)),
+        size: size * (shape.scaleX ?? 1),
         x: (shape.left ?? 0) / box.width,
         y: (shape.top ?? 0) / box.height,
         text: (shape as IText).text,

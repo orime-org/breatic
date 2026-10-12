@@ -72,7 +72,7 @@ describe("outputsOf", () => {
 });
 
 describe("gridShapeOf", () => {
-  const grid: MiniToolSpec = { ...product, outputLayout: "grid" } as MiniToolSpec;
+  const grid: MiniToolSpec = { ...product, outputLayout: "grid" };
 
   it("reads a grid tool's rows and columns from the params it counts by", () => {
     expect(gridShapeOf(grid, { rows: 2, cols: 4 })).toEqual({ rows: 2, cols: 4 });

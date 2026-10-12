@@ -94,14 +94,29 @@ export const EMPTY_MARK: Readonly<MarkDraft> = Object.freeze({
 });
 
 /**
+ * A size held to the size slider's range and steps, so the control can show
+ * it: a text scaled on the canvas comes back at whatever size the scale gave.
+ * @param size - The size as written.
+ * @returns The size on the slider.
+ */
+function onSizeSlider(size: number): number {
+  const stepped = Math.round(size / BRUSH_SIZE.step) * BRUSH_SIZE.step;
+  return Math.min(BRUSH_SIZE.max, Math.max(BRUSH_SIZE.min, stepped));
+}
+
+/**
  * The draft with a new object list, as one step when it differs from the one
  * held. A write that changes nothing is no step, so a canvas echoing back what
  * it was just told leaves undo and redo alone.
  * @param draft - The draft.
- * @param objects - The new list.
+ * @param written - The new list, as the canvas wrote it.
  * @returns The draft.
  */
-export function withObjects(draft: MarkDraft, objects: readonly MarkObject[]): MarkDraft {
+export function withObjects(draft: MarkDraft, written: readonly MarkObject[]): MarkDraft {
+  const objects = written.map((object) => {
+    const size = onSizeSlider(object.size);
+    return size === object.size ? object : { ...object, size };
+  });
   if (JSON.stringify(objects) === JSON.stringify(draft.objects)) return draft;
   return { ...draft, objects, undo: [...draft.undo, draft.objects], redo: [] };
 }

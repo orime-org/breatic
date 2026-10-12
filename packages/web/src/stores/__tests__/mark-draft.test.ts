@@ -66,6 +66,12 @@ describe('the markup draft', () => {
     expect(mark(store).undo).toHaveLength(2);
   });
 
+  it('holds each object’s size inside the size range, in whole steps, so the control can show it', () => {
+    const store = withMark();
+    store.getState().commitMark([{ ...A, size: 60 }, { ...B, size: 8.4 }, { ...B, id: 'c', size: 0.2 }]);
+    expect(mark(store).objects.map((object) => object.size)).toEqual([BRUSH_SIZE.max, 8, BRUSH_SIZE.min]);
+  });
+
   it('brings an undone object back on redo, and a write that changes nothing leaves the redo there', () => {
     const store = withMark();
     store.getState().commitMark([A]);
