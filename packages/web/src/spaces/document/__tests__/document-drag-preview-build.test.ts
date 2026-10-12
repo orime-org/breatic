@@ -107,7 +107,7 @@ describe('previewScale', () => {
 });
 
 describe('buildDragPreview', () => {
-  it('sizes the root to the scaled size and scales an inner layer, which carries the editor element\'s classes but the one that marks an editor', () => {
+  it('sizes the root to the scaled size and scales an inner layer, which carries no class', () => {
     const editor = open([{ type: 'paragraph', content: 'one' }]);
     const content = document.createElement('div');
     const root = buildDragPreview(editor.prosemirrorView!, content, () => ({ width: 1024, height: 256 }));
@@ -124,13 +124,9 @@ describe('buildDragPreview', () => {
     expect(layer.style.transformOrigin).toBe('0px 0px');
     expect(layer.style.verticalAlign).toBe('top');
     expect(root.style.transform).toBe('');
-    expect(layer.classList.contains('doc-body')).toBe(true);
-    // BlockNote takes any `.bn-editor` in the page for an editor and reads its
-    // block group, drop routing included (`SideMenu.ts` findClosestEditorElement).
-    expect(layer.classList.contains('bn-editor')).toBe(false);
-    // The rules @tiptap/core injects hang off `.ProseMirror`: a code block's
-    // wrapping, a long word's break, ligatures off.
-    expect(layer.classList.contains('ProseMirror')).toBe(true);
+    // Its content carries its styles written on it; BlockNote takes any
+    // `.bn-editor` in the page for an editor (`SideMenu.ts:328`).
+    expect(layer.className).toBe('');
     expect(layer.contains(content)).toBe(true);
   });
 
@@ -162,6 +158,50 @@ describe('buildDragPreview', () => {
     const [first, second] = [...root.querySelectorAll<HTMLElement>('.bn-block-content')];
     expect(first!.style.getPropertyValue('--doc-block-lift')).toBe('0px');
     expect(second!.style.getPropertyValue('--doc-block-lift')).toBe('');
+  });
+
+  it('writes on each element the styles it takes where its content sits in the body', () => {
+    const editor = open([{ type: 'paragraph', content: 'one' }]);
+    const view = editor.prosemirrorView!;
+    const sheet = document.createElement('style');
+    sheet.textContent = '.preview-ancestor .bn-block-content { letter-spacing: 7px; }';
+    document.head.append(sheet);
+    view.dom.parentElement!.classList.add('preview-ancestor');
+    try {
+      const content = blockPreviewContent(view, [view.dom.querySelector('.bn-block-outer')!.cloneNode(true) as Element]);
+      const root = buildDragPreview(view, content, () => ({ width: 100, height: 20 }));
+      const block = root.querySelector<HTMLElement>('.bn-block-content')!;
+      expect(block.style.getPropertyValue('letter-spacing')).toBe('7px');
+      expect(block.style.getPropertyPriority('letter-spacing')).toBe('important');
+    } finally {
+      sheet.remove();
+    }
+  });
+
+  it('works its styles out beside the editor element and leaves nothing of that there', () => {
+    const editor = open([{ type: 'paragraph', content: 'one' }]);
+    const view = editor.prosemirrorView!;
+    const after = view.dom.nextSibling;
+    const content = blockPreviewContent(view, [view.dom.querySelector('.bn-block-outer')!.cloneNode(true) as Element]);
+    buildDragPreview(view, content, () => ({ width: 100, height: 20 }));
+    expect(view.dom.nextSibling).toBe(after);
+    expect(document.querySelectorAll('.bn-editor')).toHaveLength(1);
+  });
+
+  it('works them out without what the editor element shows for the moment', () => {
+    const editor = open([{ type: 'paragraph', content: 'one' }]);
+    const view = editor.prosemirrorView!;
+    const sheet = document.createElement('style');
+    sheet.textContent = '.ProseMirror-focused .bn-block-content { word-spacing: 9px; }';
+    document.head.append(sheet);
+    view.dom.classList.add('ProseMirror-focused');
+    try {
+      const content = blockPreviewContent(view, [view.dom.querySelector('.bn-block-outer')!.cloneNode(true) as Element]);
+      const root = buildDragPreview(view, content, () => ({ width: 100, height: 20 }));
+      expect(root.querySelector<HTMLElement>('.bn-block-content')!.style.getPropertyValue('word-spacing')).not.toBe('9px');
+    } finally {
+      sheet.remove();
+    }
   });
 
   it('stands its last block flush against its bottom, and leaves the space between blocks', () => {
@@ -356,6 +396,21 @@ describe('tableLinePreviewContent', () => {
     // quoted table block's rule padding stands outside it.
     expect(row.style.boxSizing).toBe('content-box');
     expect(column.style.boxSizing).toBe('content-box');
+  });
+
+  it('works a line\'s styles out inside the block its table sits in', () => {
+    const editor = open([{ type: 'table', content: { type: 'tableContent', rows } }]);
+    const view = editor.prosemirrorView!;
+    const sheet = document.createElement('style');
+    sheet.textContent = '.bn-block-outer > .bn-block > [data-content-type="table"] { letter-spacing: 3px; }';
+    document.head.append(sheet);
+    try {
+      const content = tableLinePreviewContent(view, cellOf(editor, 'b2'), 'row')!;
+      buildDragPreview(view, content, () => ({ width: 100, height: 20 }));
+      expect(content.style.getPropertyValue('letter-spacing')).toBe('3px');
+    } finally {
+      sheet.remove();
+    }
   });
 
   it('holds the line\'s table and nothing of the frame the table scrolls in', () => {
