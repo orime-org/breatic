@@ -28,7 +28,8 @@ function toolPart(n: number): MessagePart {
     toolName: "web_search",
     input: { url: `https://example.test/${n}` },
     status: "success",
-    output: `${BODY} ${n}`,
+    output: { page: `${BODY} ${n}` },
+    forModel: { type: "text", value: `${BODY} ${n}` },
   };
 }
 
@@ -70,7 +71,7 @@ describe("what the assembly hands the turn", () => {
     const results = compressedHistory
       .flatMap((m) => m.parts)
       .filter((p) => p.type === "tool")
-      .map((p) => (p.type === "tool" ? String(p.output) : ""));
+      .map((p) => (p.type === "tool" && p.forModel?.type === "text" ? p.forModel.value : ""));
 
     expect(results).toHaveLength(6);
     // `tool_result_keep` is 3 in the config double.

@@ -255,9 +255,9 @@ export const imageSearch: Tool<z.infer<typeof inputSchema>, ImageSearchAnswer, U
   // the UI message part, so the name of the line and the tool that shows it
   // stay in one place.
   metadata: { runningLine: "chat.tool.searchingImages" },
-  // The SDK's own conversion, which is what a running turn reaches. The
-  // request assembler renders stored history through the same function, so a
-  // replayed turn reads exactly as the running one did.
+  // The SDK's own conversion, which is what a running turn reaches. The turn
+  // writes the result down with the call (`forModel`), and replay hands that
+  // copy back.
   toModelOutput: ({ output }) => ({ type: "text", value: renderImagesForModel(output) }),
   execute: async (
     { query: asked, count },

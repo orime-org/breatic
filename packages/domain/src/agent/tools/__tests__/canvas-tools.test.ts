@@ -5,8 +5,8 @@
  * The two tools an agent asks before it proposes anything (#261).
  *
  * What these pin is the part a catalog test cannot: that the answer the model
- * reads carries the modes and model names, and that the running turn and a
- * replayed history read the same words.
+ * reads carries the modes and model names, and that the tool hands the SDK
+ * that text -- which is also what the turn writes down for replay.
  */
 
 import { describe, it, expect, beforeEach, afterAll } from "vitest";
@@ -541,7 +541,7 @@ describe("what the running turn reads", () => {
         ),
     ],
   ])(
-    "%s converts its answer to the same text the history replays",
+    "%s converts its answer to the text the model reads",
     async (_name, canvasTool, input, renderedText) => {
       const answer = await run<unknown>(canvasTool, input);
       const convert = (
@@ -549,9 +549,8 @@ describe("what the running turn reads", () => {
           toModelOutput?: (arg: { output: unknown }) => { type: string; value: string };
         }
       ).toModelOutput;
-      // Without this the SDK stringifies the payload, so the running turn and
-      // a replayed history read different things -- and this is the hook the
-      // running turn goes through, not a replay hook.
+      // Without this the SDK hands the model the payload as JSON, and the turn
+      // writes that JSON down for replay as well.
       expect(convert, "the tool declares toModelOutput").toBeTypeOf("function");
       const converted = convert?.({ output: answer });
       expect(converted?.type).toBe("text");

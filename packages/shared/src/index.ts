@@ -29,6 +29,7 @@ export type {
   MessageData,
   MessageInput,
   MessagePart,
+  StoredModelOutput,
   StoredMessageMetadata,
   TaskEntity,
   NodeHistoryEntity,
