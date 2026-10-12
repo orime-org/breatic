@@ -29,7 +29,7 @@ import { turnToolsContext } from "@server/agent/turn-tools-context.js";
 import { buildTurnContext } from "@server/agent/turn-context.js";
 import { watchModelCalls, type ModelCallWatch } from "@server/agent/model-call-watch.js";
 import type { ChatAttachedChip, ChatSpaceContext, MessagePart, ToolFailure } from "@breatic/shared";
-import { wireLineOf, wordsForTitle } from "@breatic/shared";
+import { toolFailureOf, wireLineOf, wordsForTitle } from "@breatic/shared";
 import { userTurnForModel } from "@server/agent/user-turn.js";
 import * as messageRepo from "@server/modules/conversation/conversation-message.repo.js";
 import { toStoredParts } from "@server/modules/conversation/message-part-mapping.js";
@@ -460,7 +460,30 @@ export class MainAgent {
           // is this one.
           if (toolOutput.type === "tool-error") {
             if (howToolEnded.has(toolCall.toolCallId)) return;
-            howToolEnded.set(toolCall.toolCallId, endingOf(toolOutput.error));
+            const ending = endingOf(toolOutput.error);
+            howToolEnded.set(toolCall.toolCallId, ending);
+            // The turn carries on and the model is told why; the error the
+            // tool caught, and what caused it, are kept only in this log.
+            // A call turned away to steer the model, or one the reader
+            // stopped, is not a failure. A failure the tool described is one
+            // it saw coming, and the reader was told: a warning. A throw it
+            // did not describe is a fault in our own code: an error.
+            if (ending.kind === "tool_failed") {
+              const details = {
+                err: toolOutput.error,
+                toolName: toolCall.toolName,
+                toolCallId: toolCall.toolCallId,
+                userId,
+                conversationId,
+                projectId,
+                forModel: ending.forModel,
+              };
+              if (toolFailureOf(toolOutput.error) === undefined) {
+                logger.error(details, "agent_tool_failed");
+              } else {
+                logger.warn(details, "agent_tool_failed");
+              }
+            }
             return;
           }
           whatToolAnswered.set(toolCall.toolCallId, toolOutput.output);

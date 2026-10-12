@@ -267,12 +267,11 @@ test('handle shape says whether the ratio is locked', async () => {
       return [...new Set(radii)];
     });
 
-  // Locked: round, and all eight agree.
+  // Locked: square, and all eight agree.
   const locked = await handleRadii();
-  expect(locked).toHaveLength(1);
-  expect(locked[0]).not.toBe('0px');
+  expect(locked).toEqual(['0px']);
 
-  // Unlight it: the marquee stays, the handles go square.
+  // Unlight it: the marquee stays, the handles go round.
   await page.getByTestId('focus-ratio-1:1').click();
   await expect(page.getByTestId('focus-crop-rect')).toBeVisible();
   await expect(page.getByTestId('focus-ratio-1:1')).toHaveAttribute(
@@ -280,7 +279,8 @@ test('handle shape says whether the ratio is locked', async () => {
     'false',
   );
   const free = await handleRadii();
-  expect(free).toEqual(['0px']);
+  expect(free).toHaveLength(1);
+  expect(free[0]).not.toBe('0px');
 });
 
 test('the controls bar hugs its content in every locale', async () => {

@@ -73,7 +73,12 @@ export async function readSignupCode(
     }
     await new Promise((resolve) => setTimeout(resolve, POLL_EVERY_MS));
   }
-  throw new Error(`No sign-up code reached ${to} in Mailpit within ${POLL_FOR_MS / 1000}s.`);
+  // Mailpit answering says nothing about where the server sends mail: a stack
+  // started with plain `pnpm dev` mails through the backend in `.env`.
+  throw new Error(
+    `No sign-up code reached ${to} in Mailpit within ${POLL_FOR_MS / 1000}s. ` +
+      'Mail reaches Mailpit only when the stack runs under `pnpm dev:mailpit`.',
+  );
 }
 
 /**

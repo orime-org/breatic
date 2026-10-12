@@ -18,6 +18,10 @@
  */
 import { readFileSync } from 'node:fs';
 
+import type { Page } from 'playwright/test';
+
+import { watchUploadTickets } from './upload-budget';
+
 /** Which account a Project belongs to. */
 export type Account = 'A' | 'B';
 
@@ -111,11 +115,6 @@ export function smokeProjectId(account: Account = 'A', index = 0): string {
   return projectId(readProjects(), account, index);
 }
 
-/** The least a page has to offer for this module to navigate it. */
-interface Navigable {
-  goto: (url: string) => Promise<unknown>;
-}
-
 /**
  * Opens one of the Projects setup made.
  *
@@ -129,10 +128,14 @@ interface Navigable {
  * @throws {Error} When setup did not run, or made no Project there.
  */
 export async function openSmokeProject(
-  page: Navigable,
+  page: Page,
   account: Account = 'A',
   index = 0,
 ): Promise<void> {
+  // Pages that upload inside a Project are opened here, so this is where their
+  // tickets start being counted (helpers/upload-budget.ts); the few that upload
+  // elsewhere fit in its HEADROOM.
+  watchUploadTickets(page, account);
   await page.goto(smokeProjectUrl(account, index));
 }
 

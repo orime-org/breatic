@@ -145,6 +145,10 @@ async function serverHoldingAuth(ceilings?: {
 }): Promise<number> {
   const server = new Server({
     port: 0,
+    // Bound to the address the case connects to: a port the OS hands out for
+    // every interface can be held on 127.0.0.1 by another local server, which
+    // then takes the connection and answers 404.
+    address: "127.0.0.1",
     quiet: true,
     ...(ceilings ?? {}),
     onAuthenticate: () => new Promise<never>(() => {}),

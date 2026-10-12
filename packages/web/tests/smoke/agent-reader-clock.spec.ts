@@ -43,17 +43,19 @@ function clockIn(at: Date, timeZone: string): { date: string; minutes: number } 
   };
 }
 
+/** Minutes in a day. */
+const DAY = 24 * 60;
+
 /**
  * Whether a reply states a time within the slack of the expected one.
- * @param text - The reply.
+ * @param text - The reply to a question that asked for `HH:MM`.
  * @param expected - Minutes since midnight on the reader's clock.
  * @returns True when some `HH:MM` in it is close enough.
  */
 function statesTimeNear(text: string, expected: number): boolean {
-  return [...text.matchAll(/(\d{1,2})\s*[:：]\s*(\d{2})/g)].some((m) => {
-    const said = Number(m[1]) * 60 + Number(m[2]);
-    const apart = Math.abs(said - expected);
-    return Math.min(apart, 24 * 60 - apart) <= SLACK_MINUTES;
+  return [...text.matchAll(/(?<!\d)(\d{1,2})\s*[:：]\s*(\d{2})(?!\d)/g)].some((m) => {
+    const apart = Math.abs(Number(m[1]) * 60 + Number(m[2]) - expected) % DAY;
+    return Math.min(apart, DAY - apart) <= SLACK_MINUTES;
   });
 }
 
@@ -177,12 +179,10 @@ test('keeps to Chinese for a very short Chinese question @needs-model', async ({
   const page = await pageIn(browser, 'Asia/Shanghai');
   await newConversation(page);
 
-  const asked = new Date();
   const text = await askHere(page, '几点了');
 
+  // The reply's form is the model's own here, so only its language is held to
+  // anything; the cases above, which ask for HH:MM, hold the clock.
   expect(text, `the reply: ${text}`).toMatch(/[\u4e00-\u9fff]/);
-  expect(statesTimeNear(text, clockIn(asked, 'Asia/Shanghai').minutes), `the reply: ${text}`).toBe(
-    true,
-  );
   await page.context().close();
 });

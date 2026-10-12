@@ -12,8 +12,8 @@
 import { expect, type Page } from 'playwright/test';
 
 import { openFreshDocument, selectParagraph, test } from '../helpers/bubble-bar';
+import { DOCUMENT_EDITOR as EDITOR, visibleSpace } from '../helpers/space';
 
-const EDITOR = '[data-testid="document-space"] .ProseMirror';
 const AGENT_COLUMN = '[data-testid="agent-column"]';
 const SELECTION_CHIP = '[data-testid^="chat-chip-document-selection-"]';
 const BLOCK_CHIP = '[data-testid^="chat-chip-document-block-"]';
@@ -36,7 +36,7 @@ async function openHandleMenu(p: Page, index: number): Promise<void> {
   const box = await row.boundingBox();
   if (box === null) throw new Error(`row ${index} has no box`);
   await p.mouse.move(box.x + 40, box.y + 11);
-  await p.getByTestId('doc-block-handle').click();
+  await visibleSpace(p).getByTestId('doc-block-handle').click();
 }
 
 test('the selection and a line go into the tray and out with the next message', async ({ page }) => {

@@ -76,6 +76,26 @@ describe('Dialog', () => {
     expect(screen.getByRole('button', { name: 'Close' })).not.toHaveFocus();
   });
 
+  it('takes the focus without scrolling the overlay to it', async () => {
+    // The dialog is focused mid-entry, scaled to 95%, and a scroll toward
+    // that box leaves a dialog taller than the viewport opened part-way down.
+    const focus = vi.spyOn(HTMLElement.prototype, 'focus');
+    render(
+      <Dialog open>
+        <DialogContent data-testid='content'>
+          <DialogTitle>Title</DialogTitle>
+        </DialogContent>
+      </Dialog>,
+    );
+    await act(async () => {});
+    const onContent = focus.mock.contexts
+      .map((el, i) => [el, focus.mock.calls[i]?.[0]] as const)
+      .filter(([el]) => el === screen.getByTestId('content'));
+    expect(onContent.length).toBeGreaterThan(0);
+    expect(onContent.every(([, options]) => options?.preventScroll === true)).toBe(true);
+    focus.mockRestore();
+  });
+
   it('leaves focus on a field the dialog asks to focus', async () => {
     render(
       <Dialog open>

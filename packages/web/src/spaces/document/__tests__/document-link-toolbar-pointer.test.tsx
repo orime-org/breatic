@@ -51,6 +51,7 @@ vi.mock('@web/spaces/document/document-link-anchor', async () => {
 const { buildDocumentEditor } = await import(
   '@web/spaces/document/build-document-editor'
 );
+const { bodyFocusStore } = await import('@web/spaces/document/document-body-focus');
 const { DocumentLinkToolbar } = await import(
   '@web/spaces/document/DocumentLinkToolbar'
 );
@@ -409,6 +410,40 @@ describe('the link the pointer is resting on', () => {
     await waitFor(() => {
       expect(screen.queryByTestId('doc-link-toolbar')).not.toBeInTheDocument();
     });
+
+    writes();
+    await settle(120);
+
+    expect(screen.queryByTestId('doc-link-toolbar')).not.toBeInTheDocument();
+  });
+
+  it('stays away after that dismissal when the body lets the focus go and takes it back', async () => {
+    // Escape also takes the focus off the body, and the reader comes back to
+    // the same caret without moving it; the caret's link is still the one
+    // they dismissed.
+    const { editor, first, second, point, writes } = openBody();
+    caretInside(editor, first);
+    await screen.findByTestId('doc-link-toolbar');
+    point(second.from + 2);
+    await waitFor(() => {
+      expect(screen.getByTestId('doc-link-url')).toHaveTextContent(OTHER);
+    });
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await waitFor(() => {
+      expect(screen.queryByTestId('doc-link-toolbar')).not.toBeInTheDocument();
+    });
+    // What the toolbar reads of the focus, written the way the body's focus
+    // plugin publishes it: let go, then held again on the editable element.
+    const held = bodyFocusStore.get(editor);
+    act(() => {
+      bodyFocusStore.set(editor, { holds: false, focused: null });
+    });
+    await settle(120);
+    act(() => {
+      bodyFocusStore.set(editor, held);
+    });
+    await settle(120);
 
     writes();
     await settle(120);

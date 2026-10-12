@@ -32,7 +32,7 @@ const addMessage = vi.fn(async (_id: string, _msg: Record<string, unknown>) => 1
 const promptsSeen: unknown[] = [];
 
 /** What the tool does, and how many steps the model has taken. */
-const thisCase = vi.hoisted(() => ({ step: 0 }));
+const thisCase = vi.hoisted(() => ({ step: 0, uncarried: false }));
 
 vi.mock("@server/agent/turn-context.js", () => ({
   buildTurnContext: vi.fn(async () => ({
@@ -69,6 +69,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
           description: "fetch a page",
           inputSchema: z.object({ url: z.string() }),
           execute: async (): Promise<string> => {
+            if (thisCase.uncarried) throw new TypeError("cannot read properties of undefined");
             throw carrying(new Error(FOR_MODEL), {
               kind: "tool_failed",
               forModel: FOR_MODEL,
@@ -112,7 +113,7 @@ vi.mock("@server/agent/turn-budget.js", () => ({
 vi.mock("@server/agent/context.js", () => ({ buildSystemPrompt: () => "system" }));
 
 const { MainAgent } = await import("@server/agent/main-agent.js");
-const { runWithContext } = await import("@breatic/core");
+const { runWithContext, logger } = await import("@breatic/core");
 
 /** The address the stubbed tool in this file is asked for, and fails on. */
 const REFUSED = "https://public.example/page";
@@ -132,20 +133,28 @@ const FOR_MODEL =
 /** The coarse line a reader is shown, which the model has no use for. */
 const FOR_READER = "chat.tool.failure.upstream";
 
+/** Run one turn of the agent against the double model, to its end. */
+async function runTurn(): Promise<void> {
+  await runWithContext({ userId: "u1", conversationId: "c1", projectId: "p1" }, async () => {
+    const turn = await new MainAgent().chat("read that page", new AbortController().signal);
+    for await (const _chunk of turn) {
+      // drained
+    }
+  });
+}
+
 describe("what the model is handed after a tool fails", () => {
   beforeEach(() => {
     thisCase.step = 0;
+    thisCase.uncarried = false;
     promptsSeen.length = 0;
     addMessage.mockClear();
+    vi.mocked(logger.warn).mockClear();
+    vi.mocked(logger.error).mockClear();
   });
 
   it("puts the reason in front of it on the next step of the same turn", async () => {
-    await runWithContext({ userId: "u1", conversationId: "c1", projectId: "p1" }, async () => {
-      const turn = await new MainAgent().chat("read that page", new AbortController().signal);
-      for await (const _chunk of turn) {
-        // drained
-      }
-    });
+    await runTurn();
 
     expect(promptsSeen.length).toBeGreaterThanOrEqual(2);
     const second = JSON.stringify(promptsSeen[1]);
@@ -157,4 +166,32 @@ describe("what the model is handed after a tool fails", () => {
     expect(second).toContain(REFUSED);
   });
 
+  it("leaves a line in the log naming the tool and why it failed", async () => {
+    await runTurn();
+
+    // The tool said what went wrong, and the reader was told.
+    expect(logger.error).not.toHaveBeenCalledWith(expect.anything(), "agent_tool_failed");
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        toolName: "web_search",
+        toolCallId: "tc-1",
+        userId: "u1",
+        conversationId: "c1",
+        projectId: "p1",
+        forModel: FOR_MODEL,
+      }),
+      "agent_tool_failed",
+    );
+  });
+
+  it("logs a throw the tool did not describe as an error", async () => {
+    thisCase.uncarried = true;
+    await runTurn();
+
+    expect(logger.warn).not.toHaveBeenCalledWith(expect.anything(), "agent_tool_failed");
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.objectContaining({ toolName: "web_search", toolCallId: "tc-1", err: expect.any(TypeError) }),
+      "agent_tool_failed",
+    );
+  });
 });

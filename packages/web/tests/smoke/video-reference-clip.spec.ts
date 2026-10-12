@@ -224,14 +224,16 @@ test('sends a mentioned clip and a mentioned picture under their own params', as
   const imageId = crypto.randomUUID();
   // Placed by SCREEN position, converted through the live viewport: a fixed
   // flow coordinate would land wherever this project's viewport happens to be
-  // and the canvas would never mount the node. The row sits near the top so
-  // the panel, which hangs BELOW its node, has the rest of the pane to itself.
+  // and the canvas would never mount the node. The first content into an
+  // empty Space is framed to the middle of the pane, and the panel hangs below
+  // its node: the target goes first in the row, so the panel opens on the
+  // left half, clear of the minimap in the bottom-right corner.
   const { tx, ty } = await viewportOrigin(page);
   const at = (screenX: number): number => Math.round(screenX - tx);
   const row = Math.round(60 - ty);
-  await seedNode(page, imageId, 'image', PIXEL, at(40), row);
-  await seedNode(page, clipId, 'video', CLIP, at(340), row);
-  await seedNode(page, targetId, 'video', undefined, at(620), row);
+  await seedNode(page, targetId, 'video', undefined, at(40), row);
+  await seedNode(page, imageId, 'image', PIXEL, at(340), row);
+  await seedNode(page, clipId, 'video', CLIP, at(640), row);
   await wire(page, imageId, targetId);
   await wire(page, clipId, targetId);
 
