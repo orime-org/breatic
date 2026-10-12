@@ -31,7 +31,7 @@ import {
 // A self-referencing FK needs its column type spelled out, since the table is
 // still being defined at the point the reference is written.
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
-import type { MessagePart } from "@breatic/shared";
+import type { AccountConsent, ConsentSnapshot, MessagePart } from "@breatic/shared";
 import { PROJECT_NAME_MAX_CHARS } from "@breatic/shared";
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -130,6 +130,13 @@ export const users = pgTable(
     // negotiated in, and changed only when the user switches the interface
     // language.
     locale: varchar("locale", { length: 10 }).default("en").notNull(),
+    // The latest analytics consent this account's browsers reported (0094,
+    // inner#1442). Events with no browser behind them follow it; null means
+    // no browser ever reported a choice, and nothing is sent.
+    analyticsConsent: jsonb("analytics_consent").$type<AccountConsent>(),
+    // First-touch and last-touch campaign source, written at sign-up from
+    // what the browser kept after consent (0094, inner#1442).
+    attribution: jsonb("attribution").$type<Record<string, unknown>>(),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
     ...timestamps,
   },
@@ -1127,6 +1134,11 @@ export const subscriptions = pgTable(
     // subscription object in the 2025-03-31 release; nullable because a
     // subscription whose first invoice never settled has no period.
     currentPeriodEnd: timestamp("current_period_end", { withTimezone: true }),
+    // When this subscription first came into force (0094, inner#1442).
+    // Written once in the same transaction that first lifts the account off
+    // `base`; `subscription_started` is sent only on that write, so a lapsed
+    // subscription that recovers does not count as a new start.
+    firstActiveAt: timestamp("first_active_at", { withTimezone: true }),
     cancelAtPeriodEnd: boolean("cancel_at_period_end")
       .default(false)
       .notNull(),
@@ -2396,6 +2408,12 @@ export const uploadGrants = pgTable(
     }),
     /** Why the grant was voided, written with `voided_at`. */
     failureReason: text("failure_reason"),
+    /**
+     * The uploading browser's analytics consent when the ticket was issued
+     * (0094, inner#1442). Every finish path that writes `asset:uploaded`
+     * reads it here, since none of them has the browser's request.
+     */
+    analyticsConsent: jsonb("analytics_consent").$type<ConsentSnapshot>(),
     /**
      * How long the ticket itself stays usable. The same instant is signed into
      * the ticket, and the Worker checks that copy once, when the browser asks
