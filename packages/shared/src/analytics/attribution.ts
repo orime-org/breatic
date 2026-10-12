@@ -56,6 +56,34 @@ export function parseAttribution(raw: unknown): Attribution | null {
   return first && last ? { first, last } : null;
 }
 
+/** One Google Ads click identifier and when it was recorded. */
+export interface AdClick {
+  readonly gclid?: string;
+  readonly gbraid?: string;
+  readonly wbraid?: string;
+  readonly at: string;
+}
+
+// Google Ads accepts click conversions up to 90 days after the click.
+const CLICK_WINDOW_MS = 90 * 24 * 60 * 60 * 1000;
+const CLICK_FIELDS = ["gclid", "gbraid", "wbraid"] as const;
+
+/**
+ * The click a conversion is credited to (inner#1442 design §4.9).
+ * @param attribution - What the account or order recorded, if anything.
+ * @param now - The current time in milliseconds.
+ * @returns The latest touch's click within 90 days, one identifier only with
+ *   gclid preferred; null when no touch carries a recent click.
+ */
+export function adClickFrom(attribution: Attribution | null | undefined, now: number): AdClick | null {
+  for (const touch of attribution ? [attribution.last, attribution.first] : []) {
+    if (now - Date.parse(touch.at) > CLICK_WINDOW_MS) continue;
+    const field = CLICK_FIELDS.find((key) => touch[key]);
+    if (field) return { [field]: touch[field], at: touch.at };
+  }
+  return null;
+}
+
 /**
  * Read one touch.
  * @param raw - Untrusted input.

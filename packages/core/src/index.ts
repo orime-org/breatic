@@ -236,3 +236,20 @@ export {
   UnauthorizedError,
   TooManyRequestsError,
 } from "@core/app-errors.js";
+export {
+  ADS_CONVERSION_QUEUE,
+  adsConversionConfig,
+  adsConversionState,
+  enqueueAdsConversion,
+  enqueueAdsRestatement,
+  setAdsConversionConfigForTest,
+  type AdsConversionConfig,
+} from "@core/ads/ads-conversion.js";
+export { getUploadStatus, moveUpload } from "@core/ads/ads-conversion.repo.js";
+export {
+  ADS_CONVERSIONS,
+  ADS_UPLOAD_STATUSES,
+  type AdsConversionJob,
+  type AdsConversionName,
+  type AdsUploadStatus,
+} from "@core/ads/ads-types.js";

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { describe, expect, it } from "vitest";
-import { parseAttribution } from "@shared/analytics/attribution.js";
+import { adClickFrom, parseAttribution } from "@shared/analytics/attribution.js";
 
 const AT = "2026-10-12T01:00:00.000Z";
 
@@ -47,5 +47,34 @@ describe("parseAttribution", () => {
   it("drops a referrer that is not an address", () => {
     const touch = { referrer: "not a url", at: AT };
     expect(parseAttribution({ first: touch, last: touch })?.first).toEqual({ at: AT });
+  });
+});
+
+describe("adClickFrom", () => {
+  const NOW = Date.parse("2026-10-12T00:00:00.000Z");
+  const daysAgo = (n: number): string => new Date(NOW - n * 86_400_000).toISOString();
+
+  it("takes the last touch's click when it is recent", () => {
+    const attribution = { first: { gclid: "old", at: daysAgo(30) }, last: { gclid: "new", at: daysAgo(1) } };
+    expect(adClickFrom(attribution, NOW)).toEqual({ gclid: "new", at: daysAgo(1) });
+  });
+
+  it("falls back to the first touch when the last one carried no click", () => {
+    const attribution = { first: { gbraid: "g", at: daysAgo(10) }, last: { utm_source: "x", at: daysAgo(1) } };
+    expect(adClickFrom(attribution, NOW)).toEqual({ gbraid: "g", at: daysAgo(10) });
+  });
+
+  it("sends one identifier, gclid first", () => {
+    const attribution = { first: { at: daysAgo(1) }, last: { gclid: "c", gbraid: "g", wbraid: "w", at: daysAgo(1) } };
+    expect(adClickFrom(attribution, NOW)).toEqual({ gclid: "c", at: daysAgo(1) });
+  });
+
+  it("ignores clicks older than 90 days", () => {
+    const attribution = { first: { gclid: "a", at: daysAgo(91) }, last: { gclid: "b", at: daysAgo(91) } };
+    expect(adClickFrom(attribution, NOW)).toBeNull();
+  });
+
+  it("returns null without attribution", () => {
+    expect(adClickFrom(null, NOW)).toBeNull();
   });
 });

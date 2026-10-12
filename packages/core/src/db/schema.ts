@@ -32,6 +32,7 @@ import {
 // still being defined at the point the reference is written.
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import type { AccountConsent, Attribution, ConsentSnapshot, MessagePart } from "@breatic/shared";
+import type { AdsConversionJob } from "@core/ads/ads-types.js";
 import { PROJECT_NAME_MAX_CHARS } from "@breatic/shared";
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -2553,6 +2554,36 @@ export const storageReclaimQueue = pgTable(
     index("storage_reclaim_queue_pending_idx").on(
       table.reclaimedAt,
       table.createdAt,
+    ),
+  ],
+);
+
+// ── Ad conversion uploads (0094, inner#1442 §4.9) ───────────────────
+
+/**
+ * One row per conversion reported to the ad platform. The key makes a
+ * conversion queue once however many paths report it; the status lets a
+ * refund restate only a conversion the platform actually received, since a
+ * restatement whose transaction id it has not seen counts as a new one.
+ */
+export const adsConversionUploads = pgTable(
+  "ads_conversion_uploads",
+  {
+    conversion: varchar("conversion", { length: 32 }).notNull(),
+    transactionId: varchar("transaction_id", { length: 255 }).notNull(),
+    /** The credit order this conversion is for; refunds look it up by this. */
+    paymentId: uuid("payment_id").references(() => payments.id, { onDelete: "restrict" }),
+    status: varchar("status", { length: 16 }).notNull(),
+    /** The uploaded job, so a restatement repeats its click and conversion action. */
+    job: jsonb("job").$type<AdsConversionJob>().notNull(),
+    ...timestamps,
+  },
+  (table) => [
+    primaryKey({ columns: [table.conversion, table.transactionId] }),
+    index("ads_conversion_uploads_payment_idx").on(table.paymentId),
+    check(
+      "ads_conversion_uploads_status_check",
+      sql`${table.status} IN ('queued', 'uploaded', 'failed', 'restating', 'restated', 'restate_failed')`,
     ),
   ],
 );

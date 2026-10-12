@@ -802,7 +802,9 @@ export {
   type ConsentSource,
 } from "@shared/analytics/account-consent.js";
 export {
+  adClickFrom,
   parseAttribution,
+  type AdClick,
   type Attribution,
   type AttributionTouch,
 } from "@shared/analytics/attribution.js";
