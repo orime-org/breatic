@@ -129,7 +129,7 @@ function tree(
     locked?: boolean;
   } = {},
 ): React.JSX.Element {
-  const view = { handling: false, ...opts.view } as TextNodeView;
+  const view = { handling: false, ...opts.view };
   return (
     <CanvasContext.Provider value={canvasValue(opts.canvas)}>
       <NodeIdContext.Provider value={NODE}>

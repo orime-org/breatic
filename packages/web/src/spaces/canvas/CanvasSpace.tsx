@@ -3899,7 +3899,6 @@ function CanvasSpaceInner({
     ) {
       return;
     }
-    const view = host.data;
     // A node inside a group stores its position relative to that group's
     // origin, and the node this builds is top-level.
     const group =
@@ -3912,11 +3911,11 @@ function CanvasSpaceInner({
       userId: viewerId ?? '',
       source: {
         id: host.id,
-        name: view.name,
+        name: host.data.name,
         kind: host.type,
         url: menuDownloadUrl,
-        mimeType: view.mimeType,
-        sizeBytes: view.sizeBytes,
+        mimeType: host.data.mimeType,
+        sizeBytes: host.data.sizeBytes,
         position: host.position,
         groupOrigin: group?.position ?? null,
       },

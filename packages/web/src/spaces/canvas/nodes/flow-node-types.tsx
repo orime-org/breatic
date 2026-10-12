@@ -83,8 +83,7 @@ function makeFlowNode(
    * @returns The wrapped node element.
    */
   function FlowNode(props: NodeProps): React.JSX.Element {
-    const node = typedViewOf(props);
-    const { data } = node;
+    const { type, data } = typedViewOf(props);
     // Who is holding this node, baked onto it by the mirror (`attachOccupants`).
     // A node nobody holds carries nothing, and the context's own default — one
     // shared empty array — is what every such node reads.
@@ -122,21 +121,20 @@ function makeFlowNode(
     // upload this way; text enters inline edit (handled in-body), and group /
     // annotation / web have no empty-state file upload.
     const onActivate = React.useCallback((): void => {
-      const type = node.type;
       if (type === 'image' || type === 'video' || type === 'audio') {
         activateNodeUpload(props.id, type);
       }
-    }, [activateNodeUpload, props.id, node.type]);
+    }, [activateNodeUpload, props.id, type]);
     // A Group fills the ReactFlow wrapper sized to its stored width/height, so
     // the GroupNode's own `size-full` resolves to the full rect. Content nodes
     // size to their body, so they keep the auto-height wrapper. A selected,
     // unlocked Group shows the GroupResizer handles when it has resize bounds
     // (empty for a read-only viewer, so no handles show — see the gate below).
-    const isGroup = node.type === 'group';
+    const isGroup = type === 'group';
     // A Group is a container and a sticky is a remark about the board; neither
     // is an edge endpoint, so neither gets a handle. With no handle there is
     // nothing for xyflow to start or land a connection on (#1881 §8.5).
-    const takesEdges = !isGroup && node.type !== 'annotation';
+    const takesEdges = !isGroup && type !== 'annotation';
     // The crop box positions itself inside this wrapper; an element in state
     // rather than a ref, so a node shown again hands it the element anew.
     const [wrapper, setWrapper] = React.useState<HTMLDivElement | null>(null);
@@ -186,9 +184,9 @@ function makeFlowNode(
     // panel's own state, so a second node's column never lights up from the
     // first node's list.
     const taskCounts =
-      node.type === 'group' || node.type === 'annotation'
+      type === 'group' || type === 'annotation'
         ? null
-        : (node.data.taskCounts ?? NO_TASKS);
+        : (data.taskCounts ?? NO_TASKS);
     const taskPanelOpenHere = useCanvasSession(taskPanelStatusFor(props.id));
     const openTaskPanel = useCanvasSession((s) => s.openTaskPanel);
     const closeActivePanel = useCanvasSession((s) => s.closeActivePanel);

@@ -72,6 +72,7 @@ function renderNode(
           <NodeComponent
             {...({
               id: 'n1',
+              type: kind,
               data: withHolders.data,
               selected: false,
             } as unknown as NodeProps)}
