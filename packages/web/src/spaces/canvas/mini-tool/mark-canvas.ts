@@ -16,7 +16,7 @@ import { Canvas, IText, PencilBrush, type FabricObject, type Point } from 'fabri
 
 import { newId } from '@breatic/shared';
 
-import { fromFabric, markStrokePx, toFabric, type DrawBox, type MarkFabricObject } from '@web/spaces/canvas/mini-tool/mark-fabric';
+import { fromFabric, markFontPx, markStrokePx, toFabric, type DrawBox, type MarkFabricObject } from '@web/spaces/canvas/mini-tool/mark-fabric';
 import type { CanvasSessionState } from '@web/stores/canvas-session';
 import type { MarkChannel, MarkDraft, MarkObject } from '@web/stores/mark-draft';
 
@@ -197,8 +197,7 @@ export class MarkCanvasController {
     const active = this.canvas.getActiveObject() as (IText & Partial<MarkFabricObject>) | undefined;
     if (this.edit === null || !(active instanceof IText)) return;
     if (active.markColor === draft.color && active.markSize === draft.size) return;
-    const fresh = toFabric({ id: this.edit.id, kind: 'text', color: draft.color, size: draft.size, x: 0, y: 0, text: '' }, this.box);
-    active.set({ fill: draft.color, fontSize: (fresh as unknown as IText).fontSize });
+    active.set({ fill: draft.color, fontSize: markFontPx(draft.size, this.box) });
     Object.assign(active, { markColor: draft.color, markSize: draft.size });
     this.canvas.requestRenderAll();
   }

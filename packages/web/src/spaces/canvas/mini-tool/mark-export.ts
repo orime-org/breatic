@@ -20,7 +20,7 @@ import type { MarkObject } from '@web/stores/mark-draft';
  * @throws {Error} When the source fails to load CORS-clean, or the canvas cannot export.
  */
 export async function exportMarkBlob(source: CropSource, objects: readonly MarkObject[]): Promise<Blob> {
-  const [el, { FabricImage, StaticCanvas }, { toFabric }] = await Promise.all([
+  const [el, { StaticCanvas }, { markBackground, toFabric }] = await Promise.all([
     prepareCropSource(source),
     import('fabric'),
     import('@web/spaces/canvas/mini-tool/mark-fabric'),
@@ -28,7 +28,7 @@ export async function exportMarkBlob(source: CropSource, objects: readonly MarkO
   const size = intrinsicSize(el);
   const scene = new StaticCanvas(undefined, { ...size, enableRetinaScaling: false, renderOnAddRemove: false });
   try {
-    scene.backgroundImage = new FabricImage(el);
+    scene.backgroundImage = markBackground(el);
     for (const object of objects) scene.add(toFabric(object, size));
     scene.renderAll();
     return await pngOf(scene.toCanvasElement());

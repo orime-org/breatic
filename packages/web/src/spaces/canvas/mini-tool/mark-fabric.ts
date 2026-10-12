@@ -10,8 +10,9 @@
  * Loaded only with the markup canvas: Fabric is not part of the first page load.
  */
 
-import { Ellipse, IText, Path, Point, Rect, util, type FabricObject } from 'fabric';
+import { Ellipse, FabricImage, IText, Path, Point, Rect, util, type FabricObject } from 'fabric';
 
+import { BRUSH_SIZE } from '@web/stores/drawing-draft';
 import type { MarkObject } from '@web/stores/mark-draft';
 
 /** A picture's size in the pixels it is drawn at. */
@@ -55,7 +56,7 @@ export function markStrokePx(size: number, box: DrawBox): number {
  * @param box - The picture's drawn size.
  * @returns The font size.
  */
-function fontPx(size: number, box: DrawBox): number {
+export function markFontPx(size: number, box: DrawBox): number {
   return Math.min(box.width, box.height) * size * FONT_PER_SIZE;
 }
 
@@ -78,7 +79,7 @@ const LOCKS = {
  */
 function arrowPath(a: [number, number], b: [number, number], stroke: number): string {
   const angle = Math.atan2(b[1] - a[1], b[0] - a[0]);
-  const head = Math.max(stroke * 4, 8);
+  const head = stroke * 4;
   /**
    * One stroke of the head, turned off the shaft.
    * @param turn - The turn, in radians.
@@ -101,7 +102,20 @@ function arrowPath(a: [number, number], b: [number, number], stroke: number): st
 function tagged<T extends FabricObject>(shape: T, tags: MarkTags): T & MarkTags {
   shape.set(LOCKS);
   shape.setControlVisible('mtr', false);
+  // A text keeps its four corners only: its scale becomes its font size, which
+  // has one value for both directions (inner#1303 §6.2).
+  if (tags.markKind === 'text') shape.setControlsVisibility({ ml: false, mr: false, mt: false, mb: false });
   return Object.assign(shape, tags);
+}
+
+/**
+ * The picture under the objects in the export, laid from the top-left corner
+ * the objects are measured from (Fabric's own default origin is the centre).
+ * @param el - The loaded picture.
+ * @returns The picture as a Fabric object.
+ */
+export function markBackground(el: HTMLImageElement | HTMLVideoElement): FabricImage {
+  return new FabricImage(el, { left: 0, top: 0, originX: 'left', originY: 'top' });
 }
 
 /**
@@ -160,7 +174,7 @@ export function toFabric(object: MarkObject, box: DrawBox): MarkFabricObject {
           left: object.x * box.width,
           top: object.y * box.height,
           fill: object.color,
-          fontSize: fontPx(object.size, box),
+          fontSize: markFontPx(object.size, box),
           originX: 'left',
           originY: 'top',
         }),
@@ -232,7 +246,8 @@ export function fromFabric(shape: FabricObject, box: DrawBox): MarkObject {
         id,
         kind: 'text',
         color,
-        size: size * (shape.scaleX ?? 1),
+        // Held to the size slider's range and steps, so the control can show it.
+        size: Math.min(BRUSH_SIZE.max, Math.max(BRUSH_SIZE.min, Math.round((size * (shape.scaleX ?? 1)) / BRUSH_SIZE.step) * BRUSH_SIZE.step)),
         x: (shape.left ?? 0) / box.width,
         y: (shape.top ?? 0) / box.height,
         text: (shape as IText).text,
