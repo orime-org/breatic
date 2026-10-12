@@ -12,8 +12,8 @@
 | lint | `pnpm turbo lint`(`eslint`) | 代码规范 + 常见坑 | 每 PR |
 | unit | `vitest` | 函数 / 组件,mock 依赖 | 写代码时 TDD 红绿蓝 |
 | integration | `vitest` `*.integration.test.ts` | 真依赖(PG / Redis / 回环上的真实 socket),**不 mock 关键路径** | 写代码时(碰 DB / 服务 / 传输层)|
-| **visual** | 起真实 runtime + 浏览器 | 一个部件自己的行为 / 位置 / 尺寸 / 颜色 / 时序 | **每 PR ship 前**,默认那一档 |
-| **smoke / E2E** | 起真实 runtime + 浏览器 | 端到端真跑 | **每 PR ship 前**,默认那一档;带场景标签的按 §2.2 |
+| **visual** | 起真实 runtime + 浏览器 | 一个部件自己的行为 / 位置 / 尺寸 / 颜色 / 时序 | **每 PR ship 前**,跑这次改动相关的那些(§2.2) |
+| **smoke / E2E** | 起真实 runtime + 浏览器 | 端到端真跑 | **每 PR ship 前**,跑这次改动相关的那些(§2.2) |
 
 前 4 层都**不算 smoke**。**typecheck + 单测全绿 ≠ 真能跑**(esbuild 转译、mock 依赖都可能掩盖真实 runtime 问题)—— 必须再过 smoke / E2E。
 
@@ -70,13 +70,24 @@
 
 | 命令 | 跑什么 |
 |---|---|
-| `pnpm test:smoke` / `pnpm test:visual` | 默认档:不带标签的那些。**每 PR 必跑,任何一台干净机器上都要全绿** |
+| `pnpm test:smoke` / `pnpm test:visual` | 默认档:不带标签的那些。任何一台干净机器上都要全绿 |
 | `pnpm test:smoke:all` / `pnpm test:visual:all` | 全部,含带标签的，用 1 个 worker |
 | `playwright test --project=smoke --workers=1 --grep "@needs-<标签>"` | 单个子门 |
 
 子门用 1 个 worker 跑，全部落在槽位 0:生成类用例要花积分，买过积分包的是槽位 0 的账号，其余槽位的新账号只有试用积分(`config/pricing.yaml` 的 `trial_grant`)。
 
-**每个 PR 跑两条命令,分开跑**:`pnpm test:smoke`,外加自己那块的子门。**两条不能合成一条**——`--grep` 和 `--grep-invert` 是与的关系且排除优先,合并之后交集为空,一条都跑不到(playwright 1.62.1 实测 `Total: 0 tests`)。
+**每个 PR 跑这次改动相关的 smoke 和 visual,不跑全套。** 范围按任务分支相对主分支的全部 diff 定。开跑前先列一张表:改动文件 → 运行时变没变 → 哪条 spec 的哪一步走到它。判据:
+
+| 改动 | 算不算相关 |
+|---|---|
+| 只改 import、类型、注释、用例名 | 不算 |
+| 多个 spec 共用的 helper、setup 或配置 | 挑一组能走到它每条分支的 spec,引用它的其余 spec 不跑 |
+| 带标签用例背后那个服务的调用路径 | 算,按上表单个子门的写法跑 |
+| 带标签用例只做了机械改动 | 不算,由归属的 CC 在发布前签 |
+
+相关的 spec 里同时有带标签和不带标签的,分两条命令跑。**两条不能合成一条**——`--grep` 和 `--grep-invert` 是与的关系且排除优先,合并之后交集为空,一条都跑不到(playwright 1.62.1 实测 `Total: 0 tests`)。
+
+**失败用例先查已登记的 issue**:同一条用例、同样的失败现象已经有人记过,就不再查原因。**归属一律到主分支上跑同一条完整 spec 定**:主分支也红是既有问题,只在任务分支红的归本次;主分支也红而还没有 issue 的,补一条。
 
 **交付门按标签切成子门**,发布前由上表里归属的 CC 各自签,签完才算这一轮的门过了。没有任何一台机器同时具备全部场景,所以不存在「一台机器跑 `test:smoke:all` 全绿」这个门。
 
