@@ -36,7 +36,7 @@ describe("the cause a stored code is read as", () => {
 
   it("gives the source's own failures a cause of their own", () => {
     expect(readTaskFailure("source_unreachable").reason).toBe("source_unreachable");
-    expect(readTaskFailure("source_too_slow").reason).toBe("source_too_slow");
+    expect(readTaskFailure("source_cut_off").reason).toBe("source_cut_off");
     expect(readTaskFailure("unsupported_type").reason).toBe("unsupported_type");
     expect(readTaskFailure("empty").reason).toBe("empty");
   });
@@ -50,6 +50,12 @@ describe("the cause a stored code is read as", () => {
       "ingest_refused",
       "type_not_reported",
       "not_started",
+      // A transfer cut at the task's deadline settles as expired, so no answer
+      // from the ingest Worker before it means the Worker or the line to it
+      // went away (inner#1367).
+      "ingest_no_answer",
+      // A picture that could not be turned upright (inner#1367).
+      "upright_failed",
     ]) {
       expect(readTaskFailure(ours).reason).toBe("internal");
     }

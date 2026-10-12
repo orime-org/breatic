@@ -38,6 +38,7 @@ import {
   setSession,
   sessionCookieName,
   loadLocales,
+  getNodeTaskConfig,
 } from "@breatic/core";
 import { getRateLimit } from "@server/config/rate-limits.js";
 import type { Hono } from "hono";
@@ -219,10 +220,9 @@ describe("POST /canvas/ingest-url — what the node's row says", () => {
     expect(rows[0]!.label).toBe("https://cdn.test.invalid/a/clip.mp4");
   });
 
-  it("gives the row a budget this lane can reach, not the shared default", async () => {
-    // The default is sized for a browser that may genuinely still be
-    // uploading. Here one call is bounded, so a row left running by a restart
-    // sits under a claim the code knows it cannot meet.
+  it("gives the row the same two hours every task has", async () => {
+    // The transfer is held to the end of this row and to nothing shorter
+    // (inner#1367), so the row's budget is the one every task gets.
     const { projectId, cookie } = await seedEditor();
 
     await submit(cookie, {
@@ -233,7 +233,7 @@ describe("POST /canvas/ingest-url — what the node's row says", () => {
     const rows = await sql<{ budget_ms: string }[]>`
       SELECT budget_ms FROM node_tasks WHERE project_id = ${projectId}
     `;
-    expect(Number(rows[0]!.budget_ms)).toBe(590_000);
+    expect(Number(rows[0]!.budget_ms)).toBe(getNodeTaskConfig().default_budget_ms);
   });
 });
 

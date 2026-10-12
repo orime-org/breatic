@@ -2,7 +2,7 @@
 
 **English** | [简体中文](README-CN.md)
 
-Breatic is an AI creative workspace built around **projects with multiple Spaces**. Keep a script in a Document Space, develop scenes in separate Canvas Spaces, and work with AI and collaborators in the same project. You choose how to divide the work: by scene, episode, deliverable or creative direction.
+Breatic is an AI operating system for content creators, built around **projects with multiple Spaces**. Keep a script in a Document Space, develop scenes in separate Canvas Spaces, and work with AI and collaborators in the same project. You choose how to divide the work: by scene, episode, deliverable or creative direction.
 
 ## Organize a project with Spaces
 

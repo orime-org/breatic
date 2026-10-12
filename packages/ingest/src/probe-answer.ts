@@ -4,22 +4,25 @@
 /**
  * The wire between the media container and the Worker (#209 + #210, §4.2).
  *
- * Three things travel together and two of them are binary, so the answer is
- * `multipart/form-data`: a `meta` part naming the streams and the duration,
- * a `cover` part carrying the PNG when a frame was lifted, and a `preview` part
- * carrying the WebP when one was cut.
+ * Up to four things travel together and three of them are binary, so the
+ * answer is `multipart/form-data`: a `meta` part naming the streams and the
+ * duration, a `cover` part carrying the PNG when a frame was lifted, a
+ * `preview` part carrying the WebP when one was cut, and an `upright` part
+ * saying how turning the picture ended when the run was asked to turn it.
  *
  * Both halves live in one file because they are one agreement. The container
  * imports the writer, the Worker imports the reader, and a change to either
  * shape is a change to a function the other one calls.
  *
  * Reading is total: anything that does not parse comes back as nothing found.
- * The container's answer decides whether a node shows a resolution and a
- * poster, never whether the upload succeeded, so an unreadable one degrades
- * rather than failing anything.
+ * For a run that only reads, the answer decides whether a node shows a
+ * resolution and a poster, never whether the upload succeeded. For a run
+ * asked to turn a picture upright, an answer that cannot be read is a failed
+ * turn, and the upload fails.
  */
 
 import { NOTHING_FOUND } from "@ingest/media-metadata.js";
+import type { UprightOrder, UprightOutcome } from "@ingest/upright-run.js";
 import type { ProbeReport } from "@ingest/media-metadata.js";
 import {
   COVER_CONTENT_TYPE,
@@ -45,22 +48,23 @@ export interface ProbeRequest {
   /** Whether to lift a cover frame, decided from the ticket's content type. */
   wantCover: boolean;
   /**
-   * How long one tool may run, reads included. It comes off
-   * `config/storage.yaml`, which checks it against the deadline the Worker
-   * holds the whole run to.
-   */
-  toolTimeoutMs: number;
-  /**
    * Whether to cut a preview: of the cover for a video, of the object else.
    * It runs on whatever is left before `deadlineAt`.
    */
   wantPreview: boolean;
   /**
-   * When the Worker stops waiting for this answer, in epoch ms. An instant
-   * rather than a span, so time a cold start spent before the request arrived
-   * is counted.
+   * When the task this run serves runs out, in epoch ms (inner#1367). Every
+   * tool in the run is held to it and to nothing of its own. An instant rather
+   * than a span, so time a cold start spent before the request arrived is
+   * counted.
    */
   deadlineAt: number;
+  /**
+   * Turn the object upright before probing it (inner#1367). Probing and the
+   * preview then read the turned picture, and it is written back with its
+   * pixel size last.
+   */
+  upright?: UprightOrder;
 }
 
 /** What the Worker got back from one container run. */
@@ -72,6 +76,8 @@ export interface ProbeAnswer {
   preview: Uint8Array | null;
   /** Whether a container answered at all, which an empty report cannot say. */
   answered: boolean;
+  /** How turning the picture upright ended, when the run was asked to. */
+  upright: UprightOutcome | null;
 }
 
 /**
@@ -79,15 +85,18 @@ export interface ProbeAnswer {
  * @param report - What ffprobe found.
  * @param cover - The PNG frame, or null when none was lifted.
  * @param preview - The WebP preview, or null when none was cut.
+ * @param upright - How turning the picture upright ended, when it was asked.
  * @returns The response the container sends.
  */
 export function buildProbeAnswer(
   report: ProbeReport,
   cover: Uint8Array | null,
   preview: Uint8Array | null = null,
+  upright: UprightOutcome | null = null,
 ): Response {
   const form = new FormData();
   form.set("meta", JSON.stringify(report));
+  if (upright !== null) form.set("upright", JSON.stringify(upright));
   if (cover !== null) {
     // Typed from the arguments that produced it: the container is what decided
     // the format, and this type is stored on the R2 object.
@@ -124,6 +133,7 @@ export const UNREAD_ANSWER: ProbeAnswer = Object.freeze({
   cover: null,
   preview: null,
   answered: false,
+  upright: null,
 });
 
 /**
@@ -171,5 +181,25 @@ export async function readProbeAnswer(
     cover: await bytesOf(form, "cover"),
     preview: await bytesOf(form, "preview"),
     answered: true,
+    upright: uprightOf(form.get("upright")),
   };
+}
+
+/**
+ * How turning the picture upright ended, when the answer says.
+ * @param part - The answer's `upright` part.
+ * @returns The outcome, or null when there is none or it cannot be read.
+ */
+function uprightOf(part: ReturnType<FormData["get"]>): UprightOutcome | null {
+  if (typeof part !== "string") return null;
+  try {
+    const parsed = JSON.parse(part) as Partial<{ state: unknown; step: unknown }>;
+    if (parsed.state === "written") return { state: "written" };
+    if (parsed.state === "failed" && (parsed.step === "turn" || parsed.step === "write")) {
+      return { state: "failed", step: parsed.step };
+    }
+    return null;
+  } catch {
+    return null;
+  }
 }

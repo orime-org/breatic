@@ -484,7 +484,7 @@ export const coreMock = async (importOriginal: () => Promise<Record<string, unkn
     // Values intentionally differ from config/storage.yaml so route tests
     // prove the endpoint reads config instead of hardcoding.
     getStorageConfig: () => ({
-      upload: { max_upload_bytes: 1024, client_max_attempts: 2, client_retry_base_delay_ms: 250, client_request_timeout_ms: 5000, client_put_min_bytes_per_sec: 1024 },
+      upload: { max_upload_bytes: 1024, client_max_attempts: 2, client_retry_base_delay_ms: 250, upload_idle_timeout_seconds: 45, upload_status_poll_seconds: 7 },
     }),
     // Logger
     logger: { ...mocks.logger, child: () => mocks.logger },
@@ -565,6 +565,9 @@ export const domainMock = () => ({
   usageContextFor: (tools: Record<string, unknown>, usage: unknown) =>
     Object.fromEntries(Object.keys(tools).map((name) => [name, { usage }])),
   SMALLEST_CREDIT: 0.000001,
+  UPLOAD_FINISH_QUEUE: "upload-finish",
+  uploadStatusService: { statusOf: vi.fn().mockResolvedValue([]) },
+  uploadDeadlineByKey: vi.fn().mockResolvedValue(Date.now() + 7_200_000),
   assetService: mocks.assetService,
   uploadGrantService: mocks.uploadGrantService,
   uploadGrantRepo: mocks.uploadGrantRepo,

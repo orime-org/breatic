@@ -28,7 +28,6 @@ import { describe, it, expect, beforeAll, afterEach } from "vitest";
 import {
   signUploadTicket,
   INGEST_FAILURE_HEADER,
-  type MediaLimits,
   type UploadTicketPayload,
 } from "@breatic/shared";
 import worker, { type Env } from "@ingest/index.js";
@@ -94,15 +93,14 @@ function expectSource(
  * @param over - Ticket fields to override.
  * @param headers - Request headers to override.
  * @param url - The source to name in the body.
- * @param callBudgetMs - How long the whole call may take, when the case cares.
+ * @param run - The cover key, the task deadline and the container to answer.
  * @returns The Worker's answer and the key it was written to.
  */
 async function pull(
   over: Partial<UploadTicketPayload> = {},
   headers: Record<string, string> = {},
   url = `${SOURCE_ORIGIN}${SOURCE_PATH}`,
-  callBudgetMs?: number,
-  run?: { coverKey: string; limits: MediaLimits; media: Env["MEDIA"] },
+  run?: { coverKey: string; deadlineAt: number; media: Env["MEDIA"] },
 ): Promise<{ response: Response; storageKey: string }> {
   const storageKey = `image/2026-09-07/${seq++}_pulled.png`;
   const ticket = await signUploadTicket(
@@ -114,7 +112,7 @@ async function pull(
       partSize: PART_SIZE,
       contentType: "image/png",
       expiresAt: Date.now() + 300_000,
-      sessionTokenTtlSeconds: 900,
+      deadlineAt: Date.now() + 7_200_000,
       ...over,
     },
     env.INGEST_SHARED_SECRET,
@@ -130,8 +128,7 @@ async function pull(
       },
       body: JSON.stringify({
         url,
-        ...(callBudgetMs !== undefined && { callBudgetMs }),
-        ...(run !== undefined && { coverKey: run.coverKey, limits: run.limits }),
+        ...(run !== undefined && { coverKey: run.coverKey, deadlineAt: run.deadlineAt }),
       }),
     }),
     run === undefined ? env : { ...env, MEDIA: run.media },
@@ -236,6 +233,7 @@ describe("POST /fetch — the transfer", () => {
     expect(await response.json()).toMatchObject({
       sizeBytes: 0,
       contentType: "image/png",
+      upright: null,
     });
   });
 
@@ -255,6 +253,7 @@ describe("POST /fetch — the transfer", () => {
       "height",
       "sha256",
       "sizeBytes",
+      "upright",
       "width",
     ]);
   });
@@ -308,11 +307,10 @@ describe("POST /fetch — the transfer", () => {
     expect(await env.BUCKET.head(storageKey)).toBeNull();
   });
 
-  it("hands back an object it stored even when the call's window is spent", async () => {
+  it("hands back an object it stored even when the task's deadline has come", async () => {
     // The object is written and hashed before the container is asked for a
-    // resolution and a poster. A window with nothing left in it costs the
-    // upload those two, and a run started anyway would end with the caller's
-    // own timer firing on a transfer that succeeded.
+    // resolution and a poster. A deadline already past costs the upload those
+    // two, and a run started anyway would outlive the task.
     const served = pattern(1024);
     expectSource(200, served, { "content-type": "video/mp4" });
     const run = containerAnswering(PULLED_FILM, null);
@@ -321,10 +319,9 @@ describe("POST /fetch — the transfer", () => {
       { contentType: "application/octet-stream", typeFromSource: true },
       {},
       undefined,
-      1,
       {
         coverKey: `video/2026-09-14/${seq}_spent_cover.png`,
-        limits: RUN_LIMITS,
+        deadlineAt: Date.now() - 1,
         media: run.media,
       },
     );
@@ -521,7 +518,8 @@ describe("POST /fetch — where the stored type comes from", () => {
   });
 });
 
-const RUN_LIMITS: MediaLimits = { runDeadlineMs: 150_000, toolTimeoutMs: 60_000 };
+/** When the transfer's task runs out, as our worker worked it out. */
+const DEADLINE_AT = Date.now() + 7_200_000;
 
 /** A 640x360 film, the shape ffprobe answers with. */
 const PULLED_FILM: ProbeReport = {
@@ -553,15 +551,11 @@ describe("POST /fetch — the cover the caller named", () => {
       { contentType: "application/octet-stream", typeFromSource: true },
       {},
       undefined,
-      undefined,
-      { coverKey, limits: RUN_LIMITS, media: run.media },
+      { coverKey, deadlineAt: DEADLINE_AT, media: run.media },
     );
 
     expect(response.status).toBe(200);
-    expect(run.asked).toMatchObject({
-      wantCover: true,
-      toolTimeoutMs: RUN_LIMITS.toolTimeoutMs,
-    });
+    expect(run.asked).toMatchObject({ wantCover: true, deadlineAt: DEADLINE_AT });
     expect(run.asked?.objectUrl).toContain(storageKey);
     expect(await response.json<{ cover: unknown }>()).toMatchObject({
       cover: { storageKey: coverKey },
@@ -576,10 +570,9 @@ describe("POST /fetch — the cover the caller named", () => {
       { contentType: "application/octet-stream", typeFromSource: true },
       {},
       undefined,
-      undefined,
       {
         coverKey: `image/2026-09-14/${seq}_pulled_cover.png`,
-        limits: RUN_LIMITS,
+        deadlineAt: DEADLINE_AT,
         media: run.media,
       },
     );

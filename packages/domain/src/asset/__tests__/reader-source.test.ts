@@ -22,14 +22,14 @@ describe("urlIngestFailureLevel", () => {
 });
 
 describe("isReaderLinkFault", () => {
-  it("puts a link that would not answer in time, could not be reached, or held the wrong thing down to the link", () => {
-    for (const reason of ["source_unreachable", "unsupported_type", "over_cap", "empty", INGEST_NO_ANSWER]) {
+  it("puts a link that could not be reached or held the wrong thing down to the link", () => {
+    for (const reason of ["source_unreachable", "unsupported_type", "over_cap", "empty"]) {
       expect(isReaderLinkFault(reason), reason).toBe(true);
     }
   });
 
   it("puts a failure in storing or judging what arrived down to our side", () => {
-    for (const reason of ["store_failed", "assemble_failed", INGEST_REFUSED_UNNAMED, "type_not_reported"]) {
+    for (const reason of ["store_failed", "assemble_failed", INGEST_REFUSED_UNNAMED, "type_not_reported", INGEST_NO_ANSWER]) {
       expect(isReaderLinkFault(reason), reason).toBe(false);
     }
   });

@@ -171,6 +171,81 @@ export async function writeStreamAsParts(
   return parts;
 }
 
+/** Raised by the byte count when a stream runs past its ceiling. */
+class OverCeiling extends Error {
+  /** The stream ran past what it may hold. */
+  constructor() {
+    super("over the ceiling");
+    this.name = "OverCeiling";
+  }
+}
+
+/**
+ * Write a stream a container sends back as a new object, under a byte
+ * ceiling, and say how large it landed.
+ *
+ * Shared by what our containers write: a mini-tool's outputs and an upright
+ * picture. The ceiling is counted in bytes rather than in parts, so a small
+ * ceiling holds exactly.
+ * @param bucket - The bucket to write to.
+ * @param key - The key to write at.
+ * @param body - What the container sent.
+ * @param opts - How to store it.
+ * @param opts.contentType - What a reader will be served.
+ * @param opts.customMetadata - What to store beside the bytes.
+ * @param opts.partSize - The size of every part but the last.
+ * @param opts.maxBytes - The most the object may weigh.
+ * @returns The stored size, or `over_cap` when the stream ran past the ceiling.
+ * @throws {SourceReadError} When the container's stream fails while it is read.
+ * @throws {Error} When R2 refuses a part or the assembly.
+ */
+export async function writeStreamedObject(
+  bucket: R2Bucket,
+  key: string,
+  body: ReadableStream<Uint8Array>,
+  opts: {
+    contentType: string;
+    customMetadata?: Record<string, string>;
+    partSize: number;
+    maxBytes: number;
+  },
+): Promise<{ sizeBytes: number } | StreamRefusal> {
+  let seen = 0;
+  const counted = body.pipeThrough(
+    new TransformStream<Uint8Array, Uint8Array>({
+      transform(chunk, controller): void {
+        seen += chunk.length;
+        if (seen > opts.maxBytes) controller.error(new OverCeiling());
+        else controller.enqueue(chunk);
+      },
+    }),
+  );
+  const created = await bucket.createMultipartUpload(key, {
+    httpMetadata: { contentType: opts.contentType },
+    ...(opts.customMetadata !== undefined && { customMetadata: opts.customMetadata }),
+  });
+  let parts: RecordedPart[] | StreamRefusal;
+  try {
+    parts = await writeStreamAsParts(
+      bucket,
+      key,
+      created.uploadId,
+      counted,
+      opts.partSize,
+      Math.ceil(opts.maxBytes / opts.partSize) + 1,
+    );
+  } catch (err) {
+    if (err instanceof SourceReadError && err.cause instanceof OverCeiling) parts = "over_cap";
+    else throw err;
+  }
+  if (parts === "over_cap") {
+    await created.abort();
+    return "over_cap";
+  }
+  const stored = await created.complete(parts);
+  return { sizeBytes: stored.size };
+}
+
 /**
  * Write bytes this Worker is holding, and measure what landed.
  *

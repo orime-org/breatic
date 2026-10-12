@@ -23,7 +23,7 @@
  *
  *   pnpm --filter @breatic/web test:smoke
  */
-import { test, expect } from 'playwright/test';
+import { expect } from 'playwright/test';
 
 import {
   SETTLE_MS,
@@ -33,6 +33,7 @@ import {
   noteIds,
   openPeer,
   openTheNote,
+  test,
 } from '../helpers/annotation-board';
 import { visibleSpace } from '../helpers/space';
 

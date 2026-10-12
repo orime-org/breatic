@@ -25,7 +25,6 @@ export interface ResolvedModel {
   modelId: string;
   baseUrl: string;
   apiKey: string;
-  timeout: number;
   maxConcurrency: number;
   mode?: string | string[];
 }
@@ -41,9 +40,11 @@ export interface ModelFamily {
   CONSUMES: ReadonlySet<string>;
   /** Whether `prepare` makes a paid call of its own, which a retry repeats. */
   PREPARE_IS_PAID: boolean;
+  /** `signal` is the run's deadline, for a family whose preparing makes a call. */
   prepare(
     prompt: string,
     params: Readonly<Record<string, unknown>>,
+    signal: AbortSignal,
   ): Promise<{ prompt: string; fields: Record<string, unknown> }>;
 }
 
@@ -79,6 +80,11 @@ export interface ResumeContext {
   externalTaskId: string;
   /** Whether this pickup starts a retry: a submit now may be the upstream's second (#1628 monitoring). */
   retryStarting: boolean;
+  /**
+   * When the task runs out, in epoch ms (inner#1367). Every call to the
+   * upstream is bounded by it and by no figure of the model's own.
+   */
+  deadlineAt: number;
 }
 
 // ── Parameter Validation (Lenient) ───────────────────────────────────
@@ -172,7 +178,6 @@ export function resolveModel(modality: string, modelName: string | undefined): R
     modelId: active.modelId,
     baseUrl: active.baseUrl,
     apiKey: active.apiKey,
-    timeout: active.timeout,
     maxConcurrency: active.maxConcurrency,
     mode: active.modelConfig.mode,
   };

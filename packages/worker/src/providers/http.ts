@@ -14,23 +14,8 @@
 import type { ResolvedModel } from "@worker/providers/shared.js";
 import { logger } from "@breatic/core";
 import { getWorkerConfig } from "@breatic/core";
-import { httpRequest } from "@breatic/shared";
+import { httpRequest, type UntilDeadline } from "@breatic/shared";
 import { StillRunning } from "@worker/providers/still-running.js";
-
-/**
- * Lazy-loaded HTTP config values, pulled from the worker config on each call.
- * @returns The poll / billing timing values used by the helpers below
- */
-function httpConfig(): {
-  pollInterval: number;
-  billingTimeout: number;
-} {
-  const cfg = getWorkerConfig();
-  return {
-    pollInterval: cfg.poll_interval,
-    billingTimeout: cfg.billing_timeout,
-  };
-}
 
 /**
  * Standard bearer auth headers.
@@ -99,17 +84,18 @@ export function extractNested(
  * safe would change behaviour as well as misstate the endpoint.
  * @param url - Request URL.
  * @param options - Fetch options (method, headers, body). Any `signal` here is
- *   discarded — the transport supplies its own deadline from `timeoutMs`.
+ *   replaced by the transport's own, composed per delivery.
  * @param provider - Provider name, used to word the failure.
- * @param timeoutMs - How long ONE delivery may take. Omitted leaves the
+ * @param bound - The task's deadline (inner#1367 §4.8c): the signal no resend
+ *   can stretch, and the time left each delivery may take. Omitted leaves the
  *   transport's own default in place.
  * @returns Parsed JSON response.
  * @throws {HttpStatusError} On any non-ok status, carrying the status and the
  *   vendor's response body — it is the only diagnostic these calls produce.
  * @throws {Error} The transport's failure, unwrapped, when the first delivery
  *   produces no response and no replay follows. With `replaySafe: false` that
- *   is the COMMON failure shape here: a per-model deadline expiring arrives
- *   as the transport's bare timeout Error, a refused connection as fetch's
+ *   is the COMMON failure shape here: the deadline arriving cuts the delivery
+ *   with the task's own error, a refused connection arrives as fetch's
  *   TypeError — neither wrapped in anything.
  * @throws {Error} The transport's `HttpRetryError` when replays happened and
  *   the LAST of them produced no response. Not "none of them": an earlier
@@ -120,11 +106,11 @@ export async function requestWithRetry(
   url: string,
   options: RequestInit,
   provider = "unknown",
-  timeoutMs?: number,
+  bound?: UntilDeadline,
 ): Promise<Record<string, unknown>> {
   const response = await httpRequest(url, options, {
     replaySafe: false,
-    ...(timeoutMs !== undefined && { timeoutMs }),
+    ...bound,
   });
 
   if (response.ok) {
@@ -165,6 +151,8 @@ export interface PollOptions {
   failureStatuses: Set<string>;
   errorPath?: string[];
   provider?: string;
+  /** The task's deadline (inner#1367). */
+  bound?: UntilDeadline;
 }
 
 /**
@@ -225,11 +213,16 @@ export async function pollOnce(
 
   let resp: Record<string, unknown>;
   try {
-    resp = await requestWithRetry(fetchUrl, { method: "GET", headers: options.headers }, provider);
+    resp = await requestWithRetry(
+      fetchUrl,
+      { method: "GET", headers: options.headers },
+      provider,
+      options.bound,
+    );
   } catch (err) {
     if (!askAgain(err)) throw err;
     logger.warn({ err, provider, url }, "poll_request_failed");
-    throw new StillRunning(Date.now() + httpConfig().pollInterval);
+    throw new StillRunning(Date.now() + getWorkerConfig().poll_interval);
   }
 
   const status = String(extractNested(resp, options.statusPath, "unknown"));
@@ -241,7 +234,7 @@ export async function pollOnce(
     logger.warn({ provider, url, status, errorMsg }, "poll_task_failed");
     throw new UpstreamTaskFailed(provider, errorMsg);
   }
-  throw new StillRunning(Date.now() + httpConfig().pollInterval);
+  throw new StillRunning(Date.now() + getWorkerConfig().poll_interval);
 }
 
 /**
@@ -279,9 +272,14 @@ interface BillingLine {
  * wrong has to stay tellable apart from those two.
  * @param resolved - Resolved provider endpoint.
  * @param taskId - The vendor's prediction uuid.
+ * @param bound - The task's deadline (inner#1367).
  * @returns What the prediction cost in USD, or 0 when the vendor did not say.
  */
-export async function queryBilling(resolved: ResolvedModel, taskId: string): Promise<number> {
+export async function queryBilling(
+  resolved: ResolvedModel,
+  taskId: string,
+  bound?: UntilDeadline,
+): Promise<number> {
   try {
     const resp = await httpRequest(
       `${resolved.baseUrl}/billings/search`,
@@ -290,7 +288,7 @@ export async function queryBilling(resolved: ResolvedModel, taskId: string): Pro
         headers: bearerHeaders(resolved.apiKey),
         body: JSON.stringify({ prediction_uuids: [taskId] }),
       },
-      { replaySafe: false, timeoutMs: httpConfig().billingTimeout },
+      { replaySafe: false, ...bound },
     );
 
     if (!resp.ok) {

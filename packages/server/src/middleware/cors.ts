@@ -28,4 +28,7 @@ export const corsMiddleware = cors({
   credentials: true,
   allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   allowHeaders: ["Content-Type"],
+  // Not readable cross-origin unless named: the upload status list backs off
+  // by the wait a 429 names (inner#1367).
+  exposeHeaders: ["Retry-After"],
 });

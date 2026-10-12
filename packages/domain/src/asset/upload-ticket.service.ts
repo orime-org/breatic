@@ -41,6 +41,11 @@ export interface UploadTicketRequest {
   typeFromSource?: boolean;
   /** When the ticket stops being accepted, as epoch milliseconds. */
   expiresAt: number;
+  /**
+   * When the task this upload belongs to runs out, as epoch milliseconds
+   * (inner#1367). Every session token the Worker issues for it expires then.
+   */
+  deadlineAt: number;
 }
 
 /**
@@ -69,7 +74,7 @@ export async function signTicketFor(
         contentType: request.contentType,
         ...(request.typeFromSource === true && { typeFromSource: true }),
         expiresAt: request.expiresAt,
-        sessionTokenTtlSeconds: ingest.session_token_ttl_seconds,
+        deadlineAt: request.deadlineAt,
       },
       env.INGEST_SHARED_SECRET,
     ),

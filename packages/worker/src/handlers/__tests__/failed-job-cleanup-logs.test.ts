@@ -37,7 +37,8 @@ vi.mock("@breatic/domain", () => ({
   taskService: { getByIdInternal: mockGetTask },
   settleTaskForNode: mockSettleTaskForNode,
 }));
-vi.mock("@breatic/shared", () => ({
+vi.mock("@breatic/shared", async (importOriginal) => ({
+  ...(await importOriginal<object>()),
   canvasSpaceDocName: (p: string, s: string) => `project-${p}/canvas-${s}`,
 }));
 const mockRecordGeneration = vi.hoisted(() => vi.fn());

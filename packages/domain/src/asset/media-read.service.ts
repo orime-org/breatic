@@ -18,7 +18,7 @@ import { createQueue, defaultJobOpts, env } from "@breatic/core";
 import { readStoredMediaAtIngest, type StudioAssetEntity } from "@breatic/shared";
 
 import { fillMediaNumbers, findById } from "@domain/asset/asset.repo.js";
-import { detectAssetKind, mediaLimits } from "@domain/asset/asset.service.js";
+import { detectAssetKind } from "@domain/asset/asset.service.js";
 import type { IngestReportOutcome } from "@domain/asset/ingest-report.service.js";
 
 /** The queue the read travels on. */
@@ -146,10 +146,16 @@ export async function scheduleMediaRead(
  * The type sent is the one the ledger recorded off the stored bytes. A refusal
  * from the Worker or a dead network is thrown, for the queue to retry.
  * @param assetId - The row.
+ * @param deadlineAt - When the job reading it runs out, in epoch ms
+ *   (inner#1367); the read is bounded by it and nothing else.
  * @returns What became of the row.
+ * @throws {DeadlinePassed} When the deadline has already come.
  * @throws {unknown} When the Worker refused or could not be reached.
  */
-export async function readAndFillMedia(assetId: string): Promise<MediaReadResult> {
+export async function readAndFillMedia(
+  assetId: string,
+  deadlineAt: number,
+): Promise<MediaReadResult> {
   const row = await findById(assetId);
   if (row === null || row.deletedAt !== null) return "gone";
   if (!hasNoNumbers(row)) return "already_measured";
@@ -160,7 +166,7 @@ export async function readAndFillMedia(assetId: string): Promise<MediaReadResult
     {
       storageKey: row.storageKey,
       contentType: row.mimeType,
-      limits: mediaLimits(),
+      deadlineAt,
       // Every stored still image gets a preview (inner#1320); the rows read here
       // were finished without a container run, so this is where theirs is cut.
       wantPreview: row.mimeType.startsWith("image/"),

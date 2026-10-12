@@ -59,7 +59,7 @@ export { errorMonitoringOptions, type ErrorMonitoringStart } from "@core/config/
 export { assertKnownQueues, getWorkerConfig } from "@core/config/worker.js";
 export type { WorkerConfig } from "@core/config/worker.js";
 export { getStorageConfig } from "@core/config/storage.js";
-export { getNodeTaskConfig, type NodeTaskConfig } from "@core/config/node-tasks.js";
+export { budgetDeadlineFrom, getNodeTaskConfig, type NodeTaskConfig } from "@core/config/node-tasks.js";
 export { getMiniToolsConfig, type MiniToolsConfig } from "@core/config/mini-tools.js";
 export { getUnderstandConfig, type UnderstandConfig } from "@core/config/understand.js";
 export {
@@ -115,6 +115,10 @@ export {
   type HealthServerOptions,
 } from "@core/infra/health-server.js";
 export { runGracefulShutdown } from "@core/infra/graceful-shutdown.js";
+export {
+  idleSocketDispatcher,
+  installDeadlineBoundDispatcher,
+} from "@core/infra/idle-socket-dispatcher.js";
 export type { GracefulShutdownDeps } from "@core/infra/graceful-shutdown.js";
 export { checkInfraReady } from "@core/infra/connectivity-check.js";
 export { InfraNotReadyError } from "@core/infra/errors.js";

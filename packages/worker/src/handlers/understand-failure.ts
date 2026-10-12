@@ -15,7 +15,7 @@ import { MediaUnavailable, UnderstandRefused } from "@breatic/domain";
 import type { RefusalKind, UnavailableKind } from "@breatic/domain";
 import { ContainerJobFailed } from "@worker/handlers/container/run-container-job.js";
 import { UpstreamTaskFailed } from "@worker/providers/http.js";
-import { TaskDeadlinePassed } from "@worker/providers/still-running.js";
+import { DeadlinePassed } from "@breatic/shared";
 import {
   assetNameFromUrl,
   encodeTaskFailure,
@@ -28,7 +28,10 @@ const UNAVAILABLE_AS: Readonly<Record<UnavailableKind, TaskFailureReason>> = {
   unreachable: "source_unreachable",
   "unsupported-type": "understand_unsupported_type",
   "too-large": "understand_over_cap",
-  slow: "source_too_slow",
+  // The canvas lane gives a read the task's time left, so a read that runs
+  // long ends at the deadline and settles as expired (inner#1367). What
+  // reaches this as "slow" is a body that stopped part way.
+  slow: "source_cut_off",
   empty: "empty",
 };
 
@@ -106,7 +109,7 @@ export function verdictStands(err: unknown): boolean {
   // A redelivery reads the same job, which has already ended.
   if (err instanceof ContainerJobFailed) return true;
   // The task's two hours do not come back.
-  if (err instanceof TaskDeadlinePassed) return true;
+  if (err instanceof DeadlinePassed) return true;
   if (err instanceof MediaUnavailable) return MEDIA_ANSWER_STANDS[err.kind];
   if (err instanceof UnderstandRefused) return REFUSAL_ANSWER_STANDS[err.kind];
   return false;
@@ -144,7 +147,7 @@ const SAYS_SOMETHING_ABOUT_THE_FILE: Readonly<
   expired: false,
   no_result: false,
   source_unreachable: false,
-  source_too_slow: false,
+  source_cut_off: false,
   unsupported_type: false,
   empty: false,
   internal: false,

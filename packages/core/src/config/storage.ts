@@ -12,7 +12,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { parse } from "yaml";
 import { z } from "zod";
-import { MIN_PART_SIZE_BYTES, assertUploadWindows } from "@breatic/shared";
+import { MIN_PART_SIZE_BYTES } from "@breatic/shared";
 import { MONOREPO_ROOT } from "@core/config/env.js";
 
 /**
@@ -55,10 +55,18 @@ export const storageConfigSchema = z
       client_max_attempts: z.number().int().positive().default(3),
       /** Base backoff (ms) between those same browser attempts. */
       client_retry_base_delay_ms: z.number().int().min(0).default(1000),
-      /** Floor for the part stall guard. Despite the name it does not time any API request: the ticket is timed by the axios client. */
-      client_request_timeout_ms: z.number().int().positive().default(30000),
-      /** Part stall guard rate: per-attempt timeout = max(floor, size/rate). */
-      client_put_min_bytes_per_sec: z.number().int().positive().default(65536),
+      /**
+       * How long one part may go without a byte moving, in seconds, before it
+       * is cut and sent again (inner#1367). An idle window: a slow part that
+       * keeps moving is never cut. 60 is where Uppy's maintainers moved their
+       * 30-second default after it cut uploads on slow links.
+       */
+      upload_idle_timeout_seconds: z.number().int().positive().default(60),
+      /**
+       * How long the browser waits between asking how its uploads ended, in
+       * seconds; sent as `Retry-After` on every status answer (inner#1367).
+       */
+      upload_status_poll_seconds: z.number().int().positive().default(2),
     })
     .prefault({}),
 
@@ -84,74 +92,13 @@ export const storageConfigSchema = z
        */
       ticket_expires_seconds: z.number().int().positive().default(300),
       /**
-       * How long a session token stays usable, in seconds. One token is
-       * carried through two chains — the whole of the part it was issued for,
-       * and the chain completing an upload runs — which is why it is checked
-       * against both below rather than picked on its own.
+       * The quality a JPEG or lossy WebP is re-encoded at when the ingest
+       * Worker turns a picture shown at an EXIF orientation upright
+       * (inner#1367). Turning a JPEG re-encodes it.
        */
-      session_token_ttl_seconds: z.number().int().positive().default(1200),
-      /**
-       * How long the ingest Worker waits for the media container to answer,
-       * in milliseconds. It bounds the whole run — starting the container and
-       * both tools — and is checked against the tool timeout below, which has
-       * to fit inside it twice over for a run that uses both.
-       */
-      container_run_deadline_ms: z.number().int().positive().default(150_000),
-      /**
-       * How long one tool inside the container may run, in milliseconds. It
-       * covers the object's reads as well as the work, since both tools read
-       * over the network.
-       */
-      container_tool_timeout_ms: z.number().int().positive().default(60_000),
-      /**
-       * How long ONE call asking the Worker to pull a source URL may take, in
-       * milliseconds. It bounds the whole transfer, because the answer only
-       * arrives once the Worker has finished writing R2.
-       *
-       * Nothing here can be computed: what is behind the address announces no
-       * length, and the ticket's ceiling is a ceiling rather than a size. What
-       * it is chosen against is the platform's own bound — a delivery spent
-       * waiting for a response is refused at 301.4s whatever we ask for — so
-       * this sits under it and our own timer is the one that fires.
-       */
-      url_fetch_deadline_ms: z.number().int().positive().default(290_000),
+      upright_jpeg_quality: z.number().int().min(1).max(100).default(90),
     })
     .prefault({}),
-  })
-  .superRefine((cfg, ctx) => {
-    // Across sections, because the part size is an ingest knob while the
-    // deadline each part is delivered under comes from the upload ones. Both
-    // relations fail an upload that is doing nothing wrong when they are the
-    // wrong way round, and neither is visible from inside either section.
-    try {
-      assertUploadWindows({
-        partSizeBytes: cfg.ingest.part_size_bytes,
-        sessionTokenTtlSeconds: cfg.ingest.session_token_ttl_seconds,
-        ticketExpiresSeconds: cfg.ingest.ticket_expires_seconds,
-        requestTimeoutMs: cfg.upload.client_request_timeout_ms,
-        minBytesPerSec: cfg.upload.client_put_min_bytes_per_sec,
-      });
-    } catch (err) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: err instanceof Error ? err.message : String(err),
-        path: ["ingest"],
-      });
-    }
-
-    // A run can use both tools, so the Worker has to be willing to wait for
-    // two of them. Set the other way round it cuts off a container that is
-    // working, and the upload it was measuring loses its numbers for no reason
-    // either end can see. The preview runs on whatever is left after them.
-    const { container_run_deadline_ms: run, container_tool_timeout_ms: tool } =
-      cfg.ingest;
-    if (run < tool * 2) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: `container_run_deadline_ms (${run}) must be at least twice container_tool_timeout_ms (${tool}) — one run may use both tools.`,
-        path: ["ingest", "container_run_deadline_ms"],
-      });
-    }
   });
 
 /** Validated storage configuration type. */

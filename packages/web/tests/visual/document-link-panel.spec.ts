@@ -11,7 +11,7 @@
  * Needs dev running and a smoke account:
  *   pnpm --filter @breatic/web test:visual
  */
-import { test, expect, type Locator } from 'playwright/test';
+import { expect, type Locator } from 'playwright/test';
 
 import {
   openFreshDocument,
@@ -19,6 +19,7 @@ import {
   selectFirstParagraph,
   selectParagraph,
   typeLongBody,
+  test,
 } from '../helpers/bubble-bar';
 import {
   HOVER_CLOSE_DELAY_MS,

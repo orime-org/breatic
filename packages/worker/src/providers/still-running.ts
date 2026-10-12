@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * The two answers a pickup gives when the work it started is not finished
+ * What a pickup does when the work it started is not finished
  * (inner#1337 §3.1).
  *
  * A task waits on an upstream — a prediction, a container job — by going
@@ -26,25 +26,4 @@ export class StillRunning extends Error {
     super("the work cannot finish on this pickup");
     this.name = "StillRunning";
   }
-}
-
-/**
- * The task's two hours ran out with its work unfinished. The message is the
- * cause code the task row holds.
- */
-export class TaskDeadlinePassed extends Error {
-  /** A task past its deadline. */
-  constructor() {
-    super("expired");
-    this.name = "TaskDeadlinePassed";
-  }
-}
-
-/**
- * Throw when the deadline has passed.
- * @param deadlineAt - The task's deadline, in epoch milliseconds.
- * @throws {TaskDeadlinePassed} When it has.
- */
-export function assertBeforeDeadline(deadlineAt: number): void {
-  if (Date.now() >= deadlineAt) throw new TaskDeadlinePassed();
 }

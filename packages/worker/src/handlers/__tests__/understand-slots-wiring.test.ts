@@ -36,7 +36,7 @@ vi.mock("@breatic/core", () => ({
   env: {},
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
-vi.mock("@breatic/domain", () => ({
+vi.mock("@breatic/domain", async () => ({
   assetRepo: {},
   upstreamCloneRepo: {},
   upstreamStepRepo: {},
@@ -49,6 +49,7 @@ vi.mock("@breatic/domain", () => ({
   understandMediaAt: h.understandMediaAt,
   UNDERSTAND_PINS: {},
   extractPromptText: vi.fn(),
+  readingLimitsUntil: (await import("@domain/understand/limits-until.js")).readingLimitsUntil,
 }));
 
 const { stepDepsFor } = await import("@worker/handlers/step-deps.js");
@@ -64,13 +65,13 @@ beforeEach(() => {
 
 describe("a worker reading of media", () => {
   it("describes an element image inside a place", async () => {
-    await expect(stepDepsFor(null).describeImage("https://a/cat.png")).resolves.toMatchObject({ text: "a cat" });
+    await expect(stepDepsFor(null, Date.now() + 3_600_000).describeImage("https://a/cat.png")).resolves.toMatchObject({ text: "a cat" });
   });
 
   it("does not describe an element image when no place is free", async () => {
     h.full.value = true;
 
-    await expect(stepDepsFor(null).describeImage("https://a/cat.png")).rejects.toBeInstanceOf(h.StillRunning);
+    await expect(stepDepsFor(null, Date.now() + 3_600_000).describeImage("https://a/cat.png")).rejects.toBeInstanceOf(h.StillRunning);
     expect(h.understandMediaAt).not.toHaveBeenCalled();
   });
 
@@ -78,7 +79,7 @@ describe("a worker reading of media", () => {
     h.full.value = true;
 
     await expect(
-      runUnderstand({ source_type: "image", source_url: "https://a/cat.png" }, usage as never),
+      runUnderstand({ source_type: "image", source_url: "https://a/cat.png" }, usage as never, Date.now() + 3_600_000),
     ).rejects.toBeInstanceOf(h.StillRunning);
     expect(h.understandMediaAt).not.toHaveBeenCalled();
   });

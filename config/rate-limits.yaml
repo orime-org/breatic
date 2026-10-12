@@ -44,6 +44,10 @@ asset-report:   { max: 120, window_seconds: 60 }
 # than at it — a person clearing a selection onto the canvas mints a ticket
 # per file and finishes each one.
 upload-complete: { max: 60, window_seconds: 60 }
+# Asking how uploads ended (/assets/upload-status, inner#1367). One request
+# covers every upload the page is waiting on, and the page asks once per
+# Retry-After (2s), so 60 a minute is two pages' worth from one person.
+upload-status:   { max: 60, window_seconds: 60 }
 
 # Handing us an address instead of bytes (#207). One call writes a grant and a
 # node task row and puts a fetch of an arbitrary address in front of the ingest

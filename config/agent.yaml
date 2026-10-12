@@ -147,8 +147,7 @@ understand_media_max_bytes: 20000000
 understand_media_fetch_timeout_ms: 30000
 
 # The rate a media body is expected to arrive at, in bytes per second.
-# The read budget is the file's size divided by this. Same figure as the upload
-# path's client_put_min_bytes_per_sec.
+# The read budget is the file's size divided by this.
 understand_media_min_bytes_per_sec: 65536
 
 # The smallest read budget for a media body, in milliseconds.

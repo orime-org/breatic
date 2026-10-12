@@ -154,11 +154,11 @@ export interface MiniToolOutput {
 }
 
 /**
- * A layer the reader draws on the source; the run is sent images made from it.
- * Both are made from the source turned upright. A mask tool sends an upright
- * copy of the source in place of it and, under `maskParam`, a black-and-white
- * image of the same size, white where to change; a sketch tool sends the
- * upright source with the drawing painted on it in place of the source.
+ * A layer the reader draws on the source; the run is sent an image made from
+ * it, at the source's pixels as the browser shows them. A mask tool sends,
+ * under `maskParam`, a black-and-white image of the same size, white where to
+ * change, beside the source itself (stored upright since inner#1367); a sketch
+ * tool sends the source with the drawing painted on it in place of the source.
  */
 export type MiniToolDrawing =
   | { readonly kind: "mask"; readonly maskParam: string }

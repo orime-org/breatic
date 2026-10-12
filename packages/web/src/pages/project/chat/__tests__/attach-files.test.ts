@@ -148,12 +148,6 @@ describe('attaching picked files', () => {
     expect(chatAttachments.trayOf(CONV)[0]).toMatchObject({ status: 'failed', failure: 'rate_limited' });
   });
 
-  it('marks an upload that came back without an address as failed', async () => {
-    await pick([file('cover.png', 'image/png')], deps({ upload: async () => undefined }));
-
-    expect(chatAttachments.trayOf(CONV)[0]).toMatchObject({ status: 'failed', failure: 'upload' });
-  });
-
   it('marks a document that could not be read', async () => {
     await pick(
       [file('brief.pdf', 'application/pdf')],

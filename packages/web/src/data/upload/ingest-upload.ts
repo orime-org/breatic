@@ -93,6 +93,9 @@ export interface UploadAlreadyStored {
   assetId: string;
   fileUrl: string;
   kind: string;
+  /** Its pixel size, read off it when it was stored; null when there is none. */
+  width: number | null;
+  height: number | null;
 }
 
 /** Either answer the ticket endpoint can give. */

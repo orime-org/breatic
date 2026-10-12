@@ -97,6 +97,41 @@ export function checkPickedFile(file: { size: number }): PickedFileProblem | nul
   return null;
 }
 
+/** The two formats a cover or an avatar is taken in. */
+export const PICKED_FORMATS = 'image/png,image/jpeg';
+
+/** The signatures of those two formats. */
+const PICKED_SIGNATURES: readonly (readonly number[])[] = [
+  [0x89, 0x50, 0x4e, 0x47],
+  [0xff, 0xd8, 0xff],
+];
+
+/**
+ * Check a picked file is a PNG or a JPEG by its first bytes (inner#1367
+ * §4.8b). The picture is cropped in the browser, and the browsers agree on how
+ * to show those two with an EXIF orientation; Chromium and WebKit do not agree
+ * on a WebP. A file's name and declared type say nothing, so its bytes decide.
+ * @param file - The picked file.
+ * @returns `unsupported_type`, or null when it is one of the two.
+ */
+export async function checkPickedFormat(file: Blob): Promise<'unsupported_type' | null> {
+  const head = new Uint8Array(await file.slice(0, 12).arrayBuffer());
+  const matches = PICKED_SIGNATURES.some((signature) =>
+    signature.every((byte, index) => head[index] === byte),
+  );
+  return matches ? null : 'unsupported_type';
+}
+
+/**
+ * The check a cover or an avatar picker runs on a picked file: its size, then
+ * its format.
+ * @param file - The picked file.
+ * @returns The problem, or `null` when the file is usable.
+ */
+export async function checkPicked(file: Blob): Promise<PickedFileProblem | 'unsupported_type' | null> {
+  return checkPickedFile(file) ?? (await checkPickedFormat(file));
+}
+
 /**
  * Check a decoded image's dimensions.
  * @param width - Natural width in pixels.

@@ -262,9 +262,8 @@ const agentConfigSchema = z.object({
   /**
    * The rate a media body is expected to arrive at, in bytes per second.
    *
-   * The read budget is the file's size divided by this. Same figure as the
-   * upload path's `client_put_min_bytes_per_sec`, and for the same reason:
-   * below it, whoever is sending is not going to finish.
+   * The read budget is the file's size divided by this: below it, whoever
+   * is sending is not going to finish.
    */
   understand_media_min_bytes_per_sec: z.number().int().min(1).default(65_536),
   /**

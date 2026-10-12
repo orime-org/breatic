@@ -31,14 +31,17 @@ import {
   runGracefulShutdown,
   getAgentConfig,
   assertKnownQueues,
+  installDeadlineBoundDispatcher,
 } from "@breatic/core";
 import {
   modelCatalog,
   USAGE_LOOKUP_QUEUE,
   MEDIA_READ_QUEUE,
   MAIL_QUEUE,
+  UPLOAD_FINISH_QUEUE,
   type MailJob,
   type MediaReadJob,
+  type UploadFinishJob,
   type UsageLookupJob,
 } from "@breatic/domain";
 
@@ -94,26 +97,46 @@ try {
 }
 import { runTask } from "@worker/handlers/dispatch.js";
 import { reclaimFailedJobById } from "@worker/handlers/failed-job-cleanup.js";
-import {
-  runUrlIngest,
-  type UrlIngestJobData,
-} from "@worker/handlers/url-ingest.js";
+import { runUrlIngest, type UrlIngestJobData } from "@worker/handlers/url-ingest.js";
+import { settleStalledIngest } from "@worker/handlers/abort-ingest.js";
 import { runUsageLookup } from "@worker/handlers/usage-lookup.js";
 import { runMediaRead } from "@worker/handlers/media-read.js";
+import { runUploadFinish } from "@worker/handlers/upload-finish.js";
 import { runMail } from "@worker/handlers/mail.js";
 
 /** Cap graceful shutdown so a stuck drain can't hold the process. */
 const SHUTDOWN_DEADLINE_MS = 4000;
 import type { TaskJobData } from "@worker/handlers/dispatch.js";
+import type { Job } from "bullmq";
 
 // Health probe port from the validated config (default 9101).
 const HEALTH_PORT = env.WORKER_HEALTH_PORT;
+
+/**
+ * Settle a failed ingest job whose handler never ran because it stalled; a
+ * failure to settle is logged, since a failed listener has no caller to tell.
+ * @param job - The failed job, when the queue still has it.
+ */
+function settleWhenStalled(job: Job<{ storageKey: string }> | undefined): void {
+  if (job === undefined) return;
+  settleStalledIngest(job).catch((err: unknown) => {
+    logger.error(
+      { err, queue: job.queueName, jobId: job.id, key: job.data.storageKey },
+      "ingest_stalled_settle_failed",
+    );
+  });
+}
 
 /**
  * Start the worker process: install production error logging on the shared
  * Redis singletons, then begin consuming the BullMQ task queue.
  */
 export function startWorker(): void {
+  // Every call this process makes on a task's chain is bounded by the task's
+  // own deadline (inner#1367), so undici's 300-second wait for an answer must
+  // not cut one first.
+  installDeadlineBoundDispatcher();
+
   // Production error logging for shared Redis singletons. The core
   // `createRedisClient` factory installs a no-op `error` listener so
   // emitted errors don't crash the process; the application entry is
@@ -129,7 +152,14 @@ export function startWorker(): void {
 
   // A per-queue figure for a queue this process does not run is a typo that
   // would leave the queue it meant at the default.
-  assertKnownQueues(["tasks", "url-ingest", USAGE_LOOKUP_QUEUE, MEDIA_READ_QUEUE, MAIL_QUEUE]);
+  assertKnownQueues([
+    "tasks",
+    "url-ingest",
+    UPLOAD_FINISH_QUEUE,
+    USAGE_LOOKUP_QUEUE,
+    MEDIA_READ_QUEUE,
+    MAIL_QUEUE,
+  ]);
 
   const worker = createWorker<TaskJobData>("tasks", runTask);
 
@@ -148,12 +178,34 @@ export function startWorker(): void {
   );
 
   urlIngest.on("failed", (job, err) => {
-    // The handler settles its own grant and task row, so reaching here means
-    // the settling itself failed. The node keeps a running row for a harvest.
     logger.error(
       { err, jobId: job?.id, key: job?.data.storageKey },
       "url_ingest_job_failed",
     );
+    // Any failure other than a stall is the handler's own settling failing;
+    // the node keeps a running row until its deadline.
+    settleWhenStalled(job);
+  });
+
+  // Finishing a browser upload (inner#1367 §4.2a). Delivered again after a
+  // process goes away: the Worker answers a repeat of the same upload from the
+  // object it already assembled, and registration answers a registered grant
+  // as already registered.
+  const uploadFinish = createWorker<UploadFinishJob>(UPLOAD_FINISH_QUEUE, (job) =>
+    runUploadFinish(job),
+  );
+
+  uploadFinish.on("failed", (job, err) => {
+    logger.error(
+      {
+        err,
+        key: job?.data.storageKey,
+        attemptsMade: job?.attemptsMade,
+        attemptsAllowed: job?.opts?.attempts,
+      },
+      "upload_finish_job_failed",
+    );
+    settleWhenStalled(job);
   });
 
   // The later lookup of an OpenRouter call whose cost was not in hand (#296). Its retries
@@ -259,7 +311,16 @@ export function startWorker(): void {
 
 
   logger.info(
-    { queues: ["tasks", "url-ingest", USAGE_LOOKUP_QUEUE, MEDIA_READ_QUEUE, MAIL_QUEUE] },
+    {
+      queues: [
+        "tasks",
+        "url-ingest",
+        UPLOAD_FINISH_QUEUE,
+        USAGE_LOOKUP_QUEUE,
+        MEDIA_READ_QUEUE,
+        MAIL_QUEUE,
+      ],
+    },
     "BullMQ workers started",
   );
 
@@ -341,6 +402,7 @@ export function startWorker(): void {
       drains: [
         () => worker.close(),
         () => urlIngest.close(),
+        () => uploadFinish.close(),
         () => usageLookup.close(),
         () => mediaRead.close(),
         () => mail.close(),

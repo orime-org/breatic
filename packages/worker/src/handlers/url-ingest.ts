@@ -23,11 +23,12 @@ import type { Job } from "bullmq";
 import { getStorageConfig, logger } from "@breatic/core";
 import {
   backendUploadService,
-  ingestReportService,
   TYPE_UNKNOWN,
+  uploadDeadlineByKey,
   uploadTicketService,
   urlIngestFailureLevel,
 } from "@breatic/domain";
+import { abortIngest } from "@worker/handlers/abort-ingest.js";
 import { noteSideEffects } from "@worker/handlers/side-effects.js";
 import { INGEST_NOT_STARTED } from "@breatic/shared";
 
@@ -50,20 +51,6 @@ export interface UrlIngestJobData {
 }
 
 /**
- * Settle the grant and the node's task row on a transfer that did not finish.
- * @param storageKey - The key the grant was opened on.
- * @param reason - What the node's task list shows.
- */
-async function fail(storageKey: string, reason: string): Promise<void> {
-  const outcome = await ingestReportService.applyIngestReport({
-    storageKey,
-    outcome: "aborted",
-    reason,
-  });
-  noteSideEffects(outcome, { key: storageKey });
-}
-
-/**
  * Have the ingest Worker pull the address this job names into R2.
  *
  * Never throws for a transfer that failed, from signing the ticket onward:
@@ -77,6 +64,8 @@ async function fail(storageKey: string, reason: string): Promise<void> {
 export async function runUrlIngest(job: Job<UrlIngestJobData>): Promise<void> {
   const { storageKey, studioId, url, userId, projectId, nodeId } = job.data;
   const { upload, ingest } = getStorageConfig();
+  // The end of the row the route opened on the node (inner#1367).
+  const deadlineAt = await uploadDeadlineByKey(storageKey);
 
   let target;
   try {
@@ -91,6 +80,7 @@ export async function runUrlIngest(job: Job<UrlIngestJobData>): Promise<void> {
       contentType: TYPE_UNKNOWN,
       typeFromSource: true,
       expiresAt: Date.now() + ingest.ticket_expires_seconds * 1000,
+      deadlineAt,
     });
   } catch (err) {
     // Nothing was fetched, so neither the address nor its source is what to
@@ -100,11 +90,11 @@ export async function runUrlIngest(job: Job<UrlIngestJobData>): Promise<void> {
       { err, key: storageKey, projectId, nodeId },
       "url_ingest_ticket_failed",
     );
-    await fail(storageKey, INGEST_NOT_STARTED);
+    await abortIngest(storageKey, INGEST_NOT_STARTED);
     return;
   }
 
-  const pulled = await backendUploadService.pullReaderLink(storageKey, target, url, ingest.url_fetch_deadline_ms);
+  const pulled = await backendUploadService.pullReaderLink(storageKey, target, url, deadlineAt);
   if (pulled.status === "failed") {
     if (pulled.reported === undefined) {
       logger[urlIngestFailureLevel(pulled.reason)](

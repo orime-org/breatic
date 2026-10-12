@@ -16,6 +16,7 @@
  */
 
 export { understandMediaAt } from "@domain/understand/understand-at.js";
+export { readingLimitsUntil } from "@domain/understand/limits-until.js";
 export {
   AUDIO_FORMAT_NAMES,
   IMAGE_FORMAT_NAMES,

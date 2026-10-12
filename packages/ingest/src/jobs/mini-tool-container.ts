@@ -19,12 +19,13 @@ import type { OutboundHandlerContext, StopParams } from "@cloudflare/containers"
 import type { IngestMeasurements, MiniToolJobReport, MiniToolJobRequest } from "@breatic/shared";
 
 import { noteFailure } from "@ingest/error-monitoring.js";
+import { askedKey } from "@ingest/object-url.js";
 import { MEDIA_OBJECT_HOST, mediaObjectUrl, serveOneObject } from "@ingest/media-object-route.js";
 import { readContainerReport, type ContainerReportBody, type MediaOfOutput } from "@ingest/jobs/container-report.js";
 import { RUN_PATH } from "@ingest/jobs/op-args.js";
 import { PROBE_PORT } from "@ingest/probe-answer.js";
 import { transition, type JobEvent, type JobState } from "@ingest/jobs/transition.js";
-import { hashStoredObject, sniffStoredObject, writeStreamAsParts } from "@ingest/stored-object.js";
+import { hashStoredObject, sniffStoredObject, writeStreamedObject } from "@ingest/stored-object.js";
 
 /** Where the container reports how its run went. */
 export const JOB_REPORT_HOST = "jobs.local";
@@ -176,7 +177,6 @@ abstract class MiniToolContainer extends Container<MiniToolEnv> {
               ...(output.coverKey !== undefined && { coverUrl: mediaObjectUrl(output.coverKey) }),
             })),
             reportUrl: `http://${JOB_REPORT_HOST}/report`,
-            toolTimeoutMs: request.limits.toolTimeoutMs,
           }),
         }),
       );
@@ -330,20 +330,19 @@ function jobObject(env: MiniToolEnv, ctx: OutboundHandlerContext): DurableObject
 async function jobObjects(request: Request, env: MiniToolEnv, ctx: OutboundHandlerContext<JobObjects>): Promise<Response> {
   if (request.method === "GET" || request.method === "HEAD") return serveOneObject(request, env.BUCKET, ctx.params.read);
   if (request.method !== "PUT" || request.body === null) return new Response("Not allowed", { status: 405 });
-  const key = decodeURIComponent(new URL(request.url).pathname).slice(1);
+  const key = askedKey(request);
   const contentType = ctx.params.writes[key];
   if (contentType === undefined) return new Response("Not this object", { status: 403 });
 
-  const created = await env.BUCKET.createMultipartUpload(key, { httpMetadata: { contentType } });
-  const parts = await writeStreamAsParts(env.BUCKET, key, created.uploadId, request.body, PART_SIZE, MAX_PARTS);
-  if (parts === "over_cap") {
-    await created.abort();
-    return new Response("Too large", { status: 413 });
-  }
-  const stored = await created.complete(parts);
+  const stored = await writeStreamedObject(env.BUCKET, key, request.body, {
+    contentType,
+    partSize: PART_SIZE,
+    maxBytes: PART_SIZE * MAX_PARTS,
+  });
+  if (stored === "over_cap") return new Response("Too large", { status: 413 });
   const written: Written = {
     sha256: await hashStoredObject(env.BUCKET, key),
-    sizeBytes: stored.size,
+    sizeBytes: stored.sizeBytes,
     contentType: await sniffStoredObject(env.BUCKET, key),
   };
   await jobObject(env, ctx).noteWritten(key, written);

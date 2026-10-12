@@ -58,28 +58,30 @@ export interface DedupHit {
 
 /**
  * Ticket-time dedup check: does the studio the upload is charged to already
- * hold this content? A hit with a MATCHING
- * declared size skips the upload entirely; a size mismatch refuses dedup
- * (content claim not trusted) so the caller falls through to a real upload.
+ * hold this content? A hit skips the upload entirely.
+ *
+ * The hash alone decides. A picture turned upright is filed with its upright
+ * copy's size and the received bytes' hash, so the size a browser declares
+ * for the same file never matches the row (inner#1367 §4.6). A browser that
+ * forges a hash can forge a size beside it, so comparing the two never
+ * stopped one; the trust placed in the hash is the recorded upload-dedup
+ * trust model, scoped to one studio.
  * @param params - The dedup claim.
  * @param params.studioId - The studio the upload is charged to (for a project,
  *   its owner studio, #1839 — never the acting user's own); its content is
  *   what is searched.
  * @param params.contentHash - Client-computed sha256 hex.
- * @param params.sizeBytes - Client-declared file size.
- * @returns The hit to reuse, or null (no row / size mismatch).
+ * @returns The hit to reuse, or null when the studio holds no such content.
  */
 export async function checkUploadDedup(params: {
   studioId: string;
   contentHash: string;
-  sizeBytes: number;
 }): Promise<DedupHit | null> {
   const existing = await assetRepo.findByStudioAndHash(
     params.studioId,
     params.contentHash,
   );
   if (!existing) return null;
-  if (existing.sizeBytes !== params.sizeBytes) return null;
   return {
     assetId: existing.id,
     fileUrl: existing.fileUrl,

@@ -61,10 +61,15 @@ function plainPrompt(prompt: string, camera: Camera): string {
  * Ask the LLM to rewrite the description into the structured shape.
  * @param prompt - The reader's description.
  * @param camera - The camera controls.
+ * @param signal - The run's deadline.
  * @returns The JSON prompt the LLM answered, or undefined when it answered none.
- * @throws {Error} when the LLM call fails.
+ * @throws {Error} when the LLM call fails or the deadline passes.
  */
-async function rewrittenPrompt(prompt: string, camera: Camera): Promise<string | undefined> {
+async function rewrittenPrompt(
+  prompt: string,
+  camera: Camera,
+  signal: AbortSignal,
+): Promise<string | undefined> {
   const cameraContext = [camera.camera, camera.lens, camera.focalLength ? `${camera.focalLength}mm` : undefined, camera.aperture]
     .filter(Boolean)
     .join(", ");
@@ -81,6 +86,7 @@ async function rewrittenPrompt(prompt: string, camera: Camera): Promise<string |
     ],
     stopWhen: stepCountIs(1),
     temperature: 0.3,
+    abortSignal: signal,
   });
   const json = result.text.trim().match(/\{[\s\S]*\}/)?.[0];
   if (json === undefined) return undefined;
@@ -96,15 +102,20 @@ const nanoBanana: ModelFamily = {
    * Write the camera into the prompt.
    * @param prompt - The reader's description.
    * @param params - The validated run params.
+   * @param signal - The run's deadline.
    * @returns The structured prompt; no extra upstream fields.
    */
   prepare: async (
     prompt: string,
     params: Readonly<Record<string, unknown>>,
+    signal: AbortSignal,
   ): Promise<{ prompt: string; fields: Record<string, unknown> }> => {
     const camera = cameraOf(params);
     try {
-      return { prompt: (await rewrittenPrompt(prompt, camera)) ?? plainPrompt(prompt, camera), fields: {} };
+      return {
+        prompt: (await rewrittenPrompt(prompt, camera, signal)) ?? plainPrompt(prompt, camera),
+        fields: {},
+      };
     } catch (err) {
       // The rewrite is an enhancement: without it the plain shape still
       // carries the description and the camera.

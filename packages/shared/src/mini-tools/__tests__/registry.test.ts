@@ -301,15 +301,15 @@ describe("drawing tools", () => {
     expect(input.params.images).toEqual([SKETCH]);
   });
 
-  it("sends the upright copy as the image and the mask under the mask param", () => {
+  it("sends the node's source as the image and the mask under the mask param", () => {
     const input = miniToolEstimateInput(miniToolById("image.inpaint")!, {
       params: {},
       prompt: "a bow tie",
       source: { url: SOURCE },
       slots: {},
-      drawing: { image: COPY, mask: MASK },
+      drawing: { mask: MASK },
     });
-    expect(input.params.image).toBe(COPY);
+    expect(input.params.image).toBe(SOURCE);
     expect(input.params.mask_image).toBe(MASK);
     expect(input.sources).toEqual(["image", "mask_image"]);
   });
@@ -324,13 +324,22 @@ describe("drawing tools", () => {
       slots: {},
     };
 
-    it("takes a mask tool's run with both drawn images", () => {
+    it("takes a mask tool's run with the mask alone", () => {
+      const parsed = miniToolRequestSchema.safeParse({
+        ...base,
+        tool: "image.erase",
+        drawing: { mask: MASK },
+      });
+      expect(parsed.success).toBe(true);
+    });
+
+    it("refuses a mask tool's run that sends a picture in place of the source", () => {
       const parsed = miniToolRequestSchema.safeParse({
         ...base,
         tool: "image.erase",
         drawing: { image: COPY, mask: MASK },
       });
-      expect(parsed.success).toBe(true);
+      expect(parsed.success).toBe(false);
     });
 
     it("refuses a mask tool's run without the drawing", () => {
