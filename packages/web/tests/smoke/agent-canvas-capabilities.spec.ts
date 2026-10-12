@@ -21,6 +21,7 @@
  */
 import { expect, type Page } from 'playwright/test';
 import { test } from '../helpers/slot';
+import { startNewConversation } from '../helpers/conversation';
 
 import { openSmokeProject } from '../helpers/project';
 
@@ -75,7 +76,7 @@ test('names a model this deployment can actually serve @needs-model', async () =
   );
 
   // Its own conversation, so what this measures is what this turn produced.
-  await page.getByTestId('new-conversation').click();
+  await startNewConversation(page);
   await expect(page.getByTestId('message-bubble')).toHaveCount(0, { timeout: 20_000 });
 
   // One question with nothing left to settle. A prompt that leaves a choice

@@ -13,6 +13,7 @@ import { join } from 'node:path';
 
 import { expect, type Page } from 'playwright/test';
 import { test } from '../helpers/slot';
+import { startNewConversation } from '../helpers/conversation';
 
 import { openSmokeProject } from '../helpers/project';
 import { storedPicture, uniquePicture, watchQueuedFinish } from '../helpers/upload';
@@ -54,7 +55,7 @@ async function pasteInto(
 
 test.beforeEach(async ({ page }) => {
   await openSmokeProject(page);
-  await page.getByTestId('new-conversation').click();
+  await startNewConversation(page);
   await expect(page.getByTestId('message-bubble')).toHaveCount(0, { timeout: 20_000 });
 });
 

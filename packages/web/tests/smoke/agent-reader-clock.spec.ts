@@ -12,6 +12,7 @@
  */
 import { expect, type Browser, type Page } from 'playwright/test';
 import { test } from '../helpers/slot';
+import { startNewConversation } from '../helpers/conversation';
 
 import { openSmokeProject } from '../helpers/project';
 
@@ -100,7 +101,7 @@ async function askHere(p: Page, question: string): Promise<string> {
  * @param p - The signed-in page.
  */
 async function newConversation(p: Page): Promise<void> {
-  await p.getByTestId('new-conversation').click();
+  await startNewConversation(p);
   await expect(p.getByTestId('message-bubble')).toHaveCount(0, { timeout: 20_000 });
 }
 

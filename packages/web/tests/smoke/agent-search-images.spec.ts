@@ -21,6 +21,7 @@
  */
 import { expect, type Page } from 'playwright/test';
 import { test } from '../helpers/slot';
+import { startNewConversation } from '../helpers/conversation';
 
 import { openSmokeProject } from '../helpers/project';
 
@@ -65,7 +66,7 @@ async function aTurnThatFoundPictures(target: Page): Promise<void> {
   await expect(composer).toBeVisible({ timeout: 20_000 });
 
   for (let turn = 1; turn <= TURNS_TO_SEARCH; turn += 1) {
-    await target.getByTestId('new-conversation').click();
+    await startNewConversation(target);
     await expect(target.getByTestId('message-bubble')).toHaveCount(0, { timeout: 20_000 });
 
     imageRequests.length = 0;

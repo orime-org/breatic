@@ -9,6 +9,7 @@
  */
 import { expect, type Page } from 'playwright/test';
 import { test } from '../helpers/slot';
+import { startNewConversation } from '../helpers/conversation';
 
 import { openSmokeProject } from '../helpers/project';
 
@@ -61,16 +62,7 @@ async function pasteText(page: Page, text: string): Promise<void> {
 
 test.beforeEach(async ({ page }) => {
   await openSmokeProject(page);
-  // The box is read-only while the new conversation opens, and a paste made
-  // then is lost; under load the create request is slow enough for that.
-  const opened = page.waitForResponse(
-    (r) => r.request().method() === 'POST' && new URL(r.url()).pathname === '/api/v1/chat/conversations',
-  );
-  await page.getByTestId('new-conversation').click();
-  await opened;
-  await expect(page.getByTestId('chat-composer-box')).toHaveAttribute('contenteditable', 'true', {
-    timeout: 20_000,
-  });
+  await startNewConversation(page);
   await expect(page.getByTestId('message-bubble')).toHaveCount(0, { timeout: 20_000 });
 });
 
@@ -239,6 +231,7 @@ test('Shift+Tab out of an open @ list hides it and leaves the focused control un
 
 test('keys typed while a new conversation opens land in the box', async ({ page }) => {
   const box = page.getByTestId('chat-composer-box');
+  // eslint-disable-next-line no-restricted-syntax -- this case types into the box while the new conversation is still opening, which is the window startNewConversation waits out.
   await page.getByTestId('new-conversation').click();
   await box.focus();
   await expect(box).toHaveAttribute('contenteditable', 'true', { timeout: 20_000 });
@@ -257,7 +250,7 @@ test('a new conversation opens on its own empty draft, not the words left in the
   await box.pressSequentially(' here');
   await expect(page.getByTestId('chat-reference')).toBeVisible();
 
-  await page.getByTestId('new-conversation').click();
+  await startNewConversation(page);
 
   await expect(box).toHaveAttribute('contenteditable', 'true', { timeout: 20_000 });
   await expect(box).toHaveText('');

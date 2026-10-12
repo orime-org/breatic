@@ -10,6 +10,7 @@
  */
 import { expect, type Page } from 'playwright/test';
 import { test } from '../helpers/slot';
+import { startNewConversation } from '../helpers/conversation';
 
 import { openSmokeProject } from '../helpers/project';
 
@@ -53,7 +54,7 @@ async function read(page: Page): Promise<{ text: string; composing: boolean }> {
  * @param text - The words.
  */
 async function start(page: Page, text: string): Promise<void> {
-  await page.getByTestId('new-conversation').click();
+  await startNewConversation(page);
   await page.locator(BOX).click();
   await page.evaluate(([sel, t]) => {
     const e = (document.querySelector(sel as string) as unknown as { editor: { view: { dispatch: (x: unknown) => void }; state: { tr: { insertText: (s: string) => { setMeta: (k: string, v: unknown) => unknown } } } } }).editor;

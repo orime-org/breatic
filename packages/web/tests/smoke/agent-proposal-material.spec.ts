@@ -17,6 +17,7 @@ import { join } from 'node:path';
 
 import { expect, type Page } from 'playwright/test';
 import { test } from '../helpers/slot';
+import { startNewConversation } from '../helpers/conversation';
 
 import { openSmokeProject } from '../helpers/project';
 import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
@@ -99,7 +100,7 @@ test.beforeEach(async ({ browser }) => {
   await openSmokeProject(page);
   spaceId = await createSpace(page, 'canvas', `material-${String(Date.now())}`);
   await expect(page.getByTestId('chat-composer-box')).toBeVisible({ timeout: 20_000 });
-  await page.getByTestId('new-conversation').click();
+  await startNewConversation(page);
   await expect(page.getByTestId('message-bubble')).toHaveCount(0, { timeout: 20_000 });
 });
 

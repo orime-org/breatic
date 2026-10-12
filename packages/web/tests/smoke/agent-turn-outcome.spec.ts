@@ -15,6 +15,7 @@
  */
 import { expect, type Page } from 'playwright/test';
 import { test } from '../helpers/slot';
+import { startNewConversation } from '../helpers/conversation';
 
 import { openSmokeProject } from '../helpers/project';
 
@@ -48,7 +49,7 @@ async function answerWith(page: Page, chunks: object[]): Promise<void> {
  */
 async function sendOne(page: Page): Promise<void> {
   await openSmokeProject(page);
-  await page.getByTestId('new-conversation').click();
+  await startNewConversation(page);
   await expect(page.getByTestId('message-bubble')).toHaveCount(0, { timeout: 20_000 });
   const composer = page.getByTestId('chat-composer-box');
   await composer.fill('outcome probe');

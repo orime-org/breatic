@@ -28,6 +28,7 @@
  */
 import { expect, type Page } from 'playwright/test';
 import { test } from '../helpers/slot';
+import { startNewConversation } from '../helpers/conversation';
 
 import { openSmokeProject } from '../helpers/project';
 
@@ -59,7 +60,7 @@ async function aQuestionWaitingForAnswer(target: Page): Promise<void> {
   const composer = target.getByTestId('chat-composer-box');
   await expect(composer).toBeVisible({ timeout: 20_000 });
 
-  await target.getByTestId('new-conversation').click();
+  await startNewConversation(target);
   await expect(target.getByTestId('message-bubble')).toHaveCount(0, { timeout: 20_000 });
 
   await composer.fill(

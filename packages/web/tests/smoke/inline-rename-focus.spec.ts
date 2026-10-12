@@ -13,6 +13,7 @@
  */
 import { expect, type Page } from 'playwright/test';
 import { test } from '../helpers/slot';
+import { startNewConversation } from '../helpers/conversation';
 
 import { openSmokeProject } from '../helpers/project';
 import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
@@ -161,7 +162,7 @@ async function openHistoryAtAnotherRow(): Promise<{ rowId: string; currentBefore
   if ((await others.count()) === 0) {
     await page.keyboard.press('Escape');
     await expect(page.getByTestId('conversation-history-sheet')).toHaveCount(0);
-    await page.getByTestId('new-conversation').click();
+    await startNewConversation(page);
     await page.getByTestId('open-conversation-history').click();
     await expect(others.first()).toBeAttached({ timeout: 15_000 });
   }

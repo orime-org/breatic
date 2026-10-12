@@ -284,6 +284,21 @@ export default [
     },
   },
   {
+    // The composer is read-only while a new conversation opens and drops what
+    // is written into it then; startNewConversation waits that out.
+    files: ['tests/**/*.ts'],
+    ignores: ['tests/helpers/conversation.ts'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: 'CallExpression[callee.property.name="getByTestId"][arguments.0.value="new-conversation"]',
+          message: 'Start a conversation with startNewConversation from tests/helpers/conversation.ts, which waits until the composer takes input.',
+        },
+      ],
+    },
+  },
+  {
     // A helper module runs once per worker, so a hook at its top level binds
     // to the first test file that imports it and to no other.
     files: ['tests/helpers/**/*.ts'],
