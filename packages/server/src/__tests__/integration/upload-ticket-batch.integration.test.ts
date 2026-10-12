@@ -37,6 +37,7 @@ import {
   getMembershipLimits,
 } from "@breatic/core";
 import { assetRepo } from "@breatic/domain";
+import { signSessionToken } from "@breatic/shared";
 import type { Hono } from "hono";
 
 try {
@@ -263,5 +264,52 @@ describe("the batch form of the upload ticket", () => {
     const res = await batch(b.cookie, gridBody(a.projectId, [tile()]));
 
     expect(res.status).toBe(404);
+  });
+});
+
+/**
+ * Ask to finish one upload, holding a token the Worker would have given it.
+ * The key has no grant, so a request the limit lets through answers 404.
+ * @param cookie - The caller's session.
+ * @param uploadId - The upload.
+ * @returns The response.
+ */
+async function finish(cookie: string, uploadId: string): Promise<Response> {
+  const token = await signSessionToken(
+    {
+      storageKey: `image/2026-10-12/${uploadId}.png`,
+      uploadId,
+      contentType: "image/png",
+      expiresAt: Date.now() + 900_000,
+      partSize: 8 * 1024 * 1024,
+      totalParts: 1,
+    },
+    process.env.INGEST_SHARED_SECRET ?? "",
+  );
+  return app.request(`/api/v1/assets/uploads/${uploadId}/complete`, {
+    method: "POST",
+    headers: { "content-type": "application/json", cookie, "x-upload-token": token },
+    body: JSON.stringify({ parts: [{ partNumber: 1, etag: "etag-1" }] }),
+  });
+}
+
+describe("finishing a batch's uploads", () => {
+  it("finishes 64 uploads in a minute without meeting the limit", async () => {
+    const a = await account();
+
+    const statuses: number[] = [];
+    for (let i = 0; i < 64; i++) statuses.push((await finish(a.cookie, crypto.randomUUID())).status);
+
+    expect(statuses.filter((status) => status === 429)).toEqual([]);
+  });
+
+  it("limits finishing one upload over and over", async () => {
+    const a = await account();
+    const uploadId = crypto.randomUUID();
+
+    const statuses: number[] = [];
+    for (let i = 0; i < 30; i++) statuses.push((await finish(a.cookie, uploadId)).status);
+
+    expect(statuses).toContain(429);
   });
 });
