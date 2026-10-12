@@ -145,14 +145,13 @@ export function autoScrollOf(view: EditorView): BodyAutoScroll | undefined {
 
 /**
  * What a drag that just started scrolls: a column drag its table's frame,
- * sideways; anything else the body. A body not on screen — a Space kept
- * mounted while another one shows — scrolls nothing.
+ * sideways; anything else the body.
  * @param view - The editor view.
  * @returns The target, or null when there is nothing to scroll.
  */
 function dragTargetOf(view: EditorView): DragTarget | null {
   const body = bodyScrollerOf(view);
-  if (body === null || body.checkVisibility?.() === false) return null;
+  if (body === null) return null;
   const source = dragSourceOf(view.state);
   if (source?.orientation === 'column') {
     const frame = tableFrameOf(view, source.cellPos);
