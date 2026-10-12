@@ -201,8 +201,24 @@ describe('what counts as the visitor choosing', () => {
     } finally {
       document.body.innerHTML = '';
     }
-    expect(library.setCookieData).toHaveBeenCalledWith(expect.objectContaining({ value: expect.objectContaining({ source: 'settings' }) }));
+    // Saving changed no category, so the choice keeps the time it was made and the cookie's lifetime.
+    expect(library.setCookieData).toHaveBeenCalledWith({ value: { source: 'settings', decidedAt: '2026-10-12T00:00:00.000Z' }, mode: 'overwrite' });
     expect(seen).toHaveLength(2);
+  });
+
+  it('does not carry a press from a window that never hid into the next one', async () => {
+    library.consent = true;
+    await startBanner('US');
+    document.body.innerHTML = '<div id="cc-main"><div class="pm"><button data-role="save"></button></div></div>';
+    try {
+      // A second click of a double click lands while the window fades out; no hide follows it.
+      document.querySelector<HTMLButtonElement>('[data-role="save"]')?.click();
+    } finally {
+      document.body.innerHTML = '';
+    }
+    library.config?.onModalShow?.({ modalName: 'preferencesModal' });
+    library.config?.onModalHide?.({ modalName: 'preferencesModal' });
+    expect(library.setCookieData).not.toHaveBeenCalled();
   });
 
   it('does not file closing the settings window as a choice', async () => {
@@ -297,7 +313,20 @@ describe('the country lookup', () => {
     answer('US');
     await started;
     expect(library.acceptCategory).not.toHaveBeenCalled();
-    expect(library.reset).not.toHaveBeenCalled();
+    // The library started on an empty cookie; it starts again on the stored choice, so its settings window shows it.
+    expect(library.reset).toHaveBeenCalledWith(false);
+    expect(library.run.mock.invocationCallOrder.at(-1)).toBeGreaterThan(library.reset.mock.invocationCallOrder.at(-1) ?? Infinity);
     expect(seen.at(-1)).toMatchObject({ analytics: false, ads: false, source: 'banner' });
+  });
+});
+
+describe('a choice stored under a newer policy revision', () => {
+  it('stands in a tab still running the older code', async () => {
+    library.consent = true;
+    library.cookie = { ...library.cookie, revision: 2, categories: ['necessary', 'analytics'] };
+    const seen: unknown[] = [];
+    await startBanner('US', (choice) => seen.push(choice));
+    expect(library.acceptCategory).not.toHaveBeenCalled();
+    expect(seen.at(-1)).toMatchObject({ analytics: true, ads: false });
   });
 });

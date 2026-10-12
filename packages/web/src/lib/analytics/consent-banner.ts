@@ -79,7 +79,10 @@ export function followPage(pathname: string): void {
  */
 export function readBrowserChoice(): BrowserChoice | null {
   const cookie = CookieConsent.getCookie();
-  if (cookie.revision !== CONSENT_REVISION || !Array.isArray(cookie.categories)) return null;
+  // A newer revision is a choice made under a newer policy, in a tab running newer code: it stands here too.
+  if (typeof cookie.revision !== 'number' || cookie.revision < CONSENT_REVISION || !Array.isArray(cookie.categories)) {
+    return null;
+  }
   const data = (cookie.data ?? {}) as { source?: unknown; decidedAt?: unknown };
   const source = CONSENT_SOURCES.find((s) => s === data.source) ?? 'banner';
   const decidedAt = typeof data.decidedAt === 'string' ? data.decidedAt : cookie.lastConsentTimestamp;
@@ -113,10 +116,13 @@ function stamp(source: ConsentSource, decidedAt: string): void {
   CookieConsent.setCookieData({ value: { source, decidedAt }, mode: 'overwrite' });
 }
 
-/** A choice the visitor made in the banner or the settings window. */
-function onVisitorChoice(): void {
+/**
+ * A choice the visitor made in the banner or the settings window.
+ * @param decidedAt - When; a save that changed no category keeps the time the cookie's lifetime counts from.
+ */
+function onVisitorChoice(decidedAt: string = new Date().toISOString()): void {
   if (openedModal === null) return;
-  stamp(openedModal === 'preferencesModal' ? 'settings' : 'banner', new Date().toISOString());
+  stamp(openedModal === 'preferencesModal' ? 'settings' : 'banner', decidedAt);
   openedModal = null;
   undecided = false;
   lastSeen = readBrowserChoice();
@@ -232,6 +238,8 @@ async function boot(options: BannerOptions): Promise<void> {
     },
     onModalShow: ({ modalName }) => {
       if (modalName === 'consentModal' || modalName === 'preferencesModal') openedModal = modalName;
+      // A press on a window that was already hiding (a double click) never reached onModalHide.
+      if (modalName === 'preferencesModal') saving = false;
     },
     // A choice that changed a category reports before the window hides and clears openedModal.
     // A save that changed nothing reports nothing, yet is the visitor's choice; closing the window
@@ -239,18 +247,25 @@ async function boot(options: BannerOptions): Promise<void> {
     onModalHide: ({ modalName }) => {
       if (modalName !== 'preferencesModal') return;
       if (openedModal === 'preferencesModal') {
-        if (saving) onVisitorChoice();
+        if (saving) onVisitorChoice(readBrowserChoice()?.decidedAt);
         else openedModal = undecided && onBannerPage ? 'consentModal' : null;
       }
       saving = false;
     },
-    onFirstConsent: onVisitorChoice,
-    onChange: onVisitorChoice,
+    onFirstConsent: () => onVisitorChoice(),
+    onChange: () => onVisitorChoice(),
   });
 
-  const country = readBrowserChoice() ? null : await options.country;
-  // Read after the lookup: a choice another tab stored meanwhile is the one in force.
+  // What the library loaded into its own memory, which its settings window shows.
+  const loaded = readBrowserChoice();
+  const country = loaded ? null : await options.country;
   const stored = readBrowserChoice();
+  // Another tab stored a choice during the lookup: start again on it, as resync does.
+  if (!sameChoice(stored, loaded)) {
+    CookieConsent.reset(false);
+    await boot(options);
+    return;
+  }
   const decision = decideOnLoad({
     stored,
     optIn: requiresOptIn(country),
