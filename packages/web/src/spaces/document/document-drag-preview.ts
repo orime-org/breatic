@@ -34,6 +34,7 @@ import type { EditorView } from '@tiptap/pm/view';
 import { MEDIA_CHROME } from '@web/spaces/document/DocumentMediaBlock';
 import type { DragOrientation } from '@web/spaces/document/document-table-drag';
 import { cellAt, cellsOfScope } from '@web/spaces/document/document-table-run';
+import { withoutViewState } from '@web/spaces/document/document-view-state';
 
 /** The longest a drag preview's side may be, in px (user 2026-10-10). */
 export const PREVIEW_LONGEST_SIDE = 512;
@@ -179,9 +180,10 @@ function originalOf(view: EditorView, copy: Element, selector: string): Element 
 }
 
 /**
- * Turns copied content into what the preview shows: no media toolbar, each
- * table as its table alone, a still of each video. Run while the copies are
- * still in their copied blocks, where their originals can be found.
+ * Turns copied content into what the preview shows: the content without what
+ * the body shows for the moment (`document-view-state.ts`), no media toolbar,
+ * each table as its table alone, a still of each video. Run while the copies
+ * are still in their copied blocks, where their originals can be found.
  *
  * A table block holds its table inside the frame it scrolls in, and the frame
  * draws a scrollbar and the edges of what is scrolled off. The preview shows
@@ -191,6 +193,7 @@ function originalOf(view: EditorView, copy: Element, selector: string): Element 
  * @param content - The copied content.
  */
 function settle(view: EditorView, content: Element): void {
+  withoutViewState(view, content);
   content.querySelectorAll(MEDIA_CHROME).forEach((chrome) => {
     chrome.remove();
   });

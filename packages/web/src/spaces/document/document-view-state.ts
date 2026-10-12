@@ -21,13 +21,21 @@
  */
 
 import { Decoration } from '@tiptap/pm/view';
-import type { DecorationAttrs } from '@tiptap/pm/view';
+import type { DecorationAttrs, EditorView } from '@tiptap/pm/view';
 
 /** The spec key a view-state decoration records what it adds under. */
 const RECORD = 'docViewState';
 
 /** The attribute a view-state widget's element carries. */
 const WIDGET_ATTRIBUTE = 'data-view-state';
+
+/**
+ * What the libraries the body runs on paint for the moment: prosemirror-tables'
+ * layer over the cells of a cell selection, prosemirror-view's class on a
+ * selected node, prosemirror-gapcursor's caret.
+ */
+const LIBRARY_CLASSES = ['selectedCell', 'ProseMirror-selectednode'];
+const LIBRARY_ELEMENTS = '.ProseMirror-gapcursor';
 
 /** What a view-state decoration adds to the elements it lands on. */
 interface ViewStateRecord {
@@ -99,3 +107,43 @@ export const viewState = {
   },
 };
 
+
+/**
+ * Whether a decoration's spec holds a view-state record.
+ * @param spec - The spec.
+ * @returns The record, or null.
+ */
+function recordIn(spec: unknown): ViewStateRecord | null {
+  if (typeof spec !== 'object' || spec === null) return null;
+  const record = (spec as Record<string, unknown>)[RECORD];
+  return typeof record === 'object' && record !== null ? (record as ViewStateRecord) : null;
+}
+
+/**
+ * Takes what the body shows for the moment off a copy of it, leaving the
+ * content: what every view-state decoration now in the view added, and what
+ * the libraries paint for the moment.
+ * @param view - The editor view the copy was taken from.
+ * @param copy - The copy.
+ */
+export function withoutViewState(view: EditorView, copy: Element): void {
+  const classes = new Set(LIBRARY_CLASSES);
+  const attributes = new Set<string>();
+  view.someProp('decorations', (decorations) => {
+    decorations(view.state)?.forEachSet((set) => {
+      set.find().forEach((decoration) => {
+        const record = recordIn(decoration.spec);
+        record?.classes.forEach((name) => classes.add(name));
+        record?.attributes.forEach((name) => attributes.add(name));
+      });
+    });
+  });
+  copy.querySelectorAll(`[${WIDGET_ATTRIBUTE}], ${LIBRARY_ELEMENTS}`).forEach((el) => {
+    el.remove();
+  });
+  [copy, ...copy.querySelectorAll('*')].forEach((el) => {
+    classes.forEach((name) => el.classList.remove(name));
+    attributes.forEach((name) => el.removeAttribute(name));
+    if (el.getAttribute('class') === '') el.removeAttribute('class');
+  });
+}

@@ -22,13 +22,14 @@
 import { createExtension } from '@blocknote/core';
 import type { Node as PMNode } from '@tiptap/pm/model';
 import { Plugin, PluginKey, type EditorState } from '@tiptap/pm/state';
-import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view';
+import { DecorationSet, type EditorView } from '@tiptap/pm/view';
 
 import type { BlockNoteEditor, ComputeDropPositionContext } from '@blocknote/core';
 
 import { followCell, renameCell, type CellName } from '@web/spaces/document/document-table-cell-name';
 import { bodyScrollerOf, SCROLL_VIEWPORT } from '@web/spaces/document/document-body-autoscroll';
 import { cellAt, moveLineAt } from '@web/spaces/document/document-table-run';
+import { viewState } from '@web/spaces/document/document-view-state';
 
 /** Which way a drag moves cells. */
 export type DragOrientation = 'row' | 'column';
@@ -322,7 +323,7 @@ function dropLine(state: EditorState): DecorationSet {
   const decorations = at.map.cellsInRect(rect).map((rel) => {
     const pos = at.tableStart + rel;
     const cell = state.doc.nodeAt(pos)!;
-    return Decoration.node(pos, pos + cell.nodeSize, {
+    return viewState.node(pos, pos + cell.nodeSize, {
       class: `doc-table-drop-${drag.orientation}-${side}`,
     });
   });
