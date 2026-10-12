@@ -8,10 +8,11 @@
  * their tallest tile, which needs every tile's size at once.
  */
 
-import { outputsOf, type MiniToolOutput, type MiniToolSpec } from '@breatic/shared/mini-tools';
+import { defaultParamsOf, outputsOf, type MiniToolOutput, type MiniToolSpec } from '@breatic/shared/mini-tools';
 
 import { EMPTY_NODE_SIZE } from '@web/spaces/canvas/group-geometry';
 import { GAP_PX, NODE_STEP } from '@web/spaces/canvas/drop-layout';
+import { gridTileRects } from '@web/spaces/canvas/mini-tool/grid-export';
 import { MODALITY_LABEL } from '@web/spaces/canvas/nodes/_shared/modality';
 
 /** A result's pixel size, when the run already knows it. */
@@ -42,6 +43,28 @@ const MEDIA_FRAME_PX = 2 * 1 + 2 * 4;
 function nodeHeight(size: OutputSize | undefined): number {
   if (!size || size.width <= 0 || size.height <= 0) return EMPTY_NODE_SIZE.height;
   return ((EMPTY_NODE_SIZE.width - MEDIA_FRAME_PX) * size.height) / size.width + MEDIA_FRAME_PX;
+}
+
+/**
+ * The pixel sizes a run's results will have, as far as they are known before
+ * the browser makes them, so the nodes can be built at the press (inner#1303
+ * §6.7): a grid's tiles come from the source's size by the export's own cut;
+ * every other tool's layout does not depend on its results' sizes.
+ * @param spec - The tool.
+ * @param params - The run's params.
+ * @param source - The source's pixel size, where its node knows it.
+ * @param source.width - Its width.
+ * @param source.height - Its height.
+ * @returns One size per result, or none when they are not known yet.
+ */
+export function plannedOutputSizes(
+  spec: MiniToolSpec,
+  params: Record<string, unknown>,
+  source: { width?: number | undefined; height?: number | undefined },
+): OutputSize[] {
+  if (spec.outputLayout !== 'grid' || source.width === undefined || source.height === undefined) return [];
+  const { rows, cols } = { ...defaultParamsOf(spec), ...params } as { rows: number; cols: number };
+  return gridTileRects(source.width, source.height, rows, cols).map(({ width, height }) => ({ width, height }));
 }
 
 /**

@@ -28,7 +28,7 @@ import { DrawingEmptyError } from '@web/spaces/canvas/mini-tool/export-drawing';
 import { ImageTooLargeError } from '@web/spaces/canvas/mini-tool/adjust-export';
 import { NODE_STEP } from '@web/spaces/canvas/drop-layout';
 import { outputPlacementOf } from '@web/spaces/canvas/mini-tool/output-placement';
-import { startMiniToolRun, type MiniToolRun } from '@web/spaces/canvas/mini-tool/start-mini-tool-run';
+import { startMiniToolRun, type ExportedFile, type MiniToolRun } from '@web/spaces/canvas/mini-tool/start-mini-tool-run';
 import { useUploadMarksStore, type UploadMark } from '@web/stores/upload-marks';
 
 const SPACE = '22222222-2222-4222-8222-222222222222';
@@ -165,8 +165,11 @@ describe('startMiniToolRun', () => {
 
   // A13: the nodes are on the canvas before the browser starts its export.
   it('builds the nodes of a browser tool before its export, waiting', async () => {
-    let done: (files: unknown) => void = () => undefined;
-    const run = press({ spec: tool('image.adjust'), exportFile: vi.fn(() => new Promise((resolve) => (done = resolve))) });
+    let done: (files: ExportedFile[]) => void = () => undefined;
+    const run = press({
+      spec: tool('image.adjust'),
+      exportFile: vi.fn(() => new Promise<ExportedFile[]>((resolve) => (done = resolve))),
+    });
     const work = startMiniToolRun(run);
     await vi.waitFor(() => expect(run.exportFile).toHaveBeenCalled());
     expect(canvas.addNode).toHaveBeenCalledTimes(1);

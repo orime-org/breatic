@@ -8,10 +8,7 @@
  * the reader's content; what the run does then lands on their task rows.
  */
 
-import {
-  newId,
-  t,
-} from '@breatic/shared';
+import { newId } from '@breatic/shared';
 import {
   outputTemplateOf,
   type MiniToolRequest,
@@ -26,12 +23,11 @@ import { ApiException } from '@web/data/api/types';
 import type { MiniToolUploadTag } from '@web/data/upload/ingest-upload';
 import { UploadFailedError } from '@web/data/upload/media-upload';
 import { addEdge, addNode, runCanvasUndoBatch } from '@web/data/yjs/canvas-space';
-import { toast } from '@web/lib/toast';
 import { NODE_STEP } from '@web/spaces/canvas/drop-layout';
 import { ImageTooLargeError } from '@web/spaces/canvas/mini-tool/adjust-export';
 import { DrawingEmptyError, type DrawingExport } from '@web/spaces/canvas/mini-tool/export-drawing';
 import { exportsBeforeRun } from '@web/spaces/canvas/mini-tool/mini-tool-view';
-import { outputPlacementOf, type OutputSize, type PlacedOutput } from '@web/spaces/canvas/mini-tool/output-placement';
+import { outputPlacementOf, plannedOutputSizes, type OutputSize, type PlacedOutput } from '@web/spaces/canvas/mini-tool/output-placement';
 import { groupBackgroundFor } from '@web/spaces/canvas/group-background';
 import { planGroupCreation } from '@web/spaces/canvas/group-creation';
 import { writeGroup } from '@web/spaces/canvas/group-write';
@@ -42,6 +38,7 @@ import { createEmptyNode, type CreatableNodeType } from '@web/spaces/canvas/node
 import { resolveUploadFailure } from '@web/spaces/canvas/upload-failure';
 import type { DrawOp } from '@web/stores/drawing-draft';
 import type { MarkObject } from '@web/stores/mark-draft';
+import { useUploadMarksStore, type UploadMarkMessage } from '@web/stores/upload-marks';
 
 /** The node a tool reads, as the canvas holds it. */
 export interface MiniToolSourceNode {
@@ -180,14 +177,18 @@ function requestOf(run: MiniToolRun, nodeIds: string[], uploads: PressUploads): 
   };
 }
 
+/** Why a press stopped before its run started, said on the nodes it built. */
+type Stopped = { failed: UploadMarkMessage };
+
 /**
- * Say why an upload of a drawing's image did not complete.
+ * Why an upload of a drawing's image did not complete.
  * @param err - What the upload threw.
+ * @returns The message for the nodes.
  */
-function toastUploadFailure(err: unknown): void {
-  // Without a task id every reason resolves to a toast.
+function uploadFailureMessage(err: unknown): UploadMarkMessage {
+  // Without a task id every reason resolves to a message of its own.
   const plan = resolveUploadFailure({ reason: err instanceof UploadFailedError ? err.reason : 'upload' });
-  if (plan.kind === 'toastOnly') toast[plan.severity](t(plan.toastKey));
+  return { key: plan.kind === 'toastOnly' ? plan.toastKey : 'canvas.upload.failed' };
 }
 
 /**
@@ -195,17 +196,16 @@ function toastUploadFailure(err: unknown): void {
  * @param run - The press.
  * @param kind - Mask or sketch.
  * @param ops - The strokes at the press.
- * @returns Where the images are kept, or null when the reader was told why not.
+ * @returns Where the images are kept, or why they could not be made.
  */
-async function uploadDrawing(run: MiniToolRun, kind: DrawingKind, ops: readonly DrawOp[]): Promise<DrawingUrls | null> {
+async function uploadDrawing(run: MiniToolRun, kind: DrawingKind, ops: readonly DrawOp[]): Promise<DrawingUrls | Stopped> {
   let made: DrawingExport;
   try {
     made = await run.exportDrawing(run.snapshot.source.url, kind, ops);
   } catch (err) {
-    toast.warning(
-      t(err instanceof DrawingEmptyError ? 'canvas.miniTool.panel.drawingEmpty' : 'canvas.miniTool.panel.exportFailed'),
-    );
-    return null;
+    return {
+      failed: { key: err instanceof DrawingEmptyError ? 'canvas.miniTool.panel.drawingEmpty' : 'canvas.miniTool.panel.exportFailed' },
+    };
   }
   const prefix = outputTemplateOf(run.spec).namePrefix;
   /**
@@ -220,8 +220,7 @@ async function uploadDrawing(run: MiniToolRun, kind: DrawingKind, ops: readonly 
       ? { mask: await run.uploadImage(pngFile(made.mask, 'mask')) }
       : { image: await run.uploadImage(pngFile(made.image, 'sketch')) };
   } catch (err) {
-    toastUploadFailure(err);
-    return null;
+    return { failed: uploadFailureMessage(err) };
   }
 }
 
@@ -230,19 +229,18 @@ async function uploadDrawing(run: MiniToolRun, kind: DrawingKind, ops: readonly 
  * @param run - The press.
  * @param frame - The frame at the press.
  * @param sourceSize - The source's pixels the frame was measured against.
- * @returns Where the two images are kept, or null when the reader was told why not.
+ * @returns Where the two images are kept, or why they could not be made.
  */
 async function uploadExpand(
   run: MiniToolRun,
   frame: ExpandFrame,
   sourceSize: PixelSize,
-): Promise<NonNullable<MiniToolRequest['expand']> | null> {
+): Promise<NonNullable<MiniToolRequest['expand']> | Stopped> {
   let made: ExpandExport;
   try {
     made = await run.exportExpand(run.snapshot.source.url, frame, sourceSize);
   } catch {
-    toast.warning(t('canvas.miniTool.panel.exportFailed'));
-    return null;
+    return { failed: { key: 'canvas.miniTool.panel.exportFailed' } };
   }
   const prefix = outputTemplateOf(run.spec).namePrefix;
   try {
@@ -252,18 +250,17 @@ async function uploadExpand(
     ]);
     return { image, mask };
   } catch (err) {
-    toastUploadFailure(err);
-    return null;
+    return { failed: uploadFailureMessage(err) };
   }
 }
 
 /**
- * Everything before the build: the browser's own work and the check that the
- * source is still there.
+ * The browser's own work for a press, after its nodes are built, and the check
+ * that the source is still there.
  * @param run - The press.
- * @returns The file or images made, or null when the press stops here.
+ * @returns The file or images made, or why the press stops here.
  */
-async function prepare(run: MiniToolRun): Promise<{ files?: ExportedFile[]; uploads: PressUploads } | null> {
+async function prepare(run: MiniToolRun): Promise<{ files?: ExportedFile[]; uploads: PressUploads } | Stopped> {
   const { spec, snapshot, capture } = run;
   let files: ExportedFile[] | undefined;
   const uploads: PressUploads = {};
@@ -271,26 +268,22 @@ async function prepare(run: MiniToolRun): Promise<{ files?: ExportedFile[]; uplo
     try {
       files = await run.exportFile(spec, snapshot, capture);
     } catch (err) {
-      toast.warning(
-        t(err instanceof ImageTooLargeError ? 'canvas.miniTool.panel.imageTooLarge' : 'canvas.miniTool.panel.exportFailed'),
-      );
-      return null;
+      return {
+        failed: { key: err instanceof ImageTooLargeError ? 'canvas.miniTool.panel.imageTooLarge' : 'canvas.miniTool.panel.exportFailed' },
+      };
     }
   }
   if (spec.drawing !== undefined && capture?.kind === 'strokes') {
     const urls = await uploadDrawing(run, spec.drawing.kind, capture.ops);
-    if (urls === null) return null;
+    if ('failed' in urls) return urls;
     uploads.drawing = urls;
   }
   if (spec.expand !== undefined && capture?.kind === 'expand') {
     const urls = await uploadExpand(run, capture.frame, capture.sourceSize);
-    if (urls === null) return null;
+    if ('failed' in urls) return urls;
     uploads.expand = urls;
   }
-  if (!run.sourceExists()) {
-    toast.warning(t('canvas.miniTool.panel.sourceGone'));
-    return null;
-  }
+  if (!run.sourceExists()) return { failed: { key: 'canvas.miniTool.panel.sourceGone' } };
   return { ...(files !== undefined && { files }), uploads };
 }
 
@@ -336,33 +329,27 @@ function groupResults(
 /**
  * Build the result nodes, wire them to the source, and start the run.
  *
- * A browser tool's file, or a drawing tool's images and their upload, are made
- * first: a failed export or upload, like a source deleted meanwhile, builds
- * nothing and says so. A server tool's request
- * goes out after the nodes exist; a refusal opened no row, so the press is
- * where it is said, and the nodes stay.
+ * The nodes and their group are built at the press, laid out from the sizes
+ * the results will have, and the uploader sees them wait (inner#1303 §6.7).
+ * The browser's own work follows: a browser tool's file, or a drawing tool's
+ * images and their upload. A failure there, a source deleted meanwhile, or a
+ * server tool's refused request is said on the nodes, which stay.
  * @param run - The press.
  * @returns Nothing; what happens next is on the new nodes' task rows.
  */
 export async function startMiniToolRun(run: MiniToolRun): Promise<void> {
   const { projectId, spaceId, userId, spec, source } = run;
 
-  const exports = exportsBeforeRun(spec);
-  if (exports) run.setExporting(true);
-  let prepared: Awaited<ReturnType<typeof prepare>>;
-  try {
-    prepared = await prepare(run);
-  } finally {
-    if (exports) run.setExporting(false);
-  }
-  if (prepared === null) return;
-  const { files, uploads } = prepared;
-
   const base = {
     x: source.position.x + (source.groupOrigin?.x ?? 0) + NODE_STEP.x,
     y: source.position.y + (source.groupOrigin?.y ?? 0),
   };
-  const placements = outputPlacementOf(spec, run.snapshot.params, files?.map((made) => made.size) ?? [], source.name);
+  const placements = outputPlacementOf(
+    spec,
+    run.snapshot.params,
+    plannedOutputSizes(spec, run.snapshot.params, source),
+    source.name,
+  );
   const nodes = placements.map((placed) => {
     const built = createEmptyNode(placed.output.modality, { x: base.x + placed.x, y: base.y + placed.y }, userId);
     return { ...built, data: { ...built.data, name: placed.name } };
@@ -380,9 +367,41 @@ export async function startMiniToolRun(run: MiniToolRun): Promise<void> {
     }
     if (spec.groupOutputs === true) group = groupResults(run, nodes, placements);
   });
+  // The press has its place on the canvas at once; the uploader sees each node
+  // wait until the server answers (inner#1303 §6.7).
+  const marks = useUploadMarksStore.getState();
+  const ops = nodes.map((node) => marks.begin(spaceId, node.id));
+  /**
+   * End this press's marks: answered, or failed with a message.
+   * @param message - Why it stopped, or undefined when the server answered.
+   */
+  const settle = (message?: UploadMarkMessage): void => {
+    const now = useUploadMarksStore.getState();
+    nodes.forEach((node, index) => {
+      const op = ops[index]!;
+      if (message === undefined) now.answer(spaceId, node.id, op);
+      else now.fail(spaceId, node.id, op, message);
+    });
+  };
   if (run.stillOpen()) run.onBuilt(nodes.map((node) => ({ id: node.id, position: node.position })), group);
 
+  const exports = exportsBeforeRun(spec);
+  if (exports) run.setExporting(true);
+  let prepared: Awaited<ReturnType<typeof prepare>>;
+  try {
+    prepared = await prepare(run);
+  } finally {
+    if (exports) run.setExporting(false);
+  }
+  if ('failed' in prepared) {
+    settle(prepared.failed);
+    return;
+  }
+  const { files, uploads } = prepared;
+
   if (files !== undefined) {
+    // The upload marks the nodes again from its own start to its own answer.
+    settle();
     const tag: MiniToolUploadTag = { source: 'mini_tool', toolName: spec.id };
     const output = outputTemplateOf(spec);
     const [node] = nodes;
@@ -403,13 +422,14 @@ export async function startMiniToolRun(run: MiniToolRun): Promise<void> {
 
   try {
     await miniToolsApi.run(requestOf(run, nodes.map((node) => node.id), uploads));
+    settle();
   } catch (err) {
     // The server's sentence when it gave one, already in the reader's
     // language; a request that never arrived has none.
-    toast.error(
+    settle(
       err instanceof ApiException && err.fromServer && err.message
-        ? err.message
-        : t('canvas.miniTool.panel.couldNotStart'),
+        ? { text: err.message }
+        : { key: 'canvas.miniTool.panel.couldNotStart' },
     );
   }
 }
