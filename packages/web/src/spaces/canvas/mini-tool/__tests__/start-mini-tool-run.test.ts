@@ -178,7 +178,7 @@ describe('startMiniToolRun', () => {
     expect(members.map((member: { id: string }) => member.id)).toEqual(nodes.map((node) => node.id));
     expect(run.onBuilt).toHaveBeenCalledWith(
       nodes.map((node) => ({ id: node.id, position: node.position })),
-      { id: group.id, position: group.position, width: group.width, height: group.height },
+      { id: group.id, position: group.position, width: group.data.width, height: group.data.height },
     );
   });
 
