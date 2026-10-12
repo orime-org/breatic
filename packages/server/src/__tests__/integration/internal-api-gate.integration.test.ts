@@ -143,7 +143,13 @@ const REJECT_BODY = { reason: "Buyer asked twice; policy says no." };
 describe("signature (§4.2): each failed step is 401 and writes nothing", () => {
   const nowSeconds = () => Math.floor(Date.now() / 1000);
 
-  const refusals: { name: string; opts: Parameters<typeof call>[2] }[] = [
+  // The timestamp rows are thunks: their offset must be taken when the request
+  // is sent, not when the table is collected, because startup in between eats
+  // into the 1-second margin past the 300-second window. The future row is
+  // 302: both clocks are floored to whole seconds, so a second boundary
+  // crossed between signing and checking turns +301 into +300 (accepted).
+  type Opts = Parameters<typeof call>[2];
+  const refusals: { name: string; opts: Opts | (() => Opts) }[] = [
     { name: "no signature headers at all", opts: { unsigned: true } },
     { name: "the signature header missing", opts: { headerOverrides: { "x-internal-signature": undefined } } },
     { name: "the admin id outside [A-Za-z0-9_-]", opts: { admin: "admin 7" } },
@@ -151,8 +157,8 @@ describe("signature (§4.2): each failed step is 401 and writes nothing", () => 
     { name: "a nonce shorter than 16 characters", opts: { nonce: "abcdefghijklmno" } },
     { name: "a timestamp that is not Unix seconds", opts: { headerOverrides: { "x-internal-timestamp": "2026-10-12T00:00:00Z" } } },
     { name: "a signature without the v1= prefix", opts: { headerOverrides: { "x-internal-signature": "a".repeat(64) } } },
-    { name: "a timestamp 301 seconds in the past", opts: { timestamp: nowSeconds() - 301 } },
-    { name: "a timestamp 301 seconds in the future", opts: { timestamp: nowSeconds() + 301 } },
+    { name: "a timestamp 301 seconds in the past", opts: () => ({ timestamp: nowSeconds() - 301 }) },
+    { name: "a timestamp 302 seconds in the future", opts: () => ({ timestamp: nowSeconds() + 302 }) },
     { name: "a signature made with an unknown secret", opts: { secret: "not-the-shared-secret-at-all-0000" } },
     { name: "a body changed after signing", opts: { signedBody: JSON.stringify({ reason: "something else" }) } },
     { name: "an idempotency key changed after signing", opts: { signedIdempotencyKey: "bo-op-the-signed-one" } },
@@ -166,7 +172,7 @@ describe("signature (§4.2): each failed step is 401 and writes nothing", () => 
     const res = await call(running.baseUrl, paths.reject(lot.lotId), {
       body: REJECT_BODY,
       idempotencyKey: freshKey("reject"),
-      ...opts,
+      ...(typeof opts === "function" ? opts() : opts),
     });
 
     expect(res.status).toBe(401);
