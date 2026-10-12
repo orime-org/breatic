@@ -85,11 +85,7 @@ function tally(attrs: DecorationAttrs, added: Added): void {
  * @returns The classes, attributes and style properties.
  */
 function addedByDecorations(view: EditorView): Added {
-  const added: Added = {
-    classes: new Set([SELECTED_NODE_CLASS]),
-    attributes: new Set(VIEW_ATTRIBUTES),
-    properties: new Set(),
-  };
+  const added: Added = { classes: new Set(), attributes: new Set(), properties: new Set() };
   view.someProp('decorations', (decorations) => {
     decorations(view.state)?.forEachSet((set) => {
       set.find().forEach((decoration) => {
@@ -105,7 +101,8 @@ function addedByDecorations(view: EditorView): Added {
 
 /**
  * Takes what the body shows for the moment off a copy of it, leaving the
- * content: every widget, and what every decoration but the content's own adds.
+ * content: every widget, what every decoration but the content's own adds, the
+ * selected node's class and the media box's state.
  * @param view - The editor view the copy was taken from.
  * @param copy - The copy.
  */
@@ -115,6 +112,8 @@ export function withoutViewState(view: EditorView, copy: Element): void {
     widget.remove();
   });
   [copy, ...copy.querySelectorAll('*')].forEach((el) => {
+    el.classList.remove(SELECTED_NODE_CLASS);
+    VIEW_ATTRIBUTES.forEach((name) => el.removeAttribute(name));
     added.classes.forEach((name) => el.classList.remove(name));
     added.attributes.forEach((name) => el.removeAttribute(name));
     if (el instanceof HTMLElement) added.properties.forEach((property) => el.style.removeProperty(property));
