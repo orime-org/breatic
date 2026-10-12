@@ -100,6 +100,22 @@ describe('NodeExpandLayer', () => {
     expect(screen.getByTestId('mini-tool-expand-frame').style.left).toBe(left);
   });
 
+  it('starts a new opening with the picture over the node', () => {
+    mount();
+    act(() => store().setExpand({ frame: { x: -0.5, y: 0, width: 2, height: 1 }, ratio: 'free' }));
+    drag(screen.getByTestId('mini-tool-expand-source'), [300, 200], [340, 200]);
+    // Pull both sides back in to the picture: the frame is the picture's size again.
+    drag(screen.getByTestId('mini-tool-expand-handle-w'), [-160, 150], [600, 150]);
+    drag(screen.getByTestId('mini-tool-expand-handle-e'), [600, 150], [-600, 150]);
+    expect(store().miniTool?.expand?.frame).toEqual(UNIT_FRAME);
+    act(() => {
+      store().closeActivePanel();
+      store().openMiniTool('n1', 'image.expand', { sourceContent: NODE.src, params: {} });
+      store().setMiniToolSourceSize({ width: 1600, height: 1000 });
+    });
+    expect(screen.getByTestId('mini-tool-expand-frame').style.left).toBe('0px');
+  });
+
   it('does not move the picture while the frame is the picture itself', () => {
     mount();
     drag(screen.getByTestId('mini-tool-expand-source'), [300, 200], [340, 200]);
