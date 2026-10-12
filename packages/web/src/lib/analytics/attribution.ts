@@ -70,9 +70,13 @@ export function readAttribution(): Attribution | null {
   }
 }
 
-/** Record the current page's source; called once a consent category is accepted. */
-export function captureAttribution(): void {
-  const touch = touchFrom(new URL(window.location.href), document.referrer, new Date().toISOString());
+/**
+ * Record the landing's source; called once a consent category is accepted.
+ * @param landing - The address the visitor arrived on.
+ * @param referrer - `document.referrer` at arrival.
+ */
+export function captureAttribution(landing: URL, referrer: string): void {
+  const touch = touchFrom(landing, referrer, new Date().toISOString());
   if (touch === null) return;
   try {
     localStorage.setItem(STORAGE_KEYS.attribution, JSON.stringify(mergeTouch(readAttribution(), touch)));

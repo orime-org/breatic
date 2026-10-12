@@ -75,12 +75,15 @@ export function followPage(next: string): void {
 /** Start the banner and the vendors the visitor accepts; call once at startup. */
 export function startProductAnalytics(): void {
   if (!ANALYTICS_CONFIGURED || runtime !== null) return;
+  // Read before the first render: the router rewrites the address (`/` to /studio, a signed-out visitor to /login)
+  // long before consent applies. Held in memory only, so it needs no consent.
+  const landing = new URL(window.location.href);
+  const referrer = document.referrer;
   runtime = import('@web/lib/analytics/runtime').then(async (module) => {
     module.onConsentChange((next) => {
       consent = next;
-      // The landing is read once per page load; a later consent change would read a page the visitor navigated to.
       if (next.analytics || next.ads) {
-        if (!attributionCaptured) captureAttribution();
+        if (!attributionCaptured) captureAttribution(landing, referrer);
         attributionCaptured = true;
       } else {
         clearAttribution();
