@@ -52,13 +52,18 @@ const sent: OutgoingEvent[] = [];
 const failures: string[] = [];
 const ACCEPT: ConsentSnapshot = { analytics: true, ads: false };
 
-beforeAll(() => {
-  sql = postgres(inject("DATABASE_URL"), { max: 2, prepare: false });
+/** Turn server analytics on, recording what it sends. */
+function configureAnalytics(): void {
   initServerAnalytics({
     apiKey: "0123456789abcdef0123456789abcdef",
     onError: (message) => void failures.push(message),
     createClient: () => ({ track: (event) => void sent.push(event), flush: async () => undefined }),
   });
+}
+
+beforeAll(() => {
+  sql = postgres(inject("DATABASE_URL"), { max: 2, prepare: false });
+  configureAnalytics();
 });
 
 afterEach(() => {
@@ -123,6 +128,19 @@ describe("collaborator_first_action", () => {
   it("counts the first action under no consent as had, without sending it", async () => {
     const { projectId, collaboratorId } = await sharedProject();
     await reportCollaboratorFirstAction({ projectId, userId: collaboratorId, action: "asset" });
+    await reportCollaboratorFirstAction({ projectId, userId: collaboratorId, action: "asset" }, ACCEPT);
+    expect(sent).toEqual([]);
+  });
+
+  it("counts a first action reached before analytics was configured as had", async () => {
+    const { projectId, collaboratorId } = await sharedProject();
+    resetServerAnalyticsForTest();
+    setAdsConversionConfigForTest(null);
+    try {
+      await reportCollaboratorFirstAction({ projectId, userId: collaboratorId, action: "asset" }, ACCEPT);
+    } finally {
+      configureAnalytics();
+    }
     await reportCollaboratorFirstAction({ projectId, userId: collaboratorId, action: "asset" }, ACCEPT);
     expect(sent).toEqual([]);
   });

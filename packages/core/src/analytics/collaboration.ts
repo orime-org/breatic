@@ -63,12 +63,13 @@ export async function reportCollaboratorFirstAction(
   input: { projectId: string; userId: string; action: CollaborationAction },
   consent: ConsentSnapshot = currentConsent(),
 ): Promise<void> {
-  if (!serverAnalyticsOn() && adsConversionConfig() === null) return;
   try {
     const project = await findCreatorAndStudio(input.projectId);
     if (!project || project.createdByUserId === input.userId) return;
     const key = `collab:${input.projectId}:${input.userId}`;
+    // Claimed whatever the deployment sends, so a first reached before analytics was configured is not reported later.
     if (!(await claimMilestone(key))) return;
+    if (!serverAnalyticsOn() && adsConversionConfig() === null) return;
     trackServerEvent(
       "collaborator_first_action",
       {
