@@ -26,6 +26,13 @@ import { withoutViewState } from '@web/spaces/document/document-view-state';
 /** The element in the body each copy takes the place of. */
 const places = new WeakMap<Element, Element>();
 
+/**
+ * A box's size, under every name a computed style gives it. The content's own
+ * is the preview's: where its styles are worked out the body's block group
+ * fills the editor element, and that fills its scroller.
+ */
+const SIZE = /^(min-|max-)?(width|height|inline-size|block-size)$/;
+
 /** The pseudo-elements a block draws with: list markers, a quote's rule. */
 const PSEUDOS = ['::before', '::after'] as const;
 
@@ -127,7 +134,8 @@ export function writeBodyStyles(view: EditorView, content: HTMLElement): HTMLSty
     );
     const set = new Set(mine.map(([property]) => property));
     own[index]!.forEach(([property, value]) => {
-      if (!set.has(property)) element.style.setProperty(property, value, 'important');
+      if (set.has(property) || (element === content && SIZE.test(property))) return;
+      element.style.setProperty(property, value, 'important');
     });
     mine.forEach(([property, value]) => {
       element.style.removeProperty(property);
