@@ -54,8 +54,8 @@ const PREVIEW_CLASS = 'doc-drag-preview';
 /** A scroll frame's scrollbar (`components/ui/scroll-area`). */
 const SCROLLBAR = `[${SCROLLBAR_MARK}]`;
 
-/** Where each copied element is scrolled to in the body, left and top. */
-const scrolls = new WeakMap<Element, readonly [number, number]>();
+/** A table's scroll frame, the part that scrolls. */
+const SCROLL_VIEWPORT = '[data-radix-scroll-area-viewport]';
 
 /** A media block's box: the media and nothing around it. */
 const MEDIA_BOX = '[data-media-box]';
@@ -134,14 +134,6 @@ export function buildDragPreview(
   layer.append(content);
   root.append(layer, sheet);
   page.body.append(root);
-  // A copy starts at the top left of what it scrolls; it takes the place its
-  // original is at, so the preview shows what the body shows.
-  [content, ...content.querySelectorAll('*')].forEach((element) => {
-    const held = scrolls.get(element);
-    if (held === undefined) return;
-    element.scrollLeft = held[0];
-    element.scrollTop = held[1];
-  });
   const size = measure(layer);
   const scale = previewScale(size.width, size.height);
   root.style.width = `${size.width * scale}px`;
@@ -185,19 +177,44 @@ function nestingOf(view: EditorView, original: Element): number {
 }
 
 /**
- * Records where every element of a copy is scrolled to in the body, for the
- * preview to scroll its copy there once it is laid out. Run before anything is
- * taken out of the copy, while it has its original's structure.
- * @param copy - The copy.
- * @param original - What it was copied from.
+ * The columns of a table its frame has scrolled wholly out of view on the
+ * left, by index, read off the cells of its first row (no cell there is
+ * covered from a row above). A cell the frame's edge cuts through is in view.
+ * @param table - The table in the body.
+ * @returns The columns' indexes.
  */
-function holdScrolls(copy: Element, original: Element): void {
-  const copies = [copy, ...copy.querySelectorAll('*')];
-  [original, ...original.querySelectorAll('*')].forEach((element, index) => {
-    const twin = copies[index];
-    if (twin !== undefined && (element.scrollLeft !== 0 || element.scrollTop !== 0)) {
-      scrolls.set(twin, [element.scrollLeft, element.scrollTop]);
+function columnsScrolledOff(table: Element | null | undefined): Set<number> {
+  const hidden = new Set<number>();
+  const viewport = table?.closest(SCROLL_VIEWPORT);
+  if (table === null || table === undefined || viewport === null || viewport === undefined || viewport.scrollLeft === 0) {
+    return hidden;
+  }
+  const edge = viewport.getBoundingClientRect().left;
+  let column = 0;
+  table.querySelector('tr')?.querySelectorAll(':scope > td, :scope > th').forEach((cell) => {
+    const span = Number(cell.getAttribute('colspan')) || 1;
+    if (cell.getBoundingClientRect().right <= edge + 0.5) {
+      for (let at = column; at < column + span; at += 1) hidden.add(at);
     }
+    column += span;
+  });
+  return hidden;
+}
+
+/**
+ * Leaves the given columns out of a copied table, which then starts at the
+ * first column in view, unscrolled. Chromium takes a drag image as the box of
+ * the element handed over joined with every descendant that has a layer of
+ * its own, whether clipped or not, and anchors the pointer at that box's top
+ * left (`data_transfer.cc` `DraggedNodeImageBuilder`, `layout_object.cc`
+ * `AddAbsoluteRectForLayer`): cells scrolled off to the left would put the
+ * preview that far from the pointer.
+ * @param table - The copied table.
+ * @param hidden - The columns to leave out.
+ */
+function collapseColumns(table: Element | null | undefined, hidden: ReadonlySet<number>): void {
+  table?.querySelectorAll<HTMLElement>('col').forEach((col, index) => {
+    if (hidden.has(index)) col.style.setProperty('visibility', 'collapse', 'important');
   });
 }
 
@@ -324,8 +341,8 @@ export function blockPreviewContent(view: EditorView, blocks: readonly Element[]
     return box;
   }
   blocks.forEach((block) => {
-    const from = originalRow(view, block);
-    if (from !== null) holdScrolls(block, from);
+    const tables = [...(originalRow(view, block)?.querySelectorAll('table') ?? [])];
+    block.querySelectorAll('table').forEach((table, index) => collapseColumns(table, columnsScrolledOff(tables[index])));
   });
   const original = blocks[0] === undefined ? null : originalRow(view, blocks[0]);
   const content = page.createElement('div');
@@ -369,13 +386,16 @@ function columnWidths(view: EditorView, at: NonNullable<ReturnType<typeof cellAt
  * own rule for a table's width is (`.bn-editor [data-content-type=table] table`).
  * @param copy - The copied table block.
  * @param widths - The kept columns' widths in the body, in order.
+ * @param hidden - The columns left out, which take no width.
  */
-function holdColumns(copy: Element, widths: readonly number[]): void {
+function holdColumns(copy: Element, widths: readonly number[], hidden: ReadonlySet<number> = new Set()): void {
   const cols = [...copy.querySelectorAll<HTMLElement>('col')];
   if (widths.some((width) => width <= 0) || cols.length !== widths.length) return;
   cols.forEach((col, index) => col.style.setProperty('width', `${widths[index]}px`, 'important'));
   const table = copy.querySelector<HTMLElement>('table');
-  table?.style.setProperty('width', `${widths.reduce((sum, width) => sum + width, 0)}px`, 'important');
+  const width = widths.reduce((sum, each, index) => (hidden.has(index) ? sum : sum + each), 0);
+  table?.style.setProperty('width', `${width}px`, 'important');
+  collapseColumns(table, hidden);
   table?.style.setProperty('table-layout', 'fixed', 'important');
 }
 
@@ -402,7 +422,6 @@ export function tableLinePreviewContent(
   const block = cells[0]?.closest(TABLE_BLOCK);
   if (block === null || block === undefined) return null;
   const copy = block.cloneNode(true) as HTMLElement;
-  holdScrolls(copy, block);
   // The copy has the original's structure, so a cell is at its own place.
   const originals = [...block.querySelectorAll('td, th')];
   const copies = [...copy.querySelectorAll('td, th')];
@@ -426,7 +445,8 @@ export function tableLinePreviewContent(
       table.style.minWidth = '0';
     });
   }
-  holdColumns(copy, orientation === 'column' ? [widths[at.left] ?? 0] : widths);
+  if (orientation === 'column') holdColumns(copy, [widths[at.left] ?? 0]);
+  else holdColumns(copy, widths, columnsScrolledOff(block.querySelector('table')));
   standsFor(copy, block);
   settle(view, copy, block);
   return copy;
@@ -458,7 +478,6 @@ export function tableRowsPreviewContent(
   const block = (view.nodeDOM(cellPos) as Element | null)?.closest(TABLE_BLOCK);
   if (block === null || block === undefined) return null;
   const copy = block.cloneNode(true) as HTMLElement;
-  holdScrolls(copy, block);
   // The copy has the original's structure, so a cell is at its own place.
   const originals = [...block.querySelectorAll('td, th')];
   const copies = [...copy.querySelectorAll('td, th')];
@@ -485,7 +504,7 @@ export function tableRowsPreviewContent(
     }
     row.replaceChildren(...cells);
   });
-  holdColumns(copy, columnWidths(view, at));
+  holdColumns(copy, columnWidths(view, at), columnsScrolledOff(block.querySelector('table')));
   standsFor(copy, block);
   settle(view, copy, block);
   return copy;
