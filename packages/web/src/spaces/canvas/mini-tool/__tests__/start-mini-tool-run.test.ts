@@ -68,6 +68,7 @@ function press(over: Partial<MiniToolRun> = {}): MiniToolRun {
     sourceExists: () => true,
     exportFile: vi.fn(),
     fillUpload: vi.fn(),
+    fillUploads: vi.fn(),
     exportDrawing: vi.fn(),
     uploadImage: vi.fn(),
     setExporting: vi.fn(),
@@ -125,7 +126,7 @@ describe('startMiniToolRun', () => {
     const run = press({
       spec: tool('image.rotate'),
       source: { id: 'src', name: 'IMG', position: { x: 0, y: 0 }, groupOrigin: null, mimeType: 'image/png' },
-      exportFile: vi.fn(() => Promise.resolve(file)),
+      exportFile: vi.fn(() => Promise.resolve([{ file }])),
     });
     await startMiniToolRun(run);
     const [node] = canvas.addNode.mock.calls.map((call) => call[2]);
@@ -134,6 +135,27 @@ describe('startMiniToolRun', () => {
       toolName: 'image.rotate',
     });
     expect(api.run).not.toHaveBeenCalled();
+  });
+
+  it('names and places the tiles of a grid and fills them in one batch', async () => {
+    const files = [0, 1, 2, 3].map((i) => new File(['x'], `t${i}.png`, { type: 'image/png' }));
+    const run = press({
+      spec: tool('image.grid'),
+      snapshot: { ...SNAPSHOT, params: { rows: 2, cols: 2 } },
+      source: { id: 'src', name: 'IMG', position: { x: 0, y: 0 }, groupOrigin: null, mimeType: 'image/png' },
+      exportFile: vi.fn(() => Promise.resolve(files.map((file) => ({ file, size: { width: 50, height: 50 } })))),
+    });
+
+    await startMiniToolRun(run);
+
+    const nodes = canvas.addNode.mock.calls.map((call) => call[2]);
+    expect(nodes.map((node) => node.data.name)).toEqual(['GRID-r1c1-IMG', 'GRID-r1c2-IMG', 'GRID-r2c1-IMG', 'GRID-r2c2-IMG']);
+    expect(nodes[1].position.x - nodes[0].position.x).toBe(NODE_STEP.x);
+    expect(run.fillUploads).toHaveBeenCalledWith(
+      nodes.map((node, i) => ({ nodeId: node.id, file: files[i] })),
+      { source: 'mini_tool', toolName: 'image.grid' },
+    );
+    expect(run.fillUpload).not.toHaveBeenCalled();
   });
 
   // §7.5 2b: an export that fails builds nothing.
@@ -243,7 +265,7 @@ describe('startMiniToolRun', () => {
 
   it('holds a browser tool busy through its export, and a server tool not at all', async () => {
     const file = new File(['x'], 'a.png', { type: 'image/png' });
-    const browser = press({ spec: tool('image.rotate'), exportFile: vi.fn(() => Promise.resolve(file)) });
+    const browser = press({ spec: tool('image.rotate'), exportFile: vi.fn(() => Promise.resolve([{ file }])) });
     await startMiniToolRun(browser);
     expect(vi.mocked(browser.setExporting).mock.calls).toEqual([[true], [false]]);
     const server = press();
