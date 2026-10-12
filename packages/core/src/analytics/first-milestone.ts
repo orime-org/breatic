@@ -9,9 +9,7 @@
  * shipped were claimed by migration 0094.
  */
 
-import { adsConversionConfig } from "@core/ads/ads-conversion.js";
 import { claimMilestone } from "@core/analytics/milestone.repo.js";
-import { serverAnalyticsOn } from "@core/analytics/server-analytics.js";
 import type { DbTx } from "@core/db/client.js";
 
 /** The milestones an account reaches once. */
@@ -19,14 +17,13 @@ export type FirstMilestone = "first-agent" | "first-generation" | "first-project
 
 /**
  * Claim an account's first milestone of a kind. Claimed whatever the
- * account's consent, so a first reached while analytics was off is not
- * reported later as a first; skipped on a deployment that sends nothing.
+ * account's consent and whatever the deployment sends, so a first reached
+ * while analytics was off or unconfigured is not reported later as a first.
  * @param kind - Which milestone.
  * @param userId - The account.
  * @param tx - A transaction to claim it in.
  * @returns True when this call is the account's first.
  */
 export async function claimFirstMilestone(kind: FirstMilestone, userId: string, tx?: DbTx): Promise<boolean> {
-  if (!serverAnalyticsOn() && adsConversionConfig() === null) return false;
   return claimMilestone(`${kind}:${userId}`, tx);
 }
