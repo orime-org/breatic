@@ -177,6 +177,8 @@ function toTranslation(text: ConsentText, privacyUrl: string): CookieConsent.Tra
     },
     preferencesModal: {
       title: text.settings.title,
+      acceptAllBtn: text.banner.acceptAll,
+      acceptNecessaryBtn: text.banner.rejectAll,
       savePreferencesBtn: text.settings.save,
       closeIconLabel: text.settings.close,
       sections: [
