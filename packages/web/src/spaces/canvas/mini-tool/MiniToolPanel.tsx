@@ -94,12 +94,15 @@ export interface MiniToolPanelProps {
  * say so.
  * @param props - Component props.
  * @param props.expand - The presets.
+ * @param props.exporting - Whether the press is exporting, when no preset is taken.
  * @returns The group.
  */
 const ExpandRatioGroup = React.memo(function ExpandRatioGroup({
   expand,
+  exporting,
 }: {
   expand: NonNullable<MiniToolPanelProps['expand']>;
+  exporting: boolean;
 }): React.JSX.Element {
   const t = useTranslation();
   return (
@@ -117,9 +120,9 @@ const ExpandRatioGroup = React.memo(function ExpandRatioGroup({
               size={null}
               data-testid={`mini-tool-expand-ratio-${ratio}`}
               aria-current={expand.ratio === ratio}
-              aria-disabled={!fits}
+              aria-disabled={!fits || exporting}
               onClick={() => {
-                if (fits) expand.onRatio(ratio);
+                if (fits && !exporting) expand.onRatio(ratio);
               }}
               className={`${PARAM_OPTION_CLASS} aria-disabled:cursor-not-allowed aria-disabled:opacity-50`}
             >
@@ -271,7 +274,9 @@ export const MiniToolPanel = React.memo(function MiniToolPanel(props: MiniToolPa
     >
       <div className='flex flex-col gap-2.5 px-3 pb-2.5'>
         {spec.drawing !== undefined ? <DrawingControls kind={spec.drawing.kind} /> : null}
-        {props.expand !== undefined ? <ExpandRatioGroup expand={props.expand} /> : null}
+        {props.expand !== undefined ? (
+          <ExpandRatioGroup expand={props.expand} exporting={refusal === 'exporting'} />
+        ) : null}
         {spec.slots.length > 0 ? (
           <div className='flex flex-wrap gap-1.5'>
             {spec.slots.map((slot) => {
