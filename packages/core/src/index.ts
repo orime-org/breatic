@@ -217,7 +217,10 @@ export { currentConsent, runWithConsent } from "@core/analytics/consent-context.
 export {
   flushServerAnalytics,
   initServerAnalytics,
+  resetServerAnalyticsForTest,
   trackServerEvent,
+  type AnalyticsClient,
+  type OutgoingEvent,
   type ServerAnalyticsStart,
 } from "@core/analytics/server-analytics.js";
 

@@ -31,7 +31,7 @@ import {
 // A self-referencing FK needs its column type spelled out, since the table is
 // still being defined at the point the reference is written.
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
-import type { AccountConsent, ConsentSnapshot, MessagePart } from "@breatic/shared";
+import type { AccountConsent, Attribution, ConsentSnapshot, MessagePart } from "@breatic/shared";
 import { PROJECT_NAME_MAX_CHARS } from "@breatic/shared";
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -136,7 +136,7 @@ export const users = pgTable(
     analyticsConsent: jsonb("analytics_consent").$type<AccountConsent>(),
     // First-touch and last-touch campaign source, written at sign-up from
     // what the browser kept after consent (0094, inner#1442).
-    attribution: jsonb("attribution").$type<Record<string, unknown>>(),
+    attribution: jsonb("attribution").$type<Attribution>(),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
     ...timestamps,
   },

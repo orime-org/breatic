@@ -96,7 +96,7 @@ export function sanitizeEventProperties(
  * @param address - A URL or a path, possibly with a query or fragment.
  * @returns The path alone.
  */
-function pathOf(address: string): string {
+export function pathOf(address: string): string {
   try {
     return new URL(address, "https://placeholder.invalid").pathname;
   } catch {
