@@ -151,15 +151,35 @@ export function setDragPreview(view: EditorView, dataTransfer: DataTransfer, con
   dataTransfer.setDragImage(buildDragPreview(view, content), 0, 0);
 }
 
+/** The custom property a quoted line's rule is placed by (`document-decorations.ts`). */
+const QUOTE_DEPTH = '--quote-depth';
+/** A quoted line's content element. */
+const QUOTED_LINE = '[data-quoted-run]';
+
 /**
- * The body column's content width.
+ * How deep a block sits in the body: the block groups around it but the body's
+ * own.
  * @param view - The editor view.
- * @returns The width, in px.
+ * @param original - The block's element in the body.
+ * @returns The depth, 0 at the top.
  */
-function columnWidth(view: EditorView): number {
-  const style = view.dom.ownerDocument.defaultView?.getComputedStyle(view.dom);
-  const padding = (parseFloat(style?.paddingLeft ?? '') || 0) + (parseFloat(style?.paddingRight ?? '') || 0);
-  return view.dom.clientWidth - padding;
+function nestingOf(view: EditorView, original: Element): number {
+  let groups = 0;
+  for (let at = original.parentElement; at !== null && at !== view.dom; at = at.parentElement) {
+    if (at.classList.contains(BLOCK_GROUP_CLASS)) groups += 1;
+  }
+  return Math.max(0, groups - 1);
+}
+
+/**
+ * The row in the body a copied row was copied from.
+ * @param view - The editor view.
+ * @param copy - The copied row.
+ * @returns The original, or null when the copy carries no block id.
+ */
+function originalRow(view: EditorView, copy: Element): Element | null {
+  const id = copy.getAttribute('data-id');
+  return id === null ? null : view.dom.querySelector(`${ROW}[data-id="${id}"]`);
 }
 
 /**
@@ -189,11 +209,24 @@ function originalOf(view: EditorView, copy: Element, selector: string): Element 
  * draws a scrollbar and the edges of what is scrolled off. The preview shows
  * every column, so none of that is true of it: the block keeps its table and
  * nothing else.
+ *
+ * The copy is the top of the preview, out of the groups it is nested in in the
+ * body. A quoted line pulls its rule back over its own indent
+ * (`[data-quoted-run]` in `index.css`), so every line counts its indent from
+ * the copy's top: the rule stands beside the copy as beside a block at the top
+ * of the body, rather than past the preview's left edge.
  * @param view - The editor view.
  * @param content - The copied content.
+ * @param original - The element in the body the copy's top was copied from.
  */
-function settle(view: EditorView, content: Element): void {
+function settle(view: EditorView, content: Element, original: Element | null): void {
   withoutViewState(view, content);
+  const base = original === null ? 0 : nestingOf(view, original);
+  [content, ...content.querySelectorAll(QUOTED_LINE)].forEach((line) => {
+    if (!(line instanceof HTMLElement) || !line.matches(QUOTED_LINE)) return;
+    const depth = Number(line.style.getPropertyValue(QUOTE_DEPTH)) || 0;
+    line.style.setProperty(QUOTE_DEPTH, String(Math.max(0, depth - base)));
+  });
   content.querySelectorAll(MEDIA_CHROME).forEach((chrome) => {
     chrome.remove();
   });
@@ -233,8 +266,8 @@ function stillOf(copy: HTMLVideoElement, original: HTMLVideoElement | null): HTM
  * media block with nothing nested under it is its media box; anything else is
  * the blocks, in a block group at the width of the body column.
  *
- * Each copy carries what it had in the body: the width it is drawn at, and the
- * group its nested blocks' indent is read in.
+ * Each copy carries what it had in the body: the width of the group it sits in,
+ * and the group its nested blocks' indent is read in.
  * @param view - The editor view.
  * @param blocks - The copied blocks.
  * @returns The content, detached.
@@ -253,15 +286,17 @@ export function blockPreviewContent(view: EditorView, blocks: readonly Element[]
     // is held to it), and the preview wraps its content.
     const original = originalOf(view, box, MEDIA_BOX);
     if (original !== null) box.style.width = `${original.getBoundingClientRect().width}px`;
-    settle(view, lone!);
+    settle(view, lone!, originalRow(view, lone!));
     box.remove();
     return box;
   }
+  const original = blocks[0] === undefined ? null : originalRow(view, blocks[0]);
   const content = page.createElement('div');
   content.className = BLOCK_GROUP_CLASS;
-  content.style.width = `${columnWidth(view)}px`;
+  const width = original?.parentElement?.getBoundingClientRect().width ?? 0;
+  if (width > 0) content.style.width = `${width}px`;
   content.append(...blocks);
-  settle(view, content);
+  settle(view, content, original);
   return content;
 }
 
@@ -315,7 +350,7 @@ export function tableLinePreviewContent(
   const drawn = orientation === 'row' ? block.querySelector('table') : cells[0];
   const width = drawn?.getBoundingClientRect().width ?? 0;
   if (width > 0) copy.style.width = `${width}px`;
-  settle(view, copy);
+  settle(view, copy, block);
   return copy;
 }
 
@@ -373,7 +408,7 @@ export function tableRowsPreviewContent(
   });
   const width = block.querySelector('table')?.getBoundingClientRect().width ?? 0;
   if (width > 0) copy.style.width = `${width}px`;
-  settle(view, copy);
+  settle(view, copy, block);
   return copy;
 }
 

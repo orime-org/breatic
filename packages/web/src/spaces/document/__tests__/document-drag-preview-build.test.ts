@@ -166,10 +166,11 @@ describe('buildDragPreview', () => {
 });
 
 describe('blockPreviewContent', () => {
-  it('takes a text block at the width of the body column', () => {
+  it('takes a text block at the width of the group it sits in, the body column at the top', () => {
     const editor = open([{ type: 'paragraph', content: 'one' }]);
     const view = editor.prosemirrorView!;
-    Object.defineProperty(view.dom, 'clientWidth', { value: 720, configurable: true });
+    const group = view.dom.querySelector('.bn-block-group')!;
+    Object.defineProperty(group, 'getBoundingClientRect', { value: () => ({ width: 720, height: 0, top: 0, left: 0, right: 720, bottom: 0 }) });
     const block = view.dom.querySelector('.bn-block-outer')!.cloneNode(true) as HTMLElement;
     const content = blockPreviewContent(view, [block]);
     expect(content.style.width).toBe('720px');
