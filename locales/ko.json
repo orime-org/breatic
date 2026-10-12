@@ -1015,7 +1015,8 @@
         "couldNotStart": "도구를 시작하지 못했습니다. 다시 시도하세요.",
         "drawingEmpty": "먼저 그림 위에 그려 주세요.",
         "reset": "초기화",
-        "imageTooLarge": "이 이미지는 너무 커서 이 기기에서 색 보정할 수 없습니다."
+        "imageTooLarge": "이 이미지는 너무 커서 이 기기에서 색 보정할 수 없습니다.",
+        "sourceTooLargeToExpand": "이 이미지는 이미 확장할 수 있는 최대 크기입니다."
       },
       "adjust": {
         "exposure": "노출",

@@ -36,7 +36,7 @@ import {
   type MiniToolSourceInfo,
 } from '@web/spaces/canvas/mini-tool/mini-tool-view';
 import { hasInk } from '@web/spaces/canvas/mini-tool/paint-drawing';
-import type { MiniToolDrawingSnapshot } from '@web/spaces/canvas/mini-tool/start-mini-tool-run';
+import type { MiniToolCapture } from '@web/spaces/canvas/mini-tool/start-mini-tool-run';
 import { useEscapeInSpace } from '@web/spaces/canvas/use-escape-in-space';
 import { visibleOps } from '@web/stores/drawing-draft';
 
@@ -61,7 +61,7 @@ export interface MiniToolPanelContainerProps {
     nodeId: string,
     spec: MiniToolSpec,
     snapshot: MiniToolSnapshot,
-    drawing: MiniToolDrawingSnapshot | undefined,
+    capture: MiniToolCapture | undefined,
   ) => Promise<void>;
 }
 
@@ -198,7 +198,7 @@ function OpenMiniToolPanel({
     spaceId,
     nodeId,
     content,
-    (tieredParamKeys(spec).length > 0 || spec.drawing !== undefined) &&
+    (tieredParamKeys(spec).length > 0 || spec.drawing !== undefined || spec.expand !== undefined) &&
       (dataWidth === undefined || dataHeight === undefined),
   );
   const source = React.useMemo<MiniToolSourceInfo>(
@@ -288,6 +288,7 @@ function OpenMiniToolPanel({
     exporting,
     inked,
     params,
+    expandFrame: draft?.expand?.frame,
   });
   const pickingSlot = pickSession?.purpose === 'miniToolSlot' ? (pickSession.slotKey ?? null) : null;
 
@@ -318,17 +319,26 @@ function OpenMiniToolPanel({
       toast.warning(t('canvas.miniTool.panel.noUsableTier'));
       return;
     }
+    if (refusal === 'sourceTooLargeToExpand') {
+      toast.warning(t('canvas.miniTool.panel.sourceTooLargeToExpand'));
+      return;
+    }
     if (refusal === 'slotTooLong') {
       toast.warning(t('canvas.miniTool.panel.slotTooLong', { limit: slotLengthCap(spec, entry, slots) ?? 0 }));
       return;
     }
     if (refusal !== null) return;
-    const drawing =
+    // What the reader made on the node is copied out now, so a later change
+    // to the draft does not reach this run.
+    const expandFrame = draft?.expand?.frame;
+    const capture: MiniToolCapture | undefined =
       spec.drawing !== undefined && drawingSteps !== undefined
-        ? { kind: spec.drawing.kind, ops: visibleOps(drawingSteps) }
-        : undefined;
-    void onRun(nodeId, spec, snapshot, drawing);
-  }, [refusal, onRun, nodeId, spec, entry, slots, snapshot, drawingSteps, t]);
+        ? { kind: 'strokes', ops: visibleOps(drawingSteps) }
+        : spec.expand !== undefined && expandFrame !== undefined && source.width !== undefined && source.height !== undefined
+          ? { kind: 'expand', frame: { ...expandFrame }, sourceSize: { width: source.width, height: source.height } }
+          : undefined;
+    void onRun(nodeId, spec, snapshot, capture);
+  }, [refusal, onRun, nodeId, spec, entry, slots, snapshot, drawingSteps, draft?.expand?.frame, source.width, source.height, t]);
 
   // Escape closes the panel; a running pick takes the press first.
   useEscapeInSpace(pickSession === null, closeActivePanel);

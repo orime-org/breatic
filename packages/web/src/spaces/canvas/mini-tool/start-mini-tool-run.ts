@@ -37,6 +37,7 @@ import { planGroupCreation } from '@web/spaces/canvas/group-creation';
 import { writeGroup } from '@web/spaces/canvas/group-write';
 import { MODALITY_LABEL } from '@web/spaces/canvas/nodes/_shared/modality';
 import type { DrawingKind } from '@web/spaces/canvas/mini-tool/paint-drawing';
+import type { ExpandFrame, PixelSize } from '@web/spaces/canvas/mini-tool/expand-frame';
 import { createEmptyNode, type CreatableNodeType } from '@web/spaces/canvas/node-factory';
 import { resolveUploadFailure } from '@web/spaces/canvas/upload-failure';
 import type { DrawOp } from '@web/stores/drawing-draft';
@@ -55,14 +56,29 @@ export interface MiniToolSourceNode {
   height?: number | undefined;
 }
 
-/** The drawing as it stood at the press. */
-export interface MiniToolDrawingSnapshot {
-  kind: DrawingKind;
-  ops: readonly DrawOp[];
+/**
+ * What the reader made on the node, copied out at the press (inner#1303 §5):
+ * a drawing tool's strokes, or an expand tool's frame with the source's pixel
+ * size it was measured against.
+ */
+export type MiniToolCapture =
+  | { kind: 'strokes'; ops: readonly DrawOp[] }
+  | { kind: 'expand'; frame: ExpandFrame; sourceSize: PixelSize };
+
+/** The images an expand press uploads: the padded picture and the mask of its new area. */
+export interface ExpandExport {
+  image: Blob;
+  mask: Blob;
 }
 
 /** The uploaded images a drawing tool's request carries. */
 type DrawingUrls = NonNullable<MiniToolRequest['drawing']>;
+
+/** What a press uploaded before its request: a drawing's images, or an expand's padded picture and mask. */
+interface PressUploads {
+  drawing?: DrawingUrls;
+  expand?: NonNullable<MiniToolRequest['expand']>;
+}
 
 /** One file a browser tool exported, and its pixel size when the export knows it. */
 export interface ExportedFile {
@@ -96,10 +112,12 @@ export interface MiniToolRun {
   fillUpload: (nodeId: string, file: File, modality: CreatableNodeType, tag: MiniToolUploadTag) => void;
   /** Upload a browser tool's files into their nodes in one batch, tagged with the tool. */
   fillUploads: (entries: { nodeId: string; file: File }[], tag: MiniToolUploadTag) => void;
-  /** The drawing at the press, on a tool that draws. */
-  drawing?: MiniToolDrawingSnapshot | undefined;
+  /** What the reader made on the node, copied out at the press. */
+  capture?: MiniToolCapture | undefined;
   /** Make a drawing tool's images from the source and the drawing. */
   exportDrawing: (url: string, kind: DrawingKind, ops: readonly DrawOp[]) => Promise<DrawingExport>;
+  /** Make an expand tool's padded picture and mask from the source and the frame. */
+  exportExpand: (url: string, frame: ExpandFrame, sourceSize: PixelSize) => Promise<ExpandExport>;
   /** Upload an image with no node of its own, answering where it is kept. */
   uploadImage: (file: File) => Promise<string>;
   /** Show the press as under way, or not; a later opening of the panel is left alone. */
@@ -127,10 +145,10 @@ function slotOf(value: MiniToolSlotValue): MiniToolRequestSlot {
  * The request a server tool's press sends.
  * @param run - The press.
  * @param nodeIds - The result nodes, in output order.
- * @param drawing - The uploaded images of a drawing tool's drawing.
+ * @param uploads - What the press uploaded before the request.
  * @returns The body.
  */
-function requestOf(run: MiniToolRun, nodeIds: string[], drawing: DrawingUrls | undefined): MiniToolRequest {
+function requestOf(run: MiniToolRun, nodeIds: string[], uploads: PressUploads): MiniToolRequest {
   const { spec, snapshot, source } = run;
   const slots: MiniToolRequest['slots'] = {};
   for (const slot of spec.slots) {
@@ -155,7 +173,8 @@ function requestOf(run: MiniToolRun, nodeIds: string[], drawing: DrawingUrls | u
     ...(spec.prompt !== undefined && { prompt: snapshot.prompt }),
     params: { ...snapshot.params },
     slots,
-    ...(drawing !== undefined && { drawing }),
+    ...(uploads.drawing !== undefined && { drawing: uploads.drawing }),
+    ...(uploads.expand !== undefined && { expand: uploads.expand }),
   };
 }
 
@@ -172,13 +191,14 @@ function toastUploadFailure(err: unknown): void {
 /**
  * Export a drawing tool's images and upload them.
  * @param run - The press.
- * @param drawing - The drawing at the press.
+ * @param kind - Mask or sketch.
+ * @param ops - The strokes at the press.
  * @returns Where the images are kept, or null when the reader was told why not.
  */
-async function uploadDrawing(run: MiniToolRun, drawing: MiniToolDrawingSnapshot): Promise<DrawingUrls | null> {
+async function uploadDrawing(run: MiniToolRun, kind: DrawingKind, ops: readonly DrawOp[]): Promise<DrawingUrls | null> {
   let made: DrawingExport;
   try {
-    made = await run.exportDrawing(run.snapshot.source.url, drawing.kind, drawing.ops);
+    made = await run.exportDrawing(run.snapshot.source.url, kind, ops);
   } catch (err) {
     toast.warning(
       t(err instanceof DrawingEmptyError ? 'canvas.miniTool.panel.drawingEmpty' : 'canvas.miniTool.panel.exportFailed'),
@@ -204,15 +224,47 @@ async function uploadDrawing(run: MiniToolRun, drawing: MiniToolDrawingSnapshot)
 }
 
 /**
+ * Export an expand tool's padded picture and mask and upload both at once.
+ * @param run - The press.
+ * @param frame - The frame at the press.
+ * @param sourceSize - The source's pixels the frame was measured against.
+ * @returns Where the two images are kept, or null when the reader was told why not.
+ */
+async function uploadExpand(
+  run: MiniToolRun,
+  frame: ExpandFrame,
+  sourceSize: PixelSize,
+): Promise<NonNullable<MiniToolRequest['expand']> | null> {
+  let made: ExpandExport;
+  try {
+    made = await run.exportExpand(run.snapshot.source.url, frame, sourceSize);
+  } catch {
+    toast.warning(t('canvas.miniTool.panel.exportFailed'));
+    return null;
+  }
+  const prefix = outputTemplateOf(run.spec).namePrefix;
+  try {
+    const [image, mask] = await Promise.all([
+      run.uploadImage(new File([made.image], `${prefix}-image.png`, { type: 'image/png' })),
+      run.uploadImage(new File([made.mask], `${prefix}-mask.png`, { type: 'image/png' })),
+    ]);
+    return { image, mask };
+  } catch (err) {
+    toastUploadFailure(err);
+    return null;
+  }
+}
+
+/**
  * Everything before the build: the browser's own work and the check that the
  * source is still there.
  * @param run - The press.
  * @returns The file or images made, or null when the press stops here.
  */
-async function prepare(run: MiniToolRun): Promise<{ files?: ExportedFile[]; drawing?: DrawingUrls } | null> {
-  const { spec, snapshot } = run;
+async function prepare(run: MiniToolRun): Promise<{ files?: ExportedFile[]; uploads: PressUploads } | null> {
+  const { spec, snapshot, capture } = run;
   let files: ExportedFile[] | undefined;
-  let drawing: DrawingUrls | undefined;
+  const uploads: PressUploads = {};
   if (spec.run.kind === 'browser') {
     try {
       files = await run.exportFile(spec, snapshot);
@@ -223,16 +275,21 @@ async function prepare(run: MiniToolRun): Promise<{ files?: ExportedFile[]; draw
       return null;
     }
   }
-  if (spec.drawing !== undefined && run.drawing !== undefined) {
-    const urls = await uploadDrawing(run, run.drawing);
+  if (spec.drawing !== undefined && capture?.kind === 'strokes') {
+    const urls = await uploadDrawing(run, spec.drawing.kind, capture.ops);
     if (urls === null) return null;
-    drawing = urls;
+    uploads.drawing = urls;
+  }
+  if (spec.expand !== undefined && capture?.kind === 'expand') {
+    const urls = await uploadExpand(run, capture.frame, capture.sourceSize);
+    if (urls === null) return null;
+    uploads.expand = urls;
   }
   if (!run.sourceExists()) {
     toast.warning(t('canvas.miniTool.panel.sourceGone'));
     return null;
   }
-  return { ...(files !== undefined && { files }), ...(drawing !== undefined && { drawing }) };
+  return { ...(files !== undefined && { files }), uploads };
 }
 
 /**
@@ -297,7 +354,7 @@ export async function startMiniToolRun(run: MiniToolRun): Promise<void> {
     if (exports) run.setExporting(false);
   }
   if (prepared === null) return;
-  const { files, drawing } = prepared;
+  const { files, uploads } = prepared;
 
   const base = {
     x: source.position.x + (source.groupOrigin?.x ?? 0) + NODE_STEP.x,
@@ -343,7 +400,7 @@ export async function startMiniToolRun(run: MiniToolRun): Promise<void> {
   }
 
   try {
-    await miniToolsApi.run(requestOf(run, nodes.map((node) => node.id), drawing));
+    await miniToolsApi.run(requestOf(run, nodes.map((node) => node.id), uploads));
   } catch (err) {
     // The server's sentence when it gave one, already in the reader's
     // language; a request that never arrived has none.

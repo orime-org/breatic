@@ -80,6 +80,7 @@ import { writeGroup } from '@web/spaces/canvas/group-write';
 import { FRAME_PAN_MS, frameBuiltNode, framedBox } from '@web/spaces/canvas/frame-built-node';
 import { exportCropBlob } from '@web/spaces/canvas/focus/crop-export';
 import { exportDrawing } from '@web/spaces/canvas/mini-tool/export-drawing';
+import { exportExpand } from '@web/spaces/canvas/mini-tool/expand-export';
 import { focusFailureMessageKey, runFocusCrop } from '@web/spaces/canvas/focus/run-focus-crop';
 import {
   addEdge,
@@ -204,7 +205,7 @@ import { MiniToolPanelContainer } from '@web/spaces/canvas/mini-tool/MiniToolPan
 import { exportsBeforeRun } from '@web/spaces/canvas/mini-tool/mini-tool-view';
 import {
   startMiniToolRun,
-  type MiniToolDrawingSnapshot,
+  type MiniToolCapture,
 } from '@web/spaces/canvas/mini-tool/start-mini-tool-run';
 import {
   activeMiniToolSlot,
@@ -3939,7 +3940,7 @@ function CanvasSpaceInner({
       nodeId: string,
       spec: MiniToolSpec,
       snapshot: MiniToolSnapshot,
-      drawing: MiniToolDrawingSnapshot | undefined,
+      capture: MiniToolCapture | undefined,
     ): Promise<void> => {
       const host = nodes.find((n) => n.id === nodeId);
       const view = asContentView(host?.data);
@@ -3955,7 +3956,7 @@ function CanvasSpaceInner({
         userId: viewerId ?? '',
         spec,
         snapshot,
-        drawing,
+        capture,
         source: {
           id: host.id,
           name: view.name,
@@ -3970,6 +3971,7 @@ function CanvasSpaceInner({
         fillUpload,
         fillUploads,
         exportDrawing,
+        exportExpand,
         uploadImage: (file) => uploadDerivedImage(file, { projectId, spaceId }),
         setExporting: (exporting) => sessionStore.getState().setMiniToolExporting(exporting, session),
         stillOpen: () => sessionStore.getState().panelSession === session,

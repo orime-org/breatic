@@ -1015,7 +1015,8 @@
         "couldNotStart": "ツールを開始できませんでした。もう一度お試しください。",
         "drawingEmpty": "先に画像に描いてください。",
         "reset": "リセット",
-        "imageTooLarge": "この画像は大きすぎるため、この端末では色調整できません。"
+        "imageTooLarge": "この画像は大きすぎるため、この端末では色調整できません。",
+        "sourceTooLargeToExpand": "この画像はすでに拡張できる最大サイズです。"
       },
       "adjust": {
         "exposure": "露出",

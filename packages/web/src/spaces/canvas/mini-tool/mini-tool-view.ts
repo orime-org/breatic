@@ -11,6 +11,7 @@ import {
   parseAdjustValue,
   type ModelEntry,
 } from '@breatic/shared';
+import { isExpanded, sourceTooLargeToExpand, type ExpandFrame } from '@web/spaces/canvas/mini-tool/expand-frame';
 import {
   defaultSizeTier,
   isModelTool,
@@ -63,6 +64,8 @@ export type MiniToolRefusal =
   | 'drawingEmpty'
   | 'adjustNeutral'
   | 'singleTile'
+  | 'sourceTooLargeToExpand'
+  | 'frameNotExpanded'
   | 'promptMissing'
   | 'exporting'
   | null;
@@ -73,6 +76,7 @@ export const BLOCKING_REFUSALS: ReadonlySet<MiniToolRefusal> = new Set<MiniToolR
   'drawingEmpty',
   'adjustNeutral',
   'singleTile',
+  'frameNotExpanded',
   'promptMissing',
   'exporting',
 ]);
@@ -167,7 +171,7 @@ function slotOptional(entry: ModelEntry | undefined, param: string): boolean {
  * @returns True when an empty prompt holds Execute back.
  */
 export function promptRequired(spec: MiniToolSpec, entry: ModelEntry | undefined): boolean {
-  return spec.prompt !== undefined && entry?.takes_prompt === true;
+  return spec.prompt !== undefined && spec.prompt.defaultText === undefined && entry?.takes_prompt === true;
 }
 
 /**
@@ -207,6 +211,7 @@ export function slotLengthCap(
  * @param input.exporting - Whether a press is still making its file or images in the browser.
  * @param input.inked - Whether a drawing tool's drawing leaves any ink.
  * @param input.params - The draft params.
+ * @param input.expandFrame - An expand tool's frame.
  * @returns The first reason in the order the reader would fix them, or null.
  */
 export function miniToolRefusal(input: {
@@ -220,6 +225,7 @@ export function miniToolRefusal(input: {
   exporting: boolean;
   inked?: boolean;
   params?: Readonly<Record<string, unknown>>;
+  expandFrame?: ExpandFrame;
 }): MiniToolRefusal {
   const { spec, entry, prompt, slots, sourceShown, source = {}, exporting, params = {} } = input;
   if (exporting) return 'exporting';
@@ -240,6 +246,13 @@ export function miniToolRefusal(input: {
   }
   if (slotLengthCap(spec, entry, slots) !== null) return 'slotTooLong';
   if (spec.drawing !== undefined && input.inked !== true) return 'drawingEmpty';
+  if (spec.expand !== undefined) {
+    // The frame is measured in the source's pixels, which arrive with its metadata.
+    if (source.width === undefined || source.height === undefined) return 'sourceMissing';
+    const cap = entry?.max_output_side ?? Infinity;
+    if (sourceTooLargeToExpand({ width: source.width, height: source.height }, cap)) return 'sourceTooLargeToExpand';
+    if (input.expandFrame === undefined || !isExpanded(input.expandFrame)) return 'frameNotExpanded';
+  }
   // Every slider at zero changes nothing.
   const adjust = isModelTool(spec) ? undefined : spec.params.find((param) => param.kind === 'adjust');
   if (adjust !== undefined && isAdjustValueNeutral(parseAdjustValue(params[adjust.key]))) return 'adjustNeutral';
@@ -258,7 +271,7 @@ export function miniToolRefusal(input: {
  * @returns True when the press exports first.
  */
 export function exportsBeforeRun(spec: MiniToolSpec): boolean {
-  return spec.run.kind === 'browser' || spec.drawing !== undefined;
+  return spec.run.kind === 'browser' || spec.drawing !== undefined || spec.expand !== undefined;
 }
 
 /**

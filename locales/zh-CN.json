@@ -1015,7 +1015,8 @@
         "couldNotStart": "工具没能启动，请重试。",
         "drawingEmpty": "请先在图上画。",
         "reset": "重置",
-        "imageTooLarge": "这张图片太大，这台设备上无法调色。"
+        "imageTooLarge": "这张图片太大，这台设备上无法调色。",
+        "sourceTooLargeToExpand": "这张图片已经到外扩能做的最大尺寸。"
       },
       "adjust": {
         "exposure": "曝光",

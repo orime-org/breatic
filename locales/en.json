@@ -1015,7 +1015,8 @@
         "couldNotStart": "Couldn't start the tool. Try again.",
         "drawingEmpty": "Draw on the picture first.",
         "reset": "Reset",
-        "imageTooLarge": "This picture is too large to adjust on this device."
+        "imageTooLarge": "This picture is too large to adjust on this device.",
+        "sourceTooLargeToExpand": "This picture is already as large as Expand can make it."
       },
       "adjust": {
         "exposure": "Exposure",

@@ -314,6 +314,7 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "canvas.miniTool.param.cols.label": { excluded: REASONS.MODEL_SETTING_NAME },
   "canvas.miniTool.panel.exportFailed": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "canvas.miniTool.panel.imageTooLarge": { excluded: REASONS.SAYS_WHAT_HAPPENED },
+  "canvas.miniTool.panel.sourceTooLargeToExpand": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "canvas.miniTool.panel.sourceGone": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "canvas.miniTool.panel.couldNotStart": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "canvas.miniTool.panel.sourceMissing": { excluded: REASONS.SAYS_WHAT_HAPPENED },

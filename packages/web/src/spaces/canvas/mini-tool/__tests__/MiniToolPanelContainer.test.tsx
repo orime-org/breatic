@@ -230,7 +230,7 @@ describe('MiniToolPanelContainer', () => {
       render(tree(source('a.png'), onRun));
       fireEvent.click(screen.getByTestId('mini-tool-run'));
       expect(onRun).toHaveBeenCalledWith('src', expect.objectContaining({ id: 'image.erase' }), expect.anything(), {
-        kind: 'mask',
+        kind: 'strokes',
         ops: [{ ...STROKE, points: [[0.2, 0.2]] }],
       });
     });
