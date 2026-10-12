@@ -275,7 +275,7 @@ export default [
           paths: [
             {
               name: 'playwright/test',
-              importNames: ['test'],
+              importNames: ['test', 'default'],
               message: 'Import `test` from tests/helpers/slot.ts, which opens pages as the accounts of this worker.',
             },
           ],

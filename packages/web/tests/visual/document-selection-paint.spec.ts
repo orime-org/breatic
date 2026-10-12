@@ -32,10 +32,6 @@ import { test, stateFile } from '../helpers/slot';
 import { openSmokeProject } from '../helpers/project';
 import { createSpace, deleteSpace, DOCUMENT_EDITOR, VISIBLE_SPACE } from '../helpers/space';
 
-// Not serial: each case makes its own Space and shares nothing but the login,
-// and serial would stop reporting at the first red one.
-test.describe.configure({ mode: 'default' });
-
 const MOD = process.platform === 'darwin' ? 'Meta' : 'Control';
 
 /** One line, short enough that 1680px never wraps it. */

@@ -58,7 +58,7 @@ export function readAccounts(path: string = ACCOUNTS_FILE): Recorded {
   const held = JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown>;
   if ('A' in held || 'B' in held) {
     throw new Error(
-      `${path} holds one pair at its top level, the shape written before each worker had its own. Move it under "0" ({ "0": { "A": …, "B": … } }) and delete playwright/.auth/a.json and b.json, so slot 0 keeps those accounts.`,
+      `${path} holds one pair at its top level, the shape written before each worker had its own. Move it under "0" ({ "0": { "A": …, "B": … } }) so slot 0 keeps those accounts. a.json, b.json and upload-tickets.json are no longer read.`,
     );
   }
   return held as Recorded;

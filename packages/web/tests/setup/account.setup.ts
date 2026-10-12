@@ -351,15 +351,14 @@ function write(path: string, content: string): void {
 setup('prepare the accounts and their projects', async ({ browser, baseURL }) => {
   expect(baseURL, 'the config must give the suite a baseURL').toBeTruthy();
   onlyLocal(baseURL as string);
-  await preflight(browser, baseURL as string);
-
-  // Last run's unremoved Spaces are its own verdict, already reported.
-  rmSync(REMOVALS_FILE, { force: true });
-
   // One pair per worker the run starts: each worker reads its own by
   // `parallelIndex` (helpers/slot.ts), and every index is below this.
   const slots = setup.info().config.workers;
   setup.setTimeout(PREFLIGHT_MS + slots * PER_SLOT_MS + ONE_LOGIN_WAIT_MS);
+  await preflight(browser, baseURL as string);
+
+  // Last run's unremoved Spaces are its own verdict, already reported.
+  rmSync(REMOVALS_FILE, { force: true });
   const prepared: Record<string, Record<Account, string[]>> = {};
 
   for (let at = 0; at < slots; at += 1) {

@@ -24,7 +24,7 @@ import { text } from "node:stream/consumers";
 // Loads the root .env and runs initCore, as the server entry does first.
 await import("../packages/server/src/bootstrap-config.js");
 // The same file the server source reaches through `@breatic/core`, so the
-// database and Redis it closes below are the ones `register` opened.
+// database pool it closes below is the one `register` opened.
 const core = await import("../packages/core/dist/index.js");
 const authService = await import("../packages/server/src/modules/auth/auth.service.js");
 
@@ -42,5 +42,5 @@ try {
   console.error(err instanceof Error ? err.message : err);
   process.exitCode = 1;
 } finally {
-  await Promise.allSettled([core.closeDb(), core.closeRedis()]);
+  await core.closeDb();
 }
