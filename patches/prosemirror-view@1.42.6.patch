@@ -1,8 +1,33 @@
 diff --git a/dist/index.cjs b/dist/index.cjs
-index d52a5260a7b9924b2865053ea1e8c6484225277b..73f496df0b4f6f74c06e016b7fcab2baf152d657 100644
+index d52a5260a7b9924b2865053ea1e8c6484225277b..81fa0e605b99ac7679096a37a15093992af9d7f2 100644
 --- a/dist/index.cjs
 +++ b/dist/index.cjs
-@@ -778,10 +778,16 @@ var ViewDesc = function () {
+@@ -303,7 +303,8 @@ function restoreScrollStack(stack, dTop) {
+ var preventScrollSupported = null;
+ function focusPreventScroll(dom) {
+   if (dom.setActive) return dom.setActive();
+-  if (preventScrollSupported) return dom.focus(preventScrollSupported);
++  // WebKit honours preventScroll and still scrolls an editable element to its
++  // selection as it takes the focus, so the positions are always put back.
+   var stored = scrollStack(dom);
+   dom.focus(preventScrollSupported == null ? {
+     get preventScroll() {
+@@ -312,11 +313,9 @@ function focusPreventScroll(dom) {
+       };
+       return true;
+     }
+-  } : undefined);
+-  if (!preventScrollSupported) {
+-    preventScrollSupported = false;
+-    restoreScrollStack(stored, 0);
+-  }
++  } : preventScrollSupported || undefined);
++  if (!preventScrollSupported) preventScrollSupported = false;
++  restoreScrollStack(stored, 0);
+ }
+ function findOffsetInNode(node, coords) {
+   var closest;
+@@ -778,10 +777,16 @@ var ViewDesc = function () {
          }
        }
        var atEnd;
@@ -22,7 +47,7 @@ index d52a5260a7b9924b2865053ea1e8c6484225277b..73f496df0b4f6f74c06e016b7fcab2ba
        } else if (this.dom.firstChild) {
          if (offset == 0) for (var search = dom;; search = search.parentNode) {
            if (search == this.dom) {
-@@ -2441,7 +2447,7 @@ function skipIgnoredNodesBefore(view) {
+@@ -2441,7 +2446,7 @@ function skipIgnoredNodesBefore(view) {
        } else {
          break;
        }
@@ -31,7 +56,7 @@ index d52a5260a7b9924b2865053ea1e8c6484225277b..73f496df0b4f6f74c06e016b7fcab2ba
        break;
      } else {
        var prev = node.previousSibling;
-@@ -2479,7 +2485,7 @@ function skipIgnoredNodesAfter(view) {
+@@ -2479,7 +2484,7 @@ function skipIgnoredNodesAfter(view) {
        } else {
          break;
        }
@@ -40,7 +65,7 @@ index d52a5260a7b9924b2865053ea1e8c6484225277b..73f496df0b4f6f74c06e016b7fcab2ba
        break;
      } else {
        var next = node.nextSibling;
-@@ -2505,6 +2511,13 @@ function isBlockNode(dom) {
+@@ -2505,6 +2510,13 @@ function isBlockNode(dom) {
    var desc = dom.pmViewDesc;
    return desc && desc.node && desc.node.isBlock;
  }
@@ -55,10 +80,35 @@ index d52a5260a7b9924b2865053ea1e8c6484225277b..73f496df0b4f6f74c06e016b7fcab2ba
    while (node && offset == node.childNodes.length && !hasBlockDesc(node)) {
      offset = domIndex(node) + 1;
 diff --git a/dist/index.js b/dist/index.js
-index dc0d117b85e1da3eae915b4d8ff8e5e604683861..e57d5a294c4e2cff9470b37702fdea68b8ac9af4 100644
+index dc0d117b85e1da3eae915b4d8ff8e5e604683861..4b7d740c1a732fbc0236d49d386a3086cb3d57a9 100644
 --- a/dist/index.js
 +++ b/dist/index.js
-@@ -846,11 +846,22 @@ class ViewDesc {
+@@ -307,19 +307,18 @@ let preventScrollSupported = null;
+ function focusPreventScroll(dom) {
+     if (dom.setActive)
+         return dom.setActive(); // in IE
+-    if (preventScrollSupported)
+-        return dom.focus(preventScrollSupported);
++    // WebKit honours preventScroll and still scrolls an editable element to its
++    // selection as it takes the focus, so the positions are always put back.
+     let stored = scrollStack(dom);
+     dom.focus(preventScrollSupported == null ? {
+         get preventScroll() {
+             preventScrollSupported = { preventScroll: true };
+             return true;
+         }
+-    } : undefined);
+-    if (!preventScrollSupported) {
++    } : preventScrollSupported || undefined);
++    if (!preventScrollSupported)
+         preventScrollSupported = false;
+-        restoreScrollStack(stored, 0);
+-    }
++    restoreScrollStack(stored, 0);
+ }
+ function findOffsetInNode(node, coords) {
+     let closest;
+@@ -846,11 +845,22 @@ class ViewDesc {
          // parameter, to determine whether to return the position at the
          // start or at the end of this view desc.
          let atEnd;
@@ -85,7 +135,7 @@ index dc0d117b85e1da3eae915b4d8ff8e5e604683861..e57d5a294c4e2cff9470b37702fdea68
          }
          else if (this.dom.firstChild) {
              if (offset == 0)
-@@ -2551,7 +2562,7 @@ function skipIgnoredNodesBefore(view) {
+@@ -2551,7 +2561,7 @@ function skipIgnoredNodesBefore(view) {
                  break;
              }
          }
@@ -94,7 +144,7 @@ index dc0d117b85e1da3eae915b4d8ff8e5e604683861..e57d5a294c4e2cff9470b37702fdea68
              break;
          }
          else {
-@@ -2600,7 +2611,7 @@ function skipIgnoredNodesAfter(view) {
+@@ -2600,7 +2610,7 @@ function skipIgnoredNodesAfter(view) {
                  break;
              }
          }
@@ -103,7 +153,7 @@ index dc0d117b85e1da3eae915b4d8ff8e5e604683861..e57d5a294c4e2cff9470b37702fdea68
              break;
          }
          else {
-@@ -2630,6 +2641,17 @@ function isBlockNode(dom) {
+@@ -2630,6 +2640,17 @@ function isBlockNode(dom) {
      let desc = dom.pmViewDesc;
      return desc && desc.node && desc.node.isBlock;
  }

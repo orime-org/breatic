@@ -65,8 +65,9 @@ export function startRowDrag(
     // selection the library put on the row at dragstart is still there, and
     // the bubble bar comes up for any selection that is not empty.
     restoreAfterRowDrag(view, held, blockId);
-    // A key pressed after the drag has to land in the document.
-    focusInPlace(editor);
+    // A key pressed after the drag has to land in the document. The body stays
+    // where the drag left it (the prosemirror-view patch, design §5.5).
+    editor.focus();
   };
   /**
    * Seen in the capture phase, before the editor handles the drop; the end
@@ -77,25 +78,4 @@ export function startRowDrag(
   };
   page.addEventListener('drop', onDrop, true);
   return end;
-}
-
-/**
- * Gives the body the focus, leaving everything that scrolls it where it is.
- * WebKit scrolls an editable element to its selection as it takes the focus,
- * `preventScroll` or not, and after a drag the reader's caret is often off
- * screen; the positions are read before and written back after, the way
- * prosemirror-view's `focusPreventScroll` does where `preventScroll` is not
- * honoured (inner#1350 design §5.5).
- * @param editor - The editor.
- */
-function focusInPlace(editor: RowDragEditor): void {
-  const kept: Array<{ element: Element; top: number; left: number }> = [];
-  for (let element: Element | null = editor.prosemirrorView!.dom; element !== null; element = element.parentElement) {
-    kept.push({ element, top: element.scrollTop, left: element.scrollLeft });
-  }
-  editor.focus();
-  for (const { element, top, left } of kept) {
-    if (element.scrollTop !== top) element.scrollTop = top;
-    if (element.scrollLeft !== left) element.scrollLeft = left;
-  }
 }
