@@ -1,0 +1,47 @@
+/* Copyright (c) 2026 Orime, Inc. */
+/* SPDX-License-Identifier: LicenseRef-BSAL-1.0 */
+
+/*
+ * The consent banner in the product's colours (inner#1442 design §4.4.3).
+ * The library reads these variables; the tokens switch with the theme, so
+ * the banner follows light and dark without rules of its own.
+ */
+#cc-main {
+  --cc-font-family: var(--font-sans);
+  --cc-bg: var(--color-popover);
+  --cc-primary-color: var(--color-popover-foreground);
+  --cc-secondary-color: var(--color-muted-foreground);
+  --cc-link-color: var(--color-foreground);
+  --cc-btn-border-radius: var(--radius-chrome);
+  --cc-modal-border-radius: var(--radius-content-md);
+  --cc-btn-primary-bg: var(--color-primary);
+  --cc-btn-primary-color: var(--color-primary-foreground);
+  --cc-btn-primary-border-color: var(--color-primary);
+  --cc-btn-primary-hover-bg: var(--color-primary-hover);
+  --cc-btn-primary-hover-color: var(--color-primary-foreground);
+  --cc-btn-primary-hover-border-color: var(--color-primary-hover);
+  --cc-btn-secondary-bg: var(--color-secondary);
+  --cc-btn-secondary-color: var(--color-secondary-foreground);
+  --cc-btn-secondary-border-color: var(--color-border);
+  --cc-btn-secondary-hover-bg: var(--color-accent);
+  --cc-btn-secondary-hover-color: var(--color-secondary-foreground);
+  --cc-btn-secondary-hover-border-color: var(--color-border);
+  --cc-separator-border-color: var(--color-border);
+  --cc-toggle-on-bg: var(--color-primary);
+  --cc-toggle-off-bg: var(--color-muted-foreground);
+  --cc-toggle-on-knob-bg: var(--color-primary-foreground);
+  --cc-toggle-off-knob-bg: var(--color-background);
+  --cc-toggle-readonly-bg: var(--color-border);
+  --cc-toggle-readonly-knob-bg: var(--color-background);
+  --cc-toggle-readonly-knob-icon-color: var(--color-muted-foreground);
+  --cc-cookie-category-block-bg: var(--color-card);
+  --cc-cookie-category-block-border: var(--color-border);
+  --cc-cookie-category-block-hover-bg: var(--color-accent);
+  --cc-cookie-category-block-hover-border: var(--color-border);
+  --cc-cookie-category-expanded-block-bg: var(--color-card);
+  --cc-cookie-category-expanded-block-hover-bg: var(--color-accent);
+  --cc-footer-bg: var(--color-card);
+  --cc-footer-color: var(--color-muted-foreground);
+  --cc-footer-border-color: var(--color-border);
+  --cc-overlay-bg: var(--color-overlay);
+}

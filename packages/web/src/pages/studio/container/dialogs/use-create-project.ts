@@ -6,6 +6,7 @@ import { useNavigate } from 'react-router-dom';
 import { toast } from '@web/lib/toast';
 
 import { projectsApi } from '@web/data/api/projects';
+import { reportConversion } from '@web/lib/analytics';
 import { useTranslation } from '@web/i18n/use-translation';
 import type { NewItemValues } from '@web/pages/studio/container/dialogs/NewItemDialog';
 import { defaultCreateStudioId } from '@web/pages/studio/container/dialogs/studio-create';
@@ -50,6 +51,7 @@ export function useCreateProject(
       });
     },
     onSuccess: (project, values) => {
+      if (project.isFirst === true) reportConversion('first_project', `first-project:${project.createdByUserId}`);
       const target = studios.find((s) => s.id === project.studioId);
       void queryClient.invalidateQueries({
         queryKey: ['studio', target?.slug, 'projects'],

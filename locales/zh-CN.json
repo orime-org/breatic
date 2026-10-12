@@ -2278,5 +2278,33 @@
   "pageLoadError": {
     "message": "页面加载失败，请重试。",
     "retry": "重试"
+  },
+  "consent": {
+    "link": "Cookie 设置",
+    "banner": {
+      "text": "我们用 cookie 让网站正常运行。经你同意，还会用它统计产品怎么被使用（产品分析），以及衡量广告效果（广告）。你可以随时在「Cookie 设置」里修改。",
+      "privacy": "隐私政策",
+      "acceptAll": "接受全部",
+      "rejectAll": "拒绝全部",
+      "settings": "设置"
+    },
+    "settings": {
+      "title": "Cookie 设置",
+      "save": "保存",
+      "close": "关闭",
+      "note": "选择只对这个浏览器生效，在其他设备上需要另外设置。",
+      "necessary": {
+        "title": "必要",
+        "description": "登录、主题和语言偏好，以及这项选择本身。一直开启。"
+      },
+      "analytics": {
+        "title": "产品分析",
+        "description": "统计功能的使用情况，不含你的作品内容。"
+      },
+      "ads": {
+        "title": "广告",
+        "description": "衡量广告带来的注册和购买。"
+      }
+    }
   }
 }

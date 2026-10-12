@@ -2278,5 +2278,33 @@
   "pageLoadError": {
     "message": "頁面載入失敗，請重試。",
     "retry": "重試"
+  },
+  "consent": {
+    "link": "Cookie 設定",
+    "banner": {
+      "text": "我們使用 cookie 讓網站正常運作。經你同意，也會用它統計產品的使用情況（產品分析），以及衡量廣告成效（廣告）。你可以隨時在「Cookie 設定」中修改。",
+      "privacy": "隱私權政策",
+      "acceptAll": "全部接受",
+      "rejectAll": "全部拒絕",
+      "settings": "設定"
+    },
+    "settings": {
+      "title": "Cookie 設定",
+      "save": "儲存",
+      "close": "關閉",
+      "note": "選擇只對這個瀏覽器生效，在其他裝置上需要另外設定。",
+      "necessary": {
+        "title": "必要",
+        "description": "登入、主題與語言偏好，以及這項選擇本身。一律開啟。"
+      },
+      "analytics": {
+        "title": "產品分析",
+        "description": "統計功能的使用情況，不含你的作品內容。"
+      },
+      "ads": {
+        "title": "廣告",
+        "description": "衡量廣告帶來的註冊與購買。"
+      }
+    }
   }
 }

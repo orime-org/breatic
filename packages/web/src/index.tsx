@@ -16,6 +16,7 @@ import '@fontsource/inter/800.css';
 import '@web/index.css';
 import { bootstrapLocale } from '@web/i18n/locale-bootstrap';
 import { errorMonitoringInit } from '@web/lib/error-monitoring';
+import { startProductAnalytics } from '@web/lib/analytics';
 import { removeRetiredStorageKeys } from '@web/lib/storage-keys';
 import { guardStrayFileDrops } from '@web/lib/stray-file-drop';
 
@@ -30,6 +31,7 @@ const errorMonitoring = errorMonitoringInit({
   version: import.meta.env.VITE_APP_VERSION,
 });
 if (errorMonitoring !== null) Sentry.init(errorMonitoring);
+startProductAnalytics();
 
 const root = ReactDOM.createRoot(
   document.getElementById('root') as HTMLElement,
