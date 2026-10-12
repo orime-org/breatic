@@ -52,7 +52,8 @@ const createdSpaceIds: string[] = [];
  *   reaching over them, and the heights of what holds those blocks by that
  *   much: the preview's ends are the content's (design §4);
  * - the size of an element some of whose children the preview leaves out, and
- *   of its pseudo-elements; the height of a cell whose row lost its other
+ *   of its pseudo-elements, and of an absolutely positioned element inside it
+ *   (a table's edge shading, as tall as its frame); the height of a cell whose row lost its other
  *   cells (a column drag); the minimum size of an element whose parent the
  *   preview leaves out or replaces (a table out of its scroll frame, a block
  *   drawn at the top);
@@ -69,10 +70,13 @@ const createdSpaceIds: string[] = [];
  * - what governs interaction and paints nothing: `pointer-events`,
  *   `user-select`, `-webkit-user-drag`, `app-region`, `cursor`, `caret-color`,
  *   `touch-action`. A drag image is a picture;
- * - what comes of being editable: `-webkit-user-modify`, and the
+ * - what comes of being editable: `-webkit-user-modify`, the
  *   `after-white-space` line breaking Chromium gives every contenteditable
- *   element (www-style 2014-10), which cannot be written on an element; the
- *   copy is not editable, and how its lines break is compared through sizes.
+ *   element (www-style 2014-10) and the `-webkit-nbsp-mode: space` WebKit
+ *   gives it, neither of which can be written on an element; the copy is not
+ *   editable, and how its lines break is compared through sizes;
+ * - how long a change takes to happen, `transition-*` and `animation-*`: a
+ *   picture shows no change;
  *
  * Custom properties are not compared: Chromium leaves them out of a computed
  * style's list, and every property that reads one is compared with what it
@@ -98,6 +102,7 @@ function installComparer(): void {
     '-webkit-user-modify',
     'line-break',
     '-webkit-line-break',
+    '-webkit-nbsp-mode',
     'pointer-events',
     'user-select',
     '-webkit-user-select',
@@ -153,7 +158,7 @@ function installComparer(): void {
     const z = getComputedStyle(b, pseudo);
     if (pseudo !== null && a.content === 'none' && z.content === 'none') return;
     props(z).forEach((prop) => {
-      if (DERIVED.has(prop) || skip(prop)) return;
+      if (DERIVED.has(prop) || /^(transition|animation)-/.test(prop) || skip(prop)) return;
       const bv = z.getPropertyValue(prop);
       const pv = a.getPropertyValue(prop);
       if (bv === pv) return;
@@ -197,6 +202,10 @@ function installComparer(): void {
       aligned.pairs.forEach(([p, b]) => {
         const lostChildren = [...b.querySelectorAll('*')].some((el) => aligned.skipped.has(el));
         const pairedParent = aligned.pairs.some(([, body]) => body === b.parentElement);
+        const sizedByLost =
+          getComputedStyle(b).position === 'absolute' &&
+          b.parentElement !== null &&
+          [...b.parentElement.querySelectorAll('*')].some((el) => aligned.skipped.has(el));
         const lostParent = b.parentElement !== null && (aligned.skipped.has(b.parentElement) || !pairedParent);
         const rebased = depthOf(original) > 0;
         const quotedRebased = rebased && b.matches('[data-quoted-run]');
@@ -207,7 +216,7 @@ function installComparer(): void {
         const holdsEnd = (first !== undefined && p.contains(first) ? lift : 0) + (last !== undefined && p.contains(last) ? drop : 0);
         const skip = (prop: string): boolean => {
           if (p === content && (SIZE.has(prop) || MIN_SIZE.has(prop) || prop === 'box-sizing')) return true;
-          if (lostChildren && SIZE.has(prop)) return true;
+          if ((lostChildren || sizedByLost) && SIZE.has(prop)) return true;
           if (rowLostCells && (prop === 'height' || prop === 'block-size')) return true;
           if (isColumn && SIZE.has(prop)) return true;
           if (isStatic && PLACE.has(prop)) return true;
@@ -356,6 +365,8 @@ async function openDocument(p: Page): Promise<void> {
               block('paragraph', quoted, [text('After the quoted heading')]),
               block('unsupportedBlock', { originalName: 'callout' }),
               block('paragraph', {}, [text('Media follow')]),
+              // The plus shows on an empty line, and what it takes in lands above it.
+              block('paragraph', {}),
             ],
           },
         ],
@@ -365,19 +376,37 @@ async function openDocument(p: Page): Promise<void> {
     },
     { unbroken: UNBROKEN, url: URL_TEXT },
   );
-  const png = readFileSync(resolve(__dirname, '../fixtures/portrait.png')).toString('base64');
-  await editor.evaluate(
-    (element, { image, sound }) => {
-      const transfer = new DataTransfer();
-      const bytes = (base64: string): Uint8Array => Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
-      transfer.items.add(new File([bytes(image)], 'portrait.png', { type: 'image/png' }));
-      transfer.items.add(new File([bytes(sound)], 'clip.wav', { type: 'audio/wav' }));
-      element.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: transfer }));
-    },
-    { image: png, sound: wavBytes().toString('base64') },
-  );
+  // Through the block's insert menu and the file chooser, which every engine
+  // takes; a synthetic paste carrying files is Chromium's alone.
+  await insertAboveLast(p, 'image', { name: 'portrait.png', mimeType: 'image/png', buffer: readFileSync(resolve(__dirname, '../fixtures/portrait.png')) });
+  await insertAboveLast(p, 'audio', { name: 'clip.wav', mimeType: 'audio/wav', buffer: wavBytes() });
   await expect(p.locator(`${EDITOR} [data-content-type="image"] [data-media-box] img`)).toBeVisible({ timeout: 60_000 });
   await expect(p.locator(`${EDITOR} [data-content-type="audio"] [data-media-box]`)).toBeVisible({ timeout: 60_000 });
+}
+
+/**
+ * Inserts a medium above the empty line that ends the document, chosen
+ * through that line's plus menu.
+ * @param p - The page.
+ * @param kind - Which medium.
+ * @param file - The file chosen.
+ * @param file.name - Its name.
+ * @param file.mimeType - Its type.
+ * @param file.buffer - Its bytes.
+ */
+async function insertAboveLast(
+  p: Page,
+  kind: 'image' | 'audio',
+  file: { name: string; mimeType: string; buffer: Buffer },
+): Promise<void> {
+  const last = p.locator(`${EDITOR} > .bn-block-group > .bn-block-outer > .bn-block > .bn-block-content`).last();
+  await last.scrollIntoViewIfNeeded();
+  await last.hover();
+  await p.getByTestId('doc-block-plus').click();
+  const chooser = p.waitForEvent('filechooser');
+  await p.getByTestId(`doc-block-insert-${kind}`).click();
+  await (await chooser).setFiles(file);
+  await expect(p.locator(`${EDITOR} [data-content-type="${kind}"] [data-media-box]`)).toBeVisible({ timeout: 60_000 });
 }
 
 /**

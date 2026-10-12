@@ -338,25 +338,44 @@ export function blockPreviewContent(view: EditorView, blocks: readonly Element[]
 }
 
 /**
+ * The widths a table's columns are drawn at in the body, read off a cell that
+ * spans that column alone: WebKit gives a `col` no box. 0 for a column every
+ * cell of which spans others too.
+ * @param view - The editor view.
+ * @param at - The table, by a cell of it.
+ * @returns One width per column.
+ */
+function columnWidths(view: EditorView, at: NonNullable<ReturnType<typeof cellAt>>): number[] {
+  const { map, tableStart } = at;
+  return Array.from({ length: map.width }, (_, column) => {
+    for (let row = 0; row < map.height; row += 1) {
+      const pos = map.map[row * map.width + column]!;
+      const rect = map.findCell(pos);
+      if (rect.left === column && rect.right === column + 1) {
+        const cell = view.nodeDOM(tableStart + pos);
+        return cell instanceof HTMLElement ? cell.getBoundingClientRect().width : 0;
+      }
+    }
+    return 0;
+  });
+}
+
+/**
  * Holds a copied table at the column widths its original is drawn at: each
  * kept column at its own width, the table at their sum, laid out to them.
  * Laid out again from what the copy keeps, a row or a column would share its
- * width out another way. Written on the table and its columns, the elements
- * measured, so a quoted block's rule stands outside them as in the body.
- * Important, as the editor's own rule for a table's width is
- * (`.bn-editor [data-content-type=table] table`).
+ * width out another way. Written on the table and its columns, so a quoted
+ * block's rule stands outside them as in the body. Important, as the editor's
+ * own rule for a table's width is (`.bn-editor [data-content-type=table] table`).
  * @param copy - The copied table block.
- * @param original - The table block it was copied from.
- * @param kept - Which of the original's columns the copy keeps, by index.
+ * @param widths - The kept columns' widths in the body, in order.
  */
-function holdColumns(copy: Element, original: Element, kept: readonly number[]): void {
-  const widths = [...original.querySelectorAll('col')].map((col) => col.getBoundingClientRect().width);
+function holdColumns(copy: Element, widths: readonly number[]): void {
   const cols = [...copy.querySelectorAll<HTMLElement>('col')];
-  const held = kept.map((index) => widths[index] ?? 0);
-  if (held.some((width) => width <= 0) || cols.length !== held.length) return;
-  cols.forEach((col, index) => col.style.setProperty('width', `${held[index]}px`, 'important'));
+  if (widths.some((width) => width <= 0) || cols.length !== widths.length) return;
+  cols.forEach((col, index) => col.style.setProperty('width', `${widths[index]}px`, 'important'));
   const table = copy.querySelector<HTMLElement>('table');
-  table?.style.setProperty('width', `${held.reduce((sum, width) => sum + width, 0)}px`, 'important');
+  table?.style.setProperty('width', `${widths.reduce((sum, width) => sum + width, 0)}px`, 'important');
   table?.style.setProperty('table-layout', 'fixed', 'important');
 }
 
@@ -394,7 +413,7 @@ export function tableLinePreviewContent(
   copy.querySelectorAll('tr').forEach((row) => {
     if (row.querySelector('td, th') === null) row.remove();
   });
-  const columns = [...block.querySelectorAll('col')].map((_, index) => index);
+  const widths = columnWidths(view, at);
   if (orientation === 'column') {
     // A column is narrower than its frame, so the frame has nothing to scroll.
     copy.replaceChildren(...copy.querySelectorAll('table'));
@@ -407,7 +426,7 @@ export function tableLinePreviewContent(
       table.style.minWidth = '0';
     });
   }
-  holdColumns(copy, block, orientation === 'column' ? [at.left] : columns);
+  holdColumns(copy, orientation === 'column' ? [widths[at.left] ?? 0] : widths);
   standsFor(copy, block);
   settle(view, copy, block);
   return copy;
@@ -466,7 +485,7 @@ export function tableRowsPreviewContent(
     }
     row.replaceChildren(...cells);
   });
-  holdColumns(copy, block, [...block.querySelectorAll('col')].map((_, index) => index));
+  holdColumns(copy, columnWidths(view, at));
   standsFor(copy, block);
   settle(view, copy, block);
   return copy;

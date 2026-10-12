@@ -88,7 +88,8 @@ function placeInBody(view: EditorView, content: Element): HTMLElement {
 
 /**
  * Writes on every element of some content the style it takes where it sits in
- * the body, and returns the sheet its pseudo-elements are drawn by. The
+ * the body, but what the element already sets on itself, and returns the
+ * sheet its pseudo-elements are drawn by. The
  * content is in the body only while this runs, inside a copy of the editor
  * element put beside it, and is taken out again before it returns.
  * @param view - The editor view.
@@ -115,7 +116,15 @@ export function writeBodyStyles(view: EditorView, content: HTMLElement): HTMLSty
   }
   content.remove();
   elements.forEach((element, index) => {
-    own[index]!.forEach(([property, value]) => element.style.setProperty(property, value, 'important'));
+    // What the copy already says of itself is the preview's own: a width held
+    // to the body's, the space taken off its ends, what was copied with it.
+    // It stands as it is; a computed value can differ from it (WebKit computes
+    // a `col` at 0px).
+    const set = new Set(Array.from({ length: element.style.length }, (_, at) => element.style.item(at)));
+    set.forEach((property) => element.style.setProperty(property, element.style.getPropertyValue(property), 'important'));
+    own[index]!.forEach(([property, value]) => {
+      if (!set.has(property)) element.style.setProperty(property, value, 'important');
+    });
   });
   // Two previews can be on the page at once, the second built before the
   // first leaves; each one's sheet reaches its own elements alone.
