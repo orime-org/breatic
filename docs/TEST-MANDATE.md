@@ -101,7 +101,7 @@
 
 第九条:ProseMirror 拿到焦点后会在约 20ms 后把它自己记的选区写回页面,写选区与它读回之间插进来的任何一次 dispatch 也会这样写回;脚本的下一步如果抢在读回之前,结果就被撤销,而这只在页面忙的时候发生,表现为时好时坏。`selectInBody` 等到编辑器选区等于写进去的那个范围才返回,被写回时重写。
 
-第十条:服务端每个账号每个窗口只发 `config/rate-limits.yaml` 里 `upload-ticket` 那么多张上传票据,一个文件一张。smoke 单 worker 顺序跑,上传类用例连着跑时会超过它,超出的文件拿到 429、节点一直空着。`roomForUploads` 按 `openSmokeProject` 打开的页面实际发出的票据计数,等到额度够了再交。
+第十条:服务端每个账号每个窗口只发 `config/rate-limits.yaml` 里 `upload-ticket` 那么多张上传票据,一个文件一张。smoke 单 worker 顺序跑,上传类用例连着跑时会超过它,超出的文件拿到 429、节点一直空着。`roomForUploads` 按 `openSmokeProject` 打开的页面实际发出的票据计数,等到额度够了再交。记录存在 `playwright/.auth/upload-tickets.json`:用例红了之后 Playwright 会换一个 worker 进程,而服务端的窗口还在接着算。
 
 第五条的两种落点后果一样:用例体里的那一句吃掉这一条,文件顶上的那一句吃掉整个文件,报告两次都写「skipped」而退出码是零。2026-09-19 实测:文件顶上一行 `test.skip(!email || !password, ...)` 换来 12 passed / 289 skipped 和一个零退出码。名字带 body 的 `test.skip('标题', async () => {})` 不在此列——它在报告里有自己的标题,谁都看得见。
 
