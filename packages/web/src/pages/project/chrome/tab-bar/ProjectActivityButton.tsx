@@ -371,6 +371,9 @@ export function ProjectActivityButton({
       void queryClient.invalidateQueries({
         queryKey: ['project-activities', projectId],
       });
+    } catch {
+      // The host has already toasted the failure (`callRpc` reports before
+      // it throws); the button only has to come back for another try.
     } finally {
       setBusyId(null);
     }

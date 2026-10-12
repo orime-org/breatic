@@ -185,6 +185,37 @@ describe('ProjectActivityButton (activity feed)', () => {
     await waitFor(() => expect(btn).not.toHaveAttribute('aria-busy'));
   });
 
+  it('settles the Restore button after a refused restore without leaving a rejection behind', async () => {
+    // The host has already told the reader (`callRpc` toasts before it
+    // throws); the button only has to come back.
+    const unhandled = vi.fn();
+    process.on('unhandledRejection', unhandled);
+    const onRestore = vi.fn(() => Promise.reject(new Error('refused')));
+    listMock.mockResolvedValue({
+      items: [
+        entry({
+          id: 'del-5',
+          type: 'space:deleted',
+          spaceId: 'sp-5',
+          payload: { spaceName: 'Refused', spaceSnapshot: { id: 'sp-5' } },
+        }),
+      ],
+      nextCursor: null,
+    });
+    const user = userEvent.setup();
+    render(
+      <ProjectActivityButton projectId={PID} currentUserRole='owner' onRestore={onRestore} />,
+    );
+    await user.click(screen.getByTestId('project-activity-trigger'));
+    const btn = await screen.findByTestId('project-activity-restore-del-5');
+    await user.click(btn);
+
+    await waitFor(() => expect(btn).not.toHaveAttribute('aria-busy'));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    process.off('unhandledRejection', unhandled);
+    expect(unhandled).not.toHaveBeenCalled();
+  });
+
   it('replaces Restore with a disabled restored badge when the row is consumed', async () => {
     listMock.mockResolvedValue({
       items: [
