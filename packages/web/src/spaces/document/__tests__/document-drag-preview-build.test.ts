@@ -311,7 +311,7 @@ describe('blockPreviewContent', () => {
     expect(nested.parentElement!.closest('.bn-block-group')).not.toBeNull();
   });
 
-  it('takes a table out of its scroll frame: every column, and none of the frame\'s scrollbar or edges', () => {
+  it('takes a table in the frame it scrolls in, as the body shows it: its edges kept, its scrollbar not', () => {
     const editor = open([{ type: 'paragraph', content: 'x' }]);
     const view = editor.prosemirrorView!;
     const block = document.createElement('div');
@@ -325,11 +325,29 @@ describe('blockPreviewContent', () => {
       '<span class="doc-table-overflow-edge" data-overflow-edge="right" data-on=""></span>' +
       '</div></div></div>';
     const content = blockPreviewContent(view, [block]);
-    expect(content.querySelector('[data-content-type="table"] > table')).not.toBeNull();
     expect(cellTexts(content)).toEqual([['a1', 'b1']]);
-    expect(content.querySelector('[data-radix-scroll-area-viewport]')).toBeNull();
+    expect(content.querySelector('[data-radix-scroll-area-viewport] table')).not.toBeNull();
+    // Shown only while the pointer is over the frame or it scrolls: what the
+    // body shows for the moment, like a selection.
     expect(content.querySelector('[data-scroll-area-scrollbar]')).toBeNull();
-    expect(content.querySelector('[data-overflow-edge]')).toBeNull();
+    // Drawn at rest too, where columns run on past the frame.
+    expect(content.querySelectorAll('[data-overflow-edge]')).toHaveLength(2);
+  });
+
+  it('scrolls each frame in a preview to where the body has it scrolled', () => {
+    const editor = open([{ type: 'table', content: { type: 'tableContent', rows: [{ cells: ['a1', 'b1'] }] } }]);
+    const view = editor.prosemirrorView!;
+    // The frame the body draws around a table (`document-table-blocknote.tsx`)
+    // is a React view a test page does not mount; its viewport is put in place.
+    const table = view.dom.querySelector('table')!;
+    const viewport = document.createElement('div');
+    viewport.setAttribute('data-radix-scroll-area-viewport', '');
+    table.replaceWith(viewport);
+    viewport.append(table);
+    viewport.scrollLeft = 120;
+    const row = view.dom.querySelector('.bn-block-outer')!;
+    const root = buildDragPreview(view, blockPreviewContent(view, [row.cloneNode(true) as Element]), () => ({ width: 100, height: 20 }));
+    expect(root.querySelector<HTMLElement>('[data-radix-scroll-area-viewport]')!.scrollLeft).toBe(120);
   });
 
   it('draws each video as an empty canvas when it has no original to take a size and a frame from', () => {
@@ -426,7 +444,7 @@ describe('tableLinePreviewContent', () => {
     }
   });
 
-  it('holds the line\'s table and nothing of the frame the table scrolls in', () => {
+  it('holds a row in the frame its table scrolls in, and a column as its table alone', () => {
     const editor = open([{ type: 'table', content: { type: 'tableContent', rows } }]);
     const view = editor.prosemirrorView!;
     // The frame the body draws around a table (`document-table-blocknote.tsx`)
@@ -441,11 +459,16 @@ describe('tableLinePreviewContent', () => {
     const edge = document.createElement('span');
     edge.setAttribute('data-overflow-edge', 'right');
     viewport.after(scrollbar, edge);
-    const content = tableLinePreviewContent(view, cellOf(editor, 'c1'), 'column')!;
-    expect(content.querySelector(':scope > table')).not.toBeNull();
-    expect(content.querySelector('[data-radix-scroll-area-viewport]')).toBeNull();
-    expect(content.querySelector('[data-scroll-area-scrollbar]')).toBeNull();
-    expect(content.querySelector('[data-overflow-edge]')).toBeNull();
+    const row = tableLinePreviewContent(view, cellOf(editor, 'b2'), 'row')!;
+    expect(row.querySelector('[data-radix-scroll-area-viewport] table')).not.toBeNull();
+    expect(row.querySelector('[data-scroll-area-scrollbar]')).toBeNull();
+    expect(row.querySelector('[data-overflow-edge]')).not.toBeNull();
+    // A column is narrower than any frame, so it is its table alone.
+    const column = tableLinePreviewContent(view, cellOf(editor, 'c1'), 'column')!;
+    expect(column.querySelector(':scope > table')).not.toBeNull();
+    expect(column.querySelector('[data-radix-scroll-area-viewport]')).toBeNull();
+    expect(column.querySelector('[data-scroll-area-scrollbar]')).toBeNull();
+    expect(column.querySelector('[data-overflow-edge]')).toBeNull();
   });
 
   it('finds the column by the table map when a merged cell shifts the cells', () => {
