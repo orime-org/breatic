@@ -235,9 +235,24 @@ describe('a grid', () => {
   });
 });
 
+describe.each(['image.adjust', 'video.adjust'])('%s', (id) => {
+  const adjust = { spec: tool(id), entry: undefined, prompt: '', slots: {}, sourceShown: true, exporting: false };
+  const source = { width: 1600, height: 1000, duration: 8 };
+
+  it('holds Run back while every slider is at zero', () => {
+    expect(miniToolRefusal({ ...adjust, source, params: {} })).toBe('adjustNeutral');
+    expect(miniToolRefusal({ ...adjust, source, params: { value: { exposure: 0 } } })).toBe('adjustNeutral');
+  });
+
+  it('runs once any slider moves', () => {
+    expect(miniToolRefusal({ ...adjust, source, params: { value: { grain: 3 } } })).toBeNull();
+  });
+});
+
 describe('BLOCKING_REFUSALS', () => {
   it('disables Execute for the reasons the reader fixes in the panel', () => {
     expect([...BLOCKING_REFUSALS].sort()).toEqual([
+      'adjustNeutral',
       'drawingEmpty',
       'exporting',
       'promptMissing',
