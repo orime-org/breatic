@@ -61,7 +61,16 @@ async function pasteText(page: Page, text: string): Promise<void> {
 
 test.beforeEach(async ({ page }) => {
   await openSmokeProject(page);
+  // The box is read-only while the new conversation opens, and a paste made
+  // then is lost; under load the create request is slow enough for that.
+  const opened = page.waitForResponse(
+    (r) => r.request().method() === 'POST' && new URL(r.url()).pathname === '/api/v1/chat/conversations',
+  );
   await page.getByTestId('new-conversation').click();
+  await opened;
+  await expect(page.getByTestId('chat-composer-box')).toHaveAttribute('contenteditable', 'true', {
+    timeout: 20_000,
+  });
   await expect(page.getByTestId('message-bubble')).toHaveCount(0, { timeout: 20_000 });
 });
 
