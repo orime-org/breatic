@@ -12,6 +12,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const drawing = vi.hoisted(() => ({ drawAdjusted: vi.fn(() => Promise.resolve()) }));
 vi.mock('@web/spaces/canvas/mini-tool/adjust-export', () => drawing);
+// The node's own picture is not CORS-loaded; the preview draws from a copy that is.
+const loaded = vi.hoisted(() => ({ el: { tagName: 'IMG', copy: true } as unknown as HTMLImageElement }));
+const loader = vi.hoisted(() => ({ prepareCropSource: vi.fn(() => Promise.resolve(loaded.el)) }));
+vi.mock('@web/spaces/canvas/focus/crop-export', async (original) => ({ ...(await original<object>()), ...loader }));
 
 import { defaultAdjustValue } from '@breatic/shared';
 
@@ -67,6 +71,16 @@ describe('NodeAdjustLayer', () => {
       expect.objectContaining({ exposure: 20 }),
       expect.anything(),
     );
+  });
+
+  it('draws from a CORS-loaded copy of the picture, which WebGL takes', async () => {
+    mount('image.adjust', { value: { ...defaultAdjustValue, exposure: 20 } });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    flushFrames();
+    expect(loader.prepareCropSource).toHaveBeenCalledWith({ url: NODE.src, timeSeconds: null });
+    expect(drawing.drawAdjusted).toHaveBeenLastCalledWith(loaded.el, expect.anything(), expect.anything(), expect.anything());
   });
 
   it('redraws once a frame however many times the sliders move', () => {
