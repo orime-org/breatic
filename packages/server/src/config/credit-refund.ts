@@ -15,7 +15,7 @@ import { parse } from "yaml";
 import { z } from "zod";
 import { MONOREPO_ROOT } from "@breatic/core";
 
-/** Room the lease leaves after the two Stripe calls of an attempt, for writing the answer back. */
+/** Room the lease leaves after the Stripe calls of an attempt, for writing the answer back. */
 const LEASE_HEADROOM_MS = 10_000;
 
 const positiveInt = z.number().int().positive();
@@ -32,14 +32,14 @@ export const creditRefundSchema = z
     stale_sending_minutes: positiveInt,
     reconcile_window_days: positiveInt,
   })
-  // One attempt calls Stripe twice under its lease (create, then list). A
-  // lease that ran out while its holder still waited would let a second
-  // instance claim the disposition and its answer would be thrown away.
+  // A resumed attempt calls Stripe three times under its lease (list,
+  // create, list). A lease that ran out while its holder still waited would
+  // let a second instance claim the disposition and throw the answer away.
   .refine(
-    (c) => 2 * c.stripe_call_timeout_ms + LEASE_HEADROOM_MS < c.lease_seconds * 1000,
+    (c) => 3 * c.stripe_call_timeout_ms + LEASE_HEADROOM_MS < c.lease_seconds * 1000,
     {
       message:
-        "2 * stripe_call_timeout_ms + 10000 must be less than lease_seconds * 1000",
+        "3 * stripe_call_timeout_ms + 10000 must be less than lease_seconds * 1000",
       path: ["stripe_call_timeout_ms", "lease_seconds"],
     },
   );

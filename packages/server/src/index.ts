@@ -232,8 +232,8 @@ server.on("error", (err) => {
 // side cannot run inside the business transaction).
 const lifecycleRelay = startLifecycleRelay();
 
-// The refund disposition loop (inner#1410 §7.1); it starts only when the
-// internal API and payments are both on.
+// The refund disposition loop (inner#1410 §7.1); it runs whenever the
+// internal API is on, since it finishes every disposition the API accepts.
 const refundLoop = startRefundLoop();
 
 // Health probe - separate port so probe traffic stays off the main
@@ -316,9 +316,12 @@ async function shutdown(signal: string): Promise<void> {
       // Work a route left running after its reply (a password-reset send)
       // still needs the pools, so they close once it has finished.
       () =>
-        Promise.all([settleAfterReply(), refundLoop.stop()]).then(() =>
-          Promise.allSettled([closeDb(), closeRedis(), closeQueues()]),
-        ),
+        // The loop's last tick can still queue a buyer mail, so it stops
+        // before the after-reply work is waited for.
+        refundLoop
+          .stop()
+          .then(() => settleAfterReply())
+          .then(() => Promise.allSettled([closeDb(), closeRedis(), closeQueues()])),
     ],
     deadlineMs: SHUTDOWN_DEADLINE_MS,
   });

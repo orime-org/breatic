@@ -84,14 +84,12 @@ interface Facts {
  */
 export async function preview(lotId: string): Promise<Record<string, unknown>> {
   const { payment } = await loadTarget(lotId);
-  const listed = await readStripe(payment);
-  let rejudged: string | null = null;
-  const body = await db.transaction(async (tx) => {
-    rejudged = await applyRefundSnapshot(tx, payment.id, listed, "request");
+  await copyStripe(payment);
+  return db.transaction(async (tx) => {
     const lot = await creditLotRepo.lockLot(lotId, tx);
     if (lot === null) throw new RefundRefusal(404, "not_found", "lot_not_found");
     const facts = await readFacts(tx, lot, payment);
-    const judged = assessRefundPreview(assessFacts(facts, payment));
+    const judged = assessRefundPreview(assessFacts(facts));
     const inFlight = facts.ops.find(isInFlight);
     return {
       lot: {
@@ -123,8 +121,6 @@ export async function preview(lotId: string): Promise<Record<string, unknown>> {
             : { kind: judged.kind, ...judged.result },
     };
   });
-  if (rejudged !== null) sendOperationMailsLater(rejudged);
-  return body;
 }
 
 // ── approve, retry, refund_again ─────────────────────────────────────
@@ -144,16 +140,16 @@ export async function requestRefund(
   req: WriteRequest,
   body: { confirmedRefundIds?: string[]; failedRefundIds?: string[]; notify?: boolean },
 ): Promise<Answer<unknown>> {
-  const outcome = await decide(req, (facts, payment) => {
+  const outcome = await decide(req, (facts) => {
     const verdict = assessRefundCreate({
       kind,
-      ...assessFacts(facts, payment),
+      ...assessFacts(facts),
       confirmedRefundIds: body.confirmedRefundIds ?? [],
       failedRefundIds: body.failedRefundIds ?? [],
     });
     if (verdict.outcome === "blocked") throw refusalOf(verdict);
     return {
-      ...newOperation(kind, req, payment),
+      ...newOperation(kind, req, facts.payment),
       confirmedRefundIds: body.confirmedRefundIds,
       failedRefundIds: body.failedRefundIds,
       notify: body.notify,
@@ -174,7 +170,7 @@ export async function requestRefund(
  * @param req - The request.
  * @param body - The kind's own fields.
  * @param body.notify - settle: whether to tell the buyer.
- * @param body.confirmedSucceededCents - settle: the succeeded sum the operator saw.
+ * @param body.confirmedSucceededCents - settle, resolve_outside: the succeeded sum the operator saw.
  * @param body.acceptPartial - settle: book a refund short of what was paid.
  * @param body.failedRefundIds - resolve_outside: the refunds answered for.
  * @returns The finished disposition.
@@ -207,33 +203,42 @@ export async function requestOneShot(
 }
 
 /**
- * Phase 1 of every disposition (§4.6, §5.2, §5.3): replay a known key; read
- * Stripe; then in one transaction take the key's lock and the lot's, look
- * the key up again, copy what Stripe holds, judge and insert (E1).
+ * Phase 1 of every disposition (§4.6, §5.2, §5.3): replay a known key; copy
+ * what Stripe holds; then in one transaction take the key's lock and the
+ * lot's, look the key up again, judge and insert (E1). A refusal stores no
+ * disposition and no key; the copy stays (§6.4).
  * @param req - The request.
  * @param judge - Turns the facts into the new disposition, or throws its refusal.
  * @returns What to replay, or the new disposition.
  */
 async function decide(
   req: WriteRequest,
-  judge: (facts: Facts, payment: PaymentEntity) => NewOperation,
+  judge: (facts: Facts) => NewOperation,
 ): Promise<{ replay: Replay } | { op: CreditRefundOperation }> {
   const replay = await lookupKey(req.key, req.hash);
   if (replay) return { replay };
   const { payment } = await loadTarget(req.lotId);
-  const listed = await readStripe(payment);
-  let rejudged: string | null = null;
-  const outcome = await db.transaction(async (tx) => {
+  await copyStripe(payment);
+  return db.transaction(async (tx) => {
     const locked = await lockAndRecheck(tx, req);
     if ("replay" in locked) return { replay: locked.replay };
-    rejudged = await applyRefundSnapshot(tx, payment.id, listed, "request");
-    const create = judge(await readFacts(tx, locked.lot, payment), payment);
+    const create = judge(await readFacts(tx, locked.lot, payment));
     const op = await transitionOperation(tx, null, { type: "E1", create, actor: "request" });
     return { op: op! };
   });
-  // A refusal rolls the copy back with it; only a committed re-judgement mails.
+}
+
+/**
+ * Step 0: read every refund Stripe holds for the payment and copy it in its
+ * own transaction, which may finish a disposition waiting on Stripe; that
+ * disposition's buyer mail goes out once it has committed.
+ * @param payment - The payment.
+ * @throws {RefundRefusal} 503 `stripe_unavailable` when the read fails.
+ */
+async function copyStripe(payment: PaymentEntity): Promise<void> {
+  const listed = await readStripe(payment);
+  const rejudged = await db.transaction((tx) => applyRefundSnapshot(tx, payment.id, listed, "request"));
   if (rejudged !== null) sendOperationMailsLater(rejudged);
-  return outcome;
 }
 
 // ── mail resend ──────────────────────────────────────────────────────
@@ -334,14 +339,12 @@ async function lockAndRecheck(
 
 /**
  * The facts the tables read, inside the transaction holding the lot's lock.
- * The lot is read again: copying Stripe's refunds may have just moved it.
  * @param tx - The transaction.
- * @param locked - The lot, locked by this transaction.
+ * @param lot - The lot, locked by this transaction.
  * @param payment - Its payment.
  * @returns The facts.
  */
-async function readFacts(tx: DbTx, locked: CreditLotEntity, payment: PaymentEntity): Promise<Facts> {
-  const lot = (await creditLotRepo.lockLot(locked.id, tx))!;
+async function readFacts(tx: DbTx, lot: CreditLotEntity, payment: PaymentEntity): Promise<Facts> {
   const { ledgerSum, refundRequestedAt } = await creditLotRepo.readRefundFacts(lot.id, tx);
   const paid = (await paymentRepo.readPaidAmount(payment.id, tx))!;
   return {
@@ -359,13 +362,10 @@ async function readFacts(tx: DbTx, locked: CreditLotEntity, payment: PaymentEnti
 /**
  * The facts in the judgement table's shape.
  * @param facts - The facts.
- * @param payment - The payment.
  * @returns The table's input, less the request's fields.
  */
-function assessFacts(
-  facts: Facts,
-  payment: PaymentEntity,
-): Pick<AssessInput, "lot" | "payment" | "ops" | "refunds"> {
+function assessFacts(facts: Facts): Pick<AssessInput, "lot" | "payment" | "ops" | "refunds"> {
+  const { payment } = facts;
   return {
     lot: {
       lifecycle: facts.lot.lifecycle,
@@ -432,8 +432,7 @@ function snapshotOf(op: CreditRefundOperation): OperationSnapshot {
  * @returns Its snapshot, 202 while it is still in flight.
  */
 function answerOperation(op: CreditRefundOperation): Answer<OperationSnapshot> {
-  const inFlight = op.status === "started" || op.status === "awaiting_stripe";
-  return { status: inFlight ? 202 : 200, body: snapshotOf(op) };
+  return { status: isInFlight(op) ? 202 : 200, body: snapshotOf(op) };
 }
 
 /**

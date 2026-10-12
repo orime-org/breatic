@@ -2,10 +2,10 @@
 # Read once at server start by packages/server/src/config/credit-refund.ts;
 # every key is required and a malformed file refuses to start.
 
-# How long one Stripe call may take before it counts as a timeout. An attempt
-# makes two calls (create, then list), so twice this plus 10 seconds must stay
-# below the lease: a claim's holder never outlives its lease while it is still
-# waiting on Stripe.
+# How long one Stripe call may take before it counts as a timeout. A resumed
+# attempt makes three calls (list, create, list), so three times this plus 10
+# seconds must stay below the lease: a claim's holder never outlives its lease
+# while it is still waiting on Stripe.
 stripe_call_timeout_ms: 20000
 
 # How long a claim on a started disposition lasts before the loop may take it

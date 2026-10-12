@@ -73,8 +73,9 @@ export function rateLimit(
     const bucket = `${opts.prefix}:${key}`;
     let allowed: boolean;
     try {
-      const strict = opts.failClosed ? [{ strict: true }] : [];
-      allowed = await checkRateLimit(getRedis(), bucket, opts.max, opts.windowSeconds, ...strict);
+      allowed = await checkRateLimit(getRedis(), bucket, opts.max, opts.windowSeconds, {
+        strict: opts.failClosed !== undefined,
+      });
     } catch (err) {
       if (!opts.failClosed) throw err;
       logger.error({ err, action: opts.prefix }, "rate_limit_unavailable");

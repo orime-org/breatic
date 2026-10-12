@@ -29,6 +29,7 @@ import type {
 import * as refundCopyRepo from "@server/modules/credit-refund/refund-copy.repo.js";
 import * as refundMailRepo from "@server/modules/credit-refund/refund-mail.repo.js";
 import { succeededCents } from "@server/modules/credit-refund/settle-rule.js";
+import { pickUnresolvedFailedRefunds } from "@server/modules/credit-refund/unresolved.js";
 import type { RefundCopy, StripeRefundObject } from "@server/modules/credit-refund/types.js";
 import * as notificationService from "@server/modules/notification/notification.service.js";
 import * as paymentRepo from "@server/modules/payment/payment.repo.js";
@@ -82,12 +83,18 @@ interface DeclineEvent {
   failure?: StripeFailure;
 }
 
-/**
- * The events of §6.2. `leaseToken` is the lease an executor's answer was
- * made under, absent for the loop's events; E15 is any event whose lease
- * the row no longer holds. `actor` goes into the event row's detail.
- */
-export type OperationEvent = (
+/** Who made an event and under which lease (§5.1 `detail.actor`, §7.1). */
+interface EventMeta {
+  /** The lease an executor's answer was made under; absent for the loop's events. */
+  leaseToken?: string;
+  actor: Actor;
+}
+
+/** An event with who made it. */
+type Made<E> = E & EventMeta;
+
+/** The events of §6.2, as the code that observes them builds them. */
+export type OperationEventBody =
   | { type: "E1"; create: NewOperation }
   | RefundEvent
   | {
@@ -98,8 +105,13 @@ export type OperationEvent = (
   | DeclineEvent
   | { type: "E7" | "E8" | "E9" | "E16" | "E17"; failure: StripeFailure }
   | { type: "E10" | "E11" | "E12" | "E13" }
-  | { type: "E14"; closedBy: string }
-) & { leaseToken?: string; actor?: Actor };
+  | { type: "E14"; closedBy: string };
+
+/**
+ * An event as `transitionOperation` executes it. E15 is any event whose
+ * lease the row no longer holds.
+ */
+export type OperationEvent = Made<OperationEventBody>;
 
 /** A cell of §6.2 that cannot happen. */
 export class ImpossibleTransitionError extends Error {
@@ -154,7 +166,7 @@ interface Ctx {
   lot: CreditLotEntity;
   row: CreditRefundOperation;
   /** Who is moving it; the rows it writes for other dispositions say the same. */
-  actor: Actor | undefined;
+  actor: Actor;
 }
 
 /** What a finished disposition tells the buyer. */
@@ -183,7 +195,7 @@ export async function transitionOperation(
   event: OperationEvent,
 ): Promise<CreditRefundOperation | null> {
   if (op === null) {
-    if (event.type === "E1") return create(tx, event.create);
+    if (event.type === "E1") return create(tx, event);
     if (event.type === "E14") return null;
     throw new ImpossibleTransitionError(null, event.type);
   }
@@ -212,17 +224,21 @@ export async function transitionOperation(
 /**
  * Insert the disposition and do what its kind does at once (§5.2, §5.3).
  * @param tx - The caller's transaction.
- * @param req - The request.
+ * @param event - The E1 event: the request and who made it.
  * @returns The new row.
  */
-async function create(tx: DbTx, req: NewOperation): Promise<CreditRefundOperation> {
+async function create(
+  tx: DbTx,
+  event: Extract<OperationEvent, { type: "E1" }>,
+): Promise<CreditRefundOperation> {
+  const req = event.create;
   const lot = await creditLotRepo.lockLot(req.lotId, tx);
   if (lot === null) throw new ImpossibleTransitionError(null, "E1");
   const startsRefund = req.kind === "approve" || req.kind === "retry" || req.kind === "refund_again";
   const { refundRequestedAt } = await creditLotRepo.readRefundFacts(req.lotId, tx);
   if (req.kind === "approve") await creditLotService.markRefunding({ lotId: req.lotId }, tx);
 
-  const copies = await refundCopyRepo.listForPayment(req.paymentId, tx);
+  const copies = startsRefund ? [] : await refundCopyRepo.listForPayment(req.paymentId, tx);
   const finishing = finishingValues(req, lot, copies);
   const row = await operationRepo.insert(
     {
@@ -253,7 +269,7 @@ async function create(tx: DbTx, req: NewOperation): Promise<CreditRefundOperatio
       event: EVENT_NAME.E1,
       fromStatus: null,
       toStatus: row.status,
-      detail: { kind: req.kind, actor: "request" },
+      detail: detailOf(event),
     },
     tx,
   );
@@ -267,10 +283,14 @@ async function create(tx: DbTx, req: NewOperation): Promise<CreditRefundOperatio
     // settle, and resolve_outside on a lot not yet booked (§5.3, §5.5).
     await creditLotService.settleRefund({ lotId: req.lotId, refundId: finishing!.bookOn ?? row.id }, tx);
   }
-  await afterSucceeded({ tx, lot, row, actor: "request" }, row, {
+  await afterSucceeded({ tx, lot, row, actor: event.actor }, row, {
     result: row.result!,
     resolve:
-      req.kind === "resolve_outside" ? row.failedRefundIds : finishing!.books ? unresolvedFailures(copies) : [],
+      req.kind === "resolve_outside"
+        ? row.failedRefundIds
+        : finishing!.books
+          ? unresolvedIds(lot.lifecycle, copies)
+          : [],
     tell:
       req.kind === "reject"
         ? { kind: "refund_rejected" }
@@ -327,15 +347,45 @@ function finishingValues(
 }
 
 /**
- * The failed refunds a booking answers for: every one not yet answered for
- * at the moment the lot is booked (§5.5).
+ * The failed refunds a booking answers for: every one unanswered at the
+ * moment the lot is booked (§5.5), by the one definition (§5.3).
+ * @param lifecycle - The lot's lifecycle before booking.
  * @param copies - The payment's refund copies.
  * @returns Their Stripe ids.
  */
-function unresolvedFailures(copies: readonly RefundCopy[]): string[] {
-  return copies
-    .filter((c) => (c.status === "failed" || c.status === "canceled") && c.resolvedByOperationId === null)
-    .map((c) => c.stripeRefundId);
+function unresolvedIds(lifecycle: CreditLotEntity["lifecycle"], copies: readonly RefundCopy[]): string[] {
+  return pickUnresolvedFailedRefunds(lifecycle, copies).map((c) => c.stripeRefundId);
+}
+
+/**
+ * Whether the declined refund had succeeded before, by its copy.
+ * @param ctx - The locked row.
+ * @param event - The E6 event.
+ * @returns True when the copy says it once succeeded.
+ */
+async function everSucceeded(ctx: Ctx, event: Made<DeclineEvent>): Promise<boolean> {
+  if (!event.refund) return false;
+  const copies = await refundCopyRepo.listForPayment(ctx.row.paymentId, ctx.tx);
+  return copies.some((c) => c.stripeRefundId === event.refund!.id && c.everSucceeded);
+}
+
+/**
+ * A refund_again that Stripe did not carry out (E6): a person decides, and
+ * its own refund is answered for here — the debt stays with the failed
+ * refunds it was meant to cover (§5.5).
+ * @param ctx - The locked row.
+ * @param event - The E6 event.
+ * @param reason - stripe_declined (first answer) or stripe_refund_failed_later.
+ * @returns The row after.
+ */
+async function refundAgainDeclined(
+  ctx: Ctx,
+  event: Made<DeclineEvent>,
+  reason: "stripe_declined" | "stripe_refund_failed_later",
+): Promise<CreditRefundOperation> {
+  const after = await toAttention(ctx, event, reason, declineDetail(event), refundIdOf(event));
+  if (event.refund) await refundCopyRepo.markResolved(ctx.row.lotId, [event.refund.id], ctx.row.id, ctx.tx);
+  return after;
 }
 
 // ── started ──────────────────────────────────────────────────────────
@@ -360,8 +410,11 @@ async function fromStarted(ctx: Ctx, event: OperationEvent): Promise<CreditRefun
       if (again) break;
       return toAttention(ctx, event, event.reason, null, { stripeRefundId: event.refund.id });
     case "E6":
-      return again
-        ? toAttention(ctx, event, "stripe_declined", declineDetail(event), refundIdOf(event))
+      if (again) return refundAgainDeclined(ctx, event, "stripe_declined");
+      // A refund that had succeeded before it failed moved money and brought
+      // it back: that is for a person, not a plain send-back (§6.2).
+      return (await everSucceeded(ctx, event))
+        ? toAttention(ctx, event, "stripe_refund_failed_later", declineDetail(event), refundIdOf(event))
         : sendBack(ctx, event);
     case "E7":
     case "E16":
@@ -416,6 +469,7 @@ async function fromAwaiting(ctx: Ctx, event: OperationEvent): Promise<CreditRefu
       if (again) break;
       return toAttention(ctx, event, event.reason, null, { stripeRefundId: event.refund.id });
     case "E6":
+      if (again) return refundAgainDeclined(ctx, event, "stripe_refund_failed_later");
       return toAttention(ctx, event, "stripe_refund_failed_later", declineDetail(event), refundIdOf(event));
     case "E10":
       if (known) break;
@@ -585,7 +639,7 @@ async function afterSucceeded(ctx: Ctx, op: CreditRefundOperation, finish: Finis
     await transitionOperation(ctx.tx, { id }, {
       type: "E14",
       closedBy: op.id,
-      ...(ctx.actor && { actor: ctx.actor }),
+      actor: ctx.actor,
     });
   }
   await refundCopyRepo.markResolved(op.lotId, finish.resolve ?? [], op.id, ctx.tx);
@@ -623,7 +677,7 @@ async function afterSucceeded(ctx: Ctx, op: CreditRefundOperation, finish: Finis
  */
 async function book(
   ctx: Ctx,
-  event: RefundEvent,
+  event: Made<RefundEvent>,
 ): Promise<CreditRefundOperation> {
   if (ctx.lot.lifecycle !== "refunding") return stateMismatch(ctx, event, { stripeRefundId: event.refund.id });
   const copies = await refundCopyRepo.listForPayment(ctx.row.paymentId, ctx.tx);
@@ -632,7 +686,7 @@ async function book(
   return toSucceeded(ctx, EVENT_NAME.E2, detailOf(event), {
     result: "refunded",
     patch: { stripeRefundId: event.refund.id, settledSucceededCents: settledCents },
-    resolve: unresolvedFailures(copies),
+    resolve: unresolvedIds(ctx.lot.lifecycle, copies),
     tell: ctx.row.notify ? { kind: "refund_completed", amountCents: settledCents } : null,
   });
 }
@@ -662,7 +716,7 @@ function stateMismatch(
  */
 function finishRefundAgain(
   ctx: Ctx,
-  event: RefundEvent,
+  event: Made<RefundEvent>,
 ): Promise<CreditRefundOperation> {
   return toSucceeded(ctx, EVENT_NAME.E2, detailOf(event), {
     result: "refunded",
@@ -683,7 +737,7 @@ function finishRefundAgain(
  */
 async function sendBack(
   ctx: Ctx,
-  event: DeclineEvent,
+  event: Made<DeclineEvent>,
 ): Promise<CreditRefundOperation> {
   if (ctx.lot.lifecycle !== "refunding") return stateMismatch(ctx, event, refundIdOf(event));
   await creditLotService.sendBackRefund({ lotId: ctx.row.lotId }, ctx.tx);
@@ -704,7 +758,7 @@ async function sendBack(
  * @returns The refund, the Stripe failure fields, the reason or the closer.
  */
 function detailOf(event: OperationEvent): Record<string, unknown> {
-  const actor = event.actor && { actor: event.actor };
+  const actor = { actor: event.actor };
   if (event.type === "E1") return { kind: event.create.kind, ...actor };
   if (event.type === "E14") return { closedBy: event.closedBy, ...actor };
   const refund = "refund" in event ? event.refund : undefined;

@@ -10,10 +10,11 @@
  */
 
 import { db, env, logger } from "@breatic/core";
+import type { DbTx } from "@breatic/core";
 import { creditLotRepo } from "@breatic/domain";
 import { getCreditRefundConfig } from "@server/config/credit-refund.js";
 import { attemptsExhausted, waitedBackoffSeconds } from "@server/modules/credit-refund/backoff.js";
-import { executeRefund } from "@server/modules/credit-refund/executor.js";
+import { closeExhausted, executeRefund } from "@server/modules/credit-refund/executor.js";
 import * as operationRepo from "@server/modules/credit-refund/operation.repo.js";
 import type { CreditRefundOperation } from "@server/modules/credit-refund/operation.repo.js";
 import { transitionOperation } from "@server/modules/credit-refund/operation-transitions.js";
@@ -106,15 +107,15 @@ async function resumeStarted(): Promise<void> {
   for (;;) {
     let progressed = false;
     for (const candidate of await operationRepo.listClaimable(BATCH)) {
-      const claimed = await claim(candidate);
-      if (claimed === "skipped") continue;
+      const op = await claim(candidate);
+      if (op === null) continue;
       progressed = true;
-      if (claimed === "exhausted") continue;
       try {
-        await executeRefund(claimed, "loop");
-        sendOperationMailsLater(claimed.id);
+        if (attemptsExhausted(op.attemptCount, getCreditRefundConfig())) await closeExhausted(op, "loop");
+        else await executeRefund(op, "loop");
+        sendOperationMailsLater(op.id);
       } catch (err) {
-        logger.error({ err, operationId: claimed.id }, "refund_loop_execute_failed");
+        logger.error({ err, operationId: op.id }, "refund_loop_execute_failed");
       }
     }
     if (!progressed) return;
@@ -122,25 +123,18 @@ async function resumeStarted(): Promise<void> {
 }
 
 /**
- * Take a candidate over under a new lease (E13), or end it when its
- * attempts are used up (E11).
+ * Take a candidate over under a new lease (E13).
  * @param candidate - The disposition and its lot.
  * @param candidate.id - The disposition.
  * @param candidate.lotId - Its lot.
- * @returns The disposition under the new lease, `exhausted`, or `skipped`
- *   when another instance took it first.
+ * @returns The disposition under the new lease, or null when another
+ *   instance took it first.
  */
-async function claim(candidate: {
-  id: string;
-  lotId: string;
-}): Promise<CreditRefundOperation | "exhausted" | "skipped"> {
+async function claim(candidate: { id: string; lotId: string }): Promise<CreditRefundOperation | null> {
   return db.transaction(async (tx) => {
     await creditLotRepo.lockLot(candidate.lotId, tx);
-    if (!(await operationRepo.lockIfClaimable(candidate.id, tx))) return "skipped";
-    const op = (await transitionOperation(tx, { id: candidate.id }, { type: "E13", actor: "loop" }))!;
-    if (!attemptsExhausted(op.attemptCount, getCreditRefundConfig())) return op;
-    await transitionOperation(tx, { id: op.id }, { type: "E11", actor: "loop" });
-    return "exhausted";
+    if (!(await operationRepo.lockIfClaimable(candidate.id, tx))) return null;
+    return transitionOperation(tx, { id: candidate.id }, { type: "E13", actor: "loop" });
   });
 }
 
@@ -160,7 +154,7 @@ async function recheckAwaiting(): Promise<void> {
 /**
  * Copy Stripe's refunds for the disposition's payment, which re-judges it;
  * then put off its next lookup, or end the wait for a refund id that never
- * came (E12).
+ * came (E12) — the deadline holds whether or not this read worked.
  * @param op - The waiting disposition.
  */
 async function recheck(op: CreditRefundOperation): Promise<void> {
@@ -169,24 +163,16 @@ async function recheck(op: CreditRefundOperation): Promise<void> {
     listed = await listRefundsForPayment(op.paymentId);
   } catch (err) {
     if (!(err instanceof StripeReadError)) throw err;
-    await db.transaction((tx) =>
-      transitionOperation(tx, { id: op.id }, { type: "E16", failure: err.failure, actor: "loop" }),
-    );
+    await db.transaction(async (tx) => {
+      if (await endIfDeadlinePassed(tx, op.id)) return;
+      await transitionOperation(tx, { id: op.id }, { type: "E16", failure: err.failure, actor: "loop" });
+    });
     return;
   }
   await db.transaction(async (tx) => {
     await applyRefundSnapshot(tx, op.paymentId, listed, "loop");
     const current = (await operationRepo.findById(op.id, tx))!;
-    if (current.status !== "awaiting_stripe") return;
-    const firstCalledMs = current.firstCalledAt?.getTime();
-    if (
-      current.stripeRefundId === null &&
-      firstCalledMs !== undefined &&
-      Date.now() - firstCalledMs >= RESULT_UNKNOWN_AFTER_MS
-    ) {
-      await transitionOperation(tx, { id: op.id }, { type: "E12", actor: "loop" });
-      return;
-    }
+    if (current.status !== "awaiting_stripe" || (await endIfDeadlinePassed(tx, op.id))) return;
     await operationRepo.scheduleNextLook(
       op.id,
       waitedBackoffSeconds(current.firstCalledAt, getCreditRefundConfig(), Date.now()),
@@ -194,4 +180,26 @@ async function recheck(op: CreditRefundOperation): Promise<void> {
     );
   });
   sendOperationMailsLater(op.id);
+}
+
+/**
+ * E12: a disposition still waiting with no refund id 24 hours after its
+ * first call goes to a person.
+ * @param tx - The transaction.
+ * @param operationId - The waiting disposition.
+ * @returns True when it was ended.
+ */
+async function endIfDeadlinePassed(tx: DbTx, operationId: string): Promise<boolean> {
+  const current = (await operationRepo.findById(operationId, tx))!;
+  const firstCalledMs = current.firstCalledAt?.getTime();
+  if (
+    current.status !== "awaiting_stripe" ||
+    current.stripeRefundId !== null ||
+    firstCalledMs === undefined ||
+    Date.now() - firstCalledMs < RESULT_UNKNOWN_AFTER_MS
+  ) {
+    return false;
+  }
+  await transitionOperation(tx, { id: operationId }, { type: "E12", actor: "loop" });
+  return true;
 }

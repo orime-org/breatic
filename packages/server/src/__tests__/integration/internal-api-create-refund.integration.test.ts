@@ -46,6 +46,7 @@ import {
   PAID_CENTS,
   bellsOf,
   copiesOf,
+  expectOnlyRejudged,
   ledgerOf,
   mailsOf,
   readLot,
@@ -702,14 +703,16 @@ describe("POST …/refund/retry", () => {
 
   it("with a disposition still in flight is 409 operation_in_progress", async () => {
     const lot = await lotOnStripe("refunding");
-    await seedOperation(suite.sql, lot, { kind: "approve", status: "awaiting_stripe" });
+    const inFlight = await seedOperation(suite.sql, lot, { kind: "approve", status: "awaiting_stripe" });
     const before = await worldOf(suite.sql, lot);
+    const key = freshKey();
 
-    const res = await post(paths.retry(lot.lotId), body);
+    const res = await post(paths.retry(lot.lotId), body, key);
 
     expect(res.status).toBe(409);
     expect(errorShape(res.json)).toEqual({ code: "operation_in_progress", reason: undefined, detailTranslated: true });
-    expect(exceptCopies(await worldOf(suite.sql, lot))).toEqual(exceptCopies(before));
+    await expectOnlyRejudged(suite.sql, lot, before, inFlight.id);
+    expect(await holdersOf(key)).toEqual({ ops: 0, mails: 0 });
     expect(fakeStripe.createCalls).toEqual([]);
   });
 

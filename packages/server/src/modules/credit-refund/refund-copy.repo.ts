@@ -40,11 +40,13 @@ function toCopy(row: typeof creditRefunds.$inferSelect): RefundCopy {
 }
 
 /**
- * Insert a refund not seen before, or take Stripe's latest status, with the
- * failure reason reported alongside it, for one that was. A report of the
- * status the copy already holds writes nothing. `ever_succeeded` only turns
- * true; `operation_id` and `resolved_by_operation_id` are never changed by a
- * later report.
+ * Insert a refund not seen before, or take the reported status, with the
+ * failure reason reported alongside it, for one that was. `failed` and
+ * `canceled` are final on Stripe, so a copy in either keeps it: a report that
+ * says otherwise was read before. A report that changes nothing writes
+ * nothing. `ever_succeeded` only turns true, whatever the status does;
+ * `operation_id` and `resolved_by_operation_id` are never changed by a later
+ * report.
  * @param copy - The refund.
  * @param tx - The caller's transaction, holding the lot's lock.
  */
@@ -56,12 +58,13 @@ export async function upsert(copy: CopyWrite, tx: DbTx): Promise<void> {
     .onConflictDoUpdate({
       target: creditRefunds.stripeRefundId,
       set: {
-        status: copy.status,
-        failureReason: copy.failureReason,
+        status: sql`CASE WHEN ${creditRefunds.status} IN ('failed', 'canceled') THEN ${creditRefunds.status} ELSE ${copy.status} END`,
+        failureReason: sql`CASE WHEN ${creditRefunds.status} IN ('failed', 'canceled') THEN ${creditRefunds.failureReason} ELSE ${copy.failureReason} END`,
         everSucceeded: sql`${creditRefunds.everSucceeded} OR ${succeeded}`,
         updatedAt: sql`now()`,
       },
-      setWhere: sql`${creditRefunds.status} IS DISTINCT FROM ${copy.status}`,
+      setWhere: sql`(${creditRefunds.status} IS DISTINCT FROM ${copy.status} AND ${creditRefunds.status} NOT IN ('failed', 'canceled'))
+        OR (${succeeded} AND NOT ${creditRefunds.everSucceeded})`,
     });
 }
 

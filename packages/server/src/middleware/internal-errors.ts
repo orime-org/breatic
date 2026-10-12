@@ -38,8 +38,9 @@ export const internalErrorHandler: ErrorHandler = (err, c) => {
       err.status,
     );
   }
+  // Thrown by validate(), whose message is the public app's sentence.
   if (err instanceof ValidationError) {
-    return c.json({ code: "invalid_body", detail: err.message }, 422);
+    return c.json({ code: "invalid_body", detail: t("server.internal.invalid_body") }, 422);
   }
   if (err instanceof HTTPException && err.status === 400) {
     return c.json({ code: "invalid_body", detail: t("server.internal.unreadable_body") }, 400);

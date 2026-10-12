@@ -12,9 +12,7 @@
 
 import type { Context, Hono, MiddlewareHandler } from "hono";
 import { z } from "zod";
-import { ValidationError } from "@breatic/core";
 import { creditLotService } from "@breatic/domain";
-import { t } from "@breatic/shared";
 import "@server/middleware/internal-auth.js";
 import { validate } from "@server/middleware/validate.js";
 import {
@@ -26,6 +24,7 @@ import {
   type WriteRequest,
 } from "@server/modules/credit-refund/disposition.service.js";
 import { fingerprint } from "@server/modules/credit-refund/idempotency.js";
+import { RefundRefusal } from "@server/modules/credit-refund/refusal.js";
 
 const LOT = "/internal/v1/credit-lots/:lotId/refund";
 const RESEND = "/internal/v1/refund-operations/:operationId/mail/resend";
@@ -57,7 +56,9 @@ const BODIES = {
       acceptPartial: z.boolean(),
     })
     .strict(),
-  resolve_outside: z.object({ reason, failedRefundIds: refundIds }).strict(),
+  resolve_outside: z
+    .object({ reason, failedRefundIds: refundIds, confirmedSucceededCents: z.number().int().nonnegative() })
+    .strict(),
   resend: z.object({ reason }).strict(),
 };
 
@@ -66,14 +67,15 @@ type Body<K extends BodyKind> = z.infer<(typeof BODIES)[K]>;
 
 /**
  * The checked parts of a write request: the target in the path, the
- * `Idempotency-Key` header and the fingerprint over both and the body.
+ * `Idempotency-Key` header and the fingerprint over both and the body. The
+ * operator's reason is put on the context for the request's log line.
  * @param c - The context, after `validate`.
  * @param template - The route's path template.
  * @param idParam - The path parameter naming the target.
  * @param body - The validated body.
  * @param body.reason - Why, as the operator wrote it.
  * @returns The request as the service reads it, plus the target id.
- * @throws {ValidationError} 422 when the id or the key is malformed.
+ * @throws {RefundRefusal} 422 when the id or the key is malformed.
  */
 function readWrite(
   c: Context,
@@ -81,10 +83,11 @@ function readWrite(
   idParam: "lotId" | "operationId",
   body: { reason: string },
 ): Omit<WriteRequest, "lotId"> & { targetId: string } {
+  c.set("internalReason", body.reason);
   const targetId = readId(c, idParam);
   const key = c.req.header("idempotency-key");
   if (key === undefined || !creditLotService.REFKEY_PATTERN.test(key)) {
-    throw new ValidationError(t("server.internal.invalid_idempotency_key"));
+    throw new RefundRefusal(422, "invalid_body", "invalid_idempotency_key");
   }
   return {
     targetId,
@@ -100,11 +103,11 @@ function readWrite(
  * @param c - The context.
  * @param name - The parameter.
  * @returns Its value.
- * @throws {ValidationError} 422 when it is not a uuid.
+ * @throws {RefundRefusal} 422 when it is not a uuid.
  */
 function readId(c: Context, name: "lotId" | "operationId"): string {
   const value = c.req.param(name);
-  if (!uuid.safeParse(value).success) throw new ValidationError(t("server.internal.invalid_body"));
+  if (!uuid.safeParse(value).success) throw new RefundRefusal(422, "invalid_body", "invalid_body");
   return value!;
 }
 
@@ -129,13 +132,13 @@ interface Route {
  * A write on a lot: validate the body, then hand the request to the service.
  * @param kind - The body schema and the disposition kind.
  * @param path - The path template, which is also what the fingerprint names.
- * @param run - The service call.
+ * @param run - The service call, given the kind.
  * @returns The route.
  */
 function lotWrite<K extends Exclude<BodyKind, "resend">>(
   kind: K,
   path: string,
-  run: (req: WriteRequest, rest: Omit<Body<K>, "reason">) => Promise<Answer<unknown>>,
+  run: (kind: K, req: WriteRequest, rest: Omit<Body<K>, "reason">) => Promise<Answer<unknown>>,
 ): Route {
   /**
    * Read the request and call the service.
@@ -146,7 +149,7 @@ function lotWrite<K extends Exclude<BodyKind, "resend">>(
     const body = (c.req.valid as (target: "json") => Body<K>)("json");
     const { targetId, ...req } = readWrite(c, path, "lotId", body);
     const { reason: _reason, ...rest } = body;
-    return send(c, await run({ ...req, lotId: targetId }, rest));
+    return send(c, await run(kind, { ...req, lotId: targetId }, rest));
   };
   return { method: "post", path, handlers: [validate("json", BODIES[kind]), handler] };
 }
@@ -158,13 +161,13 @@ const ROUTES: Route[] = [
     path: LOT,
     handlers: [async (c) => c.json(await preview(readId(c, "lotId")), 200)],
   },
-  lotWrite("approve", `${LOT}/approve`, (req, rest) => requestRefund("approve", req, rest)),
-  lotWrite("retry", `${LOT}/retry`, (req, rest) => requestRefund("retry", req, rest)),
-  lotWrite("refund_again", `${LOT}/refund-again`, (req, rest) => requestRefund("refund_again", req, rest)),
-  lotWrite("reject", `${LOT}/reject`, (req, rest) => requestOneShot("reject", req, rest)),
-  lotWrite("settle", `${LOT}/settle`, (req, rest) => requestOneShot("settle", req, rest)),
-  lotWrite("send_back", `${LOT}/send-back`, (req, rest) => requestOneShot("send_back", req, rest)),
-  lotWrite("resolve_outside", `${LOT}/resolved-outside`, (req, rest) => requestOneShot("resolve_outside", req, rest)),
+  lotWrite("approve", `${LOT}/approve`, requestRefund),
+  lotWrite("retry", `${LOT}/retry`, requestRefund),
+  lotWrite("refund_again", `${LOT}/refund-again`, requestRefund),
+  lotWrite("reject", `${LOT}/reject`, requestOneShot),
+  lotWrite("settle", `${LOT}/settle`, requestOneShot),
+  lotWrite("send_back", `${LOT}/send-back`, requestOneShot),
+  lotWrite("resolve_outside", `${LOT}/resolved-outside`, requestOneShot),
   {
     method: "post",
     path: RESEND,

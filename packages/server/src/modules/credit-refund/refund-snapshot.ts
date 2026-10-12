@@ -15,7 +15,7 @@ import type { CreditRefundOperation } from "@server/modules/credit-refund/operat
 import {
   transitionOperation,
   type Actor,
-  type OperationEvent,
+  type OperationEventBody,
 } from "@server/modules/credit-refund/operation-transitions.js";
 import * as refundCopyRepo from "@server/modules/credit-refund/refund-copy.repo.js";
 import { canSettle } from "@server/modules/credit-refund/settle-rule.js";
@@ -42,7 +42,7 @@ export async function applyRefundSnapshot(
   tx: DbTx,
   paymentId: string,
   refunds: readonly StripeRefundObject[],
-  actor?: Actor,
+  actor: Actor,
 ): Promise<string | null> {
   const lot = await creditLotRepo.lockLotByPayment(paymentId, tx);
   if (lot === null) throw new Error(`payment ${paymentId} opened no credit lot`);
@@ -71,7 +71,7 @@ export async function applyRefundSnapshot(
   if (awaiting === null) return null;
   const event = await judgeAwaiting(tx, awaiting, refunds);
   if (event === null) return null;
-  await transitionOperation(tx, { id: awaiting.id }, { ...event, ...(actor && { actor }) });
+  await transitionOperation(tx, { id: awaiting.id }, { ...event, actor });
   return awaiting.id;
 }
 
@@ -88,7 +88,7 @@ export async function judgeOwnRefund(
   tx: DbTx,
   op: CreditRefundOperation,
   own: StripeRefundObject,
-): Promise<OperationEvent> {
+): Promise<OperationEventBody> {
   if (op.kind === "refund_again") {
     // It asked Stripe for exactly the failed refunds' amount, so its own
     // refund alone decides: succeeded settles.
@@ -122,7 +122,7 @@ async function judgeAwaiting(
   tx: DbTx,
   op: CreditRefundOperation,
   refunds: readonly StripeRefundObject[],
-): Promise<OperationEvent | null> {
+): Promise<OperationEventBody | null> {
   const own =
     op.stripeRefundId === null
       ? refunds.find((r) => r.metadata?.refund_operation_id === op.id)

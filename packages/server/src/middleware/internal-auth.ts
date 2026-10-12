@@ -24,6 +24,8 @@ declare module "hono" {
   interface ContextVariableMap {
     /** The back office admin an internal API request acts for. */
     internalAdmin: string;
+    /** The operator's reason a write request gave, for its log line. */
+    internalReason: string;
   }
 }
 

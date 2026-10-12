@@ -9,12 +9,14 @@
  */
 
 import { db } from "@breatic/core";
+import type { DbTx } from "@breatic/core";
 import * as operationRepo from "@server/modules/credit-refund/operation.repo.js";
 import type { CreditRefundOperation } from "@server/modules/credit-refund/operation.repo.js";
 import {
   transitionOperation,
   type Actor,
   type OperationEvent,
+  type OperationEventBody,
 } from "@server/modules/credit-refund/operation-transitions.js";
 import { applyRefundSnapshot, judgeOwnRefund } from "@server/modules/credit-refund/refund-snapshot.js";
 import { classifyCreateAnswer } from "@server/modules/credit-refund/stripe-answer.js";
@@ -30,7 +32,7 @@ import * as paymentRepo from "@server/modules/payment/payment.repo.js";
 interface Attempt {
   op: CreditRefundOperation;
   leaseToken: string;
-  actor: Actor | undefined;
+  actor: Actor;
 }
 
 /**
@@ -42,18 +44,13 @@ interface Attempt {
  * @returns Once the attempt's cell is committed.
  * @throws {Error} When the payment has no payment intent to refund.
  */
-export async function executeRefund(op: CreditRefundOperation, actor?: Actor): Promise<void> {
-  if (op.leaseToken === null) throw new Error(`disposition ${op.id} holds no lease`);
-  const attempt: Attempt = { op, leaseToken: op.leaseToken, actor };
-  const payment = await paymentRepo.getPaymentById(op.paymentId);
-  const paymentIntent = payment?.stripePaymentIntentId;
-  if (!paymentIntent) throw new Error(`payment ${op.paymentId} has no payment intent`);
-
+export async function executeRefund(op: CreditRefundOperation, actor: Actor): Promise<void> {
+  const { attempt, paymentIntent } = await begin(op, actor);
   if (op.firstCalledAt !== null) {
-    const listed = await read(attempt, paymentIntent);
+    const listed = await read(attempt, paymentIntent, []);
     if (listed === null) return;
     const found = ownRefundIn(listed, op.id);
-    if (found) return judgeAndAnswer(attempt, found, listed);
+    if (found) return judgeAndAnswer(attempt, found, [listed]);
   }
 
   await operationRepo.markFirstCalled(op.id, attempt.leaseToken);
@@ -67,34 +64,78 @@ export async function executeRefund(op: CreditRefundOperation, actor?: Actor): P
     return answer(attempt, { type: verdict.event, failure: created.failure! }, []);
   }
 
-  // Settling reads every refund of the payment, and so does the lookup by
-  // metadata; a failed read is E16 either way.
-  const listed = await read(attempt, paymentIntent);
+  // The create answer is copied first, then the list read after it: the
+  // list is the newer word on the status, the answer may be the only sight
+  // of a success (§6.4).
+  const seen = verdict.kind === "refund" ? [created.refund!] : [];
+  const listed = await read(attempt, paymentIntent, seen);
   if (listed === null) return;
   if (verdict.kind === "refund") {
-    // The list was read after the answer: it is the newer word on the refund.
-    const own = listed.find((r) => r.id === created.refund!.id);
-    return own
-      ? judgeAndAnswer(attempt, own, listed)
-      : judgeAndAnswer(attempt, created.refund!, [...listed, created.refund!]);
+    const own = listed.find((r) => r.id === created.refund!.id) ?? created.refund!;
+    return judgeAndAnswer(attempt, own, [seen, listed]);
   }
   const found = ownRefundIn(listed, op.id);
-  if (found) return judgeAndAnswer(attempt, found, listed);
-  return answer(attempt, { type: verdict.ifNotFound, failure: created.failure! }, listed);
+  if (found) return judgeAndAnswer(attempt, found, [listed]);
+  return answer(attempt, { type: verdict.ifNotFound, failure: created.failure! }, [listed]);
 }
 
 /**
- * Read every refund of the payment; a failed read is answered as E16.
+ * End a `started` disposition whose attempts are used up (E11), unless Stripe
+ * holds its refund after all: then that refund is judged (§6.2 E11).
+ * @param op - The disposition, under the lease the loop just claimed.
+ * @param actor - Who ends it.
+ * @returns Once the cell is committed.
+ * @throws {Error} When the payment has no payment intent.
+ */
+export async function closeExhausted(op: CreditRefundOperation, actor: Actor): Promise<void> {
+  const { attempt, paymentIntent } = await begin(op, actor);
+  let listed: StripeRefundObject[] = [];
+  try {
+    listed = await listRefunds(paymentIntent);
+  } catch (err) {
+    if (!(err instanceof StripeReadError)) throw err;
+  }
+  const found = ownRefundIn(listed, op.id);
+  if (found) return judgeAndAnswer(attempt, found, [listed]);
+  return answer(attempt, { type: "E11" }, [listed]);
+}
+
+/**
+ * The attempt's identity and the payment intent it refunds.
+ * @param op - The disposition, with its lease.
+ * @param actor - Who runs the attempt.
+ * @returns Both.
+ * @throws {Error} When the row holds no lease or the payment has no intent.
+ */
+async function begin(
+  op: CreditRefundOperation,
+  actor: Actor,
+): Promise<{ attempt: Attempt; paymentIntent: string }> {
+  if (op.leaseToken === null) throw new Error(`disposition ${op.id} holds no lease`);
+  const payment = await paymentRepo.getPaymentById(op.paymentId);
+  const paymentIntent = payment?.stripePaymentIntentId;
+  if (!paymentIntent) throw new Error(`payment ${op.paymentId} has no payment intent`);
+  return { attempt: { op, leaseToken: op.leaseToken, actor }, paymentIntent };
+}
+
+/**
+ * Read every refund of the payment; a failed read is answered as E16, with
+ * what the attempt had already seen copied.
  * @param attempt - The attempt.
  * @param paymentIntent - The payment intent.
+ * @param seen - Refunds the attempt already holds (the create answer).
  * @returns The refunds, or null when the read failed and E16 was committed.
  */
-async function read(attempt: Attempt, paymentIntent: string): Promise<StripeRefundObject[] | null> {
+async function read(
+  attempt: Attempt,
+  paymentIntent: string,
+  seen: StripeRefundObject[],
+): Promise<StripeRefundObject[] | null> {
   try {
     return await listRefunds(paymentIntent);
   } catch (err) {
     if (!(err instanceof StripeReadError)) throw err;
-    await answer(attempt, { type: "E16", failure: err.failure }, []);
+    await answer(attempt, { type: "E16", failure: err.failure }, [seen]);
     return null;
   }
 }
@@ -110,16 +151,46 @@ function ownRefundIn(listed: readonly StripeRefundObject[], operationId: string)
 }
 
 /**
- * Copy what was read and execute one cell, in one transaction.
+ * Copy what was read, oldest read first, and execute one cell, in one transaction.
  * @param attempt - The attempt.
  * @param event - The event, without lease and actor.
- * @param listed - The refunds this attempt read; empty when it read none.
+ * @param reads - The refunds this attempt saw, in the order it saw them.
  */
-async function answer(attempt: Attempt, event: OperationEvent, listed: StripeRefundObject[]): Promise<void> {
+async function answer(attempt: Attempt, event: OperationEventBody, reads: StripeRefundObject[][]): Promise<void> {
   await db.transaction(async (tx) => {
-    if (listed.length > 0) await applyRefundSnapshot(tx, attempt.op.paymentId, listed, attempt.actor);
+    await copyReads(tx, attempt, reads);
     await transitionOperation(tx, { id: attempt.op.id }, eventOf(attempt, event));
   });
+}
+
+/**
+ * Copy the reads, then judge the disposition's own refund against the copies
+ * and execute the cell — all in one transaction.
+ * @param attempt - The attempt.
+ * @param own - Its refund, as last seen.
+ * @param reads - The refunds this attempt saw, in the order it saw them.
+ */
+async function judgeAndAnswer(
+  attempt: Attempt,
+  own: StripeRefundObject,
+  reads: StripeRefundObject[][],
+): Promise<void> {
+  await db.transaction(async (tx) => {
+    await copyReads(tx, attempt, reads);
+    await transitionOperation(tx, { id: attempt.op.id }, eventOf(attempt, await judgeOwnRefund(tx, attempt.op, own)));
+  });
+}
+
+/**
+ * Copy each non-empty read, in order.
+ * @param tx - The transaction.
+ * @param attempt - The attempt.
+ * @param reads - The reads.
+ */
+async function copyReads(tx: DbTx, attempt: Attempt, reads: StripeRefundObject[][]): Promise<void> {
+  for (const refunds of reads) {
+    if (refunds.length > 0) await applyRefundSnapshot(tx, attempt.op.paymentId, refunds, attempt.actor);
+  }
 }
 
 /**
@@ -128,24 +199,6 @@ async function answer(attempt: Attempt, event: OperationEvent, listed: StripeRef
  * @param event - The event.
  * @returns The event to execute.
  */
-function eventOf(attempt: Attempt, event: OperationEvent): OperationEvent {
-  return { ...event, leaseToken: attempt.leaseToken, ...(attempt.actor && { actor: attempt.actor }) };
-}
-
-/**
- * Copy what Stripe holds for the payment, judge the disposition's own refund
- * against it, and execute the cell — all in one transaction.
- * @param attempt - The attempt.
- * @param own - Its refund.
- * @param listed - Every refund of the payment, with `own` as last seen.
- */
-async function judgeAndAnswer(
-  attempt: Attempt,
-  own: StripeRefundObject,
-  listed: StripeRefundObject[],
-): Promise<void> {
-  await db.transaction(async (tx) => {
-    await applyRefundSnapshot(tx, attempt.op.paymentId, listed, attempt.actor);
-    await transitionOperation(tx, { id: attempt.op.id }, eventOf(attempt, await judgeOwnRefund(tx, attempt.op, own)));
-  });
+function eventOf(attempt: Attempt, event: OperationEventBody): OperationEvent {
+  return { ...event, leaseToken: attempt.leaseToken, actor: attempt.actor };
 }

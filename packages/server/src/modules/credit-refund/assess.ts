@@ -11,7 +11,12 @@
  */
 
 import type { CreditLotLifecycle } from "@breatic/shared";
-import { failedCents, refundInProgress, succeededCents } from "@server/modules/credit-refund/settle-rule.js";
+import {
+  failedCents,
+  hasUnconfirmedExternal,
+  refundInProgress,
+  succeededCents,
+} from "@server/modules/credit-refund/settle-rule.js";
 import type { RefundCopy } from "@server/modules/credit-refund/types.js";
 import { pickUnresolvedFailedRefunds } from "@server/modules/credit-refund/unresolved.js";
 
@@ -104,26 +109,20 @@ function judge(input: AssessInput, fromPreview: boolean): AssessResult {
     }
   }
   if (refundInProgress(refunds)) return stripeBlocks("refund_in_progress");
-  if (kind === "refund_again") {
-    const amountCents = unresolved.reduce((sum, r) => sum + r.amountCents, 0);
-    return { outcome: "create_refund", amountCents, sendAmount: true };
-  }
-
   const succeeded = succeededCents(refunds);
-  if (succeeded >= payment.paidCents) return stripeBlocks("already_refunded");
   // Stripe keeps a failed refund's amount out of what it will still refund
   // (inner#1410 §5.2, measured in test mode).
   const refundable = payment.paidCents - succeeded - failedCents(refunds);
+  if (kind === "refund_again") {
+    const amountCents = unresolved.reduce((sum, r) => sum + r.amountCents, 0);
+    if (amountCents > refundable) return stripeBlocks("refund_failed");
+    return { outcome: "create_refund", amountCents, sendAmount: true };
+  }
+
+  if (succeeded >= payment.paidCents) return stripeBlocks("already_refunded");
   if (refundable <= 0) return stripeBlocks("refund_failed");
-  if (!fromPreview) {
-    const confirmed = new Set(input.confirmedRefundIds);
-    if (
-      refunds.some(
-        (r) => r.status === "succeeded" && r.operationId === null && !confirmed.has(r.stripeRefundId),
-      )
-    ) {
-      return stripeBlocks("unconfirmed_external_refund");
-    }
+  if (!fromPreview && hasUnconfirmedExternal(refunds, input.confirmedRefundIds)) {
+    return stripeBlocks("unconfirmed_external_refund");
   }
   return { outcome: "create_refund", amountCents: refundable, sendAmount: false };
 }
@@ -211,7 +210,7 @@ export interface OneShotInput {
   paidCents: number;
   ops: readonly AssessOperation[];
   refunds: readonly RefundCopy[];
-  /** settle only. */
+  /** settle and resolve_outside. */
   confirmedSucceededCents?: number;
   /** settle only. */
   acceptPartial?: boolean;
@@ -250,8 +249,12 @@ export function assessOneShot(input: OneShotInput): { outcome: "proceed" } | Blo
   if ((kind === "reject" || kind === "send_back") && succeeded > 0) {
     return stripeBlocks("refund_succeeded");
   }
+  // A refund that succeeded after the operator looked must not be booked as
+  // money paid outside, nor settled on a sum nobody confirmed.
+  if ((kind === "settle" || kind === "resolve_outside") && succeeded !== input.confirmedSucceededCents) {
+    return stripeBlocks("succeeded_sum_changed");
+  }
   if (kind === "settle") {
-    if (succeeded !== input.confirmedSucceededCents) return stripeBlocks("succeeded_sum_changed");
     if (succeeded === 0) return stripeBlocks("nothing_refunded");
     if (succeeded < input.paidCents && !input.acceptPartial) return stripeBlocks("partial_not_accepted");
   }

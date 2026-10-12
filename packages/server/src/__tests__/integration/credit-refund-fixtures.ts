@@ -14,7 +14,7 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { afterAll, beforeAll, inject } from "vitest";
+import { afterAll, beforeAll, expect, inject } from "vitest";
 import postgres from "postgres";
 import { db, initCore, loadLocales } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
@@ -410,6 +410,37 @@ export async function readOp(sql: Sql, id: string): Promise<OpRow> {
     next_attempt_us: num(row!.next_attempt_us),
     locked_until_us: num(row!.locked_until_us),
   };
+}
+
+/**
+ * Assert a refused request left the world as `before` save the copies it
+ * read and the re-judgement of the disposition waiting on Stripe that its
+ * read made (v6 §4.6, §6.4): no new disposition, every other row unchanged,
+ * the waiting one still in its status, and every new event row its own,
+ * written by the request.
+ * @param sql - Raw client.
+ * @param lot - The lot.
+ * @param before - The world before the request.
+ * @param inFlightId - The disposition still in flight.
+ */
+export async function expectOnlyRejudged(
+  sql: Sql,
+  lot: SeededLot,
+  before: WorldState,
+  inFlightId: string,
+): Promise<void> {
+  const { copies: _ca, ops: opsAfter, events: eventsAfter, ...restAfter } = await worldOf(sql, lot);
+  const { copies: _cb, ops: opsBefore, events: eventsBefore, ...restBefore } = before;
+  expect(restAfter).toEqual(restBefore);
+  expect(opsAfter.map((o) => o.id)).toEqual(opsBefore.map((o) => o.id));
+  const others = (ops: Record<string, unknown>[]) => ops.filter((o) => o.id !== inFlightId);
+  expect(others(opsAfter)).toEqual(others(opsBefore));
+  const statusOf = (ops: Record<string, unknown>[]) => ops.find((o) => o.id === inFlightId)?.status;
+  expect(statusOf(opsAfter)).toBe(statusOf(opsBefore));
+  expect(eventsAfter.slice(0, eventsBefore.length)).toEqual(eventsBefore);
+  for (const e of eventsAfter.slice(eventsBefore.length)) {
+    expect(e).toMatchObject({ operation_id: inFlightId, detail: { actor: "request" } });
+  }
 }
 
 export interface EventRow {

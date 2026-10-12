@@ -42,6 +42,7 @@ import {
   PAID_CENTS,
   bellsOf,
   copiesOf,
+  expectOnlyRejudged,
   ledgerOf,
   mailsOf,
   readLot,
@@ -113,6 +114,31 @@ async function expectRefused(
   expect(res.json.code).toBe(code);
   expect(errorShape(res.json).detailTranslated).toBe(true);
   expect(exceptCopies(await worldOf(suite.sql, lot))).toEqual(exceptCopies(before));
+  expect(fakeStripe.createCalls).toEqual([]);
+}
+
+/**
+ * Assert a 409 operation_in_progress that stored no disposition and held no
+ * key, the in-flight disposition keeping its status; its re-judgement by the
+ * request's own Stripe read may add its event rows (v6 §4.6, §6.4).
+ * @param res - The answer.
+ * @param lot - The lot.
+ * @param before - The world before.
+ * @param inFlightId - The disposition still in flight.
+ * @param key - The request's idempotency key.
+ */
+async function expectRefusedAroundInFlight(
+  res: Awaited<ReturnType<typeof post>>,
+  lot: SeededLot,
+  before: WorldState,
+  inFlightId: string,
+  key: string,
+): Promise<void> {
+  expect(res.status).toBe(409);
+  expect(res.json.code).toBe("operation_in_progress");
+  expect(errorShape(res.json).detailTranslated).toBe(true);
+  await expectOnlyRejudged(suite.sql, lot, before, inFlightId);
+  expect(await holdersOf(key)).toEqual({ ops: 0, mails: 0 });
   expect(fakeStripe.createCalls).toEqual([]);
 }
 
@@ -321,12 +347,17 @@ describe("POST …/refund/settle", () => {
 
   it("a disposition still in flight is 409 operation_in_progress", async () => {
     const lot = await lotOnStripe("refunding", [refundObject(reId("full"), "succeeded", PAID_CENTS)]);
-    await seedOperation(suite.sql, lot, { kind: "approve", status: "awaiting_stripe" });
+    const inFlight = await seedOperation(suite.sql, lot, { kind: "approve", status: "awaiting_stripe" });
     const before = await worldOf(suite.sql, lot);
+    const key = freshKey();
 
-    const res = await post(paths.settle(lot.lotId), { reason: "r", notify: true, confirmedSucceededCents: PAID_CENTS, acceptPartial: false });
+    const res = await post(
+      paths.settle(lot.lotId),
+      { reason: "r", notify: true, confirmedSucceededCents: PAID_CENTS, acceptPartial: false },
+      key,
+    );
 
-    await expectRefused(res, lot, before, "operation_in_progress");
+    await expectRefusedAroundInFlight(res, lot, before, inFlight.id, key);
   });
 
   it("an active lot is 409 lot_state_changed", async () => {
@@ -732,15 +763,13 @@ describe("POST …/refund/resolved-outside on a lot not yet refunded (§5.3: it 
 
   it("a refunding lot with a disposition still in flight is 409 operation_in_progress", async () => {
     const lot = await lotOnStripe("refunding");
-    await seedOperation(suite.sql, lot, { kind: "approve", status: "awaiting_stripe" });
+    const inFlight = await seedOperation(suite.sql, lot, { kind: "approve", status: "awaiting_stripe" });
     const before = await worldOf(suite.sql, lot);
+    const key = freshKey();
 
-    await expectRefused(
-      await post(paths.resolvedOutside(lot.lotId), { reason: "r", failedRefundIds: [], confirmedSucceededCents: 0 }),
-      lot,
-      before,
-      "operation_in_progress",
-    );
+    const res = await post(paths.resolvedOutside(lot.lotId), { reason: "r", failedRefundIds: [], confirmedSucceededCents: 0 }, key);
+
+    await expectRefusedAroundInFlight(res, lot, before, inFlight.id, key);
   });
 });
 

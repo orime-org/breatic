@@ -6,7 +6,8 @@
  *
  * Two steps around a Stripe read: the create call's answer, then — when
  * that alone proves nothing — the refund found by metadata is classified by
- * its status, or the answer's own event stands when none is found. Only the first request can prove
+ * its status, or the answer's own event stands when none is found. Only the
+ * first request can prove
  * Stripe created nothing (E6): Stripe caches no result for an error raised
  * before execution begins, so a later 4xx may follow a refund an earlier
  * attempt did create.
@@ -14,15 +15,9 @@
 
 import type { StripeRefundStatus } from "@server/modules/credit-refund/types.js";
 
-/** The refund object part the classification reads. */
-export interface RefundRef {
-  id: string;
-  status: StripeRefundStatus;
-}
-
-/** What one `refunds.create` call came back with. */
+/** What one `refunds.create` call came back with; a refund object is carried beside it. */
 export type CreateAnswer =
-  | { kind: "refund"; refund: RefundRef }
+  | { kind: "refund" }
   | {
       kind: "stripe_error";
       httpStatus: number;
@@ -39,7 +34,7 @@ export type PendingEvent = "E7" | "E9" | "E17";
 
 /** What to do with a create answer. */
 export type CreateVerdict =
-  | { kind: "refund"; refund: RefundRef }
+  | { kind: "refund" }
   | { kind: "event"; event: "E6" | "E8" }
   | { kind: "lookup"; ifNotFound: PendingEvent };
 
@@ -59,7 +54,7 @@ const NOTHING_CREATED_STATUSES = new Set([400, 401, 403, 404]);
 export function classifyCreateAnswer(answer: CreateAnswer, attemptCount: number): CreateVerdict {
   switch (answer.kind) {
     case "refund":
-      return { kind: "refund", refund: answer.refund };
+      return { kind: "refund" };
     case "timeout":
     case "network":
       return { kind: "lookup", ifNotFound: "E7" };

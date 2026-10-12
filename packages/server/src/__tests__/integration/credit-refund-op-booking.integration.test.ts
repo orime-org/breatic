@@ -417,6 +417,7 @@ describe("a refund_again that ends on E6 answers for its own refund (v6 §6.2, f
         type: "E6",
         refund: refundObject(own, "failed", 300, again.id),
         leaseToken: again.leaseToken!,
+        actor: "loop",
       }),
     );
 

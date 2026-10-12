@@ -7,8 +7,8 @@
  *
  * Every request passes, in order: one log line for it, the rate limit by
  * connection address (fail closed), the body size limit, the signature and
- * nonce, then the authorisation table; whatever the table does not list is
- * 403.
+ * nonce, a 403 for HEAD, then the authorisation table; whatever the table
+ * does not list is 403.
  */
 
 import { Hono, type MiddlewareHandler } from "hono";
@@ -37,11 +37,39 @@ const logRequest: MiddlewareHandler = async (c, next) => {
       method: c.req.method,
       path: c.req.path,
       idempotencyKey: c.req.header("idempotency-key"),
+      reason: c.get("internalReason"),
       status: c.res.status,
+      code: c.res.status >= 400 ? await answerCode(c.res) : undefined,
       durationMs: Date.now() - start,
     },
     "internal_api_request",
   );
+};
+
+/**
+ * The `code` of a refusal's JSON body.
+ * @param res - The response.
+ * @returns The code, or undefined when the body carries none.
+ */
+async function answerCode(res: Response): Promise<string | undefined> {
+  try {
+    const body: unknown = await res.clone().json();
+    return typeof body === "object" && body !== null && "code" in body ? String(body.code) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * HEAD is answered by the GET route in Hono, which the authorisation table
+ * does not list for it: refuse it like any other undeclared method.
+ * @param c - The request context.
+ * @param next - The rest of the app.
+ * @returns 403 for HEAD.
+ */
+const refuseHead: MiddlewareHandler = async (c, next) => {
+  if (c.req.method === "HEAD") return c.json({ code: "forbidden" }, 403);
+  await next();
 };
 
 /**
@@ -62,6 +90,7 @@ export function createInternalApp(): Hono {
   );
   app.use("*", bodyLimit({ maxSize: MAX_BODY_BYTES, onError: (c) => c.json({ code: "invalid_body" }, 413) }));
   app.use("*", internalAuth());
+  app.use("*", refuseHead);
   registerInternalRoutes(app);
   return app;
 }

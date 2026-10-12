@@ -43,6 +43,23 @@ export function refundInProgress(refunds: readonly Pick<RefundCopy, "status">[])
 }
 
 /**
+ * Whether a refund made outside the product succeeded without the operator
+ * having confirmed it on the confirmation page.
+ * @param refunds - The payment's refund copies.
+ * @param confirmedRefundIds - The external refunds the operator confirmed.
+ * @returns True when one is unconfirmed.
+ */
+export function hasUnconfirmedExternal(
+  refunds: readonly RefundCopy[],
+  confirmedRefundIds: readonly string[],
+): boolean {
+  const confirmed = new Set(confirmedRefundIds);
+  return refunds.some(
+    (r) => r.status === "succeeded" && r.operationId === null && !confirmed.has(r.stripeRefundId),
+  );
+}
+
+/**
  * The sum of the refunds in one status.
  * @param refunds - The copies.
  * @param status - The status to add up.
@@ -74,12 +91,7 @@ export function canSettle(input: {
   if (refundInProgress(input.refunds)) return { outcome: "wait" };
   const succeeded = succeededCents(input.refunds);
   if (succeeded < input.paidCents) return { outcome: "attention", reason: "partial_refund" };
-  const confirmed = new Set(input.confirmedRefundIds);
-  if (
-    input.refunds.some(
-      (r) => r.status === "succeeded" && r.operationId === null && !confirmed.has(r.stripeRefundId),
-    )
-  ) {
+  if (hasUnconfirmedExternal(input.refunds, input.confirmedRefundIds)) {
     return { outcome: "attention", reason: "unexpected_external_refund" };
   }
   return { outcome: "settle", succeededCents: succeeded };

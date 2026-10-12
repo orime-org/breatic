@@ -120,8 +120,7 @@ export async function createRefund(input: {
       },
       { idempotencyKey: `credit-refund-${input.operationId}`, ...callOptions() },
     );
-    const refund = toRefundObject(created);
-    return { answer: { kind: "refund", refund: { id: refund.id, status: refund.status } }, refund };
+    return { answer: { kind: "refund" }, refund: toRefundObject(created) };
   } catch (err) {
     return { answer: toCreateAnswer(err), failure: toFailure(err) };
   }
