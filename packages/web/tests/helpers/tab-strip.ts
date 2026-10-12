@@ -14,8 +14,9 @@
  * groups reading what the group before them left, which reports every case
  * after a red one as never run.
  */
-import { expect, test as base, type Page } from 'playwright/test';
+import { expect, type Page } from 'playwright/test';
 
+import { test as base } from './slot';
 import { openSmokeProject } from './project';
 import { createSpace, deleteSpace } from './space';
 

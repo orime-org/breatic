@@ -15,9 +15,10 @@
  * to a few fresh conversations and holds the first call it gets, and prints how
  * much material that call carried.
  */
-import { expect, test, type Page } from 'playwright/test';
+import { expect, type Page } from 'playwright/test';
+import { test, stateFile } from '../helpers/slot';
 
-import { STATE_FILE, openSmokeProject } from '../helpers/project';
+import { openSmokeProject } from '../helpers/project';
 
 let page: Page;
 
@@ -69,7 +70,7 @@ async function callsOfLatestConversation(p: Page): Promise<StoredCall[]> {
 
 test.beforeEach(async ({ browser }) => {
   page = await browser.newPage({
-    storageState: STATE_FILE.A,
+    storageState: stateFile('A'),
     viewport: { width: 1400, height: 900 },
   });
   await openSmokeProject(page);

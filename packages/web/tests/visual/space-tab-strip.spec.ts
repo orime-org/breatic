@@ -17,9 +17,10 @@
  * then a percentage height under that same wrapper resolved to auto and parked
  * the tabs against the bar's top edge with the scrollbar in the gap below).
  */
-import { expect, test, type Page } from 'playwright/test';
+import { expect, type Page } from 'playwright/test';
+import { test, stateFile } from '../helpers/slot';
 
-import { STATE_FILE, openSmokeProject } from '../helpers/project';
+import { openSmokeProject } from '../helpers/project';
 import { createSpace, deleteSpace } from '../helpers/space';
 
 // Not serial, unlike the other smoke specs: those build state a later case
@@ -71,7 +72,7 @@ async function openProject(p: Page): Promise<void> {
 const TABS_WANTED = 3;
 
 test.beforeEach(async ({ browser }) => {
-  page = await browser.newPage({ storageState: STATE_FILE.A });
+  page = await browser.newPage({ storageState: stateFile('A') });
   await openProject(page);
   // The strip has to overflow for most of what follows, and how many tabs the
   // account already carries is not this spec's to assume — a fresh account has

@@ -10,9 +10,10 @@
  * for something the reader wrote. Each browser here runs in a zone of its own,
  * which is what the composer reports with every message.
  */
-import { expect, test, type Browser, type Page } from 'playwright/test';
+import { expect, type Browser, type Page } from 'playwright/test';
+import { test, stateFile } from '../helpers/slot';
 
-import { STATE_FILE, openSmokeProject } from '../helpers/project';
+import { openSmokeProject } from '../helpers/project';
 
 /** How far the clock the reply states may sit from the moment it was asked. */
 const SLACK_MINUTES = 3;
@@ -67,7 +68,7 @@ function statesTimeNear(text: string, expected: number): boolean {
  */
 async function pageIn(browser: Browser, timeZone: string): Promise<Page> {
   const context = await browser.newContext({
-    storageState: STATE_FILE.A,
+    storageState: stateFile('A'),
     viewport: { width: 1500, height: 900 },
     timezoneId: timeZone,
   });

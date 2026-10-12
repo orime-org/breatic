@@ -15,7 +15,8 @@
  * Wants dev running:
  *   pnpm --filter @breatic/web test:smoke
  */
-import { test, expect, type Page } from 'playwright/test';
+import { expect, type Page } from 'playwright/test';
+import { test } from '../helpers/slot';
 
 import { pressAndSettle } from '../helpers/editor-keys';
 import { openSmokeProject } from '../helpers/project';
@@ -35,7 +36,6 @@ test.afterEach(async () => {
   }
   await page?.close();
 });
-
 
 /** How long the pointer rests before a press. */
 const SETTLE_MS = 400;

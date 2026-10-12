@@ -16,7 +16,8 @@
  */
 import { randomUUID } from 'node:crypto';
 
-import { test, expect, type Locator, type Page } from 'playwright/test';
+import { expect, type Locator, type Page } from 'playwright/test';
+import { test } from '../helpers/slot';
 
 import { openSmokeProject, smokeProjectId } from '../helpers/project';
 import { openTool, seedNode, setNodeContent, zoomBy } from '../helpers/mini-tool';

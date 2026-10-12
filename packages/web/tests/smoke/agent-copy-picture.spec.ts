@@ -13,13 +13,14 @@
  * The turn is real, so the model decides whether to search; a run where it
  * answers in prose instead fails at the row of pictures.
  */
-import { expect, test, type Locator, type Page } from 'playwright/test';
+import { expect, type Locator, type Page } from 'playwright/test';
+import { test } from '../helpers/slot';
 
 import { CANVAS_SPACE, liveModuleUrl } from '../helpers/live-module';
-import { STATE_FILE, openSmokeProject } from '../helpers/project';
+import { openSmokeProject } from '../helpers/project';
 import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
 
-test.use({ storageState: STATE_FILE.A, viewport: { width: 1400, height: 900 } });
+test.use({ viewport: { width: 1400, height: 900 } });
 
 let projectId = '';
 let spaceId = '';

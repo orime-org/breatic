@@ -26,15 +26,16 @@
  * conversation, three asks; the same sentence in a conversation already
  * holding an unanswered question, prose.
  */
-import { expect, test, type Page } from 'playwright/test';
+import { expect, type Page } from 'playwright/test';
+import { test, stateFile } from '../helpers/slot';
 
-import { STATE_FILE, openSmokeProject } from '../helpers/project';
+import { openSmokeProject } from '../helpers/project';
 
 let page: Page;
 
 test.beforeEach(async ({ browser }) => {
   page = await browser.newPage({
-    storageState: STATE_FILE.A,
+    storageState: stateFile('A'),
     viewport: { width: 1400, height: 900 },
   });
   await openSmokeProject(page);

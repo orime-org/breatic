@@ -7,11 +7,12 @@
  * one puts a block in the words, the message goes out with the reference, the
  * sent message shows the block, and removing the attachment removes its block.
  */
-import { expect, test, type Page } from 'playwright/test';
+import { expect, type Page } from 'playwright/test';
+import { test } from '../helpers/slot';
 
-import { STATE_FILE, openSmokeProject } from '../helpers/project';
+import { openSmokeProject } from '../helpers/project';
 
-test.use({ storageState: STATE_FILE.A, viewport: { width: 1500, height: 900 } });
+test.use({ viewport: { width: 1500, height: 900 } });
 
 const MARKER = '__breatic_canvas_nodes__:';
 

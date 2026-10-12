@@ -14,9 +14,10 @@
  * The same file checks the reply formats the prompt asks for, since both are
  * about what the model writes and both need a real turn to show.
  */
-import { expect, test, type Page } from 'playwright/test';
+import { expect, type Page } from 'playwright/test';
+import { test, stateFile } from '../helpers/slot';
 
-import { STATE_FILE, openSmokeProject } from '../helpers/project';
+import { openSmokeProject } from '../helpers/project';
 import { createSpace, deleteSpace, visibleSpace, DOCUMENT_EDITOR } from '../helpers/space';
 
 let page: Page;
@@ -64,7 +65,7 @@ async function ask(p: Page, question: string): Promise<ReturnType<Page['getByTes
 
 test.beforeEach(async ({ browser }) => {
   page = await browser.newPage({
-    storageState: STATE_FILE.A,
+    storageState: stateFile('A'),
     viewport: { width: 1500, height: 900 },
   });
   await openSmokeProject(page);

@@ -12,20 +12,20 @@
  * Wants dev running and a smoke account:
  *   pnpm --filter @breatic/web test:visual
  */
-import { test, expect, type Page } from 'playwright/test';
+import { expect, type Page } from 'playwright/test';
+import { test, stateFile } from '../helpers/slot';
 
-import { STATE_FILE, openSmokeProject } from '../helpers/project';
+import { openSmokeProject } from '../helpers/project';
 import { createSpace, deleteSpace, DOCUMENT_EDITOR as EDITOR } from '../helpers/space';
 
 let page: Page;
 
 test.beforeEach(async ({ browser }) => {
   page = await browser.newPage({
-    storageState: STATE_FILE.A,
+    storageState: stateFile('A'),
     viewport: { width: 1680, height: 950 },
   });
 });
-
 
 const createdSpaceIds: string[] = [];
 
@@ -35,7 +35,6 @@ test.afterEach(async () => {
   }
   await page.close();
 });
-
 
 /** The Cmd key on macOS, Ctrl everywhere else. */
 const MOD = process.platform === 'darwin' ? 'Meta' : 'Control';

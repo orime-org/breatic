@@ -11,9 +11,10 @@
  * the question this file answers is one only a real engine can: after a drag,
  * is every element the pointer passed over back in the state it was in.
  */
-import { expect, test, type Page } from 'playwright/test';
+import { expect, type Page } from 'playwright/test';
+import { test, stateFile } from '../helpers/slot';
 
-import { STATE_FILE, openSmokeProject } from '../helpers/project';
+import { openSmokeProject } from '../helpers/project';
 import { visibleSpace } from '../helpers/space';
 
 let page: Page;
@@ -32,7 +33,7 @@ async function openProjectWithCanvas(p: Page): Promise<void> {
 
 test.beforeEach(async ({ browser }) => {
   page = await browser.newPage({
-    storageState: STATE_FILE.A,
+    storageState: stateFile('A'),
     viewport: { width: 1400, height: 900 },
   });
   await openProjectWithCanvas(page);

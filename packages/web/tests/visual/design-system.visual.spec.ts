@@ -15,7 +15,8 @@
  *   pnpm test:visual          compare against the committed baseline
  *   pnpm test:visual:update   regenerate the baseline (after an INTENDED change)
  */
-import { test, expect } from 'playwright/test';
+import { expect } from 'playwright/test';
+import { test } from '../helpers/slot';
 
 const PAGES = [
   { name: 'login', path: '/login' },

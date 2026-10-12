@@ -16,21 +16,21 @@
  * Needs the dev server and a smoke account:
  *   pnpm --filter @breatic/web test:visual
  */
-import { test, expect, type Page } from 'playwright/test';
+import { expect, type Page } from 'playwright/test';
+import { test, stateFile } from '../helpers/slot';
 
 import { selectInBody } from '../helpers/editor-keys';
-import { STATE_FILE, openSmokeProject } from '../helpers/project';
+import { openSmokeProject } from '../helpers/project';
 import { createSpace, deleteSpace, VISIBLE_SPACE, DOCUMENT_EDITOR } from '../helpers/space';
 
 let page: Page;
 
 test.beforeEach(async ({ browser }) => {
   page = await browser.newPage({
-    storageState: STATE_FILE.A,
+    storageState: stateFile('A'),
     viewport: { width: 1680, height: 950 },
   });
 });
-
 
 // Each case makes its own Space so it starts on a clean document, and drops it
 // again when it is done — ten cases leaving ten behind in the same project runs

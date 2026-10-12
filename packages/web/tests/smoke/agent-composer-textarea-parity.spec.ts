@@ -8,11 +8,12 @@
  * Typing, an input method, pasting and dropping text go through the browser,
  * so only a real browser shows what they leave in the box.
  */
-import { expect, test, type Page } from 'playwright/test';
+import { expect, type Page } from 'playwright/test';
+import { test } from '../helpers/slot';
 
-import { STATE_FILE, openSmokeProject } from '../helpers/project';
+import { openSmokeProject } from '../helpers/project';
 
-test.use({ storageState: STATE_FILE.A, viewport: { width: 1500, height: 900 } });
+test.use({ viewport: { width: 1500, height: 900 } });
 
 const BOX = '[data-testid="chat-composer-box"]';
 const LIMIT = 10_000;
@@ -256,7 +257,6 @@ test('words copied from a web page are pasted as its plain text, line breaks and
 
   await expect.poll(async () => (await read(page)).text).toBe(`hello ${WEB_PLAIN}`);
 });
-
 
 /**
  * What the box holds with each block written as `[B]`, and what is selected.

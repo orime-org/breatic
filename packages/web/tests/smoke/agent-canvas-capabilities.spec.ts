@@ -19,9 +19,10 @@
  * replies in prose without naming anything is reported as such rather than
  * passed.
  */
-import { expect, test, type Page } from 'playwright/test';
+import { expect, type Page } from 'playwright/test';
+import { test, stateFile } from '../helpers/slot';
 
-import { STATE_FILE, openSmokeProject } from '../helpers/project';
+import { openSmokeProject } from '../helpers/project';
 
 let page: Page;
 
@@ -55,7 +56,7 @@ async function servableImageModels(p: Page, mode: string): Promise<string[]> {
 
 test.beforeEach(async ({ browser }) => {
   page = await browser.newPage({
-    storageState: STATE_FILE.A,
+    storageState: stateFile('A'),
     viewport: { width: 1400, height: 900 },
   });
   await openSmokeProject(page);

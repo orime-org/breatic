@@ -29,16 +29,10 @@
  *
  *   pnpm --filter @breatic/web test:smoke
  */
-import {
-  test,
-  expect,
-  type Browser,
-  type BrowserContext,
-  type Page,
-} from 'playwright/test';
+import { expect, type Browser, type BrowserContext, type Page } from 'playwright/test';
+import { test, stateFile } from '../helpers/slot';
 
-import { STATE_FILE, smokeProjectId } from '../helpers/project';
-
+import { smokeProjectId } from '../helpers/project';
 
 /**
  * How long the page module is held back.
@@ -240,7 +234,7 @@ let landmarks: Landmarks;
 // A context per case: module caching is per document, and a case reading a
 // chunk an earlier case already fetched would never suspend at all.
 test.beforeEach(async ({ browser }: { browser: Browser }) => {
-  shared = await browser.newContext({ storageState: STATE_FILE.A });
+  shared = await browser.newContext({ storageState: stateFile('A') });
   const page = await shared.newPage();
   landmarks = await findLandmarks(page);
   await page.close();

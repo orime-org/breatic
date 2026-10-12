@@ -27,9 +27,10 @@ import { mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { test, expect, type BrowserContext, type Page } from 'playwright/test';
+import { expect, type BrowserContext, type Page } from 'playwright/test';
+import { test, stateFile } from '../helpers/slot';
 
-import { STATE_FILE, openSmokeProject } from '../helpers/project';
+import { openSmokeProject } from '../helpers/project';
 import { createSpace, deleteSpace, visibleSpace, VISIBLE_SPACE } from '../helpers/space';
 import { dropFile } from '../helpers/upload';
 
@@ -128,7 +129,7 @@ async function videoSources(target: Page): Promise<string[]> {
 }
 
 test.beforeEach(async ({ browser }) => {
-  context = await browser.newContext({ storageState: STATE_FILE.A });
+  context = await browser.newContext({ storageState: stateFile('A') });
   page = await context.newPage();
 
   // Reuse an existing Project: this spec is about uploads, and minting one per

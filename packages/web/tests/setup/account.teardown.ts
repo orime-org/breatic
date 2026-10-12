@@ -17,22 +17,29 @@
 import { readFileSync } from 'node:fs';
 
 import { expect, request, test as teardown } from 'playwright/test';
-import { archiveProjects, readProjects, STATE_FILE } from '../helpers/project';
+import { archiveProjects, readProjects } from '../helpers/project';
+import { stateFile } from '../helpers/slot';
 import { REMOVALS_FILE } from '../helpers/space';
+
+/** What archiving one slot's Projects may take. */
+const PER_SLOT_MS = 15_000;
 
 teardown('every project this run made was archived', async ({ baseURL }) => {
   const prepared = readProjects();
+  teardown.setTimeout(Object.keys(prepared).length * PER_SLOT_MS);
   const left: string[] = [];
 
-  for (const account of ['A', 'B'] as const) {
-    const ids = prepared[account];
-    if (ids.length === 0) continue;
-    const api = await request.newContext({
-      baseURL,
-      storageState: STATE_FILE[account],
-    });
-    left.push(...(await archiveProjects(api, ids)));
-    await api.dispose();
+  for (const [slotKey, accounts] of Object.entries(prepared)) {
+    for (const account of ['A', 'B'] as const) {
+      const ids = accounts[account];
+      if (ids.length === 0) continue;
+      const api = await request.newContext({
+        baseURL,
+        storageState: stateFile(account, Number(slotKey)),
+      });
+      left.push(...(await archiveProjects(api, ids)));
+      await api.dispose();
+    }
   }
   // A Project left live counts against the studio's Project limit; the next
   // run's setup archives it, and fails there if it cannot either.

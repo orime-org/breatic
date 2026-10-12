@@ -15,10 +15,10 @@
  *
  *   pnpm --filter @breatic/web test:smoke -- project-join-request
  */
-import { expect, test, type APIRequestContext, type Browser, type BrowserContext, type Page } from 'playwright/test';
+import { expect, type APIRequestContext, type Browser, type BrowserContext, type Page } from 'playwright/test';
+import { test, stateFile } from '../helpers/slot';
 
-import { readAccounts } from '../helpers/credentials';
-import { STATE_FILE } from '../helpers/project';
+import { credentialsFor } from '../helpers/credentials';
 
 /**
  * Read a `{ data }` envelope, failing with the server's words when the call did.
@@ -46,10 +46,9 @@ interface Scene {
  * @returns The two signed-in contexts, the studio and the projects.
  */
 async function buildScene(browser: Browser, count: number): Promise<Scene> {
-  const a = await browser.newContext({ storageState: STATE_FILE.A });
-  const b = await browser.newContext({ storageState: STATE_FILE.B });
-  const emailB = readAccounts().B?.email;
-  expect(emailB, 'setup recorded no second account').toBeDefined();
+  const a = await browser.newContext({ storageState: stateFile('A') });
+  const b = await browser.newContext({ storageState: stateFile('B') });
+  const emailB = credentialsFor('B').email;
 
   const stamp = `${Date.now().toString(36)}${Math.floor(Math.random() * 1e4).toString(36)}`;
   const studioSlug = `join-smoke-${stamp}`;

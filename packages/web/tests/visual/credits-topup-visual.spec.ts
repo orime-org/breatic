@@ -12,8 +12,8 @@
  * Needs a running dev server and the smoke account:
  *   pnpm --filter @breatic/web test:visual
  */
-import { test, expect, type Page } from 'playwright/test';
-
+import { expect, type Page } from 'playwright/test';
+import { test } from '../helpers/slot';
 
 /**
  * Open the credits overlay on one of its sections.

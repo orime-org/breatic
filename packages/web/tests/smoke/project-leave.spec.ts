@@ -17,10 +17,11 @@
  *
  *   pnpm --filter @breatic/web test:smoke project-leave
  */
-import { expect, test, type APIRequestContext, type Browser, type BrowserContext, type Page } from 'playwright/test';
+import { expect, type APIRequestContext, type Browser, type BrowserContext, type Page } from 'playwright/test';
+import { test, stateFile } from '../helpers/slot';
 
-import { readAccounts } from '../helpers/credentials';
-import { STATE_FILE, smokeProjectId } from '../helpers/project';
+import { credentialsFor } from '../helpers/credentials';
+import { smokeProjectId } from '../helpers/project';
 
 /**
  * Read a `{ data }` envelope, failing with the server's words when the call did.
@@ -62,8 +63,7 @@ async function createProject(a: BrowserContext, studioId: string, slug: string, 
  * @param projectId - The project.
  */
 async function letBIn(a: BrowserContext, b: BrowserContext, projectId: string): Promise<void> {
-  const emailB = readAccounts().B?.email;
-  expect(emailB, 'setup recorded no second account').toBeDefined();
+  const emailB = credentialsFor('B').email;
   await dataOf(
     await a.request.post(`/api/v1/projects/${projectId}/invitations`, { data: { email: emailB, role: 'editor' } }),
     'invite B to the project',
@@ -93,9 +93,9 @@ interface TeamScene {
  * @returns The two signed-in contexts and the studio.
  */
 async function buildTeamScene(browser: Browser): Promise<TeamScene> {
-  const a = await browser.newContext({ storageState: STATE_FILE.A });
-  const b = await browser.newContext({ storageState: STATE_FILE.B });
-  const emailB = readAccounts().B?.email;
+  const a = await browser.newContext({ storageState: stateFile('A') });
+  const b = await browser.newContext({ storageState: stateFile('B') });
+  const emailB = credentialsFor('B').email;
   const stamp = `${Date.now().toString(36)}${Math.floor(Math.random() * 1e4).toString(36)}`;
   const studioSlug = `leave-smoke-${stamp}`;
   await dataOf(
@@ -145,6 +145,11 @@ async function openMembers(page: Page): Promise<void> {
 }
 
 test.describe('in a team studio', () => {
+  // One worker runs these in order, so the team studio below is built once
+  // per run rather than once per worker the cases are spread over; creating a
+  // studio is limited per account (config/rate-limits.yaml `studio-create`).
+  test.describe.configure({ mode: 'default' });
+
   let scene: TeamScene;
 
   test.beforeAll(async ({ browser }) => {
@@ -234,8 +239,8 @@ test.describe('in a team studio', () => {
 });
 
 test('an outside collaborator on a personal-studio project leaves from inside it', async ({ browser }) => {
-  const a = await browser.newContext({ storageState: STATE_FILE.A });
-  const b = await browser.newContext({ storageState: STATE_FILE.B });
+  const a = await browser.newContext({ storageState: stateFile('A') });
+  const b = await browser.newContext({ storageState: stateFile('B') });
   const anchor = await dataOf<{ studioId: string }>(
     await a.request.get(`/api/v1/projects/${smokeProjectId('A', 0)}`),
     'A personal project',

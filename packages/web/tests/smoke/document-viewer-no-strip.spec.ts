@@ -33,16 +33,23 @@
  * could pass with the second account holding some other role whose connection
  * happened to be read-only, and the word "viewer" in its name would be false.
  */
-import { test, expect, type Page, type BrowserContext } from 'playwright/test';
+import { expect, type Page, type BrowserContext } from 'playwright/test';
+import { test, stateFile } from '../helpers/slot';
 
 import { credentialsFor } from '../helpers/credentials';
 import { blankPoint, openCommentRail } from '../helpers/document-body';
 import { wavBytes } from '../helpers/media-bytes';
-import { STATE_FILE, openSmokeProject } from '../helpers/project';
+import { openSmokeProject } from '../helpers/project';
 import { createSpace, deleteSpace, DOCUMENT_EDITOR as EDITOR } from '../helpers/space';
 
-/** The second account's address, which is who the invite names. */
-const emailB = credentialsFor('B').email;
+/**
+ * The second account's address, which is who the invite names. Read while a
+ * case runs: the account belongs to the case's worker slot.
+ * @returns The address.
+ */
+function emailB(): string {
+  return credentialsFor('B').email;
+}
 
 const ROW = 'a row a viewer may read but not touch';
 const CELL = 'a cell a viewer may read';
@@ -72,7 +79,7 @@ async function openTheRoster(
 
   const row = modal
     .locator('[data-testid^="members-modal-row-"]')
-    .filter({ hasText: emailB })
+    .filter({ hasText: emailB() })
     .first();
   return { modal, row };
 }
@@ -160,7 +167,7 @@ async function handlesAfterHover(page: Page): Promise<number> {
 // next case would otherwise find already made.
 test.beforeEach(async ({ browser }) => {
   ownerContext = await browser.newContext({
-    storageState: STATE_FILE.A,
+    storageState: stateFile('A'),
     viewport: { width: 1680, height: 950 },
   });
   owner = await ownerContext.newPage();
@@ -191,13 +198,13 @@ test.beforeEach(async ({ browser }) => {
   await expect(owner.getByTestId('share-popover')).toBeVisible({
     timeout: 10_000,
   });
-  await owner.getByTestId('share-invite-input').fill(emailB);
+  await owner.getByTestId('share-invite-input').fill(emailB());
   await owner.getByTestId('share-send-invite').click();
   // A sent invite closes the popover; the invitee answers it from the bell.
   await expect(owner.getByTestId('share-popover')).toBeHidden({ timeout: 15_000 });
 
   viewerContext = await browser.newContext({
-    storageState: STATE_FILE.B,
+    storageState: stateFile('B'),
     viewport: { width: 1680, height: 950 },
   });
   viewer = await viewerContext.newPage();

@@ -11,12 +11,13 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { expect, test, type Page } from 'playwright/test';
+import { expect, type Page } from 'playwright/test';
+import { test } from '../helpers/slot';
 
-import { STATE_FILE, openSmokeProject } from '../helpers/project';
+import { openSmokeProject } from '../helpers/project';
 import { storedPicture, uniquePicture, watchQueuedFinish } from '../helpers/upload';
 
-test.use({ storageState: STATE_FILE.A, viewport: { width: 1500, height: 900 } });
+test.use({ viewport: { width: 1500, height: 900 } });
 
 /** A 1×1 PNG. */
 const PNG_BASE64 =

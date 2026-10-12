@@ -261,6 +261,29 @@ export default [
     },
   },
   {
+    // Every worker signs in as a pair of accounts of its own, and the `test`
+    // in tests/helpers/slot.ts is what opens a page as that pair. Playwright's
+    // own `test` opens it as nobody, or as whatever a spec hard-codes, so a
+    // case written with it is back on accounts other workers are using.
+    // Setup and teardown are projects of their own and use Playwright's.
+    files: ['tests/**/*.ts'],
+    ignores: ['tests/setup/**', 'tests/helpers/slot.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: 'playwright/test',
+              importNames: ['test'],
+              message: 'Import `test` from tests/helpers/slot.ts, which opens pages as the accounts of this worker.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
     // A helper module runs once per worker, so a hook at its top level binds
     // to the first test file that imports it and to no other.
     files: ['tests/helpers/**/*.ts'],

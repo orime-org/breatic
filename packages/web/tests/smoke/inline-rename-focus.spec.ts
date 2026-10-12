@@ -11,9 +11,10 @@
  * the one that matters most for the history row: the box used to hand the
  * keystroke on to the row button, which switched the conversation on screen.
  */
-import { expect, test, type Page } from 'playwright/test';
+import { expect, type Page } from 'playwright/test';
+import { test, stateFile } from '../helpers/slot';
 
-import { STATE_FILE, openSmokeProject } from '../helpers/project';
+import { openSmokeProject } from '../helpers/project';
 import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
 
 let page: Page;
@@ -46,7 +47,7 @@ async function focused(): Promise<{
 
 test.beforeEach(async ({ browser }) => {
   page = await browser.newPage({
-    storageState: STATE_FILE.A,
+    storageState: stateFile('A'),
     viewport: { width: 1600, height: 950 },
   });
   await openSmokeProject(page);

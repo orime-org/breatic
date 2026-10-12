@@ -17,9 +17,10 @@
  *
  *   pnpm --filter @breatic/web test:smoke
  */
-import { test, expect, type BrowserContext, type Page } from 'playwright/test';
+import { expect, type BrowserContext, type Page } from 'playwright/test';
+import { test, stateFile } from '../helpers/slot';
 
-import { STATE_FILE, openSmokeProject } from '../helpers/project';
+import { openSmokeProject } from '../helpers/project';
 import { CANVAS_SPACE, YJS_MANAGER, liveModuleUrl } from '../helpers/live-module';
 import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
 
@@ -302,7 +303,7 @@ test.setTimeout(240_000);
 
 test.beforeEach(async ({ browser }) => {
   context = await browser.newContext({
-    storageState: STATE_FILE.A,
+    storageState: stateFile('A'),
     viewport: { width: 1680, height: 950 },
   });
   mover = await context.newPage();

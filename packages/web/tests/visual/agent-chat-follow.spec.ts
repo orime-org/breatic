@@ -19,9 +19,10 @@
  * service decides what it finds. A run where neither produces enough to fill
  * the column is reported as such rather than passed.
  */
-import { expect, test, type Page } from 'playwright/test';
+import { expect, type Page } from 'playwright/test';
+import { test, stateFile } from '../helpers/slot';
 
-import { STATE_FILE, openSmokeProject } from '../helpers/project';
+import { openSmokeProject } from '../helpers/project';
 
 let page: Page;
 
@@ -70,7 +71,7 @@ async function ask(p: Page, prompt: string): Promise<void> {
 
 test.beforeEach(async ({ browser }) => {
   page = await browser.newPage({
-    storageState: STATE_FILE.A,
+    storageState: stateFile('A'),
     viewport: { width: 1400, height: 900 },
   });
   await openSmokeProject(page);

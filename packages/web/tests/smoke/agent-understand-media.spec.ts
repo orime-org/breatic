@@ -20,9 +20,10 @@
  * against, so a failure here is about our path rather than about a file whose
  * content nobody has seen.
  */
-import { expect, test, type Page } from 'playwright/test';
+import { expect, type Page } from 'playwright/test';
+import { test, stateFile } from '../helpers/slot';
 
-import { STATE_FILE, openSmokeProject } from '../helpers/project';
+import { openSmokeProject } from '../helpers/project';
 
 const IMAGE = 'https://picsum.photos/id/237/400/300.jpg';
 const VIDEO = 'https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/360/Big_Buck_Bunny_360_10s_1MB.mp4';
@@ -170,7 +171,7 @@ async function oneTurn(p: Page, prompt: string, address: string): Promise<Turn> 
 
 test.beforeEach(async ({ browser }) => {
   page = await browser.newPage({
-    storageState: STATE_FILE.A,
+    storageState: stateFile('A'),
     viewport: { width: 1400, height: 900 },
   });
   await openSmokeProject(page);

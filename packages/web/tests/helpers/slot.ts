@@ -46,11 +46,10 @@ export function stateFile(account: Account, at: number = slot()): string {
  * account. A spec that wants another state still says so with `test.use`.
  */
 export const test = base.extend({
-  storageState: [
-    // eslint-disable-next-line no-empty-pattern -- Playwright reads a fixture's dependencies from this pattern, and an empty one means it has none.
-    async ({}, use): Promise<void> => {
-      await use(stateFile('A'));
-    },
-    { option: true },
-  ],
+  // Overriding a fixture keeps its registration's `option` flag, so
+  // `test.use({ storageState })` still replaces this one.
+  // eslint-disable-next-line no-empty-pattern -- Playwright reads a fixture's dependencies from this pattern, and an empty one means it has none.
+  storageState: async ({}, provide): Promise<void> => {
+    await provide(stateFile('A'));
+  },
 });

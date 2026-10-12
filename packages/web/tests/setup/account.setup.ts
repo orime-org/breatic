@@ -25,15 +25,21 @@ import {
   type APIRequestContext,
   type Browser,
 } from 'playwright/test';
-import { newCredentials, readAccounts, rememberAccount } from '../helpers/credentials';
+import {
+  newCredentials,
+  personalStudioSlug,
+  readAccounts,
+  rememberAccount,
+} from '../helpers/credentials';
 import { registerAccount } from '../helpers/signup';
 import {
   archiveOlderRuns,
   MADE_BY_SMOKE,
   PROJECTS_FILE,
-  STATE_FILE,
   type Account,
 } from '../helpers/project';
+import { whileRateLimited } from '../helpers/rate-limit';
+import { stateFile } from '../helpers/slot';
 import { REMOVALS_FILE } from '../helpers/space';
 
 /** How many Projects each account gets, and why it needs that many. */
@@ -116,17 +122,19 @@ async function preflight(browser: Browser, baseURL: string): Promise<void> {
  * server is the one that knows whether the old session is still its own, so it
  * is the one asked.
  * @param baseURL - Where the app is being served.
- * @param account - Which account this is.
+ * @param at - Which worker slot.
+ * @param account - Which account of that slot.
  * @returns A context carrying a live session, or null when there is none.
  */
 async function reuseSession(
   baseURL: string,
+  at: number,
   account: Account,
 ): Promise<APIRequestContext | null> {
-  if (!existsSync(STATE_FILE[account])) return null;
+  if (!existsSync(stateFile(account, at))) return null;
   const api = await request.newContext({
     baseURL,
-    storageState: STATE_FILE[account],
+    storageState: stateFile(account, at),
   });
   const live = await api
     .get('/api/v1/auth/me')
@@ -149,34 +157,37 @@ async function reuseSession(
  * limited to five a minute and registering to ten an hour
  * (`config/rate-limits.yaml`), so treating a 429 as a dead account spends the
  * scarcer budget to replace an account that was working, and abandons its
- * Projects on the way. A server that is having trouble says so with a 5xx,
- * which is not an answer about this account either.
+ * Projects on the way. A 429 on signing in is waited out; one on registering
+ * is an hour's ceiling and is reported. A server that is having trouble says
+ * so with a 5xx, which is not an answer about this account either.
  * @param api - A request context with no cookies yet.
- * @param account - Which account this is.
+ * @param at - Which worker slot.
+ * @param account - Which account of that slot.
  * @returns Nothing; the context carries the session from here on.
  * @throws {Error} When signing in is refused for a reason other than the
  *   credentials, or when registering a fresh pair is refused.
  */
 async function signInOrRegister(
   api: APIRequestContext,
+  at: number,
   account: Account,
 ): Promise<void> {
-  const held = readAccounts()[account];
+  const held = readAccounts()[String(at)]?.[account];
   if (held !== undefined) {
-    const signedIn = await api.post('/api/v1/auth/login', { data: held });
+    const signedIn = await whileRateLimited(() => api.post('/api/v1/auth/login', { data: held }));
     if (signedIn.ok()) return;
     if (signedIn.status() !== 401) {
       throw new Error(
-        `Account ${account} could not sign in (${signedIn.status()}: ${(await signedIn.text()).slice(0, 160)}). A 429 is the five-a-minute ceiling on signing in (config/rate-limits.yaml) and clears within the minute; anything else is the server rather than this account. The recorded account is left alone either way.`,
+        `Account ${account} of slot ${String(at)} could not sign in (${signedIn.status()}: ${(await signedIn.text()).slice(0, 160)}). This is the server rather than this account; the recorded account is left alone.`,
       );
     }
   }
 
-  const made = newCredentials(account);
+  const made = newCredentials(account, at);
   // With email enabled a 2xx from register only means a code was mailed;
   // the helper finishes the sign-up so `api` really holds a session.
   await registerAccount(api, made);
-  rememberAccount(account, made);
+  rememberAccount(at, account, made);
 }
 
 /** A studio as the switcher list reports it. */
@@ -210,18 +221,20 @@ async function findPersonalStudio(
  * answer carries the studio's id. Both the id and the slug are needed later:
  * creating a Project takes the id, listing them takes the slug.
  * @param api - A signed-in request context.
- * @param account - Which account this is, used to build a slug.
+ * @param at - Which worker slot, used to build a slug.
+ * @param account - Which account of that slot, used to build a slug.
  * @returns The personal studio's id and slug.
  * @throws {Error} When the studio can be neither found nor created.
  */
 async function personalStudio(
   api: APIRequestContext,
+  at: number,
   account: Account,
 ): Promise<PersonalStudio> {
   const existing = await findPersonalStudio(api);
   if (existing) return existing;
 
-  const slug = `smoke-${account.toLowerCase()}-${Math.floor(Date.now() / 1000)}`;
+  const slug = personalStudioSlug(account, at);
   const made = await api.post('/api/v1/auth/setup-studio', { data: { slug } });
   if (!made.ok()) {
     throw new Error(
@@ -236,6 +249,18 @@ async function personalStudio(
   }
   return now;
 }
+
+/** What the preflight page load may take (see `preflight`). */
+const PREFLIGHT_MS = 20_000;
+
+/**
+ * What preparing one slot's pair may take: signing in or registering each
+ * account, its studio, archiving last run's Projects and making three new ones.
+ */
+const PER_SLOT_MS = 60_000;
+
+/** One wait on the sign-in limit; the server's Retry-After is the whole window. */
+const ONE_LOGIN_WAIT_MS = 60_000;
 
 /** The interface language every case expects to read; the specs assert English text. */
 const SUITE_LOCALE = 'en';
@@ -301,29 +326,36 @@ setup('prepare the accounts and their projects', async ({ browser, baseURL }) =>
   // Last run's unremoved Spaces are its own verdict, already reported.
   rmSync(REMOVALS_FILE, { force: true });
 
-  const prepared: Record<Account, string[]> = { A: [], B: [] };
+  // One pair per worker the run starts: each worker reads its own by
+  // `parallelIndex` (helpers/slot.ts), and every index is below this.
+  const slots = setup.info().config.workers;
+  setup.setTimeout(PREFLIGHT_MS + slots * PER_SLOT_MS + ONE_LOGIN_WAIT_MS);
+  const prepared: Record<string, Record<Account, string[]>> = {};
 
-  for (const account of ['A', 'B'] as const) {
-    // The record is what says an account is ours. A stored session with no
-    // record behind it belongs to an account nothing here can sign in as
-    // again, and the case that signs the second account in from inside the
-    // browser needs the pair, so that session is left alone.
-    let api =
-      readAccounts()[account] === undefined
-        ? null
-        : await reuseSession(baseURL as string, account);
-    if (api === null) {
-      api = await request.newContext({ baseURL });
-      await signInOrRegister(api, account);
+  for (let at = 0; at < slots; at += 1) {
+    prepared[String(at)] = { A: [], B: [] };
+    for (const account of ['A', 'B'] as const) {
+      // The record is what says an account is ours. A stored session with no
+      // record behind it belongs to an account nothing here can sign in as
+      // again, and the case that signs the second account in from inside the
+      // browser needs the pair, so that session is left alone.
+      let api =
+        readAccounts()[String(at)]?.[account] === undefined
+          ? null
+          : await reuseSession(baseURL as string, at, account);
+      if (api === null) {
+        api = await request.newContext({ baseURL });
+        await signInOrRegister(api, at, account);
+      }
+      await resetLocale(api, account);
+      const studio = await personalStudio(api, at, account);
+      await archiveOlderRuns(api, studio.slug);
+      for (let made = 0; made < PROJECTS_PER_ACCOUNT[account]; made += 1) {
+        prepared[String(at)][account].push(await createProject(api, studio.id, made));
+      }
+      await api.storageState({ path: stateFile(account, at) });
+      await api.dispose();
     }
-    await resetLocale(api, account);
-    const studio = await personalStudio(api, account);
-    await archiveOlderRuns(api, studio.slug);
-    for (let made = 0; made < PROJECTS_PER_ACCOUNT[account]; made += 1) {
-      prepared[account].push(await createProject(api, studio.id, made));
-    }
-    await api.storageState({ path: STATE_FILE[account] });
-    await api.dispose();
   }
 
   write(PROJECTS_FILE, JSON.stringify(prepared, null, 2));
