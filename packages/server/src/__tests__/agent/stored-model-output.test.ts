@@ -15,12 +15,11 @@ import { tool } from "ai";
 import { createToolModelOutput } from "ai/internal";
 import type { Tool } from "ai";
 import { z } from "zod";
-import type * as CoreModule from "@breatic/core";
 import type { MessagePart } from "@breatic/shared";
 
 vi.mock("@breatic/core", async (importOriginal) => {
   const { coreMock } = await import("../helpers/mock-core.js");
-  return coreMock(importOriginal as () => Promise<typeof CoreModule>);
+  return coreMock(importOriginal);
 });
 
 const { mocks } = await import("../helpers/mock-core.js");
@@ -59,7 +58,7 @@ const rendering = tool({
   execute: async () => ({ items: [1, 2] }),
   toModelOutput: ({ output }) => ({
     type: "text",
-    value: `items: ${(output as { items: number[] }).items.join(",")}`,
+    value: `items: ${(output).items.join(",")}`,
   }),
 });
 
@@ -175,7 +174,7 @@ describe("a value that cannot be worked out does not fail the turn", () => {
     ["returns an arm the store does not keep", { files }, "files"],
     ["is not in the turn's tool set", {}, "gone"],
   ] as const)("stores the note and logs when the tool %s", async (_label, tools, toolName) => {
-    const out = await passOver(tools as Record<string, Tool>, succeeded(toolName, { any: 1 }));
+    const out = await passOver(tools, succeeded(toolName, { any: 1 }));
 
     expect(out).toMatchObject({ forModel: { type: "text", value: EARLIER_RESULT_NOTE } });
     expect(mocks.logger.error).toHaveBeenCalledTimes(1);
