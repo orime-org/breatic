@@ -12,6 +12,7 @@
 import { Hono } from "hono";
 import { corsMiddleware } from "@server/middleware/cors.js";
 import { localeMiddleware } from "@server/middleware/i18n.js";
+import { analyticsConsentMiddleware } from "@server/middleware/analytics-consent.js";
 import { loggerMiddleware } from "@server/middleware/logger.js";
 import { metricsMiddleware } from "@server/infra/metrics.js";
 import { errorHandler } from "@server/middleware/error-handler.js";
@@ -55,6 +56,9 @@ export function createApp(): Hono {
   // It also runs before `onError` so error responses honour the
   // caller's language.
   app.use("*", localeMiddleware);
+  // Consent wraps the handlers for the same reason: services that send
+  // analytics events read it from the request context.
+  app.use("*", analyticsConsentMiddleware);
   app.use("*", loggerMiddleware);
   app.use("*", metricsMiddleware);
   app.onError(errorHandler);
