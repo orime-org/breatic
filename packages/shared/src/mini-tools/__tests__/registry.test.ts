@@ -33,6 +33,7 @@ const BATCH_ONE = {
     "image.inpaint",
     "image.erase",
     "image.sketch",
+    "image.adjust",
     "image.grid",
   ],
   video: [
@@ -94,6 +95,16 @@ describe("MINI_TOOLS registry", () => {
         }
       }
     }
+  });
+
+  it("adjusts a picture with the same sliders as a video, in the browser", () => {
+    const image = miniToolById("image.adjust");
+    const video = miniToolById("video.adjust");
+    expect(image?.run.kind).toBe("browser");
+    expect(image?.params).toEqual(video?.params);
+    expect(image && outputsOf(image, {}).map((output) => [output.modality, output.namePrefix])).toEqual([
+      ["image", "ADJUST"],
+    ]);
   });
 
   it("cuts a grid into rows times columns of tiles inside a group", () => {
@@ -177,6 +188,7 @@ describe("servedMiniToolsFor", () => {
       "image.crop",
       "image.rotate",
       "image.upscale",
+      "image.adjust",
       "image.grid",
     ]);
   });
@@ -185,6 +197,7 @@ describe("servedMiniToolsFor", () => {
     expect(servedMiniToolsFor("image", undefined).map((tool) => tool.id)).toEqual([
       "image.crop",
       "image.rotate",
+      "image.adjust",
       "image.grid",
     ]);
   });
