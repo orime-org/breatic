@@ -194,8 +194,19 @@ interface MiniToolBase {
   readonly sourceMany: boolean;
   /** Present on a tool the reader draws on the node for. */
   readonly drawing?: MiniToolDrawing;
-  /** Present on a model tool whose pinned model takes a prompt. */
-  readonly prompt?: { readonly placeholderKey: string };
+  /**
+   * Present on a tool that grows the picture past its edges: the run sends,
+   * in place of the source, the picture padded onto the larger canvas under
+   * `imageParam` and a mask of the same size, white where the canvas is new,
+   * under `maskParam`.
+   */
+  readonly expand?: { readonly imageParam: string; readonly maskParam: string };
+  /**
+   * Present on a model tool whose pinned model takes a prompt. `defaultText`,
+   * when given, is sent in place of an empty prompt, so the reader may leave
+   * it empty.
+   */
+  readonly prompt?: { readonly placeholderKey: string; readonly defaultText?: string };
 }
 
 /**

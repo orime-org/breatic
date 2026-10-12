@@ -124,6 +124,9 @@ function memberObject(spec: MiniToolSpec): z.ZodObject {
     params: paramsSchema(spec),
     slots: slotsSchema(spec),
     ...drawingShape(spec),
+    ...(spec.expand === undefined
+      ? {}
+      : { expand: z.strictObject({ image: URL_SCHEMA, mask: URL_SCHEMA }) }),
   });
 }
 
@@ -154,6 +157,8 @@ export interface MiniToolRequest {
    * tool's mask, or a sketch tool's composite.
    */
   drawing?: { mask: string } | { image: string } | undefined;
+  /** An expand tool's padded picture and the mask of its new area. */
+  expand?: { image: string; mask: string } | undefined;
 }
 
 /**

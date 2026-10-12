@@ -34,6 +34,7 @@ const BATCH_ONE = {
     "image.erase",
     "image.sketch",
     "image.adjust",
+    "image.expand",
     "image.grid",
   ],
   video: [

@@ -341,6 +341,7 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "canvas.miniTool.audio.extend.prompt": { excluded: REASONS.SAYS_WHAT_TO_TYPE },
   "canvas.miniTool.image.inpaint.prompt": { excluded: REASONS.SAYS_WHAT_TO_TYPE },
   "canvas.miniTool.image.sketch.prompt": { excluded: REASONS.SAYS_WHAT_TO_TYPE },
+  "canvas.miniTool.image.expand.prompt": { excluded: REASONS.SAYS_WHAT_TO_TYPE },
   "canvas.template.costume-sheet.prompt": { described: /replaces that mode's prompt with the template's/ },
   "canvas.template.storyboard-grid-25.prompt": { described: /replaces that mode's prompt with the template's/ },
   "canvas.promptMark.reference": { described: /A 📎 mark in square brackets asks the reader to @ a node/ },
