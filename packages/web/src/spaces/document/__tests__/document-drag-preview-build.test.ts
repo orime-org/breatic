@@ -132,8 +132,6 @@ describe('buildDragPreview', () => {
       expect(layer.classList.contains(name)).toBe(false);
     }
     expect(layer.contains(content)).toBe(true);
-    preview.remove();
-    expect(root.isConnected).toBe(false);
   });
 
   it('leaves the page in the animation frame after it is built, once the browser has taken the image', async () => {
@@ -152,7 +150,6 @@ describe('buildDragPreview', () => {
     const [first, second] = [...preview.element.querySelectorAll<HTMLElement>('.bn-block-content')];
     expect(first!.style.getPropertyValue('--doc-block-lift')).toBe('0px');
     expect(second!.style.getPropertyValue('--doc-block-lift')).toBe('');
-    preview.remove();
   });
 });
 

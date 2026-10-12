@@ -18,9 +18,14 @@
  * - It is scaled down as a whole when a side is longer than 512px, until the
  *   longest is 512px; content no longer than that keeps its own size. Chrome
  *   draws the image in the root element's own space, leaving out the root's
- *   transform and opacity (`data_transfer.cc`, the same reason `index.css`
- *   puts the preview's opacity on a child), so the root takes the scaled size
- *   and the scale sits on the layer inside it.
+ *   transform (`data_transfer.cc`), so the root takes the scaled size and the
+ *   scale sits on the layer inside it.
+ *
+ * The root is opaque and fixed at the viewport's top left (`index.css`):
+ * Firefox and WebKit draw the root's own opacity into the image, and Safari
+ * cancels a drag whose image is wholly off screen. The browser takes the image
+ * while `dragstart` is dispatched, so the root leaves the page in the next
+ * animation frame, before that frame is painted (inner#1350 design §4).
  */
 
 import type { EditorView } from '@tiptap/pm/view';
@@ -38,16 +43,14 @@ export interface PreviewSize {
   readonly height: number;
 }
 
-/** A preview attached to the page. */
+/** A preview attached to the page until the next animation frame. */
 export interface DragPreview {
   /** What to hand to `setDragImage`. */
   readonly element: HTMLElement;
-  /** Takes it off the page. */
-  readonly remove: () => void;
 }
 
-/** The class BlockNote gives its own drag preview, and ours takes for its positioning. */
-const LIBRARY_PREVIEW_CLASS = 'bn-drag-preview';
+/** The class `index.css` places and styles every preview by. */
+const PREVIEW_CLASS = 'doc-drag-preview';
 
 /**
  * The editor element's classes the preview leaves off: BlockNote takes any
@@ -98,7 +101,8 @@ function measureLayer(layer: HTMLElement): PreviewSize {
 
 /**
  * Attaches a preview of some content to the page, scaled and in the body's
- * styles.
+ * styles, for the `dragstart` being dispatched to hand to `setDragImage`. It
+ * takes itself off the page in the next animation frame.
  * @param view - The editor view whose styles it takes.
  * @param content - The content, detached.
  * @param measure - Reads the content's natural size once laid out.
@@ -111,8 +115,7 @@ export function buildDragPreview(
 ): DragPreview {
   const page = view.dom.ownerDocument;
   const root = page.createElement('div');
-  root.className = LIBRARY_PREVIEW_CLASS;
-  root.style.padding = '0';
+  root.className = PREVIEW_CLASS;
   root.style.overflow = 'hidden';
   const layer = page.createElement('div');
   layer.className = [...view.dom.classList].filter((name) => !EDITOR_ONLY_CLASSES.has(name)).join(' ');
@@ -134,12 +137,10 @@ export function buildDragPreview(
   root.style.width = `${size.width * scale}px`;
   root.style.height = `${size.height * scale}px`;
   layer.style.transform = `scale(${scale})`;
-  return {
-    element: root,
-    remove: () => {
-      root.remove();
-    },
-  };
+  (page.defaultView ?? window).requestAnimationFrame(() => {
+    root.remove();
+  });
+  return { element: root };
 }
 
 /**
@@ -383,47 +384,6 @@ export function captionPreviewContent(input: HTMLInputElement): HTMLElement {
 }
 
 /**
- * Takes a preview off the page when its drag ends: on whichever comes first of
- * a drop, once the drop has been handled; a `dragend`; and the first pointer
- * move with no button held. A drag's source can leave the page before its
- * `dragend` — a selection the drop moved, a caption field closed as the body
- * takes the focus — and then that `dragend` reaches nothing
- * (`document-row-drag.ts`).
- * @param page - The page the preview is on.
- * @param preview - The preview.
- * @param preview.remove - Takes it off the page.
- * @returns Takes it away now; calling it again does nothing.
- */
-export function removeWhenDragEnds(page: Document, preview: { remove: () => void }): () => void {
-  const win = page.defaultView;
-  let done = false;
-  /** Takes the preview away, once. */
-  const remove = (): void => {
-    if (done) return;
-    done = true;
-    page.removeEventListener('drop', onDrop, true);
-    page.removeEventListener('dragend', remove, true);
-    win?.removeEventListener('mousemove', onMove, true);
-    preview.remove();
-  };
-  /** Waits for the drop's own handling, which may still read the preview's drag. */
-  const onDrop = (): void => {
-    setTimeout(remove, 0);
-  };
-  /**
-   * Takes the preview away on a move with no button held.
-   * @param event - The mousemove.
-   */
-  const onMove = (event: MouseEvent): void => {
-    if (event.buttons === 0) remove();
-  };
-  page.addEventListener('drop', onDrop, true);
-  page.addEventListener('dragend', remove, true);
-  win?.addEventListener('mousemove', onMove, true);
-  return remove;
-}
-
-/**
  * Replaces the preview BlockNote set for a row drag with ours: the row whose
  * handle was pressed, copied from the body. The library copies every block a
  * selection spans, and the drop moves the pressed row alone
@@ -433,12 +393,10 @@ export function removeWhenDragEnds(page: Document, preview: { remove: () => void
  * @param view - The editor view.
  * @param dataTransfer - The drag's data transfer.
  * @param blockId - The row.
- * @returns Our preview, or null when the row is not in the body.
  */
-export function previewRowDrag(view: EditorView, dataTransfer: DataTransfer | null, blockId: string): DragPreview | null {
+export function previewRowDrag(view: EditorView, dataTransfer: DataTransfer | null, blockId: string): void {
   const row = [...view.dom.querySelectorAll(ROW)].find((outer) => outer.getAttribute('data-id') === blockId);
-  if (row === undefined || !dataTransfer) return null;
+  if (row === undefined || !dataTransfer) return;
   const preview = buildDragPreview(view, blockPreviewContent(view, [row.cloneNode(true) as Element]));
   dataTransfer.setDragImage(preview.element, 0, 0);
-  return preview;
 }

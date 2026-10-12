@@ -77,11 +77,7 @@ import {
 } from '@web/spaces/document/document-table-control-place';
 import { setTableTarget, tableTargetOf } from '@web/spaces/document/document-table-target';
 import { startTableDrag } from '@web/spaces/document/document-table-drag';
-import {
-  buildDragPreview,
-  removeWhenDragEnds,
-  tableLinePreviewContent,
-} from '@web/spaces/document/document-drag-preview';
+import { buildDragPreview, tableLinePreviewContent } from '@web/spaces/document/document-drag-preview';
 import { useDocumentBars } from '@web/spaces/document/document-bars';
 import { useEditorSnapshot } from '@web/spaces/document/use-editor-snapshot';
 import { bodyLayerMark } from '@web/spaces/document/document-body-focus';
@@ -300,8 +296,8 @@ export function DocumentTableHandle({
   // source, stays in the page and its `dragend` reaches the document
   // (inner#1350 §5.2); frozen, it no longer follows the table, so it is hidden.
   const source = useDragSourceHidden();
-  // Gives back what a drag off this handle took: its preview, and the handles
-  // it froze. Its end and the unmount both call it, whichever comes first.
+  // Gives back the handles a drag off this handle froze. Its end and the
+  // unmount both call it, whichever comes first.
   const releaseDrag = React.useRef<(() => void) | null>(null);
   const row = orientation === 'row';
 
@@ -415,10 +411,8 @@ export function DocumentTableHandle({
             const content = tableLinePreviewContent(view, pos, orientation);
             const preview = content === null ? null : buildDragPreview(view, content);
             if (preview !== null) event.dataTransfer.setDragImage(preview.element, 0, 0);
-            const takePreviewAway = preview === null ? null : removeWhenDragEnds(view.dom.ownerDocument, preview);
             handles.freezeHandles();
             releaseDrag.current = () => {
-              takePreviewAway?.();
               handles.unfreezeHandles();
             };
             source.hideAfterStart();

@@ -34,7 +34,6 @@ import {
   blockPreviewContent,
   buildDragPreview,
   captionPreviewContent,
-  removeWhenDragEnds,
   tableRowsPreviewContent,
 } from '@web/spaces/document/document-drag-preview';
 import { dragSourceOf } from '@web/spaces/document/document-table-drag';
@@ -136,7 +135,6 @@ function previewSelectionDrag(view: EditorView, event: DragEvent): void {
   if (content === null) return;
   const preview = buildDragPreview(view, content);
   dataTransfer.setDragImage(preview.element, 0, 0);
-  removeWhenDragEnds(view.dom.ownerDocument, preview);
 }
 
 /**

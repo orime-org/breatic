@@ -612,10 +612,22 @@ body {
      element handed to `setDragImage` when it takes the snapshot, while a
      descendant's opacity survives on every engine (measured for the prompt
      editor's own lift, user 2026-07-14, and 0.6 is the value that one settled
-     on). The library's own `.bn-drag-preview { opacity: 0.001 }` is a different
-     thing entirely: it keeps the clone from being SEEN in the page, and Chrome
-     ignoring it on the root is exactly why that trick works. */
-  .bn-drag-preview > * {
+     on).
+
+     The root itself is opaque and fixed at the viewport's top left: Firefox and
+     WebKit draw the root's own opacity into the image, and Safari cancels a
+     drag whose image is wholly off screen. It is never painted on the page:
+     `buildDragPreview` takes it off in the animation frame after `dragstart`,
+     and the browser has the image by then (inner#1350 design §4). */
+  .doc-drag-preview {
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 2147483647;
+    pointer-events: none;
+  }
+
+  .doc-drag-preview > * {
     opacity: 0.6;
   }
 
@@ -626,22 +638,22 @@ body {
      reads its block group, the drop's routing included. The colours and
      padding still come from the `.doc-body` rules, since the preview keeps the
      editor's other classes. */
-  .bn-drag-preview [data-content-type='table'] table {
+  .doc-drag-preview [data-content-type='table'] table {
     border-collapse: collapse;
     table-layout: fixed;
     width: auto;
   }
 
-  .bn-drag-preview [data-content-type='table'] th,
-  .bn-drag-preview [data-content-type='table'] td {
+  .doc-drag-preview [data-content-type='table'] th,
+  .doc-drag-preview [data-content-type='table'] td {
     border-width: 1px;
     border-style: solid;
     vertical-align: top;
     box-sizing: border-box;
   }
 
-  .bn-drag-preview [data-content-type='table'] td:not([colwidth]),
-  .bn-drag-preview [data-content-type='table'] th:not([colwidth]) {
+  .doc-drag-preview [data-content-type='table'] td:not([colwidth]),
+  .doc-drag-preview [data-content-type='table'] th:not([colwidth]) {
     min-width: var(--default-cell-min-width);
   }
 
