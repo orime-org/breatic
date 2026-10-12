@@ -167,6 +167,8 @@ export async function startConsentBanner(options: BannerOptions): Promise<void> 
   bannerOptions = options;
   currentLanguage = options.language;
   await boot(options);
+  // A restart while the lookup is still out would decide twice; the lookup ends within a second.
+  await options.country;
   document.addEventListener('visibilitychange', () => void resync());
   // A window beside the one where the choice changed stays visible; it learns of it when it gets focus.
   window.addEventListener('focus', () => void resync());
@@ -232,8 +234,9 @@ async function boot(options: BannerOptions): Promise<void> {
     onChange: onVisitorChoice,
   });
 
+  const country = readBrowserChoice() ? null : await options.country;
+  // Read after the lookup: a choice another tab stored meanwhile is the one in force.
   const stored = readBrowserChoice();
-  const country = stored ? null : await options.country;
   const decision = decideOnLoad({
     stored,
     optIn: requiresOptIn(country),

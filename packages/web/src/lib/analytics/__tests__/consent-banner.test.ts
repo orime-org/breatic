@@ -244,3 +244,34 @@ describe('robustness', () => {
     expect(library.reset).not.toHaveBeenCalled();
   });
 });
+
+describe('the country lookup', () => {
+  it('lets a choice stored while it runs stand', async () => {
+    let answer = (_country: string): void => undefined;
+    const country = new Promise<string>((resolve) => {
+      answer = resolve;
+    });
+    vi.resetModules();
+    const banner = await import('@web/lib/analytics/consent-banner');
+    const seen: unknown[] = [];
+    const started = banner.startConsentBanner({
+      cookieDomain: '',
+      language: 'en',
+      languages: ['en'],
+      text: () => TEXT,
+      privacyUrl: '/privacy',
+      country,
+      onChoice: (choice) => seen.push(choice),
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    // Another tab decides while the lookup is still out.
+    library.consent = true;
+    library.cookie = { ...library.cookie, categories: ['necessary'], data: { source: 'banner', decidedAt: '2026-10-14T00:00:00.000Z' } };
+    document.dispatchEvent(new Event('visibilitychange'));
+    answer('US');
+    await started;
+    expect(library.acceptCategory).not.toHaveBeenCalled();
+    expect(library.reset).not.toHaveBeenCalled();
+    expect(seen.at(-1)).toMatchObject({ analytics: false, ads: false, source: 'banner' });
+  });
+});
