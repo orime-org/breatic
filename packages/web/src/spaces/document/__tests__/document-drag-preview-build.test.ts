@@ -494,7 +494,11 @@ describe('tableLinePreviewContent', () => {
       table: ['653px', 'important', 'fixed'],
       block: '',
     });
-    expect(drawn(column)).toEqual({ cols: [['120px', 'important']], table: ['120px', 'important', 'fixed'], block: '' });
+    // A column is as wide as itself, the block's own width set to it, and its
+    // table stays in the library's wrapper, a block as in the body: in WebKit a
+    // collapsed table of a set width laid out as a flex item is 1px wider.
+    expect(drawn(column)).toEqual({ cols: [['120px', 'important']], table: ['120px', 'important', 'fixed'], block: '120px' });
+    expect(column.querySelector('table')!.parentElement!.classList.contains('tableWrapper')).toBe(true);
   });
 
   it('holds a table row at the widths of the columns in view, the table at their sum', () => {
