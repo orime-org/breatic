@@ -207,18 +207,37 @@ function installComparer(): void {
           b.parentElement !== null &&
           [...b.parentElement.querySelectorAll('*')].some((el) => aligned.skipped.has(el));
         const lostParent = b.parentElement !== null && (aligned.skipped.has(b.parentElement) || !pairedParent);
+        // An empty box takes its size from its parent, which the preview sizes
+        // when it takes some of the parent's content out.
+        const emptyInLost =
+          b.childElementCount === 0 &&
+          (b.textContent ?? '') === '' &&
+          b.parentElement !== null &&
+          [...b.parentElement.querySelectorAll('*')].some((el) => aligned.skipped.has(el));
+        // What a running animation drives is wherever its frame is.
+        const animated = [...b.getAnimations(), ...p.getAnimations()].flatMap((animation) =>
+          (animation.effect as KeyframeEffect | null)?.getKeyframes().flatMap((frame) =>
+            Object.keys(frame).map((key) => key.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)),
+          ) ?? [],
+        );
         const rebased = depthOf(original) > 0;
         const quotedRebased = rebased && b.matches('[data-quoted-run]');
         const isStatic = getComputedStyle(b).position === 'static' && getComputedStyle(p).position === 'static';
         const unshifted = [getComputedStyle(b).position, getComputedStyle(p).position].every((position) => position === 'relative' || position === 'static');
         const isColumn = p.tagName === 'COL' || p.tagName === 'COLGROUP';
+        // A column's preview takes its table out of the frame; the room the
+        // wrapper keeps under the table is for the frame's scrollbar.
+        const outOfFrame = p.matches('.tableWrapper') && p.closest('.doc-table-frame') === null && b.closest('.doc-table-frame') !== null;
         const rowLostCells = (p.tagName === 'TD' || p.tagName === 'TH') && p.parentElement!.children.length < b.parentElement!.children.length;
         const holdsEnd = (first !== undefined && p.contains(first) ? lift : 0) + (last !== undefined && p.contains(last) ? drop : 0);
         const skip = (prop: string): boolean => {
           if (p === content && (SIZE.has(prop) || MIN_SIZE.has(prop) || prop === 'box-sizing')) return true;
-          if ((lostChildren || sizedByLost) && SIZE.has(prop)) return true;
+          if ((lostChildren || sizedByLost || emptyInLost) && SIZE.has(prop)) return true;
+          if (lostChildren && MIN_SIZE.has(prop)) return true;
+          if (animated.some((name) => prop === name || prop.startsWith(`${name}-`))) return true;
           if (rowLostCells && (prop === 'height' || prop === 'block-size')) return true;
           if (isColumn && SIZE.has(prop)) return true;
+          if (outOfFrame && (prop === 'padding-bottom' || prop === 'padding-block-end')) return true;
           if (isStatic && PLACE.has(prop)) return true;
           if (unshifted && PLACE.has(prop)) {
             const values = [getComputedStyle(b).getPropertyValue(prop), getComputedStyle(p).getPropertyValue(prop)];
@@ -564,6 +583,13 @@ for (const theme of ['light', 'dark'] as const) {
 
     const reports = await compareKept(page);
     expect(reports.length).toBe(11);
+    // The column's preview is as wide as the column, not as the block it is in.
+    const column = await page.evaluate(() => {
+      const root = (window as unknown as { __previews: Element[] }).__previews[6]!;
+      const layer = root.firstElementChild as HTMLElement;
+      return { layer: layer.offsetWidth, table: (root.querySelector('table') as HTMLElement).offsetWidth };
+    });
+    expect(Math.abs(column.layer - column.table)).toBeLessThanOrEqual(1);
     const found = reports.flatMap((report, index) => [
       ...report.unmatched.map((el) => `preview ${index}: no original for ${el}`),
       ...report.diffs.map((diff) => `preview ${index}: ${diff}`),
