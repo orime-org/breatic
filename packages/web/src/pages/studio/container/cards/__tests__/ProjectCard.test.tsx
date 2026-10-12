@@ -2,13 +2,13 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
 import type * as React from 'react';
 
-import { projectsApi } from '@web/data/api/projects';
+import { projectsApi, studioProjectsListKey } from '@web/data/api/projects';
 import { ProjectCard } from '@web/pages/studio/container/cards/ProjectCard';
 import type { ProjectTimeKind } from '@web/pages/studio/container/container-types';
 import type { ContainerProject } from '@web/pages/studio/container/container-types';
@@ -430,70 +430,160 @@ describe('ProjectCard — confirmations that wait for the server (inner#1374)', 
     }
   });
 
+  /** One held studio list, as a case sees it. */
+  interface HeldList {
+    /** Answer the refetch that is out with these projects (none by default). */
+    land: (items?: ContainerProject[]) => void;
+    /** Whether a refetch is out. */
+    started: () => boolean;
+  }
+
   /**
-   * Render the card inside a list read the way the studio page reads it, with
-   * every read after the first held until the case lands it.
-   * @param p - The card's project.
-   * @returns The function that lands the held refetch with the card gone.
+   * A list read that answers its first read with `first` and holds every later
+   * one until the case lands it.
+   * @param first - The first read's answer.
+   * @returns The read and its control.
    */
-  function setupInHeldList(p: ContainerProject): { landRefetch: () => void; refetchStarted: () => boolean } {
-    let land: (() => void) | null = null;
-    const fetchList = vi.fn(
-      (): Promise<ContainerProject[]> =>
-        fetchList.mock.calls.length === 1
-          ? Promise.resolve([p])
-          : new Promise((resolve) => {
-            land = () => resolve([]);
-          }),
-    );
+  function heldList(first: ContainerProject[]): { read: () => Promise<ContainerProject[]>; control: HeldList } {
+    let land: ((items: ContainerProject[]) => void) | null = null;
+    let reads = 0;
+    const read = (): Promise<ContainerProject[]> => {
+      reads += 1;
+      return reads === 1
+        ? Promise.resolve(first)
+        : new Promise((resolve) => {
+          land = resolve;
+        });
+    };
+    return { read, control: { land: (items = []) => land?.(items), started: () => land !== null } };
+  }
+
+  /**
+   * Render the card inside the studio's live list, next to the archived list,
+   * both read the way the studio page reads them (an admin has both mounted),
+   * with every refetch held until the case lands it.
+   * @param p - The card's project, listed in the live list.
+   * @returns The two lists' controls.
+   */
+  function setupInHeldLists(p: ContainerProject): { live: HeldList; archived: HeldList } {
+    const live = heldList([p]);
+    const archived = heldList([]);
     /**
-     * Stands in for the studio's project list.
+     * Stands in for one of the studio's project lists.
+     * @param props - Which list, and how it reads.
+     * @param props.archived - Whether this is the archived list.
+     * @param props.read - Its read.
      * @returns One card per listed project.
      */
-    function List(): React.JSX.Element {
-      const list = useQuery({ queryKey: ['studio', 'acme', 'projects', 'live'], queryFn: fetchList });
+    function List(props: { archived: boolean; read: () => Promise<ContainerProject[]> }): React.JSX.Element {
+      const list = useQuery({
+        queryKey: studioProjectsListKey('acme', {
+          archived: props.archived,
+          sort: props.archived ? 'archived' : 'opened',
+          locale: 'en',
+        }),
+        queryFn: props.read,
+      });
       return <>{(list.data ?? []).map((item) => <ProjectCard key={item.id} project={item} timeKind='created' />)}</>;
     }
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={qc}>
         <MemoryRouter>
-          <List />
+          <List archived={false} read={live.read} />
+          <List archived read={archived.read} />
         </MemoryRouter>
       </QueryClientProvider>,
     );
-    return { landRefetch: () => land?.(), refetchStarted: () => land !== null };
+    return { live: live.control, archived: archived.control };
   }
 
-  it('keeps the archive confirmation busy until the list refetch takes the card away', async () => {
+  /**
+   * Open the rename dialog and save a new name.
+   * @returns The Save button.
+   */
+  async function renameFromTheCard(): Promise<HTMLElement> {
     const user = userEvent.setup();
-    const list = setupInHeldList({ ...project, ...AS_STUDIO_ADMIN });
+    await user.click(await screen.findByRole('button', { name: 'More actions' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Rename' }));
+    const field = await screen.findByLabelText('Name');
+    await user.clear(field);
+    await user.type(field, 'Renamed');
+    const save = screen.getByRole('button', { name: 'Save' });
+    await user.click(save);
+    return save;
+  }
+
+  it('keeps the rename dialog busy until the live list refetch shows the new name', async () => {
+    const lists = setupInHeldLists(project);
+    const save = await renameFromTheCard();
+
+    await waitFor(() => expect(lists.live.started() && lists.archived.started()).toBe(true));
+    await act(async () => lists.archived.land());
+    expect(save).toHaveAttribute('aria-busy', 'true');
+    expect(screen.getByTestId('rename-project-dialog')).toBeInTheDocument();
+    lists.live.land([{ ...project, name: 'Renamed' }]);
+    await waitFor(() => expect(screen.queryByTestId('rename-project-dialog')).toBeNull());
+  });
+
+  it('closes the rename dialog once the live list shows the name, without waiting for the archived list', async () => {
+    const lists = setupInHeldLists(project);
+    await renameFromTheCard();
+
+    await waitFor(() => expect(lists.live.started() && lists.archived.started()).toBe(true));
+    lists.live.land([{ ...project, name: 'Renamed' }]);
+    await waitFor(() => expect(screen.queryByTestId('rename-project-dialog')).toBeNull());
+    expect(screen.getByText('Renamed')).toBeInTheDocument();
+  });
+
+  it('keeps the archive confirmation busy until the archived list refetch lands too', async () => {
+    const user = userEvent.setup();
+    const lists = setupInHeldLists({ ...project, ...AS_STUDIO_ADMIN });
     await user.click(await screen.findByRole('button', { name: 'More actions' }));
     await user.click(await screen.findByRole('menuitem', { name: 'Archive' }));
     await screen.findByTestId('archive-project-dialog');
     const confirm = screen.getByRole('button', { name: 'Archive' });
     await user.click(confirm);
 
-    await waitFor(() => expect(list.refetchStarted()).toBe(true));
+    await waitFor(() => expect(lists.live.started() && lists.archived.started()).toBe(true));
+    // The live answer keeps the card listed only so its confirmation stays
+    // observable; what is measured is whether the wait covers the archived list.
+    await act(async () => lists.live.land([{ ...project, ...AS_STUDIO_ADMIN }]));
     expect(confirm).toHaveAttribute('aria-busy', 'true');
     expect(screen.getByTestId('archive-project-dialog')).toBeInTheDocument();
-    list.landRefetch();
+    lists.archived.land();
+    await waitFor(() => expect(screen.queryByTestId('archive-project-dialog')).toBeNull());
+  });
+
+  it('keeps the archive confirmation busy until the list refetch takes the card away', async () => {
+    const user = userEvent.setup();
+    const lists = setupInHeldLists({ ...project, ...AS_STUDIO_ADMIN });
+    await user.click(await screen.findByRole('button', { name: 'More actions' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Archive' }));
+    await screen.findByTestId('archive-project-dialog');
+    const confirm = screen.getByRole('button', { name: 'Archive' });
+    await user.click(confirm);
+
+    await waitFor(() => expect(lists.live.started()).toBe(true));
+    expect(confirm).toHaveAttribute('aria-busy', 'true');
+    expect(screen.getByTestId('archive-project-dialog')).toBeInTheDocument();
+    lists.live.land();
     await waitFor(() => expect(screen.queryByTestId('archive-project-dialog')).toBeNull());
     expect(screen.queryByTestId(`project-card-${project.id}`)).toBeNull();
   });
 
   it('keeps the leave confirmation busy until the list refetch takes the card away', async () => {
     const user = userEvent.setup();
-    const list = setupInHeldList({ ...project, myRole: 'editor', ...AS_EDITOR });
+    const lists = setupInHeldLists({ ...project, myRole: 'editor', ...AS_EDITOR });
     await user.click(await screen.findByRole('button', { name: 'More actions' }));
     await user.click(await screen.findByRole('menuitem', { name: 'Leave project' }));
     const confirm = await screen.findByRole('button', { name: 'Leave' });
     await user.click(confirm);
 
-    await waitFor(() => expect(list.refetchStarted()).toBe(true));
+    await waitFor(() => expect(lists.live.started()).toBe(true));
     expect(confirm).toHaveAttribute('aria-busy', 'true');
     expect(screen.getByTestId('leave-project-dialog')).toBeInTheDocument();
-    list.landRefetch();
+    lists.live.land();
     await waitFor(() => expect(screen.queryByTestId('leave-project-dialog')).toBeNull());
     expect(screen.queryByTestId(`project-card-${project.id}`)).toBeNull();
   });

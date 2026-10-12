@@ -85,25 +85,67 @@ export function isStudioProjectsListKey(key: readonly unknown[]): boolean {
   return key[0] === 'studio' && key[2] === 'projects';
 }
 
+/** What a change to a project does beyond its name and cover. */
+export interface ProjectListingChange {
+  /**
+   * Whether the project enters or leaves the archived lists (archive, restore).
+   * Only then does the change wait for those lists too.
+   */
+  archivedChanges?: boolean;
+}
+
 /**
- * Refetch everything that shows a project's name or which list it is in:
- * every studio's projects lists, the recent page and the project itself.
+ * Whether a cached query shows the project in a way a change has to wait for:
+ * the live studio lists (and the archived ones when the change moves the
+ * project in or out of them), the Recent landing and the project itself
+ * (not its children, such as its credits).
+ * @param key - The query's key.
+ * @param projectId - The project that changed.
+ * @param archivedChanges - Whether the project enters or leaves the archived lists.
+ * @returns Whether the change waits for that query's refetch.
+ */
+function showsChange(key: readonly unknown[], projectId: string, archivedChanges: boolean): boolean {
+  if (isStudioProjectsListKey(key)) {
+    const parts = key[3] as Partial<StudioProjectsListKeyParts> | undefined;
+    return parts?.archived === false || (archivedChanges && parts?.archived === true);
+  }
+  if (key[0] === 'studios') return key[1] === 'recent';
+  return key.length === 2 && key[0] === 'project' && key[1] === projectId;
+}
+
+/**
+ * Refresh everything that shows a project's name or which list it is in:
+ * every studio's projects lists, the recent page and the project with its
+ * children are all marked stale (mounted reads refetch now, the rest on their
+ * next mount).
  * @param queryClient - The app's query client.
  * @param projectId - The project that changed.
- * @returns Settles once every refetch is in; a caller whose button must keep
+ * @param change - What the change does beyond the name and cover.
+ * @returns Settles once the mounted reads that show the change have refetched:
+ *   the live studio lists, the archived ones only when `archivedChanges`, the
+ *   Recent landing and the project itself. A caller whose button must keep
  *   waiting until the screen shows the change awaits it (inner#1374).
  */
-export async function invalidateProjectListings(
+export function invalidateProjectListings(
   queryClient: QueryClient,
   projectId: string,
+  change: ProjectListingChange = {},
 ): Promise<void> {
-  await Promise.all([
-    queryClient.invalidateQueries({
-      predicate: (query) => isStudioProjectsListKey(query.queryKey),
-    }),
-    queryClient.invalidateQueries({ queryKey: ['studios', 'recent'] }),
-    queryClient.invalidateQueries({ queryKey: ['project', projectId] }),
-  ]);
+  void queryClient.invalidateQueries({
+    predicate: (query) => isStudioProjectsListKey(query.queryKey),
+  });
+  void queryClient.invalidateQueries({ queryKey: ['studios', 'recent'] });
+  void queryClient.invalidateQueries({ queryKey: ['project', projectId] });
+  // `cancelRefetch: false` joins the refetches the invalidations just started
+  // instead of restarting them.
+  const archivedChanges = change.archivedChanges === true;
+  return queryClient.refetchQueries(
+    {
+      predicate: (query) => showsChange(query.queryKey, projectId, archivedChanges),
+      type: 'active',
+    },
+    { cancelRefetch: false },
+  );
 }
 
 export const projectsApi = {

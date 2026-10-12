@@ -52,9 +52,10 @@ export function useProjectActions(projectId: string): ProjectActions {
     mutationFn: () => projectsApi.archive(projectId),
     // Awaited: the confirmation closes once this settles, and until the list
     // refetch lands the card and its Archive entry are still on screen
-    // (inner#1374).
+    // (inner#1374). The archived lists are waited on too: the project joins
+    // them and their total is the Archived tab's count.
     onSuccess: async () => {
-      await invalidateProjectListings(queryClient, projectId);
+      await invalidateProjectListings(queryClient, projectId, { archivedChanges: true });
       toast.success(t('studio.container.card.archived'));
     },
     onError: toastFailure(t('studio.container.card.archiveFailed')),
@@ -65,7 +66,7 @@ export function useProjectActions(projectId: string): ProjectActions {
     // banner's restore button goes away only then, and a press in between
     // would send a restore the server refuses (inner#1374).
     onSuccess: async () => {
-      await invalidateProjectListings(queryClient, projectId);
+      await invalidateProjectListings(queryClient, projectId, { archivedChanges: true });
       toast.success(t('studio.container.card.restored'));
     },
     onError: toastFailure(t('studio.container.card.restoreFailed')),
