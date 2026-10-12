@@ -1,5 +1,5 @@
 diff --git a/dist/index.cjs b/dist/index.cjs
-index d52a5260a7b9924b2865053ea1e8c6484225277b..1c38302b4c61553f81f38239044cec8c81706991 100644
+index d52a5260a7b9924b2865053ea1e8c6484225277b..73f496df0b4f6f74c06e016b7fcab2baf152d657 100644
 --- a/dist/index.cjs
 +++ b/dist/index.cjs
 @@ -778,10 +778,16 @@ var ViewDesc = function () {
@@ -22,8 +22,40 @@ index d52a5260a7b9924b2865053ea1e8c6484225277b..1c38302b4c61553f81f38239044cec8c
        } else if (this.dom.firstChild) {
          if (offset == 0) for (var search = dom;; search = search.parentNode) {
            if (search == this.dom) {
+@@ -2441,7 +2447,7 @@ function skipIgnoredNodesBefore(view) {
+       } else {
+         break;
+       }
+-    } else if (isBlockNode(node)) {
++    } else if (isBlockNode(node) || isBlockContent(node)) {
+       break;
+     } else {
+       var prev = node.previousSibling;
+@@ -2479,7 +2485,7 @@ function skipIgnoredNodesAfter(view) {
+       } else {
+         break;
+       }
+-    } else if (isBlockNode(node)) {
++    } else if (isBlockNode(node) || isBlockContent(node)) {
+       break;
+     } else {
+       var next = node.nextSibling;
+@@ -2505,6 +2511,13 @@ function isBlockNode(dom) {
+   var desc = dom.pmViewDesc;
+   return desc && desc.node && desc.node.isBlock;
+ }
++function isBlockContent(dom) {
++  for (var cur = dom.parentNode; cur; cur = cur.parentNode) {
++    var desc = cur.pmViewDesc;
++    if (desc) return desc.contentDOM == dom && !!desc.node && desc.node.isBlock;
++  }
++  return false;
++}
+ function textNodeAfter(node, offset) {
+   while (node && offset == node.childNodes.length && !hasBlockDesc(node)) {
+     offset = domIndex(node) + 1;
 diff --git a/dist/index.js b/dist/index.js
-index dc0d117b85e1da3eae915b4d8ff8e5e604683861..2e490288b9a501639e001a6863045472da01e178 100644
+index dc0d117b85e1da3eae915b4d8ff8e5e604683861..e57d5a294c4e2cff9470b37702fdea68b8ac9af4 100644
 --- a/dist/index.js
 +++ b/dist/index.js
 @@ -846,11 +846,22 @@ class ViewDesc {
@@ -53,3 +85,39 @@ index dc0d117b85e1da3eae915b4d8ff8e5e604683861..2e490288b9a501639e001a6863045472
          }
          else if (this.dom.firstChild) {
              if (offset == 0)
+@@ -2551,7 +2562,7 @@ function skipIgnoredNodesBefore(view) {
+                 break;
+             }
+         }
+-        else if (isBlockNode(node)) {
++        else if (isBlockNode(node) || isBlockContent(node)) {
+             break;
+         }
+         else {
+@@ -2600,7 +2611,7 @@ function skipIgnoredNodesAfter(view) {
+                 break;
+             }
+         }
+-        else if (isBlockNode(node)) {
++        else if (isBlockNode(node) || isBlockContent(node)) {
+             break;
+         }
+         else {
+@@ -2630,6 +2641,17 @@ function isBlockNode(dom) {
+     let desc = dom.pmViewDesc;
+     return desc && desc.node && desc.node.isBlock;
+ }
++// The content element of a block node view. What the view draws around
++// it (a checkbox, a badge) holds no cursor positions, so skipping
++// uneditable elements stops at its edge.
++function isBlockContent(dom) {
++    for (let cur = dom.parentNode; cur; cur = cur.parentNode) {
++        let desc = cur.pmViewDesc;
++        if (desc)
++            return desc.contentDOM == dom && !!desc.node && desc.node.isBlock;
++    }
++    return false;
++}
+ function textNodeAfter(node, offset) {
+     while (node && offset == node.childNodes.length && !hasBlockDesc(node)) {
+         offset = domIndex(node) + 1;

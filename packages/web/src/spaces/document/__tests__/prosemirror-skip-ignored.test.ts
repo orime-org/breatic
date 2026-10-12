@@ -121,14 +121,14 @@ function textNode(root: Node, words: string): Text {
 describe('skipping uneditable elements before a sideways caret move (patched prosemirror-view)', () => {
   it('keeps the caret in a block content element that a box stands before', () => {
     const view = open(schema.node('doc', null, [schema.node('paragraph', null, schema.text('above')), schema.node('check', null, schema.text('task'))]));
-    const content = view.dom.querySelector('div > p')!;
+    const content = textNode(view.dom, 'task').parentElement!;
     const at = press(view, textNode(view.dom, 'task'), 0, 'ArrowLeft');
     expect(content.contains(at.node), `${at.node?.nodeName}@${at.offset}`).toBe(true);
   });
 
   it('keeps the caret in a block content element that a badge stands after', () => {
     const view = open(schema.node('doc', null, [schema.node('check', null, schema.text('task')), schema.node('paragraph', null, schema.text('below'))]));
-    const content = view.dom.querySelector('div > p')!;
+    const content = textNode(view.dom, 'task').parentElement!;
     const at = press(view, textNode(view.dom, 'task'), 4, 'ArrowRight');
     expect(content.contains(at.node)).toBe(true);
   });
