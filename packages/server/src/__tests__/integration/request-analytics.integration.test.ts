@@ -123,7 +123,7 @@ describe("project_created", () => {
       await runWithConsent(ads, () => projectService.create(me.id, me.studioId, "A", "a", "canvas"));
       await runWithConsent(ads, () => projectService.create(me.id, me.studioId, "B", "b", "canvas"));
       expect(await getUploadStatus({ conversion: "first_project", transactionId: `first-project:${me.id}` })).toBe("queued");
-      const [{ n }] = await sql<{ n: number }[]>`
+      const [{ n }] = await sql<[{ n: number }]>`
         SELECT count(*)::int AS n FROM ads_conversion_uploads WHERE transaction_id = ${`first-project:${me.id}`}
       `;
       expect(n).toBe(1);

@@ -147,26 +147,54 @@ export async function enqueueAdsConversion(
 }
 
 /**
- * Queue the zero-value restatement of a refunded credit purchase. Only a
- * conversion that is queued or uploaded is restated: one Google never
- * received would be counted as a new conversion. A restatement of one still
- * queued waits in the worker until the upload settles.
+ * Ask for the zero-value restatement of a refunded credit purchase. Only a
+ * conversion Google received is restated: one it never saw would be counted
+ * as a new conversion. A conversion still queued is marked, and the worker
+ * queues the restatement once the upload lands; one whose upload failed is
+ * left alone.
  * @param paymentId - The refunded order.
- * @returns Whether a restatement was queued.
+ * @returns Whether a restatement was queued or marked to follow the upload.
  * @throws {unknown} When the database or the queue cannot be reached.
  */
 export async function enqueueAdsRestatement(paymentId: string): Promise<boolean> {
   if (adsConversionConfig() === null) return false;
   const upload = await findUploadByPayment(paymentId);
   if (!upload) return false;
-  const { conversion, transactionId } = upload.job;
-  if (!(await moveUpload({ conversion, transactionId }, ["queued", "uploaded"], "restating"))) return false;
-  await addJob({
-    ...upload.job,
-    kind: "restatement",
-    value: { amountCents: 0, currency: upload.job.value?.currency ?? "USD" },
-  });
+  const key = { conversion: upload.job.conversion, transactionId: upload.job.transactionId };
+  if (await moveUpload(key, ["queued"], "restate_pending")) return true;
+  if (!(await moveUpload(key, ["uploaded"], "restating"))) return false;
+  await addJob(restatementOf(upload.job));
   return true;
+}
+
+/**
+ * The zero-value restatement of an uploaded conversion.
+ * @param job - The original upload.
+ * @returns The restatement job.
+ */
+function restatementOf(job: AdsConversionJob): AdsConversionJob {
+  return { ...job, kind: "restatement", value: { amountCents: 0, currency: job.value?.currency ?? "USD" } };
+}
+
+/**
+ * Record how a conversion upload ended; called by the worker. A refund that
+ * arrived while it was queued is restated now that Google has it.
+ * @param job - The upload.
+ * @param uploaded - True when Google accepted it; false once retries are exhausted.
+ * @throws {unknown} When the database or the queue cannot be reached.
+ */
+export async function settleAdsUpload(job: AdsConversionJob, uploaded: boolean): Promise<void> {
+  const key = { conversion: job.conversion, transactionId: job.transactionId };
+  if (job.kind === "restatement") {
+    await moveUpload(key, ["restating"], uploaded ? "restated" : "restate_failed");
+    return;
+  }
+  if (!uploaded) {
+    await moveUpload(key, ["queued", "restate_pending"], "failed");
+    return;
+  }
+  if (await moveUpload(key, ["queued"], "uploaded")) return;
+  if (await moveUpload(key, ["restate_pending"], "restating")) await addJob(restatementOf(job));
 }
 
 /**

@@ -30,6 +30,7 @@ import {
   runGracefulShutdown,
   InfraNotReadyError,
   flushServerAnalytics,
+  adsConversionState,
   initServerAnalytics,
 } from "@breatic/core";
 import { buildCollabHealthChecks } from "@collab/infra/health-checks.js";
@@ -56,6 +57,7 @@ const analytics = initServerAnalytics({
   },
 });
 if (analytics === "invalid") logger.error({}, "amplitude_api_key_invalid");
+if (adsConversionState() === "invalid") logger.error({}, "google_ads_config_invalid");
 
 /**
  * Deadline (ms) for the teardown drains that follow the store settle.

@@ -18,7 +18,7 @@ import { env,
   getSubscriptionPlans,
 } from "@breatic/core";
 import { getPricingTiers } from "@server/config/pricing.js";
-import { closeDb, flushServerAnalytics, initServerAnalytics } from "@breatic/core";
+import { adsConversionState, closeDb, flushServerAnalytics, initServerAnalytics } from "@breatic/core";
 import { closeRedis } from "@breatic/core";
 import { closeQueues } from "@breatic/core";
 import { getRedis, getQueueRedis, getStreamRedis, pingDb, pingRedis, yjsRawPg } from "@breatic/core";
@@ -50,6 +50,7 @@ const analytics = initServerAnalytics({
   },
 });
 if (analytics === "invalid") logger.error({}, "amplitude_api_key_invalid");
+if (adsConversionState() === "invalid") logger.error({}, "google_ads_config_invalid");
 
 // Route the AI SDK's warnings into our logger. Without this the SDK writes
 // them to console, and our logs are JSON on disk — console output lands

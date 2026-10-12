@@ -8,7 +8,15 @@ export const ADS_CONVERSIONS = ["signup", "first_project", "collaboration", "cre
 export type AdsConversionName = (typeof ADS_CONVERSIONS)[number];
 
 /** Where an upload stands (inner#1442 design §4.9 state table). */
-export const ADS_UPLOAD_STATUSES = ["queued", "uploaded", "failed", "restating", "restated", "restate_failed"] as const;
+export const ADS_UPLOAD_STATUSES = [
+  "queued",
+  "uploaded",
+  "failed",
+  "restate_pending",
+  "restating",
+  "restated",
+  "restate_failed",
+] as const;
 export type AdsUploadStatus = (typeof ADS_UPLOAD_STATUSES)[number];
 
 /** One upload, as the worker receives it. */

@@ -20,6 +20,7 @@ import {
   initCore,
   moveUpload,
   setAdsConversionConfigForTest,
+  settleAdsUpload,
 } from "@breatic/core";
 import type { AdClick, ConsentSnapshot } from "@breatic/shared";
 
@@ -134,6 +135,31 @@ describe("enqueueAdsRestatement", () => {
     expect(await enqueueAdsRestatement(paymentId)).toBe(false);
     expect(await getUploadStatus({ conversion: "credit_purchase", transactionId: txn })).toBe("restating");
     expect(await jobsFor(txn)).toContainEqual({ name: "restatement", value: { amountCents: 0, currency: "USD" } });
+  });
+
+  it("restates a purchase refunded while queued only after its upload lands", async () => {
+    const { paymentId, txn } = await purchase();
+    const key = { conversion: "credit_purchase" as const, transactionId: txn };
+    expect(await enqueueAdsRestatement(paymentId)).toBe(true);
+    expect(await getUploadStatus(key)).toBe("restate_pending");
+    expect((await jobsFor(txn)).map((j) => j.name)).toEqual(["conversion"]);
+
+    const [job] = (await queue.getJobs(["waiting", "delayed", "prioritized"])).filter((j) => j.data.transactionId === txn);
+    await settleAdsUpload(job!.data, true);
+    expect(await getUploadStatus(key)).toBe("restating");
+    expect(await jobsFor(txn)).toContainEqual({ name: "restatement", value: { amountCents: 0, currency: "USD" } });
+
+    await settleAdsUpload({ ...job!.data, kind: "restatement" }, true);
+    expect(await getUploadStatus(key)).toBe("restated");
+  });
+
+  it("drops a pending restatement when the upload finally fails", async () => {
+    const { paymentId, txn } = await purchase();
+    await enqueueAdsRestatement(paymentId);
+    const [job] = (await queue.getJobs(["waiting", "delayed", "prioritized"])).filter((j) => j.data.transactionId === txn);
+    await settleAdsUpload(job!.data, false);
+    expect(await getUploadStatus({ conversion: "credit_purchase", transactionId: txn })).toBe("failed");
+    expect((await jobsFor(txn)).map((j) => j.name)).toEqual(["conversion"]);
   });
 
   it("does not restate a purchase whose upload failed", async () => {

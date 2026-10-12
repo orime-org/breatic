@@ -29,7 +29,7 @@ CREATE TABLE "ads_conversion_uploads" (
   "updated_at" timestamp with time zone DEFAULT now() NOT NULL,
   CONSTRAINT "ads_conversion_uploads_conversion_transaction_id_pk" PRIMARY KEY ("conversion", "transaction_id"),
   CONSTRAINT "ads_conversion_uploads_status_check"
-    CHECK ("status" IN ('queued', 'uploaded', 'failed', 'restating', 'restated', 'restate_failed'))
+    CHECK ("status" IN ('queued', 'uploaded', 'failed', 'restate_pending', 'restating', 'restated', 'restate_failed'))
 );--> statement-breakpoint
 ALTER TABLE "ads_conversion_uploads" ADD CONSTRAINT "ads_conversion_uploads_payment_id_payments_id_fk"
   FOREIGN KEY ("payment_id") REFERENCES "public"."payments"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint

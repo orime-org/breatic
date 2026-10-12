@@ -244,6 +244,7 @@ export {
   adsConversionWanted,
   enqueueAdsConversion,
   enqueueAdsRestatement,
+  settleAdsUpload,
   setAdsConversionConfigForTest,
   type AdsConversionConfig,
 } from "@core/ads/ads-conversion.js";

@@ -2583,7 +2583,7 @@ export const adsConversionUploads = pgTable(
     index("ads_conversion_uploads_payment_idx").on(table.paymentId),
     check(
       "ads_conversion_uploads_status_check",
-      sql`${table.status} IN ('queued', 'uploaded', 'failed', 'restating', 'restated', 'restate_failed')`,
+      sql`${table.status} IN ('queued', 'uploaded', 'failed', 'restate_pending', 'restating', 'restated', 'restate_failed')`,
     ),
   ],
 );
