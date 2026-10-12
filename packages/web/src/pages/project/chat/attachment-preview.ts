@@ -28,7 +28,7 @@ export type AttachmentPreview =
 interface SnapshotNode {
   id?: unknown;
   type?: unknown;
-  data?: { kind?: unknown; name?: unknown; content?: unknown; body?: unknown; coverUrl?: unknown };
+  data?: { name?: unknown; content?: unknown; body?: unknown; coverUrl?: unknown };
 }
 
 /**

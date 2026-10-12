@@ -61,12 +61,11 @@ function assetOf(
   node: TypedNodeView | undefined,
 ): { kind: ReferenceKind; url: string; duration?: number } | undefined {
   if (node?.type !== 'image' && node?.type !== 'video' && node?.type !== 'audio') return undefined;
-  const { data } = node;
   // The source node's content is collaborative Yjs data — untrusted, and NOT
   // covered by the catalog boundary. `typeof`, not Boolean: a malformed
   // source whose content is a non-string object is truthy and would slip a
   // non-URL into the task payload.
-  const url: unknown = data.content;
+  const url: unknown = node.data.content;
   if (typeof url !== 'string' || url.length === 0) return undefined;
   const duration = node.type === 'image' ? undefined : usableDuration(node.data.duration);
   return duration === undefined ? { kind: node.type, url } : { kind: node.type, url, duration };

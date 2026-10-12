@@ -139,7 +139,7 @@ describe('sameGroupResizeBounds (#1783)', () => {
 });
 
 /** One data object shared across a pass, the way the merge hands it down. */
-const DATA = { kind: 'image' };
+const DATA = {};
 
 describe('reconcilePlainNodes reference stability (#2010 — 30 frames a second)', () => {
   // A locked node and the focus target come out of `renderNodes` as fresh

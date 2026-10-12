@@ -281,7 +281,7 @@ export type ContentNodeView =
 /** Any node's view. Which one it is comes from the node's `type`. */
 export type NodeView = ContentNodeView | AnnotationNodeView | GroupNodeView;
 
-/** The view each node type renders. Its keys are exactly `NodeType`. */
+/** The view each node type renders: one entry per `NodeType` (a missing one fails `TypedNodeView`). */
 export interface NodeViewOf {
   text: TextNodeView;
   image: ImageNodeView;

@@ -25,7 +25,7 @@ import { typedViewOf } from '@web/data/yjs/node-view';
 /** A flow node, of which this file reads only what it carries. */
 interface FlowNodeData {
   type?: string;
-  data?: unknown;
+  data: unknown;
 }
 
 /** Nobody named yet — a stable identity, so a reader's memo can bail out. */
@@ -51,7 +51,7 @@ export function everyAnnotationAuthor(
   for (const node of nodes) {
     // The same read the node renderers do (`flow-node-types`): xyflow types
     // `data` loosely, and the node's `type` is what tells the views apart.
-    const typed = typedViewOf({ type: node.type, data: node.data });
+    const typed = typedViewOf(node);
     if (typed.type !== 'annotation') continue;
     ids.add(typed.data.createdBy);
     for (const reply of typed.data.replies) ids.add(reply.createdBy);

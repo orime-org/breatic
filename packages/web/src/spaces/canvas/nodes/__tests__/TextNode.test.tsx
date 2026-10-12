@@ -243,7 +243,7 @@ describe('TextNode', () => {
       render(
         <CanvasContext.Provider value={canvasValue()}>
           <NodeIdContext.Provider value={NODE}>
-            <TextNode data={{ handling: false } as TextNodeView} selected />
+            <TextNode data={{ handling: false }} selected />
           </NodeIdContext.Provider>
         </CanvasContext.Provider>,
       );
