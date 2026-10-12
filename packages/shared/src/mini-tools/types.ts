@@ -57,7 +57,10 @@ export type MiniToolIcon =
   | "Crosshair"
   | "Sun"
   | "SplitSquareVertical"
-  | "Timer";
+  | "Timer"
+  | "Highlighter"
+  | "Expand"
+  | "Grid3x3";
 
 /**
  * One choice of an enum param. It reads as its `label` when it has one — the
