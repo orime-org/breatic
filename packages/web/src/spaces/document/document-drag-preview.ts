@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * The image that follows the pointer while a row, a block or a table line is
- * dragged (inner#1350 A1).
+ * The image that follows the pointer while a row, a table line, what is
+ * selected (whole blocks or cell rows) or a caption's words are dragged
+ * (inner#1350 A1).
  *
  * Every preview is built here and nowhere else, because three things have to
  * hold for all of them at once:

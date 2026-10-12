@@ -5,7 +5,7 @@
  * inner#1350 A1: dragging what is selected hands the browser a preview of the
  * whole blocks the selection touches, or the rows of a cell selection, or the
  * caption line whose words are dragged — scaled like every other preview,
- * anchored at its top left, and taken off the page when the drag ends
+ * anchored at its top left, and taken off the page a frame later
  * (design §4).
  */
 
