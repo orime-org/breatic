@@ -12,6 +12,7 @@ import {
   catalogEntryOf,
   miniToolsFor,
   modelOf,
+  outputsOf,
   servedMiniToolsFor,
   toolFilledParams,
   toolParamKeys,
@@ -58,13 +59,13 @@ describe("MINI_TOOLS registry", () => {
 
   it("gives every tool at least one output and one modality per output list", () => {
     for (const tool of MINI_TOOLS) {
-      expect(tool.outputs.length).toBeGreaterThan(0);
+      expect(outputsOf(tool, defaultParamsOf(tool)).length).toBeGreaterThan(0);
     }
   });
 
   it("splits vocals and instrumental into two outputs", () => {
     const separate = miniToolById("audio.separate");
-    expect(separate?.outputs.map((output) => output.namePrefix)).toEqual([
+    expect(separate && outputsOf(separate, {}).map((output) => output.namePrefix)).toEqual([
       "VOCALS",
       "INSTRUMENTAL",
     ]);
@@ -73,7 +74,7 @@ describe("MINI_TOOLS registry", () => {
   it("makes the digital human an image tool whose output is a video", () => {
     const digitalHuman = miniToolById("image.digital-human");
     expect(digitalHuman?.source).toBe("image");
-    expect(digitalHuman?.outputs.map((output) => output.modality)).toEqual(["video"]);
+    expect(digitalHuman && outputsOf(digitalHuman, {}).map((output) => output.modality)).toEqual(["video"]);
     expect(digitalHuman?.slots.map((slot) => [slot.key, slot.accepts])).toEqual([
       ["audio", "audio"],
     ]);

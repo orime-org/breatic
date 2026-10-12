@@ -44,7 +44,7 @@ const listed: MiniToolSpec = {
   ...base,
   id: "video.split",
   source: "video",
-  run: { kind: "container", op: "trim" },
+  run: { kind: "container", op: "cut" },
   params: [{ kind: "list", key: "cuts", item: { min: 0, max: 3600, step: 0.1 }, maxItems: 20 }],
   output: { modality: "video", namePrefix: "PART" },
   outputCount: { kind: "listLength", param: "cuts", plus: 1 },

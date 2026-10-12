@@ -115,7 +115,15 @@ export interface OrientParam {
 }
 
 /** A param a browser or container tool declares in full. */
-export type MiniToolParam = NumberParam | EnumParam | RectParam | RangeParam | AdjustParam | OrientParam;
+/** A list of numbers the reader enters, such as cut points; capped at `maxItems`. */
+export interface ListParam {
+  readonly kind: "list";
+  readonly key: string;
+  readonly item: { readonly min: number; readonly max: number; readonly step: number };
+  readonly maxItems: number;
+}
+
+export type MiniToolParam = NumberParam | EnumParam | RectParam | RangeParam | AdjustParam | OrientParam | ListParam;
 
 /** One output size a megapixel param offers: the source's long edge scaled to `longEdge`. */
 export interface SizeTier {
@@ -177,7 +185,6 @@ interface MiniToolBase {
   readonly guide: string;
   readonly icon: MiniToolIcon;
   readonly slots: readonly MiniToolSlot[];
-  readonly outputs: readonly MiniToolOutput[];
   /** The param the source media fills: the model's yaml name, or the container op's input. */
   readonly sourceParam: string;
   /** Whether that param is a list, as a slot's `many` says of its param. */
@@ -188,17 +195,43 @@ interface MiniToolBase {
   readonly prompt?: { readonly placeholderKey: string };
 }
 
-/** A tool run on a pinned catalog model. */
-export interface ModelToolSpec extends MiniToolBase {
+/**
+ * How many results a variable tool makes, read off its params before the run:
+ * the product of number params (a grid's rows and columns), or a list param's
+ * length plus `plus` (cut points into segments).
+ */
+export type MiniToolOutputCount =
+  | { readonly kind: "product"; readonly params: readonly string[] }
+  | { readonly kind: "listLength"; readonly param: string; readonly plus: number };
+
+/** A tool whose results are a fixed list. */
+interface FixedOutputs {
+  readonly outputs: readonly MiniToolOutput[];
+  readonly output?: never;
+  readonly outputCount?: never;
+}
+
+/** A tool whose results are one template repeated as many times as its params say. */
+interface VariableOutputs {
+  readonly output: MiniToolOutput;
+  readonly outputCount: MiniToolOutputCount;
+  readonly outputs?: never;
+}
+
+/** A tool run on a pinned catalog model. Its params are unvalidated, so its outputs are fixed. */
+export interface ModelToolSpec extends MiniToolBase, FixedOutputs {
   readonly run: { readonly kind: "model"; readonly model: string };
   readonly params: readonly MiniToolModelParam[];
 }
 
-/** A tool run in the browser or in the container. */
-export interface LocalToolSpec extends MiniToolBase {
+/** The run and params of a tool run in the browser or in the container. */
+interface LocalToolBase extends MiniToolBase {
   readonly run: { readonly kind: "browser" } | { readonly kind: "container"; readonly op: ContainerOp };
   readonly params: readonly MiniToolParam[];
 }
+
+/** A tool run in the browser or in the container. */
+export type LocalToolSpec = LocalToolBase & (FixedOutputs | VariableOutputs);
 
 /** One mini-tool declaration. */
 export type MiniToolSpec = ModelToolSpec | LocalToolSpec;

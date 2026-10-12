@@ -13,6 +13,7 @@ import { z } from "zod";
 
 import { defaultAdjustValue } from "@shared/adjust-value.js";
 import { isModelTool } from "@shared/mini-tools/derive.js";
+import { outputsOf } from "@shared/mini-tools/outputs.js";
 import { MINI_TOOLS } from "@shared/mini-tools/tools.js";
 import type { MiniToolParam, MiniToolSpec } from "@shared/mini-tools/types.js";
 
@@ -53,6 +54,8 @@ function paramSchema(param: MiniToolParam): z.ZodType {
       );
     case "orient":
       return z.object({ turns: z.number().int(), flipX: z.boolean(), flipY: z.boolean() });
+    case "list":
+      return z.array(z.number().min(param.item.min).max(param.item.max)).max(param.maxItems);
   }
 }
 
@@ -100,16 +103,16 @@ function drawingShape(spec: MiniToolSpec): Record<string, z.ZodType> {
 }
 
 /**
- * The request member of one server-run tool.
+ * The request member of one server-run tool, before its node count is checked.
  * @param spec - The tool.
  * @returns Its strict object schema.
  */
-function memberSchema(spec: MiniToolSpec): z.ZodObject {
+function memberObject(spec: MiniToolSpec): z.ZodObject {
   return z.strictObject({
     tool: z.literal(spec.id),
     project_id: z.string().uuid(),
     space_id: z.string().uuid(),
-    node_ids: z.array(z.string().uuid()).length(spec.outputs.length),
+    node_ids: z.array(z.string().uuid()),
     source: z.object({
       url: URL_SCHEMA,
       mime_type: z.string().max(255).optional(),
@@ -153,11 +156,51 @@ export interface MiniToolRequest {
   drawing?: { mask: string } | { image: string } | undefined;
 }
 
+/**
+ * Reports a request whose node ids do not number the results its params make.
+ * @param spec - The tool.
+ * @param body - The parsed member.
+ * @param body.node_ids - The result nodes.
+ * @param body.params - The run's params.
+ * @param ctx - The refinement context.
+ */
+function checkNodeCount(
+  spec: MiniToolSpec,
+  body: { node_ids: string[]; params: Record<string, unknown> },
+  ctx: z.RefinementCtx,
+): void {
+  const expected = outputsOf(spec, body.params).length;
+  if (body.node_ids.length !== expected) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["node_ids"],
+      message: `expected ${expected} node ids`,
+    });
+  }
+}
+
+/**
+ * The request member of one server-run tool, its node count checked against
+ * the results its params make.
+ * @param spec - The tool.
+ * @returns The schema.
+ */
+export function miniToolRequestMemberSchema(spec: MiniToolSpec): z.ZodType {
+  return memberObject(spec).superRefine((body, ctx) =>
+    checkNodeCount(spec, body as { node_ids: string[]; params: Record<string, unknown> }, ctx),
+  );
+}
+
 const SERVER_TOOLS = MINI_TOOLS.filter((spec) => spec.run.kind !== "browser");
+const SERVER_TOOL_BY_ID = new Map(SERVER_TOOLS.map((spec) => [spec.id, spec]));
 
 // The members are generated from the registry at load time, so zod cannot
 // infer the body's shape; MiniToolRequest states it.
 export const miniToolRequestSchema = z.discriminatedUnion(
   "tool",
-  SERVER_TOOLS.map(memberSchema) as unknown as [z.ZodObject, z.ZodObject, ...z.ZodObject[]],
-) as unknown as z.ZodType<MiniToolRequest>;
+  SERVER_TOOLS.map(memberObject) as unknown as [z.ZodObject, z.ZodObject, ...z.ZodObject[]],
+).superRefine((body, ctx) => {
+  const member = body as { tool: string; node_ids: string[]; params: Record<string, unknown> };
+  const spec = SERVER_TOOL_BY_ID.get(member.tool);
+  if (spec) checkNodeCount(spec, member, ctx);
+}) as unknown as z.ZodType<MiniToolRequest>;
