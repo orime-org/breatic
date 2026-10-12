@@ -8,6 +8,7 @@ import { isModelTool, miniToolById } from '@breatic/shared/mini-tools';
 
 import { useCanvasSession } from '@web/spaces/canvas/canvas-context';
 import { useMediaGeometry } from '@web/spaces/canvas/crop/media-geometry';
+import { prepareCropSource } from '@web/spaces/canvas/focus/crop-export';
 import { drawAdjusted } from '@web/spaces/canvas/mini-tool/adjust-export';
 
 interface NodeAdjustLayerProps {
@@ -46,7 +47,27 @@ export function NodeAdjustLayer({ nodeId, wrapper }: NodeAdjustLayerProps): Reac
 
   const box = geometry?.box;
   const natural = geometry?.natural ?? null;
-  const el = geometry?.el;
+  // The node's own picture is not CORS-loaded and WebGL refuses it, so the
+  // preview draws from a copy that is, loaded once per picture.
+  const src = geometry?.src ?? null;
+  const [el, setEl] = React.useState<HTMLImageElement | HTMLVideoElement | undefined>(undefined);
+  React.useEffect(() => {
+    if (param === undefined || src === null) return undefined;
+    let live = true;
+    prepareCropSource({ url: src, timeSeconds: null }).then(
+      (loaded) => {
+        if (live) setEl(loaded);
+      },
+      () => {
+        // The preview stays the picture as it is; the export loads it again
+        // and says so if it fails.
+      },
+    );
+    return () => {
+      live = false;
+      setEl(undefined);
+    };
+  }, [param, src]);
   const dpr = typeof window === 'undefined' ? 1 : window.devicePixelRatio || 1;
   const width = box === undefined ? 0 : Math.max(1, Math.round(Math.min(box.width * dpr, natural?.width ?? Infinity)));
   const height = box === undefined ? 0 : Math.max(1, Math.round((width * box.height) / box.width));

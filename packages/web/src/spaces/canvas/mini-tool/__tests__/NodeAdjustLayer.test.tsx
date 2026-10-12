@@ -43,6 +43,13 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+/** Let the CORS-loaded copy of the picture arrive. */
+async function pictureLoaded(): Promise<void> {
+  await act(async () => {
+    await Promise.resolve();
+  });
+}
+
 /** Run the frames asked for so far. */
 function flushFrames(): void {
   const due = frames;
@@ -61,8 +68,9 @@ function mount(toolId: string, params: Record<string, unknown>): void {
 }
 
 describe('NodeAdjustLayer', () => {
-  it('draws the picture through the sliders while the picture adjust is open', () => {
+  it('draws the picture through the sliders while the picture adjust is open', async () => {
     mount('image.adjust', { value: { ...defaultAdjustValue, exposure: 20 } });
+    await pictureLoaded();
     flushFrames();
     expect(screen.getByTestId('mini-tool-adjust-layer')).toBeInTheDocument();
     expect(drawing.drawAdjusted).toHaveBeenLastCalledWith(
@@ -75,16 +83,15 @@ describe('NodeAdjustLayer', () => {
 
   it('draws from a CORS-loaded copy of the picture, which WebGL takes', async () => {
     mount('image.adjust', { value: { ...defaultAdjustValue, exposure: 20 } });
-    await act(async () => {
-      await Promise.resolve();
-    });
+    await pictureLoaded();
     flushFrames();
     expect(loader.prepareCropSource).toHaveBeenCalledWith({ url: NODE.src, timeSeconds: null });
     expect(drawing.drawAdjusted).toHaveBeenLastCalledWith(loaded.el, expect.anything(), expect.anything(), expect.anything());
   });
 
-  it('redraws once a frame however many times the sliders move', () => {
+  it('redraws once a frame however many times the sliders move', async () => {
     mount('image.adjust', { value: defaultAdjustValue });
+    await pictureLoaded();
     flushFrames();
     drawing.drawAdjusted.mockClear();
     act(() => {
