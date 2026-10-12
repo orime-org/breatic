@@ -11,7 +11,7 @@
  * which is what the composer reports with every message.
  */
 import { expect, type Browser, type Page } from 'playwright/test';
-import { test, stateFile } from '../helpers/slot';
+import { test } from '../helpers/slot';
 
 import { openSmokeProject } from '../helpers/project';
 
@@ -68,7 +68,6 @@ function statesTimeNear(text: string, expected: number): boolean {
  */
 async function pageIn(browser: Browser, timeZone: string): Promise<Page> {
   const context = await browser.newContext({
-    storageState: stateFile('A'),
     viewport: { width: 1500, height: 900 },
     timezoneId: timeZone,
   });

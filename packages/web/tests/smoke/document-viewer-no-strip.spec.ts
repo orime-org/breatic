@@ -167,7 +167,6 @@ async function handlesAfterHover(page: Page): Promise<number> {
 // next case would otherwise find already made.
 test.beforeEach(async ({ browser }) => {
   ownerContext = await browser.newContext({
-    storageState: stateFile('A'),
     viewport: { width: 1680, height: 950 },
   });
   owner = await ownerContext.newPage();

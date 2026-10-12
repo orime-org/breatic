@@ -13,7 +13,7 @@
  *   pnpm --filter @breatic/web test:smoke
  */
 import { expect, type Page } from 'playwright/test';
-import { test, stateFile } from '../helpers/slot';
+import { test } from '../helpers/slot';
 
 import { openSmokeProject } from '../helpers/project';
 import { createSpace, deleteSpace, DOCUMENT_EDITOR as EDITOR } from '../helpers/space';
@@ -447,7 +447,6 @@ test('the handle re-aligns when a co-editor reshapes the row under it', async ({
   await typeLines(page, ['the row a co-editor reshapes', 'a second row']);
 
   const second = await browser.newContext({
-    storageState: stateFile('A'),
     viewport: { width: 1680, height: 950 },
   });
   const coEditor = await second.newPage();
@@ -661,7 +660,6 @@ test('duplicate copies the row as it stands, not as it was hovered', async ({
   await typeLines(page, ['alpha', 'a second row']);
 
   const second = await browser.newContext({
-    storageState: stateFile('A'),
     viewport: { width: 1680, height: 950 },
   });
   const coEditor = await second.newPage();
@@ -966,7 +964,6 @@ test('a drag keeps what a co-editor typed into the row mid-flight', async ({
   await typeLines(page, ['alpha', 'beta', 'gamma']);
 
   const second = await browser.newContext({
-    storageState: stateFile('A'),
     viewport: { width: 1680, height: 950 },
   });
   const coEditor = await second.newPage();
@@ -1350,7 +1347,6 @@ test('a drag whose anchors a co-editor removes leaves nothing selected', async (
   await typeLines(page, ['alpha', 'beta', 'gamma']);
 
   const second = await browser.newContext({
-    storageState: stateFile('A'),
     viewport: { width: 1680, height: 950 },
   });
   const coEditor = await second.newPage();

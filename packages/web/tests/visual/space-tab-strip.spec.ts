@@ -18,7 +18,7 @@
  * the tabs against the bar's top edge with the scrollbar in the gap below).
  */
 import { expect, type Page } from 'playwright/test';
-import { test, stateFile } from '../helpers/slot';
+import { test } from '../helpers/slot';
 
 import { openSmokeProject } from '../helpers/project';
 import { createSpace, deleteSpace } from '../helpers/space';
@@ -72,7 +72,7 @@ async function openProject(p: Page): Promise<void> {
 const TABS_WANTED = 3;
 
 test.beforeEach(async ({ browser }) => {
-  page = await browser.newPage({ storageState: stateFile('A') });
+  page = await browser.newPage();
   await openProject(page);
   // The strip has to overflow for most of what follows, and how many tabs the
   // account already carries is not this spec's to assume — a fresh account has

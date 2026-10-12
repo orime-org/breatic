@@ -32,7 +32,7 @@ async function dataOf<T>(res: Awaited<ReturnType<APIRequestContext['get']>>, lab
 }
 
 test('mark all read clears the news and keeps the request waiting on A', async ({ browser }) => {
-  const a = await browser.newContext({ storageState: stateFile('A') });
+  const a = await browser.newContext();
   const b = await browser.newContext({ storageState: stateFile('B') });
   const emailB = credentialsFor('B').email;
 

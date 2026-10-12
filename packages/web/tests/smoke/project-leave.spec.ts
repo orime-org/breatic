@@ -93,7 +93,7 @@ interface TeamScene {
  * @returns The two signed-in contexts and the studio.
  */
 async function buildTeamScene(browser: Browser): Promise<TeamScene> {
-  const a = await browser.newContext({ storageState: stateFile('A') });
+  const a = await browser.newContext();
   const b = await browser.newContext({ storageState: stateFile('B') });
   const emailB = credentialsFor('B').email;
   const stamp = `${Date.now().toString(36)}${Math.floor(Math.random() * 1e4).toString(36)}`;
@@ -239,7 +239,7 @@ test.describe('in a team studio', () => {
 });
 
 test('an outside collaborator on a personal-studio project leaves from inside it', async ({ browser }) => {
-  const a = await browser.newContext({ storageState: stateFile('A') });
+  const a = await browser.newContext();
   const b = await browser.newContext({ storageState: stateFile('B') });
   const anchor = await dataOf<{ studioId: string }>(
     await a.request.get(`/api/v1/projects/${smokeProjectId('A', 0)}`),

@@ -46,7 +46,7 @@ interface Scene {
  * @returns The two signed-in contexts, the studio and the projects.
  */
 async function buildScene(browser: Browser, count: number): Promise<Scene> {
-  const a = await browser.newContext({ storageState: stateFile('A') });
+  const a = await browser.newContext();
   const b = await browser.newContext({ storageState: stateFile('B') });
   const emailB = credentialsFor('B').email;
 

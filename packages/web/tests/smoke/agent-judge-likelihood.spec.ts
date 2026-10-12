@@ -16,7 +16,7 @@
  * much material that call carried.
  */
 import { expect, type Page } from 'playwright/test';
-import { test, stateFile } from '../helpers/slot';
+import { test } from '../helpers/slot';
 
 import { openSmokeProject } from '../helpers/project';
 
@@ -70,7 +70,6 @@ async function callsOfLatestConversation(p: Page): Promise<StoredCall[]> {
 
 test.beforeEach(async ({ browser }) => {
   page = await browser.newPage({
-    storageState: stateFile('A'),
     viewport: { width: 1400, height: 900 },
   });
   await openSmokeProject(page);

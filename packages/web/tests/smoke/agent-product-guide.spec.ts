@@ -15,7 +15,7 @@
  * about what the model writes and both need a real turn to show.
  */
 import { expect, type Page } from 'playwright/test';
-import { test, stateFile } from '../helpers/slot';
+import { test } from '../helpers/slot';
 
 import { openSmokeProject } from '../helpers/project';
 import { createSpace, deleteSpace, visibleSpace, DOCUMENT_EDITOR } from '../helpers/space';
@@ -65,7 +65,6 @@ async function ask(p: Page, question: string): Promise<ReturnType<Page['getByTes
 
 test.beforeEach(async ({ browser }) => {
   page = await browser.newPage({
-    storageState: stateFile('A'),
     viewport: { width: 1500, height: 900 },
   });
   await openSmokeProject(page);

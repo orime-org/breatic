@@ -19,7 +19,7 @@
  *   pnpm --filter @breatic/web test:smoke
  */
 import { expect, type BrowserContext, type Page } from 'playwright/test';
-import { test, stateFile } from '../helpers/slot';
+import { test } from '../helpers/slot';
 
 import { openSmokeProject } from '../helpers/project';
 import { createSpace, deleteSpace, visibleSpace, VISIBLE_SPACE } from '../helpers/space';
@@ -144,7 +144,7 @@ async function rowsIn(
 }
 
 test.beforeEach(async ({ browser }) => {
-  context = await browser.newContext({ storageState: stateFile('A') });
+  context = await browser.newContext();
   page = await context.newPage();
 
   // Reuse an existing Project: this spec is about one endpoint, and minting

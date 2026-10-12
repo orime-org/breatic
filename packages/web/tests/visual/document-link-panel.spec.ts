@@ -12,7 +12,6 @@
  *   pnpm --filter @breatic/web test:visual
  */
 import { expect, type Locator } from 'playwright/test';
-import { stateFile } from '../helpers/slot';
 
 import {
   openFreshDocument,
@@ -644,7 +643,6 @@ test('link: the panel keeps its place while a co-editor types', async ({ page, b
   );
 
   const peer = await browser.newContext({
-    storageState: stateFile('A'),
     viewport: { width: 1680, height: 950 },
   });
   try {
@@ -895,7 +893,6 @@ test('link: the toolbar opens against the link a co-editor just moved', async ({
   );
 
   const peer = await browser.newContext({
-    storageState: stateFile('A'),
     viewport: { width: 1680, height: 950 },
   });
   try {
@@ -1058,7 +1055,6 @@ test('link: the toolbar comes up while a co-editor is typing', async ({ page, br
   );
 
   const peer = await browser.newContext({
-    storageState: stateFile('A'),
     viewport: { width: 1680, height: 950 },
   });
   try {
@@ -1132,7 +1128,6 @@ test('link: a dismissal holds while a co-editor writes ahead of the link', async
   );
 
   const peer = await browser.newContext({
-    storageState: stateFile('A'),
     viewport: { width: 1680, height: 950 },
   });
   try {

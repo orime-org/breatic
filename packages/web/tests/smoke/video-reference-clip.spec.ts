@@ -19,7 +19,7 @@
  *   pnpm --filter @breatic/web test:smoke
  */
 import { expect, type Page } from 'playwright/test';
-import { test, stateFile } from '../helpers/slot';
+import { test } from '../helpers/slot';
 
 import { openSmokeProject } from '../helpers/project';
 import { CANVAS_SPACE, liveModuleUrl } from '../helpers/live-module';
@@ -187,7 +187,7 @@ async function openGenerate(p: Page, nodeId: string): Promise<void> {
 }
 
 test.beforeEach(async ({ browser }) => {
-  page = await browser.newPage({ storageState: stateFile('A') });
+  page = await browser.newPage();
   await openSmokeProject(page);
   // The URL segment is the project's SLUG, which ends in its id. Splitting on
   // `/project/` yields the slug, and a Yjs document named after that is a

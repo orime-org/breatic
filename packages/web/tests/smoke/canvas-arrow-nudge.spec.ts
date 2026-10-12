@@ -14,7 +14,7 @@
  *   pnpm --filter @breatic/web test:smoke
  */
 import { expect, type BrowserContext, type Page } from 'playwright/test';
-import { test, stateFile } from '../helpers/slot';
+import { test } from '../helpers/slot';
 
 import { openSmokeProject } from '../helpers/project';
 import { CANVAS_SPACE, liveModuleUrl } from '../helpers/live-module';
@@ -141,7 +141,6 @@ test.setTimeout(240_000);
 
 test.beforeEach(async ({ browser }) => {
   context = await browser.newContext({
-    storageState: stateFile('A'),
     viewport: { width: 1680, height: 950 },
   });
   mover = await context.newPage();

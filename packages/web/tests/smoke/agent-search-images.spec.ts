@@ -20,7 +20,7 @@
  * for reference pictures, which is the case the tool exists for.
  */
 import { expect, type Page } from 'playwright/test';
-import { test, stateFile } from '../helpers/slot';
+import { test } from '../helpers/slot';
 
 import { openSmokeProject } from '../helpers/project';
 
@@ -31,7 +31,6 @@ const imageRequests: string[] = [];
 
 test.beforeEach(async ({ browser }) => {
   page = await browser.newPage({
-    storageState: stateFile('A'),
     viewport: { width: 1400, height: 900 },
   });
   page.on('request', (req) => {

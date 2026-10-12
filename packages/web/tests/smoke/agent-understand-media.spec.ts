@@ -21,7 +21,7 @@
  * content nobody has seen.
  */
 import { expect, type Page } from 'playwright/test';
-import { test, stateFile } from '../helpers/slot';
+import { test } from '../helpers/slot';
 
 import { openSmokeProject } from '../helpers/project';
 
@@ -171,7 +171,6 @@ async function oneTurn(p: Page, prompt: string, address: string): Promise<Turn> 
 
 test.beforeEach(async ({ browser }) => {
   page = await browser.newPage({
-    storageState: stateFile('A'),
     viewport: { width: 1400, height: 900 },
   });
   await openSmokeProject(page);

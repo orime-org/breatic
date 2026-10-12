@@ -16,7 +16,7 @@
  *   pnpm --filter @breatic/web test:smoke
  */
 import { expect, type Page } from 'playwright/test';
-import { test, stateFile } from '../helpers/slot';
+import { test } from '../helpers/slot';
 
 import { openSmokeProject } from '../helpers/project';
 import { CANVAS_SPACE, liveModuleUrl } from '../helpers/live-module';
@@ -133,7 +133,7 @@ async function captureSubmit(p: Page): Promise<() => Record<string, unknown> | u
 }
 
 test.beforeEach(async ({ browser }) => {
-  page = await browser.newPage({ storageState: stateFile('A') });
+  page = await browser.newPage();
   await openSmokeProject(page);
   projectId = (/([0-9a-f-]{36})$/.exec(page.url()) ?? [])[1] ?? '';
   if (!projectId) throw new Error(`no project id in ${page.url()}`);

@@ -17,7 +17,7 @@
  *   pnpm --filter @breatic/web test:visual
  */
 import { expect, type Page } from 'playwright/test';
-import { test, stateFile } from '../helpers/slot';
+import { test } from '../helpers/slot';
 
 import { selectInBody } from '../helpers/editor-keys';
 import { openSmokeProject } from '../helpers/project';
@@ -27,7 +27,6 @@ let page: Page;
 
 test.beforeEach(async ({ browser }) => {
   page = await browser.newPage({
-    storageState: stateFile('A'),
     viewport: { width: 1680, height: 950 },
   });
 });

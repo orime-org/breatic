@@ -22,7 +22,7 @@
  *   pnpm --filter @breatic/web test:smoke
  */
 import { expect, type BrowserContext, type Page } from 'playwright/test';
-import { test, stateFile } from '../helpers/slot';
+import { test } from '../helpers/slot';
 
 import { smokeProjectId } from '../helpers/project';
 import { CANVAS_SPACE, liveModuleUrl } from '../helpers/live-module';
@@ -112,7 +112,6 @@ test.beforeEach(async ({ browser }) => {
   // own context — two pages have to share one, because presence keys on the
   // connection and a second tab of the same account is the cheapest peer.
   context = await browser.newContext({
-    storageState: stateFile('A'),
     viewport: { width: 1680, height: 950 },
   });
   watcher = await context.newPage();

@@ -16,7 +16,7 @@
 import { join } from 'node:path';
 
 import { expect, type Page } from 'playwright/test';
-import { test, stateFile } from '../helpers/slot';
+import { test } from '../helpers/slot';
 
 import { openSmokeProject } from '../helpers/project';
 import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
@@ -94,7 +94,6 @@ async function reachPanelCorner(p: Page): Promise<void> {
 
 test.beforeEach(async ({ browser }) => {
   page = await browser.newPage({
-    storageState: stateFile('A'),
     viewport: { width: 1500, height: 900 },
   });
   await openSmokeProject(page);

@@ -12,7 +12,7 @@
  * keystroke on to the row button, which switched the conversation on screen.
  */
 import { expect, type Page } from 'playwright/test';
-import { test, stateFile } from '../helpers/slot';
+import { test } from '../helpers/slot';
 
 import { openSmokeProject } from '../helpers/project';
 import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
@@ -47,7 +47,6 @@ async function focused(): Promise<{
 
 test.beforeEach(async ({ browser }) => {
   page = await browser.newPage({
-    storageState: stateFile('A'),
     viewport: { width: 1600, height: 950 },
   });
   await openSmokeProject(page);

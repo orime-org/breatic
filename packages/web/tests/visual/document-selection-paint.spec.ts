@@ -27,7 +27,7 @@
  *   pnpm --filter @breatic/web test:visual
  */
 import { expect, type Page } from 'playwright/test';
-import { test, stateFile } from '../helpers/slot';
+import { test } from '../helpers/slot';
 
 import { openSmokeProject } from '../helpers/project';
 import { createSpace, deleteSpace, DOCUMENT_EDITOR, VISIBLE_SPACE } from '../helpers/space';
@@ -318,7 +318,6 @@ test('a selection a co-editor also holds looks the same with the panel open', as
   );
 
   const peer = await browser.newContext({
-    storageState: stateFile('A'),
     viewport: { width: 1680, height: 950 },
   });
   try {

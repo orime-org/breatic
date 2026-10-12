@@ -14,7 +14,7 @@
  *   pnpm --filter @breatic/web test:smoke -- toast-stack
  * */
 import { expect, type Page } from 'playwright/test';
-import { test, stateFile } from '../helpers/slot';
+import { test } from '../helpers/slot';
 
 import type { toast as appToast } from '@web/lib/toast';
 
@@ -52,7 +52,7 @@ async function measure(page: Page): Promise<ToastBox[]> {
 }
 
 test('every toast shows its text on its own row, centred', async ({ browser }) => {
-  const context = await browser.newContext({ storageState: stateFile('A'), viewport: { width: 1440, height: 900 } });
+  const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
   const page = await context.newPage();
   await page.goto('/');
   await page.waitForSelector('section[aria-label^="Notifications"]', { state: 'attached' });

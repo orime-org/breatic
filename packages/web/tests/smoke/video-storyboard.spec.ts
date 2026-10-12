@@ -16,7 +16,7 @@
  *   pnpm --filter @breatic/web test:smoke
  */
 import { expect, type Page } from 'playwright/test';
-import { test, stateFile } from '../helpers/slot';
+import { test } from '../helpers/slot';
 
 import { openSmokeProject } from '../helpers/project';
 import { CANVAS_SPACE, liveModuleUrl } from '../helpers/live-module';
@@ -135,7 +135,7 @@ async function captureSubmit(p: Page): Promise<() => Record<string, unknown> | u
 }
 
 test.beforeEach(async ({ browser }) => {
-  page = await browser.newPage({ storageState: stateFile('A') });
+  page = await browser.newPage();
   await openSmokeProject(page);
   projectId = (/([0-9a-f-]{36})$/.exec(page.url()) ?? [])[1] ?? '';
   if (!projectId) throw new Error(`no project id in ${page.url()}`);
@@ -298,7 +298,7 @@ test('a mode switch on one client moves the other to that mode\'s own words', as
   await page.keyboard.type('shared text to video words');
 
   // A second client on the same Space, its panel open on the same node.
-  const peer = await browser.newPage({ storageState: stateFile('A') });
+  const peer = await browser.newPage();
   try {
     await peer.goto(`/project/${projectId}`);
     const tab = peer.getByTestId(`space-tab-name-${spaceId}`);

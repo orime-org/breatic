@@ -28,7 +28,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { expect, type BrowserContext, type Page } from 'playwright/test';
-import { test, stateFile } from '../helpers/slot';
+import { test } from '../helpers/slot';
 
 import { openSmokeProject } from '../helpers/project';
 import { createSpace, deleteSpace, visibleSpace, VISIBLE_SPACE } from '../helpers/space';
@@ -129,7 +129,7 @@ async function videoSources(target: Page): Promise<string[]> {
 }
 
 test.beforeEach(async ({ browser }) => {
-  context = await browser.newContext({ storageState: stateFile('A') });
+  context = await browser.newContext();
   page = await context.newPage();
 
   // Reuse an existing Project: this spec is about uploads, and minting one per
