@@ -1016,7 +1016,8 @@
         "drawingEmpty": "Draw on the picture first.",
         "reset": "Reset",
         "imageTooLarge": "This picture is too large to adjust on this device.",
-        "sourceTooLargeToExpand": "This picture is already as large as Expand can make it."
+        "sourceTooLargeToExpand": "This picture is already as large as Expand can make it.",
+        "ratioTooLarge": "Larger than Expand can make this picture"
       },
       "adjust": {
         "exposure": "Exposure",

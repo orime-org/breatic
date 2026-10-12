@@ -28,7 +28,9 @@ export const UNIT_FRAME: Readonly<ExpandFrame> = Object.freeze({ x: 0, y: 0, wid
 export interface ExpandDraft {
   readonly frame: ExpandFrame;
   readonly ratio: ExpandRatio;
+  /** The longest side the pinned model takes, in source pixels; null until the catalog is read. */
+  readonly cap: number | null;
 }
 
 /** The draft an expand tool opens with, and goes back to when its source changes. */
-export const EMPTY_EXPAND: Readonly<ExpandDraft> = Object.freeze({ frame: UNIT_FRAME, ratio: 'free' });
+export const EMPTY_EXPAND: Readonly<ExpandDraft> = Object.freeze({ frame: UNIT_FRAME, ratio: 'free', cap: null });

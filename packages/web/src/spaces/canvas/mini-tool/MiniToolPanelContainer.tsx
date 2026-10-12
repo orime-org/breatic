@@ -36,6 +36,7 @@ import {
   type MiniToolSourceInfo,
 } from '@web/spaces/canvas/mini-tool/mini-tool-view';
 import { hasInk } from '@web/spaces/canvas/mini-tool/paint-drawing';
+import { frameForRatio, ratioFits, type ExpandRatio } from '@web/spaces/canvas/mini-tool/expand-frame';
 import type { MiniToolCapture } from '@web/spaces/canvas/mini-tool/start-mini-tool-run';
 import { useEscapeInSpace } from '@web/spaces/canvas/use-escape-in-space';
 import { visibleOps } from '@web/stores/drawing-draft';
@@ -172,6 +173,9 @@ function OpenMiniToolPanel({
   const resetMiniToolSource = useCanvasSession((s) => s.resetMiniToolSource);
   const startMiniToolSlotPick = useCanvasSession((s) => s.startMiniToolSlotPick);
   const endPick = useCanvasSession((s) => s.endPick);
+  const setExpand = useCanvasSession((s) => s.setExpand);
+  const setExpandCap = useCanvasSession((s) => s.setExpandCap);
+  const setMiniToolSourceSize = useCanvasSession((s) => s.setMiniToolSourceSize);
 
   const { data: catalog, isError } = useQuery(modelCatalogQuery());
   const entry =
@@ -210,6 +214,31 @@ function OpenMiniToolPanel({
     }),
     [crops, measured, dataWidth, dataHeight, view, shown, content],
   );
+
+  // An expand frame is measured in the source's pixels and held to the pinned
+  // model's longest side; both go into the draft the node's frame reads.
+  const expandDraft = spec.expand === undefined ? null : (draft?.expand ?? null);
+  const sourceWidth = source.width;
+  const sourceHeight = source.height;
+  const heldSize = draft?.sourceSize;
+  React.useEffect(() => {
+    if (spec.expand === undefined || sourceWidth === undefined || sourceHeight === undefined) return;
+    if (heldSize?.width === sourceWidth && heldSize.height === sourceHeight) return;
+    setMiniToolSourceSize({ width: sourceWidth, height: sourceHeight });
+  }, [spec, sourceWidth, sourceHeight, heldSize, setMiniToolSourceSize]);
+  const cap = entry?.max_output_side;
+  React.useEffect(() => {
+    if (spec.expand !== undefined && cap !== undefined) setExpandCap(cap);
+  }, [spec, cap, setExpandCap]);
+  const expand = React.useMemo(() => {
+    if (expandDraft === null || sourceWidth === undefined || sourceHeight === undefined) return undefined;
+    const size = { width: sourceWidth, height: sourceHeight };
+    return {
+      ratio: expandDraft.ratio,
+      fits: (ratio: ExpandRatio): boolean => ratioFits(ratio, size, cap ?? Infinity),
+      onRatio: (ratio: ExpandRatio): void => setExpand({ frame: frameForRatio(ratio, size, expandDraft.frame), ratio }),
+    };
+  }, [expandDraft, sourceWidth, sourceHeight, cap, setExpand]);
 
   // The source took new content while the panel was open: whatever was
   // measured on the old one is reset, and the reader is told (§7.2).
@@ -365,6 +394,7 @@ function OpenMiniToolPanel({
         refusal={refusal}
         onRun={onRunPress}
         onClose={closeActivePanel}
+        expand={expand}
       />
     </NodePanelMount>
   );

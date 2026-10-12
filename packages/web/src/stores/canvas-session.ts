@@ -338,7 +338,9 @@ export interface CanvasSessionState {
   /** Record the source size the crop box read off the shown element. */
   setMiniToolSourceSize: (size: { width: number; height: number }) => void;
   /** Set the expand frame and its ratio, on a tool that expands. */
-  setExpand: (next: ExpandDraft) => void;
+  setExpand: (next: Pick<ExpandDraft, 'frame' | 'ratio'>) => void;
+  /** Record the longest side the expand tool's model takes. */
+  setExpandCap: (cap: number) => void;
   /** Pick the shape a press on the node draws. */
   setDrawingTool: (tool: DrawTool) => void;
   /** Set the brush diameter, in percent of the source's shorter side. */
@@ -656,13 +658,21 @@ export function createCanvasSessionStore(): CanvasSessionStore {
               params: { ...s.miniTool.params, ...params },
               sourceSize: null,
               drawing,
-              expand: s.miniTool.expand === null ? null : castDraft(EMPTY_EXPAND),
+              expand: s.miniTool.expand === null ? null : castDraft({ ...EMPTY_EXPAND, cap: s.miniTool.expand.cap }),
             };
           }
         }),
       setExpand: (next) =>
         set((s) => {
-          if (s.miniTool?.expand) s.miniTool = { ...s.miniTool, expand: castDraft({ frame: { ...next.frame }, ratio: next.ratio }) };
+          if (s.miniTool?.expand) {
+            s.miniTool = { ...s.miniTool, expand: castDraft({ ...s.miniTool.expand, frame: { ...next.frame }, ratio: next.ratio }) };
+          }
+        }),
+      setExpandCap: (cap) =>
+        set((s) => {
+          if (s.miniTool?.expand && s.miniTool.expand.cap !== cap) {
+            s.miniTool = { ...s.miniTool, expand: castDraft({ ...s.miniTool.expand, cap }) };
+          }
         }),
       setMiniToolSourceSize: (size) =>
         set((s) => {

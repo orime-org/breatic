@@ -1016,7 +1016,8 @@
         "drawingEmpty": "先に画像に描いてください。",
         "reset": "リセット",
         "imageTooLarge": "この画像は大きすぎるため、この端末では色調整できません。",
-        "sourceTooLargeToExpand": "この画像はすでに拡張できる最大サイズです。"
+        "sourceTooLargeToExpand": "この画像はすでに拡張できる最大サイズです。",
+        "ratioTooLarge": "拡張できる最大サイズを超えます"
       },
       "adjust": {
         "exposure": "露出",

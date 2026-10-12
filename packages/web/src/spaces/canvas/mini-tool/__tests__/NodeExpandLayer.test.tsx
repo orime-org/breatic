@@ -57,7 +57,10 @@ describe('NodeExpandLayer', () => {
   it('shows a frame at the picture only while the expand tool is open', () => {
     mount('image.crop');
     expect(screen.queryByTestId('mini-tool-expand-frame')).toBeNull();
-    act(() => store().openMiniTool('n1', 'image.expand', { sourceContent: NODE.src, params: {} }));
+    act(() => {
+      store().openMiniTool('n1', 'image.expand', { sourceContent: NODE.src, params: {} });
+      store().setMiniToolSourceSize({ width: 1600, height: 1000 });
+    });
     const frame = screen.getByTestId('mini-tool-expand-frame');
     expect(frame.style.left).toBe('0px');
     expect(frame.style.width).toBe('400px');
@@ -88,7 +91,7 @@ describe('NodeExpandLayer', () => {
     fireEvent.pointerDown(handle, { clientX: 500, clientY: 200, button: 0, pointerId: 1 });
     act(() => store().setExpand({ frame: UNIT_FRAME, ratio: '1:1' }));
     fireEvent.pointerMove(handle, { clientX: 700, clientY: 200, pointerId: 1 });
-    expect(store().miniTool?.expand).toEqual({ frame: UNIT_FRAME, ratio: '1:1' });
+    expect(store().miniTool?.expand).toMatchObject({ frame: UNIT_FRAME, ratio: '1:1' });
   });
 
   it('keeps presses inside the frame off the canvas', () => {

@@ -27,14 +27,16 @@ import { Input } from '@web/components/ui/input';
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { Slider } from '@web/components/ui/slider';
 import { Textarea } from '@web/components/ui/textarea';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tooltip';
 import { useTranslation } from '@web/i18n/use-translation';
 import { CanvasPanel } from '@web/spaces/canvas/_shared/CanvasPanel';
 import { SlotTool, type SlotPick } from '@web/spaces/canvas/generate/generate-tools';
 import type { ModelControl } from '@web/spaces/canvas/generate/model-controls';
 import { ModelParamControls } from '@web/spaces/canvas/generate/ModelParamControls';
-import { ParamOptionGroup } from '@web/spaces/canvas/generate/ParamOptionGroup';
+import { PARAM_OPTION_CLASS, ParamOptionGroup } from '@web/spaces/canvas/generate/ParamOptionGroup';
 import { ParamSliderRow } from '@web/spaces/canvas/generate/ParamSliderRow';
 import { DrawingControls } from '@web/spaces/canvas/mini-tool/DrawingControls';
+import { EXPAND_RATIOS, type ExpandRatio } from '@web/spaces/canvas/mini-tool/expand-frame';
 import { FilmStrip } from '@web/spaces/canvas/mini-tool/FilmStrip';
 import {
   BLOCKING_REFUSALS,
@@ -77,7 +79,66 @@ export interface MiniToolPanelProps {
   refusal: MiniToolRefusal;
   onRun: () => void;
   onClose: () => void;
+  /** An expand tool's ratio presets: the one in use, which fit under the model's cap, and the setter. */
+  expand?: {
+    ratio: ExpandRatio;
+    fits: (ratio: ExpandRatio) => boolean;
+    onRatio: (ratio: ExpandRatio) => void;
+  };
 }
+
+/**
+ * An expand tool's ratio presets. A ratio whose frame would pass the model's
+ * cap reads as unavailable and says why on hover; it stays a hoverable
+ * control, since a natively disabled button takes no pointer and could not
+ * say so.
+ * @param props - Component props.
+ * @param props.expand - The presets.
+ * @returns The group.
+ */
+const ExpandRatioGroup = React.memo(function ExpandRatioGroup({
+  expand,
+}: {
+  expand: NonNullable<MiniToolPanelProps['expand']>;
+}): React.JSX.Element {
+  const t = useTranslation();
+  return (
+    <div>
+      <p className='mb-1.5 text-xs font-medium text-muted-foreground'>{t('canvas.miniTool.param.aspect.label')}</p>
+      <div className='flex flex-wrap gap-1.5'>
+        {EXPAND_RATIOS.map((ratio) => {
+          const fits = expand.fits(ratio);
+          // Value names stay English in every language, as the crop's do.
+          const button = (
+            <Button
+              key={ratio}
+              type='button'
+              variant={null}
+              size={null}
+              data-testid={`mini-tool-expand-ratio-${ratio}`}
+              aria-current={expand.ratio === ratio}
+              aria-disabled={!fits}
+              onClick={() => {
+                if (fits) expand.onRatio(ratio);
+              }}
+              className={`${PARAM_OPTION_CLASS} aria-disabled:cursor-not-allowed aria-disabled:opacity-50`}
+            >
+              {ratio === 'free' ? 'Free' : ratio}
+            </Button>
+          );
+          return fits ? (
+            button
+          ) : (
+            <Tooltip key={ratio}>
+              <TooltipTrigger asChild>{button}</TooltipTrigger>
+              <TooltipContent side='top'>{t('canvas.miniTool.panel.ratioTooLarge')}</TooltipContent>
+            </Tooltip>
+          );
+        })}
+      </div>
+    </div>
+  );
+});
 
 /** The icon an empty slot shows: what it wants. */
 const SLOT_ICONS = { image: ImageIcon, audio: Music, video: Film } as const;
@@ -210,6 +271,7 @@ export const MiniToolPanel = React.memo(function MiniToolPanel(props: MiniToolPa
     >
       <div className='flex flex-col gap-2.5 px-3 pb-2.5'>
         {spec.drawing !== undefined ? <DrawingControls kind={spec.drawing.kind} /> : null}
+        {props.expand !== undefined ? <ExpandRatioGroup expand={props.expand} /> : null}
         {spec.slots.length > 0 ? (
           <div className='flex flex-wrap gap-1.5'>
             {spec.slots.map((slot) => {

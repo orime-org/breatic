@@ -1016,7 +1016,8 @@
         "drawingEmpty": "請先在圖上畫。",
         "reset": "重設",
         "imageTooLarge": "這張圖片太大，這台裝置上無法調色。",
-        "sourceTooLargeToExpand": "這張圖片已經到外擴能做的最大尺寸。"
+        "sourceTooLargeToExpand": "這張圖片已經到外擴能做的最大尺寸。",
+        "ratioTooLarge": "超出外擴能做的最大尺寸"
       },
       "adjust": {
         "exposure": "曝光",
