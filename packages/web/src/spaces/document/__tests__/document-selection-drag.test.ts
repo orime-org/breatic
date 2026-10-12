@@ -11,8 +11,9 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as Y from 'yjs';
-import { AllSelection, NodeSelection, TextSelection } from '@tiptap/pm/state';
+import { AllSelection, NodeSelection, Plugin, TextSelection } from '@tiptap/pm/state';
 import { CellSelection } from '@tiptap/pm/tables';
+import { Decoration, DecorationSet } from '@tiptap/pm/view';
 
 import { documentBodyFragment } from '@breatic/shared';
 
@@ -23,6 +24,7 @@ import { captionPreviewContent } from '@web/spaces/document/document-drag-previe
 import { startRowDrag } from '@web/spaces/document/document-row-drag';
 import { selectionDragKind, selectionPreviewContent } from '@web/spaces/document/document-selection-drag';
 import { endTableDrag, startTableDrag } from '@web/spaces/document/document-table-drag';
+import { viewState } from '@web/spaces/document/document-view-state';
 
 type Editor = ReturnType<typeof buildDocumentEditor>;
 
@@ -411,5 +413,99 @@ describe('a handle drag while several blocks are selected', () => {
     expect(element.textContent).toContain('two');
     expect(element.textContent).not.toContain('one');
     expect(element.textContent).not.toContain('three');
+  });
+});
+
+describe('a preview draws the content, not what the body shows for the moment (Chromium `kSelectionDragImage`)', () => {
+  /** What the body paints for a selection, a cell selection or a node selection. */
+  const STATE = '.doc-in-selection, .doc-media-in-selection, .doc-empty-line-in-selection, [data-show-selection], .selectedCell, .ProseMirror-selectednode';
+
+  /**
+   * The state paint an element and everything in it carry.
+   * @param content - The preview content.
+   * @returns The tags and classes that carry it.
+   */
+  function statePaint(content: Element): string[] {
+    return [content, ...content.querySelectorAll('*')]
+      .filter((el) => el.matches(STATE))
+      .map((el) => `${el.tagName}.${el.className}`);
+  }
+
+  it('a text selection over an empty line and a divider: neither keeps its selection paint', () => {
+    const editor = open([
+      { type: 'paragraph', content: 'one' },
+      { type: 'paragraph', content: '' },
+      { type: 'divider' },
+      { type: 'paragraph', content: 'two' },
+    ]);
+    editor.prosemirrorView!.focus();
+    selectText(editor, ['one', 1], ['two', 2]);
+    const content = selectionPreviewContent(editor.prosemirrorView!)!;
+    expect(editor.prosemirrorView!.dom.querySelector('.doc-in-selection')).not.toBeNull();
+    expect(statePaint(content)).toEqual([]);
+  });
+
+  it('an edge selection: its words without the band the body draws behind them', () => {
+    const editor = open([{ type: 'paragraph', content: 'one' }, { type: 'paragraph', content: 'two' }]);
+    const view = editor.prosemirrorView!;
+    view.focus();
+    view.dispatch(view.state.tr.setSelection(BodyEdgeSelection.create(view.state.doc, textPos(editor, 'one'), 'end')));
+    const content = selectionPreviewContent(view)!;
+    expect(view.dom.querySelector('[data-show-selection]')).not.toBeNull();
+    expect(statePaint(content)).toEqual([]);
+    expect(blockTexts(content)).toEqual(['one', 'two']);
+  });
+
+  it('a cell selection: the rows without the selected cells\' layer', () => {
+    const editor = open([table([{ cells: ['a1', 'b1'] }, { cells: ['a2', 'b2'] }])]);
+    editor.prosemirrorView!.focus();
+    selectCells(editor, 'a1', 'b1');
+    const content = selectionPreviewContent(editor.prosemirrorView!)!;
+    expect(editor.prosemirrorView!.dom.querySelector('.selectedCell')).not.toBeNull();
+    expect(statePaint(content)).toEqual([]);
+  });
+
+  it('a handle drag of a row inside the selection: the row without its selection paint', () => {
+    const editor = open([{ type: 'paragraph', content: 'one' }, { type: 'divider' }, { type: 'paragraph', content: 'two' }]);
+    editor.prosemirrorView!.focus();
+    selectText(editor, ['one', 1], ['two', 2]);
+    const { setDragImage } = dragStart();
+    const dataTransfer = { setDragImage, setData: vi.fn(), clearData: vi.fn(), effectAllowed: 'all' } as unknown as DataTransfer;
+    const divider = (editor.document[1] as unknown as { id: string }).id;
+    ends.push(startRowDrag(editor as never, { dataTransfer, clientY: 0 }, divider));
+    const [element] = setDragImage.mock.calls.at(-1) as [HTMLElement];
+    expect(element.querySelector('[data-content-type="divider"]')).not.toBeNull();
+    expect(statePaint(element)).toEqual([]);
+  });
+
+  it('takes off what a view-state decoration adds and keeps what a content decoration adds', () => {
+    const editor = open([{ type: 'paragraph', content: 'one' }, { type: 'paragraph', content: 'two' }]);
+    const view = editor.prosemirrorView!;
+    const marks = new Plugin({
+      props: {
+        decorations: (state) => {
+          let one = -1;
+          state.doc.descendants((node, pos) => {
+            if (node.isTextblock && node.textContent === 'one') one = pos;
+            return one < 0;
+          });
+          const size = state.doc.nodeAt(one)!.nodeSize;
+          return DecorationSet.create(state.doc, [
+            viewState.node(one, one + size, { class: 'probe-state', 'data-probe-state': '' }),
+            viewState.inline(one + 1, one + 3, { class: 'probe-state-inline' }),
+            viewState.widget(one + 1, () => document.createElement('i')),
+            Decoration.node(one, one + size, { class: 'probe-content', 'data-probe-content': '' }),
+          ]);
+        },
+      },
+    });
+    view.updateState(view.state.reconfigure({ plugins: [...view.state.plugins, marks] }));
+    view.focus();
+    selectText(editor, ['one', 0], ['two', 3]);
+    const content = selectionPreviewContent(view)!;
+    expect(view.dom.querySelector('.probe-state[data-probe-state] .probe-state-inline')).not.toBeNull();
+    expect(content.querySelector('.probe-state, [data-probe-state], .probe-state-inline, i')).toBeNull();
+    expect(content.querySelector('.probe-content[data-probe-content]')).not.toBeNull();
+    expect(blockTexts(content)).toEqual(['one', 'two']);
   });
 });
