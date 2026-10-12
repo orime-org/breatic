@@ -357,14 +357,22 @@ describe('blockPreviewContent', () => {
     expect(content.querySelectorAll('[data-overflow-edge]')).toHaveLength(2);
   });
 
-  it('scrolls each frame in a preview to where the body has it scrolled', () => {
-    const editor = open([{ type: 'table', content: { type: 'tableContent', rows: [{ cells: ['a1', 'b1'] }] } }]);
+  it('leaves out the columns its frame has scrolled wholly out of view on the left, nothing to the left of the preview', () => {
+    const editor = open([{ type: 'table', content: { type: 'tableContent', rows: [{ cells: ['a1', 'b1', 'c1'] }] } }]);
     const view = editor.prosemirrorView!;
     const viewport = view.dom.querySelector<HTMLElement>('[data-radix-scroll-area-viewport]')!;
-    viewport.scrollLeft = 120;
+    viewport.scrollLeft = 150;
+    viewport.getBoundingClientRect = () => ({ left: 100, right: 400, width: 300, height: 40 }) as DOMRect;
+    // a1 is scrolled off whole; b1 is cut by the frame's left edge and is drawn
+    // whole; c1 is in view.
+    const rights = [90, 230, 380];
+    view.dom.querySelectorAll<HTMLElement>('td').forEach((cell, index) => {
+      cell.getBoundingClientRect = () => ({ right: rights[index]!, width: 120, height: 30 }) as DOMRect;
+    });
     const row = view.dom.querySelector('.bn-block-outer')!;
     const root = buildDragPreview(view, blockPreviewContent(view, [row.cloneNode(true) as Element]), () => ({ width: 100, height: 20 }));
-    expect(root.querySelector<HTMLElement>('[data-radix-scroll-area-viewport]')!.scrollLeft).toBe(120);
+    expect([...root.querySelectorAll<HTMLElement>('col')].map((col) => col.style.getPropertyValue('visibility'))).toEqual(['collapse', '', '']);
+    expect(root.querySelector<HTMLElement>('[data-radix-scroll-area-viewport]')!.scrollLeft).toBe(0);
   });
 
   it('draws each video as an empty canvas when it has no original to take a size and a frame from', () => {
@@ -450,6 +458,23 @@ describe('tableLinePreviewContent', () => {
       block: '',
     });
     expect(drawn(column)).toEqual({ cols: [['120px', 'important']], table: ['120px', 'important', 'fixed'], block: '' });
+  });
+
+  it('holds a table row at the widths of the columns in view, the table at their sum', () => {
+    const editor = open([{ type: 'table', content: { type: 'tableContent', rows } }]);
+    const view = editor.prosemirrorView!;
+    const viewport = view.dom.querySelector<HTMLElement>('[data-radix-scroll-area-viewport]')!;
+    viewport.scrollLeft = 150;
+    viewport.getBoundingClientRect = () => ({ left: 100, right: 400, width: 300, height: 90 }) as DOMRect;
+    const rights = [90, 230, 380];
+    view.dom.querySelectorAll('tr').forEach((tr) => {
+      tr.querySelectorAll<HTMLElement>('td').forEach((cell, index) => {
+        cell.getBoundingClientRect = () => ({ right: rights[index]!, width: 120 + index * 10, height: 30 }) as DOMRect;
+      });
+    });
+    const content = tableLinePreviewContent(view, cellOf(editor, 'b2'), 'row')!;
+    expect([...content.querySelectorAll<HTMLElement>('col')].map((col) => col.style.getPropertyValue('visibility'))).toEqual(['collapse', '', '']);
+    expect(content.querySelector<HTMLElement>('table')!.style.width).toBe('270px');
   });
 
   it('works a line\'s styles out inside the block its table sits in', () => {
