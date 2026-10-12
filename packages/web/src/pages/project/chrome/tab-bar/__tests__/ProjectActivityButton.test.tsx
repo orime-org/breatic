@@ -185,6 +185,50 @@ describe('ProjectActivityButton (activity feed)', () => {
     await waitFor(() => expect(btn).not.toHaveAttribute('aria-busy'));
   });
 
+  it('keeps the first Restore waiting when a second row is pressed, until its own restore lands', async () => {
+    const landers = new Map<string, VoidFunction>();
+    const onRestore = vi.fn(
+      (spaceId: string) =>
+        new Promise<void>((resolve) => {
+          landers.set(spaceId, resolve);
+        }),
+    );
+    listMock.mockResolvedValue({
+      items: [
+        entry({
+          id: 'del-a',
+          type: 'space:deleted',
+          spaceId: 'sp-a',
+          payload: { spaceName: 'A', spaceSnapshot: { id: 'sp-a' } },
+        }),
+        entry({
+          id: 'del-b',
+          type: 'space:deleted',
+          spaceId: 'sp-b',
+          payload: { spaceName: 'B', spaceSnapshot: { id: 'sp-b' } },
+        }),
+      ],
+      nextCursor: null,
+    });
+    const user = userEvent.setup();
+    render(
+      <ProjectActivityButton projectId={PID} currentUserRole='owner' onRestore={onRestore} />,
+    );
+    await user.click(screen.getByTestId('project-activity-trigger'));
+    const a = await screen.findByTestId('project-activity-restore-del-a');
+    const b = screen.getByTestId('project-activity-restore-del-b');
+    await user.click(a);
+    await user.click(b);
+
+    await waitFor(() => expect(b).toHaveAttribute('aria-busy', 'true'));
+    expect(a).toHaveAttribute('aria-busy', 'true');
+    landers.get('sp-a')?.();
+    await waitFor(() => expect(a).not.toHaveAttribute('aria-busy'));
+    expect(b).toHaveAttribute('aria-busy', 'true');
+    landers.get('sp-b')?.();
+    await waitFor(() => expect(b).not.toHaveAttribute('aria-busy'));
+  });
+
   it('settles the Restore button after a refused restore without leaving a rejection behind', async () => {
     // The host has already told the reader (`callRpc` toasts before it
     // throws); the button only has to come back.

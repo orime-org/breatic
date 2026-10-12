@@ -1444,4 +1444,50 @@ describe('loading what came before', () => {
     });
     expect(button).not.toHaveAttribute('aria-busy');
   });
+
+  it('keeps the wait with the conversation it was pressed in when the reader switches away and back', async () => {
+    let finish: () => void = () => undefined;
+    const onLoadEarlier = (): Promise<void> =>
+      new Promise<void>((resolve) => {
+        finish = resolve;
+      });
+    const { rerender } = render(
+      <MessageList
+        ready
+        hasEarlier
+        conversationId='c-a'
+        onLoadEarlier={onLoadEarlier}
+        messages={[bubble('m1', 'a page of A')]}
+      />,
+    );
+    fireEvent.click(screen.getByTestId('chat-load-earlier'));
+    expect(screen.getByTestId('chat-load-earlier')).toHaveAttribute('aria-busy', 'true');
+
+    rerender(
+      <MessageList
+        ready
+        hasEarlier
+        conversationId='c-b'
+        onLoadEarlier={onLoadEarlier}
+        messages={[bubble('m2', 'a page of B')]}
+      />,
+    );
+    expect(screen.getByTestId('chat-load-earlier')).not.toHaveAttribute('aria-busy');
+
+    rerender(
+      <MessageList
+        ready
+        hasEarlier
+        conversationId='c-a'
+        onLoadEarlier={onLoadEarlier}
+        messages={[bubble('m1', 'a page of A')]}
+      />,
+    );
+    expect(screen.getByTestId('chat-load-earlier')).toHaveAttribute('aria-busy', 'true');
+
+    await act(async () => {
+      finish();
+    });
+    expect(screen.getByTestId('chat-load-earlier')).not.toHaveAttribute('aria-busy');
+  });
 });

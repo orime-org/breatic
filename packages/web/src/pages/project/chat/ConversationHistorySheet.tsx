@@ -34,6 +34,7 @@ import { CONVERSATION_TITLE_MAX_CHARS } from '@breatic/shared';
 import { useTranslation } from '@web/i18n/use-translation';
 import { useInlineEditExit } from '@web/lib/inline-edit-exit';
 import { useReturnFocus } from '@web/lib/overlay-focus';
+import { usePendingKeys } from '@web/lib/use-pending-keys';
 import { useScrolledToEnd } from '@web/lib/use-scrolled-to-end';
 import { NOTICE_LINGERS_MS } from '@web/pages/project/chat/notice-timing';
 import { formatLocalDay } from '@web/lib/format-day';
@@ -473,10 +474,13 @@ function ConversationHistorySheetInner({
   // asked whether they mean it. Null the rest of the time, which is what
   // keeps the dialog closed.
   const [deleting, setDeleting] = React.useState<string | null>(null);
-  // Which conversation's delete is out. The dialog stays open on it until the
-  // answer is in: success leaves the row gone, failure leaves a word against
-  // the row, and either is only seen once the dialog is out of the way.
-  const [deletePending, setDeletePending] = React.useState<string | null>(null);
+  // Which conversations' deletes are out, per id (inner#1374). The dialog
+  // stays open on one until its answer is in: success leaves the row gone,
+  // failure leaves a word against the row, and either is only seen once the
+  // dialog is out of the way. Kept per id so a delete of another row started
+  // meanwhile does not end this one's wait.
+  const deletesOut = usePendingKeys();
+  const { track: trackDelete } = deletesOut;
 
   /**
    * Delete the conversation the dialog is asking about, keeping the dialog
@@ -488,15 +492,13 @@ function ConversationHistorySheetInner({
       event.preventDefault();
       const id = deleting;
       if (id === null) return;
-      setDeletePending(id);
-      void onDelete(id).finally(() => {
-        setDeletePending((p) => (p === id ? null : p));
+      void trackDelete(id, onDelete(id)).finally(() => {
         // Only the question about this row: the reader may have walked away
         // from it and asked about another while this one was out.
         setDeleting((d) => (d === id ? null : d));
       });
     },
-    [deleting, onDelete],
+    [deleting, onDelete, trackDelete],
   );
   // A word about one row goes against that row, and everything else goes to
   // the top. The list is one page: a rename started from the header is about
@@ -682,7 +684,7 @@ function ConversationHistorySheetInner({
             </AlertDialogCancel>
             <AlertDialogAction
               data-testid='conversation-delete-confirm'
-              loading={deleting !== null && deletePending === deleting}
+              loading={deleting !== null && deletesOut.isPending(deleting)}
               onClick={confirmDelete}
             >
               {t('chat.conversation.deleteConfirm')}
