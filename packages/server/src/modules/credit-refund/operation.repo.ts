@@ -7,7 +7,7 @@
  */
 
 import { and, asc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
-import { creditRefundOperationEvents, creditRefundOperations } from "@breatic/core";
+import { creditRefundOperationEvents, creditRefundOperations, db } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 
 export type OperationKind =
@@ -288,6 +288,81 @@ export async function findAwaiting(paymentId: string, tx: DbTx): Promise<string 
       ),
     );
   return rows[0]?.id ?? null;
+}
+
+/**
+ * One disposition, unlocked.
+ * @param id - The disposition.
+ * @param tx - The caller's transaction, if any.
+ * @returns The row, or null.
+ */
+export async function findById(id: string, tx?: DbTx): Promise<CreditRefundOperation | null> {
+  const rows = await (tx ?? db)
+    .select()
+    .from(creditRefundOperations)
+    .where(eq(creditRefundOperations.id, id));
+  return rows[0] ? toEntity(rows[0]) : null;
+}
+
+/**
+ * The disposition holding an idempotency key, and whether its executor
+ * still holds the lease (by the database clock).
+ * @param key - The `Idempotency-Key`.
+ * @param tx - The caller's transaction, if any.
+ * @returns The row and the lease fact, or null.
+ */
+export async function findByKey(
+  key: string,
+  tx?: DbTx,
+): Promise<{ op: CreditRefundOperation; leaseHeld: boolean } | null> {
+  const rows = await (tx ?? db)
+    .select({
+      row: creditRefundOperations,
+      leaseHeld: sql<boolean>`coalesce(${creditRefundOperations.lockedUntil} > now(), false)`,
+    })
+    .from(creditRefundOperations)
+    .where(eq(creditRefundOperations.idempotencyKey, key));
+  return rows[0] ? { op: toEntity(rows[0].row), leaseHeld: rows[0].leaseHeld } : null;
+}
+
+/**
+ * Every disposition of a lot, oldest first.
+ * @param lotId - The lot.
+ * @param tx - The caller's transaction.
+ * @returns The rows.
+ */
+export async function listForLot(lotId: string, tx: DbTx): Promise<CreditRefundOperation[]> {
+  const rows = await tx
+    .select()
+    .from(creditRefundOperations)
+    .where(eq(creditRefundOperations.lotId, lotId))
+    .orderBy(asc(creditRefundOperations.createdAt), asc(creditRefundOperations.id));
+  return rows.map(toEntity);
+}
+
+/**
+ * Queue behind every other write transaction using the same idempotency key
+ * (§4.6), whatever it targets; released at commit.
+ * @param key - The `Idempotency-Key`.
+ * @param tx - The write transaction.
+ */
+export async function lockIdempotencyKey(key: string, tx: DbTx): Promise<void> {
+  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`internal-idem:${key}`}))`);
+}
+
+/**
+ * Stamp the first Stripe call (§5.2 phase 2), under the caller's lease.
+ * Progress only: the status does not move, so no event row.
+ * @param id - The disposition.
+ * @param leaseToken - The lease the caller holds.
+ */
+export async function markFirstCalled(id: string, leaseToken: string): Promise<void> {
+  await db
+    .update(creditRefundOperations)
+    .set({ firstCalledAt: sql`coalesce(${creditRefundOperations.firstCalledAt}, now())` })
+    .where(
+      and(eq(creditRefundOperations.id, id), eq(creditRefundOperations.leaseToken, leaseToken)),
+    );
 }
 
 /**

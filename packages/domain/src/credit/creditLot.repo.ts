@@ -269,6 +269,28 @@ export async function lockLot(
 }
 
 /**
+ * The two facts of a lot the refund disposition reads besides the lot row:
+ * what its ledger sums to, and when the buyer asked for the refund.
+ * @param lotId - The lot.
+ * @param tx - The caller's transaction.
+ * @returns The ledger sum as Postgres `numeric` text, and the ask time.
+ */
+export async function readRefundFacts(
+  lotId: string,
+  tx: DbTx,
+): Promise<{ ledgerSum: string; refundRequestedAt: Date | null }> {
+  const [ledger] = await tx
+    .select({ sum: sql<string>`COALESCE(SUM(${creditLedger.amount}), 0)::text` })
+    .from(creditLedger)
+    .where(eq(creditLedger.lotId, lotId));
+  const [lot] = await tx
+    .select({ refundRequestedAt: creditLots.refundRequestedAt })
+    .from(creditLots)
+    .where(eq(creditLots.id, lotId));
+  return { ledgerSum: ledger?.sum ?? "0", refundRequestedAt: lot?.refundRequestedAt ?? null };
+}
+
+/**
  * {@link lockLot}, for the lot a payment opened. `source_id` is unique, so a
  * payment opens at most one lot.
  * @param paymentId - The payment the lot was granted from.

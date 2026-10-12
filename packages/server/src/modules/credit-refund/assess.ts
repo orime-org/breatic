@@ -35,12 +35,16 @@ export interface AssessInput {
   failedRefundIds: readonly string[];
 }
 
-/** Why Stripe's current state stops the refund. */
+/** Why Stripe's current state stops the operation. */
 export type StripeBlockReason =
   | "failed_refunds_changed"
   | "refund_in_progress"
   | "already_refunded"
-  | "unconfirmed_external_refund";
+  | "unconfirmed_external_refund"
+  | "refund_succeeded"
+  | "succeeded_sum_changed"
+  | "nothing_refunded"
+  | "partial_not_accepted";
 
 /** The table's answer. */
 export type AssessResult =
@@ -55,14 +59,17 @@ const REQUIRED_LIFECYCLE: Record<RefundCreateKind, CreditLotLifecycle> = {
   refund_again: "refunded",
 };
 
-const LOT_STATE_CHANGED: AssessResult = { outcome: "blocked", code: "lot_state_changed" };
+/** A refusal of the table. */
+type Blocked = Extract<AssessResult, { outcome: "blocked" }>;
+
+const LOT_STATE_CHANGED: Blocked = { outcome: "blocked", code: "lot_state_changed" };
 
 /**
  * A blocked answer naming Stripe's state.
  * @param reason - Which part of Stripe's state stops it.
  * @returns The answer.
  */
-function stripeBlocks(reason: StripeBlockReason): AssessResult {
+function stripeBlocks(reason: StripeBlockReason): Blocked {
   return { outcome: "blocked", code: "stripe_blocks", reason };
 }
 
@@ -185,4 +192,65 @@ export function assessRefundPreview(input: {
   if (kind === null) return { kind: null };
   const result = judge({ ...input, kind, confirmedRefundIds: [], failedRefundIds: [] }, true);
   return { kind, result };
+}
+
+/** The four dispositions that finish in their request (§5.3). */
+export type OneShotKind = "reject" | "settle" | "send_back" | "resolve_outside";
+
+/** The facts a one-shot disposition is judged on, and what its request sent. */
+export interface OneShotInput {
+  kind: OneShotKind;
+  lot: { lifecycle: CreditLotLifecycle; remainingCredits: number };
+  paidCents: number;
+  ops: readonly AssessOperation[];
+  refunds: readonly RefundCopy[];
+  /** settle only. */
+  confirmedSucceededCents?: number;
+  /** settle only. */
+  acceptPartial?: boolean;
+  /** resolve_outside only. */
+  failedRefundIds?: readonly string[];
+}
+
+/** The lot states each one-shot kind starts from. */
+const ONE_SHOT_LIFECYCLES: Record<OneShotKind, readonly CreditLotLifecycle[]> = {
+  reject: ["refund_pending"],
+  settle: ["refunding", "refund_pending"],
+  send_back: ["refunding"],
+  resolve_outside: ["refunded"],
+};
+
+/**
+ * Judge a reject, settle, send-back or resolved-outside request (§5.3):
+ * the lot's state, nothing in flight, then Stripe's current state.
+ * @param input - The facts and the request.
+ * @returns `proceed`, or why not.
+ */
+export function assessOneShot(input: OneShotInput): { outcome: "proceed" } | Blocked {
+  const { kind, lot, refunds } = input;
+  if (!ONE_SHOT_LIFECYCLES[kind].includes(lot.lifecycle)) return LOT_STATE_CHANGED;
+  if (kind === "reject" && lot.remainingCredits <= 0) return LOT_STATE_CHANGED;
+  if (input.ops.some((o) => o.status === "started" || o.status === "awaiting_stripe")) {
+    return { outcome: "blocked", code: "operation_in_progress" };
+  }
+  if (kind === "resolve_outside") {
+    const unresolved = pickUnresolvedFailedRefunds(lot.lifecycle, refunds);
+    if (unresolved.length === 0) return LOT_STATE_CHANGED;
+    if (!sameIds(input.failedRefundIds ?? [], unresolved)) return stripeBlocks("failed_refunds_changed");
+  }
+  if (refunds.some((r) => r.status === "pending" || r.status === "requires_action")) {
+    return stripeBlocks("refund_in_progress");
+  }
+  const succeededCents = refunds
+    .filter((r) => r.status === "succeeded")
+    .reduce((sum, r) => sum + r.amountCents, 0);
+  if ((kind === "reject" || kind === "send_back") && succeededCents > 0) {
+    return stripeBlocks("refund_succeeded");
+  }
+  if (kind === "settle") {
+    if (succeededCents !== input.confirmedSucceededCents) return stripeBlocks("succeeded_sum_changed");
+    if (succeededCents === 0) return stripeBlocks("nothing_refunded");
+    if (succeededCents < input.paidCents && !input.acceptPartial) return stripeBlocks("partial_not_accepted");
+  }
+  return { outcome: "proceed" };
 }

@@ -235,6 +235,19 @@
       "unavailable": "這個工具暫時無法使用。",
       "invalidParam": "「{name}」的值這個工具不支援。",
       "foreignSource": "這個檔案無法處理。"
+    },
+    "internal": {
+      "lot_not_found": "沒有這個編號、經付款購買的點數包。",
+      "operation_not_found": "沒有這個編號的退款處置。",
+      "lot_state_changed": "點數包不在這個操作要求的狀態。",
+      "operation_in_progress": "這筆點數包還有一個退款處置在進行中。",
+      "request_in_progress": "使用這個 Idempotency-Key 的請求還在執行。",
+      "stripe_blocks": "Stripe 上這筆付款的退款現狀不允許這個操作。",
+      "mail_not_resendable": "只有以已退款或已駁回完成的處置才有可重寄的買家郵件。",
+      "idempotency_key_reused": "這個 Idempotency-Key 已經用於另一個不同的請求。",
+      "invalid_body": "請求內容或路徑不符合這個端點的要求。",
+      "invalid_idempotency_key": "Idempotency-Key 標頭缺少或格式不對。",
+      "unreadable_body": "請求內容不是有效的 JSON。"
     }
   },
   "chat": {

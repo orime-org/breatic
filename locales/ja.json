@@ -235,6 +235,19 @@
       "unavailable": "このツールは現在利用できません。",
       "invalidParam": "「{name}」の値はこのツールでは使えません。",
       "foreignSource": "このファイルは処理できません。"
+    },
+    "internal": {
+      "lot_not_found": "この ID の、支払いで購入されたクレジットパックはありません。",
+      "operation_not_found": "この ID の返金処理はありません。",
+      "lot_state_changed": "クレジットパックがこの操作の開始条件の状態にありません。",
+      "operation_in_progress": "このクレジットパックの別の返金処理がまだ進行中です。",
+      "request_in_progress": "この Idempotency-Key のリクエストはまだ実行中です。",
+      "stripe_blocks": "この支払いに対する Stripe 上の現在の返金状況では、この操作はできません。",
+      "mail_not_resendable": "返金済みまたは却下で完了した処理にだけ、再送できる購入者メールがあります。",
+      "idempotency_key_reused": "この Idempotency-Key は別のリクエストですでに使われています。",
+      "invalid_body": "リクエスト本文またはパスがこのエンドポイントの要件に合いません。",
+      "invalid_idempotency_key": "Idempotency-Key ヘッダーがないか、形式が正しくありません。",
+      "unreadable_body": "リクエスト本文が有効な JSON ではありません。"
     }
   },
   "chat": {

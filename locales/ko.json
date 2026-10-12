@@ -235,6 +235,19 @@
       "unavailable": "이 도구는 지금 사용할 수 없습니다.",
       "invalidParam": "\"{name}\" 값은 이 도구에서 지원하지 않습니다.",
       "foreignSource": "이 파일은 처리할 수 없습니다."
+    },
+    "internal": {
+      "lot_not_found": "이 ID로 결제해 구매한 크레딧 팩이 없습니다.",
+      "operation_not_found": "이 ID의 환불 처리가 없습니다.",
+      "lot_state_changed": "크레딧 팩이 이 작업을 시작할 수 있는 상태가 아닙니다.",
+      "operation_in_progress": "이 크레딧 팩의 다른 환불 처리가 아직 진행 중입니다.",
+      "request_in_progress": "이 Idempotency-Key의 요청이 아직 실행 중입니다.",
+      "stripe_blocks": "이 결제에 대한 Stripe의 현재 환불 상태로는 이 작업을 할 수 없습니다.",
+      "mail_not_resendable": "환불 완료 또는 거절로 끝난 처리만 다시 보낼 구매자 메일이 있습니다.",
+      "idempotency_key_reused": "이 Idempotency-Key는 이미 다른 요청에 사용되었습니다.",
+      "invalid_body": "요청 본문 또는 경로가 이 엔드포인트의 요구 사항과 맞지 않습니다.",
+      "invalid_idempotency_key": "Idempotency-Key 헤더가 없거나 형식이 잘못되었습니다.",
+      "unreadable_body": "요청 본문이 올바른 JSON이 아닙니다."
     }
   },
   "chat": {

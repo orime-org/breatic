@@ -13,6 +13,7 @@ import "@server/bootstrap-config.js";
 import { exitProcess, initSentry } from "@server/sentry.js";
 import { serve } from "@hono/node-server";
 import { createApp } from "@server/app.js";
+import { createInternalApp } from "@server/internal-app.js";
 import { env,
   getAgentConfig,
   getSubscriptionPlans,
@@ -185,6 +186,22 @@ const server = serve(
   },
 );
 
+// The internal API for the back office (inner#1410 §4.1): its own port,
+// bound to INTERNAL_API_HOST; reachability is decided by where the port is
+// published, and every request is signed.
+const internalServer = env.INTERNAL_API_ENABLED
+  ? serve(
+      { fetch: createInternalApp().fetch, port: env.INTERNAL_API_PORT, hostname: env.INTERNAL_API_HOST },
+      (info) => {
+        logger.info({ port: info.port, host: env.INTERNAL_API_HOST }, "internal_api_listening");
+      },
+    )
+  : null;
+internalServer?.on("error", (err) => {
+  logger.fatal({ err, port: env.INTERNAL_API_PORT }, "internal_listen_error");
+  void exitProcess(1);
+});
+
 /** Cap graceful shutdown so a stuck teardown can't hold the process / port. */
 const SHUTDOWN_DEADLINE_MS = 4000;
 
@@ -270,7 +287,10 @@ async function shutdown(signal: string): Promise<void> {
   await runGracefulShutdown({
     // Close the HTTP socket up front (in-flight requests finish within the
     // deadline), then drain the relay + pools concurrently and bounded.
-    releaseListenSocket: () => server.close(),
+    releaseListenSocket: () => {
+      server.close();
+      internalServer?.close();
+    },
     drains: [
       () => {
         lifecycleRelay.stop();

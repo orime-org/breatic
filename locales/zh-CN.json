@@ -235,6 +235,19 @@
       "unavailable": "这个工具暂时不可用。",
       "invalidParam": "“{name}”的值这个工具不支持。",
       "foreignSource": "这个文件无法处理。"
+    },
+    "internal": {
+      "lot_not_found": "没有这个编号、经付款购买的积分包。",
+      "operation_not_found": "没有这个编号的退款处置。",
+      "lot_state_changed": "积分包不在这个操作要求的状态。",
+      "operation_in_progress": "这笔积分包还有一个退款处置在进行中。",
+      "request_in_progress": "使用这个 Idempotency-Key 的请求还在执行。",
+      "stripe_blocks": "Stripe 上这笔付款的退款现状不允许这个操作。",
+      "mail_not_resendable": "只有以已退款或已驳回做完的处置才有可重发的买家邮件。",
+      "idempotency_key_reused": "这个 Idempotency-Key 已经用于另一个不同的请求。",
+      "invalid_body": "请求体或路径不符合这个端点的要求。",
+      "invalid_idempotency_key": "Idempotency-Key 头缺失或格式不对。",
+      "unreadable_body": "请求体不是合法的 JSON。"
     }
   },
   "chat": {

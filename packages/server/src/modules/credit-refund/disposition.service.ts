@@ -1,0 +1,438 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+
+/**
+ * What the internal API's endpoints do (inner#1410 §4.5, §5.2, §5.3, §6.5).
+ *
+ * Every write reads Stripe first, outside any transaction, then in one
+ * transaction takes the key's advisory lock and the lot's row lock, looks
+ * the key up again, copies what Stripe holds, judges, and inserts the
+ * disposition through `transitionOperation`. A refusal throws
+ * {@link RefundRefusal} inside that transaction, so nothing is stored.
+ */
+
+import { db } from "@breatic/core";
+import type { DbTx } from "@breatic/core";
+import { creditLotRepo } from "@breatic/domain";
+import { isPurchased, type CreditLotEntity, type PaymentEntity } from "@breatic/shared";
+import {
+  assessOneShot,
+  assessRefundCreate,
+  assessRefundPreview,
+  type AssessInput,
+  type AssessResult,
+  type OneShotKind,
+  type RefundCreateKind,
+} from "@server/modules/credit-refund/assess.js";
+import { executeRefund } from "@server/modules/credit-refund/executor.js";
+import { lookupKey, type Replay } from "@server/modules/credit-refund/idempotency.js";
+import * as operationRepo from "@server/modules/credit-refund/operation.repo.js";
+import type { CreditRefundOperation } from "@server/modules/credit-refund/operation.repo.js";
+import {
+  transitionOperation,
+  type NewOperation,
+} from "@server/modules/credit-refund/operation-transitions.js";
+import * as refundCopyRepo from "@server/modules/credit-refund/refund-copy.repo.js";
+import * as refundMailRepo from "@server/modules/credit-refund/refund-mail.repo.js";
+import type { RefundMail } from "@server/modules/credit-refund/refund-mail.repo.js";
+import { applyRefundSnapshot } from "@server/modules/credit-refund/refund-snapshot.js";
+import { RefundRefusal, stripeUnavailable } from "@server/modules/credit-refund/refusal.js";
+import { StripeReadError, listRefunds } from "@server/modules/credit-refund/stripe-refunds.js";
+import type { RefundCopy, StripeRefundObject } from "@server/modules/credit-refund/types.js";
+import { pickUnresolvedFailedRefunds } from "@server/modules/credit-refund/unresolved.js";
+import * as paymentRepo from "@server/modules/payment/payment.repo.js";
+
+/** A disposition as the API reports it: its columns, less the executor's lease. */
+export type OperationSnapshot = Omit<CreditRefundOperation, "leaseToken">;
+
+/** An answer and the status it goes out with: 202 while the work goes on. */
+export interface Answer<T> {
+  status: 200 | 202;
+  body: T;
+}
+
+/** What every write request carries besides its body. */
+interface WriteRequest {
+  lotId: string;
+  adminId: string;
+  key: string;
+  hash: string;
+  reason: string;
+}
+
+/** The lot and the facts the tables read, under the lot's lock. */
+interface Facts {
+  lot: CreditLotEntity;
+  ledgerSum: string;
+  refundRequestedAt: Date | null;
+  paidCents: number;
+  currency: string;
+  ops: CreditRefundOperation[];
+  refunds: RefundCopy[];
+}
+
+// ── preview ──────────────────────────────────────────────────────────
+
+/**
+ * The confirmation page's facts and what the operation the lot's state
+ * allows would do now (§4.5). The refunds read are copied (§6.4).
+ * @param lotId - The lot.
+ * @returns The preview.
+ */
+export async function preview(lotId: string): Promise<Record<string, unknown>> {
+  const { payment } = await loadTarget(lotId);
+  const listed = await readStripe(payment);
+  return db.transaction(async (tx) => {
+    await applyRefundSnapshot(tx, payment.id, listed);
+    const facts = await readFacts(tx, lotId, payment);
+    const judged = assessRefundPreview(assessFacts(facts, payment));
+    const inFlight = facts.ops.find((o) => o.status === "started" || o.status === "awaiting_stripe");
+    return {
+      lot: {
+        id: facts.lot.id,
+        lifecycle: facts.lot.lifecycle,
+        refundRequestedAt: facts.refundRequestedAt,
+        purchasedCredits: facts.lot.purchasedCredits,
+        remainingCredits: facts.lot.remainingCredits,
+        createdAt: facts.lot.createdAt,
+      },
+      payment: { id: payment.id, status: payment.status, paidCents: facts.paidCents, currency: facts.currency },
+      refunds: facts.refunds.map((r) => ({
+        stripeRefundId: r.stripeRefundId,
+        amountCents: r.amountCents,
+        status: r.status,
+        madeByProduct: r.operationId !== null,
+        everSucceeded: r.everSucceeded,
+      })),
+      operationInProgress: inFlight ? snapshotOf(inFlight) : null,
+      unresolvedFailedRefunds: pickUnresolvedFailedRefunds(facts.lot.lifecycle, facts.refunds).map((r) => ({
+        stripeRefundId: r.stripeRefundId,
+        amountCents: r.amountCents,
+      })),
+      action:
+        judged.kind === null
+          ? null
+          : judged.result.outcome === "create_refund"
+            ? { kind: judged.kind, outcome: "create_refund", amountCents: judged.result.amountCents }
+            : { kind: judged.kind, ...judged.result },
+    };
+  });
+}
+
+// ── approve, retry, refund_again ─────────────────────────────────────
+
+/**
+ * Approve, retry or refund again (§5.2): phase 1 here, then phases 2 and 3.
+ * @param kind - Which of the three.
+ * @param req - The request.
+ * @param body - What the confirmation page sent back.
+ * @param body.confirmedRefundIds - approve, retry: the external refunds shown.
+ * @param body.failedRefundIds - refund_again: the unresolved failed refunds shown.
+ * @param body.notify - refund_again: whether to tell the buyer.
+ * @returns The disposition: 200 when finished, 202 while Stripe has not decided.
+ */
+export async function requestRefund(
+  kind: RefundCreateKind,
+  req: WriteRequest,
+  body: { confirmedRefundIds?: string[]; failedRefundIds?: string[]; notify?: boolean },
+): Promise<Answer<unknown>> {
+  const replay = await lookupKey(req.key, req.hash);
+  if (replay) return answerReplay(replay);
+  const { payment } = await loadTarget(req.lotId);
+  const listed = await readStripe(payment);
+
+  const outcome = await db.transaction(async (tx) => {
+    const replayed = await lockAndRecheck(tx, req);
+    if (replayed) return { replay: replayed };
+    await applyRefundSnapshot(tx, payment.id, listed);
+    const facts = await readFacts(tx, req.lotId, payment);
+    const verdict = assessRefundCreate({
+      kind,
+      ...assessFacts(facts, payment),
+      confirmedRefundIds: body.confirmedRefundIds ?? [],
+      failedRefundIds: body.failedRefundIds ?? [],
+    });
+    if (verdict.outcome === "blocked") throw refusalOf(verdict);
+    const op = await transitionOperation(tx, null, {
+      type: "E1",
+      create: {
+        ...newOperation(kind, req, payment),
+        confirmedRefundIds: body.confirmedRefundIds,
+        failedRefundIds: body.failedRefundIds,
+        notify: body.notify,
+        refundAmountCents: verdict.sendAmount ? verdict.amountCents : undefined,
+      },
+    });
+    return { op: op! };
+  });
+  if (outcome.replay) return answerReplay(outcome.replay);
+  await executeRefund(outcome.op);
+  return answerOperation((await operationRepo.findById(outcome.op.id))!);
+}
+
+// ── reject, settle, send_back, resolve_outside ───────────────────────
+
+/**
+ * A disposition that finishes in its request (§5.3).
+ * @param kind - Which of the four.
+ * @param req - The request.
+ * @param body - The kind's own fields.
+ * @param body.notify - settle: whether to tell the buyer.
+ * @param body.confirmedSucceededCents - settle: the succeeded sum the operator saw.
+ * @param body.acceptPartial - settle: book a refund short of what was paid.
+ * @param body.failedRefundIds - resolve_outside: the refunds answered for.
+ * @returns The finished disposition.
+ */
+export async function requestOneShot(
+  kind: OneShotKind,
+  req: WriteRequest,
+  body: {
+    notify?: boolean;
+    confirmedSucceededCents?: number;
+    acceptPartial?: boolean;
+    failedRefundIds?: string[];
+  },
+): Promise<Answer<unknown>> {
+  const replay = await lookupKey(req.key, req.hash);
+  if (replay) return answerReplay(replay);
+  const { payment } = await loadTarget(req.lotId);
+  const listed = await readStripe(payment);
+
+  const outcome = await db.transaction(async (tx) => {
+    const replayed = await lockAndRecheck(tx, req);
+    if (replayed) return { replay: replayed };
+    await applyRefundSnapshot(tx, payment.id, listed);
+    const facts = await readFacts(tx, req.lotId, payment);
+    const verdict = assessOneShot({
+      kind,
+      lot: { lifecycle: facts.lot.lifecycle, remainingCredits: Number(facts.lot.remainingCredits) },
+      paidCents: facts.paidCents,
+      ops: facts.ops,
+      refunds: facts.refunds,
+      ...body,
+    });
+    if (verdict.outcome === "blocked") throw refusalOf(verdict);
+    const op = await transitionOperation(tx, null, {
+      type: "E1",
+      create: { ...newOperation(kind, req, payment), ...body },
+    });
+    return { op: op! };
+  });
+  if (outcome.replay) return answerReplay(outcome.replay);
+  return answerOperation(outcome.op);
+}
+
+// ── mail resend ──────────────────────────────────────────────────────
+
+/**
+ * Queue another buyer email for a finished disposition (§6.5).
+ * @param req - The request, naming the disposition instead of a lot.
+ * @param req.operationId - The disposition.
+ * @returns The new outbox row: 202 while it has not been sent.
+ */
+export async function resendMail(
+  req: Omit<WriteRequest, "lotId"> & { operationId: string },
+): Promise<Answer<unknown>> {
+  const replay = await lookupKey(req.key, req.hash);
+  if (replay) return answerReplay(replay);
+  const op = await operationRepo.findById(req.operationId);
+  if (op === null) throw new RefundRefusal(404, "not_found", "operation_not_found");
+
+  const outcome = await db.transaction(async (tx) => {
+    const replayed = await lockAndRecheck(tx, { ...req, lotId: op.lotId });
+    if (replayed) return { replay: replayed };
+    const current = (await operationRepo.lockById(op.id, tx))!;
+    const kind =
+      current.status !== "succeeded"
+        ? null
+        : current.result === "refunded"
+          ? "refund_completed"
+          : current.result === "rejected"
+            ? "refund_rejected"
+            : null;
+    if (kind === null) throw new RefundRefusal(409, "mail_not_resendable", "mail_not_resendable");
+    const mail = await refundMailRepo.insertResend(
+      {
+        operationId: op.id,
+        kind,
+        requestedBy: req.adminId,
+        reason: req.reason,
+        idempotencyKey: req.key,
+        requestHash: req.hash,
+      },
+      tx,
+    );
+    return { mail };
+  });
+  if (outcome.replay) return answerReplay(outcome.replay);
+  return answerMail(outcome.mail);
+}
+
+// ── shared steps ─────────────────────────────────────────────────────
+
+/**
+ * The lot a request names and the payment it came from.
+ * @param lotId - The lot.
+ * @returns Both.
+ * @throws {RefundRefusal} 404 when there is no such lot, or nobody paid for it.
+ */
+async function loadTarget(lotId: string): Promise<{ lot: CreditLotEntity; payment: PaymentEntity }> {
+  const lot = await creditLotRepo.findLotById(lotId);
+  const payment = lot && isPurchased(lot.sourceKind) ? await paymentRepo.getPaymentById(lot.sourceId) : null;
+  if (lot === null || payment === null) throw new RefundRefusal(404, "not_found", "lot_not_found");
+  return { lot, payment };
+}
+
+/**
+ * Step 0: every refund Stripe holds for the payment. A payment with no
+ * payment intent has none.
+ * @param payment - The payment.
+ * @returns The refunds.
+ * @throws {RefundRefusal} 503 `stripe_unavailable` when the read fails.
+ */
+async function readStripe(payment: PaymentEntity): Promise<StripeRefundObject[]> {
+  if (payment.stripePaymentIntentId === null) return [];
+  try {
+    return await listRefunds(payment.stripePaymentIntentId);
+  } catch (err) {
+    if (err instanceof StripeReadError) throw stripeUnavailable();
+    throw err;
+  }
+}
+
+/**
+ * The first steps of every write transaction (§4.6, §9): the key's
+ * advisory lock, the lot's row lock, the second lookup of the key.
+ * @param tx - The write transaction.
+ * @param req - The request.
+ * @returns What to replay, or null to go on.
+ * @throws {RefundRefusal} 404 when the lot is gone; the key refusals.
+ */
+async function lockAndRecheck(tx: DbTx, req: WriteRequest): Promise<Replay | null> {
+  await operationRepo.lockIdempotencyKey(req.key, tx);
+  if ((await creditLotRepo.lockLot(req.lotId, tx)) === null) {
+    throw new RefundRefusal(404, "not_found", "lot_not_found");
+  }
+  return lookupKey(req.key, req.hash, tx);
+}
+
+/**
+ * The facts the tables read, inside the transaction holding the lot's lock.
+ * @param tx - The transaction.
+ * @param lotId - The lot.
+ * @param payment - Its payment.
+ * @returns The facts.
+ */
+async function readFacts(tx: DbTx, lotId: string, payment: PaymentEntity): Promise<Facts> {
+  const lot = (await creditLotRepo.lockLot(lotId, tx))!;
+  const { ledgerSum, refundRequestedAt } = await creditLotRepo.readRefundFacts(lotId, tx);
+  const paid = (await paymentRepo.readPaidAmount(payment.id, tx))!;
+  return {
+    lot,
+    ledgerSum,
+    refundRequestedAt,
+    paidCents: paid.paidCents,
+    currency: paid.currency,
+    ops: await operationRepo.listForLot(lotId, tx),
+    refunds: await refundCopyRepo.listForPayment(payment.id, tx),
+  };
+}
+
+/**
+ * The facts in the judgement table's shape.
+ * @param facts - The facts.
+ * @param payment - The payment.
+ * @returns The table's input, less the request's fields.
+ */
+function assessFacts(
+  facts: Facts,
+  payment: PaymentEntity,
+): Pick<AssessInput, "lot" | "payment" | "ops" | "refunds"> {
+  return {
+    lot: {
+      lifecycle: facts.lot.lifecycle,
+      remainingCredits: Number(facts.lot.remainingCredits),
+      ledgerSum: Number(facts.ledgerSum),
+    },
+    payment: {
+      status: payment.status,
+      stripePaymentIntentId: payment.stripePaymentIntentId,
+      paidCents: facts.paidCents,
+    },
+    ops: facts.ops,
+    refunds: facts.refunds,
+  };
+}
+
+/**
+ * The columns every new disposition takes from its request.
+ * @param kind - Its kind.
+ * @param req - The request.
+ * @param payment - The payment it refunds.
+ * @returns The common part of E1.
+ */
+function newOperation(
+  kind: NewOperation["kind"],
+  req: WriteRequest,
+  payment: PaymentEntity,
+): NewOperation {
+  return {
+    kind,
+    lotId: req.lotId,
+    paymentId: payment.id,
+    idempotencyKey: req.key,
+    requestHash: req.hash,
+    requestedBy: req.adminId,
+    reason: req.reason,
+  };
+}
+
+/**
+ * The 409 a judgement table's refusal answers with.
+ * @param verdict - The refusal.
+ * @returns The error to throw.
+ */
+function refusalOf(verdict: Extract<AssessResult, { outcome: "blocked" }>): RefundRefusal {
+  return verdict.code === "stripe_blocks"
+    ? new RefundRefusal(409, "stripe_blocks", "stripe_blocks", verdict.reason)
+    : new RefundRefusal(409, verdict.code, verdict.code);
+}
+
+/**
+ * A disposition as the API reports it.
+ * @param op - A disposition.
+ * @returns Its snapshot.
+ */
+function snapshotOf(op: CreditRefundOperation): OperationSnapshot {
+  const { leaseToken: _lease, ...snapshot } = op;
+  return snapshot;
+}
+
+/**
+ * The answer for a disposition.
+ * @param op - A disposition.
+ * @returns Its snapshot, 202 while it is still in flight.
+ */
+function answerOperation(op: CreditRefundOperation): Answer<OperationSnapshot> {
+  const inFlight = op.status === "started" || op.status === "awaiting_stripe";
+  return { status: inFlight ? 202 : 200, body: snapshotOf(op) };
+}
+
+/**
+ * The answer for an outbox row.
+ * @param mail - An outbox row.
+ * @returns It, 202 while it has not been sent.
+ */
+function answerMail(mail: RefundMail): Answer<RefundMail> {
+  const waiting = mail.status === "pending" || mail.status === "sending";
+  return { status: waiting ? 202 : 200, body: mail };
+}
+
+/**
+ * The answer for a repeated request.
+ * @param replay - What an earlier request under the same key left.
+ * @returns Its current snapshot.
+ */
+function answerReplay(replay: Replay): Answer<unknown> {
+  return replay.kind === "operation" ? answerOperation(replay.op) : answerMail(replay.mail);
+}
