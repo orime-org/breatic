@@ -79,6 +79,27 @@ describe('NodeExpandLayer', () => {
     expect(store().miniTool?.expand?.frame).toEqual({ x: -0.6, y: 0, width: 2, height: 1 });
   });
 
+  it('puts a moved picture back over the node when a ratio rewrites the frame', () => {
+    mount();
+    act(() => store().setExpand({ frame: { x: -0.5, y: 0, width: 2, height: 1 }, ratio: 'free' }));
+    drag(screen.getByTestId('mini-tool-expand-source'), [300, 200], [340, 200]);
+    act(() => store().setExpand({ frame: { x: -0.25, y: 0, width: 1.5, height: 1 }, ratio: '2:1' }));
+    // The frame wraps the picture where the node shows it: the picture's copy
+    // sits at the node's own picture, 0px from it.
+    const frame = screen.getByTestId('mini-tool-expand-frame');
+    expect(frame.style.left).toBe('-100px');
+    expect(screen.getByTestId('mini-tool-expand-source').style.left).toBe('100px');
+  });
+
+  it('keeps a moved picture where it is when Free leaves the frame as it was', () => {
+    mount();
+    act(() => store().setExpand({ frame: { x: -0.5, y: 0, width: 2, height: 1 }, ratio: '2:1' }));
+    drag(screen.getByTestId('mini-tool-expand-source'), [300, 200], [340, 200]);
+    const left = screen.getByTestId('mini-tool-expand-frame').style.left;
+    act(() => store().setExpand({ frame: store().miniTool!.expand!.frame, ratio: 'free' }));
+    expect(screen.getByTestId('mini-tool-expand-frame').style.left).toBe(left);
+  });
+
   it('does not move the picture while the frame is the picture itself', () => {
     mount();
     drag(screen.getByTestId('mini-tool-expand-source'), [300, 200], [340, 200]);
