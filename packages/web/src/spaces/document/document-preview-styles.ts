@@ -33,6 +33,22 @@ const places = new WeakMap<Element, Element>();
  */
 const SIZE = /^(min-|max-)?(width|height|inline-size|block-size)$/;
 
+/**
+ * How an element takes the pointer, which the preview's root sets for all of
+ * it (`pointer-events: none`, inherited). Written from the body, the preview's
+ * elements would take the pointer, and one pinned under it while the drag
+ * starts ends the drag in Chromium.
+ */
+const INTERACTION = new Set([
+  'pointer-events',
+  'touch-action',
+  'cursor',
+  'user-select',
+  '-webkit-user-select',
+  '-webkit-user-drag',
+  '-webkit-user-modify',
+]);
+
 /** The pseudo-elements a block draws with: list markers, a quote's rule. */
 const PSEUDOS = ['::before', '::after'] as const;
 
@@ -63,6 +79,7 @@ export function standsFor(copy: Element, original: Element): void {
  */
 function declarationsOf(style: CSSStyleDeclaration): Declarations {
   return Array.from({ length: style.length }, (_, index) => style.item(index))
+    .filter((property) => !INTERACTION.has(property))
     .map((property): [string, string] => [property, style.getPropertyValue(property)])
     .filter(([, value]) => value !== '');
 }
