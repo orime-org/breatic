@@ -498,7 +498,10 @@ describe('tableLinePreviewContent', () => {
     // table stays in the library's wrapper, a block as in the body: in WebKit a
     // collapsed table of a set width laid out as a flex item is 1px wider.
     expect(drawn(column)).toEqual({ cols: [['120px', 'important']], table: ['120px', 'important', 'fixed'], block: '120px' });
-    expect(column.querySelector('table')!.parentElement!.classList.contains('tableWrapper')).toBe(true);
+    const wrapper = column.querySelector<HTMLElement>(':scope > .tableWrapper')!;
+    expect(wrapper.querySelector('table')).not.toBeNull();
+    // The room it keeps under the table is for the frame's scrollbar.
+    expect(wrapper.style.padding).toBe('0px');
   });
 
   it('holds a table row at the widths of the columns in view, the table at their sum', () => {
@@ -541,9 +544,10 @@ describe('tableLinePreviewContent', () => {
     expect(row.querySelector('[data-radix-scroll-area-viewport] table')).not.toBeNull();
     expect(row.querySelector('[data-scroll-area-scrollbar]')).toBeNull();
     expect(row.querySelector('[data-overflow-edge]')).not.toBeNull();
-    // A column is narrower than any frame, so it is its table alone.
+    // A column is narrower than any frame, so it is its table alone, in the
+    // library's wrapper.
     const column = tableLinePreviewContent(view, cellOf(editor, 'c1'), 'column')!;
-    expect(column.querySelector(':scope > table')).not.toBeNull();
+    expect(column.querySelector(':scope > .tableWrapper table')).not.toBeNull();
     expect(column.querySelector('[data-radix-scroll-area-viewport]')).toBeNull();
     expect(column.querySelector('[data-overflow-edge]')).toBeNull();
   });

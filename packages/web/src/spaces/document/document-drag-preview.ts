@@ -61,6 +61,9 @@ const SCROLL_VIEWPORT = '[data-radix-scroll-area-viewport]';
 const MEDIA_BOX = '[data-media-box]';
 /** A table block. */
 const TABLE_BLOCK = '[data-content-type="table"]';
+
+/** The library's wrapper around a table (prosemirror-tables `TableView`). */
+const TABLE_WRAPPER = '.tableWrapper';
 /** A block's content element, which carries the space above the block. */
 const BLOCK_CONTENT = '.bn-block-content';
 /** A block's own content, as against the blocks nested under it. */
@@ -492,7 +495,16 @@ export function tableLinePreviewContent(
   const widths = columnWidths(view, at);
   if (orientation === 'column') {
     // A column is narrower than its frame, so the frame has nothing to scroll.
-    copy.replaceChildren(...copy.querySelectorAll('table'));
+    // The table stays in the library's wrapper, a block as in the body: in
+    // WebKit a collapsed table of a set width laid out as a flex item, which
+    // the block's content is, is 1px wider. The room the wrapper keeps under
+    // the table is for the frame's scrollbar. The block is as wide as the column.
+    const wrappers = [...copy.querySelectorAll<HTMLElement>(TABLE_WRAPPER)];
+    wrappers.forEach((wrapper) => {
+      wrapper.style.padding = '0';
+    });
+    copy.replaceChildren(...wrappers);
+    copy.style.width = `${widths[at.left] ?? 0}px`;
     copy.querySelectorAll('colgroup').forEach((group) => {
       [...group.children].forEach((col, index) => {
         if (index !== at.left) col.remove();
@@ -501,8 +513,6 @@ export function tableLinePreviewContent(
     copy.querySelectorAll<HTMLElement>('table').forEach((table) => {
       table.style.minWidth = '0';
     });
-  }
-  if (orientation === 'column') {
     holdColumns(copy, [widths[at.left] ?? 0]);
   } else {
     const hidden = columnsScrolledOff(block.querySelector('table'));
