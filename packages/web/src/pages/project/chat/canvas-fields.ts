@@ -49,7 +49,8 @@ type FieldKey = keyof CanvasNodeFields['data'] | ViewKey | 'body' | 'prompt';
 
 /** Every field a node is handed over with. A key added to a node and not named here fails the typecheck. */
 export const FIELD_RULES: { readonly [K in FieldKey]: FieldRule } = {
-  kind: 'identity',
+  // The node view's copy of the entry's `type`.
+  kind: 'other',
   name: 'identity',
   sourceNodeId: 'identity',
   // A picture's or a clip's address; a sticky's words; on a text node, words

@@ -145,7 +145,7 @@ describe('a slim entry', () => {
       undefined,
     );
 
-    expect(slim).toEqual({ id: 'n1', type: 'image', parentId: 'g1', data: { kind: 'image', name: 'Shot', content: URL, prompt: 'a boat' } });
+    expect(slim).toEqual({ id: 'n1', type: 'image', parentId: 'g1', data: { name: 'Shot', content: URL, prompt: 'a boat' } });
   });
 
   it('reads a content field by the node kind: an address on a picture, words on a sticky, nothing on a text node', () => {
@@ -157,7 +157,7 @@ describe('a slim entry', () => {
       id: 'n1',
       type: 'text',
       parentId: 'g1',
-      data: { kind: 'text', name: 'Shot', body: 'new words' },
+      data: { name: 'Shot', body: 'new words' },
     });
   });
 
