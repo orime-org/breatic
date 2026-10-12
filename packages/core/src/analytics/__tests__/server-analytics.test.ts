@@ -6,6 +6,7 @@ import {
   type AnalyticsClient,
   initServerAnalytics,
   resetServerAnalyticsForTest,
+  serverAnalyticsWanted,
   trackServerEvent,
 } from "@core/analytics/server-analytics.js";
 import { runWithConsent } from "@core/analytics/consent-context.js";
@@ -81,6 +82,13 @@ describe("trackServerEvent", () => {
     });
     trackServerEvent("login_completed", { userId: "u-12345", insertId: "login:2", properties: {} });
     expect(client.sent).toHaveLength(1);
+  });
+
+  it("says whether an event would leave", () => {
+    expect(serverAnalyticsWanted({ analytics: true, ads: true })).toBe(false);
+    initServerAnalytics({ apiKey: KEY, createClient: () => fakeClient() });
+    expect(serverAnalyticsWanted({ analytics: true, ads: false })).toBe(true);
+    expect(serverAnalyticsWanted({ analytics: false, ads: true })).toBe(false);
   });
 
   it("drops an event Amplitude would reject for a short user id", () => {

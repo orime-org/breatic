@@ -28,7 +28,7 @@ import { saveToStorageFor } from "@server/agent/save-to-storage.js";
 import { turnToolsContext } from "@server/agent/turn-tools-context.js";
 import { buildTurnContext } from "@server/agent/turn-context.js";
 import { watchModelCalls, type ModelCallWatch } from "@server/agent/model-call-watch.js";
-import type { ChatAttachedChip, ChatSpaceContext, MessagePart, ToolFailure } from "@breatic/shared";
+import type { ChatAttachedChip, ChatSpaceContext, ConsentSnapshot, MessagePart, ToolFailure } from "@breatic/shared";
 import { wireLineOf, wordsForTitle } from "@breatic/shared";
 import { userTurnForModel } from "@server/agent/user-turn.js";
 import * as messageRepo from "@server/modules/conversation/conversation-message.repo.js";
@@ -36,7 +36,7 @@ import { toStoredParts } from "@server/modules/conversation/message-part-mapping
 import * as conversationService from "@server/modules/conversation/conversation.service.js";
 import { foldIfOverBudget } from "@server/agent/turn-budget.js";
 import type { Assembly } from "@server/agent/turn-budget.js";
-import { getContext } from "@breatic/core";
+import { currentConsent, getContext, serverAnalyticsWanted, trackServerEvent } from "@breatic/core";
 import { logger } from "@breatic/core";
 import { toModelMessages } from "@server/agent/model-messages.js";
 import { endingOf, endingWithNothingRun } from "@server/agent/tool-ending.js";
@@ -194,6 +194,10 @@ export class MainAgent {
   ): ReadableStream<UIMessageChunk> {
     const { userId, conversationId, projectId } = this.ctx;
     const agentCfg = getAgentConfig();
+    // The asking browser's choice, held for the end of the turn, which can
+    // run after the request that started it has returned.
+    const consent = currentConsent();
+    let turnStudioId = "";
 
     // What the turn ended up running on, for the charge at the end. Settled
     // inside `execute`, which is where the config is assembled.
@@ -373,6 +377,7 @@ export class MainAgent {
       // The studio whose material a proposal may name: the project's owner,
       // which is also where a saved picture is charged.
       const studioId = await assetService.resolveOwnerStudioId(projectId);
+      turnStudioId = studioId;
       const watch = watchModelCalls(usage, { model: agentConfig.modelId, description: "Agent chat" });
       calls = watch;
 
@@ -678,6 +683,12 @@ export class MainAgent {
           );
         }
 
+        if (exit === "completed") {
+          await this.reportFirstFinishedTurn({ consent, turnIndex, studioId: turnStudioId }).catch((err: unknown) =>
+            logger.warn({ err, userId, conversationId }, "first_agent_action_report_failed"),
+          );
+        }
+
         logger.info(
           {
             userId,
@@ -694,6 +705,33 @@ export class MainAgent {
         );
       },
     });
+  }
+
+  /**
+   * Send `first_agent_action_completed` when this is the account's first
+   * finished turn (inner#1442 design §4.8).
+   * @param turn - The finished turn.
+   * @param turn.consent - The asking browser's choice.
+   * @param turn.turnIndex - Its number, left out of the history check.
+   * @param turn.studioId - The project's owning studio.
+   */
+  private async reportFirstFinishedTurn(turn: {
+    consent: ConsentSnapshot;
+    turnIndex: number;
+    studioId: string;
+  }): Promise<void> {
+    const { userId, conversationId, projectId } = this.ctx;
+    if (!serverAnalyticsWanted(turn.consent)) return;
+    if (await messageRepo.hasFinishedTurnBefore(userId, { conversationId, turnIndex: turn.turnIndex })) return;
+    trackServerEvent(
+      "first_agent_action_completed",
+      {
+        userId,
+        insertId: `first-agent:${userId}`,
+        properties: { studio_id: turn.studioId || undefined, project_id: projectId },
+      },
+      turn.consent,
+    );
   }
 
   /**

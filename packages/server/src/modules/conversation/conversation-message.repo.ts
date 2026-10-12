@@ -19,7 +19,7 @@
  * progress rather than hand out a number, and they do filter.
  */
 
-import { and, asc, desc, eq, inArray, isNull, lt, gt, max } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, lt, gt, max, not, or, sql, type SQL } from "drizzle-orm";
 import {
   db,
   conversations,
@@ -333,4 +333,48 @@ export async function cascadeDeleteMessages(
         isNull(conversationMessages.deletedAt),
       ),
     );
+}
+
+/**
+ * A condition matching stored messages that carry a part of the given type.
+ * @param type - The part type
+ * @returns The SQL condition
+ */
+function carriesPart(type: string): SQL {
+  return sql`${conversationMessages.parts} @> ${JSON.stringify([{ type }])}::jsonb`;
+}
+
+/**
+ * Whether the account has an Agent turn that finished, other than the one
+ * named: a stored reply carrying none of the marks a stopped, failed or
+ * blocked turn leaves (`failed`, `interrupted`, `blocked`). Deleted
+ * conversations count — the question is whether it ever happened.
+ * @param userId - The account
+ * @param except - The turn just stored, left out of the question
+ * @param except.conversationId - Its conversation
+ * @param except.turnIndex - Its turn number
+ * @returns True when such a turn exists
+ */
+export async function hasFinishedTurnBefore(
+  userId: string,
+  except: { conversationId: string; turnIndex: number },
+): Promise<boolean> {
+  const rows = await db
+    .select({ id: conversationMessages.id })
+    .from(conversationMessages)
+    .where(
+      and(
+        eq(conversationMessages.userId, userId),
+        eq(conversationMessages.role, "assistant"),
+        not(
+          and(
+            eq(conversationMessages.conversationId, except.conversationId),
+            eq(conversationMessages.turnIndex, except.turnIndex),
+          )!,
+        ),
+        not(or(carriesPart("failed"), carriesPart("interrupted"), carriesPart("blocked"))!),
+      ),
+    )
+    .limit(1);
+  return rows.length > 0;
 }

@@ -317,6 +317,22 @@ export async function countLiveProjectsInStudio(
 }
 
 /**
+ * Whether the account has ever created a project, counting deleted and
+ * archived ones: a first project is a one-time milestone (inner#1442 §4.8).
+ * @param userId - The account
+ * @param tx - The enclosing transaction
+ * @returns True when a project created by this account exists
+ */
+export async function hasCreatedProject(userId: string, tx?: DbTx): Promise<boolean> {
+  const rows = await (tx ?? db)
+    .select({ id: projects.id })
+    .from(projects)
+    .where(eq(projects.createdByUserId, userId))
+    .limit(1);
+  return rows.length > 0;
+}
+
+/**
  * Load one active project by id.
  * Takes an optional transaction handle; a caller inside a transaction MUST pass
  * it, or the read reaches for a second pooled connection while the first is

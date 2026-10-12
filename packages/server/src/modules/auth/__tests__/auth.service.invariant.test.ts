@@ -137,7 +137,9 @@ describe("auth.service invariant — BCRYPT_ROUNDS = 12 (锁现状回归)", () =
     await register("noname@example.com", "validPassword123");
 
     expect(captured).toBeDefined();
-    expect(Object.keys(captured!).sort()).toEqual(["email", "hashedPassword", "locale"]);
+    // `attribution` is the campaign source (inner#1442), null without consent.
+    expect(Object.keys(captured!).sort()).toEqual(["attribution", "email", "hashedPassword", "locale"]);
+    expect(captured!.attribution).toBeNull();
     expect(captured).not.toHaveProperty("username");
   });
 
@@ -379,7 +381,12 @@ describe('Google identity session success boundaries', () => {
     vi.mocked(repo.createUser).mockResolvedValue({ id: 'new', email: 'new@example.com', googleId: 'subject', emailVerified: false } as never);
     const { loginOrCreateGoogle } = await import('../auth.service.js');
     const result = await loginOrCreateGoogle('subject', 'new@example.com', false);
-    expect(repo.createUser).toHaveBeenCalledWith({ email: 'new@example.com', googleId: 'subject', locale: 'en' });
+    expect(repo.createUser).toHaveBeenCalledWith({
+      email: 'new@example.com',
+      googleId: 'subject',
+      locale: 'en',
+      attribution: null,
+    });
     expect(repo.updateUser).not.toHaveBeenCalled();
     expect(result.user.emailVerified).toBe(false);
   });

@@ -122,7 +122,7 @@ describe("POST /auth/google", () => {
     });
     expect(response.status).toBe(200);
     expect(verifyIdTokenMock).toHaveBeenCalledWith({ idToken: 'signed-token', audience: 'test-client.apps.googleusercontent.com' });
-    expect(mocks.authService.loginOrCreateGoogle).toHaveBeenLastCalledWith('subject', email, authority);
+    expect(mocks.authService.loginOrCreateGoogle).toHaveBeenLastCalledWith('subject', email, authority, null);
   });
 
   it('normalizes the token email before judging Gmail authority', async () => {
@@ -132,7 +132,7 @@ describe("POST /auth/google", () => {
       body: JSON.stringify({ credential: 'signed-token' }),
     });
     expect(response.status).toBe(200);
-    expect(mocks.authService.loginOrCreateGoogle).toHaveBeenLastCalledWith('subject', 'owner@gmail.com', true);
+    expect(mocks.authService.loginOrCreateGoogle).toHaveBeenLastCalledWith('subject', 'owner@gmail.com', true, null);
   });
 
   /** Sign in successfully and return the parsed user object. */

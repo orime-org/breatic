@@ -38,6 +38,7 @@ import {
   logger,
   subscriptionClock,
   subscriptionSituation,
+  trackServerEvent,
 } from "@breatic/core";
 import type {
   SituationReading,
@@ -740,6 +741,15 @@ export async function cancel(userId: string): Promise<Stripe.Subscription> {
     subscription: updated,
     observedAt: askedAt,
     referenceId: `action:cancel:${record.stripeSubscriptionId}`,
+  });
+  const periodEnd = updated.items.data[0]?.current_period_end;
+  trackServerEvent("subscription_cancelled", {
+    userId,
+    insertId: `cancel:${record.stripeSubscriptionId}:${askedAt.toISOString()}`,
+    properties: {
+      tier: record.tier,
+      ends_at: periodEnd ? new Date(periodEnd * 1000).toISOString() : undefined,
+    },
   });
   return updated;
 }

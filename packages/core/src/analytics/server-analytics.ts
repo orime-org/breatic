@@ -85,6 +85,16 @@ export function initServerAnalytics(options: {
 }
 
 /**
+ * Whether an event would leave right now; lets a caller skip a lookup that
+ * only feeds event properties.
+ * @param consent - The choice to check; defaults to the current request's.
+ * @returns True when analytics is configured and the choice accepts it.
+ */
+export function serverAnalyticsWanted(consent: ConsentSnapshot = currentConsent()): boolean {
+  return client !== null && consent.analytics;
+}
+
+/**
  * Send one product analytics event from the backend.
  * @param name - The event.
  * @param event - Who it is about and how to deduplicate it.
@@ -99,7 +109,7 @@ export function trackServerEvent(
   event: { userId: string; insertId: string; properties: Record<string, unknown> },
   consent: ConsentSnapshot = currentConsent(),
 ): void {
-  if (client === null || !consent.analytics) return;
+  if (client === null || !serverAnalyticsWanted(consent)) return;
   if (event.userId.length < MIN_USER_ID_LENGTH) return;
   const properties = sanitizeEventProperties(name, event.properties);
   if (properties === null) return;

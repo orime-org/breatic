@@ -27,6 +27,7 @@ vi.mock("@server/infra/stripe.js", () => ({
 }));
 
 vi.mock("@breatic/core", () => ({
+  trackServerEvent: vi.fn(),
   listSubscriptions: vi.fn(),
   upsertSubscription: vi.fn(),
   subscriptionSituation: vi.fn(),

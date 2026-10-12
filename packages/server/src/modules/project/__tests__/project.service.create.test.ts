@@ -39,6 +39,7 @@ vi.mock("ai", () => ({
 vi.mock("@server/modules/project/project.repo.js", () => ({
   createProject: vi.fn(),
   countLiveProjectsInStudio: vi.fn(async () => 0),
+  hasCreatedProject: vi.fn(async () => false),
 }));
 
 // The gate takes the studio's row before counting it. That row lock is the

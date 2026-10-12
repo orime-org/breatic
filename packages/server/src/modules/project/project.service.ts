@@ -22,7 +22,7 @@ import * as studioRepo from "@server/modules/studio/studio.repo.js";
 import { projectAuthService } from "@breatic/core";
 import * as studioService from "@server/modules/studio/studio.service.js";
 import { studioAuthService } from "@breatic/domain";
-import { db, getLimitsForStudio, projectEditsRepo } from "@breatic/core";
+import { db, getLimitsForStudio, projectEditsRepo, trackServerEvent } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 import { t } from "@breatic/shared";
 import { NotFoundError, ForbiddenError, ConflictError } from "@breatic/core";
@@ -118,9 +118,10 @@ export async function create(
 ): Promise<ProjectEntity> {
   await requireStudioCreateAccess(userId, studioId);
 
-  return db.transaction(async (tx) => {
+  const { project, isFirst } = await db.transaction(async (tx) => {
     await assertStudioHasProjectRoom(studioId, tx);
-    return projectRepo.createProject(
+    const isFirst = !(await projectRepo.hasCreatedProject(userId, tx));
+    const created = await projectRepo.createProject(
       tx,
       studioId,
       userId,
@@ -129,6 +130,22 @@ export async function create(
       spaceType,
       description,
     );
+    return { project: created, isFirst };
+  });
+  reportProjectCreated(project, { via: "create", is_first: isFirst, space_type: spaceType });
+  return project;
+}
+
+/**
+ * Send `project_created` once the project row is committed.
+ * @param project - The new project
+ * @param properties - How it came about: `via`, `is_first`, and the Space type when known
+ */
+function reportProjectCreated(project: ProjectEntity, properties: Record<string, unknown>): void {
+  trackServerEvent("project_created", {
+    userId: project.createdByUserId,
+    insertId: `project:${project.id}`,
+    properties: { ...properties, studio_id: project.studioId, project_id: project.id },
   });
 }
 
@@ -543,14 +560,18 @@ export async function duplicate(
 ): Promise<ProjectEntity> {
   await assertMayManage(sourceId, userId);
 
-  return db.transaction(async (tx) => {
+  const { project, isFirst } = await db.transaction(async (tx) => {
     // Read first, because the studio to lock is the SOURCE's — a copy lands
     // beside the thing it was copied from and counts against that studio.
     const source = await projectRepo.getProjectById(sourceId, tx);
     if (!source) throw new NotFoundError(t("server.error.not_found"));
     await assertStudioHasProjectRoom(source.studioId, tx);
-    return projectRepo.duplicateProject(tx, userId, source, copyName(source.name));
+    const isFirst = !(await projectRepo.hasCreatedProject(userId, tx));
+    const copy = await projectRepo.duplicateProject(tx, userId, source, copyName(source.name));
+    return { project: copy, isFirst };
   });
+  reportProjectCreated(project, { via: "duplicate", is_first: isFirst });
+  return project;
 }
 
 /**

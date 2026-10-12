@@ -218,6 +218,7 @@ export {
   flushServerAnalytics,
   initServerAnalytics,
   resetServerAnalyticsForTest,
+  serverAnalyticsWanted,
   trackServerEvent,
   type AnalyticsClient,
   type OutgoingEvent,

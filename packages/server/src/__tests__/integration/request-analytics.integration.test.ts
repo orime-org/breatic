@@ -1,0 +1,187 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+
+/**
+ * Product events sent from request paths (inner#1442 design §4.8) — real PG +
+ * Redis. Each follows the consent in scope, carries the documented dedupe id,
+ * and is sent only after its write committed.
+ */
+
+import { describe, it, expect, beforeAll, afterAll, afterEach, inject, vi } from "vitest";
+
+vi.mock("ai", () => ({
+  generateText: async () => ({ text: "", steps: [], usage: { totalTokens: 0 } }),
+  streamText: () => ({
+    fullStream: (async function* () {})(),
+    text: Promise.resolve(""),
+    usage: Promise.resolve({ totalTokens: 0 }),
+  }),
+  stepCountIs: (_n: number) => () => false,
+  tool: (config: Record<string, unknown>) => config,
+}));
+vi.mock("@server/utils/send-best-effort-mail.js", () => ({
+  sendBestEffortMail: async (): Promise<void> => undefined,
+}));
+
+import crypto from "node:crypto";
+import postgres from "postgres";
+import {
+  initCore,
+  initServerAnalytics,
+  loadLocales,
+  resetServerAnalyticsForTest,
+  runWithConsent,
+  type OutgoingEvent,
+} from "@breatic/core";
+import type { ConsentSnapshot } from "@breatic/shared";
+
+try {
+  initCore(process.env);
+} catch {
+  // already initialised by a sibling suite in this worker — fine.
+}
+loadLocales();
+
+const { projectService, recentService, studioService } = await import("@server/modules");
+const inviteService = await import("@server/modules/project-invite/projectInvite.service.js");
+const messageRepo = await import("@server/modules/conversation/conversation-message.repo.js");
+
+let sql: ReturnType<typeof postgres>;
+const sent: OutgoingEvent[] = [];
+const ACCEPT: ConsentSnapshot = { analytics: true, ads: false };
+
+beforeAll(() => {
+  sql = postgres(inject("DATABASE_URL"), { max: 2, prepare: false });
+  initServerAnalytics({
+    apiKey: "0123456789abcdef0123456789abcdef",
+    createClient: () => ({ track: (event) => void sent.push(event), flush: async () => undefined }),
+  });
+});
+
+afterEach(() => {
+  sent.splice(0);
+});
+
+afterAll(async () => {
+  resetServerAnalyticsForTest();
+  await sql?.end({ timeout: 5 });
+});
+
+/**
+ * An account with its personal studio, on a tier with room for projects.
+ * @returns The account id, email and studio id.
+ */
+async function member(): Promise<{ id: string; email: string; studioId: string }> {
+  const email = `request-analytics-${crypto.randomUUID()}@example.test`;
+  const [row] = await sql<{ id: string }[]>`
+    INSERT INTO users (email, membership_tier) VALUES (${email}, 'pro') RETURNING id
+  `;
+  const studio = await studioService.createPersonalStudio(row!.id, `ra-${crypto.randomUUID().slice(0, 12)}`);
+  return { id: row!.id, email, studioId: studio.id };
+}
+
+/**
+ * Events of one type, as name and properties.
+ * @param type - The event name.
+ * @returns What was sent.
+ */
+function eventsOf(type: string): OutgoingEvent[] {
+  return sent.filter((e) => e.event_type === type);
+}
+
+describe("project_created", () => {
+  it("marks only the account's first project, and counts a copy", async () => {
+    const me = await member();
+    const first = await runWithConsent(ACCEPT, () =>
+      projectService.create(me.id, me.studioId, "One", "one", "canvas"),
+    );
+    const second = await runWithConsent(ACCEPT, () =>
+      projectService.create(me.id, me.studioId, "Two", "two", "canvas"),
+    );
+    const copy = await runWithConsent(ACCEPT, () => projectService.duplicate(first.id, me.id));
+
+    expect(eventsOf("project_created").map((e) => [e.insert_id, e.event_properties])).toEqual([
+      [`project:${first.id}`, { studio_id: me.studioId, project_id: first.id, space_type: "canvas", via: "create", is_first: true }],
+      [`project:${second.id}`, { studio_id: me.studioId, project_id: second.id, space_type: "canvas", via: "create", is_first: false }],
+      [`project:${copy.id}`, { studio_id: me.studioId, project_id: copy.id, via: "duplicate", is_first: false }],
+    ]);
+  });
+
+  it("sends nothing without consent", async () => {
+    const me = await member();
+    await projectService.create(me.id, me.studioId, "Quiet", "quiet", "canvas");
+    expect(sent).toEqual([]);
+  });
+
+  it("sends nothing when the create fails", async () => {
+    const me = await member();
+    const stranger = await member();
+    await expect(
+      runWithConsent(ACCEPT, () => projectService.create(stranger.id, me.studioId, "No", "no", "canvas")),
+    ).rejects.toThrow();
+    expect(sent).toEqual([]);
+  });
+});
+
+describe("project invitations", () => {
+  it("reports the invite from the inviter and the acceptance from the invitee", async () => {
+    const owner = await member();
+    const invitee = await member();
+    const project = await projectService.create(owner.id, owner.studioId, "Shared", "shared", "canvas");
+
+    const { invitationId } = await runWithConsent(ACCEPT, () =>
+      inviteService.createInvite(project.id, owner.id, invitee.email, "editor"),
+    );
+    await runWithConsent(ACCEPT, () => inviteService.confirmInvite(invitationId, invitee.id));
+
+    const props = { studio_id: owner.studioId, project_id: project.id, scope: "project", role: "editor" };
+    expect(eventsOf("member_invited")).toEqual([
+      expect.objectContaining({ user_id: owner.id, insert_id: `invite:${invitationId}`, event_properties: props }),
+    ]);
+    expect(eventsOf("invitation_accepted")).toEqual([
+      expect.objectContaining({ user_id: invitee.id, insert_id: `invite-accepted:${invitationId}`, event_properties: props }),
+    ]);
+  });
+});
+
+describe("active_project_session", () => {
+  it("dedupes opens of one project to one per UTC day", async () => {
+    const me = await member();
+    const project = await projectService.create(me.id, me.studioId, "Open", "open", "canvas");
+    await runWithConsent(ACCEPT, async () => {
+      await recentService.recordOpen(project.id, me.id);
+      await recentService.recordOpen(project.id, me.id);
+    });
+    const day = new Date().toISOString().slice(0, 10);
+    const sessions = eventsOf("active_project_session");
+    expect(sessions).toHaveLength(2);
+    expect(new Set(sessions.map((e) => e.insert_id))).toEqual(new Set([`session:${me.id}:${project.id}:${day}`]));
+    expect(sessions[0]!.event_properties).toEqual({ studio_id: me.studioId, project_id: project.id });
+  });
+});
+
+describe("hasFinishedTurnBefore", () => {
+  it("counts only replies without a stop, failure or block mark, deleted ones included", async () => {
+    const me = await member();
+    const [conv] = await sql<{ id: string }[]>`
+      INSERT INTO conversations (user_id, title) VALUES (${me.id}, 'chat') RETURNING id
+    `;
+    const reply = async (turn: number, parts: unknown[], deleted = false): Promise<void> => {
+      await sql`
+        INSERT INTO conversation_messages (conversation_id, user_id, role, turn_index, seq, parts, deleted_at)
+        VALUES (${conv!.id}, ${me.id}, 'assistant', ${turn}, 1, ${sql.json(parts as never)},
+                ${deleted ? new Date() : null})
+      `;
+    };
+    const current = { conversationId: conv!.id, turnIndex: 9 };
+
+    await reply(1, [{ type: "text", text: "x" }, { type: "failed" }]);
+    await reply(2, [{ type: "interrupted" }]);
+    await reply(3, [{ type: "blocked" }]);
+    await reply(9, [{ type: "text", text: "now" }]);
+    expect(await messageRepo.hasFinishedTurnBefore(me.id, current)).toBe(false);
+
+    await reply(4, [{ type: "text", text: "done" }], true);
+    expect(await messageRepo.hasFinishedTurnBefore(me.id, current)).toBe(true);
+  });
+});
