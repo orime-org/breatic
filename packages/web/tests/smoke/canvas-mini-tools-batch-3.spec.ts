@@ -210,6 +210,27 @@ test('a 2×2 grid cuts four tiles of the source into a group @needs-internet', a
   await expect(results()).toContainText(['GRID-r1c1-', 'GRID-r1c2-', 'GRID-r2c1-', 'GRID-r2c2-']);
 });
 
+// A13: the group and its tiles are on the canvas at the press, and the
+// uploader sees each tile wait until the server answers.
+test('a grid shows its group and waiting tiles before the tickets come back @needs-internet', async () => {
+  await openTool(page, imageNode, 'image.grid');
+  await stepSlider('mini-tool-param-rows-slider', 'ArrowLeft', 1);
+  await stepSlider('mini-tool-param-cols-slider', 'ArrowLeft', 1);
+  let release: () => void = () => undefined;
+  const held = new Promise<void>((resolve) => (release = resolve));
+  await page.route('**/assets/upload-ticket*', async (route) => {
+    await held;
+    await route.continue();
+  });
+  await page.getByTestId('mini-tool-run').click();
+  await expect(visibleSpace(page).getByTestId('group-node')).toHaveCount(1, { timeout: 5_000 });
+  await expect(results().getByTestId('node-upload-skeleton')).toHaveCount(4, { timeout: 5_000 });
+  release();
+  await page.unroute('**/assets/upload-ticket*');
+  await expect(results().getByTestId('node-upload-skeleton')).toHaveCount(0, { timeout: 30_000 });
+  await storedResults(4);
+});
+
 test('a grid tile whose upload failed uploads again on Retry @needs-internet', async () => {
   await openTool(page, imageNode, 'image.grid');
   await stepSlider('mini-tool-param-rows-slider', 'ArrowLeft', 1);
