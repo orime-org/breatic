@@ -175,8 +175,8 @@ describe('NewItemDialog (spec §3.12)', () => {
     // The label stays, so the button is still addressable by its name — which
     // is the reason the label stays.
     const button = screen.getByRole('button', { name: 'Create' });
-    expect(button).toBeDisabled();
-    expect(screen.getByTestId('new-project-pending')).toBeInTheDocument();
+    expect(button).toHaveAttribute('aria-busy', 'true');
+    expect(button).toHaveAttribute('aria-disabled', 'true');
     expect(screen.getByLabelText('Name')).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Cancel' })).not.toBeDisabled();
     expect(onOpenChange).not.toHaveBeenCalled();
@@ -185,6 +185,7 @@ describe('NewItemDialog (spec §3.12)', () => {
       settle();
     });
     expect(onOpenChange).toHaveBeenCalledWith(false);
+    expect(button).not.toHaveAttribute('aria-busy');
   });
 
   it('stays open with Create pressable again when the create is refused (#255)', async () => {
@@ -214,7 +215,7 @@ describe('NewItemDialog (spec §3.12)', () => {
     });
     expect(onOpenChange).not.toHaveBeenCalled();
     expect(screen.getByRole('button', { name: 'Create' })).not.toBeDisabled();
-    expect(screen.queryByTestId('new-project-pending')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Create' })).not.toHaveAttribute('aria-busy');
     // What was typed is still there to press again.
     expect(screen.getByLabelText('Name')).toHaveValue('Fresh');
   });
@@ -376,6 +377,30 @@ describe('NewStudioDialog (spec §3.12 + §5.7 — live slug availability)', () 
     renderStudio(<NewStudioDialog open onOpenChange={() => {}} />);
     expect(screen.getByLabelText('Name')).toBeDisabled();
     expect(screen.getByLabelText('Slug')).toBeDisabled();
+  });
+
+  it('marks Create busy while the create is out, and clears it once answered', () => {
+    const client = new QueryClient();
+    const tree = (): ReactElement => (
+      <QueryClientProvider client={client}>
+        <NewStudioDialog open onOpenChange={() => {}} />
+      </QueryClientProvider>
+    );
+    vi.mocked(useCreateStudio).mockReturnValue({
+      mutate: mockMutate,
+      isPending: true,
+    } as unknown as ReturnType<typeof useCreateStudio>);
+    const { rerender } = render(tree());
+    const create = screen.getByRole('button', { name: 'Create' });
+    expect(create).toHaveAttribute('aria-busy', 'true');
+    expect(create).toHaveAttribute('aria-disabled', 'true');
+
+    vi.mocked(useCreateStudio).mockReturnValue({
+      mutate: mockMutate,
+      isPending: false,
+    } as unknown as ReturnType<typeof useCreateStudio>);
+    rerender(tree());
+    expect(create).not.toHaveAttribute('aria-busy');
   });
 
   it('keeps a 409 that is not about the slug as a form error', async () => {

@@ -20,7 +20,10 @@ interface ArchiveProjectDialogProps {
   onOpenChange: (open: boolean) => void;
   /** The project's name, quoted in the question. */
   name: string;
+  /** Called when the archive is confirmed; the dialog stays open, the caller closes it on success. */
   onConfirm: () => void;
+  /** True while the archive request is in flight. */
+  pending: boolean;
 }
 
 /**
@@ -31,6 +34,7 @@ interface ArchiveProjectDialogProps {
  * @param props.onOpenChange - Called when the dialog asks to open or close.
  * @param props.name - The project's name.
  * @param props.onConfirm - Called when the archive is confirmed.
+ * @param props.pending - Whether the archive request is in flight.
  * @returns The confirmation dialog.
  */
 export function ArchiveProjectDialog({
@@ -38,6 +42,7 @@ export function ArchiveProjectDialog({
   onOpenChange,
   name,
   onConfirm,
+  pending,
 }: ArchiveProjectDialogProps): React.JSX.Element {
   const t = useTranslation();
   return (
@@ -49,7 +54,17 @@ export function ArchiveProjectDialog({
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel>{t('studio.container.card.cancel')}</AlertDialogCancel>
-          <AlertDialogAction onClick={onConfirm}>{t('studio.container.card.archive')}</AlertDialogAction>
+          <AlertDialogAction
+            loading={pending}
+            onClick={(event) => {
+              // Stay open while the archive is out; a failure toasts and
+              // leaves this to press again.
+              event.preventDefault();
+              onConfirm();
+            }}
+          >
+            {t('studio.container.card.archive')}
+          </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>

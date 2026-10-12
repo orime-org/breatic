@@ -215,7 +215,8 @@ describe('ProjectCard', () => {
     await user.type(field, '  Renamed  ');
     await user.click(screen.getByRole('button', { name: 'Save' }));
     expect(projectsApi.rename).toHaveBeenCalledWith('id-1', 'Renamed');
-    expect(screen.queryByTestId('rename-project-dialog')).toBeNull();
+    // The dialog waits for the server and closes once the rename lands.
+    await waitFor(() => expect(screen.queryByTestId('rename-project-dialog')).toBeNull());
   });
 
   it('duplicates straight from the menu', async () => {
@@ -324,5 +325,107 @@ describe('ProjectCard — picking a cover (inner#1367 A4)', () => {
 
     await waitFor(() => expect(screen.getByTestId('image-crop-dialog')).toBeInTheDocument());
     expect(toast.warning).not.toHaveBeenCalled();
+  });
+});
+
+describe('ProjectCard — confirmations that wait for the server (inner#1374)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  /**
+   * A request whose answer the case decides.
+   * @param value - What it resolves to when it succeeds.
+   * @param succeeds - Whether it resolves or rejects.
+   * @returns The pending promise and the function that settles it.
+   */
+  function held<T>(value: T, succeeds: boolean): { promise: Promise<T>; settle: () => void } {
+    let settle: () => void = () => {};
+    const promise = new Promise<T>((resolve, reject) => {
+      settle = succeeds ? () => resolve(value) : () => reject(new Error('nope'));
+    });
+    return { promise, settle };
+  }
+
+  it.each([
+    ['closes once it lands', true],
+    ['stays open with Save pressable again when it fails', false],
+  ])('keeps the rename dialog open with a busy Save while the rename is out, and %s', async (_label, succeeds) => {
+    const request = held({ name: 'Renamed' } as Awaited<ReturnType<typeof projectsApi.rename>>, succeeds);
+    vi.mocked(projectsApi.rename).mockReturnValueOnce(request.promise);
+    const user = userEvent.setup();
+    setup();
+    await user.click(screen.getByRole('button', { name: 'More actions' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Rename' }));
+    const field = await screen.findByLabelText('Name');
+    await user.clear(field);
+    await user.type(field, 'Renamed');
+    const save = screen.getByRole('button', { name: 'Save' });
+    await user.click(save);
+
+    await waitFor(() => expect(save).toHaveAttribute('aria-busy', 'true'));
+    expect(save).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getByTestId('rename-project-dialog')).toBeInTheDocument();
+
+    request.settle();
+    if (succeeds) {
+      await waitFor(() => expect(screen.queryByTestId('rename-project-dialog')).toBeNull());
+    } else {
+      await waitFor(() => expect(save).not.toHaveAttribute('aria-busy'));
+      expect(screen.getByTestId('rename-project-dialog')).toBeInTheDocument();
+    }
+  });
+
+  it.each([
+    ['closes once it lands', true],
+    ['stays open with Archive pressable again when it fails', false],
+  ])('keeps the archive confirmation open with a busy Archive while the archive is out, and %s', async (_label, succeeds) => {
+    const request = held({ ok: true } as Awaited<ReturnType<typeof projectsApi.archive>>, succeeds);
+    vi.mocked(projectsApi.archive).mockReturnValueOnce(request.promise);
+    const user = userEvent.setup();
+    setup({ ...project, ...AS_STUDIO_ADMIN });
+    await user.click(screen.getByRole('button', { name: 'More actions' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Archive' }));
+    await screen.findByTestId('archive-project-dialog');
+    const confirm = screen.getByRole('button', { name: 'Archive' });
+    await user.click(confirm);
+
+    await waitFor(() => expect(confirm).toHaveAttribute('aria-busy', 'true'));
+    expect(confirm).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getByTestId('archive-project-dialog')).toBeInTheDocument();
+
+    request.settle();
+    if (succeeds) {
+      await waitFor(() => expect(screen.queryByTestId('archive-project-dialog')).toBeNull());
+    } else {
+      await waitFor(() => expect(confirm).not.toHaveAttribute('aria-busy'));
+      expect(screen.getByTestId('archive-project-dialog')).toBeInTheDocument();
+    }
+  });
+
+  it.each([
+    ['closes once it lands', true],
+    ['stays open with Leave pressable again when it fails', false],
+  ])('keeps the leave confirmation open with a busy Leave while the leave is out, and %s', async (_label, succeeds) => {
+    const request = held({ ok: true } as Awaited<ReturnType<typeof projectsApi.leave>>, succeeds);
+    vi.mocked(projectsApi.leave).mockReturnValueOnce(request.promise);
+    const user = userEvent.setup();
+    setup({ ...project, myRole: 'editor', ...AS_EDITOR });
+    await user.click(screen.getByRole('button', { name: 'More actions' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Leave project' }));
+    const confirm = await screen.findByRole('button', { name: 'Leave' });
+    await user.click(confirm);
+
+    await waitFor(() => expect(confirm).toHaveAttribute('aria-busy', 'true'));
+    expect(confirm).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getByTestId('leave-project-dialog')).toBeInTheDocument();
+
+    request.settle();
+    if (succeeds) {
+      await waitFor(() => expect(screen.queryByTestId('leave-project-dialog')).toBeNull());
+    } else {
+      await waitFor(() => expect(confirm).not.toHaveAttribute('aria-busy'));
+      expect(screen.getByTestId('leave-project-dialog')).toBeInTheDocument();
+    }
   });
 });

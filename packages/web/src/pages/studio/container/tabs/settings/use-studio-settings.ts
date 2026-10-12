@@ -47,7 +47,8 @@ export interface StudioSettingsActions {
    */
   save: (patch: UpdateStudioInput, slugFieldShown?: () => boolean) => void;
   uploadAvatar: (image: Blob) => void;
-  removeAvatar: () => void;
+  /** Clear the avatar; `onSuccess` runs once it is gone (the confirmation closes there). */
+  removeAvatar: (options?: { onSuccess?: () => void }) => void;
   leave: () => void;
   /** Drop a stale avatar failure — the picker closing means it is done with. */
   clearAvatarError: () => void;
@@ -65,6 +66,7 @@ export interface StudioSettingsActions {
    */
   renaming: boolean;
   uploadingAvatar: boolean;
+  removingAvatar: boolean;
   leaving: boolean;
   /** The last avatar upload failure, kept so the crop dialog can show it. */
   avatarError: string | null;
@@ -248,7 +250,8 @@ export function useStudioSettings(
     [mutateAvatar],
   );
   const removeAvatar = React.useCallback(
-    (): void => mutateRemoveAvatar(),
+    (options?: { onSuccess?: () => void }): void =>
+      mutateRemoveAvatar(undefined, options),
     [mutateRemoveAvatar],
   );
   const leave = React.useCallback((): void => mutateLeave(), [mutateLeave]);
@@ -275,6 +278,7 @@ export function useStudioSettings(
     renaming:
       updateMutation.isPending && updateMutation.variables?.patch.slug !== undefined,
     uploadingAvatar: avatarMutation.isPending,
+    removingAvatar: removeAvatarMutation.isPending,
     leaving: leaveMutation.isPending,
     avatarError,
   };

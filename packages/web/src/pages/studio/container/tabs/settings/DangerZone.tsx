@@ -148,7 +148,13 @@ export function DangerZone({
               {t('studio.container.dialog.cancel')}
             </AlertDialogCancel>
             <AlertDialogAction
-              onClick={onLeave}
+              loading={leaving}
+              onClick={(event) => {
+                // Stay open while the leave is out: success leaves the studio's
+                // pages, a failure toasts and leaves this to press again.
+                event.preventDefault();
+                onLeave();
+              }}
               data-testid='settings-leave-confirm'
             >
               {t('studio.container.settings.leave')}

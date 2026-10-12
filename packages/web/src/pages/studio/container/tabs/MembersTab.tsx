@@ -317,6 +317,10 @@ export function MembersTab({
                         revokeMutation.isPending &&
                         revokeMutation.variables === inv.invitationId
                       }
+                      loading={
+                        revokeMutation.isPending &&
+                        revokeMutation.variables === inv.invitationId
+                      }
                       onClick={() => revokeMutation.mutate(inv.invitationId)}
                     >
                       {t('studio.container.members.revoke')}
@@ -366,6 +370,7 @@ export function MembersTab({
             <AlertDialogAction
               variant='destructive'
               disabled={removeMutation.isPending}
+              loading={removeMutation.isPending}
               onClick={(event) => {
                 // Keep the dialog mounted until the mutation's onSuccess closes
                 // it, so a failure leaves it open with the toast error.

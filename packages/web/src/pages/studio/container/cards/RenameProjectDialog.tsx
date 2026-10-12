@@ -23,19 +23,22 @@ interface RenameProjectDialogProps {
   onOpenChange: (open: boolean) => void;
   /** The name the field starts from. */
   currentName: string;
-  /** Called with the trimmed new name; the dialog closes right after. */
-  onRename: (name: string) => void;
+  /** Called with the trimmed new name; `onSuccess` runs once the rename lands. */
+  onRename: (name: string, options: { onSuccess: () => void }) => void;
+  /** True while the rename request is in flight. */
+  pending: boolean;
 }
 
 /**
  * The card menu's rename dialog: one name field, Save and Cancel. Save stays
- * off while the field is blank or unchanged. The dialog closes on save; the
- * rename itself shows its result optimistically and toasts if it fails.
+ * off while the field is blank or unchanged. The dialog waits for the rename
+ * and closes once it lands; a failure toasts and leaves the dialog open.
  * @param props - Open state, the current name and the rename callback.
  * @param props.open - Whether the dialog is shown.
  * @param props.onOpenChange - Called when the dialog asks to open or close.
  * @param props.currentName - The name the field starts from.
  * @param props.onRename - Called with the trimmed new name.
+ * @param props.pending - Whether the rename request is in flight.
  * @returns The dialog.
  */
 export function RenameProjectDialog({
@@ -43,6 +46,7 @@ export function RenameProjectDialog({
   onOpenChange,
   currentName,
   onRename,
+  pending,
 }: RenameProjectDialogProps): React.JSX.Element {
   const t = useTranslation();
   const [name, setName] = React.useState(currentName);
@@ -59,8 +63,7 @@ export function RenameProjectDialog({
     (event: React.FormEvent<HTMLFormElement>): void => {
       event.preventDefault();
       if (!canSave) return;
-      onRename(next);
-      onOpenChange(false);
+      onRename(next, { onSuccess: () => onOpenChange(false) });
     },
     [canSave, next, onOpenChange, onRename],
   );
@@ -87,7 +90,7 @@ export function RenameProjectDialog({
             <Button type='button' variant='outline' onClick={() => onOpenChange(false)}>
               {t('studio.container.card.cancel')}
             </Button>
-            <Button type='submit' disabled={!canSave}>
+            <Button type='submit' disabled={!canSave} loading={pending}>
               {t('studio.container.card.save')}
             </Button>
           </DialogFooter>

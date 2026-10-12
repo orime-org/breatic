@@ -123,6 +123,7 @@ export function BasicInfoSection({
           <Button
             size='form'
             disabled={!canSubmit}
+            loading={saving}
             onClick={submit}
             data-testid='settings-save'
           >

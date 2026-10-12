@@ -60,9 +60,10 @@ const STUDIO: StudioDetail = {
 
 /**
  * Render the whole settings tab.
+ * @param studio - The studio shown (defaults to one without an avatar).
  * @returns The render result.
  */
-function renderTab(): ReturnType<typeof render> {
+function renderTab(studio: StudioDetail = STUDIO): ReturnType<typeof render> {
   const qc = new QueryClient({
     defaultOptions: {
       queries: { retry: false, gcTime: 0 },
@@ -71,7 +72,7 @@ function renderTab(): ReturnType<typeof render> {
   });
   return render(
     <QueryClientProvider client={qc}>
-      <SettingsTab studio={STUDIO} members={[]} />
+      <SettingsTab studio={studio} members={[]} />
     </QueryClientProvider>,
   );
 }
@@ -168,7 +169,8 @@ describe('SettingsTab — a save of one thing must not seize the other', () => {
     await waitFor(() => expect(studiosApi.update).toHaveBeenCalledTimes(1));
 
     const confirm = screen.getByTestId('settings-slug-confirm');
-    expect(confirm).toBeDisabled();
+    expect(confirm).toHaveAttribute('aria-busy', 'true');
+    expect(confirm).toHaveAttribute('aria-disabled', 'true');
     expect(confirm.querySelector('.animate-spin')).not.toBeNull();
 
     fireEvent.click(screen.getByTestId('settings-slug-cancel'));
@@ -220,5 +222,50 @@ describe('SettingsTab — picking an avatar (inner#1367 A4)', () => {
 
     await waitFor(() => expect(screen.getByTestId('image-crop-dialog')).toBeTruthy());
     expect(toast.warning).not.toHaveBeenCalled();
+  });
+});
+
+describe('SettingsTab — removing the avatar (inner#1374)', () => {
+  /**
+   * Open the remove confirmation on a studio that has an avatar and press its
+   * confirm button, with the request held open.
+   * @param succeeds - Whether the held request resolves or rejects.
+   * @returns The confirm button and the function that answers the request.
+   */
+  async function removeHeld(succeeds: boolean): Promise<{ confirm: HTMLElement; settle: () => void }> {
+    let settle: () => void = () => {};
+    vi.mocked(studiosApi.removeAvatar).mockReturnValue(
+      new Promise((resolve, reject) => {
+        settle = succeeds
+          ? () =>
+            resolve({ ...STUDIO, avatarUrl: null } as unknown as Awaited<
+              ReturnType<typeof studiosApi.removeAvatar>
+            >)
+          : () => reject(new Error('nope'));
+      }),
+    );
+    renderTab({ ...STUDIO, avatarUrl: 'https://cdn.example/a.webp' });
+    fireEvent.click(screen.getByTestId('avatar-remove-open'));
+    const confirm = await screen.findByTestId('avatar-remove-confirm');
+    fireEvent.click(confirm);
+    await waitFor(() => expect(confirm).toHaveAttribute('aria-busy', 'true'));
+    expect(confirm).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getByTestId('avatar-remove-dialog')).toBeInTheDocument();
+    return { confirm, settle };
+  }
+
+  it('keeps the confirmation open with a busy Remove until the avatar is gone, then closes it', async () => {
+    const { settle } = await removeHeld(true);
+    settle();
+    await waitFor(() =>
+      expect(screen.queryByTestId('avatar-remove-dialog')).toBeNull(),
+    );
+  });
+
+  it('keeps the confirmation open with Remove pressable again when the removal fails', async () => {
+    const { confirm, settle } = await removeHeld(false);
+    settle();
+    await waitFor(() => expect(confirm).not.toHaveAttribute('aria-busy'));
+    expect(screen.getByTestId('avatar-remove-dialog')).toBeInTheDocument();
   });
 });

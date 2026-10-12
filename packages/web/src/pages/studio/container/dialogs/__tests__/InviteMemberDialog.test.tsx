@@ -63,8 +63,8 @@ describe('InviteMemberDialog', () => {
     expect(alert).toHaveTextContent('That email is not registered.');
   });
 
-  it('disables the submit button while the invite is pending', () => {
-    render(
+  it('marks the submit button busy while the invite is pending, and clears it once answered', () => {
+    const { rerender } = render(
       <InviteMemberDialog
         open
         onOpenChange={vi.fn()}
@@ -73,6 +73,19 @@ describe('InviteMemberDialog', () => {
         error={null}
       />,
     );
-    expect(screen.getByRole('button', { name: 'Send invite' })).toBeDisabled();
+    const submit = screen.getByRole('button', { name: 'Send invite' });
+    expect(submit).toHaveAttribute('aria-busy', 'true');
+    expect(submit).toHaveAttribute('aria-disabled', 'true');
+
+    rerender(
+      <InviteMemberDialog
+        open
+        onOpenChange={vi.fn()}
+        onInvite={vi.fn()}
+        pending={false}
+        error='That email is not registered.'
+      />,
+    );
+    expect(submit).not.toHaveAttribute('aria-busy');
   });
 });

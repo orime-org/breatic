@@ -97,6 +97,27 @@ describe('BasicInfoSection — the submit gate', () => {
     fireEvent.click(screen.getByTestId('settings-save'));
     expect(onSave).toHaveBeenCalledWith({ name: 'Acme Inc' });
   });
+
+  it('marks Save busy while the save is out, and clears it once answered', () => {
+    const onSave = vi.fn();
+    const tree = (saving: boolean): React.JSX.Element => (
+      <BasicInfoSection studio={STUDIO} canEdit saving={saving} onSave={onSave} />
+    );
+    const { rerender } = render(tree(false));
+    fireEvent.change(screen.getByTestId('settings-name'), {
+      target: { value: 'Acme Inc' },
+    });
+    fireEvent.click(screen.getByTestId('settings-save'));
+
+    rerender(tree(true));
+    const save = screen.getByTestId('settings-save');
+    expect(save).toHaveAttribute('aria-busy', 'true');
+    expect(save).toHaveAttribute('aria-disabled', 'true');
+    expect(save).toHaveTextContent('studio.container.settings.saving');
+
+    rerender(tree(false));
+    expect(save).not.toHaveAttribute('aria-busy');
+  });
 });
 
 describe('BasicInfoSection — what is no longer here', () => {
