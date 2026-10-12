@@ -10,6 +10,14 @@ vi.mock('@web/data/upload/media-upload', async (importOriginal) => ({
 
 import { runMediaUploadBatch } from '@web/data/upload/media-upload';
 import { fillNodesFromFiles, type FillNodesDeps } from '@web/spaces/canvas/canvas-upload';
+import { useUploadMarksStore } from '@web/stores/upload-marks';
+
+/**
+ * A node's upload mark in the Space these tests fill.
+ * @param nodeId - The node.
+ * @returns Its mark.
+ */
+const markOf = (nodeId: string) => useUploadMarksStore.getState().markOf('s1', nodeId);
 
 const TAG = { source: 'mini_tool', toolName: 'image.grid' } as const;
 
@@ -59,16 +67,39 @@ describe('fillNodesFromFiles', () => {
     expect(vi.mocked(d.track).mock.calls.map(([nodeId]) => nodeId)).toEqual(tiles(64).map((t) => t.nodeId));
   });
 
-  it('hands a tile’s failure to the caller with its own file', () => {
+  // inner#1303 §6.7: each tile waits on its node until its own answer.
+  it('marks every tile waiting, and clears each on its own answer', () => {
+    vi.mocked(runMediaUploadBatch).mockClear();
+    useUploadMarksStore.setState({ marks: {} });
+    fillNodesFromFiles(tiles(2), 'p1', deps());
+    expect([markOf('node-0')?.state, markOf('node-1')?.state]).toEqual(['waiting', 'waiting']);
+    const [entries] = vi.mocked(runMediaUploadBatch).mock.calls[0]!;
+    entries[0]!.onAnswered!();
+    expect([markOf('node-0'), markOf('node-1')?.state]).toEqual([undefined, 'waiting']);
+  });
+
+  it('says a failure before the answer on the tile itself', () => {
+    vi.mocked(runMediaUploadBatch).mockClear();
+    useUploadMarksStore.setState({ marks: {} });
+    const d = deps();
+    fillNodesFromFiles(tiles(2), 'p1', d);
+    const [entries] = vi.mocked(runMediaUploadBatch).mock.calls[0]!;
+    entries[1]!.onFailure({ reason: 'storage' });
+    expect(markOf('node-1')).toMatchObject({ state: 'failed', message: { key: 'canvas.upload.storageFull' } });
+    expect(d.onUploadFailure).not.toHaveBeenCalled();
+  });
+
+  it('hands a failure after the answer to the caller with its own file', () => {
     vi.mocked(runMediaUploadBatch).mockClear();
     const d = deps();
     const files = tiles(2);
 
     fillNodesFromFiles(files, 'p1', d);
     const [entries] = vi.mocked(runMediaUploadBatch).mock.calls[0]!;
-    entries[1]!.onFailure({ reason: 'storage' });
+    entries[1]!.onAnswered!();
+    entries[1]!.onFailure({ reason: 'transfer', taskId: 'row-1' });
 
-    expect(d.onUploadFailure).toHaveBeenCalledWith({ reason: 'storage' }, files[1]!.file);
+    expect(d.onUploadFailure).toHaveBeenCalledWith({ reason: 'transfer', taskId: 'row-1' }, files[1]!.file);
   });
 
   it('leaves a locked node out and says so once', () => {
