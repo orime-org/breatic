@@ -85,16 +85,16 @@ index d52a5260a7b9924b2865053ea1e8c6484225277b..030b595daf42f6b3534c637051e81c1d
    while (node && offset == node.childNodes.length && !hasBlockDesc(node)) {
      offset = domIndex(node) + 1;
 diff --git a/dist/index.js b/dist/index.js
-index dc0d117b85e1da3eae915b4d8ff8e5e604683861..41746b8ef48450d0c70d6445389e0e55bebee998 100644
+index dc0d117b85e1da3eae915b4d8ff8e5e604683861..a49f58073f913e2019e5e180c8eee942ae9ed5ca 100644
 --- a/dist/index.js
 +++ b/dist/index.js
-@@ -301,25 +301,16 @@ function restoreScrollStack(stack, dTop) {
+@@ -301,25 +301,14 @@ function restoreScrollStack(stack, dTop) {
              dom.scrollLeft = left;
      }
  }
 -let preventScrollSupported = null;
- // Feature-detects support for .focus({preventScroll: true}), and uses
- // a fallback kludge when not supported.
+-// Feature-detects support for .focus({preventScroll: true}), and uses
+-// a fallback kludge when not supported.
  function focusPreventScroll(dom) {
      if (dom.setActive)
          return dom.setActive(); // in IE
@@ -118,7 +118,7 @@ index dc0d117b85e1da3eae915b4d8ff8e5e604683861..41746b8ef48450d0c70d6445389e0e55
  }
  function findOffsetInNode(node, coords) {
      let closest;
-@@ -846,11 +837,22 @@ class ViewDesc {
+@@ -846,11 +835,22 @@ class ViewDesc {
          // parameter, to determine whether to return the position at the
          // start or at the end of this view desc.
          let atEnd;
@@ -145,7 +145,7 @@ index dc0d117b85e1da3eae915b4d8ff8e5e604683861..41746b8ef48450d0c70d6445389e0e55
          }
          else if (this.dom.firstChild) {
              if (offset == 0)
-@@ -2551,7 +2553,7 @@ function skipIgnoredNodesBefore(view) {
+@@ -2551,7 +2551,7 @@ function skipIgnoredNodesBefore(view) {
                  break;
              }
          }
@@ -154,7 +154,7 @@ index dc0d117b85e1da3eae915b4d8ff8e5e604683861..41746b8ef48450d0c70d6445389e0e55
              break;
          }
          else {
-@@ -2600,7 +2602,7 @@ function skipIgnoredNodesAfter(view) {
+@@ -2600,7 +2600,7 @@ function skipIgnoredNodesAfter(view) {
                  break;
              }
          }
@@ -163,7 +163,7 @@ index dc0d117b85e1da3eae915b4d8ff8e5e604683861..41746b8ef48450d0c70d6445389e0e55
              break;
          }
          else {
-@@ -2630,6 +2632,17 @@ function isBlockNode(dom) {
+@@ -2630,6 +2630,17 @@ function isBlockNode(dom) {
      let desc = dom.pmViewDesc;
      return desc && desc.node && desc.node.isBlock;
  }
