@@ -3,9 +3,11 @@
 
 /**
  * Copying Stripe's refunds into `credit_refunds` (inner#1410 §6.4): every
- * read of a payment's refunds from Stripe is copied here, and the payment's
- * disposition waiting on Stripe, if any, is judged again in the same
- * transaction. `resolved_by_operation_id` is written by `transitionOperation`.
+ * read of a payment's refunds from Stripe is copied here, and in the same
+ * transaction the payment's disposition waiting on Stripe, if any, is judged
+ * again, and a refund_again in needs_attention whose own refund now holds
+ * succeeded answers for its failed refunds (§6.2). `resolved_by_operation_id`
+ * is written by `transitionOperation`.
  */
 
 import type { DbTx } from "@breatic/core";
@@ -48,6 +50,7 @@ export async function applyRefundSnapshot(
   if (lot === null) throw new Error(`payment ${paymentId} opened no credit lot`);
   const awaitingId = await operationRepo.findAwaiting(paymentId, tx);
   const awaiting = awaitingId === null ? null : await operationRepo.lockById(awaitingId, tx);
+  const inAttention = await operationRepo.lockRefundAgainInAttention(paymentId, tx);
 
   const named = refunds.map((r) => r.metadata?.refund_operation_id ?? "").filter((id) => UUID.test(id));
   const known = new Set(await operationRepo.existingIds(paymentId, named, tx));
@@ -68,6 +71,7 @@ export async function applyRefundSnapshot(
       tx,
     );
   }
+  await answerRefundAgainSucceededLater(tx, inAttention, actor);
   if (awaiting === null) return null;
   const event = await judgeAwaiting(tx, awaiting, refunds);
   if (event === null) return null;
@@ -76,19 +80,47 @@ export async function applyRefundSnapshot(
 }
 
 /**
+ * E2 for each refund_again in needs_attention whose own refund's copy holds
+ * succeeded while a failed refund it was for is still unanswered: the money
+ * went back after a person was asked.
+ * @param tx - The caller's transaction, after the copies were written.
+ * @param ops - The payment's refund_again dispositions in needs_attention.
+ * @param actor - Who read Stripe.
+ */
+async function answerRefundAgainSucceededLater(
+  tx: DbTx,
+  ops: readonly CreditRefundOperation[],
+  actor: Actor,
+): Promise<void> {
+  for (const op of ops) {
+    const own = await refundCopyRepo.findOwn(op.id, tx);
+    if (own?.status !== "succeeded") continue;
+    // Re-read per disposition: one answered just now leaves nothing for a second.
+    const copies = await refundCopyRepo.listForPayment(op.paymentId, tx);
+    const open = copies.some((c) => op.failedRefundIds.includes(c.stripeRefundId) && c.resolvedByOperationId === null);
+    if (!open) continue;
+    await transitionOperation(tx, { id: op.id }, { type: "E2", refund: own, actor });
+  }
+}
+
+/**
  * The §5.4 event for a disposition's own refund, read against the copies
  * already written in this transaction: approve and retry by the settle
  * rule, refund_again by its own refund alone.
  * @param tx - The caller's transaction.
  * @param op - The disposition.
- * @param own - Its refund, as Stripe reported it.
+ * @param read - Its refund, as Stripe reported it.
  * @returns The event.
  */
 export async function judgeOwnRefund(
   tx: DbTx,
   op: CreditRefundOperation,
-  own: StripeRefundObject,
+  read: StripeRefundObject,
 ): Promise<OperationEventBody> {
+  const copies = await refundCopyRepo.listForPayment(op.paymentId, tx);
+  // A read older than one already copied cannot take a refund out of
+  // failed or canceled (§6.4): the copy's status is the one judged.
+  const own = { ...read, status: copies.find((c) => c.stripeRefundId === read.id)?.status ?? read.status };
   if (op.kind === "refund_again") {
     // It asked Stripe for exactly the failed refunds' amount, so its own
     // refund alone decides: succeeded settles.
@@ -97,7 +129,7 @@ export async function judgeOwnRefund(
   }
   const paid = await paymentRepo.readPaidAmount(op.paymentId, tx);
   const verdict = canSettle({
-    refunds: await refundCopyRepo.listForPayment(op.paymentId, tx),
+    refunds: copies,
     paidCents: paid!.paidCents,
     confirmedRefundIds: op.confirmedRefundIds,
   });

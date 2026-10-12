@@ -17,7 +17,7 @@ import { attemptsExhausted, waitedBackoffSeconds } from "@server/modules/credit-
 import { closeExhausted, executeRefund } from "@server/modules/credit-refund/executor.js";
 import * as operationRepo from "@server/modules/credit-refund/operation.repo.js";
 import type { CreditRefundOperation } from "@server/modules/credit-refund/operation.repo.js";
-import { transitionOperation } from "@server/modules/credit-refund/operation-transitions.js";
+import { transitionOperation, type StripeFailure } from "@server/modules/credit-refund/operation-transitions.js";
 import { runDailyReconcile } from "@server/modules/credit-refund/reconcile.js";
 import {
   markStaleRefundMailsUnknown,
@@ -44,17 +44,23 @@ export interface RefundLoop {
 
 /**
  * One tick: steps 1 to 4 of §7.1 in order. A step that fails is logged and
- * the next one still runs.
+ * the next one still runs. Once the loop is stopped, no further step starts,
+ * and steps 1 and 2 take no further disposition.
+ * @param isStopped - Whether the loop was stopped meanwhile.
  * @returns Once the tick has settled.
  */
-export async function runRefundLoopOnce(): Promise<void> {
-  await runStep("resume_started", resumeStarted);
-  await runStep("recheck_awaiting", recheckAwaiting);
-  await runStep("send_mails", sendDueRefundMails);
-  await runStep("stale_mails", async () => {
-    await markStaleRefundMailsUnknown();
-  });
-  await runStep("daily_reconcile", runDailyReconcile);
+export async function runRefundLoopOnce(isStopped: () => boolean = () => false): Promise<void> {
+  const steps: [string, () => Promise<unknown>][] = [
+    ["resume_started", () => resumeStarted(isStopped)],
+    ["recheck_awaiting", () => recheckAwaiting(isStopped)],
+    ["send_mails", sendDueRefundMails],
+    ["stale_mails", markStaleRefundMailsUnknown],
+    ["daily_reconcile", runDailyReconcile],
+  ];
+  for (const [name, step] of steps) {
+    if (isStopped()) return;
+    await runStep(name, step);
+  }
 }
 
 /**
@@ -71,7 +77,7 @@ export function startRefundLoop(): RefundLoop {
   /** Run one tick, then schedule the next once it has settled. */
   const tick = (): void => {
     if (stopped) return;
-    running = runRefundLoopOnce().finally(() => {
+    running = runRefundLoopOnce(() => stopped).finally(() => {
       running = null;
       if (!stopped) timer = setTimeout(tick, getCreditRefundConfig().loopIntervalSeconds * 1000);
     });
@@ -92,7 +98,7 @@ export function startRefundLoop(): RefundLoop {
  * @param name - The step, for the log.
  * @param step - The work.
  */
-async function runStep(name: string, step: () => Promise<void>): Promise<void> {
+async function runStep(name: string, step: () => Promise<unknown>): Promise<void> {
   try {
     await step();
   } catch (err) {
@@ -102,11 +108,15 @@ async function runStep(name: string, step: () => Promise<void>): Promise<void> {
 
 // ── step 1 ───────────────────────────────────────────────────────────
 
-/** Claim and resume every started disposition whose executor is gone. */
-async function resumeStarted(): Promise<void> {
+/**
+ * Claim and resume every started disposition whose executor is gone.
+ * @param isStopped - Whether the loop was stopped meanwhile.
+ */
+async function resumeStarted(isStopped: () => boolean): Promise<void> {
   for (;;) {
     let progressed = false;
     for (const candidate of await operationRepo.listClaimable(BATCH)) {
+      if (isStopped()) return;
       const op = await claim(candidate);
       if (op === null) continue;
       progressed = true;
@@ -140,9 +150,13 @@ async function claim(candidate: { id: string; lotId: string }): Promise<CreditRe
 
 // ── step 2 ───────────────────────────────────────────────────────────
 
-/** Re-read Stripe for every disposition waiting on it whose lookup is due. */
-async function recheckAwaiting(): Promise<void> {
+/**
+ * Re-read Stripe for every disposition waiting on it whose lookup is due.
+ * @param isStopped - Whether the loop was stopped meanwhile.
+ */
+async function recheckAwaiting(isStopped: () => boolean): Promise<void> {
   for (const op of await operationRepo.listDueAwaiting(BATCH)) {
+    if (isStopped()) return;
     try {
       await recheck(op);
     } catch (err) {
@@ -164,18 +178,17 @@ async function recheck(op: CreditRefundOperation): Promise<void> {
   } catch (err) {
     if (!(err instanceof StripeReadError)) throw err;
     await db.transaction(async (tx) => {
-      if (await endIfDeadlinePassed(tx, op.id)) return;
+      if (await endIfDeadlinePassed(tx, op.id, err.failure)) return;
       await transitionOperation(tx, { id: op.id }, { type: "E16", failure: err.failure, actor: "loop" });
     });
     return;
   }
   await db.transaction(async (tx) => {
     await applyRefundSnapshot(tx, op.paymentId, listed, "loop");
-    const current = (await operationRepo.findById(op.id, tx))!;
-    if (current.status !== "awaiting_stripe" || (await endIfDeadlinePassed(tx, op.id))) return;
+    if (await endIfDeadlinePassed(tx, op.id)) return;
     await operationRepo.scheduleNextLook(
       op.id,
-      waitedBackoffSeconds(current.firstCalledAt, getCreditRefundConfig(), Date.now()),
+      waitedBackoffSeconds(op.firstCalledAt, getCreditRefundConfig(), Date.now()),
       tx,
     );
   });
@@ -187,9 +200,10 @@ async function recheck(op: CreditRefundOperation): Promise<void> {
  * first call goes to a person.
  * @param tx - The transaction.
  * @param operationId - The waiting disposition.
+ * @param failure - The Stripe read that just failed, if it did.
  * @returns True when it was ended.
  */
-async function endIfDeadlinePassed(tx: DbTx, operationId: string): Promise<boolean> {
+async function endIfDeadlinePassed(tx: DbTx, operationId: string, failure?: StripeFailure): Promise<boolean> {
   const current = (await operationRepo.findById(operationId, tx))!;
   const firstCalledMs = current.firstCalledAt?.getTime();
   if (
@@ -200,6 +214,6 @@ async function endIfDeadlinePassed(tx: DbTx, operationId: string): Promise<boole
   ) {
     return false;
   }
-  await transitionOperation(tx, { id: operationId }, { type: "E12", actor: "loop" });
+  await transitionOperation(tx, { id: operationId }, { type: "E12", failure, actor: "loop" });
   return true;
 }

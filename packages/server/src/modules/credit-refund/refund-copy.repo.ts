@@ -9,7 +9,7 @@
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { creditRefunds } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
-import type { RefundCopy, StripeRefundStatus } from "@server/modules/credit-refund/types.js";
+import type { RefundCopy, StripeRefundObject, StripeRefundStatus } from "@server/modules/credit-refund/types.js";
 
 /** One refund as Stripe reported it, ready to be copied. */
 export interface CopyWrite {
@@ -52,20 +52,46 @@ function toCopy(row: typeof creditRefunds.$inferSelect): RefundCopy {
  */
 export async function upsert(copy: CopyWrite, tx: DbTx): Promise<void> {
   const succeeded = copy.status === "succeeded";
+  const isFinal = sql`${creditRefunds.status} IN ('failed', 'canceled')`;
   await tx
     .insert(creditRefunds)
     .values({ ...copy, everSucceeded: succeeded })
     .onConflictDoUpdate({
       target: creditRefunds.stripeRefundId,
       set: {
-        status: sql`CASE WHEN ${creditRefunds.status} IN ('failed', 'canceled') THEN ${creditRefunds.status} ELSE ${copy.status} END`,
-        failureReason: sql`CASE WHEN ${creditRefunds.status} IN ('failed', 'canceled') THEN ${creditRefunds.failureReason} ELSE ${copy.failureReason} END`,
+        status: sql`CASE WHEN ${isFinal} THEN ${creditRefunds.status} ELSE ${copy.status} END`,
+        failureReason: sql`CASE WHEN ${isFinal} THEN ${creditRefunds.failureReason} ELSE ${copy.failureReason} END`,
         everSucceeded: sql`${creditRefunds.everSucceeded} OR ${succeeded}`,
         updatedAt: sql`now()`,
       },
-      setWhere: sql`(${creditRefunds.status} IS DISTINCT FROM ${copy.status} AND ${creditRefunds.status} NOT IN ('failed', 'canceled'))
+      setWhere: sql`(${creditRefunds.status} IS DISTINCT FROM ${copy.status} AND NOT ${isFinal})
         OR (${succeeded} AND NOT ${creditRefunds.everSucceeded})`,
     });
+}
+
+/**
+ * A disposition's own refund as its copy holds it, in the shape Stripe
+ * reports refunds: what the rules judge when Stripe cannot be read.
+ * @param operationId - The disposition.
+ * @param tx - The caller's transaction.
+ * @returns The refund, or null when none was copied.
+ */
+export async function findOwn(operationId: string, tx: DbTx): Promise<StripeRefundObject | null> {
+  const [row] = await tx
+    .select()
+    .from(creditRefunds)
+    .where(eq(creditRefunds.operationId, operationId))
+    .orderBy(creditRefunds.stripeRefundId)
+    .limit(1);
+  if (row === undefined) return null;
+  return {
+    id: row.stripeRefundId,
+    amount: row.amountCents,
+    currency: row.currency,
+    status: row.status as StripeRefundStatus,
+    failure_reason: row.failureReason,
+    metadata: { refund_operation_id: operationId },
+  };
 }
 
 /**

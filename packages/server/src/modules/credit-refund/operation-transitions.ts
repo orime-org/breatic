@@ -65,6 +65,8 @@ export interface NewOperation {
   confirmedSucceededCents?: number;
   failedRefundIds?: string[];
   refundAmountCents?: number;
+  /** settle only: the operator books less than was paid on purpose. */
+  acceptPartial?: boolean;
 }
 
 /** Who wrote an event row (§5.1 `detail.actor`). */
@@ -104,7 +106,9 @@ export type OperationEventBody =
     }
   | DeclineEvent
   | { type: "E7" | "E8" | "E9" | "E16" | "E17"; failure: StripeFailure }
-  | { type: "E10" | "E11" | "E12" | "E13" }
+  | { type: "E10" | "E13" }
+  /** `failure`: the Stripe read just before failed, so it is judged without it. */
+  | { type: "E11" | "E12"; failure?: StripeFailure }
   | { type: "E14"; closedBy: string };
 
 /**
@@ -433,7 +437,7 @@ async function fromStarted(ctx: Ctx, event: OperationEvent): Promise<CreditRefun
         lastError: event.failure.message,
       });
     case "E11":
-      return toAttention(ctx, event, "attempts_exhausted", ctx.row.lastError && firstLine(ctx.row.lastError));
+      return toAttention(ctx, event, "attempts_exhausted", lastErrorLine(ctx, event));
     case "E12":
       return move(ctx, EVENT_NAME.E12, {}, detailOf(event));
     case "E13":
@@ -479,7 +483,7 @@ async function fromAwaiting(ctx: Ctx, event: OperationEvent): Promise<CreditRefu
     case "E12":
       return known
         ? move(ctx, EVENT_NAME.E12, {}, detailOf(event))
-        : toAttention(ctx, event, "stripe_result_unknown", ctx.row.lastError && firstLine(ctx.row.lastError));
+        : toAttention(ctx, event, "stripe_result_unknown", lastErrorLine(ctx, event));
     case "E13":
       return move(ctx, EVENT_NAME.E13, {}, detailOf(event));
     case "E16":
@@ -504,6 +508,10 @@ async function fromAwaiting(ctx: Ctx, event: OperationEvent): Promise<CreditRefu
 async function fromFinished(ctx: Ctx, event: OperationEvent): Promise<CreditRefundOperation> {
   switch (event.type) {
     case "E2":
+      if (ctx.row.kind === "refund_again" && ctx.row.status === "needs_attention") {
+        return refundAgainSucceededLater(ctx, event);
+      }
+      return move(ctx, EVENT_NAME.E2, {}, detailOf(event));
     case "E3":
     case "E4":
     case "E5":
@@ -518,6 +526,24 @@ async function fromFinished(ctx: Ctx, event: OperationEvent): Promise<CreditRefu
     default:
       return impossible(ctx, event);
   }
+}
+
+/**
+ * A refund_again a person was asked about, whose own refund then succeeded:
+ * the money went back, so the failed refunds it was for are answered for and
+ * its attention is closed (§6.2 needs_attention × E2).
+ * @param ctx - The locked row.
+ * @param event - The E2 event.
+ * @returns The row after.
+ */
+async function refundAgainSucceededLater(
+  ctx: Ctx,
+  event: Made<RefundEvent>,
+): Promise<CreditRefundOperation> {
+  const open = ctx.row.attentionClosedAt === null;
+  const after = await move(ctx, EVENT_NAME.E2, open ? { attentionClosedBy: ctx.row.id } : {}, detailOf(event));
+  await refundCopyRepo.markResolved(ctx.row.lotId, ctx.row.failedRefundIds, ctx.row.id, ctx.tx);
+  return after;
 }
 
 // ── the moves ────────────────────────────────────────────────────────
@@ -759,7 +785,10 @@ async function sendBack(
  */
 function detailOf(event: OperationEvent): Record<string, unknown> {
   const actor = { actor: event.actor };
-  if (event.type === "E1") return { kind: event.create.kind, ...actor };
+  if (event.type === "E1") {
+    const { kind, notify, confirmedRefundIds, confirmedSucceededCents, failedRefundIds, acceptPartial } = event.create;
+    return { kind, notify, confirmedRefundIds, confirmedSucceededCents, failedRefundIds, acceptPartial, ...actor };
+  }
   if (event.type === "E14") return { closedBy: event.closedBy, ...actor };
   const refund = "refund" in event ? event.refund : undefined;
   return {
@@ -795,6 +824,18 @@ function refundIdOf(event: DeclineEvent): OperationPatch {
 function declineDetail(event: DeclineEvent): string | null {
   if (event.refund) return event.refund.failure_reason ?? event.refund.status;
   return event.failure ? firstLine(event.failure.message) : null;
+}
+
+/**
+ * What a person reads first when the waiting ran out: the Stripe read that
+ * just failed, otherwise the last error recorded.
+ * @param ctx - The locked row.
+ * @param event - The E11 or E12 event.
+ * @returns The first line, or null for none.
+ */
+function lastErrorLine(ctx: Ctx, event: Made<{ failure?: StripeFailure }>): string | null {
+  const message = event.failure?.message ?? ctx.row.lastError;
+  return message === null ? null : firstLine(message);
 }
 
 /**

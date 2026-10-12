@@ -4,11 +4,12 @@
 /**
  * What the internal API's endpoints do (inner#1410 §4.5, §5.2, §5.3, §6.5).
  *
- * Every write reads Stripe first, outside any transaction, then in one
- * transaction takes the key's advisory lock and the lot's row lock, looks
- * the key up again, copies what Stripe holds, judges, and inserts the
- * disposition through `transitionOperation`. A refusal throws
- * {@link RefundRefusal} inside that transaction, so nothing is stored.
+ * Every write reads Stripe first, outside any transaction, and copies what
+ * it read in a transaction of its own (§6.4). Then one transaction takes the
+ * key's advisory lock and the lot's row lock, looks the key up again, judges
+ * against the copies, and inserts the disposition through
+ * `transitionOperation`. A refusal throws {@link RefundRefusal} inside that
+ * transaction: no disposition and no key are stored; the copies stay.
  */
 
 import { db } from "@breatic/core";
@@ -186,14 +187,7 @@ export async function requestOneShot(
   },
 ): Promise<Answer<unknown>> {
   const outcome = await decide(req, (facts) => {
-    const verdict = assessOneShot({
-      kind,
-      lot: { lifecycle: facts.lot.lifecycle, remainingCredits: Number(facts.lot.remainingCredits) },
-      paidCents: facts.paidCents,
-      ops: facts.ops,
-      refunds: facts.refunds,
-      ...body,
-    });
+    const verdict = assessOneShot({ kind, ...assessFacts(facts), paidCents: facts.paidCents, ...body });
     if (verdict.outcome === "blocked") throw refusalOf(verdict);
     return { ...newOperation(kind, req, facts.payment), ...body };
   });
@@ -236,7 +230,13 @@ async function decide(
  * @throws {RefundRefusal} 503 `stripe_unavailable` when the read fails.
  */
 async function copyStripe(payment: PaymentEntity): Promise<void> {
-  const listed = await readStripe(payment);
+  let listed: StripeRefundObject[];
+  try {
+    listed = await listRefundsForPayment(payment.id);
+  } catch (err) {
+    if (err instanceof StripeReadError) throw stripeUnavailable();
+    throw err;
+  }
   const rejudged = await db.transaction((tx) => applyRefundSnapshot(tx, payment.id, listed, "request"));
   if (rejudged !== null) sendOperationMailsLater(rejudged);
 }
@@ -301,21 +301,6 @@ async function loadTarget(lotId: string): Promise<{ lot: CreditLotEntity; paymen
   const payment = lot && isPurchased(lot.sourceKind) ? await paymentRepo.getPaymentById(lot.sourceId) : null;
   if (lot === null || payment === null) throw new RefundRefusal(404, "not_found", "lot_not_found");
   return { lot, payment };
-}
-
-/**
- * Step 0: every refund Stripe holds for the payment.
- * @param payment - The payment.
- * @returns The refunds.
- * @throws {RefundRefusal} 503 `stripe_unavailable` when the read fails.
- */
-async function readStripe(payment: PaymentEntity): Promise<StripeRefundObject[]> {
-  try {
-    return await listRefundsForPayment(payment.id);
-  } catch (err) {
-    if (err instanceof StripeReadError) throw stripeUnavailable();
-    throw err;
-  }
 }
 
 /**

@@ -6,7 +6,8 @@
  *
  * The preview, the judgement table, both endpoints that answer for such a
  * refund, and the back office list all ask this function, so a refund cannot
- * be listed by one and refused by another.
+ * be listed by one and refused by another. The daily reconcile selects the
+ * same refunds in SQL (`reconcile.repo.ts`); a change here changes it too.
  */
 
 import type { CreditLotLifecycle } from "@breatic/shared";

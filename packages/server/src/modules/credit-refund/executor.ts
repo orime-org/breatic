@@ -10,6 +10,7 @@
 
 import { db } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
+import { creditLotRepo } from "@breatic/domain";
 import * as operationRepo from "@server/modules/credit-refund/operation.repo.js";
 import type { CreditRefundOperation } from "@server/modules/credit-refund/operation.repo.js";
 import {
@@ -18,6 +19,7 @@ import {
   type OperationEvent,
   type OperationEventBody,
 } from "@server/modules/credit-refund/operation-transitions.js";
+import * as refundCopyRepo from "@server/modules/credit-refund/refund-copy.repo.js";
 import { applyRefundSnapshot, judgeOwnRefund } from "@server/modules/credit-refund/refund-snapshot.js";
 import { classifyCreateAnswer } from "@server/modules/credit-refund/stripe-answer.js";
 import {
@@ -80,8 +82,9 @@ export async function executeRefund(op: CreditRefundOperation, actor: Actor): Pr
 }
 
 /**
- * End a `started` disposition whose attempts are used up (E11), unless Stripe
- * holds its refund after all: then that refund is judged (§6.2 E11).
+ * End a `started` disposition whose attempts are used up (E11), unless its
+ * refund exists after all: then that refund is judged (§6.2 E11). When
+ * Stripe cannot be read, the copy of its refund is judged, if one was made.
  * @param op - The disposition, under the lease the loop just claimed.
  * @param actor - Who ends it.
  * @returns Once the cell is committed.
@@ -89,11 +92,18 @@ export async function executeRefund(op: CreditRefundOperation, actor: Actor): Pr
  */
 export async function closeExhausted(op: CreditRefundOperation, actor: Actor): Promise<void> {
   const { attempt, paymentIntent } = await begin(op, actor);
-  let listed: StripeRefundObject[] = [];
+  let listed: StripeRefundObject[];
   try {
     listed = await listRefunds(paymentIntent);
   } catch (err) {
     if (!(err instanceof StripeReadError)) throw err;
+    const failure = err.failure;
+    return db.transaction(async (tx) => {
+      await creditLotRepo.lockLot(op.lotId, tx);
+      const copied = await refundCopyRepo.findOwn(op.id, tx);
+      const event = copied ? await judgeOwnRefund(tx, op, copied) : { type: "E11" as const, failure };
+      await transitionOperation(tx, { id: op.id }, eventOf(attempt, event));
+    });
   }
   const found = ownRefundIn(listed, op.id);
   if (found) return judgeAndAnswer(attempt, found, [listed]);

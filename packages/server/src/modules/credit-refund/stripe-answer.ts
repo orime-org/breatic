@@ -7,10 +7,9 @@
  * Two steps around a Stripe read: the create call's answer, then — when
  * that alone proves nothing — the refund found by metadata is classified by
  * its status, or the answer's own event stands when none is found. Only the
- * first request can prove
- * Stripe created nothing (E6): Stripe caches no result for an error raised
- * before execution begins, so a later 4xx may follow a refund an earlier
- * attempt did create.
+ * first request can prove Stripe created nothing (E6): Stripe caches no
+ * result for an error raised before execution begins, so a later 4xx may
+ * follow a refund an earlier attempt did create.
  */
 
 import type { StripeRefundStatus } from "@server/modules/credit-refund/types.js";
