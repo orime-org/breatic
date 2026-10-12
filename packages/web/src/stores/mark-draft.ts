@@ -146,6 +146,21 @@ export function restyled(draft: MarkDraft, style: { color?: string; size?: numbe
 }
 
 /**
+ * The draft with an object selected, or none. The selected object's colour
+ * and size become the controls' own, so the panel shows them and a change to
+ * them restyles it; they stay for the next object when it is let go. As no step.
+ * @param draft - The draft.
+ * @param id - The object, or null for none.
+ * @returns The draft.
+ */
+export function selectedMark(draft: MarkDraft, id: string | null): MarkDraft {
+  const object = id === null ? undefined : draft.objects.find((candidate) => candidate.id === id);
+  return object === undefined
+    ? { ...draft, selectedId: id }
+    : { ...draft, selectedId: id, color: object.color, size: object.size };
+}
+
+/**
  * Whether the markup leaves nothing on the picture: no object, and no text
  * with content being edited.
  * @param draft - The draft.

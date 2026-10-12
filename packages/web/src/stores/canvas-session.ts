@@ -36,6 +36,7 @@ import {
   restyled,
   undoneMark,
   withObjects,
+  selectedMark,
   type MarkChannel,
   type MarkDraft,
   type MarkObject,
@@ -738,7 +739,7 @@ export function createCanvasSessionStore(): CanvasSessionStore {
       redoMark: () => set((s) => updateMark(s, redoneMark)),
       clearMark: () =>
         set((s) => updateMark(s, (m) => ({ ...withObjects(m, []), selectedId: null }))),
-      selectMark: (id) => set((s) => updateMark(s, (m) => ({ ...m, selectedId: id }))),
+      selectMark: (id) => set((s) => updateMark(s, (m) => selectedMark(m, id))),
       setMarkEditingText: (text) => set((s) => updateMark(s, (m) => ({ ...m, editingText: text }))),
       setExpandDrop: (drop) =>
         set((s) => {

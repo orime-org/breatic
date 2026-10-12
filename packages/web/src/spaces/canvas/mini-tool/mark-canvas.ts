@@ -397,6 +397,8 @@ export class MarkCanvasController {
     if (id === undefined) return;
     if (this.edit === null) {
       this.edit = { id, isNew: false, before: fromFabric(target, this.box) };
+      // The text being edited is the selected one, so the controls show its style.
+      this.session().selectMark(id);
       this.session().setMarkEditingText(target.text);
     }
   }
