@@ -3,6 +3,7 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { BrowserChoice } from '@web/lib/analytics/consent-decision';
+import type * as RuntimeModule from '@web/lib/analytics/runtime';
 
 const sdk = vi.hoisted(() => ({
   init: vi.fn(),
@@ -46,7 +47,7 @@ const rejected: BrowserChoice = { analytics: false, ads: false, source: 'banner'
  * A fresh copy of the runtime, started, with its choice callback captured.
  * @returns The module.
  */
-async function startRuntime(): Promise<typeof import('@web/lib/analytics/runtime')> {
+async function startRuntime(): Promise<typeof RuntimeModule> {
   vi.resetModules();
   const runtime = await import('@web/lib/analytics/runtime');
   await runtime.start({ language: 'en', languages: ['en'], appVersion: '1', text: () => ({}) as never, privacyUrl: '/p' });
@@ -65,7 +66,7 @@ async function choose(choice: BrowserChoice | null): Promise<void> {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  for (const name of document.cookie.split(';').map((pair) => pair.split('=')[0]!.trim())) {
+  for (const name of document.cookie.split(';').map((pair) => pair.split('=')[0].trim())) {
     document.cookie = `${name}=; Max-Age=0; Path=/`;
   }
   localStorage.clear();

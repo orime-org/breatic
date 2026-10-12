@@ -83,8 +83,8 @@ describe('fetchCountry', () => {
   });
 
   it('returns null when the endpoint fails, answers an error, or is slower than the limit', async () => {
-    expect(await fetchCountry(ORIGIN, (async () => Promise.reject(new Error('down'))) as never)).toBeNull();
-    expect(await fetchCountry(ORIGIN, (async () => new Response('loc=US', { status: 404 })) as never)).toBeNull();
+    expect(await fetchCountry(ORIGIN, async () => Promise.reject(new Error('down')))).toBeNull();
+    expect(await fetchCountry(ORIGIN, async () => new Response('loc=US', { status: 404 }))).toBeNull();
     const slow = (_url: string, _init: RequestInit, options: { signal: AbortSignal }) =>
       new Promise((_resolve, reject) => {
         options.signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')));

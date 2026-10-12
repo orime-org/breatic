@@ -8,6 +8,7 @@
  * cookies cleared when the category is withdrawn.
  */
 
+import type * as AmplitudeSdk from '@amplitude/analytics-browser';
 import {
   adClickFrom,
   sanitizeEventProperties,
@@ -29,7 +30,7 @@ import {
 import { readAttribution } from '@web/lib/analytics/attribution';
 import { fetchCountry, type BrowserChoice } from '@web/lib/analytics/consent-decision';
 
-type Amplitude = typeof import('@amplitude/analytics-browser');
+type Amplitude = typeof AmplitudeSdk;
 
 /** Who is signed in, for user properties. */
 export interface AnalyticsUser {
@@ -182,7 +183,7 @@ const gtag: (...args: unknown[]) => void = function () {
 function clearStorage(prefix: string): void {
   const names = document.cookie
     .split(';')
-    .map((pair) => pair.split('=')[0]!.trim())
+    .map((pair) => pair.split('=')[0].trim())
     .filter((name) => name.startsWith(prefix));
   const domains = ['', CONSENT_COOKIE_DOMAIN].filter((d, i, all) => all.indexOf(d) === i);
   for (const name of names) {

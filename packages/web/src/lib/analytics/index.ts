@@ -24,9 +24,10 @@ import { captureAttribution, clearAttribution, readAttribution } from '@web/lib/
 import { ANALYTICS_CONFIGURED } from '@web/lib/analytics/build-config';
 import type { ConsentText } from '@web/lib/analytics/consent-banner';
 import type { AnalyticsUser } from '@web/lib/analytics/runtime';
+import type * as RuntimeModule from '@web/lib/analytics/runtime';
 import { PRIVACY_URL } from '@web/lib/official-home';
 
-type Runtime = typeof import('@web/lib/analytics/runtime');
+type Runtime = typeof RuntimeModule;
 
 let runtime: Promise<Runtime> | null = null;
 let consent: ConsentSnapshot | undefined;
