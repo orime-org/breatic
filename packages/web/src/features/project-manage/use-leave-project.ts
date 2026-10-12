@@ -11,7 +11,8 @@ import { toast } from '@web/lib/toast';
 
 /** Leaving one project, and whether the request is in flight. */
 export interface LeaveProject {
-  leave: () => void;
+  /** Leave; `onSuccess` runs once it lands, after `onLeft`. */
+  leave: (options?: { onSuccess?: () => void }) => void;
   pending: boolean;
 }
 
@@ -44,6 +45,9 @@ export function useLeaveProject(projectId: string, name: string, onLeft?: () => 
   });
   const { mutate } = mutation;
   // Wrapped so a click event never reaches `mutate` as its variables.
-  const leave = React.useCallback((): void => mutate(), [mutate]);
+  const leave = React.useCallback(
+    (options?: { onSuccess?: () => void }): void => mutate(undefined, options),
+    [mutate],
+  );
   return { leave, pending: mutation.isPending };
 }

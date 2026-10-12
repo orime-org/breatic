@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
+import * as React from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 import { invalidateProjectListings, projectsApi } from '@web/data/api';
@@ -11,10 +12,13 @@ import { toast } from '@web/lib/toast';
 /** A project's server-side management actions, each settling with a toast. */
 export interface ProjectActions {
   duplicate: () => void;
-  archive: () => void;
+  /** Archive; `onSuccess` runs once it lands (the confirmation closes there). */
+  archive: (options?: { onSuccess?: () => void }) => void;
   restore: () => void;
   /** True while any of the three is in flight. */
   pending: boolean;
+  /** True while the archive is in flight. */
+  archiving: boolean;
 }
 
 /**
@@ -58,10 +62,17 @@ export function useProjectActions(projectId: string): ProjectActions {
     onError: toastFailure(t('studio.container.card.restoreFailed')),
   });
 
+  const { mutate: mutateArchive } = archive;
+  const runArchive = React.useCallback(
+    (options?: { onSuccess?: () => void }): void => mutateArchive(undefined, options),
+    [mutateArchive],
+  );
+
   return {
     duplicate: duplicate.mutate,
-    archive: archive.mutate,
+    archive: runArchive,
     restore: restore.mutate,
     pending: duplicate.isPending || archive.isPending || restore.isPending,
+    archiving: archive.isPending,
   };
 }

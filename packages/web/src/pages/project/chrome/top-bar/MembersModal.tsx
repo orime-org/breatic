@@ -229,6 +229,7 @@ export function MembersModal({
             <AlertDialogAction
               variant='destructive'
               disabled={pendingRowId !== null}
+              loading={confirmRemove !== null && pendingRowId === confirmRemove.id}
               onClick={(event) => {
                 // Keep the dialog mounted until handleRemove's success path
                 // closes it, so a failure leaves it open with the error toast.
@@ -366,6 +367,7 @@ function TransferOwnershipSection({
             size='sm'
             className='h-8 shrink-0 text-xs'
             disabled={withdrawing}
+            loading={withdrawing}
             onClick={() => void handleWithdraw()}
             data-testid='members-modal-transfer-withdraw'
           >
@@ -446,6 +448,7 @@ function TransferOwnershipSection({
               size='sm'
               className='h-8 text-xs'
               disabled={!selected || sending}
+              loading={sending}
               onClick={() => void handleSend()}
               data-testid='members-modal-transfer-send'
             >

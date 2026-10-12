@@ -152,6 +152,39 @@ describe('ProjectActivityButton (activity feed)', () => {
     expect(onRestore).toHaveBeenCalledWith('sp-9');
   });
 
+  it('reads the Restore button busy while the restore is in flight, and settles after it lands', async () => {
+    let land!: () => void;
+    const onRestore = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          land = resolve;
+        }),
+    );
+    listMock.mockResolvedValue({
+      items: [
+        entry({
+          id: 'del-4',
+          type: 'space:deleted',
+          spaceId: 'sp-4',
+          payload: { spaceName: 'Doomed', spaceSnapshot: { id: 'sp-4' } },
+        }),
+      ],
+      nextCursor: null,
+    });
+    const user = userEvent.setup();
+    render(
+      <ProjectActivityButton projectId={PID} currentUserRole='owner' onRestore={onRestore} />,
+    );
+    await user.click(screen.getByTestId('project-activity-trigger'));
+    const btn = await screen.findByTestId('project-activity-restore-del-4');
+    await user.click(btn);
+
+    await waitFor(() => expect(btn).toHaveAttribute('aria-busy', 'true'));
+    expect(btn).toHaveAttribute('aria-disabled', 'true');
+    land();
+    await waitFor(() => expect(btn).not.toHaveAttribute('aria-busy'));
+  });
+
   it('replaces Restore with a disabled restored badge when the row is consumed', async () => {
     listMock.mockResolvedValue({
       items: [

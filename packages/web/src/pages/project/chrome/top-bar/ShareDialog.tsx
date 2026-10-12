@@ -150,10 +150,11 @@ export function ShareDialog({
             size='form'
             className='w-full'
             disabled={invite.trim().length === 0 || inviteSubmitting}
+            loading={inviteSubmitting}
+            icon={<Send className='h-4 w-4' />}
             onClick={handleSendInvite}
             data-testid='share-send-invite'
           >
-            <Send className='h-4 w-4' />
             {inviteSubmitting
               ? t('share.inviteSending')
               : t('share.inviteButton')}
