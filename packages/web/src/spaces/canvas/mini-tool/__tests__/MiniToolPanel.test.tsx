@@ -192,6 +192,43 @@ describe('MiniToolPanel', () => {
     expect(prompt.compareDocumentPosition(param) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
+  describe('the expand ratios', () => {
+    /**
+     * Mount the expand panel.
+     * @param fits - Which ratios fit under the cap.
+     * @returns The props.
+     */
+    function mountExpand(fits: (ratio: string) => boolean = () => true): MiniToolPanelProps {
+      return mount({
+        spec: tool('image.expand'),
+        params: {},
+        expand: { ratio: '1:1', fits, onRatio: vi.fn() },
+      });
+    }
+
+    it('offers Free and the seven fixed ratios, marking the one in use', () => {
+      mountExpand();
+      const ids = ['free', '1:1', '2:3', '3:2', '3:4', '4:3', '9:16', '16:9'];
+      for (const id of ids) expect(screen.getByTestId(`mini-tool-expand-ratio-${id}`)).toBeInTheDocument();
+      expect(screen.getByTestId('mini-tool-expand-ratio-1:1')).toHaveAttribute('aria-current', 'true');
+      expect(screen.getByTestId('mini-tool-expand-ratio-free')).toHaveTextContent('Free');
+    });
+
+    it('sets a ratio when it is pressed', () => {
+      const props = mountExpand();
+      fireEvent.click(screen.getByTestId('mini-tool-expand-ratio-16:9'));
+      expect(props.expand?.onRatio).toHaveBeenCalledWith('16:9');
+    });
+
+    it('holds back a ratio too large for the model', () => {
+      const props = mountExpand((ratio) => ratio !== '9:16');
+      const button = screen.getByTestId('mini-tool-expand-ratio-9:16');
+      expect(button).toHaveAttribute('aria-disabled', 'true');
+      fireEvent.click(button);
+      expect(props.expand?.onRatio).not.toHaveBeenCalled();
+    });
+  });
+
   describe.each(['video.adjust', 'image.adjust'])('the %s sliders', (id) => {
     const source = { width: 1600, height: 1000, duration: 8 };
 
