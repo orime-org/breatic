@@ -14,6 +14,7 @@ const canvas = vi.hoisted(() => ({
   addNode: vi.fn(),
   addEdge: vi.fn((_p: string, _s: string, _edge: { source: string; toolId?: string }) => true),
   runCanvasUndoBatch: vi.fn((_p: string, _s: string, body: () => void) => body()),
+  createGroup: vi.fn(),
 }));
 vi.mock('@web/data/yjs/canvas-space', () => canvas);
 const api = vi.hoisted(() => ({ run: vi.fn() }));
@@ -156,6 +157,36 @@ describe('startMiniToolRun', () => {
       { source: 'mini_tool', toolName: 'image.grid' },
     );
     expect(run.fillUpload).not.toHaveBeenCalled();
+  });
+
+  it('puts the tiles of a grid in a group named after the source, in the same undo entry', async () => {
+    const files = [0, 1, 2, 3].map((i) => new File(['x'], `t${i}.png`, { type: 'image/png' }));
+    const run = press({
+      spec: tool('image.grid'),
+      snapshot: { ...SNAPSHOT, params: { rows: 2, cols: 2 } },
+      source: { id: 'src', name: 'IMG', position: { x: 0, y: 0 }, groupOrigin: null, mimeType: 'image/png' },
+      exportFile: vi.fn(() => Promise.resolve(files.map((file) => ({ file, size: { width: 50, height: 50 } })))),
+    });
+
+    await startMiniToolRun(run);
+
+    expect(canvas.runCanvasUndoBatch).toHaveBeenCalledOnce();
+    expect(canvas.createGroup).toHaveBeenCalledOnce();
+    const [, , group, members] = canvas.createGroup.mock.calls[0]!;
+    const nodes = canvas.addNode.mock.calls.map((call) => call[2]);
+    expect(group.data.name).toBe('GRID-IMG');
+    expect(members.map((member: { id: string }) => member.id)).toEqual(nodes.map((node) => node.id));
+    expect(run.onBuilt).toHaveBeenCalledWith(
+      nodes.map((node) => ({ id: node.id, position: node.position })),
+      { id: group.id, position: group.position, width: group.width, height: group.height },
+    );
+  });
+
+  it('makes no group for a tool that does not group its results', async () => {
+    const run = press();
+    await startMiniToolRun(run);
+    expect(canvas.createGroup).not.toHaveBeenCalled();
+    expect(vi.mocked(run.onBuilt).mock.calls[0]![1]).toBeUndefined();
   });
 
   // §7.5 2b: an export that fails builds nothing.
