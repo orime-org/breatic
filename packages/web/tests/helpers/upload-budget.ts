@@ -82,8 +82,9 @@ const watched = new WeakSet<Page>();
 /**
  * Record every upload ticket a page asks for, against the account it is
  * signed in as.
- * The slot is read when watching starts: the request listener runs outside
- * any case, where there is no slot to read.
+ * The slot is read when watching starts: the request listener can also fire
+ * between cases (on a page opened in `beforeAll`), when there is no running
+ * case to read it from.
  * @param page - A page opened on the account's Project.
  * @param account - The account it is signed in as.
  * @param at - Which worker slot; the running case's when omitted.
