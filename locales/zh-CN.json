@@ -22,7 +22,8 @@
       "refund_not_purchased": "这笔积分是赠送的，没有付过款，所以不能退款。",
       "refund_still_designated": "这笔已指定给某个 Studio，请先解除指定。",
       "refund_already_spent": "这笔的积分已经用过，不能退款。",
-      "refund_window_closed": "这笔的退款期限已过。"
+      "refund_window_closed": "这笔的退款期限已过。",
+      "refund_state_changed": "这笔的退款状态已经变了，请刷新后再试。"
     },
     "text_tool": {
       "already_running": "另一个文本工具正在运行,请稍候。"

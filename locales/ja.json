@@ -22,7 +22,8 @@
       "refund_not_purchased": "このクレジットは付与されたもので、お支払いがないため返金できません。",
       "refund_still_designated": "この購入は Studio に割り当てられています。先に割り当てを解除してください。",
       "refund_already_spent": "この購入のクレジットは使用済みのため、返金できません。",
-      "refund_window_closed": "この購入の返金期限は終了しました。"
+      "refund_window_closed": "この購入の返金期限は終了しました。",
+      "refund_state_changed": "この購入の返金状況が変わりました。再読み込みしてからもう一度お試しください。"
     },
     "auth": {
       "invalid_credentials": "メールアドレスまたはパスワードが正しくありません",

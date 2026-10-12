@@ -22,7 +22,8 @@
       "refund_not_purchased": "이 크레딧은 지급된 것이라 결제 내역이 없어 환불할 수 없습니다.",
       "refund_still_designated": "이 구매는 Studio에 배정되어 있습니다. 먼저 배정을 해제하세요.",
       "refund_already_spent": "이 구매의 크레딧을 사용했으므로 환불할 수 없습니다.",
-      "refund_window_closed": "이 구매의 환불 기간이 종료되었습니다."
+      "refund_window_closed": "이 구매의 환불 기간이 종료되었습니다.",
+      "refund_state_changed": "이 구매의 환불 상태가 바뀌었습니다. 새로 고친 뒤 다시 시도하세요."
     },
     "auth": {
       "invalid_credentials": "이메일 또는 비밀번호가 올바르지 않습니다",

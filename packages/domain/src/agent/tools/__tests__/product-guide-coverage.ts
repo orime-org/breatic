@@ -592,6 +592,7 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "server.credit.refund_already_asked": { excluded: REASONS.NOT_ON_THESE_SCREENS },
   "server.credit.refund_already_spent": { excluded: REASONS.NOT_ON_THESE_SCREENS },
   "server.credit.refund_not_purchased": { excluded: REASONS.NOT_ON_THESE_SCREENS },
+  "server.credit.refund_state_changed": { excluded: REASONS.NOT_ON_THESE_SCREENS },
   "server.credit.refund_still_designated": { excluded: REASONS.NOT_ON_THESE_SCREENS },
   "server.credit.refund_window_closed": { excluded: REASONS.NOT_ON_THESE_SCREENS },
   "server.credit.unassigned": { excluded: REASONS.SAYS_WHAT_HAPPENED },

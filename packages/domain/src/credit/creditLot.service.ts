@@ -634,6 +634,127 @@ export async function requestRefund(input: {
   });
 }
 
+// ── The four edges a refund request takes after it is asked (inner#1410 §6.3)
+//
+// Each runs inside the caller's transaction, which already holds the lot's
+// row lock and decided the edge applies; the disposition and its ledger row
+// commit together or not at all. A lot no longer in the state the edge starts
+// from answers 409 and nothing is written.
+
+/**
+ * The 409 every refund edge answers when the lot has moved on.
+ * @returns The error.
+ */
+function refundStateChanged(): AppError {
+  return new AppError(409, t("server.credit.refund_state_changed"));
+}
+
+/**
+ * An approval starts: `refund_pending` to `refunding`.
+ * @param input - Which lot.
+ * @param input.lotId - The lot being refunded.
+ * @param tx - The transaction holding the lot's lock.
+ * @returns The lot as it now stands.
+ * @throws {AppError} 409 if the lot is not `refund_pending`.
+ */
+export async function markRefunding(
+  input: { lotId: string },
+  tx: DbTx,
+): Promise<CreditLotEntity> {
+  const lot = await creditLotRepo.markRefunding(input.lotId, tx);
+  if (!lot) throw refundStateChanged();
+  return lot;
+}
+
+/**
+ * The money is back with the buyer: the lot is `refunded` and what was left
+ * on it leaves the account in one ledger row.
+ * @param input - Which lot, and the Stripe refund the booking rests on.
+ * @param input.lotId - The lot being settled.
+ * @param input.refundId - The refund recorded as the row's reference.
+ * @param tx - The transaction holding the lot's lock.
+ * @returns The lot as it now stands.
+ * @throws {AppError} 409 if the lot is neither `refunding` nor `refund_pending`.
+ */
+export async function settleRefund(
+  input: { lotId: string; refundId: string },
+  tx: DbTx,
+): Promise<CreditLotEntity> {
+  const before = await creditLotRepo.lockLot(input.lotId, tx);
+  if (!before || (before.lifecycle !== "refunding" && before.lifecycle !== "refund_pending")) {
+    throw refundStateChanged();
+  }
+  const lot = await creditLotRepo.markRefunded(input.lotId, tx);
+  if (!lot) throw refundStateChanged();
+  await creditLotRepo.appendLedgerEntry(
+    {
+      payerUserId: before.userId,
+      entryType: "refund",
+      amount: negateDecimal(before.remainingCredits),
+      lotId: input.lotId,
+      referenceId: input.refundId,
+    },
+    tx,
+  );
+  return lot;
+}
+
+/**
+ * An approval goes back to waiting for a decision: `refunding` to
+ * `refund_pending`.
+ * @param input - Which lot.
+ * @param input.lotId - The lot sent back.
+ * @param tx - The transaction holding the lot's lock.
+ * @returns The lot as it now stands.
+ * @throws {AppError} 409 if the lot is not `refunding`.
+ */
+export async function sendBackRefund(
+  input: { lotId: string },
+  tx: DbTx,
+): Promise<CreditLotEntity> {
+  const lot = await creditLotRepo.markSentBack(input.lotId, tx);
+  if (!lot) throw refundStateChanged();
+  return lot;
+}
+
+/**
+ * The request is turned down: the lot is usable again and the attempt is
+ * counted, with a zero-amount ledger row naming the disposition.
+ * @param input - Which lot, and the disposition that rejected it.
+ * @param input.lotId - The lot rejected.
+ * @param input.operationId - The disposition, recorded as the row's reference.
+ * @param tx - The transaction holding the lot's lock.
+ * @returns The lot as it now stands.
+ * @throws {AppError} 409 if the lot is not `refund_pending` with credits on it.
+ */
+export async function rejectRefund(
+  input: { lotId: string; operationId: string },
+  tx: DbTx,
+): Promise<CreditLotEntity> {
+  const lot = await creditLotRepo.markRejected(input.lotId, tx);
+  if (!lot) throw refundStateChanged();
+  await creditLotRepo.appendLedgerEntry(
+    {
+      payerUserId: lot.userId,
+      entryType: "refund_rejected",
+      amount: "0",
+      lotId: input.lotId,
+      referenceId: input.operationId,
+    },
+    tx,
+  );
+  return lot;
+}
+
+/**
+ * The negative of a non-negative decimal string, digit for digit.
+ * @param amount - A `numeric` value as Postgres returns it.
+ * @returns The same digits with a leading minus, or "0" for zero.
+ */
+function negateDecimal(amount: string): string {
+  return /^0*(\.0*)?$/.test(amount) ? "0" : `-${amount}`;
+}
+
 /**
  * What an account holds and where it went.
  *

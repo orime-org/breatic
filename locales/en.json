@@ -22,7 +22,8 @@
       "refund_not_purchased": "These credits were granted, not paid for, so there is nothing to refund.",
       "refund_still_designated": "This purchase is assigned to a Studio. Unassign it first.",
       "refund_already_spent": "Credits from this purchase have been spent, so it cannot be refunded.",
-      "refund_window_closed": "The refund window for this purchase has closed."
+      "refund_window_closed": "The refund window for this purchase has closed.",
+      "refund_state_changed": "This purchase's refund status has changed. Refresh and try again."
     },
     "auth": {
       "invalid_credentials": "Invalid email or password",

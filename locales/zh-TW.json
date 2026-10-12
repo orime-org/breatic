@@ -22,7 +22,8 @@
       "refund_not_purchased": "這筆點數是贈送的，沒有付過款，所以不能退款。",
       "refund_still_designated": "這筆已指定給某個 Studio，請先解除指定。",
       "refund_already_spent": "這筆的點數已經用過，不能退款。",
-      "refund_window_closed": "這筆的退款期限已過。"
+      "refund_window_closed": "這筆的退款期限已過。",
+      "refund_state_changed": "這筆的退款狀態已經變了，請重新整理後再試。"
     },
     "auth": {
       "invalid_credentials": "電子郵件或密碼錯誤",
