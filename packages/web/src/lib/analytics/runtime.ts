@@ -83,11 +83,12 @@ export async function start(options: {
  */
 async function apply(next: BrowserChoice | null): Promise<void> {
   choice = next;
-  // A category not granted keeps no cookies, whether or not this page loaded its vendor.
-  if (next?.analytics !== true) clearStorage('AMP_');
-  if (next?.ads !== true) clearStorage('_gcl_');
   await applyAnalytics(next?.analytics === true);
   applyAds(next?.ads === true);
+  // A category not granted keeps no cookies, whether or not this page loaded its vendor.
+  // Last, because opting the SDK out rewrites its cookie.
+  if (next?.analytics !== true) clearStorage('AMP_');
+  if (next?.ads !== true) clearStorage('_gcl_');
   const snapshot = consentSnapshot();
   for (const listener of listeners) listener(snapshot);
 }
@@ -127,9 +128,8 @@ async function applyAnalytics(on: boolean): Promise<void> {
       if (user !== null) nameUser(amplitude, user);
     }
     amplitude.setOptOut(false);
-  } else if (amplitude !== null) {
-    amplitude.setOptOut(true);
-    clearStorage('AMP_');
+  } else {
+    amplitude?.setOptOut(true);
   }
 }
 
@@ -164,7 +164,6 @@ function applyAds(on: boolean): void {
   const state = on ? 'granted' : 'denied';
   // Ads are used to measure conversions only, never to personalise them.
   gtag('consent', 'update', { ad_storage: state, ad_user_data: state, ad_personalization: 'denied' });
-  if (!on) clearStorage('_gcl_');
 }
 
 /** The standard `gtag` command queue; Google's loader reads `arguments` objects, not arrays. */

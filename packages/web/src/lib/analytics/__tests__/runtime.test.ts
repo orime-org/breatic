@@ -7,7 +7,10 @@ import type * as RuntimeModule from '@web/lib/analytics/runtime';
 
 const sdk = vi.hoisted(() => ({
   init: vi.fn(),
-  setOptOut: vi.fn(),
+  // The real SDK rewrites its cookie whenever its settings change, opting out included.
+  setOptOut: vi.fn(() => {
+    document.cookie = 'AMP_test=1; Path=/';
+  }),
   setUserId: vi.fn(),
   identify: vi.fn(),
   reset: vi.fn(),
@@ -148,5 +151,13 @@ describe('analytics runtime', () => {
       .filter((entry) => entry[0] === 'consent' && entry[1] === 'update');
     expect(updates.length).toBeGreaterThan(0);
     for (const update of updates) expect(update[2]).toMatchObject({ ad_personalization: 'denied', ad_storage: 'granted' });
+  });
+
+  it('leaves no Amplitude cookie after analytics is withdrawn, though opting out rewrites it', async () => {
+    await startRuntime();
+    await choose(accepted);
+    await choose(rejected);
+    expect(sdk.setOptOut).toHaveBeenLastCalledWith(true);
+    expect(document.cookie).not.toMatch(/AMP_/);
   });
 });
