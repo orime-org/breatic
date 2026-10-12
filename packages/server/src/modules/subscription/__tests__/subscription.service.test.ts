@@ -28,6 +28,9 @@ vi.mock("@server/infra/stripe.js", () => ({
 
 vi.mock("@breatic/core", () => ({
   trackServerEvent: vi.fn(),
+  currentConsent: vi.fn(() => ({ analytics: false, ads: false })),
+  enqueueAdsConversion: vi.fn(async () => false),
+  markFirstActive: vi.fn(async () => false),
   listSubscriptions: vi.fn(),
   upsertSubscription: vi.fn(),
   subscriptionSituation: vi.fn(),
@@ -246,7 +249,10 @@ describe("startCheckout — no live subscription (#106 §7.2)", () => {
         mode: "subscription",
         customer: "cus_1",
         line_items: [{ price: "price_team_month", quantity: 1 }],
-        subscription_data: { metadata: { userId: USER } },
+        subscription_data: {
+          // The subscribing browser's consent rides along (inner#1442 §4.4.5).
+          metadata: { userId: USER, analyticsConsent: JSON.stringify({ analytics: false, ads: false }) },
+        },
       }),
     );
   });

@@ -191,6 +191,7 @@ export type { TierChangeReason } from "@core/auth/membership.repo.js";
 // out says the tier on the account is stale.
 export {
   listSubscriptions,
+  markFirstActive,
   upsertSubscription,
 } from "@core/auth/subscription.repo.js";
 export type {

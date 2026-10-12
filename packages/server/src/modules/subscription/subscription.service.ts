@@ -24,6 +24,8 @@
  * direction of charging somebody who asked to stop.
  */
 
+import { takeCheckoutSnapshot, toStripeMetadata } from "@server/modules/analytics/checkout-snapshot.js";
+import { reportSubscriptionStarted } from "@server/modules/subscription/subscription-analytics.js";
 import type Stripe from "stripe";
 import {
   AppError,
@@ -125,7 +127,7 @@ async function storeAnswer(input: {
     );
     return null;
   }
-  await writeSnapshot(input.userId, read.write, input.referenceId);
+  await writeSnapshot(input.userId, read.write, input.referenceId, input.subscription.metadata);
   return read.write;
 }
 
@@ -135,12 +137,14 @@ async function storeAnswer(input: {
  * @param userId - The account.
  * @param write - The snapshot.
  * @param referenceId - Identifies the change in the tier ledger.
+ * @param metadata - The Stripe subscription's metadata, holding the checkout snapshot.
  * @throws {Error} if the database fails.
  */
 async function writeSnapshot(
   userId: string,
   write: SubscriptionWrite,
   referenceId: string,
+  metadata: Record<string, unknown>,
 ): Promise<void> {
   const applied = await db.transaction((tx) =>
     applySubscriptionWrite({ userId, write, referenceId, tx }),
@@ -148,6 +152,7 @@ async function writeSnapshot(
   // After the commit: an email about a change that then rolled back cannot be
   // recalled.
   if (applied.endedFrom) await sendMembershipEndedMail(userId, applied.endedFrom);
+  if (applied.started) reportSubscriptionStarted(write, metadata);
 }
 
 /**
@@ -249,6 +254,7 @@ export async function startCheckout(input: {
   }
 
   const customerId = await ensureCustomer(input.userId);
+  const snapshot = await takeCheckoutSnapshot(input.userId);
   const session = await getStripeClient().checkout.sessions.create({
     mode: "subscription",
     customer: customerId,
@@ -259,8 +265,9 @@ export async function startCheckout(input: {
       },
     ],
     // Reaches the subscription object, which is what events carry. Top-level
-    // metadata and `client_reference_id` stop at the Session.
-    subscription_data: { metadata: { userId: input.userId } },
+    // metadata and `client_reference_id` stop at the Session. The subscribing
+    // browser's consent and ad click ride here for the same reason (inner#1442 §4.4.5).
+    subscription_data: { metadata: { userId: input.userId, ...toStripeMetadata(snapshot) } },
     client_reference_id: input.userId,
     // The subscription keeps this, so renewals and upgrade invoices are taxed
     // too. Checkout taxes on the address stored on the customer, which starts

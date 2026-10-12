@@ -21,7 +21,7 @@ import {
   moveUpload,
   setAdsConversionConfigForTest,
 } from "@breatic/core";
-import type { Attribution, ConsentSnapshot } from "@breatic/shared";
+import type { AdClick, ConsentSnapshot } from "@breatic/shared";
 
 try {
   initCore(process.env);
@@ -39,13 +39,12 @@ const CONFIG = {
 };
 
 /**
- * Attribution carrying a click from `daysAgo` days back.
+ * A click from `daysAgo` days back.
  * @param daysAgo - Age of the click.
- * @returns The attribution.
+ * @returns The click.
  */
-function clicked(daysAgo: number): Attribution {
-  const at = new Date(Date.now() - daysAgo * 86_400_000).toISOString();
-  return { first: { gclid: "click-1", at }, last: { gclid: "click-1", at } };
+function clicked(daysAgo: number): AdClick {
+  return { gclid: "click-1", at: new Date(Date.now() - daysAgo * 86_400_000).toISOString() };
 }
 
 /**
@@ -79,7 +78,7 @@ afterAll(async () => {
 describe("enqueueAdsConversion", () => {
   it("queues a conversion once however many times it is reported", async () => {
     const txn = `signup:${crypto.randomUUID()}`;
-    const input = { conversion: "signup" as const, transactionId: txn, attribution: clicked(1) };
+    const input = { conversion: "signup" as const, transactionId: txn, click: clicked(1) };
     expect(await enqueueAdsConversion(input, ADS)).toBe(true);
     expect(await enqueueAdsConversion(input, ADS)).toBe(false);
     expect(await jobsFor(txn)).toEqual([{ name: "conversion", value: undefined }]);
@@ -88,12 +87,12 @@ describe("enqueueAdsConversion", () => {
 
   it("queues nothing without ads consent, a recent click, a configured action or configuration", async () => {
     const txn = `signup:${crypto.randomUUID()}`;
-    expect(await enqueueAdsConversion({ conversion: "signup", transactionId: txn, attribution: clicked(1) }, { analytics: true, ads: false })).toBe(false);
-    expect(await enqueueAdsConversion({ conversion: "signup", transactionId: txn, attribution: clicked(91) }, ADS)).toBe(false);
-    expect(await enqueueAdsConversion({ conversion: "signup", transactionId: txn, attribution: null }, ADS)).toBe(false);
-    expect(await enqueueAdsConversion({ conversion: "subscription", transactionId: txn, attribution: clicked(1) }, ADS)).toBe(false);
+    expect(await enqueueAdsConversion({ conversion: "signup", transactionId: txn, click: clicked(1) }, { analytics: true, ads: false })).toBe(false);
+    expect(await enqueueAdsConversion({ conversion: "signup", transactionId: txn, click: clicked(91) }, ADS)).toBe(false);
+    expect(await enqueueAdsConversion({ conversion: "signup", transactionId: txn, click: null }, ADS)).toBe(false);
+    expect(await enqueueAdsConversion({ conversion: "subscription", transactionId: txn, click: clicked(1) }, ADS)).toBe(false);
     setAdsConversionConfigForTest(null);
-    expect(await enqueueAdsConversion({ conversion: "signup", transactionId: txn, attribution: clicked(1) }, ADS)).toBe(false);
+    expect(await enqueueAdsConversion({ conversion: "signup", transactionId: txn, click: clicked(1) }, ADS)).toBe(false);
     expect(await getUploadStatus({ conversion: "signup", transactionId: txn })).toBeNull();
   });
 });
@@ -119,7 +118,7 @@ describe("enqueueAdsRestatement", () => {
       {
         conversion: "credit_purchase",
         transactionId: txn,
-        attribution: clicked(1),
+        click: clicked(1),
         value: { amountCents: 1000, currency: "USD" },
         paymentId: source!.id,
       },

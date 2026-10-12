@@ -803,6 +803,7 @@ export {
 } from "@shared/analytics/account-consent.js";
 export {
   adClickFrom,
+  CLICK_WINDOW_MS,
   parseAttribution,
   type AdClick,
   type Attribution,

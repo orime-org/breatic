@@ -15,7 +15,7 @@
  */
 
 import { z } from "zod";
-import { adClickFrom, type Attribution, type ConsentSnapshot } from "@breatic/shared";
+import { CLICK_WINDOW_MS, type AdClick, type ConsentSnapshot } from "@breatic/shared";
 import { currentConsent } from "@core/analytics/consent-context.js";
 import { claimUpload, findUploadByPayment, moveUpload } from "@core/ads/ads-conversion.repo.js";
 import { ADS_CONVERSIONS, type AdsConversionJob, type AdsConversionName } from "@core/ads/ads-types.js";
@@ -98,7 +98,7 @@ async function addJob(job: AdsConversionJob): Promise<void> {
  * @param input - The conversion.
  * @param input.conversion - Which conversion action it counts toward.
  * @param input.transactionId - Shared with the browser tag for deduplication.
- * @param input.attribution - Where the click is read from: the order's or the account's.
+ * @param input.click - The click it is credited to (`adClickFrom`); none means nothing to upload.
  * @param input.value - Revenue, for purchases.
  * @param input.value.amountCents - Amount in the currency's minor unit.
  * @param input.value.currency - ISO currency code.
@@ -111,7 +111,7 @@ export async function enqueueAdsConversion(
   input: {
     conversion: AdsConversionName;
     transactionId: string;
-    attribution: Attribution | null | undefined;
+    click: AdClick | null;
     value?: { amountCents: number; currency: string };
     paymentId?: string;
   },
@@ -119,8 +119,8 @@ export async function enqueueAdsConversion(
 ): Promise<boolean> {
   const config = adsConversionConfig();
   if (config === null || !consent.ads || config.actions[input.conversion] === undefined) return false;
-  const click = adClickFrom(input.attribution, Date.now());
-  if (click === null) return false;
+  const { click } = input;
+  if (click === null || Date.now() - Date.parse(click.at) > CLICK_WINDOW_MS) return false;
   const job: AdsConversionJob = {
     kind: "conversion",
     conversion: input.conversion,

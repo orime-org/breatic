@@ -64,8 +64,8 @@ export interface AdClick {
   readonly at: string;
 }
 
-// Google Ads accepts click conversions up to 90 days after the click.
-const CLICK_WINDOW_MS = 90 * 24 * 60 * 60 * 1000;
+/** Google Ads accepts click conversions up to 90 days after the click. */
+export const CLICK_WINDOW_MS = 90 * 24 * 60 * 60 * 1000;
 const CLICK_FIELDS = ["gclid", "gbraid", "wbraid"] as const;
 
 /**

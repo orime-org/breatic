@@ -199,6 +199,16 @@ export async function getAnalyticsConsent(userId: string, tx?: DbTx): Promise<Ac
 }
 
 /**
+ * Read the campaign source recorded at sign-up.
+ * @param userId - The account.
+ * @returns It, or null when none was kept.
+ */
+export async function getAttribution(userId: string): Promise<Attribution | null> {
+  const rows = await db.select({ attribution: users.attribution }).from(users).where(eq(users.id, userId)).limit(1);
+  return rows[0]?.attribution ?? null;
+}
+
+/**
  * Overwrite the account's analytics consent.
  * @param userId - The account.
  * @param consent - The merged choice to keep.
