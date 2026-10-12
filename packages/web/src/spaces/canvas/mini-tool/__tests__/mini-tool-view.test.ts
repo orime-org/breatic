@@ -216,9 +216,34 @@ describe('miniToolRefusal', () => {
   });
 });
 
+describe('a grid', () => {
+  const grid = { spec: tool('image.grid'), entry: undefined, prompt: '', slots: {}, sourceShown: true, exporting: false };
+
+  it('refuses one row by one column, which cuts nothing', () => {
+    expect(miniToolRefusal({ ...grid, params: { rows: 1, cols: 1 } })).toBe('singleTile');
+  });
+
+  it.each([
+    [1, 2],
+    [2, 1],
+  ])('runs at %i by %i', (rows, cols) => {
+    expect(miniToolRefusal({ ...grid, params: { rows, cols } })).toBeNull();
+  });
+
+  it('runs at the default three by three', () => {
+    expect(miniToolRefusal({ ...grid, params: {} })).toBeNull();
+  });
+});
+
 describe('BLOCKING_REFUSALS', () => {
   it('disables Execute for the reasons the reader fixes in the panel', () => {
-    expect([...BLOCKING_REFUSALS].sort()).toEqual(['drawingEmpty', 'exporting', 'promptMissing', 'slotMissing']);
+    expect([...BLOCKING_REFUSALS].sort()).toEqual([
+      'drawingEmpty',
+      'exporting',
+      'promptMissing',
+      'singleTile',
+      'slotMissing',
+    ]);
   });
 });
 
