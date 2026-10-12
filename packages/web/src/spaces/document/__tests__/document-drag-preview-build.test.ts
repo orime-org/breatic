@@ -251,6 +251,33 @@ describe('buildDragPreview', () => {
     expect(Object.keys(sizes).map((property) => content.style.getPropertyValue(property))).toEqual(['', '', '', '']);
   });
 
+  it('leaves the content to take the pointer as the preview does, not as the body does', () => {
+    const editor = open([{ type: 'paragraph', content: 'one' }]);
+    const view = editor.prosemirrorView!;
+    const content = blockPreviewContent(view, [view.dom.querySelector('.bn-block-outer')!.cloneNode(true) as Element]);
+    const real = window.getComputedStyle.bind(window);
+    const taken: Record<string, string> = { 'pointer-events': 'auto', 'touch-action': 'auto', 'user-select': 'text', cursor: 'text' };
+    const computed = vi.spyOn(window, 'getComputedStyle').mockImplementation((element, pseudo) =>
+      !pseudo && content.contains(element)
+        ? ({
+          length: Object.keys(taken).length,
+          item: (at: number) => Object.keys(taken)[at],
+          getPropertyValue: (property: string) => taken[property] ?? '',
+        } as unknown as CSSStyleDeclaration)
+        : real(element, pseudo),
+    );
+    try {
+      buildDragPreview(view, content, () => ({ width: 100, height: 20 }));
+    } finally {
+      computed.mockRestore();
+    }
+    // The preview takes no pointer: one it covered would end the drag.
+    const written = [content, ...content.querySelectorAll<HTMLElement>('*')].flatMap((element) =>
+      Object.keys(taken).filter((property) => element.style.getPropertyValue(property) !== ''),
+    );
+    expect(written).toEqual([]);
+  });
+
   it('works its styles out beside the editor element and leaves nothing of that there', () => {
     const editor = open([{ type: 'paragraph', content: 'one' }]);
     const view = editor.prosemirrorView!;
