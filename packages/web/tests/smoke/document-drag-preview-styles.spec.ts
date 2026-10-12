@@ -45,30 +45,84 @@ const createdSpaceIds: string[] = [];
  * two pseudo-elements included, is compared.
  *
  * Changed on purpose, and so not reported:
- * - the top of the copy's width, height and box sizing: it is set to the
- *   width the content is drawn at;
+ * - the size of the top of the copy, and where its pseudo-elements stand
+ *   against it: it is set to the width the content is drawn at, and it no
+ *   longer sits in a flex row, where `min-width: auto` means something;
  * - the first block's space above it and the last's below it, the quote rule
  *   reaching over them, and the heights of what holds those blocks by that
  *   much: the preview's ends are the content's (design §4);
  * - the size of an element some of whose children the preview leaves out, and
- *   the height of a cell whose row lost its other cells (a column drag);
+ *   of its pseudo-elements; the height of a cell whose row lost its other
+ *   cells (a column drag); the minimum size of an element whose parent the
+ *   preview leaves out or replaces (a table out of its scroll frame, a block
+ *   drawn at the top);
+ * - a nested block drawn at the top (design §4): its quoted lines' start
+ *   margin, start padding and width, compared instead as where their words
+ *   start and how wide they run; and its row's `::before`, the guide BlockNote
+ *   draws beside nested blocks, which `index.css` paints nothing of;
+ * - the sizes of `col` and `colgroup`, which paint nothing: the cells they
+ *   size are compared;
+ * - where a statically positioned element's offsets point, which is nowhere,
+ *   and a relatively positioned one's offset of `0px` against `auto`, both of
+ *   which leave it where it is;
  * - `transform-origin` and `perspective-origin`, which are a box's size again;
- * - whether an element is editable (`-webkit-user-modify`): the copy is not.
+ * - what governs interaction and paints nothing: `pointer-events`,
+ *   `user-select`, `-webkit-user-drag`, `app-region`, `cursor`, `caret-color`,
+ *   `touch-action`. A drag image is a picture;
+ * - what comes of being editable: `-webkit-user-modify`, and the
+ *   `after-white-space` line breaking Chromium gives every contenteditable
+ *   element (www-style 2014-10), which cannot be written on an element; the
+ *   copy is not editable, and how its lines break is compared through sizes.
+ *
+ * Custom properties are not compared: Chromium leaves them out of a computed
+ * style's list, and every property that reads one is compared with what it
+ * came to. A shorthand is compared through its longhands, the way the list
+ * holds both and serializes them differently.
  */
 function installComparer(): void {
   type Diff = { where: string; prop: string; body: string; preview: string };
   const SIZE = new Set(['width', 'height', 'inline-size', 'block-size']);
-  const DERIVED = new Set(['transform-origin', 'perspective-origin', '-webkit-user-modify']);
+  const REBASED = new Set(['margin-left', 'margin-inline-start', 'padding-left', 'padding-inline-start', 'width', 'inline-size']);
+  const depthOf = (el: Element): number => {
+    let groups = 0;
+    for (let at = el.parentElement; at !== null && !at.classList.contains('ProseMirror'); at = at.parentElement) {
+      if (at.classList.contains('bn-block-group')) groups += 1;
+    }
+    return Math.max(0, groups - 1);
+  };
+  const MIN_SIZE = new Set(['min-width', 'min-height', 'min-inline-size', 'min-block-size']);
+  const PLACE = new Set(['top', 'right', 'bottom', 'left', 'inset-block-start', 'inset-block-end', 'inset-inline-start', 'inset-inline-end']);
+  const DERIVED = new Set([
+    'transform-origin',
+    'perspective-origin',
+    '-webkit-user-modify',
+    'line-break',
+    '-webkit-line-break',
+    'pointer-events',
+    'user-select',
+    '-webkit-user-select',
+    '-webkit-user-drag',
+    'app-region',
+    'cursor',
+    'caret-color',
+    'touch-action',
+  ]);
+  const ABOVE = new Set(['margin-top', 'margin-block-start']);
+  const BELOW = new Set(['margin-bottom', 'margin-block-end']);
 
   const label = (el: Element): string =>
     `${el.tagName.toLowerCase()}${el.getAttribute('data-content-type') ? `[${el.getAttribute('data-content-type')}]` : ''}` +
     `${el.getAttribute('data-id') ? `#${el.getAttribute('data-id')}` : ''}.${[...el.classList].join('.')} "${(el.textContent ?? '').trim().slice(0, 24)}"`;
 
+  const classesOf = (el: Element): string =>
+    [...el.classList].filter((name) => !name.startsWith('doc-preview-')).sort().join(' ');
+
   const same = (p: Element, b: Element): boolean => {
     if (p.tagName !== b.tagName) return false;
+    if (classesOf(p) !== classesOf(b)) return false;
     if (p.getAttribute('data-content-type') !== b.getAttribute('data-content-type')) return false;
     if (p.getAttribute('data-id') !== b.getAttribute('data-id')) return false;
-    if (p.tagName === 'TD' || p.tagName === 'TH' || p.tagName === 'TR') return p.textContent === b.textContent;
+    if (p.tagName === 'TD' || p.tagName === 'TH') return p.textContent === b.textContent;
     return true;
   };
 
@@ -89,7 +143,10 @@ function installComparer(): void {
     return { pairs, skipped, unmatched: ps.slice(at) };
   };
 
-  const props = (style: CSSStyleDeclaration): string[] => [...Array.from({ length: style.length }, (_, i) => style[i]!)];
+  const props = (style: CSSStyleDeclaration): string[] => {
+    const all = Array.from({ length: style.length }, (_, i) => style[i]!).filter((name) => !name.startsWith('--'));
+    return all.filter((name) => !all.some((other) => other.startsWith(`${name}-`)));
+  };
 
   const compareStyles = (p: Element, b: Element, pseudo: string | null, out: Diff[], skip: (prop: string) => boolean): void => {
     const a = getComputedStyle(p, pseudo);
@@ -139,13 +196,29 @@ function installComparer(): void {
       const drop = last === undefined || !byCopy.has(last) ? 0 : parseFloat(getComputedStyle(byCopy.get(last)!).marginBottom);
       aligned.pairs.forEach(([p, b]) => {
         const lostChildren = [...b.querySelectorAll('*')].some((el) => aligned.skipped.has(el));
+        const pairedParent = aligned.pairs.some(([, body]) => body === b.parentElement);
+        const lostParent = b.parentElement !== null && (aligned.skipped.has(b.parentElement) || !pairedParent);
+        const rebased = depthOf(original) > 0;
+        const quotedRebased = rebased && b.matches('[data-quoted-run]');
+        const isStatic = getComputedStyle(b).position === 'static' && getComputedStyle(p).position === 'static';
+        const unshifted = [getComputedStyle(b).position, getComputedStyle(p).position].every((position) => position === 'relative' || position === 'static');
+        const isColumn = p.tagName === 'COL' || p.tagName === 'COLGROUP';
         const rowLostCells = (p.tagName === 'TD' || p.tagName === 'TH') && p.parentElement!.children.length < b.parentElement!.children.length;
         const holdsEnd = (first !== undefined && p.contains(first) ? lift : 0) + (last !== undefined && p.contains(last) ? drop : 0);
         const skip = (prop: string): boolean => {
-          if (p === content && (SIZE.has(prop) || prop === 'box-sizing')) return true;
-          if ((lostChildren || rowLostCells) && SIZE.has(prop)) return true;
-          if (p === first && prop === 'margin-top') return true;
-          if (p === last && prop === 'margin-bottom') return true;
+          if (p === content && (SIZE.has(prop) || MIN_SIZE.has(prop) || prop === 'box-sizing')) return true;
+          if (lostChildren && SIZE.has(prop)) return true;
+          if (rowLostCells && (prop === 'height' || prop === 'block-size')) return true;
+          if (isColumn && SIZE.has(prop)) return true;
+          if (isStatic && PLACE.has(prop)) return true;
+          if (unshifted && PLACE.has(prop)) {
+            const values = [getComputedStyle(b).getPropertyValue(prop), getComputedStyle(p).getPropertyValue(prop)];
+            if (values.every((value) => value === 'auto' || value === '0px')) return true;
+          }
+          if (quotedRebased && REBASED.has(prop)) return true;
+          if (lostParent && MIN_SIZE.has(prop)) return true;
+          if (p === first && ABOVE.has(prop)) return true;
+          if (p === last && BELOW.has(prop)) return true;
           if (holdsEnd > 0 && (prop === 'height' || prop === 'block-size')) {
             const gap = parseFloat(getComputedStyle(b).getPropertyValue(prop)) - parseFloat(getComputedStyle(p).getPropertyValue(prop));
             return Math.abs(gap - holdsEnd) < 0.5;
@@ -153,8 +226,19 @@ function installComparer(): void {
           return false;
         };
         compareStyles(p, b, null, diffs, skip);
-        compareStyles(p, b, '::before', diffs, () => false);
-        compareStyles(p, b, '::after', diffs, (prop) => (p === first || p === last) && (prop === 'top' || prop === 'height' || prop === 'block-size'));
+        if (quotedRebased) {
+          const a = getComputedStyle(p);
+          const z = getComputedStyle(b);
+          const start = (st: CSSStyleDeclaration): number => parseFloat(st.marginLeft) + parseFloat(st.paddingLeft);
+          const run = (st: CSSStyleDeclaration): number => parseFloat(st.width) - parseFloat(st.paddingLeft) - parseFloat(st.paddingRight);
+          if (Math.abs(start(a) - start(z)) >= 0.5) diffs.push({ where: label(b), prop: 'words start at', body: `${start(z)}`, preview: `${start(a)}` });
+          if (Math.abs(run(a) - run(z)) >= 0.5) diffs.push({ where: label(b), prop: 'words run', body: `${run(z)}`, preview: `${run(a)}` });
+        }
+        const placed = p === content || lostChildren;
+        const pseudoSkip = (prop: string): boolean => placed && (SIZE.has(prop) || PLACE.has(prop));
+        if (!(rebased && p === copy && p.matches('.bn-block-outer'))) compareStyles(p, b, '::before', diffs, pseudoSkip);
+        compareStyles(p, b, '::after', diffs, (prop) =>
+          pseudoSkip(prop) || ((p === first || p === last) && (SIZE.has(prop) || PLACE.has(prop))));
       });
     });
     return { diffs, unmatched };
@@ -173,9 +257,13 @@ test.beforeEach(async ({ browser }) => {
     (window as unknown as { __previews: Element[] }).__previews = kept;
     const original = DataTransfer.prototype.setDragImage;
     DataTransfer.prototype.setDragImage = function (el: Element, x: number, y: number) {
-      const copy = el.cloneNode(true) as Element;
-      document.body.append(copy);
-      kept.push(copy);
+      // Ours alone: a row drag hands the browser BlockNote's preview first and
+      // ours over it in the same dragstart.
+      if (el.classList.contains('doc-drag-preview')) {
+        const copy = el.cloneNode(true) as Element;
+        document.body.append(copy);
+        kept.push(copy);
+      }
       original.call(this, el, x, y);
     };
   });
@@ -294,16 +382,21 @@ async function openDocument(p: Page): Promise<void> {
 
 /**
  * Starts a drag of the selection the way ProseMirror's own dragstart is
- * reached, on a word of a block, and keeps the preview it hands over.
+ * reached: pressed inside the selection, one character past its start, and
+ * keeps the preview it hands over.
  * @param p - The page.
  * @param from - The text the selection starts in, and where.
  * @param to - The text it ends in, and where.
- * @param on - The text of the block the drag starts on.
  */
-async function dragSelection(p: Page, from: [string, number], to: [string, number], on: string): Promise<void> {
+async function dragSelection(p: Page, from: [string, number], to: [string, number]): Promise<void> {
   await p.locator(EDITOR).evaluate(
-    (el, { from, to, on }) => {
-      type View = { state: { doc: { descendants: (f: (n: { isTextblock: boolean; textContent: string }, pos: number) => boolean | void) => void } } };
+    (el, { from, to }) => {
+      type Node = { isTextblock: boolean; textContent: string };
+      type View = {
+        state: { doc: { descendants: (f: (n: Node, pos: number) => boolean | void) => void }; selection: { from: number } };
+        coordsAtPos: (pos: number) => { left: number; top: number; bottom: number };
+        domAtPos: (pos: number) => { node: globalThis.Node };
+      };
       const editor = (el as unknown as { editor: { view: View; commands: { setTextSelection: (r: { from: number; to: number }) => void; selectAll: () => void } } }).editor;
       const start = (text: string): number => {
         let at = -1;
@@ -315,18 +408,22 @@ async function dragSelection(p: Page, from: [string, number], to: [string, numbe
       };
       if (from[0] === '*') editor.commands.selectAll();
       else editor.commands.setTextSelection({ from: start(from[0]) + from[1], to: start(to[0]) + to[1] });
-      const word = [...el.querySelectorAll('.bn-inline-content')].find((w) => (w.textContent ?? '').startsWith(on))!;
-      const box = word.getBoundingClientRect();
-      const event = new DragEvent('dragstart', {
-        bubbles: true,
-        cancelable: true,
-        clientX: box.left + 2,
-        clientY: box.top + box.height / 2,
-        dataTransfer: new DataTransfer(),
-      });
-      word.dispatchEvent(event);
+      const inside = from[0] === '*' ? start('Heading one') + 1 : start(from[0]) + from[1] + 1;
+      const held = editor.view.domAtPos(inside).node;
+      (held instanceof Element ? held : held.parentElement)!.scrollIntoView({ block: 'center' });
+      const point = editor.view.coordsAtPos(inside);
+      const target = document.elementFromPoint(point.left, (point.top + point.bottom) / 2)!;
+      target.dispatchEvent(
+        new DragEvent('dragstart', {
+          bubbles: true,
+          cancelable: true,
+          clientX: point.left,
+          clientY: (point.top + point.bottom) / 2,
+          dataTransfer: new DataTransfer(),
+        }),
+      );
     },
-    { from, to, on },
+    { from, to },
   );
   await settle(p);
 }
@@ -406,10 +503,10 @@ for (const theme of ['light', 'dark'] as const) {
 
     // Selections: the whole body; ending on a heading in the middle of a quote;
     // starting on it; a nested quoted block alone.
-    await dragSelection(page, ['*', 0], ['*', 0], 'Heading one');
-    await dragSelection(page, ['Bold', 2], ['Quoted heading', 4], 'Bold');
-    await dragSelection(page, ['Quoted heading', 2], ['Heading three', 4], 'Quoted heading');
-    await dragSelection(page, ['Nested quote', 1], ['Nested quote', 5], 'Nested quote');
+    await dragSelection(page, ['*', 0], ['*', 0]);
+    await dragSelection(page, ['Bold', 2], ['Quoted heading', 4]);
+    await dragSelection(page, ['Quoted heading', 2], ['Heading three', 4]);
+    await dragSelection(page, ['Nested quote', 1], ['Nested quote', 5]);
 
     // Handles: a row with blocks nested under it, a table row and a column, a
     // quoted table's row, the image and the audio.

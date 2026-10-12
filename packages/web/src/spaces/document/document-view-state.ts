@@ -30,11 +30,12 @@ const CONTENT = 'docContent';
 export const CONTENT_DECORATION: Readonly<Record<string, true>> = Object.freeze({ [CONTENT]: true });
 
 /**
- * What the body shows for the moment that is no decoration: the class
- * prosemirror-view puts on a selected node, and the media box's hover and
- * selected state, written by its own view (`DocumentMediaBlock`).
+ * What the body shows for the moment that is no decoration: the classes
+ * prosemirror-view puts on a selected node and on the editor element while it
+ * is focused or hides the selection, and the media box's hover and selected
+ * state, written by its own view (`DocumentMediaBlock`).
  */
-const SELECTED_NODE_CLASS = 'ProseMirror-selectednode';
+const VIEW_CLASSES = ['ProseMirror-selectednode', 'ProseMirror-focused', 'ProseMirror-hideselection'];
 const VIEW_ATTRIBUTES = ['data-hovered', 'data-selected'];
 
 /** Every widget prosemirror-view draws carries this class (`spec.raw` aside). */
@@ -80,12 +81,21 @@ function tally(attrs: DecorationAttrs, added: Added): void {
 }
 
 /**
- * What the decorations now in the view add, but for the content's own.
+ * What the decorations now in the view add, but for the content's own, and
+ * the attributes the editor element is given for the moment: an `attributes`
+ * prop's classes name the editor's styles, its other attributes the state the
+ * editor is in (prosemirror-view `computeDocDeco`).
  * @param view - The editor view.
  * @returns The classes, attributes and style properties.
  */
 function addedByDecorations(view: EditorView): Added {
   const added: Added = { classes: new Set(), attributes: new Set(), properties: new Set() };
+  view.someProp('attributes', (attributes) => {
+    const given = typeof attributes === 'function' ? attributes(view.state) : attributes;
+    Object.keys(given ?? {})
+      .filter((name) => name !== 'class' && name !== 'style')
+      .forEach((name) => added.attributes.add(name));
+  });
   view.someProp('decorations', (decorations) => {
     decorations(view.state)?.forEachSet((set) => {
       set.find().forEach((decoration) => {
@@ -102,7 +112,8 @@ function addedByDecorations(view: EditorView): Added {
 /**
  * Takes what the body shows for the moment off a copy of it, leaving the
  * content: every widget, what every decoration but the content's own adds, the
- * selected node's class and the media box's state.
+ * classes and attributes the editor element wears for the moment, the selected
+ * node's class and the media box's state.
  * @param view - The editor view the copy was taken from.
  * @param copy - The copy.
  */
@@ -112,7 +123,7 @@ export function withoutViewState(view: EditorView, copy: Element): void {
     widget.remove();
   });
   [copy, ...copy.querySelectorAll('*')].forEach((el) => {
-    el.classList.remove(SELECTED_NODE_CLASS);
+    VIEW_CLASSES.forEach((name) => el.classList.remove(name));
     VIEW_ATTRIBUTES.forEach((name) => el.removeAttribute(name));
     added.classes.forEach((name) => el.classList.remove(name));
     added.attributes.forEach((name) => el.removeAttribute(name));

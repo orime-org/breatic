@@ -47,13 +47,4 @@ describe('what a drag shows', () => {
     expect(rule).toMatch(/pointer-events: none;/);
     expect(rule).not.toMatch(/opacity/);
   });
-
-  it('draws a table in the preview the way the body draws it', () => {
-    // The table's width and lines hang off `.bn-editor` in BlockNote, the one
-    // class the preview cannot carry (inner#1350 §4), so they are given to it
-    // here; the rest comes with `.ProseMirror`, which it keeps.
-    const css = stylesheet();
-    expect(css).toMatch(/\.doc-drag-preview \[data-content-type='table'\] table \{[^}]*width: auto;/);
-    expect(css).toMatch(/\.doc-drag-preview \[data-content-type='table'\] td \{[^}]*border-width: 1px;[^}]*border-style: solid;/);
-  });
 });

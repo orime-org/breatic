@@ -337,13 +337,7 @@ describe('blockPreviewContent', () => {
   it('scrolls each frame in a preview to where the body has it scrolled', () => {
     const editor = open([{ type: 'table', content: { type: 'tableContent', rows: [{ cells: ['a1', 'b1'] }] } }]);
     const view = editor.prosemirrorView!;
-    // The frame the body draws around a table (`document-table-blocknote.tsx`)
-    // is a React view a test page does not mount; its viewport is put in place.
-    const table = view.dom.querySelector('table')!;
-    const viewport = document.createElement('div');
-    viewport.setAttribute('data-radix-scroll-area-viewport', '');
-    table.replaceWith(viewport);
-    viewport.append(table);
+    const viewport = view.dom.querySelector<HTMLElement>('[data-radix-scroll-area-viewport]')!;
     viewport.scrollLeft = 120;
     const row = view.dom.querySelector('.bn-block-outer')!;
     const root = buildDragPreview(view, blockPreviewContent(view, [row.cloneNode(true) as Element]), () => ({ width: 100, height: 20 }));
@@ -447,18 +441,6 @@ describe('tableLinePreviewContent', () => {
   it('holds a row in the frame its table scrolls in, and a column as its table alone', () => {
     const editor = open([{ type: 'table', content: { type: 'tableContent', rows } }]);
     const view = editor.prosemirrorView!;
-    // The frame the body draws around a table (`document-table-blocknote.tsx`)
-    // is a React view a test page does not mount; its parts are put in place.
-    const table = view.dom.querySelector('table')!;
-    const viewport = document.createElement('div');
-    viewport.setAttribute('data-radix-scroll-area-viewport', '');
-    table.replaceWith(viewport);
-    viewport.append(table);
-    const scrollbar = document.createElement('div');
-    scrollbar.setAttribute('data-scroll-area-scrollbar', '');
-    const edge = document.createElement('span');
-    edge.setAttribute('data-overflow-edge', 'right');
-    viewport.after(scrollbar, edge);
     const row = tableLinePreviewContent(view, cellOf(editor, 'b2'), 'row')!;
     expect(row.querySelector('[data-radix-scroll-area-viewport] table')).not.toBeNull();
     expect(row.querySelector('[data-scroll-area-scrollbar]')).toBeNull();
@@ -467,7 +449,6 @@ describe('tableLinePreviewContent', () => {
     const column = tableLinePreviewContent(view, cellOf(editor, 'c1'), 'column')!;
     expect(column.querySelector(':scope > table')).not.toBeNull();
     expect(column.querySelector('[data-radix-scroll-area-viewport]')).toBeNull();
-    expect(column.querySelector('[data-scroll-area-scrollbar]')).toBeNull();
     expect(column.querySelector('[data-overflow-edge]')).toBeNull();
   });
 

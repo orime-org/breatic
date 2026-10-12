@@ -287,12 +287,12 @@ describe('the blocks a selection preview draws', () => {
     expect(content.textContent).toContain('nested');
   });
 
-  it('a few words in a table cell: the table block, its table alone', () => {
+  it('a few words in a table cell: the table block, in the frame it scrolls in', () => {
     const editor = open([table([{ cells: ['a1', 'b1'] }, { cells: ['a2', 'b2'] }])]);
     selectText(editor, ['a1', 0], ['a1', 2]);
     const content = selectionPreviewContent(editor.prosemirrorView!)!;
     const block = content.querySelector('[data-content-type="table"]')!;
-    expect([...block.children].map((child) => child.tagName)).toEqual(['TABLE']);
+    expect(block.querySelector('[data-radix-scroll-area-viewport] table')).not.toBeNull();
     expect(rowsOf(content)).toEqual([['a1:1x1', 'b1:1x1'], ['a2:1x1', 'b2:1x1']]);
   });
 });
