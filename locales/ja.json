@@ -809,7 +809,6 @@
         "view": "表示"
       },
       "elapsed": "実行時間 {duration}",
-      "remaining": "残り {duration}",
       "startedAt": "{when} 開始",
       "endedAt": "{when} 終了",
       "lateResult": "時間切れのあとに完了しました。",
@@ -837,10 +836,10 @@
         "tool_failed": "ツールでこのファイルを処理できませんでした。",
         "no_audio_track": "この動画には音声トラックがありません。"
       },
-      "title": {
-        "upload": "アップロード · {name}",
-        "generate": "生成 · {name}",
-        "understand": "内容を読み取る · {name}"
+      "kind": {
+        "upload": "アップロード",
+        "generate": "生成",
+        "understand": "内容を読み取る"
       }
     },
     "panel": {

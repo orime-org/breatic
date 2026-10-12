@@ -125,6 +125,7 @@ describe('NodeTaskPanelContainer', () => {
       {
         id: 'task-1',
         status: 'failed',
+        action: 'upload',
         label: 'broken-take.mov',
         startedByUserId: 'u1',
         startedAt: '2026-09-06T10:00:00.000Z',
@@ -136,6 +137,7 @@ describe('NodeTaskPanelContainer', () => {
       {
         id: 'task-2',
         status: 'done',
+        action: 'upload',
         label: 'poster-final-v3.png',
         startedByUserId: 'u1',
         startedAt: '2026-09-06T09:00:00.000Z',
