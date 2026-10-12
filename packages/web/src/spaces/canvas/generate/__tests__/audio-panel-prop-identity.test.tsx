@@ -151,14 +151,14 @@ function nodes(
   return [
     {
       id: 'target',
+      type: 'audio',
       data: {
-        kind: 'audio',
         handling: false,
         model: 'elevenlabs-v3',
         paramsByModel: { 'elevenlabs-v3': { stability } },
       },
     },
-    { id: 'src', data: { kind: 'text', handling: false, name: 'The script' } },
+    { id: 'src', type: 'text', data: { handling: false, name: 'The script' } },
   ] as Parameters<typeof AudioGeneratePanelContainer>[0]['nodes'];
 }
 

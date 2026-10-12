@@ -4,7 +4,7 @@
 import { describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
 
-import type { ChatAttachedChip, ModelCatalog } from '@breatic/shared';
+import type { ChatAttachedChip, ModelCatalog, NodeType } from '@breatic/shared';
 import type { CanvasNodeView } from '@web/data/yjs/canvas-space';
 import { PREVIEW_ROWS, previewOf } from '@web/pages/project/chat/attachment-preview';
 import { itemForPick } from '@web/spaces/canvas/attach-nodes';
@@ -20,7 +20,7 @@ const node = (id: string, type: string, data: Record<string, unknown> = {}) => (
   id,
   type,
   position: { x: 0, y: 0 },
-  data: { kind: type, name: id, ...data },
+  data: { name: id, ...data },
 });
 
 const canvas = (nodes: ReturnType<typeof node>[]): ChatAttachedChip => ({
@@ -102,8 +102,8 @@ describe('previewOf', () => {
     expect(preview.more).toBe(3);
   });
 
-  it('names an unnamed node by its kind', () => {
-    const unnamed = { ...node('a', 'image'), data: { kind: 'image', name: '' } };
+  it('names an unnamed node by its type', () => {
+    const unnamed = { ...node('a', 'image'), data: { name: '' } };
     const preview = previewOf(canvas([unnamed, node('b', 'text')]));
     expect(preview?.kind === 'nodes' && preview.rows[0]?.name).toBe('image');
   });
@@ -127,12 +127,8 @@ describe('previewOf', () => {
 });
 
 describe('what the card of a picked piece of the canvas previews', () => {
-  const view = (id: string, data: Record<string, unknown>): CanvasNodeView => ({
-    id,
-    type: data.kind as CanvasNodeView['type'],
-    position: { x: 0, y: 0 },
-    data: data as unknown as CanvasNodeView['data'],
-  });
+  const view = (id: string, type: NodeType, data: Record<string, unknown>): CanvasNodeView =>
+    ({ id, type, position: { x: 0, y: 0 }, data }) as unknown as CanvasNodeView;
   const doc = new Y.Doc();
   const scriptData = doc.getMap<unknown>('t1');
   const body = new Y.XmlFragment();
@@ -145,9 +141,9 @@ describe('what the card of a picked piece of the canvas previews', () => {
   body.insert(0, [line('Line one'), line('Line two')]);
   const graph = {
     nodes: [
-      view('t1', { kind: 'text', name: 'Script' }),
-      view('a1', { kind: 'annotation', content: 'Check the colours here', replies: [] }),
-      view('i1', { kind: 'image', name: 'Cover', content: 'https://cdn.example/c.png' }),
+      view('t1', 'text', { name: 'Script' }),
+      view('a1', 'annotation', { content: 'Check the colours here', replies: [] }),
+      view('i1', 'image', { name: 'Cover', content: 'https://cdn.example/c.png' }),
     ],
     edges: [],
   };

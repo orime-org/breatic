@@ -301,8 +301,9 @@ describe('undoing a deleted sticky (#1881 A16)', () => {
     undo.undo();
     const back = readNodes(doc);
     expect(back).toHaveLength(1);
+    expect(back[0]?.type).toBe('annotation');
     const view = back[0]?.data;
-    expect(view).toMatchObject({ kind: 'annotation', content: 'a cooler shot here' });
+    expect(view).toMatchObject({ content: 'a cooler shot here' });
     expect(
       (view as { replies: { content: string }[] }).replies.map((r) => r.content),
     ).toEqual(['somebody else wrote this']);

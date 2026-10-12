@@ -49,8 +49,6 @@ type FieldKey = keyof CanvasNodeFields['data'] | ViewKey | 'body' | 'prompt';
 
 /** Every field a node is handed over with. A key added to a node and not named here fails the typecheck. */
 export const FIELD_RULES: { readonly [K in FieldKey]: FieldRule } = {
-  // The node view's copy of the entry's `type`.
-  kind: 'other',
   name: 'identity',
   sourceNodeId: 'identity',
   // A picture's or a clip's address; a sticky's words; on a text node, words
@@ -186,12 +184,12 @@ function keepEach(
 /**
  * The name a node is known by, as its attachment card names it; a sticky by
  * the start of what it says, since every sticky is named the same.
- * @param kind - The node's kind.
+ * @param type - The node's type.
  * @param data - Its data.
  * @returns The name.
  */
-function nameOf(kind: string, data: Record<string, unknown>): string {
-  return nodeNameOf(kind === 'annotation' ? { kind, content: data.content } : { ...data, kind });
+function nameOf(type: string, data: Record<string, unknown>): string {
+  return nodeNameOf(type, type === 'annotation' ? { content: data.content } : data);
 }
 
 /**

@@ -66,6 +66,7 @@ import {
   nodeDataMap,
 } from '@web/data/yjs/canvas-space';
 import { _resetForTests, docName, getDoc } from '@web/data/yjs/manager';
+import type { VideoNodeView } from '@web/data/yjs/node-view';
 import { enterStoryboardShots, readShots, shotListOf } from '@web/data/yjs/node-storyboard';
 import { canvasApi } from '@web/data/api/canvas';
 
@@ -319,13 +320,12 @@ function panelTree(
             nodes={[
               {
                 id: 'target',
-                data: { kind, handling: false, ...reactNodeData } as Parameters<
-                  typeof VideoGeneratePanelContainer
-                >[0]['nodes'][number]['data'],
+                type: kind,
+                data: { handling: false, ...reactNodeData } as VideoNodeView,
               },
               // A second node on the board, so a case that moves the panel
               // elsewhere does not trip the node-is-gone close first.
-              { id: 'other', data: { kind: 'video', handling: false } },
+              { id: 'other', type: 'video', data: { handling: false } },
               ...(board.nodes ?? []),
             ]}
             getLastWriteWasLocal={author}
@@ -890,8 +890,8 @@ describe('VideoGeneratePanelContainer', () => {
     /** An image node on the board, wired into the target as a reference. */
     const SOURCE = {
       id: 'src',
+      type: 'image' as const,
       data: {
-        kind: 'image' as const,
         handling: false as const,
         name: 'A still',
         content: 'https://cdn/a.png',
@@ -1246,8 +1246,8 @@ describe('VideoGeneratePanelContainer', () => {
     const SOURCES = [
       {
         id: 'ref-a',
+        type: 'image' as const,
         data: {
-          kind: 'image' as const,
           handling: false as const,
           name: 'A',
           content: 'https://cdn/a.png',
@@ -1255,8 +1255,8 @@ describe('VideoGeneratePanelContainer', () => {
       },
       {
         id: 'ref-b',
+        type: 'image' as const,
         data: {
-          kind: 'image' as const,
           handling: false as const,
           name: 'B',
           content: 'https://cdn/b.png',
@@ -1264,8 +1264,8 @@ describe('VideoGeneratePanelContainer', () => {
       },
       {
         id: 'ref-c',
+        type: 'image' as const,
         data: {
-          kind: 'image' as const,
           handling: false as const,
           name: 'C',
           content: 'https://cdn/c.png',
@@ -1633,7 +1633,8 @@ describe('VideoGeneratePanelContainer', () => {
             id: 'src',
             // 正文不进这个投影（node-view.ts:149），轨道那行的预览靠
             // `textById` 单独取，这一条不需要它。
-            data: { kind: 'text', handling: false },
+            type: 'text',
+            data: { handling: false },
           },
         ],
         edges: [{ id: 'e1', source: 'src', target: 'target' }],
@@ -1775,7 +1776,7 @@ describe('VideoGeneratePanelContainer', () => {
       // 留着它是因为编辑器在这一档不挂载了，那句吞掉的代码从此没有别的
       // 东西挡在前面。
       await openMode('talking_head', 'omnihuman-1.5', {
-        nodes: [{ id: 'src', data: { kind: 'image', handling: false, content: 'https://cdn/a.png' } }],
+        nodes: [{ id: 'src', type: 'image', data: { handling: false, content: 'https://cdn/a.png' } }],
         edges: [{ id: 'e1', source: 'src', target: 'target' }],
       });
       const row = await screen.findByTestId('generate-ref-insert-e1');
@@ -1925,8 +1926,8 @@ describe('VideoGeneratePanelContainer — what the @ list says when it has nothi
 
   const PICTURE = {
     id: 'src',
+    type: 'image' as const,
     data: {
-      kind: 'image' as const,
       handling: false as const,
       name: 'Alpha',
       content: 'https://cdn/a.png',

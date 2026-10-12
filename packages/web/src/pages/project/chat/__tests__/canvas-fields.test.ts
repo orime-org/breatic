@@ -133,7 +133,7 @@ function entryOf(type: string, data: Record<string, unknown>, current?: Record<s
     type,
     position: { x: 5, y: 5 },
     parentId: 'g1',
-    data: { kind: type, name: 'Shot', createdAt: 1, createdBy: 'u1', ...data },
+    data: { name: 'Shot', createdAt: 1, createdBy: 'u1', ...data },
     ...(current ? { current } : {}),
   };
 }

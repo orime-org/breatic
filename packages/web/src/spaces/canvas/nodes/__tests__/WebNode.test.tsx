@@ -8,7 +8,7 @@ import { WebNode } from '@web/spaces/canvas/nodes/WebNode';
 
 describe('WebNode', () => {
   it('renders placeholder when no url', () => {
-    render(<WebNode data={{ kind: 'web', handling: false }} />);
+    render(<WebNode data={{ handling: false }} />);
     expect(screen.getByTestId('node-placeholder')).toBeInTheDocument();
   });
 
@@ -16,7 +16,6 @@ describe('WebNode', () => {
     render(
       <WebNode
         data={{
-          kind: 'web',
           content: 'https://example.com',
           handling: false,
         }}
@@ -35,7 +34,6 @@ describe('WebNode', () => {
     render(
       <WebNode
         data={{
-          kind: 'web',
           content: 'https://example.com',
           handling: false,
         }}

@@ -160,8 +160,8 @@ describe('AttachmentChip canvas rows — the thumbnail shows the stored preview 
       name: '',
       data_snapshot: {
         nodes: [
-          { id: 'n0', type: 'image', position: { x: 0, y: 0 }, data: { kind: 'image', name: 'Node 0', content: stored } },
-          { id: 'n1', type: 'text', position: { x: 0, y: 0 }, data: { kind: 'text', name: 'Node 1', content: 'words' } },
+          { id: 'n0', type: 'image', position: { x: 0, y: 0 }, data: { name: 'Node 0', content: stored } },
+          { id: 'n1', type: 'text', position: { x: 0, y: 0 }, data: { name: 'Node 1', content: 'words' } },
         ],
         edges: [],
       },

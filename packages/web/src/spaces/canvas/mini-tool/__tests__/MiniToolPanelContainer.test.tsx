@@ -63,7 +63,7 @@ function source(content: string): CanvasNodeView[] {
       id: 'src',
       type: 'image',
       position: { x: 0, y: 0 },
-      data: { kind: 'image', handling: false, content, width: 1600, height: 1000 },
+      data: { handling: false, content, width: 1600, height: 1000 },
     },
   ];
 }
@@ -167,7 +167,7 @@ describe('MiniToolPanelContainer', () => {
     canvasSessions.of('').getState().openMiniTool('src', 'video.cut', { sourceContent: 'a.mp4', params: { range: null } });
     const onRun = vi.fn(() => Promise.resolve());
     const video: CanvasNodeView[] = [
-      { id: 'src', type: 'video', position: { x: 0, y: 0 }, data: { kind: 'video', handling: false, content: 'a.mp4', duration: 12 } },
+      { id: 'src', type: 'video', position: { x: 0, y: 0 }, data: { handling: false, content: 'a.mp4', duration: 12 } },
     ];
     render(tree(video, onRun));
     fireEvent.click(screen.getByTestId('mini-tool-run'));

@@ -9,7 +9,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
-import type { ModelCatalog, ModelEntry } from '@breatic/shared';
+import type { ModelCatalog, ModelEntry, NodeType } from '@breatic/shared';
 
 import type { CanvasEdge, CanvasNodeView } from '@web/data/yjs/canvas-space';
 import { itemForPick } from '@web/spaces/canvas/attach-nodes';
@@ -17,27 +17,28 @@ import { itemForPick } from '@web/spaces/canvas/attach-nodes';
 /**
  * A node on the canvas.
  * @param id - Its id.
+ * @param type - Its type.
  * @param data - Its view data.
  * @param parentId - The group it sits in.
  * @returns The node.
  */
-function node(id: string, data: Record<string, unknown>, parentId?: string): CanvasNodeView {
+function node(id: string, type: NodeType, data: Record<string, unknown>, parentId?: string): CanvasNodeView {
   return {
     id,
-    type: data.kind as CanvasNodeView['type'],
+    type,
     position: { x: 0, y: 0 },
     ...(parentId ? { parentId } : {}),
-    data: data as unknown as CanvasNodeView['data'],
-  };
+    data,
+  } as unknown as CanvasNodeView;
 }
 
-const IMAGE = node('i1', { kind: 'image', name: 'Cover', content: 'https://cdn.example/c.png' });
-const TEXT = node('t1', { kind: 'text', name: 'Script' });
-const GROUP = node('g1', { kind: 'group', name: 'Shots' });
-const IN_GROUP = node('v1', { kind: 'video', name: 'Opening', mode: 't2v', model: 'kling' }, 'g1');
-const MODEL = node('m1', { kind: '3d', name: 'Model' });
-const NOTE = node('a1', { kind: 'annotation', content: 'Check the colours here', replies: [] });
-const SPEECH = node('s1', { kind: 'audio', name: 'Voice', mode: 'tts' });
+const IMAGE = node('i1', 'image', { name: 'Cover', content: 'https://cdn.example/c.png' });
+const TEXT = node('t1', 'text', { name: 'Script' });
+const GROUP = node('g1', 'group', { name: 'Shots' });
+const IN_GROUP = node('v1', 'video', { name: 'Opening', mode: 't2v', model: 'kling' }, 'g1');
+const MODEL = node('m1', '3d', { name: 'Model' });
+const NOTE = node('a1', 'annotation', { content: 'Check the colours here', replies: [] });
+const SPEECH = node('s1', 'audio', { name: 'Voice', mode: 'tts' });
 const ALL = [IMAGE, TEXT, GROUP, IN_GROUP, MODEL, NOTE, SPEECH];
 
 /**
@@ -205,10 +206,11 @@ describe('a piece of the canvas handed to the agent', () => {
     expect(snapshot(['i1', 't1', 'v1']).edges).toEqual([{ id: 'e1', source: 'i1', target: 'v1' }]);
   });
 
-  it('carries each node its data with its words as plain text', () => {
+  it('carries each node its data with its words as plain text, the type once on the entry', () => {
     const [text] = snapshot(['t1']).nodes;
 
-    expect(text?.data).toEqual({ kind: 'text', name: 'Script', body: 'Line one\nLine two' });
+    expect(text?.type).toBe('text');
+    expect(text?.data).toEqual({ name: 'Script', body: 'Line one\nLine two' });
   });
 
   it('turns every fragment into plain text, mentions read as their label', () => {
@@ -287,9 +289,9 @@ describe('a piece of the canvas handed to the agent', () => {
   });
 
   it('places a group member where it sits on the canvas, keeping its group', () => {
-    const group = { ...node('g2', { kind: 'group', name: 'Scene' }), position: { x: 1000, y: 1000 } };
-    const member = { ...node('i2', { kind: 'image', name: 'Shot' }, 'g2'), position: { x: 24, y: 40 } };
-    const loose = { ...node('i3', { kind: 'image', name: 'Loose' }), position: { x: 1030, y: 1050 } };
+    const group = { ...node('g2', 'group', { name: 'Scene' }), position: { x: 1000, y: 1000 } };
+    const member = { ...node('i2', 'image', { name: 'Shot' }, 'g2'), position: { x: 24, y: 40 } };
+    const loose = { ...node('i3', 'image', { name: 'Loose' }), position: { x: 1030, y: 1050 } };
     const item = itemForPick({ nodes: [group, member, loose], edges: [] }, ['i2', 'i3'], readers);
     const nodes = (item?.chip?.data_snapshot as { nodes: Array<Record<string, unknown>> }).nodes;
 

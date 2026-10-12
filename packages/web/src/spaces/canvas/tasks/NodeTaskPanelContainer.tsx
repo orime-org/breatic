@@ -13,7 +13,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { NodeToolbar, Position, useStore } from '@xyflow/react';
 import * as React from 'react';
 
-import type { CanvasNodeView } from '@web/data/yjs/canvas-space';
+import type { NodeRef } from '@web/data/yjs/node-view';
 import type { NodeTaskEntry } from '@breatic/shared';
 
 import { canvasApi } from '@web/data/api/canvas';
@@ -34,7 +34,7 @@ import { useCanvasSession } from '@web/spaces/canvas/canvas-context';
 const LISTED_MEDIA = ['image', 'video', 'audio'] as const;
 
 /** What this panel reads off its host: that it exists, and its four counts. */
-type TaskHostNode = Pick<CanvasNodeView, 'id' | 'data'>;
+type TaskHostNode = NodeRef;
 
 /** What {@link NodeTaskPanelContainer} needs from the canvas around it. */
 export interface NodeTaskPanelContainerProps {
@@ -101,9 +101,9 @@ function OpenNodeTaskPanel({
   // A deleted host draws nothing here; `CanvasSpaceInner` closes the panel.
   const hostNode = nodes.find((n) => n.id === nodeId);
   // What the node holds, for the refusal sentence that names the formats we
-  // would have taken. Only the three media have a list; every other kind
+  // would have taken. Only the three media have a list; every other type
   // leaves the sentence its short form.
-  const hostMedium = LISTED_MEDIA.find((name) => hostNode?.data.kind === name);
+  const hostMedium = LISTED_MEDIA.find((name) => hostNode?.type === name);
 
   // The counts come off the document and move live; these rows are one fetch.
   // Keying on them is what keeps the two from contradicting each other on

@@ -31,7 +31,6 @@ function image(id: string, createdAt: number, prompt = 'a quiet street at night'
     type: 'image',
     position: { x: createdAt, y: 0 },
     data: {
-      kind: 'image',
       name: `Shot ${id}`,
       createdAt,
       createdBy: '90000000-1111-2222-3333-444444444444',
@@ -51,7 +50,7 @@ function image(id: string, createdAt: number, prompt = 'a quiet street at night'
  * @returns The entry.
  */
 function group(id: string, createdAt: number): Record<string, unknown> & { id: string } {
-  return { id, type: 'group', position: { x: 0, y: 0 }, data: { kind: 'group', name: `Group ${id}`, createdAt, createdBy: 'u1', backgroundColor: 'red', width: 400, height: 300 } };
+  return { id, type: 'group', position: { x: 0, y: 0 }, data: { name: `Group ${id}`, createdAt, createdBy: 'u1', backgroundColor: 'red', width: 400, height: 300 } };
 }
 
 /**

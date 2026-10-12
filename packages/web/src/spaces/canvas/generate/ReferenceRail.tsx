@@ -11,12 +11,12 @@ import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-refer
 import {
   insertRefusal,
   isReferenceMaterial,
+  type NodeType,
   type ReferenceKind,
   type ReferenceUsabilityContext,
   type ReferenceRefusal,
 } from '@breatic/shared';
 import { getNodeIcon } from '@web/spaces/canvas/lib/node-icon';
-import type { NodeKind } from '@web/data/yjs/node-view';
 import { HoverPreview } from '@web/spaces/canvas/nodes/_shared/HoverPreview';
 import { PreviewImg } from '@web/components/preview-img';
 
@@ -33,7 +33,7 @@ import { PreviewImg } from '@web/components/preview-img';
  * @param kind - The upstream node's modality.
  * @returns The preview form to declare.
  */
-function previewKindOf(kind: NodeKind): 'image' | 'text' | 'audio' | 'video' {
+function previewKindOf(kind: NodeType): 'image' | 'text' | 'audio' | 'video' {
   switch (kind) {
     case 'text':
       return 'text';
@@ -135,7 +135,7 @@ export const ReferenceRail = React.memo(function ReferenceRail({
   // the situation rather than explaining it (user 2026-08-17). All three
   // predate that rule and are queued to follow it (todo #1970).
   const refuseInsert = React.useCallback(
-    (refusal: ReferenceRefusal, kind: NodeKind): void => {
+    (refusal: ReferenceRefusal, kind: NodeType): void => {
       if (refusal === 'model-takes-no-prompt') {
         toast.warning(t('canvas.generatePanel.refuseInsertNoPrompt'));
         return;

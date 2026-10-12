@@ -28,7 +28,7 @@ describe('slot fields on the node view', () => {
         position: { x: 0, y: 0 },
         data: { name: 'N', createdAt: 1, createdBy: 'u1', locked: false, attachments: [], [spec.field]: pick },
       } as unknown as CanvasNodeFields;
-      expect(toNodeView(fields)).toMatchObject({ [spec.field]: pick });
+      expect(toNodeView(fields)?.data).toMatchObject({ [spec.field]: pick });
     });
   }
 });

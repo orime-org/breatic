@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { describe, it, expect } from 'vitest';
-import type { ModelEntry } from '@breatic/shared';
+import type { ModelEntry, NodeType } from '@breatic/shared';
 
 import type { CanvasEdge, CanvasNodeView } from '@web/data/yjs/canvas-space';
-import type { NodeView } from '@web/data/yjs/node-view';
+import type { NodeRef, NodeViewOf, VideoNodeView } from '@web/data/yjs/node-view';
 import type { VideoGenMode } from '@web/spaces/canvas/generate/video-panel-view-model';
 import { resolveModeSwitch } from '@web/spaces/canvas/generate/mode-selection';
 import { VIDEO_MODE_OPTIONS } from '@web/spaces/canvas/generate/video-mode-options';
@@ -50,13 +50,14 @@ function makeModel(name: string, over: Partial<ModelEntry> = {}): ModelEntry {
 }
 
 /**
- * Builds a canvas node view fixture.
+ * Builds a render-ready {@link CanvasNodeView} fixture.
  * @param id - Node id.
- * @param data - The node's view data.
- * @returns A CanvasNodeView.
+ * @param type - The node type.
+ * @param data - The view of that type.
+ * @returns A CanvasNodeView positioned at the origin.
  */
-function node(id: string, data: NodeView): CanvasNodeView {
-  return { id, type: data.kind, position: { x: 0, y: 0 }, data };
+function node<T extends NodeType>(id: string, type: T, data: NodeViewOf[T]): CanvasNodeView {
+  return { id, type, position: { x: 0, y: 0 }, data } as CanvasNodeView;
 }
 
 /**
@@ -65,9 +66,9 @@ function node(id: string, data: NodeView): CanvasNodeView {
  * @returns The video node view.
  */
 function videoView(
-  over: Partial<Extract<NodeView, { kind: 'video' }>> = {},
-): NodeView {
-  return { kind: 'video', handling: false, ...over };
+  over: Partial<VideoNodeView> = {},
+): VideoNodeView {
+  return { handling: false, ...over };
 }
 
 /** No edges, which is what a case about models / params / slots wants. */
@@ -89,7 +90,7 @@ const NO_TEXT: ReadonlyMap<string, string> = new Map();
  */
 function buildVm(input: {
   nodeId: string;
-  nodes: ReadonlyArray<Pick<CanvasNodeView, 'id' | 'data'>>;
+  nodes: ReadonlyArray<NodeRef>;
   models: ModelEntry[];
   mode: VideoGenMode;
   edges?: ReadonlyArray<CanvasEdge>;
@@ -177,7 +178,7 @@ describe('buildVideoPanelViewModel — 渲染时按本模式记住的模型解�
       nodeId: 'n1',
       nodes: [
         node(
-          'n1',
+          'n1', 'video',
           videoView({ model: 'gone-from-this-mode', modelByMode: { t2v: 'kling' } }),
         ),
       ],
@@ -192,7 +193,7 @@ describe('buildVideoPanelViewModel — 渲染时按本模式记住的模型解�
     const vm = buildVm({
       nodeId: 'n1',
       nodes: [
-        node('n1', videoView({ model: 'gone', modelByMode: { t2v: 'also-gone' } })),
+        node('n1', 'video', videoView({ model: 'gone', modelByMode: { t2v: 'also-gone' } })),
       ],
       models: [veo, kling],
       mode: 't2v',
@@ -214,7 +215,7 @@ describe('buildVideoPanelViewModel', () => {
     // pins is that the effective model comes out of that narrowing: the
     // i2v and upscale entries sit earlier and later in the catalog and
     // neither may win.
-    const nodes = [node('n1', videoView())];
+    const nodes = [node('n1', 'video', videoView())];
     const vm = buildVm({
       nodeId: 'n1',
       nodes,
@@ -229,7 +230,7 @@ describe('buildVideoPanelViewModel', () => {
   });
 
   it('uses the stored model when the active mode offers it', () => {
-    const nodes = [node('n1', videoView({ model: 'veo-3.1-lite' }))];
+    const nodes = [node('n1', 'video', videoView({ model: 'veo-3.1-lite' }))];
     const vm = buildVm({
       nodeId: 'n1',
       nodes,
@@ -240,7 +241,7 @@ describe('buildVideoPanelViewModel', () => {
   });
 
   it('falls back to the first offered model when none is stored', () => {
-    const nodes = [node('n1', videoView())];
+    const nodes = [node('n1', 'video', videoView())];
     const vm = buildVm({
       nodeId: 'n1',
       nodes,
@@ -255,7 +256,7 @@ describe('buildVideoPanelViewModel', () => {
     // or one dropped from the catalog) must never be the effective model:
     // submitting it would generate from the prompt alone, ignoring the source
     // the mode is named after.
-    const nodes = [node('n1', videoView({ model: 'kling-o3-pro-i2v' }))];
+    const nodes = [node('n1', 'video', videoView({ model: 'kling-o3-pro-i2v' }))];
     const vm = buildVm({
       nodeId: 'n1',
       nodes,
@@ -266,7 +267,7 @@ describe('buildVideoPanelViewModel', () => {
   });
 
   it('resolves no model and no params when the mode offers nothing', () => {
-    const nodes = [node('n1', videoView({ model: 'veo-3.1' }))];
+    const nodes = [node('n1', 'video', videoView({ model: 'veo-3.1' }))];
     const vm = buildVm({
       nodeId: 'n1',
       nodes,
@@ -280,7 +281,7 @@ describe('buildVideoPanelViewModel', () => {
   it('reconciles stored params against the effective model', () => {
     const nodes = [
       node(
-        'n1',
+        'n1', 'video',
         videoView({
           model: 'veo-3.1',
           // `2:1` is not offered by this model → falls back to its default;
@@ -321,7 +322,7 @@ describe('buildVideoPanelViewModel', () => {
     // passes (measured). What the case is about is the range-shaped duration.
     const nodes = [
       node(
-        'n1',
+        'n1', 'video',
         videoView({
           model: 'kling-o3-pro',
           paramsByModel: { 'kling-o3-pro': { duration: 12 } },
@@ -338,7 +339,7 @@ describe('buildVideoPanelViewModel', () => {
   });
 
   it('reports that the node is on the board, which the execute gate reads', () => {
-    const nodes = [node('n1', videoView({}))];
+    const nodes = [node('n1', 'video', videoView({}))];
     const vm = buildVm({
       nodeId: 'n1',
       nodes,
@@ -365,7 +366,7 @@ describe('buildVideoPanelViewModel', () => {
     // empty model and stays shut.
     const vm = buildVm({
       nodeId: 'n1',
-      nodes: [node('n1', videoView())],
+      nodes: [node('n1', 'video', videoView())],
       models: [makeModel('video-upscale-pro', { mode: 'upscale' })],
       mode: 't2v',
     });
@@ -385,16 +386,16 @@ describe('buildVideoPanelViewModel — source requirements (#1896 slice 2)', () 
   it('draws the slots of the mode row its model declares, in the order they are shown', () => {
     // A mode's row lists every source it can take (#1904); a model draws the
     // ones it declares (#2156, design §6). Text-to-video collects nothing.
-    const nodes = [node('n1', videoView())];
+    const nodes = [node('n1', 'video', videoView())];
     const slotsIn = (mode: VideoGenMode, model?: string): readonly string[] =>
-      buildVm({ nodeId: 'n1', nodes: model ? [node('n1', videoView({ model }))] : nodes, models, mode }).slots;
+      buildVm({ nodeId: 'n1', nodes: model ? [node('n1', 'video', videoView({ model }))] : nodes, models, mode }).slots;
     expect(slotsIn('t2v')).toEqual([]);
     expect(slotsIn('i2v', 'kling-o3-pro-i2v')).toEqual(['firstFrame']);
     expect(slotsIn('i2v', 'text-only-i2v')).toEqual([]);
   });
 
   it('echoes the mode back, so the payload is built from the same one', () => {
-    const nodes = [node('n1', videoView())];
+    const nodes = [node('n1', 'video', videoView())];
     expect(
       buildVm({ nodeId: 'n1', nodes, models, mode: 'first_last' })
         .mode,
@@ -404,7 +405,7 @@ describe('buildVideoPanelViewModel — source requirements (#1896 slice 2)', () 
   it('carries both picked frames through from node data', () => {
     const nodes = [
       node(
-        'n1',
+        'n1', 'video',
         videoView({
           firstFrameUrl: 'https://cdn/f.png',
           endFrameUrl: 'https://cdn/l.png',
@@ -427,7 +428,7 @@ describe('buildVideoPanelViewModel — source requirements (#1896 slice 2)', () 
     // copies the node's poster at pick time and the panel shows that.
     const nodes = [
       node(
-        'n1',
+        'n1', 'video',
         videoView({
           drivingVideo: {
             url: 'https://cdn/driving.mp4',
@@ -449,7 +450,7 @@ describe('buildVideoPanelViewModel — source requirements (#1896 slice 2)', () 
 
   it('shows an image slot its own pick, with no poster in between', () => {
     const nodes = [
-      node('n1', videoView({ characterImageUrl: 'https://cdn/c.png' })),
+      node('n1', 'video', videoView({ characterImageUrl: 'https://cdn/c.png' })),
     ];
     const vm = buildVm({
       nodeId: 'n1',
@@ -465,7 +466,7 @@ describe('buildVideoPanelViewModel — source requirements (#1896 slice 2)', () 
     // URL would put the blank square back; leaving the thumbnail absent lets
     // the toolbar cover the slot with the video node's icon instead (#1946).
     const nodes = [
-      node('n1', videoView({ drivingVideo: { url: 'https://cdn/driving.mp4' } })),
+      node('n1', 'video', videoView({ drivingVideo: { url: 'https://cdn/driving.mp4' } })),
     ];
     const vm = buildVm({
       nodeId: 'n1',
@@ -482,7 +483,7 @@ describe('buildVideoPanelViewModel — source requirements (#1896 slice 2)', () 
     // (user 2026-08-10) — so the panel still sees it. What the mode decides is
     // which of these reach the payload, and that decision is made there.
     const nodes = [
-      node('n1', videoView({ endFrameUrl: 'https://cdn/l.png' })),
+      node('n1', 'video', videoView({ endFrameUrl: 'https://cdn/l.png' })),
     ];
     expect(
       buildVm({ nodeId: 'n1', nodes, models, mode: 'i2v' })
@@ -498,7 +499,7 @@ describe('buildVideoPanelViewModel — source requirements (#1896 slice 2)', () 
     // alone would pass with a registry that maps them onto one field.
     const nodes = [
       node(
-        'n1',
+        'n1', 'video',
         videoView({
           sourceVideo: { url: 'https://cdn/clip.mp4' },
           drivingVideo: { url: 'https://cdn/driving.mp4' },
@@ -522,9 +523,9 @@ describe('buildVideoPanelViewModel — source requirements (#1896 slice 2)', () 
         nodeId: 'n1',
         nodes: [
           node(
-            'n1',
+            'n1', 'video',
             videoView({ endFrameUrl: value } as Partial<
-              Extract<NodeView, { kind: 'video' }>
+              VideoNodeView
             >),
           ),
         ],
@@ -538,7 +539,7 @@ describe('buildVideoPanelViewModel — source requirements (#1896 slice 2)', () 
   });
 
   it('reports an empty slot map when the node has no picks', () => {
-    const nodes = [node('n1', videoView())];
+    const nodes = [node('n1', 'video', videoView())];
     expect(
       buildVm({ nodeId: 'n1', nodes, models, mode: 'first_last' })
         .slotUrls,
@@ -553,15 +554,15 @@ describe('nodeVideoMode', () => {
     // this panel does not offer (an image mode, or a mini-tool video mode)
     // must not be honoured either: it would narrow the model list to nothing
     // and leave the panel with no model to submit.
-    expect(nodeVideoMode([node('n1', videoView())], 'n1', VIDEO_MODE_OPTIONS)).toBe('t2v');
-    expect(nodeVideoMode([node('n1', videoView({ mode: 'i2v' }))], 'n1', VIDEO_MODE_OPTIONS)).toBe(
+    expect(nodeVideoMode([node('n1', 'video', videoView())], 'n1', VIDEO_MODE_OPTIONS)).toBe('t2v');
+    expect(nodeVideoMode([node('n1', 'video', videoView({ mode: 'i2v' }))], 'n1', VIDEO_MODE_OPTIONS)).toBe(
       'i2v',
     );
-    expect(nodeVideoMode([node('n1', videoView({ mode: 't2i' }))], 'n1', VIDEO_MODE_OPTIONS)).toBe(
+    expect(nodeVideoMode([node('n1', 'video', videoView({ mode: 't2i' }))], 'n1', VIDEO_MODE_OPTIONS)).toBe(
       't2v',
     );
     expect(
-      nodeVideoMode([node('n1', videoView({ mode: 'upscale' }))], 'n1', VIDEO_MODE_OPTIONS),
+      nodeVideoMode([node('n1', 'video', videoView({ mode: 'upscale' }))], 'n1', VIDEO_MODE_OPTIONS),
     ).toBe('t2v');
   });
 
@@ -573,7 +574,7 @@ describe('nodeVideoMode', () => {
 
   it('defaults for a node kind that carries no generate inputs', () => {
     // Annotations and groups have no `mode` at all.
-    expect(nodeVideoMode([node('n1', { kind: 'group' })], 'n1', VIDEO_MODE_OPTIONS)).toBe('t2v');
+    expect(nodeVideoMode([node('n1', 'group', { })], 'n1', VIDEO_MODE_OPTIONS)).toBe('t2v');
   });
 
   // 判据是「它得先可用」，不是「它是不是一个合法的档」（#1951，user 2026-08-18）。
@@ -586,7 +587,7 @@ describe('nodeVideoMode', () => {
 
     it('存的档可用，就用它', () => {
       expect(
-        nodeVideoMode([node('n1', videoView({ mode: 'i2v' }))], 'n1', WITHOUT_ANIMATE),
+        nodeVideoMode([node('n1', 'video', videoView({ mode: 'i2v' }))], 'n1', WITHOUT_ANIMATE),
       ).toBe('i2v');
     });
 
@@ -594,16 +595,16 @@ describe('nodeVideoMode', () => {
       // 改动前这里会返回 'animate'：旧判据只问它在不在合法档清单里，
       // 于是节点停在一个选择器根本不列的档上。
       expect(
-        nodeVideoMode([node('n1', videoView({ mode: 'animate' }))], 'n1', WITHOUT_ANIMATE),
+        nodeVideoMode([node('n1', 'video', videoView({ mode: 'animate' }))], 'n1', WITHOUT_ANIMATE),
       ).toBe('t2v');
     });
 
     it('没存过 mode 时取可用档第一个，不是写死的 t2v', () => {
       // t2v 自己被摘掉的部署：默认档得跟着走，否则每个新节点都停在
       // 一个不存在的档上。
-      expect(nodeVideoMode([node('n1', videoView())], 'n1', ONLY_I2V)).toBe('i2v');
+      expect(nodeVideoMode([node('n1', 'video', videoView())], 'n1', ONLY_I2V)).toBe('i2v');
       expect(
-        nodeVideoMode([node('n1', videoView({ mode: 't2v' }))], 'n1', ONLY_I2V),
+        nodeVideoMode([node('n1', 'video', videoView({ mode: 't2v' }))], 'n1', ONLY_I2V),
       ).toBe('i2v');
     });
   });
@@ -765,9 +766,9 @@ describe('buildVideoPanelViewModel — references (#1927)', () => {
     } {
     return {
       nodes: [
-        node('n1', videoView({ mode: 'ref', model: 'kling-o3-pro-ref' })),
-        node('src-a', { kind: 'image', handling: false, content: 'https://cdn/a.png' }),
-        node('src-b', { kind: 'image', handling: false, content: 'https://cdn/b.png' }),
+        node('n1', 'video', videoView({ mode: 'ref', model: 'kling-o3-pro-ref' })),
+        node('src-a', 'image', { handling: false, content: 'https://cdn/a.png' }),
+        node('src-b', 'image', { handling: false, content: 'https://cdn/b.png' }),
       ],
       edges: [
         { id: 'e-a', source: 'src-a', target: 'n1' },
@@ -789,9 +790,9 @@ describe('buildVideoPanelViewModel — references (#1927)', () => {
     const vm = buildVm({
       nodeId: 'n1',
       nodes: [
-        node('n1', videoView({ mode: 'ref', model: 'wan-3.0-reference-to-video' })),
-        node('src-a', { kind: 'image', handling: false, content: 'https://cdn/a.png' }),
-        node('src-v', { kind: 'video', handling: false, content: 'https://cdn/v.mp4' }),
+        node('n1', 'video', videoView({ mode: 'ref', model: 'wan-3.0-reference-to-video' })),
+        node('src-a', 'image', { handling: false, content: 'https://cdn/a.png' }),
+        node('src-v', 'video', { handling: false, content: 'https://cdn/v.mp4' }),
       ],
       edges: [
         { id: 'e-a', source: 'src-a', target: 'n1' },
@@ -822,9 +823,9 @@ describe('buildVideoPanelViewModel — references (#1927)', () => {
     const vm = buildVm({
       nodeId: 'n1',
       nodes: [
-        node('n1', videoView({ mode: 'ref', model: 'wan-3.0-reference-to-video' })),
-        node('src-a', { kind: 'image', handling: false, content: 'https://cdn/a.png' }),
-        node('src-v', { kind: 'video', handling: false, content: 'https://cdn/v.mp4' }),
+        node('n1', 'video', videoView({ mode: 'ref', model: 'wan-3.0-reference-to-video' })),
+        node('src-a', 'image', { handling: false, content: 'https://cdn/a.png' }),
+        node('src-v', 'video', { handling: false, content: 'https://cdn/v.mp4' }),
       ],
       edges: [
         { id: 'e-a', source: 'src-a', target: 'n1' },
@@ -849,8 +850,8 @@ describe('buildVideoPanelViewModel — references (#1927)', () => {
     const vm = buildVm({
       nodeId: 'n1',
       nodes: [
-        node('n1', videoView({ mode: 'ref', model: 'wan-3.0-reference-to-video' })),
-        node('src-v', { kind: 'video', handling: false, content: 'https://cdn/v.mp4', duration: 8 }),
+        node('n1', 'video', videoView({ mode: 'ref', model: 'wan-3.0-reference-to-video' })),
+        node('src-v', 'video', { handling: false, content: 'https://cdn/v.mp4', duration: 8 }),
       ],
       edges: [{ id: 'e-v', source: 'src-v', target: 'n1' }],
       models: wan,
@@ -939,8 +940,8 @@ describe('buildVideoPanelViewModel — references (#1927)', () => {
     // not a URL, and sending it as one would put a sentence where the upstream
     // expects an image.
     const nodes: CanvasNodeView[] = [
-      node('n1', videoView({ mode: 'ref' })),
-      node('src-t', { kind: 'text', handling: false }),
+      node('n1', 'video', videoView({ mode: 'ref' })),
+      node('src-t', 'text', { handling: false }),
     ];
     const edges: CanvasEdge[] = [{ id: 'e-t', source: 'src-t', target: 'n1' }];
     const vm = buildVm({
@@ -1010,7 +1011,7 @@ describe('视频面板交出这个节点的聚焦裁剪（#1978）', () => {
   it('把节点上的裁剪交出来', () => {
     const vm = buildVm({
       nodeId: 'n1',
-      nodes: [node('n1', videoView({ focusImages: [crop] }))],
+      nodes: [node('n1', 'video', videoView({ focusImages: [crop] }))],
       models,
       mode: 't2v',
     });
@@ -1020,7 +1021,7 @@ describe('视频面板交出这个节点的聚焦裁剪（#1978）', () => {
   it('节点上没有裁剪时交出空数组，不是 undefined', () => {
     const vm = buildVm({
       nodeId: 'n1',
-      nodes: [node('n1', videoView())],
+      nodes: [node('n1', 'video', videoView())],
       models,
       mode: 't2v',
     });
@@ -1032,7 +1033,7 @@ describe('视频面板交出这个节点的聚焦裁剪（#1978）', () => {
       nodeId: 'n1',
       nodes: [
         node(
-          'n1',
+          'n1', 'video',
           videoView({
             focusImages: [crop, { id: 'bad' }, null, 'nope'] as never,
           }),
@@ -1065,7 +1066,7 @@ describe('被 @ 引用的裁剪随提交上路（#1978）', () => {
   it('提到了就上路', () => {
     const vm = buildVm({
       nodeId: 'n1',
-      nodes: [node('n1', videoView({ focusImages: [crop] }))],
+      nodes: [node('n1', 'video', videoView({ focusImages: [crop] }))],
       models,
       mode: 'ref',
       atMentionedSourceIds: new Set([focusRefId(crop.id)]),
@@ -1079,8 +1080,8 @@ describe('被 @ 引用的裁剪随提交上路（#1978）', () => {
     const vm = buildVm({
       nodeId: 'n1',
       nodes: [
-        node('n1', videoView({ focusImages: [crop] })),
-        node('src-a', { kind: 'image', handling: false, content: 'https://cdn/a.png' }),
+        node('n1', 'video', videoView({ focusImages: [crop] })),
+        node('src-a', 'image', { handling: false, content: 'https://cdn/a.png' }),
       ],
       edges: [{ id: 'e-a', source: 'src-a', target: 'n1' }],
       models,
@@ -1093,7 +1094,7 @@ describe('被 @ 引用的裁剪随提交上路（#1978）', () => {
   it('没提到就不上路 —— 池子里有不等于用了它', () => {
     const vm = buildVm({
       nodeId: 'n1',
-      nodes: [node('n1', videoView({ focusImages: [crop] }))],
+      nodes: [node('n1', 'video', videoView({ focusImages: [crop] }))],
       models,
       mode: 'ref',
       atMentionedSourceIds: new Set(),
@@ -1104,7 +1105,7 @@ describe('被 @ 引用的裁剪随提交上路（#1978）', () => {
   it('这一档不吃参考图时，提到了也不上路', () => {
     const vm = buildVm({
       nodeId: 'n1',
-      nodes: [node('n1', videoView({ focusImages: [crop] }))],
+      nodes: [node('n1', 'video', videoView({ focusImages: [crop] }))],
       models: [makeModel('veo-3.1', { mode: 't2v' })],
       mode: 't2v',
       atMentionedSourceIds: new Set([focusRefId(crop.id)]),
@@ -1131,7 +1132,7 @@ describe('the style slot on the video panel (inner#828)', () => {
   it('sends the node\'s style images, up to the cap, with the params', () => {
     const vm = buildVm({
       nodeId: 'n1',
-      nodes: [node('n1', videoView({ model: 'wan-ref', styleImageUrls: ['s1', 's2', 's3', 's4'] }))],
+      nodes: [node('n1', 'video', videoView({ model: 'wan-ref', styleImageUrls: ['s1', 's2', 's3', 's4'] }))],
       models: [styled],
       mode: 'ref',
     });
@@ -1144,7 +1145,7 @@ describe('the style slot on the video panel (inner#828)', () => {
   it('keeps the picks but sends and draws nothing for a model without the slot', () => {
     const vm = buildVm({
       nodeId: 'n1',
-      nodes: [node('n1', videoView({ model: 'veo-3.1', styleImageUrls: ['s1'] }))],
+      nodes: [node('n1', 'video', videoView({ model: 'veo-3.1', styleImageUrls: ['s1'] }))],
       models: [plain],
       mode: 'ref',
     });

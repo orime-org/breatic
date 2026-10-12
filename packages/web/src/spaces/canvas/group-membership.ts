@@ -34,7 +34,7 @@ import type { NodeGateReason } from '@web/spaces/canvas/node-gate';
  * Every planner that can put a node into a Group asks this itself — creation,
  * drag and the resize that absorbs loose nodes — so a fourth path cannot join
  * one by forgetting.
- * @param type - The node's `type` (the view `kind`).
+ * @param type - The node's `type`.
  * @returns True for a node a Group may hold.
  */
 export function canJoinGroup(type: string | undefined): boolean {
