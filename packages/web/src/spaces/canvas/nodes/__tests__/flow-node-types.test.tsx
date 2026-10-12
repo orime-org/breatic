@@ -11,6 +11,7 @@ import type * as Y from 'yjs';
 import { _resetForTests } from '@web/data/yjs/manager';
 import { addNode, getTextBody } from '@web/data/yjs/canvas-space';
 import { writePlainTextIntoBody } from '@breatic/shared/canvas/text-body';
+import { canvasSessions } from '@web/stores/canvas-session';
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { resetPreviewRecords } from '@web/lib/preview-src';
 import { CanvasActionsContext } from '@web/spaces/canvas/canvas-actions';
@@ -489,6 +490,26 @@ describe('which counts survive the canvas zooming out', () => {
     expect(screen.getByTestId('node-task-counts-anchor').style.transform).toBe(
       screen.getByTestId('node-header-anchor').style.transform,
     );
+  });
+});
+
+// The expand frame grows past the node over where the counts stand, so the
+// counts give way while it is open on the node (inner#1303 §6.3).
+describe('the counts while a tool is open on the node', () => {
+  afterEach(() => {
+    canvasSessions.of('').getState().closeActivePanel();
+  });
+
+  it('gives way to the expand frame', () => {
+    canvasSessions.of('').getState().openMiniTool('n1', 'image.expand', { sourceContent: ONE_OF_EACH.content, params: {} });
+    renderImage(ONE_OF_EACH);
+    expect(screen.queryByTestId('node-task-counts-anchor')).toBeNull();
+  });
+
+  it('stays beside a tool that keeps to the node', () => {
+    canvasSessions.of('').getState().openMiniTool('n1', 'image.crop', { sourceContent: ONE_OF_EACH.content, params: {} });
+    renderImage(ONE_OF_EACH);
+    expect(screen.getByTestId('node-task-counts-anchor')).toBeInTheDocument();
   });
 });
 
