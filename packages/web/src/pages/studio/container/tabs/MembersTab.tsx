@@ -140,9 +140,11 @@ export function MembersTab({
 
   const removeMutation = useMutation({
     mutationFn: (userId: string) => studiosApi.removeMember(slug, userId),
-    onSuccess: async () => {
+    onSuccess: async (_result, userId) => {
       await invalidateMembers();
-      setConfirm(null);
+      // Close the dialog only when it still shows the member this answer is
+      // for; a confirmation opened for someone else meanwhile stays open.
+      setConfirm((c) => (c?.member.id === userId ? null : c));
       toast.success(t('studio.container.members.removeSuccess'));
     },
     onError: (err) => toast.error(errorMessage(err, t)),
@@ -374,7 +376,11 @@ export function MembersTab({
             </AlertDialogCancel>
             <AlertDialogAction
               variant='destructive'
-              loading={removeMutation.isPending}
+              loading={
+                removeMutation.isPending &&
+                removeMutation.variables === confirm?.member.id
+              }
+              disabled={removeMutation.isPending}
               onClick={(event) => {
                 // Keep the dialog mounted until the mutation's onSuccess closes
                 // it, so a failure leaves it open with the toast error.

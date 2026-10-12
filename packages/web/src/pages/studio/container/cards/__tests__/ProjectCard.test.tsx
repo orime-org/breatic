@@ -536,23 +536,23 @@ describe('ProjectCard — confirmations that wait for the server (inner#1374)', 
     expect(screen.getByText('Renamed')).toBeInTheDocument();
   });
 
-  it('keeps the archive confirmation busy until the archived list refetch lands too', async () => {
+  it('holds the archived toast until the archived list refetch lands, after the live list drops the card', async () => {
     const user = userEvent.setup();
     const lists = setupInHeldLists({ ...project, ...AS_STUDIO_ADMIN });
     await user.click(await screen.findByRole('button', { name: 'More actions' }));
     await user.click(await screen.findByRole('menuitem', { name: 'Archive' }));
     await screen.findByTestId('archive-project-dialog');
-    const confirm = screen.getByRole('button', { name: 'Archive' });
-    await user.click(confirm);
+    await user.click(screen.getByRole('button', { name: 'Archive' }));
 
     await waitFor(() => expect(lists.live.started() && lists.archived.started()).toBe(true));
-    // The live answer keeps the card listed only so its confirmation stays
-    // observable; what is measured is whether the wait covers the archived list.
-    await act(async () => lists.live.land([{ ...project, ...AS_STUDIO_ADMIN }]));
-    expect(confirm).toHaveAttribute('aria-busy', 'true');
-    expect(screen.getByTestId('archive-project-dialog')).toBeInTheDocument();
-    lists.archived.land();
-    await waitFor(() => expect(screen.queryByTestId('archive-project-dialog')).toBeNull());
+    lists.live.land();
+    await waitFor(() => expect(screen.queryByTestId(`project-card-${project.id}`)).toBeNull());
+    expect(toast.success).not.toHaveBeenCalledWith('Archived');
+
+    await act(async () =>
+      lists.archived.land([{ ...project, ...AS_STUDIO_ADMIN, archivedAt: '2026-10-01T00:00:00.000Z' }]),
+    );
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Archived'));
   });
 
   it('keeps the archive confirmation busy until the list refetch takes the card away', async () => {

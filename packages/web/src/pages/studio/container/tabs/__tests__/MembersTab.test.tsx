@@ -282,6 +282,71 @@ describe('MembersTab — remove member (confirm gate)', () => {
     await waitFor(() => expect(confirm).not.toHaveAttribute('aria-busy'));
     expect(screen.getByTestId('member-confirm-dialog')).toBeInTheDocument();
   });
+
+  /**
+   * Confirm removing the guest, dismiss that dialog with Esc while the
+   * removal is still out, then open the remove confirmation for the
+   * maintainer.
+   * @param user - The user-event session.
+   * @returns The resolver for the guest's removal and the maintainer's confirm button.
+   */
+  async function removeGuestThenOpenMaintainer(
+    user: ReturnType<typeof userEvent.setup>,
+  ): Promise<{ answer: (value: { ok: true }) => void; confirm: HTMLElement }> {
+    let answer: (value: { ok: true }) => void = () => {};
+    vi.mocked(studiosApi.removeMember).mockReturnValueOnce(
+      new Promise((resolve) => {
+        answer = resolve;
+      }),
+    );
+    renderTab(
+      <MembersTab
+        slug='acme'
+        members={[ADMIN, GUEST, MAINTAINER]}
+        studioRole='admin'
+        studioType='team' pendingInvitations={[]}
+      />,
+    );
+    await user.click(screen.getByTestId(`member-row-menu-${GUEST.id}`));
+    await user.click(await screen.findByTestId(`member-remove-${GUEST.id}`));
+    const first = await screen.findByTestId('member-confirm-dialog');
+    await user.click(within(first).getByTestId('member-confirm-action'));
+    await waitFor(() => expect(studiosApi.removeMember).toHaveBeenCalledTimes(1));
+    await user.keyboard('{Escape}');
+    await waitFor(() =>
+      expect(screen.queryByTestId('member-confirm-dialog')).toBeNull(),
+    );
+
+    await user.click(screen.getByTestId(`member-row-menu-${MAINTAINER.id}`));
+    await user.click(await screen.findByTestId(`member-remove-${MAINTAINER.id}`));
+    const second = await screen.findByTestId('member-confirm-dialog');
+    expect(second).toHaveTextContent(MAINTAINER.name);
+    return { answer, confirm: within(second).getByTestId('member-confirm-action') };
+  }
+
+  it('shows no wait on a second member\'s confirm while an earlier removal is out, and keeps it unpressable', async () => {
+    const user = userEvent.setup();
+    const { confirm } = await removeGuestThenOpenMaintainer(user);
+
+    expect(confirm).not.toHaveAttribute('aria-busy');
+    expect(confirm).toBeDisabled();
+  });
+
+  it('leaves a second member\'s confirm open when the earlier removal answers', async () => {
+    const user = userEvent.setup();
+    const { answer } = await removeGuestThenOpenMaintainer(user);
+
+    answer({ ok: true });
+    await waitFor(() =>
+      expect(toast.success).toHaveBeenCalledWith(
+        'Member removed.',
+        expect.anything(),
+      ),
+    );
+    expect(screen.queryByTestId('member-confirm-dialog')).toHaveTextContent(
+      MAINTAINER.name,
+    );
+  });
 });
 
 // Transferring studio admin moved to the Settings tab (2026-07-08 decision A);
