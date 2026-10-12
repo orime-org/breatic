@@ -58,6 +58,8 @@ function consentText(): ConsentText {
   };
 }
 
+let attributionCaptured = false;
+
 // The page the visitor is on, kept until the runtime loads.
 let pathname = '';
 
@@ -76,8 +78,14 @@ export function startProductAnalytics(): void {
   runtime = import('@web/lib/analytics/runtime').then(async (module) => {
     module.onConsentChange((next) => {
       consent = next;
-      if (next.analytics || next.ads) captureAttribution();
-      else clearAttribution();
+      // The landing is read once per page load; a later consent change would read a page the visitor navigated to.
+      if (next.analytics || next.ads) {
+        if (!attributionCaptured) captureAttribution();
+        attributionCaptured = true;
+      } else {
+        clearAttribution();
+        attributionCaptured = false;
+      }
       void reportAccountConsent(module);
     });
     onLocaleChange((language) => void module.setLanguage(language));
@@ -109,7 +117,8 @@ function withRuntime(fn: (module: Runtime) => void): void {
  */
 async function reportAccountConsent(module: Runtime): Promise<void> {
   const choice = module.browserChoice();
-  if (signedIn === null || choice === null) return;
+  // The server keeps only choices the person made; a regional default is not one.
+  if (signedIn === null || choice === null || choice.source === 'implicit') return;
   try {
     await apiPut('/users/me/analytics-consent', { ...choice, revision: CONSENT_REVISION });
   } catch (err) {

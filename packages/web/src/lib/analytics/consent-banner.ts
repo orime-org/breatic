@@ -36,17 +36,6 @@ export interface ConsentText {
 }
 
 let onChoice: (choice: BrowserChoice | null) => void = ignoreChoice;
-// The choice last handed to `onChoice`.
-let inForce: BrowserChoice | null = null;
-
-/**
- * Hand the listener the choice now in force.
- * @param choice - The choice.
- */
-function report(choice: BrowserChoice | null): void {
-  inForce = choice;
-  onChoice(choice);
-}
 
 /** The listener until the banner starts. */
 function ignoreChoice(): void {
@@ -61,8 +50,12 @@ const BANNER_PATHS: readonly string[] = ['/login', '/register'];
 let undecided = false;
 let onBannerPage = false;
 
+// The library is running; it declines to run for crawlers and automated browsers.
+let running = false;
+
 /** Show the banner while an undecided visitor is on a banner page, and hide it elsewhere. */
 function placeBanner(): void {
+  if (!running) return;
   if (undecided && onBannerPage) CookieConsent.show(true);
   else CookieConsent.hide();
 }
@@ -124,7 +117,8 @@ function onVisitorChoice(): void {
   stamp(openedModal === 'preferencesModal' ? 'settings' : 'banner', new Date().toISOString());
   openedModal = null;
   undecided = false;
-  report(readBrowserChoice());
+  lastSeen = readBrowserChoice();
+  onChoice(lastSeen);
 }
 
 /** What the banner needs to start, kept so it can start again. */
@@ -140,6 +134,16 @@ interface BannerOptions {
 
 let bannerOptions: BannerOptions | null = null;
 let currentLanguage = '';
+// The choice the cookie held when last read, so a cookie the browser refuses does not look like a change.
+let lastSeen: BrowserChoice | null = null;
+
+/**
+ * Whether the library would decline to run here: the same test as its `hideFromBots`.
+ * @returns True for crawlers and automated browsers.
+ */
+function isBot(): boolean {
+  return navigator.webdriver || /bot|crawl|spider|slurp|teoma/i.test(navigator.userAgent);
+}
 
 /**
  * Show the banner when the visitor has to be asked, on the pages
@@ -155,11 +159,17 @@ let currentLanguage = '';
  * @param options.onChoice - Called with the choice in force, now and after each change.
  */
 export async function startConsentBanner(options: BannerOptions): Promise<void> {
-  bannerOptions = options;
   onChoice = options.onChoice;
+  if (isBot()) {
+    onChoice(null);
+    return;
+  }
+  bannerOptions = options;
   currentLanguage = options.language;
   await boot(options);
   document.addEventListener('visibilitychange', () => void resync());
+  // A window beside the one where the choice changed stays visible; it learns of it when it gets focus.
+  window.addEventListener('focus', () => void resync());
 }
 
 /**
@@ -170,7 +180,7 @@ export async function startConsentBanner(options: BannerOptions): Promise<void> 
  */
 async function resync(): Promise<void> {
   if (document.visibilityState !== 'visible' || bannerOptions === null) return;
-  if (sameChoice(readBrowserChoice(), inForce)) return;
+  if (sameChoice(readBrowserChoice(), lastSeen)) return;
   CookieConsent.reset(false);
   await boot(bannerOptions);
 }
@@ -211,6 +221,13 @@ async function boot(options: BannerOptions): Promise<void> {
     onModalShow: ({ modalName }) => {
       if (modalName === 'consentModal' || modalName === 'preferencesModal') openedModal = modalName;
     },
+    // A settings window closed without a choice hands back to the banner when it is still up.
+    // A choice saved in the window reports before the window hides, so it is not affected.
+    onModalHide: ({ modalName }) => {
+      if (modalName === 'preferencesModal' && openedModal === 'preferencesModal') {
+        openedModal = undecided && onBannerPage ? 'consentModal' : null;
+      }
+    },
     onFirstConsent: onVisitorChoice,
     onChange: onVisitorChoice,
   });
@@ -227,8 +244,10 @@ async function boot(options: BannerOptions): Promise<void> {
   openedModal = null;
   if (decision.choice && decision.write) setConsent(decision.choice);
   undecided = decision.showBanner;
+  running = true;
   placeBanner();
-  report(decision.choice);
+  lastSeen = readBrowserChoice();
+  onChoice(decision.choice);
 }
 
 /**
@@ -283,5 +302,5 @@ export async function setConsentLanguage(language: string): Promise<void> {
 
 /** Open the settings window; the "Cookie settings" entries call this. */
 export function openConsentSettings(): void {
-  CookieConsent.showPreferences();
+  if (running) CookieConsent.showPreferences();
 }

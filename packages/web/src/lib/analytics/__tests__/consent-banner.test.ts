@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type * as BannerModule from '@web/lib/analytics/consent-banner';
 
 const library = vi.hoisted(() => ({
@@ -68,6 +68,20 @@ function bannerShown(): boolean {
   const lastHide = library.hide.mock.invocationCallOrder.at(-1) ?? 0;
   return lastShow > lastHide;
 }
+
+// Each test starts a fresh banner module; listeners an earlier one left on the page would answer for it.
+const added: Array<[EventTarget, string, EventListenerOrEventListenerObject]> = [];
+for (const target of [document, window] as EventTarget[]) {
+  const add = target.addEventListener.bind(target);
+  vi.spyOn(target, 'addEventListener').mockImplementation((type, listener, options) => {
+    if (listener) added.push([target, type, listener]);
+    add(type, listener, options);
+  });
+}
+
+afterEach(() => {
+  for (const [target, type, listener] of added.splice(0)) target.removeEventListener(type, listener);
+});
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -166,8 +180,9 @@ describe('what counts as the visitor choosing', () => {
     const seen: unknown[] = [];
     await startBanner('DE', (choice) => seen.push(choice));
     library.config?.onModalShow?.({ modalName: 'preferencesModal' });
-    library.config?.onModalHide?.({ modalName: 'preferencesModal' });
+    // The library reports a choice saved in the window before it hides the window.
     library.config?.onFirstConsent?.();
+    library.config?.onModalHide?.({ modalName: 'preferencesModal' });
     expect(library.setCookieData).toHaveBeenCalledWith(expect.objectContaining({ value: expect.objectContaining({ source: 'settings' }) }));
     expect(seen).toHaveLength(2);
   });
@@ -182,5 +197,50 @@ describe('what counts as the visitor choosing', () => {
     document.dispatchEvent(new Event('visibilitychange'));
     await vi.waitFor(() => expect(library.acceptCategory).toHaveBeenCalled());
     expect(library.setCookieData).not.toHaveBeenCalledWith(expect.objectContaining({ value: expect.objectContaining({ source: 'settings' }) }));
+  });
+});
+
+describe('robustness', () => {
+  it('leaves a crawler or automated browser alone, as the library does', async () => {
+    Object.defineProperty(navigator, 'webdriver', { configurable: true, get: () => true });
+    try {
+      const seen: unknown[] = [];
+      const banner = await startBanner('DE', (choice) => seen.push(choice));
+      banner.followPage('/login');
+      banner.openConsentSettings();
+      expect(library.run).not.toHaveBeenCalled();
+      expect(library.show).not.toHaveBeenCalled();
+      expect(library.showPreferences).not.toHaveBeenCalled();
+      expect(seen).toEqual([null]);
+    } finally {
+      Object.defineProperty(navigator, 'webdriver', { configurable: true, get: () => false });
+    }
+  });
+
+  it('picks up a choice made in another window when this one gets focus', async () => {
+    library.consent = true;
+    await startBanner('DE');
+    library.cookie = { ...library.cookie, categories: ['necessary', 'analytics'], data: { source: 'settings', decidedAt: '2026-10-14T00:00:00.000Z' } };
+    window.dispatchEvent(new Event('focus'));
+    await vi.waitFor(() => expect(library.reset).toHaveBeenCalledWith(false));
+  });
+
+  it('files a banner click after the settings window was closed without a choice under the banner', async () => {
+    const banner = await startBanner('DE');
+    banner.followPage('/login');
+    library.config?.onModalShow?.({ modalName: 'consentModal' });
+    library.config?.onModalShow?.({ modalName: 'preferencesModal' });
+    library.config?.onModalHide?.({ modalName: 'preferencesModal' });
+    library.config?.onFirstConsent?.();
+    expect(library.setCookieData).toHaveBeenCalledWith(expect.objectContaining({ value: expect.objectContaining({ source: 'banner' }) }));
+  });
+
+  it('does not restart on every focus when the browser refuses the cookie', async () => {
+    // The library's write never reaches the cookie, so the stored choice stays empty.
+    await startBanner('US');
+    document.dispatchEvent(new Event('visibilitychange'));
+    window.dispatchEvent(new Event('focus'));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(library.reset).not.toHaveBeenCalled();
   });
 });
