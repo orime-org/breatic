@@ -182,6 +182,11 @@ export interface MediaUploadDeps {
   /** Told the share of the file that has landed, from 0 to 1, after each part. */
   onProgress?: (fraction: number) => void;
   /**
+   * The server answered: a ticket, which opened the upload's task row, or a
+   * copy the studio already holds. Told once, before any bytes move.
+   */
+  onAnswered?: () => void;
+  /**
    * The bytes are delivered and the server has them.
    *
    * What the server filed the content as. A node ignores
@@ -264,7 +269,7 @@ export async function runMediaUpload(
 }
 
 /** Where one file's outcome goes. */
-type UploadSinks = Pick<MediaUploadDeps, 'onProgress' | 'onSuccess' | 'onFailure'>;
+type UploadSinks = Pick<MediaUploadDeps, 'onProgress' | 'onAnswered' | 'onSuccess' | 'onFailure'>;
 
 /** What the delivery half calls out to. */
 type DeliveryDeps = Pick<MediaUploadDeps, 'sendToIngest' | 'waitForEnding'>;
@@ -285,6 +290,7 @@ async function deliverTicket(
   sinks: UploadSinks,
   deps: DeliveryDeps,
 ): Promise<void> {
+  sinks.onAnswered?.();
   if (isAlreadyStored(answer)) {
     // Nothing moves. When a node is behind this upload, the server has already
     // written its history and published what ends its handling; an upload with

@@ -49,6 +49,7 @@ function entry(index: number): BatchUploadEntry {
   return {
     file: new File([new Uint8Array(4)], `GRID-${index}.png`, { type: 'image/png' }),
     nodeId: `node-${index}`,
+    onAnswered: vi.fn(),
     onSuccess: vi.fn(),
     onFailure: vi.fn(),
   };
@@ -114,6 +115,8 @@ describe('runMediaUploadBatch', () => {
     expect(entries[2]!.onFailure).toHaveBeenCalledWith({ reason: 'storage' });
     expect(entries[3]!.onFailure).toHaveBeenCalledWith({ reason: 'upload' });
     expect(entries[0]!.onFailure).not.toHaveBeenCalled();
+    // inner#1303 §6.7: a ticket or a hit is the server's answer; a refusal is not.
+    expect(entries.map((e) => vi.mocked(e.onAnswered!).mock.calls.length)).toEqual([1, 1, 0, 0]);
   });
 
   it('fails a tile the browser could not hash and leaves it out of the request', async () => {
