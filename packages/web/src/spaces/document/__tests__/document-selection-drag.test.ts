@@ -19,7 +19,7 @@ import { documentBodyFragment } from '@breatic/shared';
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { BodyEdgeSelection } from '@web/spaces/document/document-body-edge-selection';
 import { rowHasLanded, rowIsFlying } from '@web/spaces/document/document-drag-drop';
-import { captionPreviewContent, removeWhenDragEnds } from '@web/spaces/document/document-drag-preview';
+import { captionPreviewContent } from '@web/spaces/document/document-drag-preview';
 import { startRowDrag } from '@web/spaces/document/document-row-drag';
 import { selectionDragKind, selectionPreviewContent } from '@web/spaces/document/document-selection-drag';
 import { endTableDrag, startTableDrag } from '@web/spaces/document/document-table-drag';
@@ -381,7 +381,7 @@ describe('the caption preview', () => {
 });
 
 describe('a selection drag on the page', () => {
-  it('hands the browser the preview at its top left corner, and takes it away when the drag ends', () => {
+  it('hands the browser the preview at its top left corner, and takes it off the page a frame later', async () => {
     const editor = open(['one', 'two', 'three'].map((content) => ({ type: 'paragraph', content })));
     const view = editor.prosemirrorView!;
     selectText(editor, ['one', 1], ['two', 2]);
@@ -394,45 +394,8 @@ describe('a selection drag on the page', () => {
     expect(call[0].isConnected).toBe(true);
     expect(call[0].textContent).toContain('one');
     expect(call[0].textContent).not.toContain('three');
-    document.dispatchEvent(new Event('dragend'));
+    await new Promise((resolve) => requestAnimationFrame(resolve));
     expect(call[0].isConnected).toBe(false);
-  });
-});
-
-describe('taking a preview away (one exit for every preview)', () => {
-  /**
-   * A preview attached to the page.
-   * @returns The element and its removal.
-   */
-  function attached(): { element: HTMLElement; remove: () => void } {
-    const element = document.createElement('div');
-    document.body.append(element);
-    return { element, remove: () => element.remove() };
-  }
-
-  it('on a drop, once the drop has been handled', async () => {
-    const preview = attached();
-    removeWhenDragEnds(document, preview);
-    document.dispatchEvent(new Event('drop'));
-    expect(preview.element.isConnected).toBe(true);
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(preview.element.isConnected).toBe(false);
-  });
-
-  it('on a dragend', () => {
-    const preview = attached();
-    removeWhenDragEnds(document, preview);
-    document.dispatchEvent(new Event('dragend'));
-    expect(preview.element.isConnected).toBe(false);
-  });
-
-  it('on the first move with no button held: a drag whose source left the page has no dragend that reaches it', () => {
-    const preview = attached();
-    removeWhenDragEnds(document, preview);
-    window.dispatchEvent(new MouseEvent('mousemove', { buttons: 1 }));
-    expect(preview.element.isConnected).toBe(true);
-    window.dispatchEvent(new MouseEvent('mousemove', { buttons: 0 }));
-    expect(preview.element.isConnected).toBe(false);
   });
 });
 

@@ -3,7 +3,7 @@
 
 /**
  * inner#1350 A1: a row drag hands the browser our scaled preview, and takes it
- * away when it ends.
+ * off the page a frame later.
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -70,7 +70,7 @@ describe('a row drag', () => {
     expect(element.textContent).toContain('first');
   });
 
-  it('leaves the side menu to whoever started the drag, and takes its preview away at the end', () => {
+  it('leaves the side menu to whoever started the drag, and takes its preview off the page a frame later', async () => {
     const editor = open();
     const sideMenu = editor.getExtension(SideMenuExtension)!;
     // The menu is up whenever a row is hovered, a medium included; a drag off
@@ -81,7 +81,8 @@ describe('a row drag', () => {
     const end = startRowDrag(editor as never, { dataTransfer, clientY: 0 }, (editor.document[0] as unknown as { id: string }).id);
     expect(freeze).not.toHaveBeenCalled();
     const [element] = setDragImage.mock.calls.at(-1) as [HTMLElement];
-    end();
+    ends.push(end);
+    await new Promise((resolve) => requestAnimationFrame(resolve));
     expect(element.isConnected).toBe(false);
   });
 });

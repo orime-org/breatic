@@ -112,7 +112,11 @@ describe('buildDragPreview', () => {
     const preview = buildDragPreview(editor.prosemirrorView!, content, () => ({ width: 1024, height: 256 }));
     const root = preview.element;
     expect(root.isConnected).toBe(true);
-    expect(root.classList.contains('bn-drag-preview')).toBe(true);
+    // Its own class: the library's carries `opacity: 0.001`, and Firefox and
+    // WebKit draw the root's opacity into the image (inner#1350 design §4).
+    expect(root.classList.contains('doc-drag-preview')).toBe(true);
+    expect(root.classList.contains('bn-drag-preview')).toBe(false);
+    expect(root.style.opacity).toBe('');
     expect(root.style.width).toBe('512px');
     expect(root.style.height).toBe('128px');
     const layer = root.firstElementChild as HTMLElement;
@@ -130,6 +134,14 @@ describe('buildDragPreview', () => {
     expect(layer.contains(content)).toBe(true);
     preview.remove();
     expect(root.isConnected).toBe(false);
+  });
+
+  it('leaves the page in the animation frame after it is built, once the browser has taken the image', async () => {
+    const editor = open([{ type: 'paragraph', content: 'one' }]);
+    const preview = buildDragPreview(editor.prosemirrorView!, document.createElement('div'), () => ({ width: 100, height: 20 }));
+    expect(preview.element.isConnected).toBe(true);
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    expect(preview.element.isConnected).toBe(false);
   });
 
   it('stands its first block flush against its top, as the document\'s first block stands, and leaves the space between blocks', () => {
