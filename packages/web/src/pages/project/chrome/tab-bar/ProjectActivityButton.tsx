@@ -533,7 +533,6 @@ export function ProjectActivityButton({
                         size={null}
                         type='button'
                         onClick={() => m.spaceId && onClickRestore(m.spaceId)}
-                        disabled={restoring.isPending(m.spaceId ?? '')}
                         loading={restoring.isPending(m.spaceId ?? '')}
                         icon={<RotateCcw className='h-3 w-3' aria-hidden />}
                         data-testid={`project-activity-restore-${m.id}`}

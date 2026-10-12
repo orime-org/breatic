@@ -325,7 +325,6 @@ export function MembersTab({
                     <Button
                       variant='outline'
                       size='sm'
-                      disabled={revokingIds.includes(inv.invitationId)}
                       loading={revokingIds.includes(inv.invitationId)}
                       onClick={() => revokeMutation.mutate(inv.invitationId)}
                     >
@@ -375,7 +374,6 @@ export function MembersTab({
             </AlertDialogCancel>
             <AlertDialogAction
               variant='destructive'
-              disabled={removeMutation.isPending}
               loading={removeMutation.isPending}
               onClick={(event) => {
                 // Keep the dialog mounted until the mutation's onSuccess closes

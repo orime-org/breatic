@@ -177,7 +177,6 @@ export function JoinProjectDialog({
             type='button'
             variant='outline'
             onClick={onWithdraw}
-            disabled={withdrawing}
             loading={withdrawing}
           >
             {t('projectJoin.withdraw')}

@@ -62,7 +62,6 @@ export function LeaveProjectDialog({
               event.preventDefault();
               onConfirm();
             }}
-            disabled={pending}
             loading={pending}
           >
             {t('project.leave.confirm')}

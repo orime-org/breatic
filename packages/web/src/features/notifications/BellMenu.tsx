@@ -169,7 +169,6 @@ export function BellMenu(): React.JSX.Element {
                 size='compact'
                 className='text-2xs'
                 onClick={() => markAllReadMutation.mutate()}
-                disabled={markAllReadMutation.isPending}
                 loading={markAllReadMutation.isPending}
                 data-testid='bell-mark-all-read'
               >

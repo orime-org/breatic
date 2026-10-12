@@ -366,7 +366,6 @@ function TransferOwnershipSection({
             variant='outline'
             size='sm'
             className='h-8 shrink-0 text-xs'
-            disabled={withdrawing}
             loading={withdrawing}
             onClick={() => void handleWithdraw()}
             data-testid='members-modal-transfer-withdraw'

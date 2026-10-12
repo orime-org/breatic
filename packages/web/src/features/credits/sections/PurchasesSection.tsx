@@ -282,7 +282,6 @@ const PurchaseLine = React.memo(function PurchaseLine({
               variant='outline'
               size='sm'
               className='mt-1'
-              disabled={sending}
               loading={sending}
               onClick={resend}
             >
