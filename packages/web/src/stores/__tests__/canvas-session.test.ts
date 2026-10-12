@@ -124,6 +124,7 @@ describe('mini-tool draft (inner#888 §7.2)', () => {
       sourceSize: null,
       drawing: null,
       expand: null,
+      mark: null,
       exporting: false,
     });
   });

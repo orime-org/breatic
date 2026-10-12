@@ -18,6 +18,7 @@ const DRAFT = {
   sourceSize: null,
   drawing: null,
   expand: null,
+  mark: null,
   exporting: false,
 };
 

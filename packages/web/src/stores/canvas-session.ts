@@ -30,6 +30,16 @@ import {
   type MaskDisplayColor,
 } from '@web/stores/drawing-draft';
 import { EMPTY_EXPAND, type ExpandDraft } from '@web/stores/expand-draft';
+import {
+  EMPTY_MARK,
+  redoneMark,
+  restyled,
+  undoneMark,
+  withObjects,
+  type MarkDraft,
+  type MarkObject,
+  type MarkTool,
+} from '@web/stores/mark-draft';
 import { immer } from 'zustand/middleware/immer';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 
@@ -170,6 +180,8 @@ export interface MiniToolDraft {
   readonly drawing: DrawingDraft | null;
   /** The expand frame and its ratio; null on a tool that does not expand (inner#1303 §6.3). */
   readonly expand: ExpandDraft | null;
+  /** What the reader has marked up; null on a tool that is not markup (inner#1303 §6.2). */
+  readonly mark: MarkDraft | null;
   /**
    * Run was pressed and what it makes in the browser (a browser tool's file,
    * or a drawing tool's images and their upload) is being made. Only the run
@@ -343,6 +355,24 @@ export interface CanvasSessionState {
   setExpandCap: (cap: number) => void;
   /** Record how far the expand frame reaches below the node. */
   setExpandDrop: (drop: number) => void;
+  /** Pick what a press on the node does in markup. */
+  setMarkTool: (tool: MarkTool) => void;
+  /** Set the markup colour; the selected object takes it too. */
+  setMarkColor: (color: string) => void;
+  /** Set the markup size; the selected object takes it too. */
+  setMarkSize: (size: number) => void;
+  /** Write the markup's objects as the canvas holds them, one step when they changed. */
+  commitMark: (objects: readonly MarkObject[]) => void;
+  /** Take the last markup step back. */
+  undoMark: () => void;
+  /** Put the last undone markup step back. */
+  redoMark: () => void;
+  /** Remove every markup object, as one step. */
+  clearMark: () => void;
+  /** Record which markup object is selected. */
+  selectMark: (id: string | null) => void;
+  /** Record the text being edited, or null when no text is. */
+  setMarkEditingText: (text: string | null) => void;
   /** Pick the shape a press on the node draws. */
   setDrawingTool: (tool: DrawTool) => void;
   /** Set the brush diameter, in percent of the source's shorter side. */
@@ -548,6 +578,15 @@ function updateDrawing(s: CanvasSessionState, next: (drawing: DrawingDraft) => D
 }
 
 /**
+ * Apply a change to the open markup draft, when there is one.
+ * @param s - The state being drafted.
+ * @param next - The change.
+ */
+function updateMark(s: CanvasSessionState, next: (mark: MarkDraft) => MarkDraft): void {
+  if (s.miniTool?.mark) s.miniTool = { ...s.miniTool, mark: castDraft(next(s.miniTool.mark as MarkDraft)) };
+}
+
+/**
  * Create one canvas's session store.
  * @returns The store.
  */
@@ -622,6 +661,7 @@ export function createCanvasSessionStore(): CanvasSessionStore {
               sourceSize: null,
               drawing: miniToolById(toolId)?.drawing === undefined ? null : castDraft(EMPTY_DRAWING),
               expand: miniToolById(toolId)?.expand === undefined ? null : castDraft(EMPTY_EXPAND),
+              mark: miniToolById(toolId)?.markup === true ? castDraft(EMPTY_MARK) : null,
               exporting: false,
             };
           }
@@ -661,6 +701,11 @@ export function createCanvasSessionStore(): CanvasSessionStore {
               sourceSize: null,
               drawing,
               expand: s.miniTool.expand === null ? null : castDraft({ ...EMPTY_EXPAND, cap: s.miniTool.expand.cap }),
+              // The pen stays as the reader set it; what was drawn goes.
+              mark:
+                s.miniTool.mark === null
+                  ? null
+                  : castDraft({ ...EMPTY_MARK, tool: s.miniTool.mark.tool, color: s.miniTool.mark.color, size: s.miniTool.mark.size }),
             };
           }
         }),
@@ -670,6 +715,16 @@ export function createCanvasSessionStore(): CanvasSessionStore {
             s.miniTool = { ...s.miniTool, expand: castDraft({ ...s.miniTool.expand, frame: { ...next.frame }, ratio: next.ratio }) };
           }
         }),
+      setMarkTool: (tool) => set((s) => updateMark(s, (m) => ({ ...m, tool }))),
+      setMarkColor: (color) => set((s) => updateMark(s, (m) => restyled(m, { color }))),
+      setMarkSize: (size) => set((s) => updateMark(s, (m) => restyled(m, { size }))),
+      commitMark: (objects) => set((s) => updateMark(s, (m) => withObjects(m, objects))),
+      undoMark: () => set((s) => updateMark(s, undoneMark)),
+      redoMark: () => set((s) => updateMark(s, redoneMark)),
+      clearMark: () =>
+        set((s) => updateMark(s, (m) => ({ ...withObjects(m, []), selectedId: null }))),
+      selectMark: (id) => set((s) => updateMark(s, (m) => ({ ...m, selectedId: id }))),
+      setMarkEditingText: (text) => set((s) => updateMark(s, (m) => ({ ...m, editingText: text }))),
       setExpandDrop: (drop) =>
         set((s) => {
           if (s.miniTool?.expand && s.miniTool.expand.drop !== drop) {
