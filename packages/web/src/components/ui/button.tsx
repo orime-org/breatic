@@ -101,7 +101,9 @@ export interface ButtonProps
   /**
    * Waiting for the server's answer: the button reads as disabled, swallows
    * presses (including the implicit submit of a form) and shows a spinner in
-   * place of `icon`, or before the label when there is none.
+   * place of `icon`, or before the label when there is none. The button is
+   * `aria-disabled`, not natively disabled, so a caller's `disabled:` styles
+   * need a matching `aria-disabled:` style to apply while it waits.
    */
   loading?: boolean;
   /** Leading icon; its classes size and space the spinner that replaces it. */

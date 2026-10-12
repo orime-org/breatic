@@ -239,7 +239,7 @@ export function SignupCodeStep({
           type='button'
           variant='link'
           size={null}
-          className='h-auto p-0 text-sm font-medium text-foreground disabled:text-muted-foreground'
+          className='h-auto p-0 text-sm font-medium text-foreground disabled:text-muted-foreground aria-disabled:text-muted-foreground'
           disabled={waiting || submitting}
           loading={resending}
           onClick={resend}
