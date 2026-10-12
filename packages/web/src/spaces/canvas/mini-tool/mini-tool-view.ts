@@ -12,6 +12,7 @@ import {
   type ModelEntry,
 } from '@breatic/shared';
 import { isExpanded, sourceTooLargeToExpand, type ExpandFrame } from '@web/spaces/canvas/mini-tool/expand-frame';
+import { markEmpty, type MarkDraft } from '@web/stores/mark-draft';
 import {
   defaultSizeTier,
   isModelTool,
@@ -66,6 +67,7 @@ export type MiniToolRefusal =
   | 'singleTile'
   | 'sourceTooLargeToExpand'
   | 'frameNotExpanded'
+  | 'markEmpty'
   | 'promptMissing'
   | 'exporting'
   | null;
@@ -77,6 +79,7 @@ export const BLOCKING_REFUSALS: ReadonlySet<MiniToolRefusal> = new Set<MiniToolR
   'adjustNeutral',
   'singleTile',
   'frameNotExpanded',
+  'markEmpty',
   'promptMissing',
   'exporting',
 ]);
@@ -212,6 +215,7 @@ export function slotLengthCap(
  * @param input.inked - Whether a drawing tool's drawing leaves any ink.
  * @param input.params - The draft params.
  * @param input.expandFrame - An expand tool's frame.
+ * @param input.mark - A markup tool's draft.
  * @returns The first reason in the order the reader would fix them, or null.
  */
 export function miniToolRefusal(input: {
@@ -226,6 +230,7 @@ export function miniToolRefusal(input: {
   inked?: boolean;
   params?: Readonly<Record<string, unknown>>;
   expandFrame?: ExpandFrame;
+  mark?: MarkDraft | null;
 }): MiniToolRefusal {
   const { spec, entry, prompt, slots, sourceShown, source = {}, exporting, params = {} } = input;
   if (exporting) return 'exporting';
@@ -253,6 +258,7 @@ export function miniToolRefusal(input: {
     if (sourceTooLargeToExpand({ width: source.width, height: source.height }, cap)) return 'sourceTooLargeToExpand';
     if (input.expandFrame === undefined || !isExpanded(input.expandFrame)) return 'frameNotExpanded';
   }
+  if (spec.markup === true && (input.mark == null || markEmpty(input.mark))) return 'markEmpty';
   // Every slider at zero changes nothing.
   const adjust = isModelTool(spec) ? undefined : spec.params.find((param) => param.kind === 'adjust');
   if (adjust !== undefined && isAdjustValueNeutral(parseAdjustValue(params[adjust.key]))) return 'adjustNeutral';

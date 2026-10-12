@@ -318,6 +318,7 @@ function OpenMiniToolPanel({
     inked,
     params,
     expandFrame: draft?.expand?.frame,
+    mark: draft?.mark,
   });
   const pickingSlot = pickSession?.purpose === 'miniToolSlot' ? (pickSession.slotKey ?? null) : null;
 
