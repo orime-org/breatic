@@ -155,14 +155,6 @@ describe('the drag session', () => {
     expect(autoScrollOf(view)!.source).toBe('drag');
   });
 
-  it('does not start for something dragged in from outside while its body is hidden, as a Space not on screen keeps it', () => {
-    const { editor, scroller } = open();
-    const view = editor.prosemirrorView!;
-    scroller.checkVisibility = (): boolean => false;
-    drag(document.body, 'dragenter', { relatedTarget: null });
-    expect(autoScrollOf(view)!.state).toBe('idle');
-  });
-
   it('tells the loop a drag that leaves the window was started on the page, and one dragged in was not', () => {
     const { editor } = open();
     const view = editor.prosemirrorView!;

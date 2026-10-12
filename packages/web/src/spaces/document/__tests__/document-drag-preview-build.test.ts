@@ -8,7 +8,7 @@
  * (design §4).
  */
 
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as Y from 'yjs';
 
 import { documentBodyFragment } from '@breatic/shared';
@@ -18,6 +18,7 @@ import {
   PREVIEW_LONGEST_SIDE,
   blockPreviewContent,
   buildDragPreview,
+  setDragPreview,
   previewScale,
   tableLinePreviewContent,
 } from '@web/spaces/document/document-drag-preview';
@@ -109,8 +110,7 @@ describe('buildDragPreview', () => {
   it('sizes the root to the scaled size and scales an inner layer, which carries the body classes but no editor class', () => {
     const editor = open([{ type: 'paragraph', content: 'one' }]);
     const content = document.createElement('div');
-    const preview = buildDragPreview(editor.prosemirrorView!, content, () => ({ width: 1024, height: 256 }));
-    const root = preview.element;
+    const root = buildDragPreview(editor.prosemirrorView!, content, () => ({ width: 1024, height: 256 }));
     expect(root.isConnected).toBe(true);
     // Its own class: the library's carries `opacity: 0.001`, and Firefox and
     // WebKit draw the root's opacity into the image (inner#1350 design §4).
@@ -134,20 +134,32 @@ describe('buildDragPreview', () => {
     expect(layer.contains(content)).toBe(true);
   });
 
+  it('is handed to the browser by one exit, anchored at its top left', () => {
+    const editor = open([{ type: 'paragraph', content: 'one' }]);
+    const setDragImage = vi.fn();
+
+    setDragPreview(editor.prosemirrorView!, { setDragImage } as unknown as DataTransfer, document.createElement('div'));
+
+    expect(setDragImage).toHaveBeenCalledTimes(1);
+    const [root, x, y] = setDragImage.mock.calls[0] as [HTMLElement, number, number];
+    expect(root.classList.contains('doc-drag-preview')).toBe(true);
+    expect([x, y]).toEqual([0, 0]);
+  });
+
   it('leaves the page in the animation frame after it is built, once the browser has taken the image', async () => {
     const editor = open([{ type: 'paragraph', content: 'one' }]);
-    const preview = buildDragPreview(editor.prosemirrorView!, document.createElement('div'), () => ({ width: 100, height: 20 }));
-    expect(preview.element.isConnected).toBe(true);
+    const root = buildDragPreview(editor.prosemirrorView!, document.createElement('div'), () => ({ width: 100, height: 20 }));
+    expect(root.isConnected).toBe(true);
     await new Promise((resolve) => requestAnimationFrame(resolve));
-    expect(preview.element.isConnected).toBe(false);
+    expect(root.isConnected).toBe(false);
   });
 
   it('stands its first block flush against its top, as the document\'s first block stands, and leaves the space between blocks', () => {
     const editor = open([{ type: 'paragraph', content: 'one' }]);
     const content = document.createElement('div');
     content.innerHTML = '<div class="bn-block-content">first</div><div class="bn-block-content">second</div>';
-    const preview = buildDragPreview(editor.prosemirrorView!, content, () => ({ width: 100, height: 40 }));
-    const [first, second] = [...preview.element.querySelectorAll<HTMLElement>('.bn-block-content')];
+    const root = buildDragPreview(editor.prosemirrorView!, content, () => ({ width: 100, height: 40 }));
+    const [first, second] = [...root.querySelectorAll<HTMLElement>('.bn-block-content')];
     expect(first!.style.getPropertyValue('--doc-block-lift')).toBe('0px');
     expect(second!.style.getPropertyValue('--doc-block-lift')).toBe('');
   });

@@ -1042,6 +1042,25 @@ describe('an empty line an end of the selection sits on, or one at an end of the
     expect(drawn?.tagName).toBe('CODE');
   });
 
+  it('is painted between the text an edge selection holds, where the body draws the selection', () => {
+    const view = open([{ type: 'paragraph', content: 'Above' }, { type: 'paragraph', content: '' }, { type: 'paragraph', content: 'Below' }]);
+    view.focus();
+
+    view.dispatch(view.state.tr.setSelection(BodyEdgeSelection.create(view.state.doc, textStart(view, 'Above'), 'end')));
+
+    expect(view.dom.hasAttribute('data-selection-drawn')).toBe(true);
+    expect(paragraphs(view)).toEqual(['Above:false', ':true', 'Below:false']);
+  });
+
+  it('is painted between the text a text selection holds, the same mark in every browser', () => {
+    const view = open([{ type: 'paragraph', content: 'Above' }, { type: 'paragraph', content: '' }, { type: 'paragraph', content: 'Below' }]);
+    view.focus();
+
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, textStart(view, 'Above') + 1, textStart(view, 'Below') + 2)));
+
+    expect(paragraphs(view)).toEqual(['Above:false', ':true', 'Below:false']);
+  });
+
   it('leaves an empty line unmarked when no end of a text range sits in it', () => {
     const view = open([{ type: 'paragraph', content: 'Above' }, { type: 'paragraph', content: '' }]);
     view.focus();
