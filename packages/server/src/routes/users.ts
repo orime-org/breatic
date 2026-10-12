@@ -22,7 +22,7 @@ import { validate } from "@server/middleware/validate.js";
 import { z } from "zod";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
-import { USER_LOOKUP_MAX_IDS } from "@breatic/shared";
+import { CONSENT_SOURCES, USER_LOOKUP_MAX_IDS } from "@breatic/shared";
 import { SUPPORTED } from "@server/middleware/i18n.js";
 
 import { authService, studioService } from "@server/modules";
@@ -91,6 +91,29 @@ users.patch("/me/locale", validate("json", localeSchema), async (c) => {
   const { locale } = c.req.valid("json");
   await authService.setLocale(c.get("user").id, locale);
   return c.json({ data: { locale } });
+});
+
+const analyticsConsentSchema = z.object({
+  analytics: z.boolean(),
+  ads: z.boolean(),
+  decidedAt: z.string().datetime({ offset: true }),
+  source: z.enum(CONSENT_SOURCES),
+  revision: z.number().int(),
+});
+
+/**
+ * `PUT /api/v1/users/me/analytics-consent` — report this browser's consent.
+ *
+ * A logged-in browser sends its choice when the app opens, after sign-in and
+ * whenever the choice changes. Events no browser is behind (renewals, approved
+ * refunds) follow the account's latest choice (inner#1442 design §4.4.6). A
+ * report from an older policy revision, or decided before the stored one, is
+ * accepted and ignored.
+ * @returns `204`
+ */
+users.put("/me/analytics-consent", validate("json", analyticsConsentSchema), async (c) => {
+  await authService.recordAnalyticsConsent(c.get("user").id, c.req.valid("json"));
+  return c.body(null, 204);
 });
 
 export { users as usersRoute };

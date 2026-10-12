@@ -21,7 +21,7 @@ import { buildPasswordResetMail } from "@server/modules/auth/auth-mail.js";
 import { isUniqueViolation } from "@server/utils/pg-error.js";
 import { getRedis } from "@breatic/core";
 import { sendMail, type SendMailResult } from "@breatic/core";
-import { env, getHonouredTierForUser } from "@breatic/core";
+import { db, env, getHonouredTierForUser } from "@breatic/core";
 import {
   setSession,
   getSession,
@@ -32,8 +32,8 @@ import {
   ConflictError,
   UnauthorizedError,
 } from "@breatic/core";
-import { getActiveLocale, normalizeEmail, t } from "@breatic/shared";
-import type { UserEntity } from "@breatic/shared";
+import { CONSENT_REVISION, getActiveLocale, mergeAccountConsent, normalizeEmail, t } from "@breatic/shared";
+import type { AccountConsent, UserEntity } from "@breatic/shared";
 
 const BCRYPT_ROUNDS = 12;
 
@@ -243,6 +243,46 @@ export async function getUserById(userId: string): Promise<UserEntity | null> {
  */
 export async function setLocale(userId: string, locale: string): Promise<void> {
   await userRepo.updateUser(userId, { locale });
+}
+
+/**
+ * Keep a stored choice only if it was made under the current policy revision.
+ * @param stored - What the column holds.
+ * @returns The choice, or null when it is missing or from an older revision.
+ */
+function currentRevisionOnly(stored: AccountConsent | null): AccountConsent | null {
+  return stored?.revision === CONSENT_REVISION ? stored : null;
+}
+
+/**
+ * Fold a logged-in browser's consent report into the account's latest choice.
+ *
+ * The one write path for `users.analytics_consent` (inner#1442 design §4.4.6).
+ * The row is locked so two browsers reporting at once both get merged. The
+ * browser's clock is not trusted past ours: a report dated in the future is
+ * taken as made now, so a fast clock cannot outrank later choices made on
+ * other devices.
+ * @param userId - The account.
+ * @param incoming - The browser's choice and when it was made.
+ */
+export async function recordAnalyticsConsent(userId: string, incoming: AccountConsent): Promise<void> {
+  const now = new Date();
+  const decidedAt = new Date(incoming.decidedAt) > now ? now.toISOString() : incoming.decidedAt;
+  await db.transaction(async (tx) => {
+    const stored = currentRevisionOnly(await userRepo.getAnalyticsConsent(userId, tx));
+    const next = mergeAccountConsent(stored, { ...incoming, decidedAt });
+    if (next !== null && next !== stored) await userRepo.setAnalyticsConsent(userId, next, tx);
+  });
+}
+
+/**
+ * Read the account's latest consent, for events no browser is behind.
+ * @param userId - The account.
+ * @returns The choice, or null when none under the current policy is on
+ *   record; callers treat null as no consent.
+ */
+export async function getAnalyticsConsent(userId: string): Promise<AccountConsent | null> {
+  return currentRevisionOnly(await userRepo.getAnalyticsConsent(userId));
 }
 
 /**

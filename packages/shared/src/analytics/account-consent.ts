@@ -3,6 +3,10 @@
 
 import { CONSENT_REVISION } from "@shared/analytics/consent.js";
 
+/** How a browser arrived at its choice (inner#1442 design §4.4.4). */
+export const CONSENT_SOURCES = ["banner", "settings", "implicit", "gpc"] as const;
+export type ConsentSource = (typeof CONSENT_SOURCES)[number];
+
 /**
  * The latest consent choice an account's browsers have reported.
  *
@@ -16,8 +20,7 @@ export interface AccountConsent {
   readonly ads: boolean;
   /** When the person made the choice in the browser, as an ISO timestamp. */
   readonly decidedAt: string;
-  /** How the browser arrived at the choice: banner, settings, implicit or gpc. */
-  readonly source: string;
+  readonly source: ConsentSource;
   readonly revision: number;
 }
 

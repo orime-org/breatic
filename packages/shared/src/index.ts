@@ -795,4 +795,9 @@ export {
   type AnalyticsEventName,
   type AnalyticsProperties,
 } from "@shared/analytics/events.js";
-export { mergeAccountConsent, type AccountConsent } from "@shared/analytics/account-consent.js";
+export {
+  CONSENT_SOURCES,
+  mergeAccountConsent,
+  type AccountConsent,
+  type ConsentSource,
+} from "@shared/analytics/account-consent.js";
