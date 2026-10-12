@@ -2179,8 +2179,11 @@ body {
      which is not until a drag ends. The sliver is drawn here from the same
      measures — a no-break space in the line's own flow, so it stands where the
      caret would under the line's alignment — and the browser's is cleared, so
-     the line wears one mark in every browser from the first frame of a drag. */
-  .doc-body .doc-empty-line-in-selection .bn-inline-content::before {
+     the line wears one mark in every browser from the first frame of a drag.
+     A table cell's line is a bare `<p>` (BlockNote's `tableParagraph`), which
+     is itself the element its text sits in. */
+  .doc-body .doc-empty-line-in-selection .bn-inline-content::before,
+  .doc-body p.doc-empty-line-in-selection::before {
     content: '\a0';
     display: inline-block;
     background-color: var(--color-selection);
