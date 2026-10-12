@@ -266,6 +266,8 @@ describe('BellMenu — every waiting request is a link, not a decision', () => {
       'membership.ended',
       'membership.upgrade_incomplete',
       'storage.quota_exceeded',
+      'credit.refund_completed',
+      'credit.refund_rejected',
     ] as const satisfies readonly NotifType[];
     // A list written by hand can fall behind the union it claims to cover, so
     // the gap is a type error rather than a quieter run of this test: leaving a
@@ -334,6 +336,58 @@ describe('BellMenu — every waiting request is a link, not a decision', () => {
 
     expect(await screen.findByTestId('bell-mark-read-n-10')).toBeInTheDocument();
     expect(screen.queryByTestId('bell-open-decision-n-10')).toBeNull();
+  });
+});
+
+describe('BellMenu — a credit refund outcome is one sentence and mark-read (inner#1410 §8)', () => {
+  // Like membership.ended: nobody to name, nothing to open. The buyer is told
+  // how their refund request ended, and the row only offers mark-read.
+  const OUTCOMES: Array<{ id: string; type: NotifType; payload: Record<string, unknown> }> = [
+    {
+      id: 'n-rc',
+      type: 'credit.refund_completed',
+      payload: { lotId: 'lot-1', credits: '880.000000', amountCents: 1080, currency: 'usd' },
+    },
+    {
+      id: 'n-rr',
+      type: 'credit.refund_rejected',
+      payload: { lotId: 'lot-2', credits: '880.000000' },
+    },
+  ];
+
+  it.each(OUTCOMES)('$type reads as a sentence with no link and offers mark-read only', async ({ id, type, payload }) => {
+    vi.mocked(notificationsApi.list).mockResolvedValue({
+      items: [fakeNotification(id, type, payload)],
+      resolved: EMPTY_RESOLVED,
+    });
+    const user = userEvent.setup();
+    setup();
+    await user.click(screen.getByTestId('bell-trigger'));
+
+    const headline = await screen.findByTestId(`bell-notification-headline-${id}`);
+    const text = headline.textContent ?? '';
+    expect(text.trim()).not.toBe('');
+    expect(text).not.toContain(type);
+    expect(text).not.toContain('notifications.');
+    expect(headline.querySelectorAll('a')).toHaveLength(0);
+    expect(screen.getByTestId(`bell-mark-read-${id}`)).toBeInTheDocument();
+    expect(screen.queryByTestId(`bell-open-decision-${id}`)).toBeNull();
+  });
+
+  it('the two outcomes say different things', async () => {
+    vi.mocked(notificationsApi.list).mockResolvedValue({
+      items: OUTCOMES.map((o) => fakeNotification(o.id, o.type, o.payload)),
+      resolved: EMPTY_RESOLVED,
+    });
+    const user = userEvent.setup();
+    setup();
+    await user.click(screen.getByTestId('bell-trigger'));
+
+    const completed = await screen.findByTestId('bell-notification-headline-n-rc');
+    const rejected = screen.getByTestId('bell-notification-headline-n-rr');
+    // Different sentences, not two raw type names that happen to differ.
+    for (const row of [completed, rejected]) expect(row.textContent).not.toMatch(/credit\.refund_/);
+    expect(completed.textContent).not.toBe(rejected.textContent);
   });
 });
 

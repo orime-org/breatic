@@ -9,6 +9,8 @@ import { notificationHeadline } from '@web/features/notifications/notification-h
 import type { Notification } from '@web/data/api/notifications';
 import { EMPTY_RESOLVED } from '@web/data/api/notifications';
 import type { useTranslation } from '@web/i18n/use-translation';
+import { setLocale, t as sharedT } from '@breatic/shared';
+import { LOCALE_CATALOGS, readPath } from '@web/test-utils/locale-catalogs';
 
 /** A fake `t()` that interpolates `{name}` placeholders from a template map. */
 function fakeT(
@@ -215,6 +217,79 @@ describe('notificationHeadline', () => {
     const text = screen.getByTestId('m').textContent ?? '';
     expect(text).toBe('payment for your move to Team was not completed');
     expect(text).not.toContain('membership.period.');
+  });
+
+  // inner#1410 §8. A refund outcome, like a membership that ended, has no
+  // actor and nothing to open: one localized sentence. Contract: the keys are
+  // `notifications.headline.creditRefundCompleted` and
+  // `notifications.headline.creditRefundRejected`. Whether the sentence
+  // interpolates the payload (credits, amount) is not decided by the design,
+  // so these cases do not depend on it.
+  it.each([
+    {
+      type: 'credit.refund_completed' as const,
+      payload: { lotId: 'lot-1', credits: '880.000000', amountCents: 1080, currency: 'usd' },
+      key: 'notifications.headline.creditRefundCompleted',
+      sentence: '退款已完成',
+    },
+    {
+      type: 'credit.refund_rejected' as const,
+      payload: { lotId: 'lot-2', credits: '880.000000' },
+      key: 'notifications.headline.creditRefundRejected',
+      sentence: '退款申请未通过',
+    },
+  ])('renders $type as a plain sentence', ({ type, payload, key, sentence }) => {
+    const tt = fakeT({ [key]: sentence });
+    const n = makeNotification({ type, payload });
+    render(
+      <MemoryRouter>
+        <span data-testid='r'>
+          {notificationHeadline(n, EMPTY_RESOLVED, tt)}
+        </span>
+      </MemoryRouter>,
+    );
+    expect(screen.getByTestId('r')).toHaveTextContent(sentence);
+    expect(screen.getByTestId('r').querySelectorAll('a')).toHaveLength(0);
+  });
+
+  describe.each([
+    {
+      type: 'credit.refund_completed' as const,
+      payload: { lotId: 'lot-1', credits: '880.000000', amountCents: 1080, currency: 'usd' },
+      key: 'notifications.headline.creditRefundCompleted',
+    },
+    {
+      type: 'credit.refund_rejected' as const,
+      payload: { lotId: 'lot-2', credits: '880.000000' },
+      key: 'notifications.headline.creditRefundRejected',
+    },
+  ])('$type in every shipped language', ({ type, payload, key }) => {
+    // Asked of the catalog directly as well as through `t()`: `t()` falls back
+    // to English, so a key missing from one locale would render English and
+    // pass a render-only check.
+    it.each(LOCALE_CATALOGS)('%s carries the sentence and renders it', (tag, catalog) => {
+      const message = readPath(catalog, key);
+      expect(typeof message).toBe('string');
+      expect((message as string).trim()).not.toBe('');
+      try {
+        setLocale(tag);
+        const n = makeNotification({ type, payload });
+        const { unmount } = render(
+          <MemoryRouter>
+            <span data-testid='l'>
+              {notificationHeadline(n, EMPTY_RESOLVED, sharedT)}
+            </span>
+          </MemoryRouter>,
+        );
+        const text = screen.getByTestId('l').textContent ?? '';
+        expect(text.trim()).not.toBe('');
+        expect(text).not.toContain('notifications.');
+        expect(text).not.toContain(type);
+        unmount();
+      } finally {
+        setLocale('en');
+      }
+    });
   });
 
   it('falls back to the raw type for an unhandled type', () => {

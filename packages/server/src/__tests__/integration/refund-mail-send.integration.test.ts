@@ -1,0 +1,402 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+
+/**
+ * Sending the refund mails, against real Postgres (inner#1410 §6.5, §7.1
+ * step 3, §8, acceptance #13).
+ *
+ * Contract this suite specifies, in
+ * `packages/server/src/modules/credit-refund/refund-mail.ts`:
+ *
+ *   - `sendRefundMail(mailId: string): Promise<boolean>` — claim (`pending` →
+ *     `sending`), load the view, render with `renderRefundMail`, send through
+ *     core's `sendMail`, write back `sent` / `failed` / `skipped` under
+ *     `status = 'sending'`. True when the letter went out. Each row is
+ *     claimed once and sent once.
+ *   - `sendDueRefundMails(): Promise<unknown>` — the loop's sweep: sends every
+ *     `pending` row inserted more than one minute ago; younger rows are left
+ *     to the send that follows their insert.
+ *   - `markStaleRefundMailsUnknown(): Promise<unknown>` — M5: `sending` rows
+ *     untouched for longer than `credit-refund.yaml`'s `stale_sending_minutes`
+ *     become `unknown`.
+ *
+ * And the wiring: once a disposition that inserted an automatic mail row has
+ * committed, and once the resend endpoint has committed its row, that row is
+ * sent without waiting for the loop — best effort: a mail backend that throws
+ * does not change the endpoint's answer. Whether the answer waits for the send
+ * is not decided by the design, so the cases poll for the row's outcome.
+ *
+ * The mail backend is the one thing stood in for: `sendMail` is replaced
+ * with a spy; everything else in `@breatic/core` is real.
+ */
+
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const sendMail = vi.fn();
+vi.mock("@breatic/core", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  sendMail: (...args: unknown[]) => sendMail(...args),
+}));
+
+vi.mock("@server/infra/stripe.js", async () => {
+  const { fakeStripe } = await import("./fake-stripe-refunds.js");
+  return {
+    getStripeClient: () => fakeStripe.client,
+    verifyWebhookSignature: () => {
+      throw new Error("not used by this suite");
+    },
+  };
+});
+
+import { getCreditRefundConfig } from "@server/config/credit-refund.js";
+import {
+  markStaleRefundMailsUnknown,
+  sendDueRefundMails,
+  sendRefundMail,
+} from "@server/modules/credit-refund/refund-mail.js";
+import * as mailRepo from "@server/modules/credit-refund/refund-mail.repo.js";
+import { renderRefundMail } from "@server/modules/credit-refund/refund-mail-template.js";
+import { fakeStripe } from "./fake-stripe-refunds.js";
+import { call, freshKey, paths, useInternalApp } from "./internal-api-harness.js";
+import {
+  PAID_CENTS,
+  seedOperation,
+  seedRefundLot,
+  type LotState,
+  type SeededLot,
+} from "./credit-refund-fixtures.js";
+
+const suite = useInternalApp("refund-mail-send-test");
+
+/** The operator's reason on every disposition here; it must never reach a buyer. */
+const OPERATOR_REASON = "Operator-only note 7f3a: buyer flagged by risk review";
+/** The operator's reason on a resend. */
+const RESEND_REASON = "Operator-only note 9c1e: resend after bounce";
+
+beforeEach(() => {
+  sendMail.mockReset();
+  sendMail.mockResolvedValue({ status: "sent" });
+});
+
+type MailStatus = "pending" | "sending" | "sent" | "failed" | "skipped" | "unknown";
+
+interface MailState {
+  status: string;
+  last_error: string | null;
+  sent_at: Date | null;
+}
+
+/**
+ * Where one mail row stands.
+ * @param mailId - The row.
+ * @returns Its status, error and send time.
+ */
+async function mailState(mailId: string): Promise<MailState> {
+  const [row] = await suite.sql<MailState[]>`
+    SELECT status, last_error, sent_at FROM refund_mail_outbox WHERE id = ${mailId}
+  `;
+  return row!;
+}
+
+/**
+ * A rejected disposition with one automatic mail row, the payment carrying
+ * the buyer's checkout language and zone.
+ * @param status - Where the mail row stands.
+ * @param insertedMinutesAgo - The row's `created_at` (and `updated_at`).
+ * @returns The lot and the mail row.
+ */
+async function seedMail(
+  status: MailStatus,
+  insertedMinutesAgo = 0,
+): Promise<{ lot: SeededLot; mailId: string; operationId: string }> {
+  const lot = await seedRefundLot(suite.sql, "refund_pending");
+  const op = await seedOperation(suite.sql, lot, { kind: "reject", status: "succeeded", result: "rejected" });
+  await suite.sql`UPDATE credit_refund_operations SET reason = ${OPERATOR_REASON} WHERE id = ${op.id}`;
+  const [row] = await suite.sql<{ id: string }[]>`
+    INSERT INTO refund_mail_outbox (operation_id, kind, origin, status, created_at, updated_at)
+    VALUES (${op.id}, 'refund_rejected', 'auto', ${status},
+            now() - make_interval(mins => ${insertedMinutesAgo}::int),
+            now() - make_interval(mins => ${insertedMinutesAgo}::int))
+    RETURNING id
+  `;
+  return { lot, mailId: row!.id, operationId: op.id };
+}
+
+/**
+ * The buyer's address.
+ * @param lot - The lot.
+ * @returns The email.
+ */
+async function emailOf(lot: SeededLot): Promise<string> {
+  const [row] = await suite.sql<{ email: string }[]>`SELECT email FROM users WHERE id = ${lot.userId}`;
+  return row!.email;
+}
+
+/**
+ * The `sendMail` calls addressed to one buyer.
+ * @param email - The buyer.
+ * @returns Their letters, in order.
+ */
+function lettersTo(email: string): { to: string; subject: string; html: string; text: string }[] {
+  return sendMail.mock.calls
+    .map((call) => call[0] as { to: string; subject: string; html: string; text: string })
+    .filter((letter) => letter.to === email);
+}
+
+/**
+ * The mail rows of a lot's dispositions, oldest first.
+ * @param lot - The lot.
+ * @returns Id, kind, origin and status of each.
+ */
+async function mailsOfLot(lot: SeededLot): Promise<{ id: string; kind: string; origin: string; status: string }[]> {
+  return suite.sql<{ id: string; kind: string; origin: string; status: string }[]>`
+    SELECT m.id, m.kind, m.origin, m.status
+    FROM refund_mail_outbox m JOIN credit_refund_operations o ON o.id = m.operation_id
+    WHERE o.lot_id = ${lot.lotId} ORDER BY m.created_at, m.id
+  `;
+}
+
+describe("sendRefundMail", () => {
+  it("sends the rendered letter to the buyer, in their checkout language, and records sent", async () => {
+    const { lot, mailId } = await seedMail("pending");
+    await suite.sql`
+      UPDATE payments SET metadata = ${suite.sql.json({ locale: "ja", timeZone: "Asia/Tokyo" })}
+      WHERE id = ${lot.paymentId}
+    `;
+    const expected = await renderRefundMail((await mailRepo.getMailView(mailId))!);
+
+    expect(await sendRefundMail(mailId)).toBe(true);
+
+    const letters = lettersTo(await emailOf(lot));
+    expect(letters).toEqual([
+      { to: expected.to, subject: expected.subject, html: expected.html, text: expected.text },
+    ]);
+    const row = await mailState(mailId);
+    expect(row.status).toBe("sent");
+    expect(row.sent_at).not.toBeNull();
+  });
+
+  it("never puts the operator's reason in the letter", async () => {
+    const { lot, mailId } = await seedMail("pending");
+
+    await sendRefundMail(mailId);
+
+    const [letter] = lettersTo(await emailOf(lot));
+    expect(letter).toBeDefined();
+    for (const body of [letter!.subject, letter!.html, letter!.text]) {
+      expect(body).not.toContain(OPERATOR_REASON);
+      expect(body).not.toContain("7f3a");
+    }
+  });
+
+  it.each([
+    ["console", { status: "backend_console", to: "x", subject: "s", html: "h" }],
+    ["disabled", { status: "skipped", reason: "backend_disabled" }],
+  ])("the %s backend leaves the row skipped (M4)", async (_name, answer) => {
+    sendMail.mockResolvedValue(answer);
+    const { mailId } = await seedMail("pending");
+
+    expect(await sendRefundMail(mailId)).toBe(false);
+
+    expect(await mailState(mailId)).toEqual({ status: "skipped", last_error: null, sent_at: null });
+  });
+
+  it("an SMTP error leaves the row failed with the reason (M3)", async () => {
+    sendMail.mockRejectedValue(new Error("550 mailbox unavailable"));
+    const { mailId } = await seedMail("pending");
+
+    expect(await sendRefundMail(mailId)).toBe(false);
+
+    expect(await mailState(mailId)).toEqual({ status: "failed", last_error: "550 mailbox unavailable", sent_at: null });
+  });
+
+  it.each(["sending", "sent", "failed", "skipped", "unknown"] as const)(
+    "a %s row is not sent again",
+    async (status) => {
+      const { lot, mailId } = await seedMail(status);
+
+      expect(await sendRefundMail(mailId)).toBe(false);
+
+      expect(lettersTo(await emailOf(lot))).toEqual([]);
+      expect((await mailState(mailId)).status).toBe(status);
+    },
+  );
+
+  it("sends a row once, however many times it is asked", async () => {
+    const { lot, mailId } = await seedMail("pending");
+
+    await Promise.all([sendRefundMail(mailId), sendRefundMail(mailId)]);
+    await sendRefundMail(mailId);
+
+    expect(lettersTo(await emailOf(lot))).toHaveLength(1);
+  });
+
+  it("a write-back arriving after the row went unknown is discarded (M5, then a late M2)", async () => {
+    const { lot, mailId } = await seedMail("pending");
+    const stale = getCreditRefundConfig().staleSendingMinutes;
+    // While the letter is out, the loop finds the row stale and moves it on.
+    sendMail.mockImplementationOnce(async () => {
+      await suite.sql`
+        UPDATE refund_mail_outbox SET updated_at = now() - make_interval(mins => ${stale + 1}::int)
+        WHERE id = ${mailId}
+      `;
+      await markStaleRefundMailsUnknown();
+      return { status: "sent" };
+    });
+
+    await sendRefundMail(mailId);
+
+    expect(lettersTo(await emailOf(lot))).toHaveLength(1);
+    expect(await mailState(mailId)).toEqual({ status: "unknown", last_error: null, sent_at: null });
+  });
+});
+
+describe("markStaleRefundMailsUnknown: the configured stale_sending_minutes", () => {
+  it("moves a sending row just past the limit to unknown, and leaves one just inside it", async () => {
+    const stale = getCreditRefundConfig().staleSendingMinutes;
+    const past = await seedMail("sending", stale + 1);
+    const inside = await seedMail("sending", Math.max(stale - 1, 0));
+
+    await markStaleRefundMailsUnknown();
+
+    expect((await mailState(past.mailId)).status).toBe("unknown");
+    expect((await mailState(inside.mailId)).status).toBe("sending");
+  });
+});
+
+describe("sendDueRefundMails: the loop's sweep (§7.1 step 3)", () => {
+  it("sends pending rows inserted more than a minute ago and leaves the rest", async () => {
+    const due = await seedMail("pending", 2);
+    const fresh = await seedMail("pending", 0);
+    const failed = await seedMail("failed", 30);
+    const unknown = await seedMail("unknown", 30);
+
+    await sendDueRefundMails();
+
+    expect((await mailState(due.mailId)).status).toBe("sent");
+    expect(lettersTo(await emailOf(due.lot))).toHaveLength(1);
+    expect((await mailState(fresh.mailId)).status).toBe("pending");
+    expect(lettersTo(await emailOf(fresh.lot))).toEqual([]);
+    expect((await mailState(failed.mailId)).status).toBe("failed");
+    expect((await mailState(unknown.mailId)).status).toBe("unknown");
+    expect(lettersTo(await emailOf(failed.lot))).toEqual([]);
+    expect(lettersTo(await emailOf(unknown.lot))).toEqual([]);
+  });
+
+  it("one row whose send throws does not stop the others", async () => {
+    const first = await seedMail("pending", 3);
+    const second = await seedMail("pending", 2);
+    const firstEmail = await emailOf(first.lot);
+    sendMail.mockImplementation(async (letter: { to: string }) => {
+      if (letter.to === firstEmail) throw new Error("smtp refused");
+      return { status: "sent" };
+    });
+
+    await sendDueRefundMails();
+
+    expect((await mailState(first.mailId)).status).toBe("failed");
+    expect((await mailState(second.mailId)).status).toBe("sent");
+  });
+});
+
+describe("sent right after the disposition commits, without waiting for the loop", () => {
+  /**
+   * A lot in `state` whose payment Stripe knows.
+   * @param state - Where the lot stands.
+   * @returns The lot.
+   */
+  async function lotOnStripe(state: LotState): Promise<SeededLot> {
+    const lot = await seedRefundLot(suite.sql, state);
+    fakeStripe.register(lot.paymentIntentId, PAID_CENTS, []);
+    return lot;
+  }
+
+  /**
+   * Send a signed POST with a fresh key.
+   * @param path - The endpoint.
+   * @param body - JSON body.
+   * @returns The answer.
+   */
+  function post(path: string, body: unknown) {
+    return call(suite.baseUrl, path, { body, idempotencyKey: freshKey() });
+  }
+
+  /**
+   * Wait until every mail row of a lot has left `pending` and `sending`.
+   * @param lot - The lot.
+   * @param count - How many rows to expect.
+   * @returns The rows.
+   */
+  async function settledMails(lot: SeededLot, count: number) {
+    let rows: Awaited<ReturnType<typeof mailsOfLot>> = [];
+    await vi.waitFor(
+      async () => {
+        rows = await mailsOfLot(lot);
+        expect(rows).toHaveLength(count);
+        for (const row of rows) expect(["pending", "sending"]).not.toContain(row.status);
+      },
+      { timeout: 10_000, interval: 50 },
+    );
+    return rows;
+  }
+
+  it("a rejection's mail goes out to the buyer, and carries no operator reason", async () => {
+    const lot = await lotOnStripe("refund_pending");
+
+    const res = await post(paths.reject(lot.lotId), { reason: OPERATOR_REASON });
+
+    expect(res.status).toBe(200);
+    const rows = await settledMails(lot, 1);
+    expect(rows[0]).toMatchObject({ kind: "refund_rejected", origin: "auto", status: "sent" });
+    const letters = lettersTo(await emailOf(lot));
+    expect(letters).toHaveLength(1);
+    for (const body of [letters[0]!.subject, letters[0]!.html, letters[0]!.text]) {
+      expect(body).not.toContain(OPERATOR_REASON);
+    }
+  });
+
+  it("an approval that Stripe refunds at once sends the completed mail", async () => {
+    const lot = await lotOnStripe("refund_pending");
+
+    const res = await post(paths.approve(lot.lotId), { reason: OPERATOR_REASON, confirmedRefundIds: [] });
+
+    expect(res.status).toBe(200);
+    expect(res.json.result).toBe("refunded");
+    const rows = await settledMails(lot, 1);
+    expect(rows[0]).toMatchObject({ kind: "refund_completed", origin: "auto", status: "sent" });
+    expect(lettersTo(await emailOf(lot))).toHaveLength(1);
+  });
+
+  it("a resend's row goes out once its request commits, beside the automatic one", async () => {
+    const lot = await lotOnStripe("refund_pending");
+    const rejected = await post(paths.reject(lot.lotId), { reason: OPERATOR_REASON });
+    expect(rejected.status).toBe(200);
+    await settledMails(lot, 1);
+
+    const res = await post(paths.resend(rejected.json.id), { reason: RESEND_REASON });
+
+    expect([200, 202]).toContain(res.status);
+    const rows = await settledMails(lot, 2);
+    expect(rows.map((r) => [r.origin, r.status])).toEqual([
+      ["auto", "sent"],
+      ["resend", "sent"],
+    ]);
+    const letters = lettersTo(await emailOf(lot));
+    expect(letters).toHaveLength(2);
+    for (const body of [letters[1]!.subject, letters[1]!.html, letters[1]!.text]) {
+      expect(body).not.toContain(RESEND_REASON);
+    }
+  });
+
+  it("a mail backend that throws does not change the disposition's answer", async () => {
+    sendMail.mockRejectedValue(new Error("smtp refused"));
+    const lot = await lotOnStripe("refund_pending");
+
+    const res = await post(paths.reject(lot.lotId), { reason: OPERATOR_REASON });
+
+    expect(res.status).toBe(200);
+    expect(res.json).toMatchObject({ status: "succeeded", result: "rejected" });
+    const rows = await settledMails(lot, 1);
+    expect(rows[0]!.status).toBe("failed");
+  });
+});
