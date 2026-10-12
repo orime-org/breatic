@@ -103,6 +103,35 @@ async function stepSlider(testId: string, key: 'ArrowRight' | 'ArrowLeft', times
 }
 
 /**
+ * The alpha of one pixel of a stored picture. The bytes are fetched outside the
+ * page, since the store answers a page's fetch without CORS headers, and drawn
+ * from a data URL.
+ * @param url - The picture.
+ * @param x - Across, in its pixels.
+ * @param y - Down, in its pixels.
+ * @returns The alpha, 0 to 255.
+ */
+async function pixelAlpha(url: string, x: number, y: number): Promise<number> {
+  const response = await page.request.get(url);
+  const dataUrl = `data:${response.headers()['content-type'] ?? 'image/png'};base64,${(await response.body()).toString('base64')}`;
+  return page.evaluate(
+    async ({ src, px, py }) => {
+      const img = new Image();
+      img.src = src;
+      await img.decode();
+      const canvas = document.createElement('canvas');
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      const context = canvas.getContext('2d');
+      if (context === null) throw new Error('no 2d context');
+      context.drawImage(img, 0, 0);
+      return context.getImageData(px, py, 1, 1).data[3] ?? 0;
+    },
+    { src: dataUrl, px: x, py: y },
+  );
+}
+
+/**
  * Wait for every result to hold a stored picture and give their addresses.
  * @param count - How many results.
  * @returns Their picture addresses.
@@ -135,8 +164,11 @@ test.afterEach(async () => {
 });
 
 test('the picture adjust previews on the node, resets, and Run fills a picture of the source size @needs-internet', async () => {
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
   await openTool(page, imageNode, 'image.adjust');
-  await expect(nodeOf(imageNode).getByTestId('mini-tool-adjust-layer')).toBeVisible({ timeout: 15_000 });
+  const layer = nodeOf(imageNode).getByTestId('mini-tool-adjust-layer');
+  await expect(layer).toBeVisible({ timeout: 15_000 });
   const run = page.getByTestId('mini-tool-run');
   await expect(run).toBeDisabled();
 
@@ -148,6 +180,16 @@ test('the picture adjust previews on the node, resets, and Run fills a picture o
   await expect(run).toBeDisabled();
 
   await stepSlider('mini-tool-adjust-contrast-slider', 'ArrowRight', 30);
+  // The preview draws the picture: its middle is not empty, and nothing threw.
+  await expect
+    .poll(() =>
+      layer.evaluate((el) => {
+        const canvas = el as HTMLCanvasElement;
+        return canvas.getContext('2d')?.getImageData(canvas.width >> 1, canvas.height >> 1, 1, 1).data[3] ?? 0;
+      }),
+    )
+    .toBe(255);
+  expect(errors).toEqual([]);
   await run.click();
   await storedResults(1);
   await expect(results()).toContainText('ADJUST-');
@@ -188,9 +230,11 @@ test('markup draws, goes back to select, keeps Escape for itself, and Run fills 
 
   // The node did not move under the drags.
   await run.click();
-  await storedResults(1);
+  const [marked] = await storedResults(1);
   await expect(results()).toContainText('MARK-');
   expect(await resultSizes()).toEqual([{ width: 400, height: 300 }]);
+  // The picture fills the whole result, its far corner included.
+  expect(await pixelAlpha(marked!, 390, 290)).toBe(255);
 });
 
 test('a 2×2 grid cuts four tiles of the source into a group @needs-internet', async () => {
