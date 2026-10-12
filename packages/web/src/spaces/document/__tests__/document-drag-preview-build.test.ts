@@ -178,6 +178,29 @@ describe('buildDragPreview', () => {
     }
   });
 
+  it('keeps what the copy sets on itself over what it works out, as the preview\'s own', () => {
+    const editor = open([{ type: 'paragraph', content: 'one' }]);
+    const view = editor.prosemirrorView!;
+    const content = blockPreviewContent(view, [view.dom.querySelector('.bn-block-outer')!.cloneNode(true) as Element]);
+    const block = content.querySelector<HTMLElement>('.bn-block-content')!;
+    block.style.width = '120px';
+    // A computed value that is not the one set: WebKit computes a `col`, which
+    // has no box, at 0px whatever width it is given.
+    const real = window.getComputedStyle.bind(window);
+    const computed = vi.spyOn(window, 'getComputedStyle').mockImplementation((element, pseudo) =>
+      element === block && !pseudo
+        ? ({ length: 1, item: () => 'width', getPropertyValue: () => '0px' } as unknown as CSSStyleDeclaration)
+        : real(element, pseudo),
+    );
+    try {
+      buildDragPreview(view, content, () => ({ width: 100, height: 20 }));
+    } finally {
+      computed.mockRestore();
+    }
+    expect(block.style.getPropertyValue('width')).toBe('120px');
+    expect(block.style.getPropertyPriority('width')).toBe('important');
+  });
+
   it('works its styles out beside the editor element and leaves nothing of that there', () => {
     const editor = open([{ type: 'paragraph', content: 'one' }]);
     const view = editor.prosemirrorView!;
