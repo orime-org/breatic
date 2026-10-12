@@ -5,8 +5,9 @@
  * Folding a long conversation into memory reads the history the way a turn
  * sends it, so a tool result written by an older version of its tool reaches
  * the fold too. Pricing each turn and building the fold's transcript both go
- * through the replay conversion; a row it cannot read stops the fold, and the
- * turn behind it, exactly as it stopped the turn itself (inner#1481).
+ * through the replay conversion, so a structured result stored before the
+ * model's copy was kept reaches the fold as the note, and the fold runs
+ * (inner#1481).
  */
 import { describe, it, expect, vi } from "vitest";
 import type * as CoreModule from "@breatic/core";

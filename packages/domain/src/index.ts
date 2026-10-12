@@ -105,8 +105,6 @@ export {
   BASELINE_TOOLS,
   TOOL_MAP,
   ASK_USER,
-  GET_CANVAS_CAPABILITIES,
-  LIST_GENERATION_MODELS,
   PROPOSE_CANVAS_ACTION,
   SAVE_IMAGE,
 } from "@domain/agent/tools/index.js";

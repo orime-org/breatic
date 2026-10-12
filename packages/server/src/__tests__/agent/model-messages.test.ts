@@ -170,7 +170,6 @@ describe("history on its way to the model", () => {
     ]);
 
     expect(output).toEqual({ type: "text", value: "1. A picture" });
-    expect(JSON.stringify(output)).not.toContain("thumbnailUrl");
   });
 
   it("hands back the placeholder for a picture search past the window", () => {

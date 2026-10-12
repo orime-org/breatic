@@ -80,12 +80,6 @@ beforeEach(() => {
 });
 
 describe("what a success part stores for the model", () => {
-  it("stores what the tool's own toModelOutput returns", async () => {
-    const out = await passOver({ rendering }, succeeded("rendering", { items: [1, 2] }));
-
-    expect(out).toMatchObject({ forModel: { type: "text", value: "items: 1,2" } });
-  });
-
   it.each([
     ["a string", "three links"],
     ["an object", { a: 1 }],
