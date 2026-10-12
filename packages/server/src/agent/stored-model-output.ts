@@ -22,7 +22,7 @@ import type { MessagePart, StoredModelOutput } from "@breatic/shared";
  * when it was written. Either way the model can call the tool again.
  */
 export const EARLIER_RESULT_NOTE =
-  "[This result was recorded by an earlier version and is no longer available. Call the tool again if you need it.]";
+  "[This result is no longer available. Call the tool again if you need it.]";
 
 /** A tool part, once narrowed out of the union. */
 type ToolPart = Extract<MessagePart, { type: "tool" }>;
