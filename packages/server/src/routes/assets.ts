@@ -24,7 +24,6 @@ import {
   INGEST_NOT_STARTED,
   UPLOAD_STATUS_MAX_KEYS,
   t,
-  type NodeTaskAction,
 } from "@breatic/shared";
 import {
   miniToolById,
@@ -34,21 +33,17 @@ import {
   ingestReportService,
   mediaReadService,
   studioAuthService,
-  uploadDeadlineByKey,
   uploadStatusService,
-  uploadTicketService,
   UPLOAD_FINISH_QUEUE,
   type UploadFinishJob,
 } from "@breatic/domain";
-import { openUpload } from "@server/modules/asset/upload-opening.js";
+import { issueUploadTicket } from "@server/modules/asset/upload-ticket.service.js";
 import { noteIngestSideEffects } from "@server/modules/asset/ingest-side-effects.js";
-import { safeExt } from "@breatic/domain";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
 import {
   assertStudioStorageAllowance,
-  assetUploadService,
   projectService,
 } from "@server/modules";
 import {
@@ -58,7 +53,6 @@ import {
   getStorageAdapter,
   env,
   logger,
-  getNodeTaskConfig,
 } from "@breatic/core";
 import { recordProjectActivity } from "@server/modules/activity/projectActivity.service.js";
 
@@ -247,25 +241,6 @@ const uploadTicketSchema = z
   });
 
 /**
- * What an upload's task row says: a browser tool's export is shown as that
- * tool, every other upload by its file name.
- * @param body - The ticket request.
- * @param body.source - What started the upload.
- * @param body.tool_name - The browser tool, on a mini-tool upload.
- * @param body.filename - The picked file's name.
- * @returns The row's action and label.
- */
-function uploadRowOf(body: {
-  source?: "mini_tool" | undefined;
-  tool_name?: string | undefined;
-  filename: string;
-}): { action: NodeTaskAction; label: string } {
-  return body.source === "mini_tool" && body.tool_name !== undefined
-    ? { action: "mini_tool", label: body.tool_name }
-    : { action: "upload", label: body.filename };
-}
-
-/**
  * `POST /assets/upload-ticket` — the permission slip the browser carries to
  * the ingest Worker (design §4.1).
  *
@@ -300,157 +275,44 @@ assets.post(
         ? await assetService.resolveOwnerStudioId(body.project_id)
         : body.studio_id;
 
-    const { upload, ingest } = getStorageConfig();
-    if (body.size > upload.max_upload_bytes) {
-      logger.info(
-        { size: body.size, cap: upload.max_upload_bytes, userId: user.id },
-        "upload_ticket_rejected_over_cap",
-      );
-      return c.json(
-        { error: { message: t("server.error.upload_too_large") } },
-        413,
-      );
+    const outcome = await issueUploadTicket(
+      { userId: user.id, studioId, projectId: body.project_id },
+      body,
+      async () => {
+        await assertStudioStorageAllowance(studioId, "upload");
+        return true;
+      },
+    );
+    if (outcome.kind === "refused") {
+      return c.json({ error: { message: t("server.error.upload_too_large") } }, 413);
     }
-
-    // Dedup: the owner studio already holding this content skips the upload
-    // entirely — no key, no grant, no ticket.
-    const dedupHit = await assetUploadService.checkUploadDedup({
-      studioId,
-      contentHash: body.client_hash,
-    });
-    if (dedupHit) {
-      logger.info(
-        { hash: body.client_hash, userId: user.id, studioId, projectId: body.project_id },
-        "upload_ticket_dedup_hit",
-      );
-      // No bytes move, but the node now shows something it did not show
-      // before: a task row is opened and settled in the same pass, pointing at
-      // the node's history row for this content (written now, or the one the
-      // node already holds).
-      // The project activity feed gets nothing, because its only shape for
-      // this is `asset:uploaded` and nothing was uploaded. A studio's avatar
-      // has no project and no node, so there is nothing to settle.
-      if (body.project_id !== undefined) {
-        await assetUploadService.settleDedupHit({
-          projectId: body.project_id,
-          hit: dedupHit,
-          userId: user.id,
-          metadata: {
-            filename: body.filename,
-            size: body.size,
-            mimeType: body.content_type,
-          },
-          row: uploadRowOf(body),
-          nodeId: body.node_id,
-          spaceId: body.space_id,
-        });
-      }
+    if (outcome.kind === "alreadyExists") {
       return c.json({
         data: {
           alreadyExists: true,
           // The row a cover or an avatar is then pointed at.
-          assetId: dedupHit.assetId,
-          fileUrl: dedupHit.fileUrl,
-          kind: dedupHit.kind,
+          assetId: outcome.assetId,
+          fileUrl: outcome.fileUrl,
+          kind: outcome.assetKind,
           // The picture's size, read off it when it was stored (inner#1367).
-          width: dedupHit.width,
-          height: dedupHit.height,
+          width: outcome.width,
+          height: outcome.height,
         },
       });
     }
-
-    // Storage gate, after the dedup return: that path consumes nothing.
-    await assertStudioStorageAllowance(studioId, "upload");
-
-    // Both settings have to be present before a byte is authorised. Without
-    // the secret the Worker would reject every ticket we sign; without the
-    // base URL the browser has nowhere to send its parts. Neither is anything
-    // the user did, so this is our own misconfiguration and reads as a 500.
-    if (!env.INGEST_SHARED_SECRET || !env.INGEST_BASE_URL) {
-      logger.error(
-        {
-          hasSecret: Boolean(env.INGEST_SHARED_SECRET),
-          hasBaseUrl: Boolean(env.INGEST_BASE_URL),
-        },
-        "upload_ticket_ingest_unconfigured",
-      );
-      throw new Error(
-        "ingest Worker is not configured: INGEST_BASE_URL and " +
-          "INGEST_SHARED_SECRET are both required",
-      );
-    }
-
-    const kind = assetService.detectAssetKind(body.content_type);
-    // One rule for what may go in a key, shared with the lane that takes an
-    // address. A separator or a query character spliced in makes publicUrl
-    // point at a key R2 does not hold, and every read of that asset 404s.
-    const ext = safeExt(body.filename);
-
-    const expiresAt = Date.now() + ingest.ticket_expires_seconds * 1000;
-    // The grant, and the task row this upload is on whatever node it lands on,
-    // opened before the ticket that starts it (#186, design §4.6.5). Nothing
-    // schedules a deadline: the row carries its own budget, and whoever opens
-    // this node's task list is what judges it against the clock.
-    const { key, taskId } = await openUpload(
-      {
-        ...(body.project_id !== undefined
-          ? { projectId: body.project_id }
-          : { studioId }),
-        actingUserId: user.id,
-        declaredSize: body.size,
-        taskType: kind,
-        ext,
-        expiresAt: new Date(expiresAt),
-        context: {
-          nodeId: body.node_id ?? null,
-          spaceId: body.space_id ?? null,
-          source: body.source ?? null,
-          toolName: body.tool_name ?? null,
-          // A cover is a byproduct: in the ledger, and not announced on the
-          // project feed as something uploaded to the canvas.
-          derived: body.purpose === "project_cover" ? true : (body.derived ?? null),
-          filename: body.filename,
-          assetSource: body.purpose ?? null,
-        },
-      },
-      {
-        budgetMs: getNodeTaskConfig().default_budget_ms,
-        ...uploadRowOf(body),
-      },
-    );
-    // The upload's two hours, read off the row or the grant just opened
-    // (inner#1367). The ticket carries it; every session token the Worker
-    // issues for this upload, and every call it makes for it, end there.
-    const deadlineAt = await uploadDeadlineByKey(key);
-
-    const target = await uploadTicketService.signTicketFor({
-      storageKey: key,
-      studioId,
-      userId: user.id,
-      declaredSize: body.size,
-      contentType: body.content_type,
-      expiresAt,
-      deadlineAt,
-    });
-
-    logger.info(
-      { key, kind, totalParts: target.totalParts, userId: user.id },
-      "upload_ticket_issued",
-    );
-
     return c.json(
       {
         data: {
-          ticket: target.ticket,
-          storageKey: key,
-          uploadUrl: target.uploadUrl,
-          kind,
-          partSize: target.partSize,
-          totalParts: target.totalParts,
-          // Which task row this upload is. The browser keys a failed
-          // upload's File by it, so two uploads onto one node each keep
-          // their own (#186 §3.7.2). Absent on an upload with no node.
-          taskId,
+          ticket: outcome.ticket,
+          storageKey: outcome.storageKey,
+          uploadUrl: outcome.uploadUrl,
+          kind: outcome.assetKind,
+          partSize: outcome.partSize,
+          totalParts: outcome.totalParts,
+          // Which task row this upload is. The browser keys a failed upload's
+          // File by it, so two uploads onto one node each keep their own (#186
+          // §3.7.2). Absent on an upload with no node.
+          taskId: outcome.taskId,
         },
       },
       201,
