@@ -69,6 +69,8 @@ describe('Button loading', () => {
     expect(el).toHaveAttribute('aria-busy', 'true');
     expect(el).toHaveAttribute('aria-disabled', 'true');
     expect(el).not.toHaveAttribute('disabled');
+    // The same faded look a disabled button has.
+    expect(el).toHaveClass('opacity-50', 'cursor-not-allowed');
   });
 
   it('puts a spinner before the label when there is no icon', () => {
