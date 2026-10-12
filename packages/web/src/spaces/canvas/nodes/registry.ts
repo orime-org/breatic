@@ -34,7 +34,8 @@ import { WebNode } from '@web/spaces/canvas/nodes/WebNode';
  * truth for "what types can the canvas render."
  *
  * Adding a new modality:
- *   1. Add the view and its `NodeViewOf` entry in data/yjs/node-view.ts
+ *   1. Add the type to `NodeType` in `@breatic/shared`, then its view, its
+ *      `NodeViewOf` entry and its `toNodeView` case in data/yjs/node-view.ts
  *   2. Author the node component
  *   3. Add it to NODE_TYPES below
  */
