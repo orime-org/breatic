@@ -133,21 +133,28 @@ const FOR_MODEL =
 /** The coarse line a reader is shown, which the model has no use for. */
 const FOR_READER = "chat.tool.failure.upstream";
 
+/** Run one turn of the agent against the double model, to its end. */
+async function runTurn(): Promise<void> {
+  await runWithContext({ userId: "u1", conversationId: "c1", projectId: "p1" }, async () => {
+    const turn = await new MainAgent().chat("read that page", new AbortController().signal);
+    for await (const _chunk of turn) {
+      // drained
+    }
+  });
+}
+
 describe("what the model is handed after a tool fails", () => {
   beforeEach(() => {
     thisCase.step = 0;
     thisCase.uncarried = false;
     promptsSeen.length = 0;
     addMessage.mockClear();
+    vi.mocked(logger.warn).mockClear();
+    vi.mocked(logger.error).mockClear();
   });
 
   it("puts the reason in front of it on the next step of the same turn", async () => {
-    await runWithContext({ userId: "u1", conversationId: "c1", projectId: "p1" }, async () => {
-      const turn = await new MainAgent().chat("read that page", new AbortController().signal);
-      for await (const _chunk of turn) {
-        // drained
-      }
-    });
+    await runTurn();
 
     expect(promptsSeen.length).toBeGreaterThanOrEqual(2);
     const second = JSON.stringify(promptsSeen[1]);
@@ -160,14 +167,7 @@ describe("what the model is handed after a tool fails", () => {
   });
 
   it("leaves a line in the log naming the tool and why it failed", async () => {
-    vi.mocked(logger.warn).mockClear();
-    vi.mocked(logger.error).mockClear();
-    await runWithContext({ userId: "u1", conversationId: "c1", projectId: "p1" }, async () => {
-      const turn = await new MainAgent().chat("read that page", new AbortController().signal);
-      for await (const _chunk of turn) {
-        // drained
-      }
-    });
+    await runTurn();
 
     // The tool said what went wrong, and the reader was told.
     expect(logger.error).not.toHaveBeenCalledWith(expect.anything(), "agent_tool_failed");
@@ -186,14 +186,7 @@ describe("what the model is handed after a tool fails", () => {
 
   it("logs a throw the tool did not describe as an error", async () => {
     thisCase.uncarried = true;
-    vi.mocked(logger.warn).mockClear();
-    vi.mocked(logger.error).mockClear();
-    await runWithContext({ userId: "u1", conversationId: "c1", projectId: "p1" }, async () => {
-      const turn = await new MainAgent().chat("read that page", new AbortController().signal);
-      for await (const _chunk of turn) {
-        // drained
-      }
-    });
+    await runTurn();
 
     expect(logger.warn).not.toHaveBeenCalledWith(expect.anything(), "agent_tool_failed");
     expect(logger.error).toHaveBeenCalledWith(
