@@ -90,9 +90,9 @@ export const viewState = {
      * @param getPos - Where the widget sits now.
      * @returns The element.
      */
-    const marked: WidgetArgs[1] = (view, getPos): HTMLElement => {
+    const marked: WidgetArgs[1] = (view, getPos): Node => {
       const dom = typeof toDOM === 'function' ? toDOM(view, getPos) : toDOM;
-      dom.setAttribute(WIDGET_ATTRIBUTE, '');
+      if (dom instanceof Element) dom.setAttribute(WIDGET_ATTRIBUTE, '');
       return dom;
     };
     return Decoration.widget(pos, marked, spec);
