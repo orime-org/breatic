@@ -11,6 +11,7 @@
 import { describe, it, expect, beforeAll, afterAll, afterEach, inject } from "vitest";
 import crypto from "node:crypto";
 import postgres from "postgres";
+import { Worker } from "bullmq";
 import {
   ADS_CONVERSION_QUEUE,
   createQueue,
@@ -207,6 +208,35 @@ describe("requeueStaleAdsUploads", () => {
     await requeueStaleAdsUploads(10 * 60_000);
     expect((await jobsFor(txn)).map((j) => j.name)).toEqual(["conversion"]);
     expect(await getUploadStatus(key)).toBe("restate_pending");
+  });
+
+  it("replaces a job the queue gave up on while its row still waits", async () => {
+    await queue.obliterate({ force: true });
+    const txn = `signup:${crypto.randomUUID()}`;
+    await enqueueAdsConversion({ conversion: "signup", transactionId: txn, click: clicked(1) }, ADS);
+    // The last attempt failed but its outcome was never recorded (the database was unreachable).
+    const worker = new Worker(ADS_CONVERSION_QUEUE, null, { connection: queue.opts.connection, autorun: false });
+    const taken = await worker.getNextJob("audit-token");
+    taken!.discard();
+    await taken!.moveToFailed(new Error("lost"), "audit-token", true);
+    await worker.close();
+    expect(await (await queue.getJob(taken!.id!))!.isFailed()).toBe(true);
+    await sql`UPDATE ads_conversion_uploads SET updated_at = now() - interval '1 hour' WHERE transaction_id = ${txn}`;
+    await requeueStaleAdsUploads(10 * 60_000);
+    expect((await jobsFor(txn)).map((j) => j.name)).toEqual(["conversion"]);
+  });
+
+  it("queues again a restatement whose job was lost", async () => {
+    const txn = `signup:${crypto.randomUUID()}`;
+    const key = { conversion: "signup" as const, transactionId: txn };
+    await enqueueAdsConversion({ conversion: "signup", transactionId: txn, click: clicked(1) }, ADS);
+    await moveUpload(key, ["queued"], "restating");
+    for (const lost of (await queue.getJobs(["waiting", "delayed", "prioritized"])).filter((j) => j.data.transactionId === txn)) {
+      await lost.remove();
+    }
+    await sql`UPDATE ads_conversion_uploads SET updated_at = now() - interval '1 hour' WHERE transaction_id = ${txn}`;
+    await requeueStaleAdsUploads(10 * 60_000);
+    expect((await jobsFor(txn)).map((j) => j.name)).toEqual(["restatement"]);
   });
 
   it("leaves a recently queued conversion alone", async () => {

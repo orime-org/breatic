@@ -93,7 +93,7 @@ beforeEach(() => {
 describe("runAdsConversion", () => {
   it("uploads and records the upload", async () => {
     const sink: AdsConversionSink = { upload: vi.fn(async () => "req-1"), status: vi.fn() };
-    await runAdsConversion(job(), sink);
+    await runAdsConversion(job(), () => sink);
     expect(sink.upload).toHaveBeenCalledWith(DATA, "22");
     expect(settleAdsUpload).toHaveBeenCalledWith(DATA, true, "req-1");
   });
@@ -101,7 +101,7 @@ describe("runAdsConversion", () => {
   it("restates only once Google has processed the original upload", async () => {
     getUploadStatus.mockResolvedValue("restating");
     const sink = sinkWithStatus("success");
-    await runAdsConversion(job(0, RESTATEMENT), sink);
+    await runAdsConversion(job(0, RESTATEMENT), () => sink);
     expect(sink.status).toHaveBeenCalledWith("req-0");
     expect(sink.upload).toHaveBeenCalledWith(RESTATEMENT, "22");
     expect(settleAdsUpload).toHaveBeenCalledWith(RESTATEMENT, true, "req-2");
@@ -112,7 +112,7 @@ describe("runAdsConversion", () => {
     const sink = sinkWithStatus("processing");
     const queued = job(0, RESTATEMENT);
     const before = Date.now();
-    await expect(runAdsConversion(queued, sink, "token")).rejects.toBeInstanceOf(DelayedError);
+    await expect(runAdsConversion(queued, () => sink, "token")).rejects.toBeInstanceOf(DelayedError);
     const [until, token] = vi.mocked(queued.moveToDelayed).mock.calls[0]!;
     expect(token).toBe("token");
     expect(until - before).toBeGreaterThanOrEqual(30 * MINUTE);
@@ -127,12 +127,12 @@ describe("runAdsConversion", () => {
     const sink = sinkWithStatus("processing");
     const second = job(0, { ...RESTATEMENT, statusChecks: 1 });
     let before = Date.now();
-    await expect(runAdsConversion(second, sink, "token")).rejects.toBeInstanceOf(DelayedError);
+    await expect(runAdsConversion(second, () => sink, "token")).rejects.toBeInstanceOf(DelayedError);
     const secondWait = vi.mocked(second.moveToDelayed).mock.calls[0]![0] - before;
     expect(secondWait).toBeGreaterThanOrEqual(39 * MINUTE);
     const late = job(0, { ...RESTATEMENT, statusChecks: 9 });
     before = Date.now();
-    await expect(runAdsConversion(late, sink, "token")).rejects.toBeInstanceOf(DelayedError);
+    await expect(runAdsConversion(late, () => sink, "token")).rejects.toBeInstanceOf(DelayedError);
     const lateWait = vi.mocked(late.moveToDelayed).mock.calls[0]![0] - before;
     expect(lateWait).toBeGreaterThanOrEqual(60 * MINUTE);
     expect(lateWait).toBeLessThan(67 * MINUTE);
@@ -142,7 +142,7 @@ describe("runAdsConversion", () => {
     getUploadStatus.mockResolvedValue("restating");
     const sink = sinkWithStatus("processing");
     const queued = job(0, RESTATEMENT, 24 * 60 * MINUTE + 1);
-    await expect(runAdsConversion(queued, sink, "token")).rejects.toBeInstanceOf(UnrecoverableError);
+    await expect(runAdsConversion(queued, () => sink, "token")).rejects.toBeInstanceOf(UnrecoverableError);
     expect(queued.moveToDelayed).not.toHaveBeenCalled();
     expect(settleAdsUpload).toHaveBeenCalledWith(RESTATEMENT, false);
   });
@@ -150,7 +150,7 @@ describe("runAdsConversion", () => {
   it("drops the restatement when Google rejected the original upload", async () => {
     getUploadStatus.mockResolvedValue("restating");
     const sink = sinkWithStatus("failed");
-    await expect(runAdsConversion(job(0, RESTATEMENT), sink)).rejects.toBeInstanceOf(UnrecoverableError);
+    await expect(runAdsConversion(job(0, RESTATEMENT), () => sink)).rejects.toBeInstanceOf(UnrecoverableError);
     expect(sink.upload).not.toHaveBeenCalled();
     expect(settleAdsUpload).toHaveBeenCalledWith(RESTATEMENT, false);
   });
@@ -162,41 +162,71 @@ describe("runAdsConversion", () => {
   ] as const)("does not upload a %s whose upload already settled as %s", async (_kind, status, data) => {
     getUploadStatus.mockResolvedValue(status);
     const sink = sinkWithStatus("success");
-    await runAdsConversion(job(0, data), sink, "token");
+    await runAdsConversion(job(0, data), () => sink, "token");
     expect(sink.upload).not.toHaveBeenCalled();
     expect(sink.status).not.toHaveBeenCalled();
     expect(settleAdsUpload).not.toHaveBeenCalled();
   });
 
+  it("uploads a conversion a refund is waiting on and records it", async () => {
+    getUploadStatus.mockResolvedValue("restate_pending");
+    const sink: AdsConversionSink = { upload: vi.fn(async () => "req-1"), status: vi.fn() };
+    await runAdsConversion(job(), () => sink);
+    expect(sink.upload).toHaveBeenCalledWith(DATA, "22");
+    expect(settleAdsUpload).toHaveBeenCalledWith(DATA, true, "req-1");
+  });
+
+  it("leaves a failed status lookup to the retries, and records the failure on the last attempt", async () => {
+    getUploadStatus.mockRejectedValue(new Error("db down"));
+    const sink: AdsConversionSink = { upload: vi.fn(), status: vi.fn() };
+    await expect(runAdsConversion(job(0), () => sink)).rejects.toThrow("db down");
+    expect(settleAdsUpload).not.toHaveBeenCalled();
+    await expect(runAdsConversion(job(4), () => sink)).rejects.toThrow("db down");
+    expect(settleAdsUpload).toHaveBeenCalledWith(DATA, false);
+    expect(sink.upload).not.toHaveBeenCalled();
+  });
+
+  it("builds the sink only for a configured conversion", async () => {
+    const sink = sinkWithStatus("success");
+    const makeSink = vi.fn(() => sink);
+    await runAdsConversion(job(), makeSink);
+    expect(makeSink).toHaveBeenCalledTimes(1);
+    expect(sink.upload).toHaveBeenCalledWith(DATA, "22");
+    adsConversionConfig.mockReturnValue(null);
+    makeSink.mockClear();
+    await expect(runAdsConversion(job(), makeSink)).rejects.toBeInstanceOf(UnrecoverableError);
+    expect(makeSink).not.toHaveBeenCalled();
+  });
+
   it("re-queues uploads whose job was lost on the sweep job", async () => {
     const sink: AdsConversionSink = { upload: vi.fn(), status: vi.fn() };
-    await runAdsConversion({ name: "sweep", data: { kind: "sweep" } } as unknown as Job<AdsConversionJob>, sink);
+    await runAdsConversion({ name: "sweep", data: { kind: "sweep" } } as unknown as Job<AdsConversionJob>, () => sink);
     expect(requeueStaleAdsUploads).toHaveBeenCalled();
     expect(sink.upload).not.toHaveBeenCalled();
   });
 
   it("leaves a passing failure to the retries without recording it", async () => {
     const sink: AdsConversionSink = { upload: vi.fn(async () => Promise.reject(Object.assign(new Error("busy"), { code: 14 }))), status: vi.fn() };
-    await expect(runAdsConversion(job(0), sink)).rejects.toThrow("busy");
+    await expect(runAdsConversion(job(0), () => sink)).rejects.toThrow("busy");
     expect(settleAdsUpload).not.toHaveBeenCalled();
   });
 
   it("records the failure on the last attempt", async () => {
     const sink: AdsConversionSink = { upload: vi.fn(async () => Promise.reject(Object.assign(new Error("busy"), { code: 14 }))), status: vi.fn() };
-    await expect(runAdsConversion(job(4), sink)).rejects.toThrow("busy");
+    await expect(runAdsConversion(job(4), () => sink)).rejects.toThrow("busy");
     expect(settleAdsUpload).toHaveBeenCalledWith(DATA, false);
   });
 
   it("stops at once when the platform refuses the request", async () => {
     const sink: AdsConversionSink = { upload: vi.fn(async () => Promise.reject(Object.assign(new Error("bad"), { code: 3 }))), status: vi.fn() };
-    await expect(runAdsConversion(job(0), sink)).rejects.toBeInstanceOf(UnrecoverableError);
+    await expect(runAdsConversion(job(0), () => sink)).rejects.toBeInstanceOf(UnrecoverableError);
     expect(settleAdsUpload).toHaveBeenCalledWith(DATA, false);
   });
 
   it("stops at once when the conversion is no longer configured", async () => {
     adsConversionConfig.mockReturnValue(null);
     const sink: AdsConversionSink = { upload: vi.fn(), status: vi.fn() };
-    await expect(runAdsConversion(job(), sink)).rejects.toBeInstanceOf(UnrecoverableError);
+    await expect(runAdsConversion(job(), () => sink)).rejects.toBeInstanceOf(UnrecoverableError);
     expect(sink.upload).not.toHaveBeenCalled();
     expect(settleAdsUpload).toHaveBeenCalledWith(DATA, false);
   });

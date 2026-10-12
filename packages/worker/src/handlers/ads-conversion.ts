@@ -144,7 +144,7 @@ function isPermanent(err: unknown): boolean {
 /**
  * Upload one queued conversion and record how it ended.
  * @param job - The queued upload.
- * @param sink - Where it goes.
+ * @param sink - Builds where it goes; called only once the conversion is configured.
  * @param token - The worker's lock token for the job.
  * @throws {UnrecoverableError} When ad conversions are no longer configured or
  *   the platform refused it for good.
@@ -153,7 +153,7 @@ function isPermanent(err: unknown): boolean {
  */
 export async function runAdsConversion(
   job: Job<AdsConversionJob>,
-  sink: AdsConversionSink,
+  sink: () => AdsConversionSink,
   token?: string,
 ): Promise<void> {
   if (job.name === ADS_SWEEP_JOB) {
@@ -170,13 +170,14 @@ export async function runAdsConversion(
     // A job queued again after its upload settled (the sweep racing the last attempt) uploads nothing.
     const status = await getUploadStatus({ conversion: job.data.conversion, transactionId: job.data.transactionId });
     if (status === null || !uploadAwaited(job.data, status)) return;
+    const platform = sink();
     // A restatement of a conversion Google never recorded would count as a new conversion.
     if (job.data.kind === "restatement" && job.data.originalRequestId) {
-      const original = await sink.status(job.data.originalRequestId);
+      const original = await platform.status(job.data.originalRequestId);
       if (original === "failed") throw new UnrecoverableError("the original upload was rejected");
       if (original === "processing") await waitForOriginal(job, token);
     }
-    requestId = await sink.upload(job.data, actionId);
+    requestId = await platform.upload(job.data, actionId);
   } catch (err) {
     if (err instanceof DelayedError) throw err;
     const lastAttempt = job.attemptsMade + 1 >= (job.opts.attempts ?? 1);
