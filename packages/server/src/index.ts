@@ -23,7 +23,7 @@ import { closeRedis } from "@breatic/core";
 import { closeQueues } from "@breatic/core";
 import { getRedis, getQueueRedis, getStreamRedis, pingDb, pingRedis, yjsRawPg } from "@breatic/core";
 import { checkInfraReady, InfraNotReadyError } from "@breatic/core";
-import { startHealthServer } from "@breatic/core";
+import { installDeadlineBoundDispatcher, startHealthServer } from "@breatic/core";
 import { getStorageConfig } from "@breatic/core";
 import { runGracefulShutdown } from "@breatic/core";
 import { renderMetrics } from "@server/infra/metrics.js";
@@ -53,6 +53,10 @@ globalThis.AI_SDK_LOG_WARNINGS = ({ warnings, provider, model }) => {
   logger.warn({ warnings, provider, model }, "ai_sdk_warning");
 };
 
+// The agent's save of a reader's link waits on the ingest Worker inside a
+// request, held to its grant's two hours (inner#1367), so undici's 300-second
+// wait for an answer must not cut it first.
+installDeadlineBoundDispatcher();
 
 // Health probe port from the validated config (default 3001).
 const HEALTH_PORT = env.SERVER_HEALTH_PORT;

@@ -1,8 +1,9 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { apiGet, apiPost } from '@web/data/api/request';
-import type { UploadClientConfig } from '@breatic/shared';
+import { apiGet, apiPost, request } from '@web/data/api/request';
+import type { ApiEnvelope } from '@web/data/api/types';
+import type { UploadClientConfig, UploadStatus } from '@breatic/shared';
 import type {
   UploadTicketRequest,
   UploadTicketResponse,
@@ -12,6 +13,11 @@ import type {
 export interface UploadConfig extends UploadClientConfig {
   /** What every stored object's public URL starts with. */
   assetUrlPrefix: string;
+  /**
+   * How long the page waits before asking how its uploads ended, in seconds,
+   * until an answer names its own interval (inner#1367).
+   */
+  uploadStatusPollSeconds: number;
 }
 
 /** Session cache for the upload knobs (one fetch per session). */
@@ -67,10 +73,42 @@ export const assetsApi = {
   },
 
   /**
+   * Ask how these uploads ended (inner#1367 §4.2a).
+   * @param keys - The keys their finishes were queued under, at most
+   *   `UPLOAD_STATUS_MAX_KEYS`.
+   * @returns One status per key, and how long the server asks to be left
+   *   before the next question, when it said. Rate-limited, no status and the
+   *   wait the server named.
+   * @throws {ApiException} When the request fails.
+   */
+  async fetchUploadStatus(
+    keys: readonly string[],
+  ): Promise<{ items: UploadStatus[]; retryAfterSeconds: number | null }> {
+    const res = await request.get<ApiEnvelope<{ items: UploadStatus[] }>>(
+      '/assets/upload-status',
+      {
+        // `key=a&key=b`, the repeated form the route reads.
+        params: { key: [...keys] },
+        paramsSerializer: { indexes: null },
+        // A 429 says when to ask again, in its Retry-After header only; the
+        // limiter counts every request, refused ones too, so asking sooner
+        // keeps the page refused.
+        validateStatus: (status) => (status >= 200 && status < 300) || status === 429,
+      },
+    );
+    const seconds = Number(res.headers['retry-after']);
+    return {
+      items: res.status === 429 ? [] : res.data.data.items,
+      retryAfterSeconds: Number.isFinite(seconds) && seconds > 0 ? seconds : null,
+    };
+  },
+
+  /**
    * The browser upload knobs (`config/storage.yaml` `upload:` section),
    * fetched once per session and cached. A failed fetch is NOT cached —
    * the next caller retries.
-   * @returns The upload knobs (cap, attempts, backoff, timeouts).
+   * @returns The upload knobs (cap, attempts, backoff, the idle window, the
+   *   status poll interval).
    */
   async fetchUploadConfig(): Promise<UploadConfig> {
     if (uploadConfigCache) return uploadConfigCache;

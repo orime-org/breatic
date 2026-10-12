@@ -42,7 +42,7 @@ async function openUpload(
       partSize: PART_SIZE,
       contentType: "video/mp4",
       expiresAt: Date.now() + 300_000,
-      sessionTokenTtlSeconds: 900,
+      deadlineAt: Date.now() + 7_200_000,
       ...over,
     },
     env.INGEST_SHARED_SECRET,
@@ -110,7 +110,6 @@ describe("a part the Worker will not take", () => {
         storageKey,
         uploadId,
         contentType: "video/mp4",
-        sessionTokenTtlSeconds: 900,
         expiresAt: Date.now() - 1,
         partSize: PART_SIZE,
         totalParts: 2,
@@ -202,48 +201,23 @@ describe("a part the Worker takes", () => {
     expect((await sendPart(uploadId, 2, bytes(1024), next.token)).status).toBe(200);
   });
 
-  // What "re-issued with every part" is worth: each one starts the window
-  // again. Carrying the remaining life forward instead leaves the deadline
-  // where the ticket first put it, and then a window sized for the gap
-  // between two parts is also the ceiling on the whole upload — which is
-  // the opposite of why it is re-issued at all.
-  it("starts the window again on every part", async () => {
-    // The gap is the whole test, and moving the clock is what makes it one
-    // the machine cannot lose. `worker.fetch` runs in this same isolate, so
-    // the Date the Worker signs with is this Date; only it is faked, leaving
-    // R2's own timers real. Waiting the gap out instead put a real deadline
-    // on a step whose cost is set by whatever else the machine is running —
-    // a loaded one took 34s against a 30s limit while an idle one takes 273ms.
-    vi.useFakeTimers({ toFake: ["Date"] });
-    try {
-      const gapMs = 200;
-      const start = new Date("2026-09-09T00:00:00.000Z");
-      vi.setSystemTime(start);
+  // Every token lives exactly as long as the upload's task (inner#1367): a
+  // re-issue carries the deadline forward rather than starting a window of its
+  // own, so no figure held here can cut an upload its task still allows.
+  it("carries the upload's deadline onto every token it re-issues", async () => {
+    const { uploadId, token } = await openUpload();
+    const opened = await verifySessionToken(token, env.INGEST_SHARED_SECRET, Date.now());
 
-      const { uploadId, token } = await openUpload();
-      const opened = await verifySessionToken(
-        token,
-        env.INGEST_SHARED_SECRET,
-        Date.now(),
-      );
+    const response = await sendPart(uploadId, 1, bytes(PART_SIZE), token);
+    const next = await response.json<{ token: string }>();
 
-      vi.setSystemTime(new Date(start.getTime() + gapMs));
-
-      const response = await sendPart(uploadId, 1, bytes(PART_SIZE), token);
-      const next = await response.json<{ token: string }>();
-
-      const payload = await verifySessionToken(
-        next.token,
-        env.INGEST_SHARED_SECRET,
-        Date.now(),
-      );
-      // Measured against the token this one replaces, which is the whole
-      // claim: carrying the remaining life forward would land on the same
-      // instant the first one did, however long the gap was.
-      expect(payload?.expiresAt).toBe((opened?.expiresAt ?? 0) + gapMs);
-    } finally {
-      vi.useRealTimers();
-    }
+    const payload = await verifySessionToken(
+      next.token,
+      env.INGEST_SHARED_SECRET,
+      Date.now(),
+    );
+    expect(opened?.expiresAt).toBeGreaterThan(Date.now() + 7_000_000);
+    expect(payload?.expiresAt).toBe(opened?.expiresAt);
   });
 });
 
@@ -271,7 +245,6 @@ describe("a part R2 would not accept", () => {
         storageKey: `video/2026-09-08/${seq++}_gone.mp4`,
         uploadId,
         contentType: "video/mp4",
-        sessionTokenTtlSeconds: 900,
         expiresAt: Date.now() + 300_000,
         partSize: PART_SIZE,
         totalParts: 2,

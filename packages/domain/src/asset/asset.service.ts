@@ -38,6 +38,7 @@
  */
 
 import {
+  coverKeyFor,
   getStorageConfig,
   NotFoundError,
   projectsRepo,
@@ -47,8 +48,7 @@ import {
   type RegisterAssetInput,
 } from "@domain/asset/asset.repo.js";
 import { t } from "@breatic/shared";
-import type { MediaLimits } from "@breatic/shared";
-import type { StudioAssetEntity } from "@breatic/shared";
+import type { IngestRun, MediaLimits, StudioAssetEntity } from "@breatic/shared";
 import { queueForReclaim } from "@domain/asset/storage-reclaim.repo.js";
 
 /**
@@ -217,19 +217,28 @@ export function detectAssetKind(
 }
 
 /**
- * How long the media container gets, out of `config/storage.yaml`.
- *
- * It travels on the request because the Worker holds no configuration of its
- * own. Read in one place, so both lanes that reach the Worker hand it the same
- * pair. How long the caller waits for the whole request is not here: that is
- * the transport's, and naming a second figure for it only copies the one it
- * already applies.
- * @returns The deadlines for the run and for each tool inside it.
+ * What the ingest Worker turns a picture upright under, read from
+ * `config/storage.yaml` (inner#1367). The Worker reads no configuration of
+ * its own, so every finish and fetch carries these.
+ * @returns The quality and the size ceiling for an upright copy.
  */
 export function mediaLimits(): MediaLimits {
-  const { ingest } = getStorageConfig();
+  const { upload, ingest } = getStorageConfig();
   return {
-    runDeadlineMs: ingest.container_run_deadline_ms,
-    toolTimeoutMs: ingest.container_tool_timeout_ms,
+    uprightJpegQuality: ingest.upright_jpeg_quality,
+    // An upright copy is the same picture re-encoded, so it is held to the
+    // same ceiling the received bytes were.
+    uprightMaxBytes: upload.max_upload_bytes,
   };
+}
+
+/**
+ * What the ingest Worker is handed for one object: where a cover would go,
+ * when the task runs out, and the limits it turns a picture under.
+ * @param storageKey - The object's key.
+ * @param deadlineAt - When its task runs out, in epoch milliseconds.
+ * @returns The run.
+ */
+export function ingestRunFor(storageKey: string, deadlineAt: number): IngestRun {
+  return { coverKey: coverKeyFor(storageKey), deadlineAt, limits: mediaLimits() };
 }

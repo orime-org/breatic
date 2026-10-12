@@ -15,12 +15,13 @@ import {
   waitOnExecutionContext,
 } from "cloudflare:test";
 import { describe, it, expect } from "vitest";
-import { previewKeyFor, type MediaLimits } from "@breatic/shared";
+import { previewKeyFor } from "@breatic/shared";
 import worker, { type Env } from "@ingest/index.js";
 import type { ProbeReport } from "@ingest/media-metadata.js";
 import { containerAnswering } from "./helpers/stand-in-container.js";
 
-const LIMITS: MediaLimits = { runDeadlineMs: 150_000, toolTimeoutMs: 60_000 };
+/** When the job asking runs out. */
+const DEADLINE_AT = Date.now() + 7_200_000;
 
 /** What ffprobe answers for an 800x450 still picture. */
 const PICTURE: ProbeReport = {
@@ -86,7 +87,7 @@ describe("who may ask for a read", () => {
     const storageKey = await storedPicture();
 
     const response = await read(
-      { storageKey, contentType: "image/jpeg", limits: LIMITS },
+      { storageKey, contentType: "image/jpeg", deadlineAt: DEADLINE_AT },
       null,
     );
 
@@ -97,7 +98,7 @@ describe("who may ask for a read", () => {
     const storageKey = await storedPicture();
 
     const response = await read(
-      { storageKey, contentType: "image/jpeg", limits: LIMITS },
+      { storageKey, contentType: "image/jpeg", deadlineAt: DEADLINE_AT },
       "not-the-secret",
     );
 
@@ -107,15 +108,15 @@ describe("who may ask for a read", () => {
 
 describe("what a read needs", () => {
   it.each([
-    ["no key", { contentType: "image/jpeg", limits: LIMITS }],
-    ["no type", { storageKey: "image/x.jpg", limits: LIMITS }],
-    ["no deadlines", { storageKey: "image/x.jpg", contentType: "image/jpeg" }],
+    ["no key", { contentType: "image/jpeg", deadlineAt: DEADLINE_AT }],
+    ["no type", { storageKey: "image/x.jpg", deadlineAt: DEADLINE_AT }],
+    ["no deadline", { storageKey: "image/x.jpg", contentType: "image/jpeg" }],
     [
       "a deadline that is not positive",
       {
         storageKey: "image/x.jpg",
         contentType: "image/jpeg",
-        limits: { runDeadlineMs: 0, toolTimeoutMs: 1 },
+        deadlineAt: 0,
       },
     ],
   ])("refuses a request with %s", async (_case, body) => {
@@ -131,7 +132,7 @@ describe("what a read needs", () => {
       {
         storageKey: "image/2026-10-01/missing.jpg",
         contentType: "image/jpeg",
-        limits: LIMITS,
+        deadlineAt: DEADLINE_AT,
       },
       env.INGEST_SHARED_SECRET,
       run.media,
@@ -148,7 +149,7 @@ describe("a read of a stored object", () => {
     const run = containerAnswering(PICTURE, null);
 
     const response = await read(
-      { storageKey, contentType: "image/jpeg", limits: LIMITS },
+      { storageKey, contentType: "image/jpeg", deadlineAt: DEADLINE_AT },
       env.INGEST_SHARED_SECRET,
       run.media,
     );
@@ -168,7 +169,7 @@ describe("a read of a stored object", () => {
     const run = containerAnswering(PICTURE, null);
 
     await read(
-      { storageKey, contentType: "image/jpeg", limits: LIMITS },
+      { storageKey, contentType: "image/jpeg", deadlineAt: DEADLINE_AT },
       env.INGEST_SHARED_SECRET,
       run.media,
     );
@@ -176,7 +177,7 @@ describe("a read of a stored object", () => {
     expect(run.authorisedFor).toBe(storageKey);
     expect(run.asked).toMatchObject({
       wantCover: false,
-      toolTimeoutMs: LIMITS.toolTimeoutMs,
+      deadlineAt: DEADLINE_AT,
     });
   });
 
@@ -188,7 +189,7 @@ describe("a read of a stored object", () => {
     const response = await read({
       storageKey,
       contentType: "image/jpeg",
-      limits: LIMITS,
+      deadlineAt: DEADLINE_AT,
     });
 
     expect(response.status).toBe(200);
@@ -212,7 +213,7 @@ describe("a read that asks for a preview", () => {
     const run = containerAnswering(PICTURE, null, PREVIEW_BYTES);
 
     const response = await read(
-      { storageKey, contentType: "image/jpeg", limits: LIMITS, wantPreview: true },
+      { storageKey, contentType: "image/jpeg", deadlineAt: DEADLINE_AT, wantPreview: true },
       env.INGEST_SHARED_SECRET,
       run.media,
     );
@@ -236,7 +237,7 @@ describe("a read that asks for a preview", () => {
     const run = containerAnswering(PICTURE, null, PREVIEW_BYTES);
 
     const response = await read(
-      { storageKey, contentType: "image/jpeg", limits: LIMITS, wantPreview: true },
+      { storageKey, contentType: "image/jpeg", deadlineAt: DEADLINE_AT, wantPreview: true },
       env.INGEST_SHARED_SECRET,
       run.media,
     );
@@ -254,7 +255,7 @@ describe("a read that asks for a preview", () => {
     const run = containerAnswering(PICTURE, null, null);
 
     const response = await read(
-      { storageKey, contentType: "image/jpeg", limits: LIMITS, wantPreview: true },
+      { storageKey, contentType: "image/jpeg", deadlineAt: DEADLINE_AT, wantPreview: true },
       env.INGEST_SHARED_SECRET,
       run.media,
     );
@@ -273,7 +274,7 @@ describe("a read that asks for a preview", () => {
     const run = containerAnswering(animated, null, null);
 
     const response = await read(
-      { storageKey, contentType: "image/webp", limits: LIMITS, wantPreview: true },
+      { storageKey, contentType: "image/webp", deadlineAt: DEADLINE_AT, wantPreview: true },
       env.INGEST_SHARED_SECRET,
       run.media,
     );
@@ -287,7 +288,7 @@ describe("a read that asks for a preview", () => {
     const response = await read({
       storageKey,
       contentType: "image/jpeg",
-      limits: LIMITS,
+      deadlineAt: DEADLINE_AT,
       wantPreview: true,
     });
 

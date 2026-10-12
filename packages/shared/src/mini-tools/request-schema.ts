@@ -83,8 +83,9 @@ function slotsSchema(spec: MiniToolSpec): z.ZodType {
 }
 
 /**
- * The drawing field of one tool: the uploaded images made from what the
- * reader drew, required on a tool that draws and absent everywhere else.
+ * The drawing field of one tool: what was uploaded from what the reader drew
+ * — a mask tool's mask, a sketch tool's composite — required on a tool that
+ * draws and absent everywhere else.
  * @param spec - The tool.
  * @returns The shape to add to its member, empty for a tool without a drawing.
  */
@@ -93,7 +94,7 @@ function drawingShape(spec: MiniToolSpec): Record<string, z.ZodType> {
   return {
     drawing:
       spec.drawing.kind === "mask"
-        ? z.strictObject({ image: URL_SCHEMA, mask: URL_SCHEMA })
+        ? z.strictObject({ mask: URL_SCHEMA })
         : z.strictObject({ image: URL_SCHEMA }),
   };
 }
@@ -145,8 +146,11 @@ export interface MiniToolRequest {
   prompt?: string | undefined;
   params: Record<string, unknown>;
   slots: Record<string, MiniToolRequestSlot | MiniToolRequestSlot[] | undefined>;
-  /** The uploaded images made from the reader's drawing, on a tool that draws. */
-  drawing?: { image: string; mask?: string | undefined } | undefined;
+  /**
+   * What was uploaded from the reader's drawing, on a tool that draws: a mask
+   * tool's mask, or a sketch tool's composite.
+   */
+  drawing?: { mask: string } | { image: string } | undefined;
 }
 
 const SERVER_TOOLS = MINI_TOOLS.filter((spec) => spec.run.kind !== "browser");

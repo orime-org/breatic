@@ -179,3 +179,46 @@ describe('SettingsTab — a save of one thing must not seize the other', () => {
     );
   });
 });
+
+describe('SettingsTab — picking an avatar (inner#1367 A4)', () => {
+  const RIFF_WEBP = [0x52, 0x49, 0x46, 0x46, 4, 0, 0, 0, 0x57, 0x45, 0x42, 0x50];
+  const JPEG = [0xff, 0xd8, 0xff, 0xe0, 0, 16, 0x4a, 0x46, 0x49, 0x46, 0, 1];
+
+  // jsdom has no object URLs; the crop dialog asks for one to show the file.
+  beforeEach(() => {
+    Object.assign(URL, { createObjectURL: vi.fn(() => 'blob:mock/0'), revokeObjectURL: vi.fn() });
+  });
+
+  /**
+   * Pick a file in the avatar input.
+   * @param bytes - The file's first bytes.
+   * @param name - Its name.
+   * @param type - The type it claims.
+   */
+  function pick(bytes: number[], name: string, type: string): void {
+    const file = new File([new Uint8Array([...bytes, ...new Array<number>(64).fill(0)])], name, { type });
+    fireEvent.change(screen.getByTestId('avatar-file-input'), { target: { files: [file] } });
+  }
+
+  it('turns away a WebP named and typed as a JPEG, before the crop', async () => {
+    const { toast } = await import('@web/lib/toast');
+    renderTab();
+
+    pick(RIFF_WEBP, 'photo.jpg', 'image/jpeg');
+
+    await waitFor(() =>
+      expect(toast.warning).toHaveBeenCalledWith('studio.container.imageError.unsupported_type'),
+    );
+    expect(screen.queryByTestId('image-crop-dialog')).toBeNull();
+  });
+
+  it('opens the crop for a JPEG', async () => {
+    const { toast } = await import('@web/lib/toast');
+    renderTab();
+
+    pick(JPEG, 'photo.jpg', 'image/jpeg');
+
+    await waitFor(() => expect(screen.getByTestId('image-crop-dialog')).toBeTruthy());
+    expect(toast.warning).not.toHaveBeenCalled();
+  });
+});

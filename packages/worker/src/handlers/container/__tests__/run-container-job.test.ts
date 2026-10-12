@@ -21,7 +21,6 @@ const h = vi.hoisted(() => ({
   readMiniToolJob: vi.fn(),
   submitMiniToolJob: vi.fn(),
   recordServiceCall: vi.fn(),
-  deadlineFor: vi.fn(),
   now: { value: 0 },
 }));
 
@@ -46,11 +45,9 @@ vi.mock("@breatic/core", () => ({
 vi.mock("@breatic/domain", async () => ({
   // The billing formula itself, so the charge these cases assert is the real one.
   containerCostUsd: (await import("@domain/credit/container-cost.js")).containerCostUsd,
-  assetService: { mediaLimits: () => ({ runDeadlineMs: 1, toolTimeoutMs: 1 }) },
   creditsForUsd: (usd: number, multiplier: number) => usd * 100 * multiplier,
   createUsageRecorder: () => ({ recordServiceCall: h.recordServiceCall, settle: async () => 0 }),
   ingestReportService: { applyIngestReport: h.applyIngestReport },
-  nodeTaskService: { deadlineFor: h.deadlineFor },
   openContainerOutputs: h.openContainerOutputs,
   upstreamStepRepo: {
     ensureSteps: h.ensureSteps,
@@ -71,10 +68,18 @@ import { UploadHttpError } from "@breatic/shared";
 import { miniToolById, type MiniToolSpec } from "@breatic/shared/mini-tools";
 
 import { ContainerJobFailed, runContainerJob } from "@worker/handlers/container/run-container-job.js";
+import { DeadlinePassed } from "@breatic/shared";
 import { StillRunning } from "@worker/providers/still-running.js";
 
 const CUT = miniToolById("video.cut") as MiniToolSpec;
-const INPUT = { taskId: "t1", userId: "u1", projectId: "p1", params: { range: { start: 0, end: 2 } }, sourceKey: "v/src.mp4" };
+const INPUT = {
+  taskId: "t1",
+  userId: "u1",
+  projectId: "p1",
+  params: { range: { start: 0, end: 2 } },
+  sourceKey: "v/src.mp4",
+  deadlineAt: 1_800_000_000_000,
+};
 const OUT = { storageKey: "video/out.mp4", contentType: "video/mp4", coverKey: "video/out.cover.jpg" };
 const USAGE = { wallMs: 10_000, cpuUsec: 4_000_000 };
 const MEASURED = { storageKey: OUT.storageKey, sha256: "a".repeat(64), sizeBytes: 10, contentType: "video/mp4" };
@@ -97,7 +102,6 @@ beforeEach(() => {
   vi.clearAllMocks();
   h.now.value = DEADLINE - 3_600_000;
   vi.spyOn(Date, "now").mockImplementation(() => h.now.value);
-  h.deadlineFor.mockResolvedValue(DEADLINE);
   h.steps = [{ id: "s1", status: "pending", output: {} }];
   h.ensureSteps.mockImplementation(async () => h.steps);
   h.recordInline.mockImplementation(async (_id: string, output: Record<string, unknown>) => {
@@ -143,22 +147,32 @@ describe("runContainerJob", () => {
     );
   });
 
-  // Every task has one ceiling, the one its rows on the canvas count down.
-  it("gives the job the deadline its task rows run out at", async () => {
+  // Every task has one ceiling, the one the run read off its rows on the canvas.
+  it("gives the job the deadline the run hands it", async () => {
     h.readMiniToolJob.mockResolvedValueOnce(null);
     h.submitMiniToolJob.mockResolvedValueOnce({ state: "starting" });
 
     await expect(runContainerJob(CUT, "cut", INPUT)).rejects.toBeInstanceOf(StillRunning);
 
-    expect(h.deadlineFor).toHaveBeenCalledWith("t1");
     expect(h.submitMiniToolJob.mock.calls[0]![2]).toMatchObject({ deadlineAt: DEADLINE });
   });
 
-  it("refuses to open a job for a task with no row on the canvas", async () => {
-    h.deadlineFor.mockResolvedValueOnce(null);
+  // The read and the submit wait as long as the job has, plus the room for its
+  // last report: two poll intervals past the deadline (inner#1367 §4.8c).
+  it("bounds the read and the submit by the job's deadline and the room for its report", async () => {
+    h.readMiniToolJob.mockResolvedValueOnce(null);
+    h.submitMiniToolJob.mockResolvedValueOnce({ state: "starting" });
 
-    await expect(runContainerJob(CUT, "cut", INPUT)).rejects.toThrow(/no task row/);
-    expect(h.openContainerOutputs).not.toHaveBeenCalled();
+    await expect(runContainerJob(CUT, "cut", INPUT)).rejects.toBeInstanceOf(StillRunning);
+
+    const left = DEADLINE + 2 * 1000 - h.now.value;
+    const read = h.readMiniToolJob.mock.calls[0]![4] as { signal: AbortSignal; timeoutMs: number };
+    const submit = h.submitMiniToolJob.mock.calls[0]![3] as { signal: AbortSignal; timeoutMs: number };
+    for (const bound of [read, submit]) {
+      expect(bound.timeoutMs).toBe(left);
+      expect(bound.signal).toBeInstanceOf(AbortSignal);
+      expect(bound.signal.aborted).toBe(false);
+    }
   });
 
   // One read per pickup: the job sits delayed in the queue between reads, not in a worker slot.
@@ -236,20 +250,22 @@ describe("runContainerJob", () => {
     expect(h.markDone).not.toHaveBeenCalled();
   });
 
-  it("fails as the tool's failure when the deadline passes with the job still running", async () => {
+  // A job still going past its deadline ran out of time, and settles as
+  // expired like any other task (inner#1367).
+  it("ends as the deadline's when it passes with the job still running", async () => {
     h.steps[0]!.output = { jobId: "task:t1", containerClass: "Std1", deadlineAt: h.now.value - 10_000, outputs: [OUT] };
     h.readMiniToolJob.mockResolvedValueOnce({ state: "running" });
 
-    await expect(runContainerJob(CUT, "cut", INPUT)).rejects.toMatchObject({ reason: "tool_failed" });
+    await expect(runContainerJob(CUT, "cut", INPUT)).rejects.toBeInstanceOf(DeadlinePassed);
     expect(h.readMiniToolJob).toHaveBeenCalledTimes(1);
   });
 
-  it("fails as the tool's failure when the container refused to start on every pickup until past the grace", async () => {
+  it("ends as the deadline's when the container refused to start on every pickup until past the grace", async () => {
     h.steps[0]!.output = { jobId: "task:t1", containerClass: "Std1", deadlineAt: h.now.value - 10_000, outputs: [OUT] };
     h.readMiniToolJob.mockResolvedValueOnce(null);
     h.submitMiniToolJob.mockRejectedValueOnce(new UploadHttpError(503, null));
 
-    await expect(runContainerJob(CUT, "cut", INPUT)).rejects.toMatchObject({ reason: "tool_failed" });
+    await expect(runContainerJob(CUT, "cut", INPUT)).rejects.toBeInstanceOf(DeadlinePassed);
   });
 
   it("spends an attempt when submitting fails for a reason other than the container not starting", async () => {

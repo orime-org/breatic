@@ -15,12 +15,13 @@ export const PREVIEW_SUFFIX = ".preview.webp";
 
 /**
  * The tail of a URL path a stored object's key produces: `storageKey` gives
- * `<date>/<ms>_<uuid>.<ext>` and `coverKeyFor` gives the same with `_cover`
- * before the extension. A preview ends in `.png.preview.webp`, which does not
+ * `<date>/<ms>_<uuid>.<ext>`, `coverKeyFor` gives the same with `_cover`
+ * before the extension, and `uprightKeyFor` with `_upright`. A preview ends in
+ * `.png.preview.webp`, which does not
  * fit, so a preview never gets a preview of its own.
  */
 const STORED_KEY_TAIL =
-  /\/\d{4}-\d{2}-\d{2}\/\d+_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?:_cover)?\.[A-Za-z0-9]+$/;
+  /\/\d{4}-\d{2}-\d{2}\/\d+_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?:_cover|_upright)?\.[A-Za-z0-9]+$/;
 
 /**
  * The key a stored object's preview is written to.

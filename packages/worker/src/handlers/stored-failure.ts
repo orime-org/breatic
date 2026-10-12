@@ -12,7 +12,7 @@
  */
 
 import { understandFailureMessage } from "@worker/handlers/understand-failure.js";
-import { TaskDeadlinePassed } from "@worker/providers/still-running.js";
+import { DeadlinePassed } from "@breatic/shared";
 
 /**
  * What a failed run's row is given to hold.
@@ -32,7 +32,7 @@ export function storedFailure(
   sourceUrl?: string,
 ): string {
   // Running out of the two hours means the same thing whatever the task was.
-  if (err instanceof TaskDeadlinePassed) return err.message;
+  if (err instanceof DeadlinePassed) return err.message;
   if (taskType === "understand") return understandFailureMessage(err, sourceUrl);
   return err instanceof Error ? err.message : String(err);
 }

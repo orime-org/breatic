@@ -31,6 +31,7 @@ import { test, expect, type BrowserContext, type Page } from 'playwright/test';
 
 import { STATE_FILE, openSmokeProject } from '../helpers/project';
 import { createSpace, deleteSpace, visibleSpace, VISIBLE_SPACE } from '../helpers/space';
+import { dropFile } from '../helpers/upload';
 
 let context: BrowserContext;
 let page: Page;
@@ -56,46 +57,6 @@ const TINY_PNG = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
   'base64',
 );
-
-/**
- * Drop one file onto the canvas the way a user does.
- *
- * The drop is built in the page so the `DataTransfer` belongs to the same
- * realm the listener reads it in.
- * @param target - A page with a canvas Space open.
- * @param name - The file name to drop under.
- * @param type - The MIME type the browser would report.
- * @param bytes - The file's contents.
- */
-async function dropFile(
-  target: Page,
-  name: string,
-  type: string,
-  bytes: Buffer,
-): Promise<void> {
-  await target.evaluate(
-    async ([fileName, mime, encoded, space]: [string, string, string, string]) => {
-      const binary = atob(encoded);
-      const buffer = new Uint8Array(binary.length);
-      for (let i = 0; i < binary.length; i += 1) buffer[i] = binary.charCodeAt(i);
-      const file = new File([buffer], fileName, { type: mime });
-      const transfer = new DataTransfer();
-      transfer.items.add(file);
-      const pane = document.querySelector(`${space} .react-flow__pane`);
-      if (pane === null) throw new Error('no canvas pane to drop onto');
-      const rect = pane.getBoundingClientRect();
-      const at = {
-        clientX: rect.left + rect.width / 2,
-        clientY: rect.top + rect.height / 2,
-        bubbles: true,
-        cancelable: true,
-      };
-      pane.dispatchEvent(new DragEvent('dragover', { ...at, dataTransfer: transfer }));
-      pane.dispatchEvent(new DragEvent('drop', { ...at, dataTransfer: transfer }));
-    },
-    [name, type, bytes.toString('base64'), VISIBLE_SPACE] as [string, string, string, string],
-  );
-}
 
 /**
  * Every image node's `src` currently on the canvas, one per node: zoomed past

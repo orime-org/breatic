@@ -8,8 +8,7 @@
       "upload_too_large": "檔案超過上傳大小限制。",
       "insufficient_credits": "點數不足：需要 {required}，可用 {available}",
       "rate_limited": "請求過於頻繁，請稍後再試",
-      "internal": "伺服器內部錯誤",
-      "upload_empty": "沒有上傳任何內容。"
+      "internal": "伺服器內部錯誤"
     },
     "credit": {
       "not_studio_admin": "只能指定給你管理的 Studio。",
@@ -828,7 +827,7 @@
         "expired": "它逾時了。",
         "no_result": "這次執行沒有產出內容。",
         "source_unreachable": "這個網址打不開。",
-        "source_too_slow": "取這個網址的內容逾時了。",
+        "source_cut_off": "這個網址的內容沒傳完就斷了。",
         "unsupported_type": "{kind, select, image {不是支援的格式，圖片只收 {formats}。} video {不是支援的格式，影片只收 {formats}。} audio {不是支援的格式，音訊只收 {formats}。} other {不是支援的格式。}}",
         "empty": "沒有拿到任何內容。",
         "internal": "我們這邊出錯了。",
@@ -1777,7 +1776,7 @@
         "saveFailed": "無法儲存你的變更。",
         "bioCount": "{count}/{max}",
         "avatarUpload": "上傳圖片",
-        "avatarHint": "方形圖片效果最好。支援常見圖片格式，最大 20 MB。",
+        "avatarHint": "方形圖片效果最好。支援 PNG 和 JPEG，最大 20 MB。",
         "avatarRemove": "移除",
         "avatarRemoveTitle": "要移除這張頭像嗎？",
         "avatarRemoveBody": "這個 Studio 會回到顯示首字母。你隨時可以再上傳新圖片。",
@@ -1861,7 +1860,7 @@
         "too_many_pixels": "這張圖片太大了，請換一張每邊都小於 8000 像素的。",
         "not_an_image": "無法把這個檔案讀成圖片。",
         "encode_failed": "無法處理這張圖片，請換一張試試。",
-        "unsupported_type": "不支援這個檔案的格式。",
+        "unsupported_type": "不是支援的格式，請用 PNG 或 JPEG。",
         "hash_unavailable": "無法驗證此檔案，請重新整理頁面後再試。",
         "rate_limited": "上傳太頻繁，請稍後再試。"
       },

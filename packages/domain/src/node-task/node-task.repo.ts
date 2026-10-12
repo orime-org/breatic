@@ -281,20 +281,15 @@ export async function findByStorageKey(
 }
 
 /**
- * When a job's time runs out: the earliest end any of its rows allows.
- *
- * Every row of one run opens with the same budget at nearly the same moment,
- * and the earliest is the one the harvest judges first.
+ * When each row one job opened started, and the budget it opened with.
  * @param taskId - The job every row of that run points at.
- * @returns The epoch milliseconds, or null when the job opened no row.
+ * @returns One entry per row, none when the job opened no row.
  */
-export async function deadlineFor(taskId: string): Promise<number | null> {
-  const rows = await db
+export async function budgetsFor(taskId: string): Promise<Pick<NodeTaskRow, "startedAt" | "budgetMs">[]> {
+  return db
     .select({ startedAt: nodeTasks.startedAt, budgetMs: nodeTasks.budgetMs })
     .from(nodeTasks)
     .where(eq(nodeTasks.taskId, taskId));
-  if (rows.length === 0) return null;
-  return Math.min(...rows.map((row) => row.startedAt.getTime() + row.budgetMs));
 }
 
 /**

@@ -27,8 +27,13 @@ import {
   type ProbeRequest,
 } from "@ingest/probe-answer.js";
 import { noted, noteFailure } from "@ingest/error-monitoring.js";
+import {
+  UPRIGHT_OBJECT_HOST,
+  WRITE_UPRIGHT,
+  type UprightOrder,
+  type UprightWriteGrant,
+} from "@ingest/upright-run.js";
 import type { MediaContainer } from "@ingest/media-container.js";
-import type { MediaLimits } from "@breatic/shared";
 
 /** What reading media off a stored object needs bound. */
 export interface MediaEnv {
@@ -52,6 +57,16 @@ export const SERVE_OBJECT = "serveObject";
  */
 const PROBEABLE = /^(?:image|video|audio)\//;
 
+/**
+ * What one read answered, and why there is no answer when there is none:
+ * `not_media` (nothing to ask about), `unfinished` (the deadline came first),
+ * `start_failed` (the container could not be reached), `refused` (it answered
+ * with an error status).
+ */
+export type MediaRead = ProbeAnswer & {
+  missed?: "not_media" | "unfinished" | "start_failed" | "refused";
+};
+
 /** What the deadline resolves with, telling it apart from what a run answers. */
 const UNFINISHED = Symbol("unfinished");
 
@@ -70,10 +85,12 @@ const UNFINISHED = Symbol("unfinished");
  *   ffmpeg has anything to say about it.
  * @param about.wantCover - Whether to ask for a frame as well.
  * @param about.wantPreview - Whether to ask for a preview as well.
- * @param about.limits - How long this run gets, and how long one tool inside
- *   it may take. Both come off `config/storage.yaml` by way of the caller; the
- *   Worker reads no configuration of its own.
- * @returns What the container answered, or nothing found.
+ * @param about.deadlineAt - When the task this run serves runs out, in epoch
+ *   ms (inner#1367). The wait ends then, and every tool in the run is held to
+ *   it; nothing here has a figure of its own.
+ * @param about.upright - Turn the picture upright first, and the one key the
+ *   run may write it back to.
+ * @returns What the container answered, or nothing found with why.
  */
 export async function readMediaAtEdge(
   env: MediaEnv,
@@ -82,21 +99,21 @@ export async function readMediaAtEdge(
     contentType: string;
     wantCover: boolean;
     wantPreview?: boolean;
-    limits: MediaLimits;
+    deadlineAt: number;
+    upright?: { order: UprightOrder; grant: UprightWriteGrant };
   },
-): Promise<ProbeAnswer> {
-  if (!PROBEABLE.test(about.contentType)) return UNREAD_ANSWER;
+): Promise<MediaRead> {
+  if (!PROBEABLE.test(about.contentType)) return { ...UNREAD_ANSWER, missed: "not_media" };
+  const left = about.deadlineAt - Date.now();
+  if (left <= 0) return { ...UNREAD_ANSWER, missed: "unfinished" };
 
   const instance = env.MEDIA.get(env.MEDIA.idFromName(about.storageKey));
-  // Taken just before the timer below starts, so it is the instant that timer
-  // fires at.
-  const deadlineAt = Date.now() + about.limits.runDeadlineMs;
   const asked: ProbeRequest = {
     objectUrl: mediaObjectUrl(about.storageKey),
     wantCover: about.wantCover,
-    toolTimeoutMs: about.limits.toolTimeoutMs,
     wantPreview: about.wantPreview === true,
-    deadlineAt,
+    deadlineAt: about.deadlineAt,
+    ...(about.upright !== undefined && { upright: about.upright.order }),
   };
 
   const answered = await Promise.race([
@@ -110,6 +127,9 @@ export async function readMediaAtEdge(
         SERVE_OBJECT,
         authorised,
       );
+      if (about.upright !== undefined) {
+        await instance.setOutboundByHost(UPRIGHT_OBJECT_HOST, WRITE_UPRIGHT, about.upright.grant);
+      }
       return instance.fetch(
         new Request(`http://media${PROBE_PATH}`, {
           method: "POST",
@@ -121,7 +141,7 @@ export async function readMediaAtEdge(
     // Stops the waiting, not the run. Nothing can reach into a container to
     // end one, and what is left behind sleeps on its own.
     new Promise<typeof UNFINISHED>((resolve) => {
-      setTimeout(() => resolve(UNFINISHED), about.limits.runDeadlineMs);
+      setTimeout(() => resolve(UNFINISHED), left);
     }),
   ]).catch(noted("ingest_media_read_failed", { storageKey: about.storageKey }));
 
@@ -133,17 +153,17 @@ export async function readMediaAtEdge(
     // where it fires, so a run that answered first never reaches this line.
     noteFailure("ingest_media_read_unfinished", {
       storageKey: about.storageKey,
-      runDeadlineMs: about.limits.runDeadlineMs,
+      deadlineAt: about.deadlineAt,
     });
-    return UNREAD_ANSWER;
+    return { ...UNREAD_ANSWER, missed: "unfinished" };
   }
-  if (answered === null) return UNREAD_ANSWER;
+  if (answered === null) return { ...UNREAD_ANSWER, missed: "start_failed" };
   if (!answered.ok) {
     noteFailure("ingest_media_read_refused", {
       storageKey: about.storageKey,
       status: answered.status,
     });
-    return UNREAD_ANSWER;
+    return { ...UNREAD_ANSWER, missed: "refused" };
   }
   return readProbeAnswer(answered);
 }

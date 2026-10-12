@@ -2205,9 +2205,17 @@ export const studioAssets = pgTable(
     studioId: uuid("studio_id")
       .notNull()
       .references(() => studios.id, { onDelete: "restrict" }),
-    /** sha256 hex of the content - the dedup key (never in the URL). */
+    /**
+     * sha256 hex of the bytes as received - the dedup key (never in the URL).
+     * A picture turned upright keeps the received bytes' hash, not its upright
+     * copy's (inner#1367).
+     */
     contentHash: varchar("content_hash", { length: 64 }).notNull(),
-    /** Random storage key (unchanged format; NOT the hash). */
+    /**
+     * Random storage key (unchanged format; NOT the hash). A picture turned
+     * upright is filed under its upright copy's key, `uprightKeyFor` of the
+     * ticket's; the received bytes stay at the key without `_upright`.
+     */
     storageKey: text("storage_key").notNull(),
     /** Public URL (adapter.publicUrl(key)) - the value embedded in Yjs. */
     fileUrl: text("file_url").notNull(),
@@ -2378,6 +2386,17 @@ export const uploadGrants = pgTable(
      */
     voidedAt: timestamp("voided_at", { withTimezone: true }),
     /**
+     * The ledger row this grant's bytes registered as, written with
+     * `consumed_at` — on a dedup hit, the row that already stood. What the
+     * upload status query hands a grant with no node, which has no task row to
+     * carry its result (inner#1367).
+     */
+    assetId: uuid("asset_id").references(() => studioAssets.id, {
+      onDelete: "restrict",
+    }),
+    /** Why the grant was voided, written with `voided_at`. */
+    failureReason: text("failure_reason"),
+    /**
      * How long the ticket itself stays usable. The same instant is signed into
      * the ticket, and the Worker checks that copy once, when the browser asks
      * it to start; an upload already running is never cut off by it. This
@@ -2475,7 +2494,11 @@ export const storageReclaimQueue = pgTable(
   "storage_reclaim_queue",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    /** The redundant object to reclaim (the copy this request just stored). */
+    /**
+     * The redundant object to reclaim (the copy this request just stored). For
+     * a picture turned upright it is the upright copy; the received bytes at
+     * the same key without `_upright` go with it (inner#1367).
+     */
     storageKey: text("storage_key").notNull(),
     /** Its content fingerprint — identical to the surviving row's. */
     contentHash: varchar("content_hash", { length: 64 }).notNull(),

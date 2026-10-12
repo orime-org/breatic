@@ -23,7 +23,7 @@
  * second time.
  */
 
-import { coverKeyFor, env, getStorageConfig } from "@breatic/core";
+import { budgetDeadlineFrom, env, getStorageConfig, idleSocketDispatcher } from "@breatic/core";
 import {
   fetchUrlToIngest,
   finishUploadAtIngest,
@@ -31,14 +31,13 @@ import {
   INGEST_REFUSED_UNNAMED,
   INGEST_TYPE_NOT_REPORTED,
   sendBytesToIngest,
+  assertBeforeDeadline,
   UploadHttpError,
-  type IngestOutcome,
   type IngestTarget,
   type StudioAssetEntity,
-  type UploadClientConfig,
 } from "@breatic/shared";
-import { mediaLimits } from "@domain/asset/asset.service.js";
 import { issueUploadGrant } from "@domain/asset/upload-grant.service.js";
+import { ingestRunFor } from "@domain/asset/asset.service.js";
 import { signTicketFor } from "@domain/asset/upload-ticket.service.js";
 import { extFromUrl } from "@domain/asset/source-url.js";
 import { storedTypeOf, TYPE_UNKNOWN } from "@domain/asset/reader-source.js";
@@ -51,13 +50,16 @@ import {
 /**
  * A backend upload that reached the ledger.
  *
- * `IngestOutcome` leaves `fileUrl` optional because the browser reads its own
- * result through a different channel and can be told there is none. A backend
- * lane has no such channel: whatever it stored is what a node will point at,
- * so an answer without a url is the upload having failed.
+ * A backend lane has no node listening: whatever it stored is what a node
+ * will point at, so an answer without a url is the upload having failed.
  */
-export type StoredAsset = IngestOutcome & {
+export type StoredAsset = {
+  /** The ledger row these bytes landed on. */
+  assetId: string;
+  /** Where the stored object is readable. */
   fileUrl: string;
+  /** The kind the server filed it under. */
+  kind: string;
   /**
    * The cover filed against this row, for a video. A backend lane has no node
    * to hear it through, so this is where it reads one.
@@ -134,6 +136,11 @@ export interface BackendUploadContext {
   ext: string;
   /** What the object is served as. */
   contentType: string;
+  /**
+   * When the task these bytes belong to runs out, in epoch ms (inner#1367).
+   * Every call of the upload is bounded by it and by nothing of its own.
+   */
+  deadlineAt: number;
 }
 
 /**
@@ -186,26 +193,8 @@ async function openBackendUpload(
       contentType: ctx.contentType,
       ...(typeFromSource && { typeFromSource: true }),
       expiresAt,
+      deadlineAt: ctx.deadlineAt,
     }),
-  };
-}
-
-/**
- * The deadlines a backend upload's parts are given.
- *
- * The same knobs the browser is served, read from the same config, because
- * they answer the same question: how long one part may stall before the
- * delivery is given up on.
- * @returns The knobs.
- */
-function uploadKnobs(): UploadClientConfig {
-  const { upload } = getStorageConfig();
-  return {
-    maxUploadBytes: upload.max_upload_bytes,
-    clientMaxAttempts: upload.client_max_attempts,
-    clientRetryBaseDelayMs: upload.client_retry_base_delay_ms,
-    clientRequestTimeoutMs: upload.client_request_timeout_ms,
-    clientPutMinBytesPerSec: upload.client_put_min_bytes_per_sec,
   };
 }
 
@@ -219,6 +208,7 @@ function uploadKnobs(): UploadClientConfig {
  * @param bytes - What to store.
  * @param ctx - What this upload is and who it belongs to.
  * @returns The registered asset, as the report handler filed it.
+ * @throws {DeadlinePassed} When the task's deadline has already come.
  * @throws {NotFoundError} When the project does not exist or is soft-deleted.
  * @throws {UploadHttpError} When the Worker refuses any step.
  * @throws {Error} When the report filed nothing.
@@ -228,14 +218,23 @@ export async function uploadBytesToStorage(
   bytes: Blob,
   ctx: BackendUploadContext,
 ): Promise<StoredAsset> {
+  assertBeforeDeadline(ctx.deadlineAt);
+  // A part is cut once its bytes stop moving for the idle window, which Node
+  // reads off the socket.
+  const uploadIdleTimeoutMs = getStorageConfig().upload.upload_idle_timeout_seconds * 1000;
   const opened = await openBackendUpload(ctx, bytes.size);
-  const held = await sendBytesToIngest(bytes, opened.target, uploadKnobs());
+  const held = await sendBytesToIngest(
+    bytes,
+    { ...opened.target, dispatcher: idleSocketDispatcher(uploadIdleTimeoutMs) },
+    { uploadIdleTimeoutMs },
+    undefined,
+    ctx.deadlineAt,
+  );
   const measured = await finishUploadAtIngest(
     opened.target.uploadUrl,
     held,
     env.INGEST_SHARED_SECRET,
-    coverKeyFor(opened.storageKey),
-    mediaLimits(),
+    ingestRunFor(opened.storageKey, ctx.deadlineAt),
   );
   return landed(
     await applyIngestReport({
@@ -256,6 +255,7 @@ export async function uploadBytesToStorage(
  * @param sourceUrl - The provider's temporary link.
  * @param ctx - What this upload is and who it belongs to.
  * @returns The registered asset, as the report handler filed it.
+ * @throws {DeadlinePassed} When the task's deadline has already come.
  * @throws {NotFoundError} When the project does not exist or is soft-deleted.
  * @throws {UploadHttpError} When the Worker could not store the source.
  * @throws {Error} When the report filed nothing.
@@ -265,15 +265,14 @@ export async function transferUrlToStorage(
   sourceUrl: string,
   ctx: BackendUploadContext,
 ): Promise<StoredAsset> {
-  const { upload, ingest } = getStorageConfig();
+  assertBeforeDeadline(ctx.deadlineAt);
+  const { upload } = getStorageConfig();
   const opened = await openBackendUpload(ctx, upload.max_upload_bytes);
   const measured = await fetchUrlToIngest(
     sourceUrl,
     opened.target,
     env.INGEST_SHARED_SECRET,
-    coverKeyFor(opened.storageKey),
-    mediaLimits(),
-    ingest.url_fetch_deadline_ms,
+    ingestRunFor(opened.storageKey, ctx.deadlineAt),
   );
   return landed(
     await applyIngestReport({
@@ -330,7 +329,9 @@ export async function transferReaderUrlToStorage(
   who: { projectId: string; actingUserId: string },
   signal?: AbortSignal,
 ): Promise<StoredAsset & { storageKey: string }> {
-  const { upload, ingest } = getStorageConfig();
+  const { upload } = getStorageConfig();
+  // The grant this opens runs out where any upload's does: two hours on.
+  const deadlineAt = budgetDeadlineFrom(Date.now());
   const opened = await openBackendUpload(
     {
       ...who,
@@ -338,12 +339,13 @@ export async function transferReaderUrlToStorage(
       taskType: "url",
       ext: extFromUrl(sourceUrl),
       contentType: TYPE_UNKNOWN,
+      deadlineAt,
     },
     upload.max_upload_bytes,
     true,
   );
 
-  const pulled = await pullReaderLink(opened.storageKey, opened.target, sourceUrl, ingest.url_fetch_deadline_ms, signal);
+  const pulled = await pullReaderLink(opened.storageKey, opened.target, sourceUrl, deadlineAt, signal);
   if (pulled.status === "failed") throw new ReaderUrlTransferError(pulled.reason, pulled.reported);
   // A rejected report turned down what the link sent (nothing, or too much):
   // the same link gets the same answer again.
@@ -392,7 +394,8 @@ export type ReaderLinkPull =
  * @param storageKey - The key the grant was opened on.
  * @param target - The signed ticket.
  * @param url - The link.
- * @param deadlineMs - How long the transfer may take.
+ * @param deadlineAt - When the upload's task runs out; the transfer and the
+ *   wait for it end there.
  * @param signal - Raised when nobody wants the answer any more.
  * @returns How it ended.
  * @throws {AggregateError} When settling a grant whose transfer did not land
@@ -403,7 +406,7 @@ export async function pullReaderLink(
   storageKey: string,
   target: Parameters<typeof fetchUrlToIngest>[1],
   url: string,
-  deadlineMs: number,
+  deadlineAt: number,
   signal?: AbortSignal,
 ): Promise<ReaderLinkPull> {
   let measured;
@@ -412,15 +415,15 @@ export async function pullReaderLink(
       url,
       target,
       env.INGEST_SHARED_SECRET,
-      coverKeyFor(storageKey),
-      mediaLimits(),
-      deadlineMs,
+      ingestRunFor(storageKey, deadlineAt),
       signal,
     );
   } catch (err) {
     // An UploadHttpError exists only because an answer arrived, so a missing
-    // name on it is the Worker refusing without saying why. Only the absence
-    // of any answer is the source running out of time.
+    // name on it is the Worker refusing without saying why. Anything else is
+    // ours, not the link's: the Worker or the line to it going away, or the
+    // caller stopping the transfer (a cut at the deadline settles as
+    // expired).
     const reason =
       err instanceof UploadHttpError ? (err.code ?? INGEST_REFUSED_UNNAMED) : INGEST_NO_ANSWER;
     const settled = await settleAborted(storageKey, reason, err);

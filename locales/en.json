@@ -8,8 +8,7 @@
       "upload_too_large": "File exceeds the upload size limit.",
       "insufficient_credits": "Insufficient credits: required {required}, available {available}",
       "rate_limited": "Too many requests, please try again later",
-      "internal": "Internal server error",
-      "upload_empty": "Nothing was uploaded."
+      "internal": "Internal server error"
     },
     "credit": {
       "not_studio_admin": "You can only assign credits to a studio you administer.",
@@ -828,7 +827,7 @@
         "expired": "This ran out of time.",
         "no_result": "This run produced nothing.",
         "source_unreachable": "This address would not open.",
-        "source_too_slow": "This address was still sending when the time ran out.",
+        "source_cut_off": "This address stopped sending before the file was complete.",
         "unsupported_type": "{kind, select, image {Not a supported format. Images take {formats}.} video {Not a supported format. Video takes {formats}.} audio {Not a supported format. Audio takes {formats}.} other {Not a supported format.}}",
         "empty": "Nothing came back.",
         "internal": "Something on our side went wrong.",
@@ -1777,7 +1776,7 @@
         "saveFailed": "Could not save your changes.",
         "bioCount": "{count}/{max}",
         "avatarUpload": "Upload image",
-        "avatarHint": "A square image works best. Any common image format, up to 20 MB.",
+        "avatarHint": "A square image works best. PNG or JPEG, up to 20 MB.",
         "avatarRemove": "Remove",
         "avatarRemoveTitle": "Remove this avatar?",
         "avatarRemoveBody": "The Studio falls back to its initials. You can upload a new image at any time.",
@@ -1861,7 +1860,7 @@
         "too_many_pixels": "That image is too large to work with. Try one under 8000 pixels on each side.",
         "not_an_image": "That file could not be read as an image.",
         "encode_failed": "Could not prepare the image. Please try another one.",
-        "unsupported_type": "This file format is not supported.",
+        "unsupported_type": "Not a supported format. Use PNG or JPEG.",
         "hash_unavailable": "Couldn't verify this file. Reload the page and try again.",
         "rate_limited": "Uploading too often. Try again later."
       },

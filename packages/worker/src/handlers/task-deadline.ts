@@ -5,7 +5,7 @@
  * When a task's two hours run out (inner#1337 §3.2).
  */
 
-import { getNodeTaskConfig } from "@breatic/core";
+import { budgetDeadlineFrom } from "@breatic/core";
 import { nodeTaskService } from "@breatic/domain";
 
 /**
@@ -22,5 +22,5 @@ export async function taskDeadline(taskId: string, createdAt: Date | undefined):
   const fromNodes = await nodeTaskService.deadlineFor(taskId);
   if (fromNodes !== null) return fromNodes;
   if (createdAt === undefined) throw new Error(`task ${taskId} has no row to run against`);
-  return createdAt.getTime() + getNodeTaskConfig().default_budget_ms;
+  return budgetDeadlineFrom(createdAt.getTime());
 }

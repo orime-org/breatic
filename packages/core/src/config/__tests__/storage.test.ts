@@ -2,11 +2,9 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { describe, it, expect } from "vitest";
-import {
-  MAX_TIMER_MS,
-  partRetryBudgetMs,
-  completeRetryBudgetMs,
-} from "@breatic/shared";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { parse } from "yaml";
 
 import { getStorageConfig, storageConfigSchema } from "@core/config/storage.js";
 
@@ -23,8 +21,7 @@ describe("getStorageConfig", () => {
     expect(cfg.upload.max_upload_bytes).toBe(SHIPPED_UPLOAD_CAP);
     expect(cfg.upload.client_max_attempts).toBe(3);
     expect(cfg.upload.client_retry_base_delay_ms).toBe(1000);
-    expect(cfg.upload.client_request_timeout_ms).toBe(30000);
-    expect(cfg.upload.client_put_min_bytes_per_sec).toBe(65536);
+    expect(cfg.upload.upload_idle_timeout_seconds).toBe(60);
   });
 
   it("returns a cached, frozen object", () => {
@@ -61,137 +58,38 @@ describe("storageConfigSchema defaults", () => {
 });
 
 /**
- * The knobs that have to be judged together, and across sections.
- *
- * The browser sizes each part's stall guard as `max(floor, part size / rate)`
- * and hands the result to the shared HTTP transport as a per-delivery
- * deadline. The transport refuses a deadline a timer cannot hold —
- * deliberately, rather than clamping — so figures that push one part past
- * {@link MAX_TIMER_MS} make every part fail before a single byte leaves, with
- * an error written for a programmer and not for the person uploading.
- *
- * The part size is an `ingest:` knob and the other two are `upload:` knobs, so
- * the relation is invisible from inside either section. What is asserted here
- * is that loading the config reaches the rule at all; the rule's own boundary
- * cases live with it, in `@shared/upload/windows`.
- */
-describe("storageConfigSchema — the stall guard has to stay expressible", () => {
-  /** The shipped part size, and the lowest rate that can still serve it. */
-  const SHIPPED_PART = 8388608;
-  const LOWEST_USABLE_RATE = Math.ceil((SHIPPED_PART * 1000) / MAX_TIMER_MS);
-
-  /**
-   * Pair an upload section with ingest windows wide enough to hold whatever
-   * deadline it produces.
-   *
-   * These cases probe one rule by driving the deadline to extremes, and the
-   * other rule — that the idle window outlasts a part's whole delivery — would
-   * then be what they trip on. Sized from the same arithmetic that rule uses,
-   * so it stays right when either figure moves.
-   * @param upload - The upload knobs under test.
-   * @returns A whole config for the schema to parse.
-   */
-  function withRoomToWait(upload: Record<string, number>): Record<string, unknown> {
-    const requestTimeoutMs = upload.client_request_timeout_ms ?? 30000;
-    const minBytesPerSec = upload.client_put_min_bytes_per_sec ?? 65536;
-    const seconds = Math.ceil(
-      partRetryBudgetMs(8388608, { requestTimeoutMs, minBytesPerSec }) / 1000,
-    );
-    const token = Math.max(seconds, Math.ceil(completeRetryBudgetMs() / 1000));
-    return {
-      upload,
-      ingest: { session_token_ttl_seconds: token + 1 },
-    };
-  }
-
-  it("accepts the lowest rate that still serves one part", () => {
-    const cfg = storageConfigSchema.parse(
-      withRoomToWait({ client_put_min_bytes_per_sec: LOWEST_USABLE_RATE }),
-    );
-    expect(cfg.upload.client_put_min_bytes_per_sec).toBe(LOWEST_USABLE_RATE);
-    // The property behind the number, so this test still means something if
-    // either constant moves.
-    expect(
-      Math.ceil((cfg.ingest.part_size_bytes / LOWEST_USABLE_RATE) * 1000),
-    ).toBeLessThanOrEqual(MAX_TIMER_MS);
-  });
-
-  it("refuses the rate one below it, and says what the floor is", () => {
-    expect(() =>
-      storageConfigSchema.parse({
-        upload: { client_put_min_bytes_per_sec: LOWEST_USABLE_RATE - 1 },
-      }),
-    ).toThrow(/client_put_min_bytes_per_sec/);
-    expect(() =>
-      storageConfigSchema.parse({
-        upload: { client_put_min_bytes_per_sec: LOWEST_USABLE_RATE - 1 },
-      }),
-    ).toThrow(new RegExp(String(LOWEST_USABLE_RATE)));
-  });
-
-  it("moves the floor when the part size moves", () => {
-    // The knobs are judged together, not each against a constant, and the one
-    // that decides the deadline lives in the other section. Doubling the part
-    // doubles what the rate has to be, so a rate that was fine a moment ago is
-    // not — which a bound written against the rate alone would let through.
-    expect(() =>
-      storageConfigSchema.parse({
-        upload: { client_put_min_bytes_per_sec: LOWEST_USABLE_RATE },
-        ingest: { part_size_bytes: SHIPPED_PART * 2 },
-      }),
-    ).toThrow(/client_put_min_bytes_per_sec/);
-  });
-
-  it("refuses a floor a timer cannot hold either", () => {
-    // The deadline is max(floor, part size/rate), so the floor is the second
-    // way to produce an unusable figure — and the one a rate-only bound would
-    // miss. Enumerated rather than waited for: the invariant is about the
-    // deadline, not about one of the two knobs that feed it.
-    expect(() =>
-      storageConfigSchema.parse({
-        upload: { client_request_timeout_ms: MAX_TIMER_MS + 1 },
-      }),
-    ).toThrow(/client_request_timeout_ms/);
-
-    expect(() =>
-      storageConfigSchema.parse(
-        withRoomToWait({ client_request_timeout_ms: MAX_TIMER_MS }),
-      ),
-    ).not.toThrow();
-  });
-
-  it("leaves the shipped pair alone", () => {
-    expect(() => storageConfigSchema.parse({})).not.toThrow();
-    expect(getStorageConfig().upload.client_put_min_bytes_per_sec).toBe(65536);
-  });
-});
-
-/**
  * The ingest Worker's two server-side knobs (#173, design §4.1).
  *
  * `part_size_bytes` is the one with a hard external floor: R2 rejects any
  * non-final part under 5 MiB, so a config below it would fail mid-upload
  * rather than at load, where the operator who typed the number is reading.
  *
- * `session_token_ttl_seconds` is how long a token stays usable after the part
- * that issued it. One token is carried through a whole part's delivery chain
- * and through the chain completing runs, so it has a floor to clear: a token
- * that expires first turns the delivery that would have succeeded into a 401.
+ * Nothing here times a task's chain: every wait there is bounded by the task's
+ * own deadline (inner#1367).
  */
 describe("storageConfigSchema — the ingest knobs", () => {
   it("loads the ingest config from config/storage.yaml", () => {
     const cfg = getStorageConfig();
     expect(cfg.ingest.part_size_bytes).toBe(8388608);
     expect(cfg.ingest.ticket_expires_seconds).toBe(300);
-    expect(cfg.ingest.session_token_ttl_seconds).toBe(1200);
   });
 
-  it("keeps the url deadline under what the platform allows anyway", () => {
-    // Measured in packages/shared/src/http/constants.ts: a delivery spent
-    // waiting for a response is rejected at 301.4s whatever we ask for. Ours
-    // has to fire first, or the failure belongs to the platform and this lane
-    // cannot tell "the source is too slow" from "nothing answered".
-    expect(getStorageConfig().ingest.url_fetch_deadline_ms).toBe(290_000);
+  // Read off disk: the schema drops keys it does not know, so a knob left in
+  // the file would never show up in what it parses.
+  it("holds no time of its own for any wait on a task's chain", () => {
+    const path = resolve(import.meta.dirname, "../../../../../config/storage.yaml");
+    const cfg = parse(readFileSync(path, "utf8")) as Record<string, Record<string, unknown>>;
+    for (const key of [
+      "session_token_ttl_seconds",
+      "container_run_deadline_ms",
+      "container_tool_timeout_ms",
+      "url_fetch_deadline_ms",
+    ]) {
+      expect(cfg.ingest).not.toHaveProperty(key);
+    }
+    for (const key of ["client_request_timeout_ms", "client_put_min_bytes_per_sec"]) {
+      expect(cfg.upload).not.toHaveProperty(key);
+    }
   });
 
   it("refuses a part size R2 would reject as a non-final part", () => {
@@ -212,72 +110,11 @@ describe("storageConfigSchema — the ingest knobs", () => {
   });
 });
 
-// One session token is carried through a whole part's delivery chain, retries
-// included, and through the chain completing runs. A token narrower than
-// either turns a delivery on an upload that is doing nothing wrong into a 401.
-describe("storageConfigSchema — the windows an upload lives inside", () => {
-  it("leaves the shipped figures alone", () => {
-    expect(() => storageConfigSchema.parse({})).not.toThrow();
-  });
-
-  it("refuses a session token one part's retries can outlast", () => {
+/** A part is cut once its bytes stop moving, never for being slow (inner#1367). */
+describe("storageConfigSchema — the idle window", () => {
+  it("refuses an idle window that is not a positive number of seconds", () => {
     expect(() =>
-      storageConfigSchema.parse({
-        ingest: { session_token_ttl_seconds: 300 },
-      }),
-    ).toThrow(/session_token_ttl_seconds/);
-  });
-
-  // A bigger part takes longer to deliver, so the token it needs grows with
-  // it — the relation is between the two, not a pair of fixed numbers.
-  it("moves the token a part needs when the part size moves", () => {
-    expect(() =>
-      storageConfigSchema.parse({
-        ingest: { part_size_bytes: 64 * 1024 * 1024 },
-      }),
-    ).toThrow(/session_token_ttl_seconds/);
-  });
-});
-
-// One run may use both tools, so the Worker has to be willing to wait for two
-// of them. The other way round it cuts off a container that is working, and
-// neither end can see why the numbers went missing.
-describe("the container's two deadlines", () => {
-  it("refuses a run deadline that cannot hold two tool runs", () => {
-    expect(() =>
-      storageConfigSchema.parse({
-        ingest: {
-          container_run_deadline_ms: 60_000,
-          container_tool_timeout_ms: 60_000,
-        },
-      }),
-    ).toThrow(/at least/);
-  });
-
-  it("takes one that can", () => {
-    const cfg = storageConfigSchema.parse({
-      ingest: {
-        container_run_deadline_ms: 130_000,
-        container_tool_timeout_ms: 60_000,
-      },
-    });
-
-    expect(cfg.ingest.container_run_deadline_ms).toBe(130_000);
-  });
-});
-
-// The preview runs on whatever the run has left (inner#1339), so the run
-// deadline only has to hold the two tool runs.
-describe("the preview in the run deadline", () => {
-  it("takes a run deadline of exactly two tool runs", () => {
-    const cfg = storageConfigSchema.parse({
-      ingest: {
-        container_run_deadline_ms: 120_000,
-        container_tool_timeout_ms: 60_000,
-      },
-    });
-
-    expect(cfg.ingest.container_run_deadline_ms).toBe(120_000);
-    expect(cfg.ingest).not.toHaveProperty("container_preview_timeout_ms");
+      storageConfigSchema.parse({ upload: { upload_idle_timeout_seconds: 0 } }),
+    ).toThrow(/upload_idle_timeout_seconds/);
   });
 });

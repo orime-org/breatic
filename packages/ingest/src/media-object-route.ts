@@ -16,26 +16,19 @@
  * request for anything else is refused here rather than reaching R2.
  */
 
+import { askedKey, objectUrlOn } from "@ingest/object-url.js";
+
 /** The hostname the container reads its object from. */
 export const MEDIA_OBJECT_HOST = "r2.local";
 
 /**
- * Where the container reads one key.
- *
- * Here rather than at the caller because it is one half of an agreement whose
- * other half is below: what this writes, `serveOneObject` reads back and
- * compares against the key the run was authorised for. A key carries whatever
- * the upload's filename ended in — the ticket's check bans separators and
- * control characters, nothing else — so each segment is escaped whole. Escaping
- * the path instead leaves `#` and `?` alone, and both end the path early: the
- * key that comes back is a prefix of the real one, every read is refused, and
- * the video gets no dimensions and no cover with nothing logged.
+ * Where the container reads one key; `serveOneObject` reads the key back and
+ * compares it against the one the run was authorised for.
  * @param storageKey - The object this run is about.
  * @returns The URL to hand the container.
  */
 export function mediaObjectUrl(storageKey: string): string {
-  const path = storageKey.split("/").map(encodeURIComponent).join("/");
-  return `http://${MEDIA_OBJECT_HOST}/${path}`;
+  return objectUrlOn(MEDIA_OBJECT_HOST, storageKey);
 }
 
 /**
@@ -69,7 +62,7 @@ export async function serveOneObject(
   // Where the path ends up, which is what the runtime hands over: it resolves
   // `..` before this is reached, so a request that traverses out of this key
   // arrives spelled as whatever it landed on and is refused on that name.
-  const asked = decodeURIComponent(new URL(request.url).pathname).slice(1);
+  const asked = askedKey(request);
   if (asked !== allowedKey) {
     return new Response("Not this object", { status: 403 });
   }

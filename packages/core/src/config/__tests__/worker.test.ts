@@ -13,8 +13,14 @@ describe("worker concurrency", () => {
     expect(workerConcurrencyFor("tasks")).toBe(50);
   });
 
+  it("gives the queues that wait on the ingest Worker as many places as tasks", () => {
+    // Each waits as long as its task's two hours allow (inner#1367).
+    expect(workerConcurrencyFor("upload-finish")).toBe(50);
+    expect(workerConcurrencyFor("url-ingest")).toBe(50);
+    expect(workerConcurrencyFor("media-read")).toBe(50);
+  });
+
   it("gives every other queue the default", () => {
-    expect(workerConcurrencyFor("url-ingest")).toBe(5);
     expect(workerConcurrencyFor("mail")).toBe(5);
   });
 
@@ -30,7 +36,7 @@ describe("worker concurrency", () => {
 // A misspelt queue name would leave that queue at the default without a word.
 describe("assertKnownQueues", () => {
   it("accepts per-queue figures that name the queues the worker runs", () => {
-    expect(() => assertKnownQueues(["tasks", "url-ingest", "mail"])).not.toThrow();
+    expect(() => assertKnownQueues(["tasks", "upload-finish", "url-ingest", "media-read", "mail"])).not.toThrow();
   });
 
   it("refuses a per-queue figure for a queue the worker does not run", () => {

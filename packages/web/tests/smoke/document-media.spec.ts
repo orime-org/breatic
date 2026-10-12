@@ -21,6 +21,7 @@ import { STATE_FILE, openSmokeProject } from '../helpers/project';
 import { blankPoint, bodySelection } from '../helpers/document-body';
 import { pressAndSettle } from '../helpers/editor-keys';
 import { wavBytes } from '../helpers/media-bytes';
+import { storedPicture, uniquePicture, watchQueuedFinish } from '../helpers/upload';
 import { createSpace, deleteSpace, DOCUMENT_EDITOR as EDITOR, visibleSpace } from '../helpers/space';
 
 let page: Page;
@@ -219,6 +220,41 @@ test('the plus menu offers image, audio and video after the table, and a picked 
     .poll(() => page.locator(`${IMAGE} img`).evaluate((img: HTMLImageElement) => img.naturalWidth))
     .toBe(480);
   expect(await types(page)).toEqual(['image', 'paragraph']);
+});
+
+// inner#1367: the finish is queued with 202 and the status query delivers the
+// result; a WebP tagged to turn is filed as its upright copy, and the block is
+// sized from the server's width and height, which are the copy's.
+test('a WebP tagged to turn lands as its upright copy, sized from what the server read @needs-ingest @needs-storage', async () => {
+  await openFreshDocument(page);
+  const finish = watchQueuedFinish(page);
+  await pickFromPlus(page, 'image', {
+    name: 'photo.webp',
+    mimeType: 'image/webp',
+    buffer: uniquePicture(readFileSync(resolve(__dirname, '../fixtures/exif6-red-top.webp'))),
+  });
+  const { queued, delivered } = await finish;
+  expect(queued).toBe(202);
+  expect([delivered.width, delivered.height]).toEqual([768, 1024]);
+  await expect(page.locator(`${IMAGE} img`)).toBeVisible({ timeout: UPLOAD_TIMEOUT });
+
+  const block = await page.evaluate((selector) => {
+    const el = document.querySelector(selector) as unknown as {
+      editor: { state: { doc: { descendants: (f: (node: { type: { name: string }; attrs: Record<string, unknown> }) => void) => void } } };
+    };
+    let found: Record<string, unknown> | null = null;
+    el.editor.state.doc.descendants((node) => {
+      if (node.type.name === 'image') found = node.attrs;
+    });
+    return found as { url: string; mediaWidth: number; mediaHeight: number } | null;
+  }, EDITOR);
+  expect(block?.url).toBe(delivered.fileUrl);
+  expect(block?.url).toMatch(/_upright\.[a-z]+$/);
+  expect([block?.mediaWidth, block?.mediaHeight]).toEqual([768, 1024]);
+  const stored = await storedPicture(page, delivered.fileUrl);
+  expect([stored.orientation, stored.width, stored.height]).toEqual([1, 768, 1024]);
+  const shown = await page.locator(`${IMAGE} img`).boundingBox();
+  expect(shown !== null && Math.abs(shown.width / shown.height - 768 / 1024)).toBeLessThan(0.01);
 });
 
 test('the grip menu inserts the picked files below its row, side by side, one empty line after the last (A1, A4)', async () => {
@@ -585,7 +621,7 @@ test('a video plays in place and keeps playing while its width changes (A7, A8)'
   });
   const video = page.locator(`${VIDEO} video`);
   await expect(video).toBeVisible({ timeout: UPLOAD_TIMEOUT });
-  // The size read off the file reaches the player, which holds it while loading (A23).
+  // The size the server read off the stored file reaches the player, which holds it while loading (A23).
   expect([await video.getAttribute('width'), await video.getAttribute('height')]).toEqual(['64', '48']);
   const handle = page.locator(`${VIDEO} [data-testid="doc-media-resize-se"]`);
   const element = await video.elementHandle();

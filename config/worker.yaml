@@ -18,6 +18,12 @@ concurrency:
   default: 5
   per_queue:
     tasks: 50
+    # Each of these waits on the ingest Worker for as long as the task's two
+    # hours allow (inner#1367), the way `tasks` waits on an upstream, so five
+    # slow ones would hold every place.
+    upload-finish: 50
+    url-ingest: 50
+    media-read: 50
 
 # ── BullMQ Job Retry ──────────────────────────────
 # Max attempts per job. BullMQ schedules retries with exponential
@@ -48,6 +54,3 @@ lock_duration_ms: 600000
 # an attempt, until the task's two-hour budget (config/node-tasks.yaml).
 poll_interval: 3000
 
-# ── Billing ───────────────────────────────────────
-# Timeout (ms) for WaveSpeed billing API queries.
-billing_timeout: 30000

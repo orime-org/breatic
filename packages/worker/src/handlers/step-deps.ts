@@ -11,6 +11,7 @@
 import { getRawEnvVar, getStorageAdapter, getUnderstandConfig } from "@breatic/core";
 import {
   assetRepo,
+  readingLimitsUntil,
   understandMediaAt,
   upstreamCloneRepo,
   upstreamStepRepo,
@@ -27,9 +28,11 @@ const DESCRIBE_QUESTION =
 /**
  * The step storage for a task run in a studio.
  * @param studioId - The studio whose assets key the clone cache, or null.
+ * @param deadlineAt - When the task runs out; a description it asks for gets
+ *   what is left of it (inner#1367).
  * @returns The dependencies `runCatalogTask` takes.
  */
-export function stepDepsFor(studioId: string | null): StepDeps {
+export function stepDepsFor(studioId: string | null, deadlineAt: number): StepDeps {
   return {
     steps: upstreamStepRepo,
     clones: upstreamCloneRepo,
@@ -61,10 +64,7 @@ export function stepDepsFor(studioId: string | null): StepDeps {
         apiKey: getRawEnvVar("OPENROUTER_API_KEY") ?? "",
         baseUrl: UNDERSTAND_PINS.baseUrl,
         maxBytes: cfg.max_media_bytes,
-        fetchTimeoutMs: cfg.fetch_timeout_ms,
-        minBytesPerSec: cfg.min_bytes_per_sec,
-        readFloorMs: cfg.read_floor_ms,
-        timeoutMs: cfg.call_timeout_ms,
+        ...readingLimitsUntil(deadlineAt, cfg.max_media_bytes),
         maxOutputTokens: cfg.max_output_tokens,
         onBilled: (billed) => {
           costUsd = billed ?? 0;

@@ -28,14 +28,17 @@ vi.mock("@breatic/core", async (importOriginal) => {
   };
 });
 
-import { logger } from "@breatic/core";
+import { getNodeTaskConfig, logger } from "@breatic/core";
 import type { MediaReadJob } from "@breatic/domain";
 import { runMediaRead } from "@worker/handlers/media-read.js";
 
 /** One queued read. */
 function job(assetId = "asset-1"): Job<MediaReadJob> {
-  return { data: { assetId } } as Job<MediaReadJob>;
+  return { data: { assetId }, timestamp: QUEUED_AT } as Job<MediaReadJob>;
 }
+
+/** When the read was queued, which its two hours count from. */
+const QUEUED_AT = 1_800_000_000_000;
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -47,7 +50,11 @@ describe("a media read job", () => {
 
     await runMediaRead(job("asset-9"));
 
-    expect(readAndFillMedia).toHaveBeenCalledWith("asset-9");
+    // The job's own two hours, counted from when it was queued (inner#1367).
+    expect(readAndFillMedia).toHaveBeenCalledWith(
+      "asset-9",
+      QUEUED_AT + getNodeTaskConfig().default_budget_ms,
+    );
     expect(logger.warn).not.toHaveBeenCalled();
   });
 

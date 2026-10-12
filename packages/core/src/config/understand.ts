@@ -21,10 +21,6 @@ import { MONOREPO_ROOT } from "@core/config/env.js";
 
 const understandConfigSchema = z.object({
   max_media_bytes: z.number().int().positive().default(20_971_520),
-  fetch_timeout_ms: z.number().int().positive().default(30_000),
-  min_bytes_per_sec: z.number().int().positive().default(65_536),
-  read_floor_ms: z.number().int().positive().default(5_000),
-  call_timeout_ms: z.number().int().positive().default(180_000),
   max_output_tokens: z.number().int().positive().default(8_192),
   max_concurrent: z.number().int().positive().default(5),
 });

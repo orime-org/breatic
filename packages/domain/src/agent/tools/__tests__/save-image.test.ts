@@ -141,7 +141,6 @@ describe("save_image", () => {
 
   it.each([
     ["link", "source_unreachable", FAILURE_LINES.unreachable],
-    ["link", "source_too_slow", FAILURE_LINES.unreachable],
     ["link", "unsupported_type", FAILURE_LINES.generic],
     ["rate_limited", undefined, FAILURE_LINES.generic],
     ["storage_full", undefined, FAILURE_LINES.generic],

@@ -27,6 +27,7 @@
 import { ConflictError } from "@breatic/core";
 import { t, type NodeTaskAction } from "@breatic/shared";
 import * as repo from "@domain/node-task/node-task.repo.js";
+import { failureOutcome } from "@domain/node-task/failure-outcome.js";
 import type {
   NodeTaskCounts,
   NodeTaskListRow,
@@ -99,12 +100,27 @@ export async function open(opts: {
 }
 
 /**
- * When a job's time runs out, as its rows on the canvas count it.
+ * When a task row's time runs out.
+ * @param row - The row.
+ * @param row.startedAt - When it started.
+ * @param row.budgetMs - The budget it opened with.
+ * @returns The epoch milliseconds.
+ */
+export function rowDeadline(row: Pick<NodeTaskRow, "startedAt" | "budgetMs">): number {
+  return row.startedAt.getTime() + row.budgetMs;
+}
+
+/**
+ * When a job's time runs out: the earliest end any of its rows allows.
+ *
+ * Every row of one run opens with the same budget at nearly the same moment,
+ * and the earliest is the one the harvest judges first.
  * @param taskId - The job.
  * @returns The epoch milliseconds, or null when the job opened no row.
  */
 export async function deadlineFor(taskId: string): Promise<number | null> {
-  return repo.deadlineFor(taskId);
+  const rows = await repo.budgetsFor(taskId);
+  return rows.length === 0 ? null : Math.min(...rows.map(rowDeadline));
 }
 
 /**
@@ -115,9 +131,11 @@ export async function deadlineFor(taskId: string): Promise<number | null> {
  * same request.
  * @param opts - Which task, where it lands, and the result pointer or reason.
  * @param opts.taskId - Which task.
- * @param opts.outcome - Where it lands.
+ * @param opts.outcome - Where it lands; `failed` at or past the row's deadline
+ *   lands as `expired`.
  * @param opts.nodeHistoryId - The history row holding the result.
- * @param opts.errorMessage - Why it failed or timed out.
+ * @param opts.errorMessage - Why it failed or timed out; `expired` when a
+ *   failure lands as `expired`.
  * @returns Whether this call moved the row, plus the node's counts.
  * @throws {Error} When the task id names no row at all — a machine reporting
  *   about a task nobody opened is a wiring fault, not a late message.
@@ -133,11 +151,16 @@ export async function settle(opts: {
     throw new Error(`settle: no node_tasks row for ${opts.taskId}`);
   }
 
-  const applied = await repo.settleRunning(opts.taskId, opts.outcome, {
+  // A task that failed at or past its deadline ended there, whichever exit
+  // reports it (inner#1367): written the way the harvest writes it.
+  const expired = opts.outcome === "failed" && failureOutcome(rowDeadline(row)) === "expired";
+  const outcome = expired ? "expired" : opts.outcome;
+  const errorMessage = expired ? "expired" : opts.errorMessage;
+  const applied = await repo.settleRunning(opts.taskId, outcome, {
     ...(opts.nodeHistoryId !== undefined && {
       nodeHistoryId: opts.nodeHistoryId,
     }),
-    ...(opts.errorMessage !== undefined && { errorMessage: opts.errorMessage }),
+    ...(errorMessage !== undefined && { errorMessage }),
   });
 
   // The row had already settled and a result turned up anyway: the deadline
@@ -149,7 +172,7 @@ export async function settle(opts: {
   }
 
   const counts = await repo.countsFor(row.projectId, row.nodeId);
-  return { applied, landed: applied || row.status === opts.outcome, counts };
+  return { applied, landed: applied || row.status === outcome, counts };
 }
 
 /**

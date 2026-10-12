@@ -42,8 +42,8 @@ export const TASK_FAILURE_REASONS = [
   "no_result",
   /** The address would not open. */
   "source_unreachable",
-  /** The address was still sending when the time to fetch it ran out. */
-  "source_too_slow",
+  /** The address stopped sending before the file was complete. */
+  "source_cut_off",
   /** What arrived is not a kind a node can hold. */
   "unsupported_type",
   /**
@@ -116,7 +116,7 @@ const CAUSE_OF: ReadonlyMap<string, TaskFailureReason> = new Map([
   // INGEST_FAILURE_CODES with no cause here widens this Map's value type and
   // stops compiling. The four named below are held by the test instead, which
   // walks INGEST_SETTLEMENT_CODES rather than a list typed beside it.
-  [INGEST_NO_ANSWER, "source_too_slow"],
+  [INGEST_NO_ANSWER, "internal"],
   [INGEST_REFUSED_UNNAMED, "internal"],
   [INGEST_TYPE_NOT_REPORTED, "internal"],
   [INGEST_NOT_STARTED, "internal"],
@@ -124,9 +124,11 @@ const CAUSE_OF: ReadonlyMap<string, TaskFailureReason> = new Map([
     (code) =>
       [
         code,
-        // The Worker's own two names for what our storage did; the other three
+        // The Worker's own names for what our side did; the other three
         // describe the address, and are causes in their own right.
-        code === "store_failed" || code === "assemble_failed" ? "internal" : code,
+        code === "store_failed" || code === "assemble_failed" || code === "upright_failed"
+          ? "internal"
+          : code,
       ] as const,
   ),
 ]);
