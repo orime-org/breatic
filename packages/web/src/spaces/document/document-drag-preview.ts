@@ -43,11 +43,6 @@ export interface PreviewSize {
   readonly height: number;
 }
 
-/** A preview attached to the page until the next animation frame. */
-export interface DragPreview {
-  /** What to hand to `setDragImage`. */
-  readonly element: HTMLElement;
-}
 
 /** The class `index.css` places and styles every preview by. */
 const PREVIEW_CLASS = 'doc-drag-preview';
@@ -106,13 +101,13 @@ function measureLayer(layer: HTMLElement): PreviewSize {
  * @param view - The editor view whose styles it takes.
  * @param content - The content, detached.
  * @param measure - Reads the content's natural size once laid out.
- * @returns The preview.
+ * @returns The preview's root, the element to hand to `setDragImage`.
  */
 export function buildDragPreview(
   view: EditorView,
   content: HTMLElement,
   measure: (layer: HTMLElement) => PreviewSize = measureLayer,
-): DragPreview {
+): HTMLElement {
   const page = view.dom.ownerDocument;
   const root = page.createElement('div');
   root.className = PREVIEW_CLASS;
@@ -140,7 +135,18 @@ export function buildDragPreview(
   (page.defaultView ?? window).requestAnimationFrame(() => {
     root.remove();
   });
-  return { element: root };
+  return root;
+}
+
+/**
+ * Hands the browser a preview of some content, in the `dragstart` being
+ * dispatched, its top left at the pointer (BlockNote `dragging.ts`).
+ * @param view - The editor view.
+ * @param dataTransfer - The drag's data transfer.
+ * @param content - The content, detached.
+ */
+export function setDragPreview(view: EditorView, dataTransfer: DataTransfer, content: HTMLElement): void {
+  dataTransfer.setDragImage(buildDragPreview(view, content), 0, 0);
 }
 
 /**
@@ -395,8 +401,7 @@ export function captionPreviewContent(input: HTMLInputElement): HTMLElement {
  * @param blockId - The row.
  */
 export function previewRowDrag(view: EditorView, dataTransfer: DataTransfer | null, blockId: string): void {
-  const row = [...view.dom.querySelectorAll(ROW)].find((outer) => outer.getAttribute('data-id') === blockId);
-  if (row === undefined || !dataTransfer) return;
-  const preview = buildDragPreview(view, blockPreviewContent(view, [row.cloneNode(true) as Element]));
-  dataTransfer.setDragImage(preview.element, 0, 0);
+  const row = view.dom.querySelector(`${ROW}[data-id="${blockId}"]`);
+  if (row === null || !dataTransfer) return;
+  setDragPreview(view, dataTransfer, blockPreviewContent(view, [row.cloneNode(true) as Element]));
 }

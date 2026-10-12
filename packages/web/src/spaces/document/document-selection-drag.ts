@@ -32,8 +32,8 @@ import { MEDIA_CAPTION_INPUT } from '@web/spaces/document/DocumentMediaBlock';
 import { rowInFlight } from '@web/spaces/document/document-drag-drop';
 import {
   blockPreviewContent,
-  buildDragPreview,
   captionPreviewContent,
+  setDragPreview,
   tableRowsPreviewContent,
 } from '@web/spaces/document/document-drag-preview';
 import { dragSourceOf } from '@web/spaces/document/document-table-drag';
@@ -120,7 +120,8 @@ export function selectionPreviewContent(view: EditorView): HTMLElement | null {
 
 /**
  * Hands the browser the preview of a drag of the selection or of a caption
- * field's words, and takes it away when the drag ends.
+ * field's words; the preview takes itself off the page a frame later
+ * (`buildDragPreview`).
  * @param view - The editor view.
  * @param event - The dragstart.
  */
@@ -133,8 +134,7 @@ function previewSelectionDrag(view: EditorView, event: DragEvent): void {
   const caption = kind === 'caption' ? (target as Element).closest<HTMLInputElement>(MEDIA_CAPTION_INPUT) : null;
   const content = caption !== null ? captionPreviewContent(caption) : selectionPreviewContent(view);
   if (content === null) return;
-  const preview = buildDragPreview(view, content);
-  dataTransfer.setDragImage(preview.element, 0, 0);
+  setDragPreview(view, dataTransfer, content);
 }
 
 /**

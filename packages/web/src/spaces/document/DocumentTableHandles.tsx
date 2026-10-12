@@ -77,7 +77,7 @@ import {
 } from '@web/spaces/document/document-table-control-place';
 import { setTableTarget, tableTargetOf } from '@web/spaces/document/document-table-target';
 import { startTableDrag } from '@web/spaces/document/document-table-drag';
-import { buildDragPreview, tableLinePreviewContent } from '@web/spaces/document/document-drag-preview';
+import { setDragPreview, tableLinePreviewContent } from '@web/spaces/document/document-drag-preview';
 import { useDocumentBars } from '@web/spaces/document/document-bars';
 import { useEditorSnapshot } from '@web/spaces/document/use-editor-snapshot';
 import { bodyLayerMark } from '@web/spaces/document/document-body-focus';
@@ -409,8 +409,7 @@ export function DocumentTableHandle({
             event.dataTransfer.effectAllowed = 'move';
             event.dataTransfer.setData(TABLE_LINE_TYPE, '');
             const content = tableLinePreviewContent(view, pos, orientation);
-            const preview = content === null ? null : buildDragPreview(view, content);
-            if (preview !== null) event.dataTransfer.setDragImage(preview.element, 0, 0);
+            if (content !== null) setDragPreview(view, event.dataTransfer, content);
             handles.freezeHandles();
             releaseDrag.current = () => {
               handles.unfreezeHandles();
