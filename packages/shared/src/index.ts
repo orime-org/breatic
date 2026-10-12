@@ -388,12 +388,14 @@ export {
 export type { DocumentSchema } from "@shared/document-schema.js";
 
 export {
+  ADJUST_RANGES,
+  adjustTerms,
   defaultAdjustValue,
   isAdjustValueNeutral,
   parseAdjustValue,
   buildAdjustVideoFilter,
 } from "@shared/adjust-value.js";
-export type { AdjustValue } from "@shared/adjust-value.js";
+export type { AdjustRange, AdjustTerms, AdjustValue } from "@shared/adjust-value.js";
 
 
 // The confirmation email names the instant the window closes, in the buyer's
