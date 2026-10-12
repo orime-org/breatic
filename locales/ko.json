@@ -809,7 +809,6 @@
         "view": "보기"
       },
       "elapsed": "실행 {duration}",
-      "remaining": "{duration} 남음",
       "startedAt": "{when} 시작",
       "endedAt": "{when} 종료",
       "lateResult": "시간이 지난 뒤에 끝났습니다.",
@@ -837,10 +836,10 @@
         "tool_failed": "도구가 이 파일을 처리하지 못했습니다.",
         "no_audio_track": "이 동영상에는 오디오 트랙이 없습니다."
       },
-      "title": {
-        "upload": "업로드 · {name}",
-        "generate": "생성 · {name}",
-        "understand": "내용 읽기 · {name}"
+      "kind": {
+        "upload": "업로드",
+        "generate": "생성",
+        "understand": "내용 읽기"
       }
     },
     "panel": {

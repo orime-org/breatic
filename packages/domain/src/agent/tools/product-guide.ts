@@ -555,10 +555,12 @@ export function renderProductGuide(): string {
       `${quoted(t("canvas.task.status.running"))}, ${quoted(t("canvas.task.status.done"))}, ` +
       `${quoted(t("canvas.task.status.failed"))} or ${quoted(t("canvas.task.status.expired"))}, each row saying ` +
       "when it started or ended; the list closes with its X. Zoomed far out, only the spinning icon remains. A running task shows how long " +
-      "it has run and has left; an expired one says " +
+      "it has run; an expired one says " +
       `${quoted(t("canvas.task.expired"))} (${quoted(t("canvas.task.lateResult"))} when a result came late). ` +
-      "Each row first says what the task was doing: an upload with the file's name, a generation or a reading " +
-      "with the model's name, or the tool's name. A done row offers " +
+      "Each row opens with a small outlined badge naming the kind of task, its icon then its word: " +
+      `${quoted(t("canvas.task.kind.upload"))} with an up arrow, followed by the file's name; ` +
+      `${quoted(t("canvas.task.kind.generate"))} with a sparkle, or ${quoted(t("canvas.task.kind.understand"))}, ` +
+      "followed by the model's name; or a tool's own icon and name, with nothing after it. A done row offers " +
       `${quoted(t("canvas.task.action.finish"))}, which takes the row away (its result is already on the ` +
       `node); a failed one says why and offers ${quoted(t("canvas.task.action.retry"))} for an upload still at ` +
       `hand, and ${quoted(t("canvas.task.action.clear"))}; an expired one offers ` +
