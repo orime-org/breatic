@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+
 import { describe, expect, it } from "vitest";
 import {
   CONSENT_COOKIE_NAME,

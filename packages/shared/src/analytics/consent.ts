@@ -45,6 +45,11 @@ export function parseConsentCookie(raw: string | undefined): ConsentSnapshot {
   return { analytics: categories.includes("analytics"), ads: categories.includes("ads") };
 }
 
+/**
+ * Parse JSON without throwing.
+ * @param text - The text to parse; null passes through.
+ * @returns The parsed value, or null when the text is null or not JSON.
+ */
 function parseJson(text: string | null): unknown {
   if (text === null) return null;
   try {
@@ -54,6 +59,11 @@ function parseJson(text: string | null): unknown {
   }
 }
 
+/**
+ * URI-decode without throwing.
+ * @param text - The encoded text.
+ * @returns The decoded text, or null when the encoding is malformed.
+ */
 function safeDecode(text: string): string | null {
   try {
     return decodeURIComponent(text);
