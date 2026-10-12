@@ -109,7 +109,10 @@ describe('Button loading', () => {
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
-  it('keeps focus on the button when it starts loading after a press', async () => {
+  // jsdom keeps focus on a natively disabled button, so focus itself is
+  // measured in a real browser (engineering probe for inner#1374); here the
+  // attribute that drops it in Chromium is what is pinned.
+  it('stays out of the native disabled state when it starts loading after a keyboard press', async () => {
     const user = userEvent.setup();
     function Harness(): React.JSX.Element {
       const [loading, setLoading] = React.useState(false);
@@ -124,6 +127,7 @@ describe('Button loading', () => {
     await user.keyboard('{Enter}');
     const el = screen.getByRole('button');
     expect(el).toHaveAttribute('aria-busy', 'true');
+    expect(el).not.toHaveAttribute('disabled');
     expect(el).toHaveFocus();
   });
 
