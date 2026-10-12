@@ -29,21 +29,23 @@ studio-create:  { max: 10,  window_seconds: 3600 }
 studio-update:  { max: 30,  window_seconds: 3600 }
 
 # Assets (post-auth, user-keyed)
-# Minting an upload ticket. Every call writes a grant row and authorises the
-# ingest Worker to accept bytes, so this caps how fast one account can put
-# work in front of the Worker and rows in the ledger.
+# Minting upload tickets, counted per request. A call writes one grant row per
+# file and authorises the ingest Worker to accept its bytes; the batch form
+# signs every tile of one grid export (up to 64) in a single call. This caps
+# how fast one account can put work in front of the Worker and rows in the
+# ledger.
 upload-ticket:  { max: 30,  window_seconds: 60 }
 # The node-delete report route (/assets/deleted) — fires once per delete;
 # 120/60s covers clearing out a whole selection while capping a flood loop
 # against the append-only feed table.
 asset-report:   { max: 120, window_seconds: 60 }
-# Finishing one upload (/assets/uploads/{id}/complete). The costliest call on
-# this path: it has the Worker assemble the object and read the whole of it
-# back to hash it. One upload needs one of these, and the browser repeats it
-# when an answer does not arrive, so this sits above the ticket rate rather
-# than at it — a person clearing a selection onto the canvas mints a ticket
-# per file and finishes each one.
-upload-complete: { max: 60, window_seconds: 60 }
+# Finishing one upload (/assets/uploads/{id}/complete), counted per upload.
+# One upload needs one of these, and the browser repeats it when an answer
+# does not arrive (up to three deliveries), so ten a minute leaves room for
+# that and stops one upload being finished over and over. How many uploads one
+# person can finish is bounded by the ticket limit: a finish has to carry the
+# upload id a ticket handed out, and one ticket request signs a whole grid.
+upload-complete: { max: 10, window_seconds: 60 }
 # Asking how uploads ended (/assets/upload-status, inner#1367). One request
 # covers every upload the page is waiting on, and the page asks once per
 # Retry-After (2s), so 60 a minute is two pages' worth from one person.

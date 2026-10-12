@@ -398,7 +398,7 @@ assets.post(
 assets.post(
   "/uploads/:uploadId/complete",
   requireAuth,
-  rateLimitFor("upload-complete", "user"),
+  rateLimitFor("upload-complete", { userAndParam: "uploadId" }),
   validate(
     "json",
     z.object({

@@ -16,8 +16,12 @@ import { getRedis, checkRateLimit, logger } from "@breatic/core";
 import { t } from "@breatic/shared";
 import { getRateLimit } from "@server/config/rate-limits.js";
 
-/** A request's rate-limit key dimension. */
-type KeyBy = "ip" | "user";
+/**
+ * A request's rate-limit key dimension: the client's address, the signed-in
+ * user, or the signed-in user and one route param (one bucket per thing that
+ * param names, such as one upload).
+ */
+type KeyBy = "ip" | "user" | { readonly userAndParam: string };
 
 /**
  * Resolve the rate-limit key for a request under the given dimension.
@@ -27,13 +31,14 @@ type KeyBy = "ip" | "user";
  * misconfigured chain degrades to a single shared bucket rather than throwing.
  * `'ip'` reads the first `x-forwarded-for` hop.
  * @param c - The Hono context for the current request
- * @param keyBy - The key dimension (`'ip'` or `'user'`)
+ * @param keyBy - The key dimension
  * @returns The bucket key (without the action prefix)
  */
 function resolveKey(c: Parameters<MiddlewareHandler>[0], keyBy: KeyBy): string {
-  if (keyBy === "user") {
+  if (keyBy !== "ip") {
     const user = c.get("user") as { id: string } | undefined;
-    return user?.id ?? "anonymous";
+    const id = user?.id ?? "anonymous";
+    return keyBy === "user" ? id : `${id}:${c.req.param(keyBy.userAndParam) ?? ""}`;
   }
   return c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
 }
@@ -44,7 +49,7 @@ function resolveKey(c: Parameters<MiddlewareHandler>[0], keyBy: KeyBy): string {
  * @param opts.prefix - Redis key prefix identifying the limited action (e.g. `login`, `studio-create`).
  * @param opts.max - Maximum allowed requests per window.
  * @param opts.windowSeconds - Sliding window length in seconds.
- * @param opts.keyBy - Bucket dimension: `'ip'` (default) or `'user'` (requires `requireAuth` upstream).
+ * @param opts.keyBy - Bucket dimension: `'ip'` (default), `'user'`, or the user and one route param (both need `requireAuth` upstream).
  * @returns A Hono middleware that returns `429` with a `Retry-After` header when the limit is exceeded.
  */
 export function rateLimit(opts: {
@@ -81,7 +86,7 @@ export function rateLimit(opts: {
  * throttle number lives in code. The `action` doubles as the yaml key
  * and the Redis prefix.
  * @param action - Throttle action (yaml key + Redis prefix, e.g. `login`).
- * @param keyBy - Bucket dimension: `'ip'` (default) or `'user'` (needs `requireAuth` upstream).
+ * @param keyBy - Bucket dimension: `'ip'` (default), `'user'`, or the user and one route param (both need `requireAuth` upstream).
  * @returns The configured rate-limit middleware.
  */
 export function rateLimitFor(
