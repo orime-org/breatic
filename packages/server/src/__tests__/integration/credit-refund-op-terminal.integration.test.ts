@@ -8,7 +8,9 @@
  * | event   | succeeded                         | needs_attention                                 |
  * |---------|-----------------------------------|-------------------------------------------------|
  * | E1      | impossible                        | impossible                                      |
- * | E2–E6   | unchanged (one event row)         | unchanged (one event row)                       |
+ * | E2      | unchanged (one event row)         | unchanged (one event row); a refund_again       |
+ * |         |                                   | closes its own attention (op-booking suite)     |
+ * | E3–E6   | unchanged (one event row)         | unchanged (one event row)                       |
  * | E7–E12  | impossible                        | impossible                                      |
  * | E13     | unaffected (one event row)        | unaffected (one event row)                      |
  * | E14     | unchanged (one event row)         | attention_closed_at / attention_closed_by set   |
@@ -63,6 +65,8 @@ interface Terminal {
   label: string;
   status: Extract<OpStatus, "succeeded" | "needs_attention">;
   make: () => Promise<{ lot: SeededLot; opId: string; refundId: string }>;
+  /** E2 (its own refund succeeded) is not "unchanged" here; see below. */
+  skipE2?: true;
 }
 
 /**
@@ -178,10 +182,14 @@ const TERMINALS: Terminal[] = [
     label: "needs_attention refund_again (refunded lot)",
     status: "needs_attention",
     make: () => refundAgainIn("needs_attention"),
+    // §6.2 v7: E2 closes this refund_again's own attention and resolves its
+    // failed refunds; pinned in credit-refund-op-booking ("needs_attention × E2
+    // for a refund_again").
+    skipE2: true,
   },
 ];
 
-describe.each(TERMINALS)("$label", ({ status, make }) => {
+describe.each(TERMINALS)("$label", ({ status, make, skipE2 }) => {
   it("× E1 is impossible", async () => {
     const { lot, opId } = await make();
     await expectImpossible(suite.sql, lot, { id: opId }, status, {
@@ -201,7 +209,7 @@ describe.each(TERMINALS)("$label", ({ status, make }) => {
     });
   });
 
-  it.each(["E2", "E3", "E4", "E5", "E6"] as const)(
+  it.each((["E2", "E3", "E4", "E5", "E6"] as const).filter((t) => !(skipE2 && t === "E2")))(
     "× %s leaves everything unchanged and appends one event row",
     async (type) => {
       const { lot, opId, refundId } = await make();
