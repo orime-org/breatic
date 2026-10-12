@@ -11,10 +11,12 @@ import { IngestionServiceClient } from "@google-ads/datamanager";
 import {
   ADS_SWEEP_JOB,
   adsConversionConfig,
+  getUploadStatus,
   requeueStaleAdsUploads,
   settleAdsUpload,
   type AdsConversionConfig,
   type AdsConversionJob,
+  type AdsUploadStatus,
 } from "@breatic/core";
 
 /** How the platform's processing of an accepted request ended. */
@@ -120,6 +122,16 @@ async function waitForOriginal(job: Job<AdsConversionJob>, token: string | undef
 }
 
 /**
+ * Whether an upload's row still waits for this job.
+ * @param job - The upload.
+ * @param status - Where its row stands.
+ * @returns True while the row expects this job to upload.
+ */
+function uploadAwaited(job: AdsConversionJob, status: AdsUploadStatus): boolean {
+  return job.kind === "restatement" ? status === "restating" : status === "queued" || status === "restate_pending";
+}
+
+/**
  * Whether the platform refused the request for good.
  * @param err - What the upload threw.
  * @returns True for a gRPC status a retry cannot change.
@@ -155,6 +167,9 @@ export async function runAdsConversion(
   }
   let requestId: string | undefined;
   try {
+    // A job queued again after its upload settled (the sweep racing the last attempt) uploads nothing.
+    const status = await getUploadStatus({ conversion: job.data.conversion, transactionId: job.data.transactionId });
+    if (status === null || !uploadAwaited(job.data, status)) return;
     // A restatement of a conversion Google never recorded would count as a new conversion.
     if (job.data.kind === "restatement" && job.data.originalRequestId) {
       const original = await sink.status(job.data.originalRequestId);

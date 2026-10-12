@@ -14,6 +14,7 @@ import type * as CoreModule from "@breatic/core";
 const settleAdsUpload = vi.hoisted(() => vi.fn(async () => undefined));
 const requeueStaleAdsUploads = vi.hoisted(() => vi.fn(async () => 0));
 const adsConversionConfig = vi.hoisted(() => vi.fn());
+const getUploadStatus = vi.hoisted(() => vi.fn(async (): Promise<string | null> => "queued"));
 const ingestEvents = vi.hoisted(() => vi.fn(async () => [{ requestId: "req-1" }]));
 const retrieveRequestStatus = vi.hoisted(() =>
   vi.fn(async () => [{ requestStatusPerDestination: [{ requestStatus: "SUCCESS" }] }]),
@@ -21,7 +22,7 @@ const retrieveRequestStatus = vi.hoisted(() =>
 
 vi.mock("@breatic/core", async (importOriginal) => {
   const actual = await importOriginal<typeof CoreModule>();
-  return { ...actual, settleAdsUpload, adsConversionConfig, requeueStaleAdsUploads };
+  return { ...actual, settleAdsUpload, adsConversionConfig, requeueStaleAdsUploads, getUploadStatus };
 });
 vi.mock("@google-ads/datamanager", () => ({
   IngestionServiceClient: class {
@@ -86,6 +87,7 @@ function sinkWithStatus(status: "success" | "processing" | "failed"): AdsConvers
 beforeEach(() => {
   vi.clearAllMocks();
   adsConversionConfig.mockReturnValue(CONFIG);
+  getUploadStatus.mockImplementation(async () => "queued");
 });
 
 describe("runAdsConversion", () => {
@@ -97,6 +99,7 @@ describe("runAdsConversion", () => {
   });
 
   it("restates only once Google has processed the original upload", async () => {
+    getUploadStatus.mockResolvedValue("restating");
     const sink = sinkWithStatus("success");
     await runAdsConversion(job(0, RESTATEMENT), sink);
     expect(sink.status).toHaveBeenCalledWith("req-0");
@@ -105,6 +108,7 @@ describe("runAdsConversion", () => {
   });
 
   it("checks again in 30 minutes while Google is still processing the original upload, spending no attempt", async () => {
+    getUploadStatus.mockResolvedValue("restating");
     const sink = sinkWithStatus("processing");
     const queued = job(0, RESTATEMENT);
     const before = Date.now();
@@ -119,6 +123,7 @@ describe("runAdsConversion", () => {
   });
 
   it("waits longer after each check, an hour at most", async () => {
+    getUploadStatus.mockResolvedValue("restating");
     const sink = sinkWithStatus("processing");
     const second = job(0, { ...RESTATEMENT, statusChecks: 1 });
     let before = Date.now();
@@ -134,6 +139,7 @@ describe("runAdsConversion", () => {
   });
 
   it("gives the restatement up when Google is still processing the original a day later", async () => {
+    getUploadStatus.mockResolvedValue("restating");
     const sink = sinkWithStatus("processing");
     const queued = job(0, RESTATEMENT, 24 * 60 * MINUTE + 1);
     await expect(runAdsConversion(queued, sink, "token")).rejects.toBeInstanceOf(UnrecoverableError);
@@ -142,10 +148,24 @@ describe("runAdsConversion", () => {
   });
 
   it("drops the restatement when Google rejected the original upload", async () => {
+    getUploadStatus.mockResolvedValue("restating");
     const sink = sinkWithStatus("failed");
     await expect(runAdsConversion(job(0, RESTATEMENT), sink)).rejects.toBeInstanceOf(UnrecoverableError);
     expect(sink.upload).not.toHaveBeenCalled();
     expect(settleAdsUpload).toHaveBeenCalledWith(RESTATEMENT, false);
+  });
+
+  it.each([
+    ["conversion", "failed", DATA],
+    ["conversion", "uploaded", DATA],
+    ["restatement", "restate_failed", RESTATEMENT],
+  ] as const)("does not upload a %s whose upload already settled as %s", async (_kind, status, data) => {
+    getUploadStatus.mockResolvedValue(status);
+    const sink = sinkWithStatus("success");
+    await runAdsConversion(job(0, data), sink, "token");
+    expect(sink.upload).not.toHaveBeenCalled();
+    expect(sink.status).not.toHaveBeenCalled();
+    expect(settleAdsUpload).not.toHaveBeenCalled();
   });
 
   it("re-queues uploads whose job was lost on the sweep job", async () => {
