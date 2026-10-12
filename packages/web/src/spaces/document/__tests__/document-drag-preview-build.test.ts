@@ -107,7 +107,7 @@ describe('previewScale', () => {
 });
 
 describe('buildDragPreview', () => {
-  it('sizes the root to the scaled size and scales an inner layer, which carries the body classes but no editor class', () => {
+  it('sizes the root to the scaled size and scales an inner layer, which carries the editor element\'s classes but the one that marks an editor', () => {
     const editor = open([{ type: 'paragraph', content: 'one' }]);
     const content = document.createElement('div');
     const root = buildDragPreview(editor.prosemirrorView!, content, () => ({ width: 1024, height: 256 }));
@@ -126,11 +126,11 @@ describe('buildDragPreview', () => {
     expect(root.style.transform).toBe('');
     expect(layer.classList.contains('doc-body')).toBe(true);
     // BlockNote takes any `.bn-editor` in the page for an editor and reads its
-    // block group, drop routing included (`SideMenu.ts` findClosestEditorElement);
-    // its own preview drops these three classes, and so does ours.
-    for (const name of ['bn-root', 'bn-editor', 'ProseMirror']) {
-      expect(layer.classList.contains(name)).toBe(false);
-    }
+    // block group, drop routing included (`SideMenu.ts` findClosestEditorElement).
+    expect(layer.classList.contains('bn-editor')).toBe(false);
+    // The rules @tiptap/core injects hang off `.ProseMirror`: a code block's
+    // wrapping, a long word's break, ligatures off.
+    expect(layer.classList.contains('ProseMirror')).toBe(true);
     expect(layer.contains(content)).toBe(true);
   });
 
@@ -162,6 +162,16 @@ describe('buildDragPreview', () => {
     const [first, second] = [...root.querySelectorAll<HTMLElement>('.bn-block-content')];
     expect(first!.style.getPropertyValue('--doc-block-lift')).toBe('0px');
     expect(second!.style.getPropertyValue('--doc-block-lift')).toBe('');
+  });
+
+  it('stands its last block flush against its bottom, and leaves the space between blocks', () => {
+    const editor = open([{ type: 'paragraph', content: 'one' }]);
+    const content = document.createElement('div');
+    content.innerHTML =
+      '<div class="bn-block-content">first</div><div><div class="bn-block-content">nested</div></div><div class="bn-block-content">last</div>';
+    const root = buildDragPreview(editor.prosemirrorView!, content, () => ({ width: 100, height: 60 }));
+    const blocks = [...root.querySelectorAll<HTMLElement>('.bn-block-content')];
+    expect(blocks.map((block) => block.style.getPropertyValue('--doc-block-drop'))).toEqual(['', '', '0px']);
   });
 });
 
@@ -338,8 +348,14 @@ describe('tableLinePreviewContent', () => {
     const view = editor.prosemirrorView!;
     view.dom.querySelector('table')!.getBoundingClientRect = () => ({ width: 1081, height: 90 }) as DOMRect;
     (view.nodeDOM(cellOf(editor, 'c1')) as HTMLElement).getBoundingClientRect = () => ({ width: 121, height: 30 }) as DOMRect;
-    expect(tableLinePreviewContent(view, cellOf(editor, 'b2'), 'row')!.style.width).toBe('1081px');
-    expect(tableLinePreviewContent(view, cellOf(editor, 'c2'), 'column')!.style.width).toBe('121px');
+    const row = tableLinePreviewContent(view, cellOf(editor, 'b2'), 'row')!;
+    const column = tableLinePreviewContent(view, cellOf(editor, 'c2'), 'column')!;
+    expect(row.style.width).toBe('1081px');
+    expect(column.style.width).toBe('121px');
+    // The width is the room the table lays out in, as it is in the body: a
+    // quoted table block's rule padding stands outside it.
+    expect(row.style.boxSizing).toBe('content-box');
+    expect(column.style.boxSizing).toBe('content-box');
   });
 
   it('holds the line\'s table and nothing of the frame the table scrolls in', () => {
