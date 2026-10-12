@@ -144,7 +144,7 @@ function isPermanent(err: unknown): boolean {
 /**
  * Upload one queued conversion and record how it ended.
  * @param job - The queued upload.
- * @param sink - Builds where it goes; called only once the conversion is configured.
+ * @param sink - Builds where it goes from the configuration the conversion was checked against.
  * @param token - The worker's lock token for the job.
  * @throws {UnrecoverableError} When ad conversions are no longer configured or
  *   the platform refused it for good.
@@ -153,15 +153,16 @@ function isPermanent(err: unknown): boolean {
  */
 export async function runAdsConversion(
   job: Job<AdsConversionJob>,
-  sink: () => AdsConversionSink,
+  sink: (config: AdsConversionConfig) => AdsConversionSink,
   token?: string,
 ): Promise<void> {
   if (job.name === ADS_SWEEP_JOB) {
     await requeueStaleAdsUploads();
     return;
   }
-  const actionId = adsConversionConfig()?.actions[job.data.conversion];
-  if (actionId === undefined) {
+  const config = adsConversionConfig();
+  const actionId = config?.actions[job.data.conversion];
+  if (config === null || actionId === undefined) {
     await settleAdsUpload(job.data, false);
     throw new UnrecoverableError(`no conversion action for ${job.data.conversion}`);
   }
@@ -170,7 +171,7 @@ export async function runAdsConversion(
     // A job queued again after its upload settled (the sweep racing the last attempt) uploads nothing.
     const status = await getUploadStatus({ conversion: job.data.conversion, transactionId: job.data.transactionId });
     if (status === null || !uploadAwaited(job.data, status)) return;
-    const platform = sink();
+    const platform = sink(config);
     // A restatement of a conversion Google never recorded would count as a new conversion.
     if (job.data.kind === "restatement" && job.data.originalRequestId) {
       const original = await platform.status(job.data.originalRequestId);
