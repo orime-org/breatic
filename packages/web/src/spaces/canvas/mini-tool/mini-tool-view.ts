@@ -12,6 +12,7 @@ import {
 import {
   defaultSizeTier,
   isModelTool,
+  outputsOf,
   sizeTierOptions,
   tieredParamKeys,
   type MiniToolSlotValue,
@@ -58,6 +59,7 @@ export type MiniToolRefusal =
   | 'slotMissing'
   | 'slotTooLong'
   | 'drawingEmpty'
+  | 'singleTile'
   | 'promptMissing'
   | 'exporting'
   | null;
@@ -66,6 +68,7 @@ export type MiniToolRefusal =
 export const BLOCKING_REFUSALS: ReadonlySet<MiniToolRefusal> = new Set<MiniToolRefusal>([
   'slotMissing',
   'drawingEmpty',
+  'singleTile',
   'promptMissing',
   'exporting',
 ]);
@@ -199,6 +202,7 @@ export function slotLengthCap(
  * @param input.tiers - The size tiers as they fall on the source.
  * @param input.exporting - Whether a press is still making its file or images in the browser.
  * @param input.inked - Whether a drawing tool's drawing leaves any ink.
+ * @param input.params - The draft params.
  * @returns The first reason in the order the reader would fix them, or null.
  */
 export function miniToolRefusal(input: {
@@ -211,8 +215,9 @@ export function miniToolRefusal(input: {
   tiers?: readonly SizeTierChoice[];
   exporting: boolean;
   inked?: boolean;
+  params?: Readonly<Record<string, unknown>>;
 }): MiniToolRefusal {
-  const { spec, entry, prompt, slots, sourceShown, source = {}, exporting } = input;
+  const { spec, entry, prompt, slots, sourceShown, source = {}, exporting, params = {} } = input;
   if (exporting) return 'exporting';
   if (!sourceShown) return 'sourceMissing';
   // A range is measured on the source's length, which arrives with its metadata.
@@ -231,6 +236,8 @@ export function miniToolRefusal(input: {
   }
   if (slotLengthCap(spec, entry, slots) !== null) return 'slotTooLong';
   if (spec.drawing !== undefined && input.inked !== true) return 'drawingEmpty';
+  // A count multiplied out of params that comes to one leaves nothing cut.
+  if (spec.outputCount?.kind === 'product' && outputsOf(spec, params).length <= 1) return 'singleTile';
   if (promptRequired(spec, entry) && prompt.trim() === '') return 'promptMissing';
   return null;
 }

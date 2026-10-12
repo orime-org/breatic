@@ -287,6 +287,7 @@ function OpenMiniToolPanel({
     tiers: sizeTiers,
     exporting,
     inked,
+    params,
   });
   const pickingSlot = pickSession?.purpose === 'miniToolSlot' ? (pickSession.slotKey ?? null) : null;
 
