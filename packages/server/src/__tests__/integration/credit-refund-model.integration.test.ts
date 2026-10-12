@@ -9,9 +9,12 @@
  * The harness plays three parts:
  *
  * - **the back office and the endpoints**: an E1 is only issued when the
- *   request would pass its preconditions (§5.2, §5.3) against Stripe's
- *   current state, and, as the endpoint does, it first hands Stripe's list
- *   to `applyRefundSnapshot` in the same transaction;
+ *   production judges (`assessRefundCreate`, `assessOneShot`) pass it
+ *   against Stripe's current state, read the way the endpoint reads it, and,
+ *   as the endpoint does, it first hands Stripe's list to
+ *   `applyRefundSnapshot` in the same transaction; it also repeats an
+ *   earlier request's Idempotency-Key, and reuses one on another target,
+ *   through the endpoint's service (§4.6);
  * - **the executor and the loop**: a started disposition gets one of the
  *   §5.4 answers, classified here from the fake Stripe's state, and passed
  *   to `transitionOperation` with its lease; leases run out and old holders
@@ -19,6 +22,9 @@
  * - **Stripe**: refunds are created at most once per disposition, change
  *   status on their own (including succeeded → failed), appear from outside
  *   the product, and every change is delivered as a snapshot (a webhook).
+ *   What Stripe will still refund is paid − succeeded − processing − failed:
+ *   a failed refund's amount does not come back (§5.2, verified), so a
+ *   create beyond it is refused.
  *
  * After each step:
  *
@@ -41,7 +47,17 @@
  *    and never turns back;
  * 8. a finished refund_again has resolved each refund it covered;
  * 9. an open refund_again needs_attention implies an unresolved failed
- *    refund; `unresolvedFailedRefunds` agrees with the §5.3 definition.
+ *    refund; production's read (`pickUnresolvedFailedRefunds` over the
+ *    payment's copies) agrees with the §5.3 definition;
+ * 10. a step that booked the lot answered for every copy then `failed` or
+ *    `canceled` (§5.5);
+ * 11. with nothing in flight and nothing processing on Stripe: a lot not yet
+ *    booked passes resolve_outside, a `refunding` lot has an exit, and a
+ *    `refunded` lot with an unresolved failed refund passes both
+ *    refund_again and resolve_outside (§9);
+ * 12. a repeated Idempotency-Key replays the disposition it made (or is
+ *    `request_in_progress` while its lease is held) and the same key on
+ *    another target is `idempotency_key_reused`; neither writes anything.
  */
 
 import { describe, it, expect, vi } from "vitest";
@@ -59,17 +75,24 @@ vi.mock("ai", () => ({
 
 import { randomUUID } from "node:crypto";
 import fc from "fast-check";
+import { db } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
-import { creditLotService } from "@breatic/domain";
+import type { CreditLotEntity } from "@breatic/shared";
+import { creditLotRepo, creditLotService } from "@breatic/domain";
+import { assessOneShot, assessRefundCreate } from "@server/modules/credit-refund/assess.js";
+import { requestOneShot, requestRefund } from "@server/modules/credit-refund/disposition.service.js";
+import * as operationRepo from "@server/modules/credit-refund/operation.repo.js";
+import type { CreditRefundOperation } from "@server/modules/credit-refund/operation.repo.js";
 import {
   transitionOperation,
   type NewOperation,
   type OperationEvent,
 } from "@server/modules/credit-refund/operation-transitions.js";
-import {
-  applyRefundSnapshot,
-  unresolvedFailedRefunds,
-} from "@server/modules/credit-refund/refund-snapshot.js";
+import * as refundCopyRepo from "@server/modules/credit-refund/refund-copy.repo.js";
+import { applyRefundSnapshot } from "@server/modules/credit-refund/refund-snapshot.js";
+import { RefundRefusal } from "@server/modules/credit-refund/refusal.js";
+import type { RefundCopy } from "@server/modules/credit-refund/types.js";
+import { pickUnresolvedFailedRefunds } from "@server/modules/credit-refund/unresolved.js";
 import {
   PAID_CENTS,
   inTx,
@@ -101,6 +124,8 @@ const ACTIONS = [
   "stripe_change",
   "redeliver",
   "ask",
+  "repeat_key",
+  "key_other_target",
 ] as const;
 type Action = (typeof ACTIONS)[number];
 
@@ -146,6 +171,22 @@ interface View {
   unresolved: { id: string; amount: number }[];
 }
 
+/** The lot as production reads it inside a write, after the snapshot. */
+interface Facts {
+  lot: CreditLotEntity;
+  ledgerSum: number;
+  ops: CreditRefundOperation[];
+  refunds: RefundCopy[];
+}
+
+/** The six kinds an operator can request, and whether the judges pass each now. */
+type Verdicts = Record<OpKind, boolean>;
+
+/** Thrown to roll back the transaction that only reads facts. */
+class ReadOnly extends Error {}
+
+const REQUEST_HASH = "e".repeat(64);
+
 /** Counters that must grow by exactly what a step did. */
 interface Counts {
   events: number;
@@ -183,9 +224,11 @@ async function view(lot: SeededLot): Promise<View> {
   // §5.3, written out here independently of the code under test.
   const unresolved = await sql<{ id: string; amount: string }[]>`
     SELECT r.stripe_refund_id AS id, r.amount_cents::text AS amount
-    FROM credit_refunds r JOIN credit_lots l ON l.id = r.lot_id
-    WHERE r.lot_id = ${lot.lotId} AND l.lifecycle = 'refunded' AND r.ever_succeeded
+    FROM credit_refunds r JOIN credit_lots l ON l.id = ${lot.lotId}
+    WHERE r.payment_id = ${lot.paymentId}
       AND r.status IN ('failed', 'canceled') AND r.resolved_by_operation_id IS NULL
+      AND (l.lifecycle IN ('refund_pending', 'refunding')
+           OR (l.lifecycle = 'refunded' AND r.ever_succeeded))
     ORDER BY r.stripe_refund_id
   `;
   return {
@@ -218,6 +261,7 @@ async function counts(lot: SeededLot): Promise<Counts> {
 const isOpen = (r: FakeRefund) => r.status === "pending" || r.status === "requires_action";
 const sumWhere = (rs: FakeRefund[], f: (r: FakeRefund) => boolean) =>
   rs.filter(f).reduce((n, r) => n + r.amount, 0);
+const inFlight = (o: { status: string }) => o.status === "started" || o.status === "awaiting_stripe";
 
 /** What Stripe allows a refund to become next. */
 const NEXT: Partial<Record<RefundStatus, RefundStatus[]>> = {
@@ -234,6 +278,8 @@ class Harness {
   everTrue = new Set<string>();
   /** Ledger rows when the lot was booked; nothing may follow. */
   rowsAtBooking: number | null = null;
+  /** Every Idempotency-Key this run's dispositions were made under. */
+  readonly keys: { key: string; kind: OpKind }[] = [];
 
   constructor(
     readonly lot: SeededLot,
@@ -259,45 +305,153 @@ class Harness {
   }
 
   /**
-   * The actions whose preconditions hold now.
+   * What Stripe will still refund: a failed refund's amount does not come
+   * back; a canceled one never moved money.
+   * @returns Cents.
+   */
+  refundable(): number {
+    return (
+      PAID_CENTS -
+      sumWhere(this.stripe, (r) => r.status === "succeeded") -
+      sumWhere(this.stripe, isOpen) -
+      sumWhere(this.stripe, (r) => r.status === "failed")
+    );
+  }
+
+  /**
+   * The facts a write request judges on: Stripe's list copied in, then the
+   * lot, its ledger sum, its dispositions and its payment's copies — as the
+   * endpoint reads them — in a transaction that is rolled back.
+   * @returns The facts.
+   */
+  async facts(): Promise<Facts> {
+    let read: Facts | undefined;
+    try {
+      await db.transaction(async (tx) => {
+        await applyRefundSnapshot(tx, this.lot.paymentId, this.list());
+        const lot = (await creditLotRepo.lockLot(this.lot.lotId, tx))!;
+        const { ledgerSum } = await creditLotRepo.readRefundFacts(this.lot.lotId, tx);
+        read = {
+          lot,
+          ledgerSum: Number(ledgerSum),
+          ops: await operationRepo.listForLot(this.lot.lotId, tx),
+          refunds: await refundCopyRepo.listForPayment(this.lot.paymentId, tx),
+        };
+        throw new ReadOnly();
+      });
+    } catch (err) {
+      if (!(err instanceof ReadOnly)) throw err;
+    }
+    return read!;
+  }
+
+  /**
+   * Whether the production judges pass each kind now, with what the
+   * confirmation page would send back for these facts.
+   * @param f - The facts.
+   * @param acceptPartial - settle's acceptPartial.
+   * @returns One verdict per kind.
+   */
+  verdicts(f: Facts, acceptPartial: boolean): Verdicts {
+    const lifecycle = f.lot.lifecycle;
+    const remainingCredits = Number(f.lot.remainingCredits);
+    const succeeded = f.refunds.filter((r) => r.status === "succeeded");
+    const succeededCents = succeeded.reduce((n, r) => n + r.amountCents, 0);
+    const failedRefundIds = pickUnresolvedFailedRefunds(lifecycle, f.refunds).map((r) => r.stripeRefundId);
+    const create = (kind: "approve" | "retry" | "refund_again") =>
+      assessRefundCreate({
+        kind,
+        lot: { lifecycle, remainingCredits, ledgerSum: f.ledgerSum },
+        payment: { status: "completed", stripePaymentIntentId: this.lot.paymentIntentId, paidCents: PAID_CENTS },
+        ops: f.ops,
+        refunds: f.refunds,
+        confirmedRefundIds: succeeded.map((r) => r.stripeRefundId),
+        failedRefundIds,
+      }).outcome === "create_refund";
+    const oneShot = (kind: "reject" | "settle" | "send_back" | "resolve_outside") =>
+      assessOneShot({
+        kind,
+        lot: { lifecycle, remainingCredits },
+        paidCents: PAID_CENTS,
+        ops: f.ops,
+        refunds: f.refunds,
+        confirmedSucceededCents: succeededCents,
+        acceptPartial,
+        failedRefundIds,
+      }).outcome === "proceed";
+    return {
+      approve: create("approve"),
+      retry: create("retry"),
+      refund_again: create("refund_again"),
+      reject: oneShot("reject"),
+      settle: oneShot("settle"),
+      send_back: oneShot("send_back"),
+      resolve_outside: oneShot("resolve_outside"),
+    };
+  }
+
+  /**
+   * The actions whose preconditions hold now: the six requests as the
+   * production judges decide them, the rest from the harness's own state.
    * @param v - The current view.
    * @param c - The step's choice.
    * @returns Enabled actions.
    */
-  enabled(v: View, c: Choice): Action[] {
-    const succ = sumWhere(this.stripe, (r) => r.status === "succeeded");
-    const anyOpen = this.stripe.some(isOpen);
-    const anySucceeded = this.stripe.some((r) => r.status === "succeeded");
-    const refundable = PAID_CENTS - succ - sumWhere(this.stripe, isOpen);
-    const idle = v.inflight === undefined;
+  async enabled(v: View, c: Choice): Promise<Action[]> {
+    const judged = this.verdicts(await this.facts(), c.acceptPartial);
     const on: Record<Action, boolean> = {
-      approve: v.lifecycle === "refund_pending" && idle && !anyOpen && succ < PAID_CENTS,
-      reject: v.lifecycle === "refund_pending" && idle && !anyOpen && !anySucceeded,
-      settle:
-        (v.lifecycle === "refunding" || v.lifecycle === "refund_pending") &&
-        idle &&
-        !anyOpen &&
-        (succ >= PAID_CENTS || (c.acceptPartial && succ > 0)),
-      send_back: v.lifecycle === "refunding" && idle && !anyOpen && !anySucceeded,
-      retry:
-        v.lifecycle === "refunding" &&
-        idle &&
-        v.latest?.status === "needs_attention" &&
-        v.latest.open &&
-        !anyOpen &&
-        succ < PAID_CENTS,
-      refund_again: v.lifecycle === "refunded" && idle && v.unresolved.length > 0 && !anyOpen,
-      resolve_outside: v.lifecycle === "refunded" && idle && v.unresolved.length > 0 && !anyOpen,
+      ...judged,
       answer: v.inflight?.status === "started",
       claim_late: v.inflight?.status === "started",
       await_tick: v.inflight?.status === "awaiting_stripe" && v.inflight.stripe_refund_id === null,
       await_read_failed: v.inflight?.status === "awaiting_stripe",
-      external: refundable > 0,
+      external: this.refundable() > 0,
       stripe_change: this.stripe.some((r) => NEXT[r.status] !== undefined),
       redeliver: this.stripe.length > 0,
       ask: v.lifecycle === "active",
+      repeat_key: this.keys.length > 0,
+      key_other_target: this.keys.length > 0,
     };
     return ACTIONS.filter((a) => on[a]);
+  }
+
+  /**
+   * Send an earlier request's Idempotency-Key through the endpoint's service
+   * again: to the same lot with the same fingerprint, or to another target.
+   * Nothing must be written either way (§4.6).
+   * @param c - The step's choice.
+   * @param otherTarget - Send it for another lot, with that lot's fingerprint.
+   */
+  async reuseKey(c: Choice, otherTarget: boolean): Promise<void> {
+    const { key, kind } = this.keys[c.amount % this.keys.length]!;
+    const req = {
+      lotId: otherTarget ? randomUUID() : this.lot.lotId,
+      adminId: "admin_model",
+      key,
+      hash: otherTarget ? "f".repeat(64) : REQUEST_HASH,
+      reason: "model: same key again",
+    };
+    const send = () =>
+      kind === "approve" || kind === "retry" || kind === "refund_again"
+        ? requestRefund(kind, req, {})
+        : requestOneShot(kind, req, {});
+    const [held] = await suite.sql<{ id: string; status: string; leased: boolean }[]>`
+      SELECT id, status, coalesce(locked_until > now(), false) AS leased
+      FROM credit_refund_operations WHERE idempotency_key = ${key}
+    `;
+    if (otherTarget) {
+      const refused = await send().then(() => null, (err: unknown) => err);
+      expect(refused).toBeInstanceOf(RefundRefusal);
+      expect(refused).toMatchObject({ status: 422, code: "idempotency_key_reused" });
+    } else if (held!.status === "started" && held!.leased) {
+      const refused = await send().then(() => null, (err: unknown) => err);
+      expect(refused).toBeInstanceOf(RefundRefusal);
+      expect(refused).toMatchObject({ status: 409, code: "request_in_progress" });
+    } else {
+      const answer = await send();
+      expect(answer.body).toMatchObject({ id: held!.id, idempotencyKey: key });
+      expect(answer.status).toBe(inFlight(held!) ? 202 : 200);
+    }
   }
 
   /**
@@ -312,19 +466,23 @@ class Harness {
     const lot = this.lot;
     const succeededIds = this.stripe.filter((r) => r.status === "succeeded").map((r) => r.id);
     const succ = sumWhere(this.stripe, (r) => r.status === "succeeded");
-    const create = (kind: OpKind, extra: Partial<NewOperation>): OperationEvent => ({
-      type: "E1",
-      create: {
-        kind,
-        lotId: lot.lotId,
-        paymentId: lot.paymentId,
-        idempotencyKey: `model-${randomUUID()}`,
-        requestHash: "e".repeat(64),
-        requestedBy: "admin_model",
-        reason: `model ${action}`,
-        ...extra,
-      },
-    });
+    const create = (kind: OpKind, extra: Partial<NewOperation>): OperationEvent => {
+      const idempotencyKey = `model-${randomUUID()}`;
+      this.keys.push({ key: idempotencyKey, kind });
+      return {
+        type: "E1",
+        create: {
+          kind,
+          lotId: lot.lotId,
+          paymentId: lot.paymentId,
+          idempotencyKey,
+          requestHash: REQUEST_HASH,
+          requestedBy: "admin_model",
+          reason: `model ${action}`,
+          ...extra,
+        },
+      };
+    };
     const e1 = async (event: OperationEvent) => {
       const op = await inTx(async (tx) => {
         await this.snapshot(tx);
@@ -398,7 +556,7 @@ class Harness {
         );
         return { direct: 1, snapshot: false };
       case "external": {
-        const refundable = PAID_CENTS - succ - sumWhere(this.stripe, isOpen);
+        const refundable = this.refundable();
         const status = (["pending", "succeeded", "failed"] as const)[c.variant % 3]!;
         this.stripe.push({ id: reId("ext"), amount: 1 + (c.amount % refundable), status });
         await inTx((tx) => this.snapshot(tx));
@@ -418,6 +576,10 @@ class Harness {
       case "ask":
         await creditLotService.requestRefund({ lotId: lot.lotId, requestingUserId: lot.userId });
         return { direct: 0, snapshot: false };
+      case "repeat_key":
+      case "key_other_target":
+        await this.reuseKey(c, action === "key_other_target");
+        return { direct: 0, snapshot: false };
     }
   }
 
@@ -430,16 +592,25 @@ class Harness {
   private async answer(op: OpView, c: Choice): Promise<{ direct: number; snapshot: boolean }> {
     const lease = op.lease_token!;
     const variant = c.variant % 9;
-    const amountFor = () =>
-      op.kind === "refund_again"
-        ? op.refund_amount_cents!
-        : PAID_CENTS -
-          sumWhere(this.stripe, (r) => r.status === "succeeded") -
-          sumWhere(this.stripe, isOpen);
+    // approve and retry send no amount: Stripe refunds what it still will.
+    const amountFor = () => (op.kind === "refund_again" ? op.refund_amount_cents! : this.refundable());
 
     if (variant <= 2) {
       const target = (["succeeded", "pending", "failed"] as const)[variant]!;
       let refund = this.stripe.find((r) => r.opId === op.id);
+      if (!refund && op.kind === "refund_again" && amountFor() > this.refundable()) {
+        // Stripe refuses an amount beyond what it will still refund, on the
+        // first request (§5.2, verified): E6, nothing created.
+        this.count("answer:E6");
+        await inTx((tx) =>
+          transitionOperation(tx, { id: op.id }, {
+            type: "E6",
+            failure: failure(400, { code: "amount_too_large" }),
+            leaseToken: lease,
+          }),
+        );
+        return { direct: 1, snapshot: false };
+      }
       if (!refund) {
         const amount = amountFor();
         if (amount <= 0) {
@@ -478,7 +649,7 @@ class Harness {
       // A 5xx says nothing about whether Stripe made the refund; sometimes it did.
       const made = c.amount % 3;
       const amount = amountFor();
-      if (made > 0 && amount > 0 && !this.stripe.some((r) => r.opId === op.id)) {
+      if (made > 0 && amount > 0 && amount <= this.refundable() && !this.stripe.some((r) => r.opId === op.id)) {
         this.stripe.push({
           id: reId("own_5xx"),
           amount,
@@ -527,11 +698,13 @@ class Harness {
    * @param step.direct - Direct transition calls.
    * @param step.snapshot - Whether a snapshot was delivered.
    * @param awaitingBefore - Whether a disposition was awaiting Stripe before it.
+   * @param lifecycleBefore - The lot's state before it.
    */
   async check(
     before: Counts,
     step: { direct: number; snapshot: boolean },
     awaitingBefore: boolean,
+    lifecycleBefore: string,
   ): Promise<void> {
     const sql = suite.sql;
     const lot = this.lot;
@@ -644,8 +817,41 @@ class Harness {
     if (v.ops.some((o) => o.kind === "refund_again" && o.status === "needs_attention" && o.open)) {
       expect(v.unresolved.length).toBeGreaterThan(0);
     }
-    const listed = await inTx((tx) => unresolvedFailedRefunds(tx, lot.lotId));
+    const listed = await inTx(async (tx) => {
+      const locked = await creditLotRepo.lockLot(lot.lotId, tx);
+      return pickUnresolvedFailedRefunds(locked!.lifecycle, await refundCopyRepo.listForPayment(lot.paymentId, tx));
+    });
     expect(listed.map((r) => r.stripeRefundId).sort()).toEqual(v.unresolved.map((u) => u.id));
+
+    // 10. A step that booked the lot answered for every copy then failed or canceled.
+    if (lifecycleBefore !== "refunded" && v.lifecycle === "refunded") {
+      const unanswered = await sql<{ id: string }[]>`
+        SELECT stripe_refund_id AS id FROM credit_refunds
+        WHERE payment_id = ${lot.paymentId} AND status IN ('failed', 'canceled')
+          AND resolved_by_operation_id IS NULL
+      `;
+      expect(unanswered).toEqual([]);
+    }
+
+    // 11. Nothing in flight and nothing processing: the exits are open (§9).
+    //     Judged on what an endpoint would read now, after Stripe's list.
+    const f = await this.facts();
+    if (!f.ops.some(inFlight) && !f.refunds.some((r) => r.status === "pending" || r.status === "requires_action")) {
+      const pass = this.verdicts(f, true);
+      const lifecycle = f.lot.lifecycle;
+      if (lifecycle === "refunding" || lifecycle === "refund_pending") {
+        expect(pass.resolve_outside).toBe(true);
+      }
+      if (lifecycle === "refunding") {
+        expect(pass.settle || pass.send_back || pass.retry || pass.resolve_outside).toBe(true);
+      }
+      if (lifecycle === "refunded" && pickUnresolvedFailedRefunds(lifecycle, f.refunds).length > 0) {
+        expect({ refund_again: pass.refund_again, resolve_outside: pass.resolve_outside }).toEqual({
+          refund_again: true,
+          resolve_outside: true,
+        });
+      }
+    }
   }
 }
 
@@ -680,7 +886,8 @@ function step(
  * path cannot leave it unchecked.
  */
 const EXAMPLES: [Choice[]][] = [
-  // Booked, the refund fails later, refund again, that one fails later too, resolved outside.
+  // Booked, the refund fails later; refund again is refused by Stripe (the
+  // failed amount does not come back), so it is resolved outside.
   [[
     step("approve"), step("answer", 0), step("stripe_change"), step("refund_again"),
     step("answer", 0), step("stripe_change"), step("resolve_outside"),
@@ -689,10 +896,13 @@ const EXAMPLES: [Choice[]][] = [
   [[step("approve"), step("answer", 1), step("stripe_change", 0), step("redeliver")]],
   // 5xx while Stripe did make the refund: found by metadata on the next snapshot.
   [[step("approve"), step("answer", 4, 2), step("redeliver")]],
-  // Reject, ask again, declined, approve, already refunded, retry, exhausted, send back.
+  // Reject, ask again, 5xx with nothing made, 24 hours, retry, attempts used
+  // up, send back, approve, already refunded elsewhere, resolved outside on
+  // the refunding lot.
   [[
-    step("reject"), step("ask"), step("approve"), step("answer", 2), step("approve"),
-    step("answer", 6), step("retry"), step("answer", 5), step("send_back"),
+    step("reject"), step("ask"), step("approve"), step("answer", 4, 0), step("await_tick", 1),
+    step("retry"), step("answer", 5), step("send_back"), step("approve"), step("answer", 6),
+    step("resolve_outside"),
   ]],
   // Timeout, lease handed on and the old holder late, 5xx with nothing made,
   // 24 hours, an external partial refund, settled on purpose short.
@@ -710,6 +920,24 @@ const EXAMPLES: [Choice[]][] = [
     step("approve"), step("external", 0, 99), step("answer", 0), step("stripe_change", 0),
     step("redeliver"),
   ]],
+  // Settled short on purpose; the refund it was booked on fails later; refund
+  // again for that amount, which Stripe can still refund, succeeds.
+  [[
+    step("external", 1, 499), step("settle", 0, 0, { acceptPartial: true, notify: false }),
+    step("stripe_change", 0, 0), step("refund_again"), step("answer", 0),
+  ]],
+  // The approval's refund goes from pending straight to failed: retry has
+  // nothing Stripe will refund (refund_failed); resolved outside books the lot.
+  [[step("approve"), step("answer", 1), step("stripe_change", 1), step("resolve_outside")]],
+  // A failed refund made outside used up the payment before any approval:
+  // resolved outside books the lot and answers for it.
+  [[step("external", 2, 1079), step("resolve_outside")]],
+  // The same Idempotency-Key again — while the lease is held, then after the
+  // disposition finished — and the same key on another lot.
+  [[
+    step("approve"), step("repeat_key"), step("key_other_target"), step("answer", 0),
+    step("repeat_key"), step("key_other_target"),
+  ]],
 ];
 
 describe("random disposition sequences on one lot (§9 invariants)", () => {
@@ -721,13 +949,13 @@ describe("random disposition sequences on one lot (§9 invariants)", () => {
         const h = new Harness(lot, tally);
         for (const c of choices) {
           const v = await view(lot);
-          const enabled = h.enabled(v, c);
+          const enabled = await h.enabled(v, c);
           if (enabled.length === 0) continue;
           const action = enabled.includes(c.want) ? c.want : enabled[c.pick % enabled.length]!;
           const before = await counts(lot);
           const awaitingBefore = v.inflight?.status === "awaiting_stripe";
           const did = await h.run(action, v, c);
-          await h.check(before, did, awaitingBefore);
+          await h.check(before, did, awaitingBefore, v.lifecycle);
         }
       }),
       { numRuns: 25, examples: EXAMPLES },
@@ -740,7 +968,7 @@ describe("random disposition sequences on one lot (§9 invariants)", () => {
       "approve", "reject", "settle", "send_back", "retry", "refund_again", "resolve_outside",
       "claim_late", "await_tick", "external", "stripe_change", "redeliver", "ask",
       "answer:E2", "answer:E3", "answer:E5", "answer:E6", "answer:E7", "answer:E8",
-      "answer:E9", "answer:E11",
+      "answer:E9", "answer:E11", "repeat_key", "key_other_target",
     ]) {
       expect(tally.get(name) ?? 0, name).toBeGreaterThan(0);
     }

@@ -6,11 +6,12 @@
  * request must get past before any handler runs, against real Postgres and
  * Redis over a real loopback socket.
  *
- * The order is rate limit (by connection address, fail closed) → signature
- * headers → ±300 s window → HMAC under either secret → nonce `SET NX EX 600`
- * (fail closed) → the authorisation table. Every refusal here must leave the
- * database and Stripe untouched: a refused request that wrote something is a
- * request that got in.
+ * The order is rate limit (by connection address, fail closed) → body size
+ * (64 KiB, 413) → signature headers → ±300 s window → HMAC under either
+ * secret → nonce `SET NX EX 602` (fail closed) → the authorisation table.
+ * Every refusal here must leave the database and Stripe untouched: a refused
+ * request that wrote something is a request that got in. Every request, let
+ * through or refused, logs one `internal_api_request` line (acceptance #14).
  *
  * Redis outages are injected at the one client the server shares
  * (`getRedis`), in the two shapes ioredis really produces: a pipeline whose
@@ -22,6 +23,7 @@ import type * as BreaticCore from "@breatic/core";
 
 type RedisFaultMode = "none" | "pipeline_error_results" | "pipeline_rejects" | "commands_reject";
 const redisFault = vi.hoisted((): { mode: RedisFaultMode } => ({ mode: "none" }));
+const logged = vi.hoisted(() => ({ info: vi.fn() }));
 
 vi.mock("@breatic/core", async (importOriginal) => {
   const actual = await importOriginal<typeof BreaticCore>();
@@ -77,7 +79,11 @@ vi.mock("@breatic/core", async (importOriginal) => {
       },
     });
   }
-  return { ...actual, getRedis: () => faulty(actual.getRedis()) };
+  // `info` is recorded instead of written; every other level goes to the real logger.
+  const logger = new Proxy(actual.logger, {
+    get: (target, prop) => (prop === "info" ? logged.info : Reflect.get(target, prop)),
+  });
+  return { ...actual, getRedis: () => faulty(actual.getRedis()), logger };
 });
 
 vi.mock("@server/infra/stripe.js", async () => {
@@ -113,6 +119,7 @@ import { PAID_CENTS, seedRefundLot, worldOf } from "./credit-refund-fixtures.js"
 // the shared beforeEach clears the rate-limit keys through the same client.
 beforeEach(() => {
   redisFault.mode = "none";
+  logged.info.mockClear();
 });
 afterEach(() => {
   redisFault.mode = "none";
@@ -203,16 +210,22 @@ describe("signature (§4.2): each failed step is 401 and writes nothing", () => 
     expect(fakeStripe.listCalls).toHaveLength(1);
   });
 
-  it("stores the nonce under {env}:server:internal-nonce:<nonce> for 600 seconds", async () => {
+  // The window is inclusive on floored seconds, so a timestamp S is accepted
+  // over real time [S-300, S+301): 601 seconds, plus one for the floor of the
+  // moment the key is set. The key was set between `sent` and the read, so
+  // what is left plus what has passed is at least the full TTL.
+  it("stores the nonce under {env}:server:internal-nonce:<nonce> for 602 seconds", async () => {
     const lot = await pendingLot();
     const nonce = freshNonce();
+    const sent = Date.now();
 
     const res = await call(running.baseUrl, paths.preview(lot.lotId), { nonce });
 
     expect(res.status).toBe(200);
-    const ttl = await getRedis().ttl(nonceKey(nonce));
-    expect(ttl).toBeGreaterThan(590);
-    expect(ttl).toBeLessThanOrEqual(600);
+    const leftMs = await getRedis().pttl(nonceKey(nonce));
+    const passedMs = Date.now() - sent;
+    expect(leftMs).toBeLessThanOrEqual(602_000);
+    expect(leftMs + passedMs).toBeGreaterThanOrEqual(602_000);
   });
 
   it("accepts a request signed with the previous secret during rotation", async () => {
@@ -327,12 +340,17 @@ describe("authorisation table (§4.3)", () => {
     expect(fakeStripe.listCalls).toEqual([]);
   });
 
+  // A route that mounts `validate()` before its handler is listed once per
+  // handler, so the table is compared as a set of method and path.
   it("registers exactly the nine endpoints of §4.5, by method and path template", async () => {
     const { createInternalApp } = await import("@server/internal-app.js");
-    const registered = createInternalApp()
-      .routes.filter((r) => r.method !== "ALL")
-      .map((r) => `${r.method} ${r.path}`)
-      .sort();
+    const registered = [
+      ...new Set(
+        createInternalApp()
+          .routes.filter((r) => r.method !== "ALL")
+          .map((r) => `${r.method} ${r.path}`),
+      ),
+    ].sort();
 
     expect(registered).toEqual(
       [
@@ -391,5 +409,221 @@ describe("the public app has no internal surface (§4.1, acceptance #1)", () => 
 
     expect(source).not.toMatch(/internal-app/);
     expect(source).not.toMatch(/routes\/internal/);
+  });
+});
+
+describe("request body size (§4.6): over 64 KiB is 413 before the signature is read", () => {
+  /** 64 KiB plus one byte of well-formed JSON. */
+  const OVERSIZE = `{"reason":"${"x".repeat(64 * 1024 + 1 - '{"reason":""}'.length)}"}`;
+  const NO_LOT = "00000000-0000-4000-8000-000000000000";
+
+  it("the oversize body is exactly 65537 bytes", () => {
+    expect(Buffer.byteLength(OVERSIZE)).toBe(65_537);
+  });
+
+  it.each([
+    ["an approval", paths.approve(NO_LOT)],
+    ["a rejection", paths.reject(NO_LOT)],
+    ["a mail resend", paths.resend(NO_LOT)],
+    ["a path outside the table", "/internal/v1/health"],
+  ])("an unsigned oversize POST to %s is 413 invalid_body", async (_name, path) => {
+    const res = await call(running.baseUrl, path, { rawBody: OVERSIZE, unsigned: true });
+
+    expect(res.status).toBe(413);
+    expect(res.json).toEqual({ code: "invalid_body" });
+  });
+
+  it("a correctly signed oversize body is 413 too, writes no nonce and touches nothing", async () => {
+    const lot = await pendingLot();
+    const before = await worldOf(sql, lot);
+    const nonce = freshNonce();
+
+    const res = await call(running.baseUrl, paths.reject(lot.lotId), {
+      rawBody: OVERSIZE,
+      idempotencyKey: freshKey("reject"),
+      nonce,
+    });
+
+    expect(res.status).toBe(413);
+    expect(res.json).toEqual({ code: "invalid_body" });
+    expect(await getRedis().exists(nonceKey(nonce))).toBe(0);
+    expect(await worldOf(sql, lot)).toEqual(before);
+    expect(fakeStripe.listCalls).toEqual([]);
+  });
+
+  // The largest honest body: a 500-character reason and 100 refund ids of 255
+  // characters each, about 26 KB. The limit must leave it room.
+  it("a signed body of the largest honest size gets past the gate", async () => {
+    const lot = await pendingLot();
+    const confirmedRefundIds = Array.from({ length: 100 }, (_, i) => `re_${String(i).padStart(3, "0")}${"x".repeat(249)}`);
+    const rawBody = JSON.stringify({ reason: "r".repeat(500), confirmedRefundIds });
+    expect(Buffer.byteLength(rawBody)).toBeGreaterThan(26_000);
+
+    const res = await call(running.baseUrl, paths.approve(lot.lotId), { rawBody, idempotencyKey: freshKey("approve") });
+
+    expect(res.status).not.toBe(413);
+    expect(res.status).not.toBe(401);
+    expect(res.json?.code).not.toBe("invalid_body");
+  });
+});
+
+describe("body contract of every write endpoint (§4.5, §4.6)", () => {
+  const NO_LOT = "00000000-0000-4000-8000-000000000000";
+  const writes = [
+    ["approve", paths.approve(NO_LOT)],
+    ["reject", paths.reject(NO_LOT)],
+    ["settle", paths.settle(NO_LOT)],
+    ["send-back", paths.sendBack(NO_LOT)],
+    ["retry", paths.retry(NO_LOT)],
+    ["refund-again", paths.refundAgain(NO_LOT)],
+    ["resolved-outside", paths.resolvedOutside(NO_LOT)],
+    ["mail resend", paths.resend(NO_LOT)],
+  ] as const;
+
+  it.each(writes)("%s: a body that is not JSON is 400 invalid_body", async (_name, path) => {
+    const res = await call(running.baseUrl, path, { rawBody: "{ not json", idempotencyKey: freshKey("bad") });
+
+    expect(res.status).toBe(400);
+    expect(res.json.code).toBe("invalid_body");
+    expect(fakeStripe.listCalls).toEqual([]);
+  });
+
+  it.each(writes)("%s: a JSON body that fails the schema is 422 invalid_body", async (_name, path) => {
+    const res = await call(running.baseUrl, path, { body: { unexpected: true }, idempotencyKey: freshKey("bad") });
+
+    expect(res.status).toBe(422);
+    expect(res.json.code).toBe("invalid_body");
+    expect(fakeStripe.listCalls).toEqual([]);
+  });
+});
+
+describe("one structured log line per request (acceptance #14)", () => {
+  /**
+   * The `internal_api_request` lines logged since the case began.
+   * @returns Their field objects, in order.
+   */
+  function requestLines(): Record<string, unknown>[] {
+    return logged.info.mock.calls
+      .filter((args: unknown[]) => args[1] === "internal_api_request")
+      .map((args: unknown[]) => args[0] as Record<string, unknown>);
+  }
+
+  /**
+   * Wait for the request's line and check it is the only one.
+   * @returns Its fields.
+   */
+  async function theOneLine(): Promise<Record<string, unknown>> {
+    await vi.waitFor(() => expect(requestLines().length).toBeGreaterThan(0), { timeout: 2_000, interval: 10 });
+    const lines = requestLines();
+    expect(lines).toHaveLength(1);
+    const line = lines[0]!;
+    expect(typeof line["durationMs"]).toBe("number");
+    expect(line["durationMs"]).toBeGreaterThanOrEqual(0);
+    return line;
+  }
+
+  it("an accepted write logs who, what, which key and the status", async () => {
+    const lot = await pendingLot();
+    const key = freshKey("reject");
+
+    const res = await call(running.baseUrl, paths.reject(lot.lotId), { body: REJECT_BODY, idempotencyKey: key });
+    await mailsSettled(sql, lot);
+
+    expect(res.status).toBe(200);
+    expect(await theOneLine()).toMatchObject({
+      adminId: ADMIN,
+      method: "POST",
+      path: paths.reject(lot.lotId),
+      idempotencyKey: key,
+      status: 200,
+    });
+  });
+
+  it("an accepted read logs no idempotency key", async () => {
+    const lot = await pendingLot();
+
+    const res = await call(running.baseUrl, `${paths.preview(lot.lotId)}?probe=1`);
+
+    expect(res.status).toBe(200);
+    const line = await theOneLine();
+    expect(line).toMatchObject({ adminId: ADMIN, method: "GET", path: paths.preview(lot.lotId), status: 200 });
+    expect(line["idempotencyKey"]).toBeUndefined();
+  });
+
+  it("an unsigned request is 401 and its line names no admin", async () => {
+    const key = freshKey("reject");
+    const path = paths.reject("00000000-0000-4000-8000-000000000000");
+
+    const res = await call(running.baseUrl, path, { body: REJECT_BODY, idempotencyKey: key, unsigned: true });
+
+    expect(res.status).toBe(401);
+    const line = await theOneLine();
+    expect(line).toMatchObject({ method: "POST", path, idempotencyKey: key, status: 401 });
+    expect(line["adminId"]).toBeUndefined();
+  });
+
+  it("a signed request outside the table is 403 and still logged", async () => {
+    const key = freshKey("probe");
+
+    const res = await call(running.baseUrl, "/internal/v1/health", { body: { reason: "probe" }, idempotencyKey: key });
+
+    expect(res.status).toBe(403);
+    expect(await theOneLine()).toMatchObject({
+      adminId: ADMIN,
+      method: "POST",
+      path: "/internal/v1/health",
+      idempotencyKey: key,
+      status: 403,
+    });
+  });
+
+  it("a write refused at a precondition is 409 and still logged", async () => {
+    const lot = await seedRefundLot(sql, "active");
+    fakeStripe.register(lot.paymentIntentId, PAID_CENTS);
+    const key = freshKey("reject");
+
+    const res = await call(running.baseUrl, paths.reject(lot.lotId), { body: REJECT_BODY, idempotencyKey: key });
+
+    expect(res.status).toBe(409);
+    expect(await theOneLine()).toMatchObject({
+      adminId: ADMIN,
+      method: "POST",
+      path: paths.reject(lot.lotId),
+      idempotencyKey: key,
+      status: 409,
+    });
+  });
+
+  it("a write with a malformed body is 422 and still logged", async () => {
+    const lot = await pendingLot();
+    const key = freshKey("reject");
+
+    const res = await call(running.baseUrl, paths.reject(lot.lotId), { body: { reason: "" }, idempotencyKey: key });
+
+    expect(res.status).toBe(422);
+    expect(await theOneLine()).toMatchObject({
+      adminId: ADMIN,
+      method: "POST",
+      path: paths.reject(lot.lotId),
+      idempotencyKey: key,
+      status: 422,
+    });
+  });
+
+  it("a rate-limited request is 429 and its line names no admin", async () => {
+    const { max } = getRateLimit("internal-api");
+    const probe = paths.preview("00000000-0000-4000-8000-000000000000");
+    for (let i = 0; i < max; i += 1) {
+      expect((await call(running.baseUrl, probe, { unsigned: true })).status).toBe(401);
+    }
+    await vi.waitFor(() => expect(requestLines()).toHaveLength(max), { timeout: 2_000, interval: 10 });
+    logged.info.mockClear();
+
+    const limited = await call(running.baseUrl, probe);
+
+    expect(limited.status).toBe(429);
+    const line = await theOneLine();
+    expect(line).toMatchObject({ method: "GET", path: probe, status: 429 });
+    expect(line["adminId"]).toBeUndefined();
   });
 });

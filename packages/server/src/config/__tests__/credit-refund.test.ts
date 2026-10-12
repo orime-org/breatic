@@ -7,8 +7,9 @@
  * Every key is required: a default standing in for a key someone renamed or
  * dropped would keep the loop running on a number nobody chose. The one rule
  * that ties two keys together keeps a claim's lease alive for as long as its
- * holder can still be waiting on Stripe — if the lease ran out first, a second
- * instance could claim the same disposition and refund the buyer twice.
+ * holder can still be waiting on Stripe, on the create and on the read after
+ * it — if the lease ran out first, a second instance could claim the same
+ * disposition and refund the buyer twice.
  */
 
 import { describe, it, expect } from "vitest";
@@ -84,14 +85,18 @@ describe("credit refund config — schema", () => {
     }
   });
 
-  // The holder of a lease may wait `stripe_call_timeout_ms` on Stripe and then
-  // still has to write its answer back; ten seconds is the room left for that.
-  // Equality is already too tight.
+  // The holder of a lease makes two Stripe calls in one attempt — the create
+  // and the `refunds.list` read after it — each bounded by
+  // `stripe_call_timeout_ms`, and then still has to write its answer back;
+  // ten seconds is the room left for that (§7.4:
+  // 2 × stripe_call_timeout_ms + 10000 < lease_seconds × 1000). Equality is
+  // already too tight.
   it.each([
     [20000, 30],
-    [20000, 25],
+    [20000, 45],
+    [20000, 50],
+    [55000, 120],
     [110000, 120],
-    [120000, 120],
   ])(
     "refuses a %d ms Stripe timeout under a %d s lease, naming both keys",
     (timeoutMs, leaseSeconds) => {
@@ -105,8 +110,8 @@ describe("credit refund config — schema", () => {
   );
 
   it.each([
-    [20000, 31],
-    [109999, 120],
+    [20000, 51],
+    [54999, 120],
   ])("accepts a %d ms Stripe timeout under a %d s lease", (timeoutMs, leaseSeconds) => {
     expect(() =>
       creditRefundSchema.parse(

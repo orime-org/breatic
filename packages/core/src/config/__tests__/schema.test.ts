@@ -465,4 +465,22 @@ describe("parseConfig — internal API", () => {
       ),
     ).toThrow(/^FATAL: .*INTERNAL_API_SECRET.*Refusing to start\.$/s);
   });
+
+  // A previous key of only whitespace is still an HMAC key, one anyone can
+  // compute; a blank previous key means none, so this is a typo to name.
+  it.each([
+    ["a space", " "],
+    ["a tab", "\t"],
+    ["spaces and a newline", "  \n"],
+  ])("refuses to start with a previous secret of only %s", (_label, previous) => {
+    expect(() =>
+      parseConfig(
+        baseEnv({
+          INTERNAL_API_ENABLED: "true",
+          INTERNAL_API_SECRET: "current-key",
+          INTERNAL_API_SECRET_PREVIOUS: previous,
+        }),
+      ),
+    ).toThrow(/^FATAL: .*INTERNAL_API_SECRET_PREVIOUS.*Refusing to start\.$/s);
+  });
 });

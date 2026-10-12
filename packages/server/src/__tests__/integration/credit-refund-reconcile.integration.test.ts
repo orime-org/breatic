@@ -14,14 +14,16 @@
  *     When — it runs only when `last_finished_at` is null (or the row is
  *       absent) or older than 24 hours, or `next_retry_at <= now()`; and only
  *       when `SET {env}:server:refund-reconcile-lock 1 EX 600 NX` succeeds.
- *       Otherwise it reads nothing from Stripe and writes nothing.
+ *       Otherwise it reads nothing from Stripe and writes nothing. The lock
+ *       is not deleted when the pass ends; it expires by itself.
  *
  *     Which payments — every pass is full: the payments of `refunding` lots;
  *       payments with a `credit_refunds` row created, or a disposition
  *       finished, within `reconcile_window_days`; payments with an unresolved
  *       failed refund (§5.3); and the previous pass's `failing_payment_ids`.
  *
- *     Per payment — `listRefunds(payment_intent)` → `applyRefundSnapshot`;
+ *     Per payment — `listRefundsForPayment(paymentId)` → `applyRefundSnapshot`;
+ *       a payment with no payment intent reads as no refunds, not a failure;
  *       a payment that fails is recorded and the pass goes on to the next.
  *
  *     Bookkeeping — `last_started_at` at the start; at the end
@@ -463,5 +465,43 @@ describe("what a pass records", () => {
     const row = (await readStatus())!;
     expect(row.failing).toContain(bad.paymentId);
     expect(row.failing).not.toContain(good.paymentId);
+  });
+
+  // `listRefundsForPayment` answers a payment with no intent with no refunds:
+  // nothing can have been refunded through Stripe without one.
+  it("a payment in scope with no payment intent is not a failure: nothing is read for it and the pass is clean", async () => {
+    const lot = await lotOnStripe("refunding");
+    await suite.sql`UPDATE payments SET stripe_payment_intent_id = NULL WHERE id = ${lot.paymentId}`;
+    try {
+      await runDailyReconcile();
+
+      expect(listed(lot)).toBe(false);
+      const row = (await readStatus())!;
+      expect(row.failing).not.toContain(lot.paymentId);
+      expect(row).toMatchObject({ failing: [], last_error: null, next_retry_us: null });
+      expect(row.last_ok_us).not.toBeNull();
+    } finally {
+      // Other suites' passes scan the whole table; leave no intent-less row behind.
+      await giveIntentlessPaymentsAnIntent(suite.sql);
+    }
+  });
+});
+
+// ── the lock ─────────────────────────────────────────────────────────
+
+describe("the reconcile lock", () => {
+  // A pass does not delete the lock when it ends: deleting it without
+  // checking who holds it could remove another instance's lock. It expires
+  // by itself within 600 seconds, and the next pass is not due before then.
+  it("is still held after a pass, with its expiry no more than 600 seconds out", async () => {
+    await lotOnStripe("refunding");
+
+    await runDailyReconcile();
+
+    expect(await readStatus()).toMatchObject({ failing: [] });
+    expect(await getRedis().exists(lockKey())).toBe(1);
+    const ttl = await getRedis().ttl(lockKey());
+    expect(ttl).toBeGreaterThan(0);
+    expect(ttl).toBeLessThanOrEqual(600);
   });
 });

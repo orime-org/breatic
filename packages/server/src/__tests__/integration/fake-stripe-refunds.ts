@@ -263,3 +263,21 @@ export class FakeStripeRefunds {
 
 /** The one instance the mocked `getStripeClient` hands out. */
 export const fakeStripe = new FakeStripeRefunds();
+
+/**
+ * Run `hook` once, at the start of the next `refunds.list` call, before that
+ * call reads what Stripe holds. It lets a suite change Stripe between a
+ * create answer and the list read that follows it (a refund that moved on
+ * since), or note what had already been called when the first read came.
+ * The list method is restored on that call, before the hook runs.
+ * @param fake - The fake whose next list call to hook.
+ * @param hook - What to do first.
+ */
+export function beforeNextList(fake: FakeStripeRefunds, hook: () => void): void {
+  const original = fake.client.refunds.list;
+  fake.client.refunds.list = (params: Record<string, unknown>) => {
+    fake.client.refunds.list = original;
+    hook();
+    return original(params);
+  };
+}

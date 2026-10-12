@@ -125,6 +125,15 @@ describe("verifyInternalRequest: keys", () => {
     );
   });
 
+  // A previous secret of only whitespace (a trailing space in a Docker
+  // --env-file, or a space typed to "clear" it) is no key either: anyone could
+  // sign with it.
+  it.each([" ", "\t", " \n "])("does not treat a whitespace-only previous secret %j as a key", (blank) => {
+    expect(verifyInternalRequest(signed(PARTS, blank), { current: SECRET, previous: blank }, NOW)).toEqual(
+      fail("signature"),
+    );
+  });
+
   it("refuses a signature made without the Idempotency-Key line when the header is sent", () => {
     const sig = signRequest(SECRET, { ...PARTS, idempotencyKey: null });
     expect(verifyInternalRequest(request(PARTS, sig), SECRETS, NOW)).toEqual(fail("signature"));

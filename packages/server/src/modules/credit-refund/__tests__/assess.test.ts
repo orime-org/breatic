@@ -31,6 +31,7 @@ import {
   type RefundCreateKind,
 } from "@server/modules/credit-refund/assess.js";
 import type { RefundCopy, StripeRefundStatus } from "@server/modules/credit-refund/types.js";
+import { pickUnresolvedFailedRefunds } from "@server/modules/credit-refund/unresolved.js";
 
 const OWN_OP = "11111111-1111-4111-8111-111111111111";
 const RESOLVER = "22222222-2222-4222-8222-222222222222";
@@ -398,6 +399,120 @@ describe("row 7: approve and retry — the paid amount is already refunded", () 
   });
 });
 
+/**
+ * Row 7b: Stripe does not give a failed refund's amount back to the
+ * payment's refundable amount (§5.2, verified against real Stripe), so what
+ * approve and retry can still refund is paid − succeeded − failed. A
+ * canceled refund never moved money and is not subtracted.
+ */
+describe("row 7b: approve and retry — nothing left that Stripe can refund (refund_failed)", () => {
+  const failed = (id: string, amountCents: number, everSucceeded = true): RefundCopy =>
+    refund(id, "failed", amountCents, { everSucceeded });
+
+  for (const kind of ["approve", "retry"] as const) {
+    it(`${kind} with a failed refund creates only what Stripe can still refund`, () => {
+      expect(assessRefundCreate({ ...BASES[kind], refunds: [failed("re_f", 400)] })).toEqual({
+        outcome: "create_refund",
+        amountCents: 600,
+        sendAmount: false,
+      });
+    });
+
+    it(`${kind} subtracts a failed refund that never succeeded, but not a canceled one`, () => {
+      expect(
+        assessRefundCreate({
+          ...BASES[kind],
+          refunds: [failed("re_f", 300, false), refund("re_c", "canceled", 500, { operationId: null })],
+        }),
+      ).toEqual({ outcome: "create_refund", amountCents: 700, sendAmount: false });
+    });
+
+    it(`${kind} with one cent left after succeeded and failed refunds creates for that cent`, () => {
+      expect(
+        assessRefundCreate({
+          ...BASES[kind],
+          refunds: [refund("re_ok", "succeeded", 600), failed("re_f", 399)],
+        }),
+      ).toEqual({ outcome: "create_refund", amountCents: 1, sendAmount: false });
+    });
+
+    it(`${kind} whose own refund of the whole amount failed is refund_failed`, () => {
+      expect(assessRefundCreate({ ...BASES[kind], refunds: [failed("re_own", PAID)] })).toEqual(
+        stripeBlocks("refund_failed"),
+      );
+    });
+
+    it(`${kind} when succeeded plus failed reach the paid amount is refund_failed`, () => {
+      expect(
+        assessRefundCreate({
+          ...BASES[kind],
+          refunds: [refund("re_ok", "succeeded", 600), failed("re_f", 400)],
+        }),
+      ).toEqual(stripeBlocks("refund_failed"));
+    });
+
+    it(`${kind} when failed refunds exceed what is left is refund_failed`, () => {
+      expect(
+        assessRefundCreate({
+          ...BASES[kind],
+          refunds: [refund("re_ok", "succeeded", 600), failed("re_f", 700)],
+        }),
+      ).toEqual(stripeBlocks("refund_failed"));
+    });
+
+    it(`${kind} is refund_failed before an unconfirmed external refund is looked at`, () => {
+      expect(
+        assessRefundCreate({
+          ...BASES[kind],
+          refunds: [refund("re_ext", "succeeded", 500, { operationId: null }), failed("re_f", 500)],
+          confirmedRefundIds: [],
+        }),
+      ).toEqual(stripeBlocks("refund_failed"));
+    });
+
+    it(`${kind} is already_refunded, not refund_failed, when the succeeded sum alone covers the payment`, () => {
+      expect(
+        assessRefundCreate({
+          ...BASES[kind],
+          refunds: [refund("re_ok", "succeeded", PAID), failed("re_f", 200)],
+        }),
+      ).toEqual(stripeBlocks("already_refunded"));
+    });
+  }
+
+  it("refund_again does not use this row: it asks for the failed refunds' sum even when it covers the payment", () => {
+    expect(
+      assessRefundCreate({
+        ...REFUND_AGAIN_OK,
+        refunds: [failedAfterSuccess("re_all", PAID)],
+        failedRefundIds: ["re_all"],
+      }),
+    ).toEqual({ outcome: "create_refund", amountCents: PAID, sendAmount: true });
+  });
+
+  it("the preview of an approve shows the amount Stripe can still refund", () => {
+    expect(
+      assessRefundPreview({
+        lot: APPROVE_OK.lot,
+        payment: APPROVE_OK.payment,
+        ops: [],
+        refunds: [failed("re_f", 400)],
+      }),
+    ).toEqual({ kind: "approve", result: { outcome: "create_refund", amountCents: 600, sendAmount: false } });
+  });
+
+  it("the preview of a retry whose refund failed shows refund_failed", () => {
+    expect(
+      assessRefundPreview({
+        lot: RETRY_OK.lot,
+        payment: RETRY_OK.payment,
+        ops: RETRY_OK.ops,
+        refunds: [failed("re_own", PAID)],
+      }),
+    ).toEqual({ kind: "retry", result: stripeBlocks("refund_failed") });
+  });
+});
+
 describe("row 8: approve and retry — a succeeded external refund the operator did not confirm", () => {
   for (const kind of ["approve", "retry"] as const) {
     it(`${kind} with an unconfirmed succeeded external refund is unconfirmed_external_refund`, () => {
@@ -613,17 +728,9 @@ describe("§9: the preview and the endpoint agree when the operator confirms wha
         const confirmedRefundIds = g.refunds
           .filter((r) => r.status === "succeeded" && r.operationId === null)
           .map((r) => r.stripeRefundId);
-        const failedRefundIds =
-          g.lifecycle === "refunded"
-            ? g.refunds
-                .filter(
-                  (r) =>
-                    r.everSucceeded &&
-                    (r.status === "failed" || r.status === "canceled") &&
-                    r.resolvedByOperationId === null,
-                )
-                .map((r) => r.stripeRefundId)
-            : [];
+        const failedRefundIds = pickUnresolvedFailedRefunds(g.lifecycle, g.refunds).map(
+          (r) => r.stripeRefundId,
+        );
         const endpoint = assessRefundCreate({
           ...base,
           kind: preview.kind,

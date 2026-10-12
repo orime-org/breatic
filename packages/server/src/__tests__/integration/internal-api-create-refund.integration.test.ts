@@ -226,6 +226,31 @@ describe("GET /internal/v1/credit-lots/:lotId/refund — preview judges the oper
     ]);
   });
 
+  it("refund_pending with a failed refund on Stripe → approve offers only what Stripe can still refund, and lists the failed refund as unresolved", async () => {
+    const gone = reId("gone");
+    const lot = await lotOnStripe("refund_pending", [refundObject(gone, "failed", 300)]);
+
+    const res = await call(suite.baseUrl, paths.preview(lot.lotId));
+
+    expect(res.status).toBe(200);
+    expect(res.json.action).toMatchObject({ kind: "approve", outcome: "create_refund", amountCents: PAID_CENTS - 300 });
+    expect(res.json.unresolvedFailedRefunds).toEqual([expect.objectContaining({ stripeRefundId: gone, amountCents: 300 })]);
+  });
+
+  it("refunding whose refund failed for the whole amount → retry blocked by refund_failed; the failed refund is listed as unresolved", async () => {
+    const lot = await seedRefundLot(suite.sql, "refunding");
+    const stuck = await seedOperation(suite.sql, lot, { kind: "approve", status: "needs_attention", attentionReason: "stripe_refund_failed_later" });
+    const failed = reId("failed_own");
+    await seedCopy(suite.sql, lot, { id: failed, amountCents: PAID_CENTS, status: "succeeded", operationId: stuck.id });
+    fakeStripe.register(lot.paymentIntentId, PAID_CENTS, [refundObject(failed, "failed", PAID_CENTS, stuck.id)]);
+
+    const res = await call(suite.baseUrl, paths.preview(lot.lotId));
+
+    expect(res.status).toBe(200);
+    expect(res.json.action).toMatchObject({ kind: "retry", outcome: "blocked", code: "stripe_blocks", reason: "refund_failed" });
+    expect(res.json.unresolvedFailedRefunds).toEqual([expect.objectContaining({ stripeRefundId: failed, amountCents: PAID_CENTS })]);
+  });
+
   it("an active lot has no refund operation to judge: action is null", async () => {
     const lot = await lotOnStripe("active");
 
@@ -389,6 +414,19 @@ describe("POST …/refund/approve", () => {
         expected: { code: "stripe_blocks", reason: "already_refunded" },
       },
       {
+        name: "a failed refund leaves Stripe nothing it will refund → stripe_blocks refund_failed",
+        state: "refund_pending",
+        refunds: () => [refundObject(reId("gone"), "failed", PAID_CENTS)],
+        expected: { code: "stripe_blocks", reason: "refund_failed" },
+      },
+      {
+        name: "succeeded plus failed refunds reach the paid amount → stripe_blocks refund_failed",
+        state: "refund_pending",
+        refunds: () => [refundObject(reId("part"), "succeeded", 500), refundObject(reId("gone"), "failed", PAID_CENTS - 500)],
+        confirm: (ids) => ids,
+        expected: { code: "stripe_blocks", reason: "refund_failed" },
+      },
+      {
         name: "a succeeded external refund the confirmation page did not show → stripe_blocks unconfirmed_external_refund",
         state: "refund_pending",
         refunds: () => [refundObject(reId("ext"), "succeeded", 300)],
@@ -535,6 +573,22 @@ describe("POST …/refund/retry", () => {
     expect(closed.status).toBe("needs_attention");
     expect(closed.attention_closed_by).toBe(opId);
     expect(typeof closed.attention_closed_at).toBe("string");
+  });
+
+  it("refunding whose approval's refund failed for the whole amount is 409 stripe_blocks refund_failed and creates nothing", async () => {
+    const lot = await seedRefundLot(suite.sql, "refunding");
+    const stuck = await seedOperation(suite.sql, lot, { kind: "approve", status: "needs_attention", attentionReason: "stripe_refund_failed_later" });
+    const failed = reId("failed_own");
+    await seedCopy(suite.sql, lot, { id: failed, amountCents: PAID_CENTS, status: "succeeded", operationId: stuck.id });
+    fakeStripe.register(lot.paymentIntentId, PAID_CENTS, [refundObject(failed, "failed", PAID_CENTS, stuck.id)]);
+    const before = await worldOf(suite.sql, lot);
+
+    const res = await post(paths.retry(lot.lotId), body);
+
+    expect(res.status).toBe(409);
+    expect(errorShape(res.json)).toEqual({ code: "stripe_blocks", reason: "refund_failed", detailTranslated: true });
+    expect(exceptCopies(await worldOf(suite.sql, lot))).toEqual(exceptCopies(before));
+    expect(fakeStripe.createCalls).toEqual([]);
   });
 
   it("refunding with no open needs_attention is 409 lot_state_changed", async () => {

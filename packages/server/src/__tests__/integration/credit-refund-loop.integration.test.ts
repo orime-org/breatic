@@ -20,6 +20,20 @@
  *       `attempts_exhausted`, no Stripe call); otherwise `executeRefund` with
  *       the row under the new lease.
  *
+ *       A resume reads first (§7.1 step 1): when the row's `first_called_at`
+ *       is set, `refunds.list` comes before any create. A refund carrying
+ *       `metadata.refund_operation_id = op.id` is judged and no create is
+ *       made; a failed read is E16 with no create; only when none is found
+ *       is `refunds.create` called, under `credit-refund-<id>`. A first
+ *       execution (`first_called_at` null) still creates first.
+ *
+ *   export function executeRefund(op): Promise<void>  (executor.ts)
+ *     When the create answers with a refund object, the `refunds.list` read
+ *     right after it is the fresher one: the disposition is judged, and the
+ *     copy written, on the listed status of that refund (§5.4, §6.4). When
+ *     the answer needs a lookup and nothing is found (E7, E9, E17), the
+ *     refunds read in that attempt are still copied (§6.4 R2).
+ *
  *     Step 2 — every `awaiting_stripe` disposition with
  *       `next_attempt_at <= now()`, with or without a refund id:
  *       `listRefunds(payment_intent)` → `applyRefundSnapshot`. The row's
@@ -36,8 +50,10 @@
  *   export function startRefundLoop(): { stop: () => Promise<void> }
  *     Written like `startLifecycleRelay`: the first tick runs at once, the
  *     next is scheduled `loop_interval_seconds` after the previous one
- *     settled. When `env.INTERNAL_API_ENABLED` or `env.PAYMENT_ENABLED` is
- *     false it schedules nothing and returns a handle whose `stop` resolves.
+ *     settled. It runs whenever `env.INTERNAL_API_ENABLED` is true, whatever
+ *     `env.PAYMENT_ENABLED` says (§7.1: every disposition the API accepted is
+ *     finished by the loop). When `INTERNAL_API_ENABLED` is false it
+ *     schedules nothing and returns a handle whose `stop` resolves.
  *     `stop()` resolves once an in-flight tick has settled. `index.ts` calls
  *     it after listen and puts `stop` into the shutdown `drains`.
  *
@@ -72,9 +88,9 @@ vi.mock("@server/infra/stripe.js", async () => {
 import { env, getRedis, initCore } from "@breatic/core";
 import { getCreditRefundConfig } from "@server/config/credit-refund.js";
 import { executeRefund } from "@server/modules/credit-refund/executor.js";
-import { findById } from "@server/modules/credit-refund/operation.repo.js";
+import { findById, type CreditRefundOperation } from "@server/modules/credit-refund/operation.repo.js";
 import { runRefundLoopOnce, startRefundLoop } from "@server/modules/credit-refund/refund-loop.js";
-import { fakeStripe, stripeError } from "./fake-stripe-refunds.js";
+import { beforeNextList, fakeStripe, stripeError } from "./fake-stripe-refunds.js";
 import {
   CREDITS,
   PAID_CENTS,
@@ -83,6 +99,7 @@ import {
   dbClockUs,
   eventsOf,
   ledgerOf,
+  mailsOf,
   readLot,
   readOp,
   refundObject,
@@ -374,6 +391,180 @@ describe("step 1 — claim and resume a started disposition", () => {
   });
 });
 
+// ── step 1: a resume reads Stripe before it creates ──────────────────
+
+describe("step 1 — a resume looks its refund up before it creates (§7.1)", () => {
+  /**
+   * A started approval whose executor called Stripe before and is gone: the
+   * lease ran out and `first_called_at` is set.
+   * @param firstCalledHoursAgo - When the first create call was made.
+   * @returns The lot and the disposition.
+   */
+  async function resumable(firstCalledHoursAgo: number): Promise<{ lot: SeededLot; opId: string }> {
+    const lot = await seedRefundLot(suite.sql, "refunding");
+    const { id: opId } = await seedOperation(suite.sql, lot, {
+      kind: "approve",
+      status: "started",
+      leaseExpired: true,
+      firstCalledHoursAgo,
+      attemptCount: 1,
+    });
+    return { lot, opId };
+  }
+
+  /**
+   * Run one tick, noting how many creates had been made for the lot when the
+   * tick's first `refunds.list` came.
+   * @param lot - The lot.
+   * @returns The creates made before the first read; -1 when nothing was read.
+   */
+  async function tickNotingCreatesAtFirstRead(lot: SeededLot): Promise<number> {
+    const seen = { creates: -1 };
+    beforeNextList(fakeStripe, () => {
+      seen.creates = createsFor(lot).length;
+    });
+    await runRefundLoopOnce();
+    return seen.creates;
+  }
+
+  it("Stripe holds the disposition's refund (key long expired): it is judged and booked, and refunds.create is not called", async () => {
+    const own = reId("own");
+    const { lot, opId } = await resumable(30);
+    fakeStripe.register(lot.paymentIntentId, PAID_CENTS, [refundObject(own, "succeeded", PAID_CENTS, opId)]);
+
+    await runRefundLoopOnce();
+
+    expect(createsFor(lot)).toEqual([]);
+    expect(await readOp(suite.sql, opId)).toMatchObject({
+      status: "succeeded",
+      result: "refunded",
+      stripe_refund_id: own,
+    });
+    await expectBookedOn(lot, own);
+    expect(await eventNames(opId)).toEqual(["claimed", "refund_succeeded"]);
+  });
+
+  it("the read fails: E16, the row stays started with one more attempt, and refunds.create is not called", async () => {
+    const { lot, opId } = await resumable(1);
+    fakeStripe.register(lot.paymentIntentId, PAID_CENTS);
+    fakeStripe.failLists(stripeError(500));
+
+    await runRefundLoopOnce();
+
+    expect(createsFor(lot)).toEqual([]);
+    expect(await readOp(suite.sql, opId)).toMatchObject({ status: "started", attempt_count: 2 });
+    expect(await eventNames(opId)).toEqual(["claimed", "stripe_read_failed"]);
+  });
+
+  it("nothing found: refunds.create is called once, under credit-refund-<id>, after the read", async () => {
+    const { lot, opId } = await resumable(1);
+    fakeStripe.register(lot.paymentIntentId, PAID_CENTS);
+
+    const createsAtFirstRead = await tickNotingCreatesAtFirstRead(lot);
+
+    expect(createsAtFirstRead).toBe(0);
+    expect(createsFor(lot).map((c) => c.options?.idempotencyKey)).toEqual([`credit-refund-${opId}`]);
+    expect(await readOp(suite.sql, opId)).toMatchObject({ status: "succeeded", result: "refunded" });
+  });
+
+  it("a first execution (first_called_at empty) still creates before it reads", async () => {
+    const { lot, opId } = await seeded("refunding", { kind: "approve", status: "started", leaseExpired: true });
+
+    const createsAtFirstRead = await tickNotingCreatesAtFirstRead(lot);
+
+    expect(createsAtFirstRead).toBe(1);
+    expect(createsFor(lot).map((c) => c.options?.idempotencyKey)).toEqual([`credit-refund-${opId}`]);
+  });
+});
+
+// ── the executor: what it reads after the create ─────────────────────
+
+describe("executeRefund — the list read after the create decides (§5.4, §6.4)", () => {
+  /**
+   * A started approval under a lease the caller holds, never called yet.
+   * @returns The lot, the disposition id and the row to execute.
+   */
+  async function startedApprove(): Promise<{ lot: SeededLot; opId: string; op: CreditRefundOperation }> {
+    const lot = await lotOnStripe("refunding");
+    const { id: opId } = await seedOperation(suite.sql, lot, { kind: "approve", status: "started" });
+    return { lot, opId, op: (await findById(opId))! };
+  }
+
+  /**
+   * The refund Stripe holds under the disposition's metadata.
+   * @param lot - The lot whose payment it is on.
+   * @param opId - The disposition.
+   * @returns The refund id.
+   */
+  function ownOnStripe(lot: SeededLot, opId: string): string {
+    const own = fakeStripe.refundsOf(lot.paymentIntentId).find((r) => r.metadata.refund_operation_id === opId);
+    if (!own) throw new Error(`no refund on Stripe for disposition ${opId}`);
+    return own.id;
+  }
+
+  it("create answers succeeded, the list right after says failed: E6 under started — sent_back, no ledger row, no bell, no mail, copy failed", async () => {
+    const { lot, opId, op } = await startedApprove();
+    beforeNextList(fakeStripe, () => fakeStripe.setStatus(ownOnStripe(lot, opId), "failed"));
+
+    await executeRefund(op);
+
+    const own = ownOnStripe(lot, opId);
+    expect(createsFor(lot)).toHaveLength(1);
+    expect(await readOp(suite.sql, opId)).toMatchObject({ status: "succeeded", result: "sent_back" });
+    expect(await eventNames(opId)).toEqual(["refund_declined"]);
+    expect(await readLot(suite.sql, lot.lotId)).toMatchObject({
+      lifecycle: "refund_pending",
+      remaining: `${CREDITS}.000000`,
+    });
+    expect((await ledgerOf(suite.sql, lot.lotId)).filter((r) => r.entry_type === "refund")).toEqual([]);
+    expect(await bellsOf(suite.sql, lot.userId)).toEqual([]);
+    expect(await mailsOf(suite.sql, lot.lotId)).toEqual([]);
+    expect((await copiesOf(suite.sql, lot.lotId)).map((c) => [c.stripe_refund_id, c.status])).toEqual([
+      [own, "failed"],
+    ]);
+  });
+
+  it("create answers pending, the list right after says succeeded: booked, copy ever_succeeded", async () => {
+    const { lot, opId, op } = await startedApprove();
+    fakeStripe.nextCreate({ kind: "refund", status: "pending" });
+    beforeNextList(fakeStripe, () => fakeStripe.setStatus(ownOnStripe(lot, opId), "succeeded"));
+
+    await executeRefund(op);
+
+    const own = ownOnStripe(lot, opId);
+    expect(await readOp(suite.sql, opId)).toMatchObject({
+      status: "succeeded",
+      result: "refunded",
+      stripe_refund_id: own,
+    });
+    await expectBookedOn(lot, own);
+    expect((await copiesOf(suite.sql, lot.lotId)).map((c) => [c.stripe_refund_id, c.status, c.ever_succeeded])).toEqual([
+      [own, "succeeded", true],
+    ]);
+  });
+
+  it.each([
+    { event: "E9", name: "charge_already_refunded", error: () => stripeError(400, { code: "charge_already_refunded" }) },
+    { event: "E7", name: "retryable_error", error: () => stripeError(429) },
+    { event: "E17", name: "unclassified_error", error: () => stripeError(402) },
+  ])(
+    "$event: the lookup finds nothing of ours, and the refunds read are still copied (an external full refund, ever_succeeded)",
+    async ({ name, error }) => {
+      const external = reId("external");
+      const lot = await lotOnStripe("refunding", [refundObject(external, "succeeded", PAID_CENTS)]);
+      const { id: opId } = await seedOperation(suite.sql, lot, { kind: "approve", status: "started" });
+      fakeStripe.nextCreate({ kind: "error", error: error() });
+
+      await executeRefund((await findById(opId))!);
+
+      expect(await eventNames(opId)).toEqual([name]);
+      expect(
+        (await copiesOf(suite.sql, lot.lotId)).map((c) => [c.stripe_refund_id, c.status, c.ever_succeeded, c.operation_id]),
+      ).toEqual([[external, "succeeded", true, null]]);
+    },
+  );
+});
+
 // ── step 2: dispositions waiting on Stripe ───────────────────────────
 
 describe("step 2 — re-read Stripe for awaiting_stripe dispositions", () => {
@@ -591,7 +782,7 @@ describe("step 4 — the daily reconcile runs from the loop", () => {
 
 // ── startRefundLoop: when the loop runs at all ───────────────────────
 
-describe("startRefundLoop — started only with the internal API and payments on", () => {
+describe("startRefundLoop — started whenever the internal API is on (§7.1)", () => {
   const BASE = {
     ...process.env,
     STRIPE_SECRET_KEY: "sk_test_unused_by_this_suite",
@@ -625,7 +816,7 @@ describe("startRefundLoop — started only with the internal API and payments on
     });
     const loop = startRefundLoop();
     try {
-      if (flags.internal && flags.payments) {
+      if (flags.internal) {
         await vi.waitFor(() => expect(listsFor(lot)).toBeGreaterThanOrEqual(1), { timeout: waitMs });
       } else {
         await new Promise((resolve) => setTimeout(resolve, waitMs));
@@ -639,7 +830,6 @@ describe("startRefundLoop — started only with the internal API and payments on
 
   it.each([
     { internal: false, payments: true },
-    { internal: true, payments: false },
     { internal: false, payments: false },
   ])("does not run with INTERNAL_API_ENABLED=$internal, PAYMENT_ENABLED=$payments", async (flags) => {
     expect(await ticked(flags, 1500)).toBe(false);
@@ -647,5 +837,21 @@ describe("startRefundLoop — started only with the internal API and payments on
 
   it("runs its first tick at once when both are on, and stop() resolves", async () => {
     expect(await ticked({ internal: true, payments: true }, 10_000)).toBe(true);
+  });
+
+  it("runs with INTERNAL_API_ENABLED=true and PAYMENT_ENABLED=false: an awaiting disposition is read", async () => {
+    expect(await ticked({ internal: true, payments: false }, 10_000)).toBe(true);
+  });
+
+  it("runs with INTERNAL_API_ENABLED=true and PAYMENT_ENABLED=false: a started disposition whose lease ran out is claimed", async () => {
+    const { opId } = await seeded("refunding", { kind: "approve", status: "started", leaseExpired: true });
+    initCore({ ...BASE, INTERNAL_API_ENABLED: "true", PAYMENT_ENABLED: "false" });
+    const loop = startRefundLoop();
+    try {
+      await vi.waitFor(async () => expect(await eventNames(opId)).toContain("claimed"), { timeout: 10_000 });
+    } finally {
+      await loop.stop();
+      initCore({ ...BASE, PAYMENT_ENABLED: "true" });
+    }
   });
 });

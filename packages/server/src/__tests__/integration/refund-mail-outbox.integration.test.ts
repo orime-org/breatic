@@ -25,21 +25,36 @@
  *     `.timeZone`, `en` / `UTC` when absent, as `getConfirmationView` does),
  *     the order reference (`payments.id`), the credits, the purchase time;
  *     for `refund_completed` the amount and currency told on the bell and the
- *     refund time; for `refund_rejected` `credit_lots.refund_requested_at`.
+ *     refund time; for `refund_rejected` the disposition's own
+ *     `credit_refund_operations.refund_requested_at` — the time of the
+ *     request that was rejected, not the lot's column, which the buyer's next
+ *     ask overwrites (§5.1, §8).
+ *
+ * And, in `operation-transitions.ts`: E1 copies the locked lot's
+ * `refund_requested_at` into the new disposition's `refund_requested_at`
+ * (timestamptz) for every kind; nothing changes it afterwards (§5.1).
  *
  * Every row a case starts from is written by SQL, so no case depends on the
- * disposition code having worked.
+ * disposition code having worked, except the cases that drive E1 itself.
  */
 
+import { randomUUID } from "node:crypto";
 import { describe, it, expect } from "vitest";
 
+import { creditLotService } from "@breatic/domain";
+import { transitionOperation, type NewOperation } from "@server/modules/credit-refund/operation-transitions.js";
 import * as mailRepo from "@server/modules/credit-refund/refund-mail.repo.js";
 import {
   CREDITS,
   PAID_CENTS,
+  inTx,
+  reId,
+  seedCopy,
   seedOperation,
   seedRefundLot,
   useRefundSuite,
+  type LotState,
+  type OpKind,
   type SeededLot,
 } from "./credit-refund-fixtures.js";
 
@@ -104,6 +119,57 @@ function tenMinutesAgo(): Date {
 }
 
 const UNKNOWN_MAIL = "00000000-0000-4000-8000-0000000000cc";
+
+/** The time of a request that gets rejected; days before any later ask. */
+const REJECTED_ASK = new Date("2026-09-03T02:45:00.000Z");
+
+/**
+ * Put the lot's request time where a case wants it, as though the buyer had
+ * asked then.
+ * @param lot - The lot.
+ * @param at - The request time.
+ */
+async function setLotAskedAt(lot: SeededLot, at: Date): Promise<void> {
+  await suite.sql`UPDATE credit_lots SET refund_requested_at = ${at} WHERE id = ${lot.lotId}`;
+}
+
+/**
+ * The request time a disposition carries.
+ * @param operationId - The disposition.
+ * @returns Its `refund_requested_at`.
+ */
+async function opAskedAt(operationId: string): Promise<Date | null> {
+  const [row] = await suite.sql<{ at: Date | null }[]>`
+    SELECT refund_requested_at AS at FROM credit_refund_operations WHERE id = ${operationId}
+  `;
+  return row!.at;
+}
+
+/**
+ * Run E1 for one kind on one lot, the way the internal API's phase 1 does.
+ * @param lot - The lot.
+ * @param kind - The disposition kind.
+ * @param extra - Request fields beyond the common ones.
+ * @returns The new disposition's id.
+ */
+async function runE1(lot: SeededLot, kind: OpKind, extra: Partial<NewOperation> = {}): Promise<string> {
+  const op = await inTx((tx) =>
+    transitionOperation(tx, null, {
+      type: "E1",
+      create: {
+        kind,
+        lotId: lot.lotId,
+        paymentId: lot.paymentId,
+        idempotencyKey: `idem-${randomUUID()}`,
+        requestHash: "a".repeat(64),
+        requestedBy: "admin_7",
+        reason: "buyer wrote in",
+        ...extra,
+      },
+    }),
+  );
+  return op!.id;
+}
 
 describe("claimSend: which rows may be claimed (M1)", () => {
   it.each([
@@ -268,14 +334,17 @@ describe("getMailView: what the letter says, from our own rows (§8)", () => {
     return row!.email;
   }
 
-  it("a rejection: address, language and zone from the payment, order ref, credits, purchase and request times", async () => {
+  it("a rejection: address, language and zone from the payment, order ref, credits, purchase time, and the disposition's request time", async () => {
     const before = new Date(Date.now() - 5_000);
-    const { lot, mailId } = await seedMail("pending");
+    const { lot, operationId, mailId } = await seedMail("pending");
     const after = new Date(Date.now() + 5_000);
     await setMetadata(lot, { locale: "ja", timeZone: "Asia/Tokyo" });
-    const [asked] = await suite.sql<{ at: Date }[]>`
-      SELECT refund_requested_at AS at FROM credit_lots WHERE id = ${lot.lotId}
+    // The disposition's copy differs from the lot's column, so the view
+    // shows which one it read.
+    await suite.sql`
+      UPDATE credit_refund_operations SET refund_requested_at = ${REJECTED_ASK} WHERE id = ${operationId}
     `;
+    const asked = { at: REJECTED_ASK };
 
     const view = await mailRepo.getMailView(mailId);
 
@@ -287,8 +356,7 @@ describe("getMailView: what the letter says, from our own rows (§8)", () => {
       paymentId: lot.paymentId,
       credits: CREDITS,
     });
-    expect(asked!.at).not.toBeNull();
-    expect(view!.kind === "refund_rejected" && view!.requestedAt.getTime()).toBe(asked!.at.getTime());
+    expect(view!.kind === "refund_rejected" && view!.requestedAt.getTime()).toBe(asked.at.getTime());
     // Which column the purchase time is read from is not decided by the
     // design; it is the moment this purchase was made.
     expect(view!.purchasedAt.getTime()).toBeGreaterThanOrEqual(before.getTime());
@@ -346,5 +414,79 @@ describe("getMailView: what the letter says, from our own rows (§8)", () => {
 
   it("no row, no view", async () => {
     expect(await mailRepo.getMailView(UNKNOWN_MAIL)).toBeNull();
+  });
+
+  it("a rejection read after the buyer asked again still names the rejected request's time", async () => {
+    const lot = await seedRefundLot(suite.sql, "refund_pending");
+    await setLotAskedAt(lot, REJECTED_ASK);
+    const operationId = await runE1(lot, "reject");
+    const [auto] = await suite.sql<{ id: string }[]>`
+      SELECT id FROM refund_mail_outbox WHERE operation_id = ${operationId} AND origin = 'auto'
+    `;
+    const [resend] = await suite.sql<{ id: string }[]>`
+      INSERT INTO refund_mail_outbox (operation_id, kind, origin, requested_by, reason, idempotency_key, request_hash)
+      VALUES (${operationId}, 'refund_rejected', 'resend', 'admin_7', 'Buyer never got it.',
+              ${`resend-${randomUUID()}`}, ${"0".repeat(64)})
+      RETURNING id
+    `;
+
+    // The buyer asks again: the lot's column now holds the new request's time.
+    await creditLotService.requestRefund({ lotId: lot.lotId, requestingUserId: lot.userId });
+    const [lotNow] = await suite.sql<{ at: Date }[]>`
+      SELECT refund_requested_at AS at FROM credit_lots WHERE id = ${lot.lotId}
+    `;
+    expect(lotNow!.at.getTime()).not.toBe(REJECTED_ASK.getTime());
+
+    for (const mailId of [auto!.id, resend!.id]) {
+      const view = await mailRepo.getMailView(mailId);
+      expect(view?.kind).toBe("refund_rejected");
+      expect(view!.kind === "refund_rejected" && view!.requestedAt.toISOString()).toBe(REJECTED_ASK.toISOString());
+    }
+  });
+});
+
+describe("refund_requested_at on the disposition: copied from the lot at E1 (§5.1)", () => {
+  it("is a timestamptz column of credit_refund_operations", async () => {
+    const [column] = await suite.sql<{ data_type: string }[]>`
+      SELECT data_type FROM information_schema.columns
+      WHERE table_name = 'credit_refund_operations' AND column_name = 'refund_requested_at'
+    `;
+
+    expect(column?.data_type).toBe("timestamp with time zone");
+  });
+
+  /**
+   * A lot ready for one kind's E1: the state the kind starts from, and for
+   * settle a succeeded refund to book on.
+   */
+  const READY: Record<OpKind, { state: LotState; extra?: Partial<NewOperation> }> = {
+    approve: { state: "refund_pending", extra: { confirmedRefundIds: [] } },
+    reject: { state: "refund_pending" },
+    settle: { state: "refunding", extra: { notify: false, confirmedSucceededCents: PAID_CENTS } },
+    send_back: { state: "refunding" },
+    retry: { state: "refunding", extra: { confirmedRefundIds: [] } },
+    refund_again: { state: "refunded", extra: { notify: false, failedRefundIds: [], refundAmountCents: 100 } },
+    resolve_outside: { state: "refunded", extra: { failedRefundIds: [] } },
+  };
+
+  it.each(Object.keys(READY) as OpKind[])("%s: the new row carries the lot's request time", async (kind) => {
+    const { state, extra } = READY[kind];
+    const lot = await seedRefundLot(suite.sql, state);
+    if (kind === "settle") await seedCopy(suite.sql, lot, { id: reId("settle"), amountCents: PAID_CENTS, status: "succeeded" });
+    await setLotAskedAt(lot, REJECTED_ASK);
+
+    const operationId = await runE1(lot, kind, extra);
+
+    expect((await opAskedAt(operationId))?.toISOString()).toBe(REJECTED_ASK.toISOString());
+  });
+
+  it("the copy stays when the buyer asks again after a rejection", async () => {
+    const lot = await seedRefundLot(suite.sql, "refund_pending");
+    await setLotAskedAt(lot, REJECTED_ASK);
+    const operationId = await runE1(lot, "reject");
+
+    await creditLotService.requestRefund({ lotId: lot.lotId, requestingUserId: lot.userId });
+
+    expect((await opAskedAt(operationId))?.toISOString()).toBe(REJECTED_ASK.toISOString());
   });
 });

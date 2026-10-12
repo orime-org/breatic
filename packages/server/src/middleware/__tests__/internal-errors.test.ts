@@ -8,7 +8,7 @@
  *
  * | thrown                         | answer                                  |
  * |--------------------------------|-----------------------------------------|
- * | InternalApiError               | its status, `{ code, detail }`, detail  |
+ * | RefundRefusal                  | its status, `{ code, detail }`, detail  |
  * |                                | is `server.internal.<detailKey>` in en  |
  * | ValidationError (validate())   | 422 invalid_body                        |
  * | HTTPException (unreadable body)| 400 invalid_body                        |
@@ -29,7 +29,10 @@ vi.mock("@breatic/core", async (importOriginal) => ({
 
 import { ConflictError, NotFoundError, ValidationError, loadLocales } from "@breatic/core";
 import { t } from "@breatic/shared";
-import { InternalApiError, internalErrorHandler } from "@server/middleware/internal-errors.js";
+import * as internalErrors from "@server/middleware/internal-errors.js";
+import { RefundRefusal } from "@server/modules/credit-refund/refusal.js";
+
+const { internalErrorHandler } = internalErrors;
 
 loadLocales();
 
@@ -57,8 +60,8 @@ describe("internalErrorHandler", () => {
     [409, "operation_in_progress", "operation_in_progress"],
     [409, "mail_not_resendable", "mail_not_resendable"],
     [422, "idempotency_key_reused", "idempotency_key_reused"],
-  ] as const)("an InternalApiError(%i, %s) answers its status with { code, detail } in English", async (status, code, detailKey) => {
-    const res = await answerFor(new InternalApiError(status, code, detailKey));
+  ] as const)("a RefundRefusal(%i, %s) answers its status with { code, detail } in English", async (status, code, detailKey) => {
+    const res = await answerFor(new RefundRefusal(status, code, detailKey));
 
     expect(res.status).toBe(status);
     const body = (await res.json()) as { code: string; detail: string };
@@ -66,6 +69,12 @@ describe("internalErrorHandler", () => {
     expect(body.code).toBe(code);
     expect(body.detail).toBe(t(`server.internal.${detailKey}`));
     expect(body.detail.startsWith("server.")).toBe(false);
+  });
+
+  // The services throw RefundRefusal; a second, empty error class beside it
+  // only invites a route to throw the wrong one.
+  it("exports no error class of its own beside RefundRefusal", () => {
+    expect(internalErrors).not.toHaveProperty("InternalApiError");
   });
 
   it("a ValidationError from validate() is 422 invalid_body", async () => {

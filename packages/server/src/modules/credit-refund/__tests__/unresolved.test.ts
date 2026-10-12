@@ -4,11 +4,19 @@
 /**
  * The one definition of an unresolved failed refund (inner#1410 §5.3).
  *
- * A refund is unresolved-failed when the lot is `refunded`, its copy has
- * `ever_succeeded` true, it is now `failed` or `canceled`, and no disposition
- * has answered for it (`resolved_by_operation_id` empty). The preview, the
- * judgement table, both endpoints and the back office list all ask this one
- * function, so a refund cannot be listed by one and refused by another.
+ * A copy counts when it is now `failed` or `canceled` and no disposition has
+ * answered for it (`resolved_by_operation_id` empty), and the lot's state
+ * allows it:
+ *
+ * | lot                           | which copies                               |
+ * |-------------------------------|--------------------------------------------|
+ * | `refunded`                    | also `ever_succeeded` (failed after booking) |
+ * | `refund_pending`, `refunding` | every one                                  |
+ * | `active`, `depleted`          | none                                       |
+ *
+ * The preview, the judgement table, both endpoints and the back office list
+ * all ask this one function, so a refund cannot be listed by one and refused
+ * by another.
  */
 
 import { describe, it, expect } from "vitest";
@@ -71,10 +79,25 @@ describe("pickUnresolvedFailedRefunds", () => {
     },
   );
 
-  it.each<CreditLotLifecycle>(["active", "depleted", "refund_pending", "refunding"])(
+  it.each<CreditLotLifecycle>(["active", "depleted"])(
     "lists nothing while the lot is %s",
     (lifecycle) => {
       expect(pickUnresolvedFailedRefunds(lifecycle, [copy("re_1", "failed")])).toEqual([]);
+    },
+  );
+
+  it.each<CreditLotLifecycle>(["refund_pending", "refunding"])(
+    "lists every unanswered failed or canceled refund of a %s lot, succeeded once or not",
+    (lifecycle) => {
+      const once = copy("re_once", "failed");
+      const never = copy("re_never", "failed", { everSucceeded: false });
+      const canceled = copy("re_canceled", "canceled", { everSucceeded: false });
+      const answered = copy("re_answered", "failed", { resolvedByOperationId: RESOLVER });
+      const open = copy("re_open", "pending", { everSucceeded: false });
+      const ok = copy("re_ok", "succeeded");
+      expect(
+        pickUnresolvedFailedRefunds(lifecycle, [once, never, canceled, answered, open, ok]),
+      ).toEqual([once, never, canceled]);
     },
   );
 
@@ -86,7 +109,7 @@ describe("pickUnresolvedFailedRefunds", () => {
     expect(pickUnresolvedFailedRefunds("refunded", [a, b, c, d])).toEqual([a, c]);
   });
 
-  it("matches the four conditions for any mix of refunds", () => {
+  it("matches the §5.3 table for any lot state and mix of refunds", () => {
     const rowArb = fc.record({
       status: fc.constantFrom<StripeRefundStatus>(
         "pending",
@@ -109,10 +132,10 @@ describe("pickUnresolvedFailedRefunds", () => {
               resolvedByOperationId: r.resolved ? RESOLVER : null,
             }),
           );
+          const inFlow = lifecycle === "refund_pending" || lifecycle === "refunding";
           const expected = refunds.filter(
             (r) =>
-              lifecycle === "refunded" &&
-              r.everSucceeded &&
+              (inFlow || (lifecycle === "refunded" && r.everSucceeded)) &&
               (r.status === "failed" || r.status === "canceled") &&
               r.resolvedByOperationId === null,
           );

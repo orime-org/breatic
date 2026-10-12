@@ -296,6 +296,46 @@ describe("a refused request stores nothing, so its key stays free", () => {
   });
 });
 
+// PostgreSQL text cannot hold U+0000, so a NUL that got past the schema would
+// fail the insert and answer 500. It is a malformed body: 422, nothing stored.
+describe("a NUL character in the body is 422 invalid_body and stores nothing (§4.6)", () => {
+  const NUL = "a\u0000b";
+
+  it.each([
+    ["the reason of a rejection", "refund_pending", (l: SeededLot) => paths.reject(l.lotId), { reason: NUL }],
+    ["the reason of an approval", "refund_pending", (l: SeededLot) => paths.approve(l.lotId), { reason: NUL, confirmedRefundIds: [] }],
+    ["a confirmed refund id", "refund_pending", (l: SeededLot) => paths.approve(l.lotId), { reason: "ok", confirmedRefundIds: [`re_${NUL}`] }],
+    ["a failed refund id to refund again", "refunded", (l: SeededLot) => paths.refundAgain(l.lotId), { reason: "ok", failedRefundIds: [`re_${NUL}`], notify: false }],
+    ["a failed refund id resolved outside", "refunded", (l: SeededLot) => paths.resolvedOutside(l.lotId), { reason: "ok", failedRefundIds: [`re_${NUL}`] }],
+  ] as const)("%s", async (_name, state, pathOf, body) => {
+    const lot = await lotOnStripe(state);
+    const before = await worldOf(suite.sql, lot);
+    const key = freshKey("nul");
+
+    const res = await post(pathOf(lot), body, key);
+
+    expect(res.status).toBe(422);
+    expect(res.json.code).toBe("invalid_body");
+    expect(await worldOf(suite.sql, lot)).toEqual(before);
+    expect(await holdersOf(key)).toEqual({ ops: 0, mails: 0 });
+    expect(fakeStripe.createCalls).toEqual([]);
+  });
+
+  it("the reason of a mail resend", async () => {
+    const lot = await seedRefundLot(suite.sql, "refunded");
+    const op = await seedOperation(suite.sql, lot, { kind: "settle", status: "succeeded", result: "refunded" });
+    const before = await worldOf(suite.sql, lot);
+    const key = freshKey("nul");
+
+    const res = await post(paths.resend(op.id), { reason: NUL }, key);
+
+    expect(res.status).toBe(422);
+    expect(res.json.code).toBe("invalid_body");
+    expect(await worldOf(suite.sql, lot)).toEqual(before);
+    expect(await holdersOf(key)).toEqual({ ops: 0, mails: 0 });
+  });
+});
+
 describe("one key, two lots, at the same time (§9)", () => {
   it("exactly one rejection runs; the other is 422 idempotency_key_reused and its lot is untouched", async () => {
     const a = await lotOnStripe("refund_pending");

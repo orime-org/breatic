@@ -26,6 +26,12 @@
  * does not change the endpoint's answer. Whether the answer waits for the send
  * is not decided by the design, so the cases poll for the row's outcome.
  *
+ * A rejection letter names the time of the request that was rejected: the
+ * disposition's own `refund_requested_at`, copied from the lot at E1. The
+ * buyer may ask again after a rejection, which rewrites the lot's column, so
+ * a resend, or an automatic row the sweep sends late, still names the
+ * rejected request's time (§5.1, §8).
+ *
  * The mail backend is the one thing stood in for: `sendMail` is replaced
  * with a spy; everything else in `@breatic/core` is real.
  */
@@ -48,7 +54,11 @@ vi.mock("@server/infra/stripe.js", async () => {
   };
 });
 
+import { randomUUID } from "node:crypto";
+import { creditLotService } from "@breatic/domain";
 import { getCreditRefundConfig } from "@server/config/credit-refund.js";
+import { transitionOperation } from "@server/modules/credit-refund/operation-transitions.js";
+import { bothZones } from "@server/modules/payment/purchase-mail-template.js";
 import {
   markStaleRefundMailsUnknown,
   sendDueRefundMails,
@@ -57,9 +67,10 @@ import {
 import * as mailRepo from "@server/modules/credit-refund/refund-mail.repo.js";
 import { renderRefundMail } from "@server/modules/credit-refund/refund-mail-template.js";
 import { fakeStripe } from "./fake-stripe-refunds.js";
-import { call, freshKey, paths, useInternalApp } from "./internal-api-harness.js";
+import { call, freshKey, mailsSettled, paths, useInternalApp } from "./internal-api-harness.js";
 import {
   PAID_CENTS,
+  inTx,
   seedOperation,
   seedRefundLot,
   type LotState,
@@ -398,5 +409,110 @@ describe("sent right after the disposition commits, without waiting for the loop
     expect(res.json).toMatchObject({ status: "succeeded", result: "rejected" });
     const rows = await settledMails(lot, 1);
     expect(rows[0]!.status).toBe("failed");
+  });
+});
+
+describe("a rejection letter names the rejected request's time, after the buyer asked again (§5.1, §8)", () => {
+  /** When the rejected request was made; days before any later ask. */
+  const REJECTED_ASK = new Date("2026-09-03T02:45:00.000Z");
+
+  /** When the pack was bought; apart from both request times, so no letter line is mistaken for another. */
+  const PURCHASED = new Date("2026-09-01T01:30:00.000Z");
+
+  /**
+   * A `refund_pending` lot whose payment Stripe knows, bought at
+   * {@link PURCHASED} and asked at {@link REJECTED_ASK}.
+   * @returns The lot.
+   */
+  async function askedLot(): Promise<SeededLot> {
+    const lot = await seedRefundLot(suite.sql, "refund_pending");
+    fakeStripe.register(lot.paymentIntentId, PAID_CENTS, []);
+    await suite.sql`
+      UPDATE credit_lots SET refund_requested_at = ${REJECTED_ASK}, created_at = ${PURCHASED}
+      WHERE id = ${lot.lotId}
+    `;
+    return lot;
+  }
+
+  /**
+   * The buyer asks again; returns the new request's time.
+   * @param lot - The lot, back to `active` after the rejection.
+   * @returns The lot's `refund_requested_at` now.
+   */
+  async function askAgain(lot: SeededLot): Promise<Date> {
+    await creditLotService.requestRefund({ lotId: lot.lotId, requestingUserId: lot.userId });
+    const [row] = await suite.sql<{ at: Date }[]>`
+      SELECT refund_requested_at AS at FROM credit_lots WHERE id = ${lot.lotId}
+    `;
+    expect(row!.at.getTime()).not.toBe(REJECTED_ASK.getTime());
+    return row!.at;
+  }
+
+  /**
+   * Assert a letter names one request time and not the other. The payment
+   * stores no language or zone, so the letter is English in UTC.
+   * @param text - The letter's plain-text part.
+   * @param named - The time it must name.
+   * @param notNamed - The time it must not name.
+   */
+  function expectNames(text: string, named: Date, notNamed: Date): void {
+    expect(text).toContain(bothZones(named, "UTC", "en"));
+    expect(text).not.toContain(bothZones(notNamed, "UTC", "en"));
+  }
+
+  it("a resend through the endpoint", async () => {
+    const lot = await askedLot();
+    const rejected = await call(suite.baseUrl, paths.reject(lot.lotId), {
+      body: { reason: OPERATOR_REASON },
+      idempotencyKey: freshKey(),
+    });
+    expect(rejected.status).toBe(200);
+    await vi.waitFor(async () => expect(await mailsOfLot(lot)).toHaveLength(1));
+    await mailsSettled(suite.sql, lot);
+    const later = await askAgain(lot);
+
+    const res = await call(suite.baseUrl, paths.resend(rejected.json.id), {
+      body: { reason: RESEND_REASON },
+      idempotencyKey: freshKey(),
+    });
+
+    expect([200, 202]).toContain(res.status);
+    await vi.waitFor(async () => expect(await mailsOfLot(lot)).toHaveLength(2));
+    await mailsSettled(suite.sql, lot);
+    const letters = lettersTo(await emailOf(lot));
+    expect(letters).toHaveLength(2);
+    expectNames(letters[0]!.text, REJECTED_ASK, later);
+    expectNames(letters[1]!.text, REJECTED_ASK, later);
+  });
+
+  it("an automatic row the loop's sweep sends after the re-ask", async () => {
+    const lot = await askedLot();
+    // E1 as the endpoint's phase 1 runs it; no send follows, so the row waits
+    // for the sweep.
+    const op = await inTx((tx) =>
+      transitionOperation(tx, null, {
+        type: "E1",
+        create: {
+          kind: "reject",
+          lotId: lot.lotId,
+          paymentId: lot.paymentId,
+          idempotencyKey: `idem-${randomUUID()}`,
+          requestHash: "a".repeat(64),
+          requestedBy: "admin_7",
+          reason: OPERATOR_REASON,
+        },
+      }),
+    );
+    const later = await askAgain(lot);
+    await suite.sql`
+      UPDATE refund_mail_outbox SET created_at = now() - interval '2 minutes', updated_at = now() - interval '2 minutes'
+      WHERE operation_id = ${op!.id}
+    `;
+
+    await sendDueRefundMails();
+
+    const letters = lettersTo(await emailOf(lot));
+    expect(letters).toHaveLength(1);
+    expectNames(letters[0]!.text, REJECTED_ASK, later);
   });
 });
