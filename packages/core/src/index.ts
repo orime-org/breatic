@@ -214,6 +214,12 @@ export type {
 // ── i18n (node-side adapter; engine lives in @breatic/shared) ──
 export { loadLocales, runWithLocale } from "@core/i18n/locale-loader.js";
 export { currentConsent, runWithConsent } from "@core/analytics/consent-context.js";
+export {
+  flushServerAnalytics,
+  initServerAnalytics,
+  trackServerEvent,
+  type ServerAnalyticsStart,
+} from "@core/analytics/server-analytics.js";
 
 // ── Utilities ────────────────────────────────────────────────────
 export { logger, initLogger, createLogger } from "@core/infra/logger.js";

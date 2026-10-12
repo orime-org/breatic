@@ -26,6 +26,7 @@
     "@ai-sdk/anthropic": "catalog:",
     "@ai-sdk/google": "catalog:",
     "@ai-sdk/openai": "catalog:",
+    "@amplitude/analytics-node": "catalog:",
     "@aws-sdk/client-s3": "^3.1107.0",
     "@breatic/shared": "workspace:*",
     "ai": "catalog:",
