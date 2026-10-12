@@ -54,12 +54,17 @@ function openScrolled(): { editor: Editor; box: HTMLElement } {
 }
 
 /**
- * Makes taking the focus do what WebKit does: it scrolls the caret, up at the
- * top, into view, `preventScroll` or not.
+ * Makes taking the focus do what WebKit does: it reads `preventScroll`, so
+ * upstream prosemirror-view takes the option as supported and stops putting
+ * the scroll positions back, and it still scrolls the caret, up at the top,
+ * into view. A stand-in that left the option unread would send upstream down
+ * its unsupported branch, which puts the positions back with or without the
+ * patch.
  * @param box - The box the caret scrolls.
  */
 function focusScrollsToCaret(box: HTMLElement): void {
-  vi.spyOn(HTMLElement.prototype, 'focus').mockImplementation(() => {
+  vi.spyOn(HTMLElement.prototype, 'focus').mockImplementation((options?: FocusOptions) => {
+    void options?.preventScroll;
     box.scrollTop = 0;
   });
 }
