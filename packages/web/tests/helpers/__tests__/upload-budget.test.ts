@@ -7,12 +7,12 @@ import { join } from 'node:path';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Page, Request } from 'playwright/test';
 
+import { roomForUploads, watchUploadTickets } from '../upload-budget';
+
 // The record is a path relative to where the suite runs; these cases run in a
 // directory of their own, so the smoke suite's record is never touched.
 const home = process.cwd();
 let scratch = '';
-
-const { roomForUploads, watchUploadTickets } = await import('../upload-budget');
 
 /**
  * A page that can be told to ask for tickets.
