@@ -85,8 +85,9 @@ interface Facts {
 export async function preview(lotId: string): Promise<Record<string, unknown>> {
   const { payment } = await loadTarget(lotId);
   const listed = await readStripe(payment);
-  return db.transaction(async (tx) => {
-    await applyRefundSnapshot(tx, payment.id, listed, "request");
+  let rejudged: string | null = null;
+  const body = await db.transaction(async (tx) => {
+    rejudged = await applyRefundSnapshot(tx, payment.id, listed, "request");
     const lot = await creditLotRepo.lockLot(lotId, tx);
     if (lot === null) throw new RefundRefusal(404, "not_found", "lot_not_found");
     const facts = await readFacts(tx, lot, payment);
@@ -122,6 +123,8 @@ export async function preview(lotId: string): Promise<Record<string, unknown>> {
             : { kind: judged.kind, ...judged.result },
     };
   });
+  if (rejudged !== null) sendOperationMailsLater(rejudged);
+  return body;
 }
 
 // ── approve, retry, refund_again ─────────────────────────────────────
@@ -219,14 +222,18 @@ async function decide(
   if (replay) return { replay };
   const { payment } = await loadTarget(req.lotId);
   const listed = await readStripe(payment);
-  return db.transaction(async (tx) => {
+  let rejudged: string | null = null;
+  const outcome = await db.transaction(async (tx) => {
     const locked = await lockAndRecheck(tx, req);
     if ("replay" in locked) return { replay: locked.replay };
-    await applyRefundSnapshot(tx, payment.id, listed, "request");
+    rejudged = await applyRefundSnapshot(tx, payment.id, listed, "request");
     const create = judge(await readFacts(tx, locked.lot, payment), payment);
     const op = await transitionOperation(tx, null, { type: "E1", create, actor: "request" });
     return { op: op! };
   });
+  // A refusal rolls the copy back with it; only a committed re-judgement mails.
+  if (rejudged !== null) sendOperationMailsLater(rejudged);
+  return outcome;
 }
 
 // ── mail resend ──────────────────────────────────────────────────────

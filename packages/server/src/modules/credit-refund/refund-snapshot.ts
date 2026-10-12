@@ -34,6 +34,8 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
  * @param paymentId - The payment.
  * @param refunds - Every refund Stripe holds for it (`refunds.list`, all pages).
  * @param actor - Who read them, for the event row a re-judged disposition gets.
+ * @returns The waiting disposition it re-judged, so the caller can send the
+ *   buyer mail a finish queued once its transaction commits; null for none.
  * @throws {Error} When the payment opened no lot.
  */
 export async function applyRefundSnapshot(
@@ -41,7 +43,7 @@ export async function applyRefundSnapshot(
   paymentId: string,
   refunds: readonly StripeRefundObject[],
   actor?: Actor,
-): Promise<void> {
+): Promise<string | null> {
   const lot = await creditLotRepo.lockLotByPayment(paymentId, tx);
   if (lot === null) throw new Error(`payment ${paymentId} opened no credit lot`);
   const awaitingId = await operationRepo.findAwaiting(paymentId, tx);
@@ -66,9 +68,11 @@ export async function applyRefundSnapshot(
       tx,
     );
   }
-  if (awaiting === null) return;
+  if (awaiting === null) return null;
   const event = await judgeAwaiting(tx, awaiting, refunds);
-  if (event !== null) await transitionOperation(tx, { id: awaiting.id }, { ...event, ...(actor && { actor }) });
+  if (event === null) return null;
+  await transitionOperation(tx, { id: awaiting.id }, { ...event, ...(actor && { actor }) });
+  return awaiting.id;
 }
 
 /**

@@ -9,6 +9,7 @@
 
 import { db } from "@breatic/core";
 import { creditLotRepo } from "@breatic/domain";
+import { sendOperationMailsLater } from "@server/modules/credit-refund/refund-mail.js";
 import { applyRefundSnapshot } from "@server/modules/credit-refund/refund-snapshot.js";
 import { StripeReadError, listRefunds } from "@server/modules/credit-refund/stripe-refunds.js";
 import type { StripeRefundObject } from "@server/modules/credit-refund/types.js";
@@ -52,10 +53,11 @@ export async function handleRefundEvent(event: RefundEvent): Promise<"handled" |
     if (err instanceof StripeReadError) return "unreadable";
     throw err;
   }
-  await db.transaction(async (tx) => {
+  const judged = await db.transaction(async (tx) => {
     await creditLotRepo.lockLot(lotId, tx);
-    if (!(await claimWebhookEvent(event.id, event.type, tx))) return;
-    await applyRefundSnapshot(tx, paymentId, listed, "webhook");
+    if (!(await claimWebhookEvent(event.id, event.type, tx))) return null;
+    return applyRefundSnapshot(tx, paymentId, listed, "webhook");
   });
+  if (judged !== null) sendOperationMailsLater(judged);
   return "handled";
 }

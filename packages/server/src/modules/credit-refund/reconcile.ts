@@ -11,6 +11,7 @@
 import { db, env, getRedis, logger } from "@breatic/core";
 import { getCreditRefundConfig } from "@server/config/credit-refund.js";
 import * as reconcileRepo from "@server/modules/credit-refund/reconcile.repo.js";
+import { sendOperationMailsLater } from "@server/modules/credit-refund/refund-mail.js";
 import { applyRefundSnapshot } from "@server/modules/credit-refund/refund-snapshot.js";
 import { listRefundsForPayment } from "@server/modules/credit-refund/stripe-refunds.js";
 
@@ -53,5 +54,6 @@ export async function runDailyReconcile(): Promise<void> {
  */
 async function reconcilePayment(paymentId: string): Promise<void> {
   const listed = await listRefundsForPayment(paymentId);
-  await db.transaction((tx) => applyRefundSnapshot(tx, paymentId, listed, "reconcile"));
+  const judged = await db.transaction((tx) => applyRefundSnapshot(tx, paymentId, listed, "reconcile"));
+  if (judged !== null) sendOperationMailsLater(judged);
 }
