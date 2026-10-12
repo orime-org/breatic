@@ -764,7 +764,7 @@ function ProjectWorkspace({
   const onRestoreSpace = async (spaceId: string): Promise<void> => {
     await callRpc(
       { type: 'space:restore', payload: { spaceId } },
-      'project.space.error.create',
+      'project.space.error.restore',
     );
   };
 

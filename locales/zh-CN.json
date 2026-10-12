@@ -1179,6 +1179,7 @@
       },
       "error": {
         "create": "Space 创建失败",
+        "restore": "Space 恢复失败",
         "unreachable": "服务器没有响应,请检查网络后重试",
         "notSynced": "Project 正在同步,请稍后再试"
       },
