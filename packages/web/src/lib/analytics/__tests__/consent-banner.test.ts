@@ -162,13 +162,25 @@ describe('a choice changed in another tab', () => {
 });
 
 describe('what counts as the visitor choosing', () => {
-  it('does not file a write made after the settings window closed without a choice as the visitor\'s', async () => {
+  it('files the visitor\'s choice under the window it was made in', async () => {
     const seen: unknown[] = [];
     await startBanner('DE', (choice) => seen.push(choice));
     library.config?.onModalShow?.({ modalName: 'preferencesModal' });
     library.config?.onModalHide?.({ modalName: 'preferencesModal' });
     library.config?.onFirstConsent?.();
-    expect(library.setCookieData).not.toHaveBeenCalled();
-    expect(seen).toHaveLength(1);
+    expect(library.setCookieData).toHaveBeenCalledWith(expect.objectContaining({ value: expect.objectContaining({ source: 'settings' }) }));
+    expect(seen).toHaveLength(2);
+  });
+
+  it('does not file its own load decision as the visitor\'s, though a window was opened and closed without a choice', async () => {
+    library.consent = true;
+    await startBanner('US');
+    library.config?.onModalShow?.({ modalName: 'preferencesModal' });
+    // The stored choice disappears while the tab is hidden; the restart writes the regional default.
+    library.consent = false;
+    library.acceptCategory.mockImplementationOnce(() => library.config?.onFirstConsent?.());
+    document.dispatchEvent(new Event('visibilitychange'));
+    await vi.waitFor(() => expect(library.acceptCategory).toHaveBeenCalled());
+    expect(library.setCookieData).not.toHaveBeenCalledWith(expect.objectContaining({ value: expect.objectContaining({ source: 'settings' }) }));
   });
 });

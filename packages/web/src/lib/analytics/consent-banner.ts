@@ -211,10 +211,6 @@ async function boot(options: BannerOptions): Promise<void> {
     onModalShow: ({ modalName }) => {
       if (modalName === 'consentModal' || modalName === 'preferencesModal') openedModal = modalName;
     },
-    // The library records a choice before it hides the window, so a window closed without one leaves nothing behind.
-    onModalHide: () => {
-      openedModal = null;
-    },
     onFirstConsent: onVisitorChoice,
     onChange: onVisitorChoice,
   });
@@ -227,6 +223,8 @@ async function boot(options: BannerOptions): Promise<void> {
     gpc: (navigator as Navigator & { globalPrivacyControl?: boolean }).globalPrivacyControl === true,
     now: new Date().toISOString(),
   });
+  // This write is ours, even if the visitor opened a window and closed it without choosing.
+  openedModal = null;
   if (decision.choice && decision.write) setConsent(decision.choice);
   undecided = decision.showBanner;
   placeBanner();
