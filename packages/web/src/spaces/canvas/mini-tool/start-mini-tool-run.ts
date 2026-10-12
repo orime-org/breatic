@@ -9,6 +9,7 @@
  */
 
 import {
+  newId,
   t,
 } from '@breatic/shared';
 import {
@@ -29,7 +30,11 @@ import { toast } from '@web/lib/toast';
 import { NODE_STEP } from '@web/spaces/canvas/drop-layout';
 import { DrawingEmptyError, type DrawingExport } from '@web/spaces/canvas/mini-tool/export-drawing';
 import { exportsBeforeRun } from '@web/spaces/canvas/mini-tool/mini-tool-view';
-import { outputPlacementOf, type OutputSize } from '@web/spaces/canvas/mini-tool/output-placement';
+import { outputPlacementOf, type OutputSize, type PlacedOutput } from '@web/spaces/canvas/mini-tool/output-placement';
+import { groupBackgroundFor } from '@web/spaces/canvas/group-background';
+import { planGroupCreation } from '@web/spaces/canvas/group-creation';
+import { writeGroup } from '@web/spaces/canvas/group-write';
+import { MODALITY_LABEL } from '@web/spaces/canvas/nodes/_shared/modality';
 import type { DrawingKind } from '@web/spaces/canvas/mini-tool/paint-drawing';
 import { createEmptyNode, type CreatableNodeType } from '@web/spaces/canvas/node-factory';
 import { resolveUploadFailure } from '@web/spaces/canvas/upload-failure';
@@ -64,6 +69,14 @@ export interface ExportedFile {
   size?: OutputSize;
 }
 
+/** The group a press put its results into, and the box it covers. */
+export interface BuiltGroup {
+  id: string;
+  position: { x: number; y: number };
+  width: number;
+  height: number;
+}
+
 /** Everything one press needs. */
 export interface MiniToolRun {
   projectId: string;
@@ -92,8 +105,12 @@ export interface MiniToolRun {
   setExporting: (exporting: boolean) => void;
   /** Whether the panel is still the opening the press was made in. */
   stillOpen: () => boolean;
-  /** Called with the nodes the press built, the moment they exist, while the panel is the same opening. */
-  onBuilt: (built: { id: string; position: { x: number; y: number } }[]) => void;
+  /**
+   * Called with the nodes the press built, and the group they went into when
+   * the tool groups its results, the moment they exist, while the panel is the
+   * same opening.
+   */
+  onBuilt: (built: { id: string; position: { x: number; y: number } }[], group?: BuiltGroup) => void;
 }
 
 /**
@@ -216,6 +233,45 @@ async function prepare(run: MiniToolRun): Promise<{ files?: ExportedFile[]; draw
 }
 
 /**
+ * Put a press's result nodes into a new group named after the tool's output
+ * and the source, sized from the nodes' laid-out footprints. Called inside the
+ * press's undo batch, so one undo takes the nodes and the group back.
+ * @param run - The press.
+ * @param nodes - The result nodes just added.
+ * @param placements - Their placements, carrying each node's footprint.
+ * @returns The group, or undefined when there was nothing to group.
+ */
+function groupResults(
+  run: MiniToolRun,
+  nodes: readonly { id: string; type: string; position: { x: number; y: number } }[],
+  placements: readonly PlacedOutput[],
+): BuiltGroup | undefined {
+  const plan = planGroupCreation(
+    nodes.map((node, index) => ({
+      id: node.id,
+      type: node.type,
+      position: node.position,
+      width: placements[index]?.width,
+      height: placements[index]?.height,
+      data: {},
+    })),
+    nodes.map((node) => node.id),
+    newId(),
+  );
+  if (plan === null) return undefined;
+  const output = outputTemplateOf(run.spec);
+  writeGroup(
+    run.projectId,
+    run.spaceId,
+    plan,
+    run.userId,
+    groupBackgroundFor(Math.random()),
+    `${output.namePrefix}-${run.source.name ?? MODALITY_LABEL[output.modality]}`,
+  );
+  return { id: plan.groupId, position: plan.position, width: plan.width, height: plan.height };
+}
+
+/**
  * Build the result nodes, wire them to the source, and start the run.
  *
  * A browser tool's file, or a drawing tool's images and their upload, are made
@@ -244,10 +300,12 @@ export async function startMiniToolRun(run: MiniToolRun): Promise<void> {
     x: source.position.x + (source.groupOrigin?.x ?? 0) + NODE_STEP.x,
     y: source.position.y + (source.groupOrigin?.y ?? 0),
   };
-  const nodes = outputPlacementOf(spec, run.snapshot.params, files?.map((made) => made.size) ?? [], source.name).map((placed) => {
+  const placements = outputPlacementOf(spec, run.snapshot.params, files?.map((made) => made.size) ?? [], source.name);
+  const nodes = placements.map((placed) => {
     const built = createEmptyNode(placed.output.modality, { x: base.x + placed.x, y: base.y + placed.y }, userId);
     return { ...built, data: { ...built.data, name: placed.name } };
   });
+  let group: BuiltGroup | undefined;
   runCanvasUndoBatch(projectId, spaceId, () => {
     for (const node of nodes) {
       addNode(projectId, spaceId, node);
@@ -258,8 +316,9 @@ export async function startMiniToolRun(run: MiniToolRun): Promise<void> {
         toolId: spec.id,
       });
     }
+    if (spec.groupOutputs === true) group = groupResults(run, nodes, placements);
   });
-  if (run.stillOpen()) run.onBuilt(nodes.map((node) => ({ id: node.id, position: node.position })));
+  if (run.stillOpen()) run.onBuilt(nodes.map((node) => ({ id: node.id, position: node.position })), group);
 
   if (files !== undefined) {
     const tag: MiniToolUploadTag = { source: 'mini_tool', toolName: spec.id };

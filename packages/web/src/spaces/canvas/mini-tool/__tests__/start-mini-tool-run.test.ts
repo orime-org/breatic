@@ -97,7 +97,10 @@ describe('startMiniToolRun', () => {
     ]);
     const edges = canvas.addEdge.mock.calls.map((call) => call[2]);
     expect(edges.every((edge) => edge.source === 'src' && edge.toolId === 'audio.separate')).toBe(true);
-    expect(run.onBuilt).toHaveBeenCalledWith(nodes.map((node) => ({ id: node.id, position: node.position })));
+    expect(run.onBuilt).toHaveBeenCalledWith(
+      nodes.map((node) => ({ id: node.id, position: node.position })),
+      undefined,
+    );
   });
 
   it('sends the snapshot with the new nodes for a server tool', async () => {

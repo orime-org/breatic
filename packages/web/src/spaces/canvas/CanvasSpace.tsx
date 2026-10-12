@@ -3973,7 +3973,17 @@ function CanvasSpaceInner({
         uploadImage: (file) => uploadDerivedImage(file, { projectId, spaceId }),
         setExporting: (exporting) => sessionStore.getState().setMiniToolExporting(exporting, session),
         stillOpen: () => sessionStore.getState().panelSession === session,
-        onBuilt: (built) => {
+        onBuilt: (built, group) => {
+          // A grouped batch is one thing to act on next: the group is what is
+          // selected and what the camera frames.
+          if (group !== undefined) {
+            setSelectAfterCreate([group.id]);
+            panToFrame(
+              [{ ...group.position, width: group.width, height: group.height }],
+              measuredRects([nodeId])[0] ?? null,
+            );
+            return;
+          }
           setSelectAfterCreate(built.map((node) => node.id));
           const [first] = built;
           if (first !== undefined) frameNewNode(first.position, nodeId);
@@ -3982,7 +3992,20 @@ function CanvasSpaceInner({
       if (exportsBeforeRun(spec)) trackOperation(newId(), work);
       return work;
     },
-    [nodes, projectId, spaceId, viewerId, buffer, fillUpload, fillUploads, frameNewNode, trackOperation, sessionStore],
+    [
+      nodes,
+      projectId,
+      spaceId,
+      viewerId,
+      buffer,
+      fillUpload,
+      fillUploads,
+      frameNewNode,
+      panToFrame,
+      measuredRects,
+      trackOperation,
+      sessionStore,
+    ],
   );
   const onUploadInputChange = React.useCallback(
     (event: React.ChangeEvent<HTMLInputElement>): void => {
