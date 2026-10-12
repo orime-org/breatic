@@ -108,6 +108,16 @@ describe('the markup draft', () => {
     expect(mark(store)).toMatchObject({ color: INK[1], size: 12, selectedId: null });
   });
 
+  it('lets go of the selection when a drawing tool is picked, and keeps it on select', () => {
+    const store = withMark();
+    store.getState().commitMark([A]);
+    store.getState().selectMark('a');
+    store.getState().setMarkTool('select');
+    expect(mark(store).selectedId).toBe('a');
+    store.getState().setMarkTool('rect');
+    expect(mark(store).selectedId).toBeNull();
+  });
+
   it('only changes the pen while a text is being edited', () => {
     const store = withMark();
     store.getState().commitMark([A]);

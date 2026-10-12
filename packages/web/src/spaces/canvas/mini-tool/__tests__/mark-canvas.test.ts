@@ -61,6 +61,12 @@ function drag(from: [number, number], to: [number, number], button = 0): void {
   pointer('mouse:up', ...to, button);
 }
 
+/**
+ * The draft id of the canvas's active object.
+ * @returns It, or undefined when nothing is active.
+ */
+const idOfActive = (): string | undefined => (controller.canvas.getActiveObject() as { markId?: string } | undefined)?.markId;
+
 /** The text object being edited. */
 const editing = (): IText => controller.canvas.getActiveObject() as IText;
 
@@ -193,6 +199,45 @@ describe('MarkCanvasController', () => {
     expect(mark().objects[0]).toMatchObject({ w: 0.5 });
     expect(mark().undo).toHaveLength(2);
     expect(controller.canvas.getActiveObject()).toBeTruthy();
+  });
+
+  it('restyles a selected object as often as the controls change, keeping it selected', () => {
+    store.getState().commitMark([RECT]);
+    controller.sync();
+    const shape = controller.canvas.getObjects()[0]!;
+    controller.canvas.setActiveObject(shape);
+    controller.canvas.fire('selection:created', { selected: [shape] } as never);
+    store.getState().setMarkColor(INK[2]);
+    controller.sync();
+    store.getState().setMarkSize(9);
+    controller.sync();
+    expect(mark().objects[0]).toMatchObject({ color: INK[2], size: 9 });
+    expect(mark().selectedId).toBe('r');
+    expect(idOfActive()).toBe('r');
+  });
+
+  it('lets go of the selection on the canvas when a drawing tool is picked', () => {
+    store.getState().commitMark([RECT]);
+    controller.sync();
+    const shape = controller.canvas.getObjects()[0]!;
+    controller.canvas.setActiveObject(shape);
+    controller.canvas.fire('selection:created', { selected: [shape] } as never);
+    store.getState().setMarkTool('rect');
+    controller.sync();
+    expect(controller.canvas.getActiveObject()).toBeUndefined();
+  });
+
+  it('writes a move back after a text was entered and left unchanged', () => {
+    store.getState().commitMark([TEXT]);
+    controller.sync();
+    const text = controller.canvas.getObjects()[0] as IText;
+    controller.canvas.setActiveObject(text);
+    text.enterEditing();
+    controller.channel.exitEditing();
+    text.set({ left: (text.left ?? 0) + 40 });
+    controller.canvas.fire('object:modified', { target: text } as never);
+    expect(mark().objects[0]).toMatchObject({ x: 0.6 });
+    expect(mark().undo).toHaveLength(2);
   });
 
   it('drops the selection when undo changes the objects', () => {
