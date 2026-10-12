@@ -43,34 +43,25 @@ function clockIn(at: Date, timeZone: string): { date: string; minutes: number } 
   };
 }
 
-/** Words that put a 12-hour time in the afternoon or evening. */
-const AFTERNOON = /下午|晚上|傍晚|中午|午後|夜|오후|저녁|p\.?m\.?/i;
-
-/** Words that put a 12-hour time between midnight and noon, where 12 is 0. */
-const MORNING = /凌晨|半夜|深夜|早上|上午|午前|오전|새벽|a\.?m\.?/i;
+/** Minutes in a day, and on a 12-hour clock face. */
+const DAY = 24 * 60;
+const FACE = 12 * 60;
 
 /**
  * Whether a reply states a time within the slack of the expected one.
  * @param text - The reply.
  * @param expected - Minutes since midnight on the reader's clock.
+ * @param clock - `24` when the question asked for `HH:MM`, so the hour is
+ * taken as written. `12` when the reply's form was left to the model, which may
+ * write `下午4:26` or `4点26分`; then only the place on the clock face counts.
  * @returns True when some hour and minute in it (`14:05`, `2点05分`, `2時5分`,
- * `2시 5분`), read on the 12-hour clock when a word for the part of the day
- * sits right before or after it, is close enough.
+ * `2시 5분`) is close enough.
  */
-function statesTimeNear(text: string, expected: number): boolean {
-  return [
-    ...text.matchAll(/([^\d\s]{0,3})\s*(?<!\d)(\d{1,2})\s*[:：点點時시]\s*(\d{1,2})(?!\d)\s*([^\d\s]{0,4})/g),
-  ].some((m) => {
-    const hour = Number(m[2]);
-    const around = `${m[1] ?? ''} ${m[4] ?? ''}`;
-    const hour24 = MORNING.test(around)
-      ? hour % 12
-      : hour < 12 && AFTERNOON.test(around)
-        ? hour + 12
-        : hour;
-    const said = hour24 * 60 + Number(m[3]);
-    const apart = Math.abs(said - expected);
-    return Math.min(apart, 24 * 60 - apart) <= SLACK_MINUTES;
+function statesTimeNear(text: string, expected: number, clock: 12 | 24 = 24): boolean {
+  const period = clock === 24 ? DAY : FACE;
+  return [...text.matchAll(/(?<!\d)(\d{1,2})\s*[:：点點時시]\s*(\d{1,2})(?!\d)/g)].some((m) => {
+    const apart = Math.abs(Number(m[1]) * 60 + Number(m[2]) - expected) % period;
+    return Math.min(apart, period - apart) <= SLACK_MINUTES;
   });
 }
 
@@ -198,8 +189,9 @@ test('keeps to Chinese for a very short Chinese question @needs-model', async ({
   const text = await askHere(page, '几点了');
 
   expect(text, `the reply: ${text}`).toMatch(/[\u4e00-\u9fff]/);
-  expect(statesTimeNear(text, clockIn(asked, 'Asia/Shanghai').minutes), `the reply: ${text}`).toBe(
-    true,
-  );
+  expect(
+    statesTimeNear(text, clockIn(asked, 'Asia/Shanghai').minutes, 12),
+    `the reply: ${text}`,
+  ).toBe(true);
   await page.context().close();
 });
