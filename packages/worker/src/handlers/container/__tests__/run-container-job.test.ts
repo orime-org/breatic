@@ -147,6 +147,27 @@ describe("runContainerJob", () => {
     );
   });
 
+  // A tool whose result count follows its params opens one output per result this run makes.
+  it("opens as many outputs as the run's params make for a variable-output tool", async () => {
+    const SPLIT: MiniToolSpec = {
+      ...CUT,
+      id: "video.split",
+      params: [{ kind: "list", key: "cuts", item: { min: 0, max: 600, step: 0.1 }, maxItems: 4 }],
+      outputs: undefined,
+      output: { modality: "video", namePrefix: "PART" },
+      outputCount: { kind: "listLength", param: "cuts", plus: 1 },
+    } as unknown as MiniToolSpec;
+    h.readMiniToolJob.mockResolvedValueOnce(null);
+    h.submitMiniToolJob.mockResolvedValueOnce({ state: "starting" });
+
+    await expect(runContainerJob(SPLIT, "cut", { ...INPUT, params: { cuts: [5, 12] } })).rejects.toBeInstanceOf(
+      StillRunning,
+    );
+
+    const opened = h.openContainerOutputs.mock.calls[0]![0] as { outputs: unknown[] };
+    expect(opened.outputs).toEqual(Array.from({ length: 3 }, () => ({ modality: "video", namePrefix: "PART" })));
+  });
+
   // Every task has one ceiling, the one the run read off its rows on the canvas.
   it("gives the job the deadline the run hands it", async () => {
     h.readMiniToolJob.mockResolvedValueOnce(null);
