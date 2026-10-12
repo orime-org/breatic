@@ -45,5 +45,13 @@ ruleTester.run("no-hand-written-button-spinner", noHandWrittenButtonSpinner, {
       code: "export const K = () => <Button><LoaderCircle />Save</Button>;",
       errors: [{ messageId: "handWrittenSpinner", line: 1 }],
     },
+    {
+      code: "export const L = () => <Button><LucideLoader2 />Save</Button>;",
+      errors: [{ messageId: "handWrittenSpinner", line: 1 }],
+    },
+    {
+      code: "export const M = () => <Button><LucideLoaderCircle />Save</Button>;",
+      errors: [{ messageId: "handWrittenSpinner", line: 1 }],
+    },
   ],
 });

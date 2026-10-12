@@ -7,7 +7,14 @@ import { createRule } from "#rules/create-rule";
 const BUTTONS = new Set(["Button", "AlertDialogAction"]);
 
 /** The lucide spinner, under each name the package exports it by. */
-const SPINNERS = new Set(["Loader2", "Loader2Icon", "LoaderCircle", "LoaderCircleIcon"]);
+const SPINNERS = new Set([
+  "Loader2",
+  "Loader2Icon",
+  "LoaderCircle",
+  "LoaderCircleIcon",
+  "LucideLoader2",
+  "LucideLoaderCircle",
+]);
 
 /**
  * The name a JSX element is written with, when it is a plain identifier.
