@@ -50,6 +50,18 @@ function counts(over: Partial<NodeTaskCounts> = {}): NodeTaskCounts {
   return { running: 0, done: 0, failed: 0, expired: 0, ...over };
 }
 
+describe('toNodeView — the node type is kept once (inner#1456)', () => {
+  const ALL_TYPES: readonly NodeType[] = ['text', 'image', 'audio', 'video', '3d', 'web', 'annotation', 'group'];
+
+  it.each(ALL_TYPES)('pairs a %s node with its view, which carries no copy of the type', (type) => {
+    const typed = toNodeView(fields(type));
+
+    expect(typed?.type).toBe(type);
+    expect(typed?.data).toBeDefined();
+    expect(typed?.data).not.toHaveProperty('kind');
+  });
+});
+
 describe('toNodeView — wire CanvasNodeFields → narrowed view', () => {
   // The body stays OUT of the projection (#1774). That absence is what makes a
   // keystroke change nothing the canvas mirror compares, so zero nodes
