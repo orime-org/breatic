@@ -29,4 +29,9 @@ export interface AdsConversionJob {
   readonly occurredAt: string;
   readonly click: AdClick;
   readonly value?: { readonly amountCents: number; readonly currency: string };
+  /** On a restatement: the platform's id for the original upload, checked before restating. */
+  readonly originalRequestId?: string;
 }
+
+/** Name of the recurring job that queues again uploads whose job was lost. */
+export const ADS_SWEEP_JOB = "sweep";

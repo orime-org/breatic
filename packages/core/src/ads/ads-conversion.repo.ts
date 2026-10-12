@@ -3,7 +3,7 @@
 
 /** Data access for `ads_conversion_uploads`. */
 
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, lt } from "drizzle-orm";
 import type { AdsConversionJob, AdsConversionName, AdsUploadStatus } from "@core/ads/ads-types.js";
 import { db } from "@core/db/client.js";
 import { adsConversionUploads } from "@core/db/schema.js";
@@ -30,16 +30,18 @@ export async function claimUpload(job: AdsConversionJob, paymentId: string | nul
  * @param key.transactionId - Its transaction id.
  * @param from - The states the move is allowed from.
  * @param to - The new state.
+ * @param requestId - The platform's id for an accepted upload, recorded with the move.
  * @returns True when the row was in one of `from` and moved.
  */
 export async function moveUpload(
   key: { conversion: AdsConversionName; transactionId: string },
   from: readonly AdsUploadStatus[],
   to: AdsUploadStatus,
+  requestId?: string,
 ): Promise<boolean> {
   const rows = await db
     .update(adsConversionUploads)
-    .set({ status: to, updatedAt: new Date() })
+    .set({ status: to, updatedAt: new Date(), ...(requestId ? { requestId } : {}) })
     .where(
       and(
         eq(adsConversionUploads.conversion, key.conversion),
@@ -75,18 +77,43 @@ export async function getUploadStatus(key: {
   return (row?.status as AdsUploadStatus | undefined) ?? null;
 }
 
+/** An upload row as the queueing code reads it. */
+export interface UploadRow {
+  readonly status: AdsUploadStatus;
+  readonly job: AdsConversionJob;
+  readonly requestId: string | null;
+}
+
+const uploadColumns = {
+  status: adsConversionUploads.status,
+  job: adsConversionUploads.job,
+  requestId: adsConversionUploads.requestId,
+};
+
 /**
  * Find the conversion recorded for a credit order.
  * @param paymentId - The order.
- * @returns Its status and job, or null when none was queued.
+ * @returns Its row, or null when none was queued.
  */
-export async function findUploadByPayment(
-  paymentId: string,
-): Promise<{ status: AdsUploadStatus; job: AdsConversionJob } | null> {
+export async function findUploadByPayment(paymentId: string): Promise<UploadRow | null> {
   const [row] = await db
-    .select({ status: adsConversionUploads.status, job: adsConversionUploads.job })
+    .select(uploadColumns)
     .from(adsConversionUploads)
     .where(eq(adsConversionUploads.paymentId, paymentId))
     .limit(1);
-  return row ? { status: row.status as AdsUploadStatus, job: row.job } : null;
+  return row ? { ...row, status: row.status as AdsUploadStatus } : null;
+}
+
+/**
+ * Uploads still waiting in one of the given states since before a time.
+ * @param statuses - The waiting states.
+ * @param before - Rows last moved before this time.
+ * @returns The rows.
+ */
+export async function findStaleUploads(statuses: readonly AdsUploadStatus[], before: Date): Promise<UploadRow[]> {
+  const rows = await db
+    .select(uploadColumns)
+    .from(adsConversionUploads)
+    .where(and(inArray(adsConversionUploads.status, [...statuses]), lt(adsConversionUploads.updatedAt, before)));
+  return rows.map((row) => ({ ...row, status: row.status as AdsUploadStatus }));
 }

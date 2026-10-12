@@ -36,6 +36,7 @@ import {
   adsConversionState,
   initServerAnalytics,
   ADS_CONVERSION_QUEUE,
+  scheduleAdsUploadSweep,
   adsConversionConfig,
   type AdsConversionJob,
 } from "@breatic/core";
@@ -283,8 +284,12 @@ export function startWorker(): void {
   const adsConversion = createWorker<AdsConversionJob>(ADS_CONVERSION_QUEUE, (job) => {
     const config = adsConversionConfig();
     if (config) adsSink ??= googleDataManagerSink(config);
-    return runAdsConversion(job, adsSink ?? { upload: async () => undefined });
+    return runAdsConversion(job, adsSink ?? { upload: async () => undefined, status: async () => "success" });
   });
+  // Queues again any upload whose job was lost between the claim and the add.
+  if (adsConversionConfig()) {
+    scheduleAdsUploadSweep().catch((err: unknown) => logger.error({ err }, "ads_conversion_sweep_schedule_failed"));
+  }
 
   adsConversion.on("failed", (job, err) => {
     logger.error(

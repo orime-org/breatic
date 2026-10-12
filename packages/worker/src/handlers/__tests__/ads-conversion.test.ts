@@ -12,16 +12,21 @@ import { UnrecoverableError, type Job } from "bullmq";
 import type * as CoreModule from "@breatic/core";
 
 const settleAdsUpload = vi.hoisted(() => vi.fn(async () => undefined));
+const requeueStaleAdsUploads = vi.hoisted(() => vi.fn(async () => 0));
 const adsConversionConfig = vi.hoisted(() => vi.fn());
-const ingestEvents = vi.hoisted(() => vi.fn(async () => [{}]));
+const ingestEvents = vi.hoisted(() => vi.fn(async () => [{ requestId: "req-1" }]));
+const retrieveRequestStatus = vi.hoisted(() =>
+  vi.fn(async () => [{ requestStatusPerDestination: [{ requestStatus: "SUCCESS" }] }]),
+);
 
 vi.mock("@breatic/core", async (importOriginal) => {
   const actual = await importOriginal<typeof CoreModule>();
-  return { ...actual, settleAdsUpload, adsConversionConfig };
+  return { ...actual, settleAdsUpload, adsConversionConfig, requeueStaleAdsUploads };
 });
 vi.mock("@google-ads/datamanager", () => ({
   IngestionServiceClient: class {
     ingestEvents = ingestEvents;
+    retrieveRequestStatus = retrieveRequestStatus;
   },
 }));
 
@@ -48,8 +53,24 @@ const DATA: AdsConversionJob = {
  * @param attemptsMade - Attempts already made.
  * @returns The job.
  */
-function job(attemptsMade = 0): Job<AdsConversionJob> {
-  return { data: DATA, attemptsMade, opts: { attempts: 5 } } as Job<AdsConversionJob>;
+function job(attemptsMade = 0, data: AdsConversionJob = DATA): Job<AdsConversionJob> {
+  return { name: data.kind, data, attemptsMade, opts: { attempts: 5 } } as Job<AdsConversionJob>;
+}
+
+const RESTATEMENT: AdsConversionJob = {
+  ...DATA,
+  kind: "restatement",
+  value: { amountCents: 0, currency: "USD" },
+  originalRequestId: "req-0",
+};
+
+/**
+ * A sink whose upload succeeds and whose status lookup answers as given.
+ * @param status - What the original request's processing came to.
+ * @returns The sink.
+ */
+function sinkWithStatus(status: "success" | "processing" | "failed"): AdsConversionSink {
+  return { upload: vi.fn(async () => "req-2"), status: vi.fn(async () => status) };
 }
 
 beforeEach(() => {
@@ -59,33 +80,62 @@ beforeEach(() => {
 
 describe("runAdsConversion", () => {
   it("uploads and records the upload", async () => {
-    const sink: AdsConversionSink = { upload: vi.fn(async () => undefined) };
+    const sink: AdsConversionSink = { upload: vi.fn(async () => "req-1"), status: vi.fn() };
     await runAdsConversion(job(), sink);
     expect(sink.upload).toHaveBeenCalledWith(DATA, "22");
-    expect(settleAdsUpload).toHaveBeenCalledWith(DATA, true);
+    expect(settleAdsUpload).toHaveBeenCalledWith(DATA, true, "req-1");
+  });
+
+  it("restates only once Google has processed the original upload", async () => {
+    const sink = sinkWithStatus("success");
+    await runAdsConversion(job(0, RESTATEMENT), sink);
+    expect(sink.status).toHaveBeenCalledWith("req-0");
+    expect(sink.upload).toHaveBeenCalledWith(RESTATEMENT, "22");
+    expect(settleAdsUpload).toHaveBeenCalledWith(RESTATEMENT, true, "req-2");
+  });
+
+  it("waits for the retries while the original upload is still processing", async () => {
+    const sink = sinkWithStatus("processing");
+    await expect(runAdsConversion(job(0, RESTATEMENT), sink)).rejects.toThrow(/processing/);
+    expect(sink.upload).not.toHaveBeenCalled();
+    expect(settleAdsUpload).not.toHaveBeenCalled();
+  });
+
+  it("drops the restatement when Google rejected the original upload", async () => {
+    const sink = sinkWithStatus("failed");
+    await expect(runAdsConversion(job(0, RESTATEMENT), sink)).rejects.toBeInstanceOf(UnrecoverableError);
+    expect(sink.upload).not.toHaveBeenCalled();
+    expect(settleAdsUpload).toHaveBeenCalledWith(RESTATEMENT, false);
+  });
+
+  it("re-queues uploads whose job was lost on the sweep job", async () => {
+    const sink: AdsConversionSink = { upload: vi.fn(), status: vi.fn() };
+    await runAdsConversion({ name: "sweep", data: { kind: "sweep" } } as unknown as Job<AdsConversionJob>, sink);
+    expect(requeueStaleAdsUploads).toHaveBeenCalled();
+    expect(sink.upload).not.toHaveBeenCalled();
   });
 
   it("leaves a passing failure to the retries without recording it", async () => {
-    const sink: AdsConversionSink = { upload: vi.fn(async () => Promise.reject(Object.assign(new Error("busy"), { code: 14 }))) };
+    const sink: AdsConversionSink = { upload: vi.fn(async () => Promise.reject(Object.assign(new Error("busy"), { code: 14 }))), status: vi.fn() };
     await expect(runAdsConversion(job(0), sink)).rejects.toThrow("busy");
     expect(settleAdsUpload).not.toHaveBeenCalled();
   });
 
   it("records the failure on the last attempt", async () => {
-    const sink: AdsConversionSink = { upload: vi.fn(async () => Promise.reject(Object.assign(new Error("busy"), { code: 14 }))) };
+    const sink: AdsConversionSink = { upload: vi.fn(async () => Promise.reject(Object.assign(new Error("busy"), { code: 14 }))), status: vi.fn() };
     await expect(runAdsConversion(job(4), sink)).rejects.toThrow("busy");
     expect(settleAdsUpload).toHaveBeenCalledWith(DATA, false);
   });
 
   it("stops at once when the platform refuses the request", async () => {
-    const sink: AdsConversionSink = { upload: vi.fn(async () => Promise.reject(Object.assign(new Error("bad"), { code: 3 }))) };
+    const sink: AdsConversionSink = { upload: vi.fn(async () => Promise.reject(Object.assign(new Error("bad"), { code: 3 }))), status: vi.fn() };
     await expect(runAdsConversion(job(0), sink)).rejects.toBeInstanceOf(UnrecoverableError);
     expect(settleAdsUpload).toHaveBeenCalledWith(DATA, false);
   });
 
   it("stops at once when the conversion is no longer configured", async () => {
     adsConversionConfig.mockReturnValue(null);
-    const sink: AdsConversionSink = { upload: vi.fn() };
+    const sink: AdsConversionSink = { upload: vi.fn(), status: vi.fn() };
     await expect(runAdsConversion(job(), sink)).rejects.toBeInstanceOf(UnrecoverableError);
     expect(sink.upload).not.toHaveBeenCalled();
     expect(settleAdsUpload).toHaveBeenCalledWith(DATA, false);
@@ -93,12 +143,12 @@ describe("runAdsConversion", () => {
 });
 
 describe("googleDataManagerSink", () => {
-  it("sends the event to the conversion action with the click, value and granted consent", async () => {
-    await googleDataManagerSink(CONFIG).upload(DATA, "22");
+  it("sends the event to the conversion action with the click, value and measurement-only consent", async () => {
+    expect(await googleDataManagerSink(CONFIG).upload(DATA, "22")).toBe("req-1");
     const account = { accountType: "GOOGLE_ADS", accountId: "1234567890" };
     expect(ingestEvents).toHaveBeenCalledWith({
       destinations: [{ operatingAccount: account, loginAccount: account, productDestinationId: "22" }],
-      consent: { adUserData: "CONSENT_GRANTED", adPersonalization: "CONSENT_GRANTED" },
+      consent: { adUserData: "CONSENT_GRANTED", adPersonalization: "CONSENT_DENIED" },
       events: [
         {
           transactionId: "purchase:cs_1",
@@ -116,5 +166,19 @@ describe("googleDataManagerSink", () => {
     await googleDataManagerSink(CONFIG).upload({ ...DATA, value: undefined }, "22");
     const [request] = ingestEvents.mock.calls[0] as unknown as [{ events: Record<string, unknown>[] }];
     expect(request.events[0]).not.toHaveProperty("conversionValue");
+  });
+});
+
+describe("googleDataManagerSink status", () => {
+  it.each([
+    ["SUCCESS", "success"],
+    ["PARTIAL_SUCCESS", "success"],
+    ["PROCESSING", "processing"],
+    ["REQUEST_STATUS_UNKNOWN", "processing"],
+    ["FAILED", "failed"],
+  ] as const)("reads %s as %s", async (requestStatus, expected) => {
+    retrieveRequestStatus.mockResolvedValueOnce([{ requestStatusPerDestination: [{ requestStatus }] }]);
+    expect(await googleDataManagerSink(CONFIG).status("req-0")).toBe(expected);
+    expect(retrieveRequestStatus).toHaveBeenCalledWith({ requestId: "req-0" });
   });
 });

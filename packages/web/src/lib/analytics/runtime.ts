@@ -9,6 +9,7 @@
  */
 
 import {
+  adClickFrom,
   sanitizeEventProperties,
   type AnalyticsEventName,
   type ConsentSnapshot,
@@ -25,6 +26,7 @@ import {
   startConsentBanner,
   type ConsentText,
 } from '@web/lib/analytics/consent-banner';
+import { readAttribution } from '@web/lib/analytics/attribution';
 import { fetchCountry, type BrowserChoice } from '@web/lib/analytics/consent-decision';
 
 type Amplitude = typeof import('@amplitude/analytics-browser');
@@ -159,7 +161,8 @@ function applyAds(on: boolean): void {
   }
   if (!gtagLoaded) return;
   const state = on ? 'granted' : 'denied';
-  gtag('consent', 'update', { ad_storage: state, ad_user_data: state, ad_personalization: state });
+  // Ads are used to measure conversions only, never to personalise them.
+  gtag('consent', 'update', { ad_storage: state, ad_user_data: state, ad_personalization: 'denied' });
   if (!on) clearStorage('_gcl_');
 }
 
@@ -277,8 +280,9 @@ export function reset(): void {
 }
 
 /**
- * Report an ad conversion through the Google tag; the backend reports the
- * same transaction id and Google counts the two once (design §4.9).
+ * Report an ad conversion through the Google tag when this browser arrived
+ * from an ad; the backend reports the same transaction id and Google counts
+ * the two once (design §4.9).
  * @param conversion - Which conversion action.
  * @param transactionId - The shared transaction id.
  * @param value - Revenue, for purchases.
@@ -292,6 +296,8 @@ export function conversion(
 ): void {
   const label = conversionLabels()[conversion];
   if (!gtagLoaded || choice?.ads !== true || label === undefined) return;
+  // The same rule as the server upload: only a visitor who arrived from an ad in the click window.
+  if (adClickFrom(readAttribution(), Date.now()) === null) return;
   gtag('event', 'conversion', {
     send_to: `${GOOGLE_ADS_TAG_ID}/${label}`,
     transaction_id: transactionId,

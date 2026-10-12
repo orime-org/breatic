@@ -25,6 +25,7 @@ CREATE TABLE "ads_conversion_uploads" (
   "payment_id" uuid,
   "status" varchar(16) NOT NULL,
   "job" jsonb NOT NULL,
+  "request_id" varchar(128),
   "created_at" timestamp with time zone DEFAULT now() NOT NULL,
   "updated_at" timestamp with time zone DEFAULT now() NOT NULL,
   CONSTRAINT "ads_conversion_uploads_conversion_transaction_id_pk" PRIMARY KEY ("conversion", "transaction_id"),

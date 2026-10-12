@@ -166,7 +166,7 @@ describe("users.analytics_consent", () => {
   it("reads no consent for a choice older than the consent cookie lasts", async () => {
     const id = await insertUser();
     const old = choice(true, true, new Date(Date.now() - (CONSENT_MAX_AGE_DAYS + 1) * 86_400_000).toISOString());
-    await sql`UPDATE users SET analytics_consent = ${sql.json(old)} WHERE id = ${id}`;
+    await sql`UPDATE users SET analytics_consent = ${sql.json({ ...old })} WHERE id = ${id}`;
     expect(await accountConsent(id)).toBeNull();
   });
 

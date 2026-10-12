@@ -8,7 +8,17 @@
 
 import { UnrecoverableError, type Job } from "bullmq";
 import { IngestionServiceClient } from "@google-ads/datamanager";
-import { adsConversionConfig, settleAdsUpload, type AdsConversionConfig, type AdsConversionJob } from "@breatic/core";
+import {
+  ADS_SWEEP_JOB,
+  adsConversionConfig,
+  requeueStaleAdsUploads,
+  settleAdsUpload,
+  type AdsConversionConfig,
+  type AdsConversionJob,
+} from "@breatic/core";
+
+/** How the platform's processing of an accepted request ended. */
+export type UploadProcessing = "success" | "processing" | "failed";
 
 /** Where conversions are reported. */
 export interface AdsConversionSink {
@@ -16,8 +26,16 @@ export interface AdsConversionSink {
    * Send one conversion or restatement.
    * @param job - The upload.
    * @param conversionActionId - The platform's id for the conversion action.
+   * @returns The platform's id for the accepted request.
    */
-  upload(job: AdsConversionJob, conversionActionId: string): Promise<void>;
+  upload(job: AdsConversionJob, conversionActionId: string): Promise<string | undefined>;
+  /**
+   * How processing of an accepted request ended; acceptance alone does not
+   * mean the platform recorded the conversion.
+   * @param requestId - The id `upload` returned.
+   * @returns The outcome.
+   */
+  status(requestId: string): Promise<UploadProcessing>;
 }
 
 // gRPC status codes a retry cannot change: INVALID_ARGUMENT, NOT_FOUND,
@@ -35,10 +53,10 @@ export function googleDataManagerSink(config: AdsConversionConfig): AdsConversio
   return {
     async upload(job, conversionActionId) {
       const { gclid, gbraid, wbraid } = job.click;
-      await client.ingestEvents({
+      const [response] = await client.ingestEvents({
         destinations: [{ operatingAccount: account, loginAccount: account, productDestinationId: conversionActionId }],
-        // Only browsers that accepted ads are queued (design §4.4.5).
-        consent: { adUserData: "CONSENT_GRANTED", adPersonalization: "CONSENT_GRANTED" },
+        // Only browsers that accepted ads are queued (design §4.4.5); ads are for measurement, never personalisation.
+        consent: { adUserData: "CONSENT_GRANTED", adPersonalization: "CONSENT_DENIED" },
         events: [
           {
             transactionId: job.transactionId,
@@ -51,6 +69,14 @@ export function googleDataManagerSink(config: AdsConversionConfig): AdsConversio
           },
         ],
       });
+      return response.requestId ?? undefined;
+    },
+    async status(requestId) {
+      const [response] = await client.retrieveRequestStatus({ requestId });
+      const outcome = response.requestStatusPerDestination?.[0]?.requestStatus;
+      if (outcome === "SUCCESS" || outcome === "PARTIAL_SUCCESS") return "success";
+      if (outcome === "FAILED") return "failed";
+      return "processing";
     },
   };
 }
@@ -74,18 +100,30 @@ function isPermanent(err: unknown): boolean {
  * @throws {unknown} When the upload failed otherwise, so the queue retries.
  */
 export async function runAdsConversion(job: Job<AdsConversionJob>, sink: AdsConversionSink): Promise<void> {
+  if (job.name === ADS_SWEEP_JOB) {
+    await requeueStaleAdsUploads();
+    return;
+  }
   const actionId = adsConversionConfig()?.actions[job.data.conversion];
   if (actionId === undefined) {
     await settleAdsUpload(job.data, false);
     throw new UnrecoverableError(`no conversion action for ${job.data.conversion}`);
   }
+  let requestId: string | undefined;
   try {
-    await sink.upload(job.data, actionId);
+    // A restatement of a conversion Google never recorded would count as a new conversion.
+    if (job.data.kind === "restatement" && job.data.originalRequestId) {
+      const original = await sink.status(job.data.originalRequestId);
+      if (original === "failed") throw new UnrecoverableError("the original upload was rejected");
+      if (original === "processing") throw new Error("the original upload is still processing");
+    }
+    requestId = await sink.upload(job.data, actionId);
   } catch (err) {
     const lastAttempt = job.attemptsMade + 1 >= (job.opts.attempts ?? 1);
-    if (isPermanent(err) || lastAttempt) await settleAdsUpload(job.data, false);
-    if (isPermanent(err)) throw new UnrecoverableError((err as Error).message);
+    const permanent = err instanceof UnrecoverableError || isPermanent(err);
+    if (permanent || lastAttempt) await settleAdsUpload(job.data, false);
+    if (permanent) throw err instanceof UnrecoverableError ? err : new UnrecoverableError((err as Error).message);
     throw err;
   }
-  await settleAdsUpload(job.data, true);
+  await settleAdsUpload(job.data, true, requestId);
 }

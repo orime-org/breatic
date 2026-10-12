@@ -19,6 +19,7 @@ import {
   getUploadStatus,
   initCore,
   moveUpload,
+  requeueStaleAdsUploads,
   setAdsConversionConfigForTest,
   settleAdsUpload,
 } from "@breatic/core";
@@ -145,9 +146,13 @@ describe("enqueueAdsRestatement", () => {
     expect((await jobsFor(txn)).map((j) => j.name)).toEqual(["conversion"]);
 
     const [job] = (await queue.getJobs(["waiting", "delayed", "prioritized"])).filter((j) => j.data.transactionId === txn);
-    await settleAdsUpload(job!.data, true);
+    await settleAdsUpload(job!.data, true, "req-1");
     expect(await getUploadStatus(key)).toBe("restating");
     expect(await jobsFor(txn)).toContainEqual({ name: "restatement", value: { amountCents: 0, currency: "USD" } });
+    const restatement = (await queue.getJobs(["waiting", "delayed", "prioritized"])).find(
+      (j) => j.data.transactionId === txn && j.name === "restatement",
+    );
+    expect(restatement?.data.originalRequestId).toBe("req-1");
 
     await settleAdsUpload({ ...job!.data, kind: "restatement" }, true);
     expect(await getUploadStatus(key)).toBe("restated");
@@ -170,5 +175,27 @@ describe("enqueueAdsRestatement", () => {
 
   it("does not restate an order that never had a conversion", async () => {
     expect(await enqueueAdsRestatement(crypto.randomUUID())).toBe(false);
+  });
+});
+
+describe("requeueStaleAdsUploads", () => {
+  it("queues again a conversion whose job never reached the queue, once", async () => {
+    const txn = `signup:${crypto.randomUUID()}`;
+    expect(await enqueueAdsConversion({ conversion: "signup", transactionId: txn, click: clicked(1) }, ADS)).toBe(true);
+    // The job is lost (Redis down between the claim and the add, or the process died).
+    for (const lost of (await queue.getJobs(["waiting", "delayed", "prioritized"])).filter((j) => j.data.transactionId === txn)) {
+      await lost.remove();
+    }
+    await sql`UPDATE ads_conversion_uploads SET updated_at = now() - interval '1 hour' WHERE transaction_id = ${txn}`;
+    await requeueStaleAdsUploads(10 * 60_000);
+    await requeueStaleAdsUploads(10 * 60_000);
+    expect((await jobsFor(txn)).map((j) => j.name)).toEqual(["conversion"]);
+  });
+
+  it("leaves a recently queued conversion alone", async () => {
+    const txn = `signup:${crypto.randomUUID()}`;
+    await enqueueAdsConversion({ conversion: "signup", transactionId: txn, click: clicked(1) }, ADS);
+    await requeueStaleAdsUploads(10 * 60_000);
+    expect((await jobsFor(txn)).map((j) => j.name)).toEqual(["conversion"]);
   });
 });

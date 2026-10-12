@@ -246,6 +246,8 @@ export {
   adsConversionWanted,
   enqueueAdsConversion,
   enqueueAdsRestatement,
+  requeueStaleAdsUploads,
+  scheduleAdsUploadSweep,
   settleAdsUpload,
   setAdsConversionConfigForTest,
   type AdsConversionConfig,
@@ -253,6 +255,7 @@ export {
 export { getUploadStatus, moveUpload } from "@core/ads/ads-conversion.repo.js";
 export {
   ADS_CONVERSIONS,
+  ADS_SWEEP_JOB,
   ADS_UPLOAD_STATUSES,
   type AdsConversionJob,
   type AdsConversionName,

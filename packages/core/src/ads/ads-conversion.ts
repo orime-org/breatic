@@ -17,8 +17,9 @@
 import { z } from "zod";
 import { CLICK_WINDOW_MS, type AdClick, type ConsentSnapshot } from "@breatic/shared";
 import { currentConsent } from "@core/analytics/consent-context.js";
-import { claimUpload, findUploadByPayment, moveUpload } from "@core/ads/ads-conversion.repo.js";
-import { ADS_CONVERSIONS, type AdsConversionJob, type AdsConversionName } from "@core/ads/ads-types.js";
+import { createHash } from "node:crypto";
+import { claimUpload, findStaleUploads, findUploadByPayment, moveUpload } from "@core/ads/ads-conversion.repo.js";
+import { ADS_CONVERSIONS, ADS_SWEEP_JOB, type AdsConversionJob, type AdsConversionName } from "@core/ads/ads-types.js";
 import { env } from "@core/config/env.js";
 import { createQueue, defaultJobOpts } from "@core/infra/queue.js";
 
@@ -80,14 +81,33 @@ export function adsConversionConfig(): AdsConversionConfig | null {
 let queue: ReturnType<typeof createQueue> | undefined;
 
 /**
- * Put a job on the queue. Callers have already claimed the upload's row, which
- * is what makes each conversion and each restatement queue once.
+ * The queue's job id for an upload: one per conversion, transaction and kind,
+ * so adding it again while it is still queued does nothing.
+ * @param job - The upload.
+ * @returns The id (BullMQ refuses `:` in custom ids, so the key is hashed).
+ */
+function jobIdOf(job: AdsConversionJob): string {
+  return createHash("sha256").update(`${job.kind}\n${job.conversion}\n${job.transactionId}`).digest("hex");
+}
+
+/**
+ * The ads queue, created on first use.
+ * @returns The queue.
+ */
+function adsQueue(): ReturnType<typeof createQueue> {
+  queue ??= createQueue(ADS_CONVERSION_QUEUE);
+  return queue;
+}
+
+/**
+ * Put a job on the queue. Callers have already claimed or moved the upload's
+ * row, which is what makes each conversion and each restatement queue once.
  * @param job - The upload.
  */
 async function addJob(job: AdsConversionJob): Promise<void> {
-  queue ??= createQueue(ADS_CONVERSION_QUEUE);
-  await queue.add(job.kind, job, {
+  await adsQueue().add(job.kind, job, {
     ...defaultJobOpts(),
+    jobId: jobIdOf(job),
     attempts: 5,
     backoff: { type: "exponential", delay: 60_000 },
   });
@@ -163,17 +183,23 @@ export async function enqueueAdsRestatement(paymentId: string): Promise<boolean>
   const key = { conversion: upload.job.conversion, transactionId: upload.job.transactionId };
   if (await moveUpload(key, ["queued"], "restate_pending")) return true;
   if (!(await moveUpload(key, ["uploaded"], "restating"))) return false;
-  await addJob(restatementOf(upload.job));
+  await addJob(restatementOf(upload.job, upload.requestId));
   return true;
 }
 
 /**
  * The zero-value restatement of an uploaded conversion.
  * @param job - The original upload.
+ * @param requestId - The platform's id for the original upload.
  * @returns The restatement job.
  */
-function restatementOf(job: AdsConversionJob): AdsConversionJob {
-  return { ...job, kind: "restatement", value: { amountCents: 0, currency: job.value?.currency ?? "USD" } };
+function restatementOf(job: AdsConversionJob, requestId: string | null): AdsConversionJob {
+  return {
+    ...job,
+    kind: "restatement",
+    value: { amountCents: 0, currency: job.value?.currency ?? "USD" },
+    ...(requestId ? { originalRequestId: requestId } : {}),
+  };
 }
 
 /**
@@ -181,9 +207,10 @@ function restatementOf(job: AdsConversionJob): AdsConversionJob {
  * arrived while it was queued is restated now that Google has it.
  * @param job - The upload.
  * @param uploaded - True when Google accepted it; false once retries are exhausted.
+ * @param requestId - Google's id for the accepted request.
  * @throws {unknown} When the database or the queue cannot be reached.
  */
-export async function settleAdsUpload(job: AdsConversionJob, uploaded: boolean): Promise<void> {
+export async function settleAdsUpload(job: AdsConversionJob, uploaded: boolean, requestId?: string): Promise<void> {
   const key = { conversion: job.conversion, transactionId: job.transactionId };
   if (job.kind === "restatement") {
     await moveUpload(key, ["restating"], uploaded ? "restated" : "restate_failed");
@@ -193,8 +220,41 @@ export async function settleAdsUpload(job: AdsConversionJob, uploaded: boolean):
     await moveUpload(key, ["queued", "restate_pending"], "failed");
     return;
   }
-  if (await moveUpload(key, ["queued"], "uploaded")) return;
-  if (await moveUpload(key, ["restate_pending"], "restating")) await addJob(restatementOf(job));
+  if (await moveUpload(key, ["queued"], "uploaded", requestId)) return;
+  if (await moveUpload(key, ["restate_pending"], "restating", requestId)) {
+    await addJob(restatementOf(job, requestId ?? null));
+  }
+}
+
+/** How long a row may wait in a queued state before its job is presumed lost. */
+const STALE_AFTER_MS = 10 * 60_000;
+
+/**
+ * Queue again every upload still waiting whose job was lost: the add failed
+ * after the row was claimed, or the process died in between. Jobs still in
+ * the queue keep their id, so re-adding them does nothing; a job the queue
+ * gave up on while its outcome could not be recorded is replaced.
+ * @param staleAfterMs - How long a row may wait before it counts as lost.
+ * @returns How many uploads were looked at.
+ * @throws {unknown} When the database or the queue cannot be reached.
+ */
+export async function requeueStaleAdsUploads(staleAfterMs: number = STALE_AFTER_MS): Promise<number> {
+  const rows = await findStaleUploads(["queued", "restating"], new Date(Date.now() - staleAfterMs));
+  for (const row of rows) {
+    const job = row.status === "restating" ? restatementOf(row.job, row.requestId) : row.job;
+    const existing = await adsQueue().getJob(jobIdOf(job));
+    if (existing && (await existing.isFailed())) await existing.remove();
+    await addJob(job);
+  }
+  return rows.length;
+}
+
+/**
+ * Run {@link requeueStaleAdsUploads} on the queue every ten minutes, once
+ * across all workers. Only a deployment with ad conversions configured calls this.
+ */
+export async function scheduleAdsUploadSweep(): Promise<void> {
+  await adsQueue().upsertJobScheduler(ADS_SWEEP_JOB, { every: STALE_AFTER_MS }, { name: ADS_SWEEP_JOB, data: {} });
 }
 
 /**

@@ -123,4 +123,29 @@ describe('analytics runtime', () => {
     expect(sdk.reset).not.toHaveBeenCalled();
     expect(document.cookie).not.toMatch(/AMP_/);
   });
+
+  it('reports a browser conversion only for a visitor who arrived from an ad in the last 90 days', async () => {
+    const runtime = await startRuntime();
+    await choose(accepted);
+    const conversions = (): unknown[][] =>
+      ((window as Window & { dataLayer?: IArguments[] }).dataLayer ?? [])
+        .map((entry) => Array.from(entry))
+        .filter((entry) => entry[0] === 'event' && entry[1] === 'conversion');
+    runtime.conversion('signup', 'signup:user-1');
+    expect(conversions()).toHaveLength(0);
+    const at = new Date().toISOString();
+    localStorage.setItem('breatic.attribution', JSON.stringify({ first: { at, gclid: 'CLICK' }, last: { at, gclid: 'CLICK' } }));
+    runtime.conversion('signup', 'signup:user-1');
+    expect(conversions()).toHaveLength(1);
+  });
+
+  it('never grants ad personalisation', async () => {
+    await startRuntime();
+    await choose(accepted);
+    const updates = ((window as Window & { dataLayer?: IArguments[] }).dataLayer ?? [])
+      .map((entry) => Array.from(entry))
+      .filter((entry) => entry[0] === 'consent' && entry[1] === 'update');
+    expect(updates.length).toBeGreaterThan(0);
+    for (const update of updates) expect(update[2]).toMatchObject({ ad_personalization: 'denied', ad_storage: 'granted' });
+  });
 });

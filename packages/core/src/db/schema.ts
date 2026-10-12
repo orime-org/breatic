@@ -2576,6 +2576,8 @@ export const adsConversionUploads = pgTable(
     status: varchar("status", { length: 16 }).notNull(),
     /** The uploaded job, so a restatement repeats its click and conversion action. */
     job: jsonb("job").$type<AdsConversionJob>().notNull(),
+    /** The platform's id for the accepted upload; its processing status decides whether a restatement may follow. */
+    requestId: varchar("request_id", { length: 128 }),
     ...timestamps,
   },
   (table) => [
