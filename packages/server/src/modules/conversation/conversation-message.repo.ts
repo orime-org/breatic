@@ -345,20 +345,27 @@ function carriesPart(type: string): SQL {
 }
 
 /**
- * Whether the account has an Agent turn that finished, other than the one
- * named: a stored reply carrying none of the marks a stopped, failed or
- * blocked turn leaves (`failed`, `interrupted`, `blocked`). Deleted
- * conversations count — the question is whether it ever happened.
+ * Whether the account finished an Agent turn before the one named: a stored
+ * reply carrying none of the marks a stopped, failed or blocked turn leaves
+ * (`failed`, `interrupted`, `blocked`), stored before the named turn's first
+ * reply. Replies are ordered by `(created_at, id)`, so of several turns
+ * finishing at once exactly one is first. Deleted conversations count — the
+ * question is whether it ever happened.
  * @param userId - The account
- * @param except - The turn just stored, left out of the question
- * @param except.conversationId - Its conversation
- * @param except.turnIndex - Its turn number
+ * @param turn - The turn just stored
+ * @param turn.conversationId - Its conversation
+ * @param turn.turnIndex - Its turn number
  * @returns True when such a turn exists
  */
 export async function hasFinishedTurnBefore(
   userId: string,
-  except: { conversationId: string; turnIndex: number },
+  turn: { conversationId: string; turnIndex: number },
 ): Promise<boolean> {
+  const firstReply = sql`(
+    SELECT m.created_at, m.id FROM conversation_messages m
+    WHERE m.conversation_id = ${turn.conversationId} AND m.turn_index = ${turn.turnIndex} AND m.role = 'assistant'
+    ORDER BY m.created_at, m.id LIMIT 1
+  )`;
   const rows = await db
     .select({ id: conversationMessages.id })
     .from(conversationMessages)
@@ -366,12 +373,7 @@ export async function hasFinishedTurnBefore(
       and(
         eq(conversationMessages.userId, userId),
         eq(conversationMessages.role, "assistant"),
-        not(
-          and(
-            eq(conversationMessages.conversationId, except.conversationId),
-            eq(conversationMessages.turnIndex, except.turnIndex),
-          )!,
-        ),
+        sql`(${conversationMessages.createdAt}, ${conversationMessages.id}) < ${firstReply}`,
         not(or(carriesPart("failed"), carriesPart("interrupted"), carriesPart("blocked"))!),
       ),
     )

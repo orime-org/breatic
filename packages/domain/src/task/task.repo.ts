@@ -286,17 +286,25 @@ export async function markCompletedAndBill(
 }
 
 /**
- * Whether the account has a completed task other than the one named: the
- * first completed one is a product milestone (inner#1442 design §4.8).
+ * Whether the account completed a task before the one named: the first
+ * completed one is a product milestone (inner#1442 design §4.8). Tasks are
+ * ordered by `(completed_at, id)`, so of several finishing at once exactly
+ * one is first.
  * @param userId - The account.
- * @param exceptTaskId - The task that just completed.
- * @returns True when another completed task exists.
+ * @param taskId - The task that just completed.
+ * @returns True when a completed task sorts before it.
  */
-export async function hasOtherCompletedTask(userId: string, exceptTaskId: string): Promise<boolean> {
+export async function hasCompletedTaskBefore(userId: string, taskId: string): Promise<boolean> {
   const rows = await db
     .select({ id: tasks.id })
     .from(tasks)
-    .where(and(eq(tasks.userId, userId), eq(tasks.status, "completed"), sql`${tasks.id} <> ${exceptTaskId}`))
+    .where(
+      and(
+        eq(tasks.userId, userId),
+        eq(tasks.status, "completed"),
+        sql`(${tasks.completedAt}, ${tasks.id}) < (SELECT t.completed_at, t.id FROM tasks t WHERE t.id = ${taskId})`,
+      ),
+    )
     .limit(1);
   return rows.length > 0;
 }

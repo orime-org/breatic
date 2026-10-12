@@ -180,17 +180,34 @@ describe("consent snapshots", () => {
 
   it("tells a first completed task from a later one", async () => {
     const me = await member();
-    const insertTask = async (status: string): Promise<string> => {
+    const insertTask = async (status: string, completedAt: Date | null): Promise<string> => {
       const [row] = await sql<{ id: string }[]>`
-        INSERT INTO tasks (user_id, space_id, task_type, mode, status, params)
-        VALUES (${me.id}, gen_random_uuid(), 'image', 'append', ${status}, '{}') RETURNING id
+        INSERT INTO tasks (user_id, space_id, task_type, mode, status, params, completed_at)
+        VALUES (${me.id}, gen_random_uuid(), 'image', 'append', ${status}, '{}', ${completedAt}) RETURNING id
       `;
       return row!.id;
     };
-    const first = await insertTask("completed");
-    await insertTask("failed");
-    expect(await taskService.hasOtherCompletedTask(me.id, first)).toBe(false);
-    const second = await insertTask("completed");
-    expect(await taskService.hasOtherCompletedTask(me.id, second)).toBe(true);
+    const first = await insertTask("completed", new Date(Date.now() - 1000));
+    await insertTask("failed", null);
+    expect(await taskService.hasCompletedTaskBefore(me.id, first)).toBe(false);
+    const second = await insertTask("completed", new Date());
+    expect(await taskService.hasCompletedTaskBefore(me.id, second)).toBe(true);
+    expect(await taskService.hasCompletedTaskBefore(me.id, first)).toBe(false);
+  });
+
+  it("counts exactly one of two tasks that completed at the same instant as the first", async () => {
+    const me = await member();
+    const at = new Date();
+    const ids = await Promise.all(
+      [0, 1].map(async () => {
+        const [row] = await sql<{ id: string }[]>`
+          INSERT INTO tasks (user_id, space_id, task_type, mode, status, params, completed_at)
+          VALUES (${me.id}, gen_random_uuid(), 'image', 'append', 'completed', '{}', ${at}) RETURNING id
+        `;
+        return row!.id;
+      }),
+    );
+    const firsts = await Promise.all(ids.map(async (id) => !(await taskService.hasCompletedTaskBefore(me.id, id))));
+    expect(firsts.filter(Boolean)).toHaveLength(1);
   });
 });

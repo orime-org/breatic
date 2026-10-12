@@ -206,7 +206,25 @@ describe("hasFinishedTurnBefore", () => {
     await reply(9, [{ type: "text", text: "now" }]);
     expect(await messageRepo.hasFinishedTurnBefore(me.id, current)).toBe(false);
 
-    await reply(4, [{ type: "text", text: "done" }], true);
-    expect(await messageRepo.hasFinishedTurnBefore(me.id, current)).toBe(true);
+    // A finished turn stored after the current one does not make the current one late.
+    await reply(10, [{ type: "text", text: "later" }]);
+    expect(await messageRepo.hasFinishedTurnBefore(me.id, current)).toBe(false);
+    expect(await messageRepo.hasFinishedTurnBefore(me.id, { conversationId: conv!.id, turnIndex: 10 })).toBe(true);
+  });
+
+  it("counts a deleted finished turn stored earlier", async () => {
+    const me = await member();
+    const [conv] = await sql<{ id: string }[]>`
+      INSERT INTO conversations (user_id, title) VALUES (${me.id}, 'chat') RETURNING id
+    `;
+    await sql`
+      INSERT INTO conversation_messages (conversation_id, user_id, role, turn_index, seq, parts, deleted_at, created_at)
+      VALUES (${conv!.id}, ${me.id}, 'assistant', 4, 1, ${sql.json([{ type: "text", text: "done" }])}, now(), now() - interval '1 minute')
+    `;
+    await sql`
+      INSERT INTO conversation_messages (conversation_id, user_id, role, turn_index, seq, parts)
+      VALUES (${conv!.id}, ${me.id}, 'assistant', 9, 1, ${sql.json([{ type: "text", text: "now" }])})
+    `;
+    expect(await messageRepo.hasFinishedTurnBefore(me.id, { conversationId: conv!.id, turnIndex: 9 })).toBe(true);
   });
 });

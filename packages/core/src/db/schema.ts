@@ -294,7 +294,10 @@ export const projects = pgTable(
     }),
     ...timestamps,
   },
-  (table) => [index("projects_studio_id_idx").on(table.studioId, table.deletedAt)],
+  (table) => [
+    index("projects_studio_id_idx").on(table.studioId, table.deletedAt),
+    index("projects_created_by_user_id_idx").on(table.createdByUserId),
+  ],
 );
 
 // ── 4. Project Members ───────────────────────────────────────────────
@@ -512,6 +515,7 @@ export const conversationMessages = pgTable(
     ...timestamps,
   },
   (table) => [
+    index("conversation_messages_user_role_idx").on(table.userId, table.role),
     uniqueIndex("conversation_messages_turn_seq_key").on(
       table.conversationId,
       table.turnIndex,

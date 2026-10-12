@@ -202,8 +202,8 @@ export async function markCompletedAndBill(
  * Whether the account had completed a task before this one.
  * @param userId - The account.
  * @param taskId - The task that just completed.
- * @returns True when another completed task exists.
+ * @returns True when a completed task sorts before it by `(completed_at, id)`.
  */
-export async function hasOtherCompletedTask(userId: string, taskId: string): Promise<boolean> {
-  return taskRepo.hasOtherCompletedTask(userId, taskId);
+export async function hasCompletedTaskBefore(userId: string, taskId: string): Promise<boolean> {
+  return taskRepo.hasCompletedTaskBefore(userId, taskId);
 }

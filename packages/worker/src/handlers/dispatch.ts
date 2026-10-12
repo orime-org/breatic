@@ -301,7 +301,7 @@ async function reportFirstGeneration(task: {
 }): Promise<void> {
   if (!serverAnalyticsWanted()) return;
   try {
-    if (await taskService.hasOtherCompletedTask(task.userId, task.taskId)) return;
+    if (await taskService.hasCompletedTaskBefore(task.userId, task.taskId)) return;
     const studioId = task.projectId ? await projectsRepo.findOwnerStudioId(task.projectId) : undefined;
     trackServerEvent("first_generation_completed", {
       userId: task.userId,
