@@ -11,6 +11,7 @@ import {
   creditMode,
   exportsBeforeRun,
   miniToolRefusal,
+  promptRequired,
   rectForAspect,
   resolvedParams,
   setRectSide,
@@ -249,12 +250,41 @@ describe.each(['image.adjust', 'video.adjust'])('%s', (id) => {
   });
 });
 
+describe('the expand tool', () => {
+  const genfill = { ...entry({}, true), max_output_side: 12288 } as ModelEntry;
+  const expand = { spec: tool('image.expand'), entry: genfill, prompt: '', slots: {}, sourceShown: true, exporting: false };
+  const source = { width: 1600, height: 1000 };
+  const grown = { x: -0.25, y: 0, width: 1.5, height: 1 };
+
+  it('takes an empty prompt, since the tool has its own', () => {
+    expect(promptRequired(tool('image.expand'), genfill)).toBe(false);
+    expect(promptRequired(tool('image.inpaint'), genfill)).toBe(true);
+  });
+
+  it('exports the padded picture and its mask before the run', () => {
+    expect(exportsBeforeRun(tool('image.expand'))).toBe(true);
+  });
+
+  it('holds Run back while the frame is the source itself', () => {
+    expect(miniToolRefusal({ ...expand, source, expandFrame: { x: 0, y: 0, width: 1, height: 1 } })).toBe('frameNotExpanded');
+    expect(miniToolRefusal({ ...expand, source, expandFrame: grown })).toBeNull();
+  });
+
+  it('says a source too large to grow before it says the frame is not grown', () => {
+    expect(
+      miniToolRefusal({ ...expand, source: { width: 13000, height: 900 }, expandFrame: { x: 0, y: 0, width: 1, height: 1 } }),
+    ).toBe('sourceTooLargeToExpand');
+    expect(BLOCKING_REFUSALS.has('sourceTooLargeToExpand')).toBe(false);
+  });
+});
+
 describe('BLOCKING_REFUSALS', () => {
   it('disables Execute for the reasons the reader fixes in the panel', () => {
     expect([...BLOCKING_REFUSALS].sort()).toEqual([
       'adjustNeutral',
       'drawingEmpty',
       'exporting',
+      'frameNotExpanded',
       'promptMissing',
       'singleTile',
       'slotMissing',
