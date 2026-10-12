@@ -91,6 +91,7 @@ import { executeRefund } from "@server/modules/credit-refund/executor.js";
 import { findById, type CreditRefundOperation } from "@server/modules/credit-refund/operation.repo.js";
 import { runRefundLoopOnce, startRefundLoop } from "@server/modules/credit-refund/refund-loop.js";
 import { beforeNextList, fakeStripe, stripeError } from "./fake-stripe-refunds.js";
+import { mailsSettled } from "./internal-api-harness.js";
 import {
   CREDITS,
   PAID_CENTS,
@@ -678,6 +679,19 @@ describe("step 2 — re-read Stripe for awaiting_stripe dispositions", () => {
     await expectBookedOn(lot, own);
     expect((await bellsOf(suite.sql, lot.userId)).map((b) => b.type)).toEqual(["credit.refund_completed"]);
     expect(await eventNames(opId)).toEqual(["refund_succeeded"]);
+  });
+
+  it("succeeded since: the buyer mail is sent right after the booking commits, not left for the sweep (§6.5 M1)", async () => {
+    const { lot, opId } = await awaitingOwn("succeeded");
+
+    await runRefundLoopOnce();
+
+    // The row is seconds old, so this tick's step 3 (rows pending over a
+    // minute) did not take it: only the send after the commit can.
+    expect(await mailsOf(suite.sql, lot.lotId)).toEqual([
+      expect.objectContaining({ operation_id: opId, kind: "refund_completed", origin: "auto" }),
+    ]);
+    await mailsSettled(suite.sql, lot);
   });
 
   it("failed since: needs_attention stripe_refund_failed_later, lot stays refunding", async () => {

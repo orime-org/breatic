@@ -54,11 +54,13 @@ vi.mock("@server/infra/stripe.js", async () => {
 import Stripe from "stripe";
 import type { Hono } from "hono";
 import { fakeStripe, stripeError } from "./fake-stripe-refunds.js";
+import { mailsSettled } from "./internal-api-harness.js";
 import {
   CREDITS,
   PAID_CENTS,
   copiesOf,
   ledgerOf,
+  mailsOf,
   readLot,
   readOp,
   refundObject,
@@ -225,6 +227,29 @@ describe("credit-pack payment: Stripe is read and copied", () => {
     expect((await ledgerOf(suite.sql, lot.lotId)).filter((r) => r.entry_type === "refund")).toEqual([
       { entry_type: "refund", amount: `-${CREDITS}.000000`, reference_id: own },
     ]);
+  });
+
+  it("refund.updated to succeeded: the buyer mail is sent right after the booking commits (§6.5 M1)", async () => {
+    const own = reId("own");
+    const lot = await seedRefundLot(suite.sql, "refunding");
+    const { id: opId } = await seedOperation(suite.sql, lot, {
+      kind: "approve",
+      status: "awaiting_stripe",
+      stripeRefundId: own,
+      firstCalledHoursAgo: 1,
+      notify: true,
+    });
+    fakeStripe.register(lot.paymentIntentId, PAID_CENTS, [refundObject(own, "succeeded", PAID_CENTS, opId)]);
+
+    const res = await deliver(refundEvent("refund.updated", refundObject(own, "succeeded", PAID_CENTS, opId), lot.paymentIntentId));
+
+    expect(res.status).toBe(200);
+    // No refund loop runs in this suite: nothing but the send after the
+    // commit can move the row.
+    expect(await mailsOf(suite.sql, lot.lotId)).toEqual([
+      expect.objectContaining({ operation_id: opId, kind: "refund_completed", origin: "auto" }),
+    ]);
+    await mailsSettled(suite.sql, lot);
   });
 
   it("refund.failed on a waiting approval → needs_attention stripe_refund_failed_later", async () => {

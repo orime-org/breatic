@@ -68,11 +68,13 @@ import { env, getRedis } from "@breatic/core";
 import { getCreditRefundConfig } from "@server/config/credit-refund.js";
 import { runDailyReconcile } from "@server/modules/credit-refund/reconcile.js";
 import { fakeStripe, stripeError } from "./fake-stripe-refunds.js";
+import { mailsSettled } from "./internal-api-harness.js";
 import {
   PAID_CENTS,
   copiesOf,
   dbClockUs,
   giveIntentlessPaymentsAnIntent,
+  mailsOf,
   parkInFlightOperations,
   refundObject,
   reId,
@@ -484,6 +486,32 @@ describe("what a pass records", () => {
       // Other suites' passes scan the whole table; leave no intent-less row behind.
       await giveIntentlessPaymentsAnIntent(suite.sql);
     }
+  });
+});
+
+// ── what a pass books ────────────────────────────────────────────────
+
+describe("an approval a pass books", () => {
+  it("the buyer mail is sent right after the booking commits (§6.5 M1)", async () => {
+    const own = reId("own");
+    const lot = await seedRefundLot(suite.sql, "refunding");
+    const { id: opId } = await seedOperation(suite.sql, lot, {
+      kind: "approve",
+      status: "awaiting_stripe",
+      stripeRefundId: own,
+      firstCalledHoursAgo: 1,
+      notify: true,
+    });
+    fakeStripe.register(lot.paymentIntentId, PAID_CENTS, [refundObject(own, "succeeded", PAID_CENTS, opId)]);
+
+    await runDailyReconcile();
+
+    // No refund loop runs in this suite: nothing but the send after the
+    // commit can move the row.
+    expect(await mailsOf(suite.sql, lot.lotId)).toEqual([
+      expect.objectContaining({ operation_id: opId, kind: "refund_completed", origin: "auto" }),
+    ]);
+    await mailsSettled(suite.sql, lot);
   });
 });
 
