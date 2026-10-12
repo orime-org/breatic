@@ -883,6 +883,9 @@
         },
         "rotate": {
           "label": "回転・反転"
+        },
+        "grid": {
+          "label": "グリッド分割"
         }
       },
       "video": {
@@ -979,6 +982,12 @@
         },
         "transfer": {
           "label": "伝達特性"
+        },
+        "rows": {
+          "label": "行数"
+        },
+        "cols": {
+          "label": "列数"
         }
       },
       "panel": {

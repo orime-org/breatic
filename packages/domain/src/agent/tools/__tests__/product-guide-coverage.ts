@@ -310,6 +310,8 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "canvas.miniTool.param.shakiness.label": { excluded: REASONS.MODEL_SETTING_NAME },
   "canvas.miniTool.param.smoothing.label": { excluded: REASONS.MODEL_SETTING_NAME },
   "canvas.miniTool.param.transfer.label": { excluded: REASONS.MODEL_SETTING_NAME },
+  "canvas.miniTool.param.rows.label": { excluded: REASONS.MODEL_SETTING_NAME },
+  "canvas.miniTool.param.cols.label": { excluded: REASONS.MODEL_SETTING_NAME },
   "canvas.miniTool.panel.exportFailed": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "canvas.miniTool.panel.sourceGone": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "canvas.miniTool.panel.couldNotStart": { excluded: REASONS.SAYS_WHAT_HAPPENED },

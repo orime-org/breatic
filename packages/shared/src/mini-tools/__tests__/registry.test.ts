@@ -184,6 +184,7 @@ describe("servedMiniToolsFor", () => {
       "image.crop",
       "image.rotate",
       "image.upscale",
+      "image.grid",
     ]);
   });
 
@@ -191,6 +192,7 @@ describe("servedMiniToolsFor", () => {
     expect(servedMiniToolsFor("image", undefined).map((tool) => tool.id)).toEqual([
       "image.crop",
       "image.rotate",
+      "image.grid",
     ]);
   });
 

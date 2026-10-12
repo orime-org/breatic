@@ -883,6 +883,9 @@
         },
         "rotate": {
           "label": "Rotate & flip"
+        },
+        "grid": {
+          "label": "Grid split"
         }
       },
       "video": {
@@ -979,6 +982,12 @@
         },
         "transfer": {
           "label": "Transfer"
+        },
+        "rows": {
+          "label": "Rows"
+        },
+        "cols": {
+          "label": "Columns"
         }
       },
       "panel": {

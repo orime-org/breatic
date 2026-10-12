@@ -883,6 +883,9 @@
         },
         "rotate": {
           "label": "회전/뒤집기"
+        },
+        "grid": {
+          "label": "격자 분할"
         }
       },
       "video": {
@@ -979,6 +982,12 @@
         },
         "transfer": {
           "label": "전송 특성"
+        },
+        "rows": {
+          "label": "행 수"
+        },
+        "cols": {
+          "label": "열 수"
         }
       },
       "panel": {

@@ -883,6 +883,9 @@
         },
         "rotate": {
           "label": "旋转/翻转"
+        },
+        "grid": {
+          "label": "九宫格切图"
         }
       },
       "video": {
@@ -979,6 +982,12 @@
         },
         "transfer": {
           "label": "传输特性"
+        },
+        "rows": {
+          "label": "行数"
+        },
+        "cols": {
+          "label": "列数"
         }
       },
       "panel": {
