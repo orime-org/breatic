@@ -207,8 +207,8 @@ export function shiftRightPastOccupied(batch: Rect, occupied: readonly Rect[], g
  * The canvas mounts only the nodes in view, so one off screen may never have
  * been measured, or kept the size it had before its content changed. Where
  * the document decides the size it is used: a group's own rect, and a picture
- * or video drawn at the node's width. Text is measured when it is, and
- * estimated from its words when not. Notes are left out: a pin draws above
+ * or video drawn at the node's width. Text takes the taller of what was
+ * measured and what its words come to. Notes are left out: a pin draws above
  * every node, so nothing placed over it hides it.
  * @param placements - Every node, as the document places it.
  * @param measuredOf - The size the canvas measured for a node, if it has one.
@@ -246,9 +246,14 @@ function footprintOf(
     return { width: EMPTY_NODE_SIZE.width, height: mediaFootprintHeight(p.mediaWidth, p.mediaHeight) };
   }
   const measured = measuredOf(p.id);
-  if (measured) return measured;
   if (p.type === 'text') {
-    return { width: EMPTY_NODE_SIZE.width, height: textFootprintHeight(p.bodyText ?? '') };
+    // An unmounted node keeps the size it was last measured at, so words
+    // written into it off screen are counted by the estimate.
+    return {
+      width: measured?.width ?? EMPTY_NODE_SIZE.width,
+      height: Math.max(measured?.height ?? 0, textFootprintHeight(p.bodyText ?? '')),
+    };
   }
+  if (measured) return measured;
   return { width: EMPTY_NODE_SIZE.width, height: EMPTY_NODE_SIZE.height };
 }

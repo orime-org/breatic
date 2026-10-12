@@ -63,9 +63,18 @@ describe('occupiedRects', () => {
     expect(rects[0]?.height).toBe(mediaFootprintHeight(1920, 1080));
   });
 
-  it('sizes text by what was measured', () => {
+  it('sizes text by what was measured when it draws taller than its words', () => {
     const rects = occupiedRects([at({ id: 't', type: 'text', bodyText: 'x' })], () => ({ width: 288, height: 333 }));
     expect(rects[0]?.height).toBe(333);
+  });
+
+  it('sizes text by its words when they grew past what was last measured', () => {
+    const words = 'word '.repeat(200);
+    const rects = occupiedRects([at({ id: 't', type: 'text', bodyText: words })], () => ({
+      width: EMPTY_NODE_SIZE.width,
+      height: EMPTY_NODE_SIZE.height,
+    }));
+    expect(rects[0]?.height).toBe(textFootprintHeight(words));
   });
 
   it('estimates text that has never been measured from its words', () => {

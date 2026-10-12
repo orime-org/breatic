@@ -39,9 +39,11 @@ describe('shiftRightPastOccupied', () => {
 
   it('keeps going when the next spot is taken too', () => {
     const first = { x: 1000, y: 500, width: 288, height: 192 };
-    const second = { x: 1300, y: 600, width: 288, height: 400 };
+    // Out of reach of the first try (which ends at 1336), in reach of the
+    // spot past `first`.
+    const second = { x: 1350, y: 600, width: 288, height: 400 };
     const dx = shiftRightPastOccupied(batch, [first, second], GAP);
-    expect(batch.x + dx).toBe(second.x + second.width + GAP);
+    expect(batch.x + dx).toBe(1686);
   });
 
   it('counts a node closer than the gap as taking the spot', () => {
