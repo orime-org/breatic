@@ -91,7 +91,7 @@ export function NodePlaceholder({
       )}
       {waiting ? null : failed ? (
         <span data-testid='node-upload-error' className='text-xs'>
-          {t(failed.key, failed.params)}
+          {'text' in failed ? failed.text : t(failed.key, failed.params)}
         </span>
       ) : hint ? (
         <span className='text-xs'>{hint}</span>

@@ -56,7 +56,7 @@ export function NodeMediaInset({
           data-testid='node-upload-error'
           className='absolute inset-x-1 bottom-1 bg-popover px-2 py-1 text-xs text-status-error'
         >
-          {t(mark.message.key, mark.message.params)}
+          {'text' in mark.message ? mark.message.text : t(mark.message.key, mark.message.params)}
         </span>
       ) : null}
     </div>

@@ -20,11 +20,11 @@ import { create } from 'zustand';
 
 import { newId } from '@breatic/shared';
 
-/** A message for the reader, as a locale key and its parameters. */
-export interface UploadMarkMessage {
-  key: string;
-  params?: Record<string, string | number>;
-}
+/**
+ * A message for the reader: a locale key and its parameters, or a sentence the
+ * server already wrote in the reader's language.
+ */
+export type UploadMarkMessage = { key: string; params?: Record<string, string | number> } | { text: string };
 
 /** One node's mark: the operation it belongs to and where it stands. */
 export type UploadMark =

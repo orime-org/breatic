@@ -7,7 +7,6 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { t } from '@breatic/shared';
 import { miniToolById, type MiniToolSnapshot, type MiniToolSpec } from '@breatic/shared/mini-tools';
 
 const canvas = vi.hoisted(() => ({
@@ -28,7 +27,30 @@ import { toast } from '@web/lib/toast';
 import { DrawingEmptyError } from '@web/spaces/canvas/mini-tool/export-drawing';
 import { ImageTooLargeError } from '@web/spaces/canvas/mini-tool/adjust-export';
 import { NODE_STEP } from '@web/spaces/canvas/drop-layout';
+import { outputPlacementOf } from '@web/spaces/canvas/mini-tool/output-placement';
 import { startMiniToolRun, type MiniToolRun } from '@web/spaces/canvas/mini-tool/start-mini-tool-run';
+import { useUploadMarksStore, type UploadMark } from '@web/stores/upload-marks';
+
+const SPACE = '22222222-2222-4222-8222-222222222222';
+
+/**
+ * The uploader's marks on the nodes this press built, in build order.
+ * @returns Each node's mark.
+ */
+function marksOfBuilt(): (UploadMark | undefined)[] {
+  const ids = canvas.addNode.mock.calls.map((call) => (call[2] as { id: string }).id);
+  return ids.map((id) => useUploadMarksStore.getState().markOf(SPACE, id));
+}
+
+/**
+ * Every built node carries a failed mark with this message.
+ * @param message - The message.
+ */
+function expectAllFailed(message: object): void {
+  const marks = marksOfBuilt();
+  expect(marks.length).toBeGreaterThan(0);
+  for (const mark of marks) expect(mark).toMatchObject({ state: 'failed', message });
+}
 
 /**
  * A registry tool by id.
@@ -83,6 +105,7 @@ function press(over: Partial<MiniToolRun> = {}): MiniToolRun {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  useUploadMarksStore.setState({ marks: {} });
   api.run.mockResolvedValue({ task_id: 't', status: 'pending' });
 });
 
@@ -119,12 +142,38 @@ describe('startMiniToolRun', () => {
     });
   });
 
-  // A8: a refused request opened no row, so the press is where it is said; the nodes stay.
-  it('says a refused request and keeps the nodes', async () => {
+  // A8, A13: a refused request opened no row, so the nodes it built say so; they stay.
+  it('says a refused request on the nodes it built and keeps them', async () => {
     api.run.mockRejectedValue(new Error('network'));
     await startMiniToolRun(press());
-    expect(toast.error).toHaveBeenCalledOnce();
+    expect(toast.error).not.toHaveBeenCalled();
     expect(canvas.addNode).toHaveBeenCalledTimes(2);
+    expectAllFailed({ key: 'canvas.miniTool.panel.couldNotStart' });
+  });
+
+  // A13: the server's answer is what ends the wait.
+  it('marks the nodes waiting until the server takes the run, then clears them', async () => {
+    let accept: (value: unknown) => void = () => undefined;
+    api.run.mockReturnValue(new Promise((resolve) => (accept = resolve)));
+    const work = startMiniToolRun(press());
+    await vi.waitFor(() => expect(api.run).toHaveBeenCalled());
+    expect(marksOfBuilt().map((mark) => mark?.state)).toEqual(['waiting', 'waiting']);
+    accept({ task_id: 't', status: 'pending' });
+    await work;
+    expect(marksOfBuilt()).toEqual([undefined, undefined]);
+  });
+
+  // A13: the nodes are on the canvas before the browser starts its export.
+  it('builds the nodes of a browser tool before its export, waiting', async () => {
+    let done: (files: unknown) => void = () => undefined;
+    const run = press({ spec: tool('image.adjust'), exportFile: vi.fn(() => new Promise((resolve) => (done = resolve))) });
+    const work = startMiniToolRun(run);
+    await vi.waitFor(() => expect(run.exportFile).toHaveBeenCalled());
+    expect(canvas.addNode).toHaveBeenCalledTimes(1);
+    expect(run.onBuilt).toHaveBeenCalledOnce();
+    expect(marksOfBuilt().map((mark) => mark?.state)).toEqual(['waiting']);
+    done([{ file: new File(['x'], 'a.png', { type: 'image/png' }) }]);
+    await work;
   });
 
   it('uploads a browser tool export into its node, tagged with the tool', async () => {
@@ -164,6 +213,23 @@ describe('startMiniToolRun', () => {
     expect(run.fillUpload).not.toHaveBeenCalled();
   });
 
+  // A13: the tiles are laid out before the export, from the source's own size.
+  it('lays the tiles out from the source size before the export', async () => {
+    const files = [0, 1, 2, 3].map((i) => new File(['x'], `t${i}.png`, { type: 'image/png' }));
+    const run = press({
+      spec: tool('image.grid'),
+      snapshot: { ...SNAPSHOT, params: { rows: 2, cols: 2 } },
+      source: { id: 'src', name: 'IMG', position: { x: 0, y: 0 }, groupOrigin: null, mimeType: 'image/png', width: 400, height: 300 },
+      exportFile: vi.fn(() => Promise.resolve(files.map((file) => ({ file })))),
+    });
+
+    await startMiniToolRun(run);
+
+    const expected = outputPlacementOf(run.spec, { rows: 2, cols: 2 }, Array.from({ length: 4 }, () => ({ width: 200, height: 150 })), 'IMG');
+    const nodes = canvas.addNode.mock.calls.map((call) => call[2]);
+    expect(nodes.map((node) => node.position.y)).toEqual(expected.map((placed) => placed.y));
+  });
+
   it('puts the tiles of a grid in a group named after the source, in the same undo entry', async () => {
     const files = [0, 1, 2, 3].map((i) => new File(['x'], `t${i}.png`, { type: 'image/png' }));
     const run = press({
@@ -194,29 +260,29 @@ describe('startMiniToolRun', () => {
     expect(vi.mocked(run.onBuilt).mock.calls[0]![1]).toBeUndefined();
   });
 
-  it('says the picture is too large for the adjust and builds nothing', async () => {
+  it('says on its node that the picture is too large for the adjust', async () => {
     await startMiniToolRun(
       press({ spec: tool('image.adjust'), exportFile: vi.fn(() => Promise.reject(new ImageTooLargeError())) }),
     );
-    expect(toast.warning).toHaveBeenCalledWith(t('canvas.miniTool.panel.imageTooLarge'));
-    expect(canvas.addNode).not.toHaveBeenCalled();
+    expect(toast.warning).not.toHaveBeenCalled();
+    expectAllFailed({ key: 'canvas.miniTool.panel.imageTooLarge' });
   });
 
-  // §7.5 2b: an export that fails builds nothing.
-  it('builds nothing when the export fails', async () => {
+  it('says on its node that the export failed, and keeps the node', async () => {
     await startMiniToolRun(
       press({ spec: tool('image.rotate'), exportFile: vi.fn(() => Promise.reject(new Error('cors'))) }),
     );
-    expect(toast.warning).toHaveBeenCalledOnce();
-    expect(canvas.addNode).not.toHaveBeenCalled();
+    expect(toast.warning).not.toHaveBeenCalled();
+    expect(canvas.addNode).toHaveBeenCalledTimes(1);
+    expectAllFailed({ key: 'canvas.miniTool.panel.exportFailed' });
   });
 
   // §7.2: the source went while the export ran.
-  it('builds nothing when the source is gone by build time', async () => {
+  it('says on the nodes that the source is gone, and sends nothing', async () => {
     await startMiniToolRun(press({ sourceExists: () => false }));
-    expect(toast.warning).toHaveBeenCalledOnce();
-    expect(canvas.addNode).not.toHaveBeenCalled();
+    expect(toast.warning).not.toHaveBeenCalled();
     expect(api.run).not.toHaveBeenCalled();
+    expectAllFailed({ key: 'canvas.miniTool.panel.sourceGone' });
   });
 
   // inner#1302 §6.5: a reader who closed the panel and opened another keeps its selection.
@@ -267,7 +333,7 @@ describe('startMiniToolRun', () => {
       expect(vi.mocked(run.setExporting).mock.calls).toEqual([[true], [false]]);
     });
 
-    it('builds nothing and says so when the export fails', async () => {
+    it('says on its node that the export failed', async () => {
       const run = press({
         spec: tool('image.expand'),
         source: IMAGE,
@@ -275,8 +341,9 @@ describe('startMiniToolRun', () => {
         exportExpand: vi.fn(() => Promise.reject(new Error('cors'))),
       });
       await startMiniToolRun(run);
-      expect(toast.warning).toHaveBeenCalledWith(t('canvas.miniTool.panel.exportFailed'));
-      expect(canvas.addNode).not.toHaveBeenCalled();
+      expect(toast.warning).not.toHaveBeenCalled();
+      expect(api.run).not.toHaveBeenCalled();
+      expectAllFailed({ key: 'canvas.miniTool.panel.exportFailed' });
     });
   });
 
@@ -306,10 +373,10 @@ describe('startMiniToolRun', () => {
       });
     }
 
-    it('uploads the mask alone and sends it, holding the panel busy until the build', async () => {
+    it('uploads the mask alone and sends it, with its node built first', async () => {
       const run = drawingPress('image.inpaint', 'mask');
       vi.mocked(run.setExporting).mockImplementation((busy) => {
-        if (!busy) expect(canvas.addNode).not.toHaveBeenCalled();
+        if (busy) expect(canvas.addNode).toHaveBeenCalled();
       });
       await startMiniToolRun(run);
       expect(run.exportDrawing).toHaveBeenCalledWith('https://cdn/a.jpg', 'mask', [STROKE]);
@@ -330,26 +397,25 @@ describe('startMiniToolRun', () => {
       );
     });
 
-    it('builds nothing and asks for a drawing when it leaves nothing', async () => {
+    it('asks for a drawing on its node when the drawing leaves nothing', async () => {
       const run = drawingPress('image.erase', 'mask', {
         exportDrawing: vi.fn(() => Promise.reject(new DrawingEmptyError())),
       });
       await startMiniToolRun(run);
-      expect(toast.warning).toHaveBeenCalledWith(t('canvas.miniTool.panel.drawingEmpty'));
-      expect(canvas.addNode).not.toHaveBeenCalled();
+      expect(toast.warning).not.toHaveBeenCalled();
       expect(api.run).not.toHaveBeenCalled();
       expect(vi.mocked(run.setExporting).mock.calls).toEqual([[true], [false]]);
+      expectAllFailed({ key: 'canvas.miniTool.panel.drawingEmpty' });
     });
 
-    it('builds nothing and says why when an upload fails', async () => {
+    it('says on its node why an upload of the drawing failed', async () => {
       const run = drawingPress('image.inpaint', 'mask', {
         uploadImage: vi.fn(() => Promise.reject(new UploadFailedError('storage'))),
       });
       await startMiniToolRun(run);
-      expect(toast.error).toHaveBeenCalledWith(t('canvas.upload.storageFull'));
-      expect(canvas.addNode).not.toHaveBeenCalled();
+      expect(toast.error).not.toHaveBeenCalled();
       expect(api.run).not.toHaveBeenCalled();
-      expect(vi.mocked(run.setExporting).mock.calls).toEqual([[true], [false]]);
+      expectAllFailed({ key: 'canvas.upload.storageFull' });
     });
   });
 
