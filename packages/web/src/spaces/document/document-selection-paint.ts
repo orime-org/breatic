@@ -34,9 +34,8 @@
 
 import { createExtension } from '@blocknote/core';
 import { ShowSelectionExtension } from '@blocknote/core/extensions';
-import type { Node as PMNode } from '@tiptap/pm/model';
 import { NodeSelection, Plugin, PluginKey } from '@tiptap/pm/state';
-import type { EditorState, Selection } from '@tiptap/pm/state';
+import type { EditorState } from '@tiptap/pm/state';
 import { CellSelection } from '@tiptap/pm/tables';
 import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view';
 
@@ -57,9 +56,15 @@ export const IN_SELECTION_CLASS = 'doc-in-selection';
 export const SELECTION_DRAWN_ATTR = 'data-selection-drawn';
 
 /**
- * The class `index.css` marks an empty line with: an empty line an end of a
- * range sits on, and the empty line at an end of the body that a selection
- * past that end, or the whole document, holds.
+ * The class `index.css` marks every empty line a selection holds with (#124).
+ * An empty line has one position, so a range that holds it takes it when
+ * deleted, yet only Chromium marks a selected empty line itself, and the one at
+ * an end of the body only once the range is written back to the page, which
+ * during a drag in Chrome it is not; a range the body draws (an edge takeover)
+ * clears the browser's mark entirely. Marked here, `index.css` draws the
+ * browser's sliver itself and clears the browser's own, so a selected empty
+ * line shows one mark in every browser, however it was selected. A cell
+ * selection holds cells, not the lines between its ends.
  */
 export const EMPTY_LINE_CLASS = 'doc-empty-line-in-selection';
 
@@ -94,33 +99,6 @@ function paintClassOf(name: string): string {
 const KEY = new PluginKey('documentSelectionPaint');
 
 /**
- * The empty lines a range holds (#124): every empty line between its ends,
- * the ones its ends sit on included. An empty line has one position, so a range
- * that holds it takes it when deleted, yet only Chromium marks a selected empty
- * line itself, and the one at an end of the body only once the range is written
- * back to the page, which during a drag in Chrome it is not; a range the body
- * draws (an edge takeover) clears the browser's mark entirely. Marked here,
- * `index.css` draws the browser's sliver itself and clears the browser's own,
- * so a selected empty line shows one mark in every browser, however it was
- * selected. A cell selection holds cells, not the lines between its ends.
- * @param selection - The selection.
- * @param doc - The document.
- * @returns A decoration per empty line the selection holds.
- */
-function emptyLinesHeld(selection: Selection, doc: PMNode): Decoration[] {
-  if (selection instanceof CellSelection) return [];
-  const found: Decoration[] = [];
-  doc.nodesBetween(selection.from, selection.to, (node, pos) => {
-    if (!node.isTextblock) return true;
-    if (node.content.size === 0 && pos + 1 >= selection.from && pos + 1 <= selection.to) {
-      found.push(Decoration.node(pos, pos + node.nodeSize, { class: EMPTY_LINE_CLASS }));
-    }
-    return false;
-  });
-  return found;
-}
-
-/**
  * The decorations for the blocks the current selection holds.
  * @param state - The editor state.
  * @returns The set, empty when nothing is to be painted.
@@ -138,14 +116,20 @@ function paintFor(state: EditorState): DecorationSet {
     }
   } else if (!selection.empty) {
     // A no-text block is a leaf of size one, so reaching it here means the
-    // range holds all of it.
+    // range holds all of it; so does an empty line, whose one position lies
+    // inside any range that reaches it.
+    const holdsLines = !(selection instanceof CellSelection);
     doc.nodesBetween(selection.from, selection.to, (node, pos) => {
-      if (node.isTextblock) return false;
+      if (node.isTextblock) {
+        if (holdsLines && node.content.size === 0) {
+          found.push(Decoration.node(pos, pos + node.nodeSize, { class: EMPTY_LINE_CLASS }));
+        }
+        return false;
+      }
       if (!NO_TEXT.has(node.type.name)) return true;
       found.push(Decoration.node(pos, pos + node.nodeSize, { class: paintClassOf(node.type.name) }));
       return false;
     });
-    found.push(...emptyLinesHeld(selection, doc));
     // The text an edge takeover holds, in the colour the panel stand-in
     // paints with (`index.css`, `[data-show-selection]`).
     if (selection instanceof BodyEdgeSelection) {
