@@ -1,0 +1,585 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+
+/**
+ * Seeding and reading helpers shared by the refund disposition suites
+ * (inner#1410 §5, §6, §9). Not a test file: the suites that import it are
+ * `credit-refund-op-*.integration.test.ts`, `credit-refund-snapshot.*` and
+ * `credit-refund-model.*`.
+ *
+ * Every row a case starts from is written by SQL here, so a case about one
+ * cell of the transition table never depends on another cell having worked.
+ * The lot itself is opened by the domain (`grantFromPayment`, then the
+ * buyer's ask), so its ledger already sums to its balance.
+ */
+
+import { randomUUID } from "node:crypto";
+import { afterAll, beforeAll, inject } from "vitest";
+import postgres from "postgres";
+import { db, initCore, loadLocales } from "@breatic/core";
+import type { DbTx } from "@breatic/core";
+import { creditLotService } from "@breatic/domain";
+
+export type Sql = ReturnType<typeof postgres>;
+
+/** What the buyer paid, tax included: `coalesce(total_cents, amount_cents)`. */
+export const PAID_CENTS = 1080;
+/** What the payment granted, and what an untouched lot holds. */
+export const CREDITS = 880;
+
+/**
+ * The `event` column each event of §6.2 writes. One name per event, kept
+ * for the cells that leave the status where it was too; E15 is any answer
+ * that carries a lease token the row no longer holds.
+ */
+export const EVENT_NAME = {
+  E1: "requested",
+  E2: "refund_succeeded",
+  E3: "refund_succeeded_others_pending",
+  E4: "refund_succeeded_unsettleable",
+  E5: "refund_pending",
+  E6: "refund_declined",
+  E7: "retryable_error",
+  E8: "stripe_server_error",
+  E9: "charge_already_refunded",
+  E10: "refund_not_found",
+  E11: "attempts_exhausted",
+  E12: "deadline_reached",
+  E13: "claimed",
+  E14: "attention_closed",
+  E15: "late_answer",
+  E16: "stripe_read_failed",
+  E17: "unclassified_error",
+} as const;
+
+/**
+ * Register the suite's setup: payments on (placeholder keys reach Stripe
+ * zero times — every Stripe answer here is handed in), locales loaded, and a
+ * raw SQL client for seeding and reading.
+ * @param appName - `application_name` for the suite's connections.
+ * @returns A holder whose `sql` is ready inside the suite's tests.
+ */
+export function useRefundSuite(appName: string): { sql: Sql } {
+  const holder = {} as { sql: Sql };
+  beforeAll(() => {
+    initCore({
+      ...process.env,
+      PAYMENT_ENABLED: "true",
+      STRIPE_SECRET_KEY: "sk_test_unused_by_this_suite",
+      STRIPE_WEBHOOK_SECRET: "whsec_unused_by_this_suite",
+    });
+    loadLocales();
+    holder.sql = postgres(inject("DATABASE_URL"), {
+      max: 6,
+      prepare: false,
+      connection: { application_name: appName },
+    });
+  });
+  afterAll(async () => {
+    await holder.sql?.end({ timeout: 1 });
+    initCore(process.env);
+  });
+  return holder;
+}
+
+
+export type LotState = "active" | "refund_pending" | "refunding" | "refunded";
+
+export interface SeededLot {
+  userId: string;
+  paymentId: string;
+  paymentIntentId: string;
+  lotId: string;
+}
+
+let seq = 0;
+
+/**
+ * A buyer, a completed payment of {@link PAID_CENTS} and the lot it opened,
+ * moved to `state`: the ask for `refund_pending`, SQL after that. A
+ * `refunded` lot gets the `refund` ledger row and zero balance it would have.
+ * @param sql - Raw client.
+ * @param state - Where the lot should stand.
+ * @returns The ids.
+ */
+export async function seedRefundLot(sql: Sql, state: LotState): Promise<SeededLot> {
+  seq += 1;
+  const tag = `${Date.now()}-${seq}-${randomUUID().slice(0, 8)}`;
+  const [user] = await sql<{ id: string }[]>`
+    INSERT INTO users (email, email_verified)
+    VALUES (${`refund-op-${tag}@example.test`}, true) RETURNING id
+  `;
+  const [source] = await sql<{ id: string }[]>`
+    INSERT INTO credit_sources (id, kind) VALUES (gen_random_uuid(), 'payment') RETURNING id
+  `;
+  const paymentIntentId = `pi_${tag}`;
+  await sql`
+    INSERT INTO payments
+      (id, user_id, amount_cents, total_cents, currency, status, credits_granted,
+       stripe_payment_intent_id)
+    VALUES (${source!.id}, ${user!.id}, 1000, ${PAID_CENTS}, 'usd', 'completed', ${CREDITS},
+            ${paymentIntentId})
+  `;
+  const lot = await creditLotService.grantFromPayment({
+    paymentId: source!.id,
+    userId: user!.id,
+    purchasedCredits: CREDITS,
+  });
+  const seeded = {
+    userId: user!.id,
+    paymentId: source!.id,
+    paymentIntentId,
+    lotId: lot.id,
+  };
+  if (state === "active") return seeded;
+  await creditLotService.requestRefund({ lotId: lot.id, requestingUserId: user!.id });
+  if (state === "refunding") {
+    await sql`UPDATE credit_lots SET lifecycle = 'refunding' WHERE id = ${lot.id}`;
+  } else if (state === "refunded") {
+    await sql`
+      INSERT INTO credit_ledger (payer_user_id, lot_id, entry_type, amount, reference_id)
+      VALUES (${user!.id}, ${lot.id}, 'refund', ${-CREDITS}, ${`re_seeded_${tag}`})
+    `;
+    await sql`
+      UPDATE credit_lots SET remaining_credits = 0, lifecycle = 'refunded' WHERE id = ${lot.id}
+    `;
+  }
+  return seeded;
+}
+
+export type OpKind =
+  | "approve"
+  | "reject"
+  | "settle"
+  | "send_back"
+  | "retry"
+  | "refund_again"
+  | "resolve_outside";
+export type OpStatus = "started" | "awaiting_stripe" | "succeeded" | "needs_attention";
+
+export interface SeedOp {
+  kind: OpKind;
+  status: OpStatus;
+  result?: "refunded" | "rejected" | "sent_back" | "resolved_outside";
+  attentionReason?: string;
+  stripeRefundId?: string | null;
+  notify?: boolean;
+  confirmedRefundIds?: string[];
+  failedRefundIds?: string[];
+  refundAmountCents?: number;
+  attemptCount?: number;
+  /** `first_called_at` this many hours ago; null leaves it empty. */
+  firstCalledHoursAgo?: number | null;
+  /** `locked_until` in the past (an expired lease) instead of the future. */
+  leaseExpired?: boolean;
+  /** `created_at` this many seconds ago, to order a lot's dispositions. */
+  createdSecondsAgo?: number;
+}
+
+/**
+ * One disposition row in the given state, as the code would have left it.
+ * `started` rows hold a lease; the other states hold none.
+ * @param sql - Raw client.
+ * @param lot - The lot it belongs to.
+ * @param op - Its kind, status and the columns that matter for the case.
+ * @returns Its id and lease token.
+ */
+export async function seedOperation(
+  sql: Sql,
+  lot: SeededLot,
+  op: SeedOp,
+): Promise<{ id: string; leaseToken: string | null }> {
+  const leaseToken = op.status === "started" ? randomUUID() : null;
+  const finished = op.status === "succeeded" || op.status === "needs_attention";
+  const notify =
+    op.notify ??
+    (op.kind === "approve" || op.kind === "retry" || op.kind === "reject");
+  const [row] = await sql<{ id: string }[]>`
+    INSERT INTO credit_refund_operations
+      (lot_id, payment_id, kind, status, result, attention_reason, attention_detail,
+       idempotency_key, request_hash, requested_by, reason, notify,
+       confirmed_refund_ids, failed_refund_ids, refund_amount_cents,
+       stripe_refund_id, first_called_at, attempt_count, next_attempt_at,
+       lease_token, locked_until, finished_at, created_at)
+    VALUES
+      (${lot.lotId}, ${lot.paymentId}, ${op.kind}, ${op.status}, ${op.result ?? null},
+       ${op.attentionReason ?? null},
+       ${op.attentionReason ? `seeded ${op.attentionReason}` : null},
+       ${`seed-${randomUUID()}`}, ${"0".repeat(64)}, ${"admin_seed"}, ${"seeded"}, ${notify},
+       string_to_array(${(op.confirmedRefundIds ?? []).join(",")}, ','),
+       string_to_array(${(op.failedRefundIds ?? []).join(",")}, ','),
+       ${op.refundAmountCents ?? null},
+       ${op.stripeRefundId ?? null},
+       ${
+         op.firstCalledHoursAgo === null || op.firstCalledHoursAgo === undefined
+           ? null
+           : sql`now() - make_interval(hours => ${op.firstCalledHoursAgo}::int)`
+       },
+       ${op.attemptCount ?? 0},
+       ${finished ? null : sql`now()`},
+       ${leaseToken},
+       ${
+         op.status === "started"
+           ? op.leaseExpired
+             ? sql`now() - interval '1 second'`
+             : sql`now() + interval '120 seconds'`
+           : null
+       },
+       ${finished ? sql`now()` : null},
+       now() - make_interval(secs => ${op.createdSecondsAgo ?? 0}::double precision))
+    RETURNING id
+  `;
+  return { id: row!.id, leaseToken };
+}
+
+export type RefundStatus = "pending" | "requires_action" | "succeeded" | "failed" | "canceled";
+
+export interface SeedCopy {
+  id: string;
+  amountCents: number;
+  status: RefundStatus;
+  everSucceeded?: boolean;
+  operationId?: string | null;
+  resolvedBy?: string | null;
+}
+
+/**
+ * One refund copy, as `applyRefundSnapshot` would have left it.
+ * @param sql - Raw client.
+ * @param lot - The lot and payment it belongs to.
+ * @param copy - The refund's facts.
+ */
+export async function seedCopy(sql: Sql, lot: SeededLot, copy: SeedCopy): Promise<void> {
+  await sql`
+    INSERT INTO credit_refunds
+      (stripe_refund_id, payment_id, lot_id, operation_id, amount_cents, currency, status,
+       ever_succeeded, resolved_by_operation_id)
+    VALUES
+      (${copy.id}, ${lot.paymentId}, ${lot.lotId}, ${copy.operationId ?? null},
+       ${copy.amountCents}, 'usd', ${copy.status},
+       ${copy.everSucceeded ?? copy.status === "succeeded"}, ${copy.resolvedBy ?? null})
+  `;
+}
+
+/** A Stripe refund object with the fields the product reads. */
+export interface RefundFixture {
+  id: string;
+  amount: number;
+  currency: string;
+  status: RefundStatus;
+  failure_reason: string | null;
+  metadata: Record<string, string>;
+}
+
+/**
+ * A Stripe refund object, made by the product when `operationId` is given.
+ * @param id - `re_…`.
+ * @param status - Stripe's status.
+ * @param amount - Cents.
+ * @param operationId - The disposition named in `metadata.refund_operation_id`.
+ * @returns The object.
+ */
+export function refundObject(
+  id: string,
+  status: RefundStatus,
+  amount: number,
+  operationId?: string,
+): RefundFixture {
+  return {
+    id,
+    amount,
+    currency: "usd",
+    status,
+    failure_reason: status === "failed" ? "lost_or_stolen_card" : null,
+    metadata: operationId ? { refund_operation_id: operationId } : {},
+  };
+}
+
+/** A fresh, unique Stripe refund id. */
+export function reId(label: string): string {
+  return `re_${label}_${randomUUID().replace(/-/g, "").slice(0, 16)}`;
+}
+
+/** Everything a disposition can write, for one lot and its buyer. */
+export interface WorldState {
+  lot: Record<string, unknown>;
+  ledger: Record<string, unknown>[];
+  ops: Record<string, unknown>[];
+  events: Record<string, unknown>[];
+  copies: Record<string, unknown>[];
+  bells: Record<string, unknown>[];
+  mails: Record<string, unknown>[];
+}
+
+/**
+ * Every row a transition could touch, whole, for exact before/after compare.
+ * @param sql - Raw client.
+ * @param lot - The lot and buyer.
+ * @returns The rows, each table in a fixed order.
+ */
+export async function worldOf(sql: Sql, lot: SeededLot): Promise<WorldState> {
+  const [lotRow] = await sql<{ j: Record<string, unknown> }[]>`
+    SELECT to_jsonb(l) AS j FROM credit_lots l WHERE l.id = ${lot.lotId}
+  `;
+  const rows = async (q: Promise<{ j: Record<string, unknown> }[]>) =>
+    (await q).map((r) => r.j);
+  return {
+    lot: lotRow!.j,
+    ledger: await rows(sql`
+      SELECT to_jsonb(c) AS j FROM credit_ledger c WHERE c.lot_id = ${lot.lotId}
+      ORDER BY c.created_at, c.id`),
+    ops: await rows(sql`
+      SELECT to_jsonb(o) AS j FROM credit_refund_operations o WHERE o.lot_id = ${lot.lotId}
+      ORDER BY o.created_at, o.id`),
+    events: await rows(sql`
+      SELECT to_jsonb(e) AS j FROM credit_refund_operation_events e
+      JOIN credit_refund_operations o ON o.id = e.operation_id
+      WHERE o.lot_id = ${lot.lotId} ORDER BY e.created_at, e.id`),
+    copies: await rows(sql`
+      SELECT to_jsonb(r) AS j FROM credit_refunds r WHERE r.lot_id = ${lot.lotId}
+      ORDER BY r.stripe_refund_id`),
+    bells: await rows(sql`
+      SELECT to_jsonb(n) AS j FROM notifications n WHERE n.user_id = ${lot.userId}
+      ORDER BY n.created_at, n.id`),
+    mails: await rows(sql`
+      SELECT to_jsonb(m) AS j FROM refund_mail_outbox m
+      JOIN credit_refund_operations o ON o.id = m.operation_id
+      WHERE o.lot_id = ${lot.lotId} ORDER BY m.created_at, m.id`),
+  };
+}
+
+export interface OpRow {
+  kind: string;
+  status: string;
+  result: string | null;
+  attention_reason: string | null;
+  attention_detail: string | null;
+  attention_closed_at: string | null;
+  attention_closed_by: string | null;
+  notify: boolean;
+  stripe_refund_id: string | null;
+  settled_succeeded_cents: number | null;
+  confirmed_refund_ids: string[];
+  confirmed_succeeded_cents: number | null;
+  failed_refund_ids: string[];
+  refund_amount_cents: number | null;
+  attempt_count: number;
+  last_error: string | null;
+  lease_token: string | null;
+  idempotency_key: string;
+  request_hash: string;
+  requested_by: string;
+  reason: string;
+  finished_at: string | null;
+  /** Epoch microseconds, null when the column is. */
+  next_attempt_us: number | null;
+  locked_until_us: number | null;
+}
+
+/**
+ * One disposition row, timestamps that are compared as epoch microseconds.
+ * @param sql - Raw client.
+ * @param id - The disposition.
+ * @returns The row.
+ */
+export async function readOp(sql: Sql, id: string): Promise<OpRow> {
+  const [row] = await sql<(Omit<OpRow, "next_attempt_us" | "locked_until_us"> & {
+    next_attempt_us: string | null;
+    locked_until_us: string | null;
+    settled_succeeded_cents: string | null;
+    confirmed_succeeded_cents: string | null;
+    refund_amount_cents: string | null;
+  })[]>`
+    SELECT kind, status, result, attention_reason, attention_detail,
+           attention_closed_at::text AS attention_closed_at, attention_closed_by,
+           notify, stripe_refund_id, settled_succeeded_cents::text AS settled_succeeded_cents,
+           confirmed_refund_ids, confirmed_succeeded_cents::text AS confirmed_succeeded_cents,
+           failed_refund_ids, refund_amount_cents::text AS refund_amount_cents,
+           attempt_count, last_error, lease_token, idempotency_key, request_hash,
+           requested_by, reason, finished_at::text AS finished_at,
+           (extract(epoch FROM next_attempt_at) * 1000000)::bigint::text AS next_attempt_us,
+           (extract(epoch FROM locked_until) * 1000000)::bigint::text AS locked_until_us
+    FROM credit_refund_operations WHERE id = ${id}
+  `;
+  const num = (v: string | null) => (v === null ? null : Number(v));
+  return {
+    ...row!,
+    settled_succeeded_cents: num(row!.settled_succeeded_cents),
+    confirmed_succeeded_cents: num(row!.confirmed_succeeded_cents),
+    refund_amount_cents: num(row!.refund_amount_cents),
+    next_attempt_us: num(row!.next_attempt_us),
+    locked_until_us: num(row!.locked_until_us),
+  };
+}
+
+export interface EventRow {
+  event: string;
+  from_status: string | null;
+  to_status: string;
+  detail: Record<string, unknown>;
+}
+
+/**
+ * A disposition's event rows, oldest first.
+ * @param sql - Raw client.
+ * @param id - The disposition.
+ * @returns The rows.
+ */
+export async function eventsOf(sql: Sql, id: string): Promise<EventRow[]> {
+  return sql<EventRow[]>`
+    SELECT event, from_status, to_status, detail
+    FROM credit_refund_operation_events WHERE operation_id = ${id}
+    ORDER BY created_at, id
+  `;
+}
+
+export interface CopyRow {
+  stripe_refund_id: string;
+  payment_id: string;
+  lot_id: string;
+  operation_id: string | null;
+  amount_cents: number;
+  currency: string;
+  status: string;
+  failure_reason: string | null;
+  ever_succeeded: boolean;
+  resolved_by_operation_id: string | null;
+}
+
+/**
+ * The refund copies of a lot, by refund id.
+ * @param sql - Raw client.
+ * @param lotId - The lot.
+ * @returns The rows.
+ */
+export async function copiesOf(sql: Sql, lotId: string): Promise<CopyRow[]> {
+  const rows = await sql<(Omit<CopyRow, "amount_cents"> & { amount_cents: string })[]>`
+    SELECT stripe_refund_id, payment_id, lot_id, operation_id, amount_cents::text AS amount_cents,
+           currency, status, failure_reason, ever_succeeded, resolved_by_operation_id
+    FROM credit_refunds WHERE lot_id = ${lotId} ORDER BY stripe_refund_id
+  `;
+  return rows.map((r) => ({ ...r, amount_cents: Number(r.amount_cents) }));
+}
+
+export interface LotRow {
+  lifecycle: string;
+  remaining: string;
+  attempts: number;
+}
+
+/**
+ * Where a lot stands.
+ * @param sql - Raw client.
+ * @param lotId - The lot.
+ * @returns Lifecycle, balance as Postgres text, rejected-attempt count.
+ */
+export async function readLot(sql: Sql, lotId: string): Promise<LotRow> {
+  const [row] = await sql<{ lifecycle: string; remaining: string; attempts: number }[]>`
+    SELECT lifecycle, remaining_credits::text AS remaining, refund_attempts AS attempts
+    FROM credit_lots WHERE id = ${lotId}
+  `;
+  return row!;
+}
+
+export interface LedgerRow {
+  entry_type: string;
+  amount: string;
+  reference_id: string | null;
+}
+
+/**
+ * A lot's ledger, oldest first.
+ * @param sql - Raw client.
+ * @param lotId - The lot.
+ * @returns Type, amount as text, reference.
+ */
+export async function ledgerOf(sql: Sql, lotId: string): Promise<LedgerRow[]> {
+  return sql<LedgerRow[]>`
+    SELECT entry_type, amount::text AS amount, reference_id
+    FROM credit_ledger WHERE lot_id = ${lotId} ORDER BY created_at, id
+  `;
+}
+
+export interface BellRow {
+  type: string;
+  payload: Record<string, unknown>;
+  expires_at: string | null;
+  project_id: string | null;
+}
+
+/**
+ * The buyer's refund bells, oldest first.
+ * @param sql - Raw client.
+ * @param userId - The buyer.
+ * @returns The rows of the two refund types.
+ */
+export async function bellsOf(sql: Sql, userId: string): Promise<BellRow[]> {
+  return sql<BellRow[]>`
+    SELECT type, payload, expires_at::text AS expires_at, project_id
+    FROM notifications
+    WHERE user_id = ${userId} AND type IN ('credit.refund_completed', 'credit.refund_rejected')
+    ORDER BY created_at, id
+  `;
+}
+
+export interface MailRow {
+  operation_id: string;
+  kind: string;
+  origin: string;
+  status: string;
+  requested_by: string | null;
+  idempotency_key: string | null;
+}
+
+/**
+ * The mail rows of a lot's dispositions.
+ * @param sql - Raw client.
+ * @param lotId - The lot.
+ * @returns The rows, oldest first.
+ */
+export async function mailsOf(sql: Sql, lotId: string): Promise<MailRow[]> {
+  return sql<MailRow[]>`
+    SELECT m.operation_id, m.kind, m.origin, m.status, m.requested_by, m.idempotency_key
+    FROM refund_mail_outbox m JOIN credit_refund_operations o ON o.id = m.operation_id
+    WHERE o.lot_id = ${lotId} ORDER BY m.created_at, m.id
+  `;
+}
+
+/**
+ * The database clock in epoch microseconds, for bracketing a `now()`.
+ * @param sql - Raw client.
+ * @returns Microseconds.
+ */
+export async function dbClockUs(sql: Sql): Promise<number> {
+  const [row] = await sql<{ t: string }[]>`
+    SELECT (extract(epoch FROM clock_timestamp()) * 1000000)::bigint::text AS t
+  `;
+  return Number(row!.t);
+}
+
+/**
+ * Run in one committed transaction.
+ * @param run - The work.
+ * @returns What it returned.
+ */
+export async function inTx<T>(run: (tx: DbTx) => Promise<T>): Promise<T> {
+  return db.transaction(run);
+}
+
+/**
+ * Run work that must refuse, catch the refusal inside the transaction and
+ * commit, so anything written before the throw would be on disk.
+ * @param run - The work.
+ * @returns What was thrown, or null.
+ */
+export async function refusedAndCommitted(run: (tx: DbTx) => Promise<unknown>): Promise<unknown> {
+  let caught: unknown = null;
+  await db.transaction(async (tx) => {
+    try {
+      await run(tx);
+    } catch (err) {
+      caught = err;
+    }
+  });
+  return caught;
+}
