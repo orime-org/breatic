@@ -2677,19 +2677,22 @@ body {
     border-radius: var(--radius-content-sm);
   }
 
-  /* nowrap is what makes the scroller appear at all: allowed to fold, a wide
-     table fits any width and scrollWidth never exceeds the viewport. */
   .chat-markdown table {
     border-collapse: collapse;
     font-size: 0.9em;
-    white-space: nowrap;
   }
 
+  /* Cells wrap to fit the column. The floor keeps a cell readable — Chinese
+     breaks between any two characters, so without it a cell can shrink to one
+     character a line — and once the floors add up past the column, the table
+     overflows into the scroller around it. 6em holds four columns in the
+     296px of prose the narrowest agent column leaves. */
   .chat-markdown th,
   .chat-markdown td {
     border: 1px solid var(--color-border);
     padding: 0.35em 0.6em;
     text-align: left;
+    min-width: 6em;
   }
 
   .chat-markdown th {
