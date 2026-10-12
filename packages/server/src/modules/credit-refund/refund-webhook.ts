@@ -55,7 +55,7 @@ export async function handleRefundEvent(event: RefundEvent): Promise<"handled" |
   await db.transaction(async (tx) => {
     await creditLotRepo.lockLot(lotId, tx);
     if (!(await claimWebhookEvent(event.id, event.type, tx))) return;
-    await applyRefundSnapshot(tx, paymentId, listed);
+    await applyRefundSnapshot(tx, paymentId, listed, "webhook");
   });
   return "handled";
 }

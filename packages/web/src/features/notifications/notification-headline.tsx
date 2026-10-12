@@ -270,9 +270,6 @@ export function notificationHeadline(
   resolved: NotificationResolved,
   t: ReturnType<typeof useTranslation>,
 ): React.ReactNode {
-  // A membership that ended has neither an actor nor an entity: nobody did it
-  // to you, a subscription ran out, and there is nothing to open. It is one
-  // localized sentence, so it skips the frame below entirely.
   // A refund outcome (inner#1410 §8): nobody to name, nothing to open.
   if (n.type === 'credit.refund_completed') {
     return t('notifications.headline.creditRefundCompleted');
@@ -280,6 +277,9 @@ export function notificationHeadline(
   if (n.type === 'credit.refund_rejected') {
     return t('notifications.headline.creditRefundRejected');
   }
+  // A membership that ended has neither an actor nor an entity: nobody did it
+  // to you, a subscription ran out, and there is nothing to open. It is one
+  // localized sentence, so it skips the frame below entirely.
   if (n.type === 'membership.ended') {
     return t('notifications.headline.membershipEnded', {
       tier: TIER_LABEL[str(n.payload, 'fromTier')] ?? '',

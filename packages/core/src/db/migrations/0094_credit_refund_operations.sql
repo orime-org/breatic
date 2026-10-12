@@ -30,6 +30,9 @@ CREATE TABLE "credit_refund_operations" (
   "requested_by" varchar(64) NOT NULL,
   "reason" text NOT NULL,
   "notify" boolean NOT NULL,
+  -- The ask this disposition answered, copied from the lot at insert: the
+  -- buyer may ask again after a rejection, which rewrites the lot's column.
+  "refund_requested_at" timestamp with time zone,
   "confirmed_refund_ids" text[] DEFAULT '{}' NOT NULL,
   "confirmed_succeeded_cents" bigint,
   -- refund_again only: the failed refunds it covers and the exact amount it

@@ -20,8 +20,7 @@ import { transitionOperation } from "@server/modules/credit-refund/operation-tra
 import { runDailyReconcile } from "@server/modules/credit-refund/reconcile.js";
 import { markStaleRefundMailsUnknown, sendDueRefundMails } from "@server/modules/credit-refund/refund-mail.js";
 import { applyRefundSnapshot } from "@server/modules/credit-refund/refund-snapshot.js";
-import { StripeReadError, listRefunds } from "@server/modules/credit-refund/stripe-refunds.js";
-import * as paymentRepo from "@server/modules/payment/payment.repo.js";
+import { StripeReadError, listRefundsForPayment } from "@server/modules/credit-refund/stripe-refunds.js";
 
 /** Rows taken per query; the rest wait for the next query or tick. */
 const BATCH = 50;
@@ -54,12 +53,12 @@ export async function runRefundLoopOnce(): Promise<void> {
 }
 
 /**
- * Start the loop when this deployment has both the internal API and
- * payments on; otherwise do nothing.
+ * Start the loop when this deployment runs the internal API: every
+ * disposition the API accepts is finished by it. Otherwise do nothing.
  * @returns The handle to stop it.
  */
 export function startRefundLoop(): RefundLoop {
-  if (!env.INTERNAL_API_ENABLED || !env.PAYMENT_ENABLED) return { stop: async () => {} };
+  if (!env.INTERNAL_API_ENABLED) return { stop: async () => {} };
   let stopped = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let running: Promise<void> | null = null;
@@ -108,7 +107,7 @@ async function resumeStarted(): Promise<void> {
       progressed = true;
       if (claimed === "exhausted") continue;
       try {
-        await executeRefund(claimed);
+        await executeRefund(claimed, "loop");
       } catch (err) {
         logger.error({ err, operationId: claimed.id }, "refund_loop_execute_failed");
       }
@@ -133,9 +132,9 @@ async function claim(candidate: {
   return db.transaction(async (tx) => {
     await creditLotRepo.lockLot(candidate.lotId, tx);
     if (!(await operationRepo.lockIfClaimable(candidate.id, tx))) return "skipped";
-    const op = (await transitionOperation(tx, { id: candidate.id }, { type: "E13" }))!;
+    const op = (await transitionOperation(tx, { id: candidate.id }, { type: "E13", actor: "loop" }))!;
     if (!attemptsExhausted(op.attemptCount, getCreditRefundConfig())) return op;
-    await transitionOperation(tx, { id: op.id }, { type: "E11" });
+    await transitionOperation(tx, { id: op.id }, { type: "E11", actor: "loop" });
     return "exhausted";
   });
 }
@@ -158,23 +157,20 @@ async function recheckAwaiting(): Promise<void> {
  * then put off its next lookup, or end the wait for a refund id that never
  * came (E12).
  * @param op - The waiting disposition.
- * @throws {Error} When its payment has no payment intent.
  */
 async function recheck(op: CreditRefundOperation): Promise<void> {
-  const payment = await paymentRepo.getPaymentById(op.paymentId);
-  if (!payment?.stripePaymentIntentId) throw new Error(`payment ${op.paymentId} has no payment intent`);
   let listed;
   try {
-    listed = await listRefunds(payment.stripePaymentIntentId);
+    listed = await listRefundsForPayment(op.paymentId);
   } catch (err) {
     if (!(err instanceof StripeReadError)) throw err;
     await db.transaction((tx) =>
-      transitionOperation(tx, { id: op.id }, { type: "E16", failure: err.failure }),
+      transitionOperation(tx, { id: op.id }, { type: "E16", failure: err.failure, actor: "loop" }),
     );
     return;
   }
   await db.transaction(async (tx) => {
-    await applyRefundSnapshot(tx, op.paymentId, listed);
+    await applyRefundSnapshot(tx, op.paymentId, listed, "loop");
     const current = (await operationRepo.findById(op.id, tx))!;
     if (current.status !== "awaiting_stripe") return;
     const firstCalledMs = current.firstCalledAt?.getTime();
@@ -183,7 +179,7 @@ async function recheck(op: CreditRefundOperation): Promise<void> {
       firstCalledMs !== undefined &&
       Date.now() - firstCalledMs >= RESULT_UNKNOWN_AFTER_MS
     ) {
-      await transitionOperation(tx, { id: op.id }, { type: "E12" });
+      await transitionOperation(tx, { id: op.id }, { type: "E12", actor: "loop" });
       return;
     }
     await operationRepo.scheduleNextLook(

@@ -402,6 +402,17 @@ export function parseConfig(rawEnv: Record<string, string | undefined>): CoreCon
       "(non-empty, non-whitespace). Refusing to start.",
     );
   }
+  // Empty means "no previous key"; whitespace alone would still sign.
+  if (
+    config.INTERNAL_API_ENABLED &&
+    config.INTERNAL_API_SECRET_PREVIOUS !== "" &&
+    !config.INTERNAL_API_SECRET_PREVIOUS.trim()
+  ) {
+    throw new Error(
+      "FATAL: INTERNAL_API_SECRET_PREVIOUS is only whitespace; leave it empty " +
+      "when there is no previous key. Refusing to start.",
+    );
+  }
 
   // The yjs binary store must be a DIFFERENT database than the business
   // DB — they are separate transaction / failure domains by design (the

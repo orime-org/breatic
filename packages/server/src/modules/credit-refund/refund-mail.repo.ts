@@ -208,7 +208,7 @@ export async function getMailView(mailId: string): Promise<RefundMailView | null
       currency: payments.currency,
       credits: creditLots.purchasedCredits,
       purchasedAt: creditLots.createdAt,
-      requestedAt: creditLots.refundRequestedAt,
+      requestedAt: creditRefundOperations.refundRequestedAt,
       settledCents: creditRefundOperations.settledSucceededCents,
       refundAmountCents: creditRefundOperations.refundAmountCents,
       finishedAt: creditRefundOperations.finishedAt,

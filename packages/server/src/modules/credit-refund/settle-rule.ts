@@ -2,17 +2,58 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * When a succeeded refund may be booked (inner#1410 §5.4) — and the narrower
- * rule a refund_again disposition uses (§5.2).
+ * When a succeeded refund may be booked (inner#1410 §5.4), and the sums of a
+ * payment's refund copies every rule reads.
  */
 
-import type { RefundCopy, StripeRefundStatus } from "@server/modules/credit-refund/types.js";
+import type { RefundCopy } from "@server/modules/credit-refund/types.js";
 
 /** The verdict on whether an approval or retry can be booked now. */
 export type SettleVerdict =
   | { outcome: "settle"; succeededCents: number }
   | { outcome: "wait" }
   | { outcome: "attention"; reason: "partial_refund" | "unexpected_external_refund" };
+
+/**
+ * What the payment's succeeded refunds add up to.
+ * @param refunds - The payment's refund copies.
+ * @returns The sum in cents.
+ */
+export function succeededCents(refunds: readonly Pick<RefundCopy, "status" | "amountCents">[]): number {
+  return sumOf(refunds, "succeeded");
+}
+
+/**
+ * What the payment's failed refunds add up to: Stripe keeps it out of what
+ * it will still refund (§5.2).
+ * @param refunds - The payment's refund copies.
+ * @returns The sum in cents.
+ */
+export function failedCents(refunds: readonly Pick<RefundCopy, "status" | "amountCents">[]): number {
+  return sumOf(refunds, "failed");
+}
+
+/**
+ * Whether Stripe has not decided one of the payment's refunds yet.
+ * @param refunds - The payment's refund copies.
+ * @returns True when one is `pending` or `requires_action`.
+ */
+export function refundInProgress(refunds: readonly Pick<RefundCopy, "status">[]): boolean {
+  return refunds.some((r) => r.status === "pending" || r.status === "requires_action");
+}
+
+/**
+ * The sum of the refunds in one status.
+ * @param refunds - The copies.
+ * @param status - The status to add up.
+ * @returns The sum in cents.
+ */
+function sumOf(
+  refunds: readonly Pick<RefundCopy, "status" | "amountCents">[],
+  status: RefundCopy["status"],
+): number {
+  return refunds.reduce((sum, r) => (r.status === status ? sum + r.amountCents : sum), 0);
+}
 
 /**
  * The three settle conditions, in order: nothing still in flight; the
@@ -30,27 +71,16 @@ export function canSettle(input: {
   paidCents: number;
   confirmedRefundIds: readonly string[];
 }): SettleVerdict {
-  if (input.refunds.some((r) => r.status === "pending" || r.status === "requires_action")) {
-    return { outcome: "wait" };
-  }
-  const succeeded = input.refunds.filter((r) => r.status === "succeeded");
-  const succeededCents = succeeded.reduce((sum, r) => sum + r.amountCents, 0);
-  if (succeededCents < input.paidCents) return { outcome: "attention", reason: "partial_refund" };
+  if (refundInProgress(input.refunds)) return { outcome: "wait" };
+  const succeeded = succeededCents(input.refunds);
+  if (succeeded < input.paidCents) return { outcome: "attention", reason: "partial_refund" };
   const confirmed = new Set(input.confirmedRefundIds);
-  if (succeeded.some((r) => r.operationId === null && !confirmed.has(r.stripeRefundId))) {
+  if (
+    input.refunds.some(
+      (r) => r.status === "succeeded" && r.operationId === null && !confirmed.has(r.stripeRefundId),
+    )
+  ) {
     return { outcome: "attention", reason: "unexpected_external_refund" };
   }
-  return { outcome: "settle", succeededCents };
-}
-
-/**
- * refund_again settles on its own refund alone: it asks Stripe for exactly the
- * failed refunds' amount, so the payment's other refunds do not decide it.
- * @param status - Its own refund's status.
- * @returns Whether it can finish now.
- */
-export function refundAgainOutcome(status: StripeRefundStatus): "settle" | "wait" | "attention" {
-  if (status === "succeeded") return "settle";
-  if (status === "pending" || status === "requires_action") return "wait";
-  return "attention";
+  return { outcome: "settle", succeededCents: succeeded };
 }

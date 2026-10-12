@@ -13,9 +13,11 @@ import type { CreditLotLifecycle } from "@breatic/shared";
 import type { RefundCopy } from "@server/modules/credit-refund/types.js";
 
 /**
- * The refunds that succeeded, then failed after the lot was booked as
- * refunded, and that no disposition has answered for yet.
- * @param lifecycle - The lot's lifecycle; only a refunded lot has any.
+ * The payment's failed or canceled refunds no disposition has answered for.
+ * On a refunded lot only the ones that had succeeded count: booking answers
+ * for whatever had failed by then (§5.5), so these failed after it. A lot not
+ * yet booked counts every one; any other lot has none.
+ * @param lifecycle - The lot's lifecycle.
  * @param refunds - The payment's refund copies.
  * @returns The matching copies, in input order.
  */
@@ -23,11 +25,11 @@ export function pickUnresolvedFailedRefunds(
   lifecycle: CreditLotLifecycle,
   refunds: readonly RefundCopy[],
 ): RefundCopy[] {
-  if (lifecycle !== "refunded") return [];
+  if (lifecycle !== "refunded" && lifecycle !== "refunding" && lifecycle !== "refund_pending") return [];
   return refunds.filter(
     (r) =>
-      r.everSucceeded &&
       (r.status === "failed" || r.status === "canceled") &&
-      r.resolvedByOperationId === null,
+      r.resolvedByOperationId === null &&
+      (lifecycle !== "refunded" || r.everSucceeded),
   );
 }

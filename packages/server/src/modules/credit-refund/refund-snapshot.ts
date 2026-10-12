@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * The one writer of `credit_refunds` (inner#1410 §6.4): every read of a
- * payment's refunds from Stripe is copied here, and the payment's disposition
- * waiting on Stripe, if any, is judged again in the same transaction.
+ * Copying Stripe's refunds into `credit_refunds` (inner#1410 §6.4): every
+ * read of a payment's refunds from Stripe is copied here, and the payment's
+ * disposition waiting on Stripe, if any, is judged again in the same
+ * transaction. `resolved_by_operation_id` is written by `transitionOperation`.
  */
 
 import type { DbTx } from "@breatic/core";
@@ -13,13 +14,13 @@ import * as operationRepo from "@server/modules/credit-refund/operation.repo.js"
 import type { CreditRefundOperation } from "@server/modules/credit-refund/operation.repo.js";
 import {
   transitionOperation,
+  type Actor,
   type OperationEvent,
 } from "@server/modules/credit-refund/operation-transitions.js";
 import * as refundCopyRepo from "@server/modules/credit-refund/refund-copy.repo.js";
-import { canSettle, refundAgainOutcome } from "@server/modules/credit-refund/settle-rule.js";
+import { canSettle } from "@server/modules/credit-refund/settle-rule.js";
 import { eventForRefund } from "@server/modules/credit-refund/stripe-answer.js";
-import type { RefundCopy, StripeRefundObject } from "@server/modules/credit-refund/types.js";
-import { pickUnresolvedFailedRefunds } from "@server/modules/credit-refund/unresolved.js";
+import type { StripeRefundObject } from "@server/modules/credit-refund/types.js";
 import * as paymentRepo from "@server/modules/payment/payment.repo.js";
 
 export type { StripeRefundObject } from "@server/modules/credit-refund/types.js";
@@ -32,13 +33,14 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
  * @param tx - The caller's transaction.
  * @param paymentId - The payment.
  * @param refunds - Every refund Stripe holds for it (`refunds.list`, all pages).
- * @throws {Error} When the payment opened no lot, or the refund a waiting
- *   disposition names is missing from the list.
+ * @param actor - Who read them, for the event row a re-judged disposition gets.
+ * @throws {Error} When the payment opened no lot.
  */
 export async function applyRefundSnapshot(
   tx: DbTx,
   paymentId: string,
   refunds: readonly StripeRefundObject[],
+  actor?: Actor,
 ): Promise<void> {
   const lot = await creditLotRepo.lockLotByPayment(paymentId, tx);
   if (lot === null) throw new Error(`payment ${paymentId} opened no credit lot`);
@@ -64,9 +66,9 @@ export async function applyRefundSnapshot(
       tx,
     );
   }
-  if (awaiting !== null) {
-    await transitionOperation(tx, { id: awaiting.id }, await judgeAwaiting(tx, awaiting, refunds));
-  }
+  if (awaiting === null) return;
+  const event = await judgeAwaiting(tx, awaiting, refunds);
+  if (event !== null) await transitionOperation(tx, { id: awaiting.id }, { ...event, ...(actor && { actor }) });
 }
 
 /**
@@ -84,7 +86,9 @@ export async function judgeOwnRefund(
   own: StripeRefundObject,
 ): Promise<OperationEvent> {
   if (op.kind === "refund_again") {
-    const type = eventForRefund(own.status, refundAgainOutcome(own.status));
+    // It asked Stripe for exactly the failed refunds' amount, so its own
+    // refund alone decides: succeeded settles.
+    const type = eventForRefund(own.status, "settle");
     return type === "E6" ? { type, refund: own } : { type: type as "E2" | "E5", refund: own };
   }
   const paid = await paymentRepo.readPaidAmount(op.paymentId, tx);
@@ -102,37 +106,23 @@ export async function judgeOwnRefund(
 
 /**
  * The event a snapshot brings a waiting disposition: its own refund judged,
- * or E10 when a disposition left after a 5xx still has none.
+ * or E10 when a disposition left after a 5xx still has none. A list read
+ * before the disposition's refund existed (a request's step 0 racing
+ * another request's phase 2) says nothing about it: no event.
  * @param tx - The caller's transaction.
  * @param op - The waiting disposition.
  * @param refunds - What Stripe listed.
- * @returns The event.
+ * @returns The event, or null to leave the disposition as it is.
  */
 async function judgeAwaiting(
   tx: DbTx,
   op: CreditRefundOperation,
   refunds: readonly StripeRefundObject[],
-): Promise<OperationEvent> {
+): Promise<OperationEvent | null> {
   const own =
     op.stripeRefundId === null
       ? refunds.find((r) => r.metadata?.refund_operation_id === op.id)
       : refunds.find((r) => r.id === op.stripeRefundId);
   if (own !== undefined) return judgeOwnRefund(tx, op, own);
-  if (op.stripeRefundId === null) return { type: "E10" };
-  throw new Error(
-    `refund ${op.stripeRefundId} of disposition ${op.id} is missing from Stripe's list; pass every page`,
-  );
-}
-
-/**
- * The failed refunds of a lot nobody has answered for (§5.3), seen from the
- * caller's transaction.
- * @param tx - The caller's transaction.
- * @param lotId - The lot.
- * @returns The copies, by refund id.
- */
-export async function unresolvedFailedRefunds(tx: DbTx, lotId: string): Promise<RefundCopy[]> {
-  const lot = await creditLotRepo.lockLot(lotId, tx);
-  if (lot === null) return [];
-  return pickUnresolvedFailedRefunds(lot.lifecycle, await refundCopyRepo.listForLot(lotId, tx));
+  return op.stripeRefundId === null ? { type: "E10" } : null;
 }

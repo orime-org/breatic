@@ -81,21 +81,6 @@ export async function listForPayment(paymentId: string, tx: DbTx): Promise<Refun
 }
 
 /**
- * Every copied refund of a lot.
- * @param lotId - The lot.
- * @param tx - The caller's transaction.
- * @returns The copies, by refund id.
- */
-export async function listForLot(lotId: string, tx: DbTx): Promise<RefundCopy[]> {
-  const rows = await tx
-    .select()
-    .from(creditRefunds)
-    .where(eq(creditRefunds.lotId, lotId))
-    .orderBy(creditRefunds.stripeRefundId);
-  return rows.map(toCopy);
-}
-
-/**
  * Record that a disposition answered for these refunds. A refund already
  * answered for keeps its first answer.
  * @param lotId - The lot they belong to.

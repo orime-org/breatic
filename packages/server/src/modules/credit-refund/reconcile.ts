@@ -12,10 +12,14 @@ import { db, env, getRedis, logger } from "@breatic/core";
 import { getCreditRefundConfig } from "@server/config/credit-refund.js";
 import * as reconcileRepo from "@server/modules/credit-refund/reconcile.repo.js";
 import { applyRefundSnapshot } from "@server/modules/credit-refund/refund-snapshot.js";
-import { listRefunds } from "@server/modules/credit-refund/stripe-refunds.js";
-import * as paymentRepo from "@server/modules/payment/payment.repo.js";
+import { listRefundsForPayment } from "@server/modules/credit-refund/stripe-refunds.js";
 
-/** Longer than any pass takes; a crashed holder's lock expires by itself. */
+/**
+ * How long the lock keeps other instances out. It is left to expire rather
+ * than deleted: a pass that outlived it may run beside another, which only
+ * copies the same refunds twice, and deleting would free a lock that by then
+ * belongs to the other instance.
+ */
 const LOCK_SECONDS = 600;
 
 /**
@@ -27,33 +31,27 @@ export async function runDailyReconcile(): Promise<void> {
   const lockKey = `${env.ENV}:server:refund-reconcile-lock`;
   const locked = await getRedis().set(lockKey, "1", "EX", LOCK_SECONDS, "NX");
   if (locked === null) return;
-  try {
-    await reconcileRepo.markStarted();
-    const failing: string[] = [];
-    let lastError: string | null = null;
-    for (const paymentId of await reconcileRepo.listPaymentsInScope(getCreditRefundConfig().reconcileWindowDays)) {
-      try {
-        await reconcilePayment(paymentId);
-      } catch (err) {
-        failing.push(paymentId);
-        lastError = `payment ${paymentId}: ${err instanceof Error ? err.message : String(err)}`;
-        logger.error({ err, paymentId }, "refund_reconcile_payment_failed");
-      }
+  await reconcileRepo.markStarted();
+  const failing: string[] = [];
+  let lastError: string | null = null;
+  for (const paymentId of await reconcileRepo.listPaymentsInScope(getCreditRefundConfig().reconcileWindowDays)) {
+    try {
+      await reconcilePayment(paymentId);
+    } catch (err) {
+      failing.push(paymentId);
+      lastError = `payment ${paymentId}: ${err instanceof Error ? err.message : String(err)}`;
+      logger.error({ err, paymentId }, "refund_reconcile_payment_failed");
     }
-    await reconcileRepo.markFinished(failing, lastError);
-  } finally {
-    await getRedis().del(lockKey);
   }
+  await reconcileRepo.markFinished(failing, lastError);
 }
 
 /**
  * Copy what Stripe holds for one payment.
  * @param paymentId - The payment.
- * @throws {Error} When the payment or its intent is missing, or Stripe cannot be read.
+ * @throws {Error} When the payment is missing or Stripe cannot be read.
  */
 async function reconcilePayment(paymentId: string): Promise<void> {
-  const payment = await paymentRepo.getPaymentById(paymentId);
-  if (!payment?.stripePaymentIntentId) throw new Error("no payment intent to read");
-  const listed = await listRefunds(payment.stripePaymentIntentId);
-  await db.transaction((tx) => applyRefundSnapshot(tx, paymentId, listed));
+  const listed = await listRefundsForPayment(paymentId);
+  await db.transaction((tx) => applyRefundSnapshot(tx, paymentId, listed, "reconcile"));
 }

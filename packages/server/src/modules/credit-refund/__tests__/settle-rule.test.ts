@@ -3,8 +3,7 @@
 
 /**
  * When a refund that Stripe reports as succeeded may be booked (inner#1410
- * §5.4, the three settle conditions), and the narrower rule refund_again
- * uses instead (§5.2).
+ * §5.4, the three settle conditions).
  *
  * `canSettle` reads every refund of the payment, judged in the design's
  * order: a refund still in flight means wait; then the succeeded sum must
@@ -17,7 +16,7 @@
 
 import { describe, it, expect } from "vitest";
 import fc from "fast-check";
-import { canSettle, refundAgainOutcome } from "@server/modules/credit-refund/settle-rule.js";
+import { canSettle } from "@server/modules/credit-refund/settle-rule.js";
 import type { RefundCopy, StripeRefundStatus } from "@server/modules/credit-refund/types.js";
 
 const OP = "11111111-1111-4111-8111-111111111111";
@@ -234,21 +233,4 @@ describe("canSettle", () => {
       );
     });
   });
-});
-
-describe("refundAgainOutcome: refund_again looks only at its own refund", () => {
-  it("settles when its refund succeeded", () => {
-    expect(refundAgainOutcome("succeeded")).toBe("settle");
-  });
-
-  it.each<StripeRefundStatus>(["pending", "requires_action"])("waits while its refund is %s", (status) => {
-    expect(refundAgainOutcome(status)).toBe("wait");
-  });
-
-  it.each<StripeRefundStatus>(["failed", "canceled"])(
-    "asks for attention when its refund is %s",
-    (status) => {
-      expect(refundAgainOutcome(status)).toBe("attention");
-    },
-  );
 });

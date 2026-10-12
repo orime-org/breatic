@@ -3,7 +3,9 @@
 
 /**
  * Data access for `credit_refund_operations` and its event rows
- * (inner#1410 §5.1). The only caller that writes is `transitionOperation`.
+ * (inner#1410 §5.1). Status changes and event rows are written only through
+ * `transitionOperation`; `markFirstCalled` and `scheduleNextLook` write the
+ * two progress columns directly, with no event row (§9).
  */
 
 import { and, asc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
@@ -47,6 +49,7 @@ export interface CreditRefundOperation {
   requestedBy: string;
   reason: string;
   notify: boolean;
+  refundRequestedAt: Date | null;
   confirmedRefundIds: string[];
   confirmedSucceededCents: number | null;
   failedRefundIds: string[];
@@ -76,6 +79,7 @@ export interface OperationInsert {
   requestedBy: string;
   reason: string;
   notify: boolean;
+  refundRequestedAt: Date | null;
   confirmedRefundIds: string[];
   confirmedSucceededCents: number | null;
   failedRefundIds: string[];

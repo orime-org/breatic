@@ -14,9 +14,6 @@ import { AppError, ValidationError, logger } from "@breatic/core";
 import { t } from "@breatic/shared";
 import { RefundRefusal } from "@server/modules/credit-refund/refusal.js";
 
-/** A refusal the internal API names itself; the services throw the same type. */
-export class InternalApiError extends RefundRefusal {}
-
 /** The code each domain `AppError` status answers with. */
 const APP_ERROR_CODES: Partial<Record<number, string>> = {
   404: "not_found",

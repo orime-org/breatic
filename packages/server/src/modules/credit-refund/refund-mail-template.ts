@@ -59,21 +59,20 @@ export function renderRefundMail(view: RefundMailView): Promise<RenderedMail> {
      */
     const line = (name: string, value: string): string =>
       t("server.refund_mail.fact_line", { label: t(`server.refund_mail.label.${name}`), value });
-    const at = (moment: Date): string => bothZones(moment, view.timeZone, locale);
     const credits = t("server.refund_mail.credits_amount", { credits: String(view.credits) });
     const lines =
       view.kind === "refund_completed"
         ? [
             line("amount", formatMoney(view.amountCents, view.currency, locale)),
             line("credits", credits),
-            line("purchased_at", at(view.purchasedAt)),
-            line("refunded_at", at(view.refundedAt)),
+            line("purchased_at", bothZones(view.purchasedAt, view.timeZone, locale)),
+            line("refunded_at", bothZones(view.refundedAt, view.timeZone, locale)),
             line("order_ref", view.paymentId),
           ]
         : [
             line("credits", credits),
-            line("purchased_at", at(view.purchasedAt)),
-            line("requested_at", at(view.requestedAt)),
+            line("purchased_at", bothZones(view.purchasedAt, view.timeZone, locale)),
+            line("requested_at", bothZones(view.requestedAt, view.timeZone, locale)),
             line("order_ref", view.paymentId),
           ];
     return { text: lines.join("\n"), html: `<div style="${DETAILS}">${lines.join("<br>")}</div>` };

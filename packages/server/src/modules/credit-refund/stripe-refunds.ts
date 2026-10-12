@@ -12,6 +12,7 @@ import { getCreditRefundConfig } from "@server/config/credit-refund.js";
 import type { StripeFailure } from "@server/modules/credit-refund/operation-transitions.js";
 import type { CreateAnswer } from "@server/modules/credit-refund/stripe-answer.js";
 import type { StripeRefundObject, StripeRefundStatus } from "@server/modules/credit-refund/types.js";
+import * as paymentRepo from "@server/modules/payment/payment.repo.js";
 
 /** `autoPagingToArray` requires a ceiling; no payment has anywhere near this many refunds. */
 const MAX_REFUNDS = 10_000;
@@ -66,12 +67,35 @@ export function toRefundObject(r: Stripe.Refund): StripeRefundObject {
 export async function listRefunds(paymentIntent: string): Promise<StripeRefundObject[]> {
   try {
     const refunds = await getStripeClient()
-      .refunds.list({ payment_intent: paymentIntent, limit: 100 })
+      .refunds.list({ payment_intent: paymentIntent, limit: 100 }, callOptions())
       .autoPagingToArray({ limit: MAX_REFUNDS });
     return refunds.map(toRefundObject);
   } catch (err) {
     throw new StripeReadError(err);
   }
+}
+
+/**
+ * Every refund Stripe holds for a payment. A payment with no payment intent
+ * has none: nothing on Stripe can refund it.
+ * @param paymentId - The payment.
+ * @returns The refunds.
+ * @throws {Error} When the payment does not exist.
+ * @throws {StripeReadError} When the read fails.
+ */
+export async function listRefundsForPayment(paymentId: string): Promise<StripeRefundObject[]> {
+  const payment = await paymentRepo.getPaymentById(paymentId);
+  if (!payment) throw new Error(`payment ${paymentId} does not exist`);
+  return payment.stripePaymentIntentId ? listRefunds(payment.stripePaymentIntentId) : [];
+}
+
+/**
+ * The options every Stripe call of a disposition runs with: its own timeout
+ * and no retries, so an attempt fits inside its lease (§7.4).
+ * @returns The request options.
+ */
+function callOptions(): { timeout: number; maxNetworkRetries: 0 } {
+  return { timeout: getCreditRefundConfig().stripeCallTimeoutMs, maxNetworkRetries: 0 };
 }
 
 /**
@@ -94,11 +118,7 @@ export async function createRefund(input: {
         ...(input.amountCents !== null && { amount: input.amountCents }),
         metadata: { refund_operation_id: input.operationId },
       },
-      {
-        idempotencyKey: `credit-refund-${input.operationId}`,
-        timeout: getCreditRefundConfig().stripeCallTimeoutMs,
-        maxNetworkRetries: 0,
-      },
+      { idempotencyKey: `credit-refund-${input.operationId}`, ...callOptions() },
     );
     const refund = toRefundObject(created);
     return { answer: { kind: "refund", refund: { id: refund.id, status: refund.status } }, refund };

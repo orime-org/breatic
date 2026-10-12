@@ -1441,6 +1441,9 @@ export const creditRefundOperations = pgTable(
     requestedBy: varchar("requested_by", { length: 64 }).notNull(),
     reason: text("reason").notNull(),
     notify: boolean("notify").notNull(),
+    // The ask this disposition answered, copied from the lot at insert: the
+    // buyer may ask again after a rejection, which rewrites the lot's column.
+    refundRequestedAt: timestamp("refund_requested_at", { withTimezone: true }),
     confirmedRefundIds: text("confirmed_refund_ids").array().default(sql`'{}'`).notNull(),
     confirmedSucceededCents: bigint("confirmed_succeeded_cents", { mode: "number" }),
     // refund_again only: the failed refunds it covers and the exact amount it

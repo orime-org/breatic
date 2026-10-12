@@ -19,6 +19,7 @@ import {
   assessOneShot,
   assessRefundCreate,
   assessRefundPreview,
+  isInFlight,
   type AssessInput,
   type AssessResult,
   type OneShotKind,
@@ -38,7 +39,7 @@ import type { RefundMail } from "@server/modules/credit-refund/refund-mail.repo.
 import { sendOperationMailsLater, sendRefundMailLater } from "@server/modules/credit-refund/refund-mail.js";
 import { applyRefundSnapshot } from "@server/modules/credit-refund/refund-snapshot.js";
 import { RefundRefusal, stripeUnavailable } from "@server/modules/credit-refund/refusal.js";
-import { StripeReadError, listRefunds } from "@server/modules/credit-refund/stripe-refunds.js";
+import { StripeReadError, listRefundsForPayment } from "@server/modules/credit-refund/stripe-refunds.js";
 import type { RefundCopy, StripeRefundObject } from "@server/modules/credit-refund/types.js";
 import { pickUnresolvedFailedRefunds } from "@server/modules/credit-refund/unresolved.js";
 import * as paymentRepo from "@server/modules/payment/payment.repo.js";
@@ -53,7 +54,7 @@ export interface Answer<T> {
 }
 
 /** What every write request carries besides its body. */
-interface WriteRequest {
+export interface WriteRequest {
   lotId: string;
   adminId: string;
   key: string;
@@ -64,6 +65,7 @@ interface WriteRequest {
 /** The lot and the facts the tables read, under the lot's lock. */
 interface Facts {
   lot: CreditLotEntity;
+  payment: PaymentEntity;
   ledgerSum: string;
   refundRequestedAt: Date | null;
   paidCents: number;
@@ -84,10 +86,12 @@ export async function preview(lotId: string): Promise<Record<string, unknown>> {
   const { payment } = await loadTarget(lotId);
   const listed = await readStripe(payment);
   return db.transaction(async (tx) => {
-    await applyRefundSnapshot(tx, payment.id, listed);
-    const facts = await readFacts(tx, lotId, payment);
+    await applyRefundSnapshot(tx, payment.id, listed, "request");
+    const lot = await creditLotRepo.lockLot(lotId, tx);
+    if (lot === null) throw new RefundRefusal(404, "not_found", "lot_not_found");
+    const facts = await readFacts(tx, lot, payment);
     const judged = assessRefundPreview(assessFacts(facts, payment));
-    const inFlight = facts.ops.find((o) => o.status === "started" || o.status === "awaiting_stripe");
+    const inFlight = facts.ops.find(isInFlight);
     return {
       lot: {
         id: facts.lot.id,
@@ -137,16 +141,7 @@ export async function requestRefund(
   req: WriteRequest,
   body: { confirmedRefundIds?: string[]; failedRefundIds?: string[]; notify?: boolean },
 ): Promise<Answer<unknown>> {
-  const replay = await lookupKey(req.key, req.hash);
-  if (replay) return answerReplay(replay);
-  const { payment } = await loadTarget(req.lotId);
-  const listed = await readStripe(payment);
-
-  const outcome = await db.transaction(async (tx) => {
-    const replayed = await lockAndRecheck(tx, req);
-    if (replayed) return { replay: replayed };
-    await applyRefundSnapshot(tx, payment.id, listed);
-    const facts = await readFacts(tx, req.lotId, payment);
+  const outcome = await decide(req, (facts, payment) => {
     const verdict = assessRefundCreate({
       kind,
       ...assessFacts(facts, payment),
@@ -154,20 +149,16 @@ export async function requestRefund(
       failedRefundIds: body.failedRefundIds ?? [],
     });
     if (verdict.outcome === "blocked") throw refusalOf(verdict);
-    const op = await transitionOperation(tx, null, {
-      type: "E1",
-      create: {
-        ...newOperation(kind, req, payment),
-        confirmedRefundIds: body.confirmedRefundIds,
-        failedRefundIds: body.failedRefundIds,
-        notify: body.notify,
-        refundAmountCents: verdict.sendAmount ? verdict.amountCents : undefined,
-      },
-    });
-    return { op: op! };
+    return {
+      ...newOperation(kind, req, payment),
+      confirmedRefundIds: body.confirmedRefundIds,
+      failedRefundIds: body.failedRefundIds,
+      notify: body.notify,
+      refundAmountCents: verdict.sendAmount ? verdict.amountCents : undefined,
+    };
   });
-  if (outcome.replay) return answerReplay(outcome.replay);
-  await executeRefund(outcome.op);
+  if ("replay" in outcome) return answerReplay(outcome.replay);
+  await executeRefund(outcome.op, "request");
   sendOperationMailsLater(outcome.op.id);
   return answerOperation((await operationRepo.findById(outcome.op.id))!);
 }
@@ -195,16 +186,7 @@ export async function requestOneShot(
     failedRefundIds?: string[];
   },
 ): Promise<Answer<unknown>> {
-  const replay = await lookupKey(req.key, req.hash);
-  if (replay) return answerReplay(replay);
-  const { payment } = await loadTarget(req.lotId);
-  const listed = await readStripe(payment);
-
-  const outcome = await db.transaction(async (tx) => {
-    const replayed = await lockAndRecheck(tx, req);
-    if (replayed) return { replay: replayed };
-    await applyRefundSnapshot(tx, payment.id, listed);
-    const facts = await readFacts(tx, req.lotId, payment);
+  const outcome = await decide(req, (facts) => {
     const verdict = assessOneShot({
       kind,
       lot: { lifecycle: facts.lot.lifecycle, remainingCredits: Number(facts.lot.remainingCredits) },
@@ -214,15 +196,37 @@ export async function requestOneShot(
       ...body,
     });
     if (verdict.outcome === "blocked") throw refusalOf(verdict);
-    const op = await transitionOperation(tx, null, {
-      type: "E1",
-      create: { ...newOperation(kind, req, payment), ...body },
-    });
-    return { op: op! };
+    return { ...newOperation(kind, req, facts.payment), ...body };
   });
-  if (outcome.replay) return answerReplay(outcome.replay);
+  if ("replay" in outcome) return answerReplay(outcome.replay);
   sendOperationMailsLater(outcome.op.id);
   return answerOperation(outcome.op);
+}
+
+/**
+ * Phase 1 of every disposition (§4.6, §5.2, §5.3): replay a known key; read
+ * Stripe; then in one transaction take the key's lock and the lot's, look
+ * the key up again, copy what Stripe holds, judge and insert (E1).
+ * @param req - The request.
+ * @param judge - Turns the facts into the new disposition, or throws its refusal.
+ * @returns What to replay, or the new disposition.
+ */
+async function decide(
+  req: WriteRequest,
+  judge: (facts: Facts, payment: PaymentEntity) => NewOperation,
+): Promise<{ replay: Replay } | { op: CreditRefundOperation }> {
+  const replay = await lookupKey(req.key, req.hash);
+  if (replay) return { replay };
+  const { payment } = await loadTarget(req.lotId);
+  const listed = await readStripe(payment);
+  return db.transaction(async (tx) => {
+    const locked = await lockAndRecheck(tx, req);
+    if ("replay" in locked) return { replay: locked.replay };
+    await applyRefundSnapshot(tx, payment.id, listed, "request");
+    const create = judge(await readFacts(tx, locked.lot, payment), payment);
+    const op = await transitionOperation(tx, null, { type: "E1", create, actor: "request" });
+    return { op: op! };
+  });
 }
 
 // ── mail resend ──────────────────────────────────────────────────────
@@ -242,8 +246,8 @@ export async function resendMail(
   if (op === null) throw new RefundRefusal(404, "not_found", "operation_not_found");
 
   const outcome = await db.transaction(async (tx) => {
-    const replayed = await lockAndRecheck(tx, { ...req, lotId: op.lotId });
-    if (replayed) return { replay: replayed };
+    const locked = await lockAndRecheck(tx, { ...req, lotId: op.lotId });
+    if ("replay" in locked) return { replay: locked.replay };
     const current = (await operationRepo.lockById(op.id, tx))!;
     const kind =
       current.status !== "succeeded"
@@ -288,16 +292,14 @@ async function loadTarget(lotId: string): Promise<{ lot: CreditLotEntity; paymen
 }
 
 /**
- * Step 0: every refund Stripe holds for the payment. A payment with no
- * payment intent has none.
+ * Step 0: every refund Stripe holds for the payment.
  * @param payment - The payment.
  * @returns The refunds.
  * @throws {RefundRefusal} 503 `stripe_unavailable` when the read fails.
  */
 async function readStripe(payment: PaymentEntity): Promise<StripeRefundObject[]> {
-  if (payment.stripePaymentIntentId === null) return [];
   try {
-    return await listRefunds(payment.stripePaymentIntentId);
+    return await listRefundsForPayment(payment.id);
   } catch (err) {
     if (err instanceof StripeReadError) throw stripeUnavailable();
     throw err;
@@ -309,35 +311,40 @@ async function readStripe(payment: PaymentEntity): Promise<StripeRefundObject[]>
  * advisory lock, the lot's row lock, the second lookup of the key.
  * @param tx - The write transaction.
  * @param req - The request.
- * @returns What to replay, or null to go on.
+ * @returns What to replay, or the locked lot to go on with.
  * @throws {RefundRefusal} 404 when the lot is gone; the key refusals.
  */
-async function lockAndRecheck(tx: DbTx, req: WriteRequest): Promise<Replay | null> {
+async function lockAndRecheck(
+  tx: DbTx,
+  req: WriteRequest,
+): Promise<{ replay: Replay } | { lot: CreditLotEntity }> {
   await operationRepo.lockIdempotencyKey(req.key, tx);
-  if ((await creditLotRepo.lockLot(req.lotId, tx)) === null) {
-    throw new RefundRefusal(404, "not_found", "lot_not_found");
-  }
-  return lookupKey(req.key, req.hash, tx);
+  const lot = await creditLotRepo.lockLot(req.lotId, tx);
+  if (lot === null) throw new RefundRefusal(404, "not_found", "lot_not_found");
+  const replay = await lookupKey(req.key, req.hash, tx);
+  return replay ? { replay } : { lot };
 }
 
 /**
  * The facts the tables read, inside the transaction holding the lot's lock.
+ * The lot is read again: copying Stripe's refunds may have just moved it.
  * @param tx - The transaction.
- * @param lotId - The lot.
+ * @param locked - The lot, locked by this transaction.
  * @param payment - Its payment.
  * @returns The facts.
  */
-async function readFacts(tx: DbTx, lotId: string, payment: PaymentEntity): Promise<Facts> {
-  const lot = (await creditLotRepo.lockLot(lotId, tx))!;
-  const { ledgerSum, refundRequestedAt } = await creditLotRepo.readRefundFacts(lotId, tx);
+async function readFacts(tx: DbTx, locked: CreditLotEntity, payment: PaymentEntity): Promise<Facts> {
+  const lot = (await creditLotRepo.lockLot(locked.id, tx))!;
+  const { ledgerSum, refundRequestedAt } = await creditLotRepo.readRefundFacts(lot.id, tx);
   const paid = (await paymentRepo.readPaidAmount(payment.id, tx))!;
   return {
     lot,
+    payment,
     ledgerSum,
     refundRequestedAt,
     paidCents: paid.paidCents,
     currency: paid.currency,
-    ops: await operationRepo.listForLot(lotId, tx),
+    ops: await operationRepo.listForLot(lot.id, tx),
     refunds: await refundCopyRepo.listForPayment(payment.id, tx),
   };
 }

@@ -4,19 +4,19 @@
 /**
  * Classifying one Stripe answer to `refunds.create` (inner#1410 §5.4).
  *
- * The classification is split in three steps, because the middle one needs a
- * Stripe read the pure code cannot make:
+ * The classification is split in two pure steps, with a Stripe read the pure
+ * code cannot make in between:
  *
  * 1. `classifyCreateAnswer` reads the create call's answer in the design's
  *    fixed order: a refund object goes by its status; otherwise
  *    `Stripe-Should-Retry: true`, then the error `code`, then the HTTP status.
  *    It answers a refund to classify, a final event (E6, E8), or "look the
  *    refund up by metadata, and if it is not there this is E7 / E9 / E17".
- * 2. `classifyLookup` turns the metadata lookup into a refund to classify, the
- *    pending event, or E16 when the lookup itself failed.
- * 3. `eventForRefund` turns a refund object into E2..E6. E2 / E3 / E4 split on
- *    the settle verdict, which the caller computes (`canSettle` for approve
- *    and retry, `refundAgainOutcome` for refund_again) and passes in.
+ *    The executor makes that lookup itself: a refund found by metadata is
+ *    classified by status in step 2; otherwise the answer's own event stands
+ *    (a lookup that itself fails is E16).
+ * 2. `eventForRefund` turns a refund object into E2..E6. E2 / E3 / E4 split on
+ *    the settle verdict, which the caller computes and passes in.
  *
  * The one thing that must never happen here is reading "Stripe did not
  * refund" (E6) out of an answer that cannot prove it: only the first request
@@ -28,7 +28,6 @@ import { describe, it, expect } from "vitest";
 import fc from "fast-check";
 import {
   classifyCreateAnswer,
-  classifyLookup,
   eventForRefund,
   type CreateAnswer,
 } from "@server/modules/credit-refund/stripe-answer.js";
@@ -253,32 +252,6 @@ describe("classifyCreateAnswer: invariants over every error answer", () => {
         expect(out).toEqual({ kind: "lookup", ifNotFound: "E7" });
       }),
     );
-  });
-});
-
-describe("classifyLookup", () => {
-  it.each(["E7", "E9", "E17"] as const)(
-    "a lookup that finds nothing yields the pending %s",
-    (ifNotFound) => {
-      expect(classifyLookup(ifNotFound, { ok: true, refund: null })).toEqual({
-        kind: "event",
-        event: ifNotFound,
-      });
-    },
-  );
-
-  it.each(["E7", "E9", "E17"] as const)(
-    "a lookup that finds the refund hands it back for status classification (%s)",
-    (ifNotFound) => {
-      expect(classifyLookup(ifNotFound, { ok: true, refund: REFUND("pending") })).toEqual({
-        kind: "refund",
-        refund: { id: "re_123", status: "pending" },
-      });
-    },
-  );
-
-  it.each(["E7", "E9", "E17"] as const)("a lookup that itself fails is E16 (%s)", (ifNotFound) => {
-    expect(classifyLookup(ifNotFound, { ok: false })).toEqual({ kind: "event", event: "E16" });
   });
 });
 

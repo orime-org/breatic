@@ -19,6 +19,7 @@ import { env,
   getSubscriptionPlans,
 } from "@breatic/core";
 import { getPricingTiers } from "@server/config/pricing.js";
+import { getCreditRefundConfig } from "@server/config/credit-refund.js";
 import { closeDb } from "@breatic/core";
 import { closeRedis } from "@breatic/core";
 import { closeQueues } from "@breatic/core";
@@ -134,6 +135,17 @@ if (env.PAYMENT_ENABLED) {
     getPricingTiers();
   } catch (err) {
     logger.error({ err }, "payment_config_invalid");
+    await exitProcess(1);
+  }
+}
+
+// The refund time limits are read lazily by the internal API and the refund
+// loop; a malformed file must stop the boot, not the first approval.
+if (env.INTERNAL_API_ENABLED) {
+  try {
+    getCreditRefundConfig();
+  } catch (err) {
+    logger.error({ err }, "credit_refund_config_invalid");
     await exitProcess(1);
   }
 }

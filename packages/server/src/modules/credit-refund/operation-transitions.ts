@@ -28,7 +28,8 @@ import type {
 } from "@server/modules/credit-refund/operation.repo.js";
 import * as refundCopyRepo from "@server/modules/credit-refund/refund-copy.repo.js";
 import * as refundMailRepo from "@server/modules/credit-refund/refund-mail.repo.js";
-import type { StripeRefundObject } from "@server/modules/credit-refund/types.js";
+import { succeededCents } from "@server/modules/credit-refund/settle-rule.js";
+import type { RefundCopy, StripeRefundObject } from "@server/modules/credit-refund/types.js";
 import * as notificationService from "@server/modules/notification/notification.service.js";
 import * as paymentRepo from "@server/modules/payment/payment.repo.js";
 import { randomUUID } from "node:crypto";
@@ -65,6 +66,9 @@ export interface NewOperation {
   refundAmountCents?: number;
 }
 
+/** Who wrote an event row (§5.1 `detail.actor`). */
+export type Actor = "request" | "loop" | "webhook" | "reconcile";
+
 /** A refund object Stripe answered with. */
 interface RefundEvent {
   type: "E2" | "E3" | "E5";
@@ -81,7 +85,7 @@ interface DeclineEvent {
 /**
  * The events of §6.2. `leaseToken` is the lease an executor's answer was
  * made under, absent for the loop's events; E15 is any event whose lease
- * the row no longer holds.
+ * the row no longer holds. `actor` goes into the event row's detail.
  */
 export type OperationEvent = (
   | { type: "E1"; create: NewOperation }
@@ -95,7 +99,7 @@ export type OperationEvent = (
   | { type: "E7" | "E8" | "E9" | "E16" | "E17"; failure: StripeFailure }
   | { type: "E10" | "E11" | "E12" | "E13" }
   | { type: "E14"; closedBy: string }
-) & { leaseToken?: string };
+) & { leaseToken?: string; actor?: Actor };
 
 /** A cell of §6.2 that cannot happen. */
 export class ImpossibleTransitionError extends Error {
@@ -149,6 +153,8 @@ interface Ctx {
   tx: DbTx;
   lot: CreditLotEntity;
   row: CreditRefundOperation;
+  /** Who is moving it; the rows it writes for other dispositions say the same. */
+  actor: Actor | undefined;
 }
 
 /** What a finished disposition tells the buyer. */
@@ -185,7 +191,7 @@ export async function transitionOperation(
   const lot = lotId === null ? null : await creditLotRepo.lockLot(lotId, tx);
   const row = lot === null ? null : await operationRepo.lockById(op.id, tx);
   if (lot === null || row === null) throw new ImpossibleTransitionError(null, event.type);
-  const ctx = { tx, lot, row };
+  const ctx = { tx, lot, row, actor: event.actor };
 
   if ("leaseToken" in event && event.leaseToken !== undefined && event.leaseToken !== row.leaseToken) {
     return move(ctx, "late_answer", {}, { answer: event.type, ...detailOf(event) });
@@ -213,9 +219,11 @@ async function create(tx: DbTx, req: NewOperation): Promise<CreditRefundOperatio
   const lot = await creditLotRepo.lockLot(req.lotId, tx);
   if (lot === null) throw new ImpossibleTransitionError(null, "E1");
   const startsRefund = req.kind === "approve" || req.kind === "retry" || req.kind === "refund_again";
+  const { refundRequestedAt } = await creditLotRepo.readRefundFacts(req.lotId, tx);
   if (req.kind === "approve") await creditLotService.markRefunding({ lotId: req.lotId }, tx);
 
-  const finishing = await finishingValues(tx, req);
+  const copies = await refundCopyRepo.listForPayment(req.paymentId, tx);
+  const finishing = finishingValues(req, lot, copies);
   const row = await operationRepo.insert(
     {
       lotId: req.lotId,
@@ -228,6 +236,7 @@ async function create(tx: DbTx, req: NewOperation): Promise<CreditRefundOperatio
       requestedBy: req.requestedBy,
       reason: req.reason,
       notify: FIXED_NOTIFY[req.kind] ?? req.notify ?? false,
+      refundRequestedAt,
       confirmedRefundIds: req.confirmedRefundIds ?? [],
       confirmedSucceededCents: req.confirmedSucceededCents ?? null,
       failedRefundIds: req.failedRefundIds ?? [],
@@ -244,7 +253,7 @@ async function create(tx: DbTx, req: NewOperation): Promise<CreditRefundOperatio
       event: EVENT_NAME.E1,
       fromStatus: null,
       toStatus: row.status,
-      detail: { kind: req.kind },
+      detail: { kind: req.kind, actor: "request" },
     },
     tx,
   );
@@ -254,12 +263,14 @@ async function create(tx: DbTx, req: NewOperation): Promise<CreditRefundOperatio
     await creditLotService.rejectRefund({ lotId: req.lotId, operationId: row.id }, tx);
   } else if (req.kind === "send_back") {
     await creditLotService.sendBackRefund({ lotId: req.lotId }, tx);
-  } else if (req.kind === "settle") {
-    await creditLotService.settleRefund({ lotId: req.lotId, refundId: finishing!.bookOn! }, tx);
+  } else if (finishing!.books) {
+    // settle, and resolve_outside on a lot not yet booked (§5.3, §5.5).
+    await creditLotService.settleRefund({ lotId: req.lotId, refundId: finishing!.bookOn ?? row.id }, tx);
   }
-  await afterSucceeded({ tx, lot, row }, row, {
+  await afterSucceeded({ tx, lot, row, actor: "request" }, row, {
     result: row.result!,
-    resolve: req.kind === "resolve_outside" ? row.failedRefundIds : [],
+    resolve:
+      req.kind === "resolve_outside" ? row.failedRefundIds : finishing!.books ? unresolvedFailures(copies) : [],
     tell:
       req.kind === "reject"
         ? { kind: "refund_rejected" }
@@ -271,37 +282,60 @@ async function create(tx: DbTx, req: NewOperation): Promise<CreditRefundOperatio
 }
 
 /**
- * The result of a kind that finishes in its request, and for settle the
- * refund it books on and the succeeded sum.
- * @param tx - The caller's transaction.
+ * The result of a kind that finishes in its request; for the two that book
+ * the lot, the refund the ledger row names and the succeeded sum (§5.5).
  * @param req - The request.
+ * @param lot - The locked lot.
+ * @param copies - The payment's refund copies, as this request wrote them.
  * @returns The values, or null for a kind that starts a refund.
+ * @throws {Error} When settle finds no succeeded refund to book on.
  */
-async function finishingValues(
-  tx: DbTx,
+function finishingValues(
   req: NewOperation,
-): Promise<{ result: OperationResult; bookOn?: string; settledCents?: number } | null> {
+  lot: CreditLotEntity,
+  copies: readonly RefundCopy[],
+): { result: OperationResult; books: boolean; bookOn?: string; settledCents?: number } | null {
+  const succeeded = copies
+    .filter((c) => c.status === "succeeded")
+    .sort((a, b) => b.amountCents - a.amountCents);
+  const settledCents = succeededCents(copies);
   switch (req.kind) {
     case "reject":
-      return { result: "rejected" };
+      return { result: "rejected", books: false };
     case "send_back":
-      return { result: "sent_back" };
+      return { result: "sent_back", books: false };
     case "resolve_outside":
-      return { result: "resolved_outside" };
+      // A booked lot only has failed refunds answered for; one not yet
+      // booked is booked here, on the largest succeeded refund if any.
+      return lot.lifecycle === "refunded"
+        ? { result: "resolved_outside", books: false }
+        : {
+            result: "resolved_outside",
+            books: true,
+            ...(succeeded[0] && { bookOn: succeeded[0].stripeRefundId }),
+            settledCents,
+          };
     case "settle": {
-      const copies = await refundCopyRepo.listForPayment(req.paymentId, tx);
-      const succeeded = copies
-        .filter((c) => c.status === "succeeded")
-        .sort((a, b) => b.amountCents - a.amountCents);
-      // §5.5: the product's own succeeded refund, otherwise the largest.
+      // The product's own succeeded refund, otherwise the largest.
       const bookOn = succeeded.find((c) => c.operationId !== null) ?? succeeded[0];
       if (bookOn === undefined) throw new Error("settle requires a succeeded refund to book on");
-      const settledCents = succeeded.reduce((sum, c) => sum + c.amountCents, 0);
-      return { result: "refunded", bookOn: bookOn.stripeRefundId, settledCents };
+      return { result: "refunded", books: true, bookOn: bookOn.stripeRefundId, settledCents };
     }
     default:
       return null;
   }
+}
+
+/**
+ * The failed refunds a booking answers for: every one not yet answered for
+ * at the moment the lot is booked (§5.5).
+ * @param copies - The payment's refund copies.
+ * @returns Their Stripe ids.
+ */
+function unresolvedFailures(copies: readonly RefundCopy[]): string[] {
+  return copies
+    .filter((c) => (c.status === "failed" || c.status === "canceled") && c.resolvedByOperationId === null)
+    .map((c) => c.stripeRefundId);
 }
 
 // ── started ──────────────────────────────────────────────────────────
@@ -348,11 +382,11 @@ async function fromStarted(ctx: Ctx, event: OperationEvent): Promise<CreditRefun
     case "E11":
       return toAttention(ctx, event, "attempts_exhausted", ctx.row.lastError && firstLine(ctx.row.lastError));
     case "E12":
-      return move(ctx, EVENT_NAME.E12, {}, {});
+      return move(ctx, EVENT_NAME.E12, {}, detailOf(event));
     case "E13":
       return move(ctx, EVENT_NAME.E13, {
         lease: { token: randomUUID(), seconds: getCreditRefundConfig().leaseSeconds },
-      }, {});
+      }, detailOf(event));
     default:
       break;
   }
@@ -385,13 +419,15 @@ async function fromAwaiting(ctx: Ctx, event: OperationEvent): Promise<CreditRefu
       return toAttention(ctx, event, "stripe_refund_failed_later", declineDetail(event), refundIdOf(event));
     case "E10":
       if (known) break;
-      return move(ctx, EVENT_NAME.E10, { nextAttemptInSeconds: waitedBackoffSeconds(ctx.row.firstCalledAt, getCreditRefundConfig(), Date.now()) }, {});
+      return move(ctx, EVENT_NAME.E10, {
+        nextAttemptInSeconds: waitedBackoffSeconds(ctx.row.firstCalledAt, getCreditRefundConfig(), Date.now()),
+      }, detailOf(event));
     case "E12":
       return known
-        ? move(ctx, EVENT_NAME.E12, {}, {})
+        ? move(ctx, EVENT_NAME.E12, {}, detailOf(event))
         : toAttention(ctx, event, "stripe_result_unknown", ctx.row.lastError && firstLine(ctx.row.lastError));
     case "E13":
-      return move(ctx, EVENT_NAME.E13, {}, {});
+      return move(ctx, EVENT_NAME.E13, {}, detailOf(event));
     case "E16":
       return move(ctx, EVENT_NAME.E16, {
         lastError: event.failure.message,
@@ -546,7 +582,11 @@ async function toSucceeded(
  */
 async function afterSucceeded(ctx: Ctx, op: CreditRefundOperation, finish: Finish): Promise<void> {
   for (const id of await operationRepo.listOpenAttention(op.lotId, op.id, ctx.tx)) {
-    await transitionOperation(ctx.tx, { id }, { type: "E14", closedBy: op.id });
+    await transitionOperation(ctx.tx, { id }, {
+      type: "E14",
+      closedBy: op.id,
+      ...(ctx.actor && { actor: ctx.actor }),
+    });
   }
   await refundCopyRepo.markResolved(op.lotId, finish.resolve ?? [], op.id, ctx.tx);
   if (!finish.tell) return;
@@ -575,7 +615,8 @@ async function afterSucceeded(ctx: Ctx, op: CreditRefundOperation, finish: Finis
 
 /**
  * Book an approval or retry on its refund (§5.5): the caller found the
- * settle rule satisfied (E2).
+ * settle rule satisfied (E2). A lot that is no longer `refunding` was
+ * changed by hand (§6.1); a person decides, and the lot is left alone.
  * @param ctx - The locked row.
  * @param event - The E2 event.
  * @returns The row after.
@@ -584,16 +625,32 @@ async function book(
   ctx: Ctx,
   event: RefundEvent,
 ): Promise<CreditRefundOperation> {
+  if (ctx.lot.lifecycle !== "refunding") return stateMismatch(ctx, event, { stripeRefundId: event.refund.id });
   const copies = await refundCopyRepo.listForPayment(ctx.row.paymentId, ctx.tx);
-  const settledCents = copies
-    .filter((c) => c.status === "succeeded")
-    .reduce((sum, c) => sum + c.amountCents, 0);
+  const settledCents = succeededCents(copies);
   await creditLotService.settleRefund({ lotId: ctx.row.lotId, refundId: event.refund.id }, ctx.tx);
   return toSucceeded(ctx, EVENT_NAME.E2, detailOf(event), {
     result: "refunded",
     patch: { stripeRefundId: event.refund.id, settledSucceededCents: settledCents },
+    resolve: unresolvedFailures(copies),
     tell: ctx.row.notify ? { kind: "refund_completed", amountCents: settledCents } : null,
   });
+}
+
+/**
+ * The lot left `refunding` by a hand outside the product (§6.1): finish as
+ * `needs_attention(state_mismatch)` naming what was found.
+ * @param ctx - The locked row.
+ * @param event - The event that found it.
+ * @param patch - What else to record.
+ * @returns The row after.
+ */
+function stateMismatch(
+  ctx: Ctx,
+  event: OperationEvent,
+  patch: OperationPatch,
+): Promise<CreditRefundOperation> {
+  return toAttention(ctx, event, "state_mismatch", `lot is ${ctx.lot.lifecycle}`, patch);
 }
 
 /**
@@ -628,6 +685,7 @@ async function sendBack(
   ctx: Ctx,
   event: DeclineEvent,
 ): Promise<CreditRefundOperation> {
+  if (ctx.lot.lifecycle !== "refunding") return stateMismatch(ctx, event, refundIdOf(event));
   await creditLotService.sendBackRefund({ lotId: ctx.row.lotId }, ctx.tx);
   return toSucceeded(ctx, EVENT_NAME.E6, detailOf(event), {
     result: "sent_back",
@@ -646,8 +704,9 @@ async function sendBack(
  * @returns The refund, the Stripe failure fields, the reason or the closer.
  */
 function detailOf(event: OperationEvent): Record<string, unknown> {
-  if (event.type === "E1") return { kind: event.create.kind };
-  if (event.type === "E14") return { closedBy: event.closedBy };
+  const actor = event.actor && { actor: event.actor };
+  if (event.type === "E1") return { kind: event.create.kind, ...actor };
+  if (event.type === "E14") return { closedBy: event.closedBy, ...actor };
   const refund = "refund" in event ? event.refund : undefined;
   return {
     ...(refund && {
@@ -661,6 +720,7 @@ function detailOf(event: OperationEvent): Record<string, unknown> {
     }),
     ...("failure" in event && event.failure),
     ...("reason" in event && { reason: event.reason }),
+    ...actor,
   };
 }
 

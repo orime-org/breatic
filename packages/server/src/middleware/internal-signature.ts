@@ -41,7 +41,7 @@ export type VerifyResult =
   | { ok: false; step: "headers" | "timestamp" | "signature" };
 
 /** How far a request's timestamp may be from the server's clock. */
-const WINDOW_SECONDS = 300;
+export const WINDOW_SECONDS = 300;
 
 const ADMIN_ID = /^[A-Za-z0-9_-]{1,64}$/;
 const NONCE = /^[A-Za-z0-9_-]{16,64}$/;
@@ -77,8 +77,8 @@ export function signRequest(secret: string, parts: SignedParts): string {
 
 /**
  * Check a request's signature headers, timestamp and HMAC, in that order.
- * Both the current and the previous secret are accepted; an empty one is no
- * key at all.
+ * Both the current and the previous secret are accepted; an empty or
+ * whitespace-only one is no key at all.
  * @param req - The request.
  * @param secrets - The current and previous secrets.
  * @param secrets.current - The secret in use.
@@ -120,7 +120,7 @@ export function verifyInternalRequest(
     body: req.body,
   };
   const matches = [secrets.current, secrets.previous].some(
-    (secret) => secret !== "" && secretsMatch(signature, signRequest(secret, parts)),
+    (secret) => secret.trim() !== "" && secretsMatch(signature, signRequest(secret, parts)),
   );
   return matches ? { ok: true, adminId, nonce } : { ok: false, step: "signature" };
 }

@@ -11,6 +11,7 @@
  */
 
 import type { CreditLotLifecycle } from "@breatic/shared";
+import { failedCents, refundInProgress, succeededCents } from "@server/modules/credit-refund/settle-rule.js";
 import type { RefundCopy } from "@server/modules/credit-refund/types.js";
 import { pickUnresolvedFailedRefunds } from "@server/modules/credit-refund/unresolved.js";
 
@@ -40,6 +41,7 @@ export type StripeBlockReason =
   | "failed_refunds_changed"
   | "refund_in_progress"
   | "already_refunded"
+  | "refund_failed"
   | "unconfirmed_external_refund"
   | "refund_succeeded"
   | "succeeded_sum_changed"
@@ -91,9 +93,7 @@ function judge(input: AssessInput, fromPreview: boolean): AssessResult {
   ) {
     return LOT_STATE_CHANGED;
   }
-  if (ops.some((o) => o.status === "started" || o.status === "awaiting_stripe")) {
-    return { outcome: "blocked", code: "operation_in_progress" };
-  }
+  if (ops.some(isInFlight)) return { outcome: "blocked", code: "operation_in_progress" };
 
   const unresolved = pickUnresolvedFailedRefunds(lot.lifecycle, refunds);
   if (kind === "retry" && !latestIsOpenAttention(ops)) return LOT_STATE_CHANGED;
@@ -103,24 +103,29 @@ function judge(input: AssessInput, fromPreview: boolean): AssessResult {
       return stripeBlocks("failed_refunds_changed");
     }
   }
-  if (refunds.some((r) => r.status === "pending" || r.status === "requires_action")) {
-    return stripeBlocks("refund_in_progress");
-  }
+  if (refundInProgress(refunds)) return stripeBlocks("refund_in_progress");
   if (kind === "refund_again") {
     const amountCents = unresolved.reduce((sum, r) => sum + r.amountCents, 0);
     return { outcome: "create_refund", amountCents, sendAmount: true };
   }
 
-  const succeeded = refunds.filter((r) => r.status === "succeeded");
-  const succeededCents = succeeded.reduce((sum, r) => sum + r.amountCents, 0);
-  if (succeededCents >= payment.paidCents) return stripeBlocks("already_refunded");
+  const succeeded = succeededCents(refunds);
+  if (succeeded >= payment.paidCents) return stripeBlocks("already_refunded");
+  // Stripe keeps a failed refund's amount out of what it will still refund
+  // (inner#1410 §5.2, measured in test mode).
+  const refundable = payment.paidCents - succeeded - failedCents(refunds);
+  if (refundable <= 0) return stripeBlocks("refund_failed");
   if (!fromPreview) {
     const confirmed = new Set(input.confirmedRefundIds);
-    if (succeeded.some((r) => r.operationId === null && !confirmed.has(r.stripeRefundId))) {
+    if (
+      refunds.some(
+        (r) => r.status === "succeeded" && r.operationId === null && !confirmed.has(r.stripeRefundId),
+      )
+    ) {
       return stripeBlocks("unconfirmed_external_refund");
     }
   }
-  return { outcome: "create_refund", amountCents: payment.paidCents - succeededCents, sendAmount: false };
+  return { outcome: "create_refund", amountCents: refundable, sendAmount: false };
 }
 
 /**
@@ -160,16 +165,18 @@ export function assessRefundCreate(input: AssessInput): AssessResult {
  * @returns The kind, or null when the lot is not in the refund flow.
  */
 export function previewKind(lifecycle: CreditLotLifecycle): RefundCreateKind | null {
-  switch (lifecycle) {
-    case "refund_pending":
-      return "approve";
-    case "refunding":
-      return "retry";
-    case "refunded":
-      return "refund_again";
-    default:
-      return null;
-  }
+  const kinds = Object.keys(REQUIRED_LIFECYCLE) as RefundCreateKind[];
+  return kinds.find((k) => REQUIRED_LIFECYCLE[k] === lifecycle) ?? null;
+}
+
+/**
+ * Whether a disposition is still being carried out.
+ * @param op - The disposition.
+ * @param op.status - Its status.
+ * @returns True for `started` and `awaiting_stripe`.
+ */
+export function isInFlight(op: { status: AssessOperation["status"] }): boolean {
+  return op.status === "started" || op.status === "awaiting_stripe";
 }
 
 /**
@@ -217,7 +224,7 @@ const ONE_SHOT_LIFECYCLES: Record<OneShotKind, readonly CreditLotLifecycle[]> = 
   reject: ["refund_pending"],
   settle: ["refunding", "refund_pending"],
   send_back: ["refunding"],
-  resolve_outside: ["refunded"],
+  resolve_outside: ["refunded", "refunding", "refund_pending"],
 };
 
 /**
@@ -230,27 +237,23 @@ export function assessOneShot(input: OneShotInput): { outcome: "proceed" } | Blo
   const { kind, lot, refunds } = input;
   if (!ONE_SHOT_LIFECYCLES[kind].includes(lot.lifecycle)) return LOT_STATE_CHANGED;
   if (kind === "reject" && lot.remainingCredits <= 0) return LOT_STATE_CHANGED;
-  if (input.ops.some((o) => o.status === "started" || o.status === "awaiting_stripe")) {
-    return { outcome: "blocked", code: "operation_in_progress" };
-  }
+  if (input.ops.some(isInFlight)) return { outcome: "blocked", code: "operation_in_progress" };
   if (kind === "resolve_outside") {
     const unresolved = pickUnresolvedFailedRefunds(lot.lifecycle, refunds);
-    if (unresolved.length === 0) return LOT_STATE_CHANGED;
+    // A booked lot has nothing to answer for unless a refund failed since;
+    // a lot not yet booked may be refunded outside with none failed.
+    if (lot.lifecycle === "refunded" && unresolved.length === 0) return LOT_STATE_CHANGED;
     if (!sameIds(input.failedRefundIds ?? [], unresolved)) return stripeBlocks("failed_refunds_changed");
   }
-  if (refunds.some((r) => r.status === "pending" || r.status === "requires_action")) {
-    return stripeBlocks("refund_in_progress");
-  }
-  const succeededCents = refunds
-    .filter((r) => r.status === "succeeded")
-    .reduce((sum, r) => sum + r.amountCents, 0);
-  if ((kind === "reject" || kind === "send_back") && succeededCents > 0) {
+  if (refundInProgress(refunds)) return stripeBlocks("refund_in_progress");
+  const succeeded = succeededCents(refunds);
+  if ((kind === "reject" || kind === "send_back") && succeeded > 0) {
     return stripeBlocks("refund_succeeded");
   }
   if (kind === "settle") {
-    if (succeededCents !== input.confirmedSucceededCents) return stripeBlocks("succeeded_sum_changed");
-    if (succeededCents === 0) return stripeBlocks("nothing_refunded");
-    if (succeededCents < input.paidCents && !input.acceptPartial) return stripeBlocks("partial_not_accepted");
+    if (succeeded !== input.confirmedSucceededCents) return stripeBlocks("succeeded_sum_changed");
+    if (succeeded === 0) return stripeBlocks("nothing_refunded");
+    if (succeeded < input.paidCents && !input.acceptPartial) return stripeBlocks("partial_not_accepted");
   }
   return { outcome: "proceed" };
 }

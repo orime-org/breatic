@@ -4,9 +4,9 @@
 /**
  * Classifying one Stripe answer to `refunds.create` (inner#1410 §5.4).
  *
- * Three steps, because the middle one needs a Stripe read: the create call's
- * answer, then the lookup of the refund by metadata when the answer alone
- * proves nothing, then the refund's status. Only the first request can prove
+ * Two steps around a Stripe read: the create call's answer, then — when
+ * that alone proves nothing — the refund found by metadata is classified by
+ * its status, or the answer's own event stands when none is found. Only the first request can prove
  * Stripe created nothing (E6): Stripe caches no result for an error raised
  * before execution begins, so a later 4xx may follow a refund an earlier
  * attempt did create.
@@ -42,11 +42,6 @@ export type CreateVerdict =
   | { kind: "refund"; refund: RefundRef }
   | { kind: "event"; event: "E6" | "E8" }
   | { kind: "lookup"; ifNotFound: PendingEvent };
-
-/** What to do with a metadata lookup's result. */
-export type LookupVerdict =
-  | { kind: "refund"; refund: RefundRef }
-  | { kind: "event"; event: PendingEvent | "E16" };
 
 /** Codes Stripe uses for a request it refused before executing, worth retrying. */
 const RETRY_CODES = new Set(["rate_limit", "lock_timeout"]);
@@ -98,21 +93,6 @@ function classifyStripeError(
     return { kind: "event", event: "E6" };
   }
   return { kind: "lookup", ifNotFound: "E17" };
-}
-
-/**
- * Read the lookup of the refund by `metadata.refund_operation_id`.
- * @param ifNotFound - The event the create answer settles on when nothing is found.
- * @param lookup - The lookup's result; `ok: false` when the lookup itself failed.
- * @returns The refund to classify, or the event.
- */
-export function classifyLookup(
-  ifNotFound: PendingEvent,
-  lookup: { ok: false } | { ok: true; refund: RefundRef | null },
-): LookupVerdict {
-  if (!lookup.ok) return { kind: "event", event: "E16" };
-  if (lookup.refund) return { kind: "refund", refund: lookup.refund };
-  return { kind: "event", event: ifNotFound };
 }
 
 /**
