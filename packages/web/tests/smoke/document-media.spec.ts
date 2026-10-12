@@ -15,9 +15,10 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-import { test, expect, type Page } from 'playwright/test';
+import { expect, type Page } from 'playwright/test';
+import { test } from '../helpers/slot';
 
-import { STATE_FILE, openSmokeProject } from '../helpers/project';
+import { openSmokeProject } from '../helpers/project';
 import { blankPoint, bodySelection } from '../helpers/document-body';
 import { pressAndSettle } from '../helpers/editor-keys';
 import { wavBytes } from '../helpers/media-bytes';
@@ -1552,7 +1553,7 @@ test('a picture and its caption show in a second client opening the document (A1
   await page.keyboard.press('Enter');
   await expect(page.locator(`${IMAGE} [data-testid="doc-media-caption"]`)).toHaveText('Shared');
 
-  const second = await browser.newContext({ storageState: STATE_FILE.A, viewport: { width: 1680, height: 950 } });
+  const second = await browser.newContext({ viewport: { width: 1680, height: 950 } });
   const peer = await second.newPage();
   try {
     await peer.goto(page.url());

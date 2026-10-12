@@ -22,9 +22,10 @@
  *
  *   pnpm --filter @breatic/web test:smoke
  */
-import { test, expect, type BrowserContext, type Page } from 'playwright/test';
+import { expect, type BrowserContext, type Page } from 'playwright/test';
+import { test } from '../helpers/slot';
 
-import { STATE_FILE, openSmokeProject } from '../helpers/project';
+import { openSmokeProject } from '../helpers/project';
 import { createSpace, deleteSpace, VISIBLE_SPACE } from '../helpers/space';
 
 let context: BrowserContext;
@@ -97,7 +98,7 @@ async function soleImageNodeId(target: Page): Promise<string> {
 }
 
 test.beforeEach(async ({ browser }) => {
-  context = await browser.newContext({ storageState: STATE_FILE.A });
+  context = await browser.newContext();
   page = await context.newPage();
 
   // Reuse an existing Project: this spec is about what a generation does with

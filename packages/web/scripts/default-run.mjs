@@ -136,8 +136,10 @@ function sayWhatThisCovers() {
   console.log(
     `[${project}] covered ${covered.total} of ${covered.total + excluded.total} cases; left out ${excluded.total} that need a service this machine may not have: ${spelled}`,
   );
+  // Sub-gates run on slot 0 alone: its account holds the purchased credits
+  // the generation cases spend, and the other slots have only the trial grant.
   console.log(
-    `[${project}] run them with \`pnpm ${ALL_SCRIPT}\`, or one service at a time with \`playwright test --project=${project} --grep "@needs-<service>"\``,
+    `[${project}] run them with \`pnpm ${ALL_SCRIPT}\`, or one service at a time with \`playwright test --project=${project} --workers=1 --grep "@needs-<service>"\``,
   );
 }
 

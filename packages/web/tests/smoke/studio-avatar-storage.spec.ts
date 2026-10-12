@@ -20,10 +20,10 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { test, expect, type Page } from 'playwright/test';
+import { expect, type Page } from 'playwright/test';
+import { test } from '../helpers/slot';
 
 import { hueOf, storedPicture, uniquePicture } from '../helpers/upload';
-
 
 /** A 64x64 red PNG — square, so the crop dialog opens on a valid selection. */
 const SQUARE_PNG = Buffer.from(

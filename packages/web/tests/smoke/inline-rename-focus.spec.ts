@@ -11,9 +11,11 @@
  * the one that matters most for the history row: the box used to hand the
  * keystroke on to the row button, which switched the conversation on screen.
  */
-import { expect, test, type Page } from 'playwright/test';
+import { expect, type Page } from 'playwright/test';
+import { test } from '../helpers/slot';
+import { startNewConversation } from '../helpers/conversation';
 
-import { STATE_FILE, openSmokeProject } from '../helpers/project';
+import { openSmokeProject } from '../helpers/project';
 import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
 
 let page: Page;
@@ -46,7 +48,6 @@ async function focused(): Promise<{
 
 test.beforeEach(async ({ browser }) => {
   page = await browser.newPage({
-    storageState: STATE_FILE.A,
     viewport: { width: 1600, height: 950 },
   });
   await openSmokeProject(page);
@@ -161,7 +162,7 @@ async function openHistoryAtAnotherRow(): Promise<{ rowId: string; currentBefore
   if ((await others.count()) === 0) {
     await page.keyboard.press('Escape');
     await expect(page.getByTestId('conversation-history-sheet')).toHaveCount(0);
-    await page.getByTestId('new-conversation').click();
+    await startNewConversation(page);
     await page.getByTestId('open-conversation-history').click();
     await expect(others.first()).toBeAttached({ timeout: 15_000 });
   }

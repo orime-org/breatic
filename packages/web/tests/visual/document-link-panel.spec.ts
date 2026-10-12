@@ -36,7 +36,7 @@ import {
   restOnLink,
   settlePanelUnder,
 } from '../helpers/link-panel';
-import { STATE_FILE } from '../helpers/project';
+
 import { VISIBLE_SPACE, DOCUMENT_EDITOR } from '../helpers/space';
 
 /**
@@ -643,7 +643,6 @@ test('link: the panel keeps its place while a co-editor types', async ({ page, b
   );
 
   const peer = await browser.newContext({
-    storageState: STATE_FILE.A,
     viewport: { width: 1680, height: 950 },
   });
   try {
@@ -894,7 +893,6 @@ test('link: the toolbar opens against the link a co-editor just moved', async ({
   );
 
   const peer = await browser.newContext({
-    storageState: STATE_FILE.A,
     viewport: { width: 1680, height: 950 },
   });
   try {
@@ -1057,7 +1055,6 @@ test('link: the toolbar comes up while a co-editor is typing', async ({ page, br
   );
 
   const peer = await browser.newContext({
-    storageState: STATE_FILE.A,
     viewport: { width: 1680, height: 950 },
   });
   try {
@@ -1131,7 +1128,6 @@ test('link: a dismissal holds while a co-editor writes ahead of the link', async
   );
 
   const peer = await browser.newContext({
-    storageState: STATE_FILE.A,
     viewport: { width: 1680, height: 950 },
   });
   try {

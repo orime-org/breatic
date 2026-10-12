@@ -11,7 +11,8 @@
  *
  *   pnpm --filter @breatic/web exec playwright test --project=smoke ui-preferences-restore
  */
-import { expect, test, type Page } from 'playwright/test';
+import { expect, type Page } from 'playwright/test';
+import { test } from '../helpers/slot';
 
 import { credentialsFor } from '../helpers/credentials';
 import { openSmokeProject, smokeProjectId } from '../helpers/project';

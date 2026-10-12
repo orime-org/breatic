@@ -19,9 +19,11 @@
  * The turn is real, so the model decides whether to search. The prompt asks
  * for reference pictures, which is the case the tool exists for.
  */
-import { expect, test, type Page } from 'playwright/test';
+import { expect, type Page } from 'playwright/test';
+import { test } from '../helpers/slot';
+import { startNewConversation } from '../helpers/conversation';
 
-import { STATE_FILE, openSmokeProject } from '../helpers/project';
+import { openSmokeProject } from '../helpers/project';
 
 let page: Page;
 
@@ -30,7 +32,6 @@ const imageRequests: string[] = [];
 
 test.beforeEach(async ({ browser }) => {
   page = await browser.newPage({
-    storageState: STATE_FILE.A,
     viewport: { width: 1400, height: 900 },
   });
   page.on('request', (req) => {
@@ -65,7 +66,7 @@ async function aTurnThatFoundPictures(target: Page): Promise<void> {
   await expect(composer).toBeVisible({ timeout: 20_000 });
 
   for (let turn = 1; turn <= TURNS_TO_SEARCH; turn += 1) {
-    await target.getByTestId('new-conversation').click();
+    await startNewConversation(target);
     await expect(target.getByTestId('message-bubble')).toHaveCount(0, { timeout: 20_000 });
 
     imageRequests.length = 0;
