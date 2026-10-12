@@ -57,8 +57,8 @@ interface MessageListProps {
   conversationId?: string;
   /** The conversation reaches back further than what is on screen. */
   hasEarlier?: boolean;
-  /** Load what comes before the messages on screen. */
-  onLoadEarlier?: () => void;
+  /** Load what comes before the messages on screen; settles once that is over. */
+  onLoadEarlier?: () => Promise<void>;
   onQuickAction?: (label: string) => void;
   /** The panel is on its way to another conversation. */
   navigating?: boolean;
@@ -162,10 +162,16 @@ function MessageListInner({
     send('thinkingOpened');
   }, [send]);
 
+  // The earlier page is on its way: the button says so until it has landed
+  // or failed, and swallows presses meanwhile.
+  const [loadingEarlier, setLoadingEarlier] = React.useState(false);
+
   /** Load what came before, and tell the column it happened. */
   const loadEarlier = React.useCallback((): void => {
     send('earlierLoaded');
-    onLoadEarlier?.();
+    if (!onLoadEarlier) return;
+    setLoadingEarlier(true);
+    void onLoadEarlier().finally(() => setLoadingEarlier(false));
   }, [send, onLoadEarlier]);
 
   /** Take the reader back to the newest message and stay there. */
@@ -208,6 +214,7 @@ function MessageListInner({
                 variant='outline'
                 size='sm'
                 className='self-center'
+                loading={loadingEarlier}
                 onClick={loadEarlier}
                 data-testid='chat-load-earlier'
               >

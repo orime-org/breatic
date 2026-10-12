@@ -708,8 +708,8 @@ function ProjectWorkspace({
    * the deleted tab vanishes the moment Yjs sync lands. Showing the
    * full-screen LoadingOverlay for that window just flashes a black
    * backdrop in and out, which the user reads as flicker rather than
-   * progress. The SpaceDrawer row keeps its own inline `deleteBusy`
-   * spinner to prevent double-click within the same row.
+   * progress. Instead the SpaceDrawer's delete confirm dialog stays open
+   * while this RPC runs, its delete button spinning and swallowing presses.
    *
    * Errors still surface - callRpc raises a toast on RPC failure.
    * @param spaceId - The id of the Space to soft-delete.

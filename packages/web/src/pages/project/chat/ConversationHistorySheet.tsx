@@ -95,7 +95,8 @@ interface ConversationHistorySheetProps {
   activeId?: string;
   onPick: (id: string) => void;
   onRename: (id: string, title: string) => void;
-  onDelete: (id: string) => void;
+  /** Delete one; settles once the attempt is over, whichever way it went. */
+  onDelete: (id: string) => Promise<void>;
   /** The project has conversations older than the ones listed. */
   hasMore: boolean;
   /** Called when the reader reaches the end of what has been fetched. */
@@ -472,6 +473,31 @@ function ConversationHistorySheetInner({
   // asked whether they mean it. Null the rest of the time, which is what
   // keeps the dialog closed.
   const [deleting, setDeleting] = React.useState<string | null>(null);
+  // Which conversation's delete is out. The dialog stays open on it until the
+  // answer is in: success leaves the row gone, failure leaves a word against
+  // the row, and either is only seen once the dialog is out of the way.
+  const [deletePending, setDeletePending] = React.useState<string | null>(null);
+
+  /**
+   * Delete the conversation the dialog is asking about, keeping the dialog
+   * open until the attempt is over.
+   * @param event - The press on the dialog's delete; kept from closing it.
+   */
+  const confirmDelete = React.useCallback(
+    (event: React.MouseEvent): void => {
+      event.preventDefault();
+      const id = deleting;
+      if (id === null) return;
+      setDeletePending(id);
+      void onDelete(id).finally(() => {
+        setDeletePending((p) => (p === id ? null : p));
+        // Only the question about this row: the reader may have walked away
+        // from it and asked about another while this one was out.
+        setDeleting((d) => (d === id ? null : d));
+      });
+    },
+    [deleting, onDelete],
+  );
   // A word about one row goes against that row, and everything else goes to
   // the top. The list is one page: a rename started from the header is about
   // whichever conversation is on screen, and that one need not be on the page
@@ -656,10 +682,8 @@ function ConversationHistorySheetInner({
             </AlertDialogCancel>
             <AlertDialogAction
               data-testid='conversation-delete-confirm'
-              onClick={() => {
-                if (deleting) onDelete(deleting);
-                setDeleting(null);
-              }}
+              loading={deleting !== null && deletePending === deleting}
+              onClick={confirmDelete}
             >
               {t('chat.conversation.deleteConfirm')}
             </AlertDialogAction>

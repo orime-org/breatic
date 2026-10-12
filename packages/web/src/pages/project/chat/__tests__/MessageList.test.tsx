@@ -1416,3 +1416,32 @@ describe('MessageList — when the content settles its own height', () => {
     expect(screen.getByTestId('back-to-latest')).toBeInTheDocument();
   });
 });
+
+describe('loading what came before', () => {
+  it('spins on the button while the earlier page is on its way, and stops when it lands', async () => {
+    let finish: () => void = () => undefined;
+    const onLoadEarlier = (): Promise<void> =>
+      new Promise<void>((resolve) => {
+        finish = resolve;
+      });
+    render(
+      <MessageList
+        ready
+        hasEarlier
+        onLoadEarlier={onLoadEarlier}
+        messages={[bubble('m1', 'the first answer on this page')]}
+      />,
+    );
+
+    const button = screen.getByTestId('chat-load-earlier');
+    fireEvent.click(button);
+
+    expect(button).toHaveAttribute('aria-busy', 'true');
+    expect(button).toHaveAttribute('aria-disabled', 'true');
+
+    await act(async () => {
+      finish();
+    });
+    expect(button).not.toHaveAttribute('aria-busy');
+  });
+});
