@@ -552,6 +552,28 @@ async function centreOf(p: Page, selector: string): Promise<{ x: number; y: numb
   return { x: box.x + Math.min(40, box.width / 2), y: box.y + box.height / 2 };
 }
 
+/**
+ * The previews kept so far whose content is taller than what it holds: their
+ * styles are worked out where the body's block group fills the editor element.
+ * @param p - The page.
+ * @returns One line per such preview.
+ */
+async function stretchedPreviews(p: Page): Promise<string[]> {
+  return p.evaluate(() =>
+    (window as unknown as { __previews: Element[] }).__previews.flatMap((root, index) => {
+      const layer = root.firstElementChild as HTMLElement;
+      const content = layer.firstElementChild as HTMLElement;
+      const kids = [...content.children];
+      if (kids.length === 0) return [];
+      const scale = layer.getBoundingClientRect().height / layer.offsetHeight;
+      const style = getComputedStyle(content);
+      const inner = content.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom);
+      const held = (Math.max(...kids.map((kid) => kid.getBoundingClientRect().bottom)) - Math.min(...kids.map((kid) => kid.getBoundingClientRect().top))) / scale;
+      return inner - held > 1 ? [`preview ${index}: content ${inner}px holds ${held}px`] : [];
+    }),
+  );
+}
+
 for (const theme of ['light', 'dark'] as const) {
   test(`A1: every preview draws its content as the body does (${theme})`, async () => {
     await page.emulateMedia({ colorScheme: theme });
@@ -607,6 +629,7 @@ for (const theme of ['light', 'dark'] as const) {
       );
     });
     expect(painted).toEqual([]);
+    expect(await stretchedPreviews(page)).toEqual([]);
     // The column's preview is as wide as the column, not as the block it is in.
     const column = await page.evaluate(() => {
       const root = (window as unknown as { __previews: Element[] }).__previews[6]!;
@@ -621,3 +644,15 @@ for (const theme of ['light', 'dark'] as const) {
     expect(found).toEqual([]);
   });
 }
+
+test('A1: a row in a document shorter than the screen draws as tall as itself', async () => {
+  await openSmokeProject(page);
+  createdSpaceIds.push(await createSpace(page, 'document', `preview-short-${Date.now()}`));
+  const editor = page.locator(EDITOR);
+  await expect(editor).toBeVisible({ timeout: 15_000 });
+  await editor.click();
+  await page.keyboard.type('One line');
+  await dragHandle(page, await centreOf(page, '[data-content-type="paragraph"]'), 'doc-block-handle');
+  expect(await page.evaluate(() => (window as unknown as { __previews: Element[] }).__previews.length)).toBe(1);
+  expect(await stretchedPreviews(page)).toEqual([]);
+});
