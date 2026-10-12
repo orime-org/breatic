@@ -7,8 +7,10 @@
  * account for the same mailbox.
  */
 
-import { expect, test } from 'playwright/test';
+import { expect } from 'playwright/test';
+import { test } from '../helpers/slot';
 
+import { submitSignIn } from '../helpers/session';
 import { registerAccount } from '../helpers/signup';
 
 test.use({ storageState: { cookies: [], origins: [] } });
@@ -29,9 +31,7 @@ test('an address typed in another case signs in to the account it names', async 
   await api.dispose();
 
   await page.goto('/login');
-  await page.getByLabel('Email').fill(typed);
-  await page.getByRole('textbox', { name: 'Password' }).fill(PASSWORD);
-  await page.getByRole('button', { name: 'Sign in' }).click();
+  await submitSignIn(page, typed, PASSWORD);
 
   await expect(page).toHaveURL(/\/(studio|choose-slug)(\/|$|\?)/);
 });

@@ -13,7 +13,7 @@ import { whileRateLimited } from '../rate-limit';
 function answer(status: number, retryAfter?: string): { status: () => number; headers: () => Record<string, string> } {
   return {
     status: () => status,
-    headers: () => (retryAfter === undefined ? {} : { 'retry-after': retryAfter }),
+    headers: (): Record<string, string> => (retryAfter === undefined ? {} : { 'retry-after': retryAfter }),
   };
 }
 
