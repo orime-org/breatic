@@ -5,9 +5,17 @@
  * Data access for `refund_mail_outbox` (inner#1410 §6.5).
  */
 
-import { eq } from "drizzle-orm";
-import { db, refundMailOutbox } from "@breatic/core";
+import { and, asc, eq, lt, sql } from "drizzle-orm";
+import {
+  creditLots,
+  creditRefundOperations,
+  db,
+  payments,
+  refundMailOutbox,
+  users,
+} from "@breatic/core";
 import type { DbTx } from "@breatic/core";
+import type { RefundMailView } from "@server/modules/credit-refund/refund-mail-template.js";
 
 /** Which buyer email. */
 export type RefundMailKind = "refund_completed" | "refund_rejected";
@@ -94,6 +102,149 @@ export async function insertResend(
     .values({ ...row, origin: "resend" })
     .returning();
   return toStored(rows[0]!).mail;
+}
+
+/**
+ * Claim a row for sending (M1): `pending` to `sending`. Each row is claimed
+ * once; a send nobody wrote back becomes `unknown` (M5), never claimed again.
+ * @param mailId - The row.
+ * @returns True when this caller took it.
+ */
+export async function claimSend(mailId: string): Promise<boolean> {
+  const rows = await db
+    .update(refundMailOutbox)
+    .set({ status: "sending", updatedAt: sql`now()` })
+    .where(and(eq(refundMailOutbox.id, mailId), eq(refundMailOutbox.status, "pending")))
+    .returning({ id: refundMailOutbox.id });
+  return rows.length > 0;
+}
+
+/**
+ * Write back where a claimed send landed (M2, M3, M4).
+ * @param mailId - The row.
+ * @param status - `sent`, `failed` or `skipped`.
+ * @param lastError - Why it failed.
+ * @returns False when the row was no longer `sending`, and nothing changed.
+ */
+export async function recordSend(
+  mailId: string,
+  status: "sent" | "failed" | "skipped",
+  lastError?: string,
+): Promise<boolean> {
+  const rows = await db
+    .update(refundMailOutbox)
+    .set({
+      status,
+      lastError: status === "failed" ? (lastError ?? null) : null,
+      ...(status === "sent" && { sentAt: sql`now()` }),
+      updatedAt: sql`now()`,
+    })
+    .where(and(eq(refundMailOutbox.id, mailId), eq(refundMailOutbox.status, "sending")))
+    .returning({ id: refundMailOutbox.id });
+  return rows.length > 0;
+}
+
+/**
+ * Give up on sends nobody wrote back (M5): `sending` rows untouched since
+ * before the cutoff become `unknown`.
+ * @param staleBefore - The cutoff.
+ * @returns How many rows moved.
+ */
+export async function markStaleUnknown(staleBefore: Date): Promise<number> {
+  const rows = await db
+    .update(refundMailOutbox)
+    .set({ status: "unknown", updatedAt: sql`now()` })
+    .where(and(eq(refundMailOutbox.status, "sending"), lt(refundMailOutbox.updatedAt, staleBefore)))
+    .returning({ id: refundMailOutbox.id });
+  return rows.length;
+}
+
+/**
+ * Pending rows inserted more than a minute ago: the loop's sweep (§7.1
+ * step 3). Younger rows belong to the send that follows their insert.
+ * @param limit - How many.
+ * @returns Their ids, oldest first.
+ */
+export async function listDuePending(limit: number): Promise<string[]> {
+  const rows = await db
+    .select({ id: refundMailOutbox.id })
+    .from(refundMailOutbox)
+    .where(
+      and(
+        eq(refundMailOutbox.status, "pending"),
+        lt(refundMailOutbox.createdAt, sql`now() - interval '1 minute'`),
+      ),
+    )
+    .orderBy(asc(refundMailOutbox.createdAt))
+    .limit(limit);
+  return rows.map((r) => r.id);
+}
+
+/**
+ * A disposition's rows still waiting to be sent.
+ * @param operationId - The disposition.
+ * @returns Their ids.
+ */
+export async function listPendingOf(operationId: string): Promise<string[]> {
+  const rows = await db
+    .select({ id: refundMailOutbox.id })
+    .from(refundMailOutbox)
+    .where(and(eq(refundMailOutbox.operationId, operationId), eq(refundMailOutbox.status, "pending")));
+  return rows.map((r) => r.id);
+}
+
+/**
+ * What one row's letter says (§8), read from our own rows.
+ * @param mailId - The row.
+ * @returns The view, or null when there is no such row.
+ */
+export async function getMailView(mailId: string): Promise<RefundMailView | null> {
+  const rows = await db
+    .select({
+      kind: refundMailOutbox.kind,
+      email: users.email,
+      metadata: payments.metadata,
+      paymentId: payments.id,
+      currency: payments.currency,
+      credits: creditLots.purchasedCredits,
+      purchasedAt: creditLots.createdAt,
+      requestedAt: creditLots.refundRequestedAt,
+      settledCents: creditRefundOperations.settledSucceededCents,
+      refundAmountCents: creditRefundOperations.refundAmountCents,
+      finishedAt: creditRefundOperations.finishedAt,
+      operationCreatedAt: creditRefundOperations.createdAt,
+    })
+    .from(refundMailOutbox)
+    .innerJoin(creditRefundOperations, eq(creditRefundOperations.id, refundMailOutbox.operationId))
+    .innerJoin(creditLots, eq(creditLots.id, creditRefundOperations.lotId))
+    .innerJoin(payments, eq(payments.id, creditRefundOperations.paymentId))
+    .innerJoin(users, eq(users.id, payments.userId))
+    .where(eq(refundMailOutbox.id, mailId))
+    .limit(1);
+  const row = rows[0];
+  if (!row) return null;
+  const metadata = row.metadata ?? {};
+  const locale = metadata["locale"];
+  const timeZone = metadata["timeZone"];
+  const base = {
+    email: row.email,
+    locale: typeof locale === "string" && locale.length > 0 ? locale : "en",
+    timeZone: typeof timeZone === "string" && timeZone.length > 0 ? timeZone : "UTC",
+    paymentId: row.paymentId,
+    credits: Number(row.credits),
+    purchasedAt: row.purchasedAt,
+  };
+  if (row.kind === "refund_rejected") {
+    return { ...base, kind: "refund_rejected", requestedAt: row.requestedAt ?? row.operationCreatedAt };
+  }
+  return {
+    ...base,
+    kind: "refund_completed",
+    // The amount the bell named: the succeeded sum booked, or refund_again's own amount.
+    amountCents: row.settledCents ?? row.refundAmountCents ?? 0,
+    currency: row.currency,
+    refundedAt: row.finishedAt ?? row.operationCreatedAt,
+  };
 }
 
 /**

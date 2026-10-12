@@ -248,6 +248,26 @@
       "invalid_body": "요청 본문 또는 경로가 이 엔드포인트의 요구 사항과 맞지 않습니다.",
       "invalid_idempotency_key": "Idempotency-Key 헤더가 없거나 형식이 잘못되었습니다.",
       "unreadable_body": "요청 본문이 올바른 JSON이 아닙니다."
+    },
+    "refund_mail": {
+      "completed": {
+        "subject": "환불이 완료되었습니다",
+        "intro": "이 구매 금액을 원래 결제 수단으로 환불했습니다. 은행에 반영되기까지 보통 영업일 기준 며칠이 걸립니다. 이 구매의 크레딧은 계정에서 제거되었습니다."
+      },
+      "rejected": {
+        "subject": "환불 요청이 승인되지 않았습니다",
+        "intro": "이 구매에 대한 환불 요청이 승인되지 않았습니다. 크레딧은 다시 사용할 수 있으며 계속 Studio에 지정해 사용할 수 있습니다."
+      },
+      "label": {
+        "amount": "환불 금액",
+        "credits": "크레딧",
+        "purchased_at": "구매 일시",
+        "refunded_at": "환불 일시",
+        "requested_at": "환불 요청 일시",
+        "order_ref": "주문 번호"
+      },
+      "credits_amount": "{credits} 크레딧",
+      "fact_line": "{label}: {value}"
     }
   },
   "chat": {
@@ -1572,7 +1592,9 @@
       "membershipEnded": "{tier} 멤버십이 종료되었습니다",
       "membershipUpgradeIncomplete": "{tier} {period}(으)로 변경하는 결제가 완료되지 않았습니다",
       "membershipUpgradeIncompleteNoPeriod": "{tier}(으)로 변경하는 결제가 완료되지 않았습니다",
-      "storageQuotaExceeded": "저장 공간이 가득 찼습니다"
+      "storageQuotaExceeded": "저장 공간이 가득 찼습니다",
+      "creditRefundCompleted": "크레딧 환불이 완료되었습니다",
+      "creditRefundRejected": "크레딧 환불 요청이 승인되지 않았습니다"
     },
     "actorFallback": "누군가",
     "subtitle": {

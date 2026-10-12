@@ -339,6 +339,10 @@ function iconForType(type: NotificationType): string {
       return initialsFromString('UI');
     case 'storage.quota_exceeded':
       return initialsFromString('SF');
+    case 'credit.refund_completed':
+      return initialsFromString('RF');
+    case 'credit.refund_rejected':
+      return initialsFromString('RX');
     default:
       return '?';
   }

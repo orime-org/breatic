@@ -18,6 +18,7 @@ import * as operationRepo from "@server/modules/credit-refund/operation.repo.js"
 import type { CreditRefundOperation } from "@server/modules/credit-refund/operation.repo.js";
 import { transitionOperation } from "@server/modules/credit-refund/operation-transitions.js";
 import { runDailyReconcile } from "@server/modules/credit-refund/reconcile.js";
+import { markStaleRefundMailsUnknown, sendDueRefundMails } from "@server/modules/credit-refund/refund-mail.js";
 import { applyRefundSnapshot } from "@server/modules/credit-refund/refund-snapshot.js";
 import { StripeReadError, listRefunds } from "@server/modules/credit-refund/stripe-refunds.js";
 import * as paymentRepo from "@server/modules/payment/payment.repo.js";
@@ -38,13 +39,17 @@ export interface RefundLoop {
 }
 
 /**
- * One tick: step 1, step 2, then step 4. A step that fails is logged and
+ * One tick: steps 1 to 4 of §7.1 in order. A step that fails is logged and
  * the next one still runs.
  * @returns Once the tick has settled.
  */
 export async function runRefundLoopOnce(): Promise<void> {
   await runStep("resume_started", resumeStarted);
   await runStep("recheck_awaiting", recheckAwaiting);
+  await runStep("send_mails", sendDueRefundMails);
+  await runStep("stale_mails", async () => {
+    await markStaleRefundMailsUnknown();
+  });
   await runStep("daily_reconcile", runDailyReconcile);
 }
 

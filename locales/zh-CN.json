@@ -248,6 +248,26 @@
       "invalid_body": "请求体或路径不符合这个端点的要求。",
       "invalid_idempotency_key": "Idempotency-Key 头缺失或格式不对。",
       "unreadable_body": "请求体不是合法的 JSON。"
+    },
+    "refund_mail": {
+      "completed": {
+        "subject": "退款已完成",
+        "intro": "我们已把这笔购买的钱退回你的原付款方式，银行入账通常需要几个工作日。这笔购买的积分已从账户移除。"
+      },
+      "rejected": {
+        "subject": "退款申请未通过",
+        "intro": "这笔购买的退款申请没有通过。这笔积分已回到可用状态，可以继续指定给 Studio 使用。"
+      },
+      "label": {
+        "amount": "退款金额",
+        "credits": "积分",
+        "purchased_at": "购买时间",
+        "refunded_at": "退款时间",
+        "requested_at": "申请退款时间",
+        "order_ref": "订单号"
+      },
+      "credits_amount": "{credits} 积分",
+      "fact_line": "{label}：{value}"
     }
   },
   "chat": {
@@ -1572,7 +1592,9 @@
       "membershipEnded": "{tier} 会员已结束",
       "membershipUpgradeIncomplete": "换到 {tier} {period} 的付款没有完成",
       "membershipUpgradeIncompleteNoPeriod": "换到 {tier} 的付款没有完成",
-      "storageQuotaExceeded": "存储已满"
+      "storageQuotaExceeded": "存储已满",
+      "creditRefundCompleted": "积分退款已完成",
+      "creditRefundRejected": "积分退款申请未通过"
     },
     "actorFallback": "某人",
     "subtitle": {

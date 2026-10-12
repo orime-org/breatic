@@ -248,6 +248,26 @@
       "invalid_body": "リクエスト本文またはパスがこのエンドポイントの要件に合いません。",
       "invalid_idempotency_key": "Idempotency-Key ヘッダーがないか、形式が正しくありません。",
       "unreadable_body": "リクエスト本文が有効な JSON ではありません。"
+    },
+    "refund_mail": {
+      "completed": {
+        "subject": "返金が完了しました",
+        "intro": "このご購入の代金を元のお支払い方法に返金しました。銀行での反映には通常数営業日かかります。このご購入のクレジットはアカウントから削除されました。"
+      },
+      "rejected": {
+        "subject": "返金リクエストは承認されませんでした",
+        "intro": "このご購入の返金リクエストは承認されませんでした。クレジットは再び利用可能になり、引き続き Studio に割り当てて使えます。"
+      },
+      "label": {
+        "amount": "返金額",
+        "credits": "クレジット",
+        "purchased_at": "購入日時",
+        "refunded_at": "返金日時",
+        "requested_at": "返金リクエスト日時",
+        "order_ref": "注文番号"
+      },
+      "credits_amount": "{credits} クレジット",
+      "fact_line": "{label}：{value}"
     }
   },
   "chat": {
@@ -1572,7 +1592,9 @@
       "membershipEnded": "{tier} メンバーシップが終了しました",
       "membershipUpgradeIncomplete": "{tier} {period} への変更のお支払いが完了しませんでした",
       "membershipUpgradeIncompleteNoPeriod": "{tier} への変更のお支払いが完了しませんでした",
-      "storageQuotaExceeded": "ストレージがいっぱいです"
+      "storageQuotaExceeded": "ストレージがいっぱいです",
+      "creditRefundCompleted": "クレジットの返金が完了しました",
+      "creditRefundRejected": "クレジットの返金リクエストは承認されませんでした"
     },
     "actorFallback": "誰か",
     "subtitle": {

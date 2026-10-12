@@ -35,6 +35,7 @@ import {
 import * as refundCopyRepo from "@server/modules/credit-refund/refund-copy.repo.js";
 import * as refundMailRepo from "@server/modules/credit-refund/refund-mail.repo.js";
 import type { RefundMail } from "@server/modules/credit-refund/refund-mail.repo.js";
+import { sendOperationMailsLater, sendRefundMailLater } from "@server/modules/credit-refund/refund-mail.js";
 import { applyRefundSnapshot } from "@server/modules/credit-refund/refund-snapshot.js";
 import { RefundRefusal, stripeUnavailable } from "@server/modules/credit-refund/refusal.js";
 import { StripeReadError, listRefunds } from "@server/modules/credit-refund/stripe-refunds.js";
@@ -167,6 +168,7 @@ export async function requestRefund(
   });
   if (outcome.replay) return answerReplay(outcome.replay);
   await executeRefund(outcome.op);
+  sendOperationMailsLater(outcome.op.id);
   return answerOperation((await operationRepo.findById(outcome.op.id))!);
 }
 
@@ -219,6 +221,7 @@ export async function requestOneShot(
     return { op: op! };
   });
   if (outcome.replay) return answerReplay(outcome.replay);
+  sendOperationMailsLater(outcome.op.id);
   return answerOperation(outcome.op);
 }
 
@@ -265,6 +268,7 @@ export async function resendMail(
     return { mail };
   });
   if (outcome.replay) return answerReplay(outcome.replay);
+  sendRefundMailLater(outcome.mail.id);
   return answerMail(outcome.mail);
 }
 

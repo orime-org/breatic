@@ -248,6 +248,26 @@
       "invalid_body": "The request body or path does not match what this endpoint accepts.",
       "invalid_idempotency_key": "The Idempotency-Key header is missing or malformed.",
       "unreadable_body": "The request body is not valid JSON."
+    },
+    "refund_mail": {
+      "completed": {
+        "subject": "Your refund is on its way",
+        "intro": "We have refunded this purchase to your original payment method. Banks usually take a few business days to show it. The credits from this purchase have been removed from your account."
+      },
+      "rejected": {
+        "subject": "Your refund request was not approved",
+        "intro": "Your refund request for this purchase was not approved. The credits are available again, and you can keep assigning them to a Studio."
+      },
+      "label": {
+        "amount": "Amount refunded",
+        "credits": "Credits",
+        "purchased_at": "Purchased",
+        "refunded_at": "Refunded",
+        "requested_at": "Refund requested",
+        "order_ref": "Order reference"
+      },
+      "credits_amount": "{credits}",
+      "fact_line": "{label}: {value}"
     }
   },
   "chat": {
@@ -1572,7 +1592,9 @@
       "membershipEnded": "Your {tier} membership has ended",
       "membershipUpgradeIncomplete": "Payment for your move to {tier} {period} was not completed",
       "membershipUpgradeIncompleteNoPeriod": "Payment for your move to {tier} was not completed",
-      "storageQuotaExceeded": "Your storage is full"
+      "storageQuotaExceeded": "Your storage is full",
+      "creditRefundCompleted": "Your credit refund is complete",
+      "creditRefundRejected": "Your credit refund request was not approved"
     },
     "actorFallback": "Someone",
     "subtitle": {

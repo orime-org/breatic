@@ -248,6 +248,26 @@
       "invalid_body": "請求內容或路徑不符合這個端點的要求。",
       "invalid_idempotency_key": "Idempotency-Key 標頭缺少或格式不對。",
       "unreadable_body": "請求內容不是有效的 JSON。"
+    },
+    "refund_mail": {
+      "completed": {
+        "subject": "退款已完成",
+        "intro": "我們已把這筆購買的款項退回你的原付款方式，銀行入帳通常需要幾個工作天。這筆購買的點數已從帳戶移除。"
+      },
+      "rejected": {
+        "subject": "退款申請未通過",
+        "intro": "這筆購買的退款申請沒有通過。這筆點數已恢復為可用，可以繼續指定給 Studio 使用。"
+      },
+      "label": {
+        "amount": "退款金額",
+        "credits": "點數",
+        "purchased_at": "購買時間",
+        "refunded_at": "退款時間",
+        "requested_at": "申請退款時間",
+        "order_ref": "訂單編號"
+      },
+      "credits_amount": "{credits} 點",
+      "fact_line": "{label}：{value}"
     }
   },
   "chat": {
@@ -1572,7 +1592,9 @@
       "membershipEnded": "{tier} 會員已結束",
       "membershipUpgradeIncomplete": "換到 {tier} {period} 的付款沒有完成",
       "membershipUpgradeIncompleteNoPeriod": "換到 {tier} 的付款沒有完成",
-      "storageQuotaExceeded": "儲存空間已滿"
+      "storageQuotaExceeded": "儲存空間已滿",
+      "creditRefundCompleted": "點數退款已完成",
+      "creditRefundRejected": "點數退款申請未通過"
     },
     "actorFallback": "某人",
     "subtitle": {
