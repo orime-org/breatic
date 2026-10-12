@@ -4,6 +4,7 @@
 import { describe, it, expect } from 'vitest';
 import { type ModelEntry, type ParamDescriptor } from '@breatic/shared';
 import { miniToolById, miniToolRequestSchema } from '@breatic/shared/mini-tools';
+import { EMPTY_MARK } from '@web/stores/mark-draft';
 
 import {
   BLOCKING_REFUSALS,
@@ -278,6 +279,20 @@ describe('the expand tool', () => {
   });
 });
 
+describe('the markup tool', () => {
+  const mark = { spec: tool('image.mark'), entry: undefined, prompt: '', slots: {}, sourceShown: true, exporting: false };
+  const RECT = { id: 'a', kind: 'rect', color: '#FF3B30', size: 5, x: 0.1, y: 0.1, w: 0.2, h: 0.2 } as const;
+
+  it('holds Run back while nothing is drawn', () => {
+    expect(miniToolRefusal({ ...mark, mark: { ...EMPTY_MARK } })).toBe('markEmpty');
+  });
+
+  it('runs with one object, or with a text still being typed', () => {
+    expect(miniToolRefusal({ ...mark, mark: { ...EMPTY_MARK, objects: [RECT] } })).toBeNull();
+    expect(miniToolRefusal({ ...mark, mark: { ...EMPTY_MARK, editingText: 'note' } })).toBeNull();
+  });
+});
+
 describe('BLOCKING_REFUSALS', () => {
   it('disables Execute for the reasons the reader fixes in the panel', () => {
     expect([...BLOCKING_REFUSALS].sort()).toEqual([
@@ -285,6 +300,7 @@ describe('BLOCKING_REFUSALS', () => {
       'drawingEmpty',
       'exporting',
       'frameNotExpanded',
+      'markEmpty',
       'promptMissing',
       'singleTile',
       'slotMissing',
