@@ -15,8 +15,8 @@
  * person moving) and `speech.mp3` (a few seconds of speech) — are fixtures,
  * made with our own generators. The rest are drawn by ffmpeg as the run
  * starts: `song.mp3` (that speech over a tone), `short720.mp4` (a clip with
- * sound), `silent.mp4` (no audio stream), `shaky.mp4` (a moving crop of a still
- * pattern) and `long1080.mp4` (60 s of 1080p with sound).
+ * sound), `silent.mp4` (no audio stream), `shaky.mp4` (a moving crop of
+ * ffmpeg's animated test pattern) and `long1080.mp4` (60 s of 1080p with sound).
  */
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
@@ -328,7 +328,7 @@ test('every tool runs to a result, and the silent denoise fails as such @needs-m
     .toEqual([]);
 
   const nodes = new Map((await documentNodes()).map((n) => [n.id, n]));
-  const out = (label: string): string => nodes.get(results.get(label)![0]!)!.content;
+  const out = (label: string): string => nodes.get(results.get(label)![0])!.content;
 
   // A12: what each container tool made is what its name says.
   const hdr = probe(out('hdr')).streams.find((s) => s.codec_type === 'video')!;

@@ -17,8 +17,9 @@ vi.mock("@server/config/rate-limits.js", () => ({
 
 // A file's stubbed globals end with the file. Every file in this package runs
 // in one process, and a stub left standing reaches the next file as it imports
-// its modules: a test that replaced `URL` with an object made the next file's
-// `new URL(...)` at import time throw "URL is not a constructor".
+// its modules (in @breatic/web, a test that replaced `URL` with an object made
+// the next file's `new URL(...)` at import time throw "URL is not a
+// constructor").
 afterAll(() => {
   vi.unstubAllGlobals();
 });

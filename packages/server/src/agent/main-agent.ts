@@ -456,8 +456,8 @@ export class MainAgent {
             if (howToolEnded.has(toolCall.toolCallId)) return;
             const ending = endingOf(toolOutput.error);
             howToolEnded.set(toolCall.toolCallId, ending);
-            // The turn carries on and the model is told why; the log is the
-            // only place the reason is kept for whoever looks into the turn.
+            // The turn carries on and the model is told why; the error the
+            // tool caught, and what caused it, are kept only in this log.
             // A call turned away to steer the model, or one the reader
             // stopped, is not a failure. A failure the tool described is one
             // it saw coming, and the reader was told: a warning. A throw it

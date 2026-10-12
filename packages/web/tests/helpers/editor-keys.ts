@@ -86,7 +86,7 @@ export async function clickAndSettle(p: Page, target: Locator): Promise<void> {
   await expect.poll(() => selectionOf(p)).not.toBe(before);
 }
 
-/** How many times a range the editor never took is written again. */
+/** How many times a range is written before the editor counts as never taking it. */
 const SELECTION_WRITES = 3;
 
 /**

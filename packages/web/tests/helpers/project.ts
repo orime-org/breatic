@@ -132,8 +132,9 @@ export async function openSmokeProject(
   account: Account = 'A',
   index = 0,
 ): Promise<void> {
-  // Every page that can upload is opened here, so this is where its tickets
-  // start being counted (helpers/upload-budget.ts).
+  // Pages that upload inside a Project are opened here, so this is where their
+  // tickets start being counted (helpers/upload-budget.ts); the few that upload
+  // elsewhere fit in its HEADROOM.
   watchUploadTickets(page, account);
   await page.goto(smokeProjectUrl(account, index));
 }

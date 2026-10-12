@@ -234,8 +234,8 @@ test('a greyed row does not open, by pointer or by keyboard', async () => {
   // Radix's `disabled` buys — and the key Radix opens a submenu with does
   // nothing there. The pointer goes off the menu first, as a reader's hand
   // does when they take to the keys, so the walk starts from the menu itself.
-  // The menu moves the focus a task after the key (Radix's roving focus does
-  // it in a timeout), so each step is read once the focus has moved.
+  // From an item the menu moves the focus a task after the key (Radix's roving
+  // focus does it in a timeout), so each step is read once the focus has moved.
   await page.mouse.move(1, 1);
   /** The test id of the element holding the focus. */
   const focused = (): Promise<string | null> =>
