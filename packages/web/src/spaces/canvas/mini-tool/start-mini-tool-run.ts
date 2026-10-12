@@ -29,7 +29,7 @@ import { toast } from '@web/lib/toast';
 import { NODE_STEP } from '@web/spaces/canvas/drop-layout';
 import { DrawingEmptyError, type DrawingExport } from '@web/spaces/canvas/mini-tool/export-drawing';
 import { exportsBeforeRun } from '@web/spaces/canvas/mini-tool/mini-tool-view';
-import { outputPlacementOf } from '@web/spaces/canvas/mini-tool/output-placement';
+import { outputPlacementOf, type OutputSize } from '@web/spaces/canvas/mini-tool/output-placement';
 import type { DrawingKind } from '@web/spaces/canvas/mini-tool/paint-drawing';
 import { createEmptyNode, type CreatableNodeType } from '@web/spaces/canvas/node-factory';
 import { resolveUploadFailure } from '@web/spaces/canvas/upload-failure';
@@ -58,6 +58,12 @@ export interface MiniToolDrawingSnapshot {
 /** The uploaded images a drawing tool's request carries. */
 type DrawingUrls = NonNullable<MiniToolRequest['drawing']>;
 
+/** One file a browser tool exported, and its pixel size when the export knows it. */
+export interface ExportedFile {
+  file: File;
+  size?: OutputSize;
+}
+
 /** Everything one press needs. */
 export interface MiniToolRun {
   projectId: string;
@@ -70,10 +76,12 @@ export interface MiniToolRun {
   source: MiniToolSourceNode;
   /** Whether the source node is still on the canvas, asked at build time. */
   sourceExists: () => boolean;
-  /** Make a browser tool's file from the snapshot. */
-  exportFile: (spec: MiniToolSpec, snapshot: MiniToolSnapshot) => Promise<File>;
-  /** Upload a browser tool's file into its node, tagged with the tool. */
+  /** Make a browser tool's files from the snapshot, one per result in order, with their pixel size when known. */
+  exportFile: (spec: MiniToolSpec, snapshot: MiniToolSnapshot) => Promise<ExportedFile[]>;
+  /** Upload a browser tool's one file into its node, tagged with the tool. */
   fillUpload: (nodeId: string, file: File, modality: CreatableNodeType, tag: MiniToolUploadTag) => void;
+  /** Upload a browser tool's files into their nodes in one batch, tagged with the tool. */
+  fillUploads: (entries: { nodeId: string; file: File }[], tag: MiniToolUploadTag) => void;
   /** The drawing at the press, on a tool that draws. */
   drawing?: MiniToolDrawingSnapshot | undefined;
   /** Make a drawing tool's images from the source and the drawing. */
@@ -183,13 +191,13 @@ async function uploadDrawing(run: MiniToolRun, drawing: MiniToolDrawingSnapshot)
  * @param run - The press.
  * @returns The file or images made, or null when the press stops here.
  */
-async function prepare(run: MiniToolRun): Promise<{ file?: File; drawing?: DrawingUrls } | null> {
+async function prepare(run: MiniToolRun): Promise<{ files?: ExportedFile[]; drawing?: DrawingUrls } | null> {
   const { spec, snapshot } = run;
-  let file: File | undefined;
+  let files: ExportedFile[] | undefined;
   let drawing: DrawingUrls | undefined;
   if (spec.run.kind === 'browser') {
     try {
-      file = await run.exportFile(spec, snapshot);
+      files = await run.exportFile(spec, snapshot);
     } catch {
       toast.warning(t('canvas.miniTool.panel.exportFailed'));
       return null;
@@ -204,7 +212,7 @@ async function prepare(run: MiniToolRun): Promise<{ file?: File; drawing?: Drawi
     toast.warning(t('canvas.miniTool.panel.sourceGone'));
     return null;
   }
-  return { ...(file !== undefined && { file }), ...(drawing !== undefined && { drawing }) };
+  return { ...(files !== undefined && { files }), ...(drawing !== undefined && { drawing }) };
 }
 
 /**
@@ -230,13 +238,13 @@ export async function startMiniToolRun(run: MiniToolRun): Promise<void> {
     if (exports) run.setExporting(false);
   }
   if (prepared === null) return;
-  const { file, drawing } = prepared;
+  const { files, drawing } = prepared;
 
   const base = {
     x: source.position.x + (source.groupOrigin?.x ?? 0) + NODE_STEP.x,
     y: source.position.y + (source.groupOrigin?.y ?? 0),
   };
-  const nodes = outputPlacementOf(spec, run.snapshot.params, [], source.name).map((placed) => {
+  const nodes = outputPlacementOf(spec, run.snapshot.params, files?.map((made) => made.size) ?? [], source.name).map((placed) => {
     const built = createEmptyNode(placed.output.modality, { x: base.x + placed.x, y: base.y + placed.y }, userId);
     return { ...built, data: { ...built.data, name: placed.name } };
   });
@@ -253,11 +261,21 @@ export async function startMiniToolRun(run: MiniToolRun): Promise<void> {
   });
   if (run.stillOpen()) run.onBuilt(nodes.map((node) => ({ id: node.id, position: node.position })));
 
-  if (file !== undefined) {
-    const [node] = nodes;
+  if (files !== undefined) {
+    const tag: MiniToolUploadTag = { source: 'mini_tool', toolName: spec.id };
     const output = outputTemplateOf(spec);
-    if (node !== undefined && output.modality !== 'text') {
-      run.fillUpload(node.id, file, output.modality, { source: 'mini_tool', toolName: spec.id });
+    const [node] = nodes;
+    const [only] = files;
+    if (files.length === 1 && node !== undefined && only !== undefined && output.modality !== 'text') {
+      run.fillUpload(node.id, only.file, output.modality, tag);
+    } else if (files.length > 1) {
+      run.fillUploads(
+        nodes.flatMap((built, index) => {
+          const made = files[index];
+          return made === undefined ? [] : [{ nodeId: built.id, file: made.file }];
+        }),
+        tag,
+      );
     }
     return;
   }

@@ -10,6 +10,7 @@ import {
   type Orientation,
 } from '@web/spaces/canvas/focus/crop-export';
 import type { CropRect } from '@web/spaces/canvas/mini-tool/mini-tool-view';
+import type { ExportedFile } from '@web/spaces/canvas/mini-tool/start-mini-tool-run';
 
 /**
  * Make a browser tool's file from the snapshot taken at the press
@@ -17,10 +18,10 @@ import type { CropRect } from '@web/spaces/canvas/mini-tool/mini-tool-view';
  * own resolution.
  * @param spec - The browser tool.
  * @param snapshot - The draft as it stood at the press.
- * @returns The file to upload, named after the tool's output.
+ * @returns The files to upload, one per result, named after the tool's output.
  * @throws {Error} When the tool is not one this end draws, or the export fails.
  */
-export async function exportMiniToolFile(spec: MiniToolSpec, snapshot: MiniToolSnapshot): Promise<File> {
+export async function exportMiniToolFile(spec: MiniToolSpec, snapshot: MiniToolSnapshot): Promise<ExportedFile[]> {
   const source: CropSource = { url: snapshot.source.url, timeSeconds: null };
   let blob: Blob;
   if (spec.id === 'image.crop') {
@@ -35,5 +36,5 @@ export async function exportMiniToolFile(spec: MiniToolSpec, snapshot: MiniToolS
     throw new Error(`no browser export for ${spec.id}`);
   }
   const prefix = outputTemplateOf(spec).namePrefix;
-  return new File([blob], `${prefix}.png`, { type: 'image/png' });
+  return [{ file: new File([blob], `${prefix}.png`, { type: 'image/png' }) }];
 }

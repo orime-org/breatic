@@ -29,10 +29,12 @@ beforeEach(() => vi.clearAllMocks());
 
 describe('exportMiniToolFile', () => {
   it('crops to the rectangle in source pixels', async () => {
-    const file = await exportMiniToolFile(
+    const [made, ...rest] = await exportMiniToolFile(
       miniToolById('image.crop')!,
       snapshot({ aspect: 'free', rect: { x: 10, y: 20, w: 300, h: 200 } }),
     );
+    const file = made!.file;
+    expect(rest).toEqual([]);
     expect(exporter.exportCropBlob).toHaveBeenCalledWith(
       { url: 'https://cdn/a.jpg', timeSeconds: null },
       { x: 10, y: 20, width: 300, height: 200 },

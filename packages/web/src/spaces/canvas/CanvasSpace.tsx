@@ -140,6 +140,7 @@ import {
   uploadAcceptFor,
   refusedFormatParams,
   fillNodeFromFile,
+  fillNodesFromFiles,
   computeDeletedAssetEntries,
   type UploadNodeSpec,
   assetUrlSurvives,
@@ -3717,6 +3718,29 @@ function CanvasSpaceInner({
     },
     [projectId, spaceId, t, failUploadNode, failExtraction, trackOperation],
   );
+  // Fill a browser tool's result nodes with its export in one batch upload
+  // (inner#1303 §6.5): the same lock gate and busy registration as fillUpload,
+  // one ticket request for every file.
+  const fillUploads = React.useCallback(
+    (entries: { nodeId: string; file: File }[], tag: MiniToolUploadTag): void => {
+      fillNodesFromFiles(entries, projectId, {
+        getUploadConfig: assetsApi.fetchUploadConfig,
+        hashFile,
+        requestTicketBatch: assetsApi.requestUploadTicketBatch,
+        sendToIngest: sendFileAndFinish,
+        spaceId,
+        tag,
+        isLocked: (nodeId) => isNodeLocked(projectId, spaceId, nodeId),
+        onLocked: () => {
+          const gateBlock = evaluateNodeGate({ locked: true });
+          if (gateBlock) warnNodeGate(t(gateBlock.toastKey));
+        },
+        track: trackOperation,
+        onUploadFailure: (outcome, f) => failUploadNode(outcome, f, tag),
+      });
+    },
+    [projectId, spaceId, t, failUploadNode, trackOperation],
+  );
   // Reset an image node to a fresh blank PNG (#1623): the panel's Execute. reset
   // ≡ "upload a new image" (user 2026-07-20), so it rasterises the blank canvas
   // then hands it to the SAME fillUpload pipeline (handling → ticket → write
@@ -3979,6 +4003,7 @@ function CanvasSpaceInner({
         sourceExists: () => buffer.settled().some((n) => n.id === nodeId),
         exportFile: exportMiniToolFile,
         fillUpload,
+        fillUploads,
         exportDrawing,
         uploadImage: (file) => uploadDerivedImage(file, { projectId, spaceId }),
         setExporting: (exporting) => sessionStore.getState().setMiniToolExporting(exporting, session),
@@ -3992,7 +4017,7 @@ function CanvasSpaceInner({
       if (exportsBeforeRun(spec)) trackOperation(newId(), work);
       return work;
     },
-    [nodes, projectId, spaceId, viewerId, buffer, fillUpload, frameNewNode, trackOperation, sessionStore],
+    [nodes, projectId, spaceId, viewerId, buffer, fillUpload, fillUploads, frameNewNode, trackOperation, sessionStore],
   );
   const onUploadInputChange = React.useCallback(
     (event: React.ChangeEvent<HTMLInputElement>): void => {
