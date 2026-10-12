@@ -233,8 +233,12 @@ test('markup draws, goes back to select, keeps Escape for itself, and Run fills 
   const [marked] = await storedResults(1);
   await expect(results()).toContainText('MARK-');
   expect(await resultSizes()).toEqual([{ width: 400, height: 300 }]);
-  // The picture fills the whole result, its far corner included.
-  expect(await pixelAlpha(marked!, 390, 290)).toBe(255);
+  // The picture fills the whole result, its far corner included. The node
+  // shows the thumbnail; the stored picture is the address without its suffix.
+  const original = marked!.replace(/\.preview\.webp$/, '');
+  await expect
+    .poll(() => pixelAlpha(original, 390, 290).catch(() => -1), { timeout: 30_000 })
+    .toBe(255);
 });
 
 test('a 2×2 grid cuts four tiles of the source into a group @needs-internet', async () => {
