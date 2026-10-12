@@ -34,6 +34,7 @@ const BATCH_ONE = {
     "image.erase",
     "image.sketch",
     "image.adjust",
+    "image.mark",
     "image.expand",
     "image.grid",
   ],
@@ -106,6 +107,14 @@ describe("MINI_TOOLS registry", () => {
     expect(image && outputsOf(image, {}).map((output) => [output.modality, output.namePrefix])).toEqual([
       ["image", "ADJUST"],
     ]);
+  });
+
+  it("marks a picture up in the browser, for people to read", () => {
+    const mark = miniToolById("image.mark");
+    expect(mark?.run.kind).toBe("browser");
+    expect(mark?.markup).toBe(true);
+    expect(mark?.params).toEqual([]);
+    expect(mark && outputsOf(mark, {}).map((output) => output.namePrefix)).toEqual(["MARK"]);
   });
 
   it("cuts a grid into rows times columns of tiles inside a group", () => {
@@ -190,6 +199,7 @@ describe("servedMiniToolsFor", () => {
       "image.rotate",
       "image.upscale",
       "image.adjust",
+      "image.mark",
       "image.grid",
     ]);
   });
@@ -199,6 +209,7 @@ describe("servedMiniToolsFor", () => {
       "image.crop",
       "image.rotate",
       "image.adjust",
+      "image.mark",
       "image.grid",
     ]);
   });
