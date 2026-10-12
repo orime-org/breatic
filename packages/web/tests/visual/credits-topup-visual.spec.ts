@@ -299,7 +299,15 @@ test('the buy screen and its confirm dialog measure up @needs-payments', async (
 // — a sentence out of the locale, which is what makes it the reader's language
 // rather than a string in the code. Pinning what a screen with purchases on it
 // draws needs an account that has bought some (#277).
+//
+// The list is answered empty here rather than read off the account: a worker's
+// account may have bought packs for the cases that need credits, and this case
+// is about what the screen draws with none.
 test('the refunds screen draws its empty state', async ({ page }) => {
+  await page.route(/\/api\/v1\/credits\/lots(\?|$)/, async (route) => {
+    if (route.request().method() !== 'GET') return route.continue();
+    await route.fulfill({ json: { data: { items: [], nextCursor: null } } });
+  });
   await openCredits(page, 'refunds');
 
   const panel = page.getByRole('tabpanel');
