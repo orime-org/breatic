@@ -383,19 +383,32 @@ describe('tableLinePreviewContent', () => {
     expect(cols[0]!.style.width).toBe('300px');
   });
 
-  it('sets a row at its table\'s width and a column at its cell\'s, the widths they are drawn at in the body', () => {
+  it('draws a line at the column widths the body draws, the table at their sum', () => {
     const editor = open([{ type: 'table', content: { type: 'tableContent', rows } }]);
     const view = editor.prosemirrorView!;
-    view.dom.querySelector('table')!.getBoundingClientRect = () => ({ width: 1081, height: 90 }) as DOMRect;
-    (view.nodeDOM(cellOf(editor, 'c1')) as HTMLElement).getBoundingClientRect = () => ({ width: 121, height: 30 }) as DOMRect;
+    const widths = [393, 120, 140];
+    view.dom.querySelectorAll('col').forEach((col, index) => {
+      col.getBoundingClientRect = () => ({ width: widths[index]!, height: 90 }) as DOMRect;
+    });
     const row = tableLinePreviewContent(view, cellOf(editor, 'b2'), 'row')!;
-    const column = tableLinePreviewContent(view, cellOf(editor, 'c2'), 'column')!;
-    expect(row.style.width).toBe('1081px');
-    expect(column.style.width).toBe('121px');
-    // The width is the room the table lays out in, as it is in the body: a
-    // quoted table block's rule padding stands outside it.
-    expect(row.style.boxSizing).toBe('content-box');
-    expect(column.style.boxSizing).toBe('content-box');
+    const column = tableLinePreviewContent(view, cellOf(editor, 'b2'), 'column')!;
+    const drawn = (content: HTMLElement): unknown => {
+      const table = content.querySelector('table')!;
+      return {
+        cols: [...content.querySelectorAll('col')].map((col) => [col.style.width, col.style.getPropertyPriority('width')]),
+        table: [table.style.width, table.style.getPropertyPriority('width'), table.style.tableLayout],
+        block: content.style.width,
+      };
+    };
+    // A row keeps every column at the width the whole table gives it: its own
+    // cells alone would share the room out another way. The width is the
+    // table's, so a quoted block's rule stands outside it.
+    expect(drawn(row)).toEqual({
+      cols: [['393px', 'important'], ['120px', 'important'], ['140px', 'important']],
+      table: ['653px', 'important', 'fixed'],
+      block: '',
+    });
+    expect(drawn(column)).toEqual({ cols: [['120px', 'important']], table: ['120px', 'important', 'fixed'], block: '' });
   });
 
   it('works a line\'s styles out inside the block its table sits in', () => {

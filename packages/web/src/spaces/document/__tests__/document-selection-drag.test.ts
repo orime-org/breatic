@@ -298,13 +298,17 @@ describe('the blocks a selection preview draws', () => {
 });
 
 describe('the rows a cell selection preview draws (design §4)', () => {
-  it('at the width its table is drawn at, as the room the table lays out in', () => {
+  it('at the column widths the body draws', () => {
     const editor = open([table([{ cells: ['a1', 'b1'] }, { cells: ['a2', 'b2'] }])]);
-    editor.prosemirrorView!.dom.querySelector('table')!.getBoundingClientRect = () => ({ width: 640, height: 60 }) as DOMRect;
+    const widths = [400, 240];
+    editor.prosemirrorView!.dom.querySelectorAll('col').forEach((col, index) => {
+      col.getBoundingClientRect = () => ({ width: widths[index]!, height: 60 }) as DOMRect;
+    });
     selectCells(editor, 'a2', 'b2');
     const content = selectionPreviewContent(editor.prosemirrorView!)!;
-    expect(content.style.width).toBe('640px');
-    expect(content.style.boxSizing).toBe('content-box');
+    expect([...content.querySelectorAll('col')].map((col) => col.style.width)).toEqual(['400px', '240px']);
+    expect(content.querySelector('table')!.style.width).toBe('640px');
+    expect(content.style.width).toBe('');
   });
 
   it('the selected cells\' rows, every column', () => {
