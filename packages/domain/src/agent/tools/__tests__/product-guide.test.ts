@@ -736,8 +736,8 @@ describe("what the guide says about each surface", () => {
 
   it("says a task changes nothing on the node and a failed reading leaves it as it was", () => {
     const filling = section("Filling a node");
-    expect(filling).toMatch(/A running, failed or expired task changes nothing on the node/);
-    expect(filling).toMatch(/leaves the node as it was, and a message names the file it could not read/);
+    expect(filling).toMatch(/a running, failed or expired task changes nothing on the node/);
+    expect(filling).toMatch(/leaves the node as it was, and a message on the node names the file it could not read/);
   });
 
   it("says files dropped on a node still make new nodes", () => {
