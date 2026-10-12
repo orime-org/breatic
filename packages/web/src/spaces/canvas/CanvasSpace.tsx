@@ -552,8 +552,8 @@ function writeGroup(
 }
 
 /**
- * Node kind → localized display-name key, for the connection-rules rejection
- * toast ("Audio can't connect into Image"). An unknown (corrupt Yjs) kind
+ * Node type → localized display-name key, for the connection-rules rejection
+ * toast ("Audio can't connect into Image"). An unknown (corrupt Yjs) type
  * falls back to the raw string at the call site.
  */
 const KIND_LABEL_KEY: Record<string, string> = {
@@ -569,7 +569,7 @@ const KIND_LABEL_KEY: Record<string, string> = {
 
 /**
  * Project a Yjs canvas node view into a ReactFlow node. ReactFlow's
- * `node.type` is the view `kind` (the `FLOW_NODE_TYPES` lookup key) and
+ * `node.type` is the stored node type (the `FLOW_NODE_TYPES` lookup key) and
  * `node.data` carries the full narrowed view for the body to render.
  * @param node - The canvas node view from the Yjs binding.
  * @returns The ReactFlow node.
@@ -3811,7 +3811,7 @@ function CanvasSpaceInner({
     () =>
       readOnly
         ? null
-        : downloadableAsset(nodes.find((n) => n.id === nodeMenu.nodeId)?.data),
+        : downloadableAsset(nodes.find((n) => n.id === nodeMenu.nodeId)),
     [readOnly, nodes, nodeMenu.nodeId],
   );
   // A read, like history browsing: no node gate, a locked node downloads too.
@@ -3892,15 +3892,14 @@ function CanvasSpaceInner({
   // can settle, builds the text node and its edge, and asks for the run.
   const understandFromMenu = React.useCallback((): void => {
     const host = nodes.find((n) => n.id === nodeMenu.nodeId);
-    const view = asContentView(host?.data);
     if (
       menuDownloadUrl === null ||
       host === undefined ||
-      view === undefined ||
-      (view.kind !== 'image' && view.kind !== 'video' && view.kind !== 'audio')
+      (host.type !== 'image' && host.type !== 'video' && host.type !== 'audio')
     ) {
       return;
     }
+    const view = host.data;
     // A node inside a group stores its position relative to that group's
     // origin, and the node this builds is top-level.
     const group =
@@ -3914,7 +3913,7 @@ function CanvasSpaceInner({
       source: {
         id: host.id,
         name: view.name,
-        kind: view.kind,
+        kind: host.type,
         url: menuDownloadUrl,
         mimeType: view.mimeType,
         sizeBytes: view.sizeBytes,

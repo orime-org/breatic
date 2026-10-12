@@ -25,7 +25,7 @@ import {
   nodePicture,
   zoomedPastPreview,
 } from '@web/spaces/canvas/nodes/_shared/preview-zoom';
-import { NODE_KIND_LIST, NODE_TYPES } from '@web/spaces/canvas/nodes/registry';
+import { NODE_TYPE_LIST, NODE_TYPES } from '@web/spaces/canvas/nodes/registry';
 import {
   cellMeetsTargetSize,
   overlayCounterScale,
@@ -34,7 +34,7 @@ import { NodeCropLayer } from '@web/spaces/canvas/crop/NodeCropLayer';
 import { NodeDrawLayer } from '@web/spaces/canvas/mini-tool/NodeDrawLayer';
 import { TaskCountColumn } from '@web/spaces/canvas/tasks/TaskCountColumn';
 import type { TaskStatus } from '@web/spaces/canvas/tasks/TaskStatusDot';
-import type { NodeView } from '@web/data/yjs/node-view';
+import { typedViewOf } from '@web/data/yjs/node-view';
 
 /**
  * What a node whose document carries no counts yet reads as. It is the four
@@ -79,11 +79,12 @@ function makeFlowNode(
 ): ComponentType<NodeProps> {
   /**
    * ReactFlow node renderer: connection handles + the modality body.
-   * @param props - ReactFlow node props; `data` carries the node's NodeView.
+   * @param props - ReactFlow node props; `type` is the node type, `data` its view.
    * @returns The wrapped node element.
    */
   function FlowNode(props: NodeProps): React.JSX.Element {
-    const data = props.data as unknown as NodeView;
+    const node = typedViewOf(props);
+    const { data } = node;
     // Who is holding this node, baked onto it by the mirror (`attachOccupants`).
     // A node nobody holds carries nothing, and the context's own default — one
     // shared empty array — is what every such node reads.
@@ -121,21 +122,21 @@ function makeFlowNode(
     // upload this way; text enters inline edit (handled in-body), and group /
     // annotation / web have no empty-state file upload.
     const onActivate = React.useCallback((): void => {
-      const kind = data.kind;
-      if (kind === 'image' || kind === 'video' || kind === 'audio') {
-        activateNodeUpload(props.id, kind);
+      const type = node.type;
+      if (type === 'image' || type === 'video' || type === 'audio') {
+        activateNodeUpload(props.id, type);
       }
-    }, [activateNodeUpload, props.id, data.kind]);
+    }, [activateNodeUpload, props.id, node.type]);
     // A Group fills the ReactFlow wrapper sized to its stored width/height, so
     // the GroupNode's own `size-full` resolves to the full rect. Content nodes
     // size to their body, so they keep the auto-height wrapper. A selected,
     // unlocked Group shows the GroupResizer handles when it has resize bounds
     // (empty for a read-only viewer, so no handles show — see the gate below).
-    const isGroup = data.kind === 'group';
+    const isGroup = node.type === 'group';
     // A Group is a container and a sticky is a remark about the board; neither
     // is an edge endpoint, so neither gets a handle. With no handle there is
     // nothing for xyflow to start or land a connection on (#1881 §8.5).
-    const takesEdges = !isGroup && data.kind !== 'annotation';
+    const takesEdges = !isGroup && node.type !== 'annotation';
     // The crop box positions itself inside this wrapper; an element in state
     // rather than a ref, so a node shown again hands it the element anew.
     const [wrapper, setWrapper] = React.useState<HTMLDivElement | null>(null);
@@ -185,9 +186,9 @@ function makeFlowNode(
     // panel's own state, so a second node's column never lights up from the
     // first node's list.
     const taskCounts =
-      data.kind === 'group' || data.kind === 'annotation'
+      node.type === 'group' || node.type === 'annotation'
         ? null
-        : (data.taskCounts ?? NO_TASKS);
+        : (node.data.taskCounts ?? NO_TASKS);
     const taskPanelOpenHere = useCanvasSession(taskPanelStatusFor(props.id));
     const openTaskPanel = useCanvasSession((s) => s.openTaskPanel);
     const closeActivePanel = useCanvasSession((s) => s.closeActivePanel);
@@ -312,10 +313,10 @@ function makeFlowNode(
 }
 
 /**
- * ReactFlow `nodeTypes` map — one handle-wrapped component per node kind,
- * keyed by the same `NodeKind` strings ReactFlow matches against `node.type`.
+ * ReactFlow `nodeTypes` map — one handle-wrapped component per node type,
+ * keyed by the same `NodeType` strings ReactFlow matches against `node.type`.
  */
 export const FLOW_NODE_TYPES: Record<string, ComponentType<NodeProps>> =
   Object.fromEntries(
-    NODE_KIND_LIST.map((kind) => [kind, makeFlowNode(NODE_TYPES[kind])]),
+    NODE_TYPE_LIST.map((type) => [type, makeFlowNode(NODE_TYPES[type])]),
   );

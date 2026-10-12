@@ -3,11 +3,11 @@
 
 import type { ComponentType } from 'react';
 
-import type { NodeKind } from '@web/data/yjs/node-view';
+import type { NodeType } from '@breatic/shared';
 
 /**
  * Common prop surface every canvas node component accepts. The body is
- * passed the narrowed `data` view at runtime (cast per kind); `selected`
+ * passed the narrowed `data` view at runtime (cast per type); `selected`
  * / `locked` / `onRename` are supplied by the ReactFlow wrapper (the wrapper
  * pre-binds `onRename` to this node's id; content nodes use it, annotation /
  * group ignore it).
@@ -28,17 +28,17 @@ import { VideoNode } from '@web/spaces/canvas/nodes/VideoNode';
 import { WebNode } from '@web/spaces/canvas/nodes/WebNode';
 
 /**
- * Maps `NodeKind` → React component used by the ReactFlow `nodeTypes`
+ * Maps `NodeType` → React component used by the ReactFlow `nodeTypes`
  * prop. The annotation entry is wired even though the standalone node
  * lives in its own folder so the registry stays the single source of
- * truth for "what kinds can the canvas render."
+ * truth for "what types can the canvas render."
  *
  * Adding a new modality:
- *   1. Add a discriminated union member in types/node-view.ts
+ *   1. Add the view and its `NodeViewOf` entry in data/yjs/node-view.ts
  *   2. Author the node component
  *   3. Add it to NODE_TYPES below
  */
-export const NODE_TYPES: Record<NodeKind, CanvasNodeComponent> = {
+export const NODE_TYPES: Record<NodeType, CanvasNodeComponent> = {
   text: TextNode as CanvasNodeComponent,
   image: ImageNode as CanvasNodeComponent,
   audio: AudioNode as CanvasNodeComponent,
@@ -49,13 +49,5 @@ export const NODE_TYPES: Record<NodeKind, CanvasNodeComponent> = {
   group: GroupNode as CanvasNodeComponent,
 };
 
-export const NODE_KIND_LIST: ReadonlyArray<NodeKind> = [
-  'text',
-  'image',
-  'audio',
-  'video',
-  '3d',
-  'web',
-  'annotation',
-  'group',
-];
+/** Every node type the canvas renders, in `NODE_TYPES` order. */
+export const NODE_TYPE_LIST = Object.keys(NODE_TYPES) as ReadonlyArray<NodeType>;

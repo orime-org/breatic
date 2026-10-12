@@ -5,7 +5,7 @@ import { NodeToolbar, Position } from '@xyflow/react';
 import * as React from 'react';
 
 import type { NodeHistoryEntry } from '@web/data/api/canvas';
-import type { CanvasNodeView } from '@web/data/yjs/canvas-space';
+import type { NodeRef } from '@web/data/yjs/node-view';
 import { useCanvasSession } from '@web/spaces/canvas/canvas-context';
 
 import { NodeHistoryPanel } from '@web/spaces/canvas/history/NodeHistoryPanel';
@@ -48,7 +48,7 @@ function useDelayedFlag(active: boolean, delayMs: number): boolean {
 }
 
 /** A node view narrowed to what the container needs. */
-type HistoryHostNode = Pick<CanvasNodeView, 'id' | 'type' | 'data'>;
+type HistoryHostNode = NodeRef;
 
 interface NodeHistoryPanelContainerProps {
   /** Live node views, for the host modality + content + node-gone guard. */

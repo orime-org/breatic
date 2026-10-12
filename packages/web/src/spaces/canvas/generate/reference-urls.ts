@@ -21,9 +21,8 @@
 
 import { referenceKinds, type ReferenceKind, type ReferencePool } from '@breatic/shared';
 
-import type { CanvasNodeView } from '@web/data/yjs/canvas-space';
 import { focusRefId } from '@web/spaces/canvas/generate/derive-references';
-import type { NodeView } from '@web/data/yjs/node-view';
+import type { NodeRef, TypedNodeView } from '@web/data/yjs/node-view';
 import { usableDuration } from '@web/spaces/canvas/generate/slot-pick';
 
 /** The part of a rail row this needs: which node it points at. */
@@ -55,21 +54,22 @@ export const NO_REFERENCE_URLS: ReferenceUrls = { image: [], video: [], audio: [
  * because the pool is derived from collaborative edges and a chip can outlive
  * the model it was picked under: whatever the picker did, a row's URL rides
  * only in the list of its own kind.
- * @param data - The source node view.
+ * @param node - The source node's type and view.
  * @returns The kind and URL, or undefined when the source lends nothing.
  */
 function assetOf(
-  data: NodeView | undefined,
+  node: TypedNodeView | undefined,
 ): { kind: ReferenceKind; url: string; duration?: number } | undefined {
-  if (data?.kind !== 'image' && data?.kind !== 'video' && data?.kind !== 'audio') return undefined;
+  if (node?.type !== 'image' && node?.type !== 'video' && node?.type !== 'audio') return undefined;
+  const { data } = node;
   // The source node's content is collaborative Yjs data — untrusted, and NOT
   // covered by the catalog boundary. `typeof`, not Boolean: a malformed
   // source whose content is a non-string object is truthy and would slip a
   // non-URL into the task payload.
   const url: unknown = data.content;
   if (typeof url !== 'string' || url.length === 0) return undefined;
-  const duration = data.kind === 'image' ? undefined : usableDuration(data.duration);
-  return duration === undefined ? { kind: data.kind, url } : { kind: data.kind, url, duration };
+  const duration = node.type === 'image' ? undefined : usableDuration(node.data.duration);
+  return duration === undefined ? { kind: node.type, url } : { kind: node.type, url, duration };
 }
 
 /** The part of a focus crop this needs: its id and the asset it points at. */
@@ -89,7 +89,7 @@ interface MentionInput {
   /** The pool ids the prompt mentions right now. */
   atMentioned: ReadonlySet<string>;
   /** Current canvas node views, for looking a row's source up. */
-  nodes: ReadonlyArray<Pick<CanvasNodeView, 'id' | 'data'>>;
+  nodes: ReadonlyArray<NodeRef>;
 }
 
 /** One mentioned reference, as it is sent. */
@@ -118,7 +118,7 @@ function sentReferences(input: MentionInput): SentReference[] {
   const sent: SentReference[] = [];
   for (const row of input.references) {
     if (!input.atMentioned.has(row.sourceNodeId)) continue;
-    const asset = assetOf(byId.get(row.sourceNodeId)?.data);
+    const asset = assetOf(byId.get(row.sourceNodeId));
     if (asset) sent.push({ id: row.sourceNodeId, ...asset });
   }
   for (const crop of input.focusImages) {

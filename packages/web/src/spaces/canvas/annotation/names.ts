@@ -20,10 +20,11 @@
 import * as React from 'react';
 
 import type { UserSummary } from '@web/data/api/users';
-import type { NodeView } from '@web/data/yjs/node-view';
+import { typedViewOf } from '@web/data/yjs/node-view';
 
 /** A flow node, of which this file reads only what it carries. */
 interface FlowNodeData {
+  type?: string;
   data?: unknown;
 }
 
@@ -49,11 +50,11 @@ export function everyAnnotationAuthor(
   const ids = new Set<string>();
   for (const node of nodes) {
     // The same read the node renderers do (`flow-node-types`): xyflow types
-    // `data` loosely, and `kind` is what tells the views apart.
-    const view = node.data as NodeView | undefined;
-    if (view?.kind !== 'annotation') continue;
-    ids.add(view.createdBy);
-    for (const reply of view.replies) ids.add(reply.createdBy);
+    // `data` loosely, and the node's `type` is what tells the views apart.
+    const typed = typedViewOf({ type: node.type, data: node.data });
+    if (typed.type !== 'annotation') continue;
+    ids.add(typed.data.createdBy);
+    for (const reply of typed.data.replies) ids.add(reply.createdBy);
   }
   return [...ids].sort();
 }

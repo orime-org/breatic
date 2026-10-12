@@ -30,7 +30,7 @@ import { createLocalUserInputTracker } from '@web/features/reference-mention/ref
 import { createReferenceMentionRangeHighlight } from '@web/features/reference-mention/reference-mention-range-decoration';
 import { getNodeIcon } from '@web/spaces/canvas/lib/node-icon';
 import { HoverPreview } from '@web/spaces/canvas/nodes/_shared/HoverPreview';
-import type { NodeKind } from '@web/data/yjs/node-view';
+import type { NodeType } from '@breatic/shared';
 import { PreviewImg } from '@web/components/preview-img';
 
 /** Options for the {@link ReferenceMention} node. */
@@ -205,7 +205,7 @@ function ReferenceMentionChip({
 }: NodeViewProps): React.JSX.Element {
   const t = useTranslation();
   const thumbnail = node.attrs[MENTION_THUMBNAIL_ATTR] as string | null;
-  const kind = node.attrs[MENTION_KIND_ATTR] as NodeKind | null;
+  const kind = node.attrs[MENTION_KIND_ATTR] as NodeType | null;
   // Localized fallback for a source node with no display name (nameOf → '')
   // instead of a hardcoded English literal (i18n mandate). useTranslation is a
   // global-store hook, so it works inside this ReactNodeView.
