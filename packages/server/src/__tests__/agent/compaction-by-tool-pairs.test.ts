@@ -29,14 +29,27 @@ const BODY = "body of page";
  * @returns The part as the store hands it out.
  */
 function toolPart(n: number): MessagePart {
+  const body = `${BODY} ${n}`.repeat(500);
   return {
     type: "tool",
     toolCallId: `call-${n}`,
     toolName: "web_search",
     input: { url: `https://example.test/${n}` },
     status: "success",
-    output: `${BODY} ${n}`.repeat(500),
+    output: { page: body },
+    forModel: { type: "text", value: body },
   };
+}
+
+/**
+ * What a tool part hands the model on replay.
+ * @param part - A part from the compressed history.
+ * @returns The text of its model copy, or the empty string for a part that
+ *   is not a tool use or carries no copy.
+ */
+function modelCopy(part: MessagePart): string {
+  if (part.type !== "tool" || part.forModel?.type !== "text") return "";
+  return part.forModel.value;
 }
 
 /**
@@ -104,11 +117,11 @@ describe("compression keeps the last N tool results, whatever turn they are in",
     expect(tools).toHaveLength(5);
     // Turns 3, 4 and 5 hold the three most recent uses.
     for (const part of tools.slice(-KEEP)) {
-      expect(part.type === "tool" && part.output).toContain(BODY);
+      expect(modelCopy(part)).toContain(BODY);
     }
     // Turns 1 and 2 are older than the window.
     for (const part of tools.slice(0, -KEEP)) {
-      expect(part.type === "tool" && part.output).not.toContain(BODY);
+      expect(modelCopy(part)).not.toContain(BODY);
     }
   });
 
@@ -127,10 +140,10 @@ describe("compression keeps the last N tool results, whatever turn they are in",
 
     expect(tools).toHaveLength(10);
     for (const part of tools.slice(-KEEP)) {
-      expect(part.type === "tool" && part.output).toContain(BODY);
+      expect(modelCopy(part)).toContain(BODY);
     }
     for (const part of tools.slice(0, -KEEP)) {
-      expect(part.type === "tool" && part.output).not.toContain(BODY);
+      expect(modelCopy(part)).not.toContain(BODY);
     }
   });
 
@@ -139,11 +152,12 @@ describe("compression keeps the last N tool results, whatever turn they are in",
     const compressed = compressForContext(history, KEEP);
 
     // Same messages, same order, same parts in the same order — the only
-    // difference anywhere is the `output` on pairs older than the window.
+    // difference anywhere is the model copy on pairs older than the window;
+    // the tool's own answer stays whole, since the panel draws from it.
     const withoutOutputs = (h: readonly MessageData[]) =>
       h.map((m) => ({
         ...m,
-        parts: m.parts.map((p) => (p.type === "tool" ? { ...p, output: null } : p)),
+        parts: m.parts.map((p) => (p.type === "tool" ? { ...p, forModel: null } : p)),
       }));
 
     expect(withoutOutputs(compressed)).toEqual(withoutOutputs(history));
@@ -241,7 +255,7 @@ describe("compression keeps the last N tool results, whatever turn they are in",
     // Four real uses, three of which keep their body: the incomplete one does
     // not take a slot from them.
     expect(shown).toHaveLength(4);
-    const kept = shown.filter((p) => p.type === "tool" && String(p.output ?? "").includes(BODY));
+    const kept = shown.filter((p) => modelCopy(p).includes(BODY));
     expect(kept).toHaveLength(KEEP);
   });
 
