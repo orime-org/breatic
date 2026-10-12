@@ -31,7 +31,9 @@ export interface AccountConsent {
  * @returns The record to keep: the later decision wins; on the same instant a
  *   category stays on only if both sides accepted it; a regional default the
  *   person never chose (`implicit`), a report from an older policy revision or
- *   one with an unreadable time leaves the record unchanged.
+ *   one with an unreadable time leaves the record unchanged. Global Privacy
+ *   Control is an opt-out of ads only: it switches ads off on a stored choice
+ *   and never records analytics, which under it is still the regional default.
  */
 export function mergeAccountConsent(
   stored: AccountConsent | null,
@@ -40,6 +42,7 @@ export function mergeAccountConsent(
   const incomingAt = Date.parse(incoming.decidedAt);
   if (incoming.source === "implicit") return stored;
   if (incoming.revision !== CONSENT_REVISION || Number.isNaN(incomingAt)) return stored;
+  if (incoming.source === "gpc") return stored === null ? null : { ...stored, ads: false };
   if (stored === null) return incoming;
   const storedAt = Date.parse(stored.decidedAt);
   if (incomingAt > storedAt || Number.isNaN(storedAt)) return incoming;

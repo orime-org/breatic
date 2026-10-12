@@ -60,10 +60,17 @@ describe("mergeAccountConsent", () => {
     expect(mergeAccountConsent(null, implicit)).toBeNull();
   });
 
-  it("records a choice Global Privacy Control made", () => {
+  it("lets Global Privacy Control withdraw ads from the account's choice and nothing else", () => {
     const stored = choice(true, true, "2026-10-12T09:00:00.000Z");
     const gpc = choice(true, false, "2026-10-13T09:00:00.000Z", CONSENT_REVISION, "gpc");
-    expect(mergeAccountConsent(stored, gpc)).toEqual(gpc);
+    expect(mergeAccountConsent(stored, gpc)).toEqual({ ...stored, ads: false });
+  });
+
+  it("never lets Global Privacy Control grant analytics the person refused or never chose", () => {
+    const rejected = choice(false, false, "2026-10-12T09:00:00.000Z");
+    const gpc = choice(true, false, "2026-10-13T09:00:00.000Z", CONSENT_REVISION, "gpc");
+    expect(mergeAccountConsent(rejected, gpc)).toEqual(rejected);
+    expect(mergeAccountConsent(null, gpc)).toBeNull();
   });
 });
 
