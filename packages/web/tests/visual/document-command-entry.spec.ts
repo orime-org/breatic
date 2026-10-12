@@ -18,6 +18,7 @@
  */
 import { test, expect, type Page } from 'playwright/test';
 
+import { selectInBody } from '../helpers/editor-keys';
 import { STATE_FILE, openSmokeProject } from '../helpers/project';
 import { createSpace, deleteSpace, VISIBLE_SPACE, DOCUMENT_EDITOR } from '../helpers/space';
 
@@ -365,19 +366,21 @@ test('the bubble bar paints above the entry where they overlap', async () => {
   await editor.click();
   await page.keyboard.type('some text to select');
 
-  await page.evaluate((space: string) => {
-    const pm = document.querySelector(
-      `${space} [data-testid="document-space"] .ProseMirror`,
-    )!;
-    const text = pm.querySelector('p')!.firstChild as Text;
-    const sel = window.getSelection()!;
-    const r = document.createRange();
-    r.setStart(text, 1);
-    r.setEnd(text, 5);
-    sel.removeAllRanges();
-    sel.addRange(r);
-    pm.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
-  }, VISIBLE_SPACE);
+  await selectInBody(page, () =>
+    page.evaluate((space: string) => {
+      const pm = document.querySelector(
+        `${space} [data-testid="document-space"] .ProseMirror`,
+      )!;
+      const text = pm.querySelector('p')!.firstChild as Text;
+      const sel = window.getSelection()!;
+      const r = document.createRange();
+      r.setStart(text, 1);
+      r.setEnd(text, 5);
+      sel.removeAllRanges();
+      sel.addRange(r);
+      pm.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+    }, VISIBLE_SPACE),
+  );
   await expect(page.getByTestId('doc-selection-bubble-bar')).toBeVisible({
     timeout: 5_000,
   });

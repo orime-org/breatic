@@ -132,6 +132,20 @@ function noteRemovalFailure(spaceId: string, err: unknown): void {
  */
 export async function deleteSpace(page: Page, spaceId: string): Promise<void> {
   try {
+    // A case that failed with a dialog open (a picture shown full screen, a
+    // confirmation) leaves its overlay over the drawer trigger, and the click
+    // below would wait out the test's whole timeout behind it; one red then
+    // leaves its Space behind and every later case that opens the Project
+    // lands on it. A confirmation is an AlertDialog, whose role is
+    // `alertdialog`.
+    const strayDialog = page.locator(
+      '[role="dialog"]:not([data-testid="space-drawer"]), [role="alertdialog"]',
+    );
+    for (let tries = 0; tries < 3 && (await strayDialog.count()) > 0; tries += 1) {
+      await page.keyboard.press('Escape');
+    }
+    await expect(strayDialog).toHaveCount(0, { timeout: 5_000 });
+
     // Open the drawer only when it is shut. The trigger toggles, so calling
     // this twice in a row on one page — which is what a case creating two
     // Spaces does — would close the drawer the second time and then wait out

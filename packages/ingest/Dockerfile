@@ -159,3 +159,11 @@ COPY --from=build /out/build-info.json /app/build-info.json
 # container spends waiting.
 EXPOSE 8080
 CMD ["node", "/app/server.mjs"]
+
+# Which copy of the repository built this image, set by `image_vars` in a
+# local wrangler.toml and empty for a deploy. Copies building the same content
+# would otherwise share one image ID, and wrangler, after each build, removes
+# every other `cloudflare-dev` tag on that ID — the tags another copy's Worker
+# starts its containers from. Last, so every layer above stays shared.
+ARG DEV_COPY=
+LABEL org.breatic.dev-copy=$DEV_COPY

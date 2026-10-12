@@ -373,15 +373,10 @@ test('link: the toolbar comes up over the link the caret is in', async ({ page }
   await linkTheSelection(page, 'a.example/caret');
   await collapseAfterLinking(page);
 
-  // Walked in from the body's start rather than back from its end: confirming
-  // an address leaves the caret at the start of the paragraph, and the first
-  // character boundary of a link is not inside it as far as
-  // `getLinkAtSelection` is concerned.
-  await page.keyboard.press(
-    process.platform === 'darwin' ? 'Meta+ArrowUp' : 'Control+Home',
-  );
+  // Walked back from the end, where collapsing left the caret, with arrows
+  // ProseMirror answers from its own selection.
   for (let i = 0; i < 3; i += 1) {
-    await page.keyboard.press('ArrowRight');
+    await page.keyboard.press('ArrowLeft');
   }
 
   await expect(page.getByTestId('doc-link-toolbar')).toBeVisible({

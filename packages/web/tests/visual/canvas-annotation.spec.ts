@@ -522,7 +522,7 @@ test('the minimap draws a note at a patch, not at the block its box measures', a
   await landANote(page);
   const show = page.getByRole('button', { name: 'Show minimap' });
   if ((await show.count()) > 0) await show.click();
-  const map = page.getByTestId('rf__minimap');
+  const map = visibleSpace(page).getByTestId('rf__minimap');
   await expect(map).toBeVisible({ timeout: SETTLE_MS });
 
   /**
