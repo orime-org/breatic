@@ -7,6 +7,7 @@ import { ApiException } from '@web/data/api/types';
 import { assetsApi } from '@web/data/api/assets';
 import { BytesNotDelivered, sendFileAndFinish } from '@web/data/upload/finish-upload';
 import { hashFile } from '@web/data/upload/hash';
+import { waitForUploadEnding, type UploadEnding } from '@web/data/upload/upload-status';
 import {
   runMediaUpload,
   uploadMedia,
@@ -21,14 +22,15 @@ vi.mock('@web/data/upload/finish-upload', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@web/data/upload/finish-upload')>()),
   sendFileAndFinish: vi.fn(),
 }));
+vi.mock('@web/data/upload/upload-status', () => ({ waitForUploadEnding: vi.fn() }));
 
 /** The knob fixture threaded through the upload orchestration tests. */
 const CFG = {
   maxUploadBytes: 2147483648,
   clientMaxAttempts: 3,
   clientRetryBaseDelayMs: 1000,
-  clientRequestTimeoutMs: 30000,
-  clientPutMinBytesPerSec: 65536,
+  uploadIdleTimeoutMs: 60000,
+  uploadStatusPollSeconds: 2,
   assetUrlPrefix: 'https://cdn/',
 };
 
@@ -54,6 +56,22 @@ const TICKET = {
   taskId: 'task-row-1',
 };
 
+/** The same ticket for an upload with no node, which opens no task row. */
+const { taskId: _noRow, ...TICKET_NO_NODE } = TICKET;
+
+/** What the status query hands a registered upload. */
+const COMPLETED = {
+  key: TICKET.storageKey,
+  state: 'completed' as const,
+  result: {
+    assetId: 'asset-new',
+    fileUrl: 'https://cdn/p.png',
+    kind: 'image',
+    width: 640,
+    height: 480,
+  },
+};
+
 /** Shared orchestration deps (config + hash + network spies). */
 function makeUploadDeps(
   over: Partial<Parameters<typeof runMediaUpload>[2]> = {},
@@ -62,11 +80,8 @@ function makeUploadDeps(
     getUploadConfig: vi.fn().mockResolvedValue(CFG),
     hashFile: vi.fn().mockResolvedValue(HASH),
     requestTicket: vi.fn().mockResolvedValue(TICKET),
-    sendToIngest: vi.fn().mockResolvedValue({
-      assetId: 'asset-new',
-      fileUrl: 'https://cdn/p.png',
-      kind: 'image',
-    }),
+    sendToIngest: vi.fn().mockResolvedValue({ storageKey: TICKET.storageKey }),
+    waitForEnding: vi.fn().mockResolvedValue(COMPLETED),
     onSuccess: vi.fn(),
     onFailure: vi.fn(),
     sleep: () => Promise.resolve(),
@@ -104,7 +119,7 @@ describe('runMediaUpload — ask for a ticket, send the bytes, hand back the out
       sendToIngest: vi.fn(async (_file, _ticket, _cfg, onPartLanded?: (n: number) => void) => {
         onPartLanded?.(100);
         onPartLanded?.(400);
-        return { assetId: 'a', fileUrl: 'https://cdn/c.mp4', kind: 'video' };
+        return { storageKey: TICKET.storageKey };
       }),
     });
 
@@ -113,18 +128,76 @@ describe('runMediaUpload — ask for a ticket, send the bytes, hand back the out
     expect(onProgress.mock.calls).toEqual([[0.25], [1]]);
   });
 
-  // The node reads its result from Yjs and ignores this; an upload with no
-  // node behind it has no other channel and reads it here (design §9).
-  it('hands back what completing the upload said it became', async () => {
-    const deps = makeUploadDeps();
+  // An upload with no node has no other channel for its result, so it waits
+  // on the status query for what the queued finish registered (inner#1367).
+  it('hands an upload with no node what its queued finish registered', async () => {
+    const deps = makeUploadDeps({ requestTicket: vi.fn().mockResolvedValue(TICKET_NO_NODE) });
 
-    await runMediaUpload(file, context, deps);
+    await runMediaUpload(file, { projectId: 'p1', derived: true }, deps);
 
+    expect(deps.waitForEnding).toHaveBeenCalledWith(TICKET.storageKey);
     expect(deps.onSuccess).toHaveBeenCalledExactlyOnceWith({
       fileUrl: 'https://cdn/p.png',
       assetId: 'asset-new',
       kind: 'image',
+      width: 640,
+      height: 480,
     });
+  });
+
+  // A node's content arrives through Yjs, so its upload is over for the page
+  // once the finish is queued; holding it open would hold the space open.
+  it('ends a node upload once its finish is queued, without waiting for the ending', async () => {
+    const deps = makeUploadDeps({
+      waitForEnding: vi.fn(() => new Promise<UploadEnding>(() => undefined)),
+    });
+
+    await runMediaUpload(file, context, deps);
+
+    expect(deps.onSuccess).not.toHaveBeenCalled();
+    expect(deps.onFailure).not.toHaveBeenCalled();
+  });
+
+  it('tells a node upload whose finish failed, naming its task row, once the ending arrives', async () => {
+    let end: (ending: UploadEnding) => void = () => undefined;
+    const deps = makeUploadDeps({
+      waitForEnding: vi.fn(
+        () =>
+          new Promise<UploadEnding>((resolve) => {
+            end = resolve;
+          }),
+      ),
+    });
+
+    await runMediaUpload(file, context, deps);
+    end({ key: TICKET.storageKey, state: 'failed', reason: 'assemble_failed' });
+    await Promise.resolve();
+
+    expect(deps.onFailure).toHaveBeenCalledExactlyOnceWith({
+      reason: 'upload',
+      taskId: TICKET.taskId,
+    });
+  });
+
+  it('says nothing more for a node upload whose finish registered', async () => {
+    const deps = makeUploadDeps();
+
+    await runMediaUpload(file, context, deps);
+    await Promise.resolve();
+
+    expect(deps.onSuccess).not.toHaveBeenCalled();
+    expect(deps.onFailure).not.toHaveBeenCalled();
+  });
+
+  it('reports an ending the server does not know as an ordinary failure', async () => {
+    const deps = makeUploadDeps({
+      requestTicket: vi.fn().mockResolvedValue(TICKET_NO_NODE),
+      waitForEnding: vi.fn().mockResolvedValue({ key: TICKET.storageKey, state: 'unknown' }),
+    });
+
+    await runMediaUpload(file, { projectId: 'p1' }, deps);
+
+    expect(deps.onFailure).toHaveBeenCalledExactlyOnceWith({ reason: 'upload' });
   });
 
   it('sends nothing when the studio already holds the content', async () => {
@@ -134,6 +207,8 @@ describe('runMediaUpload — ask for a ticket, send the bytes, hand back the out
         assetId: 'asset-existing',
         fileUrl: 'https://cdn/existing.png',
         kind: 'image',
+        width: 3000,
+        height: 4000,
       }),
     });
 
@@ -144,6 +219,8 @@ describe('runMediaUpload — ask for a ticket, send the bytes, hand back the out
       fileUrl: 'https://cdn/existing.png',
       assetId: 'asset-existing',
       kind: 'image',
+      width: 3000,
+      height: 4000,
     });
   });
 
@@ -186,7 +263,8 @@ describe('runMediaUpload — ask for a ticket, send the bytes, hand back the out
     await runMediaUpload(file, context, deps);
 
     expect(requestTicket).toHaveBeenCalledTimes(2);
-    expect(deps.onSuccess).toHaveBeenCalledOnce();
+    expect(deps.sendToIngest).toHaveBeenCalledOnce();
+    expect(deps.onFailure).not.toHaveBeenCalled();
   });
 
   // No ticket means no grant, so nothing on the server knows this upload was
@@ -246,10 +324,11 @@ describe('runMediaUpload — ask for a ticket, send the bytes, hand back the out
   // that broke: the same file re-sent meets the same refusal every time.
   it('names a format the edge refused apart from a transfer that broke', async () => {
     const deps = makeUploadDeps({
-      sendToIngest: vi.fn().mockRejectedValue(apiError(415)),
+      waitForEnding: vi.fn().mockResolvedValue({ key: TICKET.storageKey, state: 'failed', reason: 'unsupported_type' }),
     });
 
     await runMediaUpload(file, context, deps);
+    await Promise.resolve();
 
     expect(deps.onFailure).toHaveBeenCalledExactlyOnceWith({
       reason: 'unsupportedType',
@@ -319,12 +398,9 @@ describe('uploadMedia — the pipeline wired to the real network, as a promise',
   function wire(): void {
     vi.mocked(assetsApi.fetchUploadConfig).mockResolvedValue(CFG);
     vi.mocked(hashFile).mockResolvedValue(HASH);
-    vi.mocked(assetsApi.requestUploadTicket).mockResolvedValue(TICKET);
-    vi.mocked(sendFileAndFinish).mockResolvedValue({
-      assetId: 'asset-new',
-      fileUrl: 'https://cdn/p.png',
-      kind: 'image',
-    });
+    vi.mocked(assetsApi.requestUploadTicket).mockResolvedValue(TICKET_NO_NODE);
+    vi.mocked(sendFileAndFinish).mockResolvedValue({ storageKey: TICKET.storageKey });
+    vi.mocked(waitForUploadEnding).mockResolvedValue(COMPLETED);
   }
 
   it('resolves with what the server filed the upload under', async () => {
@@ -334,6 +410,8 @@ describe('uploadMedia — the pipeline wired to the real network, as a promise',
       fileUrl: 'https://cdn/p.png',
       assetId: 'asset-new',
       kind: 'image',
+      width: 640,
+      height: 480,
     });
     expect(assetsApi.requestUploadTicket).toHaveBeenCalledWith(
       expect.objectContaining({ projectId: 'p1', derived: true, hash: HASH }),

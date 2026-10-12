@@ -21,11 +21,11 @@ export class DrawingEmptyError extends Error {
   }
 }
 
-/** What a drawing tool's run is sent: the picture, and for a mask the mask beside it. */
-export interface DrawingExport {
-  image: Blob;
-  mask?: Blob;
-}
+/**
+ * What a drawing tool's run is sent: a mask tool's mask, which goes beside the
+ * source, or a sketch tool's composite, which goes in place of it.
+ */
+export type DrawingExport = { mask: Blob } | { image: Blob };
 
 /**
  * A canvas the given size, with its 2D context.
@@ -46,9 +46,11 @@ function blankCanvas(size: { width: number; height: number }): { canvas: HTMLCan
 
 /**
  * Export what a mask or sketch tool sends, at the source's own pixels as the
- * browser decodes it (turned upright by its EXIF orientation). A mask is the
- * upright source and a black image of the same size, white where painted; a
- * sketch is the upright source with the drawing painted over it.
+ * browser decodes it. These are the stored pixels for anything stored since
+ * uploads are turned upright on ingest (inner#1367); a picture stored earlier
+ * with an EXIF orientation is decoded turned, so its mask does not line up
+ * with the stored pixels. A mask is a black image of that size, white where painted; a
+ * sketch is the source with the drawing painted over it.
  * @param url - The source image.
  * @param kind - Mask or sketch.
  * @param ops - The visible ops.
@@ -63,15 +65,11 @@ export async function exportDrawing(url: string, kind: DrawingKind, ops: readonl
   paintDrawing(layer.ctx, ops, size, kind, '#fff'); // design-value: allow — mask white, image content
   const pixels = layer.ctx.getImageData(0, 0, size.width, size.height);
   if (!inkShows(pixels.data)) throw new DrawingEmptyError();
-  // Temporary: the stored asset keeps its EXIF orientation and the models
-  // read raw pixels, so a mask tool sends this upright re-encode in its place,
-  // one more upload per run. Drop it for the stored source once uploads are
-  // turned upright on ingest (inner#1367).
-  const source = blankCanvas(size);
-  source.ctx.drawImage(el, 0, 0);
   if (kind === 'sketch') {
-    source.ctx.drawImage(layer.canvas, 0, 0);
-    return { image: await pngOf(source.canvas) };
+    const composite = blankCanvas(size);
+    composite.ctx.drawImage(el, 0, 0);
+    composite.ctx.drawImage(layer.canvas, 0, 0);
+    return { image: await pngOf(composite.canvas) };
   }
   // White painted over black reads as its alpha; ink is white, the rest black.
   for (let i = 0; i < pixels.data.length; i += 4) {
@@ -82,5 +80,5 @@ export async function exportDrawing(url: string, kind: DrawingKind, ops: readonl
     pixels.data[i + 3] = 255;
   }
   layer.ctx.putImageData(pixels, 0, 0);
-  return { image: await pngOf(source.canvas), mask: await pngOf(layer.canvas) };
+  return { mask: await pngOf(layer.canvas) };
 }

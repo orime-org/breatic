@@ -187,6 +187,27 @@ describe("POST /canvas/paste", () => {
     expect((await res.json()).data.map[img.url]).toBe(rows[0]!.file_url);
   });
 
+  // A picture turned upright is filed under its upright copy's key with the
+  // received bytes' hash (inner#1367 §4.5); pasting it carries both over.
+  it("registers a picture turned upright against its upright key, with the received hash", async () => {
+    const a = await seedEditor();
+    const b = await seedEditor();
+    const uprightKey = key("image").replace(/\.png$/, "_upright.png");
+    const img = await asset(a.studioId, a.userId, { key: uprightKey });
+
+    const res = await paste(b.cookie, b.projectId, { urls: [img.url] });
+
+    expect(res.status).toBe(200);
+    const rows = await ledger(b.studioId);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ content_hash: img.hash, storage_key: uprightKey });
+    // The row counts against the target studio's storage at the copy's size.
+    const [counted] = await sql<Array<{ size_bytes: string }>>`
+      SELECT size_bytes FROM studio_assets WHERE id = ${rows[0]!.id}
+    `;
+    expect(counted?.size_bytes).toBe("4096");
+  });
+
   it("maps to the row the target studio already holds under another key, and history follows it", async () => {
     const a = await seedEditor();
     const b = await seedEditor();

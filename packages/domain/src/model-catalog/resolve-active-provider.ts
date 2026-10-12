@@ -32,7 +32,6 @@ export interface ActiveProvider {
   modelId: string;
   baseUrl: string;
   apiKey: string;
-  timeout: number;
   maxConcurrency: number;
 }
 
@@ -86,7 +85,6 @@ export function resolveActiveProvider(
       modelId: entry.model_id,
       baseUrl: connection.base_url ?? "",
       apiKey,
-      timeout: connection.timeout ?? 120,
       maxConcurrency: connection.max_concurrency ?? 50,
     };
   }

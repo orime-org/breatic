@@ -170,7 +170,6 @@ export interface FullModelEntry {
 export interface ProviderConnectionConfig {
   base_url?: string;
   api_key_env?: string;
-  timeout?: number;
   max_concurrency?: number;
   [extra: string]: unknown;
 }

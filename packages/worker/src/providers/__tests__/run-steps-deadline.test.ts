@@ -40,7 +40,8 @@ vi.mock("@worker/providers/http.js", async (importOriginal) => {
 
 const { runCatalogTask } = await import("@worker/providers/run-steps.js");
 const { FAMILIES } = await import("@worker/providers/generate.js");
-const { StillRunning, TaskDeadlinePassed } = await import("@worker/providers/still-running.js");
+const { StillRunning } = await import("@worker/providers/still-running.js");
+const { DeadlinePassed } = await import("@breatic/shared");
 const { HttpStatusError } = await import("@worker/providers/http.js");
 
 beforeAll(() => {
@@ -139,7 +140,7 @@ describe("a step with no upstream id", () => {
 
     await expect(
       runCatalogTask(deps, ctx(-1), "tts", "hello", "minimax-speech-2.8-hd", { voice_id: "Wise_Woman" }, 1),
-    ).rejects.toBeInstanceOf(TaskDeadlinePassed);
+    ).rejects.toBeInstanceOf(DeadlinePassed);
     expect(runPredictionMock).not.toHaveBeenCalled();
   });
 
@@ -150,7 +151,7 @@ describe("a step with no upstream id", () => {
       runCatalogTask(deps, ctx(-1), "video", "Element 1 waves", "kling-video-o3-4k-image-to-video", {
         elements: ["https://a/cat.png"],
       }, 1),
-    ).rejects.toBeInstanceOf(TaskDeadlinePassed);
+    ).rejects.toBeInstanceOf(DeadlinePassed);
     expect(deps.describeImage).not.toHaveBeenCalled();
     expect(runPredictionMock).not.toHaveBeenCalled();
   });
@@ -166,7 +167,7 @@ describe("a step with no upstream id", () => {
       runCatalogTask(deps, ctx(5_000), "video", "Element 1 waves", "kling-video-o3-4k-image-to-video", {
         elements: ["https://a/cat.png"],
       }, 1),
-    ).rejects.toBeInstanceOf(TaskDeadlinePassed);
+    ).rejects.toBeInstanceOf(DeadlinePassed);
     expect(deps.describeImage).toHaveBeenCalledTimes(1);
     expect(runPredictionMock).not.toHaveBeenCalled();
   });
@@ -176,7 +177,7 @@ describe("a step with no upstream id", () => {
     const { deps } = stores();
 
     await expect(runCatalogTask(deps, ctx(-1), "image", "a cat", "nano-banana-2", {}, 1)).rejects.toBeInstanceOf(
-      TaskDeadlinePassed,
+      DeadlinePassed,
     );
     expect(prepare).not.toHaveBeenCalled();
   });
@@ -331,7 +332,7 @@ describe("which step a retry hands its duplicate-cost check to", () => {
 
     await expect(
       runCatalogTask(deps, ctx(5_000, true), "image", "a cat", "nano-banana-2", {}, 1),
-    ).rejects.toBeInstanceOf(TaskDeadlinePassed);
+    ).rejects.toBeInstanceOf(DeadlinePassed);
 
     expect(duplicateWarnings()).toHaveLength(1);
     expect(runPredictionMock).not.toHaveBeenCalled();

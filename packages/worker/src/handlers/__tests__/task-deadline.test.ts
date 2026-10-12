@@ -15,7 +15,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const h = vi.hoisted(() => ({ deadlineFor: vi.fn() }));
 
 vi.mock("@breatic/domain", () => ({ nodeTaskService: { deadlineFor: h.deadlineFor } }));
-vi.mock("@breatic/core", () => ({ getNodeTaskConfig: () => ({ default_budget_ms: 7_200_000 }) }));
+vi.mock("@breatic/core", () => ({ budgetDeadlineFrom: (startedAt: number) => startedAt + 7_200_000 }));
 
 const { taskDeadline } = await import("@worker/handlers/task-deadline.js");
 

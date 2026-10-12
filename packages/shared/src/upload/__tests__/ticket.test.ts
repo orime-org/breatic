@@ -29,7 +29,7 @@ function payload(overrides: Partial<UploadTicketPayload> = {}): UploadTicketPayl
     totalParts: 3,
     partSize: 8 * 1024 * 1024,
     contentType: "video/mp4",
-    sessionTokenTtlSeconds: 900,
+    deadlineAt: Date.now() + 7_200_000,
     expiresAt: NOW + 5 * 60_000,
     ...overrides,
   };

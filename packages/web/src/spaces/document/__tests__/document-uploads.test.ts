@@ -91,7 +91,6 @@ function deps(maxBytes = 1000): { deps: DocumentUploaderDeps; pending: Pending[]
       unregister: vi.fn(),
       refuse: vi.fn(),
       undo: { stopCapturing: vi.fn() },
-      measure: () => Promise.resolve(undefined),
     },
   };
 }
@@ -229,7 +228,7 @@ describe('a gap held while admission waits (A2)', () => {
     release(1000);
     await started;
     await settle();
-    pending[0]!.resolve({ fileUrl: 'https://cdn.example/m.png', assetId: 'x', kind: 'image' });
+    pending[0]!.resolve({ fileUrl: 'https://cdn.example/m.png', assetId: 'x', kind: 'image', width: null, height: null });
     await settle();
 
     expect(blocks(editor).map((block) => (block.type === 'image' ? 'image' : (block.content ?? []).map((c) => c.text ?? '').join('')))).toEqual([
@@ -252,7 +251,7 @@ describe('uploading (A4, A12)', () => {
     expect(d.register).toHaveBeenCalledWith(slot!.id);
     expect(d.unregister).not.toHaveBeenCalled();
 
-    pending[0]!.resolve({ fileUrl: 'https://cdn.example/a.png', assetId: 'x', kind: 'image' });
+    pending[0]!.resolve({ fileUrl: 'https://cdn.example/a.png', assetId: 'x', kind: 'image', width: null, height: null });
     await settle();
     expect(d.unregister).toHaveBeenCalledWith(slot!.id);
   });
@@ -280,7 +279,7 @@ describe('an upload that succeeds (A13, A15)', () => {
     const uploader = createDocumentUploader(d);
 
     await start(editor, uploader, [file(name, type)], true);
-    pending[0]!.resolve({ fileUrl: `https://cdn.example/${name}`, assetId: 'x', kind: expected });
+    pending[0]!.resolve({ fileUrl: `https://cdn.example/${name}`, assetId: 'x', kind: expected, width: null, height: null });
     await settle();
 
     const media = blocks(editor)[1]!;
@@ -310,26 +309,10 @@ describe('an upload that succeeds (A13, A15)', () => {
 
     await uploader.start(view, [file('a.png', 'image/png')], () => gapBefore(view.state.doc, empty), aimed);
     await settle();
-    pending[0]!.resolve({ fileUrl: 'https://cdn.example/a.png', assetId: 'x', kind: 'image' });
+    pending[0]!.resolve({ fileUrl: 'https://cdn.example/a.png', assetId: 'x', kind: 'image', width: null, height: null });
     await settle();
 
     expect(blocks(editor)[1]!.props).toMatchObject({ name: 'a.png', quoted });
-  });
-
-  it('fails as a plain upload failure when the answer carries no address', async () => {
-    const editor = open();
-    const { deps: d, pending } = deps();
-    const uploader = createDocumentUploader(d);
-
-    await start(editor, uploader, [file('a.png', 'image/png')]);
-    pending[0]!.resolve({ fileUrl: undefined, assetId: undefined, kind: undefined });
-    await settle();
-
-    expect(blocks(editor)).toHaveLength(2);
-    expect(uploadSlots(editor.prosemirrorView!.state)[0]).toMatchObject({
-      phase: 'failed',
-      failure: { messageKey: 'canvas.upload.failed', retryable: true },
-    });
   });
 
   it('makes the block the kind the server read off the stored bytes', async () => {
@@ -338,31 +321,39 @@ describe('an upload that succeeds (A13, A15)', () => {
     const uploader = createDocumentUploader(d);
 
     await start(editor, uploader, [file('clip.png', 'image/png')]);
-    pending[0]!.resolve({ fileUrl: 'https://cdn.example/clip.mp4', assetId: 'x', kind: 'video' });
+    pending[0]!.resolve({ fileUrl: 'https://cdn.example/clip.mp4', assetId: 'x', kind: 'video', width: null, height: null });
     await settle();
 
     expect(blocks(editor)[1]!.type).toBe('video');
   });
 
-  it('writes the size read off the file onto the block (A23)', async () => {
-    const editor = open();
-    const { deps: d, pending } = deps();
-    const uploader = createDocumentUploader({ ...d, measure: () => Promise.resolve({ width: 640, height: 360 }) });
-
-    await start(editor, uploader, [file('clip.png', 'image/png')]);
-    pending[0]!.resolve({ fileUrl: 'https://cdn.example/clip.png', assetId: 'x', kind: 'image' });
-    await settle();
-
-    expect(blocks(editor)[1]!.props).toMatchObject({ mediaWidth: 640, mediaHeight: 360 });
-  });
-
-  it('writes no size when the file could not be measured (A23)', async () => {
+  // The server read the size off the stored picture, which for one with an
+  // EXIF orientation is its upright copy (inner#1367 §4.8a).
+  it('writes the size the server read off the stored picture onto the block (A23)', async () => {
     const editor = open();
     const { deps: d, pending } = deps();
     const uploader = createDocumentUploader(d);
 
     await start(editor, uploader, [file('clip.png', 'image/png')]);
-    pending[0]!.resolve({ fileUrl: 'https://cdn.example/clip.png', assetId: 'x', kind: 'image' });
+    pending[0]!.resolve({
+      fileUrl: 'https://cdn.example/clip.png',
+      assetId: 'x',
+      kind: 'image',
+      width: 640,
+      height: 360,
+    });
+    await settle();
+
+    expect(blocks(editor)[1]!.props).toMatchObject({ mediaWidth: 640, mediaHeight: 360 });
+  });
+
+  it('writes no size when the server read none (A23)', async () => {
+    const editor = open();
+    const { deps: d, pending } = deps();
+    const uploader = createDocumentUploader(d);
+
+    await start(editor, uploader, [file('clip.png', 'image/png')]);
+    pending[0]!.resolve({ fileUrl: 'https://cdn.example/clip.png', assetId: 'x', kind: 'image', width: null, height: null });
     await settle();
 
     expect(blocks(editor)[1]!.props['mediaWidth']).toBeUndefined();
@@ -375,28 +366,13 @@ describe('an upload that succeeds (A13, A15)', () => {
     const uploader = createDocumentUploader(d);
 
     await start(editor, uploader, [file('model.png', 'image/png')]);
-    pending[0]!.resolve({ fileUrl: 'https://cdn.example/model.glb', assetId: 'x', kind: 'three_d' });
+    pending[0]!.resolve({ fileUrl: 'https://cdn.example/model.glb', assetId: 'x', kind: 'three_d', width: null, height: null });
     await settle();
 
     expect(blocks(editor)).toHaveLength(2);
     expect(uploadSlots(editor.prosemirrorView!.state)[0]).toMatchObject({
       phase: 'failed',
       failure: { messageKey: 'canvas.upload.unsupportedType', retryable: false },
-    });
-  });
-
-  it('fails as a plain upload failure when the answer names no kind', async () => {
-    const editor = open();
-    const { deps: d, pending } = deps();
-    const uploader = createDocumentUploader(d);
-
-    await start(editor, uploader, [file('a.png', 'image/png')]);
-    pending[0]!.resolve({ fileUrl: 'https://cdn.example/a.png', assetId: 'x', kind: undefined });
-    await settle();
-
-    expect(uploadSlots(editor.prosemirrorView!.state)[0]).toMatchObject({
-      phase: 'failed',
-      failure: { messageKey: 'canvas.upload.failed', retryable: true },
     });
   });
 
@@ -407,44 +383,13 @@ describe('an upload that succeeds (A13, A15)', () => {
 
     await start(editor, uploader, [file('a.png', 'image/png')]);
     editor.isEditable = false;
-    pending[0]!.resolve({ fileUrl: 'https://cdn.example/a.png', assetId: 'x', kind: 'image' });
+    pending[0]!.resolve({ fileUrl: 'https://cdn.example/a.png', assetId: 'x', kind: 'image', width: null, height: null });
     await settle();
 
     expect(blocks(editor)).toHaveLength(2);
     expect(uploadSlots(editor.prosemirrorView!.state)[0]).toMatchObject({
       phase: 'failed',
       failure: { messageKey: 'spaces.document.media.readOnly', retryable: true },
-    });
-  });
-});
-
-describe('an upload whose size is read after the file is stored (A12, A23)', () => {
-  it('stays in flight and checks the body is writable once the size is in', async () => {
-    const editor = open();
-    const { deps: d, pending } = deps();
-    let sized: (size: { width: number; height: number }) => void = () => undefined;
-    const uploader = createDocumentUploader({
-      ...d,
-      measure: () =>
-        new Promise((resolve) => {
-          sized = resolve;
-        }),
-    });
-
-    await start(editor, uploader, [file('a.png', 'image/png')]);
-    pending[0]!.resolve({ fileUrl: 'https://cdn.example/a.png', assetId: 'x', kind: 'image' });
-    await settle();
-    expect(d.unregister).not.toHaveBeenCalled();
-
-    editor.isEditable = false;
-    sized({ width: 640, height: 360 });
-    await settle();
-
-    expect(d.unregister).toHaveBeenCalled();
-    expect(blocks(editor)).toHaveLength(2);
-    expect(uploadSlots(editor.prosemirrorView!.state)[0]).toMatchObject({
-      phase: 'failed',
-      failure: { messageKey: 'spaces.document.media.readOnly' },
     });
   });
 });
@@ -493,7 +438,7 @@ describe('an upload that fails (A6)', () => {
     expect(pending[1]!.file).toBe(picked);
     expect(d.register).toHaveBeenCalledTimes(2);
 
-    pending[1]!.resolve({ fileUrl: 'https://cdn.example/a.png', assetId: 'x', kind: 'image' });
+    pending[1]!.resolve({ fileUrl: 'https://cdn.example/a.png', assetId: 'x', kind: 'image', width: null, height: null });
     await settle();
     expect(blocks(editor).map((b) => b.type)).toEqual(['paragraph', 'image', 'paragraph']);
   });

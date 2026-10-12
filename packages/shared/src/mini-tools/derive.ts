@@ -29,10 +29,10 @@ export interface MiniToolSnapshot {
   readonly source: { readonly url: string; readonly duration?: number };
   readonly slots: Readonly<Record<string, MiniToolSlotValue | readonly MiniToolSlotValue[] | undefined>>;
   /**
-   * Where the images made from the reader's drawing were uploaded: the image
-   * sent as the source, and on a mask tool the mask.
+   * Where what the reader drew was uploaded: a mask tool's mask, sent beside
+   * the source, or a sketch tool's composite, sent in place of it.
    */
-  readonly drawing?: { readonly image: string; readonly mask?: string };
+  readonly drawing?: { readonly mask: string } | { readonly image: string };
 }
 
 const BY_ID = new Map(MINI_TOOLS.map((tool) => [tool.id, tool]));
@@ -243,14 +243,15 @@ function knownDurations(values: readonly MiniToolSlotValue[]): number[] | undefi
 
 /**
  * The estimate input of one run: the draft params first, then the source and
- * every filled slot written under the model params they fill. A drawing's
- * image stands in for the source and its mask fills the mask param.
+ * every filled slot written under the model params they fill. A sketch's
+ * composite stands in for the source and a mask fills the mask param.
  * @param spec - The tool.
  * @param snapshot - What the run reads.
  * @returns The input `estimateCredits` takes for the pinned model.
  */
 export function miniToolEstimateInput(spec: MiniToolSpec, snapshot: MiniToolSnapshot): EstimateInput {
-  const sourceUrl = snapshot.drawing?.image ?? snapshot.source.url;
+  const drawing = snapshot.drawing;
+  const sourceUrl = drawing !== undefined && "image" in drawing ? drawing.image : snapshot.source.url;
   const params: Record<string, unknown> = {
     ...snapshot.params,
     [spec.sourceParam]: spec.sourceMany ? [sourceUrl] : sourceUrl,
@@ -266,8 +267,8 @@ export function miniToolEstimateInput(spec: MiniToolSpec, snapshot: MiniToolSnap
     const lengths = knownDurations(list);
     if (lengths) durations[slot.param] = lengths;
   }
-  if (spec.drawing?.kind === "mask" && snapshot.drawing?.mask !== undefined) {
-    params[spec.drawing.maskParam] = snapshot.drawing.mask;
+  if (spec.drawing?.kind === "mask" && drawing !== undefined && "mask" in drawing) {
+    params[spec.drawing.maskParam] = drawing.mask;
   }
   return {
     params,

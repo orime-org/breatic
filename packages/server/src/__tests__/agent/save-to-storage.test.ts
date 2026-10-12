@@ -8,6 +8,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { INGEST_NO_ANSWER } from "@breatic/shared";
 import type * as CoreModule from "@breatic/core";
 import type * as DomainModule from "@breatic/domain";
 
@@ -148,13 +149,15 @@ describe("saveToStorageFor", () => {
     expect(log.error).not.toHaveBeenCalled();
   });
 
-  it("refuses a link that did not answer in time as the link's own, logged as an error", async () => {
-    transferReaderUrlToStorage.mockRejectedValue(new ReaderUrlTransferError("source_too_slow"));
+  // No answer from the Worker is the Worker or the line to it going away (inner#1367).
+  it("lets no answer from the Worker through as a failure on our side", async () => {
+    const failure = new ReaderUrlTransferError(INGEST_NO_ANSWER);
+    transferReaderUrlToStorage.mockRejectedValue(failure);
 
     const err = await refusalOf(save(LINK));
 
-    expect(err).toMatchObject({ kind: "link", detail: "source_too_slow" });
-    expect(log.error).toHaveBeenCalledWith(expect.objectContaining({ reason: "source_too_slow" }), "agent_save_failed");
+    expect(err).toBe(failure);
+    expect(log.error).toHaveBeenCalledWith(expect.objectContaining({ reason: INGEST_NO_ANSWER }), "agent_save_failed");
   });
 
   it("logs a failure on our side as an error and lets it through, never as a refusal of the link", async () => {

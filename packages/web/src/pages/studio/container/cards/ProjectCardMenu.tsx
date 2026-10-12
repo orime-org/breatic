@@ -23,7 +23,10 @@ import { RenameProjectDialog } from '@web/pages/studio/container/cards/RenamePro
 import { useProjectCover } from '@web/pages/studio/container/cards/use-project-cover';
 import type { ContainerProject } from '@web/pages/studio/container/container-types';
 import { ImageCropDialog } from '@web/pages/studio/container/dialogs/ImageCropDialog';
-import { checkPickedFile } from '@web/pages/studio/container/dialogs/crop-image';
+import {
+  checkPicked,
+  PICKED_FORMATS,
+} from '@web/pages/studio/container/dialogs/crop-image';
 
 interface ProjectCardMenuProps {
   project: ContainerProject;
@@ -88,13 +91,14 @@ export function ProjectCardMenu({ project, placement = 'card' }: ProjectCardMenu
       // Reset so picking the same file twice in a row still fires a change.
       event.target.value = '';
       if (file === null) return;
-      const problem = checkPickedFile(file);
-      if (problem !== null) {
-        toast.warning(t(`studio.container.imageError.${problem}`));
-        return;
-      }
-      reset();
-      setPicked(file);
+      void checkPicked(file).then((problem) => {
+        if (problem !== null) {
+          toast.warning(t(`studio.container.imageError.${problem}`));
+          return;
+        }
+        reset();
+        setPicked(file);
+      });
     },
     [reset, t],
   );
@@ -191,7 +195,7 @@ export function ProjectCardMenu({ project, placement = 'card' }: ProjectCardMenu
           <input
             ref={inputRef}
             type='file'
-            accept='image/*'
+            accept={PICKED_FORMATS}
             hidden
             onChange={handlePick}
             data-testid='project-cover-input'

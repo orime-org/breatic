@@ -31,6 +31,11 @@ export const INGEST_FAILURE_CODES = [
   "store_failed",
   /** The parts would not assemble into an object, or it would not hash. */
   "assemble_failed",
+  /**
+   * A picture with an EXIF orientation could not be turned upright, or its
+   * orientation could not be read (inner#1367).
+   */
+  "upright_failed",
 ] as const;
 
 /**
@@ -46,11 +51,13 @@ export const INGEST_REFUSED_UNNAMED = "ingest_refused";
 /**
  * What a caller records when nothing usable came back.
  *
- * No answer at all, or one this side could not read. The deadline for one
- * call is set under what the platform itself allows, so a transfer that ran
- * out of time ends here rather than in a platform refusal.
+ * No answer at all, or one this side could not read. A transfer cut at the
+ * task's deadline settles as expired instead (inner#1367), so what is left
+ * here is our side, not the address: the ingest Worker or the line to it
+ * going away, our own job process going away before it settled, or the
+ * caller stopping the transfer.
  */
-export const INGEST_NO_ANSWER = "source_too_slow";
+export const INGEST_NO_ANSWER = "ingest_no_answer";
 
 /**
  * What a caller records when the Worker reported a type it never read.

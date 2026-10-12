@@ -52,16 +52,24 @@ import {
   sessionCookieName,
   loadLocales,
   taskEventsStreamKey,
+  getStorageConfig,
+  createQueue,
 } from "@breatic/core";
 import {
   backendUploadService,
   ingestReportService,
   uploadGrantService,
+  UPLOAD_FINISH_QUEUE,
+  type UploadFinishResult,
 } from "@breatic/domain";
+import { Queue } from "bullmq";
+import { closeFinishQueue, runQueuedFinish } from "@server/__tests__/helpers/queued-finish.js";
 import {
   canvasSpaceDocName,
   INGEST_FAILURE_HEADER,
   signSessionToken,
+  uprightKeyFor,
+  UPLOAD_STATUS_MAX_KEYS,
 } from "@breatic/shared";
 import type { Hono } from "hono";
 
@@ -88,6 +96,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  await closeFinishQueue();
   await sql?.end({ timeout: 1 });
 });
 
@@ -170,6 +179,7 @@ async function mintTicket(
 
 const FINISH_UPLOAD_ID = "r2-upload-id";
 
+
 /** What the last finish request asked the Worker for. */
 let lastFinishBody: Record<string, unknown> = {};
 const ONE_PART = [{ partNumber: 1, etag: "etag-1" }];
@@ -183,12 +193,13 @@ const ONE_PART = [{ partNumber: 1, etag: "etag-1" }];
  * turn the parts into an object; one carrying `refusal` stands for a Worker
  * that could, looked at the bytes, and named what it would not keep.
  * @param body - What the Worker's answer amounts to.
- * @returns This server's answer to the browser.
+ * @returns How the queued finish ended.
+ * @throws {Error} When the route did not queue a finish, or the finish threw.
  */
 async function report(
   body: Record<string, unknown>,
   cookie?: string,
-): Promise<Response> {
+): Promise<UploadFinishResult> {
   const storageKey = body.storage_key as string;
   const contentType = (body.content_type as string) ?? "image/png";
   const token = await signSessionToken(
@@ -196,7 +207,6 @@ async function report(
       storageKey,
       uploadId: FINISH_UPLOAD_ID,
       contentType,
-      sessionTokenTtlSeconds: 900,
       expiresAt: Date.now() + 900_000,
       partSize: 8 * 1024 * 1024,
       totalParts: ONE_PART.length,
@@ -234,6 +244,8 @@ async function report(
               // The cover the container cut, already written to the key this
               // server minted and hashed at the edge.
               ...(body.cover !== undefined && { cover: body.cover }),
+              // The upright copy of a picture with an EXIF orientation.
+              ...(body.upright !== undefined && { upright: body.upright }),
             }),
             { status: 200, headers: { "content-type": "application/json" } },
           )
@@ -241,7 +253,7 @@ async function report(
     }),
   );
   try {
-    return await app.request(
+    const res = await app.request(
       `/api/v1/assets/uploads/${FINISH_UPLOAD_ID}/complete`,
       {
         method: "POST",
@@ -255,6 +267,8 @@ async function report(
         body: JSON.stringify({ parts: ONE_PART }),
       },
     );
+    if (res.status !== 202) throw new Error(`the finish route answered ${res.status}`);
+    return await runQueuedFinish(storageKey);
   } finally {
     vi.unstubAllGlobals();
   }
@@ -319,11 +333,44 @@ describe("a finish this server drove — a completed upload", () => {
 
     const res = await report(noHash);
 
-    expect(res.status).toBe(502);
+    expect(res.refused).toBeDefined();
     const rows = await sql<{ n: string }[]>`
       SELECT count(*) AS n FROM studio_assets WHERE studio_id = ${seed.studioId}
     `;
     expect(rows[0]!.n).toBe("0");
+  });
+
+  it("points the consumed grant at the ledger row it registered", async () => {
+    const seed = await seedEditor();
+    const key = await mintTicket(seed);
+
+    await report(completed(key));
+
+    const rows = await sql<{ asset_id: string | null; id: string; failure_reason: string | null }[]>`
+      SELECT g.asset_id, a.id, g.failure_reason
+      FROM upload_grants g JOIN studio_assets a ON a.storage_key = g.storage_key
+      WHERE g.storage_key = ${key}
+    `;
+    expect(rows[0]!.asset_id).toBe(rows[0]!.id);
+    expect(rows[0]!.failure_reason).toBeNull();
+  });
+
+  it("points a grant whose bytes deduped at the row that already stood", async () => {
+    const seed = await seedEditor();
+    const first = await mintTicket(seed);
+    const second = await mintTicket(seed);
+    const sha256 = crypto.randomBytes(32).toString("hex");
+
+    await report(completed(first, { sha256 }));
+    await report(completed(second, { sha256 }));
+
+    const rows = await sql<{ storage_key: string; asset_id: string | null }[]>`
+      SELECT storage_key, asset_id FROM upload_grants
+      WHERE storage_key IN (${first}, ${second})
+    `;
+    const ids = new Set(rows.map((r) => r.asset_id));
+    expect(ids.size).toBe(1);
+    expect([...ids][0]).not.toBeNull();
   });
 
   it("registers the asset under the grant's studio and consumes the grant", async () => {
@@ -334,7 +381,7 @@ describe("a finish this server drove — a completed upload", () => {
 
     const res = await report(completed(key, { sha256: sha }));
 
-    expect(res.status).toBe(200);
+    expect(res.refused).toBeUndefined();
     const assets = await sql<
       { studio_id: string; content_hash: string; storage_key: string; kind: string }[]
     >`
@@ -403,7 +450,7 @@ describe("a finish this server drove — a completed upload", () => {
     // so nothing about this may turn a finished upload into a failed one.
     const res = await report(completed(key, { sha256: sha }));
 
-    expect(res.status).toBe(200);
+    expect(res.refused).toBeUndefined();
     const rows = await sql<
       { width: number | null; height: number | null; duration_seconds: string | null }[]
     >`
@@ -430,7 +477,7 @@ describe("a finish this server drove — a completed upload", () => {
       }),
     );
 
-    expect(res.status).toBe(200);
+    expect(res.refused).toBeUndefined();
     const rows = await sql<
       { width: number | null; height: number | null; duration_seconds: string | null }[]
     >`
@@ -594,6 +641,98 @@ describe("a finish this server drove — a completed upload", () => {
     expect(history[0]!.metadata.toolId).toBe("image.crop");
   });
 
+  // A picture with an EXIF orientation is filed as its upright copy; the hash
+  // stays the received bytes' (inner#1367 §4.5).
+  it("files a picture turned upright as its upright copy, under the received hash", async () => {
+    const seed = await seedEditor();
+    const key = await mintTicket(seed, { content_type: "image/jpeg" });
+    const sha = crypto.randomBytes(32).toString("hex");
+
+    const finished = await report(
+      completed(key, {
+        sha256: sha,
+        content_type: "image/jpeg",
+        width: 3000,
+        height: 4000,
+        upright: { storageKey: uprightKeyFor(key), sizeBytes: 3900, width: 3000, height: 4000 },
+      }),
+    );
+
+    expect(finished.refused).toBeUndefined();
+    const rows = await sql<
+      { storage_key: string; file_url: string; size_bytes: string; width: number; height: number }[]
+    >`
+      SELECT storage_key, file_url, size_bytes, width, height FROM studio_assets
+      WHERE content_hash = ${sha}
+    `;
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      storage_key: uprightKeyFor(key),
+      size_bytes: "3900",
+      width: 3000,
+      height: 4000,
+    });
+    expect(rows[0]!.file_url.endsWith(uprightKeyFor(key))).toBe(true);
+    expect(finished.outcome).toMatchObject({ status: "registered", ownRow: true });
+  });
+
+  it("files the upright copy under the key it is derived from the ticket's, whatever the answer named", async () => {
+    const seed = await seedEditor();
+    const key = await mintTicket(seed, { content_type: "image/jpeg" });
+    const sha = crypto.randomBytes(32).toString("hex");
+
+    await report(
+      completed(key, {
+        sha256: sha,
+        content_type: "image/jpeg",
+        upright: { storageKey: "image/2026-10-10/someone_else.jpg", sizeBytes: 10, width: 1, height: 1 },
+      }),
+    );
+
+    const rows = await sql<{ storage_key: string }[]>`
+      SELECT storage_key FROM studio_assets WHERE content_hash = ${sha}
+    `;
+    expect(rows[0]!.storage_key).toBe(uprightKeyFor(key));
+  });
+
+  it("keeps the ticket's key on the node history row of a picture turned upright", async () => {
+    const seed = await seedEditor();
+    const nodeId = crypto.randomUUID();
+    const key = await mintTicket(seed, { content_type: "image/jpeg", node_id: nodeId });
+
+    await report(
+      completed(key, {
+        content_type: "image/jpeg",
+        upright: { storageKey: uprightKeyFor(key), sizeBytes: 3900, width: 3000, height: 4000 },
+      }),
+    );
+
+    // The ticket's key is what makes a repeated report find this row again.
+    const history = await sql<{ upload_storage_key: string }[]>`
+      SELECT upload_storage_key FROM node_history WHERE node_id = ${nodeId}
+    `;
+    expect(history[0]!.upload_storage_key).toBe(key);
+  });
+
+  it("queues the losing upright copy for reclaim when its received bytes dedup", async () => {
+    const seed = await seedEditor();
+    const sha = crypto.randomBytes(32).toString("hex");
+    const upright = (k: string) => ({ storageKey: uprightKeyFor(k), sizeBytes: 3900, width: 3000, height: 4000 });
+    const firstKey = await mintTicket(seed, { content_type: "image/jpeg" });
+    await report(completed(firstKey, { sha256: sha, content_type: "image/jpeg", upright: upright(firstKey) }));
+    const secondKey = await mintTicket(seed, { content_type: "image/jpeg" });
+
+    const second = await report(
+      completed(secondKey, { sha256: sha, content_type: "image/jpeg", upright: upright(secondKey) }),
+    );
+
+    expect(second.outcome).toMatchObject({ status: "registered", ownRow: false });
+    const queued = await sql<{ kept_storage_key: string }[]>`
+      SELECT kept_storage_key FROM storage_reclaim_queue WHERE storage_key = ${uprightKeyFor(secondKey)}
+    `;
+    expect(queued[0]!.kept_storage_key).toBe(uprightKeyFor(firstKey));
+  });
+
   it("reuses the existing row when the bytes turn out to be a duplicate", async () => {
     const seed = await seedEditor();
     const sha = crypto.randomBytes(32).toString("hex");
@@ -606,7 +745,7 @@ describe("a finish this server drove — a completed upload", () => {
     const secondKey = await mintTicket(seed);
     const res = await report(completed(secondKey, { sha256: sha }));
 
-    expect(res.status).toBe(200);
+    expect(res.refused).toBeUndefined();
     // One row per (studio, content), so the second upload resolves onto the
     // first one's row rather than adding another.
     const assets = await sql<{ storage_key: string }[]>`
@@ -634,9 +773,9 @@ describe("a finish this server drove — a completed upload", () => {
     const sha = crypto.randomBytes(32).toString("hex");
 
     const firstKey = await mintTicket(seed, { node_id: nodeId });
-    expect((await report(completed(firstKey, { sha256: sha }))).status).toBe(200);
+    expect((await report(completed(firstKey, { sha256: sha }))).refused).toBeUndefined();
     const secondKey = await mintTicket(seed, { node_id: nodeId });
-    expect((await report(completed(secondKey, { sha256: sha }))).status).toBe(200);
+    expect((await report(completed(secondKey, { sha256: sha }))).refused).toBeUndefined();
 
     const history = await sql<{ n: string }[]>`
       SELECT count(*) AS n FROM node_history
@@ -661,7 +800,7 @@ describe("a finish this server drove — a completed upload", () => {
       completed(key, { size_bytes: 3 * 1024 * 1024 * 1024 }),
     );
 
-    expect(res.status).toBe(413);
+    expect(res.outcome).toMatchObject({ status: "rejected", reason: "over_cap" });
     const assets = await sql<{ n: string }[]>`
       SELECT count(*) AS n FROM studio_assets WHERE storage_key = ${key}
     `;
@@ -724,7 +863,7 @@ describe("a finish this server drove — an upload the backend opened", () => {
 
     const res = await report(completed(key, { sha256: sha }), seed.cookie);
 
-    expect(res.status).toBe(200);
+    expect(res.refused).toBeUndefined();
     const rows = await sql<
       { source: string; generation_task_id: string | null; id: string }[]
     >`
@@ -738,8 +877,7 @@ describe("a finish this server drove — an upload the backend opened", () => {
 
     // The row it landed on, which is what a caller hanging a cover off this
     // asset has to be told -- it never sees the ledger itself.
-    const answer = (await res.json()) as { data: { assetId: string } };
-    expect(answer.data.assetId).toBe(rows[0]!.id);
+    expect(res.outcome).toMatchObject({ assetId: rows[0]!.id });
 
     // The feed announces what a person did in the project. A generation's
     // output reaches it through the worker, which writes its own row; one
@@ -804,7 +942,7 @@ describe("a finish this server drove — a backend upload that landed empty", ()
       seed.cookie,
     );
 
-    expect(res.status).toBe(422);
+    expect(res.outcome).toMatchObject({ status: "rejected", reason: "empty" });
     const rows = await sql<{ n: string }[]>`
       SELECT count(*) AS n FROM studio_assets WHERE content_hash = ${sha}
     `;
@@ -821,7 +959,7 @@ describe("a finish this server drove — a backend upload that landed empty", ()
       seed.cookie,
     );
 
-    expect(res.status).toBe(422);
+    expect(res.outcome).toMatchObject({ status: "rejected", reason: "empty" });
   });
 
   it("needs no lane of its own, because the browser cannot open an empty one", async () => {
@@ -856,10 +994,9 @@ describe("a finish this server drove — an event that could not be published", 
     const xadd = vi
       .spyOn(getStreamRedis(), "xadd")
       .mockRejectedValueOnce(new Error("the stream's Redis is unreachable"));
-    const res = await report(completed(key));
+    // The job throws, so the queue delivers it again.
+    await expect(report(completed(key))).rejects.toThrow();
     xadd.mockRestore();
-
-    expect(res.status).toBeGreaterThanOrEqual(500);
   });
 
   // Nothing here can be logged where it happens — a library holds no logger —
@@ -911,7 +1048,8 @@ describe("a finish this server drove — an event that could not be published", 
     const xadd = vi
       .spyOn(getStreamRedis(), "xadd")
       .mockRejectedValueOnce(new Error("the stream's Redis is unreachable"));
-    await report(completed(key));
+    // The job throws, and the queue delivers it again.
+    await expect(report(completed(key))).rejects.toThrow("unreachable");
     xadd.mockRestore();
 
     const feed = (await sql`
@@ -931,10 +1069,11 @@ describe("a finish this server drove — an event that could not be published", 
     const xadd = vi
       .spyOn(getStreamRedis(), "xadd")
       .mockRejectedValueOnce(new Error("the stream's Redis is unreachable"));
-    await report(completed(key));
+    // The job throws, and the queue delivers it again.
+    await expect(report(completed(key))).rejects.toThrow("unreachable");
     xadd.mockRestore();
 
-    expect((await report(completed(key))).status).toBe(200);
+    expect((await report(completed(key))).refused).toBeUndefined();
 
     const events = await eventsFor(
       canvasSpaceDocName(seed.projectId, seed.spaceId),
@@ -956,7 +1095,7 @@ describe("a finish the Worker could not complete", () => {
       outcome: "aborted",
     });
 
-    expect(res.status).toBe(502);
+    expect(res.refused).toBeDefined();
     const assets = await sql<{ n: string }[]>`
       SELECT count(*) AS n FROM studio_assets WHERE storage_key = ${key}
     `;
@@ -981,7 +1120,7 @@ describe("a finish the Worker could not complete", () => {
     const nodeId = crypto.randomUUID();
     const key = await mintTicket(seed, { node_id: nodeId });
 
-    expect((await report(completed(key))).status).toBe(200);
+    expect((await report(completed(key))).refused).toBeUndefined();
 
     // The browser did not hear that answer and asked the Worker to finish
     // again. That delivery holds the same upload id, so it is granted the key,
@@ -992,7 +1131,7 @@ describe("a finish the Worker could not complete", () => {
       outcome: "aborted",
     });
 
-    expect(res.status).toBe(502);
+    expect(res.refused).toBeDefined();
     const tasks = await sql<{ status: string }[]>`
       SELECT status FROM node_tasks WHERE node_id = ${nodeId}
     `;
@@ -1005,6 +1144,53 @@ describe("a finish the Worker could not complete", () => {
     const docName = `project-${seed.projectId}/canvas-${seed.spaceId}`;
     const events = (await eventsFor(docName)).filter((e) => e.nodeId === nodeId);
     expect(events).toHaveLength(2);
+  });
+
+  // A grant with no node has no task row to say why it failed, so the grant
+  // itself carries the reason the status query answers with (inner#1367).
+  it("writes down on the grant why it was voided", async () => {
+    const seed = await seedEditor();
+    const key = await mintTicket(seed);
+
+    await ingestReportService.applyIngestReport({
+      storageKey: key,
+      outcome: "aborted",
+      reason: "store_failed",
+    });
+
+    const grants = await sql<{ failure_reason: string | null; asset_id: string | null }[]>`
+      SELECT failure_reason, asset_id FROM upload_grants WHERE storage_key = ${key}
+    `;
+    expect(grants[0]).toEqual({ failure_reason: "store_failed", asset_id: null });
+  });
+
+  it("writes expired on a grant with no node whose abort arrives past its two hours", async () => {
+    const seed = await seedEditor();
+    const key = await mintTicket(seed);
+    await sql`
+      UPDATE upload_grants
+      SET created_at = now() - interval '2 hours' - interval '1 second'
+      WHERE storage_key = ${key}
+    `;
+
+    await report({ storage_key: key, outcome: "aborted" });
+
+    const grants = await sql<{ failure_reason: string | null }[]>`
+      SELECT failure_reason FROM upload_grants WHERE storage_key = ${key}
+    `;
+    expect(grants[0]!.failure_reason).toBe("expired");
+  });
+
+  it("writes over_cap on a grant whose bytes came back too large", async () => {
+    const seed = await seedEditor();
+    const key = await mintTicket(seed);
+
+    await report(completed(key, { size_bytes: Number.MAX_SAFE_INTEGER }));
+
+    const grants = await sql<{ failure_reason: string | null }[]>`
+      SELECT failure_reason FROM upload_grants WHERE storage_key = ${key}
+    `;
+    expect(grants[0]!.failure_reason).toBe("over_cap");
   });
 
   it("voids the grant even when the node's counts could not be published", async () => {
@@ -1026,7 +1212,7 @@ describe("a finish the Worker could not complete", () => {
     // the row is failed before the event is tried, and the event carries four
     // numbers and no content. Opening the node's task list republishes them
     // (design §4.6.4), so a stream that was unreachable costs nothing else.
-    expect(res.status).toBe(502);
+    expect(res.refused).toBeDefined();
     const grants = await sql<{ voided_at: Date | null }[]>`
       SELECT voided_at FROM upload_grants WHERE storage_key = ${key}
     `;
@@ -1044,11 +1230,11 @@ describe("a finish this server drove — the same report twice", () => {
     const first = await report(body);
     const second = await report(body);
 
-    expect(first.status).toBe(200);
-    expect(second.status).toBe(200);
-    const a = (await first.json()) as { data: { fileUrl: string } };
-    const b = (await second.json()) as { data: { fileUrl: string } };
-    expect(b.data.fileUrl).toBe(a.data.fileUrl);
+    expect(first.outcome.status).toBe("registered");
+    expect(second.outcome.status).toBe("already_registered");
+    const a = first.outcome as { fileUrl: string };
+    const b = second.outcome as { fileUrl: string };
+    expect(b.fileUrl).toBe(a.fileUrl);
 
     // One asset, one history row: the retry registers nothing new.
     const assets = await sql<{ n: string }[]>`
@@ -1075,7 +1261,7 @@ describe("a finish this server drove — the same report twice", () => {
     const events = (await eventsFor(docName)).filter((e) => e.nodeId === nodeId);
     // The ticket's own event, then one settlement per report.
     expect(events).toHaveLength(3);
-    expect(events[2]!.result?.content).toBe(a.data.fileUrl);
+    expect(events[2]!.result?.content).toBe(a.fileUrl);
   });
 
   // The grant is what tells a repeat report apart from a first one, so it is
@@ -1097,13 +1283,13 @@ describe("a finish this server drove — the same report twice", () => {
       `ALTER TABLE node_history ADD CONSTRAINT node_history_report_retry_probe
        CHECK (node_id <> '${nodeId}')`,
     );
-    const first = await report(body);
+    const first = await report(body).catch((err: unknown) => err);
     await sql.unsafe(
       `ALTER TABLE node_history DROP CONSTRAINT node_history_report_retry_probe`,
     );
 
-    expect(first.status).toBeGreaterThanOrEqual(500);
-    expect((await report(body)).status).toBe(200);
+    expect(first).toBeInstanceOf(Error);
+    expect((await report(body)).refused).toBeUndefined();
 
     const history = await sql<{ n: string }[]>`
       SELECT count(*) AS n FROM node_history
@@ -1276,7 +1462,7 @@ describe("a video, whose cover comes back with the rest of the answer", () => {
       completed(key, { content_type: "video/mp4", size_bytes: 200_000 }),
     );
 
-    expect(res.status).toBe(200);
+    expect(res.refused).toBeUndefined();
     const video = await sql<{ cover_asset_id: string | null }[]>`
       SELECT cover_asset_id FROM studio_assets WHERE storage_key = ${key}
     `;
@@ -1533,7 +1719,7 @@ describe("a finish this server drove — the task it settles", () => {
     const nodeId = crypto.randomUUID();
     const key = await mintTicket(seed, { node_id: nodeId });
 
-    expect((await report(completed(key))).status).toBe(200);
+    expect((await report(completed(key))).refused).toBeUndefined();
 
     const rows = await tasksOn(nodeId);
     expect(rows).toHaveLength(1);
@@ -1583,6 +1769,24 @@ describe("a finish this server drove — the task it settles", () => {
     expect(rows[0]!.error_message).not.toBeNull();
   });
 
+  // Every call on the upload's chain is cut at the task's deadline, so an
+  // abort that arrives past it is the deadline's doing whatever it names.
+  it("settles the row as expired when the abort arrives past the task's deadline", async () => {
+    const seed = await seedEditor();
+    const nodeId = crypto.randomUUID();
+    const key = await mintTicket(seed, { node_id: nodeId });
+    await sql`
+      UPDATE node_tasks SET started_at = now() - (budget_ms + 1000) * interval '1 millisecond'
+      WHERE node_id = ${nodeId}
+    `;
+
+    await report({ storage_key: key, outcome: "aborted" });
+
+    const rows = await tasksOn(nodeId);
+    expect(rows[0]!.status).toBe("expired");
+    expect(rows[0]!.error_message).toBe("expired");
+  });
+
   // Four failures answer the same status at the edge, and one more never
   // reaches it at all. What the list shows has to say which of them happened,
   // or every one of them reads to the user as the source being at fault.
@@ -1594,11 +1798,11 @@ describe("a finish this server drove — the task it settles", () => {
     await ingestReportService.applyIngestReport({
       storageKey: key,
       outcome: "aborted",
-      reason: "source_too_slow",
+      reason: "ingest_no_answer",
     });
 
     const rows = await tasksOn(nodeId);
-    expect(rows[0]!.error_message).toBe("source_too_slow");
+    expect(rows[0]!.error_message).toBe("ingest_no_answer");
   });
 
   // The edge is the one place that ever sees these bytes, so "we do not take
@@ -1615,7 +1819,7 @@ describe("a finish this server drove — the task it settles", () => {
       refusal: "unsupported_type",
     });
 
-    expect(res.status).toBe(415);
+    expect(res.refused?.reason).toBe("unsupported_type");
     const rows = await tasksOn(nodeId);
     expect(rows[0]!.status).toBe("failed");
     expect(rows[0]!.error_message).toBe("unsupported_type");
@@ -1631,7 +1835,7 @@ describe("a finish this server drove — the task it settles", () => {
 
     const res = await report({ storage_key: key, unreachable: true });
 
-    expect(res.status).toBe(502);
+    expect(res.refused).toBeDefined();
     const rows = await tasksOn(nodeId);
     expect(rows[0]!.status).toBe("failed");
     expect(rows[0]!.error_message).toBe("aborted");
@@ -1699,7 +1903,7 @@ describe("a finish this server drove — the task it settles", () => {
     await report(body);
     const first = await tasksOn(nodeId);
 
-    expect((await report(body)).status).toBe(200);
+    expect((await report(body)).refused).toBeUndefined();
     const second = await tasksOn(nodeId);
 
     expect(second).toHaveLength(1);
@@ -1721,20 +1925,39 @@ describe("a finish this server drove — the task it settles", () => {
     const body = completed(key, { sha256: sha });
 
     await report(body);
-    await sql`DELETE FROM studio_assets WHERE content_hash = ${sha}`;
+    // Gone the way a ledger row goes: soft-deleted, never removed.
+    await sql`UPDATE studio_assets SET deleted_at = now() WHERE content_hash = ${sha}`;
 
     const res = await report(body);
 
-    expect(res.status).toBe(200);
-    const answer = (await res.json()) as { data: Record<string, unknown> };
-    expect(answer.data).not.toHaveProperty("fileUrl");
+    expect(res.outcome.status).toBe("stale");
+    expect(res.outcome).not.toHaveProperty("fileUrl");
+  });
+
+  // A queued finish that ran again after the first one registered, and failed
+  // this time: what the first one wrote stands (inner#1367 §4.2a).
+  it("answers an abort that arrives after the upload registered as stale, and keeps it done", async () => {
+    const seed = await seedEditor();
+    const nodeId = crypto.randomUUID();
+    const key = await mintTicket(seed, { node_id: nodeId });
+    await report(completed(key));
+
+    const res = await report({ storage_key: key, outcome: "aborted" });
+
+    expect(res.outcome.status).toBe("stale");
+    const rows = await tasksOn(nodeId);
+    expect(rows[0]!.status).toBe("done");
+    const grants = await sql<{ voided_at: Date | null }[]>`
+      SELECT voided_at FROM upload_grants WHERE storage_key = ${key}
+    `;
+    expect(grants[0]!.voided_at).toBeNull();
   });
 
   it("settles nothing for an upload with no node behind it", async () => {
     const seed = await seedEditor();
     const key = await mintTicket(seed, { node_id: undefined, space_id: undefined });
 
-    expect((await report(completed(key))).status).toBe(200);
+    expect((await report(completed(key))).refused).toBeUndefined();
 
     const rows = (await sql`
       SELECT id FROM node_tasks WHERE storage_key = ${key}
@@ -1833,7 +2056,6 @@ describe("POST /assets/uploads/:uploadId/complete", () => {
         storageKey,
         uploadId: UPLOAD_ID,
         contentType: "image/png",
-        sessionTokenTtlSeconds: 900,
         expiresAt: Date.now() + 900_000,
         partSize: 5 * 1024 * 1024,
         totalParts: 1,
@@ -1897,9 +2119,9 @@ describe("POST /assets/uploads/:uploadId/complete", () => {
 
     const res = await finish(await tokenFor(key), { parts: PARTS }, seed.cookie);
 
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as { data: { fileUrl: string } };
-    expect(body.data.fileUrl).toBeTruthy();
+    expect(res.status).toBe(202);
+    const result = await runQueuedFinish(key);
+    expect(result.outcome).toMatchObject({ status: "registered", fileUrl: expect.any(String) });
     const rows = (await sql`
       SELECT consumed_at FROM upload_grants WHERE storage_key = ${key}
     `) as unknown as { consumed_at: Date | null }[];
@@ -1929,7 +2151,8 @@ describe("POST /assets/uploads/:uploadId/complete", () => {
     // Asserted first: without it this passes on any answer at all, including
     // a route that does not exist, and then it says nothing about which key
     // was used.
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(202);
+    await runQueuedFinish(myKey);
     const rows = (await sql`
       SELECT storage_key, consumed_at FROM upload_grants
       WHERE storage_key IN (${myKey}, ${theirKey})
@@ -1958,6 +2181,47 @@ describe("POST /assets/uploads/:uploadId/complete", () => {
     );
 
     expect(res.status).toBe(401);
+  });
+
+  // A browser that did not hear 202 sends the finish again; the key is the
+  // job id, so the job already queued is the only one (inner#1367 §4.2a).
+  it("queues one finish however many times the browser asks", async () => {
+    const seed = await seedEditor();
+    const key = await mintTicket(seed);
+    workerAnswers({
+      sha256: crypto.randomBytes(32).toString("hex"),
+      sizeBytes: 4096,
+      contentType: "image/png",
+    });
+    const token = await tokenFor(key);
+
+    expect((await finish(token, { parts: PARTS }, seed.cookie)).status).toBe(202);
+    expect((await finish(token, { parts: PARTS }, seed.cookie)).status).toBe(202);
+
+    const queue = createQueue(UPLOAD_FINISH_QUEUE);
+    const queued = (await queue.getJobs(["waiting", "delayed", "active"])).filter(
+      (job) => job.id === key,
+    );
+    expect(queued).toHaveLength(1);
+    await runQueuedFinish(key);
+  });
+
+  it("voids the grant and answers 502 when the finish could not be queued", async () => {
+    const seed = await seedEditor();
+    const key = await mintTicket(seed);
+    const add = vi
+      .spyOn(Queue.prototype, "add")
+      .mockRejectedValueOnce(new Error("the queue's Redis is unreachable"));
+
+    const res = await finish(await tokenFor(key), { parts: PARTS }, seed.cookie);
+    add.mockRestore();
+
+    expect(res.status).toBe(502);
+    const grants = await sql<{ voided_at: Date | null; failure_reason: string | null }[]>`
+      SELECT voided_at, failure_reason FROM upload_grants WHERE storage_key = ${key}
+    `;
+    expect(grants[0]!.voided_at).not.toBeNull();
+    expect(grants[0]!.failure_reason).toBe("not_started");
   });
 
   it("refuses a caller with no session", async () => {
@@ -2005,7 +2269,8 @@ describe("POST /assets/uploads/:uploadId/complete", () => {
         contentType: "image/png",
       });
       const first = await finish(await tokenFor(key), { parts: PARTS }, seed.cookie);
-      expect(first.status).toBe(200);
+      expect(first.status).toBe(202);
+      await runQueuedFinish(key);
 
       const stub = workerAnswers({
         sha256: crypto.randomBytes(32).toString("hex"),
@@ -2114,6 +2379,7 @@ describe("an upload our own worker drove", () => {
         taskType: "image",
         ext: ".png",
         contentType: "image/png",
+        deadlineAt: Date.now() + 3_600_000,
       },
     );
 
@@ -2145,6 +2411,7 @@ describe("an upload our own worker drove", () => {
         taskType: "image",
         ext: ".png",
         contentType: "image/png",
+        deadlineAt: Date.now() + 3_600_000,
       },
     );
 
@@ -2173,6 +2440,7 @@ describe("an upload our own worker drove", () => {
         taskType: "image",
         ext: ".png",
         contentType: "image/png",
+        deadlineAt: Date.now() + 3_600_000,
       },
     );
 
@@ -2180,5 +2448,129 @@ describe("an upload our own worker drove", () => {
       SELECT id FROM project_activities WHERE project_id = ${seed.projectId}
     `) as unknown as { id: string }[];
     expect(feed).toHaveLength(0);
+  });
+});
+
+describe("the upload status query (inner#1367)", () => {
+  /** Ask how these uploads ended, as `cookie`'s user. */
+  async function statusOf(
+    cookie: string,
+    keys: string[],
+  ): Promise<{ res: Response; items: Record<string, unknown>[] }> {
+    const query = keys.map((k) => `key=${encodeURIComponent(k)}`).join("&");
+    const res = await app.request(`/api/v1/assets/upload-status?${query}`, {
+      headers: { cookie },
+    });
+    const items =
+      res.status === 200
+        ? ((await res.json()) as { data: { items: Record<string, unknown>[] } }).data.items
+        : [];
+    return { res, items };
+  }
+
+  it("answers an upload still being finished as finishing", async () => {
+    const seed = await seedEditor();
+    const key = await mintTicket(seed);
+
+    const { items } = await statusOf(seed.cookie, [key]);
+
+    expect(items).toEqual([{ key, state: "finishing" }]);
+  });
+
+  it("answers a registered upload with what it registered as", async () => {
+    const seed = await seedEditor();
+    const key = await mintTicket(seed);
+    await report(completed(key, { width: 800, height: 600 }));
+
+    const { items } = await statusOf(seed.cookie, [key]);
+
+    const asset = await sql<{ id: string; file_url: string }[]>`
+      SELECT id, file_url FROM studio_assets WHERE storage_key = ${key}
+    `;
+    expect(items).toEqual([
+      {
+        key,
+        state: "completed",
+        result: {
+          assetId: asset[0]!.id,
+          fileUrl: asset[0]!.file_url,
+          kind: "image",
+          width: 800,
+          height: 600,
+        },
+      },
+    ]);
+  });
+
+  it("answers a voided upload with the reason written on its grant", async () => {
+    const seed = await seedEditor();
+    const key = await mintTicket(seed);
+    await ingestReportService.applyIngestReport({
+      storageKey: key,
+      outcome: "aborted",
+      reason: "unsupported_type",
+    });
+
+    const { items } = await statusOf(seed.cookie, [key]);
+
+    expect(items).toEqual([{ key, state: "failed", reason: "unsupported_type" }]);
+  });
+
+  it("answers expired for one still finishing past its two hours, and writes nothing", async () => {
+    const seed = await seedEditor();
+    const key = await mintTicket(seed);
+    await sql`
+      UPDATE upload_grants
+      SET created_at = now() - interval '2 hours' - interval '1 second'
+      WHERE storage_key = ${key}
+    `;
+
+    const { items } = await statusOf(seed.cookie, [key]);
+
+    expect(items).toEqual([{ key, state: "failed", reason: "expired" }]);
+    const grants = await sql<{ voided_at: Date | null }[]>`
+      SELECT voided_at FROM upload_grants WHERE storage_key = ${key}
+    `;
+    expect(grants[0]!.voided_at).toBeNull();
+  });
+
+  it("answers unknown for someone else's upload and for a key never issued", async () => {
+    const owner = await seedEditor();
+    const other = await seedEditor();
+    const key = await mintTicket(owner);
+    const mine = await mintTicket(other);
+
+    const { items } = await statusOf(other.cookie, [key, "image/never/issued.png", mine]);
+
+    expect(items).toEqual([
+      { key, state: "unknown" },
+      { key: "image/never/issued.png", state: "unknown" },
+      { key: mine, state: "finishing" },
+    ]);
+  });
+
+  it("tells the caller how long to wait before asking again", async () => {
+    const seed = await seedEditor();
+    const key = await mintTicket(seed);
+
+    const { res } = await statusOf(seed.cookie, [key]);
+
+    expect(res.headers.get("retry-after")).toBe(
+      String(getStorageConfig().upload.upload_status_poll_seconds),
+    );
+  });
+
+  it("refuses a request naming no upload, or more than one request may carry", async () => {
+    const seed = await seedEditor();
+
+    // 422 is what every route's request validation answers.
+    expect((await statusOf(seed.cookie, [])).res.status).toBe(422);
+    const many = Array.from({ length: UPLOAD_STATUS_MAX_KEYS + 1 }, (_, i) => `k/${i}`);
+    expect((await statusOf(seed.cookie, many)).res.status).toBe(422);
+  });
+
+  it("requires a signed-in caller", async () => {
+    const res = await app.request("/api/v1/assets/upload-status?key=a");
+    expect(res.status).toBe(401);
   });
 });

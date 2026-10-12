@@ -42,6 +42,7 @@ const ctx = {
   taskType: "image",
   ext: ".png",
   contentType: "image/png",
+  deadlineAt: Date.now() + 3_600_000,
 };
 
 const registered = { assetId: "a-1", fileUrl: "/uploads/a.png", kind: "image" };

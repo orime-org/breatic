@@ -23,7 +23,7 @@ export interface DocumentMediaImageProps {
   readonly url: string;
   /** The width it is laid out at, in CSS pixels, once measured. */
   readonly shownWidth: number | null;
-  /** The original's pixel size, read off the file as it was added. */
+  /** The pixel size the server read off the stored picture (its upright copy when it carried an EXIF orientation). */
   readonly mediaWidth?: number;
   readonly mediaHeight?: number;
   /** True until the picture has loaded or failed for good. */

@@ -5,7 +5,7 @@
  * Worker YAML configuration loader.
  *
  * Reads `config/worker.yaml`: BullMQ queue parameters, the interval between
- * two questions to an upstream about a task, and the billing-query timeout.
+ * two questions to an upstream about a task.
  */
 
 import { readFileSync } from "node:fs";
@@ -30,7 +30,6 @@ const workerConfigSchema = z.object({
   /** Base backoff delay (ms) between job retries. */
   job_backoff_delay_ms: z.number().int().positive().default(2000),
   poll_interval: z.number().int().positive().default(3000),
-  billing_timeout: z.number().int().positive().default(30_000),
 });
 
 /** Validated worker configuration type. */

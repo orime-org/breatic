@@ -1,8 +1,8 @@
 # Audio Provider Connection Config (music + sound effects + separation)
-# Each provider defines: base_url, api_key_env, timeout, max_concurrency
+# Each provider defines: base_url, api_key_env, max_concurrency. Calls are
+# bounded by the task's own deadline, not by a figure here (inner#1367).
 
 wavespeed:
   base_url: "https://api.wavespeed.ai/api/v3"
   api_key_env: WAVESPEED_API_KEY
-  timeout: 120
   max_concurrency: 50

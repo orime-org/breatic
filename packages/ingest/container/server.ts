@@ -15,14 +15,20 @@
  *
  * It reads the object over plain HTTP from a hostname the Worker intercepts,
  * so it holds no credentials and has no route to the internet. The Worker
- * serves exactly the one key this run is about (`serveOneObject`).
+ * serves exactly the one key this run is about (`serveOneObject`). When the
+ * probe carries an upright order, the picture is first turned with vips, the
+ * turned picture is probed and previewed, and it is PUT to `upright.local`,
+ * which the Worker accepts for this run's one upright key only.
  *
  * Bundled into one file at image build time, which is why it imports from the
  * Worker's source: the argument lists and the answer format are one agreement
  * between the two sides, and a second copy in here would drift from it.
  */
 
-import { createServer } from "node:http";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { createServer, type ServerResponse } from "node:http";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { Readable } from "node:stream";
 import {
   buildProbeAnswer,
@@ -30,12 +36,16 @@ import {
   PROBE_PORT,
 } from "@ingest/probe-answer.js";
 import {
+  PREVIEW_MAX_BYTES,
+  PROBE_MAX_BYTES,
   probeArgs,
   coverArgs,
   previewArgs,
   readProbeOutput,
 } from "@ingest/probe-command.js";
-import { previewSource, previewTimeLeft } from "@ingest/preview-step.js";
+import { previewSource } from "@ingest/preview-step.js";
+import type { UprightOrder } from "@ingest/upright-run.js";
+import { runUpright, type UprightDeps } from "./upright-probe.js";
 import { openObject, runTool } from "./run-tool.js";
 import { NOTHING_FOUND, pickMediaMetadata } from "@ingest/media-metadata.js";
 import type { ProbeReport } from "@ingest/media-metadata.js";
@@ -52,13 +62,6 @@ import { runJob, type RunBody } from "./mini-tool-run.js";
  */
 const COVER_MAX_BYTES = 10 * 1024 * 1024;
 
-/**
- * The most a preview may weigh. The largest preview is 576x16383, and that
- * size cut from pure noise came to 5,176,264 bytes (inner#1320 round 5); an
- * ordinary 576-wide frame is around 100 KB.
- */
-const PREVIEW_MAX_BYTES = 8 * 1024 * 1024;
-
 /** One run's request as it arrives: read before it is believed. */
 type IncomingRequest = Partial<Record<keyof ProbeRequest, unknown>>;
 
@@ -67,17 +70,17 @@ type IncomingRequest = Partial<Record<keyof ProbeRequest, unknown>>;
  * stream to lift it from.
  * @param objectUrl - Where to read it.
  * @param wantCover - Whether the caller wants a frame.
- * @param timeoutMs - How long each tool may run.
+ * @param signal - The run's deadline.
  * @returns What ffprobe found and the frame, when there is one.
  */
 async function probe(
   objectUrl: string,
   wantCover: boolean,
-  timeoutMs: number,
+  signal: AbortSignal,
 ): Promise<{ report: ProbeReport; cover: Uint8Array | null }> {
   const probed = await runTool("ffprobe", probeArgs(objectUrl), {
-    maxBytes: 4 * 1024 * 1024,
-    signal: AbortSignal.timeout(timeoutMs),
+    maxBytes: PROBE_MAX_BYTES,
+    signal,
   });
   const report =
     probed === null
@@ -95,7 +98,7 @@ async function probe(
 
   const cut = await runTool("ffmpeg", coverArgs(objectUrl), {
     maxBytes: COVER_MAX_BYTES,
-    signal: AbortSignal.timeout(timeoutMs),
+    signal,
   });
   return { report, cover: cut === null ? null : new Uint8Array(cut) };
 }
@@ -106,13 +109,16 @@ async function probe(
  * @param found - What the probe and the cover call produced.
  * @param found.report - What ffprobe found.
  * @param found.cover - The cover frame, when one was cut.
+ * @param signal - The run's deadline, shared by the read and vips so a read
+ *   cut off by it never hands vips a short picture.
  * @returns The WebP bytes, or null when none was cut.
  */
 async function cutPreview(
   asked: ProbeRequest,
   found: { report: ProbeReport; cover: Uint8Array | null },
+  signal: AbortSignal,
 ): Promise<Uint8Array | null> {
-  // One reading of the clock decides both whether there is time and how much.
+  // One reading of the clock decides whether there is time left for a preview.
   const clock = { deadlineAt: asked.deadlineAt, now: Date.now() };
   const source = previewSource({
     wantPreview: asked.wantPreview,
@@ -122,17 +128,14 @@ async function cutPreview(
     ...clock,
   });
   if (source === "late") {
-    // The Worker drops the whole answer at its deadline, so this run keeps
-    // the size and the cover and leaves the preview to the backfill.
+    // The deadline has come and the Worker has stopped waiting, so no preview
+    // is cut; the backfill cuts it later.
     console.error("media_preview_skipped_deadline", {
       leftMs: clock.deadlineAt - clock.now,
     });
     return null;
   }
   if (source === null) return null;
-  // The read and vips share this signal, so a read cut off by it never hands
-  // vips a short picture.
-  const signal = AbortSignal.timeout(previewTimeLeft(clock));
   const input =
     source === "cover" ? found.cover : await openObject(asked.objectUrl, signal);
   if (input === null) return null;
@@ -142,6 +145,70 @@ async function cutPreview(
     input,
   });
   return cut === null ? null : new Uint8Array(cut);
+}
+
+/**
+ * Read an upright order off the request, when it carries a whole one.
+ * @param sent - What arrived.
+ * @returns The order, or null.
+ */
+function uprightOrderOf(sent: unknown): UprightOrder | null {
+  if (typeof sent !== "object" || sent === null) return null;
+  const order = sent as Partial<Record<keyof UprightOrder, unknown>>;
+  if (
+    typeof order.writeUrl !== "string" ||
+    typeof order.contentType !== "string" ||
+    typeof order.lossless !== "boolean" ||
+    typeof order.quality !== "number" ||
+    typeof order.maxBytes !== "number"
+  ) {
+    return null;
+  }
+  return {
+    writeUrl: order.writeUrl,
+    contentType: order.contentType,
+    lossless: order.lossless,
+    quality: order.quality,
+    maxBytes: order.maxBytes,
+  };
+}
+
+/** What an upright run reaches out to, in this container. */
+const UPRIGHT_DEPS: UprightDeps = {
+  openObject,
+  runTool,
+  writeTemp: async (bytes) => {
+    const dir = await mkdtemp(join(tmpdir(), "upright-"));
+    const path = join(dir, "picture");
+    await writeFile(path, bytes);
+    return { path, remove: () => rm(dir, { recursive: true, force: true }) };
+  },
+  put: async (url, headers, body) => {
+    try {
+      const answered = await fetch(url, { method: "PUT", headers, body });
+      await answered.body?.cancel();
+      if (answered.status !== 200) console.error("media_upright_write_refused", { status: answered.status });
+      return answered.status;
+    } catch (err) {
+      console.error("media_upright_write_failed", { err: err instanceof Error ? err.message : String(err) });
+      return 0;
+    }
+  },
+};
+
+/**
+ * Send one answer.
+ * @param res - The response to write.
+ * @param answer - What to send.
+ */
+function send(res: ServerResponse, answer: Response): void {
+  res.writeHead(200, { "content-type": answer.headers.get("content-type") ?? "" });
+  const body = answer.body;
+  if (body === null) {
+    res.end();
+    return;
+  }
+  Readable.fromWeb(body).pipe(res);
 }
 
 createServer((req, res) => {
@@ -179,36 +246,32 @@ createServer((req, res) => {
       res.writeHead(400).end();
       return;
     }
-    if (
-      typeof asked.objectUrl !== "string" ||
-      typeof asked.toolTimeoutMs !== "number"
-    ) {
+    if (typeof asked.objectUrl !== "string" || typeof asked.deadlineAt !== "number") {
       res.writeHead(400).end();
       return;
     }
     const request: ProbeRequest = {
       objectUrl: asked.objectUrl,
       wantCover: asked.wantCover === true,
-      toolTimeoutMs: asked.toolTimeoutMs,
       wantPreview: asked.wantPreview === true,
-      deadlineAt: typeof asked.deadlineAt === "number" ? asked.deadlineAt : 0,
+      deadlineAt: asked.deadlineAt,
     };
+    // Every tool in this run is held to the task's deadline and nothing else
+    // (inner#1367). A timer cannot be set to a negative span, so a run that
+    // arrives at or past the deadline is cut at once.
+    const signal = AbortSignal.timeout(Math.max(1, request.deadlineAt - Date.now()));
 
-    const found = await probe(
-      request.objectUrl,
-      request.wantCover,
-      request.toolTimeoutMs,
-    );
-    const preview = await cutPreview(request, found);
-    const answer = buildProbeAnswer(found.report, found.cover, preview);
-    res.writeHead(200, {
-      "content-type": answer.headers.get("content-type") ?? "",
-    });
-    const body = answer.body;
-    if (body === null) {
-      res.end();
+    const upright = uprightOrderOf(asked.upright);
+    if (upright !== null) {
+      // The probe and the preview are of the turned picture, which is written
+      // back last with its pixel size (inner#1367 §4.4).
+      const ran = await runUpright(request.objectUrl, upright, request, signal, UPRIGHT_DEPS);
+      send(res, buildProbeAnswer(ran.report, null, ran.preview, ran.outcome));
       return;
     }
-    Readable.fromWeb(body).pipe(res);
+
+    const found = await probe(request.objectUrl, request.wantCover, signal);
+    const preview = await cutPreview(request, found, signal);
+    send(res, buildProbeAnswer(found.report, found.cover, preview));
   })();
 }).listen(PROBE_PORT);

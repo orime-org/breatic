@@ -418,6 +418,19 @@ describe("POST /assets/upload-ticket", () => {
     expect(grants[0]!.n).toBe("0");
   });
 
+  // An upload with no node reads the picture's size off this answer, the way
+  // it reads it off a finished upload (inner#1367 §4.8a).
+  it("answers content the studio already holds with the size stored on its row", async () => {
+    const { projectId, cookie, studioId, userId } = await seedEditor();
+    const hash = crypto.randomBytes(32).toString("hex");
+    await registerAsset(studioId, userId, hash, 4096, { width: 3000, height: 4000, durationSeconds: 0 });
+
+    const res = await requestTicket(cookie, body({ project_id: projectId, client_hash: hash, size: 4096 }));
+
+    const payload = (await res.json()) as { data: { width?: number; height?: number } };
+    expect(payload.data).toMatchObject({ width: 3000, height: 4000 });
+  });
+
   it("records the node's new content in its history on a dedup hit", async () => {
     const { projectId, cookie, studioId, userId } = await seedEditor();
     const hash = crypto.randomBytes(32).toString("hex");
@@ -509,25 +522,25 @@ describe("POST /assets/upload-ticket", () => {
     expect(live[0]!.content).toBe(`https://cdn.test.invalid/${hash}.mp4`);
   });
 
-  it("distrusts a hash whose declared size disagrees with the stored row", async () => {
+  // A picture turned upright is filed with its upright copy's size and the
+  // received bytes' hash, so the size a browser declares for the same file
+  // never matches the row (inner#1367 §4.6). The hash alone decides.
+  it("reuses the row a hash names though its declared size differs from the stored one", async () => {
     const { projectId, cookie, studioId, userId } = await seedEditor();
     const hash = crypto.randomBytes(32).toString("hex");
     await registerAsset(studioId, userId, hash, 40 * 1024 * 1024);
 
-    // The hash is the client's claim about content it has not sent. Matching
-    // it against a row of a different length would hand back somebody else's
-    // file, so the mismatch falls through to a real upload.
     const res = await requestTicket(
       cookie,
       body({ project_id: projectId, client_hash: hash, size: 40 * 1024 * 1024 + 1 }),
     );
 
-    expect(res.status).toBe(201);
+    expect(res.status).toBe(200);
     const payload = (await res.json()) as {
       data: { ticket?: string; alreadyExists?: boolean };
     };
-    expect(payload.data.alreadyExists).toBeUndefined();
-    expect(typeof payload.data.ticket).toBe("string");
+    expect(payload.data.alreadyExists).toBe(true);
+    expect(payload.data.ticket).toBeUndefined();
   });
 
   it("dedups against the PROJECT's studio, not the uploader's own", async () => {

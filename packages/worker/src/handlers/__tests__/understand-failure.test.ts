@@ -28,7 +28,7 @@ describe("what an address that yielded nothing is stored as", () => {
     ["unreachable", "source_unreachable"],
     ["unsupported-type", "understand_unsupported_type"],
     ["too-large", "understand_over_cap"],
-    ["slow", "source_too_slow"],
+    ["slow", "source_cut_off"],
     ["empty", "empty"],
   ] as const)("reads %s as %s", (kind, code) => {
     expect(understandFailureCode(new MediaUnavailable(kind, {}))).toBe(code);
@@ -100,7 +100,7 @@ describe("what a failed run's row is given", () => {
   // reader is told it in their own language.
   it("gives a read's failure the code that names it", () => {
     expect(storedFailure("understand", new MediaUnavailable("slow", {}))).toBe(
-      "source_too_slow",
+      "source_cut_off",
     );
   });
 
@@ -155,7 +155,7 @@ describe("what a failed run's row is given", () => {
         new MediaUnavailable("slow", { declaredType: "audio/mp4" }),
         "https://cdn.invalid/upload/2026-09-20/1758_a1b2.m4a",
       ),
-    ).toBe("source_too_slow");
+    ).toBe("source_cut_off");
   });
 });
 

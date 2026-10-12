@@ -25,7 +25,7 @@ vi.mock("@breatic/core", async (importOriginal) => {
   const actual = await importOriginal<typeof coreModule>();
   return {
     ...actual,
-    getWorkerConfig: () => ({ poll_interval: 3_000, billing_timeout: 30_000 }),
+    getWorkerConfig: () => ({ poll_interval: 3_000 }),
     logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
   };
 });

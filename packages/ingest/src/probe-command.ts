@@ -133,6 +133,16 @@ const COVER_SCALE =
 /** What vips writes a preview as. */
 export const PREVIEW_CONTENT_TYPE = "image/webp";
 
+/** The most ffprobe's report on one object may weigh. */
+export const PROBE_MAX_BYTES = 4 * 1024 * 1024;
+
+/**
+ * The most a preview may weigh. The largest preview is 576x16383, and that
+ * size cut from pure noise came to 5,176,264 bytes (inner#1320 round 5); an
+ * ordinary 576-wide frame is around 100 KB.
+ */
+export const PREVIEW_MAX_BYTES = 8 * 1024 * 1024;
+
 /**
  * The one vips call that writes a preview (inner#1320, inner#1339).
  *

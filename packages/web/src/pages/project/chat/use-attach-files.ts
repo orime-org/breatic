@@ -21,10 +21,10 @@ import { useTrayNotice, type TrayNotice } from '@web/stores/chat-attachments';
  * the project's activity feed.
  * @param file - The file.
  * @param projectId - The project the chat is in.
- * @returns The address it was filed under, when the server said.
+ * @returns The address it was filed under.
  * @throws {UploadFailedError} When the upload could not complete.
  */
-async function uploadForChat(file: File, projectId: string): Promise<string | undefined> {
+async function uploadForChat(file: File, projectId: string): Promise<string> {
   return (await uploadMedia(file, { projectId, derived: true })).fileUrl;
 }
 

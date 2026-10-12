@@ -38,7 +38,6 @@ vi.mock("@breatic/core", async (importOriginal) => {
     ...actual,
     getWorkerConfig: () => ({
       poll_interval: 1_000,
-      billing_timeout: 30_000,
     }),
     logger: {
       info: vi.fn(),
@@ -58,7 +57,6 @@ const RESOLVED: ResolvedModel = {
   providerName: "wavespeed",
   baseUrl: "https://api.wavespeed.test/v3",
   apiKey: "ws-key",
-  timeout: 60,
   maxConcurrency: 5,
 };
 

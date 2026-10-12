@@ -81,7 +81,8 @@ function bufferOutput(): { extra: Record<string, unknown> } {
 const PROVIDER_URL = "https://provider.example/tmp/out.png";
 const CANONICAL = "https://our-bucket/image/2026-01-01/canonical.png";
 
-const baseOpts = { taskType: "image", userId: "u1", projectId: "p1", taskId: "t1" };
+const DEADLINE = 1_900_000_000_000;
+const baseOpts = { taskType: "image", userId: "u1", projectId: "p1", taskId: "t1", deadlineAt: DEADLINE };
 
 beforeEach(() => {
   mockUploadBytes.mockReset().mockResolvedValue({ assetId: "a1", fileUrl: CANONICAL });
@@ -104,6 +105,8 @@ describe("persistOutputs — the lane an output takes", () => {
       generationTaskId: "t1",
       contentType: "image/png",
       ext: ".png",
+      // Storing is the last leg of the task, so it runs out when the task does.
+      deadlineAt: DEADLINE,
     });
     // The registered row's canonical, never the key just written: on a dedup
     // hit that key lost and is queued for reclaim, so pinning it would 404.
@@ -129,6 +132,7 @@ describe("persistOutputs — the lane an output takes", () => {
       taskType: "image",
       ext: ".png",
       contentType: "image/png",
+      deadlineAt: DEADLINE,
     });
     // The whole point of lane ③: those bytes never pass through this process.
     expect(mockUploadBytes).not.toHaveBeenCalled();
