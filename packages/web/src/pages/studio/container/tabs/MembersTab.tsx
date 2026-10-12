@@ -2,7 +2,11 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import * as React from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import {
+  useMutation,
+  useMutationState,
+  useQueryClient,
+} from '@tanstack/react-query';
 import { toast } from '@web/lib/toast';
 
 import {
@@ -144,7 +148,9 @@ export function MembersTab({
     onError: (err) => toast.error(errorMessage(err, t)),
   });
 
+  const revokeKey = ['studio', 'revoke-invitation', slug];
   const revokeMutation = useMutation({
+    mutationKey: revokeKey,
     mutationFn: (invitationId: string) =>
       studiosApi.revokeInvitation(slug, invitationId),
     onSuccess: async () => {
@@ -152,6 +158,12 @@ export function MembersTab({
       toast.success(t('studio.container.members.revokeSuccess'));
     },
     onError: (err) => toast.error(errorMessage(err, t)),
+  });
+  // Every invitation whose own revoke is still out — one entry per request,
+  // so revoking a second invitation never ends the first one's wait.
+  const revokingIds = useMutationState({
+    filters: { mutationKey: revokeKey, status: 'pending' },
+    select: (m) => m.state.variables as string,
   });
 
   // A single row's pending flag (disables its menu) — true while a mutation
@@ -313,14 +325,8 @@ export function MembersTab({
                     <Button
                       variant='outline'
                       size='sm'
-                      disabled={
-                        revokeMutation.isPending &&
-                        revokeMutation.variables === inv.invitationId
-                      }
-                      loading={
-                        revokeMutation.isPending &&
-                        revokeMutation.variables === inv.invitationId
-                      }
+                      disabled={revokingIds.includes(inv.invitationId)}
+                      loading={revokingIds.includes(inv.invitationId)}
                       onClick={() => revokeMutation.mutate(inv.invitationId)}
                     >
                       {t('studio.container.members.revoke')}

@@ -1,7 +1,12 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  useMutation,
+  useMutationState,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
 import { Bell } from 'lucide-react';
 import * as React from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -26,6 +31,9 @@ import { EMPTY_RESOLVED } from '@web/data/api/notifications';
 import type { NotificationResolved } from '@web/data/api/notifications';
 import { useTranslation } from '@web/i18n/use-translation';
 import { useCurrentUserStore } from '@web/stores/current-user';
+
+/** Groups single-row mark-read requests so each row can find its own. */
+const MARK_READ_KEY = ['notifications', 'mark-read'] as const;
 
 /**
  * Returns the first two characters of a string, uppercased, for an avatar glyph.
@@ -97,12 +105,19 @@ export function BellMenu(): React.JSX.Element {
   const count = notifications.length;
 
   const markReadMutation = useMutation({
+    mutationKey: MARK_READ_KEY,
     mutationFn: (id: string) => notificationsApi.markRead(id),
     onSuccess: async () => {
       await queryClient.invalidateQueries({
         queryKey: ['notifications', 'unread'],
       });
     },
+  });
+  // Every row whose own mark-read is still out — one entry per request, so
+  // marking a second row never ends the first row's wait.
+  const markingIds = useMutationState({
+    filters: { mutationKey: MARK_READ_KEY, status: 'pending' },
+    select: (m) => m.state.variables as string,
   });
   const markAllReadMutation = useMutation({
     mutationFn: () => notificationsApi.markAllRead(),
@@ -189,10 +204,7 @@ export function BellMenu(): React.JSX.Element {
                     navigate(`/decision?token=${token}`);
                   }}
                   onMarkRead={() => markReadMutation.mutate(n.id)}
-                  pending={
-                    markReadMutation.isPending &&
-                    markReadMutation.variables === n.id
-                  }
+                  pending={markingIds.includes(n.id)}
                 />
               </li>
             ))}

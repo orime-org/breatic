@@ -471,4 +471,30 @@ describe('BellMenu — the mark-read buttons spin while the server answers', () 
       expect(marked).not.toHaveAttribute('aria-disabled');
     },
   );
+
+  it('keeps the first row spinning when a second row is marked read before it answers', async () => {
+    const replyA = deferred<{ ok: true }>();
+    const replyB = deferred<{ ok: true }>();
+    vi.mocked(notificationsApi.markRead).mockImplementation((id) =>
+      id === NEWS_A ? replyA.promise : replyB.promise,
+    );
+    const user = userEvent.setup();
+    setup();
+    await user.click(screen.getByTestId('bell-trigger'));
+    const rowA = await screen.findByTestId(`bell-mark-read-${NEWS_A}`);
+    const rowB = screen.getByTestId(`bell-mark-read-${NEWS_B}`);
+    await user.click(rowA);
+    await waitFor(() => expect(rowA).toHaveAttribute('aria-busy', 'true'));
+    await user.click(rowB);
+
+    await waitFor(() => expect(rowB).toHaveAttribute('aria-busy', 'true'));
+    expect(rowA).toHaveAttribute('aria-busy', 'true');
+
+    replyA.resolve({ ok: true });
+    await waitFor(() => expect(rowA).not.toHaveAttribute('aria-busy'));
+    expect(rowB).toHaveAttribute('aria-busy', 'true');
+
+    replyB.resolve({ ok: true });
+    await waitFor(() => expect(rowB).not.toHaveAttribute('aria-busy'));
+  });
 });

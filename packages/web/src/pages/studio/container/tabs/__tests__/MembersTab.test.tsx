@@ -372,6 +372,49 @@ describe('MembersTab — pending invitations', () => {
     settle();
     await waitFor(() => expect(revoke).not.toHaveAttribute('aria-busy'));
   });
+
+  it('keeps the first Revoke busy when a second invitation is revoked before it answers', async () => {
+    const user = userEvent.setup();
+    const second: PendingInvitationSummary = {
+      ...PENDING,
+      invitationId: 'inv-2',
+      invitedUserId: 'u-eve',
+      name: 'Eve',
+      email: 'eve@x.example',
+    };
+    const settlers: Map<string, () => void> = new Map();
+    vi.mocked(studiosApi.revokeInvitation).mockImplementation(
+      (_slug, invitationId) =>
+        new Promise((resolve) => {
+          settlers.set(invitationId, () => resolve({ ok: true }));
+        }),
+    );
+    renderTab(
+      <MembersTab
+        slug='acme'
+        members={[ADMIN]}
+        studioRole='admin'
+        studioType='team'
+        pendingInvitations={[PENDING, second]}
+      />,
+    );
+    const [revokeA, revokeB] = screen.getAllByRole('button', { name: 'Revoke' });
+    await user.click(revokeA);
+    await waitFor(() => expect(revokeA).toHaveAttribute('aria-busy', 'true'));
+    await user.click(revokeB);
+
+    await waitFor(() => expect(revokeB).toHaveAttribute('aria-busy', 'true'));
+    expect(revokeA).toHaveAttribute('aria-busy', 'true');
+    expect(revokeA).toHaveAttribute('aria-disabled', 'true');
+
+    settlers.get(PENDING.invitationId)?.();
+    await waitFor(() => expect(revokeA).not.toHaveAttribute('aria-busy'));
+    expect(revokeA).not.toHaveAttribute('aria-disabled');
+    expect(revokeB).toHaveAttribute('aria-busy', 'true');
+
+    settlers.get(second.invitationId)?.();
+    await waitFor(() => expect(revokeB).not.toHaveAttribute('aria-busy'));
+  });
 });
 
 describe('MembersTab — a11y', () => {
