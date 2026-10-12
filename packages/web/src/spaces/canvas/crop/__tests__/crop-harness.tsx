@@ -17,6 +17,7 @@ import { CANVAS_MAX_ZOOM, CANVAS_MIN_ZOOM } from '@web/lib/canvas-zoom';
 import { NodeCropLayer } from '@web/spaces/canvas/crop/NodeCropLayer';
 import { NodeDrawLayer } from '@web/spaces/canvas/mini-tool/NodeDrawLayer';
 import { NodeAdjustLayer } from '@web/spaces/canvas/mini-tool/NodeAdjustLayer';
+import { NodeExpandLayer } from '@web/spaces/canvas/mini-tool/NodeExpandLayer';
 import { NodeGridLayer } from '@web/spaces/canvas/mini-tool/NodeGridLayer';
 
 /** The media's box on screen, and its layout size unless {@link LAYOUT} says otherwise. Mutable. */
@@ -51,6 +52,7 @@ function MediaNode({ id, data }: NodeProps<Node<MediaNodeData>>): React.JSX.Elem
       <NodeDrawLayer nodeId={id} wrapper={wrapper} />
       <NodeGridLayer nodeId={id} wrapper={wrapper} />
       <NodeAdjustLayer nodeId={id} wrapper={wrapper} />
+      <NodeExpandLayer nodeId={id} wrapper={wrapper} />
     </div>
   );
 }
