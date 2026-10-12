@@ -17,6 +17,23 @@ import {
   toolFilledParams,
   toolParamKeys,
 } from "@shared/mini-tools/index.js";
+import type { MiniToolSpec } from "@shared/mini-tools/index.js";
+import { MINI_TOOL_JOB_MAX_OUTPUTS } from "@shared/upload/mini-tool-job.js";
+
+/**
+ * The most results a tool can make: every number param at its max, every list full.
+ * @param tool - The tool.
+ * @returns The result count at those params.
+ */
+function mostOutputsOf(tool: MiniToolSpec): number {
+  const params: Record<string, unknown> = {};
+  for (const param of tool.params) {
+    if (!("kind" in param)) continue;
+    if (param.kind === "number") params[param.key] = param.max;
+    if (param.kind === "list") params[param.key] = Array.from({ length: param.maxItems }, () => param.item.min);
+  }
+  return outputsOf(tool, params).length;
+}
 
 const BATCH_ONE = {
   // The confirmed demo's order: the free and usage-billed edits first, the model tools after.
@@ -60,6 +77,28 @@ describe("MINI_TOOLS registry", () => {
   it("gives every tool at least one output and one modality per output list", () => {
     for (const tool of MINI_TOOLS) {
       expect(outputsOf(tool, defaultParamsOf(tool)).length).toBeGreaterThan(0);
+    }
+  });
+
+  it("keeps every container tool within the outputs one ingest job takes", () => {
+    for (const tool of MINI_TOOLS.filter((t) => t.run.kind === "container")) {
+      expect(mostOutputsOf(tool), tool.id).toBeLessThanOrEqual(MINI_TOOL_JOB_MAX_OUTPUTS);
+    }
+  });
+
+  it("counts a variable tool only off whole-number params from one and off list params", () => {
+    for (const tool of MINI_TOOLS) {
+      const count = tool.outputCount;
+      if (!count) continue;
+      const keys = count.kind === "product" ? count.params : [count.param];
+      for (const key of keys) {
+        const param = tool.params.find((p) => p.key === key);
+        if (count.kind === "product") {
+          expect(param && "kind" in param && param.kind === "number" && Number.isInteger(param.step) && param.min >= 1, `${tool.id}.${key}`).toBe(true);
+        } else {
+          expect(param && "kind" in param && param.kind === "list", `${tool.id}.${key}`).toBe(true);
+        }
+      }
     }
   });
 
