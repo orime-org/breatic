@@ -12,7 +12,9 @@
  *   refund still processing, resolve_outside always passes on a lot that is
  *   not yet booked;
  * - a `refunded` lot with an unresolved failed refund, nothing in flight and
- *   nothing processing passes both refund_again and resolve_outside.
+ *   nothing processing passes resolve_outside, and passes refund_again
+ *   exactly when the amount it would send (the unresolved failed refunds'
+ *   sum) is no more than paid − succeeded − failed (v6 §9).
  *
  * `assessOneShot` rows, top to bottom, first match answers:
  *
@@ -27,8 +29,9 @@
  *    both lists may be empty);
  * 4. a refund pending or requires_action → stripe_blocks refund_in_progress;
  * 5. reject, send_back: any succeeded refund → stripe_blocks refund_succeeded;
- * 6. settle: succeeded sum ≠ confirmed → succeeded_sum_changed; nothing
- *    succeeded → nothing_refunded; short of paid without acceptPartial →
+ * 6. settle and resolve_outside: succeeded sum ≠ confirmed →
+ *    succeeded_sum_changed; settle also: nothing succeeded →
+ *    nothing_refunded; short of paid without acceptPartial →
  *    partial_not_accepted;
  * 7. proceed.
  */
@@ -289,7 +292,13 @@ describe("assessOneShot: resolve_outside on a refunded lot (unchanged)", () => {
 
   it("proceeds when the named ids are exactly the unresolved failed refunds", () => {
     expect(
-      assessOneShot(oneShot("resolve_outside", "refunded", { refunds: [failedLater], failedRefundIds: ["re_later"] })),
+      assessOneShot(
+        oneShot("resolve_outside", "refunded", {
+          refunds: [failedLater],
+          failedRefundIds: ["re_later"],
+          confirmedSucceededCents: 0,
+        }),
+      ),
     ).toEqual(PROCEED);
   });
 
@@ -324,6 +333,7 @@ describe("assessOneShot: resolve_outside on a refunded lot (unchanged)", () => {
         oneShot("resolve_outside", "refunded", {
           refunds: [failedLater, refund("re_p", "pending", 5)],
           failedRefundIds: ["re_later"],
+          confirmedSucceededCents: 0,
         }),
       ),
     ).toEqual(stripeBlocks("refund_in_progress"));
@@ -333,7 +343,9 @@ describe("assessOneShot: resolve_outside on a refunded lot (unchanged)", () => {
 describe("assessOneShot: resolve_outside on a lot not yet booked (§5.3, refund_pending and refunding)", () => {
   for (const lifecycle of ["refund_pending", "refunding"] as const) {
     it(`${lifecycle} with nothing on Stripe proceeds with an empty list`, () => {
-      expect(assessOneShot(oneShot("resolve_outside", lifecycle, { failedRefundIds: [] }))).toEqual(PROCEED);
+      expect(
+        assessOneShot(oneShot("resolve_outside", lifecycle, { failedRefundIds: [], confirmedSucceededCents: 0 })),
+      ).toEqual(PROCEED);
     });
 
     it(`${lifecycle} proceeds when the named ids are every unanswered failed or canceled refund, succeeded once or not`, () => {
@@ -347,6 +359,7 @@ describe("assessOneShot: resolve_outside on a lot not yet booked (§5.3, refund_
               refund("re_done", "failed", 70, { resolvedByOperationId: RESOLVER }),
             ],
             failedRefundIds: ["re_c", "re_own", "re_never"],
+            confirmedSucceededCents: 0,
           }),
         ),
       ).toEqual(PROCEED);
@@ -358,6 +371,7 @@ describe("assessOneShot: resolve_outside on a lot not yet booked (§5.3, refund_
           oneShot("resolve_outside", lifecycle, {
             refunds: [refund("re_ok", "succeeded", 400), refund("re_f", "failed", 600, { everSucceeded: true })],
             failedRefundIds: ["re_f"],
+            confirmedSucceededCents: 400,
           }),
         ),
       ).toEqual(PROCEED);
@@ -384,6 +398,60 @@ describe("assessOneShot: resolve_outside on a lot not yet booked (§5.3, refund_
       expect(
         assessOneShot(oneShot("resolve_outside", lifecycle, { refunds: [refund("re_p", "pending", 5)], failedRefundIds: [] })),
       ).toEqual(stripeBlocks("refund_in_progress"));
+    });
+  }
+});
+
+describe("assessOneShot: resolve_outside checks the succeeded sum the operator confirmed (v6 §5.3, finding [8])", () => {
+  const failedLater = refund("re_later", "failed", 300, { everSucceeded: true });
+
+  for (const lifecycle of ["refunded", "refunding", "refund_pending"] as const) {
+    it(`${lifecycle}: a succeeded refund that landed after the confirmation is succeeded_sum_changed; the confirmed sum proceeds`, () => {
+      const base = {
+        refunds: [failedLater, refund("re_late", "succeeded", 200, { operationId: null })],
+        failedRefundIds: ["re_later"],
+      };
+      expect(assessOneShot(oneShot("resolve_outside", lifecycle, { ...base, confirmedSucceededCents: 0 }))).toEqual(
+        stripeBlocks("succeeded_sum_changed"),
+      );
+      expect(assessOneShot(oneShot("resolve_outside", lifecycle, { ...base, confirmedSucceededCents: 200 }))).toEqual(
+        PROCEED,
+      );
+    });
+
+    it(`${lifecycle}: a confirmed sum higher than Stripe's is succeeded_sum_changed`, () => {
+      expect(
+        assessOneShot(
+          oneShot("resolve_outside", lifecycle, {
+            refunds: [failedLater],
+            failedRefundIds: ["re_later"],
+            confirmedSucceededCents: 300,
+          }),
+        ),
+      ).toEqual(stripeBlocks("succeeded_sum_changed"));
+    });
+
+    it(`${lifecycle}: is judged after refund_in_progress and after failed_refunds_changed`, () => {
+      const refunds = [failedLater, refund("re_late", "succeeded", 200), refund("re_p", "pending", 5)];
+      expect(
+        assessOneShot(
+          oneShot("resolve_outside", lifecycle, { refunds, failedRefundIds: ["re_later"], confirmedSucceededCents: 0 }),
+        ),
+      ).toEqual(stripeBlocks("refund_in_progress"));
+      expect(
+        assessOneShot(
+          oneShot("resolve_outside", lifecycle, { refunds, failedRefundIds: ["re_other"], confirmedSucceededCents: 0 }),
+        ),
+      ).toEqual(stripeBlocks("failed_refunds_changed"));
+      expect(
+        assessOneShot(
+          oneShot("resolve_outside", lifecycle, {
+            refunds: refunds.slice(0, 2),
+            failedRefundIds: ["re_later"],
+            confirmedSucceededCents: 0,
+          }),
+        ),
+      ).toEqual(stripeBlocks("succeeded_sum_changed"));
     });
   }
 });
@@ -446,6 +514,19 @@ function passingExits(state: {
   return exits.filter((e) =>
     e === "retry" || e === "refund_again" ? createPasses(e) : oneShotPasses(e),
   );
+}
+
+/**
+ * Whether refund_again's amount — the unresolved failed refunds' sum — fits
+ * what Stripe will still refund: paid − succeeded − failed (v6 §5.2, §9).
+ * @param lifecycle - The lot's state.
+ * @param refunds - The payment's refund copies.
+ * @returns True when Stripe could take it.
+ */
+function refundAgainFits(lifecycle: CreditLotLifecycle, refunds: readonly RefundCopy[]): boolean {
+  const sum = (f: (r: RefundCopy) => boolean) => refunds.filter(f).reduce((n, r) => n + r.amountCents, 0);
+  const amount = pickUnresolvedFailedRefunds(lifecycle, refunds).reduce((n, r) => n + r.amountCents, 0);
+  return amount <= PAID - sum((r) => r.status === "succeeded") - sum((r) => r.status === "failed");
 }
 
 const originalFailed = refund("re_original", "failed", PAID, { everSucceeded: true });
@@ -522,8 +603,11 @@ describe("§9: every needs_attention has an exit the production judges accept", 
     const passing = passingExits({ lifecycle: state.lifecycle, refunds: state.refunds, ops });
     expect(passing.length).toBeGreaterThan(0);
     if (state.lifecycle === "refunded") {
-      // With an unresolved failed refund and nothing processing, both exits.
-      expect(passing).toEqual(["refund_again", "resolve_outside"]);
+      // With an unresolved failed refund and nothing processing,
+      // resolve_outside always; refund_again only when Stripe could take it.
+      expect(passing).toEqual(
+        refundAgainFits(state.lifecycle, state.refunds) ? ["refund_again", "resolve_outside"] : ["resolve_outside"],
+      );
     } else {
       // Nothing processing: resolve_outside always passes on a lot not yet booked.
       expect(passing).toContain("resolve_outside");
@@ -572,7 +656,7 @@ const settledOpsArb = fc.array(
 );
 
 describe("§9 properties over the production judges", () => {
-  it("a refunded lot with an unresolved failed refund, nothing processing and nothing in flight passes both refund_again and resolve_outside", () => {
+  it("a refunded lot with an unresolved failed refund, nothing processing and nothing in flight passes resolve_outside, and refund_again exactly when its amount fits", () => {
     fc.assert(
       fc.property(
         copiesArb,
@@ -582,7 +666,9 @@ describe("§9 properties over the production judges", () => {
         (others, amount, status, rawOps) => {
           const refunds = [...others, refund("re_unresolved", status, amount, { everSucceeded: true })];
           const ops = rawOps.map((o) => op(o.status, o.minute, o.closed));
-          expect(passingExits({ lifecycle: "refunded", refunds, ops })).toEqual(["refund_again", "resolve_outside"]);
+          expect(passingExits({ lifecycle: "refunded", refunds, ops })).toEqual(
+            refundAgainFits("refunded", refunds) ? ["refund_again", "resolve_outside"] : ["resolve_outside"],
+          );
         },
       ),
       { numRuns: 300 },
@@ -597,6 +683,7 @@ describe("§9 properties over the production judges", () => {
         settledOpsArb,
         (lifecycle, refunds, rawOps) => {
           const unresolvedIds = pickUnresolvedFailedRefunds(lifecycle, refunds).map((r) => r.stripeRefundId);
+          const succeededCents = refunds.filter((r) => r.status === "succeeded").reduce((n, r) => n + r.amountCents, 0);
           expect(
             assessOneShot({
               kind: "resolve_outside",
@@ -605,6 +692,7 @@ describe("§9 properties over the production judges", () => {
               ops: rawOps.map((o) => op(o.status, o.minute, o.closed)),
               refunds,
               failedRefundIds: unresolvedIds,
+              confirmedSucceededCents: succeededCents,
             }),
           ).toEqual(PROCEED);
         },

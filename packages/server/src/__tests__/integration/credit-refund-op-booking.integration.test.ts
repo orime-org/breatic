@@ -24,6 +24,9 @@
  *    `needs_attention/state_mismatch`, `attention_detail` names the state
  *    found, the lot is not touched, one event row is appended, and the
  *    transaction commits instead of throwing.
+ * 4. A refund_again that ends on E6 writes `resolved_by_operation_id` = itself
+ *    on its own refund (v6 §6.2, §9): the debt stays with the failed refunds
+ *    it was sent for, so its own refund is never counted a second time.
  */
 
 import { describe, it, expect, vi } from "vitest";
@@ -93,6 +96,7 @@ function e1(lot: SeededLot, kind: OpKind, extra: Partial<NewOperation> = {}): Op
       reason: "booking rule",
       ...extra,
     },
+    actor: "request",
   };
 }
 
@@ -145,6 +149,7 @@ describe("booking answers for the refunds that had already failed (§5.5)", () =
         type: "E2",
         refund: refundObject(own, "succeeded", 1080, approve.id),
         leaseToken: approve.leaseToken!,
+        actor: "loop",
       }),
     );
 
@@ -181,7 +186,7 @@ describe("booking answers for the refunds that had already failed (§5.5)", () =
     await seedCopy(suite.sql, lot, { id: retryRefund, amountCents: 780, status: "succeeded", operationId: retry.id });
 
     await inTx((tx) =>
-      transitionOperation(tx, { id: retry.id }, { type: "E2", refund: refundObject(retryRefund, "succeeded", 780, retry.id) }),
+      transitionOperation(tx, { id: retry.id }, { type: "E2", refund: refundObject(retryRefund, "succeeded", 780, retry.id), actor: "loop" }),
     );
 
     await expectBooked(suite.sql, lot, retry.id, { refundId: retryRefund, settledCents: 1080, notify: true, amountCents: 1080 });
@@ -361,8 +366,8 @@ describe("state_mismatch: approve or retry finding a lot that is not refunding (
       const lease = seeded.leaseToken ? { leaseToken: seeded.leaseToken } : {};
       const event: OperationEvent =
         type === "E2"
-          ? { type, refund: refundObject(own, "succeeded", 1080, seeded.id), ...lease }
-          : { type, refund: refundObject(own, "failed", 1080, seeded.id), ...lease };
+          ? { type, refund: refundObject(own, "succeeded", 1080, seeded.id), ...lease, actor: "loop" }
+          : { type, refund: refundObject(own, "failed", 1080, seeded.id), ...lease, actor: "loop" };
 
       const returned = await inTx((tx) => transitionOperation(tx, { id: seeded.id }, event));
 
@@ -382,4 +387,55 @@ describe("state_mismatch: approve or retry finding a lot that is not refunding (
       ]);
     },
   );
+});
+
+describe("a refund_again that ends on E6 answers for its own refund (v6 §6.2, finding [39])", () => {
+  it("started: its refund was seen succeeded and then failed before it was judged → stripe_declined; its own refund resolved by it; only the original stays unresolved", async () => {
+    const lot = await seedRefundLot(suite.sql, "refunded");
+    // Booked short on purpose on a 300 refund that failed later.
+    await seedOperation(suite.sql, lot, { kind: "settle", status: "succeeded", result: "refunded", notify: false, createdSecondsAgo: 900 });
+    const original = reId("original");
+    await seedCopy(suite.sql, lot, { id: original, amountCents: 300, status: "failed", everSucceeded: true });
+    const again = await seedOperation(suite.sql, lot, {
+      kind: "refund_again",
+      status: "started",
+      failedRefundIds: [original],
+      refundAmountCents: 300,
+      notify: true,
+      firstCalledHoursAgo: 1,
+      attemptCount: 1,
+    });
+    // While it was still started, webhooks copied its refund as succeeded,
+    // then as failed (pm_card_refundFail behaviour).
+    const own = reId("again_own");
+    await seedCopy(suite.sql, lot, { id: own, amountCents: 300, status: "failed", everSucceeded: true, operationId: again.id });
+    expect(await unresolvedIds(lot)).toEqual([original, own].sort());
+    const before = await worldOf(suite.sql, lot);
+
+    await inTx((tx) =>
+      transitionOperation(tx, { id: again.id }, {
+        type: "E6",
+        refund: refundObject(own, "failed", 300, again.id),
+        leaseToken: again.leaseToken!,
+      }),
+    );
+
+    expect(await readOp(suite.sql, again.id)).toMatchObject({
+      status: "needs_attention",
+      attention_reason: "stripe_declined",
+      stripe_refund_id: own,
+    });
+    const by = await resolvers(lot);
+    expect(by.get(own)).toBe(again.id);
+    expect(by.get(original)).toBeNull();
+    expect(await unresolvedIds(lot)).toEqual([original]);
+    const after = await worldOf(suite.sql, lot);
+    expect(after.lot).toEqual(before.lot);
+    expect(after.ledger).toEqual(before.ledger);
+    expect(after.bells).toEqual(before.bells);
+    expect(after.mails).toEqual(before.mails);
+    expect(await newEventsOn(suite.sql, lot, before, again.id)).toEqual([
+      { event: EVENT_NAME.E6, from_status: "started", to_status: "needs_attention" },
+    ]);
+  });
 });

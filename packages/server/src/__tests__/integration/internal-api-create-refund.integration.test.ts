@@ -11,7 +11,8 @@
  * phase 1 (judge and insert the disposition), phase 2 (`refunds.create`
  * under `credit-refund-<id>`), phase 3 (classify the answer). A refusal at
  * the judgement table answers 409 and stores no disposition, so the key can
- * be used again.
+ * be used again; the refunds step 0 read are still copied, and a disposition
+ * that copy re-judged stays re-judged (v6 §4.6, §6.4).
  *
  * Response shapes asserted here (camelCase of the §5.1 columns):
  *   disposition snapshot — `{ id, lotId, paymentId, kind, status, result,
@@ -139,6 +140,21 @@ async function expectBuyerToldRefunded(lot: SeededLot, opId: string): Promise<vo
 }
 
 /**
+ * The dispositions and resend rows holding a key.
+ * @param key - The key.
+ * @returns Counts in both tables.
+ */
+async function holdersOf(key: string): Promise<{ ops: number; mails: number }> {
+  const [ops] = await suite.sql<{ n: number }[]>`
+    SELECT count(*)::int AS n FROM credit_refund_operations WHERE idempotency_key = ${key}
+  `;
+  const [mails] = await suite.sql<{ n: number }[]>`
+    SELECT count(*)::int AS n FROM refund_mail_outbox WHERE idempotency_key = ${key}
+  `;
+  return { ops: ops!.n, mails: mails!.n };
+}
+
+/**
  * The disposition ids of a lot, oldest first.
  * @param lot - The lot.
  * @returns The ids.
@@ -204,7 +220,7 @@ describe("GET /internal/v1/credit-lots/:lotId/refund — preview judges the oper
     expect(res.json.action).toMatchObject({ kind: "retry", outcome: "blocked", code: "operation_in_progress" });
   });
 
-  it("refunded with a refund that succeeded and has since failed → refund_again for exactly that refund's amount; the copy keeps ever_succeeded", async () => {
+  it("refunded whose whole refund succeeded and has since failed → refund_again blocked by refund_failed (Stripe keeps the failed amount); the copy keeps ever_succeeded", async () => {
     const lot = await seedRefundLot(suite.sql, "refunded");
     const approve = await seedOperation(suite.sql, lot, { kind: "approve", status: "succeeded", result: "refunded" });
     const failedLater = reId("later");
@@ -220,7 +236,12 @@ describe("GET /internal/v1/credit-lots/:lotId/refund — preview judges the oper
     expect(res.json.refunds).toEqual([
       expect.objectContaining({ stripeRefundId: failedLater, status: "failed", madeByProduct: true }),
     ]);
-    expect(res.json.action).toMatchObject({ kind: "refund_again", outcome: "create_refund", amountCents: PAID_CENTS });
+    expect(res.json.action).toMatchObject({
+      kind: "refund_again",
+      outcome: "blocked",
+      code: "stripe_blocks",
+      reason: "refund_failed",
+    });
     expect(await copiesOf(suite.sql, lot.lotId)).toEqual([
       expect.objectContaining({ stripe_refund_id: failedLater, status: "failed", ever_succeeded: true, resolved_by_operation_id: null }),
     ]);
@@ -524,6 +545,82 @@ describe("POST …/refund/approve", () => {
     });
   });
 
+  describe("a refused request still copies what it read (v6 §4.6, §6.4, findings [2][42])", () => {
+    it("409 unconfirmed_external_refund: the succeeded external refund it read has a copy with ever_succeeded; no disposition, no key", async () => {
+      const external = reId("ext_unseen");
+      const lot = await lotOnStripe("refund_pending", [refundObject(external, "succeeded", 300)]);
+      const before = await worldOf(suite.sql, lot);
+      const key = freshKey("approve");
+
+      const res = await post(paths.approve(lot.lotId), { ...body, confirmedRefundIds: [] }, key);
+
+      expect(res.status).toBe(409);
+      expect(errorShape(res.json)).toEqual({ code: "stripe_blocks", reason: "unconfirmed_external_refund", detailTranslated: true });
+      expect(await copiesOf(suite.sql, lot.lotId)).toEqual([
+        expect.objectContaining({ stripe_refund_id: external, operation_id: null, status: "succeeded", ever_succeeded: true }),
+      ]);
+      expect(exceptCopies(await worldOf(suite.sql, lot))).toEqual(exceptCopies(before));
+      expect(await holdersOf(key)).toEqual({ ops: 0, mails: 0 });
+      expect(fakeStripe.createCalls).toEqual([]);
+    });
+
+    it("409 refund_in_progress: every refund it read is copied, the processing one and a succeeded one", async () => {
+      const pending = reId("pend");
+      const done = reId("done");
+      const lot = await lotOnStripe("refund_pending", [
+        refundObject(pending, "pending", 200),
+        refundObject(done, "succeeded", 100),
+      ]);
+      const key = freshKey("approve");
+
+      const res = await post(paths.approve(lot.lotId), { ...body, confirmedRefundIds: [done] }, key);
+
+      expect(res.status).toBe(409);
+      expect(res.json.reason).toBe("refund_in_progress");
+      expect((await copiesOf(suite.sql, lot.lotId)).map((c) => [c.stripe_refund_id, c.status, c.ever_succeeded]).sort()).toEqual(
+        [
+          [pending, "pending", false],
+          [done, "succeeded", true],
+        ].sort(),
+      );
+      expect(await opIdsOf(lot)).toEqual([]);
+      expect(await holdersOf(key)).toEqual({ ops: 0, mails: 0 });
+    });
+
+    it("a retry refused because its read finished the awaiting approval: the approval stays booked, the retry stores nothing", async () => {
+      // The approval waits on its refund; Stripe now says it succeeded for
+      // the whole payment. The retry's read re-judges the approval (E2,
+      // booked), which leaves the retry nothing to do: 409.
+      const own = reId("own_done");
+      const lot = await seedRefundLot(suite.sql, "refunding");
+      const waiting = await seedOperation(suite.sql, lot, {
+        kind: "approve",
+        status: "awaiting_stripe",
+        stripeRefundId: own,
+        firstCalledHoursAgo: 1,
+        attemptCount: 1,
+      });
+      await seedCopy(suite.sql, lot, { id: own, amountCents: PAID_CENTS, status: "pending", operationId: waiting.id });
+      fakeStripe.register(lot.paymentIntentId, PAID_CENTS, [refundObject(own, "succeeded", PAID_CENTS, waiting.id)]);
+      const key = freshKey("retry");
+
+      const res = await post(paths.retry(lot.lotId), { reason: "Try again.", confirmedRefundIds: [] }, key);
+
+      expect(res.status).toBe(409);
+      expect(["lot_state_changed", "operation_in_progress"]).toContain(res.json.code);
+      expect(await readOp(suite.sql, waiting.id)).toMatchObject({ status: "succeeded", result: "refunded" });
+      await expectBookedOn(lot, own);
+      await expectBuyerToldRefunded(lot, waiting.id);
+      expect(await copiesOf(suite.sql, lot.lotId)).toEqual([
+        expect.objectContaining({ stripe_refund_id: own, status: "succeeded", ever_succeeded: true }),
+      ]);
+      expect(await opIdsOf(lot)).toEqual([waiting.id]);
+      expect(await holdersOf(key)).toEqual({ ops: 0, mails: 0 });
+      expect(fakeStripe.createCalls).toEqual([]);
+      await mailsSettled(suite.sql, lot);
+    });
+  });
+
   it("two approvals of one lot under different keys at once: exactly one runs, one refund is created, the other is 409", async () => {
     const lot = await lotOnStripe("refund_pending");
 
@@ -642,20 +739,28 @@ describe("POST …/refund/retry", () => {
 
 describe("POST …/refund/refund-again", () => {
   /**
-   * A refunded lot paid back by two refunds: an external one still
-   * succeeded, and the product's own one that has since failed.
+   * A refunded lot settled short on purpose (acceptPartial) on two refunds:
+   * an external one of 400 still succeeded, and one of 300 that has since
+   * failed. Stripe can still refund 1080 − 400 − 300 = 380, so a refund of
+   * the failed 300 fits (v6 §5.2).
    * @returns The lot and the two refund ids.
    */
   async function refundedWithFailedRefund() {
     const lot = await seedRefundLot(suite.sql, "refunded");
-    const approve = await seedOperation(suite.sql, lot, { kind: "approve", status: "succeeded", result: "refunded", createdSecondsAgo: 120 });
+    await seedOperation(suite.sql, lot, {
+      kind: "settle",
+      status: "succeeded",
+      result: "refunded",
+      notify: false,
+      createdSecondsAgo: 120,
+    });
     const kept = reId("kept");
     const failed = reId("failed");
     await seedCopy(suite.sql, lot, { id: kept, amountCents: 400, status: "succeeded" });
-    await seedCopy(suite.sql, lot, { id: failed, amountCents: 680, status: "succeeded", operationId: approve.id });
+    await seedCopy(suite.sql, lot, { id: failed, amountCents: 300, status: "succeeded" });
     fakeStripe.register(lot.paymentIntentId, PAID_CENTS, [
       refundObject(kept, "succeeded", 400),
-      refundObject(failed, "failed", 680, approve.id),
+      refundObject(failed, "failed", 300),
     ]);
     return { lot, kept, failed };
   }
@@ -671,17 +776,17 @@ describe("POST …/refund/refund-again", () => {
     expect(res.json).toMatchObject({ kind: "refund_again", status: "succeeded", result: "refunded", notify: true });
     expect(fakeStripe.createCalls).toEqual([
       {
-        params: { payment_intent: lot.paymentIntentId, amount: 680, metadata: { refund_operation_id: opId } },
+        params: { payment_intent: lot.paymentIntentId, amount: 300, metadata: { refund_operation_id: opId } },
         options: createOptions(opId),
       },
     ]);
     const created = fakeStripe.refundsOf(lot.paymentIntentId).find((r) => r.id !== kept && r.id !== failed)!;
     expect(res.json.stripeRefundId).toBe(created.id);
-    expect(await readOp(suite.sql, opId)).toMatchObject({ failed_refund_ids: [failed], refund_amount_cents: 680 });
+    expect(await readOp(suite.sql, opId)).toMatchObject({ failed_refund_ids: [failed], refund_amount_cents: 300 });
     const copies = await copiesOf(suite.sql, lot.lotId);
     expect(copies.find((c) => c.stripe_refund_id === failed)).toMatchObject({ status: "failed", ever_succeeded: true, resolved_by_operation_id: opId });
     expect(copies.find((c) => c.stripe_refund_id === kept)).toMatchObject({ resolved_by_operation_id: null });
-    expect(copies.find((c) => c.stripe_refund_id === created.id)).toMatchObject({ operation_id: opId, amount_cents: 680, status: "succeeded" });
+    expect(copies.find((c) => c.stripe_refund_id === created.id)).toMatchObject({ operation_id: opId, amount_cents: 300, status: "succeeded" });
     expect(await ledgerOf(suite.sql, lot.lotId)).toEqual(ledgerBefore);
     expect(await readLot(suite.sql, lot.lotId)).toEqual({ lifecycle: "refunded", remaining: "0.000000", attempts: 0 });
     await expectBuyerToldRefunded(lot, opId);
@@ -697,6 +802,33 @@ describe("POST …/refund/refund-again", () => {
     expect(errorShape(res.json)).toEqual({ code: "stripe_blocks", reason: "failed_refunds_changed", detailTranslated: true });
     expect(exceptCopies(await worldOf(suite.sql, lot))).toEqual(exceptCopies(before));
     expect(fakeStripe.createCalls).toEqual([]);
+  });
+
+  it("an amount above what Stripe can still refund is 409 stripe_blocks refund_failed, creates nothing, and leaves the refund unresolved (v6 §5.2)", async () => {
+    // The whole payment was refunded and that refund failed later
+    // (pm_card_refundFail): 1080 > 1080 − 0 − 1080.
+    const lot = await seedRefundLot(suite.sql, "refunded");
+    const approve = await seedOperation(suite.sql, lot, { kind: "approve", status: "succeeded", result: "refunded", createdSecondsAgo: 120 });
+    const failed = reId("failed_whole");
+    await seedCopy(suite.sql, lot, { id: failed, amountCents: PAID_CENTS, status: "succeeded", operationId: approve.id });
+    fakeStripe.register(lot.paymentIntentId, PAID_CENTS, [refundObject(failed, "failed", PAID_CENTS, approve.id)]);
+    const key = freshKey("again");
+
+    const res = await post(paths.refundAgain(lot.lotId), { reason: "Card was replaced.", failedRefundIds: [failed], notify: true }, key);
+
+    expect(res.status).toBe(409);
+    expect(errorShape(res.json)).toEqual({ code: "stripe_blocks", reason: "refund_failed", detailTranslated: true });
+    expect(fakeStripe.createCalls).toEqual([]);
+    expect(await opIdsOf(lot)).toEqual([approve.id]);
+    expect(await holdersOf(key)).toEqual({ ops: 0, mails: 0 });
+    expect(await copiesOf(suite.sql, lot.lotId)).toEqual([
+      expect.objectContaining({ stripe_refund_id: failed, status: "failed", ever_succeeded: true, resolved_by_operation_id: null }),
+    ]);
+
+    // When the amount fits (booked short on purpose), the preview still offers it.
+    const fits = await refundedWithFailedRefund();
+    const preview = await call(suite.baseUrl, paths.preview(fits.lot.lotId));
+    expect(preview.json.action).toMatchObject({ kind: "refund_again", outcome: "create_refund", amountCents: 300 });
   });
 
   it("a refunded lot with no unresolved failed refund is 409 lot_state_changed", async () => {

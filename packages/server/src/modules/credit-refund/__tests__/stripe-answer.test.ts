@@ -33,8 +33,6 @@ import {
 } from "@server/modules/credit-refund/stripe-answer.js";
 import type { StripeRefundStatus } from "@server/modules/credit-refund/types.js";
 
-const REFUND = (status: StripeRefundStatus) => ({ id: "re_123", status });
-
 /** A Stripe error answer with only the given fields set. */
 const err = (
   httpStatus: number,
@@ -44,20 +42,14 @@ const err = (
 const FIRST = 0;
 const LATER = 1;
 
-describe("classifyCreateAnswer: a refund object goes by its status", () => {
-  it.each<StripeRefundStatus>(["succeeded", "pending", "requires_action", "failed", "canceled"])(
-    "hands back a %s refund for status classification",
-    (status) => {
-      expect(classifyCreateAnswer({ kind: "refund", refund: REFUND(status) }, FIRST)).toEqual({
-        kind: "refund",
-        refund: { id: "re_123", status },
-      });
-      expect(classifyCreateAnswer({ kind: "refund", refund: REFUND(status) }, LATER)).toEqual({
-        kind: "refund",
-        refund: { id: "re_123", status },
-      });
-    },
-  );
+// The answer and the verdict only say "a refund came back": the executor
+// classifies the refund object createRefund returned beside the answer, so
+// neither carries a copy of it that nothing reads.
+describe("classifyCreateAnswer: a refund object is handed to the executor's status classification", () => {
+  it("answers { kind: refund } and nothing else, first request or not", () => {
+    expect(classifyCreateAnswer({ kind: "refund" }, FIRST)).toStrictEqual({ kind: "refund" });
+    expect(classifyCreateAnswer({ kind: "refund" }, LATER)).toStrictEqual({ kind: "refund" });
+  });
 });
 
 describe("classifyCreateAnswer: Stripe-Should-Retry true comes first", () => {

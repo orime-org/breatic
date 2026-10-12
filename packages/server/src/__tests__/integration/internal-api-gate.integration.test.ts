@@ -99,6 +99,7 @@ vi.mock("@server/infra/stripe.js", async () => {
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { getRedis } from "@breatic/core";
+import { t } from "@breatic/shared";
 import { getRateLimit } from "@server/config/rate-limits.js";
 import { fakeStripe } from "./fake-stripe-refunds.js";
 import {
@@ -113,7 +114,7 @@ import {
   paths,
   useInternalApp,
 } from "./internal-api-harness.js";
-import { PAID_CENTS, seedRefundLot, worldOf } from "./credit-refund-fixtures.js";
+import { PAID_CENTS, reId, refundObject, seedRefundLot, worldOf } from "./credit-refund-fixtures.js";
 
 // Registered before the suite's own hooks, so the fault mode is reset before
 // the shared beforeEach clears the rate-limit keys through the same client.
@@ -488,12 +489,28 @@ describe("body contract of every write endpoint (§4.5, §4.6)", () => {
     expect(fakeStripe.listCalls).toEqual([]);
   });
 
-  it.each(writes)("%s: a JSON body that fails the schema is 422 invalid_body", async (_name, path) => {
+  // The detail is the internal API's own sentence, not the public app's
+  // "Invalid input" that validate() throws with (§4.6).
+  it.each(writes)("%s: a JSON body that fails the schema is 422 invalid_body with the server.internal.invalid_body sentence", async (_name, path) => {
     const res = await call(running.baseUrl, path, { body: { unexpected: true }, idempotencyKey: freshKey("bad") });
 
     expect(res.status).toBe(422);
-    expect(res.json.code).toBe("invalid_body");
+    expect(res.json).toEqual({ code: "invalid_body", detail: t("server.internal.invalid_body") });
+    expect(res.json.detail).not.toBe(t("server.error.validation"));
     expect(fakeStripe.listCalls).toEqual([]);
+  });
+
+  // Whatever maps the schema failure to the internal sentence must leave the
+  // key check's own sentence alone.
+  it("a valid body with a malformed idempotency key is 422 invalid_body with the server.internal.invalid_idempotency_key sentence", async () => {
+    const lot = await pendingLot();
+    const before = await worldOf(sql, lot);
+
+    const res = await call(running.baseUrl, paths.reject(lot.lotId), { body: REJECT_BODY, idempotencyKey: "has a space" });
+
+    expect(res.status).toBe(422);
+    expect(res.json).toEqual({ code: "invalid_body", detail: t("server.internal.invalid_idempotency_key") });
+    expect(await worldOf(sql, lot)).toEqual(before);
   });
 });
 
@@ -530,16 +547,19 @@ describe("one structured log line per request (acceptance #14)", () => {
     await mailsSettled(sql, lot);
 
     expect(res.status).toBe(200);
-    expect(await theOneLine()).toMatchObject({
+    const line = await theOneLine();
+    expect(line).toMatchObject({
       adminId: ADMIN,
       method: "POST",
       path: paths.reject(lot.lotId),
       idempotencyKey: key,
       status: 200,
+      reason: REJECT_BODY.reason,
     });
+    expect(line["code"]).toBeUndefined();
   });
 
-  it("an accepted read logs no idempotency key", async () => {
+  it("an accepted read logs no idempotency key, no reason and no code", async () => {
     const lot = await pendingLot();
 
     const res = await call(running.baseUrl, `${paths.preview(lot.lotId)}?probe=1`);
@@ -548,9 +568,11 @@ describe("one structured log line per request (acceptance #14)", () => {
     const line = await theOneLine();
     expect(line).toMatchObject({ adminId: ADMIN, method: "GET", path: paths.preview(lot.lotId), status: 200 });
     expect(line["idempotencyKey"]).toBeUndefined();
+    expect(line["reason"]).toBeUndefined();
+    expect(line["code"]).toBeUndefined();
   });
 
-  it("an unsigned request is 401 and its line names no admin", async () => {
+  it("an unsigned request is 401 and its line names no admin and no reason, and carries code unauthorized", async () => {
     const key = freshKey("reject");
     const path = paths.reject("00000000-0000-4000-8000-000000000000");
 
@@ -558,11 +580,12 @@ describe("one structured log line per request (acceptance #14)", () => {
 
     expect(res.status).toBe(401);
     const line = await theOneLine();
-    expect(line).toMatchObject({ method: "POST", path, idempotencyKey: key, status: 401 });
+    expect(line).toMatchObject({ method: "POST", path, idempotencyKey: key, status: 401, code: "unauthorized" });
     expect(line["adminId"]).toBeUndefined();
+    expect(line["reason"]).toBeUndefined();
   });
 
-  it("a signed request outside the table is 403 and still logged", async () => {
+  it("a signed request outside the table is 403 and still logged with code forbidden", async () => {
     const key = freshKey("probe");
 
     const res = await call(running.baseUrl, "/internal/v1/health", { body: { reason: "probe" }, idempotencyKey: key });
@@ -574,10 +597,35 @@ describe("one structured log line per request (acceptance #14)", () => {
       path: "/internal/v1/health",
       idempotencyKey: key,
       status: 403,
+      code: "forbidden",
     });
   });
 
-  it("a write refused at a precondition is 409 and still logged", async () => {
+  // Hono answers HEAD with the GET route of the same path, so a HEAD on the
+  // preview path would run the preview (a Stripe read that writes copies).
+  // HEAD is in no row of the table, so it is 403 like any other undeclared
+  // pair. A HEAD answer carries no body on the wire; the line's code is the
+  // body's code.
+  it("a signed HEAD on the preview path is 403, runs no preview and is logged with code forbidden", async () => {
+    const lot = await pendingLot();
+    const before = await worldOf(sql, lot);
+
+    // `call` types only the methods the table uses; HEAD is signed the same way.
+    const res = await call(running.baseUrl, paths.preview(lot.lotId), { method: "HEAD" as unknown as "GET" });
+
+    expect(res.status).toBe(403);
+    expect(fakeStripe.listCalls).toEqual([]);
+    expect(await worldOf(sql, lot)).toEqual(before);
+    expect(await theOneLine()).toMatchObject({
+      adminId: ADMIN,
+      method: "HEAD",
+      path: paths.preview(lot.lotId),
+      status: 403,
+      code: "forbidden",
+    });
+  });
+
+  it("a write refused at a precondition is 409 and still logged with its reason and code lot_state_changed", async () => {
     const lot = await seedRefundLot(sql, "active");
     fakeStripe.register(lot.paymentIntentId, PAID_CENTS);
     const key = freshKey("reject");
@@ -591,26 +639,53 @@ describe("one structured log line per request (acceptance #14)", () => {
       path: paths.reject(lot.lotId),
       idempotencyKey: key,
       status: 409,
+      reason: REJECT_BODY.reason,
+      code: "lot_state_changed",
     });
   });
 
-  it("a write with a malformed body is 422 and still logged", async () => {
+  // A refused write stores nothing (§4.6), so this line is the only place
+  // the operator's reason and the refusal's code are kept.
+  it("a write Stripe blocks is 409 and logged with its reason and code stripe_blocks", async () => {
+    const lot = await seedRefundLot(sql, "refund_pending");
+    fakeStripe.register(lot.paymentIntentId, PAID_CENTS, [refundObject(reId("x"), "pending", 300)]);
+    const key = freshKey("reject");
+
+    const res = await call(running.baseUrl, paths.reject(lot.lotId), { body: REJECT_BODY, idempotencyKey: key });
+
+    expect(res.status).toBe(409);
+    expect(res.json.code).toBe("stripe_blocks");
+    expect(await theOneLine()).toMatchObject({
+      adminId: ADMIN,
+      method: "POST",
+      path: paths.reject(lot.lotId),
+      idempotencyKey: key,
+      status: 409,
+      reason: REJECT_BODY.reason,
+      code: "stripe_blocks",
+    });
+  });
+
+  it("a write with a malformed body is 422 and still logged with code invalid_body and no reason", async () => {
     const lot = await pendingLot();
     const key = freshKey("reject");
 
     const res = await call(running.baseUrl, paths.reject(lot.lotId), { body: { reason: "" }, idempotencyKey: key });
 
     expect(res.status).toBe(422);
-    expect(await theOneLine()).toMatchObject({
+    const line = await theOneLine();
+    expect(line).toMatchObject({
       adminId: ADMIN,
       method: "POST",
       path: paths.reject(lot.lotId),
       idempotencyKey: key,
       status: 422,
+      code: "invalid_body",
     });
+    expect(line["reason"]).toBeUndefined();
   });
 
-  it("a rate-limited request is 429 and its line names no admin", async () => {
+  it("a rate-limited request is 429 and its line names no admin and carries code rate_limited", async () => {
     const { max } = getRateLimit("internal-api");
     const probe = paths.preview("00000000-0000-4000-8000-000000000000");
     for (let i = 0; i < max; i += 1) {
@@ -623,7 +698,7 @@ describe("one structured log line per request (acceptance #14)", () => {
 
     expect(limited.status).toBe(429);
     const line = await theOneLine();
-    expect(line).toMatchObject({ method: "GET", path: probe, status: 429 });
+    expect(line).toMatchObject({ method: "GET", path: probe, status: 429, code: "rate_limited" });
     expect(line["adminId"]).toBeUndefined();
   });
 });

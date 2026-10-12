@@ -197,6 +197,7 @@ describe.each(TERMINALS)("$label", ({ status, make }) => {
         notify: true,
         confirmedSucceededCents: 1080,
       },
+      actor: "request",
     });
   });
 
@@ -224,7 +225,7 @@ describe.each(TERMINALS)("$label", ({ status, make }) => {
 
   it("× E13 leaves everything unchanged and appends one event row", async () => {
     const { lot, opId } = await make();
-    await expectStays(suite.sql, lot, opId, status, { type: "E13" });
+    await expectStays(suite.sql, lot, opId, status, { type: "E13", actor: "loop" });
   });
 
   it("× E15 (an answer under a lease it does not hold) is discarded", async () => {
@@ -238,6 +239,7 @@ describe.each(TERMINALS)("$label", ({ status, make }) => {
         type: "E2",
         refund: refundObject(refundId, "succeeded", 1080, opId),
         leaseToken: randomUUID(),
+        actor: "loop",
       },
       "late_answer",
     );
@@ -263,7 +265,7 @@ describe("succeeded × E14: nothing to close", () => {
       status: "succeeded",
       result: "sent_back",
     });
-    await expectStays(suite.sql, lot, done.id, "succeeded", { type: "E14", closedBy: later.id });
+    await expectStays(suite.sql, lot, done.id, "succeeded", { type: "E14", closedBy: later.id, actor: "request" });
     expect((await readOp(suite.sql, done.id)).attention_closed_at).toBeNull();
   });
 });
@@ -286,7 +288,7 @@ describe("needs_attention × E14: a later disposition finished on this lot", () 
     const before = await worldOf(suite.sql, lot);
 
     const returned = await inTx((tx) =>
-      transitionOperation(tx, { id: open.id }, { type: "E14", closedBy: closer.id }),
+      transitionOperation(tx, { id: open.id }, { type: "E14", closedBy: closer.id, actor: "request" }),
     );
 
     expect(returned).toMatchObject({ id: open.id, status: "needs_attention" });
@@ -333,6 +335,7 @@ describe("needs_attention × E14: a later disposition finished on this lot", () 
     await expectStays(suite.sql, lot, open.id, "needs_attention", {
       type: "E14",
       closedBy: second.id,
+      actor: "request",
     });
     expect((await readOp(suite.sql, open.id)).attention_closed_by).toBe(first.id);
   });

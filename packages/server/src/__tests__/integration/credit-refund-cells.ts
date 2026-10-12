@@ -78,30 +78,30 @@ export function eventOf(
   switch (type) {
     case "E2":
     case "E3":
-      return { type, refund: { ...refund, status: "succeeded" } };
+      return { type, refund: { ...refund, status: "succeeded" }, actor: "loop" };
     case "E4":
-      return { type, refund: { ...refund, status: "succeeded" }, reason: "partial_refund" };
+      return { type, refund: { ...refund, status: "succeeded" }, reason: "partial_refund", actor: "loop" };
     case "E5":
-      return { type, refund: { ...refund, status: "pending" } };
+      return { type, refund: { ...refund, status: "pending" }, actor: "loop" };
     case "E6":
-      return { type, refund: { ...refund, status: "failed" } };
+      return { type, refund: { ...refund, status: "failed" }, actor: "loop" };
     case "E7":
-      return { type, failure: failure(409) };
+      return { type, failure: failure(409), actor: "loop" };
     case "E8":
-      return { type, failure: failure(502) };
+      return { type, failure: failure(502), actor: "loop" };
     case "E9":
-      return { type, failure: failure(400, { code: "charge_already_refunded" }) };
+      return { type, failure: failure(400, { code: "charge_already_refunded" }), actor: "loop" };
     case "E16":
-      return { type, failure: failure(503) };
+      return { type, failure: failure(503), actor: "loop" };
     case "E17":
-      return { type, failure: failure(402) };
+      return { type, failure: failure(402), actor: "loop" };
     case "E10":
     case "E11":
     case "E12":
     case "E13":
-      return { type };
+      return { type, actor: "loop" };
     case "E14":
-      return { type, closedBy };
+      return { type, closedBy, actor: "request" };
   }
 }
 

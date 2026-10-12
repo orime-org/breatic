@@ -53,8 +53,9 @@
  *    `canceled` (§5.5);
  * 11. with nothing in flight and nothing processing on Stripe: a lot not yet
  *    booked passes resolve_outside, a `refunding` lot has an exit, and a
- *    `refunded` lot with an unresolved failed refund passes both
- *    refund_again and resolve_outside (§9);
+ *    `refunded` lot with an unresolved failed refund passes resolve_outside,
+ *    and passes refund_again exactly when the amount it would send is no
+ *    more than paid − succeeded − failed (v6 §9);
  * 12. a repeated Idempotency-Key replays the disposition it made (or is
  *    `request_in_progress` while its lease is held) and the same key on
  *    another target is `idempotency_key_reused`; neither writes anything.
@@ -297,7 +298,7 @@ class Harness {
    */
   async snapshot(tx: DbTx): Promise<void> {
     for (const r of this.stripe) if (r.status === "succeeded") this.everSucceeded.add(r.id);
-    await applyRefundSnapshot(tx, this.lot.paymentId, this.list());
+    await applyRefundSnapshot(tx, this.lot.paymentId, this.list(), "request");
   }
 
   count(name: string): void {
@@ -328,7 +329,7 @@ class Harness {
     let read: Facts | undefined;
     try {
       await db.transaction(async (tx) => {
-        await applyRefundSnapshot(tx, this.lot.paymentId, this.list());
+        await applyRefundSnapshot(tx, this.lot.paymentId, this.list(), "request");
         const lot = (await creditLotRepo.lockLot(this.lot.lotId, tx))!;
         const { ledgerSum } = await creditLotRepo.readRefundFacts(this.lot.lotId, tx);
         read = {
@@ -481,6 +482,7 @@ class Harness {
           reason: `model ${action}`,
           ...extra,
         },
+        actor: "request",
       };
     };
     const e1 = async (event: OperationEvent) => {
@@ -527,12 +529,13 @@ class Harness {
           UPDATE credit_refund_operations SET locked_until = now() - interval '1 second'
           WHERE id = ${op.id}
         `;
-        await inTx((tx) => transitionOperation(tx, { id: op.id }, { type: "E13" }));
+        await inTx((tx) => transitionOperation(tx, { id: op.id }, { type: "E13", actor: "loop" }));
         await inTx((tx) =>
           transitionOperation(tx, { id: op.id }, {
             type: "E7",
             failure: failure(409),
             leaseToken: op.lease_token!,
+            actor: "loop",
           }),
         );
         return { direct: 2, snapshot: false };
@@ -544,15 +547,15 @@ class Harness {
             UPDATE credit_refund_operations SET first_called_at = now() - interval '25 hours'
             WHERE id = ${op.id}
           `;
-          await inTx((tx) => transitionOperation(tx, { id: op.id }, { type: "E12" }));
+          await inTx((tx) => transitionOperation(tx, { id: op.id }, { type: "E12", actor: "loop" }));
         } else {
-          await inTx((tx) => transitionOperation(tx, { id: op.id }, { type: "E10" }));
+          await inTx((tx) => transitionOperation(tx, { id: op.id }, { type: "E10", actor: "loop" }));
         }
         return { direct: 1, snapshot: false };
       }
       case "await_read_failed":
         await inTx((tx) =>
-          transitionOperation(tx, { id: v.inflight!.id }, { type: "E16", failure: failure(503) }),
+          transitionOperation(tx, { id: v.inflight!.id }, { type: "E16", failure: failure(503), actor: "loop" }),
         );
         return { direct: 1, snapshot: false };
       case "external": {
@@ -607,6 +610,7 @@ class Harness {
             type: "E6",
             failure: failure(400, { code: "amount_too_large" }),
             leaseToken: lease,
+            actor: "loop",
           }),
         );
         return { direct: 1, snapshot: false };
@@ -620,6 +624,7 @@ class Harness {
               type: "E9",
               failure: failure(400, { code: "charge_already_refunded" }),
               leaseToken: lease,
+              actor: "loop",
             }),
           );
           return { direct: 1, snapshot: false };
@@ -638,12 +643,12 @@ class Harness {
     }
 
     const failures: Record<number, OperationEvent> = {
-      3: { type: "E7", failure: failure(429, { code: "rate_limit" }), leaseToken: lease },
-      4: { type: "E8", failure: failure(500), leaseToken: lease },
-      5: { type: "E11" },
-      6: { type: "E9", failure: failure(400, { code: "charge_already_refunded" }), leaseToken: lease },
-      7: { type: "E16", failure: failure(503), leaseToken: lease },
-      8: { type: "E17", failure: failure(402), leaseToken: lease },
+      3: { type: "E7", failure: failure(429, { code: "rate_limit" }), leaseToken: lease, actor: "loop" },
+      4: { type: "E8", failure: failure(500), leaseToken: lease, actor: "loop" },
+      5: { type: "E11", actor: "loop" },
+      6: { type: "E9", failure: failure(400, { code: "charge_already_refunded" }), leaseToken: lease, actor: "loop" },
+      7: { type: "E16", failure: failure(503), leaseToken: lease, actor: "loop" },
+      8: { type: "E17", failure: failure(402), leaseToken: lease, actor: "loop" },
     };
     if (variant === 4) {
       // A 5xx says nothing about whether Stripe made the refund; sometimes it did.
@@ -673,22 +678,22 @@ class Harness {
     object: ReturnType<typeof refundObject>,
   ): OperationEvent {
     if (refund.status === "pending" || refund.status === "requires_action") {
-      return { type: "E5", refund: object };
+      return { type: "E5", refund: object, actor: "loop" };
     }
     if (refund.status === "failed" || refund.status === "canceled") {
-      return { type: "E6", refund: object };
+      return { type: "E6", refund: object, actor: "loop" };
     }
-    if (op.kind === "refund_again") return { type: "E2", refund: object };
+    if (op.kind === "refund_again") return { type: "E2", refund: object, actor: "loop" };
     if (this.stripe.some((r) => r.id !== refund.id && isOpen(r))) {
-      return { type: "E3", refund: object };
+      return { type: "E3", refund: object, actor: "loop" };
     }
     const succ = sumWhere(this.stripe, (r) => r.status === "succeeded");
-    if (succ < PAID_CENTS) return { type: "E4", refund: object, reason: "partial_refund" };
+    if (succ < PAID_CENTS) return { type: "E4", refund: object, reason: "partial_refund", actor: "loop" };
     const unconfirmed = this.stripe.some(
       (r) => r.status === "succeeded" && r.opId === undefined && !op.confirmed_refund_ids.includes(r.id),
     );
-    if (unconfirmed) return { type: "E4", refund: object, reason: "unexpected_external_refund" };
-    return { type: "E2", refund: object };
+    if (unconfirmed) return { type: "E4", refund: object, reason: "unexpected_external_refund", actor: "loop" };
+    return { type: "E2", refund: object, actor: "loop" };
   }
 
   /**
@@ -845,9 +850,15 @@ class Harness {
       if (lifecycle === "refunding") {
         expect(pass.settle || pass.send_back || pass.retry || pass.resolve_outside).toBe(true);
       }
-      if (lifecycle === "refunded" && pickUnresolvedFailedRefunds(lifecycle, f.refunds).length > 0) {
+      const unresolved = pickUnresolvedFailedRefunds(lifecycle, f.refunds);
+      if (lifecycle === "refunded" && unresolved.length > 0) {
+        const cents = (pick: (r: RefundCopy) => boolean) =>
+          f.refunds.filter(pick).reduce((n, r) => n + r.amountCents, 0);
+        const amount = unresolved.reduce((n, r) => n + r.amountCents, 0);
+        const fits =
+          amount <= PAID_CENTS - cents((r) => r.status === "succeeded") - cents((r) => r.status === "failed");
         expect({ refund_again: pass.refund_again, resolve_outside: pass.resolve_outside }).toEqual({
-          refund_again: true,
+          refund_again: fits,
           resolve_outside: true,
         });
       }
@@ -886,8 +897,9 @@ function step(
  * path cannot leave it unchecked.
  */
 const EXAMPLES: [Choice[]][] = [
-  // Booked, the refund fails later; refund again is refused by Stripe (the
-  // failed amount does not come back), so it is resolved outside.
+  // Booked, the refund fails later; refund again is refused by the judge
+  // (refund_failed: the failed amount does not come back), so it is
+  // resolved outside.
   [[
     step("approve"), step("answer", 0), step("stripe_change"), step("refund_again"),
     step("answer", 0), step("stripe_change"), step("resolve_outside"),
@@ -910,11 +922,9 @@ const EXAMPLES: [Choice[]][] = [
     step("approve"), step("answer", 3), step("claim_late"), step("answer", 4, 0),
     step("await_tick", 1), step("external", 1, 0), step("settle", 0, 0, { acceptPartial: true, notify: false }),
   ]],
-  // Booked, fails later, refund again declined by Stripe, resolved outside.
-  [[
-    step("approve"), step("answer", 0), step("stripe_change"), step("refund_again", 0, 0, { notify: false }),
-    step("answer", 2), step("resolve_outside"),
-  ]],
+  // The approval's first answer is a failed refund: sent back (E6 under
+  // started), then resolved outside on the refund_pending lot.
+  [[step("approve"), step("answer", 2), step("resolve_outside")]],
   // An external refund in flight holds the approval back (E3) until it settles.
   [[
     step("approve"), step("external", 0, 99), step("answer", 0), step("stripe_change", 0),

@@ -161,6 +161,7 @@ describe("started × E1: impossible", () => {
         requestedBy: "admin_7",
         reason: "again",
       },
+      actor: "request",
     });
   });
 });
@@ -182,6 +183,7 @@ describe("started × E2: the refund succeeded and the lot can be booked", () => 
         type: "E2",
         refund: refundObject(refundId, "succeeded", 1080, op.id),
         leaseToken: op.leaseToken,
+        actor: "loop",
       }),
     );
 
@@ -216,6 +218,7 @@ describe("started × E2: the refund succeeded and the lot can be booked", () => 
         type: "E2",
         refund: refundObject(own, "succeeded", 780, op.id),
         leaseToken: op.leaseToken,
+        actor: "loop",
       }),
     );
 
@@ -244,6 +247,7 @@ describe("started × E2: the refund succeeded and the lot can be booked", () => 
         type: "E2",
         refund: refundObject(fresh, "succeeded", 1080, op.id),
         leaseToken: op.leaseToken,
+        actor: "loop",
       }),
     );
 
@@ -274,6 +278,7 @@ describe("started × E2: the refund succeeded and the lot can be booked", () => 
         type: "E2",
         refund: refundObject(fresh, "succeeded", 1080, op.id),
         leaseToken: op.leaseToken,
+        actor: "loop",
       }),
     );
 
@@ -301,6 +306,7 @@ describe("started × E2: the refund succeeded and the lot can be booked", () => 
         type: "E2",
         refund: refundObject(reId("again"), "succeeded", 1080, op.id),
         leaseToken: op.leaseToken,
+        actor: "loop",
       }),
     );
 
@@ -321,6 +327,7 @@ describe("started × E3 / E5: Stripe holds the refund open", () => {
           type,
           refund: refundObject(refundId, type === "E3" ? "succeeded" : "pending", 1080, op.id),
           leaseToken: op.leaseToken,
+          actor: "loop",
         }),
       );
 
@@ -348,6 +355,7 @@ describe("started × E3 / E5: Stripe holds the refund open", () => {
         type: "E5",
         refund: refundObject(refundId, "pending", 1080, op.id),
         leaseToken: op.leaseToken,
+        actor: "loop",
       }),
     );
     expect(await readOp(suite.sql, op.id)).toMatchObject({
@@ -376,6 +384,7 @@ describe("started × E4: the refund succeeded but the payment is not covered as 
           refund: refundObject(reId("short"), "succeeded", 700, op.id),
           reason,
           leaseToken: op.leaseToken,
+          actor: "loop",
         }),
       );
 
@@ -417,6 +426,7 @@ describe("started × E6: the first definite answer is that Stripe did not refund
         type: "E6",
         refund: refundObject(reId("declined"), "failed", 1080, op.id),
         leaseToken: op.leaseToken,
+        actor: "loop",
       }),
     );
 
@@ -443,6 +453,7 @@ describe("started × E6: the first definite answer is that Stripe did not refund
         type: "E6",
         failure: failure(400, { code: "parameter_invalid_integer" }),
         leaseToken: op.leaseToken,
+        actor: "loop",
       }),
     );
     expect(await readOp(suite.sql, op.id)).toMatchObject({ status: "succeeded", result: "sent_back" });
@@ -458,6 +469,7 @@ describe("started × E6: the first definite answer is that Stripe did not refund
         type: "E6",
         refund: refundObject(reId("declined"), "canceled", 780, op.id),
         leaseToken: op.leaseToken,
+        actor: "loop",
       }),
     );
 
@@ -475,6 +487,7 @@ describe("started × E6: the first definite answer is that Stripe did not refund
         type: "E6",
         failure: failure(400, { code: "amount_too_large" }),
         leaseToken: op.leaseToken,
+        actor: "loop",
       }),
     );
 
@@ -510,7 +523,7 @@ describe("started × E7 / E16 / E17: try again later with the same key", () => {
         const { backoffMaxSeconds } = getCreditRefundConfig();
 
         await inTx((tx) =>
-          transitionOperation(tx, { id: op.id }, { type, failure: fail, leaseToken: op.leaseToken }),
+          transitionOperation(tx, { id: op.id }, { type, failure: fail, leaseToken: op.leaseToken, actor: "loop" }),
         );
 
         const row = await readOp(suite.sql, op.id);
@@ -541,7 +554,7 @@ describe("started × E7 / E16 / E17: try again later with the same key", () => {
     const fail = failure(409, { code: "lock_timeout", type: "api_error" });
     const before = await worldOf(suite.sql, lot);
     await inTx((tx) =>
-      transitionOperation(tx, { id: op.id }, { type: "E7", failure: fail, leaseToken: op.leaseToken }),
+      transitionOperation(tx, { id: op.id }, { type: "E7", failure: fail, leaseToken: op.leaseToken, actor: "loop" }),
     );
     const after = await worldOf(suite.sql, lot);
     const added = after.events.slice(before.events.length);
@@ -565,7 +578,7 @@ describe("started × E8: a 5xx — outcome unknown", () => {
       const before = await worldOf(suite.sql, lot);
 
       await inTx((tx) =>
-        transitionOperation(tx, { id: op.id }, { type: "E8", failure: fail, leaseToken: op.leaseToken }),
+        transitionOperation(tx, { id: op.id }, { type: "E8", failure: fail, leaseToken: op.leaseToken, actor: "loop" }),
       );
 
       const row = await readOp(suite.sql, op.id);
@@ -590,7 +603,7 @@ describe("started × E9: charge_already_refunded and no refund of ours", () => {
       const before = await worldOf(suite.sql, lot);
 
       await inTx((tx) =>
-        transitionOperation(tx, { id: op.id }, { type: "E9", failure: fail, leaseToken: op.leaseToken }),
+        transitionOperation(tx, { id: op.id }, { type: "E9", failure: fail, leaseToken: op.leaseToken, actor: "loop" }),
       );
 
       const row = await readOp(suite.sql, op.id);
@@ -629,7 +642,7 @@ describe("started × E11: attempts used up", () => {
       const lifecycle = (await readLot(suite.sql, lot.lotId)).lifecycle;
       const before = await worldOf(suite.sql, lot);
 
-      await inTx((tx) => transitionOperation(tx, { id: op.id }, { type: "E11" }));
+      await inTx((tx) => transitionOperation(tx, { id: op.id }, { type: "E11", actor: "loop" }));
 
       expect(await readOp(suite.sql, op.id)).toMatchObject({
         status: "needs_attention",
@@ -653,7 +666,7 @@ describe("started × E12: 24 hours since the first call — the attempt cap gove
       firstCalledHoursAgo: 25,
       attemptCount: 3,
     });
-    await expectStays(suite.sql, lot, op.id, "started", { type: "E12" });
+    await expectStays(suite.sql, lot, op.id, "started", { type: "E12", actor: "loop" });
   });
 });
 
@@ -669,7 +682,7 @@ describe("started × E13: the lease ran out", () => {
     const before = await worldOf(suite.sql, lot);
     const clockBefore = await dbClockUs(suite.sql);
 
-    const returned = await inTx((tx) => transitionOperation(tx, { id: op.id }, { type: "E13" }));
+    const returned = await inTx((tx) => transitionOperation(tx, { id: op.id }, { type: "E13", actor: "loop" }));
 
     const clockAfter = await dbClockUs(suite.sql);
     const row = await readOp(suite.sql, op.id);
@@ -704,6 +717,7 @@ describe("started × E15: an answer under a lease the row no longer holds", () =
         type: "E2",
         refund: refundObject(refundId, "succeeded", 1080, op.id),
         leaseToken: randomUUID(),
+        actor: "loop",
       },
       "late_answer",
     );
@@ -716,13 +730,13 @@ describe("started × E15: an answer under a lease the row no longer holds", () =
       status: "started",
       leaseExpired: true,
     });
-    await inTx((tx) => transitionOperation(tx, { id: op.id }, { type: "E13" }));
+    await inTx((tx) => transitionOperation(tx, { id: op.id }, { type: "E13", actor: "loop" }));
     await expectStays(
       suite.sql,
       lot,
       op.id,
       "started",
-      { type: "E7", failure: failure(409), leaseToken: op.leaseToken! },
+      { type: "E7", failure: failure(409), leaseToken: op.leaseToken!, actor: "loop" },
       "late_answer",
     );
   });

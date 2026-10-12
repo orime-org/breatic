@@ -12,7 +12,9 @@
  * four outcomes: unseen → run; same fingerprint → replay the current
  * snapshot; different fingerprint → 422 `idempotency_key_reused`; original
  * still holding its lease (or its mail `sending`) → 409 `request_in_progress`.
- * A request refused at a precondition stores nothing, so its key stays free.
+ * A request refused at a precondition stores no disposition and no key, so
+ * its key stays free; the refund copies of what it read are the one thing it
+ * keeps (v6 §4.6, §6.4).
  *
  * The fingerprint is `sha256(method \n route template \n target id \n
  * canonical JSON body)`, hex, kept in `request_hash`.
@@ -35,7 +37,10 @@ import { fakeStripe } from "./fake-stripe-refunds.js";
 import { ADMIN, call, errorShape, freshKey, mailsSettled, paths, useInternalApp } from "./internal-api-harness.js";
 import {
   PAID_CENTS,
+  copiesOf,
   mailsOf,
+  reId,
+  refundObject,
   readOp,
   seedOperation,
   seedRefundLot,
@@ -271,6 +276,28 @@ describe("a refused request stores nothing, so its key stays free", () => {
     expect(await holdersOf(key)).toEqual({ ops: 1, mails: 0 });
   });
 
+  it("a 409 at the judgement still keeps the copy of the succeeded refund it read, but not the key", async () => {
+    const pending = await seedRefundLot(suite.sql, "refund_pending");
+    const succeeded = reId("seen");
+    fakeStripe.register(pending.paymentIntentId, PAID_CENTS, [refundObject(succeeded, "succeeded", 300)]);
+    const free = await lotOnStripe("refund_pending");
+    const key = freshKey("reject");
+
+    const refused = await post(paths.reject(pending.lotId), REJECT, key);
+
+    expect(refused.status).toBe(409);
+    expect(refused.json).toMatchObject({ code: "stripe_blocks", reason: "refund_succeeded" });
+    expect(await copiesOf(suite.sql, pending.lotId)).toEqual([
+      expect.objectContaining({ stripe_refund_id: succeeded, status: "succeeded", ever_succeeded: true }),
+    ]);
+    expect(await holdersOf(key)).toEqual({ ops: 0, mails: 0 });
+
+    const accepted = await post(paths.reject(free.lotId), REJECT, key);
+    expect(accepted.status).toBe(200);
+    expect(await holdersOf(key)).toEqual({ ops: 1, mails: 0 });
+    await mailsSettled(suite.sql, free);
+  });
+
   it("after a 404 the same key runs a valid request", async () => {
     const pending = await lotOnStripe("refund_pending");
     const key = freshKey("reject");
@@ -306,7 +333,7 @@ describe("a NUL character in the body is 422 invalid_body and stores nothing (§
     ["the reason of an approval", "refund_pending", (l: SeededLot) => paths.approve(l.lotId), { reason: NUL, confirmedRefundIds: [] }],
     ["a confirmed refund id", "refund_pending", (l: SeededLot) => paths.approve(l.lotId), { reason: "ok", confirmedRefundIds: [`re_${NUL}`] }],
     ["a failed refund id to refund again", "refunded", (l: SeededLot) => paths.refundAgain(l.lotId), { reason: "ok", failedRefundIds: [`re_${NUL}`], notify: false }],
-    ["a failed refund id resolved outside", "refunded", (l: SeededLot) => paths.resolvedOutside(l.lotId), { reason: "ok", failedRefundIds: [`re_${NUL}`] }],
+    ["a failed refund id resolved outside", "refunded", (l: SeededLot) => paths.resolvedOutside(l.lotId), { reason: "ok", failedRefundIds: [`re_${NUL}`], confirmedSucceededCents: 0 }],
   ] as const)("%s", async (_name, state, pathOf, body) => {
     const lot = await lotOnStripe(state);
     const before = await worldOf(suite.sql, lot);

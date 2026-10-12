@@ -356,6 +356,28 @@ describe("which payments a pass reconciles", () => {
     });
   });
 
+  // §5.3: on a refund_pending lot every failed or canceled refund nobody has
+  // answered for counts, whether or not it ever succeeded.
+  it("a refund_pending lot sent back on a failed refund, everything older than the window, is still read from Stripe", async () => {
+    const window = getCreditRefundConfig().reconcileWindowDays;
+    const failedId = reId("sent_back");
+    const lot = await lotOnStripe("refund_pending", [refundObject(failedId, "failed", PAID_CENTS)]);
+    const approve = await seedOperation(suite.sql, lot, { kind: "approve", status: "succeeded", result: "sent_back" });
+    await opFinishedDaysAgo(approve.id, window + 10);
+    await seedCopy(suite.sql, lot, {
+      id: failedId,
+      amountCents: PAID_CENTS,
+      status: "failed",
+      everSucceeded: false,
+      operationId: approve.id,
+    });
+    await copyCreatedDaysAgo(failedId, window + 10);
+
+    await runDailyReconcile();
+
+    expect(listed(lot)).toBe(true);
+  });
+
   it("what Stripe lists is copied: a refund made outside the product appears, a status change lands", async () => {
     const own = reId("own");
     const external = reId("external");

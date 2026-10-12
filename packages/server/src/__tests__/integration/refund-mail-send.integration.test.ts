@@ -501,6 +501,7 @@ describe("a rejection letter names the rejected request's time, after the buyer 
           requestedBy: "admin_7",
           reason: OPERATOR_REASON,
         },
+        actor: "request",
       }),
     );
     const later = await askAgain(lot);

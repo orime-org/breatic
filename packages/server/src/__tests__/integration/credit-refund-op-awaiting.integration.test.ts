@@ -154,6 +154,7 @@ describe("awaiting_stripe × E1, E7, E8, E9, E11, E14, E17: impossible", () => {
         requestedBy: "admin_7",
         reason: "again",
       },
+      actor: "request",
     });
   });
 
@@ -194,6 +195,7 @@ describe("awaiting_stripe × E2: the refund it waited on succeeded and the lot c
         transitionOperation(tx, { id: opId }, {
           type: "E2",
           refund: refundObject(refundId, "succeeded", 1080, opId),
+          actor: "loop",
         }),
       );
 
@@ -223,6 +225,7 @@ describe("awaiting_stripe × E2: the refund it waited on succeeded and the lot c
       transitionOperation(tx, { id: opId }, {
         type: "E2",
         refund: refundObject(refundId, "succeeded", 1080, opId),
+        actor: "loop",
       }),
     );
 
@@ -244,6 +247,7 @@ describe("awaiting_stripe × E2: the refund it waited on succeeded and the lot c
       transitionOperation(tx, { id: opId }, {
         type: "E2",
         refund: refundObject(refundId, "succeeded", 1080, opId),
+        actor: "loop",
       }),
     );
 
@@ -273,6 +277,7 @@ describe("awaiting_stripe × E3 / E5: still open at Stripe", () => {
         transitionOperation(tx, { id: opId }, {
           type,
           refund: refundObject(refundId, type === "E3" ? "succeeded" : "pending", 1080, opId),
+          actor: "loop",
         }),
       );
 
@@ -300,6 +305,7 @@ describe("awaiting_stripe × E3 / E5: still open at Stripe", () => {
     await expectStays(suite.sql, lot, opId, "awaiting_stripe", {
       type: "E5",
       refund: refundObject(refundId, "pending", 1080, opId),
+      actor: "loop",
     });
   });
 });
@@ -317,6 +323,7 @@ describe("awaiting_stripe × E4: succeeded, but the payment is not covered as co
           type: "E4",
           refund: refundObject(refundId, "succeeded", 1080, opId),
           reason,
+          actor: "loop",
         }),
       );
 
@@ -352,6 +359,7 @@ describe("awaiting_stripe × E6: Stripe took the refund, then it failed (#10)", 
         transitionOperation(tx, { id: opId }, {
           type: "E6",
           refund: refundObject(refundId, "failed", 1080, opId),
+          actor: "loop",
         }),
       );
 
@@ -381,7 +389,7 @@ describe("awaiting_stripe × E10: the lookup after a 5xx found nothing", () => {
     const clock = await dbClockUs(suite.sql);
     const before = await worldOf(suite.sql, lot);
 
-    await inTx((tx) => transitionOperation(tx, { id: opId }, { type: "E10" }));
+    await inTx((tx) => transitionOperation(tx, { id: opId }, { type: "E10", actor: "loop" }));
 
     const row = await readOp(suite.sql, opId);
     expect(row).toMatchObject({ status: "awaiting_stripe", stripe_refund_id: null, attempt_count: 1 });
@@ -397,7 +405,7 @@ describe("awaiting_stripe × E12: 24 hours since the first call", () => {
     const { lot, opId } = await awaiting("approve", null, 25);
     const before = await worldOf(suite.sql, lot);
 
-    await inTx((tx) => transitionOperation(tx, { id: opId }, { type: "E12" }));
+    await inTx((tx) => transitionOperation(tx, { id: opId }, { type: "E12", actor: "loop" }));
 
     expect(await readOp(suite.sql, opId)).toMatchObject({
       status: "needs_attention",
@@ -414,7 +422,7 @@ describe("awaiting_stripe × E12: 24 hours since the first call", () => {
     const { lot, opId } = await awaiting("approve", refundId, 25);
     const before = await worldOf(suite.sql, lot);
 
-    await inTx((tx) => transitionOperation(tx, { id: opId }, { type: "E12" }));
+    await inTx((tx) => transitionOperation(tx, { id: opId }, { type: "E12", actor: "loop" }));
 
     // next_attempt_at may move: the loop keeps looking on its backoff.
     expect(await readOp(suite.sql, opId)).toMatchObject({
@@ -437,7 +445,7 @@ describe("awaiting_stripe × E12: 24 hours since the first call", () => {
 describe("awaiting_stripe × E13: no lease to lose", () => {
   it("leaves everything as it was", async () => {
     const { lot, opId } = await awaiting("approve", reId("p"));
-    await expectStays(suite.sql, lot, opId, "awaiting_stripe", { type: "E13" });
+    await expectStays(suite.sql, lot, opId, "awaiting_stripe", { type: "E13", actor: "loop" });
     expect((await readOp(suite.sql, opId)).lease_token).toBeNull();
   });
 });
@@ -461,6 +469,7 @@ describe("awaiting_stripe × E15: a late executor's answer", () => {
         type: "E2",
         refund: refundObject(refundId, "succeeded", 1080, opId),
         leaseToken: randomUUID(),
+        actor: "loop",
       },
       "late_answer",
     );
@@ -473,7 +482,7 @@ describe("awaiting_stripe × E15: a late executor's answer", () => {
       lot,
       opId,
       "awaiting_stripe",
-      { type: "E7", failure: failure(409), leaseToken: randomUUID() },
+      { type: "E7", failure: failure(409), leaseToken: randomUUID(), actor: "loop" },
       "late_answer",
     );
   });
@@ -488,7 +497,7 @@ describe("awaiting_stripe × E16: reading Stripe failed", () => {
       const clock = await dbClockUs(suite.sql);
       const before = await worldOf(suite.sql, lot);
 
-      await inTx((tx) => transitionOperation(tx, { id: opId }, { type: "E16", failure: fail }));
+      await inTx((tx) => transitionOperation(tx, { id: opId }, { type: "E16", failure: fail, actor: "loop" }));
 
       const row = await readOp(suite.sql, opId);
       expect(row).toMatchObject({ status: "awaiting_stripe", attempt_count: 1 });

@@ -10,7 +10,8 @@
  * |--------------------------------|-----------------------------------------|
  * | RefundRefusal                  | its status, `{ code, detail }`, detail  |
  * |                                | is `server.internal.<detailKey>` in en  |
- * | ValidationError (validate())   | 422 invalid_body                        |
+ * | ValidationError (validate())   | 422 invalid_body, detail is             |
+ * |                                | `server.internal.invalid_body` in en    |
  * | HTTPException (unreadable body)| 400 invalid_body                        |
  * | other AppError                 | 404 not_found / 409 lot_state_changed / |
  * |                                | 422 invalid_body, detail = its message  |
@@ -77,11 +78,13 @@ describe("internalErrorHandler", () => {
     expect(internalErrors).not.toHaveProperty("InternalApiError");
   });
 
-  it("a ValidationError from validate() is 422 invalid_body", async () => {
-    const res = await answerFor(new ValidationError("reason: too long"));
+  // validate() throws with the public app's sentence ("Invalid input"); the
+  // internal answer carries the internal API's own sentence instead.
+  it("a ValidationError from validate() is 422 invalid_body with the server.internal.invalid_body sentence", async () => {
+    const res = await answerFor(new ValidationError(t("server.error.validation")));
 
     expect(res.status).toBe(422);
-    expect(((await res.json()) as { code: string }).code).toBe("invalid_body");
+    expect(await res.json()).toEqual({ code: "invalid_body", detail: t("server.internal.invalid_body") });
   });
 
   it("hono's HTTPException for an unreadable body is 400 invalid_body", async () => {

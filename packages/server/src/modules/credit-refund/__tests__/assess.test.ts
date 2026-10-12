@@ -389,13 +389,13 @@ describe("row 7: approve and retry — the paid amount is already refunded", () 
     });
   }
 
-  it("refund_again does not use this row", () => {
+  it("refund_again does not use this row: a covered payment leaves its amount nothing to fit in (refund_failed)", () => {
     expect(
       assessRefundCreate({
         ...REFUND_AGAIN_OK,
         refunds: [...REFUND_AGAIN_OK.refunds, refund("re_ok", "succeeded", PAID)],
       }),
-    ).toEqual({ outcome: "create_refund", amountCents: 500, sendAmount: true });
+    ).toEqual(stripeBlocks("refund_failed"));
   });
 });
 
@@ -403,9 +403,11 @@ describe("row 7: approve and retry — the paid amount is already refunded", () 
  * Row 7b: Stripe does not give a failed refund's amount back to the
  * payment's refundable amount (§5.2, verified against real Stripe), so what
  * approve and retry can still refund is paid − succeeded − failed. A
- * canceled refund never moved money and is not subtracted.
+ * canceled refund never moved money and is not subtracted. refund_again
+ * (v6) answers the same code when the amount it would send — the unresolved
+ * failed refunds' sum — is more than that.
  */
-describe("row 7b: approve and retry — nothing left that Stripe can refund (refund_failed)", () => {
+describe("row 7b: nothing (or not enough) left that Stripe can refund (refund_failed)", () => {
   const failed = (id: string, amountCents: number, everSucceeded = true): RefundCopy =>
     refund(id, "failed", amountCents, { everSucceeded });
 
@@ -480,14 +482,77 @@ describe("row 7b: approve and retry — nothing left that Stripe can refund (ref
     });
   }
 
-  it("refund_again does not use this row: it asks for the failed refunds' sum even when it covers the payment", () => {
+  it("refund_again of a whole payment whose refund failed is refund_failed (pm_card_refundFail: 1000 > 1000 − 0 − 1000)", () => {
     expect(
       assessRefundCreate({
         ...REFUND_AGAIN_OK,
         refunds: [failedAfterSuccess("re_all", PAID)],
         failedRefundIds: ["re_all"],
       }),
-    ).toEqual({ outcome: "create_refund", amountCents: PAID, sendAmount: true });
+    ).toEqual(stripeBlocks("refund_failed"));
+  });
+
+  it("refund_again passes when its amount fits what Stripe can still refund, and is refund_failed one cent over", () => {
+    // acceptPartial: paid 1000, booked on a 300 refund that later failed;
+    // Stripe can still refund 1000 − 0 − 300 = 700.
+    expect(
+      assessRefundCreate({
+        ...REFUND_AGAIN_OK,
+        refunds: [failedAfterSuccess("re_f", 300)],
+        failedRefundIds: ["re_f"],
+      }),
+    ).toEqual({ outcome: "create_refund", amountCents: 300, sendAmount: true });
+    // Exactly what is left: 400 + succeeded 200 + failed 400 = paid.
+    expect(
+      assessRefundCreate({
+        ...REFUND_AGAIN_OK,
+        refunds: [refund("re_ok", "succeeded", 200), failedAfterSuccess("re_f", 400)],
+        failedRefundIds: ["re_f"],
+      }),
+    ).toEqual({ outcome: "create_refund", amountCents: 400, sendAmount: true });
+    // One cent more than is left.
+    expect(
+      assessRefundCreate({
+        ...REFUND_AGAIN_OK,
+        refunds: [refund("re_ok", "succeeded", 201), failedAfterSuccess("re_f", 400)],
+        failedRefundIds: ["re_f"],
+      }),
+    ).toEqual(stripeBlocks("refund_failed"));
+  });
+
+  it("refund_again counts every failed refund of the payment, answered for or not, against what is left", () => {
+    // Unresolved 300; an answered failed refund of 500 and a succeeded 300
+    // leave 1000 − 300 − 800 = −100.
+    expect(
+      assessRefundCreate({
+        ...REFUND_AGAIN_OK,
+        refunds: [
+          refund("re_ok", "succeeded", 300),
+          failedAfterSuccess("re_f", 300),
+          refund("re_done", "failed", 500, { everSucceeded: true, resolvedByOperationId: RESOLVER }),
+        ],
+        failedRefundIds: ["re_f"],
+      }),
+    ).toEqual(stripeBlocks("refund_failed"));
+  });
+
+  it("refund_again is refund_in_progress, not refund_failed, while a refund is processing", () => {
+    const tooBig = { ...REFUND_AGAIN_OK, refunds: [failedAfterSuccess("re_all", PAID)], failedRefundIds: ["re_all"] };
+    expect(
+      assessRefundCreate({ ...tooBig, refunds: [...tooBig.refunds, refund("re_p", "pending", 10)] }),
+    ).toEqual(stripeBlocks("refund_in_progress"));
+    expect(assessRefundCreate(tooBig)).toEqual(stripeBlocks("refund_failed"));
+  });
+
+  it("the preview of a refunded lot whose whole refund failed shows refund_again blocked by refund_failed", () => {
+    expect(
+      assessRefundPreview({
+        lot: REFUND_AGAIN_OK.lot,
+        payment: REFUND_AGAIN_OK.payment,
+        ops: REFUND_AGAIN_OK.ops,
+        refunds: [failedAfterSuccess("re_all", PAID)],
+      }),
+    ).toEqual({ kind: "refund_again", result: stripeBlocks("refund_failed") });
   });
 
   it("the preview of an approve shows the amount Stripe can still refund", () => {
@@ -550,10 +615,11 @@ describe("row 8: approve and retry — a succeeded external refund the operator 
     expect(
       assessRefundCreate({
         ...REFUND_AGAIN_OK,
-        refunds: [...REFUND_AGAIN_OK.refunds, refund("re_ext", "succeeded", 100, { operationId: null })],
+        refunds: [failedAfterSuccess("re_f1", 300), refund("re_ext", "succeeded", 100, { operationId: null })],
+        failedRefundIds: ["re_f1"],
         confirmedRefundIds: [],
       }),
-    ).toEqual({ outcome: "create_refund", amountCents: 500, sendAmount: true });
+    ).toEqual({ outcome: "create_refund", amountCents: 300, sendAmount: true });
   });
 });
 

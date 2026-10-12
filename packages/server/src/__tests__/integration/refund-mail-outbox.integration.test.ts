@@ -166,6 +166,7 @@ async function runE1(lot: SeededLot, kind: OpKind, extra: Partial<NewOperation> 
         reason: "buyer wrote in",
         ...extra,
       },
+      actor: "request",
     }),
   );
   return op!.id;

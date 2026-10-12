@@ -10,9 +10,12 @@
  * - a refund not seen before is inserted verbatim; `operation_id` is the
  *   disposition named by `metadata.refund_operation_id` when that
  *   disposition exists, otherwise empty (an external refund);
- * - a refund seen before takes Stripe's status as given, whatever it was;
+ * - a refund seen before takes Stripe's status as given, unless its copy is
+ *   already `failed` or `canceled`: those are final on Stripe, so a read
+ *   taken earlier and delivered late never moves the copy out of them (v6
+ *   §6.4);
  * - `ever_succeeded` turns true when a `succeeded` status is seen and never
- *   turns back;
+ *   turns back, also when the status itself is not taken;
  * - then, in the same transaction, a disposition of this payment that is
  *   `awaiting_stripe` is judged once more through `transitionOperation`:
  *   approve and retry by the settle rule, refund_again by its own refund.
@@ -83,7 +86,7 @@ const suite = useRefundSuite("credit-refund-snapshot-test");
  * @param refunds - What Stripe listed.
  */
 async function apply(lot: SeededLot, refunds: StripeRefundObject[]): Promise<void> {
-  await inTx((tx) => applyRefundSnapshot(tx, lot.paymentId, refunds));
+  await inTx((tx) => applyRefundSnapshot(tx, lot.paymentId, refunds, "webhook"));
 }
 
 /**
@@ -188,7 +191,7 @@ describe("applyRefundSnapshot: copies (R1, R2)", () => {
     expect((await copyOf(lot, id))!.operation_id).toBeNull();
   });
 
-  it("takes the latest status verbatim; ever_succeeded turns true and never back", async () => {
+  it("takes each newer status; ever_succeeded turns true and never back; a failed copy stays failed", async () => {
     const lot = await seedRefundLot(suite.sql, "refunded");
     const id = reId("flip");
 
@@ -205,9 +208,57 @@ describe("applyRefundSnapshot: copies (R1, R2)", () => {
       ever_succeeded: true,
     });
 
-    // An older snapshot delivered late still cannot take the memory away.
+    // An older snapshot delivered late moves neither the status nor the memory.
     await apply(lot, [refundObject(id, "pending", 1080)]);
-    expect(await copyOf(lot, id)).toMatchObject({ status: "pending", ever_succeeded: true });
+    expect(await copyOf(lot, id)).toMatchObject({
+      status: "failed",
+      failure_reason: "lost_or_stolen_card",
+      ever_succeeded: true,
+    });
+  });
+
+  it("a canceled copy stays canceled whatever a late read says", async () => {
+    const lot = await seedRefundLot(suite.sql, "refund_pending");
+    const id = reId("canceled");
+
+    await apply(lot, [refundObject(id, "requires_action", 300)]);
+    await apply(lot, [refundObject(id, "canceled", 300)]);
+    await apply(lot, [refundObject(id, "requires_action", 300)]);
+    await apply(lot, [refundObject(id, "succeeded", 300)]);
+
+    expect(await copyOf(lot, id)).toMatchObject({ status: "canceled" });
+  });
+
+  it("a snapshot saying failed, then an older one saying succeeded: the copy stays failed (ever_succeeded true) and nothing is booked (finding [13])", async () => {
+    const lot = await seedRefundLot(suite.sql, "refunding");
+    const own = reId("own_failed_first");
+    const waiting = await seedOperation(suite.sql, lot, {
+      kind: "approve",
+      status: "awaiting_stripe",
+      stripeRefundId: own,
+      firstCalledHoursAgo: 1,
+      attemptCount: 1,
+    });
+    await seedCopy(suite.sql, lot, { id: own, amountCents: 1080, status: "pending", operationId: waiting.id });
+
+    // The webhook's newer read commits first …
+    await apply(lot, [refundObject(own, "failed", 1080, waiting.id)]);
+    expect(await readOp(suite.sql, waiting.id)).toMatchObject({
+      status: "needs_attention",
+      attention_reason: "stripe_refund_failed_later",
+    });
+    const before = await worldOf(suite.sql, lot);
+
+    // … then a read taken before the failure is delivered.
+    await apply(lot, [refundObject(own, "succeeded", 1080, waiting.id)]);
+
+    expect(await copyOf(lot, own)).toMatchObject({ status: "failed", ever_succeeded: true });
+    const after = await worldOf(suite.sql, lot);
+    expect(after.lot).toEqual(before.lot);
+    expect(after.ledger).toEqual(before.ledger);
+    expect(after.ops).toEqual(before.ops);
+    expect(after.bells).toEqual(before.bells);
+    expect(after.mails).toEqual(before.mails);
   });
 
   it("does not touch a copy the snapshot does not list, nor its resolution", async () => {
@@ -238,7 +289,7 @@ describe("applyRefundSnapshot: copies (R1, R2)", () => {
     const id = reId("rolled_back");
     await expect(
       db.transaction(async (tx) => {
-        await applyRefundSnapshot(tx, lot.paymentId, [refundObject(id, "succeeded", 1080)]);
+        await applyRefundSnapshot(tx, lot.paymentId, [refundObject(id, "succeeded", 1080)], "webhook");
         throw new Error("roll back");
       }),
     ).rejects.toThrow("roll back");
@@ -517,7 +568,7 @@ describe("applyRefundSnapshot: re-judging an awaiting_stripe approve or retry (�
 
     await expect(
       db.transaction(async (tx) => {
-        await applyRefundSnapshot(tx, lot.paymentId, [refundObject(own, "succeeded", 1080, opId)]);
+        await applyRefundSnapshot(tx, lot.paymentId, [refundObject(own, "succeeded", 1080, opId)], "webhook");
         throw new Error("roll back");
       }),
     ).rejects.toThrow("roll back");
@@ -603,6 +654,46 @@ describe("applyRefundSnapshot: re-judging an awaiting_stripe refund_again by its
     expect((await copyOf(lot, failed))!.resolved_by_operation_id).toBeNull();
     const unresolved = await inTx((tx) => unresolvedOf(tx, lot));
     expect(unresolved.map((r) => r.stripeRefundId)).toEqual([failed]);
+  });
+});
+
+describe("a refund_again that ends on E6 answers for its own refund (v6 §6.2, §9, finding [39])", () => {
+  it("awaiting: its refund was seen succeeded, then failed → stripe_refund_failed_later; its own refund is resolved by it, only the original stays unresolved", async () => {
+    const lot = await seedRefundLot(suite.sql, "refunded");
+    // Booked short on purpose; the 300 refund it was booked on failed later.
+    await seedOperation(suite.sql, lot, {
+      kind: "settle",
+      status: "succeeded",
+      result: "refunded",
+      notify: false,
+      createdSecondsAgo: 600,
+    });
+    const original = reId("original");
+    await seedCopy(suite.sql, lot, { id: original, amountCents: 300, status: "failed", everSucceeded: true });
+    const own = reId("again_own");
+    const again = await seedOperation(suite.sql, lot, {
+      kind: "refund_again",
+      status: "awaiting_stripe",
+      stripeRefundId: own,
+      failedRefundIds: [original],
+      refundAmountCents: 300,
+      notify: true,
+      firstCalledHoursAgo: 1,
+      attemptCount: 1,
+    });
+    // Seen succeeded once (a webhook while it was still pending elsewhere).
+    await seedCopy(suite.sql, lot, { id: own, amountCents: 300, status: "succeeded", everSucceeded: true, operationId: again.id });
+
+    await apply(lot, [refundObject(original, "failed", 300), refundObject(own, "failed", 300, again.id)]);
+
+    expect(await readOp(suite.sql, again.id)).toMatchObject({
+      status: "needs_attention",
+      attention_reason: "stripe_refund_failed_later",
+    });
+    expect(await copyOf(lot, own)).toMatchObject({ status: "failed", ever_succeeded: true, resolved_by_operation_id: again.id });
+    expect((await copyOf(lot, original))!.resolved_by_operation_id).toBeNull();
+    const unresolved = await inTx((tx) => unresolvedOf(tx, lot));
+    expect(unresolved.map((r) => r.stripeRefundId)).toEqual([original]);
   });
 });
 
@@ -713,8 +804,8 @@ describe("unresolved failed refunds, read as production reads them (§5.3)", () 
     const lot = await seedRefundLot(suite.sql, "refunded");
     const id = reId("fresh");
     const seen = await inTx(async (tx) => {
-      await applyRefundSnapshot(tx, lot.paymentId, [refundObject(id, "succeeded", 1080)]);
-      await applyRefundSnapshot(tx, lot.paymentId, [refundObject(id, "failed", 1080)]);
+      await applyRefundSnapshot(tx, lot.paymentId, [refundObject(id, "succeeded", 1080)], "webhook");
+      await applyRefundSnapshot(tx, lot.paymentId, [refundObject(id, "failed", 1080)], "webhook");
       return unresolvedOf(tx, lot);
     });
     expect(seen.map((r) => r.stripeRefundId)).toEqual([id]);

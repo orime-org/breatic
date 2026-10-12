@@ -104,6 +104,7 @@ function e1(lot: SeededLot, kind: OpKind, extra: Partial<NewOperation> = {}): Op
       reason: "buyer wrote in",
       ...extra,
     },
+    actor: "request",
   };
 }
 
@@ -138,6 +139,7 @@ describe("(no row) × every event but E1 and E14: impossible", () => {
       type: "E2",
       refund: refundObject(reId("late"), "succeeded", 1080),
       leaseToken: randomUUID(),
+      actor: "loop",
     });
   });
 });
@@ -147,7 +149,7 @@ describe("(no row) × E14: nothing to close", () => {
     const lot = await seedRefundLot(suite.sql, "refund_pending");
     const before = await worldOf(suite.sql, lot);
     const returned = await inTx((tx) =>
-      transitionOperation(tx, null, { type: "E14", closedBy: randomUUID() }),
+      transitionOperation(tx, null, { type: "E14", closedBy: randomUUID(), actor: "request" }),
     );
     expect(returned).toBeNull();
     expect(await worldOf(suite.sql, lot)).toEqual(before);

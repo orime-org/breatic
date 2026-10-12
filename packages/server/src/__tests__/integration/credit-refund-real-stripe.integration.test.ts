@@ -245,7 +245,7 @@ describe("approve against Stripe test mode", () => {
 
 describe("a refund that succeeds and later fails (pm_card_refundFail)", () => {
   it(
-    "approve books it; the reconcile finds it failed; the preview offers refund_again; refund-again ends as the design allows, and the outcome is logged @needs-payments",
+    "approve books it; the reconcile finds it failed; the preview blocks refund_again (refund_failed: the failed amount does not come back); resolved-outside answers for it @needs-payments",
     async () => {
       const lot = await paidLot("pm_card_refundFail");
 
@@ -261,57 +261,35 @@ describe("a refund that succeeds and later fails (pm_card_refundFail)", () => {
         expect(copy).toMatchObject({ status: "failed", ever_succeeded: true, resolved_by_operation_id: null });
       }, FAILED_LATER_WITHIN_MS);
 
+      // §5.2 v6: paid − succeeded − failed = 0, so a refund_again of the
+      // failed amount is one Stripe would refuse; the preview says so.
       const preview = await call(suite.baseUrl, paths.preview(lot.lotId));
       expect(preview.status).toBe(200);
       expect(preview.json.unresolvedFailedRefunds).toEqual([
         expect.objectContaining({ stripeRefundId: failedId, amountCents: PAID_CENTS }),
       ]);
-      expect(preview.json.action).toMatchObject({ kind: "refund_again", outcome: "create_refund", amountCents: PAID_CENTS });
+      expect(preview.json.action).toMatchObject({
+        kind: "refund_again",
+        outcome: "blocked",
+        code: "stripe_blocks",
+        reason: "refund_failed",
+      });
       const ledgerBefore = await ledgerOf(suite.sql, lot.lotId);
 
-      const again = await post(paths.refundAgain(lot.lotId), {
-        reason: "The refund to the card failed.",
+      const resolved = await post(paths.resolvedOutside(lot.lotId), {
+        reason: "Paid back by bank transfer after the card refund failed.",
         failedRefundIds: [failedId],
-        notify: true,
+        confirmedSucceededCents: 0,
       });
 
-      expect(again.status === 200 || again.status === 202).toBe(true);
-      const opId: string = again.json.id;
-      const created = (await stripeRefundsOf(lot.paymentIntentId)).find(
-        (r) => r.metadata?.refund_operation_id === opId,
-      );
-      console.info(
-        `[inner#1410 §5.2 open question] refund-again after pm_card_refundFail: ${
-          created
-            ? `Stripe created refund ${created.id} for ${created.amount} cents (status ${created.status}); the failed amount returned to the refundable amount`
-            : `Stripe refused; disposition ${again.json.status}/${again.json.attentionReason}; the failed amount did not return to the refundable amount`
-        }`,
-      );
-
-      if (created) {
-        expect(created.amount).toBe(PAID_CENTS);
-        if (again.status === 202) {
-          await loopUntil(async () => {
-            const [op] = await suite.sql<{ status: string }[]>`
-              SELECT status FROM credit_refund_operations WHERE id = ${opId}
-            `;
-            expect(op!.status).not.toBe("awaiting_stripe");
-          }, FAILED_LATER_WITHIN_MS);
-        }
-        const [op] = await suite.sql<{ status: string; result: string | null }[]>`
-          SELECT status, result FROM credit_refund_operations WHERE id = ${opId}
-        `;
-        expect(op).toEqual({ status: "succeeded", result: "refunded" });
-        const failed = (await copiesOf(suite.sql, lot.lotId)).find((c) => c.stripe_refund_id === failedId);
-        expect(failed).toMatchObject({ resolved_by_operation_id: opId });
-      } else {
-        expect(again.json).toMatchObject({ kind: "refund_again", status: "needs_attention" });
-        expect(["already_refunded_elsewhere", "stripe_declined"]).toContain(again.json.attentionReason);
-        const after = await call(suite.baseUrl, paths.preview(lot.lotId));
-        expect(after.json.unresolvedFailedRefunds).toEqual([
-          expect.objectContaining({ stripeRefundId: failedId, amountCents: PAID_CENTS }),
-        ]);
-      }
+      expect(resolved.status).toBe(200);
+      const opId: string = resolved.json.id;
+      expect(resolved.json).toMatchObject({ kind: "resolve_outside", status: "succeeded", result: "resolved_outside", notify: false });
+      expect((await stripeRefundsOf(lot.paymentIntentId)).map((r) => r.id)).toEqual([failedId]);
+      const failed = (await copiesOf(suite.sql, lot.lotId)).find((c) => c.stripe_refund_id === failedId);
+      expect(failed).toMatchObject({ status: "failed", ever_succeeded: true, resolved_by_operation_id: opId });
+      const after = await call(suite.baseUrl, paths.preview(lot.lotId));
+      expect(after.json.unresolvedFailedRefunds).toEqual([]);
       expect(await ledgerOf(suite.sql, lot.lotId)).toEqual(ledgerBefore);
       expect(await readLot(suite.sql, lot.lotId)).toEqual({ lifecycle: "refunded", remaining: "0.000000", attempts: 0 });
     },
