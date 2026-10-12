@@ -66,6 +66,8 @@ What leaves when it is on:
 
 To turn it off again, empty the variables, restart the backend and rebuild the frontend.
 
+When an account is deleted on request, delete its events from Amplitude too: run `AMPLITUDE_SECRET_KEY=<project secret key> pnpm analytics:delete-users <users.id> …` from the repository root. The secret key is in the Amplitude project's settings and is passed only for that run; Amplitude schedules the deletion within 30 days and the command prints the scheduled day. How long Amplitude keeps events is set in its organization settings (Time to Live).
+
 ## Scope and verification
 
 This change implements the user-approved separate-frontend deployment without changing database tables, session format, task semantics or local deployment defaults. Keeping one configurable API base avoids divergent request paths; passing queue TLS/credentials fixes the lost connection options rather than weakening cloud security. Separate API and WS hostnames would require a different cookie-sharing decision and are not required.
