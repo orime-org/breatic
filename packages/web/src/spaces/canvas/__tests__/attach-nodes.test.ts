@@ -205,10 +205,11 @@ describe('a piece of the canvas handed to the agent', () => {
     expect(snapshot(['i1', 't1', 'v1']).edges).toEqual([{ id: 'e1', source: 'i1', target: 'v1' }]);
   });
 
-  it('carries each node its data with its words as plain text', () => {
+  it('carries each node its data with its words as plain text, the type once on the entry', () => {
     const [text] = snapshot(['t1']).nodes;
 
-    expect(text?.data).toEqual({ kind: 'text', name: 'Script', body: 'Line one\nLine two' });
+    expect(text?.type).toBe('text');
+    expect(text?.data).toEqual({ name: 'Script', body: 'Line one\nLine two' });
   });
 
   it('turns every fragment into plain text, mentions read as their label', () => {
