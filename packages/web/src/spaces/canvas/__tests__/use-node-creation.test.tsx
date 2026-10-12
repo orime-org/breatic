@@ -1084,6 +1084,24 @@ describe('useNodeCreation', () => {
       expect(group?.y).toBe(planned.y);
     });
 
+    it('moves a single node right by its own rect, with no group padding', () => {
+      const one: CanvasProposal = {
+        nodes: [{ role: 'source', type: 'image', name: 'Your photo' }],
+        edges: [],
+        rationale: '',
+      };
+      const start = { x: 0, y: 0 };
+      const [spot] = planFlowLayout(one, start);
+      const taken = { x: spot!.x, y: spot!.y, width: 100, height: 100 };
+      const { result } = renderHook(() => useNodeCreation('p-single', 's-single'));
+
+      result.current.placeProposalAt(one, start, [taken]);
+
+      const [placed] = canvasSpace.readNodePlacements('p-single', 's-single');
+      expect(placed?.x).toBe(taken.x + taken.width + ROW_GAP_PX);
+      expect(placed?.y).toBe(spot!.y);
+    });
+
     it('places a second flow clear of the first one', () => {
       const start = { x: 0, y: 0 };
       const { result } = renderHook(() => useNodeCreation('p-twice', 's-twice'));

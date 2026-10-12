@@ -2781,10 +2781,11 @@ function CanvasSpaceInner({
             : undefined;
         });
         const placed = placeProposalAt(intent.proposal, center, occupied);
-        // The camera is not touched. The flow lands near the middle of what
-        // the reader was already looking at, and if it runs past an edge at
-        // their zoom, that is a canvas they can drag -- where they are looking
-        // and how far in they are zoomed is theirs to set (#263 A17).
+        // The camera is not touched. The flow lands at the first clear spot
+        // right of the middle of the view (inner#1443), and if that runs past
+        // an edge at their zoom, that is a canvas they can drag -- where they
+        // are looking and how far in they are zoomed is theirs to set (#263
+        // A17).
         const focus = whatToFocus(intent.proposal, placed);
         if (focus.select.length > 0) setSelectAfterCreate(focus.select);
         if (focus.panel) openGeneratePanel(focus.panel.nodeId, focus.panel.type);
