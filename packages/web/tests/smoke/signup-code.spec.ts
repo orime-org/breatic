@@ -11,7 +11,8 @@
  * the server which way this stack is set up and walks that way.
  */
 
-import { expect, test, type Page } from 'playwright/test';
+import { expect, type Page } from 'playwright/test';
+import { test } from '../helpers/slot';
 
 import { emailVerification, readSignupCode } from '../helpers/signup';
 

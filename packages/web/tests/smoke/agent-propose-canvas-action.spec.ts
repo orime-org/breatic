@@ -17,9 +17,11 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { expect, test, type Page } from 'playwright/test';
+import { expect, type Page } from 'playwright/test';
+import { test } from '../helpers/slot';
+import { startNewConversation } from '../helpers/conversation';
 
-import { STATE_FILE, openSmokeProject } from '../helpers/project';
+import { openSmokeProject } from '../helpers/project';
 import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
 
 let page: Page;
@@ -54,7 +56,6 @@ async function toolsUsed(p: Page): Promise<string[]> {
 
 test.beforeEach(async ({ browser }) => {
   page = await browser.newPage({
-    storageState: STATE_FILE.A,
     viewport: { width: 1500, height: 900 },
   });
   await openSmokeProject(page);
@@ -83,7 +84,7 @@ test('proposes a pair of nodes, and one press puts them on the canvas wired @nee
   );
   await page.mouse.wheel(900, 700);
 
-  await page.getByTestId('new-conversation').click();
+  await startNewConversation(page);
   await expect(page.getByTestId('message-bubble')).toHaveCount(0, { timeout: 20_000 });
 
   // Asked the way the reader this feature exists for would ask: what they
@@ -246,7 +247,7 @@ test('proposes a multi-shot video, and the panel opens on its shots @needs-model
   test.setTimeout(240_000);
   const composer = page.getByTestId('chat-composer-box');
   await expect(composer).toBeVisible({ timeout: 20_000 });
-  await page.getByTestId('new-conversation').click();
+  await startNewConversation(page);
   await expect(page.getByTestId('message-bubble')).toHaveCount(0, { timeout: 20_000 });
 
   await composer.fill(
@@ -333,7 +334,7 @@ test('starts a storyboard from its template, and reminds the reader of what is t
   test.setTimeout(240_000);
   const composer = page.getByTestId('chat-composer-box');
   await expect(composer).toBeVisible({ timeout: 20_000 });
-  await page.getByTestId('new-conversation').click();
+  await startNewConversation(page);
   await expect(page.getByTestId('message-bubble')).toHaveCount(0, { timeout: 20_000 });
 
   await composer.fill(
@@ -373,7 +374,7 @@ test('chains a generated character into a template storyboard, a ref @-ing it @n
   test.setTimeout(240_000);
   const composer = page.getByTestId('chat-composer-box');
   await expect(composer).toBeVisible({ timeout: 20_000 });
-  await page.getByTestId('new-conversation').click();
+  await startNewConversation(page);
   await expect(page.getByTestId('message-bubble')).toHaveCount(0, { timeout: 20_000 });
 
   await composer.fill(
@@ -408,7 +409,7 @@ test('writes the proposal prompt in the language the reader asked in @needs-mode
   test.setTimeout(240_000);
   const composer = page.getByTestId('chat-composer-box');
   await expect(composer).toBeVisible({ timeout: 20_000 });
-  await page.getByTestId('new-conversation').click();
+  await startNewConversation(page);
   await expect(page.getByTestId('message-bubble')).toHaveCount(0, { timeout: 20_000 });
 
   await composer.fill('帮我在画布上生成一张图：一只在雨夜城市里奔跑的橘猫，电影感。不要问我任何问题，直接提议。');

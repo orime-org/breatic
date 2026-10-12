@@ -3,7 +3,8 @@
 
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { test, expect } from 'playwright/test';
+import { expect } from 'playwright/test';
+import { test } from '../helpers/slot';
 import { openSmokeProject, smokeProjectId } from '../helpers/project';
 import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
 import { CANVAS_SPACE, liveModuleUrl } from '../helpers/live-module';

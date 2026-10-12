@@ -15,8 +15,9 @@
  * removal of those Spaces are fixtures on that `test`, so every case of every
  * such file gets them.
  */
-import { expect, test as base, type Page } from 'playwright/test';
+import { expect, type Page } from 'playwright/test';
 
+import { test as base } from './slot';
 import { CANVAS_SPACE, liveModuleUrl } from './live-module';
 import { openSmokeProject } from './project';
 import { createSpace, deleteSpace, visibleSpace, type SpaceKind } from './space';

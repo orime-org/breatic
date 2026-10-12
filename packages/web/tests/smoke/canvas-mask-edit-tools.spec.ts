@@ -19,7 +19,8 @@ import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { test, expect, type Locator, type Page } from 'playwright/test';
+import { expect, type Locator, type Page } from 'playwright/test';
+import { test } from '../helpers/slot';
 
 import { CANVAS_SPACE, liveModuleUrl } from '../helpers/live-module';
 import { openTool, seedNode, setNodeContent, zoomBy } from '../helpers/mini-tool';

@@ -13,11 +13,13 @@
  * conversation is reopened is checked against a real store in the server's
  * `turn-message-shape.integration.test.ts`.
  */
-import { expect, test, type Page } from 'playwright/test';
+import { expect, type Page } from 'playwright/test';
+import { test } from '../helpers/slot';
+import { startNewConversation } from '../helpers/conversation';
 
-import { STATE_FILE, openSmokeProject } from '../helpers/project';
+import { openSmokeProject } from '../helpers/project';
 
-test.use({ storageState: STATE_FILE.A, viewport: { width: 1500, height: 900 } });
+test.use({ viewport: { width: 1500, height: 900 } });
 
 /** How the server opens every turn. */
 const OPENING = [
@@ -47,7 +49,7 @@ async function answerWith(page: Page, chunks: object[]): Promise<void> {
  */
 async function sendOne(page: Page): Promise<void> {
   await openSmokeProject(page);
-  await page.getByTestId('new-conversation').click();
+  await startNewConversation(page);
   await expect(page.getByTestId('message-bubble')).toHaveCount(0, { timeout: 20_000 });
   const composer = page.getByTestId('chat-composer-box');
   await composer.fill('outcome probe');

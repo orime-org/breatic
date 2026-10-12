@@ -23,10 +23,11 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
-import { test, expect, type Page } from 'playwright/test';
+import { expect, type Page } from 'playwright/test';
+import { test } from '../helpers/slot';
 
 import { CANVAS_SPACE, liveModuleUrl } from '../helpers/live-module';
-import { STATE_FILE, openSmokeProject, smokeProjectId } from '../helpers/project';
+import { openSmokeProject, smokeProjectId } from '../helpers/project';
 import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
 
 /** The fixtures with people in them. */
@@ -87,7 +88,7 @@ function prepareMedia(): string {
   return dir;
 }
 
-test.use({ storageState: STATE_FILE.A, actionTimeout: 20_000 });
+test.use({ actionTimeout: 20_000 });
 test.setTimeout(45 * 60_000);
 
 /** One node as the document holds it. */

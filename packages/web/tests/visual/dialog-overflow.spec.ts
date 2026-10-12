@@ -14,7 +14,8 @@
  * The gallery at /dev/primitives is the surface: it renders the primitives
  * through the real component tree and needs no session.
  */
-import { test, expect, type Page, type Locator } from 'playwright/test';
+import { expect, type Page, type Locator } from 'playwright/test';
+import { test } from '../helpers/slot';
 
 /** Viewport equivalent to 1280x720 at 200% zoom, where #166 was reported. */
 const ZOOMED = { width: 640, height: 320 };

@@ -10,9 +10,11 @@
  * for something the reader wrote. Each browser here runs in a zone of its own,
  * which is what the composer reports with every message.
  */
-import { expect, test, type Browser, type Page } from 'playwright/test';
+import { expect, type Browser, type Page } from 'playwright/test';
+import { test } from '../helpers/slot';
+import { startNewConversation } from '../helpers/conversation';
 
-import { STATE_FILE, openSmokeProject } from '../helpers/project';
+import { openSmokeProject } from '../helpers/project';
 
 /** How far the clock the reply states may sit from the moment it was asked. */
 const SLACK_MINUTES = 3;
@@ -67,7 +69,6 @@ function statesTimeNear(text: string, expected: number): boolean {
  */
 async function pageIn(browser: Browser, timeZone: string): Promise<Page> {
   const context = await browser.newContext({
-    storageState: STATE_FILE.A,
     viewport: { width: 1500, height: 900 },
     timezoneId: timeZone,
   });
@@ -100,7 +101,7 @@ async function askHere(p: Page, question: string): Promise<string> {
  * @param p - The signed-in page.
  */
 async function newConversation(p: Page): Promise<void> {
-  await p.getByTestId('new-conversation').click();
+  await startNewConversation(p);
   await expect(p.getByTestId('message-bubble')).toHaveCount(0, { timeout: 20_000 });
 }
 

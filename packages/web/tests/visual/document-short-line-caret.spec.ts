@@ -41,11 +41,11 @@
  *
  *   pnpm --filter @breatic/web test:visual
  */
-import { test, expect, type Page } from 'playwright/test';
+import { expect, type Page } from 'playwright/test';
+import { test } from '../helpers/slot';
 
 import { openSmokeProject } from '../helpers/project';
 import { createSpace, deleteSpace, DOCUMENT_EDITOR as EDITOR } from '../helpers/space';
-
 
 const BLOCK = `${EDITOR} .bn-block-content`;
 const MOD = process.platform === 'darwin' ? 'Meta' : 'Control';
