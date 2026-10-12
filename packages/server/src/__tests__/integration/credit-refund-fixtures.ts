@@ -546,6 +546,23 @@ export async function mailsOf(sql: Sql, lotId: string): Promise<MailRow[]> {
 }
 
 /**
+ * Finish every disposition still in flight, so a suite that drives the
+ * refund loop or the daily reconcile — both scan the whole table — starts
+ * from the rows it seeds itself. The integration run is a single fork, so
+ * the rows parked here belong to suites that have already finished.
+ * @param sql - Raw client.
+ */
+export async function parkInFlightOperations(sql: Sql): Promise<void> {
+  await sql`
+    UPDATE credit_refund_operations
+    SET status = 'needs_attention', attention_reason = 'state_mismatch',
+        attention_detail = 'parked by a later suite', finished_at = now(),
+        lease_token = NULL, locked_until = NULL, next_attempt_at = NULL
+    WHERE status IN ('started', 'awaiting_stripe')
+  `;
+}
+
+/**
  * The database clock in epoch microseconds, for bracketing a `now()`.
  * @param sql - Raw client.
  * @returns Microseconds.

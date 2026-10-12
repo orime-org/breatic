@@ -124,6 +124,7 @@ export class FakeStripeRefunds {
   private readonly paid = new Map<string, number>();
   private readonly script: CreateBehavior[] = [];
   private listFailure: Error | null = null;
+  private readonly listFailureFor = new Map<string, Error>();
   readonly listCalls: Record<string, unknown>[] = [];
   readonly createCalls: CreateCall[] = [];
 
@@ -142,6 +143,7 @@ export class FakeStripeRefunds {
     this.paid.clear();
     this.script.length = 0;
     this.listFailure = null;
+    this.listFailureFor.clear();
     this.listCalls.length = 0;
     this.createCalls.length = 0;
   }
@@ -166,6 +168,25 @@ export class FakeStripeRefunds {
    */
   failLists(error: Error | null): void {
     this.listFailure = error;
+  }
+
+  /**
+   * Make `refunds.list` of one payment intent throw until cleared; the
+   * others answer normally.
+   * @param paymentIntent - `pi_…`.
+   * @param error - What to throw; null restores normal answers.
+   */
+  failListFor(paymentIntent: string, error: Error | null): void {
+    if (error === null) this.listFailureFor.delete(paymentIntent);
+    else this.listFailureFor.set(paymentIntent, error);
+  }
+
+  /**
+   * The payment intents `refunds.list` was called for, in call order.
+   * @returns One entry per call.
+   */
+  listedIntents(): string[] {
+    return this.listCalls.map((p) => String(p.payment_intent));
   }
 
   /**
@@ -200,7 +221,10 @@ export class FakeStripeRefunds {
   private list(params: Record<string, unknown>): Promise<unknown> {
     this.listCalls.push(structuredClone(params));
     const pi = String(params.payment_intent);
-    return apiList(structuredClone(this.refunds.get(pi) ?? []), this.listFailure);
+    return apiList(
+      structuredClone(this.refunds.get(pi) ?? []),
+      this.listFailure ?? this.listFailureFor.get(pi) ?? null,
+    );
   }
 
   private async create(params: Record<string, unknown>, options?: Record<string, unknown>): Promise<FakeRefund> {
