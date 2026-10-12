@@ -49,9 +49,7 @@
 import { createExtension } from '@blocknote/core';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import type { EditorState } from '@tiptap/pm/state';
-import { DecorationSet } from '@tiptap/pm/view';
-
-import { viewState } from '@web/spaces/document/document-view-state';
+import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import type { EditorView } from '@tiptap/pm/view';
 import type { Node as PMNode } from '@tiptap/pm/model';
 
@@ -154,7 +152,7 @@ function nudgePlugin(): Plugin<number | null> {
         const node = state.doc.nodeAt(pos);
         if (node === null) return null;
         return DecorationSet.create(state.doc, [
-          viewState.node(pos, pos + node.nodeSize, {
+          Decoration.node(pos, pos + node.nodeSize, {
             [BLOCKED_ATTRIBUTE]: '',
             style: `--doc-tab-nudge:${NUDGE_MS}ms`,
           }),

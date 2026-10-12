@@ -39,7 +39,6 @@ import { QUOTED } from '@web/spaces/document/document-list-block';
 import { rowById } from '@web/spaces/document/document-row-by-id';
 import { namesOnUndoStack } from '@web/spaces/document/document-undo-selection';
 import { fromYjs } from '@web/spaces/document/document-yjs-origin';
-import { viewState } from '@web/spaces/document/document-view-state';
 
 /** Where a batch of files lands: a position between two blocks. */
 export type UploadGap = number;
@@ -285,7 +284,7 @@ function decorate(batches: readonly UploadBatch[], doc: PMNode): DecorationSet {
     batch.slots.forEach((slot, k) => {
       if (slot.phase === 'inserted') return;
       widgets.push(
-        viewState.widget(
+        Decoration.widget(
           placeSlot(batch, k, doc).at,
           (view) => {
             const holder = document.createElement('div');

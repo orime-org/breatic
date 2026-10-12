@@ -44,7 +44,6 @@ import { bodyHolds } from '@web/spaces/document/document-body-focus';
 import { UNSUPPORTED_BLOCK } from '@web/spaces/document/document-unsupported-blocknote';
 import { DIVIDER } from '@web/spaces/document/document-divider';
 import { MEDIA_BLOCK_TYPES, isMediaBlockType } from '@web/spaces/document/document-media-types';
-import { viewState } from '@web/spaces/document/document-view-state';
 
 /** The class `index.css` paints a no-text block inside the selection with. */
 export const IN_SELECTION_CLASS = 'doc-in-selection';
@@ -110,7 +109,7 @@ function paintFor(state: EditorState): DecorationSet {
   if (selection instanceof NodeSelection) {
     if (NODE_SELECTED.has(selection.node.type.name)) {
       found.push(
-        viewState.node(selection.from, selection.to, {
+        Decoration.node(selection.from, selection.to, {
           class: paintClassOf(selection.node.type.name),
         }),
       );
@@ -123,18 +122,18 @@ function paintFor(state: EditorState): DecorationSet {
     doc.nodesBetween(selection.from, selection.to, (node, pos) => {
       if (node.isTextblock) {
         if (holdsLines && node.content.size === 0) {
-          found.push(viewState.node(pos, pos + node.nodeSize, { class: EMPTY_LINE_CLASS }));
+          found.push(Decoration.node(pos, pos + node.nodeSize, { class: EMPTY_LINE_CLASS }));
         }
         return false;
       }
       if (!NO_TEXT.has(node.type.name)) return true;
-      found.push(viewState.node(pos, pos + node.nodeSize, { class: paintClassOf(node.type.name) }));
+      found.push(Decoration.node(pos, pos + node.nodeSize, { class: paintClassOf(node.type.name) }));
       return false;
     });
     // The text an edge takeover holds, in the colour the panel stand-in
     // paints with (`index.css`, `[data-show-selection]`).
     if (selection instanceof BodyEdgeSelection) {
-      found.push(viewState.inline(selection.from, selection.to, { 'data-show-selection': 'true' }));
+      found.push(Decoration.inline(selection.from, selection.to, { 'data-show-selection': 'true' }));
     }
   }
   return found.length > 0 ? DecorationSet.create(doc, found) : DecorationSet.empty;

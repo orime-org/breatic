@@ -102,7 +102,7 @@ import {
   type EditorState,
   type Transaction,
 } from '@tiptap/pm/state';
-import { DecorationSet } from '@tiptap/pm/view';
+import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import {
   absolutePositionToRelativePosition,
   relativePositionToAbsolutePosition,
@@ -126,7 +126,6 @@ import {
   rowById,
 } from '@web/spaces/document/document-row-by-id';
 import { fromYjs } from '@web/spaces/document/document-yjs-origin';
-import { viewState } from '@web/spaces/document/document-view-state';
 
 /**
  * The draft's name wherever a comment is named by id: the panel's column and
@@ -654,7 +653,7 @@ function paintDraft(state: EditorState): DecorationSet {
   return DecorationSet.create(
     state.doc,
     range.segments.map(({ from, to }) =>
-      viewState.inline(from, to, {
+      Decoration.inline(from, to, {
         class: reading ? `${DRAFT_MARK_CLASS} ${READING_CLASS}` : DRAFT_MARK_CLASS,
       }),
     ),

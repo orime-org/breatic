@@ -21,11 +21,10 @@
 
 import { createExtension } from '@blocknote/core';
 import { Plugin, PluginKey, type EditorState } from '@tiptap/pm/state';
-import { DecorationSet, type EditorView } from '@tiptap/pm/view';
+import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view';
 
 import { followCell, renameCell, type CellName } from '@web/spaces/document/document-table-cell-name';
 import { cellsOfScope } from '@web/spaces/document/document-table-run';
-import { viewState } from '@web/spaces/document/document-view-state';
 
 /** The line a row or column menu acts on. */
 type Line = 'row' | 'column';
@@ -79,7 +78,7 @@ function tableTargetPlugin(): Plugin<Target> {
         const held = tableTargetKey.getState(state) ?? null;
         if (held === null || held.line === null) return null;
         const marks = cellsOfScope(state.doc, held.pos, held.line).map((pos) =>
-          viewState.node(pos, pos + (state.doc.nodeAt(pos)?.nodeSize ?? 0), { class: TARGET_CLASS }),
+          Decoration.node(pos, pos + (state.doc.nodeAt(pos)?.nodeSize ?? 0), { class: TARGET_CLASS }),
         );
         return DecorationSet.create(state.doc, marks);
       },

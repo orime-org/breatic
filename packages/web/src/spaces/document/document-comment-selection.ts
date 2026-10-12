@@ -51,7 +51,6 @@ import {
 } from '@web/spaces/document/document-comment-extension';
 import { watchPluginState } from '@web/spaces/document/document-plugin-watch';
 import type { ToolEditor } from '@web/spaces/document/document-tool-button';
-import { viewState } from '@web/spaces/document/document-view-state';
 
 /** The editor surface this plugin needs, past the view. */
 interface CommentSelectionHost {
@@ -143,7 +142,7 @@ function paintSelected(
       if (!isLiveCommentMark(mark)) return;
       if (!ids.includes(mark.attrs.threadId as string)) return;
       painted.push(
-        viewState.inline(pos, pos + node.nodeSize, { class: READING_CLASS }),
+        Decoration.inline(pos, pos + node.nodeSize, { class: READING_CLASS }),
       );
     });
     return true;

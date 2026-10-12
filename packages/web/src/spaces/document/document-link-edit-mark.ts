@@ -30,9 +30,7 @@
 import { createExtension } from '@blocknote/core';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import type { EditorState, Transaction } from '@tiptap/pm/state';
-import { DecorationSet } from '@tiptap/pm/view';
-
-import { viewState } from '@web/spaces/document/document-view-state';
+import { Decoration, DecorationSet } from '@tiptap/pm/view';
 
 import {
   resolveTrackedLink,
@@ -87,7 +85,7 @@ export const documentLinkEditMarkExtension = createExtension(() => ({
           );
           if (!range) return DecorationSet.empty;
           return DecorationSet.create(state.doc, [
-            viewState.inline(range.from, range.to, {
+            Decoration.inline(range.from, range.to, {
               'data-show-selection': 'true',
             }),
           ]);

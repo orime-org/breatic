@@ -42,13 +42,12 @@
 import { createExtension, type ExtensionFactoryInstance } from '@blocknote/core';
 import { Plugin, PluginKey, type EditorState } from '@tiptap/pm/state';
 import type { Node as PMNode } from '@tiptap/pm/model';
-import { DecorationSet } from '@tiptap/pm/view';
+import { Decoration, DecorationSet } from '@tiptap/pm/view';
 
 import { t } from '@breatic/shared';
 
 import { QUOTED } from '@web/spaces/document/document-list-block';
 import { ownContentPaints } from '@web/spaces/document/document-row-paints';
-import { viewState } from '@web/spaces/document/document-view-state';
 
 /**
  * Whether a block's own content node paints nothing a reader could see.
@@ -124,7 +123,7 @@ function firstBlockHint(state: EditorState): DecorationSet | null {
   const first = firstBlock(doc);
   if (first === null) return null;
   return DecorationSet.create(doc, [
-    viewState.node(first.pos, first.pos + first.node.nodeSize, {
+    Decoration.node(first.pos, first.pos + first.node.nodeSize, {
       'data-block-placeholder': t('spaces.document.placeholder'),
     }),
   ]);

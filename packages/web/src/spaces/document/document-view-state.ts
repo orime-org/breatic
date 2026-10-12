@@ -2,148 +2,123 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * What the body paints for the moment rather than for its content: the
- * selection, a comment being read or drafted, a link being edited, a table
- * line held or dropped on, a block refusing a Tab, an upload on its way, the
- * empty document's hint (inner#1350 A1).
- *
- * A copy of the body takes all of it along, and a drag preview is a copy: the
- * same blocks would come out painted one way or another by how they happened
- * to be selected. A preview shows the content alone, the way Chromium draws
+ * A drag preview shows the content alone (inner#1350 A1). It is a copy of the
+ * body, and the body also wears what it shows for the moment: the selection, a
+ * collaborator's caret and selection, a comment being read, a link being
+ * edited, a table line held, a block refusing a Tab, an upload on its way, the
+ * slash menu's query, a column being resized, a medium the pointer is over.
+ * The same blocks would come out painted one way or another by how they
+ * happened to be selected and who else was in the document. Chromium draws
  * selected text being dragged without its selection behind it
  * (`text_fragment_painter.cc`, `PaintPhase::kSelectionDragImage`).
  *
- * Every decoration of that kind in the body is made here, and each records in
- * its spec what it adds, so a copy can be taken back to the content without a
- * list of names kept somewhere else. A decoration that is part of how the
- * content looks (a quote's rule, an unsupported block's label) is made with
- * `Decoration` itself.
+ * So everything a decoration adds comes off the copy, whoever made it, and so
+ * does every widget; a decoration that is part of how the content looks says
+ * so in its spec ({@link CONTENT_DECORATION}) and stays.
  */
 
-import { Decoration } from '@tiptap/pm/view';
-import type { DecorationAttrs, EditorView } from '@tiptap/pm/view';
+import type { Decoration, DecorationAttrs, EditorView } from '@tiptap/pm/view';
 
-/** The spec key a view-state decoration records what it adds under. */
-const RECORD = 'docViewState';
-
-/** The attribute a view-state widget's element carries. */
-const WIDGET_ATTRIBUTE = 'data-view-state';
+/** The spec key a content decoration carries. */
+const CONTENT = 'docContent';
 
 /**
- * What the libraries the body runs on paint for the moment: prosemirror-tables'
- * layer over the cells of a cell selection, prosemirror-view's class on a
- * selected node, prosemirror-gapcursor's caret.
+ * The spec of a decoration that is part of how the content looks — a list's
+ * numbers, a quote's rule, an unsupported block's label — which a drag preview
+ * keeps.
  */
-const LIBRARY_CLASSES = ['selectedCell', 'ProseMirror-selectednode'];
-const LIBRARY_ELEMENTS = '.ProseMirror-gapcursor';
+export const CONTENT_DECORATION: Readonly<Record<string, true>> = Object.freeze({ [CONTENT]: true });
 
-/** What a view-state decoration adds to the elements it lands on. */
-interface ViewStateRecord {
-  readonly classes: readonly string[];
-  readonly attributes: readonly string[];
+/**
+ * What the body shows for the moment that is no decoration: the class
+ * prosemirror-view puts on a selected node, and the media box's hover and
+ * selected state, written by its own view (`DocumentMediaBlock`).
+ */
+const SELECTED_NODE_CLASS = 'ProseMirror-selectednode';
+const VIEW_ATTRIBUTES = ['data-hovered', 'data-selected'];
+
+/** Every widget prosemirror-view draws carries this class (`spec.raw` aside). */
+const WIDGET = '.ProseMirror-widget';
+
+/** What the decorations now in the view add, to be taken off a copy. */
+interface Added {
+  readonly classes: Set<string>;
+  readonly attributes: Set<string>;
+  readonly properties: Set<string>;
 }
 
-/** The arguments of `Decoration.widget`. */
-type WidgetArgs = Parameters<typeof Decoration.widget>;
+/**
+ * The attributes a node or inline decoration adds. prosemirror-view keeps them
+ * on the decoration's type; a widget's type has none.
+ * @param decoration - The decoration.
+ * @returns Its attributes, or undefined for a widget.
+ */
+function attrsOf(decoration: Decoration): DecorationAttrs | undefined {
+  return (decoration as unknown as { type: { attrs?: DecorationAttrs } }).type.attrs;
+}
 
 /**
- * What some decoration attributes add: their classes, and every other
- * attribute but `style` (which only sets custom properties the classes and
- * attributes read).
+ * Adds what some decoration attributes put on an element to a tally.
  * @param attrs - The attributes.
- * @returns The record.
+ * @param added - The tally.
  */
-function recordOf(attrs: DecorationAttrs): ViewStateRecord {
-  const classes = (attrs.class ?? '').split(/\s+/).filter((name) => name !== '');
-  const attributes = Object.keys(attrs).filter((name) => name !== 'class' && name !== 'style' && name !== 'nodeName');
-  return { classes, attributes };
+function tally(attrs: DecorationAttrs, added: Added): void {
+  Object.entries(attrs).forEach(([name, value]) => {
+    if (name === 'nodeName' || typeof value !== 'string') return;
+    if (name === 'class') {
+      value.split(/\s+/).filter((token) => token !== '').forEach((token) => added.classes.add(token));
+    } else if (name === 'style') {
+      value
+        .split(';')
+        .map((declaration) => declaration.split(':')[0]?.trim() ?? '')
+        .filter((property) => property !== '')
+        .forEach((property) => added.properties.add(property));
+    } else {
+      added.attributes.add(name);
+    }
+  });
 }
 
-/** The decorations for what the body shows for the moment. */
-export const viewState = {
-  /**
-   * A node decoration for what the body shows for the moment.
-   * @param from - Where the node starts.
-   * @param to - Where it ends.
-   * @param attrs - What it adds to the node's element.
-   * @param spec - The decoration's own spec.
-   * @returns The decoration.
-   */
-  node(from: number, to: number, attrs: DecorationAttrs, spec?: Record<string, unknown>): Decoration {
-    return Decoration.node(from, to, attrs, { ...spec, [RECORD]: recordOf(attrs) });
-  },
-  /**
-   * An inline decoration for what the body shows for the moment.
-   * @param from - Where the range starts.
-   * @param to - Where it ends.
-   * @param attrs - What it adds to the range's elements.
-   * @param spec - The decoration's own spec.
-   * @returns The decoration.
-   */
-  inline(from: number, to: number, attrs: DecorationAttrs, spec?: Record<string, unknown>): Decoration {
-    return Decoration.inline(from, to, attrs, { ...spec, [RECORD]: recordOf(attrs) });
-  },
-  /**
-   * A widget for what the body shows for the moment; its element is marked so
-   * a copy can leave it out.
-   * @param pos - Where it sits.
-   * @param toDOM - Builds its element.
-   * @param spec - The decoration's own spec.
-   * @returns The decoration.
-   */
-  widget(pos: number, toDOM: WidgetArgs[1], spec?: WidgetArgs[2]): Decoration {
-    /**
-     * Builds the widget's element and marks it.
-     * @param view - The editor view.
-     * @param getPos - Where the widget sits now.
-     * @returns The element.
-     */
-    const marked: WidgetArgs[1] = (view, getPos): Node => {
-      const dom = typeof toDOM === 'function' ? toDOM(view, getPos) : toDOM;
-      if (dom instanceof Element) dom.setAttribute(WIDGET_ATTRIBUTE, '');
-      return dom;
-    };
-    return Decoration.widget(pos, marked, spec);
-  },
-};
-
-
 /**
- * Whether a decoration's spec holds a view-state record.
- * @param spec - The spec.
- * @returns The record, or null.
+ * What the decorations now in the view add, but for the content's own.
+ * @param view - The editor view.
+ * @returns The classes, attributes and style properties.
  */
-function recordIn(spec: unknown): ViewStateRecord | null {
-  if (typeof spec !== 'object' || spec === null) return null;
-  const record = (spec as Record<string, unknown>)[RECORD];
-  return typeof record === 'object' && record !== null ? (record as ViewStateRecord) : null;
+function addedByDecorations(view: EditorView): Added {
+  const added: Added = {
+    classes: new Set([SELECTED_NODE_CLASS]),
+    attributes: new Set(VIEW_ATTRIBUTES),
+    properties: new Set(),
+  };
+  view.someProp('decorations', (decorations) => {
+    decorations(view.state)?.forEachSet((set) => {
+      set.find().forEach((decoration) => {
+        const attrs = attrsOf(decoration);
+        if (attrs !== undefined && (decoration.spec as Record<string, unknown>)[CONTENT] !== true) {
+          tally(attrs, added);
+        }
+      });
+    });
+  });
+  return added;
 }
 
 /**
  * Takes what the body shows for the moment off a copy of it, leaving the
- * content: what every view-state decoration now in the view added, and what
- * the libraries paint for the moment.
+ * content: every widget, and what every decoration but the content's own adds.
  * @param view - The editor view the copy was taken from.
  * @param copy - The copy.
  */
 export function withoutViewState(view: EditorView, copy: Element): void {
-  const classes = new Set(LIBRARY_CLASSES);
-  const attributes = new Set<string>();
-  view.someProp('decorations', (decorations) => {
-    decorations(view.state)?.forEachSet((set) => {
-      set.find().forEach((decoration) => {
-        const record = recordIn(decoration.spec);
-        record?.classes.forEach((name) => classes.add(name));
-        record?.attributes.forEach((name) => attributes.add(name));
-      });
-    });
-  });
-  copy.querySelectorAll(`[${WIDGET_ATTRIBUTE}], ${LIBRARY_ELEMENTS}`).forEach((el) => {
-    el.remove();
+  const added = addedByDecorations(view);
+  copy.querySelectorAll(WIDGET).forEach((widget) => {
+    widget.remove();
   });
   [copy, ...copy.querySelectorAll('*')].forEach((el) => {
-    classes.forEach((name) => el.classList.remove(name));
-    attributes.forEach((name) => el.removeAttribute(name));
+    added.classes.forEach((name) => el.classList.remove(name));
+    added.attributes.forEach((name) => el.removeAttribute(name));
+    if (el instanceof HTMLElement) added.properties.forEach((property) => el.style.removeProperty(property));
     if (el.getAttribute('class') === '') el.removeAttribute('class');
+    if (el.getAttribute('style') === '') el.removeAttribute('style');
   });
 }
