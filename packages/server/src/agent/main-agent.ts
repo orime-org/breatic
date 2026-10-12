@@ -29,7 +29,7 @@ import { turnToolsContext } from "@server/agent/turn-tools-context.js";
 import { buildTurnContext } from "@server/agent/turn-context.js";
 import { watchModelCalls, type ModelCallWatch } from "@server/agent/model-call-watch.js";
 import type { ChatAttachedChip, MessagePart, ToolFailure } from "@breatic/shared";
-import { userTurnForModel, wireLineOf, wordsForTitle } from "@breatic/shared";
+import { toolFailureOf, userTurnForModel, wireLineOf, wordsForTitle } from "@breatic/shared";
 import * as messageRepo from "@server/modules/conversation/conversation-message.repo.js";
 import { toStoredParts } from "@server/modules/conversation/message-part-mapping.js";
 import * as conversationService from "@server/modules/conversation/conversation.service.js";
@@ -459,22 +459,24 @@ export class MainAgent {
             // The turn carries on and the model is told why; the log is the
             // only place the reason is kept for whoever looks into the turn.
             // A call turned away to steer the model, or one the reader
-            // stopped, is not a failure. A warning: the reader was told, and a
-            // fault of our own inside a tool is logged as an error where it
-            // happened (`save-to-storage.ts`).
+            // stopped, is not a failure. A failure the tool described is one
+            // it saw coming, and the reader was told: a warning. A throw it
+            // did not describe is a fault in our own code: an error.
             if (ending.kind === "tool_failed") {
-              logger.warn(
-                {
-                  err: toolOutput.error,
-                  toolName: toolCall.toolName,
-                  toolCallId: toolCall.toolCallId,
-                  userId,
-                  conversationId,
-                  projectId,
-                  forModel: ending.forModel,
-                },
-                "agent_tool_failed",
-              );
+              const details = {
+                err: toolOutput.error,
+                toolName: toolCall.toolName,
+                toolCallId: toolCall.toolCallId,
+                userId,
+                conversationId,
+                projectId,
+                forModel: ending.forModel,
+              };
+              if (toolFailureOf(toolOutput.error) === undefined) {
+                logger.error(details, "agent_tool_failed");
+              } else {
+                logger.warn(details, "agent_tool_failed");
+              }
             }
             return;
           }

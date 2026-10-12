@@ -770,6 +770,21 @@ describe("understand_media — naming which side failed", () => {
     expect(readerKey).toBe("chat.tool.failure.upstream");
   });
 
+  it("keeps what our own call threw, and what a passing refusal said, for the turn's log", async () => {
+    // The model is told the fact without the vendor's words; the error the
+    // turn logs is the one place left to tell a timeout from a dropped link.
+    const dropped = new TypeError("fetch failed");
+    const busy = new UnderstandRefused(503, "upstream overloaded", "transient");
+    for (const thrown of [dropped, busy]) {
+      understandMediaAtMock.mockRejectedValueOnce(thrown);
+      const failed = await run({ url: "https://example.com/dog.jpg", question: "What is this?" }).then(
+        () => undefined,
+        (err: unknown) => err,
+      );
+      expect((failed as Error).cause).toBe(thrown);
+    }
+  });
+
   it("says an empty file is empty, rather than that the address could not be reached", async () => {
     // The address answered: a HEAD, a GET, a content-type. What it holds is
     // nothing. Telling the model it could not be reached sends the user to
