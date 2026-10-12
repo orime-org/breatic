@@ -2,7 +2,7 @@ import * as React from 'react';
 import * as AlertDialogPrimitive from '@radix-ui/react-alert-dialog';
 import type { VariantProps } from 'class-variance-authority';
 
-import { buttonVariants } from '@web/components/ui/button';
+import { Button, buttonVariants } from '@web/components/ui/button';
 import {
   DialogOverlayScroller,
   OVERLAY_CLASS,
@@ -129,20 +129,30 @@ AlertDialogDescription.displayName =
 // alerts (e.g. "Clear all messages?") can opt into `variant='destructive'`
 // without resorting to className overrides — those couldn't suppress the
 // default variant's `hover:bg-primary-hover` cascade.
+// `loading` and `icon` reach the same Button every other waiting button uses:
+// the Action renders through `asChild`, so Radix composes its close handler
+// into that Button's click, and a press made while loading never gets there.
 type AlertDialogActionProps = React.ComponentPropsWithoutRef<
   typeof AlertDialogPrimitive.Action
 > &
-  VariantProps<typeof buttonVariants>;
+  VariantProps<typeof buttonVariants> &
+  Pick<React.ComponentProps<typeof Button>, 'loading' | 'icon'>;
 
 const AlertDialogAction = React.forwardRef<
   React.ElementRef<typeof AlertDialogPrimitive.Action>,
   AlertDialogActionProps
->(({ className, variant, size, ...props }, ref) => (
-  <AlertDialogPrimitive.Action
-    ref={ref}
-    className={cn(buttonVariants({ variant, size }), className)}
-    {...props}
-  />
+>(({ className, variant, size, loading, icon, children, ...props }, ref) => (
+  <AlertDialogPrimitive.Action ref={ref} asChild {...props}>
+    <Button
+      variant={variant}
+      size={size}
+      className={className}
+      loading={loading}
+      icon={icon}
+    >
+      {children}
+    </Button>
+  </AlertDialogPrimitive.Action>
 ));
 AlertDialogAction.displayName = AlertDialogPrimitive.Action.displayName;
 
