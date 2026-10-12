@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { UPRIGHT, outputTemplateOf, type MiniToolSnapshot, type MiniToolSpec } from '@breatic/shared/mini-tools';
+import { UPRIGHT, defaultParamsOf, outputTemplateOf, type MiniToolSnapshot, type MiniToolSpec } from '@breatic/shared/mini-tools';
 
 import {
   exportCropBlob,
@@ -9,13 +9,14 @@ import {
   type CropSource,
   type Orientation,
 } from '@web/spaces/canvas/focus/crop-export';
+import { exportGridTiles } from '@web/spaces/canvas/mini-tool/grid-export';
 import type { CropRect } from '@web/spaces/canvas/mini-tool/mini-tool-view';
 import type { ExportedFile } from '@web/spaces/canvas/mini-tool/start-mini-tool-run';
 
 /**
  * Make a browser tool's file from the snapshot taken at the press
- * (inner#888 §7.5): the crop or the turned picture, as a PNG at the source's
- * own resolution.
+ * (inner#888 §7.5): the crop, the turned picture or the grid's tiles, as PNGs
+ * at the source's own resolution.
  * @param spec - The browser tool.
  * @param snapshot - The draft as it stood at the press.
  * @returns The files to upload, one per result, named after the tool's output.
@@ -23,6 +24,15 @@ import type { ExportedFile } from '@web/spaces/canvas/mini-tool/start-mini-tool-
  */
 export async function exportMiniToolFile(spec: MiniToolSpec, snapshot: MiniToolSnapshot): Promise<ExportedFile[]> {
   const source: CropSource = { url: snapshot.source.url, timeSeconds: null };
+  if (spec.id === 'image.grid') {
+    const params = { ...defaultParamsOf(spec), ...snapshot.params };
+    const tiles = await exportGridTiles(source, params.rows as number, params.cols as number);
+    const prefix = outputTemplateOf(spec).namePrefix;
+    return tiles.map((tile) => ({
+      file: new File([tile.blob], `${prefix}.png`, { type: 'image/png' }),
+      size: { width: tile.width, height: tile.height },
+    }));
+  }
   let blob: Blob;
   if (spec.id === 'image.crop') {
     const rect = snapshot.params.rect as CropRect | null | undefined;
