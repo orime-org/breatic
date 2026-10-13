@@ -21,7 +21,7 @@ import {
 } from "@collab/services/stream-group-consumer.js";
 
 const FAST: GroupConsumerSettings = {
-  batchCount: 16,
+  maxHeld: 16,
   keyConcurrency: 16,
   blockMs: 100,
   leaseRetryMs: 20,
@@ -392,7 +392,7 @@ describe("startGroupConsumer", () => {
         "a",
         async (entries, ctl) => {
           // Failing entries sit in the backoff queue, which does not count against
-          // batchCount, so the renewal holds more than one chunk.
+          // maxHeld, so the renewal holds more than one chunk.
           if (entries[0]!.payload !== "slow") return new Map(entries.map((e) => [e.id, { failed: new Error("boom") }]));
           // The round in hand outlives the stop deadline.
           await until(() => ctl.stopping(), 10_000);
@@ -400,7 +400,7 @@ describe("startGroupConsumer", () => {
           slowDone = true;
           return new Map(entries.map((e) => [e.id, "done" as const]));
         },
-        { batchCount: 1, retryMinMs: 60_000, retryMaxMs: 60_000, claimIdleMs, claimIntervalMs: 60_000, stopDeadlineMs: 200 },
+        { maxHeld: 1, retryMinMs: 60_000, retryMaxMs: 60_000, claimIdleMs, claimIntervalMs: 60_000, stopDeadlineMs: 200 },
       );
       await until(() => stopped !== undefined, 5000);
       await stopped;
@@ -477,7 +477,7 @@ describe("startGroupConsumer", () => {
     await stream.xreadgroup("GROUP", keys.group, "dead", "COUNT", 40, "STREAMS", keys.streamKey, ">");
     await new Promise((r) => setTimeout(r, 400));
     start(keys, "a", async () => new Promise<Map<string, EntryOutcome>>(() => {}), {
-      batchCount: 10,
+      maxHeld: 10,
       claimIdleMs: 300,
       claimIntervalMs: 60_000,
     });
@@ -511,7 +511,7 @@ describe("startGroupConsumer", () => {
     try {
       // The two claimed entries fill the room, so no read follows the sweep.
       a = start(keys, "a", allDone([]), {
-        batchCount: 2,
+        maxHeld: 2,
         blockMs: 5000,
         claimIdleMs: 300,
         claimIntervalMs: 60_000,
@@ -527,10 +527,32 @@ describe("startGroupConsumer", () => {
     expect(elapsed).toBeLessThan(1000);
   });
 
-  it("does not wake every millisecond while a delayed key is due and every slot is busy", async () => {
+  it("leaves a slot for a held-back key, so no other key is read while it waits", async () => {
     const keys = keysFor();
-    await append(keys.streamKey, ["x1", "y1"]);
+    const [x1] = await append(keys.streamKey, ["x1", "y1"]);
     let xTries = 0;
+    start(
+      keys,
+      "a",
+      async (entries) =>
+        new Map(
+          entries.map((e) => [e.id, e.payload === "x1" && (xTries += 1) === 1 ? ("wait" as const) : ("done" as const)]),
+        ),
+      { keyConcurrency: 1, leaseRetryMs: 600, blockMs: 5000, claimIntervalMs: 60_000 },
+    );
+    await until(() => xTries === 1);
+    await new Promise((r) => setTimeout(r, 300));
+    const groups = (await stream.xinfo("GROUPS", keys.streamKey)) as unknown[][];
+    const row = groups.find((g) => g[1] === keys.group)!;
+    expect(String(row[row.indexOf("last-delivered-id") + 1])).toBe(x1);
+    await until(async () => (await pendingCount(keys)) === 0);
+  });
+
+  it("does not wake every millisecond while a held-back key is due and every slot is busy", async () => {
+    const keys = keysFor();
+    await append(keys.streamKey, ["y1", "x1"]);
+    let xTries = 0;
+    let yTries = 0;
     let yRunning = false;
     const tinyTimers: number[] = [];
     const realSetTimeout = globalThis.setTimeout;
@@ -539,11 +561,14 @@ describe("startGroupConsumer", () => {
       return realSetTimeout(fn, ms);
     }) as typeof setTimeout);
     try {
+      // y1 fails once and comes back through the backoff queue, which bypasses
+      // the read limit, so it takes the only slot while x1 is held back and due.
       start(
         keys,
         "a",
         async (entries) => {
           const payload = entries[0]!.payload;
+          if (payload === "y1" && (yTries += 1) === 1) return new Map(entries.map((e) => [e.id, { failed: new Error("boom") }]));
           if (payload === "x1" && (xTries += 1) === 1) return new Map(entries.map((e) => [e.id, "wait" as const]));
           if (payload === "y1") {
             yRunning = true;
@@ -552,9 +577,9 @@ describe("startGroupConsumer", () => {
           }
           return new Map(entries.map((e) => [e.id, "done" as const]));
         },
-        { keyConcurrency: 1, leaseRetryMs: 100, blockMs: 5000, claimIntervalMs: 60_000 },
+        { keyConcurrency: 1, retryMinMs: 200, retryMaxMs: 200, leaseRetryMs: 400, blockMs: 5000, claimIntervalMs: 60_000 },
       );
-      await until(async () => (await pendingCount(keys)) === 0, 8000);
+      await until(async () => yTries >= 2 && (await pendingCount(keys)) === 0, 8000);
     } finally {
       spy.mockRestore();
     }
@@ -571,14 +596,15 @@ describe("startGroupConsumer", () => {
     await stream.xclaim(keys.streamKey, keys.group, "live", 0, ...ids.slice(0, 25), "JUSTID");
     // Room 2: one XAUTOCLAIM scans at most 20 entries.
     start(keys, "a", async () => new Promise<Map<string, EntryOutcome>>(() => {}), {
-      batchCount: 2,
+      maxHeld: 2,
       claimIdleMs: 2000,
       claimIntervalMs: 100,
     });
+    // Only the idle tail can be claimed; a sweep that restarted at the head
+    // every time would never reach it.
     await until(async () => {
-      const consumers = (await stream.xinfo("CONSUMERS", keys.streamKey, keys.group)) as unknown[][];
-      const row = consumers.find((c) => c[1] === "a");
-      return row !== undefined && Number(row[3]) > 0;
+      const mine = (await stream.xpending(keys.streamKey, keys.group, "-", "+", 10, "a")) as Array<[string, ...unknown[]]>;
+      return mine.length > 0 && mine.every(([id]) => ids.slice(25).includes(id));
     }, 1500);
   });
 

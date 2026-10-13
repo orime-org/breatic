@@ -31,7 +31,7 @@ import { isNewerStreamId } from "@collab/services/stream-id.js";
 const PID = "77777777-7777-4777-8777-777777777777";
 
 const SETTINGS: TaskListenerSettings = {
-  batchCount: 128,
+  maxHeld: 128,
   blockMs: 100,
   leaseRetryMs: 50,
   claimIntervalMs: 15_000,
@@ -275,7 +275,7 @@ describe("task events across two collab instances", () => {
     );
     // Fewer entries held than the grid has, so both instances take part in the
     // same document; the other event_* values are config/collab.yaml's.
-    const settings = { batchCount: 64, blockMs: 5000, leaseRetryMs: 1000, handoffWaitMs: 5000 };
+    const settings = { maxHeld: 64, keyConcurrency: 16, blockMs: 5000, leaseRetryMs: 1000, handoffPollMs: 50, handoffWaitMs: 5000 };
     const startedAt = Date.now();
     listen(c, instanceA, "a", settings);
     listen(c, instanceB, "b", settings);
@@ -458,7 +458,7 @@ describe("task events across two collab instances", () => {
       }
       const startedAt = Date.now();
       // The event_* values of config/collab.yaml.
-      const production = { batchCount: 128, keyConcurrency: 16, blockMs: 5000, leaseRetryMs: 1000, handoffWaitMs: 5000 };
+      const production = { maxHeld: 128, keyConcurrency: 16, blockMs: 5000, leaseRetryMs: 1000, handoffWaitMs: 5000 };
       instances.forEach((h, i) => listen(cases[0]!, h, `i${i}`, production));
       await until(async () => (await pending(cases[0]!)) === 0 && (await stream.xlen(streamKey)) === 32, 60_000);
       const elapsed = Date.now() - startedAt;
@@ -532,8 +532,8 @@ describe("task events across two collab instances", () => {
     await publish(c, [{ nodeId, counts: DONE, result: { ...MEDIA, content: "once" } }], ["originId", id!]);
     const opensA = vi.spyOn(instanceA, "openDirectConnection");
     const opensB = vi.spyOn(instanceB, "openDirectConnection");
-    listen(c, instanceA, "a", { batchCount: 1 });
-    listen(c, instanceB, "b", { batchCount: 1 });
+    listen(c, instanceA, "a", { maxHeld: 1 });
+    listen(c, instanceB, "b", { maxHeld: 1 });
     await until(async () => (await pending(c)) === 0 && (await stream.xlen(c.streamKey)) === 2);
     expect(opensA.mock.calls.length).toBeGreaterThan(0);
     expect(opensB.mock.calls.length).toBeGreaterThan(0);
