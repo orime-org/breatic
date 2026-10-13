@@ -45,6 +45,7 @@ interface Harness {
   hocuspocus: ReturnType<typeof createLiveServer>;
   writes: Array<{ documentName: string; state: Uint8Array }>;
   encodes: string[];
+  rescues: string[];
   runRound: () => Promise<void>;
   storeGate: { current?: ReturnType<typeof createUnloadGate> };
 }
@@ -57,6 +58,7 @@ interface Harness {
 function harness(options: { failing?: boolean; delayMs?: number; debounceMs?: number } = {}): Harness {
   const writes: Array<{ documentName: string; state: Uint8Array }> = [];
   const encodes: string[] = [];
+  const rescues: string[] = [];
   const storeGate: { current?: ReturnType<typeof createUnloadGate> } = {};
 
   const persistence = createPersistenceExtension({
@@ -100,7 +102,10 @@ function harness(options: { failing?: boolean; delayMs?: number; debounceMs?: nu
     instanceId: "inst-test",
     encode: (document: Y.Doc) => Y.encodeStateAsUpdate(document),
     storeNow: ({ name }) => storeDocumentNow(hocuspocus, name),
-    writeRescue: async () => "/rescue/x.yjs",
+    writeRescue: async ({ documentName }) => {
+      rescues.push(documentName);
+      return "/rescue/x.yjs";
+    },
     writeRescueNote: async () => {},
     alert: async () => {},
   });
@@ -111,7 +116,7 @@ function harness(options: { failing?: boolean; delayMs?: number; debounceMs?: nu
     storeNow: ({ name }) => storeDocumentNow(hocuspocus, name),
   });
 
-  return { hocuspocus, writes, encodes, runRound: loop.runOnce, storeGate };
+  return { hocuspocus, writes, encodes, rescues, runRound: loop.runOnce, storeGate };
 }
 
 beforeEach(() => {
@@ -325,5 +330,41 @@ describe("a timed round landing on top of a pending change-triggered store", () 
     expect(h.writes).toHaveLength(1);
 
     client.close();
+  });
+});
+
+// inner#1471: somebody reopens the document while its last store on the way
+// out is still being written, and the welcome they get edits it. The library
+// keeps a document that gained a connection, so nothing is leaving memory and
+// nothing is lost; the edit goes in with a later store.
+describe("an edit that arrives while the document's last store is being written", () => {
+  it("rescues nothing, keeps the document, and stores the edit later", async () => {
+    const h = harness({ delayMs: 120, debounceMs: 60 });
+    const first = await connectLiveClient(h.hocuspocus, DOC);
+    const document = h.hocuspocus.documents.get(DOC)!;
+    document.transact(() => {
+      document.getText("body").insert(0, "typed before leaving");
+    });
+    await new Promise((r) => setTimeout(r, 150));
+    const storedBefore = h.writes.length;
+
+    first.close();
+    // The gate's final store is now waiting on the slow write.
+    await new Promise((r) => setTimeout(r, 40));
+    const second = await connectLiveClient(h.hocuspocus, DOC);
+    document.transact(() => {
+      document.getText("body").insert(0, "back again: ");
+    });
+    await waitFor(() => h.writes.length > storedBefore, "the gate's final store");
+    await new Promise((r) => setTimeout(r, 200));
+
+    expect(h.rescues).toEqual([]);
+    expect(h.hocuspocus.documents.has(DOC)).toBe(true);
+    await h.runRound();
+    const last = new Y.Doc();
+    Y.applyUpdate(last, h.writes[h.writes.length - 1]!.state);
+    expect(last.getText("body").toString()).toBe("back again: typed before leaving");
+
+    second.close();
   });
 });
