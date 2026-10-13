@@ -277,7 +277,8 @@ export const generationModels: Tool<z.infer<typeof inputSchema>, PricedModelsFor
   metadata: { runningLine: "chat.tool.checkingModels" },
   // The SDK's own conversion, which is what a running turn reaches -- the
   // model names a model and fills parameters out of this text, so it carries
-  // the whole answer. The same renderer is registered for history replay.
+  // the whole answer. The turn writes the result down with the call
+  // (`forModel`), and replay hands that copy back.
   toModelOutput: ({ output }) => ({
     type: "text",
     value: renderGenerationModelsForModel(output),

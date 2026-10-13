@@ -563,9 +563,8 @@ describe("search_images: what the model reads", () => {
   });
 
   it("renders through the same function the SDK is told to use", async () => {
-    // Two readers of one answer: the SDK converts mid-turn through
-    // `toModelOutput`, and the request assembler renders stored history. They
-    // have to be the same text or a conversation changes under the model.
+    // The SDK converts mid-turn through `toModelOutput`, and the turn writes
+    // that conversion down for replay, so it has to be this function's text.
     httpRequestMock.mockImplementation(async () => imagesOk([braveResult()]));
     const answer = await run({ query: "cyberpunk city" });
 

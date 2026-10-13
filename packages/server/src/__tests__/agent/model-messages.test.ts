@@ -18,17 +18,21 @@
 import { describe, it, expect } from "vitest";
 import { FAILURE_LINES, NOTHING_SAID_WHY } from "@breatic/shared";
 import { userTurnForModel } from "@server/agent/user-turn.js";
-import type { MessageData, ProposalAnswer } from "@breatic/shared";
+import type { MessageData, MessagePart } from "@breatic/shared";
 
-import {
-  renderCapabilitiesForModel,
-  renderGenerationModelsForModel,
-  renderProposalForModel,
-  renderImagesForModel,
-} from "@breatic/domain";
-import type { CanvasCapabilityAnswer, ModelsForMode } from "@breatic/domain";
-import { DROPPED_TOOL_RESULT } from "@server/agent/message-compressor.js";
+import { DROPPED_TOOL_RESULT, compressForContext } from "@server/agent/message-compressor.js";
 import { toModelMessages } from "@server/agent/model-messages.js";
+import { EARLIER_RESULT_NOTE } from "@server/agent/stored-model-output.js";
+
+/**
+ * The output of the one tool result in what the model is given.
+ * @param history - Stored history holding a single tool use.
+ * @returns The output field of the tool message.
+ */
+function replayedOutput(history: MessageData[]): unknown {
+  const toolMessage = toModelMessages(history).find((m) => m.role === "tool");
+  return (toolMessage as { content: Array<{ output: unknown }> } | undefined)?.content[0]?.output;
+}
 
 /**
  * Build a stored message the way the repository hands it out.
@@ -113,21 +117,12 @@ describe("history on its way to the model", () => {
     expect(typeof output).not.toBe("string");
   });
 
-  it("says a tool that answered with an object answered with an object", () => {
-    // The `json` arm, reached by an object nothing says how to render. No tool
-    // that gets this far answers that way: the two that answer with an object
-    // and reach the model both name themselves in `RENDER_FOR_MODEL`, and
-    // `ask_user` answers with an object while naming no rendering but never
-    // arrives, `reachesTheModel` turning it away first. So what actually
-    // arrives here is a row written by a tool that has since been removed --
-    // `show_search_results`, whose result is still in the history of any
-    // conversation that used it.
-    //
-    // The `text` arm takes a string, and the SDK validates the field against
-    // a discriminated union before the request goes out: an object put there
-    // fails the whole turn inside the stream, where nothing reaches the
-    // screen and nothing says why.
-    const [, toolMessage] = toModelMessages([
+  it("says a structured result written before the model's copy was kept is no longer available", () => {
+    // A row from before `forModel` existed, written by a tool that has since
+    // been removed. Reading `output` with the current code is what made a
+    // conversation fail every turn once a tool's answer gained a field, so a
+    // structured result with no stored copy goes to the model as a note.
+    const output = replayedOutput([
       stored("assistant", [
         {
           type: "tool",
@@ -135,25 +130,19 @@ describe("history on its way to the model", () => {
           toolName: "show_search_results",
           input: { sourceQuery: "a reference" },
           status: "success",
-          output: { sourceQuery: "a reference", links: [] } as unknown as string,
+          output: { sourceQuery: "a reference", links: [] },
         },
       ]),
     ]);
 
-    const output = (toolMessage as { content: Array<{ output: unknown }> } | undefined)
-      ?.content[0]?.output;
-    expect(output).toEqual({
-      type: "json",
-      value: { sourceQuery: "a reference", links: [] },
-    });
+    expect(output).toEqual({ type: "text", value: EARLIER_RESULT_NOTE });
   });
 
-  it("renders a picture search the way the tool itself would", () => {
-    // Two readers of one answer: the SDK converts mid-turn through the tool's
-    // own `toModelOutput`, and this assembler renders stored history. A tool
-    // missing from the table here lands in the `json` arm without a word --
-    // the model then reads field names and two long addresses where it read
-    // numbered titles during the turn, and nothing on screen changes.
+  it("hands back a picture search as the model was given it when the turn ran", () => {
+    // What the model read during the turn was written down with it. Handing
+    // that back, and never the tool's raw answer, is what keeps the replay
+    // the same text the turn read -- field names and long addresses never
+    // reach the model.
     const answer = {
       query: "cyberpunk city",
       images: [
@@ -166,7 +155,7 @@ describe("history on its way to the model", () => {
       ],
       sent: 1,
     };
-    const [, toolMessage] = toModelMessages([
+    const output = replayedOutput([
       stored("assistant", [
         {
           type: "tool",
@@ -174,38 +163,39 @@ describe("history on its way to the model", () => {
           toolName: "search_images",
           input: { query: "cyberpunk city" },
           status: "success",
-          output: answer as unknown as string,
+          output: answer,
+          forModel: { type: "text", value: "1. A picture" },
         },
       ]),
     ]);
 
-    const output = (toolMessage as { content: Array<{ output: unknown }> } | undefined)
-      ?.content[0]?.output;
-    expect(output).toEqual({ type: "text", value: renderImagesForModel(answer) });
-    // Names of fields reaching the model is what the `json` arm looks like.
-    expect(JSON.stringify(output)).not.toContain("thumbnailUrl");
+    expect(output).toEqual({ type: "text", value: "1. A picture" });
   });
 
   it("hands back the placeholder for a picture search past the window", () => {
-    // Compaction replaces the result with a string, and the string arm is
-    // read before the table. A renderer given that string instead would be
-    // handed a string where it expects an answer.
-    const [, toolMessage] = toModelMessages([
-      stored("assistant", [
-        {
-          type: "tool",
-          toolCallId: "tc-img",
-          toolName: "search_images",
-          input: { query: "cyberpunk city" },
-          status: "success",
-          output: DROPPED_TOOL_RESULT,
-        },
-      ]),
-    ]);
+    // Compaction writes the placeholder over the model's copy and leaves the
+    // tool's answer alone, so what reaches the model is the placeholder.
+    const searches = Array.from({ length: 2 }, (_, i): MessagePart => ({
+      type: "tool",
+      toolCallId: `tc-img-${String(i)}`,
+      toolName: "search_images",
+      input: { query: "cyberpunk city" },
+      status: "success",
+      output: { query: "cyberpunk city", images: [], sent: 0 },
+      forModel: { type: "text", value: `search ${String(i)}` },
+    }));
+    const [compressed] = compressForContext([stored("assistant", searches)], 1);
 
-    const output = (toolMessage as { content: Array<{ output: unknown }> } | undefined)
-      ?.content[0]?.output;
-    expect(output).toEqual({ type: "text", value: DROPPED_TOOL_RESULT });
+    const toolMessages = toModelMessages(compressed === undefined ? [] : [compressed]).filter(
+      (m) => m.role === "tool",
+    );
+    const outputs = toolMessages.map(
+      (m) => (m as { content: Array<{ output: unknown }> }).content[0]?.output,
+    );
+    expect(outputs).toEqual([
+      { type: "text", value: DROPPED_TOOL_RESULT },
+      { type: "text", value: "search 1" },
+    ]);
   });
 
   it("says so even for a turn stopped before it got a word out", () => {
@@ -497,81 +487,107 @@ describe("history on its way to the model", () => {
   });
 });
 
-const capabilityAnswer: CanvasCapabilityAnswer = {
-  nodes: [
-    { nodeType: "image", modes: [{ mode: "t2i", label: "text-to-image", what: "makes one" }] },
-  ],
-};
+describe("a replayed tool result", () => {
+  it.each(["get_canvas_capabilities", "list_generation_models", "propose_canvas_action"])(
+    "hands back what %s gave the model when the turn ran",
+    (toolName) => {
+      const output = replayedOutput([
+        stored("assistant", [
+          {
+            type: "tool",
+            toolCallId: "tc-canvas",
+            toolName,
+            input: {},
+            status: "success",
+            output: { any: "shape" },
+            forModel: { type: "text", value: `what ${toolName} said` },
+          },
+        ]),
+      ]);
 
-const modelsAnswer: ModelsForMode = {
-  available: true,
-  models: [
-    {
-      name: "some-model",
-      displayName: "Some Model",
-      what: "does things",
-      seconds: 18,
-      nodeType: "image",
-      takesPrompt: true,
-      needs: [],
-      params: {},
+      expect(output).toEqual({ type: "text", value: `what ${toolName} said` });
     },
-  ],
-};
+  );
 
-/** A proposal the tool accepted, as the model sent it. */
-const proposalAnswer: ProposalAnswer = {
-  placed: true,
-  nodes: [
-    {
-      role: "generate",
-      type: "image",
-      name: "Result",
-      mode: "t2i",
-      model: "a-model",
-      params: {},
-      prompt: [{ text: "a still life" }],
-    },
-  ],
-  edges: [],
-  modelNote: "",
-  rationale: "",
-};
-
-describe("a replayed capability answer", () => {
-  it.each([
-    [
-      "get_canvas_capabilities",
-      capabilityAnswer as unknown,
-      renderCapabilitiesForModel(capabilityAnswer),
-    ],
-    [
-      "list_generation_models",
-      modelsAnswer as unknown,
-      renderGenerationModelsForModel(modelsAnswer),
-    ],
-    [
-      "propose_canvas_action",
-      proposalAnswer as unknown,
-      renderProposalForModel(proposalAnswer),
-    ],
-  ])("replays %s as the text the running turn read", (toolName, output, expected) => {
-    // Without a registration the payload falls through to the JSON fallback,
-    // and every later turn carries the whole catalog answer as JSON.
-    const [, toolMessage] = toModelMessages([
+  it("hands back a json copy as it was stored", () => {
+    const output = replayedOutput([
       stored("assistant", [
         {
           type: "tool",
-          toolCallId: "tc-canvas",
-          toolName,
+          toolCallId: "tc-j",
+          toolName: "judge_likelihood",
           input: {},
           status: "success",
-          output,
+          output: { likely: 0.8 },
+          forModel: { type: "json", value: { likely: 0.8 } },
         },
       ]),
     ]);
-    const content = (toolMessage as { content: Array<{ output: unknown }> }).content;
-    expect(content[0]?.output).toEqual({ type: "text", value: expected });
+
+    expect(output).toEqual({ type: "json", value: { likely: 0.8 } });
+  });
+
+  it("never reads the tool's own answer when the model's copy is there", () => {
+    // An answer the current renderer would throw on: `needs` missing, which is
+    // the row that failed every later turn of a conversation (inner#1481).
+    const output = replayedOutput([
+      stored("assistant", [
+        {
+          type: "tool",
+          toolCallId: "tc-m",
+          toolName: "list_generation_models",
+          input: {},
+          status: "success",
+          output: { available: true, models: [{ name: "m", params: {} }] },
+          forModel: { type: "text", value: "the models, as listed then" },
+        },
+      ]),
+    ]);
+
+    expect(output).toEqual({ type: "text", value: "the models, as listed then" });
+  });
+});
+
+describe("a structured result stored before the model's copy was kept", () => {
+  // One row in the shape each tool wrote before a field it now reads existed.
+  it.each([
+    ["web_search", { query: "q", sources: [{ url: "https://a.example", title: "A" }] }],
+    ["search_images", { query: "q", images: [{ thumbnailUrl: "https://t.example/1.jpg" }] }],
+    ["get_canvas_capabilities", { nodes: [{ nodeType: "image" }] }],
+    // `needs` missing: the shape that threw in `renderNeeds`.
+    [
+      "list_generation_models",
+      { available: true, models: [{ name: "m", displayName: "M", what: "x", seconds: 1, params: {} }] },
+    ],
+    // The proposal tool before it answered `placed`.
+    ["propose_canvas_action", { action: "add_nodes", nodes: [], rationale: "" }],
+  ])("goes to the model as a note for %s, without throwing", (toolName, output) => {
+    const replayed = (): unknown =>
+      replayedOutput([
+        stored("assistant", [
+          { type: "tool", toolCallId: "tc-old", toolName, input: {}, status: "success", output },
+        ]),
+      ]);
+
+    expect(replayed).not.toThrow();
+    expect(replayed()).toEqual({ type: "text", value: EARLIER_RESULT_NOTE });
+  });
+
+  it("hands a string result back as it was, since that string is what the model read", () => {
+    const output = replayedOutput([
+      stored("assistant", [
+        {
+          type: "tool",
+          toolCallId: "tc-s",
+          toolName: "web_search",
+          input: {},
+          status: "success",
+          output: "Results for: q",
+        },
+      ]),
+    ]);
+
+    expect(output).toEqual({ type: "text", value: "Results for: q" });
   });
 });
 
