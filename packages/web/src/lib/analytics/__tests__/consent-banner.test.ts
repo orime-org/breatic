@@ -204,11 +204,12 @@ describe('what counts as the visitor choosing', () => {
     } finally {
       document.body.innerHTML = '';
     }
-    // Saving changed no category, so the cookie keeps the time its lifetime counts from.
-    expect(library.setCookieData).toHaveBeenCalledWith({ value: { source: 'settings', decidedAt: '2026-10-12T00:00:00.000Z' }, mode: 'overwrite' });
     expect(seen).toHaveLength(2);
-    // The account learns of the save as the latest decision, made now.
-    expect(Date.parse((seen.at(-1) as { decidedAt: string }).decidedAt)).toBeGreaterThan(Date.parse('2026-10-12T00:00:00.000Z'));
+    // The save is the latest decision, made now: the cookie records it, so a report from a later page carries it too.
+    const stamped = library.setCookieData.mock.calls.at(-1)?.[0] as { value: { source: string; decidedAt: string } };
+    expect(stamped.value.source).toBe('settings');
+    expect(Date.parse(stamped.value.decidedAt)).toBeGreaterThan(Date.parse('2026-10-12T00:00:00.000Z'));
+    expect((seen.at(-1) as { decidedAt: string }).decidedAt).toBe(stamped.value.decidedAt);
     expect(seen.at(-1)).toMatchObject({ source: 'settings', analytics: true, ads: true });
   });
 

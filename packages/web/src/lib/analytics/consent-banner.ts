@@ -114,19 +114,14 @@ function stamp(source: ConsentSource, decidedAt: string): void {
   CookieConsent.setCookieData({ value: { source, decidedAt }, mode: 'overwrite' });
 }
 
-/**
- * A choice the visitor made in the banner or the settings window.
- * @param keptAt - For a save that changed no category: the time the cookie's lifetime counts from, which it keeps.
- */
-function onVisitorChoice(keptAt?: string): void {
+/** A choice the visitor made in the banner or the settings window. */
+function onVisitorChoice(): void {
   if (openedModal === null) return;
-  const now = new Date().toISOString();
-  stamp(openedModal === 'preferencesModal' ? 'settings' : 'banner', keptAt ?? now);
+  stamp(openedModal === 'preferencesModal' ? 'settings' : 'banner', new Date().toISOString());
   openedModal = null;
   undecided = false;
   lastSeen = readBrowserChoice();
-  // The account orders decisions by time, and this one was made now.
-  onChoice(lastSeen && { ...lastSeen, decidedAt: now });
+  onChoice(lastSeen);
 }
 
 /**
@@ -268,13 +263,13 @@ async function boot(options: BannerOptions): Promise<void> {
     onModalHide: ({ modalName }) => {
       if (modalName !== 'preferencesModal') return;
       if (openedModal === 'preferencesModal') {
-        if (saving) onVisitorChoice(readBrowserChoice()?.decidedAt);
+        if (saving) onVisitorChoice();
         else openedModal = undecided && onBannerPage ? 'consentModal' : null;
       }
       saving = false;
     },
-    onFirstConsent: () => onVisitorChoice(),
-    onChange: () => onVisitorChoice(),
+    onFirstConsent: onVisitorChoice,
+    onChange: onVisitorChoice,
   });
 
   // What the library loaded into its own memory, which its settings window shows.
