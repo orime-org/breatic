@@ -18,6 +18,7 @@ import {
   PREVIEW_LONGEST_SIDE,
   blockPreviewContent,
   buildDragPreview,
+  measureDrawn,
   setDragPreview,
   previewScale,
   tableLinePreviewContent,
@@ -767,5 +768,131 @@ describe('tableRowsPreviewContent', () => {
     expect(heldTable(content)).toEqual({ cols: ['130px', '140px'], table: ['270px', '0px', 'fixed'], rows: ['40px', '50px'] });
     buildDragPreview(view, contentPlaced, () => ({ width: 720, height: 90 }));
     expect(content.style.width).toBe('720px');
+  });
+});
+
+describe('a table line or cell selection in its frame', () => {
+  /**
+   * Opens a table of three columns, its frame scrolled as the body draws it,
+   * and its left edge showing that columns lie to the left.
+   * @param firstLeft - Where the first column's left edge is; the frame's left is at 100.
+   * @returns The editor.
+   */
+  function scrolledTable(firstLeft: number): Editor {
+    const editor = open([
+      { type: 'table', content: { type: 'tableContent', rows: [{ cells: ['a1', 'b1', 'c1'] }, { cells: ['a2', 'b2', 'c2'] }] } },
+    ]);
+    scrollFrame(editor, 20);
+    const a = firstLeft + 120;
+    layOut(editor, { a1: [firstLeft, a], b1: [a, a + 130], c1: [a + 130, a + 270], a2: [firstLeft, a], b2: [a, a + 130], c2: [a + 130, a + 270] }, [30, 40]);
+    editor.prosemirrorView!.dom.querySelector('[data-overflow-edge="left"]')!.setAttribute('data-on', '');
+    return editor;
+  }
+
+  it('draws the left edge only when columns were taken out on that side', () => {
+    const partly = scrolledTable(80);
+    const kept = tableLinePreviewContent(partly.prosemirrorView!, cellOf(partly, 'b2'), 'row')!.content;
+    expect(cellTexts(kept)).toEqual([['a2', 'b2', 'c2']]);
+    expect(kept.querySelector('[data-overflow-edge="left"]')!.hasAttribute('data-on')).toBe(false);
+    const rows = tableRowsPreviewContent(partly.prosemirrorView!, cellOf(partly, 'b2'), 0, 2)!.content;
+    expect(rows.querySelector('[data-overflow-edge="left"]')!.hasAttribute('data-on')).toBe(false);
+
+    const wholly = scrolledTable(-30);
+    const dropped = tableLinePreviewContent(wholly.prosemirrorView!, cellOf(wholly, 'b2'), 'row')!.content;
+    expect(cellTexts(dropped)).toEqual([['b2', 'c2']]);
+    expect(dropped.querySelector('[data-overflow-edge="left"]')!.hasAttribute('data-on')).toBe(true);
+  });
+
+  it('keeps no room under a row or a cell selection for the scrollbar it does not draw, its edges down to the table', () => {
+    const editor = scrolledTable(-30);
+    const view = editor.prosemirrorView!;
+    for (const content of [
+      tableLinePreviewContent(view, cellOf(editor, 'b2'), 'row')!.content,
+      tableRowsPreviewContent(view, cellOf(editor, 'b2'), 0, 2)!.content,
+    ]) {
+      expect(content.querySelector<HTMLElement>('.tableWrapper')!.style.padding).toBe('0px');
+      content.querySelectorAll<HTMLElement>('[data-overflow-edge]').forEach((edge) => expect(edge.style.bottom).toBe('0px'));
+    }
+  });
+});
+
+describe('measureDrawn', () => {
+  /**
+   * Gives an element the box it is laid out in.
+   * @param element - The element.
+   * @param left - Its left edge.
+   * @param right - Its right edge.
+   * @returns The element.
+   */
+  function boxed<T extends HTMLElement>(element: T, left: number, right: number): T {
+    element.getBoundingClientRect = () => ({ left, right, width: right - left, top: 0, bottom: 20, height: 20 }) as DOMRect;
+    return element;
+  }
+
+  /**
+   * Draws each text node as wide as given, by its text.
+   * @param widths - The widths, by text.
+   */
+  function textWidths(widths: Record<string, number>): void {
+    vi.spyOn(Range.prototype, 'getBoundingClientRect').mockImplementation(function (this: Range) {
+      const width = widths[this.startContainer.textContent ?? ''] ?? 0;
+      return { left: 0, right: width, width, top: 0, bottom: 20, height: 20 } as DOMRect;
+    });
+  }
+
+  /**
+   * A layer laid out from 0 to 768, holding the given elements.
+   * @param children - What it holds.
+   * @returns The layer, on the page.
+   */
+  function layerOf(...children: HTMLElement[]): HTMLElement {
+    const layer = boxed(document.createElement('div'), 0, 768);
+    layer.append(...children);
+    document.body.append(layer);
+    return layer;
+  }
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('takes the width of the words a block holds, not of the block laying them out', () => {
+    textWidths({ 'Bullet one': 150 });
+    const block = boxed(document.createElement('div'), 0, 768);
+    block.textContent = 'Bullet one';
+    expect(measureDrawn(layerOf(block)).width).toBe(150);
+  });
+
+  it('takes a box that paints, its background or its border, at its full width', () => {
+    const panel = boxed(document.createElement('div'), 0, 600);
+    panel.style.backgroundColor = 'rgb(1, 2, 3)';
+    const ruled = boxed(document.createElement('div'), 0, 640);
+    ruled.style.borderBottom = '1px solid rgb(0, 0, 0)';
+    expect(measureDrawn(layerOf(panel)).width).toBe(600);
+    expect(measureDrawn(layerOf(ruled)).width).toBe(640);
+  });
+
+  it('takes a picture, a video or a canvas at its own width', () => {
+    expect(measureDrawn(layerOf(boxed(document.createElement('img'), 0, 320))).width).toBe(320);
+    expect(measureDrawn(layerOf(boxed(document.createElement('canvas'), 0, 280))).width).toBe(280);
+  });
+
+  it('cuts what is drawn to a box that clips it', () => {
+    const frame = boxed(document.createElement('div'), 0, 300);
+    frame.style.overflow = 'hidden';
+    const table = boxed(document.createElement('div'), 0, 900);
+    table.style.border = '1px solid rgb(0, 0, 0)';
+    frame.append(table);
+    expect(measureDrawn(layerOf(frame)).width).toBe(300);
+  });
+
+  it('leaves out what is not shown', () => {
+    textWidths({ shown: 100 });
+    const edge = boxed(document.createElement('span'), 0, 700);
+    edge.style.backgroundColor = 'rgb(1, 2, 3)';
+    edge.style.opacity = '0';
+    const words = boxed(document.createElement('div'), 0, 768);
+    words.textContent = 'shown';
+    expect(measureDrawn(layerOf(edge, words)).width).toBe(100);
   });
 });
