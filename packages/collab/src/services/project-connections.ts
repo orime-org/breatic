@@ -37,15 +37,17 @@ const CLOSE_FRAMES: Record<ProjectConnectionsCloseReason, { code: number; reason
  * @param hocuspocus - This instance's Hocuspocus server.
  * @param projectId - The project.
  * @param reason - Why; picks the close frame.
+ * @returns False when the reason names no close frame, and nothing was closed.
  */
 export function closeProjectConnections(
   hocuspocus: Hocuspocus,
   projectId: string,
   reason: ProjectConnectionsCloseReason,
-): void {
+): boolean {
   const frame = CLOSE_FRAMES[reason];
+  if (!frame) return false;
   const docs = hocuspocus.documents;
-  if (!docs) return;
+  if (!docs) return true;
   for (const [docName, doc] of docs.entries()) {
     const parsed = parseDocName(docName);
     if (!parsed || parsed.projectId !== projectId) continue;
@@ -55,4 +57,5 @@ export function closeProjectConnections(
       connection.close({ code: frame.code, reason: frame.reason });
     }
   }
+  return true;
 }

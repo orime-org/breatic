@@ -79,7 +79,6 @@ export function applyNodeTaskCounts(
   doc.transact(() => {
     if (writeCounts) data.set("taskCounts", { ...event.counts });
     if (!writeResult || result === undefined) return;
-    data.set(TASK_RESULT_EVENT_ID_KEY, at.version);
     if (isText) {
       // A text node holds its words in the `Y.XmlFragment` the editor binds
       // to; its `content` is retired (#1774). Written there, a finished read
@@ -90,10 +89,12 @@ export function applyNodeTaskCounts(
         data.set("body", body);
       }
       writePlainTextIntoBody(body as Y.XmlFragment, result.content);
-      return;
+    } else {
+      data.set("content", result.content);
+      writeNodeMedia(data, result);
     }
-    data.set("content", result.content);
-    writeNodeMedia(data, result);
+    // Last, so a write that throws leaves the version for the retry.
+    data.set(TASK_RESULT_EVENT_ID_KEY, at.version);
   });
   return heldAfter;
 }

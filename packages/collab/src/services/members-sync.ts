@@ -191,7 +191,10 @@ async function handleEvent(
   }
 
   if (event.type === "project-connections:close") {
-    closeProjectConnections(hocuspocus, event.projectId, event.reason);
+    if (!closeProjectConnections(hocuspocus, event.projectId, event.reason)) {
+      logger.warn({ projectId: event.projectId, reason: event.reason }, "unknown_connections_close_reason");
+      return;
+    }
     logger.info({ projectId: event.projectId, reason: event.reason }, "project_connections_closed");
     return;
   }
@@ -238,7 +241,9 @@ export function startMembersSync(
   });
 
   subscriber.on("pmessage", (_pattern, _channel, message) => {
-    void handleEvent(hocuspocus, message);
+    handleEvent(hocuspocus, message).catch((err: unknown) => {
+      logger.error({ err, channel: _channel }, "control_event_failed");
+    });
   });
 
   return async () => {
