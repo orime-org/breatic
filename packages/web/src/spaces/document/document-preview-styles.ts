@@ -6,8 +6,9 @@
  * content rests on where that content sits: the editor element's classes and
  * state, the elements around the editor, the blocks between the editor and the
  * content, each with rules and inherited values of its own (inner#1350 A1,
- * design §4 "样式"). Measured with the editor's classes alone on the preview,
- * it differed from the body in 6029 computed values, all from that chain.
+ * design §4, the styles row). Measured with the editor's classes alone on
+ * the preview, it differed from the body in 6029 computed values, all from
+ * that chain.
  *
  * So a preview's content is put in shallow copies of every element from just
  * under the page's body down to the place it takes in the body, without the

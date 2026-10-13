@@ -23,7 +23,8 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-import { test, expect, type Page } from 'playwright/test';
+import { expect, type Page } from 'playwright/test';
+import { test } from '../helpers/slot';
 
 import { wavBytes } from '../helpers/media-bytes';
 import { openSmokeProject } from '../helpers/project';
