@@ -215,7 +215,7 @@ export const VoiceList = React.memo(function VoiceList({
                       size='menu-item'
                       aria-pressed={chosen}
                       data-testid={`generate-voice-option-${voice.id}`}
-                      className='min-w-0 flex-1 justify-start hover:bg-transparent'
+                      className='min-w-0 flex-1 justify-start hover-enabled:bg-transparent'
                       onClick={() => onPick(voice)}
                     >
                       <span className='flex min-w-0 flex-1 flex-col items-start'>

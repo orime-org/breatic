@@ -3,7 +3,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-import { Button } from '@web/components/ui/button';
+import { Button, buttonVariants, type ButtonProps } from '@web/components/ui/button';
 
 describe('Button', () => {
   it('renders a <button> with text content', () => {
@@ -190,5 +190,26 @@ describe('Button loading', () => {
     expect(el).not.toHaveAttribute('aria-busy');
     expect(el).not.toHaveAttribute('aria-disabled');
     expect(el.children).toHaveLength(0);
+  });
+});
+
+describe('buttonVariants hover', () => {
+  // A Record so a variant added to buttonVariants without a row here fails typecheck.
+  const listed: Record<NonNullable<ButtonProps['variant']>, true> = {
+    default: true,
+    destructive: true,
+    outline: true,
+    secondary: true,
+    ghost: true,
+    'chrome-ghost': true,
+    link: true,
+  };
+  const variants = Object.keys(listed) as Array<keyof typeof listed>;
+
+  it.each(variants)('variant %s guards every hover class against the waiting and disabled states', (variant) => {
+    const bare = buttonVariants({ variant })
+      .split(/\s+/)
+      .filter((cls) => /(^|:)hover:/.test(cls));
+    expect(bare).toEqual([]);
   });
 });

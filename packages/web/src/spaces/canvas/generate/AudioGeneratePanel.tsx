@@ -393,7 +393,7 @@ export const AudioGeneratePanel = React.memo(function AudioGeneratePanel({
             loading={executeRefusal === 'submitting'}
             icon={<ArrowUp className='h-4 w-4' aria-hidden='true' />}
             onClick={onExecute}
-            className='flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground transition-colors hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50 disabled:cursor-not-allowed'
+            className='flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground transition-colors hover-enabled:bg-primary-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50 disabled:cursor-not-allowed'
           />
         </div>
       </div>

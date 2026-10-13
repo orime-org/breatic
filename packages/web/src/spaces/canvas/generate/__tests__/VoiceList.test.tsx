@@ -234,10 +234,10 @@ describe('the voice list list (#1960 A2)', () => {
 
   it('lifts the label with the fill, the way the model picker does', () => {
     // ModelPicker's rows are ghost Buttons, whose hover is
-    // `hover:bg-accent hover:text-accent-foreground` — both halves.
+    // `hover-enabled:bg-accent hover-enabled:text-accent-foreground` — both halves.
     open();
     expect(screen.getByTestId('generate-voice-option-alpha').className).toContain(
-      'hover:text-accent-foreground',
+      'hover-enabled:text-accent-foreground',
     );
   });
 });

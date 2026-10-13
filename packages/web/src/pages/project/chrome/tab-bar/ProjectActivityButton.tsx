@@ -540,7 +540,7 @@ export function ProjectActivityButton({
                         loading={restoring.isPending(m.spaceId ?? '')}
                         icon={<RotateCcw className='h-3 w-3' aria-hidden />}
                         data-testid={`project-activity-restore-${m.id}`}
-                        className='mt-0.5 inline-flex items-center gap-1 rounded-md border border-border bg-background px-2 py-1 text-2xs text-foreground hover:bg-accent disabled:opacity-50'
+                        className='mt-0.5 inline-flex items-center gap-1 rounded-md border border-border bg-background px-2 py-1 text-2xs text-foreground hover-enabled:bg-accent disabled:opacity-50'
                       >
                         {t('activity.action.restore')}
                       </Button>

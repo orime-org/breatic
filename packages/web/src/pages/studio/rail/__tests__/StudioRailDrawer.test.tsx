@@ -100,7 +100,7 @@ describe('StudioRailDrawer (narrow-screen rail)', () => {
     setup();
     const hamburger = screen.getByRole('button', { name: 'Open navigation' });
     expect(hamburger.className).toContain('text-muted-foreground');
-    expect(hamburger.className).toContain('hover:text-foreground');
+    expect(hamburger.className).toContain('hover-enabled:text-foreground');
     expect(hamburger.querySelector('svg')?.getAttribute('class')).not.toMatch(
       /(^|\s)text-[a-z][\w-]*(\s|$)/,
     );

@@ -138,7 +138,7 @@ export function TransferStudioSection({
           type='button'
           variant={null}
           size={null}
-          className='h-[30px] rounded-chrome border border-border px-3 text-xs font-medium transition-colors hover:bg-accent'
+          className='h-[30px] rounded-chrome border border-border px-3 text-xs font-medium transition-colors hover-enabled:bg-accent'
           loading={withdrawMutation.isPending}
           onClick={onWithdraw}
           data-testid='settings-transfer-withdraw'

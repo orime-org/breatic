@@ -81,7 +81,7 @@ export function OptionList({
                     size='menu-item'
                     aria-pressed={chosen}
                     data-testid={`${testIdPrefix}-${String(option.value)}`}
-                    className={cn('justify-start', chosen && 'bg-accent-strong hover:bg-accent-strong')}
+                    className={cn('justify-start', chosen && 'bg-accent-strong hover-enabled:bg-accent-strong')}
                     onClick={() => onPick(option.value)}
                   >
                     <span className='truncate'>{option.label}</span>

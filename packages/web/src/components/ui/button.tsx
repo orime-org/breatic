@@ -29,25 +29,25 @@ const buttonVariants = cva(
         // Every studio CTA routes through this variant, so the hover stays
         // consistent (matches the project NewSpaceDialog create button).
         default:
-          'bg-primary text-primary-foreground transition-colors hover:bg-primary-hover',
+          'bg-primary text-primary-foreground transition-colors hover-enabled:bg-primary-hover',
         // Destructive (delete) — red-narrowed to the status-error coral tint
         // (2026-06-13): 14% bg + 40% border + readable coral text; hover
         // deepens the border. No more solid brick-red button.
         destructive:
-          'border border-status-error-border bg-status-error-bg text-status-error-foreground transition-colors hover:border-status-error',
+          'border border-status-error-border bg-status-error-bg text-status-error-foreground transition-colors hover-enabled:border-status-error',
         outline:
-          'border border-border bg-background hover:bg-accent hover:text-accent-foreground',
+          'border border-border bg-background hover-enabled:bg-accent hover-enabled:text-accent-foreground',
         secondary:
-          'bg-secondary text-secondary-foreground hover:bg-accent',
-        ghost: 'hover:bg-accent hover:text-accent-foreground',
+          'bg-secondary text-secondary-foreground hover-enabled:bg-accent',
+        ghost: 'hover-enabled:bg-accent hover-enabled:text-accent-foreground',
         // Chrome variant — TopBar/TabBar 32px buttons default to muted
         // foreground (mock §TopBar v4.0); hover lifts to foreground +
         // accent bg (matches the chrome-baseline mock `.tb-btn:hover` rule).
         // Project-wide rule: hover state only, no active state
         // (per user 2026-05-26 — removed prior `active:bg-secondary`).
         'chrome-ghost':
-          'text-muted-foreground hover:bg-accent hover:text-foreground',
-        link: 'text-primary underline-offset-4 hover:underline',
+          'text-muted-foreground hover-enabled:bg-accent hover-enabled:text-foreground',
+        link: 'text-primary underline-offset-4 hover-enabled:underline',
       },
       size: {
         // Sizes conform to the Linear-anchored ladder (24/28/32/44) via the
