@@ -20,7 +20,7 @@ import {
   getLyricsFragment,
   getPromptFragment,
   getTextBody,
-  readNodeCorners,
+  readNodePlacements,
   restoreNodeMedia,
   runCanvasUndoBatch,
   setGroupBackground,
@@ -148,6 +148,8 @@ export interface PlacedProposal {
   nodeIds: string[];
   /** The group they landed in, when there were two or more of them. */
   groupId?: string;
+  /** Where the batch landed: the group's rect, or the one node's. */
+  bounds?: Rect;
 }
 
 /**
@@ -199,7 +201,7 @@ export function useNodeCreation(
   // moment ago counts before it has rendered.
   const stepPaste = React.useCallback(
     (corners: ReadonlyArray<{ x: number; y: number }>): { dx: number; dy: number } =>
-      stepPastOccupied(corners, readNodeCorners(projectId, spaceId)),
+      stepPastOccupied(corners, readNodePlacements(projectId, spaceId)),
     [projectId, spaceId],
   );
   const pasteTextAt = React.useCallback(
@@ -276,9 +278,11 @@ export function useNodeCreation(
       const aimed = planFlowLayout(proposal, start);
       // Two or more nodes land as one group, so the group's rect is what has
       // to be clear; a single node needs only its own.
-      const footprint = (aimed.length > 1 ? groupRectForMembers(aimed) : aimed[0]) ?? null;
+      const aimedGroup = aimed.length > 1 ? groupRectForMembers(aimed) : null;
+      const footprint = aimedGroup ?? aimed[0];
       const dx = footprint ? shiftRightPastOccupied(footprint, occupied, ROW_GAP_PX) : 0;
       const spots = aimed.map((spot) => ({ ...spot, x: spot.x + dx }));
+      const bounds = footprint && { ...footprint, x: footprint.x + dx };
       const nodeIds: string[] = [];
       let groupId: string | undefined;
       runCanvasUndoBatch(projectId, spaceId, () => {
@@ -320,7 +324,7 @@ export function useNodeCreation(
         // Built from the arrangement's own rects: the nodes were written a
         // moment ago and the render buffer has not seen them yet, so anything
         // reading that buffer would find no members and quietly make nothing.
-        const rect = nodeIds.length > 1 ? groupRectForMembers(spots) : null;
+        const rect = aimedGroup && bounds;
         if (rect) {
           const id = newId();
           createGroup(
@@ -400,7 +404,11 @@ export function useNodeCreation(
         (node) => node.takesPrompt !== false && proposalMarkSegments(node).some((segment) => segment.slot?.kind === 'tweak'),
       );
       if (toFill) toast.info(t('canvas.generatePanel.editProposalMarks'));
-      return groupId === undefined ? { nodeIds } : { nodeIds, groupId };
+      return {
+        nodeIds,
+        ...(groupId === undefined ? {} : { groupId }),
+        ...(bounds === undefined ? {} : { bounds }),
+      };
     },
     [projectId, spaceId, createNodeAt, userId, t],
   );

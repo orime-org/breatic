@@ -110,7 +110,7 @@ import {
   readNodePlacements,
   nodeDataMap,
 } from '@web/data/yjs/canvas-space';
-import { occupiedRects } from '@web/spaces/canvas/lib/place-flow';
+import { frameProposal, occupiedRects } from '@web/spaces/canvas/lib/place-flow';
 import { docName, getDoc } from '@web/data/yjs/manager';
 import { handToAgent } from '@web/spaces/canvas/pick-for-agent';
 import { useConversationRuntime } from '@web/stores/conversation-runtime';
@@ -769,6 +769,7 @@ function CanvasSpaceInner({
     fitView,
     zoomTo,
     setCenter,
+    setViewport,
     getInternalNode,
     deleteElements,
   } = useReactFlow();
@@ -2772,8 +2773,8 @@ function CanvasSpaceInner({
     });
     if (isProposalIntent(intent)) {
       try {
-        // What is already there, by the size it is drawn at: the canvas's
-        // measurement where it has one, the document's facts where not.
+        // Sized as `occupiedRects` describes, from the document and the
+        // canvas's measurements together.
         const occupied = occupiedRects(readNodePlacements(projectId, spaceId), (id) => {
           const measured = getInternalNode(id)?.measured;
           return measured?.width && measured.height
@@ -2781,11 +2782,14 @@ function CanvasSpaceInner({
             : undefined;
         });
         const placed = placeProposalAt(intent.proposal, center, occupied);
-        // The camera is not touched. The flow lands at the first clear spot
-        // right of the middle of the view (inner#1443), and if that runs past
-        // an edge at their zoom, that is a canvas they can drag -- where they
-        // are looking and how far in they are zoomed is theirs to set (#263
-        // A17).
+        // The camera follows what landed: centred on it, zoomed out only as
+        // far as it takes to show all of it (inner#1443 A4).
+        if (placed.bounds) {
+          const zoom = rfStoreApi.getState().transform[2];
+          void setViewport(frameProposal(placed.bounds, { width: rect.width, height: rect.height }, zoom), {
+            duration: FRAME_PAN_MS,
+          });
+        }
         const focus = whatToFocus(intent.proposal, placed);
         if (focus.select.length > 0) setSelectAfterCreate(focus.select);
         if (focus.panel) openGeneratePanel(focus.panel.nodeId, focus.panel.type);
@@ -2812,6 +2816,8 @@ function CanvasSpaceInner({
     projectId,
     spaceId,
     getInternalNode,
+    rfStoreApi,
+    setViewport,
   ]);
 
   // Whoever posts a proposal is outside the canvas and cannot see whether one

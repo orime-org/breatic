@@ -12,6 +12,7 @@ import { describe, it, expect } from 'vitest';
 
 import type { NodePlacement } from '@web/data/yjs/canvas-space';
 import { EMPTY_NODE_SIZE } from '@web/spaces/canvas/group-geometry';
+import { COUNTS_COLUMN_FLOW_REACH } from '@web/spaces/canvas/overlay-scale';
 import {
   mediaFootprintHeight,
   occupiedRects,
@@ -31,6 +32,9 @@ const at = (fields: Partial<NodePlacement> & Pick<NodePlacement, 'id'>): NodePla
 });
 
 const noMeasure = (): undefined => undefined;
+
+/** A content node's width once the task counts hung off its right edge are counted. */
+const WITH_COUNTS = EMPTY_NODE_SIZE.width + COUNTS_COLUMN_FLOW_REACH;
 
 describe('occupiedRects', () => {
   it('sizes a group by its own width and height, whatever was measured', () => {
@@ -53,7 +57,7 @@ describe('occupiedRects', () => {
     expect(rects[0]).toEqual({
       x: 0,
       y: 0,
-      width: EMPTY_NODE_SIZE.width,
+      width: WITH_COUNTS,
       height: mediaFootprintHeight(1080, 1920),
     });
   });
@@ -85,11 +89,29 @@ describe('occupiedRects', () => {
 
   it('gives any other node that has never been measured the standard footprint', () => {
     const rects = occupiedRects([at({ id: 'a', type: 'audio', x: 5, y: 7 })], noMeasure);
-    expect(rects).toEqual([{ x: 5, y: 7, ...EMPTY_NODE_SIZE }]);
+    expect(rects).toEqual([{ x: 5, y: 7, width: WITH_COUNTS, height: EMPTY_NODE_SIZE.height }]);
   });
 
   it('sizes any other node by what was measured', () => {
     const rects = occupiedRects([at({ id: 'a', type: 'audio' })], () => ({ width: 300, height: 120 }));
-    expect(rects[0]).toMatchObject({ width: 300, height: 120 });
+    expect(rects[0]).toMatchObject({ width: 300 + COUNTS_COLUMN_FLOW_REACH, height: 120 });
+  });
+
+  it('leaves room on the right of every content node for its task counts', () => {
+    const rects = occupiedRects(
+      [
+        at({ id: 'i', type: 'image' }),
+        at({ id: 'v', type: 'video', mediaWidth: 1920, mediaHeight: 1080 }),
+        at({ id: 'a', type: 'audio' }),
+        at({ id: 't', type: 'text', bodyText: 'x' }),
+      ],
+      noMeasure,
+    );
+    expect(rects.map((r) => r.width)).toEqual([WITH_COUNTS, WITH_COUNTS, WITH_COUNTS, WITH_COUNTS]);
+  });
+
+  it('counts a group by its own frame, with no room added for task counts', () => {
+    const rects = occupiedRects([at({ id: 'g', type: 'group', width: 600, height: 400 })], noMeasure);
+    expect(rects[0]?.width).toBe(600);
   });
 });

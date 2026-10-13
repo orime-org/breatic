@@ -15,8 +15,12 @@
 
 import { layersOf, promptPlainText, type CanvasProposal, type ProposalNode } from '@breatic/shared';
 
+import { getViewportForBounds, type Viewport } from '@xyflow/react';
+
 import type { NodePlacement } from '@web/data/yjs/canvas-space';
+import { CANVAS_MIN_ZOOM } from '@web/lib/canvas-zoom';
 import { EMPTY_NODE_SIZE, type Rect } from '@web/spaces/canvas/group-geometry';
+import { COUNTS_COLUMN_FLOW_REACH } from '@web/spaces/canvas/overlay-scale';
 
 /** A point in flow coordinates. */
 export interface Spot {
@@ -208,8 +212,10 @@ export function shiftRightPastOccupied(batch: Rect, occupied: readonly Rect[], g
  * been measured, or kept the size it had before its content changed. Where
  * the document decides the size it is used: a group's own rect, and a picture
  * or video drawn at the node's width. Text takes the taller of what was
- * measured and what its words come to. Notes are left out: a pin draws above
- * every node, so nothing placed over it hides it.
+ * measured and what its words come to. Every node but a group also has its
+ * task counts hung off its right edge, so that reach is added to its width.
+ * Notes are left out: a pin draws above every node, so nothing placed over it
+ * hides it.
  * @param placements - Every node, as the document places it.
  * @param measuredOf - The size the canvas measured for a node, if it has one.
  * @returns One rect per node that takes room.
@@ -223,7 +229,8 @@ export function occupiedRects(
   for (const p of placements) {
     if (p.type === 'annotation') continue;
     const size = footprintOf(p, measuredOf);
-    rects.push({ x: p.x, y: p.y, width: size.width, height: size.height });
+    const counts = p.type === 'group' ? 0 : COUNTS_COLUMN_FLOW_REACH;
+    rects.push({ x: p.x, y: p.y, width: size.width + counts, height: size.height });
   }
   return rects;
 }
@@ -256,4 +263,23 @@ function footprintOf(
   }
   if (measured) return measured;
   return { width: EMPTY_NODE_SIZE.width, height: EMPTY_NODE_SIZE.height };
+}
+
+/** Room left around a framed proposal, as `fitView` leaves around the canvas. */
+const FRAME_PADDING = 0.1;
+
+/**
+ * Where to put the camera once a proposal has landed: centred on what was
+ * placed, at the reader's zoom while it fits, zoomed out just enough to show
+ * all of it when it does not, never past the canvas floor.
+ * @param bounds - The rect of what landed, in flow coordinates.
+ * @param pane - The canvas pane's size in screen pixels.
+ * @param pane.width - Its width.
+ * @param pane.height - Its height.
+ * @param zoom - The reader's zoom now.
+ * @returns The viewport to move to.
+ * @throws {never} Never.
+ */
+export function frameProposal(bounds: Rect, pane: { width: number; height: number }, zoom: number): Viewport {
+  return getViewportForBounds(bounds, pane.width, pane.height, CANVAS_MIN_ZOOM, zoom, FRAME_PADDING);
 }

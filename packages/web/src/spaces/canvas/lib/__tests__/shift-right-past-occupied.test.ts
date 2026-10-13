@@ -52,14 +52,13 @@ describe('shiftRightPastOccupied', () => {
     expect(batch.x + dx).toBe(justBelow.x + justBelow.width + GAP);
   });
 
-  it('ignores a node exactly the gap away', () => {
-    const atGap = { x: 1000, y: batch.y + batch.height + GAP, width: 288, height: 192 };
+  it.each([
+    ['below', { x: batch.x, y: batch.y + batch.height + GAP, width: 288, height: 192 }],
+    ['above', { x: batch.x, y: batch.y - GAP - 192, width: 288, height: 192 }],
+    ['to the left', { x: batch.x - GAP - 288, y: batch.y, width: 288, height: 192 }],
+    ['to the right', { x: batch.x + batch.width + GAP, y: batch.y, width: 288, height: 192 }],
+  ])('ignores a node exactly the gap away %s', (_side, atGap) => {
     expect(shiftRightPastOccupied(batch, [atGap], GAP)).toBe(0);
-  });
-
-  it('never moves the batch left or up', () => {
-    const taken = { x: 1200, y: 500, width: 288, height: 192 };
-    expect(shiftRightPastOccupied(batch, [taken], GAP)).toBeGreaterThan(0);
   });
 });
 

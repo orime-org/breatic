@@ -10,7 +10,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import type { CanvasNodeFields } from '@breatic/shared';
 
 import { _resetForTests } from '@web/data/yjs/manager';
-import { addNode, readNodeCorners, readNodePlacements } from '@web/data/yjs/canvas-space';
+import { addNode, readNodePlacements } from '@web/data/yjs/canvas-space';
 
 const PID = 'p1';
 const SID = 's1';
@@ -56,14 +56,5 @@ describe('readNodePlacements', () => {
     addNode(PID, SID, node({ id: 't', type: 'text', data: { content: 'first line\nsecond line' } as never }));
 
     expect(readNodePlacements(PID, SID)[0]?.bodyText).toBe('first line\nsecond line');
-  });
-
-  it('leaves the corners every paste reads where they were', () => {
-    addNode(PID, SID, node({ id: 'g', type: 'group', position: { x: 100, y: 200 }, data: { width: 600, height: 400 } as never }));
-    addNode(PID, SID, node({ id: 'm', type: 'image', parentId: 'g', position: { x: 10, y: 20 } }));
-
-    expect(readNodeCorners(PID, SID)).toEqual(
-      readNodePlacements(PID, SID).map(({ x, y }) => ({ x, y })),
-    );
   });
 });

@@ -2567,15 +2567,19 @@ describe('CanvasSpace (ReactFlow mount)', () => {
   describe('files handed over twice at the same spot (inner#1235 A20)', () => {
     /**
      * Mount the canvas with writes and the upload size check stubbed.
-     * @returns The `addNode` and `readNodeCorners` spies.
+     * @returns The `addNode` spy, and a setter for the top-lefts the
+     *   document reports as taken.
      */
     const mount = (): {
       addNode: MockInstance<typeof canvasSpace.addNode>;
-      corners: MockInstance<typeof canvasSpace.readNodeCorners>;
+      corners: (taken: ReadonlyArray<{ x: number; y: number }>) => void;
     } => {
       mockUseCanvasSpace.mockReturnValue(mockSpace());
       const addNode = vi.spyOn(canvasSpace, 'addNode').mockImplementation(() => undefined);
-      const corners = vi.spyOn(canvasSpace, 'readNodeCorners').mockReturnValue([]);
+      const placements = vi.spyOn(canvasSpace, 'readNodePlacements').mockReturnValue([]);
+      const corners = (taken: ReadonlyArray<{ x: number; y: number }>): void => {
+        placements.mockReturnValue(taken.map((at, i) => ({ id: `taken-${String(i)}`, type: 'image', ...at })));
+      };
       vi.spyOn(assetsApi, 'fetchUploadConfig').mockResolvedValue({
         maxUploadBytes: 1_000_000,
       } as Awaited<ReturnType<typeof assetsApi.fetchUploadConfig>>);
@@ -2593,7 +2597,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
       const first = picturesFrom(addNode.mock.calls, 0);
       const before = addNode.mock.calls.length;
       // Only the second picture's spot is taken now.
-      corners.mockReturnValue([first[1] as { x: number; y: number }]);
+      corners([first[1] as { x: number; y: number }]);
       handTwoFiles('paste');
       await waitFor(() => expect(picturesFrom(addNode.mock.calls, before)).toHaveLength(2));
 
@@ -2610,7 +2614,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
       const before = addNode.mock.calls.length;
       // The Group around two pictures starts 24 up and left of the first one;
       // only that spot is taken.
-      corners.mockReturnValue([
+      corners([
         {
           x: Math.min(...first.map((at) => at.x)) - 24,
           y: Math.min(...first.map((at) => at.y)) - 24,
@@ -2630,7 +2634,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
       await waitFor(() => expect(picturesFrom(addNode.mock.calls, 0)).toHaveLength(2));
       const first = picturesFrom(addNode.mock.calls, 0);
       const before = addNode.mock.calls.length;
-      corners.mockReturnValue(first);
+      corners(first);
       handTwoFiles('drop');
       await waitFor(() => expect(picturesFrom(addNode.mock.calls, before)).toHaveLength(2));
 

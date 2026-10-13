@@ -1102,6 +1102,32 @@ describe('useNodeCreation', () => {
       expect(placed?.y).toBe(spot!.y);
     });
 
+    it('reports where the batch landed, as the rect the camera frames', () => {
+      const start = { x: 0, y: 0 };
+      const planned = groupRectForMembers(planFlowLayout(PAIR, start))!;
+      const taken = { x: planned.x, y: planned.y, width: 100, height: 100 };
+      const { result } = renderHook(() => useNodeCreation('p-bounds', 's-bounds'));
+
+      const { bounds } = result.current.placeProposalAt(PAIR, start, [taken]);
+
+      const [group] = groupRects('p-bounds', 's-bounds');
+      expect(bounds).toEqual(group);
+    });
+
+    it('reports a single node by its own rect', () => {
+      const one: CanvasProposal = {
+        nodes: [{ role: 'source', type: 'image', name: 'Your photo' }],
+        edges: [],
+        rationale: '',
+      };
+      const [spot] = planFlowLayout(one, { x: 0, y: 0 });
+      const { result } = renderHook(() => useNodeCreation('p-bounds-one', 's-bounds-one'));
+
+      const { bounds } = result.current.placeProposalAt(one, { x: 0, y: 0 }, []);
+
+      expect(bounds).toEqual(spot);
+    });
+
     it('places a second flow clear of the first one', () => {
       const start = { x: 0, y: 0 };
       const { result } = renderHook(() => useNodeCreation('p-twice', 's-twice'));

@@ -2153,19 +2153,6 @@ export function readNodePlacements(projectId: string, spaceId: string): NodePlac
 }
 
 /**
- * Where every node of a canvas space sits on the canvas, as absolute top-lefts.
- * @param projectId - Project the canvas space belongs to.
- * @param spaceId - Canvas space to read.
- * @returns One top-left per node, in no particular order.
- */
-export function readNodeCorners(
-  projectId: string,
-  spaceId: string,
-): Array<{ x: number; y: number }> {
-  return readNodePlacements(projectId, spaceId).map(({ x, y }) => ({ x, y }));
-}
-
-/**
  * Read all edges from `edgesMap` into a ReactFlow-ready array.
  * @param doc - The canvas-space Y.Doc to read from.
  * @returns The current canvas edges, with defaults applied for missing fields.

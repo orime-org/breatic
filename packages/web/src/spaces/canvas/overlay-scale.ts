@@ -62,6 +62,13 @@ const COUNTS_COLUMN_WIDTH =
  */
 const COUNTS_COLUMN_GAP = 8;
 
+/**
+ * The farthest the counts column reaches past a node's right edge in flow
+ * coordinates, at any zoom: its screen width over the counter-scale floor,
+ * which is where the column stops shrinking with the canvas.
+ */
+export const COUNTS_COLUMN_FLOW_REACH = (COUNTS_COLUMN_GAP + COUNTS_COLUMN_WIDTH) / OVERLAY_SCALE_FLOOR_ZOOM;
+
 /** Gap the reader sees between the column and whatever is anchored past it. */
 const CLEARANCE = 8;
 
