@@ -54,13 +54,14 @@ export interface RunningApp {
 }
 
 /**
- * Serve an app on a free loopback port.
- * @param app - The internal app.
+ * Serve an app on a loopback port.
+ * @param app - The app.
+ * @param listenPort - The port; 0 (the default) takes a free one.
  * @returns Its base URL and a closer.
  */
-export async function serveOnLoopback(app: Hono): Promise<RunningApp> {
+export async function serveOnLoopback(app: Hono, listenPort = 0): Promise<RunningApp> {
   const server = await new Promise<ReturnType<typeof serve>>((resolve) => {
-    const s = serve({ fetch: app.fetch, port: 0, hostname: "127.0.0.1" }, () => resolve(s));
+    const s = serve({ fetch: app.fetch, port: listenPort, hostname: "127.0.0.1" }, () => resolve(s));
   });
   const { port } = server.address() as AddressInfo;
   return {
