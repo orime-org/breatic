@@ -35,4 +35,5 @@ export interface RefundCopy {
   operationId: string | null;
   everSucceeded: boolean;
   resolvedByOperationId: string | null;
+  failureReason: string | null;
 }

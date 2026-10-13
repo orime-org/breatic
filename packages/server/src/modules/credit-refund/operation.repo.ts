@@ -167,30 +167,6 @@ export async function lockById(id: string, tx: DbTx): Promise<CreditRefundOperat
 }
 
 /**
- * Lock a payment's refund_again dispositions that ended needs_attention: a
- * later sight of their own refund succeeded still answers for their failed
- * refunds (§6.2 needs_attention × E2).
- * @param paymentId - The payment.
- * @param tx - The caller's transaction, holding the lot's lock.
- * @returns The rows, by id.
- */
-export async function lockRefundAgainInAttention(paymentId: string, tx: DbTx): Promise<CreditRefundOperation[]> {
-  const rows = await tx
-    .select()
-    .from(creditRefundOperations)
-    .where(
-      and(
-        eq(creditRefundOperations.paymentId, paymentId),
-        eq(creditRefundOperations.kind, "refund_again"),
-        eq(creditRefundOperations.status, "needs_attention"),
-      ),
-    )
-    .orderBy(asc(creditRefundOperations.id))
-    .for("update");
-  return rows.map(toEntity);
-}
-
-/**
  * Insert a disposition. The partial unique index refuses a second one in
  * flight on the same lot.
  * @param values - The new row.

@@ -25,9 +25,10 @@ const LOCK_SECONDS = 600;
 
 /**
  * Run a pass when one is due and this instance gets the lock.
+ * @param isStopped - Whether the refund loop was stopped meanwhile: no further payment is read.
  * @returns Once the pass, if any, has been recorded.
  */
-export async function runDailyReconcile(): Promise<void> {
+export async function runDailyReconcile(isStopped: () => boolean = () => false): Promise<void> {
   if (!(await reconcileRepo.isDue())) return;
   const lockKey = `${env.ENV}:server:refund-reconcile-lock`;
   const locked = await getRedis().set(lockKey, "1", "EX", LOCK_SECONDS, "NX");
@@ -36,6 +37,8 @@ export async function runDailyReconcile(): Promise<void> {
   const failing: string[] = [];
   let lastError: string | null = null;
   for (const paymentId of await reconcileRepo.listPaymentsInScope(getCreditRefundConfig().reconcileWindowDays)) {
+    // Left unfinished, the pass stays due and runs again in full.
+    if (isStopped()) return;
     try {
       await reconcilePayment(paymentId);
     } catch (err) {

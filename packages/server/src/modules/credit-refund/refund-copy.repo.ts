@@ -9,7 +9,7 @@
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { creditRefunds } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
-import type { RefundCopy, StripeRefundObject, StripeRefundStatus } from "@server/modules/credit-refund/types.js";
+import type { RefundCopy, StripeRefundStatus } from "@server/modules/credit-refund/types.js";
 
 /** One refund as Stripe reported it, ready to be copied. */
 export interface CopyWrite {
@@ -36,6 +36,7 @@ function toCopy(row: typeof creditRefunds.$inferSelect): RefundCopy {
     operationId: row.operationId,
     everSucceeded: row.everSucceeded,
     resolvedByOperationId: row.resolvedByOperationId,
+    failureReason: row.failureReason,
   };
 }
 
@@ -67,31 +68,6 @@ export async function upsert(copy: CopyWrite, tx: DbTx): Promise<void> {
       setWhere: sql`(${creditRefunds.status} IS DISTINCT FROM ${copy.status} AND NOT ${isFinal})
         OR (${succeeded} AND NOT ${creditRefunds.everSucceeded})`,
     });
-}
-
-/**
- * A disposition's own refund as its copy holds it, in the shape Stripe
- * reports refunds: what the rules judge when Stripe cannot be read.
- * @param operationId - The disposition.
- * @param tx - The caller's transaction.
- * @returns The refund, or null when none was copied.
- */
-export async function findOwn(operationId: string, tx: DbTx): Promise<StripeRefundObject | null> {
-  const [row] = await tx
-    .select()
-    .from(creditRefunds)
-    .where(eq(creditRefunds.operationId, operationId))
-    .orderBy(creditRefunds.stripeRefundId)
-    .limit(1);
-  if (row === undefined) return null;
-  return {
-    id: row.stripeRefundId,
-    amount: row.amountCents,
-    currency: row.currency,
-    status: row.status as StripeRefundStatus,
-    failure_reason: row.failureReason,
-    metadata: { refund_operation_id: operationId },
-  };
 }
 
 /**

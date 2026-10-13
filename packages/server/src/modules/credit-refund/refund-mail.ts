@@ -85,10 +85,12 @@ export function sendRefundMailLater(mailId: string): void {
 /**
  * The loop's sweep (§7.1 step 3): rows still pending a minute after insert.
  * One row that fails does not stop the others.
+ * @param isStopped - Whether the refund loop was stopped meanwhile: no further row is taken.
  * @returns Once every row of the batch has been tried.
  */
-export async function sendDueRefundMails(): Promise<void> {
+export async function sendDueRefundMails(isStopped: () => boolean = () => false): Promise<void> {
   for (const mailId of await refundMailRepo.listDuePending(SWEEP_BATCH)) {
+    if (isStopped()) return;
     try {
       await sendRefundMail(mailId);
     } catch (err) {

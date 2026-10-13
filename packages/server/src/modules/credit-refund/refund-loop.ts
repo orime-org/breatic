@@ -17,7 +17,7 @@ import { attemptsExhausted, waitedBackoffSeconds } from "@server/modules/credit-
 import { closeExhausted, executeRefund } from "@server/modules/credit-refund/executor.js";
 import * as operationRepo from "@server/modules/credit-refund/operation.repo.js";
 import type { CreditRefundOperation } from "@server/modules/credit-refund/operation.repo.js";
-import { transitionOperation, type StripeFailure } from "@server/modules/credit-refund/operation-transitions.js";
+import { transitionOperation } from "@server/modules/credit-refund/operation-transitions.js";
 import { runDailyReconcile } from "@server/modules/credit-refund/reconcile.js";
 import {
   markStaleRefundMailsUnknown,
@@ -45,7 +45,7 @@ export interface RefundLoop {
 /**
  * One tick: steps 1 to 4 of §7.1 in order. A step that fails is logged and
  * the next one still runs. Once the loop is stopped, no further step starts,
- * and steps 1 and 2 take no further disposition.
+ * and the step in progress takes no further disposition, mail or payment.
  * @param isStopped - Whether the loop was stopped meanwhile.
  * @returns Once the tick has settled.
  */
@@ -53,9 +53,9 @@ export async function runRefundLoopOnce(isStopped: () => boolean = () => false):
   const steps: [string, () => Promise<unknown>][] = [
     ["resume_started", () => resumeStarted(isStopped)],
     ["recheck_awaiting", () => recheckAwaiting(isStopped)],
-    ["send_mails", sendDueRefundMails],
+    ["send_mails", () => sendDueRefundMails(isStopped)],
     ["stale_mails", markStaleRefundMailsUnknown],
-    ["daily_reconcile", runDailyReconcile],
+    ["daily_reconcile", () => runDailyReconcile(isStopped)],
   ];
   for (const [name, step] of steps) {
     if (isStopped()) return;
@@ -167,8 +167,9 @@ async function recheckAwaiting(isStopped: () => boolean): Promise<void> {
 
 /**
  * Copy Stripe's refunds for the disposition's payment, which re-judges it;
- * then put off its next lookup, or end the wait for a refund id that never
- * came (E12) — the deadline holds whether or not this read worked.
+ * then put off its next lookup, or end the wait for a refund id Stripe shows
+ * no sign of (E12). A failed read is E16: the wait goes on until Stripe
+ * answers (§9).
  * @param op - The waiting disposition.
  */
 async function recheck(op: CreditRefundOperation): Promise<void> {
@@ -178,7 +179,9 @@ async function recheck(op: CreditRefundOperation): Promise<void> {
   } catch (err) {
     if (!(err instanceof StripeReadError)) throw err;
     await db.transaction(async (tx) => {
-      if (await endIfDeadlinePassed(tx, op.id, err.failure)) return;
+      // Another writer may have finished it meanwhile; look under the lot's lock.
+      await creditLotRepo.lockLot(op.lotId, tx);
+      if ((await operationRepo.findById(op.id, tx))?.status !== "awaiting_stripe") return;
       await transitionOperation(tx, { id: op.id }, { type: "E16", failure: err.failure, actor: "loop" });
     });
     return;
@@ -198,12 +201,11 @@ async function recheck(op: CreditRefundOperation): Promise<void> {
 /**
  * E12: a disposition still waiting with no refund id 24 hours after its
  * first call goes to a person.
- * @param tx - The transaction.
+ * @param tx - The transaction, holding the lot's lock.
  * @param operationId - The waiting disposition.
- * @param failure - The Stripe read that just failed, if it did.
  * @returns True when it was ended.
  */
-async function endIfDeadlinePassed(tx: DbTx, operationId: string, failure?: StripeFailure): Promise<boolean> {
+async function endIfDeadlinePassed(tx: DbTx, operationId: string): Promise<boolean> {
   const current = (await operationRepo.findById(operationId, tx))!;
   const firstCalledMs = current.firstCalledAt?.getTime();
   if (
@@ -214,6 +216,6 @@ async function endIfDeadlinePassed(tx: DbTx, operationId: string, failure?: Stri
   ) {
     return false;
   }
-  await transitionOperation(tx, { id: operationId }, { type: "E12", failure, actor: "loop" });
+  await transitionOperation(tx, { id: operationId }, { type: "E12", actor: "loop" });
   return true;
 }
