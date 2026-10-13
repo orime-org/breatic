@@ -192,7 +192,7 @@ export function startGroupConsumer(opts: GroupConsumerOptions): GroupConsumer {
 
   /**
    * Remove consumers that have been idle past the limit with nothing pending.
-    * @throws {Error} When a Redis command fails; the read loop logs it and retries.
+   * @throws {Error} When a Redis command fails; the read loop logs it and retries.
    */
   async function forgetIdleConsumers(): Promise<void> {
     const rows = (await commands.xinfo("CONSUMERS", streamKey, group)) as unknown[][];
@@ -209,7 +209,7 @@ export function startGroupConsumer(opts: GroupConsumerOptions): GroupConsumer {
 
   /**
    * Take over entries idle past `claimIdleMs`, then forget dead consumers.
-    * @throws {Error} When a Redis command fails; the read loop logs it and retries.
+   * @throws {Error} When a Redis command fails; the read loop logs it and retries.
    */
   async function sweep(): Promise<void> {
     let cursor = "0-0";
@@ -251,7 +251,7 @@ export function startGroupConsumer(opts: GroupConsumerOptions): GroupConsumer {
    * Read new entries.
    * @param blockMs - Longest to block.
    * @returns The entries read.
-    * @throws {Error} When a Redis command fails; the read loop logs it and retries.
+   * @throws {Error} When a Redis command fails; the read loop logs it and retries.
    */
   async function readNew(blockMs: number): Promise<StreamEntry[]> {
     const reply = (await reader.xreadgroup(
@@ -285,7 +285,7 @@ export function startGroupConsumer(opts: GroupConsumerOptions): GroupConsumer {
    * @param entry - The entry that failed.
    * @param err - What it threw.
    * @returns True when the entry went to the dead-letter stream.
-    * @throws {Error} When a Redis command fails; the read loop logs it and retries.
+   * @throws {Error} When a Redis command fails; settle() logs it and retries the entry.
    */
   async function recordFailure(entry: StreamEntry, err: unknown): Promise<boolean> {
     const failures = await coordination.hincrby(failuresKey, entry.id, 1);
@@ -320,7 +320,7 @@ export function startGroupConsumer(opts: GroupConsumerOptions): GroupConsumer {
    * Act on the outcome of every entry of a batch.
    * @param entries - The batch.
    * @param outcomes - What the handler answered.
-    * @throws {Error} When a Redis command fails; the read loop logs it and retries.
+   * @throws {Error} When a Redis command fails; the read loop logs it and retries.
    */
   async function settle(entries: StreamEntry[], outcomes: Map<string, EntryOutcome>): Promise<void> {
     const ack: string[] = [];
