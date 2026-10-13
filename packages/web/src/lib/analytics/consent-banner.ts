@@ -141,7 +141,7 @@ function storedRevision(): number {
   // The library's getCookie(field, cookieName) reads a named cookie before run(); its type definitions omit the name.
   const read = CookieConsent.getCookie as (field: undefined, cookieName: string) => Partial<CookieConsent.CookieValue>;
   const { revision } = read(undefined, CONSENT_COOKIE_NAME);
-  return typeof revision === 'number' ? revision : 0;
+  return revisionInForce(revision) ? (revision as number) : 0;
 }
 
 /** What the banner needs to start, kept so it can start again. */

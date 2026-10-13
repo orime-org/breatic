@@ -327,6 +327,15 @@ describe('the country lookup', () => {
   });
 });
 
+describe('a choice stored under a revision that is not a whole number', () => {
+  it('counts as no choice, and the library runs on the current revision', async () => {
+    library.consent = true;
+    library.cookie = { ...library.cookie, revision: 1.5, categories: ['necessary', 'analytics'] };
+    await startBanner('US');
+    expect(library.run).toHaveBeenCalledWith(expect.objectContaining({ revision: 1 }));
+  });
+});
+
 describe('a choice stored under a newer policy revision', () => {
   it('stands in a tab still running the older code', async () => {
     library.consent = true;
