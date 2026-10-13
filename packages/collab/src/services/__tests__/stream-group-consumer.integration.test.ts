@@ -527,6 +527,61 @@ describe("startGroupConsumer", () => {
     expect(elapsed).toBeLessThan(1000);
   });
 
+  it("does not wake every millisecond while a delayed key is due and every slot is busy", async () => {
+    const keys = keysFor();
+    await append(keys.streamKey, ["x1", "y1"]);
+    let xTries = 0;
+    let yRunning = false;
+    const tinyTimers: number[] = [];
+    const realSetTimeout = globalThis.setTimeout;
+    const spy = vi.spyOn(globalThis, "setTimeout").mockImplementation(((fn: () => void, ms?: number) => {
+      if (yRunning && (ms ?? 0) <= 1) tinyTimers.push(Date.now());
+      return realSetTimeout(fn, ms);
+    }) as typeof setTimeout);
+    try {
+      start(
+        keys,
+        "a",
+        async (entries) => {
+          const payload = entries[0]!.payload;
+          if (payload === "x1" && (xTries += 1) === 1) return new Map(entries.map((e) => [e.id, "wait" as const]));
+          if (payload === "y1") {
+            yRunning = true;
+            await new Promise((r) => realSetTimeout(r, 1500));
+            yRunning = false;
+          }
+          return new Map(entries.map((e) => [e.id, "done" as const]));
+        },
+        { keyConcurrency: 1, leaseRetryMs: 100, blockMs: 5000, claimIntervalMs: 60_000 },
+      );
+      await until(async () => (await pendingCount(keys)) === 0, 8000);
+    } finally {
+      spy.mockRestore();
+    }
+    expect(tinyTimers.length).toBeLessThan(20);
+  });
+
+  it("walks the whole pending list across sweeps, past entries a live consumer keeps", async () => {
+    const keys = keysFor();
+    const ids = await append(keys.streamKey, Array.from({ length: 30 }, (_, i) => `e${i}`));
+    await stream.xgroup("CREATE", keys.streamKey, keys.group, "0", "MKSTREAM");
+    await stream.xreadgroup("GROUP", keys.group, "dead", "COUNT", 30, "STREAMS", keys.streamKey, ">");
+    await new Promise((r) => setTimeout(r, 2100));
+    // The first 25 move to a live consumer and are fresh again; the last 5 stay idle with the dead one.
+    await stream.xclaim(keys.streamKey, keys.group, "live", 0, ...ids.slice(0, 25), "JUSTID");
+    // Room 2: one XAUTOCLAIM scans at most 20 entries.
+    start(keys, "a", async () => new Promise<Map<string, EntryOutcome>>(() => {}), {
+      batchCount: 2,
+      claimIdleMs: 2000,
+      claimIntervalMs: 100,
+    });
+    await until(async () => {
+      const consumers = (await stream.xinfo("CONSUMERS", keys.streamKey, keys.group)) as unknown[][];
+      const row = consumers.find((c) => c[1] === "a");
+      return row !== undefined && Number(row[3]) > 0;
+    }, 1500);
+  });
+
   it("forgets a consumer that has been idle past the limit with nothing pending", async () => {
     const keys = keysFor();
     await append(keys.streamKey, ["e1"]);
