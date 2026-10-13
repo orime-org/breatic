@@ -234,4 +234,10 @@ export interface ChatMessage {
    * nowhere for that to live and the message may be several turns old.
    */
   proposals?: CanvasProposal[];
+  /**
+   * How many proposals this turn stored in a shape this build can no longer
+   * place (inner#1499). Each draws a line saying it has expired, with nothing
+   * to press.
+   */
+  expiredProposals?: number;
 }

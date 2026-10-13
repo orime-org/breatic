@@ -16,7 +16,7 @@
  */
 import { getToolName, isToolUIPart } from 'ai';
 import type { UIMessage } from 'ai';
-import { chipOfPart, isReaderLine, TURNED_AWAY } from '@breatic/shared';
+import { canvasProposalSchema, chipOfPart, isReaderLine, TURNED_AWAY } from '@breatic/shared';
 import type { CanvasProposal, ChatAttachedChip } from '@breatic/shared';
 import type { ChatAsset, ChatMessage, ChatSource, ToolCall } from '@web/pages/project/chat/types';
 
@@ -45,43 +45,26 @@ const RESULTS_TOOL = 'search_images';
 const PROPOSE_TOOL = 'propose_canvas_action';
 
 /**
- * The group one finished `propose_canvas_action` call proposed, or nothing.
+ * The group one finished `propose_canvas_action` call proposed, if any.
  *
  * Read defensively, like the pictures above: a refused proposal answers with a
  * reason instead of a group, and a row stored before this tool existed carries
- * the model's own text. Either would throw while a message is being built,
- * which takes the whole conversation down rather than one card.
+ * the model's own text -- neither is a proposal at all. One the tool accepted
+ * is checked against the shape this build places (inner#1499): a group stored
+ * before that shape changed would throw half way onto the canvas, so it is
+ * told apart as expired rather than offered as a card.
  * @param output - Whatever the call answered with.
- * @returns The proposal, or nothing when the call carries none.
+ * @returns The proposal, `'expired'` for an accepted one this build cannot
+ *   place, or null when the call carries none.
  */
-function proposalOf(output: unknown): CanvasProposal[] {
-  // Null only, because indexing it is what throws. Everything else this could
-  // be -- a refusal, the model's own text on an older row -- is answered by
-  // the one judgement below, which asks the only question that matters.
-  if (output === null || output === undefined) return [];
-  const answer = output as Record<string, unknown>;
-  // One judgement rather than several: "the tool accepted it and the group is
-  // whole". Split apart, each piece is already covered by the others for every
-  // answer that can actually arrive, so no test could hold any one of them.
-  const accepted =
-    answer['placed'] === true &&
-    Array.isArray(answer['nodes']) &&
-    Array.isArray(answer['edges']);
-  if (!accepted) return [];
-  // Field by field rather than spread, because what arrives is whatever was
-  // stored on a message -- but every field the proposal carries has to be on
-  // this list. One left off passes the tool's own check on the way out and is
-  // gone by the time the canvas reads it, with nothing failing in between.
-  const groupName = answer['groupName'];
-  return [
-    {
-      nodes: answer['nodes'] as CanvasProposal['nodes'],
-      edges: answer['edges'] as CanvasProposal['edges'],
-      modelNote: typeof answer['modelNote'] === 'string' ? answer['modelNote'] : '',
-      rationale: typeof answer['rationale'] === 'string' ? answer['rationale'] : '',
-      ...(typeof groupName === 'string' && groupName !== '' ? { groupName } : {}),
-    },
-  ];
+function proposalOf(output: unknown): CanvasProposal | 'expired' | null {
+  // Null only, because indexing it is what throws.
+  if (output === null || output === undefined) return null;
+  if ((output as Record<string, unknown>)['placed'] !== true) return null;
+  const parsed = canvasProposalSchema.safeParse(output);
+  if (!parsed.success) return 'expired';
+  const { groupName, ...rest } = parsed.data;
+  return { ...rest, modelNote: rest.modelNote ?? '', ...(groupName ? { groupName } : {}) };
 }
 
 /**
@@ -203,6 +186,7 @@ export function toChatMessage(
   const found: Array<[number, ChatSource]> = [];
   const assets: ChatAsset[] = [];
   const proposals: CanvasProposal[] = [];
+  let expiredProposals = 0;
   const attachments: ChatAttachedChip[] = [];
   // The server writes it onto the stored message; a message this reader has
   // only just sent is not stored yet and carries none.
@@ -260,7 +244,9 @@ export function toChatMessage(
         assets.push(...assetsOf(part.output));
       }
       if (status === 'success' && getToolName(part) === PROPOSE_TOOL) {
-        proposals.push(...proposalOf(part.output));
+        const proposal = proposalOf(part.output);
+        if (proposal === 'expired') expiredProposals += 1;
+        else if (proposal !== null) proposals.push(proposal);
       }
       if (status === 'success' && getToolName(part) === SEARCH_TOOL) {
         found.push(...sourcesOf(part.output));
@@ -328,6 +314,7 @@ export function toChatMessage(
     ...(sources.length > 0 ? { sources, citations } : {}),
     ...(assets.length > 0 ? { assets } : {}),
     ...(proposals.length > 0 ? { proposals } : {}),
+    ...(expiredProposals > 0 ? { expiredProposals } : {}),
     ...(attachments.length > 0 ? { attachments } : {}),
     ...(options.failedJustNow === true ? { failedJustNow: true as const } : {}),
     ...(options.streaming === true ? { streaming: true } : {}),

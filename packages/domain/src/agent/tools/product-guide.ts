@@ -900,10 +900,13 @@ export function renderProductGuide(): string {
       "the same list share one heading, joined by ·. Each generating node's list ends with one of these two " +
       "lines, the second where the model has no prompt box: " +
       `${quoted(t("chat.proposal.promptReady"))} ${quoted(t("chat.proposal.settingsReady"))}`,
-    `Pressing ${quoted(t("chat.proposal.use"))} places the nodes near the middle of the reader's view, joined ` +
-      "by the proposal's edges (a node filling a slot through fills gets no line) and grouped when there are two or more, as one step undo reverses; the button reads " +
+    `Pressing ${quoted(t("chat.proposal.use"))} places the nodes at the first spot right of the middle of the ` +
+      "reader's view where they cover nothing already on the canvas, joined " +
+      "by the proposal's edges (a node filling a slot through fills gets no line) and grouped when there are two or more, as one step undo reverses; " +
+      "the view then moves to centre them, zooming out only as far as it takes to show all of them. The button reads " +
       `${quoted(t("chat.proposal.building"))} meanwhile, and ${quoted(t("chat.proposal.failed"))} appears if it ` +
-      "fails. A canvas has to be open: " +
+      "fails, with nothing placed. A proposal kept from before its shape changed shows " +
+      `${quoted(t("chat.proposal.expired"))} where its card would be, with no button. A canvas has to be open: ` +
       `anywhere else pressing it shows the message ${quoted(t("chat.proposal.needCanvas"))} and places nothing. ` +
       "With one generating node its panel opens by itself; with several, the group is selected and the reader " +
       `right-clicks each node and chooses ${quoted(t("canvas.nodeMenu.generate"))}.`,

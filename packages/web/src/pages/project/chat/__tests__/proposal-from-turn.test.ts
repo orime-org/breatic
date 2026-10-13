@@ -102,3 +102,33 @@ describe('a turn whose proposal never reached the reader', () => {
     expect(message.proposals).toBeUndefined();
   });
 });
+
+describe('a turn whose proposal was stored in a shape this build no longer places', () => {
+  // Stored on 2026-10-07, before the `ref` mark was taken out (inner#1499).
+  const STALE = {
+    ...ACCEPTED,
+    nodes: [
+      ACCEPTED.nodes[0],
+      {
+        ...ACCEPTED.nodes[1],
+        prompt: [{ text: 'from ' }, { slot: { kind: 'ref', label: 'Your photo', note: 'step one' } }],
+      },
+    ],
+  };
+
+  it('draws no card that could be pressed', () => {
+    expect(toChatMessage(turnWith(STALE)).proposals).toBeUndefined();
+  });
+
+  it('says that one proposal there has expired', () => {
+    expect(toChatMessage(turnWith(STALE)).expiredProposals).toBe(1);
+  });
+
+  it('says nothing has expired on a turn whose proposal is current', () => {
+    expect(toChatMessage(turnWith(ACCEPTED)).expiredProposals).toBeUndefined();
+  });
+
+  it('says nothing has expired on a proposal the tool refused', () => {
+    expect(toChatMessage(turnWith({ placed: false, reason: 'no' })).expiredProposals).toBeUndefined();
+  });
+});
