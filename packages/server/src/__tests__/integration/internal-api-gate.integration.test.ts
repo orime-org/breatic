@@ -23,7 +23,7 @@ import type * as BreaticCore from "@breatic/core";
 
 type RedisFaultMode = "none" | "pipeline_error_results" | "pipeline_rejects" | "commands_reject";
 const redisFault = vi.hoisted((): { mode: RedisFaultMode } => ({ mode: "none" }));
-const logged = vi.hoisted(() => ({ info: vi.fn() }));
+const logged = vi.hoisted(() => ({ info: vi.fn(), warn: vi.fn() }));
 
 vi.mock("@breatic/core", async (importOriginal) => {
   const actual = await importOriginal<typeof BreaticCore>();
@@ -79,9 +79,9 @@ vi.mock("@breatic/core", async (importOriginal) => {
       },
     });
   }
-  // `info` is recorded instead of written; every other level goes to the real logger.
+  // `info` and `warn` are recorded instead of written; every other level goes to the real logger.
   const logger = new Proxy(actual.logger, {
-    get: (target, prop) => (prop === "info" ? logged.info : Reflect.get(target, prop)),
+    get: (target, prop) => (prop === "info" ? logged.info : prop === "warn" ? logged.warn : Reflect.get(target, prop)),
   });
   return { ...actual, getRedis: () => faulty(actual.getRedis()), logger };
 });
@@ -121,6 +121,7 @@ import { PAID_CENTS, reId, refundObject, seedRefundLot, worldOf } from "./credit
 beforeEach(() => {
   redisFault.mode = "none";
   logged.info.mockClear();
+  logged.warn.mockClear();
 });
 afterEach(() => {
   redisFault.mode = "none";
@@ -149,6 +150,37 @@ async function pendingLot() {
 
 const REJECT_BODY = { reason: "Buyer asked twice; policy says no." };
 
+/**
+ * The fields of every line logged at one level under one message.
+ * @param level - The recorded level.
+ * @param message - The line's message.
+ * @returns Their field objects, in order.
+ */
+function linesOf(level: "info" | "warn", message: string): Record<string, unknown>[] {
+  return logged[level].mock.calls
+    .filter((args: unknown[]) => args[1] === message)
+    .map((args: unknown[]) => args[0] as Record<string, unknown>);
+}
+
+/**
+ * Check a 401 left exactly one `internal_auth_rejected` line naming the step
+ * that refused it, besides its one `internal_api_request` line (acceptance #2).
+ * @param step - The refusing step.
+ * @param path - The request's path.
+ */
+async function expectOneRejectionLine(step: "headers" | "timestamp" | "signature" | "nonce", path: string): Promise<void> {
+  await vi.waitFor(() => expect(linesOf("info", "internal_api_request").length).toBeGreaterThan(0), {
+    timeout: 2_000,
+    interval: 10,
+  });
+  const requests = linesOf("info", "internal_api_request");
+  expect(requests).toHaveLength(1);
+  expect(requests[0]).toMatchObject({ path, status: 401, code: "unauthorized" });
+  const rejections = linesOf("warn", "internal_auth_rejected");
+  expect(rejections).toHaveLength(1);
+  expect(rejections[0]).toMatchObject({ step, path });
+}
+
 describe("signature (§4.2): each failed step is 401 and writes nothing", () => {
   const nowSeconds = () => Math.floor(Date.now() / 1000);
 
@@ -158,30 +190,31 @@ describe("signature (§4.2): each failed step is 401 and writes nothing", () => 
   // 302: both clocks are floored to whole seconds, so a second boundary
   // crossed between signing and checking turns +301 into +300 (accepted).
   type Opts = Parameters<typeof call>[2];
-  const refusals: { name: string; opts: Opts | (() => Opts) }[] = [
-    { name: "no signature headers at all", opts: { unsigned: true } },
-    { name: "the signature header missing", opts: { headerOverrides: { "x-internal-signature": undefined } } },
-    { name: "the admin id outside [A-Za-z0-9_-]", opts: { admin: "admin 7" } },
-    { name: "an admin id longer than 64 characters", opts: { admin: "a".repeat(65) } },
-    { name: "a nonce shorter than 16 characters", opts: { nonce: "abcdefghijklmno" } },
-    { name: "a timestamp that is not Unix seconds", opts: { headerOverrides: { "x-internal-timestamp": "2026-10-12T00:00:00Z" } } },
-    { name: "a signature without the v1= prefix", opts: { headerOverrides: { "x-internal-signature": "a".repeat(64) } } },
-    { name: "a timestamp 301 seconds in the past", opts: () => ({ timestamp: nowSeconds() - 301 }) },
-    { name: "a timestamp 302 seconds in the future", opts: () => ({ timestamp: nowSeconds() + 302 }) },
-    { name: "a signature made with an unknown secret", opts: { secret: "not-the-shared-secret-at-all-0000" } },
-    { name: "a body changed after signing", opts: { signedBody: JSON.stringify({ reason: "something else" }) } },
-    { name: "an idempotency key changed after signing", opts: { signedIdempotencyKey: "bo-op-the-signed-one" } },
-    { name: "an admin id changed after signing", opts: { headerOverrides: { "x-internal-admin": "admin_8" } } },
+  const refusals: { name: string; step: "headers" | "timestamp" | "signature"; opts: Opts | (() => Opts) }[] = [
+    { name: "no signature headers at all", step: "headers", opts: { unsigned: true } },
+    { name: "the signature header missing", step: "headers", opts: { headerOverrides: { "x-internal-signature": undefined } } },
+    { name: "the admin id outside [A-Za-z0-9_-]", step: "headers", opts: { admin: "admin 7" } },
+    { name: "an admin id longer than 64 characters", step: "headers", opts: { admin: "a".repeat(65) } },
+    { name: "a nonce shorter than 16 characters", step: "headers", opts: { nonce: "abcdefghijklmno" } },
+    { name: "a timestamp that is not Unix seconds", step: "headers", opts: { headerOverrides: { "x-internal-timestamp": "2026-10-12T00:00:00Z" } } },
+    { name: "a signature without the v1= prefix", step: "headers", opts: { headerOverrides: { "x-internal-signature": "a".repeat(64) } } },
+    { name: "a timestamp 301 seconds in the past", step: "timestamp", opts: () => ({ timestamp: nowSeconds() - 301 }) },
+    { name: "a timestamp 302 seconds in the future", step: "timestamp", opts: () => ({ timestamp: nowSeconds() + 302 }) },
+    { name: "a signature made with an unknown secret", step: "signature", opts: { secret: "not-the-shared-secret-at-all-0000" } },
+    { name: "a body changed after signing", step: "signature", opts: { signedBody: JSON.stringify({ reason: "something else" }) } },
+    { name: "an idempotency key changed after signing", step: "signature", opts: { signedIdempotencyKey: "bo-op-the-signed-one" } },
+    { name: "an admin id changed after signing", step: "signature", opts: { headerOverrides: { "x-internal-admin": "admin_8" } } },
   ];
 
-  it.each(refusals)("refuses $name", async ({ opts }) => {
+  it.each(refusals)("refuses $name at the $step step", async ({ step, opts }) => {
     const lot = await pendingLot();
     const before = await worldOf(sql, lot);
+    const resolved = { nonce: freshNonce(), ...(typeof opts === "function" ? opts() : opts) };
 
     const res = await call(running.baseUrl, paths.reject(lot.lotId), {
       body: REJECT_BODY,
       idempotencyKey: freshKey("reject"),
-      ...(typeof opts === "function" ? opts() : opts),
+      ...resolved,
     });
 
     expect(res.status).toBe(401);
@@ -189,6 +222,9 @@ describe("signature (§4.2): each failed step is 401 and writes nothing", () => 
     expect(await worldOf(sql, lot)).toEqual(before);
     expect(fakeStripe.listCalls).toEqual([]);
     expect(fakeStripe.createCalls).toEqual([]);
+    await expectOneRejectionLine(step, paths.reject(lot.lotId));
+    // Every step here comes before the nonce's SET, so the nonce stays unspent.
+    expect(await getRedis().exists(nonceKey(resolved.nonce))).toBe(0);
   });
 
   it("refuses a replayed nonce even when everything else is identical, and the first request's effects stay single", async () => {
@@ -201,6 +237,9 @@ describe("signature (§4.2): each failed step is 401 and writes nothing", () => 
     expect(first.json.result).toBe("rejected");
     await mailsSettled(sql, lot);
     const after = await worldOf(sql, lot);
+    await vi.waitFor(() => expect(linesOf("info", "internal_api_request")).toHaveLength(1), { timeout: 2_000, interval: 10 });
+    logged.info.mockClear();
+    logged.warn.mockClear();
 
     const again = await first.replay();
 
@@ -209,6 +248,7 @@ describe("signature (§4.2): each failed step is 401 and writes nothing", () => 
     expect(await worldOf(sql, lot)).toEqual(after);
     expect(after.ops).toHaveLength(1);
     expect(fakeStripe.listCalls).toHaveLength(1);
+    await expectOneRejectionLine("nonce", paths.reject(lot.lotId));
   });
 
   // The window is inclusive on floored seconds, so a timestamp S is accepted

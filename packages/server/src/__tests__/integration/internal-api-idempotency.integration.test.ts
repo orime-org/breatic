@@ -212,6 +212,36 @@ describe("same key, different request: 422 idempotency_key_reused", () => {
   });
 });
 
+// Acceptance #6 refuses a key reused with another method. Every write route is
+// POST, so another method never reaches the key lookup: the authorisation
+// table answers 403 first. The fingerprint's own method sensitivity is pinned
+// in `modules/credit-refund/__tests__/idempotency.test.ts`.
+describe("same key, another method: never reaches a write", () => {
+  it.each(["GET", "PUT", "PATCH", "DELETE"])(
+    "an approval's key sent with %s to the same path is 403 forbidden and changes nothing",
+    async (method) => {
+      const lot = await lotOnStripe("refund_pending");
+      const key = freshKey("approve");
+      expect((await post(paths.approve(lot.lotId), APPROVE, key)).status).toBe(200);
+      await mailsSettled(suite.sql, lot);
+      const after = await worldOf(suite.sql, lot);
+
+      // `call` types only the methods the table uses; any other is signed the same way.
+      const res = await call(suite.baseUrl, paths.approve(lot.lotId), {
+        method: method as "POST",
+        ...(method === "GET" ? {} : { body: APPROVE }),
+        idempotencyKey: key,
+      });
+
+      expect(res.status).toBe(403);
+      expect(res.json).toEqual({ code: "forbidden" });
+      expect(await worldOf(suite.sql, lot)).toEqual(after);
+      expect(fakeStripe.createCalls).toHaveLength(1);
+      expect(await holdersOf(suite.sql, key)).toEqual({ ops: 1, mails: 0 });
+    },
+  );
+});
+
 describe("same key while the original runs: 409 request_in_progress", () => {
   it("an approval whose Stripe call is still out: the repeat is 409, and the original then finishes with one create", async () => {
     const lot = await lotOnStripe("refund_pending");
