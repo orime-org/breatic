@@ -294,3 +294,29 @@ test('zooms out just far enough to show a group that does not fit at the readerâ
   expect(after.zoom, 'zoomed out to fit').toBeLessThan(2);
   await expectFramed(pane, group);
 });
+
+test('shows a proposal kept in an older shape as expired, with nothing to press', async () => {
+  const pane = visibleSpace(page).locator('.react-flow__pane');
+  await expect(pane).toBeVisible({ timeout: 20_000 });
+  // The shape stored before 2026-10-07, when the `ref` mark was taken out.
+  await answerWithProposal(page, {
+    ...ONE,
+    nodes: [
+      {
+        role: 'generate',
+        type: 'image',
+        name: 'Turnaround',
+        prompt: [{ slot: { kind: 'ref', label: 'Your photo', note: 'step one' } }],
+      },
+    ],
+  });
+  await startNewConversation(page);
+  const composer = page.getByTestId('chat-composer-box');
+  await composer.fill('Set up a node for my photo.');
+  await composer.press('Enter');
+
+  await expect(page.getByTestId('proposal-expired')).toHaveCount(1, { timeout: 20_000 });
+  await expect(page.getByTestId('proposal-card')).toHaveCount(0);
+  await expect(page.getByTestId('proposal-use')).toHaveCount(0);
+});
+
