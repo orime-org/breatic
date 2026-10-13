@@ -509,9 +509,9 @@ describe("startGroupConsumer", () => {
     });
     let elapsed = 0;
     try {
-      // The two claimed keys fill both slots, so no read follows the sweep.
+      // The two claimed entries fill the room, so no read follows the sweep.
       a = start(keys, "a", allDone([]), {
-        keyConcurrency: 2,
+        batchCount: 2,
         blockMs: 5000,
         claimIdleMs: 300,
         claimIntervalMs: 60_000,

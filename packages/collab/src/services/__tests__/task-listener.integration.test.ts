@@ -26,6 +26,7 @@ import { createUnloadGate } from "@collab/hooks/unload-gate.js";
 import { createChangeTrackingExtension } from "@collab/services/change-tracking.js";
 import type { GroupConsumer } from "@collab/services/stream-group-consumer.js";
 import { startTaskListener, type TaskListenerSettings } from "@collab/services/task-listener.js";
+import { isNewerStreamId } from "@collab/services/stream-id.js";
 
 const PID = "77777777-7777-4777-8777-777777777777";
 
@@ -272,10 +273,14 @@ describe("task events across two collab instances", () => {
       c,
       nodeIds.map((nodeId, i) => ({ nodeId, counts: DONE, result: { ...MEDIA, content: `tile ${i}` } })),
     );
-    // Fewer entries held than the grid has, so both instances take part in the same document.
-    listen(c, instanceA, "a", { batchCount: 64 });
-    listen(c, instanceB, "b", { batchCount: 64 });
-    await until(async () => (await pending(c)) === 0 && (await stream.xlen(c.streamKey)) === 128, 40_000);
+    // Fewer entries held than the grid has, so both instances take part in the
+    // same document; the other event_* values are config/collab.yaml's.
+    const settings = { batchCount: 64, blockMs: 5000, leaseRetryMs: 1000, handoffWaitMs: 5000 };
+    const startedAt = Date.now();
+    listen(c, instanceA, "a", settings);
+    listen(c, instanceB, "b", settings);
+    await until(async () => (await pending(c)) === 0 && (await stream.xlen(c.streamKey)) === 128, 15_000);
+    expect(Date.now() - startedAt).toBeLessThan(10_000);
     const listenerOpens = opensA.mock.calls.length + opensB.mock.calls.length;
     expect(opensA.mock.calls.length).toBeGreaterThan(0);
     expect(opensB.mock.calls.length).toBeGreaterThan(0);
@@ -470,23 +475,27 @@ describe("task events across two collab instances", () => {
     const c = await newCase(Object.fromEntries(nodeIds.map((n) => [n, "image"])));
     // config/collab.yaml timing.
     const timing = { blockMs: 5000, leaseRetryMs: 1000, handoffWaitMs: 5000 };
+    const opensA = vi.spyOn(instanceA, "openDirectConnection");
+    const opensB = vi.spyOn(instanceB, "openDirectConnection");
     listen(c, instanceA, "a", timing);
     listen(c, instanceB, "b", timing);
     await new Promise((r) => setTimeout(r, 500));
     const published = new Map<string, number>();
-    const owner = new Map<string, string>();
     const acked = new Map<string, number>();
     let publishing = true;
     const watch = (async () => {
       while (publishing || acked.size < published.size) {
+        // An entry is acknowledged once it was delivered and left the pending list.
+        const groups = (await stream.xinfo("GROUPS", c.streamKey)) as unknown[][];
+        const row = groups.find((g) => g[1] === "collab-task-events")!;
+        const delivered = String(row[row.indexOf("last-delivered-id") + 1]);
         const rows = (await stream.xpending(c.streamKey, "collab-task-events", "-", "+", 1000)) as Array<
           [string, string, number, number]
         >;
         const now = Date.now();
         const pendingIds = new Set(rows.map((r) => r[0]));
-        for (const [id, by] of rows) owner.set(id, by);
         for (const id of published.keys()) {
-          if (owner.has(id) && !pendingIds.has(id) && !acked.has(id)) acked.set(id, now);
+          if (!acked.has(id) && !pendingIds.has(id) && !isNewerStreamId(id, delivered)) acked.set(id, now);
         }
         await new Promise((r) => setTimeout(r, 30));
       }
@@ -499,7 +508,8 @@ describe("task events across two collab instances", () => {
     publishing = false;
     await Promise.race([watch, new Promise((r) => setTimeout(r, 60_000))]);
     const latencies = [...published].map(([id, at]) => (acked.get(id) ?? Infinity) - at);
-    expect(new Set(owner.values())).toEqual(new Set(["a", "b"]));
+    expect(opensA.mock.calls.length).toBeGreaterThan(0);
+    expect(opensB.mock.calls.length).toBeGreaterThan(0);
     expect(Math.max(...latencies)).toBeLessThan(8000);
   }, 120_000);
 
