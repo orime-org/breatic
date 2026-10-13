@@ -306,9 +306,6 @@ importers:
       '@hocuspocus/extension-redis':
         specifier: 'catalog:'
         version: 4.6.0(y-protocols@1.0.7(yjs@13.6.32))(yjs@13.6.32)
-      '@hocuspocus/extension-throttle':
-        specifier: ^4.6.0
-        version: 4.6.0(y-protocols@1.0.7(yjs@13.6.32))(yjs@13.6.32)
       '@hocuspocus/server':
         specifier: 'catalog:'
         version: 4.6.0(y-protocols@1.0.7(yjs@13.6.32))(yjs@13.6.32)
@@ -3069,9 +3066,6 @@ packages:
     peerDependencies:
       y-protocols: ^1.0.6
       yjs: ^13.6.8
-
-  '@hocuspocus/extension-throttle@4.6.0':
-    resolution: {integrity: sha512-3cgjGfX61SYmiR9U1HxhYQ0mmw5ct0P8gSyTudg/kEBTlDAR4Z7YRneIuxcLA+MRCp3RbftquZmF0jLHxVotGg==}
 
   '@hocuspocus/provider@4.6.0':
     resolution: {integrity: sha512-twKgZb1PbDSapfdghvLWR1zQEvSiQLCH7DjKL4QmSoG2P1a0D7p5MUrm/RzXKscPpzVjHyGzHPlIWAXEEcvfxQ==}
@@ -13444,14 +13438,6 @@ snapshots:
     transitivePeerDependencies:
       - srvx
       - supports-color
-
-  '@hocuspocus/extension-throttle@4.6.0(y-protocols@1.0.7(yjs@13.6.32))(yjs@13.6.32)':
-    dependencies:
-      '@hocuspocus/server': 4.6.0(y-protocols@1.0.7(yjs@13.6.32))(yjs@13.6.32)
-    transitivePeerDependencies:
-      - srvx
-      - y-protocols
-      - yjs
 
   '@hocuspocus/provider@4.6.0(y-protocols@1.0.7(yjs@13.6.32))(yjs@13.6.32)':
     dependencies:

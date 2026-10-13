@@ -30,6 +30,7 @@ import {
   MONOREPO_ROOT,
 } from "@breatic/core";
 import { createConnectionGate } from "@collab/infra/connection-gate.js";
+import { createSharedThrottle } from "@collab/infra/shared-throttle.js";
 import { socketCeilings } from "@collab/infra/socket-ceilings.js";
 import {
   createConnectionRegistry,
@@ -208,10 +209,14 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
   // early and why it travels as a header.
   if (cfg.throttle_enabled) {
     extensions.push(
-      createConnectionGate({
-        throttle: cfg.throttle_max_attempts,
-        banTime: cfg.throttle_ban_time,
-      }),
+      createConnectionGate(
+        createSharedThrottle({
+          redis: getRedis(),
+          maxAttempts: cfg.throttle_max_attempts,
+          banMinutes: cfg.throttle_ban_time,
+          onError: (err, identity) => logger.warn({ err, identity }, "connection_throttle_unavailable"),
+        }),
+      ),
     );
   }
 

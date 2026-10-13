@@ -37,20 +37,13 @@
  */
 
 import type { IncomingMessage } from "node:http";
-import { Throttle } from "@hocuspocus/extension-throttle";
 import { createLogger } from "@breatic/core";
 import { decideClientIdentity } from "@collab/infra/client-identity.js";
 import type { RefusalReason } from "@collab/infra/client-identity.js";
 
 const logger = createLogger("connection-gate");
 
-/** Throttle tuning: connections per window before a ban, and ban length in minutes. */
-export interface ThrottleConfig {
-  throttle: number;
-  banTime: number;
-}
-
-/** The part of the throttle extension this gate uses. */
+/** What the gate hands a counted connection to. */
 export interface ThrottleLike {
   onConnect(data: unknown): Promise<unknown>;
   onDestroy(): Promise<unknown>;
@@ -146,17 +139,11 @@ function refuseUpgrade(
 
 /**
  * Build the connection gate.
- * @param config - Throttle tuning passed through to the throttle extension.
- * @param deps - Overridable collaborators.
- * @param deps.throttle - Throttle implementation; defaults to the real extension.
+ * @param throttle - Counts the connections the gate does not exempt; the
+ *   shared Redis throttle in production (`infra/shared-throttle.ts`).
  * @returns The hooks to register on the Hocuspocus server.
  */
-export function createConnectionGate(
-  config: ThrottleConfig,
-  deps: { throttle?: ThrottleLike } = {},
-): ConnectionGate {
-  const throttle: ThrottleLike =
-    deps.throttle ?? new Throttle(config);
+export function createConnectionGate(throttle: ThrottleLike): ConnectionGate {
 
   return {
     onUpgrade: (data: UpgradeHookPayload): Promise<void> => {

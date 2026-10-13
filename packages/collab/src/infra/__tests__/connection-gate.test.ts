@@ -33,7 +33,6 @@ vi.mock("@breatic/core", () => ({
 }));
 
 import { createConnectionGate } from "@collab/infra/connection-gate.js";
-import type { ConnectionGate } from "@collab/infra/connection-gate.js";
 
 beforeEach(() => {
   loggerWarnMock.mockClear();
