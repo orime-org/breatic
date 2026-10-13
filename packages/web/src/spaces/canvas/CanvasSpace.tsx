@@ -2795,9 +2795,10 @@ function CanvasSpaceInner({
         if (focus.panel) openGeneratePanel(focus.panel.nodeId, focus.panel.type);
         reportProposalOutcome('placed');
       } catch {
-        // The whole group is one transaction, so nothing half-placed is left
-        // behind -- but the card is still waiting, and a button that stays
-        // disabled forever is worse than one that says it did not work.
+        // `placeProposalAt` takes back whatever it wrote before it threw, so
+        // nothing half-placed is left behind -- but the card is still waiting,
+        // and a button that stays disabled forever is worse than one that says
+        // it did not work.
         reportProposalOutcome('failed');
       }
     } else {

@@ -21,6 +21,7 @@ import {
   getPromptFragment,
   getTextBody,
   readNodePlacements,
+  removeElements,
   restoreNodeMedia,
   runCanvasUndoBatch,
   setGroupBackground,
@@ -284,116 +285,123 @@ export function useNodeCreation(
       const spots = aimed.map((spot) => ({ ...spot, x: spot.x + dx }));
       const bounds = footprint && { ...footprint, x: footprint.x + dx };
       const nodeIds: string[] = [];
+      const edgeIds: string[] = [];
       let groupId: string | undefined;
       runCanvasUndoBatch(projectId, spaceId, () => {
-        proposal.nodes.forEach((node, i) => {
-          const at = spots[i] ?? { x: start.x, y: start.y };
-          // `createNodeAt` centres what it is given on the standard footprint,
-          // so the arrangement's top-left is handed over as that centre --
-          // otherwise every node lands half a footprint up and to the left of
-          // where the group was measured around it.
-          const id = createNodeAt(node.type, {
-            x: at.x + EMPTY_NODE_SIZE.width / 2,
-            y: at.y + EMPTY_NODE_SIZE.height / 2,
+        // A Yjs transaction does not roll back when it throws, so whatever
+        // this press wrote before the failure is taken back in the same
+        // transaction: the card says it was not built, and nothing was.
+        try {
+          proposal.nodes.forEach((node, i) => {
+            const at = spots[i] ?? { x: start.x, y: start.y };
+            // `createNodeAt` centres what it is given on the standard footprint,
+            // so the arrangement's top-left is handed over as that centre --
+            // otherwise every node lands half a footprint up and to the left of
+            // where the group was measured around it.
+            const id = createNodeAt(node.type, {
+              x: at.x + EMPTY_NODE_SIZE.width / 2,
+              y: at.y + EMPTY_NODE_SIZE.height / 2,
+            });
+            nodeIds.push(id);
+            setNodeName(projectId, spaceId, id, node.name);
+            // The reader's material, with the numbers its registration holds,
+            // the same write a restored result goes through (inner#1315). The
+            // tool answers with both or neither: a material it could not read the
+            // registration of is refused before a card is drawn.
+            if (node.material !== undefined && node.materialMedia !== undefined) {
+              restoreNodeMedia(projectId, spaceId, id, { content: node.material, media: node.materialMedia });
+            }
+            // Mode and model go together in one write, so a collaborator never
+            // sees the proposed mode paired with whatever model the node
+            // defaulted to. A source node carries neither -- it is the empty
+            // place the reader drops their own material into.
+            if (node.mode && node.model) {
+              const params = { [node.model]: node.params ?? {} };
+              setNodeMode(projectId, spaceId, id, node.mode, node.model, params);
+              // And record it as a choice. The agent picked this model on the
+              // reader's behalf; written only as a mode switch it is forgotten
+              // the moment they look at another mode and come back.
+              setNodeModel(projectId, spaceId, id, node.mode, node.model, params);
+            }
           });
-          nodeIds.push(id);
-          setNodeName(projectId, spaceId, id, node.name);
-          // The reader's material, with the numbers its registration holds,
-          // the same write a restored result goes through (inner#1315). The
-          // tool answers with both or neither: a material it could not read the
-          // registration of is refused before a card is drawn.
-          if (node.material !== undefined && node.materialMedia !== undefined) {
-            restoreNodeMedia(projectId, spaceId, id, { content: node.material, media: node.materialMedia });
+          // Two or more nodes are one piece of work, and a group is how the
+          // canvas says so -- a name and a ground of its own, rather than a
+          // handful of nodes the reader has to work out the relation between.
+          // Built from the arrangement's own rects: the nodes were written a
+          // moment ago and the render buffer has not seen them yet, so anything
+          // reading that buffer would find no members and quietly make nothing.
+          const rect = aimedGroup && bounds;
+          if (rect) {
+            const id = newId();
+            createGroup(
+              projectId,
+              spaceId,
+              createGroupNode(id, { x: rect.x, y: rect.y }, rect.width, rect.height, userId),
+              nodeIds.map((member, i) => ({
+                id: member,
+                position: toRelativePosition(spots[i] ?? rect, rect),
+              })),
+            );
+            if (proposal.groupName) setNodeName(projectId, spaceId, id, proposal.groupName);
+            setGroupBackground(projectId, spaceId, id, groupBackgroundFor(Math.random()));
+            groupId = id;
           }
-          // Mode and model go together in one write, so a collaborator never
-          // sees the proposed mode paired with whatever model the node
-          // defaulted to. A source node carries neither -- it is the empty
-          // place the reader drops their own material into.
-          if (node.mode && node.model) {
-            const params = { [node.model]: node.params ?? {} };
-            setNodeMode(projectId, spaceId, id, node.mode, node.model, params);
-            // And record it as a choice. The agent picked this model on the
-            // reader's behalf; written only as a mode switch it is forgotten
-            // the moment they look at another mode and come back.
-            setNodeModel(projectId, spaceId, id, node.mode, node.model, params);
-          }
-        });
-        // Two or more nodes are one piece of work, and a group is how the
-        // canvas says so -- a name and a ground of its own, rather than a
-        // handful of nodes the reader has to work out the relation between.
-        // Built from the arrangement's own rects: the nodes were written a
-        // moment ago and the render buffer has not seen them yet, so anything
-        // reading that buffer would find no members and quietly make nothing.
-        const rect = aimedGroup && bounds;
-        if (rect) {
-          const id = newId();
-          createGroup(
-            projectId,
-            spaceId,
-            createGroupNode(id, { x: rect.x, y: rect.y }, rect.width, rect.height, userId),
-            nodeIds.map((member, i) => ({
-              id: member,
-              position: toRelativePosition(spots[i] ?? rect, rect),
-            })),
-          );
-          if (proposal.groupName) setNodeName(projectId, spaceId, id, proposal.groupName);
-          setGroupBackground(projectId, spaceId, id, groupBackgroundFor(Math.random()));
-          groupId = id;
+          proposal.edges.forEach((edge) => {
+            const source = nodeIds[edge.fromIndex];
+            const target = nodeIds[edge.toIndex];
+            // Indices that point nowhere are refused before a card is ever drawn
+            // (`checkProposal`); skipping rather than throwing keeps the rest of
+            // the flow from being rolled back by one bad wire.
+            if (source && target) {
+              const id = `${source}->${target}`;
+              addEdge(projectId, spaceId, { id, source, target });
+              edgeIds.push(id);
+            }
+          });
+          // Words last, once every node and edge is in place: a ref lands as a
+          // mention of the node placed for it (inner#1315).
+          const mentionOf = proposalMentionOf(proposal, nodeIds);
+          proposal.nodes.forEach((node, i) => {
+            const id = nodeIds[i];
+            if (!id) return;
+            writeProposalFills(projectId, spaceId, id, node, proposal.nodes);
+            if (node.role === 'written') {
+              // A written node's words are its body, not a prompt: nothing
+              // generates there, and the body is what the reader reads and edits.
+              const body = getTextBody(projectId, spaceId, id);
+              if (body && node.prompt) writePlainTextIntoBody(body, promptPlainText(node.prompt));
+              return;
+            }
+            if (!node.mode) return;
+            // Words sent into a song model's lyrics box are @'d there, the way the
+            // reader would @ them, and nowhere else.
+            const lyrics = proposal.edges.filter((edge) => edge.toIndex === i && edge.into === PANEL_EDITOR_PARAM);
+            const lyricsBox = lyrics.length > 0 ? getLyricsFragment(projectId, spaceId, id, node.mode) : null;
+            // One line each, the way a reader @'ing them by hand would: two
+            // mentions on one line send their words run together.
+            const lyricsLines = lyrics.flatMap((edge, k) =>
+              k === 0 ? [{ ref: edge.fromIndex }] : [{ text: '\n' }, { ref: edge.fromIndex }],
+            );
+            if (lyricsBox) writeProposalPrompt(lyricsBox, lyricsLines, mentionOf);
+            // A model drawing no prompt box shows nothing written there; the card
+            // lists its marks instead.
+            if (node.takesPrompt === false) return;
+            // The main prompt goes into the proposal's own mode (#2218), then
+            // each shot.
+            const fragment = getPromptFragment(projectId, spaceId, id, node.mode);
+            if (fragment && node.prompt) writeProposalPrompt(fragment, node.prompt, mentionOf);
+            if (node.shots) {
+              const shotFragments = setStoryboardShots(projectId, spaceId, id, node.shots.map((shot) => shot.duration));
+              node.shots.forEach((shot, k) => {
+                const target = shotFragments[k];
+                if (target) writeProposalPrompt(target, shot.prompt, mentionOf);
+              });
+            }
+          });
+        } catch (error) {
+          removeElements(projectId, spaceId, groupId === undefined ? nodeIds : [...nodeIds, groupId], edgeIds);
+          throw error;
         }
-        proposal.edges.forEach((edge) => {
-          const source = nodeIds[edge.fromIndex];
-          const target = nodeIds[edge.toIndex];
-          // Indices that point nowhere are refused before a card is ever drawn
-          // (`checkProposal`); skipping rather than throwing keeps the rest of
-          // the flow from being rolled back by one bad wire.
-          if (source && target) {
-            addEdge(projectId, spaceId, {
-              id: `${source}->${target}`,
-              source,
-              target,
-            });
-          }
-        });
-        // Words last, once every node and edge is in place: a ref lands as a
-        // mention of the node placed for it (inner#1315).
-        const mentionOf = proposalMentionOf(proposal, nodeIds);
-        proposal.nodes.forEach((node, i) => {
-          const id = nodeIds[i];
-          if (!id) return;
-          writeProposalFills(projectId, spaceId, id, node, proposal.nodes);
-          if (node.role === 'written') {
-            // A written node's words are its body, not a prompt: nothing
-            // generates there, and the body is what the reader reads and edits.
-            const body = getTextBody(projectId, spaceId, id);
-            if (body && node.prompt) writePlainTextIntoBody(body, promptPlainText(node.prompt));
-            return;
-          }
-          if (!node.mode) return;
-          // Words sent into a song model's lyrics box are @'d there, the way the
-          // reader would @ them, and nowhere else.
-          const lyrics = proposal.edges.filter((edge) => edge.toIndex === i && edge.into === PANEL_EDITOR_PARAM);
-          const lyricsBox = lyrics.length > 0 ? getLyricsFragment(projectId, spaceId, id, node.mode) : null;
-          // One line each, the way a reader @'ing them by hand would: two
-          // mentions on one line send their words run together.
-          const lyricsLines = lyrics.flatMap((edge, k) =>
-            k === 0 ? [{ ref: edge.fromIndex }] : [{ text: '\n' }, { ref: edge.fromIndex }],
-          );
-          if (lyricsBox) writeProposalPrompt(lyricsBox, lyricsLines, mentionOf);
-          // A model drawing no prompt box shows nothing written there; the card
-          // lists its marks instead.
-          if (node.takesPrompt === false) return;
-          // The main prompt goes into the proposal's own mode (#2218), then
-          // each shot.
-          const fragment = getPromptFragment(projectId, spaceId, id, node.mode);
-          if (fragment && node.prompt) writeProposalPrompt(fragment, node.prompt, mentionOf);
-          if (node.shots) {
-            const shotFragments = setStoryboardShots(projectId, spaceId, id, node.shots.map((shot) => shot.duration));
-            node.shots.forEach((shot, k) => {
-              const target = shotFragments[k];
-              if (target) writeProposalPrompt(target, shot.prompt, mentionOf);
-            });
-          }
-        });
       });
       // Words in braces are the reader's to write. Saying so is all: what
       // they leave as it is goes out as it is (inner#977). A proposal's

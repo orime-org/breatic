@@ -1128,6 +1128,35 @@ describe('useNodeCreation', () => {
       expect(bounds).toEqual(spot);
     });
 
+    it('leaves nothing on the canvas when a write fails part way', () => {
+      // Stored on 2026-10-07, before the `ref` mark was taken out: the nodes
+      // and the group are written before its prompt is, and the prompt throws.
+      const stale = {
+        nodes: [
+          { role: 'generate', type: 'image', name: 'Reference', mode: 't2i', model: 'some-model', takesPrompt: true, prompt: [{ text: 'a girl' }] },
+          {
+            role: 'generate',
+            type: 'image',
+            name: 'Turnaround',
+            mode: 'i2i',
+            model: 'some-model',
+            takesPrompt: true,
+            prompt: [{ text: 'from ' }, { slot: { kind: 'ref', label: 'Reference', note: 'step one' } }],
+          },
+        ],
+        edges: [{ fromIndex: 0, toIndex: 1 }],
+        rationale: '',
+        groupName: 'Turnaround',
+      } as unknown as CanvasProposal;
+      const { result } = renderHook(() => useNodeCreation('p-stale', 's-stale'));
+
+      expect(() => result.current.placeProposalAt(stale, { x: 0, y: 0 }, [])).toThrow();
+
+      const { nodes, edges } = canvasSpace.readCanvasGraph('p-stale', 's-stale');
+      expect(nodes).toHaveLength(0);
+      expect(edges).toHaveLength(0);
+    });
+
     it('places a second flow clear of the first one', () => {
       const start = { x: 0, y: 0 };
       const { result } = renderHook(() => useNodeCreation('p-twice', 's-twice'));
