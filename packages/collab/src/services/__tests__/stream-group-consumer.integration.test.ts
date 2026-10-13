@@ -258,6 +258,23 @@ describe("startGroupConsumer", () => {
     expect(at[2]! - at[1]!).toBeGreaterThanOrEqual(190);
   });
 
+  it("keeps an entry it is still retrying, so a peer neither retries it too nor dead-letters it twice", async () => {
+    const keys = keysFor();
+    const [id] = await append(keys.streamKey, ["poison"]);
+    const failing = async (entries: StreamEntry[]): Promise<Map<string, EntryOutcome>> =>
+      new Map(entries.map((e) => [e.id, { failed: new Error("boom") }]));
+    // The backoff (200, 400, 800 ms) outgrows the take-over idle time (300 ms).
+    // Only the peer sweeps often, so it is the peer that would take the entry.
+    const settings = { claimIdleMs: 300, retryMinMs: 200, retryMaxMs: 800, maxFailures: 4 };
+    start(keys, "a", failing, { ...settings, claimIntervalMs: 60_000 });
+    await until(async () => (await pendingCount(keys)) === 1);
+    start(keys, "b", failing, { ...settings, claimIntervalMs: 100 });
+    await until(async () => (await stream.xlen(`${keys.streamKey}:dead`)) >= 1, 10_000);
+    await new Promise((r) => setTimeout(r, 2500));
+    const dead = (await stream.xrange(`${keys.streamKey}:dead`, "-", "+")) as Array<[string, string[]]>;
+    expect(dead.filter(([, f]) => f[f.indexOf("originId") + 1] === id)).toHaveLength(1);
+  });
+
   it("lets another consumer take over the entries of one that stopped answering", async () => {
     const keys = keysFor();
     await append(keys.streamKey, ["held-by-a"]);
