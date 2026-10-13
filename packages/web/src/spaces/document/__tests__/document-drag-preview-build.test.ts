@@ -271,7 +271,8 @@ describe('buildDragPreview', () => {
     const copy = content.parentElement!;
     expect(copy.classList.contains('bn-editor')).toBe(true);
     expect(copy.classList.contains('ProseMirror-focused')).toBe(false);
-    expect(copy.hasAttribute('contenteditable')).toBe(false);
+    // The editor's rules select by it (`@tiptap/core` `style.ts`).
+    expect(copy.getAttribute('contenteditable')).toBe(view.dom.getAttribute('contenteditable'));
     expect(root.querySelector('[id], [data-testid], [data-space-outlet]')).toBeNull();
   });
 

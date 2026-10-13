@@ -33,10 +33,11 @@ const SHELL_CLASS = 'doc-preview-shell';
 
 /**
  * What a copy of an element would give the page twice, and no rule styles by:
- * its id, the names a test or the page finds a Space or an element by, and
- * that the editor element takes typing.
+ * its id, and the names a test or the page finds a Space or an element by.
+ * `contenteditable` stays: the editor's rules select by it (`@tiptap/core`
+ * `style.ts`), and a copy that is no box takes no focus.
  */
-const NOT_COPIED = ['id', 'data-testid', 'data-space-outlet', 'contenteditable'];
+const NOT_COPIED = ['id', 'data-testid', 'data-space-outlet'];
 
 /**
  * Records the element in the body a copy takes the place of, for it to be put

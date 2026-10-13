@@ -71,11 +71,6 @@ const createdSpaceIds: string[] = [];
  * - what governs interaction and paints nothing: `pointer-events`,
  *   `user-select`, `-webkit-user-drag`, `app-region`, `cursor`, `caret-color`,
  *   `touch-action`. A drag image is a picture;
- * - what comes of being editable: `-webkit-user-modify`, the
- *   `after-white-space` line breaking Chromium gives every contenteditable
- *   element (www-style 2014-10) and the `-webkit-nbsp-mode: space` WebKit
- *   gives it, neither of which can be written on an element; the copy is not
- *   editable, and how its lines break is compared through sizes;
  * - how long a change takes to happen, `transition-*` and `animation-*`: a
  *   picture shows no change;
  *
@@ -111,10 +106,6 @@ function installComparer(): void {
   const DERIVED = new Set([
     'transform-origin',
     'perspective-origin',
-    '-webkit-user-modify',
-    'line-break',
-    '-webkit-line-break',
-    '-webkit-nbsp-mode',
     'pointer-events',
     'user-select',
     '-webkit-user-select',
