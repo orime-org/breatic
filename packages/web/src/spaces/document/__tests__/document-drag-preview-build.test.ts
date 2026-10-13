@@ -308,8 +308,8 @@ describe('buildDragPreview', () => {
     expect(content.style.width).toBe('333px');
   });
 
-  it('takes content only from a builder that says what it is sized like', () => {
-    // @ts-expect-error A preview's content says where it stands in the body (`placed`).
+  it('takes content with where it stands and what it is sized like, never a bare element', () => {
+    // @ts-expect-error A preview's content comes with where it stands in the body (`PlacedContent`).
     const unplaced: Parameters<typeof buildDragPreview>[1] = document.createElement('div');
     expect(unplaced).toBeInstanceOf(HTMLElement);
   });
@@ -628,8 +628,8 @@ describe('tableLinePreviewContent', () => {
       { a1: [0, 393], b1: [393, 513], c1: [513, 653], a2: [0, 393], b2: [393, 513], c2: [513, 653], a3: [0, 393], b3: [393, 513], c3: [513, 653] },
       [30, 40, 50],
     );
-    // The block's own box carries what its quote's indent adds; the row it is
-    // stretched across is the width it has at the top.
+    // The block's own box carries what its quote's indent adds; the
+    // `.bn-block` it sits in does not.
     const tableBlock = view.dom.querySelector<HTMLElement>('[data-content-type="table"]')!;
     tableBlock.getBoundingClientRect = () => ({ width: 744, height: 120 }) as DOMRect;
     tableBlock.parentElement!.getBoundingClientRect = () => ({ width: 720, height: 120 }) as DOMRect;
@@ -756,8 +756,8 @@ describe('tableRowsPreviewContent', () => {
       [30, 40, 50],
     );
     view.dom.querySelector<HTMLElement>('table')!.style.minWidth = '900px';
-    // The block's own box carries what its quote's indent adds; the row it is
-    // stretched across is the width it has at the top.
+    // The block's own box carries what its quote's indent adds; the
+    // `.bn-block` it sits in does not.
     const tableBlock = view.dom.querySelector<HTMLElement>('[data-content-type="table"]')!;
     tableBlock.getBoundingClientRect = () => ({ width: 744, height: 120 }) as DOMRect;
     tableBlock.parentElement!.getBoundingClientRect = () => ({ width: 720, height: 120 }) as DOMRect;

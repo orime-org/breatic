@@ -14,8 +14,9 @@
  *   box, a table is in the frame it scrolls in from its first column in view, a
  *   table row is that whole row in the same frame and a column is that column
  *   alone. Each builder says which element of the body its content is drawn
- *   as wide as (`placed`), and the content is laid out at that width here. A
- *   table keeps the widths and heights the body draws its columns and rows at.
+ *   as wide as (`PlacedContent.sizedLike`), and the content is laid out at
+ *   that width here. A table keeps the widths and heights the body draws its
+ *   columns and rows at.
  * - It is drawn in the body's styles: its content sits in copies of the
  *   elements it sits in in the body, which lay out and draw nothing of their
  *   own (`document-preview-styles.ts`).
@@ -40,7 +41,7 @@ import { MEDIA_CHROME } from '@web/spaces/document/DocumentMediaBlock';
 import type { DragOrientation } from '@web/spaces/document/document-table-drag';
 import { cellAt, cellsOfScope } from '@web/spaces/document/document-table-run';
 import { QUOTE_RUN_ATTRIBUTES } from '@web/spaces/document/document-decorations';
-import { inPlaceOf, type PlacedContent } from '@web/spaces/document/document-preview-styles';
+import { inPlaceOf } from '@web/spaces/document/document-preview-styles';
 
 /** The longest a drag preview's side may be, in px (user 2026-10-10). */
 export const PREVIEW_LONGEST_SIDE = 512;
@@ -51,6 +52,15 @@ export interface PreviewSize {
   readonly height: number;
 }
 
+/** Content copied out of the body for a drag preview, and where it stands there. */
+export interface PlacedContent {
+  /** The copied content. */
+  readonly content: HTMLElement;
+  /** The element it takes the place of; null when it sits where the body's own block group does. */
+  readonly place: Element | null;
+  /** The element it is drawn as wide as; null when the body has none to go by. */
+  readonly sizedLike: Element | null;
+}
 
 /** The class `index.css` places and styles every preview by. */
 const PREVIEW_CLASS = 'doc-drag-preview';
@@ -164,7 +174,7 @@ export function buildDragPreview(
   layer.style.verticalAlign = 'top';
   layer.style.padding = '0';
   layer.style.transformOrigin = '0px 0px';
-  layer.append(inPlaceOf(view, placed));
+  layer.append(inPlaceOf(view, content, placed.place));
   root.append(layer);
   page.body.append(root);
   const size = measure(layer);
@@ -574,8 +584,8 @@ export function tableLinePreviewContent(
     holdTable(copied, widths.slice(off), heights);
   }
   settle(view, copy, block);
-  // A row is drawn as wide as the row of the body its block is stretched
-  // across, which does not change with how deep a quote's indent is.
+  // A table row is drawn as wide as the `.bn-block` its table block sits in,
+  // which a quote's negative margin does not widen; a column as its own cells.
   return { content: copy, place: block, sizedLike: orientation === 'column' ? cells[0]! : block.parentElement };
 }
 

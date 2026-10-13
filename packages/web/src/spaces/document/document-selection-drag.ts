@@ -33,10 +33,10 @@ import { rowInFlight } from '@web/spaces/document/document-drag-drop';
 import {
   blockPreviewContent,
   captionPreviewContent,
+  type PlacedContent,
   setDragPreview,
   tableRowsPreviewContent,
 } from '@web/spaces/document/document-drag-preview';
-import type { PlacedContent } from '@web/spaces/document/document-preview-styles';
 import { dragSourceOf } from '@web/spaces/document/document-table-drag';
 
 /** A drag this module draws the preview of. */
