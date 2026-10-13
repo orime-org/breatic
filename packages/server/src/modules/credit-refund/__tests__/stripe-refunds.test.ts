@@ -15,7 +15,10 @@
  * have been refunded through Stripe without one.
  */
 
+import { createRequire } from "node:module";
+import { Writable } from "node:stream";
 import { describe, it, expect, beforeEach, vi } from "vitest";
+import Stripe from "stripe";
 
 const list = vi.fn();
 const getPaymentById = vi.fn();
@@ -29,7 +32,13 @@ vi.mock("@server/modules/payment/payment.repo.js", () => ({
 }));
 
 import { getCreditRefundConfig } from "@server/config/credit-refund.js";
-import { listRefunds, listRefundsForPayment } from "@server/modules/credit-refund/stripe-refunds.js";
+import { StripeReadError, listRefunds, listRefundsForPayment } from "@server/modules/credit-refund/stripe-refunds.js";
+
+/** The slice of a pino logger this suite calls. */
+type PinoFactory = (opts: object, stream: Writable) => { error: (obj: object, msg: string) => void };
+
+/** The product's own pino, resolved from `@breatic/core`, which depends on it. */
+const pino = createRequire(new URL("../../../../../core/package.json", import.meta.url))("pino") as PinoFactory;
 
 /** One refund as stripe-node hands it back. */
 const REFUND = {
@@ -100,5 +109,49 @@ describe("listRefundsForPayment — one rule for a payment without an intent", (
       timeout: getCreditRefundConfig().stripeCallTimeoutMs,
       maxNetworkRetries: 0,
     });
+  });
+});
+
+describe("StripeReadError — logged under pino's err key (round 10 [3][7])", () => {
+  /**
+   * What a real pino instance, with the default serializers the product
+   * logger keeps, writes for one error line.
+   * @param obj - The merge object.
+   * @returns The line, parsed.
+   */
+  function logLine(obj: object): Record<string, unknown> {
+    const lines: string[] = [];
+    const sink = new Writable({
+      write(chunk: Buffer, _encoding, done) {
+        lines.push(chunk.toString());
+        done();
+      },
+    });
+    pino({}, sink).error(obj, "refund_read_failed");
+    expect(lines).toHaveLength(1);
+    return JSON.parse(lines[0]!) as Record<string, unknown>;
+  }
+
+  /** A 403 as stripe-node builds it from Stripe's answer. */
+  function forbidden(): Error {
+    return new Stripe.errors.StripeInvalidRequestError({
+      type: "invalid_request_error",
+      message: "synthetic 403",
+      statusCode: 403,
+    });
+  }
+
+  it("serializes err as the error alone: no second copy of failure, whose type the serializer would turn into 'Object'", () => {
+    const line = logLine({ err: new StripeReadError(forbidden()) });
+
+    const err = line.err as Record<string, unknown>;
+    expect(err.type).toBe("StripeReadError");
+    expect(err).not.toHaveProperty("failure");
+  });
+
+  it("still carries Stripe's failure, with Stripe's own type, for code to read", () => {
+    const err = new StripeReadError(forbidden());
+
+    expect(err.failure).toEqual({ message: "synthetic 403", httpStatus: 403, type: "invalid_request_error" });
   });
 });

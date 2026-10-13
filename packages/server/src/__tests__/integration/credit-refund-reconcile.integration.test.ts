@@ -42,6 +42,18 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import type * as BreaticCore from "@breatic/core";
+
+const logged = vi.hoisted(() => ({ error: vi.fn() }));
+
+vi.mock("@breatic/core", async (importOriginal) => {
+  const actual = await importOriginal<typeof BreaticCore>();
+  // `error` is recorded instead of written; every other level goes to the real logger.
+  const logger = new Proxy(actual.logger, {
+    get: (target, prop) => (prop === "error" ? logged.error : Reflect.get(target, prop)),
+  });
+  return { ...actual, logger };
+});
 
 vi.mock("ai", () => ({
   generateText: async () => ({ text: "", steps: [], usage: { totalTokens: 0 } }),
@@ -98,6 +110,7 @@ function lockKey(): string {
 }
 
 beforeEach(async () => {
+  logged.error.mockClear();
   fakeStripe.reset();
   await parkInFlightOperations(suite.sql);
   await giveIntentlessPaymentsAnIntent(suite.sql);
@@ -467,6 +480,22 @@ describe("what a pass records", () => {
     const clean = (await readStatus())!;
     expect(clean).toMatchObject({ failing: [], last_error: null, next_retry_us: null });
     expect(clean.last_ok_us).not.toBeNull();
+  });
+
+  it("a payment whose Stripe read fails is logged with Stripe's failure, its message and HTTP status, beside the error (round 10 [3])", async () => {
+    const bad = await lotOnStripe("refunding");
+    fakeStripe.failListFor(bad.paymentIntentId, stripeError(403));
+
+    await runDailyReconcile();
+
+    expect(logged.error).toHaveBeenCalledWith(
+      expect.objectContaining({
+        paymentId: bad.paymentId,
+        err: expect.any(Error),
+        failure: expect.objectContaining({ message: "synthetic 403", httpStatus: 403, type: "invalid_request_error" }),
+      }),
+      "refund_reconcile_payment_failed",
+    );
   });
 
   it("a payment that keeps failing stays listed while the others keep being reconciled", async () => {

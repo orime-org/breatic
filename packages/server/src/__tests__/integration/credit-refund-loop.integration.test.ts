@@ -1183,6 +1183,70 @@ describe("executeRefund — a stale attempt whose copy finishes another disposit
       await mailsSettled(suite.sql, lot);
     },
   );
+
+  /**
+   * Approval A's first attempt creates, and its create answers a refund
+   * object; while the list read after it is out, another instance has taken
+   * A over and finished it, and retry B was accepted and left
+   * `awaiting_stripe` with no refund id (its create got a 5xx). The list read
+   * then fails, or holds B's refund succeeded.
+   * @param listFails - Whether the list read after A's create fails (E16).
+   * @returns The lot, A and B.
+   */
+  async function staleCreateWithWaitingRetry(listFails: boolean): Promise<{ lot: SeededLot; a: string; b: string }> {
+    const ownB = reId("own-b");
+    const { lot, opId: a } = await seeded("refunding", { kind: "approve", status: "started" });
+    // A's refund failed, so B's succeeded refund alone settles the payment.
+    fakeStripe.nextCreate({ kind: "refund", status: "failed" });
+    let b = "";
+    aroundNextList(fakeStripe, async (read) => {
+      await suite.sql`
+        UPDATE credit_refund_operations
+        SET status = 'needs_attention', attention_reason = 'stripe_refund_failed_later',
+            attention_detail = 'seeded', lease_token = NULL, locked_until = NULL,
+            next_attempt_at = NULL, finished_at = now()
+        WHERE id = ${a}
+      `;
+      ({ id: b } = await seedOperation(suite.sql, lot, {
+        kind: "retry",
+        status: "awaiting_stripe",
+        stripeRefundId: null,
+        firstCalledHoursAgo: 0,
+        notify: true,
+      }));
+      if (listFails) throw stripeError(500);
+      fakeStripe.register(lot.paymentIntentId, PAID_CENTS, [
+        ...fakeStripe.refundsOf(lot.paymentIntentId),
+        refundObject(ownB, "succeeded", PAID_CENTS, b),
+      ]);
+      return read();
+    });
+    await executeRefund((await findById(a))!, "loop");
+    // The exit taken: A's lease is gone, so its own answer lands late.
+    expect(await eventNames(a)).toContain("late_answer");
+    return { lot, a, b };
+  }
+
+  it("a create answer is copied but judges no other disposition: when the list read after it fails (E16), the waiting retry gets no event at all (round 10 [1])", async () => {
+    const { lot, b } = await staleCreateWithWaitingRetry(true);
+
+    // No refunds.list read held anything of B: no 'refund_not_found' (E10).
+    expect(await eventsOf(suite.sql, b)).toEqual([]);
+    expect(await readOp(suite.sql, b)).toMatchObject({ status: "awaiting_stripe", stripe_refund_id: null });
+    expect(await mailsOf(suite.sql, lot.lotId)).toEqual([]);
+  });
+
+  it("a create answer is copied but judges no other disposition: when the list read after it succeeds, the waiting retry is judged once, from the list, and mailed once (round 10 [1])", async () => {
+    const { lot, b } = await staleCreateWithWaitingRetry(false);
+
+    expect(await eventNames(b)).toEqual(["refund_succeeded"]);
+    expect(await readOp(suite.sql, b)).toMatchObject({ status: "succeeded", result: "refunded" });
+    expect(await mailsOf(suite.sql, lot.lotId)).toEqual([
+      expect.objectContaining({ operation_id: b, kind: "refund_completed", origin: "auto" }),
+    ]);
+    await mailsSettled(suite.sql, lot);
+    expect((await mailsOf(suite.sql, lot.lotId)).map((m) => [m.operation_id, m.status])).toEqual([[b, "sent"]]);
+  });
 });
 
 // ── step 2: dispositions waiting on Stripe ───────────────────────────
