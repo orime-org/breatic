@@ -72,8 +72,13 @@ const DARKEST = 18;
  * is the standing exception to that — a highlight the reader has to be able
  * to pick out from the text it sits on. Only the two washes derive from it,
  * both by mixing it with transparency.
+ *
+ * `content-link` is a link written in content, which has to be told apart
+ * from the words around it while the chrome stays neutral
+ * (`packages/web/CLAUDE.md`). Its light value is Primer's link blue, the one
+ * that reads at 4.5:1 on the page; nothing derives from it.
  */
-const COLOURFUL = /(palette|status|note|selection|comment)/i;
+const COLOURFUL = /(palette|status|note|selection|comment|content-link)/i;
 
 /**
  * Wraps one message as this check's single-finding result.

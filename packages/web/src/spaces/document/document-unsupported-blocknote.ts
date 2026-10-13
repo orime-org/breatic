@@ -46,6 +46,8 @@ import {
 
 import { t } from '@breatic/shared';
 
+import { CONTENT_DECORATION } from '@web/spaces/document/document-view-state';
+
 /** The attribute every stand-in carries: the name this build could not use. */
 const ORIGINAL_NAME = 'originalName';
 
@@ -241,7 +243,7 @@ function labelDecorations(state: EditorState): DecorationSet | null {
   state.doc.descendants((node, pos) => {
     if (LABELLED.has(node.type.name)) {
       found.push(
-        Decoration.node(pos, pos + node.nodeSize, { 'data-label': label }),
+        Decoration.node(pos, pos + node.nodeSize, { 'data-label': label }, CONTENT_DECORATION),
       );
     }
     return true;
