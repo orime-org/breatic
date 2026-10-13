@@ -53,18 +53,19 @@ vi.mock("@server/infra/stripe.js", async () => {
   };
 });
 
-const logged = vi.hoisted(() => ({ warn: vi.fn(), error: vi.fn() }));
+const logError = vi.hoisted(() => vi.fn());
 
 vi.mock("@breatic/core", async (io) => {
   const actual = await io<typeof BreaticCore>();
-  // `warn` and `error` are recorded instead of written; every other level goes to the real logger.
+  // `error` is recorded instead of written; every other level goes to the real logger.
   const logger = new Proxy(actual.logger, {
-    get: (target, prop) => (prop === "warn" || prop === "error" ? logged[prop] : Reflect.get(target, prop)),
+    get: (target, prop) => (prop === "error" ? logError : Reflect.get(target, prop)),
   });
   return { ...actual, logger };
 });
 
 import type { Hono } from "hono";
+import { StripeReadError } from "@server/modules/credit-refund/stripe-refunds.js";
 import { fakeStripe, stripeError } from "./fake-stripe-refunds.js";
 import { mailsSettled } from "./internal-api-harness.js";
 import {
@@ -382,20 +383,21 @@ describe("Stripe cannot be read", () => {
     expect(await readOp(suite.sql, opId)).toMatchObject({ status: "succeeded", result: "refunded" });
   });
 
-  it("the unread event is logged at error with Stripe's failure under `failure` (round 7 [8], round 8 [8][13])", async () => {
+  it("the unread event is logged at error with the read error under `err` and Stripe's failure under `failure` (round 7 [8], round 8 [8][13], round 9 [1][4])", async () => {
     const external = reId("external");
     const lot = await lotOnStripe("refund_pending", [refundObject(external, "succeeded", 100)]);
     fakeStripe.failLists(stripeError(403));
     const event = refundEvent("refund.updated", refundObject(external, "succeeded", 100), lot.paymentIntentId);
-    logged.error.mockClear();
+    logError.mockClear();
 
     const res = await deliver(event);
 
     expect(res.status).toBe(500);
-    // Error, as the request path logs the same failure; `failure`, not pino's `err`,
-    // whose serializer would replace Stripe's error type with "Object".
-    expect(logged.error).toHaveBeenCalledWith(
+    // Error, as the request path logs the same failure. `err` keeps the stack
+    // and cause chain; `failure` keeps Stripe's own error type.
+    expect(logError).toHaveBeenCalledWith(
       expect.objectContaining({
+        err: expect.any(StripeReadError),
         eventId: event.id,
         failure: expect.objectContaining({ message: "synthetic 403", httpStatus: 403 }),
       }),

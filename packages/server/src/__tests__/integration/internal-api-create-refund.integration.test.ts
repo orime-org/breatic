@@ -39,19 +39,20 @@ vi.mock("@server/infra/stripe.js", async () => {
   };
 });
 
-const logged = vi.hoisted(() => ({ warn: vi.fn(), error: vi.fn() }));
+const logError = vi.hoisted(() => vi.fn());
 
 vi.mock("@breatic/core", async (io) => {
   const actual = await io<typeof BreaticCore>();
-  // `warn` and `error` are recorded instead of written; every other level goes to the real logger.
+  // `error` is recorded instead of written; every other level goes to the real logger.
   const logger = new Proxy(actual.logger, {
-    get: (target, prop) => (prop === "warn" || prop === "error" ? logged[prop] : Reflect.get(target, prop)),
+    get: (target, prop) => (prop === "error" ? logError : Reflect.get(target, prop)),
   });
   return { ...actual, logger };
 });
 
 import { getCreditRefundConfig } from "@server/config/credit-refund.js";
 import { runRefundLoopOnce } from "@server/modules/credit-refund/refund-loop.js";
+import { StripeReadError } from "@server/modules/credit-refund/stripe-refunds.js";
 import { fakeStripe, stripeError } from "./fake-stripe-refunds.js";
 import {
   ADMIN,
@@ -313,18 +314,19 @@ describe("GET /internal/v1/credit-lots/:lotId/refund — preview judges the oper
     expect(await copiesOf(suite.sql, lot.lotId)).toEqual([]);
   });
 
-  it("a failed Stripe read at step 0 is still 503 stripe_unavailable, and an error line carries Stripe's failure under `failure` and the payment id (round 7 [8], round 8 [8])", async () => {
+  it("a failed Stripe read at step 0 is still 503 stripe_unavailable, and an error line carries the read error under `err`, Stripe's failure under `failure` and the payment id (round 7 [8], round 8 [8], round 9 [1][4])", async () => {
     const lot = await lotOnStripe("refund_pending");
     fakeStripe.failLists(stripeError(403));
-    logged.error.mockClear();
+    logError.mockClear();
 
     const res = await call(suite.baseUrl, paths.preview(lot.lotId));
 
     expect(res.status).toBe(503);
     expect(res.json).toEqual({ code: "stripe_unavailable" });
-    // Under `failure`, not pino's `err`: the `err` serializer would replace Stripe's error type with "Object".
-    expect(logged.error).toHaveBeenCalledWith(
+    // `err` keeps the stack and cause chain; `failure` keeps Stripe's own error type.
+    expect(logError).toHaveBeenCalledWith(
       expect.objectContaining({
+        err: expect.any(StripeReadError),
         paymentId: lot.paymentId,
         failure: expect.objectContaining({ message: "synthetic 403", httpStatus: 403 }),
       }),

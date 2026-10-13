@@ -1123,6 +1123,68 @@ describe("executeRefund — refunds.create only under a lease still held with a 
   });
 });
 
+describe("executeRefund — a stale attempt whose copy finishes another disposition (§6.5 M1, round 9 [2][6])", () => {
+  it.each([
+    { exit: "its pre-read finds its own refund (late_answer)", ownListed: true },
+    { exit: "its pre-read finds none of its own and the lease refuses the create", ownListed: false },
+  ])(
+    "$exit: the other disposition's buyer mail is sent right after the executor's commit, not left for the sweep",
+    async ({ ownListed }) => {
+      const ownA = reId("own-a");
+      const ownB = reId("own-b");
+      const lot = await lotOnStripe("refunding");
+      const { id: a } = await seedOperation(suite.sql, lot, {
+        kind: "approve",
+        status: "started",
+        leaseExpired: true,
+        firstCalledHoursAgo: 1,
+        attemptCount: 1,
+      });
+      let b = "";
+      aroundNextList(fakeStripe, async (read) => {
+        // While the loop's attempt on A has its pre-read out, another instance
+        // took A over and finished it, and a retry B was accepted whose refund
+        // Stripe now shows succeeded.
+        await suite.sql`
+          UPDATE credit_refund_operations
+          SET status = 'needs_attention', attention_reason = 'stripe_refund_failed_later',
+              attention_detail = 'seeded', lease_token = NULL, locked_until = NULL,
+              next_attempt_at = NULL, finished_at = now()
+          WHERE id = ${a}
+        `;
+        ({ id: b } = await seedOperation(suite.sql, lot, {
+          kind: "retry",
+          status: "awaiting_stripe",
+          stripeRefundId: ownB,
+          firstCalledHoursAgo: 0,
+          notify: true,
+        }));
+        // Step 2 of this tick must not be the one to read B.
+        await setNextAttempt(b, 3600);
+        fakeStripe.register(lot.paymentIntentId, PAID_CENTS, [
+          ...(ownListed ? [refundObject(ownA, "failed", PAID_CENTS, a)] : []),
+          refundObject(ownB, "succeeded", PAID_CENTS, b),
+        ]);
+        return read();
+      });
+
+      await runRefundLoopOnce();
+
+      expect(createsFor(lot)).toEqual([]);
+      // The exit taken: only judging its own refund answers A, late.
+      expect((await eventNames(a)).includes("late_answer")).toBe(ownListed);
+      expect(await readOp(suite.sql, b)).toMatchObject({ status: "succeeded", result: "refunded" });
+      // B's mail row is seconds old, so this tick's sweep (rows pending over a
+      // minute) did not take it, and no later tick runs: only a send after the
+      // executor's commit can move it.
+      expect(await mailsOf(suite.sql, lot.lotId)).toEqual([
+        expect.objectContaining({ operation_id: b, kind: "refund_completed", origin: "auto" }),
+      ]);
+      await mailsSettled(suite.sql, lot);
+    },
+  );
+});
+
 // ── step 2: dispositions waiting on Stripe ───────────────────────────
 
 describe("step 2 — re-read Stripe for awaiting_stripe dispositions", () => {
