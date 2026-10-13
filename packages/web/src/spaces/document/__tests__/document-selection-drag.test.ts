@@ -21,7 +21,7 @@ import { buildDocumentEditor } from '@web/spaces/document/build-document-editor'
 import { BodyEdgeSelection } from '@web/spaces/document/document-body-edge-selection';
 import { documentDecorationsExtension } from '@web/spaces/document/document-decorations';
 import { rowHasLanded, rowIsFlying } from '@web/spaces/document/document-drag-drop';
-import { captionPreviewContent, tableLinePreviewContent } from '@web/spaces/document/document-drag-preview';
+import { buildDragPreview, captionPreviewContent, tableLinePreviewContent } from '@web/spaces/document/document-drag-preview';
 import { startRowDrag } from '@web/spaces/document/document-row-drag';
 import { selectionDragKind, selectionPreviewContent } from '@web/spaces/document/document-selection-drag';
 import { endTableDrag, startTableDrag } from '@web/spaces/document/document-table-drag';
@@ -393,7 +393,7 @@ describe('the caption preview', () => {
     input.className = 'mt-1.5 w-full text-center';
     input.value = 'a caption being typed';
     document.body.append(input);
-    const content = captionPreviewContent(input) as HTMLInputElement;
+    const content = captionPreviewContent(input);
     expect(content).not.toBe(input);
     expect(content.value).toBe('a caption being typed');
     expect(content.style.marginTop).toBe('0px');
@@ -591,6 +591,7 @@ describe('a preview draws the content, not what the body shows for the moment (C
     selectText(editor, ['b', 0], ['b', 1]);
     const content = selectionPreviewContent(view)!;
     expect(quoteDepths(content)).toEqual(['0', '1']);
+    buildDragPreview(view, content, () => ({ width: 696, height: 40 }));
     expect(content.style.width).toBe('696px');
   });
 

@@ -13,8 +13,9 @@
  *   its own and takes that of the group it sits in, a media block is its media
  *   box, a table is in the frame it scrolls in from its first column in view, a
  *   table row is that whole row in the same frame and a column is that column
- *   alone, at its width. A table keeps the widths and heights the body draws
- *   its columns and rows at.
+ *   alone. Each builder says which element of the body its content is drawn
+ *   as wide as (`placed`), and the content is laid out at that width here. A
+ *   table keeps the widths and heights the body draws its columns and rows at.
  * - It is drawn in the body's styles: its content sits in copies of the
  *   elements it sits in in the body, which lay out and draw nothing of their
  *   own (`document-preview-styles.ts`).
@@ -38,7 +39,7 @@ import { SCROLLBAR_MARK } from '@web/components/ui/scroll-area';
 import { MEDIA_CHROME } from '@web/spaces/document/DocumentMediaBlock';
 import type { DragOrientation } from '@web/spaces/document/document-table-drag';
 import { cellAt, cellsOfScope } from '@web/spaces/document/document-table-run';
-import { inPlaceOf, standsFor } from '@web/spaces/document/document-preview-styles';
+import { drawnWidthOf, inPlaceOf, placed, type PlacedContent } from '@web/spaces/document/document-preview-styles';
 import { withoutViewState } from '@web/spaces/document/document-view-state';
 
 /** The longest a drag preview's side may be, in px (user 2026-10-10). */
@@ -136,7 +137,7 @@ function leaveOnceTaken(root: HTMLElement): void {
  */
 export function buildDragPreview(
   view: EditorView,
-  content: HTMLElement,
+  content: PlacedContent,
   measure: (layer: HTMLElement) => PreviewSize = measureLayer,
 ): HTMLElement {
   const page = view.dom.ownerDocument;
@@ -150,6 +151,8 @@ export function buildDragPreview(
     : [...content.querySelectorAll<HTMLElement>(BLOCK_CONTENT)];
   blocks[0]?.style.setProperty('--doc-block-lift', '0px');
   blocks[blocks.length - 1]?.style.setProperty('--doc-block-drop', '0px');
+  const width = drawnWidthOf(content);
+  if (width > 0) content.style.width = `${width}px`;
   const root = page.createElement('div');
   root.className = PREVIEW_CLASS;
   root.style.overflow = 'hidden';
@@ -179,7 +182,7 @@ export function buildDragPreview(
  * @param dataTransfer - The drag's data transfer.
  * @param content - The content, detached.
  */
-export function setDragPreview(view: EditorView, dataTransfer: DataTransfer, content: HTMLElement): void {
+export function setDragPreview(view: EditorView, dataTransfer: DataTransfer, content: PlacedContent): void {
   dataTransfer.setDragImage(buildDragPreview(view, content), 0, 0);
 }
 
@@ -430,7 +433,7 @@ function stillOf(copy: HTMLVideoElement, original: HTMLVideoElement | null): HTM
  * @param blocks - The copied blocks.
  * @returns The content, detached.
  */
-export function blockPreviewContent(view: EditorView, blocks: readonly Element[]): HTMLElement {
+export function blockPreviewContent(view: EditorView, blocks: readonly Element[]): PlacedContent {
   const page = view.dom.ownerDocument;
   const lone = blocks.length === 1 ? blocks[0]! : null;
   const own = lone?.querySelector(OWN_CONTENT);
@@ -440,16 +443,12 @@ export function blockPreviewContent(view: EditorView, blocks: readonly Element[]
       ? own.querySelector<HTMLElement>(MEDIA_BOX)
       : null;
   if (box !== null) {
-    // The box takes its width from the body's row (an audio fills it; any box
-    // is held to it), and the preview wraps its content.
+    // The box is drawn as wide as in the body, where its row may give it its
+    // width (an audio fills it), and the preview wraps its content.
     const original = originalOf(view, box, MEDIA_BOX);
-    if (original !== null) {
-      box.style.width = `${original.getBoundingClientRect().width}px`;
-      standsFor(box, original);
-    }
     settle(view, lone!, originalRow(view, lone!));
     box.remove();
-    return box;
+    return placed(box, original, original);
   }
   blocks.forEach((block) => {
     const originals = [...(originalRow(view, block)?.querySelectorAll('table') ?? [])];
@@ -464,11 +463,9 @@ export function blockPreviewContent(view: EditorView, blocks: readonly Element[]
   const original = blocks[0] === undefined ? null : originalRow(view, blocks[0]);
   const content = page.createElement('div');
   content.className = BLOCK_GROUP_CLASS;
-  const width = original?.parentElement?.getBoundingClientRect().width ?? 0;
-  if (width > 0) content.style.width = `${width}px`;
   content.append(...blocks);
   settle(view, content, original);
-  return content;
+  return placed(content, null, original?.parentElement ?? null);
 }
 
 /**
@@ -501,17 +498,6 @@ function holdTable(table: HTMLElement | null | undefined, widths: readonly numbe
 }
 
 /**
- * Holds a copied table block at the width the body draws it at, so the frame
- * the table scrolls in cuts it where the body's does.
- * @param copy - The copied block.
- * @param original - The block in the body.
- */
-function holdBlockWidth(copy: HTMLElement, original: Element): void {
-  const width = original.getBoundingClientRect().width;
-  if (width > 0) copy.style.width = `${width}px`;
-}
-
-/**
  * What a table row or column drag's preview shows: that whole line, inside a
  * copy of its table block so the table's styles and column widths hold. The
  * line's cells come from the table map, so a merged cell elsewhere does not
@@ -525,7 +511,7 @@ export function tableLinePreviewContent(
   view: EditorView,
   cellPos: number,
   orientation: DragOrientation,
-): HTMLElement | null {
+): PlacedContent | null {
   const at = cellAt(view.state.doc, cellPos);
   if (at === null) return null;
   const cells = cellsOfScope(view.state.doc, cellPos, orientation)
@@ -565,13 +551,13 @@ export function tableLinePreviewContent(
     // The table stays in the library's wrapper, a block as in the body: in
     // WebKit a collapsed table of a set width laid out as a flex item, which
     // the block's content is, is 1px wider. The room the wrapper keeps under
-    // the table is for the frame's scrollbar. The block is as wide as the column.
+    // the table is for the frame's scrollbar. The block is as wide as the
+    // column, which its cells are.
     const wrappers = [...copy.querySelectorAll<HTMLElement>(TABLE_WRAPPER)];
     wrappers.forEach((wrapper) => {
       wrapper.style.padding = '0';
     });
     copy.replaceChildren(...wrappers);
-    copy.style.width = `${widths[at.left] ?? 0}px`;
     copy.querySelectorAll('colgroup').forEach((group) => {
       [...group.children].forEach((col, index) => {
         if (index !== at.left) col.remove();
@@ -582,11 +568,9 @@ export function tableLinePreviewContent(
     const hidden = columnsScrolledOff(table);
     dropColumns(copied, hidden, spans);
     holdTable(copied, widths.filter((_, column) => !hidden.has(column)), heights);
-    holdBlockWidth(copy, block);
   }
-  standsFor(copy, block);
   settle(view, copy, block);
-  return copy;
+  return placed(copy, block, orientation === 'column' ? cells[0]! : block);
 }
 
 /**
@@ -608,7 +592,7 @@ export function tableRowsPreviewContent(
   cellPos: number,
   top: number,
   bottom: number,
-): HTMLElement | null {
+): PlacedContent | null {
   const at = cellAt(view.state.doc, cellPos);
   if (at === null) return null;
   const { map, tableStart } = at;
@@ -649,10 +633,8 @@ export function tableRowsPreviewContent(
   const hidden = columnsScrolledOff(table);
   dropColumns(copied, hidden, spans);
   holdTable(copied, columnWidths(table).filter((_, column) => !hidden.has(column)), heights);
-  holdBlockWidth(copy, block);
-  standsFor(copy, block);
   settle(view, copy, block);
-  return copy;
+  return placed(copy, block, block);
 }
 
 /**
@@ -662,13 +644,10 @@ export function tableRowsPreviewContent(
  * @param input - The caption field.
  * @returns The content, detached.
  */
-export function captionPreviewContent(input: HTMLInputElement): HTMLElement {
+export function captionPreviewContent(input: HTMLInputElement): PlacedContent<HTMLInputElement> {
   const copy = input.cloneNode(true) as HTMLInputElement;
-  const width = input.getBoundingClientRect().width;
-  if (width > 0) copy.style.width = `${width}px`;
   copy.style.marginTop = '0px';
-  standsFor(copy, input);
-  return copy;
+  return placed(copy, input, input);
 }
 
 /**

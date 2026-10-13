@@ -36,6 +36,7 @@ import {
   setDragPreview,
   tableRowsPreviewContent,
 } from '@web/spaces/document/document-drag-preview';
+import type { PlacedContent } from '@web/spaces/document/document-preview-styles';
 import { dragSourceOf } from '@web/spaces/document/document-table-drag';
 
 /** A drag this module draws the preview of. */
@@ -103,7 +104,7 @@ function touchedBlocks(doc: PMNode, from: number, to: number): number[] {
  * @param view - The editor view.
  * @returns The content, detached; null when there is nothing to draw.
  */
-export function selectionPreviewContent(view: EditorView): HTMLElement | null {
+export function selectionPreviewContent(view: EditorView): PlacedContent | null {
   const { selection, doc } = view.state;
   if (selection instanceof CellSelection) {
     const table = selection.$anchorCell.node(-1);
