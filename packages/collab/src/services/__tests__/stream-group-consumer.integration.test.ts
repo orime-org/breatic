@@ -110,17 +110,23 @@ function allDone(seen: string[]): (entries: StreamEntry[]) => Promise<Map<string
 }
 
 /**
- * Wait until a condition holds.
+ * Wait until a condition holds. A check that throws counts as not yet: the
+ * group does not exist until the consumer has created it.
  * @param check - The condition.
  * @param timeoutMs - How long to keep trying.
  */
 async function until(check: () => boolean | Promise<boolean>, timeoutMs = 5000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
+  let last: unknown;
   while (Date.now() < deadline) {
-    if (await check()) return;
+    try {
+      if (await check()) return;
+    } catch (err) {
+      last = err;
+    }
     await new Promise((r) => setTimeout(r, 25));
   }
-  throw new Error("condition not met in time");
+  throw new Error(`condition not met in time${last ? `: ${String(last)}` : ""}`);
 }
 
 /**
@@ -201,8 +207,8 @@ describe("startGroupConsumer", () => {
     const [, badId] = await append(keys.streamKey, ["good-1", "bad", "good-2"]);
     const done: string[] = [];
     start(keys, "a", async (entries) =>
-      new Map(
-        entries.map((e) => {
+      new Map<string, EntryOutcome>(
+        entries.map((e): [string, EntryOutcome] => {
           if (e.payload === "bad") return [e.id, { failed: new Error("boom") }];
           done.push(e.payload ?? "");
           return [e.id, "done"];
