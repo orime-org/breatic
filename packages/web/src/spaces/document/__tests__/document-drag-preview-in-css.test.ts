@@ -30,10 +30,10 @@ function stylesheet(): string {
 }
 
 describe('what a drag shows', () => {
-  it('lifts the clone by making its contents translucent', () => {
+  it('sets the drag image opacity on the clone\'s contents', () => {
     // The child, not the clone itself: Chrome ignores `opacity` on the element
     // handed to `setDragImage`.
-    expect(stylesheet()).toMatch(/\.doc-drag-preview > \* \{\s*opacity: 0\.8;/);
+    expect(stylesheet()).toMatch(/\.doc-drag-preview > \* \{\s*opacity: 1;/);
   });
 
   it('keeps the preview opaque and fixed in the viewport for the image to be taken', () => {
