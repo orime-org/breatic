@@ -31,7 +31,7 @@ import {
   setNodeModel,
   setNodeParams,
 } from '@web/data/yjs/canvas-space';
-import type { CanvasEdge, CanvasNodeView } from '@web/data/yjs/canvas-space';
+import type { CanvasEdge } from '@web/data/yjs/canvas-space';
 import { useTextBodies } from '@web/data/yjs/use-text-body';
 import { useTranslation } from '@web/i18n/use-translation';
 import { toast } from '@web/lib/toast';
@@ -87,7 +87,7 @@ import { voiceParamName } from '@web/spaces/canvas/generate/voice-param';
 import { useApplyTemplate } from '@web/spaces/canvas/generate/use-apply-template';
 import { evaluateNodeGate } from '@web/spaces/canvas/node-gate';
 import { warnNodeGate } from '@web/spaces/canvas/node-gate-toast';
-import { asContentView } from '@web/data/yjs/node-view';
+import { asContentView, type NodeRef } from '@web/data/yjs/node-view';
 import { useCanvasSession, useCanvasSessionStore } from '@web/spaces/canvas/canvas-context';
 
 /** Empty text map, for the pass that only needs to know WHICH rows exist. */
@@ -96,7 +96,7 @@ const EMPTY_TEXT: ReadonlyMap<string, string> = new Map();
 
 interface AudioGeneratePanelContainerProps {
   /** Live canvas node views (target + reference sources). */
-  nodes: ReadonlyArray<Pick<CanvasNodeView, 'id' | 'data'>>;
+  nodes: ReadonlyArray<NodeRef>;
   /** Live canvas edges (incoming = references). */
   edges: ReadonlyArray<CanvasEdge>;
   /** Project the canvas space belongs to. */

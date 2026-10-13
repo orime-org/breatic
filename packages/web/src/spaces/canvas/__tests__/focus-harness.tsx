@@ -112,7 +112,7 @@ export function image(id: string, x: number, over = {}): Nodes[number] {
     id,
     type: 'image',
     position: { x, y: 0 },
-    data: { kind: 'image', content: `${id}.png`, handling: false, ...over },
+    data: { content: `${id}.png`, handling: false, ...over },
   } as Nodes[number];
 }
 
@@ -129,6 +129,6 @@ export function group(id: string, x: number): Nodes[number] {
     position: { x, y: 0 },
     width: 400,
     height: 400,
-    data: { kind: 'group' },
+    data: {},
   } as Nodes[number];
 }

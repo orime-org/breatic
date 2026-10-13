@@ -308,6 +308,9 @@ describe("how a tool use is recorded when it does not come back", () => {
     expect(answered).toBeDefined();
     expect(answered?.status).toBe("success");
     expect(answered?.output).toBe("两条链接");
+    // Written down with the call like any other answer, though the SDK never
+    // converted it: the turn ended before the chunk carrying it was read.
+    expect(answered?.forModel).toEqual({ type: "text", value: "两条链接" });
     // 被停的是这一轮,不是这次调用,所以那件事记在轮上。少了它,回到会话里看到的
     // 是一个话说到一半、也不说为什么的答复。
     expect(parts.some((p) => p.type === "interrupted")).toBe(true);

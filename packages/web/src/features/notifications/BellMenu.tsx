@@ -1,7 +1,12 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  useMutation,
+  useMutationState,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
 import { Bell } from 'lucide-react';
 import * as React from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -26,6 +31,9 @@ import { EMPTY_RESOLVED } from '@web/data/api/notifications';
 import type { NotificationResolved } from '@web/data/api/notifications';
 import { useTranslation } from '@web/i18n/use-translation';
 import { useCurrentUserStore } from '@web/stores/current-user';
+
+/** Groups single-row mark-read requests so each row can find its own. */
+const MARK_READ_KEY = ['notifications', 'mark-read'] as const;
 
 /**
  * Returns the first two characters of a string, uppercased, for an avatar glyph.
@@ -97,12 +105,19 @@ export function BellMenu(): React.JSX.Element {
   const count = notifications.length;
 
   const markReadMutation = useMutation({
+    mutationKey: MARK_READ_KEY,
     mutationFn: (id: string) => notificationsApi.markRead(id),
     onSuccess: async () => {
       await queryClient.invalidateQueries({
         queryKey: ['notifications', 'unread'],
       });
     },
+  });
+  // Every row whose own mark-read is still out — one entry per request, so
+  // marking a second row never ends the first row's wait.
+  const markingIds = useMutationState({
+    filters: { mutationKey: MARK_READ_KEY, status: 'pending' },
+    select: (m) => m.state.variables as string,
   });
   const markAllReadMutation = useMutation({
     mutationFn: () => notificationsApi.markAllRead(),
@@ -154,7 +169,7 @@ export function BellMenu(): React.JSX.Element {
                 size='compact'
                 className='text-2xs'
                 onClick={() => markAllReadMutation.mutate()}
-                disabled={markAllReadMutation.isPending}
+                loading={markAllReadMutation.isPending}
                 data-testid='bell-mark-all-read'
               >
                 {t('notifications.markAllRead')}
@@ -188,6 +203,7 @@ export function BellMenu(): React.JSX.Element {
                     navigate(`/decision?token=${token}`);
                   }}
                   onMarkRead={() => markReadMutation.mutate(n.id)}
+                  pending={markingIds.includes(n.id)}
                 />
               </li>
             ))}
@@ -204,6 +220,8 @@ interface NotificationItemProps {
   resolved: NotificationResolved;
   onOpenDecision: (token: string) => void;
   onMarkRead: () => void;
+  /** Whether this row's mark-read is waiting on the server. */
+  pending: boolean;
 }
 
 /**
@@ -215,6 +233,7 @@ interface NotificationItemProps {
  * @param root0.resolved - Current identities for the ids it carries.
  * @param root0.onOpenDecision - Opens the shared landing page for this request.
  * @param root0.onMarkRead - Called when an informational notification is marked read.
+ * @param root0.pending - Whether this row's mark-read is waiting on the server.
  * @returns the notification row with its type-specific actions.
  */
 function NotificationItem({
@@ -222,6 +241,7 @@ function NotificationItem({
   resolved,
   onOpenDecision,
   onMarkRead,
+  pending,
 }: NotificationItemProps): React.JSX.Element {
   const t = useTranslation();
   const headline = notificationHeadline(notification, resolved, t);
@@ -280,6 +300,7 @@ function NotificationItem({
             size='sm'
             className='h-7 px-2 text-xs'
             onClick={onMarkRead}
+            loading={pending}
             data-testid={`bell-mark-read-${notification.id}`}
           >
             {t('notifications.markRead')}

@@ -11,7 +11,11 @@ import { toast } from '@web/lib/toast';
 
 /** Leaving one project, and whether the request is in flight. */
 export interface LeaveProject {
-  leave: () => void;
+  /**
+   * Leave; `onSuccess` runs once the leave is in and the lists that showed the
+   * project have refreshed, after `onLeft`.
+   */
+  leave: (options?: { onSuccess?: () => void }) => void;
   pending: boolean;
 }
 
@@ -34,9 +38,12 @@ export function useLeaveProject(projectId: string, name: string, onLeft?: () => 
   const queryClient = useQueryClient();
   const mutation = useMutation({
     mutationFn: () => projectsApi.leave(projectId),
-    onSuccess: () => {
+    // Awaited: the confirmation closes (or the page navigates) once this
+    // settles, and until the list refetch lands the card and its Leave entry
+    // are still on screen (inner#1374).
+    onSuccess: async () => {
       queryClient.removeQueries({ queryKey: ['project', projectId] });
-      invalidateProjectListings(queryClient, projectId);
+      await invalidateProjectListings(queryClient, projectId);
       toast.success(t('project.leave.done', { name }));
       onLeft?.();
     },
@@ -44,6 +51,9 @@ export function useLeaveProject(projectId: string, name: string, onLeft?: () => 
   });
   const { mutate } = mutation;
   // Wrapped so a click event never reaches `mutate` as its variables.
-  const leave = React.useCallback((): void => mutate(), [mutate]);
+  const leave = React.useCallback(
+    (options?: { onSuccess?: () => void }): void => mutate(undefined, options),
+    [mutate],
+  );
   return { leave, pending: mutation.isPending };
 }

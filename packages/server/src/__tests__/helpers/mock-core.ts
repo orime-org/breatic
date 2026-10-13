@@ -21,8 +21,6 @@ import { vi } from "vitest";
 // it); test code is exempt from the alias rule.
 import {
   ASK_USER as REAL_ASK_USER,
-  GET_CANVAS_CAPABILITIES as REAL_GET_CANVAS_CAPABILITIES,
-  LIST_GENERATION_MODELS as REAL_LIST_GENERATION_MODELS,
   PROPOSE_CANVAS_ACTION as REAL_PROPOSE_CANVAS_ACTION,
   SAVE_IMAGE as REAL_SAVE_IMAGE,
 } from "../../../../domain/src/agent/tools/tool-names.js";
@@ -612,10 +610,7 @@ export const domainMock = () => ({
   // and a copy that drifts throws nothing: the match simply never happens and
   // a turn carries on talking past the question it just asked.
   ASK_USER: REAL_ASK_USER,
-  // Read at module evaluation, as the keys of the render registry, so this
-  // stub has to carry them or every file mocking the barrel fails to load.
-  GET_CANVAS_CAPABILITIES: REAL_GET_CANVAS_CAPABILITIES,
-  LIST_GENERATION_MODELS: REAL_LIST_GENERATION_MODELS,
+  // Read by the turn when it hands the tools their context.
   PROPOSE_CANVAS_ACTION: REAL_PROPOSE_CANVAS_ACTION,
   // Read by the turn when it hands the save its context (inner#1315).
   SAVE_IMAGE: REAL_SAVE_IMAGE,

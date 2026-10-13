@@ -47,12 +47,18 @@ export interface StudioSettingsActions {
    */
   save: (patch: UpdateStudioInput, slugFieldShown?: () => boolean) => void;
   uploadAvatar: (image: Blob) => void;
-  removeAvatar: () => void;
+  /** Clear the avatar; `onSuccess` runs once it is gone (the confirmation closes there). */
+  removeAvatar: (options?: { onSuccess?: () => void }) => void;
   leave: () => void;
   /** Drop a stale avatar failure — the picker closing means it is done with. */
   clearAvatarError: () => void;
   /** Any studio edit is in flight — the basic-info form greys itself out. */
   saving: boolean;
+  /**
+   * The in-flight edit is NOT a slug change — the name and description Save
+   * spins off this one, so a rename does not make it claim to be saving.
+   */
+  savingDetails: boolean;
   /**
    * The in-flight edit is a SLUG change specifically.
    *
@@ -65,6 +71,7 @@ export interface StudioSettingsActions {
    */
   renaming: boolean;
   uploadingAvatar: boolean;
+  removingAvatar: boolean;
   leaving: boolean;
   /** The last avatar upload failure, kept so the crop dialog can show it. */
   avatarError: string | null;
@@ -111,9 +118,12 @@ export function useStudioSettings(
   /**
    * Fold a server-confirmed studio back into everything that displays it.
    * @param next - The studio as the server now has it.
+   * @returns Settles once the mounted studio read has refetched; a save whose
+   *   button stays on screen awaits it, so the button keeps waiting until the
+   *   studio shows what was saved, and not on unrelated reads (inner#1374).
    */
   const absorb = React.useCallback(
-    (next: Studio): void => {
+    (next: Studio): Promise<void> => {
       const renamed = next.slug !== studio.slug;
       if (renamed) {
         // Remove, never invalidate: the old slug is already gone server-side.
@@ -122,8 +132,14 @@ export function useStudioSettings(
       // A studio's name, slug and avatar ride along in reads keyed by things
       // other than the studio (recent projects, the credits overlay's lists),
       // so mark everything stale: mounted reads refetch now, the rest on their
-      // next mount.
+      // next mount. Only the studio read is waited on: it is what the settings
+      // fields and the avatar are drawn from. `cancelRefetch: false` joins the
+      // refetch the invalidation just started instead of restarting it.
       void queryClient.invalidateQueries();
+      const refetched = queryClient.refetchQueries(
+        { queryKey: ['studio', next.slug], exact: true, type: 'active' },
+        { cancelRefetch: false },
+      );
 
       const store = useCurrentUserStore.getState();
       const user = store.user;
@@ -145,6 +161,7 @@ export function useStudioSettings(
       if (renamed) {
         navigate(studioTabPath(next.slug, 'settings'), { replace: true });
       }
+      return refetched;
     },
     [navigate, queryClient, studio.slug, studio.type],
   );
@@ -152,8 +169,10 @@ export function useStudioSettings(
   const updateMutation = useMutation({
     mutationFn: ({ patch }: StudioSave) =>
       studiosApi.update(studio.slug, patch),
-    onSuccess: (next) => {
-      absorb(next);
+    // Awaited: until the studio refetch lands the fields still differ from
+    // the stale studio, so Save would read as unsaved and live again.
+    onSuccess: async (next) => {
+      await absorb(next);
       toast.success(t('studio.container.settings.saved'));
     },
     // On the mutation itself, so it still runs after the settings tab has
@@ -186,8 +205,10 @@ export function useStudioSettings(
     // a failure leaves the message set for good, and the next crop dialog opens
     // already showing an error about an upload the user has moved on from.
     onMutate: () => setAvatarError(null),
-    onSuccess: (next) => {
-      absorb(next);
+    // Awaited: the crop dialog stays open and busy until the studio refetch
+    // shows the new avatar (inner#1374).
+    onSuccess: async (next) => {
+      await absorb(next);
       toast.success(t('studio.container.settings.avatarSaved'));
     },
     // Kept in state rather than only a toast: the crop dialog stays open on
@@ -204,8 +225,10 @@ export function useStudioSettings(
 
   const removeAvatarMutation = useMutation({
     mutationFn: () => studiosApi.removeAvatar(studio.slug),
-    onSuccess: (next) => {
-      absorb(next);
+    // Awaited: the confirmation closes once this settles, and until the
+    // studio refetch lands the Remove entry is still on screen (inner#1374).
+    onSuccess: async (next) => {
+      await absorb(next);
       toast.success(t('studio.container.settings.avatarRemoved'));
     },
     onError: (err) => toast.error(messageFor(err)),
@@ -248,7 +271,8 @@ export function useStudioSettings(
     [mutateAvatar],
   );
   const removeAvatar = React.useCallback(
-    (): void => mutateRemoveAvatar(),
+    (options?: { onSuccess?: () => void }): void =>
+      mutateRemoveAvatar(undefined, options),
     [mutateRemoveAvatar],
   );
   const leave = React.useCallback((): void => mutateLeave(), [mutateLeave]);
@@ -269,12 +293,15 @@ export function useStudioSettings(
     leave,
     clearAvatarError,
     saving: updateMutation.isPending,
+    savingDetails:
+      updateMutation.isPending && updateMutation.variables?.patch.slug === undefined,
     // Read off the patch that is actually out, so this answers "a rename is
     // running" rather than "something is running". `variables` holds the
     // arguments of the request in flight.
     renaming:
       updateMutation.isPending && updateMutation.variables?.patch.slug !== undefined,
     uploadingAvatar: avatarMutation.isPending,
+    removingAvatar: removeAvatarMutation.isPending,
     leaving: leaveMutation.isPending,
     avatarError,
   };

@@ -13,8 +13,9 @@
  * cases used to share one page across the file, where a red one left the next
  * reading a document it had not built.
  */
-import { expect, test as base, type Locator, type Page } from 'playwright/test';
+import { expect, type Locator, type Page } from 'playwright/test';
 
+import { test as base } from './slot';
 import { openSmokeProject } from './project';
 import { createSpace, deleteSpace, VISIBLE_SPACE, DOCUMENT_EDITOR } from './space';
 

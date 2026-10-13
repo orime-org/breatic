@@ -1213,6 +1213,7 @@
       },
       "error": {
         "create": "Failed to create space",
+        "restore": "Failed to restore space",
         "unreachable": "No answer from the server — check your connection and try again",
         "notSynced": "Project is still syncing — try again in a moment"
       },

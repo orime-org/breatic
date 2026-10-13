@@ -76,4 +76,25 @@ describe('LeaveProjectFromPage', () => {
     await waitFor(() => expect(projectsApi.leave).toHaveBeenCalledWith('p1'));
     expect(screen.queryByTestId('landing')).toBeNull();
   });
+
+  it('keeps the confirmation open with a busy Leave while the leave is out, and pressable again after a refusal', async () => {
+    let refuse: (reason: Error) => void = () => {};
+    vi.mocked(projectsApi.leave).mockReturnValue(
+      new Promise((_resolve, reject) => {
+        refuse = reject;
+      }),
+    );
+    setup();
+    const confirm = screen.getByRole('button', { name: 'Leave' });
+
+    await userEvent.setup().click(confirm);
+
+    await waitFor(() => expect(confirm).toHaveAttribute('aria-busy', 'true'));
+    expect(confirm).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getByTestId('leave-project-dialog')).toBeInTheDocument();
+
+    refuse(new Error('nope'));
+    await waitFor(() => expect(confirm).not.toHaveAttribute('aria-busy'));
+    expect(screen.getByTestId('leave-project-dialog')).toBeInTheDocument();
+  });
 });

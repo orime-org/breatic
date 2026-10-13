@@ -20,9 +20,11 @@
  * against, so a failure here is about our path rather than about a file whose
  * content nobody has seen.
  */
-import { expect, test, type Page } from 'playwright/test';
+import { expect, type Page } from 'playwright/test';
+import { test } from '../helpers/slot';
+import { startNewConversation } from '../helpers/conversation';
 
-import { STATE_FILE, openSmokeProject } from '../helpers/project';
+import { openSmokeProject } from '../helpers/project';
 
 const IMAGE = 'https://picsum.photos/id/237/400/300.jpg';
 const VIDEO = 'https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/360/Big_Buck_Bunny_360_10s_1MB.mp4';
@@ -110,7 +112,7 @@ async function oneTurn(p: Page, prompt: string, address: string): Promise<Turn> 
   const composer = p.getByTestId('chat-composer-box');
   await expect(composer).toBeVisible({ timeout: 20_000 });
 
-  await p.getByTestId('new-conversation').click();
+  await startNewConversation(p);
   await expect(p.getByTestId('message-bubble')).toHaveCount(0, { timeout: 20_000 });
 
   // Watched rather than awaited: the line for a running tool is on screen only
@@ -170,7 +172,6 @@ async function oneTurn(p: Page, prompt: string, address: string): Promise<Turn> 
 
 test.beforeEach(async ({ browser }) => {
   page = await browser.newPage({
-    storageState: STATE_FILE.A,
     viewport: { width: 1400, height: 900 },
   });
   await openSmokeProject(page);
@@ -238,7 +239,7 @@ test('says what it is doing while the call is in flight @needs-internet @needs-m
 
   const composer = page.getByTestId('chat-composer-box');
   await expect(composer).toBeVisible({ timeout: 20_000 });
-  await page.getByTestId('new-conversation').click();
+  await startNewConversation(page);
   await expect(page.getByTestId('message-bubble')).toHaveCount(0, { timeout: 20_000 });
 
   // A video, because this line lives only while the call runs and the video

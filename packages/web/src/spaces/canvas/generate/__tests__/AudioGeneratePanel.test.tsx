@@ -202,9 +202,9 @@ describe('AudioGeneratePanel execute button (#1960 A12)', () => {
 
   it('spins while a submit is in flight', () => {
     renderPanel(<AudioGeneratePanel {...BASE} executeRefusal='submitting' />);
-    expect(
-      screen.getByTestId('generate-audio-execute-pending'),
-    ).toBeInTheDocument();
+    const btn = screen.getByTestId('generate-audio-execute');
+    expect(btn).toHaveAttribute('aria-busy', 'true');
+    expect(btn).toHaveAttribute('aria-disabled', 'true');
   });
 });
 

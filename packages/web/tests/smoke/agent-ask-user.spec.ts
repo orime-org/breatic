@@ -26,15 +26,16 @@
  * conversation, three asks; the same sentence in a conversation already
  * holding an unanswered question, prose.
  */
-import { expect, test, type Page } from 'playwright/test';
+import { expect, type Page } from 'playwright/test';
+import { test } from '../helpers/slot';
+import { startNewConversation } from '../helpers/conversation';
 
-import { STATE_FILE, openSmokeProject } from '../helpers/project';
+import { openSmokeProject } from '../helpers/project';
 
 let page: Page;
 
 test.beforeEach(async ({ browser }) => {
   page = await browser.newPage({
-    storageState: STATE_FILE.A,
     viewport: { width: 1400, height: 900 },
   });
   await openSmokeProject(page);
@@ -59,7 +60,7 @@ async function aQuestionWaitingForAnswer(target: Page): Promise<void> {
   const composer = target.getByTestId('chat-composer-box');
   await expect(composer).toBeVisible({ timeout: 20_000 });
 
-  await target.getByTestId('new-conversation').click();
+  await startNewConversation(target);
   await expect(target.getByTestId('message-bubble')).toHaveCount(0, { timeout: 20_000 });
 
   await composer.fill(

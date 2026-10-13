@@ -81,7 +81,7 @@ function expand(nodes: readonly CanvasNodeView[], picked: readonly string[]): st
   const byId = new Map(nodes.map((n) => [n.id, n]));
   for (const id of picked) {
     add(id);
-    if (byId.get(id)?.data.kind === 'group') {
+    if (byId.get(id)?.type === 'group') {
       for (const n of nodes) if (n.parentId === id) add(n.id);
     }
   }
@@ -90,20 +90,19 @@ function expand(nodes: readonly CanvasNodeView[], picked: readonly string[]): st
 
 /**
  * What a node is called on the card and in its preview.
+ * @param type - The node's type.
  * @param data - The node's data, from the canvas or from a stored snapshot.
- * @param data.kind - Its kind.
  * @param data.name - Its name, when it has one.
  * @param data.content - A note's words.
- * @returns Its name, or for a note its own words cut short, or its kind.
+ * @returns Its name, or for a note its own words cut short, or its type.
  */
-export function nodeNameOf(data: { kind?: unknown; name?: unknown; content?: unknown }): string {
+export function nodeNameOf(type: string, data: { name?: unknown; content?: unknown }): string {
   const named = typeof data.name === 'string' ? data.name.trim() : '';
   if (named) return named;
-  const kind = typeof data.kind === 'string' ? data.kind : '';
-  if (kind === 'annotation' && typeof data.content === 'string') {
+  if (type === 'annotation' && typeof data.content === 'string') {
     return data.content.trim().slice(0, ATTACHMENT_NAME_CHARS);
   }
-  return kind;
+  return type;
 }
 
 /**
@@ -154,7 +153,7 @@ export function snapshotOfPick(
   };
   const nodes = expand(graph.nodes, picked).flatMap((id) => {
     const node = byId.get(id);
-    return node && ATTACHABLE.has(node.data.kind) ? [node] : [];
+    return node && ATTACHABLE.has(node.type) ? [node] : [];
   });
   if (nodes.length === 0) return null;
   const ids = new Set(nodes.map((n) => n.id));
@@ -169,10 +168,9 @@ export function snapshotOfPick(
       ...(node.data as unknown as Record<string, unknown>),
       ...(stored ? (plain(stored) as Record<string, unknown>) : {}),
     };
-    const kind = node.data.kind;
-    const current = isGenerationNodeType(kind)
+    const current = isGenerationNodeType(node.type)
       ? currentGeneration(
-        kind,
+        node.type,
           node.data as ContentNodeView,
           readers.catalog,
           readers.firstVoiceOf,
@@ -180,7 +178,7 @@ export function snapshotOfPick(
       : null;
     return {
       id: node.id,
-      type: node.data.kind,
+      type: node.type,
       position: canvasPosition(node),
       ...(node.parentId ? { parentId: node.parentId } : {}),
       data,
@@ -214,7 +212,7 @@ export function itemForPick(
   if (snapshot === null) return null;
   const ids = new Set(snapshot.nodes.map((n) => n.id));
   const lead = picked.length === 1 ? graph.nodes.find((n) => n.id === picked[0]) : undefined;
-  const name = lead && ids.has(lead.id) ? nodeNameOf(lead.data as { kind: string }) : '';
+  const name = lead && ids.has(lead.id) ? nodeNameOf(lead.type, lead.data) : '';
   const id = pickId([...ids]);
   const chip: ChatAttachedChip = { id, type: 'canvas', name, data_snapshot: snapshot };
   return { id, name, type: 'canvas', status: 'ready', chip };

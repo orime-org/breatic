@@ -1213,6 +1213,7 @@
       },
       "error": {
         "create": "Space 建立失敗",
+        "restore": "Space 還原失敗",
         "unreachable": "伺服器沒有回應,請檢查網路後重試",
         "notSynced": "Project 正在同步,請稍後再試"
       },

@@ -20,10 +20,10 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 
-import type { NodeKind } from '@web/data/yjs/node-view';
+import type { NodeType } from '@breatic/shared';
 
-/** Single source of truth for modality → icon; exhaustive over {@link NodeKind}. */
-const ICON_BY_KIND: Record<NodeKind, LucideIcon> = {
+/** Single source of truth for modality → icon; exhaustive over {@link NodeType}. */
+const ICON_BY_TYPE: Record<NodeType, LucideIcon> = {
   text: FileText,
   image: Image,
   audio: Music,
@@ -48,9 +48,9 @@ const ICON_BY_KIND: Record<NodeKind, LucideIcon> = {
  * @returns A lucide icon component; the Image icon for any unknown modality.
  */
 export function getNodeIcon(
-  kind: NodeKind | string | null | undefined,
+  kind: NodeType | string | null | undefined,
 ): LucideIcon {
-  return kind != null && Object.hasOwn(ICON_BY_KIND, kind)
-    ? ICON_BY_KIND[kind as NodeKind]
+  return kind != null && Object.hasOwn(ICON_BY_TYPE, kind)
+    ? ICON_BY_TYPE[kind as NodeType]
     : Image;
 }

@@ -148,10 +148,10 @@ function TaskCount({
             // The open cell keeps the fill its neighbours have, and the coloured
             // rim is what says it is open: a darker fill made the cell the
             // reader had picked read as the least present of the four. The base
-            // fill is repeated under `hover:` so this one does not take
-            // `hover:bg-accent` like any other cell — both rules survive the
-            // merge, different modifier groups, and the hovered one wins.
-            isOpen && cn(OPEN_BORDER[status], 'hover:bg-background'),
+            // fill is repeated under `hover-enabled:` so this one does not take
+            // the variant's `hover-enabled:bg-accent` like any other cell — the
+            // two share a modifier, so the merge keeps only this one.
+            isOpen && cn(OPEN_BORDER[status], 'hover-enabled:bg-background'),
           )}
         >
           <Mark

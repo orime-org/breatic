@@ -19,9 +19,11 @@
  * replies in prose without naming anything is reported as such rather than
  * passed.
  */
-import { expect, test, type Page } from 'playwright/test';
+import { expect, type Page } from 'playwright/test';
+import { test } from '../helpers/slot';
+import { startNewConversation } from '../helpers/conversation';
 
-import { STATE_FILE, openSmokeProject } from '../helpers/project';
+import { openSmokeProject } from '../helpers/project';
 
 let page: Page;
 
@@ -55,7 +57,6 @@ async function servableImageModels(p: Page, mode: string): Promise<string[]> {
 
 test.beforeEach(async ({ browser }) => {
   page = await browser.newPage({
-    storageState: STATE_FILE.A,
     viewport: { width: 1400, height: 900 },
   });
   await openSmokeProject(page);
@@ -75,7 +76,7 @@ test('names a model this deployment can actually serve @needs-model', async () =
   );
 
   // Its own conversation, so what this measures is what this turn produced.
-  await page.getByTestId('new-conversation').click();
+  await startNewConversation(page);
   await expect(page.getByTestId('message-bubble')).toHaveCount(0, { timeout: 20_000 });
 
   // One question with nothing left to settle. A prompt that leaves a choice

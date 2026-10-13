@@ -12,14 +12,13 @@
  *
  * Needs a running dev stack (`pnpm dev`) and the smoke account setup.
  */
-import { test, expect, type Page } from 'playwright/test';
+import { expect, type Page } from 'playwright/test';
+import { test } from '../helpers/slot';
 
 import { CANVAS_SPACE, liveModuleUrl } from '../helpers/live-module';
-import { STATE_FILE, openSmokeProject } from '../helpers/project';
+import { openSmokeProject } from '../helpers/project';
 import { createSpace, deleteSpace, visibleSpace, VISIBLE_SPACE } from '../helpers/space';
 import { roomForUploads } from '../helpers/upload-budget';
-
-test.use({ storageState: STATE_FILE.A });
 
 /** A 320x240 solid PNG, inline so it decodes with no network. */
 const SOLID_PNG =

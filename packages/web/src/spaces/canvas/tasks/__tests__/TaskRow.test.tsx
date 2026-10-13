@@ -73,6 +73,8 @@ function entry(over: Partial<NodeTaskEntry> = {}): NodeTaskEntry {
  * @param props.onRetry - Send the stashed File again.
  * @param props.onDismiss - Drop the row.
  * @param props.medium - What the host node holds, for a refusal's format list.
+ * @param props.retrying - Whether this row's Retry waits for the server.
+ * @param props.dismissing - Whether this row's Finish or Clear waits for the server.
  * @param names - Roster, defaulting to one named person.
  */
 function renderRow(
@@ -84,6 +86,8 @@ function renderRow(
     onRetry?: (id: string) => void;
     onDismiss?: (id: string) => void;
     medium?: 'image' | 'video' | 'audio';
+    retrying?: boolean;
+    dismissing?: boolean;
   } = {},
   names: Record<string, string> = { 'u-1': 'Ada' },
 ): void {
@@ -96,6 +100,8 @@ function renderRow(
         now={NOW}
         hasRetryFile={props.hasRetryFile ?? false}
         readOnly={props.readOnly ?? false}
+        retrying={props.retrying ?? false}
+        dismissing={props.dismissing ?? false}
         onView={props.onView ?? ((): void => {})}
         onRetry={props.onRetry ?? ((): void => {})}
         onDismiss={props.onDismiss ?? ((): void => {})}
@@ -274,6 +280,31 @@ describe('TaskRow', () => {
     renderRow({ status: 'failed' }, { hasRetryFile: false });
     expect(screen.queryByTestId('task-action-retry')).toBeNull();
     expect(screen.getByTestId('task-action-clear')).toBeInTheDocument();
+  });
+
+  it('spins only the button whose request is out, and leaves the other usable', async () => {
+    const onDismiss = vi.fn();
+    renderRow({ status: 'failed' }, { hasRetryFile: true, retrying: true, onDismiss });
+    expect(screen.getByTestId('task-action-retry')).toHaveAttribute('aria-busy', 'true');
+    const clear = screen.getByTestId('task-action-clear');
+    expect(clear).not.toHaveAttribute('aria-busy');
+    expect(clear).not.toHaveAttribute('aria-disabled');
+    await userEvent.click(clear);
+    expect(onDismiss).toHaveBeenCalledWith('t-1');
+
+    cleanup();
+    renderRow({ status: 'failed' }, { hasRetryFile: true, dismissing: true });
+    expect(screen.getByTestId('task-action-clear')).toHaveAttribute('aria-busy', 'true');
+    expect(screen.getByTestId('task-action-retry')).not.toHaveAttribute('aria-busy');
+  });
+
+  it('never spins View, whatever is out', () => {
+    renderRow(
+      { status: 'expired', content: 'https://cdn.example/late.png' },
+      { dismissing: true, retrying: true },
+    );
+    expect(screen.getByTestId('task-action-view')).not.toHaveAttribute('aria-busy');
+    expect(screen.getByTestId('task-action-clear')).toHaveAttribute('aria-busy', 'true');
   });
 
   it('says an expired task ran out of time', () => {

@@ -104,7 +104,7 @@ function audioParams(
   mode: string,
   firstVoiceOf: (model: string) => { id: string } | null | undefined,
 ): Record<string, unknown> {
-  const vm = buildAudioPanelViewModel({ nodeId: '', nodes: [{ id: '', data: content }], models, mode });
+  const vm = buildAudioPanelViewModel({ nodeId: '', nodes: [{ id: '', type: 'audio', data: content }], models, mode });
   // Asked for only where the panel asks for it.
   const first = vm.voiceRequired && !vm.voiceChosen ? firstVoiceOf(vm.model) : undefined;
   return withListDefaultVoice(vm, first).params;

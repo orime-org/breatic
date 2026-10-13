@@ -1,7 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { test, expect } from 'playwright/test';
+import { expect } from 'playwright/test';
+import { test } from '../helpers/slot';
 
 // Signed out: a visitor's language is the one stored in the browser, while a
 // signed-in page follows the account's.

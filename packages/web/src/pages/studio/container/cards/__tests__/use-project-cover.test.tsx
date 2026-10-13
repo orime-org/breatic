@@ -4,7 +4,7 @@
 import * as React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
 
 vi.mock('@web/i18n/use-translation', () => ({
   useTranslation: () => (key: string) => key,
@@ -38,6 +38,76 @@ function setup(): ReturnType<typeof renderHook<ReturnType<typeof useProjectCover
     <QueryClientProvider client={qc}>{children}</QueryClientProvider>
   );
   return renderHook(() => useProjectCover('p1'), { wrapper });
+}
+
+const LIVE = studioProjectsListKey('acme', { archived: false, sort: 'opened', locale: 'en' });
+const ARCHIVED = studioProjectsListKey('acme', { archived: true, sort: 'archived', locale: 'en' });
+
+/** One held studio list, as a case sees it. */
+interface HeldList {
+  read: () => Promise<string[]>;
+  /** Answer the refetch that is out. */
+  land: () => void;
+  /** Whether a refetch is out. */
+  started: () => boolean;
+}
+
+/**
+ * A list read that answers its first read at once and holds every later one
+ * until the case lands it.
+ * @returns The read and its control.
+ */
+function heldList(): HeldList {
+  let land: (() => void) | null = null;
+  let reads = 0;
+  return {
+    read: (): Promise<string[]> => {
+      reads += 1;
+      return reads === 1
+        ? Promise.resolve([])
+        : new Promise((resolve) => {
+          land = () => resolve([]);
+        });
+    },
+    land: () => land?.(),
+    started: () => land !== null,
+  };
+}
+
+/**
+ * Render the hook next to a mounted live list and archived list (an admin's
+ * studio page), whose refetches the case lands by hand.
+ * @returns The hook's result handle and the two lists.
+ */
+async function setupBesideHeldLists(): Promise<{
+  result: { current: ReturnType<typeof useProjectCover> };
+  live: HeldList;
+  archived: HeldList;
+}> {
+  qc = new QueryClient({ defaultOptions: { mutations: { retry: false }, queries: { retry: false } } });
+  const live = heldList();
+  const archived = heldList();
+  /**
+   * Keeps both lists mounted.
+   * @returns Nothing visible.
+   */
+  function Lists(): React.JSX.Element {
+    useQuery({ queryKey: LIVE, queryFn: live.read });
+    useQuery({ queryKey: ARCHIVED, queryFn: archived.read });
+    return <></>;
+  }
+  const wrapper = ({ children }: { children: React.ReactNode }): React.JSX.Element => (
+    <QueryClientProvider client={qc}>
+      <Lists />
+      {children}
+    </QueryClientProvider>
+  );
+  const { result } = renderHook(() => useProjectCover('p1'), { wrapper });
+  await waitFor(() => {
+    expect(qc.getQueryState(LIVE)?.status).toBe('success');
+    expect(qc.getQueryState(ARCHIVED)?.status).toBe('success');
+  });
+  return { result, live, archived };
 }
 
 beforeEach(() => {
@@ -110,5 +180,32 @@ describe('useProjectCover', () => {
     await waitFor(() =>
       expect(result.current.error).toBe('studio.container.cover.error.upload'),
     );
+  });
+
+  it('stays uploading until the live list refetch shows the new cover', async () => {
+    uploadPicture.mockResolvedValue('asset-1');
+    setCover.mockResolvedValue({ id: 'p1' });
+    const { result, live, archived } = await setupBesideHeldLists();
+
+    act(() => result.current.upload(new Blob(['x'], { type: 'image/jpeg' })));
+
+    await waitFor(() => expect(live.started() && archived.started()).toBe(true));
+    await act(async () => archived.land());
+    expect(result.current.uploading).toBe(true);
+    expect(result.current.done).toBe(false);
+    live.land();
+    await waitFor(() => expect(result.current.done).toBe(true));
+  });
+
+  it('is done once the live list lands, without waiting for the archived list', async () => {
+    uploadPicture.mockResolvedValue('asset-1');
+    setCover.mockResolvedValue({ id: 'p1' });
+    const { result, live, archived } = await setupBesideHeldLists();
+
+    act(() => result.current.upload(new Blob(['x'], { type: 'image/jpeg' })));
+
+    await waitFor(() => expect(live.started() && archived.started()).toBe(true));
+    live.land();
+    await waitFor(() => expect(result.current.done).toBe(true));
   });
 });

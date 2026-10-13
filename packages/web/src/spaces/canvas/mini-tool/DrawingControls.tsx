@@ -22,7 +22,7 @@ const TOOLS: ReadonlyArray<{ id: DrawTool; Icon: LucideIcon }> = [
 
 const ICON_BUTTON =
   'h-[var(--btn-inline)] w-[var(--btn-inline)] border border-transparent p-0 ' +
-  'aria-pressed:border-active-border aria-pressed:bg-accent-strong aria-pressed:hover:bg-accent-strong';
+  'aria-pressed:border-active-border aria-pressed:bg-accent-strong aria-pressed:hover-enabled:bg-accent-strong';
 
 // A cell around each colour dot, marked the way the canvas group colour picker
 // and the document colour panel mark theirs. The dot's edge is full-strength

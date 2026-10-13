@@ -13,11 +13,10 @@
  *
  *   pnpm --filter @breatic/web test:smoke -- toast-stack
  * */
-import { expect, test, type Page } from 'playwright/test';
+import { expect, type Page } from 'playwright/test';
+import { test } from '../helpers/slot';
 
 import type { toast as appToast } from '@web/lib/toast';
-
-import { STATE_FILE } from '../helpers/project';
 
 const MESSAGES = ['Transfer request sent.', 'Transfer request withdrawn.', 'A third, longer notice'];
 
@@ -53,7 +52,7 @@ async function measure(page: Page): Promise<ToastBox[]> {
 }
 
 test('every toast shows its text on its own row, centred', async ({ browser }) => {
-  const context = await browser.newContext({ storageState: STATE_FILE.A, viewport: { width: 1440, height: 900 } });
+  const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
   const page = await context.newPage();
   await page.goto('/');
   await page.waitForSelector('section[aria-label^="Notifications"]', { state: 'attached' });

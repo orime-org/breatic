@@ -59,10 +59,10 @@ describe('roomForUploads', () => {
   it('lets a batch through while the window has room for it', async () => {
     vi.useFakeTimers();
     const { page, ask } = fakePage();
-    watchUploadTickets(page, 'B');
+    watchUploadTickets(page, 'B', 0);
     ask(10);
     let through = false;
-    void roomForUploads(15, 'B').then(() => {
+    void roomForUploads(15, 'B', 0).then(() => {
       through = true;
     });
     await vi.advanceTimersByTimeAsync(0);
@@ -72,10 +72,10 @@ describe('roomForUploads', () => {
   it('holds a batch until enough of the window has passed', async () => {
     vi.useFakeTimers();
     const { page, ask } = fakePage();
-    watchUploadTickets(page, 'A');
+    watchUploadTickets(page, 'A', 0);
     ask(25);
     let through = false;
-    void roomForUploads(5, 'A').then(() => {
+    void roomForUploads(5, 'A', 0).then(() => {
       through = true;
     });
     await vi.advanceTimersByTimeAsync(30_000);
@@ -89,12 +89,12 @@ describe('roomForUploads', () => {
     // does not reset with it.
     vi.useFakeTimers();
     const { page, ask } = fakePage();
-    watchUploadTickets(page, 'A');
+    watchUploadTickets(page, 'A', 0);
     ask(25);
     vi.resetModules();
     const fresh = await import('../upload-budget');
     let through = false;
-    void fresh.roomForUploads(5, 'A').then(() => {
+    void fresh.roomForUploads(5, 'A', 0).then(() => {
       through = true;
     });
     await vi.advanceTimersByTimeAsync(30_000);
@@ -103,7 +103,22 @@ describe('roomForUploads', () => {
     expect(through).toBe(true);
   });
 
+  it('counts each worker slot on its own', async () => {
+    // Two workers sign in as two different accounts, so one slot's tickets say
+    // nothing about the other's window.
+    vi.useFakeTimers();
+    const { page, ask } = fakePage();
+    watchUploadTickets(page, 'A', 0);
+    ask(25);
+    let through = false;
+    void roomForUploads(5, 'A', 1).then(() => {
+      through = true;
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(through).toBe(true);
+  });
+
   it('refuses a batch the window could never hold', async () => {
-    await expect(roomForUploads(40, 'A')).rejects.toThrow('over the');
+    await expect(roomForUploads(40, 'A', 0)).rejects.toThrow('over the');
   });
 });

@@ -20,6 +20,7 @@ import { noMissingLicenseHeader } from "#rules/rules/no-missing-license-header";
 import { noNativeRenderedUi } from "#rules/rules/no-native-rendered-ui";
 import { noRawBodyParse } from "#rules/rules/no-raw-body-parse";
 import { noUntranslatedErrorMessage } from "#rules/rules/no-untranslated-error-message";
+import { noHandWrittenButtonSpinner } from "#rules/rules/no-hand-written-button-spinner";
 import { noRawButton } from "#rules/rules/no-raw-button";
 import { noParamAsString } from "#rules/rules/no-param-as-string";
 import { noPostgresOutsideCore } from "#rules/rules/no-postgres-outside-core";
@@ -77,6 +78,7 @@ export const breaticPlugin = {
     "no-native-rendered-ui": noNativeRenderedUi,
     "no-raw-body-parse": noRawBodyParse,
     "no-untranslated-error-message": noUntranslatedErrorMessage,
+    "no-hand-written-button-spinner": noHandWrittenButtonSpinner,
     "no-raw-button": noRawButton,
     "no-param-as-string": noParamAsString,
     "no-postgres-outside-core": noPostgresOutsideCore,

@@ -129,7 +129,7 @@ function tree(
     locked?: boolean;
   } = {},
 ): React.JSX.Element {
-  const view = { kind: 'text', handling: false, ...opts.view } as TextNodeView;
+  const view = { handling: false, ...opts.view };
   return (
     <CanvasContext.Provider value={canvasValue(opts.canvas)}>
       <NodeIdContext.Provider value={NODE}>
@@ -243,7 +243,7 @@ describe('TextNode', () => {
       render(
         <CanvasContext.Provider value={canvasValue()}>
           <NodeIdContext.Provider value={NODE}>
-            <TextNode data={{ kind: 'text', handling: false } as TextNodeView} selected />
+            <TextNode data={{ handling: false }} selected />
           </NodeIdContext.Provider>
         </CanvasContext.Provider>,
       );

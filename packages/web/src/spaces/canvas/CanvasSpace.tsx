@@ -552,8 +552,8 @@ function writeGroup(
 }
 
 /**
- * Node kind → localized display-name key, for the connection-rules rejection
- * toast ("Audio can't connect into Image"). An unknown (corrupt Yjs) kind
+ * Node type → localized display-name key, for the connection-rules rejection
+ * toast ("Audio can't connect into Image"). An unknown (corrupt Yjs) type
  * falls back to the raw string at the call site.
  */
 const KIND_LABEL_KEY: Record<string, string> = {
@@ -569,7 +569,7 @@ const KIND_LABEL_KEY: Record<string, string> = {
 
 /**
  * Project a Yjs canvas node view into a ReactFlow node. ReactFlow's
- * `node.type` is the view `kind` (the `FLOW_NODE_TYPES` lookup key) and
+ * `node.type` is the stored node type (the `FLOW_NODE_TYPES` lookup key) and
  * `node.data` carries the full narrowed view for the body to render.
  * @param node - The canvas node view from the Yjs binding.
  * @returns The ReactFlow node.
@@ -3651,7 +3651,7 @@ function CanvasSpaceInner({
       file: File,
       modality: UploadNodeSpec['nodeType'],
       tag?: MiniToolUploadTag,
-    ): void => {
+    ): Promise<void> | undefined => {
       // Re-gate at fill time (adversarial round): activateNodeUpload gates at
       // picker-OPEN, but the OS picker then stays open for seconds — a
       // collaborator can lock the node inside that window. Re-read fresh Yjs
@@ -3663,7 +3663,7 @@ function CanvasSpaceInner({
       });
       if (gateBlock) {
         warnNodeGate(t(gateBlock.toastKey));
-        return;
+        return undefined;
       }
       // Register SYNCHRONOUSLY (before the config-fetch await) by making the
       // whole flow the tracked work — otherwise the tab-close guard reads "not
@@ -3714,6 +3714,7 @@ function CanvasSpaceInner({
         });
       })();
       trackOperation(nodeId, work);
+      return work;
     },
     [projectId, spaceId, t, failUploadNode, failExtraction, trackOperation],
   );
@@ -3740,7 +3741,9 @@ function CanvasSpaceInner({
       // recoverable (D4). An unconditional toast on raster failure (silent-fail
       // mandate) — the node is untouched.
       void generateBlankPng(opts.width, opts.height, opts.color)
-        .then((file) => fillUpload(nodeId, file, 'image'))
+        .then((file) => {
+          fillUpload(nodeId, file, 'image');
+        })
         .catch(() => toast.error(t('canvas.emptyImage.generateFailed')));
     },
     [projectId, spaceId, t, closeActivePanel, fillUpload],
@@ -3811,7 +3814,7 @@ function CanvasSpaceInner({
     () =>
       readOnly
         ? null
-        : downloadableAsset(nodes.find((n) => n.id === nodeMenu.nodeId)?.data),
+        : downloadableAsset(nodes.find((n) => n.id === nodeMenu.nodeId)),
     [readOnly, nodes, nodeMenu.nodeId],
   );
   // A read, like history browsing: no node gate, a locked node downloads too.
@@ -3892,12 +3895,10 @@ function CanvasSpaceInner({
   // can settle, builds the text node and its edge, and asks for the run.
   const understandFromMenu = React.useCallback((): void => {
     const host = nodes.find((n) => n.id === nodeMenu.nodeId);
-    const view = asContentView(host?.data);
     if (
       menuDownloadUrl === null ||
       host === undefined ||
-      view === undefined ||
-      (view.kind !== 'image' && view.kind !== 'video' && view.kind !== 'audio')
+      (host.type !== 'image' && host.type !== 'video' && host.type !== 'audio')
     ) {
       return;
     }
@@ -3913,11 +3914,11 @@ function CanvasSpaceInner({
       userId: viewerId ?? '',
       source: {
         id: host.id,
-        name: view.name,
-        kind: view.kind,
+        name: host.data.name,
+        kind: host.type,
         url: menuDownloadUrl,
-        mimeType: view.mimeType,
-        sizeBytes: view.sizeBytes,
+        mimeType: host.data.mimeType,
+        sizeBytes: host.data.sizeBytes,
         position: host.position,
         groupOrigin: group?.position ?? null,
       },
@@ -4011,23 +4012,24 @@ function CanvasSpaceInner({
   // clears that task off the list; a refresh drops it too, and the button
   // then no longer renders.
   const retryNodeUpload = React.useCallback(
-    (nodeId: string, taskId: string): void => {
-      if (readOnly) return;
+    (nodeId: string, taskId: string): Promise<void> | undefined => {
+      if (readOnly) return undefined;
       // Retry is an upload entry point too, and a locked node refuses it.
       const gateBlock = evaluateNodeGate({
         locked: isNodeLocked(projectId, spaceId, nodeId),
       });
       if (gateBlock) {
         warnNodeGate(t(gateBlock.toastKey));
-        return;
+        return undefined;
       }
       // The File this task was carrying, held under its own id — a second
       // upload onto the same node has its own (#186 §3.7.2). The failed row
       // stays where it is: re-sending is a new task, and removing the record
       // of the old one is the user's call.
       const upload = getRetryUpload(projectId, spaceId, taskId);
-      if (!upload) return;
-      fillUpload(nodeId, upload.file, fileToNodeSpec(upload.file).nodeType, upload.context);
+      if (!upload) return undefined;
+      // The task row waits on this work (`NodeTaskPanelContainer`).
+      return fillUpload(nodeId, upload.file, fileToNodeSpec(upload.file).nodeType, upload.context);
     },
     [readOnly, projectId, spaceId, t, fillUpload],
   );

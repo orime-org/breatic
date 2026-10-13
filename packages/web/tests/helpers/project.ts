@@ -20,13 +20,17 @@ import { readFileSync } from 'node:fs';
 
 import type { Page } from 'playwright/test';
 
+import { slot } from './slot';
 import { watchUploadTickets } from './upload-budget';
 
 /** Which account a Project belongs to. */
 export type Account = 'A' | 'B';
 
-/** The Project ids each account owns for this run, in the order made. */
+/** The Project ids each account of one worker slot owns for this run, in the order made. */
 export type PreparedProjects = Readonly<Record<Account, readonly string[]>>;
+
+/** What setup prepared, by worker slot (`"0"`, `"1"`, …). */
+export type PreparedSlots = Readonly<Record<string, PreparedProjects>>;
 
 /** How the slug of every Project setup makes begins, so later runs can recognise them. */
 export const MADE_BY_SMOKE = 'smoke-run';
@@ -35,24 +39,11 @@ export const MADE_BY_SMOKE = 'smoke-run';
 export const PROJECTS_FILE = 'playwright/.auth/projects.json';
 
 /**
- * Where each account's signed-in browser state is kept.
- *
- * The config hands account A's to every project, so a spec that takes its
- * page from the fixtures is signed in already. A spec that builds its own
- * context with `browser.newContext()` gets none of that — the option is
- * applied to the fixture, not to the browser — so it passes one of these.
- */
-export const STATE_FILE: Readonly<Record<Account, string>> = {
-  A: 'playwright/.auth/a.json',
-  B: 'playwright/.auth/b.json',
-};
-
-/**
- * Answers whether a parsed value has the shape setup writes.
- * @param value - Whatever `JSON.parse` returned.
+ * Answers whether a parsed value is one slot's projects.
+ * @param value - One entry of the parsed file.
  * @returns Whether both accounts carry a list of ids.
  */
-function hasTheShape(value: unknown): value is PreparedProjects {
+function isSlot(value: unknown): value is PreparedProjects {
   if (typeof value !== 'object' || value === null) return false;
   const holder = value as Record<string, unknown>;
   return (['A', 'B'] as const).every(
@@ -63,16 +54,26 @@ function hasTheShape(value: unknown): value is PreparedProjects {
 }
 
 /**
+ * Answers whether a parsed value has the shape setup writes.
+ * @param value - Whatever `JSON.parse` returned.
+ * @returns Whether every key is a slot number holding one slot's projects.
+ */
+function hasTheShape(value: unknown): value is PreparedSlots {
+  if (typeof value !== 'object' || value === null) return false;
+  return Object.entries(value).every(([key, entry]) => /^\d+$/.test(key) && isSlot(entry));
+}
+
+/**
  * Reads what setup prepared.
  *
  * A missing file means setup did not run, and saying so here is the whole
  * point: the alternative is every spec failing at its first navigation with a
  * 404, which reads as a product defect rather than as a run with no opening.
  * @param path - Where the file is, for tests that write their own.
- * @returns The Project ids by account.
+ * @returns The Project ids by slot and account.
  * @throws {Error} When the file is absent, unreadable, or not that shape.
  */
-export function readProjects(path: string = PROJECTS_FILE): PreparedProjects {
+export function readProjects(path: string = PROJECTS_FILE): PreparedSlots {
   let raw: string;
   try {
     raw = readFileSync(path, 'utf8');
@@ -84,35 +85,38 @@ export function readProjects(path: string = PROJECTS_FILE): PreparedProjects {
   const parsed: unknown = JSON.parse(raw);
   if (!hasTheShape(parsed)) {
     throw new Error(
-      `${path} is not the shape setup writes ({ A: string[], B: string[] }). Delete it and run setup again.`,
+      `${path} is not the shape setup writes ({ "0": { A: string[], B: string[] }, … }). Delete it and run setup again.`,
     );
   }
   return parsed;
 }
 
 /**
- * The path a spec navigates to for one of the Projects setup made.
+ * The path a spec navigates to for one of the Projects setup made for the
+ * running case's worker slot.
  *
- * This is what a spec calls. The two-argument forms above take the parsed
- * file so they can be tested against one a test wrote itself.
+ * This is what a spec calls. The forms below take the parsed file and the
+ * slot so they can be tested against one a test wrote itself.
  * @param account - Which account owns it; most specs want 'A'.
  * @param index - Which of that account's Projects. A has two, B has one.
  * @returns A path ready for `page.goto`.
- * @throws {Error} When setup did not run, or made no Project there.
+ * @throws {Error} When setup did not run, made no Project there, or this is
+ *   called outside a running case.
  */
 export function smokeProjectUrl(account: Account = 'A', index = 0): string {
-  return projectUrl(readProjects(), account, index);
+  return projectUrl(readProjects(), slot(), account, index);
 }
 
 /**
- * The id of one of the Projects setup made.
+ * The id of one of the Projects setup made for the running case's worker slot.
  * @param account - Which account owns it; most specs want 'A'.
  * @param index - Which of that account's Projects. A has two, B has one.
  * @returns The Project id.
- * @throws {Error} When setup did not run, or made no Project there.
+ * @throws {Error} When setup did not run, made no Project there, or this is
+ *   called outside a running case.
  */
 export function smokeProjectId(account: Account = 'A', index = 0): string {
-  return projectId(readProjects(), account, index);
+  return projectId(readProjects(), slot(), account, index);
 }
 
 /**
@@ -135,27 +139,36 @@ export async function openSmokeProject(
   // Pages that upload inside a Project are opened here, so this is where their
   // tickets start being counted (helpers/upload-budget.ts); the few that upload
   // elsewhere fit in its HEADROOM.
-  watchUploadTickets(page, account);
+  watchUploadTickets(page, account, slot());
   await page.goto(smokeProjectUrl(account, index));
 }
 
 /**
  * Takes the id of one prepared Project.
  * @param prepared - What setup made.
- * @param account - Which account owns it.
+ * @param at - Which worker slot.
+ * @param account - Which account of that slot owns it.
  * @param index - Which of that account's Projects, in the order made.
  * @returns The Project id.
- * @throws {Error} When that account has no Project at that place.
+ * @throws {Error} When setup prepared nothing for that slot, or that account
+ *   has no Project at that place.
  */
 export function projectId(
-  prepared: PreparedProjects,
+  prepared: PreparedSlots,
+  at: number,
   account: Account,
   index: number,
 ): string {
-  const found = prepared[account][index];
+  const ours = prepared[String(at)];
+  if (ours === undefined) {
+    throw new Error(
+      `Setup prepared nothing for worker slot ${String(at)}. It prepares one slot per worker of the run it starts; a run with more workers needs setup to run again.`,
+    );
+  }
+  const found = ours[account][index];
   if (found === undefined) {
     throw new Error(
-      `Account ${account} has ${prepared[account].length} project(s), so there is none at ${index}. Setup decides how many each account gets.`,
+      `Account ${account} has ${String(ours[account].length)} project(s), so there is none at ${String(index)}. Setup decides how many each account gets.`,
     );
   }
   return found;
@@ -164,17 +177,19 @@ export function projectId(
 /**
  * Builds the path a spec navigates to.
  * @param prepared - What setup made.
- * @param account - Which account owns it.
+ * @param at - Which worker slot.
+ * @param account - Which account of that slot owns it.
  * @param index - Which of that account's Projects, in the order made.
  * @returns A path ready for `page.goto`.
- * @throws {Error} When that account has no Project at that place.
+ * @throws {Error} When there is no Project at that place.
  */
 export function projectUrl(
-  prepared: PreparedProjects,
+  prepared: PreparedSlots,
+  at: number,
   account: Account,
   index: number,
 ): string {
-  return `/project/${projectId(prepared, account, index)}`;
+  return `/project/${projectId(prepared, at, account, index)}`;
 }
 
 /** One answer from the API, as much of it as clean-up reads. */

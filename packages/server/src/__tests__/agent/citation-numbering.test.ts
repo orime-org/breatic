@@ -11,38 +11,40 @@
  * number the model invented.
  *
  * The number is decided once, when the search runs, and travels on the source.
- * Replaying a stored history therefore reads exactly as the running turn did:
- * the SDK's own conversion mid-turn and this assembler reach the same
- * function, and neither of them counts anything.
+ * The text the model reads is written down with the turn, so a replayed
+ * history reads exactly as the running turn did, however long it gets.
  */
 
 import { describe, it, expect } from "vitest";
-import type { MessageData } from "@breatic/shared";
+import type { MessageData, MessagePart } from "@breatic/shared";
+import { makeSearchTools } from "@domain/agent/tools/web-search.js";
 import { DROPPED_TOOL_RESULT } from "@server/agent/message-compressor.js";
 import { toModelMessages } from "@server/agent/model-messages.js";
+import { withModelOutputs } from "@server/agent/stored-model-output.js";
+
+const tools = { web_search: makeSearchTools().web_search };
 
 /**
- * An assistant message carrying one finished `web_search` call.
+ * An assistant message carrying one finished `web_search` call, written the
+ * way a turn writes it. A string answer is a row from before the model's copy
+ * was kept, so it is stored as it is.
  * @param id - The tool call id.
  * @param output - What the call answered with.
+ * @param compressed - The copy compaction left in place of the model's own.
  * @returns The stored message.
  */
-function searchTurn(id: string, output: unknown): MessageData {
-  return {
-    id: `m-${id}`,
-    role: "assistant",
-    content: "",
-    parts: [
-      {
-        type: "tool",
-        toolCallId: id,
-        toolName: "web_search",
-        input: { query: "q", count: 5 },
-        output,
-        status: "success",
-      },
-    ],
-  } as unknown as MessageData;
+async function searchTurn(id: string, output: unknown, compressed?: unknown): Promise<MessageData> {
+  const call: MessagePart = {
+    type: "tool",
+    toolCallId: id,
+    toolName: "web_search",
+    input: { query: "q", count: 5 },
+    output,
+    status: "success",
+  };
+  const [written] = typeof output === "string" ? [call] : await withModelOutputs([call], tools, { conversationId: "c" });
+  const part = compressed === undefined ? written : { ...written, forModel: compressed };
+  return { id: `m-${id}`, role: "assistant", content: "", parts: [part] } as unknown as MessageData;
 }
 
 /**
@@ -81,10 +83,10 @@ function toolTexts(history: MessageData[]): string[] {
 }
 
 describe("numbering across several searches", () => {
-  it("prints the number each source was given when its search ran", () => {
+  it("prints the number each source was given when its search ran", async () => {
     const texts = toolTexts([
-      searchTurn("a", answerWith(3, "a")),
-      searchTurn("b", answerWith(2, "b", 4)),
+      await searchTurn("a", answerWith(3, "a")),
+      await searchTurn("b", answerWith(2, "b", 4)),
     ]);
 
     expect(texts).toHaveLength(2);
@@ -95,14 +97,14 @@ describe("numbering across several searches", () => {
     expect(texts[1]).not.toContain('<source index="1">');
   });
 
-  it("says the same thing however long the history it sits in gets", () => {
+  it("says the same thing however long the history it sits in gets", async () => {
     // The number belongs to the source, so a result replayed inside a longer
     // conversation still reads as the number the model was shown.
     const answer = answerWith(2, "a", 7);
-    const alone = toolTexts([searchTurn("a", answer)]);
+    const alone = toolTexts([await searchTurn("a", answer)]);
     const later = toolTexts([
-      searchTurn("z", answerWith(3, "z")),
-      searchTurn("a", answer),
+      await searchTurn("z", answerWith(3, "z")),
+      await searchTurn("a", answer),
     ]);
 
     expect(later[1]).toBe(alone[0]);
@@ -110,28 +112,28 @@ describe("numbering across several searches", () => {
 });
 
 describe("what the string arms are for", () => {
-  it("passes the compression placeholder through untouched", () => {
-    // The rendering reads `output.sources`. Handing it this string is how a
-    // long conversation stops being able to start a turn at all, and the
-    // shape that gets here is a plain string, so the check on that comes
-    // first.
-    const texts = toolTexts([searchTurn("a", DROPPED_TOOL_RESULT)]);
+  it("passes the compression placeholder through untouched", async () => {
+    // Compaction writes the placeholder over the model's copy and leaves the
+    // answer itself alone.
+    const placeholder = { type: "text", value: DROPPED_TOOL_RESULT };
+    const texts = toolTexts([await searchTurn("a", answerWith(2, "a"), placeholder)]);
 
     expect(texts).toEqual([DROPPED_TOOL_RESULT]);
   });
 
-  it("passes a row written before the structured output through untouched", () => {
+  it("passes a row written before the structured output through untouched", async () => {
     const older = "Results for: q\n<source index=\"1\">\nurl: https://a.example\n</source>";
 
-    const texts = toolTexts([searchTurn("a", older)]);
+    const texts = toolTexts([await searchTurn("a", older)]);
 
     expect(texts).toEqual([older]);
   });
 
-  it("leaves a real search beside a placeholder untouched", () => {
+  it("leaves a real search beside a placeholder untouched", async () => {
+    const placeholder = { type: "text", value: DROPPED_TOOL_RESULT };
     const texts = toolTexts([
-      searchTurn("a", DROPPED_TOOL_RESULT),
-      searchTurn("b", answerWith(1, "b", 4)),
+      await searchTurn("a", answerWith(1, "a"), placeholder),
+      await searchTurn("b", answerWith(1, "b", 4)),
     ]);
 
     expect(texts[0]).toBe(DROPPED_TOOL_RESULT);

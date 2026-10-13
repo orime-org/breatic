@@ -117,4 +117,71 @@ describe('TransferStudioSection', () => {
       expect(studiosApi.withdrawTransfer).toHaveBeenCalledWith(SLUG, TRANSFER);
     });
   });
+
+  /**
+   * A request whose answer the case decides.
+   * @param succeeds - Whether it resolves or rejects.
+   * @returns The pending promise and the function that settles it.
+   */
+  function deferred(succeeds: boolean): { promise: Promise<{ ok: true }>; settle: () => void } {
+    let settle: () => void = () => {};
+    const promise = new Promise<{ ok: true }>((resolve, reject) => {
+      settle = succeeds ? () => resolve({ ok: true }) : () => reject(new Error('nope'));
+    });
+    return { promise, settle };
+  }
+
+  it.each([
+    ['succeeds', true],
+    ['fails', false],
+  ])('marks Withdraw busy while the withdraw is out, and clears it once it %s', async (_label, succeeds) => {
+    vi.mocked(studiosApi.liveTransfer).mockResolvedValue(liveOffer());
+    const request = deferred(succeeds);
+    vi.mocked(studiosApi.withdrawTransfer).mockReturnValue(request.promise);
+    const user = userEvent.setup();
+    renderSection(<TransferStudioSection slug={SLUG} members={MEMBERS} />);
+    const withdraw = await screen.findByTestId('settings-transfer-withdraw');
+    await user.click(withdraw);
+
+    await waitFor(() => expect(withdraw).toHaveAttribute('aria-busy', 'true'));
+    expect(withdraw).toHaveAttribute('aria-disabled', 'true');
+
+    request.settle();
+    await waitFor(() => expect(withdraw).not.toHaveAttribute('aria-busy'));
+  });
+
+  /**
+   * Pick the maintainer and press Send, with the request held open.
+   * @param succeeds - Whether the held request resolves or rejects.
+   * @returns The Send button and the function that answers the request.
+   */
+  async function sendHeld(succeeds: boolean): Promise<{ send: HTMLElement; settle: () => void }> {
+    const request = deferred(succeeds);
+    vi.mocked(studiosApi.requestTransfer).mockReturnValue(request.promise);
+    const user = userEvent.setup();
+    renderSection(<TransferStudioSection slug={SLUG} members={MEMBERS} />);
+    await user.click(await screen.findByTestId('settings-transfer-open'));
+    await user.click(await screen.findByTestId('settings-transfer-select'));
+    await user.click(await screen.findByText(/Mo Maintainer/));
+    const send = screen.getByTestId('settings-transfer-send');
+    await user.click(send);
+    await waitFor(() => expect(send).toHaveAttribute('aria-busy', 'true'));
+    expect(send).toHaveAttribute('aria-disabled', 'true');
+    return { send, settle: request.settle };
+  }
+
+  it('marks Send busy while the offer is out, and closes the picker once it is sent', async () => {
+    const { settle } = await sendHeld(true);
+    settle();
+    await waitFor(() =>
+      expect(screen.queryByTestId('settings-transfer-dialog')).toBeNull(),
+    );
+  });
+
+  it('marks Send busy while the offer is out, and clears it when the offer is refused', async () => {
+    const { send, settle } = await sendHeld(false);
+    settle();
+    await waitFor(() => expect(send).not.toHaveAttribute('aria-busy'));
+    expect(screen.getByTestId('settings-transfer-dialog')).toBeInTheDocument();
+  });
 });

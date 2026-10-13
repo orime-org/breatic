@@ -10,7 +10,7 @@
 
 import { createUIMessageStream, stepCountIs } from "ai";
 import { streamTextRetry } from "@breatic/domain";
-import type { StopCondition, ToolSet, UIMessageChunk, UIMessageStreamWriter } from "ai";
+import type { StopCondition, Tool, ToolSet, UIMessageChunk, UIMessageStreamWriter } from "ai";
 
 import { getModel, reasoningFor, resolveProvider } from "@breatic/domain";
 import {
@@ -39,6 +39,7 @@ import type { Assembly } from "@server/agent/turn-budget.js";
 import { getContext } from "@breatic/core";
 import { logger } from "@breatic/core";
 import { toModelMessages } from "@server/agent/model-messages.js";
+import { withModelOutputs } from "@server/agent/stored-model-output.js";
 import { endingOf, endingWithNothingRun } from "@server/agent/tool-ending.js";
 import { writeAskUserText } from "@server/agent/ask-user-text.js";
 
@@ -198,6 +199,10 @@ export class MainAgent {
     // What the turn ended up running on, for the charge at the end. Settled
     // inside `execute`, which is where the config is assembled.
     let modelId = "";
+    // The tool set the model ran with, for writing down what each call gave
+    // it. Settled with `modelId`, after any fold, so it is the set of the call
+    // that produced the reply.
+    let turnTools: Readonly<Record<string, Tool>> = {};
 
     // Whether this turn ended by putting a question to the reader.
     //
@@ -370,6 +375,7 @@ export class MainAgent {
 
       const { agentConfig, messages } = assembly;
       modelId = agentConfig.modelId;
+      turnTools = agentConfig.tools;
       // The studio whose material a proposal may name: the project's owner,
       // which is also where a saved picture is charged.
       const studioId = await assetService.resolveOwnerStudioId(projectId);
@@ -635,6 +641,10 @@ export class MainAgent {
           replyParts[i] = { ...part, status: "error", failure: ending };
         }
 
+        // Every call is settled now, from either source of a success, so this
+        // is where what the model was given gets written down beside each.
+        const storedParts = await withModelOutputs(replyParts, turnTools, { conversationId });
+
         let creditsUsed = 0;
         const failures = await finalizeTurn({
           steps: {
@@ -645,7 +655,7 @@ export class MainAgent {
             persist: async () => {
               await messageRepo.addMessage(conversationId, {
                 role: "assistant",
-                parts: replyParts,
+                parts: storedParts,
                 turnIndex,
               });
             },

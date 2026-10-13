@@ -15,7 +15,6 @@ import {
   setNodeModel,
   setNodeParams,
   type CanvasEdge,
-  type CanvasNodeView,
 } from '@web/data/yjs/canvas-space';
 import { useCanvasContext } from '@web/spaces/canvas/canvas-context';
 import { IMAGE_SLOTS } from '@web/spaces/canvas/generate/image-slots';
@@ -49,6 +48,7 @@ import {
 import {
   asContentView,
   type ContentNodeView,
+  type NodeRef,
 } from '@web/data/yjs/node-view';
 import {
   resolveModelSwitch,
@@ -94,7 +94,7 @@ const EMPTY_TEXT: ReadonlyMap<string, string> = new Map();
 
 interface GeneratePanelContainerProps {
   /** Live canvas node views (target + reference sources). */
-  nodes: ReadonlyArray<Pick<CanvasNodeView, 'id' | 'data'>>;
+  nodes: ReadonlyArray<NodeRef>;
   /** Live canvas edges (incoming = references). */
   edges: ReadonlyArray<CanvasEdge>;
   /** Project the canvas space belongs to. */
