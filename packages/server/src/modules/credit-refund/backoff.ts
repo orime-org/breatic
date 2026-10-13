@@ -25,11 +25,11 @@ export function nextAttemptDelaySeconds(
 }
 
 /**
- * Whether a disposition has used up its retries (E11, `attempts_exhausted`).
- * @param attemptCount - Retries counted so far.
+ * Whether a disposition has used up its attempts (E11, `attempts_exhausted`).
+ * @param attemptCount - Attempts that ended without an answer so far (`attempt_count`), the first included.
  * @param config - The limit from `config/credit-refund.yaml`.
- * @param config.maxAttempts - How many retries a disposition gets.
- * @returns True when no retry is left.
+ * @param config.maxAttempts - How many attempts a disposition gets, the first included.
+ * @returns True when no attempt is left.
  */
 export function attemptsExhausted(attemptCount: number, config: { maxAttempts: number }): boolean {
   return attemptCount >= config.maxAttempts;

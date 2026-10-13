@@ -15,8 +15,8 @@ import { WINDOW_SECONDS, verifyInternalRequest } from "@server/middleware/intern
 /**
  * How long a nonce is remembered. The window compares whole seconds and
  * includes both ends, so a timestamp `ts` is accepted from `ts - 300` until
- * just before `ts + 301`; counting from the first acceptance, that is at most
- * 601 seconds, plus one for the floor.
+ * just before `ts + 301` (the floor adds that last second); counting from the
+ * first acceptance, that is at most 601 seconds, kept one more for margin.
  */
 const NONCE_TTL_SECONDS = 2 * WINDOW_SECONDS + 2;
 

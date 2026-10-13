@@ -47,7 +47,7 @@ const NOTHING_CREATED_STATUSES = new Set([400, 401, 403, 404]);
  * Read a create call's answer in the design's fixed order: a refund object;
  * `Stripe-Should-Retry: true`; the error code; the HTTP status.
  * @param answer - What the call came back with.
- * @param attemptCount - Calls made before this one (0 for the first).
+ * @param attemptCount - The disposition's `attempt_count`: attempts that already ended without an answer (E7, E16, E17); 0 until one has.
  * @returns A refund to classify, a final event, or a lookup to make.
  */
 export function classifyCreateAnswer(answer: CreateAnswer, attemptCount: number): CreateVerdict {

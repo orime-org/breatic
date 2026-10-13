@@ -4,10 +4,12 @@
 /**
  * The one definition of an unresolved failed refund (inner#1410 §5.3).
  *
- * The preview, the judgement table, both endpoints that answer for such a
- * refund, and the back office list all ask this function, so a refund cannot
- * be listed by one and refused by another. The daily reconcile selects the
- * same refunds in SQL (`reconcile.repo.ts`); a change here changes it too.
+ * The preview, the judgement tables (including both endpoints that answer for
+ * such a refund) and booking all ask this function, so a refund cannot be
+ * listed by one and refused by another. The daily reconcile selects the same
+ * refunds in SQL (`reconcile.repo.ts`), and so must any list outside this
+ * module (the back office reads the product DB itself); a change here changes
+ * those too.
  */
 
 import type { CreditLotLifecycle } from "@breatic/shared";

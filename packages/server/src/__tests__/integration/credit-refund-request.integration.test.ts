@@ -4,9 +4,10 @@
 /**
  * Asking for a refund, on real Postgres (task #14).
  *
- * This repository writes one transition of the refund flow: a buyer asks,
- * and the lot moves from `active` to `refund_pending`. Deciding what happens
- * next belongs to the back office.
+ * This suite covers the buyer's transition of the refund flow: a buyer asks,
+ * and the lot moves from `active` to `refund_pending`. The back office
+ * decides what happens next; the edges that carry it out are covered in
+ * credit-lot-refund-transitions.integration.test.ts.
  *
  * Four conditions gate the ask. Three are checked here on their own, so that
  * removing any of them turns a test red; the fourth — already in the refund
@@ -201,9 +202,9 @@ describe("a lot that meets every condition", () => {
   });
 
   it("keeps its balance and its ledger untouched", async () => {
-    // The credits leave the account when the money actually goes back, and
-    // that step is the back office's. Asking only freezes the lot, so there
-    // is nothing to undo if the ask is turned down.
+    // The credits leave the account when the money actually goes back
+    // (settleRefund). Asking only freezes the lot, so there is nothing to
+    // undo if the ask is turned down.
     const fx = await seedFixture();
     const lotId = await seedLot(fx, 100);
     const rowsBefore = await ledgerRows(lotId);

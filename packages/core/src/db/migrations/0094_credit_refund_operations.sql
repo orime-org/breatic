@@ -4,9 +4,11 @@
 -- One row of `credit_refund_operations` is one disposition, every step of it
 -- is appended to `credit_refund_operation_events`, `credit_refunds` copies
 -- what Stripe says about each refund of a pack's payment, and
--- `refund_mail_outbox` records each buyer email. All five tables are money
--- and mail records that live as long as the payment they describe, so none
--- carries deleted_at (NO_SOFT_DELETE, with reasons, in schema-timestamps).
+-- `refund_mail_outbox` records each buyer email; `credit_refund_reconcile_status`
+-- is the daily reconcile's progress row. The first four are money and mail
+-- records that live as long as the payment they describe, and the fifth is an
+-- internal marker, so none of the five carries deleted_at (NO_SOFT_DELETE,
+-- with reasons, in schema-timestamps).
 
 ALTER TABLE "credit_lots" ADD COLUMN "refund_requested_at" timestamp with time zone;--> statement-breakpoint
 

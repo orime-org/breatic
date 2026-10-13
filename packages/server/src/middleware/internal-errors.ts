@@ -3,8 +3,9 @@
 
 /**
  * The internal app's error exit (inner#1410 §4.6). Its callers are programs,
- * so every answer is `{ code, detail? }` with a stable code to branch on, and
- * `detail` is the English sentence of `server.internal.<key>`.
+ * so every answer is `{ code, detail? }` (a `stripe_blocks` refusal adds
+ * `reason`) with a stable code to branch on; `detail` is the English sentence
+ * of `server.internal.<key>`, or a domain `AppError`'s own message.
  */
 
 import type { ErrorHandler } from "hono";

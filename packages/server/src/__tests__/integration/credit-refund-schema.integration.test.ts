@@ -640,7 +640,7 @@ describe("notifications.type (0094)", () => {
   });
 });
 
-describe("the five new tables are money and mail records", () => {
+describe("none of the five new tables can be soft-deleted", () => {
   it("none can be soft-deleted, and every one has created_at", async () => {
     for (const table of NEW_TABLES) {
       const cols = await columnsOf(table);

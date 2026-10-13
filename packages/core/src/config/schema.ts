@@ -262,7 +262,7 @@ export const coreConfigSchema = z.object({
 
   // ── Internal API (back office) ───────────────────
   // A second listener in the server process that only the back office
-  // calls; every request carries an HMAC signature over the secret below.
+  // calls; every request carries an HMAC signature keyed with the secret below.
   // The host defaults to loopback; a container binds 0.0.0.0 and the
   // deployment's port publishing and security group decide who reaches it.
   INTERNAL_API_ENABLED: z

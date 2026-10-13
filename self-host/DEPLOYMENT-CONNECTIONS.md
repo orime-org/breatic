@@ -54,7 +54,7 @@ No environment variables are added or removed. Changing `VITE_APP_VERSION` requi
 | This `docker-compose.yml` | Binds `0.0.0.0` in the container; `expose: ["3002"]` only, no host port | `http://server:3002`, from a container on the same compose network |
 | Separate hosts in one VPC | Binds `0.0.0.0` in the container; publish `<private-ip>:3002:3002` | `http://<product private IP>:3002` |
 
-With separate hosts, the security group is the only network-level isolation: on Alibaba Cloud ECS, traffic to the public IP is translated to the primary private IP, and Docker-published ports bypass the host firewall. Allow inbound 3002 only from the back office server's private IP/32, and keep the product host's group free of intra-group allow rules (or use an enterprise security group). Every deployment's verification probes 3002 from the public IP; a successful connection fails the deployment.
+With separate hosts, the security group is the only network-level isolation: on Alibaba Cloud ECS, traffic to the public IP is translated to the primary private IP, and Docker-published ports bypass the host firewall. Allow inbound 3002 only from the back office server's private IP/32, and keep the product host's group free of intra-group allow rules (or use an enterprise security group). Make every deployment's verification probe 3002 from the public IP, and fail the deployment if the connection succeeds.
 
 Subscribe the product's Stripe webhook endpoint to `refund.created`, `refund.updated` and `refund.failed`.
 

@@ -17,7 +17,7 @@
  * | reject                                       | succeeded/rejected  | refund_pending → active     |
  * | settle                                       | succeeded/refunded  | → refunded, booked (§5.5)   |
  * | send_back                                    | succeeded/sent_back | refunding → refund_pending  |
- * | resolve_outside                              | succeeded/resolved  | unchanged, copies resolved  |
+ * | resolve_outside                              | succeeded/resolved  | refunded lot: unchanged, copies resolved; refund_pending / refunding: → refunded, booked (§5.5) |
  *
  * `notify` is fixed for five kinds (§5.1): approve, retry, reject always
  * true, send_back and resolve_outside always false; settle and refund_again

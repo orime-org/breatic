@@ -87,7 +87,11 @@ interface DeclineEvent {
 
 /** Who made an event and under which lease (§5.1 `detail.actor`, §7.1). */
 interface EventMeta {
-  /** The lease an executor's answer was made under; absent for the loop's events. */
+  /**
+   * The lease an executor attempt's answer was made under, whoever runs it;
+   * absent for events no attempt answers (claims, rechecks, deadlines,
+   * webhook, reconcile and request reads).
+   */
   leaseToken?: string;
   actor: Actor;
 }

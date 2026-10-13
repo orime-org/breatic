@@ -4,12 +4,13 @@
 /**
  * What the internal API's endpoints do (inner#1410 §4.5, §5.2, §5.3, §6.5).
  *
- * Every write reads Stripe first, outside any transaction, and copies what
- * it read in a transaction of its own (§6.4). Then one transaction takes the
- * key's advisory lock and the lot's row lock, looks the key up again, judges
- * against the copies, and inserts the disposition through
- * `transitionOperation`. A refusal throws {@link RefundRefusal} inside that
- * transaction: no disposition and no key are stored; the copies stay.
+ * Every disposition write replays a known key, then reads Stripe outside any
+ * transaction and copies what it read in a transaction of its own (§6.4).
+ * Then one transaction takes the key's advisory lock and the lot's row lock,
+ * looks the key up again, judges against the copies, and inserts the
+ * disposition through `transitionOperation`. A refusal throws
+ * {@link RefundRefusal} inside that transaction: no disposition and no key
+ * are stored; the copies stay. The mail resend reads no Stripe state.
  */
 
 import { db, logger } from "@breatic/core";

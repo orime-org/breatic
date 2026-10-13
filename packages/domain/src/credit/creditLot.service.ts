@@ -559,10 +559,11 @@ export async function designateLot(input: {
 /**
  * Ask for a refund on one purchase.
  *
- * This is the whole of the refund flow that lives here: the lot moves to
+ * This is the buyer's half of the refund flow: the lot moves to
  * `refund_pending` and stops being spendable or designatable. Deciding the
- * ask — paying the money back, or returning the lot to `active` — belongs to
- * the back office.
+ * ask belongs to the back office; the edges that carry the decision out
+ * (`markRefunding`, `settleRefund`, `sendBackRefund`, `rejectRefund`) are
+ * below.
  *
  * Five conditions gate it. The first asks whether anybody paid: a refund
  * returns money, and credits that were granted had none. Two come from the
@@ -582,9 +583,8 @@ export async function designateLot(input: {
  * long the decision took afterwards does not cost them the right.
  *
  * Nothing is written to the ledger and the balance does not move: the credits
- * leave the account when the money actually goes back, which is a step this
- * repository does not take. So an ask that is turned down needs nothing
- * undone.
+ * leave the account when the money actually goes back, in `settleRefund`.
+ * So an ask that is turned down needs nothing undone.
  * @param input - Which lot, on whose behalf.
  * @param input.lotId - The lot to ask about.
  * @param input.requestingUserId - Who is asking. Must be the buyer.
@@ -669,9 +669,11 @@ export async function markRefunding(
 /**
  * The money is back with the buyer: the lot is `refunded` and what was left
  * on it leaves the account in one ledger row.
- * @param input - Which lot, and the Stripe refund the booking rests on.
+ * @param input - Which lot, and what the booking rests on.
  * @param input.lotId - The lot being settled.
- * @param input.refundId - The refund recorded as the row's reference.
+ * @param input.refundId - The Stripe refund the booking rests on, or the
+ *   disposition's id when resolve_outside books a lot no refund succeeded
+ *   on; recorded as the row's reference.
  * @param tx - The transaction holding the lot's lock.
  * @returns The lot as it now stands.
  * @throws {AppError} 409 if the lot is neither `refunding` nor `refund_pending`.

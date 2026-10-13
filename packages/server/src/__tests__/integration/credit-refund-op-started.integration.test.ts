@@ -16,7 +16,7 @@
  * | E3    | awaiting_stripe, refund id kept                 | impossible                                  |
  * | E4    | needs_attention (reason given)                  | impossible                                  |
  * | E5    | awaiting_stripe, refund id kept                 | same                                        |
- * | E6    | succeeded/sent_back, lot back to refund_pending | needs_attention stripe_declined, lot stays  |
+ * | E6    | succeeded/sent_back, lot back to refund_pending; a refund whose copy once succeeded: needs_attention stripe_refund_failed_later, lot stays refunding | needs_attention stripe_declined, lot stays  |
  * | E7    | stays, attempt + 1, backoff, lease released     | same                                        |
  * | E8    | awaiting_stripe, no refund id                   | same                                        |
  * | E9    | needs_attention already_refunded_elsewhere      | same                                        |
