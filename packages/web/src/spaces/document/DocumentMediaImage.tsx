@@ -4,13 +4,16 @@
 /**
  * A picture in the body (inner#1127 A23): its final size held from the first
  * frame, a skeleton over it until it loads, and the stored preview shown
- * while that preview is sharp enough at the width the picture is shown.
+ * while that preview is sharp enough at the width the picture is shown. When
+ * the original replaces the preview, the skeleton covers the box again until
+ * the original arrives (inner#1472).
  */
 
 import * as React from 'react';
 
 import { Skeleton } from '@web/components/ui/skeleton';
 import { useDevicePixelRatio } from '@web/lib/device-pixel-ratio';
+import { cn } from '@web/lib/utils';
 import { usePreviewSrc, usePreviewWidth } from '@web/lib/preview-src';
 import { useLatchedFor, zoomedPastPreview } from '@web/spaces/canvas/nodes/_shared/preview-zoom';
 
@@ -66,25 +69,35 @@ export const DocumentMediaImage = React.memo(function DocumentMediaImage({
     () => (sizeKnown ? { aspectRatio: `${mediaWidth} / ${mediaHeight}` } : waiting ? UNKNOWN_SIZE : undefined),
     [sizeKnown, mediaWidth, mediaHeight, waiting],
   );
-  const showsOriginal = useLatchedFor(
+  const pastPreview = useLatchedFor(
     url,
     shownWidth !== null && zoomedPastPreview(shownWidth, 1, ratio, previewPixels),
   );
+  // An original that fails after its preview was shown gives the preview back.
+  const [failedOriginal, setFailedOriginal] = React.useState<string | null>(null);
+  const showsOriginal = pastPreview && failedOriginal !== url;
   const shown = usePreviewSrc(url, { enabled: sizeKnown && !showsOriginal });
   const src = shown.src ?? url;
   const { onLoad: recordPreview, onError: dropPreview, isOriginal } = shown;
+  // The address the element last finished loading. After the first load a
+  // new address is the original replacing the preview: until it arrives the
+  // stretched preview is hidden under the skeleton (inner#1472).
+  const [drawn, setDrawn] = React.useState<string | null>(null);
+  const replacing = !waiting && drawn !== null && drawn !== src;
 
   const onLoad = React.useCallback(
     (event: React.SyntheticEvent<HTMLImageElement>): void => {
       recordPreview(event);
+      setDrawn(src);
       onSettle(url);
     },
-    [recordPreview, onSettle, url],
+    [recordPreview, onSettle, url, src],
   );
   const onError = React.useCallback((): void => {
-    if (isOriginal) onSettle(url);
-    else dropPreview();
-  }, [isOriginal, dropPreview, onSettle, url]);
+    if (!isOriginal) dropPreview();
+    else if (replacing) setFailedOriginal(url);
+    else onSettle(url);
+  }, [isOriginal, replacing, dropPreview, onSettle, url]);
 
   return (
     <>
@@ -96,13 +109,13 @@ export const DocumentMediaImage = React.memo(function DocumentMediaImage({
         draggable={false}
         width={mediaWidth}
         height={mediaHeight}
-        className='block h-auto w-full'
+        className={cn('block h-auto w-full', replacing && 'opacity-0')}
         style={shape}
         onDoubleClick={onDoubleClick}
         onLoad={onLoad}
         onError={onError}
       />
-      {waiting ? (
+      {waiting || replacing ? (
         <Skeleton data-testid='doc-media-skeleton' className='pointer-events-none absolute inset-0 rounded-none' />
       ) : null}
     </>

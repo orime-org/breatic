@@ -309,6 +309,44 @@ describe('the loading state and the preview (A23)', () => {
     expect(element(editor).querySelector('img')!.getAttribute('src')).toBe(STORED);
   });
 
+  // inner#1472: the stretched preview is not shown while the original loads.
+  it('hides the preview behind a skeleton when the picture is widened past it, until the original loads', () => {
+    screenAt(2);
+    shownAt(240);
+    const editor = open('image', { url: STORED, mediaWidth: 1600, mediaHeight: 900 });
+    loadAt(editor, 576);
+    expect(within(element(editor)).queryByTestId('doc-media-skeleton')).toBeNull();
+
+    resizeTo(400);
+
+    const img = element(editor).querySelector('img')!;
+    expect(img.getAttribute('src')).toBe(STORED);
+    expect(within(element(editor)).getByTestId('doc-media-skeleton')).toBeTruthy();
+    expect(img.classList.contains('opacity-0')).toBe(true);
+
+    loadAt(editor, 1600);
+
+    expect(within(element(editor)).queryByTestId('doc-media-skeleton')).toBeNull();
+    expect(element(editor).querySelector('img')!.classList.contains('opacity-0')).toBe(false);
+  });
+
+  it('goes back to the preview when the original it was widened to fails', () => {
+    screenAt(2);
+    shownAt(240);
+    const editor = open('image', { url: STORED, mediaWidth: 1600, mediaHeight: 900 });
+    loadAt(editor, 576);
+    resizeTo(400);
+
+    act(() => {
+      element(editor).querySelector('img')!.dispatchEvent(new Event('error'));
+    });
+
+    const img = element(editor).querySelector('img')!;
+    expect(img.getAttribute('src')).toBe(`${STORED}.preview.webp`);
+    expect(within(element(editor)).queryByTestId('doc-media-skeleton')).toBeNull();
+    expect(img.classList.contains('opacity-0')).toBe(false);
+  });
+
   it('shows a stored picture with no stored size from its original, as the canvas does', () => {
     shownAt(720);
     const editor = open('image', { url: STORED });
