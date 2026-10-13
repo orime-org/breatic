@@ -52,6 +52,8 @@ let stream: Redis;
 let coordination: Redis;
 const servers: Server[] = [];
 const listeners: GroupConsumer[] = [];
+/** Documents an unload gate wrote to a rescue file. */
+const rescues: string[] = [];
 
 /**
  * One collab server wired as production wires it: change tracking,
@@ -86,10 +88,13 @@ async function startInstance(name: string): Promise<Hocuspocus> {
     instanceId: name,
     encode: (document: Y.Doc): Uint8Array => Y.encodeStateAsUpdate(document),
     storeNow: ({ name: docName }) => storeDocumentNow(server.hocuspocus, docName),
-    writeRescue: async () => "itest-rescue-unused",
+    writeRescue: async ({ documentName }) => {
+      rescues.push(documentName);
+      return "itest-rescue";
+    },
     writeRescueNote: async () => {},
     alert: async () => {},
-  retry: { windowMs: 0, intervalMs: 10, rescueReserveMs: 0 },
+  retry: { windowMs: 1500, intervalMs: 100, rescueReserveMs: 0 },
   shutdownDeadline: () => undefined,
 });
   await server.listen();
@@ -397,6 +402,76 @@ describe("task events across two collab instances", () => {
     await until(async () => (await pending(c)) === 0 && (await stream.xlen(c.streamKey)) === 2);
     expect((await readNode(c, nodeId)).taskCounts).toEqual(RUNNING);
     expect(await coordination.hget(`${c.keyPrefix}:collab:task-event-failures`, goodId!)).toBeNull();
+  });
+
+  it("writes 128 events of one document within seconds with a single consumer", async () => {
+    const nodeIds = Array.from({ length: 64 }, () => randomUUID());
+    const c = await newCase(Object.fromEntries(nodeIds.map((n) => [n, "image"])));
+    await publish(c, nodeIds.map((nodeId) => ({ nodeId, counts: RUNNING })));
+    await publish(c, nodeIds.map((nodeId) => ({ nodeId, counts: DONE })));
+    const startedAt = Date.now();
+    listen(c, instanceA, "a");
+    await until(async () => (await pending(c)) === 0 && (await stream.xlen(c.streamKey)) === 128);
+    expect(Date.now() - startedAt).toBeLessThan(10_000);
+    for (const node of await readNodes(c, nodeIds)) expect(node.taskCounts).toEqual(DONE);
+  });
+
+  it("writes several documents side by side", async () => {
+    const cases = await Promise.all(Array.from({ length: 8 }, () => newCase({ n: "image" })));
+    const streamKey = cases[0]!.streamKey;
+    for (const c of cases) {
+      for (const counts of [RUNNING, DONE]) {
+        await stream.xadd(streamKey, "*", "payload", JSON.stringify({ type: "node-task-counts", docName: c.docName, nodeId: "n", counts }));
+      }
+    }
+    const startedAt = Date.now();
+    listen(cases[0]!, instanceA, "a", { docConcurrency: 4 });
+    await until(async () => (await pending(cases[0]!)) === 0 && (await stream.xlen(streamKey)) === 16, 30_000);
+    // One document batch takes about two seconds (store plus the two one-second
+    // waits), so eight in a row would take sixteen.
+    expect(Date.now() - startedAt).toBeLessThan(10_000);
+  });
+
+  it("writes an older result that arrives after newer counts, and leaves the counts alone", async () => {
+    const nodeId = randomUUID();
+    const c = await newCase({ [nodeId]: "image" });
+    await publish(c, [{ nodeId, counts: RUNNING }]);
+    await publish(c, [{ nodeId, counts: DONE, result: { ...MEDIA, content: "late.png" } }], ["originId", "1-0"]);
+    listen(c, instanceA, "a");
+    await until(async () => (await pending(c)) === 0 && (await stream.xlen(c.streamKey)) === 2);
+    const node = await readNode(c, nodeId);
+    expect(node.content).toBe("late.png");
+    expect(node.taskCounts).toEqual(RUNNING);
+  });
+
+  it("writes a result delivered twice only once", async () => {
+    const nodeId = randomUUID();
+    const c = await newCase({ [nodeId]: "text" });
+    const [id] = await publish(c, [{ nodeId, counts: DONE, result: { ...MEDIA, content: "once" } }]);
+    await publish(c, [{ nodeId, counts: DONE, result: { ...MEDIA, content: "once" } }], ["originId", id!]);
+    listen(c, instanceA, "a");
+    listen(c, instanceB, "b");
+    await until(async () => (await pending(c)) === 0 && (await stream.xlen(c.streamKey)) === 2);
+    expect((await readNode(c, nodeId)).text).toBe("once");
+  });
+
+  it("stores a document whose unload met a peer's store lock, without a rescue file", async () => {
+    const docName = `project-${PID}/canvas-${randomUUID()}`;
+    const conn = await instanceA.openDirectConnection(docName, { context: { user: { id: "test" } } });
+    await conn.transact((doc) => doc.getMap("probe").set("k", "v"));
+    // The Redis extension's store lock, held by a peer past the extension's own
+    // one-second wait before unload. Redlock writes it in database 0.
+    const db0 = new URL(process.env.REDIS_COLLAB_URL!);
+    db0.pathname = "/0";
+    const lockHolder = createRedisClient(db0.toString(), { name: "itest-peer-lock" });
+    await lockHolder.set(`itest:hocuspocus:${docName}:lock`, "peer", "PX", 1400);
+    await conn.disconnect();
+    await until(async () => (await yjsRepo.fetchDocData(docName)) !== null, 10_000);
+    await lockHolder.quit();
+    const stored = new Y.Doc();
+    Y.applyUpdate(stored, (await yjsRepo.fetchDocData(docName))!);
+    expect(stored.getMap("probe").get("k")).toBe("v");
+    expect(rescues).not.toContain(docName);
   });
 
   it("acknowledges and skips an event for a document that is not a canvas Space", async () => {
