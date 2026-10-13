@@ -245,7 +245,8 @@ describe('the blocks a selection preview draws', () => {
   it('a word in a heading: the whole heading, with its level', () => {
     const editor = open([{ type: 'heading', props: { level: 2 }, content: 'Title words' }, { type: 'paragraph', content: 'after' }]);
     selectText(editor, ['Title words', 6], ['Title words', 11]);
-    const content = selectionPreviewContent(editor.prosemirrorView!)!;
+    const contentPlaced = selectionPreviewContent(editor.prosemirrorView!)!;
+    const content = contentPlaced.content;
     expect(blockTexts(content)).toEqual(['Title words']);
     const heading = content.querySelector('[data-content-type="heading"]')!;
     expect(heading.getAttribute('data-level')).toBe('2');
@@ -254,7 +255,7 @@ describe('the blocks a selection preview draws', () => {
   it('a selection across three paragraphs: those three', () => {
     const editor = open(['one', 'two', 'three', 'four'].map((content) => ({ type: 'paragraph', content })));
     selectText(editor, ['one', 1], ['three', 2]);
-    expect(blockTexts(selectionPreviewContent(editor.prosemirrorView!)!)).toEqual(['one', 'two', 'three']);
+    expect(blockTexts(selectionPreviewContent(editor.prosemirrorView!)!.content)).toEqual(['one', 'two', 'three']);
   });
 
   it('from a list item\'s child to the next item: the level holding both ends, each item with its children', () => {
@@ -263,7 +264,8 @@ describe('the blocks a selection preview draws', () => {
       { type: 'bulletListItem', content: 'item two' },
     ]);
     selectText(editor, ['child', 1], ['item two', 3]);
-    const content = selectionPreviewContent(editor.prosemirrorView!)!;
+    const contentPlaced = selectionPreviewContent(editor.prosemirrorView!)!;
+    const content = contentPlaced.content;
     expect(blockTexts(content)).toEqual(['item one', 'item two']);
     expect(content.textContent).toContain('child');
   });
@@ -272,7 +274,7 @@ describe('the blocks a selection preview draws', () => {
     const editor = open(['one', 'two', 'three'].map((content) => ({ type: 'paragraph', content })));
     const view = editor.prosemirrorView!;
     view.dispatch(view.state.tr.setSelection(new AllSelection(view.state.doc)));
-    expect(blockTexts(selectionPreviewContent(view)!)).toEqual(['one', 'two', 'three']);
+    expect(blockTexts(selectionPreviewContent(view)!.content)).toEqual(['one', 'two', 'three']);
   });
 
   it('a body edge selection ending on the last block: up to the last top-level block, with its children', () => {
@@ -282,7 +284,8 @@ describe('the blocks a selection preview draws', () => {
     ]);
     const view = editor.prosemirrorView!;
     view.dispatch(view.state.tr.setSelection(BodyEdgeSelection.create(view.state.doc, textPos(editor, 'one') + 1, 'end')));
-    const content = selectionPreviewContent(view)!;
+    const contentPlaced = selectionPreviewContent(view)!;
+    const content = contentPlaced.content;
     expect(blockTexts(content)).toEqual(['one', 'last']);
     expect(content.textContent).toContain('nested');
   });
@@ -290,7 +293,8 @@ describe('the blocks a selection preview draws', () => {
   it('a few words in a table cell: the table block, in the frame it scrolls in', () => {
     const editor = open([table([{ cells: ['a1', 'b1'] }, { cells: ['a2', 'b2'] }])]);
     selectText(editor, ['a1', 0], ['a1', 2]);
-    const content = selectionPreviewContent(editor.prosemirrorView!)!;
+    const contentPlaced = selectionPreviewContent(editor.prosemirrorView!)!;
+    const content = contentPlaced.content;
     const block = content.querySelector('[data-content-type="table"]')!;
     expect(block.querySelector('[data-radix-scroll-area-viewport] table')).not.toBeNull();
     expect(rowsOf(content)).toEqual([['a1:1x1', 'b1:1x1'], ['a2:1x1', 'b2:1x1']]);
@@ -307,7 +311,8 @@ describe('the rows a cell selection preview draws (design §4)', () => {
       });
     });
     selectCells(editor, 'a2', 'b2');
-    const content = selectionPreviewContent(editor.prosemirrorView!)!;
+    const contentPlaced = selectionPreviewContent(editor.prosemirrorView!)!;
+    const content = contentPlaced.content;
     expect([...content.querySelectorAll('col')].map((col) => col.style.width)).toEqual(['400px', '240px']);
     expect(content.querySelector('table')!.style.width).toBe('640px');
     expect(content.style.width).toBe('');
@@ -316,7 +321,7 @@ describe('the rows a cell selection preview draws (design §4)', () => {
   it('the selected cells\' rows, every column', () => {
     const editor = open([table([{ cells: ['a1', 'b1', 'c1'] }, { cells: ['a2', 'b2', 'c2'] }, { cells: ['a3', 'b3', 'c3'] }])]);
     selectCells(editor, 'b2', 'c3');
-    expect(rowsOf(selectionPreviewContent(editor.prosemirrorView!)!)).toEqual([
+    expect(rowsOf(selectionPreviewContent(editor.prosemirrorView!)!.content)).toEqual([
       ['a2:1x1', 'b2:1x1', 'c2:1x1'],
       ['a3:1x1', 'b3:1x1', 'c3:1x1'],
     ]);
@@ -325,7 +330,7 @@ describe('the rows a cell selection preview draws (design §4)', () => {
   it('A1:A2 merged, B2:C2 selected: row 2 alone, the merged cell an empty cell of its size', () => {
     const editor = open([table([{ cells: [merged('tall', { rowspan: 2 }), 'b1', 'c1'] }, { cells: ['b2', 'c2'] }])]);
     selectCells(editor, 'b2', 'c2');
-    expect(rowsOf(selectionPreviewContent(editor.prosemirrorView!)!)).toEqual([['∅:1x1', 'b2:1x1', 'c2:1x1']]);
+    expect(rowsOf(selectionPreviewContent(editor.prosemirrorView!)!.content)).toEqual([['∅:1x1', 'b2:1x1', 'c2:1x1']]);
   });
 
   it('A2:A3 merged, B2:C2 selected: its rowspan cut to 1, its words kept', () => {
@@ -333,13 +338,13 @@ describe('the rows a cell selection preview draws (design §4)', () => {
       table([{ cells: ['a1', 'b1', 'c1'] }, { cells: [merged('tall', { rowspan: 2 }), 'b2', 'c2'] }, { cells: ['b3', 'c3'] }]),
     ]);
     selectCells(editor, 'b2', 'c2');
-    expect(rowsOf(selectionPreviewContent(editor.prosemirrorView!)!)).toEqual([['tall:1x1', 'b2:1x1', 'c2:1x1']]);
+    expect(rowsOf(selectionPreviewContent(editor.prosemirrorView!)!.content)).toEqual([['tall:1x1', 'b2:1x1', 'c2:1x1']]);
   });
 
   it('A2:B2 merged, B1:C2 selected: rows 1 and 2, the merged cell whole with its words', () => {
     const editor = open([table([{ cells: ['a1', 'b1', 'c1'] }, { cells: [merged('wide', { colspan: 2 }), 'c2'] }])]);
     selectCells(editor, 'b1', 'c2');
-    expect(rowsOf(selectionPreviewContent(editor.prosemirrorView!)!)).toEqual([
+    expect(rowsOf(selectionPreviewContent(editor.prosemirrorView!)!.content)).toEqual([
       ['a1:1x1', 'b1:1x1', 'c1:1x1'],
       ['wide:2x1', 'c2:1x1'],
     ]);
@@ -348,7 +353,7 @@ describe('the rows a cell selection preview draws (design §4)', () => {
   it('B1:B2 merged, A2:C2 selected: row 2 alone, the B cell empty with a rowspan of 1', () => {
     const editor = open([table([{ cells: ['a1', merged('tall', { rowspan: 2 }), 'c1'] }, { cells: ['a2', 'c2'] }])]);
     selectCells(editor, 'a2', 'c2');
-    expect(rowsOf(selectionPreviewContent(editor.prosemirrorView!)!)).toEqual([['a2:1x1', '∅:1x1', 'c2:1x1']]);
+    expect(rowsOf(selectionPreviewContent(editor.prosemirrorView!)!.content)).toEqual([['a2:1x1', '∅:1x1', 'c2:1x1']]);
   });
 
   it('A1:B2 merged, from B3 to C2: rows 2 and 3, the merged cell empty, two columns wide, one row tall', () => {
@@ -360,7 +365,7 @@ describe('the rows a cell selection preview draws (design §4)', () => {
       ]),
     ]);
     selectCells(editor, 'b3', 'c2');
-    expect(rowsOf(selectionPreviewContent(editor.prosemirrorView!)!)).toEqual([
+    expect(rowsOf(selectionPreviewContent(editor.prosemirrorView!)!.content)).toEqual([
       ['∅:2x1', 'c2:1x1'],
       ['a3:1x1', 'b3:1x1', 'c3:1x1'],
     ]);
@@ -371,7 +376,7 @@ describe('the rows a cell selection preview draws (design §4)', () => {
       table([{ cells: ['a1', 'b1', 'c1'] }, { cells: ['a2', merged('wide', { colspan: 2 })] }, { cells: ['a3', 'b3', 'c3'] }]),
     ]);
     selectCells(editor, 'a2', 'b3');
-    expect(rowsOf(selectionPreviewContent(editor.prosemirrorView!)!)).toEqual([
+    expect(rowsOf(selectionPreviewContent(editor.prosemirrorView!)!.content)).toEqual([
       ['a2:1x1', 'wide:2x1'],
       ['a3:1x1', 'b3:1x1', 'c3:1x1'],
     ]);
@@ -380,7 +385,7 @@ describe('the rows a cell selection preview draws (design §4)', () => {
   it('A2:B2 merged, C1:C2 selected: rows 1 and 2, the merged cell whole with its words', () => {
     const editor = open([table([{ cells: ['a1', 'b1', 'c1'] }, { cells: [merged('wide', { colspan: 2 }), 'c2'] }])]);
     selectCells(editor, 'c1', 'c2');
-    expect(rowsOf(selectionPreviewContent(editor.prosemirrorView!)!)).toEqual([
+    expect(rowsOf(selectionPreviewContent(editor.prosemirrorView!)!.content)).toEqual([
       ['a1:1x1', 'b1:1x1', 'c1:1x1'],
       ['wide:2x1', 'c2:1x1'],
     ]);
@@ -393,10 +398,27 @@ describe('the caption preview', () => {
     input.className = 'mt-1.5 w-full text-center';
     input.value = 'a caption being typed';
     document.body.append(input);
-    const content = captionPreviewContent(input);
+    const content = captionPreviewContent(input).content as HTMLInputElement;
     expect(content).not.toBe(input);
     expect(content.value).toBe('a caption being typed');
     expect(content.style.marginTop).toBe('0px');
+  });
+
+  it('is drawn without what the body shows for the moment, as every preview is', () => {
+    const editor = buildDocumentEditor({ fragment: documentBodyFragment(new Y.Doc()) });
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    editor.mount(host);
+    try {
+      const input = document.createElement('input');
+      input.setAttribute('data-selected', 'true');
+      editor.prosemirrorView!.dom.append(input);
+      const placed = captionPreviewContent(input);
+      buildDragPreview(editor.prosemirrorView!, placed, () => ({ width: 100, height: 20 }));
+      expect(placed.content.hasAttribute('data-selected')).toBe(false);
+    } finally {
+      editor.unmount();
+    }
   });
 });
 
@@ -458,7 +480,10 @@ describe('a preview draws the content, not what the body shows for the moment (C
     ]);
     editor.prosemirrorView!.focus();
     selectText(editor, ['one', 1], ['two', 2]);
-    const content = selectionPreviewContent(editor.prosemirrorView!)!;
+    const contentPlaced = selectionPreviewContent(editor.prosemirrorView!)!;
+    const content = contentPlaced.content;
+    // What the body shows for the moment comes off where the preview is built.
+    buildDragPreview(editor.prosemirrorView!, contentPlaced, () => ({ width: 100, height: 20 }));
     expect(editor.prosemirrorView!.dom.querySelector('.doc-in-selection')).not.toBeNull();
     expect(statePaint(content)).toEqual([]);
   });
@@ -468,7 +493,10 @@ describe('a preview draws the content, not what the body shows for the moment (C
     const view = editor.prosemirrorView!;
     view.focus();
     view.dispatch(view.state.tr.setSelection(BodyEdgeSelection.create(view.state.doc, textPos(editor, 'one'), 'end')));
-    const content = selectionPreviewContent(view)!;
+    const contentPlaced = selectionPreviewContent(view)!;
+    const content = contentPlaced.content;
+    // What the body shows for the moment comes off where the preview is built.
+    buildDragPreview(view, contentPlaced, () => ({ width: 100, height: 20 }));
     expect(view.dom.querySelector('[data-show-selection]')).not.toBeNull();
     expect(statePaint(content)).toEqual([]);
     expect(blockTexts(content)).toEqual(['one', 'two']);
@@ -478,7 +506,10 @@ describe('a preview draws the content, not what the body shows for the moment (C
     const editor = open([table([{ cells: ['a1', 'b1'] }, { cells: ['a2', 'b2'] }])]);
     editor.prosemirrorView!.focus();
     selectCells(editor, 'a1', 'b1');
-    const content = selectionPreviewContent(editor.prosemirrorView!)!;
+    const contentPlaced = selectionPreviewContent(editor.prosemirrorView!)!;
+    const content = contentPlaced.content;
+    // What the body shows for the moment comes off where the preview is built.
+    buildDragPreview(editor.prosemirrorView!, contentPlaced, () => ({ width: 100, height: 20 }));
     expect(editor.prosemirrorView!.dom.querySelector('.selectedCell')).not.toBeNull();
     expect(statePaint(content)).toEqual([]);
   });
@@ -521,7 +552,10 @@ describe('a preview draws the content, not what the body shows for the moment (C
     view.updateState(view.state.reconfigure({ plugins: [...view.state.plugins, marks] }));
     view.focus();
     selectText(editor, ['one', 0], ['two', 3]);
-    const content = selectionPreviewContent(view)!;
+    const contentPlaced = selectionPreviewContent(view)!;
+    const content = contentPlaced.content;
+    // What the body shows for the moment comes off where the preview is built.
+    buildDragPreview(view, contentPlaced, () => ({ width: 100, height: 20 }));
     expect(view.dom.querySelector('.probe-state .collaboration-carets__selection')).not.toBeNull();
     expect(view.dom.querySelector('.collaboration-carets__caret')).not.toBeNull();
     expect(content.querySelector('.probe-state, [data-probe-state], .collaboration-carets__selection, .collaboration-carets__caret, .ProseMirror-widget')).toBeNull();
@@ -570,7 +604,8 @@ describe('a preview draws the content, not what the body shows for the moment (C
       { type: 'paragraph', content: 'said', props: { quoted: true } },
     ]);
     selectText(editor, ['first', 1], ['said', 2]);
-    const content = selectionPreviewContent(editor.prosemirrorView!)!;
+    const contentPlaced = selectionPreviewContent(editor.prosemirrorView!)!;
+    const content = contentPlaced.content;
     expect(content.querySelector('[data-doc-number]')).not.toBeNull();
     expect(content.querySelector('[data-bullet-level]')).not.toBeNull();
     expect(content.querySelector('[data-label]')).not.toBeNull();
@@ -589,9 +624,10 @@ describe('a preview draws the content, not what the body shows for the moment (C
     const group = view.dom.querySelector('.bn-block-group .bn-block-group')!;
     Object.defineProperty(group, 'getBoundingClientRect', { value: () => ({ width: 696, height: 0, top: 0, left: 0, right: 696, bottom: 0 }) });
     selectText(editor, ['b', 0], ['b', 1]);
-    const content = selectionPreviewContent(view)!;
+    const contentPlaced = selectionPreviewContent(view)!;
+    const content = contentPlaced.content;
     expect(quoteDepths(content)).toEqual(['0', '1']);
-    buildDragPreview(view, content, () => ({ width: 696, height: 40 }));
+    buildDragPreview(view, contentPlaced, () => ({ width: 696, height: 40 }));
     expect(content.style.width).toBe('696px');
   });
 
@@ -600,7 +636,8 @@ describe('a preview draws the content, not what the body shows for the moment (C
       { type: 'paragraph', content: 'a', children: [{ ...(table([{ cells: ['x1', 'y1'] }]) as object), props: { quoted: true } }] },
     ]);
     const view = editor.prosemirrorView!;
-    const content = tableLinePreviewContent(view, nodeOf(editor, 'tableCell', 'x1'), 'row')!;
+    const contentPlaced = tableLinePreviewContent(view, nodeOf(editor, 'tableCell', 'x1'), 'row')!;
+    const content = contentPlaced.content;
     expect(quoteDepths(content)).toEqual(['0']);
   });
 });

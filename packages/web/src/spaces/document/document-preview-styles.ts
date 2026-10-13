@@ -25,21 +25,15 @@ import type { EditorView } from '@tiptap/pm/view';
 
 import { withoutViewState } from '@web/spaces/document/document-view-state';
 
-/** Where a preview's content stands in the body. */
-interface Standing {
+/** Content copied out of the body for a drag preview, and where it stands there. */
+export interface PlacedContent {
+  /** The copied content. */
+  readonly content: HTMLElement;
   /** The element it takes the place of; null when it sits where the body's own block group does. */
   readonly place: Element | null;
   /** The element it is drawn as wide as; null when the body has none to go by. */
   readonly sizedLike: Element | null;
 }
-
-declare const PLACED: unique symbol;
-
-/** Content copied out of the body for a drag preview, its standing recorded by {@link placed}. */
-export type PlacedContent<Element extends HTMLElement = HTMLElement> = Element & { readonly [PLACED]: true };
-
-/** Each placed content's standing. */
-const standings = new WeakMap<Element, Standing>();
 
 /** The class `index.css` lays out and draws nothing of. */
 const SHELL_CLASS = 'doc-preview-shell';
@@ -53,45 +47,17 @@ const SHELL_CLASS = 'doc-preview-shell';
 const NOT_COPIED = ['id', 'data-testid', 'data-space-outlet'];
 
 /**
- * Records where content copied out of the body stands there: the element it
- * takes the place of, and the element it is drawn as wide as. A preview takes
- * only content so recorded, which is laid out at that width where it is
- * drawn, as in the body (inner#1350 design §4).
- * @param content - The copied content.
- * @param place - The element it takes the place of; null when it sits where the body's own block group does.
- * @param sizedLike - The element it is drawn as wide as; null when the body has none to go by.
- * @returns The content.
- */
-export function placed<Content extends HTMLElement>(
-  content: Content,
-  place: Element | null,
-  sizedLike: Element | null,
-): PlacedContent<Content> {
-  standings.set(content, { place, sizedLike });
-  return content as PlacedContent<Content>;
-}
-
-/**
- * The width placed content is drawn at in the body.
- * @param content - The content.
- * @returns The width, 0 when the body has none to go by.
- */
-export function drawnWidthOf(content: PlacedContent): number {
-  return standings.get(content)?.sizedLike?.getBoundingClientRect().width ?? 0;
-}
-
-/**
  * Puts content in shallow copies of the elements it sits in in the body, from
- * just under the page's body down, all without the moment's state. The
- * content itself had its state taken off when it was copied.
+ * just under the page's body down, and takes the moment's state off the copies
+ * and the content alike (`document-view-state.ts`).
  * @param view - The editor view.
- * @param content - The content, detached.
+ * @param placed - The content and where it stands in the body.
  * @returns The outermost copy, holding the content.
  */
-export function inPlaceOf(view: EditorView, content: PlacedContent): Element {
+export function inPlaceOf(view: EditorView, placed: PlacedContent): Element {
   const body = view.dom.ownerDocument.body;
   const ancestors: Element[] = [];
-  for (let at: Element | null = standings.get(content)?.place?.parentElement ?? view.dom; at !== null && at !== body; at = at.parentElement) {
+  for (let at: Element | null = placed.place?.parentElement ?? view.dom; at !== null && at !== body; at = at.parentElement) {
     ancestors.unshift(at);
   }
   const shells = ancestors.map((ancestor) => {
@@ -105,7 +71,7 @@ export function inPlaceOf(view: EditorView, content: PlacedContent): Element {
     return shell;
   });
   const outermost = shells[0]!;
+  shells.at(-1)!.append(placed.content);
   withoutViewState(view, outermost);
-  shells.at(-1)!.append(content);
   return outermost;
 }

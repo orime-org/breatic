@@ -604,9 +604,9 @@ body {
 
   /* ---- A drag preview ----
      The lift itself. Every preview — a row, a table line, what is selected, a
-     caption's words — is a copy of the body's own content inside a layer that
-     carries the editor element's classes, so it already has the body's type and
-     spacing (`document-drag-preview.ts`) — all that is missing is that it
+     caption's words — is a copy of the body's own content inside copies of the
+     elements it sits in in the body (`document-preview-styles.ts`), so it
+     already has the body's type and spacing — all that is missing is that it
      should read as floating rather than as a second copy of the content.
 
      The translucency has to live on a CHILD: Chrome ignores `opacity` on the
@@ -618,8 +618,9 @@ body {
      The root itself is opaque and fixed at the viewport's top left: Firefox and
      WebKit draw the root's own opacity into the image, and Safari cancels a
      drag whose image is wholly off screen. It is never painted on the page:
-     `buildDragPreview` takes it off in the animation frame after `dragstart`,
-     and the browser has the image by then (inner#1350 design §4). */
+     `buildDragPreview` takes it off in the next animation frame or at the
+     drag's next event, whichever comes first, and the browser has the image
+     by then (inner#1350 design §4). */
   .doc-drag-preview {
     position: fixed;
     top: 0;

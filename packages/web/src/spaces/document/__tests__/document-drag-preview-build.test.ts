@@ -23,7 +23,7 @@ import {
   tableLinePreviewContent,
   tableRowsPreviewContent,
 } from '@web/spaces/document/document-drag-preview';
-import { placed } from '@web/spaces/document/document-preview-styles';
+import { QUOTE_RUN_ATTRIBUTES } from '@web/spaces/document/document-decorations';
 
 type Editor = ReturnType<typeof buildDocumentEditor>;
 
@@ -155,8 +155,9 @@ describe('previewScale', () => {
 describe('buildDragPreview', () => {
   it('sizes the root to the scaled size and scales an inner layer, which carries no class', () => {
     const editor = open([{ type: 'paragraph', content: 'one' }]);
-    const content = placed(document.createElement('div'), null, null);
-    const root = buildDragPreview(editor.prosemirrorView!, content, () => ({ width: 1024, height: 256 }));
+    const contentPlaced = { content: document.createElement('div'), place: null, sizedLike: null };
+    const content = contentPlaced.content;
+    const root = buildDragPreview(editor.prosemirrorView!, contentPlaced, () => ({ width: 1024, height: 256 }));
     expect(root.isConnected).toBe(true);
     // Its own class: the library's carries `opacity: 0.001`, and Firefox and
     // WebKit draw the root's opacity into the image (inner#1350 design §4).
@@ -180,7 +181,7 @@ describe('buildDragPreview', () => {
     const editor = open([{ type: 'paragraph', content: 'one' }]);
     const setDragImage = vi.fn();
 
-    setDragPreview(editor.prosemirrorView!, { setDragImage } as unknown as DataTransfer, placed(document.createElement('div'), null, null));
+    setDragPreview(editor.prosemirrorView!, { setDragImage } as unknown as DataTransfer, { content: document.createElement('div'), place: null, sizedLike: null });
 
     expect(setDragImage).toHaveBeenCalledTimes(1);
     const [root, x, y] = setDragImage.mock.calls[0] as [HTMLElement, number, number];
@@ -190,7 +191,7 @@ describe('buildDragPreview', () => {
 
   it('leaves the page in the animation frame after it is built, once the browser has taken the image', async () => {
     const editor = open([{ type: 'paragraph', content: 'one' }]);
-    const root = buildDragPreview(editor.prosemirrorView!, placed(document.createElement('div'), null, null), () => ({ width: 100, height: 20 }));
+    const root = buildDragPreview(editor.prosemirrorView!, { content: document.createElement('div'), place: null, sizedLike: null }, () => ({ width: 100, height: 20 }));
     expect(root.isConnected).toBe(true);
     await new Promise((resolve) => requestAnimationFrame(resolve));
     expect(root.isConnected).toBe(false);
@@ -198,9 +199,10 @@ describe('buildDragPreview', () => {
 
   it('stands its first block flush against its top, as the document\'s first block stands, and leaves the space between blocks', () => {
     const editor = open([{ type: 'paragraph', content: 'one' }]);
-    const content = placed(document.createElement('div'), null, null);
+    const contentPlaced = { content: document.createElement('div'), place: null, sizedLike: null };
+    const content = contentPlaced.content;
     content.innerHTML = '<div class="bn-block-content">first</div><div class="bn-block-content">second</div>';
-    const root = buildDragPreview(editor.prosemirrorView!, content, () => ({ width: 100, height: 40 }));
+    const root = buildDragPreview(editor.prosemirrorView!, contentPlaced, () => ({ width: 100, height: 40 }));
     const [first, second] = [...root.querySelectorAll<HTMLElement>('.bn-block-content')];
     expect(first!.style.getPropertyValue('--doc-block-lift')).toBe('0px');
     expect(second!.style.getPropertyValue('--doc-block-lift')).toBe('');
@@ -209,8 +211,9 @@ describe('buildDragPreview', () => {
   it('puts its content in copies of every element it sits in in the body, from just under the page body', () => {
     const editor = open([{ type: 'paragraph', content: 'one' }]);
     const view = editor.prosemirrorView!;
-    const content = blockPreviewContent(view, [view.dom.querySelector('.bn-block-outer')!.cloneNode(true) as Element]);
-    const root = buildDragPreview(view, content, () => ({ width: 100, height: 20 }));
+    const contentPlaced = blockPreviewContent(view, [view.dom.querySelector('.bn-block-outer')!.cloneNode(true) as Element]);
+    const content = contentPlaced.content;
+    const root = buildDragPreview(view, contentPlaced, () => ({ width: 100, height: 20 }));
     const layer = root.firstElementChild!;
     const shells: Element[] = [];
     for (let at = content.parentElement; at !== null && at !== layer; at = at.parentElement) shells.unshift(at);
@@ -231,8 +234,8 @@ describe('buildDragPreview', () => {
     document.head.append(sheet);
     view.dom.parentElement!.classList.add('preview-ancestor');
     try {
-      const content = blockPreviewContent(view, [view.dom.querySelector('.bn-block-outer')!.cloneNode(true) as Element]);
-      const root = buildDragPreview(view, content, () => ({ width: 100, height: 20 }));
+      const contentPlaced = blockPreviewContent(view, [view.dom.querySelector('.bn-block-outer')!.cloneNode(true) as Element]);
+      const root = buildDragPreview(view, contentPlaced, () => ({ width: 100, height: 20 }));
       const block = root.querySelector<HTMLElement>('.bn-block-content')!;
       expect(getComputedStyle(block).letterSpacing).toBe('7px');
       expect(block.style.getPropertyValue('letter-spacing')).toBe('');
@@ -267,8 +270,9 @@ describe('buildDragPreview', () => {
     view.dom.id = 'preview-editor';
     view.dom.setAttribute('data-testid', 'preview-editor');
     view.dom.setAttribute('data-space-outlet', 'space-1');
-    const content = blockPreviewContent(view, [view.dom.querySelector('.bn-block-outer')!.cloneNode(true) as Element]);
-    const root = buildDragPreview(view, content, () => ({ width: 100, height: 20 }));
+    const contentPlaced = blockPreviewContent(view, [view.dom.querySelector('.bn-block-outer')!.cloneNode(true) as Element]);
+    const content = contentPlaced.content;
+    const root = buildDragPreview(view, contentPlaced, () => ({ width: 100, height: 20 }));
     const copy = content.parentElement!;
     expect(copy.classList.contains('bn-editor')).toBe(true);
     expect(copy.classList.contains('ProseMirror-focused')).toBe(false);
@@ -298,8 +302,9 @@ describe('buildDragPreview', () => {
     const editor = open([{ type: 'paragraph', content: 'one' }]);
     const sized = document.createElement('div');
     sized.getBoundingClientRect = () => ({ width: 333, height: 20 }) as DOMRect;
-    const content = placed(document.createElement('div'), null, sized);
-    buildDragPreview(editor.prosemirrorView!, content, () => ({ width: 333, height: 20 }));
+    const contentPlaced = { content: document.createElement('div'), place: null, sizedLike: sized };
+    const content = contentPlaced.content;
+    buildDragPreview(editor.prosemirrorView!, contentPlaced, () => ({ width: 333, height: 20 }));
     expect(content.style.width).toBe('333px');
   });
 
@@ -311,10 +316,11 @@ describe('buildDragPreview', () => {
 
   it('stands its last block flush against its bottom, and leaves the space between blocks', () => {
     const editor = open([{ type: 'paragraph', content: 'one' }]);
-    const content = placed(document.createElement('div'), null, null);
+    const contentPlaced = { content: document.createElement('div'), place: null, sizedLike: null };
+    const content = contentPlaced.content;
     content.innerHTML =
       '<div class="bn-block-content">first</div><div><div class="bn-block-content">nested</div></div><div class="bn-block-content">last</div>';
-    const root = buildDragPreview(editor.prosemirrorView!, content, () => ({ width: 100, height: 60 }));
+    const root = buildDragPreview(editor.prosemirrorView!, contentPlaced, () => ({ width: 100, height: 60 }));
     const blocks = [...root.querySelectorAll<HTMLElement>('.bn-block-content')];
     expect(blocks.map((block) => block.style.getPropertyValue('--doc-block-drop'))).toEqual(['', '', '0px']);
   });
@@ -327,8 +333,9 @@ describe('blockPreviewContent', () => {
     const group = view.dom.querySelector('.bn-block-group')!;
     Object.defineProperty(group, 'getBoundingClientRect', { value: () => ({ width: 720, height: 0, top: 0, left: 0, right: 720, bottom: 0 }) });
     const block = view.dom.querySelector('.bn-block-outer')!.cloneNode(true) as HTMLElement;
-    const content = blockPreviewContent(view, [block]);
-    buildDragPreview(view, content, () => ({ width: 720, height: 20 }));
+    const contentPlaced = blockPreviewContent(view, [block]);
+    const content = contentPlaced.content;
+    buildDragPreview(view, contentPlaced, () => ({ width: 720, height: 20 }));
     expect(content.style.width).toBe('720px');
     expect(content.textContent).toContain('one');
   });
@@ -342,7 +349,8 @@ describe('blockPreviewContent', () => {
       '<div data-testid="doc-media-row" class="flex w-full justify-end">' +
         '<div data-media-box="" style="width: 240px"><div data-media-chrome="">bar</div><img alt=""></div></div>',
     );
-    const content = blockPreviewContent(view, [block]);
+    const contentPlaced = blockPreviewContent(view, [block]);
+    const content = contentPlaced.content;
     expect(content.hasAttribute('data-media-box')).toBe(true);
     expect(content.querySelector('[data-media-chrome]')).toBeNull();
     expect(content.querySelector('img')).not.toBeNull();
@@ -357,7 +365,9 @@ describe('blockPreviewContent', () => {
       '<div data-testid="doc-media-row" class="flex w-full justify-end">' +
         '<div data-media-box="" data-hovered="true" data-selected="true" style="width: 240px"><img alt=""></div></div>',
     );
-    const content = blockPreviewContent(view, [block]);
+    const contentPlaced = blockPreviewContent(view, [block]);
+    const content = contentPlaced.content;
+    buildDragPreview(view, contentPlaced, () => ({ width: 240, height: 120 }));
     expect(content.hasAttribute('data-media-box')).toBe(true);
     expect(content.hasAttribute('data-hovered')).toBe(false);
     expect(content.hasAttribute('data-selected')).toBe(false);
@@ -372,9 +382,10 @@ describe('blockPreviewContent', () => {
     view.dom.append(original);
     original.querySelector('[data-media-box]')!.getBoundingClientRect = () => ({ width: 768, height: 84 }) as DOMRect;
     const block = blockOf('audio-1', 'audio', '<div data-media-box="" class="w-full"><div data-testid="media-player"></div></div>');
-    const content = blockPreviewContent(view, [block]);
+    const contentPlaced = blockPreviewContent(view, [block]);
+    const content = contentPlaced.content;
     expect(content.hasAttribute('data-media-box')).toBe(true);
-    buildDragPreview(view, content, () => ({ width: 768, height: 84 }));
+    buildDragPreview(view, contentPlaced, () => ({ width: 768, height: 84 }));
     expect(content.style.width).toBe('768px');
   });
 
@@ -387,7 +398,8 @@ describe('blockPreviewContent', () => {
       'parent words',
       blockOf('m1', 'image', '<div data-media-box=""><img alt=""></div>').outerHTML,
     );
-    const content = blockPreviewContent(view, [block]);
+    const contentPlaced = blockPreviewContent(view, [block]);
+    const content = contentPlaced.content;
     expect(content.matches('[data-media-box]')).toBe(false);
     expect(content.textContent).toContain('parent words');
     expect(content.querySelector('[data-media-box]')).not.toBeNull();
@@ -402,7 +414,8 @@ describe('blockPreviewContent', () => {
       '<div data-media-box=""><img alt=""></div>',
       blockOf('p1', 'paragraph', 'child words').outerHTML,
     );
-    const content = blockPreviewContent(view, [block]);
+    const contentPlaced = blockPreviewContent(view, [block]);
+    const content = contentPlaced.content;
     expect(content.matches('[data-media-box]')).toBe(false);
     expect(content.textContent).toContain('child words');
   });
@@ -411,7 +424,8 @@ describe('blockPreviewContent', () => {
     const editor = open([{ type: 'paragraph', content: 'x' }]);
     const view = editor.prosemirrorView!;
     const block = blockOf('p1', 'bulletListItem', 'parent', blockOf('p2', 'bulletListItem', 'child').outerHTML);
-    const content = blockPreviewContent(view, [block]);
+    const contentPlaced = blockPreviewContent(view, [block]);
+    const content = contentPlaced.content;
     // BlockNote indents a group only inside another group (`Block.css`
     // `.bn-block-group .bn-block-group`).
     const nested = content.querySelector('.bn-block .bn-block-group')!;
@@ -431,7 +445,8 @@ describe('blockPreviewContent', () => {
       '<span class="doc-table-overflow-edge" data-overflow-edge="left"></span>' +
       '<span class="doc-table-overflow-edge" data-overflow-edge="right" data-on=""></span>' +
       '</div></div></div>';
-    const content = blockPreviewContent(view, [block]);
+    const contentPlaced = blockPreviewContent(view, [block]);
+    const content = contentPlaced.content;
     expect(cellTexts(content)).toEqual([['a1', 'b1']]);
     expect(content.querySelector('[data-radix-scroll-area-viewport] table')).not.toBeNull();
     // Shown only while the pointer is over the frame or it scrolls: what the
@@ -480,7 +495,8 @@ describe('blockPreviewContent', () => {
     scrollFrame(editor, 150);
     layOut(editor, { ab: [-30, 230], c1: [230, 380], a2: [-30, 90], b2: [90, 230], c2: [230, 380] });
     const row = view.dom.querySelector('.bn-block-outer')!;
-    const content = blockPreviewContent(view, [row.cloneNode(true) as Element]);
+    const contentPlaced = blockPreviewContent(view, [row.cloneNode(true) as Element]);
+    const content = contentPlaced.content;
     expect(cellTexts(content)).toEqual([['ab', 'c1'], ['b2', 'c2']]);
     expect(content.querySelector('td')!.getAttribute('colspan')).toBe('1');
   });
@@ -493,7 +509,8 @@ describe('blockPreviewContent', () => {
     // (`updateColumnsOnResize`), which the copy would carry past the columns
     // it keeps.
     view.dom.querySelector<HTMLElement>('table')!.style.minWidth = '900px';
-    const content = blockPreviewContent(view, [view.dom.querySelector('.bn-block-outer')!.cloneNode(true) as Element]);
+    const contentPlaced = blockPreviewContent(view, [view.dom.querySelector('.bn-block-outer')!.cloneNode(true) as Element]);
+    const content = contentPlaced.content;
     expect(heldTable(content)).toEqual({ cols: ['100px', '120px', '140px'], table: ['360px', '0px', 'fixed'], rows: ['30px', '50px'] });
   });
 
@@ -510,7 +527,8 @@ describe('blockPreviewContent', () => {
     const view = editor.prosemirrorView!;
     scrollFrame(editor, 150);
     layOut(editor, { a1: [-30, 90], a2: [-30, 90], merged: [90, 230] }, [30, 90]);
-    const content = blockPreviewContent(view, [view.dom.querySelector('.bn-block-outer')!.cloneNode(true) as Element]);
+    const contentPlaced = blockPreviewContent(view, [view.dom.querySelector('.bn-block-outer')!.cloneNode(true) as Element]);
+    const content = contentPlaced.content;
     // The merged cell spans an empty row, at its height, as in the body.
     expect(cellTexts(content)).toEqual([['merged'], []]);
     expect(heldTable(content)).toMatchObject({ cols: ['140px'], rows: ['30px', '90px'] });
@@ -521,10 +539,27 @@ describe('blockPreviewContent', () => {
     const view = editor.prosemirrorView!;
     // The body's video player sets no size on the element.
     const block = blockOf('v1', 'video', '<div data-media-box=""><video src="https://example.test/v.mp4" preload="metadata"></video></div>');
-    const content = blockPreviewContent(view, [block]);
+    const contentPlaced = blockPreviewContent(view, [block]);
+    const content = contentPlaced.content;
     expect(content.querySelector('video')).toBeNull();
     const canvas = content.querySelector('canvas')!;
     expect([canvas.width, canvas.height]).toEqual([0, 0]);
+  });
+
+  it('draws a video\'s still at the screen\'s pixels, as the body draws the video', () => {
+    const editor = open([{ type: 'paragraph', content: 'x' }]);
+    const view = editor.prosemirrorView!;
+    const video = '<div data-media-box=""><video src="https://example.test/hd.mp4"></video></div>';
+    const original = blockOf('v1', 'video', video);
+    view.dom.append(original);
+    original.querySelector('video')!.getBoundingClientRect = () => ({ width: 300, height: 150 }) as DOMRect;
+    vi.stubGlobal('devicePixelRatio', 2);
+    try {
+      const canvas = blockPreviewContent(view, [blockOf('v1', 'video', video)]).content.querySelector('canvas')!;
+      expect([canvas.width, canvas.height]).toEqual([600, 300]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it('draws a video from the copy of the block it sits in, when the same video is in the body twice', () => {
@@ -536,7 +571,8 @@ describe('blockPreviewContent', () => {
     view.dom.append(first, second);
     first.querySelector('video')!.getBoundingClientRect = () => ({ width: 100, height: 50 }) as DOMRect;
     second.querySelector('video')!.getBoundingClientRect = () => ({ width: 300, height: 150 }) as DOMRect;
-    const content = blockPreviewContent(view, [blockOf('v2', 'video', video)]);
+    const contentPlaced = blockPreviewContent(view, [blockOf('v2', 'video', video)]);
+    const content = contentPlaced.content;
     const canvas = content.querySelector('canvas')!;
     expect([canvas.width, canvas.height]).toEqual([300, 150]);
   });
@@ -551,16 +587,29 @@ describe('tableLinePreviewContent', () => {
 
   it('keeps the whole dragged row, inside the table block and its colgroup', () => {
     const editor = open([{ type: 'table', content: { type: 'tableContent', columnWidths: [100, 200, 300], rows } }]);
-    const content = tableLinePreviewContent(editor.prosemirrorView!, cellOf(editor, 'b2'), 'row')!;
+    const contentPlaced = tableLinePreviewContent(editor.prosemirrorView!, cellOf(editor, 'b2'), 'row')!;
+    const content = contentPlaced.content;
     const tableBlock = '[data-content-type="table"]';
     expect(content.querySelector(tableBlock) ?? content.matches(tableBlock)).toBeTruthy();
     expect(cellTexts(content)).toEqual([['a2', 'b2', 'c2']]);
     expect([...content.querySelectorAll<HTMLElement>('colgroup col')].map((col) => col.style.width)).toEqual(['100px', '200px', '300px']);
   });
 
+  it('leaves a quoted table\'s rule off a column, which is not the block it stands beside', () => {
+    const editor = open([{ type: 'table', content: { type: 'tableContent', rows } }]);
+    const view = editor.prosemirrorView!;
+    const tableBlock = view.dom.querySelector<HTMLElement>('[data-content-type="table"]')!;
+    QUOTE_RUN_ATTRIBUTES.forEach((name) => tableBlock.setAttribute(name, ''));
+    const column = tableLinePreviewContent(view, cellOf(editor, 'b2'), 'column')!.content;
+    expect(QUOTE_RUN_ATTRIBUTES.filter((name) => column.hasAttribute(name))).toEqual([]);
+    const row = tableLinePreviewContent(view, cellOf(editor, 'b2'), 'row')!.content;
+    expect(row.hasAttribute('data-quoted-run')).toBe(true);
+  });
+
   it('keeps only the dragged column, and only its col', () => {
     const editor = open([{ type: 'table', content: { type: 'tableContent', columnWidths: [100, 200, 300], rows } }]);
-    const content = tableLinePreviewContent(editor.prosemirrorView!, cellOf(editor, 'c1'), 'column')!;
+    const contentPlaced = tableLinePreviewContent(editor.prosemirrorView!, cellOf(editor, 'c1'), 'column')!;
+    const content = contentPlaced.content;
     expect(cellTexts(content)).toEqual([['c1'], ['c2'], ['c3']]);
     const cols = content.querySelectorAll<HTMLElement>('colgroup col');
     expect(cols.length).toBe(1);
@@ -579,22 +628,28 @@ describe('tableLinePreviewContent', () => {
       { a1: [0, 393], b1: [393, 513], c1: [513, 653], a2: [0, 393], b2: [393, 513], c2: [513, 653], a3: [0, 393], b3: [393, 513], c3: [513, 653] },
       [30, 40, 50],
     );
-    view.dom.querySelector<HTMLElement>('[data-content-type="table"]')!.getBoundingClientRect = () => ({ width: 720, height: 120 }) as DOMRect;
-    const row = tableLinePreviewContent(view, cellOf(editor, 'b2'), 'row')!;
-    const column = tableLinePreviewContent(view, cellOf(editor, 'b2'), 'column')!;
+    // The block's own box carries what its quote's indent adds; the row it is
+    // stretched across is the width it has at the top.
+    const tableBlock = view.dom.querySelector<HTMLElement>('[data-content-type="table"]')!;
+    tableBlock.getBoundingClientRect = () => ({ width: 744, height: 120 }) as DOMRect;
+    tableBlock.parentElement!.getBoundingClientRect = () => ({ width: 720, height: 120 }) as DOMRect;
+    const rowPlaced = tableLinePreviewContent(view, cellOf(editor, 'b2'), 'row')!;
+    const row = rowPlaced.content;
+    const columnPlaced = tableLinePreviewContent(view, cellOf(editor, 'b2'), 'column')!;
+    const column = columnPlaced.content;
     // A row keeps every column at the width the whole table gives it: its own
     // cells alone would share the room out another way. The width is the
     // table's, so a quoted block's rule stands outside it. Its block is as wide
     // as the body's, so its frame cuts the table where the body's does.
     expect(heldTable(row)).toEqual({ cols: ['393px', '120px', '140px'], table: ['653px', '0px', 'fixed'], rows: ['40px'] });
-    buildDragPreview(view, row, () => ({ width: 720, height: 40 }));
+    buildDragPreview(view, rowPlaced, () => ({ width: 720, height: 40 }));
     expect(row.style.width).toBe('720px');
     expect(row.querySelector('col')!.style.getPropertyPriority('width')).toBe('important');
     // A column is as wide as itself, the block's own width set to it, and its
     // table stays in the library's wrapper, a block as in the body: in WebKit a
     // collapsed table of a set width laid out as a flex item is 1px wider.
     expect(heldTable(column)).toEqual({ cols: ['120px'], table: ['120px', '0px', 'fixed'], rows: ['30px', '40px', '50px'] });
-    buildDragPreview(view, column, () => ({ width: 120, height: 120 }));
+    buildDragPreview(view, columnPlaced, () => ({ width: 120, height: 120 }));
     expect(column.style.width).toBe('120px');
     const wrapper = column.querySelector<HTMLElement>(':scope > .tableWrapper')!;
     expect(wrapper.querySelector('table')).not.toBeNull();
@@ -614,7 +669,8 @@ describe('tableLinePreviewContent', () => {
     ]);
     const view = editor.prosemirrorView!;
     layOut(editor, { a1: [0, 100], a2: [0, 100], merged: [100, 220] }, [30, 90]);
-    const column = tableLinePreviewContent(view, cellOf(editor, 'merged'), 'column')!;
+    const columnPlaced = tableLinePreviewContent(view, cellOf(editor, 'merged'), 'column')!;
+    const column = columnPlaced.content;
     expect(cellTexts(column)).toEqual([['merged'], []]);
     expect(heldTable(column)).toMatchObject({ rows: ['30px', '90px'] });
   });
@@ -624,7 +680,8 @@ describe('tableLinePreviewContent', () => {
     const view = editor.prosemirrorView!;
     scrollFrame(editor, 150);
     layOut(editor, { a1: [-30, 90], b1: [90, 220], c1: [220, 360], a2: [-30, 90], b2: [90, 220], c2: [220, 360], a3: [-30, 90], b3: [90, 220], c3: [220, 360] });
-    const content = tableLinePreviewContent(view, cellOf(editor, 'b2'), 'row')!;
+    const contentPlaced = tableLinePreviewContent(view, cellOf(editor, 'b2'), 'row')!;
+    const content = contentPlaced.content;
     expect(cellTexts(content)).toEqual([['b2', 'c2']]);
     expect([...content.querySelectorAll<HTMLElement>('col')].map((col) => col.style.width)).toEqual(['130px', '140px']);
     expect(content.querySelector<HTMLElement>('table')!.style.width).toBe('270px');
@@ -637,8 +694,9 @@ describe('tableLinePreviewContent', () => {
     sheet.textContent = '.bn-block-outer > .bn-block > [data-content-type="table"] { letter-spacing: 3px; }';
     document.head.append(sheet);
     try {
-      const content = tableLinePreviewContent(view, cellOf(editor, 'b2'), 'row')!;
-      buildDragPreview(view, content, () => ({ width: 100, height: 20 }));
+      const contentPlaced = tableLinePreviewContent(view, cellOf(editor, 'b2'), 'row')!;
+      const content = contentPlaced.content;
+      buildDragPreview(view, contentPlaced, () => ({ width: 100, height: 20 }));
       expect(getComputedStyle(content).letterSpacing).toBe('3px');
       expect(content.style.getPropertyValue('letter-spacing')).toBe('');
     } finally {
@@ -649,13 +707,15 @@ describe('tableLinePreviewContent', () => {
   it('holds a row in the frame its table scrolls in, and a column as its table alone', () => {
     const editor = open([{ type: 'table', content: { type: 'tableContent', rows } }]);
     const view = editor.prosemirrorView!;
-    const row = tableLinePreviewContent(view, cellOf(editor, 'b2'), 'row')!;
+    const rowPlaced = tableLinePreviewContent(view, cellOf(editor, 'b2'), 'row')!;
+    const row = rowPlaced.content;
     expect(row.querySelector('[data-radix-scroll-area-viewport] table')).not.toBeNull();
     expect(row.querySelector('[data-scroll-area-scrollbar]')).toBeNull();
     expect(row.querySelector('[data-overflow-edge]')).not.toBeNull();
     // A column is narrower than any frame, so it is its table alone, in the
     // library's wrapper.
-    const column = tableLinePreviewContent(view, cellOf(editor, 'c1'), 'column')!;
+    const columnPlaced = tableLinePreviewContent(view, cellOf(editor, 'c1'), 'column')!;
+    const column = columnPlaced.content;
     expect(column.querySelector(':scope > .tableWrapper table')).not.toBeNull();
     expect(column.querySelector('[data-radix-scroll-area-viewport]')).toBeNull();
     expect(column.querySelector('[data-overflow-edge]')).toBeNull();
@@ -674,7 +734,8 @@ describe('tableLinePreviewContent', () => {
         },
       },
     ]);
-    const content = tableLinePreviewContent(editor.prosemirrorView!, cellOf(editor, 'c2'), 'column')!;
+    const contentPlaced = tableLinePreviewContent(editor.prosemirrorView!, cellOf(editor, 'c2'), 'column')!;
+    const content = contentPlaced.content;
     expect(cellTexts(content)).toEqual([['c1'], ['c2']]);
   });
 });
@@ -695,11 +756,16 @@ describe('tableRowsPreviewContent', () => {
       [30, 40, 50],
     );
     view.dom.querySelector<HTMLElement>('table')!.style.minWidth = '900px';
-    view.dom.querySelector<HTMLElement>('[data-content-type="table"]')!.getBoundingClientRect = () => ({ width: 720, height: 120 }) as DOMRect;
-    const content = tableRowsPreviewContent(view, cellOf(editor, 'b2'), 1, 3)!;
+    // The block's own box carries what its quote's indent adds; the row it is
+    // stretched across is the width it has at the top.
+    const tableBlock = view.dom.querySelector<HTMLElement>('[data-content-type="table"]')!;
+    tableBlock.getBoundingClientRect = () => ({ width: 744, height: 120 }) as DOMRect;
+    tableBlock.parentElement!.getBoundingClientRect = () => ({ width: 720, height: 120 }) as DOMRect;
+    const contentPlaced = tableRowsPreviewContent(view, cellOf(editor, 'b2'), 1, 3)!;
+    const content = contentPlaced.content;
     expect(cellTexts(content)).toEqual([['b2', 'c2'], ['b3', 'c3']]);
     expect(heldTable(content)).toEqual({ cols: ['130px', '140px'], table: ['270px', '0px', 'fixed'], rows: ['40px', '50px'] });
-    buildDragPreview(view, content, () => ({ width: 720, height: 90 }));
+    buildDragPreview(view, contentPlaced, () => ({ width: 720, height: 90 }));
     expect(content.style.width).toBe('720px');
   });
 });

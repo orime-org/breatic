@@ -39,8 +39,8 @@ import { SCROLLBAR_MARK } from '@web/components/ui/scroll-area';
 import { MEDIA_CHROME } from '@web/spaces/document/DocumentMediaBlock';
 import type { DragOrientation } from '@web/spaces/document/document-table-drag';
 import { cellAt, cellsOfScope } from '@web/spaces/document/document-table-run';
-import { drawnWidthOf, inPlaceOf, placed, type PlacedContent } from '@web/spaces/document/document-preview-styles';
-import { withoutViewState } from '@web/spaces/document/document-view-state';
+import { QUOTE_RUN_ATTRIBUTES } from '@web/spaces/document/document-decorations';
+import { inPlaceOf, type PlacedContent } from '@web/spaces/document/document-preview-styles';
 
 /** The longest a drag preview's side may be, in px (user 2026-10-10). */
 export const PREVIEW_LONGEST_SIDE = 512;
@@ -131,16 +131,17 @@ function leaveOnceTaken(root: HTMLElement): void {
  * styles, for the `dragstart` being dispatched to hand to `setDragImage`. It
  * takes itself off the page once the browser has the image.
  * @param view - The editor view whose styles it takes.
- * @param content - The content, detached.
+ * @param placed - The content, detached, and where it stands in the body.
  * @param measure - Reads the content's natural size once laid out.
  * @returns The preview's root, the element to hand to `setDragImage`.
  */
 export function buildDragPreview(
   view: EditorView,
-  content: PlacedContent,
+  placed: PlacedContent,
   measure: (layer: HTMLElement) => PreviewSize = measureLayer,
 ): HTMLElement {
   const page = view.dom.ownerDocument;
+  const { content } = placed;
   // The first block stands flush against the top and the last against the
   // bottom, as the document's do (`index.css`): the space a block carries above
   // or below it is the gap to its neighbour, and the preview has none past its
@@ -151,7 +152,7 @@ export function buildDragPreview(
     : [...content.querySelectorAll<HTMLElement>(BLOCK_CONTENT)];
   blocks[0]?.style.setProperty('--doc-block-lift', '0px');
   blocks[blocks.length - 1]?.style.setProperty('--doc-block-drop', '0px');
-  const width = drawnWidthOf(content);
+  const width = placed.sizedLike?.getBoundingClientRect().width ?? 0;
   if (width > 0) content.style.width = `${width}px`;
   const root = page.createElement('div');
   root.className = PREVIEW_CLASS;
@@ -163,7 +164,7 @@ export function buildDragPreview(
   layer.style.verticalAlign = 'top';
   layer.style.padding = '0';
   layer.style.transformOrigin = '0px 0px';
-  layer.append(inPlaceOf(view, content));
+  layer.append(inPlaceOf(view, placed));
   root.append(layer);
   page.body.append(root);
   const size = measure(layer);
@@ -180,10 +181,10 @@ export function buildDragPreview(
  * dispatched, its top left at the pointer (BlockNote `dragging.ts`).
  * @param view - The editor view.
  * @param dataTransfer - The drag's data transfer.
- * @param content - The content, detached.
+ * @param placed - The content, detached, and where it stands in the body.
  */
-export function setDragPreview(view: EditorView, dataTransfer: DataTransfer, content: PlacedContent): void {
-  dataTransfer.setDragImage(buildDragPreview(view, content), 0, 0);
+export function setDragPreview(view: EditorView, dataTransfer: DataTransfer, placed: PlacedContent): void {
+  dataTransfer.setDragImage(buildDragPreview(view, placed), 0, 0);
 }
 
 /** The custom property a quoted line's rule is placed by (`document-decorations.ts`). */
@@ -232,24 +233,24 @@ function spansOf(table: Element): Map<Element, Span> {
 }
 
 /**
- * The columns of a table its frame has scrolled wholly out of view on the
- * left, by index: every column up to the last whose right edge some cell, in
- * whichever row, draws at or left of the frame's edge. A cell the frame's edge
- * cuts through is in view.
+ * How many of a table's columns, from its first, its frame has scrolled
+ * wholly out of view on the left: every column up to the last whose right edge
+ * some cell, in whichever row, draws at or left of the frame's edge. A cell
+ * the frame's edge cuts through is in view.
  * @param table - The table in the body.
- * @returns The columns' indexes.
+ * @returns The number of columns.
  */
-function columnsScrolledOff(table: Element | null | undefined): Set<number> {
+function columnsScrolledOff(table: Element | null | undefined): number {
   const viewport = table?.closest(SCROLL_VIEWPORT);
   if (table === null || table === undefined || viewport === null || viewport === undefined || viewport.scrollLeft === 0) {
-    return new Set();
+    return 0;
   }
   const edge = viewport.getBoundingClientRect().left + 0.5;
   let off = 0;
   spansOf(table).forEach(([, end], cell) => {
     if (cell.getBoundingClientRect().right <= edge) off = Math.max(off, end);
   });
-  return new Set(Array.from({ length: off }, (_, column) => column));
+  return off;
 }
 
 /**
@@ -303,8 +304,8 @@ function copiedSpans(original: Element | null | undefined, copy: Element | null)
 }
 
 /**
- * Takes the given columns out of a copied table: their `col`s and their
- * cells, and from a cell merged across one of them, that column. The table
+ * Takes a copied table's first columns out: their `col`s and their cells, and
+ * from a cell merged across one of them, that column. The table
  * then starts at the first column in view, unscrolled. Chromium takes a drag
  * image as the box of the element handed over joined with every descendant
  * that has a layer of its own, whether clipped or not, and anchors the
@@ -314,20 +315,19 @@ function copiedSpans(original: Element | null | undefined, copy: Element | null)
  * pointer. Taken out rather than hidden by a style: WebKit draws a column set
  * to `visibility: collapse`.
  * @param table - The copied table.
- * @param hidden - The columns to take out.
+ * @param off - How many columns to take out, from the first.
  * @param spans - Each copied cell's columns.
  */
-function dropColumns(table: Element | null | undefined, hidden: ReadonlySet<number>, spans: ReadonlyMap<Element, Span>): void {
-  if (table === null || table === undefined || hidden.size === 0) return;
+function dropColumns(table: Element | null | undefined, off: number, spans: ReadonlyMap<Element, Span>): void {
+  if (table === null || table === undefined || off === 0) return;
   table.querySelectorAll('col').forEach((col, index) => {
-    if (hidden.has(index)) col.remove();
+    if (index < off) col.remove();
   });
   table.querySelectorAll<HTMLTableCellElement>('td, th').forEach((cell) => {
     const span = spans.get(cell);
     if (span === undefined) return;
-    let kept = 0;
-    for (let column = span[0]; column < span[1]; column += 1) if (!hidden.has(column)) kept += 1;
-    if (kept === 0) cell.remove();
+    const kept = span[1] - Math.max(span[0], off);
+    if (kept <= 0) cell.remove();
     else if (kept !== cell.colSpan) cell.colSpan = kept;
   });
 }
@@ -361,10 +361,10 @@ function originalOf(view: EditorView, copy: Element, selector: string): Element 
 }
 
 /**
- * Turns copied content into what the preview shows: the content without what
- * the body shows for the moment (`document-view-state.ts`), no media toolbar,
- * no scrollbar, a still of each video. Run while the copies are still in their
- * copied blocks, where their originals can be found.
+ * Turns copied content into what the preview shows: no media toolbar, no
+ * scrollbar, a still of each video. Run while the copies are still in their
+ * copied blocks, where their originals can be found. What the body shows for
+ * the moment comes off where the preview is built (`inPlaceOf`).
  *
  * A table stays in the frame it scrolls in, as the body shows it: a table
  * wider than the column would otherwise set the preview's width, and scaled to
@@ -382,7 +382,6 @@ function originalOf(view: EditorView, copy: Element, selector: string): Element 
  * @param original - The element in the body the copy's top was copied from.
  */
 function settle(view: EditorView, content: Element, original: Element | null): void {
-  withoutViewState(view, content);
   const base = original === null ? 0 : nestingOf(view, original);
   [content, ...content.querySelectorAll(QUOTED_LINE)].forEach((line) => {
     if (!(line instanceof HTMLElement) || !line.matches(QUOTED_LINE)) return;
@@ -402,9 +401,11 @@ function settle(view: EditorView, content: Element, original: Element | null): v
 }
 
 /**
- * A canvas the size of a copied video's original, holding its current frame.
- * A copied video starts loading from nothing, and the drag image is taken
- * before it has a frame.
+ * A canvas the size of a copied video's original, holding its current frame
+ * at the screen's pixels, as the body draws the video: the browser draws a
+ * drag image at the screen's pixels too. Its size on the page is the video's,
+ * from the classes it takes over. A copied video starts loading from nothing,
+ * and the drag image is taken before it has a frame.
  * @param copy - The copied video.
  * @param original - The video it was copied from.
  * @returns The canvas.
@@ -412,8 +413,9 @@ function settle(view: EditorView, content: Element, original: Element | null): v
 function stillOf(copy: HTMLVideoElement, original: HTMLVideoElement | null): HTMLCanvasElement {
   const box = original?.getBoundingClientRect();
   const canvas = copy.ownerDocument.createElement('canvas');
-  canvas.width = Math.round(box?.width ?? 0);
-  canvas.height = Math.round(box?.height ?? 0);
+  const pixels = copy.ownerDocument.defaultView?.devicePixelRatio ?? 1;
+  canvas.width = Math.round((box?.width ?? 0) * pixels);
+  canvas.height = Math.round((box?.height ?? 0) * pixels);
   canvas.className = copy.className;
   if (original !== null && original.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
     canvas.getContext('2d')?.drawImage(original, 0, 0, canvas.width, canvas.height);
@@ -448,16 +450,16 @@ export function blockPreviewContent(view: EditorView, blocks: readonly Element[]
     const original = originalOf(view, box, MEDIA_BOX);
     settle(view, lone!, originalRow(view, lone!));
     box.remove();
-    return placed(box, original, original);
+    return { content: box, place: original, sizedLike: original };
   }
   blocks.forEach((block) => {
     const originals = [...(originalRow(view, block)?.querySelectorAll('table') ?? [])];
     block.querySelectorAll('table').forEach((table, index) => {
       const original = originals[index];
-      const hidden = columnsScrolledOff(original);
+      const off = columnsScrolledOff(original);
       const heights = copiedHeights(original, table);
-      dropColumns(table, hidden, copiedSpans(original, table));
-      holdTable(table, columnWidths(original).filter((_, column) => !hidden.has(column)), heights);
+      dropColumns(table, off, copiedSpans(original, table));
+      holdTable(table, columnWidths(original).slice(off), heights);
     });
   });
   const original = blocks[0] === undefined ? null : originalRow(view, blocks[0]);
@@ -465,7 +467,7 @@ export function blockPreviewContent(view: EditorView, blocks: readonly Element[]
   content.className = BLOCK_GROUP_CLASS;
   content.append(...blocks);
   settle(view, content, original);
-  return placed(content, null, original?.parentElement ?? null);
+  return { content, place: null, sizedLike: original?.parentElement ?? null };
 }
 
 /**
@@ -552,12 +554,14 @@ export function tableLinePreviewContent(
     // WebKit a collapsed table of a set width laid out as a flex item, which
     // the block's content is, is 1px wider. The room the wrapper keeps under
     // the table is for the frame's scrollbar. The block is as wide as the
-    // column, which its cells are.
+    // column, which its cells are. A quote's rule stands beside the whole
+    // block, not beside one of its columns.
     const wrappers = [...copy.querySelectorAll<HTMLElement>(TABLE_WRAPPER)];
     wrappers.forEach((wrapper) => {
       wrapper.style.padding = '0';
     });
     copy.replaceChildren(...wrappers);
+    QUOTE_RUN_ATTRIBUTES.forEach((name) => copy.removeAttribute(name));
     copy.querySelectorAll('colgroup').forEach((group) => {
       [...group.children].forEach((col, index) => {
         if (index !== at.left) col.remove();
@@ -565,12 +569,14 @@ export function tableLinePreviewContent(
     });
     holdTable(copied, [widths[at.left] ?? 0], heights);
   } else {
-    const hidden = columnsScrolledOff(table);
-    dropColumns(copied, hidden, spans);
-    holdTable(copied, widths.filter((_, column) => !hidden.has(column)), heights);
+    const off = columnsScrolledOff(table);
+    dropColumns(copied, off, spans);
+    holdTable(copied, widths.slice(off), heights);
   }
   settle(view, copy, block);
-  return placed(copy, block, orientation === 'column' ? cells[0]! : block);
+  // A row is drawn as wide as the row of the body its block is stretched
+  // across, which does not change with how deep a quote's indent is.
+  return { content: copy, place: block, sizedLike: orientation === 'column' ? cells[0]! : block.parentElement };
 }
 
 /**
@@ -630,11 +636,11 @@ export function tableRowsPreviewContent(
     }
     row.replaceChildren(...cells);
   });
-  const hidden = columnsScrolledOff(table);
-  dropColumns(copied, hidden, spans);
-  holdTable(copied, columnWidths(table).filter((_, column) => !hidden.has(column)), heights);
+  const off = columnsScrolledOff(table);
+  dropColumns(copied, off, spans);
+  holdTable(copied, columnWidths(table).slice(off), heights);
   settle(view, copy, block);
-  return placed(copy, block, block);
+  return { content: copy, place: block, sizedLike: block.parentElement };
 }
 
 /**
@@ -644,10 +650,10 @@ export function tableRowsPreviewContent(
  * @param input - The caption field.
  * @returns The content, detached.
  */
-export function captionPreviewContent(input: HTMLInputElement): PlacedContent<HTMLInputElement> {
+export function captionPreviewContent(input: HTMLInputElement): PlacedContent {
   const copy = input.cloneNode(true) as HTMLInputElement;
   copy.style.marginTop = '0px';
-  return placed(copy, input, input);
+  return { content: copy, place: input, sizedLike: input };
 }
 
 /**

@@ -121,8 +121,8 @@ export function selectionPreviewContent(view: EditorView): PlacedContent | null 
 
 /**
  * Hands the browser the preview of a drag of the selection or of a caption
- * field's words; the preview takes itself off the page a frame later
- * (`buildDragPreview`).
+ * field's words; the preview takes itself off the page once the browser has
+ * the image (`buildDragPreview`).
  * @param view - The editor view.
  * @param event - The dragstart.
  */
