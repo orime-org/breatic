@@ -157,6 +157,14 @@ const EDGES_KEY = 'edgesMap';
  */
 export const CANVAS_UNDO = Symbol('canvas-undo');
 
+/**
+ * Marks a canvas transaction that took back everything it wrote, so the undo
+ * manager leaves it out: it changed nothing the reader could undo, and as a
+ * step it would cost them a press of undo that does nothing and the redo they
+ * had before it.
+ */
+export const CANVAS_ROLLED_BACK = Symbol('canvas-rolled-back');
+
 /** One entry on a canvas undo stack. */
 export type CanvasUndoStep = Y.UndoManager['undoStack'][number];
 
@@ -207,6 +215,7 @@ export function createCanvasUndoManager(doc: Y.Doc): Y.UndoManager {
       new Y.UndoManager([nodesMap, edgesMap], {
         trackedOrigins: new Set([CANVAS_UNDO]),
         captureTimeout: 0,
+        captureTransaction: (tr) => !tr.meta.has(CANVAS_ROLLED_BACK),
       }),
   );
   undoManager.on('stack-item-added', () => {
@@ -288,7 +297,8 @@ export function _resetCanvasUndoCacheForTests(): void {
  * `joinStep` — any other write in between leaves a different step on top.
  * @param projectId - Project the canvas space belongs to.
  * @param spaceId - Canvas space whose doc to mutate.
- * @param fn - Runs the individual mutations; their writes join this one transaction.
+ * @param fn - Runs the individual mutations; their writes join this one
+ *   transaction, which it is handed so it can mark a write it took back.
  * @param joinStep - The undo step to merge into, when it is still on top.
  * @returns The undo step this batch landed in: `joinStep` when it merged into
  *   it, otherwise the new step on top, or undefined when it wrote nothing.
@@ -296,7 +306,7 @@ export function _resetCanvasUndoCacheForTests(): void {
 export function runCanvasUndoBatch(
   projectId: string,
   spaceId: string,
-  fn: () => void,
+  fn: (tr: Y.Transaction) => void,
   joinStep?: CanvasUndoStep,
 ): CanvasUndoStep | undefined {
   const name = docName.canvasSpace(projectId, spaceId);

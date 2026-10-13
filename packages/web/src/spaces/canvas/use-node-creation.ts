@@ -20,6 +20,7 @@ import {
   getLyricsFragment,
   getPromptFragment,
   getTextBody,
+  CANVAS_ROLLED_BACK,
   readNodePlacements,
   removeElements,
   restoreNodeMedia,
@@ -63,6 +64,7 @@ import {
   toRelativePosition,
   type Rect,
 } from '@web/spaces/canvas/group-geometry';
+import { COUNTS_COLUMN_FLOW_REACH } from '@web/spaces/canvas/overlay-scale';
 import { useCurrentUserStore } from '@web/stores/current-user';
 import { canvasApi } from '@web/data/api/canvas';
 import { ApiException } from '@web/data/api/types';
@@ -281,16 +283,22 @@ export function useNodeCreation(
       // to be clear; a single node needs only its own.
       const aimedGroup = aimed.length > 1 ? groupRectForMembers(aimed) : null;
       const footprint = aimedGroup ?? aimed[0];
-      const dx = footprint ? shiftRightPastOccupied(footprint, occupied, ROW_GAP_PX) : 0;
+      // The new nodes will hang their own task counts off their right edges,
+      // so the spot keeps that much clear too, as it does for nodes already
+      // there.
+      const dx = footprint
+        ? shiftRightPastOccupied({ ...footprint, width: footprint.width + COUNTS_COLUMN_FLOW_REACH }, occupied, ROW_GAP_PX)
+        : 0;
       const spots = aimed.map((spot) => ({ ...spot, x: spot.x + dx }));
       const bounds = footprint && { ...footprint, x: footprint.x + dx };
       const nodeIds: string[] = [];
       const edgeIds: string[] = [];
       let groupId: string | undefined;
-      runCanvasUndoBatch(projectId, spaceId, () => {
+      runCanvasUndoBatch(projectId, spaceId, (tr) => {
         // A Yjs transaction does not roll back when it throws, so whatever
         // this press wrote before the failure is taken back in the same
-        // transaction: the card says it was not built, and nothing was.
+        // transaction: the card says it was not built, and nothing was --
+        // not in the undo history either.
         try {
           proposal.nodes.forEach((node, i) => {
             const at = spots[i] ?? { x: start.x, y: start.y };
@@ -333,6 +341,7 @@ export function useNodeCreation(
           const rect = aimedGroup && bounds;
           if (rect) {
             const id = newId();
+            groupId = id;
             createGroup(
               projectId,
               spaceId,
@@ -344,7 +353,6 @@ export function useNodeCreation(
             );
             if (proposal.groupName) setNodeName(projectId, spaceId, id, proposal.groupName);
             setGroupBackground(projectId, spaceId, id, groupBackgroundFor(Math.random()));
-            groupId = id;
           }
           proposal.edges.forEach((edge) => {
             const source = nodeIds[edge.fromIndex];
@@ -399,6 +407,7 @@ export function useNodeCreation(
             }
           });
         } catch (error) {
+          tr.meta.set(CANVAS_ROLLED_BACK, true);
           removeElements(projectId, spaceId, groupId === undefined ? nodeIds : [...nodeIds, groupId], edgeIds);
           throw error;
         }

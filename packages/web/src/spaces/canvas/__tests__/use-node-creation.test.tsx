@@ -16,6 +16,7 @@ import { useCurrentUserStore } from '@web/stores/current-user';
 import { groupBackgroundFor } from '@web/spaces/canvas/group-background';
 import { ROW_GAP_PX, occupiedRects, planFlowLayout } from '@web/spaces/canvas/lib/place-flow';
 import { groupRectForMembers } from '@web/spaces/canvas/group-geometry';
+import { COUNTS_COLUMN_FLOW_REACH } from '@web/spaces/canvas/overlay-scale';
 import { useNodeCreation } from '@web/spaces/canvas/use-node-creation';
 import { CLIPBOARD_VERSION, type ClipboardNode, type ClipboardPayload } from '@web/spaces/canvas/node-clipboard';
 import { toast } from '@web/lib/toast';
@@ -1129,8 +1130,10 @@ describe('useNodeCreation', () => {
     });
 
     it('leaves nothing on the canvas when a write fails part way', () => {
-      // Stored on 2026-10-07, before the `ref` mark was taken out: the nodes
-      // and the group are written before its prompt is, and the prompt throws.
+      // A prompt mark of a kind this build has no form for makes the prompt
+      // write throw after the nodes and the group are in; the product never
+      // hands one in any more (stored ones show as expired), so it stands in
+      // for any write that fails part way.
       const stale = {
         nodes: [
           { role: 'generate', type: 'image', name: 'Reference', mode: 't2i', model: 'some-model', takesPrompt: true, prompt: [{ text: 'a girl' }] },
@@ -1155,6 +1158,41 @@ describe('useNodeCreation', () => {
       const { nodes, edges } = canvasSpace.readCanvasGraph('p-stale', 's-stale');
       expect(nodes).toHaveLength(0);
       expect(edges).toHaveLength(0);
+    });
+
+    it('leaves the undo and redo history as it was when a write fails part way', () => {
+      const name = docName.canvasSpace('p-hist', 's-hist');
+      const undo = canvasSpace.getCanvasUndoManager(getDoc(name), name);
+      const { result } = renderHook(() => useNodeCreation('p-hist', 's-hist'));
+      result.current.placeProposalAt(PAIR, { x: 0, y: 0 }, []);
+      undo.undo();
+      const before = { undo: undo.undoStack.length, redo: undo.redoStack.length };
+      const stale = {
+        ...PAIR,
+        nodes: [PAIR.nodes[0]!, { ...PAIR.nodes[1]!, prompt: [{ slot: { kind: 'ref', label: 'x', note: 'y' } }] }],
+      } as unknown as CanvasProposal;
+
+      expect(() => result.current.placeProposalAt(stale, { x: 0, y: 0 }, [])).toThrow();
+
+      expect({ undo: undo.undoStack.length, redo: undo.redoStack.length }).toEqual(before);
+      expect(before.redo).toBe(1);
+    });
+
+    it('keeps the room its own task counts will take clear on its right', () => {
+      const one: CanvasProposal = {
+        nodes: [{ role: 'source', type: 'image', name: 'Your photo' }],
+        edges: [],
+        rationale: '',
+      };
+      const [spot] = planFlowLayout(one, { x: 0, y: 0 });
+      // Past the gap, but inside the reach of the counts the new node will hang off its right edge.
+      const right = { x: spot!.x + spot!.width + ROW_GAP_PX + COUNTS_COLUMN_FLOW_REACH - 1, y: spot!.y, width: 100, height: 100 };
+      const { result } = renderHook(() => useNodeCreation('p-reach', 's-reach'));
+
+      result.current.placeProposalAt(one, { x: 0, y: 0 }, [right]);
+
+      const [placed] = canvasSpace.readNodePlacements('p-reach', 's-reach');
+      expect(placed?.x).toBe(right.x + right.width + ROW_GAP_PX);
     });
 
     it('places a second flow clear of the first one', () => {
