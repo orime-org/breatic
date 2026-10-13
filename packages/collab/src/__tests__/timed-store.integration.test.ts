@@ -32,7 +32,11 @@ const mockLogger = vi.hoisted(() => ({
 vi.mock("@breatic/core", () => ({ createLogger: () => mockLogger }));
 
 import { createLiveServer, connectLiveClient, waitFor } from "./helpers/live-hocuspocus.js";
-import { createPersistenceExtension, storeDocumentNow } from "../services/persistence.js";
+import {
+  createPersistenceExtension,
+  staysLoaded,
+  storeDocumentNow,
+} from "../services/persistence.js";
 import { createStoreLoop } from "../services/store-loop.js";
 import { createChangeTrackingExtension } from "@collab/services/change-tracking.js";
 import { createUnloadGate } from "../hooks/unload-gate.js";
@@ -101,6 +105,7 @@ function harness(options: { failing?: boolean; delayMs?: number; debounceMs?: nu
   storeGate.current = createUnloadGate({
     instanceId: "inst-test",
     encode: (document: Y.Doc) => Y.encodeStateAsUpdate(document),
+    staysLoaded: (name) => staysLoaded(hocuspocus, name),
     storeNow: ({ name }) => storeDocumentNow(hocuspocus, name),
     writeRescue: async ({ documentName }) => {
       rescues.push(documentName);
