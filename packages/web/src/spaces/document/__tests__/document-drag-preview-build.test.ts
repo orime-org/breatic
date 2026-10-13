@@ -21,6 +21,7 @@ import {
   setDragPreview,
   previewScale,
   tableLinePreviewContent,
+  tableRowsPreviewContent,
 } from '@web/spaces/document/document-drag-preview';
 
 type Editor = ReturnType<typeof buildDocumentEditor>;
@@ -91,6 +92,50 @@ function blockOf(id: string, type: string, inner: string, children?: string): HT
   return block;
 }
 
+/**
+ * Lays a table out in the body as given: each cell's left and right edges,
+ * found by its text, and each row's height.
+ * @param editor - The editor.
+ * @param edges - Each cell's left and right, by its text.
+ * @param heights - Each row's height, in order.
+ */
+function layOut(editor: Editor, edges: Record<string, [number, number]>, heights: number[] = []): void {
+  const view = editor.prosemirrorView!;
+  view.dom.querySelectorAll<HTMLElement>('td, th').forEach((cell) => {
+    const [left, right] = edges[cell.textContent ?? ''] ?? [0, 0];
+    cell.getBoundingClientRect = () => ({ left, right, width: right - left, top: 0, bottom: 30, height: 30 }) as DOMRect;
+  });
+  view.dom.querySelectorAll<HTMLElement>('tr').forEach((row, index) => {
+    row.getBoundingClientRect = () => ({ height: heights[index] ?? 0 }) as DOMRect;
+  });
+}
+
+/**
+ * Scrolls a table's frame to the left by some amount, its left edge at 100.
+ * @param editor - The editor.
+ * @param by - How far.
+ */
+function scrollFrame(editor: Editor, by: number): void {
+  const viewport = editor.prosemirrorView!.dom.querySelector<HTMLElement>('[data-radix-scroll-area-viewport]')!;
+  viewport.scrollLeft = by;
+  viewport.getBoundingClientRect = () => ({ left: 100, right: 400, width: 300, height: 90 }) as DOMRect;
+}
+
+/**
+ * How a preview's table is held: its columns' widths, its own width, minimum
+ * width and layout, and its rows' heights.
+ * @param content - The preview content.
+ * @returns What is written on them.
+ */
+function heldTable(content: HTMLElement): unknown {
+  const table = content.querySelector<HTMLElement>('table')!;
+  return {
+    cols: [...content.querySelectorAll<HTMLElement>('col')].map((col) => col.style.width),
+    table: [table.style.width, table.style.minWidth, table.style.tableLayout],
+    rows: [...content.querySelectorAll<HTMLElement>('tr')].map((row) => row.style.height),
+  };
+}
+
 describe('previewScale', () => {
   it('fits the width to 512 when the content is wider than tall', () => {
     expect(previewScale(768, 40)).toBeCloseTo(PREVIEW_LONGEST_SIDE / 768);
@@ -124,8 +169,8 @@ describe('buildDragPreview', () => {
     expect(layer.style.transformOrigin).toBe('0px 0px');
     expect(layer.style.verticalAlign).toBe('top');
     expect(root.style.transform).toBe('');
-    // Its content carries its styles written on it; BlockNote takes any
-    // `.bn-editor` in the page for an editor (`SideMenu.ts:328`).
+    // Its content sits in copies of what it sits in in the body; the layer
+    // itself names nothing a rule could reach.
     expect(layer.className).toBe('');
     expect(layer.contains(content)).toBe(true);
   });
@@ -160,7 +205,24 @@ describe('buildDragPreview', () => {
     expect(second!.style.getPropertyValue('--doc-block-lift')).toBe('');
   });
 
-  it('writes on each element the styles it takes where its content sits in the body', () => {
+  it('puts its content in copies of every element it sits in in the body, from just under the page body', () => {
+    const editor = open([{ type: 'paragraph', content: 'one' }]);
+    const view = editor.prosemirrorView!;
+    const content = blockPreviewContent(view, [view.dom.querySelector('.bn-block-outer')!.cloneNode(true) as Element]);
+    const root = buildDragPreview(view, content, () => ({ width: 100, height: 20 }));
+    const layer = root.firstElementChild!;
+    const shells: Element[] = [];
+    for (let at = content.parentElement; at !== null && at !== layer; at = at.parentElement) shells.unshift(at);
+    const originals: Element[] = [];
+    for (let at: Element | null = view.dom; at !== null && at !== document.body; at = at.parentElement) originals.unshift(at);
+    expect(shells.map((shell) => shell.tagName)).toEqual(originals.map((original) => original.tagName));
+    expect(shells.at(-1)!.classList.contains('bn-editor')).toBe(true);
+    // They lay out and draw nothing of their own (`index.css`), and hold
+    // nothing but the way down to the content.
+    expect(shells.every((shell) => shell.classList.contains('doc-preview-shell') && shell.childElementCount === 1)).toBe(true);
+  });
+
+  it('lets the stylesheet reach its content through those copies, writing no style on it', () => {
     const editor = open([{ type: 'paragraph', content: 'one' }]);
     const view = editor.prosemirrorView!;
     const sheet = document.createElement('style');
@@ -171,137 +233,61 @@ describe('buildDragPreview', () => {
       const content = blockPreviewContent(view, [view.dom.querySelector('.bn-block-outer')!.cloneNode(true) as Element]);
       const root = buildDragPreview(view, content, () => ({ width: 100, height: 20 }));
       const block = root.querySelector<HTMLElement>('.bn-block-content')!;
-      expect(block.style.getPropertyValue('letter-spacing')).toBe('7px');
-      expect(block.style.getPropertyPriority('letter-spacing')).toBe('important');
+      expect(getComputedStyle(block).letterSpacing).toBe('7px');
+      expect(block.style.getPropertyValue('letter-spacing')).toBe('');
     } finally {
       sheet.remove();
     }
   });
 
-  it('keeps what the copy sets on itself over what it works out, as the preview\'s own', () => {
-    const editor = open([{ type: 'paragraph', content: 'one' }]);
+  it('reads no style element by element, however much the preview holds', () => {
+    const editor = open(Array.from({ length: 40 }, (_, at) => ({ type: 'paragraph', content: `line ${at}` })));
     const view = editor.prosemirrorView!;
-    const content = blockPreviewContent(view, [view.dom.querySelector('.bn-block-outer')!.cloneNode(true) as Element]);
-    const block = content.querySelector<HTMLElement>('.bn-block-content')!;
-    block.style.width = '120px';
-    // A computed value that is not the one set: WebKit computes a `col`, which
-    // has no box, at 0px whatever width it is given.
-    const real = window.getComputedStyle.bind(window);
-    const computed = vi.spyOn(window, 'getComputedStyle').mockImplementation((element, pseudo) =>
-      element === block && !pseudo
-        ? ({ length: 1, item: () => 'width', getPropertyValue: () => '0px' } as unknown as CSSStyleDeclaration)
-        : real(element, pseudo),
-    );
-    try {
-      buildDragPreview(view, content, () => ({ width: 100, height: 20 }));
-    } finally {
-      computed.mockRestore();
-    }
-    expect(block.style.getPropertyValue('width')).toBe('120px');
-    expect(block.style.getPropertyPriority('width')).toBe('important');
+    const rows = [...view.dom.querySelectorAll(':scope > .bn-block-group > .bn-block-outer')];
+    const reads = (count: number): number => {
+      const computed = vi.spyOn(window, 'getComputedStyle');
+      try {
+        buildDragPreview(view, blockPreviewContent(view, rows.slice(0, count).map((row) => row.cloneNode(true) as Element)), () => ({
+          width: 100,
+          height: 20,
+        }));
+        return computed.mock.calls.length;
+      } finally {
+        computed.mockRestore();
+      }
+    };
+    expect(reads(40)).toBe(reads(1));
   });
 
-  it('keeps what the copy sets on itself over the same property under another name', () => {
+  it('copies what the content sits in without what it shows for the moment, or what the page would find twice', () => {
     const editor = open([{ type: 'paragraph', content: 'one' }]);
     const view = editor.prosemirrorView!;
+    view.dom.classList.add('ProseMirror-focused');
+    view.dom.id = 'preview-editor';
     const content = blockPreviewContent(view, [view.dom.querySelector('.bn-block-outer')!.cloneNode(true) as Element]);
-    const block = content.querySelector<HTMLElement>('.bn-block-content')!;
-    block.style.width = '120px';
-    // `inline-size` is `width` in a horizontal writing mode; WebKit lays a
-    // collapsed table set to 120px out at 122px where its content sits.
-    const real = window.getComputedStyle.bind(window);
-    const computed = vi.spyOn(window, 'getComputedStyle').mockImplementation((element, pseudo) =>
-      element === block && !pseudo
-        ? ({ length: 1, item: () => 'inline-size', getPropertyValue: () => '122px' } as unknown as CSSStyleDeclaration)
-        : real(element, pseudo),
-    );
-    try {
-      buildDragPreview(view, content, () => ({ width: 100, height: 20 }));
-    } finally {
-      computed.mockRestore();
-    }
-    // A declaration block takes the later of two that set one value.
-    const order = Array.from({ length: block.style.length }, (_, at) => block.style.item(at));
-    expect(order.indexOf('width')).toBeGreaterThan(order.indexOf('inline-size'));
-    expect(block.style.getPropertyPriority('width')).toBe('important');
+    const root = buildDragPreview(view, content, () => ({ width: 100, height: 20 }));
+    const copy = content.parentElement!;
+    expect(copy.classList.contains('bn-editor')).toBe(true);
+    expect(copy.classList.contains('ProseMirror-focused')).toBe(false);
+    expect(copy.hasAttribute('contenteditable')).toBe(false);
+    expect(root.querySelector('[id]')).toBeNull();
   });
 
-  it('leaves the content its own size, which the place its styles are worked out in would stretch', () => {
-    const editor = open([{ type: 'paragraph', content: 'one' }]);
-    const view = editor.prosemirrorView!;
-    const content = blockPreviewContent(view, [view.dom.querySelector('.bn-block-outer')!.cloneNode(true) as Element]);
-    // The body's block group fills the editor element, which fills its
-    // scroller: worked out there, a one-line row is as tall as the screen.
-    const real = window.getComputedStyle.bind(window);
-    const sizes: Record<string, string> = { height: '313px', 'block-size': '313px', 'min-height': '313px', 'max-width': '768px' };
-    const computed = vi.spyOn(window, 'getComputedStyle').mockImplementation((element, pseudo) =>
-      element === content && !pseudo
-        ? ({
-          length: Object.keys(sizes).length,
-          item: (at: number) => Object.keys(sizes)[at],
-          getPropertyValue: (property: string) => sizes[property] ?? '',
-        } as unknown as CSSStyleDeclaration)
-        : real(element, pseudo),
-    );
-    try {
-      buildDragPreview(view, content, () => ({ width: 100, height: 20 }));
-    } finally {
-      computed.mockRestore();
-    }
-    expect(Object.keys(sizes).map((property) => content.style.getPropertyValue(property))).toEqual(['', '', '', '']);
-  });
-
-  it('leaves the content to take the pointer as the preview does, not as the body does', () => {
-    const editor = open([{ type: 'paragraph', content: 'one' }]);
-    const view = editor.prosemirrorView!;
-    const content = blockPreviewContent(view, [view.dom.querySelector('.bn-block-outer')!.cloneNode(true) as Element]);
-    const real = window.getComputedStyle.bind(window);
-    const taken: Record<string, string> = { 'pointer-events': 'auto', 'touch-action': 'auto', 'user-select': 'text', cursor: 'text' };
-    const computed = vi.spyOn(window, 'getComputedStyle').mockImplementation((element, pseudo) =>
-      !pseudo && content.contains(element)
-        ? ({
-          length: Object.keys(taken).length,
-          item: (at: number) => Object.keys(taken)[at],
-          getPropertyValue: (property: string) => taken[property] ?? '',
-        } as unknown as CSSStyleDeclaration)
-        : real(element, pseudo),
-    );
-    try {
-      buildDragPreview(view, content, () => ({ width: 100, height: 20 }));
-    } finally {
-      computed.mockRestore();
-    }
-    // The preview takes no pointer: one it covered would end the drag.
-    const written = [content, ...content.querySelectorAll<HTMLElement>('*')].flatMap((element) =>
-      Object.keys(taken).filter((property) => element.style.getPropertyValue(property) !== ''),
-    );
-    expect(written).toEqual([]);
-  });
-
-  it('works its styles out beside the editor element and leaves nothing of that there', () => {
+  it('leaves the page at the first drag event after it is built, when that comes before the next animation frame', () => {
     const editor = open([{ type: 'paragraph', content: 'one' }]);
     const view = editor.prosemirrorView!;
     const after = view.dom.nextSibling;
-    const content = blockPreviewContent(view, [view.dom.querySelector('.bn-block-outer')!.cloneNode(true) as Element]);
-    buildDragPreview(view, content, () => ({ width: 100, height: 20 }));
+    const root = buildDragPreview(view, blockPreviewContent(view, [view.dom.querySelector('.bn-block-outer')!.cloneNode(true) as Element]), () => ({
+      width: 100,
+      height: 20,
+    }));
+    // Nothing is put beside the editor element; the copy of it inside the
+    // preview is on the page until then, where BlockNote looks for an editor
+    // under the pointer (`SideMenu.ts:328`) on the drag's events.
     expect(view.dom.nextSibling).toBe(after);
+    view.dom.dispatchEvent(new Event('dragover', { bubbles: true }));
+    expect(root.isConnected).toBe(false);
     expect(document.querySelectorAll('.bn-editor')).toHaveLength(1);
-  });
-
-  it('works them out without what the editor element shows for the moment', () => {
-    const editor = open([{ type: 'paragraph', content: 'one' }]);
-    const view = editor.prosemirrorView!;
-    const sheet = document.createElement('style');
-    sheet.textContent = '.ProseMirror-focused .bn-block-content { word-spacing: 9px; }';
-    document.head.append(sheet);
-    view.dom.classList.add('ProseMirror-focused');
-    try {
-      const content = blockPreviewContent(view, [view.dom.querySelector('.bn-block-outer')!.cloneNode(true) as Element]);
-      const root = buildDragPreview(view, content, () => ({ width: 100, height: 20 }));
-      expect(root.querySelector<HTMLElement>('.bn-block-content')!.style.getPropertyValue('word-spacing')).not.toBe('9px');
-    } finally {
-      sheet.remove();
-    }
   });
 
   it('stands its last block flush against its bottom, and leaves the space between blocks', () => {
@@ -445,15 +431,10 @@ describe('blockPreviewContent', () => {
       },
     ]);
     const view = editor.prosemirrorView!;
-    const viewport = view.dom.querySelector<HTMLElement>('[data-radix-scroll-area-viewport]')!;
-    viewport.scrollLeft = 150;
-    viewport.getBoundingClientRect = () => ({ left: 100, right: 400, width: 300, height: 40 }) as DOMRect;
+    scrollFrame(editor, 150);
     // a1 is scrolled off whole; b1 is cut by the frame's left edge and is drawn
     // whole; c1 is in view.
-    const rights = [90, 230, 380];
-    view.dom.querySelectorAll<HTMLElement>('tr:first-child td').forEach((cell, index) => {
-      cell.getBoundingClientRect = () => ({ right: rights[index]!, width: 120, height: 30 }) as DOMRect;
-    });
+    layOut(editor, { a1: [-30, 90], b1: [90, 230], c1: [230, 380], ab: [-30, 230], c2: [230, 380] });
     const row = view.dom.querySelector('.bn-block-outer')!;
     const root = buildDragPreview(view, blockPreviewContent(view, [row.cloneNode(true) as Element]), () => ({ width: 100, height: 20 }));
     // Taken out, not hidden by a style: WebKit draws a column set to
@@ -462,6 +443,56 @@ describe('blockPreviewContent', () => {
     expect(root.querySelectorAll('col')).toHaveLength(2);
     expect(root.querySelector('tr:last-child td')!.getAttribute('colspan')).toBe('1');
     expect(root.querySelector<HTMLElement>('[data-radix-scroll-area-viewport]')!.scrollLeft).toBe(0);
+  });
+
+  it('finds a column scrolled off whose edge only a later row draws, under a cell merged across it in the first', () => {
+    const editor = open([
+      {
+        type: 'table',
+        content: {
+          type: 'tableContent',
+          rows: [{ cells: [{ type: 'tableCell', content: 'ab', props: { colspan: 2 } }, 'c1'] }, { cells: ['a2', 'b2', 'c2'] }],
+        },
+      },
+    ]);
+    const view = editor.prosemirrorView!;
+    scrollFrame(editor, 150);
+    layOut(editor, { ab: [-30, 230], c1: [230, 380], a2: [-30, 90], b2: [90, 230], c2: [230, 380] });
+    const row = view.dom.querySelector('.bn-block-outer')!;
+    const content = blockPreviewContent(view, [row.cloneNode(true) as Element]);
+    expect(cellTexts(content)).toEqual([['ab', 'c1'], ['b2', 'c2']]);
+    expect(content.querySelector('td')!.getAttribute('colspan')).toBe('1');
+  });
+
+  it('holds a whole table at the widths and heights the body draws, whatever width the library wrote on it', () => {
+    const editor = open([{ type: 'table', content: { type: 'tableContent', rows: [{ cells: ['a1', 'b1', 'c1'] }, { cells: ['a2', 'b2', 'c2'] }] } }]);
+    const view = editor.prosemirrorView!;
+    layOut(editor, { a1: [0, 100], b1: [100, 220], c1: [220, 360], a2: [0, 100], b2: [100, 220], c2: [220, 360] }, [30, 50]);
+    // prosemirror-tables writes the whole table's width on it
+    // (`updateColumnsOnResize`), which the copy would carry past the columns
+    // it keeps.
+    view.dom.querySelector<HTMLElement>('table')!.style.minWidth = '900px';
+    const content = blockPreviewContent(view, [view.dom.querySelector('.bn-block-outer')!.cloneNode(true) as Element]);
+    expect(heldTable(content)).toEqual({ cols: ['100px', '120px', '140px'], table: ['360px', '0px', 'fixed'], rows: ['30px', '50px'] });
+  });
+
+  it('holds every row at the height the body draws it, one the columns taken out leave empty included', () => {
+    const editor = open([
+      {
+        type: 'table',
+        content: {
+          type: 'tableContent',
+          rows: [{ cells: ['a1', { type: 'tableCell', content: 'merged', props: { rowspan: 2 } }] }, { cells: ['a2'] }],
+        },
+      },
+    ]);
+    const view = editor.prosemirrorView!;
+    scrollFrame(editor, 150);
+    layOut(editor, { a1: [-30, 90], a2: [-30, 90], merged: [90, 230] }, [30, 90]);
+    const content = blockPreviewContent(view, [view.dom.querySelector('.bn-block-outer')!.cloneNode(true) as Element]);
+    // The merged cell spans an empty row, at its height, as in the body.
+    expect(cellTexts(content)).toEqual([['merged'], []]);
+    expect(heldTable(content)).toMatchObject({ cols: ['140px'], rows: ['30px', '90px'] });
   });
 
   it('draws each video as an empty canvas when it has no original to take a size and a frame from', () => {
@@ -515,66 +546,68 @@ describe('tableLinePreviewContent', () => {
     expect(cols[0]!.style.width).toBe('300px');
   });
 
-  it('draws a line at the column widths the body draws, the table at their sum', () => {
+  it('draws a line at the column widths and row heights the body draws, the table at their sum', () => {
     const editor = open([{ type: 'table', content: { type: 'tableContent', rows } }]);
     const view = editor.prosemirrorView!;
     // Measured on the cells: WebKit gives a `col` no box (its rect is all 0).
-    const widths = [393, 120, 140];
     view.dom.querySelectorAll('col').forEach((col) => {
       col.getBoundingClientRect = () => ({ width: 0, height: 0 }) as DOMRect;
     });
-    view.dom.querySelectorAll('tr').forEach((tr) => {
-      tr.querySelectorAll<HTMLElement>('td, th').forEach((cell, index) => {
-        cell.getBoundingClientRect = () => ({ width: widths[index]!, height: 30 }) as DOMRect;
-      });
-    });
+    layOut(
+      editor,
+      { a1: [0, 393], b1: [393, 513], c1: [513, 653], a2: [0, 393], b2: [393, 513], c2: [513, 653], a3: [0, 393], b3: [393, 513], c3: [513, 653] },
+      [30, 40, 50],
+    );
+    view.dom.querySelector<HTMLElement>('[data-content-type="table"]')!.getBoundingClientRect = () => ({ width: 720, height: 120 }) as DOMRect;
     const row = tableLinePreviewContent(view, cellOf(editor, 'b2'), 'row')!;
     const column = tableLinePreviewContent(view, cellOf(editor, 'b2'), 'column')!;
-    const drawn = (content: HTMLElement): unknown => {
-      const table = content.querySelector('table')!;
-      return {
-        cols: [...content.querySelectorAll('col')].map((col) => [col.style.width, col.style.getPropertyPriority('width')]),
-        table: [table.style.width, table.style.getPropertyPriority('width'), table.style.tableLayout],
-        block: content.style.width,
-      };
-    };
     // A row keeps every column at the width the whole table gives it: its own
     // cells alone would share the room out another way. The width is the
-    // table's, so a quoted block's rule stands outside it.
-    expect(drawn(row)).toEqual({
-      cols: [['393px', 'important'], ['120px', 'important'], ['140px', 'important']],
-      table: ['653px', 'important', 'fixed'],
-      block: '',
-    });
+    // table's, so a quoted block's rule stands outside it. Its block is as wide
+    // as the body's, so its frame cuts the table where the body's does.
+    expect(heldTable(row)).toEqual({ cols: ['393px', '120px', '140px'], table: ['653px', '0px', 'fixed'], rows: ['40px'] });
+    expect(row.style.width).toBe('720px');
+    expect(row.querySelector('col')!.style.getPropertyPriority('width')).toBe('important');
     // A column is as wide as itself, the block's own width set to it, and its
     // table stays in the library's wrapper, a block as in the body: in WebKit a
     // collapsed table of a set width laid out as a flex item is 1px wider.
-    expect(drawn(column)).toEqual({ cols: [['120px', 'important']], table: ['120px', 'important', 'fixed'], block: '120px' });
+    expect(heldTable(column)).toEqual({ cols: ['120px'], table: ['120px', '0px', 'fixed'], rows: ['30px', '40px', '50px'] });
+    expect(column.style.width).toBe('120px');
     const wrapper = column.querySelector<HTMLElement>(':scope > .tableWrapper')!;
     expect(wrapper.querySelector('table')).not.toBeNull();
     // The room it keeps under the table is for the frame's scrollbar.
     expect(wrapper.style.padding).toBe('0px');
   });
 
+  it('keeps a column\'s row a merged cell covers, at its height, under the merged cell', () => {
+    const editor = open([
+      {
+        type: 'table',
+        content: {
+          type: 'tableContent',
+          rows: [{ cells: ['a1', { type: 'tableCell', content: 'merged', props: { rowspan: 2 } }] }, { cells: ['a2'] }],
+        },
+      },
+    ]);
+    const view = editor.prosemirrorView!;
+    layOut(editor, { a1: [0, 100], a2: [0, 100], merged: [100, 220] }, [30, 90]);
+    const column = tableLinePreviewContent(view, cellOf(editor, 'merged'), 'column')!;
+    expect(cellTexts(column)).toEqual([['merged'], []]);
+    expect(heldTable(column)).toMatchObject({ rows: ['30px', '90px'] });
+  });
+
   it('holds a table row at the widths of the columns in view, the table at their sum', () => {
     const editor = open([{ type: 'table', content: { type: 'tableContent', rows } }]);
     const view = editor.prosemirrorView!;
-    const viewport = view.dom.querySelector<HTMLElement>('[data-radix-scroll-area-viewport]')!;
-    viewport.scrollLeft = 150;
-    viewport.getBoundingClientRect = () => ({ left: 100, right: 400, width: 300, height: 90 }) as DOMRect;
-    const rights = [90, 230, 380];
-    view.dom.querySelectorAll('tr').forEach((tr) => {
-      tr.querySelectorAll<HTMLElement>('td').forEach((cell, index) => {
-        cell.getBoundingClientRect = () => ({ right: rights[index]!, width: 120 + index * 10, height: 30 }) as DOMRect;
-      });
-    });
+    scrollFrame(editor, 150);
+    layOut(editor, { a1: [-30, 90], b1: [90, 220], c1: [220, 360], a2: [-30, 90], b2: [90, 220], c2: [220, 360], a3: [-30, 90], b3: [90, 220], c3: [220, 360] });
     const content = tableLinePreviewContent(view, cellOf(editor, 'b2'), 'row')!;
     expect(cellTexts(content)).toEqual([['b2', 'c2']]);
     expect([...content.querySelectorAll<HTMLElement>('col')].map((col) => col.style.width)).toEqual(['130px', '140px']);
     expect(content.querySelector<HTMLElement>('table')!.style.width).toBe('270px');
   });
 
-  it('works a line\'s styles out inside the block its table sits in', () => {
+  it('lets a line\'s styles reach it inside the block its table sits in', () => {
     const editor = open([{ type: 'table', content: { type: 'tableContent', rows } }]);
     const view = editor.prosemirrorView!;
     const sheet = document.createElement('style');
@@ -583,7 +616,8 @@ describe('tableLinePreviewContent', () => {
     try {
       const content = tableLinePreviewContent(view, cellOf(editor, 'b2'), 'row')!;
       buildDragPreview(view, content, () => ({ width: 100, height: 20 }));
-      expect(content.style.getPropertyValue('letter-spacing')).toBe('3px');
+      expect(getComputedStyle(content).letterSpacing).toBe('3px');
+      expect(content.style.getPropertyValue('letter-spacing')).toBe('');
     } finally {
       sheet.remove();
     }
@@ -619,5 +653,29 @@ describe('tableLinePreviewContent', () => {
     ]);
     const content = tableLinePreviewContent(editor.prosemirrorView!, cellOf(editor, 'c2'), 'column')!;
     expect(cellTexts(content)).toEqual([['c1'], ['c2']]);
+  });
+});
+
+describe('tableRowsPreviewContent', () => {
+  it('holds the rows of a cell selection at the widths and heights the body draws, its block at the body\'s width', () => {
+    const editor = open([
+      {
+        type: 'table',
+        content: { type: 'tableContent', rows: [{ cells: ['a1', 'b1', 'c1'] }, { cells: ['a2', 'b2', 'c2'] }, { cells: ['a3', 'b3', 'c3'] }] },
+      },
+    ]);
+    const view = editor.prosemirrorView!;
+    scrollFrame(editor, 150);
+    layOut(
+      editor,
+      { a1: [-30, 90], b1: [90, 220], c1: [220, 360], a2: [-30, 90], b2: [90, 220], c2: [220, 360], a3: [-30, 90], b3: [90, 220], c3: [220, 360] },
+      [30, 40, 50],
+    );
+    view.dom.querySelector<HTMLElement>('table')!.style.minWidth = '900px';
+    view.dom.querySelector<HTMLElement>('[data-content-type="table"]')!.getBoundingClientRect = () => ({ width: 720, height: 120 }) as DOMRect;
+    const content = tableRowsPreviewContent(view, cellOf(editor, 'b2'), 1, 3)!;
+    expect(cellTexts(content)).toEqual([['b2', 'c2'], ['b3', 'c3']]);
+    expect(heldTable(content)).toEqual({ cols: ['130px', '140px'], table: ['270px', '0px', 'fixed'], rows: ['40px', '50px'] });
+    expect(content.style.width).toBe('720px');
   });
 });
