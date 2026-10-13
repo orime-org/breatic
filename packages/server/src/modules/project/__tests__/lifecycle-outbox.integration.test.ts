@@ -44,7 +44,7 @@ async function seed(count: number): Promise<string[]> {
   for (let i = 0; i < count; i++) {
     const projectId = randomUUID();
     const event: ProjectLifecycleEvent = { type: "project:archived", projectId, ts: Date.now() };
-    await sql`INSERT INTO project_lifecycle_outbox (kind, payload) VALUES (${event.type}, ${sql.json(event)})`;
+    await sql`INSERT INTO project_lifecycle_outbox (kind, payload) VALUES (${event.type}, ${sql.json(event as unknown as postgres.JSONValue)})`;
     ids.push(projectId);
   }
   return ids;
