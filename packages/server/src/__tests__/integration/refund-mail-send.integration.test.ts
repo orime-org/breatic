@@ -70,6 +70,7 @@ import { fakeStripe } from "./fake-stripe-refunds.js";
 import { call, freshKey, mailsSettled, paths, useInternalApp } from "./internal-api-harness.js";
 import {
   PAID_CENTS,
+  bellsOf,
   inTx,
   seedOperation,
   seedRefundLot,
@@ -516,4 +517,66 @@ describe("a rejection letter names the rejected request's time, after the buyer 
     expect(letters).toHaveLength(1);
     expectNames(letters[0]!.text, REJECTED_ASK, later);
   });
+});
+
+describe("the bell tells the buyer whatever the mail does, and the operator can resend (§5.5, §6.5, acceptance #13)", () => {
+  const cases = [
+    { kind: "reject", ending: "failed", result: "rejected", mail: "refund_rejected", bell: "credit.refund_rejected" },
+    { kind: "reject", ending: "unknown", result: "rejected", mail: "refund_rejected", bell: "credit.refund_rejected" },
+    { kind: "approve", ending: "failed", result: "refunded", mail: "refund_completed", bell: "credit.refund_completed" },
+    { kind: "approve", ending: "unknown", result: "refunded", mail: "refund_completed", bell: "credit.refund_completed" },
+  ] as const;
+
+  it.each(cases)(
+    "$kind whose automatic mail ends $ending: the answer is $result, the bell is written, and a resend goes out",
+    async ({ kind, ending, result, mail, bell }) => {
+      const lot = await seedRefundLot(suite.sql, "refund_pending");
+      fakeStripe.register(lot.paymentIntentId, PAID_CENTS, []);
+      const email = await emailOf(lot);
+      const stale = getCreditRefundConfig().staleSendingMinutes;
+      let first = true;
+      sendMail.mockImplementation(async (letter: { to: string }) => {
+        if (letter.to !== email || !first) return { status: "sent" };
+        first = false;
+        if (ending === "failed") throw new Error("smtp refused");
+        // While the letter is out, the loop finds the row stale (M5); the
+        // send's write-back then lands on an unknown row and is discarded.
+        await suite.sql`
+          UPDATE refund_mail_outbox m SET updated_at = now() - make_interval(mins => ${stale + 1}::int)
+          FROM credit_refund_operations o
+          WHERE o.id = m.operation_id AND o.lot_id = ${lot.lotId} AND m.status = 'sending'
+        `;
+        await markStaleRefundMailsUnknown();
+        return { status: "sent" };
+      });
+
+      const res = await call(suite.baseUrl, kind === "reject" ? paths.reject(lot.lotId) : paths.approve(lot.lotId), {
+        body: kind === "reject" ? { reason: OPERATOR_REASON } : { reason: OPERATOR_REASON, confirmedRefundIds: [] },
+        idempotencyKey: freshKey(),
+      });
+
+      expect(res.status).toBe(200);
+      expect(res.json).toMatchObject({ kind, status: "succeeded", result });
+      if (kind === "approve") expect(res.json.stripeRefundId).toBe(fakeStripe.refundsOf(lot.paymentIntentId)[0]!.id);
+      await vi.waitFor(async () => expect(await mailsOfLot(lot)).toHaveLength(1));
+      await mailsSettled(suite.sql, lot);
+      expect((await mailsOfLot(lot)).map((m) => [m.kind, m.origin, m.status])).toEqual([[mail, "auto", ending]]);
+      expect((await bellsOf(suite.sql, lot.userId)).map((b) => b.type)).toEqual([bell]);
+
+      const resent = await call(suite.baseUrl, paths.resend(res.json.id), {
+        body: { reason: RESEND_REASON },
+        idempotencyKey: freshKey(),
+      });
+
+      expect([200, 202]).toContain(resent.status);
+      await vi.waitFor(async () => expect(await mailsOfLot(lot)).toHaveLength(2));
+      await mailsSettled(suite.sql, lot);
+      expect((await mailsOfLot(lot)).map((m) => [m.kind, m.origin, m.status])).toEqual([
+        [mail, "auto", ending],
+        [mail, "resend", "sent"],
+      ]);
+      expect(lettersTo(email)).toHaveLength(2);
+      expect((await bellsOf(suite.sql, lot.userId)).map((b) => b.type)).toEqual([bell]);
+    },
+  );
 });
