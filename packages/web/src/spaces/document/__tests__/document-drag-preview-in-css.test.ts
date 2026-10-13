@@ -47,4 +47,15 @@ describe('what a drag shows', () => {
     expect(rule).toMatch(/pointer-events: none;/);
     expect(rule).not.toMatch(/opacity/);
   });
+
+  it('lays out and draws nothing of the copies its content sits in, and takes no pointer anywhere', () => {
+    // The copies of what the content sits in in the body
+    // (`document-preview-styles.ts`): rules match through them and values are
+    // inherited through them, and they are no box. A preview over the pointer
+    // as the drag starts would end it in Chromium.
+    const sheet = stylesheet();
+    expect(sheet).toMatch(/\.doc-preview-shell \{\s*display: contents !important;\s*\}/);
+    expect(sheet).toMatch(/\.doc-preview-shell::before,\s*\.doc-preview-shell::after \{\s*content: none !important;\s*\}/);
+    expect(sheet).toMatch(/\.doc-drag-preview \* \{\s*pointer-events: none !important;\s*\}/);
+  });
 });

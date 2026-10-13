@@ -13,10 +13,11 @@
  *   its own and takes that of the group it sits in, a media block is its media
  *   box, a table is in the frame it scrolls in from its first column in view, a
  *   table row is that whole row in the same frame and a column is that column
- *   alone, at its width.
- * - It is drawn in the body's styles: each element carries, written on it, the
- *   style it takes where its content sits in the body
- *   (`document-preview-styles.ts`).
+ *   alone, at its width. A table keeps the widths and heights the body draws
+ *   its columns and rows at.
+ * - It is drawn in the body's styles: its content sits in copies of the
+ *   elements it sits in in the body, which lay out and draw nothing of their
+ *   own (`document-preview-styles.ts`).
  * - It is scaled down as a whole when a side is longer than 512px, until the
  *   longest is 512px; content no longer than that keeps its own size. Chrome
  *   draws the image in the root element's own space, leaving out the root's
@@ -27,7 +28,8 @@
  * Firefox and WebKit draw the root's own opacity into the image, and Safari
  * cancels a drag whose image is wholly off screen. The browser takes the image
  * while `dragstart` is dispatched, so the root leaves the page in the next
- * animation frame, before that frame is painted (inner#1350 design §4).
+ * animation frame, before that frame is painted, or at the drag's next event
+ * if that comes first (inner#1350 design §4).
  */
 
 import type { EditorView } from '@tiptap/pm/view';
@@ -36,7 +38,7 @@ import { SCROLLBAR_MARK } from '@web/components/ui/scroll-area';
 import { MEDIA_CHROME } from '@web/spaces/document/DocumentMediaBlock';
 import type { DragOrientation } from '@web/spaces/document/document-table-drag';
 import { cellAt, cellsOfScope } from '@web/spaces/document/document-table-run';
-import { standsFor, writeBodyStyles } from '@web/spaces/document/document-preview-styles';
+import { inPlaceOf, standsFor } from '@web/spaces/document/document-preview-styles';
 import { withoutViewState } from '@web/spaces/document/document-view-state';
 
 /** The longest a drag preview's side may be, in px (user 2026-10-10). */
@@ -99,10 +101,34 @@ function measureLayer(layer: HTMLElement): PreviewSize {
   return { width: Math.max(box.width, layer.scrollWidth), height: Math.max(box.height, layer.scrollHeight) };
 }
 
+/** A drag's events, each dispatched once the browser has taken the image. */
+const DRAG_EVENTS = ['drag', 'dragenter', 'dragover', 'dragleave', 'drop', 'dragend'] as const;
+
+/**
+ * Takes a preview off the page once the browser has its image: in the next
+ * animation frame, before it is painted, or at the drag's next event if that
+ * comes first. Until then the preview's copy of the editor element is on the
+ * page, where BlockNote looks for an editor on the drag's events
+ * (`SideMenu.ts` `findClosestEditorElement`); the window sees each first, in
+ * the capture phase.
+ * @param root - The preview's root.
+ */
+function leaveOnceTaken(root: HTMLElement): void {
+  const frame = root.ownerDocument.defaultView ?? window;
+  /** Takes the preview off the page, and what would take it off again. */
+  const leave = (): void => {
+    frame.cancelAnimationFrame(next);
+    DRAG_EVENTS.forEach((type) => frame.removeEventListener(type, leave, true));
+    root.remove();
+  };
+  const next = frame.requestAnimationFrame(leave);
+  DRAG_EVENTS.forEach((type) => frame.addEventListener(type, leave, true));
+}
+
 /**
  * Attaches a preview of some content to the page, scaled and in the body's
  * styles, for the `dragstart` being dispatched to hand to `setDragImage`. It
- * takes itself off the page in the next animation frame.
+ * takes itself off the page once the browser has the image.
  * @param view - The editor view whose styles it takes.
  * @param content - The content, detached.
  * @param measure - Reads the content's natural size once laid out.
@@ -124,7 +150,6 @@ export function buildDragPreview(
     : [...content.querySelectorAll<HTMLElement>(BLOCK_CONTENT)];
   blocks[0]?.style.setProperty('--doc-block-lift', '0px');
   blocks[blocks.length - 1]?.style.setProperty('--doc-block-drop', '0px');
-  const sheet = writeBodyStyles(view, content);
   const root = page.createElement('div');
   root.className = PREVIEW_CLASS;
   root.style.overflow = 'hidden';
@@ -135,17 +160,15 @@ export function buildDragPreview(
   layer.style.verticalAlign = 'top';
   layer.style.padding = '0';
   layer.style.transformOrigin = '0px 0px';
-  layer.append(content);
-  root.append(layer, sheet);
+  layer.append(inPlaceOf(view, content));
+  root.append(layer);
   page.body.append(root);
   const size = measure(layer);
   const scale = previewScale(size.width, size.height);
   root.style.width = `${size.width * scale}px`;
   root.style.height = `${size.height * scale}px`;
   layer.style.transform = `scale(${scale})`;
-  (page.defaultView ?? window).requestAnimationFrame(() => {
-    root.remove();
-  });
+  leaveOnceTaken(root);
   return root;
 }
 
@@ -180,31 +203,6 @@ function nestingOf(view: EditorView, original: Element): number {
   return Math.max(0, groups - 1);
 }
 
-/**
- * The columns of a table its frame has scrolled wholly out of view on the
- * left, by index, read off the cells of its first row (no cell there is
- * covered from a row above). A cell the frame's edge cuts through is in view.
- * @param table - The table in the body.
- * @returns The columns' indexes.
- */
-function columnsScrolledOff(table: Element | null | undefined): Set<number> {
-  const hidden = new Set<number>();
-  const viewport = table?.closest(SCROLL_VIEWPORT);
-  if (table === null || table === undefined || viewport === null || viewport === undefined || viewport.scrollLeft === 0) {
-    return hidden;
-  }
-  const edge = viewport.getBoundingClientRect().left;
-  let column = 0;
-  table.querySelector('tr')?.querySelectorAll(':scope > td, :scope > th').forEach((cell) => {
-    const span = Number(cell.getAttribute('colspan')) || 1;
-    if (cell.getBoundingClientRect().right <= edge + 0.5) {
-      for (let at = column; at < column + span; at += 1) hidden.add(at);
-    }
-    column += span;
-  });
-  return hidden;
-}
-
 /** The columns a cell spans: its first, and the one after its last. */
 type Span = readonly [number, number];
 
@@ -228,6 +226,58 @@ function spansOf(table: Element): Map<Element, Span> {
     });
   });
   return spans;
+}
+
+/**
+ * The columns of a table its frame has scrolled wholly out of view on the
+ * left, by index: every column up to the last whose right edge some cell, in
+ * whichever row, draws at or left of the frame's edge. A cell the frame's edge
+ * cuts through is in view.
+ * @param table - The table in the body.
+ * @returns The columns' indexes.
+ */
+function columnsScrolledOff(table: Element | null | undefined): Set<number> {
+  const viewport = table?.closest(SCROLL_VIEWPORT);
+  if (table === null || table === undefined || viewport === null || viewport === undefined || viewport.scrollLeft === 0) {
+    return new Set();
+  }
+  const edge = viewport.getBoundingClientRect().left + 0.5;
+  let off = 0;
+  spansOf(table).forEach(([, end], cell) => {
+    if (cell.getBoundingClientRect().right <= edge) off = Math.max(off, end);
+  });
+  return new Set(Array.from({ length: off }, (_, column) => column));
+}
+
+/**
+ * The widths a table's columns are drawn at in the body, read off a cell that
+ * spans that column alone: WebKit gives a `col` no box. 0 for a column every
+ * cell of which spans others too.
+ * @param table - The table in the body.
+ * @returns One width per column.
+ */
+function columnWidths(table: Element | null | undefined): number[] {
+  if (table === null || table === undefined) return [];
+  const widths: number[] = [];
+  let count = 0;
+  spansOf(table).forEach(([first, end], cell) => {
+    count = Math.max(count, end);
+    if (end === first + 1 && widths[first] === undefined) widths[first] = cell.getBoundingClientRect().width;
+  });
+  return Array.from({ length: count }, (_, column) => widths[column] ?? 0);
+}
+
+/**
+ * The height each row of a copied table is drawn at in the body, from the
+ * table it was copied from. Run while the copy still has its original's rows.
+ * @param original - The table in the body.
+ * @param copy - Its copy.
+ * @returns Each copied row's height.
+ */
+function copiedHeights(original: Element | null | undefined, copy: Element | null): Map<Element, number> {
+  if (original === null || original === undefined || copy === null) return new Map();
+  const rows = [...original.querySelectorAll('tr')];
+  return new Map([...copy.querySelectorAll('tr')].map((row, index) => [row, rows[index]?.getBoundingClientRect().height ?? 0]));
 }
 
 /**
@@ -402,9 +452,13 @@ export function blockPreviewContent(view: EditorView, blocks: readonly Element[]
     return box;
   }
   blocks.forEach((block) => {
-    const tables = [...(originalRow(view, block)?.querySelectorAll('table') ?? [])];
+    const originals = [...(originalRow(view, block)?.querySelectorAll('table') ?? [])];
     block.querySelectorAll('table').forEach((table, index) => {
-      dropColumns(table, columnsScrolledOff(tables[index]), copiedSpans(tables[index], table));
+      const original = originals[index];
+      const hidden = columnsScrolledOff(original);
+      const heights = copiedHeights(original, table);
+      dropColumns(table, hidden, copiedSpans(original, table));
+      holdTable(table, columnWidths(original).filter((_, column) => !hidden.has(column)), heights);
     });
   });
   const original = blocks[0] === undefined ? null : originalRow(view, blocks[0]);
@@ -418,45 +472,43 @@ export function blockPreviewContent(view: EditorView, blocks: readonly Element[]
 }
 
 /**
- * The widths a table's columns are drawn at in the body, read off a cell that
- * spans that column alone: WebKit gives a `col` no box. 0 for a column every
- * cell of which spans others too.
- * @param view - The editor view.
- * @param at - The table, by a cell of it.
- * @returns One width per column.
+ * Holds a copied table at the geometry its original is drawn at: each row at
+ * its height, each kept column at its own width, the table at their sum and no
+ * wider, laid out to them. Laid out again from what the copy keeps, a row or a
+ * column would share its room out another way, a row the columns taken out
+ * leave empty would close up under the cell merged across it, and the width
+ * prosemirror-tables writes on the table for all its columns
+ * (`updateColumnsOnResize`) would stretch the ones kept. Written on the table
+ * and its columns, so a quoted block's rule stands outside them as in the
+ * body. Important, as the editor's own rule for a table's width is
+ * (`.bn-editor [data-content-type=table] table`).
+ * @param table - The copied table.
+ * @param widths - The kept columns' widths in the body, in order.
+ * @param heights - Each copied row's height in the body.
  */
-function columnWidths(view: EditorView, at: NonNullable<ReturnType<typeof cellAt>>): number[] {
-  const { map, tableStart } = at;
-  return Array.from({ length: map.width }, (_, column) => {
-    for (let row = 0; row < map.height; row += 1) {
-      const pos = map.map[row * map.width + column]!;
-      const rect = map.findCell(pos);
-      if (rect.left === column && rect.right === column + 1) {
-        const cell = view.nodeDOM(tableStart + pos);
-        return cell instanceof HTMLElement ? cell.getBoundingClientRect().width : 0;
-      }
-    }
-    return 0;
+function holdTable(table: HTMLElement | null | undefined, widths: readonly number[], heights: ReadonlyMap<Element, number>): void {
+  if (table === null || table === undefined) return;
+  table.querySelectorAll<HTMLElement>('tr').forEach((row) => {
+    const height = heights.get(row) ?? 0;
+    if (height > 0) row.style.height = `${height}px`;
   });
+  const cols = [...table.querySelectorAll<HTMLElement>('col')];
+  if (widths.length === 0 || widths.some((width) => width <= 0) || cols.length !== widths.length) return;
+  cols.forEach((col, index) => col.style.setProperty('width', `${widths[index]}px`, 'important'));
+  table.style.setProperty('width', `${widths.reduce((sum, width) => sum + width, 0)}px`, 'important');
+  table.style.setProperty('min-width', '0px', 'important');
+  table.style.setProperty('table-layout', 'fixed', 'important');
 }
 
 /**
- * Holds a copied table at the column widths its original is drawn at: each
- * kept column at its own width, the table at their sum, laid out to them.
- * Laid out again from what the copy keeps, a row or a column would share its
- * width out another way. Written on the table and its columns, so a quoted
- * block's rule stands outside them as in the body. Important, as the editor's
- * own rule for a table's width is (`.bn-editor [data-content-type=table] table`).
- * @param copy - The copied table block.
- * @param widths - The kept columns' widths in the body, in order.
+ * Holds a copied table block at the width the body draws it at, so the frame
+ * the table scrolls in cuts it where the body's does.
+ * @param copy - The copied block.
+ * @param original - The block in the body.
  */
-function holdColumns(copy: Element, widths: readonly number[]): void {
-  const cols = [...copy.querySelectorAll<HTMLElement>('col')];
-  if (widths.some((width) => width <= 0) || cols.length !== widths.length) return;
-  cols.forEach((col, index) => col.style.setProperty('width', `${widths[index]}px`, 'important'));
-  const table = copy.querySelector<HTMLElement>('table');
-  table?.style.setProperty('width', `${widths.reduce((sum, width) => sum + width, 0)}px`, 'important');
-  table?.style.setProperty('table-layout', 'fixed', 'important');
+function holdBlockWidth(copy: HTMLElement, original: Element): void {
+  const width = original.getBoundingClientRect().width;
+  if (width > 0) copy.style.width = `${width}px`;
 }
 
 /**
@@ -481,19 +533,33 @@ export function tableLinePreviewContent(
     .filter((node): node is HTMLElement => node instanceof HTMLElement);
   const block = cells[0]?.closest(TABLE_BLOCK);
   if (block === null || block === undefined) return null;
+  const table = block.querySelector('table');
   const copy = block.cloneNode(true) as HTMLElement;
+  const copied = copy.querySelector<HTMLElement>('table');
   // The copy has the original's structure, so a cell is at its own place.
   const originals = [...block.querySelectorAll('td, th')];
   const copies = [...copy.querySelectorAll('td, th')];
-  const spans = copiedSpans(block.querySelector('table'), copy.querySelector('table'));
+  const spans = copiedSpans(table, copied);
+  const heights = copiedHeights(table, copied);
   const kept = new Set(cells.map((cell) => copies[originals.indexOf(cell)]));
   copy.querySelectorAll('td, th').forEach((cell) => {
     if (!kept.has(cell)) cell.remove();
   });
-  copy.querySelectorAll('tr').forEach((row) => {
-    if (row.querySelector('td, th') === null) row.remove();
+  // The rows the line's cells reach down through stay, one a merged cell
+  // covers too, empty, for that cell to span it as in the body.
+  const rows = [...copy.querySelectorAll('tr')];
+  let first = rows.length;
+  let last = -1;
+  rows.forEach((row, index) => {
+    row.querySelectorAll<HTMLTableCellElement>('td, th').forEach((cell) => {
+      first = Math.min(first, index);
+      last = Math.max(last, index + cell.rowSpan - 1);
+    });
   });
-  const widths = columnWidths(view, at);
+  rows.forEach((row, index) => {
+    if (index < first || index > last) row.remove();
+  });
+  const widths = columnWidths(table);
   if (orientation === 'column') {
     // A column is narrower than its frame, so the frame has nothing to scroll.
     // The table stays in the library's wrapper, a block as in the body: in
@@ -511,14 +577,12 @@ export function tableLinePreviewContent(
         if (index !== at.left) col.remove();
       });
     });
-    copy.querySelectorAll<HTMLElement>('table').forEach((table) => {
-      table.style.minWidth = '0';
-    });
-    holdColumns(copy, [widths[at.left] ?? 0]);
+    holdTable(copied, [widths[at.left] ?? 0], heights);
   } else {
-    const hidden = columnsScrolledOff(block.querySelector('table'));
-    dropColumns(copy.querySelector('table'), hidden, spans);
-    holdColumns(copy, widths.filter((_, column) => !hidden.has(column)));
+    const hidden = columnsScrolledOff(table);
+    dropColumns(copied, hidden, spans);
+    holdTable(copied, widths.filter((_, column) => !hidden.has(column)), heights);
+    holdBlockWidth(copy, block);
   }
   standsFor(copy, block);
   settle(view, copy, block);
@@ -550,7 +614,10 @@ export function tableRowsPreviewContent(
   const { map, tableStart } = at;
   const block = (view.nodeDOM(cellPos) as Element | null)?.closest(TABLE_BLOCK);
   if (block === null || block === undefined) return null;
+  const table = block.querySelector('table');
   const copy = block.cloneNode(true) as HTMLElement;
+  const copied = copy.querySelector<HTMLElement>('table');
+  const heights = copiedHeights(table, copied);
   // The copy has the original's structure, so a cell is at its own place.
   const originals = [...block.querySelectorAll('td, th')];
   const copies = [...copy.querySelectorAll('td, th')];
@@ -579,9 +646,10 @@ export function tableRowsPreviewContent(
     }
     row.replaceChildren(...cells);
   });
-  const hidden = columnsScrolledOff(block.querySelector('table'));
-  dropColumns(copy.querySelector('table'), hidden, spans);
-  holdColumns(copy, columnWidths(view, at).filter((_, column) => !hidden.has(column)));
+  const hidden = columnsScrolledOff(table);
+  dropColumns(copied, hidden, spans);
+  holdTable(copied, columnWidths(table).filter((_, column) => !hidden.has(column)), heights);
+  holdBlockWidth(copy, block);
   standsFor(copy, block);
   settle(view, copy, block);
   return copy;

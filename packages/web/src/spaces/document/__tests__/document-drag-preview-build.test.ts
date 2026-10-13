@@ -264,13 +264,15 @@ describe('buildDragPreview', () => {
     const view = editor.prosemirrorView!;
     view.dom.classList.add('ProseMirror-focused');
     view.dom.id = 'preview-editor';
+    view.dom.setAttribute('data-testid', 'preview-editor');
+    view.dom.setAttribute('data-space-outlet', 'space-1');
     const content = blockPreviewContent(view, [view.dom.querySelector('.bn-block-outer')!.cloneNode(true) as Element]);
     const root = buildDragPreview(view, content, () => ({ width: 100, height: 20 }));
     const copy = content.parentElement!;
     expect(copy.classList.contains('bn-editor')).toBe(true);
     expect(copy.classList.contains('ProseMirror-focused')).toBe(false);
     expect(copy.hasAttribute('contenteditable')).toBe(false);
-    expect(root.querySelector('[id]')).toBeNull();
+    expect(root.querySelector('[id], [data-testid], [data-space-outlet]')).toBeNull();
   });
 
   it('leaves the page at the first drag event after it is built, when that comes before the next animation frame', () => {

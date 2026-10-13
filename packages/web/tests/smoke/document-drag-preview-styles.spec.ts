@@ -62,7 +62,8 @@ const createdSpaceIds: string[] = [];
  *   start and how wide they run; and its row's `::before`, the guide BlockNote
  *   draws beside nested blocks, which `index.css` paints nothing of;
  * - the sizes of `col` and `colgroup`, which paint nothing: the cells they
- *   size are compared;
+ *   size are compared; and a table's minimum width, which the preview sets to
+ *   none, holding the table at its kept columns' widths;
  * - where a statically positioned element's offsets point, which is nowhere,
  *   and a relatively positioned one's offset of `0px` against `auto`, both of
  *   which leave it where it is;
@@ -84,6 +85,17 @@ const createdSpaceIds: string[] = [];
  * holds both and serializes them differently.
  */
 function installComparer(): void {
+  /**
+   * A preview's content, inside the copies of what it sits in in the body.
+   * @param root - The preview's root.
+   * @returns The content.
+   */
+  const contentOf = (root: Element): Element => {
+    let at = root.firstElementChild!.firstElementChild!;
+    while (at.classList.contains('doc-preview-shell')) at = at.firstElementChild!;
+    return at;
+  };
+  (window as unknown as { __contentOf: (root: Element) => Element }).__contentOf = contentOf;
   type Diff = { where: string; prop: string; body: string; preview: string };
   const SIZE = new Set(['width', 'height', 'inline-size', 'block-size']);
   const REBASED = new Set(['margin-left', 'margin-inline-start', 'padding-left', 'padding-inline-start', 'width', 'inline-size']);
@@ -186,8 +198,8 @@ function installComparer(): void {
   };
 
   (window as unknown as { __comparePreview: (root: Element) => { diffs: Diff[]; unmatched: string[] } }).__comparePreview = (root) => {
-    const editor = document.querySelector('[data-space-outlet]:not([style*="display: none"]) [data-testid="document-space"] .ProseMirror')!;
-    const content = root.firstElementChild!.firstElementChild!;
+    const editor = document.querySelector('[data-space-outlet]:not([style*="display: none"]) [data-testid="document-space"] .ProseMirror:not(.doc-preview-shell)')!;
+    const content = contentOf(root);
     const diffs: Diff[] = [];
     const unmatched: string[] = [];
     const blocks = [...root.querySelectorAll('.bn-block-content')];
@@ -225,6 +237,7 @@ function installComparer(): void {
         const isStatic = getComputedStyle(b).position === 'static' && getComputedStyle(p).position === 'static';
         const unshifted = [getComputedStyle(b).position, getComputedStyle(p).position].every((position) => position === 'relative' || position === 'static');
         const isColumn = p.tagName === 'COL' || p.tagName === 'COLGROUP';
+        const isTable = p.tagName === 'TABLE';
         // A column's preview takes its table out of the frame; the room the
         // wrapper keeps under the table is for the frame's scrollbar.
         const outOfFrame = p.matches('.tableWrapper') && p.closest('.doc-table-frame') === null && b.closest('.doc-table-frame') !== null;
@@ -237,6 +250,7 @@ function installComparer(): void {
           if (animated.some((name) => prop === name || prop.startsWith(`${name}-`))) return true;
           if (rowLostCells && (prop === 'height' || prop === 'block-size')) return true;
           if (isColumn && SIZE.has(prop)) return true;
+          if (isTable && MIN_SIZE.has(prop)) return true;
           if (outOfFrame && (prop === 'padding-bottom' || prop === 'padding-block-end')) return true;
           if (isStatic && PLACE.has(prop)) return true;
           if (unshifted && PLACE.has(prop)) {
@@ -562,7 +576,7 @@ async function stretchedPreviews(p: Page): Promise<string[]> {
   return p.evaluate(() =>
     (window as unknown as { __previews: Element[] }).__previews.flatMap((root, index) => {
       const layer = root.firstElementChild as HTMLElement;
-      const content = layer.firstElementChild as HTMLElement;
+      const content = (window as unknown as { __contentOf: (root: Element) => HTMLElement }).__contentOf(root);
       const kids = [...content.children];
       if (kids.length === 0) return [];
       const scale = layer.getBoundingClientRect().height / layer.offsetHeight;

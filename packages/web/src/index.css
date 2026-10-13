@@ -632,6 +632,25 @@ body {
     opacity: 0.6;
   }
 
+  /* A preview takes no pointer: one over the pointer as the drag starts ends
+     the drag in Chromium, and the body's rules let some of its elements take it. */
+  .doc-drag-preview * {
+    pointer-events: none !important;
+  }
+
+  /* The copies of the elements a preview's content sits in in the body
+     (`document-preview-styles.ts`): the body's rules match through them and
+     its inherited values pass through them, and they are no box and draw
+     nothing of their own. */
+  .doc-preview-shell {
+    display: contents !important;
+  }
+
+  .doc-preview-shell::before,
+  .doc-preview-shell::after {
+    content: none !important;
+  }
+
   /* Where the carried row, or a dragged piece of text, will land. The extension
      is asked for no colour of its own (`build-document-editor.ts`), so this is
      the whole paint: the same token the block being dragged wears, since the
