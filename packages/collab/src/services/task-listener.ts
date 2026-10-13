@@ -216,6 +216,7 @@ export function startTaskListener(deps: TaskListenerDeps): GroupConsumer {
    * @param handoffKey - Where the previous holder left its state vector.
    * @param stopping - True once the listener is stopping; the wait ends then.
    * @returns True once covered; false when the wait ran out or stopping began.
+   * @throws {Error} When Redis rejects the read; the batch counts it as a failure.
    */
   async function awaitHandOver(doc: Y.Doc, handoffKey: string, stopping: () => boolean): Promise<boolean> {
     const stored = await coordination.get(handoffKey);
@@ -309,7 +310,10 @@ export function startTaskListener(deps: TaskListenerDeps): GroupConsumer {
         }
       });
 
-      // The hand-over record names only what the store below has written.
+      // The hand-over record is this holder's in-memory state. With other
+      // connections on this instance the store below writes nothing yet; the
+      // next holder waits until the Redis extension's sync, or a load from the
+      // database once stored, covers it.
       const vector = Y.encodeStateVector(doc);
       await disconnect();
       if (moved.size > 0) {

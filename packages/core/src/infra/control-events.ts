@@ -4,12 +4,19 @@
 /**
  * Cross-process control-plane events (Redis pub/sub on DB2).
  *
- * One fire-and-forget notification path remains:
+ * Three fire-and-forget notification paths, all per project:
  *
- *   - `members:changed` — API publishes after a write to
- *                         `project_members`; Collab kicks the
- *                         affected user's ws and broadcasts a
- *                         stateless invalidate signal.
+ *   - `members:changed`   — server publishes after a write to
+ *                           `project_members`; every collab instance
+ *                           kicks the affected user's ws and relays a
+ *                           stateless invalidate signal.
+ *   - `activity:new`      — server or worker publishes after writing an
+ *                           activity row; every collab instance relays
+ *                           it on the meta doc.
+ *   - `connections:close` — collab's lifecycle consumer publishes after
+ *                           a duplicate / archive / restore; every collab
+ *                           instance closes its connections to the
+ *                           project so the clients re-authenticate.
  *
  * Space lifecycle (create / delete / lock / restore) used to live
  * here as `publishSpace*` + `space:*` channels — removed 2026-05-23
@@ -26,11 +33,10 @@
  *
  * Why DB2 (REDIS_STREAM_URL):
  *
- *   - `members:changed` is a CROSS-SERVICE notification (API publishes,
- *     Collab consumes), so it belongs with the cross-service Streams on
- *     DB2 — NOT with the collab-cluster coordination that moved to
- *     REDIS_COLLAB_URL (DB3: Hocuspocus cross-instance pub/sub + the
- *     space-delete serialization lock).
+ *   - These are CROSS-SERVICE notifications (server, worker or collab
+ *     publish; every collab instance consumes), so they belong with the
+ *     cross-service Streams on DB2 — NOT with the collab instances' own
+ *     coordination on REDIS_COLLAB_URL (DB3).
  *   - Pub/sub channels are global (not DB-scoped) on the same Redis
  *     instance — DB choice only affects which connection publishes /
  *     listens, not who can hear it. Auth (DB0) stays untouched.
@@ -114,6 +120,7 @@ export async function publishActivityNew(projectId: string): Promise<void> {
  * @param projectId - Project whose connections are closed.
  * @param reason - Why; picks the close frame the client re-authenticates on.
  * @returns Nothing.
+ * @throws {Error} When Redis rejects the publish.
  */
 export async function publishProjectConnectionsClose(
   projectId: string,

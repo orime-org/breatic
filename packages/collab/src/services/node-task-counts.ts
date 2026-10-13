@@ -6,9 +6,9 @@
  *
  * The document holds four numbers about tasks and nothing else, so the event
  * carries all four, recounted on the server after every state change. Collab
- * writes what it is told: no task ids on the wire, no per-entry merge, no
- * compare-and-set. A number is either the current one or an older one, and
- * the next state change on that node replaces it outright.
+ * writes what it is told, but only when the event is newer than what the node
+ * holds: the result version sits in the node, the counts version in DB3
+ * (#1497 §6.1). An older event that arrives late changes nothing.
  *
  * All judgement happens before the event is published — which task moved,
  * what the counts now are, whether a result rides along. Collab reaches no

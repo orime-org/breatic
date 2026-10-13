@@ -57,6 +57,7 @@ export interface ForwardResult {
  * attempt count raised, both written by this same transaction.
  * @param publish - Sends the event to the lifecycle stream.
  * @returns The row it took, or null when nothing is unsent.
+ * @throws {Error} When the outbox transaction itself fails.
  */
 export async function forwardNextUnsent(
   publish: (event: ProjectLifecycleEvent) => Promise<void>,

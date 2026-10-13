@@ -104,10 +104,10 @@ function kickUserFromProject(
  * If no client is connected (Document not loaded), this is a no-op
  * — connected clients will rehydrate via REST on next page load.
  * @param hocuspocus - Running Hocuspocus server holding the project's loaded meta doc.
- * @param projectId - Project whose meta doc receives the stateless broadcast.
+ * @param projectId - Project whose meta doc relays the signal.
  * @param payload - Control event serialized and sent as the stateless invalidate signal.
  */
-function broadcastInvalidate(
+function relayInvalidate(
   hocuspocus: Hocuspocus,
   projectId: string,
   payload: ProjectControlEvent,
@@ -121,16 +121,17 @@ function broadcastInvalidate(
     // client one copy per instance.
     doc.relayStateless(JSON.stringify(payload));
   } catch (err) {
-    logger.warn({ err, docName }, "broadcast_stateless_failed");
+    logger.warn({ err, docName }, "relay_stateless_failed");
   }
 }
 
 /**
- * Decode one raw control-plane pub/sub message and dispatch it. For a
- * `project-members:changed` event, kick the affected user(s) and
- * broadcast a meta-doc invalidate; unknown / unparseable messages are
- * logged and ignored.
- * @param hocuspocus - Running Hocuspocus server passed through to the kick / broadcast handlers.
+ * Decode one raw control-plane pub/sub message and dispatch it:
+ * `project-members:changed` kicks the affected user(s) and relays a meta-doc
+ * invalidate; `project-activity:new` relays the activity signal on the meta
+ * doc; `project-connections:close` closes this instance's connections to the
+ * project. Unknown / unparseable messages are logged and ignored.
+ * @param hocuspocus - Running Hocuspocus server passed through to the kick / relay handlers.
  * @param raw - Raw JSON message body received on the project control channel.
  */
 async function handleEvent(
@@ -157,7 +158,7 @@ async function handleEvent(
         kickUserFromProject(hocuspocus, event.projectId, event.toUserId);
       }
     }
-    broadcastInvalidate(hocuspocus, event.projectId, event);
+    relayInvalidate(hocuspocus, event.projectId, event);
     logger.info(
       {
         projectId: event.projectId,
