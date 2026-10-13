@@ -138,7 +138,7 @@ async function hold(p: Page, x: number, y: number, ms = 1500): Promise<void> {
   }
 }
 
-test('A1 and A2: a row dragged to the body bottom scrolls it down, under a 512px preview', async () => {
+test('A1 and A2: a row dragged to the body bottom scrolls it down, under a preview no longer than 512px', async () => {
   await openLongDocument(page);
   await setScrollTop(page, 0);
   const view = (await page.locator(SCROLLER).first().boundingBox())!;
@@ -150,8 +150,12 @@ test('A1 and A2: a row dragged to the body bottom scrolls it down, under a 512px
   await page.mouse.up();
   const images = await page.evaluate(() => (window as unknown as { __images: Array<{ width: number; height: number; scale: string; lift: number }> }).__images);
   const ours = images.at(-1)!;
-  expect(Math.max(ours.width, ours.height)).toBeCloseTo(512, 0);
-  expect(ours.scale).toMatch(/^scale\(/);
+  // The row is drawn at its own size, scaled down only past 512px (A1).
+  const longest = Math.max(ours.width, ours.height);
+  expect(longest).toBeGreaterThan(0);
+  expect(longest).toBeLessThanOrEqual(512.5);
+  if (longest < 511.5) expect(ours.scale).toBe('scale(1)');
+  else expect(ours.scale).toMatch(/^scale\(/);
   expect(ours.lift).toBeCloseTo(0, 0);
 });
 
