@@ -213,15 +213,16 @@ export function startTaskListener(deps: TaskListenerDeps): GroupConsumer {
    * Wait until the local document holds what the previous holder wrote.
    * @param doc - The local document.
    * @param handoffKey - Where the previous holder left its state vector.
-   * @returns True once covered; false when the wait ran out.
+   * @param stopping - True once the listener is stopping; the wait ends then.
+   * @returns True once covered; false when the wait ran out or stopping began.
    */
-  async function awaitHandOver(doc: Y.Doc, handoffKey: string): Promise<boolean> {
+  async function awaitHandOver(doc: Y.Doc, handoffKey: string, stopping: () => boolean): Promise<boolean> {
     const stored = await coordination.get(handoffKey);
     if (!stored) return true;
     const recorded = Y.decodeStateVector(Buffer.from(stored, "base64"));
     const deadline = Date.now() + settings.handoffWaitMs;
     while (!covers(doc, recorded)) {
-      if (Date.now() >= deadline) return false;
+      if (stopping() || Date.now() >= deadline) return false;
       await new Promise((resolve) => setTimeout(resolve, settings.handoffPollMs));
     }
     return true;
@@ -274,7 +275,8 @@ export function startTaskListener(deps: TaskListenerDeps): GroupConsumer {
     };
     try {
       const doc = connection.document!;
-      if (!(await awaitHandOver(doc, keys.handoff))) {
+      if (!(await awaitHandOver(doc, keys.handoff, stopping))) {
+        if (stopping()) return answerAll("held");
         logger.warn({ docName: batch.docName }, "task_doc_handoff_not_reached");
         return answerAll("wait");
       }
@@ -369,6 +371,10 @@ export function startTaskListener(deps: TaskListenerDeps): GroupConsumer {
       const outcomes = new Map<string, EntryOutcome>();
       const batches = groupByDoc(entries, outcomes);
       await runLimited(batches, settings.docConcurrency, async (batch) => {
+        if (control.stopping()) {
+          for (const { entry } of batch.items) outcomes.set(entry.id, "held");
+          return;
+        }
         for (const [id, outcome] of await handleDoc(batch, control.stopping)) outcomes.set(id, outcome);
       });
       return outcomes;
