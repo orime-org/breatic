@@ -9,8 +9,9 @@ import { notificationHeadline } from '@web/features/notifications/notification-h
 import type { Notification } from '@web/data/api/notifications';
 import { EMPTY_RESOLVED } from '@web/data/api/notifications';
 import type { useTranslation } from '@web/i18n/use-translation';
-import { setLocale, t as sharedT } from '@breatic/shared';
+import { formatCredits, setLocale, t as sharedT } from '@breatic/shared';
 import { LOCALE_CATALOGS, readPath } from '@web/test-utils/locale-catalogs';
+import type { LocaleTag } from '@web/test-utils/locale-catalogs';
 
 /** A fake `t()` that interpolates `{name}` placeholders from a template map. */
 function fakeT(
@@ -220,26 +221,28 @@ describe('notificationHeadline', () => {
   });
 
   // inner#1410 §8. A refund outcome, like a membership that ended, has no
-  // actor and nothing to open: one localized sentence. Contract: the keys are
+  // actor and nothing to open: one localized sentence. The keys are
   // `notifications.headline.creditRefundCompleted` and
-  // `notifications.headline.creditRefundRejected`. Whether the sentence
-  // interpolates the payload (credits, amount) is not decided by the design,
-  // so these cases do not depend on it.
+  // `notifications.headline.creditRefundRejected`, and the sentence names how
+  // many credits the request was for: the payload's `credits` (a numeric
+  // string, '880.000000') written by `formatCreditAmount` in the active locale.
   it.each([
     {
       type: 'credit.refund_completed' as const,
       payload: { lotId: 'lot-1', credits: '880.000000', amountCents: 1080, currency: 'usd' },
       key: 'notifications.headline.creditRefundCompleted',
-      sentence: '退款已完成',
+      template: '{credits} 积分的退款已完成',
+      sentence: '880 积分的退款已完成',
     },
     {
       type: 'credit.refund_rejected' as const,
       payload: { lotId: 'lot-2', credits: '880.000000' },
       key: 'notifications.headline.creditRefundRejected',
-      sentence: '退款申请未通过',
+      template: '{credits} 积分的退款申请未通过',
+      sentence: '880 积分的退款申请未通过',
     },
-  ])('renders $type as a plain sentence', ({ type, payload, key, sentence }) => {
-    const tt = fakeT({ [key]: sentence });
+  ])('renders $type as a plain sentence naming the credits', ({ type, payload, key, template, sentence }) => {
+    const tt = fakeT({ [key]: template });
     const n = makeNotification({ type, payload });
     render(
       <MemoryRouter>
@@ -249,46 +252,133 @@ describe('notificationHeadline', () => {
       </MemoryRouter>,
     );
     expect(screen.getByTestId('r')).toHaveTextContent(sentence);
+    // The stored six-decimal string is never shown as stored.
+    expect(screen.getByTestId('r').textContent).not.toContain('880.000000');
     expect(screen.getByTestId('r').querySelectorAll('a')).toHaveLength(0);
   });
+
+  /** The design's sentence per locale (§8), `{credits}` still in it. */
+  const REFUND_SENTENCES: Record<
+    LocaleTag,
+    { completed: string; rejected: string }
+  > = {
+    en: {
+      completed: 'Your refund for {credits} credits is complete',
+      rejected: 'Your refund request for {credits} credits was not approved',
+    },
+    'zh-CN': {
+      completed: '{credits} 积分的退款已完成',
+      rejected: '{credits} 积分的退款申请未通过',
+    },
+    'zh-TW': {
+      completed: '{credits} 點的退款已完成',
+      rejected: '{credits} 點的退款申請未通過',
+    },
+    ja: {
+      completed: '{credits} クレジットの返金が完了しました',
+      rejected: '{credits} クレジットの返金リクエストは承認されませんでした',
+    },
+    ko: {
+      completed: '{credits} 크레딧 환불이 완료되었습니다',
+      rejected: '{credits} 크레딧 환불 요청이 승인되지 않았습니다',
+    },
+  };
+
+  /**
+   * Render a refund row through the real catalog in one locale.
+   * @param tag - The locale to render in.
+   * @param n - The notification to render.
+   * @returns The rendered headline text.
+   */
+  function renderInLocale(tag: LocaleTag, n: Notification): string {
+    try {
+      setLocale(tag);
+      const { unmount } = render(
+        <MemoryRouter>
+          <span data-testid='l'>
+            {notificationHeadline(n, EMPTY_RESOLVED, sharedT)}
+          </span>
+        </MemoryRouter>,
+      );
+      const text = screen.getByTestId('l').textContent ?? '';
+      unmount();
+      return text;
+    } finally {
+      setLocale('en');
+    }
+  }
 
   describe.each([
     {
       type: 'credit.refund_completed' as const,
-      payload: { lotId: 'lot-1', credits: '880.000000', amountCents: 1080, currency: 'usd' },
+      payload: { lotId: 'lot-1', amountCents: 1080, currency: 'usd' },
       key: 'notifications.headline.creditRefundCompleted',
+      outcome: 'completed' as const,
     },
     {
       type: 'credit.refund_rejected' as const,
-      payload: { lotId: 'lot-2', credits: '880.000000' },
+      payload: { lotId: 'lot-2' },
       key: 'notifications.headline.creditRefundRejected',
+      outcome: 'rejected' as const,
     },
-  ])('$type in every shipped language', ({ type, payload, key }) => {
+  ])('$type in every shipped language', ({ type, payload, key, outcome }) => {
     // Asked of the catalog directly as well as through `t()`: `t()` falls back
     // to English, so a key missing from one locale would render English and
     // pass a render-only check.
-    it.each(LOCALE_CATALOGS)('%s carries the sentence and renders it', (tag, catalog) => {
+    it.each(LOCALE_CATALOGS)('%s carries the sentence with a {credits} slot', (_tag, catalog) => {
       const message = readPath(catalog, key);
       expect(typeof message).toBe('string');
-      expect((message as string).trim()).not.toBe('');
-      try {
-        setLocale(tag);
-        const n = makeNotification({ type, payload });
-        const { unmount } = render(
-          <MemoryRouter>
-            <span data-testid='l'>
-              {notificationHeadline(n, EMPTY_RESOLVED, sharedT)}
-            </span>
-          </MemoryRouter>,
-        );
-        const text = screen.getByTestId('l').textContent ?? '';
-        expect(text.trim()).not.toBe('');
-        expect(text).not.toContain('notifications.');
-        expect(text).not.toContain(type);
-        unmount();
-      } finally {
-        setLocale('en');
-      }
+      expect(message as string).toContain('{credits}');
+    });
+
+    it.each(LOCALE_CATALOGS)('%s names a whole amount without its stored decimals', (tag) => {
+      const n = makeNotification({ type, payload: { ...payload, credits: '880.000000' } });
+      expect(renderInLocale(tag, n)).toBe(
+        REFUND_SENTENCES[tag][outcome].replace('{credits}', '880'),
+      );
+    });
+
+    it.each(LOCALE_CATALOGS)('%s groups a large amount the way the locale groups it', (tag) => {
+      // The grouping is whatever the shared credit formatter gives in this
+      // locale (e.g. '12,500' in en), not a separator hard-coded here.
+      const n = makeNotification({ type, payload: { ...payload, credits: '12500.000000' } });
+      const text = renderInLocale(tag, n);
+      expect(text).toBe(
+        REFUND_SENTENCES[tag][outcome].replace('{credits}', formatCredits(12500, tag)),
+      );
+      expect(text).not.toContain('12500.000000');
+    });
+  });
+
+  // A row with no usable `credits` follows membership.ended's missing tier:
+  // the slot is filled with an empty string, so the sentence still renders
+  // and no stand-in figure ('0', 'NaN', 'undefined') is ever shown as if it
+  // were the amount. Number('') is 0, which is the easy way to get this wrong.
+  describe.each([
+    { type: 'credit.refund_completed' as const, key: 'notifications.headline.creditRefundCompleted' },
+    { type: 'credit.refund_rejected' as const, key: 'notifications.headline.creditRefundRejected' },
+  ])('$type without a usable credits value', ({ type, key }) => {
+    it.each([
+      { label: 'missing', payload: { lotId: 'lot-3' } },
+      { label: 'empty', payload: { lotId: 'lot-3', credits: '' } },
+      { label: 'not a number', payload: { lotId: 'lot-3', credits: 'abc' } },
+      { label: 'null', payload: { lotId: 'lot-3', credits: null } },
+    ])('$label fills the slot with an empty string', ({ payload }) => {
+      const seen: Array<Record<string, unknown> | undefined> = [];
+      const tt = ((k: string, params?: Record<string, string | number | Date>) => {
+        if (k === key) seen.push(params);
+        return k === key ? `[${String(params?.credits)}] credits` : k;
+      }) as ReturnType<typeof useTranslation>;
+      const n = makeNotification({ type, payload });
+      render(
+        <MemoryRouter>
+          <span data-testid='x'>
+            {notificationHeadline(n, EMPTY_RESOLVED, tt)}
+          </span>
+        </MemoryRouter>,
+      );
+      expect(seen).toEqual([{ credits: '' }]);
+      expect(screen.getByTestId('x').textContent).toBe('[] credits');
     });
   });
 

@@ -374,6 +374,26 @@ describe('BellMenu — a credit refund outcome is one sentence and mark-read (in
     expect(screen.queryByTestId(`bell-open-decision-${id}`)).toBeNull();
   });
 
+  // A refund outcome is a settled answer, so it takes the mark the rest of the
+  // inbox uses for one (the rule above `iconForType`): a tick when the refund
+  // went through, a cross when it was turned down. Not initials (RF/RX).
+  it.each([
+    { ...OUTCOMES[0], glyph: '✓', initials: 'RF' },
+    { ...OUTCOMES[1], glyph: '✕', initials: 'RX' },
+  ])('$type shows $glyph as its glyph', async ({ id, type, payload, glyph, initials }) => {
+    vi.mocked(notificationsApi.list).mockResolvedValue({
+      items: [fakeNotification(id, type, payload)],
+      resolved: EMPTY_RESOLVED,
+    });
+    const user = userEvent.setup();
+    setup();
+    await user.click(screen.getByTestId('bell-trigger'));
+    await screen.findByTestId(`bell-notification-headline-${id}`);
+
+    expect(screen.getByText(glyph)).toBeInTheDocument();
+    expect(screen.queryByText(initials)).toBeNull();
+  });
+
   it('the two outcomes say different things', async () => {
     vi.mocked(notificationsApi.list).mockResolvedValue({
       items: OUTCOMES.map((o) => fakeNotification(o.id, o.type, o.payload)),
