@@ -8,7 +8,7 @@
  * never be read by another.
  */
 
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { randomUUID } from "node:crypto";
 
 import { createRedisClient, initCore, type Redis } from "@breatic/core";
@@ -325,6 +325,81 @@ describe("startGroupConsumer", () => {
     const consumers = (await stream.xinfo("CONSUMERS", keys.streamKey, keys.group)) as unknown[][];
     const names = consumers.map((c) => c[1]);
     expect(names).toContain("a");
+  });
+
+  it("keeps an entry it is still working on past the stop deadline, and acknowledges it once done", async () => {
+    const keys = keysFor();
+    const [id] = await append(keys.streamKey, ["slow-copy"]);
+    let finished = false;
+    const a = start(
+      keys,
+      "a",
+      async (entries, ctl) => {
+        await until(() => ctl.stopping());
+        await new Promise((r) => setTimeout(r, 700));
+        finished = true;
+        return new Map(entries.map((e) => [e.id, "done" as const]));
+      },
+      { claimIdleMs: 60_000, stopDeadlineMs: 200 },
+    );
+    await until(async () => (await pendingCount(keys)) === 1);
+    await a.stop();
+    expect(finished).toBe(false);
+    const [[, , idleMs]] = (await stream.xpending(keys.streamKey, keys.group, "-", "+", 10)) as Array<
+      [string, string, number, number]
+    >;
+    expect(idleMs).toBeLessThan(10_000);
+    await until(() => finished);
+    await until(async () => (await pendingCount(keys)) === 0);
+    expect(id).toBeTypeOf("string");
+  });
+
+  it("finishes a renewal in flight before handing its waiting entries over on a stop", async () => {
+    const keys = keysFor();
+    await append(keys.streamKey, ["w1", "w2", "w3", "w4", "w5", "slow"]);
+    const claimIdleMs = 3000;
+    let a: GroupConsumer | undefined;
+    let stopped: Promise<void> | undefined;
+    let slowDone = false;
+    let proto: object | null = Object.getPrototypeOf(stream);
+    while (proto && !Object.prototype.hasOwnProperty.call(proto, "xclaim")) proto = Object.getPrototypeOf(proto);
+    const target = proto as { xclaim: (...args: unknown[]) => unknown };
+    const original = target.xclaim;
+    const spy = vi.spyOn(target, "xclaim").mockImplementation(function (this: unknown, ...args: unknown[]) {
+      if (args.includes("IDLE") || !a) return original.apply(this, args);
+      // The first renewal chunk: stop right as it goes out. Later chunks of
+      // that renewal reach Redis late, as over a slow link.
+      if (!stopped) {
+        stopped = a.stop();
+        return original.apply(this, args);
+      }
+      return new Promise((r) => setTimeout(r, 100)).then(() => original.apply(this, args));
+    });
+    try {
+      a = start(
+        keys,
+        "a",
+        async (entries, ctl) => {
+          if (entries[0]!.payload !== "slow") return new Map(entries.map((e) => [e.id, "wait" as const]));
+          // The batch in hand outlives the stop deadline.
+          await until(() => ctl.stopping(), 10_000);
+          await new Promise((r) => setTimeout(r, 1000));
+          slowDone = true;
+          return new Map(entries.map((e) => [e.id, "done" as const]));
+        },
+        { batchCount: 1, leaseRetryMs: 60_000, claimIdleMs, claimIntervalMs: 60_000, stopDeadlineMs: 200 },
+      );
+      await until(() => stopped !== undefined, 5000);
+      await stopped;
+      await until(() => slowDone, 5000);
+      await until(async () => (await pendingCount(keys)) === 5);
+    } finally {
+      spy.mockRestore();
+    }
+    const rows = (await stream.xpending(keys.streamKey, keys.group, "-", "+", 10)) as Array<
+      [string, string, number, number]
+    >;
+    for (const [, , idleMs] of rows) expect(idleMs).toBeGreaterThanOrEqual(claimIdleMs);
   });
 
   it("forgets a consumer that has been idle past the limit with nothing pending", async () => {
