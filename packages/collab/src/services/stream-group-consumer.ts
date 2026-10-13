@@ -16,16 +16,13 @@
  * command sent on it would queue behind the block.
  */
 
-import { createLogger, createRedisClient, type Redis } from "@breatic/core";
-import { retryDelayMs } from "@collab/services/stream-id.js";
+import { setTimeout as delay } from "node:timers/promises";
+import { createLogger, createRedisClient, STREAM_MAXLEN, type Redis } from "@breatic/core";
 
 const logger = createLogger("stream-group-consumer");
 
 /** How long a failure count is kept after its last failure. */
 const FAILURES_TTL_SECONDS = 24 * 60 * 60;
-
-/** Same cap the cross-service streams use (`core/src/infra/event-stream.ts`). */
-const DEAD_LETTER_MAXLEN = 10_000;
 
 /** Wait before retrying group creation or the read loop after an error. */
 const LOOP_ERROR_DELAY_MS = 1000;
@@ -111,12 +108,17 @@ interface Waiting {
 }
 
 /**
- * Wait.
- * @param ms - How long.
- * @returns Resolves after `ms`.
+ * How long to wait before retrying an entry that has failed `failures` times:
+ * the minimum after the first failure, doubling after each next one, never
+ * past the maximum.
+ * @param failures - Failures so far, at least 1.
+ * @param minMs - Wait after the first failure.
+ * @param maxMs - Longest wait.
+ * @returns The wait in milliseconds.
  */
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+export function retryDelayMs(failures: number, minMs: number, maxMs: number): number {
+  const exponent = Math.min(Math.max(failures - 1, 0), 30);
+  return Math.min(minMs * 2 ** exponent, maxMs);
 }
 
 /**
@@ -190,6 +192,7 @@ export function startGroupConsumer(opts: GroupConsumerOptions): GroupConsumer {
 
   /**
    * Remove consumers that have been idle past the limit with nothing pending.
+    * @throws {Error} When a Redis command fails; the read loop logs it and retries.
    */
   async function forgetIdleConsumers(): Promise<void> {
     const rows = (await commands.xinfo("CONSUMERS", streamKey, group)) as unknown[][];
@@ -206,6 +209,7 @@ export function startGroupConsumer(opts: GroupConsumerOptions): GroupConsumer {
 
   /**
    * Take over entries idle past `claimIdleMs`, then forget dead consumers.
+    * @throws {Error} When a Redis command fails; the read loop logs it and retries.
    */
   async function sweep(): Promise<void> {
     let cursor = "0-0";
@@ -233,6 +237,7 @@ export function startGroupConsumer(opts: GroupConsumerOptions): GroupConsumer {
    * hand and the queued retries — so no peer takes one over while this
    * consumer is alive and still working on it. A consumer that stops
    * answering stops renewing, and its entries go idle past `claimIdleMs`.
+   * @throws {Error} When a Redis command fails; the timer logs it and renews next time.
    */
   async function renewHeld(): Promise<void> {
     const ids = [...new Set([...inHand, ...waiting.map((w) => w.entry.id)])];
@@ -246,6 +251,7 @@ export function startGroupConsumer(opts: GroupConsumerOptions): GroupConsumer {
    * Read new entries.
    * @param blockMs - Longest to block.
    * @returns The entries read.
+    * @throws {Error} When a Redis command fails; the read loop logs it and retries.
    */
   async function readNew(blockMs: number): Promise<StreamEntry[]> {
     const reply = (await reader.xreadgroup(
@@ -279,6 +285,7 @@ export function startGroupConsumer(opts: GroupConsumerOptions): GroupConsumer {
    * @param entry - The entry that failed.
    * @param err - What it threw.
    * @returns True when the entry went to the dead-letter stream.
+    * @throws {Error} When a Redis command fails; the read loop logs it and retries.
    */
   async function recordFailure(entry: StreamEntry, err: unknown): Promise<boolean> {
     const failures = await coordination.hincrby(failuresKey, entry.id, 1);
@@ -293,7 +300,7 @@ export function startGroupConsumer(opts: GroupConsumerOptions): GroupConsumer {
       deadKey,
       "MAXLEN",
       "~",
-      DEAD_LETTER_MAXLEN,
+      STREAM_MAXLEN,
       "*",
       "payload",
       entry.payload ?? "",
@@ -313,6 +320,7 @@ export function startGroupConsumer(opts: GroupConsumerOptions): GroupConsumer {
    * Act on the outcome of every entry of a batch.
    * @param entries - The batch.
    * @param outcomes - What the handler answered.
+    * @throws {Error} When a Redis command fails; the read loop logs it and retries.
    */
   async function settle(entries: StreamEntry[], outcomes: Map<string, EntryOutcome>): Promise<void> {
     const ack: string[] = [];
@@ -394,7 +402,7 @@ export function startGroupConsumer(opts: GroupConsumerOptions): GroupConsumer {
         break;
       } catch (err) {
         logger.error({ err, streamKey, group }, "stream_group_create_failed");
-        await sleep(LOOP_ERROR_DELAY_MS);
+        await delay(LOOP_ERROR_DELAY_MS);
       }
     }
     while (!stopping) {
@@ -406,12 +414,12 @@ export function startGroupConsumer(opts: GroupConsumerOptions): GroupConsumer {
         const fresh = claimed.splice(0);
         let batch = [...fresh, ...takeDue(fresh)];
         if (batch.length === 0) batch = await readNew(blockFor());
+        // A batch taken while stopping stays pending; handOver() marks it idle.
         if (batch.length > 0 && !stopping) await handle(batch);
-        else if (batch.length > 0) await settle(batch, new Map(batch.map((e) => [e.id, "held" as const])));
       } catch (err) {
         if (stopping) break;
         logger.error({ err, streamKey, group }, "stream_group_loop_failed");
-        await sleep(LOOP_ERROR_DELAY_MS);
+        await delay(LOOP_ERROR_DELAY_MS);
       }
     }
   }
@@ -419,6 +427,7 @@ export function startGroupConsumer(opts: GroupConsumerOptions): GroupConsumer {
   /**
    * Mark every entry this consumer still holds as idle past the take-over
    * limit, so the next sweep of any consumer takes it.
+   * @throws {Error} When a Redis command fails; the stop logs it.
    */
   async function handOver(): Promise<void> {
     let start = "-";
@@ -456,7 +465,7 @@ export function startGroupConsumer(opts: GroupConsumerOptions): GroupConsumer {
       // before is in the pending list and is handed over below.
       reader.disconnect();
       stopped = (async (): Promise<void> => {
-        await Promise.race([loop, sleep(settings.stopDeadlineMs)]);
+        await Promise.race([loop, delay(settings.stopDeadlineMs)]);
         waiting = [];
         try {
           await handOver();

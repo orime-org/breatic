@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Ordering of Redis stream ids, and the retry delay of a failing stream entry.
+ * Ordering of Redis stream ids.
  */
 
 /**
@@ -35,18 +35,4 @@ export function isNewerStreamId(candidate: string, held: unknown): boolean {
   if (!current) return true;
   if (next[0] !== current[0]) return next[0] > current[0];
   return next[1] > current[1];
-}
-
-/**
- * How long to wait before retrying an entry that has failed `failures` times:
- * the minimum after the first failure, doubling after each next one, never
- * past the maximum.
- * @param failures - Failures so far, at least 1.
- * @param minMs - Wait after the first failure.
- * @param maxMs - Longest wait.
- * @returns The wait in milliseconds.
- */
-export function retryDelayMs(failures: number, minMs: number, maxMs: number): number {
-  const exponent = Math.min(Math.max(failures - 1, 0), 30);
-  return Math.min(minMs * 2 ** exponent, maxMs);
 }

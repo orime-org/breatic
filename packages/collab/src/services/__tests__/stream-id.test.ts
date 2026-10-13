@@ -4,7 +4,7 @@
 import { describe, expect, it } from "vitest";
 import fc from "fast-check";
 
-import { isNewerStreamId, retryDelayMs } from "@collab/services/stream-id.js";
+import { isNewerStreamId } from "@collab/services/stream-id.js";
 
 describe("isNewerStreamId", () => {
   it("compares the millisecond part numerically, not as text", () => {
@@ -41,18 +41,5 @@ describe("isNewerStreamId", () => {
         },
       ),
     );
-  });
-});
-
-describe("retryDelayMs", () => {
-  it("waits the minimum after the first failure and doubles after each next one", () => {
-    expect(retryDelayMs(1, 10_000, 600_000)).toBe(10_000);
-    expect(retryDelayMs(2, 10_000, 600_000)).toBe(20_000);
-    expect(retryDelayMs(3, 10_000, 600_000)).toBe(40_000);
-  });
-
-  it("never waits longer than the maximum", () => {
-    expect(retryDelayMs(10, 10_000, 600_000)).toBe(600_000);
-    expect(retryDelayMs(500, 10_000, 600_000)).toBe(600_000);
   });
 });

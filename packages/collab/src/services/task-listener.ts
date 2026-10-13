@@ -24,6 +24,7 @@
  * other doc name is skipped.
  */
 
+import { setTimeout as delay } from "node:timers/promises";
 import type { Hocuspocus } from "@hocuspocus/server";
 import * as Y from "yjs";
 import { ExecutionError, Redlock, ResourceLockedError } from "@sesamecare-oss/redlock";
@@ -223,7 +224,7 @@ export function startTaskListener(deps: TaskListenerDeps): GroupConsumer {
     const deadline = Date.now() + settings.handoffWaitMs;
     while (!covers(doc, recorded)) {
       if (stopping() || Date.now() >= deadline) return false;
-      await new Promise((resolve) => setTimeout(resolve, settings.handoffPollMs));
+      await delay(settings.handoffPollMs);
     }
     return true;
   }

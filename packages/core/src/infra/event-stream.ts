@@ -22,6 +22,9 @@ import type Redis from "ioredis";
 import type { NodeEvent } from "@breatic/shared";
 import { env } from "@core/config/env.js";
 
+/** Approximate length cap of every stream we write, dead-letter streams included. */
+export const STREAM_MAXLEN = 10_000;
+
 /**
  * Build the Redis stream key for task lifecycle events.
  * @returns the environment-scoped `task-events` stream key
@@ -61,7 +64,7 @@ export async function publishToStream(
     streamKey,
     "MAXLEN",
     "~",
-    "10000",
+    STREAM_MAXLEN,
     "*",
     "payload",
     JSON.stringify(payload),

@@ -22,6 +22,7 @@
  * memory with zero connections and no further re-check to release it.
  */
 
+import { setTimeout as delay } from "node:timers/promises";
 import type * as Y from "yjs";
 import { createLogger } from "@breatic/core";
 import type { StoreFailureAlert } from "@collab/services/store-alert.js";
@@ -264,7 +265,7 @@ export function createUnloadGate(deps: UnloadGateDeps): UnloadGate {
     for (let attempt = 2; result.attempt === "not-reached"; attempt += 1) {
       if (Date.now() + deps.retry.intervalMs > retryUntil(startedAt)) break;
       logger.warn({ documentName, attempt }, "collab_final_store_retry");
-      await new Promise((resolve) => setTimeout(resolve, deps.retry.intervalMs));
+      await delay(deps.retry.intervalMs);
       if (!hasUnsavedContent(documentName)) return { attempt: "stored" };
       result = await attemptStore(documentName);
     }

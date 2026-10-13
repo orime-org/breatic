@@ -134,6 +134,7 @@ export type { MailLogCtx, MailLogLine, SendMailOptions, SendMailResult } from "@
 export {
   publishNodeEvent,
   publishToStream,
+  STREAM_MAXLEN,
   taskEventsStreamKey,
   lifecycleStreamKey,
 } from "@core/infra/event-stream.js";
