@@ -16,8 +16,8 @@
  * Entries of one key run one round at a time, in the order this consumer took
  * them; an entry being retried runs after newer ones of its key, and the
  * caller's versions keep that safe. Different keys run side by side up to
- * `keyConcurrency`. The consumer takes only what it can
- * start now and keeps reading while rounds run: a read asks for at most as
+ * `keyConcurrency`. A read takes only what can start now, and reads go on
+ * while rounds run: a read asks for at most as
  * many entries as there are free key slots, so even with every entry on a new
  * key nothing waits here behind a busy slot while a peer sits idle (Celery
  * prefetch, RabbitMQ consumer prefetch, Pub/Sub flow control). Entries for a
@@ -64,7 +64,7 @@ export interface GroupConsumerSettings {
   keyConcurrency: number;
   /** Longest a read blocks when nothing is waiting. */
   blockMs: number;
-  /** Retry delay of a `wait` outcome. */
+  /** Hold on a key after a `wait` outcome; also the longest a read blocks while rounds run. */
   leaseRetryMs: number;
   /** Gap between take-over sweeps. */
   claimIntervalMs: number;
@@ -200,6 +200,8 @@ export function startGroupConsumer(opts: GroupConsumerOptions): GroupConsumer {
   /** Keys whose next round must not start before the given time. */
   const delayedUntil = new Map<string, number>();
   let nextSweepAt = 0;
+  /** Where the next take-over sweep continues its walk of the pending list. */
+  let claimCursor = "0-0";
   /** Ends the loop's idle wait early. */
   let wake: (() => void) | undefined;
 
@@ -236,22 +238,25 @@ export function startGroupConsumer(opts: GroupConsumerOptions): GroupConsumer {
 
   /**
    * Take over as many entries idle past `claimIdleMs` as there is room for,
-   * then forget dead consumers. What is left stays idle for the next sweep of
-   * any consumer.
+   * continuing where the last sweep stopped, then forget dead consumers. What
+   * is left stays idle for the next sweep of any consumer.
    * @throws {Error} When a Redis command fails; the read loop logs it and retries.
    */
   async function sweep(): Promise<void> {
-    const room = settings.batchCount - inHand.size - queuedIds.size;
-    if (room > 0) {
-      const [, entries, trimmed] = (await commands.xautoclaim(
+    const free = room();
+    if (free > 0) {
+      // One call scans at most ten times COUNT entries; the cursor carries the
+      // walk on from where this one stopped.
+      const [next, entries, trimmed] = (await commands.xautoclaim(
         streamKey,
         group,
         consumer,
         settings.claimIdleMs,
-        "0-0",
+        claimCursor,
         "COUNT",
-        room,
+        free,
       )) as [string, Array<[string, string[] | null]>, string[] | undefined];
+      claimCursor = next;
       for (const [id, fields] of entries) claimed.push(toEntry(id, fields));
       if (trimmed && trimmed.length > 0) {
         logger.warn({ streamKey, group, ids: trimmed }, "stream_entries_trimmed_before_handled");
@@ -356,9 +361,8 @@ export function startGroupConsumer(opts: GroupConsumerOptions): GroupConsumer {
    */
   function retryKeyLater(key: string, entries: StreamEntry[]): void {
     if (stopping || entries.length === 0) return;
-    const fresh = entries.filter((e) => !queuedIds.has(e.id));
-    queued.set(key, [...fresh, ...(queued.get(key) ?? [])]);
-    for (const e of fresh) queuedIds.add(e.id);
+    queued.set(key, [...entries, ...(queued.get(key) ?? [])]);
+    for (const e of entries) queuedIds.add(e.id);
     delayedUntil.set(key, Date.now() + settings.leaseRetryMs);
   }
 
@@ -475,13 +479,21 @@ export function startGroupConsumer(opts: GroupConsumerOptions): GroupConsumer {
   }
 
   /**
-   * How many entries a read may take now: one per free key slot, within the
-   * entries this consumer may hold.
+   * How many entries a read may take now: one per key slot that neither a
+   * running round nor a held-back key occupies, within the entries this
+   * consumer may hold.
    * @returns The count; zero when nothing may be read.
    */
   function readCapacity(): number {
-    const room = settings.batchCount - inHand.size - queuedIds.size;
-    return Math.max(0, Math.min(settings.keyConcurrency - running.size, room));
+    return Math.max(0, Math.min(settings.keyConcurrency - running.size - delayedUntil.size, room()));
+  }
+
+  /**
+   * Entries this consumer may still take within `batchCount`.
+   * @returns The count; negative after a sweep took entries back.
+   */
+  function room(): number {
+    return settings.batchCount - inHand.size - queuedIds.size;
   }
 
   /**
@@ -496,7 +508,9 @@ export function startGroupConsumer(opts: GroupConsumerOptions): GroupConsumer {
     let until = Math.min(now + settings.blockMs, nextSweepAt);
     if (running.size > 0) until = Math.min(until, now + settings.leaseRetryMs);
     for (const w of waiting) until = Math.min(until, w.notBefore);
-    for (const t of delayedUntil.values()) until = Math.min(until, t);
+    // A held-back key can start only in a free slot; while every slot is busy,
+    // the round that ends frees one and starts it.
+    if (running.size < settings.keyConcurrency) for (const t of delayedUntil.values()) until = Math.min(until, t);
     return Math.max(1, until - now);
   }
 

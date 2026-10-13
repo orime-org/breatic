@@ -49,6 +49,10 @@ export const TASK_EVENTS_GROUP = "collab-task-events";
 const RELEASE_WAITER_SCRIPT =
   'if redis.call("get", KEYS[1]) == ARGV[1] then return redis.call("del", KEYS[1]) end return 0';
 
+/** Sets or renews the waiter mark unless another instance holds it. */
+const MARK_WAITER_SCRIPT =
+  'local v = redis.call("get", KEYS[1]) if v == false or v == ARGV[1] then return redis.call("set", KEYS[1], ARGV[1], "PX", ARGV[2]) end return 0';
+
 /** How long a node's counts version is kept after its last write. */
 const COUNTS_VERSION_TTL_SECONDS = 30 * 24 * 60 * 60;
 
@@ -92,6 +96,16 @@ interface Item {
 interface DocBatch {
   docName: string;
   items: Item[];
+}
+
+/**
+ * Give every event of a batch the same outcome.
+ * @param batch - The document and its events.
+ * @param outcome - The outcome.
+ * @returns The outcomes.
+ */
+function outcomeForAll(batch: DocBatch, outcome: EntryOutcome): Map<string, EntryOutcome> {
+  return new Map(batch.items.map(({ entry }) => [entry.id, outcome]));
 }
 
 /**
@@ -221,15 +235,6 @@ export function startTaskListener(deps: TaskListenerDeps): GroupConsumer {
     stopping: () => boolean,
   ): Promise<Map<string, EntryOutcome>> {
     const outcomes = new Map<string, EntryOutcome>();
-    /**
-     * Give every event of the batch the same outcome.
-     * @param outcome - The outcome.
-     * @returns The filled map.
-     */
-    const answerAll = (outcome: EntryOutcome): Map<string, EntryOutcome> => {
-      for (const { entry } of batch.items) outcomes.set(entry.id, outcome);
-      return outcomes;
-    };
 
     let connection: Awaited<ReturnType<Hocuspocus["openDirectConnection"]>>;
     try {
@@ -238,7 +243,7 @@ export function startTaskListener(deps: TaskListenerDeps): GroupConsumer {
       });
     } catch (err) {
       logger.error({ err, docName: batch.docName }, "task_doc_open_failed");
-      return answerAll({ failed: err });
+      return outcomeForAll(batch, { failed: err });
     }
 
     let disconnected = false;
@@ -256,11 +261,11 @@ export function startTaskListener(deps: TaskListenerDeps): GroupConsumer {
       const doc = connection.document!;
       if (!(await awaitHandOver(doc, keys.handoff, stopping))) {
         if (!stopping()) logger.warn({ docName: batch.docName }, "task_doc_handoff_not_reached");
-        return answerAll("wait");
+        return outcomeForAll(batch, "wait");
       }
       const versions = await coordination.hgetall(keys.versions);
       // Nothing awaits between here and the transaction, which runs synchronously.
-      if (stopping() || signal.aborted) return answerAll("wait");
+      if (stopping() || signal.aborted) return outcomeForAll(batch, "wait");
       const moved = new Map<string, string>();
       await connection.transact((d) => {
         for (const { entry, event } of batch.items) {
@@ -298,7 +303,7 @@ export function startTaskListener(deps: TaskListenerDeps): GroupConsumer {
       // Whatever landed in the document is applied again on the retry, and the
       // versions make that a no-op.
       logger.warn({ err, docName: batch.docName }, "task_doc_coordination_failed");
-      return answerAll("wait");
+      return outcomeForAll(batch, "wait");
     } finally {
       await disconnect();
     }
@@ -313,17 +318,12 @@ export function startTaskListener(deps: TaskListenerDeps): GroupConsumer {
    */
   async function handleDoc(batch: DocBatch, stopping: () => boolean): Promise<Map<string, EntryOutcome>> {
     const keys = docKeys(keyPrefix, batch.docName);
-    /**
-     * Answer every event of the batch `wait`.
-     * @returns The outcomes.
-     */
-    const waitAll = (): Map<string, EntryOutcome> => new Map(batch.items.map(({ entry }) => [entry.id, "wait"]));
     // Another instance is waiting for this lease: let it have the next turn.
-    if (await peerWaiting(keys.waiter)) return waitAll();
+    if (await peerWaiting(keys.waiter)) return outcomeForAll(batch, "wait");
     let written: Map<string, EntryOutcome> | undefined;
     try {
       await redlock.using([keys.lease], settings.docLeaseMs, { retryCount: 0 }, async (signal) => {
-        await coordination.eval(RELEASE_WAITER_SCRIPT, 1, keys.waiter, deps.instanceId);
+        await releaseWaiting(keys.waiter);
         written = await writeBatch(batch, keys, signal, stopping);
       });
       return written!;
@@ -335,7 +335,7 @@ export function startTaskListener(deps: TaskListenerDeps): GroupConsumer {
       }
       if (await leaseHeldElsewhere(err)) await markWaiting(keys.waiter);
       else logger.warn({ err, docName: batch.docName }, "task_doc_lease_unavailable");
-      return waitAll();
+      return outcomeForAll(batch, "wait");
     }
   }
 
@@ -360,14 +360,22 @@ export function startTaskListener(deps: TaskListenerDeps): GroupConsumer {
    * @param waiterKey - The document's waiter mark.
    */
   async function markWaiting(waiterKey: string): Promise<void> {
-    const ttlMs = settings.leaseRetryMs * 2;
     try {
-      const set = await coordination.set(waiterKey, deps.instanceId, "PX", ttlMs, "NX");
-      if (set === null && (await coordination.get(waiterKey)) === deps.instanceId) {
-        await coordination.pexpire(waiterKey, ttlMs);
-      }
+      await coordination.eval(MARK_WAITER_SCRIPT, 1, waiterKey, deps.instanceId, settings.leaseRetryMs * 2);
     } catch (err) {
       logger.warn({ err, waiterKey }, "task_doc_waiter_unmarked");
+    }
+  }
+
+  /**
+   * Remove this instance's waiter mark once it holds the lease.
+   * @param waiterKey - The document's waiter mark.
+   */
+  async function releaseWaiting(waiterKey: string): Promise<void> {
+    try {
+      await coordination.eval(RELEASE_WAITER_SCRIPT, 1, waiterKey, deps.instanceId);
+    } catch (err) {
+      logger.warn({ err, waiterKey }, "task_doc_waiter_unreleased");
     }
   }
 
