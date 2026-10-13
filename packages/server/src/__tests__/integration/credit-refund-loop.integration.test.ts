@@ -529,7 +529,9 @@ describe("step 1 — claim and resume a started disposition", () => {
   });
 
   it("the old holder's late answer is discarded after the loop took the row over", async () => {
-    const { lot, opId } = await seeded("refunding", { kind: "approve", status: "started", leaseExpired: true });
+    // The old holder starts under a lease it holds with time left, so it
+    // reaches refunds.create (§9 arbitration rule).
+    const { lot, opId } = await seeded("refunding", { kind: "approve", status: "started" });
     const stale = (await findById(opId))!;
     const hold = gate();
     // The old holder's call hangs and then times out on a 5xx; the loop's
@@ -539,6 +541,12 @@ describe("step 1 — claim and resume a started disposition", () => {
 
     const oldHolder = executeRefund(stale, "loop");
     await vi.waitFor(() => expect(createsFor(lot)).toHaveLength(1), { timeout: 10_000 });
+    // While its call hangs, the lease runs out and the attempt falls due.
+    await suite.sql`
+      UPDATE credit_refund_operations
+      SET locked_until = now() - interval '1 second', next_attempt_at = now() - interval '1 second'
+      WHERE id = ${opId}
+    `;
     await runRefundLoopOnce();
     const afterLoop = await readOp(suite.sql, opId);
     expect(afterLoop).toMatchObject({ status: "succeeded", result: "refunded" });
