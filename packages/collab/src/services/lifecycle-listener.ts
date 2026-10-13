@@ -134,7 +134,7 @@ export function startLifecycleListener(deps: LifecycleListenerDeps): GroupConsum
     failuresKey: `${deps.keyPrefix}:collab:lifecycle-event-failures`,
     coordination: deps.coordination,
     settings: deps.settings,
-    // One key: commands run one at a time, in stream order.
+    // One key: one command at a time; a failing one retries after the later ones.
     keyOf: () => "lifecycle",
     process: async (entries, control) => {
       const outcomes = new Map<string, EntryOutcome>();

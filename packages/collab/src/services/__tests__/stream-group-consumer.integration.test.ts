@@ -382,14 +382,16 @@ describe("startGroupConsumer", () => {
         keys,
         "a",
         async (entries, ctl) => {
-          if (entries[0]!.payload !== "slow") return new Map(entries.map((e) => [e.id, "wait" as const]));
+          // Failing entries sit in the backoff queue, which does not count against
+          // batchCount, so the renewal holds more than one chunk.
+          if (entries[0]!.payload !== "slow") return new Map(entries.map((e) => [e.id, { failed: new Error("boom") }]));
           // The batch in hand outlives the stop deadline.
           await until(() => ctl.stopping(), 10_000);
           await new Promise((r) => setTimeout(r, 1000));
           slowDone = true;
           return new Map(entries.map((e) => [e.id, "done" as const]));
         },
-        { batchCount: 1, leaseRetryMs: 60_000, claimIdleMs, claimIntervalMs: 60_000, stopDeadlineMs: 200 },
+        { batchCount: 1, retryMinMs: 60_000, retryMaxMs: 60_000, claimIdleMs, claimIntervalMs: 60_000, stopDeadlineMs: 200 },
       );
       await until(() => stopped !== undefined, 5000);
       await stopped;

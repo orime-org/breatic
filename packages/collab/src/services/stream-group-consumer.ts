@@ -13,8 +13,10 @@
  * caller's: it names each entry's key, gets one key's entries at a time and
  * answers each entry with an outcome.
  *
- * Entries of one key run one round at a time, in stream order; different keys
- * run side by side up to `keyConcurrency`. The consumer takes only what it can
+ * Entries of one key run one round at a time, in the order this consumer took
+ * them; an entry being retried runs after newer ones of its key, and the
+ * caller's versions keep that safe. Different keys run side by side up to
+ * `keyConcurrency`. The consumer takes only what it can
  * start now and keeps reading while rounds run: a read asks for at most as
  * many entries as there are free key slots, so even with every entry on a new
  * key nothing waits here behind a busy slot while a peer sits idle (Celery
@@ -100,7 +102,7 @@ export interface GroupConsumerOptions {
   settings: GroupConsumerSettings;
   /** The key an entry's round is grouped under. */
   keyOf: (entry: StreamEntry) => string;
-  /** Handle one key's entries, in stream order; an entry left unanswered counts as `wait`. */
+  /** Handle one key's entries, in the order taken; an entry left unanswered counts as `wait`. */
   process: (
     entries: StreamEntry[],
     control: { stopping: () => boolean },
@@ -187,7 +189,7 @@ export function startGroupConsumer(opts: GroupConsumerOptions): GroupConsumer {
   let stopped: Promise<void> | undefined;
   let waiting: Waiting[] = [];
   const claimed: StreamEntry[] = [];
-  /** Entries waiting for their key's next round, by key, in stream order. */
+  /** Entries waiting for their key's next round, by key. */
   const queued = new Map<string, StreamEntry[]>();
   /** Ids of the queued entries. */
   const queuedIds = new Set<string>();
@@ -195,6 +197,8 @@ export function startGroupConsumer(opts: GroupConsumerOptions): GroupConsumer {
   const running = new Map<string, Promise<void>>();
   /** Ids of the entries in running rounds. */
   const inHand = new Set<string>();
+  /** Keys whose next round must not start before the given time. */
+  const delayedUntil = new Map<string, number>();
   let nextSweepAt = 0;
   /** Ends the loop's idle wait early. */
   let wake: (() => void) | undefined;
@@ -231,27 +235,28 @@ export function startGroupConsumer(opts: GroupConsumerOptions): GroupConsumer {
   }
 
   /**
-   * Take over entries idle past `claimIdleMs`, then forget dead consumers.
+   * Take over as many entries idle past `claimIdleMs` as there is room for,
+   * then forget dead consumers. What is left stays idle for the next sweep of
+   * any consumer.
    * @throws {Error} When a Redis command fails; the read loop logs it and retries.
    */
   async function sweep(): Promise<void> {
-    let cursor = "0-0";
-    do {
-      const [next, entries, trimmed] = (await commands.xautoclaim(
+    const room = settings.batchCount - inHand.size - queuedIds.size;
+    if (room > 0) {
+      const [, entries, trimmed] = (await commands.xautoclaim(
         streamKey,
         group,
         consumer,
         settings.claimIdleMs,
-        cursor,
+        "0-0",
         "COUNT",
-        settings.batchCount,
+        room,
       )) as [string, Array<[string, string[] | null]>, string[] | undefined];
       for (const [id, fields] of entries) claimed.push(toEntry(id, fields));
       if (trimmed && trimmed.length > 0) {
         logger.warn({ streamKey, group, ids: trimmed }, "stream_entries_trimmed_before_handled");
       }
-      cursor = next;
-    } while (cursor !== "0-0" && !stopping);
+    }
     await forgetIdleConsumers();
   }
 
@@ -296,7 +301,7 @@ export function startGroupConsumer(opts: GroupConsumerOptions): GroupConsumer {
   }
 
   /**
-   * Queue an entry for a retry.
+   * Queue a failed entry for a retry after its backoff.
    * @param entry - The entry.
    * @param delayMs - How long from now.
    */
@@ -342,28 +347,47 @@ export function startGroupConsumer(opts: GroupConsumerOptions): GroupConsumer {
   }
 
   /**
+   * Put entries back at the head of their key's queue and hold the key's next
+   * round for `leaseRetryMs`. A `wait` is about the key (its lease is busy, a
+   * peer's writes are not here yet), so the key retries as a whole, together
+   * with whatever arrived for it meanwhile.
+   * @param key - The key.
+   * @param entries - Its entries to retry, in the order taken.
+   */
+  function retryKeyLater(key: string, entries: StreamEntry[]): void {
+    if (stopping || entries.length === 0) return;
+    const fresh = entries.filter((e) => !queuedIds.has(e.id));
+    queued.set(key, [...fresh, ...(queued.get(key) ?? [])]);
+    for (const e of fresh) queuedIds.add(e.id);
+    delayedUntil.set(key, Date.now() + settings.leaseRetryMs);
+  }
+
+  /**
    * Act on the outcome of every entry of a round.
+   * @param key - The round's key.
    * @param entries - The round's entries.
    * @param outcomes - What the handler answered.
    * @throws {Error} When acknowledging fails; the round logs it.
    */
-  async function settle(entries: StreamEntry[], outcomes: Map<string, EntryOutcome>): Promise<void> {
+  async function settle(key: string, entries: StreamEntry[], outcomes: Map<string, EntryOutcome>): Promise<void> {
     const ack: string[] = [];
+    const retry: StreamEntry[] = [];
     for (const entry of entries) {
       const outcome = outcomes.get(entry.id) ?? "wait";
       if (outcome === "done") {
         ack.push(entry.id);
       } else if (outcome === "wait") {
-        retryLater(entry, settings.leaseRetryMs);
+        retry.push(entry);
       } else {
         try {
           if (await recordFailure(entry, outcome.failed)) ack.push(entry.id);
         } catch (err) {
           logger.error({ err, streamKey, id: entry.id }, "stream_entry_failure_not_recorded");
-          retryLater(entry, settings.leaseRetryMs);
+          retry.push(entry);
         }
       }
     }
+    retryKeyLater(key, retry);
     if (ack.length === 0) return;
     await commands.xack(streamKey, group, ...ack);
     await coordination.hdel(failuresKey, ...ack);
@@ -380,7 +404,7 @@ export function startGroupConsumer(opts: GroupConsumerOptions): GroupConsumer {
    * Hand one key's entries to the caller and settle every entry; then start
    * whatever the freed slot allows.
    * @param key - The key.
-   * @param entries - Its entries, in stream order.
+   * @param entries - Its entries, in the order taken.
    */
   function startRound(key: string, entries: StreamEntry[]): void {
     for (const e of entries) inHand.add(e.id);
@@ -392,7 +416,7 @@ export function startGroupConsumer(opts: GroupConsumerOptions): GroupConsumer {
         outcomes = new Map(entries.map((e) => [e.id, { failed: err }]));
       }
       try {
-        await settle(entries, outcomes);
+        await settle(key, entries, outcomes);
       } catch (err) {
         // Unacknowledged entries stay pending and are taken over once idle.
         logger.error({ err, streamKey, group, ids: entries.map((e) => e.id) }, "stream_round_settle_failed");
@@ -406,13 +430,15 @@ export function startGroupConsumer(opts: GroupConsumerOptions): GroupConsumer {
     running.set(key, round);
   }
 
-  /** Start a round for every queued key without one, while slots are free. */
+  /** Start a round for every queued key without one and not held back, while slots are free. */
   function startRounds(): void {
     if (stopping) return;
+    const now = Date.now();
     for (const [key, entries] of queued) {
       if (running.size >= settings.keyConcurrency) return;
-      if (running.has(key)) continue;
+      if (running.has(key) || (delayedUntil.get(key) ?? 0) > now) continue;
       queued.delete(key);
+      delayedUntil.delete(key);
       for (const e of entries) queuedIds.delete(e.id);
       startRound(key, entries);
     }
@@ -454,21 +480,23 @@ export function startGroupConsumer(opts: GroupConsumerOptions): GroupConsumer {
    * @returns The count; zero when nothing may be read.
    */
   function readCapacity(): number {
-    let startingKeys = 0;
-    for (const key of queued.keys()) if (!running.has(key)) startingKeys += 1;
-    const freeKeys = settings.keyConcurrency - running.size - startingKeys;
     const room = settings.batchCount - inHand.size - queuedIds.size;
-    return Math.max(0, Math.min(freeKeys, room));
+    return Math.max(0, Math.min(settings.keyConcurrency - running.size, room));
   }
 
   /**
-   * How long the next read or idle wait may last: until the next retry or sweep is due.
+   * How long the next read or idle wait may last: until the next retry or
+   * sweep is due. A running round can queue a retry due `leaseRetryMs` after
+   * it ends, and nothing can end a blocked read early, so a read issued while
+   * rounds run blocks at most that long.
    * @returns Milliseconds, at least 1.
    */
   function blockFor(): number {
     const now = Date.now();
     let until = Math.min(now + settings.blockMs, nextSweepAt);
+    if (running.size > 0) until = Math.min(until, now + settings.leaseRetryMs);
     for (const w of waiting) until = Math.min(until, w.notBefore);
+    for (const t of delayedUntil.values()) until = Math.min(until, t);
     return Math.max(1, until - now);
   }
 
@@ -478,6 +506,7 @@ export function startGroupConsumer(opts: GroupConsumerOptions): GroupConsumer {
    * @returns Resolves when any of them happens.
    */
   function idle(ms: number): Promise<void> {
+    if (stopping) return Promise.resolve();
     return new Promise((resolve) => {
       const timer = setTimeout(() => {
         wake = undefined;
@@ -585,6 +614,7 @@ export function startGroupConsumer(opts: GroupConsumerOptions): GroupConsumer {
         waiting = [];
         queued.clear();
         queuedIds.clear();
+        delayedUntil.clear();
         try {
           await handOver();
         } catch (err) {

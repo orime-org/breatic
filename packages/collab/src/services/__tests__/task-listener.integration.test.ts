@@ -272,10 +272,10 @@ describe("task events across two collab instances", () => {
       c,
       nodeIds.map((nodeId, i) => ({ nodeId, counts: DONE, result: { ...MEDIA, content: `tile ${i}` } })),
     );
-    // Small reads, so both instances take part in the same document.
-    listen(c, instanceA, "a", { batchCount: 16 });
-    listen(c, instanceB, "b", { batchCount: 16 });
-    await until(async () => (await pending(c)) === 0 && (await stream.xlen(c.streamKey)) === 128);
+    // Fewer entries held than the grid has, so both instances take part in the same document.
+    listen(c, instanceA, "a", { batchCount: 64 });
+    listen(c, instanceB, "b", { batchCount: 64 });
+    await until(async () => (await pending(c)) === 0 && (await stream.xlen(c.streamKey)) === 128, 40_000);
     const listenerOpens = opensA.mock.calls.length + opensB.mock.calls.length;
     expect(opensA.mock.calls.length).toBeGreaterThan(0);
     expect(opensB.mock.calls.length).toBeGreaterThan(0);

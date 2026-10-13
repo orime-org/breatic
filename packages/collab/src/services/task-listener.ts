@@ -45,6 +45,10 @@ const logger = createLogger("task-listener");
 /** Consumer group every collab instance joins for task events. */
 export const TASK_EVENTS_GROUP = "collab-task-events";
 
+/** Deletes the waiter mark only while it is still the given instance's. */
+const RELEASE_WAITER_SCRIPT =
+  'if redis.call("get", KEYS[1]) == ARGV[1] then return redis.call("del", KEYS[1]) end return 0';
+
 /** How long a node's counts version is kept after its last write. */
 const COUNTS_VERSION_TTL_SECONDS = 30 * 24 * 60 * 60;
 
@@ -94,11 +98,15 @@ interface DocBatch {
  * Coordination keys of one document.
  * @param keyPrefix - `REDIS_KEY_PREFIX`.
  * @param docName - The canvas document.
- * @returns Lease, hand-over and counts-version keys.
+ * @returns Lease, waiter, hand-over and counts-version keys.
  */
-function docKeys(keyPrefix: string, docName: string): { lease: string; handoff: string; versions: string } {
+function docKeys(
+  keyPrefix: string,
+  docName: string,
+): { lease: string; waiter: string; handoff: string; versions: string } {
   return {
     lease: `${keyPrefix}:collab:task-doc-lease:${docName}`,
+    waiter: `${keyPrefix}:collab:task-doc-lease-waiter:${docName}`,
     handoff: `${keyPrefix}:collab:task-doc-handoff:${docName}`,
     versions: `${keyPrefix}:collab:task-counts-version:${docName}`,
   };
@@ -305,9 +313,17 @@ export function startTaskListener(deps: TaskListenerDeps): GroupConsumer {
    */
   async function handleDoc(batch: DocBatch, stopping: () => boolean): Promise<Map<string, EntryOutcome>> {
     const keys = docKeys(keyPrefix, batch.docName);
+    /**
+     * Answer every event of the batch `wait`.
+     * @returns The outcomes.
+     */
+    const waitAll = (): Map<string, EntryOutcome> => new Map(batch.items.map(({ entry }) => [entry.id, "wait"]));
+    // Another instance is waiting for this lease: let it have the next turn.
+    if (await peerWaiting(keys.waiter)) return waitAll();
     let written: Map<string, EntryOutcome> | undefined;
     try {
       await redlock.using([keys.lease], settings.docLeaseMs, { retryCount: 0 }, async (signal) => {
+        await coordination.eval(RELEASE_WAITER_SCRIPT, 1, keys.waiter, deps.instanceId);
         written = await writeBatch(batch, keys, signal, stopping);
       });
       return written!;
@@ -317,10 +333,41 @@ export function startTaskListener(deps: TaskListenerDeps): GroupConsumer {
         logger.warn({ err, docName: batch.docName }, "task_doc_lease_release_failed");
         return written;
       }
-      if (!(await leaseHeldElsewhere(err))) {
-        logger.warn({ err, docName: batch.docName }, "task_doc_lease_unavailable");
+      if (await leaseHeldElsewhere(err)) await markWaiting(keys.waiter);
+      else logger.warn({ err, docName: batch.docName }, "task_doc_lease_unavailable");
+      return waitAll();
+    }
+  }
+
+  /**
+   * Whether another instance has marked itself as waiting for a document lease.
+   * @param waiterKey - The document's waiter mark.
+   * @returns True when the mark names another instance; false when it is absent, this instance's, or unreadable.
+   */
+  async function peerWaiting(waiterKey: string): Promise<boolean> {
+    try {
+      const waiter = await coordination.get(waiterKey);
+      return waiter !== null && waiter !== deps.instanceId;
+    } catch (err) {
+      logger.warn({ err, waiterKey }, "task_doc_waiter_unreadable");
+      return false;
+    }
+  }
+
+  /**
+   * Mark this instance as waiting for a document lease, unless another
+   * instance already waits; renew the mark when it is this instance's.
+   * @param waiterKey - The document's waiter mark.
+   */
+  async function markWaiting(waiterKey: string): Promise<void> {
+    const ttlMs = settings.leaseRetryMs * 2;
+    try {
+      const set = await coordination.set(waiterKey, deps.instanceId, "PX", ttlMs, "NX");
+      if (set === null && (await coordination.get(waiterKey)) === deps.instanceId) {
+        await coordination.pexpire(waiterKey, ttlMs);
       }
-      return new Map(batch.items.map(({ entry }) => [entry.id, "wait"]));
+    } catch (err) {
+      logger.warn({ err, waiterKey }, "task_doc_waiter_unmarked");
     }
   }
 
