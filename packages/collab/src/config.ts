@@ -48,8 +48,8 @@ const collabConfigSchema = z.object({
   // Throttle (coarse per-IP DoS backstop; loopback is exempt)
   throttle_enabled: z.boolean().default(true),
   throttle_max_attempts: z.number().int().positive().default(200),
-  // ban length in MINUTES — the throttle extension multiplies by 60*1000, so
-  // this is NOT milliseconds (the 60000-read-as-ms bug = a 41.7-day ban).
+  // ban length in MINUTES — shared-throttle.ts sets the ban key with EX
+  // minutes*60, so this is NOT milliseconds (the 60000-read-as-ms bug = a 41.7-day ban).
   throttle_ban_time: z.number().int().positive().default(1),
 
   // Logging
@@ -80,6 +80,7 @@ const collabConfigSchema = z.object({
   event_retry_max_ms: z.number().int().positive().default(600_000),
   event_max_failures: z.number().int().positive().default(5),
   event_stop_deadline_ms: z.number().int().positive().default(3000),
+  event_forget_idle_consumer_ms: z.number().int().positive().default(86_400_000),
   unload_store_retry_ms: z.number().int().positive().default(1200),
   unload_store_retry_interval_ms: z.number().int().positive().default(200),
   unload_rescue_reserve_ms: z.number().int().nonnegative().default(1000),

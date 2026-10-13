@@ -111,6 +111,7 @@ describe("the knobs of several collab instances (#1497)", () => {
       "event_retry_max_ms",
       "event_max_failures",
       "event_stop_deadline_ms",
+      "event_forget_idle_consumer_ms",
       "unload_store_retry_ms",
       "unload_store_retry_interval_ms",
       "unload_rescue_reserve_ms",

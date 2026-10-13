@@ -62,9 +62,6 @@ if (monitoring === "invalid_dsn") logger.error({}, "sentry_dsn_invalid");
  */
 const SHUTDOWN_DEADLINE_MS = 4000;
 
-/** A consumer idle this long with nothing pending is removed from its group. */
-const FORGET_IDLE_CONSUMER_MS = 24 * 60 * 60 * 1000;
-
 /**
  * Sentinel document the healthz end-to-end probe loads. Deliberately NOT a
  * project doc name so `parseDocName` rejects it and the auth hook skips it.
@@ -241,7 +238,7 @@ async function main(): Promise<void> {
     retryMaxMs: cfg.event_retry_max_ms,
     maxFailures: cfg.event_max_failures,
     stopDeadlineMs: cfg.event_stop_deadline_ms,
-    forgetIdleConsumerMs: FORGET_IDLE_CONSUMER_MS,
+    forgetIdleConsumerMs: cfg.event_forget_idle_consumer_ms,
   };
 
   // Task events (server, worker → canvas documents).
