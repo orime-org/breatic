@@ -212,7 +212,7 @@ test('lands to the right of a node drawn over its spot, and the camera follows a
   const pane = visibleSpace(page).locator('.react-flow__pane');
   await expect(pane).toBeVisible({ timeout: 20_000 });
 
-  // The note goes in first: the first node on an empty canvas makes it frame
+  // The text node goes in first: the first node on an empty canvas makes it frame
   // that node, so the middle of the view is only known once that is done.
   await addText(page, 'blocker', WIDE_WORDS);
   const blocker = visibleSpace(page).locator('.react-flow__node[data-id="blocker"]');
@@ -254,15 +254,15 @@ test('lands to the right of a node drawn over its spot, and the camera follows a
   );
   const blockerTop = paneBox.y + paneBox.height / 2 + (blockerAt.y - centre.y) * before.zoom;
   await expect.poll(async () => Math.round((await blocker.boundingBox())!.y)).toBe(Math.round(blockerTop));
-  expect(await viewTransform(page), 'moving the note leaves the view where it is').toBe(viewBefore);
+  expect(await viewTransform(page), 'moving the text node leaves the view where it is').toBe(viewBefore);
   expect(
     (await blocker.boundingBox())!.height / before.zoom,
-    'the note draws down into the proposal, past where its estimate ends',
+    'the text node draws down into the proposal, past where its estimate ends',
   ).toBeGreaterThan(estimate + ESTIMATE_CLEARANCE);
 
   await answerWithProposal(page, ONE);
   await useTheProposal(page);
-  // The camera has to travel past the note, so 400ms in it is still moving.
+  // The camera has to travel past the text node, so 400ms in it is still moving.
   await page.waitForTimeout(400);
   const midway = await viewTransform(page);
   const placed = visibleSpace(page).locator('.react-flow__node:not([data-id="blocker"])');
@@ -279,12 +279,12 @@ test('lands to the right of a node drawn over its spot, and the camera follows a
     placedBox.y >= blockerBox.y + blockerBox.height ||
     blockerBox.y >= placedBox.y + placedBox.height;
   expect(clear, `placed ${JSON.stringify(placedBox)} clear of ${JSON.stringify(blockerBox)}`).toBe(true);
-  expect(placedBox.x, 'moved to the right of the note').toBeGreaterThanOrEqual(blockerBox.x + blockerBox.width);
+  expect(placedBox.x, 'moved to the right of the text node').toBeGreaterThanOrEqual(blockerBox.x + blockerBox.width);
   expect(after.zoom, 'one node fits, so the zoom stays the reader’s').toBe(before.zoom);
   await expectFramed(pane, placed, after.zoom);
 });
 
-test('zooms out just far enough to show a group that does not fit at the reader’s zoom', async () => {
+test('zooms out to show a group that does not fit at the reader’s zoom', async () => {
   const pane = visibleSpace(page).locator('.react-flow__pane');
   await expect(pane).toBeVisible({ timeout: 20_000 });
   // A node first, so the canvas has framed its first content before the
@@ -330,7 +330,7 @@ test('shows a proposal kept in an older shape as expired, with nothing to press'
   await expect(page.getByTestId('proposal-use')).toHaveCount(0);
 });
 
-test('on a Space opened empty, keeps the reader\u2019s zoom and slides there', async () => {
+test('on a Space opened empty, keeps the reader\u2019s zoom and centres on what landed', async () => {
   const pane = visibleSpace(page).locator('.react-flow__pane');
   await expect(pane).toBeVisible({ timeout: 20_000 });
   // Nothing on the canvas yet, so its opening fit is still waiting for the
