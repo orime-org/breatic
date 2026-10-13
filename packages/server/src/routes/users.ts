@@ -99,6 +99,8 @@ const analyticsConsentSchema = z.object({
   decidedAt: z.string().datetime({ offset: true }),
   source: z.enum(CONSENT_SOURCES),
   revision: z.number().int(),
+  /** The browser's clock when it sent the report, so the server can correct a skewed clock. */
+  sentAt: z.string().datetime({ offset: true }).optional(),
 });
 
 /**

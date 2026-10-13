@@ -9,7 +9,7 @@ const runtime = vi.hoisted(() => ({
   choice: null as null | Record<string, unknown>,
   revision: 1,
 }));
-const api = vi.hoisted(() => ({ put: vi.fn(async () => undefined) }));
+const api = vi.hoisted(() => ({ put: vi.fn(async (_path: string, _body: Record<string, unknown>) => undefined) }));
 
 vi.mock('@web/lib/analytics/build-config', () => ({ ANALYTICS_CONFIGURED: true }));
 vi.mock('@web/lib/analytics/runtime', () => ({
@@ -54,5 +54,18 @@ describe('the choice sent to the account', () => {
     analytics.identifyUser({ id: 'u1' } as never);
     await vi.waitFor(() => expect(api.put).toHaveBeenCalled());
     expect(api.put).toHaveBeenCalledWith('/users/me/analytics-consent', expect.objectContaining({ revision: 2, analytics: false }));
+  });
+
+  it('carries the browser clock at sending, so the server can correct a skewed clock', async () => {
+    vi.resetModules();
+    api.put.mockClear();
+    runtime.choice = { analytics: true, ads: true, source: 'banner', decidedAt: '2026-10-13T00:00:00.000Z' };
+    const analytics = await import('@web/lib/analytics');
+    analytics.startProductAnalytics();
+    const before = Date.now();
+    analytics.identifyUser({ id: 'u2' } as never);
+    await vi.waitFor(() => expect(api.put).toHaveBeenCalled());
+    const body = api.put.mock.calls.at(-1)?.[1] ?? {};
+    expect(Date.parse(String(body.sentAt))).toBeGreaterThanOrEqual(before);
   });
 });

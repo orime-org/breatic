@@ -148,6 +148,17 @@ describe("users.analytics_consent", () => {
     expect(await accountConsent(id)).toMatchObject({ analytics: false, ads: false });
   });
 
+  it("corrects a fast device clock by the time the report was sent, so a later choice elsewhere still wins", async () => {
+    const id = await insertUser();
+    const minutes = (n: number): string => new Date(Date.now() + n * 60_000).toISOString();
+    // Device B, clock right, turned everything off ten minutes ago.
+    await putConsent(id, { ...choice(false, false, minutes(-10)), sentAt: minutes(0) });
+    // Device A, clock an hour fast, accepted twenty minutes ago and re-reports on a page load now.
+    const res = await putConsent(id, { ...choice(true, true, minutes(40)), sentAt: minutes(60) });
+    expect(res.status).toBe(204);
+    expect(await accountConsent(id)).toMatchObject({ analytics: false, ads: false });
+  });
+
   it("ignores a report from an older policy revision", async () => {
     const id = await insertUser();
     const res = await putConsent(id, { ...choice(true, true, hoursAgo(3)), revision: CONSENT_REVISION - 1 });

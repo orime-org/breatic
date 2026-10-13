@@ -296,15 +296,22 @@ function currentRevisionOnly(stored: AccountConsent | null): AccountConsent | nu
  *
  * The one write path for `users.analytics_consent` (inner#1442 design §4.4.6).
  * The row is locked so two browsers reporting at once both get merged. The
- * browser's clock is not trusted past ours: a report dated in the future is
- * taken as made now, so a fast clock cannot outrank later choices made on
- * other devices.
+ * browser stamps the choice with its own clock, so the time is moved by how
+ * far that clock was off when the report was sent (`sentAt` against ours, as
+ * Segment, RudderStack, Snowplow, PostHog and Amplitude correct event times);
+ * a report still dated in the future, or one without `sentAt`, is taken as
+ * made now.
  * @param userId - The account.
- * @param incoming - The browser's choice and when it was made.
+ * @param report - The browser's choice, when it was made and when it was sent.
  */
-export async function recordAnalyticsConsent(userId: string, incoming: AccountConsent): Promise<void> {
-  const now = new Date();
-  const decidedAt = new Date(incoming.decidedAt) > now ? now.toISOString() : incoming.decidedAt;
+export async function recordAnalyticsConsent(
+  userId: string,
+  report: AccountConsent & { readonly sentAt?: string },
+): Promise<void> {
+  const { sentAt, ...incoming } = report;
+  const now = Date.now();
+  const skew = sentAt === undefined ? 0 : now - Date.parse(sentAt);
+  const decidedAt = new Date(Math.min(Date.parse(incoming.decidedAt) + skew, now)).toISOString();
   await db.transaction(async (tx) => {
     const stored = currentRevisionOnly(await getAccountConsent(userId, tx));
     const next = mergeAccountConsent(stored, { ...incoming, decidedAt });
