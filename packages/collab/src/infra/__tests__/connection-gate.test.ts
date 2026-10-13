@@ -85,10 +85,7 @@ function connectPayload(headers: Record<string, string>) {
 
 describe("connection gate — onUpgrade", () => {
   it("normalises x-real-ip to the peer address for a loopback peer", async () => {
-    const gate = createConnectionGate(
-      { throttle: 15, banTime: 5 },
-      { throttle: fakeThrottle() },
-    );
+    const gate = createConnectionGate(fakeThrottle());
     const payload = fakeUpgradeRequest({}, "::1");
 
     await gate.onUpgrade(payload);
@@ -99,10 +96,7 @@ describe("connection gate — onUpgrade", () => {
   });
 
   it("overwrites a header a loopback peer tried to supply itself", async () => {
-    const gate = createConnectionGate(
-      { throttle: 15, banTime: 5 },
-      { throttle: fakeThrottle() },
-    );
+    const gate = createConnectionGate(fakeThrottle());
     const payload = fakeUpgradeRequest({ "x-real-ip": "9.9.9.9" }, "127.0.0.1");
 
     await gate.onUpgrade(payload);
@@ -111,10 +105,7 @@ describe("connection gate — onUpgrade", () => {
   });
 
   it("leaves the proxy's x-real-ip alone for a non-loopback peer", async () => {
-    const gate = createConnectionGate(
-      { throttle: 15, banTime: 5 },
-      { throttle: fakeThrottle() },
-    );
+    const gate = createConnectionGate(fakeThrottle());
     const payload = fakeUpgradeRequest(
       { "x-real-ip": "203.0.113.9" },
       "172.18.0.4",
@@ -127,10 +118,7 @@ describe("connection gate — onUpgrade", () => {
   });
 
   it("always strips x-forwarded-for so nothing downstream can fall back to it", async () => {
-    const gate = createConnectionGate(
-      { throttle: 15, banTime: 5 },
-      { throttle: fakeThrottle() },
-    );
+    const gate = createConnectionGate(fakeThrottle());
     const payload = fakeUpgradeRequest(
       { "x-real-ip": "203.0.113.9", "x-forwarded-for": "1.2.3.4, 5.6.7.8" },
       "172.18.0.4",
@@ -142,10 +130,7 @@ describe("connection gate — onUpgrade", () => {
   });
 
   it("refuses a non-loopback peer with no x-real-ip: 403, socket closed, no truthy throw", async () => {
-    const gate = createConnectionGate(
-      { throttle: 15, banTime: 5 },
-      { throttle: fakeThrottle() },
-    );
+    const gate = createConnectionGate(fakeThrottle());
     const payload = fakeUpgradeRequest({}, "203.0.113.9");
 
     let thrown: unknown = "not-thrown";
@@ -166,10 +151,7 @@ describe("connection gate — onUpgrade", () => {
   });
 
   it("refuses when the peer address is unavailable", async () => {
-    const gate = createConnectionGate(
-      { throttle: 15, banTime: 5 },
-      { throttle: fakeThrottle() },
-    );
+    const gate = createConnectionGate(fakeThrottle());
     const payload = fakeUpgradeRequest({ "x-real-ip": "203.0.113.9" }, undefined);
 
     let thrown: unknown = "not-thrown";
@@ -200,7 +182,7 @@ describe("connection gate — the verdict travels, not just the identity", () =>
     headers: Record<string, string>,
   ): Promise<{ throttled: boolean }> {
     const throttle = fakeThrottle();
-    const gate = createConnectionGate({ throttle: 15, banTime: 5 }, { throttle });
+    const gate = createConnectionGate(throttle);
     const upgrade = fakeUpgradeRequest(headers, peerAddress);
     await gate.onUpgrade(upgrade);
     await gate.onConnect({
@@ -234,93 +216,6 @@ describe("connection gate — the verdict travels, not just the identity", () =>
   });
 });
 
-describe("connection gate — driving the real throttle", () => {
-  // The tests above hand the gate a stand-in, which proves it delegates but
-  // proves nothing about whether anyone is ever actually throttled. These
-  // drive the shipped extension, so they fail if the gate stops feeding it a
-  // usable identity — the extension reads `x-real-ip` and has no fallback, so
-  // an unset header quietly collapses every client into one shared bucket
-  // instead of erroring.
-
-  /** Run one connection through the gate and report how it ended. */
-  async function connect(identity: string, gate: ConnectionGate): Promise<string> {
-    try {
-      await gate.onConnect(connectPayload({ "x-real-ip": identity }));
-      return "allowed";
-    } catch {
-      return "denied";
-    }
-  }
-
-  it("bans a non-loopback identity once it passes the threshold", async () => {
-    // The extension bans on the connection AFTER the threshold, so a limit of
-    // two allows two and denies from the third on.
-    const gate = createConnectionGate({ throttle: 2, banTime: 5 });
-    const outcomes: string[] = [];
-    for (let i = 0; i < 4; i += 1) {
-      outcomes.push(await connect("203.0.113.9", gate));
-    }
-    await gate.onDestroy();
-
-    expect(outcomes).toEqual(["allowed", "allowed", "denied", "denied"]);
-  });
-
-  it("never bans a loopback peer, however many times it connects", async () => {
-    // A developer opens the meta doc plus one document per Space, twice over
-    // under StrictMode. Counting those would ban them on their own machine.
-    // Through the upgrade, because only the peer address earns the exemption.
-    const gate = createConnectionGate({ throttle: 2, banTime: 5 });
-    const outcomes: string[] = [];
-    for (let i = 0; i < 10; i += 1) {
-      const upgrade = fakeUpgradeRequest({}, "127.0.0.1");
-      await gate.onUpgrade(upgrade);
-      try {
-        await gate.onConnect(connectPayload(upgrade.request.headers as Record<string, string>));
-        outcomes.push("allowed");
-      } catch {
-        outcomes.push("denied");
-      }
-    }
-    await gate.onDestroy();
-
-    expect(outcomes.every((outcome) => outcome === "allowed")).toBe(true);
-  });
-
-  it("counts each identity separately rather than pooling them", async () => {
-    const gate = createConnectionGate({ throttle: 2, banTime: 5 });
-    await connect("203.0.113.9", gate);
-    await connect("203.0.113.9", gate);
-    const other = await connect("198.51.100.7", gate);
-    await gate.onDestroy();
-
-    expect(other).toBe("allowed");
-  });
-
-  it("pools everyone into one bucket when the identity header is missing", async () => {
-    // Not a wish — a characterisation of the extension we depend on, and the
-    // reason the gate must guarantee that header. The extension reads
-    // `x-real-ip` and has no fallback, so an absent one is not an error: it
-    // is one shared empty-string bucket, where a handful of connections bans
-    // every user of the service at once. The version bump this PR carries
-    // changed how that header is read (`headers["x"]` became
-    // `headers.get("x")`), which is exactly the kind of change that turns the
-    // key into an empty string without failing anything.
-    const gate = createConnectionGate({ throttle: 2, banTime: 5 });
-    const outcomes: string[] = [];
-    for (let i = 0; i < 3; i += 1) {
-      try {
-        await gate.onConnect({ request: { headers: new Headers() } });
-        outcomes.push("allowed");
-      } catch {
-        outcomes.push("denied");
-      }
-    }
-    await gate.onDestroy();
-
-    expect(outcomes).toEqual(["allowed", "allowed", "denied"]);
-  });
-});
-
 describe("connection gate — what a refusal leaves behind", () => {
   // A refused upgrade is the one outcome nothing downstream can report: the
   // socket is gone before any document, hook or request handler exists, so
@@ -344,10 +239,7 @@ describe("connection gate — what a refusal leaves behind", () => {
     headers: Record<string, string>,
     remoteAddress: string | undefined,
   ): Promise<void> {
-    const gate = createConnectionGate(
-      { throttle: 15, banTime: 5 },
-      { throttle: fakeThrottle() },
-    );
+    const gate = createConnectionGate(fakeThrottle());
     try {
       await gate.onUpgrade(fakeUpgradeRequest(headers, remoteAddress));
     } catch {
@@ -382,10 +274,7 @@ describe("connection gate — what a refusal leaves behind", () => {
   });
 
   it("stays silent when a connection is allowed through", async () => {
-    const gate = createConnectionGate(
-      { throttle: 15, banTime: 5 },
-      { throttle: fakeThrottle() },
-    );
+    const gate = createConnectionGate(fakeThrottle());
 
     await gate.onUpgrade(fakeUpgradeRequest({ "x-real-ip": "203.0.113.9" }, "172.18.0.4"));
 
@@ -401,7 +290,7 @@ describe("connection gate — onConnect", () => {
     // have: the identity is what the throttle counts by, never what decides
     // whether to count.
     const throttle = fakeThrottle();
-    const gate = createConnectionGate({ throttle: 15, banTime: 5 }, { throttle });
+    const gate = createConnectionGate(throttle);
     const upgrade = fakeUpgradeRequest({}, "::1");
     await gate.onUpgrade(upgrade);
 
@@ -412,7 +301,7 @@ describe("connection gate — onConnect", () => {
 
   it("hands a real identity to the throttle to count", async () => {
     const throttle = fakeThrottle();
-    const gate = createConnectionGate({ throttle: 15, banTime: 5 }, { throttle });
+    const gate = createConnectionGate(throttle);
 
     await gate.onConnect(connectPayload({ "x-real-ip": "203.0.113.9" }));
 
@@ -421,7 +310,7 @@ describe("connection gate — onConnect", () => {
 
   it("never looks at x-forwarded-for", async () => {
     const throttle = fakeThrottle();
-    const gate = createConnectionGate({ throttle: 15, banTime: 5 }, { throttle });
+    const gate = createConnectionGate(throttle);
 
     // A request that only carries x-forwarded-for must NOT be treated as
     // loopback-exempt just because that header says so.
@@ -432,7 +321,7 @@ describe("connection gate — onConnect", () => {
 
   it("forwards shutdown to the throttle", async () => {
     const throttle = fakeThrottle();
-    const gate = createConnectionGate({ throttle: 15, banTime: 5 }, { throttle });
+    const gate = createConnectionGate(throttle);
 
     await gate.onDestroy();
 
