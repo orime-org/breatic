@@ -78,6 +78,10 @@ const TABLE_BLOCK = '[data-content-type="table"]';
 
 /** The library's wrapper around a table (prosemirror-tables `TableView`). */
 const TABLE_WRAPPER = '.tableWrapper';
+/** The edges of a table's frame that say columns run on (`DocumentTableScroller`). */
+const OVERFLOW_EDGE = '.doc-table-overflow-edge';
+/** The frame a table scrolls in, with its edges. */
+const TABLE_FRAME = '.doc-table-frame';
 /** A block's content element, which carries the space above the block. */
 const BLOCK_CONTENT = '.bn-block-content';
 /** A block's own content, as against the blocks nested under it. */
@@ -102,14 +106,62 @@ export function previewScale(width: number, height: number): number {
   return longest > PREVIEW_LONGEST_SIDE ? PREVIEW_LONGEST_SIDE / longest : 1;
 }
 
+/** Elements that draw what they hold whatever their style says. */
+const REPLACED = new Set(['img', 'video', 'canvas', 'svg', 'iframe', 'input', 'hr']);
+
 /**
- * Measures a laid-out layer, overflow included.
+ * Whether an element paints a box of its own: a background or a border.
+ * @param style - Its computed style.
+ * @returns True when it does.
+ */
+function paintsBox(style: CSSStyleDeclaration): boolean {
+  if (style.backgroundImage !== '' && style.backgroundImage !== 'none') return true;
+  const background = style.backgroundColor;
+  if (background !== '' && background !== 'transparent' && !/^rgba\(.*,\s*0\)$/.test(background)) return true;
+  return (['Top', 'Right', 'Bottom', 'Left'] as const).some(
+    (side) => parseFloat(style[`border${side}Width`]) > 0 && style[`border${side}Style`] !== 'none',
+  );
+}
+
+/**
+ * Measures a laid-out layer by what it draws: its words, its pictures, the
+ * boxes that paint a background or a border, each cut to the boxes that clip
+ * it. A block is laid out as wide as the body's column, so its lines break as
+ * they do there, and the room past its words is drawn as nothing; counted, it
+ * would scale a short line down with the column (A1: the longest side of what
+ * is dragged). Its height is the layer's.
  * @param layer - The layer.
  * @returns Its natural size.
  */
-function measureLayer(layer: HTMLElement): PreviewSize {
+export function measureDrawn(layer: HTMLElement): PreviewSize {
+  const page = layer.ownerDocument;
+  const frame = page.defaultView ?? window;
   const box = layer.getBoundingClientRect();
-  return { width: Math.max(box.width, layer.scrollWidth), height: Math.max(box.height, layer.scrollHeight) };
+  let right = box.left;
+  /**
+   * Takes in how far a node and what it holds draw.
+   * @param node - The node.
+   * @param clip - The right edge of the boxes clipping it.
+   */
+  const visit = (node: Node, clip: number): void => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      if ((node.textContent ?? '').trim() === '') return;
+      const range = page.createRange();
+      range.selectNodeContents(node);
+      right = Math.max(right, Math.min(range.getBoundingClientRect().right, clip));
+      return;
+    }
+    if (!(node instanceof Element)) return;
+    const style = frame.getComputedStyle(node);
+    if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') return;
+    const rect = node.getBoundingClientRect();
+    if (REPLACED.has(node.localName) || paintsBox(style)) right = Math.max(right, Math.min(rect.right, clip));
+    const inner = style.overflowX === 'visible' ? clip : Math.min(clip, rect.right);
+    node.childNodes.forEach((child) => visit(child, inner));
+  };
+  layer.childNodes.forEach((child) => visit(child, Infinity));
+  const width = right > box.left ? right - box.left : Math.max(box.width, layer.scrollWidth);
+  return { width, height: Math.max(box.height, layer.scrollHeight) };
 }
 
 /** A drag's events, each dispatched once the browser has taken the image. */
@@ -148,7 +200,7 @@ function leaveOnceTaken(root: HTMLElement): void {
 export function buildDragPreview(
   view: EditorView,
   placed: PlacedContent,
-  measure: (layer: HTMLElement) => PreviewSize = measureLayer,
+  measure: (layer: HTMLElement) => PreviewSize = measureDrawn,
 ): HTMLElement {
   const page = view.dom.ownerDocument;
   const { content } = placed;
@@ -324,12 +376,19 @@ function copiedSpans(original: Element | null | undefined, copy: Element | null)
  * cells scrolled off to the left would put the preview that far from the
  * pointer. Taken out rather than hidden by a style: WebKit draws a column set
  * to `visibility: collapse`.
+ *
+ * The frame's left edge says columns lie to the left. With none taken out, the
+ * first column is drawn whole, so nothing does, and the edge goes too.
  * @param table - The copied table.
  * @param off - How many columns to take out, from the first.
  * @param spans - Each copied cell's columns.
  */
 function dropColumns(table: Element | null | undefined, off: number, spans: ReadonlyMap<Element, Span>): void {
-  if (table === null || table === undefined || off === 0) return;
+  if (table === null || table === undefined) return;
+  if (off === 0) {
+    table.closest(TABLE_FRAME)?.querySelector(`${OVERFLOW_EDGE}[data-overflow-edge="left"]`)?.removeAttribute('data-on');
+    return;
+  }
   table.querySelectorAll('col').forEach((col, index) => {
     if (index < off) col.remove();
   });
@@ -510,6 +569,22 @@ function holdTable(table: HTMLElement | null | undefined, widths: readonly numbe
 }
 
 /**
+ * Ends a row's or a cell selection's frame at its table: the room the
+ * library's wrapper keeps under the table is for the frame's scrollbar, which
+ * the preview does not draw, and with it a quote's rule would run on past the
+ * rows (design §4). The frame's edges end at the table with it.
+ * @param copy - The copied table block.
+ */
+function fitFrame(copy: HTMLElement): void {
+  copy.querySelectorAll<HTMLElement>(TABLE_WRAPPER).forEach((wrapper) => {
+    wrapper.style.padding = '0';
+  });
+  copy.querySelectorAll<HTMLElement>(OVERFLOW_EDGE).forEach((edge) => {
+    edge.style.bottom = '0';
+  });
+}
+
+/**
  * What a table row or column drag's preview shows: that whole line, inside a
  * copy of its table block so the table's styles and column widths hold. The
  * line's cells come from the table map, so a merged cell elsewhere does not
@@ -582,6 +657,7 @@ export function tableLinePreviewContent(
     const off = columnsScrolledOff(table);
     dropColumns(copied, off, spans);
     holdTable(copied, widths.slice(off), heights);
+    fitFrame(copy);
   }
   settle(view, copy, block);
   // A table row is drawn as wide as the `.bn-block` its table block sits in,
@@ -649,6 +725,7 @@ export function tableRowsPreviewContent(
   const off = columnsScrolledOff(table);
   dropColumns(copied, off, spans);
   holdTable(copied, columnWidths(table).slice(off), heights);
+  fitFrame(copy);
   settle(view, copy, block);
   return { content: copy, place: block, sizedLike: block.parentElement };
 }

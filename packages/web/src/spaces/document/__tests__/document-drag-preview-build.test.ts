@@ -879,7 +879,7 @@ describe('measureDrawn', () => {
 
   it('cuts what is drawn to a box that clips it', () => {
     const frame = boxed(document.createElement('div'), 0, 300);
-    frame.style.overflow = 'hidden';
+    frame.style.overflowX = 'hidden';
     const table = boxed(document.createElement('div'), 0, 900);
     table.style.border = '1px solid rgb(0, 0, 0)';
     frame.append(table);
