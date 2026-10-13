@@ -59,7 +59,7 @@ export type EntryOutcome = "done" | "wait" | { failed: unknown };
 /** Timing and limits, all from `config/collab.yaml` in production. */
 export interface GroupConsumerSettings {
   /** Most entries this consumer holds at once, running and queued. */
-  batchCount: number;
+  maxHeld: number;
   /** Most keys with a round running at once. */
   keyConcurrency: number;
   /** Longest a read blocks when nothing is waiting. */
@@ -275,8 +275,8 @@ export function startGroupConsumer(opts: GroupConsumerOptions): GroupConsumer {
    */
   async function renewHeld(): Promise<void> {
     const ids = [...new Set([...inHand, ...queuedIds, ...waiting.map((w) => w.entry.id)])];
-    for (let i = 0; i < ids.length && !stopping; i += settings.batchCount) {
-      const chunk = ids.slice(i, i + settings.batchCount);
+    for (let i = 0; i < ids.length && !stopping; i += settings.maxHeld) {
+      const chunk = ids.slice(i, i + settings.maxHeld);
       await commands.xclaim(streamKey, group, consumer, 0, ...chunk, "JUSTID");
     }
   }
@@ -489,16 +489,19 @@ export function startGroupConsumer(opts: GroupConsumerOptions): GroupConsumer {
   }
 
   /**
-   * Entries this consumer may still take within `batchCount`.
-   * @returns The count; negative after a sweep took entries back.
+   * Entries this consumer may still take within `maxHeld`.
+   * @returns The count; negative while due failure retries, which do not
+   *   count against `maxHeld` while they wait, are back in the queue, and
+   *   briefly while a round that answered `wait` settles with its entries
+   *   both in hand and queued.
    */
   function room(): number {
-    return settings.batchCount - inHand.size - queuedIds.size;
+    return settings.maxHeld - inHand.size - queuedIds.size;
   }
 
   /**
    * How long the next read or idle wait may last: until the next retry or
-   * sweep is due. A running round can queue a retry due `leaseRetryMs` after
+   * sweep is due, or a held-back key's hold ends while a slot is free. A running round can queue a retry due `leaseRetryMs` after
    * it ends, and nothing can end a blocked read early, so a read issued while
    * rounds run blocks at most that long.
    * @returns Milliseconds, at least 1.
@@ -585,7 +588,7 @@ export function startGroupConsumer(opts: GroupConsumerOptions): GroupConsumer {
         group,
         start,
         "+",
-        settings.batchCount,
+        settings.maxHeld,
         consumer,
       )) as Array<[string, string, number, number]>;
       if (rows.length === 0) return;
@@ -594,7 +597,7 @@ export function startGroupConsumer(opts: GroupConsumerOptions): GroupConsumer {
         await commands.xclaim(streamKey, group, consumer, 0, ...ids, "IDLE", settings.claimIdleMs, "JUSTID");
         logger.info({ streamKey, group, count: ids.length }, "stream_entries_handed_over");
       }
-      if (rows.length < settings.batchCount) return;
+      if (rows.length < settings.maxHeld) return;
       start = `(${rows[rows.length - 1]![0]}`;
     }
   }

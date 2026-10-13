@@ -229,7 +229,7 @@ async function main(): Promise<void> {
   // joins under its instance id (#1497 §6.1, §6.2).
   const cfg = getCollabConfig();
   const consumerSettings = {
-    batchCount: cfg.event_batch_count,
+    maxHeld: cfg.event_max_held,
     keyConcurrency: cfg.event_doc_concurrency,
     blockMs: cfg.event_block_ms,
     leaseRetryMs: cfg.event_lease_retry_ms,

@@ -105,11 +105,11 @@ quiet: true
 # as one Redis consumer group, so each event reaches one instance. Task events
 # are written one document batch at a time under a per-document lease in the
 # coordination database (DB3).
-event_batch_count: 128            # most entries one instance holds at once, writing and queued
+event_max_held: 128               # most entries one instance holds at once, writing and queued
 event_block_ms: 5000              # longest a read blocks when nothing is waiting
 event_doc_concurrency: 16         # most documents one instance writes at once; a read takes at most this many free slots
 event_doc_lease_ms: 30000         # document lease length; extended while writing
-event_lease_retry_ms: 1000       # hold on a document after a wait (lease busy, peer waiting, hand-over not reached); also caps a read while writes run; a waiter mark lives twice this
+event_lease_retry_ms: 1000        # hold on a document after a wait (lease busy, peer waiting, hand-over not reached); also caps a read while writes run; a waiter mark lives twice this
 event_handoff_poll_ms: 50         # gap between checks that the previous holder's writes arrived
 event_handoff_wait_ms: 5000       # longest wait for them before the batch is retried
 event_claim_interval_ms: 15000    # gap between sweeps that take over idle entries

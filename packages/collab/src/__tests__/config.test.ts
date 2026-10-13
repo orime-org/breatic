@@ -98,7 +98,7 @@ describe("the knobs of several collab instances (#1497)", () => {
   it("reads every event-consumer and unload-retry knob from the YAML", async () => {
     const yaml = readFileSync(resolve(import.meta.dirname, "../../../../config/collab.yaml"), "utf-8");
     for (const key of [
-      "event_batch_count",
+      "event_max_held",
       "event_block_ms",
       "event_doc_concurrency",
       "event_doc_lease_ms",

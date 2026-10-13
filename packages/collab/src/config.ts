@@ -67,7 +67,7 @@ const collabConfigSchema = z.object({
   store_alert_email: z.string().default(""),
   store_alert_window_ms: z.number().int().positive().default(600_000),
   store_alert_timeout_ms: z.number().int().positive().default(3_000),
-  event_batch_count: z.number().int().positive().default(128),
+  event_max_held: z.number().int().positive().default(128),
   event_block_ms: z.number().int().positive().default(5000),
   event_doc_concurrency: z.number().int().positive().default(16),
   event_doc_lease_ms: z.number().int().positive().default(30_000),

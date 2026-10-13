@@ -568,7 +568,7 @@ beforeAll(async () => {
     instanceId: "itest-e2e",
     coordination,
     settings: {
-      batchCount: 128,
+      maxHeld: 128,
       blockMs: 100,
       leaseRetryMs: 50,
       claimIntervalMs: 15_000,

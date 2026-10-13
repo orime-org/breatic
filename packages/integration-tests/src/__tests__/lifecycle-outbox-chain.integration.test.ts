@@ -93,7 +93,7 @@ beforeAll(() => {
     instanceId: "itest-chain",
     coordination,
     settings: {
-      batchCount: 16,
+      maxHeld: 16,
       keyConcurrency: 16,
       blockMs: 100,
       leaseRetryMs: 50,
