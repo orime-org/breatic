@@ -52,7 +52,7 @@ import { env, getRedis } from "@breatic/core";
 import { getCreditRefundConfig } from "@server/config/credit-refund.js";
 import { runDailyReconcile } from "@server/modules/credit-refund/reconcile.js";
 import { runRefundLoopOnce } from "@server/modules/credit-refund/refund-loop.js";
-import { fakeStripe, type FakeRefund } from "./fake-stripe-refunds.js";
+import { fakeStripe } from "./fake-stripe-refunds.js";
 import { call, freshKey, mailsSettled, paths, useInternalApp } from "./internal-api-harness.js";
 import {
   PAID_CENTS,
@@ -135,16 +135,6 @@ async function awaitingRefundThatSucceeded(): Promise<{ lot: SeededLot; opId: st
  */
 async function actorsOf(opId: string): Promise<[string, unknown][]> {
   return (await eventsOf(suite.sql, opId)).map((e) => [e.event, e.detail.actor]);
-}
-
-/**
- * Deliver one signed `refund.updated` event for a refund to the webhook.
- * @param refund - The refund the event carries.
- * @returns The webhook's HTTP status.
- */
-async function deliverRefundUpdated(refund: FakeRefund | undefined): Promise<number> {
-  const event = refundEvent("refund.updated", refund!, refund!.payment_intent);
-  return (await deliverWebhook(app, WEBHOOK_SECRET, event)).status;
 }
 
 describe("request: rows written while an internal API request runs", () => {
@@ -324,7 +314,8 @@ describe("webhook: rows written while a refund event is handled", () => {
     const { lot, opId } = await awaitingRefundThatSucceeded();
     const [refund] = fakeStripe.refundsOf(lot.paymentIntentId);
 
-    expect(await deliverRefundUpdated(refund)).toBe(200);
+    const delivered = await deliverWebhook(app, WEBHOOK_SECRET, refundEvent("refund.updated", refund!, lot.paymentIntentId));
+    expect(delivered.status).toBe(200);
     expect(await actorsOf(opId)).toEqual([["refund_succeeded", "webhook"]]);
   });
 });

@@ -56,7 +56,7 @@ vi.mock("@server/infra/stripe.js", async () => {
 
 import { env, getRedis, initCore } from "@breatic/core";
 import { startRefundLoop } from "@server/modules/credit-refund/refund-loop.js";
-import { fakeStripe } from "./fake-stripe-refunds.js";
+import { aroundNextList, fakeStripe, gate } from "./fake-stripe-refunds.js";
 import {
   PAID_CENTS,
   eventsOf,
@@ -100,18 +100,6 @@ async function dueStarted(): Promise<{ lot: SeededLot; opId: string }> {
   fakeStripe.register(lot.paymentIntentId, PAID_CENTS);
   const { id } = await seedOperation(suite.sql, lot, { kind: "approve", status: "started", leaseExpired: true });
   return { lot, opId: id };
-}
-
-/**
- * A gate a stubbed call waits on.
- * @returns The promise to wait on and the function that opens it.
- */
-function gate(): { until: Promise<void>; open: () => void } {
-  let open!: () => void;
-  const until = new Promise<void>((resolve) => {
-    open = resolve;
-  });
-  return { until, open };
 }
 
 /**
@@ -166,28 +154,6 @@ async function dueMail(): Promise<string> {
 async function pendingMails(): Promise<string[]> {
   const rows = await suite.sql<{ id: string }[]>`SELECT id FROM refund_mail_outbox WHERE status = 'pending'`;
   return rows.map((r) => r.id);
-}
-
-/**
- * Make the next `refunds.list` wait on a gate before it answers. The call is
- * recorded when it is made, so `fakeStripe.listCalls` shows it while held.
- * @param until - The gate.
- */
-function holdNextList(until: Promise<void>): void {
-  const original = fakeStripe.client.refunds.list;
-  fakeStripe.client.refunds.list = (params: Record<string, unknown>) => {
-    fakeStripe.client.refunds.list = original;
-    const listed = original(params) as Promise<unknown> & { autoPagingToArray: (o: unknown) => Promise<unknown> };
-    return Object.assign(
-      until.then(() => listed),
-      {
-        autoPagingToArray: async (o: unknown) => {
-          await until;
-          return listed.autoPagingToArray(o);
-        },
-      },
-    );
-  };
 }
 
 describe("startRefundLoop — stop() during step 1 (§7.1)", () => {
@@ -267,9 +233,14 @@ describe("startRefundLoop — stop() during step 4, the daily reconcile (v8 §7.
       fakeStripe.register(lot.paymentIntentId, PAID_CENTS);
     }
     const { until, open } = gate();
-    holdNextList(until);
+    let held = false;
+    aroundNextList(fakeStripe, async (read) => {
+      held = true;
+      await until;
+      return read();
+    });
 
-    await stopOnceHeld(() => expect(fakeStripe.listCalls).toHaveLength(1), open);
+    await stopOnceHeld(() => expect(held).toBe(true), open);
 
     expect(fakeStripe.listCalls).toHaveLength(1);
   });

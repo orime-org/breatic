@@ -17,7 +17,7 @@
  * | E4    | needs_attention (reason given)                  | impossible                                  |
  * | E5    | awaiting_stripe, refund id kept                 | same                                        |
  * | E6    | succeeded/sent_back, lot back to refund_pending | needs_attention stripe_declined, lot stays  |
- * | E7    | stays, attempt + 1, backoff                     | same                                        |
+ * | E7    | stays, attempt + 1, backoff, lease released     | same                                        |
  * | E8    | awaiting_stripe, no refund id                   | same                                        |
  * | E9    | needs_attention already_refunded_elsewhere      | same                                        |
  * | E10   | impossible                                      | impossible                                  |
@@ -26,8 +26,8 @@
  * | E13   | stays, new lease                                | same                                        |
  * | E14   | impossible                                      | impossible                                  |
  * | E15   | discarded                                       | discarded                                   |
- * | E16   | stays, attempt + 1, backoff                     | same                                        |
- * | E17   | stays, attempt + 1, backoff                     | same                                        |
+ * | E16   | stays, attempt + 1, backoff, lease released, last_error kept | same                           |
+ * | E17   | stays, attempt + 1, backoff, lease released     | same                                        |
  *
  * A retry that finishes `succeeded` closes the approval's open
  * needs_attention it was started from (E14).
@@ -509,15 +509,27 @@ describe("started × E6: the first definite answer is that Stripe did not refund
 });
 
 describe("started × E7 / E16 / E17: try again later with the same key", () => {
+  const EARLIER_CREATE_ERROR = "synthetic 429 from an earlier create";
+
+  /**
+   * Give a disposition the error an earlier create left.
+   * @param opId - The disposition.
+   * @param message - The error text.
+   */
+  async function setLastError(opId: string, message: string): Promise<void> {
+    await suite.sql`UPDATE credit_refund_operations SET last_error = ${message} WHERE id = ${opId}`;
+  }
+
   it.each([
     ["E7", failure(429, { code: "rate_limit" })],
     ["E16", failure(503)],
     ["E17", failure(402, { code: "card_declined" })],
   ] as const)(
-    "%s stays started, counts the attempt, keeps the error, and pushes next_attempt_at out",
+    "%s stays started, counts the attempt, records only a create error, releases the lease, and pushes next_attempt_at out",
     async (type, fail) => {
       for (const make of [startedApprove, startedRefundAgain]) {
         const { lot, op } = await make();
+        await setLastError(op.id, EARLIER_CREATE_ERROR);
         const before = await worldOf(suite.sql, lot);
         const clock = await dbClockUs(suite.sql);
         const { backoffMaxSeconds } = getCreditRefundConfig();
@@ -528,7 +540,14 @@ describe("started × E7 / E16 / E17: try again later with the same key", () => {
 
         const row = await readOp(suite.sql, op.id);
         expect(row).toMatchObject({ status: "started", result: null, attempt_count: 1 });
-        expect(row.last_error).toContain(fail.message.split("\n")[0]);
+        // last_error holds refunds.create errors only; a failed read's text
+        // is in its event row (v8 round 5, §5.1).
+        if (type === "E16") expect(row.last_error).toBe(EARLIER_CREATE_ERROR);
+        else expect(row.last_error).toContain(fail.message.split("\n")[0]);
+        // The attempt is over: the lease ends now, its token stays so a late
+        // answer of the same executor is still recognised (v8 round 5, §6.2).
+        expect(row.lease_token).toBe(op.leaseToken);
+        expect(row.locked_until_us!).toBeLessThanOrEqual(await dbClockUs(suite.sql));
         expect(row.next_attempt_us!).toBeGreaterThan(clock);
         expect(row.next_attempt_us!).toBeLessThanOrEqual(
           (await dbClockUs(suite.sql)) + backoffMaxSeconds * 1_000_000,

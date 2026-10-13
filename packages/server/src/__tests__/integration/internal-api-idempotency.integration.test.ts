@@ -12,6 +12,8 @@
  * four outcomes: unseen → run; same fingerprint → replay the current
  * snapshot; different fingerprint → 422 `idempotency_key_reused`; original
  * still holding its lease (or its mail `sending`) → 409 `request_in_progress`.
+ * An attempt that ends with the disposition still `started` releases its
+ * lease, so a repeat after the answer went out replays (v8 round 5).
  * A request refused at a precondition stores no disposition and no key, so
  * its key stays free; the refund copies of what it read are the one thing it
  * keeps (v6 §4.6, §6.4).
@@ -21,6 +23,7 @@
  */
 
 import { createHash } from "node:crypto";
+import Stripe from "stripe";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@server/infra/stripe.js", async () => {
@@ -47,6 +50,7 @@ import {
 import {
   PAID_CENTS,
   copiesOf,
+  dbClockUs,
   mailsOf,
   reId,
   refundObject,
@@ -228,6 +232,33 @@ describe("same key while the original runs: 409 request_in_progress", () => {
     expect(errorShape(repeat.json)).toEqual({ code: "request_in_progress", reason: undefined, detailTranslated: true });
     expect(done.status).toBe(200);
     expect(done.json).toMatchObject({ status: "succeeded", result: "refunded" });
+    expect(fakeStripe.createCalls).toHaveLength(1);
+    expect(await holdersOf(suite.sql, key)).toEqual({ ops: 1, mails: 0 });
+  });
+
+  it("an approval whose create timed out and whose lookup found nothing (E7) answered 202 started; the immediate repeat replays that snapshot, not 409 (v8 round 5, §4.6)", async () => {
+    const lot = await lotOnStripe("refund_pending");
+    const key = freshKey("approve");
+    fakeStripe.nextCreate({
+      kind: "error",
+      // stripe-node builds a timeout's error with a message and no type.
+      error: new Stripe.errors.StripeConnectionError({
+        message: "Request was retried 0 times: timed out",
+      } as ConstructorParameters<typeof Stripe.errors.StripeConnectionError>[0]),
+    });
+
+    const first = await post(paths.approve(lot.lotId), APPROVE, key);
+    expect(first.status).toBe(202);
+    expect(first.json).toMatchObject({ status: "started" });
+    // The attempt is over: its lease ended with it, the token stays on the row.
+    const op = await readOp(suite.sql, first.json.id);
+    expect(op.lease_token).not.toBeNull();
+    expect(op.locked_until_us!).toBeLessThanOrEqual(await dbClockUs(suite.sql));
+
+    const again = await post(paths.approve(lot.lotId), APPROVE, key);
+
+    expect(again.status).toBe(202);
+    expect(again.json).toEqual(first.json);
     expect(fakeStripe.createCalls).toHaveLength(1);
     expect(await holdersOf(suite.sql, key)).toEqual({ ops: 1, mails: 0 });
   });

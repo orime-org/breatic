@@ -58,7 +58,14 @@
  *    more than paid − succeeded − failed (v6 §9);
  * 12. a repeated Idempotency-Key replays the disposition it made (or is
  *    `request_in_progress` while its lease is held) and the same key on
- *    another target is `idempotency_key_reused`; neither writes anything.
+ *    another target is `idempotency_key_reused`; neither writes anything;
+ * 13. a disposition in `needs_attention` for `attempts_exhausted` or
+ *    `stripe_result_unknown` has no refund on Stripe carrying its id: E11 and
+ *    E12 only follow a list read that holds none (v8 §9).
+ *
+ * The harness's loop follows v8 too: its E11 and E12 come after Stripe's
+ * list is copied, and only when that list holds no refund of the
+ * disposition; otherwise the list judges that refund.
  */
 
 import { describe, it, expect, vi } from "vitest";
@@ -541,17 +548,27 @@ class Harness {
         return { direct: 2, snapshot: false };
       }
       case "await_tick": {
+        // The loop's recheck: Stripe's list first, which judges the
+        // disposition's own refund or, finding none, is the E10; then, on odd
+        // variants past 24 hours, E12 only while it still waits with no
+        // refund id and Stripe holds none of its (v8 §9).
         const op = v.inflight!;
         if (c.variant % 2 === 1) {
           await suite.sql`
             UPDATE credit_refund_operations SET first_called_at = now() - interval '25 hours'
             WHERE id = ${op.id}
           `;
-          await inTx((tx) => transitionOperation(tx, { id: op.id }, { type: "E12", actor: "loop" }));
-        } else {
-          await inTx((tx) => transitionOperation(tx, { id: op.id }, { type: "E10", actor: "loop" }));
         }
-        return { direct: 1, snapshot: false };
+        const fired = await inTx(async (tx) => {
+          await this.snapshot(tx);
+          const row = (await operationRepo.findById(op.id, tx))!;
+          const unknown =
+            row.status === "awaiting_stripe" && row.stripeRefundId === null && !this.stripe.some((r) => r.opId === op.id);
+          if (c.variant % 2 === 0 || !unknown) return 0;
+          await transitionOperation(tx, { id: op.id }, { type: "E12", actor: "loop" });
+          return 1;
+        });
+        return { direct: fired, snapshot: true };
       }
       case "await_read_failed":
         await inTx((tx) =>
@@ -597,8 +614,11 @@ class Harness {
     const variant = c.variant % 9;
     // approve and retry send no amount: Stripe refunds what it still will.
     const amountFor = () => (op.kind === "refund_again" ? op.refund_amount_cents! : this.refundable());
+    // E11 follows a list read that holds no refund of this disposition (v8);
+    // a read that holds one judges it instead, as variants 0-2 do.
+    const own = this.stripe.some((r) => r.opId === op.id);
 
-    if (variant <= 2) {
+    if (variant <= 2 || (variant === 5 && own)) {
       const target = (["succeeded", "pending", "failed"] as const)[variant]!;
       let refund = this.stripe.find((r) => r.opId === op.id);
       if (!refund && op.kind === "refund_again" && amountFor() > this.refundable()) {
@@ -664,7 +684,10 @@ class Harness {
       }
     }
     this.count(`answer:${failures[variant]!.type}`);
-    await inTx((tx) => transitionOperation(tx, { id: op.id }, failures[variant]!));
+    await inTx(async (tx) => {
+      if (variant === 5) await this.snapshot(tx);
+      await transitionOperation(tx, { id: op.id }, failures[variant]!);
+    });
     return { direct: 1, snapshot: false };
   }
 
@@ -797,6 +820,15 @@ class Harness {
     expect(firsts).toHaveLength(v.ops.length);
     for (const f of firsts) expect({ event: f.event, from: f.from_status }).toEqual({ event: "requested", from: null });
 
+    // 13. A disposition handed to a person because Stripe's result is not
+    //     known, or its attempts ran out, has no refund on Stripe (v8 §9).
+    for (const o of v.ops) {
+      const unknownResult =
+        o.attention_reason === "attempts_exhausted" || o.attention_reason === "stripe_result_unknown";
+      if (o.status !== "needs_attention" || !unknownResult) continue;
+      expect(this.stripe.filter((r) => r.opId === o.id), o.id).toEqual([]);
+    }
+
     // 7. ever_succeeded: delivered successes are remembered, and memory stays.
     const copies = await sql<{ id: string; ever: boolean }[]>`
       SELECT stripe_refund_id AS id, ever_succeeded AS ever FROM credit_refunds
@@ -908,6 +940,9 @@ const EXAMPLES: [Choice[]][] = [
   [[step("approve"), step("answer", 1), step("stripe_change", 0), step("redeliver")]],
   // 5xx while Stripe did make the refund: found by metadata on the next snapshot.
   [[step("approve"), step("answer", 4, 2), step("redeliver")]],
+  // 5xx while Stripe made a pending refund, then 24 hours: the recheck's list
+  // finds it, so the disposition waits on it instead of going to a person.
+  [[step("approve"), step("answer", 4, 1), step("await_tick", 1)]],
   // Reject, ask again, 5xx with nothing made, 24 hours, retry, attempts used
   // up, send back, approve, already refunded elsewhere, resolved outside on
   // the refunding lot.

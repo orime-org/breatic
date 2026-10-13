@@ -23,7 +23,7 @@
  * | E13   | stays (no lease to lose)                               | same                                        |
  * | E14   | impossible                                             | impossible                                  |
  * | E15   | discarded                                              | discarded                                   |
- * | E16   | stays, error kept, backoff, no attempt counted         | same                                        |
+ * | E16   | stays, last_error kept, backoff, no attempt counted    | same                                        |
  * | E17   | impossible                                             | impossible                                  |
  */
 
@@ -46,6 +46,7 @@ import {
   bellsOf,
   copiesOf,
   dbClockUs,
+  eventsOf,
   inTx,
   ledgerOf,
   mailsOf,
@@ -490,9 +491,11 @@ describe("awaiting_stripe × E15: a late executor's answer", () => {
 
 describe("awaiting_stripe × E16: reading Stripe failed", () => {
   it.each(["approve", "refund_again"] as const)(
-    "%s stays, keeps the error, does not count an attempt, pushes the next look out",
+    "%s stays, leaves last_error to the create error, does not count an attempt, pushes the next look out",
     async (kind) => {
       const { lot, opId } = await awaiting(kind, reId("p"));
+      const createError = "synthetic 500 from the create";
+      await suite.sql`UPDATE credit_refund_operations SET last_error = ${createError} WHERE id = ${opId}`;
       const fail = failure(503);
       const clock = await dbClockUs(suite.sql);
       const before = await worldOf(suite.sql, lot);
@@ -501,11 +504,13 @@ describe("awaiting_stripe × E16: reading Stripe failed", () => {
 
       const row = await readOp(suite.sql, opId);
       expect(row).toMatchObject({ status: "awaiting_stripe", attempt_count: 1 });
-      expect(row.last_error).toContain(fail.message.split("\n")[0]);
+      // last_error holds refunds.create errors only (v8 round 5, §5.1).
+      expect(row.last_error).toBe(createError);
       expect(row.next_attempt_us!).toBeGreaterThan(clock);
       expect(await newEventsOn(suite.sql, lot, before, opId)).toEqual([
         { event: "stripe_read_failed", from_status: "awaiting_stripe", to_status: "awaiting_stripe" },
       ]);
+      expect((await eventsOf(suite.sql, opId)).at(-1)!.detail).toMatchObject({ message: fail.message });
     },
   );
 });

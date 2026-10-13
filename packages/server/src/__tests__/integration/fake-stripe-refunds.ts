@@ -89,31 +89,30 @@ export function stripeError(
   });
 }
 
+/** The thing `refunds.list` returns, as far as the product reads it. */
+export type FakeApiList = Promise<unknown> & {
+  autoPagingToArray: (opts?: unknown) => Promise<FakeRefund[]>;
+  autoPagingEach: (fn: (r: FakeRefund) => unknown) => Promise<void>;
+  [Symbol.asyncIterator]: () => AsyncGenerator<FakeRefund>;
+};
+
 /**
  * The thing `refunds.list` returns: a promise of one page that can also be
  * auto-paged or iterated, as stripe-node's `ApiListPromise` can.
- * @param data - The refunds.
- * @param failure - When set, every way of reading it throws this.
+ * @param answer - The refunds, or the error every way of reading it throws.
  * @returns The list promise.
  */
-function apiList(data: FakeRefund[], failure: Error | null): Promise<unknown> {
-  const page = failure
-    ? Promise.reject(failure)
-    : Promise.resolve({ object: "list", data, has_more: false, url: "/v1/refunds" });
+function apiList(answer: Promise<FakeRefund[]>): FakeApiList {
+  const page = answer.then((data) => ({ object: "list", data, has_more: false, url: "/v1/refunds" }));
   // Read through another method, the bare promise is never awaited.
   page.catch(() => undefined);
   return Object.assign(page, {
-    autoPagingToArray: async () => {
-      if (failure) throw failure;
-      return data;
-    },
+    autoPagingToArray: () => answer,
     autoPagingEach: async (fn: (r: FakeRefund) => unknown) => {
-      if (failure) throw failure;
-      for (const r of data) await fn(r);
+      for (const r of await answer) await fn(r);
     },
     [Symbol.asyncIterator]: async function* () {
-      if (failure) throw failure;
-      yield* data;
+      yield* await answer;
     },
   });
 }
@@ -218,13 +217,11 @@ export class FakeStripeRefunds {
     return structuredClone(this.refunds.get(paymentIntent) ?? []);
   }
 
-  private list(params: Record<string, unknown>): Promise<unknown> {
+  private list(params: Record<string, unknown>): FakeApiList {
     this.listCalls.push(structuredClone(params));
     const pi = String(params.payment_intent);
-    return apiList(
-      structuredClone(this.refunds.get(pi) ?? []),
-      this.listFailure ?? this.listFailureFor.get(pi) ?? null,
-    );
+    const failure = this.listFailure ?? this.listFailureFor.get(pi) ?? null;
+    return apiList(failure ? Promise.reject(failure) : Promise.resolve(structuredClone(this.refunds.get(pi) ?? [])));
   }
 
   private async create(params: Record<string, unknown>, options?: Record<string, unknown>): Promise<FakeRefund> {
@@ -265,6 +262,26 @@ export class FakeStripeRefunds {
 export const fakeStripe = new FakeStripeRefunds();
 
 /**
+ * Wrap the next `refunds.list` call. On that call the list method is
+ * restored, then `around` is handed `read`, which does the real list read
+ * (recording the call and reading what Stripe holds at that moment);
+ * whatever `around` resolves to, or throws, is what every way of reading the
+ * list (`await`, `autoPagingToArray`, `autoPagingEach`, `for await`) sees.
+ * @param fake - The fake whose next list call to wrap.
+ * @param around - Runs in place of the read; may wait, read, write, or throw.
+ */
+export function aroundNextList(
+  fake: FakeStripeRefunds,
+  around: (read: () => Promise<FakeRefund[]>) => Promise<FakeRefund[]>,
+): void {
+  const original = fake.client.refunds.list;
+  fake.client.refunds.list = (params: Record<string, unknown>) => {
+    fake.client.refunds.list = original;
+    return apiList(around(() => original(params).autoPagingToArray()));
+  };
+}
+
+/**
  * Run `hook` once, at the start of the next `refunds.list` call, before that
  * call reads what Stripe holds. It lets a suite change Stripe between a
  * create answer and the list read that follows it (a refund that moved on
@@ -274,10 +291,20 @@ export const fakeStripe = new FakeStripeRefunds();
  * @param hook - What to do first.
  */
 export function beforeNextList(fake: FakeStripeRefunds, hook: () => void): void {
-  const original = fake.client.refunds.list;
-  fake.client.refunds.list = (params: Record<string, unknown>) => {
-    fake.client.refunds.list = original;
+  aroundNextList(fake, (read) => {
     hook();
-    return original(params);
-  };
+    return read();
+  });
+}
+
+/**
+ * A gate a stubbed call waits on.
+ * @returns The promise to wait on and the function that opens it.
+ */
+export function gate(): { until: Promise<void>; open: () => void } {
+  let open!: () => void;
+  const until = new Promise<void>((resolve) => {
+    open = resolve;
+  });
+  return { until, open };
 }
