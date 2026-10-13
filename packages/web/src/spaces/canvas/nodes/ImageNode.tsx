@@ -62,11 +62,16 @@ export const ImageNode = React.memo(function ImageNode({
   // covers the box until the address on the element is that one.
   const [settled, setSettled] = React.useState<string | null>(null);
   const loading = settled !== src;
-  // Zoomed past the preview, the original is laid over it and shown once it
-  // has loaded, so the picture never blanks while it sharpens.
+  // Zoomed past the preview, the original is laid over it. Until it loads the
+  // stretched preview is hidden under the skeleton (inner#1472); an original
+  // that fails gives the node back its preview.
   const zoomedPast = useZoomedPastPreview(data.content);
-  const laysOriginal = zoomedPast && !shown.isOriginal;
-  const [originalLoaded, setOriginalLoaded] = React.useState<string | undefined>(undefined);
+  const [originalSettled, setOriginalSettled] = React.useState<
+    { url: string | undefined; loaded: boolean } | undefined
+  >(undefined);
+  const originalOutcome = originalSettled?.url === data.content ? originalSettled : undefined;
+  const laysOriginal = zoomedPast && !shown.isOriginal && originalOutcome?.loaded !== false;
+  const awaitsOriginal = laysOriginal && originalOutcome === undefined;
   const { onError: fallBack, isOriginal } = shown;
   const onError = React.useCallback((): void => {
     // A missing preview falls back to the original, which then loads in its
@@ -106,7 +111,7 @@ export const ImageNode = React.memo(function ImageNode({
                 loading='lazy'
                 decoding='async'
                 data-testid='image-node-img'
-                className='block h-auto w-full'
+                className={cn('block h-auto w-full', awaitsOriginal && 'opacity-0')}
                 onError={onError}
                 onLoad={(e) => {
                   const img = e.currentTarget;
@@ -126,7 +131,7 @@ export const ImageNode = React.memo(function ImageNode({
                 Without one the unloaded img has no height, and the empty
                 node's 288x192 holds the place until the picture brings its
                 own. */}
-              {loading ? (
+              {loading || awaitsOriginal ? (
                 <Skeleton
                   data-testid='image-node-skeleton'
                   className={cn(
@@ -143,9 +148,10 @@ export const ImageNode = React.memo(function ImageNode({
                   data-testid='image-node-original'
                   className={cn(
                     'pointer-events-none absolute inset-0 block size-full',
-                    originalLoaded !== data.content && 'opacity-0',
+                    awaitsOriginal && 'opacity-0',
                   )}
-                  onLoad={() => setOriginalLoaded(data.content)}
+                  onLoad={() => setOriginalSettled({ url: data.content, loaded: true })}
+                  onError={() => setOriginalSettled({ url: data.content, loaded: false })}
                 />
               ) : null}
             </div>

@@ -406,6 +406,32 @@ describe('ImageNode zoomed past its preview (inner#1320)', () => {
     expect(screen.getByTestId('image-node-original').className).not.toContain('opacity-0');
   });
 
+  // inner#1472: the stretched preview is not shown while the original loads.
+  it('hides the preview behind a skeleton until the original loads', () => {
+    resetPreviewRecords();
+    const { rerender } = render(zoomed(false));
+    fireImageLoad(screen.getByTestId('image-node-img'), 576, 288);
+    expect(screen.queryByTestId('image-node-skeleton')).toBeNull();
+
+    rerender(zoomed(true));
+    expect(screen.getByTestId('image-node-skeleton')).toBeInTheDocument();
+    expect(screen.getByTestId('image-node-img').className).toContain('opacity-0');
+
+    fireImageLoad(screen.getByTestId('image-node-original'), 4096, 2048);
+    expect(screen.queryByTestId('image-node-skeleton')).toBeNull();
+  });
+
+  it('goes back to the preview when the original fails', () => {
+    resetPreviewRecords();
+    render(zoomed(true));
+    fireImageLoad(screen.getByTestId('image-node-img'), 576, 288);
+    fireEvent.error(screen.getByTestId('image-node-original'));
+
+    expect(screen.queryByTestId('image-node-skeleton')).toBeNull();
+    expect(screen.queryByTestId('image-node-original')).toBeNull();
+    expect(screen.getByTestId('image-node-img').className).not.toContain('opacity-0');
+  });
+
   it('keeps the original after the canvas zooms back out', () => {
     resetPreviewRecords();
     const { rerender } = render(zoomed(true));
