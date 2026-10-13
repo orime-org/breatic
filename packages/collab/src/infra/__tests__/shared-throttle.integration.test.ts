@@ -32,16 +32,15 @@ afterAll(async () => {
 /**
  * Connect once and report the verdict.
  * @param throttle - The throttle.
- * @param ip - The identity header value, or none.
+ * @param ip - The identity, or none (the gate passes the empty string then).
  * @returns "allowed" or "denied".
  */
 async function connect(
   throttle: ReturnType<typeof createSharedThrottle>,
   ip: string | undefined,
 ): Promise<"allowed" | "denied"> {
-  const headers = new Headers(ip === undefined ? {} : { "x-real-ip": ip });
   try {
-    await throttle.onConnect({ request: { headers } });
+    await throttle(ip ?? "");
     return "allowed";
   } catch {
     return "denied";
@@ -93,7 +92,7 @@ describe("createSharedThrottle", () => {
     expect(await connect(throttle, freshIp())).toBe("allowed");
   });
 
-  it("pools every connection without an identity header into one bucket", async () => {
+  it("pools every connection without an identity into one bucket", async () => {
     // The gate always sets the header; this pins what the throttle does if it
     // ever does not, which is the reason the gate must.
     await redis.del("dev:ratelimit:collab-connect:", "dev:collab:conn-ban:");

@@ -67,14 +67,7 @@ function fakeUpgradeRequest(
 
 /** A throttle stand-in so the gate's delegation is observable. */
 function fakeThrottle() {
-  const seen: unknown[] = [];
-  return {
-    seen,
-    onConnect: vi.fn(async (data: unknown) => {
-      seen.push(data);
-    }),
-    onDestroy: vi.fn(async () => {}),
-  };
+  return vi.fn(async (_identity: string) => {});
 }
 
 /** An onConnect payload carrying the given (already normalised) headers. */
@@ -189,7 +182,7 @@ describe("connection gate — the verdict travels, not just the identity", () =>
         headers: new Headers(upgrade.request.headers as Record<string, string>),
       },
     });
-    return { throttled: throttle.onConnect.mock.calls.length > 0 };
+    return { throttled: throttle.mock.calls.length > 0 };
   }
 
   it("counts a real client that claims to be loopback", async () => {
@@ -295,7 +288,7 @@ describe("connection gate — onConnect", () => {
 
     await gate.onConnect(connectPayload(upgrade.request.headers as Record<string, string>));
 
-    expect(throttle.onConnect).not.toHaveBeenCalled();
+    expect(throttle).not.toHaveBeenCalled();
   });
 
   it("hands a real identity to the throttle to count", async () => {
@@ -304,7 +297,7 @@ describe("connection gate — onConnect", () => {
 
     await gate.onConnect(connectPayload({ "x-real-ip": "203.0.113.9" }));
 
-    expect(throttle.onConnect).toHaveBeenCalledTimes(1);
+    expect(throttle).toHaveBeenCalledExactlyOnceWith("203.0.113.9");
   });
 
   it("never looks at x-forwarded-for", async () => {
@@ -315,15 +308,6 @@ describe("connection gate — onConnect", () => {
     // loopback-exempt just because that header says so.
     await gate.onConnect(connectPayload({ "x-real-ip": "203.0.113.9", "x-forwarded-for": "::1" }));
 
-    expect(throttle.onConnect).toHaveBeenCalledTimes(1);
-  });
-
-  it("forwards shutdown to the throttle", async () => {
-    const throttle = fakeThrottle();
-    const gate = createConnectionGate(throttle);
-
-    await gate.onDestroy();
-
-    expect(throttle.onDestroy).toHaveBeenCalledTimes(1);
+    expect(throttle).toHaveBeenCalledExactlyOnceWith("203.0.113.9");
   });
 });

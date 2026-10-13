@@ -17,13 +17,10 @@
  */
 
 import { checkRateLimit, env, type Redis } from "@breatic/core";
-import type { ThrottleLike } from "@collab/infra/connection-gate.js";
+import type { Throttle } from "@collab/infra/connection-gate.js";
 
 /** The window the limit counts over. */
 const WINDOW_SECONDS = 60;
-
-/** The identity header the connection gate writes. */
-const IDENTITY_HEADER = "x-real-ip";
 
 /** What the shared throttle needs. */
 export interface SharedThrottleDeps {
@@ -42,28 +39,23 @@ export interface SharedThrottleDeps {
  * @param deps - Redis client, limits and the error reporter.
  * @returns The throttle the connection gate calls.
  */
-export function createSharedThrottle(deps: SharedThrottleDeps): ThrottleLike {
-  return {
-    onConnect: async (data: unknown): Promise<void> => {
-      const headers = (data as { request: { headers: Headers } }).request.headers;
-      const identity = headers.get(IDENTITY_HEADER) ?? "";
-      const banKey = `${env.ENV}:collab:conn-ban:${identity}`;
-      let allowed: boolean;
-      try {
-        if (await deps.redis.get(banKey)) {
-          allowed = false;
-        } else {
-          allowed = await checkRateLimit(deps.redis, `collab-connect:${identity}`, deps.maxAttempts, WINDOW_SECONDS);
-          if (!allowed) await deps.redis.set(banKey, "1", "EX", deps.banMinutes * 60);
-        }
-      } catch (err) {
-        deps.onError(err, identity);
-        return;
+export function createSharedThrottle(deps: SharedThrottleDeps): Throttle {
+  return async (identity: string): Promise<void> => {
+    const banKey = `${env.ENV}:collab:conn-ban:${identity}`;
+    let allowed: boolean;
+    try {
+      if (await deps.redis.get(banKey)) {
+        allowed = false;
+      } else {
+        allowed = await checkRateLimit(deps.redis, `collab-connect:${identity}`, deps.maxAttempts, WINDOW_SECONDS);
+        if (!allowed) await deps.redis.set(banKey, "1", "EX", deps.banMinutes * 60);
       }
-      // A falsy rejection, as the extension gives: hocuspocus treats it as
-      // "refuse quietly".
-      if (!allowed) throw undefined;
-    },
-    onDestroy: async (): Promise<void> => undefined,
+    } catch (err) {
+      deps.onError(err, identity);
+      return;
+    }
+    // A falsy rejection, as the extension gives: hocuspocus treats it as
+    // "refuse quietly".
+    if (!allowed) throw undefined;
   };
 }

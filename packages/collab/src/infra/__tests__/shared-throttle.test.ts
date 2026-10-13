@@ -28,7 +28,7 @@ describe("createSharedThrottle when Redis fails", () => {
     const throttle = createSharedThrottle({ redis: broken, maxAttempts: 2, banMinutes: 5, onError });
 
     await expect(
-      throttle.onConnect({ request: { headers: new Headers({ "x-real-ip": "203.0.113.9" }) } }),
+      throttle("203.0.113.9"),
     ).resolves.toBeUndefined();
     expect(onError).toHaveBeenCalledWith(expect.any(Error), "203.0.113.9");
   });
