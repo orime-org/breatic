@@ -170,6 +170,8 @@ export function startGroupConsumer(opts: GroupConsumerOptions): GroupConsumer {
   let stopped: Promise<void> | undefined;
   let waiting: Waiting[] = [];
   const claimed: StreamEntry[] = [];
+  /** Ids of the batch being handled right now. */
+  const inHand = new Set<string>();
   let nextSweepAt = 0;
 
   /**
@@ -224,6 +226,20 @@ export function startGroupConsumer(opts: GroupConsumerOptions): GroupConsumer {
       cursor = next;
     } while (cursor !== "0-0" && !stopping);
     await forgetIdleConsumers();
+  }
+
+  /**
+   * Reset the idle time of every entry this consumer holds — the batch in
+   * hand and the queued retries — so no peer takes one over while this
+   * consumer is alive and still working on it. A consumer that stops
+   * answering stops renewing, and its entries go idle past `claimIdleMs`.
+   */
+  async function renewHeld(): Promise<void> {
+    const ids = [...new Set([...inHand, ...waiting.map((w) => w.entry.id)])];
+    for (let i = 0; i < ids.length; i += settings.batchCount) {
+      const chunk = ids.slice(i, i + settings.batchCount);
+      await commands.xclaim(streamKey, group, consumer, 0, ...chunk, "JUSTID");
+    }
   }
 
   /**
@@ -325,13 +341,18 @@ export function startGroupConsumer(opts: GroupConsumerOptions): GroupConsumer {
    * @param entries - The batch.
    */
   async function handle(entries: StreamEntry[]): Promise<void> {
-    let outcomes: Map<string, EntryOutcome>;
+    for (const e of entries) inHand.add(e.id);
     try {
-      outcomes = await opts.process(entries, { stopping: () => stopping });
-    } catch (err) {
-      outcomes = new Map(entries.map((e) => [e.id, { failed: err }]));
+      let outcomes: Map<string, EntryOutcome>;
+      try {
+        outcomes = await opts.process(entries, { stopping: () => stopping });
+      } catch (err) {
+        outcomes = new Map(entries.map((e) => [e.id, { failed: err }]));
+      }
+      await settle(entries, outcomes);
+    } finally {
+      inHand.clear();
     }
-    await settle(entries, outcomes);
   }
 
   /**
@@ -420,11 +441,17 @@ export function startGroupConsumer(opts: GroupConsumerOptions): GroupConsumer {
   }
 
   const loop = run();
+  // Renewed three times within the take-over idle time, as BullMQ renews a
+  // job lock at half its duration.
+  const renewTimer = setInterval(() => {
+    renewHeld().catch((err: unknown) => logger.warn({ err, streamKey, group }, "stream_entries_renew_failed"));
+  }, Math.max(1, Math.floor(settings.claimIdleMs / 3)));
 
   return {
     stop: (): Promise<void> => {
       if (stopped) return stopped;
       stopping = true;
+      clearInterval(renewTimer);
       // Ends a read blocked on the server; an entry Redis delivered just
       // before is in the pending list and is handed over below.
       reader.disconnect();

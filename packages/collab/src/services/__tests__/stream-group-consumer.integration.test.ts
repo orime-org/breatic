@@ -275,9 +275,22 @@ describe("startGroupConsumer", () => {
     expect(dead.filter(([, f]) => f[f.indexOf("originId") + 1] === id)).toHaveLength(1);
   });
 
-  it("lets another consumer take over the entries of one that stopped answering", async () => {
+  it("lets another consumer take over the entries of one that died", async () => {
     const keys = keysFor();
     await append(keys.streamKey, ["held-by-a"]);
+    // A consumer that read the entry and then died: nothing renews it any more.
+    await stream.xgroup("CREATE", keys.streamKey, keys.group, "0", "MKSTREAM");
+    await stream.xreadgroup("GROUP", keys.group, "a", "COUNT", 10, "STREAMS", keys.streamKey, ">");
+    expect(await pendingCount(keys)).toBe(1);
+    const seenB: string[] = [];
+    start(keys, "b", allDone(seenB));
+    await until(() => seenB.length >= 1);
+    expect(seenB).toEqual(["held-by-a"]);
+  });
+
+  it("keeps the entries of a live consumer whose batch is taking long", async () => {
+    const keys = keysFor();
+    await append(keys.streamKey, ["slow"]);
     let aGotIt = false;
     start(keys, "a", async () => {
       aGotIt = true;
@@ -286,8 +299,8 @@ describe("startGroupConsumer", () => {
     await until(() => aGotIt);
     const seenB: string[] = [];
     start(keys, "b", allDone(seenB));
-    await until(() => seenB.length >= 1);
-    expect(seenB).toEqual(["held-by-a"]);
+    await new Promise((r) => setTimeout(r, FAST.claimIdleMs * 4));
+    expect(seenB).toEqual([]);
   });
 
   it("on a graceful stop hands its unfinished entries to the next sweep and stays registered", async () => {
