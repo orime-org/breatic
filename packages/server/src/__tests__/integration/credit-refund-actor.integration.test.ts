@@ -23,7 +23,6 @@
  * written by the path under test.
  */
 
-import { randomUUID } from "node:crypto";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("ai", () => ({
@@ -48,37 +47,34 @@ vi.mock("@server/infra/stripe.js", async () => {
   };
 });
 
-import Stripe from "stripe";
 import type { Hono } from "hono";
 import { env, getRedis } from "@breatic/core";
 import { getCreditRefundConfig } from "@server/config/credit-refund.js";
 import { runDailyReconcile } from "@server/modules/credit-refund/reconcile.js";
 import { runRefundLoopOnce } from "@server/modules/credit-refund/refund-loop.js";
-import { fakeStripe } from "./fake-stripe-refunds.js";
+import { fakeStripe, type FakeRefund } from "./fake-stripe-refunds.js";
 import { call, freshKey, mailsSettled, paths, useInternalApp } from "./internal-api-harness.js";
 import {
   PAID_CENTS,
   REFUND_AGAIN_CENTS,
-  copiesOf,
+  deliverWebhook,
   eventsOf,
   giveIntentlessPaymentsAnIntent,
+  markReconcileJustFinished,
   parkInFlightOperations,
-  readOp,
+  refundEvent,
   refundObject,
   reId,
-  seedCopy,
   seedOperation,
   seedRefundAgainOn,
   seedRefundLot,
   type LotState,
-  type RefundAgainCase,
   type RefundFixture,
   type SeedOp,
   type SeededLot,
 } from "./credit-refund-fixtures.js";
 
 const WEBHOOK_SECRET = "whsec_refund_actor_suite";
-const signer = new Stripe("sk_test_unused_by_this_suite");
 
 const suite = useInternalApp("credit-refund-actor-test");
 let app: Hono;
@@ -146,41 +142,9 @@ async function actorsOf(opId: string): Promise<[string, unknown][]> {
  * @param refund - The refund the event carries.
  * @returns The webhook's HTTP status.
  */
-async function deliverRefundUpdated(refund: unknown): Promise<number> {
-  const payload = JSON.stringify({
-    id: `evt_${randomUUID().replace(/-/g, "")}`,
-    object: "event",
-    api_version: "2025-01-27.acacia",
-    created: Math.floor(Date.now() / 1000),
-    livemode: false,
-    pending_webhooks: 1,
-    request: { id: null, idempotency_key: null },
-    type: "refund.updated",
-    data: { object: refund },
-  });
-  const res = await app.request("/api/v1/payment/webhook", {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "stripe-signature": signer.webhooks.generateTestHeaderString({ payload, secret: WEBHOOK_SECRET }),
-    },
-    body: payload,
-  });
-  return res.status;
-}
-
-/**
- * Mark the daily reconcile as just finished, so a loop tick's step 4 does
- * nothing.
- */
-async function reconcileJustFinished(): Promise<void> {
-  await suite.sql`
-    INSERT INTO credit_refund_reconcile_status (name, last_started_at, last_finished_at, last_ok_at)
-    VALUES ('daily', now(), now(), now())
-    ON CONFLICT (name) DO UPDATE SET
-      last_started_at = now(), last_finished_at = now(), last_ok_at = now(),
-      last_error = NULL, failing_payment_ids = '{}', next_retry_at = NULL
-  `;
+async function deliverRefundUpdated(refund: FakeRefund | undefined): Promise<number> {
+  const event = refundEvent("refund.updated", refund!, refund!.payment_intent);
+  return (await deliverWebhook(app, WEBHOOK_SECRET, event)).status;
 }
 
 describe("request: rows written while an internal API request runs", () => {
@@ -308,7 +272,7 @@ describe("request: the E1 row carries the request body (v7 §6.2 E1, finding [23
 describe("loop: rows written by the refund loop", () => {
   beforeEach(async () => {
     await parkInFlightOperations(suite.sql);
-    await reconcileJustFinished();
+    await markReconcileJustFinished(suite.sql);
   });
 
   it("the claim of a started disposition whose lease lapsed, and what the resumed executor writes", async () => {
@@ -385,108 +349,6 @@ describe("reconcile: rows written by the daily reconcile", () => {
     await runDailyReconcile();
 
     expect(await actorsOf(opId)).toEqual([["refund_succeeded", "reconcile"]]);
-    await reconcileJustFinished();
-  });
-});
-
-describe("a refund_again in needs_attention is answered for by whichever read sees its own refund succeeded (v7 §6.2, findings [1][6][8][22])", () => {
-  beforeEach(async () => {
-    await parkInFlightOperations(suite.sql);
-    await reconcileJustFinished();
-  });
-
-  /**
-   * A refund_again that ran out of attempts while its refund was in fact
-   * made; Stripe now lists that refund succeeded.
-   * @returns The case and its own refund's id.
-   */
-  async function exhaustedWhileRefunded(): Promise<RefundAgainCase & { own: string }> {
-    const seeded = await seedRefundAgainOn(suite.sql, { status: "needs_attention", attentionReason: "attempts_exhausted" });
-    const own = reId("again_own");
-    fakeStripe.register(seeded.lot.paymentIntentId, PAID_CENTS, [
-      refundObject(seeded.failed, "failed", REFUND_AGAIN_CENTS),
-      refundObject(own, "succeeded", REFUND_AGAIN_CENTS, seeded.againId),
-    ]);
-    return { ...seeded, own };
-  }
-
-  /**
-   * Its failed refund is answered for by it, its attention closed by itself,
-   * and one row on it names the reader.
-   * @param seeded - The case.
-   * @param actor - The path that read the refund.
-   */
-  async function expectAnsweredBy(seeded: RefundAgainCase, actor: string): Promise<void> {
-    const op = await readOp(suite.sql, seeded.againId);
-    expect(op).toMatchObject({ status: "needs_attention", attention_closed_by: seeded.againId });
-    expect(op.attention_closed_at).not.toBeNull();
-    const failed = (await copiesOf(suite.sql, seeded.lot.lotId)).find((c) => c.stripe_refund_id === seeded.failed);
-    expect(failed!.resolved_by_operation_id).toBe(seeded.againId);
-    expect(await actorsOf(seeded.againId)).toEqual([["refund_succeeded", actor]]);
-  }
-
-  it("webhook", async () => {
-    const seeded = await exhaustedWhileRefunded();
-    const refund = fakeStripe.refundsOf(seeded.lot.paymentIntentId).find((r) => r.id === seeded.own);
-
-    expect(await deliverRefundUpdated(refund)).toBe(200);
-
-    await expectAnsweredBy(seeded, "webhook");
-  });
-
-  it("a request's step 0 (the preview), which then no longer offers refund_again for that refund", async () => {
-    const seeded = await exhaustedWhileRefunded();
-
-    const res = await call(suite.baseUrl, paths.preview(seeded.lot.lotId));
-
-    expect(res.status).toBe(200);
-    await expectAnsweredBy(seeded, "request");
-    expect(res.json.unresolvedFailedRefunds).toEqual([]);
-    expect(res.json.action).toMatchObject({ kind: "refund_again", outcome: "blocked" });
-  });
-
-  it("the loop's recheck of another disposition of the payment", async () => {
-    const seeded = await exhaustedWhileRefunded();
-    // A second refund_again left waiting after a 5xx: the loop reads the payment for it.
-    await seedOperation(suite.sql, seeded.lot, {
-      kind: "refund_again",
-      status: "awaiting_stripe",
-      stripeRefundId: null,
-      firstCalledHoursAgo: 1,
-      attemptCount: 1,
-      failedRefundIds: [seeded.failed],
-      refundAmountCents: REFUND_AGAIN_CENTS,
-    });
-
-    await runRefundLoopOnce();
-
-    await expectAnsweredBy(seeded, "loop");
-  });
-
-  it("the daily reconcile", async () => {
-    await giveIntentlessPaymentsAnIntent(suite.sql);
-    await suite.sql`DELETE FROM credit_refund_reconcile_status`;
-    await getRedis().del(`${env.ENV}:server:refund-reconcile-lock`);
-    const seeded = await exhaustedWhileRefunded();
-
-    await runDailyReconcile();
-
-    await expectAnsweredBy(seeded, "reconcile");
-    await reconcileJustFinished();
-  });
-
-  it("a copy already seen succeeded before it went to a person counts too: the next read answers for it", async () => {
-    const seeded = await exhaustedWhileRefunded();
-    await seedCopy(suite.sql, seeded.lot, {
-      id: seeded.own,
-      amountCents: REFUND_AGAIN_CENTS,
-      status: "succeeded",
-      operationId: seeded.againId,
-    });
-    const refund = fakeStripe.refundsOf(seeded.lot.paymentIntentId).find((r) => r.id === seeded.own);
-
-    expect(await deliverRefundUpdated(refund)).toBe(200);
-
-    await expectAnsweredBy(seeded, "webhook");
+    await markReconcileJustFinished(suite.sql);
   });
 });

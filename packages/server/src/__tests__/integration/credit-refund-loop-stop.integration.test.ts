@@ -15,8 +15,11 @@
  *     reads, step 3's mail sweep, the stale-mail pass, step 4's reconcile).
  *     Whatever it skips is due again on the next start.
  *
- * Each case holds the first step on a `refunds.create` that waits on a gate,
- * calls `stop()`, then opens the gate and waits for `stop()` to resolve.
+ * Each case holds the loop on a call that waits on a gate (a `refunds.create`
+ * in step 1, an SMTP send in step 3, a `refunds.list` in step 4), calls
+ * `stop()`, then opens the gate and waits for `stop()` to resolve. Steps 3
+ * and 4 stop the same way as steps 1 and 2 (v8 §7.1; round-4 findings 9, 23):
+ * the sweep claims no further mail and the reconcile reads no further payment.
  *
  * Only the mail backend is stood in for besides Stripe: `sendMail` is a spy,
  * so a sweep that does run marks the row sent instead of reaching SMTP.
@@ -100,20 +103,28 @@ async function dueStarted(): Promise<{ lot: SeededLot; opId: string }> {
 }
 
 /**
- * Start the loop, wait until its first tick is held on a `refunds.create`
- * that waits on a gate, call `stop()`, then open the gate and wait for
- * `stop()` to resolve.
+ * A gate a stubbed call waits on.
+ * @returns The promise to wait on and the function that opens it.
  */
-async function stopWhileStepOneIsHeld(): Promise<void> {
+function gate(): { until: Promise<void>; open: () => void } {
   let open!: () => void;
   const until = new Promise<void>((resolve) => {
     open = resolve;
   });
-  fakeStripe.nextCreate({ kind: "hang", until, then: { kind: "refund", status: "succeeded" } });
+  return { until, open };
+}
+
+/**
+ * Start the loop, wait until it is held on a gated call, call `stop()`, then
+ * open the gate and wait for `stop()` to resolve.
+ * @param held - Passes once the loop is held.
+ * @param open - Opens the gate.
+ */
+async function stopOnceHeld(held: () => unknown, open: () => void): Promise<void> {
   initCore({ ...BASE, INTERNAL_API_ENABLED: "true" });
   const loop = startRefundLoop();
   try {
-    await vi.waitFor(() => expect(fakeStripe.createCalls).toHaveLength(1), { timeout: 10_000 });
+    await vi.waitFor(held, { timeout: 10_000 });
     const stopping = loop.stop();
     open();
     await stopping;
@@ -122,6 +133,61 @@ async function stopWhileStepOneIsHeld(): Promise<void> {
     await loop.stop();
     initCore(BASE);
   }
+}
+
+/** Hold the first tick in step 1 on a `refunds.create` that waits on a gate, and stop the loop there. */
+async function stopWhileStepOneIsHeld(): Promise<void> {
+  const { until, open } = gate();
+  fakeStripe.nextCreate({ kind: "hang", until, then: { kind: "refund", status: "succeeded" } });
+  await stopOnceHeld(() => expect(fakeStripe.createCalls).toHaveLength(1), open);
+}
+
+/**
+ * An automatic mail row still pending two minutes after insert, so the
+ * step-3 sweep picks it up.
+ * @returns The row's id.
+ */
+async function dueMail(): Promise<string> {
+  const lot = await seedRefundLot(suite.sql, "refund_pending");
+  const rejected = await seedOperation(suite.sql, lot, { kind: "reject", status: "succeeded", result: "rejected" });
+  const [mail] = await suite.sql<{ id: string }[]>`
+    INSERT INTO refund_mail_outbox (operation_id, kind, origin, status, created_at, updated_at)
+    VALUES (${rejected.id}, 'refund_rejected', 'auto', 'pending',
+            now() - interval '2 minutes', now() - interval '2 minutes')
+    RETURNING id
+  `;
+  return mail!.id;
+}
+
+/**
+ * The outbox rows still pending.
+ * @returns Their ids.
+ */
+async function pendingMails(): Promise<string[]> {
+  const rows = await suite.sql<{ id: string }[]>`SELECT id FROM refund_mail_outbox WHERE status = 'pending'`;
+  return rows.map((r) => r.id);
+}
+
+/**
+ * Make the next `refunds.list` wait on a gate before it answers. The call is
+ * recorded when it is made, so `fakeStripe.listCalls` shows it while held.
+ * @param until - The gate.
+ */
+function holdNextList(until: Promise<void>): void {
+  const original = fakeStripe.client.refunds.list;
+  fakeStripe.client.refunds.list = (params: Record<string, unknown>) => {
+    fakeStripe.client.refunds.list = original;
+    const listed = original(params) as Promise<unknown> & { autoPagingToArray: (o: unknown) => Promise<unknown> };
+    return Object.assign(
+      until.then(() => listed),
+      {
+        autoPagingToArray: async (o: unknown) => {
+          await until;
+          return listed.autoPagingToArray(o);
+        },
+      },
+    );
+  };
 }
 
 describe("startRefundLoop — stop() during step 1 (§7.1)", () => {
@@ -137,21 +203,14 @@ describe("startRefundLoop — stop() during step 1 (§7.1)", () => {
       firstCalledHoursAgo: 1,
     });
     fakeStripe.register(waitingLot.paymentIntentId, PAID_CENTS, [refundObject(own, "pending", PAID_CENTS, waitingId)]);
-    // Step 3: an automatic mail row still pending two minutes after insert.
-    const mailLot = await seedRefundLot(suite.sql, "refund_pending");
-    const rejected = await seedOperation(suite.sql, mailLot, { kind: "reject", status: "succeeded", result: "rejected" });
-    const [mail] = await suite.sql<{ id: string }[]>`
-      INSERT INTO refund_mail_outbox (operation_id, kind, origin, status, created_at, updated_at)
-      VALUES (${rejected.id}, 'refund_rejected', 'auto', 'pending',
-              now() - interval '2 minutes', now() - interval '2 minutes')
-      RETURNING id
-    `;
+    // Step 3: a due mail.
+    const mail = await dueMail();
 
     await stopWhileStepOneIsHeld();
 
     expect(fakeStripe.listedIntents()).not.toContain(waitingLot.paymentIntentId);
     const [mailAfter] = await suite.sql<{ status: string }[]>`
-      SELECT status FROM refund_mail_outbox WHERE id = ${mail!.id}
+      SELECT status FROM refund_mail_outbox WHERE id = ${mail}
     `;
     expect(mailAfter).toEqual({ status: "pending" });
     const reconcileRows = await suite.sql`SELECT 1 FROM credit_refund_reconcile_status WHERE name = 'daily'`;
@@ -168,5 +227,50 @@ describe("startRefundLoop — stop() during step 1 (§7.1)", () => {
       (await eventsOf(suite.sql, opId)).some((e) => e.event === "claimed");
     expect([await claimed(first.opId), await claimed(second.opId)].filter(Boolean)).toHaveLength(1);
     expect(fakeStripe.createCalls).toHaveLength(1);
+  });
+});
+
+describe("startRefundLoop — stop() during step 3, the mail sweep (v8 §7.1; round-4 findings 9, 23)", () => {
+  it("claims no further mail: of several due mails only the one being sent leaves pending, and the reconcile is not started", async () => {
+    await dueMail();
+    await dueMail();
+    await dueMail();
+    // Every due row, including any an earlier case left pending.
+    const due = await pendingMails();
+    // Every send waits on the gate, so a send left over from an earlier case
+    // cannot stand in for the sweep's; the sweep is held once it claimed a row.
+    const { until, open } = gate();
+    sendMail.mockImplementation(async () => {
+      await until;
+      return { status: "sent" };
+    });
+    const claimedRows = async () => {
+      const rows = await suite.sql<{ id: string }[]>`
+        SELECT id FROM refund_mail_outbox WHERE id = ANY(${due}) AND status <> 'pending'
+      `;
+      return rows.length;
+    };
+
+    await stopOnceHeld(async () => expect(await claimedRows()).toBeGreaterThan(0), open);
+
+    expect(await claimedRows()).toBe(1);
+    const reconcileRows = await suite.sql`SELECT 1 FROM credit_refund_reconcile_status WHERE name = 'daily'`;
+    expect(reconcileRows).toHaveLength(0);
+  });
+});
+
+describe("startRefundLoop — stop() during step 4, the daily reconcile (v8 §7.1; round-4 finding 9)", () => {
+  it("reads no further payment: of several payments in scope only the one being read is listed", async () => {
+    // Lots in refunding put their payments in the reconcile's scope.
+    for (let i = 0; i < 3; i++) {
+      const lot = await seedRefundLot(suite.sql, "refunding");
+      fakeStripe.register(lot.paymentIntentId, PAID_CENTS);
+    }
+    const { until, open } = gate();
+    holdNextList(until);
+
+    await stopOnceHeld(() => expect(fakeStripe.listCalls).toHaveLength(1), open);
+
+    expect(fakeStripe.listCalls).toHaveLength(1);
   });
 });

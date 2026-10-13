@@ -57,7 +57,6 @@ import {
   REFUND_AGAIN_CENTS,
   bellsOf,
   copiesOf,
-  eventsOf,
   inTx,
   ledgerOf,
   mailsOf,
@@ -700,14 +699,14 @@ describe("a refund_again that ends on E6 answers for its own refund (v6 §6.2, �
   });
 });
 
-describe("a refund_again in needs_attention whose own refund is later seen succeeded (v7 §6.2 needs_attention × E2, findings [1][6][8][22])", () => {
-  it("answers for its failed refunds and closes its own attention, with one event row naming the reader; an approve in needs_attention on the lot is left alone", async () => {
+describe("a snapshot leaves a refund_again in needs_attention alone (v8 §6.2, §6.4: only the copies update)", () => {
+  it("its own refund is listed succeeded: the copy updates, but the disposition gets no event, keeps its attention open and its failed refund stays unanswered; an approve in needs_attention on the lot is left alone too", async () => {
     const { lot, failed, againId } = await seedRefundAgainOn(suite.sql, {
       status: "needs_attention",
       attentionReason: "attempts_exhausted",
     });
-    // An earlier approval that went to a person and was closed by the settle:
-    // its refund read again must not move it (only the copy updates).
+    // An earlier approval still in needs_attention on the same lot: its
+    // refund read again must not move it either.
     const approve = await seedOperation(suite.sql, lot, {
       kind: "approve",
       status: "needs_attention",
@@ -717,6 +716,7 @@ describe("a refund_again in needs_attention whose own refund is later seen succe
     const approveRefund = reId("approve_own");
     await seedCopy(suite.sql, lot, { id: approveRefund, amountCents: 780, status: "pending", operationId: approve.id });
     const own = reId("again_own");
+    const againBefore = await readOp(suite.sql, againId);
     const approveBefore = await readOp(suite.sql, approve.id);
     const before = await worldOf(suite.sql, lot);
 
@@ -726,20 +726,11 @@ describe("a refund_again in needs_attention whose own refund is later seen succe
       refundObject(own, "succeeded", REFUND_AGAIN_CENTS, againId),
     ]);
 
-    const again = await readOp(suite.sql, againId);
-    expect(again).toMatchObject({
-      status: "needs_attention",
-      attention_reason: "attempts_exhausted",
-      attention_closed_by: againId,
-    });
-    expect(again.attention_closed_at).not.toBeNull();
-    expect((await copyOf(lot, failed))!.resolved_by_operation_id).toBe(againId);
+    expect(await readOp(suite.sql, againId)).toEqual(againBefore);
+    expect(await newEventsOn(suite.sql, lot, before, againId)).toEqual([]);
+    expect((await copyOf(lot, failed))!.resolved_by_operation_id).toBeNull();
     expect(await copyOf(lot, own)).toMatchObject({ status: "succeeded", operation_id: againId });
-    expect(await inTx((tx) => unresolvedOf(tx, lot))).toEqual([]);
-    expect(await newEventsOn(suite.sql, lot, before, againId)).toEqual([
-      { event: "refund_succeeded", from_status: "needs_attention", to_status: "needs_attention" },
-    ]);
-    expect((await eventsOf(suite.sql, againId)).at(-1)!.detail).toMatchObject({ actor: "webhook" });
+    expect((await inTx((tx) => unresolvedOf(tx, lot))).map((r) => r.stripeRefundId)).toEqual([failed]);
 
     expect(await readOp(suite.sql, approve.id)).toEqual(approveBefore);
     expect(await newEventsOn(suite.sql, lot, before, approve.id)).toEqual([]);
@@ -747,6 +738,8 @@ describe("a refund_again in needs_attention whose own refund is later seen succe
     const after = await worldOf(suite.sql, lot);
     expect(after.lot).toEqual(before.lot);
     expect(after.ledger).toEqual(before.ledger);
+    expect(after.bells).toEqual(before.bells);
+    expect(after.mails).toEqual(before.mails);
   });
 });
 

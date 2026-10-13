@@ -26,7 +26,7 @@
  *           | { kind, outcome: "blocked", code, reason? } | null }`
  */
 
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@server/infra/stripe.js", async () => {
   const { fakeStripe } = await import("./fake-stripe-refunds.js");
@@ -39,6 +39,7 @@ vi.mock("@server/infra/stripe.js", async () => {
 });
 
 import { getCreditRefundConfig } from "@server/config/credit-refund.js";
+import { runRefundLoopOnce } from "@server/modules/credit-refund/refund-loop.js";
 import { fakeStripe, stripeError } from "./fake-stripe-refunds.js";
 import {
   ADMIN,
@@ -54,16 +55,21 @@ import {
 import {
   CREDITS,
   PAID_CENTS,
+  REFUND_AGAIN_CENTS,
   bellsOf,
   copiesOf,
+  eventsOf,
   ledgerOf,
   mailsOf,
+  markReconcileJustFinished,
+  parkInFlightOperations,
   readLot,
   readOp,
   reId,
   refundObject,
   seedCopy,
   seedOperation,
+  seedRefundAgainOn,
   seedRefundLot,
   worldOf,
   type LotState,
@@ -850,5 +856,61 @@ describe("POST …/refund/refund-again", () => {
     expect(res.status).toBe(409);
     expect(errorShape(res.json)).toEqual({ code: "stripe_blocks", reason: "refund_in_progress", detailTranslated: true });
     expect(fakeStripe.createCalls).toEqual([]);
+  });
+});
+
+describe("a refund_again whose Stripe result is unknown keeps the debt it pays (v8 §6.2 E11, E12, §9)", () => {
+  beforeEach(async () => {
+    await parkInFlightOperations(suite.sql);
+    await markReconcileJustFinished(suite.sql);
+  });
+
+  /**
+   * Run one loop tick while every Stripe read fails, then let reads work
+   * again and send a second refund_again for the same failed refund.
+   * @param lot - Its lot.
+   * @param failed - The failed refund both are for.
+   * @returns The second request's answer, the world before it and its key.
+   */
+  async function secondRefundAgainAfterFailedReads(lot: SeededLot, failed: string) {
+    fakeStripe.register(lot.paymentIntentId, PAID_CENTS, [refundObject(failed, "failed", REFUND_AGAIN_CENTS)]);
+    fakeStripe.failLists(stripeError(500));
+    await runRefundLoopOnce();
+    fakeStripe.failLists(null);
+
+    const before = await worldOf(suite.sql, lot);
+    const key = freshKey("again2");
+    const res = await post(paths.refundAgain(lot.lotId), { reason: "Pay it again.", failedRefundIds: [failed], notify: true }, key);
+    return { res, before, key };
+  }
+
+  it("attempts used up while every read fails: it stays started, and a second refund_again for the same refund is 409 operation_in_progress with no create", async () => {
+    const { lot, failed, againId } = await seedRefundAgainOn(suite.sql, {
+      status: "started",
+      leaseExpired: true,
+      attemptCount: getCreditRefundConfig().maxAttempts,
+      firstCalledHoursAgo: 1,
+    });
+
+    const { res, before, key } = await secondRefundAgainAfterFailedReads(lot, failed);
+
+    await expectRefusedAroundInFlight(suite.sql, res, lot, before, againId, key);
+    expect(await readOp(suite.sql, againId)).toMatchObject({ status: "started", attention_reason: null });
+    expect((await eventsOf(suite.sql, againId)).map((e) => e.event)).toEqual(["claimed", "stripe_read_failed"]);
+  });
+
+  it("awaiting_stripe with no refund id past 24 hours while every read fails: it stays awaiting_stripe, and a second refund_again for the same refund is 409 operation_in_progress with no create", async () => {
+    const { lot, failed, againId } = await seedRefundAgainOn(suite.sql, {
+      status: "awaiting_stripe",
+      stripeRefundId: null,
+      attemptCount: 1,
+      firstCalledHoursAgo: 25,
+    });
+
+    const { res, before, key } = await secondRefundAgainAfterFailedReads(lot, failed);
+
+    await expectRefusedAroundInFlight(suite.sql, res, lot, before, againId, key);
+    expect(await readOp(suite.sql, againId)).toMatchObject({ status: "awaiting_stripe", attention_reason: null });
+    expect((await eventsOf(suite.sql, againId)).map((e) => e.event)[0]).toBe("stripe_read_failed");
   });
 });

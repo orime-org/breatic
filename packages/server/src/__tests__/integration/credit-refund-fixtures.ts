@@ -16,6 +16,8 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, expect, inject } from "vitest";
 import postgres from "postgres";
+import Stripe from "stripe";
+import type { Hono } from "hono";
 import { db, initCore, loadLocales } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 import { creditLotService } from "@breatic/domain";
@@ -241,6 +243,8 @@ export interface SeedCopy {
   everSucceeded?: boolean;
   operationId?: string | null;
   resolvedBy?: string | null;
+  /** Stripe's `failure_reason`; empty when not given. */
+  failureReason?: string | null;
 }
 
 /**
@@ -253,11 +257,12 @@ export async function seedCopy(sql: Sql, lot: SeededLot, copy: SeedCopy): Promis
   await sql`
     INSERT INTO credit_refunds
       (stripe_refund_id, payment_id, lot_id, operation_id, amount_cents, currency, status,
-       ever_succeeded, resolved_by_operation_id)
+       ever_succeeded, resolved_by_operation_id, failure_reason)
     VALUES
       (${copy.id}, ${lot.paymentId}, ${lot.lotId}, ${copy.operationId ?? null},
        ${copy.amountCents}, 'usd', ${copy.status},
-       ${copy.everSucceeded ?? copy.status === "succeeded"}, ${copy.resolvedBy ?? null})
+       ${copy.everSucceeded ?? copy.status === "succeeded"}, ${copy.resolvedBy ?? null},
+       ${copy.failureReason ?? null})
   `;
 }
 
@@ -298,6 +303,58 @@ export function refundObject(
 /** A fresh, unique Stripe refund id. */
 export function reId(label: string): string {
   return `re_${label}_${randomUUID().replace(/-/g, "").slice(0, 16)}`;
+}
+
+export type RefundEventType = "refund.created" | "refund.updated" | "refund.failed";
+
+/**
+ * A Stripe event carrying a refund object.
+ * @param type - The event type.
+ * @param refund - The refund as the event carries it.
+ * @param paymentIntent - The refund's payment intent.
+ * @param id - The event id; fresh when absent.
+ * @returns The event body.
+ */
+export function refundEvent(
+  type: RefundEventType,
+  refund: RefundFixture,
+  paymentIntent: string,
+  id = `evt_${randomUUID().replace(/-/g, "")}`,
+): Record<string, unknown> {
+  return {
+    id,
+    object: "event",
+    api_version: "2025-01-27.acacia",
+    created: Math.floor(Date.now() / 1000),
+    livemode: false,
+    pending_webhooks: 1,
+    request: { id: null, idempotency_key: null },
+    type,
+    data: {
+      object: { ...refund, object: "refund", payment_intent: paymentIntent, created: 1_700_000_000 },
+    },
+  };
+}
+
+/** Signs test deliveries; the key is never used to call Stripe. */
+const webhookSigner = new Stripe("sk_test_unused_by_the_refund_suites");
+
+/**
+ * Deliver an event to the Stripe webhook of an app, signed the way Stripe
+ * signs with `secret`.
+ * @param app - The app.
+ * @param secret - The webhook secret the app verifies with.
+ * @param event - The event body.
+ * @returns The answer.
+ */
+export async function deliverWebhook(app: Hono, secret: string, event: Record<string, unknown>): Promise<Response> {
+  const payload = JSON.stringify(event);
+  const signature = webhookSigner.webhooks.generateTestHeaderString({ payload, secret });
+  return app.request("/api/v1/payment/webhook", {
+    method: "POST",
+    headers: { "stripe-signature": signature, "content-type": "application/json" },
+    body: payload,
+  });
 }
 
 /** Everything a disposition can write, for one lot and its buyer. */
@@ -608,6 +665,21 @@ export async function giveIntentlessPaymentsAnIntent(sql: Sql): Promise<void> {
     UPDATE payments p SET stripe_payment_intent_id = 'pi_placeholder_' || p.id
     WHERE p.stripe_payment_intent_id IS NULL
       AND EXISTS (SELECT 1 FROM credit_lots l WHERE l.source_id = p.id)
+  `;
+}
+
+/**
+ * Mark the daily reconcile as just finished, so a refund loop tick's step 4
+ * (§7.2) is not due and the tick touches only what the case seeded.
+ * @param sql - Raw client.
+ */
+export async function markReconcileJustFinished(sql: Sql): Promise<void> {
+  await sql`
+    INSERT INTO credit_refund_reconcile_status (name, last_started_at, last_finished_at, last_ok_at)
+    VALUES ('daily', now(), now(), now())
+    ON CONFLICT (name) DO UPDATE SET
+      last_started_at = now(), last_finished_at = now(), last_ok_at = now(),
+      last_error = NULL, failing_payment_ids = '{}', next_retry_at = NULL
   `;
 }
 

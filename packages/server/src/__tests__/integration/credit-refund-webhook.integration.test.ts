@@ -51,7 +51,6 @@ vi.mock("@server/infra/stripe.js", async () => {
   };
 });
 
-import Stripe from "stripe";
 import type { Hono } from "hono";
 import { fakeStripe, stripeError } from "./fake-stripe-refunds.js";
 import { mailsSettled } from "./internal-api-harness.js";
@@ -59,10 +58,12 @@ import {
   CREDITS,
   PAID_CENTS,
   copiesOf,
+  deliverWebhook,
   ledgerOf,
   mailsOf,
   readLot,
   readOp,
+  refundEvent,
   refundObject,
   reId,
   seedCopy,
@@ -71,12 +72,12 @@ import {
   useRefundSuite,
   worldOf,
   type LotState,
+  type RefundEventType,
   type RefundFixture,
   type SeededLot,
 } from "./credit-refund-fixtures.js";
 
 const WEBHOOK_SECRET = "whsec_refund_webhook_suite";
-const signer = new Stripe("sk_test_unused_by_this_suite");
 
 const suite = useRefundSuite("credit-refund-webhook-test");
 let app: Hono;
@@ -90,50 +91,13 @@ beforeEach(() => {
   fakeStripe.reset();
 });
 
-type RefundEventType = "refund.created" | "refund.updated" | "refund.failed";
-
-/**
- * A Stripe event carrying a refund object.
- * @param type - The event type.
- * @param refund - The refund as the event carries it.
- * @param paymentIntent - The refund's payment intent.
- * @param id - The event id; fresh when absent.
- * @returns The event body.
- */
-function refundEvent(
-  type: RefundEventType,
-  refund: RefundFixture,
-  paymentIntent: string,
-  id = `evt_${randomUUID().replace(/-/g, "")}`,
-): Record<string, unknown> {
-  return {
-    id,
-    object: "event",
-    api_version: "2025-01-27.acacia",
-    created: Math.floor(Date.now() / 1000),
-    livemode: false,
-    pending_webhooks: 1,
-    request: { id: null, idempotency_key: null },
-    type,
-    data: {
-      object: { ...refund, object: "refund", payment_intent: paymentIntent, created: 1_700_000_000 },
-    },
-  };
-}
-
 /**
  * Deliver an event to the webhook, signed with the suite's secret.
  * @param event - The event body.
  * @returns The answer.
  */
-async function deliver(event: Record<string, unknown>): Promise<Response> {
-  const payload = JSON.stringify(event);
-  const signature = signer.webhooks.generateTestHeaderString({ payload, secret: WEBHOOK_SECRET });
-  return app.request("/api/v1/payment/webhook", {
-    method: "POST",
-    headers: { "stripe-signature": signature, "content-type": "application/json" },
-    body: payload,
-  });
+function deliver(event: Record<string, unknown>): Promise<Response> {
+  return deliverWebhook(app, WEBHOOK_SECRET, event);
 }
 
 /**

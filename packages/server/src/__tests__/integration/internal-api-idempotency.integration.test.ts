@@ -34,7 +34,16 @@ vi.mock("@server/infra/stripe.js", async () => {
 });
 
 import { fakeStripe } from "./fake-stripe-refunds.js";
-import { ADMIN, call, errorShape, freshKey, mailsSettled, paths, useInternalApp } from "./internal-api-harness.js";
+import {
+  ADMIN,
+  call,
+  errorShape,
+  freshKey,
+  holdersOf,
+  mailsSettled,
+  paths,
+  useInternalApp,
+} from "./internal-api-harness.js";
 import {
   PAID_CENTS,
   copiesOf,
@@ -74,21 +83,6 @@ function post(path: string, body: unknown, key: string) {
 }
 
 /**
- * The dispositions and resend rows holding a key.
- * @param key - The key.
- * @returns Counts in both tables.
- */
-async function holdersOf(key: string): Promise<{ ops: number; mails: number }> {
-  const [ops] = await suite.sql<{ n: number }[]>`
-    SELECT count(*)::int AS n FROM credit_refund_operations WHERE idempotency_key = ${key}
-  `;
-  const [mails] = await suite.sql<{ n: number }[]>`
-    SELECT count(*)::int AS n FROM refund_mail_outbox WHERE idempotency_key = ${key}
-  `;
-  return { ops: ops!.n, mails: mails!.n };
-}
-
-/**
  * Wait until a condition holds.
  * @param check - The condition.
  * @param timeoutMs - How long to wait.
@@ -121,7 +115,7 @@ describe("same key, same request: replay", () => {
     expect(await worldOf(suite.sql, lot)).toEqual(after);
     expect(fakeStripe.createCalls).toHaveLength(1);
     expect(fakeStripe.listCalls).toHaveLength(listCalls);
-    expect(await holdersOf(key)).toEqual({ ops: 1, mails: 0 });
+    expect(await holdersOf(suite.sql, key)).toEqual({ ops: 1, mails: 0 });
   });
 
   it("replays an approval still waiting on Stripe as 202 with the same snapshot", async () => {
@@ -168,7 +162,7 @@ describe("same key, same request: replay", () => {
     expect([200, 202]).toContain(again.status);
     expect(again.json.id).toBe(first.json.id);
     expect((await mailsOf(suite.sql, lot.lotId)).filter((m) => m.origin === "resend")).toHaveLength(1);
-    expect(await holdersOf(key)).toEqual({ ops: 0, mails: 1 });
+    expect(await holdersOf(suite.sql, key)).toEqual({ ops: 0, mails: 1 });
   });
 });
 
@@ -194,7 +188,7 @@ describe("same key, different request: 422 idempotency_key_reused", () => {
     expect(await worldOf(suite.sql, lot)).toEqual(lotAfter);
     expect(await worldOf(suite.sql, other)).toEqual(otherBefore);
     expect(fakeStripe.createCalls).toHaveLength(1);
-    expect(await holdersOf(key)).toEqual({ ops: 1, mails: 0 });
+    expect(await holdersOf(suite.sql, key)).toEqual({ ops: 1, mails: 0 });
   });
 
   it("one key space: an approval's key reused for a mail resend is 422 and inserts no mail", async () => {
@@ -210,7 +204,7 @@ describe("same key, different request: 422 idempotency_key_reused", () => {
     expect(res.status).toBe(422);
     expect(res.json.code).toBe("idempotency_key_reused");
     expect(await mailsOf(suite.sql, lot.lotId)).toEqual(mailsBefore);
-    expect(await holdersOf(key)).toEqual({ ops: 1, mails: 0 });
+    expect(await holdersOf(suite.sql, key)).toEqual({ ops: 1, mails: 0 });
   });
 });
 
@@ -235,7 +229,7 @@ describe("same key while the original runs: 409 request_in_progress", () => {
     expect(done.status).toBe(200);
     expect(done.json).toMatchObject({ status: "succeeded", result: "refunded" });
     expect(fakeStripe.createCalls).toHaveLength(1);
-    expect(await holdersOf(key)).toEqual({ ops: 1, mails: 0 });
+    expect(await holdersOf(suite.sql, key)).toEqual({ ops: 1, mails: 0 });
   });
 
   it("a resend whose row is still sending: the repeat with the same fingerprint is 409", async () => {
@@ -255,7 +249,7 @@ describe("same key while the original runs: 409 request_in_progress", () => {
 
     expect(res.status).toBe(409);
     expect(res.json.code).toBe("request_in_progress");
-    expect(await holdersOf(key)).toEqual({ ops: 0, mails: 1 });
+    expect(await holdersOf(suite.sql, key)).toEqual({ ops: 0, mails: 1 });
   });
 });
 
@@ -268,12 +262,12 @@ describe("a refused request stores nothing, so its key stays free", () => {
 
     const refused = await post(paths.reject(refunding.lotId), REJECT, key);
     expect(refused.status).toBe(409);
-    expect(await holdersOf(key)).toEqual({ ops: 0, mails: 0 });
+    expect(await holdersOf(suite.sql, key)).toEqual({ ops: 0, mails: 0 });
 
     const accepted = await post(paths.reject(pending.lotId), REJECT, key);
     expect(accepted.status).toBe(200);
     expect(accepted.json).toMatchObject({ lotId: pending.lotId, result: "rejected" });
-    expect(await holdersOf(key)).toEqual({ ops: 1, mails: 0 });
+    expect(await holdersOf(suite.sql, key)).toEqual({ ops: 1, mails: 0 });
   });
 
   it("a 409 at the judgement still keeps the copy of the succeeded refund it read, but not the key", async () => {
@@ -290,11 +284,11 @@ describe("a refused request stores nothing, so its key stays free", () => {
     expect(await copiesOf(suite.sql, pending.lotId)).toEqual([
       expect.objectContaining({ stripe_refund_id: succeeded, status: "succeeded", ever_succeeded: true }),
     ]);
-    expect(await holdersOf(key)).toEqual({ ops: 0, mails: 0 });
+    expect(await holdersOf(suite.sql, key)).toEqual({ ops: 0, mails: 0 });
 
     const accepted = await post(paths.reject(free.lotId), REJECT, key);
     expect(accepted.status).toBe(200);
-    expect(await holdersOf(key)).toEqual({ ops: 1, mails: 0 });
+    expect(await holdersOf(suite.sql, key)).toEqual({ ops: 1, mails: 0 });
     await mailsSettled(suite.sql, free);
   });
 
@@ -307,7 +301,7 @@ describe("a refused request stores nothing, so its key stays free", () => {
 
     const accepted = await post(paths.reject(pending.lotId), REJECT, key);
     expect(accepted.status).toBe(200);
-    expect(await holdersOf(key)).toEqual({ ops: 1, mails: 0 });
+    expect(await holdersOf(suite.sql, key)).toEqual({ ops: 1, mails: 0 });
   });
 
   it("after a 422 the same key runs a valid request", async () => {
@@ -319,7 +313,7 @@ describe("a refused request stores nothing, so its key stays free", () => {
 
     const accepted = await post(paths.reject(pending.lotId), REJECT, key);
     expect(accepted.status).toBe(200);
-    expect(await holdersOf(key)).toEqual({ ops: 1, mails: 0 });
+    expect(await holdersOf(suite.sql, key)).toEqual({ ops: 1, mails: 0 });
   });
 });
 
@@ -344,7 +338,7 @@ describe("a NUL character in the body is 422 invalid_body and stores nothing (§
     expect(res.status).toBe(422);
     expect(res.json.code).toBe("invalid_body");
     expect(await worldOf(suite.sql, lot)).toEqual(before);
-    expect(await holdersOf(key)).toEqual({ ops: 0, mails: 0 });
+    expect(await holdersOf(suite.sql, key)).toEqual({ ops: 0, mails: 0 });
     expect(fakeStripe.createCalls).toEqual([]);
   });
 
@@ -359,7 +353,7 @@ describe("a NUL character in the body is 422 invalid_body and stores nothing (§
     expect(res.status).toBe(422);
     expect(res.json.code).toBe("invalid_body");
     expect(await worldOf(suite.sql, lot)).toEqual(before);
-    expect(await holdersOf(key)).toEqual({ ops: 0, mails: 0 });
+    expect(await holdersOf(suite.sql, key)).toEqual({ ops: 0, mails: 0 });
   });
 });
 
@@ -381,7 +375,7 @@ describe("one key, two lots, at the same time (§9)", () => {
     const loserLot = winnerLot === a ? b : a;
     expect(await worldOf(suite.sql, loserLot)).toEqual(loserLot === a ? beforeA : beforeB);
     expect((await readOp(suite.sql, winner.json.id)).idempotency_key).toBe(key);
-    expect(await holdersOf(key)).toEqual({ ops: 1, mails: 0 });
+    expect(await holdersOf(suite.sql, key)).toEqual({ ops: 1, mails: 0 });
     await mailsSettled(suite.sql, winnerLot);
   });
 
@@ -397,7 +391,7 @@ describe("one key, two lots, at the same time (§9)", () => {
 
     expect(answers.map((r) => r.status).sort()).toEqual([200, 422]);
     expect(fakeStripe.createCalls).toHaveLength(1);
-    expect(await holdersOf(key)).toEqual({ ops: 1, mails: 0 });
+    expect(await holdersOf(suite.sql, key)).toEqual({ ops: 1, mails: 0 });
     await mailsSettled(suite.sql, a);
     await mailsSettled(suite.sql, b);
   });
