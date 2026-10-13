@@ -27,7 +27,7 @@
 import type { Hocuspocus } from "@hocuspocus/server";
 import * as Y from "yjs";
 import { ExecutionError, Redlock, ResourceLockedError } from "@sesamecare-oss/redlock";
-import type { NodeEvent, NodeTaskCountsEvent } from "@breatic/shared";
+import type { NodeTaskCountsEvent } from "@breatic/shared";
 import { parseDocName } from "@breatic/shared";
 import { createLogger, type Redis } from "@breatic/core";
 import { applyNodeTaskCounts } from "@collab/services/node-task-counts.js";
@@ -136,8 +136,30 @@ async function leaseHeldElsewhere(err: unknown): Promise<boolean> {
 }
 
 /**
- * Parse a batch, answer the entries that will not be applied, and group the
- * rest by document in stream order.
+ * Read one entry as a task event for a canvas document.
+ * @param entry - The stream entry.
+ * @returns The event, or why it is skipped.
+ */
+function readItem(entry: StreamEntry): NodeTaskCountsEvent | { skip: string } {
+  let event: unknown;
+  try {
+    event = JSON.parse(entry.payload ?? "");
+  } catch {
+    return { skip: "task_event_unparseable_skipped" };
+  }
+  if (typeof event !== "object" || event === null || (event as { type?: unknown }).type !== "node-task-counts") {
+    return { skip: "task_event_unknown_type_skipped" };
+  }
+  const docName = (event as { docName?: unknown }).docName;
+  const parsed = typeof docName === "string" ? parseDocName(docName) : null;
+  if (!parsed || parsed.kind !== "canvas") return { skip: "task_event_unknown_doc_skipped" };
+  return event as NodeTaskCountsEvent;
+}
+
+/**
+ * Answer the entries that will not be applied, and group the rest by
+ * document in stream order. Every entry is read on its own, so one that
+ * cannot be read is skipped without touching the others.
  * @param entries - The batch.
  * @param outcomes - Filled with `done` for every skipped entry.
  * @returns The documents' batches.
@@ -145,28 +167,15 @@ async function leaseHeldElsewhere(err: unknown): Promise<boolean> {
 function groupByDoc(entries: StreamEntry[], outcomes: Map<string, EntryOutcome>): DocBatch[] {
   const byDoc = new Map<string, Item[]>();
   for (const entry of entries) {
-    let event: NodeEvent;
-    try {
-      event = JSON.parse(entry.payload ?? "") as NodeEvent;
-    } catch (err) {
-      logger.error({ err, id: entry.id, raw: entry.payload }, "task_event_unparseable_skipped");
+    const read = readItem(entry);
+    if ("skip" in read) {
+      logger.warn({ id: entry.id, raw: entry.payload }, read.skip);
       outcomes.set(entry.id, "done");
       continue;
     }
-    if (event?.type !== "node-task-counts") {
-      logger.warn({ id: entry.id, type: (event as { type?: unknown } | null)?.type }, "task_event_unknown_type_skipped");
-      outcomes.set(entry.id, "done");
-      continue;
-    }
-    const parsed = parseDocName(event.docName);
-    if (!parsed || parsed.kind !== "canvas") {
-      logger.warn({ id: entry.id, docName: event.docName }, "task_event_unknown_doc_skipped");
-      outcomes.set(entry.id, "done");
-      continue;
-    }
-    const items = byDoc.get(event.docName) ?? [];
-    items.push({ entry, event });
-    byDoc.set(event.docName, items);
+    const items = byDoc.get(read.docName) ?? [];
+    items.push({ entry, event: read });
+    byDoc.set(read.docName, items);
   }
   return [...byDoc].map(([docName, items]) => ({ docName, items }));
 }

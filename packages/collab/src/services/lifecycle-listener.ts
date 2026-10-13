@@ -83,6 +83,21 @@ export async function handleLifecycleEvent(
   logger.warn({ type: (event as { type?: string }).type }, "unknown_lifecycle_event_type");
 }
 
+/**
+ * Read one entry's payload as a lifecycle command.
+ * @param payload - The entry's `payload` field.
+ * @returns The command, or null when it is not a JSON object.
+ */
+function readLifecycleEvent(payload: string | undefined): ProjectLifecycleEvent | null {
+  let event: unknown;
+  try {
+    event = JSON.parse(payload ?? "");
+  } catch {
+    return null;
+  }
+  return typeof event === "object" && event !== null ? (event as ProjectLifecycleEvent) : null;
+}
+
 /** What the lifecycle listener needs. */
 export interface LifecycleListenerDeps {
   /** Redis URL of the stream database (DB2). */
@@ -126,11 +141,9 @@ export function startLifecycleListener(deps: LifecycleListenerDeps): GroupConsum
           outcomes.set(entry.id, "held");
           continue;
         }
-        let event: ProjectLifecycleEvent;
-        try {
-          event = JSON.parse(entry.payload ?? "") as ProjectLifecycleEvent;
-        } catch (err) {
-          logger.error({ err, id: entry.id, raw: entry.payload }, "lifecycle_event_unparseable_skipped");
+        const event = readLifecycleEvent(entry.payload);
+        if (!event) {
+          logger.error({ id: entry.id, raw: entry.payload }, "lifecycle_event_unparseable_skipped");
           outcomes.set(entry.id, "done");
           continue;
         }
