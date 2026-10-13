@@ -50,10 +50,14 @@ describe('shiftRightPastOccupied', () => {
     // 208.0844 + 48 - 48 is 208.08439999999996 in floating point: walking the
     // batch's own x and taking the gap back off lands short of the edge it
     // just stepped past, so that edge is hit again on every step.
-    const near = { x: 0, y: 0, width: 356, height: 232 };
     const taken = { x: -147.9156, y: 0, width: 356, height: 232 };
-    const dx = shiftRightPastOccupied({ ...near, x: -200 }, [taken], GAP);
+    const dx = shiftRightPastOccupied({ x: -200, y: 0, width: 356, height: 232 }, [taken], GAP);
     expect(-200 + dx).toBeCloseTo(taken.x + taken.width + GAP, 9);
+  });
+
+  it('leaves a batch at a fractional x exactly where it is on an empty canvas', () => {
+    // (x - 48) + 48 - x is -2.27e-13 here, not 0.
+    expect(shiftRightPastOccupied({ ...batch, x: -2027.7354493273058 }, [], GAP)).toBe(0);
   });
 
   it('counts a node closer than the gap as taking the spot', () => {
