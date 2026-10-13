@@ -496,6 +496,7 @@ describe("what a pass records", () => {
       }),
       "refund_reconcile_payment_failed",
     );
+    expect((await readStatus())!.last_error).toContain("synthetic 403");
   });
 
   it("a payment that keeps failing stays listed while the others keep being reconciled", async () => {

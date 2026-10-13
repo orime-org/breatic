@@ -154,4 +154,8 @@ describe("StripeReadError — logged under pino's err key (round 10 [3][7])", ()
 
     expect(err.failure).toEqual({ message: "synthetic 403", httpStatus: 403, type: "invalid_request_error" });
   });
+
+  it("carries Stripe's own text in its message, so a status row's last_error says why the read failed", () => {
+    expect(new StripeReadError(forbidden()).message).toBe("Stripe refunds.list failed: synthetic 403");
+  });
 });

@@ -1249,6 +1249,50 @@ describe("executeRefund — a stale attempt whose copy finishes another disposit
     // `skipped` (refund-mail.ts), not `sent`.
     expect((await mailsOf(suite.sql, lot.lotId)).map((m) => [m.operation_id, m.status])).toEqual([[b, "skipped"]]);
   });
+
+  it("an empty refunds.list read judges the waiting retry too, like every other list reader: a stale resume whose pre-read lists nothing and whose lease refuses the create gives the waiting retry one 'refund_not_found' (round 11 P4)", async () => {
+    // A resume of approval A: its pre-read is a refunds.list read, and no
+    // create follows it once the lease is gone.
+    const { lot, opId: a } = await seeded("refunding", {
+      kind: "approve",
+      status: "started",
+      firstCalledHoursAgo: 1,
+      attemptCount: 1,
+    });
+    const stale = (await findById(a))!;
+    let b = "";
+    aroundNextList(fakeStripe, async (read) => {
+      // While the pre-read is out, another instance took A over and finished
+      // it, and retry B was accepted and left awaiting_stripe with no refund
+      // id (its create got a 5xx). Stripe holds no refund of the payment.
+      await suite.sql`
+        UPDATE credit_refund_operations
+        SET status = 'needs_attention', attention_reason = 'stripe_refund_failed_later',
+            attention_detail = 'seeded', lease_token = NULL, locked_until = NULL,
+            next_attempt_at = NULL, finished_at = now()
+        WHERE id = ${a}
+      `;
+      ({ id: b } = await seedOperation(suite.sql, lot, {
+        kind: "retry",
+        status: "awaiting_stripe",
+        stripeRefundId: null,
+        firstCalledHoursAgo: 0,
+      }));
+      return read();
+    });
+
+    await executeRefund(stale, "loop");
+
+    expect(createsFor(lot)).toEqual([]);
+    expect(listsFor(lot)).toBe(1);
+    expect(await copiesOf(suite.sql, lot.lotId)).toEqual([]);
+    // The lease-refusal exit: A gets no event from this stale attempt.
+    expect(await eventsOf(suite.sql, a)).toEqual([]);
+    // The empty list is Stripe's whole answer for the payment: B is judged on
+    // it, once, as the loop, exactly as step 2 and the reconcile would.
+    expect((await eventsOf(suite.sql, b)).map((e) => [e.event, e.detail.actor])).toEqual([["refund_not_found", "loop"]]);
+    expect(await readOp(suite.sql, b)).toMatchObject({ status: "awaiting_stripe", stripe_refund_id: null });
+  });
 });
 
 // ── step 2: dispositions waiting on Stripe ───────────────────────────
