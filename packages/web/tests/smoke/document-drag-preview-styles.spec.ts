@@ -661,3 +661,63 @@ test('A1: a row in a document shorter than the screen draws as tall as itself', 
   expect(await page.evaluate(() => (window as unknown as { __previews: Element[] }).__previews.length)).toBe(1);
   expect(await stretchedPreviews(page)).toEqual([]);
 });
+
+test('A1: an indented quoted table draws its row in a frame as wide as the body\'s, and its column without the quote\'s rule', async () => {
+  await openSmokeProject(page);
+  createdSpaceIds.push(await createSpace(page, 'document', `preview-quoted-table-${Date.now()}`));
+  const editor = page.locator(EDITOR);
+  await expect(editor).toBeVisible({ timeout: 15_000 });
+  await editor.click();
+  await editor.evaluate((el) => {
+    let n = 0;
+    const text = (value: string): unknown => ({ type: 'text', text: value });
+    const cell = (value: string): unknown => ({ type: 'tableCell', attrs: { colwidth: [240] }, content: [{ type: 'tableParagraph', content: [text(value)] }] });
+    const row = (r: number): unknown => ({ type: 'tableRow', content: Array.from({ length: 6 }, (_, c) => cell(`r${r}c${c}`)) });
+    const block = (type: string, attrs: Record<string, unknown>, content: unknown[], children?: unknown[]): unknown => {
+      n += 1;
+      return {
+        type: 'blockContainer',
+        attrs: { id: `quoted-table-${n}` },
+        content: [{ type, attrs, content }, ...(children === undefined ? [] : [{ type: 'blockGroup', content: children }])],
+      };
+    };
+    (el as unknown as { editor: { commands: { setContent: (c: unknown) => void } } }).editor.commands.setContent({
+      type: 'doc',
+      content: [{
+        type: 'blockGroup',
+        content: [
+          block('paragraph', { quoted: true }, [text('Quoted parent')], [block('table', { quoted: true }, [row(1), row(2), row(3)])]),
+          block('paragraph', {}, [text('After')]),
+        ],
+      }],
+    });
+  });
+  // Indented a level under the quoted line, wider than its frame and scrolled.
+  const body = await page.locator(`${EDITOR} [data-radix-scroll-area-viewport]`).first().evaluate((viewport) => {
+    viewport.scrollLeft = 200;
+    const block = viewport.closest('[data-content-type="table"]') as HTMLElement;
+    return { frame: viewport.clientWidth, depth: block.style.getPropertyValue('--quote-depth') };
+  });
+  expect(body.depth).toBe('1');
+  await dragHandle(page, await centreOf(page, 'td:has-text("r2c3")'), 'doc-table-col-handle');
+  await dragHandle(page, await centreOf(page, 'td:has-text("r2c3")'), 'doc-table-row-handle');
+  const previews = await page.evaluate(() =>
+    (window as unknown as { __previews: Element[] }).__previews.map((root) => {
+      const content = (window as unknown as { __contentOf: (root: Element) => HTMLElement }).__contentOf(root);
+      return {
+        width: (root.firstElementChild as HTMLElement).scrollWidth,
+        quoted: content.hasAttribute('data-quoted-run'),
+        frame: content.querySelector('[data-radix-scroll-area-viewport]')?.clientWidth ?? null,
+        table: (content.querySelector('table') as HTMLElement).offsetWidth,
+      };
+    }),
+  );
+  expect(previews).toHaveLength(2);
+  const [column, row] = previews as [(typeof previews)[number], (typeof previews)[number]];
+  // A column is the column alone: no rule, as wide as itself.
+  expect(column.quoted).toBe(false);
+  expect(Math.abs(column.width - column.table)).toBeLessThanOrEqual(1);
+  // A row keeps the quote's rule, in a frame as wide as the body's.
+  expect(row.quoted).toBe(true);
+  expect(Math.abs((row.frame ?? 0) - body.frame)).toBeLessThanOrEqual(1);
+});
