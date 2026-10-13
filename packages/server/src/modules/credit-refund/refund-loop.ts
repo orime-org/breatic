@@ -165,8 +165,9 @@ async function recheckAwaiting(isStopped: () => boolean): Promise<void> {
 }
 
 /**
- * Copy Stripe's refunds for the disposition's payment, which re-judges it;
- * then put off its next lookup, or end the wait for a refund id Stripe shows
+ * Copy Stripe's refunds for the disposition's payment, which re-judges the
+ * payment's waiting disposition (`op`, or one accepted after it) and mails
+ * its buyer; then put off `op`'s next lookup, or end the wait for a refund id Stripe shows
  * no sign of (E12). A failed read is E16: the wait goes on until Stripe
  * answers (§9).
  * @param op - The waiting disposition.
@@ -196,7 +197,6 @@ async function recheck(op: CreditRefundOperation): Promise<void> {
     }
     return id;
   });
-  // The snapshot judges the payment's waiting disposition, which may not be `op`.
   if (judged !== null) sendOperationMailsLater(judged);
 }
 

@@ -21,6 +21,7 @@ import {
   type OperationEventBody,
   type StripeFailure,
 } from "@server/modules/credit-refund/operation-transitions.js";
+import { sendOperationMailsLater } from "@server/modules/credit-refund/refund-mail.js";
 import { applyRefundSnapshot, judgeOwnRefund } from "@server/modules/credit-refund/refund-snapshot.js";
 import { classifyCreateAnswer } from "@server/modules/credit-refund/stripe-answer.js";
 import {
@@ -70,7 +71,7 @@ export async function executeRefund(op: CreditRefundOperation, actor: Actor): Pr
   // claims the row and carries on under its own lease (§9).
   if (!(await operationRepo.markFirstCalled(op.id, attempt.leaseToken, config.stripeCallTimeoutMs))) {
     logger.warn({ operationId: op.id }, "credit_refund_create_skipped_lease");
-    await db.transaction((tx) => copyReads(tx, attempt, reads));
+    sendJudgedMails(await db.transaction((tx) => copyReads(tx, attempt, reads)));
     return;
   }
   const created = await createRefund({
@@ -155,10 +156,12 @@ function ownRefundIn(listed: readonly StripeRefundObject[], operationId: string)
  * @param reads - The refunds this attempt saw, in the order it saw them.
  */
 async function answer(attempt: Attempt, event: OperationEventBody, reads: StripeRefundObject[][]): Promise<void> {
-  await db.transaction(async (tx) => {
-    await copyReads(tx, attempt, reads);
+  const judged = await db.transaction(async (tx) => {
+    const ids = await copyReads(tx, attempt, reads);
     await transitionOperation(tx, { id: attempt.op.id }, eventOf(attempt, event));
+    return ids;
   });
+  sendJudgedMails(judged);
 }
 
 /**
@@ -173,10 +176,12 @@ async function judgeAndAnswer(
   own: StripeRefundObject,
   reads: StripeRefundObject[][],
 ): Promise<void> {
-  await db.transaction(async (tx) => {
-    await copyReads(tx, attempt, reads);
+  const judged = await db.transaction(async (tx) => {
+    const ids = await copyReads(tx, attempt, reads);
     await transitionOperation(tx, { id: attempt.op.id }, eventOf(attempt, await judgeOwnRefund(tx, attempt.op, own)));
+    return ids;
   });
+  sendJudgedMails(judged);
 }
 
 /**
@@ -184,11 +189,26 @@ async function judgeAndAnswer(
  * @param tx - The transaction.
  * @param attempt - The attempt.
  * @param reads - The reads.
+ * @returns The waiting dispositions the copies judged: once this attempt's
+ *   lease is gone, that may be one accepted after it, whose buyer mail the
+ *   caller sends after the commit.
  */
-async function copyReads(tx: DbTx, attempt: Attempt, reads: StripeRefundObject[][]): Promise<void> {
+async function copyReads(tx: DbTx, attempt: Attempt, reads: StripeRefundObject[][]): Promise<string[]> {
+  const judged: string[] = [];
   for (const refunds of reads) {
-    if (refunds.length > 0) await applyRefundSnapshot(tx, attempt.op.paymentId, refunds, attempt.actor);
+    if (refunds.length === 0) continue;
+    const id = await applyRefundSnapshot(tx, attempt.op.paymentId, refunds, attempt.actor);
+    if (id !== null) judged.push(id);
   }
+  return judged;
+}
+
+/**
+ * Send the buyer mail the copies queued for the dispositions they judged.
+ * @param ids - The dispositions, after their transaction committed.
+ */
+function sendJudgedMails(ids: readonly string[]): void {
+  for (const id of ids) sendOperationMailsLater(id);
 }
 
 /**

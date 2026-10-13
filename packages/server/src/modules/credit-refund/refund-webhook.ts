@@ -51,7 +51,10 @@ export async function handleRefundEvent(event: RefundEvent): Promise<"handled" |
     listed = await listRefunds(paymentIntent);
   } catch (err) {
     if (err instanceof StripeReadError) {
-      logger.error({ eventId: event.id, type: event.type, failure: err.failure }, "refund_webhook_stripe_unreadable");
+      logger.error(
+        { err, failure: err.failure, eventId: event.id, type: event.type },
+        "refund_webhook_stripe_unreadable",
+      );
       return "unreadable";
     }
     throw err;
