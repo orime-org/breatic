@@ -61,6 +61,10 @@ const createdSpaceIds: string[] = [];
  *   margin, start padding and width, compared instead as where their words
  *   start and how wide they run; and its row's `::before`, the guide BlockNote
  *   draws beside nested blocks, which `index.css` paints nothing of;
+ * - the room a table's wrapper keeps under the table for the frame's
+ *   scrollbar, which a column's, a row's and a cell selection's preview leave
+ *   out, and the frame's edges and the boxes around the table, shorter by
+ *   that much;
  * - the sizes of `col` and `colgroup`, which paint nothing: the cells they
  *   size are compared; and a table's minimum width, which the preview sets to
  *   none, holding the table at its kept columns' widths;

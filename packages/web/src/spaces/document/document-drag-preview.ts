@@ -446,7 +446,8 @@ function originalOf(view: EditorView, copy: Element, selector: string): Element 
  * wider than the column would otherwise set the preview's width, and scaled to
  * 512px the rest would be too small to read. The frame's scrollbar shows only
  * while the pointer is over it or it scrolls, so it is the moment's, not the
- * content's; the edges that say columns run on are drawn at rest, and stay.
+ * content's; the edges that say columns run on are drawn at rest, and stay,
+ * except the left one when no column is taken out (`dropColumns`).
  *
  * The copy is the top of the preview, out of the groups it is nested in in the
  * body. A quoted line pulls its rule back over its own indent
@@ -678,8 +679,9 @@ export function tableLinePreviewContent(
  * edges is cut to them the way the drag's own content is
  * (prosemirror-tables `CellSelection.content()`): one that starts above them is
  * an empty cell of the size it has within them, one that starts in them keeps
- * its words and is cut at their bottom. Its columns are never cut: the rows are
- * drawn whole.
+ * its words and is cut at their bottom. Its columns are not cut to the
+ * selection: the rows are drawn across every column from the first one the
+ * frame shows (`dropColumns`), as a table is.
  * @param view - The editor view.
  * @param cellPos - A cell of the table.
  * @param top - The first row, by the table map.

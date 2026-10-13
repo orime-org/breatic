@@ -131,7 +131,8 @@ export function startTableDrag(view: EditorView, orientation: DragOrientation, c
 
 /**
  * Takes a row or column drag's drop line away, if one is drawn: the pointer
- * left the window, where no dragover comes from.
+ * is over no part of the body scroller (the top bar, the Agent column), or
+ * has left the page.
  * @param view - The editor view.
  */
 export function clearTableDropLine(view: EditorView): void {
@@ -173,7 +174,8 @@ type DropPositionHook = (context: ComputeDropPositionContext) => ComputeDropPosi
  * Holds the editor's drop line back while a row or a column is dragged: that
  * drag draws its own line across the table, and the editor's line says where
  * words would land, which is not where the row or column goes. BlockNote's own
- * table handles hide it the same way (`TableHandles.ts` `dragOverHandler`).
+ * table handles hide it too, hiding the drop cursor's elements on each
+ * dragover (`TableHandles.ts` `dragOverHandler`).
  * @param next - The hook for every other drag.
  * @returns The hook.
  */
@@ -266,7 +268,7 @@ function gapUnder(view: EditorView, drag: Drag, event: MouseEvent): number | nul
  * the gutters beside it, the area a table drag can land in — or, for an editor
  * in no scroller, inside the editor.
  * @param view - The editor view.
- * @param target - The event's target, or the element it leaves for.
+ * @param target - The event's target.
  * @returns Whether it is.
  */
 function inBody(view: EditorView, target: EventTarget | null): boolean {
@@ -287,7 +289,8 @@ function trackGap(view: EditorView, drag: Drag, event: DragEvent): void {
 }
 
 /**
- * Takes a drop: the line moves to the gap under the pointer.
+ * Takes a drop: the dragged row or column moves to the gap under the pointer;
+ * with no gap there, nothing moves.
  * @param editor - The editor to write to.
  * @param view - The editor view.
  * @param drag - The drag.

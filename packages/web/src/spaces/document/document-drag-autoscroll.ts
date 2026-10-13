@@ -25,10 +25,12 @@
  * That dragleave is either the drag ending in the window — an Esc, a release
  * nothing takes — which ends the session on the spot, or the pointer leaving
  * the window, which goes out through the edge the last dragovers headed for
- * (`endsWithinWindow`, `exitEdgeOf`). A table row or column drag's drop line
- * goes with it. A session ends on `drop`, `dragend` or the first `mousemove`
- * with no button held: a drag whose source left the page, or one from another
- * application, has no `dragend` that reaches the document.
+ * (`endsWithinWindow`, `exitEdgeOf`). Chrome's Esc cannot be told from
+ * leaving and is ended by the `dragend` that follows within milliseconds. A
+ * table row or column drag's drop line goes with it. A session ends on
+ * `drop`, `dragend` or the first `mousemove` with no button held: a drag
+ * whose source left the page, or one from another application, has no
+ * `dragend` that reaches the document.
  *
  * A column drag scrolls the frame its table scrolls sideways in, and holds
  * the body still: the browser's own drag autoscroll scrolls any box a reader

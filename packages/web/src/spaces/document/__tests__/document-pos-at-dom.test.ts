@@ -5,9 +5,12 @@
  * inner#1350 A8 (design §5.7): a page selection whose end lands on an element
  * that wraps a node's content — the table's wrappers, the code block's `pre` —
  * maps to the side of the node the offset points at. Unpatched
- * prosemirror-view 1.42.6 ignores the offset there and sends every such point
- * to the node's end, so a drag-select ending in the table's top padding keeps
- * the whole table while the browser drew none of it.
+ * prosemirror-view 1.42.6 sends every point on the elements between a node's
+ * own element and its content (the table's wrappers, the code block's `pre`)
+ * to the node's end, whatever the offset, and on the node's own element
+ * compares the offset with the content's index in another parent. So a
+ * drag-select ending in the table's top padding keeps the whole table while
+ * the browser drew none of it.
  */
 
 import { afterEach, describe, expect, it } from 'vitest';

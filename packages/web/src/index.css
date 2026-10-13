@@ -1105,8 +1105,9 @@ body {
 }
 
 /* A cell selection is drawn by its cells (`.selectedCell`) and an edge
-   takeover by its own `[data-show-selection]` band. ProseMirror's write back
-   of either is held off by Chrome while the mouse is down, so under a pull the
+   takeover by its own `[data-show-selection]` band. ProseMirror holds off its
+   write back of either in Chrome while the mouse is down (prosemirror-view
+   `selectionToDOM`), so under a pull the
    native selection would show the range the browser swept;
    `data-selection-drawn` (written by `document-selection-paint.ts`) is set on
    the transaction (inner#1350 A8). */

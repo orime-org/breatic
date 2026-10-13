@@ -8,8 +8,8 @@
  * is the selection at its full size, cut to the window. So a drag of selected
  * content gets the preview every other drag gets: the whole blocks the
  * selection touches, drawn through the same exit as a row drag
- * (`blockPreviewContent`, `buildDragPreview`), scaled to 512px and anchored at
- * its top left. A cell selection draws every column of the rows its cells are
+ * (`blockPreviewContent`, `buildDragPreview`), scaled down when a side is
+ * longer than 512px and anchored at its top left. A cell selection draws every column of the rows its cells are
  * in; a drag of a caption field's words draws the whole field. Editors that
  * draw their own drag previews draw whole blocks (Tiptap's drag handle,
  * BlockNote's multi-block drag, Plate, CKEditor 5).
