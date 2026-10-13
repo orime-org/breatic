@@ -28,10 +28,10 @@ TS strict 零 `any` · 关键路径 / invariant(StrictMode-safe resource hook / 
 实测两者的计算样式只差 `text-underline-offset`(2px 对 auto),给一段已加下划线的文字粘上 URL 屏幕上零变化。
 
 所以内容里的链接一律 **`color: var(--color-content-link)` 加下划线两样都要**:颜色让它跟正文分开,下划线
-保住「颜色不能是唯一信号」这条(WCAG 1.4.1)。这个 token 指向 palette 的 blue,而 palette 那段注释自己写着
-identity 值就是给彩色文字用的;我们的 blue 是 Radix 的一档 —— 亮色 step 10、暗色 step 9(#923)。两档都紧贴
-Primer 的 accent 蓝(也就是 Primer 的链接色):CAM02-UCS 下亮色差 10.7、暗色差 3.5,2026-09-16 重定值后实测。
-业界三家(GitHub 蓝 + 下划线 ·
+保住「颜色不能是唯一信号」这条(WCAG 1.4.1)。亮色下它就是 Primer 的链接蓝 `#0969da`:palette 的 blue 在页面底色
+`#f0f0f0` 上只有 3.18:1,正文要 4.5:1(WCAG 2.2 SC 1.4.3),`#0969da` 是 4.56:1(inner#1462)。暗色下它指向 palette
+的 blue(Radix 暗色 step 9,`#0090ff`),在页面底色 `#1c1c1c` 上 5.22:1。`src/theme/__tests__/content-link-contrast.test.ts`
+按 token 量这几处对比度。业界三家(GitHub 蓝 + 下划线 ·
 Notion 灰 + 下划线 · NN/g 的通则)没有一家让链接跟正文同色。
 
 判定题:**这条链接嵌在一段话里、要让人看出它能点吗?是 → `--color-content-link` 加下划线**。chrome 里的
