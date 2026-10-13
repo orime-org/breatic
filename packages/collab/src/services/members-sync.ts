@@ -2,16 +2,23 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Cross-process control-plane subscriber (members channel only).
+ * Cross-process control-plane subscriber.
  *
- * The API server publishes pub/sub events on Redis DB2:
+ * Every collab instance subscribes, and each acts on its own connections:
  *
- *   - `{prefix}:project:{pid}:members:changed` — kick the affected user's
- *     ws connections to this project's docs (the close reason makes the
- *     web client re-authenticate, so onAuthenticate re-checks the role),
- *     then broadcastStateless an
- *     invalidate signal to the project's `meta` doc so other
+ *   - `{prefix}:project:{pid}:members:changed` (server) — kick the affected
+ *     user's ws connections to this project's docs (the close reason makes
+ *     the web client re-authenticate, so onAuthenticate re-checks the role),
+ *     then relay an invalidate signal on the project's `meta` doc so other
  *     connected clients re-fetch their members cache.
+ *   - `{prefix}:project:{pid}:activity:new` (server, worker) — relay the
+ *     activity signal on the `meta` doc.
+ *   - `{prefix}:project:{pid}:connections:close` (collab's lifecycle
+ *     consumer) — close every connection to the project.
+ *
+ * Signals go out with `relayStateless`, to this instance's connections only:
+ * every instance runs this, and `broadcastStateless` would also forward them
+ * through the Redis extension, one extra copy per instance.
  *
  * Why pub/sub (not Streams):
  *
@@ -25,8 +32,7 @@
  * now happen inside `space-rpc.ts` as collab stateless RPC, so no
  * Redis round-trip is needed.
  *
- * One `psubscribe` on `{prefix}:project:*` covers the remaining channel — kept
- * as a pattern subscription in case future control-plane events join.
+ * One `psubscribe` on `{prefix}:project:*` covers all three channels.
  *
  * `{prefix}` is `REDIS_KEY_PREFIX` (defaults to `ENV`), injected in exactly one
  * place — core's `projectControlChannelPattern()`. It is what keeps two
@@ -44,13 +50,15 @@ import {
   projectMetaDocName,
   type MembersChangedEvent,
   type ActivityNewControlEvent,
+  type ProjectConnectionsCloseEvent,
   ACTIVITY_NEW_SIGNAL,
   type ActivityNewSignal,
 } from "@breatic/shared";
+import { closeProjectConnections } from "@collab/services/project-connections.js";
 
 const logger = createLogger("members-sync");
 
-type ProjectControlEvent = MembersChangedEvent | ActivityNewControlEvent;
+type ProjectControlEvent = MembersChangedEvent | ActivityNewControlEvent | ProjectConnectionsCloseEvent;
 
 /**
  * Best-effort kick — close every ws connection the user holds to
@@ -88,8 +96,8 @@ function kickUserFromProject(
 }
 
 /**
- * Broadcast a stateless invalidate signal on the project's meta
- * doc. Frontend clients subscribed via
+ * Relay a stateless invalidate signal on the project's meta doc to this
+ * instance's connections. Frontend clients subscribed via
  * `metaProvider.on('stateless', handler)` re-fetch their members
  * cache (and any other invalidated state).
  *
@@ -108,7 +116,10 @@ function broadcastInvalidate(
   const doc = hocuspocus.documents?.get(docName);
   if (!doc) return;
   try {
-    doc.broadcastStateless(JSON.stringify(payload));
+    // Every instance receives this control event and relays it to its own
+    // connections; going through the Redis extension as well would hand each
+    // client one copy per instance.
+    doc.relayStateless(JSON.stringify(payload));
   } catch (err) {
     logger.warn({ err, docName }, "broadcast_stateless_failed");
   }
@@ -166,7 +177,7 @@ async function handleEvent(
     const doc = hocuspocus.documents?.get(docName);
     if (doc) {
       try {
-        doc.broadcastStateless(
+        doc.relayStateless(
           JSON.stringify({
             t: ACTIVITY_NEW_SIGNAL,
             projectId: event.projectId,
@@ -176,6 +187,12 @@ async function handleEvent(
         logger.warn({ err, docName }, "activity_signal_relay_failed");
       }
     }
+    return;
+  }
+
+  if (event.type === "project-connections:close") {
+    closeProjectConnections(hocuspocus, event.projectId, event.reason);
+    logger.info({ projectId: event.projectId, reason: event.reason }, "project_connections_closed");
     return;
   }
 

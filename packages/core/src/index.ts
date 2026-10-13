@@ -140,6 +140,7 @@ export {
 export {
   publishMembersChanged,
   publishActivityNew,
+  publishProjectConnectionsClose,
   projectControlChannelPattern,
 } from "@core/infra/control-events.js";
 export { setSession, getSession, deleteSession, deleteAllSessions, sessionCookieName } from "@core/infra/session-store.js";

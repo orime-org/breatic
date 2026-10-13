@@ -140,6 +140,32 @@ export function activityNewChannel(prefix: string, projectId: string): string {
   return `${prefix}:project:${projectId}:activity:new`;
 }
 
+/** Why every collab instance closes a project's connections. */
+export type ProjectConnectionsCloseReason = "content-updated" | "archived" | "restored";
+
+/**
+ * Control event asking every collab instance to close its connections to one
+ * project (#1497 §6.2). The lifecycle consumer that handled the command runs
+ * on one instance; the connections are spread across all of them.
+ */
+export interface ProjectConnectionsCloseEvent {
+  type: "project-connections:close";
+  projectId: string;
+  reason: ProjectConnectionsCloseReason;
+  ts: number;
+}
+
+/**
+ * Pub/sub channel for {@link ProjectConnectionsCloseEvent}. Matched by
+ * {@link allProjectChannelsPattern}.
+ * @param prefix - Deployment namespace (`REDIS_KEY_PREFIX`, defaults to `ENV`).
+ * @param projectId - Project whose connections are closed.
+ * @returns The channel name `{prefix}:project:{projectId}:connections:close`.
+ */
+export function projectConnectionsCloseChannel(prefix: string, projectId: string): string {
+  return `${prefix}:project:${projectId}:connections:close`;
+}
+
 /**
  * Glob pattern matching every project-scoped control channel the collab process
  * subscribes to. One `psubscribe` instead of one subscription per channel keeps

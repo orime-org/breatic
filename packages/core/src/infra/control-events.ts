@@ -41,9 +41,12 @@ import { env } from "@core/config/runtime.js";
 import {
   membersChangedChannel,
   activityNewChannel,
+  projectConnectionsCloseChannel,
   allProjectChannelsPattern,
   type ActivityNewControlEvent,
   type MembersChangedEvent,
+  type ProjectConnectionsCloseEvent,
+  type ProjectConnectionsCloseReason,
 } from "@breatic/shared";
 
 /**
@@ -102,4 +105,26 @@ export async function publishActivityNew(projectId: string): Promise<void> {
   };
   const redis = getStreamRedis();
   await redis.publish(activityNewChannel(env.REDIS_KEY_PREFIX, projectId), JSON.stringify(event));
+}
+
+/**
+ * Ask every collab instance to close its connections to a project (#1497
+ * §6.2). Each instance holds some of the project's connections, so the
+ * instance that handled the lifecycle command cannot close them all itself.
+ * @param projectId - Project whose connections are closed.
+ * @param reason - Why; picks the close frame the client re-authenticates on.
+ * @returns Nothing.
+ */
+export async function publishProjectConnectionsClose(
+  projectId: string,
+  reason: ProjectConnectionsCloseReason,
+): Promise<void> {
+  const event: ProjectConnectionsCloseEvent = {
+    type: "project-connections:close",
+    projectId,
+    reason,
+    ts: Date.now(),
+  };
+  const redis = getStreamRedis();
+  await redis.publish(projectConnectionsCloseChannel(env.REDIS_KEY_PREFIX, projectId), JSON.stringify(event));
 }
