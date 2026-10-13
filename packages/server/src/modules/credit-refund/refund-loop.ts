@@ -185,16 +185,19 @@ async function recheck(op: CreditRefundOperation): Promise<void> {
     });
     return;
   }
-  await db.transaction(async (tx) => {
-    await applyRefundSnapshot(tx, op.paymentId, listed, "loop");
-    if (await endIfDeadlinePassed(tx, op.id)) return;
-    await operationRepo.scheduleNextLook(
-      op.id,
-      waitedBackoffSeconds(op.firstCalledAt, getCreditRefundConfig(), Date.now()),
-      tx,
-    );
+  const judged = await db.transaction(async (tx) => {
+    const id = await applyRefundSnapshot(tx, op.paymentId, listed, "loop");
+    if (!(await endIfDeadlinePassed(tx, op.id))) {
+      await operationRepo.scheduleNextLook(
+        op.id,
+        waitedBackoffSeconds(op.firstCalledAt, getCreditRefundConfig(), Date.now()),
+        tx,
+      );
+    }
+    return id;
   });
-  sendOperationMailsLater(op.id);
+  // The snapshot judges the payment's waiting disposition, which may not be `op`.
+  if (judged !== null) sendOperationMailsLater(judged);
 }
 
 /**

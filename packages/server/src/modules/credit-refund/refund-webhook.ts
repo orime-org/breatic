@@ -51,14 +51,15 @@ export async function handleRefundEvent(event: RefundEvent): Promise<"handled" |
     listed = await listRefunds(paymentIntent);
   } catch (err) {
     if (err instanceof StripeReadError) {
-      logger.warn({ eventId: event.id, type: event.type, err: err.failure }, "refund_webhook_stripe_unreadable");
+      logger.error({ eventId: event.id, type: event.type, failure: err.failure }, "refund_webhook_stripe_unreadable");
       return "unreadable";
     }
     throw err;
   }
   const judged = await db.transaction(async (tx) => {
     await creditLotRepo.lockLot(lotId, tx);
-    if (!(await claimWebhookEvent(event.id, event.type, tx))) return null;
+    // A redelivery is claimed once, but what it read is still copied (§6.4).
+    await claimWebhookEvent(event.id, event.type, tx);
     return applyRefundSnapshot(tx, paymentId, listed, "webhook");
   });
   if (judged !== null) sendOperationMailsLater(judged);

@@ -5,7 +5,8 @@
  * A request the refund disposition refuses, with the code and status the
  * internal API answers it with (inner#1410 §4.6). Thrown inside a write
  * transaction it also rolls that transaction back, so a refused request
- * stores nothing.
+ * stores no disposition and no key; the refund copies written before it stay
+ * (§6.4).
  */
 export class RefundRefusal extends Error {
   readonly status: 401 | 403 | 404 | 409 | 422 | 429 | 500 | 503;

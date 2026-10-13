@@ -235,7 +235,7 @@ async function copyStripe(payment: PaymentEntity): Promise<void> {
     listed = await listRefundsForPayment(payment.id);
   } catch (err) {
     if (err instanceof StripeReadError) {
-      logger.error({ err: err.failure, paymentId: payment.id }, "credit_refund_stripe_read_failed");
+      logger.error({ failure: err.failure, paymentId: payment.id }, "credit_refund_stripe_read_failed");
       throw stripeUnavailable();
     }
     throw err;
