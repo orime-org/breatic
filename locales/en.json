@@ -1593,8 +1593,8 @@
       "membershipUpgradeIncomplete": "Payment for your move to {tier} {period} was not completed",
       "membershipUpgradeIncompleteNoPeriod": "Payment for your move to {tier} was not completed",
       "storageQuotaExceeded": "Your storage is full",
-      "creditRefundCompleted": "Your credit refund is complete",
-      "creditRefundRejected": "Your credit refund request was not approved"
+      "creditRefundCompleted": "Your refund for {credits} credits is complete",
+      "creditRefundRejected": "Your refund request for {credits} credits was not approved"
     },
     "actorFallback": "Someone",
     "subtitle": {

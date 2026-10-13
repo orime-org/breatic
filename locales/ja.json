@@ -1593,8 +1593,8 @@
       "membershipUpgradeIncomplete": "{tier} {period} への変更のお支払いが完了しませんでした",
       "membershipUpgradeIncompleteNoPeriod": "{tier} への変更のお支払いが完了しませんでした",
       "storageQuotaExceeded": "ストレージがいっぱいです",
-      "creditRefundCompleted": "クレジットの返金が完了しました",
-      "creditRefundRejected": "クレジットの返金リクエストは承認されませんでした"
+      "creditRefundCompleted": "{credits} クレジットの返金が完了しました",
+      "creditRefundRejected": "{credits} クレジットの返金リクエストは承認されませんでした"
     },
     "actorFallback": "誰か",
     "subtitle": {

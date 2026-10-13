@@ -1593,8 +1593,8 @@
       "membershipUpgradeIncomplete": "换到 {tier} {period} 的付款没有完成",
       "membershipUpgradeIncompleteNoPeriod": "换到 {tier} 的付款没有完成",
       "storageQuotaExceeded": "存储已满",
-      "creditRefundCompleted": "积分退款已完成",
-      "creditRefundRejected": "积分退款申请未通过"
+      "creditRefundCompleted": "{credits} 积分的退款已完成",
+      "creditRefundRejected": "{credits} 积分的退款申请未通过"
     },
     "actorFallback": "某人",
     "subtitle": {

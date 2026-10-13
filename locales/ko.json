@@ -1593,8 +1593,8 @@
       "membershipUpgradeIncomplete": "{tier} {period}(으)로 변경하는 결제가 완료되지 않았습니다",
       "membershipUpgradeIncompleteNoPeriod": "{tier}(으)로 변경하는 결제가 완료되지 않았습니다",
       "storageQuotaExceeded": "저장 공간이 가득 찼습니다",
-      "creditRefundCompleted": "크레딧 환불이 완료되었습니다",
-      "creditRefundRejected": "크레딧 환불 요청이 승인되지 않았습니다"
+      "creditRefundCompleted": "{credits} 크레딧 환불이 완료되었습니다",
+      "creditRefundRejected": "{credits} 크레딧 환불 요청이 승인되지 않았습니다"
     },
     "actorFallback": "누군가",
     "subtitle": {
