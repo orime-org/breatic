@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Task events across two collab instances (#1497 §6.1, B1, B2, B3).
+ * Task events across two collab instances (inner#1497 §6.1, B1, B2, B3).
  *
  * Two Hocuspocus servers share one Redis and one Postgres the way production
  * runs them, and each runs its own task listener in one consumer group. Every
@@ -16,6 +16,7 @@ import { Server, type Hocuspocus } from "@hocuspocus/server";
 import { Redis as RedisExtension } from "@hocuspocus/extension-redis";
 import * as Y from "yjs";
 import * as encoding from "lib0/encoding";
+import { ExecutionError, Redlock, type ExecutionStats } from "@sesamecare-oss/redlock";
 
 import { createRedisClient, initCore, type Redis } from "@breatic/core";
 import { CANVAS_NODES_KEY, type NodeTaskCountsEvent } from "@breatic/shared";
@@ -95,9 +96,9 @@ async function startInstance(name: string): Promise<Hocuspocus> {
     },
     writeRescueNote: async () => {},
     alert: async () => {},
-  retry: { windowMs: 1500, intervalMs: 100, rescueReserveMs: 0 },
-  shutdownDeadline: () => undefined,
-});
+    retry: { windowMs: 1500, intervalMs: 100, rescueReserveMs: 0 },
+    shutdownDeadline: () => undefined,
+  });
   await server.listen();
   servers.push(server);
   return server.hocuspocus;
@@ -362,6 +363,95 @@ describe("task events across two collab instances", () => {
     expect((await readNode(c, nodeId)).taskCounts).toEqual(RUNNING);
   });
 
+  it("waits without counting a failure when Redis errors while the lease is taken", async () => {
+    const nodeId = randomUUID();
+    const c = await newCase({ [nodeId]: "image" });
+    const leaseKey = `${c.keyPrefix}:collab:task-doc-lease:${c.docName}`;
+    const original = Redlock.prototype.acquire;
+    let refused = 0;
+    // The Redis extension's store lock is a Redlock too; only this document's lease errors.
+    vi.spyOn(Redlock.prototype, "acquire").mockImplementation(function (this: Redlock, resources, duration, settings) {
+      if (resources.includes(leaseKey) && refused === 0) {
+        refused += 1;
+        const stats: ExecutionStats = {
+          membershipSize: 1,
+          quorumSize: 1,
+          votesFor: new Set(),
+          votesAgainst: new Map([[coordination, new Error("connection reset")]]),
+        };
+        return Promise.reject(new ExecutionError("no quorum", [Promise.resolve(stats)]));
+      }
+      return original.call(this, resources, duration, settings);
+    });
+    const [id] = await publish(c, [{ nodeId, counts: RUNNING }]);
+    // One failure would send the event straight to the dead-letter stream.
+    listen(c, instanceA, "a", { maxFailures: 1 });
+    await until(async () => (await pending(c)) === 0);
+    expect(refused).toBe(1);
+    expect((await readNode(c, nodeId)).taskCounts).toEqual(RUNNING);
+    expect(await coordination.hget(`${c.keyPrefix}:collab:task-event-failures`, id!)).toBeNull();
+    expect(await stream.xlen(`${c.streamKey}:dead`)).toBe(0);
+  });
+
+  it("acknowledges a written batch whose lease release fails", async () => {
+    const nodeId = randomUUID();
+    const c = await newCase({ [nodeId]: "image" });
+    const leaseKey = `${c.keyPrefix}:collab:task-doc-lease:${c.docName}`;
+    const original = Redlock.prototype.release;
+    let refused = 0;
+    // The Redis extension's store lock is a Redlock too; only this document's lease fails to release.
+    vi.spyOn(Redlock.prototype, "release").mockImplementation(function (this: Redlock, lock, settings) {
+      if (lock.resources.includes(leaseKey) && refused === 0) {
+        refused += 1;
+        return Promise.reject(new ExecutionError("no quorum", []));
+      }
+      return original.call(this, lock, settings);
+    });
+    const [id] = await publish(c, [{ nodeId, counts: RUNNING }]);
+    // One failure would send the event straight to the dead-letter stream.
+    listen(c, instanceA, "a", { maxFailures: 1 });
+    await until(async () => (await pending(c)) === 0);
+    expect(refused).toBe(1);
+    expect((await readNode(c, nodeId)).taskCounts).toEqual(RUNNING);
+    expect(await coordination.hget(`${c.keyPrefix}:collab:task-event-failures`, id!)).toBeNull();
+    expect(await stream.xlen(`${c.streamKey}:dead`)).toBe(0);
+  });
+
+  it("writes once a peer's update named in the hand-over record has synced to its copy", async () => {
+    const nodeId = randomUUID();
+    const c = await newCase({ [nodeId]: "image" });
+    const peer = new Y.Doc();
+    peer.clientID = 987_654_321;
+    for (let i = 0; i < 5; i++) peer.getMap("itest-peer").set(`k${i}`, i);
+    const handoffKey = `${c.keyPrefix}:collab:task-doc-handoff:${c.docName}`;
+    await coordination.set(handoffKey, Buffer.from(Y.encodeStateVector(peer)).toString("base64"), "PX", 60_000);
+    await publish(c, [{ nodeId, counts: RUNNING }]);
+    listen(c, instanceA, "a", { handoffWaitMs: 10_000 });
+    await new Promise((r) => setTimeout(r, 1000));
+    expect((await readNode(c, nodeId)).taskCounts).toBeUndefined();
+
+    // The peer's update reaches instance A only through the Redis extension.
+    const onB = await instanceB.openDirectConnection(c.docName, { context: { user: { id: "test" } } });
+    await onB.transact((doc) => Y.applyUpdate(doc, Y.encodeStateAsUpdate(peer)));
+    await until(async () => (await pending(c)) === 0);
+    await onB.disconnect();
+    expect((await readNode(c, nodeId)).taskCounts).toEqual(RUNNING);
+  });
+
+  it("writes the hand-over record only after the document holding it is stored", async () => {
+    const nodeId = randomUUID();
+    const c = await newCase({ [nodeId]: "image" });
+    await publish(c, [{ nodeId, counts: RUNNING }]);
+    listen(c, instanceA, "a");
+    const handoffKey = `${c.keyPrefix}:collab:task-doc-handoff:${c.docName}`;
+    await until(async () => (await coordination.get(handoffKey)) !== null);
+    const recorded = Y.decodeStateVector(Buffer.from((await coordination.get(handoffKey))!, "base64"));
+    const stored = new Y.Doc();
+    Y.applyUpdate(stored, (await yjsRepo.fetchDocData(c.docName))!);
+    const held = Y.decodeStateVector(Y.encodeStateVector(stored));
+    for (const [client, clock] of recorded) expect(held.get(client) ?? 0).toBeGreaterThanOrEqual(clock);
+  });
+
   it("stops waiting for a hand-over and takes no further lease once it is told to stop", async () => {
     const waitingNode = randomUUID();
     const c = await newCase({ [waitingNode]: "image" });
@@ -402,7 +492,7 @@ describe("task events across two collab instances", () => {
     await until(async () => Number(await coordination.hget(`${c.keyPrefix}:collab:task-event-failures`, badId!)) >= 1);
   });
 
-  it("skips an entry missing its document name without failing the rest of its batch", async () => {
+  it("acknowledges an entry missing its document name on its own and still writes the next event", async () => {
     const nodeId = randomUUID();
     const c = await newCase({ [nodeId]: "image" });
     await stream.xadd(c.streamKey, "*", "payload", JSON.stringify({ type: "node-task-counts", nodeId }));

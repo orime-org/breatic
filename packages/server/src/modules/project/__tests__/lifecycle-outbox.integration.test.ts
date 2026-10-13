@@ -3,11 +3,11 @@
 
 /**
  * Forwarding the project-lifecycle outbox from several server instances
- * (#1497 §6.3, B8).
+ * (inner#1497 §6.3, B8).
  *
  * Each row is taken in its own transaction with `FOR UPDATE SKIP LOCKED`, so
- * two relays running at once each get different rows and no row is forwarded
- * twice.
+ * two relays running at once each get different rows and never forward the
+ * same row.
  */
 
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
@@ -81,6 +81,28 @@ describe("forwardNextUnsent", () => {
       SELECT count(*)::int AS n FROM project_lifecycle_outbox
       WHERE sent_at IS NULL AND payload->>'projectId' = ANY(${[...mine]})`;
     expect(unsent[0]!.n).toBe(0);
+  });
+
+  it("forwards again only the row whose publish was not committed", async () => {
+    await drain([]);
+    const [first, second, third] = await seed(3);
+    const published: string[] = [];
+
+    // The second publish reaches the stream and then fails before its commit.
+    for (;;) {
+      const result = await forwardNextUnsent(async (event) => {
+        if (!("projectId" in event)) return;
+        published.push(event.projectId);
+        if (event.projectId === second && published.filter((id) => id === second).length === 1) {
+          throw new Error("lost before commit");
+        }
+      });
+      if (!result) break;
+    }
+
+    expect(published.filter((id) => id === first)).toHaveLength(1);
+    expect(published.filter((id) => id === second)).toHaveLength(2);
+    expect(published.filter((id) => id === third)).toHaveLength(1);
   });
 
   it("leaves a row unsent and counts the attempt when the publish fails", async () => {

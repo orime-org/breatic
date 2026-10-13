@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Lifecycle commands across two collab instances (#1497 §6.2, B4, B5).
+ * Lifecycle commands across two collab instances (inner#1497 §6.2, B4, B5).
  *
  * Two lifecycle consumers share one stream, and two members-sync subscribers
  * stand for the two instances' control planes. Each instance's Hocuspocus is a
@@ -151,6 +151,22 @@ describe("lifecycle commands across two collab instances", () => {
     expect(a.closed[0]!.code).toBe(4407);
     expect(b.closed[0]!.code).toBe(4407);
     expect(published).toEqual([[pid, "archived"]]);
+  });
+
+  it("closes the project's connections on every instance when it is restored", async () => {
+    const pid = randomUUID();
+    const a = fakeInstance([`project-${pid}/meta`]);
+    const b = fakeInstance([`project-${pid}/canvas-${randomUUID()}`]);
+    stops.push(startMembersSync(a.hocuspocus, stream), startMembersSync(b.hocuspocus, stream));
+    const { streamKey, published } = startTwoConsumers();
+    await new Promise((r) => setTimeout(r, 200));
+
+    await send(streamKey, { type: "project:restored", projectId: pid, ts: Date.now() });
+
+    await until(() => a.closed.length === 1 && b.closed.length === 1);
+    expect(a.closed[0]!.code).toBe(4408);
+    expect(b.closed[0]!.code).toBe(4408);
+    expect(published).toEqual([[pid, "restored"]]);
   });
 
   it("skips an entry whose payload is not an object without failing the rest of its batch", async () => {

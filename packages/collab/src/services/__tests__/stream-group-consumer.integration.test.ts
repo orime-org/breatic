@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * The consumer-group runner against a real Redis (#1497 §6.1, B6, B7).
+ * The consumer-group runner against a real Redis (inner#1497 §6.1, B6, B7).
  *
  * Every case uses its own stream key so a leftover entry from one case can
  * never be read by another.
@@ -205,7 +205,7 @@ describe("startGroupConsumer", () => {
 
   it("counts a failure against the one entry that threw and still acknowledges the rest", async () => {
     const keys = keysFor();
-    const [, badId] = await append(keys.streamKey, ["good-1", "bad", "good-2"]);
+    const [goodId1, badId, goodId2] = await append(keys.streamKey, ["good-1", "bad", "good-2"]);
     const done: string[] = [];
     start(keys, "a", async (entries) =>
       new Map<string, EntryOutcome>(
@@ -219,6 +219,11 @@ describe("startGroupConsumer", () => {
     await until(() => done.length >= 2);
     await until(async () => Number(await coordination.hget(keys.failuresKey, badId!)) >= 1);
     expect(done).toEqual(["good-1", "good-2"]);
+    await until(async () => {
+      const rows = (await stream.xpending(keys.streamKey, keys.group, "-", "+", 10)) as Array<[string]>;
+      const ids = rows.map((r) => r[0]);
+      return !ids.includes(goodId1!) && !ids.includes(goodId2!);
+    });
   });
 
   it("moves an entry that keeps throwing to the dead-letter stream with its origin id and acknowledges it", async () => {

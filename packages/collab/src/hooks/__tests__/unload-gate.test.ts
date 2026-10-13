@@ -552,7 +552,7 @@ describe("a write that landed while new content was arriving", () => {
 
 });
 
-describe("the unload gate — when another instance holds the store lock (#1497 §6.4)", () => {
+describe("the unload gate — when another instance holds the store lock (inner#1497 §6.4)", () => {
   // Two instances hold the same document; the one unloading cannot take the
   // store lock while its peer is storing, and the Redis extension then skips
   // our hook. The peer's lock lasts a second and is not extended, so waiting a
@@ -598,6 +598,23 @@ describe("the unload gate — when another instance holds the store lock (#1497 
     });
     noteDocumentChange(DOC);
 
+    await gate.beforeUnloadDocument({ documentName: DOC, document: documentWithText("x") });
+
+    expect(rescued).toHaveLength(1);
+    expect(alerted).toHaveLength(1);
+    expect(Date.now()).toBeLessThanOrEqual(deadline - 100);
+  });
+
+  it("during shutdown still rescues before the deadline when the Redis extension's one-second unload wait runs first", async () => {
+    const deadline = Date.now() + 1500;
+    const { gate, rescued, alerted } = harness("not-reached", {
+      retry: { windowMs: 10_000, intervalMs: 20, rescueReserveMs: 200 },
+      shutdownDeadline: () => deadline,
+    });
+    noteDocumentChange(DOC);
+
+    // `@hocuspocus/extension-redis` holds every unload for `disconnectDelay` (1 s) before ours runs.
+    await new Promise((r) => setTimeout(r, 1000));
     await gate.beforeUnloadDocument({ documentName: DOC, document: documentWithText("x") });
 
     expect(rescued).toHaveLength(1);
