@@ -216,7 +216,9 @@ describe("the unload gate — a document with outstanding content", () => {
       },
       writeRescueNote: async () => {},
       alert: async (failure) => void alerted.push(failure),
-    });
+    retry: { windowMs: 0, intervalMs: 10, rescueReserveMs: 0 },
+    shutdownDeadline: () => undefined,
+});
     noteDocumentChange(DOC);
 
     await gate.beforeUnloadDocument({ documentName: DOC, document: documentWithText("x") });
@@ -248,7 +250,9 @@ describe("the unload gate — when the library unloaded the document first", () 
       writeRescue: async () => "/rescue/1.yjs",
       writeRescueNote: async () => {},
       alert: async (failure) => void alerted.push(failure),
-    });
+    retry: { windowMs: 0, intervalMs: 10, rescueReserveMs: 0 },
+    shutdownDeadline: () => undefined,
+});
     noteDocumentChange(DOC);
 
     await gate.beforeUnloadDocument({ documentName: DOC, document: documentWithText("x") });
@@ -357,7 +361,9 @@ describe("what the gate leaves behind for whoever has to sort it out", () => {
       writeRescue: async () => "/rescue/1.yjs",
       writeRescueNote: async (rescuePath, note) => void notes.push({ rescuePath, note }),
       alert: async () => {},
-    });
+    retry: { windowMs: 0, intervalMs: 10, rescueReserveMs: 0 },
+    shutdownDeadline: () => undefined,
+});
     noteDocumentChange(DOC);
 
     await gate.beforeUnloadDocument({ documentName: DOC, document: documentWithText("x") });
@@ -397,7 +403,9 @@ describe("what the gate leaves behind for whoever has to sort it out", () => {
       },
       writeRescueNote: async () => {},
       alert: async () => {},
-    });
+    retry: { windowMs: 0, intervalMs: 10, rescueReserveMs: 0 },
+    shutdownDeadline: () => undefined,
+});
     noteDocumentChange(DOC);
 
     await gate.beforeUnloadDocument({ documentName: DOC, document: documentWithText("x") });
@@ -419,7 +427,9 @@ describe("what the gate leaves behind for whoever has to sort it out", () => {
       writeRescue: async () => "/rescue/1.yjs",
       writeRescueNote: async () => {},
       alert: async () => {},
-    });
+    retry: { windowMs: 0, intervalMs: 10, rescueReserveMs: 0 },
+    shutdownDeadline: () => undefined,
+});
     noteDocumentChange(DOC);
 
     await gate.beforeUnloadDocument({ documentName: DOC, document: documentWithText("x") });
@@ -492,7 +502,9 @@ describe("what the operator is told when there is no answer", () => {
       writeRescue: async () => "/rescue/1.yjs",
       writeRescueNote: async () => {},
       alert: async (failure) => void alerted.push(failure),
-    });
+    retry: { windowMs: 0, intervalMs: 10, rescueReserveMs: 0 },
+    shutdownDeadline: () => undefined,
+});
     const alerted: StoreFailureAlert[] = [];
     noteDocumentChange(DOC);
 
@@ -527,7 +539,9 @@ describe("a write that landed while new content was arriving", () => {
       writeRescue: async () => "/rescue/1.yjs",
       writeRescueNote: async () => {},
       alert: async (failure) => void alerted.push(failure),
-    });
+    retry: { windowMs: 0, intervalMs: 10, rescueReserveMs: 0 },
+    shutdownDeadline: () => undefined,
+});
     noteDocumentChange(DOC);
 
     await gate.beforeUnloadDocument({ documentName: DOC, document: documentWithText("x") });

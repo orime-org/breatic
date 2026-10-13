@@ -89,7 +89,9 @@ async function startInstance(name: string): Promise<Hocuspocus> {
     writeRescue: async () => "itest-rescue-unused",
     writeRescueNote: async () => {},
     alert: async () => {},
-  });
+  retry: { windowMs: 0, intervalMs: 10, rescueReserveMs: 0 },
+  shutdownDeadline: () => undefined,
+});
   await server.listen();
   servers.push(server);
   return server.hocuspocus;
