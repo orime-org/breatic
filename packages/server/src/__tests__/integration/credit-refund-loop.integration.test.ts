@@ -104,6 +104,8 @@ vi.mock("@server/infra/stripe.js", async () => {
   };
 });
 
+import { randomUUID } from "node:crypto";
+import Stripe from "stripe";
 import { env, getRedis, initCore } from "@breatic/core";
 import { getCreditRefundConfig } from "@server/config/credit-refund.js";
 import { executeRefund } from "@server/modules/credit-refund/executor.js";
@@ -121,6 +123,7 @@ import {
   copiesOf,
   dbClockUs,
   eventsOf,
+  expectLeaseReleased,
   ledgerOf,
   mailsOf,
   readLot,
@@ -135,8 +138,10 @@ import {
   seedOperation,
   seedRefundAgainOn,
   seedRefundLot,
+  setLastError,
   useRefundSuite,
   type LotState,
+  type OpRow,
   type RefundFixture,
   type SeedOp,
   type SeededLot,
@@ -226,38 +231,6 @@ async function setNextAttempt(opId: string, seconds: number): Promise<void> {
     SET next_attempt_at = now() + make_interval(secs => ${seconds}::double precision)
     WHERE id = ${opId}
   `;
-}
-
-/**
- * Let time pass for a `started` disposition: its lease and its backoff have
- * both run out, so the next tick claims it again.
- * @param opId - The disposition.
- */
-async function dueAgain(opId: string): Promise<void> {
-  await suite.sql`
-    UPDATE credit_refund_operations
-    SET locked_until = now() - interval '1 second', next_attempt_at = now() - interval '1 second'
-    WHERE id = ${opId}
-  `;
-}
-
-/**
- * Give a disposition the error an earlier `refunds.create` left.
- * @param opId - The disposition.
- * @param message - The error text.
- */
-async function setLastError(opId: string, message: string): Promise<void> {
-  await suite.sql`UPDATE credit_refund_operations SET last_error = ${message} WHERE id = ${opId}`;
-}
-
-/**
- * The lease is over (`locked_until <= now()`) and its token still on the row.
- * @param opId - The disposition.
- */
-async function expectLeaseReleased(opId: string): Promise<void> {
-  const op = await readOp(suite.sql, opId);
-  expect(op.lease_token).not.toBeNull();
-  expect(op.locked_until_us!).toBeLessThanOrEqual(await dbClockUs(suite.sql));
 }
 
 // ── step 1: started dispositions whose executor is gone ──────────────
@@ -467,7 +440,7 @@ describe("step 1 — claim and resume a started disposition", () => {
       });
       if (copied) await seedCopy(suite.sql, lot, { id: own, amountCents: PAID_CENTS, status: "succeeded", operationId: opId });
       fakeStripe.register(lot.paymentIntentId, PAID_CENTS, copied ? [refundObject(own, "succeeded", PAID_CENTS, opId)] : []);
-      await setLastError(opId, "synthetic 429");
+      await setLastError(suite.sql, opId, "synthetic 429");
       fakeStripe.failLists(stripeError(500));
 
       await runRefundLoopOnce();
@@ -477,7 +450,7 @@ describe("step 1 — claim and resume a started disposition", () => {
       expect(op).toMatchObject({ status: "started", attempt_count: maxAttempts + 1, result: null, attention_reason: null });
       // last_error keeps the create error; the read failure is in the event row (v8 round 5).
       expect(op.last_error).toBe("synthetic 429");
-      await expectLeaseReleased(opId);
+      await expectLeaseReleased(suite.sql, opId);
       expect(await eventNames(opId)).toEqual(["claimed", "stripe_read_failed"]);
       expect((await eventsOf(suite.sql, opId)).at(-1)!.detail).toMatchObject({ message: "synthetic 500", actor: "loop" });
       expect(await readLot(suite.sql, lot.lotId)).toMatchObject({ lifecycle: "refunding", remaining: `${CREDITS}.000000` });
@@ -511,7 +484,7 @@ describe("step 1 — claim and resume a started disposition", () => {
     expect(await resolverOf(failed)).toBeNull();
 
     fakeStripe.failLists(null);
-    await dueAgain(againId);
+    await setNextAttempt(againId, -1);
     await runRefundLoopOnce();
 
     expect(createsFor(lot)).toEqual([]);
@@ -601,7 +574,7 @@ describe("step 1 — claim and resume a started disposition", () => {
 
       expect(await readOp(suite.sql, opId)).toMatchObject({ status: "started" });
       expect(await eventNames(opId)).toEqual(["claimed", name]);
-      await expectLeaseReleased(opId);
+      await expectLeaseReleased(suite.sql, opId);
 
       // Only the backoff is moved; the lease is left as the attempt left it.
       fakeStripe.failLists(null);
@@ -627,13 +600,13 @@ describe("step 1 — claim and resume a started disposition", () => {
     expect(await readOp(suite.sql, opId)).toMatchObject({ status: "started", attempt_count: maxAttempts, last_error: "synthetic 429" });
 
     fakeStripe.failLists(stripeError(503));
-    await dueAgain(opId);
+    await setNextAttempt(opId, -1);
     await runRefundLoopOnce();
     expect(await readOp(suite.sql, opId)).toMatchObject({ status: "started", attempt_count: maxAttempts + 1, last_error: "synthetic 429" });
     expect((await eventsOf(suite.sql, opId)).at(-1)).toMatchObject({ event: "stripe_read_failed", detail: { message: "synthetic 503" } });
 
     fakeStripe.failLists(null);
-    await dueAgain(opId);
+    await setNextAttempt(opId, -1);
     await runRefundLoopOnce();
 
     expect(createsFor(lot)).toHaveLength(1);
@@ -643,6 +616,58 @@ describe("step 1 — claim and resume a started disposition", () => {
       attention_detail: "synthetic 429",
     });
   });
+
+  it.each([
+    { label: "a 429", error: () => stripeError(429) },
+    {
+      label: "a timeout",
+      // stripe-node builds a timeout's error with a message and no type.
+      error: () =>
+        new Stripe.errors.StripeConnectionError({
+          message: "Request was retried 0 times: timed out",
+        } as ConstructorParameters<typeof Stripe.errors.StripeConnectionError>[0]),
+    },
+  ])(
+    "the create answers $label and the lookup read after it fails: E16 keeps the create error in last_error and in the event row; a later read that finds nothing with attempts used up → E11 shows it (v8 round 6, §6.2 started × E16)",
+    async ({ error }) => {
+      const { maxAttempts } = getCreditRefundConfig();
+      const { lot, opId } = await seeded("refunding", {
+        kind: "approve",
+        status: "started",
+        leaseExpired: true,
+        attemptCount: maxAttempts - 1,
+      });
+      const createError = error();
+      fakeStripe.nextCreate({ kind: "error", error: createError });
+      // A first execution makes no pre-read: the one list is the lookup after the create.
+      fakeStripe.failLists(stripeError(503));
+
+      await runRefundLoopOnce();
+
+      expect(createsFor(lot)).toHaveLength(1);
+      expect(await readOp(suite.sql, opId)).toMatchObject({
+        status: "started",
+        attempt_count: maxAttempts,
+        last_error: createError.message,
+      });
+      const failed = (await eventsOf(suite.sql, opId)).at(-1)!;
+      expect(failed.event).toBe("stripe_read_failed");
+      // The row carries both Stripe texts: the read that failed and the create before it.
+      expect(JSON.stringify(failed.detail)).toContain("synthetic 503");
+      expect(JSON.stringify(failed.detail)).toContain(createError.message);
+
+      fakeStripe.failLists(null);
+      await setNextAttempt(opId, -1);
+      await runRefundLoopOnce();
+
+      expect(createsFor(lot)).toHaveLength(1);
+      expect(await readOp(suite.sql, opId)).toMatchObject({
+        status: "needs_attention",
+        attention_reason: "attempts_exhausted",
+        attention_detail: createError.message.split("\n")[0],
+      });
+    },
+  );
 });
 
 // ── step 1: a resume reads Stripe before it creates ──────────────────
@@ -963,6 +988,89 @@ describe("executeRefund — the list read after the create decides (§5.4, §6.4
   );
 });
 
+// ── the executor: it creates only under a lease it still holds ───────
+
+describe("executeRefund — refunds.create only under a lease still held with a Stripe call's time left (v8 round 6, §9 arbitration rule)", () => {
+  /**
+   * Hand the disposition's lease to another claimer, as a later E13 would:
+   * a new token, a full lease.
+   * @param opId - The disposition.
+   */
+  async function claimedByAnother(opId: string): Promise<void> {
+    await suite.sql`
+      UPDATE credit_refund_operations
+      SET lease_token = ${randomUUID()}, locked_until = now() + interval '120 seconds'
+      WHERE id = ${opId}
+    `;
+  }
+
+  it("A: a first execution whose token was replaced before it calls Stripe makes no create, writes no event and changes no row", async () => {
+    const { lot, opId } = await seeded("refunding", { kind: "approve", status: "started" });
+    const stale = (await findById(opId))!;
+    await claimedByAnother(opId);
+    const before = await readOp(suite.sql, opId);
+
+    await executeRefund(stale, "loop");
+
+    expect(createsFor(lot)).toEqual([]);
+    expect(fakeStripe.refundsOf(lot.paymentIntentId)).toEqual([]);
+    expect(await eventsOf(suite.sql, opId)).toEqual([]);
+    expect(await readOp(suite.sql, opId)).toEqual(before);
+  });
+
+  it("A: a resume whose token is replaced while its pre-read is out makes no create, writes no event and changes no row", async () => {
+    const { lot, opId } = await seeded("refunding", {
+      kind: "approve",
+      status: "started",
+      firstCalledHoursAgo: 1,
+      attemptCount: 1,
+    });
+    const stale = (await findById(opId))!;
+    const seen: { row?: OpRow } = {};
+    aroundNextList(fakeStripe, async (read) => {
+      const data = await read();
+      await claimedByAnother(opId);
+      seen.row = await readOp(suite.sql, opId);
+      return data;
+    });
+
+    await executeRefund(stale, "loop");
+
+    expect(createsFor(lot)).toEqual([]);
+    expect(listsFor(lot)).toBe(1);
+    expect(fakeStripe.refundsOf(lot.paymentIntentId)).toEqual([]);
+    expect(await eventsOf(suite.sql, opId)).toEqual([]);
+    expect(await readOp(suite.sql, opId)).toEqual(seen.row);
+  });
+
+  it("B: the row still holds its token but less than stripe_call_timeout_ms of the lease is left: no create, no event, no row change", async () => {
+    const { stripeCallTimeoutMs } = getCreditRefundConfig();
+    const { lot, opId } = await seeded("refunding", { kind: "approve", status: "started" });
+    await suite.sql`
+      UPDATE credit_refund_operations
+      SET locked_until = now() + make_interval(secs => ${(stripeCallTimeoutMs - 5000) / 1000}::double precision)
+      WHERE id = ${opId}
+    `;
+    const op = (await findById(opId))!;
+    const before = await readOp(suite.sql, opId);
+
+    await executeRefund(op, "loop");
+
+    expect(createsFor(lot)).toEqual([]);
+    expect(await eventsOf(suite.sql, opId)).toEqual([]);
+    expect(await readOp(suite.sql, opId)).toEqual(before);
+  });
+
+  it("C (control): a lease still held with its time left creates as before", async () => {
+    const { lot, opId } = await seeded("refunding", { kind: "approve", status: "started" });
+
+    await executeRefund((await findById(opId))!, "loop");
+
+    expect(createsFor(lot).map((c) => c.options?.idempotencyKey)).toEqual([`credit-refund-${opId}`]);
+    expect(await readOp(suite.sql, opId)).toMatchObject({ status: "succeeded", result: "refunded" });
+  });
+});
+
 // ── step 2: dispositions waiting on Stripe ───────────────────────────
 
 describe("step 2 — re-read Stripe for awaiting_stripe dispositions", () => {
@@ -1145,7 +1253,7 @@ describe("step 2 — re-read Stripe for awaiting_stripe dispositions", () => {
 
   it("no refund id, 24 hours after the first call, and the read fails: E16 — stays awaiting_stripe, last_error left to the create error, pushed out, no E12 (v8 §6.2 E12, §7.1, round 5)", async () => {
     const { lot, opId } = await awaitingNoId(25);
-    await setLastError(opId, "synthetic 500");
+    await setLastError(suite.sql, opId, "synthetic 500");
     fakeStripe.failLists(stripeError(503));
     const before = await dbClockUs(suite.sql);
 

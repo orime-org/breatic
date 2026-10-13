@@ -914,3 +914,38 @@ describe("a refund_again whose Stripe result is unknown keeps the debt it pays (
     expect((await eventsOf(suite.sql, againId)).map((e) => e.event)[0]).toBe("stripe_read_failed");
   });
 });
+
+describe("a preview does not move the loop's next look: E10 only writes its event row (v8 round 6, §6.2 awaiting × E10)", () => {
+  beforeEach(async () => {
+    await parkInFlightOperations(suite.sql);
+    await markReconcileJustFinished(suite.sql);
+  });
+
+  it("awaiting_stripe with no refund id 25 hours after the first call, its next look due: the preview records refund_not_found and leaves next_attempt_at; the next tick ends it stripe_result_unknown", async () => {
+    const lot = await lotOnStripe("refunding");
+    const { id: opId } = await seedOperation(suite.sql, lot, {
+      kind: "approve",
+      status: "awaiting_stripe",
+      stripeRefundId: null,
+      attemptCount: 1,
+      firstCalledHoursAgo: 25,
+    });
+    const { next_attempt_us: due } = await readOp(suite.sql, opId);
+
+    const res = await call(suite.baseUrl, paths.preview(lot.lotId));
+
+    expect(res.status).toBe(200);
+    expect((await eventsOf(suite.sql, opId)).map((e) => [e.event, e.detail.actor])).toEqual([
+      ["refund_not_found", "request"],
+    ]);
+    expect((await readOp(suite.sql, opId)).next_attempt_us).toBe(due);
+
+    await runRefundLoopOnce();
+
+    expect(await readOp(suite.sql, opId)).toMatchObject({
+      status: "needs_attention",
+      attention_reason: "stripe_result_unknown",
+    });
+    expect(fakeStripe.createCalls).toEqual([]);
+  });
+});

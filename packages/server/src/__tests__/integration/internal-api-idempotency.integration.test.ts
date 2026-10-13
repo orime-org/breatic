@@ -50,7 +50,7 @@ import {
 import {
   PAID_CENTS,
   copiesOf,
-  dbClockUs,
+  expectLeaseReleased,
   mailsOf,
   reId,
   refundObject,
@@ -251,9 +251,7 @@ describe("same key while the original runs: 409 request_in_progress", () => {
     expect(first.status).toBe(202);
     expect(first.json).toMatchObject({ status: "started" });
     // The attempt is over: its lease ended with it, the token stays on the row.
-    const op = await readOp(suite.sql, first.json.id);
-    expect(op.lease_token).not.toBeNull();
-    expect(op.locked_until_us!).toBeLessThanOrEqual(await dbClockUs(suite.sql));
+    await expectLeaseReleased(suite.sql, first.json.id);
 
     const again = await post(paths.approve(lot.lotId), APPROVE, key);
 

@@ -771,3 +771,28 @@ export async function seedRefundAgainOn(
   });
   return { lot, settleId: settle.id, failed, againId: op.id, leaseToken: op.leaseToken };
 }
+
+/**
+ * Give a disposition the error an earlier `refunds.create` left in `last_error`.
+ * @param sql - Raw client.
+ * @param opId - The disposition.
+ * @param message - The error text.
+ */
+export async function setLastError(sql: Sql, opId: string, message: string): Promise<void> {
+  await sql`UPDATE credit_refund_operations SET last_error = ${message} WHERE id = ${opId}`;
+}
+
+/**
+ * An attempt that left the row `started` ended its lease and kept the token
+ * (v8 round 5, §6.2): `locked_until <= now()`, `lease_token` still set — the
+ * given one, when named, so a late answer of the same executor is recognised.
+ * @param sql - Raw client.
+ * @param opId - The disposition.
+ * @param token - The token the row must still hold; any non-null one when absent.
+ */
+export async function expectLeaseReleased(sql: Sql, opId: string, token?: string): Promise<void> {
+  const op = await readOp(sql, opId);
+  if (token === undefined) expect(op.lease_token).not.toBeNull();
+  else expect(op.lease_token).toBe(token);
+  expect(op.locked_until_us!).toBeLessThanOrEqual(await dbClockUs(sql));
+}

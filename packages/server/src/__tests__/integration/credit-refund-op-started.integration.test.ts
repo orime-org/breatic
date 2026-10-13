@@ -54,6 +54,7 @@ import {
   bellsOf,
   copiesOf,
   dbClockUs,
+  expectLeaseReleased,
   inTx,
   ledgerOf,
   mailsOf,
@@ -64,6 +65,7 @@ import {
   seedCopy,
   seedOperation,
   seedRefundLot,
+  setLastError,
   useRefundSuite,
   worldOf,
   type SeededLot,
@@ -511,15 +513,6 @@ describe("started × E6: the first definite answer is that Stripe did not refund
 describe("started × E7 / E16 / E17: try again later with the same key", () => {
   const EARLIER_CREATE_ERROR = "synthetic 429 from an earlier create";
 
-  /**
-   * Give a disposition the error an earlier create left.
-   * @param opId - The disposition.
-   * @param message - The error text.
-   */
-  async function setLastError(opId: string, message: string): Promise<void> {
-    await suite.sql`UPDATE credit_refund_operations SET last_error = ${message} WHERE id = ${opId}`;
-  }
-
   it.each([
     ["E7", failure(429, { code: "rate_limit" })],
     ["E16", failure(503)],
@@ -529,7 +522,7 @@ describe("started × E7 / E16 / E17: try again later with the same key", () => {
     async (type, fail) => {
       for (const make of [startedApprove, startedRefundAgain]) {
         const { lot, op } = await make();
-        await setLastError(op.id, EARLIER_CREATE_ERROR);
+        await setLastError(suite.sql, op.id, EARLIER_CREATE_ERROR);
         const before = await worldOf(suite.sql, lot);
         const clock = await dbClockUs(suite.sql);
         const { backoffMaxSeconds } = getCreditRefundConfig();
@@ -546,8 +539,7 @@ describe("started × E7 / E16 / E17: try again later with the same key", () => {
         else expect(row.last_error).toContain(fail.message.split("\n")[0]);
         // The attempt is over: the lease ends now, its token stays so a late
         // answer of the same executor is still recognised (v8 round 5, §6.2).
-        expect(row.lease_token).toBe(op.leaseToken);
-        expect(row.locked_until_us!).toBeLessThanOrEqual(await dbClockUs(suite.sql));
+        await expectLeaseReleased(suite.sql, op.id, op.leaseToken);
         expect(row.next_attempt_us!).toBeGreaterThan(clock);
         expect(row.next_attempt_us!).toBeLessThanOrEqual(
           (await dbClockUs(suite.sql)) + backoffMaxSeconds * 1_000_000,

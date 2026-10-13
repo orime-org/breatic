@@ -17,7 +17,7 @@
  * | E5    | stays, refund id kept                                  | same                                        |
  * | E6    | needs_attention stripe_refund_failed_later, lot stays  | same, lot stays refunded                    |
  * | E7–E9 | impossible                                             | impossible                                  |
- * | E10   | id empty: stays, backoff, no attempt counted; id set: impossible |                                   |
+ * | E10   | id empty: stays, next_attempt_at untouched, no attempt counted; id set: impossible |                 |
  * | E11   | impossible                                             | impossible                                  |
  * | E12   | id empty: needs_attention stripe_result_unknown; id set: stays |                                     |
  * | E13   | stays (no lease to lose)                               | same                                        |
@@ -57,6 +57,7 @@ import {
   seedCopy,
   seedOperation,
   seedRefundLot,
+  setLastError,
   useRefundSuite,
   worldOf,
   type OpKind,
@@ -385,16 +386,16 @@ describe("awaiting_stripe × E6: Stripe took the refund, then it failed (#10)", 
 });
 
 describe("awaiting_stripe × E10: the lookup after a 5xx found nothing", () => {
-  it("stays, does not count an attempt, and pushes the next look out", async () => {
+  it("stays, does not count an attempt, and leaves next_attempt_at as it was: only the loop's recheck schedules the next look (v8 round 6, §6.2)", async () => {
     const { lot, opId } = await awaiting("approve", null);
-    const clock = await dbClockUs(suite.sql);
+    const { next_attempt_us: nextBefore } = await readOp(suite.sql, opId);
     const before = await worldOf(suite.sql, lot);
 
-    await inTx((tx) => transitionOperation(tx, { id: opId }, { type: "E10", actor: "loop" }));
+    await inTx((tx) => transitionOperation(tx, { id: opId }, { type: "E10", actor: "request" }));
 
     const row = await readOp(suite.sql, opId);
     expect(row).toMatchObject({ status: "awaiting_stripe", stripe_refund_id: null, attempt_count: 1 });
-    expect(row.next_attempt_us!).toBeGreaterThan(clock);
+    expect(row.next_attempt_us).toBe(nextBefore);
     expect(await newEventsOn(suite.sql, lot, before, opId)).toEqual([
       { event: "refund_not_found", from_status: "awaiting_stripe", to_status: "awaiting_stripe" },
     ]);
@@ -495,7 +496,7 @@ describe("awaiting_stripe × E16: reading Stripe failed", () => {
     async (kind) => {
       const { lot, opId } = await awaiting(kind, reId("p"));
       const createError = "synthetic 500 from the create";
-      await suite.sql`UPDATE credit_refund_operations SET last_error = ${createError} WHERE id = ${opId}`;
+      await setLastError(suite.sql, opId, createError);
       const fail = failure(503);
       const clock = await dbClockUs(suite.sql);
       const before = await worldOf(suite.sql, lot);

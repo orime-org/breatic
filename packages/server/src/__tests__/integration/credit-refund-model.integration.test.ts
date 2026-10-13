@@ -18,7 +18,12 @@
  * - **the executor and the loop**: a started disposition gets one of the
  *   §5.4 answers, classified here from the fake Stripe's state, and passed
  *   to `transitionOperation` with its lease; leases run out and old holders
- *   answer late; awaiting dispositions get looked up;
+ *   answer late. The two steps that can end a disposition without Stripe's
+ *   refund run the production code itself: the awaiting lookup is a real
+ *   loop tick (`runRefundLoopOnce`: recheck, snapshot, E12), and the answer
+ *   "attempts used up" claims the row and runs `executeRefund`; both read
+ *   Stripe through `listRefunds` / `listRefundsForPayment`, mocked to
+ *   answer with this harness's list;
  * - **Stripe**: refunds are created at most once per disposition, change
  *   status on their own (including succeeded → failed), appear from outside
  *   the product, and every change is delivered as a snapshot (a webhook).
@@ -61,11 +66,8 @@
  *    another target is `idempotency_key_reused`; neither writes anything;
  * 13. a disposition in `needs_attention` for `attempts_exhausted` or
  *    `stripe_result_unknown` has no refund on Stripe carrying its id: E11 and
- *    E12 only follow a list read that holds none (v8 §9).
- *
- * The harness's loop follows v8 too: its E11 and E12 come after Stripe's
- * list is copied, and only when that list holds no refund of the
- * disposition; otherwise the list judges that refund.
+ *    E12 only follow a list read that holds none (v8 §9). Production's
+ *    executor and loop fire both, so this watches them, not the harness.
  */
 
 import { describe, it, expect, vi } from "vitest";
@@ -81,14 +83,39 @@ vi.mock("ai", () => ({
   tool: (config: Record<string, unknown>) => config,
 }));
 
+/** The run whose Stripe the mocked reads answer for: its payment, and its list. */
+const stripeReads = vi.hoisted(() => ({
+  paymentId: "",
+  paymentIntentId: "",
+  list: (): StripeRefundObject[] => [],
+}));
+
+vi.mock("@server/modules/credit-refund/stripe-refunds.js", async (importOriginal) => {
+  const real = await importOriginal<typeof StripeRefunds>();
+  const answer = async (asked: string, held: string): Promise<StripeRefundObject[]> => {
+    if (asked !== held) throw new Error(`model: Stripe read for ${asked}, not this run's payment`);
+    return stripeReads.list();
+  };
+  return {
+    ...real,
+    listRefunds: (paymentIntent: string) => answer(paymentIntent, stripeReads.paymentIntentId),
+    listRefundsForPayment: (paymentId: string) => answer(paymentId, stripeReads.paymentId),
+    createRefund: async () => {
+      throw new Error("model: no step here lets production call refunds.create");
+    },
+  };
+});
+
 import { randomUUID } from "node:crypto";
 import fc from "fast-check";
 import { db } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 import type { CreditLotEntity } from "@breatic/shared";
 import { creditLotRepo, creditLotService } from "@breatic/domain";
+import { getCreditRefundConfig } from "@server/config/credit-refund.js";
 import { assessOneShot, assessRefundCreate } from "@server/modules/credit-refund/assess.js";
 import { requestOneShot, requestRefund } from "@server/modules/credit-refund/disposition.service.js";
+import { executeRefund } from "@server/modules/credit-refund/executor.js";
 import * as operationRepo from "@server/modules/credit-refund/operation.repo.js";
 import type { CreditRefundOperation } from "@server/modules/credit-refund/operation.repo.js";
 import {
@@ -97,13 +124,17 @@ import {
   type OperationEvent,
 } from "@server/modules/credit-refund/operation-transitions.js";
 import * as refundCopyRepo from "@server/modules/credit-refund/refund-copy.repo.js";
+import { runRefundLoopOnce } from "@server/modules/credit-refund/refund-loop.js";
 import { applyRefundSnapshot } from "@server/modules/credit-refund/refund-snapshot.js";
 import { RefundRefusal } from "@server/modules/credit-refund/refusal.js";
-import type { RefundCopy } from "@server/modules/credit-refund/types.js";
+import type * as StripeRefunds from "@server/modules/credit-refund/stripe-refunds.js";
+import type { RefundCopy, StripeRefundObject } from "@server/modules/credit-refund/types.js";
 import { pickUnresolvedFailedRefunds } from "@server/modules/credit-refund/unresolved.js";
 import {
   PAID_CENTS,
   inTx,
+  markReconcileJustFinished,
+  parkInFlightOperations,
   refundObject,
   reId,
   seedRefundLot,
@@ -304,8 +335,27 @@ class Harness {
    * @param tx - The transaction.
    */
   async snapshot(tx: DbTx): Promise<void> {
-    for (const r of this.stripe) if (r.status === "succeeded") this.everSucceeded.add(r.id);
+    this.noteSucceeded();
     await applyRefundSnapshot(tx, this.lot.paymentId, this.list(), "request");
+  }
+
+  /** Note every refund the next read will see as succeeded (check 7). */
+  noteSucceeded(): void {
+    for (const r of this.stripe) if (r.status === "succeeded") this.everSucceeded.add(r.id);
+  }
+
+  /**
+   * Event rows of one name a disposition has.
+   * @param operationId - The disposition.
+   * @param event - The event name.
+   * @returns How many.
+   */
+  async eventsNamed(operationId: string, event: string): Promise<number> {
+    const [row] = await suite.sql<{ n: string }[]>`
+      SELECT COUNT(*)::text AS n FROM credit_refund_operation_events
+      WHERE operation_id = ${operationId} AND event = ${event}
+    `;
+    return Number(row!.n);
   }
 
   count(name: string): void {
@@ -548,27 +598,22 @@ class Harness {
         return { direct: 2, snapshot: false };
       }
       case "await_tick": {
-        // The loop's recheck: Stripe's list first, which judges the
-        // disposition's own refund or, finding none, is the E10; then, on odd
-        // variants past 24 hours, E12 only while it still waits with no
-        // refund id and Stripe holds none of its (v8 §9).
+        // A real loop tick for the disposition, made due (and, on odd
+        // variants, 25 hours past its first call): its recheck copies
+        // Stripe's list, which judges the disposition's own refund or is the
+        // E10, and decides E12 itself. Only that E12 is a direct call.
         const op = v.inflight!;
-        if (c.variant % 2 === 1) {
-          await suite.sql`
-            UPDATE credit_refund_operations SET first_called_at = now() - interval '25 hours'
-            WHERE id = ${op.id}
-          `;
-        }
-        const fired = await inTx(async (tx) => {
-          await this.snapshot(tx);
-          const row = (await operationRepo.findById(op.id, tx))!;
-          const unknown =
-            row.status === "awaiting_stripe" && row.stripeRefundId === null && !this.stripe.some((r) => r.opId === op.id);
-          if (c.variant % 2 === 0 || !unknown) return 0;
-          await transitionOperation(tx, { id: op.id }, { type: "E12", actor: "loop" });
-          return 1;
-        });
-        return { direct: fired, snapshot: true };
+        await suite.sql`
+          UPDATE credit_refund_operations
+          SET next_attempt_at = now() - interval '1 second',
+              first_called_at = CASE WHEN ${c.variant % 2 === 1}
+                THEN now() - interval '25 hours' ELSE first_called_at END
+          WHERE id = ${op.id}
+        `;
+        const e12Before = await this.eventsNamed(op.id, "deadline_reached");
+        this.noteSucceeded();
+        await runRefundLoopOnce();
+        return { direct: (await this.eventsNamed(op.id, "deadline_reached")) - e12Before, snapshot: true };
       }
       case "await_read_failed":
         await inTx((tx) =>
@@ -614,11 +659,9 @@ class Harness {
     const variant = c.variant % 9;
     // approve and retry send no amount: Stripe refunds what it still will.
     const amountFor = () => (op.kind === "refund_again" ? op.refund_amount_cents! : this.refundable());
-    // E11 follows a list read that holds no refund of this disposition (v8);
-    // a read that holds one judges it instead, as variants 0-2 do.
-    const own = this.stripe.some((r) => r.opId === op.id);
+    if (variant === 5) return this.resumeExhausted(op);
 
-    if (variant <= 2 || (variant === 5 && own)) {
+    if (variant <= 2) {
       const target = (["succeeded", "pending", "failed"] as const)[variant]!;
       let refund = this.stripe.find((r) => r.opId === op.id);
       if (!refund && op.kind === "refund_again" && amountFor() > this.refundable()) {
@@ -665,7 +708,6 @@ class Harness {
     const failures: Record<number, OperationEvent> = {
       3: { type: "E7", failure: failure(429, { code: "rate_limit" }), leaseToken: lease, actor: "loop" },
       4: { type: "E8", failure: failure(500), leaseToken: lease, actor: "loop" },
-      5: { type: "E11", actor: "loop" },
       6: { type: "E9", failure: failure(400, { code: "charge_already_refunded" }), leaseToken: lease, actor: "loop" },
       7: { type: "E16", failure: failure(503), leaseToken: lease, actor: "loop" },
       8: { type: "E17", failure: failure(402), leaseToken: lease, actor: "loop" },
@@ -684,11 +726,35 @@ class Harness {
       }
     }
     this.count(`answer:${failures[variant]!.type}`);
-    await inTx(async (tx) => {
-      if (variant === 5) await this.snapshot(tx);
-      await transitionOperation(tx, { id: op.id }, failures[variant]!);
-    });
+    await inTx((tx) => transitionOperation(tx, { id: op.id }, failures[variant]!));
     return { direct: 1, snapshot: false };
+  }
+
+  /**
+   * The loop resuming a started disposition with no attempt left, through
+   * production: its lease runs out, E13 claims it, and `executeRefund` reads
+   * Stripe's list first — judging the disposition's own refund there, or,
+   * finding none, ending it with E11 (v8 §6.2). It never creates.
+   * @param op - The started disposition.
+   * @returns E13 and the attempt's one cell.
+   */
+  private async resumeExhausted(op: OpView): Promise<{ direct: number; snapshot: boolean }> {
+    await suite.sql`
+      UPDATE credit_refund_operations
+      SET locked_until = now() - interval '1 second',
+          attempt_count = ${getCreditRefundConfig().maxAttempts},
+          first_called_at = coalesce(first_called_at, now())
+      WHERE id = ${op.id}
+    `;
+    const claimed = await inTx((tx) => transitionOperation(tx, { id: op.id }, { type: "E13", actor: "loop" }));
+    this.noteSucceeded();
+    await executeRefund(claimed!, "loop");
+    const [last] = await suite.sql<{ event: string }[]>`
+      SELECT event FROM credit_refund_operation_events WHERE operation_id = ${op.id}
+      ORDER BY created_at DESC, id DESC LIMIT 1
+    `;
+    this.count(`exhausted:${last!.event}`);
+    return { direct: 2, snapshot: false };
   }
 
   /**
@@ -988,10 +1054,15 @@ const EXAMPLES: [Choice[]][] = [
 describe("random disposition sequences on one lot (§9 invariants)", () => {
   it("keeps every invariant after every step", async () => {
     const tally = new Map<string, number>();
+    // A real loop tick must see only this run's lot: no daily reconcile, and
+    // what earlier runs and suites left in flight parked.
+    await markReconcileJustFinished(suite.sql);
     await fc.assert(
       fc.asyncProperty(fc.array(choiceArb, { minLength: 4, maxLength: 16 }), async (choices) => {
+        await parkInFlightOperations(suite.sql);
         const lot = await seedRefundLot(suite.sql, "refund_pending");
         const h = new Harness(lot, tally);
+        Object.assign(stripeReads, { paymentId: lot.paymentId, paymentIntentId: lot.paymentIntentId, list: () => h.list() });
         for (const c of choices) {
           const v = await view(lot);
           const enabled = await h.enabled(v, c);
@@ -1013,7 +1084,7 @@ describe("random disposition sequences on one lot (§9 invariants)", () => {
       "approve", "reject", "settle", "send_back", "retry", "refund_again", "resolve_outside",
       "claim_late", "await_tick", "external", "stripe_change", "redeliver", "ask",
       "answer:E2", "answer:E3", "answer:E5", "answer:E6", "answer:E7", "answer:E8",
-      "answer:E9", "answer:E11", "repeat_key", "key_other_target",
+      "answer:E9", "exhausted:attempts_exhausted", "repeat_key", "key_other_target",
     ]) {
       expect(tally.get(name) ?? 0, name).toBeGreaterThan(0);
     }
