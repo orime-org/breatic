@@ -3,9 +3,9 @@
 
 /**
  * Copying Stripe's refunds into `credit_refunds` (inner#1410 §6.4): every
- * read of a payment's refunds from Stripe is copied here, and the payment's
- * disposition waiting on Stripe, if any, is judged again in the same
- * transaction. `resolved_by_operation_id` is written by `transitionOperation`.
+ * read of a payment's refunds from Stripe is copied here, and a whole-list
+ * read also judges the payment's disposition waiting on Stripe, if any, in
+ * the same transaction. `resolved_by_operation_id` is written by `transitionOperation`.
  */
 
 import type { DbTx } from "@breatic/core";
@@ -28,11 +28,12 @@ export type { StripeRefundObject } from "@server/modules/credit-refund/types.js"
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
- * Copy what Stripe listed for a payment, then re-judge its disposition that
- * waits on Stripe. Locks in the §9 order: lot, disposition, copies.
+ * Copy what Stripe reported for a payment and, for a whole-list read,
+ * re-judge its disposition that waits on Stripe. Locks in the §9 order: lot, disposition, copies.
  * @param tx - The caller's transaction.
  * @param paymentId - The payment.
- * @param refunds - Every refund Stripe holds for it (`refunds.list`, all pages).
+ * @param refunds - What Stripe reported: the whole `refunds.list` (all pages),
+ *   or, with `judge: false`, a `refunds.create` answer.
  * @param actor - Who read them, for the event row a re-judged disposition gets.
  * @param options - How to apply them.
  * @param options.judge - False for refunds that are not the whole list (a

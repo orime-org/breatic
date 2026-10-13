@@ -178,7 +178,7 @@ async function commit(
 }
 
 /**
- * Copy each non-empty read, in order. Only a list read judges the payment's
+ * Copy each read, in order. Only a list read judges the payment's
  * waiting disposition: a create answer is one refund, not the whole list.
  * @param tx - The transaction.
  * @param attempt - The attempt.
@@ -189,7 +189,6 @@ async function commit(
 async function copyReads(tx: DbTx, attempt: Attempt, reads: Read[]): Promise<string[]> {
   const judged: string[] = [];
   for (const { refunds, list } of reads) {
-    if (refunds.length === 0) continue;
     const id = await applyRefundSnapshot(tx, attempt.op.paymentId, refunds, attempt.actor, { judge: list });
     if (id !== null) judged.push(id);
   }

@@ -34,11 +34,12 @@ export class StripeReadError extends Error {
    * @param err - What the read threw.
    */
   constructor(err: unknown) {
-    super("Stripe refunds.list failed", { cause: err });
+    const failure = toFailure(err);
+    super(`Stripe refunds.list failed: ${failure.message}`, { cause: err });
     this.name = "StripeReadError";
     // Not enumerable: pino's err serializer would copy it and rename Stripe's
     // error type to "Object"; log lines carry it under `failure` instead.
-    Object.defineProperty(this, "failure", { value: toFailure(err), enumerable: false });
+    Object.defineProperty(this, "failure", { value: failure, enumerable: false });
   }
 }
 
