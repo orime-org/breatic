@@ -3,7 +3,8 @@
 
 /**
  * Asking for a refund: the confirmation stays open, with its confirm button
- * spinning, until the server answers. A success closes it; a refusal leaves it
+ * spinning, until the server answers and, on success, until the account reads
+ * it changed are back. A success then closes it; a refusal leaves it
  * open so the buyer can read the toast and try again from where they were.
  */
 

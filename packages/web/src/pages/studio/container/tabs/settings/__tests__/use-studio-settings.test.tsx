@@ -437,7 +437,8 @@ describe('useStudioSettings — changing the slug', () => {
 
 describe('useStudioSettings — a new avatar waits for the studio to show it (inner#1374)', () => {
   it('keeps the upload running until the studio refetch carrying the avatar lands', async () => {
-    // The crop dialog spins and stays open for exactly as long as this flag.
+    // The crop dialog's Confirm spins for exactly as long as this flag, and a
+    // successful upload closes the dialog only once it drops.
     uploadPicture.mockResolvedValue('asset-1');
     vi.mocked(studiosApi.setAvatar).mockResolvedValue(
       updated(TEAM, { avatarUrl: 'https://cdn.test/a.png' }),

@@ -129,7 +129,7 @@ AlertDialogDescription.displayName =
 // Accepts the Button primitive's `variant` + `size` props so destructive
 // alerts (e.g. "Clear all messages?") can opt into `variant='destructive'`
 // without resorting to className overrides — those couldn't suppress the
-// default variant's `hover:bg-primary-hover` cascade.
+// default variant's `hover-enabled:bg-primary-hover` cascade.
 // `loading` and `icon` reach the same Button every other waiting button uses:
 // the Action renders through `asChild`, so Radix composes its close handler
 // into that Button's click, and a press made while loading never gets there.
