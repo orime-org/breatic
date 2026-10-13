@@ -349,6 +349,32 @@ describe("task events across two collab instances", () => {
     expect((await readNode(c, nodeId)).taskCounts).toEqual(RUNNING);
   });
 
+  it("stops waiting for a hand-over and takes no further lease once it is told to stop", async () => {
+    const waitingNode = randomUUID();
+    const c = await newCase({ [waitingNode]: "image" });
+    const other = await newCase({ [randomUUID()]: "image" });
+    const unseen = new Map<number, number>([[987_654_322, 5]]);
+    await coordination.set(
+      `${c.keyPrefix}:collab:task-doc-handoff:${c.docName}`,
+      Buffer.from(encodeVector(unseen)).toString("base64"),
+      "PX",
+      60_000,
+    );
+    await publish(c, [{ nodeId: waitingNode, counts: RUNNING }]);
+    await stream.xadd(
+      c.streamKey,
+      "*",
+      "payload",
+      JSON.stringify({ type: "node-task-counts", docName: other.docName, nodeId: randomUUID(), counts: RUNNING }),
+    );
+    const l = listen(c, instanceA, "a", { handoffWaitMs: 20_000, docConcurrency: 1, stopDeadlineMs: 10_000 });
+    await new Promise((r) => setTimeout(r, 1500));
+    const startedAt = Date.now();
+    await l.stop();
+    expect(Date.now() - startedAt).toBeLessThan(3000);
+    expect(await coordination.exists(`${c.keyPrefix}:collab:task-doc-lease:${other.docName}`)).toBe(0);
+  });
+
   it("fails only the event that throws while the rest of its document's events land", async () => {
     const good = randomUUID();
     const bad = randomUUID();
