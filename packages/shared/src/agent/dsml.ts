@@ -16,17 +16,17 @@
  * talking about a call, loses only the tag.
  */
 
-/** Where a call block starts. */
-const BLOCK_OPENER = /<｜DSML｜(?:tool_calls|function_calls)>/;
+/** Where a call block starts. `\uFF5C` is the full-width bar DeepSeek writes around `DSML`. */
+const BLOCK_OPENER = /<\uFF5CDSML\uFF5C(?:tool_calls|function_calls)>/;
 
 /**
  * A tag on its own, including one cut off before its `>`. Tag attributes
  * never span lines, so an unfinished tag ends at the end of its line.
  */
-const LONE_TAG = /<\/?｜DSML｜[^>\n]*>?/g;
+const LONE_TAG = /<\/?\uFF5CDSML\uFF5C[^>\n]*>?/g;
 
 /** How an opening and a closing tag start. */
-const TAG_STARTS = ["<｜DSML｜", "</｜DSML｜"] as const;
+const TAG_STARTS = ["<\uFF5CDSML\uFF5C", "</\uFF5CDSML\uFF5C"] as const;
 
 /**
  * Where the call block in a piece of text starts.
