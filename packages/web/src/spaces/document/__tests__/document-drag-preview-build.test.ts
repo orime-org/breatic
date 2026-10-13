@@ -23,6 +23,7 @@ import {
   tableLinePreviewContent,
   tableRowsPreviewContent,
 } from '@web/spaces/document/document-drag-preview';
+import { placed } from '@web/spaces/document/document-preview-styles';
 
 type Editor = ReturnType<typeof buildDocumentEditor>;
 
@@ -154,7 +155,7 @@ describe('previewScale', () => {
 describe('buildDragPreview', () => {
   it('sizes the root to the scaled size and scales an inner layer, which carries no class', () => {
     const editor = open([{ type: 'paragraph', content: 'one' }]);
-    const content = document.createElement('div');
+    const content = placed(document.createElement('div'), null, null);
     const root = buildDragPreview(editor.prosemirrorView!, content, () => ({ width: 1024, height: 256 }));
     expect(root.isConnected).toBe(true);
     // Its own class: the library's carries `opacity: 0.001`, and Firefox and
@@ -179,7 +180,7 @@ describe('buildDragPreview', () => {
     const editor = open([{ type: 'paragraph', content: 'one' }]);
     const setDragImage = vi.fn();
 
-    setDragPreview(editor.prosemirrorView!, { setDragImage } as unknown as DataTransfer, document.createElement('div'));
+    setDragPreview(editor.prosemirrorView!, { setDragImage } as unknown as DataTransfer, placed(document.createElement('div'), null, null));
 
     expect(setDragImage).toHaveBeenCalledTimes(1);
     const [root, x, y] = setDragImage.mock.calls[0] as [HTMLElement, number, number];
@@ -189,7 +190,7 @@ describe('buildDragPreview', () => {
 
   it('leaves the page in the animation frame after it is built, once the browser has taken the image', async () => {
     const editor = open([{ type: 'paragraph', content: 'one' }]);
-    const root = buildDragPreview(editor.prosemirrorView!, document.createElement('div'), () => ({ width: 100, height: 20 }));
+    const root = buildDragPreview(editor.prosemirrorView!, placed(document.createElement('div'), null, null), () => ({ width: 100, height: 20 }));
     expect(root.isConnected).toBe(true);
     await new Promise((resolve) => requestAnimationFrame(resolve));
     expect(root.isConnected).toBe(false);
@@ -197,7 +198,7 @@ describe('buildDragPreview', () => {
 
   it('stands its first block flush against its top, as the document\'s first block stands, and leaves the space between blocks', () => {
     const editor = open([{ type: 'paragraph', content: 'one' }]);
-    const content = document.createElement('div');
+    const content = placed(document.createElement('div'), null, null);
     content.innerHTML = '<div class="bn-block-content">first</div><div class="bn-block-content">second</div>';
     const root = buildDragPreview(editor.prosemirrorView!, content, () => ({ width: 100, height: 40 }));
     const [first, second] = [...root.querySelectorAll<HTMLElement>('.bn-block-content')];
@@ -293,9 +294,24 @@ describe('buildDragPreview', () => {
     expect(document.querySelectorAll('.bn-editor')).toHaveLength(1);
   });
 
+  it('draws its content as wide as the element in the body it is sized like, whichever builder made it', () => {
+    const editor = open([{ type: 'paragraph', content: 'one' }]);
+    const sized = document.createElement('div');
+    sized.getBoundingClientRect = () => ({ width: 333, height: 20 }) as DOMRect;
+    const content = placed(document.createElement('div'), null, sized);
+    buildDragPreview(editor.prosemirrorView!, content, () => ({ width: 333, height: 20 }));
+    expect(content.style.width).toBe('333px');
+  });
+
+  it('takes content only from a builder that says what it is sized like', () => {
+    // @ts-expect-error A preview's content says where it stands in the body (`placed`).
+    const unplaced: Parameters<typeof buildDragPreview>[1] = document.createElement('div');
+    expect(unplaced).toBeInstanceOf(HTMLElement);
+  });
+
   it('stands its last block flush against its bottom, and leaves the space between blocks', () => {
     const editor = open([{ type: 'paragraph', content: 'one' }]);
-    const content = document.createElement('div');
+    const content = placed(document.createElement('div'), null, null);
     content.innerHTML =
       '<div class="bn-block-content">first</div><div><div class="bn-block-content">nested</div></div><div class="bn-block-content">last</div>';
     const root = buildDragPreview(editor.prosemirrorView!, content, () => ({ width: 100, height: 60 }));
@@ -312,6 +328,7 @@ describe('blockPreviewContent', () => {
     Object.defineProperty(group, 'getBoundingClientRect', { value: () => ({ width: 720, height: 0, top: 0, left: 0, right: 720, bottom: 0 }) });
     const block = view.dom.querySelector('.bn-block-outer')!.cloneNode(true) as HTMLElement;
     const content = blockPreviewContent(view, [block]);
+    buildDragPreview(view, content, () => ({ width: 720, height: 20 }));
     expect(content.style.width).toBe('720px');
     expect(content.textContent).toContain('one');
   });
@@ -357,6 +374,7 @@ describe('blockPreviewContent', () => {
     const block = blockOf('audio-1', 'audio', '<div data-media-box="" class="w-full"><div data-testid="media-player"></div></div>');
     const content = blockPreviewContent(view, [block]);
     expect(content.hasAttribute('data-media-box')).toBe(true);
+    buildDragPreview(view, content, () => ({ width: 768, height: 84 }));
     expect(content.style.width).toBe('768px');
   });
 
@@ -569,12 +587,14 @@ describe('tableLinePreviewContent', () => {
     // table's, so a quoted block's rule stands outside it. Its block is as wide
     // as the body's, so its frame cuts the table where the body's does.
     expect(heldTable(row)).toEqual({ cols: ['393px', '120px', '140px'], table: ['653px', '0px', 'fixed'], rows: ['40px'] });
+    buildDragPreview(view, row, () => ({ width: 720, height: 40 }));
     expect(row.style.width).toBe('720px');
     expect(row.querySelector('col')!.style.getPropertyPriority('width')).toBe('important');
     // A column is as wide as itself, the block's own width set to it, and its
     // table stays in the library's wrapper, a block as in the body: in WebKit a
     // collapsed table of a set width laid out as a flex item is 1px wider.
     expect(heldTable(column)).toEqual({ cols: ['120px'], table: ['120px', '0px', 'fixed'], rows: ['30px', '40px', '50px'] });
+    buildDragPreview(view, column, () => ({ width: 120, height: 120 }));
     expect(column.style.width).toBe('120px');
     const wrapper = column.querySelector<HTMLElement>(':scope > .tableWrapper')!;
     expect(wrapper.querySelector('table')).not.toBeNull();
@@ -679,6 +699,7 @@ describe('tableRowsPreviewContent', () => {
     const content = tableRowsPreviewContent(view, cellOf(editor, 'b2'), 1, 3)!;
     expect(cellTexts(content)).toEqual([['b2', 'c2'], ['b3', 'c3']]);
     expect(heldTable(content)).toEqual({ cols: ['130px', '140px'], table: ['270px', '0px', 'fixed'], rows: ['40px', '50px'] });
+    buildDragPreview(view, content, () => ({ width: 720, height: 90 }));
     expect(content.style.width).toBe('720px');
   });
 });
