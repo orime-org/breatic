@@ -134,13 +134,12 @@ export function startLifecycleListener(deps: LifecycleListenerDeps): GroupConsum
     failuresKey: `${deps.keyPrefix}:collab:lifecycle-event-failures`,
     coordination: deps.coordination,
     settings: deps.settings,
+    // One key: commands run one at a time, in stream order.
+    keyOf: () => "lifecycle",
     process: async (entries, control) => {
       const outcomes = new Map<string, EntryOutcome>();
       for (const entry of entries) {
-        if (control.stopping()) {
-          outcomes.set(entry.id, "wait");
-          continue;
-        }
+        if (control.stopping()) break;
         const event = readLifecycleEvent(entry.payload);
         if (!event) {
           logger.error({ id: entry.id, raw: entry.payload }, "lifecycle_event_unparseable_skipped");

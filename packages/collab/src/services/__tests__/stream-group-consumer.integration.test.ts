@@ -22,6 +22,7 @@ import {
 
 const FAST: GroupConsumerSettings = {
   batchCount: 16,
+  keyConcurrency: 16,
   blockMs: 100,
   leaseRetryMs: 20,
   claimIntervalMs: 100,
@@ -95,6 +96,7 @@ function start(
     consumer,
     coordination,
     settings: { ...FAST, ...settings },
+    keyOf: (entry) => entry.id,
     process: handle,
   });
   running.push(c);
@@ -329,7 +331,7 @@ describe("startGroupConsumer", () => {
 
   it("keeps an entry it is still working on past the stop deadline, and acknowledges it once done", async () => {
     const keys = keysFor();
-    const [id] = await append(keys.streamKey, ["slow-copy"]);
+    await append(keys.streamKey, ["slow-copy"]);
     let finished = false;
     const a = start(
       keys,
@@ -351,29 +353,29 @@ describe("startGroupConsumer", () => {
     expect(idleMs).toBeLessThan(10_000);
     await until(() => finished);
     await until(async () => (await pendingCount(keys)) === 0);
-    expect(id).toBeTypeOf("string");
   });
 
-  it("finishes a renewal in flight before handing its waiting entries over on a stop", async () => {
+  it("sends no renewal chunk once stopping, so the hand-over is not undone", async () => {
     const keys = keysFor();
     await append(keys.streamKey, ["w1", "w2", "w3", "w4", "w5", "slow"]);
     const claimIdleMs = 3000;
     let a: GroupConsumer | undefined;
     let stopped: Promise<void> | undefined;
     let slowDone = false;
+    let chunksAfterStop = 0;
     let proto: object | null = Object.getPrototypeOf(stream);
     while (proto && !Object.prototype.hasOwnProperty.call(proto, "xclaim")) proto = Object.getPrototypeOf(proto);
     const target = proto as { xclaim: (...args: unknown[]) => unknown };
     const original = target.xclaim;
     const spy = vi.spyOn(target, "xclaim").mockImplementation(function (this: unknown, ...args: unknown[]) {
       if (args.includes("IDLE") || !a) return original.apply(this, args);
-      // The first renewal chunk: stop right as it goes out. Later chunks of
-      // that renewal reach Redis late, as over a slow link.
+      // The first renewal chunk: stop right as it goes out.
       if (!stopped) {
         stopped = a.stop();
         return original.apply(this, args);
       }
-      return new Promise((r) => setTimeout(r, 100)).then(() => original.apply(this, args));
+      chunksAfterStop += 1;
+      return original.apply(this, args);
     });
     try {
       a = start(
@@ -400,6 +402,7 @@ describe("startGroupConsumer", () => {
       [string, string, number, number]
     >;
     for (const [, , idleMs] of rows) expect(idleMs).toBeGreaterThanOrEqual(claimIdleMs);
+    expect(chunksAfterStop).toBe(0);
   });
 
   it("hands over entries queued behind a running round on a stop, and keeps the running round", async () => {
@@ -431,8 +434,10 @@ describe("startGroupConsumer", () => {
         ([id, , idleMs]) => [id, idleMs],
       ),
     );
+    // The first read takes one entry per free slot (two), both on key "a", so
+    // the running round holds a1 and a2; a3 arrived while it ran.
     expect(idle.get(a1!)).toBeLessThan(10_000);
-    expect(idle.get(a2!)).toBeGreaterThanOrEqual(60_000);
+    expect(idle.get(a2!)).toBeLessThan(10_000);
     expect(idle.get(a3!)).toBeGreaterThanOrEqual(60_000);
   });
 

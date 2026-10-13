@@ -578,7 +578,7 @@ beforeAll(async () => {
       maxFailures: 3,
       stopDeadlineMs: 2000,
       forgetIdleConsumerMs: 24 * 60 * 60 * 1000,
-      docConcurrency: 4,
+      keyConcurrency: 4,
       docLeaseMs: 30_000,
       handoffPollMs: 20,
       handoffWaitMs: 200,

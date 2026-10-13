@@ -230,6 +230,7 @@ async function main(): Promise<void> {
   const cfg = getCollabConfig();
   const consumerSettings = {
     batchCount: cfg.event_batch_count,
+    keyConcurrency: cfg.event_doc_concurrency,
     blockMs: cfg.event_block_ms,
     leaseRetryMs: cfg.event_lease_retry_ms,
     claimIntervalMs: cfg.event_claim_interval_ms,
@@ -252,7 +253,6 @@ async function main(): Promise<void> {
     coordination: getCollabRedis(),
     settings: {
       ...consumerSettings,
-      docConcurrency: cfg.event_doc_concurrency,
       docLeaseMs: cfg.event_doc_lease_ms,
       handoffPollMs: cfg.event_handoff_poll_ms,
       handoffWaitMs: cfg.event_handoff_wait_ms,
@@ -394,11 +394,12 @@ async function main(): Promise<void> {
       // Best effort — a release error must not stop the teardown below.
     }
 
-    // The stream consumers stop first, while the Redis clients and Hocuspocus
-    // they write through are still up: each finishes or holds the batch in
-    // hand and marks what it still holds as idle, so another instance — or
-    // this one's successor on startup — takes it on its next sweep. Each is
-    // bounded by `event_stop_deadline_ms`.
+    // The stream consumers stop first. Each waits up to
+    // `event_stop_deadline_ms` for its running rounds and marks everything
+    // else it holds as idle, so another instance — or this one's successor on
+    // startup — takes it on its next sweep. A round still running past that
+    // keeps running into the drains below; if it cannot finish there, it stays
+    // pending and is taken over after `event_claim_idle_ms`.
     await Promise.all([taskConsumer.stop(), lifecycleConsumer.stop()]);
 
     // Onto disk before the teardown, not after it: if the platform loses

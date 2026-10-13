@@ -94,6 +94,7 @@ beforeAll(() => {
     coordination,
     settings: {
       batchCount: 16,
+      keyConcurrency: 16,
       blockMs: 100,
       leaseRetryMs: 50,
       claimIntervalMs: 15_000,

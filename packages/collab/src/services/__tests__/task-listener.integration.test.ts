@@ -40,7 +40,7 @@ const SETTINGS: TaskListenerSettings = {
   maxFailures: 3,
   stopDeadlineMs: 3000,
   forgetIdleConsumerMs: 24 * 60 * 60 * 1000,
-  docConcurrency: 4,
+  keyConcurrency: 4,
   docLeaseMs: 30_000,
   handoffPollMs: 20,
   handoffWaitMs: 200,
@@ -375,12 +375,13 @@ describe("task events across two collab instances", () => {
       "payload",
       JSON.stringify({ type: "node-task-counts", docName: other.docName, nodeId: randomUUID(), counts: RUNNING }),
     );
-    const l = listen(c, instanceA, "a", { handoffWaitMs: 20_000, docConcurrency: 1, stopDeadlineMs: 10_000 });
+    const l = listen(c, instanceA, "a", { handoffWaitMs: 20_000, keyConcurrency: 1, stopDeadlineMs: 10_000 });
     await new Promise((r) => setTimeout(r, 1500));
+    const opens = vi.spyOn(instanceA, "openDirectConnection");
     const startedAt = Date.now();
     await l.stop();
     expect(Date.now() - startedAt).toBeLessThan(3000);
-    expect(await coordination.exists(`${c.keyPrefix}:collab:task-doc-lease:${other.docName}`)).toBe(0);
+    expect(opens.mock.calls.map((call) => call[0])).not.toContain(other.docName);
   });
 
   it("fails only the event that throws while the rest of its document's events land", async () => {
@@ -428,7 +429,7 @@ describe("task events across two collab instances", () => {
       }
     }
     const startedAt = Date.now();
-    listen(cases[0]!, instanceA, "a", { docConcurrency: 4 });
+    listen(cases[0]!, instanceA, "a", { keyConcurrency: 4 });
     await until(async () => (await pending(cases[0]!)) === 0 && (await stream.xlen(streamKey)) === 16, 30_000);
     // One document batch takes about two seconds (store plus the two one-second
     // waits), so eight in a row would take sixteen.
@@ -451,7 +452,7 @@ describe("task events across two collab instances", () => {
       }
       const startedAt = Date.now();
       // config/collab.yaml: event_batch_count 128, event_doc_concurrency 16.
-      instances.forEach((h, i) => listen(cases[0]!, h, `i${i}`, { batchCount: 128, docConcurrency: 16 }));
+      instances.forEach((h, i) => listen(cases[0]!, h, `i${i}`, { batchCount: 128, keyConcurrency: 16 }));
       await until(async () => (await pending(cases[0]!)) === 0 && (await stream.xlen(streamKey)) === 40, 60_000);
       const elapsed = Date.now() - startedAt;
       await Promise.all(listeners.splice(0).map((l) => l.stop()));

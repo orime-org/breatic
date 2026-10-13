@@ -6,8 +6,8 @@
  * documents (#186, #1497 §6.1).
  *
  * Data path:
- *   server / worker → Redis stream → consumer group → per-document lease →
- *   one direct connection per document batch → applyNodeTaskCounts
+ *   server / worker → Redis stream → consumer group (one round per document) →
+ *   per-document lease → one direct connection per round → applyNodeTaskCounts
  *
  * Collab executes; it does not judge. Which task moved, what the counts now
  * are, whether a result rides along — the server decided all of it.
@@ -50,8 +50,6 @@ const COUNTS_VERSION_TTL_SECONDS = 30 * 24 * 60 * 60;
 
 /** Settings of the task listener: the consumer group's, plus the per-document ones. */
 export interface TaskListenerSettings extends GroupConsumerSettings {
-  /** Documents of one batch handled at once. */
-  docConcurrency: number;
   /** Document lease length. */
   docLeaseMs: number;
   /** Gap between checks that the local document holds the previous holder's writes. */
@@ -158,44 +156,14 @@ function readItem(entry: StreamEntry): NodeTaskCountsEvent | { skip: string } {
 }
 
 /**
- * Answer the entries that will not be applied, and group the rest by
- * document in stream order. Every entry is read on its own, so one that
- * cannot be read is skipped without touching the others.
- * @param entries - The batch.
- * @param outcomes - Filled with `done` for every skipped entry.
- * @returns The documents' batches.
+ * The round key of an entry: its document, or the entry itself when it names
+ * no canvas document, so it is skipped on its own.
+ * @param entry - The stream entry.
+ * @returns The key.
  */
-function groupByDoc(entries: StreamEntry[], outcomes: Map<string, EntryOutcome>): DocBatch[] {
-  const byDoc = new Map<string, Item[]>();
-  for (const entry of entries) {
-    const read = readItem(entry);
-    if ("skip" in read) {
-      logger.warn({ id: entry.id, raw: entry.payload }, read.skip);
-      outcomes.set(entry.id, "done");
-      continue;
-    }
-    const items = byDoc.get(read.docName) ?? [];
-    items.push({ entry, event: read });
-    byDoc.set(read.docName, items);
-  }
-  return [...byDoc].map(([docName, items]) => ({ docName, items }));
-}
-
-/**
- * Run `work` over `items`, at most `limit` at a time.
- * @param items - What to work on.
- * @param limit - Most at once.
- * @param work - The work.
- */
-async function runLimited<T>(items: T[], limit: number, work: (item: T) => Promise<void>): Promise<void> {
-  let next = 0;
-  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
-    while (next < items.length) {
-      const item = items[next++]!;
-      await work(item);
-    }
-  });
-  await Promise.all(workers);
+function docKeyOf(entry: StreamEntry): string {
+  const read = readItem(entry);
+  return "skip" in read ? `skip:${entry.id}` : read.docName;
 }
 
 /**
@@ -216,7 +184,7 @@ export function startTaskListener(deps: TaskListenerDeps): GroupConsumer {
    * @param handoffKey - Where the previous holder left its state vector.
    * @param stopping - True once the listener is stopping; the wait ends then.
    * @returns True once covered; false when the wait ran out or stopping began.
-   * @throws {Error} When Redis rejects the read; the batch counts it as a failure.
+   * @throws {Error} When Redis rejects the read; the batch answers wait and is retried without counting a failure.
    */
   async function awaitHandOver(doc: Y.Doc, handoffKey: string, stopping: () => boolean): Promise<boolean> {
     const stored = await coordination.get(handoffKey);
@@ -282,10 +250,9 @@ export function startTaskListener(deps: TaskListenerDeps): GroupConsumer {
         if (!stopping()) logger.warn({ docName: batch.docName }, "task_doc_handoff_not_reached");
         return answerAll("wait");
       }
-      // The transaction below runs synchronously, so neither flag can change inside it.
-      if (stopping() || signal.aborted) return answerAll("wait");
-
       const versions = await coordination.hgetall(keys.versions);
+      // Nothing awaits between here and the transaction, which runs synchronously.
+      if (stopping() || signal.aborted) return answerAll("wait");
       const moved = new Map<string, string>();
       await connection.transact((d) => {
         for (const { entry, event } of batch.items) {
@@ -366,16 +333,23 @@ export function startTaskListener(deps: TaskListenerDeps): GroupConsumer {
     failuresKey: `${keyPrefix}:collab:task-event-failures`,
     coordination,
     settings,
+    keyOf: docKeyOf,
     process: async (entries, control) => {
       const outcomes = new Map<string, EntryOutcome>();
-      const batches = groupByDoc(entries, outcomes);
-      await runLimited(batches, settings.docConcurrency, async (batch) => {
-        if (control.stopping()) {
-          for (const { entry } of batch.items) outcomes.set(entry.id, "wait");
-          return;
+      const items: Item[] = [];
+      for (const entry of entries) {
+        const read = readItem(entry);
+        if ("skip" in read) {
+          logger.warn({ id: entry.id, raw: entry.payload }, read.skip);
+          outcomes.set(entry.id, "done");
+        } else {
+          items.push({ entry, event: read });
         }
-        for (const [id, outcome] of await handleDoc(batch, control.stopping)) outcomes.set(id, outcome);
-      });
+      }
+      if (items.length === 0 || control.stopping()) return outcomes;
+      for (const [id, outcome] of await handleDoc({ docName: items[0]!.event.docName, items }, control.stopping)) {
+        outcomes.set(id, outcome);
+      }
       return outcomes;
     },
   });

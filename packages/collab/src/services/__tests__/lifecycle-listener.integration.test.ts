@@ -25,6 +25,7 @@ import { startLifecycleListener } from "@collab/services/lifecycle-listener.js";
 
 const SETTINGS: GroupConsumerSettings = {
   batchCount: 16,
+  keyConcurrency: 16,
   blockMs: 100,
   leaseRetryMs: 50,
   claimIntervalMs: 15_000,
