@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type * as React from 'react';
 
@@ -91,6 +91,67 @@ describe('SpaceDrawer', () => {
     expect(
       await screen.findByTestId('space-drawer-delete-confirm-sp-1'),
     ).toBeInTheDocument();
+  });
+
+  /**
+   * Open the delete question for `sp-1` and press its delete.
+   * @param user - The user-event instance.
+   * @returns The confirm button, pressed.
+   */
+  async function confirmDeletingFirstSpace(
+    user: ReturnType<typeof userEvent.setup>,
+  ): Promise<HTMLElement> {
+    await user.click(screen.getByTestId('space-drawer-trigger'));
+    await openRowMenu(user, 'sp-1');
+    await user.click(screen.getByTestId('space-drawer-delete-sp-1'));
+    const confirm = await screen.findByTestId('space-drawer-delete-confirm-action-sp-1');
+    await user.click(confirm);
+    return confirm;
+  }
+
+  it('keeps the delete question open and spinning while the RPC runs, and closes on success', async () => {
+    const user = userEvent.setup();
+    let done: () => void = () => undefined;
+    const onDeleteSpace = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          done = resolve;
+        }),
+    );
+    setup({ onDeleteSpace });
+
+    const confirm = await confirmDeletingFirstSpace(user);
+
+    expect(onDeleteSpace).toHaveBeenCalledWith('sp-1');
+    expect(screen.getByTestId('space-drawer-delete-confirm-sp-1')).toBeInTheDocument();
+    expect(confirm).toHaveAttribute('aria-busy', 'true');
+    expect(confirm).toHaveAttribute('aria-disabled', 'true');
+
+    await act(async () => {
+      done();
+    });
+    expect(screen.queryByTestId('space-drawer-delete-confirm-sp-1')).toBeNull();
+  });
+
+  it('keeps the delete question open after a failed RPC, so it can be pressed again', async () => {
+    const user = userEvent.setup();
+    let fail: (err: Error) => void = () => undefined;
+    const onDeleteSpace = vi.fn(
+      () =>
+        new Promise<void>((_resolve, reject) => {
+          fail = reject;
+        }),
+    );
+    setup({ onDeleteSpace });
+
+    const confirm = await confirmDeletingFirstSpace(user);
+    expect(confirm).toHaveAttribute('aria-busy', 'true');
+
+    await act(async () => {
+      fail(new Error('refused'));
+    });
+    expect(screen.getByTestId('space-drawer-delete-confirm-sp-1')).toBeInTheDocument();
+    expect(confirm).not.toHaveAttribute('aria-busy');
   });
 
   it('puts view, lock and delete in the row menu', async () => {

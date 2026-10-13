@@ -1314,6 +1314,10 @@ describe('the credits overlay, section by section', () => {
       await waitFor(() => {
         expect(fetchCreditOverview).toHaveBeenCalled();
       });
+      // A refused ask leaves the confirmation open for another try; the
+      // reader backs out of it to move on.
+      expect(screen.getByRole('alertdialog')).toBeInTheDocument();
+      await user.click(within(dialog).getByRole('button', { name: /cancel/i }));
       // The history is not, so it was marked stale: the reader going back to
       // it gets the row as it now stands rather than the thirty-second-old
       // answer saying the pack is theirs to spend.
@@ -1428,7 +1432,10 @@ describe('the credits overlay, section by section', () => {
         expect(requestCreditLotRefund).toHaveBeenCalledTimes(1);
       });
 
-      expect(screen.getByRole('button', { name: /refund/i })).toBeDisabled();
+      // The confirmation waits on the read too, so the ask cannot go twice.
+      const ask = within(dialog).getByRole('button', { name: /^ask for a refund$/i });
+      expect(ask).toHaveAttribute('aria-busy', 'true');
+      expect(ask).toHaveAttribute('aria-disabled', 'true');
     });
 
     // What scrolls is the box around the rows, not the panel: the heading and

@@ -1,5 +1,7 @@
-import { describe, it, expect } from 'vitest';
+import * as React from 'react';
+import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 
 import {
   AlertDialog,
@@ -87,5 +89,92 @@ describe('AlertDialog', () => {
     expect(cancel.className).toContain('border-border');
     expect(cancel.className).not.toContain('border-input');
     expect(cancel.className).toContain('bg-background');
+  });
+});
+
+/**
+ * A controlled confirm dialog whose Action can be put in its waiting state.
+ * @param props - Initial loading flag and the Action click spy.
+ * @param props.loading - Whether the Action starts out waiting.
+ * @param props.onAction - Called when the Action is clicked.
+ * @param props.keepOpen - Whether the Action's handler prevents the close.
+ * @returns The dialog.
+ */
+function Controlled({
+  loading,
+  onAction,
+  keepOpen = false,
+}: {
+  loading: boolean;
+  onAction: () => void;
+  keepOpen?: boolean;
+}): React.JSX.Element {
+  const [open, setOpen] = React.useState(true);
+  return (
+    <AlertDialog open={open} onOpenChange={setOpen}>
+      <AlertDialogContent data-testid='content'>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Confirm</AlertDialogTitle>
+          <AlertDialogDescription>This cannot be undone.</AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            loading={loading}
+            onClick={(event) => {
+              if (keepOpen) event.preventDefault();
+              onAction();
+            }}
+          >
+            Delete
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}
+
+describe('AlertDialogAction loading', () => {
+  it('shows a spinner and is aria-disabled while loading', () => {
+    render(<Controlled loading onAction={vi.fn()} />);
+    const action = screen.getByRole('button', { name: 'Delete' });
+    expect(action).toHaveAttribute('aria-busy', 'true');
+    expect(action).toHaveAttribute('aria-disabled', 'true');
+    expect(action.querySelector('svg.animate-spin')).not.toBeNull();
+  });
+
+  it('neither closes the dialog nor calls onClick when pressed while loading', async () => {
+    const user = userEvent.setup();
+    const onAction = vi.fn();
+    render(<Controlled loading onAction={onAction} />);
+    await user.click(screen.getByRole('button', { name: 'Delete' }));
+    expect(onAction).not.toHaveBeenCalled();
+    expect(screen.getByTestId('content')).toBeInTheDocument();
+  });
+
+  it('stays open when the caller prevents the default close', async () => {
+    const user = userEvent.setup();
+    const onAction = vi.fn();
+    render(<Controlled loading={false} onAction={onAction} keepOpen />);
+    await user.click(screen.getByRole('button', { name: 'Delete' }));
+    expect(onAction).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId('content')).toBeInTheDocument();
+  });
+
+  it('closes on Escape while the action is waiting', async () => {
+    const user = userEvent.setup();
+    render(<Controlled loading onAction={vi.fn()} />);
+    expect(screen.getByTestId('content')).toBeInTheDocument();
+    await user.keyboard('{Escape}');
+    expect(screen.queryByTestId('content')).toBeNull();
+  });
+
+  it('closes on a plain press when idle', async () => {
+    const user = userEvent.setup();
+    const onAction = vi.fn();
+    render(<Controlled loading={false} onAction={onAction} />);
+    await user.click(screen.getByRole('button', { name: 'Delete' }));
+    expect(onAction).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTestId('content')).toBeNull();
   });
 });

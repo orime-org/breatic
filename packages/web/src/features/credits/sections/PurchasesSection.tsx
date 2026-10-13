@@ -176,11 +176,12 @@ const PurchaseLine = React.memo(function PurchaseLine({
     } catch {
       toast.error(t('credits.purchase.resendFailed'));
     } finally {
-      setSending(false);
       // Whether the control is still offered is decided from the row, and the
       // row just moved. Left as it was, the next tap would be refused by the
-      // server and the buyer would be told a letter that did go out did not.
-      void client.invalidateQueries({ queryKey: ['payment', 'history', userId] });
+      // server and the buyer would be told a letter that did go out did not —
+      // so the button keeps waiting until the re-read row is in (inner#1374).
+      await client.invalidateQueries({ queryKey: ['payment', 'history', userId] });
+      setSending(false);
     }
   }, [client, purchase.paymentId, t, userId]);
 
@@ -282,7 +283,7 @@ const PurchaseLine = React.memo(function PurchaseLine({
               variant='outline'
               size='sm'
               className='mt-1'
-              disabled={sending}
+              loading={sending}
               onClick={resend}
             >
               {t('credits.purchase.resend')}

@@ -108,7 +108,7 @@ export default function SlugSetupPage(): React.JSX.Element {
           </FieldError>
         ) : null}
 
-        <Button type='submit' size='form' disabled={!canSubmit} className='mt-2'>
+        <Button type='submit' size='form' disabled={!canSubmit} loading={submitting} className='mt-2'>
           {submitting
             ? t('auth.onboarding.submitting')
             : t('auth.onboarding.submit')}

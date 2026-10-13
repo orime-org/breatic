@@ -70,7 +70,7 @@ export function LangSwitcher(): React.JSX.Element {
               className={cn(
                 'justify-start',
                 locale === l.code &&
-                  'bg-accent-strong hover:bg-accent-strong',
+                  'bg-accent-strong hover-enabled:bg-accent-strong',
               )}
               onClick={() => pick(l.code)}
               data-testid={`lang-option-${l.code}`}

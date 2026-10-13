@@ -80,8 +80,8 @@ export interface ChatSession {
    * moment the reader was in, and it goes away on its own.
    */
   mishap: ChatMishap | null;
-  /** Load the messages before the ones on screen. */
-  loadEarlier: () => void;
+  /** Load the messages before the ones on screen; settles once the page has landed or failed. */
+  loadEarlier: () => Promise<void>;
   /**
    * Send what is in the composer, opening a conversation if there is not one.
    *
@@ -132,8 +132,8 @@ export interface ChatSession {
   switchTo: (conversationId: string) => void;
   /** Name one. */
   rename: (conversationId: string, title: string) => void;
-  /** Delete one, after the reader has confirmed. */
-  remove: (conversationId: string) => void;
+  /** Delete one, after the reader has confirmed; settles once the attempt is over. */
+  remove: (conversationId: string) => Promise<void>;
 }
 
 /**
@@ -318,8 +318,8 @@ export function useChatSession(
     if (conversationId) stopChatSession(conversationId);
   }, [conversationId]);
 
-  const loadEarlier = React.useCallback((): void => {
-    if (conversationId) void conversationRuntime.loadEarlier(conversationId);
+  const loadEarlier = React.useCallback(async (): Promise<void> => {
+    if (conversationId) await conversationRuntime.loadEarlier(conversationId);
   }, [conversationId]);
 
   const setDraft = React.useCallback(
@@ -349,7 +349,7 @@ export function useChatSession(
   );
 
   const remove = React.useCallback(
-    (id: string): void => void conversationRuntime.remove(projectId, id),
+    (id: string): Promise<void> => conversationRuntime.remove(projectId, id),
     [projectId],
   );
 

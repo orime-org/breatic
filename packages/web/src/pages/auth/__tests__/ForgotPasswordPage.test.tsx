@@ -3,6 +3,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 
 import ForgotPasswordPage from '@web/pages/auth/ForgotPasswordPage';
@@ -47,6 +48,44 @@ describe('ForgotPasswordPage offers only the way that works here', () => {
     setup();
     expect(screen.queryByRole('button', { name: 'Email me a reset link' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /recovery code/i })).not.toBeInTheDocument();
+  });
+
+  it('marks the send button busy while the reset link is being sent, then shows the sent card', async () => {
+    vi.mocked(authApi.options).mockResolvedValueOnce({ emailVerification: true });
+    let answer!: (value: { message: string }) => void;
+    vi.mocked(authApi.forgotPassword).mockReturnValueOnce(
+      new Promise((resolve) => { answer = resolve; }),
+    );
+    const user = userEvent.setup();
+    setup();
+    await user.type(await screen.findByLabelText('Email'), 'ada@example.com');
+    await user.click(screen.getByRole('button', { name: 'Email me a reset link' }));
+
+    const busy = screen.getByRole('button', { name: 'Sending...' });
+    expect(busy).toHaveAttribute('aria-busy', 'true');
+    expect(busy).toHaveAttribute('aria-disabled', 'true');
+
+    answer({ message: 'sent' });
+    expect(await screen.findByText('Check your inbox')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { busy: true })).toBeNull();
+  });
+
+  it('clears the busy mark on the send button after a failed send', async () => {
+    vi.mocked(authApi.options).mockResolvedValueOnce({ emailVerification: true });
+    let fail!: (reason: unknown) => void;
+    vi.mocked(authApi.forgotPassword).mockReturnValueOnce(
+      new Promise((_, reject) => { fail = reject; }),
+    );
+    const user = userEvent.setup();
+    setup();
+    await user.type(await screen.findByLabelText('Email'), 'ada@example.com');
+    await user.click(screen.getByRole('button', { name: 'Email me a reset link' }));
+    expect(screen.getByRole('button', { name: 'Sending...' })).toHaveAttribute('aria-busy', 'true');
+
+    fail(new Error('network'));
+    const idle = await screen.findByRole('button', { name: 'Email me a reset link' });
+    expect(idle).not.toHaveAttribute('aria-busy');
+    expect(idle).not.toHaveAttribute('aria-disabled');
   });
 
   it('says it could not load when the server does not answer', async () => {

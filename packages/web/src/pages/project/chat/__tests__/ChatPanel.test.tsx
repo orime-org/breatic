@@ -549,6 +549,50 @@ describe('a conversation longer than one page', () => {
     // fetching nothing.
     await waitFor(() => expect(screen.queryByTestId('chat-load-earlier')).toBeNull());
   });
+
+  it('spins on the load-earlier button until the page lands', async () => {
+    let land: (value: Awaited<ReturnType<typeof chatApi.messagesBefore>>) => void = () => undefined;
+    vi.mocked(chatApi.messagesBefore).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          land = resolve;
+        }),
+    );
+
+    renderPanel();
+    const button = await screen.findByTestId('chat-load-earlier');
+    await userEvent.click(button);
+
+    expect(button).toHaveAttribute('aria-busy', 'true');
+    expect(button).toHaveAttribute('aria-disabled', 'true');
+
+    await act(async () => {
+      land({ messages: [], hasMore: true } as unknown as Awaited<
+        ReturnType<typeof chatApi.messagesBefore>
+      >);
+    });
+    await waitFor(() => expect(button).not.toHaveAttribute('aria-busy'));
+  });
+
+  it('stops spinning on the load-earlier button when the page fails to arrive', async () => {
+    let fail: (err: Error) => void = () => undefined;
+    vi.mocked(chatApi.messagesBefore).mockImplementation(
+      () =>
+        new Promise((_resolve, reject) => {
+          fail = reject;
+        }),
+    );
+
+    renderPanel();
+    const button = await screen.findByTestId('chat-load-earlier');
+    await userEvent.click(button);
+    expect(button).toHaveAttribute('aria-busy', 'true');
+
+    await act(async () => {
+      fail(new Error('offline'));
+    });
+    await waitFor(() => expect(button).not.toHaveAttribute('aria-busy'));
+  });
 });
 
 
@@ -702,5 +746,85 @@ describe('opening the list', () => {
     );
 
     await waitFor(() => expect(chatApi.listConversations).toHaveBeenCalledTimes(1));
+  });
+});
+
+describe('deleting a conversation from the list', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    _resetForTests();
+    vi.mocked(chatApi.streamConfig).mockResolvedValue({ heartbeatIntervalMs: 5000, attachmentMaxChars: 200_000, attachmentMaxItems: 10, currentSpaceMaxChars: 100_000, spaceListMaxItems: 200 });
+    vi.mocked(chatApi.openChat).mockResolvedValue({
+      conversations: [
+        { id: 'c-1', title: 'one' },
+        { id: 'c-2', title: 'two' },
+      ],
+      current: { conversation: { id: 'c-1', title: 'one' }, messages: [], hasMore: false },
+      hasMoreConversations: false,
+    } as unknown as Awaited<ReturnType<typeof chatApi.openChat>>);
+    vi.mocked(chatApi.listConversations).mockResolvedValue({
+      conversations: [
+        { id: 'c-1', title: 'one' },
+        { id: 'c-2', title: 'two' },
+      ],
+      hasMore: false,
+    } as unknown as Awaited<ReturnType<typeof chatApi.listConversations>>);
+  });
+
+  /**
+   * Open the list, ask to delete the second row, and confirm.
+   * @returns The confirm button, pressed.
+   */
+  async function confirmDeletingTheSecondRow(): Promise<HTMLElement> {
+    renderPanel({ projectId: 'p-del', historyOpen: true });
+    await userEvent.click(await screen.findByTestId('conversation-menu-c-2'));
+    await userEvent.click(await screen.findByTestId('conversation-delete-c-2'));
+    const confirm = await screen.findByTestId('conversation-delete-confirm');
+    await userEvent.click(confirm);
+    return confirm;
+  }
+
+  it('keeps the question open and spinning until the server answers, then closes', async () => {
+    let done: () => void = () => undefined;
+    vi.mocked(chatApi.deleteConversation).mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          done = resolve;
+        }) as unknown as ReturnType<typeof chatApi.deleteConversation>,
+    );
+
+    const confirm = await confirmDeletingTheSecondRow();
+
+    expect(screen.getByTestId('conversation-delete-dialog')).toBeInTheDocument();
+    expect(confirm).toHaveAttribute('aria-busy', 'true');
+    expect(confirm).toHaveAttribute('aria-disabled', 'true');
+
+    await act(async () => {
+      done();
+    });
+    await waitFor(() =>
+      expect(screen.queryByTestId('conversation-delete-dialog')).toBeNull(),
+    );
+  });
+
+  it('closes the question once a failed delete is answered, uncovering the word on the row', async () => {
+    let fail: (err: Error) => void = () => undefined;
+    vi.mocked(chatApi.deleteConversation).mockImplementation(
+      () =>
+        new Promise((_resolve, reject) => {
+          fail = reject;
+        }) as unknown as ReturnType<typeof chatApi.deleteConversation>,
+    );
+
+    const confirm = await confirmDeletingTheSecondRow();
+    expect(confirm).toHaveAttribute('aria-busy', 'true');
+
+    await act(async () => {
+      fail(new Error('offline'));
+    });
+    await waitFor(() =>
+      expect(screen.queryByTestId('conversation-delete-dialog')).toBeNull(),
+    );
+    expect(screen.getByTestId('conversation-row-mishap')).toBeInTheDocument();
   });
 });

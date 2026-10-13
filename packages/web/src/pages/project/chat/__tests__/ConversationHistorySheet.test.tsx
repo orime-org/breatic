@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import {
@@ -34,7 +34,7 @@ const CONVS: ConversationRow[] = [
 /** The handlers every case passes but none of these assert on. */
 const NOOPS = {
   onRename: () => undefined,
-  onDelete: () => undefined,
+  onDelete: async () => undefined,
   hasMore: false,
   onReachEnd: () => undefined,
   nextPageFailed: false,
@@ -232,7 +232,7 @@ describe('asking to delete a conversation', () => {
     // 它要是跟着菜单一起消失,这条路上用户永远删不掉任何东西,而屏幕上只会
     // 闪一下,看不出发生过什么。
     const user = userEvent.setup();
-    const onDelete = vi.fn();
+    const onDelete = vi.fn().mockResolvedValue(undefined);
     render(
       <ConversationHistorySheet
         open
@@ -252,5 +252,125 @@ describe('asking to delete a conversation', () => {
 
     await user.click(screen.getByTestId('conversation-delete-confirm'));
     expect(onDelete).toHaveBeenCalledWith('c2');
+  });
+
+  it('stays open and spinning while the delete is out, and closes once it is answered', async () => {
+    const user = userEvent.setup();
+    let answer: () => void = () => undefined;
+    const onDelete = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          answer = resolve;
+        }),
+    );
+    render(
+      <ConversationHistorySheet
+        open
+        onOpenChange={() => undefined}
+        conversations={CONVS}
+        activeId='c1'
+        onPick={() => undefined}
+        {...NOOPS}
+        onDelete={onDelete}
+      />,
+    );
+
+    await user.click(screen.getByTestId('conversation-menu-c2'));
+    await user.click(await screen.findByTestId('conversation-delete-c2'));
+    const confirm = await screen.findByTestId('conversation-delete-confirm');
+    await user.click(confirm);
+
+    expect(onDelete).toHaveBeenCalledWith('c2');
+    expect(screen.getByTestId('conversation-delete-dialog')).toBeInTheDocument();
+    expect(confirm).toHaveAttribute('aria-busy', 'true');
+    expect(confirm).toHaveAttribute('aria-disabled', 'true');
+
+    await act(async () => {
+      answer();
+    });
+    expect(screen.queryByTestId('conversation-delete-dialog')).toBeNull();
+  });
+
+  it('leaves a question asked later alone when an earlier delete is answered', async () => {
+    const user = userEvent.setup();
+    const answers: Array<() => void> = [];
+    const onDelete = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          answers.push(resolve);
+        }),
+    );
+    render(
+      <ConversationHistorySheet
+        open
+        onOpenChange={() => undefined}
+        conversations={CONVS}
+        activeId='c1'
+        onPick={() => undefined}
+        {...NOOPS}
+        onDelete={onDelete}
+      />,
+    );
+
+    await user.click(screen.getByTestId('conversation-menu-c2'));
+    await user.click(await screen.findByTestId('conversation-delete-c2'));
+    await user.click(await screen.findByTestId('conversation-delete-confirm'));
+    // Walked away from the wait, then asked about another row.
+    await user.click(screen.getByTestId('conversation-delete-cancel'));
+    await user.click(screen.getByTestId('conversation-menu-c1'));
+    await user.click(await screen.findByTestId('conversation-delete-c1'));
+    const confirm = await screen.findByTestId('conversation-delete-confirm');
+    expect(confirm).not.toHaveAttribute('aria-busy');
+
+    await act(async () => {
+      answers[0]?.();
+    });
+    expect(screen.getByTestId('conversation-delete-dialog')).toBeInTheDocument();
+  });
+
+  it('spins the confirm for a row whose delete is still out after another row was deleted meanwhile', async () => {
+    const user = userEvent.setup();
+    const answers: Array<() => void> = [];
+    const onDelete = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          answers.push(resolve);
+        }),
+    );
+    render(
+      <ConversationHistorySheet
+        open
+        onOpenChange={() => undefined}
+        conversations={CONVS}
+        activeId='c1'
+        onPick={() => undefined}
+        {...NOOPS}
+        onDelete={onDelete}
+      />,
+    );
+
+    // Delete c2, walk away, delete c1, walk away, come back to c2.
+    await user.click(screen.getByTestId('conversation-menu-c2'));
+    await user.click(await screen.findByTestId('conversation-delete-c2'));
+    await user.click(await screen.findByTestId('conversation-delete-confirm'));
+    await user.click(screen.getByTestId('conversation-delete-cancel'));
+    await user.click(screen.getByTestId('conversation-menu-c1'));
+    await user.click(await screen.findByTestId('conversation-delete-c1'));
+    await user.click(await screen.findByTestId('conversation-delete-confirm'));
+    await user.click(screen.getByTestId('conversation-delete-cancel'));
+    await user.click(screen.getByTestId('conversation-menu-c2'));
+    await user.click(await screen.findByTestId('conversation-delete-c2'));
+
+    const confirm = await screen.findByTestId('conversation-delete-confirm');
+    expect(confirm).toHaveAttribute('aria-busy', 'true');
+    // c1's answer does not end c2's wait.
+    await act(async () => {
+      answers[1]?.();
+    });
+    expect(confirm).toHaveAttribute('aria-busy', 'true');
+    await act(async () => {
+      answers[0]?.();
+    });
+    expect(screen.queryByTestId('conversation-delete-dialog')).toBeNull();
   });
 });

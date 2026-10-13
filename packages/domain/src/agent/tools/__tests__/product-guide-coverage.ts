@@ -515,6 +515,7 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "project.leave.failed": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "project.leave.title": { described: /asks to confirm first/ },
   "project.space.error.create": { excluded: REASONS.SAYS_WHAT_HAPPENED },
+  "project.space.error.restore": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "project.space.error.notSynced": { excluded: REASONS.SAYS_TRY_AGAIN },
   "project.space.error.unreachable": { excluded: REASONS.SAYS_TRY_AGAIN },
   "project.space.timeout.create": { excluded: REASONS.SAYS_WHAT_HAPPENED },

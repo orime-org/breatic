@@ -312,16 +312,20 @@ function SpaceDrawerRow({
   };
 
   /**
-   * Deletes the space via `onDeleteSpace` (no-op when locked or already busy);
-   * the live Y.Doc update drives the resulting UI changes.
+   * Deletes the space via `onDeleteSpace` (no-op when locked or already busy),
+   * keeping the confirm dialog open while it runs: closed on success, left
+   * open on failure so it can be pressed again. The live Y.Doc update drives
+   * the resulting UI changes.
    * @param e - The click event from the delete confirm action.
    */
   const onDelete = async (e: React.MouseEvent): Promise<void> => {
     e.stopPropagation();
+    e.preventDefault();
     if (deleteBusy || deleteBlocked !== null || !onDeleteSpace) return;
     setDeleteBusy(true);
     try {
       await onDeleteSpace(space.id);
+      setConfirmOpen(false);
       // The collab Y.Doc update will drive the spaces list shrink + the
       // ProjectPage effect picks a new active tab + clears the loading
       // overlay. Errors surface via toast inside ProjectPage.callRpc.
@@ -496,6 +500,7 @@ function SpaceDrawerRow({
                 <AlertDialogCancel>{t('common.cancel')}</AlertDialogCancel>
                 <AlertDialogAction
                   variant='destructive'
+                  loading={deleteBusy}
                   onClick={onDelete}
                   data-testid={`space-drawer-delete-confirm-action-${space.id}`}
                 >

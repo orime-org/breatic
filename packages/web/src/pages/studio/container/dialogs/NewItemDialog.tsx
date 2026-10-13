@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import * as React from 'react';
-import { Loader2 } from 'lucide-react';
 
 import { Button } from '@web/components/ui/button';
 import {
@@ -266,14 +265,8 @@ export function NewItemDialog({
             <Button
               type='submit'
               disabled={!canSubmit}
+              loading={submitting}
             >
-              {submitting ? (
-                <Loader2
-                  data-testid={`new-${kind}-pending`}
-                  aria-hidden='true'
-                  className='mr-2 h-3.5 w-3.5 animate-spin'
-                />
-              ) : null}
               {t('studio.container.dialog.create')}
             </Button>
           </DialogFooter>

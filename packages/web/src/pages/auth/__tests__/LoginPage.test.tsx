@@ -151,6 +151,38 @@ describe('LoginPage', () => {
     }
   });
 
+  it('marks the submit button busy while the server answers, then clears it after a success', async () => {
+    let answer!: (value: Awaited<ReturnType<typeof authApi.login>>) => void;
+    vi.mocked(authApi.login).mockReturnValue(new Promise((resolve) => { answer = resolve; }));
+
+    setup();
+    await signIn();
+
+    const busy = screen.getByRole('button', { name: 'Signing in...' });
+    expect(busy).toHaveAttribute('aria-busy', 'true');
+    expect(busy).toHaveAttribute('aria-disabled', 'true');
+
+    answer({
+      user: { id: 'u-ada', email: 'ada@example.com', personalStudio: null },
+    } as Awaited<ReturnType<typeof authApi.login>>);
+    await screen.findByTestId('studio-page');
+    expect(screen.queryByRole('button', { busy: true })).toBeNull();
+  });
+
+  it('clears the busy mark on the submit button after a failed sign-in', async () => {
+    let fail!: (reason: unknown) => void;
+    vi.mocked(authApi.login).mockReturnValue(new Promise((_, reject) => { fail = reject; }));
+
+    setup();
+    await signIn();
+    expect(screen.getByRole('button', { name: 'Signing in...' })).toHaveAttribute('aria-busy', 'true');
+
+    fail(new Error('network'));
+    const idle = await screen.findByRole('button', { name: 'Sign in' });
+    expect(idle).not.toHaveAttribute('aria-busy');
+    expect(idle).not.toHaveAttribute('aria-disabled');
+  });
+
   // #302: the terms line sits at the foot of the card, after the cross-link.
   it('shows the terms line under the footer', () => {
     setup();

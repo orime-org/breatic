@@ -114,7 +114,7 @@ export const ModeToggle = React.memo(function ModeToggle({
               data-testid={testId}
               className={cn(
                 'justify-start',
-                mode === value && 'bg-accent-strong hover:bg-accent-strong',
+                mode === value && 'bg-accent-strong hover-enabled:bg-accent-strong',
               )}
               onClick={() => {
                 if (mode !== value) onChange(mode);
