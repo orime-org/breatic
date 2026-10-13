@@ -241,7 +241,7 @@ export function startGroupConsumer(opts: GroupConsumerOptions): GroupConsumer {
    */
   async function renewHeld(): Promise<void> {
     const ids = [...new Set([...inHand, ...waiting.map((w) => w.entry.id)])];
-    for (let i = 0; i < ids.length; i += settings.batchCount) {
+    for (let i = 0; i < ids.length && !stopping; i += settings.batchCount) {
       const chunk = ids.slice(i, i + settings.batchCount);
       await commands.xclaim(streamKey, group, consumer, 0, ...chunk, "JUSTID");
     }
@@ -425,8 +425,10 @@ export function startGroupConsumer(opts: GroupConsumerOptions): GroupConsumer {
   }
 
   /**
-   * Mark every entry this consumer still holds as idle past the take-over
-   * limit, so the next sweep of any consumer takes it.
+   * Mark every entry this consumer still holds, except the batch still being
+   * handled, as idle past the take-over limit, so the next sweep of any
+   * consumer takes it. The batch in hand is acknowledged when it finishes, or
+   * taken over like a dead consumer's once the process is gone.
    * @throws {Error} When a Redis command fails; the stop logs it.
    */
   async function handOver(): Promise<void> {
@@ -441,19 +443,22 @@ export function startGroupConsumer(opts: GroupConsumerOptions): GroupConsumer {
         consumer,
       )) as Array<[string, string, number, number]>;
       if (rows.length === 0) return;
-      const ids = rows.map((r) => r[0]);
-      await commands.xclaim(streamKey, group, consumer, 0, ...ids, "IDLE", settings.claimIdleMs, "JUSTID");
-      logger.info({ streamKey, group, count: ids.length }, "stream_entries_handed_over");
+      const ids = rows.map((r) => r[0]).filter((id) => !inHand.has(id));
+      if (ids.length > 0) {
+        await commands.xclaim(streamKey, group, consumer, 0, ...ids, "IDLE", settings.claimIdleMs, "JUSTID");
+        logger.info({ streamKey, group, count: ids.length }, "stream_entries_handed_over");
+      }
       if (rows.length < settings.batchCount) return;
-      start = `(${ids[ids.length - 1]}`;
+      start = `(${rows[rows.length - 1]![0]}`;
     }
   }
 
   const loop = run();
   // Renewed three times within the take-over idle time, as BullMQ renews a
   // job lock at half its duration.
+  let renewing: Promise<void> = Promise.resolve();
   const renewTimer = setInterval(() => {
-    renewHeld().catch((err: unknown) => logger.warn({ err, streamKey, group }, "stream_entries_renew_failed"));
+    renewing = renewHeld().catch((err: unknown) => logger.warn({ err, streamKey, group }, "stream_entries_renew_failed"));
   }, Math.max(1, Math.floor(settings.claimIdleMs / 3)));
 
   return {
@@ -467,12 +472,15 @@ export function startGroupConsumer(opts: GroupConsumerOptions): GroupConsumer {
       stopped = (async (): Promise<void> => {
         await Promise.race([loop, delay(settings.stopDeadlineMs)]);
         waiting = [];
+        // A renewal landing after the hand-over would reset what it handed over.
+        await renewing;
         try {
           await handOver();
         } catch (err) {
           logger.error({ err, streamKey, group }, "stream_hand_over_failed");
         }
-        await commands.quit().catch(() => commands.disconnect());
+        // Open until the batch in hand settles, so it can still be acknowledged.
+        void loop.finally(() => commands.quit().catch(() => commands.disconnect()));
       })();
       return stopped;
     },
