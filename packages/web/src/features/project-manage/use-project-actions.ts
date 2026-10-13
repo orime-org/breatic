@@ -52,8 +52,8 @@ export function useProjectActions(projectId: string): ProjectActions {
     mutationFn: () => projectsApi.archive(projectId),
     // Awaited (inner#1374). The confirmation lives inside the card and leaves
     // with it once the live list refetch drops the card. The archived lists are
-    // waited on too, so the "Archived" toast and the menu's pending last until
-    // the Archived tab's count is refreshed.
+    // waited on too, so the "Archived" toast waits until the Archived tab's
+    // count is refreshed.
     onSuccess: async () => {
       await invalidateProjectListings(queryClient, projectId, { archivedChanges: true });
       toast.success(t('studio.container.card.archived'));

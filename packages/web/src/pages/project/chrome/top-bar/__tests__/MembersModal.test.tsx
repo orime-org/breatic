@@ -275,6 +275,11 @@ describe('MembersModal waiting buttons', () => {
     );
     await user.click(screen.getByTestId('members-modal-remove-u-c'));
     expect(screen.getByTestId('members-modal-remove-confirm')).toHaveTextContent('Real Viewer');
+    // Nothing has been sent for this member: no wait shown, and no second
+    // removal can start while the first is out.
+    const second = screen.getByTestId('members-modal-remove-confirm-action');
+    expect(second).not.toHaveAttribute('aria-busy');
+    expect(second).toBeDisabled();
 
     reply.resolve(undefined);
     await waitFor(() => expect(toast.success).toHaveBeenCalled());
