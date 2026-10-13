@@ -2746,9 +2746,9 @@ function CanvasSpaceInner({
 
   // Mailbox path: chrome posted a create intent -- one node type from the
   // library, or a whole wired group from a proposal card. Neither sender has a
-  // viewport, so the drop point is decided here: the viewport centre,
-  // staggering repeats so they don't stack exactly. Always clear the mailbox
-  // afterward.
+  // viewport, so the drop point is decided here: the viewport centre. Library
+  // nodes stagger repeats so they don't stack exactly; a proposal steps right
+  // past whatever is there instead. Always clear the mailbox afterward.
   React.useEffect(() => {
     if (!pendingNodeCreate) return;
     const intent = pendingNodeCreate;
@@ -2765,13 +2765,9 @@ function CanvasSpaceInner({
       consumePendingNodeCreate();
       return;
     }
-    const offset = (staggerRef.current % STAGGER_WRAP) * STAGGER_STEP_PX;
-    staggerRef.current += 1;
-    const center = screenToFlowPosition({
-      x: rect.left + rect.width / 2 + offset,
-      y: rect.top + rect.height / 2 + offset,
-    });
+    const middle = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
     if (isProposalIntent(intent)) {
+      const center = screenToFlowPosition(middle);
       try {
         // Sized as `occupiedRects` describes, from the document and the
         // canvas's measurements together.
@@ -2785,6 +2781,9 @@ function CanvasSpaceInner({
         // The camera follows what landed: centred on it, zoomed out only as
         // far as it takes to show all of it (inner#1443 A4).
         if (placed.bounds) {
+          // A Space opened empty and never framed still has its opening fit
+          // queued for the first nodes to arrive; this framing is that one.
+          rfStoreApi.setState({ fitViewQueued: false });
           const zoom = rfStoreApi.getState().transform[2];
           void setViewport(frameProposal(placed.bounds, { width: rect.width, height: rect.height }, zoom), {
             duration: PROPOSAL_FRAME_MS,
@@ -2802,7 +2801,9 @@ function CanvasSpaceInner({
         reportProposalOutcome('failed');
       }
     } else {
-      createNode(intent, center);
+      const offset = (staggerRef.current % STAGGER_WRAP) * STAGGER_STEP_PX;
+      staggerRef.current += 1;
+      createNode(intent, screenToFlowPosition({ x: middle.x + offset, y: middle.y + offset }));
     }
     consumePendingNodeCreate();
   }, [

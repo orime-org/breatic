@@ -35,7 +35,11 @@ const WIDE_WORDS = 'WWWW '.repeat(60);
 /** How far above the proposal's top edge the blocker's estimated bottom ends. */
 const ESTIMATE_CLEARANCE = 58;
 
-/** How far off the pane's middle a framed centre may land, in screen pixels. */
+/**
+ * How far off the pane's middle a framed centre may land, in flow units: the
+ * camera frames the rect the layout planned, and a node draws a pixel of
+ * border past it on each side.
+ */
 const CENTRE_TOLERANCE = 1.5;
 
 test.use({ viewport: { width: 1500, height: 900 } });
@@ -185,18 +189,19 @@ async function addText(p: Page, id: string, words: string): Promise<void> {
  * Check that the camera ended on `target`: centred in the pane, all of it in view.
  * @param pane - The canvas pane.
  * @param target - What landed.
+ * @param zoom - The zoom the view came to rest at.
  */
-async function expectFramed(pane: Locator, target: Locator): Promise<void> {
+async function expectFramed(pane: Locator, target: Locator, zoom: number): Promise<void> {
   const paneBox = (await pane.boundingBox())!;
   const box = (await target.boundingBox())!;
   expect(
     Math.abs(box.x + box.width / 2 - (paneBox.x + paneBox.width / 2)),
     'centred across',
-  ).toBeLessThanOrEqual(CENTRE_TOLERANCE);
+  ).toBeLessThanOrEqual(CENTRE_TOLERANCE * zoom);
   expect(
     Math.abs(box.y + box.height / 2 - (paneBox.y + paneBox.height / 2)),
     'centred down',
-  ).toBeLessThanOrEqual(CENTRE_TOLERANCE);
+  ).toBeLessThanOrEqual(CENTRE_TOLERANCE * zoom);
   expect(box.x, 'left edge in view').toBeGreaterThanOrEqual(paneBox.x);
   expect(box.y, 'top edge in view').toBeGreaterThanOrEqual(paneBox.y);
   expect(box.x + box.width, 'right edge in view').toBeLessThanOrEqual(paneBox.x + paneBox.width);
@@ -257,9 +262,14 @@ test('lands to the right of a node drawn over its spot, and the camera follows a
 
   await answerWithProposal(page, ONE);
   await useTheProposal(page);
+  // The camera has to travel past the note, so 400ms in it is still moving.
+  await page.waitForTimeout(400);
+  const midway = await viewTransform(page);
   const placed = visibleSpace(page).locator('.react-flow__node:not([data-id="blocker"])');
   await expect(placed).toHaveCount(1, { timeout: 20_000 });
   const after = await settledView(page);
+  expect(midway, 'still on its way 400ms in').not.toBe(await viewTransform(page));
+  expect(midway, 'already on its way 400ms in').not.toBe(viewBefore);
 
   const placedBox = (await placed.boundingBox())!;
   const blockerBox = (await blocker.boundingBox())!;
@@ -271,7 +281,7 @@ test('lands to the right of a node drawn over its spot, and the camera follows a
   expect(clear, `placed ${JSON.stringify(placedBox)} clear of ${JSON.stringify(blockerBox)}`).toBe(true);
   expect(placedBox.x, 'moved to the right of the note').toBeGreaterThanOrEqual(blockerBox.x + blockerBox.width);
   expect(after.zoom, 'one node fits, so the zoom stays the reader’s').toBe(before.zoom);
-  await expectFramed(pane, placed);
+  await expectFramed(pane, placed, after.zoom);
 });
 
 test('zooms out just far enough to show a group that does not fit at the reader’s zoom', async () => {
@@ -292,7 +302,7 @@ test('zooms out just far enough to show a group that does not fit at the reader�
   const after = await settledView(page);
 
   expect(after.zoom, 'zoomed out to fit').toBeLessThan(2);
-  await expectFramed(pane, group);
+  await expectFramed(pane, group, after.zoom);
 });
 
 test('shows a proposal kept in an older shape as expired, with nothing to press', async () => {
@@ -318,5 +328,46 @@ test('shows a proposal kept in an older shape as expired, with nothing to press'
   await expect(page.getByTestId('proposal-expired')).toHaveCount(1, { timeout: 20_000 });
   await expect(page.getByTestId('proposal-card')).toHaveCount(0);
   await expect(page.getByTestId('proposal-use')).toHaveCount(0);
+});
+
+test('on a Space opened empty, keeps the reader\u2019s zoom and slides there', async () => {
+  const pane = visibleSpace(page).locator('.react-flow__pane');
+  await expect(pane).toBeVisible({ timeout: 20_000 });
+  // Nothing on the canvas yet, so its opening fit is still waiting for the
+  // first nodes; the reader zooms in before any arrive.
+  await page.getByTestId('zoom-readout-trigger').click();
+  await page.getByTestId('zoom-preset-200').click();
+  await expect.poll(async () => (await settledView(page)).zoom).toBe(2);
+
+  await answerWithProposal(page, ONE);
+  await useTheProposal(page);
+  const placed = visibleSpace(page).locator('.react-flow__node');
+  await expect(placed).toHaveCount(1, { timeout: 20_000 });
+  const after = await settledView(page);
+
+  expect(after.zoom, 'one node fits, so the zoom stays the reader\u2019s').toBe(2);
+  await expectFramed(pane, placed, after.zoom);
+});
+
+test('lands a second press of the same card in the same row, to the right', async () => {
+  const pane = visibleSpace(page).locator('.react-flow__pane');
+  await expect(pane).toBeVisible({ timeout: 20_000 });
+  await answerWithProposal(page, ONE);
+  await useTheProposal(page);
+  const nodes = visibleSpace(page).locator('.react-flow__node');
+  await expect(nodes).toHaveCount(1, { timeout: 20_000 });
+  await settledView(page);
+  await page.getByTestId('proposal-card').last().getByTestId('proposal-use').click();
+  await expect(nodes).toHaveCount(2, { timeout: 20_000 });
+  await settledView(page);
+
+  const [first, second] = await nodes.evaluateAll((els) =>
+    els.map((el) => {
+      const m = /translate\((-?[\d.]+)px, (-?[\d.]+)px\)/.exec((el as HTMLElement).style.transform);
+      return { x: Number(m?.[1]), y: Number(m?.[2]) };
+    }),
+  );
+  expect(second!.y, 'same row').toBe(first!.y);
+  expect(second!.x, 'to the right').toBeGreaterThan(first!.x);
 });
 

@@ -62,9 +62,7 @@ function proposalOf(output: unknown): CanvasProposal | 'expired' | null {
   if (output === null || output === undefined) return null;
   if ((output as Record<string, unknown>)['placed'] !== true) return null;
   const parsed = canvasProposalSchema.safeParse(output);
-  if (!parsed.success) return 'expired';
-  const { groupName, ...rest } = parsed.data;
-  return { ...rest, modelNote: rest.modelNote ?? '', ...(groupName ? { groupName } : {}) };
+  return parsed.success ? parsed.data : 'expired';
 }
 
 /**
