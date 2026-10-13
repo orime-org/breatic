@@ -35,10 +35,10 @@ import { toUiMessages } from "@server/modules/conversation/message-part-mapping.
 import type { UIMessageChunk } from "ai";
 import { runWithContext, logger, getAgentConfig, ValidationError } from "@breatic/core";
 import { attachmentSection, messageLength, referenceCount, t } from "@breatic/shared";
-import type { ChatAttachedChip } from "@breatic/shared";
+import type { ChatAttachedChip, ChatSpaceContext } from "@breatic/shared";
 
 /**
- * Refuse a message whose words or attachments are past their limits.
+ * Refuse a message whose words, attachments or Spaces are past their limits.
  *
  * Two limits, measured apart: the words on what the user typed, the
  * attachments on the section the model is sent them in. A long question does
@@ -48,14 +48,29 @@ import type { ChatAttachedChip } from "@breatic/shared";
  * Refused rather than trimmed. A silently shortened question leaves the
  * reader unable to see what went missing, reading an answer to something they
  * did not ask.
+ *
+ * The Spaces are cut to their limits by the browser, so only a client that
+ * skipped that reaches these two.
  * @param message - What the user typed.
  * @param chips - What the user attached.
+ * @param space - The project's Spaces and the one the reader has open.
  * @throws {AppError} With 422 when the words, the number of references, the
- *   number of attached items or the attachments' length is over its limit.
+ *   number of attached items, the attachments' length, the open Space's
+ *   content or the number of Spaces listed is over its limit.
  */
-function assertSayable(message: string, chips: readonly ChatAttachedChip[]): void {
-  const { user_message_max_chars, user_message_max_references, attachment_max_chars, attachment_max_items } =
-    getAgentConfig();
+function assertSayable(
+  message: string,
+  chips: readonly ChatAttachedChip[],
+  space: ChatSpaceContext,
+): void {
+  const {
+    user_message_max_chars,
+    user_message_max_references,
+    attachment_max_chars,
+    attachment_max_items,
+    current_space_max_chars,
+    space_list_max_items,
+  } = getAgentConfig();
   // Measured the way the box shows it: a reference is the one block the
   // reader sees, not the longer marker it is written as.
   const said = messageLength(chips, message);
@@ -82,6 +97,16 @@ function assertSayable(message: string, chips: readonly ChatAttachedChip[]): voi
   if (attached > attachment_max_chars) {
     throw new ValidationError(
       t("server.chat.attachments_too_long", { limit: attachment_max_chars, actual: attached }),
+    );
+  }
+  const listed = space.spaces?.length ?? 0;
+  if (listed > space_list_max_items) {
+    throw new ValidationError(t("server.chat.spaces_too_many", { limit: space_list_max_items, actual: listed }));
+  }
+  const content = space.current_space?.state === "loaded" ? space.current_space.content.length : 0;
+  if (content > current_space_max_chars) {
+    throw new ValidationError(
+      t("server.chat.current_space_too_long", { limit: current_space_max_chars, actual: content }),
     );
   }
 }
@@ -235,7 +260,7 @@ chat.post("/message", validate("json", chatMessageSchema), async (c) => {
     body.project_id,
   );
 
-  assertSayable(body.message, body.attached_chips);
+  assertSayable(body.message, body.attached_chips, body);
 
   // A turn needs a balance above zero to start (#296). Payments off: no check.
   await precheckCredits(body.project_id, user.id, SMALLEST_CREDIT);
@@ -243,7 +268,8 @@ chat.post("/message", validate("json", chatMessageSchema), async (c) => {
   return streamTurn(
     c,
     { userId: user.id, conversationId: conversation.id, projectId: body.project_id },
-    (signal) => new MainAgent().chat(body.message, signal, body.attached_chips, body.time_zone),
+    (signal) =>
+      new MainAgent().chat(body.message, signal, body.attached_chips, body.time_zone, body),
   );
 });
 
@@ -458,10 +484,11 @@ chat.delete(
 
 /**
  * `GET /chat/stream-config` — the chat knobs a browser needs, from
- * `config/agent.yaml`: how often a stream says it is alive, and how long the
- * attachments on one message may be and how many there may be. The browser
- * checks attachments against those before sending, so it measures against
- * the same limits the server enforces.
+ * `config/agent.yaml`: how often a stream says it is alive, how long the
+ * attachments on one message may be and how many there may be, and how much
+ * of the reader's Spaces one message may carry. The browser checks
+ * attachments against those before sending and cuts the Spaces to them, so it
+ * measures against the same limits the server enforces.
  *
  * How often this server says a stream is alive is the same fact as how long a
  * browser waits before deciding it is not, so it has one home and the browser
@@ -484,6 +511,8 @@ chat.get("/stream-config", (c) => {
       heartbeatIntervalMs: config.sse_heartbeat_interval_ms,
       attachmentMaxChars: config.attachment_max_chars,
       attachmentMaxItems: config.attachment_max_items,
+      currentSpaceMaxChars: config.current_space_max_chars,
+      spaceListMaxItems: config.space_list_max_items,
     },
   });
 });

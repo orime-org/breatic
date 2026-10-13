@@ -34,7 +34,6 @@ export interface RunBody {
   input: string;
   outputs: { url: string; key: string; coverUrl?: string }[];
   reportUrl: string;
-  toolTimeoutMs: number;
 }
 
 /** The most a cover frame may weigh. */
@@ -44,14 +43,14 @@ const COVER_MAX_BYTES = 10 * 1024 * 1024;
  * Run one tool to completion.
  * @param program - `ffmpeg` or `ffprobe`.
  * @param args - Its arguments.
- * @param timeoutMs - How long it may run; 0 leaves it to the job's deadline.
  * @param maxBytes - The most stdout may hold.
  * @returns What it wrote to stdout.
- * @throws {Error} When it fails, times out or writes too much.
+ * @throws {Error} When it fails or writes too much. It has no time of its own:
+ *   the job's deadline ends the container (inner#1367).
  */
-function runTool(program: string, args: string[], timeoutMs: number, maxBytes = 4 * 1024 * 1024): Promise<Buffer> {
+function runTool(program: string, args: string[], maxBytes = 4 * 1024 * 1024): Promise<Buffer> {
   return new Promise((resolve, reject) => {
-    execFile(program, args, { encoding: "buffer", maxBuffer: maxBytes, timeout: timeoutMs }, (error, stdout, stderr) => {
+    execFile(program, args, { encoding: "buffer", maxBuffer: maxBytes }, (error, stdout, stderr) => {
       if (error !== null) {
         reject(new Error(`${program} failed: ${error.message} ${stderr.toString("utf8").slice(0, 2000)}`));
         return;
@@ -125,7 +124,7 @@ export async function runJob(job: RunBody): Promise<void> {
     };
     const input = join(dir, "source");
     await download(job.input, input).catch(ours);
-    const source = readProbeOutput((await runTool("ffprobe", probeArgs(input, "own-file"), job.toolTimeoutMs)).toString("utf8"));
+    const source = readProbeOutput((await runTool("ffprobe", probeArgs(input, "own-file"))).toString("utf8"));
     const refused = inputRefusal(job.op, source);
     if (refused !== null) {
       reason = refused;
@@ -136,9 +135,9 @@ export async function runJob(job: RunBody): Promise<void> {
       // An operation runs as long as its job's deadline allows; the Durable
       // Object destroys the container when that passes.
       for (const args of opRuns(job.op, job.params, input, file, dir, source)) {
-        await runTool("ffmpeg", args, 0);
+        await runTool("ffmpeg", args);
       }
-      const probed = await runTool("ffprobe", probeArgs(file, "own-file"), job.toolTimeoutMs).catch(() => null);
+      const probed = await runTool("ffprobe", probeArgs(file, "own-file")).catch(() => null);
       const report = probed === null ? NOTHING_FOUND : readProbeOutput(probed.toString("utf8"));
       const empty = outputRefusal(report);
       if (empty !== null) {
@@ -149,7 +148,7 @@ export async function runJob(job: RunBody): Promise<void> {
       const numbers = pickMediaMetadata(report);
       let cover: { width: number | null; height: number | null } | null = null;
       if (output.coverUrl !== undefined && numbers.width !== null) {
-        const frame = await runTool("ffmpeg", coverArgs(file, "own-file"), job.toolTimeoutMs, COVER_MAX_BYTES).catch(() => null);
+        const frame = await runTool("ffmpeg", coverArgs(file, "own-file"), COVER_MAX_BYTES).catch(() => null);
         if (frame !== null && frame.length > 0) {
           const coverFile = join(dir, "cover.png");
           await writeFile(coverFile, frame);

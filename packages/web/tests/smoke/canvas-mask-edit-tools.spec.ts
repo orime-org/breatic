@@ -19,18 +19,19 @@ import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { test, expect, type Locator, type Page } from 'playwright/test';
+import { expect, type Locator, type Page } from 'playwright/test';
+import { test } from '../helpers/slot';
 
 import { CANVAS_SPACE, liveModuleUrl } from '../helpers/live-module';
 import { openTool, seedNode, setNodeContent, zoomBy } from '../helpers/mini-tool';
 import { openSmokeProject, smokeProjectId } from '../helpers/project';
 import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
+import { dropFile, hueOf, storedPicture, uniquePicture } from '../helpers/upload';
 
 /** A public JPEG served with CORS, 400×300. */
 const IMAGE = 'https://picsum.photos/id/237/400/300.jpg';
 
-/** A phone photo stored 768×1024 with EXIF orientation 6, upright 1024×768; served by a route below. */
-const EXIF_PHOTO = 'https://exif-fixture.test/photo.jpg';
+/** A phone photo stored 768×1024 with EXIF orientation 6, upright 1024×768. */
 const EXIF_BYTES = readFileSync(join(__dirname, '../fixtures/exif6.jpg'));
 
 let page: Page;
@@ -90,9 +91,6 @@ async function inkAcrossMiddle(node: Locator): Promise<{ thickness: number; bitm
 
 test.beforeEach(async ({ browser }) => {
   page = await browser.newPage({ viewport: { width: 1680, height: 950 } });
-  await page.route(`${EXIF_PHOTO}**`, (route) =>
-    route.fulfill({ body: EXIF_BYTES, contentType: 'image/jpeg', headers: { 'access-control-allow-origin': '*' } }),
-  );
   await openSmokeProject(page);
   projectId = smokeProjectId();
   spaceId = await createSpace(page, 'canvas', `mask-tools-e2e-${Date.now()}`);
@@ -105,6 +103,33 @@ test.beforeEach(async ({ browser }) => {
   });
   await expect(nodeOf(imageNode).getByTestId('image-node-img')).toBeVisible({ timeout: 20_000 });
 });
+
+/**
+ * Drop a phone photo on the canvas through the real upload, and wait for the
+ * node it lands on.
+ * @param bytes - The photo's bytes.
+ * @param file - Its name and type.
+ * @returns The new node, its picture's URL and whether the ticket found it stored already.
+ */
+async function dropPhoto(
+  bytes: Buffer,
+  file: { name: string; type: string } = { name: 'photo.jpg', type: 'image/jpeg' },
+): Promise<{ id: string; src: string; alreadyExists: boolean }> {
+  const before = await visibleSpace(page).locator('.react-flow__node').evaluateAll((els) => els.map((el) => el.getAttribute('data-id')));
+  const ticket = page.waitForResponse((r) => r.url().includes('/assets/upload-ticket') && r.request().method() === 'POST');
+  await dropFile(page, file.name, file.type, bytes);
+  const answered = (await (await ticket).json()) as { data: { alreadyExists?: boolean } };
+  const made = visibleSpace(page).locator(`.react-flow__node${before.map((id) => `:not([data-id="${id}"])`).join('')}`);
+  await expect(made).toHaveCount(1, { timeout: 30_000 });
+  const img = made.getByTestId('image-node-img');
+  await expect(img).toHaveAttribute('src', /^https?:\/\//, { timeout: 120_000 });
+  return {
+    id: (await made.getAttribute('data-id'))!,
+    // The node may show the stored picture's preview; the original sits beside it.
+    src: (await img.getAttribute('src'))!.replace(/\.preview\.webp$/, ''),
+    alreadyExists: answered.data.alreadyExists === true,
+  };
+}
 
 test.afterEach(async () => {
   if (spaceId !== '') await deleteSpace(page, spaceId);
@@ -233,10 +258,48 @@ test('the brush ring matches the stroke at 0.5, 1 and 2 times, and zooming in sh
   }
 });
 
+// inner#1367: a phone photo is stored upright beside the file as received,
+// and the same file dropped again is found by the ticket before a byte moves.
+test('a phone photo is stored upright beside the file as received, and dropping it again uploads nothing @needs-ingest @needs-storage', async () => {
+  const bytes = uniquePicture(EXIF_BYTES);
+  const first = await dropPhoto(bytes);
+  expect(first.alreadyExists).toBe(false);
+  expect(first.src).toMatch(/_upright\.[a-z]+$/);
+  const stored = await storedPicture(page, first.src);
+  // Received 768×1024 with orientation 6; the copy is the turned pixels, untagged.
+  expect([stored.orientation, stored.width, stored.height]).toEqual([1, 1024, 768]);
+  // The file as received stays at the key without the marker, byte for byte.
+  const received = await page.request.get(first.src.replace('_upright', ''));
+  expect(received.ok()).toBe(true);
+  expect(Buffer.compare(await received.body(), bytes)).toBe(0);
+
+  const again = await dropPhoto(bytes);
+  expect(again.alreadyExists).toBe(true);
+  expect(again.src).toBe(first.src);
+});
+
+// inner#1367: a PNG (eXIf chunk) and a WebP (EXIF chunk) tagged to turn are
+// stored upright, and the node shows them portrait, red above blue.
+for (const format of ['png', 'webp'] as const) {
+  test(`a ${format} photo tagged to turn is stored upright and shown portrait @needs-ingest @needs-storage`, async () => {
+    const picture = uniquePicture(readFileSync(join(__dirname, `../fixtures/exif6-red-top.${format}`)));
+    const photo = await dropPhoto(picture, { name: `photo.${format}`, type: `image/${format}` });
+    expect(photo.src).toMatch(/_upright\.[a-z]+$/);
+    const stored = await storedPicture(page, photo.src);
+    expect([stored.orientation, stored.width, stored.height]).toEqual([1, 768, 1024]);
+    expect([hueOf(stored.top), hueOf(stored.bottom)]).toEqual(['red', 'blue']);
+    const box = await nodeOf(photo.id).getByTestId('image-node-img').boundingBox();
+    expect(box !== null && box.height > box.width).toBe(true);
+  });
+}
+
 // §6.4: the painter and the export, pixel by pixel, on the live modules.
-test('the export is the upright source with a mask of only 0 and 255, and a wiped drawing has no ink @needs-internet', async () => {
-  await openTool(page, imageNode, 'image.inpaint');
-  await expect(nodeOf(imageNode).getByTestId('mini-tool-draw-layer')).toBeVisible({ timeout: 15_000 });
+test('a mask tool exports only a mask of 0 and 255 at the stored picture\'s size, and a wiped drawing has no ink @needs-internet @needs-ingest', async () => {
+  const photo = await dropPhoto(uniquePicture(EXIF_BYTES));
+  const stored = await storedPicture(page, photo.src);
+  // The dropped photo lands over the seeded node, so the tool opens on it.
+  await openTool(page, photo.id, 'image.inpaint');
+  await expect(nodeOf(photo.id).getByTestId('mini-tool-draw-layer')).toBeVisible({ timeout: 15_000 });
   // The resource timeline keeps only the first modules loaded; these two sit
   // beside the canvas module on the same dev server.
   const canvasAt = new URL(await liveModuleUrl(page, CANVAS_SPACE));
@@ -244,7 +307,7 @@ test('the export is the upright source with a mask of only 0 and 255, and a wipe
   const paintAt = `${root}spaces/canvas/mini-tool/paint-drawing.ts`;
   const exportAt = `${root}spaces/canvas/mini-tool/export-drawing.ts`;
   const found = await page.evaluate(
-    async ([paintUrl, exportUrl, image, photo]) => {
+    async ([paintUrl, exportUrl, image, photoUrl]) => {
       const paint = (await import(/* @vite-ignore */ paintUrl)) as typeof import('../../src/spaces/canvas/mini-tool/paint-drawing');
       const exporter = (await import(/* @vite-ignore */ exportUrl)) as typeof import('../../src/spaces/canvas/mini-tool/export-drawing');
       const stroke = { kind: 'stroke', erase: false, size: 10, color: '#FF3B30', points: [[0.2, 0.5], [0.8, 0.5]] } as const;
@@ -266,7 +329,7 @@ test('the export is the upright source with a mask of only 0 and 255, and a wipe
         return { w: bitmap.width, h: bitmap.height, values: [...values].sort((a, b) => a - b) };
       };
       const mask = await exporter.exportDrawing(image, 'mask', [stroke, rect]);
-      const upright = await exporter.exportDrawing(photo, 'mask', [stroke]);
+      const onPhoto = await exporter.exportDrawing(photoUrl, 'mask', [stroke]);
       const sketch = await exporter.exportDrawing(image, 'sketch', [rect]);
       let empty = '';
       try {
@@ -279,24 +342,23 @@ test('the export is the upright source with a mask of only 0 and 255, and a wipe
         wiped: paint.hasInk([stroke, wipe], 'mask', 4 / 3),
         // The same path erased leaves only an anti-aliased rim below half cover.
         retraced: paint.hasInk([stroke, { ...stroke, erase: true }], 'mask', 4 / 3),
-        maskSource: await read(mask.image),
-        mask: await read(mask.mask!),
-        uprightSource: await read(upright.image),
-        uprightMask: await read(upright.mask!),
-        sketch: { ...(await read(sketch.image)), hasMask: sketch.mask !== undefined },
+        maskSendsPicture: 'image' in mask,
+        mask: 'mask' in mask ? await read(mask.mask) : null,
+        photoMask: 'mask' in onPhoto ? await read(onPhoto.mask) : null,
+        sketch: 'image' in sketch ? { ...(await read(sketch.image)), hasMask: 'mask' in sketch } : null,
         empty,
       };
     },
-    [paintAt, exportAt, IMAGE, EXIF_PHOTO] as const,
+    [paintAt, exportAt, IMAGE, photo.src] as const,
   );
   expect(found.inked).toBe(true);
   expect(found.wiped).toBe(false);
   expect(found.retraced).toBe(false);
-  expect([found.maskSource.w, found.maskSource.h]).toEqual([400, 300]);
-  expect([found.mask.w, found.mask.h, found.mask.values]).toEqual([400, 300, [0, 255]]);
-  expect([found.uprightSource.w, found.uprightSource.h]).toEqual([1024, 768]);
-  expect([found.uprightMask.w, found.uprightMask.h]).toEqual([1024, 768]);
-  expect([found.sketch.w, found.sketch.h, found.sketch.hasMask]).toEqual([400, 300, false]);
+  expect(found.maskSendsPicture).toBe(false);
+  expect(found.mask && [found.mask.w, found.mask.h, found.mask.values]).toEqual([400, 300, [0, 255]]);
+  // The mask is drawn over the picture as shown, which is the stored picture.
+  expect(found.photoMask && [found.photoMask.w, found.photoMask.h]).toEqual([stored.width, stored.height]);
+  expect(found.sketch && [found.sketch.w, found.sketch.h, found.sketch.hasMask]).toEqual([400, 300, false]);
   expect(found.empty).toBe('DrawingEmptyError');
 });
 
@@ -433,12 +495,16 @@ async function runOn(nodeId: string, toolId: string, prompt?: string, seeded: st
 test.describe('real runs @needs-internet @billed', () => {
   test.setTimeout(420_000);
 
-  test('inpaint fills a new node', async () => {
-    await expect(await runOn(imageNode, 'image.inpaint', 'a red ball')).toContainText('INPAINT-SEED');
+  // Both mask tools send the node's own stored picture, so their runs start
+  // from a picture this run uploaded: one turned upright on ingest.
+  test('inpaint fills a new node from an uploaded phone photo', async () => {
+    const photo = await dropPhoto(uniquePicture(EXIF_BYTES));
+    await expect(await runOn(photo.id, 'image.inpaint', 'a red ball', [imageNode, photo.id])).toContainText('INPAINT-');
   });
 
-  test('erase fills a new node', async () => {
-    await expect(await runOn(imageNode, 'image.erase')).toContainText('ERASE-SEED');
+  test('erase fills a new node from an uploaded phone photo', async () => {
+    const photo = await dropPhoto(uniquePicture(EXIF_BYTES));
+    await expect(await runOn(photo.id, 'image.erase', undefined, [imageNode, photo.id])).toContainText('ERASE-');
   });
 
   test('sketch edit fills a new node', async () => {
@@ -446,16 +512,5 @@ test.describe('real runs @needs-internet @billed', () => {
       'SKETCH-SEED',
     );
   });
-
-  for (const [toolId, prompt] of [
-    ['image.erase', undefined],
-    ['image.inpaint', 'a red ball'],
-  ] as const) {
-    test(`${toolId} runs on a phone photo with an EXIF turn`, async () => {
-      const photo = randomUUID();
-      await seedNode(page, { projectId, spaceId }, photo, 'image', -350, { content: EXIF_PHOTO, mimeType: 'image/jpeg' });
-      await expect(await runOn(photo, toolId, prompt, [imageNode, photo])).toContainText('-SEED');
-    });
-  }
 });
 

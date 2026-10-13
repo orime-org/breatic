@@ -481,12 +481,12 @@ describe('useFollowColumn', () => {
       });
 
       // Something above shrinks; the browser compensates by pulling the column
-      // up, and the end comes closer by the same amount.
+      // up, and the end comes closer by the same amount. The scroll event for
+      // that pull is dispatched before the next frame's callbacks, so no step
+      // of the journey runs between the shrink and it.
       geometry.scrollHeight -= 300;
       await act(async () => {
         resize.fire();
-      });
-      await act(async () => {
         readerScrollsTo(geometry, screen.getByTestId('viewport'), geometry.scrollTop - 300);
       });
 
@@ -524,8 +524,11 @@ describe('useFollowColumn', () => {
         await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
       });
 
+      // Further down from wherever the journey has got to: a slow first frame
+      // can carry it past any fixed point, and a push to that point would then
+      // be a push back up.
       await act(async () => {
-        readerScrollsTo(geometry, screen.getByTestId('viewport'), 1500);
+        readerScrollsTo(geometry, screen.getByTestId('viewport'), geometry.scrollTop + 100);
       });
 
       let frames = 0;

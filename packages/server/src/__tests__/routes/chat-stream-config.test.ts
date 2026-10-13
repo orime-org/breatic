@@ -31,6 +31,8 @@ vi.mock("@breatic/core", async (importOriginal) => {
       sse_heartbeat_interval_ms: 7000,
       attachment_max_chars: 123456,
       attachment_max_items: 7,
+      current_space_max_chars: 4321,
+      space_list_max_items: 12,
     }),
   };
 });
@@ -76,7 +78,9 @@ describe("GET /chat/stream-config", () => {
     expect(Object.keys(data).sort()).toEqual([
       "attachmentMaxChars",
       "attachmentMaxItems",
+      "currentSpaceMaxChars",
       "heartbeatIntervalMs",
+      "spaceListMaxItems",
     ]);
   });
 
@@ -85,5 +89,12 @@ describe("GET /chat/stream-config", () => {
 
     expect(data.attachmentMaxChars).toBe(123456);
     expect(data.attachmentMaxItems).toBe(7);
+  });
+
+  it("answers the Space limits from config, which the browser cuts to before sending", async () => {
+    const { data } = await askForStreamConfig();
+
+    expect(data.currentSpaceMaxChars).toBe(4321);
+    expect(data.spaceListMaxItems).toBe(12);
   });
 });

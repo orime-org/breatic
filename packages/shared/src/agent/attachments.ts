@@ -43,7 +43,7 @@ export function chipOfPart(part: { type: string }): ChatAttachedChip | undefined
  * @param chip - The item.
  * @returns The heading.
  */
-function titleOf(chip: ChatAttachedChip): string {
+export function attachmentTitle(chip: ChatAttachedChip): string {
   if (chip.name) return chip.name;
   const nodes = chip.data_snapshot.nodes;
   return Array.isArray(nodes) ? `${chip.type}, ${nodes.length} nodes` : chip.type;
@@ -179,20 +179,8 @@ export function attachmentSection(chips: readonly ChatAttachedChip[]): string {
   const items = chips
     .map(
       (c, i) =>
-        `### Attachment ${String(i + 1)}: ${titleOf(c)} (type: ${c.type})\n${JSON.stringify(c.data_snapshot, null, 2)}`,
+        `### Attachment ${String(i + 1)}: ${attachmentTitle(c)} (type: ${c.type})\n${JSON.stringify(c.data_snapshot, null, 2)}`,
     )
     .join("\n\n");
   return `## Attached content (a snapshot taken when it was attached)\n\n${items}`;
-}
-
-/**
- * One user message as the model is sent it: the attachments, then the words.
- * @param chips - What the user attached to the message.
- * @param message - What the user typed.
- * @returns The typed words alone when nothing is attached.
- */
-export function userTurnForModel(chips: readonly ChatAttachedChip[], message: string): string {
-  if (chips.length === 0) return message;
-  const words = writeReferences(chips, message, (chip, n) => `[Attachment ${String(n)}: ${titleOf(chip)}]`);
-  return `${attachmentSection(chips)}\n\n## User message\n\n${words}`;
 }

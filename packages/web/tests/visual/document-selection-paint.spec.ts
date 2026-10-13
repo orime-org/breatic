@@ -26,14 +26,11 @@
  * Needs dev running plus a smoke account:
  *   pnpm --filter @breatic/web test:visual
  */
-import { test, expect, type Page } from 'playwright/test';
+import { expect, type Page } from 'playwright/test';
+import { test } from '../helpers/slot';
 
-import { STATE_FILE, openSmokeProject } from '../helpers/project';
+import { openSmokeProject } from '../helpers/project';
 import { createSpace, deleteSpace, DOCUMENT_EDITOR, VISIBLE_SPACE } from '../helpers/space';
-
-// Not serial: each case makes its own Space and shares nothing but the login,
-// and serial would stop reporting at the first red one.
-test.describe.configure({ mode: 'default' });
 
 const MOD = process.platform === 'darwin' ? 'Meta' : 'Control';
 
@@ -321,7 +318,6 @@ test('a selection a co-editor also holds looks the same with the panel open', as
   );
 
   const peer = await browser.newContext({
-    storageState: STATE_FILE.A,
     viewport: { width: 1680, height: 950 },
   });
   try {

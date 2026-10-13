@@ -142,12 +142,14 @@ function unavailableFailure(err: MediaUnavailable): Error {
  *
  * Naming the address would send the model to blame a url that was fine, and
  * the endpoint has no business in a conversation.
+ * @param cause - What was caught.
  * @returns The sentence for the model, and the line a reader is shown.
  */
-function serviceSilent(): Error {
+function serviceSilent(cause: unknown): Error {
   return toolFailed(
     "The media understanding service did not answer. Tell the user to try again shortly.",
     FAILURE_LINES.upstream,
+    cause,
   );
 }
 
@@ -197,7 +199,7 @@ function refusedFailure(err: UnderstandRefused): Error {
         FAILURE_LINES.upstream,
       );
     case "transient":
-      return serviceSilent();
+      return serviceSilent(err);
   }
 }
 
@@ -317,7 +319,7 @@ export function makeUnderstandMediaTool(): Tool<z.infer<typeof inputSchema>, str
         if (err instanceof MediaUnavailable) throw unavailableFailure(err);
         if (err instanceof UnderstandRefused) throw refusedFailure(err);
         // Our own request failing outright, before any answer to judge.
-        throw serviceSilent();
+        throw serviceSilent(err);
       } finally {
         running = false;
       }

@@ -8,8 +8,7 @@
       "upload_too_large": "ファイルがアップロードサイズの上限を超えています。",
       "insufficient_credits": "クレジット不足：必要 {required}、残高 {available}",
       "rate_limited": "リクエストが多すぎます。しばらくしてから再試行してください",
-      "internal": "内部サーバーエラー",
-      "upload_empty": "アップロードされた内容がありません。"
+      "internal": "内部サーバーエラー"
     },
     "credit": {
       "not_studio_admin": "クレジットを割り当てられるのは、自分が管理する Studio だけです。",
@@ -161,6 +160,8 @@
       "message_too_long": "このメッセージは長すぎます。最大 {limit, number} 文字までですが、これは {actual, number} 文字あります。",
       "attachments_too_long": "添付した内容が長すぎます。最大 {limit, number} 文字までですが、これは {actual, number} 文字あります。",
       "attachments_too_many": "添付が多すぎます。最大 {limit, number} 件までですが、これは {actual, number} 件あります。",
+      "current_space_too_long": "開いている Space の内容が長すぎます。最大 {limit, number} 文字までですが、これは {actual, number} 文字あります。",
+      "spaces_too_many": "一覧の Space が多すぎます。最大 {limit, number} 件までですが、これは {actual, number} 件あります。",
       "references_too_many": "添付の参照が多すぎます。1 件のメッセージにつき最大 {limit, number} 回までです。このメッセージには {actual, number} 回あります。"
     },
     "mail": {
@@ -244,6 +245,10 @@
       "sending": "送信中",
       "atLimit": "{limit, number} 文字の上限に達しました",
       "attach": "ファイルを添付",
+      "spaceContextOn": "Agent はこの Space を読み取ります · クリックでオフ",
+      "spaceContextOff": "Agent はこの Space を読み取りません · クリックでオン",
+      "spaceContextOnUnreadable": "Agent はこの Space が開いていることを知っていますが、内容は読み取れません · クリックでオフ",
+      "spaceContextOffUnreadable": "Agent はこの Space が開いていることを知りません · クリックでオン",
       "removeAttachment": "{name} を外す",
       "attachmentUploading": "アップロード中",
       "attachmentFailed": "{reason, select, upload {アップロード失敗} rate_limited {アップロードが多すぎます。後でお試しください} extract {読み取り失敗} too_long {長すぎます} other {失敗}}",
@@ -252,6 +257,7 @@
       "attachUnsupported": "{filename} は添付できません",
       "attachTooLarge": "{filename} は大きすぎて添付できません",
       "attachUnavailable": "今は添付できません。もう一度お試しください。",
+      "sendUnavailable": "今は送信できません。もう一度お試しください。",
       "atEmpty": "参照できる添付はありません"
     },
     "empty": {
@@ -810,7 +816,6 @@
         "view": "表示"
       },
       "elapsed": "実行時間 {duration}",
-      "remaining": "残り {duration}",
       "startedAt": "{when} 開始",
       "endedAt": "{when} 終了",
       "lateResult": "時間切れのあとに完了しました。",
@@ -828,7 +833,7 @@
         "expired": "時間切れになりました。",
         "no_result": "この実行は何も生成しませんでした。",
         "source_unreachable": "このアドレスを開けませんでした。",
-        "source_too_slow": "このアドレスの取得が時間切れになりました。",
+        "source_cut_off": "このアドレスからの送信がファイルの途中で止まりました。",
         "unsupported_type": "{kind, select, image {対応していない形式です。画像は {formats} に対応しています。} video {対応していない形式です。動画は {formats} に対応しています。} audio {対応していない形式です。音声は {formats} に対応しています。} other {対応していない形式です。}}",
         "empty": "何も取得できませんでした。",
         "internal": "こちら側で問題が起きました。",
@@ -838,10 +843,10 @@
         "tool_failed": "ツールでこのファイルを処理できませんでした。",
         "no_audio_track": "この動画には音声トラックがありません。"
       },
-      "title": {
-        "upload": "アップロード · {name}",
-        "generate": "生成 · {name}",
-        "understand": "内容を読み取る · {name}"
+      "kind": {
+        "upload": "アップロード",
+        "generate": "生成",
+        "understand": "内容を読み取る"
       }
     },
     "panel": {
@@ -1174,6 +1179,7 @@
       },
       "error": {
         "create": "Space の作成に失敗しました",
+        "restore": "Space の復元に失敗しました",
         "unreachable": "サーバーから応答がありません。接続を確認して再試行してください",
         "notSynced": "Project を同期中です。しばらくしてから再試行してください"
       },
@@ -1777,7 +1783,7 @@
         "saveFailed": "変更を保存できませんでした。",
         "bioCount": "{count}/{max}",
         "avatarUpload": "画像をアップロード",
-        "avatarHint": "正方形の画像が最適です。一般的な画像形式に対応、20 MB まで。",
+        "avatarHint": "正方形の画像が最適です。PNG と JPEG に対応、20 MB まで。",
         "avatarRemove": "削除",
         "avatarRemoveTitle": "このアバターを削除しますか？",
         "avatarRemoveBody": "Studio はイニシャル表示に戻ります。いつでも新しい画像をアップロードできます。",
@@ -1861,7 +1867,7 @@
         "too_many_pixels": "その画像は大きすぎます。各辺 8000 ピクセル未満のものをお試しください。",
         "not_an_image": "そのファイルは画像として読み取れませんでした。",
         "encode_failed": "画像を準備できませんでした。別の画像をお試しください。",
-        "unsupported_type": "このファイル形式には対応していません。",
+        "unsupported_type": "対応していない形式です。PNG または JPEG を使ってください。",
         "hash_unavailable": "このファイルを検証できませんでした。ページを再読み込みしてからもう一度お試しください。",
         "rate_limited": "アップロードの回数が多すぎます。しばらくしてからもう一度お試しください。"
       },

@@ -50,7 +50,7 @@ export interface MediaBlockProps {
   readonly caption: string;
   /** Image and video only. */
   readonly previewWidth?: number;
-  /** Image and video only: the pixel size read off the file as it was added. */
+  /** Image and video only: the pixel size the server read off the stored file (its upright copy for a picture with an EXIF orientation). */
   readonly mediaWidth?: number;
   readonly mediaHeight?: number;
   /** Image and video only. */
@@ -528,7 +528,7 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
               testId='doc-media-delete'
               // The red every delete row in the body uses (block and table
               // menus), kept on hover.
-              className='text-status-error-foreground hover:text-status-error-foreground'
+              className='text-status-error-foreground hover-enabled:text-status-error-foreground'
               onPress={actions.remove}
             >
               <Trash2 />

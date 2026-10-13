@@ -143,6 +143,34 @@ describe('ImageCropDialog — closing while an upload is in flight', () => {
   });
 });
 
+describe('ImageCropDialog — the confirm button while uploading', () => {
+  it('is busy with the uploading label while the upload is out, and not once it answers', () => {
+    const props = {
+      variant: 'avatar' as const,
+      file: pickedFile(),
+      onCancel: vi.fn(),
+      onConfirm: vi.fn(),
+    };
+    const { rerender } = render(
+      <ImageCropDialog {...props} uploading={true} error={null} />,
+    );
+    const confirm = screen.getByTestId('image-crop-confirm');
+    expect(confirm).toHaveAttribute('aria-busy', 'true');
+    expect(confirm).toHaveAttribute('aria-disabled', 'true');
+    expect(confirm).toHaveTextContent('studio.container.settings.avatarUploading');
+
+    // A failed upload leaves the dialog open with the error.
+    rerender(<ImageCropDialog {...props} uploading={false} error='upload exploded' />);
+    expect(confirm).not.toHaveAttribute('aria-busy');
+
+    rerender(<ImageCropDialog {...props} uploading={true} error={null} />);
+    expect(confirm).toHaveAttribute('aria-busy', 'true');
+    // A finished one.
+    rerender(<ImageCropDialog {...props} uploading={false} error={null} />);
+    expect(confirm).not.toHaveAttribute('aria-busy');
+  });
+});
+
 describe('ImageCropDialog — upload failure', () => {
   it('keeps the dialog open and shows why, so the crop is not lost', () => {
     render(

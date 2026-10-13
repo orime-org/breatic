@@ -165,6 +165,29 @@ describe("a machine reporting a fact", () => {
     expect((await readRow(taskId))?.status).toBe("failed");
   });
 
+  // Whoever reports the failure — the browser, a crashed job's cleanup — a
+  // task that ended at or past its deadline ended there (inner#1367).
+  it("settles a failure reported past the row's deadline as expired", async () => {
+    const { taskId } = await openTask();
+    await sql`UPDATE node_tasks SET started_at = now() - interval '11 minutes' WHERE id = ${taskId}`;
+
+    const settled = await nodeTaskService.settle({ taskId, outcome: "failed", errorMessage: "transfer" });
+
+    expect(settled.applied).toBe(true);
+    const rows = await sql<{ status: string; error_message: string | null }[]>`
+      SELECT status, error_message FROM node_tasks WHERE id = ${taskId}
+    `;
+    expect(rows[0]).toEqual({ status: "expired", error_message: "expired" });
+  });
+
+  it("keeps a failure reported inside the row's deadline failed", async () => {
+    const { taskId } = await openTask();
+
+    await nodeTaskService.settle({ taskId, outcome: "failed", errorMessage: "transfer" });
+
+    expect((await readRow(taskId))?.status).toBe("failed");
+  });
+
   it("fills the history id on an expired row — the bytes really landed", async () => {
     const { taskId } = await openTask();
     await nodeTaskService.settle({ taskId, outcome: "expired" });

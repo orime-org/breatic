@@ -14,17 +14,17 @@
 
 import { env, getMiniToolsConfig, logger } from "@breatic/core";
 import {
-  assetService,
   containerCostUsd,
   createUsageRecorder,
   creditsForUsd,
   ingestReportService,
-  nodeTaskService,
   openContainerOutputs,
   upstreamStepRepo,
 } from "@breatic/domain";
 import {
   readMiniToolJob,
+  assertBeforeDeadline,
+  untilDeadlineIfAhead,
   submitMiniToolJob,
   UploadHttpError,
   type ContainerUsage,
@@ -70,6 +70,8 @@ export interface ContainerRunInput {
   projectId: string;
   params: Record<string, unknown>;
   sourceKey: string;
+  /** When the task runs out: the job is opened with it. */
+  deadlineAt: number;
 }
 
 /**
@@ -96,7 +98,7 @@ function storedJob(output: Record<string, unknown>): StoredJob | null {
  * @param input - The run.
  * @returns The step's id and the job.
  * @throws {ContainerJobFailed} When an earlier attempt already failed the step.
- * @throws {Error} When the task opened no row on the canvas.
+ * @throws {Error} When the task has no container step.
  */
 async function jobFor(spec: MiniToolSpec, op: ContainerOp, input: ContainerRunInput): Promise<{ stepId: string; job: StoredJob }> {
   const plan = getMiniToolsConfig().ops[op];
@@ -110,8 +112,7 @@ async function jobFor(spec: MiniToolSpec, op: ContainerOp, input: ContainerRunIn
   }
   const held = storedJob(step.output);
   if (held) return { stepId: step.id, job: held };
-  const deadlineAt = await nodeTaskService.deadlineFor(input.taskId);
-  if (deadlineAt === null) throw new Error(`task ${input.taskId} has no task row to run against`);
+  const { deadlineAt } = input;
   const job: StoredJob = {
     jobId: `task:${input.taskId}`,
     containerClass: plan.container_class,
@@ -135,11 +136,22 @@ async function jobFor(spec: MiniToolSpec, op: ContainerOp, input: ContainerRunIn
  * @param job - The job.
  * @returns The report of a job that ended.
  * @throws {StillRunning} When the job is still going.
- * @throws {ContainerJobFailed} When the deadline has passed with the job still going.
+ * @throws {DeadlinePassed} When the deadline has passed with the job still going.
  */
 async function checkJob(op: ContainerOp, input: ContainerRunInput, job: StoredJob): Promise<EndedReport> {
   const { poll_interval_ms: poll } = getMiniToolsConfig();
-  let report = await readMiniToolJob(env.INGEST_BASE_URL, env.INGEST_SHARED_SECRET, job.containerClass, job.jobId);
+  // The job's own deadline and the room for its last report bound every call
+  // (inner#1367). Past it, the read that finds the ending still goes out, under
+  // the transport's own bound.
+  const endsAt = job.deadlineAt + poll * 2;
+  const bound = untilDeadlineIfAhead(endsAt);
+  let report = await readMiniToolJob(
+    env.INGEST_BASE_URL,
+    env.INGEST_SHARED_SECRET,
+    job.containerClass,
+    job.jobId,
+    bound,
+  );
   if (report === null) {
     try {
       report = await submitMiniToolJob(env.INGEST_BASE_URL, env.INGEST_SHARED_SECRET, {
@@ -150,8 +162,7 @@ async function checkJob(op: ContainerOp, input: ContainerRunInput, job: StoredJo
         params: input.params,
         input: { storageKey: input.sourceKey },
         outputs: job.outputs,
-        limits: assetService.mediaLimits(),
-      });
+      }, bound);
     } catch (err) {
       // The container could not start; the next pickup submits again.
       if (!(err instanceof UploadHttpError && err.status === 503)) throw err;
@@ -159,8 +170,10 @@ async function checkJob(op: ContainerOp, input: ContainerRunInput, job: StoredJo
     }
   }
   if (report?.state === "done" || report?.state === "failed") return report;
-  // The Durable Object ends the job at its deadline; two polls leave room for its report to land.
-  if (Date.now() >= job.deadlineAt + poll * 2) throw new ContainerJobFailed("tool_failed");
+  // The Durable Object ends the job at its deadline; two polls leave room for
+  // its report to land. A job still going after that ran out of time, which
+  // settles as expired like any other task (inner#1367).
+  assertBeforeDeadline(endsAt);
   throw new StillRunning(Date.now() + poll);
 }
 
@@ -207,7 +220,8 @@ async function recordUsage(input: ContainerRunInput, op: ContainerOp, containerC
  * @param input - The run.
  * @returns The stored outputs, in output order, and the credits to charge.
  * @throws {StillRunning} When the job is still going.
- * @throws {ContainerJobFailed} When the job failed or ran out of time, or an output was refused.
+ * @throws {ContainerJobFailed} When the job failed or an output was refused.
+ * @throws {DeadlinePassed} When the deadline and the grace for its last report have passed with the job still going.
  */
 export async function runContainerJob(
   spec: MiniToolSpec,

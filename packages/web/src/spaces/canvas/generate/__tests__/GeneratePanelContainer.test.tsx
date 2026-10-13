@@ -155,7 +155,8 @@ function containerTree(
                 graph?.nodes ?? [
                   {
                     id: 'target',
-                    data: { kind: 'image', handling: false },
+                    type: 'image',
+                    data: { handling: false },
                   },
                 ]
               }
@@ -285,7 +286,7 @@ describe('GeneratePanelContainer — catalog failure gate', () => {
           <GeneratePanelContainer
             projectId='p'
             spaceId='s'
-            nodes={[{ id: 'target', data: { kind: 'image', handling: false, mode } }]}
+            nodes={[{ id: 'target', type: 'image', data: { handling: false, mode } }]}
             edges={[]}
             getLastWriteWasLocal={author}
           />
@@ -471,7 +472,7 @@ describe('GeneratePanelContainer — catalog failure gate', () => {
             <GeneratePanelContainer
               projectId='p'
               spaceId='s'
-              nodes={[{ id: 'target', data: { kind: 'image', handling: false, mode: 't2i', model } }]}
+              nodes={[{ id: 'target', type: 'image', data: { handling: false, mode: 't2i', model } }]}
               edges={[]}
               getLastWriteWasLocal={LAST_WRITE_LOCAL}
             />
@@ -524,7 +525,8 @@ describe('GeneratePanelContainer — catalog failure gate', () => {
               nodes={[
                 {
                   id: 'target',
-                  data: { kind: 'image', handling: false, mode: 't2i', model: 'styled', styleImageUrls: ['a', 'b', 'c'] },
+                  type: 'image',
+                  data: { handling: false, mode: 't2i', model: 'styled', styleImageUrls: ['a', 'b', 'c'] },
                 },
               ]}
               edges={[]}
@@ -568,11 +570,11 @@ describe('GeneratePanelContainer — body subscription set', () => {
     });
     mountContainer({
       nodes: [
-        { id: 'target', data: { kind: 'image', handling: false } },
-        { id: 'wired-a', data: { kind: 'text', handling: false } },
-        { id: 'wired-b', data: { kind: 'text', handling: false } },
-        { id: 'stray', data: { kind: 'text', handling: false } },
-        { id: 'other', data: { kind: 'image', handling: false } },
+        { id: 'target', type: 'image', data: { handling: false } },
+        { id: 'wired-a', type: 'text', data: { handling: false } },
+        { id: 'wired-b', type: 'text', data: { handling: false } },
+        { id: 'stray', type: 'text', data: { handling: false } },
+        { id: 'other', type: 'image', data: { handling: false } },
       ],
       edges: [
         { id: 'e1', source: 'wired-a', target: 'target' },
@@ -818,8 +820,8 @@ describe('GeneratePanelContainer — 提交路径读模型的提示词声明 (#1
     seedImageNode();
     mountContainer({
       nodes: [
-        { id: 'target', data: { kind: 'image', handling: false } },
-        { id: 'src', data: { kind: 'text', handling: false } },
+        { id: 'target', type: 'image', data: { handling: false } },
+        { id: 'src', type: 'text', data: { handling: false } },
       ],
       edges: [{ id: 'e1', source: 'src', target: 'target' }],
     });
@@ -844,8 +846,8 @@ describe('GeneratePanelContainer — 提交路径读模型的提示词声明 (#1
     seedImageNode();
     mountContainer({
       nodes: [
-        { id: 'target', data: { kind: 'image', handling: false } },
-        { id: 'src', data: { kind: 'text', handling: false } },
+        { id: 'target', type: 'image', data: { handling: false } },
+        { id: 'src', type: 'text', data: { handling: false } },
       ],
       edges: [{ id: 'e1', source: 'src', target: 'target' }],
     });
@@ -1199,9 +1201,90 @@ describe('GeneratePanelContainer — 点不动的时候说清缺什么 (#1949)',
     });
     fireEvent.click(btn);
     await waitFor(() => {
-      expect((btn as HTMLButtonElement).disabled).toBe(true);
+      expect(btn).toHaveAttribute('aria-busy', 'true');
     });
-    expect(screen.getByTestId('generate-execute-pending')).toBeInTheDocument();
+    expect(btn).toHaveAttribute('aria-disabled', 'true');
+    listSpy.mockRestore();
+    createSpy.mockRestore();
+  });
+
+  it('stops waiting once a refused submit is answered', async () => {
+    const listSpy = vi
+      .spyOn(modelsApi, 'list')
+      .mockResolvedValue(imageCatalog());
+    let refuse: ((reason: unknown) => void) | undefined;
+    const createSpy = vi
+      .spyOn(canvasApi, 'createTask')
+      .mockImplementation(
+        () =>
+          new Promise((_resolve, reject) => {
+            refuse = reject;
+          }) as ReturnType<typeof canvasApi.createTask>,
+      );
+    seedImageNode();
+    seedPromptText('a line');
+    mountContainer();
+    act(() => {
+      canvasSessions.of('s').getState().openGeneratePanel('target', 'image');
+    });
+    const btn = await screen.findByTestId('generate-execute');
+    await waitFor(() => {
+      expect((btn as HTMLButtonElement).disabled).toBe(false);
+    });
+    fireEvent.click(btn);
+    await waitFor(() => {
+      expect(btn).toHaveAttribute('aria-busy', 'true');
+    });
+    await act(async () => {
+      refuse?.(new Error('refused'));
+      await Promise.resolve();
+    });
+    await waitFor(() => {
+      expect(btn).not.toHaveAttribute('aria-busy');
+    });
+    expect(btn).not.toHaveAttribute('aria-disabled');
+    // The refusal's error toast is this case's own; later cases count them.
+    vi.mocked(toast.error).mockClear();
+    listSpy.mockRestore();
+    createSpy.mockRestore();
+  });
+
+  it('closes the panel, spinner and all, once an accepted submit is answered', async () => {
+    const listSpy = vi
+      .spyOn(modelsApi, 'list')
+      .mockResolvedValue(imageCatalog());
+    let accept: (() => void) | undefined;
+    const createSpy = vi
+      .spyOn(canvasApi, 'createTask')
+      .mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            accept = () => resolve({ id: 'task-1' } as Awaited<
+              ReturnType<typeof canvasApi.createTask>
+            >);
+          }) as ReturnType<typeof canvasApi.createTask>,
+      );
+    seedImageNode();
+    seedPromptText('a line');
+    mountContainer();
+    act(() => {
+      canvasSessions.of('s').getState().openGeneratePanel('target', 'image');
+    });
+    const btn = await screen.findByTestId('generate-execute');
+    await waitFor(() => {
+      expect((btn as HTMLButtonElement).disabled).toBe(false);
+    });
+    fireEvent.click(btn);
+    await waitFor(() => {
+      expect(btn).toHaveAttribute('aria-busy', 'true');
+    });
+    await act(async () => {
+      accept?.();
+      await Promise.resolve();
+    });
+    await waitFor(() => {
+      expect(screen.queryByTestId('generate-execute')).toBeNull();
+    });
     listSpy.mockRestore();
     createSpy.mockRestore();
   });
@@ -1233,15 +1316,15 @@ describe('GeneratePanelContainer — 点不动的时候说清缺什么 (#1949)',
     });
     fireEvent.click(btn);
     await waitFor(() => {
-      expect((btn as HTMLButtonElement).disabled).toBe(true);
+      expect(btn).toHaveAttribute('aria-busy', 'true');
     });
     // 请求还在飞的时候清空提示词。
     const fragment = getPromptFragment('p', 's', 'target', storedMode());
     act(() => {
       fragment?.delete(0, fragment.length);
     });
-    expect((btn as HTMLButtonElement).disabled).toBe(true);
-    expect(screen.getByTestId('generate-execute-pending')).toBeInTheDocument();
+    expect(btn).toHaveAttribute('aria-busy', 'true');
+    expect(btn).toHaveAttribute('aria-disabled', 'true');
     listSpy.mockRestore();
     createSpy.mockRestore();
   });
@@ -1363,7 +1446,7 @@ describe('这个部署服务不了的档 (#1951)', () => {
     // 这条用例就测不到「存了不可用档」这件事（实现对抗第 2 轮咬出）。
     seedImageNode({ mode: 'i2i' });
     mountContainer({
-      nodes: [{ id: 'target', data: { kind: 'image', handling: false, mode: 'i2i' } }],
+      nodes: [{ id: 'target', type: 'image', data: { handling: false, mode: 'i2i' } }],
     });
     act(() => {
       canvasSessions.of('s').getState().openGeneratePanel('target', 'image');
@@ -1437,8 +1520,8 @@ describe('GeneratePanelContainer — what the @ list says when it has nothing to
     const nothingUsable = await emptyStateText(
       {
         nodes: [
-          { id: 'target', data: { kind: 'image', handling: false } },
-          { id: 'src', data: { kind: 'image', handling: false } },
+          { id: 'target', type: 'image', data: { handling: false } },
+          { id: 'src', type: 'image', data: { handling: false } },
         ],
         edges: [{ id: 'e1', source: 'src', target: 'target' }],
       },
@@ -1452,8 +1535,8 @@ describe('GeneratePanelContainer — what the @ list says when it has nothing to
     const nothingMatched = await emptyStateText(
       {
         nodes: [
-          { id: 'target', data: { kind: 'image', handling: false } },
-          { id: 'src', data: { kind: 'text', handling: false } },
+          { id: 'target', type: 'image', data: { handling: false } },
+          { id: 'src', type: 'text', data: { handling: false } },
         ],
         edges: [{ id: 'e1', source: 'src', target: 'target' }],
       },
@@ -1532,8 +1615,8 @@ describe('GeneratePanelContainer — picking a template (inner#977)', () => {
     addEdge('p', 's', { id: 'e1', source: 'src', target: 'target' });
     mountContainer({
       nodes: [
-        { id: 'target', data: { kind: 'image', handling: false } },
-        { id: 'src', data: { kind: 'image', handling: false } },
+        { id: 'target', type: 'image', data: { handling: false } },
+        { id: 'src', type: 'image', data: { handling: false } },
       ],
       edges: [{ id: 'e1', source: 'src', target: 'target' }],
     });

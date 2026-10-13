@@ -53,8 +53,6 @@ describe("resolveActiveProvider (#1960)", () => {
     deployWith({ WAVESPEED_API_KEY: "ws-key" });
     const resolved = resolveActiveProvider("tts", "elevenlabs-v3");
     expect(resolved.baseUrl).toBe("https://api.wavespeed.ai/api/v3");
-    expect(typeof resolved.timeout).toBe("number");
-    expect(resolved.timeout).toBeGreaterThan(0);
   });
 
   it("hands back the model config and the provider entry, not just names", () => {

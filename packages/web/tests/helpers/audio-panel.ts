@@ -17,7 +17,8 @@
  * shared opening makes the first red take every case after it down with it,
  * which reports cases as never run instead of saying what broke.
  */
-import { expect, test, type Page } from 'playwright/test';
+import { expect, type Page } from 'playwright/test';
+import { test } from './slot';
 
 import { CANVAS_SPACE, liveModuleUrl } from './live-module';
 import { openSmokeProject } from './project';

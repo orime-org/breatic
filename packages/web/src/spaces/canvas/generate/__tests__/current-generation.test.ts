@@ -87,28 +87,28 @@ function noVoice(): undefined {
 
 describe('what a node would run right now', () => {
   it('falls back to the first served mode and model when nothing is stored', () => {
-    const now = currentGeneration('video', { kind: 'video', handling: false } as never, catalog, noVoice);
+    const now = currentGeneration('video', { handling: false }, catalog, noVoice);
     expect(now).toMatchObject({ mode: 't2v', model: 'kling', params: { duration: 5 } });
   });
 
   it('leaves out a param declared for another mode, as the run does', () => {
-    const content = { kind: 'video', handling: false, model: 'kling', paramsByModel: { kling: { duration: 3, auto_shots: true } } };
-    const inT2v = currentGeneration('video', { ...content, mode: 't2v' } as never, catalog, noVoice);
+    const content = { handling: false, model: 'kling', paramsByModel: { kling: { duration: 3, auto_shots: true } } };
+    const inT2v = currentGeneration('video', { ...content, mode: 't2v' }, catalog, noVoice);
     expect(inT2v?.params).toMatchObject({ duration: 3, auto_shots: true });
-    const inMultiShot = currentGeneration('video', { ...content, mode: 'multi_shot' } as never, catalog, noVoice);
+    const inMultiShot = currentGeneration('video', { ...content, mode: 'multi_shot' }, catalog, noVoice);
     expect(inMultiShot).toMatchObject({ mode: 'multi_shot', model: 'kling', params: { duration: 3 } });
     expect(inMultiShot?.params).not.toHaveProperty('auto_shots');
   });
 
   it('sends the first listed voice when nobody picked one, as the audio panel does', () => {
-    const now = currentGeneration('audio', { kind: 'audio', handling: false, mode: 'tts' } as never, catalog, () => ({ id: 'first' }));
+    const now = currentGeneration('audio', { handling: false, mode: 'tts' }, catalog, () => ({ id: 'first' }));
     expect(now).toMatchObject({ mode: 'tts', model: 'speech', params: { voice_id: 'first' } });
   });
 
   it('keeps the voice the reader picked', () => {
     const now = currentGeneration(
       'audio',
-      { kind: 'audio', handling: false, mode: 'tts', model: 'speech', paramsByModel: { speech: { voice_id: 'mine' } } } as never,
+      { handling: false, mode: 'tts', model: 'speech', paramsByModel: { speech: { voice_id: 'mine' } } },
       catalog,
       () => ({ id: 'first' }),
     );
@@ -119,9 +119,9 @@ describe('what a node would run right now', () => {
     const now = currentGeneration(
       'audio',
       {
-        kind: 'audio', handling: false, mode: 'tts', model: 'dialogue',
+        handling: false, mode: 'tts', model: 'dialogue',
         paramsByModel: { dialogue: { voice_id: 'Puck', speakers: TWO, _stand_in_on: true } },
-      } as never,
+      },
       catalog,
       noVoice,
     );
@@ -134,9 +134,9 @@ describe('what a node would run right now', () => {
     const now = currentGeneration(
       'audio',
       {
-        kind: 'audio', handling: false, mode: 'tts', model: 'dialogue',
+        handling: false, mode: 'tts', model: 'dialogue',
         paramsByModel: { dialogue: { voice_id: 'Puck', speakers: TWO } },
-      } as never,
+      },
       catalog,
       noVoice,
     );
@@ -147,7 +147,7 @@ describe('what a node would run right now', () => {
   it('sends the style images a video model takes, up to its cap (inner#828)', () => {
     const now = currentGeneration(
       'video',
-      { kind: 'video', handling: false, mode: 't2v', model: 'seedance', styleImageUrls: ['s1', 's2', 's3', 's4'] } as never,
+      { handling: false, mode: 't2v', model: 'seedance', styleImageUrls: ['s1', 's2', 's3', 's4'] },
       catalog,
       noVoice,
     );
@@ -157,7 +157,7 @@ describe('what a node would run right now', () => {
   it('sends the style images an image model takes (inner#826)', () => {
     const now = currentGeneration(
       'image',
-      { kind: 'image', handling: false, mode: 't2i', model: 'krea', styleImageUrls: ['s1'] } as never,
+      { handling: false, mode: 't2i', model: 'krea', styleImageUrls: ['s1'] },
       catalog,
       noVoice,
     );
@@ -167,7 +167,7 @@ describe('what a node would run right now', () => {
   it('sends no style images on a model without the slot, though the node keeps them', () => {
     const now = currentGeneration(
       'video',
-      { kind: 'video', handling: false, mode: 't2v', model: 'minimax', styleImageUrls: ['s1'] } as never,
+      { handling: false, mode: 't2v', model: 'minimax', styleImageUrls: ['s1'] },
       catalog,
       noVoice,
     );
@@ -175,6 +175,6 @@ describe('what a node would run right now', () => {
   });
 
   it('is null without a catalog', () => {
-    expect(currentGeneration('video', { kind: 'video', handling: false } as never, undefined, noVoice)).toBeNull();
+    expect(currentGeneration('video', { handling: false }, undefined, noVoice)).toBeNull();
   });
 });

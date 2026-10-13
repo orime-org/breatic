@@ -34,6 +34,7 @@ const core = (await import("../packages/core/dist/index.js")) as {
   initCore: (env: NodeJS.ProcessEnv) => void;
   env: { INGEST_BASE_URL: string; INGEST_SHARED_SECRET: string };
   rawPg: (s: TemplateStringsArray, ...v: unknown[]) => Promise<unknown[]>;
+  budgetDeadlineFrom: (startedAt: number) => number;
 };
 core.initCore(process.env);
 const shared = (await import("../packages/shared/dist/index.js")) as {
@@ -41,11 +42,8 @@ const shared = (await import("../packages/shared/dist/index.js")) as {
   readStoredMediaAtIngest: (
     url: string,
     secret: string,
-    about: { storageKey: string; contentType: string; limits: unknown; wantPreview: boolean },
+    about: { storageKey: string; contentType: string; deadlineAt: number; wantPreview: boolean },
   ) => Promise<{ width: number | null; height: number | null; preview?: string }>;
-};
-const domain = (await import("../packages/domain/dist/index.js")) as {
-  assetService: { mediaLimits: () => unknown };
 };
 
 /** One image row: the oldest live row for each stored key. */
@@ -68,7 +66,7 @@ const rows = (await core.rawPg`
 `) as ImageRow[];
 console.log(`${rows.length} stored images`);
 
-const limits = domain.assetService.mediaLimits();
+// Each read is its own task: two hours from when it starts (inner#1367).
 const counts = new Map<string, number>(
   [...shared.PREVIEW_OUTCOMES, "missing"].map((outcome) => [outcome, 0]),
 );
@@ -85,7 +83,7 @@ async function work(): Promise<void> {
       .readStoredMediaAtIngest(core.env.INGEST_BASE_URL, core.env.INGEST_SHARED_SECRET, {
         storageKey: row.storage_key,
         contentType: row.mime_type,
-        limits,
+        deadlineAt: core.budgetDeadlineFrom(Date.now()),
         wantPreview: true,
       })
       .catch((err: unknown) => {

@@ -19,6 +19,7 @@ import {
 
 import { GENERATION_SOURCES } from "@shared/types/project-activity.js";
 import { SpaceTypeSchema } from "@shared/types/space.js";
+import { SPACE_NAME_MAX_LEN } from "@shared/types/space-rpc.js";
 
 // ── Auth ─────────────────────────────────────────────────────────────
 
@@ -187,6 +188,66 @@ export const chatAttachedChipSchema = z.object({
 });
 export type ChatAttachedChip = z.infer<typeof chatAttachedChipSchema>;
 
+/** One of the project's Spaces, as the agent is told about it (inner#1413). */
+const chatSpaceSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().max(SPACE_NAME_MAX_LEN),
+  kind: SpaceTypeSchema,
+});
+
+/** A count of things sent or left out. */
+const count = z.number().int().nonnegative();
+
+/**
+ * What was done to fit an open canvas into the limit, each counted in what
+ * was sent. A canvas that fits whole has every reduction at zero.
+ */
+const chatCanvasDetailSchema = z
+  .object({
+    /** Nodes the reader has selected; a selected group counts its members. */
+    selected_total: count,
+    /** Selected nodes sent with the rest because an attachment holds them unchanged. */
+    selected_attached: count,
+    /** The other selected nodes that went whole. */
+    selected_whole: count,
+    /** Whether any node went as a slim entry; a group's slim entry is its name only. */
+    slim: z.boolean(),
+    /** How many texts end with the cut marker. */
+    texts_cut: count,
+    /** Nodes that are not groups and show only their id, type, name and group. */
+    names_only: count,
+    edges_not_listed: count,
+    /** Nodes that are not groups and are left out. */
+    nodes_not_listed: count,
+    groups_not_listed: count,
+  })
+  .refine((d) => d.selected_attached + d.selected_whole <= d.selected_total, {
+    message: "selected_attached + selected_whole exceeds selected_total",
+  });
+
+const chatLoadedSpaceSchema = chatSpaceSchema
+  .extend({
+    state: z.literal("loaded"),
+    content: z.string(),
+    total_chars: count,
+    detail: chatCanvasDetailSchema.optional(),
+  })
+  .refine((s) => (s.kind === "canvas") === (s.detail !== undefined), {
+    message: "a loaded canvas carries detail and nothing else does",
+    path: ["detail"],
+  });
+
+/**
+ * The Space the reader has open, as the browser read it at the press. The
+ * content is already cut to the limit; the server checks that limit, since
+ * it lives in config this package cannot read.
+ */
+const chatCurrentSpaceSchema = z.discriminatedUnion("state", [
+  chatLoadedSpaceSchema,
+  chatSpaceSchema.extend({ state: z.literal("loading") }),
+  chatSpaceSchema.extend({ state: z.literal("unreadable") }),
+]);
+
 export const chatMessageSchema = z.object({
   message: z.string().min(1),
   project_id: z.string().uuid(),
@@ -202,8 +263,8 @@ export const chatMessageSchema = z.object({
   /**
    * The items in the composer's tray when the message was sent: files
    * picked with the attach button and pieces of the canvas added to the
-   * agent. Defaults to `[]` for callers with no tray. `userTurnForModel`
-   * puts them in front of the message, one section per item.
+   * agent. Defaults to `[]` for callers with no tray. The server puts them
+   * in front of the message, one section per item.
    */
   attached_chips: z.array(chatAttachedChipSchema).default([]),
   /**
@@ -219,8 +280,25 @@ export const chatMessageSchema = z.object({
    * credit purchase's `time_zone`.
    */
   time_zone: z.string().min(1).max(64).optional(),
+  /**
+   * The project's Spaces, newest first, cut to the list limit; `spaces_total`
+   * is how many there were before the cut. Sent on every turn.
+   */
+  spaces: z.array(chatSpaceSchema).optional(),
+  spaces_total: z.number().int().nonnegative().optional(),
+  /** The Space the reader has open, when the chip beside "+" is enabled. */
+  current_space: chatCurrentSpaceSchema.optional(),
 });
 export type ChatMessageInput = z.infer<typeof chatMessageSchema>;
+export type ChatSpace = z.infer<typeof chatSpaceSchema>;
+export type ChatCurrentSpace = z.infer<typeof chatCurrentSpaceSchema>;
+export type ChatCanvasDetail = z.infer<typeof chatCanvasDetailSchema>;
+/**
+ * The reader's Spaces as one message carries them (inner#1413): the project's
+ * Spaces, and the open one when the reader has it on. Read when they pressed
+ * send and never stored, so each message says what is there now.
+ */
+export type ChatSpaceContext = Pick<ChatMessageInput, "spaces" | "spaces_total" | "current_space">;
 
 // ── Canvas ───────────────────────────────────────────────────────────
 

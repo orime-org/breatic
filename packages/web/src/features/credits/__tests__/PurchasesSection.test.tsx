@@ -76,6 +76,27 @@ function row(over: Partial<PurchaseRow> = {}): PurchaseRow {
   };
 }
 
+/** The two ways a pending resend can end. */
+interface Settle {
+  resolve: (value: { sent: boolean }) => void;
+  reject: (reason: Error) => void;
+}
+
+/**
+ * Hold the next resend open until the test settles it.
+ * @returns The handles that settle it.
+ */
+function deferResend(): Settle {
+  const settle: Settle = { resolve: () => undefined, reject: () => undefined };
+  resendConfirmation.mockReturnValue(
+    new Promise<{ sent: boolean }>((resolve, reject) => {
+      settle.resolve = resolve;
+      settle.reject = reject;
+    }),
+  );
+  return settle;
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   history.mockResolvedValue({ items: [row()], nextCursor: null });
@@ -495,6 +516,56 @@ describe('sending the confirmation again', () => {
     await waitFor(() => {
       expect(screen.queryByTestId('resend-confirmation')).toBeNull();
     });
+  });
+
+  it('keeps the button waiting until the re-read row arrives (inner#1374)', async () => {
+    const user = userEvent.setup();
+    resendConfirmation.mockResolvedValue({ sent: true });
+    let landRefetch: (() => void) | null = null;
+    history
+      .mockResolvedValueOnce({ items: [row({ canResend: true })], nextCursor: null })
+      .mockReturnValue(
+        new Promise((resolve) => {
+          landRefetch = () => resolve({ items: [row({ canResend: false })], nextCursor: null });
+        }),
+      );
+    renderHistory();
+    const button = await screen.findByTestId('resend-confirmation');
+
+    await user.click(button);
+
+    await waitFor(() => expect(landRefetch).not.toBeNull());
+    expect(button).toHaveAttribute('aria-busy', 'true');
+    landRefetch!();
+    await waitFor(() => {
+      expect(screen.queryByTestId('resend-confirmation')).toBeNull();
+    });
+  });
+
+  it.each([
+    ['answers', (settle: Settle): void => settle.resolve({ sent: true })],
+    ['fails', (settle: Settle): void => settle.reject(new Error('offline'))],
+  ])('spins the button while the server works, and stops once it %s', async (_label, finish) => {
+    const user = userEvent.setup();
+    const settle = deferResend();
+    history.mockResolvedValue({
+      items: [row({ paymentId: 'b', canResend: true })],
+      nextCursor: null,
+    });
+    renderHistory();
+    const button = await screen.findByTestId('resend-confirmation');
+    await user.click(button);
+
+    await waitFor(() => {
+      expect(button).toHaveAttribute('aria-busy', 'true');
+    });
+    expect(button).toHaveAttribute('aria-disabled', 'true');
+
+    finish(settle);
+    await waitFor(() => {
+      expect(button).not.toHaveAttribute('aria-busy');
+    });
+    expect(button).not.toHaveAttribute('aria-disabled');
   });
 
   it('says so when the letter still did not go out', async () => {

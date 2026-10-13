@@ -49,7 +49,6 @@ import {
   sessionCookieName,
   loadLocales,
   coverKeyFor,
-  getStorageConfig,
 } from "@breatic/core";
 import {
   INGEST_FAILURE_HEADER,
@@ -276,21 +275,23 @@ describe("the url ingest job — what it asks the Worker for", () => {
     expect(payload.studioId).toBe(job.studioId);
   });
 
-  it("sends the container's windows and the budget for this whole call", async () => {
-    // Without the windows the Worker starts no run at all, so the node loses
-    // its resolution and every video its poster; without the budget the
-    // container spends what the transfer needed. Both travel on the body
-    // because the Worker reads no configuration of its own.
+  it("holds the transfer to the end of the row the route opened, and nothing shorter", async () => {
+    // The Worker reads no configuration of its own, so the deadline travels
+    // on the body; it is the task row's, the one the node is judged by
+    // (inner#1367).
     const job = await submitted();
     workerAnswers(landed());
 
     await run(job);
 
-    const { ingest } = getStorageConfig();
-    expect(asked.body).toMatchObject({
-      limits: assetService.mediaLimits(),
-      callBudgetMs: ingest.url_fetch_deadline_ms,
-    });
+    const rows = await sql<{ ends: string }[]>`
+      SELECT (floor(extract(epoch FROM started_at) * 1000) + budget_ms)::bigint AS ends
+      FROM node_tasks WHERE storage_key = ${job.storageKey}
+    `;
+    expect(asked.body.deadlineAt).toBe(Number(rows[0]!.ends));
+    expect(asked.body).not.toHaveProperty("callBudgetMs");
+    // What a tagged picture is turned upright under travels the same way.
+    expect(asked.body.limits).toEqual(assetService.mediaLimits());
   });
 
   it("names a place for a cover on every call, whatever the source turns out to be", async () => {
@@ -411,10 +412,8 @@ describe("the url ingest job — when it does not", () => {
     });
   });
 
-  it("says the source was too slow when nothing answered at all", async () => {
-    // Our own deadline fires before the platform's, so this is what a transfer
-    // that outran its window looks like from here — the one failure that
-    // brings back no answer to read a name off.
+  it("records a Worker that never answered as ingest_no_answer", async () => {
+    // No response at all: the Worker or the line to it went away, which is ours.
     const job = await submitted();
     workerAnswers(new Error("http request to https://ingest.example timed out"));
 
@@ -422,7 +421,7 @@ describe("the url ingest job — when it does not", () => {
 
     expect(await taskOn(job.nodeId)).toMatchObject({
       status: "failed",
-      error_message: "source_too_slow",
+      error_message: "ingest_no_answer",
     });
   });
 

@@ -16,7 +16,8 @@
  *
  *   pnpm --filter @breatic/web test:smoke
  */
-import { test, expect, type Page } from 'playwright/test';
+import { expect, type Page } from 'playwright/test';
+import { test } from '../helpers/slot';
 
 import { openGenerate, seedNode, registerCanvasStage } from '../helpers/audio-panel';
 import { visibleSpace } from '../helpers/space';

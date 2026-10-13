@@ -69,6 +69,13 @@ image_build_context = "../.."
 # (inner#1339). Not inherited either, so production carries its own copy.
 instance_type = "basic"
 max_instances = <how many may run at once; start at 5>
+# Written into a label on the image, so each copy of the repository on one
+# machine builds an image of its own. Copies that build identical images share
+# one image ID, and wrangler, after every build, removes each `cloudflare-dev`
+# tag on that ID other than its own: one copy's rebuild then deletes the tag
+# another copy's running Worker starts its containers from ("No such image
+# available"). Every `[[containers]]` block here carries the same value.
+image_vars = { DEV_COPY = "<a name for this copy, unique on this machine; its directory name will do>" }
 
 # A container is reached through a Durable Object, so the class is bound as one.
 [[durable_objects.bindings]]
@@ -96,6 +103,7 @@ image = "./Dockerfile"
 image_build_context = "../.."
 instance_type = "standard-1"
 max_instances = <how many standard-1 tool runs may run at once; start at 5>
+image_vars = { DEV_COPY = "<the same name as in the MediaContainer block>" }
 
 [[containers]]
 class_name = "MiniToolContainerStd4"
@@ -103,6 +111,7 @@ image = "./Dockerfile"
 image_build_context = "../.."
 instance_type = "standard-4"
 max_instances = <how many standard-4 tool runs may run at once; start at 2>
+image_vars = { DEV_COPY = "<the same name as in the MediaContainer block>" }
 
 [[durable_objects.bindings]]
 name = "MINI_TOOL_STD1"

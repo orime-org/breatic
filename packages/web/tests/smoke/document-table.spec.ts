@@ -14,7 +14,8 @@
  * Wants dev running:
  *   pnpm --filter @breatic/web test:smoke
  */
-import { test, expect, type Page } from 'playwright/test';
+import { expect, type Page } from 'playwright/test';
+import { test } from '../helpers/slot';
 
 import { openSmokeProject } from '../helpers/project';
 import { clickAndSettle, pressAndSettle } from '../helpers/editor-keys';

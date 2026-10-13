@@ -16,7 +16,9 @@
  * platform parses its own way — none of that survives being hand-written.
  *
  * The cost is wall-clock: cases that exercise a replay really do back off. They
- * are kept few and deliberate for that reason.
+ * are kept few and deliberate for that reason. Those waits are measured on
+ * `performance.now()`: `Date.now()` follows the system clock, which can be set
+ * back mid-wait.
  */
 
 import { createServer, type Server, type IncomingMessage, type ServerResponse } from "node:http";
@@ -216,7 +218,7 @@ describe("item 1 — send the request the caller asked for", () => {
     running = server;
     const { port } = server.address() as AddressInfo;
 
-    const started = Date.now();
+    const started = performance.now();
     const out = await httpRequest(
       `http://127.0.0.1:${port}/`,
       { method: "POST", body: payload },
@@ -226,7 +228,7 @@ describe("item 1 — send the request the caller asked for", () => {
     expect(out.status).toBe(200);
     expect(received).toBe(payload.byteLength);
     // The assertion that pins the defect: it took longer than the old figure.
-    expect(Date.now() - started).toBeGreaterThan(10_000);
+    expect(performance.now() - started).toBeGreaterThan(10_000);
   }, 120_000);
 
   it.each([
@@ -403,7 +405,7 @@ describe("how long one delivery may take", () => {
     // socket and answers nothing, a 500ms deadline must end the call in well
     // under the default.
     const stub = await stubServer([{ kind: "silent" }]);
-    const started = Date.now();
+    const started = performance.now();
 
     const thrown = await httpRequest(
       stub.url,
@@ -412,7 +414,7 @@ describe("how long one delivery may take", () => {
     ).catch((e: unknown) => e);
 
     expect(thrown).toBeInstanceOf(Error);
-    expect(Date.now() - started).toBeLessThan(5_000);
+    expect(performance.now() - started).toBeLessThan(5_000);
     expect(stub.hits()).toBe(1);
   }, 30_000);
 
@@ -465,14 +467,14 @@ describe("how long one delivery may take", () => {
     // assumed for this one. A caller sizing a deadline off a file would have
     // been refused outright.
     const stub = await stubServer([{ kind: "silent" }]);
-    const started = Date.now();
+    const started = performance.now();
 
     const thrown = await httpRequest(
       stub.url,
       {},
       { replaySafe: false, timeoutMs: 400.75 },
     ).catch((e: unknown) => e);
-    const elapsed = Date.now() - started;
+    const elapsed = performance.now() - started;
 
     // It reached the network and ran out of time there, rather than being
     // turned away at the boundary.
@@ -532,9 +534,9 @@ describe("item 3 — wait as long as the server said", () => {
       { kind: "status", status: 200 },
     ]);
 
-    const started = Date.now();
+    const started = performance.now();
     const out = await httpRequest(stub.url, {}, REPLAYABLE);
-    const elapsed = Date.now() - started;
+    const elapsed = performance.now() - started;
 
     expect(out.status).toBe(200);
     // Two seconds is well past the sub-second jitter the first replay would
@@ -552,11 +554,11 @@ describe("item 3 — wait as long as the server said", () => {
       { kind: "status", status: 200 },
     ]);
 
-    const started = Date.now();
+    const started = performance.now();
     const out = await httpRequest(stub.url, {}, REPLAYABLE);
 
     expect(out.status).toBe(200);
-    expect(Date.now() - started).toBeGreaterThanOrEqual(1_900);
+    expect(performance.now() - started).toBeGreaterThanOrEqual(1_900);
   }, 20_000);
 
   it("serves a wait named as a date, measured against the clock", async () => {
@@ -572,9 +574,9 @@ describe("item 3 — wait as long as the server said", () => {
       { kind: "status", status: 200 },
     ]);
 
-    const started = Date.now();
+    const started = performance.now();
     const out = await httpRequest(stub.url, {}, REPLAYABLE);
-    const elapsed = Date.now() - started;
+    const elapsed = performance.now() - started;
 
     expect(out.status).toBe(200);
     expect(stub.hits()).toBe(2);
@@ -595,11 +597,11 @@ describe("item 3 — wait as long as the server said", () => {
       { kind: "status", status: 200 },
     ]);
 
-    const started = Date.now();
+    const started = performance.now();
     const out = await httpRequest(stub.url, {}, REPLAYABLE);
 
     expect(out.status).toBe(200);
-    expect(Date.now() - started).toBeGreaterThanOrEqual(1_900);
+    expect(performance.now() - started).toBeGreaterThanOrEqual(1_900);
   }, 20_000);
 
   it("stops rather than serving a wait past the ceiling, handing the response back", async () => {

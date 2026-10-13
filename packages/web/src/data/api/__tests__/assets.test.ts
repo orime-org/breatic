@@ -8,9 +8,10 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 vi.mock('@web/data/api/request', () => ({
   apiGet: vi.fn(),
   apiPost: vi.fn(),
+  request: { get: vi.fn() },
 }));
 
-import { apiGet, apiPost } from '@web/data/api/request';
+import { apiGet, apiPost, request } from '@web/data/api/request';
 import { assetsApi } from '@web/data/api/assets';
 
 beforeEach(() => {
@@ -127,8 +128,7 @@ describe('assetsApi.fetchUploadConfig — session-cached knobs', () => {
       maxUploadBytes: 2147483648,
       clientMaxAttempts: 3,
       clientRetryBaseDelayMs: 1000,
-      clientRequestTimeoutMs: 30000,
-      clientPutMinBytesPerSec: 65536,
+      uploadIdleTimeoutMs: 60000,
     });
 
     const first = await assetsApi.fetchUploadConfig();
@@ -147,8 +147,7 @@ describe('assetsApi.fetchUploadConfig — session-cached knobs', () => {
       maxUploadBytes: 1,
       clientMaxAttempts: 3,
       clientRetryBaseDelayMs: 1000,
-      clientRequestTimeoutMs: 30000,
-      clientPutMinBytesPerSec: 65536,
+      uploadIdleTimeoutMs: 60000,
       assetUrlPrefix: 'https://cdn.example/',
     });
 
@@ -165,8 +164,7 @@ describe('assetsApi.fetchUploadConfig — session-cached knobs', () => {
         maxUploadBytes: 1,
         clientMaxAttempts: 3,
         clientRetryBaseDelayMs: 1000,
-        clientRequestTimeoutMs: 30000,
-        clientPutMinBytesPerSec: 65536,
+        uploadIdleTimeoutMs: 60000,
       });
 
     await expect(assetsApi.fetchUploadConfig()).rejects.toThrow('down');
@@ -194,3 +192,41 @@ describe('assetsApi.reportDeleted — batch chunking (adversarial round-4)', () 
   });
 });
 
+
+// inner#1367 §4.2a: the status query answers how each upload ended, and says
+// when to ask again in its Retry-After header.
+describe('assetsApi.fetchUploadStatus', () => {
+  it('reads each upload and the server\'s Retry-After', async () => {
+    vi.mocked(request.get).mockResolvedValue({
+      status: 200,
+      headers: { 'retry-after': '2' },
+      data: { data: { items: [{ key: 'k', state: 'finishing' }] } },
+    });
+
+    await expect(assetsApi.fetchUploadStatus(['k'])).resolves.toEqual({
+      items: [{ key: 'k', state: 'finishing' }],
+      retryAfterSeconds: 2,
+    });
+  });
+
+  // Rate-limited, the server answers 429 with when to come back in the header
+  // only. The page has to wait that long; asking again at its own pace keeps
+  // every request counted and refused.
+  it('takes a 429 as an answer that says when to ask again', async () => {
+    vi.mocked(request.get).mockResolvedValue({
+      status: 429,
+      headers: { 'retry-after': '60' },
+      data: { error: { code: 429, message: 'Too many requests' } },
+    });
+
+    await expect(assetsApi.fetchUploadStatus(['k'])).resolves.toEqual({
+      items: [],
+      retryAfterSeconds: 60,
+    });
+    const options = vi.mocked(request.get).mock.calls[0]?.[1] as { validateStatus?: (status: number) => boolean };
+    expect(options.validateStatus?.(429)).toBe(true);
+    expect(options.validateStatus?.(200)).toBe(true);
+    expect(options.validateStatus?.(500)).toBe(false);
+    expect(options.validateStatus?.(401)).toBe(false);
+  });
+});

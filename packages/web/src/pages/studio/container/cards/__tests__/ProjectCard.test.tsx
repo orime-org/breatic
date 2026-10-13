@@ -1,17 +1,19 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
+import type * as React from 'react';
 
-import { projectsApi } from '@web/data/api/projects';
+import { projectsApi, studioProjectsListKey } from '@web/data/api/projects';
 import { ProjectCard } from '@web/pages/studio/container/cards/ProjectCard';
 import type { ProjectTimeKind } from '@web/pages/studio/container/container-types';
 import type { ContainerProject } from '@web/pages/studio/container/container-types';
 import { expectNoA11yViolations } from '@web/test-utils/a11y';
+import { toast } from '@web/lib/toast';
 
 vi.mock('@web/data/api/projects', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@web/data/api/projects')>()),
@@ -22,6 +24,10 @@ vi.mock('@web/data/api/projects', async (importOriginal) => ({
     restore: vi.fn(() => Promise.resolve({ ok: true })),
     leave: vi.fn(() => Promise.resolve({ ok: true })),
   },
+}));
+
+vi.mock('@web/lib/toast', () => ({
+  toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() },
 }));
 
 vi.mock('@web/data/api/project-join-requests', () => ({
@@ -210,7 +216,8 @@ describe('ProjectCard', () => {
     await user.type(field, '  Renamed  ');
     await user.click(screen.getByRole('button', { name: 'Save' }));
     expect(projectsApi.rename).toHaveBeenCalledWith('id-1', 'Renamed');
-    expect(screen.queryByTestId('rename-project-dialog')).toBeNull();
+    // The dialog waits for the server and closes once the rename lands.
+    await waitFor(() => expect(screen.queryByTestId('rename-project-dialog')).toBeNull());
   });
 
   it('duplicates straight from the menu', async () => {
@@ -279,5 +286,305 @@ describe('ProjectCard', () => {
   it('has no a11y violations', async () => {
     const { container } = setup();
     await expectNoA11yViolations(container);
+  });
+});
+
+describe('ProjectCard — picking a cover (inner#1367 A4)', () => {
+  const RIFF_WEBP = [0x52, 0x49, 0x46, 0x46, 4, 0, 0, 0, 0x57, 0x45, 0x42, 0x50];
+  const PNG = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13];
+
+  // jsdom has no object URLs; the crop dialog asks for one to show the file.
+  beforeEach(() => {
+    vi.mocked(toast.warning).mockClear();
+    Object.assign(URL, { createObjectURL: vi.fn(() => 'blob:mock/0'), revokeObjectURL: vi.fn() });
+  });
+
+  /**
+   * Pick a file in the cover input.
+   * @param bytes - The file's first bytes.
+   * @param name - Its name.
+   * @param type - The type it claims.
+   */
+  function pick(bytes: number[], name: string, type: string): void {
+    const file = new File([new Uint8Array([...bytes, ...new Array<number>(64).fill(0)])], name, { type });
+    fireEvent.change(screen.getByTestId('project-cover-input'), { target: { files: [file] } });
+  }
+
+  it('turns away a WebP named and typed as a JPEG, before the crop', async () => {
+    setup();
+
+    pick(RIFF_WEBP, 'cover.jpg', 'image/jpeg');
+
+    await waitFor(() => expect(toast.warning).toHaveBeenCalledWith('Not a supported format. Use PNG or JPEG.'));
+    expect(screen.queryByTestId('image-crop-dialog')).toBeNull();
+  });
+
+  it('opens the crop for a PNG', async () => {
+    setup();
+
+    pick(PNG, 'cover.png', 'image/png');
+
+    await waitFor(() => expect(screen.getByTestId('image-crop-dialog')).toBeInTheDocument());
+    expect(toast.warning).not.toHaveBeenCalled();
+  });
+});
+
+describe('ProjectCard — confirmations that wait for the server (inner#1374)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  /**
+   * A request whose answer the case decides.
+   * @param value - What it resolves to when it succeeds.
+   * @param succeeds - Whether it resolves or rejects.
+   * @returns The pending promise and the function that settles it.
+   */
+  function held<T>(value: T, succeeds: boolean): { promise: Promise<T>; settle: () => void } {
+    let settle: () => void = () => {};
+    const promise = new Promise<T>((resolve, reject) => {
+      settle = succeeds ? () => resolve(value) : () => reject(new Error('nope'));
+    });
+    return { promise, settle };
+  }
+
+  it.each([
+    ['closes once it lands', true],
+    ['stays open with Save pressable again when it fails', false],
+  ])('keeps the rename dialog open with a busy Save while the rename is out, and %s', async (_label, succeeds) => {
+    const request = held({ name: 'Renamed' } as Awaited<ReturnType<typeof projectsApi.rename>>, succeeds);
+    vi.mocked(projectsApi.rename).mockReturnValueOnce(request.promise);
+    const user = userEvent.setup();
+    setup();
+    await user.click(screen.getByRole('button', { name: 'More actions' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Rename' }));
+    const field = await screen.findByLabelText('Name');
+    await user.clear(field);
+    await user.type(field, 'Renamed');
+    const save = screen.getByRole('button', { name: 'Save' });
+    await user.click(save);
+
+    await waitFor(() => expect(save).toHaveAttribute('aria-busy', 'true'));
+    expect(save).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getByTestId('rename-project-dialog')).toBeInTheDocument();
+
+    request.settle();
+    if (succeeds) {
+      await waitFor(() => expect(screen.queryByTestId('rename-project-dialog')).toBeNull());
+    } else {
+      await waitFor(() => expect(save).not.toHaveAttribute('aria-busy'));
+      expect(screen.getByTestId('rename-project-dialog')).toBeInTheDocument();
+    }
+  });
+
+  it.each([
+    ['closes once it lands', true],
+    ['stays open with Archive pressable again when it fails', false],
+  ])('keeps the archive confirmation open with a busy Archive while the archive is out, and %s', async (_label, succeeds) => {
+    const request = held({ ok: true } as Awaited<ReturnType<typeof projectsApi.archive>>, succeeds);
+    vi.mocked(projectsApi.archive).mockReturnValueOnce(request.promise);
+    const user = userEvent.setup();
+    setup({ ...project, ...AS_STUDIO_ADMIN });
+    await user.click(screen.getByRole('button', { name: 'More actions' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Archive' }));
+    await screen.findByTestId('archive-project-dialog');
+    const confirm = screen.getByRole('button', { name: 'Archive' });
+    await user.click(confirm);
+
+    await waitFor(() => expect(confirm).toHaveAttribute('aria-busy', 'true'));
+    expect(confirm).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getByTestId('archive-project-dialog')).toBeInTheDocument();
+
+    request.settle();
+    if (succeeds) {
+      await waitFor(() => expect(screen.queryByTestId('archive-project-dialog')).toBeNull());
+    } else {
+      await waitFor(() => expect(confirm).not.toHaveAttribute('aria-busy'));
+      expect(screen.getByTestId('archive-project-dialog')).toBeInTheDocument();
+    }
+  });
+
+  it.each([
+    ['closes once it lands', true],
+    ['stays open with Leave pressable again when it fails', false],
+  ])('keeps the leave confirmation open with a busy Leave while the leave is out, and %s', async (_label, succeeds) => {
+    const request = held({ ok: true } as Awaited<ReturnType<typeof projectsApi.leave>>, succeeds);
+    vi.mocked(projectsApi.leave).mockReturnValueOnce(request.promise);
+    const user = userEvent.setup();
+    setup({ ...project, myRole: 'editor', ...AS_EDITOR });
+    await user.click(screen.getByRole('button', { name: 'More actions' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Leave project' }));
+    const confirm = await screen.findByRole('button', { name: 'Leave' });
+    await user.click(confirm);
+
+    await waitFor(() => expect(confirm).toHaveAttribute('aria-busy', 'true'));
+    expect(confirm).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getByTestId('leave-project-dialog')).toBeInTheDocument();
+
+    request.settle();
+    if (succeeds) {
+      await waitFor(() => expect(screen.queryByTestId('leave-project-dialog')).toBeNull());
+    } else {
+      await waitFor(() => expect(confirm).not.toHaveAttribute('aria-busy'));
+      expect(screen.getByTestId('leave-project-dialog')).toBeInTheDocument();
+    }
+  });
+
+  /** One held studio list, as a case sees it. */
+  interface HeldList {
+    /** Answer the refetch that is out with these projects (none by default). */
+    land: (items?: ContainerProject[]) => void;
+    /** Whether a refetch is out. */
+    started: () => boolean;
+  }
+
+  /**
+   * A list read that answers its first read with `first` and holds every later
+   * one until the case lands it.
+   * @param first - The first read's answer.
+   * @returns The read and its control.
+   */
+  function heldList(first: ContainerProject[]): { read: () => Promise<ContainerProject[]>; control: HeldList } {
+    let land: ((items: ContainerProject[]) => void) | null = null;
+    let reads = 0;
+    const read = (): Promise<ContainerProject[]> => {
+      reads += 1;
+      return reads === 1
+        ? Promise.resolve(first)
+        : new Promise((resolve) => {
+          land = resolve;
+        });
+    };
+    return { read, control: { land: (items = []) => land?.(items), started: () => land !== null } };
+  }
+
+  /**
+   * Render the card inside the studio's live list, next to the archived list,
+   * both read the way the studio page reads them (an admin has both mounted),
+   * with every refetch held until the case lands it.
+   * @param p - The card's project, listed in the live list.
+   * @returns The two lists' controls.
+   */
+  function setupInHeldLists(p: ContainerProject): { live: HeldList; archived: HeldList } {
+    const live = heldList([p]);
+    const archived = heldList([]);
+    /**
+     * Stands in for one of the studio's project lists.
+     * @param props - Which list, and how it reads.
+     * @param props.archived - Whether this is the archived list.
+     * @param props.read - Its read.
+     * @returns One card per listed project.
+     */
+    function List(props: { archived: boolean; read: () => Promise<ContainerProject[]> }): React.JSX.Element {
+      const list = useQuery({
+        queryKey: studioProjectsListKey('acme', {
+          archived: props.archived,
+          sort: props.archived ? 'archived' : 'opened',
+          locale: 'en',
+        }),
+        queryFn: props.read,
+      });
+      return <>{(list.data ?? []).map((item) => <ProjectCard key={item.id} project={item} timeKind='created' />)}</>;
+    }
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={qc}>
+        <MemoryRouter>
+          <List archived={false} read={live.read} />
+          <List archived read={archived.read} />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    return { live: live.control, archived: archived.control };
+  }
+
+  /**
+   * Open the rename dialog and save a new name.
+   * @returns The Save button.
+   */
+  async function renameFromTheCard(): Promise<HTMLElement> {
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: 'More actions' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Rename' }));
+    const field = await screen.findByLabelText('Name');
+    await user.clear(field);
+    await user.type(field, 'Renamed');
+    const save = screen.getByRole('button', { name: 'Save' });
+    await user.click(save);
+    return save;
+  }
+
+  it('keeps the rename dialog busy until the live list refetch shows the new name', async () => {
+    const lists = setupInHeldLists(project);
+    const save = await renameFromTheCard();
+
+    await waitFor(() => expect(lists.live.started() && lists.archived.started()).toBe(true));
+    await act(async () => lists.archived.land());
+    expect(save).toHaveAttribute('aria-busy', 'true');
+    expect(screen.getByTestId('rename-project-dialog')).toBeInTheDocument();
+    lists.live.land([{ ...project, name: 'Renamed' }]);
+    await waitFor(() => expect(screen.queryByTestId('rename-project-dialog')).toBeNull());
+  });
+
+  it('closes the rename dialog once the live list shows the name, without waiting for the archived list', async () => {
+    const lists = setupInHeldLists(project);
+    await renameFromTheCard();
+
+    await waitFor(() => expect(lists.live.started() && lists.archived.started()).toBe(true));
+    lists.live.land([{ ...project, name: 'Renamed' }]);
+    await waitFor(() => expect(screen.queryByTestId('rename-project-dialog')).toBeNull());
+    expect(screen.getByText('Renamed')).toBeInTheDocument();
+  });
+
+  it('holds the archived toast until the archived list refetch lands, after the live list drops the card', async () => {
+    const user = userEvent.setup();
+    const lists = setupInHeldLists({ ...project, ...AS_STUDIO_ADMIN });
+    await user.click(await screen.findByRole('button', { name: 'More actions' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Archive' }));
+    await screen.findByTestId('archive-project-dialog');
+    await user.click(screen.getByRole('button', { name: 'Archive' }));
+
+    await waitFor(() => expect(lists.live.started() && lists.archived.started()).toBe(true));
+    lists.live.land();
+    await waitFor(() => expect(screen.queryByTestId(`project-card-${project.id}`)).toBeNull());
+    expect(toast.success).not.toHaveBeenCalledWith('Archived');
+
+    await act(async () =>
+      lists.archived.land([{ ...project, ...AS_STUDIO_ADMIN, archivedAt: '2026-10-01T00:00:00.000Z' }]),
+    );
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Archived'));
+  });
+
+  it('keeps the archive confirmation busy until the list refetch takes the card away', async () => {
+    const user = userEvent.setup();
+    const lists = setupInHeldLists({ ...project, ...AS_STUDIO_ADMIN });
+    await user.click(await screen.findByRole('button', { name: 'More actions' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Archive' }));
+    await screen.findByTestId('archive-project-dialog');
+    const confirm = screen.getByRole('button', { name: 'Archive' });
+    await user.click(confirm);
+
+    await waitFor(() => expect(lists.live.started()).toBe(true));
+    expect(confirm).toHaveAttribute('aria-busy', 'true');
+    expect(screen.getByTestId('archive-project-dialog')).toBeInTheDocument();
+    lists.live.land();
+    await waitFor(() => expect(screen.queryByTestId('archive-project-dialog')).toBeNull());
+    expect(screen.queryByTestId(`project-card-${project.id}`)).toBeNull();
+  });
+
+  it('keeps the leave confirmation busy until the list refetch takes the card away', async () => {
+    const user = userEvent.setup();
+    const lists = setupInHeldLists({ ...project, myRole: 'editor', ...AS_EDITOR });
+    await user.click(await screen.findByRole('button', { name: 'More actions' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Leave project' }));
+    const confirm = await screen.findByRole('button', { name: 'Leave' });
+    await user.click(confirm);
+
+    await waitFor(() => expect(lists.live.started()).toBe(true));
+    expect(confirm).toHaveAttribute('aria-busy', 'true');
+    expect(screen.getByTestId('leave-project-dialog')).toBeInTheDocument();
+    lists.live.land();
+    await waitFor(() => expect(screen.queryByTestId('leave-project-dialog')).toBeNull());
+    expect(screen.queryByTestId(`project-card-${project.id}`)).toBeNull();
   });
 });

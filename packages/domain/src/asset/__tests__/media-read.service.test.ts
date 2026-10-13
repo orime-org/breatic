@@ -19,7 +19,8 @@ const readStoredMediaAtIngest = vi.fn();
 const findById = vi.fn();
 const fillMediaNumbers = vi.fn();
 
-const LIMITS = { runDeadlineMs: 150_000, toolTimeoutMs: 60_000 };
+/** When the job reading runs out. */
+const DEADLINE_AT = Date.now() + 7_200_000;
 
 vi.mock("@breatic/core", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
@@ -37,12 +38,6 @@ vi.mock("@breatic/shared", async (importOriginal) => ({
   readStoredMediaAtIngest,
 }));
 vi.mock("@domain/asset/asset.repo.js", () => ({ findById, fillMediaNumbers }));
-// Real but for the deadlines, so the rule deciding what a picture is stays the
-// one the ledger files kinds by.
-vi.mock("@domain/asset/asset.service.js", async (importOriginal) => ({
-  ...(await importOriginal<Record<string, unknown>>()),
-  mediaLimits: () => LIMITS,
-}));
 
 const {
   MEDIA_READ_QUEUE,
@@ -223,17 +218,22 @@ describe("what a read job does with its row", () => {
     readStoredMediaAtIngest.mockResolvedValue({ width: 800, height: 450, durationSeconds: null });
     fillMediaNumbers.mockResolvedValue(true);
 
-    const result = await readAndFillMedia("asset-1");
+    const result = await readAndFillMedia("asset-1", DEADLINE_AT);
 
     expect(result).toBe("filled");
-    expect(readStoredMediaAtIngest).toHaveBeenCalledWith("https://ingest.example", "secret", {
-      storageKey: "image/2026-10-01/1_cover.jpg",
-      contentType: "image/jpeg",
-      limits: LIMITS,
-      // Every stored image gets a preview, a cover or an avatar included
-      // (inner#1320); this read is where they get theirs.
-      wantPreview: true,
-    });
+    expect(readStoredMediaAtIngest).toHaveBeenCalledWith(
+      "https://ingest.example",
+      "secret",
+      {
+        storageKey: "image/2026-10-01/1_cover.jpg",
+        contentType: "image/jpeg",
+        // The job's own deadline, and nothing of the read's own (inner#1367).
+        deadlineAt: DEADLINE_AT,
+        // Every stored image gets a preview, a cover or an avatar included
+        // (inner#1320); this read is where they get theirs.
+        wantPreview: true,
+      },
+    );
     expect(fillMediaNumbers).toHaveBeenCalledWith("asset-1", {
       width: 800,
       height: 450,
@@ -247,7 +247,7 @@ describe("what a read job does with its row", () => {
   ])("reads nothing for %s", async (_case, found) => {
     findById.mockResolvedValue(found);
 
-    const result = await readAndFillMedia("asset-1");
+    const result = await readAndFillMedia("asset-1", DEADLINE_AT);
 
     expect(result).toBe("gone");
     expect(readStoredMediaAtIngest).not.toHaveBeenCalled();
@@ -256,7 +256,7 @@ describe("what a read job does with its row", () => {
   it("reads nothing for a row that already has a number", async () => {
     findById.mockResolvedValue(row({ width: 800 }));
 
-    const result = await readAndFillMedia("asset-1");
+    const result = await readAndFillMedia("asset-1", DEADLINE_AT);
 
     expect(result).toBe("already_measured");
     expect(readStoredMediaAtIngest).not.toHaveBeenCalled();
@@ -269,7 +269,7 @@ describe("what a read job does with its row", () => {
     readStoredMediaAtIngest.mockResolvedValue({ width: 800, height: 450, durationSeconds: null });
     fillMediaNumbers.mockResolvedValue(false);
 
-    expect(await readAndFillMedia("asset-1")).toBe("already_measured");
+    expect(await readAndFillMedia("asset-1", DEADLINE_AT)).toBe("already_measured");
   });
 
   // A6: nothing came back, and the row stays as a container timeout leaves it.
@@ -277,7 +277,7 @@ describe("what a read job does with its row", () => {
     findById.mockResolvedValue(row());
     readStoredMediaAtIngest.mockResolvedValue({ width: null, height: null, durationSeconds: null });
 
-    const result = await readAndFillMedia("asset-1");
+    const result = await readAndFillMedia("asset-1", DEADLINE_AT);
 
     expect(result).toBe("nothing_found");
     expect(fillMediaNumbers).not.toHaveBeenCalled();
@@ -288,7 +288,7 @@ describe("what a read job does with its row", () => {
     findById.mockResolvedValue(row());
     readStoredMediaAtIngest.mockRejectedValue(new Error("502"));
 
-    await expect(readAndFillMedia("asset-1")).rejects.toThrow("502");
+    await expect(readAndFillMedia("asset-1", DEADLINE_AT)).rejects.toThrow("502");
     expect(fillMediaNumbers).not.toHaveBeenCalled();
   });
 });

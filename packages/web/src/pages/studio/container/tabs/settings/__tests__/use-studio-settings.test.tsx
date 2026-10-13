@@ -18,6 +18,7 @@ import {
   QueryClient,
   QueryClientProvider,
   onlineManager,
+  useQuery,
 } from '@tanstack/react-query';
 
 import { useStudioSettings } from '@web/pages/studio/container/tabs/settings/use-studio-settings';
@@ -431,6 +432,41 @@ describe('useStudioSettings — changing the slug', () => {
         'https://cdn/a.webp',
       ),
     );
+  });
+});
+
+describe('useStudioSettings — a new avatar waits for the studio to show it (inner#1374)', () => {
+  it('keeps the upload running until the studio refetch carrying the avatar lands', async () => {
+    // The crop dialog's Confirm spins for exactly as long as this flag, and a
+    // successful upload closes the dialog only once it drops.
+    uploadPicture.mockResolvedValue('asset-1');
+    vi.mocked(studiosApi.setAvatar).mockResolvedValue(
+      updated(TEAM, { avatarUrl: 'https://cdn.test/a.png' }),
+    );
+    let landRefetch: (() => void) | null = null;
+    const fetchStudio = vi.fn(
+      (): Promise<StudioDetail> =>
+        fetchStudio.mock.calls.length === 1
+          ? Promise.resolve(TEAM)
+          : new Promise((resolve) => {
+            landRefetch = () => resolve({ ...TEAM, avatarUrl: 'https://cdn.test/a.png' });
+          }),
+    );
+    const { result } = renderHook(
+      () => {
+        useQuery({ queryKey: ['studio', 'acme'], queryFn: fetchStudio });
+        return useStudioSettings(TEAM);
+      },
+      { wrapper },
+    );
+    await waitFor(() => expect(fetchStudio).toHaveBeenCalledTimes(1));
+
+    result.current.uploadAvatar(new Blob(['x']));
+
+    await waitFor(() => expect(landRefetch).not.toBeNull());
+    expect(result.current.uploadingAvatar).toBe(true);
+    landRefetch!();
+    await waitFor(() => expect(result.current.uploadingAvatar).toBe(false));
   });
 });
 

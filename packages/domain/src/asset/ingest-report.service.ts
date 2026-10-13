@@ -34,6 +34,8 @@ import * as assetRepo from "@domain/asset/asset.repo.js";
 import * as assetService from "@domain/asset/asset.service.js";
 import * as nodeHistoryService from "@domain/node-history/node-history.service.js";
 import * as nodeTaskService from "@domain/node-task/node-task.service.js";
+import { failureOutcome } from "@domain/node-task/failure-outcome.js";
+import { uploadDeadline } from "@domain/asset/upload-deadline.js";
 import { emitNodeTaskCounts } from "@domain/canvas-node/node-state-events.js";
 import {
   getStorageAdapter,
@@ -41,8 +43,8 @@ import {
   getStreamRedis,
   NotFoundError,
 } from "@breatic/core";
-import { canvasSpaceDocName, t } from "@breatic/shared";
-import type { NodeTaskResult, StudioAssetEntity } from "@breatic/shared";
+import { canvasSpaceDocName, t, uprightKeyFor } from "@breatic/shared";
+import type { NodeTaskResult, StudioAssetEntity, UprightCopy } from "@breatic/shared";
 import { appendProjectActivity } from "@domain/activity/project-activity.service.js";
 import * as uploadGrantRepo from "@domain/asset/upload-grant.repo.js";
 import type {
@@ -98,6 +100,12 @@ export type IngestReport =
         width?: number | null;
         height?: number | null;
       } | null;
+      /**
+       * The upright copy of a picture with an EXIF orientation, written beside
+       * the bytes as received (inner#1367). Present, it is what is filed;
+       * `sha256` and `contentType` stay the received bytes'.
+       */
+      upright?: UprightCopy | null;
     }
   | {
       storageKey: string;
@@ -298,15 +306,47 @@ async function announceSuccess(
  * @param message - What the node shows.
  * @returns Whether publishing the node's numbers failed.
  */
-async function announceFailure(
-  grant: UploadGrant,
-  message: string,
-): Promise<boolean> {
+async function announceFailure(grant: UploadGrant, message: string): Promise<boolean> {
   if (!hasNode(grant)) return false;
-  return settleUploadTask(grant, {
-    outcome: "failed",
-    errorMessage: message,
-  });
+  return settleUploadTask(grant, { outcome: "failed", errorMessage: message });
+}
+
+/**
+ * Whether a ledger row's key is one this upload wrote: the ticket's own, or
+ * the upright copy beside it (inner#1367).
+ * @param key - The row's key.
+ * @param grant - The upload's grant.
+ * @returns True for this upload's own row.
+ */
+function isOwnKey(key: string, grant: UploadGrant): boolean {
+  return key === grant.storageKey || key === uprightKeyFor(grant.storageKey);
+}
+
+/**
+ * What a completed upload is filed as: its upright copy when the Worker wrote
+ * one, the bytes as received otherwise.
+ * @param report - The completed report.
+ * @param grant - The upload's grant.
+ * @returns The key, size and pixel size to file.
+ */
+function filedObject(
+  report: Extract<IngestReport, { outcome: "completed" }>,
+  grant: UploadGrant,
+): { storageKey: string; sizeBytes: number; width: number | null; height: number | null } {
+  if (report.upright !== undefined && report.upright !== null) {
+    return {
+      storageKey: uprightKeyFor(grant.storageKey),
+      sizeBytes: report.upright.sizeBytes,
+      width: report.upright.width,
+      height: report.upright.height,
+    };
+  }
+  return {
+    storageKey: grant.storageKey,
+    sizeBytes: report.sizeBytes,
+    width: report.width ?? null,
+    height: report.height ?? null,
+  };
 }
 
 /**
@@ -350,9 +390,9 @@ async function settleUploadTask(
   });
 
   // The content rides along whenever the row holds this outcome, a repeated
-  // finish included — the browser delivers one again when it heard no answer,
-  // and that retry is the whole recovery for a result that never reached the
-  // node. A row that settled some OTHER way leaves the node's content alone:
+  // finish included — the queue runs a finish again when a try failed or its
+  // worker went away, and that repeat is the whole recovery for a result that
+  // never reached the node. A row that settled some OTHER way leaves the node's content alone:
   // the user may have retried, and choosing for them is not ours to do.
   const content = settled.landed ? outcome.result : undefined;
   const docName = canvasSpaceDocName(grant.projectId, grant.spaceId);
@@ -532,21 +572,22 @@ export async function applyIngestReport(
   // one.
   if (report.outcome === "aborted") {
     if (grant.consumedAt !== null) return { status: "stale" };
-    await voidGrant(grant.storageKey);
-    const countsPublishFailed = await announceFailure(
-      grant,
-      report.reason ?? "aborted",
-    );
+    // Every call on an upload's chain is cut at its deadline, so a failure
+    // that arrives past it ends the upload the way the deadline does.
+    const expired = failureOutcome(await uploadDeadline(grant)) === "expired";
+    const reason = expired ? "expired" : (report.reason ?? "aborted");
+    await voidGrant(grant.storageKey, reason);
+    const countsPublishFailed = await announceFailure(grant, reason);
     return { status: "voided", ...(countsPublishFailed && { countsPublishFailed }) };
   }
 
   const adapter = await getStorageAdapter();
   const contentType = report.contentType;
 
-  // A retry: the browser did not hear the answer to its finish request, so it
-  // sent the same upload again. Publishing again is the point — collab applies
-  // these last-write-wins, so a duplicate costs nothing while a lost one
-  // leaves the node spinning.
+  // A repeat: the queue ran this finish again after a try failed or its worker
+  // went away, so the same upload reports again. Publishing again is the
+  // point — collab applies these last-write-wins, so a duplicate costs
+  // nothing while a lost one leaves the node spinning.
   if (grant.consumedAt !== null) {
     const existing = await assetRepo.findByStudioAndHash(
       grant.studioId,
@@ -574,7 +615,7 @@ export async function applyIngestReport(
       assetId: existing.id,
       fileUrl,
       kind: settledKind,
-      ownRow: existing.storageKey === grant.storageKey,
+      ownRow: isOwnKey(existing.storageKey, grant),
       coverUrl: existingCover?.fileUrl ?? null,
       width: existing.width,
       height: existing.height,
@@ -591,7 +632,7 @@ export async function applyIngestReport(
   const { upload } = getStorageConfig();
   const sizeBytes = report.sizeBytes;
   if (sizeBytes > upload.max_upload_bytes) {
-    await voidGrant(grant.storageKey);
+    await voidGrant(grant.storageKey, "over_cap");
     const countsPublishFailed = await announceFailure(grant, "over_cap");
     return {
       status: "rejected",
@@ -610,7 +651,7 @@ export async function applyIngestReport(
   // (`packages/ingest/src/part-layout.ts`), and that refusal reaches the node
   // the ordinary way.
   if (sizeBytes === 0) {
-    await voidGrant(grant.storageKey);
+    await voidGrant(grant.storageKey, "empty");
     const countsPublishFailed = await announceFailure(grant, "empty");
     return {
       status: "rejected",
@@ -620,6 +661,10 @@ export async function applyIngestReport(
   }
 
   const kind = assetService.detectAssetKind(contentType);
+  // A picture turned upright is filed as its upright copy (inner#1367 §4.5).
+  // The key is derived from the ticket's rather than read off the answer, so
+  // the copy can only ever be the one this upload wrote.
+  const filed = filedObject(report, grant);
 
   // Filed first, so the video row below is inserted already pointing at it.
   // The frame was cut in the media container while this request waited, so
@@ -635,13 +680,13 @@ export async function applyIngestReport(
     ownerStudioId: grant.studioId,
     actingUserId: grant.userId,
     contentHash: report.sha256,
-    storageKey: grant.storageKey,
-    fileUrl: adapter.publicUrl(grant.storageKey),
-    sizeBytes,
+    storageKey: filed.storageKey,
+    fileUrl: adapter.publicUrl(filed.storageKey),
+    sizeBytes: filed.sizeBytes,
     mimeType: contentType,
     kind,
-    width: report.width ?? null,
-    height: report.height ?? null,
+    width: filed.width,
+    height: filed.height,
     durationSeconds: report.durationSeconds ?? null,
     // Off the grant, because what this is was decided where the upload was
     // opened. The worker opens its own now (#181), and calling everything that
@@ -684,7 +729,8 @@ export async function applyIngestReport(
       storageKey: grant.storageKey,
       metadata: {
         ...(grant.filename !== null && { filename: grant.filename }),
-        size: sizeBytes,
+        // What the node holds, which for a picture turned upright is its copy.
+        size: filed.sizeBytes,
         mimeType: contentType,
         // The row is named by the browser tool that made the file, as its
         // task row is (inner#888 A20).
@@ -735,13 +781,17 @@ export async function applyIngestReport(
   // The answer is a CAS: false means another delivery of this same report got
   // there first, and both did the same work against one registered asset — so
   // the loser has nothing to undo and nothing to say.
-  await consumeGrant({ storageKey: grant.storageKey, userId: grant.userId });
+  await consumeGrant({
+    storageKey: grant.storageKey,
+    userId: grant.userId,
+    assetId: asset.id,
+  });
   return {
     status: "registered",
     assetId: asset.id,
     fileUrl: asset.fileUrl,
     kind: asset.kind,
-    ownRow: asset.storageKey === grant.storageKey,
+    ownRow: isOwnKey(asset.storageKey, grant),
     coverUrl,
     width: asset.width,
     height: asset.height,

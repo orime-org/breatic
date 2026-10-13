@@ -331,17 +331,17 @@ describe('MembershipPanel', () => {
     await user.click(pro);
 
     await waitFor(() => {
-      expect(within(pro).getByTestId('membership-choose-pending')).toBeInTheDocument();
+      expect(pro).toHaveAttribute('aria-busy', 'true');
     });
-    expect(pro).toBeDisabled();
+    expect(pro).toHaveAttribute('aria-disabled', 'true');
     expect(pro.textContent).toBe(label);
     expect(team).toBeDisabled();
-    expect(within(team).queryByTestId('membership-choose-pending')).toBeNull();
+    expect(team).not.toHaveAttribute('aria-busy');
 
     open({ url: 'https://checkout.stripe.example/c/pay/abc' });
     await waitFor(() => expect(assignSpy).toHaveBeenCalled());
-    expect(pro).toBeDisabled();
-    expect(within(pro).getByTestId('membership-choose-pending')).toBeInTheDocument();
+    expect(pro).toHaveAttribute('aria-busy', 'true');
+    expect(pro).toHaveAttribute('aria-disabled', 'true');
   });
 
   it('drops the spin and frees every card when starting the checkout fails', async () => {
@@ -364,12 +364,13 @@ describe('MembershipPanel', () => {
     const pro = await screen.findByTestId('membership-choose-pro');
     await user.click(pro);
     await waitFor(() => {
-      expect(within(pro).getByTestId('membership-choose-pending')).toBeInTheDocument();
+      expect(pro).toHaveAttribute('aria-busy', 'true');
     });
 
     fail(new Error('409'));
     await waitFor(() => expect(pro).toBeEnabled());
-    expect(within(pro).queryByTestId('membership-choose-pending')).toBeNull();
+    expect(pro).not.toHaveAttribute('aria-busy');
+    expect(pro).not.toHaveAttribute('aria-disabled');
     expect(screen.getByTestId('membership-choose-team')).toBeEnabled();
   });
 
@@ -388,14 +389,44 @@ describe('MembershipPanel', () => {
     const cancel = await screen.findByTestId('membership-cancel');
     await user.click(cancel);
     await waitFor(() => {
-      expect(within(cancel).getByTestId('membership-cancel-pending')).toBeInTheDocument();
+      expect(cancel).toHaveAttribute('aria-busy', 'true');
     });
-    expect(cancel).toBeDisabled();
+    expect(cancel).toHaveAttribute('aria-disabled', 'true');
 
     done();
     await waitFor(() => {
-      expect(screen.queryByTestId('membership-cancel-pending')).toBeNull();
+      expect(cancel).not.toHaveAttribute('aria-busy');
     });
+  });
+
+  it('spins the resume button while the resume runs, and frees it when it fails', async () => {
+    const subscriptionApi = await import('@web/data/api/subscription');
+    let fail: (reason: Error) => void = () => undefined;
+    vi.spyOn(subscriptionApi, 'resumeSubscription').mockReturnValue(
+      new Promise<void>((_resolve, reject) => {
+        fail = reject;
+      }) as never,
+    );
+    membershipMock.mockResolvedValue(
+      answer({
+        subscription: subscription({ state: 'cancelling', cancelAtPeriodEnd: true }),
+      }),
+    );
+    const user = userEvent.setup();
+    setup();
+
+    const resume = await screen.findByTestId('membership-resume');
+    await user.click(resume);
+    await waitFor(() => {
+      expect(resume).toHaveAttribute('aria-busy', 'true');
+    });
+    expect(resume).toHaveAttribute('aria-disabled', 'true');
+
+    fail(new Error('offline'));
+    await waitFor(() => {
+      expect(resume).not.toHaveAttribute('aria-busy');
+    });
+    expect(resume).not.toHaveAttribute('aria-disabled');
   });
 
   it('点取消打的是取消接口，并且重新拉面板而不是整页重载', async () => {

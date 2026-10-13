@@ -107,6 +107,20 @@ async function insertStudio(ownerUserId: string): Promise<string> {
   return rows[0]!.id;
 }
 
+/** A ledger row in `studioId`, for a consumed grant to point at; returns its id. */
+async function insertAsset(studioId: string, userId: string): Promise<string> {
+  const rows = await sql<{ id: string }[]>`
+    INSERT INTO studio_assets
+      (studio_id, content_hash, storage_key, file_url, size_bytes, mime_type, kind, source,
+       produced_by_user_id)
+    VALUES
+      (${studioId}, ${crypto.randomBytes(32).toString("hex")}, ${freshKey()},
+       ${"https://cdn.example/x.png"}, 1, 'image/png', 'image', 'upload', ${userId})
+    RETURNING id
+  `;
+  return rows[0]!.id;
+}
+
 /**
  * A grant's fields, with the parts a test varies. The expiry and the lease gen
  * are required on every row and play no part in ownership, so they get plain
@@ -148,7 +162,7 @@ describe("upload-grant repo — issue (user-only ownership, no time limit)", () 
 
   it("refuses a forged key that was never issued", async () => {
     const userId = await insertUser();
-    expect(await consumeGrant({ storageKey: freshKey(), userId })).toBe(false);
+    expect(await consumeGrant({ storageKey: freshKey(), userId, assetId: crypto.randomUUID() })).toBe(false);
   });
 });
 
@@ -158,12 +172,13 @@ describe("upload-grant repo — consume (single-shot anti-replay)", () => {
     const studioId = await insertStudio(userId);
     const storageKey = freshKey();
     await issueGrant(grantFields({ userId, studioId, storageKey, declaredSize: 1 }));
+    const assetId = await insertAsset(studioId, userId);
 
-    const first = await consumeGrant({ storageKey, userId });
+    const first = await consumeGrant({ storageKey, userId, assetId });
     expect(first).toBe(true);
 
     // A replay of the same key is refused.
-    expect(await consumeGrant({ storageKey, userId })).toBe(false);
+    expect(await consumeGrant({ storageKey, userId, assetId })).toBe(false);
   });
 
   it("does NOT consume for a foreign user", async () => {
@@ -172,10 +187,11 @@ describe("upload-grant repo — consume (single-shot anti-replay)", () => {
     const otherUserId = await insertUser();
     const storageKey = freshKey();
     await issueGrant(grantFields({ userId, studioId, storageKey, declaredSize: 1 }));
+    const assetId = await insertAsset(studioId, userId);
 
-    expect(await consumeGrant({ storageKey, userId: otherUserId })).toBe(false);
+    expect(await consumeGrant({ storageKey, userId: otherUserId, assetId })).toBe(false);
     // The grant is still live: its own user can still consume it.
-    expect(await consumeGrant({ storageKey, userId })).toBe(true);
+    expect(await consumeGrant({ storageKey, userId, assetId })).toBe(true);
   });
 
   it("INVARIANT — concurrent consume of one key: EXACTLY ONE wins", async () => {
@@ -183,10 +199,11 @@ describe("upload-grant repo — consume (single-shot anti-replay)", () => {
     const studioId = await insertStudio(userId);
     const storageKey = freshKey();
     await issueGrant(grantFields({ userId, studioId, storageKey, declaredSize: 1 }));
+    const assetId = await insertAsset(studioId, userId);
 
     const RACERS = 16;
     const results = await Promise.all(
-      Array.from({ length: RACERS }, () => consumeGrant({ storageKey, userId })),
+      Array.from({ length: RACERS }, () => consumeGrant({ storageKey, userId, assetId })),
     );
     const wins = results.filter((r) => r === true).length;
     expect(wins).toBe(1);
@@ -203,12 +220,13 @@ describe("upload-grant repo — a voided grant is dead", () => {
     const studioId = await insertStudio(userId);
     const storageKey = freshKey();
     await issueGrant(grantFields({ userId, studioId, storageKey, declaredSize: 1 }));
+    const assetId = await insertAsset(studioId, userId);
 
     await sql`
       UPDATE upload_grants SET voided_at = now() WHERE storage_key = ${storageKey}
     `;
 
-    expect(await consumeGrant({ storageKey, userId })).toBe(false);
+    expect(await consumeGrant({ storageKey, userId, assetId })).toBe(false);
   });
 });
 
@@ -271,8 +289,9 @@ describe("upload-grant repo — the permission to finish an upload", () => {
     const studioId = await insertStudio(userId);
     const storageKey = freshKey();
     await issueGrant(grantFields({ userId, studioId, storageKey, declaredSize: 1 }));
+    const assetId = await insertAsset(studioId, userId);
     await claimFinalize({ storageKey, uploadId: "upload-a" });
-    await consumeGrant({ storageKey, userId });
+    await consumeGrant({ storageKey, userId, assetId });
 
     // Registration is not what ends this upload's claim on the key — the
     // browser may not have heard the answer, and its retry brings the same
@@ -308,8 +327,9 @@ describe("upload-grant repo — the permission to finish an upload", () => {
     const studioId = await insertStudio(userId);
     const storageKey = freshKey();
     await issueGrant(grantFields({ userId, studioId, storageKey, declaredSize: 1 }));
+    const assetId = await insertAsset(studioId, userId);
     await claimFinalize({ storageKey, uploadId: "upload-a" });
-    await consumeGrant({ storageKey, userId });
+    await consumeGrant({ storageKey, userId, assetId });
 
     // A replay: it had to open its own multipart upload, and completing that
     // one WOULD overwrite the object the ledger describes.

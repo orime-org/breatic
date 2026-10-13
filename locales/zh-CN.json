@@ -8,8 +8,7 @@
       "upload_too_large": "文件超过上传大小限制。",
       "insufficient_credits": "积分不足：需要 {required}，可用 {available}",
       "rate_limited": "请求过于频繁，请稍后再试",
-      "internal": "服务器内部错误",
-      "upload_empty": "没有上传任何内容。"
+      "internal": "服务器内部错误"
     },
     "credit": {
       "not_studio_admin": "只能指定给你管理的 Studio。",
@@ -161,6 +160,8 @@
       "message_too_long": "这条消息太长了。最多 {limit, number} 个字符，这条有 {actual, number} 个。",
       "attachments_too_long": "附带的内容太长了。最多 {limit, number} 个字符，现在有 {actual, number} 个。",
       "attachments_too_many": "附带的内容太多了。最多 {limit, number} 项，这条有 {actual, number} 项。",
+      "current_space_too_long": "当前 Space 的内容太长了。最多 {limit, number} 个字符，现在有 {actual, number} 个。",
+      "spaces_too_many": "列出的 Space 太多了。最多 {limit, number} 个，这条有 {actual, number} 个。",
       "references_too_many": "引用附件的次数太多。一条消息最多 {limit, number} 次，这条有 {actual, number} 次。"
     },
     "mail": {
@@ -244,6 +245,10 @@
       "sending": "发送中",
       "atLimit": "已达 {limit, number} 字上限",
       "attach": "添加文件",
+      "spaceContextOn": "Agent 会读到这个 Space · 点击禁止",
+      "spaceContextOff": "Agent 不会读到这个 Space · 点击允许",
+      "spaceContextOnUnreadable": "Agent 知道你开着这个 Space，但读不了它的内容 · 点击禁止",
+      "spaceContextOffUnreadable": "Agent 不知道你开着这个 Space · 点击允许",
       "removeAttachment": "移除 {name}",
       "attachmentUploading": "上传中",
       "attachmentFailed": "{reason, select, upload {上传失败} rate_limited {上传太频繁，请稍后重试} extract {读取失败} too_long {太长} other {失败}}",
@@ -252,6 +257,7 @@
       "attachUnsupported": "{filename} 不能附带",
       "attachTooLarge": "{filename} 太大，不能附带",
       "attachUnavailable": "暂时无法添加，请重试。",
+      "sendUnavailable": "暂时无法发送，请重试。",
       "atEmpty": "没有可引用的附件"
     },
     "empty": {
@@ -810,7 +816,6 @@
         "view": "查看"
       },
       "elapsed": "已运行 {duration}",
-      "remaining": "剩余 {duration}",
       "startedAt": "{when} 开始",
       "endedAt": "{when} 结束",
       "lateResult": "超时之后才完成。",
@@ -828,7 +833,7 @@
         "expired": "它超时了。",
         "no_result": "这次运行没有产出内容。",
         "source_unreachable": "这个地址打不开。",
-        "source_too_slow": "取这个地址的内容超时了。",
+        "source_cut_off": "这个地址的内容没传完就断了。",
         "unsupported_type": "{kind, select, image {不是支持的格式，图片只收 {formats}。} video {不是支持的格式，视频只收 {formats}。} audio {不是支持的格式，音频只收 {formats}。} other {不是支持的格式。}}",
         "empty": "没有拿到任何内容。",
         "internal": "我们这边出错了。",
@@ -838,10 +843,10 @@
         "tool_failed": "工具没能处理这个文件。",
         "no_audio_track": "这个视频没有音轨。"
       },
-      "title": {
-        "upload": "上传 · {name}",
-        "generate": "生成 · {name}",
-        "understand": "理解 · {name}"
+      "kind": {
+        "upload": "上传",
+        "generate": "生成",
+        "understand": "理解"
       }
     },
     "panel": {
@@ -1174,6 +1179,7 @@
       },
       "error": {
         "create": "Space 创建失败",
+        "restore": "Space 恢复失败",
         "unreachable": "服务器没有响应,请检查网络后重试",
         "notSynced": "Project 正在同步,请稍后再试"
       },
@@ -1777,7 +1783,7 @@
         "saveFailed": "无法保存你的更改。",
         "bioCount": "{count}/{max}",
         "avatarUpload": "上传图片",
-        "avatarHint": "方形图片效果最好。支持常见图片格式，最大 20 MB。",
+        "avatarHint": "方形图片效果最好。支持 PNG 和 JPEG，最大 20 MB。",
         "avatarRemove": "移除",
         "avatarRemoveTitle": "要移除这张头像吗？",
         "avatarRemoveBody": "这个 Studio 会回到显示首字母。你随时可以再上传新图片。",
@@ -1861,7 +1867,7 @@
         "too_many_pixels": "这张图片太大了，请换一张每边都小于 8000 像素的。",
         "not_an_image": "无法把这个文件读成图片。",
         "encode_failed": "无法处理这张图片，请换一张试试。",
-        "unsupported_type": "这个文件的格式不支持。",
+        "unsupported_type": "不是支持的格式，请用 PNG 或 JPEG。",
         "hash_unavailable": "无法校验此文件，请刷新页面后重试。",
         "rate_limited": "上传太频繁，请稍后重试。"
       },

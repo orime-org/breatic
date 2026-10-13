@@ -14,9 +14,9 @@
  *     GET  {base_url}/predictions/{task_id}/result  ->  asked once per pickup
  */
 
+import { assertBeforeDeadline, untilDeadlineIfAhead } from "@breatic/shared";
 import type { ResolvedModel, ResumeContext } from "@worker/providers/shared.js";
 import { submitOrResume } from "@worker/providers/async-resume.js";
-import { assertBeforeDeadline } from "@worker/providers/still-running.js";
 import {
   bearerHeaders,
   requestWithRetry,
@@ -52,11 +52,10 @@ function extractOutputUrl(data: Record<string, unknown>): string | undefined {
  * @param prompt - 3D object description prompt
  * @param resolved - Resolved provider endpoint
  * @param params - API-ready parameters (already converted by `buildRequest`)
- * @param resume - Worker resume context
- * @param deadlineAt - The task's two-hour deadline, in epoch milliseconds
+ * @param resume - Worker resume context, carrying the task's two-hour deadline
  * @returns Object with `url`, `model`, and `cost`
  * @throws {StillRunning} while the task is still going
- * @throws {TaskDeadlinePassed} when the deadline has passed before a submit
+ * @throws {DeadlinePassed} when the deadline has passed before a submit
  * @throws {Error} if the task fails or returns no output
  */
 export async function generate(
@@ -64,7 +63,6 @@ export async function generate(
   resolved: ResolvedModel,
   params: Record<string, unknown>,
   resume: ResumeContext,
-  deadlineAt: number,
 ): Promise<{ url: string; model: string; cost: number }> {
   // Strip null/undefined values — WaveSpeed rejects nullable fields
   const body: Record<string, unknown> = {};
@@ -84,6 +82,10 @@ export async function generate(
   // The vendor task id poll() ran with (stored or fresh), used for the
   // post-poll billing query.
   let billedTaskId = "";
+  // Every call below is bounded by the task's deadline (inner#1367). Past it
+  // no submit starts, and the question that finds the ending still goes out,
+  // under the transport's own bound.
+  const bound = untilDeadlineIfAhead(resume.deadlineAt);
 
   /**
    * Submit the generation task to WaveSpeed.
@@ -99,7 +101,7 @@ export async function generate(
         body: JSON.stringify(body),
       },
       "wavespeed",
-      resolved.timeout * 1000,
+      bound,
     );
 
     if (extractOutputUrl(data) !== undefined) {
@@ -135,11 +137,12 @@ export async function generate(
       failureStatuses: new Set(["failed"]),
       errorPath: ["data", "error"],
       provider: "wavespeed",
+      bound,
     });
   };
 
   // Before the duplicate-cost warning, which only a submit that runs may raise.
-  if (resume.storedTaskId === null) assertBeforeDeadline(deadlineAt);
+  if (resume.storedTaskId === null) assertBeforeDeadline(resume.deadlineAt);
   const result = await submitOrResume({
     storedTaskId: resume.storedTaskId,
     retryStarting: resume.retryStarting,
@@ -154,6 +157,6 @@ export async function generate(
     throw new Error("No output URL after WaveSpeed polling");
   }
 
-  const cost = await queryBilling(resolved, billedTaskId);
+  const cost = await queryBilling(resolved, billedTaskId, bound);
   return { url: outputUrl, model: resolved.modelName, cost };
 }

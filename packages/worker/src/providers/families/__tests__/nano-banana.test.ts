@@ -28,6 +28,9 @@ const CAMERA = {
   aperture: "f/4",
 };
 
+/** The run's deadline, which nothing here reaches. */
+const RUN = new AbortController().signal;
+
 describe("nano-banana family", () => {
   beforeEach(() => {
     mockLlm.mockReset();
@@ -46,7 +49,7 @@ describe("nano-banana family", () => {
   });
 
   it("writes the camera into the prompt when the camera is on", async () => {
-    const { prompt, fields } = await nanoBanana.prepare("a cat", { enable_camera: true, ...CAMERA });
+    const { prompt, fields } = await nanoBanana.prepare("a cat", { enable_camera: true, ...CAMERA }, RUN);
 
     expect(JSON.parse(prompt)).toEqual({
       subject: "a cat",
@@ -56,15 +59,26 @@ describe("nano-banana family", () => {
   });
 
   it("leaves the camera out when it is off, though its defaults are filled", async () => {
-    const { prompt } = await nanoBanana.prepare("a cat", { enable_camera: false, ...CAMERA });
+    const { prompt } = await nanoBanana.prepare("a cat", { enable_camera: false, ...CAMERA }, RUN);
 
     expect(JSON.parse(prompt)).toEqual({ subject: "a cat" });
+  });
+
+  // The rewrite is a call on the task's chain, so it is cut at the task's
+  // deadline like every other (inner#1367).
+  it("asks for the rewrite under the run's deadline", async () => {
+    mockLlm.mockResolvedValue({ text: '{"subject":"a cat"}' } as never);
+    const signal = new AbortController().signal;
+
+    await nanoBanana.prepare("a cat", { enable_camera: false }, signal);
+
+    expect(mockLlm).toHaveBeenCalledWith(expect.objectContaining({ abortSignal: signal }));
   });
 
   it("uses the model's rewrite when it answers JSON", async () => {
     mockLlm.mockResolvedValue({ text: 'Here: {"subject":"a cat","lighting":"dusk"}' } as never);
 
-    const { prompt } = await nanoBanana.prepare("a cat", { enable_camera: false });
+    const { prompt } = await nanoBanana.prepare("a cat", { enable_camera: false }, RUN);
 
     expect(JSON.parse(prompt)).toEqual({ subject: "a cat", lighting: "dusk" });
   });

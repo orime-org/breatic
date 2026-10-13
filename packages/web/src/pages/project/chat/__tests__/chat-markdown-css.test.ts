@@ -170,9 +170,12 @@ describe('chat prose stylesheet — scope and scrolling', () => {
     expect(css).toMatch(/\.doc-body h1\s*\{/);
   });
 
-  it('holds table cells on one line so the scroller has something to scroll', () => {
+  it('lets table cells wrap down to a floor, past which the scroller takes over', () => {
     const table = chatRules().find((r) => /\.chat-markdown table\s*$/.test(r.selector));
-    expect(table?.body).toMatch(/white-space:\s*nowrap/);
+    expect(table?.body).not.toMatch(/white-space/);
+    const cells = chatRules().find((r) => /\.chat-markdown td\s*$/.test(r.selector));
+    expect(cells?.selector).toContain('.chat-markdown th');
+    expect(cells?.body).toMatch(/min-width:\s*6em;/);
   });
 
   it('declares no scroller of its own', () => {

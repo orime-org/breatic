@@ -37,7 +37,7 @@ async function mintTicket(
       partSize: 5 * 1024 * 1024,
       contentType: "video/mp4",
       expiresAt: Date.now() + 300_000,
-      sessionTokenTtlSeconds: 900,
+      deadlineAt: Date.now() + 7_200_000,
       ...over,
     },
     env.INGEST_SHARED_SECRET,
@@ -125,11 +125,12 @@ describe("a ticket the Worker takes", () => {
     });
   });
 
-  // The Worker holds no clock of its own for this: the window comes off the
-  // ticket, so the one place it is decided is the config our server reads.
-  it("times the session token by what the ticket signed", async () => {
-    const before = Date.now();
-    const { ticket } = await mintTicket({ sessionTokenTtlSeconds: 42 });
+  // The token lives as long as the upload's task does (inner#1367): the
+  // instant comes off the ticket, so the one place it is decided is the task
+  // our server opened the ticket for.
+  it("ends the session token at the deadline the ticket signed", async () => {
+    const deadlineAt = Date.now() + 7_200_000;
+    const { ticket } = await mintTicket({ deadlineAt });
 
     const { token } = await (await open(ticket)).json<{ token: string }>();
 
@@ -138,8 +139,7 @@ describe("a ticket the Worker takes", () => {
       env.INGEST_SHARED_SECRET,
       Date.now(),
     );
-    expect(payload?.expiresAt).toBeGreaterThan(before);
-    expect(payload?.expiresAt).toBeLessThanOrEqual(before + 42_000 + 5_000);
+    expect(payload?.expiresAt).toBe(deadlineAt);
   });
 
   // The layout bounds what this upload may put into R2, and only the Worker

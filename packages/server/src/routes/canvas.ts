@@ -57,6 +57,7 @@ import {
 import {
   createQueue,
   defaultJobOpts,
+  getNodeTaskConfig,
   getStorageConfig,
 } from "@breatic/core";
 import {
@@ -178,19 +179,9 @@ canvas.post(
         },
       },
       {
-        // The shared default is sized for a browser that may genuinely still
-        // be uploading. One call bounds this lane, so the row would otherwise
-        // claim hours of possible runtime for something the configuration ends
-        // in minutes — and a row a restart left running is undeletable until
-        // its budget runs out.
-        //
-        // The call's own bound is url_fetch_deadline_ms. The rest is room for
-        // the wait in the queue, which nothing bounds: the ticket is minted
-        // inside the job, so its window never covers the wait. A submission
-        // that waits longer than this is judged expired while its transfer is
-        // still running.
-        budgetMs:
-          ingest.ticket_expires_seconds * 1000 + ingest.url_fetch_deadline_ms,
+        // Every task has the same two hours (inner#1367); the transfer is
+        // held to the end of this row.
+        budgetMs: getNodeTaskConfig().default_budget_ms,
         action: "upload",
         label: labelForUrl(body.url),
       },
@@ -730,8 +721,8 @@ canvas.delete(
 /**
  * Take the one upload failure only the browser witnessed (#237).
  *
- * Every finish that reached the ledger settles the task row before it answers,
- * so those failures need nothing from the browser. Bytes that never reached
+ * Every finish the server queued settles the task row in its job, so those
+ * failures need nothing from the browser. Bytes that never reached
  * the edge are the exception — the finish needs an upload id
  * that only a completed transfer hands back, so it was never asked for and
  * nothing here was ever told. Without this the row runs to its budget and is

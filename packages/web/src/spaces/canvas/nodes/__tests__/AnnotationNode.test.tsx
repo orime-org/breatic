@@ -25,7 +25,6 @@ const NAMES = new Map([
  * @returns The node view the component renders.
  */
 const note = (over: Partial<AnnotationNodeView> = {}): AnnotationNodeView => ({
-  kind: 'annotation',
   content: 'a cooler shot here',
   createdBy: 'u-me',
   createdAt: 1_757_000_000_000,

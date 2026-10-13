@@ -20,7 +20,6 @@
 
 import type { ModelEntry } from '@breatic/shared';
 
-import type { CanvasNodeView } from '@web/data/yjs/canvas-space';
 import { AUDIO_SLOTS } from '@web/spaces/canvas/generate/audio-slots';
 import type { AudioSlot, AudioSlotUrls } from '@web/spaces/canvas/generate/audio-slots';
 import {
@@ -37,7 +36,7 @@ import {
   isVoiceChosen,
   voiceParamName,
 } from '@web/spaces/canvas/generate/voice-param';
-import { asContentView } from '@web/data/yjs/node-view';
+import { asContentView, type NodeRef } from '@web/data/yjs/node-view';
 import {
   isStandInOn,
   speakersShort,
@@ -94,7 +93,7 @@ export interface AudioPanelViewModel {
  */
 export function buildAudioPanelViewModel(input: {
   nodeId: string;
-  nodes: ReadonlyArray<Pick<CanvasNodeView, 'id' | 'data'>>;
+  nodes: ReadonlyArray<NodeRef>;
   models: ModelEntry[];
   mode: string;
 }): AudioPanelViewModel {

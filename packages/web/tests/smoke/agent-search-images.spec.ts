@@ -17,12 +17,13 @@
  * actually made say which one it used.
  *
  * The turn is real, so the model decides whether to search. The prompt asks
- * for reference pictures, which is the case the tool exists for; a run where
- * it answers in prose instead is reported as such rather than passed.
+ * for reference pictures, which is the case the tool exists for.
  */
-import { expect, test, type Page } from 'playwright/test';
+import { expect, type Page } from 'playwright/test';
+import { test } from '../helpers/slot';
+import { startNewConversation } from '../helpers/conversation';
 
-import { STATE_FILE, openSmokeProject } from '../helpers/project';
+import { openSmokeProject } from '../helpers/project';
 
 let page: Page;
 
@@ -31,7 +32,6 @@ const imageRequests: string[] = [];
 
 test.beforeEach(async ({ browser }) => {
   page = await browser.newPage({
-    storageState: STATE_FILE.A,
     viewport: { width: 1400, height: 900 },
   });
   page.on('request', (req) => {
@@ -40,28 +40,46 @@ test.beforeEach(async ({ browser }) => {
   await openSmokeProject(page);
 });
 
+/** How many turns a case asks before it counts the model as not searching. */
+const TURNS_TO_SEARCH = 3;
+/** The longest one turn is waited for. */
+const TURN_MS = 150_000;
+
+test.setTimeout(TURNS_TO_SEARCH * TURN_MS + 60_000); // three turns of up to 150s each, and the reading after
+
 /**
  * Run a turn that asks for reference pictures, and wait for the squares.
  *
  * Each case opens its own page, so neither inherits the other's squares. The
  * conversation is its own too: opening a Project hands back the one this
  * account used last, which would be whatever another case was doing.
+ *
+ * Whether to search is the model's call each turn. A turn it answers in
+ * prose is asked again in a new conversation, so what these cases measure is
+ * the pictures a search brings back; a model that never searches still fails
+ * them, after the last turn.
  * @param target - The page to run the turn in.
- * @throws {Error} When no row of pictures appears, which is what a run where
- *   the model answered in prose instead of searching looks like.
+ * @throws {Error} When no turn brings back a row of pictures.
  */
 async function aTurnThatFoundPictures(target: Page): Promise<void> {
   const composer = target.getByTestId('chat-composer-box');
   await expect(composer).toBeVisible({ timeout: 20_000 });
 
-  await target.getByTestId('new-conversation').click();
-  await expect(target.getByTestId('message-bubble')).toHaveCount(0, { timeout: 20_000 });
+  for (let turn = 1; turn <= TURNS_TO_SEARCH; turn += 1) {
+    await startNewConversation(target);
+    await expect(target.getByTestId('message-bubble')).toHaveCount(0, { timeout: 20_000 });
 
-  imageRequests.length = 0;
-  await composer.fill('Find me a few cyberpunk reference images -- neon, rainy night, street.');
-  await composer.press('Enter');
+    imageRequests.length = 0;
+    await composer.fill('Search the web for images: cyberpunk references, neon, a rainy night street.');
+    await composer.press('Enter');
 
-  await expect(target.getByTestId('asset-row')).toBeVisible({ timeout: 150_000 });
+    // The turn is over once the reply is there and the stop button has gone;
+    // a search draws its row before that.
+    await expect(target.getByTestId('message-bubble')).toHaveCount(2, { timeout: TURN_MS });
+    await expect(target.getByTestId('chat-composer-abort')).toHaveCount(0, { timeout: TURN_MS });
+    if ((await target.getByTestId('asset-row').count()) > 0) return;
+  }
+  throw new Error(`no turn of ${String(TURNS_TO_SEARCH)} searched for pictures`);
 }
 
 test.afterEach(async () => {
@@ -108,7 +126,6 @@ test('a turn that found pictures draws them, from the proxied thumbnail @needs-m
 });
 
 test('opening one shows it large, from that same address @needs-model @needs-search @needs-internet', async () => {
-  test.setTimeout(240_000);
   await aTurnThatFoundPictures(page);
 
   const first = page.getByTestId('asset-thumb').first();

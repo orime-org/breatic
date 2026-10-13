@@ -7,7 +7,7 @@
  * (inner#1315) in the request that asked for it.
  */
 
-import { canonicalMediaType, INGEST_NO_ANSWER, isUploadableMediaType, reduceMediaType } from "@breatic/shared";
+import { canonicalMediaType, isUploadableMediaType, reduceMediaType } from "@breatic/shared";
 
 /**
  * Refusals that come from the link the reader handed us: it would not answer,
@@ -23,17 +23,15 @@ const READER_SOURCE_REFUSALS: ReadonlySet<string> = new Set([
 
 /**
  * Whether a failed transfer is the link's own doing, as the one who handed it
- * over is told: it would not answer, would not finish in time, held a kind we
- * do not take, was larger than the ticket allows, or sent nothing. A link
- * that ran out of time is logged as an error, since no answer at all can also
- * be the Worker's, and is still told as the link's: the canvas tells the
- * reader the address was too slow.
+ * over is told: it would not answer, held a kind we do not take, was larger
+ * than the ticket allows, or sent nothing. No answer from the Worker at all is
+ * the Worker or the line to it going away, which is ours (inner#1367).
  * @param reason - The failure reason recorded on the transfer.
  * @returns True where the link is at fault.
  * @throws {never} Never.
  */
 export function isReaderLinkFault(reason: string): boolean {
-  return READER_SOURCE_REFUSALS.has(reason) || reason === INGEST_NO_ANSWER;
+  return READER_SOURCE_REFUSALS.has(reason);
 }
 
 /**
@@ -46,7 +44,7 @@ export function isReaderLinkFault(reason: string): boolean {
  * @throws {never} Never.
  */
 export function urlIngestFailureLevel(reason: string): "warn" | "error" {
-  return READER_SOURCE_REFUSALS.has(reason) ? "warn" : "error";
+  return isReaderLinkFault(reason) ? "warn" : "error";
 }
 
 /**

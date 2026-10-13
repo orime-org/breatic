@@ -28,7 +28,7 @@ export type AttachmentPreview =
 interface SnapshotNode {
   id?: unknown;
   type?: unknown;
-  data?: { kind?: unknown; name?: unknown; content?: unknown; body?: unknown; coverUrl?: unknown };
+  data?: { name?: unknown; content?: unknown; body?: unknown; coverUrl?: unknown };
 }
 
 /**
@@ -74,7 +74,7 @@ function rowOf(node: SnapshotNode, index: number): PreviewRow {
   const kind = str(node.type) ?? '';
   const thumbnail =
     kind === 'image' ? str(node.data?.content) : kind === 'video' ? str(node.data?.coverUrl) : undefined;
-  const row: PreviewRow = { id: str(node.id) ?? String(index), kind, name: nodeNameOf({ ...node.data, kind }) };
+  const row: PreviewRow = { id: str(node.id) ?? String(index), kind, name: nodeNameOf(kind, node.data ?? {}) };
   return thumbnail ? { ...row, thumbnail } : row;
 }
 

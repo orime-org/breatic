@@ -33,7 +33,6 @@ describe("resolveModel (#1672 behavior pins)", () => {
       modelId: "x-ai/grok-imagine-image-v2.0/text-to-image",
       baseUrl: "https://api.wavespeed.ai/api/v3",
       apiKey: "test-wavespeed-key",
-      timeout: 120,
       maxConcurrency: 50,
       mode: "t2i",
     });

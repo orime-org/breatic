@@ -21,6 +21,7 @@ import {
   selectParagraph,
   test,
 } from '../helpers/bubble-bar';
+import { selectInBody } from '../helpers/editor-keys';
 import { createSpace, deleteSpace, DOCUMENT_EDITOR as EDITOR, VISIBLE_SPACE } from '../helpers/space';
 
 // `bubble-bar` registers the afterEach that removes what `openFreshDocument`
@@ -81,40 +82,40 @@ async function selectChars(
   to: number,
   paragraph = 0,
 ): Promise<void> {
-  await p.evaluate(
-    ({ sel, at, index }) => {
-      (document.querySelector(sel) as HTMLElement).focus({ preventScroll: true });
-      const para = document.querySelectorAll(`${sel} p`)[index]!;
-      const walker = document.createTreeWalker(para, NodeFilter.SHOW_TEXT);
-      let seen = 0;
-      let startNode: Text | null = null;
-      let startOffset = 0;
-      let endNode: Text | null = null;
-      let endOffset = 0;
-      let node = walker.nextNode() as Text | null;
-      while (node !== null) {
-        const len = node.data.length;
-        if (startNode === null && seen + len >= at.from) {
-          startNode = node;
-          startOffset = at.from - seen;
+  await selectInBody(p, () =>
+    p.evaluate(
+      ({ sel, at, index }) => {
+        const para = document.querySelectorAll(`${sel} p`)[index]!;
+        const walker = document.createTreeWalker(para, NodeFilter.SHOW_TEXT);
+        let seen = 0;
+        let startNode: Text | null = null;
+        let startOffset = 0;
+        let endNode: Text | null = null;
+        let endOffset = 0;
+        let node = walker.nextNode() as Text | null;
+        while (node !== null) {
+          const len = node.data.length;
+          if (startNode === null && seen + len >= at.from) {
+            startNode = node;
+            startOffset = at.from - seen;
+          }
+          if (endNode === null && seen + len >= at.to) {
+            endNode = node;
+            endOffset = at.to - seen;
+          }
+          seen += len;
+          node = walker.nextNode() as Text | null;
         }
-        if (endNode === null && seen + len >= at.to) {
-          endNode = node;
-          endOffset = at.to - seen;
-        }
-        seen += len;
-        node = walker.nextNode() as Text | null;
-      }
-      const range = document.createRange();
-      range.setStart(startNode!, startOffset);
-      range.setEnd(endNode!, endOffset);
-      const selection = window.getSelection()!;
-      selection.removeAllRanges();
-      selection.addRange(range);
-    },
-    { sel: EDITOR, at: { from, to }, index: paragraph },
+        const range = document.createRange();
+        range.setStart(startNode!, startOffset);
+        range.setEnd(endNode!, endOffset);
+        const selection = window.getSelection()!;
+        selection.removeAllRanges();
+        selection.addRange(range);
+      },
+      { sel: EDITOR, at: { from, to }, index: paragraph },
+    ),
   );
-  await p.waitForTimeout(250);
 }
 
 /** How many bubble bars are on screen. */
@@ -726,15 +727,17 @@ test.describe('the card a comment is written in', () => {
     const home = (await page
       .locator('[role="tab"][aria-selected="true"]')
       .getAttribute('data-testid'))!;
-    await page.evaluate((sel) => {
-      const second = document.querySelectorAll(`${sel} p`)[1]!;
-      const range = document.createRange();
-      range.setStart(second.firstChild!, 4);
-      range.setEnd(second.firstChild!, 12);
-      const selection = window.getSelection()!;
-      selection.removeAllRanges();
-      selection.addRange(range);
-    }, EDITOR);
+    await selectInBody(page, () =>
+      page.evaluate((sel) => {
+        const second = document.querySelectorAll(`${sel} p`)[1]!;
+        const range = document.createRange();
+        range.setStart(second.firstChild!, 4);
+        range.setEnd(second.firstChild!, 12);
+        const selection = window.getSelection()!;
+        selection.removeAllRanges();
+        selection.addRange(range);
+      }, EDITOR),
+    );
     await page.getByTestId('doc-bubble-tool-comment').click();
     await page.getByTestId('doc-comment-draft-input').fill('half a thought');
 
@@ -778,15 +781,17 @@ test.describe('the card a comment is written in', () => {
     const home = (await page
       .locator('[role="tab"][aria-selected="true"]')
       .getAttribute('data-testid'))!;
-    await page.evaluate((sel) => {
-      const second = document.querySelectorAll(`${sel} p`)[1]!;
-      const range = document.createRange();
-      range.setStart(second.firstChild!, 6);
-      range.setEnd(second.firstChild!, 11);
-      const selection = window.getSelection()!;
-      selection.removeAllRanges();
-      selection.addRange(range);
-    }, EDITOR);
+    await selectInBody(page, () =>
+      page.evaluate((sel) => {
+        const second = document.querySelectorAll(`${sel} p`)[1]!;
+        const range = document.createRange();
+        range.setStart(second.firstChild!, 6);
+        range.setEnd(second.firstChild!, 11);
+        const selection = window.getSelection()!;
+        selection.removeAllRanges();
+        selection.addRange(range);
+      }, EDITOR),
+    );
     await page.getByTestId('doc-bubble-tool-comment').click();
     await page.getByTestId('doc-comment-draft-input').fill('half a thought');
 
@@ -830,15 +835,17 @@ test.describe('the card a comment is written in', () => {
     await page.keyboard.type('alpha bravo\n');
     await page.keyboard.type('charlie delta\n');
     await page.keyboard.type('echo');
-    await page.evaluate((sel) => {
-      const [first, second] = document.querySelectorAll(`${sel} p`);
-      const range = document.createRange();
-      range.setStart(first!.firstChild!, 6);
-      range.setEnd(second!.firstChild!, 7);
-      const selection = window.getSelection()!;
-      selection.removeAllRanges();
-      selection.addRange(range);
-    }, EDITOR);
+    await selectInBody(page, () =>
+      page.evaluate((sel) => {
+        const [first, second] = document.querySelectorAll(`${sel} p`);
+        const range = document.createRange();
+        range.setStart(first!.firstChild!, 6);
+        range.setEnd(second!.firstChild!, 7);
+        const selection = window.getSelection()!;
+        selection.removeAllRanges();
+        selection.addRange(range);
+      }, EDITOR),
+    );
     await page.getByTestId('doc-bubble-tool-comment').click();
     await page.getByTestId('doc-comment-draft-input').fill('half a thought');
 
@@ -1637,34 +1644,36 @@ test.describe('a comment split around words that are not its own', () => {
 
     // Drag the settled words into the middle of the live run, which is what
     // splits one thread around words it never covered.
-    const at = await page.evaluate((sel) => {
-      const para = document.querySelector(`${sel} p`)!;
-      const nodes: Text[] = [];
-      const walker = document.createTreeWalker(para, NodeFilter.SHOW_TEXT);
-      let node = walker.nextNode() as Text | null;
-      while (node !== null) {
-        nodes.push(node);
-        node = walker.nextNode() as Text | null;
-      }
-      const settled = nodes.find((n) => n.data.includes('SETTLED'))!;
-      const live = nodes.find((n) => n.data.includes('ALPHABETA'))!;
-      const source = document.createRange();
-      source.setStart(settled, settled.data.indexOf('SETTLED'));
-      source.setEnd(settled, settled.data.indexOf('SETTLED') + 7);
-      const landing = document.createRange();
-      const mid = live.data.indexOf('ALPHABETA') + 5;
-      landing.setStart(live, mid);
-      landing.setEnd(live, mid);
-      const selection = window.getSelection()!;
-      selection.removeAllRanges();
-      selection.addRange(source);
-      const from = source.getBoundingClientRect();
-      const to = landing.getBoundingClientRect();
-      return {
-        from: { x: from.x + from.width / 2, y: from.y + from.height / 2 },
-        to: { x: to.x, y: to.y + to.height / 2 },
-      };
-    }, EDITOR);
+    const at = await selectInBody(page, () =>
+      page.evaluate((sel) => {
+        const para = document.querySelector(`${sel} p`)!;
+        const nodes: Text[] = [];
+        const walker = document.createTreeWalker(para, NodeFilter.SHOW_TEXT);
+        let node = walker.nextNode() as Text | null;
+        while (node !== null) {
+          nodes.push(node);
+          node = walker.nextNode() as Text | null;
+        }
+        const settled = nodes.find((n) => n.data.includes('SETTLED'))!;
+        const live = nodes.find((n) => n.data.includes('ALPHABETA'))!;
+        const source = document.createRange();
+        source.setStart(settled, settled.data.indexOf('SETTLED'));
+        source.setEnd(settled, settled.data.indexOf('SETTLED') + 7);
+        const landing = document.createRange();
+        const mid = live.data.indexOf('ALPHABETA') + 5;
+        landing.setStart(live, mid);
+        landing.setEnd(live, mid);
+        const selection = window.getSelection()!;
+        selection.removeAllRanges();
+        selection.addRange(source);
+        const from = source.getBoundingClientRect();
+        const to = landing.getBoundingClientRect();
+        return {
+          from: { x: from.x + from.width / 2, y: from.y + from.height / 2 },
+          to: { x: to.x, y: to.y + to.height / 2 },
+        };
+      }, EDITOR),
+    );
 
     await page.evaluate(
       ({ sel, drag }) => {
@@ -1722,24 +1731,26 @@ test.describe('a comment split around words that are not its own', () => {
     await page.keyboard.type('charlie');
     await expect(page.locator(`${EDITOR} p`).nth(2)).toHaveText('charlie');
 
-    const at = await page.evaluate((sel) => {
-      const [first, second, third] = document.querySelectorAll(`${sel} p`);
-      const source = document.createRange();
-      source.setStart(first!.firstChild!, 0);
-      source.setEnd(second!.firstChild!, 5);
-      const landing = document.createRange();
-      landing.setStart(third!.firstChild!, 7);
-      landing.setEnd(third!.firstChild!, 7);
-      const selection = window.getSelection()!;
-      selection.removeAllRanges();
-      selection.addRange(source);
-      const from = first!.getBoundingClientRect();
-      const to = landing.getBoundingClientRect();
-      return {
-        from: { x: from.x + 10, y: from.y + from.height / 2 },
-        to: { x: to.x, y: to.y + to.height / 2 },
-      };
-    }, EDITOR);
+    const at = await selectInBody(page, () =>
+      page.evaluate((sel) => {
+        const [first, second, third] = document.querySelectorAll(`${sel} p`);
+        const source = document.createRange();
+        source.setStart(first!.firstChild!, 0);
+        source.setEnd(second!.firstChild!, 5);
+        const landing = document.createRange();
+        landing.setStart(third!.firstChild!, 7);
+        landing.setEnd(third!.firstChild!, 7);
+        const selection = window.getSelection()!;
+        selection.removeAllRanges();
+        selection.addRange(source);
+        const from = first!.getBoundingClientRect();
+        const to = landing.getBoundingClientRect();
+        return {
+          from: { x: from.x + 10, y: from.y + from.height / 2 },
+          to: { x: to.x, y: to.y + to.height / 2 },
+        };
+      }, EDITOR),
+    );
 
     await page.evaluate(
       ({ sel, drag }) => {

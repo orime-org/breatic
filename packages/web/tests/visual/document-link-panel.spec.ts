@@ -36,7 +36,7 @@ import {
   restOnLink,
   settlePanelUnder,
 } from '../helpers/link-panel';
-import { STATE_FILE } from '../helpers/project';
+
 import { VISIBLE_SPACE, DOCUMENT_EDITOR } from '../helpers/space';
 
 /**
@@ -373,15 +373,10 @@ test('link: the toolbar comes up over the link the caret is in', async ({ page }
   await linkTheSelection(page, 'a.example/caret');
   await collapseAfterLinking(page);
 
-  // Walked in from the body's start rather than back from its end: confirming
-  // an address leaves the caret at the start of the paragraph, and the first
-  // character boundary of a link is not inside it as far as
-  // `getLinkAtSelection` is concerned.
-  await page.keyboard.press(
-    process.platform === 'darwin' ? 'Meta+ArrowUp' : 'Control+Home',
-  );
+  // Walked back from the end, where collapsing left the caret, with arrows
+  // ProseMirror answers from its own selection.
   for (let i = 0; i < 3; i += 1) {
-    await page.keyboard.press('ArrowRight');
+    await page.keyboard.press('ArrowLeft');
   }
 
   await expect(page.getByTestId('doc-link-toolbar')).toBeVisible({
@@ -648,7 +643,6 @@ test('link: the panel keeps its place while a co-editor types', async ({ page, b
   );
 
   const peer = await browser.newContext({
-    storageState: STATE_FILE.A,
     viewport: { width: 1680, height: 950 },
   });
   try {
@@ -899,7 +893,6 @@ test('link: the toolbar opens against the link a co-editor just moved', async ({
   );
 
   const peer = await browser.newContext({
-    storageState: STATE_FILE.A,
     viewport: { width: 1680, height: 950 },
   });
   try {
@@ -1062,7 +1055,6 @@ test('link: the toolbar comes up while a co-editor is typing', async ({ page, br
   );
 
   const peer = await browser.newContext({
-    storageState: STATE_FILE.A,
     viewport: { width: 1680, height: 950 },
   });
   try {
@@ -1136,7 +1128,6 @@ test('link: a dismissal holds while a co-editor writes ahead of the link', async
   );
 
   const peer = await browser.newContext({
-    storageState: STATE_FILE.A,
     viewport: { width: 1680, height: 950 },
   });
   try {

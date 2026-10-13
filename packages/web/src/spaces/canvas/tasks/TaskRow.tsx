@@ -20,13 +20,11 @@ import { useCollaboratorNames } from '@web/features/collab-editor/collaborator-n
 import { useTranslation } from '@web/i18n/use-translation';
 import { TaskStatusDot } from '@web/spaces/canvas/tasks/TaskStatusDot';
 import { formatDuration } from '@web/spaces/canvas/lib/duration';
-import {
-  elapsedMs,
-  remainingMs,
-} from '@web/spaces/canvas/tasks/task-timing';
+import { elapsedMs } from '@web/spaces/canvas/tasks/task-timing';
 import type { TaskRowAction } from '@web/spaces/canvas/tasks/task-row-actions';
 import { taskRowActions } from '@web/spaces/canvas/tasks/task-row-actions';
-import { taskRowTitle } from '@web/spaces/canvas/tasks/task-row-title';
+import { taskRowKind } from '@web/spaces/canvas/tasks/task-row-kind';
+import { KindBadge } from '@web/spaces/canvas/_shared/KindBadge';
 
 /**
  * Used when no catalog is at hand: every model shows as its id.
@@ -57,6 +55,10 @@ export interface TaskRowProps {
   hasRetryFile: boolean;
   /** Whether this reader may write; a read-only row carries no buttons. */
   readOnly: boolean;
+  /** Whether this row's Retry is still waiting for the server. */
+  retrying: boolean;
+  /** Whether this row's Finish or Clear is still waiting for the server. */
+  dismissing: boolean;
   /**
    * What the host node holds, when it holds one of the three media.
    *
@@ -106,6 +108,8 @@ function settledNote(
  * @param props.now - The reader's clock.
  * @param props.hasRetryFile - Whether this session holds the File.
  * @param props.readOnly - Whether this reader may write.
+ * @param props.retrying - Whether this row's Retry is still waiting.
+ * @param props.dismissing - Whether this row's Finish or Clear is still waiting.
  * @param props.medium - What the host node holds, for a refusal's format list.
  * @param props.onView - Open the node's history at the late result.
  * @param props.displayNameOf - The catalog's name for a model id.
@@ -118,6 +122,8 @@ export const TaskRow = React.memo(function TaskRow({
   now,
   hasRetryFile,
   readOnly,
+  retrying,
+  dismissing,
   medium,
   onView,
   displayNameOf = NO_NAMES,
@@ -146,7 +152,7 @@ export const TaskRow = React.memo(function TaskRow({
     },
     [entry.id, onView, onRetry, onDismiss],
   );
-  const title = taskRowTitle(entry, t, displayNameOf);
+  const kind = taskRowKind(entry, t, displayNameOf);
 
   const note = settledNote(entry, t, medium);
   // Whichever instant this row has: a running task says when it began, a
@@ -171,14 +177,18 @@ export const TaskRow = React.memo(function TaskRow({
     >
       <div className='flex items-center gap-2'>
         <TaskStatusDot status={status} />
-        {/* What the task was doing, at the weight of context. What the reader
-            came for is the sentence below, so this sits between it and the
-            timing. */}
-        <span
-          data-testid='task-title'
-          className='min-w-0 flex-1 truncate text-2xs text-foreground-secondary'
-        >
-          {title}
+        <KindBadge
+          testId='task-kind'
+          icon={kind.icon}
+          label={kind.label}
+          colorClassName='text-foreground-secondary'
+        />
+        {/* What the task acted on, at the weight of context. What the reader
+            came for is the sentence below. */}
+        <span className='min-w-0 flex-1 truncate text-2xs text-foreground-secondary'>
+          {kind.detail !== null ? (
+            <span data-testid='task-detail'>{kind.detail}</span>
+          ) : null}
         </span>
         {starter !== null ? (
           <span className='shrink-0 text-2xs text-muted-foreground'>
@@ -192,13 +202,6 @@ export const TaskRow = React.memo(function TaskRow({
           <span data-testid='task-elapsed'>
             {t('canvas.task.elapsed', {
               duration: formatDuration(elapsedMs(entry.startedAt, now)),
-            })}
-          </span>
-          <span data-testid='task-remaining'>
-            {t('canvas.task.remaining', {
-              duration: formatDuration(
-                remainingMs(entry.startedAt, entry.budgetMs, now),
-              ),
             })}
           </span>
         </div>
@@ -247,6 +250,14 @@ export const TaskRow = React.memo(function TaskRow({
             variant={PRIMARY_ACTIONS.has(action) ? 'default' : 'outline'}
             size='compact'
             data-testid={`task-action-${action}`}
+            // Each button waits on its own request only; View sends none.
+            loading={
+              action === 'retry'
+                ? retrying
+                : action === 'view'
+                  ? false
+                  : dismissing
+            }
             onClick={(): void => run(action)}
             className='text-2xs'
           >

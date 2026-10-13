@@ -26,7 +26,7 @@ import {
   type NodeMediaFields,
 } from '@breatic/shared';
 import { bodyFromText, bodyToPlainText, writePlainTextIntoBody } from '@breatic/shared/canvas/text-body';
-import type { NodeKind, NodeView } from '@web/data/yjs/node-view';
+import type { TypedNodeView } from '@web/data/yjs/node-view';
 import { toNodeView } from '@web/data/yjs/node-view';
 import { fillNestedData, splitSnapshot } from '@web/data/yjs/node-data-snapshot';
 
@@ -54,11 +54,14 @@ import { fillNestedData, splitSnapshot } from '@web/data/yjs/node-data-snapshot'
  * `type` or a missing `data` Y.Map are skipped).
  */
 
-/** A render-ready canvas node: identity + position + the narrowed view. */
-export interface CanvasNodeView {
+/**
+ * A render-ready canvas node: identity, position, and its type paired with the
+ * view of that type. `type` is the stored node type and doubles as the
+ * ReactFlow node type (the `NODE_TYPES` registry key); checking it narrows
+ * `data`.
+ */
+export type CanvasNodeView = TypedNodeView & {
   id: string;
-  /** ReactFlow node type = the view kind (the `NODE_TYPES` registry key). */
-  type: NodeKind;
   position: { x: number; y: number };
   /**
    * Containing Group id (group redesign 2026-06-23) — present on a member
@@ -66,8 +69,7 @@ export interface CanvasNodeView {
    * top-level nodes.
    */
   parentId?: string;
-  data: NodeView;
-}
+};
 
 /**
  * A canvas connection. Its data meaning IS a reference relationship: an edge
@@ -2059,15 +2061,14 @@ export function readNodes(doc: Y.Doc): ReadonlyArray<CanvasNodeView> {
       },
       data: dataMap.toJSON() as CanvasNodeFields['data'],
     };
-    const view = toNodeView(fields);
-    if (!view) return;
+    const typed = toNodeView(fields);
+    if (!typed) return;
     const parentId = nodeMap.get('parentId');
     out.push({
       id: fields.id,
-      type: view.kind,
+      ...typed,
       position: fields.position,
       ...(typeof parentId === 'string' ? { parentId } : {}),
-      data: view,
     });
   });
   return out;

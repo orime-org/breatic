@@ -71,6 +71,20 @@ vi.mock('@web/spaces/canvas/focus/run-focus-crop', async (importOriginal) => {
   return { ...actual, runFocusCrop: vi.fn(() => Promise.resolve()) };
 });
 
+// The upload pipeline's network steps, passed through unless a case stands
+// one in (inner#1367 A10).
+vi.mock('@web/data/upload/hash', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@web/data/upload/hash')>();
+  return { ...actual, hashFile: vi.fn(actual.hashFile) };
+});
+vi.mock('@web/data/upload/finish-upload', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@web/data/upload/finish-upload')>();
+  return { ...actual, sendFileAndFinish: vi.fn(actual.sendFileAndFinish) };
+});
+vi.mock('@web/data/upload/upload-status', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@web/data/upload/upload-status')>();
+  return { ...actual, waitForUploadEnding: vi.fn(actual.waitForUploadEnding) };
+});
 vi.mock('@web/components/ui/tooltip', () => ({
   Tooltip: ({ children }: { children?: React.ReactNode }) => children,
   TooltipTrigger: ({ children }: { children?: React.ReactNode }) => children,
@@ -97,10 +111,15 @@ import { useSocket } from '@web/data/yjs/use-socket';
 import { docName, getDoc, _resetForTests } from '@web/data/yjs/manager';
 import { bodyToPlainText, writePlainTextIntoBody } from '@breatic/shared/canvas/text-body';
 import { addNode, getTextBody } from '@web/data/yjs/canvas-space';
+import type { TypedNodeView } from '@web/data/yjs/node-view';
 import { runFocusCrop } from '@web/spaces/canvas/focus/run-focus-crop';
 import * as downloadLib from '@web/lib/download';
 import { canvasSessions } from '@web/stores/canvas-session';
 import { installLayout, relayout } from '@web/spaces/canvas/crop/__tests__/crop-harness';
+import { hashFile } from '@web/data/upload/hash';
+import { sendFileAndFinish } from '@web/data/upload/finish-upload';
+import { waitForUploadEnding, type UploadEnding } from '@web/data/upload/upload-status';
+import { hasRetryFile, resetRetryFilesForTests } from '@web/spaces/canvas/upload-retry-files';
 
 const mockUseCanvasSpace = vi.mocked(canvasSpace.useCanvasSpace);
 
@@ -451,7 +470,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
             id: 'n1',
             type: 'text',
             position: { x: 0, y: 0 },
-            data: { kind: 'text', handling: false, name: 'N' },
+            data: { handling: false, name: 'N' },
           },
         ],
       }),
@@ -549,7 +568,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
             id: 'n1',
             type: 'image',
             position: { x: 0, y: 0 },
-            data: { kind: 'image', content: 'x.png', handling: false },
+            data: { content: 'x.png', handling: false },
           },
         ],
       }),
@@ -598,7 +617,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
               id: 'n1',
               type: 'text',
               position: { x: 0, y: 0 },
-              data: { kind: 'text', handling: false, name: 'N' },
+              data: { handling: false, name: 'N' },
             },
           ],
         }),
@@ -685,7 +704,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
             id: 'n1',
             type: 'text',
             position: { x: 0, y: 0 },
-            data: { kind: 'text', handling: false, name: 'N' },
+            data: { handling: false, name: 'N' },
           },
         ],
       }),
@@ -733,7 +752,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
             id: 'n1',
             type: 'text',
             position: { x: 0, y: 0 },
-            data: { kind: 'text', handling: false, name: 'N' },
+            data: { handling: false, name: 'N' },
           },
         ],
       }),
@@ -785,7 +804,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
             id: 'n1',
             type: 'text',
             position: { x: 0, y: 0 },
-            data: { kind: 'text', handling: false, name: 'N' },
+            data: { handling: false, name: 'N' },
           },
         ],
       }),
@@ -838,7 +857,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
             id: 'n1',
             type: 'text',
             position: { x: 0, y: 0 },
-            data: { kind: 'text', handling: false, name: 'N' },
+            data: { handling: false, name: 'N' },
           },
         ],
       }),
@@ -869,7 +888,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
             id: 'n1',
             type: 'image',
             position: { x: 0, y: 0 },
-            data: { kind: 'image', content: 'x.png', handling: false },
+            data: { content: 'x.png', handling: false },
           },
         ],
       }),
@@ -888,7 +907,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
             id: 'n1',
             type: 'image',
             position: { x: 0, y: 0 },
-            data: { kind: 'image', content: 'x.png', handling: false },
+            data: { content: 'x.png', handling: false },
           },
         ],
       }),
@@ -914,25 +933,25 @@ describe('CanvasSpace (ReactFlow mount)', () => {
             position: { x: 0, y: 0 },
             // i2i uses the full source pool, so images stay selectable — this
             // isolates the canConnect (type) dimming from the mode scoping.
-            data: { kind: 'image', handling: false, mode: 'i2i' },
+            data: { handling: false, mode: 'i2i' },
           },
           {
             id: 'src-audio',
             type: 'audio',
             position: { x: 300, y: 0 },
-            data: { kind: 'audio', content: 'a.mp3', handling: false },
+            data: { content: 'a.mp3', handling: false },
           },
           {
             id: 'src-text',
             type: 'text',
             position: { x: 600, y: 0 },
-            data: { kind: 'text', handling: false },
+            data: { handling: false },
           },
           {
             id: 'src-image',
             type: 'image',
             position: { x: 900, y: 0 },
-            data: { kind: 'image', content: 'x.png', handling: false },
+            data: { content: 'x.png', handling: false },
           },
         ],
       }),
@@ -961,8 +980,8 @@ describe('CanvasSpace (ReactFlow mount)', () => {
   const styleNodes = (held: string[]) =>
     mockSpace({
       nodes: [
-        { id: 'target', type: 'image', position: { x: 0, y: 0 }, data: { kind: 'image', handling: false, styleImageUrls: held } },
-        { id: 'src-image', type: 'image', position: { x: 600, y: 0 }, data: { kind: 'image', content: 'https://cdn/x.png', handling: false } },
+        { id: 'target', type: 'image', position: { x: 0, y: 0 }, data: { handling: false, styleImageUrls: held } },
+        { id: 'src-image', type: 'image', position: { x: 600, y: 0 }, data: { content: 'https://cdn/x.png', handling: false } },
       ],
     });
   const clickSource = (): void => {
@@ -1004,8 +1023,8 @@ describe('CanvasSpace (ReactFlow mount)', () => {
   const motionNodes = () =>
     mockSpace({
       nodes: [
-        { id: 'target', type: 'video', position: { x: 0, y: 0 }, data: { kind: 'video', content: 'https://cdn/v.mp4', handling: false } },
-        { id: 'src-image', type: 'image', position: { x: 600, y: 0 }, data: { kind: 'image', content: 'https://cdn/x.png', handling: false } },
+        { id: 'target', type: 'video', position: { x: 0, y: 0 }, data: { content: 'https://cdn/v.mp4', handling: false } },
+        { id: 'src-image', type: 'image', position: { x: 600, y: 0 }, data: { content: 'https://cdn/x.png', handling: false } },
       ],
     });
   const openMotion = (): void => {
@@ -1077,7 +1096,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
             id: 'target',
             type: 'video',
             position: { x: 0, y: 0 },
-            data: { kind: 'video', handling: false, mode: 'i2v' },
+            data: { handling: false, mode: 'i2v' },
           },
         ],
       }),
@@ -1107,7 +1126,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
             id: 'target',
             type: 'video',
             position: { x: 0, y: 0 },
-            data: { kind: 'video', handling: false, mode: 'i2v' },
+            data: { handling: false, mode: 'i2v' },
           },
         ],
       }),
@@ -1140,7 +1159,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
             id: 'target',
             type: 'audio',
             position: { x: 0, y: 0 },
-            data: { kind: 'audio', handling: false },
+            data: { handling: false },
           },
         ],
       }),
@@ -1172,7 +1191,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
             id: 'target',
             type: 'video',
             position: { x: 0, y: 0 },
-            data: { kind: 'video', handling: false, mode: 'first_last' },
+            data: { handling: false, mode: 'first_last' },
           },
         ],
       }),
@@ -1203,25 +1222,25 @@ describe('CanvasSpace (ReactFlow mount)', () => {
             id: 'target',
             type: 'image',
             position: { x: 0, y: 0 },
-            data: { kind: 'image', handling: false, mode: 't2i' },
+            data: { handling: false, mode: 't2i' },
           },
           {
             id: 'src-audio',
             type: 'audio',
             position: { x: 300, y: 0 },
-            data: { kind: 'audio', content: 'a.mp3', handling: false },
+            data: { content: 'a.mp3', handling: false },
           },
           {
             id: 'src-text',
             type: 'text',
             position: { x: 600, y: 0 },
-            data: { kind: 'text', handling: false },
+            data: { handling: false },
           },
           {
             id: 'src-image',
             type: 'image',
             position: { x: 900, y: 0 },
-            data: { kind: 'image', content: 'x.png', handling: false },
+            data: { content: 'x.png', handling: false },
           },
         ],
       }),
@@ -1257,13 +1276,13 @@ describe('CanvasSpace (ReactFlow mount)', () => {
             id: 'target',
             type: 'image',
             position: { x: 0, y: 0 },
-            data: { kind: 'image', handling: false, mode: 't2i' },
+            data: { handling: false, mode: 't2i' },
           },
           {
             id: 'src-image',
             type: 'image',
             position: { x: 900, y: 0 },
-            data: { kind: 'image', content: 'x.png', handling: false },
+            data: { content: 'x.png', handling: false },
           },
         ],
       }),
@@ -1304,7 +1323,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
             id: 'locked',
             type: 'image',
             position: { x: 0, y: 0 },
-            data: { kind: 'image', handling: false, locked: true },
+            data: { handling: false, locked: true },
           },
         ],
       }),
@@ -1343,7 +1362,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
             id: 'locked',
             type: 'image',
             position: { x: 0, y: 0 },
-            data: { kind: 'image', handling: false, locked: true },
+            data: { handling: false, locked: true },
           },
         ],
       }),
@@ -1377,7 +1396,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
             id: 'locked',
             type: 'image',
             position: { x: 0, y: 0 },
-            data: { kind: 'image', handling: false, locked: true },
+            data: { handling: false, locked: true },
           },
         ],
       }),
@@ -1413,7 +1432,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
             id: 'locked',
             type: 'image',
             position: { x: 0, y: 0 },
-            data: { kind: 'image', handling: false, locked: true },
+            data: { handling: false, locked: true },
           },
         ],
       }),
@@ -1444,7 +1463,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
             id: 'locked',
             type: 'image',
             position: { x: 0, y: 0 },
-            data: { kind: 'image', handling: false, locked: true },
+            data: { handling: false, locked: true },
           },
         ],
       }),
@@ -1482,13 +1501,13 @@ describe('CanvasSpace (ReactFlow mount)', () => {
             id: 'target',
             type: 'video',
             position: { x: 0, y: 0 },
-            data: { kind: 'video', handling: false, mode: 'first_last' },
+            data: { handling: false, mode: 'first_last' },
           },
           {
             id: 'src-audio',
             type: 'audio',
             position: { x: 600, y: 0 },
-            data: { kind: 'audio', content: 'https://cdn/a.m4a', handling: false },
+            data: { content: 'https://cdn/a.m4a', handling: false },
           },
         ],
       }),
@@ -1529,13 +1548,13 @@ describe('CanvasSpace (ReactFlow mount)', () => {
             id: 'target',
             type: 'video',
             position: { x: 0, y: 0 },
-            data: { kind: 'video', handling: false, mode: 'first_last' },
+            data: { handling: false, mode: 'first_last' },
           },
           {
             id: 'src-image',
             type: 'image',
             position: { x: 600, y: 0 },
-            data: { kind: 'image', content: 'https://cdn/l.png', handling: false },
+            data: { content: 'https://cdn/l.png', handling: false },
           },
         ],
       }),
@@ -1581,13 +1600,13 @@ describe('CanvasSpace (ReactFlow mount)', () => {
             id: 'target',
             type: 'video',
             position: { x: 0, y: 0 },
-            data: { kind: 'video', handling: false, mode: 'animate' },
+            data: { handling: false, mode: 'animate' },
           },
           {
             id: 'src-image',
             type: 'image',
             position: { x: 600, y: 0 },
-            data: { kind: 'image', content: 'https://cdn/i.png', handling: false },
+            data: { content: 'https://cdn/i.png', handling: false },
           },
         ],
       }),
@@ -1627,14 +1646,13 @@ describe('CanvasSpace (ReactFlow mount)', () => {
             id: 'target',
             type: 'video',
             position: { x: 0, y: 0 },
-            data: { kind: 'video', handling: false, mode: 'animate' },
+            data: { handling: false, mode: 'animate' },
           },
           {
             id: 'src-video',
             type: 'video',
             position: { x: 600, y: 0 },
             data: {
-              kind: 'video',
               content: 'https://cdn/driving.mp4',
               coverUrl: 'https://cdn/driving-cover.png',
               handling: false,
@@ -1676,14 +1694,13 @@ describe('CanvasSpace (ReactFlow mount)', () => {
             id: 'target',
             type: 'video',
             position: { x: 0, y: 0 },
-            data: { kind: 'video', handling: false, mode: 'animate' },
+            data: { handling: false, mode: 'animate' },
           },
           {
             id: 'src-video',
             type: 'video',
             position: { x: 600, y: 0 },
             data: {
-              kind: 'video',
               content: 'https://cdn/v.mp4',
               handling: false,
             },
@@ -1722,31 +1739,31 @@ describe('CanvasSpace (ReactFlow mount)', () => {
             id: 'target',
             type: 'video',
             position: { x: 0, y: 0 },
-            data: { kind: 'video', handling: false, mode: 'first_last' },
+            data: { handling: false, mode: 'first_last' },
           },
           {
             id: 'src-empty',
             type: 'image',
             position: { x: 300, y: 0 },
-            data: { kind: 'image', handling: false },
+            data: { handling: false },
           },
           {
             id: 'src-text',
             type: 'text',
             position: { x: 600, y: 0 },
-            data: { kind: 'text', handling: false },
+            data: { handling: false },
           },
           {
             id: 'src-audio',
             type: 'audio',
             position: { x: 900, y: 0 },
-            data: { kind: 'audio', content: 'https://cdn/a.m4a', handling: false },
+            data: { content: 'https://cdn/a.m4a', handling: false },
           },
           {
             id: 'src-image',
             type: 'image',
             position: { x: 1200, y: 0 },
-            data: { kind: 'image', content: 'https://cdn/l.png', handling: false },
+            data: { content: 'https://cdn/l.png', handling: false },
           },
         ],
       }),
@@ -1777,7 +1794,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
             id: 'target',
             type: 'video',
             position: { x: 0, y: 0 },
-            data: { kind: 'video', handling: false, mode: 'first_last' },
+            data: { handling: false, mode: 'first_last' },
           },
         ],
       }),
@@ -1811,7 +1828,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
             id: 'target',
             type: 'image',
             position: { x: 0, y: 0 },
-            data: { kind: 'image', handling: false },
+            data: { handling: false },
           },
         ],
       }),
@@ -1851,7 +1868,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
             id: 'target',
             type: 'image',
             position: { x: 0, y: 0 },
-            data: { kind: 'image', handling: false },
+            data: { handling: false },
           },
         ],
       }),
@@ -1874,7 +1891,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
             id: 'target',
             type: 'image',
             position: { x: 0, y: 0 },
-            data: { kind: 'image', handling: false },
+            data: { handling: false },
           },
         ],
       }),
@@ -1919,7 +1936,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
             id: 'target',
             type: 'image',
             position: { x: 0, y: 0 },
-            data: { kind: 'image', handling: false },
+            data: { handling: false },
           },
         ],
       }),
@@ -1962,7 +1979,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
             id: 'target',
             type: 'image',
             position: { x: 0, y: 0 },
-            data: { kind: 'image', handling: false },
+            data: { handling: false },
           },
         ],
       }),
@@ -2002,7 +2019,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
             id: 'target',
             type: 'image',
             position: { x: 0, y: 0 },
-            data: { kind: 'image', handling: false, mode: 'i2i' },
+            data: { handling: false, mode: 'i2i' },
           },
         ],
       }),
@@ -2050,7 +2067,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
             id: 'target',
             type: 'image',
             position: { x: 0, y: 0 },
-            data: { kind: 'image', handling: false },
+            data: { handling: false },
           },
         ],
       }),
@@ -2085,7 +2102,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
       id: 'target',
       type: 'image',
       position: { x: 0, y: 0 },
-      data: { kind: 'image', handling: false },
+      data: { handling: false },
     } as const;
     mockUseCanvasSpace.mockReturnValue(mockSpace({ nodes: [target] }));
     const addNode = vi
@@ -2143,7 +2160,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
       id: 'target',
       type: 'image',
       position: { x: 0, y: 0 },
-      data: { kind: 'image', handling: false },
+      data: { handling: false },
     } as const;
     mockUseCanvasSpace.mockReturnValue(mockSpace({ nodes: [target] }));
     const addNode = vi
@@ -2204,13 +2221,13 @@ describe('CanvasSpace (ReactFlow mount)', () => {
       id: 'target',
       type: 'image',
       position: { x: 0, y: 0 },
-      data: { kind: 'image', handling: false, mode: 'i2i' },
+      data: { handling: false, mode: 'i2i' },
     } as const;
     const other = {
       id: 'other',
       type: 'image',
       position: { x: 200, y: 0 },
-      data: { kind: 'image', handling: false },
+      data: { handling: false },
     } as const;
     mockUseCanvasSpace.mockReturnValue(mockSpace({ nodes: [target, other] }));
     render(
@@ -2252,7 +2269,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
       id: 'target',
       type: 'image',
       position: { x: 0, y: 0 },
-      data: { kind: 'image', handling: false },
+      data: { handling: false },
     } as const;
     mockUseCanvasSpace.mockReturnValue(mockSpace({ nodes: [target] }));
     const client = new QueryClient({
@@ -2304,13 +2321,13 @@ describe('CanvasSpace (ReactFlow mount)', () => {
       id: 'target',
       type: 'image',
       position: { x: 0, y: 0 },
-      data: { kind: 'image', handling: false },
+      data: { handling: false },
     } as const;
     const other = {
       id: 'other',
       type: 'image',
       position: { x: 200, y: 0 },
-      data: { kind: 'image', handling: false },
+      data: { handling: false },
     } as const;
     mockUseCanvasSpace.mockReturnValue(mockSpace({ nodes: [target, other] }));
     render(
@@ -2430,7 +2447,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
             id: 'n1',
             type: 'image',
             position: { x: 0, y: 0 },
-            data: { kind: 'image', handling: false },
+            data: { handling: false },
           },
         ],
       }),
@@ -2848,6 +2865,65 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     configSpy.mockRestore();
   });
 
+  // A node's upload is over for the page once its finish is queued, so the
+  // Space can close; a finish that fails later is still told to the person who
+  // dropped the file, and the File is kept for the task's Retry (inner#1367 A10).
+  it('frees the Space once a dropped file\'s finish is queued, and tells a failed finish later', async () => {
+    resetRetryFilesForTests();
+    mockUseCanvasSpace.mockReturnValue(mockSpace());
+    const storageKey = 'image/2026-10-11/1_dropped.png';
+    vi.spyOn(assetsApi, 'fetchUploadConfig').mockResolvedValue({
+      maxUploadBytes: 2147483648,
+      clientMaxAttempts: 1,
+      clientRetryBaseDelayMs: 1,
+      uploadIdleTimeoutMs: 60000,
+      uploadStatusPollSeconds: 2,
+      assetUrlPrefix: 'https://cdn/',
+    });
+    vi.mocked(hashFile).mockResolvedValueOnce('a'.repeat(64));
+    vi.spyOn(assetsApi, 'requestUploadTicket').mockResolvedValue({
+      ticket: 'signed',
+      storageKey,
+      uploadUrl: 'https://ingest.example.com',
+      kind: 'image',
+      partSize: 5 * 1024 * 1024,
+      totalParts: 1,
+      taskId: 'task-9',
+    } as Awaited<ReturnType<typeof assetsApi.requestUploadTicket>>);
+    vi.mocked(sendFileAndFinish).mockResolvedValueOnce({ storageKey });
+    let end: (ending: UploadEnding) => void = () => undefined;
+    vi.mocked(waitForUploadEnding).mockReturnValueOnce(
+      new Promise<UploadEnding>((resolve) => {
+        end = resolve;
+      }),
+    );
+    const errorSpy = vi.spyOn(toast, 'error').mockReturnValue('t');
+    renderSpace();
+
+    const file = new File(['x'], 'a.png', { type: 'image/png' });
+    const drop = new Event('drop', { bubbles: true, cancelable: true });
+    Object.defineProperty(drop, 'dataTransfer', {
+      configurable: true,
+      value: { files: [file], types: ['Files'] },
+    });
+    Object.defineProperty(drop, 'clientX', { configurable: true, value: 10 });
+    Object.defineProperty(drop, 'clientY', { configurable: true, value: 10 });
+    act(() => {
+      screen.getByTestId('canvas-space').dispatchEvent(drop);
+    });
+
+    await waitFor(() => expect(sendFileAndFinish).toHaveBeenCalled());
+    await waitFor(() => expect(useSpaceOperationsStore.getState().hasOperations('s')).toBe(false));
+    expect(errorSpy).not.toHaveBeenCalled();
+
+    await act(async () => {
+      end({ key: storageKey, state: 'failed', reason: 'assemble_failed' });
+    });
+
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    expect(hasRetryFile('p', 's', 'task-9')).toBe(true);
+  });
+
   // ---- Magnetic handle (user 2026-07-11) ----
   // The 8px anchor element is invisible (its center is the edge attachment);
   // the visible dot is a spring-following child, and the 36px outside-the-
@@ -2862,7 +2938,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
             id: 'n1',
             type: 'image',
             position: { x: 0, y: 0 },
-            data: { kind: 'image', content: 'x.png', handling: false },
+            data: { content: 'x.png', handling: false },
           },
         ],
       }),
@@ -2904,13 +2980,13 @@ describe('CanvasSpace (ReactFlow mount)', () => {
             id: 'target',
             type: 'image',
             position: { x: 0, y: 0 },
-            data: { kind: 'image', handling: false },
+            data: { handling: false },
           },
           {
             id: 'candidate',
             type: 'image',
             position: { x: 400, y: 0 },
-            data: { kind: 'image', content: 'c.png', handling: false },
+            data: { content: 'c.png', handling: false },
           },
         ],
       }),
@@ -2946,7 +3022,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
             id: 'target',
             type: 'image',
             position: { x: 0, y: 0 },
-            data: { kind: 'image', handling: false },
+            data: { handling: false },
           },
         ],
       }),
@@ -2986,7 +3062,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
             id: 'target',
             type: 'image',
             position: { x: 0, y: 0 },
-            data: { kind: 'image', handling: false },
+            data: { handling: false },
           },
         ],
       }),
@@ -3033,7 +3109,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
             id: 'target',
             type: 'image',
             position: { x: 0, y: 0 },
-            data: { kind: 'image', handling: false },
+            data: { handling: false },
           },
         ],
       }),
@@ -3059,7 +3135,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
             id: 'target',
             type: 'image',
             position: { x: 0, y: 0 },
-            data: { kind: 'image', handling: false },
+            data: { handling: false },
           },
         ],
       }),
@@ -3095,7 +3171,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
             id: 'n1',
             type: 'image',
             position: { x: 0, y: 0 },
-            data: { kind: 'image', handling: false },
+            data: { handling: false },
           },
         ],
       }),
@@ -3149,7 +3225,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
             id: 'locked-img',
             type: 'image',
             position: { x: 0, y: 0 },
-            data: { kind: 'image', handling: false, locked: true },
+            data: { handling: false, locked: true },
           },
         ],
       }),
@@ -3180,7 +3256,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
             id: 'locked',
             type: 'image',
             position: { x: 0, y: 0 },
-            data: { kind: 'image', handling: false },
+            data: { handling: false },
           },
         ],
       }),
@@ -3228,7 +3304,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
             id: 'img',
             type: 'image',
             position: { x: 0, y: 0 },
-            data: { kind: 'image', handling: false, locked: true },
+            data: { handling: false, locked: true },
           },
         ],
       }),
@@ -3272,7 +3348,6 @@ describe('CanvasSpace (ReactFlow mount)', () => {
             type: 'image',
             position: { x: 0, y: 0 },
             data: {
-              kind: 'image',
               handling: false,
               content: 'https://assets.example.com/image/2026-09-13/other.png',
             },
@@ -3281,7 +3356,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
             id: 'clicked',
             type: 'image',
             position: { x: 400, y: 0 },
-            data: { kind: 'image', handling: false, content: clicked },
+            data: { handling: false, content: clicked },
           },
         ],
       }),
@@ -3315,13 +3390,13 @@ describe('CanvasSpace (ReactFlow mount)', () => {
    *
    * The item is on the menu either way; what changes is whether it is
    * disabled, which is how the reader is told this node has nothing to take.
-   * @param data - The node's view.
+   * @param typed - The node's type and view.
    * @returns Whether the download item was enabled.
    */
-  function downloadOffered(data: canvasSpace.CanvasNodeView['data']): boolean {
+  function downloadOffered(typed: TypedNodeView): boolean {
     mockUseCanvasSpace.mockReturnValue(
       mockSpace({
-        nodes: [{ id: 'n', type: data.kind, position: { x: 0, y: 0 }, data }],
+        nodes: [{ id: 'n', ...typed, position: { x: 0, y: 0 } }],
       }),
     );
     renderSpace();
@@ -3350,7 +3425,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
             id: 'n',
             type: 'image',
             position: { x: 0, y: 0 },
-            data: { kind: 'image', handling: false, content: SHOWN },
+            data: { handling: false, content: SHOWN },
           },
         ],
       }),
@@ -3372,26 +3447,26 @@ describe('CanvasSpace (ReactFlow mount)', () => {
   it('offers download on a video node showing its asset (#2108 A2)', () => {
     canvasSessions.of('s').setState({ panelHostId: null, panelKind: null });
     expect(
-      downloadOffered({ kind: 'video', handling: false, content: SHOWN }),
+      downloadOffered({ type: 'video', data: { handling: false, content: SHOWN } }),
     ).toBe(true);
   });
 
   it('offers download on an audio node showing its asset (#2108 A3)', () => {
     canvasSessions.of('s').setState({ panelHostId: null, panelKind: null });
     expect(
-      downloadOffered({ kind: 'audio', handling: false, content: SHOWN }),
+      downloadOffered({ type: 'audio', data: { handling: false, content: SHOWN } }),
     ).toBe(true);
   });
 
   it('offers no download on a node showing nothing (#2108 A4)', () => {
     canvasSessions.of('s').setState({ panelHostId: null, panelKind: null });
-    expect(downloadOffered({ kind: 'image', handling: false })).toBe(false);
+    expect(downloadOffered({ type: 'image', data: { handling: false } })).toBe(false);
   });
 
   it('offers download on a node still showing content while a task runs (#2108 A14)', () => {
     canvasSessions.of('s').setState({ panelHostId: null, panelKind: null });
     expect(
-      downloadOffered({ kind: 'image', handling: true, content: SHOWN }),
+      downloadOffered({ type: 'image', data: { handling: true, content: SHOWN } }),
     ).toBe(true);
   });
 
@@ -3406,7 +3481,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
             id: 'img',
             type: 'image',
             position: { x: 0, y: 0 },
-            data: { kind: 'image', handling: false },
+            data: { handling: false },
           },
         ],
       }),
@@ -3450,7 +3525,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
             id: 'img',
             type: 'image',
             position: { x: 0, y: 0 },
-            data: { kind: 'image', handling: false },
+            data: { handling: false },
           },
         ],
       }),
@@ -3490,19 +3565,19 @@ describe('CanvasSpace (ReactFlow mount)', () => {
             id: 'target',
             type: 'image',
             position: { x: 0, y: 0 },
-            data: { kind: 'image', handling: false },
+            data: { handling: false },
           },
           {
             id: 'src-video',
             type: 'video',
             position: { x: 300, y: 0 },
-            data: { kind: 'video', content: 'v.mp4', handling: false },
+            data: { content: 'v.mp4', handling: false },
           },
           {
             id: 'src-image',
             type: 'image',
             position: { x: 600, y: 0 },
-            data: { kind: 'image', content: 'x.png', handling: false },
+            data: { content: 'x.png', handling: false },
           },
         ],
       }),
@@ -3531,13 +3606,13 @@ describe('CanvasSpace (ReactFlow mount)', () => {
             id: 'target',
             type: 'image',
             position: { x: 0, y: 0 },
-            data: { kind: 'image', handling: false },
+            data: { handling: false },
           },
           {
             id: 'src-video',
             type: 'video',
             position: { x: 300, y: 0 },
-            data: { kind: 'video', content: 'v.mp4', handling: false },
+            data: { content: 'v.mp4', handling: false },
           },
         ],
       }),
@@ -3565,13 +3640,13 @@ describe('CanvasSpace (ReactFlow mount)', () => {
             id: 'target',
             type: 'image',
             position: { x: 0, y: 0 },
-            data: { kind: 'image', handling: false },
+            data: { handling: false },
           },
           {
             id: 'src-audio',
             type: 'audio',
             position: { x: 300, y: 0 },
-            data: { kind: 'audio', content: 'a.m4a', handling: false },
+            data: { content: 'a.m4a', handling: false },
           },
         ],
       }),
@@ -3605,19 +3680,19 @@ describe('CanvasSpace (ReactFlow mount)', () => {
             id: 'target',
             type: 'image',
             position: { x: 0, y: 0 },
-            data: { kind: 'image', handling: false },
+            data: { handling: false },
           },
           {
             id: 'busy-video',
             type: 'video',
             position: { x: 300, y: 0 },
-            data: { kind: 'video', content: 'v.mp4', handling: true },
+            data: { content: 'v.mp4', handling: true },
           },
           {
             id: 'empty-video',
             type: 'video',
             position: { x: 900, y: 0 },
-            data: { kind: 'video', handling: false },
+            data: { handling: false },
           },
         ],
       }),
@@ -3653,7 +3728,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
             id: 'target',
             type: 'video',
             position: { x: 0, y: 0 },
-            data: { kind: 'video', content: 'self.mp4', handling: false },
+            data: { content: 'self.mp4', handling: false },
           },
         ],
       }),
@@ -3687,14 +3762,13 @@ describe('CanvasSpace (ReactFlow mount)', () => {
             id: 'target',
             type: 'image',
             position: { x: 0, y: 0 },
-            data: { kind: 'image', handling: false },
+            data: { handling: false },
           },
           {
             id: 'src-video',
             type: 'video',
             position: { x: 300, y: 0 },
             data: {
-              kind: 'video',
               content: 'https://cdn/clip.mp4',
               name: 'Video Node 3',
               handling: false,
@@ -3794,7 +3868,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
             id: `n${i + 1}`,
             type: 'text' as const,
             position: { x: i * 400, y: 0 },
-            data: { kind: 'text' as const, handling: false as const, name: 'N' },
+            data: { handling: false as const, name: 'N' },
           })),
         }),
       );
@@ -4321,7 +4395,7 @@ describe('reference-pick interaction contract', () => {
             id: 'target',
             type: 'image',
             position: { x: 0, y: 0 },
-            data: { kind: 'image', handling: false, mode: 'i2i' },
+            data: { handling: false, mode: 'i2i' },
           },
         ],
       }),
@@ -4660,7 +4734,6 @@ describe('placing a note (#1881)', () => {
             type: 'annotation',
             position: { x: 0, y: 0 },
             data: {
-              kind: 'annotation',
               content: 'a cooler shot here',
               createdBy: 'u-1',
               createdAt: 1,
@@ -4764,7 +4837,6 @@ describe('placing a note (#1881)', () => {
             type: 'annotation',
             position: { x: 0, y: 0 },
             data: {
-              kind: 'annotation',
               content: 'somebody else wrote this',
               createdBy: 'u-somebody-else',
               createdAt: 1,
@@ -4904,7 +4976,6 @@ describe('placing a note (#1881)', () => {
             type: 'annotation' as const,
             position: { x: i * 300, y: 0 },
             data: {
-              kind: 'annotation' as const,
               content: `note ${id}`,
               createdBy: author,
               createdAt: 1,
@@ -5042,7 +5113,6 @@ describe('placing a note (#1881)', () => {
             type: 'annotation',
             position: { x: 0, y: 0 },
             data: {
-              kind: 'annotation',
               content: 'a cooler shot here',
               createdBy: 'u-1',
               createdAt: 1,
@@ -5056,7 +5126,6 @@ describe('placing a note (#1881)', () => {
             type: 'annotation',
             position: { x: 300, y: 0 },
             data: {
-              kind: 'annotation',
               content: 'and slower',
               createdBy: 'u-3',
               createdAt: 3,
@@ -5123,7 +5192,7 @@ describe('the camera this Space is left on (#2165)', () => {
             id: 'n-1',
             type: 'image',
             position: { x: 900, y: 700 },
-            data: { kind: 'image', handling: false },
+            data: { handling: false },
           },
         ],
       }),

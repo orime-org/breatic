@@ -29,6 +29,7 @@ export type {
   MessageData,
   MessageInput,
   MessagePart,
+  StoredModelOutput,
   StoredMessageMetadata,
   TaskEntity,
   NodeHistoryEntity,
@@ -310,7 +311,11 @@ export type {
   UpdateStudioInput,
   LoginInput,
   ChatMessageInput,
+  ChatSpaceContext,
   ChatAttachedChip,
+  ChatSpace,
+  ChatCurrentSpace,
+  ChatCanvasDetail,
   TaskCreateInput,
   UnderstandInput,
   CanvasPasteInput,
@@ -447,6 +452,7 @@ export {
 } from "@shared/camera-angle.js";
 export { appliesInMode, paramsForMode } from "@shared/param-modes.js";
 export {
+  MULTI_SHOT_MODE,
   storyboardSend,
   storyboardSpec,
 } from "@shared/storyboard.js";
@@ -476,6 +482,7 @@ export {
   attachmentMarker,
   attachmentPart,
   attachmentSection,
+  attachmentTitle,
   chipOfPart,
   messageLength,
   messageSegments,
@@ -483,7 +490,6 @@ export {
   resolvedSegments,
   wordsForTitle,
   writeReferences,
-  userTurnForModel,
 } from "@shared/agent/attachments.js";
 export type { AttachmentDataPart, MessageSegment, ResolvedSegment } from "@shared/agent/attachments.js";
 export {
@@ -508,9 +514,9 @@ export type {
 // through here, on both sides of the wire (decided 2026-08-02).
 //
 // Two symbols for what it does, plus one for what it demands of a caller (see
-// below). It does seven things — send, judge, wait, cap at three deliveries,
-// hand over or throw, hold nothing, stop when the caller says so — and no
-// eighth, so there is nothing else worth naming here. Everything the loop needs internally (the judgement, its
+// below). It does eight things — send, judge, wait, cap at three deliveries,
+// hand over or throw, hold nothing, stop when the caller says so, abort a send
+// that stalls — and no ninth, so there is nothing else worth naming here. Everything the loop needs internally (the judgement, its
 // vocabulary, the sleep) stays inside: an export is a promise to somebody, and
 // nobody outside this package needs those. Not even the options type: a caller
 // writes the object inline and TypeScript's structural typing does the rest,
@@ -535,6 +541,13 @@ export type {
 // caller holding a 200 has no use for "and it took two tries", while a caller
 // holding a failure has a log line to write.
 export { httpRequest, HttpRetryError } from "@shared/http/request.js";
+export {
+  assertBeforeDeadline,
+  DeadlinePassed,
+  untilDeadline,
+  untilDeadlineIfAhead,
+  type UntilDeadline,
+} from "@shared/http/deadline.js";
 export { readWithin, readBytesWithin, BodyTooLarge, EmptyBody } from "@shared/http/read-within.js";
 
 // Beside the transport because it undoes what the transport did: a request
@@ -547,7 +560,7 @@ export { reasonOf } from "@shared/http/reason.js";
 // message is only half a contract. A caller whose deadline comes from config
 // (`size / rate`) has to be able to refuse an unusable pair where the operator
 // can still read the complaint, rather than at the moment someone uploads.
-// This is not an eighth thing the transport does — it is the bound the second
+// This is not one more thing the transport does — it is the bound the second
 // parameter already had, said out loud.
 export { MAX_TIMER_MS } from "@shared/http/constants.js";
 
@@ -596,6 +609,12 @@ export {
   type PartLayout,
   type SessionTokenPayload,
 } from "@shared/upload/session-token.js";
+export {
+  UPLOAD_STATUS_MAX_KEYS,
+  type UploadStatus,
+  type UploadStatusResult,
+} from "@shared/upload/upload-status.js";
+export { uprightKeyFor, type UprightCopy } from "@shared/upload/upright.js";
 // Why a task failed, as a code rather than a sentence: the writer is a server
 // and the reader is whoever opens the list, in their own language.
 export {
@@ -645,17 +664,6 @@ export {
 // Plain text in and out of a text node's body ships at
 // `@breatic/shared/canvas/text-body` — that file says why it is not here.
 
-// The arithmetic both sides of an upload read: the browser sizes each part's
-// deadline with it, and the config refuses windows narrower than what they
-// have to hold.
-export {
-  partDeadlineMs,
-  partRetryBudgetMs,
-  completeRetryBudgetMs,
-  assertUploadWindows,
-  type PartDeadlineConfig,
-  type UploadWindows,
-} from "@shared/upload/windows.js";
 // Sending bytes to the ingest Worker. Whoever holds them sends them: the
 // browser for a file a person picked, our own backend for what it produced
 // itself -- one implementation, so "every asset reaches R2 through the ingest
@@ -665,16 +673,15 @@ export {
   finishUploadAtIngest,
   fetchUrlToIngest,
   readStoredMediaAtIngest,
-  computePutTimeoutMs,
   IngestAnswerError,
   UploadHttpError,
   type UploadClientConfig,
   type IngestTarget,
-  type IngestOutcome,
+  type MediaLimits,
   type HeldUpload,
   type PartReceipt,
   type IngestMeasurements,
-  type MediaLimits,
+  type IngestRun,
   type MediaNumbers,
   PREVIEW_OUTCOMES,
   type PreviewOutcome,

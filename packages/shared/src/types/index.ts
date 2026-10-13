@@ -7,6 +7,7 @@ export type {
   MessageData,
   MessageInput,
   MessagePart,
+  StoredModelOutput,
   TaskEntity,
   NodeHistoryEntity,
   StudioAssetEntity,

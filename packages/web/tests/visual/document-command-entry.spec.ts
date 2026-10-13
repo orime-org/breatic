@@ -16,20 +16,20 @@
  * Needs the dev server and a smoke account:
  *   pnpm --filter @breatic/web test:visual
  */
-import { test, expect, type Page } from 'playwright/test';
+import { expect, type Page } from 'playwright/test';
+import { test } from '../helpers/slot';
 
-import { STATE_FILE, openSmokeProject } from '../helpers/project';
+import { selectInBody } from '../helpers/editor-keys';
+import { openSmokeProject } from '../helpers/project';
 import { createSpace, deleteSpace, VISIBLE_SPACE, DOCUMENT_EDITOR } from '../helpers/space';
 
 let page: Page;
 
 test.beforeEach(async ({ browser }) => {
   page = await browser.newPage({
-    storageState: STATE_FILE.A,
     viewport: { width: 1680, height: 950 },
   });
 });
-
 
 // Each case makes its own Space so it starts on a clean document, and drops it
 // again when it is done — ten cases leaving ten behind in the same project runs
@@ -365,19 +365,21 @@ test('the bubble bar paints above the entry where they overlap', async () => {
   await editor.click();
   await page.keyboard.type('some text to select');
 
-  await page.evaluate((space: string) => {
-    const pm = document.querySelector(
-      `${space} [data-testid="document-space"] .ProseMirror`,
-    )!;
-    const text = pm.querySelector('p')!.firstChild as Text;
-    const sel = window.getSelection()!;
-    const r = document.createRange();
-    r.setStart(text, 1);
-    r.setEnd(text, 5);
-    sel.removeAllRanges();
-    sel.addRange(r);
-    pm.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
-  }, VISIBLE_SPACE);
+  await selectInBody(page, () =>
+    page.evaluate((space: string) => {
+      const pm = document.querySelector(
+        `${space} [data-testid="document-space"] .ProseMirror`,
+      )!;
+      const text = pm.querySelector('p')!.firstChild as Text;
+      const sel = window.getSelection()!;
+      const r = document.createRange();
+      r.setStart(text, 1);
+      r.setEnd(text, 5);
+      sel.removeAllRanges();
+      sel.addRange(r);
+      pm.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+    }, VISIBLE_SPACE),
+  );
   await expect(page.getByTestId('doc-selection-bubble-bar')).toBeVisible({
     timeout: 5_000,
   });

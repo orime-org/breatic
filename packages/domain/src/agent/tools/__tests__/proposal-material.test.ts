@@ -374,3 +374,12 @@ describe("a ref to material a slot takes through fills (inner#1315)", () => {
     expect(reason).not.toContain('into: "pool"');
   });
 });
+
+describe("where the description sends the model to learn what material is on the canvas (inner#1413)", () => {
+  it("looks first at the open canvas a message carries and asks only when it is not there", () => {
+    const description = String(makeProposeCanvasAction().description);
+
+    expect(description).not.toContain("you cannot see their canvas");
+    expect(description).toContain("The Space the reader has open");
+  });
+});

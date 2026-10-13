@@ -21,8 +21,6 @@ import { vi } from "vitest";
 // it); test code is exempt from the alias rule.
 import {
   ASK_USER as REAL_ASK_USER,
-  GET_CANVAS_CAPABILITIES as REAL_GET_CANVAS_CAPABILITIES,
-  LIST_GENERATION_MODELS as REAL_LIST_GENERATION_MODELS,
   PROPOSE_CANVAS_ACTION as REAL_PROPOSE_CANVAS_ACTION,
   SAVE_IMAGE as REAL_SAVE_IMAGE,
 } from "../../../../domain/src/agent/tools/tool-names.js";
@@ -478,11 +476,13 @@ export const coreMock = async (importOriginal: () => Promise<Record<string, unkn
     // Config
     env: { ENV: "dev", PORT: 3000, CREDIT_MULTIPLIER: 2.5, BRAVE_SEARCH_API_KEY: "test-search-key", ALLOWED_ORIGINS: "http://localhost:8000", COOKIE_DOMAIN: "", STORAGE_PROVIDER: "r2", GOOGLE_CLIENT_ID: "test-client.apps.googleusercontent.com", PAYMENT_ENABLED: true, EMAIL_BACKEND: "disabled", INGEST_SHARED_SECRET: "test-ingest-secret", INGEST_BASE_URL: "https://ingest.test.example" },
     MONOREPO_ROOT: "/tmp",
-    getAgentConfig: () => ({ default_model: "test", max_tool_iterations: 5, tool_result_keep: 3, memory_project_max_size: 1000, memory_conversation_max_size: 1000, max_output_tokens: 16384, memory_budget_chars: 850000, memory_keep_chars: 500000, user_message_max_chars: 15000, user_message_max_references: 100, attachment_max_chars: 200000, attachment_max_items: 10, conversation_page_size: 30, image_search_timeout_ms: 10000 }),
+    // The real config underneath, so every field the code reads exists; only
+    // the values these suites depend on are set here.
+    getAgentConfig: () => ({ ...(actual.getAgentConfig as () => Record<string, unknown>)(), default_model: "test", max_tool_iterations: 5, tool_result_keep: 3, memory_project_max_size: 1000, memory_conversation_max_size: 1000, max_output_tokens: 16384, memory_budget_chars: 850000, memory_keep_chars: 500000, user_message_max_chars: 15000, user_message_max_references: 100, attachment_max_chars: 200000, attachment_max_items: 10, conversation_page_size: 30, image_search_timeout_ms: 10000 }),
     // Values intentionally differ from config/storage.yaml so route tests
     // prove the endpoint reads config instead of hardcoding.
     getStorageConfig: () => ({
-      upload: { max_upload_bytes: 1024, client_max_attempts: 2, client_retry_base_delay_ms: 250, client_request_timeout_ms: 5000, client_put_min_bytes_per_sec: 1024 },
+      upload: { max_upload_bytes: 1024, client_max_attempts: 2, client_retry_base_delay_ms: 250, upload_idle_timeout_seconds: 45, upload_status_poll_seconds: 7 },
     }),
     // Logger
     logger: { ...mocks.logger, child: () => mocks.logger },
@@ -563,6 +563,9 @@ export const domainMock = () => ({
   usageContextFor: (tools: Record<string, unknown>, usage: unknown) =>
     Object.fromEntries(Object.keys(tools).map((name) => [name, { usage }])),
   SMALLEST_CREDIT: 0.000001,
+  UPLOAD_FINISH_QUEUE: "upload-finish",
+  uploadStatusService: { statusOf: vi.fn().mockResolvedValue([]) },
+  uploadDeadlineByKey: vi.fn().mockResolvedValue(Date.now() + 7_200_000),
   assetService: mocks.assetService,
   uploadGrantService: mocks.uploadGrantService,
   uploadGrantRepo: mocks.uploadGrantRepo,
@@ -607,10 +610,7 @@ export const domainMock = () => ({
   // and a copy that drifts throws nothing: the match simply never happens and
   // a turn carries on talking past the question it just asked.
   ASK_USER: REAL_ASK_USER,
-  // Read at module evaluation, as the keys of the render registry, so this
-  // stub has to carry them or every file mocking the barrel fails to load.
-  GET_CANVAS_CAPABILITIES: REAL_GET_CANVAS_CAPABILITIES,
-  LIST_GENERATION_MODELS: REAL_LIST_GENERATION_MODELS,
+  // Read by the turn when it hands the tools their context.
   PROPOSE_CANVAS_ACTION: REAL_PROPOSE_CANVAS_ACTION,
   // Read by the turn when it hands the save its context (inner#1315).
   SAVE_IMAGE: REAL_SAVE_IMAGE,

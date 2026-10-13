@@ -85,7 +85,7 @@ const EXTENSION: Readonly<Record<string, string>> = {
  * @param context - Where it lands and what it is for.
  * @param upload - The upload; tests pass a stand-in.
  * @returns The asset id to point the project or the studio at.
- * @throws {UploadFailedError} When the upload fails, or ends without naming a row.
+ * @throws {UploadFailedError} When the upload fails.
  */
 export async function uploadPicture(
   picture: Blob,
@@ -96,6 +96,5 @@ export async function uploadPicture(
     type: picture.type,
   });
   const { assetId } = await upload(file, context);
-  if (assetId === undefined) throw new UploadFailedError('upload');
   return assetId;
 }

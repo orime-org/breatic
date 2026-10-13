@@ -21,15 +21,15 @@ import { useTrayNotice, type TrayNotice } from '@web/stores/chat-attachments';
  * the project's activity feed.
  * @param file - The file.
  * @param projectId - The project the chat is in.
- * @returns The address it was filed under, when the server said.
+ * @returns The address it was filed under.
  * @throws {UploadFailedError} When the upload could not complete.
  */
-async function uploadForChat(file: File, projectId: string): Promise<string | undefined> {
+async function uploadForChat(file: File, projectId: string): Promise<string> {
   return (await uploadMedia(file, { projectId, derived: true })).fileUrl;
 }
 
 /**
- * What the reader is told about their last attempt to attach something.
+ * What the reader is told about their last attempt to attach something or send.
  * @param said - What the tray said.
  * @param t - The translator.
  * @returns The sentence.
@@ -38,6 +38,8 @@ function noticeText(said: TrayNotice, t: ReturnType<typeof useTranslation>): str
   switch (said.key) {
     case 'unavailable':
       return t('chat.composer.attachUnavailable');
+    case 'sendUnavailable':
+      return t('chat.composer.sendUnavailable');
     case 'full':
       return t('chat.composer.attachFull', { limit: said.limit });
     case 'tooLong':

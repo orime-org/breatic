@@ -76,6 +76,9 @@ const FROZEN_TERMS: ReadonlyArray<readonly [string, string]> = [
  * decisions and its role hints and per-kind request lines lost their reader.
  */
 const REMOVED_DEAD_KEYS: readonly string[] = [
+  // Finishing an upload answers 202 and its ending reaches the page through
+  // the upload status query, which names the reason (inner#1367).
+  'server.error.upload_empty',
   // A comment is written in a card in the panel, where Save and Cancel are
   // the pair every write box carries. The floating box that used to hold a
   // Post button, and the notice it dismissed, are gone with it.

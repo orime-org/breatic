@@ -14,8 +14,9 @@
  * both are frontend-owned and never involve the worker.
  */
 
-import type { CanvasEdge, CanvasNodeView } from '@web/data/yjs/canvas-space';
-import type { NodeKind, NodeView } from '@web/data/yjs/node-view';
+import type { CanvasEdge } from '@web/data/yjs/canvas-space';
+import type { NodeType } from '@breatic/shared';
+import type { NodeRef, NodeView, TypedNodeView } from '@web/data/yjs/node-view';
 
 /** One derived reference rail row (view-model, not stored in Yjs). */
 export interface ReferenceRailItem {
@@ -24,7 +25,7 @@ export interface ReferenceRailItem {
   /** Upstream node feeding this reference = the edge source. */
   sourceNodeId: string;
   /** Upstream node modality. */
-  sourceNodeType: NodeKind;
+  sourceNodeType: NodeType;
   /** Live display name of the upstream node (updates as it is renamed). */
   sourceNodeName: string;
   /** Live thumbnail / preview URL when the upstream carries a visual payload. */
@@ -151,15 +152,15 @@ function nameOf(view: NodeView): string {
  * (#1821); a coverless video degrades to a modality icon downstream), and
  * nothing for modalities without a visual payload (text / audio / 3d / web /
  * annotation / group).
- * @param view - The source node's view.
+ * @param node - The source node's type and view.
  * @returns The thumbnail URL, or undefined when there is no usable cover.
  */
-function thumbnailOf(view: NodeView): string | undefined {
-  switch (view.kind) {
+function thumbnailOf(node: TypedNodeView): string | undefined {
+  switch (node.type) {
     case 'image':
-      return view.content;
+      return node.data.content;
     case 'video':
-      return view.coverUrl;
+      return node.data.coverUrl;
     default:
       return undefined;
   }
@@ -170,16 +171,16 @@ function thumbnailOf(view: NodeView): string | undefined {
  * playable preview loads, as opposed to what the row's `<img>` shows. All
  * three media modalities keep it in the same place (`content`); the cover
  * frame a video also carries is the thumbnail's business, not this one.
- * @param view - The source node's view.
+ * @param node - The source node's type and view.
  * @returns The asset URL, or undefined when the modality has nothing to play
  *   or the source has produced nothing yet.
  */
-function mediaUrlOf(view: NodeView): string | undefined {
-  switch (view.kind) {
+function mediaUrlOf(node: TypedNodeView): string | undefined {
+  switch (node.type) {
     case 'image':
     case 'audio':
     case 'video':
-      return view.content;
+      return node.data.content;
     default:
       return undefined;
   }
@@ -196,8 +197,8 @@ function mediaUrlOf(view: NodeView): string | undefined {
  * display fields reflect the source nodes as passed in.
  * @param nodeId - The generative node whose reference rail to build.
  * @param nodes - The current canvas node views (source of live display
- *   fields). Only `id` + `data` are read, so both the stored
- *   {@link CanvasNodeView} shape and ReactFlow's `Node<NodeView>` satisfy it.
+ *   fields). Only `id`, `type` and `data` are read, so the stored
+ *   `CanvasNodeView` shape satisfies it.
  * @param edges - The current canvas edges.
  * @param textById - Body text per text node, from `useTextBodies`. Passed in
  *   rather than read off the node view, because the body is a shared fragment
@@ -210,7 +211,7 @@ function mediaUrlOf(view: NodeView): string | undefined {
  */
 export function deriveReferences(
   nodeId: string,
-  nodes: ReadonlyArray<Pick<CanvasNodeView, 'id' | 'data'>>,
+  nodes: ReadonlyArray<NodeRef>,
   edges: ReadonlyArray<CanvasEdge>,
   textById: ReadonlyMap<string, string>,
 ): ReferenceRailItem[] {
@@ -246,12 +247,12 @@ export function deriveReferences(
     rail.push({
       refId: edge.id,
       sourceNodeId: source.id,
-      sourceNodeType: source.data.kind,
+      sourceNodeType: source.type,
       sourceNodeName: nameOf(source.data),
-      thumbnail: thumbnailOf(source.data),
-      mediaUrl: mediaUrlOf(source.data),
+      thumbnail: thumbnailOf(source),
+      mediaUrl: mediaUrlOf(source),
       textContent:
-        source.data.kind === 'text' ? (textById.get(source.id) ?? '') : undefined,
+        source.type === 'text' ? (textById.get(source.id) ?? '') : undefined,
     });
   }
   return rail;

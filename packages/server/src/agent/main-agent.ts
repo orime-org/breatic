@@ -10,7 +10,7 @@
 
 import { createUIMessageStream, stepCountIs } from "ai";
 import { streamTextRetry } from "@breatic/domain";
-import type { StopCondition, ToolSet, UIMessageChunk, UIMessageStreamWriter } from "ai";
+import type { StopCondition, Tool, ToolSet, UIMessageChunk, UIMessageStreamWriter } from "ai";
 
 import { getModel, reasoningFor, resolveProvider } from "@breatic/domain";
 import {
@@ -28,8 +28,9 @@ import { saveToStorageFor } from "@server/agent/save-to-storage.js";
 import { turnToolsContext } from "@server/agent/turn-tools-context.js";
 import { buildTurnContext } from "@server/agent/turn-context.js";
 import { watchModelCalls, type ModelCallWatch } from "@server/agent/model-call-watch.js";
-import type { ChatAttachedChip, MessagePart, ToolFailure } from "@breatic/shared";
-import { userTurnForModel, wireLineOf, wordsForTitle } from "@breatic/shared";
+import type { ChatAttachedChip, ChatSpaceContext, MessagePart, ToolFailure } from "@breatic/shared";
+import { toolFailureOf, wireLineOf, wordsForTitle } from "@breatic/shared";
+import { userTurnForModel } from "@server/agent/user-turn.js";
 import * as messageRepo from "@server/modules/conversation/conversation-message.repo.js";
 import { toStoredParts } from "@server/modules/conversation/message-part-mapping.js";
 import * as conversationService from "@server/modules/conversation/conversation.service.js";
@@ -38,6 +39,7 @@ import type { Assembly } from "@server/agent/turn-budget.js";
 import { getContext } from "@breatic/core";
 import { logger } from "@breatic/core";
 import { toModelMessages } from "@server/agent/model-messages.js";
+import { withModelOutputs } from "@server/agent/stored-model-output.js";
 import { endingOf, endingWithNothingRun } from "@server/agent/tool-ending.js";
 import { writeAskUserText } from "@server/agent/ask-user-text.js";
 
@@ -75,6 +77,7 @@ export class MainAgent {
    *   away. Absent means this caller has no way to stop the turn.
    * @param attached - What the user attached to the message, in order.
    * @param timeZone - The zone the reader's browser reported, if any.
+   * @param space - The project's Spaces and the one the reader has open.
    * @returns The turn, as the SDK's own message chunks.
    */
   async chat(
@@ -82,8 +85,9 @@ export class MainAgent {
     signal?: AbortSignal,
     attached: readonly ChatAttachedChip[] = [],
     timeZone?: string,
+    space: ChatSpaceContext = {},
   ): Promise<ReadableStream<UIMessageChunk>> {
-    return this.runTurn(userMessage, attached, signal, timeZone);
+    return this.runTurn(userMessage, attached, signal, timeZone, space);
   }
 
   /**
@@ -92,6 +96,7 @@ export class MainAgent {
    * @param attached - What the user attached, stored beside the typed words
    * @param signal - Raised when the user stops the turn or the client leaves
    * @param timeZone - The zone the reader's browser reported, if any
+   * @param space - The project's Spaces and the one the reader has open
    * @returns The turn, as the SDK's own message chunks.
    */
   private async runTurn(
@@ -99,6 +104,7 @@ export class MainAgent {
     attached: readonly ChatAttachedChip[],
     signal: AbortSignal | undefined,
     timeZone: string | undefined,
+    space: ChatSpaceContext,
   ): Promise<ReadableStream<UIMessageChunk>> {
     const { conversationId } = this.ctx;
 
@@ -137,8 +143,9 @@ export class MainAgent {
     // heading. It is never stored, and the system prompt does not carry it,
     // so a provider's prefix cache still matches everything up to the last
     // turn's user message: that message went out with its note last time and
-    // goes out without it from here on.
-    const forModel = `${readerClockNote(new Date(), timeZone)}\n\n${userTurnForModel(attached, said)}`;
+    // goes out without it from here on. The reader's Spaces follow it on the
+    // same terms: read fresh with each message, never stored.
+    const forModel = `${readerClockNote(new Date(), timeZone)}\n\n${userTurnForModel({ ...space, chips: attached, message: said })}`;
     return this.runStream(forModel, turnIndex, title, signal);
   }
 
@@ -192,6 +199,10 @@ export class MainAgent {
     // What the turn ended up running on, for the charge at the end. Settled
     // inside `execute`, which is where the config is assembled.
     let modelId = "";
+    // The tool set the model ran with, for writing down what each call gave
+    // it. Settled with `modelId`, after any fold, so it is the set of the call
+    // that produced the reply.
+    let turnTools: Readonly<Record<string, Tool>> = {};
 
     // Whether this turn ended by putting a question to the reader.
     //
@@ -364,6 +375,7 @@ export class MainAgent {
 
       const { agentConfig, messages } = assembly;
       modelId = agentConfig.modelId;
+      turnTools = agentConfig.tools;
       // The studio whose material a proposal may name: the project's owner,
       // which is also where a saved picture is charged.
       const studioId = await assetService.resolveOwnerStudioId(projectId);
@@ -454,7 +466,30 @@ export class MainAgent {
           // is this one.
           if (toolOutput.type === "tool-error") {
             if (howToolEnded.has(toolCall.toolCallId)) return;
-            howToolEnded.set(toolCall.toolCallId, endingOf(toolOutput.error));
+            const ending = endingOf(toolOutput.error);
+            howToolEnded.set(toolCall.toolCallId, ending);
+            // The turn carries on and the model is told why; the error the
+            // tool caught, and what caused it, are kept only in this log.
+            // A call turned away to steer the model, or one the reader
+            // stopped, is not a failure. A failure the tool described is one
+            // it saw coming, and the reader was told: a warning. A throw it
+            // did not describe is a fault in our own code: an error.
+            if (ending.kind === "tool_failed") {
+              const details = {
+                err: toolOutput.error,
+                toolName: toolCall.toolName,
+                toolCallId: toolCall.toolCallId,
+                userId,
+                conversationId,
+                projectId,
+                forModel: ending.forModel,
+              };
+              if (toolFailureOf(toolOutput.error) === undefined) {
+                logger.error(details, "agent_tool_failed");
+              } else {
+                logger.warn(details, "agent_tool_failed");
+              }
+            }
             return;
           }
           whatToolAnswered.set(toolCall.toolCallId, toolOutput.output);
@@ -606,6 +641,10 @@ export class MainAgent {
           replyParts[i] = { ...part, status: "error", failure: ending };
         }
 
+        // Every call is settled now, from either source of a success, so this
+        // is where what the model was given gets written down beside each.
+        const storedParts = await withModelOutputs(replyParts, turnTools, { conversationId });
+
         let creditsUsed = 0;
         const failures = await finalizeTurn({
           steps: {
@@ -616,7 +655,7 @@ export class MainAgent {
             persist: async () => {
               await messageRepo.addMessage(conversationId, {
                 role: "assistant",
-                parts: replyParts,
+                parts: storedParts,
                 turnIndex,
               });
             },

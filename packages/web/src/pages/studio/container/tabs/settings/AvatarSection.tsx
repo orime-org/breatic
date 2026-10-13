@@ -17,7 +17,10 @@ import { Button } from '@web/components/ui/button';
 import { useTranslation } from '@web/i18n/use-translation';
 import { toast } from '@web/lib/toast';
 import { ImageCropDialog } from '@web/pages/studio/container/dialogs/ImageCropDialog';
-import { checkPickedFile } from '@web/pages/studio/container/dialogs/crop-image';
+import {
+  checkPicked,
+  PICKED_FORMATS,
+} from '@web/pages/studio/container/dialogs/crop-image';
 import { StudioAvatar } from '@web/ui/StudioAvatar';
 import type { StudioDetail } from '@web/pages/studio/container/container-types';
 
@@ -29,7 +32,9 @@ interface AvatarSectionProps {
   /** The last upload failure, shown inside the crop dialog. */
   error: string | null;
   onUpload: (image: Blob) => void;
-  onRemove: () => void;
+  /** Whether the avatar removal is in flight. */
+  removing: boolean;
+  onRemove: (options?: { onSuccess?: () => void }) => void;
   /** Drops a stale upload failure when the picker is dismissed. */
   onDismissError: () => void;
 }
@@ -53,7 +58,8 @@ interface AvatarSectionProps {
  * @param props.uploading - Whether an upload is in flight.
  * @param props.error - The last upload failure.
  * @param props.onUpload - Called with the cropped, encoded avatar.
- * @param props.onRemove - Called to clear the avatar.
+ * @param props.removing - Whether the avatar removal is in flight.
+ * @param props.onRemove - Called to clear the avatar; its `onSuccess` closes the confirmation.
  * @param props.onDismissError - Called when the picker is dismissed.
  * @returns The avatar section.
  */
@@ -63,6 +69,7 @@ export function AvatarSection({
   uploading,
   error,
   onUpload,
+  removing,
   onRemove,
   onDismissError,
 }: AvatarSectionProps): React.JSX.Element {
@@ -77,14 +84,25 @@ export function AvatarSection({
       // Reset so picking the same file twice in a row still fires a change.
       event.target.value = '';
       if (file === null) return;
-      const problem = checkPickedFile(file);
-      if (problem !== null) {
-        toast.warning(t(`studio.container.imageError.${problem}`));
-        return;
-      }
-      setPicked(file);
+      void checkPicked(file).then((problem) => {
+        if (problem !== null) {
+          toast.warning(t(`studio.container.imageError.${problem}`));
+          return;
+        }
+        setPicked(file);
+      });
     },
     [t],
+  );
+
+  const handleRemove = React.useCallback(
+    (event: React.MouseEvent<HTMLButtonElement>): void => {
+      // Stay open while the removal is out: success closes it, a failure
+      // toasts and leaves this to press again.
+      event.preventDefault();
+      onRemove({ onSuccess: () => setConfirmingRemove(false) });
+    },
+    [onRemove],
   );
 
   const handleConfirm = React.useCallback(
@@ -141,7 +159,7 @@ export function AvatarSection({
           <input
             ref={inputRef}
             type='file'
-            accept='image/*'
+            accept={PICKED_FORMATS}
             hidden
             onChange={handlePick}
             data-testid='avatar-file-input'
@@ -178,7 +196,8 @@ export function AvatarSection({
               {t('studio.container.dialog.cancel')}
             </AlertDialogCancel>
             <AlertDialogAction
-              onClick={onRemove}
+              loading={removing}
+              onClick={handleRemove}
               data-testid='avatar-remove-confirm'
             >
               {t('studio.container.settings.avatarRemove')}

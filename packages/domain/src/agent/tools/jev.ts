@@ -55,12 +55,14 @@ const moves = nextMovesFor(voice);
 /**
  * The failure for a call that got no answer: nothing came back before the
  * budget ran out, or the delivery itself failed.
+ * @param cause - What the transport threw.
  * @returns The error to throw.
  */
-function unanswered(): Error {
+function unanswered(cause: unknown): Error {
   return toolFailed(
     reason(`Nothing answered the ${voice.act} request.`, moves.retryOnce),
     FAILURE_LINES.unreachable,
+    cause,
   );
 }
 
@@ -294,7 +296,7 @@ export async function askJev(request: JevRequest): Promise<JevAnswers> {
     // vendor's identity, it tells the model nothing it can act on, and it is
     // read again by every later turn off the stored row -- so what the model
     // gets is the fact instead.
-    throw unanswered();
+    throw unanswered(err);
   }
 
   if (!res.ok) {
@@ -338,7 +340,7 @@ export async function askJev(request: JevRequest): Promise<JevAnswers> {
     // The budget covers the body as well as the deliveries, so a sender that
     // writes its headers and then stops ends here with the whole figure spent.
     // That is the same fact as nothing answering at all, and says so.
-    if (spanning.aborted) throw unanswered();
+    if (spanning.aborted) throw unanswered(err);
     throw toolFailed(
       readFailedReason(voice, asked, reasonOf(err)),
       FAILURE_LINES.upstream,

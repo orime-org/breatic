@@ -138,12 +138,14 @@ const DialogContent = React.forwardRef<
           // by script shows a ring only when the previous focus did, so it
           // came and went with how the dialog was opened. Tab reaches the
           // first control; a field that should take focus says `autoFocus`,
-          // which Radix leaves in place.
+          // which Radix leaves in place. The focus does not scroll: the dialog
+          // is still scaled by its entry, and a scroll toward that box opens a
+          // dialog taller than the viewport part-way down.
           onOpenAutoFocus={(e) => {
             props.onOpenAutoFocus?.(e);
             if (e.defaultPrevented) return;
             e.preventDefault();
-            (e.currentTarget as HTMLElement | null)?.focus();
+            (e.currentTarget as HTMLElement | null)?.focus({ preventScroll: true });
           }}
           // The overlay's scrollbar rail sits outside the content and so
           // counts as "outside" — but it is the dialog's own bar. The middle

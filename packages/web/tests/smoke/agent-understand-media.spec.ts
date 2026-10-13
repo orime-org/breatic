@@ -20,9 +20,11 @@
  * against, so a failure here is about our path rather than about a file whose
  * content nobody has seen.
  */
-import { expect, test, type Page } from 'playwright/test';
+import { expect, type Page } from 'playwright/test';
+import { test } from '../helpers/slot';
+import { startNewConversation } from '../helpers/conversation';
 
-import { STATE_FILE, openSmokeProject } from '../helpers/project';
+import { openSmokeProject } from '../helpers/project';
 
 const IMAGE = 'https://picsum.photos/id/237/400/300.jpg';
 const VIDEO = 'https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/360/Big_Buck_Bunny_360_10s_1MB.mp4';
@@ -34,35 +36,83 @@ const AVI = 'https://filesamples.com/samples/video/avi/sample_640x360.avi';
 // measured, it answers 400 "Supported formats: PNG, JPEG, WebP, GIF."
 const SVG = 'https://upload.wikimedia.org/wikipedia/commons/f/fd/Ghostscript_Tiger.svg';
 
-// A turn that failed renders the same running line as one that worked — the
-// line goes up when `execute` starts and says nothing about how it ended, and
-// nothing on screen names a tool failure today (#94). So the only signal left
-// is whether the reply is a description or an account of not having been able
-// to look.
-//
-// The verb has to travel with the word, because a correct description reaches
-// for the same words as a hedge: "a black Labrador puppy, 无法确定具体品种" is
-// an answer, not a failure.
-const REPORTS_A_FAILURE =
-  /失败|无法(查看|观看|收听|播放|读取|访问|获取|打开|分析|处理)|没(能|有)(看到|听到)|(服务|接口|请求|模型)(没有|未)(响应|回应)|(cannot|could ?n.t|unable to|failed to|was not able to)\s+(see|view|watch|listen|hear|access|open|read|fetch|download|retrieve|process|analy[sz]e|get)/i;
+/** The understand_media call of a turn, as the conversation stores it. */
+interface UnderstandCall {
+  state: string;
+  input?: { url?: unknown };
+  output?: unknown;
+  failureKind?: string;
+  errorText?: string;
+}
 
 let page: Page;
 
 /**
- * Ask about one address in a conversation of its own, and read the reply.
+ * Whether a call's address is the one asked about, written either way the
+ * model may write it (`https://example.com` and `https://example.com/`).
+ * @param url - The address in the call's input.
+ * @param asked - The address asked about, already normalised.
+ * @returns Whether they name the same resource.
+ */
+function sameAddress(url: unknown, asked: string): boolean {
+  if (typeof url !== 'string') return false;
+  try {
+    return new URL(url).href === asked;
+  } catch {
+    return false;
+  }
+}
+
+/** How many conversations a case asks in before it counts the model as not looking. */
+const TURNS_TO_LOOK = 3;
+/** The longest one turn takes: up to a minute to start, three to finish, and the reading after. */
+const TURN_MS = 240_000;
+
+test.setTimeout(TURNS_TO_LOOK * TURN_MS + 60_000);
+
+/** What one turn left: the reply, the running-tool lines, and the call made on the address. */
+interface Turn {
+  reply: string;
+  toolLines: string;
+  call: UnderstandCall | null;
+}
+
+/**
+ * Ask about one address until the model calls understand_media on it, each
+ * time in a conversation of its own.
+ *
+ * Whether to call the tool is the model's choice each turn: an address it
+ * knows (example.com) it may describe from memory, and after a refusal it may
+ * go on to look at another copy of the same picture. What these cases measure
+ * is our path for this address, so they read the call made on it, and a turn
+ * without one is asked again.
  * @param p - The page to drive.
  * @param prompt - What to type.
- * @returns The reply's text, and what the running-tool line said while the
- * turn was going.
+ * @param address - The address the call has to be made on.
+ * @returns The turn that looked at the address.
+ * @throws {Error} When no turn calls the tool on the address.
  */
-async function askInFreshConversation(
-  p: Page,
-  prompt: string,
-): Promise<{ reply: string; toolLines: string }> {
+async function askInFreshConversation(p: Page, prompt: string, address: string): Promise<Turn> {
+  for (let turn = 1; turn <= TURNS_TO_LOOK; turn += 1) {
+    const result = await oneTurn(p, prompt, address);
+    if (result.call !== null) return result;
+  }
+  throw new Error(`no turn of ${String(TURNS_TO_LOOK)} called understand_media on ${address}`);
+}
+
+/**
+ * Ask once, in a new conversation, and read the reply.
+ * @param p - The page to drive.
+ * @param prompt - What to type.
+ * @param address - The address whose call is read.
+ * @returns The reply's text, what the running-tool line said while the turn
+ * was going, and the turn's last understand_media call on the address.
+ */
+async function oneTurn(p: Page, prompt: string, address: string): Promise<Turn> {
   const composer = p.getByTestId('chat-composer-box');
   await expect(composer).toBeVisible({ timeout: 20_000 });
 
-  await p.getByTestId('new-conversation').click();
+  await startNewConversation(p);
   await expect(p.getByTestId('message-bubble')).toHaveCount(0, { timeout: 20_000 });
 
   // Watched rather than awaited: the line for a running tool is on screen only
@@ -85,8 +135,10 @@ async function askInFreshConversation(
     new MutationObserver(read).observe(document.body, { childList: true, subtree: true });
   });
 
+  const sent = p.waitForRequest((req) => req.method() === 'POST' && req.url().endsWith('/api/v1/chat/message'));
   await composer.fill(prompt);
   await composer.press('Enter');
+  const conversationId = ((await sent).postDataJSON() as { conversation_id: string }).conversation_id;
 
   // The composer's one slot says which phase the turn is in, and the stop
   // button is the only one of the three that means "still running". So its
@@ -102,12 +154,24 @@ async function askInFreshConversation(
   const toolLines = await p.evaluate(
     () => (window as unknown as { __toolLines?: string }).__toolLines ?? '',
   );
-  return { reply: (await body.innerText()).trim(), toolLines };
+  // What the tool itself answered, as the conversation stored it: the model's
+  // reply around it is its own wording, and the call is what our path did.
+  const stored = await p.request.get(`/api/v1/chat/conversations/${conversationId}`);
+  expect(stored.ok(), `conversation read: ${String(stored.status())}`).toBe(true);
+  const { messages } = ((await stored.json()) as {
+    data: { messages: { role: string; parts: ({ type: string } & UnderstandCall)[] }[] };
+  }).data;
+  const asked = new URL(address).href;
+  const call =
+    messages
+      .flatMap((m) => m.parts)
+      .filter((part) => part.type === 'tool-understand_media' && sameAddress(part.input?.url, asked))
+      .at(-1) ?? null;
+  return { reply: (await body.innerText()).trim(), toolLines, call };
 }
 
 test.beforeEach(async ({ browser }) => {
   page = await browser.newPage({
-    storageState: STATE_FILE.A,
     viewport: { width: 1400, height: 900 },
   });
   await openSmokeProject(page);
@@ -118,31 +182,26 @@ test.afterEach(async () => {
 });
 
 test('says what is in an image the user pasted @needs-internet @needs-model', async () => {
-  // A real turn against a real backend, and a real download for the kinds
-  // that travel inline, so the budget is the model's rather than this
-  // machine's.
-  test.setTimeout(240_000);
-
-  const { reply, toolLines } = await askInFreshConversation(
+  const { toolLines, call } = await askInFreshConversation(
     page,
     `看看这张图 ${IMAGE}，用一句话说清楚里面是什么。`,
+    IMAGE,
   );
 
-  // Two assertions, because the words alone do not separate a model that
-  // looked from one that guessed: the tool having run is what says the address
-  // travelled our path, and the subject is what says the answer is about this
+  // The call having run and answered is what says the address travelled our
+  // path, and the subject in its answer is what says the answer is about this
   // picture. It is a black Labrador puppy, and the address does not say so.
   expect(toolLines).toContain('Looking at the media');
-  expect(reply).toMatch(/狗|犬|puppy|dog|Labrador|拉布拉多/i);
-  expect(reply).not.toMatch(REPORTS_A_FAILURE);
+  expect(call?.state).toBe('output-available');
+  expect(String(call?.output)).toMatch(/puppy|dog|Labrador|狗|犬/i);
 });
 
 test('says what happens in a video the user pasted @needs-internet @needs-model', async () => {
-  test.setTimeout(240_000);
 
-  const { reply, toolLines } = await askInFreshConversation(
+  const { toolLines, call } = await askInFreshConversation(
     page,
     `看看这个视频 ${VIDEO}，用一句话说清楚里面发生了什么。`,
+    VIDEO,
   );
 
   // The first ten seconds of Big Buck Bunny, which is what this clip holds:
@@ -154,16 +213,16 @@ test('says what happens in a video the user pasted @needs-internet @needs-model'
   // The film's name would carry a reader to "forest" on its own, so the
   // sentence is the weaker half here and the tool having run is the strong one.
   expect(toolLines).toContain('Looking at the media');
-  expect(reply).toMatch(/树|草|森林|林间|tree|grass|meadow|forest|clearing/i);
-  expect(reply).not.toMatch(REPORTS_A_FAILURE);
+  expect(call?.state).toBe('output-available');
+  expect(String(call?.output)).toMatch(/tree|grass|meadow|forest|clearing|树|草|森林/i);
 });
 
 test('says what an audio clip sounds like @needs-internet @needs-model', async () => {
-  test.setTimeout(240_000);
 
-  const { reply, toolLines } = await askInFreshConversation(
+  const { toolLines, call } = await askInFreshConversation(
     page,
     `听听这段音频 ${AUDIO}，用一句话说清楚它是什么。`,
+    AUDIO,
   );
 
   // The file is named piano2.wav and the name is in the prompt, so "piano" in
@@ -171,8 +230,8 @@ test('says what an audio clip sounds like @needs-internet @needs-model', async (
   // having run is the assertion; the word only says the answer is about this
   // file rather than the previous one.
   expect(toolLines).toContain('Looking at the media');
-  expect(reply).toMatch(/钢琴|音乐|piano|music|melod/i);
-  expect(reply).not.toMatch(REPORTS_A_FAILURE);
+  expect(call?.state).toBe('output-available');
+  expect(String(call?.output)).toMatch(/piano|music|melod|钢琴|音乐/i);
 });
 
 test('says what it is doing while the call is in flight @needs-internet @needs-model', async () => {
@@ -180,7 +239,7 @@ test('says what it is doing while the call is in flight @needs-internet @needs-m
 
   const composer = page.getByTestId('chat-composer-box');
   await expect(composer).toBeVisible({ timeout: 20_000 });
-  await page.getByTestId('new-conversation').click();
+  await startNewConversation(page);
   await expect(page.getByTestId('message-bubble')).toHaveCount(0, { timeout: 20_000 });
 
   // A video, because this line lives only while the call runs and the video
@@ -206,13 +265,20 @@ test('tells the user a video format it cannot watch is one to convert @needs-int
   // problem and converting is the move. The failing shape this replaces sent
   // the whole clip up and then repeated the endpoint's complaint, which reads
   // as the model having declined to watch it.
-  const { reply } = await askInFreshConversation(
+  const { reply, call } = await askInFreshConversation(
     page,
     `看看这个视频 ${AVI}，说说里面有什么。`,
+    AVI,
   );
 
-  expect(reply).toMatch(/格式|转换|convert|format/i);
-  expect(reply).not.toMatch(/稍后再试|稍后重试|try again/i);
+  // Refused by our own check: the call ended as a tool failure, which is the
+  // ending that carries the sentence telling the model to ask for a convert.
+  expect(call?.state).toBe('output-error');
+  expect(call?.failureKind).toBe('tool_failed');
+  // The line for a refusal of our own. The endpoint turning the file down
+  // would show the upstream line instead.
+  expect(call?.errorText).toBe('chat.tool.failure.generic');
+  expect(reply.length).toBeGreaterThan(0);
 });
 
 test('tells the user an image format it cannot read is one to convert @needs-internet @needs-model', async () => {
@@ -221,25 +287,29 @@ test('tells the user an image format it cannot read is one to convert @needs-int
   // most encyclopedia diagrams are svg. Before the gate this went to the model
   // and came back as an upstream failure — "try again shortly", for an address
   // that answers the same way every time.
-  const { reply } = await askInFreshConversation(
+  const { reply, call } = await askInFreshConversation(
     page,
     `看看这张图 ${SVG}，说说里面是什么。`,
+    SVG,
   );
 
-  expect(reply).toMatch(/格式|转换|convert|format/i);
-  expect(reply).not.toMatch(/稍后再试|稍后重试|try again/i);
+  expect(call?.state).toBe('output-error');
+  expect(call?.failureKind).toBe('tool_failed');
+  expect(call?.errorText).toBe('chat.tool.failure.generic');
+  expect(reply.length).toBeGreaterThan(0);
 });
 
 test('tells the user when the address holds nothing it can look at @needs-internet @needs-model', async () => {
 
-  const { reply } = await askInFreshConversation(
+  const { reply, call } = await askInFreshConversation(
     page,
     '看看 https://example.com/ 这个地址，说说里面是什么。',
+    'https://example.com/',
   );
 
-  // The address answers text/html, which is none of the three kinds. What the
-  // model does with that is its own wording; what must be true is that it
-  // says so rather than describing something it never saw.
+  // The address answers text/html, which is none of the three kinds: the call
+  // ends as a tool failure, so there is no description for the model to give.
+  expect(call?.state).toBe('output-error');
+  expect(call?.failureKind).toBe('tool_failed');
   expect(reply.length).toBeGreaterThan(0);
-  expect(reply).toMatch(/不是|无法|不能|没有|失败|cannot|not a|unable|failed/i);
 });

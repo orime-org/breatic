@@ -118,19 +118,19 @@ describe("POST /mini-tools", () => {
   });
 
   // inner#1302: what the reader drew reaches the pinned model through the task's params.
-  it("sends the drawn mask and the upright copy to the inpaint model", async () => {
+  it("sends the drawn mask and the node's own source to the inpaint model", async () => {
     const res = await post({
       tool: "image.inpaint",
       node_ids: [NODE_A],
       source: { url: "https://assets.example.com/i/a.png" },
       prompt: "a red bow tie",
-      drawing: { image: "https://assets.example.com/i/upright.png", mask: "https://assets.example.com/i/mask.png" },
+      drawing: { mask: "https://assets.example.com/i/mask.png" },
     });
 
     expect(res.status).toBe(201);
     expect(mocks.taskService.create.mock.calls[0]?.[6]).toBe("bria-genfill");
     expect(mocks.taskService.create.mock.calls[0]?.[5]).toMatchObject({
-      image: "https://assets.example.com/i/upright.png",
+      image: "https://assets.example.com/i/a.png",
       mask_image: "https://assets.example.com/i/mask.png",
       prompt: "a red bow tie",
     });

@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { randomUUID } from 'node:crypto';
-import { test, expect } from 'playwright/test';
+import { expect } from 'playwright/test';
+import { test } from '../helpers/slot';
 import { smokeProjectUrl } from '../helpers/project';
 
 for (const resource of ['studio', 'project', 'invalid-project'] as const) {

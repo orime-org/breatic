@@ -15,7 +15,8 @@
  *   pnpm test:visual          compare against the committed baseline
  *   pnpm test:visual:update   regenerate the baseline (after an INTENDED change)
  */
-import { test, expect } from 'playwright/test';
+import { expect } from 'playwright/test';
+import { test } from '../helpers/slot';
 
 const PAGES = [
   { name: 'login', path: '/login' },
@@ -34,6 +35,13 @@ for (const theme of THEMES) {
         window.localStorage.setItem('breatic.theme', t);
       }, theme);
 
+      // Only this machine is reached. Google's sign-in script comes from the
+      // public internet and the button it draws depends on whether it
+      // arrived; refused, the login page always shows its failure line.
+      await page.route(
+        (url) => url.hostname !== 'localhost' && url.hostname !== '127.0.0.1',
+        (route) => route.abort(),
+      );
       await page.goto(pg.path);
       await page.waitForLoadState('networkidle', { timeout: 20_000 });
       // Wait for web fonts (self-hosted Inter) so glyph rendering is stable.

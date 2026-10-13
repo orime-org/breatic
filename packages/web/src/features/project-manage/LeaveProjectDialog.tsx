@@ -20,6 +20,7 @@ interface LeaveProjectDialogProps {
   onOpenChange: (open: boolean) => void;
   /** The project's name, quoted in the question. */
   name: string;
+  /** Called when the leave is confirmed; the dialog stays open, the caller closes it on success. */
   onConfirm: () => void;
   /** True while the leave request is in flight. */
   pending: boolean;
@@ -53,7 +54,16 @@ export function LeaveProjectDialog({
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel>{t('common.cancel')}</AlertDialogCancel>
-          <AlertDialogAction variant='destructive' onClick={onConfirm} disabled={pending}>
+          <AlertDialogAction
+            variant='destructive'
+            onClick={(event) => {
+              // Stay open while the leave is out; a failure toasts and leaves
+              // this to press again.
+              event.preventDefault();
+              onConfirm();
+            }}
+            loading={pending}
+          >
             {t('project.leave.confirm')}
           </AlertDialogAction>
         </AlertDialogFooter>

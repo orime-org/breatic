@@ -4,13 +4,19 @@
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 
-import { readAgentPanelOpen, writeAgentPanelOpen } from '@web/lib/project-tabs-storage';
+import {
+  readAgentPanelOpen,
+  readSpaceContextEnabled,
+  writeAgentPanelOpen,
+  writeSpaceContextEnabled,
+} from '@web/lib/project-tabs-storage';
 
 /**
  * Global UI store - chrome-level state shared across pages.
  *
  * Scope:
  *   - chatPanelCollapsed: Agent panel hidden, remembered per account and project
+ *   - spaceContextEnabled: the open Space goes to the Agent, remembered the same way
  *   - drawerOpen: side drawer state (Space drawer, conversation history)
  *   - sidebarOpen: studio nav sidebar
  *   - modalStack: ordered list of open modal ids (top of stack is active)
@@ -36,7 +42,15 @@ interface UIState {
    * after that is stored under the same account and project.
    */
   chatPanelCollapsed: boolean;
-  /** Where changes to `chatPanelCollapsed` are stored; null before a project opens. */
+  /**
+   * Whether each message carries the open Space's name and content to the
+   * Agent (inner#1413). Remembered per account and project like the panel.
+   */
+  spaceContextEnabled: boolean;
+  /**
+   * Where changes to `chatPanelCollapsed` and `spaceContextEnabled` are
+   * stored; null before a project opens.
+   */
   agentPanelOwner: AgentPanelOwner | null;
   drawerOpen: boolean;
   sidebarOpen: boolean;
@@ -83,12 +97,14 @@ interface UIState {
    */
   activeRegion: ActiveRegion;
   /**
-   * Load what this account left in this project, open when nothing is stored,
-   * and store later changes there.
+   * Load the Agent panel's preferences this account left in this project --
+   * the panel open and the open Space sent when nothing is stored -- and store
+   * later changes there.
    */
   restoreAgentPanel: (userId: string | undefined, projectId: string) => void;
   setChatPanelCollapsed: (collapsed: boolean) => void;
   toggleChatPanel: () => void;
+  toggleSpaceContext: () => void;
   setDrawerOpen: (open: boolean) => void;
   setSidebarOpen: (open: boolean) => void;
   pushModal: (id: string) => void;
@@ -115,6 +131,7 @@ function storeAgentPanel(owner: AgentPanelOwner | null, collapsed: boolean): voi
 export const useUIStore = create<UIState>()(
   immer((set, get) => ({
     chatPanelCollapsed: false,
+    spaceContextEnabled: true,
     agentPanelOwner: null,
     drawerOpen: false,
     sidebarOpen: true,
@@ -128,6 +145,7 @@ export const useUIStore = create<UIState>()(
     restoreAgentPanel: (userId, projectId) =>
       set((s) => {
         s.chatPanelCollapsed = readAgentPanelOpen(userId, projectId) === false;
+        s.spaceContextEnabled = readSpaceContextEnabled(userId, projectId) !== false;
         s.agentPanelOwner = { userId, projectId };
       }),
     setChatPanelCollapsed: (collapsed) => {
@@ -142,6 +160,15 @@ export const useUIStore = create<UIState>()(
       });
       const { agentPanelOwner, chatPanelCollapsed } = get();
       storeAgentPanel(agentPanelOwner, chatPanelCollapsed);
+    },
+    toggleSpaceContext: () => {
+      set((s) => {
+        s.spaceContextEnabled = !s.spaceContextEnabled;
+      });
+      const { agentPanelOwner, spaceContextEnabled } = get();
+      if (agentPanelOwner !== null) {
+        writeSpaceContextEnabled(agentPanelOwner.userId, agentPanelOwner.projectId, spaceContextEnabled);
+      }
     },
     setDrawerOpen: (open) =>
       set((s) => {
@@ -191,7 +218,8 @@ export const useUIStore = create<UIState>()(
         // A fresh project opens with the space region in charge (2026-08-26).
         s.activeRegion = 'space';
         // `sidebarOpen` is kept across a project change; `chatPanelCollapsed`
-        // is loaded for the next project by `restoreAgentPanel`.
+        // and `spaceContextEnabled` are loaded for the next project by
+        // `restoreAgentPanel`.
       }),
   })),
 );

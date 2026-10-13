@@ -13,9 +13,10 @@
  * Wants dev running:
  *   pnpm --filter @breatic/web test:smoke
  */
-import { test, expect, type Page } from 'playwright/test';
+import { expect, type Page } from 'playwright/test';
+import { test } from '../helpers/slot';
 
-import { STATE_FILE, openSmokeProject } from '../helpers/project';
+import { openSmokeProject } from '../helpers/project';
 import { createSpace, deleteSpace, DOCUMENT_EDITOR as EDITOR } from '../helpers/space';
 
 let page: Page;
@@ -24,7 +25,6 @@ let page: Page;
 // between them carries whatever the last one left on screen.
 test.beforeEach(async ({ browser }) => {
   page = await browser.newPage({
-    storageState: STATE_FILE.A,
     viewport: { width: 1680, height: 950 },
   });
 });
@@ -232,15 +232,20 @@ test('a greyed row does not open, by pointer or by keyboard', async () => {
   // The keyboard walks down to the colour row the way a reader does — a
   // greyed row stays reachable, which is what `aria-disabled` rather than
   // Radix's `disabled` buys — and the key Radix opens a submenu with does
-  // nothing there.
+  // nothing there. The pointer goes off the menu first, as a reader's hand
+  // does when they take to the keys, so the walk starts from the menu itself.
+  // From an item the menu moves the focus a task after the key (Radix's roving
+  // focus does it in a timeout), so each step is read once the focus has moved.
+  await page.mouse.move(1, 1);
+  /** The test id of the element holding the focus. */
+  const focused = (): Promise<string | null> =>
+    page.evaluate(() => document.activeElement?.getAttribute('data-testid') ?? null);
   const landed: (string | null)[] = [];
   for (let i = 0; i < 7; i += 1) {
+    const before = await focused();
     await page.keyboard.press('ArrowDown');
-    landed.push(
-      await page.evaluate(
-        () => document.activeElement?.getAttribute('data-testid') ?? null,
-      ),
-    );
+    await expect.poll(focused).not.toBe(before);
+    landed.push(await focused());
     if (landed[landed.length - 1] === 'doc-block-row-color') break;
   }
   expect(landed).toContain('doc-block-row-color');

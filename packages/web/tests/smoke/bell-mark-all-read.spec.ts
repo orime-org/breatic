@@ -15,10 +15,10 @@
  *
  *   pnpm --filter @breatic/web test:smoke -- bell-mark-all-read
  */
-import { expect, test, type APIRequestContext } from 'playwright/test';
+import { expect, type APIRequestContext } from 'playwright/test';
+import { test, stateFile } from '../helpers/slot';
 
-import { readAccounts } from '../helpers/credentials';
-import { STATE_FILE } from '../helpers/project';
+import { credentialsFor } from '../helpers/credentials';
 
 /**
  * Read a `{ data }` envelope, failing with the server's words when the call did.
@@ -32,10 +32,9 @@ async function dataOf<T>(res: Awaited<ReturnType<APIRequestContext['get']>>, lab
 }
 
 test('mark all read clears the news and keeps the request waiting on A', async ({ browser }) => {
-  const a = await browser.newContext({ storageState: STATE_FILE.A });
-  const b = await browser.newContext({ storageState: STATE_FILE.B });
-  const emailB = readAccounts().B?.email;
-  expect(emailB, 'setup recorded no second account').toBeDefined();
+  const a = await browser.newContext();
+  const b = await browser.newContext({ storageState: stateFile('B') });
+  const emailB = credentialsFor('B').email;
 
   // Start from an inbox with nothing A could clear, so the counts below are this test's.
   await dataOf(await a.request.post('/api/v1/users/me/notifications/read-all'), 'A clears news');

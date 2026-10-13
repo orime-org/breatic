@@ -5,21 +5,9 @@ import { describe, it, expect, vi } from 'vitest';
 
 import { ApiException } from '@web/data/api/types';
 import {
-  computePutTimeoutMs,
-  type UploadClientConfig,
-} from '@breatic/shared';
-import {
   retryTransient,
   isTransientUploadError,
 } from '@web/data/upload/upload-retry';
-
-const CFG: UploadClientConfig = {
-  maxUploadBytes: 2147483648,
-  clientMaxAttempts: 3,
-  clientRetryBaseDelayMs: 1000,
-  clientRequestTimeoutMs: 30000,
-  clientPutMinBytesPerSec: 65536,
-};
 
 /** A no-wait sleep spy so tests never touch real timers. */
 function fakeSleep(): { sleep: (ms: number) => Promise<void>; delays: number[] } {
@@ -136,43 +124,5 @@ describe('retryTransient — 3 attempts, full-jitter backoff', () => {
       retryTransient(fn, { attempts: 3, baseDelayMs: 1000, sleep }),
     ).resolves.toBe('ok');
     expect(fn).toHaveBeenCalledTimes(2);
-  });
-});
-
-describe('computePutTimeoutMs — stall guard scales with size', () => {
-  it('uses the request-timeout floor for small files', () => {
-    expect(computePutTimeoutMs(1024, CFG)).toBe(30000);
-  });
-
-  it('scales by the minimum acceptable rate for large files', () => {
-    // 6553600 bytes at 65536 B/s = 100s > 30s floor
-    expect(computePutTimeoutMs(6553600, CFG)).toBe(100000);
-  });
-
-  it('keeps a 2 GiB file (the upload cap) below the 32-bit setTimeout ceiling', () => {
-    // This value is now handed to the shared HTTP transport as its
-    // per-delivery deadline, and the transport REFUSES an out-of-range one at
-    // the boundary — `usableDeadline` throws before the loop, so not a single
-    // byte is sent. That is a deliberate choice on its side over clamping.
-    //
-    // The old path did NOT behave that way, and an earlier version of this
-    // comment said it did. `AbortSignal.timeout` takes an [EnforceRange]
-    // unsigned long long, deliberately unlike setTimeout's 32-bit argument, so
-    // a browser accepts 2147483648 as a 24.8-day deadline. Measured in Chrome
-    // 150: that signal had not aborted 400ms later, while a 50ms control had.
-    // Overflowing to ~1ms is Node's timers — another runtime, and this file
-    // only ever runs in a browser.
-    //
-    // Pinned here: at the shipped pair of values the deadline stays in range,
-    // with ~65x of headroom. Be exact about what this does NOT do — CFG is a
-    // literal in this file, so it cannot notice a change to storage.yaml, and
-    // a config able to cross the ceiling would leave it green. That is not the
-    // hole it used to be: `storageConfigSchema` now refuses such a pair at
-    // load, so no reachable config can hand this function an unusable figure.
-    // The invariant lives there, in core; this stays a check on the shipped
-    // numbers.
-    const t = computePutTimeoutMs(2147483648, CFG);
-    expect(t).toBeGreaterThan(0);
-    expect(t).toBeLessThanOrEqual(2147483647);
   });
 });

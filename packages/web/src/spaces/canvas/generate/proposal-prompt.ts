@@ -20,11 +20,10 @@
 
 import * as Y from 'yjs';
 
-import { markText, type CanvasProposal, type PromptSegment } from '@breatic/shared';
+import { markText, type CanvasProposal, type NodeType, type PromptSegment } from '@breatic/shared';
 
 import { PROMPT_NOTE_LABEL_ATTR, PROMPT_NOTE_NODE } from '@web/features/prompt-note/prompt-note';
 import { MENTION_SOURCE_ID_ATTR, REFERENCE_MENTION_NODE } from '@web/features/reference-mention/mention-node';
-import type { NodeKind } from '@web/data/yjs/node-view';
 import {
   MENTION_KIND_ATTR,
   MENTION_LABEL_ATTR,
@@ -41,7 +40,7 @@ export interface ProposalMention {
   /** Its name. */
   label: string;
   /** Its kind, for the chip's icon. */
-  kind: NodeKind;
+  kind: NodeType;
   /** Its picture, when it lands holding one. */
   thumbnail?: string;
 }

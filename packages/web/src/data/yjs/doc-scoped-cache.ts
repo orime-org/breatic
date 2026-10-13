@@ -38,6 +38,11 @@ export interface DocScopedCache<TValue, TInputs = void> {
    */
   get: (doc: Y.Doc, name: string, inputs: TInputs) => TValue;
   /**
+   * The value already built for a document, or undefined when there is none.
+   * Never builds one: for a reader that must not create what it reads.
+   */
+  peek: (name: string) => TValue | undefined;
+  /**
    * Tear down and drop the value for a document. Called when a tab closes, so
    * reopening the Space starts clean. No-op for an unknown name.
    */
@@ -102,6 +107,9 @@ export function createDocScopedCache<TValue, TInputs = void>(
       const value = create(doc, inputs);
       entries.set(name, { value, doc });
       return value;
+    },
+    peek(name: string): TValue | undefined {
+      return entries.get(name)?.value;
     },
     evict,
     has(name: string): boolean {

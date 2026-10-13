@@ -17,8 +17,13 @@
  *
  *   pnpm --filter @breatic/web test:smoke
  */
-import { test, expect } from 'playwright/test';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
+import { expect, type Page } from 'playwright/test';
+import { test } from '../helpers/slot';
+
+import { hueOf, storedPicture, uniquePicture } from '../helpers/upload';
 
 /** A 64x64 red PNG — square, so the crop dialog opens on a valid selection. */
 const SQUARE_PNG = Buffer.from(
@@ -92,4 +97,53 @@ test('an avatar reaches storage and comes back as a fetchable URL @needs-storage
   const fetched = await page.request.get(avatarUrl);
   expect(fetched.status(), `GET ${avatarUrl}`).toBe(200);
   expect((await fetched.body()).byteLength).toBeGreaterThan(0);
+});
+
+/**
+ * Pick a picture as the personal studio's avatar and confirm the crop.
+ * @param page - The page.
+ * @param file - The picked file.
+ * @returns The avatar URL the studio now points at.
+ */
+async function uploadAvatar(page: Page, file: { name: string; mimeType: string; buffer: Buffer }): Promise<string> {
+  const listed = await page.request.get('/api/v1/studios');
+  const studios = ((await listed.json()) as { data: { slug: string; type: string }[] }).data;
+  const personal = studios.find((s) => s.type === 'personal') ?? studios[0];
+  await page.goto(`/studio/${personal!.slug}/settings`);
+  await expect(page.getByTestId('avatar-upload-open')).toBeVisible({ timeout: 15_000 });
+  await page.getByTestId('avatar-file-input').setInputFiles(file);
+  await expect(page.getByTestId('image-crop-dialog')).toBeVisible({ timeout: 10_000 });
+  const [response] = await Promise.all([
+    page.waitForResponse((r) => r.url().includes('/avatar') && r.request().method() === 'PUT', { timeout: 60_000 }),
+    page.getByTestId('image-crop-confirm').click(),
+  ]);
+  expect(response.status(), await response.text()).toBe(200);
+  return ((await response.json()) as { data: { avatarUrl: string } }).data.avatarUrl;
+}
+
+// A4 (inner#1367): a phone photo picked as an avatar is stored upright. Shown
+// at its EXIF orientation the sample is red above blue; the square crop keeps
+// both.
+test('an avatar cut from a phone photo is stored upright @needs-storage', async ({ page }) => {
+  const photo = uniquePicture(readFileSync(join(__dirname, '../fixtures/exif6-red-top.jpg')));
+  const url = await uploadAvatar(page, { name: 'photo.jpg', mimeType: 'image/jpeg', buffer: photo });
+  const stored = await storedPicture(page, url);
+  expect(stored.orientation).toBe(1);
+  expect([hueOf(stored.top), hueOf(stored.bottom)]).toEqual(['red', 'blue']);
+});
+
+// inner#1367 §4.8b: an avatar is taken as a PNG or a JPEG only, judged by the
+// bytes; a WebP is turned away before the crop dialog opens.
+test('a WebP picked as an avatar is turned away before the crop @needs-storage', async ({ page }) => {
+  const listed = await page.request.get('/api/v1/studios');
+  const studios = ((await listed.json()) as { data: { slug: string; type: string }[] }).data;
+  const personal = studios.find((s) => s.type === 'personal') ?? studios[0];
+  await page.goto(`/studio/${personal!.slug}/settings`);
+  await expect(page.getByTestId('avatar-upload-open')).toBeVisible({ timeout: 15_000 });
+  const webp = readFileSync(join(__dirname, '../fixtures/exif6-red-top.webp'));
+  // The picker offers only the two formats an avatar takes; the bytes are checked as well.
+  await expect(page.getByTestId('avatar-file-input')).toHaveAttribute('accept', 'image/png,image/jpeg');
+  await page.getByTestId('avatar-file-input').setInputFiles({ name: 'avatar.png', mimeType: 'image/png', buffer: webp });
+  await expect(page.getByText('Not a supported format. Use PNG or JPEG.')).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByTestId('image-crop-dialog')).toHaveCount(0);
 });

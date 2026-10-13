@@ -11,6 +11,9 @@ import { describe, it, expect } from "vitest";
 
 import minimaxSpeech from "@worker/providers/families/minimax-speech.js";
 
+/** The run's deadline, which nothing here reaches. */
+const RUN = new AbortController().signal;
+
 describe("minimax speech family", () => {
   it("covers the catalog's MiniMax Speech 2.8 HD", () => {
     expect([...minimaxSpeech.MODELS]).toEqual(["minimax-speech-2.8-hd"]);
@@ -23,7 +26,7 @@ describe("minimax speech family", () => {
         { text: "重庆", pronunciation: "chong2 qing4" },
         { text: "长江", pronunciation: "chang2 jiang1" },
       ],
-    });
+    }, RUN);
 
     expect(prompt).toBe("重庆的长江大桥。");
     expect(fields).toEqual({ pronunciation_dict: ["重庆/chong2 qing4", "长江/chang2 jiang1"] });
@@ -36,10 +39,10 @@ describe("minimax speech family", () => {
         { text: " ", pronunciation: "Oh my god" },
         { text: "Omg", pronunciation: "Oh my god" },
       ],
-    });
+    }, RUN);
     expect(half.fields).toEqual({ pronunciation_dict: ["Omg/Oh my god"] });
 
-    expect((await minimaxSpeech.prepare("x", { pronunciation_dict: null })).fields).toEqual({});
-    expect((await minimaxSpeech.prepare("x", { pronunciation_dict: [{ text: "a" }] })).fields).toEqual({});
+    expect((await minimaxSpeech.prepare("x", { pronunciation_dict: null }, RUN)).fields).toEqual({});
+    expect((await minimaxSpeech.prepare("x", { pronunciation_dict: [{ text: "a" }] }, RUN)).fields).toEqual({});
   });
 });

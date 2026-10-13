@@ -73,8 +73,9 @@ export const canvasCapabilities: Tool<
   inputSchema,
   metadata: { runningLine: "chat.tool.checkingCanvas" },
   // The SDK's own conversion, which is what a running turn reaches -- the
-  // model chooses out of this text, so it carries the whole answer. The same
-  // renderer is registered for history replay, so both read alike.
+  // model chooses out of this text, so it carries the whole answer. The turn
+  // writes the result down with the call (`forModel`), and replay hands that
+  // copy back.
   toModelOutput: ({ output }) => ({
     type: "text",
     value: renderCapabilitiesForModel(output),

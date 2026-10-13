@@ -69,6 +69,13 @@ export * as assetService from "@domain/asset/asset.service.js";
 export * as assetRepo from "@domain/asset/asset.repo.js";
 export * as uploadGrantRepo from "@domain/asset/upload-grant.repo.js";
 export * as uploadGrantService from "@domain/asset/upload-grant.service.js";
+export * as uploadStatusService from "@domain/asset/upload-status.service.js";
+export * as uploadFinishService from "@domain/asset/upload-finish.service.js";
+export {
+  UPLOAD_FINISH_QUEUE,
+  type UploadFinishJob,
+  type UploadFinishResult,
+} from "@domain/asset/upload-finish.service.js";
 export * as uploadTicketService from "@domain/asset/upload-ticket.service.js";
 export * as backendUploadService from "@domain/asset/backend-upload.service.js";
 export { openContainerOutputs } from "@domain/asset/container-outputs.service.js";
@@ -98,26 +105,12 @@ export {
   BASELINE_TOOLS,
   TOOL_MAP,
   ASK_USER,
-  GET_CANVAS_CAPABILITIES,
-  LIST_GENERATION_MODELS,
   PROPOSE_CANVAS_ACTION,
   SAVE_IMAGE,
 } from "@domain/agent/tools/index.js";
 export type { AskUserPayload } from "@domain/agent/tools/ask-user.js";
 export { STOPPED_BY_USER } from "@domain/agent/tools/failure.js";
 export { SaveRefused, type SavedMaterial, type SaveToStorage } from "@domain/agent/tools/save-image.js";
-// The model's half of what `web_search` answers with. The panel reads the
-// structured object; the request assembler renders it, and only it knows how
-// many sources the turn has already numbered.
-export { renderSearchForModel } from "@domain/agent/tools/web-search.js";
-export { renderImagesForModel } from "@domain/agent/tools/image-search.js";
-export { renderCapabilitiesForModel } from "@domain/agent/tools/canvas-capabilities.js";
-export { renderGenerationModelsForModel } from "@domain/agent/tools/generation-models.js";
-export { renderProposalForModel } from "@domain/agent/tools/propose-canvas-action.js";
-export type { CanvasCapabilityAnswer } from "@domain/agent/tools/canvas-capabilities.js";
-export type { ModelsForMode } from "@domain/model-catalog/mode-catalog.js";
-export type { ImageResult, ImageSearchAnswer } from "@domain/agent/tools/image-search.js";
-export type { SearchAnswer, SearchSource } from "@domain/agent/tools/web-search.js";
 export { buildAgentConfig } from "@domain/agent/agent-config.js";
 export { finalizeTurn } from "@domain/agent/turn-finalizer.js";
 export type { TurnSteps, TurnStepFailure } from "@domain/agent/turn-finalizer.js";
@@ -143,6 +136,7 @@ export type { Voice, VoicePage, VoiceQuery } from "@domain/model-catalog/voice-c
 // ── Node tasks (one row per task on a node; the four counts the node shows) ──
 export * as nodeTaskService from "@domain/node-task/node-task.service.js";
 export { settleTaskForNode } from "@domain/node-task/settle-for-node.js";
+export { failureOutcome } from "@domain/node-task/failure-outcome.js";
 export type {
   NodeTaskCounts,
   NodeTaskListRow,
@@ -166,6 +160,7 @@ export {
 // ── Registering what the edge measured (our server finishes the browser's
 //    upload, our worker finishes its own — one function, one place) ──
 export * as ingestReportService from "@domain/asset/ingest-report.service.js";
+export { uploadDeadlineByKey } from "@domain/asset/upload-deadline.js";
 export type {
   IngestReport,
   IngestReportOutcome,
@@ -181,6 +176,7 @@ export {
   UNDERSTAND_PINS,
   UnderstandRefused,
   understandMediaAt,
+  readingLimitsUntil,
 } from "@domain/understand/index.js";
 export type {
   MediaKind,

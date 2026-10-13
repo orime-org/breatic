@@ -66,7 +66,8 @@ vi.mock("@breatic/domain", async () => ({
   resolveModelPricing: vi.fn(),
 }));
 
-vi.mock("@breatic/shared", () => ({
+vi.mock("@breatic/shared", async (importOriginal) => ({
+  ...(await importOriginal<object>()),
   canvasSpaceDocName: (pid: string, sid: string) => `project-${pid}/canvas-${sid}`,
 }));
 

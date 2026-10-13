@@ -141,7 +141,6 @@ describe("save_image", () => {
 
   it.each([
     ["link", "source_unreachable", FAILURE_LINES.unreachable],
-    ["link", "source_too_slow", FAILURE_LINES.unreachable],
     ["link", "unsupported_type", FAILURE_LINES.generic],
     ["rate_limited", undefined, FAILURE_LINES.generic],
     ["storage_full", undefined, FAILURE_LINES.generic],
@@ -164,11 +163,19 @@ describe("save_image", () => {
   });
 
   it("reports a failure of our own as one", async () => {
-    const save = vi.fn<SaveToStorage>().mockRejectedValue(new Error("db down"));
+    const down = new Error("db down");
+    const save = vi.fn<SaveToStorage>().mockRejectedValue(down);
 
-    const failure = await failureOf(turnCopy(save)(LINK));
+    const thrown = await turnCopy(save)(LINK).then(
+      () => {
+        throw new Error("expected the call to fail");
+      },
+      (e: unknown) => e,
+    );
+    const failure = toolFailureOf(thrown);
 
     expect(failure?.kind).toBe("tool_failed");
     expect(failure && "readerKey" in failure ? failure.readerKey : undefined).toBe(FAILURE_LINES.generic);
+    expect((thrown as Error).cause, "the turn's log keeps what broke").toBe(down);
   });
 });

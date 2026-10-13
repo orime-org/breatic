@@ -146,13 +146,14 @@ Replace **every angle-bracket placeholder** in `packages/ingest/wrangler.toml`. 
 | Top-level `[[r2_buckets]].bucket_name` | Exactly the root `.env`'s `R2_BUCKET` |
 | Top-level `[[r2_buckets]].remote` | Keep `true` |
 | Top-level `[[containers]].max_instances` | Integer `5`, unquoted |
+| Top-level `[[containers]].image_vars` | `{ DEV_COPY = "breatic" }` in all three blocks; when several copies of the repository run on one machine, give each its own name |
 | `[dev].port` | Integer `8787` |
 | `[vars].ALLOWED_ORIGINS` | `"http://localhost:8000"` |
 | `[env.production.vars].ALLOWED_ORIGINS` | For this local-only setup, fill with `"http://localhost:8000"` to complete the template |
 | `[[env.production.r2_buckets]].bucket_name` | For this local-only setup, use the same development bucket |
 | `[[env.production.containers]].max_instances` | Integer `5` |
 
-Keep both `image_build_context = "../.."` lines and the template's `compatibility_date`, `compatibility_flags`, Durable Object bindings and `exports`. Filling production fields here only makes the template valid; **this local workflow does not run `deploy:worker`**. For a deployed upload service, configure cloud resources using the [Cloudflare deployment steps](LOCAL.md#cloudflare).
+Keep every `image_build_context = "../.."` line and the template's `compatibility_date`, `compatibility_flags`, Durable Object bindings and `exports`. Filling production fields here only makes the template valid; **this local workflow does not run `deploy:worker`**. For a deployed upload service, configure cloud resources using the [Cloudflare deployment steps](LOCAL.md#cloudflare).
 
 Edit `packages/ingest/.dev.vars`:
 

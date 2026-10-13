@@ -9,7 +9,6 @@ vi.mock('@web/data/upload/media-upload', async (importOriginal) => ({
   uploadMedia: upload.uploadMedia,
 }));
 
-import { UploadFailedError } from '@web/data/upload/media-upload';
 import { uploadDerivedImage } from '@web/spaces/canvas/upload-derived-image';
 
 const WHERE = { projectId: 'p1', spaceId: 's1' };
@@ -24,10 +23,5 @@ describe('uploadDerivedImage', () => {
     upload.uploadMedia.mockResolvedValue({ fileUrl: 'https://cdn/a.png' });
     await expect(uploadDerivedImage(FILE, WHERE)).resolves.toBe('https://cdn/a.png');
     expect(upload.uploadMedia).toHaveBeenCalledWith(FILE, { projectId: 'p1', spaceId: 's1', derived: true });
-  });
-
-  it('fails as an upload when the answer carries no address', async () => {
-    upload.uploadMedia.mockResolvedValue({});
-    await expect(uploadDerivedImage(FILE, WHERE)).rejects.toEqual(new UploadFailedError('upload'));
   });
 });

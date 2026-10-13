@@ -8,11 +8,17 @@
  * and a file the attach button would turn away is turned away with the same
  * notice. A plain-text paste still goes into the box.
  */
-import { expect, test, type Page } from 'playwright/test';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
-import { STATE_FILE, openSmokeProject } from '../helpers/project';
+import { expect, type Page } from 'playwright/test';
+import { test } from '../helpers/slot';
+import { startNewConversation } from '../helpers/conversation';
 
-test.use({ storageState: STATE_FILE.A, viewport: { width: 1500, height: 900 } });
+import { openSmokeProject } from '../helpers/project';
+import { storedPicture, uniquePicture, watchQueuedFinish } from '../helpers/upload';
+
+test.use({ viewport: { width: 1500, height: 900 } });
 
 /** A 1×1 PNG. */
 const PNG_BASE64 =
@@ -49,7 +55,7 @@ async function pasteInto(
 
 test.beforeEach(async ({ page }) => {
   await openSmokeProject(page);
-  await page.getByTestId('new-conversation').click();
+  await startNewConversation(page);
   await expect(page.getByTestId('message-bubble')).toHaveCount(0, { timeout: 20_000 });
 });
 
@@ -71,4 +77,21 @@ test('a plain-text paste still goes into the box', async ({ page }) => {
   await pasteInto(page, { text: 'hello from the clipboard' });
 
   await expect(page.getByTestId('chat-composer-box')).toHaveText('hello from the clipboard');
+});
+
+// inner#1367: an attachment's finish is queued with 202 and the status query
+// delivers the result; a photo tagged to turn is attached as its upright copy.
+test('a picked photo tagged to turn is attached as its upright copy once the status query delivers it @needs-ingest @needs-storage', async ({ page }) => {
+  const finish = watchQueuedFinish(page);
+  await page.getByTestId('chat-composer-file-input').setInputFiles({
+    name: 'photo.jpg',
+    mimeType: 'image/jpeg',
+    buffer: uniquePicture(readFileSync(join(__dirname, '../fixtures/exif6-red-top.jpg'))),
+  });
+  const { queued, delivered } = await finish;
+  expect(queued).toBe(202);
+  expect(delivered.fileUrl).toMatch(/_upright\.[a-z]+$/);
+  await expect(page.getByTestId('chat-composer-chips').locator('[data-status]')).toHaveAttribute('data-status', 'ready', { timeout: 20_000 });
+  const stored = await storedPicture(page, delivered.fileUrl);
+  expect([stored.orientation, stored.width, stored.height]).toEqual([1, 768, 1024]);
 });

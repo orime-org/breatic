@@ -22,7 +22,7 @@ import type * as ChatApiModule from '@web/data/api/chat';
 vi.mock('@web/data/api/chat', async (importOriginal) => ({
   ...(await importOriginal<typeof ChatApiModule>()),
   chatApi: {
-    streamConfig: vi.fn(async () => ({ heartbeatIntervalMs: 5000, attachmentMaxChars: 200_000, attachmentMaxItems: 10 })),
+    streamConfig: vi.fn(async () => ({ heartbeatIntervalMs: 5000, attachmentMaxChars: 200_000, attachmentMaxItems: 10, currentSpaceMaxChars: 100_000, spaceListMaxItems: 200 })),
     openChat: vi.fn(),
     messagesBefore: vi.fn(),
     readConversation: vi.fn(),
@@ -35,9 +35,10 @@ vi.mock('@web/data/api/chat', async (importOriginal) => ({
 
 import { chatApi } from '@web/data/api/chat';
 import { useChatSession } from '@web/pages/project/chat/use-chat-session';
-import { _resetForTests } from '@web/stores/conversation-runtime';
+import { _resetForTests, conversationRuntime } from '@web/stores/conversation-runtime';
 import { tell } from '@web/stores/chat-mishaps';
 import { evictAllChatSessions } from '@web/stores/chat-sessions';
+import { useChatAttachments } from '@web/stores/chat-attachments';
 import { stubChatWire, turnOpens } from '@web/test-utils/chat-wire';
 import type { WatchedWire } from '@web/test-utils/chat-wire';
 
@@ -76,7 +77,7 @@ function openChatAnswers(
 function render(
   listOpen = false,
 ): ReturnType<typeof renderHook<ReturnType<typeof useChatSession>, unknown>> {
-  return renderHook(() => useChatSession('p-1', listOpen));
+  return renderHook(() => useChatSession('p-1', listOpen, () => ({ spaces: [] })));
 }
 
 /**
@@ -477,5 +478,196 @@ describe('when the chat never opened', () => {
       expect(wire.sent()).toHaveLength(1);
     });
     expect(wire.sent()[0]).toMatchObject({ conversation_id: 'c-1', message: '还是想问' });
+  });
+});
+
+describe('the Spaces a message carries (inner#1413)', () => {
+  const read = {
+    spaces: [
+      { id: 's3', name: 'Edit', kind: 'timeline' as const },
+      { id: 's2', name: 'Storyboard', kind: 'document' as const },
+      { id: 's1', name: 'Cast', kind: 'canvas' as const },
+    ],
+    current: { id: 's2', name: 'Storyboard', kind: 'document' as const, state: 'loaded' as const, text: 'abcdef' },
+  };
+
+  it('reads them at the press, before anything is waited on', async () => {
+    const readSpaces = vi.fn(() => read);
+    const panel = renderHook(() => useChatSession('p-1', false, readSpaces));
+    await waitFor(() => {
+      expect(panel.result.current.status).toBe('ready');
+    });
+
+    act(() => {
+      void panel.result.current.send('summarise this');
+      expect(readSpaces).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it('sends them cut to the limits the server reads', async () => {
+    vi.mocked(chatApi.streamConfig).mockResolvedValueOnce({
+      heartbeatIntervalMs: 5000,
+      attachmentMaxChars: 200_000,
+      attachmentMaxItems: 10,
+      currentSpaceMaxChars: 4,
+      spaceListMaxItems: 2,
+    });
+    const panel = renderHook(() => useChatSession('p-1', false, () => read));
+    await waitFor(() => {
+      expect(panel.result.current.status).toBe('ready');
+    });
+
+    act(() => {
+      void panel.result.current.send('summarise this');
+    });
+    await waitFor(() => {
+      expect(wire.sent()).toHaveLength(1);
+    });
+
+    expect(wire.sent()[0]).toMatchObject({
+      message: 'summarise this',
+      spaces: [{ id: 's3' }, { id: 's2' }],
+      spaces_total: 3,
+      current_space: { id: 's2', state: 'loaded', content: 'abcd', total_chars: 6 },
+    });
+  });
+
+  it('sends nothing and says so beside the plus sign when the limits cannot be read', async () => {
+    vi.mocked(chatApi.streamConfig).mockRejectedValueOnce(new Error('offline'));
+    const panel = renderHook(() => useChatSession('p-1', false, () => read));
+    await waitFor(() => {
+      expect(panel.result.current.status).toBe('ready');
+    });
+    act(() => {
+      panel.result.current.setDraft('summarise this');
+    });
+
+    await act(async () => {
+      await panel.result.current.send('summarise this');
+    });
+
+    expect(wire.sent()).toHaveLength(0);
+    expect(useChatAttachments.getState().noticeByConversation['c-1']).toEqual({ key: 'sendUnavailable' });
+    expect(panel.result.current.draft).toBe('summarise this');
+  });
+});
+
+describe('the wait for the limits before a send (inner#1413)', () => {
+  it('holds the send between the press and the request while the limits are read', async () => {
+    let answer: (config: Awaited<ReturnType<typeof chatApi.streamConfig>>) => void = () => undefined;
+    vi.mocked(chatApi.streamConfig).mockReturnValue(
+      new Promise((resolve) => {
+        answer = resolve;
+      }),
+    );
+    const panel = await anOpenPanel();
+
+    act(() => {
+      void panel.result.current.send('summarise this');
+    });
+    await waitFor(() => {
+      expect(panel.result.current.turnPhase).toBe('sending');
+    });
+    expect(wire.sent()).toHaveLength(0);
+
+    act(() => {
+      answer({
+        heartbeatIntervalMs: 5000,
+        attachmentMaxChars: 200_000,
+        attachmentMaxItems: 10,
+        currentSpaceMaxChars: 100_000,
+        spaceListMaxItems: 200,
+      });
+    });
+    await waitFor(() => {
+      expect(wire.sent()).toHaveLength(1);
+    });
+  });
+
+  it('sends nothing into the conversation being left when a new one is started during the wait', async () => {
+    let answer: (config: Awaited<ReturnType<typeof chatApi.streamConfig>>) => void = () => undefined;
+    vi.mocked(chatApi.streamConfig).mockReturnValue(
+      new Promise((resolve) => {
+        answer = resolve;
+      }),
+    );
+    vi.mocked(chatApi.createConversation).mockReturnValue(new Promise(() => {}));
+    const panel = await anOpenPanel();
+
+    act(() => {
+      void panel.result.current.send('summarise this');
+    });
+    act(() => {
+      void conversationRuntime.startNew('p-1');
+    });
+    await act(async () => {
+      answer({
+        heartbeatIntervalMs: 5000,
+        attachmentMaxChars: 200_000,
+        attachmentMaxItems: 10,
+        currentSpaceMaxChars: 100_000,
+        spaceListMaxItems: 200,
+      });
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+
+    expect(wire.sent().filter((body) => body.conversation_id === 'c-1')).toHaveLength(0);
+  });
+
+  /**
+   * Press send while the limits are still on their way.
+   * @returns Answers the limits read.
+   */
+  async function pressWhileTheLimitsAreRead(): Promise<() => Promise<void>> {
+    let answer: (config: Awaited<ReturnType<typeof chatApi.streamConfig>>) => void = () => undefined;
+    vi.mocked(chatApi.streamConfig).mockReturnValueOnce(
+      new Promise((resolve) => {
+        answer = resolve;
+      }),
+    );
+    const panel = await anOpenPanel();
+    act(() => {
+      void panel.result.current.send('summarise this');
+    });
+    return async () => {
+      await act(async () => {
+        answer({
+          heartbeatIntervalMs: 5000,
+          attachmentMaxChars: 200_000,
+          attachmentMaxItems: 10,
+          currentSpaceMaxChars: 100_000,
+          spaceListMaxItems: 200,
+        });
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      });
+    };
+  }
+
+  it('sends nothing once the reader has left the project during the wait', async () => {
+    const answerTheLimits = await pressWhileTheLimitsAreRead();
+
+    act(() => {
+      conversationRuntime.leaveProject('p-1');
+    });
+    await answerTheLimits();
+
+    expect(wire.sent()).toHaveLength(0);
+    expect(chatApi.openChat).toHaveBeenCalledTimes(1);
+  });
+
+  it('sends nothing into the conversation the reader switched to during the wait', async () => {
+    vi.mocked(chatApi.readConversation).mockResolvedValue({
+      conversation: { id: 'c-2' },
+      messages: [],
+      hasMore: false,
+    } as unknown as Awaited<ReturnType<typeof chatApi.readConversation>>);
+    const answerTheLimits = await pressWhileTheLimitsAreRead();
+
+    await act(async () => {
+      await conversationRuntime.switchTo('p-1', 'c-2');
+    });
+    await answerTheLimits();
+
+    expect(wire.sent()).toHaveLength(0);
   });
 });

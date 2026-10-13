@@ -161,16 +161,14 @@ async function uploadDrawing(run: MiniToolRun, drawing: MiniToolDrawingSnapshot)
   /**
    * A PNG file named after the tool's output and the part it is.
    * @param blob - The image.
-   * @param part - `source`, `mask` or `sketch`.
+   * @param part - `mask` or `sketch`.
    * @returns The file.
    */
   const pngFile = (blob: Blob, part: string): File => new File([blob], `${prefix}-${part}.png`, { type: 'image/png' });
   try {
-    const [image, mask] = await Promise.all([
-      run.uploadImage(pngFile(made.image, made.mask === undefined ? 'sketch' : 'source')),
-      made.mask === undefined ? undefined : run.uploadImage(pngFile(made.mask, 'mask')),
-    ]);
-    return { image, ...(mask !== undefined && { mask }) };
+    return 'mask' in made
+      ? { mask: await run.uploadImage(pngFile(made.mask, 'mask')) }
+      : { image: await run.uploadImage(pngFile(made.image, 'sketch')) };
   } catch (err) {
     toastUploadFailure(err);
     return null;

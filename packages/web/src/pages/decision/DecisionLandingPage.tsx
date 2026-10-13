@@ -68,7 +68,8 @@ export default function DecisionLandingPage(): React.JSX.Element {
     token === null ? 'invalid' : 'loading',
   );
   const [view, setView] = React.useState<DecisionView | null>(null);
-  const [submitting, setSubmitting] = React.useState(false);
+  // The answer being sent, so only the pressed button spins; null when idle.
+  const [submitting, setSubmitting] = React.useState<DecisionAction | null>(null);
   // The role a join request's approval grants; only that kind shows the picker.
   const [grantRole, setGrantRole] = React.useState<DecisionGrantRole>('viewer');
   const onGrantRoleChange = React.useCallback(
@@ -106,7 +107,7 @@ export default function DecisionLandingPage(): React.JSX.Element {
   const answer = React.useCallback(
     async (action: DecisionAction): Promise<void> => {
       if (token === null || view === null) return;
-      setSubmitting(true);
+      setSubmitting(action);
       try {
         const result =
           view.kind === 'project_join' && action === 'confirm'
@@ -138,7 +139,7 @@ export default function DecisionLandingPage(): React.JSX.Element {
         const fresh = await decisionsApi.view(token).catch(() => null);
         if (fresh !== null) setView(fresh);
       } finally {
-        setSubmitting(false);
+        setSubmitting(null);
       }
     },
     [grantRole, navigate, queryClient, t, token, view],
@@ -340,7 +341,7 @@ export default function DecisionLandingPage(): React.JSX.Element {
           {isJoin && (
             <div className='flex items-center gap-2'>
               <Label htmlFor='decision-grant-role'>{t('decision.grantRole')}</Label>
-              <Select value={grantRole} onValueChange={onGrantRoleChange} disabled={submitting}>
+              <Select value={grantRole} onValueChange={onGrantRoleChange} disabled={submitting !== null}>
                 <SelectTrigger id='decision-grant-role' className='w-[120px]'>
                   <SelectValue />
                 </SelectTrigger>
@@ -352,10 +353,19 @@ export default function DecisionLandingPage(): React.JSX.Element {
             </div>
           )}
           <div className='flex gap-2'>
-            <Button variant='outline' onClick={onDecline} disabled={submitting}>
+            <Button
+              variant='outline'
+              onClick={onDecline}
+              disabled={submitting !== null}
+              loading={submitting === 'decline'}
+            >
               {t('decision.decline', vars)}
             </Button>
-            <Button onClick={onConfirm} disabled={submitting}>
+            <Button
+              onClick={onConfirm}
+              disabled={submitting !== null}
+              loading={submitting === 'confirm'}
+            >
               {t('decision.confirm', vars)}
             </Button>
           </div>

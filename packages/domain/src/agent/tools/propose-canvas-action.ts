@@ -381,9 +381,11 @@ export function makeProposeCanvasAction(): Tool<z.infer<typeof inputSchema>, Pro
     "A source node can hold material the user gave: a file uploaded in the chat, " +
     `or a picture found on the web and saved with ${SAVE_IMAGE}. Give its address as material, and ` +
     "fill a generation's slot with it through fills, or wire it into the pool. " +
-    "Before proposing any shape with an empty node in it, ask_user once " +
-    "whether they have that material -- you cannot see their canvas, and the " +
-    "answer decides the shape. Wire an edge where a node draws on another's " +
+    "Before proposing any shape with an empty node in it, find out whether " +
+    "they have that material, since the answer decides the shape: when the " +
+    "message carries the canvas they have open, under \"The Space the reader " +
+    "has open\", look there first; ask_user once when it is not there or no " +
+    "canvas came with the message. Wire an edge where a node draws on another's " +
     "work or on what the reader puts in an empty node; belonging is said by " +
     "the group, not edges. " +
     "Ask get_canvas_capabilities and list_generation_models first, and " +

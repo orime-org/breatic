@@ -22,15 +22,11 @@ const h = vi.hoisted(() => {
       super("still running");
     }
   }
-  /** Stand-in for the real class, matched by `instanceof` in the dispatcher. */
-  class TaskDeadlinePassed extends Error {
-    constructor() {
-      super("expired");
-    }
-  }
+  /** Stand-in for a container job the Durable Object ended as failed. */
+  class ContainerJobFailed extends Error {}
   return {
     StillRunning,
-    TaskDeadlinePassed,
+    ContainerJobFailed,
     warn: vi.fn(),
     runContainerJob: vi.fn(),
     runCatalogTask: vi.fn(),
@@ -51,14 +47,10 @@ const h = vi.hoisted(() => {
 
 vi.mock("@worker/providers/still-running.js", () => ({
   StillRunning: h.StillRunning,
-  TaskDeadlinePassed: h.TaskDeadlinePassed,
-  assertBeforeDeadline: (deadlineAt: number): void => {
-    if (Date.now() >= deadlineAt) throw new h.TaskDeadlinePassed();
-  },
 }));
 vi.mock("@worker/handlers/task-deadline.js", () => ({ taskDeadline: h.taskDeadline }));
 vi.mock("@worker/handlers/container/run-container-job.js", () => ({
-  ContainerJobFailed: class extends Error {},
+  ContainerJobFailed: h.ContainerJobFailed,
   runContainerJob: h.runContainerJob,
 }));
 vi.mock("@worker/providers/run-steps.js", () => ({ runCatalogTask: h.runCatalogTask }));
@@ -96,7 +88,9 @@ vi.mock("@breatic/core", () => ({
   NotFoundError: class extends Error {},
   logger: { info: h.info, warn: h.warn, error: vi.fn(), debug: vi.fn() },
 }));
-vi.mock("@breatic/domain", () => ({
+vi.mock("@breatic/domain", async () => ({
+  // The real judgement: the case below is about the ending it gives.
+  failureOutcome: (await import("@domain/node-task/failure-outcome.js")).failureOutcome,
   buildAgentConfig: vi.fn(),
   getModel: vi.fn(),
   generateTextRetry: vi.fn(),
@@ -125,6 +119,7 @@ vi.mock("@breatic/domain", () => ({
 
 import { DelayedError, type Job } from "bullmq";
 
+import { DeadlinePassed } from "@breatic/shared";
 import { runTask } from "@worker/handlers/dispatch.js";
 
 const DEADLINE = 1_800_000_000_000;
@@ -236,6 +231,12 @@ describe("an upstream prediction still running when a pickup ends", () => {
     expect(h.runCatalogTask.mock.calls[0]![1]).toMatchObject({ taskId: "task-1", deadlineAt: DEADLINE });
   });
 
+  it("hands the task's deadline to a container job", async () => {
+    await runTask(containerJob(), "lock-token").catch(() => undefined);
+
+    expect(h.runContainerJob.mock.calls[0]![2]).toMatchObject({ taskId: "task-1", deadlineAt: DEADLINE });
+  });
+
   it("hands the task's deadline to the steps of a model mini-tool", async () => {
     await runTask(jobOf({ source: "mini_tool", toolId: "image.remove-bg", model: undefined }), "lock-token").catch(
       () => undefined,
@@ -248,7 +249,7 @@ describe("an upstream prediction still running when a pickup ends", () => {
     vi.spyOn(Date, "now").mockReturnValue(DEADLINE + 1);
 
     await expect(runTask(containerJob(), "lock-token")).rejects.toBeInstanceOf(DelayedError);
-    expect(h.taskDeadline).not.toHaveBeenCalled();
+    vi.restoreAllMocks();
   });
 
   it("fails a run whose task row is gone, without putting it back on the queue", async () => {
@@ -264,7 +265,7 @@ describe("an upstream prediction still running when a pickup ends", () => {
 
 describe("a run past its two-hour deadline", () => {
   beforeEach(() => {
-    h.runCatalogTask.mockRejectedValue(new h.TaskDeadlinePassed());
+    h.runCatalogTask.mockRejectedValue(new DeadlinePassed());
   });
 
   it("settles on the first attempt that finds it, with attempts still left", async () => {
@@ -292,6 +293,43 @@ describe("a run past its two-hour deadline", () => {
       expect.any(String),
       expect.objectContaining({ outcome: "expired" }),
     );
+  });
+
+  // A call on the chain is bounded by the deadline itself (inner#1367), so the
+  // failure that ends it there is whatever the cut call threw. The ending is
+  // the deadline's all the same.
+  it("settles a failure that arrives once the deadline has come as expired", async () => {
+    h.runCatalogTask.mockImplementation(async () => {
+      vi.spyOn(Date, "now").mockReturnValue(DEADLINE);
+      throw new Error("http request to https://vendor/ was cancelled by its caller");
+    });
+
+    await runTask(jobOf({}, 2), "lock-token").catch(() => undefined);
+
+    expect(h.settleTaskForNode).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.any(String),
+      expect.objectContaining({ outcome: "expired" }),
+    );
+    vi.restoreAllMocks();
+  });
+
+  // The Durable Object ends a container job at the task's deadline and reports
+  // it failed; that ending is the deadline's.
+  it("settles a container job the Durable Object ended at the deadline as expired", async () => {
+    h.runContainerJob.mockImplementation(async () => {
+      vi.spyOn(Date, "now").mockReturnValue(DEADLINE);
+      throw new h.ContainerJobFailed("tool_failed");
+    });
+
+    await runTask(containerJob(), "lock-token").catch(() => undefined);
+
+    expect(h.settleTaskForNode).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.any(String),
+      expect.objectContaining({ outcome: "expired" }),
+    );
+    vi.restoreAllMocks();
   });
 
   it("settles any other failure as failed", async () => {

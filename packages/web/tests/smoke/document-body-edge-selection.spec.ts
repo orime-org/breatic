@@ -15,8 +15,10 @@
  * Wants dev running:
  *   pnpm --filter @breatic/web test:smoke
  */
-import { test, expect, type Page } from 'playwright/test';
+import { expect, type Page } from 'playwright/test';
+import { test } from '../helpers/slot';
 
+import { pressAndSettle } from '../helpers/editor-keys';
 import { openSmokeProject } from '../helpers/project';
 import { createSpace, deleteSpace, DOCUMENT_EDITOR as EDITOR } from '../helpers/space';
 
@@ -34,7 +36,6 @@ test.afterEach(async () => {
   }
   await page?.close();
 });
-
 
 /** How long the pointer rests before a press. */
 const SETTLE_MS = 400;
@@ -543,12 +544,12 @@ test('Shift+Down from the last line of words in a code block ending in a line br
   const clicked = await read(page);
   expect(clicked.text).toBe('');
 
-  await page.keyboard.press('Shift+ArrowDown');
+  await pressAndSettle(page, 'Shift+ArrowDown');
   const empty = await read(page);
   expect(empty.kind).toBe('_TextSelection');
   expect(empty.head).toBe(clicked.head + 1);
 
-  await page.keyboard.press('Shift+ArrowDown');
+  await pressAndSettle(page, 'Shift+ArrowDown');
   const edge = await read(page);
   expect([edge.kind, edge.head]).toEqual(['BodyEdgeSelectionClass', edge.size - 2]);
 });

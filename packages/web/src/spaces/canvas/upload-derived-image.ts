@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { UploadFailedError, uploadMedia } from '@web/data/upload/media-upload';
+import { uploadMedia } from '@web/data/upload/media-upload';
 
 /**
  * Upload an image made in the browser from canvas content: a focus crop, a
@@ -19,6 +19,5 @@ import { UploadFailedError, uploadMedia } from '@web/data/upload/media-upload';
  */
 export async function uploadDerivedImage(file: File, where: { projectId: string; spaceId: string }): Promise<string> {
   const { fileUrl } = await uploadMedia(file, { projectId: where.projectId, spaceId: where.spaceId, derived: true });
-  if (fileUrl === undefined) throw new UploadFailedError('upload');
   return fileUrl;
 }
