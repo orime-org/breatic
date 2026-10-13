@@ -624,8 +624,7 @@ body {
      The translucency has to live on a CHILD: Chrome ignores `opacity` on the
      element handed to `setDragImage` when it takes the snapshot, while a
      descendant's opacity survives on every engine (measured for the prompt
-     editor's own lift, user 2026-07-14, and 0.6 is the value that one settled
-     on).
+     editor's own lift, user 2026-07-14). 0.8 is the user's call (2026-10-14).
 
      The root itself is opaque and fixed at the viewport's top left: Firefox and
      WebKit draw the root's own opacity into the image, and Safari cancels a
@@ -642,7 +641,7 @@ body {
   }
 
   .doc-drag-preview > * {
-    opacity: 0.6;
+    opacity: 0.8;
   }
 
   /* A preview takes no pointer: one over the pointer as the drag starts ends
