@@ -4,8 +4,8 @@
 /**
  * A link written in content is body text, and reads at WCAG 2.2 SC 1.4.3,
  * 4.5:1, on every surface it is written on: the page a document is written
- * on, and a canvas note (inner#1462). The dark theme's note is not checked
- * here: a link there reads at 3.91:1, which inner#1462 records.
+ * on, and a canvas note (inner#1462). The dark theme's note stays as it is
+ * (user 2026-10-13), where a link reads at 3.91:1, so only its page is checked.
  *
  * Tokens rather than the screen: the value written here decides it, and a
  * measurement here catches a change to it at the moment it is made.
