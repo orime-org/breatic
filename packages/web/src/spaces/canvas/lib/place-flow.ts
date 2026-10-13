@@ -20,7 +20,7 @@ import { getViewportForBounds, type Viewport } from '@xyflow/react';
 import type { NodePlacement } from '@web/data/yjs/canvas-space';
 import { CANVAS_MIN_ZOOM } from '@web/lib/canvas-zoom';
 import { EMPTY_NODE_SIZE, type Rect } from '@web/spaces/canvas/group-geometry';
-import { COUNTS_COLUMN_FLOW_REACH } from '@web/spaces/canvas/overlay-scale';
+import { COUNTS_COLUMN_FLOW_DEPTH, COUNTS_COLUMN_FLOW_REACH } from '@web/spaces/canvas/overlay-scale';
 
 /** A point in flow coordinates. */
 export interface Spot {
@@ -213,7 +213,8 @@ export function shiftRightPastOccupied(batch: Rect, occupied: readonly Rect[], g
  * the document decides the size it is used: a group's own rect, and a picture
  * or video drawn at the node's width. Text takes the taller of what was
  * measured and what its words come to. Every node but a group also has its
- * task counts hung off its right edge, so that reach is added to its width.
+ * task counts hung off its top right corner, so it takes the room
+ * {@link withTaskCounts} gives it.
  * Notes are left out: a pin draws above every node, so nothing placed over it
  * hides it.
  * @param placements - Every node, as the document places it.
@@ -228,11 +229,26 @@ export function occupiedRects(
   const rects: Rect[] = [];
   for (const p of placements) {
     if (p.type === 'annotation') continue;
-    const size = footprintOf(p, measuredOf);
-    const counts = p.type === 'group' ? 0 : COUNTS_COLUMN_FLOW_REACH;
-    rects.push({ x: p.x, y: p.y, width: size.width + counts, height: size.height });
+    const rect = { x: p.x, y: p.y, ...footprintOf(p, measuredOf) };
+    rects.push(p.type === 'group' ? rect : withTaskCounts(rect));
   }
   return rects;
+}
+
+/**
+ * The room a node takes once the task counts it can carry are counted: they
+ * hang off its top right corner, past its right edge and, below a short node,
+ * past its bottom, as far as they reach at any zoom.
+ * @param rect - The node's own rect.
+ * @returns The rect with its counts.
+ * @throws {never} Never.
+ */
+export function withTaskCounts(rect: Rect): Rect {
+  return {
+    ...rect,
+    width: rect.width + COUNTS_COLUMN_FLOW_REACH,
+    height: Math.max(rect.height, COUNTS_COLUMN_FLOW_DEPTH),
+  };
 }
 
 /**

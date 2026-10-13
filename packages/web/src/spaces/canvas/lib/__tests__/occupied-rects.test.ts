@@ -12,7 +12,7 @@ import { describe, it, expect } from 'vitest';
 
 import type { NodePlacement } from '@web/data/yjs/canvas-space';
 import { EMPTY_NODE_SIZE } from '@web/spaces/canvas/group-geometry';
-import { COUNTS_COLUMN_FLOW_REACH } from '@web/spaces/canvas/overlay-scale';
+import { COUNTS_COLUMN_FLOW_DEPTH, COUNTS_COLUMN_FLOW_REACH } from '@web/spaces/canvas/overlay-scale';
 import {
   mediaFootprintHeight,
   occupiedRects,
@@ -63,8 +63,8 @@ describe('occupiedRects', () => {
   });
 
   it('sizes a video that has never been measured by its pixels', () => {
-    const rects = occupiedRects([at({ id: 'v', type: 'video', mediaWidth: 1920, mediaHeight: 1080 })], noMeasure);
-    expect(rects[0]?.height).toBe(mediaFootprintHeight(1920, 1080));
+    const rects = occupiedRects([at({ id: 'v', type: 'video', mediaWidth: 1080, mediaHeight: 1920 })], noMeasure);
+    expect(rects[0]?.height).toBe(mediaFootprintHeight(1080, 1920));
   });
 
   it('sizes text by what was measured when it draws taller than its words', () => {
@@ -87,14 +87,20 @@ describe('occupiedRects', () => {
     expect(rects[0]?.height).toBe(textFootprintHeight(words));
   });
 
-  it('gives any other node that has never been measured the standard footprint', () => {
+  it('gives any other node that has never been measured the standard footprint, as deep as its counts reach', () => {
     const rects = occupiedRects([at({ id: 'a', type: 'audio', x: 5, y: 7 })], noMeasure);
-    expect(rects).toEqual([{ x: 5, y: 7, width: WITH_COUNTS, height: EMPTY_NODE_SIZE.height }]);
+    expect(rects).toEqual([{ x: 5, y: 7, width: WITH_COUNTS, height: Math.max(EMPTY_NODE_SIZE.height, COUNTS_COLUMN_FLOW_DEPTH) }]);
   });
 
   it('sizes any other node by what was measured', () => {
-    const rects = occupiedRects([at({ id: 'a', type: 'audio' })], () => ({ width: 300, height: 120 }));
-    expect(rects[0]).toMatchObject({ width: 300 + COUNTS_COLUMN_FLOW_REACH, height: 120 });
+    const rects = occupiedRects([at({ id: 'a', type: 'audio' })], () => ({ width: 300, height: 400 }));
+    expect(rects[0]).toMatchObject({ width: 300 + COUNTS_COLUMN_FLOW_REACH, height: 400 });
+  });
+
+  it('reaches below a short node as deep as its task counts can', () => {
+    const banner = at({ id: 'b', type: 'image', mediaWidth: 3000, mediaHeight: 1000 });
+    expect(mediaFootprintHeight(3000, 1000)).toBeLessThan(COUNTS_COLUMN_FLOW_DEPTH);
+    expect(occupiedRects([banner], noMeasure)[0]?.height).toBe(COUNTS_COLUMN_FLOW_DEPTH);
   });
 
   it('leaves room on the right of every content node for its task counts', () => {

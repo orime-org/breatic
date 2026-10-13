@@ -41,6 +41,7 @@ import {
   ROW_GAP_PX,
   planFlowLayout,
   shiftRightPastOccupied,
+  withTaskCounts,
   type Spot,
 } from '@web/spaces/canvas/lib/place-flow';
 import {
@@ -64,7 +65,6 @@ import {
   toRelativePosition,
   type Rect,
 } from '@web/spaces/canvas/group-geometry';
-import { COUNTS_COLUMN_FLOW_REACH } from '@web/spaces/canvas/overlay-scale';
 import { useCurrentUserStore } from '@web/stores/current-user';
 import { canvasApi } from '@web/data/api/canvas';
 import { ApiException } from '@web/data/api/types';
@@ -140,7 +140,11 @@ export interface NodeCreation {
    * One press is ONE undo entry: a half-placed flow -- nodes without their
    * wires, or a generation node still on whatever mode it defaults to -- is
    * worse than no flow at all. The flow is aimed at `start` and moved right
-   * past `occupied` until it covers none of it (inner#1443).
+   * past `occupied` until it covers none of it (inner#1443). If a write fails
+   * part way, everything this press wrote is taken back in the same
+   * transaction, which stays out of undo history, and the error is rethrown.
+   * @throws {Error} When a write fails part way; nothing is left on the canvas
+   *   or in undo history.
    */
   placeProposalAt: (proposal: CanvasProposal, start: Spot, occupied: readonly Rect[]) => PlacedProposal;
 }
@@ -283,12 +287,11 @@ export function useNodeCreation(
       // to be clear; a single node needs only its own.
       const aimedGroup = aimed.length > 1 ? groupRectForMembers(aimed) : null;
       const footprint = aimedGroup ?? aimed[0];
-      // The new nodes will hang their own task counts off their right edges,
-      // so the spot keeps that much clear too, as it does for nodes already
-      // there.
-      const dx = footprint
-        ? shiftRightPastOccupied({ ...footprint, width: footprint.width + COUNTS_COLUMN_FLOW_REACH }, occupied, ROW_GAP_PX)
-        : 0;
+      // The new nodes will hang their own task counts off their corners, so
+      // the spot keeps that much clear too: the group's frame, and each node
+      // with its counts, as nodes already there are counted.
+      const searched = groupRectForMembers([...(aimedGroup ? [aimedGroup] : []), ...aimed.map(withTaskCounts)], 0);
+      const dx = searched ? shiftRightPastOccupied(searched, occupied, ROW_GAP_PX) : 0;
       const spots = aimed.map((spot) => ({ ...spot, x: spot.x + dx }));
       const bounds = footprint && { ...footprint, x: footprint.x + dx };
       const nodeIds: string[] = [];

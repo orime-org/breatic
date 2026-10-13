@@ -15,8 +15,8 @@ import { bodyToPlainText } from '@breatic/shared/canvas/text-body';
 import { useCurrentUserStore } from '@web/stores/current-user';
 import { groupBackgroundFor } from '@web/spaces/canvas/group-background';
 import { ROW_GAP_PX, occupiedRects, planFlowLayout } from '@web/spaces/canvas/lib/place-flow';
-import { groupRectForMembers } from '@web/spaces/canvas/group-geometry';
-import { COUNTS_COLUMN_FLOW_REACH } from '@web/spaces/canvas/overlay-scale';
+import { GROUP_PADDING, groupRectForMembers } from '@web/spaces/canvas/group-geometry';
+import { COUNTS_COLUMN_FLOW_DEPTH, COUNTS_COLUMN_FLOW_REACH } from '@web/spaces/canvas/overlay-scale';
 import { useNodeCreation } from '@web/spaces/canvas/use-node-creation';
 import { CLIPBOARD_VERSION, type ClipboardNode, type ClipboardPayload } from '@web/spaces/canvas/node-clipboard';
 import { toast } from '@web/lib/toast';
@@ -1176,6 +1176,45 @@ describe('useNodeCreation', () => {
 
       expect({ undo: undo.undoStack.length, redo: undo.redoStack.length }).toEqual(before);
       expect(before.redo).toBe(1);
+    });
+
+    it('takes back a group written before the failure, too', () => {
+      vi.spyOn(canvasSpace, 'setGroupBackground').mockImplementationOnce(() => {
+        throw new Error('no background');
+      });
+      const { result } = renderHook(() => useNodeCreation('p-grp', 's-grp'));
+
+      expect(() => result.current.placeProposalAt(PAIR, { x: 0, y: 0 }, [])).toThrow();
+
+      expect(canvasSpace.readNodePlacements('p-grp', 's-grp')).toHaveLength(0);
+    });
+
+    it('keeps the depth its own task counts can reach clear below it', () => {
+      const one: CanvasProposal = {
+        nodes: [{ role: 'source', type: 'image', name: 'Your photo' }],
+        edges: [],
+        rationale: '',
+      };
+      const [spot] = planFlowLayout(one, { x: 0, y: 0 });
+      const below = { x: spot!.x, y: spot!.y + COUNTS_COLUMN_FLOW_DEPTH + ROW_GAP_PX - 1, width: 100, height: 100 };
+      const { result } = renderHook(() => useNodeCreation('p-depth', 's-depth'));
+
+      result.current.placeProposalAt(one, { x: 0, y: 0 }, [below]);
+
+      const [placed] = canvasSpace.readNodePlacements('p-depth', 's-depth');
+      expect(placed?.x).toBe(below.x + below.width + ROW_GAP_PX);
+    });
+
+    it('keeps clear past a group only as far as its members\u2019 counts reach', () => {
+      const planned = groupRectForMembers(planFlowLayout(PAIR, { x: 0, y: 0 }))!;
+      const reach = COUNTS_COLUMN_FLOW_REACH - GROUP_PADDING;
+      const right = { x: planned.x + planned.width + reach + ROW_GAP_PX + 1, y: planned.y, width: 100, height: 100 };
+      const { result } = renderHook(() => useNodeCreation('p-greach', 's-greach'));
+
+      result.current.placeProposalAt(PAIR, { x: 0, y: 0 }, [right]);
+
+      const [group] = groupRects('p-greach', 's-greach');
+      expect(group?.x).toBe(planned.x);
     });
 
     it('keeps the room its own task counts will take clear on its right', () => {
