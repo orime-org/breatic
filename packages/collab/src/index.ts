@@ -29,7 +29,10 @@ import {
   startHealthServer,
   runGracefulShutdown,
   InfraNotReadyError,
+  taskEventsStreamKey,
+  lifecycleStreamKey,
 } from "@breatic/core";
+import { getCollabConfig } from "@collab/config.js";
 import { buildCollabHealthChecks } from "@collab/infra/health-checks.js";
 import { createCollabServer } from "@collab/hocuspocus.js";
 import { startTaskListener } from "@collab/services/task-listener.js";
@@ -49,19 +52,18 @@ const logger = createLogger("main");
 if (monitoring === "invalid_dsn") logger.error({}, "sentry_dsn_invalid");
 
 /**
- * Deadline (ms) for the teardown drains that follow the store settle.
+ * Deadline (ms) for the concurrent teardown drains.
  *
- * Predates the timed store by two months (`6e07f4fd`, the shared
- * graceful-shutdown refactor across all three services) and covers what it
- * always covered: a hung drain — a Redis quit that never returns, say — must
- * not hold the process open. It does NOT bound the store settle, which runs
- * before it and is deliberately unbounded; a store answers when the database
- * answers, and a clock over it would cancel nothing.
- *
- * It no longer has to cover the listen socket either: that is released before
- * the settle now, so a dev `tsx watch` restart can rebind :1234 immediately.
+ * A hung drain — a Redis quit that never returns, say — must not hold the
+ * process open. Every document's final store runs inside `server.destroy()`,
+ * the first drain, so it shares this deadline: the unload gate reads the
+ * absolute moment it ends and stops retrying a store in time to rescue the
+ * content before it.
  */
 const SHUTDOWN_DEADLINE_MS = 4000;
+
+/** A consumer idle this long with nothing pending is removed from its group. */
+const FORGET_IDLE_CONSUMER_MS = 24 * 60 * 60 * 1000;
 
 /**
  * Sentinel document the healthz end-to-end probe loads. Deliberately NOT a
@@ -126,14 +128,11 @@ const REDIS_COLLAB_URL = env.REDIS_COLLAB_URL;
 // instance with another one sets it (#1831).
 const REDIS_KEY_PREFIX = env.REDIS_KEY_PREFIX;
 
-// Namespace for the Redis STREAM cursor keys. Deliberately `ENV` and NOT
-// `REDIS_KEY_PREFIX`: a cursor must live in the same namespace as the stream
-// it points into, and the stream keys come from core's `taskEventsStreamKey()`
-// / `lifecycleStreamKey()` (also ENV-derived) because server, worker and collab
-// must agree on them. Deriving the cursor from a per-deployment prefix would
-// rename it out from under an existing deployment — `startStreamConsumer`
-// treats a missing cursor as `0-0` and would replay the WHOLE stream, applying
-// every historical task event to the Yjs documents again.
+// Namespace of the cursor keys the single-instance reader kept. Each consumer
+// group is created at the position its cursor records (#1497 §6.9), and the
+// key is left in place for a rollback to the single-instance reader. Like the
+// stream keys (core's `taskEventsStreamKey()` / `lifecycleStreamKey()`), it is
+// `ENV`, not `REDIS_KEY_PREFIX`.
 const STREAM_CURSOR_PREFIX = env.ENV;
 const HEALTH_PORT = env.COLLAB_HEALTH_PORT;
 
@@ -168,12 +167,16 @@ async function main(): Promise<void> {
     await exitProcess(1);
   }
 
+  // Set when shutdown reaches the concurrent drains.
+  let shutdownDeadlineAt: number | undefined;
+
   // Create and start Hocuspocus server
-  const { server, hocuspocus, seatHandover, storeLoop } =
+  const { server, hocuspocus, seatHandover, storeLoop, instanceId } =
     await createCollabServer({
     collabRedisUrl: REDIS_COLLAB_URL,
     port: env.COLLAB_PORT,
     redisKeyPrefix: REDIS_KEY_PREFIX,
+    shutdownDeadline: () => shutdownDeadlineAt,
   });
 
   /**
@@ -225,27 +228,55 @@ async function main(): Promise<void> {
   await server.listen();
   logger.info({ port: env.COLLAB_PORT }, "Hocuspocus collaboration server started");
 
-  // Start task result listener (Worker → Yjs)
-  // streamRedisUrl: consume Redis Streams (DB 2)
-  const stopListener = startTaskListener(
-    hocuspocus,
-    REDIS_STREAM_URL,
-    STREAM_CURSOR_PREFIX,
-  );
+  // Both cross-service streams are read as consumer groups this instance
+  // joins under its instance id (#1497 §6.1, §6.2).
+  const cfg = getCollabConfig();
+  const consumerSettings = {
+    batchCount: cfg.event_batch_count,
+    blockMs: cfg.event_block_ms,
+    leaseRetryMs: cfg.event_lease_retry_ms,
+    claimIntervalMs: cfg.event_claim_interval_ms,
+    claimIdleMs: cfg.event_claim_idle_ms,
+    retryMinMs: cfg.event_retry_min_ms,
+    retryMaxMs: cfg.event_retry_max_ms,
+    maxFailures: cfg.event_max_failures,
+    stopDeadlineMs: cfg.event_stop_deadline_ms,
+    forgetIdleConsumerMs: FORGET_IDLE_CONSUMER_MS,
+  };
 
-  // Start project-lifecycle listener (API outbox relay → yjs-DB cascade).
-  // Same Streams Redis (DB 2) as the task stream; consumes delete /
-  // duplicate commands and performs the yjs-DB side + connection kick.
-  const stopLifecycle = startLifecycleListener(
+  // Task events (server, worker → canvas documents).
+  const taskConsumer = startTaskListener({
     hocuspocus,
-    REDIS_STREAM_URL,
-    STREAM_CURSOR_PREFIX,
-  );
+    streamUrl: REDIS_STREAM_URL,
+    streamKey: taskEventsStreamKey(),
+    legacyCursorKey: `${STREAM_CURSOR_PREFIX}:collab:task-events:last-id`,
+    keyPrefix: REDIS_KEY_PREFIX,
+    instanceId,
+    coordination: getCollabRedis(),
+    settings: {
+      ...consumerSettings,
+      docConcurrency: cfg.event_doc_concurrency,
+      docLeaseMs: cfg.event_doc_lease_ms,
+      handoffPollMs: cfg.event_handoff_poll_ms,
+      handoffWaitMs: cfg.event_handoff_wait_ms,
+    },
+  });
 
-  // Start members-sync subscriber (API → kick + broadcastStateless +
-  // meta-doc Space CRUD apply). Same Redis instance as the task
-  // stream (DB2); members-sync .duplicate()s the connection for its
-  // dedicated subscriber.
+  // Project-lifecycle commands (server outbox relay → yjs-DB copy and the
+  // connection close every instance does).
+  const lifecycleConsumer = startLifecycleListener({
+    streamUrl: REDIS_STREAM_URL,
+    streamKey: lifecycleStreamKey(),
+    legacyCursorKey: `${STREAM_CURSOR_PREFIX}:collab:project-lifecycle:last-id`,
+    keyPrefix: REDIS_KEY_PREFIX,
+    instanceId,
+    coordination: getCollabRedis(),
+    settings: consumerSettings,
+  });
+
+  // Start the control-plane subscriber (members changed, activity, project
+  // connection closes). Same Redis instance as the streams (DB2);
+  // members-sync .duplicate()s the connection for its dedicated subscriber.
   // Members-sync subscriber client. Uses the core factory so it
   // inherits the production-safety knobs (keepAlive,
   // commandTimeout: undefined for the subscribe path's blocking
@@ -343,9 +374,10 @@ async function main(): Promise<void> {
 
   // Graceful shutdown
   /**
-   * Gracefully tear down the collab process: stop the health server,
-   * members-sync subscriber, Redis/Postgres clients, stream listener,
-   * and Hocuspocus server, then exit with code 0.
+   * Gracefully tear down the collab process: stop the two stream consumers
+   * and hand over what they still hold, then stop the Hocuspocus server, the
+   * health server, the members-sync subscriber and the Redis clients
+   * together, then exit with code 0.
    * @param signal - Name of the OS signal that triggered shutdown (`SIGTERM` / `SIGINT`), logged for traceability.
    */
   const shutdown = async (signal: string): Promise<void> => {
@@ -365,11 +397,19 @@ async function main(): Promise<void> {
       // Best effort — a release error must not stop the teardown below.
     }
 
+    // The stream consumers stop first, while the Redis clients and Hocuspocus
+    // they write through are still up: each finishes or holds the batch in
+    // hand and marks what it still holds as idle, so another instance — or
+    // this one's successor on startup — takes it on its next sweep. Each is
+    // bounded by `event_stop_deadline_ms`.
+    await Promise.all([taskConsumer.stop(), lifecycleConsumer.stop()]);
+
     // Onto disk before the teardown, not after it: if the platform loses
     // patience and kills the process mid-drain, everything logged up to here
     // is already safe.
     await flushLogger();
 
+    shutdownDeadlineAt = Date.now() + SHUTDOWN_DEADLINE_MS;
     await runGracefulShutdown({
       // Release the WS listen socket first so a restart can rebind :1234
       // immediately, instead of holding it behind the drains below — the old
@@ -388,8 +428,6 @@ async function main(): Promise<void> {
         () => seatHandover.stop(),
         () => controlRedis.quit(),
         () => closeCollabRedis(),
-        () => stopListener(),
-        () => stopLifecycle(),
       ],
       deadlineMs: SHUTDOWN_DEADLINE_MS,
     });

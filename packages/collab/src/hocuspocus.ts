@@ -97,6 +97,11 @@ export interface CollabServerInfra {
    * `REDIS_*_URL` split isolates every ordinary key but not channels.
    */
   redisKeyPrefix: string;
+  /**
+   * When the process must be gone by, once shutdown has begun; undefined
+   * before. The unload gate stops retrying in time to rescue before it.
+   */
+  shutdownDeadline: () => number | undefined;
 }
 
 /**
@@ -105,9 +110,9 @@ export interface CollabServerInfra {
  * Behavior parameters are loaded from `config/collab.yaml`.
  * Infrastructure connections (DB, Redis) are passed as arguments.
  * @param infra - Database and Redis connection details
- * @returns Configured Server + Hocuspocus instances + the seat-handover channel (caller stops it on shutdown) + the timed store loop
+ * @returns Configured Server + Hocuspocus instances + the seat-handover channel (caller stops it on shutdown) + the timed store loop + this process's instance id
  */
-export async function createCollabServer(infra: CollabServerInfra): Promise<{ server: Server; hocuspocus: Hocuspocus; seatHandover: SeatHandover; storeLoop: StoreLoop }> {
+export async function createCollabServer(infra: CollabServerInfra): Promise<{ server: Server; hocuspocus: Hocuspocus; seatHandover: SeatHandover; storeLoop: StoreLoop; instanceId: string }> {
   const cfg = getCollabConfig();
   const timings = getConnectionTimings();
 
@@ -623,6 +628,12 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
       }),
     writeRescueNote,
     alert: (failure) => storeAlerter.alert(failure),
+    retry: {
+      windowMs: cfg.unload_store_retry_ms,
+      intervalMs: cfg.unload_store_retry_interval_ms,
+      rescueReserveMs: cfg.unload_rescue_reserve_ms,
+    },
+    shutdownDeadline: infra.shutdownDeadline,
   });
   const storeLoop = createStoreLoop({
     intervalMs: cfg.store_interval_ms,
@@ -637,5 +648,6 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     hocuspocus: wsServer.hocuspocus,
     seatHandover,
     storeLoop,
+    instanceId,
   };
 }
