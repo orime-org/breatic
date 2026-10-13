@@ -441,6 +441,81 @@ describe("startGroupConsumer", () => {
     expect(idle.get(a3!)).toBeGreaterThanOrEqual(60_000);
   });
 
+  it("retries a waiting entry after leaseRetryMs even while a read is blocked", async () => {
+    const keys = keysFor();
+    await append(keys.streamKey, ["busy-once"]);
+    const at: number[] = [];
+    start(
+      keys,
+      "a",
+      async (entries) => {
+        at.push(Date.now());
+        return new Map(entries.map((e) => [e.id, at.length === 1 ? ("wait" as const) : ("done" as const)]));
+      },
+      { blockMs: 5000, leaseRetryMs: 100, claimIntervalMs: 60_000 },
+    );
+    await until(() => at.length >= 2, 8000);
+    expect(at[1]! - at[0]!).toBeLessThan(1500);
+  });
+
+  it("takes over no more idle entries than it has room for", async () => {
+    const keys = keysFor();
+    await append(keys.streamKey, Array.from({ length: 40 }, (_, i) => `e${i}`));
+    // A consumer that read everything and then died.
+    await stream.xgroup("CREATE", keys.streamKey, keys.group, "0", "MKSTREAM");
+    await stream.xreadgroup("GROUP", keys.group, "dead", "COUNT", 40, "STREAMS", keys.streamKey, ">");
+    await new Promise((r) => setTimeout(r, 400));
+    start(keys, "a", async () => new Promise<Map<string, EntryOutcome>>(() => {}), {
+      batchCount: 10,
+      claimIdleMs: 300,
+      claimIntervalMs: 60_000,
+    });
+    await new Promise((r) => setTimeout(r, 500));
+    const consumers = (await stream.xinfo("CONSUMERS", keys.streamKey, keys.group)) as unknown[][];
+    const pendingOf = (name: string): number => {
+      const row = consumers.find((c) => c[1] === name);
+      return row ? Number(row[3]) : 0;
+    };
+    expect(pendingOf("a")).toBe(10);
+    expect(pendingOf("dead")).toBe(30);
+  });
+
+  it("hands over at once when a stop lands during a take-over sweep", async () => {
+    const keys = keysFor();
+    await append(keys.streamKey, ["d1", "d2"]);
+    await stream.xgroup("CREATE", keys.streamKey, keys.group, "0", "MKSTREAM");
+    await stream.xreadgroup("GROUP", keys.group, "dead", "COUNT", 10, "STREAMS", keys.streamKey, ">");
+    await new Promise((r) => setTimeout(r, 400));
+    let a: GroupConsumer | undefined;
+    let stopped: Promise<void> | undefined;
+    let proto: object | null = Object.getPrototypeOf(stream);
+    while (proto && !Object.prototype.hasOwnProperty.call(proto, "xautoclaim")) proto = Object.getPrototypeOf(proto);
+    const target = proto as { xautoclaim: (...args: unknown[]) => unknown };
+    const original = target.xautoclaim;
+    const spy = vi.spyOn(target, "xautoclaim").mockImplementation(function (this: unknown, ...args: unknown[]) {
+      if (a && !stopped) stopped = a.stop();
+      return original.apply(this, args);
+    });
+    let elapsed = 0;
+    try {
+      // The two claimed keys fill both slots, so no read follows the sweep.
+      a = start(keys, "a", allDone([]), {
+        keyConcurrency: 2,
+        blockMs: 5000,
+        claimIdleMs: 300,
+        claimIntervalMs: 60_000,
+        stopDeadlineMs: 3000,
+      });
+      await until(() => stopped !== undefined);
+      const startedAt = Date.now();
+      await stopped;
+      elapsed = Date.now() - startedAt;
+    } finally {
+      spy.mockRestore();
+    }
+    expect(elapsed).toBeLessThan(1000);
+  });
+
   it("forgets a consumer that has been idle past the limit with nothing pending", async () => {
     const keys = keysFor();
     await append(keys.streamKey, ["e1"]);

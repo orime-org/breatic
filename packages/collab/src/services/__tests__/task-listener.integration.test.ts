@@ -463,6 +463,44 @@ describe("task events across two collab instances", () => {
     expect(two).toBeLessThan(one * 0.75);
   }, 150_000);
 
+  it("lets both instances write a document whose events keep arriving, each within seconds", async () => {
+    const nodeIds = Array.from({ length: 40 }, () => randomUUID());
+    const c = await newCase(Object.fromEntries(nodeIds.map((n) => [n, "image"])));
+    // config/collab.yaml timing.
+    const timing = { blockMs: 5000, leaseRetryMs: 1000, handoffWaitMs: 5000 };
+    listen(c, instanceA, "a", timing);
+    listen(c, instanceB, "b", timing);
+    await new Promise((r) => setTimeout(r, 500));
+    const published = new Map<string, number>();
+    const owner = new Map<string, string>();
+    const acked = new Map<string, number>();
+    let publishing = true;
+    const watch = (async () => {
+      while (publishing || acked.size < published.size) {
+        const rows = (await stream.xpending(c.streamKey, "collab-task-events", "-", "+", 1000)) as Array<
+          [string, string, number, number]
+        >;
+        const now = Date.now();
+        const pendingIds = new Set(rows.map((r) => r[0]));
+        for (const [id, by] of rows) owner.set(id, by);
+        for (const id of published.keys()) {
+          if (owner.has(id) && !pendingIds.has(id) && !acked.has(id)) acked.set(id, now);
+        }
+        await new Promise((r) => setTimeout(r, 30));
+      }
+    })();
+    for (const [i, nodeId] of nodeIds.entries()) {
+      const [id] = await publish(c, [{ nodeId, counts: DONE, result: { ...MEDIA, content: `r${i}.png` } }]);
+      published.set(id!, Date.now());
+      await new Promise((r) => setTimeout(r, 250));
+    }
+    publishing = false;
+    await Promise.race([watch, new Promise((r) => setTimeout(r, 60_000))]);
+    const latencies = [...published].map(([id, at]) => (acked.get(id) ?? Infinity) - at);
+    expect(new Set(owner.values())).toEqual(new Set(["a", "b"]));
+    expect(Math.max(...latencies)).toBeLessThan(8000);
+  }, 120_000);
+
   it("writes an older result that arrives after newer counts, and leaves the counts alone", async () => {
     const nodeId = randomUUID();
     const c = await newCase({ [nodeId]: "image" });
