@@ -886,6 +886,19 @@ describe('measureDrawn', () => {
     expect(measureDrawn(layerOf(frame)).width).toBe(300);
   });
 
+  it('reads through an element that is no box, which neither clips nor paints nor fades what it holds', () => {
+    textWidths({ 'Bullet one': 150 });
+    const shell = document.createElement('div');
+    shell.style.display = 'contents';
+    shell.style.overflowX = 'hidden';
+    shell.style.opacity = '0';
+    shell.style.backgroundColor = 'rgb(1, 2, 3)';
+    const block = boxed(document.createElement('div'), 0, 768);
+    block.textContent = 'Bullet one';
+    shell.append(block);
+    expect(measureDrawn(layerOf(shell)).width).toBe(150);
+  });
+
   it('leaves out what is not shown', () => {
     textWidths({ shown: 100 });
     const edge = boxed(document.createElement('span'), 0, 700);

@@ -153,7 +153,14 @@ export function measureDrawn(layer: HTMLElement): PreviewSize {
     }
     if (!(node instanceof Element)) return;
     const style = frame.getComputedStyle(node);
-    if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') return;
+    if (style.display === 'none') return;
+    // An element that is no box (the copies a preview's content sits in)
+    // neither clips, paints nor fades what it holds.
+    if (style.display === 'contents') {
+      node.childNodes.forEach((child) => visit(child, clip));
+      return;
+    }
+    if (style.opacity === '0' || style.visibility === 'hidden') return;
     const rect = node.getBoundingClientRect();
     if (REPLACED.has(node.localName) || paintsBox(style)) right = Math.max(right, Math.min(rect.right, clip));
     const inner = style.overflowX === 'visible' ? clip : Math.min(clip, rect.right);
