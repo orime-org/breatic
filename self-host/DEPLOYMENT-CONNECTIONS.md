@@ -44,6 +44,20 @@ The Update button reloads the page using the existing Project `beforeunload` gua
 
 No environment variables are added or removed. Changing `VITE_APP_VERSION` requires rebuilding the frontend, not restarting the backend.
 
+## Back office internal API
+
+`INTERNAL_API_ENABLED=true` starts a second server listener, called only by the Breatic back office, on `INTERNAL_API_HOST`:`INTERNAL_API_PORT` (default `127.0.0.1:3002`), plus the loop that finishes the credit-pack refunds it accepts. Every request carries an HMAC-SHA256 signature made with `INTERNAL_API_SECRET`, the same value the back office holds; with the API enabled and that secret empty, the services refuse to start. To rotate, move the old key to `INTERNAL_API_SECRET_PREVIOUS`: requests signed with either key are accepted until it is blanked. Requests are limited to 120 per 60 seconds per connection address (`internal-api` in `config/rate-limits.yaml`).
+
+| Deployment | Product server | Back office connects to |
+|---|---|---|
+| Local development | Binds `127.0.0.1:3002` | `http://127.0.0.1:3002` |
+| This `docker-compose.yml` | Binds `0.0.0.0` in the container; `expose: ["3002"]` only, no host port | `http://server:3002`, from a container on the same compose network |
+| Separate hosts in one VPC | Binds `0.0.0.0` in the container; publish `<private-ip>:3002:3002` | `http://<product private IP>:3002` |
+
+With separate hosts, the security group is the only network-level isolation: on Alibaba Cloud ECS, traffic to the public IP is translated to the primary private IP, and Docker-published ports bypass the host firewall. Allow inbound 3002 only from the back office server's private IP/32, and keep the product host's group free of intra-group allow rules (or use an enterprise security group). Every deployment's verification probes 3002 from the public IP; a successful connection fails the deployment.
+
+Subscribe the product's Stripe webhook endpoint to `refund.created`, `refund.updated` and `refund.failed`.
+
 ## Scope and verification
 
 This change implements the user-approved separate-frontend deployment without changing database tables, session format, task semantics or local deployment defaults. Keeping one configurable API base avoids divergent request paths; passing queue TLS/credentials fixes the lost connection options rather than weakening cloud security. Separate API and WS hostnames would require a different cookie-sharing decision and are not required.

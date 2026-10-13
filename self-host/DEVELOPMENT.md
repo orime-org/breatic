@@ -74,7 +74,7 @@ EMAIL_BACKEND=console
 
 `PAYMENT_ENABLED=false` disables application payments and the corresponding credit checks; **external model charges still apply**. `EMAIL_BACKEND=console` prints email content to local logs without delivering it. Email/password registration works without Google OAuth. Signing up asks for a six-digit code; with `console` it is in the server log line `[console] email`. With `EMAIL_BACKEND=disabled` there is no code step and a recovery code is shown instead; save it.
 
-This guide assumes one local instance. Required free ports are `5432`, `6379`, `3000`, `3001`, `1234`, `1235`, `9101`, `8000` and, for local Ingest, `8787`. Do not accidentally connect to another instance's data. See the `.env.dev` header for multi-instance isolation.
+This guide assumes one local instance. Required free ports are `5432`, `6379`, `3000`, `3001`, `1234`, `1235`, `9101`, `8000` and, for local Ingest, `8787`; with `INTERNAL_API_ENABLED=true`, also `3002`. Do not accidentally connect to another instance's data. See the `.env.dev` header for multi-instance isolation.
 
 ## 3. Configure R2 storage
 
