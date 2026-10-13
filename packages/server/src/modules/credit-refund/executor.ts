@@ -32,6 +32,12 @@ import {
 import type { StripeRefundObject } from "@server/modules/credit-refund/types.js";
 import * as paymentRepo from "@server/modules/payment/payment.repo.js";
 
+/** One read of Stripe: a whole `refunds.list`, or the one refund a create answered with. */
+interface Read {
+  refunds: StripeRefundObject[];
+  list: boolean;
+}
+
 /** One attempt's identity: the disposition, its lease and who runs it. */
 interface Attempt {
   op: CreditRefundOperation;
@@ -47,8 +53,9 @@ interface Attempt {
  * fails leaves it in flight until Stripe answers (§9).
  * @param op - The disposition, as the caller last read it with its lease.
  * @param actor - Who runs the attempt: the endpoint or the loop, for the event rows.
- * @returns Once the attempt's cell is committed; at once, with only what it
- *   read copied, when its lease no longer covers a Stripe call (§9).
+ * @returns Once the attempt's cell is committed and the buyer mail it queued
+ *   is on its way; at once, with only what it read copied, when its lease no
+ *   longer covers a Stripe call (§9).
  * @throws {Error} When the payment has no payment intent to refund.
  */
 export async function executeRefund(op: CreditRefundOperation, actor: Actor): Promise<void> {
@@ -56,23 +63,22 @@ export async function executeRefund(op: CreditRefundOperation, actor: Actor): Pr
   const config = getCreditRefundConfig();
   // Every read is copied, oldest first (§6.4): the create answer may be the
   // only sight of a success, the list after it the newer word on the status.
-  const reads: StripeRefundObject[][] = [];
+  const reads: Read[] = [];
   if (op.firstCalledAt !== null) {
     const listed = await read(attempt, paymentIntent, reads);
     if (listed === null) return;
-    reads.push(listed);
+    reads.push({ refunds: listed, list: true });
     const found = ownRefundIn(listed, op.id);
-    if (found) return judgeAndAnswer(attempt, found, reads);
+    if (found) return commit(attempt, reads, (tx) => judgeOwnRefund(tx, op, found));
     // Stripe holds none of it and no attempt is left: a person decides.
-    if (attemptsExhausted(op.attemptCount, config)) return answer(attempt, { type: "E11" }, reads);
+    if (attemptsExhausted(op.attemptCount, config)) return commit(attempt, reads, () => ({ type: "E11" }));
   }
 
   // A lease taken over or about to run out must not reach Stripe: the loop
   // claims the row and carries on under its own lease (§9).
   if (!(await operationRepo.markFirstCalled(op.id, attempt.leaseToken, config.stripeCallTimeoutMs))) {
     logger.warn({ operationId: op.id }, "credit_refund_create_skipped_lease");
-    sendJudgedMails(await db.transaction((tx) => copyReads(tx, attempt, reads)));
-    return;
+    return commit(attempt, reads);
   }
   const created = await createRefund({
     operationId: op.id,
@@ -81,20 +87,20 @@ export async function executeRefund(op: CreditRefundOperation, actor: Actor): Pr
   });
   const verdict = classifyCreateAnswer(created.answer, op.attemptCount);
   if (verdict.kind === "event") {
-    return answer(attempt, { type: verdict.event, failure: created.failure! }, reads);
+    return commit(attempt, reads, () => ({ type: verdict.event, failure: created.failure! }));
   }
 
-  if (verdict.kind === "refund") reads.push([created.refund!]);
+  if (verdict.kind === "refund") reads.push({ refunds: [created.refund!], list: false });
   const listed = await read(attempt, paymentIntent, reads, created.failure);
   if (listed === null) return;
-  reads.push(listed);
+  reads.push({ refunds: listed, list: true });
   if (verdict.kind === "refund") {
     const own = listed.find((r) => r.id === created.refund!.id) ?? created.refund!;
-    return judgeAndAnswer(attempt, own, reads);
+    return commit(attempt, reads, (tx) => judgeOwnRefund(tx, op, own));
   }
   const found = ownRefundIn(listed, op.id);
-  if (found) return judgeAndAnswer(attempt, found, reads);
-  return answer(attempt, { type: verdict.ifNotFound, failure: created.failure! }, reads);
+  if (found) return commit(attempt, reads, (tx) => judgeOwnRefund(tx, op, found));
+  return commit(attempt, reads, () => ({ type: verdict.ifNotFound, failure: created.failure! }));
 }
 
 /**
@@ -127,14 +133,14 @@ async function begin(
 async function read(
   attempt: Attempt,
   paymentIntent: string,
-  earlier: StripeRefundObject[][],
+  earlier: Read[],
   createFailure?: StripeFailure,
 ): Promise<StripeRefundObject[] | null> {
   try {
     return await listRefunds(paymentIntent);
   } catch (err) {
     if (!(err instanceof StripeReadError)) throw err;
-    await answer(attempt, { type: "E16", failure: err.failure, createFailure }, earlier);
+    await commit(attempt, earlier, () => ({ type: "E16", failure: err.failure, createFailure }));
     return null;
   }
 }
@@ -150,65 +156,44 @@ function ownRefundIn(listed: readonly StripeRefundObject[], operationId: string)
 }
 
 /**
- * Copy what was read, oldest read first, and execute one cell, in one transaction.
+ * Copy what was read, oldest read first, and execute the attempt's cell, in
+ * one transaction; then send the buyer mail of this disposition and of any
+ * waiting one the copies judged (§6.5 M1).
  * @param attempt - The attempt.
- * @param event - The event, without lease and actor.
  * @param reads - The refunds this attempt saw, in the order it saw them.
+ * @param cell - The event to execute, computed inside the transaction; none
+ *   when the attempt stands down and only copies.
  */
-async function answer(attempt: Attempt, event: OperationEventBody, reads: StripeRefundObject[][]): Promise<void> {
-  const judged = await db.transaction(async (tx) => {
-    const ids = await copyReads(tx, attempt, reads);
-    await transitionOperation(tx, { id: attempt.op.id }, eventOf(attempt, event));
-    return ids;
-  });
-  sendJudgedMails(judged);
-}
-
-/**
- * Copy the reads, then judge the disposition's own refund against the copies
- * and execute the cell — all in one transaction.
- * @param attempt - The attempt.
- * @param own - Its refund, as last seen.
- * @param reads - The refunds this attempt saw, in the order it saw them.
- */
-async function judgeAndAnswer(
+async function commit(
   attempt: Attempt,
-  own: StripeRefundObject,
-  reads: StripeRefundObject[][],
+  reads: Read[],
+  cell?: (tx: DbTx) => Promise<OperationEventBody> | OperationEventBody,
 ): Promise<void> {
   const judged = await db.transaction(async (tx) => {
     const ids = await copyReads(tx, attempt, reads);
-    await transitionOperation(tx, { id: attempt.op.id }, eventOf(attempt, await judgeOwnRefund(tx, attempt.op, own)));
+    if (cell) await transitionOperation(tx, { id: attempt.op.id }, eventOf(attempt, await cell(tx)));
     return ids;
   });
-  sendJudgedMails(judged);
+  for (const id of new Set([attempt.op.id, ...judged])) sendOperationMailsLater(id);
 }
 
 /**
- * Copy each non-empty read, in order.
+ * Copy each non-empty read, in order. Only a list read judges the payment's
+ * waiting disposition: a create answer is one refund, not the whole list.
  * @param tx - The transaction.
  * @param attempt - The attempt.
  * @param reads - The reads.
- * @returns The waiting dispositions the copies judged: once this attempt's
- *   lease is gone, that may be one accepted after it, whose buyer mail the
- *   caller sends after the commit.
+ * @returns The waiting dispositions the list reads judged: once this
+ *   attempt's lease is gone, that may be one accepted after it.
  */
-async function copyReads(tx: DbTx, attempt: Attempt, reads: StripeRefundObject[][]): Promise<string[]> {
+async function copyReads(tx: DbTx, attempt: Attempt, reads: Read[]): Promise<string[]> {
   const judged: string[] = [];
-  for (const refunds of reads) {
+  for (const { refunds, list } of reads) {
     if (refunds.length === 0) continue;
-    const id = await applyRefundSnapshot(tx, attempt.op.paymentId, refunds, attempt.actor);
+    const id = await applyRefundSnapshot(tx, attempt.op.paymentId, refunds, attempt.actor, { judge: list });
     if (id !== null) judged.push(id);
   }
   return judged;
-}
-
-/**
- * Send the buyer mail the copies queued for the dispositions they judged.
- * @param ids - The dispositions, after their transaction committed.
- */
-function sendJudgedMails(ids: readonly string[]): void {
-  for (const id of ids) sendOperationMailsLater(id);
 }
 
 /**

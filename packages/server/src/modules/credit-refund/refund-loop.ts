@@ -122,7 +122,6 @@ async function resumeStarted(isStopped: () => boolean): Promise<void> {
       progressed = true;
       try {
         await executeRefund(op, "loop");
-        sendOperationMailsLater(op.id);
       } catch (err) {
         logger.error({ err, operationId: op.id }, "refund_loop_execute_failed");
       }

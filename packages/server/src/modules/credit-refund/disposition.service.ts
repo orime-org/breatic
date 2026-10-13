@@ -159,7 +159,6 @@ export async function requestRefund(
   });
   if ("replay" in outcome) return answerReplay(outcome.replay);
   await executeRefund(outcome.op, "request");
-  sendOperationMailsLater(outcome.op.id);
   return answerOperation((await operationRepo.findById(outcome.op.id))!);
 }
 

@@ -13,7 +13,7 @@ import { getCreditRefundConfig } from "@server/config/credit-refund.js";
 import * as reconcileRepo from "@server/modules/credit-refund/reconcile.repo.js";
 import { sendOperationMailsLater } from "@server/modules/credit-refund/refund-mail.js";
 import { applyRefundSnapshot } from "@server/modules/credit-refund/refund-snapshot.js";
-import { listRefundsForPayment } from "@server/modules/credit-refund/stripe-refunds.js";
+import { StripeReadError, listRefundsForPayment } from "@server/modules/credit-refund/stripe-refunds.js";
 
 /**
  * How long the lock keeps other instances out. It is left to expire rather
@@ -44,7 +44,10 @@ export async function runDailyReconcile(isStopped: () => boolean = () => false):
     } catch (err) {
       failing.push(paymentId);
       lastError = `payment ${paymentId}: ${err instanceof Error ? err.message : String(err)}`;
-      logger.error({ err, paymentId }, "refund_reconcile_payment_failed");
+      logger.error(
+        { err, ...(err instanceof StripeReadError && { failure: err.failure }), paymentId },
+        "refund_reconcile_payment_failed",
+      );
     }
   }
   await reconcileRepo.markFinished(failing, lastError);

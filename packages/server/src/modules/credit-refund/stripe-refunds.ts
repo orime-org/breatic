@@ -27,7 +27,7 @@ const STATUSES: ReadonlySet<string> = new Set<StripeRefundStatus>([
 
 /** `refunds.list` failed; nothing was read. */
 export class StripeReadError extends Error {
-  readonly failure: StripeFailure;
+  declare readonly failure: StripeFailure;
 
   /**
    * Wrap the read's error.
@@ -36,7 +36,9 @@ export class StripeReadError extends Error {
   constructor(err: unknown) {
     super("Stripe refunds.list failed", { cause: err });
     this.name = "StripeReadError";
-    this.failure = toFailure(err);
+    // Not enumerable: pino's err serializer would copy it and rename Stripe's
+    // error type to "Object"; log lines carry it under `failure` instead.
+    Object.defineProperty(this, "failure", { value: toFailure(err), enumerable: false });
   }
 }
 
