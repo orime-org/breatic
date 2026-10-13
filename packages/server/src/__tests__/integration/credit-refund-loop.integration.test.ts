@@ -1251,6 +1251,53 @@ describe("step 2 — re-read Stripe for awaiting_stripe dispositions", () => {
     await mailsSettled(suite.sql, lot);
   });
 
+  it("the read finishes a different disposition than the one listed: that one's buyer mail is sent right after the commit, not left for the sweep (§6.5 M1, round 8 [3])", async () => {
+    const ownA = reId("own-a");
+    const ownR = reId("own-r");
+    const lot = await seedRefundLot(suite.sql, "refunding");
+    const { id: a } = await seedOperation(suite.sql, lot, {
+      kind: "approve",
+      status: "awaiting_stripe",
+      stripeRefundId: ownA,
+      firstCalledHoursAgo: 1,
+    });
+    fakeStripe.register(lot.paymentIntentId, PAID_CENTS, [refundObject(ownA, "pending", PAID_CENTS, a)]);
+    let r = "";
+    aroundNextList(fakeStripe, async (read) => {
+      // Between the tick listing A and its read: A's refund failed and went to
+      // a person, and a retry R was accepted; Stripe now shows R succeeded.
+      await suite.sql`
+        UPDATE credit_refund_operations
+        SET status = 'needs_attention', attention_reason = 'stripe_refund_failed_later',
+            attention_detail = 'seeded', next_attempt_at = NULL, finished_at = now()
+        WHERE id = ${a}
+      `;
+      ({ id: r } = await seedOperation(suite.sql, lot, {
+        kind: "retry",
+        status: "awaiting_stripe",
+        stripeRefundId: ownR,
+        firstCalledHoursAgo: 0,
+        notify: true,
+      }));
+      fakeStripe.register(lot.paymentIntentId, PAID_CENTS, [
+        refundObject(ownA, "failed", PAID_CENTS, a),
+        refundObject(ownR, "succeeded", PAID_CENTS, r),
+      ]);
+      return read();
+    });
+
+    await runRefundLoopOnce();
+
+    expect(await readOp(suite.sql, r)).toMatchObject({ status: "succeeded", result: "refunded" });
+    // R's mail row is seconds old, so this tick's sweep (rows pending over a
+    // minute) did not take it, and no later tick runs: only the send after
+    // the commit can move it.
+    expect(await mailsOf(suite.sql, lot.lotId)).toEqual([
+      expect.objectContaining({ operation_id: r, kind: "refund_completed", origin: "auto" }),
+    ]);
+    await mailsSettled(suite.sql, lot);
+  });
+
   it("failed since: needs_attention stripe_refund_failed_later, lot stays refunding", async () => {
     const { lot, opId } = await awaitingOwn("failed");
 

@@ -24,9 +24,10 @@
  *   itself: the awaiting lookup is a real loop tick (`runRefundLoopOnce`:
  *   recheck, snapshot, E12), and the answer "attempts used up" claims the
  *   row and runs `executeRefund`; both read Stripe through `listRefunds` /
- *   `listRefundsForPayment`, mocked to answer with this harness's list, and
- *   production's `createRefund` is mocked to make the refund on this
- *   harness's Stripe under `credit-refund-<id>`;
+ *   `listRefundsForPayment`, mocked to answer with this harness's list. No
+ *   step lets production reach `refunds.create`: the stale executor's lease
+ *   no longer covers a call, and the exhausted one ends before it, so the
+ *   mocked `createRefund` throws and any call fails the run (v8 §9);
  * - **Stripe**: refunds are created at most once per disposition, change
  *   status on their own (including succeeded → failed), appear from outside
  *   the product, and every change is delivered as a snapshot (a webhook).
@@ -70,10 +71,7 @@
  * 13. a disposition in `needs_attention` for `attempts_exhausted` or
  *    `stripe_result_unknown` has no refund on Stripe carrying its id: E11 and
  *    E12 only follow a list read that holds none (v8 §9). Production's
- *    executor and loop fire both, so this watches them, not the harness;
- * 14. Stripe holds at most one refund per disposition, and production called
- *    `refunds.create` only while the caller still held the row's lease
- *    (v8 §9): an executor that wakes after a takeover never creates.
+ *    executor and loop fire both, so this watches them, not the harness.
  */
 
 import { describe, it, expect, vi } from "vitest";
@@ -89,14 +87,11 @@ vi.mock("ai", () => ({
   tool: (config: Record<string, unknown>) => config,
 }));
 
-/** The run whose Stripe the mocked calls answer for: its payment, its list, its create. */
+/** The run whose Stripe the mocked reads answer for: its payment, and its list. */
 const stripeReads = vi.hoisted(() => ({
   paymentId: "",
   paymentIntentId: "",
   list: (): StripeRefundObject[] => [],
-  create: async (_input: CreateInput): Promise<CreateResult> => {
-    throw new Error("model: refunds.create called outside a run");
-  },
 }));
 
 vi.mock("@server/modules/credit-refund/stripe-refunds.js", async (importOriginal) => {
@@ -109,7 +104,9 @@ vi.mock("@server/modules/credit-refund/stripe-refunds.js", async (importOriginal
     ...real,
     listRefunds: (paymentIntent: string) => answer(paymentIntent, stripeReads.paymentIntentId),
     listRefundsForPayment: (paymentId: string) => answer(paymentId, stripeReads.paymentId),
-    createRefund: (input: CreateInput) => stripeReads.create(input),
+    createRefund: async () => {
+      throw new Error("model: production must not call refunds.create here");
+    },
   };
 });
 
@@ -185,9 +182,6 @@ interface Choice {
   notify: boolean;
   acceptPartial: boolean;
 }
-
-type CreateInput = Parameters<typeof StripeRefunds.createRefund>[0];
-type CreateResult = Awaited<ReturnType<typeof StripeRefunds.createRefund>>;
 
 /** One refund as Stripe holds it. */
 interface FakeRefund {
@@ -330,12 +324,6 @@ class Harness {
   rowsAtBooking: number | null = null;
   /** Every Idempotency-Key this run's dispositions were made under. */
   readonly keys: { key: string; kind: OpKind }[] = [];
-  /** Every `refunds.create` production made, and whether its caller held the row's lease then. */
-  readonly creates: { key: string; held: boolean }[] = [];
-  /** The lease of the `executeRefund` the harness is running now, if any. */
-  callerLease: string | null = null;
-  /** The status a refund made by production's create starts in. */
-  createStatus: RefundStatus = "succeeded";
 
   constructor(
     readonly lot: SeededLot,
@@ -359,53 +347,6 @@ class Harness {
   /** Note every refund the next read will see as succeeded (check 7). */
   noteSucceeded(): void {
     for (const r of this.stripe) if (r.status === "succeeded") this.everSucceeded.add(r.id);
-  }
-
-  /**
-   * Stripe's `refunds.create` under `credit-refund-<id>`, as production calls
-   * it: a repeat of the key returns the refund the first call made, as
-   * Stripe's idempotency does; a first call makes one in `createStatus`, or
-   * is refused when Stripe will not refund that much. Each call is logged
-   * with whether its caller still held the row's lease (check 14).
-   * @param input - What production asked for.
-   * @returns Stripe's answer.
-   */
-  async create(input: CreateInput): Promise<CreateResult> {
-    const [row] = await suite.sql<{ held: boolean | null }[]>`
-      SELECT lease_token = ${this.callerLease} AND locked_until > now() AS held
-      FROM credit_refund_operations WHERE id = ${input.operationId}
-    `;
-    this.creates.push({ key: `credit-refund-${input.operationId}`, held: row?.held === true });
-    let refund = this.stripe.find((r) => r.opId === input.operationId);
-    if (!refund) {
-      const amount = input.amountCents ?? this.refundable();
-      if (amount <= 0 || amount > this.refundable()) {
-        const code = amount <= 0 ? "charge_already_refunded" : "amount_too_large";
-        return {
-          answer: { kind: "stripe_error", httpStatus: 400, type: "invalid_request_error", code },
-          failure: failure(400, { code }),
-        };
-      }
-      refund = { id: reId("own_create"), amount, status: this.createStatus, opId: input.operationId };
-      this.stripe.push(refund);
-    }
-    return {
-      answer: { kind: "refund" },
-      refund: refundObject(refund.id, refund.status, refund.amount, input.operationId),
-    };
-  }
-
-  /**
-   * Run production's attempt as the executor holding `row`'s lease.
-   * @param row - The disposition as that executor last read it.
-   */
-  async execute(row: CreditRefundOperation): Promise<void> {
-    this.callerLease = row.leaseToken;
-    try {
-      await executeRefund(row, "loop");
-    } finally {
-      this.callerLease = null;
-    }
   }
 
   count(name: string): void {
@@ -633,8 +574,8 @@ class Harness {
       case "claim_late": {
         // The lease runs out and the loop takes the row over (E13). The old
         // executor then wakes with its stale row and runs production's
-        // attempt: it must not reach refunds.create (check 14), and anything
-        // it writes is a late answer. Then the old holder answers late.
+        // attempt: it must not reach refunds.create (the mock throws), and
+        // anything it writes is a late answer. Then the old holder answers late.
         const op = v.inflight!;
         const stale = (await operationRepo.findById(op.id))!;
         await suite.sql`
@@ -642,9 +583,8 @@ class Harness {
           WHERE id = ${op.id}
         `;
         await inTx((tx) => transitionOperation(tx, { id: op.id }, { type: "E13", actor: "loop" }));
-        this.createStatus = (["succeeded", "pending", "failed"] as const)[c.variant % 3]!;
         const eventsBefore = (await eventsOf(suite.sql, op.id)).length;
-        await this.execute(stale);
+        await executeRefund(stale, "loop");
         const staleEvents = (await eventsOf(suite.sql, op.id)).slice(eventsBefore).map((e) => e.event);
         expect(staleEvents.filter((e) => e !== "late_answer")).toEqual([]);
         await inTx((tx) =>
@@ -811,7 +751,7 @@ class Harness {
     `;
     const claimed = await inTx((tx) => transitionOperation(tx, { id: op.id }, { type: "E13", actor: "loop" }));
     this.noteSucceeded();
-    await this.execute(claimed!);
+    await executeRefund(claimed!, "loop");
     this.count(`exhausted:${(await eventsOf(suite.sql, op.id)).at(-1)!.event}`);
     return { direct: 2, snapshot: false };
   }
@@ -953,12 +893,6 @@ class Harness {
       if (o.status !== "needs_attention" || !unknownResult) continue;
       expect(this.stripe.filter((r) => r.opId === o.id), o.id).toEqual([]);
     }
-
-    // 14. One refund per disposition on Stripe, created only under a lease
-    //     the caller still held (v8 §9).
-    const owners = this.stripe.flatMap((r) => (r.opId === undefined ? [] : [r.opId]));
-    expect(owners.length - new Set(owners).size, "dispositions with two refunds").toBe(0);
-    expect(this.creates.filter((c) => !c.held), "refunds.create under a lease no longer held").toEqual([]);
 
     // 7. ever_succeeded: delivered successes are remembered, and memory stays.
     const copies = await sql<{ id: string; ever: boolean }[]>`
@@ -1131,7 +1065,6 @@ describe("random disposition sequences on one lot (§9 invariants)", () => {
           paymentId: lot.paymentId,
           paymentIntentId: lot.paymentIntentId,
           list: () => h.list(),
-          create: (input: CreateInput) => h.create(input),
         });
         for (const c of choices) {
           const v = await view(lot);

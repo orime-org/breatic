@@ -17,7 +17,8 @@
  *   - A credit-pack payment: `listRefunds(payment_intent)` (every refund, the
  *     latest state — the event's own payload is not trusted for state), then
  *     in one transaction `lockLot`, `claimWebhookEvent`,
- *     `applyRefundSnapshot`. An event id already claimed changes nothing.
+ *     `applyRefundSnapshot`. An event id already claimed is not claimed
+ *     again, but the list read for it is still copied (§6.4).
  *   - The Stripe read fails: answer 500 and write nothing, so Stripe
  *     redelivers and the redelivery is processed.
  *
@@ -27,6 +28,7 @@
  */
 
 import { randomUUID } from "node:crypto";
+import type * as BreaticCore from "@breatic/core";
 import { describe, it, expect, beforeAll, beforeEach, vi } from "vitest";
 
 vi.mock("ai", () => ({
@@ -51,31 +53,15 @@ vi.mock("@server/infra/stripe.js", async () => {
   };
 });
 
-/** Every `warn` and `error` line the server wrote, for the cases that assert on what was logged. */
-const logged = vi.hoisted(() => [] as { level: string; ctx: unknown; line: unknown }[]);
+const logged = vi.hoisted(() => ({ warn: vi.fn(), error: vi.fn() }));
 
 vi.mock("@breatic/core", async (io) => {
-  const orig = await io<Record<string, unknown>>();
-  return {
-    ...orig,
-    // Forwarded through a Proxy rather than spread: pino's level methods live
-    // on the prototype, so `{ ...logger }` hands back an object without them.
-    logger: new Proxy(
-      {},
-      {
-        get: (_target, prop: string) => {
-          const real = orig.logger as Record<string, unknown>;
-          const value = real[prop];
-          if (typeof value !== "function") return value;
-          if (prop !== "warn" && prop !== "error") return value.bind(real);
-          return (ctx: unknown, line: unknown) => {
-            logged.push({ level: prop, ctx, line });
-            (value as (c: unknown, l: unknown) => void).call(real, ctx, line);
-          };
-        },
-      },
-    ),
-  };
+  const actual = await io<typeof BreaticCore>();
+  // `warn` and `error` are recorded instead of written; every other level goes to the real logger.
+  const logger = new Proxy(actual.logger, {
+    get: (target, prop) => (prop === "warn" || prop === "error" ? logged[prop] : Reflect.get(target, prop)),
+  });
+  return { ...actual, logger };
 });
 
 import type { Hono } from "hono";
@@ -158,21 +144,6 @@ async function claimedTypes(eventId: string): Promise<string[]> {
  */
 function listed(paymentIntent: string): boolean {
   return fakeStripe.listedIntents().includes(paymentIntent);
-}
-
-/**
- * Whether `value`, or anything nested in it, satisfies `match`; a log line
- * is checked this way so the field names it uses stay its own.
- * @param value - What to search.
- * @param match - The test.
- * @param seen - Objects already visited.
- * @returns True when something matched.
- */
-function holds(value: unknown, match: (v: unknown) => boolean, seen = new Set<unknown>()): boolean {
-  if (match(value)) return true;
-  if (typeof value !== "object" || value === null || seen.has(value)) return false;
-  seen.add(value);
-  return Object.values(value).some((v) => holds(v, match, seen));
 }
 
 describe("credit-pack payment: Stripe is read and copied", () => {
@@ -305,23 +276,40 @@ describe("credit-pack payment: Stripe is read and copied", () => {
 });
 
 describe("redelivery", () => {
-  it("the same event delivered twice is acted on once", async () => {
-    const external = reId("external");
-    const lot = await lotOnStripe("active", [refundObject(external, "pending", 300)]);
-    const event = refundEvent("refund.updated", refundObject(external, "pending", 300), lot.paymentIntentId);
+  it("the same event delivered again is claimed once, still copies what it reads, and finishes nothing twice (round 8 [2])", async () => {
+    const own = reId("own");
+    const lot = await seedRefundLot(suite.sql, "refunding");
+    const { id: opId } = await seedOperation(suite.sql, lot, {
+      kind: "approve",
+      status: "awaiting_stripe",
+      stripeRefundId: own,
+      firstCalledHoursAgo: 1,
+      notify: true,
+    });
+    fakeStripe.register(lot.paymentIntentId, PAID_CENTS, [refundObject(own, "pending", PAID_CENTS, opId)]);
+    const event = refundEvent("refund.updated", refundObject(own, "pending", PAID_CENTS, opId), lot.paymentIntentId);
 
     expect((await deliver(event)).status).toBe(200);
-    // Stripe moves on; a redelivery of the old event must not be what copies it.
-    fakeStripe.setStatus(external, "succeeded");
-    const res = await deliver(event);
+    // Stripe moves on before the redelivery. The handler copies the list it
+    // reads, never the event's payload, so that read is copied too (§6.4).
+    fakeStripe.setStatus(own, "succeeded");
+    expect((await deliver(event)).status).toBe(200);
 
-    expect(res.status).toBe(200);
-    expect((await copiesOf(suite.sql, lot.lotId)).map((c) => [c.stripe_refund_id, c.status])).toEqual([[external, "pending"]]);
+    expect((await copiesOf(suite.sql, lot.lotId)).map((c) => [c.stripe_refund_id, c.status, c.ever_succeeded])).toEqual([
+      [own, "succeeded", true],
+    ]);
     expect(await claimedTypes(event.id as string)).toEqual(["refund.updated"]);
+    expect(await readOp(suite.sql, opId)).toMatchObject({ status: "succeeded", result: "refunded" });
+    await mailsSettled(suite.sql, lot);
+    const { copies: _copies, ...finished } = await worldOf(suite.sql, lot);
+    expect(finished.mails).toHaveLength(1);
 
-    // A new event for the same refund is acted on.
-    expect((await deliver(refundEvent("refund.updated", refundObject(external, "succeeded", 300), lot.paymentIntentId))).status).toBe(200);
-    expect((await copiesOf(suite.sql, lot.lotId)).map((c) => [c.stripe_refund_id, c.status])).toEqual([[external, "succeeded"]]);
+    // Delivered once more: the finished disposition gets no second booking, bell or mail.
+    expect((await deliver(event)).status).toBe(200);
+    await mailsSettled(suite.sql, lot);
+    const { copies: _again, ...after } = await worldOf(suite.sql, lot);
+    expect(after).toEqual(finished);
+    expect(await claimedTypes(event.id as string)).toEqual(["refund.updated"]);
   });
 });
 
@@ -394,22 +382,24 @@ describe("Stripe cannot be read", () => {
     expect(await readOp(suite.sql, opId)).toMatchObject({ status: "succeeded", result: "refunded" });
   });
 
-  it("the warn line for the unread event carries Stripe's failure, message and status (round 7 [8])", async () => {
+  it("the unread event is logged at error with Stripe's failure under `failure` (round 7 [8], round 8 [8][13])", async () => {
     const external = reId("external");
     const lot = await lotOnStripe("refund_pending", [refundObject(external, "succeeded", 100)]);
     fakeStripe.failLists(stripeError(403));
     const event = refundEvent("refund.updated", refundObject(external, "succeeded", 100), lot.paymentIntentId);
-    logged.length = 0;
+    logged.error.mockClear();
 
     const res = await deliver(event);
 
     expect(res.status).toBe(500);
-    const lines = logged.filter((l) => l.level === "warn" && holds(l.ctx, (v) => v === event.id));
-    expect(lines, "no warn line names the event").not.toEqual([]);
-    const isFailure = (v: unknown): boolean => {
-      const f = v as { message?: unknown; httpStatus?: unknown } | null;
-      return typeof v === "object" && f !== null && f.message === "synthetic 403" && f.httpStatus === 403;
-    };
-    expect(lines.some((l) => holds(l.ctx, isFailure)), `warn lines: ${JSON.stringify(lines)}`).toBe(true);
+    // Error, as the request path logs the same failure; `failure`, not pino's `err`,
+    // whose serializer would replace Stripe's error type with "Object".
+    expect(logged.error).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventId: event.id,
+        failure: expect.objectContaining({ message: "synthetic 403", httpStatus: 403 }),
+      }),
+      "refund_webhook_stripe_unreadable",
+    );
   });
 });
