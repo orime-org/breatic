@@ -155,4 +155,55 @@ describe('RoleTag', () => {
     ).toBeInTheDocument();
     expect(screen.getByTestId('role-tag')).toHaveTextContent('Viewer');
   });
+
+  for (const outcome of ['succeeds', 'fails'] as const) {
+    it(`reads the request button busy while sending, and settles after it ${outcome}`, async () => {
+      let settle!: () => void;
+      vi.mocked(roleUpgradeRequestsApi.submit).mockReturnValue(
+        new Promise((resolve, reject) => {
+          settle = outcome === 'succeeds' ? () => resolve({ ok: true } as never) : () => reject(new Error('refused'));
+        }),
+      );
+      const user = userEvent.setup();
+      renderTag(<RoleTag role={VIEWER} projectId={PID} />);
+      await user.click(screen.getByTestId('role-tag'));
+      const submit = await screen.findByTestId('role-tag-submit');
+      await user.click(submit);
+
+      await waitFor(() => expect(submit).toHaveAttribute('aria-busy', 'true'));
+      expect(submit).toHaveAttribute('aria-disabled', 'true');
+      settle();
+      if (outcome === 'succeeds') {
+        // A sent request closes the popover, taking the button with it.
+        await waitFor(() => expect(submit).not.toBeInTheDocument());
+      } else {
+        await waitFor(() => expect(submit).not.toHaveAttribute('aria-busy'));
+      }
+    });
+
+    it(`reads the withdraw button busy while withdrawing, and settles after it ${outcome}`, async () => {
+      vi.mocked(roleUpgradeRequestsApi.mine).mockResolvedValue(liveRequest());
+      let settle!: () => void;
+      vi.mocked(roleUpgradeRequestsApi.cancel).mockReturnValue(
+        new Promise((resolve, reject) => {
+          settle = outcome === 'succeeds' ? () => resolve({ ok: true }) : () => reject(new Error('refused'));
+        }),
+      );
+      const user = userEvent.setup();
+      renderTag(<RoleTag role={VIEWER} projectId={PID} />);
+      await user.click(await screen.findByTestId('role-tag'));
+      const withdraw = await screen.findByTestId('role-tag-withdraw');
+      await user.click(withdraw);
+
+      await waitFor(() => expect(withdraw).toHaveAttribute('aria-busy', 'true'));
+      expect(withdraw).toHaveAttribute('aria-disabled', 'true');
+      settle();
+      if (outcome === 'succeeds') {
+        // A withdrawal closes the popover, taking the button with it.
+        await waitFor(() => expect(withdraw).not.toBeInTheDocument());
+      } else {
+        await waitFor(() => expect(withdraw).not.toHaveAttribute('aria-busy'));
+      }
+    });
+  }
 });

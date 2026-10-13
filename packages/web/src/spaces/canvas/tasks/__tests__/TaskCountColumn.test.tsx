@@ -120,7 +120,7 @@ describe('TaskCountColumn', () => {
       expect(cell).toBeEnabled();
       // A count that opens a list has to look like it does; the shared
       // `outline` variant answers a pointer and this one has to as well.
-      expect(cell.className).toContain('hover:bg-accent');
+      expect(cell.className).toMatch(/hover-enabled:bg-accent(\s|$)/);
     }
   });
 
@@ -139,13 +139,14 @@ describe('TaskCountColumn', () => {
 
   it('holds its fill when the pointer crosses the open one', () => {
     // The open cell keeps the base fill its neighbours have, so what says it is
-    // open is the coloured rim. Without repeating that fill under `hover:` it
-    // would take `hover:bg-accent` like any other cell — the two rules merge
-    // into different groups, so both survive and the hover one wins.
+    // open is the coloured rim. Without repeating that fill under
+    // `hover-enabled:` it would take the variant's `hover-enabled:bg-accent`
+    // like any other cell; sharing the modifier, the merge keeps only its own.
     renderColumn({ counts: COUNTS, endedShown: true, openFor: 'done', onOpen: vi.fn() });
 
     const cell = screen.getByTestId('task-count-done').className;
-    expect(cell).toContain('hover:bg-background');
+    expect(cell).toContain('hover-enabled:bg-background');
+    expect(cell).not.toMatch(/hover-enabled:bg-accent(\s|$)/);
     // A fill darker than the unopened cells beside it made the one the reader
     // picked read as the least present of the four.
     expect(cell).not.toContain('bg-muted');

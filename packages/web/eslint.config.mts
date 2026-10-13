@@ -499,6 +499,7 @@ export default [
     plugins: { breatic: breaticPlugin },
     rules: {
       'breatic/no-raw-button': 'error',
+      'breatic/no-hand-written-button-spinner': 'error',
     },
   },
   {

@@ -87,7 +87,9 @@ describe('JoinProjectDialog', () => {
     await user.click(screen.getByRole('button', { name: 'Request to join' }));
 
     expect(request).toHaveBeenCalledWith('p1', 'I cut the trailer');
-    expect(screen.getByRole('button', { name: 'Request to join' })).toBeDisabled();
+    const send = screen.getByRole('button', { name: 'Request to join' });
+    expect(send).toHaveAttribute('aria-busy', 'true');
+    expect(send).toHaveAttribute('aria-disabled', 'true');
     sent.resolve();
     expect(await screen.findByText('Request sent')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'OK' })).toBeInTheDocument();
@@ -95,15 +97,21 @@ describe('JoinProjectDialog', () => {
 
   it('stays on the form and shows the error when sending fails', async () => {
     mine.mockResolvedValue({ project: PROJECT, pendingRequest: null });
-    request.mockRejectedValue(new Error('boom'));
+    const sent = deferred<void>();
+    request.mockReturnValue(sent.promise);
     renderDialog();
     const user = userEvent.setup();
 
     await waitFor(() => expect(screen.getByRole('button', { name: 'Request to join' })).toBeEnabled());
-    await user.click(screen.getByRole('button', { name: 'Request to join' }));
+    const send = screen.getByRole('button', { name: 'Request to join' });
+    await user.click(send);
+    expect(send).toHaveAttribute('aria-busy', 'true');
 
+    sent.reject(new Error('boom'));
     await waitFor(() => expect(toastError).toHaveBeenCalled());
-    expect(screen.getByRole('button', { name: 'Request to join' })).toBeEnabled();
+    expect(send).toBeEnabled();
+    expect(send).not.toHaveAttribute('aria-busy');
+    expect(send).not.toHaveAttribute('aria-disabled');
   });
 
   it('shows a pending request and lets the requester withdraw it', async () => {
@@ -119,7 +127,9 @@ describe('JoinProjectDialog', () => {
     expect(await screen.findByText('Request pending')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Withdraw request' }));
     expect(cancelMine).toHaveBeenCalledWith('p1');
-    expect(screen.getByRole('button', { name: 'Withdraw request' })).toBeDisabled();
+    const withdraw = screen.getByRole('button', { name: 'Withdraw request' });
+    expect(withdraw).toHaveAttribute('aria-busy', 'true');
+    expect(withdraw).toHaveAttribute('aria-disabled', 'true');
 
     withdrawn.resolve();
     expect(await screen.findByRole('button', { name: 'Request to join' })).toBeEnabled();
@@ -130,15 +140,21 @@ describe('JoinProjectDialog', () => {
       project: PROJECT,
       pendingRequest: { id: 'r1', createdAt: '2026-09-28T02:00:00.000Z' },
     });
-    cancelMine.mockRejectedValue(new Error('boom'));
+    const withdrawn = deferred<void>();
+    cancelMine.mockReturnValue(withdrawn.promise);
     renderDialog();
     const user = userEvent.setup();
 
-    await user.click(await screen.findByRole('button', { name: 'Withdraw request' }));
+    const withdraw = await screen.findByRole('button', { name: 'Withdraw request' });
+    await user.click(withdraw);
+    expect(withdraw).toHaveAttribute('aria-busy', 'true');
 
+    withdrawn.reject(new Error('boom'));
     await waitFor(() => expect(toastError).toHaveBeenCalled());
     expect(screen.getByText('Request pending')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Withdraw request' })).toBeEnabled();
+    expect(withdraw).toBeEnabled();
+    expect(withdraw).not.toHaveAttribute('aria-busy');
+    expect(withdraw).not.toHaveAttribute('aria-disabled');
   });
 
   it('closes and shows the error when reading fails', async () => {

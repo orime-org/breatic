@@ -101,7 +101,7 @@ export const ModelPicker = React.memo(function ModelPicker({
                 className={cn(
                   'justify-start',
                   m.name === value &&
-                    'bg-accent-strong hover:bg-accent-strong',
+                    'bg-accent-strong hover-enabled:bg-accent-strong',
                 )}
                 onClick={() => {
                   onChange(m.name);

@@ -11,11 +11,12 @@ import { expect } from 'vitest';
  */
 const CHOSEN = /(^|\s)bg-accent-strong(\s|$)/;
 
-/** The hover fill a sibling reaches for. */
-const HOVER = 'hover:bg-accent';
-
-/** That same fill as a whole class, so `hover:bg-accent-strong` is not it. */
-const HOVER_PLAIN = /hover:bg-accent(\s|$)/;
+/**
+ * The hover fill as a whole class, under either hover modifier: `Button`'s
+ * variants hover through `hover-enabled:`, an element with no variant through
+ * plain `hover:`. Whole class, so `hover:bg-accent-strong` is not it.
+ */
+const HOVER_PLAIN = /(^|[\s:])hover(-enabled)?:bg-accent(\s|$)/;
 
 /**
  * The plain accent fill. It is hover's own colour, so on a chosen item beside
@@ -43,7 +44,7 @@ export function expectChosenFill(el: Element): void {
  * @throws {Error} When it carries a chosen fill, or offers no hover at all.
  */
 export function expectHoverableSiblingFill(el: Element): void {
-  expect(el.className).toContain(HOVER);
+  expect(el.className).toMatch(HOVER_PLAIN);
   expect(el.className).not.toMatch(CHOSEN);
   expect(el.className).not.toMatch(PLAIN);
 }

@@ -406,6 +406,32 @@ describe('ImageNode zoomed past its preview (inner#1320)', () => {
     expect(screen.getByTestId('image-node-original').className).not.toContain('opacity-0');
   });
 
+  // inner#1472: the stretched preview is not shown while the original loads.
+  it('hides the preview behind a skeleton until the original loads', () => {
+    resetPreviewRecords();
+    const { rerender } = render(zoomed(false));
+    fireImageLoad(screen.getByTestId('image-node-img'), 576, 288);
+    expect(screen.queryByTestId('image-node-skeleton')).toBeNull();
+
+    rerender(zoomed(true));
+    expect(screen.getByTestId('image-node-skeleton')).toBeInTheDocument();
+    expect(screen.getByTestId('image-node-img').className).toContain('opacity-0');
+
+    fireImageLoad(screen.getByTestId('image-node-original'), 4096, 2048);
+    expect(screen.queryByTestId('image-node-skeleton')).toBeNull();
+  });
+
+  it('goes back to the preview when the original fails', () => {
+    resetPreviewRecords();
+    render(zoomed(true));
+    fireImageLoad(screen.getByTestId('image-node-img'), 576, 288);
+    fireEvent.error(screen.getByTestId('image-node-original'));
+
+    expect(screen.queryByTestId('image-node-skeleton')).toBeNull();
+    expect(screen.queryByTestId('image-node-original')).toBeNull();
+    expect(screen.getByTestId('image-node-img').className).not.toContain('opacity-0');
+  });
+
   it('keeps the original after the canvas zooms back out', () => {
     resetPreviewRecords();
     const { rerender } = render(zoomed(true));
@@ -485,5 +511,32 @@ describe('ImageNode while its picture loads (inner#1320)', () => {
     render(<ImageNode data={{ content: STORED, handling: false }} />);
 
     expect(screen.getByTestId('image-node-skeleton').className).toContain('aspect-[3/2]');
+  });
+
+  // inner#1472: the skeleton alone fills the content area while it shows; a
+  // half-decoded picture neither shows through it nor pushes it down.
+  it('hides a loading picture under the skeleton', () => {
+    resetPreviewRecords();
+    render(
+      <ImageNode
+        data={{ content: STORED, width: 4096, height: 2048, handling: false }}
+      />,
+    );
+    expect(screen.getByTestId('image-node-img').className).toContain('opacity-0');
+
+    fireImageLoad(screen.getByTestId('image-node-img'), 576, 288);
+    expect(screen.getByTestId('image-node-img').className).not.toContain('opacity-0');
+  });
+
+  it('takes a loading picture of unknown size out of the flow, so only the skeleton sizes the node', () => {
+    resetPreviewRecords();
+    render(<ImageNode data={{ content: STORED, handling: false }} />);
+    const img = screen.getByTestId('image-node-img');
+    expect(img.className).toContain('absolute');
+    expect(img.className).toContain('opacity-0');
+
+    fireImageLoad(img, 1024, 1024);
+    expect(screen.getByTestId('image-node-img').className).not.toContain('absolute');
+    expect(screen.getByTestId('image-node-img').className).not.toContain('opacity-0');
   });
 });

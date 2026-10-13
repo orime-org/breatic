@@ -525,7 +525,7 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
               testId='doc-media-delete'
               // The red every delete row in the body uses (block and table
               // menus), kept on hover.
-              className='text-status-error-foreground hover:text-status-error-foreground'
+              className='text-status-error-foreground hover-enabled:text-status-error-foreground'
               onPress={actions.remove}
             >
               <Trash2 />

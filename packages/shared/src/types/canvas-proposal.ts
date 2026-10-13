@@ -11,32 +11,38 @@
  * model catalog.
  */
 
+import { z } from "zod";
+
 import { t, tInEveryLocale } from "@shared/i18n/index.js";
-import type { GenerationNodeType } from "@shared/types/model-catalog.js";
-import type { NodeMediaFields } from "@shared/canvas/node-media.js";
+import { isGenerationNodeType, type GenerationNodeType } from "@shared/types/model-catalog.js";
 
 /**
  * What a marked spot in the prompt asks of the reader (inner#977): `asset`
  * names something to @ by hand, `tweak` words to fill in, and `note` how to
  * operate the panel -- shown to the reader and never sent to the model.
  */
-export type SlotKind = "asset" | "tweak" | "note";
+export type SlotKind = NonNullable<PromptSegment["slot"]>["kind"];
 
 /**
  * One stretch of the prompt: plain words, a place the reader acts on, or an
  * @ of another node in the proposal by its index (inner#1315), which lands as
  * the same mention the reader would insert by hand.
  */
-export type PromptSegment =
-  | { text: string; slot?: undefined; ref?: undefined }
-  | {
-      text?: undefined;
-      ref?: undefined;
-      slot:
-        | { kind: "asset" | "tweak"; label: string; note: string }
-        | { kind: "note"; label: string; note?: undefined };
-    }
-  | { ref: number; text?: undefined; slot?: undefined };
+const promptSegmentSchema = z.union([
+  z.object({ text: z.string(), slot: z.undefined().optional(), ref: z.undefined().optional() }),
+  z.object({
+    text: z.undefined().optional(),
+    ref: z.undefined().optional(),
+    slot: z.union([
+      z.object({ kind: z.enum(["asset", "tweak"]), label: z.string(), note: z.string() }),
+      z.object({ kind: z.literal("note"), label: z.string(), note: z.undefined().optional() }),
+    ]),
+  }),
+  z.object({ ref: z.number().int().nonnegative(), text: z.undefined().optional(), slot: z.undefined().optional() }),
+]);
+
+/** One stretch of the prompt, as {@link promptSegmentSchema} describes it. */
+export type PromptSegment = z.infer<typeof promptSegmentSchema>;
 
 /** The brackets and symbol each kind wears where it is written as words. */
 const MARK_FORM: Readonly<Record<SlotKind, { open: string; symbol: string; close: string }>> = {
@@ -222,49 +228,71 @@ export function promptPlainText(segments: readonly PromptSegment[]): string {
  * them to press Generate, and `written` already holds the words -- the only
  * one of the three whose content is finished before anything is placed.
  */
-export type ProposalRole = "source" | "generate" | "written";
+const proposalRoleSchema = z.enum(["source", "generate", "written"]);
+
+/** What a proposed node is, as {@link proposalRoleSchema} lists it. */
+export type ProposalRole = z.infer<typeof proposalRoleSchema>;
 
 /** Every node kind a proposal can place: the three that generate, plus text. */
-export type ProposalNodeType = GenerationNodeType | "text";
+const proposalNodeTypeSchema = z.union([
+  z.literal("text"),
+  z.custom<GenerationNodeType>((value) => typeof value === "string" && isGenerationNodeType(value)),
+]);
+
+/** Every node kind a proposal can place, as {@link proposalNodeTypeSchema} lists it. */
+export type ProposalNodeType = z.infer<typeof proposalNodeTypeSchema>;
+
+/** The numbers a material's registration holds, as a node keeps them. */
+const materialMediaSchema = z.object({
+  coverUrl: z.string().nullable(),
+  width: z.number().nullable(),
+  height: z.number().nullable(),
+  duration: z.number().nullable(),
+  mimeType: z.string().nullable(),
+  size: z.number().nullable(),
+});
 
 /** One shot of a proposed multi-shot generation. */
-export interface ProposalShot {
-  prompt: PromptSegment[];
-  duration: number;
-}
+const proposalShotSchema = z.object({
+  prompt: z.array(promptSegmentSchema),
+  duration: z.number(),
+});
+
+/** One shot, as {@link proposalShotSchema} describes it. */
+export type ProposalShot = z.infer<typeof proposalShotSchema>;
 
 /** One node of a proposal, before anything is placed. */
-export interface ProposalNode {
-  role: ProposalRole;
-  type: ProposalNodeType;
-  name: string;
+const proposalNodeSchema = z.object({
+  role: proposalRoleSchema,
+  type: proposalNodeTypeSchema,
+  name: z.string(),
   /**
    * The reader's material a source node lands holding: an address in our
    * storage. A source node without it lands empty for the reader to fill.
    */
-  material?: string;
+  material: z.string().optional(),
   /**
    * What the check read off the material's registration, so the node lands
    * with the numbers an upload would have given it. Written by the check,
    * never by the model.
    */
-  materialMedia?: NodeMediaFields;
+  materialMedia: materialMediaSchema.optional(),
   /**
    * The slots of a generation filled straight from material nodes: slot param
    * name to the indices of the source nodes that fill it. The slot takes a
    * snapshot of each, the way a pick in the panel does, and no edge is drawn.
    */
-  fills?: Record<string, number[]>;
-  mode?: string;
-  model?: string;
-  params?: Record<string, unknown>;
-  prompt?: PromptSegment[];
+  fills: z.record(z.string(), z.array(z.number())).optional(),
+  mode: z.string().optional(),
+  model: z.string().optional(),
+  params: z.record(z.string(), z.unknown()).optional(),
+  prompt: z.array(promptSegmentSchema).optional(),
   /**
    * The shots of a multi-shot generation, each with its own prompt and whole
    * seconds; given in the `multi_shot` mode only, where they stand in for the
    * main prompt.
    */
-  shots?: ProposalShot[];
+  shots: z.array(proposalShotSchema).optional(),
   /**
    * Whether the panel will draw a prompt box here, answered by the check.
    *
@@ -274,20 +302,30 @@ export interface ProposalNode {
    * nothing there and the card lists the marks instead. Absent on a node that
    * generates nothing.
    */
-  takesPrompt?: boolean;
-}
+  takesPrompt: z.boolean().optional(),
+});
 
-/** A whole proposal, as the model sends it and the card reads it. */
-export interface CanvasProposal {
-  nodes: ProposalNode[];
+/** One node, as {@link proposalNodeSchema} describes it. */
+export type ProposalNode = z.infer<typeof proposalNodeSchema>;
+
+/**
+ * A whole proposal, as the model sends it and the card reads it.
+ *
+ * The one description of its shape: the types are read off it, and a proposal
+ * read back from storage is checked against it (inner#1499), so one stored
+ * before the shape changed is known for what it is rather than placed as if it
+ * were current.
+ */
+export const canvasProposalSchema = z.object({
+  nodes: z.array(proposalNodeSchema),
   /**
    * The wiring. `into` says where the node wired in goes on the generation it
    * feeds: `"pool"` for the reference pool, the name of one of its slots, or
    * `PANEL_EDITOR_PARAM` for a song model's lyrics box.
    */
-  edges: Array<{ fromIndex: number; toIndex: number; into?: string }>;
-  modelNote?: string;
-  rationale: string;
+  edges: z.array(z.object({ fromIndex: z.number(), toIndex: z.number(), into: z.string().optional() })),
+  modelNote: z.string().optional(),
+  rationale: z.string(),
   /**
    * What to call the group these nodes land in.
    *
@@ -295,8 +333,11 @@ export interface CanvasProposal {
    * the group is for -- it just decided. One node places no group and needs
    * no name.
    */
-  groupName?: string;
-}
+  groupName: z.string().optional(),
+});
+
+/** A whole proposal, as {@link canvasProposalSchema} describes it. */
+export type CanvasProposal = z.infer<typeof canvasProposalSchema>;
 
 /**
  * Every segment of a node that can carry a mark: the main prompt, then each

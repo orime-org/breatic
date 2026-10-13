@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { describe, it, expect, vi, beforeAll } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { act, render, screen, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { MediaPlayer } from '@web/spaces/canvas/nodes/_shared/MediaPlayer';
@@ -201,6 +201,93 @@ describe('MediaPlayer poster', () => {
   });
 });
 
+// inner#1472: zoomed past the cover preview, the stretched preview is not shown
+// while the original cover loads.
+describe('MediaPlayer zoomed past its cover preview', () => {
+  const COVER =
+    'https://resource-dev.breatic.cc/video/2026-09-30/2_18f58aed-b802-4243-a8ea-02d377de9679_cover.png';
+  const SIZE = { width: 1920, height: 1080 } as const;
+  let probes: { src: string; onload: (() => void) | null; onerror: (() => void) | null }[] = [];
+
+  beforeEach(() => {
+    probes = [];
+    vi.stubGlobal(
+      'Image',
+      class {
+        src = '';
+        onload: (() => void) | null = null;
+        onerror: (() => void) | null = null;
+        naturalWidth = 0;
+        constructor() {
+          probes.push(this);
+        }
+      },
+    );
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  /**
+   * Settles the off-screen load of one address.
+   * @param src - The address.
+   * @param ok - Whether it loaded.
+   */
+  function settle(src: string, ok: boolean): void {
+    act(() => {
+      for (const probe of probes.filter((p) => p.src === src)) (ok ? probe.onload : probe.onerror)?.();
+    });
+  }
+
+  /**
+   * The player, zoomed past its cover or not.
+   * @param fullPoster - Whether the canvas is past the preview.
+   * @returns The element.
+   */
+  function player(fullPoster: boolean): React.JSX.Element {
+    return <MediaPlayer modality='video' src='/v.mp4' poster={COVER} size={SIZE} fullPoster={fullPoster} />;
+  }
+
+  it('hides the video under the skeleton until the original cover loads', () => {
+    const { rerender } = render(player(false));
+    fireEvent.loadedData(screen.getByTestId('media-element'));
+    expect(screen.queryByTestId('media-skeleton')).toBeNull();
+
+    rerender(player(true));
+    expect(screen.getByTestId('media-skeleton')).toBeInTheDocument();
+    expect(screen.getByTestId('media-element')).toHaveClass('opacity-0');
+
+    settle(COVER, true);
+    expect(screen.queryByTestId('media-skeleton')).toBeNull();
+    expect(screen.getByTestId('media-element')).not.toHaveClass('opacity-0');
+    expect(screen.getByTestId('media-element').getAttribute('poster')).toBe(COVER);
+  });
+
+  it('goes back to the cover preview when the original cover fails', () => {
+    const { rerender } = render(player(false));
+    fireEvent.loadedData(screen.getByTestId('media-element'));
+    rerender(player(true));
+
+    settle(COVER, false);
+
+    expect(screen.queryByTestId('media-skeleton')).toBeNull();
+    expect(screen.getByTestId('media-element')).not.toHaveClass('opacity-0');
+    expect(screen.getByTestId('media-element').getAttribute('poster')).toBe(`${COVER}.preview.webp`);
+  });
+
+  it('leaves a video that has started playing alone, its cover being gone', () => {
+    const { rerender } = render(player(false));
+    const video = screen.getByTestId('media-element');
+    fireEvent.loadedData(video);
+    fireEvent.play(video);
+
+    rerender(player(true));
+
+    expect(screen.queryByTestId('media-skeleton')).toBeNull();
+    expect(screen.getByTestId('media-element')).not.toHaveClass('opacity-0');
+  });
+});
+
 // inner#1320: a video node with a known size reserves its box before the
 // poster arrives and covers it with the skeleton, as an image node does.
 describe('MediaPlayer video with a known size', () => {
@@ -212,6 +299,8 @@ describe('MediaPlayer video with a known size', () => {
     expect(video.getAttribute('height')).toBe('3840');
     expect(video).toHaveClass('h-auto');
     expect(screen.getByTestId('media-skeleton')).toBeInTheDocument();
+    // inner#1472: a half-loaded poster does not show through the skeleton.
+    expect(video).toHaveClass('opacity-0');
   });
 
   it('drops the skeleton once the video has its first frame', () => {
@@ -220,6 +309,7 @@ describe('MediaPlayer video with a known size', () => {
     fireEvent.loadedData(screen.getByTestId('media-element'));
 
     expect(screen.queryByTestId('media-skeleton')).toBeNull();
+    expect(screen.getByTestId('media-element')).not.toHaveClass('opacity-0');
   });
 
   it('reserves nothing and shows no skeleton without a size', () => {

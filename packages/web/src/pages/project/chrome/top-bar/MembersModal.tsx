@@ -132,9 +132,11 @@ export function MembersModal({
         queryKey: ['project-members', projectId],
       });
       toast.success(t('members.modal.removeSuccess'));
-      // Close the confirm dialog only on success — a failure leaves it open
-      // with the error toast so the owner can retry.
-      setConfirmRemove(null);
+      // Close the confirm dialog only on success, and only when it still shows
+      // this member — a failure leaves it open with the error toast so the
+      // owner can retry, and a confirmation opened for someone else meanwhile
+      // stays open.
+      setConfirmRemove((c) => (c?.id === member.id ? null : c));
     } catch {
       toast.error(t('members.modal.removeFailed'));
     } finally {
@@ -229,6 +231,7 @@ export function MembersModal({
             <AlertDialogAction
               variant='destructive'
               disabled={pendingRowId !== null}
+              loading={confirmRemove !== null && pendingRowId === confirmRemove.id}
               onClick={(event) => {
                 // Keep the dialog mounted until handleRemove's success path
                 // closes it, so a failure leaves it open with the error toast.
@@ -365,7 +368,7 @@ function TransferOwnershipSection({
             variant='outline'
             size='sm'
             className='h-8 shrink-0 text-xs'
-            disabled={withdrawing}
+            loading={withdrawing}
             onClick={() => void handleWithdraw()}
             data-testid='members-modal-transfer-withdraw'
           >
@@ -446,6 +449,7 @@ function TransferOwnershipSection({
               size='sm'
               className='h-8 text-xs'
               disabled={!selected || sending}
+              loading={sending}
               onClick={() => void handleSend()}
               data-testid='members-modal-transfer-send'
             >

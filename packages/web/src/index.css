@@ -26,6 +26,18 @@
    line width and font it names is written over further down. */
 @import '@blocknote/react/style.css' layer(base);
 
+/* Hover for a control that can be waiting or disabled: the built-in `hover:`
+   (same `(hover: hover)` media wrapping) minus the two states a press does
+   nothing in. A Button waiting for a reply is `aria-disabled="true"`, not
+   natively disabled, so `:disabled` alone would keep its hover colour. */
+@custom-variant hover-enabled {
+  @media (hover: hover) {
+    &:not(:disabled):not([aria-disabled='true']):hover {
+      @slot;
+    }
+  }
+}
+
 html,
 body,
 #root {
