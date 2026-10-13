@@ -229,9 +229,16 @@ function installComparer(): void {
         const unshifted = [getComputedStyle(b).position, getComputedStyle(p).position].every((position) => position === 'relative' || position === 'static');
         const isColumn = p.tagName === 'COL' || p.tagName === 'COLGROUP';
         const isTable = p.tagName === 'TABLE';
-        // A column's preview takes its table out of the frame; the room the
-        // wrapper keeps under the table is for the frame's scrollbar.
-        const outOfFrame = p.matches('.tableWrapper') && p.closest('.doc-table-frame') === null && b.closest('.doc-table-frame') !== null;
+        // The room the wrapper keeps under a table is for the frame's
+        // scrollbar, which no preview draws: a column's preview and a row's or
+        // a cell selection's keep none, their frame's edges and the boxes
+        // around the table end at the table, as much shorter as that room.
+        const wrapperOf = (el: Element): Element | null => (el.matches('.tableWrapper') ? el : el.querySelector('.tableWrapper'));
+        const frameOf = (el: Element): Element | null => el.closest('.doc-table-frame') ?? el;
+        const roomBetween = (preview: Element | null, body: Element | null): number =>
+          preview === null || body === null ? 0 : parseFloat(getComputedStyle(body).paddingBottom) - parseFloat(getComputedStyle(preview).paddingBottom);
+        const room = roomBetween(wrapperOf(p), wrapperOf(b));
+        const edgeRoom = p.matches('.doc-table-overflow-edge') ? roomBetween(wrapperOf(frameOf(p)!), wrapperOf(frameOf(b)!)) : 0;
         const rowLostCells = (p.tagName === 'TD' || p.tagName === 'TH') && p.parentElement!.children.length < b.parentElement!.children.length;
         const holdsEnd = (first !== undefined && p.contains(first) ? lift : 0) + (last !== undefined && p.contains(last) ? drop : 0);
         const skip = (prop: string): boolean => {
@@ -242,7 +249,14 @@ function installComparer(): void {
           if (rowLostCells && (prop === 'height' || prop === 'block-size')) return true;
           if (isColumn && SIZE.has(prop)) return true;
           if (isTable && MIN_SIZE.has(prop)) return true;
-          if (outOfFrame && (prop === 'padding-bottom' || prop === 'padding-block-end')) return true;
+          if (room > 0 && p.matches('.tableWrapper') && (prop === 'padding-bottom' || prop === 'padding-block-end')) return true;
+          if (edgeRoom > 0 && (prop === 'bottom' || prop === 'inset-block-end')) {
+            return Math.abs(parseFloat(getComputedStyle(b).getPropertyValue(prop)) - parseFloat(getComputedStyle(p).getPropertyValue(prop)) - edgeRoom) < 0.5;
+          }
+          if (room > 0 && (prop === 'height' || prop === 'block-size')) {
+            const gap = parseFloat(getComputedStyle(b).getPropertyValue(prop)) - parseFloat(getComputedStyle(p).getPropertyValue(prop));
+            if (Math.abs(gap - room) < 0.5) return true;
+          }
           if (isStatic && PLACE.has(prop)) return true;
           if (unshifted && PLACE.has(prop)) {
             const values = [getComputedStyle(b).getPropertyValue(prop), getComputedStyle(p).getPropertyValue(prop)];
@@ -660,6 +674,71 @@ test('A1: a row in a document shorter than the screen draws as tall as itself', 
   await dragHandle(page, await centreOf(page, '[data-content-type="paragraph"]'), 'doc-block-handle');
   expect(await page.evaluate(() => (window as unknown as { __previews: Element[] }).__previews.length)).toBe(1);
   expect(await stretchedPreviews(page)).toEqual([]);
+});
+
+test('A1: a short line, and a narrow table\'s row and cells, draw at their own size, not scaled with the column they are laid out in', async () => {
+  await openSmokeProject(page);
+  createdSpaceIds.push(await createSpace(page, 'document', `preview-drawn-${Date.now()}`));
+  const editor = page.locator(EDITOR);
+  await expect(editor).toBeVisible({ timeout: 15_000 });
+  await editor.click();
+  await editor.evaluate((el) => {
+    const text = (value: string): unknown => ({ type: 'text', text: value });
+    const cell = (value: string): unknown => ({ type: 'tableCell', content: [{ type: 'tableParagraph', content: [text(value)] }] });
+    (el as unknown as { editor: { commands: { setContent: (c: unknown) => void } } }).editor.commands.setContent({
+      type: 'doc',
+      content: [{
+        type: 'blockGroup',
+        content: [
+          { type: 'blockContainer', attrs: { id: 'drawn-1' }, content: [{ type: 'bulletListItem', content: [text('Bullet one')] }] },
+          {
+            type: 'blockContainer',
+            attrs: { id: 'drawn-2' },
+            content: [{
+              type: 'table',
+              content: [
+                { type: 'tableRow', content: [cell('g1'), cell('h1'), cell('i1')] },
+                { type: 'tableRow', content: [cell('g2'), cell('h2'), cell('i2')] },
+              ],
+            }],
+          },
+          { type: 'blockContainer', attrs: { id: 'drawn-3' }, content: [{ type: 'paragraph', content: [] }] },
+        ],
+      }],
+    });
+  });
+  await dragHandle(page, await centreOf(page, '[data-content-type="bulletListItem"]'), 'doc-block-handle');
+  await dragHandle(page, await centreOf(page, 'td:has-text("h2")'), 'doc-table-row-handle');
+  // A cell selection, dragged from its head cell.
+  const g1 = await centreOf(page, 'td:has-text("g1")');
+  const i2 = await centreOf(page, 'td:has-text("i2")');
+  await page.mouse.move(g1.x, g1.y);
+  await page.mouse.down();
+  await page.mouse.move(i2.x, i2.y, { steps: 6 });
+  await page.mouse.up();
+  await page.locator(`${EDITOR} td:has-text("i2")`).evaluate((cell) => {
+    const box = cell.getBoundingClientRect();
+    cell.dispatchEvent(new DragEvent('dragstart', { bubbles: true, cancelable: true, clientX: box.left + 4, clientY: box.top + 4, dataTransfer: new DataTransfer() }));
+  });
+  const body = await page.locator(`${EDITOR} table`).evaluate((table) => (table as HTMLElement).offsetWidth);
+  const previews = await page.evaluate(() =>
+    (window as unknown as { __previews: HTMLElement[] }).__previews.map((root) => ({
+      width: parseFloat(root.style.width),
+      scale: (root.firstElementChild as HTMLElement).style.transform,
+      table: (root.querySelector('table') as HTMLElement | null)?.offsetWidth ?? null,
+    })),
+  );
+  expect(previews).toHaveLength(3);
+  const [line, row, cells] = previews as [(typeof previews)[number], (typeof previews)[number], (typeof previews)[number]];
+  // The line is as wide as its words, far short of the column it wraps in.
+  expect(line.scale).toBe('scale(1)');
+  expect(line.width).toBeGreaterThan(0);
+  expect(line.width).toBeLessThan(300);
+  // The row and the cells are as wide as the table the body draws.
+  for (const table of [row, cells]) {
+    expect(table.scale).toBe('scale(1)');
+    expect(Math.abs(table.width - body)).toBeLessThanOrEqual(2);
+  }
 });
 
 test('A1: an indented quoted table draws its row in a frame as wide as the body\'s, and its column without the quote\'s rule', async () => {
