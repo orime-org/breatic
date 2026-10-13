@@ -138,7 +138,7 @@ export function startLifecycleListener(deps: LifecycleListenerDeps): GroupConsum
       const outcomes = new Map<string, EntryOutcome>();
       for (const entry of entries) {
         if (control.stopping()) {
-          outcomes.set(entry.id, "held");
+          outcomes.set(entry.id, "wait");
           continue;
         }
         const event = readLifecycleEvent(entry.payload);

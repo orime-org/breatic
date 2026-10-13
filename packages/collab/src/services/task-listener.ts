@@ -86,7 +86,7 @@ interface Item {
   event: NodeTaskCountsEvent;
 }
 
-/** A document's batch and the keys that coordinate it. */
+/** One document's events, in stream order. */
 interface DocBatch {
   docName: string;
   items: Item[];
@@ -233,16 +233,17 @@ export function startTaskListener(deps: TaskListenerDeps): GroupConsumer {
   /**
    * Write one document's batch while holding its lease.
    * @param batch - The document and its events.
+   * @param keys - The document's lease, hand-over and counts-version keys.
    * @param signal - Aborted when the lease could not be extended.
    * @param stopping - True once the listener is stopping.
    * @returns The outcome of every event.
    */
   async function writeBatch(
     batch: DocBatch,
+    keys: ReturnType<typeof docKeys>,
     signal: AbortSignal,
     stopping: () => boolean,
   ): Promise<Map<string, EntryOutcome>> {
-    const keys = docKeys(keyPrefix, batch.docName);
     const outcomes = new Map<string, EntryOutcome>();
     /**
      * Give every event of the batch the same outcome.
@@ -278,23 +279,16 @@ export function startTaskListener(deps: TaskListenerDeps): GroupConsumer {
     try {
       const doc = connection.document!;
       if (!(await awaitHandOver(doc, keys.handoff, stopping))) {
-        if (stopping()) return answerAll("held");
-        logger.warn({ docName: batch.docName }, "task_doc_handoff_not_reached");
+        if (!stopping()) logger.warn({ docName: batch.docName }, "task_doc_handoff_not_reached");
         return answerAll("wait");
       }
+      // The transaction below runs synchronously, so neither flag can change inside it.
+      if (stopping() || signal.aborted) return answerAll("wait");
 
       const versions = await coordination.hgetall(keys.versions);
       const moved = new Map<string, string>();
       await connection.transact((d) => {
         for (const { entry, event } of batch.items) {
-          if (stopping()) {
-            outcomes.set(entry.id, "held");
-            continue;
-          }
-          if (signal.aborted) {
-            outcomes.set(entry.id, "wait");
-            continue;
-          }
           try {
             const held = moved.get(event.nodeId) ?? versions[event.nodeId];
             const after = applyNodeTaskCounts(d, event, {
@@ -329,7 +323,7 @@ export function startTaskListener(deps: TaskListenerDeps): GroupConsumer {
       // Whatever landed in the document is applied again on the retry, and the
       // versions make that a no-op.
       logger.warn({ err, docName: batch.docName }, "task_doc_coordination_failed");
-      return answerAll(stopping() ? "held" : "wait");
+      return answerAll("wait");
     } finally {
       await disconnect();
     }
@@ -347,7 +341,7 @@ export function startTaskListener(deps: TaskListenerDeps): GroupConsumer {
     let written: Map<string, EntryOutcome> | undefined;
     try {
       await redlock.using([keys.lease], settings.docLeaseMs, { retryCount: 0 }, async (signal) => {
-        written = await writeBatch(batch, signal, stopping);
+        written = await writeBatch(batch, keys, signal, stopping);
       });
       return written!;
     } catch (err) {
@@ -359,7 +353,7 @@ export function startTaskListener(deps: TaskListenerDeps): GroupConsumer {
       if (!(await leaseHeldElsewhere(err))) {
         logger.warn({ err, docName: batch.docName }, "task_doc_lease_unavailable");
       }
-      return new Map(batch.items.map(({ entry }) => [entry.id, stopping() ? "held" : "wait"]));
+      return new Map(batch.items.map(({ entry }) => [entry.id, "wait"]));
     }
   }
 
@@ -377,7 +371,7 @@ export function startTaskListener(deps: TaskListenerDeps): GroupConsumer {
       const batches = groupByDoc(entries, outcomes);
       await runLimited(batches, settings.docConcurrency, async (batch) => {
         if (control.stopping()) {
-          for (const { entry } of batch.items) outcomes.set(entry.id, "held");
+          for (const { entry } of batch.items) outcomes.set(entry.id, "wait");
           return;
         }
         for (const [id, outcome] of await handleDoc(batch, control.stopping)) outcomes.set(id, outcome);

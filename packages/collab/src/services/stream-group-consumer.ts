@@ -40,11 +40,10 @@ export interface StreamEntry {
 /**
  * What became of one entry.
  * - `done`: handled (or deliberately skipped); acknowledged.
- * - `wait`: not attempted this time (lease busy, peer write not here yet); retried soon, not counted as a failure.
- * - `held`: not attempted because the consumer is stopping; left pending for the hand-over.
+ * - `wait`: not attempted this time (lease busy, peer write not here yet, or stopping); retried soon, not counted as a failure; while stopping, left pending for the hand-over.
  * - `{ failed }`: handling threw; counted, retried with backoff, dead-lettered at the limit.
  */
-export type EntryOutcome = "done" | "wait" | "held" | { failed: unknown };
+export type EntryOutcome = "done" | "wait" | { failed: unknown };
 
 /** Timing and limits, all from `config/collab.yaml` in production. */
 export interface GroupConsumerSettings {
@@ -128,8 +127,7 @@ export function retryDelayMs(failures: number, minMs: number, maxMs: number): nu
  * @returns The entry.
  */
 function toEntry(id: string, fields: string[] | null): StreamEntry {
-  const values = new Map<string, string>();
-  for (let i = 0; fields && i + 1 < fields.length; i += 2) values.set(fields[i]!, fields[i + 1]!);
+  const values = pairs(fields ?? []);
   return { id, originId: values.get("originId"), payload: values.get("payload") };
 }
 
@@ -138,9 +136,9 @@ function toEntry(id: string, fields: string[] | null): StreamEntry {
  * @param row - The reply.
  * @returns Field name to value.
  */
-function pairs(row: unknown[]): Map<string, unknown> {
-  const out = new Map<string, unknown>();
-  for (let i = 0; i + 1 < row.length; i += 2) out.set(String(row[i]), row[i + 1]);
+function pairs<T>(row: T[]): Map<string, T> {
+  const out = new Map<string, T>();
+  for (let i = 0; i + 1 < row.length; i += 2) out.set(String(row[i]), row[i + 1]!);
   return out;
 }
 
@@ -330,7 +328,7 @@ export function startGroupConsumer(opts: GroupConsumerOptions): GroupConsumer {
         ack.push(entry.id);
       } else if (outcome === "wait") {
         retryLater(entry, settings.leaseRetryMs);
-      } else if (outcome !== "held") {
+      } else {
         try {
           if (await recordFailure(entry, outcome.failed)) ack.push(entry.id);
         } catch (err) {
@@ -347,6 +345,7 @@ export function startGroupConsumer(opts: GroupConsumerOptions): GroupConsumer {
   /**
    * Hand a batch to the caller and settle every entry.
    * @param entries - The batch.
+   * @throws {Error} When settling the batch fails; the read loop logs it and retries.
    */
   async function handle(entries: StreamEntry[]): Promise<void> {
     for (const e of entries) inHand.add(e.id);

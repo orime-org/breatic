@@ -311,7 +311,7 @@ describe("startGroupConsumer", () => {
       "a",
       async (entries, ctl) => {
         await until(() => ctl.stopping());
-        return new Map(entries.map((e) => [e.id, "held" as const]));
+        return new Map(entries.map((e) => [e.id, "wait" as const]));
       },
       { claimIdleMs: 60_000 },
     );
@@ -345,9 +345,9 @@ describe("startGroupConsumer", () => {
     await until(async () => (await pendingCount(keys)) === 1);
     await a.stop();
     expect(finished).toBe(false);
-    const [[, , idleMs]] = (await stream.xpending(keys.streamKey, keys.group, "-", "+", 10)) as Array<
-      [string, string, number, number]
-    >;
+    const [[, , idleMs]] = (await stream.xpending(keys.streamKey, keys.group, "-", "+", 10)) as [
+      [string, string, number, number],
+    ];
     expect(idleMs).toBeLessThan(10_000);
     await until(() => finished);
     await until(async () => (await pendingCount(keys)) === 0);
