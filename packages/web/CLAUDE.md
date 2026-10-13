@@ -128,6 +128,16 @@ demo 里那些动画参数是随手写的示意,不是定稿 —— 完全实现
 
 **CI 强制**:`breatic/no-raw-button`(ESLint),扫 `src/**/*.{ts,tsx}`(`.ts` 也扫 —— `createElement('button')` 这种写法就住在普通模块里)。**豁免按出身不按目录**:只放行 `components/ui/button.tsx` 一个文件(`Button` 自己要渲染这个元素),**不放行整个 `components/ui/`** —— 那个目录不是纯 vendor,`password-input` 是我们自己的。另豁免 `_dev` 陈列页(它的用途就是把被替换掉的原生控件并排展示)和测试。
 
+## 等服务器答复的按钮一律带 `loading`(MANDATORY)
+
+**点下去要等服务器答复的按钮,一律用 `Button`(或 `AlertDialogAction`)的 `loading`**:按下之后到屏幕显示出结果之前,按钮按不出第二次,并显示转圈(user 2026-10-13 定,inner#1374)。新写的按钮和改动到的旧按钮都照此办,不许出现点了没有任何等待提示的按钮。行为约定见 [docs/ARCHITECTURE.md](../../docs/ARCHITECTURE.md#frontend) 的「等服务器答复的按钮一律走 `Button` 的 `loading`」。
+
+做法四条:**① 等待标志在请求发出前置上,成功和失败都清掉**;**② 等到显示这个结果的那次读取回来为止,只等那一次**(`onSuccess` 里 `await` 那次读取,参照 `use-studio-settings.ts` 的 `absorb`、`data/api/projects.ts` 的 `invalidateProjectListings`);**③ 同一列表里多个按钮按对象分开记**(`mutationKey` + `useMutationState`、`lib/use-pending-keys.ts`);**④ 确认弹窗开着等,成功关、失败留着**。图标按钮把图标交给 `icon`,转圈会替换它。
+
+判定题:**这个按钮点下去要等服务器答复吗?要 → `loading`,没有第二个选项。**
+
+**不上「按钮必须有 loading」的 CI 守卫**:一个按钮点下去等不等服务器,写在它的回调和它调用的 hook 里,ESLint 一次只读一个文件看不出来,硬判就只能拿别的属性去代理这个前提。机器能判的那一半已经在 CI 里:按钮里手写转圈图标由 `breatic/no-hand-written-button-spinner` 拦下。
+
 ## 按钮的边框:看着定,不上机器守卫(MANDATORY)
 
 **独立摆着的文字按钮应当有边框**(user 2026-08-07 原话「你连个边框都没有,用户是看不出来它是个按钮的」),包括弹窗的「取消」。写新按钮时按这条办:一段文字单独摆着能点 → 给它 `variant='outline'`。
