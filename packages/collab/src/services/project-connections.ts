@@ -14,7 +14,7 @@
  * now-correct meta.
  */
 
-import type { Hocuspocus } from "@hocuspocus/server";
+import type { Connection, Hocuspocus } from "@hocuspocus/server";
 import {
   COLLAB_REAUTH_REASONS,
   parseDocName,
@@ -29,11 +29,33 @@ const CLOSE_FRAMES: Record<ProjectConnectionsCloseReason, { code: number; reason
 };
 
 /**
- * Close every connection to any document of a project on this instance.
+ * Visit every connection this instance holds to any document of a project.
  *
  * Walks the loaded-document map and filters by the project id in the document
  * name, so the meta document and every Space document are covered. A
  * document that is not loaded here has no connections here.
+ * @param hocuspocus - This instance's Hocuspocus server.
+ * @param projectId - The project.
+ * @param visit - Called once per connection.
+ */
+export function forEachProjectConnection(
+  hocuspocus: Hocuspocus,
+  projectId: string,
+  visit: (connection: Connection) => void,
+): void {
+  const docs = hocuspocus.documents;
+  if (!docs) return;
+  for (const [docName, doc] of docs.entries()) {
+    const parsed = parseDocName(docName);
+    if (!parsed || parsed.projectId !== projectId) continue;
+    // The connection IS the map key from v4 on (the value only carries the
+    // client-id set).
+    for (const [connection] of doc.connections) visit(connection);
+  }
+}
+
+/**
+ * Close every connection to any document of a project on this instance.
  * @param hocuspocus - This instance's Hocuspocus server.
  * @param projectId - The project.
  * @param reason - Why; picks the close frame.
@@ -46,16 +68,8 @@ export function closeProjectConnections(
 ): boolean {
   const frame = CLOSE_FRAMES[reason];
   if (!frame) return false;
-  const docs = hocuspocus.documents;
-  if (!docs) return true;
-  for (const [docName, doc] of docs.entries()) {
-    const parsed = parseDocName(docName);
-    if (!parsed || parsed.projectId !== projectId) continue;
-    // The connection IS the map key from v4 on (the value only carries the
-    // client-id set).
-    for (const [connection] of doc.connections) {
-      connection.close({ code: frame.code, reason: frame.reason });
-    }
-  }
+  forEachProjectConnection(hocuspocus, projectId, (connection) => {
+    connection.close({ code: frame.code, reason: frame.reason });
+  });
   return true;
 }

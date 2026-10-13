@@ -46,7 +46,6 @@ import type { Redis } from "@breatic/core";
 import { createLogger, projectControlChannelPattern } from "@breatic/core";
 import {
   COLLAB_REAUTH_REASONS,
-  parseDocName,
   projectMetaDocName,
   type MembersChangedEvent,
   type ActivityNewControlEvent,
@@ -54,7 +53,7 @@ import {
   ACTIVITY_NEW_SIGNAL,
   type ActivityNewSignal,
 } from "@breatic/shared";
-import { closeProjectConnections } from "@collab/services/project-connections.js";
+import { closeProjectConnections, forEachProjectConnection } from "@collab/services/project-connections.js";
 
 const logger = createLogger("members-sync");
 
@@ -75,24 +74,12 @@ function kickUserFromProject(
   projectId: string,
   userId: string,
 ): void {
-  // Hocuspocus exposes connections via the per-document map; we walk
-  // all loaded docs and close connections whose user.id matches.
-  // The doc-name filter restricts the kick to this project.
-  const docs = hocuspocus.documents;
-  if (!docs) return;
-  for (const [docName, doc] of docs.entries()) {
-    const parsed = parseDocName(docName);
-    if (!parsed || parsed.projectId !== projectId) continue;
-    // The connection IS the map key from v4 on (the value only carries the
-    // client-id set); before that the key was the raw websocket and the
-    // connection hung off the value.
-    for (const [connection] of doc.connections) {
-      const ctxUser = (connection.context as { user?: { id?: string } } | undefined)?.user;
-      if (ctxUser?.id === userId) {
-        connection.close({ code: 4403, reason: COLLAB_REAUTH_REASONS.permissionChanged });
-      }
+  forEachProjectConnection(hocuspocus, projectId, (connection) => {
+    const ctxUser = (connection.context as { user?: { id?: string } } | undefined)?.user;
+    if (ctxUser?.id === userId) {
+      connection.close({ code: 4403, reason: COLLAB_REAUTH_REASONS.permissionChanged });
     }
-  }
+  });
 }
 
 /**
@@ -133,6 +120,7 @@ function relayInvalidate(
  * project. Unknown / unparseable messages are logged and ignored.
  * @param hocuspocus - Running Hocuspocus server passed through to the kick / relay handlers.
  * @param raw - Raw JSON message body received on the project control channel.
+ * @throws {TypeError} When the message decodes to something other than an object; the subscriber logs it.
  */
 async function handleEvent(
   hocuspocus: Hocuspocus,
@@ -241,9 +229,9 @@ export function startMembersSync(
     );
   });
 
-  subscriber.on("pmessage", (_pattern, _channel, message) => {
+  subscriber.on("pmessage", (_pattern, channel, message) => {
     handleEvent(hocuspocus, message).catch((err: unknown) => {
-      logger.error({ err, channel: _channel }, "control_event_failed");
+      logger.error({ err, channel }, "control_event_failed");
     });
   });
 
