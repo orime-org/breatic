@@ -21,6 +21,7 @@
     "@hocuspocus/extension-throttle": "^4.6.0",
     "@hocuspocus/server": "catalog:",
     "@sentry/node": "catalog:",
+    "@sesamecare-oss/redlock": "^1.4.0",
     "dotenv": "catalog:",
     "drizzle-orm": "catalog:",
     "lib0": "catalog:",

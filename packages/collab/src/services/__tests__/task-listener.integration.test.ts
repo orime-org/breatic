@@ -21,7 +21,8 @@ import { createRedisClient, initCore, type Redis } from "@breatic/core";
 import { CANVAS_NODES_KEY, type NodeTaskCountsEvent } from "@breatic/shared";
 import { bodyToPlainText } from "@breatic/shared/canvas/text-body";
 import * as yjsRepo from "@collab/services/yjs-documents.repo.js";
-import { createPersistenceExtension } from "@collab/services/persistence.js";
+import { createPersistenceExtension, storeDocumentNow } from "@collab/services/persistence.js";
+import { createUnloadGate } from "@collab/hooks/unload-gate.js";
 import { createChangeTrackingExtension } from "@collab/services/change-tracking.js";
 import type { GroupConsumer } from "@collab/services/stream-group-consumer.js";
 import { startTaskListener, type TaskListenerSettings } from "@collab/services/task-listener.js";
@@ -53,11 +54,14 @@ const servers: Server[] = [];
 const listeners: GroupConsumer[] = [];
 
 /**
- * One collab server wired as production wires it.
+ * One collab server wired as production wires it: change tracking,
+ * persistence, the Redis extension, and the unload gate that stores a
+ * document before it leaves memory.
  * @param name - Distinguishes the two servers' Redis clients.
  * @returns Its Hocuspocus instance.
  */
 async function startInstance(name: string): Promise<Hocuspocus> {
+  const storeGate: { current?: ReturnType<typeof createUnloadGate> } = {};
   const server = new Server({
     port: 0,
     quiet: true,
@@ -70,8 +74,21 @@ async function startInstance(name: string): Promise<Hocuspocus> {
         createClient: () => createRedisClient(process.env.REDIS_COLLAB_URL!, { name }),
         prefix: "itest:hocuspocus",
       }),
+      {
+        beforeUnloadDocument: async (payload: { documentName: string; document: Y.Doc }): Promise<void> => {
+          await storeGate.current?.beforeUnloadDocument(payload);
+        },
+      },
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     ] as any[],
+  });
+  storeGate.current = createUnloadGate({
+    instanceId: name,
+    encode: (document: Y.Doc): Uint8Array => Y.encodeStateAsUpdate(document),
+    storeNow: ({ name: docName }) => storeDocumentNow(server.hocuspocus, docName),
+    writeRescue: async () => "itest-rescue-unused",
+    writeRescueNote: async () => {},
+    alert: async () => {},
   });
   await server.listen();
   servers.push(server);
@@ -169,25 +186,39 @@ async function publish(c: Case, events: Array<Partial<NodeTaskCountsEvent>>, ext
 }
 
 /**
- * Read a node's data out of the document as stored and synced.
+ * Read nodes' data out of the document as stored and synced, through one
+ * direct connection.
+ * @param c - The case.
+ * @param nodeIds - The nodes.
+ * @returns A plain copy of the fields the tests look at, per node.
+ */
+async function readNodes(c: Case, nodeIds: string[]): Promise<Array<Record<string, unknown>>> {
+  const conn = await instanceA.openDirectConnection(c.docName, { context: { user: { id: "test" } } });
+  try {
+    const nodes = conn.document!.getMap(CANVAS_NODES_KEY);
+    return nodeIds.map((nodeId) => {
+      const data = (nodes.get(nodeId) as Y.Map<unknown>).get("data") as Y.Map<unknown>;
+      const body = data.get("body");
+      return {
+        taskCounts: data.get("taskCounts"),
+        content: data.get("content"),
+        taskResultEventId: data.get("taskResultEventId"),
+        text: body instanceof Y.XmlFragment ? bodyToPlainText(body) : undefined,
+      };
+    });
+  } finally {
+    await conn.disconnect();
+  }
+}
+
+/**
+ * Read one node's data.
  * @param c - The case.
  * @param nodeId - The node.
  * @returns A plain copy of the fields the tests look at.
  */
 async function readNode(c: Case, nodeId: string): Promise<Record<string, unknown>> {
-  const conn = await instanceA.openDirectConnection(c.docName, { context: { user: { id: "test" } } });
-  try {
-    const data = (conn.document!.getMap(CANVAS_NODES_KEY).get(nodeId) as Y.Map<unknown>).get("data") as Y.Map<unknown>;
-    const body = data.get("body");
-    return {
-      taskCounts: data.get("taskCounts"),
-      content: data.get("content"),
-      taskResultEventId: data.get("taskResultEventId"),
-      text: body instanceof Y.XmlFragment ? bodyToPlainText(body) : undefined,
-    };
-  } finally {
-    await conn.disconnect();
-  }
+  return (await readNodes(c, [nodeId]))[0]!;
 }
 
 /**
@@ -238,8 +269,8 @@ describe("task events across two collab instances", () => {
     listen(c, instanceB, "b");
     await until(async () => (await pending(c)) === 0 && (await stream.xlen(c.streamKey)) === 128);
     const listenerOpens = opensA.mock.calls.length + opensB.mock.calls.length;
-    for (const [i, nodeId] of nodeIds.entries()) {
-      const node = await readNode(c, nodeId);
+    const nodes = await readNodes(c, nodeIds);
+    for (const [i, node] of nodes.entries()) {
       expect(node.taskCounts).toEqual(DONE);
       expect(node.text).toBe(`tile ${i}`);
     }
@@ -290,7 +321,7 @@ describe("task events across two collab instances", () => {
     await coordination.set(handoffKey, Buffer.from(vector).toString("base64"), "PX", 60_000);
     const [id] = await publish(c, [{ nodeId, counts: RUNNING }]);
     listen(c, instanceA, "a");
-    await new Promise((r) => setTimeout(r, 800));
+    await new Promise((r) => setTimeout(r, 4000));
     expect((await readNode(c, nodeId)).taskCounts).toBeUndefined();
     expect(await pending(c)).toBe(1);
     expect(await coordination.hget(`${c.keyPrefix}:collab:task-event-failures`, id!)).toBeNull();
@@ -306,8 +337,10 @@ describe("task events across two collab instances", () => {
     await coordination.set(leaseKey, "someone-else", "PX", 60_000);
     const [id] = await publish(c, [{ nodeId, counts: RUNNING }]);
     listen(c, instanceA, "a");
-    await new Promise((r) => setTimeout(r, 800));
+    // Longer than one whole batch write (store plus the two one-second waits).
+    await new Promise((r) => setTimeout(r, 4000));
     expect(await pending(c)).toBe(1);
+    expect((await readNode(c, nodeId)).taskCounts).toBeUndefined();
     expect(await coordination.hget(`${c.keyPrefix}:collab:task-event-failures`, id!)).toBeNull();
     await coordination.del(leaseKey);
     await until(async () => (await pending(c)) === 0);
@@ -318,7 +351,8 @@ describe("task events across two collab instances", () => {
     const good = randomUUID();
     const bad = randomUUID();
     const c = await newCase({ [good]: "image", [bad]: "image" });
-    const [badId] = await publish(c, [{ nodeId: bad, counts: null as unknown as typeof RUNNING }]);
+    // A replayed entry whose origin id was damaged: its version cannot be read.
+    const [badId] = await publish(c, [{ nodeId: bad, counts: RUNNING }], ["originId", "not-a-stream-id"]);
     await publish(c, [{ nodeId: good, counts: RUNNING }]);
     listen(c, instanceA, "a");
     await until(async () => (await readNode(c, good)).taskCounts !== undefined);
