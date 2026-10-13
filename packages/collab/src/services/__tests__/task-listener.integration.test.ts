@@ -435,14 +435,14 @@ describe("task events across two collab instances", () => {
     expect(Date.now() - startedAt).toBeLessThan(10_000);
   });
 
-  it("writes several documents faster with two instances than with one", async () => {
+  it("writes a burst across many documents faster with two instances than with one, at the production settings", async () => {
     /**
-     * Time six documents' events through the given instances.
+     * Time twenty documents' events, written before anyone listens, through the given instances.
      * @param instances - Instances to listen on.
      * @returns Milliseconds until every event is acknowledged.
      */
-    async function timeSixDocs(instances: Hocuspocus[]): Promise<number> {
-      const cases = await Promise.all(Array.from({ length: 6 }, () => newCase({ n: "image" })));
+    async function timeBurst(instances: Hocuspocus[]): Promise<number> {
+      const cases = await Promise.all(Array.from({ length: 20 }, () => newCase({ n: "image" })));
       const streamKey = cases[0]!.streamKey;
       for (const c of cases) {
         for (const counts of [RUNNING, DONE]) {
@@ -450,17 +450,17 @@ describe("task events across two collab instances", () => {
         }
       }
       const startedAt = Date.now();
-      // One read takes one document's two events; each instance writes one document at a time.
-      instances.forEach((h, i) => listen(cases[0]!, h, `i${i}`, { batchCount: 2, docConcurrency: 1 }));
-      await until(async () => (await pending(cases[0]!)) === 0 && (await stream.xlen(streamKey)) === 12, 40_000);
+      // config/collab.yaml: event_batch_count 128, event_doc_concurrency 16.
+      instances.forEach((h, i) => listen(cases[0]!, h, `i${i}`, { batchCount: 128, docConcurrency: 16 }));
+      await until(async () => (await pending(cases[0]!)) === 0 && (await stream.xlen(streamKey)) === 40, 60_000);
       const elapsed = Date.now() - startedAt;
       await Promise.all(listeners.splice(0).map((l) => l.stop()));
       return elapsed;
     }
-    const one = await timeSixDocs([instanceA]);
-    const two = await timeSixDocs([instanceA, instanceB]);
+    const one = await timeBurst([instanceA]);
+    const two = await timeBurst([instanceA, instanceB]);
     expect(two).toBeLessThan(one * 0.75);
-  }, 90_000);
+  }, 150_000);
 
   it("writes an older result that arrives after newer counts, and leaves the counts alone", async () => {
     const nodeId = randomUUID();

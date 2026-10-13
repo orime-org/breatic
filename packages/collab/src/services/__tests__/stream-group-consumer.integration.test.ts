@@ -402,6 +402,40 @@ describe("startGroupConsumer", () => {
     for (const [, , idleMs] of rows) expect(idleMs).toBeGreaterThanOrEqual(claimIdleMs);
   });
 
+  it("hands over entries queued behind a running round on a stop, and keeps the running round", async () => {
+    const keys = keysFor();
+    const [a1, a2, a3] = await append(keys.streamKey, ["a1", "a2", "a3"]);
+    let a1Running = false;
+    const a = startGroupConsumer({
+      streamUrl: process.env.REDIS_STREAM_URL!,
+      ...keys,
+      consumer: "a",
+      coordination,
+      settings: { ...FAST, claimIdleMs: 60_000, stopDeadlineMs: 200, keyConcurrency: 2 },
+      keyOf: (entry) => (entry.payload ?? "").slice(0, 1),
+      process: async (entries, ctl) => {
+        if (entries.some((e) => e.payload === "a1")) {
+          a1Running = true;
+          await until(() => ctl.stopping(), 10_000);
+          await new Promise((r) => setTimeout(r, 1000));
+        }
+        return new Map(entries.map((e) => [e.id, "done" as const]));
+      },
+    });
+    running.push(a);
+    await until(() => a1Running);
+    await until(async () => (await pendingCount(keys)) === 3);
+    await a.stop();
+    const idle = new Map(
+      ((await stream.xpending(keys.streamKey, keys.group, "-", "+", 10)) as Array<[string, string, number, number]>).map(
+        ([id, , idleMs]) => [id, idleMs],
+      ),
+    );
+    expect(idle.get(a1!)).toBeLessThan(10_000);
+    expect(idle.get(a2!)).toBeGreaterThanOrEqual(60_000);
+    expect(idle.get(a3!)).toBeGreaterThanOrEqual(60_000);
+  });
+
   it("forgets a consumer that has been idle past the limit with nothing pending", async () => {
     const keys = keysFor();
     await append(keys.streamKey, ["e1"]);
