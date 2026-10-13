@@ -282,6 +282,8 @@ Agent 里没有选模板的控件,它按读者的需求自己调用。**提示�
 
 **从布尔到字节都有断言**(`packages/domain/src/agent/__tests__/llm.test.ts`):调用方传的布尔 → 表交回的 `providerOptions` → SDK 发出的请求体 → 认证用的 header,五家逐条走完。中间那一步差别不小 —— DeepSeek 的 `reasoningEffort` 到线上叫 `reasoning_effort`,Google 的整个对象嵌在 `generationConfig` 下,OpenAI 自己补一个 `summary`。断言只停在第二步的话,厂商换掉命名空间时它照样绿,而 reasoning 已经不再被索取。
 
+**模型流回来的回复文字去掉 DeepSeek 的 DSML 工具调用标记**(`packages/domain/src/agent/dsml-middleware.ts`,跟 `unicodeTagMiddleware` 一起挂在 `model-call.ts` 的 `wrapLanguageModel` 上)。DeepSeek 用这种文字格式写工具调用;里面的参数不是合法 JSON 时,服务商把整段标记当正文返回,另给一个参数为 `{}` 的真调用。中间件只动文字片段:调用块开头(`<｜DSML｜tool_calls>` 或 `function_calls`)起,这一步剩下的文字全部丢弃;别处零散的标签只去标签;结尾可能变成标签的几个字符扣到下一片再判。真调用、`raw` 和其余片段原样往下传,所以那个调用照旧执行、被校验拒掉、由模型重试。规则是 `@breatic/shared` 的 `stripDsml`,聊天面板读存下的回复(`to-chat-message.ts`)和重放历史给模型(`model-messages.ts`)也经它,库里的数据不改。
+
 ### Configuration files
 
 | File | Use |

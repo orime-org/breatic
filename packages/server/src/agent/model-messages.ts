@@ -19,7 +19,7 @@
 import type { ModelMessage } from "ai";
 import type { ToolResultPart } from "ai";
 
-import { NOTHING_SAID_WHY } from "@breatic/shared";
+import { NOTHING_SAID_WHY, stripDsml } from "@breatic/shared";
 import { userTurnForModel } from "@server/agent/user-turn.js";
 import { EARLIER_RESULT_NOTE } from "@server/agent/stored-model-output.js";
 import { ASK_USER } from "@breatic/domain";
@@ -173,7 +173,7 @@ export function toModelMessages(history: readonly MessageData[]): ModelMessage[]
 
     for (const part of message.parts) {
       if (part.type === "text") {
-        out.push({ role: "assistant", content: part.text });
+        out.push({ role: "assistant", content: stripDsml(part.text) });
         continue;
       }
 
