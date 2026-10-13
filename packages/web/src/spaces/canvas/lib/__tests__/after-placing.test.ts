@@ -2,12 +2,9 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Where the reader's attention goes once a flow is placed (#263).
- *
- * Never on the camera: the zoom and the middle of the screen are what they
- * set, and a flow arriving does not take that off them. So the only questions
- * here are what is selected and whether a panel opens -- and the answer turns
- * on how many things in the flow are waiting to be generated.
+ * Where the reader's attention goes once a flow is placed (#263): what is
+ * selected and whether a panel opens -- and the answer turns on how many
+ * things in the flow are waiting to be generated.
  */
 
 import { describe, it, expect } from 'vitest';

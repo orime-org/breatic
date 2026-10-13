@@ -4,14 +4,9 @@
 /**
  * What the canvas does once a proposed flow is on it (#263).
  *
- * Nothing here moves the camera. Where the reader is looking and how far in
- * they are zoomed is theirs: they set it, and a flow arriving is not a reason
- * to take it off them. The nodes land near the middle of what they were
- * already looking at, and if the flow runs past an edge at their zoom that is
- * a canvas they can drag.
- *
- * So this answers only two questions -- what is selected, and whether a panel
- * opens -- and a test can hold both without a canvas around it.
+ * This answers two questions -- what is selected, and whether a panel opens --
+ * and a test can hold both without a canvas around it. The camera follows the
+ * flow in `CanvasSpace` (`frameProposal`, inner#1443).
  */
 
 import type { CanvasProposal, GenerationNodeType } from '@breatic/shared';
@@ -33,9 +28,8 @@ export interface Focus {
  * prompt that was just written -- marks and all -- is why the marks are in it.
  *
  * Two or more: select the group and open nothing. A panel is up to 600px wide
- * and hangs under the node it belongs to, so opening one covers the others,
- * which is the same thing as moving the camera under the reader. The card
- * already says what each node needs; they open the one they want.
+ * and hangs under the node it belongs to, so opening one covers the others.
+ * The card already says what each node needs; they open the one they want.
  *
  * Anything else selects nothing. A flow with nothing that generates is turned
  * away before it reaches a card, so what is left here is a payload that took

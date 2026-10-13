@@ -2787,6 +2787,9 @@ function CanvasSpaceInner({
           const zoom = rfStoreApi.getState().transform[2];
           void setViewport(frameProposal(placed.bounds, { width: rect.width, height: rect.height }, zoom), {
             duration: PROPOSAL_FRAME_MS,
+            // A straight slide, like the other framings: the default arc zooms
+            // out on the way and back in.
+            interpolate: 'linear',
           });
         }
         const focus = whatToFocus(intent.proposal, placed);
