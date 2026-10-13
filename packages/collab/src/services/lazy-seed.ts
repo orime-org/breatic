@@ -153,10 +153,11 @@ async function reportSeededSpace(
   opener: SeedOpener | undefined,
 ): Promise<void> {
   if (!opener || !serverAnalyticsOn()) return;
-  const cookies = opener.requestHeaders?.get("cookie") ?? undefined;
-  const consent = parseConsentCookie(readCookie(cookies, CONSENT_COOKIE_NAME) ?? undefined);
-  if (!consent.analytics) return;
+  // Reporting is best-effort: a cookie it cannot read must not fail the project's load.
   try {
+    const cookies = opener.requestHeaders?.get("cookie") ?? undefined;
+    const consent = parseConsentCookie(readCookie(cookies, CONSENT_COOKIE_NAME) ?? undefined);
+    if (!consent.analytics) return;
     const fromContext = (opener.context as { user?: { id?: string } } | undefined)?.user?.id;
     const token = readCookie(cookies, sessionCookieName());
     const userId =

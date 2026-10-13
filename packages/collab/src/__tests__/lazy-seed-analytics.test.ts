@@ -98,6 +98,16 @@ describe("lazySeedMeta analytics", () => {
     expect(reportSpaceCreatedMock).not.toHaveBeenCalled();
   });
 
+  it("still loads the project when the consent cookie cannot be decoded", async () => {
+    await expect(
+      lazySeedMeta(projectMetaDocName(PID), {
+        requestHeaders: new Headers({ cookie: `${CONSENT_COOKIE_NAME}=%` }),
+        context: { user: { id: "user-12345" } },
+      }),
+    ).resolves.toBeDefined();
+    expect(reportSpaceCreatedMock).not.toHaveBeenCalled();
+  });
+
   it("reports nothing for a loader that lost the seed race", async () => {
     seedInitialStateMock.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
     await lazySeedMeta(projectMetaDocName(PID), {
