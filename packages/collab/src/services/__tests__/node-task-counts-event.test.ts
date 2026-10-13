@@ -437,3 +437,16 @@ describe("an event older than what the node holds changes nothing", () => {
     expect(apply(doc, { nodeId, counts: running }, "1700-3")).toBe("1700-5");
   });
 });
+
+describe("a result that cannot be written", () => {
+  it("leaves the result version unset, so a retry writes it", () => {
+    const nodeId = "n-1";
+    const { doc, data } = docWithNode(nodeId, "text");
+    const broken = { coverUrl: null, width: null, height: null, duration: null, mimeType: null, size: null, content: 42 };
+
+    expect(() =>
+      apply(doc, { nodeId, counts: { running: 0, done: 1, failed: 0, expired: 0 }, result: broken as never }, "1700-9"),
+    ).toThrow();
+    expect(data.get("taskResultEventId")).toBeUndefined();
+  });
+});

@@ -260,3 +260,34 @@ describe("startMembersSync — connections:close", () => {
     expect(close).toHaveBeenCalledWith({ code: 4407, reason: "Project archived" });
   });
 });
+
+describe("startMembersSync — a control event it cannot act on", () => {
+  it("leaves connections alone and does not reject when the close reason is unknown", async () => {
+    const close = vi.fn();
+    const metaDoc: DocSpy = {
+      doc: new Y.Doc(),
+      broadcastStateless: vi.fn(),
+      relayStateless: vi.fn(),
+      connections: new Map([[{ context: { user: { id: "anyone" } }, close }, { clients: new Set<number>() }]]),
+    };
+    const { hocuspocus } = buildHocuspocus(metaDoc);
+    const { subscriber } = buildRedis();
+    const rejections: unknown[] = [];
+    const onRejection = (reason: unknown): void => void rejections.push(reason);
+    process.on("unhandledRejection", onRejection);
+    startMembersSync(hocuspocus, subscriber as unknown as Redis);
+    await Promise.resolve();
+
+    subscriber.emit(
+      "pmessage",
+      `${TEST_PREFIX}:project:*`,
+      projectConnectionsCloseChannel(TEST_PREFIX, PID),
+      JSON.stringify({ type: "project-connections:close", projectId: PID, reason: "something-new", ts: Date.now() }),
+    );
+    await new Promise((r) => setTimeout(r, 20));
+    process.off("unhandledRejection", onRejection);
+
+    expect(close).not.toHaveBeenCalled();
+    expect(rejections).toEqual([]);
+  });
+});
