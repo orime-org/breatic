@@ -184,7 +184,7 @@ export function toChatMessage(
   const found: Array<[number, ChatSource]> = [];
   const assets: ChatAsset[] = [];
   const proposals: CanvasProposal[] = [];
-  let expiredProposals = 0;
+  let hasExpiredProposal = false;
   const attachments: ChatAttachedChip[] = [];
   // The server writes it onto the stored message; a message this reader has
   // only just sent is not stored yet and carries none.
@@ -243,7 +243,7 @@ export function toChatMessage(
       }
       if (status === 'success' && getToolName(part) === PROPOSE_TOOL) {
         const proposal = proposalOf(part.output);
-        if (proposal === 'expired') expiredProposals += 1;
+        if (proposal === 'expired') hasExpiredProposal = true;
         else if (proposal !== null) proposals.push(proposal);
       }
       if (status === 'success' && getToolName(part) === SEARCH_TOOL) {
@@ -312,7 +312,7 @@ export function toChatMessage(
     ...(sources.length > 0 ? { sources, citations } : {}),
     ...(assets.length > 0 ? { assets } : {}),
     ...(proposals.length > 0 ? { proposals } : {}),
-    ...(expiredProposals > 0 ? { expiredProposals } : {}),
+    ...(hasExpiredProposal ? { hasExpiredProposal: true as const } : {}),
     ...(attachments.length > 0 ? { attachments } : {}),
     ...(options.failedJustNow === true ? { failedJustNow: true as const } : {}),
     ...(options.streaming === true ? { streaming: true } : {}),

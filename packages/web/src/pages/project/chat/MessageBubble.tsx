@@ -187,17 +187,14 @@ export const MessageBubble = React.memo(function MessageBubble({
           {/* A proposal stored in a shape this build can no longer place is
             named where its card would be, so the reader knows to ask again
             rather than meeting a button that cannot work (inner#1499). */}
-          {running || message.expiredProposals === undefined
-            ? null
-            : Array.from({ length: message.expiredProposals }, (_, i) => (
-              <div
-                key={`expired-${String(i)}`}
-                data-testid='proposal-expired'
-                className='mt-2 rounded-lg border border-border bg-muted/40 px-3 py-2.5 text-xs text-muted-foreground'
-              >
-                {t('chat.proposal.expired')}
-              </div>
-            ))}
+          {running || message.hasExpiredProposal !== true ? null : (
+            <div
+              data-testid='proposal-expired'
+              className='mt-2 rounded-lg border border-border bg-muted/40 px-3 py-2.5 text-xs text-muted-foreground'
+            >
+              {t('chat.proposal.expired')}
+            </div>
+          )}
           {/* Each step that failed while the turn carried on, after what the
             turn produced and before how it ended. */}
           {isUser ? null : <FailedSteps message={message} />}

@@ -120,15 +120,15 @@ describe('a turn whose proposal was stored in a shape this build no longer place
     expect(toChatMessage(turnWith(STALE)).proposals).toBeUndefined();
   });
 
-  it('says that one proposal there has expired', () => {
-    expect(toChatMessage(turnWith(STALE)).expiredProposals).toBe(1);
+  it('says a proposal there has expired', () => {
+    expect(toChatMessage(turnWith(STALE)).hasExpiredProposal).toBe(true);
   });
 
   it('says nothing has expired on a turn whose proposal is current', () => {
-    expect(toChatMessage(turnWith(ACCEPTED)).expiredProposals).toBeUndefined();
+    expect(toChatMessage(turnWith(ACCEPTED)).hasExpiredProposal).toBeUndefined();
   });
 
   it('says nothing has expired on a proposal the tool refused', () => {
-    expect(toChatMessage(turnWith({ placed: false, reason: 'no' })).expiredProposals).toBeUndefined();
+    expect(toChatMessage(turnWith({ placed: false, reason: 'no' })).hasExpiredProposal).toBeUndefined();
   });
 });

@@ -331,15 +331,15 @@ describe('MessageBubble — what the reader attached', () => {
     expect(screen.queryByTestId('message-attachments')).not.toBeInTheDocument();
   });
 
-  it('says each expired proposal has expired, with nothing to press', () => {
-    setup({ id: 'm1', role: 'assistant', content: 'here', expiredProposals: 2 });
+  it('says once that the turn\u2019s proposals have expired, with nothing to press', () => {
+    setup({ id: 'm1', role: 'assistant', content: 'here', hasExpiredProposal: true });
 
-    expect(screen.getAllByTestId('proposal-expired')).toHaveLength(2);
+    expect(screen.getAllByTestId('proposal-expired')).toHaveLength(1);
     expect(screen.queryByTestId('proposal-use')).not.toBeInTheDocument();
   });
 
   it('shows no expired line on a turn that is still running', () => {
-    setup({ id: 'm1', role: 'assistant', content: 'here', expiredProposals: 1, streaming: true });
+    setup({ id: 'm1', role: 'assistant', content: 'here', hasExpiredProposal: true, streaming: true });
 
     expect(screen.queryByTestId('proposal-expired')).not.toBeInTheDocument();
   });
