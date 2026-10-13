@@ -97,12 +97,14 @@ async function until(check: () => boolean | Promise<boolean>, timeoutMs = 10_000
 }
 
 /**
- * Two consumers on a fresh stream, counting publishes.
+ * Two consumers on a stream, counting publishes.
+ * @param streamKey - The stream; a fresh one when omitted.
  * @returns The stream key and the publishes so far.
  */
-function startTwoConsumers(): { streamKey: string; published: Array<[string, ProjectConnectionsCloseReason]> } {
+function startTwoConsumers(
+  streamKey = `itest:stream:lifecycle:${randomUUID()}`,
+): { streamKey: string; published: Array<[string, ProjectConnectionsCloseReason]> } {
   const id = randomUUID();
-  const streamKey = `itest:stream:lifecycle:${id}`;
   const published: Array<[string, ProjectConnectionsCloseReason]> = [];
   for (const name of ["a", "b"]) {
     consumers.push(
@@ -148,6 +150,22 @@ describe("lifecycle commands across two collab instances", () => {
     expect(a.closed[0]!.code).toBe(4407);
     expect(b.closed[0]!.code).toBe(4407);
     expect(published).toEqual([[pid, "archived"]]);
+  });
+
+  it("skips an entry whose payload is not an object without failing the rest of its batch", async () => {
+    const pid = randomUUID();
+    const a = fakeInstance([`project-${pid}/meta`]);
+    stops.push(startMembersSync(a.hocuspocus, stream));
+    // Both written before any consumer reads, so they arrive in one batch.
+    const id = randomUUID();
+    const streamKey = `itest:stream:lifecycle:${id}`;
+    await stream.xadd(streamKey, "*", "payload", "null");
+    await send(streamKey, { type: "project:archived", projectId: pid, ts: Date.now() });
+    const { published } = startTwoConsumers(streamKey);
+
+    await until(() => a.closed.length === 1);
+    expect(published).toEqual([[pid, "archived"]]);
+    await until(async () => Number(((await stream.xpending(streamKey, "collab-lifecycle")) as [number])[0]) === 0);
   });
 
   it("copies a duplicate once and then closes the new project's connections on every instance", async () => {

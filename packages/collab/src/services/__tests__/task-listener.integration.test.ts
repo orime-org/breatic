@@ -362,6 +362,17 @@ describe("task events across two collab instances", () => {
     await until(async () => Number(await coordination.hget(`${c.keyPrefix}:collab:task-event-failures`, badId!)) >= 1);
   });
 
+  it("skips an entry missing its document name without failing the rest of its batch", async () => {
+    const nodeId = randomUUID();
+    const c = await newCase({ [nodeId]: "image" });
+    await stream.xadd(c.streamKey, "*", "payload", JSON.stringify({ type: "node-task-counts", nodeId }));
+    const [goodId] = await publish(c, [{ nodeId, counts: RUNNING }]);
+    listen(c, instanceA, "a");
+    await until(async () => (await pending(c)) === 0 && (await stream.xlen(c.streamKey)) === 2);
+    expect((await readNode(c, nodeId)).taskCounts).toEqual(RUNNING);
+    expect(await coordination.hget(`${c.keyPrefix}:collab:task-event-failures`, goodId!)).toBeNull();
+  });
+
   it("acknowledges and skips an event for a document that is not a canvas Space", async () => {
     const c = await newCase({});
     await stream.xadd(
