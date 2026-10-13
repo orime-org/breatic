@@ -76,7 +76,7 @@ import {
 import { docGeometryView } from '@web/spaces/canvas/doc-geometry-view';
 import { batchCentresAt } from '@web/spaces/canvas/drop-layout';
 import { groupBackgroundFor } from '@web/spaces/canvas/group-background';
-import { FRAME_PAN_MS, frameBuiltNode, framedBox } from '@web/spaces/canvas/frame-built-node';
+import { FRAME_PAN_MS, PROPOSAL_FRAME_MS, frameBuiltNode, framedBox } from '@web/spaces/canvas/frame-built-node';
 import { exportCropBlob } from '@web/spaces/canvas/focus/crop-export';
 import { exportDrawing } from '@web/spaces/canvas/mini-tool/export-drawing';
 import { focusFailureMessageKey, runFocusCrop } from '@web/spaces/canvas/focus/run-focus-crop';
@@ -2787,7 +2787,7 @@ function CanvasSpaceInner({
         if (placed.bounds) {
           const zoom = rfStoreApi.getState().transform[2];
           void setViewport(frameProposal(placed.bounds, { width: rect.width, height: rect.height }, zoom), {
-            duration: FRAME_PAN_MS,
+            duration: PROPOSAL_FRAME_MS,
           });
         }
         const focus = whatToFocus(intent.proposal, placed);
