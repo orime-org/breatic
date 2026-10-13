@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import * as React from 'react';
-import { Loader2 } from 'lucide-react';
 
 import { Button } from '@web/components/ui/button';
 import {
@@ -203,15 +202,10 @@ export function ChangeSlugSection({
               <Button
                 size='sm'
                 disabled={!canConfirm}
+                loading={renaming}
                 onClick={confirm}
                 data-testid='settings-slug-confirm'
               >
-                {renaming ? (
-                  <Loader2
-                    className='mr-1.5 h-3.5 w-3.5 animate-spin'
-                    aria-hidden='true'
-                  />
-                ) : null}
                 {renaming
                   ? t('studio.container.settings.saving')
                   : t('studio.container.settings.slugChangeConfirm')}

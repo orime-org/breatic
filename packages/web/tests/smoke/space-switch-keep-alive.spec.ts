@@ -1381,13 +1381,13 @@ test('a generation answered while its Space was hidden leaves the panel ready', 
     await route.fulfill({ status: 500, json: { success: false, error: 'held' } });
   });
   await visibleSpace(page).getByTestId('generate-execute').click();
-  await expect(visibleSpace(page).getByTestId('generate-execute-pending')).toBeVisible();
+  await expect(visibleSpace(page).getByTestId('generate-execute')).toHaveAttribute('aria-busy', 'true');
 
   await showSpace(page, second);
   await page.waitForTimeout(4_000);
   await showSpace(page, first);
 
-  await expect(visibleSpace(page).getByTestId('generate-execute-pending')).toHaveCount(0);
+  await expect(visibleSpace(page).getByTestId('generate-execute')).not.toHaveAttribute('aria-busy');
   await expect(visibleSpace(page).getByTestId('generate-execute')).toBeEnabled();
 });
 

@@ -48,7 +48,7 @@ export const BUBBLE_ICON_BUTTON_SIZE = `${BUBBLE_CONTROL_HEIGHT} w-7`;
  * the product reads in (the theme menu's current row), held through hover so
  * pointing at it does not take the mark away.
  */
-export const PRESSED_CLASS = 'bg-accent-strong hover:bg-accent-strong';
+export const PRESSED_CLASS = 'bg-accent-strong hover-enabled:bg-accent-strong';
 
 /**
  * The frame of a bar of these buttons floating over the body: the selection

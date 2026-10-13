@@ -138,8 +138,8 @@ export function TransferStudioSection({
           type='button'
           variant={null}
           size={null}
-          className='h-[30px] rounded-chrome border border-border px-3 text-xs font-medium transition-colors hover:bg-accent'
-          disabled={withdrawMutation.isPending}
+          className='h-[30px] rounded-chrome border border-border px-3 text-xs font-medium transition-colors hover-enabled:bg-accent'
+          loading={withdrawMutation.isPending}
           onClick={onWithdraw}
           data-testid='settings-transfer-withdraw'
         >
@@ -213,6 +213,7 @@ export function TransferStudioSection({
               <Button
                 size='sm'
                 disabled={!selected || transferMutation.isPending}
+                loading={transferMutation.isPending}
                 onClick={() => transferMutation.mutate(selected)}
                 data-testid='settings-transfer-send'
               >

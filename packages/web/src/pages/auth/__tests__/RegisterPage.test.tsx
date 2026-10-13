@@ -104,6 +104,37 @@ describe('RegisterPage without email (two-step entry)', () => {
     expect(useCurrentUserStore.getState().user?.personalStudio).toBeNull();
   });
 
+  it('marks the create button busy while the server answers, then leaves for the next step', async () => {
+    let answer!: (value: Awaited<ReturnType<typeof authApi.register>>) => void;
+    vi.mocked(authApi.register).mockReturnValueOnce(new Promise((resolve) => { answer = resolve; }));
+    const user = userEvent.setup();
+    setup();
+    await submitForm(user);
+
+    const busy = screen.getByRole('button', { name: 'Creating...' });
+    expect(busy).toHaveAttribute('aria-busy', 'true');
+    expect(busy).toHaveAttribute('aria-disabled', 'true');
+
+    answer(CODE_SENT);
+    expect(await screen.findByRole('heading', { name: 'Verify your email' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { busy: true })).toBeNull();
+  });
+
+  it('clears the busy mark on the create button after a refused sign-up', async () => {
+    let fail!: (reason: unknown) => void;
+    vi.mocked(authApi.register).mockReturnValueOnce(new Promise((_, reject) => { fail = reject; }));
+    const user = userEvent.setup();
+    setup();
+    await submitForm(user);
+    expect(screen.getByRole('button', { name: 'Creating...' })).toHaveAttribute('aria-busy', 'true');
+
+    fail(refusal(409, 'This email is already registered.'));
+    expect(await screen.findByText('This email is already registered.')).toBeInTheDocument();
+    const idle = screen.getByRole('button', { name: 'Create account' });
+    expect(idle).not.toHaveAttribute('aria-busy');
+    expect(idle).not.toHaveAttribute('aria-disabled');
+  });
+
   // INVARIANT (design §5.1): after acknowledging the recovery code, the
   // user is sent to step two (the onboarding slug page), NOT straight to
   // /studio — a half-finished sign-up must complete onboarding first.
@@ -255,6 +286,41 @@ describe('RegisterPage with email (code step, #287)', () => {
     expect(await screen.findByText('We sent you a new code.')).toBeInTheDocument();
     expect(input).toBeEnabled();
     expect(screen.getByRole('button', { name: 'Resend in 60s' })).toBeDisabled();
+  });
+
+  it('marks the resend button busy while the new code is being sent, then clears it', async () => {
+    vi.mocked(authApi.register).mockResolvedValueOnce({ ...CODE_SENT, resendAfterSeconds: 0 });
+    let answer!: (value: typeof CODE_SENT) => void;
+    vi.mocked(authApi.resendSignupCode).mockReturnValueOnce(new Promise((resolve) => { answer = resolve; }));
+    const user = userEvent.setup();
+    setup();
+    await submitForm(user);
+    await user.click(await screen.findByRole('button', { name: 'Resend code' }));
+
+    const busy = screen.getByRole('button', { name: 'Resend code' });
+    expect(busy).toHaveAttribute('aria-busy', 'true');
+    expect(busy).toHaveAttribute('aria-disabled', 'true');
+
+    answer(CODE_SENT);
+    const after = await screen.findByRole('button', { name: 'Resend in 60s' });
+    expect(after).not.toHaveAttribute('aria-busy');
+  });
+
+  it('clears the busy mark on the resend button after a failed resend', async () => {
+    vi.mocked(authApi.register).mockResolvedValueOnce({ ...CODE_SENT, resendAfterSeconds: 0 });
+    let fail!: (reason: unknown) => void;
+    vi.mocked(authApi.resendSignupCode).mockReturnValueOnce(new Promise((_, reject) => { fail = reject; }));
+    const user = userEvent.setup();
+    setup();
+    await submitForm(user);
+    await user.click(await screen.findByRole('button', { name: 'Resend code' }));
+    expect(screen.getByRole('button', { name: 'Resend code' })).toHaveAttribute('aria-busy', 'true');
+
+    fail(refusal(500, 'Something broke.'));
+    expect(await screen.findByText('Something broke.')).toBeInTheDocument();
+    const idle = screen.getByRole('button', { name: 'Resend code' });
+    expect(idle).not.toHaveAttribute('aria-busy');
+    expect(idle).not.toHaveAttribute('aria-disabled');
   });
 
   it('counts the resend wait down a second at a time', async () => {

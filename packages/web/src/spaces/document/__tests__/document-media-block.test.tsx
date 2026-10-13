@@ -863,7 +863,7 @@ describe('the delete button', () => {
 
     const remove = within(toolbar(editor)).getByTestId('doc-media-delete');
     expect(remove.className).toContain('text-status-error-foreground');
-    expect(remove.className).toContain('hover:text-status-error-foreground');
+    expect(remove.className).toContain('hover-enabled:text-status-error-foreground');
   });
 });
 

@@ -316,8 +316,17 @@ const LotRow = React.memo(function LotRow({
                       {t('credits.confirmRefund.cancel')}
                     </AlertDialogCancel>
                     <AlertDialogAction
-                      onClick={() => {
-                        askRefund.mutate();
+                      loading={askRefund.isPending}
+                      onClick={(event) => {
+                        // Held open while the server answers: a refusal is
+                        // read off the toast with the confirm still in reach,
+                        // and only an ask that went through closes it.
+                        event.preventDefault();
+                        askRefund.mutate(undefined, {
+                          onSuccess: () => {
+                            setAsking(false);
+                          },
+                        });
                       }}
                     >
                       {t('credits.confirmRefund.confirm')}

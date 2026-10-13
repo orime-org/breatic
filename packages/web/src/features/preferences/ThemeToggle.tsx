@@ -70,7 +70,7 @@ export function ThemeToggle(): React.JSX.Element {
                 className={cn(
                   'justify-start',
                   theme === m.code &&
-                    'bg-accent-strong hover:bg-accent-strong',
+                    'bg-accent-strong hover-enabled:bg-accent-strong',
                 )}
                 onClick={() => pick(m.code)}
                 data-testid={`theme-option-${m.code}`}

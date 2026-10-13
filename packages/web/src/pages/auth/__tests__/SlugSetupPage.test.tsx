@@ -260,6 +260,39 @@ describe('SlugSetupPage', () => {
     expect(screen.queryByTestId('studio-page')).not.toBeInTheDocument();
   });
 
+  it('marks the submit button busy while the Studio is being set up, then leaves for /studio', async () => {
+    let answer!: (value: Awaited<ReturnType<typeof authApi.setupStudio>>) => void;
+    vi.mocked(authApi.setupStudio).mockReturnValueOnce(new Promise((resolve) => { answer = resolve; }));
+    const user = userEvent.setup();
+    setup();
+    await user.type(screen.getByLabelText('Slug'), 'my-handle');
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+
+    const busy = screen.getByRole('button', { name: 'Setting up...' });
+    expect(busy).toHaveAttribute('aria-busy', 'true');
+    expect(busy).toHaveAttribute('aria-disabled', 'true');
+
+    answer({ personalStudio: { name: 'my-handle', slug: 'my-handle', avatarUrl: null } });
+    expect(await screen.findByTestId('studio-page')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { busy: true })).toBeNull();
+  });
+
+  it('clears the busy mark on the submit button after a failed setup', async () => {
+    let fail!: (reason: unknown) => void;
+    vi.mocked(authApi.setupStudio).mockReturnValueOnce(new Promise((_, reject) => { fail = reject; }));
+    const user = userEvent.setup();
+    setup();
+    await user.type(screen.getByLabelText('Slug'), 'good-handle');
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    expect(screen.getByRole('button', { name: 'Setting up...' })).toHaveAttribute('aria-busy', 'true');
+
+    fail(new ApiException({ status: 500, message: 'boom' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('boom');
+    const idle = screen.getByRole('button', { name: 'Continue' });
+    expect(idle).not.toHaveAttribute('aria-busy');
+    expect(idle).not.toHaveAttribute('aria-disabled');
+  });
+
   it('has no a11y violations', async () => {
     const { container } = setup();
     await expectNoA11yViolations(container);

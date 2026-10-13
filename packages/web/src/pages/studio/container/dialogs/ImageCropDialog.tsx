@@ -516,6 +516,7 @@ export function ImageCropDialog({
             <Button
               size='sm'
               disabled={busy || rect === null}
+              loading={busy}
               onClick={() => void handleConfirm()}
               data-testid='image-crop-confirm'
             >

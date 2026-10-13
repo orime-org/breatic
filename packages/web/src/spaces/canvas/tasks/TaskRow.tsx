@@ -55,6 +55,10 @@ export interface TaskRowProps {
   hasRetryFile: boolean;
   /** Whether this reader may write; a read-only row carries no buttons. */
   readOnly: boolean;
+  /** Whether this row's Retry is still waiting for the server. */
+  retrying: boolean;
+  /** Whether this row's Finish or Clear is still waiting for the server. */
+  dismissing: boolean;
   /**
    * What the host node holds, when it holds one of the three media.
    *
@@ -104,6 +108,8 @@ function settledNote(
  * @param props.now - The reader's clock.
  * @param props.hasRetryFile - Whether this session holds the File.
  * @param props.readOnly - Whether this reader may write.
+ * @param props.retrying - Whether this row's Retry is still waiting.
+ * @param props.dismissing - Whether this row's Finish or Clear is still waiting.
  * @param props.medium - What the host node holds, for a refusal's format list.
  * @param props.onView - Open the node's history at the late result.
  * @param props.displayNameOf - The catalog's name for a model id.
@@ -116,6 +122,8 @@ export const TaskRow = React.memo(function TaskRow({
   now,
   hasRetryFile,
   readOnly,
+  retrying,
+  dismissing,
   medium,
   onView,
   displayNameOf = NO_NAMES,
@@ -242,6 +250,14 @@ export const TaskRow = React.memo(function TaskRow({
             variant={PRIMARY_ACTIONS.has(action) ? 'default' : 'outline'}
             size='compact'
             data-testid={`task-action-${action}`}
+            // Each button waits on its own request only; View sends none.
+            loading={
+              action === 'retry'
+                ? retrying
+                : action === 'view'
+                  ? false
+                  : dismissing
+            }
             onClick={(): void => run(action)}
             className='text-2xs'
           >

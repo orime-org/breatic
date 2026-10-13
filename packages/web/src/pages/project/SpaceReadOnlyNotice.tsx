@@ -107,7 +107,7 @@ export function SpaceReadOnlyNotice({
         variant='outline'
         size='sm'
         data-testid='space-read-only-notice-reconnect'
-        className='h-6 shrink-0 border-status-warning-border px-2 text-xs text-status-warning-foreground hover:bg-status-warning-bg hover:text-status-warning-foreground'
+        className='h-6 shrink-0 border-status-warning-border px-2 text-xs text-status-warning-foreground hover-enabled:bg-status-warning-bg hover-enabled:text-status-warning-foreground'
         onClick={() => window.location.reload()}
       >
         {t('spaces.readOnlyReconnect')}

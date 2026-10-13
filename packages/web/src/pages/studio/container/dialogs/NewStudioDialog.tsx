@@ -176,7 +176,7 @@ export function NewStudioDialog({
             >
               {t('studio.container.dialog.cancel')}
             </Button>
-            <Button type='submit' disabled={!canSubmit}>
+            <Button type='submit' disabled={!canSubmit} loading={createStudio.isPending}>
               {t('studio.container.dialog.create')}
             </Button>
           </DialogFooter>

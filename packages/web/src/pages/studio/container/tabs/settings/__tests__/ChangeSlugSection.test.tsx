@@ -348,11 +348,17 @@ describe('ChangeSlugSection — while the request is out', () => {
     return handle;
   }
 
-  it('puts a spinner on the confirm button and keeps it disabled', async () => {
-    await reachInFlight();
+  it('puts a spinner on the confirm button and marks it busy until the answer', async () => {
+    const handle = await reachInFlight();
     const confirm = screen.getByTestId('settings-slug-confirm');
-    expect(confirm).toBeDisabled();
+    expect(confirm).toHaveAttribute('aria-busy', 'true');
+    expect(confirm).toHaveAttribute('aria-disabled', 'true');
     expect(confirm.querySelector('.animate-spin')).not.toBeNull();
+
+    // A failed rename leaves the dialog open with Confirm pressable again.
+    handle.setFlags({ saving: false, renaming: false });
+    expect(confirm).not.toHaveAttribute('aria-busy');
+    expect(confirm.querySelector('.animate-spin')).toBeNull();
   });
 
   it('shows no spinner when the save running is somebody else’s', async () => {

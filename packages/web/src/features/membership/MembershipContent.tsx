@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import * as React from 'react';
-import { Loader2 } from 'lucide-react';
 import {
   BILLING_PERIODS,
   COMPARABLE_MEMBERSHIP_TIERS,
@@ -350,7 +349,7 @@ export function MembershipContent({
                           // segments fill it exactly, so a ring drawn outside
                           // their edges has nowhere to land. Drawn inside, the
                           // keyboard reader sees where they are.
-                          className='rounded-none border-0 border-l border-border first:border-l-0 focus-visible:ring-inset aria-pressed:bg-accent-strong aria-pressed:font-semibold aria-pressed:hover:bg-accent-strong'
+                          className='rounded-none border-0 border-l border-border first:border-l-0 focus-visible:ring-inset aria-pressed:bg-accent-strong aria-pressed:font-semibold aria-pressed:hover-enabled:bg-accent-strong'
                           data-testid={`membership-period-${period}`}
                           onClick={() => setSelectedPeriod(period)}
                         >
@@ -417,23 +416,13 @@ export function MembershipContent({
                     variant='outline'
                     size='sm'
                     disabled={busy}
+                    loading={pending?.kind === 'cancel' || pending?.kind === 'resume'}
                     data-testid={
                       actions.resume ? 'membership-resume' : 'membership-cancel'
                     }
                     onClick={actions.resume ? resume : cancel}
                     className='shrink-0'
                   >
-                    {pending?.kind === 'cancel' || pending?.kind === 'resume' ? (
-                      <Loader2
-                        data-testid={
-                          pending.kind === 'resume'
-                            ? 'membership-resume-pending'
-                            : 'membership-cancel-pending'
-                        }
-                        aria-hidden='true'
-                        className='mr-2 h-3.5 w-3.5 animate-spin'
-                      />
-                    ) : null}
                     {actions.resume ? t('membership.resume') : t('membership.cancel')}
                   </Button>
                 ) : null}

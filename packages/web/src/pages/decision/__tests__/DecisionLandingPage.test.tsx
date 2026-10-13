@@ -382,6 +382,49 @@ describe('answering', () => {
     expect(toast.error).toHaveBeenCalledWith('Too late');
   });
 
+  it('marks only the pressed button busy, holds the other one and the role, then settles on the answer', async () => {
+    const user = userEvent.setup();
+    vi.mocked(decisionsApi.view).mockResolvedValueOnce(makeView({ kind: 'project_join', role: null }));
+    let answer!: (value: Awaited<ReturnType<typeof decisionsApi.respond>>) => void;
+    vi.mocked(decisionsApi.respond).mockReturnValueOnce(new Promise((resolve) => { answer = resolve; }));
+    setup();
+    await user.click(await screen.findByRole('button', { name: 'Approve' }));
+
+    const pressed = screen.getByRole('button', { name: 'Approve' });
+    expect(pressed).toHaveAttribute('aria-busy', 'true');
+    expect(pressed).toHaveAttribute('aria-disabled', 'true');
+    const other = screen.getByRole('button', { name: 'Decline' });
+    expect(other).not.toHaveAttribute('aria-busy');
+    expect(other).toBeDisabled();
+    expect(screen.getByRole('combobox', { name: 'Role' })).toBeDisabled();
+
+    answer({ state: 'accepted', redirectTo: null });
+    expect(await screen.findByText(/already accepted/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { busy: true })).toBeNull();
+  });
+
+  it('clears the busy mark on the pressed button after an answer that failed on the way', async () => {
+    const user = userEvent.setup();
+    vi.mocked(decisionsApi.view)
+      .mockResolvedValueOnce(makeView())
+      .mockResolvedValueOnce(makeView());
+    let fail!: (reason: unknown) => void;
+    vi.mocked(decisionsApi.respond).mockReturnValueOnce(new Promise((_, reject) => { fail = reject; }));
+    setup();
+    await user.click(await screen.findByRole('button', { name: 'Decline' }));
+
+    expect(screen.getByRole('button', { name: 'Decline' })).toHaveAttribute('aria-busy', 'true');
+    expect(screen.getByRole('button', { name: 'Accept' })).toBeDisabled();
+
+    fail(new ApiException({ status: 503, code: 'SERVICE_UNAVAILABLE', message: 'Try again' }));
+    await waitFor(() => expect(decisionsApi.view).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Decline' })).not.toHaveAttribute('aria-busy'),
+    );
+    expect(screen.getByRole('button', { name: 'Decline' })).not.toHaveAttribute('aria-disabled');
+    expect(screen.getByRole('button', { name: 'Accept' })).toBeEnabled();
+  });
+
   it('an answer that failed on the way keeps the buttons, because it can be retried', async () => {
     // The other half of the pair above: the answer did not land, but the
     // request itself is untouched. Re-reading says so, and a request that can

@@ -221,7 +221,7 @@ function SortMenu({ sort }: { sort: ToolbarSort }): React.JSX.Element {
               size='menu-item'
               className={cn(
                 'justify-start',
-                sort.value === option && 'bg-accent-strong hover:bg-accent-strong',
+                sort.value === option && 'bg-accent-strong hover-enabled:bg-accent-strong',
               )}
               onClick={() => {
                 sort.onChange(option);
