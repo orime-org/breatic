@@ -795,6 +795,7 @@ describe("unresolved failed refunds, read as production reads them (§5.3)", () 
         operationId: approve.id,
         everSucceeded: true,
         resolvedByOperationId: null,
+        failureReason: null,
       },
       {
         stripeRefundId: canceledExt,
@@ -803,6 +804,7 @@ describe("unresolved failed refunds, read as production reads them (§5.3)", () 
         operationId: null,
         everSucceeded: true,
         resolvedByOperationId: null,
+        failureReason: null,
       },
     ];
     expect([...listed].sort((a, b) => a.stripeRefundId.localeCompare(b.stripeRefundId))).toEqual(

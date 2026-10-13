@@ -50,6 +50,7 @@ function refund(
     operationId: OWN_OP,
     everSucceeded: status === "succeeded",
     resolvedByOperationId: null,
+    failureReason: null,
     ...overrides,
   };
 }

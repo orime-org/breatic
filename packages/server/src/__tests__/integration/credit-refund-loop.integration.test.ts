@@ -102,6 +102,7 @@ import { getCreditRefundConfig } from "@server/config/credit-refund.js";
 import { executeRefund } from "@server/modules/credit-refund/executor.js";
 import { findById, type CreditRefundOperation } from "@server/modules/credit-refund/operation.repo.js";
 import { runRefundLoopOnce, startRefundLoop } from "@server/modules/credit-refund/refund-loop.js";
+import { sendOperationMailsLater } from "@server/modules/credit-refund/refund-mail.js";
 import { applyRefundSnapshot } from "@server/modules/credit-refund/refund-snapshot.js";
 import { beforeNextList, fakeStripe, stripeError } from "./fake-stripe-refunds.js";
 import { mailsSettled } from "./internal-api-harness.js";
@@ -1089,7 +1090,11 @@ describe("step 2 — re-read Stripe for awaiting_stripe dispositions", () => {
       // Another writer reads Stripe and commits the finish while this read
       // is still out; then this read fails.
       const page = (async () => {
-        await inTx((tx) => applyRefundSnapshot(tx, paymentId, [refundObject(own, "succeeded", PAID_CENTS, opId)], "webhook"));
+        const judged = await inTx((tx) =>
+          applyRefundSnapshot(tx, paymentId, [refundObject(own, "succeeded", PAID_CENTS, opId)], "webhook"),
+        );
+        // The real webhook sends the buyer mail after its commit.
+        if (judged !== null) sendOperationMailsLater(judged);
         throw stripeError(500);
       })();
       page.catch(() => undefined);

@@ -39,6 +39,7 @@ function copy(
     operationId: null,
     everSucceeded: true,
     resolvedByOperationId: null,
+    failureReason: null,
     ...overrides,
   };
 }

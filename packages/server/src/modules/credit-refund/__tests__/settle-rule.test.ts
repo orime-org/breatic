@@ -35,6 +35,7 @@ function refund(
     operationId: own ? OP : null,
     everSucceeded: status === "succeeded",
     resolvedByOperationId: null,
+    failureReason: null,
   };
 }
 
