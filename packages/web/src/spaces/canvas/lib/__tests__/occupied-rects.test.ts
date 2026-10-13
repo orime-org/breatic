@@ -37,7 +37,7 @@ const noMeasure = (): undefined => undefined;
 const WITH_COUNTS = EMPTY_NODE_SIZE.width + COUNTS_COLUMN_FLOW_REACH;
 
 describe('occupiedRects', () => {
-  it('sizes a group by its own width and height, whatever was measured', () => {
+  it('sizes a group by its own frame, whatever was measured, with no room added for task counts', () => {
     const rects = occupiedRects([at({ id: 'g', type: 'group', width: 600, height: 400 })], () => ({
       width: 10,
       height: 10,
@@ -114,10 +114,5 @@ describe('occupiedRects', () => {
       noMeasure,
     );
     expect(rects.map((r) => r.width)).toEqual([WITH_COUNTS, WITH_COUNTS, WITH_COUNTS, WITH_COUNTS]);
-  });
-
-  it('counts a group by its own frame, with no room added for task counts', () => {
-    const rects = occupiedRects([at({ id: 'g', type: 'group', width: 600, height: 400 })], noMeasure);
-    expect(rects[0]?.width).toBe(600);
   });
 });

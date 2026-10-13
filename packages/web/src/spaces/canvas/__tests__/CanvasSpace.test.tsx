@@ -4582,6 +4582,23 @@ describe('what an Understand press leaves on screen', () => {
   });
 });
 
+// A landed proposal is framed by a ReactFlow camera move jsdom cannot run, so
+// this pins how that move is asked for the way the Understand framing above
+// is pinned; where it lands is `frameProposal`'s, which has its own tests.
+describe('how the camera follows a landed proposal', () => {
+  const src = readFileSync(resolve(__dirname, '../CanvasSpace.tsx'), 'utf8');
+  const follow = src.slice(
+    src.indexOf('const placed = placeProposalAt'),
+    src.indexOf('const focus = whatToFocus'),
+  );
+
+  it('slides in a straight line over the proposal framing time', () => {
+    expect(follow).toContain('frameProposal(placed.bounds');
+    expect(follow).toContain('duration: PROPOSAL_FRAME_MS');
+    expect(follow).toContain('interpolate: \'linear\'');
+  });
+});
+
 // The space warms the model catalog on mount (#1966). Pinned here rather than
 // left to the hook's own test, because the hook and the CALL are two different
 // invariants: `use-prefetch-model-catalog.test.tsx` proves the hook prefetches,

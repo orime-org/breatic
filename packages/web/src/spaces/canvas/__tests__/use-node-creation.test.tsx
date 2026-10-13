@@ -1217,6 +1217,35 @@ describe('useNodeCreation', () => {
       expect(group?.x).toBe(planned.x);
     });
 
+    it('keeps clear past a group as far as its members’ counts reach', () => {
+      const planned = groupRectForMembers(planFlowLayout(PAIR, { x: 0, y: 0 }))!;
+      const reach = COUNTS_COLUMN_FLOW_REACH - GROUP_PADDING;
+      const right = { x: planned.x + planned.width + reach + ROW_GAP_PX - 1, y: planned.y, width: 100, height: 100 };
+      // Clear of the group's own rect and gap: only the counts can take this spot.
+      expect(right.x).toBeGreaterThan(planned.x + planned.width + ROW_GAP_PX);
+      const { result } = renderHook(() => useNodeCreation('p-gright', 's-gright'));
+
+      result.current.placeProposalAt(PAIR, { x: 0, y: 0 }, [right]);
+
+      const [group] = groupRects('p-gright', 's-gright');
+      expect(group!.x).toBeGreaterThan(planned.x);
+    });
+
+    it('keeps clear below a group as deep as its members’ counts reach', () => {
+      const spots = planFlowLayout(PAIR, { x: 0, y: 0 });
+      const planned = groupRectForMembers(spots)!;
+      const top = Math.min(...spots.map((s) => s.y));
+      const below = { x: planned.x, y: top + COUNTS_COLUMN_FLOW_DEPTH + ROW_GAP_PX - 1, width: 100, height: 100 };
+      // Clear of the group's own rect and gap: only the counts can take this spot.
+      expect(below.y).toBeGreaterThan(planned.y + planned.height + ROW_GAP_PX);
+      const { result } = renderHook(() => useNodeCreation('p-gdeep', 's-gdeep'));
+
+      result.current.placeProposalAt(PAIR, { x: 0, y: 0 }, [below]);
+
+      const [group] = groupRects('p-gdeep', 's-gdeep');
+      expect(group!.x).toBeGreaterThan(planned.x);
+    });
+
     it('keeps the room its own task counts will take clear on its right', () => {
       const one: CanvasProposal = {
         nodes: [{ role: 'source', type: 'image', name: 'Your photo' }],

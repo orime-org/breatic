@@ -46,6 +46,16 @@ describe('shiftRightPastOccupied', () => {
     expect(batch.x + dx).toBe(1686);
   });
 
+  it('stops past a node whose right edge is fractional', () => {
+    // 208.0844 + 48 - 48 is 208.08439999999996 in floating point: walking the
+    // batch's own x and taking the gap back off lands short of the edge it
+    // just stepped past, so that edge is hit again on every step.
+    const near = { x: 0, y: 0, width: 356, height: 232 };
+    const taken = { x: -147.9156, y: 0, width: 356, height: 232 };
+    const dx = shiftRightPastOccupied({ ...near, x: -200 }, [taken], GAP);
+    expect(-200 + dx).toBeCloseTo(taken.x + taken.width + GAP, 9);
+  });
+
   it('counts a node closer than the gap as taking the spot', () => {
     const justBelow = { x: 1000, y: batch.y + batch.height + GAP / 2, width: 288, height: 192 };
     const dx = shiftRightPastOccupied(batch, [justBelow], GAP);

@@ -190,17 +190,21 @@ export function planFlowLayout(proposal: CanvasProposal, centre: Spot): Placed[]
  * @throws {never} Never.
  */
 export function shiftRightPastOccupied(batch: Rect, occupied: readonly Rect[], gap: number): number {
-  let x = batch.x;
+  // Walk the gap-padded left edge itself, set to a hit's right edge as is: the
+  // next test then compares that edge with itself and lets it go. Walking the
+  // batch's x instead takes the gap back off each time, and (edge + gap) - gap
+  // can land a hair short of the edge, which then hits again forever.
+  const start = batch.x - gap;
+  const top = batch.y - gap;
+  const bottom = batch.y + batch.height + gap;
+  let left = start;
   for (;;) {
-    const left = x - gap;
-    const right = x + batch.width + gap;
-    const top = batch.y - gap;
-    const bottom = batch.y + batch.height + gap;
+    const right = left + batch.width + gap * 2;
     const hits = occupied.filter(
       (r) => r.x < right && r.x + r.width > left && r.y < bottom && r.y + r.height > top,
     );
-    if (hits.length === 0) return x - batch.x;
-    x = Math.max(...hits.map((r) => r.x + r.width)) + gap;
+    if (hits.length === 0) return left === start ? 0 : left + gap - batch.x;
+    left = Math.max(...hits.map((r) => r.x + r.width));
   }
 }
 

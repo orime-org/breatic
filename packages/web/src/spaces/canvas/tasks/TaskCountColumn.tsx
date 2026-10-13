@@ -35,7 +35,6 @@ import { useTranslation } from '@web/i18n/use-translation';
 import { TASK_COUNT_ORDER } from '@web/spaces/canvas/overlay-scale';
 import type { TaskStatus } from '@web/spaces/canvas/tasks/TaskStatusDot';
 
-
 /**
  * The mark's colour per state. The state rides on the mark rather than on the
  * number: light theme measures these four against the cell's fills at 3.4 to
