@@ -14,6 +14,8 @@ ruleTester.run("hover-pattern", hoverPattern, {
     { code: "export const c = 'hover:bg-white/20';" },
     // Single-digit alpha is outside the ban, which requires two digits.
     { code: "export const c = 'hover:bg-muted/5';" },
+    { code: "export const c = 'hover-enabled:bg-accent';" },
+    { code: "export const c = 'hover-enabled:bg-black/70';" },
   ],
   invalid: [
     {
@@ -22,6 +24,11 @@ ruleTester.run("hover-pattern", hoverPattern, {
     },
     {
       code: "export const c = `flex hover:bg-accent/70 ${extra}`;",
+      errors: [{ messageId: "forbiddenClass" }],
+    },
+    // The guarded hover of a control that can wait or be disabled.
+    {
+      code: "export const c = 'hover-enabled:bg-accent/40';",
       errors: [{ messageId: "forbiddenClass" }],
     },
   ],
