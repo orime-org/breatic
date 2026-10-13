@@ -100,6 +100,41 @@ throttle_ban_time: 1             # ban duration in MINUTES (the extension multip
 # Quiet mode: suppress internal Hocuspocus logs (use our pino logger instead).
 quiet: true
 
+# ── Cross-service events (#1497) ──────────────────
+# Every collab instance reads the task-events and project-lifecycle streams
+# as one Redis consumer group, so each event reaches one instance. Task events
+# are written one document batch at a time under a per-document lease in the
+# coordination database (DB3).
+event_batch_count: 128            # most entries one XREADGROUP returns
+event_block_ms: 5000              # longest a read blocks when nothing is waiting
+event_doc_concurrency: 16         # documents of one batch written at once
+event_doc_lease_ms: 30000         # document lease length; extended while writing
+event_lease_retry_ms: 1000        # wait before retrying a batch whose lease is held elsewhere
+event_handoff_poll_ms: 50         # gap between checks that the previous holder's writes arrived
+event_handoff_wait_ms: 5000       # longest wait for them before the batch is retried
+event_claim_interval_ms: 15000    # gap between sweeps that take over idle entries
+event_claim_idle_ms: 60000        # idle time after which another instance's entry is taken over
+# Retrying an event whose handling threw, then giving up. Google Pub/Sub's
+# defaults: backoff from 10 s doubling to 600 s, five attempts — about five
+# minutes before an event goes to the dead-letter stream.
+event_retry_min_ms: 10000
+event_retry_max_ms: 600000
+event_max_failures: 5
+# On SIGTERM the consumers stop first and hand their unfinished entries over;
+# this bounds that step. Plus the 4 s of the drains after it, the process is
+# gone inside docker's default 10 s grace period.
+event_stop_deadline_ms: 3000
+
+# ── Unload store retry (#1497) ────────────────────
+# Another instance holding the same document can hold its store lock while
+# this one unloads it; the Redis extension then skips our store. That lock
+# lasts 1 s and is not extended, so the unload retries a little past it. During
+# shutdown the retries stop early enough to leave `unload_rescue_reserve_ms`
+# for the rescue file, its note and the alert.
+unload_store_retry_ms: 1200
+unload_store_retry_interval_ms: 200
+unload_rescue_reserve_ms: 1000
+
 # ── Timed Store (#40) ─────────────────────────────
 # Storing runs on a timer, not on "somebody changed something". The two
 # settings above (debounce / max_debounce) still describe when Hocuspocus
