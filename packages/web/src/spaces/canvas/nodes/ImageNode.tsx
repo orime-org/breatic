@@ -111,7 +111,15 @@ export const ImageNode = React.memo(function ImageNode({
                 loading='lazy'
                 decoding='async'
                 data-testid='image-node-img'
-                className={cn('block h-auto w-full', awaitsOriginal && 'opacity-0')}
+                // Under the skeleton the picture is hidden: a half-decoded or
+                // stretched picture would show through it (inner#1472). With
+                // no size it also leaves the flow, so the skeleton alone sizes
+                // the node until the picture brings its own.
+                className={cn(
+                  'block h-auto w-full',
+                  (loading || awaitsOriginal) && 'opacity-0',
+                  loading && !knowsSize && 'absolute inset-x-0 top-0',
+                )}
                 onError={onError}
                 onLoad={(e) => {
                   const img = e.currentTarget;
@@ -128,7 +136,7 @@ export const ImageNode = React.memo(function ImageNode({
                 }}
               />
               {/* With a size the skeleton covers the box the img reserves.
-                Without one the unloaded img has no height, and the empty
+                Without one the loading img is out of the flow, and the empty
                 node's 288x192 holds the place until the picture brings its
                 own. */}
               {loading || awaitsOriginal ? (

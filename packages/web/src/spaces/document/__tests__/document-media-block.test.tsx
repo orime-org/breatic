@@ -210,12 +210,15 @@ describe('the loading state and the preview (A23)', () => {
     expect(img.getAttribute('width')).toBe('800');
     expect(img.getAttribute('height')).toBe('400');
     expect(within(element(editor)).getByTestId('doc-media-skeleton')).toBeTruthy();
+    // inner#1472: a half-decoded picture does not show through the skeleton.
+    expect(img.classList.contains('opacity-0')).toBe(true);
 
     act(() => {
       img.dispatchEvent(new Event('load'));
     });
 
     expect(within(element(editor)).queryByTestId('doc-media-skeleton')).toBeNull();
+    expect(img.classList.contains('opacity-0')).toBe(false);
   });
 
   it('keeps the stored shape after it loads, whatever shape the preview has', () => {
