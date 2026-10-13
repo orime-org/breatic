@@ -1245,7 +1245,9 @@ describe("executeRefund — a stale attempt whose copy finishes another disposit
       expect.objectContaining({ operation_id: b, kind: "refund_completed", origin: "auto" }),
     ]);
     await mailsSettled(suite.sql, lot);
-    expect((await mailsOf(suite.sql, lot.lotId)).map((m) => [m.operation_id, m.status])).toEqual([[b, "sent"]]);
+    // Processed once: this suite has no SMTP transport, so the send records
+    // `skipped` (refund-mail.ts), not `sent`.
+    expect((await mailsOf(suite.sql, lot.lotId)).map((m) => [m.operation_id, m.status])).toEqual([[b, "skipped"]]);
   });
 });
 
