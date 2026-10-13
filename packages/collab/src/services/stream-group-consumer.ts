@@ -172,7 +172,7 @@ function describeError(err: unknown): string {
 
 /**
  * Start consuming.
- * @param opts - Stream, group, names, limits and the batch handler.
+ * @param opts - Stream, group, names, limits, the key function and the round handler.
  * @returns The running consumer.
  */
 export function startGroupConsumer(opts: GroupConsumerOptions): GroupConsumer {

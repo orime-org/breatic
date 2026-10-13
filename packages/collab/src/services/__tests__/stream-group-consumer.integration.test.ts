@@ -80,7 +80,7 @@ async function append(streamKey: string, payloads: string[]): Promise<string[]> 
  * Start a consumer and track it for teardown.
  * @param keys - The case's names.
  * @param consumer - Consumer name.
- * @param handle - What to do with each batch.
+ * @param handle - What to do with each round.
  * @param settings - Overrides on the fast defaults.
  * @returns The running consumer.
  */
@@ -103,7 +103,7 @@ function start(
   return c;
 }
 
-/** Every entry in the batch is done. */
+/** Every entry in the round is done. */
 function allDone(seen: string[]): (entries: StreamEntry[]) => Promise<Map<string, EntryOutcome>> {
   return async (entries) => {
     for (const e of entries) seen.push(e.payload ?? "");
@@ -157,7 +157,7 @@ describe("startGroupConsumer", () => {
 
   it("starts the group where the single-instance cursor stopped and keeps that cursor", async () => {
     const keys = keysFor();
-    const [first, second] = await append(keys.streamKey, ["already-handled", "not-yet"]);
+    const [first] = await append(keys.streamKey, ["already-handled", "not-yet"]);
     await stream.set(keys.legacyCursorKey, first!);
     const seen: string[] = [];
     start(keys, "a", allDone(seen));
@@ -165,7 +165,6 @@ describe("startGroupConsumer", () => {
     await new Promise((r) => setTimeout(r, 200));
     expect(seen).toEqual(["not-yet"]);
     expect(await stream.get(keys.legacyCursorKey)).toBe(first);
-    expect(second).toBeTypeOf("string");
   });
 
   it("reads entries written before the group existed when there is no old cursor", async () => {
@@ -270,11 +269,21 @@ describe("startGroupConsumer", () => {
     const settings = { claimIdleMs: 300, retryMinMs: 200, retryMaxMs: 800, maxFailures: 4 };
     start(keys, "a", failing, { ...settings, claimIntervalMs: 60_000 });
     await until(async () => (await pendingCount(keys)) === 1);
-    start(keys, "b", failing, { ...settings, claimIntervalMs: 100 });
+    let bCalls = 0;
+    start(
+      keys,
+      "b",
+      async (entries) => {
+        bCalls += 1;
+        return failing(entries);
+      },
+      { ...settings, claimIntervalMs: 100 },
+    );
     await until(async () => (await stream.xlen(`${keys.streamKey}:dead`)) >= 1, 10_000);
     await new Promise((r) => setTimeout(r, 2500));
     const dead = (await stream.xrange(`${keys.streamKey}:dead`, "-", "+")) as Array<[string, string[]]>;
     expect(dead.filter(([, f]) => f[f.indexOf("originId") + 1] === id)).toHaveLength(1);
+    expect(bCalls).toBe(0);
   });
 
   it("lets another consumer take over the entries of one that died", async () => {
@@ -290,7 +299,7 @@ describe("startGroupConsumer", () => {
     expect(seenB).toEqual(["held-by-a"]);
   });
 
-  it("keeps the entries of a live consumer whose batch is taking long", async () => {
+  it("keeps the entries of a live consumer whose round is taking long", async () => {
     const keys = keysFor();
     await append(keys.streamKey, ["slow"]);
     let aGotIt = false;
@@ -385,7 +394,7 @@ describe("startGroupConsumer", () => {
           // Failing entries sit in the backoff queue, which does not count against
           // batchCount, so the renewal holds more than one chunk.
           if (entries[0]!.payload !== "slow") return new Map(entries.map((e) => [e.id, { failed: new Error("boom") }]));
-          // The batch in hand outlives the stop deadline.
+          // The round in hand outlives the stop deadline.
           await until(() => ctl.stopping(), 10_000);
           await new Promise((r) => setTimeout(r, 1000));
           slowDone = true;

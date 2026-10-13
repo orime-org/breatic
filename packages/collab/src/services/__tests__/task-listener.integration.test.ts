@@ -438,22 +438,24 @@ describe("task events across two collab instances", () => {
 
   it("writes a burst across many documents faster with two instances than with one, at the production settings", async () => {
     /**
-     * Time twenty documents' events, written before anyone listens, through the given instances.
+     * Time thirty-two documents' events, one per document and written before
+     * anyone listens, through the given instances. One event per document
+     * keeps this about documents side by side; one document split across
+     * instances is the steady-flow case below.
      * @param instances - Instances to listen on.
      * @returns Milliseconds until every event is acknowledged.
      */
     async function timeBurst(instances: Hocuspocus[]): Promise<number> {
-      const cases = await Promise.all(Array.from({ length: 20 }, () => newCase({ n: "image" })));
+      const cases = await Promise.all(Array.from({ length: 32 }, () => newCase({ n: "image" })));
       const streamKey = cases[0]!.streamKey;
       for (const c of cases) {
-        for (const counts of [RUNNING, DONE]) {
-          await stream.xadd(streamKey, "*", "payload", JSON.stringify({ type: "node-task-counts", docName: c.docName, nodeId: "n", counts }));
-        }
+        await stream.xadd(streamKey, "*", "payload", JSON.stringify({ type: "node-task-counts", docName: c.docName, nodeId: "n", counts: DONE }));
       }
       const startedAt = Date.now();
-      // config/collab.yaml: event_batch_count 128, event_doc_concurrency 16.
-      instances.forEach((h, i) => listen(cases[0]!, h, `i${i}`, { batchCount: 128, keyConcurrency: 16 }));
-      await until(async () => (await pending(cases[0]!)) === 0 && (await stream.xlen(streamKey)) === 40, 60_000);
+      // The event_* values of config/collab.yaml.
+      const production = { batchCount: 128, keyConcurrency: 16, blockMs: 5000, leaseRetryMs: 1000, handoffWaitMs: 5000 };
+      instances.forEach((h, i) => listen(cases[0]!, h, `i${i}`, production));
+      await until(async () => (await pending(cases[0]!)) === 0 && (await stream.xlen(streamKey)) === 32, 60_000);
       const elapsed = Date.now() - startedAt;
       await Promise.all(listeners.splice(0).map((l) => l.stop()));
       return elapsed;
