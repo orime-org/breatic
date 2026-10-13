@@ -94,7 +94,7 @@ describe("the store's knobs", () => {
   });
 });
 
-describe("the knobs of several collab instances (#1497)", () => {
+describe("the knobs of several collab instances (inner#1497)", () => {
   it("reads every event-consumer and unload-retry knob from the YAML", async () => {
     const yaml = readFileSync(resolve(import.meta.dirname, "../../../../config/collab.yaml"), "utf-8");
     for (const key of [

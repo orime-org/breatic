@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Closing every connection this instance holds on one project (#1497 §6.2).
+ * Closing every connection this instance holds on one project (inner#1497 §6.2).
  *
  * Run by every instance when the project's `connections:close` control event
  * arrives. Hocuspocus closes one document of a shared socket with a CLOSE

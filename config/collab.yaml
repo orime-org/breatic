@@ -100,12 +100,14 @@ throttle_ban_time: 1             # ban duration in MINUTES (shared-throttle.ts s
 # Quiet mode: suppress internal Hocuspocus logs (use our pino logger instead).
 quiet: true
 
-# ── Cross-service events (#1497) ──────────────────
+# ── Cross-service events (inner#1497) ────────────
 # Every collab instance reads the task-events and project-lifecycle streams
-# as one Redis consumer group, so each event reaches one instance. Task events
+# as one Redis consumer group, so each event is held by one instance at a
+# time; an event not acknowledged is taken over by another once idle past
+# event_claim_idle_ms. Task events
 # are written one document batch at a time under a per-document lease in the
 # coordination database (DB3).
-event_max_held: 128               # most entries one instance holds at once, writing and queued
+event_max_held: 128               # most entries one instance holds per stream at once, writing and queued; entries waiting out a failure backoff are not counted
 event_block_ms: 5000              # longest a read blocks when nothing is waiting
 event_doc_concurrency: 16         # most documents one instance writes at once; a read takes at most this many free slots
 event_doc_lease_ms: 30000         # document lease length; extended while writing
@@ -121,15 +123,16 @@ event_claim_idle_ms: 60000        # idle time after which another instance's ent
 event_retry_min_ms: 10000
 event_retry_max_ms: 600000
 event_max_failures: 5
-# On SIGTERM the consumers stop first and hand their unfinished entries over;
-# this bounds that step. Plus the 4 s of the drains after it, the process is
-# gone inside docker's default 10 s grace period.
+# On SIGTERM the consumers stop first: this bounds their wait for the running
+# writes, and the hand-over of the rest follows. After it come a log flush of
+# up to 0.5 s, the 4 s drains, another log flush of up to 0.5 s and a Sentry
+# flush of up to 2 s; docker's default grace period is 10 s.
 event_stop_deadline_ms: 3000
 # A consumer idle this long with nothing pending is removed from its group;
 # instance ids change on every start, so stopped instances leave names behind.
 event_forget_idle_consumer_ms: 86400000
 
-# ── Unload store retry (#1497) ────────────────────
+# ── Unload store retry (inner#1497) ──────────────
 # Another instance holding the same document can hold its store lock while
 # this one unloads it; the Redis extension then skips our store. That lock
 # lasts 1 s and is not extended, so the unload retries a little past it. During

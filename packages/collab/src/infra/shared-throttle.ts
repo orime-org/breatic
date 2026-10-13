@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * The connection throttle every collab instance shares (#1497 §6.6).
+ * The connection throttle every collab instance shares (inner#1497 §6.6).
  *
  * Counts and bans live in Redis, so an IP gets the same limit however many
  * instances its connections land on. The verdicts match the in-memory

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * What the project-lifecycle consumer does with one command (#1497 §6.2).
+ * What the project-lifecycle consumer does with one command (inner#1497 §6.2).
  *
  * The consumer group hands each command to one collab instance, so that
  * instance does the part that happens once — copying a duplicate's documents —

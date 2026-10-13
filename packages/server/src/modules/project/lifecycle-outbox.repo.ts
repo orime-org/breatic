@@ -49,11 +49,12 @@ export interface ForwardResult {
 }
 
 /**
- * Forward the oldest unsent row, in a transaction of its own (#1497 §6.3).
+ * Forward the oldest unsent row, in a transaction of its own (inner#1497 §6.3).
  *
  * `FOR UPDATE SKIP LOCKED` lets several server instances drain the outbox at
- * once: each takes a row no other open transaction holds, so no row is
- * published twice. A publish that throws leaves the row unsent with its
+ * once: each takes a row no other open transaction holds, so no two instances
+ * publish the same row; a crash between a row's publish and its commit
+ * publishes it again. A publish that throws leaves the row unsent with its
  * attempt count raised, both written by this same transaction.
  * @param publish - Sends the event to the lifecycle stream.
  * @returns The row it took, or null when nothing is unsent.

@@ -19,7 +19,7 @@
  *   - Yjs data path bugs (wrong Y.Map nesting, wrong field key)
  *   - FK constraint failures in DB fixture setup
  *
- * @see packages/collab/src/task-listener.ts
+ * @see packages/collab/src/services/task-listener.ts
  * @see packages/worker/src/handlers.ts
  */
 

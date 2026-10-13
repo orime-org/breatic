@@ -27,8 +27,10 @@
  *
  * Why pub/sub (not Streams):
  *
- *   - Notification-only: a consumer that's offline can safely miss
- *     a message — its next reconnect re-queries PG.
+ *   - Notification-only. A missed `members:changed` or `activity:new` is
+ *     made up by the next reconnect, which re-queries PG; a missed
+ *     `connections:close` leaves that instance's connections on the role
+ *     they had until they next reconnect.
  *   - No replay / consumer-group semantics needed.
  *
  * Why DB2 (REDIS_STREAM_URL):
@@ -114,7 +116,7 @@ export async function publishActivityNew(projectId: string): Promise<void> {
 }
 
 /**
- * Ask every collab instance to close its connections to a project (#1497
+ * Ask every collab instance to close its connections to a project (inner#1497
  * §6.2). Each instance holds some of the project's connections, so the
  * instance that handled the lifecycle command cannot close them all itself.
  * @param projectId - Project whose connections are closed.

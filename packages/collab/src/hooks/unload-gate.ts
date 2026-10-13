@@ -12,7 +12,7 @@
  *
  * So this is the one place left to act, and it gets one attempt — repeated
  * only while the store lock of another instance holding the same document
- * kept our write from running (#1497 §6.4). Holding the document instead
+ * kept our write from running (inner#1497 §6.4). Holding the document instead
  * would protect the content but hand a long outage the ability to fill memory
  * with every document ever opened, and a collab that falls over costs
  * everyone rather than one person.
@@ -134,7 +134,7 @@ export interface UnloadGateDeps {
     /** Kept free before the shutdown deadline for the rescue file and alert. */
     rescueReserveMs: number;
   };
-  /** When the process must be gone by, once shutdown has begun. */
+  /** The end of the shutdown drains, once shutdown has reached them. */
   shutdownDeadline(): number | undefined;
 }
 

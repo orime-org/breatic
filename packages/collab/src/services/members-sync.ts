@@ -120,7 +120,7 @@ function relayInvalidate(
  * project. Unknown / unparseable messages are logged and ignored.
  * @param hocuspocus - Running Hocuspocus server passed through to the kick / relay handlers.
  * @param raw - Raw JSON message body received on the project control channel.
- * @throws {TypeError} When the message decodes to something other than an object; the subscriber logs it.
+ * @throws {TypeError} When the message decodes to `null`; the subscriber logs it.
  */
 async function handleEvent(
   hocuspocus: Hocuspocus,

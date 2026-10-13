@@ -2,12 +2,13 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Project-lifecycle commands, from the cross-service stream (#1497 §6.2).
+ * Project-lifecycle commands, from the cross-service stream (inner#1497 §6.2).
  *
  * The server's transactional-outbox relay forwards each command onto
  * `${env}:stream:project-lifecycle`. Every collab instance reads it as one
- * consumer group, so each command reaches one instance, which does the part
- * that must happen once and then asks every instance to close its own
+ * consumer group, so each command is held by one instance at a time (an
+ * unacknowledged one goes to another once idle). That instance does the part that
+ * must happen once and then asks every instance to close its own
  * connections to the project:
  *
  *   - `project:duplicated` → copy `project-{src}/*` → `project-{new}/*` in the

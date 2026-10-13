@@ -7,7 +7,7 @@
  * Every collab instance receives each control event, so each one sends the
  * resulting signal only to its own connections (`relayStateless`): a
  * `broadcastStateless` would go through the Redis extension to the other
- * instances too, and each client would get one copy per instance (#1497 §6.5).
+ * instances too, and each client would get one copy per instance (inner#1497 §6.5).
  *
  *   - `members:changed` kicks the affected user's project ws connections and
  *     relays a stateless invalidate signal on the meta doc

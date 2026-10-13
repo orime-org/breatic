@@ -3,7 +3,7 @@
 
 /**
  * The shared throttle lets connections through when Redis cannot answer
- * (#1497 §6.6): the same choice the seat registry makes, and an outage is an
+ * (inner#1497 §6.6): the same choice the seat registry makes, and an outage is an
  * operations event that the error log reports.
  */
 

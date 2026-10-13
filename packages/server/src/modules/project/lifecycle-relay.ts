@@ -7,9 +7,10 @@
  * Polls the `project_lifecycle_outbox` table for unsent rows and
  * forwards each to the durable `project-lifecycle` Redis Stream, one row per
  * transaction (`forwardNextUnsent`), so several server instances can run it
- * at once without publishing a row twice. At-least-once: a row is marked
+ * at once without two of them publishing the same row. At-least-once: a row is marked
  * sent in the transaction that published it, so a crash between the publish
- * and the commit re-publishes it (collab's consumer is idempotent). A failed
+ * and the commit re-publishes it (collab's copy is idempotent on its canvas
+ * documents). A failed
  * publish bumps the attempt counter and leaves the row unsent for the next
  * pass.
  *

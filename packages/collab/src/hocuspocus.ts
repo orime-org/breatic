@@ -98,7 +98,7 @@ export interface CollabServerInfra {
    */
   redisKeyPrefix: string;
   /**
-   * When the process must be gone by, once shutdown has begun; undefined
+   * The end of the shutdown drains, once shutdown has reached them; undefined
    * before. The unload gate stops retrying in time to rescue before it.
    */
   shutdownDeadline: () => number | undefined;

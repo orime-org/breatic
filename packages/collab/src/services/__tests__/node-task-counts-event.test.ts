@@ -6,9 +6,10 @@
  *
  * The canvas document holds four numbers about tasks and nothing else, so
  * this event carries the whole of them, recounted by the server after every
- * state change. There is no task id on the wire, no per-entry update and no
- * compare-and-set: a number is either the current one or an older one, and
- * the next state change on that node replaces it outright.
+ * state change. There is no task id on the wire and no per-entry update.
+ * Each write happens only when the event is newer than what it replaces: the
+ * counts version the caller holds (in DB3), or the node's `taskResultEventId`
+ * for the result.
  *
  * The transition that reaches `done` carries the content fields as well,
  * and collab writes both in ONE Yjs transaction. Split across two, there is a
@@ -369,7 +370,7 @@ describe("applyNodeTaskCounts — nothing new, nothing written", () => {
   });
 });
 
-describe("an event older than what the node holds changes nothing", () => {
+describe("counts and result each change only for an event newer than their own version", () => {
   const nodeId = "n-1";
   const running = { running: 1, done: 0, failed: 0, expired: 0 };
   const finished = { running: 0, done: 1, failed: 0, expired: 0 };

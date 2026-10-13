@@ -126,7 +126,7 @@ const REDIS_COLLAB_URL = env.REDIS_COLLAB_URL;
 const REDIS_KEY_PREFIX = env.REDIS_KEY_PREFIX;
 
 // Namespace of the cursor keys the single-instance reader kept. Each consumer
-// group is created at the position its cursor records (#1497 §6.9), and the
+// group is created at the position its cursor records (inner#1497 §6.9), and the
 // key is left in place for a rollback to the single-instance reader. Like the
 // stream keys (core's `taskEventsStreamKey()` / `lifecycleStreamKey()`), it is
 // `ENV`, not `REDIS_KEY_PREFIX`.
@@ -226,7 +226,7 @@ async function main(): Promise<void> {
   logger.info({ port: env.COLLAB_PORT }, "Hocuspocus collaboration server started");
 
   // Both cross-service streams are read as consumer groups this instance
-  // joins under its instance id (#1497 §6.1, §6.2).
+  // joins under its instance id (inner#1497 §6.1, §6.2).
   const cfg = getCollabConfig();
   const consumerSettings = {
     maxHeld: cfg.event_max_held,
@@ -396,8 +396,8 @@ async function main(): Promise<void> {
 
     // The stream consumers stop first. Each waits up to
     // `event_stop_deadline_ms` for its running rounds and marks everything
-    // else it holds as idle, so another instance — or this one's successor on
-    // startup — takes it on its next sweep. A round still running past that
+    // else it holds as idle, so this one's successor takes it on its first
+    // sweep at startup, or another instance once its sweep reaches it. A round still running past that
     // keeps running into the drains below; if it cannot finish there, it stays
     // pending and is taken over after `event_claim_idle_ms`.
     await Promise.all([taskConsumer.stop(), lifecycleConsumer.stop()]);

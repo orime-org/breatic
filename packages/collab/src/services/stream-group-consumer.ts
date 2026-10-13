@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Consume a Redis stream as one member of a consumer group (#1497 §6.1).
+ * Consume a Redis stream as one member of a consumer group (inner#1497 §6.1).
  *
- * Every collab instance is one consumer in the group, so each entry goes to
- * exactly one instance. What this module owns is the part every stream needs
+ * Every collab instance is one consumer in the group, so each entry is held
+ * by one instance at a time. An entry that is not acknowledged goes to another
+ * consumer once it has been idle past `claimIdleMs`, so delivery is at least
+ * once and the caller's handling must tolerate a repeat. What this module owns is the part every stream needs
  * the same way: creating the group, reading, acknowledging, taking over the
  * entries of a consumer that stopped answering, retrying a failing entry with
  * a growing delay until it goes to the dead-letter stream, and handing the
@@ -14,14 +16,16 @@
  * answers each entry with an outcome.
  *
  * Entries of one key run one round at a time, in the order this consumer took
- * them; an entry being retried runs after newer ones of its key, and the
- * caller's versions keep that safe. Different keys run side by side up to
- * `keyConcurrency`. A read takes only what can start now, and reads go on
- * while rounds run: a read asks for at most as
- * many entries as there are free key slots, so even with every entry on a new
- * key nothing waits here behind a busy slot while a peer sits idle (Celery
- * prefetch, RabbitMQ consumer prefetch, Pub/Sub flow control). Entries for a
- * key whose round is running join that key's next round.
+ * them. An entry retried after a failure, and one taken over from another
+ * consumer, runs after newer ones of its key, and the caller's versions keep
+ * that safe; entries answered `wait` go back to the head of their key's queue.
+ * Different keys run side by side up to `keyConcurrency`. Reads go on while
+ * rounds run, and a read asks for at most as many entries as there are free
+ * key slots, so an entry read off the stream does not wait here behind a busy
+ * slot while a peer sits idle (Celery prefetch, RabbitMQ consumer prefetch,
+ * Pub/Sub flow control); a take-over sweep claims up to the room left within
+ * `maxHeld`. Entries for a key whose round is running join that key's next
+ * round.
  *
  * Two connections: the blocking read holds one for up to `blockMs`, and any
  * command sent on it would queue behind the block.
@@ -51,7 +55,7 @@ export interface StreamEntry {
 /**
  * What became of one entry.
  * - `done`: handled (or deliberately skipped); acknowledged.
- * - `wait`: not attempted this time (lease busy, peer write not here yet, or stopping); retried soon, not counted as a failure; while stopping, left pending for the hand-over.
+ * - `wait`: not attempted this time (lease busy, peer write not here yet, or stopping); retried soon, not counted as a failure; while stopping, left pending: handed over when its round settled before the stop deadline, otherwise taken over once idle past `claimIdleMs`.
  * - `{ failed }`: handling threw; counted, retried with backoff, dead-lettered at the limit.
  */
 export type EntryOutcome = "done" | "wait" | { failed: unknown };
@@ -112,9 +116,10 @@ export interface GroupConsumerOptions {
 /** A running consumer. */
 export interface GroupConsumer {
   /**
-   * Stop reading and starting rounds, and hand over every entry not in a
-   * running round. Resolves within `stopDeadlineMs`; a round still running
-   * then settles afterwards on a connection kept open until it does.
+   * Stop reading and starting rounds, wait up to `stopDeadlineMs` for the
+   * running rounds, then hand over every entry not in a running round and
+   * resolve. A round still running then settles afterwards on a connection
+   * kept open until it does.
    */
   stop: () => Promise<void>;
 }
@@ -575,8 +580,9 @@ export function startGroupConsumer(opts: GroupConsumerOptions): GroupConsumer {
 
   /**
    * Mark every entry this consumer still holds, except those in running
-   * rounds, as idle past the take-over limit, so the next sweep of any
-   * consumer takes it. A running round's entries are acknowledged when it
+   * rounds, as idle past the take-over limit, so a later sweep of a consumer
+   * with room takes it: a successor's first sweep at startup, or a peer's once
+   * its walk of the pending list reaches it. A running round's entries are acknowledged when it
    * settles, or taken over like a dead consumer's once the process is gone.
    * @throws {Error} When a Redis command fails; the stop logs it.
    */

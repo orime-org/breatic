@@ -145,7 +145,7 @@ export type ProjectConnectionsCloseReason = "content-updated" | "archived" | "re
 
 /**
  * Control event asking every collab instance to close its connections to one
- * project (#1497 §6.2). The lifecycle consumer that handled the command runs
+ * project (inner#1497 §6.2). The lifecycle consumer that handled the command runs
  * on one instance; the connections are spread across all of them.
  */
 export interface ProjectConnectionsCloseEvent {

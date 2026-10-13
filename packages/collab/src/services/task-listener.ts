@@ -3,7 +3,7 @@
 
 /**
  * Task lifecycle events, from the cross-service stream into the canvas
- * documents (#186, #1497 §6.1).
+ * documents (#186, inner#1497 §6.1).
  *
  * Data path:
  *   server / worker → Redis stream → consumer group (one round per document) →
@@ -13,12 +13,13 @@
  * are, whether a result rides along — the server decided all of it.
  *
  * Several collab instances read the stream as one consumer group, so each
- * event reaches one of them. What keeps two of them from writing the same
- * document at once is the document lease in the coordination database; what
- * keeps the next holder from writing over a peer's update it has not received
- * yet is the hand-over record, the state vector the previous holder stored;
- * what keeps an older event from undoing a newer one is the version each node
- * carries.
+ * event is held by one of them at a time; an event not acknowledged goes to
+ * another once idle, so one can be handled twice. What keeps two of them from
+ * writing the same document at once is the document lease in the coordination
+ * database; what keeps the next holder from writing over a peer's update it
+ * has not received yet is the hand-over record, the state vector the previous
+ * holder stored; what keeps an older event from undoing a newer one is the
+ * version each node carries.
  *
  * Doc layout: `project-{pid}/canvas-{spaceId}`, one canvas doc per Space. Any
  * other doc name is skipped.

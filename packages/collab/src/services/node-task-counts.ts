@@ -8,7 +8,8 @@
  * carries all four, recounted on the server after every state change. Collab
  * writes what it is told, but only when the event is newer than what the node
  * holds: the result version sits in the node, the counts version in DB3
- * (#1497 §6.1). An older event that arrives late changes nothing.
+ * (inner#1497). Counts and result are versioned apart: an event older than
+ * the version it would replace changes nothing.
  *
  * All judgement happens before the event is published — which task moved,
  * what the counts now are, whether a result rides along. Collab reaches no
@@ -27,7 +28,7 @@ export const TASK_RESULT_EVENT_ID_KEY = "taskResultEventId";
 
 /**
  * Write the counts, and the content fields when the event carries them, each
- * only when the event is newer than what the node holds (#1497 §6.1).
+ * only when the event is newer than what the node holds (inner#1497 §6.1).
  *
  * Counts and content are versioned apart. A result can arrive after a newer
  * counts-only event and still be the newest content the node has seen; it

@@ -301,7 +301,7 @@ export interface CanvasNodeFields {
     taskCounts?: NodeTaskCounts;
     /**
      * The stream id of the task event the node's content last came from
-     * (#1497 §6.1). Collab writes a result only when its event is newer, so
+     * (inner#1497 §6.1). Collab writes a result only when its event is newer, so
      * an older event handled late on another instance cannot replace newer
      * content. Node state, not content: a copy of the node does not carry it.
      */

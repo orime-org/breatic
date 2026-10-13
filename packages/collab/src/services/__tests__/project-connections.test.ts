@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Closing one project's connections on this instance (#1497 §6.2).
+ * Closing one project's connections on this instance (inner#1497 §6.2).
  *
  * Every instance runs this when the project's `connections:close` control
  * event arrives, so each closes only the connections it holds. The reason is
