@@ -10,6 +10,8 @@
 
 import { db } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
+import { getCreditRefundConfig } from "@server/config/credit-refund.js";
+import { attemptsExhausted } from "@server/modules/credit-refund/backoff.js";
 import * as operationRepo from "@server/modules/credit-refund/operation.repo.js";
 import type { CreditRefundOperation } from "@server/modules/credit-refund/operation.repo.js";
 import {
@@ -38,7 +40,9 @@ interface Attempt {
 /**
  * Make one attempt for a `started` disposition whose lease the caller holds.
  * An attempt after the first looks the refund up before asking again: Stripe
- * keeps an idempotency key only 24 hours, and the resume may come later.
+ * keeps an idempotency key only 24 hours, and the resume may come later. With
+ * no attempt left, a lookup that finds nothing ends it (E11); a lookup that
+ * fails leaves it in flight until Stripe answers (§9).
  * @param op - The disposition, as the caller last read it with its lease.
  * @param actor - Who runs the attempt: the endpoint or the loop, for the event rows.
  * @returns Once the attempt's cell is committed.
@@ -46,11 +50,19 @@ interface Attempt {
  */
 export async function executeRefund(op: CreditRefundOperation, actor: Actor): Promise<void> {
   const { attempt, paymentIntent } = await begin(op, actor);
+  // Every read is copied, oldest first (§6.4): the create answer may be the
+  // only sight of a success, the list after it the newer word on the status.
+  const reads: StripeRefundObject[][] = [];
   if (op.firstCalledAt !== null) {
-    const listed = await read(attempt, paymentIntent, []);
+    const listed = await read(attempt, paymentIntent, reads);
     if (listed === null) return;
     const found = ownRefundIn(listed, op.id);
     if (found) return judgeAndAnswer(attempt, found, [listed]);
+    // Stripe holds none of it and no attempt is left: a person decides.
+    if (attemptsExhausted(op.attemptCount, getCreditRefundConfig())) {
+      return answer(attempt, { type: "E11" }, [listed]);
+    }
+    reads.push(listed);
   }
 
   await operationRepo.markFirstCalled(op.id, attempt.leaseToken);
@@ -61,40 +73,20 @@ export async function executeRefund(op: CreditRefundOperation, actor: Actor): Pr
   });
   const verdict = classifyCreateAnswer(created.answer, op.attemptCount);
   if (verdict.kind === "event") {
-    return answer(attempt, { type: verdict.event, failure: created.failure! }, []);
+    return answer(attempt, { type: verdict.event, failure: created.failure! }, reads);
   }
 
-  // The create answer is copied first, then the list read after it: the
-  // list is the newer word on the status, the answer may be the only sight
-  // of a success (§6.4).
-  const seen = verdict.kind === "refund" ? [created.refund!] : [];
-  const listed = await read(attempt, paymentIntent, seen);
+  if (verdict.kind === "refund") reads.push([created.refund!]);
+  const listed = await read(attempt, paymentIntent, reads);
   if (listed === null) return;
+  reads.push(listed);
   if (verdict.kind === "refund") {
     const own = listed.find((r) => r.id === created.refund!.id) ?? created.refund!;
-    return judgeAndAnswer(attempt, own, [seen, listed]);
+    return judgeAndAnswer(attempt, own, reads);
   }
   const found = ownRefundIn(listed, op.id);
-  if (found) return judgeAndAnswer(attempt, found, [listed]);
-  return answer(attempt, { type: verdict.ifNotFound, failure: created.failure! }, [listed]);
-}
-
-/**
- * End a `started` disposition whose attempts are used up (E11) once a read of
- * Stripe shows no refund of it; a refund found is judged (§6.2 E11). A read
- * that fails is E16: the disposition stays in flight until Stripe answers (§9).
- * @param op - The disposition, under the lease the loop just claimed.
- * @param actor - Who ends it.
- * @returns Once the cell is committed.
- * @throws {Error} When the payment has no payment intent.
- */
-export async function closeExhausted(op: CreditRefundOperation, actor: Actor): Promise<void> {
-  const { attempt, paymentIntent } = await begin(op, actor);
-  const listed = await read(attempt, paymentIntent, []);
-  if (listed === null) return;
-  const found = ownRefundIn(listed, op.id);
-  if (found) return judgeAndAnswer(attempt, found, [listed]);
-  return answer(attempt, { type: "E11" }, [listed]);
+  if (found) return judgeAndAnswer(attempt, found, reads);
+  return answer(attempt, { type: verdict.ifNotFound, failure: created.failure! }, reads);
 }
 
 /**
@@ -120,19 +112,19 @@ async function begin(
  * what the attempt had already seen copied.
  * @param attempt - The attempt.
  * @param paymentIntent - The payment intent.
- * @param seen - Refunds the attempt already holds (the create answer).
+ * @param earlier - The reads the attempt already holds, oldest first.
  * @returns The refunds, or null when the read failed and E16 was committed.
  */
 async function read(
   attempt: Attempt,
   paymentIntent: string,
-  seen: StripeRefundObject[],
+  earlier: StripeRefundObject[][],
 ): Promise<StripeRefundObject[] | null> {
   try {
     return await listRefunds(paymentIntent);
   } catch (err) {
     if (!(err instanceof StripeReadError)) throw err;
-    await answer(attempt, { type: "E16", failure: err.failure }, [seen]);
+    await answer(attempt, { type: "E16", failure: err.failure }, earlier);
     return null;
   }
 }

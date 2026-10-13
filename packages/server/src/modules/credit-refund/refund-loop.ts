@@ -13,8 +13,8 @@ import { db, env, logger } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 import { creditLotRepo } from "@breatic/domain";
 import { getCreditRefundConfig } from "@server/config/credit-refund.js";
-import { attemptsExhausted, waitedBackoffSeconds } from "@server/modules/credit-refund/backoff.js";
-import { closeExhausted, executeRefund } from "@server/modules/credit-refund/executor.js";
+import { waitedBackoffSeconds } from "@server/modules/credit-refund/backoff.js";
+import { executeRefund } from "@server/modules/credit-refund/executor.js";
 import * as operationRepo from "@server/modules/credit-refund/operation.repo.js";
 import type { CreditRefundOperation } from "@server/modules/credit-refund/operation.repo.js";
 import { transitionOperation } from "@server/modules/credit-refund/operation-transitions.js";
@@ -121,8 +121,7 @@ async function resumeStarted(isStopped: () => boolean): Promise<void> {
       if (op === null) continue;
       progressed = true;
       try {
-        if (attemptsExhausted(op.attemptCount, getCreditRefundConfig())) await closeExhausted(op, "loop");
-        else await executeRefund(op, "loop");
+        await executeRefund(op, "loop");
         sendOperationMailsLater(op.id);
       } catch (err) {
         logger.error({ err, operationId: op.id }, "refund_loop_execute_failed");

@@ -421,10 +421,14 @@ async function fromStarted(ctx: Ctx, event: OperationEvent): Promise<CreditRefun
     case "E7":
     case "E16":
     case "E17": {
+      // The attempt is over: its lease ends now, so a same-key repeat replays
+      // and the loop claims the row once it is due (§4.6). A failed read
+      // stays in the event row; last_error keeps the create's error (§5.1).
       const attemptCount = ctx.row.attemptCount + 1;
       return move(ctx, EVENT_NAME[event.type], {
         attemptCount,
-        lastError: event.failure.message,
+        ...(event.type !== "E16" && { lastError: event.failure.message }),
+        lease: { token: ctx.row.leaseToken!, seconds: 0 },
         nextAttemptInSeconds: nextAttemptDelaySeconds(attemptCount, getCreditRefundConfig()),
       }, detailOf(event));
     }
@@ -486,7 +490,6 @@ async function fromAwaiting(ctx: Ctx, event: OperationEvent): Promise<CreditRefu
       return move(ctx, EVENT_NAME.E13, {}, detailOf(event));
     case "E16":
       return move(ctx, EVENT_NAME.E16, {
-        lastError: event.failure.message,
         nextAttemptInSeconds: waitedBackoffSeconds(ctx.row.firstCalledAt, getCreditRefundConfig(), Date.now()),
       }, detailOf(event));
     default:
