@@ -132,6 +132,15 @@ function onVisitorChoice(keptAt?: string): void {
 }
 
 /**
+ * The policy revision the library runs under and writes: the code's, or a newer one the stored choice was made under.
+ * The account record takes the same, so a choice made here is not dropped as outdated.
+ * @returns The revision.
+ */
+export function consentRevision(): number {
+  return Math.max(CONSENT_REVISION, storedRevision());
+}
+
+/**
  * The policy revision the stored cookie was written under; readable before the library runs.
  * @returns The revision, or 0 when nothing is stored.
  */
@@ -225,7 +234,7 @@ async function boot(options: BannerOptions): Promise<void> {
   await CookieConsent.run({
     autoShow: false,
     // A choice stored under a newer revision stands (readBrowserChoice); the library must hold it too.
-    revision: Math.max(CONSENT_REVISION, storedRevision()),
+    revision: consentRevision(),
     cookie: {
       name: CONSENT_COOKIE_NAME,
       ...(options.cookieDomain !== '' ? { domain: options.cookieDomain } : {}),

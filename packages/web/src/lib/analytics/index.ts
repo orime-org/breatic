@@ -9,7 +9,6 @@
 
 import { captureException } from '@sentry/react';
 import {
-  CONSENT_REVISION,
   getLocale,
   onLocaleChange,
   t,
@@ -123,7 +122,7 @@ async function reportAccountConsent(module: Runtime): Promise<void> {
   // The server keeps only choices the person made; a regional default is not one.
   if (signedIn === null || choice === null || choice.source === 'implicit') return;
   try {
-    await apiPut('/users/me/analytics-consent', { ...choice, revision: CONSENT_REVISION });
+    await apiPut('/users/me/analytics-consent', { ...choice, revision: module.consentRevision() });
   } catch (err) {
     captureException(err, { tags: { area: 'product_analytics' } });
   }
