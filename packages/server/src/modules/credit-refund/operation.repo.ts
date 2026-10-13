@@ -107,7 +107,7 @@ export interface OperationPatch {
   lastError?: string;
   /** Seconds from now; null clears `next_attempt_at`. */
   nextAttemptInSeconds?: number | null;
-  /** A new lease from now; null clears token and `locked_until`. */
+  /** Set the lease: its token and the seconds left from now (0 ends it now); null clears both. */
   lease?: { token: string; seconds: number } | null;
   finished?: true;
 }
@@ -357,18 +357,27 @@ export async function lockIdempotencyKey(key: string, tx: DbTx): Promise<void> {
 }
 
 /**
- * Stamp the first Stripe call (§5.2 phase 2), under the caller's lease.
- * Progress only: the status does not move, so no event row.
+ * Before `refunds.create`: stamp the first call, only while the caller still
+ * holds the lease with at least one Stripe call's time left on it (§9).
  * @param id - The disposition.
- * @param leaseToken - The lease the caller holds.
+ * @param leaseToken - The caller's lease.
+ * @param callMs - How long one Stripe call may take.
+ * @returns False when the lease was taken over or is about to run out: the
+ *   caller must not call Stripe.
  */
-export async function markFirstCalled(id: string, leaseToken: string): Promise<void> {
-  await db
+export async function markFirstCalled(id: string, leaseToken: string, callMs: number): Promise<boolean> {
+  const rows = await db
     .update(creditRefundOperations)
     .set({ firstCalledAt: sql`coalesce(${creditRefundOperations.firstCalledAt}, now())` })
     .where(
-      and(eq(creditRefundOperations.id, id), eq(creditRefundOperations.leaseToken, leaseToken)),
-    );
+      and(
+        eq(creditRefundOperations.id, id),
+        eq(creditRefundOperations.leaseToken, leaseToken),
+        sql`${creditRefundOperations.lockedUntil} > now() + ${callMs} * interval '1 millisecond'`,
+      ),
+    )
+    .returning({ id: creditRefundOperations.id });
+  return rows.length > 0;
 }
 
 /** A `started` row whose executor is gone: lease run out, attempt due. */

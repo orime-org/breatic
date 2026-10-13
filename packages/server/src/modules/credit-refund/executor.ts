@@ -19,6 +19,7 @@ import {
   type Actor,
   type OperationEvent,
   type OperationEventBody,
+  type StripeFailure,
 } from "@server/modules/credit-refund/operation-transitions.js";
 import { applyRefundSnapshot, judgeOwnRefund } from "@server/modules/credit-refund/refund-snapshot.js";
 import { classifyCreateAnswer } from "@server/modules/credit-refund/stripe-answer.js";
@@ -50,22 +51,23 @@ interface Attempt {
  */
 export async function executeRefund(op: CreditRefundOperation, actor: Actor): Promise<void> {
   const { attempt, paymentIntent } = await begin(op, actor);
+  const config = getCreditRefundConfig();
   // Every read is copied, oldest first (§6.4): the create answer may be the
   // only sight of a success, the list after it the newer word on the status.
   const reads: StripeRefundObject[][] = [];
   if (op.firstCalledAt !== null) {
     const listed = await read(attempt, paymentIntent, reads);
     if (listed === null) return;
-    const found = ownRefundIn(listed, op.id);
-    if (found) return judgeAndAnswer(attempt, found, [listed]);
-    // Stripe holds none of it and no attempt is left: a person decides.
-    if (attemptsExhausted(op.attemptCount, getCreditRefundConfig())) {
-      return answer(attempt, { type: "E11" }, [listed]);
-    }
     reads.push(listed);
+    const found = ownRefundIn(listed, op.id);
+    if (found) return judgeAndAnswer(attempt, found, reads);
+    // Stripe holds none of it and no attempt is left: a person decides.
+    if (attemptsExhausted(op.attemptCount, config)) return answer(attempt, { type: "E11" }, reads);
   }
 
-  await operationRepo.markFirstCalled(op.id, attempt.leaseToken);
+  // A lease taken over or about to run out must not reach Stripe: the loop
+  // claims the row and carries on under its own lease (§9).
+  if (!(await operationRepo.markFirstCalled(op.id, attempt.leaseToken, config.stripeCallTimeoutMs))) return;
   const created = await createRefund({
     operationId: op.id,
     paymentIntent,
@@ -77,7 +79,7 @@ export async function executeRefund(op: CreditRefundOperation, actor: Actor): Pr
   }
 
   if (verdict.kind === "refund") reads.push([created.refund!]);
-  const listed = await read(attempt, paymentIntent, reads);
+  const listed = await read(attempt, paymentIntent, reads, created.failure);
   if (listed === null) return;
   reads.push(listed);
   if (verdict.kind === "refund") {
@@ -113,18 +115,20 @@ async function begin(
  * @param attempt - The attempt.
  * @param paymentIntent - The payment intent.
  * @param earlier - The reads the attempt already holds, oldest first.
+ * @param createFailure - The create's error, when this read follows it.
  * @returns The refunds, or null when the read failed and E16 was committed.
  */
 async function read(
   attempt: Attempt,
   paymentIntent: string,
   earlier: StripeRefundObject[][],
+  createFailure?: StripeFailure,
 ): Promise<StripeRefundObject[] | null> {
   try {
     return await listRefunds(paymentIntent);
   } catch (err) {
     if (!(err instanceof StripeReadError)) throw err;
-    await answer(attempt, { type: "E16", failure: err.failure }, earlier);
+    await answer(attempt, { type: "E16", failure: err.failure, ...(createFailure && { createFailure }) }, earlier);
     return null;
   }
 }

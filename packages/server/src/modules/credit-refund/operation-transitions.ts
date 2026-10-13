@@ -105,7 +105,9 @@ export type OperationEventBody =
       reason: "partial_refund" | "unexpected_external_refund";
     }
   | DeclineEvent
-  | { type: "E7" | "E8" | "E9" | "E16" | "E17"; failure: StripeFailure }
+  | { type: "E7" | "E8" | "E9" | "E17"; failure: StripeFailure }
+  /** `createFailure`: the create's error, when the read after it failed. */
+  | { type: "E16"; failure: StripeFailure; createFailure?: StripeFailure }
   | { type: "E10" | "E11" | "E12" | "E13" }
   | { type: "E14"; closedBy: string };
 
@@ -425,9 +427,10 @@ async function fromStarted(ctx: Ctx, event: OperationEvent): Promise<CreditRefun
       // and the loop claims the row once it is due (§4.6). A failed read
       // stays in the event row; last_error keeps the create's error (§5.1).
       const attemptCount = ctx.row.attemptCount + 1;
+      const createError = event.type === "E16" ? event.createFailure : event.failure;
       return move(ctx, EVENT_NAME[event.type], {
         attemptCount,
-        ...(event.type !== "E16" && { lastError: event.failure.message }),
+        ...(createError && { lastError: createError.message }),
         lease: { token: ctx.row.leaseToken!, seconds: 0 },
         nextAttemptInSeconds: nextAttemptDelaySeconds(attemptCount, getCreditRefundConfig()),
       }, detailOf(event));
@@ -479,9 +482,9 @@ async function fromAwaiting(ctx: Ctx, event: OperationEvent): Promise<CreditRefu
       return toAttention(ctx, event, "stripe_refund_failed_later", declineDetail(event), refundIdOf(event));
     case "E10":
       if (known) break;
-      return move(ctx, EVENT_NAME.E10, {
-        nextAttemptInSeconds: waitedBackoffSeconds(ctx.row.firstCalledAt, getCreditRefundConfig(), Date.now()),
-      }, detailOf(event));
+      // Only the loop's recheck sets the next look: a preview or webhook
+      // that finds nothing must not put off the 24-hour deadline (E12).
+      return move(ctx, EVENT_NAME.E10, {}, detailOf(event));
     case "E12":
       return known
         ? move(ctx, EVENT_NAME.E12, {}, detailOf(event))
@@ -782,6 +785,7 @@ function detailOf(event: OperationEvent): Record<string, unknown> {
       },
     }),
     ...("failure" in event && event.failure),
+    ...("createFailure" in event && event.createFailure && { createFailure: event.createFailure }),
     ...("reason" in event && { reason: event.reason }),
     ...actor,
   };
