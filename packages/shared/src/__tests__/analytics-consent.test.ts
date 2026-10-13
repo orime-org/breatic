@@ -49,6 +49,12 @@ describe("parseConsentCookie", () => {
     ).toEqual({ analytics: false, ads: true });
   });
 
+  it("keeps a choice made under a newer policy revision, as the browser does", () => {
+    expect(
+      parseConsentCookie(cookieValue({ categories: ["analytics"], revision: CONSENT_REVISION + 1 })),
+    ).toEqual({ analytics: true, ads: false });
+  });
+
   it("drops a choice made under an older policy revision", () => {
     expect(
       parseConsentCookie(cookieValue({ categories: ["analytics", "ads"], revision: CONSENT_REVISION - 1 })),

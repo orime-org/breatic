@@ -48,6 +48,12 @@ describe("mergeAccountConsent", () => {
     expect(mergeAccountConsent(null, outdated)).toBeNull();
   });
 
+  it("records a report made under a newer revision, written by code deployed ahead of this server", () => {
+    const stored = choice(true, true, "2026-10-12T09:00:00.000Z");
+    const withdrawn = choice(false, false, "2026-10-13T09:00:00.000Z", CONSENT_REVISION + 1, "settings");
+    expect(mergeAccountConsent(stored, withdrawn)).toEqual(withdrawn);
+  });
+
   it("ignores a report whose decision time is not a valid date", () => {
     const stored = choice(true, true, "2026-10-12T09:00:00.000Z");
     expect(mergeAccountConsent(stored, choice(false, false, "yesterday"))).toEqual(stored);
@@ -90,6 +96,11 @@ describe("accountConsentCurrent", () => {
   it("drops a choice older than the consent cookie lasts", () => {
     const now = Date.parse(decided) + (CONSENT_MAX_AGE_DAYS + 1) * day;
     expect(accountConsentCurrent(choice(true, true, decided), now)).toBeNull();
+  });
+
+  it("keeps a choice made under a newer revision", () => {
+    const newer = choice(false, false, decided, CONSENT_REVISION + 1);
+    expect(accountConsentCurrent(newer, Date.parse(decided))).toEqual(newer);
   });
 
   it("drops a choice made under an older revision", () => {

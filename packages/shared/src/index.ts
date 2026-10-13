@@ -788,6 +788,7 @@ export {
   CONSENT_REVISION,
   NO_CONSENT,
   parseConsentCookie,
+  revisionInForce,
   requiresOptIn,
   type ConsentSnapshot,
 } from "@shared/analytics/consent.js";

@@ -17,6 +17,7 @@ import {
   CONSENT_REVISION,
   CONSENT_SOURCES,
   requiresOptIn,
+  revisionInForce,
   type ConsentSource,
 } from '@breatic/shared';
 import { decideOnLoad, type BrowserChoice } from '@web/lib/analytics/consent-decision';
@@ -79,10 +80,7 @@ export function followPage(pathname: string): void {
  */
 export function readBrowserChoice(): BrowserChoice | null {
   const cookie = CookieConsent.getCookie();
-  // A newer revision is a choice made under a newer policy, in a tab running newer code: it stands here too.
-  if (typeof cookie.revision !== 'number' || cookie.revision < CONSENT_REVISION || !Array.isArray(cookie.categories)) {
-    return null;
-  }
+  if (!revisionInForce(cookie.revision) || !Array.isArray(cookie.categories)) return null;
   const data = (cookie.data ?? {}) as { source?: unknown; decidedAt?: unknown };
   const source = CONSENT_SOURCES.find((s) => s === data.source) ?? 'banner';
   const decidedAt = typeof data.decidedAt === 'string' ? data.decidedAt : cookie.lastConsentTimestamp;

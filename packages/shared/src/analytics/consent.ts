@@ -23,6 +23,17 @@ export const CONSENT_COOKIE_NAME = "breatic_consent";
  */
 export const CONSENT_REVISION = 1;
 
+/**
+ * Whether a choice recorded under a revision still counts: the current one, or
+ * a newer one written by code deployed ahead of this copy (the website and the
+ * product deploy separately). Only an older revision no longer counts.
+ * @param revision - The recorded revision.
+ * @returns True when the choice stands.
+ */
+export function revisionInForce(revision: unknown): boolean {
+  return typeof revision === "number" && Number.isInteger(revision) && revision >= CONSENT_REVISION;
+}
+
 /** How long a choice lasts before the banner asks again: 13 months, as Google keeps a visitor's cookie choice (its SOCS cookie). */
 export const CONSENT_MAX_AGE_DAYS = 395;
 
@@ -49,7 +60,7 @@ export function parseConsentCookie(raw: string | undefined): ConsentSnapshot {
   const parsed = parseJson(raw) ?? parseJson(safeDecode(raw));
   if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return NO_CONSENT;
   const { categories, revision } = parsed as { categories?: unknown; revision?: unknown };
-  if (revision !== CONSENT_REVISION || !Array.isArray(categories)) return NO_CONSENT;
+  if (!revisionInForce(revision) || !Array.isArray(categories)) return NO_CONSENT;
   return { analytics: categories.includes("analytics"), ads: categories.includes("ads") };
 }
 

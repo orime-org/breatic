@@ -43,7 +43,7 @@ import {
   ConflictError,
   UnauthorizedError,
 } from "@breatic/core";
-import { adClickFrom, CONSENT_REVISION, getActiveLocale, mergeAccountConsent, normalizeEmail, t } from "@breatic/shared";
+import { adClickFrom, getActiveLocale, mergeAccountConsent, normalizeEmail, revisionInForce, t } from "@breatic/shared";
 import type { AccountConsent, Attribution, UserEntity } from "@breatic/shared";
 
 const BCRYPT_ROUNDS = 12;
@@ -283,12 +283,12 @@ export async function setLocale(userId: string, locale: string): Promise<void> {
 }
 
 /**
- * Keep a stored choice only if it was made under the current policy revision.
+ * Keep a stored choice only if its policy revision is still in force.
  * @param stored - What the column holds.
  * @returns The choice, or null when it is missing or from an older revision.
  */
 function currentRevisionOnly(stored: AccountConsent | null): AccountConsent | null {
-  return stored?.revision === CONSENT_REVISION ? stored : null;
+  return stored !== null && revisionInForce(stored.revision) ? stored : null;
 }
 
 /**

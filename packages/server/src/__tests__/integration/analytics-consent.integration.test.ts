@@ -155,6 +155,14 @@ describe("users.analytics_consent", () => {
     expect(await accountConsent(id)).toBeNull();
   });
 
+  it("records a withdrawal reported under a newer revision, from code deployed ahead of this server", async () => {
+    const id = await insertUser();
+    await putConsent(id, choice(true, true, hoursAgo(2)));
+    const res = await putConsent(id, { ...choice(false, false, hoursAgo(1)), revision: CONSENT_REVISION + 1 });
+    expect(res.status).toBe(204);
+    expect(await accountConsent(id)).toMatchObject({ analytics: false, ads: false, revision: CONSENT_REVISION + 1 });
+  });
+
   it("keeps an explicit choice when a regional default the person never chose arrives later", async () => {
     const id = await insertUser();
     await putConsent(id, choice(false, false, hoursAgo(2)));

@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { CONSENT_MAX_AGE_DAYS, CONSENT_REVISION } from "@shared/analytics/consent.js";
+import { CONSENT_MAX_AGE_DAYS, revisionInForce } from "@shared/analytics/consent.js";
 
 /** How a browser arrived at its choice (inner#1442 design §4.4.4). */
 export const CONSENT_SOURCES = ["banner", "settings", "implicit", "gpc"] as const;
@@ -41,7 +41,7 @@ export function mergeAccountConsent(
 ): AccountConsent | null {
   const incomingAt = Date.parse(incoming.decidedAt);
   if (incoming.source === "implicit") return stored;
-  if (incoming.revision !== CONSENT_REVISION || Number.isNaN(incomingAt)) return stored;
+  if (!revisionInForce(incoming.revision) || Number.isNaN(incomingAt)) return stored;
   if (incoming.source === "gpc") return stored === null ? null : { ...stored, ads: false };
   if (stored === null) return incoming;
   const storedAt = Date.parse(stored.decidedAt);
@@ -64,7 +64,7 @@ const MAX_AGE_MS = CONSENT_MAX_AGE_DAYS * 24 * 60 * 60 * 1000;
  * @returns The choice, or null; callers treat null as no consent.
  */
 export function accountConsentCurrent(stored: AccountConsent | null, now: number): AccountConsent | null {
-  if (stored === null || stored.revision !== CONSENT_REVISION) return null;
+  if (stored === null || !revisionInForce(stored.revision)) return null;
   const decidedAt = Date.parse(stored.decidedAt);
   return now - decidedAt <= MAX_AGE_MS ? stored : null;
 }
