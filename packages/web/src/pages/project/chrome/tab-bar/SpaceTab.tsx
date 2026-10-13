@@ -14,6 +14,7 @@ import {
   TooltipTrigger,
 } from '@web/components/ui/tooltip';
 import { useInlineEditExit } from '@web/lib/inline-edit-exit';
+import { useHeldName } from '@web/lib/use-held-name';
 import { spaceFocusRoot } from '@web/lib/space-focus-root';
 import { cn } from '@web/lib/utils';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -120,11 +121,9 @@ export function SpaceTab({
   const { setNodeRef, listeners, transform, transition, isDragging } =
     useSortable({ id, disabled: editing });
 
-  // Keep `draft` aligned with external `name` updates (collab broadcast)
-  // when we are not currently editing.
-  React.useEffect(() => {
-    if (!editing) setDraft(name);
-  }, [name, editing]);
+  // A rename reaches `name` once the server's write comes back through the
+  // project meta, after the field has closed.
+  const { shown, hold } = useHeldName(name);
 
   React.useEffect(() => {
     if (editing) {
@@ -154,7 +153,7 @@ export function SpaceTab({
       toast.warning(t('spaces.rename.locked'));
       return;
     }
-    setDraft(name);
+    setDraft(shown);
     setEditing(true);
   };
 
@@ -165,21 +164,16 @@ export function SpaceTab({
   const commit = (): void => {
     const trimmed = draft.trim().slice(0, SPACE_NAME_MAX_LEN);
     setEditing(false);
-    if (trimmed.length === 0 || trimmed === name) {
-      setDraft(name);
-      return;
-    }
-    void Promise.resolve(onRename?.(trimmed)).catch(() => {
-      // toast already raised by callRpc in ProjectPage
-    });
+    if (trimmed.length === 0 || trimmed === shown) return;
+    // A refused rename has already raised its toast in ProjectPage's callRpc.
+    hold(trimmed, onRename?.(trimmed));
   };
 
   /**
-   * Leaves edit mode and discards the draft, restoring the current name.
+   * Leaves edit mode without committing the draft.
    */
   const cancel = (): void => {
     setEditing(false);
-    setDraft(name);
   };
 
   // Ending the name from the keyboard gives the keyboard to the content of
@@ -288,7 +282,7 @@ export function SpaceTab({
           // this shrink below its text inside the flex row.
           className='min-w-0 truncate'
         >
-          {name}
+          {shown}
         </span>
       )}
       {locked ? (
@@ -350,7 +344,7 @@ export function SpaceTab({
           from the edge a person sees rather than from the name inset within
           it. */}
       <TooltipTrigger asChild>{tab}</TooltipTrigger>
-      <TooltipContent>{name}</TooltipContent>
+      <TooltipContent>{shown}</TooltipContent>
     </Tooltip>
   );
 }

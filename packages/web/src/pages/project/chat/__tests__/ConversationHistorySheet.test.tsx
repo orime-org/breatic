@@ -33,7 +33,7 @@ const CONVS: ConversationRow[] = [
 
 /** The handlers every case passes but none of these assert on. */
 const NOOPS = {
-  onRename: () => undefined,
+  onRename: async () => undefined,
   onDelete: async () => undefined,
   hasMore: false,
   onReachEnd: () => undefined,
