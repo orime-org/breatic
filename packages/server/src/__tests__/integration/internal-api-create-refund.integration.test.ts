@@ -38,6 +38,33 @@ vi.mock("@server/infra/stripe.js", async () => {
   };
 });
 
+/** Every `warn` and `error` line the server wrote, for the cases that assert on what was logged. */
+const logged = vi.hoisted(() => [] as { level: string; ctx: unknown; line: unknown }[]);
+
+vi.mock("@breatic/core", async (io) => {
+  const orig = await io<Record<string, unknown>>();
+  return {
+    ...orig,
+    // Forwarded through a Proxy rather than spread: pino's level methods live
+    // on the prototype, so `{ ...logger }` hands back an object without them.
+    logger: new Proxy(
+      {},
+      {
+        get: (_target, prop: string) => {
+          const real = orig.logger as Record<string, unknown>;
+          const value = real[prop];
+          if (typeof value !== "function") return value;
+          if (prop !== "warn" && prop !== "error") return value.bind(real);
+          return (ctx: unknown, line: unknown) => {
+            logged.push({ level: prop, ctx, line });
+            (value as (c: unknown, l: unknown) => void).call(real, ctx, line);
+          };
+        },
+      },
+    ),
+  };
+});
+
 import { getCreditRefundConfig } from "@server/config/credit-refund.js";
 import { runRefundLoopOnce } from "@server/modules/credit-refund/refund-loop.js";
 import { fakeStripe, stripeError } from "./fake-stripe-refunds.js";
@@ -93,6 +120,33 @@ async function lotOnStripe(state: LotState, refunds: RefundFixture[] = []): Prom
   const lot = await seedRefundLot(suite.sql, state);
   fakeStripe.register(lot.paymentIntentId, PAID_CENTS, refunds);
   return lot;
+}
+
+/**
+ * Whether `value`, or anything nested in it, satisfies `match`; a log line
+ * is checked this way so the field names it uses stay its own.
+ * @param value - What to search.
+ * @param match - The test.
+ * @param seen - Objects already visited.
+ * @returns True when something matched.
+ */
+function holds(value: unknown, match: (v: unknown) => boolean, seen = new Set<unknown>()): boolean {
+  if (match(value)) return true;
+  if (typeof value !== "object" || value === null || seen.has(value)) return false;
+  seen.add(value);
+  return Object.values(value).some((v) => holds(v, match, seen));
+}
+
+/**
+ * A test for the Stripe failure `stripeError(httpStatus)` turns into.
+ * @param httpStatus - The status the fake Stripe answered with.
+ * @returns True for an object carrying its message and status.
+ */
+function isFailureOf(httpStatus: number): (v: unknown) => boolean {
+  return (v) => {
+    const f = v as { message?: unknown; httpStatus?: unknown } | null;
+    return typeof v === "object" && f !== null && f.message === `synthetic ${httpStatus}` && f.httpStatus === httpStatus;
+  };
 }
 
 /**
@@ -299,6 +353,22 @@ describe("GET /internal/v1/credit-lots/:lotId/refund — preview judges the oper
     expect(res.status).toBe(503);
     expect(res.json).toEqual({ code: "stripe_unavailable" });
     expect(await copiesOf(suite.sql, lot.lotId)).toEqual([]);
+  });
+
+  it("a failed Stripe read at step 0 is still 503 stripe_unavailable, and an error line carries Stripe's failure and the payment id (round 7 [8])", async () => {
+    const lot = await lotOnStripe("refund_pending");
+    fakeStripe.failLists(stripeError(403));
+    logged.length = 0;
+
+    const res = await call(suite.baseUrl, paths.preview(lot.lotId));
+
+    expect(res.status).toBe(503);
+    expect(res.json).toEqual({ code: "stripe_unavailable" });
+    const lines = logged.filter((l) => l.level === "error");
+    expect(
+      lines.some((l) => holds(l.ctx, (v) => v === lot.paymentId) && holds(l.ctx, isFailureOf(403))),
+      `error lines: ${JSON.stringify(lines)}`,
+    ).toBe(true);
   });
 });
 

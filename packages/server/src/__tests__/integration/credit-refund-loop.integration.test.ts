@@ -1026,13 +1026,36 @@ describe("executeRefund — refunds.create only under a lease still held with a 
     expect(await readOp(suite.sql, opId)).toEqual(before);
   });
 
-  it("A: a resume whose token is replaced while its pre-read is out makes no create, writes no event and changes no row", async () => {
+  /**
+   * A started approval that called Stripe before (a resume), on a lot whose
+   * payment Stripe holds one external refund, succeeded.
+   * @returns The lot, the disposition id and the external refund's id.
+   */
+  async function resumeWithExternalSucceeded(): Promise<{ lot: SeededLot; opId: string; external: string }> {
+    const external = reId("external");
     const { lot, opId } = await seeded("refunding", {
       kind: "approve",
       status: "started",
       firstCalledHoursAgo: 1,
       attemptCount: 1,
     });
+    fakeStripe.register(lot.paymentIntentId, PAID_CENTS, [refundObject(external, "succeeded", 100)]);
+    return { lot, opId, external };
+  }
+
+  /**
+   * The copy of one refund on the lot, as [id, status, ever_succeeded].
+   * @param lot - The lot.
+   * @param refundId - The refund.
+   * @returns The triple, or undefined when no copy exists.
+   */
+  async function copyOf(lot: SeededLot, refundId: string): Promise<[string, string, boolean] | undefined> {
+    const copy = (await copiesOf(suite.sql, lot.lotId)).find((c) => c.stripe_refund_id === refundId);
+    return copy && [copy.stripe_refund_id, copy.status, copy.ever_succeeded];
+  }
+
+  it("A: a resume whose token is replaced while its pre-read is out makes no create, writes no event and changes no row, but still copies what its pre-read listed — an external refund succeeded keeps ever_succeeded (§6.4 '凡是读到就写', round 7)", async () => {
+    const { lot, opId, external } = await resumeWithExternalSucceeded();
     const stale = (await findById(opId))!;
     const seen: { row?: OpRow } = {};
     aroundNextList(fakeStripe, async (read) => {
@@ -1046,7 +1069,8 @@ describe("executeRefund — refunds.create only under a lease still held with a 
 
     expect(createsFor(lot)).toEqual([]);
     expect(listsFor(lot)).toBe(1);
-    expect(fakeStripe.refundsOf(lot.paymentIntentId)).toEqual([]);
+    expect(fakeStripe.refundsOf(lot.paymentIntentId).map((r) => r.id)).toEqual([external]);
+    expect(await copyOf(lot, external)).toEqual([external, "succeeded", true]);
     expect(await eventsOf(suite.sql, opId)).toEqual([]);
     expect(await readOp(suite.sql, opId)).toEqual(seen.row);
   });
@@ -1065,6 +1089,26 @@ describe("executeRefund — refunds.create only under a lease still held with a 
     await executeRefund(op, "loop");
 
     expect(createsFor(lot)).toEqual([]);
+    expect(await eventsOf(suite.sql, opId)).toEqual([]);
+    expect(await readOp(suite.sql, opId)).toEqual(before);
+  });
+
+  it("B: a resume with too little lease left makes no create, writes no event and changes no row, but still copies what its pre-read listed — an external refund succeeded keeps ever_succeeded (§6.4 '凡是读到就写', round 7)", async () => {
+    const { stripeCallTimeoutMs } = getCreditRefundConfig();
+    const { lot, opId, external } = await resumeWithExternalSucceeded();
+    await suite.sql`
+      UPDATE credit_refund_operations
+      SET locked_until = now() + make_interval(secs => ${(stripeCallTimeoutMs - 5000) / 1000}::double precision)
+      WHERE id = ${opId}
+    `;
+    const op = (await findById(opId))!;
+    const before = await readOp(suite.sql, opId);
+
+    await executeRefund(op, "loop");
+
+    expect(createsFor(lot)).toEqual([]);
+    expect(listsFor(lot)).toBe(1);
+    expect(await copyOf(lot, external)).toEqual([external, "succeeded", true]);
     expect(await eventsOf(suite.sql, opId)).toEqual([]);
     expect(await readOp(suite.sql, opId)).toEqual(before);
   });

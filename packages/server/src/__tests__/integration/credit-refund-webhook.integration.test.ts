@@ -51,6 +51,33 @@ vi.mock("@server/infra/stripe.js", async () => {
   };
 });
 
+/** Every `warn` and `error` line the server wrote, for the cases that assert on what was logged. */
+const logged = vi.hoisted(() => [] as { level: string; ctx: unknown; line: unknown }[]);
+
+vi.mock("@breatic/core", async (io) => {
+  const orig = await io<Record<string, unknown>>();
+  return {
+    ...orig,
+    // Forwarded through a Proxy rather than spread: pino's level methods live
+    // on the prototype, so `{ ...logger }` hands back an object without them.
+    logger: new Proxy(
+      {},
+      {
+        get: (_target, prop: string) => {
+          const real = orig.logger as Record<string, unknown>;
+          const value = real[prop];
+          if (typeof value !== "function") return value;
+          if (prop !== "warn" && prop !== "error") return value.bind(real);
+          return (ctx: unknown, line: unknown) => {
+            logged.push({ level: prop, ctx, line });
+            (value as (c: unknown, l: unknown) => void).call(real, ctx, line);
+          };
+        },
+      },
+    ),
+  };
+});
+
 import type { Hono } from "hono";
 import { fakeStripe, stripeError } from "./fake-stripe-refunds.js";
 import { mailsSettled } from "./internal-api-harness.js";
@@ -131,6 +158,21 @@ async function claimedTypes(eventId: string): Promise<string[]> {
  */
 function listed(paymentIntent: string): boolean {
   return fakeStripe.listedIntents().includes(paymentIntent);
+}
+
+/**
+ * Whether `value`, or anything nested in it, satisfies `match`; a log line
+ * is checked this way so the field names it uses stay its own.
+ * @param value - What to search.
+ * @param match - The test.
+ * @param seen - Objects already visited.
+ * @returns True when something matched.
+ */
+function holds(value: unknown, match: (v: unknown) => boolean, seen = new Set<unknown>()): boolean {
+  if (match(value)) return true;
+  if (typeof value !== "object" || value === null || seen.has(value)) return false;
+  seen.add(value);
+  return Object.values(value).some((v) => holds(v, match, seen));
 }
 
 describe("credit-pack payment: Stripe is read and copied", () => {
@@ -350,5 +392,24 @@ describe("Stripe cannot be read", () => {
     expect(again.status).toBe(200);
     expect(await claimedTypes(event.id as string)).toEqual(["refund.updated"]);
     expect(await readOp(suite.sql, opId)).toMatchObject({ status: "succeeded", result: "refunded" });
+  });
+
+  it("the warn line for the unread event carries Stripe's failure, message and status (round 7 [8])", async () => {
+    const external = reId("external");
+    const lot = await lotOnStripe("refund_pending", [refundObject(external, "succeeded", 100)]);
+    fakeStripe.failLists(stripeError(403));
+    const event = refundEvent("refund.updated", refundObject(external, "succeeded", 100), lot.paymentIntentId);
+    logged.length = 0;
+
+    const res = await deliver(event);
+
+    expect(res.status).toBe(500);
+    const lines = logged.filter((l) => l.level === "warn" && holds(l.ctx, (v) => v === event.id));
+    expect(lines, "no warn line names the event").not.toEqual([]);
+    const isFailure = (v: unknown): boolean => {
+      const f = v as { message?: unknown; httpStatus?: unknown } | null;
+      return typeof v === "object" && f !== null && f.message === "synthetic 403" && f.httpStatus === 403;
+    };
+    expect(lines.some((l) => holds(l.ctx, isFailure)), `warn lines: ${JSON.stringify(lines)}`).toBe(true);
   });
 });

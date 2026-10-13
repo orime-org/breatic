@@ -90,7 +90,7 @@ export function stripeError(
 }
 
 /** The thing `refunds.list` returns, as far as the product reads it. */
-type FakeApiList =Promise<unknown> & {
+type FakeApiList = Promise<unknown> & {
   autoPagingToArray: (opts?: unknown) => Promise<FakeRefund[]>;
   autoPagingEach: (fn: (r: FakeRefund) => unknown) => Promise<void>;
   [Symbol.asyncIterator]: () => AsyncGenerator<FakeRefund>;
