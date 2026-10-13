@@ -272,10 +272,13 @@ describe("task events across two collab instances", () => {
       c,
       nodeIds.map((nodeId, i) => ({ nodeId, counts: DONE, result: { ...MEDIA, content: `tile ${i}` } })),
     );
-    listen(c, instanceA, "a");
-    listen(c, instanceB, "b");
+    // Small reads, so both instances take part in the same document.
+    listen(c, instanceA, "a", { batchCount: 16 });
+    listen(c, instanceB, "b", { batchCount: 16 });
     await until(async () => (await pending(c)) === 0 && (await stream.xlen(c.streamKey)) === 128);
     const listenerOpens = opensA.mock.calls.length + opensB.mock.calls.length;
+    expect(opensA.mock.calls.length).toBeGreaterThan(0);
+    expect(opensB.mock.calls.length).toBeGreaterThan(0);
     const nodes = await readNodes(c, nodeIds);
     for (const [i, node] of nodes.entries()) {
       expect(node.taskCounts).toEqual(DONE);
@@ -432,6 +435,33 @@ describe("task events across two collab instances", () => {
     expect(Date.now() - startedAt).toBeLessThan(10_000);
   });
 
+  it("writes several documents faster with two instances than with one", async () => {
+    /**
+     * Time six documents' events through the given instances.
+     * @param instances - Instances to listen on.
+     * @returns Milliseconds until every event is acknowledged.
+     */
+    async function timeSixDocs(instances: Hocuspocus[]): Promise<number> {
+      const cases = await Promise.all(Array.from({ length: 6 }, () => newCase({ n: "image" })));
+      const streamKey = cases[0]!.streamKey;
+      for (const c of cases) {
+        for (const counts of [RUNNING, DONE]) {
+          await stream.xadd(streamKey, "*", "payload", JSON.stringify({ type: "node-task-counts", docName: c.docName, nodeId: "n", counts }));
+        }
+      }
+      const startedAt = Date.now();
+      // One read takes one document's two events; each instance writes one document at a time.
+      instances.forEach((h, i) => listen(cases[0]!, h, `i${i}`, { batchCount: 2, docConcurrency: 1 }));
+      await until(async () => (await pending(cases[0]!)) === 0 && (await stream.xlen(streamKey)) === 12, 40_000);
+      const elapsed = Date.now() - startedAt;
+      await Promise.all(listeners.splice(0).map((l) => l.stop()));
+      return elapsed;
+    }
+    const one = await timeSixDocs([instanceA]);
+    const two = await timeSixDocs([instanceA, instanceB]);
+    expect(two).toBeLessThan(one * 0.75);
+  }, 90_000);
+
   it("writes an older result that arrives after newer counts, and leaves the counts alone", async () => {
     const nodeId = randomUUID();
     const c = await newCase({ [nodeId]: "image" });
@@ -449,9 +479,13 @@ describe("task events across two collab instances", () => {
     const c = await newCase({ [nodeId]: "text" });
     const [id] = await publish(c, [{ nodeId, counts: DONE, result: { ...MEDIA, content: "once" } }]);
     await publish(c, [{ nodeId, counts: DONE, result: { ...MEDIA, content: "once" } }], ["originId", id!]);
-    listen(c, instanceA, "a");
-    listen(c, instanceB, "b");
+    const opensA = vi.spyOn(instanceA, "openDirectConnection");
+    const opensB = vi.spyOn(instanceB, "openDirectConnection");
+    listen(c, instanceA, "a", { batchCount: 1 });
+    listen(c, instanceB, "b", { batchCount: 1 });
     await until(async () => (await pending(c)) === 0 && (await stream.xlen(c.streamKey)) === 2);
+    expect(opensA.mock.calls.length).toBeGreaterThan(0);
+    expect(opensB.mock.calls.length).toBeGreaterThan(0);
     expect((await readNode(c, nodeId)).text).toBe("once");
   });
 
