@@ -374,3 +374,47 @@ describe('asking to delete a conversation', () => {
     expect(screen.queryByTestId('conversation-delete-dialog')).toBeNull();
   });
 });
+
+// inner#1440: a row's name only changes once the store does, which is after
+// the server has answered, so the row shows what was committed until then.
+describe('the name shown after a row rename is committed', () => {
+  /**
+   * Renders the sheet with the given rename handler and renames c2.
+   * @param onRename - The handler the sheet calls.
+   * @param name - What to type.
+   */
+  async function renameRow(
+    onRename: (id: string, title: string) => Promise<void>,
+    name: string,
+  ): Promise<void> {
+    const user = userEvent.setup();
+    render(
+      <ConversationHistorySheet
+        open
+        onOpenChange={() => undefined}
+        conversations={CONVS}
+        activeId='c1'
+        onPick={() => undefined}
+        {...NOOPS}
+        onRename={onRename}
+      />,
+    );
+    await user.click(screen.getByTestId('conversation-menu-c2'));
+    await user.click(await screen.findByTestId('conversation-rename-c2'));
+    const box = await screen.findByTestId('conversation-rename-input');
+    await user.clear(box);
+    await user.type(box, `${name}{Enter}`);
+  }
+
+  it('shows the new name while the row still holds the old one', async () => {
+    await renameRow(() => new Promise<void>(() => undefined), 'Villain arc');
+    expect(screen.getByTestId('conversation-open-c2')).toHaveTextContent('Villain arc');
+  });
+
+  it('goes back to the row name when the rename is refused', async () => {
+    let refuse: (reason: Error) => void = () => undefined;
+    await renameRow(() => new Promise<void>((_, reject) => { refuse = reject; }), 'Villain arc');
+    await act(async () => { refuse(new Error('refused')); });
+    expect(screen.getByTestId('conversation-open-c2')).toHaveTextContent('Character design');
+  });
+});
