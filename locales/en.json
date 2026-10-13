@@ -362,6 +362,7 @@
       "use": "Use",
       "building": "Creating…",
       "failed": "Could not create these nodes.",
+      "expired": "This proposal has expired. Ask the Agent for a new one.",
       "needCanvas": "Open a canvas first.",
       "promptReady": "Prompt ready. Right-click the node and choose Generate to open the generation panel and see it.",
       "settingsReady": "Settings ready. Right-click the node and choose Generate to open the generation panel and see them."

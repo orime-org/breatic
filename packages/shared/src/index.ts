@@ -220,6 +220,7 @@ export {
   PANEL_EDITOR_PARAM,
   insertRefusal,
   isReferenceMaterial,
+  canvasProposalSchema,
   feedsOf,
   layersOf,
   proposalMarkSegments,
