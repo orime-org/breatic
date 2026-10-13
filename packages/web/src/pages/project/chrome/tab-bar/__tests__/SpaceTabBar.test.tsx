@@ -785,3 +785,36 @@ describe('ending a tab rename', () => {
     expect(onRenameSpace).not.toHaveBeenCalled();
   });
 });
+
+// inner#1440: the name only reaches the tab once the server's write comes back
+// through the project meta, so the tab shows what was committed until then.
+describe('the name shown after a tab rename is committed', () => {
+  /**
+   * Opens the Notes tab's name field, replaces the name and presses Enter.
+   * @param name - What to type.
+   */
+  async function renameNotesTo(name: string): Promise<void> {
+    const user = userEvent.setup();
+    await user.dblClick(screen.getByTestId('space-tab-name-s2'));
+    const field = screen.getByTestId('space-tab-name-input-s2');
+    await user.clear(field);
+    await user.type(field, `${name}{Enter}`);
+  }
+
+  it('shows the new name while the meta still holds the old one', async () => {
+    setup({ onRenameSpace: vi.fn(() => new Promise<void>(() => undefined)) });
+    await renameNotesTo('Ideas');
+    expect(screen.getByTestId('space-tab-name-s2')).toHaveTextContent('Ideas');
+  });
+
+  it('goes back to the meta name when the rename is refused', async () => {
+    let refuse: (reason: Error) => void = () => undefined;
+    setup({
+      onRenameSpace: vi.fn(() => new Promise<void>((_, reject) => { refuse = reject; })),
+    });
+    await renameNotesTo('Ideas');
+    expect(screen.getByTestId('space-tab-name-s2')).toHaveTextContent('Ideas');
+    await act(async () => { refuse(new Error('refused')); });
+    expect(screen.getByTestId('space-tab-name-s2')).toHaveTextContent('Notes');
+  });
+});

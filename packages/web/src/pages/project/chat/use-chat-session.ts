@@ -130,8 +130,8 @@ export interface ChatSession {
   setDraft: (text: string) => void;
   /** Show a different conversation. */
   switchTo: (conversationId: string) => void;
-  /** Name one. */
-  rename: (conversationId: string, title: string) => void;
+  /** Name one; rejects when the name was not saved. */
+  rename: (conversationId: string, title: string) => Promise<void>;
   /** Delete one, after the reader has confirmed; settles once the attempt is over. */
   remove: (conversationId: string) => Promise<void>;
 }
@@ -344,7 +344,7 @@ export function useChatSession(
   );
 
   const rename = React.useCallback(
-    (id: string, title: string): void => void conversationRuntime.rename(projectId, id, title),
+    (id: string, title: string): Promise<void> => conversationRuntime.rename(projectId, id, title),
     [projectId],
   );
 

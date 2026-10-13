@@ -33,6 +33,7 @@ import { cn } from '@web/lib/utils';
 import { CONVERSATION_TITLE_MAX_CHARS } from '@breatic/shared';
 import { useTranslation } from '@web/i18n/use-translation';
 import { useInlineEditExit } from '@web/lib/inline-edit-exit';
+import { useHeldName } from '@web/lib/use-held-name';
 import { useReturnFocus } from '@web/lib/overlay-focus';
 import { usePendingKeys } from '@web/lib/use-pending-keys';
 import { useScrolledToEnd } from '@web/lib/use-scrolled-to-end';
@@ -95,7 +96,8 @@ interface ConversationHistorySheetProps {
   conversations: ReadonlyArray<ConversationRow>;
   activeId?: string;
   onPick: (id: string) => void;
-  onRename: (id: string, title: string) => void;
+  /** Saves a name; rejects when it was not saved. */
+  onRename: (id: string, title: string) => Promise<void>;
   /** Delete one; settles once the attempt is over, whichever way it went. */
   onDelete: (id: string) => Promise<void>;
   /** The project has conversations older than the ones listed. */
@@ -210,7 +212,7 @@ interface RowProps {
   row: ConversationRow;
   isActive: boolean;
   onPick: (id: string) => void;
-  onRename: (id: string, title: string) => void;
+  onRename: (id: string, title: string) => Promise<void>;
   onAskDelete: (id: string) => void;
 }
 
@@ -241,6 +243,9 @@ function ConversationRowView({
 }: RowProps): React.JSX.Element {
   const t = useTranslation();
   const [renaming, setRenaming] = React.useState(false);
+  // The store takes a new name once the server has answered, after the box
+  // has closed.
+  const { shown: title, hold } = useHeldName(row.title);
   // Which item was chosen, held until the menu has finished closing. A ref
   // rather than state because nothing renders differently for it; see the menu
   // below for why both of them wait.
@@ -266,7 +271,7 @@ function ConversationRowView({
     const named = typed.trim();
     // A row showing nothing reads as a rendering fault rather than as a name,
     // so a name of nothing is not one. Same rule the server applies.
-    if (named.length > 0 && named !== row.title) onRename(row.id, named);
+    if (named.length > 0 && named !== title) hold(named, onRename(row.id, named));
   };
 
   // Ending the box from the keyboard gives the keyboard to this row's menu
@@ -306,7 +311,7 @@ function ConversationRowView({
             autoComplete='off'
             data-testid='conversation-rename-input'
             ref={box}
-            defaultValue={row.title ?? ''}
+            defaultValue={title ?? ''}
             // The same cap the server enforces. Without it a pasted name over
             // the limit comes back as a flat validation error that says
             // nothing about length, while the box in the header simply stops
@@ -344,7 +349,7 @@ function ConversationRowView({
                 )}
               />
               <span className='flex min-w-0 flex-1 flex-col gap-1'>
-                {row.title === null ? (
+                {title === null ? (
                   <span
                     data-testid='conversation-untitled'
                     className='truncate text-sm font-normal text-muted-foreground'
@@ -353,7 +358,7 @@ function ConversationRowView({
                   </span>
                 ) : (
                   <span className='truncate text-sm font-normal text-foreground'>
-                    {row.title}
+                    {title}
                   </span>
                 )}
                 <span className='text-2xs tabular-nums text-muted-foreground'>
