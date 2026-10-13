@@ -202,10 +202,7 @@ payment.post("/webhook", async (c) => {
 
   if (REFUND_EVENT_TYPES.has(event.type)) {
     const outcome = await handleRefundEvent(event as unknown as RefundEvent);
-    if (outcome === "unreadable") {
-      logger.warn({ eventId: event.id, type: event.type }, "refund_webhook_stripe_unreadable");
-      return c.json({ received: false }, 500);
-    }
+    if (outcome === "unreadable") return c.json({ received: false }, 500);
     return c.json({ received: true });
   }
 

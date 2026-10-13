@@ -8,7 +8,7 @@
  * endpoint right after phase 1, and by the loop for a lease it claimed.
  */
 
-import { db } from "@breatic/core";
+import { db, logger } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 import { getCreditRefundConfig } from "@server/config/credit-refund.js";
 import { attemptsExhausted } from "@server/modules/credit-refund/backoff.js";
@@ -46,7 +46,8 @@ interface Attempt {
  * fails leaves it in flight until Stripe answers (§9).
  * @param op - The disposition, as the caller last read it with its lease.
  * @param actor - Who runs the attempt: the endpoint or the loop, for the event rows.
- * @returns Once the attempt's cell is committed.
+ * @returns Once the attempt's cell is committed; at once, with only what it
+ *   read copied, when its lease no longer covers a Stripe call (§9).
  * @throws {Error} When the payment has no payment intent to refund.
  */
 export async function executeRefund(op: CreditRefundOperation, actor: Actor): Promise<void> {
@@ -67,7 +68,11 @@ export async function executeRefund(op: CreditRefundOperation, actor: Actor): Pr
 
   // A lease taken over or about to run out must not reach Stripe: the loop
   // claims the row and carries on under its own lease (§9).
-  if (!(await operationRepo.markFirstCalled(op.id, attempt.leaseToken, config.stripeCallTimeoutMs))) return;
+  if (!(await operationRepo.markFirstCalled(op.id, attempt.leaseToken, config.stripeCallTimeoutMs))) {
+    logger.warn({ operationId: op.id }, "credit_refund_create_skipped_lease");
+    await db.transaction((tx) => copyReads(tx, attempt, reads));
+    return;
+  }
   const created = await createRefund({
     operationId: op.id,
     paymentIntent,
@@ -128,7 +133,7 @@ async function read(
     return await listRefunds(paymentIntent);
   } catch (err) {
     if (!(err instanceof StripeReadError)) throw err;
-    await answer(attempt, { type: "E16", failure: err.failure, ...(createFailure && { createFailure }) }, earlier);
+    await answer(attempt, { type: "E16", failure: err.failure, createFailure }, earlier);
     return null;
   }
 }

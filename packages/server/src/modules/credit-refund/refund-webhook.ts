@@ -7,7 +7,7 @@
  * read from Stripe and copied, so the order events arrive in does not matter.
  */
 
-import { db } from "@breatic/core";
+import { db, logger } from "@breatic/core";
 import { creditLotRepo } from "@breatic/domain";
 import { sendOperationMailsLater } from "@server/modules/credit-refund/refund-mail.js";
 import { applyRefundSnapshot } from "@server/modules/credit-refund/refund-snapshot.js";
@@ -50,7 +50,10 @@ export async function handleRefundEvent(event: RefundEvent): Promise<"handled" |
   try {
     listed = await listRefunds(paymentIntent);
   } catch (err) {
-    if (err instanceof StripeReadError) return "unreadable";
+    if (err instanceof StripeReadError) {
+      logger.warn({ eventId: event.id, type: event.type, err: err.failure }, "refund_webhook_stripe_unreadable");
+      return "unreadable";
+    }
     throw err;
   }
   const judged = await db.transaction(async (tx) => {

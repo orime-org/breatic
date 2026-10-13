@@ -12,7 +12,7 @@
  * transaction: no disposition and no key are stored; the copies stay.
  */
 
-import { db } from "@breatic/core";
+import { db, logger } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 import { creditLotRepo } from "@breatic/domain";
 import { isPurchased, type CreditLotEntity, type PaymentEntity } from "@breatic/shared";
@@ -234,7 +234,10 @@ async function copyStripe(payment: PaymentEntity): Promise<void> {
   try {
     listed = await listRefundsForPayment(payment.id);
   } catch (err) {
-    if (err instanceof StripeReadError) throw stripeUnavailable();
+    if (err instanceof StripeReadError) {
+      logger.error({ err: err.failure, paymentId: payment.id }, "credit_refund_stripe_read_failed");
+      throw stripeUnavailable();
+    }
     throw err;
   }
   const rejudged = await db.transaction((tx) => applyRefundSnapshot(tx, payment.id, listed, "request"));

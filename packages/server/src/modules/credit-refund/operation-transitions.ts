@@ -763,8 +763,9 @@ async function sendBack(
 /**
  * The event's payload, for its event row.
  * @param event - The event.
- * @returns The request body (E1), the refund, the Stripe failure fields, the
- *   reason or the closer; always the actor.
+ * @returns The request body (E1), the refund, the Stripe failure fields (with
+ *   the create's failure on an E16 after a create), the reason or the closer;
+ *   always the actor.
  */
 function detailOf(event: OperationEvent): Record<string, unknown> {
   const actor = { actor: event.actor };
