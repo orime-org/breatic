@@ -687,3 +687,16 @@ describe("a user message that carried attachments", () => {
     ]);
   });
 });
+
+describe("a stored reply with DSML markup in its text", () => {
+  it("is replayed to the model without the markup", () => {
+    const history = [
+      stored("user", [{ type: "text", text: "make a storyboard" }]),
+      stored("assistant", [
+        { type: "text", text: "Here is the plan.\n\n<｜DSML｜tool_calls>\n<｜DSML｜invoke name=\"propose_canvas_action\">\n" },
+      ]),
+    ];
+
+    expect(toModelMessages(history)).toContainEqual({ role: "assistant", content: "Here is the plan.\n\n" });
+  });
+});

@@ -31,7 +31,8 @@ interface AgentColHeaderProps {
   onNewConversation: () => void;
   /** A new conversation has been asked for and the server has not answered. */
   creating: boolean;
-  onRenameConversation: (next: string) => void;
+  /** Saves a name; a returned promise rejects when it was not saved. */
+  onRenameConversation: (next: string) => Promise<void> | undefined;
 }
 
 /**

@@ -623,7 +623,7 @@ describe('where a failure about a row in the list is drawn', () => {
 
     vi.mocked(chatApi.renameConversation).mockRejectedValue(new Error('offline'));
     await act(async () => {
-      await conversationRuntime.rename('p1', 'c-1', 'a new name');
+      await expect(conversationRuntime.rename('p1', 'c-1', 'a new name')).rejects.toThrow('offline');
     });
 
     await waitFor(() => expect(screen.getByTestId('chat-notice')).toBeInTheDocument());
@@ -636,7 +636,7 @@ describe('where a failure about a row in the list is drawn', () => {
 
     vi.mocked(chatApi.renameConversation).mockRejectedValue(new Error('offline'));
     await act(async () => {
-      await conversationRuntime.rename('p1', 'c-1', 'a new name');
+      await expect(conversationRuntime.rename('p1', 'c-1', 'a new name')).rejects.toThrow('offline');
     });
 
     await waitFor(() =>

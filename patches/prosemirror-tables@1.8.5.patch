@@ -1,0 +1,114 @@
+diff --git a/dist/index.cjs b/dist/index.cjs
+index 6c65eb7d57e207a8cd1f2a2ae3bb99507c405cef..a5430d552db4f6e69d4f8a0a3837c84f99e36c64 100644
+--- a/dist/index.cjs
++++ b/dist/index.cjs
+@@ -706,10 +706,13 @@ function isCellBoundarySelection({ $from, $to }) {
+ function isTextSelectionAcrossCells({ $from, $to }) {
+ 	let fromCellBoundaryNode;
+ 	let toCellBoundaryNode;
++	let fromTable;
++	let toTable;
+ 	for (let i = $from.depth; i > 0; i--) {
+ 		const node = $from.node(i);
+ 		if (node.type.spec.tableRole === "cell" || node.type.spec.tableRole === "header_cell") {
+ 			fromCellBoundaryNode = node;
++			fromTable = $from.node(i - 2);
+ 			break;
+ 		}
+ 	}
+@@ -717,10 +720,15 @@ function isTextSelectionAcrossCells({ $from, $to }) {
+ 		const node = $to.node(i);
+ 		if (node.type.spec.tableRole === "cell" || node.type.spec.tableRole === "header_cell") {
+ 			toCellBoundaryNode = node;
++			toTable = $to.node(i - 2);
+ 			break;
+ 		}
+ 	}
+-	return fromCellBoundaryNode !== toCellBoundaryNode && $to.parentOffset === 0;
++	// breatic (inner#1350): narrow only between two cells of one table, as
++	// Atlassian's isTextSelectionAcrossSameTableCells does; a selection that
++	// starts or ends outside the table, or spans two tables, stays as the
++	// browser drew it.
++	return fromCellBoundaryNode !== void 0 && toCellBoundaryNode !== void 0 && fromTable === toTable && fromCellBoundaryNode !== toCellBoundaryNode && $to.parentOffset === 0;
+ }
+ function normalizeSelection(state, tr, allowTableNodeSelection) {
+ 	const sel = (tr || state).selection;
+@@ -2216,8 +2224,19 @@ function handleMouseDown$1(view, startEvent) {
+ 	function setCellSelection($anchor$1, event) {
+ 		let $head = cellUnderMouse(view, event);
+ 		const starting = tableEditingKey.getState(view.state) == null;
+-		if (!$head || !inSameTable($anchor$1, $head)) if (starting) $head = $anchor$1;
+-		else return;
++		if (!$head || !inSameTable($anchor$1, $head)) {
++			// breatic (inner#1350): a pointer pulled out of the table during a drag
++			// lets go of the cell selection, so the selection is the text the
++			// browser drew from the press; the press itself keeps the library's
++			// behaviour.
++			if (event === startEvent) {
++				if (starting) $head = $anchor$1;
++				else return;
++			} else {
++				if (!starting) view.dispatch(view.state.tr.setMeta(tableEditingKey, -1));
++				return;
++			}
++		}
+ 		const selection = new CellSelection($anchor$1, $head);
+ 		if (starting || !view.state.selection.eq(selection)) {
+ 			const tr = view.state.tr.setSelection(selection);
+diff --git a/dist/index.js b/dist/index.js
+index 5b4ac25594ba5722409332b1e5c812f108c9bf11..c0af4d8fb5ef55d52c55c593698db76032eccab5 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -706,10 +706,13 @@ function isCellBoundarySelection({ $from, $to }) {
+ function isTextSelectionAcrossCells({ $from, $to }) {
+ 	let fromCellBoundaryNode;
+ 	let toCellBoundaryNode;
++	let fromTable;
++	let toTable;
+ 	for (let i = $from.depth; i > 0; i--) {
+ 		const node = $from.node(i);
+ 		if (node.type.spec.tableRole === "cell" || node.type.spec.tableRole === "header_cell") {
+ 			fromCellBoundaryNode = node;
++			fromTable = $from.node(i - 2);
+ 			break;
+ 		}
+ 	}
+@@ -717,10 +720,15 @@ function isTextSelectionAcrossCells({ $from, $to }) {
+ 		const node = $to.node(i);
+ 		if (node.type.spec.tableRole === "cell" || node.type.spec.tableRole === "header_cell") {
+ 			toCellBoundaryNode = node;
++			toTable = $to.node(i - 2);
+ 			break;
+ 		}
+ 	}
+-	return fromCellBoundaryNode !== toCellBoundaryNode && $to.parentOffset === 0;
++	// breatic (inner#1350): narrow only between two cells of one table, as
++	// Atlassian's isTextSelectionAcrossSameTableCells does; a selection that
++	// starts or ends outside the table, or spans two tables, stays as the
++	// browser drew it.
++	return fromCellBoundaryNode !== void 0 && toCellBoundaryNode !== void 0 && fromTable === toTable && fromCellBoundaryNode !== toCellBoundaryNode && $to.parentOffset === 0;
+ }
+ function normalizeSelection(state, tr, allowTableNodeSelection) {
+ 	const sel = (tr || state).selection;
+@@ -2216,8 +2224,19 @@ function handleMouseDown$1(view, startEvent) {
+ 	function setCellSelection($anchor$1, event) {
+ 		let $head = cellUnderMouse(view, event);
+ 		const starting = tableEditingKey.getState(view.state) == null;
+-		if (!$head || !inSameTable($anchor$1, $head)) if (starting) $head = $anchor$1;
+-		else return;
++		if (!$head || !inSameTable($anchor$1, $head)) {
++			// breatic (inner#1350): a pointer pulled out of the table during a drag
++			// lets go of the cell selection, so the selection is the text the
++			// browser drew from the press; the press itself keeps the library's
++			// behaviour.
++			if (event === startEvent) {
++				if (starting) $head = $anchor$1;
++				else return;
++			} else {
++				if (!starting) view.dispatch(view.state.tr.setMeta(tableEditingKey, -1));
++				return;
++			}
++		}
+ 		const selection = new CellSelection($anchor$1, $head);
+ 		if (starting || !view.state.selection.eq(selection)) {
+ 			const tr = view.state.tr.setSelection(selection);

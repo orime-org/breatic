@@ -24,9 +24,10 @@ import type { Node as PMNode } from '@tiptap/pm/model';
 import { Plugin, PluginKey, type EditorState } from '@tiptap/pm/state';
 import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view';
 
-import type { BlockNoteEditor } from '@blocknote/core';
+import type { BlockNoteEditor, ComputeDropPositionContext } from '@blocknote/core';
 
 import { followCell, renameCell, type CellName } from '@web/spaces/document/document-table-cell-name';
+import { bodyScrollerOf, SCROLL_VIEWPORT } from '@web/spaces/document/document-body-autoscroll';
 import { cellAt, moveLineAt } from '@web/spaces/document/document-table-run';
 
 /** Which way a drag moves cells. */
@@ -55,7 +56,10 @@ type DropEditor = BlockNoteEditor<never, never, never>;
 
 /**
  * Whether a row or column can be dragged from a cell: not where a merged cell
- * reaches across its edge.
+ * reaches across its edge. Every slot of the line is read off the table map,
+ * the slots a merged cell from above or from the left covers too:
+ * `cellsInRect` skips those, and a drop moves every row such a cell spans
+ * (prosemirror-tables `getSelectionRangeInRow`), more than the line dragged.
  * @param doc - The document.
  * @param cellPos - The cell.
  * @param orientation - Its row or its column.
@@ -64,16 +68,18 @@ type DropEditor = BlockNoteEditor<never, never, never>;
 export function canDragFrom(doc: PMNode, cellPos: number, orientation: DragOrientation): boolean {
   const at = cellAt(doc, cellPos);
   if (at === null) return false;
-  const rect =
-    orientation === 'row'
-      ? { left: 0, right: at.map.width, top: at.top, bottom: at.top + 1 }
-      : { left: at.left, right: at.left + 1, top: 0, bottom: at.map.height };
-  return at.map.cellsInRect(rect).every((rel) => {
-    const cell = at.map.findCell(rel);
-    return orientation === 'row'
-      ? cell.top === rect.top && cell.bottom === rect.bottom
-      : cell.left === rect.left && cell.right === rect.right;
-  });
+  const { map } = at;
+  const slots = orientation === 'row' ? map.width : map.height;
+  for (let i = 0; i < slots; i += 1) {
+    const index = orientation === 'row' ? at.top * map.width + i : i * map.width + at.left;
+    const cell = map.findCell(map.map[index]!);
+    const fits =
+      orientation === 'row'
+        ? cell.top === at.top && cell.bottom === at.top + 1
+        : cell.left === at.left && cell.right === at.left + 1;
+    if (!fits) return false;
+  }
+  return true;
 }
 
 /**
@@ -119,9 +125,18 @@ export function moveToGap(
  */
 export function startTableDrag(view: EditorView, orientation: DragOrientation, cellPos: number): boolean {
   if (!canDragFrom(view.state.doc, cellPos, orientation)) return false;
-  const command: DragCommand = { start: { source: cellPos, orientation } };
-  view.dispatch(view.state.tr.setMeta(tableDragKey, command).setMeta('addToHistory', false));
+  send(view, { start: { source: cellPos, orientation } });
   return true;
+}
+
+/**
+ * Takes a row or column drag's drop line away, if one is drawn: the pointer
+ * is over no part of the body scroller (the top bar, the Agent column), or
+ * has left the page.
+ * @param view - The editor view.
+ */
+export function clearTableDropLine(view: EditorView): void {
+  if (tableDragKey.getState(view.state)?.gap != null) send(view, { gap: null });
 }
 
 /**
@@ -130,7 +145,15 @@ export function startTableDrag(view: EditorView, orientation: DragOrientation, c
  */
 export function endTableDrag(view: EditorView): void {
   if (tableDragKey.getState(view.state) == null || view.isDestroyed) return;
-  const command: DragCommand = { end: true };
+  send(view, { end: true });
+}
+
+/**
+ * Hands the drag a command, outside the undo history.
+ * @param view - The editor view.
+ * @param command - The command.
+ */
+function send(view: EditorView, command: DragCommand): void {
   view.dispatch(view.state.tr.setMeta(tableDragKey, command).setMeta('addToHistory', false));
 }
 
@@ -142,6 +165,22 @@ export function endTableDrag(view: EditorView): void {
 export function dragSourceOf(state: EditorState): { cellPos: number; orientation: DragOrientation } | null {
   const drag = tableDragKey.getState(state);
   return drag == null ? null : { cellPos: drag.source, orientation: drag.orientation };
+}
+
+/** The editor's drop-line hook (`dropCursor.hooks.computeDropPosition`). */
+type DropPositionHook = (context: ComputeDropPositionContext) => ComputeDropPositionContext['defaultPosition'];
+
+/**
+ * Holds the editor's drop line back while a row or a column is dragged: that
+ * drag draws its own line across the table, and the editor's line says where
+ * words would land, which is not where the row or column goes. BlockNote's own
+ * table handles hide it too, hiding the drop cursor's elements on each
+ * dragover (`TableHandles.ts` `dragOverHandler`).
+ * @param next - The hook for every other drag.
+ * @returns The hook.
+ */
+export function holdDropLineInTableDrags(next: DropPositionHook): DropPositionHook {
+  return (context) => (dragSourceOf(context.view.state) === null ? next(context) : null);
 }
 
 /**
@@ -175,6 +214,94 @@ function edgesOf(view: EditorView, drag: Drag): number[] | null {
   }
   edges.push(right);
   return edges;
+}
+
+/**
+ * The frame a table scrolls sideways in.
+ * @param view - The editor view.
+ * @param cellPos - A cell of the table.
+ * @returns The frame, or null when the cell is not drawn in one.
+ */
+export function tableFrameOf(view: EditorView, cellPos: number): HTMLElement | null {
+  const cell = view.nodeDOM(cellPos);
+  return cell instanceof Element ? cell.closest<HTMLElement>(SCROLL_VIEWPORT) : null;
+}
+
+/**
+ * Where on screen a drag's lines can be seen, along the axis they move on: a
+ * column's within its table frame, a row's within the body scroller. Past it
+ * the edges the table lays out are clipped from view.
+ * @param view - The editor view.
+ * @param drag - The drag.
+ * @returns The start and end, or null when nothing clips them.
+ */
+function shownRange(view: EditorView, drag: Drag): [number, number] | null {
+  const clip = drag.orientation === 'column' ? tableFrameOf(view, drag.source) : bodyScrollerOf(view);
+  if (clip === null) return null;
+  const box = clip.getBoundingClientRect();
+  return drag.orientation === 'row' ? [box.top, box.bottom] : [box.left, box.right];
+}
+
+/**
+ * The gap the pointer of a drag event is over, among the edges the reader
+ * sees. The line is drawn at this gap and a drop lands at it, so with no edge
+ * shown — the table scrolled out of view, a column wider than its frame —
+ * there is neither.
+ * @param view - The editor view.
+ * @param drag - The drag.
+ * @param event - The dragover or drop.
+ * @returns The gap, or null when no edge is shown or the table is not drawn.
+ */
+function gapUnder(view: EditorView, drag: Drag, event: MouseEvent): number | null {
+  const edges = edgesOf(view, drag);
+  if (edges === null) return null;
+  const pointer = drag.orientation === 'row' ? event.clientY : event.clientX;
+  const [start, end] = shownRange(view, drag) ?? [-Infinity, Infinity];
+  // A pixel either way: a table flush with its frame has its outer edges on
+  // the frame's own, at fractional positions.
+  const gaps = edges.flatMap((edge, gap) => (edge >= start - 1 && edge <= end + 1 ? [gap] : []));
+  return gaps.length === 0 ? null : gaps[dropGapAt(gaps.map((gap) => edges[gap]!), pointer)]!;
+}
+
+/**
+ * Whether a drag event is inside the body scroller — over the text column or
+ * the gutters beside it, the area a table drag can land in — or, for an editor
+ * in no scroller, inside the editor.
+ * @param view - The editor view.
+ * @param target - The event's target.
+ * @returns Whether it is.
+ */
+function inBody(view: EditorView, target: EventTarget | null): boolean {
+  return target instanceof Node && (bodyScrollerOf(view) ?? view.dom).contains(target);
+}
+
+/**
+ * Takes a dragover: the line is drawn at the gap under the pointer, or goes
+ * when no shown edge is there.
+ * @param view - The editor view.
+ * @param drag - The drag.
+ * @param event - The dragover.
+ */
+function trackGap(view: EditorView, drag: Drag, event: DragEvent): void {
+  event.preventDefault();
+  const gap = gapUnder(view, drag, event);
+  if (gap !== drag.gap) send(view, { gap });
+}
+
+/**
+ * Takes a drop: the dragged row or column moves to the gap under the pointer;
+ * with no gap there, nothing moves.
+ * @param editor - The editor to write to.
+ * @param view - The editor view.
+ * @param drag - The drag.
+ * @param event - The drop.
+ */
+function dropAtGap(editor: DropEditor, view: EditorView, drag: Drag, event: DragEvent): void {
+  event.preventDefault();
+  // Read at the drop itself: the body or the table frame can scroll the lines
+  // under a still pointer between dragovers (inner#1350).
+  const gap = gapUnder(view, drag, event);
+  if (gap !== null) moveToGap(editor, drag.source, drag.orientation, gap);
 }
 
 /**
@@ -230,10 +357,14 @@ function tableDragPlugin(editor: DropEditor): Plugin<Drag | null> {
         return source === null ? null : { ...value, source };
       },
     },
-    // The handle a drag starts from can leave the page mid-drag (the
-    // controller drops it), and a drag from an element no longer in the page
-    // fires no `dragend`. So the end is also read off the page: any drop, any
-    // drag end, and the first pointer move with no button held.
+    // The drag is taken off the page, in the capture phase: over the gutters
+    // beside the text column the editor sees nothing, and over a block's own
+    // controls it lets the event go (a node view's `stopEvent`). Cancelled there,
+    // the editor leaves the event alone (`prosemirror-view` `eventBelongsToView`).
+    // The handle a drag starts from can leave the page mid-drag (its table can
+    // be deleted under it), and a drag from an element no longer in the page
+    // fires no `dragend`: the end is also read off any drop, any drag end, and
+    // the first pointer move with no button held.
     view: (view) => {
       /** Ends the drag, if one is on. */
       const end = (): void => {
@@ -247,8 +378,32 @@ function tableDragPlugin(editor: DropEditor): Plugin<Drag | null> {
         if (event.buttons === 0) end();
       };
       const page = view.dom.ownerDocument;
+      /**
+       * Takes a dragover, or the dragenter a browser fires in its place on the
+       * update the element under the pointer changes: inside the body scroller
+       * the line follows the pointer; over the top bar or the Agent column it
+       * goes, as the editor's own drop cursor does when the pointer leaves it.
+       * @param event - The dragover or dragenter.
+       */
+      const over = (event: DragEvent): void => {
+        const drag = tableDragKey.getState(view.state);
+        if (drag == null) return;
+        if (inBody(view, event.target)) trackGap(view, drag, event);
+        else clearTableDropLine(view);
+      };
+      /**
+       * Takes a drop inside the body scroller; any other drop only ends the drag.
+       * @param event - The drop.
+       */
+      const dropped = (event: DragEvent): void => {
+        const drag = tableDragKey.getState(view.state);
+        if (drag != null && inBody(view, event.target)) dropAtGap(editor, view, drag, event);
+        end();
+      };
       page.addEventListener('dragend', end);
-      page.addEventListener('drop', end);
+      page.addEventListener('dragenter', over, true);
+      page.addEventListener('dragover', over, true);
+      page.addEventListener('drop', dropped, true);
       page.addEventListener('mousemove', moved);
       return {
         update: (current, prev): void => {
@@ -257,36 +412,15 @@ function tableDragPlugin(editor: DropEditor): Plugin<Drag | null> {
         },
         destroy: (): void => {
           page.removeEventListener('dragend', end);
-          page.removeEventListener('drop', end);
+          page.removeEventListener('dragenter', over, true);
+          page.removeEventListener('dragover', over, true);
+          page.removeEventListener('drop', dropped, true);
           page.removeEventListener('mousemove', moved);
         },
       };
     },
     props: {
       decorations: dropLine,
-      handleDOMEvents: {
-        dragover: (view, event): boolean => {
-          const drag = tableDragKey.getState(view.state);
-          if (drag == null) return false;
-          event.preventDefault();
-          const edges = edgesOf(view, drag);
-          if (edges === null) return true;
-          const gap = dropGapAt(edges, drag.orientation === 'row' ? event.clientY : event.clientX);
-          if (gap !== drag.gap) {
-            const command: DragCommand = { gap };
-            view.dispatch(view.state.tr.setMeta(tableDragKey, command).setMeta('addToHistory', false));
-          }
-          return true;
-        },
-        drop: (view, event): boolean => {
-          const drag = tableDragKey.getState(view.state);
-          if (drag == null) return false;
-          event.preventDefault();
-          if (drag.gap !== null) moveToGap(editor, drag.source, drag.orientation, drag.gap);
-          endTableDrag(view);
-          return true;
-        },
-      },
     },
   });
 }

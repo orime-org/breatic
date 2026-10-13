@@ -481,6 +481,7 @@ export {
 export { SSE_HEARTBEAT_MISSES_ALLOWED } from "@shared/agent/heartbeat.js";
 export { extractPromptText } from "@shared/agent/extract-prompt.js";
 export { stripUnicodeTags } from "@shared/agent/strip-unicode-tags.js";
+export { dsmlBlockStart, dsmlHeldFrom, stripDsml } from "@shared/agent/dsml.js";
 export {
   ATTACHMENT_DATA_PART,
   attachmentMarker,

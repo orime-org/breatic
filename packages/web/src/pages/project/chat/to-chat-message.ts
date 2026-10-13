@@ -16,7 +16,7 @@
  */
 import { getToolName, isToolUIPart } from 'ai';
 import type { UIMessage } from 'ai';
-import { canvasProposalSchema, chipOfPart, isReaderLine, TURNED_AWAY } from '@breatic/shared';
+import { canvasProposalSchema, chipOfPart, isReaderLine, stripDsml, TURNED_AWAY } from '@breatic/shared';
 import type { CanvasProposal, ChatAttachedChip } from '@breatic/shared';
 import type { ChatAsset, ChatMessage, ChatSource, ToolCall } from '@web/pages/project/chat/types';
 
@@ -256,7 +256,7 @@ export function toChatMessage(
       attachments.push(chip);
       continue;
     }
-    if (part.type === 'text') content += part.text;
+    if (part.type === 'text') content += stripDsml(part.text);
     else if (part.type === 'reasoning') {
       thinking += part.text;
       // The thinking says whether it is still going; the turn does not. How

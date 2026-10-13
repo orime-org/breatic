@@ -38,6 +38,8 @@ import type { EditorView } from '@tiptap/pm/view';
 import * as React from 'react';
 
 import { Button } from '@web/components/ui/button';
+import { cn } from '@web/lib/utils';
+import { useDragSourceHidden } from '@web/spaces/document/use-drag-source-hidden';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -74,7 +76,8 @@ import {
   type Box,
 } from '@web/spaces/document/document-table-control-place';
 import { setTableTarget, tableTargetOf } from '@web/spaces/document/document-table-target';
-import { endTableDrag, startTableDrag } from '@web/spaces/document/document-table-drag';
+import { startTableDrag } from '@web/spaces/document/document-table-drag';
+import { setDragPreview, tableLinePreviewContent } from '@web/spaces/document/document-drag-preview';
 import { useDocumentBars } from '@web/spaces/document/document-bars';
 import { useEditorSnapshot } from '@web/spaces/document/use-editor-snapshot';
 import { bodyLayerMark } from '@web/spaces/document/document-body-focus';
@@ -289,6 +292,13 @@ export function DocumentTableHandle({
   const state = useExtensionState(TableHandlesExtension) as HandlesState | undefined;
   const holdsSelection = useHoldsSelection(editor);
   const [open, setOpen] = React.useState(false);
+  // The handles are frozen for this handle's drag so the handle, the drag's
+  // source, stays in the page and its `dragend` reaches the document
+  // (inner#1350 §5.2); frozen, it no longer follows the table, so it is hidden.
+  const source = useDragSourceHidden();
+  // Gives back the handles a drag off this handle froze. Its end and the
+  // unmount both call it, whichever comes first.
+  const releaseDrag = React.useRef<(() => void) | null>(null);
   const row = orientation === 'row';
 
   // What the unmount has to undo, read when it runs: the controller drops a
@@ -303,6 +313,8 @@ export function DocumentTableHandle({
   React.useEffect(
     () => () => {
       const last = held.current;
+      releaseDrag.current?.();
+      releaseDrag.current = null;
       if (!last.open) return;
       last.handles.unfreezeHandles();
       last.hideOtherElements(false);
@@ -362,7 +374,7 @@ export function DocumentTableHandle({
   return (
     <DropdownMenu open={open} onOpenChange={onOpenChange}>
       <div
-        className='doc-table-handle relative flex'
+        className={cn('doc-table-handle relative flex', source.hidden && 'invisible')}
         style={placeStyle}
         // A layer of the body, belonging on its table (inner#1127).
         {...bodyLayerMark(editor, { block: state.block.id })}
@@ -396,10 +408,18 @@ export function DocumentTableHandle({
             }
             event.dataTransfer.effectAllowed = 'move';
             event.dataTransfer.setData(TABLE_LINE_TYPE, '');
+            const content = tableLinePreviewContent(view, pos, orientation);
+            if (content !== null) setDragPreview(view, event.dataTransfer, content);
+            handles.freezeHandles();
+            releaseDrag.current = () => {
+              handles.unfreezeHandles();
+            };
+            source.hideAfterStart();
           }}
           onDragEnd={() => {
-            const view = editor.prosemirrorView;
-            if (view !== undefined) endTableDrag(view);
+            releaseDrag.current?.();
+            releaseDrag.current = null;
+            source.show();
           }}
           onClick={() => {
             onOpenChange(!open);
