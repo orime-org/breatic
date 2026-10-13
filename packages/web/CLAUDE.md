@@ -122,7 +122,9 @@ demo 里那些动画参数是随手写的示意,不是定稿 —— 完全实现
 
 **这条也是踩出来的**:2026-08-11 做 rail 时,我看到折叠箭头和汉堡按钮写得逐字相同,把共享的类抽成了一个函数;对抗指出那 14 个类里 7 个是 base 无条件给的、3 个逐字就是 `chrome-ghost`,只有尺寸是自己的 —— 我做的是「给重复起个名字」,而不是「用已经有的那个」。换成 `variant='chrome-ghost'` 后计算样式零差异,函数删掉。**症状是「两处代码写得一模一样」时,先问「设计系统里是不是已经有一个名字在说这件事」,再考虑抽共用的东西。**
 
-**真要给某个按钮定变体时,`className` 怎么跟变体类合并要弄清楚**:`cn()` 走 twMerge,**只在同一个 utility 组里让后写的赢** —— 你写的 `bg-muted` 盖得掉变体的 `bg-background`;但带 modifier 的自成一组,变体的 `hover:bg-accent` **不会**被一个无 modifier 的 `bg-*` 盖掉。所以**给了自定义底色就必须把 hover 一起重述**,否则鼠标一放上去你的底色就被变体的 hover 顶掉。选中态尤其容易踩:选中项的底色被 hover 顶掉之后,它跟一个被 hover 的未选中项长得一模一样。
+**真要给某个按钮定变体时,`className` 怎么跟变体类合并要弄清楚**:`cn()` 走 twMerge,**只在同一个 utility 组里让后写的赢** —— 你写的 `bg-muted` 盖得掉变体的 `bg-background`;但带 modifier 的自成一组,变体的 `hover-enabled:bg-accent` **不会**被一个无 modifier 的 `bg-*` 盖掉。所以**给了自定义底色就必须把 hover 一起重述,而且要写成 `hover-enabled:`**,否则鼠标一放上去你的底色就被变体的 hover 顶掉 —— 写成 `hover:` 跟变体的 `hover-enabled:` 不在同一组,盖不掉它。选中态尤其容易踩:选中项的底色被 hover 顶掉之后,它跟一个被 hover 的未选中项长得一模一样。
+
+**`Button` 的悬停只在按钮可用时生效(MANDATORY)**:`buttonVariants` 的每个变体用 `hover-enabled:`(定义在 `index.css`),它是内置 `hover:` 加上「不是 `:disabled`、也不是 `aria-disabled="true"`」—— 等待中(`loading`)和禁用的按钮指针停在上面不变色,跟已确认的 demo 一致。调用方给 `Button` 写自己的悬停,同样写 `hover-enabled:`。判定题:**我正要给一个 `Button` 写悬停吗?写 `hover-enabled:`。** `components/ui/__tests__/button.test.tsx` 钉住变体里不出现裸 `hover:`。
 
 **CI 强制**:`breatic/no-raw-button`(ESLint),扫 `src/**/*.{ts,tsx}`(`.ts` 也扫 —— `createElement('button')` 这种写法就住在普通模块里)。**豁免按出身不按目录**:只放行 `components/ui/button.tsx` 一个文件(`Button` 自己要渲染这个元素),**不放行整个 `components/ui/`** —— 那个目录不是纯 vendor,`password-input` 是我们自己的。另豁免 `_dev` 陈列页(它的用途就是把被替换掉的原生控件并排展示)和测试。
 
