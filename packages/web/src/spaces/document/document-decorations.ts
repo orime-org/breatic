@@ -37,6 +37,7 @@ import { createExtension } from '@blocknote/core';
 import { computeNumbering } from '@web/spaces/document/document-numbering';
 import { quoteRuns } from '@web/spaces/document/document-quote-runs';
 import { QUOTED } from '@web/spaces/document/document-list-block';
+import { CONTENT_DECORATION } from '@web/spaces/document/document-view-state';
 
 /** The attribute the number is drawn from. */
 const DOC_NUMBER_ATTRIBUTE = 'data-doc-number';
@@ -66,6 +67,9 @@ const QUOTE_FIRST_ATTRIBUTE = 'data-quoted-run-first';
  * part of the quote.
  */
 const QUOTE_LAST_ATTRIBUTE = 'data-quoted-run-last';
+
+/** Every attribute a quoted block's run marks it with. */
+export const QUOTE_RUN_ATTRIBUTES = [QUOTE_RUN_ATTRIBUTE, QUOTE_FIRST_ATTRIBUTE, QUOTE_LAST_ATTRIBUTE] as const;
 
 /** The attribute saying which of the three shapes a bullet draws. */
 const BULLET_LEVEL_ATTRIBUTE = 'data-bullet-level';
@@ -191,7 +195,7 @@ function blockDecorations(doc: PMNode): DecorationSet {
     if (Object.keys(onContent).length > 0) {
       const from = pos + 1;
       decorations.push(
-        Decoration.node(from, from + content.nodeSize, onContent),
+        Decoration.node(from, from + content.nodeSize, onContent, CONTENT_DECORATION),
       );
     }
     return true;

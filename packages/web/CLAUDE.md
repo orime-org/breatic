@@ -28,10 +28,10 @@ TS strict 零 `any` · 关键路径 / invariant(StrictMode-safe resource hook / 
 实测两者的计算样式只差 `text-underline-offset`(2px 对 auto),给一段已加下划线的文字粘上 URL 屏幕上零变化。
 
 所以内容里的链接一律 **`color: var(--color-content-link)` 加下划线两样都要**:颜色让它跟正文分开,下划线
-保住「颜色不能是唯一信号」这条(WCAG 1.4.1)。这个 token 指向 palette 的 blue,而 palette 那段注释自己写着
-identity 值就是给彩色文字用的;我们的 blue 是 Radix 的一档 —— 亮色 step 10、暗色 step 9(#923)。两档都紧贴
-Primer 的 accent 蓝(也就是 Primer 的链接色):CAM02-UCS 下亮色差 10.7、暗色差 3.5,2026-09-16 重定值后实测。
-业界三家(GitHub 蓝 + 下划线 ·
+保住「颜色不能是唯一信号」这条(WCAG 1.4.1)。亮色下它就是 Primer 的链接蓝 `#0969da`:palette 的 blue 在页面底色
+`#f0f0f0` 上只有 3.18:1,正文要 4.5:1(WCAG 2.2 SC 1.4.3),`#0969da` 是 4.56:1(inner#1462)。暗色下它指向 palette
+的 blue(Radix 暗色 step 9,`#0090ff`),在页面底色 `#1c1c1c` 上 5.22:1。`src/theme/__tests__/content-link-contrast.test.ts`
+按 token 量这几处对比度。业界三家(GitHub 蓝 + 下划线 ·
 Notion 灰 + 下划线 · NN/g 的通则)没有一家让链接跟正文同色。
 
 判定题:**这条链接嵌在一段话里、要让人看出它能点吗?是 → `--color-content-link` 加下划线**。chrome 里的
@@ -156,7 +156,7 @@ demo 里那些动画参数是随手写的示意,不是定稿 —— 完全实现
 
 判定题:**我正要在 `index.css` 里写一条 `.scope 元素 { ... }` 吗?它在 `@layer` 里吗?** 以及 **这个 scope 和它元素上的 utility,有没有都会设的属性?有 → 那个属性归元素。**
 `packages/web/src/pages/project/chat/__tests__/chat-markdown-css.test.ts` 用 postcss 遍历规则的父节点强制这两条,**但它只认 `.chat-markdown` 这一个 scope**;`.doc-body` 有自己的那一个(见下一段),只管分层、不管交集属性。别的 scope 没有守卫替你判,判定题每个新 scope 都要自己过一遍。
-**document 正文那族(`.doc-body`)在 `@layer components` 里,只有两类规则留在层外**:三条 `::selection` 规则,和 gap cursor 的颜色(`.doc-body .ProseMirror-gapcursor::after`)。两类面对的都是 `@tiptap/core` 建编辑器时往 `<head>` 末尾注入的那张**未分层**样式表(`style.ts`):gap cursor 那条要盖掉它的 `border-top: 1px solid black`(否则暗色主题下是一条黑线,#101),分层的规则盖不掉任何未分层的;`::selection` 那几条面对它的 `.ProseMirror-hideselection *::selection { background: transparent }`,分层后同样必输 —— 但这几条不分层时 `.doc-body ::selection` 跟它同特异性、按顺序也输,`:not([data-body-holds])` 那条赢它而说的同样是 `transparent`,所以这几条放进层里屏幕上没有差别,留在层外只是保持现状。不带 `.doc-body` 却必须跟正文规则同层的有两条:合作者选区色带(`.collaboration-carets__selection:not(:has(.reference-mention))`)和链接面板的选区替身(`[data-show-selection]`)—— 正文对它们的覆盖(色带的 `padding-block`、评论高亮在合并 span 上的底色)靠同层里的特异性和先后顺序成立,它们留在层外就会按层赢过正文。正文里带工具类的元素是媒体块的工具条、缩放手柄、说明文字输入框、说明文字、图片与它的骨架屏、音视频播放器和上传占位条;收层时实测(空闲 · 选中文字 · 悬停图片 · 选中图片 · 说明框打开 · 选中单元格 · 写评论草稿 · 上传中加失败,8 种状态各量一遍正文里每个元素)正文规则跟它们的工具类**零重叠**,收层前后每个元素的计算样式逐项相同(上传中那个转圈图标的动画角度除外)。`src/spaces/document/__tests__/document-body-layer-css.test.ts` 用 postcss 守这件事:每条 `.doc-body` 规则要么在 `@layer components`,要么是上面那两类、在层外。
+**document 正文那族(`.doc-body`)在 `@layer components` 里,只有两类规则留在层外**:四条 `::selection` 规则,和 gap cursor 的颜色(`.doc-body .ProseMirror-gapcursor::after`)。两类面对的都是 `@tiptap/core` 建编辑器时往 `<head>` 末尾注入的那张**未分层**样式表(`style.ts`):gap cursor 那条要盖掉它的 `border-top: 1px solid black`(否则暗色主题下是一条黑线,#101),分层的规则盖不掉任何未分层的;`::selection` 那几条面对它的 `.ProseMirror-hideselection *::selection { background: transparent }`,分层后同样必输 —— 但这几条不分层时 `.doc-body ::selection` 跟它同特异性、按顺序也输,`:not([data-body-holds])` 那条赢它而说的同样是 `transparent`,所以这几条放进层里屏幕上没有差别,留在层外只是保持现状。不带 `.doc-body` 却必须跟正文规则同层的有两条:合作者选区色带(`.collaboration-carets__selection:not(:has(.reference-mention))`)和链接面板的选区替身(`[data-show-selection]`)—— 正文对它们的覆盖(色带的 `padding-block`、评论高亮在合并 span 上的底色)靠同层里的特异性和先后顺序成立,它们留在层外就会按层赢过正文。正文里带工具类的元素是媒体块的工具条、缩放手柄、说明文字输入框、说明文字、图片与它的骨架屏、音视频播放器和上传占位条;收层时实测(空闲 · 选中文字 · 悬停图片 · 选中图片 · 说明框打开 · 选中单元格 · 写评论草稿 · 上传中加失败,8 种状态各量一遍正文里每个元素)正文规则跟它们的工具类**零重叠**,收层前后每个元素的计算样式逐项相同(上传中那个转圈图标的动画角度除外)。`src/spaces/document/__tests__/document-body-layer-css.test.ts` 用 postcss 守这件事:每条 `.doc-body` 规则要么在 `@layer components`,要么是上面那两类、在层外。
 
 ## 禁止浏览器 / OS 原生渲染的交互控件(MANDATORY,CI 强制)
 **凡「视觉皮肤由浏览器 / 操作系统绘制」的交互控件,一律禁用,必须自绘(Radix primitive 或自绘组件)。** 根因:各引擎(Chrome / Safari / Firefox)画同一个原生控件长得不一样,**对创作类产品这种跨引擎不一致是致命的**;「跨引擎像素一致」是硬功能需求,不是锦上添花。这是滚动条 / toast / tooltip 那些单点守卫背后的**总原则** —— 它们都是本条的实例,本条把教训泛化,让每个新原生控件(color → range → 未来 date)被**机械挡住**,而不是每次靠真机 review 一个个逮。

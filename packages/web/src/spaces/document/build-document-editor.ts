@@ -41,6 +41,8 @@ import { buildDocumentSchema } from '@web/spaces/document/document-schema-blockn
 import { documentNodeCompositionExtension } from '@web/spaces/document/document-node-composition';
 import { documentDividerInputExtension } from '@web/spaces/document/document-divider';
 import { documentBodyEdgePointerExtension } from '@web/spaces/document/document-body-edge-pointer';
+import { documentDragAutoScrollExtension } from '@web/spaces/document/document-drag-autoscroll';
+import { documentSelectionDragExtension } from '@web/spaces/document/document-selection-drag';
 import { documentBodyEdgeExtension } from '@web/spaces/document/document-body-edge-selection';
 import { documentMediaRowPressExtension } from '@web/spaces/document/document-media-row-press';
 import { documentBodyFocusExtension } from '@web/spaces/document/document-body-focus';
@@ -52,7 +54,7 @@ import { documentTabExtension } from '@web/spaces/document/document-tab';
 import { documentTableKeysExtension } from '@web/spaces/document/document-table-keys';
 import { documentTableColumnWidthsExtension } from '@web/spaces/document/document-table-column-widths';
 import { documentTableTargetExtension } from '@web/spaces/document/document-table-target';
-import { documentTableDragExtension } from '@web/spaces/document/document-table-drag';
+import { documentTableDragExtension, holdDropLineInTableDrags } from '@web/spaces/document/document-table-drag';
 import { documentPasteHandler } from '@web/spaces/document/document-table-paste';
 import { documentQuoteInputExtension } from '@web/spaces/document/document-quote-input';
 import { documentSafariImeExtension } from '@web/spaces/document/document-safari-ime';
@@ -169,6 +171,8 @@ export function buildDocumentEditor(
       documentDividerInputExtension(),
       documentNodeCompositionExtension(),
       documentBodyEdgePointerExtension(),
+      documentDragAutoScrollExtension(),
+      documentSelectionDragExtension(),
       documentBodyEdgeExtension(),
       documentSelectionPaintExtension(),
       documentBodyFocusExtension(),
@@ -225,7 +229,7 @@ export function buildDocumentEditor(
     // draws a band across the whole 768px column; two reads as a line, which
     // is all this has to say and is how the rest of this product's chrome is
     // drawn.
-    dropCursor: { color: false, width: 2, hooks: { computeDropPosition: fileDropPosition } },
+    dropCursor: { color: false, width: 2, hooks: { computeDropPosition: holdDropLineInTableDrags(fileDropPosition) } },
     // Merge and split, a fill colour per cell, and a header row and column.
     // Cell text colour stays off: a cell's text takes the same text colour
     // mark every other run does.
