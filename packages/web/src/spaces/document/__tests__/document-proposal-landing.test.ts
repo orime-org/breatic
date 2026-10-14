@@ -21,7 +21,7 @@ import {
   getDocumentEditor,
   type DocumentEditorHandle,
 } from '@web/spaces/document/document-editor-cache';
-import { landedOn, landProposal } from '@web/spaces/document/document-proposal-landing';
+import { landedAs, landedOn, landProposal } from '@web/spaces/document/document-proposal-landing';
 
 afterEach(() => {
   _resetDocumentEditorCacheForTests();
@@ -258,7 +258,7 @@ describe('knowing a proposal has landed', () => {
 
     await landProposal(handle, proposal, 'write', true);
 
-    expect(landedOn(handle, proposal)).toBe(true);
+    expect(landedAs(handle, proposal)).toBe('write');
   });
 
   it('knows a rewrite card whose words went on as a comment', async () => {
@@ -267,7 +267,7 @@ describe('knowing a proposal has landed', () => {
 
     await landProposal(handle, proposal, 'comment', true);
 
-    expect(landedOn(handle, proposal)).toBe(true);
+    expect(landedAs(handle, proposal)).toBe('comment');
   });
 
   it('does not count a comment whose words have gone', async () => {

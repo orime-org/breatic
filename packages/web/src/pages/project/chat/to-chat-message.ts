@@ -16,8 +16,8 @@
  */
 import { getToolName, isToolUIPart } from 'ai';
 import type { UIMessage } from 'ai';
-import { canvasProposalSchema, chipOfPart, isReaderLine, stripDsml, TURNED_AWAY } from '@breatic/shared';
-import type { CanvasProposal, ChatAttachedChip } from '@breatic/shared';
+import { canvasProposalSchema, chipOfPart, documentProposalSchema, isReaderLine, stripDsml, TURNED_AWAY } from '@breatic/shared';
+import type { CanvasProposal, ChatAttachedChip, DocumentProposal } from '@breatic/shared';
 import type { ChatAsset, ChatMessage, ChatSource, ToolCall } from '@web/pages/project/chat/types';
 
 /** The part type carrying a turn that was stopped. */
@@ -44,6 +44,9 @@ const RESULTS_TOOL = 'search_images';
 /** The tool that proposes a group of canvas nodes for the reader to place. */
 const PROPOSE_TOOL = 'propose_canvas_action';
 
+/** The tool that proposes a comment, rewrite or insert for the open document. */
+const PROPOSE_DOCUMENT_TOOL = 'propose_document_edit';
+
 /**
  * The group one finished `propose_canvas_action` call proposed, if any.
  *
@@ -62,6 +65,20 @@ function proposalOf(output: unknown): CanvasProposal | 'expired' | null {
   if (output === null || output === undefined) return null;
   if ((output as Record<string, unknown>)['placed'] !== true) return null;
   const parsed = canvasProposalSchema.safeParse(output);
+  return parsed.success ? parsed.data : 'expired';
+}
+
+/**
+ * The edit one finished `propose_document_edit` call proposed, if any
+ * (inner#1509), read the way {@link proposalOf} reads a canvas proposal.
+ * @param output - Whatever the call answered with.
+ * @returns The proposal, `'expired'` for an accepted one this build cannot
+ *   land, or null when the call carries none.
+ */
+function documentProposalOf(output: unknown): DocumentProposal | 'expired' | null {
+  if (output === null || output === undefined) return null;
+  if ((output as Record<string, unknown>)['placed'] !== true) return null;
+  const parsed = documentProposalSchema.safeParse(output);
   return parsed.success ? parsed.data : 'expired';
 }
 
@@ -184,6 +201,7 @@ export function toChatMessage(
   const found: Array<[number, ChatSource]> = [];
   const assets: ChatAsset[] = [];
   const proposals: CanvasProposal[] = [];
+  const documentProposals: DocumentProposal[] = [];
   let hasExpiredProposal = false;
   const attachments: ChatAttachedChip[] = [];
   // The server writes it onto the stored message; a message this reader has
@@ -245,6 +263,11 @@ export function toChatMessage(
         const proposal = proposalOf(part.output);
         if (proposal === 'expired') hasExpiredProposal = true;
         else if (proposal !== null) proposals.push(proposal);
+      }
+      if (status === 'success' && getToolName(part) === PROPOSE_DOCUMENT_TOOL) {
+        const proposal = documentProposalOf(part.output);
+        if (proposal === 'expired') hasExpiredProposal = true;
+        else if (proposal !== null) documentProposals.push(proposal);
       }
       if (status === 'success' && getToolName(part) === SEARCH_TOOL) {
         found.push(...sourcesOf(part.output));
@@ -312,6 +335,7 @@ export function toChatMessage(
     ...(sources.length > 0 ? { sources, citations } : {}),
     ...(assets.length > 0 ? { assets } : {}),
     ...(proposals.length > 0 ? { proposals } : {}),
+    ...(documentProposals.length > 0 ? { documentProposals } : {}),
     ...(hasExpiredProposal ? { hasExpiredProposal: true as const } : {}),
     ...(attachments.length > 0 ? { attachments } : {}),
     ...(options.failedJustNow === true ? { failedJustNow: true as const } : {}),

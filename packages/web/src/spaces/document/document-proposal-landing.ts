@@ -25,9 +25,9 @@ import { asCommentBody, commentsOn } from '@web/spaces/document/document-comment
 import { threadRangesByThread } from '@web/spaces/document/document-comment-ranges';
 import type { DocumentEditorHandle } from '@web/spaces/document/document-editor-cache';
 import { markdownBlocks } from '@web/spaces/document/document-markdown';
+import type { LandingAction } from '@web/stores/document-proposals';
 
-/** What the reader pressed: put it on as a comment, or write it into the body. */
-export type LandingAction = 'comment' | 'write';
+export type { LandingAction } from '@web/stores/document-proposals';
 
 /** How a press ended. */
 export type LandingResult =
@@ -137,16 +137,26 @@ function commentLanded(handle: Pick<Landable, 'editor'>, proposalId: string): bo
 }
 
 /**
- * Whether a proposal has already landed in the document: its comment is on,
- * or the first block it writes is there. A rewrite card counts either.
+ * How a proposal has already landed in the document, if it has: its comment
+ * is on, or the first block it writes is there. A rewrite card counts either.
+ * @param handle - The document.
+ * @param proposal - The proposal.
+ * @returns The way it landed, or null when it has not.
+ */
+export function landedAs(handle: Pick<Landable, 'editor'>, proposal: DocumentProposal): LandingAction | null {
+  if (proposal.kind !== 'insert' && commentLanded(handle, proposal.proposalId)) return 'comment';
+  if (proposal.kind === 'comment') return null;
+  return blockById(handle.editor.prosemirrorState.doc, writtenBlockId(proposal.proposalId, 0)) === null ? null : 'write';
+}
+
+/**
+ * Whether a proposal has already landed in the document.
  * @param handle - The document.
  * @param proposal - The proposal.
  * @returns True when it has landed.
  */
 export function landedOn(handle: Pick<Landable, 'editor'>, proposal: DocumentProposal): boolean {
-  if (proposal.kind !== 'insert' && commentLanded(handle, proposal.proposalId)) return true;
-  if (proposal.kind === 'comment') return false;
-  return blockById(handle.editor.prosemirrorState.doc, writtenBlockId(proposal.proposalId, 0)) !== null;
+  return landedAs(handle, proposal) !== null;
 }
 
 /**

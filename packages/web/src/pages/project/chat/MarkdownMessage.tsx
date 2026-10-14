@@ -69,6 +69,7 @@ const SIZE_CLASS = {
   // written there it would lose to the utility and the prose would set 3.45px
   // tighter than it reads at.
   sm: 'chat-markdown text-sm leading-[1.65]',
+  xs: 'chat-markdown text-xs leading-[1.65]',
   '2xs': 'chat-markdown text-2xs leading-[1.65]',
 } as const;
 
