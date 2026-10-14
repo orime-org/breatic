@@ -9,6 +9,7 @@ import * as React from 'react';
 import type * as Y from 'yjs';
 
 import { isReauthCloseReason } from '@breatic/shared';
+import { reportCollabFailure } from '@web/data/yjs/collab-failure-report';
 import { destroyDoc } from '@web/data/yjs/manager';
 
 /**
@@ -116,6 +117,16 @@ const docEntries = new Map<string, DocEntry>();
 function ensureSharedSocket(url: string): HocuspocusProviderWebsocket {
   if (!sharedSocket) {
     sharedSocket = new HocuspocusProviderWebsocket({ url: toAbsoluteWsUrl(url) });
+    // The connection reports its own drops: each attached provider re-emits
+    // this close, so reporting there sent one alert per open document.
+    sharedSocket.on('close', (data: { event?: { code?: number; reason?: string } } | undefined) => {
+      reportCollabFailure({
+        kind: 'disconnect',
+        code: data?.event?.code,
+        reason: data?.event?.reason || undefined,
+        documents: docEntries.size,
+      });
+    });
   }
   return sharedSocket;
 }
