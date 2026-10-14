@@ -337,8 +337,9 @@ type AdjustFilter = InstanceType<typeof filters.BaseFilter>;
  * The filters one adjust value comes to, in the order ffmpeg runs its stages.
  * Stages that change nothing are left out. A stage that reads neighbouring
  * pixels reaches at least one of the source's own pixels, as ffmpeg's smallest
- * unsharp matrix does; the reach stays a share of the width, so a smaller draw
- * of the same source (the node's preview) shows the export's effect scaled.
+ * unsharp matrix does; the reach stays a share of the picture (of the width for
+ * the unsharp, of the short side for the blur), so a smaller draw of the same
+ * source (the node's preview) shows the export's effect scaled.
  * @param value - The sliders.
  * @param seed - The grain's seed, fixed for one panel so the preview and the export match.
  * @param source - The source's size in pixels.

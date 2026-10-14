@@ -109,7 +109,7 @@ export function previewSourceOf(
 }
 
 /**
- * Draw a picture through the adjust onto a canvas sized to the picture. The
+ * Draw a picture through the adjust onto a canvas at the size drawn. The
  * picture must be CORS-loaded: WebGL refuses a cross-origin image outright.
  * @param el - The picture.
  * @param asked - The size to draw it at, held to what the backend can draw.

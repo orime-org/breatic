@@ -50,7 +50,8 @@ export function NodeExpandLayer({ nodeId, wrapper }: NodeExpandLayerProps): Reac
   const expand = draft !== null && miniToolById(draft.toolId)?.expand !== undefined ? draft.expand : null;
   const sourceSize = draft?.sourceSize ?? null;
   const geometry = useMediaGeometry(wrapper, expand !== null);
-  const zoom = useStore((s) => s.transform[2]);
+  // Read only while the layer shows, so a zoom does not re-render it on every node.
+  const zoom = useStore((s) => (expand === null ? 1 : s.transform[2]));
   // How far the picture has been moved since the panel opened, in shares of
   // it: the frame keeps its place on the canvas and the picture moves.
   const [shift, setShift] = React.useState({ x: 0, y: 0 });

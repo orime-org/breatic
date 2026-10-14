@@ -77,7 +77,8 @@ export function NodeCropLayer({ nodeId, wrapper }: NodeCropLayerProps): React.JS
   const focus = useCanvasSession((s) => (s.focusCrop?.nodeId === nodeId ? s.focusCrop : null));
   const draft = useCanvasSession(miniToolOpenOn(nodeId));
   const rectParam = rectParamOf(draft);
-  const zoom = useStore((s) => s.transform[2]);
+  // Read only while the layer shows, so a zoom does not re-render it on every node.
+  const zoom = useStore((s) => (focus === null && rectParam === undefined ? 1 : s.transform[2]));
   const geometry = useMediaGeometry(wrapper, focus !== null || rectParam !== undefined);
   const focusWrites = useWrittenElsewhere(focus?.rect ?? null);
   const toolWrites = useWrittenElsewhere<unknown>(

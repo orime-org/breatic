@@ -42,7 +42,8 @@ export function NodeGridLayer({ nodeId, wrapper }: NodeGridLayerProps): React.JS
   const spec = draft === null ? undefined : miniToolById(draft.toolId);
   const shape = spec === undefined || draft === null ? null : gridShapeOf(spec, draft.params);
   const geometry = useMediaGeometry(wrapper, shape !== null);
-  const zoom = useStore((s) => s.transform[2]);
+  // Read only while the layer shows, so a zoom does not re-render it on every node.
+  const zoom = useStore((s) => (shape === null ? 1 : s.transform[2]));
   // The lines and checkboxes counter the zoom, as the crop frame's handles do.
   const scale = handleScale(zoom);
   const picked = React.useMemo(

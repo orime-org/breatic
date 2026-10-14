@@ -79,7 +79,8 @@ export function NodeAdjustLayer({ nodeId, wrapper }: NodeAdjustLayerProps): Reac
   // Drawn at the pixels the node takes on screen, so zooming in shows what the
   // export does to fine detail, as an editor's 1:1 view does; never past the
   // source's own pixels.
-  const zoom = useStore((s) => s.transform[2]);
+  // Read only while the layer shows, so a zoom does not re-render it on every node.
+  const zoom = useStore((s) => (param === undefined ? 1 : s.transform[2]));
   const width =
     box === undefined ? 0 : Math.max(1, Math.round(Math.min(box.width * zoom * dpr, natural?.width ?? Infinity)));
   const height = box === undefined ? 0 : Math.max(1, Math.round((width * box.height) / box.width));
