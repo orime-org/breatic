@@ -12,8 +12,8 @@
 | lint | `pnpm turbo lint`(`eslint`) | 代码规范 + 常见坑 | 每 PR |
 | unit | `vitest` | 函数 / 组件,mock 依赖 | 写代码时 TDD 红绿蓝 |
 | integration | `vitest` `*.integration.test.ts` | 真依赖(PG / Redis / 回环上的真实 socket),**不 mock 关键路径** | 写代码时(碰 DB / 服务 / 传输层)|
-| **visual** | 起真实 runtime + 浏览器 | 一个部件自己的行为 / 位置 / 尺寸 / 颜色 / 时序 | **每 PR ship 前**,默认那一档 |
-| **smoke / E2E** | 起真实 runtime + 浏览器 | 端到端真跑 | **每 PR ship 前**,默认那一档;带场景标签的按 §2.2 |
+| **visual** | 起真实 runtime + 浏览器 | 一个部件自己的行为 / 位置 / 尺寸 / 颜色 / 时序 | **每 PR ship 前**,跑这次改动相关的那些(§2.2) |
+| **smoke / E2E** | 起真实 runtime + 浏览器 | 端到端真跑 | **每 PR ship 前**,跑这次改动相关的那些(§2.2) |
 
 前 4 层都**不算 smoke**。**typecheck + 单测全绿 ≠ 真能跑**(esbuild 转译、mock 依赖都可能掩盖真实 runtime 问题)—— 必须再过 smoke / E2E。
 
@@ -45,11 +45,11 @@
 
 ### 2.1 套件自己准备它要的一切
 
-`pnpm --filter @breatic/web test:smoke` 不需要任何事先配置:setup 自己注册两个账号、建它们的 studio 和 project,把凭据写进 `playwright/.auth/`(已 gitignore)。第一次跑和数据库被清空之后跑走同一条路。**只对本机**——setup 会注册账号、会归档 project,所以它拒绝对着 localhost 以外的地址跑。
+`pnpm --filter @breatic/web test:smoke` 不需要任何事先配置。两档默认用 4 个 worker 并行跑(`playwright.config.ts` 的 `WORKERS`,`--workers` 可覆盖),每个 worker 按它的 `parallelIndex`(下称槽位)用自己的一对账号 A / B 和它们的 project:setup 按本轮的 worker 数逐个槽位准备，缺账号的槽位由 `scripts/seed-smoke-account.ts` 直接建账号(调服务端注册接口背后的 `authService.register`,不经 `POST /auth/register`,不占注册限流),再登录、建 studio 和 project,凭据和登录状态写进 `playwright/.auth/`(已 gitignore,`accounts.json` 按槽位分，登录状态是 `<槽位>-a.json` / `<槽位>-b.json`)。第一次跑和数据库被清空之后跑走同一条路。**只对本机**——setup 会建账号、会归档 project,所以它拒绝对着 localhost 以外的地址跑。spec 和 helper 一律从 `tests/helpers/slot.ts` 取 `test`,它打开的页面默认登录成本槽位的 A;从 `playwright/test` 直接取 `test` 会被 ESLint 拦下。
 
-服务端开着邮件时,注册要读寄到 Mailpit 的验证码,所以跑 smoke 的那套服务用 `pnpm dev:mailpit` 起:它起 Mailpit 并把服务端的 SMTP 指过去。用 `pnpm dev` 起的服务按 `.env` 里的发信方式寄信,Mailpit 开着也收不到。
+服务端开着邮件时，测注册的那几条 spec(`email-case`、`signup-code`、`trial-credits`)要读寄到 Mailpit 的验证码，所以跑 smoke 的那套服务用 `pnpm dev:mailpit` 起：它起 Mailpit 并把服务端的 SMTP 指过去。用 `pnpm dev` 起的服务按 `.env` 里的发信方式寄信,Mailpit 开着也收不到。
 
-同一套服务同一时间只跑一组 playwright。两组共用 `playwright/.auth/` 里的账号和它们的 project:后起的那组 setup 会重写登录状态文件,两组建的 Space 会出现在对方的页面上,上传还共用同一份票据额度。
+同一套服务同一时间只跑一轮 playwright(见 2.3 末尾)。一轮里的几个 worker 各用各的账号，互不干扰。
 
 ### 2.2 要外部服务的用例:声明、默认不跑、发布前必须跑(MANDATORY)
 
@@ -70,11 +70,25 @@
 
 | 命令 | 跑什么 |
 |---|---|
-| `pnpm test:smoke` / `pnpm test:visual` | 默认档:不带标签的那些。**每 PR 必跑,任何一台干净机器上都要全绿** |
-| `pnpm test:smoke:all` / `pnpm test:visual:all` | 全部,含带标签的 |
-| `playwright test --project=smoke --grep "@needs-<标签>"` | 单个子门 |
+| `pnpm test:smoke` / `pnpm test:visual` | 默认档:不带标签的那些。任何一台干净机器上都要全绿 |
+| `pnpm test:smoke:all` / `pnpm test:visual:all` | 全部,含带标签的，用 1 个 worker |
+| `playwright test --project=smoke --workers=1 --grep "@needs-<标签>"` | 单个子门 |
 
-**每个 PR 跑两条命令,分开跑**:`pnpm test:smoke`,外加自己那块的子门。**两条不能合成一条**——`--grep` 和 `--grep-invert` 是与的关系且排除优先,合并之后交集为空,一条都跑不到(playwright 1.62.1 实测 `Total: 0 tests`)。
+子门用 1 个 worker 跑，全部落在槽位 0:生成类用例要花积分，买过积分包的是槽位 0 的账号，其余槽位的新账号只有试用积分(`config/pricing.yaml` 的 `trial_grant`)。
+
+**每个 PR 跑这次改动相关的 smoke 和 visual,不跑全套。** 范围按任务分支相对主分支的全部 diff 定。开跑前先列一张表:改动文件 → 运行时变没变 → 哪条 spec 的哪一步走到它，以及那一步在改动前后看到的结果有什么不同。表先给决策人看过再开跑。判据:
+
+| 改动 | 算不算相关 |
+|---|---|
+| 只改 import、类型、注释、用例名 | 不算 |
+| spec 只是引用了改动组件的元素(取 testid、取框、等它可见),那一步在改动前后得到的结果一样 | 不算 |
+| 多个 spec 共用的 helper、setup 或配置 | 挑一组能走到它每条分支的 spec,引用它的其余 spec 不跑 |
+| 带标签用例背后那个服务的调用路径 | 算,按上表单个子门的写法跑 |
+| 带标签用例只做了机械改动 | 不算,由归属的 CC 在发布前签 |
+
+不带标签的用例用默认的 4 个 worker 并行跑,`--workers=1` 只给上表的子门。相关的 spec 里同时有带标签和不带标签的,分两条命令跑。**两条不能合成一条**——`--grep` 和 `--grep-invert` 是与的关系且排除优先,合并之后交集为空,一条都跑不到(playwright 1.62.1 实测 `Total: 0 tests`)。
+
+**按上表不相关的用例红了，不进归属判定。** **失败用例先查已登记的 issue**:同一条用例、同样的失败现象已经有人记过,就不再查原因。**归属一律到主分支上跑同一条完整 spec 定**:主分支也红是既有问题,只在任务分支红的归本次;主分支也红而还没有 issue 的,补一条。
 
 **交付门按标签切成子门**,发布前由上表里归属的 CC 各自签,签完才算这一轮的门过了。没有任何一台机器同时具备全部场景,所以不存在「一台机器跑 `test:smoke:all` 全绿」这个门。
 
@@ -101,7 +115,7 @@
 
 第九条:ProseMirror 拿到焦点后会在约 20ms 后把它自己记的选区写回页面,写选区与它读回之间插进来的任何一次 dispatch 也会这样写回;脚本的下一步如果抢在读回之前,结果就被撤销,而这只在页面忙的时候发生,表现为时好时坏。`selectInBody` 等到编辑器选区等于写进去的那个范围才返回,被写回时重写。
 
-第十条:服务端每个账号每个窗口只发 `config/rate-limits.yaml` 里 `upload-ticket` 那么多张上传票据,一个文件一张。smoke 单 worker 顺序跑,上传类用例连着跑时会超过它,超出的文件拿到 429、节点一直空着。`roomForUploads` 按 `openSmokeProject` 打开的页面实际发出的票据计数,等到额度够了再交。记录存在 `playwright/.auth/upload-tickets.json`:用例红了之后 Playwright 会换一个 worker 进程,而服务端的窗口还在接着算。
+第十条:服务端每个账号每个窗口只发 `config/rate-limits.yaml` 里 `upload-ticket` 那么多张上传票据,一个文件一张。同一个槽位里上传类用例连着跑时会超过它，超出的文件拿到 429、节点一直空着。`roomForUploads` 按 `openSmokeProject` 打开的页面实际发出的票据计数，等到额度够了再交。记录按槽位存在 `playwright/.auth/upload-tickets-<槽位>.json`:用例红了之后 Playwright 会在同一个槽位上换一个 worker 进程，而服务端的窗口还在接着算。
 
 第五条的两种落点后果一样:用例体里的那一句吃掉这一条,文件顶上的那一句吃掉整个文件,报告两次都写「skipped」而退出码是零。2026-09-19 实测:文件顶上一行 `test.skip(!email || !password, ...)` 换来 12 passed / 289 skipped 和一个零退出码。名字带 body 的 `test.skip('标题', async () => {})` 不在此列——它在报告里有自己的标题,谁都看得见。
 
@@ -109,7 +123,9 @@
 
 **超时只有一个数:project 的那个**(`playwright.config.ts`,两档都是 180s)。playwright 的 `test.setTimeout` 是**赋值**不是取大(`playwright/lib/common/index.js:2413`),所以一句写在文件顶上的 `test.setTimeout(90_000)` 把 180 秒降成了 90 秒,而它旁边的注释多半写着「抬高」。判定题:**我要写的这个数,比 project 的大吗?** 不大就别写;大才写,并在同一行说清哪一步要花这么久。
 
-**一台机器上一次只跑一轮。** setup 开局会把上一轮留下的 Project 归档(`tests/helpers/project.ts` 的 `archiveOlderRuns`),而它分不出「上一轮扔下的」和「另一轮正在用的」。smoke 和 visual 同时开两个进程,后起的那个会把先起的那个正在用的 Project 归档掉,先起的那一轮从此只能读、写不进去。
+**一台机器上一次只跑一轮。** 一轮里的几个 worker 按槽位分账号，两轮之间没有：setup 开局会把每个槽位上一轮留下的 Project 归档(`tests/helpers/project.ts` 的 `archiveOlderRuns`),而它分不出「上一轮扔下的」和「另一轮正在用的」。smoke 和 visual 同时开两个进程，后起的那个会把先起的那个正在用的 Project 归档掉，先起的那一轮从此只能读、写不进去。
+
+**同一个文件里的用例会分到不同 worker。** 两档都开着 `fullyParallel`,所以第六条在这里同样要成立。一组用例在 `beforeAll` 里建了只该建一次的东西(比如受限流的 team studio),给那个 describe 加 `test.describe.configure({ mode: 'default' })`,整组留在一个 worker 里按顺序跑。
 
 ## 3. E2E(关键路径 + 核心用户流必有完整流程验证)
 

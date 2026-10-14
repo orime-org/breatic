@@ -930,7 +930,10 @@ describe('Shift+Enter on a selection that reaches past the last block', () => {
   });
 });
 
-describe('an empty line an end of the selection sits on, or one at an end of the body it reaches past', () => {
+describe('an empty line a selection holds', () => {
+  /** The tail of the `index.css` rule that draws an empty line's sliver. */
+  const SLIVER = '.bn-inline-content::before';
+
   /**
    * Whether each paragraph's element carries the empty-line mark's class, by its text.
    * @param view - The view.
@@ -1035,20 +1038,95 @@ describe('an empty line an end of the selection sits on, or one at an end of the
     const view = open([{ type: 'paragraph', content: 'Above' }, { type: 'codeBlock' }]);
     view.focus();
     view.dispatch(view.state.tr.setSelection(BodyEdgeSelection.create(view.state.doc, textStart(view, 'Above'), 'end')));
-    const rule = selectorEndingIn('.bn-inline-content::before').replace('::before', '');
+    const rule = selectorEndingIn(SLIVER).replaceAll('::before', '');
 
     const drawn = view.dom.parentElement!.querySelector(rule);
 
     expect(drawn?.tagName).toBe('CODE');
   });
 
-  it('leaves an empty line unmarked when no end of a text range sits in it', () => {
+  it('is drawn in an empty line of every kind of text block, table cells included', () => {
+    const view = open([
+      { type: 'paragraph', content: '' },
+      { type: 'heading', props: { level: 2 } },
+      { type: 'codeBlock' },
+      { type: 'bulletListItem', content: '' },
+      { type: 'numberedListItem', content: '' },
+      { type: 'checkListItem', content: '' },
+      { type: 'table', content: { type: 'tableContent', rows: [{ cells: ['', 'x'] }] } },
+    ]);
+    view.focus();
+    view.dispatch(view.state.tr.setSelection(new AllSelection(view.state.doc)));
+    const rule = selectorEndingIn(SLIVER).replaceAll('::before', '');
+    const kinds = new Set<string>();
+    view.state.doc.descendants((node) => {
+      if (node.isTextblock && node.content.size === 0) kinds.add(node.type.name);
+    });
+    const textblocks = Object.values(view.state.schema.nodes).filter((type) => type.isTextblock);
+
+    const undrawn = [...view.dom.querySelectorAll(`.${EMPTY_LINE_CLASS}`)].filter(
+      (el) => !el.matches(rule) && el.querySelector(rule) === null,
+    );
+
+    expect(textblocks.map((type) => type.name).filter((name) => !kinds.has(name))).toEqual([]);
+    expect(view.dom.querySelectorAll(`.${EMPTY_LINE_CLASS}`)).toHaveLength(7);
+    expect(undrawn.map((el) => el.outerHTML)).toEqual([]);
+  });
+
+  it('is painted between the text an edge selection holds, where the body draws the selection', () => {
+    const view = open([{ type: 'paragraph', content: 'Above' }, { type: 'paragraph', content: '' }, { type: 'paragraph', content: 'Below' }]);
+    view.focus();
+
+    view.dispatch(view.state.tr.setSelection(BodyEdgeSelection.create(view.state.doc, textStart(view, 'Above'), 'end')));
+
+    expect(view.dom.hasAttribute('data-selection-drawn')).toBe(true);
+    expect(paragraphs(view)).toEqual(['Above:false', ':true', 'Below:false']);
+  });
+
+  it('is painted between the text a text selection holds, the same mark in every browser', () => {
+    const view = open([{ type: 'paragraph', content: 'Above' }, { type: 'paragraph', content: '' }, { type: 'paragraph', content: 'Below' }]);
+    view.focus();
+
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, textStart(view, 'Above') + 1, textStart(view, 'Below') + 2)));
+
+    expect(paragraphs(view)).toEqual(['Above:false', ':true', 'Below:false']);
+  });
+
+  it('leaves an empty line the range stops before unmarked', () => {
     const view = open([{ type: 'paragraph', content: 'Above' }, { type: 'paragraph', content: '' }]);
     view.focus();
     const at = textStart(view, 'Above');
 
-    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, at, at + 'Above'.length + 3)));
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, at, at + 'Above'.length)));
 
     expect(paragraphs(view)).toEqual(['Above:false', ':false']);
+  });
+});
+
+describe('the body while an edge selection stands (inner#1350 A8)', () => {
+  it('draws the selection itself, so a pull shows the same range before and after the release', () => {
+    const view = open(ABOVE_DIVIDER);
+    view.focus();
+    view.dispatch(
+      view.state.tr.setSelection(BodyEdgeSelection.create(view.state.doc, textStart(view, 'Above'), 'end')),
+    );
+
+    expect(view.dom.hasAttribute('data-selection-drawn')).toBe(true);
+    const drawn = [...view.dom.querySelectorAll('[data-show-selection]')].map((el) => el.textContent).join('');
+    expect(drawn).toBe('Above');
+  });
+
+  it('leaves a text selection to the browser', () => {
+    const view = open(ABOVE_DIVIDER);
+    view.focus();
+    view.dispatch(
+      view.state.tr.setSelection(BodyEdgeSelection.create(view.state.doc, textStart(view, 'Above'), 'end')),
+    );
+    view.dispatch(
+      view.state.tr.setSelection(TextSelection.create(view.state.doc, textStart(view, 'Above'), textStart(view, 'Above') + 3)),
+    );
+
+    expect(view.dom.hasAttribute('data-selection-drawn')).toBe(false);
+    expect(view.dom.querySelectorAll('[data-show-selection]')).toHaveLength(0);
   });
 });

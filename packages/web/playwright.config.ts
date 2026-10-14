@@ -16,7 +16,6 @@
  */
 import { defineConfig, devices } from 'playwright/test';
 import { resolveDevPort } from './dev-ports.mjs';
-import { STATE_FILE } from './tests/helpers/project';
 
 const devPort = resolveDevPort('development', __dirname);
 const baseURL = `http://localhost:${devPort}`;
@@ -31,12 +30,19 @@ const baseURL = `http://localhost:${devPort}`;
  */
 const chrome = { ...devices['Desktop Chrome'] };
 
+/**
+ * How many workers a run starts. Each has its own pair of accounts and
+ * Projects, read by `parallelIndex` (tests/helpers/slot.ts), and setup
+ * prepares one pair per worker. `--workers` on the command line overrides it.
+ */
+const WORKERS = 4;
+
 export default defineConfig({
   testDir: './tests',
-  fullyParallel: false,
+  fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: 0,
-  workers: 1,
+  workers: WORKERS,
   reporter: 'list',
   timeout: 30_000,
   expect: {
@@ -71,7 +77,7 @@ export default defineConfig({
       // that plus the case itself. Measured per case once the split lands;
       // this figure is the old per-file budget (120s) plus that opening.
       timeout: 180_000,
-      use: { ...chrome, storageState: STATE_FILE.A },
+      use: chrome,
     },
     {
       // Named `chromium` because the committed screenshot baselines carry the
@@ -82,7 +88,7 @@ export default defineConfig({
       // The same budget as the suite next door, for the same reason: a case
       // here opens a Space of its own before it measures anything.
       timeout: 180_000,
-      use: { ...chrome, storageState: STATE_FILE.A },
+      use: chrome,
     },
   ],
 });

@@ -23,7 +23,8 @@
  *      may go, because every option it could offer would be refused.
  */
 
-import { expect, request, test } from 'playwright/test';
+import { expect, request } from 'playwright/test';
+import { test } from '../helpers/slot';
 
 import { registerAccount } from '../helpers/signup';
 

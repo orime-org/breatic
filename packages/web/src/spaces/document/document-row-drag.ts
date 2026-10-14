@@ -11,6 +11,7 @@ import type { BlockNoteEditor } from '@blocknote/core';
 import { SideMenuExtension } from '@blocknote/core/extensions';
 
 import { rowHasLanded, rowIsFlying } from '@web/spaces/document/document-drag-drop';
+import { previewRowDrag } from '@web/spaces/document/document-drag-preview';
 import {
   readerPlace,
   restoreAfterRowDrag,
@@ -47,9 +48,11 @@ export function startRowDrag(
   // Which row is in flight, for the drop to read out of the document rather
   // than out of the payload.
   rowIsFlying(blockId, held);
-  editor.getExtension(SideMenuExtension)!.blockDragStart(event as never, editor.getBlock(blockId) as never);
-
+  const sideMenu = editor.getExtension(SideMenuExtension)!;
+  sideMenu.blockDragStart(event as never, editor.getBlock(blockId) as never);
   const page = view.dom.ownerDocument;
+  previewRowDrag(view, event.dataTransfer, blockId);
+
   let ended = false;
   /** Ends the drag, once. */
   const end = (): void => {
@@ -57,12 +60,13 @@ export function startRowDrag(
     ended = true;
     page.removeEventListener('drop', onDrop, true);
     rowHasLanded();
-    editor.getExtension(SideMenuExtension)!.blockDragEnd();
+    sideMenu.blockDragEnd();
     // A text selection goes back to whatever the reader had: the node
     // selection the library put on the row at dragstart is still there, and
     // the bubble bar comes up for any selection that is not empty.
     restoreAfterRowDrag(view, held, blockId);
-    // A key pressed after the drag has to land in the document.
+    // A key pressed after the drag has to land in the document. The body stays
+    // where the drag left it (the prosemirror-view patch, design §5.5).
     editor.focus();
   };
   /**

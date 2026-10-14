@@ -311,3 +311,39 @@ describe('the header when the list no longer holds the conversation on screen', 
     expect(screen.getByTestId('agent-col-header')).toHaveTextContent('Storyboard notes');
   });
 });
+
+describe('the new conversation button', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    _resetForTests();
+  });
+
+  for (const outcome of ['succeeds', 'fails'] as const) {
+    it(`reads busy while the conversation is being made, and settles after it ${outcome}`, async () => {
+      opensWith([{ id: 'c-1', title: 'Storyboard notes' }]);
+      let settle!: () => void;
+      vi.mocked(chatApi.createConversation).mockReturnValue(
+        new Promise((resolve, reject) => {
+          settle =
+            outcome === 'succeeds'
+              ? () => resolve({ id: 'c-2', title: null } as never)
+              : () => reject(new Error('offline'));
+        }),
+      );
+      const user = userEvent.setup();
+      renderColumn();
+      await waitFor(() =>
+        expect(screen.getByTestId('agent-col-header')).toHaveTextContent('Storyboard notes'),
+      );
+      const button = screen.getByTestId('new-conversation');
+      await user.click(button);
+
+      await waitFor(() => expect(button).toHaveAttribute('aria-busy', 'true'));
+      expect(button).toHaveAttribute('aria-disabled', 'true');
+      await act(async () => {
+        settle();
+      });
+      await waitFor(() => expect(button).not.toHaveAttribute('aria-busy'));
+    });
+  }
+});

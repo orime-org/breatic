@@ -18,7 +18,8 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { deflateSync } from 'node:zlib';
-import { test, expect, type Page } from 'playwright/test';
+import { expect, type Page } from 'playwright/test';
+import { test } from '../helpers/slot';
 
 import { openSmokeProject, smokeProjectId } from '../helpers/project';
 import { hueOf, storedPicture, uniquePicture } from '../helpers/upload';

@@ -1369,12 +1369,12 @@ function settleListLoading(projectId: string): void {
 /**
  * Give a conversation the name its owner typed.
  *
- * The list is written only once the server has stored it. Showing the new name
- * first would leave a row saying something the server never accepted, and the
- * reader has no way to tell the two apart.
+ * The store takes the name the server stored. The box the name was typed into
+ * shows it until then, and puts the old one back when this rejects.
  * @param projectId - The project the conversation is in.
  * @param conversationId - The conversation being named.
  * @param title - The name the reader typed.
+ * @throws {Error} When the server did not store the name, after saying so.
  */
 async function rename(
   projectId: string,
@@ -1387,8 +1387,10 @@ async function rename(
     if (visit.signal.aborted) return;
     applyTitle(projectId, conversationId, renamed.title);
   } catch (err) {
-    if (visit.signal.aborted) return;
-    tell({ projectId, conversationId, deliberate: true, aboutRow: true, ...readMishap(err) });
+    if (!visit.signal.aborted) {
+      tell({ projectId, conversationId, deliberate: true, aboutRow: true, ...readMishap(err) });
+    }
+    throw err;
   }
 }
 

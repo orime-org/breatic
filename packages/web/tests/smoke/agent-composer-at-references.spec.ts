@@ -7,11 +7,13 @@
  * one puts a block in the words, the message goes out with the reference, the
  * sent message shows the block, and removing the attachment removes its block.
  */
-import { expect, test, type Page } from 'playwright/test';
+import { expect, type Page } from 'playwright/test';
+import { test } from '../helpers/slot';
+import { startNewConversation } from '../helpers/conversation';
 
-import { STATE_FILE, openSmokeProject } from '../helpers/project';
+import { openSmokeProject } from '../helpers/project';
 
-test.use({ storageState: STATE_FILE.A, viewport: { width: 1500, height: 900 } });
+test.use({ viewport: { width: 1500, height: 900 } });
 
 const MARKER = '__breatic_canvas_nodes__:';
 
@@ -60,7 +62,7 @@ async function pasteText(page: Page, text: string): Promise<void> {
 
 test.beforeEach(async ({ page }) => {
   await openSmokeProject(page);
-  await page.getByTestId('new-conversation').click();
+  await startNewConversation(page);
   await expect(page.getByTestId('message-bubble')).toHaveCount(0, { timeout: 20_000 });
 });
 
@@ -229,6 +231,7 @@ test('Shift+Tab out of an open @ list hides it and leaves the focused control un
 
 test('keys typed while a new conversation opens land in the box', async ({ page }) => {
   const box = page.getByTestId('chat-composer-box');
+  // eslint-disable-next-line no-restricted-syntax -- this case focuses the box while the new conversation is still opening, the window startNewConversation waits out.
   await page.getByTestId('new-conversation').click();
   await box.focus();
   await expect(box).toHaveAttribute('contenteditable', 'true', { timeout: 20_000 });
@@ -247,7 +250,7 @@ test('a new conversation opens on its own empty draft, not the words left in the
   await box.pressSequentially(' here');
   await expect(page.getByTestId('chat-reference')).toBeVisible();
 
-  await page.getByTestId('new-conversation').click();
+  await startNewConversation(page);
 
   await expect(box).toHaveAttribute('contenteditable', 'true', { timeout: 20_000 });
   await expect(box).toHaveText('');

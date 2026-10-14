@@ -32,13 +32,8 @@ import { Button } from '@web/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tooltip';
 import { cn } from '@web/lib/utils';
 import { useTranslation } from '@web/i18n/use-translation';
+import { TASK_COUNT_ORDER } from '@web/spaces/canvas/overlay-scale';
 import type { TaskStatus } from '@web/spaces/canvas/tasks/TaskStatusDot';
-
-/**
- * Top to bottom, and the colour each one carries. The order is the task's own
- * lifecycle: what is happening now, then the three ways it can end.
- */
-const ORDER: readonly TaskStatus[] = ['running', 'done', 'failed', 'expired'];
 
 /**
  * The mark's colour per state. The state rides on the mark rather than on the
@@ -148,10 +143,10 @@ function TaskCount({
             // The open cell keeps the fill its neighbours have, and the coloured
             // rim is what says it is open: a darker fill made the cell the
             // reader had picked read as the least present of the four. The base
-            // fill is repeated under `hover:` so this one does not take
-            // `hover:bg-accent` like any other cell — both rules survive the
-            // merge, different modifier groups, and the hovered one wins.
-            isOpen && cn(OPEN_BORDER[status], 'hover:bg-background'),
+            // fill is repeated under `hover-enabled:` so this one does not take
+            // the variant's `hover-enabled:bg-accent` like any other cell — the
+            // two share a modifier, so the merge keeps only this one.
+            isOpen && cn(OPEN_BORDER[status], 'hover-enabled:bg-background'),
           )}
         >
           <Mark
@@ -177,7 +172,7 @@ const TaskCountMemo = React.memo(TaskCount);
  * @returns The column element, or null when this node has nothing to draw.
  */
 export function TaskCountColumn({ counts, endedShown, openFor, onOpen }: TaskCountColumnProps): JSX.Element | null {
-  const shown = ORDER.filter(
+  const shown = TASK_COUNT_ORDER.filter(
     (status) => counts[status] > 0 && (endedShown || status === 'running'),
   );
   if (shown.length === 0) return null;

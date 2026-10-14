@@ -157,7 +157,7 @@ export function InviteMemberDialog({
             >
               {t('studio.container.dialog.cancel')}
             </Button>
-            <Button type='submit' disabled={pending || email.trim() === ''}>
+            <Button type='submit' disabled={pending || email.trim() === ''} loading={pending}>
               {t('studio.container.members.inviteSubmit')}
             </Button>
           </DialogFooter>

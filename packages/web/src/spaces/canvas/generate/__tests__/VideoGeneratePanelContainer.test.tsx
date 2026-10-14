@@ -1859,10 +1859,53 @@ describe('VideoGeneratePanelContainer — 点不动的时候说清缺什么 (#19
     const btn = await screen.findByTestId('generate-video-execute');
     await waitFor(() => expect(btn).not.toBeDisabled());
     fireEvent.click(btn);
-    await waitFor(() => expect(btn).toBeDisabled());
-    expect(
-      screen.getByTestId('generate-video-execute-pending'),
-    ).toBeInTheDocument();
+    await waitFor(() => expect(btn).toHaveAttribute('aria-busy', 'true'));
+    expect(btn).toHaveAttribute('aria-disabled', 'true');
+    createTask.mockRestore();
+  });
+
+  it.each([
+    ['a refused', false],
+    ['an accepted', true],
+  ] as const)('stops waiting once %s submit is answered', async (_answer, accepted) => {
+    let answer: (() => void) | undefined;
+    const createTask = vi
+      .spyOn(canvasApi, 'createTask')
+      .mockImplementation(
+        () =>
+          new Promise((resolve, reject) => {
+            answer = accepted
+              ? () => resolve({ id: 'task-1' } as Awaited<ReturnType<typeof canvasApi.createTask>>)
+              : () => reject(new Error('refused'));
+          }) as ReturnType<typeof canvasApi.createTask>,
+      );
+    await openPanelInMode('t2v', 'veo-3.1');
+    const fragment = getPromptFragment('p', 's', 'target', storedMode());
+    if (!fragment) throw new Error('node has no prompt fragment');
+    act(() => {
+      const paragraph = new Y.XmlElement('paragraph');
+      const words = new Y.XmlText();
+      words.insert(0, 'a line');
+      paragraph.insert(0, [words]);
+      fragment.insert(0, [paragraph]);
+    });
+    const btn = await screen.findByTestId('generate-video-execute');
+    await waitFor(() => expect(btn).not.toBeDisabled());
+    fireEvent.click(btn);
+    await waitFor(() => expect(btn).toHaveAttribute('aria-busy', 'true'));
+    await act(async () => {
+      answer?.();
+      await Promise.resolve();
+    });
+    if (accepted) {
+      // An accepted submit closes the panel it came from.
+      await waitFor(() =>
+        expect(screen.queryByTestId('generate-video-execute')).toBeNull(),
+      );
+    } else {
+      await waitFor(() => expect(btn).not.toHaveAttribute('aria-busy'));
+      expect(btn).not.toHaveAttribute('aria-disabled');
+    }
     createTask.mockRestore();
   });
 

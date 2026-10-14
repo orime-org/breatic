@@ -79,14 +79,21 @@ export function AgentColumn({ projectId, activeSpace, spaces }: AgentColumnProps
     [historyOpen, setHistoryOpen],
   );
 
-  const startNew = React.useCallback((): void => {
-    void conversationRuntime.startNew(projectId);
+  // Held here rather than read from the runtime: only this button waits on
+  // it, and `startNew` settles every outcome itself (it never rejects).
+  const [creating, setCreating] = React.useState(false);
+  const startNew = React.useCallback(async (): Promise<void> => {
+    setCreating(true);
+    try {
+      await conversationRuntime.startNew(projectId);
+    } finally {
+      setCreating(false);
+    }
   }, [projectId]);
 
   const renameCurrent = React.useCallback(
-    (next: string): void => {
-      if (currentId) void conversationRuntime.rename(projectId, currentId, next);
-    },
+    (next: string): Promise<void> | undefined =>
+      currentId ? conversationRuntime.rename(projectId, currentId, next) : undefined,
     [projectId, currentId],
   );
 
@@ -133,6 +140,7 @@ export function AgentColumn({ projectId, activeSpace, spaces }: AgentColumnProps
           conversationNamePlaceholder={arrived ? t('chat.conversation.untitled') : ''}
           onToggleHistory={toggleHistory}
           onNewConversation={startNew}
+          creating={creating}
           onRenameConversation={renameCurrent}
         />
         <ChatPanel

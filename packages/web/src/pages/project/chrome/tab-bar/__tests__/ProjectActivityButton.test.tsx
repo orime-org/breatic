@@ -152,6 +152,148 @@ describe('ProjectActivityButton (activity feed)', () => {
     expect(onRestore).toHaveBeenCalledWith('sp-9');
   });
 
+  it('reads the Restore button busy while the restore is in flight, and settles after it lands', async () => {
+    let land!: () => void;
+    const onRestore = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          land = resolve;
+        }),
+    );
+    listMock.mockResolvedValue({
+      items: [
+        entry({
+          id: 'del-4',
+          type: 'space:deleted',
+          spaceId: 'sp-4',
+          payload: { spaceName: 'Doomed', spaceSnapshot: { id: 'sp-4' } },
+        }),
+      ],
+      nextCursor: null,
+    });
+    const user = userEvent.setup();
+    render(
+      <ProjectActivityButton projectId={PID} currentUserRole='owner' onRestore={onRestore} />,
+    );
+    await user.click(screen.getByTestId('project-activity-trigger'));
+    const btn = await screen.findByTestId('project-activity-restore-del-4');
+    await user.click(btn);
+
+    await waitFor(() => expect(btn).toHaveAttribute('aria-busy', 'true'));
+    expect(btn).toHaveAttribute('aria-disabled', 'true');
+    land();
+    await waitFor(() => expect(btn).not.toHaveAttribute('aria-busy'));
+  });
+
+  it('keeps the Restore button waiting until the refetched feed shows the row restored', async () => {
+    const deleted = entry({
+      id: 'del-6',
+      type: 'space:deleted',
+      spaceId: 'sp-6',
+      payload: { spaceName: 'Back', spaceSnapshot: { id: 'sp-6' } },
+    });
+    listMock.mockResolvedValue({ items: [deleted], nextCursor: null });
+    const onRestore = vi.fn(() => Promise.resolve());
+    const user = userEvent.setup();
+    render(
+      <ProjectActivityButton projectId={PID} currentUserRole='owner' onRestore={onRestore} />,
+    );
+    await user.click(screen.getByTestId('project-activity-trigger'));
+    const btn = await screen.findByTestId('project-activity-restore-del-6');
+
+    let landRefetch!: () => void;
+    listMock.mockReturnValue(
+      new Promise((resolve) => {
+        landRefetch = () => resolve({ items: [{ ...deleted, restored: true }], nextCursor: null });
+      }),
+    );
+    await user.click(btn);
+
+    await waitFor(() => expect(onRestore).toHaveBeenCalledWith('sp-6'));
+    await waitFor(() => expect(listMock).toHaveBeenCalledTimes(2));
+    expect(btn).toHaveAttribute('aria-busy', 'true');
+    landRefetch();
+    expect(
+      await screen.findByTestId('project-activity-restored-badge-del-6'),
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId('project-activity-restore-del-6')).toBeNull();
+  });
+
+  it('keeps the first Restore waiting when a second row is pressed, until its own restore lands', async () => {
+    const landers = new Map<string, VoidFunction>();
+    const onRestore = vi.fn(
+      (spaceId: string) =>
+        new Promise<void>((resolve) => {
+          landers.set(spaceId, resolve);
+        }),
+    );
+    listMock.mockResolvedValue({
+      items: [
+        entry({
+          id: 'del-a',
+          type: 'space:deleted',
+          spaceId: 'sp-a',
+          payload: { spaceName: 'A', spaceSnapshot: { id: 'sp-a' } },
+        }),
+        entry({
+          id: 'del-b',
+          type: 'space:deleted',
+          spaceId: 'sp-b',
+          payload: { spaceName: 'B', spaceSnapshot: { id: 'sp-b' } },
+        }),
+      ],
+      nextCursor: null,
+    });
+    const user = userEvent.setup();
+    render(
+      <ProjectActivityButton projectId={PID} currentUserRole='owner' onRestore={onRestore} />,
+    );
+    await user.click(screen.getByTestId('project-activity-trigger'));
+    const a = await screen.findByTestId('project-activity-restore-del-a');
+    const b = screen.getByTestId('project-activity-restore-del-b');
+    await user.click(a);
+    await user.click(b);
+
+    await waitFor(() => expect(b).toHaveAttribute('aria-busy', 'true'));
+    expect(a).toHaveAttribute('aria-busy', 'true');
+    landers.get('sp-a')?.();
+    await waitFor(() => expect(a).not.toHaveAttribute('aria-busy'));
+    expect(b).toHaveAttribute('aria-busy', 'true');
+    landers.get('sp-b')?.();
+    await waitFor(() => expect(b).not.toHaveAttribute('aria-busy'));
+  });
+
+  it('settles the Restore button after a refused restore without leaving a rejection behind', async () => {
+    // The host has already told the reader (`callRpc` toasts before it
+    // throws); the button only has to come back.
+    const unhandled = vi.fn();
+    process.on('unhandledRejection', unhandled);
+    const onRestore = vi.fn(() => Promise.reject(new Error('refused')));
+    listMock.mockResolvedValue({
+      items: [
+        entry({
+          id: 'del-5',
+          type: 'space:deleted',
+          spaceId: 'sp-5',
+          payload: { spaceName: 'Refused', spaceSnapshot: { id: 'sp-5' } },
+        }),
+      ],
+      nextCursor: null,
+    });
+    const user = userEvent.setup();
+    render(
+      <ProjectActivityButton projectId={PID} currentUserRole='owner' onRestore={onRestore} />,
+    );
+    await user.click(screen.getByTestId('project-activity-trigger'));
+    const btn = await screen.findByTestId('project-activity-restore-del-5');
+    await user.click(btn);
+
+    await waitFor(() => expect(btn).not.toHaveAttribute('aria-busy'));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    process.off('unhandledRejection', unhandled);
+    expect(unhandled).not.toHaveBeenCalled();
+  });
+
   it('replaces Restore with a disabled restored badge when the row is consumed', async () => {
     listMock.mockResolvedValue({
       items: [

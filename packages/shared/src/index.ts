@@ -29,6 +29,7 @@ export type {
   MessageData,
   MessageInput,
   MessagePart,
+  StoredModelOutput,
   StoredMessageMetadata,
   TaskEntity,
   NodeHistoryEntity,
@@ -113,6 +114,8 @@ export type {
   Space,
   MembersChangedEvent,
   ActivityNewControlEvent,
+  ProjectConnectionsCloseEvent,
+  ProjectConnectionsCloseReason,
   ProjectDuplicatedLifecycleEvent,
   ProjectArchivedLifecycleEvent,
   ProjectRestoredLifecycleEvent,
@@ -145,6 +148,7 @@ export {
   CANVAS_NODES_KEY,
   membersChangedChannel,
   activityNewChannel,
+  projectConnectionsCloseChannel,
   allProjectChannelsPattern,
   SpaceTypeSchema,
   SPACE_NAME_MAX_LEN,
@@ -219,6 +223,7 @@ export {
   PANEL_EDITOR_PARAM,
   insertRefusal,
   isReferenceMaterial,
+  canvasProposalSchema,
   feedsOf,
   layersOf,
   proposalMarkSegments,
@@ -478,6 +483,7 @@ export {
 export { SSE_HEARTBEAT_MISSES_ALLOWED } from "@shared/agent/heartbeat.js";
 export { extractPromptText } from "@shared/agent/extract-prompt.js";
 export { stripUnicodeTags } from "@shared/agent/strip-unicode-tags.js";
+export { dsmlBlockStart, dsmlHeldFrom, stripDsml } from "@shared/agent/dsml.js";
 export {
   ATTACHMENT_DATA_PART,
   attachmentMarker,

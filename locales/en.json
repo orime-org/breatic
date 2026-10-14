@@ -362,6 +362,7 @@
       "use": "Use",
       "building": "Creating…",
       "failed": "Could not create these nodes.",
+      "expired": "This proposal has expired. Ask the Agent for a new one.",
       "needCanvas": "Open a canvas first.",
       "promptReady": "Prompt ready. Right-click the node and choose Generate to open the generation panel and see it.",
       "settingsReady": "Settings ready. Right-click the node and choose Generate to open the generation panel and see them."
@@ -1211,6 +1212,7 @@
       },
       "error": {
         "create": "Failed to create space",
+        "restore": "Failed to restore space",
         "unreachable": "No answer from the server — check your connection and try again",
         "notSynced": "Project is still syncing — try again in a moment"
       },

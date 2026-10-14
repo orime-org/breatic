@@ -1,5 +1,6 @@
 import { Slot } from '@radix-ui/react-slot';
 import { cva, type VariantProps } from 'class-variance-authority';
+import { Loader2 } from 'lucide-react';
 import * as React from 'react';
 
 import { cn } from '@web/lib/utils';
@@ -28,25 +29,25 @@ const buttonVariants = cva(
         // Every studio CTA routes through this variant, so the hover stays
         // consistent (matches the project NewSpaceDialog create button).
         default:
-          'bg-primary text-primary-foreground transition-colors hover:bg-primary-hover',
+          'bg-primary text-primary-foreground transition-colors hover-enabled:bg-primary-hover',
         // Destructive (delete) — red-narrowed to the status-error coral tint
         // (2026-06-13): 14% bg + 40% border + readable coral text; hover
         // deepens the border. No more solid brick-red button.
         destructive:
-          'border border-status-error-border bg-status-error-bg text-status-error-foreground transition-colors hover:border-status-error',
+          'border border-status-error-border bg-status-error-bg text-status-error-foreground transition-colors hover-enabled:border-status-error',
         outline:
-          'border border-border bg-background hover:bg-accent hover:text-accent-foreground',
+          'border border-border bg-background hover-enabled:bg-accent hover-enabled:text-accent-foreground',
         secondary:
-          'bg-secondary text-secondary-foreground hover:bg-accent',
-        ghost: 'hover:bg-accent hover:text-accent-foreground',
+          'bg-secondary text-secondary-foreground hover-enabled:bg-accent',
+        ghost: 'hover-enabled:bg-accent hover-enabled:text-accent-foreground',
         // Chrome variant — TopBar/TabBar 32px buttons default to muted
         // foreground (mock §TopBar v4.0); hover lifts to foreground +
         // accent bg (matches the chrome-baseline mock `.tb-btn:hover` rule).
         // Project-wide rule: hover state only, no active state
         // (per user 2026-05-26 — removed prior `active:bg-secondary`).
         'chrome-ghost':
-          'text-muted-foreground hover:bg-accent hover:text-foreground',
-        link: 'text-primary underline-offset-4 hover:underline',
+          'text-muted-foreground hover-enabled:bg-accent hover-enabled:text-foreground',
+        link: 'text-primary underline-offset-4 hover-enabled:underline',
       },
       size: {
         // Sizes conform to the Linear-anchored ladder (24/28/32/44) via the
@@ -95,18 +96,60 @@ const buttonVariants = cva(
 export interface ButtonProps
   extends React.ButtonHTMLAttributes<HTMLButtonElement>,
     VariantProps<typeof buttonVariants> {
+  /** Hand the classes to the single child element; `loading` and `icon` are ignored. */
   asChild?: boolean;
+  /**
+   * Waiting for the server's answer: the button reads as disabled, swallows
+   * presses (including the implicit submit of a form) and shows a spinner in
+   * place of `icon`, or before the label when there is none. The button is
+   * `aria-disabled`, not natively disabled, so a caller's `disabled:` styles
+   * need a matching `aria-disabled:` style to apply while it waits.
+   */
+  loading?: boolean;
+  /** Leading icon; its classes size and space the spinner that replaces it. */
+  icon?: React.ReactElement<{ className?: string }>;
+}
+
+/**
+ * Cancel a press made while the button waits. `preventDefault` also cancels
+ * the form submission a submit button would start, whether by click or by
+ * Enter in one of the form's fields.
+ * @param event - The swallowed click.
+ */
+function swallowPress(event: React.MouseEvent<HTMLButtonElement>): void {
+  event.preventDefault();
 }
 
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant, size, asChild = false, ...props }, ref) => {
-    const Comp = asChild ? Slot : 'button';
-    return (
-      <Comp
-        className={cn(buttonVariants({ variant, size, className }))}
-        ref={ref}
-        {...props}
+  ({ className, variant, size, asChild = false, loading = false, icon, ...props }, ref) => {
+    const classes = buttonVariants({ variant, size, className });
+    if (asChild) return <Slot {...props} className={cn(classes)} ref={ref} />;
+    const { disabled, onClick, children } = props;
+    const lead = loading ? (
+      <Loader2
+        aria-hidden='true'
+        className={cn('animate-spin', icon === undefined ? 'mr-2 h-3.5 w-3.5' : icon.props.className)}
       />
+    ) : (
+      icon
+    );
+    // While waiting the button stays focusable: a native `disabled` would
+    // drop keyboard focus to <body> the moment it is pressed (measured in
+    // Chromium 151), and a dialog kept open after a failed reply needs the
+    // reader's focus still on its confirm button.
+    return (
+      <button
+        {...props}
+        className={cn(classes, loading && 'cursor-not-allowed opacity-50')}
+        ref={ref}
+        disabled={loading ? undefined : disabled}
+        aria-disabled={loading ? true : props['aria-disabled']}
+        aria-busy={loading ? true : props['aria-busy']}
+        onClick={loading ? swallowPress : onClick}
+      >
+        {lead}
+        {children}
+      </button>
     );
   },
 );

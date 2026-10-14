@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { OFFICIAL_HOME_URL } from '../../src/lib/official-home';
-import { test, expect } from 'playwright/test';
+import { expect } from 'playwright/test';
+import { test } from '../helpers/slot';
 import { openSmokeProject } from '../helpers/project';
 
 for (const entry of ['studio', 'project'] as const) {

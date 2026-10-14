@@ -19,9 +19,11 @@
  * service decides what it finds. A run where neither produces enough to fill
  * the column is reported as such rather than passed.
  */
-import { expect, test, type Page } from 'playwright/test';
+import { expect, type Page } from 'playwright/test';
+import { test } from '../helpers/slot';
+import { startNewConversation } from '../helpers/conversation';
 
-import { STATE_FILE, openSmokeProject } from '../helpers/project';
+import { openSmokeProject } from '../helpers/project';
 
 let page: Page;
 
@@ -62,7 +64,7 @@ async function isWriting(p: Page): Promise<boolean> {
 async function ask(p: Page, prompt: string): Promise<void> {
   const composer = p.getByTestId('chat-composer-box');
   await expect(composer).toBeVisible({ timeout: 20_000 });
-  await p.getByTestId('new-conversation').click();
+  await startNewConversation(p);
   await expect(p.getByTestId('message-bubble')).toHaveCount(0, { timeout: 20_000 });
   await composer.fill(prompt);
   await composer.press('Enter');
@@ -70,7 +72,6 @@ async function ask(p: Page, prompt: string): Promise<void> {
 
 test.beforeEach(async ({ browser }) => {
   page = await browser.newPage({
-    storageState: STATE_FILE.A,
     viewport: { width: 1400, height: 900 },
   });
   await openSmokeProject(page);

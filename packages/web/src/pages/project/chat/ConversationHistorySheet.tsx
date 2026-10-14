@@ -33,7 +33,9 @@ import { cn } from '@web/lib/utils';
 import { CONVERSATION_TITLE_MAX_CHARS } from '@breatic/shared';
 import { useTranslation } from '@web/i18n/use-translation';
 import { useInlineEditExit } from '@web/lib/inline-edit-exit';
+import { useHeldName } from '@web/lib/use-held-name';
 import { useReturnFocus } from '@web/lib/overlay-focus';
+import { usePendingKeys } from '@web/lib/use-pending-keys';
 import { useScrolledToEnd } from '@web/lib/use-scrolled-to-end';
 import { NOTICE_LINGERS_MS } from '@web/pages/project/chat/notice-timing';
 import { formatLocalDay } from '@web/lib/format-day';
@@ -94,8 +96,10 @@ interface ConversationHistorySheetProps {
   conversations: ReadonlyArray<ConversationRow>;
   activeId?: string;
   onPick: (id: string) => void;
-  onRename: (id: string, title: string) => void;
-  onDelete: (id: string) => void;
+  /** Saves a name; rejects when it was not saved. */
+  onRename: (id: string, title: string) => Promise<void>;
+  /** Delete one; settles once the attempt is over, whichever way it went. */
+  onDelete: (id: string) => Promise<void>;
   /** The project has conversations older than the ones listed. */
   hasMore: boolean;
   /** Called when the reader reaches the end of what has been fetched. */
@@ -208,7 +212,7 @@ interface RowProps {
   row: ConversationRow;
   isActive: boolean;
   onPick: (id: string) => void;
-  onRename: (id: string, title: string) => void;
+  onRename: (id: string, title: string) => Promise<void>;
   onAskDelete: (id: string) => void;
 }
 
@@ -239,6 +243,9 @@ function ConversationRowView({
 }: RowProps): React.JSX.Element {
   const t = useTranslation();
   const [renaming, setRenaming] = React.useState(false);
+  // The store takes a new name once the server has answered, after the box
+  // has closed.
+  const { shown: title, hold } = useHeldName(row.title);
   // Which item was chosen, held until the menu has finished closing. A ref
   // rather than state because nothing renders differently for it; see the menu
   // below for why both of them wait.
@@ -264,7 +271,7 @@ function ConversationRowView({
     const named = typed.trim();
     // A row showing nothing reads as a rendering fault rather than as a name,
     // so a name of nothing is not one. Same rule the server applies.
-    if (named.length > 0 && named !== row.title) onRename(row.id, named);
+    if (named.length > 0 && named !== title) hold(named, onRename(row.id, named));
   };
 
   // Ending the box from the keyboard gives the keyboard to this row's menu
@@ -304,7 +311,7 @@ function ConversationRowView({
             autoComplete='off'
             data-testid='conversation-rename-input'
             ref={box}
-            defaultValue={row.title ?? ''}
+            defaultValue={title ?? ''}
             // The same cap the server enforces. Without it a pasted name over
             // the limit comes back as a flat validation error that says
             // nothing about length, while the box in the header simply stops
@@ -342,7 +349,7 @@ function ConversationRowView({
                 )}
               />
               <span className='flex min-w-0 flex-1 flex-col gap-1'>
-                {row.title === null ? (
+                {title === null ? (
                   <span
                     data-testid='conversation-untitled'
                     className='truncate text-sm font-normal text-muted-foreground'
@@ -351,7 +358,7 @@ function ConversationRowView({
                   </span>
                 ) : (
                   <span className='truncate text-sm font-normal text-foreground'>
-                    {row.title}
+                    {title}
                   </span>
                 )}
                 <span className='text-2xs tabular-nums text-muted-foreground'>
@@ -472,6 +479,32 @@ function ConversationHistorySheetInner({
   // asked whether they mean it. Null the rest of the time, which is what
   // keeps the dialog closed.
   const [deleting, setDeleting] = React.useState<string | null>(null);
+  // Which conversations' deletes are out, per id (inner#1374). The dialog
+  // stays open on one until its answer is in: success leaves the row gone,
+  // failure leaves a word against the row, and either is only seen once the
+  // dialog is out of the way. Kept per id so a delete of another row started
+  // meanwhile does not end this one's wait.
+  const deletesOut = usePendingKeys();
+  const { track: trackDelete } = deletesOut;
+
+  /**
+   * Delete the conversation the dialog is asking about, keeping the dialog
+   * open until the attempt is over.
+   * @param event - The press on the dialog's delete; kept from closing it.
+   */
+  const confirmDelete = React.useCallback(
+    (event: React.MouseEvent): void => {
+      event.preventDefault();
+      const id = deleting;
+      if (id === null) return;
+      void trackDelete(id, onDelete(id)).finally(() => {
+        // Only the question about this row: the reader may have walked away
+        // from it and asked about another while this one was out.
+        setDeleting((d) => (d === id ? null : d));
+      });
+    },
+    [deleting, onDelete, trackDelete],
+  );
   // A word about one row goes against that row, and everything else goes to
   // the top. The list is one page: a rename started from the header is about
   // whichever conversation is on screen, and that one need not be on the page
@@ -656,10 +689,8 @@ function ConversationHistorySheetInner({
             </AlertDialogCancel>
             <AlertDialogAction
               data-testid='conversation-delete-confirm'
-              onClick={() => {
-                if (deleting) onDelete(deleting);
-                setDeleting(null);
-              }}
+              loading={deleting !== null && deletesOut.isPending(deleting)}
+              onClick={confirmDelete}
             >
               {t('chat.conversation.deleteConfirm')}
             </AlertDialogAction>

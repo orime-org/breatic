@@ -335,16 +335,17 @@ describe('the confirmation before paying', () => {
       await user.click(pay);
 
       await waitFor(() => {
-        expect(within(pay).getByTestId('confirm-pay-pending')).toBeInTheDocument();
+        expect(pay).toHaveAttribute('aria-busy', 'true');
       });
-      expect(pay).toBeDisabled();
+      expect(pay).toHaveAttribute('aria-disabled', 'true');
       expect(pay.textContent).toBe(label);
 
       fail(new Error('offline'));
       await waitFor(() => {
         expect(pay).toBeEnabled();
       });
-      expect(within(pay).queryByTestId('confirm-pay-pending')).toBeNull();
+      expect(pay).not.toHaveAttribute('aria-busy');
+      expect(pay).not.toHaveAttribute('aria-disabled');
     } finally {
       vi.unstubAllGlobals();
     }
@@ -365,8 +366,8 @@ describe('the confirmation before paying', () => {
       await waitFor(() => {
         expect(assign).toHaveBeenCalled();
       });
-      expect(pay).toBeDisabled();
-      expect(within(pay).getByTestId('confirm-pay-pending')).toBeInTheDocument();
+      expect(pay).toHaveAttribute('aria-busy', 'true');
+      expect(pay).toHaveAttribute('aria-disabled', 'true');
     } finally {
       vi.unstubAllGlobals();
     }

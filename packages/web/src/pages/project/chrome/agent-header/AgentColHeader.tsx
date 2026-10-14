@@ -29,7 +29,10 @@ interface AgentColHeaderProps {
    */
   onToggleHistory: () => void;
   onNewConversation: () => void;
-  onRenameConversation: (next: string) => void;
+  /** A new conversation has been asked for and the server has not answered. */
+  creating: boolean;
+  /** Saves a name; a returned promise rejects when it was not saved. */
+  onRenameConversation: (next: string) => Promise<void> | undefined;
 }
 
 /**
@@ -59,6 +62,7 @@ interface AgentColHeaderProps {
  * @param root0.conversationNamePlaceholder - What the title reads while the conversation has no name.
  * @param root0.onToggleHistory - Shows the conversation history, or hides it if it is showing.
  * @param root0.onNewConversation - Starts a new conversation.
+ * @param root0.creating - Whether a new conversation is still being made.
  * @param root0.onRenameConversation - Commits a new conversation name when the title is edited.
  * @returns The agent column header row with history, editable title, and new-conversation actions.
  */
@@ -67,6 +71,7 @@ export function AgentColHeader({
   conversationNamePlaceholder,
   onToggleHistory,
   onNewConversation,
+  creating,
   onRenameConversation,
 }: AgentColHeaderProps): React.JSX.Element {
   const t = useTranslation();
@@ -107,10 +112,10 @@ export function AgentColHeader({
         size='chrome'
         aria-label={t('chrome.tooltip.newConversation')}
         onClick={onNewConversation}
+        loading={creating}
+        icon={<Plus className='h-[18px] w-[18px]' />}
         data-testid='new-conversation'
-      >
-        <Plus className='h-[18px] w-[18px]' />
-      </Button>
+      />
     </header>
   );
 }

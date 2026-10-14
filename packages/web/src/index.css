@@ -26,6 +26,18 @@
    line width and font it names is written over further down. */
 @import '@blocknote/react/style.css' layer(base);
 
+/* Hover for a control that can be waiting or disabled: the built-in `hover:`
+   (same `(hover: hover)` media wrapping) minus the two states a press does
+   nothing in. A Button waiting for a reply is `aria-disabled="true"`, not
+   natively disabled, so `:disabled` alone would keep its hover colour. */
+@custom-variant hover-enabled {
+  @media (hover: hover) {
+    &:not(:disabled):not([aria-disabled='true']):hover {
+      @slot;
+    }
+  }
+}
+
 html,
 body,
 #root {
@@ -602,21 +614,53 @@ body {
     box-shadow: none;
   }
 
-  /* ---- While a row is being dragged ----
-     The lift itself. The clone is a copy of the real block group, so it already
-     carries the body's own type and spacing (that is what the surface class on
-     the editor element is for) — all that is missing is that it should read as
-     floating rather than as a second copy of the row.
+  /* ---- A drag preview ----
+     The lift itself. Every preview — a row, a table line, what is selected, a
+     caption's words — is a copy of the body's own content inside copies of the
+     elements it sits in in the body (`document-preview-styles.ts`), so it
+     already has the body's type and spacing.
 
-     The translucency has to live on a CHILD: Chrome ignores `opacity` on the
+     Its opacity has to live on a CHILD: Chrome ignores `opacity` on the
      element handed to `setDragImage` when it takes the snapshot, while a
      descendant's opacity survives on every engine (measured for the prompt
-     editor's own lift, user 2026-07-14, and 0.6 is the value that one settled
-     on). The library's own `.bn-drag-preview { opacity: 0.001 }` is a different
-     thing entirely: it keeps the clone from being SEEN in the page, and Chrome
-     ignoring it on the root is exactly why that trick works. */
-  .bn-drag-preview > * {
-    opacity: 0.6;
+     editor's own lift, user 2026-07-14). The value is the user's call
+     (2026-10-14); inner#1515 sets one look for every editor's drag image.
+
+     The root itself is opaque and fixed at the viewport's top left: Firefox and
+     WebKit draw the root's own opacity into the image, and Safari cancels a
+     drag whose image is wholly off screen. It is never painted on the page:
+     `buildDragPreview` takes it off in the next animation frame or at the
+     drag's next event, whichever comes first, and the browser has the image
+     by then (inner#1350 design §4). */
+  .doc-drag-preview {
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 2147483647;
+    pointer-events: none;
+  }
+
+  .doc-drag-preview > * {
+    opacity: 1;
+  }
+
+  /* A preview takes no pointer: one over the pointer as the drag starts ends
+     the drag in Chromium, and the body's rules let some of its elements take it. */
+  .doc-drag-preview * {
+    pointer-events: none !important;
+  }
+
+  /* The copies of the elements a preview's content sits in in the body
+     (`document-preview-styles.ts`): the body's rules match through them and
+     its inherited values pass through them, and they are no box and draw
+     nothing of their own. */
+  .doc-preview-shell {
+    display: contents !important;
+  }
+
+  .doc-preview-shell::before,
+  .doc-preview-shell::after {
+    content: none !important;
   }
 
   /* Where the carried row, or a dragged piece of text, will land. The extension
@@ -1068,6 +1112,17 @@ body {
    way, so the rule reaches editable bodies only. */
 .doc-body[contenteditable='true']:not([data-body-holds]) ::selection,
 .doc-body[contenteditable='true']:not([data-body-holds])::selection {
+  background-color: transparent;
+}
+
+/* A cell selection is drawn by its cells (`.selectedCell`) and an edge
+   takeover by its own `[data-show-selection]` band. ProseMirror holds off its
+   write back of either in Chrome while the mouse is down (prosemirror-view
+   `selectionToDOM`), so under a pull the
+   native selection would show the range the browser swept;
+   `data-selection-drawn` (written by `document-selection-paint.ts`) is set on
+   the transaction (inner#1350 A8). */
+.doc-body[data-selection-drawn] ::selection {
   background-color: transparent;
 }
 
@@ -2123,16 +2178,18 @@ body {
     background-clip: content-box;
   }
 
-  /* An empty line an end of a range sits on, or the empty line at an end of the
-     body that a selection past it or the whole document holds
-     (`document-selection-paint.ts`). The browser marks a selected empty line with
-     a sliver at its start, the width of a space and the height of the line; it
-     draws that one only once the range is written back, which in Chrome is not
-     until a drag ends. The sliver is drawn here from the same measures — a
-     no-break space in the line's own flow, so it stands where the caret would
-     under the line's alignment — and the browser's is cleared, so the line
-     wears one mark from the first frame of the drag. */
-  .doc-body .doc-empty-line-in-selection .bn-inline-content::before {
+  /* An empty line a selection holds (`document-selection-paint.ts`). Chromium
+     marks a selected empty line with a sliver at its start, the width of a space
+     and the height of the line, and the other browsers mark nothing; Chromium
+     draws the one at an end of the body only once the range is written back,
+     which is not until a drag ends. The sliver is drawn here from the same
+     measures — a no-break space in the line's own flow, so it stands where the
+     caret would under the line's alignment — and the browser's is cleared, so
+     the line wears one mark in every browser from the first frame of a drag.
+     A table cell's line is a bare `<p>` (BlockNote's `tableParagraph`), which
+     is itself the element its text sits in. */
+  .doc-body .doc-empty-line-in-selection .bn-inline-content::before,
+  .doc-body p.doc-empty-line-in-selection::before {
     content: '\a0';
     display: inline-block;
     background-color: var(--color-selection);
@@ -2677,19 +2734,22 @@ body {
     border-radius: var(--radius-content-sm);
   }
 
-  /* nowrap is what makes the scroller appear at all: allowed to fold, a wide
-     table fits any width and scrollWidth never exceeds the viewport. */
   .chat-markdown table {
     border-collapse: collapse;
     font-size: 0.9em;
-    white-space: nowrap;
   }
 
+  /* Cells wrap to fit the column. The floor keeps a cell readable — Chinese
+     breaks between any two characters, so without it a cell can shrink to one
+     character a line — and once the floors add up past the column, the table
+     overflows into the scroller around it. 6em holds four columns in the
+     296px of prose the narrowest agent column leaves. */
   .chat-markdown th,
   .chat-markdown td {
     border: 1px solid var(--color-border);
     padding: 0.35em 0.6em;
     text-align: left;
+    min-width: 6em;
   }
 
   .chat-markdown th {

@@ -122,6 +122,34 @@ describe('ShareDialog — invite by email flow', () => {
     expect(screen.getByTestId('share-invite-input')).toHaveValue('new@example.com');
   });
 
+  for (const outcome of ['succeeds', 'fails'] as const) {
+    it(`reads the send button busy while inviting, and settles after it ${outcome}`, async () => {
+      let settle!: () => void;
+      vi.mocked(projectInvitationsApi.inviteMember).mockReturnValueOnce(
+        new Promise<void>((resolve, reject) => {
+          settle = outcome === 'succeeds' ? resolve : () => reject(new Error('refused'));
+        }),
+      );
+      const user = userEvent.setup();
+      setup();
+      await user.type(screen.getByTestId('share-invite-input'), 'new@example.com');
+      const send = screen.getByTestId('share-send-invite');
+      await user.click(send);
+
+      await waitFor(() => expect(send).toHaveAttribute('aria-busy', 'true'));
+      expect(send).toHaveAttribute('aria-disabled', 'true');
+      // The spinner takes the send icon's place rather than joining it.
+      expect(send.querySelectorAll('svg')).toHaveLength(1);
+      settle();
+      if (outcome === 'succeeds') {
+        // A sent invite closes the popover, taking the button with it.
+        await waitFor(() => expect(send).not.toBeInTheDocument());
+      } else {
+        await waitFor(() => expect(send).not.toHaveAttribute('aria-busy'));
+      }
+    });
+  }
+
   it('shows ApiException.message inline when the invite is rejected', async () => {
     const user = userEvent.setup();
     vi.mocked(projectInvitationsApi.inviteMember).mockRejectedValueOnce(

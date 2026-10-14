@@ -390,9 +390,11 @@ html[data-theme='light'] {
      borrowing `status-info`. Blue because that is where the industry landed
      for exactly this (Primer's link colour is its accent blue, which this
      palette's blue was already tuned against); the underline stays on, since
-     colour must never be the only signal (WCAG 1.4.1). Dark tracks the
-     palette through var(), same as every other alias. ---- */
-  --color-content-link: var(--color-palette-blue);
+     colour must never be the only signal (WCAG 1.4.1). Light is Primer's
+     link blue itself: the palette's blue reads at 3.18:1 on the page, under
+     the 4.5:1 body text needs (WCAG 2.2 SC 1.4.3, inner#1462), and this one at
+     4.56:1. Dark tracks the palette through var(), set in the dark block. ---- */
+  --color-content-link: #0969da;
 
   /* ---- Annotation note surface · sticky-note color (canvas AnnotationNode).
      Standalone token, not part of the neutral / status systems. Dark variant
@@ -596,6 +598,7 @@ html[data-theme='dark'] {
   --color-palette-violet: #6e56cf;
   --color-palette-pink: #d6409f;
   --color-palette-teal: #12a594;
+  --color-content-link: var(--color-palette-blue);
   /* The hues are light here, so text on top of them is dark. */
   --color-on-palette: #1c1c1c;
 

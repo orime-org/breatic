@@ -1201,9 +1201,90 @@ describe('GeneratePanelContainer — 点不动的时候说清缺什么 (#1949)',
     });
     fireEvent.click(btn);
     await waitFor(() => {
-      expect((btn as HTMLButtonElement).disabled).toBe(true);
+      expect(btn).toHaveAttribute('aria-busy', 'true');
     });
-    expect(screen.getByTestId('generate-execute-pending')).toBeInTheDocument();
+    expect(btn).toHaveAttribute('aria-disabled', 'true');
+    listSpy.mockRestore();
+    createSpy.mockRestore();
+  });
+
+  it('stops waiting once a refused submit is answered', async () => {
+    const listSpy = vi
+      .spyOn(modelsApi, 'list')
+      .mockResolvedValue(imageCatalog());
+    let refuse: ((reason: unknown) => void) | undefined;
+    const createSpy = vi
+      .spyOn(canvasApi, 'createTask')
+      .mockImplementation(
+        () =>
+          new Promise((_resolve, reject) => {
+            refuse = reject;
+          }) as ReturnType<typeof canvasApi.createTask>,
+      );
+    seedImageNode();
+    seedPromptText('a line');
+    mountContainer();
+    act(() => {
+      canvasSessions.of('s').getState().openGeneratePanel('target', 'image');
+    });
+    const btn = await screen.findByTestId('generate-execute');
+    await waitFor(() => {
+      expect((btn as HTMLButtonElement).disabled).toBe(false);
+    });
+    fireEvent.click(btn);
+    await waitFor(() => {
+      expect(btn).toHaveAttribute('aria-busy', 'true');
+    });
+    await act(async () => {
+      refuse?.(new Error('refused'));
+      await Promise.resolve();
+    });
+    await waitFor(() => {
+      expect(btn).not.toHaveAttribute('aria-busy');
+    });
+    expect(btn).not.toHaveAttribute('aria-disabled');
+    // The refusal's error toast is this case's own; later cases count them.
+    vi.mocked(toast.error).mockClear();
+    listSpy.mockRestore();
+    createSpy.mockRestore();
+  });
+
+  it('closes the panel, spinner and all, once an accepted submit is answered', async () => {
+    const listSpy = vi
+      .spyOn(modelsApi, 'list')
+      .mockResolvedValue(imageCatalog());
+    let accept: (() => void) | undefined;
+    const createSpy = vi
+      .spyOn(canvasApi, 'createTask')
+      .mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            accept = () => resolve({ id: 'task-1' } as Awaited<
+              ReturnType<typeof canvasApi.createTask>
+            >);
+          }) as ReturnType<typeof canvasApi.createTask>,
+      );
+    seedImageNode();
+    seedPromptText('a line');
+    mountContainer();
+    act(() => {
+      canvasSessions.of('s').getState().openGeneratePanel('target', 'image');
+    });
+    const btn = await screen.findByTestId('generate-execute');
+    await waitFor(() => {
+      expect((btn as HTMLButtonElement).disabled).toBe(false);
+    });
+    fireEvent.click(btn);
+    await waitFor(() => {
+      expect(btn).toHaveAttribute('aria-busy', 'true');
+    });
+    await act(async () => {
+      accept?.();
+      await Promise.resolve();
+    });
+    await waitFor(() => {
+      expect(screen.queryByTestId('generate-execute')).toBeNull();
+    });
     listSpy.mockRestore();
     createSpy.mockRestore();
   });
@@ -1235,15 +1316,15 @@ describe('GeneratePanelContainer — 点不动的时候说清缺什么 (#1949)',
     });
     fireEvent.click(btn);
     await waitFor(() => {
-      expect((btn as HTMLButtonElement).disabled).toBe(true);
+      expect(btn).toHaveAttribute('aria-busy', 'true');
     });
     // 请求还在飞的时候清空提示词。
     const fragment = getPromptFragment('p', 's', 'target', storedMode());
     act(() => {
       fragment?.delete(0, fragment.length);
     });
-    expect((btn as HTMLButtonElement).disabled).toBe(true);
-    expect(screen.getByTestId('generate-execute-pending')).toBeInTheDocument();
+    expect(btn).toHaveAttribute('aria-busy', 'true');
+    expect(btn).toHaveAttribute('aria-disabled', 'true');
     listSpy.mockRestore();
     createSpy.mockRestore();
   });

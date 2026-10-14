@@ -292,12 +292,15 @@ describe('naming a conversation', () => {
     expect(listed?.[0]?.title).toBe('Storyboard notes');
   });
 
-  it('leaves the old name in place when the rename fails', async () => {
+  it('leaves the old name in place and refuses to the caller when the rename fails', async () => {
     openAnswers([{ id: 'c-1', title: 'the old one' }], 'c-1');
     await conversationRuntime.ensureLoaded(PROJECT);
     vi.mocked(chatApi.renameConversation).mockRejectedValue(new Error('offline'));
 
-    await conversationRuntime.rename(PROJECT, 'c-1', 'never lands');
+    // The box that took the name shows it until told otherwise (inner#1440).
+    await expect(conversationRuntime.rename(PROJECT, 'c-1', 'never lands')).rejects.toThrow(
+      'offline',
+    );
 
     const listed = useConversationRuntime.getState().listByProject[PROJECT];
     expect(listed?.[0]?.title).toBe('the old one');

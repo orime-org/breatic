@@ -8,6 +8,7 @@ import { Button } from '@web/components/ui/button';
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { Skeleton } from '@web/components/ui/skeleton';
 import { useTranslation } from '@web/i18n/use-translation';
+import { usePendingKeys } from '@web/lib/use-pending-keys';
 import { ChatEmpty } from '@web/pages/project/chat/ChatEmpty';
 import { MessageBubble } from '@web/pages/project/chat/MessageBubble';
 import type { ChatMessage } from '@web/pages/project/chat/types';
@@ -57,8 +58,8 @@ interface MessageListProps {
   conversationId?: string;
   /** The conversation reaches back further than what is on screen. */
   hasEarlier?: boolean;
-  /** Load what comes before the messages on screen. */
-  onLoadEarlier?: () => void;
+  /** Load what comes before the messages on screen; settles once that is over. */
+  onLoadEarlier?: () => Promise<void>;
   onQuickAction?: (label: string) => void;
   /** The panel is on its way to another conversation. */
   navigating?: boolean;
@@ -162,11 +163,20 @@ function MessageListInner({
     send('thinkingOpened');
   }, [send]);
 
+  // The earlier page is on its way: the button says so until it has landed
+  // or failed, and swallows presses meanwhile. Kept per conversation
+  // (inner#1374): this list is not remounted on a switch, so a load pressed in
+  // one conversation must not spin the button in the next.
+  const earlierLoads = usePendingKeys();
+  const { track: trackEarlier } = earlierLoads;
+  const loadKey = conversationId ?? '';
+
   /** Load what came before, and tell the column it happened. */
   const loadEarlier = React.useCallback((): void => {
     send('earlierLoaded');
-    onLoadEarlier?.();
-  }, [send, onLoadEarlier]);
+    if (!onLoadEarlier) return;
+    void trackEarlier(loadKey, onLoadEarlier());
+  }, [send, onLoadEarlier, trackEarlier, loadKey]);
 
   /** Take the reader back to the newest message and stay there. */
   const backToEnd = React.useCallback((): void => {
@@ -208,6 +218,7 @@ function MessageListInner({
                 variant='outline'
                 size='sm'
                 className='self-center'
+                loading={earlierLoads.isPending(loadKey)}
                 onClick={loadEarlier}
                 data-testid='chat-load-earlier'
               >

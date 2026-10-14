@@ -34,17 +34,20 @@ afterEach(() => {
 });
 
 describe('the projects setup prepared', () => {
-  it('hands over the id at the asked-for place', () => {
-    const path = fileHolding(JSON.stringify({ A: ['one', 'two'], B: ['three'] }));
-    const prepared = readProjects(path);
-    expect(projectId(prepared, 'A', 0)).toBe('one');
-    expect(projectId(prepared, 'A', 1)).toBe('two');
-    expect(projectId(prepared, 'B', 0)).toBe('three');
+  const slots = { '0': { A: ['one', 'two'], B: ['three'] }, '1': { A: ['four', 'five'], B: ['six'] } };
+
+  it('hands over the id at the asked-for place in the asked-for slot', () => {
+    const prepared = readProjects(fileHolding(JSON.stringify(slots)));
+    expect(projectId(prepared, 0, 'A', 0)).toBe('one');
+    expect(projectId(prepared, 0, 'A', 1)).toBe('two');
+    expect(projectId(prepared, 0, 'B', 0)).toBe('three');
+    expect(projectId(prepared, 1, 'A', 0)).toBe('four');
+    expect(projectId(prepared, 1, 'B', 0)).toBe('six');
   });
 
   it('builds the url a spec navigates to', () => {
-    const path = fileHolding(JSON.stringify({ A: ['one'], B: ['three'] }));
-    expect(projectUrl(readProjects(path), 'A', 0)).toBe('/project/one');
+    const prepared = readProjects(fileHolding(JSON.stringify(slots)));
+    expect(projectUrl(prepared, 1, 'A', 1)).toBe('/project/five');
   });
 
   it('says setup has not run when the file is missing', () => {
@@ -56,22 +59,23 @@ describe('the projects setup prepared', () => {
   });
 
   it('rejects a file that is not the shape setup writes', () => {
-    const path = fileHolding(JSON.stringify({ A: 'one' }));
-    expect(() => readProjects(path)).toThrow(/shape/i);
+    expect(() => readProjects(fileHolding(JSON.stringify({ '0': { A: 'one' } })))).toThrow(/shape/i);
+    // The one-pair file an earlier suite wrote.
+    expect(() => readProjects(fileHolding(JSON.stringify({ A: ['one'], B: ['two'] })))).toThrow(/shape/i);
   });
 
-  it('names the account and the place when there is no project there', () => {
-    const path = fileHolding(JSON.stringify({ A: ['one', 'two'], B: ['three'] }));
-    const prepared = readProjects(path);
-    expect(() => projectId(prepared, 'B', 1)).toThrow(/B.*1/);
+  it('names the slot, the account and the place when there is no project there', () => {
+    const prepared = readProjects(fileHolding(JSON.stringify(slots)));
+    expect(() => projectId(prepared, 0, 'B', 1)).toThrow(/B.*1/);
+    expect(() => projectId(prepared, 2, 'A', 0)).toThrow(/slot 2/);
   });
 
   it('answers for the file it is given, every time it is asked', () => {
-    const one = fileHolding(JSON.stringify({ A: ['one'], B: ['two'] }));
-    const other = fileHolding(JSON.stringify({ A: ['three'], B: ['four'] }));
-    expect(readProjects(one)).toEqual({ A: ['one'], B: ['two'] });
-    expect(readProjects(other)).toEqual({ A: ['three'], B: ['four'] });
-    expect(readProjects(one)).toEqual({ A: ['one'], B: ['two'] });
+    const one = fileHolding(JSON.stringify({ '0': { A: ['one'], B: ['two'] } }));
+    const other = fileHolding(JSON.stringify({ '0': { A: ['three'], B: ['four'] } }));
+    expect(readProjects(one)).toEqual({ '0': { A: ['one'], B: ['two'] } });
+    expect(readProjects(other)).toEqual({ '0': { A: ['three'], B: ['four'] } });
+    expect(readProjects(one)).toEqual({ '0': { A: ['one'], B: ['two'] } });
   });
 });
 

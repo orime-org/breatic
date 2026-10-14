@@ -77,7 +77,7 @@ import { docGeometryView } from '@web/spaces/canvas/doc-geometry-view';
 import { batchCentresAt } from '@web/spaces/canvas/drop-layout';
 import { groupBackgroundFor } from '@web/spaces/canvas/group-background';
 import { writeGroup } from '@web/spaces/canvas/group-write';
-import { FRAME_PAN_MS, frameBuiltNode, framedBox } from '@web/spaces/canvas/frame-built-node';
+import { FRAME_PAN_MS, PROPOSAL_FRAME_MS, frameBuiltNode, framedBox } from '@web/spaces/canvas/frame-built-node';
 import { exportCropBlob } from '@web/spaces/canvas/focus/crop-export';
 import { exportDrawing } from '@web/spaces/canvas/mini-tool/export-drawing';
 import { exportExpand } from '@web/spaces/canvas/mini-tool/expand-export';
@@ -108,8 +108,10 @@ import {
   readCanvasGraph,
   readTextBodies,
   readEdges,
+  readNodePlacements,
   nodeDataMap,
 } from '@web/data/yjs/canvas-space';
+import { frameProposal, occupiedRects } from '@web/spaces/canvas/lib/place-flow';
 import { docName, getDoc } from '@web/data/yjs/manager';
 import { handToAgent } from '@web/spaces/canvas/pick-for-agent';
 import { useConversationRuntime } from '@web/stores/conversation-runtime';
@@ -737,6 +739,7 @@ function CanvasSpaceInner({
     fitView,
     zoomTo,
     setCenter,
+    setViewport,
     getInternalNode,
     deleteElements,
   } = useReactFlow();
@@ -2716,9 +2719,9 @@ function CanvasSpaceInner({
 
   // Mailbox path: chrome posted a create intent -- one node type from the
   // library, or a whole wired group from a proposal card. Neither sender has a
-  // viewport, so the drop point is decided here: the viewport centre,
-  // staggering repeats so they don't stack exactly. Always clear the mailbox
-  // afterward.
+  // viewport, so the drop point is decided here: the viewport centre. Library
+  // nodes stagger repeats so they don't stack exactly; a proposal steps right
+  // past whatever is there instead. Always clear the mailbox afterward.
   React.useEffect(() => {
     if (!pendingNodeCreate) return;
     const intent = pendingNodeCreate;
@@ -2735,31 +2738,48 @@ function CanvasSpaceInner({
       consumePendingNodeCreate();
       return;
     }
-    const offset = (staggerRef.current % STAGGER_WRAP) * STAGGER_STEP_PX;
-    staggerRef.current += 1;
-    const center = screenToFlowPosition({
-      x: rect.left + rect.width / 2 + offset,
-      y: rect.top + rect.height / 2 + offset,
-    });
+    const middle = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
     if (isProposalIntent(intent)) {
+      const center = screenToFlowPosition(middle);
       try {
-        const placed = placeProposalAt(intent.proposal, center);
-        // The camera is not touched. The flow lands near the middle of what
-        // the reader was already looking at, and if it runs past an edge at
-        // their zoom, that is a canvas they can drag -- where they are looking
-        // and how far in they are zoomed is theirs to set (#263 A17).
+        // Sized as `occupiedRects` describes, from the document and the
+        // canvas's measurements together.
+        const occupied = occupiedRects(readNodePlacements(projectId, spaceId), (id) => {
+          const measured = getInternalNode(id)?.measured;
+          return measured?.width && measured.height
+            ? { width: measured.width, height: measured.height }
+            : undefined;
+        });
+        const placed = placeProposalAt(intent.proposal, center, occupied);
+        // The camera follows what landed: centred on it, zoomed out only as
+        // far as it takes to show all of it (inner#1443 A4).
+        if (placed.bounds) {
+          // A Space opened empty and never framed still has its opening fit
+          // queued for the first nodes to arrive; this framing is that one.
+          rfStoreApi.setState({ fitViewQueued: false });
+          const zoom = rfStoreApi.getState().transform[2];
+          void setViewport(frameProposal(placed.bounds, { width: rect.width, height: rect.height }, zoom), {
+            duration: PROPOSAL_FRAME_MS,
+            // A straight slide, like the other framings: the default arc zooms
+            // out on the way and back in.
+            interpolate: 'linear',
+          });
+        }
         const focus = whatToFocus(intent.proposal, placed);
         if (focus.select.length > 0) setSelectAfterCreate(focus.select);
         if (focus.panel) openGeneratePanel(focus.panel.nodeId, focus.panel.type);
         reportProposalOutcome('placed');
       } catch {
-        // The whole group is one transaction, so nothing half-placed is left
-        // behind -- but the card is still waiting, and a button that stays
-        // disabled forever is worse than one that says it did not work.
+        // `placeProposalAt` takes back whatever it wrote before it threw, so
+        // nothing half-placed is left behind -- but the card is still waiting,
+        // and a button that stays disabled forever is worse than one that says
+        // it did not work.
         reportProposalOutcome('failed');
       }
     } else {
-      createNode(intent, center);
+      const offset = (staggerRef.current % STAGGER_WRAP) * STAGGER_STEP_PX;
+      staggerRef.current += 1;
+      createNode(intent, screenToFlowPosition({ x: middle.x + offset, y: middle.y + offset }));
     }
     consumePendingNodeCreate();
   }, [
@@ -2771,6 +2791,11 @@ function CanvasSpaceInner({
     placeProposalAt,
     reportProposalOutcome,
     openGeneratePanel,
+    projectId,
+    spaceId,
+    getInternalNode,
+    rfStoreApi,
+    setViewport,
   ]);
 
   // Whoever posts a proposal is outside the canvas and cannot see whether one
@@ -3626,7 +3651,7 @@ function CanvasSpaceInner({
       file: File,
       modality: UploadNodeSpec['nodeType'],
       tag?: MiniToolUploadTag,
-    ): void => {
+    ): Promise<void> | undefined => {
       // Re-gate at fill time (adversarial round): activateNodeUpload gates at
       // picker-OPEN, but the OS picker then stays open for seconds — a
       // collaborator can lock the node inside that window. Re-read fresh Yjs
@@ -3638,7 +3663,7 @@ function CanvasSpaceInner({
       });
       if (gateBlock) {
         warnNodeGate(t(gateBlock.toastKey));
-        return;
+        return undefined;
       }
       // The uploader sees the node wait from this moment until the server
       // answers (inner#1303 §6.7).
@@ -3684,6 +3709,7 @@ function CanvasSpaceInner({
         });
       })();
       trackOperation(nodeId, work);
+      return work;
     },
     [projectId, spaceId, t, failUploadNode, trackOperation],
   );
@@ -3733,7 +3759,9 @@ function CanvasSpaceInner({
       // recoverable (D4). An unconditional toast on raster failure (silent-fail
       // mandate) — the node is untouched.
       void generateBlankPng(opts.width, opts.height, opts.color)
-        .then((file) => fillUpload(nodeId, file, 'image'))
+        .then((file) => {
+          fillUpload(nodeId, file, 'image');
+        })
         .catch(() => toast.error(t('canvas.emptyImage.generateFailed')));
     },
     [projectId, spaceId, t, closeActivePanel, fillUpload],
@@ -4027,23 +4055,24 @@ function CanvasSpaceInner({
   // clears that task off the list; a refresh drops it too, and the button
   // then no longer renders.
   const retryNodeUpload = React.useCallback(
-    (nodeId: string, taskId: string): void => {
-      if (readOnly) return;
+    (nodeId: string, taskId: string): Promise<void> | undefined => {
+      if (readOnly) return undefined;
       // Retry is an upload entry point too, and a locked node refuses it.
       const gateBlock = evaluateNodeGate({
         locked: isNodeLocked(projectId, spaceId, nodeId),
       });
       if (gateBlock) {
         warnNodeGate(t(gateBlock.toastKey));
-        return;
+        return undefined;
       }
       // The File this task was carrying, held under its own id — a second
       // upload onto the same node has its own (#186 §3.7.2). The failed row
       // stays where it is: re-sending is a new task, and removing the record
       // of the old one is the user's call.
       const upload = getRetryUpload(projectId, spaceId, taskId);
-      if (!upload) return;
-      fillUpload(nodeId, upload.file, fileToNodeSpec(upload.file).nodeType, upload.context);
+      if (!upload) return undefined;
+      // The task row waits on this work (`NodeTaskPanelContainer`).
+      return fillUpload(nodeId, upload.file, fileToNodeSpec(upload.file).nodeType, upload.context);
     },
     [readOnly, projectId, spaceId, t, fillUpload],
   );

@@ -2,7 +2,7 @@ import * as React from 'react';
 import * as AlertDialogPrimitive from '@radix-ui/react-alert-dialog';
 import type { VariantProps } from 'class-variance-authority';
 
-import { buttonVariants } from '@web/components/ui/button';
+import { Button, buttonVariants } from '@web/components/ui/button';
 import {
   DialogOverlayScroller,
   OVERLAY_CLASS,
@@ -15,11 +15,12 @@ import { cn } from '@web/lib/utils';
  * @radix-ui/react-alert-dialog.
  *
  * Used for destructive / irreversible actions (delete, leave unsaved, etc.).
- * Unlike a regular Dialog, the user MUST pick Action or Cancel (no
- * dismissal via Escape / outside click). The vendor sets
- * `onPointerDownOutside` and `onInteractOutside` to `preventDefault` after
- * its own spread, so no outside press of any button reaches this content —
- * which is why the rail needs no veto here and `Dialog` carries one.
+ * Unlike a regular Dialog, an outside click never dismisses it: the vendor
+ * sets `onPointerDownOutside` and `onInteractOutside` to `preventDefault`
+ * after its own spread, so no outside press of any button reaches this
+ * content — which is why the rail needs no veto here and `Dialog` carries
+ * one. Action, Cancel and Escape close it, Escape also while the Action is
+ * waiting for the server.
  */
 const AlertDialog = AlertDialogPrimitive.Root;
 const AlertDialogTrigger = AlertDialogPrimitive.Trigger;
@@ -128,21 +129,31 @@ AlertDialogDescription.displayName =
 // Accepts the Button primitive's `variant` + `size` props so destructive
 // alerts (e.g. "Clear all messages?") can opt into `variant='destructive'`
 // without resorting to className overrides — those couldn't suppress the
-// default variant's `hover:bg-primary-hover` cascade.
+// default variant's `hover-enabled:bg-primary-hover` cascade.
+// `loading` and `icon` reach the same Button every other waiting button uses:
+// the Action renders through `asChild`, so Radix composes its close handler
+// into that Button's click, and a press made while loading never gets there.
 type AlertDialogActionProps = React.ComponentPropsWithoutRef<
   typeof AlertDialogPrimitive.Action
 > &
-  VariantProps<typeof buttonVariants>;
+  VariantProps<typeof buttonVariants> &
+  Pick<React.ComponentProps<typeof Button>, 'loading' | 'icon'>;
 
 const AlertDialogAction = React.forwardRef<
   React.ElementRef<typeof AlertDialogPrimitive.Action>,
   AlertDialogActionProps
->(({ className, variant, size, ...props }, ref) => (
-  <AlertDialogPrimitive.Action
-    ref={ref}
-    className={cn(buttonVariants({ variant, size }), className)}
-    {...props}
-  />
+>(({ className, variant, size, loading, icon, children, ...props }, ref) => (
+  <AlertDialogPrimitive.Action ref={ref} asChild {...props}>
+    <Button
+      variant={variant}
+      size={size}
+      className={className}
+      loading={loading}
+      icon={icon}
+    >
+      {children}
+    </Button>
+  </AlertDialogPrimitive.Action>
 ));
 AlertDialogAction.displayName = AlertDialogPrimitive.Action.displayName;
 

@@ -239,7 +239,7 @@ function ClickableViewerRoleTag({
               </Button>
               <Button
                 size='sm'
-                disabled={submitMutation.isPending}
+                loading={submitMutation.isPending}
                 onClick={() =>
                   submitMutation.mutate({
                     message: message.trim() || undefined,
@@ -303,7 +303,7 @@ function PendingRequest({
         <Button
           variant='outline'
           size='sm'
-          disabled={withdrawing}
+          loading={withdrawing}
           onClick={onWithdraw}
           data-testid='role-tag-withdraw'
         >

@@ -12,11 +12,11 @@
  * Wants dev running:
  *   pnpm --filter @breatic/web test:smoke
  */
-import { test, expect, type Page } from 'playwright/test';
+import { expect, type Page } from 'playwright/test';
+import { test } from '../helpers/slot';
 
-import { STATE_FILE, openSmokeProject } from '../helpers/project';
+import { openSmokeProject } from '../helpers/project';
 import { createSpace, deleteSpace, DOCUMENT_EDITOR as EDITOR } from '../helpers/space';
-
 
 let page: Page;
 
@@ -34,7 +34,6 @@ test.afterEach(async () => {
   }
   await page?.close();
 });
-
 
 /**
  * Open a freshly made Document Space with the caret in the body.
@@ -448,7 +447,6 @@ test('the handle re-aligns when a co-editor reshapes the row under it', async ({
   await typeLines(page, ['the row a co-editor reshapes', 'a second row']);
 
   const second = await browser.newContext({
-    storageState: STATE_FILE.A,
     viewport: { width: 1680, height: 950 },
   });
   const coEditor = await second.newPage();
@@ -592,7 +590,6 @@ test('the comment row is drawn unusable on a row without words and does nothing 
     1,
   );
 
-
   // And pressing it leaves the document exactly as it was — the row's own
   // `onSelect` is what has to stop, since Radix would otherwise run it.
   //
@@ -663,7 +660,6 @@ test('duplicate copies the row as it stands, not as it was hovered', async ({
   await typeLines(page, ['alpha', 'a second row']);
 
   const second = await browser.newContext({
-    storageState: STATE_FILE.A,
     viewport: { width: 1680, height: 950 },
   });
   const coEditor = await second.newPage();
@@ -968,7 +964,6 @@ test('a drag keeps what a co-editor typed into the row mid-flight', async ({
   await typeLines(page, ['alpha', 'beta', 'gamma']);
 
   const second = await browser.newContext({
-    storageState: STATE_FILE.A,
     viewport: { width: 1680, height: 950 },
   });
   const coEditor = await second.newPage();
@@ -1352,7 +1347,6 @@ test('a drag whose anchors a co-editor removes leaves nothing selected', async (
   await typeLines(page, ['alpha', 'beta', 'gamma']);
 
   const second = await browser.newContext({
-    storageState: STATE_FILE.A,
     viewport: { width: 1680, height: 950 },
   });
   const coEditor = await second.newPage();

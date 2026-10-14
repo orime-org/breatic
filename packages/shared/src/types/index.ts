@@ -7,6 +7,7 @@ export type {
   MessageData,
   MessageInput,
   MessagePart,
+  StoredModelOutput,
   TaskEntity,
   NodeHistoryEntity,
   StudioAssetEntity,
@@ -121,6 +122,7 @@ export type {
   ProposalAnswer,
 } from "@shared/types/canvas-proposal.js";
 export {
+  canvasProposalSchema,
   feedsOf,
   layersOf,
   markReadsBack,
@@ -254,11 +256,14 @@ export type {
 export {
   membersChangedChannel,
   activityNewChannel,
+  projectConnectionsCloseChannel,
   allProjectChannelsPattern,
 } from "@shared/types/redis-events.js";
 export type {
   MembersChangedEvent,
   ActivityNewControlEvent,
+  ProjectConnectionsCloseEvent,
+  ProjectConnectionsCloseReason,
   ProjectDuplicatedLifecycleEvent,
   ProjectArchivedLifecycleEvent,
   ProjectRestoredLifecycleEvent,

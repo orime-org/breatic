@@ -121,7 +121,22 @@ describe('MiniToolPanelContainer', () => {
   it('shows a press under way while the draft says it is exporting', () => {
     render(tree(source('a.png'), () => Promise.resolve()));
     act(() => canvasSessions.of('').getState().setMiniToolExporting(true, canvasSessions.of('').getState().panelSession));
-    expect(screen.getByTestId('mini-tool-run')).toBeDisabled();
+    const run = screen.getByTestId('mini-tool-run');
+    expect(run).toHaveAttribute('aria-busy', 'true');
+    expect(run).toHaveAttribute('aria-disabled', 'true');
+  });
+
+  it('stops waiting once the export is over, whichever way it went', () => {
+    // `startMiniToolRun` clears the flag in a `finally`, after a delivered
+    // export and a failed one alike.
+    render(tree(source('a.png'), () => Promise.resolve()));
+    const session = canvasSessions.of('').getState().panelSession;
+    act(() => canvasSessions.of('').getState().setMiniToolExporting(true, session));
+    const run = screen.getByTestId('mini-tool-run');
+    expect(run).toHaveAttribute('aria-busy', 'true');
+    act(() => canvasSessions.of('').getState().setMiniToolExporting(false, session));
+    expect(run).not.toHaveAttribute('aria-busy');
+    expect(run).not.toHaveAttribute('aria-disabled');
   });
 
   // A7: nothing to export yet, so nothing is started and the reader is told.

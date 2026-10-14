@@ -30,11 +30,8 @@ export const ASK_USER = "ask_user";
 /**
  * Ask which modes each generation node can be set to.
  *
- * Written here for the reason above: the registry key, the plain-chat tool
- * list and the server's render registry all have to name the same tool, and
- * the render registry is the one where a disagreement is silent -- the turn
- * that ran the tool reads the rendered text, and every later turn reads the
- * raw payload as JSON instead.
+ * Written here for the reason above: the registry key and `CANVAS_TOOLS`
+ * both have to name the same tool.
  */
 export const GET_CANVAS_CAPABILITIES = "get_canvas_capabilities";
 

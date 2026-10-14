@@ -15,7 +15,8 @@
  *
  *   pnpm --filter @breatic/web test:visual
  */
-import { test, expect } from 'playwright/test';
+import { expect } from 'playwright/test';
+import { test } from '../helpers/slot';
 
 import { openGenerate, panCanvasDown, seedNode, registerCanvasStage, voiceRowCount } from '../helpers/audio-panel';
 
