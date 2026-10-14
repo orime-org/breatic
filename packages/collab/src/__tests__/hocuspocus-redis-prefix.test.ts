@@ -149,6 +149,7 @@ describe("createCollabServer — Redis channel prefix", () => {
       collabRedisUrl: "redis://localhost:6379/3",
       port: 1234,
       redisKeyPrefix: "dev",
+      shutdownDeadline: () => undefined,
     });
 
     expect(capturedPrefix()).toBe("dev:hocuspocus");
@@ -159,6 +160,7 @@ describe("createCollabServer — Redis channel prefix", () => {
       collabRedisUrl: "redis://localhost:6379/7",
       port: 1234,
       redisKeyPrefix: "dev-agent",
+      shutdownDeadline: () => undefined,
     });
 
     expect(capturedPrefix()).toBe("dev-agent:hocuspocus");
@@ -174,6 +176,7 @@ describe("createCollabServer — Redis channel prefix", () => {
       collabRedisUrl: "redis://localhost:6379/3",
       port: 1244,
       redisKeyPrefix: "dev",
+      shutdownDeadline: () => undefined,
     });
 
     const config = serverSpy.mock.calls[0]?.[0] as { port: number };
@@ -191,6 +194,7 @@ describe("createCollabServer — Redis channel prefix", () => {
       collabRedisUrl: "redis://localhost:6379/3",
       port: 1234,
       redisKeyPrefix: "dev",
+      shutdownDeadline: () => undefined,
     });
 
     const config = serverSpy.mock.calls[0]?.[0] as Record<string, unknown>;
@@ -211,6 +215,7 @@ describe("createCollabServer — Redis channel prefix", () => {
       collabRedisUrl: "redis://localhost:6379/3",
       port: 1234,
       redisKeyPrefix: "dev-studio",
+      shutdownDeadline: () => undefined,
     });
 
     expect(capturedPrefix()).not.toContain("redis://");
@@ -238,6 +243,7 @@ describe("createCollabServer — the identity rule is registered", () => {
       collabRedisUrl: "redis://localhost:6379/3",
       port: 1234,
       redisKeyPrefix: "dev",
+      shutdownDeadline: () => undefined,
     });
 
     const config = serverSpy.mock.calls[0]?.[0] as {
@@ -279,6 +285,7 @@ describe("createCollabServer — only writable connections take a seat", () => {
       collabRedisUrl: "redis://localhost:6379/3",
       port: 1234,
       redisKeyPrefix: "dev",
+      shutdownDeadline: () => undefined,
     });
     const config = serverSpy.mock.calls[0]?.[0] as {
       connected?: (payload: unknown) => Promise<void>;
@@ -372,6 +379,7 @@ describe("createCollabServer — the facts a connection and its pong carry", () 
       collabRedisUrl: "redis://localhost:6379/3",
       port: 1234,
       redisKeyPrefix: "dev",
+      shutdownDeadline: () => undefined,
     });
     const config = serverSpy.mock.calls[0]?.[0] as {
       connected?: (payload: unknown) => Promise<void>;
@@ -459,6 +467,7 @@ describe("createCollabServer — the facts a connection and its pong carry", () 
       collabRedisUrl: "redis://localhost:6379/3",
       port: 1234,
       redisKeyPrefix: "dev",
+      shutdownDeadline: () => undefined,
     });
 
     const timings = getConnectionTimings();
@@ -485,6 +494,7 @@ describe("createCollabServer — a connection re-reads its role once registered"
       collabRedisUrl: "redis://localhost:6379/3",
       port: 1234,
       redisKeyPrefix: "dev",
+      shutdownDeadline: () => undefined,
     });
     const config = serverSpy.mock.calls[0]?.[0] as {
       connected?: (payload: unknown) => Promise<void>;

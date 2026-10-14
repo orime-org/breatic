@@ -132,7 +132,9 @@ beforeAll(async () => {
     },
     writeRescueNote: async () => {},
     alert: async () => {},
-  });
+  retry: { windowMs: 0, intervalMs: 10, rescueReserveMs: 0 },
+  shutdownDeadline: () => undefined,
+});
   await wsServer.listen();
 });
 

@@ -113,7 +113,9 @@ function harness(options: { failing?: boolean; delayMs?: number; debounceMs?: nu
     },
     writeRescueNote: async () => {},
     alert: async () => {},
-  });
+  retry: { windowMs: 0, intervalMs: 10, rescueReserveMs: 0 },
+  shutdownDeadline: () => undefined,
+});
 
   const loop = createStoreLoop({
     intervalMs: 10_000,

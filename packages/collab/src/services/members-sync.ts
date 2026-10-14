@@ -2,16 +2,23 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Cross-process control-plane subscriber (members channel only).
+ * Cross-process control-plane subscriber.
  *
- * The API server publishes pub/sub events on Redis DB2:
+ * Every collab instance subscribes, and each acts on its own connections:
  *
- *   - `{prefix}:project:{pid}:members:changed` — kick the affected user's
- *     ws connections to this project's docs (the close reason makes the
- *     web client re-authenticate, so onAuthenticate re-checks the role),
- *     then broadcastStateless an
- *     invalidate signal to the project's `meta` doc so other
+ *   - `{prefix}:project:{pid}:members:changed` (server) — kick the affected
+ *     user's ws connections to this project's docs (the close reason makes
+ *     the web client re-authenticate, so onAuthenticate re-checks the role),
+ *     then relay an invalidate signal on the project's `meta` doc so other
  *     connected clients re-fetch their members cache.
+ *   - `{prefix}:project:{pid}:activity:new` (server, worker) — relay the
+ *     activity signal on the `meta` doc.
+ *   - `{prefix}:project:{pid}:connections:close` (collab's lifecycle
+ *     consumer) — close every connection to the project.
+ *
+ * Signals go out with `relayStateless`, to this instance's connections only:
+ * every instance runs this, and `broadcastStateless` would also forward them
+ * through the Redis extension, one extra copy per instance.
  *
  * Why pub/sub (not Streams):
  *
@@ -25,8 +32,7 @@
  * now happen inside `space-rpc.ts` as collab stateless RPC, so no
  * Redis round-trip is needed.
  *
- * One `psubscribe` on `{prefix}:project:*` covers the remaining channel — kept
- * as a pattern subscription in case future control-plane events join.
+ * One `psubscribe` on `{prefix}:project:*` covers all three channels.
  *
  * `{prefix}` is `REDIS_KEY_PREFIX` (defaults to `ENV`), injected in exactly one
  * place — core's `projectControlChannelPattern()`. It is what keeps two
@@ -40,17 +46,18 @@ import type { Redis } from "@breatic/core";
 import { createLogger, projectControlChannelPattern } from "@breatic/core";
 import {
   COLLAB_REAUTH_REASONS,
-  parseDocName,
   projectMetaDocName,
   type MembersChangedEvent,
   type ActivityNewControlEvent,
+  type ProjectConnectionsCloseEvent,
   ACTIVITY_NEW_SIGNAL,
   type ActivityNewSignal,
 } from "@breatic/shared";
+import { closeProjectConnections, forEachProjectConnection } from "@collab/services/project-connections.js";
 
 const logger = createLogger("members-sync");
 
-type ProjectControlEvent = MembersChangedEvent | ActivityNewControlEvent;
+type ProjectControlEvent = MembersChangedEvent | ActivityNewControlEvent | ProjectConnectionsCloseEvent;
 
 /**
  * Best-effort kick — close every ws connection the user holds to
@@ -67,39 +74,27 @@ function kickUserFromProject(
   projectId: string,
   userId: string,
 ): void {
-  // Hocuspocus exposes connections via the per-document map; we walk
-  // all loaded docs and close connections whose user.id matches.
-  // The doc-name filter restricts the kick to this project.
-  const docs = hocuspocus.documents;
-  if (!docs) return;
-  for (const [docName, doc] of docs.entries()) {
-    const parsed = parseDocName(docName);
-    if (!parsed || parsed.projectId !== projectId) continue;
-    // The connection IS the map key from v4 on (the value only carries the
-    // client-id set); before that the key was the raw websocket and the
-    // connection hung off the value.
-    for (const [connection] of doc.connections) {
-      const ctxUser = (connection.context as { user?: { id?: string } } | undefined)?.user;
-      if (ctxUser?.id === userId) {
-        connection.close({ code: 4403, reason: COLLAB_REAUTH_REASONS.permissionChanged });
-      }
+  forEachProjectConnection(hocuspocus, projectId, (connection) => {
+    const ctxUser = (connection.context as { user?: { id?: string } } | undefined)?.user;
+    if (ctxUser?.id === userId) {
+      connection.close({ code: 4403, reason: COLLAB_REAUTH_REASONS.permissionChanged });
     }
-  }
+  });
 }
 
 /**
- * Broadcast a stateless invalidate signal on the project's meta
- * doc. Frontend clients subscribed via
+ * Relay a stateless invalidate signal on the project's meta doc to this
+ * instance's connections. Frontend clients subscribed via
  * `metaProvider.on('stateless', handler)` re-fetch their members
  * cache (and any other invalidated state).
  *
  * If no client is connected (Document not loaded), this is a no-op
  * — connected clients will rehydrate via REST on next page load.
  * @param hocuspocus - Running Hocuspocus server holding the project's loaded meta doc.
- * @param projectId - Project whose meta doc receives the stateless broadcast.
+ * @param projectId - Project whose meta doc relays the signal.
  * @param payload - Control event serialized and sent as the stateless invalidate signal.
  */
-function broadcastInvalidate(
+function relayInvalidate(
   hocuspocus: Hocuspocus,
   projectId: string,
   payload: ProjectControlEvent,
@@ -108,19 +103,24 @@ function broadcastInvalidate(
   const doc = hocuspocus.documents?.get(docName);
   if (!doc) return;
   try {
-    doc.broadcastStateless(JSON.stringify(payload));
+    // Every instance receives this control event and relays it to its own
+    // connections; going through the Redis extension as well would hand each
+    // client one copy per instance.
+    doc.relayStateless(JSON.stringify(payload));
   } catch (err) {
-    logger.warn({ err, docName }, "broadcast_stateless_failed");
+    logger.warn({ err, docName }, "relay_stateless_failed");
   }
 }
 
 /**
- * Decode one raw control-plane pub/sub message and dispatch it. For a
- * `project-members:changed` event, kick the affected user(s) and
- * broadcast a meta-doc invalidate; unknown / unparseable messages are
- * logged and ignored.
- * @param hocuspocus - Running Hocuspocus server passed through to the kick / broadcast handlers.
+ * Decode one raw control-plane pub/sub message and dispatch it:
+ * `project-members:changed` kicks the affected user(s) and relays a meta-doc
+ * invalidate; `project-activity:new` relays the activity signal on the meta
+ * doc; `project-connections:close` closes this instance's connections to the
+ * project. Unknown / unparseable messages are logged and ignored.
+ * @param hocuspocus - Running Hocuspocus server passed through to the kick / relay handlers.
  * @param raw - Raw JSON message body received on the project control channel.
+ * @throws {TypeError} When the message decodes to `null`; the subscriber logs it.
  */
 async function handleEvent(
   hocuspocus: Hocuspocus,
@@ -146,7 +146,7 @@ async function handleEvent(
         kickUserFromProject(hocuspocus, event.projectId, event.toUserId);
       }
     }
-    broadcastInvalidate(hocuspocus, event.projectId, event);
+    relayInvalidate(hocuspocus, event.projectId, event);
     logger.info(
       {
         projectId: event.projectId,
@@ -166,7 +166,7 @@ async function handleEvent(
     const doc = hocuspocus.documents?.get(docName);
     if (doc) {
       try {
-        doc.broadcastStateless(
+        doc.relayStateless(
           JSON.stringify({
             t: ACTIVITY_NEW_SIGNAL,
             projectId: event.projectId,
@@ -176,6 +176,15 @@ async function handleEvent(
         logger.warn({ err, docName }, "activity_signal_relay_failed");
       }
     }
+    return;
+  }
+
+  if (event.type === "project-connections:close") {
+    if (!closeProjectConnections(hocuspocus, event.projectId, event.reason)) {
+      logger.warn({ projectId: event.projectId, reason: event.reason }, "unknown_connections_close_reason");
+      return;
+    }
+    logger.info({ projectId: event.projectId, reason: event.reason }, "project_connections_closed");
     return;
   }
 
@@ -220,8 +229,10 @@ export function startMembersSync(
     );
   });
 
-  subscriber.on("pmessage", (_pattern, _channel, message) => {
-    void handleEvent(hocuspocus, message);
+  subscriber.on("pmessage", (_pattern, channel, message) => {
+    handleEvent(hocuspocus, message).catch((err: unknown) => {
+      logger.error({ err, channel }, "control_event_failed");
+    });
   });
 
   return async () => {
