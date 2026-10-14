@@ -21,7 +21,7 @@ import {
   getDocumentEditor,
   type DocumentEditorHandle,
 } from '@web/spaces/document/document-editor-cache';
-import { landedAs, landProposal } from '@web/spaces/document/document-proposal-landing';
+import { landedAt, landProposal } from '@web/spaces/document/document-proposal-landing';
 
 afterEach(() => {
   _resetDocumentEditorCacheForTests();
@@ -77,6 +77,27 @@ function marked(handle: DocumentEditorHandle): Array<{ threadId: string; text: s
     return true;
   });
   return found;
+}
+
+/**
+ * Joins a top-level block onto the end of the one above it, the way Backspace
+ * at its start does: the boundary between the two goes, and the block below
+ * with its id goes with it.
+ * @param handle - The document.
+ * @param index - The block to join upward.
+ */
+function mergeIntoAbove(handle: DocumentEditorHandle, index: number): void {
+  const view = handle.editor.prosemirrorView!;
+  const group = view.state.doc.firstChild!;
+  let pos = 1;
+  const starts: number[] = [];
+  group.forEach((node) => {
+    starts.push(pos);
+    pos += node.nodeSize;
+  });
+  const above = group.child(index - 1);
+  const contentEnd = starts[index - 1]! + 1 + above.firstChild!.nodeSize - 1;
+  view.dispatch(view.state.tr.delete(contentEnd, starts[index]! + 2));
 }
 
 /**
@@ -249,9 +270,9 @@ describe('knowing a proposal has landed', () => {
     const handle = await open('Scene 1');
     const proposal = proposalOn(handle, 0, { kind: 'rewrite', body: '## Scene 1' });
 
-    expect(landedAs(handle, proposal)).toBeNull();
+    expect(landedAt(handle, proposal)).toBeNull();
     await landProposal(handle, proposal, 'write', true);
-    expect(landedAs(handle, proposal)).toBe('write');
+    expect(landedAt(handle, proposal)).toEqual({ how: 'write', blockId: deriveId(`document-proposal:${proposal.proposalId}:0`) });
     expect((handle.editor.document[0] as { type?: string } | undefined)?.type).toBe('heading');
   });
 
@@ -261,7 +282,7 @@ describe('knowing a proposal has landed', () => {
 
     await landProposal(handle, proposal, 'write', true);
 
-    expect(landedAs(handle, proposal)).toBe('write');
+    expect(landedAt(handle, proposal)).toEqual({ how: 'write', blockId: deriveId(`document-proposal:${proposal.proposalId}:0`) });
   });
 
   it('knows a rewrite card whose words went on as a comment', async () => {
@@ -270,7 +291,7 @@ describe('knowing a proposal has landed', () => {
 
     await landProposal(handle, proposal, 'comment', true);
 
-    expect(landedAs(handle, proposal)).toBe('comment');
+    expect(landedAt(handle, proposal)).toEqual({ how: 'comment', blockId: proposal.blockId });
   });
 
   it('does not count a comment whose words have gone', async () => {
@@ -280,7 +301,7 @@ describe('knowing a proposal has landed', () => {
     handle.editor.removeBlocks([blocks(handle)[0]!.id]);
 
     expect(threads(handle)).toHaveLength(1);
-    expect(landedAs(handle, proposal)).toBeNull();
+    expect(landedAt(handle, proposal)).toBeNull();
   });
 });
 
@@ -302,6 +323,19 @@ describe('the block a landed proposal is shown at (inner#1509 review round 1)', 
     await landProposal(handle, proposal, 'comment', true);
 
     expect(await landProposal(handle, proposal, 'comment', true)).toEqual({ outcome: 'applied', blockId: proposal.blockId });
+  });
+
+  it('is the block the comment is in now, after its own block was merged into the one above (review round 2)', async () => {
+    const handle = await open('Scene two opens.\n\nThe hero arrives.');
+    const [above] = blocks(handle);
+    const proposal = proposalOn(handle, 1, { kind: 'comment', quote: 'hero', body: 'Who?' });
+    await landProposal(handle, proposal, 'comment', true);
+
+    mergeIntoAbove(handle, 1);
+
+    expect(blocks(handle).map((b) => b.text)).toEqual(['Scene two opens.The hero arrives.']);
+    expect(landedAt(handle, proposal)).toEqual({ how: 'comment', blockId: above!.id });
+    expect(await landProposal(handle, proposal, 'comment', true)).toEqual({ outcome: 'applied', blockId: above!.id });
   });
 });
 

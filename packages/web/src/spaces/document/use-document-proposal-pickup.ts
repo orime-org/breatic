@@ -22,14 +22,12 @@ import * as React from 'react';
 
 import type { WriteAccess } from '@web/data/yjs/use-socket';
 import type { DocumentEditorHandle } from '@web/spaces/document/document-editor-cache';
-import { landedAs, landProposal, revealBlockOf } from '@web/spaces/document/document-proposal-landing';
+import { landedAt, landProposal } from '@web/spaces/document/document-proposal-landing';
 import { pendingFor, useDocumentProposals } from '@web/stores/document-proposals';
 
 /** The block a card just landed, for the body to bring into view. */
 export interface LandedBlock {
   blockId: string;
-  /** Which card landed it, so landing the same block twice still reads as new. */
-  proposalId: string;
 }
 
 /**
@@ -48,9 +46,8 @@ export function useDocumentProposalPickup(
 ): LandedBlock | null {
   const pending = useDocumentProposals((s) => s.pending);
   const [landed, setLanded] = React.useState<LandedBlock | null>(null);
-  // Cards already taken up by this document, so a second run of the effect
-  // (StrictMode, or a press arriving mid-landing) never lands one twice.
-  const taken = React.useRef(new Set<string>());
+  // One loop at a time: a second run of the effect (StrictMode, or a press
+  // arriving mid-landing) leaves the presses to the loop already running.
   const busy = React.useRef(false);
 
   React.useEffect(() => {
@@ -72,22 +69,20 @@ export function useDocumentProposalPickup(
     const { report } = useDocumentProposals.getState();
     void (async () => {
       for (;;) {
-        const next = pendingFor(spaceId).find((p) => !taken.current.has(p.proposal.proposalId));
+        const next = pendingFor(spaceId)[0];
         if (next === undefined) break;
         const id = next.proposal.proposalId;
         if (next.action === 'view') {
-          const how = landedAs(handle, next.proposal);
-          report(id, how === null ? 'reset' : 'applied');
-          if (how !== null) setLanded({ blockId: revealBlockOf(next.proposal, how), proposalId: id });
+          const at = landedAt(handle, next.proposal);
+          report(id, at === null ? 'reset' : 'applied');
+          if (at !== null) setLanded({ blockId: at.blockId });
           continue;
         }
-        taken.current.add(id);
         const result = await landProposal(handle, next.proposal, next.action, writeAccess === 'granted').catch(
           () => ({ outcome: 'failed' }) as const,
         );
         report(id, result.outcome);
-        taken.current.delete(id);
-        if (result.outcome === 'applied') setLanded({ blockId: result.blockId, proposalId: id });
+        if (result.outcome === 'applied') setLanded({ blockId: result.blockId });
       }
       busy.current = false;
     })();

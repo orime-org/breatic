@@ -15,9 +15,8 @@ import type { DocumentProposal } from '@breatic/shared';
 import { useDocumentProposals } from '@web/stores/document-proposals';
 
 const landProposal = vi.hoisted(() => vi.fn());
-const landedAs = vi.hoisted(() => vi.fn());
-const revealBlockOf = vi.hoisted(() => vi.fn(() => 'b-shown'));
-vi.mock('@web/spaces/document/document-proposal-landing', () => ({ landProposal, landedAs, revealBlockOf }));
+const landedAt = vi.hoisted(() => vi.fn());
+vi.mock('@web/spaces/document/document-proposal-landing', () => ({ landProposal, landedAt }));
 
 const { useDocumentProposalPickup } = await import('@web/spaces/document/use-document-proposal-pickup');
 
@@ -39,7 +38,7 @@ const cards = (): ReturnType<typeof useDocumentProposals.getState>['cards'] => u
 beforeEach(() => {
   useDocumentProposals.getState().reset();
   landProposal.mockReset();
-  landedAs.mockReset();
+  landedAt.mockReset();
   onChange.mockReset();
   onChange.mockReturnValue(() => undefined);
 });
@@ -64,7 +63,7 @@ describe('taking up the cards pressed for this document', () => {
     ]);
     expect(cards().p2?.state).toBe('applied');
     expect(cards().p3?.state).toBe('working');
-    expect(result.current).toEqual({ blockId: 'b9', proposalId: 'p2' });
+    expect(result.current).toEqual({ blockId: 'b9' });
   });
 
   it('takes up a card pressed after the document is already open', async () => {
@@ -129,7 +128,7 @@ describe('taking up the cards pressed for this document', () => {
 
 describe('a card shown again (inner#1509 review round 1)', () => {
   it('shows a landed proposal and writes nothing', async () => {
-    landedAs.mockReturnValue('write');
+    landedAt.mockReturnValue({ how: 'write', blockId: 'b-shown' });
     useDocumentProposals.getState().view(proposal('p1'), 'write');
 
     const { result } = renderHook(() => useDocumentProposalPickup('d1', HANDLE, 'granted', false));
@@ -138,11 +137,11 @@ describe('a card shown again (inner#1509 review round 1)', () => {
       expect(cards().p1).toEqual({ state: 'applied', action: 'write' });
     });
     expect(landProposal).not.toHaveBeenCalled();
-    expect(result.current).toEqual({ blockId: 'b-shown', proposalId: 'p1' });
+    expect(result.current).toEqual({ blockId: 'b-shown' });
   });
 
   it('puts back a card whose change was taken back, and writes nothing', async () => {
-    landedAs.mockReturnValue(null);
+    landedAt.mockReturnValue(null);
     useDocumentProposals.getState().view(proposal('p1'), 'write');
 
     renderHook(() => useDocumentProposalPickup('d1', HANDLE, 'granted', false));

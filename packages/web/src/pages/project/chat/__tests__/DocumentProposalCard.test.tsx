@@ -16,9 +16,15 @@ import type { DocumentProposal } from '@breatic/shared';
 import { DocumentProposalCard } from '@web/pages/project/chat/DocumentProposalCard';
 import { useDocumentProposals } from '@web/stores/document-proposals';
 
-const landedAs = vi.hoisted(() => vi.fn<() => 'comment' | 'write' | null>(() => null));
+const landedHow = vi.hoisted(() => vi.fn<() => 'comment' | 'write' | null>(() => null));
+const landedAt = vi.hoisted(() =>
+  vi.fn(() => {
+    const how = landedHow();
+    return how === null ? null : { how, blockId: 'b' };
+  }),
+);
 const peek = vi.hoisted(() => vi.fn<(name: string) => unknown>(() => undefined));
-vi.mock('@web/spaces/document/document-proposal-landing', () => ({ landedAs }));
+vi.mock('@web/spaces/document/document-proposal-landing', () => ({ landedAt }));
 vi.mock('@web/spaces/document/document-editor-cache', () => ({ peekDocumentEditor: peek }));
 
 const PROJECT = '11111111-1111-4111-8111-111111111111';
@@ -53,7 +59,7 @@ function draw(proposal: DocumentProposal): void {
 
 beforeEach(() => {
   useDocumentProposals.getState().reset();
-  landedAs.mockReturnValue(null);
+  landedHow.mockReturnValue(null);
   peek.mockReturnValue(undefined);
 });
 
@@ -185,7 +191,7 @@ describe('after a press', () => {
 describe('a card drawn again', () => {
   it('knows from the open document that it already landed, and how', () => {
     peek.mockReturnValue({ editor: {} });
-    landedAs.mockReturnValue('write');
+    landedHow.mockReturnValue('write');
     const { quote: _quote, ...rewrite } = { ...BASE, kind: 'rewrite' as const };
 
     draw(rewrite);
@@ -199,11 +205,11 @@ describe('a landed card whose document changes', () => {
   it('goes back to how it first was when the open document no longer holds the change', () => {
     const { quote: _quote, ...rewrite } = { ...BASE, kind: 'rewrite' as const };
     peek.mockReturnValue({ editor: {} });
-    landedAs.mockReturnValue('write');
+    landedHow.mockReturnValue('write');
     draw(rewrite);
     expect(screen.getByTestId('document-proposal-status').textContent).toBe('Replaced');
 
-    landedAs.mockReturnValue(null);
+    landedHow.mockReturnValue(null);
     act(() => {
       useDocumentProposals.getState().bump(BASE.spaceId);
     });

@@ -14,7 +14,7 @@ import { projectUuidFromRouteParam } from '@web/lib/project-route';
 import { MarkdownMessage } from '@web/pages/project/chat/MarkdownMessage';
 import { peekDocumentEditor } from '@web/spaces/document/document-editor-cache';
 import { markdownBlocks } from '@web/spaces/document/document-markdown';
-import { landedAs } from '@web/spaces/document/document-proposal-landing';
+import { landedAt } from '@web/spaces/document/document-proposal-landing';
 import {
   useDocumentProposals,
   type DocumentProposalCardState,
@@ -116,7 +116,7 @@ export const DocumentProposalCard = React.memo(function DocumentProposalCard({
   // Read again whenever the document changes or this card's press ends.
   const read = React.useMemo(() => {
     const handle = peekDocumentEditor(docName.documentSpace(projectId, proposal.spaceId));
-    return handle === undefined ? { open: false, landed: null } : { open: true, landed: landedAs(handle, proposal) };
+    return handle === undefined ? { open: false, landed: null } : { open: true, landed: landedAt(handle, proposal)?.how ?? null };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- re-read when the document or this card's state changes
   }, [projectId, proposal, docVersion, card?.state]);
 

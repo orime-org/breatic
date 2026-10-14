@@ -117,45 +117,65 @@ function wholeBlockAim(blockId: string): CommentAim {
 }
 
 /**
- * Whether the comment a proposal put on is in the document, with words to show.
+ * The block holding a position: the innermost block around it.
+ * @param doc - The body.
+ * @param pos - The position.
+ * @returns The block's id, or null when the position is outside every block.
+ */
+function blockAt(doc: ProseMirrorNode, pos: number): string | null {
+  const at = doc.resolve(pos);
+  for (let depth = at.depth; depth > 0; depth -= 1) {
+    const node = at.node(depth);
+    if (node.type.name === 'blockContainer') return String(node.attrs.id);
+  }
+  return null;
+}
+
+/**
+ * The block the comment a proposal put on is in now: a thread carrying its id
+ * that still has a mark in the body, wherever that mark has moved.
  * @param handle - The document.
  * @param proposalId - The proposal.
- * @returns True when a thread carrying the proposal's id still has a mark.
+ * @returns The block holding the comment's first words, or null when there is none.
  */
-function commentLanded(handle: Pick<Landable, 'editor'>, proposalId: string): boolean {
+function commentBlock(handle: Pick<Landable, 'editor'>, proposalId: string): string | null {
   const threads = commentsOn(handle.editor)?.threadStore.getThreads();
-  if (threads === undefined) return false;
-  const marked = threadRangesByThread(handle.editor.prosemirrorState.doc);
-  for (const thread of threads.values()) {
-    if ((thread.metadata as { proposalId?: unknown } | undefined)?.proposalId === proposalId && marked.has(thread.id)) {
-      return true;
-    }
+  if (threads === undefined) return null;
+  const ids = [...threads.values()]
+    .filter((thread) => (thread.metadata as { proposalId?: unknown } | undefined)?.proposalId === proposalId)
+    .map((thread) => thread.id);
+  if (ids.length === 0) return null;
+  const doc = handle.editor.prosemirrorState.doc;
+  const marked = threadRangesByThread(doc);
+  for (const id of ids) {
+    const first = marked.get(id)?.[0];
+    if (first !== undefined) return blockAt(doc, first.from);
   }
-  return false;
+  return null;
+}
+
+/** How a proposal landed, and the block that shows it. */
+export interface Landed {
+  how: LandingAction;
+  blockId: string;
 }
 
 /**
- * How a proposal has already landed in the document, if it has: its comment
- * is on, or the first block it writes is there. A rewrite card counts either.
+ * How a proposal has landed in the document, if it has, and where: the block
+ * its comment is in now, or the first block it wrote. A rewrite card counts
+ * either. Whether it landed and where it is come from the same trace.
  * @param handle - The document.
  * @param proposal - The proposal.
- * @returns The way it landed, or null when it has not.
+ * @returns How and where it landed, or null when it has not.
  */
-export function landedAs(handle: Pick<Landable, 'editor'>, proposal: DocumentProposal): LandingAction | null {
-  if (proposal.kind !== 'insert' && commentLanded(handle, proposal.proposalId)) return 'comment';
+export function landedAt(handle: Pick<Landable, 'editor'>, proposal: DocumentProposal): Landed | null {
+  if (proposal.kind !== 'insert') {
+    const blockId = commentBlock(handle, proposal.proposalId);
+    if (blockId !== null) return { how: 'comment', blockId };
+  }
   if (proposal.kind === 'comment') return null;
-  return blockById(handle.editor.prosemirrorState.doc, writtenBlockId(proposal.proposalId, 0)) === null ? null : 'write';
-}
-
-/**
- * The block to bring into view for a proposal that landed: the one its
- * comment is on, or the first block it wrote.
- * @param proposal - The proposal.
- * @param how - How it landed.
- * @returns The block's id.
- */
-export function revealBlockOf(proposal: DocumentProposal, how: LandingAction): string {
-  return how === 'comment' ? proposal.blockId! : writtenBlockId(proposal.proposalId, 0);
+  const first = writtenBlockId(proposal.proposalId, 0);
+  return blockById(handle.editor.prosemirrorState.doc, first) === null ? null : { how: 'write', blockId: first };
 }
 
 /**
@@ -180,20 +200,19 @@ function blockProblem(handle: Landable, proposal: DocumentProposal): 'blockGone'
  * rewritten words one paragraph per block for a rewrite card.
  * @param handle - The document.
  * @param proposal - The proposal.
- * @returns True when the comment was created.
+ * @returns Nothing; whether it landed is read off the body afterwards.
  */
-async function landComment(handle: Landable, proposal: DocumentProposal): Promise<boolean> {
+async function landComment(handle: Landable, proposal: DocumentProposal): Promise<void> {
   const blockId = proposal.blockId!;
   const body =
     proposal.kind === 'comment'
       ? asCommentBody(proposal.body)
       : (await markdownBlocks(proposal.body)).flatMap((b) => asCommentBody(b.text) as unknown[]);
   const aim = proposal.quote === undefined ? wholeBlockAim(blockId) : quoteAim(blockId, proposal.quote);
-  const thread = await commentOn(handle.editor as never, body, aim, {
+  await commentOn(handle.editor as never, body, aim, {
     thread: { proposalId: proposal.proposalId },
     comment: { fromAgent: true },
   });
-  return thread !== null;
 }
 
 /**
@@ -236,17 +255,16 @@ export async function landProposal(
   action: LandingAction,
   writable: boolean,
 ): Promise<LandingResult> {
-  const already = landedAs(handle, proposal);
-  if (already !== null) return { outcome: 'applied', blockId: revealBlockOf(proposal, already) };
+  const already = landedAt(handle, proposal);
+  if (already !== null) return { outcome: 'applied', blockId: already.blockId };
   if (!writable) return { outcome: 'readOnly' };
   const problem = blockProblem(handle, proposal);
   if (problem !== null) return { outcome: problem };
   try {
-    if (action === 'comment') {
-      return (await landComment(handle, proposal)) ? { outcome: 'applied', blockId: revealBlockOf(proposal, 'comment') } : { outcome: 'changed' };
-    }
-    await landBlocks(handle, proposal);
-    return { outcome: 'applied', blockId: revealBlockOf(proposal, 'write') };
+    if (action === 'comment') await landComment(handle, proposal);
+    else await landBlocks(handle, proposal);
+    const landed = landedAt(handle, proposal);
+    return landed === null ? { outcome: 'changed' } : { outcome: 'applied', blockId: landed.blockId };
   } catch {
     return { outcome: 'failed' };
   }
