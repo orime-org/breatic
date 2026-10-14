@@ -363,18 +363,19 @@ async function undoContentRows(
  *
  * `disconnect()` awaits the store hooks, and `@hocuspocus/extension-redis`
  * holds its `afterStoreDocument` for `disconnectDelay` (1000ms by default)
- * on every direct-connection disconnect, whether or not the connection
- * wrote anything: `disconnect()` always stamps the store's origin "local",
- * which is the one thing the extension checks. The wait gives peers a beat
- * to receive the sync before the document might unload. Nothing the caller is
- * waiting on depends on that: the change was broadcast inside `transact`,
- * and our own store gate turns this store away anyway (`persistence.ts`).
- * Awaited, the second sat in every answer and, for delete and restore,
- * inside the cross-instance delete lock — a Space left every screen in under
- * a tenth of a second while the lock stayed held for over a second, and the
- * next delete a person made was refused (inner#867).
- * `project-space-list.ts` hands its meta doc back the same way, for the same
- * reason.
+ * whenever a direct connection's disconnect reaches that hook, whether or
+ * not the connection wrote anything: `disconnect()` always stamps the
+ * store's origin "local", which is the one thing the extension checks. The
+ * hook is skipped only when another instance holds the document's store
+ * lock. Nothing the caller is waiting on depends on that store: the change
+ * was broadcast inside `transact`. Awaited, the second sat in every answer
+ * given after the connection opened and, for delete and restore, inside the
+ * cross-instance delete lock — a Space left every screen in under a tenth
+ * of a second while the lock stayed held for over a second, and the next
+ * delete a person made was refused (inner#867).
+ * `project-space-list.ts` releases the meta doc it loads the same way: it
+ * starts `unloadDocument` without awaiting it, which keeps the extension's
+ * one-second `beforeUnloadDocument` delay out of its answer.
  *
  * A failure is logged, never thrown: the answer has already been decided,
  * and by the time this settles it may already have gone out.

@@ -874,8 +874,8 @@ describe("finishing steps cannot change the answer already decided", () => {
 
 describe("no answer waits for the meta connection to be handed back", () => {
   // `disconnect()` awaits the store hooks, and `@hocuspocus/extension-redis`
-  // holds its `afterStoreDocument` for `disconnectDelay` (1000ms) on every
-  // direct-connection disconnect, written or not. Awaited inside the delete lock, that
+  // holds its `afterStoreDocument` for `disconnectDelay` (1000ms) whenever a
+  // direct-connection disconnect reaches it, written or not. Awaited inside the delete lock, that
   // second kept the lock held long after the Space had left every screen,
   // so the next delete a person made was refused (inner#867).
   const cases: ReadonlyArray<{
