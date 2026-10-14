@@ -324,12 +324,13 @@ test('three files dropped together land in the order they came in, at the line s
   ]);
 
   await expect(page.locator(PENDING)).toHaveCount(3);
-  await expect(page.locator(AUDIO)).toBeVisible({ timeout: UPLOAD_TIMEOUT });
-  await expect(page.locator(IMAGE)).toHaveCount(1, { timeout: UPLOAD_TIMEOUT });
-  // The two that finished stand where they belong, the first one's place kept.
+  // A pending block is a block of its kind already, so what is counted is
+  // the media drawn: the two that finished, in their places.
+  await expect(page.locator(`${AUDIO} audio`)).toHaveCount(1, { timeout: UPLOAD_TIMEOUT });
+  await expect(page.locator(`${IMAGE} img`)).toHaveCount(1, { timeout: UPLOAD_TIMEOUT });
   await expect(page.locator(PENDING)).toHaveCount(1);
   release();
-  await expect(page.locator(IMAGE)).toHaveCount(2, { timeout: UPLOAD_TIMEOUT });
+  await expect(page.locator(`${IMAGE} img`)).toHaveCount(2, { timeout: UPLOAD_TIMEOUT });
   expect(await types(page)).toEqual(['paragraph', 'image', 'audio', 'image', 'paragraph']);
   expect(await mediaAttr(page, 'name')).toEqual(['one.png', 'two.wav', 'three.png']);
 });

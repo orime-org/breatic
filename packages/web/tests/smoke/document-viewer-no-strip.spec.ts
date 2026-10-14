@@ -345,13 +345,13 @@ test('a viewer sees the owner\'s upload as uploading, then as not finished once 
   await expect(block).toHaveAttribute('data-status', 'peerUploading', { timeout: 20_000 });
 
   await owner.close();
-  // The owner's claim goes with its page; y-protocols drops a silent one after 30 s.
-  await expect(block).toHaveAttribute('data-status', 'notFinished', { timeout: 40_000 });
-  await expect(viewer.getByTestId('doc-pending-remove')).toBeHidden();
-
   // The case's teardown works from an owner page.
   owner = await ownerContext.newPage();
   await owner.goto(projectUrl);
+
+  // The owner's claim goes with its page; y-protocols drops a silent one after 30 s.
+  await expect(block).toHaveAttribute('data-status', 'notFinished', { timeout: 40_000 });
+  await expect(viewer.getByTestId('doc-pending-remove')).toBeHidden();
 });
 
 test('a viewer sees a picture the owner added, and none of its controls (inner#1127 A11, A13)', async () => {
