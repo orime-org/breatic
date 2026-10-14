@@ -974,18 +974,20 @@ export function renderProductGuide(): string {
       `or ${quoted(t("chat.documentProposal.appliedInsert"))} and a ` +
       `${quoted(t("chat.documentProposal.view"))} button that shows it again. A card reads whether it landed ` +
       "from its document while that document is open, after a reload too, and a rewrite or insert card goes back " +
-      "to its buttons once the reader undoes it; with the document closed it shows its buttons, and pressing one " +
-      "opens the document and finds the change already there, writing nothing again.",
-    "A press that does not land says why in a toast that goes after a moment, and the card keeps its buttons to " +
-      "press again; nothing changes in the document. When the passage changed or was deleted after the proposal " +
+      "to its buttons once the reader undoes it. With the document closed, a card pressed in this visit keeps " +
+      "showing how its press ended; after a reload it shows its buttons, and pressing one opens the document and " +
+      "finds the change already there, writing nothing again.",
+    "A press that does not land says why in a toast that goes after a moment, and the card shows its buttons " +
+      "to press again; nothing changes in the document. When the passage changed or was deleted after the proposal " +
       `the toast says ${quoted(t("chat.documentProposal.changed"))} or ${quoted(t("chat.documentProposal.blockGone"))} ` +
       `When the reader's connection to the document is read-only it says ${quoted(t("chat.documentProposal.readOnly"))} ` +
       `When the document is gone it says ${quoted(t("chat.documentProposal.spaceGone"))} When writing fails it says ` +
       `${quoted(t("chat.documentProposal.failedComment"))} ${quoted(t("chat.documentProposal.failedRewrite"))} or ` +
       `${quoted(t("chat.documentProposal.failedInsert"))} Pressing ${quoted(t("chat.documentProposal.view"))} ` +
       `after the change has left the document, undone or deleted, says ${quoted(t("chat.documentProposal.gone"))} ` +
-      "An image, video or audio in a rewrite or an insert lands only when it is a file already in this project; " +
-      "the others are left out when it lands, and a toast says how many, such as " +
+      "and the card shows its buttons again, which write the proposal again. An image, video or audio in a " +
+      "rewrite or an insert lands only when it is a file already in this project; the others are left out, and " +
+      "when nothing else is left nothing lands and the card keeps its buttons; a toast says how many, such as " +
       `${quoted(t("chat.documentProposal.mediaLeftOut", { count: 1 }))}`,
     "",
     "## Document spaces",
