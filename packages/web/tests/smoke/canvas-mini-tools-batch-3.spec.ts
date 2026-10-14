@@ -382,6 +382,53 @@ test('a 1×1 grid cannot be run @needs-internet', async () => {
   await expect(page.getByTestId('mini-tool-run')).toBeDisabled();
 });
 
+// A15: the reader picks which tiles to cut on the node itself.
+test('a grid cuts only the tiles picked on the node, each at its own place @needs-internet', async () => {
+  await openTool(page, imageNode, 'image.grid');
+  const layer = nodeOf(imageNode).getByTestId('mini-tool-grid-layer');
+  await expect(layer).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByTestId('mini-tool-grid-picked')).toContainText('9');
+
+  // Select none holds Run back; the checkbox is round.
+  await page.getByTestId('mini-tool-grid-pick-all').click();
+  await expect(page.getByTestId('mini-tool-run')).toBeDisabled();
+  const check = layer.getByTestId('mini-tool-grid-check-1');
+  expect(await check.evaluate((el) => getComputedStyle(el).borderRadius)).toMatch(/^(9999px|50%|[1-9]\d*px)$/);
+  expect(await check.evaluate((el) => el.getBoundingClientRect().width)).toBeCloseTo(16, 0);
+
+  // A press dragged across a tile does not move the node; letting go on the
+  // tile is a click on it, as on any control, so it toggles the tile.
+  const before = await nodeOf(imageNode).boundingBox();
+  const tile = layer.getByTestId('mini-tool-grid-tile-4');
+  const box = (await tile.boundingBox())!;
+  await page.mouse.move(box.x + 5, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 25, box.y + box.height / 2, { steps: 5 });
+  await page.mouse.up();
+  expect(await nodeOf(imageNode).boundingBox()).toEqual(before);
+  await expect(tile).toHaveAttribute('data-picked', 'true');
+  await tile.click({ position: { x: 10, y: 30 } });
+  await expect(tile).toHaveAttribute('data-picked', 'false');
+
+  // Pick three tiles: two by clicking the tile, one by Space on its checkbox.
+  await layer.getByTestId('mini-tool-grid-tile-1').click({ position: { x: 10, y: 30 } });
+  await layer.getByTestId('mini-tool-grid-tile-5').click({ position: { x: 10, y: 30 } });
+  await layer.getByTestId('mini-tool-grid-check-6').focus();
+  await page.keyboard.press('Space');
+  await expect(layer.getByTestId('mini-tool-grid-tile-1')).toHaveAttribute('data-picked', 'true');
+  await expect(layer.getByTestId('mini-tool-grid-tile-6')).toHaveAttribute('data-picked', 'true');
+  await expect(layer.getByTestId('mini-tool-grid-tile-0')).toHaveAttribute('data-picked', 'false');
+  await expect(page.getByTestId('mini-tool-grid-picked')).toContainText('3');
+  expect(
+    await layer.getByTestId('mini-tool-grid-tile-0').evaluate((el) => getComputedStyle(el).backgroundColor),
+  ).not.toBe('rgba(0, 0, 0, 0)');
+
+  await page.getByTestId('mini-tool-run').click();
+  await storedResults(3);
+  await expect(results()).toContainText(['GRID-r1c2-', 'GRID-r2c3-', 'GRID-r3c1-']);
+  await expect(visibleSpace(page).getByTestId('group-node')).toHaveCount(1);
+});
+
 test('an 8×8 grid uploads all sixty-four tiles @needs-internet', async () => {
   test.setTimeout(300_000);
   await openTool(page, imageNode, 'image.grid');
