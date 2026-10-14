@@ -312,6 +312,7 @@
       "searchingImages": "「{query}」の画像を検索中",
       "checkingCanvas": "キャンバスでできることを確認中",
       "proposingNodes": "提案をまとめています",
+      "proposingDocumentEdit": "修正案をまとめています",
       "savingImage": "画像を保存中",
       "checkingModels": "利用できるモデルを確認中",
       "readingGuide": "製品の使い方を確認中",

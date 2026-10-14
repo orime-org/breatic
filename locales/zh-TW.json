@@ -312,6 +312,7 @@
       "searchingImages": "正在找「{query}」的圖片",
       "checkingCanvas": "正在查畫布能做什麼",
       "proposingNodes": "正在擬一份提議",
+      "proposingDocumentEdit": "正在擬一份修改提議",
       "savingImage": "正在儲存圖片",
       "checkingModels": "正在查可用的模型",
       "readingGuide": "正在查產品怎麼用",

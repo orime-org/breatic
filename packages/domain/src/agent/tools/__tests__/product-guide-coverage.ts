@@ -424,6 +424,7 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "chat.tool.failure.upstream": { described: /A step that failed while the reply carried on leaves a red line/ },
   "chat.tool.failureTimes": { described: /share one line, followed by a multiplication sign and how many times/ },
   "chat.tool.judging": { described: /a line may name what it is doing/ },
+  "chat.tool.proposingDocumentEdit": { described: /a line may name what it is doing/ },
   "chat.tool.proposingNodes": { described: /a line may name what it is doing/ },
   "chat.tool.running": { described: /a line may name what it is doing/ },
   "chat.tool.searching": { described: /a line may name what it is doing/ },

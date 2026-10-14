@@ -312,6 +312,7 @@
       "searchingImages": "Looking for pictures of “{query}”",
       "checkingCanvas": "Checking what the canvas can make",
       "proposingNodes": "Drafting a proposal",
+      "proposingDocumentEdit": "Drafting an edit",
       "savingImage": "Saving the picture",
       "checkingModels": "Looking up the models",
       "readingGuide": "Reading how the product works",
