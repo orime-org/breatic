@@ -16,7 +16,7 @@ import {
 } from '@web/lib/crop-math';
 import { OUTSIDE_DIM, handleScale, type BoxSize } from '@web/spaces/canvas/crop/crop-geometry';
 import { CROP_HANDLES } from '@web/spaces/canvas/focus/crop-source';
-import { TOOL_LAYER_CLASS, stopNodeClick, useToolLayerKeys } from '@web/spaces/canvas/mini-tool/tool-layer-input';
+import { TOOL_LAYER_CLASS, stopNodeClick } from '@web/spaces/canvas/mini-tool/tool-layer-input';
 
 /** An in-progress pointer gesture, in box pixels. */
 type Gesture = { pointerId: number } & (
@@ -88,7 +88,6 @@ export function NodeCropFrame({
   onChange,
   writtenElsewhere,
 }: NodeCropFrameProps): React.JSX.Element {
-  useToolLayerKeys(true);
   const gestureRef = React.useRef<Gesture | null>(null);
   // A marquee written by anyone else ends the gesture: without that, the next
   // move of a still-held pointer redraws a marquee Esc or Cancel just cleared.

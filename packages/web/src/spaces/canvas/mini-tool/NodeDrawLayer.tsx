@@ -12,7 +12,7 @@ import { handleScale } from '@web/spaces/canvas/crop/crop-geometry';
 import { useMediaGeometry, type MediaGeometry } from '@web/spaces/canvas/crop/media-geometry';
 import { paintDrawing, type DrawingKind } from '@web/spaces/canvas/mini-tool/paint-drawing';
 import { visibleOps, type DrawingDraft, type DrawOp } from '@web/stores/drawing-draft';
-import { TOOL_LAYER_CLASS, stopNodeClick, useToolLayerKeys } from '@web/spaces/canvas/mini-tool/tool-layer-input';
+import { TOOL_LAYER_CLASS, stopNodeClick } from '@web/spaces/canvas/mini-tool/tool-layer-input';
 
 interface NodeDrawLayerProps {
   /** The node this layer belongs to. */
@@ -34,7 +34,6 @@ export function NodeDrawLayer({ nodeId, wrapper }: NodeDrawLayerProps): React.JS
   const kind = draft === null ? undefined : miniToolById(draft.toolId)?.drawing?.kind;
   const drawing = kind === undefined ? null : (draft?.drawing ?? null);
   const geometry = useMediaGeometry(wrapper, drawing !== null);
-  useToolLayerKeys(drawing !== null);
   if (kind === undefined || drawing === null || geometry === null || draft === null) return null;
   return (
     <DrawSurface

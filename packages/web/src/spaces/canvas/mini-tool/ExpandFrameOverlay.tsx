@@ -11,7 +11,7 @@ import { useCanvasSession, useCanvasSessionStore } from '@web/spaces/canvas/canv
 import { miniToolOpenOn } from '@web/stores/canvas-session';
 import { handleScale } from '@web/spaces/canvas/crop/crop-geometry';
 import { CROP_HANDLES } from '@web/spaces/canvas/focus/crop-source';
-import { TOOL_LAYER_CLASS, stopNodeClick, useToolLayerKeys } from '@web/spaces/canvas/mini-tool/tool-layer-input';
+import { TOOL_LAYER_CLASS, stopNodeClick } from '@web/spaces/canvas/mini-tool/tool-layer-input';
 import {
   isExpanded,
   moveSource,
@@ -45,7 +45,6 @@ export function ExpandFrameOverlay(): React.JSX.Element | null {
   const hostId = useCanvasSession((s) => s.panelHostId);
   const draft = useCanvasSession(miniToolOpenOn(hostId));
   const expand = draft !== null && miniToolById(draft.toolId)?.expand !== undefined ? draft.expand : null;
-  useToolLayerKeys(expand !== null);
   // Read only while the frame shows, so a zoom does not re-render it otherwise.
   const zoom = useStore((s) => (expand === null ? 1 : s.transform[2]));
   const node = useInternalNode(hostId ?? '');

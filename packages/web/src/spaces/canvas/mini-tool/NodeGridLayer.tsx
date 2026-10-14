@@ -11,7 +11,7 @@ import { useCanvasSession } from '@web/spaces/canvas/canvas-context';
 import { miniToolOpenOn } from '@web/stores/canvas-session';
 import { OUTSIDE_DIM, handleScale } from '@web/spaces/canvas/crop/crop-geometry';
 import { useMediaGeometry } from '@web/spaces/canvas/crop/media-geometry';
-import { TOOL_LAYER_CLASS, stopNodeClick, useToolLayerKeys } from '@web/spaces/canvas/mini-tool/tool-layer-input';
+import { TOOL_LAYER_CLASS, stopNodeClick } from '@web/spaces/canvas/mini-tool/tool-layer-input';
 import { gridCuts } from '@web/spaces/canvas/mini-tool/grid-export';
 
 interface NodeGridLayerProps {
@@ -44,7 +44,6 @@ export function NodeGridLayer({ nodeId, wrapper }: NodeGridLayerProps): React.JS
   const spec = draft === null ? undefined : miniToolById(draft.toolId);
   const shape = spec === undefined || draft === null ? null : gridShapeOf(spec, draft.params);
   const geometry = useMediaGeometry(wrapper, shape !== null);
-  useToolLayerKeys(shape !== null);
   // Read only while the layer shows, so a zoom does not re-render it on every node.
   const zoom = useStore((s) => (shape === null ? 1 : s.transform[2]));
   // The lines and checkboxes counter the zoom, as the crop frame's handles do.

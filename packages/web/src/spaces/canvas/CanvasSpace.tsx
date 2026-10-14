@@ -220,6 +220,7 @@ import { pickSessionUi } from '@web/spaces/canvas/pick-purpose-ui';
 import { exportMiniToolFile } from '@web/spaces/canvas/mini-tool/export-mini-tool-file';
 import { MiniToolPanelContainer } from '@web/spaces/canvas/mini-tool/MiniToolPanelContainer';
 import { exportsBeforeRun } from '@web/spaces/canvas/mini-tool/mini-tool-view';
+import { toolLayerOpen, useToolLayerArrows } from '@web/spaces/canvas/mini-tool/tool-layer-input';
 import {
   startMiniToolRun,
   type MiniToolCapture,
@@ -798,6 +799,9 @@ function CanvasSpaceInner({
   // outlived its panel — leaves focus where it already is; where focus goes
   // after a pick ends is #125.
   const sessionStore = useCanvasSessionStore();
+  // A tool drawing on a node keeps the arrows pressed in it, while that node
+  // is culled too (inner#1303 §6.6).
+  useToolLayerArrows(useCanvasSession(toolLayerOpen));
   const onExitPick = React.useCallback((): void => {
     const { pickSession: session, miniTool } = sessionStore.getState();
     endPick();
@@ -3006,7 +3010,8 @@ function CanvasSpaceInner({
      */
     const onPaste = (event: ClipboardEvent): void => {
       const text = event.clipboardData?.getData('text/plain') ?? '';
-      if (readOnly) return;
+      // A tool drawing on a node holds the reader's work there (§6.6).
+      if (readOnly || toolLayerOpen(sessionStore.getState())) return;
       if (!canvasTakesPaste(event.target, text)) return;
       // A caret in a field is answered by the field or by the browser, so
       // this key is theirs while one is there.
@@ -3030,7 +3035,7 @@ function CanvasSpaceInner({
     };
     document.addEventListener('paste', onPaste);
     return () => document.removeEventListener('paste', onPaste);
-  }, [readOnly, pasteFromText, viewCentre, processFiles]);
+  }, [readOnly, pasteFromText, viewCentre, processFiles, sessionStore]);
 
   React.useEffect(() => {
     /**
@@ -3039,7 +3044,7 @@ function CanvasSpaceInner({
      * @param event - The clipboard copy event.
      */
     const onCopy = (event: ClipboardEvent): void => {
-      if (readOnly) return;
+      if (readOnly || toolLayerOpen(sessionStore.getState())) return;
       // Words the reader dragged across are the ones they asked for, wherever
       // they sit, so the browser copies those and the nodes stay put. Words
       // left selected in a hidden Space are not on screen to be asked for
@@ -3067,7 +3072,7 @@ function CanvasSpaceInner({
     };
     document.addEventListener('copy', onCopy);
     return () => document.removeEventListener('copy', onCopy);
-  }, [readOnly, captureClipboardFor, buffer]);
+  }, [readOnly, captureClipboardFor, buffer, sessionStore]);
 
   // ---- Grouping (selection → group / ungroup) ----
   // Stable references (#1647 step 4): the Yjs mirror hands a fresh `flowNodes`
@@ -3496,11 +3501,12 @@ function CanvasSpaceInner({
       if (isEditableTarget(event.target as Element | null)) return;
       if (!matchDuplicateShortcut(event)) return;
       event.preventDefault();
+      if (toolLayerOpen(sessionStore.getState())) return;
       duplicateSelection();
     };
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
-  }, [readOnly, duplicateSelection]);
+  }, [readOnly, duplicateSelection, sessionStore]);
 
   // The delete key, taken off the library and answered here so the region gate
   // gets a say (#168). `deleteKeyCode={null}` registers no listener at all

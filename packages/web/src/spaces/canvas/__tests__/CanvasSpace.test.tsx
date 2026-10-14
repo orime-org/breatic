@@ -4209,6 +4209,61 @@ describe('CanvasSpace (ReactFlow mount)', () => {
         expect(copyAndRead(words)).toContain('__breatic_canvas_nodes__:');
       });
 
+      // A tool drawing on its node takes the reader's attention there; copy,
+      // paste and duplicate would act on the host or its neighbours instead
+      // and close the panel (inner#1303 §6.6). The clipboard events are fired
+      // by the physical key, so this holds on every keyboard layout.
+      describe('a tool layer open on a node', () => {
+        /**
+         * Mount a selected node and open the markup tool on it.
+         */
+        const mountWithMarkup = (): void => {
+          mountWithSelection();
+          act(() => {
+            canvasSessions.of('s').getState()
+              .openMiniTool('n1', 'image.mark', { sourceContent: 'https://cdn/a.png', params: {} });
+          });
+        };
+
+        it('copy leaves the clipboard alone', () => {
+          mountWithMarkup();
+          expect(copyAndRead()).toBe('');
+        });
+
+        it.each([
+          ['the space', 'space'],
+          ['the agent panel', 'agent'],
+        ] as const)('paste with %s active creates no node and keeps the tool open', (_name, region) => {
+          mountWithMarkup();
+          useUIStore.setState({ activeRegion: region });
+          const { addNode } = spyWrites();
+          dispatchPaste('hello');
+          expect(addNode).not.toHaveBeenCalled();
+          expect(canvasSessions.of('s').getState().panelKind).toBe('miniTool');
+        });
+
+        // The clone would land in the document, so the node is seeded there
+        // (the same setup that proves a duplicate does write one).
+        it('the duplicate shortcut creates no clone and is still the canvas key', async () => {
+          _resetForTests();
+          addNode('p', 's', {
+            id: 'n1',
+            type: 'text',
+            position: { x: 0, y: 0 },
+            data: { name: 'N', createdAt: 1, createdBy: 'u', locked: false, attachments: [] },
+          });
+          mountWithMarkup();
+          const event = new KeyboardEvent('keydown', { key: 'd', metaKey: true, bubbles: true, cancelable: true });
+          act(() => {
+            keyTarget().dispatchEvent(event);
+          });
+          await new Promise((r) => setTimeout(r, 30));
+          const ids = [...getDoc(docName.canvasSpace('p', 's')).getMap<Y.Map<unknown>>('nodesMap').keys()];
+          expect(ids).toEqual(['n1']);
+          expect(event.defaultPrevented).toBe(true);
+        });
+      });
+
       // Each of these keys has a native meaning inside a field: Backspace
       // deletes a character, Cmd+Z undoes the typing, Cmd+D and Cmd+G are the
       // browser's own. The field sits in the space region, so the region hands

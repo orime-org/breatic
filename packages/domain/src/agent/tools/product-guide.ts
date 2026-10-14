@@ -851,7 +851,10 @@ export function renderProductGuide(): string {
       "grid split are free, the video tools that work on the file are billed by how long they run, and the others show an " +
       "estimate. The X, Esc or a click on empty canvas closes the panel; in " +
       `${quoted(t("canvas.miniTool.image.mark.label"))}, Esc first leaves the text being typed, then lets go of ` +
-      "the selected object, and only then closes the panel. Pressing the arrow puts the result in new nodes to " +
+      "the selected object, and only then closes the panel. While a tool that draws on the picture itself is open " +
+      "(a crop box, an expand frame, the grid's lines and tiles, markup or a drawing), and during a focus crop, the " +
+      "arrow keys pressed on the node and Cmd or Ctrl with C, V or D do nothing, so the node stays put and the panel " +
+      "stays open; text being typed keeps its own keys. Pressing the arrow puts the result in new nodes to " +
       "the right of the source, joined to it by a line and named after it (such as CROP- followed by its name); " +
       `${quoted(t("canvas.miniTool.image.grid.label"))} cuts only the picked tiles and lays each out at the row and ` +
       "column it was cut from, inside a new group named GRID- followed by the source's name (even when one tile is " +

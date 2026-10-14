@@ -10,7 +10,7 @@ import { isFreeEscape } from '@web/spaces/canvas/use-escape-in-space';
 import { useMediaGeometry, type MediaGeometry } from '@web/spaces/canvas/crop/media-geometry';
 import { miniToolOpenOn } from '@web/stores/canvas-session';
 import type { MarkCanvasController } from '@web/spaces/canvas/mini-tool/mark-canvas';
-import { TOOL_LAYER_CLASS, stopNodeClick, useToolLayerKeys } from '@web/spaces/canvas/mini-tool/tool-layer-input';
+import { TOOL_LAYER_CLASS, stopNodeClick } from '@web/spaces/canvas/mini-tool/tool-layer-input';
 
 interface NodeMarkLayerProps {
   /** The node this layer belongs to. */
@@ -43,7 +43,6 @@ export function NodeMarkLayer({ nodeId, wrapper }: NodeMarkLayerProps): React.JS
  * @returns The layer.
  */
 function MarkSurface({ geometry }: { geometry: MediaGeometry }): React.JSX.Element {
-  useToolLayerKeys(true);
   const store = useCanvasSessionStore();
   const host = React.useRef<HTMLDivElement>(null);
   const controller = React.useRef<MarkCanvasController | null>(null);
