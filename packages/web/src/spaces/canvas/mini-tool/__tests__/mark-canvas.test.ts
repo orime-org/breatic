@@ -27,7 +27,7 @@ beforeEach(() => {
   store.getState().openMiniTool('n1', 'image.mark', { sourceContent: 'a.png', params: {} });
   const el = document.createElement('canvas');
   document.body.appendChild(el);
-  controller = new MarkCanvasController(el, BOX, () => store.getState());
+  controller = new MarkCanvasController(el, BOX, () => store.getState(), 1);
   controller.sync();
 });
 
@@ -72,6 +72,61 @@ const idOfActive = (): string | undefined => (controller.canvas.getActiveObject(
 const editing = (): IText => controller.canvas.getActiveObject() as IText;
 
 describe('MarkCanvasController', () => {
+  // §6.2: the canvas draws at the pixels the node takes on screen, so Fabric's
+  // handles keep one screen size and the strokes stay sharp at any zoom.
+  it('draws at the node’s screen size and keeps the scene in drawn pixels', () => {
+    controller.setZoom(0.25);
+    expect(controller.canvas.width).toBe(100);
+    expect(controller.canvas.height).toBe(75);
+    expect(controller.canvas.getZoom()).toBe(0.25);
+    expect(controller.canvas.getElement().style.width).toBe('400px');
+    controller.setZoom(2);
+    expect(controller.canvas.width).toBe(800);
+    expect(controller.canvas.getZoom()).toBe(2);
+    expect(controller.canvas.getElement().style.height).toBe('300px');
+  });
+
+  // Fabric puts its text input on the page body at the caret's unzoomed place
+  // plus the canvas's screen offset, which is off the caret on a zoomed page
+  // and can scroll the page; inside the canvas's own box it follows the node.
+  it('keeps Fabric’s text input in the canvas, at the caret in the canvas’s own pixels', () => {
+    controller.setZoom(0.5);
+    store.getState().setMarkTool('text');
+    controller.sync();
+    drag([300, 150], [300, 150]);
+    const area = editing().hiddenTextarea!;
+    expect(area.parentElement).toBe(controller.canvas.wrapperEl);
+    expect(Math.abs(parseFloat(area.style.left) - 300)).toBeLessThan(5);
+    expect(parseFloat(area.style.top)).toBeGreaterThan(150);
+    expect(parseFloat(area.style.top)).toBeLessThan(150 + 100);
+  });
+
+  it('builds the canvas at the zoom it is given', () => {
+    const el = document.createElement('canvas');
+    document.body.appendChild(el);
+    const zoomed = new MarkCanvasController(el, BOX, () => store.getState(), 0.5);
+    expect(zoomed.canvas.width).toBe(200);
+    expect(zoomed.canvas.getZoom()).toBe(0.5);
+    expect(zoomed.canvas.getElement().style.width).toBe('400px');
+    zoomed.dispose();
+  });
+
+  // The click threshold is in screen pixels (§6.2): at 25% a 3px hand tremor
+  // spans 12 drawn pixels and is still a click.
+  it('takes a press that moves less than the threshold on screen as a click at any zoom', () => {
+    controller.setZoom(0.25);
+    store.getState().setMarkTool('rect');
+    controller.sync();
+    const at = (x: number, y: number) => ({ scenePoint: new Point(x, y), viewportPoint: new Point(x * 0.25, y * 0.25) });
+    controller.canvas.fire('mouse:down', { e: { button: 0 } as MouseEvent, ...at(100, 100) } as never);
+    controller.canvas.fire('mouse:move', { e: { button: 0 } as MouseEvent, ...at(112, 112) } as never);
+    controller.canvas.fire('mouse:up', { e: { button: 0 } as MouseEvent, ...at(112, 112) } as never);
+    expect(mark().objects).toEqual([]);
+    controller.canvas.fire('mouse:down', { e: { button: 0 } as MouseEvent, ...at(100, 100) } as never);
+    controller.canvas.fire('mouse:up', { e: { button: 0 } as MouseEvent, ...at(120, 100) } as never);
+    expect(mark().objects).toHaveLength(1);
+  });
+
   // Fabric reads its canvas again after `text:editing:exited` when the text
   // changed, so a new text holding only a space must still be on it then.
   it('drops a new text holding only a space without throwing', () => {

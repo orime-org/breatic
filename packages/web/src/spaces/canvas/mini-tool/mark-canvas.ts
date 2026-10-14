@@ -20,13 +20,15 @@ import { fromFabric, markFontPx, markStrokePx, toFabric, type DrawBox, type Mark
 import type { CanvasSessionState } from '@web/stores/canvas-session';
 import { editStyleOf, type MarkChannel, type MarkDraft, type MarkObject } from '@web/stores/mark-draft';
 
-/** Below this drag, in drawn pixels, a shape tool's press is a click and draws nothing. */
+/** Below this drag, in screen pixels, a shape tool's press is a click and draws nothing. */
 export const MARK_MIN_DRAG_PX = 4;
 
 /** What a pointer event from Fabric carries that this canvas reads. */
 interface PointerInfo {
   e: { button?: number };
   scenePoint: Point;
+  /** Where the pointer is in screen pixels over the canvas; the canvas draws at the node's screen size. */
+  viewportPoint: Point;
 }
 
 /** The text being edited: its object, whether it is new, and how it stood when the edit began. */
@@ -56,6 +58,9 @@ export class MarkCanvasController {
 
   private box: DrawBox;
 
+  /** The canvas page's zoom, which the node is drawn at on screen. */
+  private zoom: number;
+
   private readonly session: () => CanvasSessionState;
 
   /** Set while this canvas changes itself to match the draft; no event is written back then. */
@@ -68,7 +73,7 @@ export class MarkCanvasController {
   private lastWritten = '[]';
 
   /** The shape being dragged out, with where the press began. */
-  private pending: { start: Point; shape: MarkFabricObject | null } | null = null;
+  private pending: { start: Point; startOnScreen: Point; shape: MarkFabricObject | null } | null = null;
 
   private edit: Edit | null = null;
 
@@ -85,9 +90,11 @@ export class MarkCanvasController {
    * @param el - The canvas element.
    * @param box - The picture's drawn size.
    * @param session - Reads the canvas session.
+   * @param zoom - The canvas page's zoom.
    */
-  constructor(el: HTMLCanvasElement, box: DrawBox, session: () => CanvasSessionState) {
+  constructor(el: HTMLCanvasElement, box: DrawBox, session: () => CanvasSessionState, zoom: number) {
     this.box = box;
+    this.zoom = zoom;
     this.session = session;
     this.canvas = new Canvas(el, {
       width: box.width,
@@ -97,6 +104,7 @@ export class MarkCanvasController {
       fireRightClick: false,
       preserveObjectStacking: true,
     });
+    this.fitToScreen();
     this.canvas.freeDrawingBrush = new PencilBrush(this.canvas);
     this.channel = {
       exitEditing: () => this.exitEditing(),
@@ -133,9 +141,32 @@ export class MarkCanvasController {
   setBox(box: DrawBox): void {
     if (box.width === this.box.width && box.height === this.box.height) return;
     this.box = box;
-    this.canvas.setDimensions(box);
+    this.fitToScreen();
     this.shown = '';
     this.sync();
+  }
+
+  /**
+   * Follow the canvas page's zoom.
+   * @param zoom - The zoom.
+   */
+  setZoom(zoom: number): void {
+    if (zoom === this.zoom) return;
+    this.zoom = zoom;
+    this.fitToScreen();
+    this.canvas.requestRenderAll();
+  }
+
+  /**
+   * Size the canvas to the node's screen pixels. The element keeps the drawn
+   * size, which the page's zoom scales on screen; its pixels and Fabric's
+   * viewport are the screen's, so Fabric's handles keep one screen size and
+   * strokes stay sharp, while the scene stays in drawn pixels.
+   */
+  private fitToScreen(): void {
+    this.canvas.setDimensions(this.box, { cssOnly: true });
+    this.canvas.setDimensions({ width: this.box.width * this.zoom, height: this.box.height * this.zoom }, { backstoreOnly: true });
+    this.canvas.setZoom(this.zoom);
   }
 
   /**
@@ -291,7 +322,7 @@ export class MarkCanvasController {
     const draft = this.draft();
     if (draft === null || !this.usable(opt)) return;
     // Select and pen are Fabric's own; every other tool starts here.
-    if (draft.tool !== 'select' && draft.tool !== 'pen') this.pending = { start: opt.scenePoint, shape: null };
+    if (draft.tool !== 'select' && draft.tool !== 'pen') this.pending = { start: opt.scenePoint, startOnScreen: opt.viewportPoint, shape: null };
   }
 
   /**
@@ -360,8 +391,9 @@ export class MarkCanvasController {
       this.placeText(draft, pending.start);
       return;
     }
+    const moved = opt.viewportPoint.subtract(pending.startOnScreen);
+    if (Math.max(Math.abs(moved.x), Math.abs(moved.y)) < MARK_MIN_DRAG_PX) return;
     const end = opt.scenePoint;
-    if (Math.max(Math.abs(end.x - pending.start.x), Math.abs(end.y - pending.start.y)) < MARK_MIN_DRAG_PX) return;
     const id = newId();
     const object = this.shapeOf(draft, id, pending.start, end);
     if (object === null) return;

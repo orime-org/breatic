@@ -118,6 +118,79 @@ export function markBackground(el: HTMLImageElement | HTMLVideoElement): FabricI
 }
 
 /**
+ * A markup text. Fabric drags a selection inside a text onto another text by
+ * default, which the draft has no move for; and it puts its hidden text input
+ * on the page body at the caret's place in the canvas's unzoomed pixels plus
+ * the canvas's offset on screen, which is off the caret on a zoomed page (the
+ * input method's candidates show away from it) and, past the window's edge,
+ * scrolls the page when the input takes focus. Here the input sits in the
+ * canvas's own box, which moves with the node, at the caret in the scene's
+ * pixels, which are the box's.
+ */
+class MarkText extends IText {
+  /** The picture's drawn size, which the scene is in. */
+  private readonly box: DrawBox;
+
+  /**
+   * A text.
+   * @param box - The picture's drawn size.
+   * @param text - Its words.
+   * @param options - Fabric's options.
+   */
+  constructor(box: DrawBox, text: string, options: ConstructorParameters<typeof IText>[1]) {
+    super(text, options);
+    this.box = box;
+  }
+
+  /**
+   * Never start dragging the selected words.
+   * @returns False.
+   */
+  override shouldStartDragging(): boolean {
+    return false;
+  }
+
+  /**
+   * Never drag the selected words.
+   * @returns False.
+   */
+  override onDragStart(): boolean {
+    return false;
+  }
+
+  /**
+   * Never take dropped words.
+   * @returns False.
+   */
+  override canDrop(): boolean {
+    return false;
+  }
+
+  /** Make the hidden text input in the canvas's own box. */
+  override initHiddenTextarea(): void {
+    this.hiddenTextareaContainer = this.canvas?.wrapperEl ?? null;
+    super.initHiddenTextarea();
+  }
+
+  /**
+   * Where the hidden text input goes: at the caret, in the canvas's own pixels.
+   * @returns Its place and the caret's height.
+   */
+  override _calcTextareaPosition(): { left: string; top: string; fontSize: string; charHeight: number } {
+    const at = this.inCompositionMode ? this.compositionStart : this.selectionStart;
+    const bounds = this._getCursorBoundaries(at);
+    const { lineIndex, charIndex } = this.get2DCursorLocation(at);
+    const charHeight = this.getValueOfPropertyAt(lineIndex, charIndex, 'fontSize') * this.lineHeight;
+    const caret = new Point(bounds.left + bounds.leftOffset, bounds.top + bounds.topOffset + charHeight).transform(
+      this.calcTransformMatrix(),
+    );
+    const x = Math.min(Math.max(caret.x, 0), Math.max(0, this.box.width - charHeight));
+    const y = Math.min(Math.max(caret.y, 0), Math.max(0, this.box.height - charHeight));
+    return { left: `${x}px`, top: `${y}px`, fontSize: `${charHeight}px`, charHeight };
+  }
+}
+
+/**
  * Draw one markup object as a Fabric object at `box`'s pixels.
  * @param object - The object.
  * @param box - The picture's drawn size.
@@ -168,7 +241,7 @@ export function toFabric(object: MarkObject, box: DrawBox): MarkFabricObject {
       return tagged(path, { ...base, markPoints: points });
     }
     case 'text': {
-      const text = new IText(object.text, {
+      const text = new MarkText(box, object.text, {
         left: object.x * box.width,
         top: object.y * box.height,
         fill: object.color,
@@ -176,9 +249,6 @@ export function toFabric(object: MarkObject, box: DrawBox): MarkFabricObject {
         originX: 'left',
         originY: 'top',
       });
-      // Fabric drags a selection inside a text onto another text by default;
-      // the draft has no such move. These three are how its docs turn it off.
-      Object.assign(text, { shouldStartDragging: () => false, onDragStart: () => false, canDrop: () => false });
       return tagged(text, base);
     }
   }

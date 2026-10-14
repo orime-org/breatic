@@ -61,6 +61,16 @@ describe('NodeMarkLayer', () => {
     expect(layer.className).toMatch(/\bnopan\b/);
   });
 
+  // §6.2: Fabric draws at the node's screen pixels, the element at its layout size.
+  it('builds the canvas at the page’s zoom', async () => {
+    render(cropCanvas([NODE], null, 0.5));
+    act(() => store().openMiniTool('n1', 'image.mark', { sourceContent: NODE.src, params: {} }));
+    await waitFor(() => expect(store().markChannel).not.toBeNull());
+    const drawn = screen.getByTestId('mini-tool-mark-layer').querySelector('canvas')!;
+    expect(drawn.width).toBe(200);
+    expect(drawn.style.width).toBe('400px');
+  });
+
   it('registers its channel while open and takes it back on close', async () => {
     await mount();
     act(() => store().closeActivePanel());

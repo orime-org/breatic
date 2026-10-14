@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import * as React from 'react';
+import { useStore } from '@xyflow/react';
 
 import { regionOwnsKeyboard } from '@web/features/active-region/keyboard-scope';
 import { useCanvasSession, useCanvasSessionStore } from '@web/spaces/canvas/canvas-context';
@@ -50,6 +51,10 @@ function MarkSurface({ geometry }: { geometry: MediaGeometry }): React.JSX.Eleme
   // The box the canvas was built at; later sizes reach it through `setBox`.
   const box = React.useRef({ width, height });
   box.current = { width, height };
+  // The canvas draws at the node's screen pixels; built at this zoom, later ones reach it through `setZoom`.
+  const zoom = useStore((s) => s.transform[2]);
+  const builtZoom = React.useRef(zoom);
+  builtZoom.current = zoom;
 
   React.useEffect(() => {
     let live = true;
@@ -63,7 +68,7 @@ function MarkSurface({ geometry }: { geometry: MediaGeometry }): React.JSX.Eleme
       if (!live || el === null) return;
       const canvasEl = document.createElement('canvas');
       el.appendChild(canvasEl);
-      const made = new MarkCanvasController(canvasEl, box.current, store.getState);
+      const made = new MarkCanvasController(canvasEl, box.current, store.getState, builtZoom.current);
       controller.current = made;
       /** Draw the draft and say how many objects are drawn. */
       const sync = (): void => {
@@ -98,6 +103,10 @@ function MarkSurface({ geometry }: { geometry: MediaGeometry }): React.JSX.Eleme
   React.useEffect(() => {
     controller.current?.setBox({ width, height });
   }, [width, height]);
+
+  React.useEffect(() => {
+    controller.current?.setZoom(zoom);
+  }, [zoom]);
 
   // Escape leaves a text edit, then drops a selection, before it reaches the
   // node (whose Escape deselects the host and so closes the panel).
