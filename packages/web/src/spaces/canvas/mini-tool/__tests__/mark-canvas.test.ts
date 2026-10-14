@@ -10,9 +10,10 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { IText, Path, Point } from 'fabric';
 
 import { MarkCanvasController } from '@web/spaces/canvas/mini-tool/mark-canvas';
+import { markFontPx } from '@web/spaces/canvas/mini-tool/mark-fabric';
 import { createCanvasSessionStore } from '@web/stores/canvas-session';
-import { INK } from '@web/stores/drawing-draft';
-import type { MarkObject } from '@web/stores/mark-draft';
+import { BRUSH_SIZE, INK } from '@web/stores/drawing-draft';
+import { steppedMarkSize, type MarkObject } from '@web/stores/mark-draft';
 
 const BOX = { width: 400, height: 300 };
 const RECT: MarkObject = { id: 'r', kind: 'rect', color: INK[0], size: 5, x: 0.1, y: 0.1, w: 0.25, h: 0.2 };
@@ -173,6 +174,23 @@ describe('MarkCanvasController', () => {
     expect(text.fontSize).toBe(fontSize);
     controller.channel.exitEditing();
     expect(mark().objects[0]).toMatchObject({ size: 40.5 });
+  });
+
+  // §6.2: the key moves a scaled text back toward the range, in its edit as out of it.
+  it('brings a scaled text into the range with one smaller step in its edit', () => {
+    store.getState().commitMark([{ ...TEXT, size: 40.5 }]);
+    controller.sync();
+    const text = controller.canvas.getObjects()[0] as IText;
+    controller.canvas.setActiveObject(text);
+    text.enterEditing();
+    controller.sync();
+    const smaller = steppedMarkSize(mark(), -1);
+    expect(smaller).toBe(BRUSH_SIZE.max);
+    store.getState().setMarkSize(smaller ?? 0);
+    controller.sync();
+    expect(text.fontSize).toBe(markFontPx(BRUSH_SIZE.max, BOX));
+    controller.channel.exitEditing();
+    expect(mark().objects[0]).toMatchObject({ size: BRUSH_SIZE.max });
   });
 
   it('changes only the colour of a scaled text whose colour changes in its edit', () => {

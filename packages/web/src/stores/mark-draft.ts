@@ -156,8 +156,9 @@ export function redoneMark(draft: MarkDraft): MarkDraft {
  */
 export function restyled(draft: MarkDraft, style: { color?: string; size?: number }): MarkDraft {
   const next = { ...draft, ...style };
-  if (draft.editingText !== null) {
-    return { ...next, editResized: draft.editResized || (style.size !== undefined && style.size !== draft.size) };
+  const editing = editStyleOf(draft);
+  if (editing !== null) {
+    return { ...next, editResized: draft.editResized || (style.size !== undefined && style.size !== editing.size) };
   }
   if (draft.selectedId === null) return next;
   const objects = draft.objects.map((object) => (object.id === draft.selectedId ? { ...object, ...style } : object));
@@ -193,18 +194,31 @@ export function withEditingText(draft: MarkDraft, text: string | null): MarkDraf
 }
 
 /**
- * The selected text as it shows during its edit: as typed, in the panel's
- * colour, and in the panel's size once that changed in the edit. Leaving the
- * edit writes this back.
+ * The colour and size the text being edited shows: the panel's colour, and
+ * the panel's size once that changed in the edit, else the text's own (a text
+ * scaled past the slider keeps its size). Leaving the edit writes these back.
+ * @param draft - The draft.
+ * @returns The style, or null when no text is being edited.
+ * @throws {never} Never.
+ */
+export function editStyleOf(draft: MarkDraft): { color: string; size: number } | null {
+  if (draft.editingText === null) return null;
+  const held = draft.objects.find((object) => object.id === draft.selectedId);
+  return { color: draft.color, size: held === undefined || draft.editResized ? draft.size : held.size };
+}
+
+/**
+ * The selected text as it shows during its edit: as typed, in the style the
+ * edit shows (`editStyleOf`).
  * @param draft - The draft, with a text being edited.
  * @param held - The text as the list holds it.
  * @returns The text as it shows.
  * @throws {never} Never.
  */
 function shownInEdit(draft: MarkDraft, held: MarkObject): MarkObject {
-  const size = draft.editResized ? draft.size : held.size;
-  if (held.kind !== 'text') return { ...held, color: draft.color, size };
-  return { ...held, text: draft.editingText ?? held.text, color: draft.color, size };
+  const style = editStyleOf(draft) ?? { color: held.color, size: held.size };
+  if (held.kind !== 'text') return { ...held, ...style };
+  return { ...held, text: draft.editingText ?? held.text, ...style };
 }
 
 /**
