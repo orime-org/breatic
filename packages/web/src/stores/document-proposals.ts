@@ -56,8 +56,21 @@ const WARNING_KEY: Readonly<Record<'changed' | 'blockGone' | 'readOnly' | 'space
   gone: 'chat.documentProposal.gone',
 };
 
+/** What a press puts in the document: a comment either way, else the rewrite or the insert itself. */
+export type PressKind = 'comment' | 'rewrite' | 'insert';
+
+/**
+ * What a press puts in the document.
+ * @param proposal - The proposal.
+ * @param action - What was pressed.
+ * @returns The kind of change.
+ */
+export function pressKind(proposal: DocumentProposal, action: LandingAction): PressKind {
+  return action === 'comment' ? 'comment' : proposal.kind === 'insert' ? 'insert' : 'rewrite';
+}
+
 /** The error a press whose writing failed is told with, by what was pressed. */
-const FAILED_KEY: Readonly<Record<'comment' | 'rewrite' | 'insert', string>> = {
+const FAILED_KEY: Readonly<Record<PressKind, string>> = {
   comment: 'chat.documentProposal.failedComment',
   rewrite: 'chat.documentProposal.failedRewrite',
   insert: 'chat.documentProposal.failedInsert',
@@ -72,7 +85,7 @@ const FAILED_KEY: Readonly<Record<'comment' | 'rewrite' | 'insert', string>> = {
  */
 function tell(proposal: DocumentProposal, action: LandingAction, outcome: DocumentProposalOutcome, leftOut: number): void {
   if (outcome === 'failed') {
-    toast.error(t(FAILED_KEY[action === 'comment' ? 'comment' : proposal.kind === 'insert' ? 'insert' : 'rewrite']));
+    toast.error(t(FAILED_KEY[pressKind(proposal, action)]));
   } else if (outcome === 'applied' || outcome === 'mediaOnly') {
     if (leftOut > 0) toast.warning(t('chat.documentProposal.mediaLeftOut', { count: leftOut }));
   } else {
@@ -160,6 +173,16 @@ export const useDocumentProposals = create<DocumentProposalsState>()((set, get) 
     const waiting = pending[proposalId];
     const card = cards[proposalId];
     if (waiting === undefined) return;
+    // A View press that could not reach its document wrote nothing and the
+    // change is still there: the card stays landed, and the document Space
+    // shows why it could not open.
+    if (waiting.action === 'view' && outcome === 'failed') {
+      set((s) => {
+        const { [proposalId]: _gone, ...rest } = s.pending;
+        return { pending: rest };
+      });
+      return;
+    }
     set((s) => ended(s, proposalId, outcome));
     if (card !== undefined) tell(waiting.proposal, card.action, outcome, leftOut);
   },

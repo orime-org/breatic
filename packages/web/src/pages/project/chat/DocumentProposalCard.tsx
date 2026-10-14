@@ -17,8 +17,10 @@ import { markdownBlocks } from '@web/spaces/document/document-markdown';
 import { commentTextOf, landedAt } from '@web/spaces/document/document-proposal-landing';
 import {
   useDocumentProposals,
+  pressKind,
   type DocumentProposalCardState,
   type LandingAction,
+  type PressKind,
 } from '@web/stores/document-proposals';
 
 interface DocumentProposalCardProps {
@@ -42,25 +44,12 @@ const BLOCK_NAME_KEY: Readonly<Record<string, string>> = {
   audio: 'spaces.document.media.audio',
 };
 
-/** What a press puts in the document: a comment either way, else the rewrite or the insert itself. */
-type PressKind = 'comment' | 'rewrite' | 'insert';
-
 /** The line a press that landed shows. */
 const APPLIED_KEY: Readonly<Record<PressKind, string>> = {
   comment: 'chat.documentProposal.appliedComment',
   rewrite: 'chat.documentProposal.appliedRewrite',
   insert: 'chat.documentProposal.appliedInsert',
 };
-
-/**
- * What a press puts in the document.
- * @param proposal - The proposal.
- * @param action - What was pressed.
- * @returns The kind of change.
- */
-function pressKind(proposal: DocumentProposal, action: LandingAction): PressKind {
-  return action === 'comment' ? 'comment' : proposal.kind === 'insert' ? 'insert' : 'rewrite';
-}
 
 /**
  * How long the word-by-word comparison may run on the page's thread. Two
@@ -167,7 +156,6 @@ export const DocumentProposalCard = React.memo(function DocumentProposalCard({
   });
   const place =
     proposal.kind === 'insert' && proposal.blockId === null ? t('chat.documentProposal.end') : proposal.heading;
-  const held = state !== 'idle';
   // A comment hangs on words; a block with none (an empty code block, an
   // image, a table of empty cells) has nowhere to put it. A rewrite's comment
   // carries the rewrite's words, so one with none offers no comment either.
@@ -270,7 +258,7 @@ export const DocumentProposalCard = React.memo(function DocumentProposalCard({
               variant='outline'
               size='sm'
               loading={working && card?.action === 'comment'}
-              disabled={unread || (held && !(working && card?.action === 'comment'))}
+              disabled={unread || (working && card?.action !== 'comment')}
               onClick={onComment}
               className='flex-1'
             >
@@ -283,7 +271,7 @@ export const DocumentProposalCard = React.memo(function DocumentProposalCard({
               variant='outline'
               size='sm'
               loading={working && card?.action === 'write'}
-              disabled={unread || (held && !(working && card?.action === 'write'))}
+              disabled={unread || (working && card?.action !== 'write')}
               onClick={onWrite}
               className='flex-1'
             >

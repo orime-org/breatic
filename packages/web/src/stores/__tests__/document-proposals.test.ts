@@ -53,6 +53,8 @@ describe('a card', () => {
     store().report('p1', 'applied');
     expect(store().cards.p1).toEqual({ state: 'applied', action: 'write' });
     expect(pendingFor('d1')).toEqual([]);
+    expect(toast.warning).not.toHaveBeenCalled();
+    expect(toast.error).not.toHaveBeenCalled();
   });
 
   it('ignores a second press while it is working', () => {
@@ -184,5 +186,17 @@ describe('how a press that did not land is told (inner#1509, design §5.7)', () 
 
     expect(store().cards.p1).toBeUndefined();
     expect(toast.warning).toHaveBeenCalledWith('1 image, video or audio is not a file in this project and will not be added.');
+  });
+});
+
+describe('a View press that could not reach its document (review round 6)', () => {
+  it('keeps the card landed and says nothing about writing', () => {
+    store().view(proposal('p1'), 'comment');
+    store().report('p1', 'failed');
+
+    expect(store().cards.p1).toEqual({ state: 'applied', action: 'comment' });
+    expect(pendingFor('d1')).toEqual([]);
+    expect(toast.error).not.toHaveBeenCalled();
+    expect(toast.warning).not.toHaveBeenCalled();
   });
 });

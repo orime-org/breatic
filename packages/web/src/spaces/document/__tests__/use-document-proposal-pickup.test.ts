@@ -173,3 +173,16 @@ describe('the document changing', () => {
     expect(useDocumentProposals.getState().docVersion.d1).toBe(2);
   });
 });
+
+describe('media left out of a landing (review round 6)', () => {
+  it('are counted in a toast once the press lands', async () => {
+    landProposal.mockResolvedValue({ outcome: 'applied', blockId: 'b', leftOut: 2 });
+    useDocumentProposals.getState().start(proposal('p1'), 'write');
+
+    renderHook(() => useDocumentProposalPickup('d1', HANDLE, 'granted', false));
+
+    await waitFor(() => {
+      expect(toast.warning).toHaveBeenCalledWith('2 images, videos or audio are not files in this project and will not be added.');
+    });
+  });
+});
