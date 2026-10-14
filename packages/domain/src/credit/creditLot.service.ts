@@ -74,6 +74,8 @@ const REFUSAL_ERRORS: Record<RefundRefusal, () => AppError> = {
     new AppError(422, t("server.credit.refund_not_purchased")),
   already_asked: () =>
     new AppError(409, t("server.credit.refund_already_asked")),
+  restored: () =>
+    new AppError(409, t("server.credit.refund_restored")),
   still_designated: () =>
     new AppError(409, t("server.credit.refund_still_designated")),
   already_spent: () =>
@@ -562,8 +564,8 @@ export async function designateLot(input: {
  * This is the buyer's half of the refund flow: the lot moves to
  * `refund_pending` and stops being spendable or designatable. Deciding the
  * ask belongs to the back office; the edges that carry the decision out
- * (`markRefunding`, `settleRefund`, `sendBackRefund`, `rejectRefund`) are
- * below.
+ * (`markRefunding`, `settleRefund`, `sendBackRefund`, `rejectRefund`,
+ * `restoreRefundedCredits`) are below.
  *
  * Five conditions gate it. The first asks whether anybody paid: a refund
  * returns money, and credits that were granted had none. Two come from the
@@ -613,6 +615,7 @@ export async function requestRefund(input: {
         lifecycle: lot.lifecycle,
         designated: lot.designatedStudioId !== null,
         everSpent: await creditLotRepo.hasEverSpent(input.lotId, tx),
+        everRestored: await creditLotRepo.hasEverRestored(input.lotId, tx),
         refundAttempts: lot.refundAttempts,
         createdAt: lot.createdAt,
       },
@@ -634,7 +637,7 @@ export async function requestRefund(input: {
   });
 }
 
-// ── The four edges a refund request takes after it is asked (inner#1410 §6.3)
+// ── The five edges a refund request takes after it is asked (inner#1410 §6.3)
 //
 // Each runs inside the caller's transaction, which already holds the lot's
 // row lock and decided the edge applies; the disposition and its ledger row
@@ -740,6 +743,42 @@ export async function rejectRefund(
       payerUserId: lot.userId,
       entryType: "refund_rejected",
       amount: "0",
+      lotId: input.lotId,
+      referenceId: input.operationId,
+    },
+    tx,
+  );
+  return lot;
+}
+
+/**
+ * Credits are restored after a refund failed and the buyer took the credits
+ * instead of the money: the lot is `active` again, with one `refund_reversed`
+ * ledger row naming the disposition. On a booked lot the row puts back what
+ * the `refund` row took out and the balance returns to it; on a lot never
+ * booked nothing left the account, so the row is zero and the balance stands.
+ * @param input - Which lot, and the disposition that restored it.
+ * @param input.lotId - The lot restored.
+ * @param input.operationId - The disposition, recorded as the row's reference.
+ * @param tx - The transaction holding the lot's lock.
+ * @returns The lot as it now stands.
+ * @throws {AppError} 409 if the lot is not `refunded`, `refunding` or `refund_pending`.
+ */
+export async function restoreRefundedCredits(
+  input: { lotId: string; operationId: string },
+  tx: DbTx,
+): Promise<CreditLotEntity> {
+  const before = await creditLotRepo.lockLot(input.lotId, tx);
+  if (!before) throw refundStateChanged();
+  const booked = before.lifecycle === "refunded";
+  const credits = booked ? await creditLotRepo.readBookedCredits(input.lotId, tx) : "0";
+  const lot = await creditLotRepo.markRestored(input.lotId, booked ? credits : before.remainingCredits, tx);
+  if (!lot) throw refundStateChanged();
+  await creditLotRepo.appendLedgerEntry(
+    {
+      payerUserId: before.userId,
+      entryType: "refund_reversed",
+      amount: credits,
       lotId: input.lotId,
       referenceId: input.operationId,
     },

@@ -28,6 +28,7 @@ export const REFUND_LIFECYCLES: ReadonlySet<CreditLotLifecycle> = new Set([
 export type RefundRefusal =
   | "not_purchased"
   | "already_asked"
+  | "restored"
   | "still_designated"
   | "already_spent"
   | "window_closed";
@@ -65,6 +66,12 @@ export interface RefundCandidate {
    * thing.
    */
   everSpent: boolean;
+  /**
+   * Whether credits were restored to it after a refund failed. The buyer took
+   * the credits instead of the money, and Stripe accepts no further refund on
+   * that card, so the pack is never asked about again.
+   */
+  everRestored: boolean;
   /** How many earlier asks were refused. */
   refundAttempts: number;
   /** When it was paid for. */
@@ -94,6 +101,9 @@ export function refundRefusal(
   }
   if (REFUND_LIFECYCLES.has(lot.lifecycle)) {
     return "already_asked";
+  }
+  if (lot.everRestored) {
+    return "restored";
   }
   if (lot.everSpent) {
     return "already_spent";

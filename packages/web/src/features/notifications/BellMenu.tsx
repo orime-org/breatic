@@ -364,6 +364,8 @@ function iconForType(type: NotificationType): string {
       return '✓';
     case 'credit.refund_rejected':
       return '✕';
+    case 'credit.refund_restored':
+      return '↺';
     default:
       return '?';
   }

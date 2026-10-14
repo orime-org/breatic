@@ -19,6 +19,7 @@
       "none": "Not enough credits. Add credits to continue.",
       "granted_elsewhere": "Your credits were granted, and can only be used in your personal Studio.",
       "refund_already_asked": "This purchase has already been sent for a refund.",
+      "refund_restored": "Credits were restored to this purchase after its refund failed, so it can no longer be refunded.",
       "refund_not_purchased": "These credits were granted, not paid for, so there is nothing to refund.",
       "refund_still_designated": "This purchase is assigned to a Studio. Unassign it first.",
       "refund_already_spent": "Credits from this purchase have been spent, so it cannot be refunded.",
@@ -243,7 +244,7 @@
       "operation_in_progress": "Another refund disposition of this credit pack is still in progress.",
       "request_in_progress": "The request with this Idempotency-Key is still running.",
       "stripe_blocks": "Stripe's current refunds for this payment do not allow this operation.",
-      "mail_not_resendable": "Only a disposition that finished refunded or rejected has a buyer email to resend.",
+      "mail_not_resendable": "Only a disposition that finished refunded, rejected or restored has a buyer email to resend.",
       "idempotency_key_reused": "This Idempotency-Key was already used for a different request.",
       "invalid_body": "The request body or path does not match what this endpoint accepts.",
       "invalid_idempotency_key": "The Idempotency-Key header is missing or malformed.",
@@ -257,6 +258,10 @@
       "rejected": {
         "subject": "Your refund request was not approved",
         "intro": "Your refund request for this purchase was not approved. The credits are available again, and you can keep assigning them to a Studio."
+      },
+      "restored": {
+        "subject": "Your credits have been restored",
+        "intro": "We could not return the money to your original payment method. As agreed with you, the credits from this purchase have been restored to your account, and you can keep assigning them to a Studio."
       },
       "label": {
         "amount": "Amount refunded",
@@ -1595,7 +1600,8 @@
       "membershipUpgradeIncompleteNoPeriod": "Payment for your move to {tier} was not completed",
       "storageQuotaExceeded": "Your storage is full",
       "creditRefundCompleted": "Your refund for {credits} credits is complete",
-      "creditRefundRejected": "Your refund request for {credits} credits was not approved"
+      "creditRefundRejected": "Your refund request for {credits} credits was not approved",
+      "creditRefundRestored": "{credits} credits are back in your account"
     },
     "actorFallback": "Someone",
     "subtitle": {
@@ -2294,7 +2300,8 @@
     },
     "refundReason": {
       "spent": "Already used",
-      "expired": "Over 30 days"
+      "expired": "Over 30 days",
+      "restored": "Credits restored"
     },
     "refundHint": {
       "assigned": "Unassign it to ask for a refund"

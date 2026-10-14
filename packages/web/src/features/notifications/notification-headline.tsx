@@ -290,6 +290,9 @@ export function notificationHeadline(
   if (n.type === 'credit.refund_rejected') {
     return t('notifications.headline.creditRefundRejected', { credits: creditsOf(n.payload) });
   }
+  if (n.type === 'credit.refund_restored') {
+    return t('notifications.headline.creditRefundRestored', { credits: creditsOf(n.payload) });
+  }
   // A membership that ended has neither an actor nor an entity: nobody did it
   // to you, a subscription ran out, and there is nothing to open. It is one
   // localized sentence, so it skips the frame below entirely.

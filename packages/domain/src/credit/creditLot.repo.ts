@@ -962,6 +962,68 @@ export async function markRejected(
   return rows[0] ? toLotEntity(rows[0]) : null;
 }
 
+/**
+ * Credits are restored after a refund failed: `refunded`, `refunding` or
+ * `refund_pending` back to `active`, with `remaining_credits` set to what the
+ * caller computed. `refund_attempts` is left alone: the buyer did not ask
+ * twice. The caller appends the reversing ledger row in the same transaction.
+ * @param lotId - The lot to move.
+ * @param remainingCredits - Its balance afterwards, as a `numeric` string.
+ * @param tx - The transaction holding the lock.
+ * @returns The lot as it now stands, or null if it was in none of the three states.
+ */
+export async function markRestored(
+  lotId: string,
+  remainingCredits: string,
+  tx: DbTx,
+): Promise<CreditLotEntity | null> {
+  const rows = await tx
+    .update(creditLots)
+    .set({ lifecycle: "active", remainingCredits })
+    .where(
+      and(
+        eq(creditLots.id, lotId),
+        inArray(creditLots.lifecycle, ["refunded", "refunding", "refund_pending"]),
+      ),
+    )
+    .returning();
+  return rows[0] ? toLotEntity(rows[0]) : null;
+}
+
+/**
+ * What booking the lot took out of the account: the negation of its `refund`
+ * ledger row, or "0" when the lot was never booked. A lot is booked at most
+ * once, so there is at most one such row.
+ * @param lotId - The lot.
+ * @param tx - The transaction holding the lot's lock.
+ * @returns The credits the booking removed, as a non-negative `numeric` string.
+ */
+export async function readBookedCredits(lotId: string, tx: DbTx): Promise<string> {
+  const rows = await tx
+    .select({ credits: sql<string>`(-${creditLedger.amount})::text` })
+    .from(creditLedger)
+    .where(and(eq(creditLedger.lotId, lotId), eq(creditLedger.entryType, "refund")))
+    .limit(1);
+  return rows[0]?.credits ?? "0";
+}
+
+/**
+ * Whether credits were ever restored to this purchase after a refund failed.
+ * Read off the ledger, as `hasEverSpent` is: the `refund_reversed` row is the
+ * record of it.
+ * @param lotId - The lot to ask about.
+ * @param tx - The transaction reading it.
+ * @returns True if the lot has a `refund_reversed` row.
+ */
+export async function hasEverRestored(lotId: string, tx: DbTx): Promise<boolean> {
+  const rows = await tx
+    .select({ id: creditLedger.id })
+    .from(creditLedger)
+    .where(and(eq(creditLedger.lotId, lotId), eq(creditLedger.entryType, "refund_reversed")))
+    .limit(1);
+  return rows.length > 0;
+}
+
 /** What a lot's row carries beyond the lot itself. */
 export interface LotContext {
   /**
@@ -986,6 +1048,8 @@ export interface LotContext {
    * repayment of a studio's debt.
    */
   everSpent: boolean;
+  /** Whether credits were restored to it after a refund failed (a `refund_reversed` row). */
+  everRestored: boolean;
 }
 
 /**
@@ -1049,6 +1113,11 @@ export async function listLotsByUser(
         WHERE ${creditLedger.lotId} = ${creditLots.id}
           AND ${inArray(creditLedger.entryType, SPENDING_ENTRY_TYPES)}
       )`,
+      everRestored: sql<boolean>`EXISTS (
+        SELECT 1 FROM ${creditLedger}
+        WHERE ${creditLedger.lotId} = ${creditLots.id}
+          AND ${creditLedger.entryType} = 'refund_reversed'
+      )`,
       // What the caller's cursor is built from. The mapped `Date` beside it
       // has already lost the microseconds this column keeps.
       cursorAt: sql<string>`${creditLots.createdAt}::text`,
@@ -1087,6 +1156,7 @@ export async function listLotsByUser(
     designatedStudioName: row.designatedStudioName,
     designated: row.designated,
     everSpent: row.everSpent,
+    everRestored: row.everRestored,
     cursorAt: row.cursorAt,
   }));
 }

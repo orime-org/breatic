@@ -19,6 +19,7 @@
       "none": "积分不足，请先充值。",
       "granted_elsewhere": "你的积分是赠送的，只能用在你的个人 Studio 里。",
       "refund_already_asked": "这笔已经提交过退款。",
+      "refund_restored": "这笔退款失败后已恢复为积分，不能再申请退款。",
       "refund_not_purchased": "这笔积分是赠送的，没有付过款，所以不能退款。",
       "refund_still_designated": "这笔已指定给某个 Studio，请先解除指定。",
       "refund_already_spent": "这笔的积分已经用过，不能退款。",
@@ -243,7 +244,7 @@
       "operation_in_progress": "这笔积分包还有一个退款处置在进行中。",
       "request_in_progress": "使用这个 Idempotency-Key 的请求还在执行。",
       "stripe_blocks": "Stripe 上这笔付款的退款现状不允许这个操作。",
-      "mail_not_resendable": "只有以已退款或已驳回做完的处置才有可重发的买家邮件。",
+      "mail_not_resendable": "只有以已退款、已驳回或积分已恢复做完的处置才有可重发的买家邮件。",
       "idempotency_key_reused": "这个 Idempotency-Key 已经用于另一个不同的请求。",
       "invalid_body": "请求体或路径不符合这个端点的要求。",
       "invalid_idempotency_key": "Idempotency-Key 头缺失或格式不对。",
@@ -257,6 +258,10 @@
       "rejected": {
         "subject": "退款申请未通过",
         "intro": "这笔购买的退款申请没有通过。这笔积分已回到可用状态，可以继续指定给 Studio 使用。"
+      },
+      "restored": {
+        "subject": "积分已恢复",
+        "intro": "钱没能退回你的原付款方式。按和你的沟通，这笔购买的积分已恢复到账户，可以继续指定给 Studio 使用。"
       },
       "label": {
         "amount": "退款金额",
@@ -1595,7 +1600,8 @@
       "membershipUpgradeIncompleteNoPeriod": "换到 {tier} 的付款没有完成",
       "storageQuotaExceeded": "存储已满",
       "creditRefundCompleted": "{credits} 积分的退款已完成",
-      "creditRefundRejected": "{credits} 积分的退款申请未通过"
+      "creditRefundRejected": "{credits} 积分的退款申请未通过",
+      "creditRefundRestored": "{credits} 积分已恢复到你的账户"
     },
     "actorFallback": "某人",
     "subtitle": {
@@ -2294,7 +2300,8 @@
     },
     "refundReason": {
       "spent": "已经用过",
-      "expired": "超过 30 天"
+      "expired": "超过 30 天",
+      "restored": "积分已恢复"
     },
     "refundHint": {
       "assigned": "解除指定后可以申请退款"

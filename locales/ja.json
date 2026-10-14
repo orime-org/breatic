@@ -19,6 +19,7 @@
       "none": "クレジットが不足しています。チャージしてください。",
       "granted_elsewhere": "お持ちのクレジットは付与されたもので、個人 Studio でのみ使用できます。",
       "refund_already_asked": "この購入はすでに返金を申請済みです。",
+      "refund_restored": "この購入は返金に失敗した後クレジットに戻されたため、返金を申請できません。",
       "refund_not_purchased": "このクレジットは付与されたもので、お支払いがないため返金できません。",
       "refund_still_designated": "この購入は Studio に割り当てられています。先に割り当てを解除してください。",
       "refund_already_spent": "この購入のクレジットは使用済みのため、返金できません。",
@@ -243,7 +244,7 @@
       "operation_in_progress": "このクレジットパックの別の返金処理がまだ進行中です。",
       "request_in_progress": "この Idempotency-Key のリクエストはまだ実行中です。",
       "stripe_blocks": "この支払いに対する Stripe 上の現在の返金状況では、この操作はできません。",
-      "mail_not_resendable": "返金済みまたは却下で完了した処理にだけ、再送できる購入者メールがあります。",
+      "mail_not_resendable": "返金済み・却下・クレジット復元で完了した処理だけが、購入者へのメールを再送できます。",
       "idempotency_key_reused": "この Idempotency-Key は別のリクエストですでに使われています。",
       "invalid_body": "リクエスト本文またはパスがこのエンドポイントの要件に合いません。",
       "invalid_idempotency_key": "Idempotency-Key ヘッダーがないか、形式が正しくありません。",
@@ -257,6 +258,10 @@
       "rejected": {
         "subject": "返金リクエストは承認されませんでした",
         "intro": "このご購入の返金リクエストは承認されませんでした。クレジットは再び利用可能になり、引き続き Studio に割り当てて使えます。"
+      },
+      "restored": {
+        "subject": "クレジットを元に戻しました",
+        "intro": "元のお支払い方法へ返金できませんでした。お客様とのご相談に基づき、この購入のクレジットをアカウントに戻しました。引き続き Studio に割り当てられます。"
       },
       "label": {
         "amount": "返金額",
@@ -1595,7 +1600,8 @@
       "membershipUpgradeIncompleteNoPeriod": "{tier} への変更のお支払いが完了しませんでした",
       "storageQuotaExceeded": "ストレージがいっぱいです",
       "creditRefundCompleted": "{credits} クレジットの返金が完了しました",
-      "creditRefundRejected": "{credits} クレジットの返金リクエストは承認されませんでした"
+      "creditRefundRejected": "{credits} クレジットの返金リクエストは承認されませんでした",
+      "creditRefundRestored": "{credits} クレジットがアカウントに戻りました"
     },
     "actorFallback": "誰か",
     "subtitle": {
@@ -2294,7 +2300,8 @@
     },
     "refundReason": {
       "spent": "使用済み",
-      "expired": "30 日超過"
+      "expired": "30 日超過",
+      "restored": "クレジット復元済み"
     },
     "refundHint": {
       "assigned": "割り当てを解除すると返金を申請できます"
