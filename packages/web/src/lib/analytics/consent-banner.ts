@@ -115,6 +115,9 @@ function writeConsent(writes: ConsentWrites, prior: BrowserChoices | null): void
   askServerToKeepCookie();
 }
 
+/** How long one write-back may take; it carries the value of its moment, which grows stale. */
+const WRITE_BACK_TIMEOUT_MS = 10_000;
+
 // The write-back still on its way. The server echoes the value the request carried, so an answer landing
 // after a later write would put the earlier value back; the later write cancels it first.
 let keeping: AbortController | null = null;
@@ -133,8 +136,10 @@ function askServerToKeepCookie(): void {
   url.searchParams.set('domain', bannerOptions?.cookieDomain || window.location.hostname);
   void httpRequest(
     url.href,
-    { credentials: 'same-origin', cache: 'no-store' },
-    { replaySafe: true, signal: controller.signal },
+    // keepalive: a navigation right after the choice (a sign-in redirect) must not end the request.
+    { credentials: 'same-origin', cache: 'no-store', keepalive: true },
+    // A stalled answer is dropped: the next write or page response writes the cookie back again.
+    { replaySafe: true, signal: controller.signal, timeoutMs: WRITE_BACK_TIMEOUT_MS },
   ).catch(() => undefined);
 }
 
@@ -338,6 +343,8 @@ export async function startConsentBanner(options: BannerOptions): Promise<void> 
 async function resync(): Promise<void> {
   if (document.visibilityState !== 'visible' || bannerOptions === null) return;
   if (sameChoices(readBrowserChoices(), lastSeen)) return;
+  // A write-back still on its way carries this page's value, which the cookie no longer holds.
+  keeping?.abort();
   CookieConsent.reset(false);
   await boot(bannerOptions);
 }

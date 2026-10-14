@@ -80,6 +80,15 @@ describe("GET /_consent/refresh on a self-hosted copy", () => {
     expect(dotted).toContain("Domain=example.com;");
   });
 
+  it("reads the named domain as the browser stores it: lower case, international names in punycode", async () => {
+    const upper = (await refresh(`breatic_consent=${consent()}`, { host: "app.example.com", domain: "Example.COM" })).headers.get("set-cookie") ?? "";
+    expect(upper).toContain("Domain=example.com;");
+    const idn = (await refresh(`breatic_consent=${consent()}`, { host: "app.xn--r8jz45g.jp", domain: "例え.jp" })).headers.get("set-cookie") ?? "";
+    expect(idn).toContain("Domain=xn--r8jz45g.jp;");
+    const unparsable = await refresh(`breatic_consent=${consent()}`, { host: "app.example.com", domain: "exa mple.com" });
+    expect(unparsable.headers.get("set-cookie")).toBeNull();
+  });
+
   it("writes nothing for a domain the page's host does not belong to, or none at all", async () => {
     for (const [host, domain] of [
       ["app.example.com", "other.com"],

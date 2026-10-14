@@ -70,9 +70,14 @@ export const consentRefreshRoute = new Hono();
  */
 function cookieDomain(host: string, named: string | undefined): string | null {
   if (!host.includes(".")) return "";
-  // A leading dot names the same domain (RFC 6265 §5.2.3).
-  const domain = (named ?? "").replace(/^\./, "");
-  if (domain === "") return null;
+  // A leading dot names the same domain (RFC 6265 §5.2.3); the browser stores it lower-cased and in
+  // punycode, which the URL parser gives.
+  let domain: string;
+  try {
+    domain = new URL(`http://${(named ?? "").replace(/^\./, "")}`).hostname;
+  } catch {
+    return null;
+  }
   return host === domain || host.endsWith(`.${domain}`) ? domain : null;
 }
 

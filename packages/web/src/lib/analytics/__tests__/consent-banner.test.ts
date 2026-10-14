@@ -351,7 +351,8 @@ describe('the server writing the stored choice back (design §4.4.3a)', () => {
     expect(new URL(url).origin).toBe(window.location.origin);
     // The library writes under the page's host when no domain is configured.
     expect(new URL(url).searchParams.get('domain')).toBe(window.location.hostname);
-    expect(init).toMatchObject({ credentials: 'same-origin', cache: 'no-store' });
+    // Kept alive past the page, so a navigation right after the choice does not end it.
+    expect(init).toMatchObject({ credentials: 'same-origin', cache: 'no-store', keepalive: true });
     expect(refresh.mock.invocationCallOrder[0]).toBeGreaterThan(library.setCookieData.mock.invocationCallOrder.at(-1) ?? Infinity);
   });
 
@@ -385,6 +386,34 @@ describe('the server writing the stored choice back (design §4.4.3a)', () => {
     const signals = (refresh.mock.calls as unknown as Array<[string, RequestInit]>).map(([, init]) => init.signal);
     expect(signals[0]?.aborted).toBe(true);
     expect(signals[1]?.aborted).toBe(false);
+  });
+
+  it('gives up on a write-back after ten seconds, so a stalled answer cannot land long after', async () => {
+    refresh.mockImplementationOnce(() => new Promise<Response>(() => undefined));
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      await startBanner('US');
+      await vi.waitFor(() => expect(refresh).toHaveBeenCalledTimes(1));
+      const [, init] = refresh.mock.calls[0] as unknown as [string, RequestInit];
+      await vi.advanceTimersByTimeAsync(9_000);
+      expect(init.signal?.aborted).toBe(false);
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(init.signal?.aborted).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('cancels its write-back on its way when another tab changed the choice, since it carries a value no longer stored', async () => {
+    refresh.mockImplementationOnce(() => new Promise<Response>(() => undefined));
+    await startBanner('US');
+    await vi.waitFor(() => expect(refresh).toHaveBeenCalledTimes(1));
+    library.consent = true;
+    library.cookie = cookieOf(['necessary'], 'settings', '2026-10-14T00:00:00.000Z');
+    document.dispatchEvent(new Event('visibilitychange'));
+    await vi.waitFor(() => expect(library.reset).toHaveBeenCalledWith(false));
+    const [, init] = refresh.mock.calls[0] as unknown as [string, RequestInit];
+    expect(init.signal?.aborted).toBe(true);
   });
 
   it('keeps the choice when the request fails', async () => {
