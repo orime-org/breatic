@@ -791,9 +791,11 @@ async function exhaustedAttention(ctx: Ctx): Promise<{ reason: AttentionReason; 
 }
 
 /**
- * What a person reads first about a refund that failed or a create Stripe
- * refused (E6, E11; §5.1): the refund's failure reason or status, else the
- * first line of Stripe's error.
+ * What a person reads first about an E6 or E11 answer (§5.1): a refund that
+ * failed or was canceled, a create answer that made no refund (refused, or
+ * 401, 403, 404), or the refusal E11 found in the event rows. It is the
+ * refund's failure reason, else its status, else the first line of Stripe's
+ * error.
  * @param answer - The answer as an event row keeps it.
  * @returns The text, or null when the answer carries none.
  */

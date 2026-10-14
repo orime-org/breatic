@@ -4,8 +4,9 @@
 /**
  * Data access for `credit_refund_operations` and its event rows
  * (inner#1410 §5.1). Status changes and event rows are written only through
- * `transitionOperation`; `markFirstCalled` and `scheduleNextLook` write the
- * two progress columns directly, with no event row (§9).
+ * `transitionOperation`; `markFirstCalled` and `scheduleNextLook` write one
+ * progress column each, plus `updated_at` by the database clock, with no
+ * event row (§5.1, §9).
  */
 
 import { and, asc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
@@ -128,9 +129,10 @@ function toEntity(row: typeof creditRefundOperations.$inferSelect): CreditRefund
 }
 
 /**
- * When something happened to a row: the database's wall clock at the
- * statement. `now()` is the transaction's start, which can precede a row
- * inserted later in the same transaction (§5.1).
+ * When something happened to a row: the database's wall clock when the
+ * expression is evaluated. `now()` is the writing transaction's start, which
+ * precedes any row inserted after that start, by this transaction or by
+ * another that committed while it waited on the lot lock (§5.1).
  */
 const STAMP = sql`clock_timestamp()`;
 
