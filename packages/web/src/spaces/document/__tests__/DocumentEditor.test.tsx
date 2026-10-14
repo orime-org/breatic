@@ -250,7 +250,7 @@ describe('DocumentEditor', () => {
     const original = HTMLElement.prototype.scrollTo;
     HTMLElement.prototype.scrollTo = scrollTo as typeof HTMLElement.prototype.scrollTo;
     try {
-      const landed = { blockId: handle.editor.document[0]!.id, proposalId: 'p1' };
+      const landed = { blockId: (handle.editor.document[0] as { id: string }).id, proposalId: 'p1' };
       const at = (mode: 'visible' | 'hidden'): React.JSX.Element => (
         <React.Activity mode={mode}>
           <DocumentEditor handle={handle} uploader={uploader} landed={landed} />
