@@ -1055,12 +1055,21 @@ export function renderProductGuide(): string {
       "the list or to-do of the one above, Cmd+Alt+0 makes it plain text, and if it kept the quote, Cmd+Shift+B " +
       "takes the quote off.",
     "- Images, videos and audio can also be dragged into the document from the computer, landing where the " +
-      "line shows, or pasted, landing under the caret's line (above it when that line is empty). Each file shows a dashed box with its name and how " +
-      "far its upload has got, which only the person uploading sees; when it is done the box becomes the picture, " +
-      "video or audio for everyone. A file that cannot be uploaded turns the box red with the reason, with " +
+      "line shows, or pasted, landing under the caret's line (above it when that line is empty). Nodes copied " +
+      "on the canvas and a picture copied in this chat paste the same way: each text node's lines become lines " +
+      "(only text pastes at the caret, or into a table cell), and each picture, video or audio comes in with " +
+      "the node's name as its caption, in the order they sit on the canvas from the top; with the caret in a " +
+      "table they land under the table. Pictures, videos and audio inside copied web pages or Markdown come " +
+      "in with the text, and dragging a web page's content in does the same. Each picture, video or audio " +
+      "first shows as a dashed box with a spinner and, for a file, its name and how far its upload has got; " +
+      "everyone working on the document sees the box, and it becomes the picture, video or audio for everyone " +
+      "when the upload is done. One Cmd+Z takes the whole paste or drop away, boxes included, and redo brings " +
+      "it back without uploading again. An upload that fails turns the box red with the reason, with " +
       `${quoted(t("spaces.document.media.retry"))} when trying again can help, and ` +
-      `${quoted(t("spaces.document.media.remove"))}. Pictures, videos or audio inside copied web pages or ` +
-      "Markdown are not pasted with the text; drop or paste the files themselves. Hovering a picture, video or " +
+      `${quoted(t("spaces.document.media.remove"))}. If the person uploading closes the page before it is ` +
+      `done, the box says ${quoted(t("spaces.document.media.notFinished"))} and anyone who can edit can ` +
+      `${quoted(t("spaces.document.media.remove"))} it. What cannot be pasted (a canvas node with nothing in ` +
+      "it yet, an address the page cannot fetch) is left out, and a message says how many. Hovering a picture, video or " +
       "audio, or clicking it, shows a row of icons above it: left, centre and right alignment (only when the " +
       "picture or video is narrower than the page; audio is always as wide as the page), " +
       `${quoted(t("spaces.document.media.caption"))} (a T), which opens a line under it for a caption, ` +

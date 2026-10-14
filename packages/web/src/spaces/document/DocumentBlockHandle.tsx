@@ -62,7 +62,7 @@ import { itemWithin } from '@web/spaces/document/document-block-menu-parts';
 import {
   fillEmptyRow,
   isEmptyParagraph,
-  mediaGapOnRow,
+  insertMediaOnRow,
   type InsertChoice,
 } from '@web/spaces/document/document-insert-row';
 import { useDocumentMediaPick } from '@web/spaces/document/DocumentMediaPicker';
@@ -244,9 +244,11 @@ export function DocumentBlockHandle(): React.JSX.Element | null {
       mediaPick === null
         ? undefined
         : (kind: MediaBlockType): void => {
-          mediaPick(kind, () => {
+          mediaPick(kind, (blocks) => {
             const live = rowNow();
-            return live === undefined ? null : mediaGapOnRow(editor as never, live);
+            if (live === undefined) return false;
+            insertMediaOnRow(editor as never, live, blocks);
+            return true;
           });
           closeMenu();
         },

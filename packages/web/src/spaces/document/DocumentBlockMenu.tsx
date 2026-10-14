@@ -82,7 +82,7 @@ import { attachToChat } from '@web/stores/attach-to-chat';
 import { selectionOverBlockContent } from '@web/spaces/document/document-hovered-block';
 import {
   insertBelow,
-  mediaGapBelow,
+  insertMediaBelow,
   type InsertChoice,
 } from '@web/spaces/document/document-insert-row';
 import { useDocumentMediaPick } from '@web/spaces/document/DocumentMediaPicker';
@@ -290,16 +290,19 @@ export function DocumentBlockMenu({
   );
 
   // The media entries: the files land under this row once they are chosen
-  // (inner#1127 A1). Absent where nothing picks — a body with no uploader.
+  // (inner#1127 A1). Absent where nothing picks — a body with nowhere to
+  // upload to.
   const mediaPick = useDocumentMediaPick();
   const onInsertMediaBelow = React.useMemo(
     () =>
       mediaPick === null
         ? undefined
         : (kind: MediaBlockType): void => {
-          mediaPick(kind, () => {
+          mediaPick(kind, (blocks) => {
             const live = rowNow();
-            return live === undefined ? null : mediaGapBelow(editor, live);
+            if (live === undefined) return false;
+            insertMediaBelow(editor, live, blocks);
+            return true;
           });
           close();
         },

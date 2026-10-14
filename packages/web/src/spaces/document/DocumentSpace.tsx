@@ -231,7 +231,7 @@ export function DocumentSpace({
             handle={shown}
             readOnly={readOnly}
             myRole={myRole}
-            uploader={shown.uploader}
+            files={shown.files}
             pending={shown.pending}
           />
         </DocumentProjectProvider>

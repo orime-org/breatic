@@ -10,12 +10,12 @@
  */
 
 import { blockToNode } from '@blocknote/core';
-import { Fragment, Slice, type Node as PMNode } from '@tiptap/pm/model';
+import { Fragment, Slice } from '@tiptap/pm/model';
 
 import { parseClipboard } from '@web/spaces/canvas/node-clipboard';
 import { planCanvasPaste, type PastedMedia } from '@web/spaces/document/document-canvas-paste';
-import { pasteTarget, type PasteHandler } from '@web/spaces/document/document-file-input';
-import { QUOTED } from '@web/spaces/document/document-list-block';
+import { insertAtGap, pasteTarget, type BlockSpec, type PasteHandler } from '@web/spaces/document/document-file-input';
+import { pendingBlock } from '@web/spaces/document/document-uploads';
 import type { UploadSource } from '@web/spaces/document/document-upload-controller';
 
 /** Where a canvas paste hands its uploads and what it could not paste. */
@@ -67,35 +67,15 @@ export function canvasPasteHandler(sink: CanvasPasteSink, next: PasteHandler): P
         sink.stopCapturing?.();
       } else {
         const { gap, aimed } = pasteTarget(view.state);
-        const $gap = view.state.doc.resolve(gap);
-        // Quoted as the line it was aimed at, else as the block before it.
-        const beside: PMNode | null = aimed ? $gap.nodeAfter : ($gap.nodeBefore ?? $gap.nodeAfter);
-        const quoted = beside?.firstChild?.attrs[QUOTED] === true;
         const started: { uploadId: string; source: UploadSource }[] = [];
-        const nodes = items.flatMap((item) => {
-          if (item.kind === 'text') {
-            return item.lines.map((line) =>
-              blockToNode(
-                { id: crypto.randomUUID(), type: 'paragraph', props: { [QUOTED]: quoted }, content: line } as never,
-                view.state.schema,
-              ),
-            );
-          }
+        const blocks = items.flatMap((item): BlockSpec[] => {
+          if (item.kind === 'text') return item.lines.map((line) => ({ type: 'paragraph', content: line }));
           const uploadId = crypto.randomUUID();
           started.push({ uploadId, source: sourceOf(item) });
-          return [
-            blockToNode(
-              {
-                id: crypto.randomUUID(),
-                type: item.type,
-                props: { url: '', uploadId, name: item.name, caption: item.caption, [QUOTED]: quoted },
-              } as never,
-              view.state.schema,
-            ),
-          ];
+          return [pendingBlock(item.type, uploadId, item.name, item.caption)];
         });
         sink.stopCapturing?.();
-        view.dispatch(view.state.tr.insert(gap, Fragment.from(nodes)));
+        insertAtGap(view, gap, aimed, blocks);
         sink.stopCapturing?.();
         for (const { uploadId, source } of started) sink.start(uploadId, source);
       }

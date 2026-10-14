@@ -1470,7 +1470,6 @@
         "video": "동영상",
         "uploading": "업로드 중",
         "uploadingPercent": "업로드 중 {percent}%",
-        "readOnly": "현재 읽기 전용입니다.",
         "retry": "다시 시도",
         "remove": "제거",
         "notFinished": "업로드가 완료되지 않았습니다",

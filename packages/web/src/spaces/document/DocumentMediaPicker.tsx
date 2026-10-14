@@ -2,24 +2,30 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * The file picker behind the insert menu's media entries (inner#1127 A1).
+ * The file picker behind the insert menu's media entries (inner#1127 A1,
+ * inner#1351 + inner#1390 design §5.9).
  *
- * A pick opens the system picker filtered to that kind. The gap the files go
- * into is made once a chosen file is admitted, not when the entry is pressed:
- * closing the picker without a file, or choosing only files that are refused,
- * leaves the document as it was.
+ * A pick opens the system picker filtered to that kind. Once files are
+ * chosen, the admitted ones become pending blocks, put in where the entry
+ * says as one undo step, and their uploads start. Closing the picker without
+ * a file, or choosing only files that are refused, leaves the document as it
+ * was.
  */
 
 import * as React from 'react';
-import type { EditorView } from '@tiptap/pm/view';
 
 import { uploadAcceptFor } from '@web/spaces/canvas/canvas-upload';
-import type { UploadGap } from '@web/spaces/document/document-upload-slots';
-import type { DocumentUploader } from '@web/spaces/document/document-uploads';
+import type { FileEntry, PendingBlock } from '@web/spaces/document/document-uploads';
 import type { MediaBlockType } from '@web/spaces/document/document-media-types';
 
-/** Opens the picker for a kind; `gap` makes the gap once a chosen file is admitted. */
-type MediaPick = (kind: MediaBlockType, gap: () => UploadGap | null) => void;
+/**
+ * Puts the chosen files' blocks in.
+ * @returns False when the row the menu was opened on is gone, and nothing went in.
+ */
+type MediaPlace = (blocks: readonly PendingBlock[]) => boolean;
+
+/** Opens the picker for a kind; `place` puts the blocks in once files are chosen. */
+type MediaPick = (kind: MediaBlockType, place: MediaPlace) => void;
 
 const MediaPickContext = React.createContext<MediaPick | null>(null);
 
@@ -32,35 +38,28 @@ export function useDocumentMediaPick(): MediaPick | null {
 }
 
 interface DocumentMediaPickerProps {
-  /** Where chosen files go; null where nothing may be picked (a viewer). */
-  uploader: DocumentUploader | null;
-  /** The editor's view, read when files are chosen. */
-  view: () => EditorView | null;
+  /** What admits chosen files; null where nothing may be picked (a viewer). */
+  files: FileEntry | null;
   children: React.ReactNode;
 }
 
 /**
- * Provides the pick, and the hidden input it opens. Without an uploader it
+ * Provides the pick, and the hidden input it opens. Without file admission it
  * provides none, around the same children, so a reader turning read-only
  * keeps the body mounted where it is.
  * @param props - See {@link DocumentMediaPickerProps}.
- * @param props.uploader - Where chosen files go.
- * @param props.view - The editor's view.
+ * @param props.files - What admits chosen files.
  * @param props.children - What may pick.
  * @returns The provider and the input.
  */
-export function DocumentMediaPicker({
-  uploader,
-  view,
-  children,
-}: DocumentMediaPickerProps): React.JSX.Element {
+export function DocumentMediaPicker({ files, children }: DocumentMediaPickerProps): React.JSX.Element {
   const input = React.useRef<HTMLInputElement>(null);
-  const pending = React.useRef<(() => UploadGap | null) | null>(null);
+  const pending = React.useRef<MediaPlace | null>(null);
 
-  const pick = React.useCallback<MediaPick>((kind, gap) => {
+  const pick = React.useCallback<MediaPick>((kind, place) => {
     const element = input.current;
     if (element === null) return;
-    pending.current = gap;
+    pending.current = place;
     element.accept = uploadAcceptFor(kind);
     // Cleared so picking the same file twice still reports a change.
     element.value = '';
@@ -69,21 +68,24 @@ export function DocumentMediaPicker({
 
   const onChange = React.useCallback(
     (event: React.ChangeEvent<HTMLInputElement>): void => {
-      const files = Array.from(event.target.files ?? []);
-      const makeGap = pending.current;
+      const chosen = Array.from(event.target.files ?? []);
+      const place = pending.current;
       pending.current = null;
-      const target = view();
-      if (files.length === 0 || makeGap === null || target === null) return;
-      // The gap is made only once a file is admitted.
-      void uploader?.start(target, files, makeGap, true);
+      if (chosen.length === 0 || place === null || files === null) return;
+      const prepared = files.prepare(chosen);
+      if (prepared === null) return;
+      files.stopCapturing();
+      const placed = place(prepared.blocks);
+      files.stopCapturing();
+      if (placed) prepared.start();
     },
-    [uploader, view],
+    [files],
   );
 
   return (
-    <MediaPickContext.Provider value={uploader === null ? null : pick}>
+    <MediaPickContext.Provider value={files === null ? null : pick}>
       {children}
-      {uploader !== null && (
+      {files !== null && (
         <input
           ref={input}
           type='file'

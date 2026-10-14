@@ -22,11 +22,15 @@ import {
   type ComputeDropPositionContext,
   type ExtensionFactoryInstance,
 } from '@blocknote/core';
-import type { Node as PMNode } from '@tiptap/pm/model';
+import { Fragment, type Node as PMNode } from '@tiptap/pm/model';
 import { Plugin, type EditorState } from '@tiptap/pm/state';
+import type { EditorView } from '@tiptap/pm/view';
 
 import { landingFor } from '@web/spaces/document/document-drag-move';
-import type { UploadGap } from '@web/spaces/document/document-upload-slots';
+import { QUOTED } from '@web/spaces/document/document-list-block';
+
+/** A position between two blocks, where inserted blocks go. */
+export type UploadGap = number;
 
 /** BlockNote's paste hook, as this editor's options take it. */
 export type PasteHandler = NonNullable<
@@ -130,6 +134,35 @@ function caretLine(state: EditorState): { start: number; container: PMNode; empt
     return { start: $head.before(depth), container, empty };
   }
   return null;
+}
+
+/** A block to insert, as BlockNote takes one. */
+export interface BlockSpec {
+  readonly type: string;
+  readonly props?: Readonly<Record<string, unknown>>;
+  readonly content?: unknown;
+}
+
+/**
+ * Inserts blocks at a gap in one transaction, quoted as the line the reader
+ * aimed at, else as the block before the gap (the block after it at the
+ * start of the body) — the way a block made there by typing would be.
+ * @param view - The editor view.
+ * @param gap - Where they go.
+ * @param aimed - Whether the reader aimed at the line right after the gap.
+ * @param blocks - The blocks, in order.
+ */
+export function insertAtGap(view: EditorView, gap: UploadGap, aimed: boolean, blocks: readonly BlockSpec[]): void {
+  const $gap = view.state.doc.resolve(gap);
+  const beside: PMNode | null = aimed ? $gap.nodeAfter : ($gap.nodeBefore ?? $gap.nodeAfter);
+  const quoted = beside?.firstChild?.attrs[QUOTED] === true;
+  const nodes = blocks.map((block) =>
+    blockToNode(
+      { id: crypto.randomUUID(), ...block, props: { ...block.props, [QUOTED]: quoted } } as never,
+      view.state.schema,
+    ),
+  );
+  view.dispatch(view.state.tr.insert(gap, Fragment.from(nodes)));
 }
 
 /**

@@ -1470,7 +1470,6 @@
         "video": "Video",
         "uploading": "Uploading",
         "uploadingPercent": "Uploading {percent}%",
-        "readOnly": "Read-only now.",
         "retry": "Retry",
         "remove": "Remove",
         "notFinished": "Upload not finished",

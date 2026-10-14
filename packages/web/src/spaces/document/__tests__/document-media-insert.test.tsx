@@ -20,7 +20,7 @@ import {
   DocumentMediaPicker,
   useDocumentMediaPick,
 } from '@web/spaces/document/DocumentMediaPicker';
-import type { FileEntry } from '@web/spaces/document/document-uploads';
+import { pendingBlock, type FileEntry, type PendingBlock } from '@web/spaces/document/document-uploads';
 
 /**
  * The insert menu, open.
@@ -85,6 +85,9 @@ function PickButton({
   );
 }
 
+/** The blocks the stub admission makes. */
+const BLOCKS: readonly PendingBlock[] = [pendingBlock('video', 'u1', 'clip.mp4', '')];
+
 describe('the file picker (inner#1351 + inner#1390 design §5.9)', () => {
   /**
    * Renders the picker around a button that picks.
@@ -99,7 +102,7 @@ describe('the file picker (inner#1351 + inner#1390 design §5.9)', () => {
     const order: string[] = [];
     const start = vi.fn(() => order.push('start'));
     const entry: FileEntry = {
-      prepare: vi.fn(() => (admitted ? { blocks: ['block'], start } : null)),
+      prepare: vi.fn(() => (admitted ? { blocks: BLOCKS, start } : null)),
       stopCapturing: vi.fn(() => order.push('stop')),
     };
     render(
@@ -138,7 +141,7 @@ describe('the file picker (inner#1351 + inner#1390 design §5.9)', () => {
     fireEvent.change(input, { target: { files: [chosen] } });
 
     expect(entry.prepare).toHaveBeenCalledWith([chosen]);
-    expect(place).toHaveBeenCalledWith(['block']);
+    expect(place).toHaveBeenCalledWith(BLOCKS);
     expect(order).toEqual(['stop', 'place', 'stop', 'start']);
   });
 

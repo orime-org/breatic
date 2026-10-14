@@ -2,84 +2,83 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * One file's way from being picked to being a block (inner#1127 §3.4).
+ * Files put into a body by paste, drop or the insert menu (inner#1351 +
+ * inner#1390 design §5.9).
  *
- * The three entries — the insert menu, a drop, a paste — hand their files here
- * with the gap they go into. Each file is admitted on the same rules as the
- * canvas, uploaded with no node behind it, and either lands as a media block
- * where its placeholder is drawn or stops as a failed placeholder that says
- * why. The placeholders themselves live in `document-upload-slots`.
+ * Each file is admitted at once on the canvas's rules plus the body's own; a
+ * refused one is told and makes nothing. Each admitted file becomes a pending
+ * media block, which the entry puts in where the reader aimed, and its upload
+ * starts once the block is in. Where the block goes and what it shows from
+ * then on belong to the entry and the page's upload controller.
  */
 
-import type { EditorView } from '@tiptap/pm/view';
-
-import { UploadFailedError, type StoredUpload } from '@web/data/upload/media-upload';
 import {
   checkFileAdmission,
   fileToNodeSpec,
   refusedFormatParams,
   type FileRejection,
 } from '@web/spaces/canvas/canvas-upload';
-import {
-  uploadFailureMessageKey,
-  uploadRetryCanChange,
-} from '@web/spaces/canvas/upload-failure';
-import { isMediaBlockType } from '@web/spaces/document/document-media-types';
-import {
-  addUploadBatch,
-  insertSlotBlock,
-  patchUploadSlot,
-  removeUploadSlot,
-  uploadSlots,
-  type SlotFailure,
-  type UndoCapture,
-  type UploadGap,
-} from '@web/spaces/document/document-upload-slots';
+import type { MediaBlockType } from '@web/spaces/document/document-media-types';
+import type { UploadSource } from '@web/spaces/document/document-upload-controller';
 
-/** What the uploader needs from the page. */
-export interface DocumentUploaderDeps {
-  /** The upload cap; `Infinity` when it could not be read. */
-  readonly maxUploadBytes: () => Promise<number>;
-  /** Uploads one file with no node behind it (`uploadMedia`). */
-  readonly upload: (file: File, onProgress: (fraction: number) => void) => Promise<StoredUpload>;
-  /** Marks an upload as in flight, so leaving asks first. */
-  readonly register: (operationId: string) => void;
-  /** Ends what {@link DocumentUploaderDeps.register} started. */
-  readonly unregister: (operationId: string) => void;
-  /** Says why a file was turned away before it was sent. */
-  readonly refuse: (messageKey: string, params: Readonly<Record<string, string>>) => void;
-  /** Closes the reader's undo step around a batch's start and each insert. */
-  readonly undo: UndoCapture;
+/** A pending media block, as BlockNote takes a block to insert. */
+export interface PendingBlock {
+  readonly type: MediaBlockType;
+  readonly props: {
+    readonly url: '';
+    readonly uploadId: string;
+    readonly name: string;
+    readonly caption: string;
+  };
 }
-
-/** What the entries and the placeholders call. */
-export interface DocumentUploader {
-  /**
-   * Admits the files and starts the ones that pass at one gap, asked for only
-   * once at least one file is admitted (the insert menu makes its gap then);
-   * null puts nothing anywhere. `aimed` says the reader aimed the files at
-   * the empty line right after the gap (its insert menu, or a paste with the
-   * caret in it), so they land quoted as that line.
-   */
-  start(view: EditorView, files: readonly File[], place: () => UploadGap | null, aimed: boolean): Promise<void>;
-  /** Sends a failed file again, when doing so can end differently. */
-  retry(view: EditorView, slotId: string): void;
-  /** Takes a failed placeholder away. */
-  remove(view: EditorView, slotId: string): void;
-}
-
-/** The failure a body that stopped being editable meanwhile shows. */
-const READ_ONLY: SlotFailure = {
-  messageKey: 'spaces.document.media.readOnly',
-  params: {},
-  retryable: true,
-};
 
 /**
- * Why a file may not enter the body, or null to admit it.
- *
- * The canvas's rules, plus one of the body's own: a file that is not an
- * image, a video or an audio has no block to become.
+ * A pending media block.
+ * @param type - Its media type.
+ * @param uploadId - The upload behind it.
+ * @param name - The file's or the node's name.
+ * @param caption - Its caption.
+ * @returns The block.
+ */
+export function pendingBlock(type: MediaBlockType, uploadId: string, name: string, caption: string): PendingBlock {
+  return { type, props: { url: '', uploadId, name, caption } };
+}
+
+/** What the file entries need from the page. */
+export interface FileUploadsDeps {
+  /** The upload cap as this page knows it now; `Infinity` before it is read. */
+  readonly maxUploadBytes: () => number;
+  /** Says why a file was turned away. */
+  readonly refuse: (messageKey: string, params: Readonly<Record<string, string>>) => void;
+  /** Starts the upload behind a pending block. */
+  readonly start: (uploadId: string, source: UploadSource) => void;
+}
+
+/** Admitted files: their blocks, and what starts their uploads once the blocks are in. */
+export interface PreparedFiles {
+  readonly blocks: readonly PendingBlock[];
+  start(): void;
+}
+
+/** What admits files into a body. */
+export interface FileUploads {
+  /**
+   * Admits the files; a refused one is told.
+   * @returns Their blocks, or null when none is admitted.
+   */
+  prepare(files: readonly File[]): PreparedFiles | null;
+}
+
+/** What a body's file entries are handed: admission, and the undo step around an insert. */
+export interface FileEntry extends FileUploads {
+  /** Closes the reader's undo step, so an insert is a step of its own. */
+  stopCapturing(): void;
+}
+
+/**
+ * Why a file may not enter the body, or null to admit it: the canvas's rules,
+ * plus one of the body's own — a file that is not an image, a video or an
+ * audio has no block to become.
  * @param file - The file.
  * @param maxBytes - The upload cap.
  * @returns The refusal, or null.
@@ -91,114 +90,31 @@ function rejectionOf(file: File, maxBytes: number): FileRejection | null {
 }
 
 /**
- * The failure a placeholder shows for an upload that ended badly.
- * @param err - What the upload rejected with.
- * @param file - The file.
- * @returns The failure.
- */
-function failureOf(err: unknown, file: File): SlotFailure {
-  const reason = err instanceof UploadFailedError ? err.reason : 'upload';
-  return {
-    messageKey: uploadFailureMessageKey(reason),
-    params: { filename: file.name, ...refusedFormatParams(file) },
-    retryable: uploadRetryCanChange(reason),
-  };
-}
-
-/**
- * Builds an uploader for one body.
+ * Builds a body's file admission.
  * @param deps - What it needs from the page.
- * @returns The uploader.
+ * @returns The admission.
  */
-export function createDocumentUploader(deps: DocumentUploaderDeps): DocumentUploader {
-  const held = new Map<string, File>();
-
-  /**
-   * Runs one upload to its end.
-   * @param view - The editor view.
-   * @param slotId - Which slot.
-   */
-  async function run(view: EditorView, slotId: string): Promise<void> {
-    const file = held.get(slotId);
-    if (file === undefined) return;
-    deps.register(slotId);
-    let stored: StoredUpload;
-    try {
-      stored = await deps.upload(file, (progress) => {
-        patchUploadSlot(view, slotId, { progress });
-      });
-    } catch (err) {
-      deps.unregister(slotId);
-      patchUploadSlot(view, slotId, { phase: 'failed', failure: failureOf(err, file) });
-      return;
-    }
-    deps.unregister(slotId);
-    // The kind the server read off the stored bytes, not the name's guess.
-    if (!isMediaBlockType(stored.kind)) {
-      patchUploadSlot(view, slotId, {
-        phase: 'failed',
-        failure: failureOf(new UploadFailedError('unsupportedType'), file),
-      });
-      return;
-    }
-    if (!view.editable) {
-      patchUploadSlot(view, slotId, { phase: 'failed', failure: READ_ONLY });
-      return;
-    }
-    insertSlotBlock(
-      view,
-      slotId,
-      {
-        type: stored.kind,
-        props: {
-          url: stored.fileUrl,
-          name: file.name,
-          // The size the server read off the stored picture, which for one with
-          // an EXIF orientation is its upright copy (inner#1367 §4.8a).
-          ...(typeof stored.width === 'number' &&
-            typeof stored.height === 'number' && { mediaWidth: stored.width, mediaHeight: stored.height }),
-        },
-      },
-      deps.undo,
-    );
-    held.delete(slotId);
-  }
-
+export function createFileUploads(deps: FileUploadsDeps): FileUploads {
   return {
-    async start(view, files, place, aimed) {
-      const maxBytes = await deps.maxUploadBytes();
-      const admitted: File[] = [];
+    prepare(files) {
+      const maxBytes = deps.maxUploadBytes();
+      const admitted: { file: File; block: PendingBlock }[] = [];
       for (const file of files) {
         const rejection = rejectionOf(file, maxBytes);
-        if (rejection === null) {
-          admitted.push(file);
-        } else {
-          deps.refuse(`canvas.upload.${rejection}`, {
-            filename: file.name,
-            ...refusedFormatParams(file),
-          });
+        if (rejection !== null) {
+          deps.refuse(`canvas.upload.${rejection}`, { filename: file.name, ...refusedFormatParams(file) });
+          continue;
         }
+        const type = fileToNodeSpec(file).nodeType as MediaBlockType;
+        admitted.push({ file, block: pendingBlock(type, crypto.randomUUID(), file.name, '') });
       }
-      if (admitted.length === 0) return;
-      const gap = place();
-      if (gap === null) return;
-      const ids = addUploadBatch(view, gap, admitted.map((file) => file.name), aimed, deps.undo);
-      ids.forEach((slotId, k) => {
-        held.set(slotId, admitted[k]!);
-        void run(view, slotId);
-      });
-    },
-
-    retry(view, slotId) {
-      const slot = uploadSlots(view.state).find((s) => s.id === slotId);
-      if (slot?.phase !== 'failed' || slot.failure?.retryable !== true) return;
-      patchUploadSlot(view, slotId, { phase: 'uploading', progress: null, failure: null });
-      void run(view, slotId);
-    },
-
-    remove(view, slotId) {
-      held.delete(slotId);
-      removeUploadSlot(view, slotId);
+      if (admitted.length === 0) return null;
+      return {
+        blocks: admitted.map(({ block }) => block),
+        start: () => {
+          for (const { file, block } of admitted) deps.start(block.props.uploadId, { kind: 'file', file });
+        },
+      };
     },
   };
 }

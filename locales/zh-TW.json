@@ -1470,7 +1470,6 @@
         "video": "影片",
         "uploading": "上傳中",
         "uploadingPercent": "上傳中 {percent}%",
-        "readOnly": "目前唯讀。",
         "retry": "重試",
         "remove": "移除",
         "notFinished": "上傳沒有完成",

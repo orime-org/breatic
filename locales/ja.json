@@ -1470,7 +1470,6 @@
         "video": "動画",
         "uploading": "アップロード中",
         "uploadingPercent": "アップロード中 {percent}%",
-        "readOnly": "現在は読み取り専用です。",
         "retry": "再試行",
         "remove": "削除",
         "notFinished": "アップロードが完了していません",
