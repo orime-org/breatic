@@ -2,476 +2,110 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * inner#1127 A4–A6, A11, A12, A15: one file's way from being picked to being
- * a block, cell by cell of the design's §3.4 transition table.
+ * Files put into a body by paste, drop or the insert menu (inner#1351 +
+ * inner#1390 design §5.9): admitted at once on the canvas's rules plus the
+ * body's own, each admitted file becomes a pending media block, and its
+ * upload starts once the blocks are in.
  */
 
-import { describe, it, expect, afterEach, vi } from 'vitest';
-import * as Y from 'yjs';
+import { describe, it, expect, vi } from 'vitest';
 
-import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared';
-
-import { UploadFailedError, type StoredUpload } from '@web/data/upload/media-upload';
-import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
-import {
-  createDocumentUploader,
-  type DocumentUploaderDeps,
-} from '@web/spaces/document/document-uploads';
-import {
-  documentUploadsExtension,
-  holdGap,
-  uploadSlots,
-} from '@web/spaces/document/document-upload-slots';
-import { gapBefore } from './textblocks';
-
-type Editor = ReturnType<typeof buildDocumentEditor>;
-
-const mounted: Editor[] = [];
-
-afterEach(() => {
-  mounted.splice(0).forEach((editor) => {
-    editor.unmount();
-  });
-});
-
-/** A block as this file reads it. */
-interface Seen {
-  id: string;
-  type: string;
-  props: Record<string, unknown>;
-  content?: { text?: string }[];
-}
+import { createFileUploads, type FileUploadsDeps } from '@web/spaces/document/document-uploads';
 
 /**
- * Opens an editor holding A and B.
- * @returns The editor.
- */
-function open(): Editor {
-  const doc = new Y.Doc();
-  Y.applyUpdate(doc, encodeInitialSpaceContent('document'));
-  const editor = buildDocumentEditor({
-    fragment: documentBodyFragment(doc),
-    extensions: [documentUploadsExtension()],
-  });
-  const root = document.createElement('div');
-  document.body.appendChild(root);
-  editor.mount(root);
-  mounted.push(editor);
-  editor.replaceBlocks(editor.document, [
-    { type: 'paragraph', content: 'A' },
-    { type: 'paragraph', content: 'B' },
-  ] as never);
-  return editor;
-}
-
-/** An upload the test settles by hand. */
-interface Pending {
-  file: File;
-  progress: (fraction: number) => void;
-  resolve: (stored: StoredUpload) => void;
-  reject: (err: unknown) => void;
-}
-
-/**
- * Deps whose uploads wait for the test.
- * @param maxBytes - The upload cap.
- * @returns The deps, and the uploads they started.
- */
-function deps(maxBytes = 1000): { deps: DocumentUploaderDeps; pending: Pending[] } {
-  const pending: Pending[] = [];
-  return {
-    pending,
-    deps: {
-      maxUploadBytes: () => Promise.resolve(maxBytes),
-      upload: (file, onProgress) =>
-        new Promise<StoredUpload>((resolve, reject) => {
-          pending.push({ file, progress: onProgress, resolve, reject });
-        }),
-      register: vi.fn(),
-      unregister: vi.fn(),
-      refuse: vi.fn(),
-      undo: { stopCapturing: vi.fn() },
-    },
-  };
-}
-
-/**
- * A file of this type and size.
+ * A file of a given type and size.
  * @param name - Its name.
- * @param type - Its type.
- * @param size - How many bytes.
+ * @param type - Its MIME type.
+ * @param size - Its size in bytes.
  * @returns The file.
  */
-function file(name: string, type: string, size = 10): File {
+function file(name: string, type: string, size = 8): File {
   return new File([new Uint8Array(size)], name, { type });
 }
 
 /**
- * The editor's blocks.
- * @param editor - The editor.
- * @returns The top-level blocks.
+ * File uploads whose cap and sinks the test reads.
+ * @param maxUploadBytes - The cap the page knows.
+ * @returns The uploads and their deps.
  */
-function blocks(editor: Editor): Seen[] {
-  return editor.document as Seen[];
+function uploads(maxUploadBytes = 1000): { deps: FileUploadsDeps; files: ReturnType<typeof createFileUploads> } {
+  const deps: FileUploadsDeps = {
+    maxUploadBytes: () => maxUploadBytes,
+    refuse: vi.fn(),
+    start: vi.fn(),
+  };
+  return { deps, files: createFileUploads(deps) };
 }
 
-/**
- * Lets the uploader's awaits run.
- * @returns When they have.
- */
-async function settle(): Promise<void> {
-  await new Promise((resolve) => setTimeout(resolve, 0));
+/** A pending block as {@link createFileUploads} builds it. */
+interface Built {
+  type: string;
+  props: { url: string; uploadId: string; name: string; caption: string };
 }
 
-/**
- * Starts one batch between A and B.
- * @param editor - The editor.
- * @param uploader - The uploader.
- * @param files - The files.
- * @param quoted - Whether the block before the gap is quoted.
- */
-async function start(
-  editor: Editor,
-  uploader: ReturnType<typeof createDocumentUploader>,
-  files: File[],
-  quoted = false,
-): Promise<void> {
-  const [a, b] = blocks(editor);
-  if (quoted) editor.updateBlock(a!.id, { props: { quoted: true } } as never);
-  const view = editor.prosemirrorView!;
-  await uploader.start(view, files, () => gapBefore(view.state.doc, b!.id), false);
-  await settle();
-}
-
-describe('admission (A5)', () => {
+describe('admission', () => {
   it.each([
     ['an empty file', file('e.png', 'image/png', 0), 'canvas.upload.empty'],
     ['a file over the cap', file('big.png', 'image/png', 2000), 'canvas.upload.tooLarge'],
     ['a format we do not take', file('loop.gif', 'image/gif'), 'canvas.upload.unsupportedType'],
     ['a file that is not media', file('notes.txt', 'text/plain'), 'canvas.upload.unsupportedType'],
-  ])('refuses %s with a toast and draws no placeholder', async (_label, picked, key) => {
-    const editor = open();
-    const { deps: d, pending } = deps();
-    const uploader = createDocumentUploader(d);
+  ])('refuses %s at once, with a toast, and makes no block', (_label, picked, key) => {
+    const { deps, files } = uploads();
 
-    await start(editor, uploader, [picked]);
+    const prepared = files.prepare([picked]);
 
-    expect(d.refuse).toHaveBeenCalledWith(key, expect.objectContaining({ filename: picked.name }));
-    expect(uploadSlots(editor.prosemirrorView!.state)).toEqual([]);
-    expect(pending).toEqual([]);
+    expect(prepared).toBeNull();
+    expect(deps.refuse).toHaveBeenCalledWith(key, expect.objectContaining({ filename: picked.name }));
   });
 
-  it('asks for no gap when every file is refused', async () => {
-    const editor = open();
-    const { deps: d } = deps();
-    const uploader = createDocumentUploader(d);
-    const place = vi.fn(() => null);
+  it('with no cap read yet takes a large file and leaves it to the server', () => {
+    const { files } = uploads(Infinity);
 
-    await uploader.start(editor.prosemirrorView!, [file('e.png', 'image/png', 0)], place, false);
-
-    expect(place).not.toHaveBeenCalled();
+    expect(files.prepare([file('big.png', 'image/png', 2000)])).not.toBeNull();
   });
 
-  it('starts the files it admits and refuses only the others', async () => {
-    const editor = open();
-    const { deps: d, pending } = deps();
-    const uploader = createDocumentUploader(d);
+  it('makes blocks only for the files it admits', () => {
+    const { deps, files } = uploads();
 
-    await start(editor, uploader, [file('a.png', 'image/png'), file('e.png', 'image/png', 0)]);
+    const prepared = files.prepare([file('a.png', 'image/png'), file('e.png', 'image/png', 0)]);
 
-    expect(pending.map((p) => p.file.name)).toEqual(['a.png']);
-    expect(uploadSlots(editor.prosemirrorView!.state).map((s) => s.name)).toEqual(['a.png']);
+    expect((prepared!.blocks as Built[]).map((b) => b.props.name)).toEqual(['a.png']);
+    expect(deps.refuse).toHaveBeenCalledOnce();
   });
 });
 
-describe('a batch and the undo step (A10)', () => {
-  it('closes the reader\'s undo step before the batch starts', async () => {
-    const editor = open();
-    const { deps: d } = deps();
-    const view = editor.prosemirrorView!;
-    const seen: number[] = [];
-    const uploader = createDocumentUploader({
-      ...d,
-      undo: {
-        stopCapturing: () => {
-          seen.push(uploadSlots(view.state).length);
-        },
-      },
-    });
+describe('the blocks', () => {
+  it('are pending blocks of each file\'s kind, named after it, each with its own upload', () => {
+    const { files } = uploads();
 
-    await start(editor, uploader, [file('a.png', 'image/png')]);
-
-    expect(seen[0]).toBe(0);
-  });
-});
-
-describe('a gap held while admission waits (A2)', () => {
-  it('lands between the rows it was dropped between when a row is added above meanwhile', async () => {
-    const editor = open();
-    const { deps: d, pending } = deps();
-    let release!: (bytes: number) => void;
-    const uploader = createDocumentUploader({
-      ...d,
-      maxUploadBytes: () => new Promise<number>((resolve) => {
-        release = resolve;
-      }),
-    });
-    const view = editor.prosemirrorView!;
-    const [a, b] = blocks(editor);
-    const started = uploader.start(
-      view,
-      [file('m.png', 'image/png')],
-      holdGap(view, gapBefore(view.state.doc, b!.id)),
-      false,
-    );
-    editor.insertBlocks([{ type: 'paragraph', content: 'X' }] as never, a!.id, 'before');
-    release(1000);
-    await started;
-    await settle();
-    pending[0]!.resolve({ fileUrl: 'https://cdn.example/m.png', assetId: 'x', kind: 'image', width: null, height: null });
-    await settle();
-
-    expect(blocks(editor).map((block) => (block.type === 'image' ? 'image' : (block.content ?? []).map((c) => c.text ?? '').join('')))).toEqual([
-      'X',
-      'A',
-      'image',
-      'B',
+    const prepared = files.prepare([
+      file('a.png', 'image/png'),
+      file('b.mp4', 'video/mp4'),
+      file('c.mp3', 'audio/mpeg'),
     ]);
-  });
-});
 
-describe('uploading (A4, A12)', () => {
-  it('registers the upload as in flight until it settles', async () => {
-    const editor = open();
-    const { deps: d, pending } = deps();
-    const uploader = createDocumentUploader(d);
-
-    await start(editor, uploader, [file('a.png', 'image/png')]);
-    const [slot] = uploadSlots(editor.prosemirrorView!.state);
-    expect(d.register).toHaveBeenCalledWith(slot!.id);
-    expect(d.unregister).not.toHaveBeenCalled();
-
-    pending[0]!.resolve({ fileUrl: 'https://cdn.example/a.png', assetId: 'x', kind: 'image', width: null, height: null });
-    await settle();
-    expect(d.unregister).toHaveBeenCalledWith(slot!.id);
+    const blocks = prepared!.blocks as Built[];
+    expect(blocks.map((b) => [b.type, b.props.url, b.props.name, b.props.caption])).toEqual([
+      ['image', '', 'a.png', ''],
+      ['video', '', 'b.mp4', ''],
+      ['audio', '', 'c.mp3', ''],
+    ]);
+    const ids = blocks.map((b) => b.props.uploadId);
+    expect(new Set(ids).size).toBe(3);
+    expect(ids.every((id) => id !== '')).toBe(true);
   });
 
-  it('shows the share that has landed', async () => {
-    const editor = open();
-    const { deps: d, pending } = deps();
-    const uploader = createDocumentUploader(d);
+  it('start nothing until told, then start each file under its block\'s upload', () => {
+    const { deps, files } = uploads();
+    const a = file('a.png', 'image/png');
+    const b = file('b.mp4', 'video/mp4');
 
-    await start(editor, uploader, [file('clip.mp4', 'video/mp4')]);
-    pending[0]!.progress(0.4);
+    const prepared = files.prepare([a, b])!;
+    expect(deps.start).not.toHaveBeenCalled();
+    prepared.start();
 
-    expect(uploadSlots(editor.prosemirrorView!.state)[0]!.progress).toBe(0.4);
-  });
-});
-
-describe('an upload that succeeds (A13, A15)', () => {
-  it.each([
-    ['photo.png', 'image/png', 'image'],
-    ['clip.mp4', 'video/mp4', 'video'],
-    ['song.mp3', 'audio/mpeg', 'audio'],
-  ])('turns %s into a %s block carrying the registered address', async (name, type, expected) => {
-    const editor = open();
-    const { deps: d, pending } = deps();
-    const uploader = createDocumentUploader(d);
-
-    await start(editor, uploader, [file(name, type)], true);
-    pending[0]!.resolve({ fileUrl: `https://cdn.example/${name}`, assetId: 'x', kind: expected, width: null, height: null });
-    await settle();
-
-    const media = blocks(editor)[1]!;
-    expect(media.type).toBe(expected);
-    expect(media.props).toMatchObject({
-      url: `https://cdn.example/${name}`,
-      name,
-      quoted: true,
-    });
-    expect(uploadSlots(editor.prosemirrorView!.state)).toEqual([]);
-  });
-
-  it.each([
-    [true, true],
-    [false, false],
-  ])('takes the quoting of the empty line after the gap only when aimed (aimed %s, quoted %s)', async (aimed, quoted) => {
-    const editor = open();
-    editor.replaceBlocks(editor.document, [
-      { type: 'paragraph', content: 'A' },
-      { type: 'paragraph', props: { quoted: true } },
-      { type: 'paragraph', content: 'B' },
-    ] as never);
-    const { deps: d, pending } = deps();
-    const uploader = createDocumentUploader(d);
-    const view = editor.prosemirrorView!;
-    const empty = blocks(editor)[1]!.id;
-
-    await uploader.start(view, [file('a.png', 'image/png')], () => gapBefore(view.state.doc, empty), aimed);
-    await settle();
-    pending[0]!.resolve({ fileUrl: 'https://cdn.example/a.png', assetId: 'x', kind: 'image', width: null, height: null });
-    await settle();
-
-    expect(blocks(editor)[1]!.props).toMatchObject({ name: 'a.png', quoted });
-  });
-
-  it('makes the block the kind the server read off the stored bytes', async () => {
-    const editor = open();
-    const { deps: d, pending } = deps();
-    const uploader = createDocumentUploader(d);
-
-    await start(editor, uploader, [file('clip.png', 'image/png')]);
-    pending[0]!.resolve({ fileUrl: 'https://cdn.example/clip.mp4', assetId: 'x', kind: 'video', width: null, height: null });
-    await settle();
-
-    expect(blocks(editor)[1]!.type).toBe('video');
-  });
-
-  // The server read the size off the stored picture, which for one with an
-  // EXIF orientation is its upright copy (inner#1367 §4.8a).
-  it('writes the size the server read off the stored picture onto the block (A23)', async () => {
-    const editor = open();
-    const { deps: d, pending } = deps();
-    const uploader = createDocumentUploader(d);
-
-    await start(editor, uploader, [file('clip.png', 'image/png')]);
-    pending[0]!.resolve({
-      fileUrl: 'https://cdn.example/clip.png',
-      assetId: 'x',
-      kind: 'image',
-      width: 640,
-      height: 360,
-    });
-    await settle();
-
-    expect(blocks(editor)[1]!.props).toMatchObject({ mediaWidth: 640, mediaHeight: 360 });
-  });
-
-  it('writes no size when the server read none (A23)', async () => {
-    const editor = open();
-    const { deps: d, pending } = deps();
-    const uploader = createDocumentUploader(d);
-
-    await start(editor, uploader, [file('clip.png', 'image/png')]);
-    pending[0]!.resolve({ fileUrl: 'https://cdn.example/clip.png', assetId: 'x', kind: 'image', width: null, height: null });
-    await settle();
-
-    expect(blocks(editor)[1]!.props['mediaWidth']).toBeUndefined();
-    expect(blocks(editor)[1]!.props['mediaHeight']).toBeUndefined();
-  });
-
-  it('fails as a format we do not take when the server filed the bytes as something else', async () => {
-    const editor = open();
-    const { deps: d, pending } = deps();
-    const uploader = createDocumentUploader(d);
-
-    await start(editor, uploader, [file('model.png', 'image/png')]);
-    pending[0]!.resolve({ fileUrl: 'https://cdn.example/model.glb', assetId: 'x', kind: 'three_d', width: null, height: null });
-    await settle();
-
-    expect(blocks(editor)).toHaveLength(2);
-    expect(uploadSlots(editor.prosemirrorView!.state)[0]).toMatchObject({
-      phase: 'failed',
-      failure: { messageKey: 'canvas.upload.unsupportedType', retryable: false },
-    });
-  });
-
-  it('fails as read-only when the body stopped being editable meanwhile', async () => {
-    const editor = open();
-    const { deps: d, pending } = deps();
-    const uploader = createDocumentUploader(d);
-
-    await start(editor, uploader, [file('a.png', 'image/png')]);
-    editor.isEditable = false;
-    pending[0]!.resolve({ fileUrl: 'https://cdn.example/a.png', assetId: 'x', kind: 'image', width: null, height: null });
-    await settle();
-
-    expect(blocks(editor)).toHaveLength(2);
-    expect(uploadSlots(editor.prosemirrorView!.state)[0]).toMatchObject({
-      phase: 'failed',
-      failure: { messageKey: 'spaces.document.media.readOnly', retryable: true },
-    });
-  });
-});
-
-describe('an upload that fails (A6)', () => {
-  it.each([
-    ['upload', 'canvas.upload.failed', true],
-    ['transfer', 'canvas.upload.failed', true],
-    ['rateLimited', 'canvas.upload.rateLimited', true],
-    ['storage', 'canvas.upload.storageFull', false],
-    ['hash', 'canvas.upload.hashUnavailable', false],
-    ['unsupportedType', 'canvas.upload.unsupportedType', false],
-  ] as const)('on %s says %s, retryable %s', async (reason, key, retryable) => {
-    const editor = open();
-    const { deps: d, pending } = deps();
-    const uploader = createDocumentUploader(d);
-
-    await start(editor, uploader, [file('a.png', 'image/png')]);
-    const [slot] = uploadSlots(editor.prosemirrorView!.state);
-    pending[0]!.reject(new UploadFailedError(reason));
-    await settle();
-
-    expect(uploadSlots(editor.prosemirrorView!.state)[0]).toMatchObject({
-      phase: 'failed',
-      failure: { messageKey: key, retryable },
-    });
-    expect(d.unregister).toHaveBeenCalledWith(slot!.id);
-  });
-
-  it('sends the same file again on retry, and lands it where it was', async () => {
-    const editor = open();
-    const { deps: d, pending } = deps();
-    const uploader = createDocumentUploader(d);
-    const picked = file('a.png', 'image/png');
-
-    await start(editor, uploader, [picked]);
-    const [slot] = uploadSlots(editor.prosemirrorView!.state);
-    pending[0]!.reject(new UploadFailedError('upload'));
-    await settle();
-
-    uploader.retry(editor.prosemirrorView!, slot!.id);
-    expect(uploadSlots(editor.prosemirrorView!.state)[0]).toMatchObject({
-      phase: 'uploading',
-      failure: null,
-    });
-    expect(pending[1]!.file).toBe(picked);
-    expect(d.register).toHaveBeenCalledTimes(2);
-
-    pending[1]!.resolve({ fileUrl: 'https://cdn.example/a.png', assetId: 'x', kind: 'image', width: null, height: null });
-    await settle();
-    expect(blocks(editor).map((b) => b.type)).toEqual(['paragraph', 'image', 'paragraph']);
-  });
-
-  it('offers no retry where re-sending meets the same answer', async () => {
-    const editor = open();
-    const { deps: d, pending } = deps();
-    const uploader = createDocumentUploader(d);
-
-    await start(editor, uploader, [file('a.png', 'image/png')]);
-    const [slot] = uploadSlots(editor.prosemirrorView!.state);
-    pending[0]!.reject(new UploadFailedError('storage'));
-    await settle();
-
-    uploader.retry(editor.prosemirrorView!, slot!.id);
-
-    expect(pending).toHaveLength(1);
-    expect(uploadSlots(editor.prosemirrorView!.state)[0]!.phase).toBe('failed');
-  });
-
-  it('takes a failed placeholder away on remove', async () => {
-    const editor = open();
-    const { deps: d, pending } = deps();
-    const uploader = createDocumentUploader(d);
-
-    await start(editor, uploader, [file('a.png', 'image/png')]);
-    const [slot] = uploadSlots(editor.prosemirrorView!.state);
-    pending[0]!.reject(new UploadFailedError('storage'));
-    await settle();
-
-    uploader.remove(editor.prosemirrorView!, slot!.id);
-
-    expect(uploadSlots(editor.prosemirrorView!.state)).toEqual([]);
-    expect(blocks(editor)).toHaveLength(2);
+    const ids = (prepared.blocks as Built[]).map((block) => block.props.uploadId);
+    expect(deps.start).toHaveBeenNthCalledWith(1, ids[0], { kind: 'file', file: a });
+    expect(deps.start).toHaveBeenNthCalledWith(2, ids[1], { kind: 'file', file: b });
   });
 });
