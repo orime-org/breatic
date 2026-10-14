@@ -269,13 +269,16 @@ export {
   type CollaborationAction,
 } from "@core/analytics/collaboration.js";
 export { claimFirstMilestone, type FirstMilestone } from "@core/analytics/first-milestone.js";
+export { ANALYTICS_CONSENT_QUEUE, CONSENT_PRUNE_JOB, scheduleConsentPrune } from "@core/analytics/consent-retention.js";
 export {
   accountOnlyConsent,
   adsAllowedFor,
   adsOwnership,
+  eraseAccountAnalytics,
   getAccountAdsEvents,
   getAccountAnalytics,
   getAccountAttribution,
+  pruneConsentReceipts,
   recordConsentReceipts,
   recordGpcSignal,
   recordOptOutRequest,

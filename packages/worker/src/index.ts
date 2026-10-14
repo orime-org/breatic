@@ -40,6 +40,9 @@ import {
   unscheduleAdsUploadSweep,
   adsConversionConfig,
   type AdsConversionJob,
+  ANALYTICS_CONSENT_QUEUE,
+  pruneConsentReceipts,
+  scheduleConsentPrune,
 } from "@breatic/core";
 import { googleDataManagerSink, runAdsConversion, type AdsConversionSink } from "@worker/handlers/ads-conversion.js";
 import {
@@ -177,6 +180,7 @@ export function startWorker(): void {
     MEDIA_READ_QUEUE,
     MAIL_QUEUE,
     ADS_CONVERSION_QUEUE,
+    ANALYTICS_CONSENT_QUEUE,
   ]);
 
   const worker = createWorker<TaskJobData>("tasks", runTask);
@@ -290,6 +294,15 @@ export function startWorker(): void {
     logger.error({ err }, "ads_conversion_sweep_schedule_failed"),
   );
 
+  // Consent receipts that no longer count are deleted once a day, on every
+  // deployment whatever it sends (inner#1442 §4.4.6).
+  const consentPrune = createWorker(ANALYTICS_CONSENT_QUEUE, async () => {
+    const deleted = await pruneConsentReceipts(Date.now());
+    logger.info({ deleted }, "consent_receipts_pruned");
+  });
+  scheduleConsentPrune().catch((err: unknown) => logger.error({ err }, "consent_prune_schedule_failed"));
+  consentPrune.on("failed", (_job, err) => logger.error({ err }, "consent_prune_failed"));
+
   adsConversion.on("failed", (job, err) => {
     logger.error(
       {
@@ -364,6 +377,7 @@ export function startWorker(): void {
         MEDIA_READ_QUEUE,
         MAIL_QUEUE,
         ADS_CONVERSION_QUEUE,
+        ANALYTICS_CONSENT_QUEUE,
       ],
     },
     "BullMQ workers started",
@@ -452,6 +466,7 @@ export function startWorker(): void {
         () => mediaRead.close(),
         () => mail.close(),
         () => adsConversion.close(),
+        () => consentPrune.close(),
         () => flushServerAnalytics(),
       ],
       deadlineMs: SHUTDOWN_DEADLINE_MS,

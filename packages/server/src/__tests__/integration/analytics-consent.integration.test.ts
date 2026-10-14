@@ -28,11 +28,14 @@ import crypto from "node:crypto";
 import postgres from "postgres";
 import {
   accountOnlyConsent,
+  eraseAccountAnalytics,
   getAccountAdsEvents,
   getRedis,
   initCore,
   loadLocales,
+  pruneConsentReceipts,
   recordConsentReceipts,
+  recordOptOutRequest,
   sessionCookieName,
   setSession,
 } from "@breatic/core";
@@ -65,7 +68,7 @@ beforeAll(async () => {
 afterEach(async () => {
   for (const id of created.splice(0)) {
     await sql`DELETE FROM analytics_consent_events WHERE user_id = ${id}`;
-    await sql`UPDATE users SET deleted_at = now() WHERE id = ${id}`;
+    await sql`UPDATE users SET deleted_at = coalesce(deleted_at, now()) WHERE id = ${id}`;
   }
 });
 
@@ -376,5 +379,128 @@ describe("the account's consent for events no browser is behind", () => {
     expect(await receipts(id)).toHaveLength(1);
     expect(await getAccountAdsEvents(id, Date.now())).toBeNull();
     expect(await accountOnlyConsent(id, Date.now())).toEqual({ analytics: false, ads: false });
+  });
+});
+
+/**
+ * Insert a receipt as it would stand after the given age.
+ * @param userId - The account.
+ * @param row - The receipt's category, value, age and revision.
+ * @param row.category - `analytics` or `ads`.
+ * @param row.value - Consent or refusal.
+ * @param row.ageDays - How old it is.
+ * @param row.revision - Its policy revision.
+ * @returns Its decision id.
+ */
+async function insertReceipt(
+  userId: string,
+  row: { category: "analytics" | "ads"; value: boolean; ageDays: number; revision?: number },
+): Promise<string> {
+  const id = crypto.randomUUID();
+  await sql`
+    INSERT INTO analytics_consent_events (decision_id, user_id, category, value, source, decided_at, revision)
+    VALUES (${id}, ${userId}, ${row.category}, ${row.value}, 'banner', ${new Date(Date.now() - row.ageDays * DAY).toISOString()},
+            ${row.revision ?? CONSENT_REVISION})
+  `;
+  return id;
+}
+
+describe("pruneConsentReceipts", () => {
+  it("deletes analytics receipts and ads consents past 395 days or from an older revision, and keeps ads refusals", async () => {
+    const id = await insertUser();
+    const old = CONSENT_MAX_AGE_DAYS + 1;
+    const gone = [
+      await insertReceipt(id, { category: "analytics", value: true, ageDays: old }),
+      await insertReceipt(id, { category: "analytics", value: false, ageDays: old }),
+      await insertReceipt(id, { category: "analytics", value: true, ageDays: 1, revision: CONSENT_REVISION - 1 }),
+      await insertReceipt(id, { category: "ads", value: true, ageDays: old }),
+      await insertReceipt(id, { category: "ads", value: true, ageDays: 1, revision: CONSENT_REVISION - 1 }),
+    ];
+    const kept = [
+      await insertReceipt(id, { category: "analytics", value: false, ageDays: 1 }),
+      await insertReceipt(id, { category: "ads", value: true, ageDays: 1 }),
+      await insertReceipt(id, { category: "ads", value: false, ageDays: 1000, revision: CONSENT_REVISION - 1 }),
+    ];
+    await pruneConsentReceipts(Date.now());
+    const left = (await receipts(id)).map((r) => r.decision_id as string);
+    expect(left.sort()).toEqual([...kept].sort());
+    expect(left.some((d) => gone.includes(d))).toBe(false);
+  });
+});
+
+describe("recordOptOutRequest", () => {
+  it("records an ads refusal on the person's behalf that keeps ads off", async () => {
+    const id = await insertUser();
+    await recordConsentReceipts(id, parsed([decision()]), Date.now());
+    expect(await accountOnlyConsent(id, Date.now())).toMatchObject({ ads: true });
+    expect(await recordOptOutRequest(id, crypto.randomUUID(), CONSENT_REVISION)).toBe(true);
+    expect((await receipts(id)).at(-1)).toMatchObject({ category: "ads", value: false, source: "request" });
+    expect(await accountOnlyConsent(id, Date.now())).toMatchObject({ ads: false });
+  });
+
+  it("records nothing for a missing or deleted account", async () => {
+    expect(await recordOptOutRequest(crypto.randomUUID(), crypto.randomUUID(), CONSENT_REVISION)).toBe(false);
+    const id = await insertUser();
+    await sql`UPDATE users SET deleted_at = now() WHERE id = ${id}`;
+    expect(await recordOptOutRequest(id, crypto.randomUUID(), CONSENT_REVISION)).toBe(false);
+  });
+});
+
+describe("eraseAccountAnalytics", () => {
+  /**
+   * An account with a receipt, a GPC signal and consent kept on an order, an upload ticket and an ad upload.
+   * @returns Its id.
+   */
+  async function accountWithConsent(): Promise<string> {
+    const id = await insertUser();
+    await insertReceipt(id, { category: "ads", value: false, ageDays: 1 });
+    await sql`UPDATE users SET analytics_gpc_seen_at = now() WHERE id = ${id}`;
+    const [source] = await sql<{ id: string }[]>`
+      INSERT INTO credit_sources (id, kind) VALUES (gen_random_uuid(), 'payment') RETURNING id
+    `;
+    await sql`
+      INSERT INTO payments (id, user_id, amount_cents, status, credits_granted, metadata)
+      VALUES (${source!.id}, ${id}, 1000, 'completed', 1000,
+              ${sql.json({ locale: "en", analyticsConsent: { analytics: true, ads: true }, adsBrowser: { choice: null } })})
+    `;
+    const [studio] = await sql<{ id: string }[]>`
+      INSERT INTO studios (created_by_user_id, slug, type, name)
+      VALUES (${id}, ${`erase-${crypto.randomUUID().slice(0, 8)}`}, 'team', 'Team') RETURNING id
+    `;
+    await sql`
+      INSERT INTO upload_grants (user_id, studio_id, storage_key, declared_size, expires_at, analytics_consent)
+      VALUES (${id}, ${studio!.id}, ${`k/${crypto.randomUUID()}`}, 1, now() + interval '1 hour',
+              ${sql.json({ analytics: true, ads: true })})
+    `;
+    const job = { kind: "conversion", userId: id, browser: { choice: null, gpcAt: null, at: new Date().toISOString() } };
+    await sql`
+      INSERT INTO ads_conversion_uploads (conversion, transaction_id, payment_id, status, job)
+      VALUES ('signup', ${`signup:${id}`}, null, 'uploaded', ${sql.json(job)})
+    `;
+    return id;
+  }
+
+  it("refuses accounts that are not deleted, and changes nothing", async () => {
+    const live = await accountWithConsent();
+    const deleted = await accountWithConsent();
+    await sql`UPDATE users SET deleted_at = now() WHERE id = ${deleted}`;
+    expect(await eraseAccountAnalytics([live, deleted])).toEqual({ notDeleted: [live] });
+    expect(await receipts(deleted)).toHaveLength(1);
+  });
+
+  it("removes the receipts, the GPC signal and every consent snapshot of deleted accounts", async () => {
+    const id = await accountWithConsent();
+    await sql`UPDATE users SET deleted_at = now() WHERE id = ${id}`;
+    expect(await eraseAccountAnalytics([id])).toEqual({ notDeleted: [] });
+    expect(await receipts(id)).toHaveLength(0);
+    expect(await gpcSeenAt(id)).toBeNull();
+    const [payment] = await sql<{ metadata: Record<string, unknown> }[]>`SELECT metadata FROM payments WHERE user_id = ${id}`;
+    expect(payment!.metadata).toEqual({ locale: "en" });
+    const [grant] = await sql<{ c: unknown }[]>`SELECT analytics_consent AS c FROM upload_grants WHERE user_id = ${id}`;
+    expect(grant!.c).toBeNull();
+    const [upload] = await sql<{ job: Record<string, unknown> }[]>`
+      SELECT job FROM ads_conversion_uploads WHERE transaction_id = ${`signup:${id}`}
+    `;
+    expect(upload!.job.browser).toBeNull();
   });
 });
