@@ -29,7 +29,7 @@ import {
   type DrawTool,
   type MaskDisplayColor,
 } from '@web/stores/drawing-draft';
-import { EMPTY_EXPAND, type ExpandDraft } from '@web/stores/expand-draft';
+import { EMPTY_EXPAND, type ExpandDraft, type ExpandView } from '@web/stores/expand-draft';
 import {
   EMPTY_MARK,
   redoneMark,
@@ -361,8 +361,15 @@ export interface CanvasSessionState {
   resetMiniToolSource: (sourceContent: string, params: Readonly<Record<string, unknown>>) => void;
   /** Record the source size the crop box read off the shown element. */
   setMiniToolSourceSize: (size: { width: number; height: number }) => void;
-  /** Set the expand frame and its ratio, on a tool that expands. */
-  setExpand: (next: Pick<ExpandDraft, 'frame' | 'ratio'>) => void;
+  /**
+   * Set the expand frame and its ratio, on a tool that expands. A drag says how
+   * far the picture has moved; any other write that changes the frame wraps it
+   * around the picture where the node shows it, and one that leaves the frame
+   * as it was leaves the picture where it is.
+   */
+  setExpand: (next: Pick<ExpandDraft, 'frame' | 'ratio'> & { shift?: ExpandDraft['shift'] }) => void;
+  /** Record where the node shows the picture, for the expand frame drawn outside it. */
+  setExpandView: (view: ExpandView) => void;
   /** Record the longest side the expand tool's model takes. */
   setExpandCap: (cap: number) => void;
   /** Record how far the expand frame reaches below the node. */
@@ -736,8 +743,20 @@ export function createCanvasSessionStore(): CanvasSessionStore {
         }),
       setExpand: (next) =>
         set((s) => {
-          if (s.miniTool?.expand) {
-            s.miniTool = { ...s.miniTool, expand: castDraft({ ...s.miniTool.expand, frame: { ...next.frame }, ratio: next.ratio }) };
+          const held = s.miniTool?.expand;
+          if (s.miniTool && held) {
+            const same = JSON.stringify(held.frame) === JSON.stringify(next.frame);
+            const shift = next.shift ?? (same ? held.shift : EMPTY_EXPAND.shift);
+            s.miniTool = {
+              ...s.miniTool,
+              expand: castDraft({ ...held, frame: { ...next.frame }, ratio: next.ratio, shift: { ...shift } }),
+            };
+          }
+        }),
+      setExpandView: (view) =>
+        set((s) => {
+          if (s.miniTool?.expand && JSON.stringify(s.miniTool.expand.view) !== JSON.stringify(view)) {
+            s.miniTool = { ...s.miniTool, expand: castDraft({ ...s.miniTool.expand, view }) };
           }
         }),
       // A drawing tool lets go of the selected object, so the next colour or

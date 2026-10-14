@@ -2,15 +2,19 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * The expand frame on the node (inner#1303 §6.3): handles grow the frame past
- * the picture, and once grown the picture can be moved inside it. The node is
- * shown 400×300 at 100,50; the source is 1600×1000 pixels.
+ * The expand frame (inner#1303 §6.3): handles grow the frame past the
+ * picture, and once grown the picture can be moved inside it. The node sits at
+ * the canvas's origin, which is on screen at 100,50, so its picture shows
+ * 400×300 at 100,50; the source is 1600×1000 pixels. The frame is drawn in the
+ * canvas's viewport, the cover in the node.
  */
 
 import { act, fireEvent, render, screen } from '@testing-library/react';
+import { ViewportPortal } from '@xyflow/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { cropCanvas, installLayout } from '@web/spaces/canvas/crop/__tests__/crop-harness';
+import { ExpandFrameOverlay } from '@web/spaces/canvas/mini-tool/ExpandFrameOverlay';
 import { canvasSessions } from '@web/stores/canvas-session';
 import { UNIT_FRAME } from '@web/stores/expand-draft';
 
@@ -29,16 +33,34 @@ afterEach(() => {
 });
 
 /**
+ * The canvas with the node and the frame drawn in its viewport.
+ * @param zoom - The canvas zoom.
+ * @returns The tree.
+ */
+const canvas = (zoom = 1) =>
+  cropCanvas(
+    [NODE],
+    <ViewportPortal>
+      <ExpandFrameOverlay />
+    </ViewportPortal>,
+    zoom,
+    { x: 100, y: 50 },
+  );
+
+/**
  * Render the node and open the expand tool on it.
  * @param toolId - The tool.
+ * @param zoom - The canvas zoom.
+ * @returns What render gives.
  */
-function mount(toolId = 'image.expand', zoom = 1): void {
-  render(cropCanvas([NODE], null, zoom));
+function mount(toolId = 'image.expand', zoom = 1): ReturnType<typeof render> {
+  const view = render(canvas(zoom));
   act(() => {
     store().openMiniTool('n1', toolId, { sourceContent: NODE.src, params: {} });
     store().setMiniToolSourceSize({ width: 1600, height: 1000 });
     store().setExpandCap(12288);
   });
+  return view;
 }
 
 /**
@@ -64,6 +86,27 @@ describe('NodeExpandLayer', () => {
     const frame = screen.getByTestId('mini-tool-expand-frame');
     expect(frame.style.left).toBe('0px');
     expect(frame.style.width).toBe('400px');
+  });
+
+  // The canvas unmounts a node whose own box is off screen, while the frame
+  // reaches past it: the frame is drawn in the viewport, outside the node.
+  it('draws the frame in the canvas’s viewport, outside the node', () => {
+    mount();
+    const frame = screen.getByTestId('mini-tool-expand-frame');
+    expect(frame.closest('.react-flow__node')).toBeNull();
+    expect(frame.closest('.react-flow__viewport-portal')).not.toBeNull();
+    expect(screen.getByTestId('mini-tool-expand-cover').closest('.react-flow__node')).not.toBeNull();
+  });
+
+  it('keeps the frame and the moved picture where they were when the canvas is drawn again', () => {
+    const { unmount } = mount();
+    act(() => store().setExpand({ frame: { x: -0.5, y: 0, width: 2, height: 1 }, ratio: 'free' }));
+    drag(screen.getByTestId('mini-tool-expand-source'), [300, 200], [340, 200]);
+    const left = screen.getByTestId('mini-tool-expand-frame').style.left;
+    unmount();
+    render(canvas());
+    expect(screen.getByTestId('mini-tool-expand-frame').style.left).toBe(left);
+    expect(store().miniTool?.expand?.frame).toEqual({ x: -0.6, y: 0, width: 2, height: 1 });
   });
 
   it('keeps the canvas marquee and node clicks off its frame', () => {

@@ -66,12 +66,14 @@ const NODE_TYPES = { media: MediaNode };
  * @param nodes - The media nodes, by id.
  * @param children - Rendered inside the ReactFlow, where canvas chrome lives.
  * @param zoom - The canvas zoom.
+ * @param pan - Where the canvas's origin sits on screen.
  * @returns The tree.
  */
 export function cropCanvas(
   nodes: ReadonlyArray<{ id: string } & MediaNodeData>,
   children: React.ReactNode,
   zoom = 1,
+  pan = { x: 0, y: 0 },
 ): React.JSX.Element {
   return (
     <div data-region='space'>
@@ -79,7 +81,7 @@ export function cropCanvas(
         nodes={nodes.map(({ id, ...data }) => ({ id, type: 'media', position: { x: 0, y: 0 }, data }))}
         edges={[]}
         nodeTypes={NODE_TYPES}
-        defaultViewport={{ x: 0, y: 0, zoom }}
+        defaultViewport={{ ...pan, zoom }}
         minZoom={CANVAS_MIN_ZOOM}
         maxZoom={CANVAS_MAX_ZOOM}
       >

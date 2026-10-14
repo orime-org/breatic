@@ -24,6 +24,13 @@ export type ExpandRatio = (typeof EXPAND_RATIOS)[number];
 /** The frame that is the source itself. */
 export const UNIT_FRAME: Readonly<ExpandFrame> = Object.freeze({ x: 0, y: 0, width: 1, height: 1 });
 
+/** Where the node shows the picture: its offset in the node and its drawn size, in layout pixels. */
+export interface ExpandView {
+  readonly at: { readonly x: number; readonly y: number };
+  readonly box: { readonly width: number; readonly height: number };
+  readonly src: string | null;
+}
+
 /** The expand tool's draft. */
 export interface ExpandDraft {
   readonly frame: ExpandFrame;
@@ -32,7 +39,27 @@ export interface ExpandDraft {
   readonly cap: number | null;
   /** How far the frame reaches below the node, in screen pixels, so the panel can hang under it. */
   readonly drop: number;
+  /**
+   * How far the picture has been moved inside the frame since the frame last
+   * wrapped it, as shares of it: the frame keeps its place on the canvas and
+   * the picture moves. Held here rather than in the node, which the canvas
+   * unmounts while it is off screen.
+   */
+  readonly shift: { readonly x: number; readonly y: number };
+  /**
+   * Where the node last showed the picture, which the frame is drawn from: the
+   * frame is drawn outside the node, so it stays while the node is off screen
+   * and unmounted. Null until the node has measured it.
+   */
+  readonly view: ExpandView | null;
 }
 
 /** The draft an expand tool opens with, and goes back to when its source changes. */
-export const EMPTY_EXPAND: Readonly<ExpandDraft> = Object.freeze({ frame: UNIT_FRAME, ratio: 'free', cap: null, drop: 0 });
+export const EMPTY_EXPAND: Readonly<ExpandDraft> = Object.freeze({
+  frame: UNIT_FRAME,
+  ratio: 'free',
+  cap: null,
+  drop: 0,
+  shift: Object.freeze({ x: 0, y: 0 }),
+  view: null,
+});

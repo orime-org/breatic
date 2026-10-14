@@ -90,6 +90,7 @@ import {
 import { exportCropBlob } from '@web/spaces/canvas/focus/crop-export';
 import { cropSourceSelector, intrinsicSize, isCropSource } from '@web/spaces/canvas/focus/crop-source';
 import { exportDrawing } from '@web/spaces/canvas/mini-tool/export-drawing';
+import { ExpandFrameOverlay } from '@web/spaces/canvas/mini-tool/ExpandFrameOverlay';
 import { exportExpand } from '@web/spaces/canvas/mini-tool/expand-export';
 import { focusFailureMessageKey, runFocusCrop } from '@web/spaces/canvas/focus/run-focus-crop';
 import {
@@ -4724,6 +4725,14 @@ function CanvasSpaceInner({
               the viewport, so pan and zoom carry it with the nodes. */}
             {dropLayer}
             <CanvasCursorLayer awareness={awareness} />
+            {/* The expand frame reaches past its node, which the canvas
+              unmounts while its own box is off screen; drawn here, over every
+              node like the new-note box, it stays while any part is visible. */}
+            <ViewportPortal>
+              <div className='absolute top-0 left-0' style={{ zIndex: ANNOTATION_COMPOSER_Z }}>
+                <ExpandFrameOverlay />
+              </div>
+            </ViewportPortal>
             {composerAt === null ? null : (
             // Portalled into the viewport, so the box stays over the spot that
             // was clicked through any pan or zoom. The node itself does not
