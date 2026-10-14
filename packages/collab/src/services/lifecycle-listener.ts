@@ -2,168 +2,160 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Project-lifecycle event listener backed by Redis Streams.
+ * Project-lifecycle commands, from the cross-service stream (inner#1497 §6.2).
  *
- * Consumes `ProjectLifecycleEvent` commands from the
- * `${env}:stream:project-lifecycle` stream (forwarded by the server's
- * transactional-outbox relay) and performs the yjs-DB side that can no
- * longer ride the server's business transaction:
+ * The server's transactional-outbox relay forwards each command onto
+ * `${env}:stream:project-lifecycle`. Every collab instance reads it as one
+ * consumer group, so each command is held by one instance at a time (an
+ * unacknowledged one goes to another once idle). That instance does the part that
+ * must happen once and then asks every instance to close its own
+ * connections to the project:
  *
- *   - `project:duplicated` → copy `project-{src}/*` → `project-{new}/*`
- *                            in the yjs DB + close the new project's
- *                            connections so a client that raced in and
- *                            lazy-seeded a default meta reloads the
- *                            copied source content.
- *   - `project:archived`   → close live connections, so members
+ *   - `project:duplicated` → copy `project-{src}/*` → `project-{new}/*` in the
+ *                            yjs DB, then close the new project's connections
+ *                            so a client that raced in and lazy-seeded a
+ *                            default meta reloads the copied content.
+ *   - `project:archived`   → close the project's connections, so members
  *                            re-authenticate and come back read-only.
- *   - `project:restored`   → close live connections, so members
+ *   - `project:restored`   → close the project's connections, so members
  *                            re-authenticate and come back writable.
  *
- * Durable resume — the last handled stream id is persisted to Redis so
- * a collab restart never drops an in-flight command (a dropped duplicate
- * = empty project, a dropped archive = writers who stay writable). Handlers
- * are idempotent (`ON CONFLICT` on the copy; a kick of no connections is a
- * no-op), so at-least-once redelivery is safe; a transient DB error throws
- * and the consumer retries.
+ * A command is acknowledged once the close request is published; a copy or a
+ * publish that throws leaves it for a retry. The copy is idempotent on its
+ * canvas documents (`ON CONFLICT DO NOTHING`).
  */
 
-import type { Hocuspocus } from "@hocuspocus/server";
-import { createLogger, lifecycleStreamKey } from "@breatic/core";
-import { COLLAB_REAUTH_REASONS, parseDocName, type ProjectLifecycleEvent } from "@breatic/shared";
-import { startStreamConsumer } from "@collab/services/event-stream.js";
+import {
+  createLogger,
+  publishProjectConnectionsClose,
+  type Redis,
+} from "@breatic/core";
+import type { ProjectConnectionsCloseReason, ProjectLifecycleEvent } from "@breatic/shared";
+import {
+  startGroupConsumer,
+  type EntryOutcome,
+  type GroupConsumer,
+  type GroupConsumerSettings,
+} from "@collab/services/stream-group-consumer.js";
 import * as yjsDocumentsRepo from "@collab/services/yjs-documents.repo.js";
 
 const logger = createLogger("lifecycle-listener");
 
-/**
- * Close frames for the lifecycle kick. Hocuspocus closes one document of a
- * shared socket with a CLOSE message that carries only the reason; the client
- * sees the code as 1000. So the REASON is the contract: for the reasons in
- * the web client's re-authenticate list it re-sends its token for that
- * document on the same socket, and `onAuthenticate` decides the outcome — an
- * archived project comes back read-only, a restored one writable, a
- * duplicated one re-loads its now-correct meta.
- */
-const CLOSE_PROJECT_REFRESHED = {
-  code: 4406,
-  reason: COLLAB_REAUTH_REASONS.projectContentUpdated,
-} as const;
-const CLOSE_PROJECT_ARCHIVED = { code: 4407, reason: COLLAB_REAUTH_REASONS.projectArchived } as const;
-const CLOSE_PROJECT_RESTORED = { code: 4408, reason: COLLAB_REAUTH_REASONS.projectRestored } as const;
+/** Consumer group every collab instance joins for lifecycle commands. */
+export const LIFECYCLE_GROUP = "collab-lifecycle";
 
-/**
- * Build the Redis key where this consumer persists its last-handled
- * stream id for durable resume.
- * @param envPrefix - Namespace for this consumer's cursor key (`ENV`)
- * @returns The `{envPrefix}:collab:project-lifecycle:last-id` cursor key
- */
-function lifecycleLastIdKey(envPrefix: string): string {
-  return `${envPrefix}:collab:project-lifecycle:last-id`;
-}
-
-/**
- * Close every live connection to any doc under a project (all users).
- *
- * Walks the loaded-document map and filters by the doc-name project id,
- * so meta + every canvas doc of the project are covered. Best-effort:
- * unloaded docs simply have no connections.
- * @param hocuspocus - Running Hocuspocus server whose connections are scanned
- * @param projectId - Project whose docs' connections are closed
- * @param close - Close frame sent to each connection
- * @param close.code - WebSocket close code
- * @param close.reason - Human-readable close reason
- */
-function kickAllFromProject(
-  hocuspocus: Hocuspocus,
+/** Asks every instance to close its connections to a project. */
+export type PublishConnectionsClose = (
   projectId: string,
-  close: { code: number; reason: string },
-): void {
-  const docs = hocuspocus.documents;
-  if (!docs) return;
-  for (const [docName, doc] of docs.entries()) {
-    const parsed = parseDocName(docName);
-    if (!parsed || parsed.projectId !== projectId) continue;
-    // The connection IS the map key from v4 on (the value only carries the
-    // client-id set); before that the key was the raw websocket and the
-    // connection hung off the value.
-    for (const [connection] of doc.connections) {
-      connection.close({ code: close.code, reason: close.reason });
-    }
-  }
-}
+  reason: ProjectConnectionsCloseReason,
+) => Promise<void>;
 
 /**
- * Dispatch one lifecycle command to its yjs-DB side + connection kick.
+ * Do the once-only part of one command and ask every instance to close the
+ * project's connections.
  *
- * A thrown error (transient DB failure) is propagated so the stream
- * consumer leaves the cursor un-advanced and retries; the idempotent
- * repo guards make a redelivery a safe no-op.
- *
- * Exported for unit testing the dispatch + kick without a live stream.
- * @param hocuspocus - Running Hocuspocus server for the connection kick
- * @param event - The lifecycle command read off the stream
+ * Exported for unit testing without a stream.
+ * @param event - The command read off the stream.
+ * @param publish - Publishes the close request.
+ * @throws {Error} When the copy or the publish fails; the consumer retries.
  */
 export async function handleLifecycleEvent(
-  hocuspocus: Hocuspocus,
   event: ProjectLifecycleEvent,
+  publish: PublishConnectionsClose,
 ): Promise<void> {
   if (event.type === "project:duplicated") {
     await yjsDocumentsRepo.duplicateByProjectPrefix(event.sourceId, event.newId);
-    kickAllFromProject(hocuspocus, event.newId, CLOSE_PROJECT_REFRESHED);
-    logger.info(
-      { sourceId: event.sourceId, newId: event.newId },
-      "project_duplicated_copy_handled",
-    );
+    await publish(event.newId, "content-updated");
+    logger.info({ sourceId: event.sourceId, newId: event.newId }, "project_duplicated_copy_handled");
     return;
   }
   if (event.type === "project:archived") {
-    kickAllFromProject(hocuspocus, event.projectId, CLOSE_PROJECT_ARCHIVED);
-    logger.info({ projectId: event.projectId }, "project_archived_kick_handled");
+    await publish(event.projectId, "archived");
+    logger.info({ projectId: event.projectId }, "project_archived_close_requested");
     return;
   }
   if (event.type === "project:restored") {
-    kickAllFromProject(hocuspocus, event.projectId, CLOSE_PROJECT_RESTORED);
-    logger.info({ projectId: event.projectId }, "project_restored_kick_handled");
+    await publish(event.projectId, "restored");
+    logger.info({ projectId: event.projectId }, "project_restored_close_requested");
     return;
   }
-  // Forward-compat: an unknown command type is skipped (not retried), so
-  // one bad event can't block the stream.
-  logger.warn(
-    { type: (event as { type?: string }).type },
-    "unknown_lifecycle_event_type",
-  );
+  // An unknown command type is skipped rather than retried, so one bad event
+  // can't block the stream.
+  logger.warn({ type: (event as { type?: string }).type }, "unknown_lifecycle_event_type");
 }
 
 /**
- * Start consuming project-lifecycle commands off the Redis stream.
- * @param hocuspocus - Running Hocuspocus server instance
- * @param streamRedisUrl - Redis URL for Streams (DB 2)
- * @param envPrefix - `ENV`, the namespace the last-id cursor key lives in.
- *   It MUST match the namespace of the stream key (which core derives from
- *   `ENV` too) — a cursor renamed out from under a running deployment reads
- *   as "missing", and a missing cursor replays the stream from `0-0`.
- * @returns Cleanup function to stop consuming
+ * Read one entry's payload as a lifecycle command.
+ * @param payload - The entry's `payload` field.
+ * @returns The command, or null when it is not a JSON object.
  */
-export function startLifecycleListener(
-  hocuspocus: Hocuspocus,
-  streamRedisUrl: string,
-  envPrefix: string,
-): () => Promise<void> {
-  const streamKey = lifecycleStreamKey();
-  const lastIdKey = lifecycleLastIdKey(envPrefix);
+function readLifecycleEvent(payload: string | undefined): ProjectLifecycleEvent | null {
+  let event: unknown;
+  try {
+    event = JSON.parse(payload ?? "");
+  } catch {
+    return null;
+  }
+  return typeof event === "object" && event !== null ? (event as ProjectLifecycleEvent) : null;
+}
 
-  logger.info({ streamKey }, "Project lifecycle listener starting");
+/** What the lifecycle listener needs. */
+export interface LifecycleListenerDeps {
+  /** Redis URL of the stream database (DB2). */
+  streamUrl: string;
+  /** Lifecycle stream key. */
+  streamKey: string;
+  /** Where the single-instance reader kept its position. */
+  legacyCursorKey: string;
+  /** `REDIS_KEY_PREFIX`, namespacing the failure counts. */
+  keyPrefix: string;
+  /** This process's consumer name. */
+  instanceId: string;
+  /** Coordination database client (DB3). */
+  coordination: Redis;
+  /** Timing and limits. */
+  settings: GroupConsumerSettings;
+  /** Publishes the close request; the core publisher in production. */
+  publish?: PublishConnectionsClose;
+}
 
-  const stopStream = startStreamConsumer<ProjectLifecycleEvent>({
-    redisUrl: streamRedisUrl,
-    streamKey,
-    lastIdKey,
-    parse: (raw) => JSON.parse(raw) as ProjectLifecycleEvent,
-    handle: (event) => handleLifecycleEvent(hocuspocus, event),
+/**
+ * Start consuming project-lifecycle commands.
+ * @param deps - Stream, names, coordination client and settings.
+ * @returns The running consumer.
+ */
+export function startLifecycleListener(deps: LifecycleListenerDeps): GroupConsumer {
+  const publish = deps.publish ?? publishProjectConnectionsClose;
+  return startGroupConsumer({
+    streamUrl: deps.streamUrl,
+    streamKey: deps.streamKey,
+    group: LIFECYCLE_GROUP,
+    consumer: deps.instanceId,
+    legacyCursorKey: deps.legacyCursorKey,
+    failuresKey: `${deps.keyPrefix}:collab:lifecycle-event-failures`,
+    coordination: deps.coordination,
+    settings: deps.settings,
+    // One key: one command at a time; a failing one retries after the later ones.
+    keyOf: () => "lifecycle",
+    process: async (entries, control) => {
+      const outcomes = new Map<string, EntryOutcome>();
+      for (const entry of entries) {
+        if (control.stopping()) break;
+        const event = readLifecycleEvent(entry.payload);
+        if (!event) {
+          logger.error({ id: entry.id, raw: entry.payload }, "lifecycle_event_unparseable_skipped");
+          outcomes.set(entry.id, "done");
+          continue;
+        }
+        try {
+          await handleLifecycleEvent(event, publish);
+          outcomes.set(entry.id, "done");
+        } catch (err) {
+          logger.error({ err, id: entry.id, type: event.type }, "lifecycle_event_failed");
+          outcomes.set(entry.id, { failed: err });
+        }
+      }
+      return outcomes;
+    },
   });
-
-  return async () => {
-    await stopStream();
-    logger.info("Project lifecycle listener stopped");
-  };
 }

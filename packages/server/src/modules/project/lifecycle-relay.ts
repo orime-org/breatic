@@ -5,11 +5,14 @@
  * Transactional-outbox relay for project-lifecycle commands.
  *
  * Polls the `project_lifecycle_outbox` table for unsent rows and
- * forwards each to the durable `project-lifecycle` Redis Stream, then
- * marks it sent. At-least-once: a row is marked sent only AFTER a
- * successful publish, so a crash between publish and mark re-publishes
- * it (collab's consumer is idempotent). A failed publish bumps the
- * attempt counter and leaves the row unsent for the next pass.
+ * forwards each to the durable `project-lifecycle` Redis Stream, one row per
+ * transaction (`forwardNextUnsent`), so several server instances can run it
+ * at once without two of them publishing the same row. At-least-once: a row is marked
+ * sent in the transaction that published it, so a crash between the publish
+ * and the commit re-publishes it (collab's copy is idempotent on its canvas
+ * documents). A failed
+ * publish bumps the attempt counter and leaves the row unsent for the next
+ * pass.
  *
  * Started by the server composition root after listen, stopped on
  * SIGTERM. Application-layer: it logs + drives the Redis publish, while
@@ -18,11 +21,7 @@
  */
 
 import { getStreamRedis, lifecycleStreamKey, publishToStream, logger } from "@breatic/core";
-import {
-  bumpAttempts,
-  markSent,
-  readUnsentEvents,
-} from "@server/modules/project/lifecycle-outbox.repo.js";
+import { forwardNextUnsent } from "@server/modules/project/lifecycle-outbox.repo.js";
 
 /** How often the relay scans the outbox for unsent rows. */
 const POLL_INTERVAL_MS = 1000;
@@ -52,19 +51,14 @@ export function startLifecycleRelay(): LifecycleRelay {
   async function tick(): Promise<void> {
     if (stopped) return;
     try {
-      const rows = await readUnsentEvents(BATCH_SIZE);
-      for (const row of rows) {
-        if (stopped) break;
-        try {
-          await publishToStream(
-            redis,
-            lifecycleStreamKey(),
-            row.event as unknown as Record<string, unknown>,
-          );
-          await markSent(row.id);
-        } catch (err) {
-          logger.error({ err, outboxId: row.id }, "lifecycle_relay_forward_failed");
-          await bumpAttempts(row.id);
+      for (let i = 0; i < BATCH_SIZE && !stopped; i++) {
+        const forwarded = await forwardNextUnsent((event) =>
+          publishToStream(redis, lifecycleStreamKey(), event as unknown as Record<string, unknown>).then(() => undefined),
+        );
+        if (!forwarded) break;
+        if (forwarded.error !== undefined) {
+          logger.error({ err: forwarded.error, outboxId: forwarded.id }, "lifecycle_relay_forward_failed");
+          break;
         }
       }
     } catch (err) {
