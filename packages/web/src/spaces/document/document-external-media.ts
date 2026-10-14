@@ -198,7 +198,11 @@ function withoutMedia(html: string): string {
   for (const content of Array.from(body.querySelectorAll(OWN_MEDIA))) {
     const row = content.closest('[data-node-type="blockOuter"]') ?? content;
     const nested = row.querySelector(':scope > [data-node-type="blockContainer"] > [data-node-type="blockGroup"]');
+    const group = row.parentElement;
     row.replaceWith(...Array.from(nested?.children ?? []));
+    // A group may not be empty (`blockGroupChild+`): read back, an emptied one
+    // would come back holding a blank line.
+    if (group?.matches('[data-node-type="blockGroup"]') === true && group.childElementCount === 0) group.remove();
   }
   for (const element of Array.from(body.querySelectorAll('img, video, audio'))) {
     (element.closest('figure') ?? element).remove();
@@ -239,44 +243,53 @@ export function documentPastedMediaExtension(
 ): ExtensionFactoryInstance {
   return createExtension(({ editor }) => {
     let queued: Queued[] = [];
+    let leftOut = 0;
     let flushing = false;
     let dropAt: number | null = null;
     let landing: CellLanding | null = null;
 
     /**
      * Once the paste or the drop is done, starts the uploads whose blocks
-     * went in and counts the rest as left out: another hook can take a paste
-     * and put in none of it.
-     * @param view - The editor view.
+     * went in and tells how many media were left out, once: those judged out
+     * and those another hook kept out — a hook can take a paste and put in
+     * none of it.
      */
-    const settle = (view: EditorView): void => {
+    const settle = (): void => {
       if (flushing) return;
       flushing = true;
       queueMicrotask(() => {
         flushing = false;
-        const present = pendingIds(view.state.doc);
+        const doc = editor.prosemirrorView?.state.doc;
+        const present = doc === undefined ? new Set<string>() : pendingIds(doc);
         const waiting = queued;
+        const judgedOut = leftOut;
         queued = [];
+        leftOut = 0;
         const missing = waiting.filter(({ uploadId }) => !present.has(uploadId)).length;
         for (const { uploadId, url } of waiting) {
           if (present.has(uploadId)) options?.start?.(uploadId, { kind: 'address', url });
         }
-        if (missing > 0) options?.onLeftOut(missing);
+        if (judgedOut + missing > 0) options?.onLeftOut(judgedOut + missing);
       });
     };
 
     /**
-     * Takes the landing whose HTML was read; its uploads join the queue.
-     * @param view - The editor view.
-     * @returns The landing, or null when none is held.
+     * Counts media judged out, told once the event is done.
+     * @param count - How many.
      */
-    const take = (view: EditorView): CellLanding | null => {
+    const leaveOut = (count: number): void => {
+      if (count === 0) return;
+      leftOut += count;
+      settle();
+    };
+
+    /** Takes the landing whose HTML was read; its uploads join the queue. */
+    const take = (): void => {
       const held = landing;
       landing = null;
-      if (held === null) return null;
+      if (held === null) return;
       queued = [...queued, ...held.queued];
-      settle(view);
-      return held;
+      settle();
     };
 
     /**
@@ -299,13 +312,13 @@ export function documentPastedMediaExtension(
         const attrs = pended(props, prefix, options?.start === undefined ? null : waiting);
         if (attrs !== null) media.push({ type, props: attrs });
       }
-      if (media.length < found.length) options?.onLeftOut(found.length - media.length);
+      leaveOut(found.length - media.length);
       if (media.length > 0) {
         const held: CellLanding = { at, media, queued: waiting };
         landing = held;
         queueMicrotask(() => {
           if (landing !== held) return;
-          take(view);
+          take();
           view.dispatch(markOwnUndoStep(mediaUnderTable(view.state, held.at, held.media)).scrollIntoView());
         });
       }
@@ -340,10 +353,12 @@ export function documentPastedMediaExtension(
               const prefix = options?.assetUrlPrefix() ?? null;
               const { fragment, dropped } = judge(slice.content, prefix, options?.start === undefined ? null : found);
               queued = [...queued, ...found];
-              if (found.length > 0) settle(view);
-              if (dropped > 0) options?.onLeftOut(dropped);
+              if (found.length > 0) settle();
+              leaveOut(dropped);
               if (fragment === slice.content) return slice;
-              return fragment.childCount === 0 ? Slice.empty : Slice.maxOpen(fragment);
+              // Opened as ProseMirror opens HTML it reads, up to an isolating
+              // node, so a table's last cell does not take the line's tail.
+              return fragment.childCount === 0 ? Slice.empty : Slice.maxOpen(fragment, false);
             },
           },
           // The rest went in the way it would have without the media; the
@@ -352,9 +367,7 @@ export function documentPastedMediaExtension(
           appendTransaction: (transactions, _old, state) => {
             const held = landing;
             if (held === null || !transactions.some((tr) => tr.docChanged)) return null;
-            const view = editor.prosemirrorView;
-            if (view === undefined || view === null) return null;
-            take(view);
+            take();
             const at = transactions.reduce((pos, tr) => tr.mapping.map(pos, -1), held.at);
             return mediaUnderTable(state, at, held.media);
           },
