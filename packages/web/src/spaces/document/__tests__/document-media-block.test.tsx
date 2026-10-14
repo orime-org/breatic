@@ -1900,3 +1900,13 @@ describe('the drags a media block lets through', () => {
     expect(refused(within(element(editor)).getByTestId('doc-media-caption-input'))).toBe(false);
   });
 });
+
+describe.each(['image', 'video', 'audio'] as const)('a pending %s block (inner#1351 §5.5)', (type) => {
+  it('shows the pending frame and none of the media, its player, or its toolbar', () => {
+    const editor = open(type, { url: '', uploadId: 'u1', caption: '' });
+    const block = element(editor);
+    expect(within(block).getByTestId('doc-pending-media')).toBeTruthy();
+    expect(block.querySelector('img, video, audio')).toBeNull();
+    expect(within(block).queryByTestId('doc-media-toolbar')).toBeNull();
+  });
+});
