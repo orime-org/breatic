@@ -23,11 +23,7 @@ import {
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
-import {
-  extFromUrl,
-  labelForUrl,
-  readerUrlSchema,
-} from "@breatic/domain";
+import { readerUrlSchema } from "@breatic/domain";
 import {
   getCanvasReferencePoolCap,
   getNodeHistoryPageSize,
@@ -39,13 +35,12 @@ import {
   violatesReferenceCountForModel,
 } from "@breatic/domain";
 import { nodeHistoryService } from "@breatic/domain";
-import { nodeTaskService, ingestReportService } from "@breatic/domain";
+import { nodeTaskService } from "@breatic/domain";
 import {
   openGenerationTasks,
   startRowedRun,
 } from "@server/modules/task/generation-task.js";
-import { openUpload } from "@server/modules/asset/upload-opening.js";
-import { noteIngestSideEffects } from "@server/modules/asset/ingest-side-effects.js";
+import { startUrlIngest } from "@server/modules/asset/url-ingest.js";
 import { publishCountsQuietly } from "@server/modules/task/publish-counts.js";
 import { UNDERSTAND_PINS } from "@breatic/domain";
 import {
@@ -54,19 +49,14 @@ import {
   precheckCredits,
   projectService,
 } from "@server/modules";
-import {
-  createQueue,
-  defaultJobOpts,
-  getNodeTaskConfig,
-  getStorageConfig,
-} from "@breatic/core";
+import { createQueue, defaultJobOpts } from "@breatic/core";
 import {
   ValidationError,
   NotFoundError,
   getUnderstandConfig,
   logger,
 } from "@breatic/core";
-import { t, INGEST_NOT_STARTED, extractPromptText } from "@breatic/shared";
+import { t, extractPromptText } from "@breatic/shared";
 import { canvasSpaceDocName } from "@breatic/shared";
 
 const canvas = new Hono<{ Variables: AuthVariables }>();
@@ -82,7 +72,6 @@ const tasksQueue = createQueue("tasks");
  * dispatch runs unconditionally — recording a provider result, persisting
  * outputs, billing, announcing a generation — and an ingest wants none of it.
  */
-const urlIngestQueue = createQueue("url-ingest");
 
 /**
  * `GET /canvas/limits` — frontend-consumed canvas knobs from
@@ -157,68 +146,13 @@ canvas.post(
   async (c) => {
     const user = c.get("user");
     const body = c.req.valid("json");
-
-    await projectService.assertAccess(body.project_id, user.id, "editor");
-    await assertStorageAllowance(body.project_id, "upload");
-
-    const { upload, ingest } = getStorageConfig();
-    const { key, studioId, taskId } = await openUpload(
-      {
-        projectId: body.project_id,
-        actingUserId: user.id,
-        // The ceiling on what the Worker may write, since nothing here can say
-        // how large the thing behind the address is (design §7.7).
-        declaredSize: upload.max_upload_bytes,
-        taskType: "url",
-        ext: extFromUrl(body.url),
-        expiresAt: new Date(Date.now() + ingest.ticket_expires_seconds * 1000),
-        context: {
-          nodeId: body.node_id,
-          spaceId: body.space_id,
-          source: "url",
-        },
-      },
-      {
-        // Every task has the same two hours (inner#1367); the transfer is
-        // held to the end of this row.
-        budgetMs: getNodeTaskConfig().default_budget_ms,
-        action: "upload",
-        label: labelForUrl(body.url),
-      },
-    );
-
-    try {
-      await urlIngestQueue.add(
-        "ingest-url",
-        {
-          storageKey: key,
-          studioId,
-          url: body.url,
-          userId: user.id,
-          projectId: body.project_id,
-          spaceId: body.space_id,
-          nodeId: body.node_id,
-        },
-        // One delivery: a dead address stays dead, and the failure path voids
-        // the grant, which a second run would walk straight past.
-        { ...defaultJobOpts(), attempts: 1 },
-      );
-    } catch (err) {
-      // The row above is already on every open canvas. Leaving it there says a
-      // transfer started to everyone watching, for as long as the budget lasts,
-      // while the submitter alone was told it failed.
-      logger.error({ err, key, projectId: body.project_id }, "url_ingest_enqueue_failed");
-      const settled = await ingestReportService.applyIngestReport({
-        storageKey: key,
-        outcome: "aborted",
-        reason: INGEST_NOT_STARTED,
-      });
-      // Settling can fail beside itself, and this is the one caller with no
-      // second chance to notice: the request is about to throw.
-      noteIngestSideEffects(key, settled);
-      throw err;
-    }
-
+    const { taskId } = await startUrlIngest({
+      url: body.url,
+      projectId: body.project_id,
+      spaceId: body.space_id,
+      nodeId: body.node_id,
+      userId: user.id,
+    });
     return c.json({ data: { task_id: taskId } }, 201);
   },
 );
