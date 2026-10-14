@@ -253,7 +253,7 @@
     "refund_mail": {
       "completed": {
         "subject": "退款已完成",
-        "intro": "我們已把這筆購買的款項退回你的原付款方式，銀行入帳通常需要幾個工作天。這筆購買的點數已從帳戶移除。"
+        "intro": "我們已把這筆購買的款項退回你的原付款方式，銀行入帳通常需要幾個工作天。這筆購買的點數已從帳號移除。"
       },
       "rejected": {
         "subject": "退款申請未通過",
@@ -261,7 +261,7 @@
       },
       "restored": {
         "subject": "點數已恢復",
-        "intro": "款項沒能退回你的原付款方式。依照和你的溝通，這筆購買的點數已恢復到帳戶，可以繼續指定給 Studio 使用。"
+        "intro": "款項沒能退回你的原付款方式。依照和你的溝通，這筆購買的點數已恢復到帳號，可以繼續指定給 Studio 使用。"
       },
       "label": {
         "amount": "退款金額",
@@ -1601,7 +1601,7 @@
       "storageQuotaExceeded": "儲存空間已滿",
       "creditRefundCompleted": "{credits} 點的退款已完成",
       "creditRefundRejected": "{credits} 點的退款申請未通過",
-      "creditRefundRestored": "{credits} 點已恢復到你的帳戶"
+      "creditRefundRestored": "{credits} 點已恢復到你的帳號"
     },
     "actorFallback": "某人",
     "subtitle": {

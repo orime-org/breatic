@@ -253,7 +253,7 @@
     "refund_mail": {
       "completed": {
         "subject": "退款已完成",
-        "intro": "我们已把这笔购买的钱退回你的原付款方式，银行入账通常需要几个工作日。这笔购买的积分已从账户移除。"
+        "intro": "我们已把这笔购买的钱退回你的原付款方式，银行入账通常需要几个工作日。这笔购买的积分已从账号移除。"
       },
       "rejected": {
         "subject": "退款申请未通过",
@@ -261,7 +261,7 @@
       },
       "restored": {
         "subject": "积分已恢复",
-        "intro": "钱没能退回你的原付款方式。按和你的沟通，这笔购买的积分已恢复到账户，可以继续指定给 Studio 使用。"
+        "intro": "钱没能退回你的原付款方式。按和你的沟通，这笔购买的积分已恢复到账号，可以继续指定给 Studio 使用。"
       },
       "label": {
         "amount": "退款金额",
@@ -1601,7 +1601,7 @@
       "storageQuotaExceeded": "存储已满",
       "creditRefundCompleted": "{credits} 积分的退款已完成",
       "creditRefundRejected": "{credits} 积分的退款申请未通过",
-      "creditRefundRestored": "{credits} 积分已恢复到你的账户"
+      "creditRefundRestored": "{credits} 积分已恢复到你的账号"
     },
     "actorFallback": "某人",
     "subtitle": {

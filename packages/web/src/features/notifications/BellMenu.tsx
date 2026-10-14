@@ -254,13 +254,14 @@ function NotificationItem({
   // the button anyway is how you get an affordance that silently does nothing.
   const token = shareTokenOf(notification.payload);
   const isDecidable = isRequestNotification(notification.type) && token !== null;
+  const icon = iconForType(notification.type);
 
   return (
     <div className='flex flex-col gap-2 rounded-chrome px-2 py-2 hover:bg-accent'>
       <div className='flex items-start gap-2'>
         <Avatar className='h-9 w-9 shrink-0'>
-          <AvatarFallback className='text-xs font-semibold'>
-            {iconForType(notification.type)}
+          <AvatarFallback className={`${isMark(icon) ? 'text-base' : 'text-xs'} font-semibold`}>
+            {icon}
           </AvatarFallback>
         </Avatar>
         <div className='flex min-w-0 flex-1 flex-col gap-0.5'>
@@ -369,6 +370,17 @@ function iconForType(type: NotificationType): string {
     default:
       return '?';
   }
+}
+
+/**
+ * Whether an avatar glyph is a single mark (✓, ✕, ↺, ?) rather than two
+ * letters of initials. A mark has a fraction of the ink of two letters, so it
+ * is drawn a size up to read at the same weight in the same circle.
+ * @param icon - What {@link iconForType} returned.
+ * @returns True for a single mark.
+ */
+function isMark(icon: string): boolean {
+  return [...icon].length === 1;
 }
 
 /** Maps a studio role payload value to its localized member-role label. */

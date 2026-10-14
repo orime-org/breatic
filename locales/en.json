@@ -1601,7 +1601,7 @@
       "storageQuotaExceeded": "Your storage is full",
       "creditRefundCompleted": "Your refund for {credits} credits is complete",
       "creditRefundRejected": "Your refund request for {credits} credits was not approved",
-      "creditRefundRestored": "{credits} credits are back in your account"
+      "creditRefundRestored": "{credits} credits have been restored to your account"
     },
     "actorFallback": "Someone",
     "subtitle": {

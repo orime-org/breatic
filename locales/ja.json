@@ -2301,7 +2301,7 @@
     "refundReason": {
       "spent": "使用済み",
       "expired": "30 日超過",
-      "restored": "クレジット復元済み"
+      "restored": "クレジットに戻しました"
     },
     "refundHint": {
       "assigned": "割り当てを解除すると返金を申請できます"
