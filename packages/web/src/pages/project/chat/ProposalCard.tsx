@@ -104,7 +104,7 @@ export const ProposalCard = React.memo(function ProposalCard({
   return (
     <div
       data-testid='proposal-card'
-      className='mt-2 flex flex-col gap-2 rounded-lg border border-border bg-popover px-3 py-2.5'
+      className='mt-2 flex flex-col gap-2 rounded-overlay border border-border bg-popover px-3 py-2.5'
     >
       {proposal.rationale ? (
         <div className='text-sm font-semibold text-foreground'>{proposal.rationale}</div>
@@ -143,7 +143,7 @@ export const ProposalCard = React.memo(function ProposalCard({
                       key={`${chip.label}-${String(c)}`}
                       data-testid='proposal-chip'
                       className={cn(
-                        'rounded-md border px-1.5 py-0.5',
+                        'rounded-chrome border px-1.5 py-0.5',
                         chip.empty
                           ? 'border-dashed border-border text-muted-foreground'
                           : 'border-border text-foreground',
@@ -177,7 +177,7 @@ export const ProposalCard = React.memo(function ProposalCard({
           </div>
           <div
             data-testid='proposal-words'
-            className='whitespace-pre-wrap rounded-md border border-border px-2 py-1.5 text-xs text-foreground'
+            className='whitespace-pre-wrap rounded-chrome border border-border px-2 py-1.5 text-xs text-foreground'
           >
             {promptPlainText(node.prompt ?? [])}
           </div>
