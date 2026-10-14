@@ -37,9 +37,11 @@ export interface UploadResult {
 
 /** Why an upload did not finish, and whether running it again can help. */
 export interface UploadFailure {
-  readonly reason: string;
+  /** The message key the block shows. */
+  readonly messageKey: string;
+  /** The values the message is filled with. */
+  readonly params: Readonly<Record<string, string>>;
   readonly retryable: boolean;
-  readonly params?: Readonly<Record<string, string>>;
 }
 
 /** How an upload ended. */

@@ -450,7 +450,7 @@ describe('failure and retry', () => {
     const world = open();
     pastePending(world, 'u1');
     world.controller.start('u1', { kind: 'address', url: 'https://imgs.example/x.jpg' });
-    world.uploads.get('u1')!.resolve({ ok: false, failure: { reason: 'upload', retryable: true } });
+    world.uploads.get('u1')!.resolve({ ok: false, failure: { messageKey: 'canvas.upload.failed', params: {}, retryable: true } });
     await settle();
     expect(world.controller.entry('u1')).toMatchObject({ phase: 'failed', failure: { retryable: true } });
     world.controller.retry('u1');
