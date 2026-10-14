@@ -223,3 +223,12 @@ describe("判定：meta 里那份就是我这一版吗", () => {
     expect(documentSchemaDiffers("aa", { version: 1 })).toBe(false);
   });
 });
+
+describe("pending media blocks", () => {
+  it.each(["image", "video", "audio"] as const)(
+    "%s carries uploadId, the id of the upload it waits for",
+    (node) => {
+      expect(DOCUMENT_SCHEMA.nodes[node]).toContain("uploadId");
+    },
+  );
+});
