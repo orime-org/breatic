@@ -76,6 +76,7 @@ async function buildScene(browser: Browser, count: number): Promise<Scene> {
     const slug = `join-target-${stamp}-${n}`;
     const created = await dataOf<{ id: string; name: string }>(
       await a.request.post('/api/v1/projects', {
+        headers: { 'Idempotency-Key': crypto.randomUUID() },
         data: { studioId: studio.id, name: `Join target ${stamp} ${n}`, slug, spaceType: 'canvas' },
       }),
       `create project ${n}`,

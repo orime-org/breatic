@@ -139,7 +139,7 @@ test('a generated image lands on the node under our own url, not the provider’
     async ([project, space, node]: [string, string, string]) => {
       const response = await fetch('/api/v1/canvas/tasks', {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: { 'content-type': 'application/json', 'idempotency-key': crypto.randomUUID() },
         credentials: 'include',
         body: JSON.stringify({
           task_type: 'image',

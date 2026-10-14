@@ -62,6 +62,7 @@ test('mark all read clears the news and keeps the request waiting on A', async (
 
   const project = await dataOf<{ id: string }>(
     await a.request.post('/api/v1/projects', {
+      headers: { 'Idempotency-Key': crypto.randomUUID() },
       data: { studioId: studio.id, name: `Bell target ${stamp}`, slug: `bell-target-${stamp}`, spaceType: 'canvas' },
     }),
     'create project',
