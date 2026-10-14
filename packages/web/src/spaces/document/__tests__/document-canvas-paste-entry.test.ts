@@ -116,7 +116,7 @@ function shape(editor: Editor): string[] {
   return (editor.document as { type: string; props: Record<string, unknown>; content?: { text?: string }[] }[]).map((b) =>
     b.type === 'image' || b.type === 'video' || b.type === 'audio'
       ? `${b.type}[${b.props['uploadId'] === '' ? 'none' : 'id'}|${String(b.props['caption'])}|${String(b.props['url'])}]`
-      : `${b.type}:${(b.content ?? []).map((c) => c.text ?? '').join('')}`,
+      : `${b.type}:${Array.isArray(b.content) ? b.content.map((c) => c.text ?? '').join('') : ''}`,
   );
 }
 
@@ -126,6 +126,19 @@ describe('text only', () => {
     paste(editor, clipboard({ id: 't', type: 'text', position: { x: 0, y: 0 }, data: { body: body('_x_', '# y') } }));
     expect(shape(editor)).toEqual(['paragraph:lead _x_', 'paragraph:# y']);
     expect(sink.start).not.toHaveBeenCalled();
+  });
+});
+
+describe('text only, in a table cell', () => {
+  it('goes into the cell', () => {
+    const { editor } = open(
+      [{ type: 'table', content: { type: 'tableContent', rows: [{ cells: [['cell ']] }] } }],
+      0,
+    );
+    paste(editor, clipboard({ id: 't', type: 'text', position: { x: 0, y: 0 }, data: { body: body('_x_') } }));
+    const table = (editor.document as { type: string; content: { rows: { cells: { content: { text: string }[] }[] }[] } }[])[0]!;
+    expect(table.content.rows[0]!.cells[0]!.content.map((c) => c.text).join('')).toBe('cell _x_');
+    expect(editor.document).toHaveLength(1);
   });
 });
 
