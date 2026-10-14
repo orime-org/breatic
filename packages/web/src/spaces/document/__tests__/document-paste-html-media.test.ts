@@ -12,6 +12,7 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import * as Y from 'yjs';
 import { TextSelection } from '@tiptap/pm/state';
+import { CellSelection } from '@tiptap/pm/tables';
 
 import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared';
 
@@ -170,6 +171,7 @@ function firstCell(editor: Editor, index: number): string {
 }
 
 const TABLE = { type: 'table', content: { type: 'tableContent', rows: [{ cells: [['cell ']] }] } };
+const TWO_CELLS = { type: 'table', content: { type: 'tableContent', rows: [{ cells: [['c1'], ['c2']] }] } };
 
 
 /**
@@ -452,6 +454,53 @@ describe('a paste or a drop is an undo step of its own (A6)', () => {
     manager.undo();
 
     expect(shape(editor)).toEqual(['paragraph:lead typed']);
+  });
+
+  it('typing just before a table pasted into a cell stays when the paste is undone', async () => {
+    const { editor, manager } = open([TABLE]);
+    caretIn(editor, 0);
+
+    type(editor, 'typed');
+    paste(editor, '<table><tr><td>a</td><td>b</td></tr></table>', 'a\tb');
+    await settled();
+    manager.undo();
+
+    expect(shape(editor)).toEqual(['table']);
+    expect(firstCell(editor, 0)).toBe('cell typed');
+  });
+
+  it('typing just before an address pasted over a selection stays when the paste is undone', async () => {
+    const { editor, manager } = open([{ type: 'paragraph', content: 'lead word' }]);
+    caretIn(editor, 0);
+    type(editor, ' typed');
+    const view = editor.prosemirrorView!;
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 13, 18)));
+
+    paste(editor, '', 'https://x.example/');
+    await settled();
+    manager.undo();
+
+    expect(shape(editor)).toEqual(['paragraph:lead word typed']);
+  });
+
+  it('typing just before web content pasted over a cell selection stays when the paste is undone', async () => {
+    const { editor, manager } = open([TWO_CELLS]);
+    caretIn(editor, 0);
+    type(editor, 'typed');
+    const view = editor.prosemirrorView!;
+    const cells: number[] = [];
+    view.state.doc.descendants((node, at) => {
+      if (node.type.name === 'tableCell') cells.push(at);
+      return true;
+    });
+    view.dispatch(view.state.tr.setSelection(CellSelection.create(view.state.doc, cells[0]!, cells[1]!)));
+
+    paste(editor, '<p>w</p><img src="https://elsewhere.example/a.png">', 'w');
+    await settled();
+    manager.undo();
+
+    expect(shape(editor)).toEqual(['table']);
+    expect(firstCell(editor, 0)).toBe('c1typed');
   });
 });
 
