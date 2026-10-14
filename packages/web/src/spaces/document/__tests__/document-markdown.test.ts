@@ -15,7 +15,7 @@ describe('markdownBlocks', () => {
   it('reads each block with its type and its plain text', async () => {
     const got = await markdownBlocks('A **bold** [link](https://example.com)\n\n## Scene 3\n\n| Shot | Size |\n|---|---|\n| 1 | Wide |');
 
-    expect(got.map((b) => [b.type, b.text])).toEqual([
+    expect(got.map((b) => [(b.block as { type?: unknown }).type, b.text])).toEqual([
       ['paragraph', 'A bold link'],
       ['heading', 'Scene 3'],
       ['table', 'Shot\nSize\n1\nWide'],

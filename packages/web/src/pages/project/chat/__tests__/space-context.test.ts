@@ -35,7 +35,7 @@ const { _resetForTests, docName, getDoc, hasDoc } = await import('@web/data/yjs/
 const { modelCatalogQuery } = await import('@web/spaces/canvas/generate/model-catalog-query');
 const { buildDocumentEditor } = await import('@web/spaces/document/build-document-editor');
 const { clipSpaceContext, readSpaceContext } = await import('@web/pages/project/chat/space-context');
-type ReadBlock = import('@web/pages/project/chat/space-context').ReadBlock;
+type ReadBlock = import('@web/spaces/document/document-blocks-read').ReadBlock;
 type DocumentEditor = ReturnType<typeof buildDocumentEditor>;
 
 const PID = 'p1';

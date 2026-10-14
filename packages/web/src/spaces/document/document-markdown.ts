@@ -23,10 +23,9 @@ import { blockPlainText } from '@web/spaces/document/document-blocks-read';
 /** A block as the parser hands it back, ready to write into a document. */
 export type ParsedBlock = Awaited<ReturnType<BlockNoteEditor<never, never, never>['tryParseMarkdownToBlocks']>>[number];
 
-/** One block of a Markdown body: what lands, its BlockNote type, and how its words read. */
+/** One block of a Markdown body: what lands, and how its words read. */
 export interface MarkdownBlock {
   block: ParsedBlock;
-  type: string;
   text: string;
 }
 
@@ -42,5 +41,5 @@ export async function markdownBlocks(markdown: string): Promise<MarkdownBlock[]>
   editor.replaceBlocks(editor.document, parsed);
   const nodes: string[] = [];
   editor.prosemirrorState.doc.firstChild?.forEach((node) => nodes.push(blockPlainText(node)));
-  return parsed.map((block, i) => ({ block, type: String((block as { type?: unknown }).type), text: nodes[i] ?? '' }));
+  return parsed.map((block, i) => ({ block, text: nodes[i] ?? '' }));
 }

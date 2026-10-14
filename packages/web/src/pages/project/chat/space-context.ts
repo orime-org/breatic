@@ -33,8 +33,6 @@ import { peekDocumentEditor } from '@web/spaces/document/document-editor-cache';
 import { readTopBlocks } from '@web/spaces/document/document-blocks-read';
 import type { ReadBlock } from '@web/spaces/document/document-blocks-read';
 
-export type { ReadBlock } from '@web/spaces/document/document-blocks-read';
-
 /** The open Space as read at the press, before its content is cut. */
 export type ReadCurrentSpace = ChatSpace &
   (
