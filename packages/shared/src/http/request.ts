@@ -573,15 +573,14 @@ export async function httpRequest(
     );
     let response: Response | null = null;
     let failure: unknown = null;
+    // Composed per delivery, never reused: the deadline's controller is
+    // created fresh above, and the caller's is the same object every time
+    // round. A composite made once and kept would carry the first delivery's
+    // expiry into the second.
+    const link = linkCallerSignal(options.signal, controller);
 
     try {
-      // Composed per delivery, never reused: the deadline's controller is
-      // created fresh above, and the caller's is the same object every time
-      // round. A composite made once and kept would carry the first delivery's
-      // expiry into the second.
-      const signal = options.signal
-        ? AbortSignal.any([options.signal, controller.signal])
-        : controller.signal;
+      const signal = link.signal;
       const watch =
         bytes === null || idleMs === undefined
           ? null
@@ -627,6 +626,7 @@ export async function httpRequest(
       // "attempts: 1" that it did not already know, and wrapping would bury the
       // error it can actually act on. More than one, and the count is the part
       // it could not have worked out for itself.
+      link.release();
       if (attempts === 1) throw failure;
       throw new HttpRetryError(
         `http request to ${safeUrl} failed after ${attempts} attempts`,
@@ -647,6 +647,43 @@ export async function httpRequest(
     // a backoff it will do nothing with — a delay the user watches for no work
     // at all. The next pass round the loop finds the signal raised and takes
     // the exit above.
+    link.release();
     await wait(decision.delayMs, options.signal);
   }
+}
+
+/**
+ * The signal one delivery runs under: its own deadline, and the caller's signal when there is one. The
+ * composite stays tied to a response handed back, so a later stop still ends its body.
+ * `AbortSignal.any` arrived only in Safari 17.4, older than browsers the web build targets; there the
+ * caller's signal is forwarded by a listener, which `release` removes once the delivery is abandoned.
+ * @param caller - The caller's signal, if any.
+ * @param own - This delivery's controller.
+ * @returns The signal to deliver under, and how to let go of the caller's signal.
+ */
+function linkCallerSignal(
+  caller: AbortSignal | undefined,
+  own: AbortController,
+): { signal: AbortSignal; release: () => void } {
+  /** Nothing to remove: no listener was added. */
+  const none = (): void => {
+    // Nothing attached.
+  };
+  if (caller === undefined) return { signal: own.signal, release: none };
+  if (typeof AbortSignal.any === "function") return { signal: AbortSignal.any([caller, own.signal]), release: none };
+  const unlink = new AbortController();
+  caller.addEventListener(
+    "abort",
+    () => {
+      own.abort(caller.reason);
+    },
+    { once: true, signal: unlink.signal },
+  );
+  return {
+    signal: own.signal,
+    /** Remove the listener from the caller's signal. */
+    release: () => {
+      unlink.abort();
+    },
+  };
 }
