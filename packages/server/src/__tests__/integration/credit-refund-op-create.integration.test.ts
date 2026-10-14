@@ -745,12 +745,11 @@ describe("(no row) × E1: a disposition's own stamps never run backwards (G1)", 
   it("a row inserted after its finisher's transaction began: the finish stamps finished_at and updated_at from the clock, not the transaction start (H5)", async () => {
     const lot = await seedRefundLot(suite.sql, "refund_pending");
 
-    // T fixes its now() first; the approve is inserted and committed on
-    // another connection after that, so now() in T is before its created_at.
+    // T's now() is fixed at BEGIN (postgres-js runs begin before the callback);
+    // the approve is inserted and committed on another connection after that,
+    // so now() in T is before its created_at.
     const approveId = await db.transaction(async (tx) => {
-      await tx.execute(sql`SELECT 1`);
       const approve = await inTx((other) => transitionOperation(other, null, e1(lot, "approve")));
-      await tx.execute(sql`SELECT pg_sleep(0.05)`);
       await transitionOperation(tx, { id: approve!.id }, {
         type: "E6",
         failure: failure(400, { type: "invalid_request_error" }),
@@ -785,34 +784,21 @@ describe("(no row) × E1: a disposition's own stamps never run backwards (G1)", 
     }
 
     /**
-     * A disposition's created_at and updated_at in epoch microseconds.
+     * Assert updated_at did not run backwards past created_at or its earlier
+     * value. Neither write touches created_at, so both are offsets from it.
      * @param id - The disposition.
-     * @returns Both stamps.
+     * @param before - updated_at past created_at, read just before the write.
      */
-    async function createdAndUpdatedUs(id: string): Promise<{ created: number; updated: number }> {
-      const [row] = await suite.sql<{ created: string; updated: string }[]>`
-        SELECT (extract(epoch FROM created_at) * 1000000)::bigint::text AS created,
-               (extract(epoch FROM updated_at) * 1000000)::bigint::text AS updated
-        FROM credit_refund_operations WHERE id = ${id}
-      `;
-      return { created: Number(row!.created), updated: Number(row!.updated) };
-    }
-
-    /**
-     * Assert updated_at did not run backwards past created_at or its earlier value.
-     * @param id - The disposition.
-     * @param before - The stamps read just before the write.
-     */
-    async function expectUpdatedNotBackwards(id: string, before: { updated: number }): Promise<void> {
-      const after = await createdAndUpdatedUs(id);
-      expect(after.updated).toBeGreaterThanOrEqual(after.created);
-      expect(after.updated).toBeGreaterThanOrEqual(before.updated);
+    async function expectUpdatedNotBackwards(id: string, before: number): Promise<void> {
+      const after = (await stampsPastCreated(id)).updated;
+      expect(after).toBeGreaterThanOrEqual(0);
+      expect(after).toBeGreaterThanOrEqual(before);
     }
 
     it("markFirstCalled on a started approve holding its lease", async () => {
       const lot = await seedRefundLot(suite.sql, "refunding");
       const op = await seedOperation(suite.sql, lot, { kind: "approve", status: "started" });
-      const before = await createdAndUpdatedUs(op.id);
+      const before = (await stampsPastCreated(op.id)).updated;
 
       await withAppClockBehind(async () => {
         expect(await operationRepo.markFirstCalled(op.id, op.leaseToken!, 1000)).toBe(true);
@@ -830,7 +816,7 @@ describe("(no row) × E1: a disposition's own stamps never run backwards (G1)", 
         firstCalledHoursAgo: 1,
         attemptCount: 1,
       });
-      const before = await createdAndUpdatedUs(op.id);
+      const before = (await stampsPastCreated(op.id)).updated;
 
       await withAppClockBehind(() => inTx((tx) => operationRepo.scheduleNextLook(op.id, 60, tx)));
 
