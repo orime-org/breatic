@@ -106,17 +106,21 @@ export const DocumentPendingMedia = React.memo(function DocumentPendingMedia({
         </span>
       )}
       {(retry || remove) && (
-        <span data-media-chrome='' className='flex shrink-0 gap-1.5'>
-          {retry && (
-            <Button variant='outline' size='compact' className='text-foreground' data-testid='doc-pending-retry' onClick={onRetry}>
-              {t('spaces.document.media.retry')}
-            </Button>
-          )}
-          {remove && (
-            <Button variant='outline' size='compact' className='text-foreground' data-testid='doc-pending-remove' onClick={onRemove}>
-              {t('spaces.document.media.remove')}
-            </Button>
-          )}
+        // The body hides `[data-media-chrome]` while it is not editable
+        // (`index.css`); a display class on that element would win over it.
+        <span data-media-chrome='' className='shrink-0'>
+          <span className='flex gap-1.5'>
+            {retry && (
+              <Button variant='outline' size='compact' className='text-foreground' data-testid='doc-pending-retry' onClick={onRetry}>
+                {t('spaces.document.media.retry')}
+              </Button>
+            )}
+            {remove && (
+              <Button variant='outline' size='compact' className='text-foreground' data-testid='doc-pending-remove' onClick={onRemove}>
+                {t('spaces.document.media.remove')}
+              </Button>
+            )}
+          </span>
         </span>
       )}
     </div>
