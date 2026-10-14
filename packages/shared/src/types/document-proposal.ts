@@ -47,3 +47,20 @@ export const documentProposalSchema = z
 
 /** A whole proposal, as {@link documentProposalSchema} describes it. */
 export type DocumentProposal = z.infer<typeof documentProposalSchema>;
+
+/**
+ * How many times a quote appears in a block's plain text, overlapping places
+ * included. The server checks a proposal's quote with it and the browser
+ * checks it again before landing, so both answer the same question the same
+ * way. An empty quote appears nowhere.
+ * @param text - The block's plain text.
+ * @param quote - The words quoted.
+ * @returns The count.
+ * @throws {never} Never.
+ */
+export function occurrences(text: string, quote: string): number {
+  if (quote === "") return 0;
+  let count = 0;
+  for (let at = text.indexOf(quote); at !== -1; at = text.indexOf(quote, at + 1)) count += 1;
+  return count;
+}

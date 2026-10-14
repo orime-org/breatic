@@ -223,6 +223,7 @@ export {
   isReferenceMaterial,
   canvasProposalSchema,
   documentProposalSchema,
+  occurrences,
   feedsOf,
   layersOf,
   proposalMarkSegments,

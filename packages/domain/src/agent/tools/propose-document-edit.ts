@@ -19,7 +19,7 @@ import { randomUUID } from "node:crypto";
 import { tool, type Tool } from "ai";
 import { z } from "zod";
 
-import type { ChatDocumentBlock, DocumentProposal, ProposalRefused } from "@breatic/shared";
+import { occurrences, type ChatDocumentBlock, type DocumentProposal, type ProposalRefused } from "@breatic/shared";
 
 /** The document a proposal goes to: the one the reader has open this turn. */
 export interface OpenDocument {
@@ -46,6 +46,7 @@ export const documentEditInputSchema = z
       ),
     quote: z
       .string()
+      .min(1)
       .optional()
       .describe(
         "For a comment only: the words in that block it hangs on, appearing there once. Written without Markdown " +
@@ -68,19 +69,6 @@ type DocumentEditInput = z.infer<typeof documentEditInputSchema>;
  */
 function refused(reason: string): ProposalRefused {
   return { placed: false, reason };
-}
-
-/**
- * How many times one text appears in another, overlapping counts included.
- * @param text - Where to look.
- * @param quote - What to look for.
- * @returns The count.
- * @throws {never} Never.
- */
-function timesIn(text: string, quote: string): number {
-  let count = 0;
-  for (let at = text.indexOf(quote); at !== -1; at = text.indexOf(quote, at + 1)) count += 1;
-  return count;
 }
 
 /**
@@ -107,7 +95,7 @@ function headingAbove(blocks: readonly ChatDocumentBlock[], index: number): stri
  * @throws {never} Never.
  */
 function quoteProblem(quote: string, n: number, text: string): string | null {
-  const times = timesIn(text, quote);
+  const times = occurrences(text, quote);
   if (times === 1) return null;
   if (times > 1) {
     return `The quote appears ${String(times)} times in block ${String(n)}; quote enough of the words around it that it appears once.`;
@@ -231,7 +219,8 @@ export function makeProposeDocumentEdit(): Tool<DocumentEditInput, DocumentPropo
       "words in one block and the reader can reply to it or resolve it; a rewrite replaces one whole block with " +
       "your Markdown; an insert adds Markdown -- paragraphs, headings, lists, a table -- after a block or at the " +
       "end. Nothing changes in the document until the reader presses the card. One proposal per change: several " +
-      "changes are several calls.",
+      "changes are several calls, and content that follows one place -- a run of paragraphs, several scenes -- " +
+      "goes in one insert, in the order it reads.",
     inputSchema: documentEditInputSchema,
     contextSchema: proposeDocumentContextSchema,
     metadata: { runningLine: "chat.tool.proposingDocumentEdit" },

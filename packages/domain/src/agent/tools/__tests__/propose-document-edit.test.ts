@@ -12,6 +12,7 @@ import { documentProposalSchema, type ChatDocumentBlock } from "@breatic/shared"
 
 import {
   answerDocumentEdit,
+  documentEditInputSchema,
   makeProposeDocumentEdit,
   renderDocumentProposalForModel,
   type OpenDocument,
@@ -187,5 +188,21 @@ describe("the tool", () => {
 
     expect(a?.placed).toBe(true);
     expect(a?.proposalId).not.toBe(b?.proposalId);
+  });
+});
+
+describe("an empty quote (inner#1509 review round 1)", () => {
+  it("is refused by the input schema", () => {
+    expect(documentEditInputSchema.safeParse({ kind: "comment", block: 2, quote: "", body: "x", title: "t" }).success).toBe(false);
+  });
+
+  it("is refused by the check rather than searched for", () => {
+    expect(refusal({ kind: "comment", block: 2, quote: "", body: "x", title: "t" })).toMatch(/not in block 2/i);
+  });
+});
+
+describe("the tool's description", () => {
+  it("asks for content that follows one place to go in one insert", () => {
+    expect(makeProposeDocumentEdit().description).toMatch(/one insert/i);
   });
 });

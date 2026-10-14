@@ -8,7 +8,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { documentProposalSchema } from "@shared/types/document-proposal.js";
+import { documentProposalSchema, occurrences } from "@shared/types/document-proposal.js";
 
 const COMMENT = {
   proposalId: "33333333-3333-4333-8333-333333333333",
@@ -52,5 +52,18 @@ describe("documentProposalSchema", () => {
   it("refuses an empty body and an id that is not a uuid", () => {
     expect(documentProposalSchema.safeParse({ ...COMMENT, body: "" }).success).toBe(false);
     expect(documentProposalSchema.safeParse({ ...COMMENT, proposalId: "p1" }).success).toBe(false);
+  });
+});
+
+describe("occurrences", () => {
+  it("counts every place a quote appears, overlapping ones included", () => {
+    expect(occurrences("She turns, and turns again.", "turns")).toBe(2);
+    expect(occurrences("aaa", "aa")).toBe(2);
+    expect(occurrences("She turns.", "leaves")).toBe(0);
+  });
+
+  it("finds nothing for an empty quote", () => {
+    expect(occurrences("abc", "")).toBe(0);
+    expect(occurrences("", "")).toBe(0);
   });
 });
