@@ -393,8 +393,12 @@ test('a grid cuts only the tiles picked on the node, each at its own place @need
   await page.getByTestId('mini-tool-grid-pick-all').click();
   await expect(page.getByTestId('mini-tool-run')).toBeDisabled();
   const check = layer.getByTestId('mini-tool-grid-check-1');
-  expect(await check.evaluate((el) => getComputedStyle(el).borderRadius)).toMatch(/^(9999px|50%|[1-9]\d*px)$/);
-  expect(await check.evaluate((el) => el.getBoundingClientRect().width)).toBeCloseTo(16, 0);
+  const corner = await check.evaluate((el) => ({
+    radius: parseFloat(getComputedStyle(el).borderTopLeftRadius),
+    width: el.getBoundingClientRect().width,
+  }));
+  expect(corner.width).toBeCloseTo(16, 0);
+  expect(corner.radius).toBeGreaterThanOrEqual(corner.width / 2);
 
   // A press dragged across a tile does not move the node; letting go on the
   // tile is a click on it, as on any control, so it toggles the tile.
@@ -421,7 +425,7 @@ test('a grid cuts only the tiles picked on the node, each at its own place @need
   await expect(page.getByTestId('mini-tool-grid-picked')).toContainText('3');
   expect(
     await layer.getByTestId('mini-tool-grid-tile-0').evaluate((el) => getComputedStyle(el).backgroundColor),
-  ).not.toBe('rgba(0, 0, 0, 0)');
+  ).toBe('rgba(0, 0, 0, 0.4)');
 
   await page.getByTestId('mini-tool-run').click();
   await storedResults(3);

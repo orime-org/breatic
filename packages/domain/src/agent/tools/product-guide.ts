@@ -832,9 +832,9 @@ export function renderProductGuide(): string {
       "the frame reaches past the picture, and the node's task icons are hidden while the frame shows. " +
       `${quoted(t("canvas.miniTool.image.grid.label"))} draws the cut lines on the picture and has two sliders, ` +
       `${quoted(t("canvas.miniTool.param.rows.label"))} and ${quoted(t("canvas.miniTool.param.cols.label"))}, ` +
-      "each from 1 to 8 and starting at 3. Every tile starts picked, with a round check mark in its corner; " +
-      "clicking a tile on the picture, or its check mark, leaves it out and dims it, and clicking again picks it " +
-      "back. A line under the sliders counts the tiles picked out of all of them, with a button that reads " +
+      "each from 1 to 8 and starting at 3. Every tile starts picked, with a round check mark in its corner; a " +
+      "tile too small on screen for the mark shows none until the canvas is zoomed in. Clicking a tile on the " +
+      "picture, or its check mark, leaves it out and darkens it, and clicking again picks it back. A line under the sliders counts the tiles picked out of all of them, with a button that reads " +
       `${quoted(t("canvas.miniTool.grid.pickNone"))} while every tile is picked and ` +
       `${quoted(t("canvas.miniTool.grid.pickAll"))} otherwise. Changing the rows or columns, or the picture ` +
       "changing, picks every tile again. The arrow stays greyed out at 1 by 1 and while no tile is picked. " +

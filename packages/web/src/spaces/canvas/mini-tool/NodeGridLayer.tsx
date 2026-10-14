@@ -7,10 +7,9 @@ import * as React from 'react';
 import { gridShapeOf, miniToolById, pickedCellsOf } from '@breatic/shared/mini-tools';
 
 import { Checkbox } from '@web/components/ui/checkbox';
-import { cn } from '@web/lib/utils';
 import { useCanvasSession } from '@web/spaces/canvas/canvas-context';
 import { miniToolOpenOn } from '@web/stores/canvas-session';
-import { handleScale } from '@web/spaces/canvas/crop/crop-geometry';
+import { OUTSIDE_DIM, handleScale } from '@web/spaces/canvas/crop/crop-geometry';
 import { useMediaGeometry } from '@web/spaces/canvas/crop/media-geometry';
 
 interface NodeGridLayerProps {
@@ -51,16 +50,16 @@ export function NodeGridLayer({ nodeId, wrapper }: NodeGridLayerProps): React.JS
     [spec, draft],
   );
   const skipKey = spec?.outputCount?.kind === 'product' ? spec.outputCount.except : undefined;
+  const total = shape === null ? 0 : shape.rows * shape.cols;
   const toggle = React.useCallback(
     (cell: number): void => {
-      if (skipKey === undefined || shape === null) return;
-      const total = shape.rows * shape.cols;
+      if (skipKey === undefined || total === 0) return;
       const skipped = Array.from({ length: total }, (_, index) => index).filter(
         (index) => (index === cell) === picked.has(index),
       );
       setMiniToolParam(skipKey, skipped);
     },
-    [skipKey, shape, picked, setMiniToolParam],
+    [skipKey, total, picked, setMiniToolParam],
   );
   if (shape === null || geometry === null) return null;
   const { rows, cols } = shape;
@@ -92,7 +91,8 @@ export function NodeGridLayer({ nodeId, wrapper }: NodeGridLayerProps): React.JS
             key={cell}
             data-testid={`mini-tool-grid-tile-${cell}`}
             data-picked={on}
-            className={cn('nodrag nopan relative cursor-pointer', on ? undefined : 'bg-background/70')}
+            className='nodrag nopan relative cursor-pointer'
+            style={on ? undefined : { backgroundColor: OUTSIDE_DIM }}
             onClick={() => toggle(cell)}
           >
             {roomy ? (

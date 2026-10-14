@@ -14,7 +14,7 @@ import {
   type CropRect,
   type CropSize,
 } from '@web/lib/crop-math';
-import { handleScale, type BoxSize } from '@web/spaces/canvas/crop/crop-geometry';
+import { OUTSIDE_DIM, handleScale, type BoxSize } from '@web/spaces/canvas/crop/crop-geometry';
 import { CROP_HANDLES } from '@web/spaces/canvas/focus/crop-source';
 
 /** An in-progress pointer gesture, in box pixels. */
@@ -199,7 +199,7 @@ export function NodeCropFrame({
               top: rect.y,
               width: rect.width,
               height: rect.height,
-              boxShadow: '0 0 0 100000px rgb(0 0 0 / 0.4)',
+              boxShadow: `0 0 0 100000px ${OUTSIDE_DIM}`,
             }}
           />
         )}

@@ -97,17 +97,24 @@ describe('NodeGridLayer tile picking', () => {
 
   it('leaves a clicked tile out and dims it, and picks it again on a second click', () => {
     mount('image.grid', { rows: 2, cols: 2, skip: [] });
-    fireEvent.click(screen.getByTestId('mini-tool-grid-tile-1'));
+    const tile = screen.getByTestId('mini-tool-grid-tile-1');
+    expect(tile.style.backgroundColor).toBe('');
+    fireEvent.click(tile);
     expect(store().miniTool?.params.skip).toEqual([1]);
     expect(ticks()).toEqual([true, false, true, true]);
-    expect(screen.getByTestId('mini-tool-grid-tile-1').dataset.picked).toBe('false');
-    fireEvent.click(screen.getByTestId('mini-tool-grid-tile-1'));
+    expect(tile.dataset.picked).toBe('false');
+    // The same black the crop frame darkens outside its box with, in both themes.
+    expect(getComputedStyle(tile).backgroundColor).toBe('rgba(0, 0, 0, 0.4)');
+    fireEvent.click(tile);
     expect(store().miniTool?.params.skip).toEqual([]);
+    expect(tile.style.backgroundColor).toBe('');
   });
 
   it('toggles a tile once when its checkbox is clicked', () => {
+    const write = vi.spyOn(store(), 'setMiniToolParam');
     mount('image.grid', { rows: 2, cols: 2, skip: [] });
     fireEvent.click(screen.getByTestId('mini-tool-grid-check-2'));
+    expect(write).toHaveBeenCalledOnce();
     expect(store().miniTool?.params.skip).toEqual([2]);
   });
 
