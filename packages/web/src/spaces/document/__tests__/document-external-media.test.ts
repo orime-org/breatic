@@ -212,6 +212,25 @@ describe('while our addresses are not known yet', () => {
   });
 });
 
+describe('a row dragged within the body', () => {
+  it('is left as it is, even while our addresses are not known yet', () => {
+    const s = sink();
+    const editor = open(null, s);
+    editor.replaceBlocks(editor.document, [{ type: 'image', props: { url: `${OURS}image/2026-10-07/a.png` } }] as never);
+    const view = editor.prosemirrorView!;
+    const slice = view.state.doc.slice(1, view.state.doc.content.size - 1);
+    view.dragging = { slice, move: true } as never;
+
+    let out = slice;
+    view.someProp('transformPasted', (transform) => {
+      out = transform(out, view, false);
+    });
+
+    expect(out).toBe(slice);
+    expect(s.start).not.toHaveBeenCalled();
+  });
+});
+
 describe('a medium that cannot be fetched', () => {
   it('is left out and counted, and the words stay', () => {
     const s = sink();

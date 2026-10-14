@@ -273,6 +273,48 @@ describe('with the caret in a table cell (A7)', () => {
     expect(sink.start).toHaveBeenCalledOnce();
   });
 
+  it.each([
+    ['a line break', '<img src="https://elsewhere.example/a.png"><br>'],
+    ['a rule', '<img src="https://elsewhere.example/a.png"><hr>'],
+    ['a break inside its paragraph', '<p><img src="https://elsewhere.example/a.png"><br></p>'],
+  ])('a picture followed by %s that leaves the cell as it was still lands under the table', (_what, html) => {
+    const { editor, sink } = open([TABLE, { type: 'paragraph', content: 'after' }]);
+    caretIn(editor, 0);
+
+    paste(editor, html, '');
+
+    expect(shape(editor)).toEqual(['table', 'image[pending|]', 'paragraph:after']);
+    expect(sink.start).toHaveBeenCalledOnce();
+  });
+
+  it('a drop of a picture and a line break that leaves the cell as it was still lands the picture under the table', () => {
+    const { editor, sink } = open([TABLE, { type: 'paragraph', content: 'after' }]);
+    const at = caretIn(editor, 0);
+
+    drop(editor, at, '<img src="https://elsewhere.example/a.png"><br>', '');
+
+    expect(shape(editor)).toEqual(['table', 'image[pending|]', 'paragraph:after']);
+    expect(sink.start).toHaveBeenCalledOnce();
+  });
+
+  it('web content dropped on a cell with the caret elsewhere lands as it does without its picture, the picture under the table', () => {
+    const HTML = '<h2>Head</h2><p>para</p>';
+    const plain = open([{ type: 'paragraph', content: 'before' }, TABLE, { type: 'paragraph', content: 'after' }]);
+    const plainAt = caretIn(plain.editor, 1);
+    caretIn(plain.editor, 2);
+    drop(plain.editor, plainAt, HTML, 'Head para');
+    const withPicture = open([{ type: 'paragraph', content: 'before' }, TABLE, { type: 'paragraph', content: 'after' }]);
+    const at = caretIn(withPicture.editor, 1);
+    caretIn(withPicture.editor, 2);
+
+    drop(withPicture.editor, at, `${HTML}<img src="https://elsewhere.example/a.png">`, 'Head para');
+
+    const expected = shape(plain.editor);
+    expected.splice(expected.indexOf('table') + 1, 0, 'image[pending|]');
+    expect(shape(withPicture.editor)).toEqual(expected);
+    expect(firstCell(withPicture.editor, 1)).toBe(firstCell(plain.editor, 1));
+  });
+
   it('is taken away by one undo', () => {
     const { editor, manager } = open([TABLE]);
     caretIn(editor, 0);
@@ -366,5 +408,21 @@ describe('a paste or a drop is an undo step of its own (A6)', () => {
     manager.undo();
 
     expect(shape(editor)).toEqual(['paragraph:lead typed']);
+  });
+});
+
+describe('a paste the editor does not put in', () => {
+  it('counts its media as left out when another hook takes the paste instead', async () => {
+    const { editor, sink } = open([{ type: 'paragraph', content: 'lead word' }]);
+    const view = editor.prosemirrorView!;
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 8, 12)));
+    view.focus();
+
+    // The link hook takes a paste whose words are one address, over a selection.
+    paste(editor, '<p><a href="https://x.example/">https://x.example/</a></p><img src="https://elsewhere.example/a.png">', 'https://x.example/');
+    await Promise.resolve();
+
+    expect(sink.start).not.toHaveBeenCalled();
+    expect(sink.onLeftOut).toHaveBeenCalledWith(1);
   });
 });
