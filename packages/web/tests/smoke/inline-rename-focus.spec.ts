@@ -198,6 +198,31 @@ test('a history row rename gives the row menu the keyboard and keeps the convers
   }
 });
 
+test('a Space drawer row rename gives the row menu the keyboard and keeps the drawer', async () => {
+  const id = await createSpace(page, 'canvas', `drawer-focus-${String(Date.now())}`);
+  spaces.push(id);
+  await page.getByTestId('space-drawer-trigger').click();
+  const active = await page.locator('[data-testid^="space-tab-"][aria-selected="true"]').getAttribute('data-testid');
+
+  for (const key of ['Enter', 'Escape']) {
+    await page.getByTestId(`space-drawer-menu-${id}`).focus();
+    await page.keyboard.press('Enter');
+    await expect(page.getByTestId(`space-drawer-rename-${id}`)).toBeVisible();
+    // View is the first item; Rename is the next.
+    await page.keyboard.press('ArrowDown');
+    await expect(page.getByTestId(`space-drawer-rename-${id}`)).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect(page.getByTestId(`space-drawer-rename-input-${id}`)).toBeFocused();
+    await page.keyboard.press(key);
+    await expect(page.getByTestId(`space-drawer-rename-input-${id}`)).toHaveCount(0);
+    await expect(page.getByTestId(`space-drawer-menu-${id}`)).toBeFocused();
+    await expect(page.getByTestId('space-drawer')).toBeVisible();
+    expect(
+      await page.locator('[data-testid^="space-tab-"][aria-selected="true"]').getAttribute('data-testid'),
+    ).toBe(active);
+  }
+});
+
 /**
  * Holds Enter down: the press, the auto-repeats the system sends while the key
  * is held, then its release.

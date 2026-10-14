@@ -402,7 +402,10 @@ function SpaceDrawerRow({
               onBlur={(e) => commit(e.currentTarget.value)}
             />
           ) : (
-            <span className='truncate text-base font-semibold text-foreground'>
+            <span
+              className='truncate text-base font-semibold text-foreground'
+              data-testid={`space-drawer-name-${space.id}`}
+            >
               {name}
             </span>
           )}

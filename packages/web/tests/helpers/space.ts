@@ -152,6 +152,11 @@ export async function deleteSpace(page: Page, spaceId: string): Promise<void> {
     // the timeout looking for it. Measured: 84 removals in a row came out 42
     // done, 42 timed out, strictly alternating.
     const drawer = page.getByTestId('space-drawer');
+    // A drawer still sliding shut is in the page but its rows no longer take
+    // a press; counted as open, the click below would wait out the timeout.
+    await expect(
+      page.locator('[data-testid="space-drawer"][data-state="closed"]'),
+    ).toHaveCount(0, { timeout: 5_000 });
     if ((await drawer.count()) === 0) {
       await page.getByTestId('space-drawer-trigger').click();
       await expect(drawer).toBeVisible({ timeout: 10_000 });
