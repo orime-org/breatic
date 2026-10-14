@@ -15,6 +15,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('@xyflow/react', async (original) => ({ ...(await original<object>()), useNodeId: () => 'n1' }));
 
 import { ContentNodeFrame } from '@web/spaces/canvas/nodes/_shared/ContentNodeFrame';
+import { NodeContent } from '@web/spaces/canvas/nodes/_shared/NodeContent';
 import { NodePlaceholder } from '@web/spaces/canvas/nodes/_shared/NodePlaceholder';
 import { useUploadMarksStore } from '@web/stores/upload-marks';
 
@@ -57,14 +58,17 @@ describe('an empty node with an upload mark', () => {
 });
 
 /**
- * Render a node through the frame every content modality shares.
+ * Render a node the way every content modality does: its frame around
+ * `NodeContent`, showing the body, or the placeholder when it holds nothing.
  * @param modality - The node's modality.
- * @param body - What the node shows.
+ * @param body - What the node shows, or null for an empty node.
  */
 function renderFramed(modality: 'image' | 'video' | 'audio' | 'text', body: React.ReactNode): void {
   render(
     <ReactFlowProvider>
-      <ContentNodeFrame modality={modality}>{body}</ContentNodeFrame>
+      <ContentNodeFrame modality={modality}>
+        <NodeContent hasContent={body !== null} placeholder={<NodePlaceholder modality={modality} />} content={body} />
+      </ContentNodeFrame>
     </ReactFlowProvider>,
   );
 }
@@ -91,7 +95,7 @@ describe('every content node with an upload mark', () => {
     act(() => {
       marks().begin('', 'n1', 'upload');
     });
-    renderFramed('image', <NodePlaceholder modality='image' />);
+    renderFramed('image', null);
     expect(screen.getAllByTestId('node-upload-skeleton')).toHaveLength(1);
     expect(screen.getByTestId('node-placeholder')).toContainElement(screen.getByTestId('node-upload-skeleton'));
   });
@@ -101,7 +105,7 @@ describe('every content node with an upload mark', () => {
       const op = marks().begin('', 'n1', 'upload');
       marks().fail('', 'n1', op, { key: 'canvas.upload.failed' });
     });
-    renderFramed('image', <NodePlaceholder modality='image' />);
+    renderFramed('image', null);
     expect(screen.getAllByTestId('node-upload-error')).toHaveLength(1);
   });
 

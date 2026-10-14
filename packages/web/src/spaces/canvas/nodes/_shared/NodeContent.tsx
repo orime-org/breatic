@@ -3,6 +3,8 @@
 
 import * as React from 'react';
 
+import { NodeUploadMarkOverlay } from '@web/spaces/canvas/nodes/_shared/NodeUploadMarkOverlay';
+
 interface NodeContentProps {
   hasContent: boolean;
   placeholder: React.ReactNode;
@@ -28,8 +30,13 @@ export function NodeContent({
 }: NodeContentProps): React.JSX.Element {
   // An empty node fills a fixed h-48 box so every empty node is the same size
   // regardless of modality; a filled node grows to its content's real height.
+  // The uploader's mark lies over content; an empty node's placeholder draws
+  // it in place of its call to action (inner#1303 §6.7).
   return hasContent ? (
-    <>{content}</>
+    <>
+      {content}
+      <NodeUploadMarkOverlay />
+    </>
   ) : (
     <div data-testid='node-content-empty' className='h-48'>
       {placeholder}
