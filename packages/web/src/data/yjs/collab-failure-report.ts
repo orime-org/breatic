@@ -16,35 +16,55 @@ import * as Sentry from '@sentry/react';
 /** Whether the collab connection failed on auth (terminal) or a transient disconnect. */
 export type CollabFailureKind = 'auth' | 'disconnect';
 
-/** Structured detail captured at a collab connection failure. */
-export interface CollabFailureInfo {
-  /** `auth` = rejected (close 4401/4403, terminal); `disconnect` = network/server drop. */
-  kind: CollabFailureKind;
-  /** The Yjs document name the failure occurred on (e.g. `"project-7/meta"`). */
+/** A document the server refused (close 4401/4403, terminal). */
+export interface CollabAuthFailure {
+  kind: 'auth';
+  /** The Yjs document name the refusal was for (e.g. `"project-7/meta"`). */
   docName: string;
-  /** WebSocket close code, when the failure arrived via `onClose`. */
+  /** WebSocket close code, when the refusal arrived via a close. */
   code?: number;
   /** Server-provided reason string, when available. */
   reason?: string;
 }
 
 /**
+ * The tab's one collab connection dropped.
+ *
+ * Every open document rides that connection, so a drop is one event however
+ * many documents were attached; the count says how many lost their sync.
+ */
+export interface CollabDisconnect {
+  kind: 'disconnect';
+  /** WebSocket close code. */
+  code?: number;
+  /** Close reason the server sent, when it sent one (e.g. `"Connection Timeout"`). */
+  reason?: string;
+  /** How many documents were attached to the connection when it dropped. */
+  documents: number;
+}
+
+/** Structured detail captured at a collab connection failure. */
+export type CollabFailureInfo = CollabAuthFailure | CollabDisconnect;
+
+/**
  * Report a collab connection failure to the browser console and Sentry.
- * @param info - Structured failure detail (kind, doc name, close code, reason).
+ * @param info - Structured failure detail.
  */
 export function reportCollabFailure(info: CollabFailureInfo): void {
-  const { kind, docName, code, reason } = info;
+  const { code, reason } = info;
+  const closed =
+    (code != null ? ` (close ${code})` : '') + (reason ? `: ${reason}` : '');
   const detail =
-    `collab ${kind} failure on "${docName}"` +
-    (code != null ? ` (close ${code})` : '') +
-    (reason ? `: ${reason}` : '');
+    info.kind === 'auth'
+      ? `collab auth failure on "${info.docName}"${closed}`
+      : `collab disconnect${closed}`;
 
   // eslint allows console.error/warn (see eslint.config.mts no-console).
-  console.error(`[collab] ${detail}`, { kind, docName, code, reason });
+  console.error(`[collab] ${detail}`, info);
 
   Sentry.captureMessage(detail, {
-    level: kind === 'auth' ? 'error' : 'warning',
-    tags: { area: 'collab', kind },
-    extra: { docName, code, reason },
+    level: info.kind === 'auth' ? 'error' : 'warning',
+    tags: { area: 'collab', kind: info.kind },
+    extra: { ...info },
   });
 }

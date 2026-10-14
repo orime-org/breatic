@@ -5,6 +5,7 @@ const transports = vi.hoisted(() => ({ socket: vi.fn(), stream: vi.fn().mockReso
 vi.mock('@hocuspocus/provider', () => ({ HocuspocusProviderWebsocket: class {
   constructor(config: unknown) { transports.socket(config); }
   destroy() { }
+  on() { }
 }, HocuspocusProvider: class {
   attach() { }
   on() { }
