@@ -1423,6 +1423,7 @@
         "nothingUnresolved": "Nothing unresolved.",
         "writeFailed": "That change could not be saved.",
         "unknownAuthor": "Unknown",
+        "fromAgent": "from Agent",
         "folded": "{count, plural, one {# more comment} other {# more comments}}",
         "reply": "Reply…",
         "save": "Save",

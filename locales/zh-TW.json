@@ -1423,6 +1423,7 @@
         "nothingUnresolved": "沒有未解決的批註。",
         "writeFailed": "這次改動沒能儲存。",
         "unknownAuthor": "未知",
+        "fromAgent": "來自 Agent",
         "folded": "還有 {count} 則",
         "reply": "回覆…",
         "save": "儲存",

@@ -202,6 +202,11 @@ function Entry({
       <div className='min-w-0 flex-1'>
         <div className='flex items-center text-2xs'>
           <span className='font-medium'>{author}</span>
+          {entry.fromAgent ? (
+            <span className='ml-1.5 text-muted-foreground' data-testid='doc-comment-from-agent'>
+              {t('spaces.document.comment.fromAgent')}
+            </span>
+          ) : null}
           <time
             className='ml-1.5 text-muted-foreground'
             dateTime={entry.createdAt.toISOString()}

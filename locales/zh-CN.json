@@ -1423,6 +1423,7 @@
         "nothingUnresolved": "没有未解决的批注。",
         "writeFailed": "这次改动没能保存。",
         "unknownAuthor": "未知",
+        "fromAgent": "来自 Agent",
         "folded": "还有 {count} 条",
         "reply": "回复…",
         "save": "保存",
