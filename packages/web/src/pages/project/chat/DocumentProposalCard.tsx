@@ -190,6 +190,19 @@ export const DocumentProposalCard = React.memo(function DocumentProposalCard({
           {t('chat.documentProposal.lossy')}
         </div>
       ) : null}
+      {proposal.kind === 'insert' && proposal.blockId !== null ? (
+        <div className='flex flex-col gap-1'>
+          <div data-testid='document-proposal-anchor-label' className='text-xs text-muted-foreground'>
+            {t('chat.documentProposal.insertAfter')}
+          </div>
+          <div
+            data-testid='document-proposal-anchor'
+            className='line-clamp-2 border-l border-border pl-2 text-xs text-muted-foreground'
+          >
+            {proposal.original}
+          </div>
+        </div>
+      ) : null}
       {proposal.kind === 'insert' ? (
         <div className='rounded-md border border-border bg-background px-2 py-1.5'>
           <MarkdownMessage content={proposal.body} size='xs' />

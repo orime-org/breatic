@@ -116,6 +116,15 @@ describe('an insert card', () => {
     expect(screen.getByTestId('document-proposal-where').textContent).toBe('Insert into Document “Storyboard” · End');
     expect(screen.getByText('Wide')).toBeTruthy();
     expect(screen.getAllByRole('button').map((b) => b.textContent)).toEqual(['Insert']);
+    expect(screen.queryByTestId('document-proposal-anchor')).toBeNull();
+  });
+
+  it('shows the passage it goes after', () => {
+    const { quote: _quote, ...insert } = { ...BASE, kind: 'insert' as const, body: 'She waits.' };
+    draw(insert);
+
+    expect(screen.getByTestId('document-proposal-anchor-label').textContent).toBe('Goes after this passage');
+    expect(screen.getByTestId('document-proposal-anchor').textContent).toBe(BASE.original);
   });
 });
 

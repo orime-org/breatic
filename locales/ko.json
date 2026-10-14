@@ -371,6 +371,7 @@
     "documentProposal": {
       "where": "Document「{name}」",
       "whereInsert": "Document「{name}」에 삽입",
+      "insertAfter": "이 단락 뒤에 삽입",
       "end": "맨 끝",
       "addComment": "코멘트 추가",
       "apply": "바꾸기",

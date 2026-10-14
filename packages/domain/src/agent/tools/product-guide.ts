@@ -960,8 +960,9 @@ export function renderProductGuide(): string {
       `${quoted(t("chat.documentProposal.addComment"))} puts the rewritten words on the passage as a comment, and ` +
       `${quoted(t("chat.documentProposal.apply"))} replaces the passage with them. When the passage holds colours, ` +
       `an alignment, column widths or comments, a rewrite card adds ${quoted(t("chat.documentProposal.lossy"))} ` +
-      "An insert card shows the new content as it will look, tables included, with " +
-      `${quoted(t("chat.documentProposal.insert"))}.`,
+      "An insert card that goes after a passage first shows that passage under " +
+      `${quoted(t("chat.documentProposal.insertAfter"))}; it shows the new content as it will look, tables ` +
+      `included, with ${quoted(t("chat.documentProposal.insert"))}.`,
     "Pressing a button opens the document, or switches to its tab, and the change lands; the document scrolls " +
       "to it and outlines it for a moment. The pressed button spins meanwhile. A rewrite or an insert is one step " +
       "undo reverses. A comment lands under the reader's own name, marked " +
@@ -970,7 +971,8 @@ export function renderProductGuide(): string {
       `${quoted(t("chat.documentProposal.appliedComment"))}, ${quoted(t("chat.documentProposal.appliedRewrite"))} ` +
       `or ${quoted(t("chat.documentProposal.appliedInsert"))} and a ` +
       `${quoted(t("chat.documentProposal.view"))} button that shows it again; a card that already landed shows ` +
-      "the same after a reload. When the passage changed or was deleted after the proposal the card shows " +
+      "the same after a reload, and a rewrite or insert card goes back to its buttons once the reader undoes " +
+      "it. When the passage changed or was deleted after the proposal the card shows " +
       `${quoted(t("chat.documentProposal.changed"))} or ${quoted(t("chat.documentProposal.blockGone"))} and ` +
       `nothing changes; ${quoted(t("chat.documentProposal.readOnly"))} when the reader's connection to the ` +
       `document is read-only; ${quoted(t("chat.documentProposal.spaceGone"))} when the document is gone. When ` +

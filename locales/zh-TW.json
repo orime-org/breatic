@@ -371,6 +371,7 @@
     "documentProposal": {
       "where": "Document「{name}」",
       "whereInsert": "插入到 Document「{name}」",
+      "insertAfter": "插在這一段之後",
       "end": "文末",
       "addComment": "新增註解",
       "apply": "直接修改",

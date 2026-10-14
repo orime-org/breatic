@@ -371,6 +371,7 @@
     "documentProposal": {
       "where": "Document “{name}”",
       "whereInsert": "Insert into Document “{name}”",
+      "insertAfter": "Goes after this passage",
       "end": "End",
       "addComment": "Add comment",
       "apply": "Replace",
