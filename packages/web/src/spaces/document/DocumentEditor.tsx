@@ -38,6 +38,7 @@ import { useDocumentBars } from '@web/spaces/document/document-bars';
 import { bodyPartMark, recomputeBodyFocus, releaseBodyFocus } from '@web/spaces/document/document-body-focus';
 import { attachBodyScroller, BODY_BLANK } from '@web/spaces/document/document-body-press';
 import type { DocumentUploader } from '@web/spaces/document/document-uploads';
+import type { LandedBlock } from '@web/spaces/document/use-document-proposal-pickup';
 
 interface DocumentEditorProps {
   /** The live editor and its surface, created and owned by the cache. */
@@ -56,6 +57,19 @@ interface DocumentEditorProps {
   myRole?: ProjectRole;
   /** What takes files into this body; a body without one offers no media entries. */
   uploader?: DocumentUploader | null;
+  /** The block an Agent proposal just landed, to bring into view and mark (inner#1509). */
+  landed?: LandedBlock | null;
+}
+
+/** How long a block an Agent proposal landed stays marked. */
+const LANDED_MARK_MS = 2000;
+
+/** Where the mark around a landed block is drawn, in the viewport's coordinates. */
+interface LandedBox {
+  top: number;
+  left: number;
+  width: number;
+  height: number;
 }
 
 /**
@@ -73,6 +87,7 @@ interface DocumentEditorProps {
  * @param root0.readOnly - True for a viewer.
  * @param root0.myRole - The reader's role on the project.
  * @param root0.uploader - What takes files into this body.
+ * @param root0.landed - The block an Agent proposal just landed.
  * @returns The editor body, the comment panel beside it, the entry and the
  *   bubble bar.
  */
@@ -81,6 +96,7 @@ export const DocumentEditor = React.memo(function DocumentEditor({
   readOnly = false,
   myRole = 'viewer',
   uploader = null,
+  landed = null,
 }: DocumentEditorProps): React.JSX.Element {
   const body = React.useRef<HTMLDivElement>(null);
   // The one bit that says whether the panel is on screen, and the reader is
@@ -169,6 +185,24 @@ export const DocumentEditor = React.memo(function DocumentEditor({
     );
   }, [handle]);
 
+  // A block an Agent proposal landed is scrolled to a third of the way down
+  // the viewport and outlined for a moment, so the reader sees what changed.
+  const [landedBox, setLandedBox] = React.useState<LandedBox | null>(null);
+  React.useEffect(() => {
+    const block = landed === null ? null : body.current?.querySelector<HTMLElement>(`[data-id="${CSS.escape(landed.blockId)}"]`);
+    if (viewport === null || block === null || block === undefined) return undefined;
+    const at = block.getBoundingClientRect();
+    const frame = viewport.getBoundingClientRect();
+    const top = at.top - frame.top + viewport.scrollTop;
+    setLandedBox({ top, left: at.left - frame.left + viewport.scrollLeft, width: at.width, height: at.height });
+    viewport.scrollTo({ top: Math.max(0, top - viewport.clientHeight / 3), behavior: 'smooth' });
+    const timer = window.setTimeout(() => setLandedBox(null), LANDED_MARK_MS);
+    return () => {
+      window.clearTimeout(timer);
+      setLandedBox(null);
+    };
+  }, [landed, viewport]);
+
   // The scroller is where a press on blank space leaves the focus, and where
   // a press in the body is first read (inner#1127 A20). A Space hidden
   // lets go of the focus at once: its layers stay on the page, so nothing
@@ -240,6 +274,14 @@ export const DocumentEditor = React.memo(function DocumentEditor({
               takes that height, and a flex container, so the text column and
               the panel beside it each take it in turn. */}
           <div {...{ [BODY_BLANK]: '' }} className='flex flex-1'>
+            {landedBox === null ? null : (
+              <div
+                data-testid='document-proposal-landed'
+                aria-hidden='true'
+                className='pointer-events-none absolute rounded-md border border-status-info'
+                style={landedBox}
+              />
+            )}
             <div
               {...{ [BODY_BLANK]: '' }}
               className='flex min-w-0 flex-1 flex-col px-[var(--doc-body-gutter)]'
