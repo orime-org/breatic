@@ -186,18 +186,20 @@ export const DocumentProposalCard = React.memo(function DocumentProposalCard({
           >
             {proposal.quote}
           </div>
-          <div className='whitespace-pre-wrap text-xs text-foreground'>{proposal.body}</div>
+          <div className='whitespace-pre-wrap rounded-md border border-border bg-background px-2 py-1.5 text-xs text-foreground'>
+            {proposal.body}
+          </div>
         </>
       ) : null}
       {proposal.kind === 'rewrite' ? (
         <div className='whitespace-pre-wrap rounded-md border border-border bg-background px-2 py-1.5 text-xs text-foreground'>
           {(changes ?? [{ value: proposal.original, added: false, removed: false, count: 0 }]).map((part, i) =>
             part.removed ? (
-              <del key={i} data-testid='document-proposal-removed' className='text-status-error line-through'>
+              <del key={i} data-testid='document-proposal-removed' className='rounded-content-xs bg-status-error-bg line-through'>
                 {part.value}
               </del>
             ) : part.added ? (
-              <ins key={i} data-testid='document-proposal-added' className='text-status-success no-underline'>
+              <ins key={i} data-testid='document-proposal-added' className='rounded-content-xs bg-status-success-bg no-underline'>
                 {part.value}
               </ins>
             ) : (
@@ -206,7 +208,7 @@ export const DocumentProposalCard = React.memo(function DocumentProposalCard({
           )}
         </div>
       ) : null}
-      {proposal.kind === 'rewrite' && proposal.lossy ? (
+      {proposal.kind === 'rewrite' && proposal.lossy && state !== 'applied' ? (
         <div data-testid='document-proposal-lossy' className='text-xs text-muted-foreground'>
           {t('chat.documentProposal.lossy')}
         </div>
@@ -231,32 +233,22 @@ export const DocumentProposalCard = React.memo(function DocumentProposalCard({
           <MarkdownMessage content={proposal.body} size='xs' />
         </div>
       ) : null}
-      {status === null ? null : (
-        <div
-          data-testid='document-proposal-status'
-          className='text-xs text-muted-foreground'
-        >
-          {status}
-        </div>
-      )}
       {state === 'applied' ? (
-        <Button
-          type='button'
-          variant='outline'
-          size='sm'
-          loading={viewing}
-          onClick={onView}
-          className='w-full max-w-[270px] self-center'
-        >
-          {t('chat.documentProposal.view')}
-        </Button>
+        <div className='flex items-center justify-between gap-2'>
+          <div data-testid='document-proposal-status' className='text-xs text-muted-foreground'>
+            {status}
+          </div>
+          <Button type='button' variant='outline' size='form' loading={viewing} onClick={onView}>
+            {t('chat.documentProposal.view')}
+          </Button>
+        </div>
       ) : (
         <div className='flex w-full max-w-[270px] gap-2 self-center'>
           {commentable ? (
             <Button
               type='button'
               variant='outline'
-              size='sm'
+              size='form'
               loading={working && card?.action === 'comment'}
               disabled={unread || (working && card?.action !== 'comment')}
               onClick={onComment}
@@ -269,7 +261,7 @@ export const DocumentProposalCard = React.memo(function DocumentProposalCard({
             <Button
               type='button'
               variant='outline'
-              size='sm'
+              size='form'
               loading={working && card?.action === 'write'}
               disabled={unread || (working && card?.action !== 'write')}
               onClick={onWrite}

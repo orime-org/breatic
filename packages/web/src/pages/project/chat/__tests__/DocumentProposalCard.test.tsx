@@ -167,6 +167,21 @@ describe('a rewrite card', () => {
       'The formatting and comments in this passage will be replaced.',
     );
   });
+
+  it('stops saying the passage will be replaced once it has been', async () => {
+    const { quote: _quote, ...rewrite } = { ...REWRITE, lossy: true };
+    draw(rewrite);
+    await waitFor(() => {
+      expect((screen.getByRole('button', { name: 'Replace' }) as HTMLButtonElement).disabled).toBe(false);
+    });
+    await userEvent.click(screen.getByRole('button', { name: 'Replace' }));
+    act(() => {
+      useDocumentProposals.getState().report(rewrite.proposalId, 'applied');
+    });
+
+    expect(screen.getByTestId('document-proposal-status').textContent).toBe('Replaced');
+    expect(screen.queryByTestId('document-proposal-lossy')).toBeNull();
+  });
 });
 
 describe('an insert card', () => {
