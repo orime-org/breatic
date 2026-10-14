@@ -25,7 +25,7 @@ import { asCommentBody, commentsOn } from '@web/spaces/document/document-comment
 import { ourMediaPrefixReady, ownMediaOnly, type WrittenBlock } from '@web/spaces/document/document-external-media';
 import { threadRangesByThread } from '@web/spaces/document/document-comment-ranges';
 import type { DocumentEditorHandle } from '@web/spaces/document/document-editor-cache';
-import { markdownBlocks } from '@web/spaces/document/document-markdown';
+import { markdownBlocks, type MarkdownBlock } from '@web/spaces/document/document-markdown';
 import type { LandingAction } from '@web/stores/document-proposals';
 
 
@@ -196,6 +196,16 @@ function blockProblem(handle: Landable, proposal: DocumentProposal): 'blockGone'
 }
 
 /**
+ * The parts of a rewrite that go into a comment made from it: those whose
+ * words are not only blanks, the rule a reader's own comment is sent by.
+ * @param blocks - The rewrite's blocks.
+ * @returns The blocks with words.
+ */
+export function commentTextOf(blocks: readonly MarkdownBlock[]): MarkdownBlock[] {
+  return blocks.filter((b) => b.text.trim() !== '');
+}
+
+/**
  * Puts a proposal on as a comment: its own words for a comment card, the
  * rewritten words one paragraph per block for a rewrite card.
  * @param handle - The document.
@@ -207,9 +217,7 @@ async function landComment(handle: Landable, proposal: DocumentProposal): Promis
   const body =
     proposal.kind === 'comment'
       ? asCommentBody(proposal.body)
-      : (await markdownBlocks(proposal.body))
-        .filter((b) => b.text.trim() !== '')
-        .flatMap((b) => asCommentBody(b.text) as unknown[]);
+      : commentTextOf(await markdownBlocks(proposal.body)).flatMap((b) => asCommentBody(b.text) as unknown[]);
   const aim = proposal.quote === undefined ? wholeBlockAim(blockId) : quoteAim(blockId, proposal.quote);
   await commentOn(handle.editor as never, body, aim, {
     thread: { proposalId: proposal.proposalId },

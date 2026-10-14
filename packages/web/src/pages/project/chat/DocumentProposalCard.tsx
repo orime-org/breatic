@@ -15,7 +15,7 @@ import { MarkdownMessage } from '@web/pages/project/chat/MarkdownMessage';
 import { peekDocumentEditor } from '@web/spaces/document/document-editor-cache';
 import { ourMediaPrefixReady, ownMediaOnly, type WrittenBlock } from '@web/spaces/document/document-external-media';
 import { markdownBlocks } from '@web/spaces/document/document-markdown';
-import { landedAt } from '@web/spaces/document/document-proposal-landing';
+import { commentTextOf, landedAt } from '@web/spaces/document/document-proposal-landing';
 import {
   useDocumentProposals,
   type DocumentProposalCardState,
@@ -126,7 +126,7 @@ function useReadBody(proposal: DocumentProposal): ReadBody | null {
             : null,
         mediaLeftOut: kept.count,
         writable: kept.blocks.length > 0,
-        hasCommentText: blocks.some((b) => b.text.trim() !== ''),
+        hasCommentText: commentTextOf(blocks).length > 0,
       });
     });
     return () => {

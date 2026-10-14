@@ -25,7 +25,10 @@ const landedAt = vi.hoisted(() =>
   }),
 );
 const peek = vi.hoisted(() => vi.fn<(name: string) => unknown>(() => undefined));
-vi.mock('@web/spaces/document/document-proposal-landing', () => ({ landedAt }));
+vi.mock('@web/spaces/document/document-proposal-landing', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@web/spaces/document/document-proposal-landing')>()),
+  landedAt,
+}));
 vi.mock('@web/spaces/document/document-editor-cache', () => ({ peekDocumentEditor: peek }));
 
 const PROJECT = '11111111-1111-4111-8111-111111111111';
