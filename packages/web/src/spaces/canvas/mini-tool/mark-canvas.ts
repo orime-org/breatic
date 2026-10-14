@@ -18,7 +18,7 @@ import { newId } from '@breatic/shared';
 
 import { fromFabric, markFontPx, markStrokePx, toFabric, type DrawBox, type MarkFabricObject } from '@web/spaces/canvas/mini-tool/mark-fabric';
 import type { CanvasSessionState } from '@web/stores/canvas-session';
-import { sliderSizeOf, type MarkChannel, type MarkDraft, type MarkObject } from '@web/stores/mark-draft';
+import type { MarkChannel, MarkDraft, MarkObject } from '@web/stores/mark-draft';
 
 /** Below this drag, in drawn pixels, a shape tool's press is a click and draws nothing. */
 export const MARK_MIN_DRAG_PX = 4;
@@ -35,6 +35,11 @@ interface Edit {
   isNew: boolean;
   /** The text as the edit began, which says whether leaving it changed anything. */
   textAtEntry: string;
+  /**
+   * The panel's colour and size the text was last given, starting from what
+   * the panel showed as the edit began; only a change from these restyles it.
+   */
+  style: { color: string; size: number } | null;
 }
 
 /**
@@ -202,6 +207,13 @@ export class MarkCanvasController {
     }
   }
 
+  /** Take the panel's colour and size as the edit begins as the ones the text has. */
+  private noteEditStyle(): void {
+    const draft = this.draft();
+    if (this.edit === null || draft === null) return;
+    this.edit = { ...this.edit, style: { color: draft.color, size: draft.size } };
+  }
+
   /**
    * Give a text being edited the pen's colour and size as they change; they
    * are written back with the text when the edit ends.
@@ -210,9 +222,12 @@ export class MarkCanvasController {
   private restyleEdit(draft: MarkDraft): void {
     const active = this.canvas.getActiveObject() as (IText & Partial<MarkFabricObject>) | undefined;
     if (this.edit === null || !(active instanceof IText)) return;
-    // The slider shows the text's own size at its nearest step; only a move of
-    // the slider away from that restyles the text.
-    if (active.markColor === draft.color && sliderSizeOf(active.markSize ?? draft.size) === draft.size) return;
+    // The panel shows a text's own size at the slider's nearest step, so
+    // comparing the text against the panel would restyle it on entry; a change
+    // of the panel since the edit began is what restyles it.
+    const seen = this.edit.style;
+    if (seen === null || (seen.color === draft.color && seen.size === draft.size)) return;
+    this.edit = { ...this.edit, style: { color: draft.color, size: draft.size } };
     active.set({ fill: draft.color, fontSize: markFontPx(draft.size, this.box) });
     Object.assign(active, { markColor: draft.color, markSize: draft.size });
     this.canvas.requestRenderAll();
@@ -369,7 +384,7 @@ export class MarkCanvasController {
       { id, kind: 'text', color: draft.color, size: draft.size, x: at.x / this.box.width, y: at.y / this.box.height, text: '' },
       this.box,
     ) as unknown as IText;
-    this.edit = { id, isNew: true, textAtEntry: '' };
+    this.edit = { id, isNew: true, textAtEntry: '', style: null };
     this.suppressed = true;
     this.canvas.add(text);
     this.canvas.setActiveObject(text);
@@ -378,6 +393,7 @@ export class MarkCanvasController {
     session.setMarkTool('select');
     session.selectMark(id);
     session.setMarkEditingText('');
+    this.noteEditStyle();
     text.enterEditing();
     this.canvas.requestRenderAll();
   }
@@ -411,10 +427,11 @@ export class MarkCanvasController {
     const id = idOf(target);
     if (id === undefined) return;
     if (this.edit === null) {
-      this.edit = { id, isNew: false, textAtEntry: target.text };
+      this.edit = { id, isNew: false, textAtEntry: target.text, style: null };
       // The text being edited is the selected one, so the controls show its style.
       this.session().selectMark(id);
       this.session().setMarkEditingText(target.text);
+      this.noteEditStyle();
     }
   }
 
