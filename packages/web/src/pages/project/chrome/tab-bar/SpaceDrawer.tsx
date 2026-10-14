@@ -410,7 +410,11 @@ function SpaceDrawerRow({
             </span>
           )}
           {isActive ? (
-            <span className='shrink-0 rounded-chrome border border-border px-1 py-0.5 text-2xs font-medium text-foreground-secondary'>
+            <span
+              // The border takes 1px a side, so a 1px pad keeps this mark the
+              // height of the Open mark beside other rows.
+              className='shrink-0 rounded-chrome border border-border px-1 py-px text-2xs font-medium text-foreground-secondary'
+            >
               {t('spaces.drawer.status.editing')}
             </span>
           ) : isOpen ? (
