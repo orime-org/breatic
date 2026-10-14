@@ -71,6 +71,43 @@ async function backendSides(): Promise<BackendSides> {
   return { shared: backend.tileSize, max };
 }
 
+/** A picture's preview-sized copies, one per picture, kept for its last size. */
+const previewCopies = new WeakMap<CropSourceEl, { width: number; height: number; canvas: HTMLCanvasElement }>();
+
+/**
+ * What the filters draw from at a given size: the picture itself when it is no
+ * larger, otherwise a copy scaled to that size with smoothing. The filters
+ * sample by nearest neighbour, so a larger source drawn straight into the size
+ * keeps one pixel in every few and the preview stops matching the export. A
+ * picture's copy is kept for its size; a video's frame moves, so its copy is
+ * drawn each time.
+ * @param el - The picture.
+ * @param size - The size the filters draw at.
+ * @param size.width - Its width.
+ * @param size.height - Its height.
+ * @returns The source to filter.
+ * @throws {never} Never.
+ */
+export function previewSourceOf(
+  el: CropSourceEl,
+  size: { width: number; height: number },
+): CropSourceEl | HTMLCanvasElement {
+  const own = intrinsicSize(el);
+  if (own.width <= size.width && own.height <= size.height) return el;
+  const kept = el instanceof HTMLVideoElement ? undefined : previewCopies.get(el);
+  if (kept !== undefined && kept.width === size.width && kept.height === size.height) return kept.canvas;
+  const canvas = document.createElement('canvas');
+  canvas.width = size.width;
+  canvas.height = size.height;
+  const context = canvas.getContext('2d');
+  if (context === null) return el;
+  context.imageSmoothingEnabled = true;
+  context.imageSmoothingQuality = 'high';
+  context.drawImage(el, 0, 0, size.width, size.height);
+  if (!(el instanceof HTMLVideoElement)) previewCopies.set(el, { ...size, canvas });
+  return canvas;
+}
+
 /**
  * Draw a picture through the adjust onto a canvas sized to the picture. The
  * picture must be CORS-loaded: WebGL refuses a cross-origin image outright.
@@ -93,11 +130,12 @@ export async function drawAdjusted(
   target.width = size.width;
   target.height = size.height;
   const chain = adjustFilters(value, ADJUST_GRAIN_SEED);
+  const source = previewSourceOf(el, size);
   if (chain.length === 0) {
-    target.getContext('2d')?.drawImage(el, 0, 0, size.width, size.height);
+    target.getContext('2d')?.drawImage(source, 0, 0, size.width, size.height);
     return;
   }
-  (backend ?? fabric.getFilterBackend()).applyFilters(chain, el, size.width, size.height, target);
+  (backend ?? fabric.getFilterBackend()).applyFilters(chain, source, size.width, size.height, target);
 }
 
 /**

@@ -94,10 +94,10 @@ describe('NodeAdjustLayer', () => {
     await pictureLoaded();
     flushFrames();
     drawing.drawAdjusted.mockClear();
-    act(() => {
-      store().setMiniToolParam('value', { ...defaultAdjustValue, contrast: 10 });
-      store().setMiniToolParam('value', { ...defaultAdjustValue, contrast: 30 });
-    });
+    // Two renders before the frame runs: the second finds a frame already asked
+    // for and leaves its value for it.
+    act(() => store().setMiniToolParam('value', { ...defaultAdjustValue, contrast: 10 }));
+    act(() => store().setMiniToolParam('value', { ...defaultAdjustValue, contrast: 30 }));
     flushFrames();
     expect(drawing.drawAdjusted).toHaveBeenCalledTimes(1);
     expect(drawing.drawAdjusted).toHaveBeenLastCalledWith(
@@ -106,6 +106,14 @@ describe('NodeAdjustLayer', () => {
       expect.objectContaining({ contrast: 30 }),
       expect.anything(),
     );
+  });
+
+  // A semi-transparent pixel shows the card behind it, as on the result node,
+  // not the unadjusted picture under the layer.
+  it('covers the picture under it with the card', async () => {
+    mount('image.adjust', { value: { ...defaultAdjustValue, exposure: 20 } });
+    await pictureLoaded();
+    expect(screen.getByTestId('mini-tool-adjust-layer')).toHaveClass('bg-card');
   });
 
   it('draws nothing for another tool', () => {

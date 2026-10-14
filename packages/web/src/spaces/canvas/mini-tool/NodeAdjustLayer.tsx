@@ -10,6 +10,7 @@ import { useCanvasSession } from '@web/spaces/canvas/canvas-context';
 import { miniToolOpenOn } from '@web/stores/canvas-session';
 import { useMediaGeometry } from '@web/spaces/canvas/crop/media-geometry';
 import { prepareCropSource } from '@web/spaces/canvas/focus/crop-export';
+import type { CropSourceEl } from '@web/spaces/canvas/focus/crop-source';
 import { drawAdjusted } from '@web/spaces/canvas/mini-tool/adjust-export';
 
 interface NodeAdjustLayerProps {
@@ -40,8 +41,9 @@ export function NodeAdjustLayer({ nodeId, wrapper }: NodeAdjustLayerProps): Reac
   const raw = param === undefined ? undefined : draft?.params[param.key];
   const value = React.useMemo(() => parseAdjustValue(raw), [raw]);
   const canvas = React.useRef<HTMLCanvasElement>(null);
-  // The latest value waiting for the next frame, and whether a frame is asked for.
-  const pending = React.useRef<AdjustValue | null>(null);
+  // The latest picture, size and value waiting for the next frame, and
+  // whether a frame is asked for.
+  const pending = React.useRef<{ el: CropSourceEl; size: { width: number; height: number }; value: AdjustValue } | null>(null);
   const frame = React.useRef<number | null>(null);
 
   const box = geometry?.box;
@@ -73,14 +75,14 @@ export function NodeAdjustLayer({ nodeId, wrapper }: NodeAdjustLayerProps): Reac
 
   React.useEffect(() => {
     if (param === undefined || el === undefined || width === 0) return;
-    pending.current = value;
+    pending.current = { el, size: { width, height }, value };
     if (frame.current !== null) return;
     frame.current = requestAnimationFrame(() => {
       frame.current = null;
       const next = pending.current;
       const target = canvas.current;
       if (next === null || target === null) return;
-      void drawAdjusted(el, { width, height }, next, target);
+      void drawAdjusted(next.el, next.size, next.value, target);
     });
   }, [param, el, width, height, value]);
 
@@ -96,7 +98,7 @@ export function NodeAdjustLayer({ nodeId, wrapper }: NodeAdjustLayerProps): Reac
     <canvas
       ref={canvas}
       data-testid='mini-tool-adjust-layer'
-      className='pointer-events-none absolute'
+      className='pointer-events-none absolute bg-card'
       style={{ left: geometry.at.x, top: geometry.at.y, width: geometry.box.width, height: geometry.box.height }}
     />
   );
