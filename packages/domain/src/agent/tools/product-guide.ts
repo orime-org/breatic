@@ -433,7 +433,8 @@ export function renderProductGuide(): string {
     `- On a picture, video or sound node, ${quoted(t("canvas.nodeMenu.download"))}, which saves the file (on a deployment whose ` +
       "files are served from an r2.dev address it opens the file in a new tab instead), then " +
       `${quoted(t("canvas.nodeMenu.understand"))}, which writes a description of what the node holds into a new ` +
-      `text node connected to it, and ${quoted(t("canvas.nodeMenu.tools"))}, described under Mini-tools. All three ` +
+      "text node connected to it (the canvas slides to show it when it lands out of view, as for the mini-tools), " +
+      `and ${quoted(t("canvas.nodeMenu.tools"))}, described under Mini-tools. All three ` +
       "are greyed while the node holds nothing. A reading that cannot " +
       `begin says ${quoted(t("canvas.understand.couldNotStart"))} A file it cannot take makes no new node and ` +
       "says why: it is larger than a reading takes, or of a type it cannot read. If the node being read is " +
@@ -799,7 +800,9 @@ export function renderProductGuide(): string {
       "required one must be filled before the arrow works; a small X on a filled box empties it), and for some " +
       "tools a text box. A crop shows a box with " +
       "eight handles on the node and takes a ratio and a size in pixels in the panel; rotating turns and flips the " +
-      "picture on the node as you press. Adjusting gives a slider for each setting, starting at zero; " +
+      "picture on the node as you press. Adjusting gives a slider for each setting, starting at zero, and " +
+      "opening it zooms the canvas in until the node and its panel fill the view (no closer than shows the " +
+      "picture at its own pixels, and never out); " +
       `${quoted(t("canvas.miniTool.panel.reset"))} above them puts every one back to zero, and the arrow stays ` +
       `greyed out while they are all at zero. ${quoted(t("canvas.miniTool.image.inpaint.label"))}, ` +
       `${quoted(t("canvas.miniTool.image.erase.label"))} and ${quoted(t("canvas.miniTool.image.sketch.label"))} ` +
@@ -852,6 +855,8 @@ export function renderProductGuide(): string {
       `${quoted(t("canvas.miniTool.image.grid.label"))} cuts only the picked tiles and lays each out at the row and ` +
       "column it was cut from, inside a new group named GRID- followed by the source's name (even when one tile is " +
       "picked), each tile named by its place (GRID-r1c1- and so on, then the source's name), and selects the group. " +
+      "When the new nodes are not already in view, the canvas slides to show them with the source, zooming out " +
+      "only as far as it takes to show them all. " +
       "One undo takes them all away, and the source " +
       "stays as it was. The new nodes appear at once; until our server has taken the work in, the person who " +
       "pressed sees a grey shimmering placeholder on them, and a run that ends before then shows a red line on " +

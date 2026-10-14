@@ -843,6 +843,14 @@ describe("mini-tools and the task rows", () => {
     }
   });
 
+  // The canvas moves by itself on these two presses; the reader may ask why.
+  it("says the canvas zooms in when Adjust opens and moves to show what a press built", () => {
+    const tools = section("Mini-tools");
+    expect(tools).toMatch(/opening it zooms the canvas in until the node and its panel fill the view/i);
+    expect(tools).toMatch(/not already in view, the canvas slides to show them/i);
+    expect(renderProductGuide()).toMatch(/text node connected to it \(the canvas slides to show it when it lands out of view/i);
+  });
+
   it("says what each task row offers, View opening history at that result", () => {
     const generating = section("Generating");
     expect(generating).toContain(`"${t("canvas.task.action.finish")}"`);
