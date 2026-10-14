@@ -469,6 +469,44 @@ describe('ads under an opt-out', () => {
     }
   });
 
+  it('moves an untouched ads switch with a decision that arrives while the window is open', async () => {
+    library.consent = true;
+    const banner = await startBanner('US');
+    document.body.innerHTML =
+      '<div id="cc-main"><div class="pm"><div class="pm__section--toggle"><input type="checkbox" value="ads"></div></div></div>';
+    try {
+      // The account's answer is still on its way: the switch shows this browser's consent.
+      banner.setAdsView({ notice: false, adsOn: true });
+      library.config?.onModalShow?.({ modalName: 'preferencesModal' });
+      const toggle = document.querySelector<HTMLInputElement>('input[value="ads"]');
+      expect(toggle?.checked).toBe(true);
+      // The answer: another device opted the account out. Nobody has switched ads on under the notice.
+      banner.setAdsView({ notice: 'account', adsOn: false });
+      expect(toggle?.checked).toBe(false);
+      expect(document.querySelector('.breatic-consent-notice')?.textContent).toBe('notice-account');
+    } finally {
+      document.body.innerHTML = '';
+    }
+  });
+
+  it('keeps the ads switch where the visitor put it when a decision arrives afterwards', async () => {
+    library.consent = true;
+    const banner = await startBanner('US');
+    document.body.innerHTML =
+      '<div id="cc-main"><div class="pm"><div class="pm__section--toggle"><input type="checkbox" value="ads"></div></div></div>';
+    try {
+      banner.setAdsView({ notice: false, adsOn: true });
+      library.config?.onModalShow?.({ modalName: 'preferencesModal' });
+      const toggle = document.querySelector<HTMLInputElement>('input[value="ads"]');
+      toggle?.click();
+      expect(toggle?.checked).toBe(false);
+      banner.setAdsView({ notice: false, adsOn: true });
+      expect(toggle?.checked).toBe(false);
+    } finally {
+      document.body.innerHTML = '';
+    }
+  });
+
   it('says on the banner when GPC keeps ads off', async () => {
     const banner = await startBanner('DE');
     document.body.innerHTML = '<div id="cc-main"><div class="cm"><div class="cm__desc"></div></div></div>';

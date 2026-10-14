@@ -202,6 +202,13 @@ describe('adsViewFor', () => {
     expect(adsViewFor({ signedIn: true, outcome: null, gpc: false, ads: ads() })).toEqual({ allowed: false, known: false, notice: false, adsOn: true });
   });
 
+  it('shows the GPC notice while the account answer is unknown, as this browser alone decides it', () => {
+    const gpcRefusal = ads({ value: false, source: 'gpc', gpcAtDecision: true });
+    expect(adsViewFor({ signedIn: true, outcome: null, gpc: true, ads: gpcRefusal })).toEqual({ allowed: false, known: true, notice: 'gpc', adsOn: false });
+    // Once the answer is known, a signed-in browser shows the account's notice.
+    expect(adsViewFor({ signedIn: true, outcome: { allowed: false, notice: 'gpc' }, gpc: true, ads: gpcRefusal }).notice).toBe('account');
+  });
+
   it('treats a refusal or no choice here as known at once, whatever the account says', () => {
     expect(adsViewFor({ signedIn: true, outcome: null, gpc: false, ads: ads({ value: false }) })).toEqual({ allowed: false, known: true, notice: false, adsOn: false });
     expect(adsViewFor({ signedIn: false, outcome: null, gpc: true, ads: null })).toEqual({ allowed: false, known: true, notice: 'gpc', adsOn: false });

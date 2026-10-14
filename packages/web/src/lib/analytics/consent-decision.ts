@@ -182,7 +182,8 @@ export function adsViewFor(input: {
   ads: BrowserAds | null;
 }): AdsView {
   const { signedIn, outcome, gpc, ads } = input;
-  const notice = adsNotice({ signedIn, outcome: outcome ?? { allowed: false, notice: null }, gpc, ads });
+  // Until the account answers, the notice is the one this browser decides alone: GPC.
+  const notice = adsNotice({ signedIn: signedIn && outcome !== null, outcome: outcome ?? { allowed: false, notice: null }, gpc, ads });
   if (outcome !== null) return { allowed: outcome.allowed, known: true, notice, adsOn: outcome.allowed };
   const consents = ads?.value === true;
   return { allowed: false, known: !consents, notice, adsOn: consents };

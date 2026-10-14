@@ -50,8 +50,10 @@ let openedModal: 'consentModal' | 'preferencesModal' | null = null;
 let saving = false;
 // The last button pressed in either window: accept all, reject all or save.
 let pressed: 'all' | 'necessary' | 'save' | null = null;
-// What the page decided about ads: the notice the settings window shows and whether its ads switch starts on.
+// The page's ads view: the notice the windows show and where the settings window's ads switch stands.
 let adsView: { notice: NoticeShown; adsOn: boolean } = { notice: false, adsOn: false };
+// The visitor changed the ads switch since the settings window opened; a later decision leaves it there.
+let adsSwitchTouched = false;
 
 /**
  * Whether the browser sends Global Privacy Control.
@@ -137,17 +139,33 @@ function onVisitorChoice(): void {
 }
 
 /**
- * Take what the page decided about ads: the settings window shows its notice
- * and starts its ads switch accordingly, without saving.
- * @param view - The notice to show and whether ads are on.
+ * Take the page's ads view: the windows show its notice, and the settings
+ * window's ads switch follows it until the visitor changes the switch, without saving.
+ * @param view - The notice to show and where the ads switch stands.
  * @param view.notice - The opt-out notice, if any.
- * @param view.adsOn - Whether the ads switch starts on.
+ * @param view.adsOn - Whether the ads switch is on.
  */
 export function setAdsView(view: { notice: NoticeShown; adsOn: boolean }): void {
   adsView = view;
-  // A decision that arrives while a window is open updates its notice; its switch stays as the visitor left it.
+  if (!adsSwitchTouched) {
+    const toggle = adsSwitch();
+    if (toggle !== null) toggle.checked = view.adsOn;
+  }
   const text = bannerOptions?.text();
   if (text !== undefined) showNotices(text);
+}
+
+/**
+ * The settings window's ads switch, once the library has built it.
+ * @returns The switch, or null.
+ */
+function adsSwitch(): HTMLInputElement | null {
+  return document.querySelector<HTMLInputElement>('#cc-main .pm input[value="ads"]');
+}
+
+/** The visitor changed the ads switch. */
+function markAdsSwitchTouched(): void {
+  adsSwitchTouched = true;
 }
 
 /**
@@ -165,9 +183,9 @@ function showNotice(container: Element | null, text: string | null): void {
 }
 
 /**
- * Bring a window that just opened in line with the ads decision: the banner
+ * Bring a window that just opened in line with the page's ads view: the banner
  * says when GPC keeps ads off; the settings window shows the notice above the
- * ads switch and starts the switch on only where ads are allowed.
+ * ads switch and starts the switch from the view.
  * @param modalName - The window.
  */
 function presetWindow(modalName: string): void {
@@ -177,8 +195,12 @@ function presetWindow(modalName: string): void {
     showNotices(text);
     return;
   }
-  const toggle = document.querySelector<HTMLInputElement>('#cc-main .pm input[value="ads"]');
-  if (toggle !== null) toggle.checked = adsView.adsOn;
+  const toggle = adsSwitch();
+  adsSwitchTouched = false;
+  if (toggle !== null) {
+    toggle.checked = adsView.adsOn;
+    toggle.addEventListener('change', markAdsSwitchTouched);
+  }
   showNotices(text);
 }
 
@@ -188,7 +210,7 @@ function presetWindow(modalName: string): void {
  */
 function showNotices(text: ConsentText): void {
   showNotice(document.querySelector('#cc-main .cm__desc'), adsView.notice === 'gpc' ? text.banner.gpc : null);
-  const section = document.querySelector('#cc-main .pm input[value="ads"]')?.closest('.pm__section--toggle') ?? null;
+  const section = adsSwitch()?.closest('.pm__section--toggle') ?? null;
   // Inside the ads card, under its description.
   const body = section?.querySelector('.pm__section-desc-wrapper') ?? section;
   showNotice(body, adsView.notice === false ? null : text.settings.notice[adsView.notice]);
