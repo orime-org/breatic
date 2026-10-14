@@ -395,6 +395,29 @@ describe('our own media in a proposal (review round 4)', () => {
   });
 });
 
+describe('headings deeper than the body has (review round 4)', () => {
+  it('land at the deepest level the body shows, keeping the levels above them', async () => {
+    const handle = await open('One.');
+
+    await landProposal(handle, proposalOn(handle, 0, { body: '### Scene\n\n#### Shot 1\n\n###### Note' }), 'write', true);
+
+    const headings = (handle.editor.document as Array<{ type: string; props: { level?: number } }>).filter((b) => b.type === 'heading');
+    expect(headings.map((b) => b.props.level)).toEqual([3, 3, 3]);
+  });
+
+  it('are held to the levels of the body inside nested blocks too', async () => {
+    const handle = await open('One.');
+
+    await landProposal(handle, proposalOn(handle, 0, { body: '- Item\n\n  #### Under it' }), 'write', true);
+
+    const levels: number[] = [];
+    handle.editor.prosemirrorState.doc.descendants((node) => {
+      if (node.type.name === 'heading') levels.push(Number(node.attrs.level));
+    });
+    expect(levels.every((level) => level <= 3)).toBe(true);
+  });
+});
+
 describe('an insert at the end', () => {
   it('takes the place of an empty last paragraph, so no blank line is left above it', async () => {
     const handle = await open('');

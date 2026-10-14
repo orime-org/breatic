@@ -213,4 +213,8 @@ describe("the tool's description", () => {
   it("asks for content that follows one place to go in one insert", () => {
     expect(makeProposeDocumentEdit().description).toMatch(/one insert/i);
   });
+
+  it("says the document has three heading levels (review round 4)", () => {
+    expect(makeProposeDocumentEdit().description).toMatch(/headings? .*levels? 1 to 3|#, ## and ###/i);
+  });
 });

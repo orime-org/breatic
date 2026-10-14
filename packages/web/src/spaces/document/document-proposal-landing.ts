@@ -18,6 +18,7 @@
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import { deriveId, occurrences, type DocumentProposal } from '@breatic/shared';
 
+import { BODY_HEADING_LEVELS } from '@web/spaces/document/document-block-type';
 import { blockPlainText } from '@web/spaces/document/document-blocks-read';
 import { commentOn, type CommentAim } from '@web/spaces/document/document-comment-post';
 import { asCommentBody, commentsOn } from '@web/spaces/document/document-comment-extension';
@@ -214,6 +215,27 @@ async function landComment(handle: Landable, proposal: DocumentProposal): Promis
   });
 }
 
+/** The deepest heading level the body shows. */
+const DEEPEST_LEVEL = Math.max(...BODY_HEADING_LEVELS);
+
+/**
+ * Blocks with every heading deeper than the body shows brought up to its
+ * deepest level. Markdown's `####` and an HTML `<h4>` parse to levels the
+ * body draws as a plain paragraph, with no row of the block-type menu ticked.
+ * @param blocks - The blocks about to be written.
+ * @returns The same blocks with their headings within the body's levels.
+ */
+function withinBodyLevels(blocks: readonly WrittenBlock[]): WrittenBlock[] {
+  return blocks.map((block) => {
+    const level = block.props?.['level'];
+    const held =
+      block.type === 'heading' && typeof level === 'number' && level > DEEPEST_LEVEL
+        ? { ...block, props: { ...block.props, level: DEEPEST_LEVEL } }
+        : block;
+    return held.children === undefined ? held : { ...held, children: withinBodyLevels(held.children) };
+  });
+}
+
 /**
  * Writes a rewrite or an insert into the body as one undo step.
  * @param handle - The document.
@@ -224,7 +246,7 @@ async function landBlocks(handle: Landable, proposal: DocumentProposal): Promise
   const parsed = await markdownBlocks(proposal.body);
   const { blocks: kept } = ownMediaOnly(parsed.map((b) => b.block as WrittenBlock), await ourMediaPrefixReady());
   if (kept.length === 0) return;
-  const written = kept.map((block, n) => ({ ...block, id: writtenBlockId(proposal.proposalId, n) }));
+  const written = withinBodyLevels(kept).map((block, n) => ({ ...block, id: writtenBlockId(proposal.proposalId, n) }));
   const { editor, undoManager } = handle;
   undoManager.stopCapturing();
   if (proposal.kind === 'rewrite') {

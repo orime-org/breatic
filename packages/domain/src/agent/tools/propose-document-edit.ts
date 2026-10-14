@@ -221,7 +221,8 @@ export function makeProposeDocumentEdit(): Tool<DocumentEditInput, DocumentPropo
       "apply with one press. It works on the document under \"The Space the reader has open\" in the message, " +
       "where each top-level block follows a <!-- b:N --> marker: name a block by that N. A comment hangs on " +
       "words in one block and the reader can reply to it or resolve it; a rewrite replaces one whole block with " +
-      "your Markdown; an insert adds Markdown -- paragraphs, headings, lists, a table -- after a block or at the " +
+      "your Markdown; an insert adds Markdown -- paragraphs, headings (#, ## and ### only: the document has three " +
+      "levels, and deeper ones land as ###), lists, a table -- after a block or at the " +
       "end. Nothing changes in the document until the reader presses the card. One proposal per change: several " +
       "changes are several calls, and content that follows one place -- a run of paragraphs, several scenes -- " +
       "goes in one insert, in the order it reads. An image, video or audio in the Markdown lands only when its " +
