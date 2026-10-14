@@ -232,7 +232,7 @@ test('a mini-tool Run keeps waiting after its panel closes and builds once', asy
   await sentOnce(held);
   await expect(nodes).toHaveCount(2);
 
-  await page.getByTestId('mini-tool-panel-close').click();
+  // The built result node is selected, which closes the panel by itself.
   await expect(page.getByTestId('mini-tool-panel-title')).toHaveCount(0);
   await openTool(page, nodeId, 'image.upscale');
 
