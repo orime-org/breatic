@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * A generation submitted from a panel is an operation started on its node
- * (inner#1303 §6.7): a failure line an earlier upload or tool left there gives
- * way to it, and nothing is left once the server has answered.
+ * A generation submitted from a panel (inner#1303 §6.7): once the server takes
+ * it, a failure line an earlier upload or tool left on the node goes. The
+ * generation shows its progress through its own task count, so it never takes
+ * the node's mark from an upload or tool still waiting there.
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -22,30 +23,49 @@ const PAYLOAD = { task_type: 'image', params: {} } as unknown as TaskCreateInput
 /** The node's mark. */
 const mark = () => useUploadMarksStore.getState().markOf(SPACE, NODE);
 
-beforeEach(() => {
-  vi.restoreAllMocks();
-  useUploadMarksStore.setState({ marks: {} });
+/**
+ * Leave a failed upload's line on the node.
+ * @returns Nothing.
+ */
+function failUpload(): void {
   const marks = useUploadMarksStore.getState();
   const op = marks.begin(SPACE, NODE, 'upload');
   marks.fail(SPACE, NODE, op, { key: 'canvas.upload.tooLarge' });
+}
+
+beforeEach(() => {
+  vi.restoreAllMocks();
+  useUploadMarksStore.setState({ marks: {} });
 });
 
 describe('createNodeTask', () => {
-  it('replaces a failure line left on the node while the request is out', async () => {
+  it('clears a failure line on the node once the server takes the task', async () => {
+    failUpload();
     let seen: ReturnType<typeof mark>;
     vi.spyOn(canvasApi, 'createTask').mockImplementation(() => {
       seen = mark();
       return Promise.resolve({} as never);
     });
     await createNodeTask(SPACE, NODE, PAYLOAD);
-    expect(seen!).toMatchObject({ state: 'waiting', action: 'generate' });
+    expect(seen!).toMatchObject({ state: 'failed', action: 'upload' });
     expect(mark()).toBeUndefined();
   });
 
-  it('leaves no mark when the server refuses, and passes the refusal on', async () => {
+  it('keeps the failure line when the server refuses, and passes the refusal on', async () => {
+    failUpload();
     const refused = new Error('402');
     vi.spyOn(canvasApi, 'createTask').mockRejectedValue(refused);
     await expect(createNodeTask(SPACE, NODE, PAYLOAD)).rejects.toBe(refused);
-    expect(mark()).toBeUndefined();
+    expect(mark()).toMatchObject({ state: 'failed', action: 'upload' });
+  });
+
+  it('leaves an upload waiting on the node its own, so its failure still shows', async () => {
+    const marks = useUploadMarksStore.getState();
+    const op = marks.begin(SPACE, NODE, 'upload');
+    vi.spyOn(canvasApi, 'createTask').mockResolvedValue({} as never);
+    await createNodeTask(SPACE, NODE, PAYLOAD);
+    expect(mark()).toMatchObject({ op, state: 'waiting', action: 'upload' });
+    marks.fail(SPACE, NODE, op, { key: 'canvas.upload.failed' });
+    expect(mark()).toMatchObject({ op, state: 'failed' });
   });
 });

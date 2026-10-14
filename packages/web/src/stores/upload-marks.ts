@@ -59,6 +59,8 @@ interface UploadMarksState {
   answer: (spaceId: string, nodeId: string, op: string) => void;
   /** This operation ended before the server answered. */
   fail: (spaceId: string, nodeId: string, op: string, message: UploadMarkMessage) => void;
+  /** Take a failure line off the node; a waiting operation keeps its mark. */
+  clearFailed: (spaceId: string, nodeId: string) => void;
   /** The node's mark, if it has one. */
   markOf: (spaceId: string, nodeId: string) => UploadMark | undefined;
 }
@@ -98,6 +100,10 @@ export const useUploadMarksStore = create<UploadMarksState>()((set, get) => ({
     const mark = get().markOf(spaceId, nodeId);
     if (mark?.op !== op || mark.state !== 'waiting') return;
     set((s) => ({ marks: withMark(s.marks, spaceId, nodeId, { ...mark, state: 'failed', message }) }));
+  },
+  clearFailed: (spaceId, nodeId) => {
+    if (get().markOf(spaceId, nodeId)?.state !== 'failed') return;
+    set((s) => ({ marks: withMark(s.marks, spaceId, nodeId, undefined) }));
   },
   markOf: (spaceId, nodeId) => get().marks[spaceId]?.[nodeId],
 }));

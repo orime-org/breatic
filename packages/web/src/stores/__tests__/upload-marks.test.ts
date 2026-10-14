@@ -66,6 +66,16 @@ describe('upload marks', () => {
     expect(marks().markOf(S, 'n1')?.state).toBe('failed');
   });
 
+  it('clears a failure line, and leaves a waiting operation its mark', () => {
+    const failed = marks().begin(S, 'n1', 'upload');
+    marks().fail(S, 'n1', failed, { key: 'canvas.upload.failed' });
+    marks().clearFailed(S, 'n1');
+    expect(marks().markOf(S, 'n1')).toBeUndefined();
+    const waiting = marks().begin(S, 'n2', 'upload');
+    marks().clearFailed(S, 'n2');
+    expect(marks().markOf(S, 'n2')).toEqual({ op: waiting, state: 'waiting', action: 'upload', at: NOW });
+  });
+
   it('keeps each Space and node apart', () => {
     marks().begin(S, 'n1', 'upload');
     expect(marks().markOf(S, 'n2')).toBeUndefined();
