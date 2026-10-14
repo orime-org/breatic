@@ -20,7 +20,7 @@ import { CLICK_WINDOW_MS, type AdClick, type BrowserAdsSnapshot } from "@breatic
 import { adsAllowedFor } from "@core/analytics/account.repo.js";
 import { currentAdsBrowser } from "@core/analytics/consent-context.js";
 import { createHash } from "node:crypto";
-import { claimUpload, findStaleUploads, findUploadByPayment, moveUpload } from "@core/ads/ads-conversion.repo.js";
+import { claimUpload, findStaleUploads, findUploadByPayment, getUploadStatus, moveUpload } from "@core/ads/ads-conversion.repo.js";
 import { ADS_CONVERSIONS, ADS_SWEEP_JOB, type AdsConversionJob, type AdsConversionName } from "@core/ads/ads-types.js";
 import { env } from "@core/config/env.js";
 import { createQueue, defaultJobOpts } from "@core/infra/queue.js";
@@ -191,7 +191,8 @@ export async function enqueueAdsRestatement(
   if (!upload) return "none";
   const key = { conversion: upload.job.conversion, transactionId: upload.job.transactionId };
   if (await moveUpload(key, ["queued"], "restate_pending")) return "after_upload";
-  if (upload.status !== "uploaded") return "none";
+  // Read again: the upload may have landed since the first read.
+  if ((await getUploadStatus(key)) !== "uploaded") return "none";
   if (!(await stillAllowed(upload.job))) return "consent_withdrawn";
   if (!(await moveUpload(key, ["uploaded"], "restating"))) return "none";
   await addJob(restatementOf(upload.job, upload.requestId));

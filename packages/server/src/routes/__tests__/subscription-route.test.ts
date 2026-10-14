@@ -234,6 +234,18 @@ describe("POST /confirm — the return from a membership checkout (#307 A5–A7)
     expect(refused.data.conversion).toBeNull();
   });
 
+  it("still confirms a paid subscription when the ads consent lookup fails, with no conversion", async () => {
+    service.confirmCheckout.mockResolvedValue({ stripeSubscriptionId: "sub_1", status: "active", tier: "pro", period: "month" });
+    membership.readAccountMembership.mockResolvedValue({ tier: "pro" });
+    conversionOf.mockReturnValue({ transactionId: "sub:sub_1", amountCents: 1700, currency: "usd" });
+    adsAllowedFor.mockRejectedValueOnce(new Error("database down"));
+
+    const res = await post("/confirm", { session_id: "cs_1" });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ data: { tier: "pro", conversion: null } });
+  });
+
   it("passes a refusal from the service through as it was", async () => {
     const { NotFoundError } = await import("@breatic/core");
     service.confirmCheckout.mockRejectedValue(new NotFoundError("not yours"));

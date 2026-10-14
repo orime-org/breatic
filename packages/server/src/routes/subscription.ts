@@ -147,8 +147,13 @@ subscription.post(
     logger.info({ userId: user.id, sessionId }, "subscription_checkout_confirmed");
     const membership = await readAccountMembership(user.id);
     const candidate = subscriptionConversion(stored);
-    const conversion =
-      candidate !== null && (await adsAllowedFor(user.id, currentAdsBrowser(), Date.now())) ? candidate : null;
+    let conversion: typeof candidate = null;
+    // The subscription is already confirmed; a failed ads lookup only withholds the conversion.
+    try {
+      if (candidate !== null && (await adsAllowedFor(user.id, currentAdsBrowser(), Date.now()))) conversion = candidate;
+    } catch (err) {
+      logger.error({ err, userId: user.id }, "ads_conversion_gate_failed");
+    }
     return c.json({ data: { ...membership, conversion } });
   },
 );

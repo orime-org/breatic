@@ -286,6 +286,28 @@ describe("PUT /users/me/analytics-consent", () => {
     expect(await receipts(id)).toHaveLength(0);
   });
 
+  it("rejects a revision outside the column's range and records nothing", async () => {
+    const id = await insertUser();
+    for (const revision of [0, 2_147_483_648]) {
+      const res = await call(id, { method: "PUT", body: report([decision()], { revision }) });
+      expect(res.status, String(revision)).toBe(422);
+    }
+    expect(await receipts(id)).toHaveLength(0);
+  });
+
+  it("records a report whose corrected time falls before the epoch, whole, at the epoch", async () => {
+    const id = await insertUser();
+    const body = report(
+      [decision({ decidedAt: "0001-01-01T00:00:00.000Z" }), decision({ category: "analytics", decidedAt: "0001-01-01T00:00:00.000Z" })],
+      { sentAt: "9999-12-31T00:00:00.000Z" },
+    );
+    const res = await call(id, { method: "PUT", body });
+    expect(res.status).toBe(200);
+    const rows = await receipts(id);
+    expect(rows).toHaveLength(2);
+    expect(rows.every((r) => (r.decided_at as Date).getTime() === 0)).toBe(true);
+  });
+
   it("refuses a report without a session", async () => {
     const res = await app.request("/api/v1/users/me/analytics-consent", {
       method: "PUT",

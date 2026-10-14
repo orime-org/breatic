@@ -37,25 +37,28 @@ const DAY_MS = 86_400_000;
  * Record a signed-in browser's report, one receipt per decision. A decision
  * already on file, on this account or another, is left as it is; nothing is
  * recorded for a deleted account. The browser's clock is corrected by how far
- * it was off when it sent the report, and no receipt is dated in the future.
+ * it was off when it sent the report, and every receipt is dated between the
+ * epoch and the time it was received. A report is recorded whole or not at all.
  * @param userId - The account.
  * @param report - The validated report.
  * @param receivedAt - When the server received it, epoch ms.
  */
 export async function recordConsentReceipts(userId: string, report: ConsentReport, receivedAt: number): Promise<void> {
   const skew = report.sentAt === undefined ? 0 : receivedAt - Date.parse(report.sentAt);
-  for (const d of report.decisions) {
-    const decidedAt = new Date(Math.min(Date.parse(d.decidedAt) + skew, receivedAt)).toISOString();
-    // An override seen under the GPC notice counts as a plain consent (§4.4.6), so only `account` is kept.
-    const notice = d.noticeShown === "account" ? "account" : null;
-    await db.execute(sql`
+  await db.transaction(async (tx) => {
+    for (const d of report.decisions) {
+      const decidedAt = new Date(Math.max(0, Math.min(Date.parse(d.decidedAt) + skew, receivedAt))).toISOString();
+      // An override seen under the GPC notice counts as a plain consent (§4.4.6), so only `account` is kept.
+      const notice = d.noticeShown === "account" ? "account" : null;
+      await tx.execute(sql`
       INSERT INTO analytics_consent_events
         (decision_id, user_id, category, value, source, notice_shown, gpc_at_decision, decided_at, revision)
       SELECT ${d.decisionId}, ${userId}, ${d.category}, ${d.value}, ${d.source}, ${notice},
              ${d.gpcAtDecision}, ${decidedAt}, ${report.revision}
       WHERE EXISTS (SELECT 1 FROM users WHERE id = ${userId} AND deleted_at IS NULL)
       ON CONFLICT (decision_id) DO NOTHING`);
-  }
+    }
+  });
 }
 
 /**

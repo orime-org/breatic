@@ -18,16 +18,13 @@
  */
 
 import { Hono, type Context } from "hono";
-import { getCookie } from "hono/cookie";
-import { NotFoundError } from "@breatic/core";
+import { currentAdsBrowser, NotFoundError } from "@breatic/core";
 import { validate } from "@server/middleware/validate.js";
 import { z } from "zod";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
 import {
-  CONSENT_COOKIE_NAME,
   ConsentReportSchema,
-  parseConsentChoices,
   t,
   USER_LOOKUP_MAX_IDS,
 } from "@breatic/shared";
@@ -102,22 +99,13 @@ users.patch("/me/locale", validate("json", localeSchema), async (c) => {
 });
 
 /**
- * The ads decision id in the requesting browser's consent cookie, if any.
- * @param c - The request context.
- * @returns The id.
- */
-function cookieAdsDecisionId(c: Context): string | undefined {
-  return parseConsentChoices(getCookie(c, CONSENT_COOKIE_NAME), Date.now()).ads?.decisionId;
-}
-
-/**
  * The account's ads record, or 404 when the account is gone.
  * @param c - The request context.
  * @returns `200` with `{ data: { receipts, gpcSeenAt, ownership } }`.
  * @throws {NotFoundError} When the account is gone.
  */
 async function consentView(c: Context<{ Variables: AuthVariables }>): Promise<Response> {
-  const view = await authService.getAnalyticsConsentView(c.get("user").id, cookieAdsDecisionId(c));
+  const view = await authService.getAnalyticsConsentView(c.get("user").id, currentAdsBrowser().choice?.decisionId);
   if (view === null) throw new NotFoundError(t("server.error.not_found"));
   return c.json({ data: view });
 }

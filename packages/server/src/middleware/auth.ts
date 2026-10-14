@@ -17,7 +17,7 @@
 import type { MiddlewareHandler } from "hono";
 import * as Sentry from "@sentry/node";
 import { authService } from "@server/modules";
-import { logger } from "@breatic/core";
+import { currentAdsBrowser, logger } from "@breatic/core";
 import { t, type MembershipTier } from "@breatic/shared";
 import { readSessionCookie } from "@server/middleware/session-cookie.js";
 import { recordRequestGpc } from "@server/middleware/analytics-consent.js";
@@ -75,6 +75,7 @@ export const requireAuth: MiddlewareHandler<{
   // Errors raised while serving this request carry the account id, and
   // nothing else about the person (the Sentry request isolation scopes it).
   Sentry.setUser({ id: user.id });
-  if (c.req.header("Sec-GPC") === "1") await recordRequestGpc(c, user.id);
+  const adsBrowser = currentAdsBrowser();
+  if (adsBrowser.gpcAt !== null) await recordRequestGpc(user.id, adsBrowser);
   await next();
 };

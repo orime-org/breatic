@@ -32,7 +32,8 @@ export const ConsentDecisionSchema = z
 export const ConsentReportSchema = z
   .object({
     decisions: z.array(ConsentDecisionSchema).min(1).max(2),
-    revision: z.number().int(),
+    // The column is a Postgres integer; revisions start at 1.
+    revision: z.number().int().min(1).max(2_147_483_647),
     /** The browser's clock when it sent the report, so the server can correct a skewed clock. */
     sentAt: z.string().datetime({ offset: true }).optional(),
   })
