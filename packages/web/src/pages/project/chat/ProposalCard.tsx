@@ -146,7 +146,7 @@ export const ProposalCard = React.memo(function ProposalCard({
                         'rounded-md border px-1.5 py-0.5',
                         chip.empty
                           ? 'border-dashed border-border text-muted-foreground'
-                          : 'border-border bg-background text-foreground',
+                          : 'border-border text-foreground',
                       )}
                     >
                       {chip.label}
@@ -177,7 +177,7 @@ export const ProposalCard = React.memo(function ProposalCard({
           </div>
           <div
             data-testid='proposal-words'
-            className='whitespace-pre-wrap rounded-md border border-border bg-background px-2 py-1.5 text-xs text-foreground'
+            className='whitespace-pre-wrap rounded-md border border-border px-2 py-1.5 text-xs text-foreground'
           >
             {promptPlainText(node.prompt ?? [])}
           </div>

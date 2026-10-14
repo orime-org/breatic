@@ -186,13 +186,13 @@ export const DocumentProposalCard = React.memo(function DocumentProposalCard({
           >
             {proposal.quote}
           </div>
-          <div className='whitespace-pre-wrap rounded-md border border-border bg-background px-2 py-1.5 text-xs text-foreground'>
+          <div className='whitespace-pre-wrap rounded-md border border-border px-2 py-1.5 text-xs text-foreground'>
             {proposal.body}
           </div>
         </>
       ) : null}
       {proposal.kind === 'rewrite' ? (
-        <div className='whitespace-pre-wrap rounded-md border border-border bg-background px-2 py-1.5 text-xs text-foreground'>
+        <div className='whitespace-pre-wrap rounded-md border border-border px-2 py-1.5 text-xs text-foreground'>
           {(changes ?? [{ value: proposal.original, added: false, removed: false, count: 0 }]).map((part, i) =>
             part.removed ? (
               <del key={i} data-testid='document-proposal-removed' className='rounded-content-xs bg-status-error-bg line-through'>
@@ -229,7 +229,7 @@ export const DocumentProposalCard = React.memo(function DocumentProposalCard({
         </div>
       ) : null}
       {proposal.kind === 'insert' ? (
-        <div className='rounded-md border border-border bg-background px-2 py-1.5'>
+        <div className='rounded-md border border-border px-2 py-1.5'>
           <MarkdownMessage content={proposal.body} size='xs' />
         </div>
       ) : null}
