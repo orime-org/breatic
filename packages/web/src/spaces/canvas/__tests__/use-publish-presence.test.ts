@@ -1074,10 +1074,10 @@ describe('usePublishPresence, the activity', () => {
     expect(activityOf(awareness)).toHaveLength(64);
   });
 
-  it('leaves another Space’s operations out', () => {
+  it('leaves another Space’s operations out', async () => {
     const awareness = makeAwareness();
     mount(awareness);
-    act(() => {
+    await act(async () => {
       useUploadMarksStore.getState().begin('T', 'n1', 'upload');
     });
     expect(activityOf(awareness)).toBeNull();
@@ -1092,12 +1092,13 @@ describe('usePublishPresence, the activity', () => {
     expect(activityOf(awareness)).toEqual([expect.objectContaining({ nodeId: 'n1', action: 'readText' })]);
   });
 
-  it('withdraws the activity when it unmounts', () => {
+  it('withdraws the activity when it unmounts', async () => {
     const awareness = makeAwareness();
     const rendered = mount(awareness);
-    act(() => {
+    await act(async () => {
       useUploadMarksStore.getState().begin('S', 'n1', 'upload');
     });
+    expect(activityOf(awareness)).toEqual([expect.objectContaining({ nodeId: 'n1', action: 'upload' })]);
     rendered.unmount();
     expect(activityOf(awareness)).toBeNull();
     expect(awareness.getLocalState()).not.toBeNull();
