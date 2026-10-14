@@ -52,6 +52,15 @@ describe('the markup draft', () => {
     });
   });
 
+  // The markup canvas loads apart from the page and reads the edit's style here.
+  it('says the style the text being edited shows, and none outside an edit', () => {
+    const store = withMark();
+    expect(store.getState().markEditStyle()).toBeNull();
+    store.getState().setMarkEditingText('eye');
+    store.getState().setMarkColor(INK[2]);
+    expect(store.getState().markEditStyle()).toEqual({ color: INK[2], size: BRUSH_SIZE.initial });
+  });
+
   it('holds no markup on another tool', () => {
     const store = createCanvasSessionStore();
     store.getState().openMiniTool('node-a', 'image.crop', OPEN);

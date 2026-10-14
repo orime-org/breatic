@@ -32,6 +32,7 @@ import {
 import { EMPTY_EXPAND, type ExpandDraft, type ExpandView } from '@web/stores/expand-draft';
 import {
   EMPTY_MARK,
+  editStyleOf,
   redoneMark,
   restyled,
   undoneMark,
@@ -230,6 +231,12 @@ export interface CanvasSessionState {
   markChannel: MarkChannel | null;
   /** Register the markup canvas's channel, or null when it unmounts. */
   registerMarkChannel: (channel: MarkChannel | null) => void;
+  /**
+   * The colour and size the text being edited in the open markup shows
+   * (`editStyleOf`), or null when no text is being edited. Read through the
+   * session by the markup canvas, which loads apart from the page.
+   */
+  markEditStyle: () => { color: string; size: number } | null;
   /**
    * Whether the annotation tool is armed: the left menu's comment button was
    * pressed and the next canvas click says where the note goes (#1881 §6.4).
@@ -611,7 +618,7 @@ function updateMark(s: CanvasSessionState, next: (mark: MarkDraft) => MarkDraft)
  */
 export function createCanvasSessionStore(): CanvasSessionStore {
   return createStore<CanvasSessionState>()(
-    immer((set) => ({
+    immer((set, get) => ({
       placingAnnotation: false,
       annotationDrafts: {},
       panelHostId: null,
@@ -623,6 +630,10 @@ export function createCanvasSessionStore(): CanvasSessionStore {
         set((s) => {
           s.markChannel = channel;
         }),
+      markEditStyle: () => {
+        const mark = get().miniTool?.mark;
+        return mark == null ? null : editStyleOf(mark);
+      },
       focusCrop: null,
       historyFocus: null,
       editingTextNode: null,

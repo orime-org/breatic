@@ -18,7 +18,7 @@ import { newId } from '@breatic/shared';
 
 import { fromFabric, markFontPx, markStrokePx, toFabric, type DrawBox, type MarkFabricObject } from '@web/spaces/canvas/mini-tool/mark-fabric';
 import type { CanvasSessionState } from '@web/stores/canvas-session';
-import { editStyleOf, type MarkChannel, type MarkDraft, type MarkObject } from '@web/stores/mark-draft';
+import type { MarkChannel, MarkDraft, MarkObject } from '@web/stores/mark-draft';
 
 /** Below this drag, in screen pixels, a shape tool's press is a click and draws nothing. */
 export const MARK_MIN_DRAG_PX = 4;
@@ -181,7 +181,7 @@ export class MarkCanvasController {
     const draft = this.draft();
     if (draft === null) return;
     this.applyTool(draft);
-    this.restyleEdit(draft);
+    this.restyleEdit();
     const json = JSON.stringify(draft.objects);
     this.suppressed = true;
     try {
@@ -258,11 +258,10 @@ export class MarkCanvasController {
   /**
    * Give a text being edited the style the draft says it shows; it is written
    * back with the text when the edit ends.
-   * @param draft - The draft.
    */
-  private restyleEdit(draft: MarkDraft): void {
+  private restyleEdit(): void {
     const active = this.canvas.getActiveObject() as (IText & Partial<MarkFabricObject>) | undefined;
-    const style = editStyleOf(draft);
+    const style = this.session().markEditStyle();
     if (this.edit === null || style === null || !(active instanceof IText)) return;
     if (active.markColor === style.color && active.markSize === style.size) return;
     active.set({ fill: style.color, fontSize: markFontPx(style.size, this.box) });
