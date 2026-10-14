@@ -29,6 +29,7 @@ import { useCreditText } from '@web/spaces/canvas/generate/use-credit-estimate';
 import { MiniToolPanel } from '@web/spaces/canvas/mini-tool/MiniToolPanel';
 import {
   creditMode,
+  laysOutInSourcePixels,
   miniToolRefusal,
   resolvedParams,
   sizeTierChoices,
@@ -204,10 +205,7 @@ function OpenMiniToolPanel({
     spaceId,
     nodeId,
     content,
-    (tieredParamKeys(spec).length > 0 ||
-      spec.drawing !== undefined ||
-      spec.expand !== undefined ||
-      spec.outputLayout === 'grid') &&
+    (tieredParamKeys(spec).length > 0 || spec.drawing !== undefined || laysOutInSourcePixels(spec)) &&
       (dataWidth === undefined || dataHeight === undefined),
   );
   const source = React.useMemo<MiniToolSourceInfo>(

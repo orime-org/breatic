@@ -219,7 +219,21 @@ describe('miniToolRefusal', () => {
 });
 
 describe('a grid', () => {
-  const grid = { spec: tool('image.grid'), entry: undefined, prompt: '', slots: {}, sourceShown: true, exporting: false };
+  const grid = {
+    spec: tool('image.grid'),
+    entry: undefined,
+    prompt: '',
+    slots: {},
+    sourceShown: true,
+    source: { width: 400, height: 300 },
+    exporting: false,
+  };
+
+  // The tiles are laid out in the source's pixels; a press before they are
+  // known lays every row at the empty-node height.
+  it('holds Run back while the source size is unknown', () => {
+    expect(miniToolRefusal({ ...grid, source: {}, params: {} })).toBe('sourceMissing');
+  });
 
   it('refuses one row by one column, which cuts nothing', () => {
     expect(miniToolRefusal({ ...grid, params: { rows: 1, cols: 1 } })).toBe('singleTile');

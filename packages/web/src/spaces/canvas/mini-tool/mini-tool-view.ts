@@ -205,6 +205,17 @@ export function slotLengthCap(
 }
 
 /**
+ * Whether a tool lays its result out in the source's pixels: the expand's
+ * frame and the grid's tiles. Its size arrives with the source's metadata, or
+ * from the shown picture when the node records none.
+ * @param spec - The tool.
+ * @returns True when the result needs the source's pixel size.
+ */
+export function laysOutInSourcePixels(spec: MiniToolSpec): boolean {
+  return spec.expand !== undefined || spec.outputLayout === 'grid';
+}
+
+/**
  * Why Execute is held back right now.
  * @param input - What the panel knows.
  * @param input.spec - The tool.
@@ -254,9 +265,8 @@ export function miniToolRefusal(input: {
   }
   if (slotLengthCap(spec, entry, slots) !== null) return 'slotTooLong';
   if (spec.drawing !== undefined && input.inked !== true) return 'drawingEmpty';
-  if (spec.expand !== undefined) {
-    // The frame is measured in the source's pixels, which arrive with its metadata.
-    if (source.width === undefined || source.height === undefined) return 'sourceMissing';
+  if (laysOutInSourcePixels(spec) && (source.width === undefined || source.height === undefined)) return 'sourceMissing';
+  if (spec.expand !== undefined && source.width !== undefined && source.height !== undefined) {
     const cap = entry?.max_output_side ?? Infinity;
     if (sourceTooLargeToExpand({ width: source.width, height: source.height }, cap)) return 'sourceTooLargeToExpand';
     if (input.expandFrame === undefined || !isExpanded(input.expandFrame, { width: source.width, height: source.height })) {

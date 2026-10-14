@@ -137,7 +137,18 @@ describe('NodeGridLayer tile picking', () => {
     expect(screen.getByTestId('mini-tool-grid-check-0')).toHaveClass('rounded-full');
   });
 
-  it('leaves the checkbox out of a tile too small on screen to hold it, dimming still showing the pick', () => {
+  // The picture is 400 by 300; a checkbox needs 24 screen px of tile both ways.
+  it.each([
+    ['tall enough', { rows: 8, cols: 1 }, 0.64, 1],
+    ['too short', { rows: 8, cols: 1 }, 0.63, 0],
+    ['wide enough', { rows: 1, cols: 8 }, 0.48, 1],
+    ['too narrow', { rows: 1, cols: 8 }, 0.47, 0],
+  ])('draws checkboxes on tiles %s on screen', (_, shape, zoom, shown) => {
+    mount('image.grid', { ...shape, skip: [] }, zoom);
+    expect(screen.queryAllByTestId(/^mini-tool-grid-check-/).length > 0 ? 1 : 0).toBe(shown);
+  });
+
+  it('dims an unpicked tile too small for a checkbox', () => {
     // 300 px of picture over 8 rows at half zoom: 18.75 screen px a tile.
     mount('image.grid', { rows: 8, cols: 1, skip: [0] }, 0.5);
     expect(screen.queryAllByTestId(/^mini-tool-grid-check-/)).toEqual([]);
