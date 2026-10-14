@@ -363,8 +363,10 @@ async function undoContentRows(
  *
  * `disconnect()` awaits the store hooks, and `@hocuspocus/extension-redis`
  * holds its `afterStoreDocument` for `disconnectDelay` (1000ms by default)
- * whenever a direct connection made the change, so peers get a beat to
- * receive the sync before the document might unload. Nothing the caller is
+ * on every direct-connection disconnect, whether or not the connection
+ * wrote anything: `disconnect()` always stamps the store's origin "local",
+ * which is the one thing the extension checks. The wait gives peers a beat
+ * to receive the sync before the document might unload. Nothing the caller is
  * waiting on depends on that: the change was broadcast inside `transact`,
  * and our own store gate turns this store away anyway (`persistence.ts`).
  * Awaited, the second sat in every answer and, for delete and restore,

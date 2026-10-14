@@ -874,8 +874,8 @@ describe("finishing steps cannot change the answer already decided", () => {
 
 describe("no answer waits for the meta connection to be handed back", () => {
   // `disconnect()` awaits the store hooks, and `@hocuspocus/extension-redis`
-  // holds its `afterStoreDocument` for `disconnectDelay` (1000ms) whenever a
-  // direct connection made the change. Awaited inside the delete lock, that
+  // holds its `afterStoreDocument` for `disconnectDelay` (1000ms) on every
+  // direct-connection disconnect, written or not. Awaited inside the delete lock, that
   // second kept the lock held long after the Space had left every screen,
   // so the next delete a person made was refused (inner#867).
   const cases: ReadonlyArray<{
@@ -950,6 +950,35 @@ describe("no answer waits for the meta connection to be handed back", () => {
     ]);
 
     expect(first).toMatchObject({ id: "r1", ok: true });
+    expect(disconnect).toHaveBeenCalledTimes(1);
+    handBack();
+  });
+
+  it("space:create answers a failed content-row seed while the hand-back is still running", async () => {
+    seedInitialStateMock.mockRejectedValue(new Error("write failed"));
+    let handBack: () => void = () => {};
+    const disconnect = vi.fn(
+      () => new Promise<void>((resolve) => {
+        handBack = resolve;
+      }),
+    );
+
+    const answer = handleSpaceRpc(
+      { hocuspocus: makeHocuspocus({ disconnect }) },
+      PID,
+      { userId: ACTOR, role: "editor" },
+      {
+        id: "r1",
+        type: "space:create",
+        payload: { type: "canvas", name: "Main", claimToken: TOKEN },
+      },
+    );
+    const first = await Promise.race([
+      answer,
+      new Promise<"still waiting">((resolve) => setTimeout(() => resolve("still waiting"), 50)),
+    ]);
+
+    expect(first).toMatchObject({ id: "r1", ok: false, error: { code: "INTERNAL" } });
     expect(disconnect).toHaveBeenCalledTimes(1);
     handBack();
   });
