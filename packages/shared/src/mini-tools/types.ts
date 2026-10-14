@@ -126,7 +126,24 @@ export interface ListParam {
   readonly maxItems: number;
 }
 
-export type MiniToolParam = NumberParam | EnumParam | RectParam | RangeParam | AdjustParam | OrientParam | ListParam;
+/**
+ * Cells of a grid the reader leaves out, by row-major index from 0; empty means
+ * every cell. Named by a product count's `except`.
+ */
+export interface CellsParam {
+  readonly kind: "cells";
+  readonly key: string;
+}
+
+export type MiniToolParam =
+  | NumberParam
+  | EnumParam
+  | RectParam
+  | RangeParam
+  | AdjustParam
+  | OrientParam
+  | ListParam
+  | CellsParam;
 
 /** One output size a megapixel param offers: the source's long edge scaled to `longEdge`. */
 export interface SizeTier {
@@ -217,11 +234,12 @@ interface MiniToolBase {
 
 /**
  * How many results a variable tool makes, read off its params before the run:
- * the product of number params (a grid's rows and columns), or a list param's
- * length plus `plus` (cut points into segments).
+ * the product of number params (a grid's rows and columns), less the cells a
+ * cells param named by `except` leaves out; or a list param's length plus
+ * `plus` (cut points into segments).
  */
 export type MiniToolOutputCount =
-  | { readonly kind: "product"; readonly params: readonly string[] }
+  | { readonly kind: "product"; readonly params: readonly string[]; readonly except?: string }
   | { readonly kind: "listLength"; readonly param: string; readonly plus: number };
 
 /** A tool whose results are a fixed list. */

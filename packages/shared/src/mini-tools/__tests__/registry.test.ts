@@ -101,6 +101,20 @@ describe("MINI_TOOLS registry", () => {
     }
   });
 
+  it("skips cells only through a cells param", () => {
+    for (const tool of MINI_TOOLS) {
+      const count = tool.outputCount;
+      if (count?.kind !== "product" || count.except === undefined) continue;
+      const param = tool.params.find((p) => p.key === count.except);
+      expect(param && "kind" in param && param.kind, tool.id).toBe("cells");
+    }
+  });
+
+  it("lets the grid split skip tiles", () => {
+    const grid = miniToolById("image.grid");
+    expect(grid?.outputCount).toEqual({ kind: "product", params: ["rows", "cols"], except: "skip" });
+  });
+
   it("adjusts a picture with the same sliders as a video, in the browser", () => {
     const image = miniToolById("image.adjust");
     const video = miniToolById("video.adjust");
@@ -250,6 +264,11 @@ describe("defaultParamsOf", () => {
     expect(rotate && defaultParamsOf(rotate)).toEqual({
       orient: { turns: 0, flipX: false, flipY: false },
     });
+  });
+
+  it("starts the grid split with every tile picked", () => {
+    const grid = miniToolById("image.grid");
+    expect(grid && defaultParamsOf(grid)).toEqual({ rows: 3, cols: 3, skip: [] });
   });
 
   it("starts HDR on PQ", () => {

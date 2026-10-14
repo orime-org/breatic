@@ -149,6 +149,8 @@ function defaultOf(param: MiniToolParam): unknown {
       return { ...defaultAdjustValue };
     case "orient":
       return { ...UPRIGHT };
+    case "cells":
+      return [];
   }
 }
 

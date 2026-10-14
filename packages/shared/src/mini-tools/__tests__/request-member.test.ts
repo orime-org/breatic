@@ -51,7 +51,26 @@ const body = (spec: MiniToolSpec, params: Record<string, unknown>, n: number): u
   slots: {},
 });
 
+const picking: MiniToolSpec = {
+  ...grid,
+  id: "video.picking",
+  params: [...grid.params, { kind: "cells", key: "skip" }],
+  outputCount: { kind: "product", params: ["rows", "cols"], except: "skip" },
+};
+
 describe("miniToolRequestMemberSchema", () => {
+  it("takes one node id per picked cell", () => {
+    const schema = miniToolRequestMemberSchema(picking);
+    expect(schema.safeParse(body(picking, { rows: 2, cols: 2, skip: [1] }, 3)).success).toBe(true);
+    expect(schema.safeParse(body(picking, { rows: 2, cols: 2, skip: [1] }, 4)).success).toBe(false);
+  });
+
+  it("refuses skipped cells that are not whole non-negative numbers", () => {
+    const schema = miniToolRequestMemberSchema(picking);
+    expect(schema.safeParse(body(picking, { rows: 2, cols: 2, skip: [1.5] }, 4)).success).toBe(false);
+    expect(schema.safeParse(body(picking, { rows: 2, cols: 2, skip: [-1] }, 4)).success).toBe(false);
+  });
+
   it("takes as many node ids as the cut points make segments", () => {
     const schema = miniToolRequestMemberSchema(split);
     expect(schema.safeParse(body(split, { cuts: [5, 12] }, 3)).success).toBe(true);

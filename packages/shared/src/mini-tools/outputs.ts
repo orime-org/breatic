@@ -4,8 +4,9 @@
 /**
  * The results a tool makes for a given set of params. Every reader that needs
  * the count (node creation, the request's `node_ids`, a container job's write
- * grants, the batch ticket cap) reads `outputsOf`; a reader that only needs the
- * kind or the name prefix reads `outputTemplateOf`.
+ * grants, the batch ticket cap) reads `outputsOf`; a reader that needs which
+ * grid cell each result is (layout, export) reads `pickedCellsOf`; a reader
+ * that only needs the kind or the name prefix reads `outputTemplateOf`.
  */
 
 import type { MiniToolOutput, MiniToolParam, MiniToolSpec } from "@shared/mini-tools/types.js";
@@ -25,6 +26,23 @@ function numberParam(spec: MiniToolSpec, params: Readonly<Record<string, unknown
 }
 
 /**
+ * The cells a product-counted tool makes a result for: every index of the
+ * product, row by row from 0, less the in-range whole numbers its `except`
+ * param lists. Result i, its placement and its file are all cell `[i]`.
+ * @param spec - The tool.
+ * @param params - The run's params.
+ * @returns The cell indices, or null when the tool is not counted by a product.
+ */
+export function pickedCellsOf(spec: MiniToolSpec, params: Readonly<Record<string, unknown>>): readonly number[] | null {
+  const count = spec.outputCount;
+  if (count?.kind !== "product") return null;
+  const total = count.params.reduce((product, key) => product * numberParam(spec, params, key), 1);
+  const listed = count.except === undefined ? undefined : params[count.except];
+  const skipped = new Set(Array.isArray(listed) ? listed : []);
+  return Array.from({ length: total }, (_, index) => index).filter((index) => !skipped.has(index));
+}
+
+/**
  * The results the tool makes with these params.
  * @param spec - The tool.
  * @param params - The run's params.
@@ -35,7 +53,7 @@ export function outputsOf(spec: MiniToolSpec, params: Readonly<Record<string, un
   const count = spec.outputCount;
   const n =
     count.kind === "product"
-      ? count.params.reduce((total, key) => total * numberParam(spec, params, key), 1)
+      ? (pickedCellsOf(spec, params) ?? []).length
       : (Array.isArray(params[count.param]) ? (params[count.param] as unknown[]).length : 0) + count.plus;
   return Array.from({ length: n }, () => spec.output);
 }

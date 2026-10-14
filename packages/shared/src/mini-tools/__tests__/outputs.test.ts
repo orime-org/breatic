@@ -3,7 +3,14 @@
 
 import { describe, it, expect } from "vitest";
 
-import { gridShapeOf, outputTemplateOf, outputsOf, type MiniToolSpec } from "@shared/mini-tools/index.js";
+import {
+  gridShapeOf,
+  mostOutputsOf,
+  outputTemplateOf,
+  outputsOf,
+  pickedCellsOf,
+  type MiniToolSpec,
+} from "@shared/mini-tools/index.js";
 
 const TILE = { modality: "image", namePrefix: "GRID" } as const;
 
@@ -68,6 +75,49 @@ describe("outputsOf", () => {
   it("counts a list's items plus the declared extra", () => {
     expect(outputsOf(listed, { cuts: [10, 20.5, 31] })).toHaveLength(4);
     expect(outputsOf(listed, { cuts: [] })).toHaveLength(1);
+  });
+});
+
+const picking: MiniToolSpec = {
+  ...product,
+  id: "image.picking",
+  params: [...product.params, { kind: "cells", key: "skip" }],
+  outputCount: { kind: "product", params: ["rows", "cols"], except: "skip" },
+  outputLayout: "grid",
+};
+
+describe("pickedCellsOf", () => {
+  it("lists every cell row by row when nothing is skipped", () => {
+    expect(pickedCellsOf(picking, { rows: 2, cols: 3, skip: [] })).toEqual([0, 1, 2, 3, 4, 5]);
+    expect(pickedCellsOf(picking, {})).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8]);
+  });
+
+  it("leaves out the skipped cells, counting a repeat once and ignoring indices off the grid", () => {
+    expect(pickedCellsOf(picking, { rows: 3, cols: 3, skip: [0, 4, 4, 9, -1, 2.5] })).toEqual([1, 2, 3, 5, 6, 7, 8]);
+  });
+
+  it("is empty when every cell is skipped", () => {
+    expect(pickedCellsOf(picking, { rows: 2, cols: 2, skip: [0, 1, 2, 3] })).toEqual([]);
+  });
+
+  it("lists every cell of a product tool that declares nothing to skip", () => {
+    expect(pickedCellsOf(product, { rows: 2, cols: 2 })).toEqual([0, 1, 2, 3]);
+  });
+
+  it("has no cells for a fixed tool or a list-counted tool", () => {
+    expect(pickedCellsOf(fixed, {})).toBeNull();
+    expect(pickedCellsOf(listed, { cuts: [1] })).toBeNull();
+  });
+});
+
+describe("outputsOf with skipped cells", () => {
+  it("makes one result per picked cell", () => {
+    expect(outputsOf(picking, { rows: 3, cols: 3, skip: [0, 4] })).toHaveLength(7);
+    expect(outputsOf(picking, { rows: 3, cols: 3, skip: [0, 1, 2, 3, 4, 5, 6, 7, 8] })).toHaveLength(0);
+  });
+
+  it("bounds a run at the whole grid", () => {
+    expect(mostOutputsOf(picking)).toBe(64);
   });
 });
 

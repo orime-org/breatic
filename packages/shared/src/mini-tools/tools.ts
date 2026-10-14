@@ -123,10 +123,11 @@ export const MINI_TOOLS: readonly MiniToolSpec[] = [
     params: [
       { kind: "number", key: "rows", default: 3, min: 1, max: 8, step: 1 },
       { kind: "number", key: "cols", default: 3, min: 1, max: 8, step: 1 },
+      { kind: "cells", key: "skip" },
     ],
     slots: [],
     output: { modality: "image", namePrefix: "GRID" },
-    outputCount: { kind: "product", params: ["rows", "cols"] },
+    outputCount: { kind: "product", params: ["rows", "cols"], except: "skip" },
     outputLayout: "grid",
     groupOutputs: true,
     sourceParam: "image",

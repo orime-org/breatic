@@ -13,7 +13,7 @@ import { z } from "zod";
 
 import { ADJUST_RANGES } from "@shared/adjust-value.js";
 import { isModelTool } from "@shared/mini-tools/derive.js";
-import { outputsOf } from "@shared/mini-tools/outputs.js";
+import { mostOutputsOf, outputsOf } from "@shared/mini-tools/outputs.js";
 import { MINI_TOOLS } from "@shared/mini-tools/tools.js";
 import type { MiniToolParam, MiniToolSpec } from "@shared/mini-tools/types.js";
 
@@ -27,9 +27,10 @@ const SLOT_VALUE = z.object({
 /**
  * The value schema of one declared param.
  * @param param - The param.
+ * @param cellsCap - How many cells the tool's grid holds at its largest.
  * @returns Its zod schema.
  */
-function paramSchema(param: MiniToolParam): z.ZodType {
+function paramSchema(param: MiniToolParam, cellsCap: number): z.ZodType {
   switch (param.kind) {
     case "number":
       return z.number().min(param.min).max(param.max);
@@ -58,6 +59,8 @@ function paramSchema(param: MiniToolParam): z.ZodType {
       return z.object({ turns: z.number().int(), flipX: z.boolean(), flipY: z.boolean() });
     case "list":
       return z.array(z.number().min(param.item.min).max(param.item.max)).max(param.maxItems);
+    case "cells":
+      return z.array(z.number().int().nonnegative()).max(cellsCap);
   }
 }
 
@@ -70,7 +73,8 @@ function paramsSchema(spec: MiniToolSpec): z.ZodType {
   if (isModelTool(spec)) {
     return z.strictObject(Object.fromEntries(spec.params.map((param) => [param.key, z.unknown().optional()])));
   }
-  return z.strictObject(Object.fromEntries(spec.params.map((param) => [param.key, paramSchema(param)])));
+  const cellsCap = mostOutputsOf(spec);
+  return z.strictObject(Object.fromEntries(spec.params.map((param) => [param.key, paramSchema(param, cellsCap)])));
 }
 
 /**
