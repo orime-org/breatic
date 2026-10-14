@@ -13,7 +13,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { TOOL_LAYER_CLASS, stopNodeClick, useToolLayerKeys } from '@web/spaces/canvas/mini-tool/tool-layer-input';
 
 /**
- * A layer in the space region, with a control and a text box in it.
+ * A canvas node holding a tool layer, and a panel slider beside it, in the
+ * space region.
  * @param root0 - Props.
  * @param root0.active - Whether its tool is open.
  * @returns The layer.
@@ -22,8 +23,11 @@ function Layer({ active }: { active: boolean }): React.JSX.Element {
   useToolLayerKeys(active);
   return (
     <div data-region='space'>
-      <button type='button' data-testid='control'>tile</button>
-      <textarea data-testid='typing' />
+      <div className='react-flow__node'>
+        <button type='button' data-testid='control'>tile</button>
+        <textarea data-testid='typing' />
+      </div>
+      <div role='slider' tabIndex={0} aria-valuenow={0} data-testid='slider' />
     </div>
   );
 }
@@ -47,6 +51,22 @@ describe('useToolLayerKeys', () => {
     render(<Layer active />);
     const allowed = fireEvent.keyDown(screen.getByTestId('control'), { key, ...modifiers });
     expect(allowed).toBe(false);
+    expect(reached).not.toHaveBeenCalled();
+  });
+
+  // xyflow moves a node by the arrows pressed in it; a control outside every
+  // node (a panel's slider, the focus crop's timeline) keeps its own arrows.
+  it('lets arrows pressed outside the node through', () => {
+    document.addEventListener('keydown', reached);
+    render(<Layer active />);
+    expect(fireEvent.keyDown(screen.getByTestId('slider'), { key: 'ArrowRight' })).toBe(true);
+    expect(reached).toHaveBeenCalledOnce();
+  });
+
+  it('keeps the node shortcuts pressed outside the node from it', () => {
+    document.addEventListener('keydown', reached);
+    render(<Layer active />);
+    expect(fireEvent.keyDown(screen.getByTestId('slider'), { key: 'd', metaKey: true })).toBe(false);
     expect(reached).not.toHaveBeenCalled();
   });
 

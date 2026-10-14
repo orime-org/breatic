@@ -19,6 +19,11 @@ export const TOOL_LAYER_CLASS = 'nodrag nopan nokey';
 
 /** The node keys a tool layer keeps while its tool is open. */
 const NODE_KEYS = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
+/**
+ * Where xyflow moves nodes by the arrows: a node, or the box around several,
+ * each from the keys pressed in it (`@xyflow/react@12.11.2` index.mjs:2091, 2309).
+ */
+const MOVED_BY_ARROWS = '.react-flow__node, .react-flow__nodesselection';
 /** The node shortcuts, pressed with Cmd or Ctrl, a tool layer keeps. */
 const NODE_SHORTCUTS = new Set(['c', 'v', 'x', 'd']);
 
@@ -45,7 +50,9 @@ function typesText(target: EventTarget | null): boolean {
 
 /**
  * Keep the node's keys while a tool is open on it: they would move, copy or
- * duplicate the host instead of acting in the tool. Text boxes keep theirs.
+ * duplicate the host instead of acting in the tool. Text boxes keep theirs,
+ * and so does every control outside the nodes for its arrows (a panel's
+ * slider, the focus crop's timeline), which xyflow does not move nodes by.
  * @param active - Whether the tool is open on this node.
  */
 export function useToolLayerKeys(active: boolean): void {
@@ -58,7 +65,9 @@ export function useToolLayerKeys(active: boolean): void {
     const onKeyDown = (event: KeyboardEvent): void => {
       if (typesText(event.target) || !regionOwnsKeyboard(event.target, 'space')) return;
       const shortcut = (event.metaKey || event.ctrlKey) && NODE_SHORTCUTS.has(event.key.toLowerCase());
-      if (!shortcut && !NODE_KEYS.has(event.key)) return;
+      const moves =
+        NODE_KEYS.has(event.key) && event.target instanceof Element && event.target.closest(MOVED_BY_ARROWS) !== null;
+      if (!shortcut && !moves) return;
       event.preventDefault();
       event.stopPropagation();
     };
