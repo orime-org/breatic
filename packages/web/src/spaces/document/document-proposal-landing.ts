@@ -207,7 +207,9 @@ async function landComment(handle: Landable, proposal: DocumentProposal): Promis
   const body =
     proposal.kind === 'comment'
       ? asCommentBody(proposal.body)
-      : (await markdownBlocks(proposal.body)).flatMap((b) => asCommentBody(b.text) as unknown[]);
+      : (await markdownBlocks(proposal.body))
+        .filter((b) => b.text.trim() !== '')
+        .flatMap((b) => asCommentBody(b.text) as unknown[]);
   const aim = proposal.quote === undefined ? wholeBlockAim(blockId) : quoteAim(blockId, proposal.quote);
   await commentOn(handle.editor as never, body, aim, {
     thread: { proposalId: proposal.proposalId },

@@ -132,6 +132,26 @@ describe('a rewrite card', () => {
     expect(screen.getByTestId('document-proposal-added').textContent).toBe(body);
   }, 15000);
 
+  it('offers no comment when the rewrite has no words of its own (review round 4)', async () => {
+    const { quote: _quote, ...rewrite } = { ...REWRITE, body: '---' };
+    draw(rewrite);
+
+    await waitFor(() => {
+      expect((screen.getByRole('button', { name: 'Replace' }) as HTMLButtonElement).disabled).toBe(false);
+    });
+    expect(screen.getAllByRole('button').map((b) => b.textContent)).toEqual(['Replace']);
+  });
+
+  it('holds its write button until the body is read (review round 4)', async () => {
+    const { quote: _quote, ...insert } = { ...BASE, kind: 'insert' as const, body: 'Text.' };
+    draw(insert);
+
+    expect((screen.getByRole('button', { name: 'Insert' }) as HTMLButtonElement).disabled).toBe(true);
+    await waitFor(() => {
+      expect((screen.getByRole('button', { name: 'Insert' }) as HTMLButtonElement).disabled).toBe(false);
+    });
+  });
+
   it('says the passage loses formatting Markdown cannot hold', () => {
     const { quote: _quote, ...rewrite } = { ...REWRITE, lossy: true };
     draw(rewrite);
@@ -209,6 +229,9 @@ describe('after a press', () => {
   it('waits on the pressed button with the other one held', async () => {
     const { quote: _quote, ...rewrite } = { ...BASE, kind: 'rewrite' as const };
     draw(rewrite);
+    await waitFor(() => {
+      expect((screen.getByRole('button', { name: 'Replace' }) as HTMLButtonElement).disabled).toBe(false);
+    });
 
     await userEvent.click(screen.getByRole('button', { name: 'Replace' }));
 

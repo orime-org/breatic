@@ -171,6 +171,17 @@ describe('a comment', () => {
   });
 });
 
+describe('a rewrite put on as a comment (review round 4)', () => {
+  it('carries only the parts of the rewrite that hold words', async () => {
+    const handle = await open('Morning light falls on the table.');
+
+    await landProposal(handle, proposalOn(handle, 0, { kind: 'rewrite', body: 'Light on the table.\n\n---' }), 'comment', true);
+
+    const body = threads(handle)[0]?.comments[0]?.body as Array<{ content: Array<{ text: string }> }>;
+    expect(body.map((p) => p.content.map((c) => c.text).join(''))).toEqual(['Light on the table.']);
+  });
+});
+
 describe('a rewrite', () => {
   it('replaces the block with the body, and one undo puts it back', async () => {
     const handle = await open('Before.\n\nMorning light falls on the table.\n\nAfter.');

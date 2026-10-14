@@ -87,64 +87,53 @@ function pressKind(proposal: DocumentProposal, action: LandingAction): PressKind
  */
 const DIFF_TIMEOUT_MS = 100;
 
-/** What landing a proposal's body would leave out, once its Markdown is read. */
-interface MediaLeftOut {
+/** A rewrite's or an insert's body, read once with the document's schema. */
+interface ReadBody {
+  /** The rewrite's words set against the original's; null for an insert. */
+  changes: Change[] | null;
   /** How many media in it are not files in this project. */
-  count: number;
-  /** Whether anything else is left to write. */
+  mediaLeftOut: number;
+  /** Whether anything is left to write once those are taken out. */
   writable: boolean;
+  /** Whether its text holds anything to put in a comment. */
+  hasCommentText: boolean;
 }
 
 /**
- * How many media a rewrite or an insert would leave out when it lands, judged
- * by the rule a paste follows.
+ * A rewrite's or an insert's body, read once: its Markdown parsed with the
+ * document's schema and its media judged against our address, both of which
+ * the card waits for.
  * @param proposal - The proposal.
- * @returns The count, and whether anything else would be written.
+ * @returns What the card draws from the body, or null until it is read.
  */
-function useMediaLeftOut(proposal: DocumentProposal): MediaLeftOut {
-  const [leftOut, setLeftOut] = React.useState<MediaLeftOut>({ count: 0, writable: true });
+function useReadBody(proposal: DocumentProposal): ReadBody | null {
+  const [read, setRead] = React.useState<ReadBody | null>(null);
   React.useEffect(() => {
     if (proposal.kind === 'comment') return undefined;
     let live = true;
     void Promise.all([markdownBlocks(proposal.body), ourMediaPrefixReady()]).then(([blocks, prefix]) => {
       if (!live) return;
       const kept = ownMediaOnly(blocks.map((b) => b.block as WrittenBlock), prefix);
-      setLeftOut({ count: kept.count, writable: kept.blocks.length > 0 });
-    });
-    return () => {
-      live = false;
-    };
-  }, [proposal]);
-  return leftOut;
-}
-
-/**
- * The rewritten passage's words set against the original's, once its
- * Markdown is read.
- * @param proposal - A rewrite.
- * @returns The changes, or null until they are worked out.
- */
-function useRewriteChanges(proposal: DocumentProposal): Change[] | null {
-  const [changes, setChanges] = React.useState<Change[] | null>(null);
-  React.useEffect(() => {
-    if (proposal.kind !== 'rewrite') return undefined;
-    let live = true;
-    void markdownBlocks(proposal.body).then((blocks) => {
-      if (!live) return;
       const rewritten = blocks.map((b) => b.text).join('\n');
       const intlSegmenter = new Intl.Segmenter(getLocale(), { granularity: 'word' });
-      setChanges(
-        diffWords(proposal.original, rewritten, { intlSegmenter, timeout: DIFF_TIMEOUT_MS }) ?? [
-          { value: proposal.original, removed: true, added: false, count: 0 },
-          { value: rewritten, added: true, removed: false, count: 0 },
-        ],
-      );
+      setRead({
+        changes:
+          proposal.kind === 'rewrite'
+            ? (diffWords(proposal.original, rewritten, { intlSegmenter, timeout: DIFF_TIMEOUT_MS }) ?? [
+              { value: proposal.original, removed: true, added: false, count: 0 },
+              { value: rewritten, added: true, removed: false, count: 0 },
+            ])
+            : null,
+        mediaLeftOut: kept.count,
+        writable: kept.blocks.length > 0,
+        hasCommentText: blocks.some((b) => b.text.trim() !== ''),
+      });
     });
     return () => {
       live = false;
     };
   }, [proposal]);
-  return changes;
+  return read;
 }
 
 /**
@@ -173,8 +162,8 @@ export const DocumentProposalCard = React.memo(function DocumentProposalCard({
   const docVersion = useDocumentProposals((s) => s.docVersion[proposal.spaceId] ?? 0);
   const start = useDocumentProposals((s) => s.start);
   const view = useDocumentProposals((s) => s.view);
-  const changes = useRewriteChanges(proposal);
-  const media = useMediaLeftOut(proposal);
+  const body = useReadBody(proposal);
+  const changes = body?.changes ?? null;
 
   // Read again whenever the document changes or this card's press ends.
   const read = React.useMemo(() => {
@@ -205,8 +194,14 @@ export const DocumentProposalCard = React.memo(function DocumentProposalCard({
     proposal.kind === 'insert' && proposal.blockId === null ? t('chat.documentProposal.end') : proposal.heading;
   const held = state !== 'idle' && state !== 'failed' && state !== 'gone';
   // A comment hangs on words; a block with none (an empty code block, an
-  // image, a table of empty cells) has nowhere to put it.
-  const commentable = proposal.kind !== 'insert' && hasWords(proposal.original);
+  // image, a table of empty cells) has nowhere to put it. A rewrite's comment
+  // carries the rewrite's words, so one with none offers no comment either.
+  const commentable =
+    proposal.kind === 'comment'
+      ? hasWords(proposal.original)
+      : proposal.kind === 'rewrite' && hasWords(proposal.original) && body?.hasCommentText !== false;
+  // Until a rewrite's or an insert's body is read, what it would write is not known.
+  const unread = proposal.kind !== 'comment' && body === null;
 
   let status: string | null = null;
   if (state === 'applied' && action !== undefined) status = t(APPLIED_KEY[pressKind(proposal, action)]);
@@ -276,9 +271,9 @@ export const DocumentProposalCard = React.memo(function DocumentProposalCard({
           <MarkdownMessage content={proposal.body} size='xs' />
         </div>
       ) : null}
-      {media.count > 0 ? (
+      {body !== null && body.mediaLeftOut > 0 ? (
         <div data-testid='document-proposal-media-left-out' className='text-xs text-muted-foreground'>
-          {t('chat.documentProposal.mediaLeftOut', { count: media.count })}
+          {t('chat.documentProposal.mediaLeftOut', { count: body.mediaLeftOut })}
         </div>
       ) : null}
       {status === null ? null : (
@@ -308,20 +303,20 @@ export const DocumentProposalCard = React.memo(function DocumentProposalCard({
               variant='outline'
               size='sm'
               loading={working && card?.action === 'comment'}
-              disabled={held && !(working && card?.action === 'comment')}
+              disabled={unread || (held && !(working && card?.action === 'comment'))}
               onClick={onComment}
               className='flex-1'
             >
               {t('chat.documentProposal.addComment')}
             </Button>
           ) : null}
-          {proposal.kind === 'comment' || !media.writable ? null : (
+          {proposal.kind === 'comment' || body?.writable === false ? null : (
             <Button
               type='button'
               variant='outline'
               size='sm'
               loading={working && card?.action === 'write'}
-              disabled={held && !(working && card?.action === 'write')}
+              disabled={unread || (held && !(working && card?.action === 'write'))}
               onClick={onWrite}
               className='flex-1'
             >
