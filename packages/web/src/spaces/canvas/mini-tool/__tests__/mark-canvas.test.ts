@@ -160,6 +160,21 @@ describe('MarkCanvasController', () => {
     expect(mark().undo).toHaveLength(1);
   });
 
+  // §6.2: a text scaled past the slider's range keeps its size; the slider
+  // shows it at the nearest step, and entering the text does not apply that.
+  it('keeps the size of a text scaled past the slider through an edit', () => {
+    store.getState().commitMark([{ ...TEXT, size: 40.5 }]);
+    controller.sync();
+    const text = controller.canvas.getObjects()[0] as IText;
+    const fontSize = text.fontSize;
+    controller.canvas.setActiveObject(text);
+    text.enterEditing();
+    controller.sync();
+    expect(text.fontSize).toBe(fontSize);
+    controller.channel.exitEditing();
+    expect(mark().objects[0]).toMatchObject({ size: 40.5 });
+  });
+
   it('keeps an existing text’s own colour through an edit with a different pen', () => {
     store.getState().commitMark([TEXT]);
     controller.sync();

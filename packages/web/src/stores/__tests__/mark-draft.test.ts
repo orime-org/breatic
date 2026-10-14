@@ -66,10 +66,20 @@ describe('the markup draft', () => {
     expect(mark(store).undo).toHaveLength(2);
   });
 
-  it('holds each object’s size inside the size range, in whole steps, so the control can show it', () => {
+  // §6.2: a text's scale folds into its size as it was scaled, a continuous value.
+  it('keeps each object’s size as it was written', () => {
     const store = withMark();
     store.getState().commitMark([{ ...A, size: 60 }, { ...B, size: 8.4 }, { ...B, id: 'c', size: 0.2 }]);
-    expect(mark(store).objects.map((object) => object.size)).toEqual([BRUSH_SIZE.max, 8, BRUSH_SIZE.min]);
+    expect(mark(store).objects.map((object) => object.size)).toEqual([60, 8.4, 0.2]);
+  });
+
+  it('shows a selected object’s size on the slider within its range and steps', () => {
+    const store = withMark();
+    store.getState().commitMark([{ ...A, size: 60 }, { ...B, size: 8.4 }]);
+    store.getState().selectMark('a');
+    expect(mark(store).size).toBe(BRUSH_SIZE.max);
+    store.getState().selectMark('b');
+    expect(mark(store).size).toBe(8);
   });
 
   it('brings an undone object back on redo, and a write that changes nothing leaves the redo there', () => {

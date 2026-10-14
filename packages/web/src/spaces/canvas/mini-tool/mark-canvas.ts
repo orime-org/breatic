@@ -18,7 +18,7 @@ import { newId } from '@breatic/shared';
 
 import { fromFabric, markFontPx, markStrokePx, toFabric, type DrawBox, type MarkFabricObject } from '@web/spaces/canvas/mini-tool/mark-fabric';
 import type { CanvasSessionState } from '@web/stores/canvas-session';
-import type { MarkChannel, MarkDraft, MarkObject } from '@web/stores/mark-draft';
+import { sliderSizeOf, type MarkChannel, type MarkDraft, type MarkObject } from '@web/stores/mark-draft';
 
 /** Below this drag, in drawn pixels, a shape tool's press is a click and draws nothing. */
 export const MARK_MIN_DRAG_PX = 4;
@@ -210,7 +210,9 @@ export class MarkCanvasController {
   private restyleEdit(draft: MarkDraft): void {
     const active = this.canvas.getActiveObject() as (IText & Partial<MarkFabricObject>) | undefined;
     if (this.edit === null || !(active instanceof IText)) return;
-    if (active.markColor === draft.color && active.markSize === draft.size) return;
+    // The slider shows the text's own size at its nearest step; only a move of
+    // the slider away from that restyles the text.
+    if (active.markColor === draft.color && sliderSizeOf(active.markSize ?? draft.size) === draft.size) return;
     active.set({ fill: draft.color, fontSize: markFontPx(draft.size, this.box) });
     Object.assign(active, { markColor: draft.color, markSize: draft.size });
     this.canvas.requestRenderAll();
