@@ -292,6 +292,14 @@ test('a project create keeps Create waiting when the dialog is opened from the o
 test('a membership checkout keeps its choice waiting after the panel closes @needs-payments', async ({
   page,
 }) => {
+  // `config/membership.yaml` gives every account on a local deployment the
+  // self-hosted tier, which offers no plans; the panel is told the account is
+  // on the free tier so it draws the cards this press is made on.
+  await page.route('**/api/v1/account/membership', async (route) => {
+    const response = await route.fetch();
+    const body = (await response.json()) as { data: Record<string, unknown> };
+    await route.fulfill({ response, json: { ...body, data: { ...body.data, tier: 'base' } } });
+  });
   await page.goto('/studio');
   const held = await holdPosts(page, '/api/v1/account/subscription/checkout');
   await openAccountPanel(page, 'Membership');
