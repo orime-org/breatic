@@ -170,6 +170,16 @@ describe('with media', () => {
     expect(shape(editor)).toEqual(['paragraph:lead']);
   });
 
+  it('carries the node\'s pixel size, so the picture keeps its shape while it loads', () => {
+    const { editor } = open([{ type: 'paragraph', content: 'lead' }], 0);
+    paste(
+      editor,
+      clipboard({ id: 'i', type: 'image', position: { x: 0, y: 0 }, data: { name: 'Hero', content: OURS, mediaWidth: 320, mediaHeight: 180 } }),
+    );
+    const image = (editor.document as { type: string; props: Record<string, unknown> }[])[1]!;
+    expect([image.props['mediaWidth'], image.props['mediaHeight']]).toEqual([320, 180]);
+  });
+
   it('aimed at an empty line, lands above it and leaves it with the caret', () => {
     const { editor } = open([{ type: 'paragraph', content: 'lead' }, { type: 'paragraph', content: '' }], 1);
     paste(editor, clipboard({ id: 'i', type: 'image', position: { x: 0, y: 0 }, data: { name: 'Hero', content: OURS } }));

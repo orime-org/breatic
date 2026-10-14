@@ -66,7 +66,7 @@ function order(p: ClipboardPayload): string[] {
 }
 
 describe('what each node becomes', () => {
-  it('our image, video and audio become media blocks named and captioned by the node, sourced by registration', () => {
+  it('our image, video and audio become media blocks named and captioned by the node, sized as it is, sourced by registration', () => {
     const plan = planCanvasPaste(
       payload(
         node('i', 'image', 0, 0, { name: 'Hero', content: OURS, mediaWidth: 640, mediaHeight: 480 }, { height: 100 }),
@@ -75,7 +75,15 @@ describe('what each node becomes', () => {
       ),
     );
     expect(plan.items).toEqual([
-      { kind: 'media', type: 'image', name: 'Hero', caption: 'Hero', source: { kind: 'ours', url: OURS } },
+      {
+        kind: 'media',
+        type: 'image',
+        name: 'Hero',
+        caption: 'Hero',
+        mediaWidth: 640,
+        mediaHeight: 480,
+        source: { kind: 'ours', url: OURS },
+      },
       {
         kind: 'media',
         type: 'video',
