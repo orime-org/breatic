@@ -88,6 +88,8 @@ const TOAST_KEY: Readonly<
   unsupportedType: 'canvas.upload.unsupportedType',
   // The window passes; the reader retries after it.
   rateLimited: 'canvas.upload.rateLimited',
+  // The same bytes are over the same cap the next time.
+  tooLarge: 'canvas.upload.tooLarge',
   upload: 'canvas.upload.failed',
 };
 

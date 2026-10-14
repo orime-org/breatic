@@ -61,6 +61,9 @@ export type StoredUpload = UploadStatusResult;
  * the bytes never got out, or the edge turned them down (#237). Either way the
  * finish was never asked for, which makes this the one failure whose task row,
  * when the upload has one, nobody else will end.
+ * `tooLarge` — the server refused the file as over the upload cap, which the
+ * browser checks first whenever it has read the cap; sending it again changes
+ * nothing.
  * `upload` — anything else along the way: the knobs, the ticket request, or a
  * finish that failed. A retry can fix it, and the server settles the row
  * itself whenever it answered.
@@ -70,6 +73,7 @@ export const UPLOAD_FAILURE_REASONS = [
   'storage',
   'rateLimited',
   'unsupportedType',
+  'tooLarge',
   'transfer',
   'upload',
 ] as const;
@@ -111,11 +115,15 @@ export interface UploadFailure {
 /** Too Many Requests (RFC 6585 §4): a per-user limit on the upload routes. */
 const RATE_LIMITED_STATUS = 429;
 
+/** Content Too Large (RFC 9110 §15.5.14): the ticket route refuses a file over the cap. */
+const TOO_LARGE_STATUS = 413;
+
 /** The statuses that name their own reason; whether a retry helps is `uploadRetryCanChange`'s call. */
 const REASON_BY_STATUS: ReadonlyMap<number, UploadFailureReason> = new Map([
   [STORAGE_FULL_STATUS, 'storage'],
   [UNSUPPORTED_TYPE_STATUS, 'unsupportedType'],
   [RATE_LIMITED_STATUS, 'rateLimited'],
+  [TOO_LARGE_STATUS, 'tooLarge'],
 ]);
 
 /**
