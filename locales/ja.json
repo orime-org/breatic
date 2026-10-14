@@ -1474,6 +1474,7 @@
         "retry": "再試行",
         "remove": "削除",
         "notFinished": "アップロードが完了していません",
+        "pendingExport": "{name}（アップロード未完了）",
         "uploadFailed": "アップロードに失敗しました",
         "readOnlyWaiting": "このタブは現在読み取り専用です。編集できるようになると追加されます",
         "notWrittenYet": "アップロード済み。まだ追加されていません",

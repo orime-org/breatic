@@ -1474,6 +1474,7 @@
         "retry": "Retry",
         "remove": "Remove",
         "notFinished": "Upload not finished",
+        "pendingExport": "{name} (upload not finished)",
         "uploadFailed": "Upload failed",
         "readOnlyWaiting": "This tab is read-only now; it is added once the tab can edit again",
         "notWrittenYet": "Uploaded, not added yet",

@@ -1474,6 +1474,7 @@
         "retry": "다시 시도",
         "remove": "제거",
         "notFinished": "업로드가 완료되지 않았습니다",
+        "pendingExport": "{name} (업로드 미완료)",
         "uploadFailed": "업로드 실패",
         "readOnlyWaiting": "이 탭은 현재 읽기 전용입니다. 다시 편집할 수 있으면 추가됩니다",
         "notWrittenYet": "업로드됨, 아직 추가되지 않음",

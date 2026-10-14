@@ -1474,6 +1474,7 @@
         "retry": "重試",
         "remove": "移除",
         "notFinished": "上傳沒有完成",
+        "pendingExport": "{name}（尚未上傳完成）",
         "uploadFailed": "上傳失敗",
         "readOnlyWaiting": "這個分頁現在唯讀，恢復可寫後寫入正文",
         "notWrittenYet": "已上傳，還沒寫進正文",

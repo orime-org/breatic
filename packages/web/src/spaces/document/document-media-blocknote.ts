@@ -27,6 +27,8 @@
  * (`createSpec.ts:437-456`), and the schema keeps a node it is handed.
  */
 
+import { t } from '@breatic/shared';
+
 import { carriesFiles } from '@web/lib/stray-file-drop';
 import { startRowDrag } from '@web/spaces/document/document-row-drag';
 import {
@@ -294,5 +296,39 @@ export function withMediaView<T extends MediaSpec>(spec: T): T {
       return (viewProps: NodeViewRendererProps) => mediaNodeView(viewProps, editor, spec);
     },
   });
-  return { ...spec, implementation: { ...spec.implementation, node } };
+  // The library's own export, which falls back to the block's render.
+  const toExternalHTML = spec.implementation['toExternalHTML'] as ExternalHTML;
+  return {
+    ...spec,
+    implementation: {
+      ...spec.implementation,
+      node,
+      toExternalHTML(this: unknown, block: { props: Record<string, unknown> }, ...rest: unknown[]) {
+        return pendingExternalHTML(block) ?? toExternalHTML.call(this, block, ...rest);
+      },
+    },
+  };
+}
+
+/** The library's export of one block to outside HTML. */
+type ExternalHTML = (
+  this: unknown,
+  block: { props: Record<string, unknown> },
+  ...rest: unknown[]
+) => { dom: HTMLElement };
+
+/**
+ * A pending block's outside HTML: one line naming it and saying its upload
+ * is not finished (inner#1351 design §5.10). It has no address, and an empty
+ * media element tells the Agent or another app nothing.
+ * @param block - The block.
+ * @param block.props - Its props.
+ * @returns The line, or null for a block with an address.
+ */
+function pendingExternalHTML(block: { props: Record<string, unknown> }): { dom: HTMLElement } | null {
+  const { uploadId, name } = block.props;
+  if (typeof uploadId !== 'string' || uploadId === '') return null;
+  const line = document.createElement('p');
+  line.textContent = t('spaces.document.media.pendingExport', { name: typeof name === 'string' ? name : '' });
+  return { dom: line };
 }
