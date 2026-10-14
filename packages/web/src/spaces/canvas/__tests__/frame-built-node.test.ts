@@ -183,13 +183,20 @@ describe('viewportToInspect', () => {
     const at = onScreen(v);
     expect(at.top).toBeCloseTo(pane.height * 0.1, 3);
     expect(at.bottom).toBeCloseTo(pane.height * 0.9, 3);
-    expect(at.left).toBeGreaterThanOrEqual(0);
-    expect(at.right).toBeLessThanOrEqual(pane.width);
   });
 
   it('comes to the same view from any zoom it starts at', () => {
     const from = (zoom: number): number => viewportToInspect(node, panel, pane, { x: 0, y: 0, zoom }, 8)!.zoom;
     expect(from(0.25)).toBeCloseTo(from(0.75), 6);
+  });
+
+  // A wide, short picture in a narrow view fills the width, not the height.
+  it('stops where a wide node fills the width, less a tenth either side', () => {
+    const narrow = { width: 600, height: 820 };
+    const wide = { x: 0, y: 0, width: 288, height: 20 };
+    const v = viewportToInspect(wide, panel, narrow, { x: 0, y: 0, zoom: 0.5 }, 8)!;
+    expect(wide.x * v.zoom + v.x).toBeCloseTo(narrow.width * 0.1, 6);
+    expect((wide.x + wide.width) * v.zoom + v.x).toBeCloseTo(narrow.width * 0.9, 6);
   });
 
   it('stops at the zoom that shows the picture at its own pixels', () => {

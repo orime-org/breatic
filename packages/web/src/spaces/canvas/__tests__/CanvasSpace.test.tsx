@@ -4543,20 +4543,20 @@ describe('onLocateSource absolute-position contract (item 7 grouped source)', ()
 // Selecting it sets a flag and moves nothing, so the viewport is moved too.
 // jsdom cannot render the ReactFlow viewport, so this pins the wiring the way
 // the locate-source contract above does; what that move comes to is
-// `frameBuiltNode`'s, and it has its own tests.
+// `viewportForBuilt`'s, and it has its own tests.
 describe('what an Understand press leaves on screen', () => {
   const src = readFileSync(resolve(__dirname, '../CanvasSpace.tsx'), 'utf8');
   const press = src.slice(
     src.indexOf('const understandFromMenu'),
     src.indexOf('const onUploadInputChange'),
   );
-  // frameNewNode reads the source's box through measuredRects and hands it to
-  // panToFrame, which reads the viewport and asks frameBuiltNode; the three
-  // read together are the framing.
+  // frameBuilt reads the source's box through measuredRects and the live
+  // viewport, asks viewportForBuilt where to go, and moves there.
   const framing = src.slice(
-    src.indexOf('const measuredRects'),
+    src.indexOf('const frameBuilt'),
     src.indexOf('// ---- Node creation (library mailbox + right-click) ----'),
   );
+  const measured = src.slice(src.indexOf('const measuredRects'), src.indexOf('const frameBuilt'));
 
   it('moves the viewport to the node it built, not only its selection flag', () => {
     // The call, not the name: a dependency array mentions it too, and a
@@ -4565,20 +4565,22 @@ describe('what an Understand press leaves on screen', () => {
     expect(press).toContain('frameBuilt(freshNodesBox([position]), host.id)');
   });
 
+  // The pan keeps the reader's zoom, so it slides in a straight line; the
+  // default 'smooth' path zooms out and back in on the way.
+  it('moves to where viewportForBuilt says, in a straight line', () => {
+    expect(framing).toContain('viewportForBuilt(');
+    expect(framing).toContain('setViewport(next');
+    expect(framing).toContain('interpolate: \'linear\'');
+  });
+
   // Both boxes are read where the reader is looking right now: the source
   // from ReactFlow's own store, which folds in every parent offset, and the
   // viewport from the live transform. A grouped source read off
   // `node.position` would be measured a whole group-origin away.
-  // The pan keeps the reader's zoom, so it slides in a straight line; the
-  // default 'smooth' path zooms out and back in on the way.
-  it('slides in a straight line at the reader zoom', () => {
-    expect(framing).toContain('interpolate: \'linear\'');
-  });
-
   it('frames against the live viewport and the source node absolute box', () => {
-    expect(framing).toContain('frameBuiltNode');
-    expect(framing).toContain('positionAbsolute');
+    expect(framing).toContain('measuredRects([sourceNodeId])');
     expect(framing).toContain('rfStoreApi.getState()');
+    expect(measured).toContain('positionAbsolute');
   });
 });
 
