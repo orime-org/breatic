@@ -3,7 +3,8 @@
 
 /**
  * A document proposal landing (inner#1509): checked against the document as
- * it is when the reader presses, written as one undo step, and recognised as
+ * it is when the reader presses, written (a rewrite or an insert as one undo
+ * step, a comment off the undo stack), and recognised as
  * landed from the marks it left -- a thread carrying its id, or a block whose
  * id was derived from it.
  */

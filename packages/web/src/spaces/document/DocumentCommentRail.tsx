@@ -419,9 +419,8 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
   // Computed from the two rectangles, as `scrollTabToEdge` does, with the
   // card's height as it is now: a card read opens up to all of its comments
   // in the same commit, before the observer reports the new height. A card
-  // that grows afterwards (an author's name arriving and taking a second
-  // line) is shown again at its new height, unless the reader has scrolled
-  // since.
+  // that grows afterwards is shown again at its new height, unless the
+  // reader has scrolled since.
   const revealed = React.useRef<{ key: string; height: number; top: number } | null>(null);
   const draftEntry = draft?.kind === 'aimed' ? draft.entry : null;
   const reveal =

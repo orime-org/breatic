@@ -104,10 +104,12 @@ function useReadBody(proposal: DocumentProposal): ReadBody | null {
  * A card that lands an Agent's comment, rewrite or insert in a document
  * (inner#1509). It says which document and passage, what would change, and
  * offers the press; the project page opens the document and the document
- * Space lands it, then the card says how that ended.
+ * Space lands it. A press that landed shows its result on the card; any other
+ * ending is told in a toast and the card goes back to its buttons.
  *
  * Whether it landed is read off the open document whenever the document
- * changes, so a reload knows too and an undo takes the card back; while the
+ * changes, so a reload knows once the document is open and undoing a rewrite
+ * or an insert takes the card back; while the
  * document is open it is the truth, over what a press reported. Pressing
  * again checks the same thing first, so nothing lands twice; "View" only
  * shows where it is.

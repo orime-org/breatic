@@ -30,7 +30,7 @@ export const documentProposalSchema = z
     /** The comment's words, or the Markdown a rewrite or insert lands. */
     body: z.string().min(1),
     title: z.string(),
-    /** The nearest heading above the block, empty when there is none. */
+    /** The nearest heading at or above the block, empty when there is none. */
     heading: z.string(),
     original: z.string(),
     /** That block's BlockNote type, which names it on the card when it holds no words; null for the end. */

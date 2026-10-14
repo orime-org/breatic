@@ -29,6 +29,9 @@ import { makeProposeCanvasAction } from "@domain/agent/tools/propose-canvas-acti
 import { makeProposeDocumentEdit } from "@domain/agent/tools/propose-document-edit.js";
 import { judgeLikelihood } from "@domain/agent/tools/judge-likelihood.js";
 
+/** The document proposal tool; it holds nothing between calls. */
+const proposeDocumentEdit = makeProposeDocumentEdit();
+
 /**
  * Complete mapping of tool name to tool instance.
  *
@@ -61,8 +64,8 @@ export const TOOL_MAP: Readonly<Record<string, () => Tool>> = {
   // Built per turn: its description quotes the template prompts in the
   // reader's language.
   [PROPOSE_CANVAS_ACTION]: () => makeProposeCanvasAction(),
-  // Holds nothing between calls; built per turn like the canvas proposal.
-  [PROPOSE_DOCUMENT_EDIT]: () => makeProposeDocumentEdit(),
+  // Holds nothing between calls, so one object serves every turn.
+  [PROPOSE_DOCUMENT_EDIT]: () => proposeDocumentEdit,
   // Built per turn: it holds whether a save is running, so one turn saves one
   // picture at a time.
   [SAVE_IMAGE]: () => makeSaveImageTool(),

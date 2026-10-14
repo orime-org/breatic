@@ -952,7 +952,7 @@ export function renderProductGuide(): string {
     "## Document proposal cards",
     "A comment, a rewrite or an insert you propose for the document the reader has open appears in this chat as " +
       "a card: its title; a line naming the document, which for an insert says the content goes into it, " +
-      "followed after a · by the heading the passage sits under, or " +
+      "followed after a · by the nearest heading at or above the passage, or " +
       `${quoted(t("chat.documentProposal.end"))} for an insert at the end; then the passage. A comment card ` +
       "quotes the words the comment hangs on and shows the comment, with one " +
       `button, ${quoted(t("chat.documentProposal.addComment"))}. A rewrite card shows the passage with the words ` +
@@ -964,7 +964,7 @@ export function renderProductGuide(): string {
       "An insert card that goes after a passage first shows that passage under " +
       `${quoted(t("chat.documentProposal.insertAfter"))}, naming a passage with no words by its kind, such as ` +
       `${quoted(t("spaces.document.media.image"))} or ${quoted(t("chat.documentProposal.headingBlock"))}; it ` +
-      `shows the new content as it will look, tables included, with ${quoted(t("chat.documentProposal.insert"))}.`,
+      `shows the new content drawn from its Markdown, tables included, with ${quoted(t("chat.documentProposal.insert"))}.`,
     "Pressing a button opens the document, or switches to its tab, and the change lands. A rewrite or an insert " +
       "is scrolled to and outlined for a moment; a comment opens the comments panel on its card, its words marked, " +
       "as pressing its highlight does, with a wide table scrolled sideways to them. The pressed button spins " +
@@ -988,7 +988,7 @@ export function renderProductGuide(): string {
       `${quoted(t("chat.documentProposal.failedInsert"))} Pressing ${quoted(t("chat.documentProposal.view"))} ` +
       `after the change has left the document, undone or deleted, says ${quoted(t("chat.documentProposal.gone"))} ` +
       "and the card shows its buttons again, which write the proposal again. An image, video or audio in a " +
-      "rewrite or an insert lands only when it is a file already in this project; the others are left out, and " +
+      "rewrite or an insert lands only when its address is in our storage; outside links are left out, and " +
       "when nothing else is left nothing lands and the card keeps its buttons; a toast says how many, such as " +
       `${quoted(t("chat.documentProposal.mediaLeftOut", { count: 1 }))}`,
     "",

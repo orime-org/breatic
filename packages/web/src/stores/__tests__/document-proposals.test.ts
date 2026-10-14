@@ -177,7 +177,7 @@ describe('how a press that did not land is told (inner#1509, design §5.7)', () 
     store().report('p1', 'applied', 2);
 
     expect(store().cards.p1).toEqual({ state: 'applied', action: 'write' });
-    expect(toast.warning).toHaveBeenCalledWith('2 images, videos or audio are not files in this project and will not be added.');
+    expect(toast.warning).toHaveBeenCalledWith('2 images, videos or audio are outside links and will not be added.');
   });
 
   it('says the media were left out when nothing else was to land', () => {
@@ -185,7 +185,7 @@ describe('how a press that did not land is told (inner#1509, design §5.7)', () 
     store().report('p1', 'mediaOnly', 1);
 
     expect(store().cards.p1).toBeUndefined();
-    expect(toast.warning).toHaveBeenCalledWith('1 image, video or audio is not a file in this project and will not be added.');
+    expect(toast.warning).toHaveBeenCalledWith('1 image, video or audio is an outside link and will not be added.');
   });
 });
 

@@ -34,8 +34,8 @@ export type DocumentProposalCardState = 'working' | 'applied';
 
 /**
  * How a press ended. `gone`: a "View" press found the change no longer in
- * the document. `mediaOnly`: nothing was left to write once the media that
- * are not files in this project were left out.
+ * the document. `mediaOnly`: nothing was left to write once the media whose
+ * address is not in our storage were left out.
  */
 export type DocumentProposalOutcome =
   | 'applied'
@@ -174,8 +174,9 @@ export const useDocumentProposals = create<DocumentProposalsState>()((set, get) 
     const card = cards[proposalId];
     if (waiting === undefined) return;
     // A View press that could not reach its document wrote nothing and the
-    // change is still there: the card stays landed, and the document Space
-    // shows why it could not open.
+    // change is still there: the card stays landed. When the editor could not
+    // be built the document Space shows why; a tab closed first ends the
+    // press with nothing to say.
     if (waiting.action === 'view' && outcome === 'failed') {
       set((s) => {
         const { [proposalId]: _gone, ...rest } = s.pending;

@@ -6,9 +6,10 @@
  *
  * When the reader presses a card, the proposal is checked against the
  * document as it stands -- the block still there, its words still the ones
- * proposed on -- and written as one undo step: a comment through the same
- * function a reader's own comment goes through, a rewrite or an insert as one
- * BlockNote write whose new blocks take ids derived from the proposal.
+ * proposed on -- and written: a comment through the same function a reader's
+ * own comment goes through, off the undo stack like theirs; a rewrite or an
+ * insert as one BlockNote write, one undo step, whose new blocks take ids
+ * derived from the proposal.
  *
  * Those two traces are also how a proposal is known to have landed: a thread
  * carrying its id that still has a mark in the body, or a block with the first

@@ -123,7 +123,7 @@ function blockProblem(input: DocumentEditInput, blocks: readonly ChatDocumentBlo
   }
   const target = blocks[input.block - 1];
   if (target === undefined) {
-    return `There is no block ${String(input.block)}: the document's blocks run from 1 to ${String(blocks.length)}.`;
+    return `There is no block ${String(input.block)} among the blocks sent: they run from 1 to ${String(blocks.length)}.`;
   }
   return target.partial
     ? `Block ${String(input.block)} was cut at the limit, so its whole text was not sent and it cannot be proposed on.`
@@ -226,7 +226,7 @@ export function makeProposeDocumentEdit(): Tool<DocumentEditInput, DocumentPropo
       "end. Nothing changes in the document until the reader presses the card. One proposal per change: several " +
       "changes are several calls, and content that follows one place -- a run of paragraphs, several scenes -- " +
       "goes in one insert, in the order it reads. An image, video or audio in the Markdown lands only when its " +
-      "address is a file already in this project; others are left out.",
+      "address is in our storage (a file uploaded or saved here); an outside link is left out.",
     inputSchema: documentEditInputSchema,
     contextSchema: proposeDocumentContextSchema,
     metadata: { runningLine: "chat.tool.proposingDocumentEdit" },

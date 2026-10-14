@@ -204,7 +204,7 @@ describe('media left out of a landing (review round 6)', () => {
     renderHook(() => useDocumentProposalPickup('d1', HANDLE, 'granted', false));
 
     await waitFor(() => {
-      expect(toast.warning).toHaveBeenCalledWith('2 images, videos or audio are not files in this project and will not be added.');
+      expect(toast.warning).toHaveBeenCalledWith('2 images, videos or audio are outside links and will not be added.');
     });
   });
 });
