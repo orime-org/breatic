@@ -53,15 +53,31 @@ export type AddressRoute = 'fetch' | 'file' | 'skip';
 const MEDIA_TYPES: ReadonlySet<string> = new Set<PastedMediaType>(['image', 'video', 'audio']);
 
 /**
+ * The origin a `blob:` address belongs to, or null when it names none.
+ * @param url - The address.
+ * @returns The origin.
+ */
+function blobOrigin(url: string): string | null {
+  try {
+    return new URL(url).origin;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * How an outside address gets into storage (§5.3): an `https:` address is
- * fetched by the ingest Worker, a `data:` or `blob:` address is read in the
- * browser and uploaded as a file, anything else is not pasted.
+ * fetched by the ingest Worker, a `data:` address or a `blob:` address of this
+ * page's origin is read in the browser and uploaded as a file, anything else
+ * is not pasted.
  * @param url - The address.
  * @returns The route.
  */
 export function routeAddress(url: string): AddressRoute {
   if (url.startsWith('https://')) return 'fetch';
-  if (url.startsWith('data:') || url.startsWith('blob:')) return 'file';
+  if (url.startsWith('data:')) return 'file';
+  // Only the origin that made a blob: address can read it (File API §8).
+  if (url.startsWith('blob:')) return blobOrigin(url) === location.origin ? 'file' : 'skip';
   return 'skip';
 }
 
@@ -81,7 +97,9 @@ function readingOrder(nodes: readonly ClipboardNode[]): ClipboardNode[] {
     );
     const top = first.node.position.y;
     const bottom = top + (first.node.height ?? EMPTY_NODE_SIZE.height);
-    const row = left.filter((entry) => entry.node.position.y >= top && entry.node.position.y <= bottom);
+    const row = left.filter(
+      (entry) => entry === first || (entry.node.position.y >= top && entry.node.position.y <= bottom),
+    );
     row.sort((a, b) => a.node.position.x - b.node.position.x || a.index - b.index);
     for (const entry of row) {
       ordered.push(entry.node);
@@ -89,6 +107,24 @@ function readingOrder(nodes: readonly ClipboardNode[]): ClipboardNode[] {
     }
   }
   return ordered;
+}
+
+/**
+ * Whether a clipboard node has the shape the canvas writes: a position of two
+ * finite numbers, a finite height when it has one, and data. The clipboard
+ * is any page's to write, and the marker alone does not make it ours.
+ * @param node - The node.
+ * @returns True when it can be ordered and read.
+ */
+function isWellFormed(node: ClipboardNode): boolean {
+  const { position, height, data } = node as { position?: { x?: unknown; y?: unknown }; height?: unknown; data?: unknown };
+  return (
+    Number.isFinite(position?.x) &&
+    Number.isFinite(position?.y) &&
+    (height === undefined || Number.isFinite(height)) &&
+    typeof data === 'object' &&
+    data !== null
+  );
 }
 
 /**
@@ -144,9 +180,10 @@ function itemOf(node: ClipboardNode): PastedItem | null {
  */
 export function planCanvasPaste(payload: ClipboardPayload): CanvasPastePlan {
   const content = payload.nodes.filter((node) => node.type !== 'group' && node.type !== 'annotation');
+  const readable = content.filter(isWellFormed);
   const items: PastedItem[] = [];
-  let notPasted = 0;
-  for (const node of readingOrder(content)) {
+  let notPasted = content.length - readable.length;
+  for (const node of readingOrder(readable)) {
     const item = itemOf(node);
     if (item === null) notPasted += 1;
     else items.push(item);

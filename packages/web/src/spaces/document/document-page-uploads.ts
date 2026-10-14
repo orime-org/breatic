@@ -43,21 +43,20 @@ const targets = new Map<string, UploadTarget>();
 const runners = new Map<string, UploadControllerDeps['run']>();
 
 /**
- * Reads a `data:` or `blob:` address into a file. Nothing crosses the
+ * Reads a `data:` or `blob:` address. Nothing crosses the
  * network, so there is nothing for the shared transport to retry, and it
  * takes only `http(s)` addresses; `XMLHttpRequest` reads both kinds.
  * @param url - The address.
- * @returns The file.
+ * @returns The bytes.
  * @throws {Error} When the address cannot be read: a `blob:` its page revoked.
  */
-function readLocalAddress(url: string): Promise<File> {
+function readLocalAddress(url: string): Promise<Blob> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open('GET', url);
     xhr.responseType = 'blob';
     xhr.onload = (): void => {
-      const blob = xhr.response as Blob;
-      resolve(new File([blob], 'pasted', { type: blob.type }));
+      resolve(xhr.response as Blob);
     };
     xhr.onerror = (): void => {
       reject(new Error('The address could not be read'));

@@ -17,7 +17,7 @@
  *   Studio, with every other one started in the same task, in one request.
  */
 
-import { readTaskFailure, type PastePair, type TaskFailureReason } from '@breatic/shared';
+import { formatNameOf, readTaskFailure, type PastePair, type TaskFailureReason } from '@breatic/shared';
 
 import { ApiException } from '@web/data/api/types';
 import { UploadFailedError, type StoredUpload } from '@web/data/upload/media-upload';
@@ -48,10 +48,21 @@ export interface UploadSourceDeps {
   register: (input: { urls: string[]; pairs: PastePair[] }) => Promise<Readonly<Record<string, string | null>>>;
   /** Our public prefix, or null when it cannot be read. */
   assetUrlPrefix: () => Promise<string | null>;
-  /** Reads a `data:` or `blob:` address into a file. */
-  readAddress: (url: string) => Promise<File>;
+  /** Reads a `data:` or `blob:` address. */
+  readAddress: (url: string) => Promise<Blob>;
   /** Waits this many milliseconds. */
   sleep: (ms: number) => Promise<void>;
+}
+
+/**
+ * The bytes an address held, as a file named for its format: the name's
+ * extension is what the storage key, and a later save-as, carry.
+ * @param blob - The bytes.
+ * @returns The file.
+ */
+function pastedFile(blob: Blob): File {
+  const extension = formatNameOf(blob.type)?.toLowerCase();
+  return new File([blob], extension === undefined ? 'pasted' : `pasted.${extension}`, { type: blob.type });
 }
 
 /** Too Many Requests (RFC 6585 §4). */
@@ -240,14 +251,14 @@ export function createUploadSources(deps: UploadSourceDeps): UploadControllerDep
     const route = routeAddress(source.url);
     if (route === 'fetch') return fetchAddress(source.url);
     if (route === 'file') {
-      let file: File;
+      let blob: Blob;
       try {
-        file = await deps.readAddress(source.url);
+        blob = await deps.readAddress(source.url);
       } catch {
         // A blob: address revoked by the page it came from reads as nothing again.
         return fail(FAILED_KEY, false);
       }
-      return uploadFile(file, onProgress);
+      return uploadFile(pastedFile(blob), onProgress);
     }
     return fail(FAILED_KEY, false);
   };

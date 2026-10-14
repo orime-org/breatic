@@ -82,12 +82,15 @@ function normalizeError(err: unknown): ApiError {
       | { error?: { code?: string; message?: string; retryAfterSeconds?: number } }
       | undefined;
     const written = data?.error?.message;
+    // The rate-limit middleware names the wait in its Retry-After header only.
+    const header = Number(err.response?.headers['retry-after']);
     return {
       status,
       message: written ?? err.message,
       code: data?.error?.code,
       fromServer: written !== undefined,
-      retryAfterSeconds: data?.error?.retryAfterSeconds,
+      retryAfterSeconds:
+        data?.error?.retryAfterSeconds ?? (Number.isFinite(header) && header > 0 ? header : undefined),
     };
   }
   if (err instanceof Error) {
