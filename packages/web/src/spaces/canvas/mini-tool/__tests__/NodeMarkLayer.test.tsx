@@ -39,12 +39,14 @@ async function mount(toolId = 'image.mark'): Promise<void> {
 
 /**
  * Press Escape on the page the way a key from the focused node arrives.
+ * @param init - More of the key event.
+ * @param on - Where the key is pressed.
  * @returns The event, to read whether it was taken.
  */
-function pressEscape(): KeyboardEvent {
-  const event = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+function pressEscape(init: KeyboardEventInit = {}, on: EventTarget = document.body): KeyboardEvent {
+  const event = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true, ...init });
   act(() => {
-    document.body.dispatchEvent(event);
+    on.dispatchEvent(event);
   });
   return event;
 }
@@ -95,6 +97,43 @@ describe('NodeMarkLayer', () => {
     expect(event.defaultPrevented).toBe(true);
     expect(store().miniTool?.mark?.selectedId).toBeNull();
     expect(store().miniTool).not.toBeNull();
+  });
+
+  // An Escape that cancels an input method's candidates belongs to it.
+  it('leaves the text edit alone on an Escape that ends a composition', async () => {
+    await mount();
+    const exit = vi.fn();
+    act(() => {
+      store().registerMarkChannel({ exitEditing: exit, discardSelection: vi.fn() });
+      store().setMarkEditingText('bei');
+    });
+    expect(pressEscape({ isComposing: true }).defaultPrevented).toBe(false);
+    expect(pressEscape({ keyCode: 229 }).defaultPrevented).toBe(false);
+    expect(exit).not.toHaveBeenCalled();
+  });
+
+  it('leaves a held Escape alone', async () => {
+    await mount();
+    act(() => {
+      store().commitMark([RECT]);
+      store().selectMark('r');
+    });
+    expect(pressEscape({ repeat: true }).defaultPrevented).toBe(false);
+    expect(store().miniTool?.mark?.selectedId).toBe('r');
+  });
+
+  // A menu or dialog over the canvas takes its own Escape first.
+  it('leaves Escape to a menu over the canvas while an object is selected', async () => {
+    await mount();
+    act(() => {
+      store().commitMark([RECT]);
+      store().selectMark('r');
+    });
+    const menu = document.createElement('div');
+    document.body.append(menu);
+    expect(pressEscape({}, menu).defaultPrevented).toBe(false);
+    expect(store().miniTool?.mark?.selectedId).toBe('r');
+    menu.remove();
   });
 
   it('leaves Escape alone with nothing selected or edited, and while exporting', async () => {

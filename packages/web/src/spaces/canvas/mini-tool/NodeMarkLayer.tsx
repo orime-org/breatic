@@ -3,7 +3,9 @@
 
 import * as React from 'react';
 
+import { regionOwnsKeyboard } from '@web/features/active-region/keyboard-scope';
 import { useCanvasSession, useCanvasSessionStore } from '@web/spaces/canvas/canvas-context';
+import { isFreeEscape } from '@web/spaces/canvas/use-escape-in-space';
 import { useMediaGeometry, type MediaGeometry } from '@web/spaces/canvas/crop/media-geometry';
 import { miniToolOpenOn } from '@web/stores/canvas-session';
 import type { MarkCanvasController } from '@web/spaces/canvas/mini-tool/mark-canvas';
@@ -103,12 +105,15 @@ function MarkSurface({ geometry }: { geometry: MediaGeometry }): React.JSX.Eleme
      * @param event - The key.
      */
     const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key !== 'Escape') return;
+      if (!isFreeEscape(event)) return;
       const session = store.getState();
       const mark = session.miniTool?.mark;
       if (mark == null || session.miniTool?.exporting === true) return;
+      // The text being edited holds the focus in Fabric's own input, outside
+      // every region; a selection answers only a press meant for this space,
+      // so a menu or dialog over it closes first.
       if (mark.editingText !== null) session.markChannel?.exitEditing();
-      else if (mark.selectedId !== null) session.markChannel?.discardSelection();
+      else if (mark.selectedId !== null && regionOwnsKeyboard(event.target, 'space')) session.markChannel?.discardSelection();
       else return;
       event.preventDefault();
       event.stopPropagation();
