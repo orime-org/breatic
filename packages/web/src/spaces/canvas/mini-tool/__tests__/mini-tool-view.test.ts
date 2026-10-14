@@ -271,6 +271,13 @@ describe('the expand tool', () => {
     expect(miniToolRefusal({ ...expand, source, expandFrame: grown })).toBeNull();
   });
 
+  it('holds Run back while the frame pads the source by less than a pixel', () => {
+    const shot = { width: 1366, height: 768 };
+    expect(
+      miniToolRefusal({ ...expand, source: shot, expandFrame: { x: 0, y: -0.000244, width: 1, height: 1.000488 } }),
+    ).toBe('frameNotExpanded');
+  });
+
   it('says a source too large to grow before it says the frame is not grown', () => {
     expect(
       miniToolRefusal({ ...expand, source: { width: 13000, height: 900 }, expandFrame: { x: 0, y: 0, width: 1, height: 1 } }),

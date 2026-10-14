@@ -157,7 +157,7 @@ export function NodeExpandLayer({ nodeId, wrapper }: NodeExpandLayerProps): Reac
   };
 
   const scale = handleScale(zoom);
-  const grown = isExpanded(frame);
+  const grown = isExpanded(frame, sourceSize);
   return (
     <div
       data-testid='mini-tool-expand-frame'

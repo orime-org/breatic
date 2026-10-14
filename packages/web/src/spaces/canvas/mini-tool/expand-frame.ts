@@ -47,13 +47,42 @@ export function ratioValue(ratio: ExpandRatio): number | null {
   return (w ?? 1) / (h ?? 1);
 }
 
+/** The padded canvas's size and where the source's top left sits on it, in source pixels. */
+export interface ExpandLayout {
+  width: number;
+  height: number;
+  sourceX: number;
+  sourceY: number;
+}
+
 /**
- * Whether the frame reaches past the source on any side.
- * @param frame - The frame.
- * @returns True when it does.
+ * Lay the source on the frame's canvas in whole pixels, never cutting into it.
+ * @param frame - The frame, as shares of the source.
+ * @param source - The source's pixels.
+ * @returns The canvas size and the source's offset on it.
  */
-export function isExpanded(frame: ExpandFrame): boolean {
-  return frame.x < -EPS || frame.y < -EPS || frame.x + frame.width > 1 + EPS || frame.y + frame.height > 1 + EPS;
+export function expandLayout(frame: ExpandFrame, source: PixelSize): ExpandLayout {
+  const sourceX = Math.round(-frame.x * source.width);
+  const sourceY = Math.round(-frame.y * source.height);
+  return {
+    width: Math.max(sourceX + source.width, Math.round(frame.width * source.width)),
+    height: Math.max(sourceY + source.height, Math.round(frame.height * source.height)),
+    sourceX,
+    sourceY,
+  };
+}
+
+/**
+ * Whether the frame pads the source by at least one pixel on some side, read
+ * from the same whole-pixel layout the export draws.
+ * @param frame - The frame.
+ * @param source - The source's pixels.
+ * @returns True when the export would be larger than the source.
+ * @throws {never} Never.
+ */
+export function isExpanded(frame: ExpandFrame, source: PixelSize): boolean {
+  const layout = expandLayout(frame, source);
+  return layout.width > source.width || layout.height > source.height;
 }
 
 /**
@@ -82,9 +111,9 @@ function wrapping(ratio: number, source: PixelSize): ExpandFrame {
  */
 export function frameForRatio(ratio: ExpandRatio, source: PixelSize, current: ExpandFrame): ExpandFrame {
   const value = ratioValue(ratio);
-  if (value === null) return isExpanded(current) ? current : UNIT_FRAME;
+  if (value === null) return isExpanded(current, source) ? current : UNIT_FRAME;
   const frame = wrapping(value, source);
-  return isExpanded(frame) ? frame : UNIT_FRAME;
+  return isExpanded(frame, source) ? frame : UNIT_FRAME;
 }
 
 /**

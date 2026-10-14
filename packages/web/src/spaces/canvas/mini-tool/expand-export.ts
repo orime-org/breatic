@@ -9,33 +9,8 @@
  */
 
 import { pngOf, prepareCropSource } from '@web/spaces/canvas/focus/crop-export';
-import type { ExpandFrame, PixelSize } from '@web/spaces/canvas/mini-tool/expand-frame';
+import { expandLayout, type ExpandFrame, type PixelSize } from '@web/spaces/canvas/mini-tool/expand-frame';
 import type { ExpandExport } from '@web/spaces/canvas/mini-tool/start-mini-tool-run';
-
-/** The padded canvas's size and where the source's top left sits on it, in source pixels. */
-export interface ExpandLayout {
-  width: number;
-  height: number;
-  sourceX: number;
-  sourceY: number;
-}
-
-/**
- * Lay the source on the frame's canvas in whole pixels, never cutting into it.
- * @param frame - The frame, as shares of the source.
- * @param source - The source's pixels.
- * @returns The canvas size and the source's offset on it.
- */
-export function expandLayout(frame: ExpandFrame, source: PixelSize): ExpandLayout {
-  const sourceX = Math.round(-frame.x * source.width);
-  const sourceY = Math.round(-frame.y * source.height);
-  return {
-    width: Math.max(sourceX + source.width, Math.round(frame.width * source.width)),
-    height: Math.max(sourceY + source.height, Math.round(frame.height * source.height)),
-    sourceX,
-    sourceY,
-  };
-}
 
 /**
  * Make the padded picture and its mask.

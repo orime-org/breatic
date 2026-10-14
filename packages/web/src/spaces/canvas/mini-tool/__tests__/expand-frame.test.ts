@@ -37,8 +37,16 @@ function pixels(frame: ExpandFrame, source: { width: number; height: number }): 
 
 describe('isExpanded', () => {
   it('reads the source-sized frame as not expanded, and any edge past it as expanded', () => {
-    expect(isExpanded(UNIT_FRAME)).toBe(false);
-    expect(isExpanded({ x: -0.1, y: 0, width: 1.1, height: 1 })).toBe(true);
+    expect(isExpanded(UNIT_FRAME, LANDSCAPE)).toBe(false);
+    expect(isExpanded({ x: -0.1, y: 0, width: 1.1, height: 1 }, LANDSCAPE)).toBe(true);
+  });
+
+  // The export pads by whole pixels; a frame past the source by under half a
+  // pixel exports the source as it is, so it is not expanded (round 2, R12).
+  it('reads a frame past the source by under half a pixel as not expanded', () => {
+    const shot = { width: 1366, height: 768 };
+    expect(isExpanded({ x: 0, y: -0.000244, width: 1, height: 1.000488 }, shot)).toBe(false);
+    expect(isExpanded({ x: 0, y: -0.001, width: 1, height: 1.002 }, shot)).toBe(true);
   });
 });
 
@@ -55,6 +63,8 @@ describe('frameForRatio', () => {
   it('keeps the frame at the source for Free or the source’s own ratio while not expanded', () => {
     expect(frameForRatio('free', LANDSCAPE, UNIT_FRAME)).toEqual(UNIT_FRAME);
     expect(frameForRatio('16:9', { width: 1920, height: 1080 }, UNIT_FRAME)).toEqual(UNIT_FRAME);
+    // 1366 by 768 is 16:9 to within half a pixel.
+    expect(frameForRatio('16:9', { width: 1366, height: 768 }, UNIT_FRAME)).toEqual(UNIT_FRAME);
   });
 
   it('keeps an expanded frame as it is when Free is chosen', () => {
@@ -92,7 +102,7 @@ describe('resizeFrame', () => {
   it('can drag a locked frame back down to the source when the ratio is the source’s own', () => {
     const source = { width: 1600, height: 900 };
     const grown = resizeFrame(UNIT_FRAME, 'e', { x: 1.5, y: 0.5 }, '16:9', source, CAP);
-    expect(isExpanded(grown)).toBe(true);
+    expect(isExpanded(grown, source)).toBe(true);
     expect(resizeFrame(grown, 'e', { x: 0.2, y: 0.5 }, '16:9', source, CAP)).toEqual(UNIT_FRAME);
   });
 

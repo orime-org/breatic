@@ -8,7 +8,7 @@
 
 import { describe, it, expect } from 'vitest';
 
-import { expandLayout } from '@web/spaces/canvas/mini-tool/expand-export';
+import { expandLayout } from '@web/spaces/canvas/mini-tool/expand-frame';
 
 describe('expandLayout', () => {
   it('sizes the canvas to the frame in source pixels and puts the source where the frame leaves it', () => {

@@ -32,8 +32,8 @@ afterEach(() => {
  * Render the node and open the expand tool on it.
  * @param toolId - The tool.
  */
-function mount(toolId = 'image.expand'): void {
-  render(cropCanvas([NODE], null));
+function mount(toolId = 'image.expand', zoom = 1): void {
+  render(cropCanvas([NODE], null, zoom));
   act(() => {
     store().openMiniTool('n1', toolId, { sourceContent: NODE.src, params: {} });
     store().setMiniToolSourceSize({ width: 1600, height: 1000 });
@@ -138,6 +138,14 @@ describe('NodeExpandLayer', () => {
     expect((store().miniTool?.expand?.drop ?? 0) - flush).toBeCloseTo(150, 6);
     act(() => store().setExpand({ frame: { x: 0, y: -0.5, width: 1, height: 1.5 }, ratio: 'free' }));
     expect(store().miniTool?.expand?.drop ?? 0).toBeCloseTo(flush, 6);
+  });
+
+  // The panel's offset is in screen pixels, so the reach is scaled by the zoom.
+  it('says that reach in screen pixels at the canvas zoom', () => {
+    mount('image.expand', 0.5);
+    const flush = store().miniTool?.expand?.drop ?? 0;
+    act(() => store().setExpand({ frame: { x: 0, y: 0, width: 1, height: 1.5 }, ratio: 'free' }));
+    expect((store().miniTool?.expand?.drop ?? 0) - flush).toBeCloseTo(75, 6);
   });
 
   it('keeps presses inside the frame off the canvas', () => {

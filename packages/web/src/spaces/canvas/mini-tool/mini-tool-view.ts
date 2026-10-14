@@ -256,7 +256,9 @@ export function miniToolRefusal(input: {
     if (source.width === undefined || source.height === undefined) return 'sourceMissing';
     const cap = entry?.max_output_side ?? Infinity;
     if (sourceTooLargeToExpand({ width: source.width, height: source.height }, cap)) return 'sourceTooLargeToExpand';
-    if (input.expandFrame === undefined || !isExpanded(input.expandFrame)) return 'frameNotExpanded';
+    if (input.expandFrame === undefined || !isExpanded(input.expandFrame, { width: source.width, height: source.height })) {
+      return 'frameNotExpanded';
+    }
   }
   if (spec.markup === true && (input.mark == null || markEmpty(input.mark))) return 'markEmpty';
   // Every slider at zero changes nothing.
