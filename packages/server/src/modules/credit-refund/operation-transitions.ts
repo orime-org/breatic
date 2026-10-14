@@ -791,10 +791,11 @@ async function exhaustedAttention(ctx: Ctx): Promise<{ reason: AttentionReason; 
 }
 
 /**
- * What a person reads first about a create answer that did not make a
- * refund, E6's live one and E11's stored one alike (§5.1).
+ * What a person reads first about a refund that failed or a create Stripe
+ * refused (E6, E11; §5.1): the refund's failure reason or status, else the
+ * first line of Stripe's error.
  * @param answer - The answer as an event row keeps it.
- * @returns Stripe's failure reason, or the first line of its error.
+ * @returns The text, or null when the answer carries none.
  */
 function answerText(answer: StoredCreateAnswer): string | null {
   if (answer.refund) return answer.refund.failureReason ?? answer.refund.status ?? null;

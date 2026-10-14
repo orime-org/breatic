@@ -128,9 +128,9 @@ function toEntity(row: typeof creditRefundOperations.$inferSelect): CreditRefund
 }
 
 /**
- * When something happened to a row: the wall clock at the statement, taken
- * under the lot lock. `now()` is the transaction's start, which can precede
- * a row inserted later in the same transaction (§9).
+ * When something happened to a row: the database's wall clock at the
+ * statement. `now()` is the transaction's start, which can precede a row
+ * inserted later in the same transaction (§5.1).
  */
 const STAMP = sql`clock_timestamp()`;
 
@@ -396,7 +396,7 @@ export async function lockIdempotencyKey(key: string, tx: DbTx): Promise<void> {
 export async function markFirstCalled(id: string, leaseToken: string, callMs: number): Promise<boolean> {
   const rows = await db
     .update(creditRefundOperations)
-    .set({ firstCalledAt: sql`coalesce(${creditRefundOperations.firstCalledAt}, now())` })
+    .set({ firstCalledAt: sql`coalesce(${creditRefundOperations.firstCalledAt}, now())`, updatedAt: STAMP })
     .where(
       and(
         eq(creditRefundOperations.id, id),
@@ -473,7 +473,7 @@ export async function listDueAwaiting(limit: number): Promise<CreditRefundOperat
 export async function scheduleNextLook(id: string, seconds: number, tx: DbTx): Promise<void> {
   await tx
     .update(creditRefundOperations)
-    .set({ nextAttemptAt: fromNow(seconds) })
+    .set({ nextAttemptAt: fromNow(seconds), updatedAt: STAMP })
     .where(
       and(eq(creditRefundOperations.id, id), eq(creditRefundOperations.status, "awaiting_stripe")),
     );
