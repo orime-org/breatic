@@ -66,6 +66,18 @@ describe('NodeExpandLayer', () => {
     expect(frame.style.width).toBe('400px');
   });
 
+  it('keeps the canvas marquee and node clicks off its frame', () => {
+    mount();
+    const frame = screen.getByTestId('mini-tool-expand-frame');
+    expect(frame).toHaveClass('nokey');
+    const reached = vi.fn();
+    document.addEventListener('click', reached);
+    fireEvent.click(frame, { metaKey: true });
+    document.removeEventListener('click', reached);
+    // React stops it at the frame: nothing above it, the node included, sees it.
+    expect(reached).not.toHaveBeenCalled();
+  });
+
   it('grows the frame from a handle past the picture', () => {
     mount();
     drag(screen.getByTestId('mini-tool-expand-handle-e'), [500, 200], [700, 200]);

@@ -9,6 +9,7 @@ import { isFreeEscape } from '@web/spaces/canvas/use-escape-in-space';
 import { useMediaGeometry, type MediaGeometry } from '@web/spaces/canvas/crop/media-geometry';
 import { miniToolOpenOn } from '@web/stores/canvas-session';
 import type { MarkCanvasController } from '@web/spaces/canvas/mini-tool/mark-canvas';
+import { TOOL_LAYER_CLASS, stopNodeClick, useToolLayerKeys } from '@web/spaces/canvas/mini-tool/tool-layer-input';
 
 interface NodeMarkLayerProps {
   /** The node this layer belongs to. */
@@ -41,6 +42,7 @@ export function NodeMarkLayer({ nodeId, wrapper }: NodeMarkLayerProps): React.JS
  * @returns The layer.
  */
 function MarkSurface({ geometry }: { geometry: MediaGeometry }): React.JSX.Element {
+  useToolLayerKeys(true);
   const store = useCanvasSessionStore();
   const host = React.useRef<HTMLDivElement>(null);
   const controller = React.useRef<MarkCanvasController | null>(null);
@@ -128,10 +130,12 @@ function MarkSurface({ geometry }: { geometry: MediaGeometry }): React.JSX.Eleme
   }, [store]);
 
   return (
+    // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- the click is only kept from the node
     <div
       ref={host}
       data-testid='mini-tool-mark-layer'
-      className='nodrag nopan absolute'
+      className={`${TOOL_LAYER_CLASS} absolute`}
+      onClick={stopNodeClick}
       style={{ left: geometry.at.x, top: geometry.at.y, width, height }}
     />
   );

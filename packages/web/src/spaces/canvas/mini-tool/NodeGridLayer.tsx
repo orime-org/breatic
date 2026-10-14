@@ -11,6 +11,7 @@ import { useCanvasSession } from '@web/spaces/canvas/canvas-context';
 import { miniToolOpenOn } from '@web/stores/canvas-session';
 import { OUTSIDE_DIM, handleScale } from '@web/spaces/canvas/crop/crop-geometry';
 import { useMediaGeometry } from '@web/spaces/canvas/crop/media-geometry';
+import { TOOL_LAYER_CLASS, stopNodeClick, useToolLayerKeys } from '@web/spaces/canvas/mini-tool/tool-layer-input';
 
 interface NodeGridLayerProps {
   /** The node this layer belongs to. */
@@ -42,6 +43,7 @@ export function NodeGridLayer({ nodeId, wrapper }: NodeGridLayerProps): React.JS
   const spec = draft === null ? undefined : miniToolById(draft.toolId);
   const shape = spec === undefined || draft === null ? null : gridShapeOf(spec, draft.params);
   const geometry = useMediaGeometry(wrapper, shape !== null);
+  useToolLayerKeys(shape !== null);
   // Read only while the layer shows, so a zoom does not re-render it on every node.
   const zoom = useStore((s) => (shape === null ? 1 : s.transform[2]));
   // The lines and checkboxes counter the zoom, as the crop frame's handles do.
@@ -68,9 +70,11 @@ export function NodeGridLayer({ nodeId, wrapper }: NodeGridLayerProps): React.JS
   const roomy =
     (geometry.box.width / cols) * zoom >= CHECK_ROOM_PX && (geometry.box.height / rows) * zoom >= CHECK_ROOM_PX;
   return (
+    // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- the click is only kept from the node
     <div
       data-testid='mini-tool-grid-layer'
-      className='absolute grid'
+      className={`${TOOL_LAYER_CLASS} absolute grid`}
+      onClick={stopNodeClick}
       style={{
         left: geometry.at.x,
         top: geometry.at.y,

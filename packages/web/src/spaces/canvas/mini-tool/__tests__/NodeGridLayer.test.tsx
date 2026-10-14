@@ -132,6 +132,21 @@ describe('NodeGridLayer tile picking', () => {
     expect(tile).toHaveClass('nopan');
   });
 
+  // A Shift press must not start the canvas marquee, and a Cmd/Ctrl click must
+  // not unselect the host, which would close the panel.
+  it('keeps the canvas marquee and node clicks off its tiles', () => {
+    mount('image.grid', { rows: 2, cols: 2, skip: [] });
+    const layer = screen.getByTestId('mini-tool-grid-layer');
+    expect(layer).toHaveClass('nokey');
+    const reached = vi.fn();
+    document.addEventListener('click', reached);
+    fireEvent.click(screen.getByTestId('mini-tool-grid-tile-0'), { metaKey: true });
+    document.removeEventListener('click', reached);
+    // React stops it at the layer: nothing above it, the node included, sees it.
+    expect(reached).not.toHaveBeenCalled();
+    expect(screen.getByTestId('mini-tool-grid-tile-0').dataset.picked).toBe('false');
+  });
+
   it('draws a round checkbox', () => {
     mount('image.grid', { rows: 2, cols: 2, skip: [] });
     expect(screen.getByTestId('mini-tool-grid-check-0')).toHaveClass('rounded-full');

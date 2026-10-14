@@ -12,6 +12,7 @@ import { miniToolOpenOn } from '@web/stores/canvas-session';
 import { handleScale } from '@web/spaces/canvas/crop/crop-geometry';
 import { useMediaGeometry } from '@web/spaces/canvas/crop/media-geometry';
 import { CROP_HANDLES } from '@web/spaces/canvas/focus/crop-source';
+import { TOOL_LAYER_CLASS, stopNodeClick, useToolLayerKeys } from '@web/spaces/canvas/mini-tool/tool-layer-input';
 import {
   isExpanded,
   moveSource,
@@ -50,6 +51,7 @@ export function NodeExpandLayer({ nodeId, wrapper }: NodeExpandLayerProps): Reac
   const expand = draft !== null && miniToolById(draft.toolId)?.expand !== undefined ? draft.expand : null;
   const sourceSize = draft?.sourceSize ?? null;
   const geometry = useMediaGeometry(wrapper, expand !== null);
+  useToolLayerKeys(expand !== null);
   // Read only while the layer shows, so a zoom does not re-render it on every node.
   const zoom = useStore((s) => (expand === null ? 1 : s.transform[2]));
   // How far the picture has been moved since the panel opened, in shares of
@@ -167,9 +169,11 @@ export function NodeExpandLayer({ nodeId, wrapper }: NodeExpandLayerProps): Reac
         className='pointer-events-none absolute bg-muted'
         style={{ left: at.x, top: at.y, width: box.width, height: box.height }}
       />
+      {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- the click is only kept from the node */}
       <div
         data-testid='mini-tool-expand-frame'
-        className='nodrag nopan absolute touch-none border-solid border-background bg-muted outline outline-foreground'
+        className={`${TOOL_LAYER_CLASS} absolute touch-none border-solid border-background bg-muted outline outline-foreground`}
+        onClick={stopNodeClick}
         style={{
           left: at.x + (frame.x + shift.x) * box.width,
           top: at.y + (frame.y + shift.y) * box.height,
