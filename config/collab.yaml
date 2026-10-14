@@ -94,11 +94,53 @@ max_documents_per_socket: 1000
 # abuse control belongs at the authenticated-user layer, not per-IP.
 throttle_enabled: true
 throttle_max_attempts: 200       # max connections per IP within the 60s window before a ban
-throttle_ban_time: 1             # ban duration in MINUTES (the extension multiplies by 60*1000 — NOT ms)
+throttle_ban_time: 1             # ban duration in MINUTES (shared-throttle.ts sets the ban key with EX minutes*60 — NOT ms)
 
 # ── Persistence ───────────────────────────────────
 # Quiet mode: suppress internal Hocuspocus logs (use our pino logger instead).
 quiet: true
+
+# ── Cross-service events (inner#1497) ────────────
+# Every collab instance reads the task-events and project-lifecycle streams
+# as one Redis consumer group, so each event is held by one instance at a
+# time; an event not acknowledged is taken over by another once idle past
+# event_claim_idle_ms. Task events
+# are written one document batch at a time under a per-document lease in the
+# coordination database (DB3).
+event_max_held: 128               # most entries one instance holds per stream at once, writing and queued; entries waiting out a failure backoff are not counted
+event_block_ms: 5000              # longest a read blocks when nothing is waiting
+event_doc_concurrency: 16         # most documents one instance writes at once; a read takes at most this many free slots
+event_doc_lease_ms: 30000         # document lease length; extended while writing
+event_lease_retry_ms: 1000        # hold on a document after a wait (lease busy, peer waiting, hand-over not reached); also caps a read while writes run; a waiter mark lives twice this
+event_handoff_poll_ms: 50         # gap between checks that the previous holder's writes arrived
+event_handoff_wait_ms: 5000       # longest wait for them before the batch is retried
+event_claim_interval_ms: 15000    # gap between sweeps that take over idle entries
+event_claim_idle_ms: 60000        # idle time after which another instance's entry is taken over
+# Retrying an event whose handling threw, then giving up. Google Pub/Sub's
+# defaults: backoff from 10 s doubling to 600 s, five attempts — waits of 10,
+# 20, 40 and 80 s, about two and a half minutes before an event goes to the
+# dead-letter stream.
+event_retry_min_ms: 10000
+event_retry_max_ms: 600000
+event_max_failures: 5
+# On SIGTERM the consumers stop first: this bounds their wait for the running
+# writes, and the hand-over of the rest follows. After it come a log flush of
+# up to 0.5 s, the 4 s drains, another log flush of up to 0.5 s and a Sentry
+# flush of up to 2 s; docker's default grace period is 10 s.
+event_stop_deadline_ms: 3000
+# A consumer idle this long with nothing pending is removed from its group;
+# instance ids change on every start, so stopped instances leave names behind.
+event_forget_idle_consumer_ms: 86400000
+
+# ── Unload store retry (inner#1497) ──────────────
+# Another instance holding the same document can hold its store lock while
+# this one unloads it; the Redis extension then skips our store. That lock
+# lasts 1 s and is not extended, so the unload retries a little past it. During
+# shutdown the retries stop early enough to leave `unload_rescue_reserve_ms`
+# for the rescue file, its note and the alert.
+unload_store_retry_ms: 1200
+unload_store_retry_interval_ms: 200
+unload_rescue_reserve_ms: 1000
 
 # ── Timed Store (#40) ─────────────────────────────
 # Storing runs on a timer, not on "somebody changed something". The two
@@ -124,7 +166,7 @@ store_interval_ms: 10000
 # studio list's "last edited" sort. One instance writes a project at most
 # once per this many milliseconds, so the list's edit time is at most this
 # stale and the business database sees at most one small write per edited
-# project per interval.
+# project per interval from each collab instance.
 project_edit_touch_interval_ms: 60000
 
 # There is deliberately no timeout over a store, here or anywhere. A store is

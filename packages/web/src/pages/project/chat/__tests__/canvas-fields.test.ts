@@ -42,6 +42,7 @@ const EVERY_FIELD: CanvasNodeFields['data'] = {
   createdBy: 'u1',
   locked: false,
   taskCounts: { running: 0, done: 1, failed: 0, expired: 0 },
+  taskResultEventId: '1700-3',
   content: URL,
   coverUrl: URL,
   width: 10,

@@ -48,7 +48,16 @@ function documentWithText(text: string): Y.Doc {
  * @param outcome - What the final attempt should do.
  * @returns The gate plus everything it did.
  */
-function harness(outcome: "lands" | "fails" | "hangs" | "not-reached" = "lands") {
+function harness(
+  outcome: "lands" | "fails" | "hangs" | "not-reached" = "lands",
+  options: {
+    retry?: { windowMs: number; intervalMs: number; rescueReserveMs: number };
+    shutdownDeadline?: () => number | undefined;
+    notReachedTimes?: number;
+    staysLoaded?: boolean;
+  } = {},
+) {
+  let notReachedLeft = options.notReachedTimes ?? 0;
   const rescued: Array<{ documentName: string; state: Uint8Array }> = [];
   const deleted: string[] = [];
   const alerted: StoreFailureAlert[] = [];
@@ -56,6 +65,7 @@ function harness(outcome: "lands" | "fails" | "hangs" | "not-reached" = "lands")
 
   const gate = createUnloadGate({
     instanceId: "inst-a",
+    staysLoaded: () => options.staysLoaded ?? false,
     encode: (document: Y.Doc) => Y.encodeStateAsUpdate(document),
     storeNow: async ({ name }) => {
       storeCalls.push(name);
@@ -67,6 +77,10 @@ function harness(outcome: "lands" | "fails" | "hangs" | "not-reached" = "lands")
       // library resolves normally and our extension never ran, so the arm is
       // still sitting there untouched.
       if (outcome === "not-reached") return true;
+      if (notReachedLeft > 0) {
+        notReachedLeft -= 1;
+        return true;
+      }
       if (!consumeTimedStoreArm(name)) return true;
       // Our hook DID run — the arm above is spent — and then the write itself
       // never came back. That is what a hung database looks like, and it is a
@@ -86,6 +100,8 @@ function harness(outcome: "lands" | "fails" | "hangs" | "not-reached" = "lands")
     },
     writeRescueNote: async () => {},
     alert: async (failure) => void alerted.push(failure),
+    retry: options.retry ?? { windowMs: 0, intervalMs: 10, rescueReserveMs: 0 },
+    shutdownDeadline: options.shutdownDeadline ?? (() => undefined),
   });
 
   return { gate, rescued, deleted, alerted, storeCalls };
@@ -195,6 +211,7 @@ describe("the unload gate — a document with outstanding content", () => {
     const alerted: Array<{ rescuePath: string; reason: string }> = [];
     const gate = createUnloadGate({
       instanceId: "inst-a",
+      staysLoaded: () => false,
       encode: (document: Y.Doc) => Y.encodeStateAsUpdate(document),
       storeNow: async () => true,
       writeRescue: async () => {
@@ -202,7 +219,9 @@ describe("the unload gate — a document with outstanding content", () => {
       },
       writeRescueNote: async () => {},
       alert: async (failure) => void alerted.push(failure),
-    });
+    retry: { windowMs: 0, intervalMs: 10, rescueReserveMs: 0 },
+    shutdownDeadline: () => undefined,
+});
     noteDocumentChange(DOC);
 
     await gate.beforeUnloadDocument({ documentName: DOC, document: documentWithText("x") });
@@ -227,6 +246,7 @@ describe("the unload gate — when the library unloaded the document first", () 
     const alerted: StoreFailureAlert[] = [];
     const gate = createUnloadGate({
       instanceId: "inst-a",
+      staysLoaded: () => false,
       encode: (d: Y.Doc) => Y.encodeStateAsUpdate(d),
       // Exactly what the real `storeDocumentNow` returns once the library has
       // taken the document out of `instance.documents`.
@@ -234,7 +254,9 @@ describe("the unload gate — when the library unloaded the document first", () 
       writeRescue: async () => "/rescue/1.yjs",
       writeRescueNote: async () => {},
       alert: async (failure) => void alerted.push(failure),
-    });
+    retry: { windowMs: 0, intervalMs: 10, rescueReserveMs: 0 },
+    shutdownDeadline: () => undefined,
+});
     noteDocumentChange(DOC);
 
     await gate.beforeUnloadDocument({ documentName: DOC, document: documentWithText("x") });
@@ -335,6 +357,7 @@ describe("what the gate leaves behind for whoever has to sort it out", () => {
     const notes: Array<{ rescuePath: string; note: { reason: string } }> = [];
     const gate = createUnloadGate({
       instanceId: "inst-a",
+      staysLoaded: () => false,
       encode: (document: Y.Doc) => Y.encodeStateAsUpdate(document),
       storeNow: async ({ name }) => {
         if (consumeTimedStoreArm(name)) noteStoreOutcome(name, "refused");
@@ -343,7 +366,9 @@ describe("what the gate leaves behind for whoever has to sort it out", () => {
       writeRescue: async () => "/rescue/1.yjs",
       writeRescueNote: async (rescuePath, note) => void notes.push({ rescuePath, note }),
       alert: async () => {},
-    });
+    retry: { windowMs: 0, intervalMs: 10, rescueReserveMs: 0 },
+    shutdownDeadline: () => undefined,
+});
     noteDocumentChange(DOC);
 
     await gate.beforeUnloadDocument({ documentName: DOC, document: documentWithText("x") });
@@ -373,6 +398,7 @@ describe("what the gate leaves behind for whoever has to sort it out", () => {
   it("logs under a stable name when even the rescue file could not be written", async () => {
     const gate = createUnloadGate({
       instanceId: "inst-a",
+      staysLoaded: () => false,
       encode: (document: Y.Doc) => Y.encodeStateAsUpdate(document),
       storeNow: async ({ name }) => {
         if (consumeTimedStoreArm(name)) noteStoreOutcome(name, "refused");
@@ -383,7 +409,9 @@ describe("what the gate leaves behind for whoever has to sort it out", () => {
       },
       writeRescueNote: async () => {},
       alert: async () => {},
-    });
+    retry: { windowMs: 0, intervalMs: 10, rescueReserveMs: 0 },
+    shutdownDeadline: () => undefined,
+});
     noteDocumentChange(DOC);
 
     await gate.beforeUnloadDocument({ documentName: DOC, document: documentWithText("x") });
@@ -397,6 +425,7 @@ describe("what the gate leaves behind for whoever has to sort it out", () => {
   it("logs under a stable name when the attempt itself threw", async () => {
     const gate = createUnloadGate({
       instanceId: "inst-a",
+      staysLoaded: () => false,
       encode: (document: Y.Doc) => Y.encodeStateAsUpdate(document),
       storeNow: async () => {
         throw new Error("the connection went away");
@@ -405,7 +434,9 @@ describe("what the gate leaves behind for whoever has to sort it out", () => {
       writeRescue: async () => "/rescue/1.yjs",
       writeRescueNote: async () => {},
       alert: async () => {},
-    });
+    retry: { windowMs: 0, intervalMs: 10, rescueReserveMs: 0 },
+    shutdownDeadline: () => undefined,
+});
     noteDocumentChange(DOC);
 
     await gate.beforeUnloadDocument({ documentName: DOC, document: documentWithText("x") });
@@ -466,6 +497,7 @@ describe("what the operator is told when there is no answer", () => {
     // superseding attempt may well have stored the document.
     const gate = createUnloadGate({
       instanceId: "inst-a",
+      staysLoaded: () => false,
       encode: (document: Y.Doc) => Y.encodeStateAsUpdate(document),
       storeNow: async ({ name }) => {
         // Somebody else's round arms over ours and stores it.
@@ -478,7 +510,9 @@ describe("what the operator is told when there is no answer", () => {
       writeRescue: async () => "/rescue/1.yjs",
       writeRescueNote: async () => {},
       alert: async (failure) => void alerted.push(failure),
-    });
+    retry: { windowMs: 0, intervalMs: 10, rescueReserveMs: 0 },
+    shutdownDeadline: () => undefined,
+});
     const alerted: StoreFailureAlert[] = [];
     noteDocumentChange(DOC);
 
@@ -501,6 +535,7 @@ describe("a write that landed while new content was arriving", () => {
     const alerted: StoreFailureAlert[] = [];
     const gate = createUnloadGate({
       instanceId: "inst-a",
+      staysLoaded: () => false,
       encode: (d: Y.Doc) => Y.encodeStateAsUpdate(d),
       storeNow: async ({ name }) => {
         if (!consumeTimedStoreArm(name)) return true;
@@ -513,7 +548,9 @@ describe("a write that landed while new content was arriving", () => {
       writeRescue: async () => "/rescue/1.yjs",
       writeRescueNote: async () => {},
       alert: async (failure) => void alerted.push(failure),
-    });
+    retry: { windowMs: 0, intervalMs: 10, rescueReserveMs: 0 },
+    shutdownDeadline: () => undefined,
+});
     noteDocumentChange(DOC);
 
     await gate.beforeUnloadDocument({ documentName: DOC, document: documentWithText("x") });
@@ -522,4 +559,136 @@ describe("a write that landed while new content was arriving", () => {
     expect(alerted[0]?.reason).toContain("this file holds it");
   });
 
+});
+
+describe("the unload gate — when another instance holds the store lock (inner#1497 §6.4)", () => {
+  // Two instances hold the same document; the one unloading cannot take the
+  // store lock while its peer is storing, and the Redis extension then skips
+  // our hook. The peer's lock lasts a second and is not extended, so waiting a
+  // little gets our write in.
+
+  it("tries again until our write runs, and rescues nothing", async () => {
+    const { gate, storeCalls, rescued, alerted } = harness("lands", {
+      notReachedTimes: 2,
+      retry: { windowMs: 1000, intervalMs: 10, rescueReserveMs: 0 },
+    });
+    noteDocumentChange(DOC);
+
+    await gate.beforeUnloadDocument({ documentName: DOC, document: documentWithText("x") });
+
+    expect(storeCalls).toHaveLength(3);
+    expect(rescued).toHaveLength(0);
+    expect(alerted).toHaveLength(0);
+    expect(mockLogger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ documentName: DOC, attempt: 2 }),
+      "collab_final_store_retry",
+    );
+  });
+
+  it("rescues once the window has passed without our write running", async () => {
+    const { gate, storeCalls, rescued } = harness("not-reached", {
+      retry: { windowMs: 100, intervalMs: 20, rescueReserveMs: 0 },
+    });
+    noteDocumentChange(DOC);
+    const started = Date.now();
+
+    await gate.beforeUnloadDocument({ documentName: DOC, document: documentWithText("x") });
+
+    expect(storeCalls.length).toBeGreaterThan(1);
+    expect(rescued).toHaveLength(1);
+    expect(Date.now() - started).toBeLessThan(400);
+  });
+
+  it("during shutdown stops retrying in time to rescue before the deadline", async () => {
+    const deadline = Date.now() + 300;
+    const { gate, rescued, alerted } = harness("not-reached", {
+      retry: { windowMs: 10_000, intervalMs: 20, rescueReserveMs: 150 },
+      shutdownDeadline: () => deadline,
+    });
+    noteDocumentChange(DOC);
+
+    await gate.beforeUnloadDocument({ documentName: DOC, document: documentWithText("x") });
+
+    expect(rescued).toHaveLength(1);
+    expect(alerted).toHaveLength(1);
+    expect(Date.now()).toBeLessThanOrEqual(deadline - 100);
+  });
+
+  it("during shutdown still rescues before the deadline when the Redis extension's one-second unload wait runs first", async () => {
+    const deadline = Date.now() + 1500;
+    const { gate, rescued, alerted } = harness("not-reached", {
+      retry: { windowMs: 10_000, intervalMs: 20, rescueReserveMs: 200 },
+      shutdownDeadline: () => deadline,
+    });
+    noteDocumentChange(DOC);
+
+    // `@hocuspocus/extension-redis` holds every unload for `disconnectDelay` (1 s) before ours runs.
+    await new Promise((r) => setTimeout(r, 1000));
+    await gate.beforeUnloadDocument({ documentName: DOC, document: documentWithText("x") });
+
+    expect(rescued).toHaveLength(1);
+    expect(alerted).toHaveLength(1);
+    expect(Date.now()).toBeLessThanOrEqual(deadline - 100);
+  });
+
+  it("does not retry a write that ran and was refused", async () => {
+    const { gate, storeCalls, rescued } = harness("fails", {
+      retry: { windowMs: 1000, intervalMs: 10, rescueReserveMs: 0 },
+    });
+    noteDocumentChange(DOC);
+
+    await gate.beforeUnloadDocument({ documentName: DOC, document: documentWithText("x") });
+
+    expect(storeCalls).toHaveLength(1);
+    expect(rescued).toHaveLength(1);
+  });
+});
+
+// inner#1471: the library re-checks after this hook and keeps a document that
+// gained a connection or a pending store meanwhile, storing it later. Content
+// in a document that stays is not lost, so there is nothing to rescue yet.
+describe("a document the library is keeping", () => {
+  it("rescues nothing and tells nobody when an edit arrived during the write", async () => {
+    const rescued: string[] = [];
+    const alerted: StoreFailureAlert[] = [];
+    const gate = createUnloadGate({
+      instanceId: "inst-a",
+      staysLoaded: () => true,
+      encode: (d: Y.Doc) => Y.encodeStateAsUpdate(d),
+      storeNow: async ({ name }) => {
+        if (!consumeTimedStoreArm(name)) return true;
+        const ticket = beginStore(name);
+        noteDocumentChange(name);
+        commitStore(name, ticket);
+        noteStoreOutcome(name, "stored");
+        return true;
+      },
+      writeRescue: async ({ documentName }) => {
+        rescued.push(documentName);
+        return "/rescue/1.yjs";
+      },
+      writeRescueNote: async () => {},
+      alert: async (failure) => void alerted.push(failure),
+      retry: { windowMs: 0, intervalMs: 10, rescueReserveMs: 0 },
+      shutdownDeadline: () => undefined,
+    });
+    noteDocumentChange(DOC);
+
+    await gate.beforeUnloadDocument({ documentName: DOC, document: documentWithText("x") });
+
+    expect(hasUnsavedContent(DOC)).toBe(true);
+    expect(rescued).toHaveLength(0);
+    expect(alerted).toHaveLength(0);
+    expect(mockLogger.error).not.toHaveBeenCalled();
+  });
+
+  it("rescues nothing when the write failed, since the document is still here to retry", async () => {
+    const { gate, rescued, alerted } = harness("fails", { staysLoaded: true });
+    noteDocumentChange(DOC);
+
+    await gate.beforeUnloadDocument({ documentName: DOC, document: documentWithText("x") });
+
+    expect(rescued).toHaveLength(0);
+    expect(alerted).toHaveLength(0);
+  });
 });

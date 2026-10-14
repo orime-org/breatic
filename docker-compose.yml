@@ -110,8 +110,6 @@ services:
   server:
     image: ghcr.io/orime-org/breatic:v0.0.12
     command: ["node", "packages/server/dist/index.js"]
-    ports:
-      - "127.0.0.1:3000:3000"
     env_file: .env
     volumes:
       - ./logs:/app/logs

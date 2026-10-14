@@ -6,9 +6,10 @@
  *
  * The canvas document holds four numbers about tasks and nothing else, so
  * this event carries the whole of them, recounted by the server after every
- * state change. There is no task id on the wire, no per-entry update and no
- * compare-and-set: a number is either the current one or an older one, and
- * the next state change on that node replaces it outright.
+ * state change. There is no task id on the wire and no per-entry update.
+ * Each write happens only when the event is newer than what it replaces: the
+ * counts version the caller holds (in DB3), or the node's `taskResultEventId`
+ * for the result.
  *
  * The transition that reaches `done` carries the content fields as well,
  * and collab writes both in ONE Yjs transaction. Split across two, there is a
@@ -20,6 +21,31 @@ import { describe, it, expect } from "vitest";
 import * as Y from "yjs";
 import { applyNodeTaskCounts } from "@collab/services/node-task-counts.js";
 import { bodyToPlainText } from "@breatic/shared/canvas/text-body";
+
+let clock = 0;
+/** The counts version each document's caller would hold, as the hash in DB3 does. */
+const heldCountsVersion = new WeakMap<Y.Doc, string | undefined>();
+
+/**
+ * Apply an event the way the task listener does: each event newer than the
+ * last, the counts version carried between calls.
+ * @param doc - The canvas document.
+ * @param event - The event.
+ * @param version - Its version; a fresh, newer one when omitted.
+ * @returns The counts version held afterwards.
+ */
+function apply(
+  doc: Y.Doc,
+  event: Parameters<typeof applyNodeTaskCounts>[1],
+  version = `1700-${++clock}`,
+): string | undefined {
+  const next = applyNodeTaskCounts(doc, event, {
+    version,
+    countsVersion: heldCountsVersion.get(doc),
+  });
+  heldCountsVersion.set(doc, next);
+  return next;
+}
 
 /**
  * A doc holding one node, shaped the way the canvas stores them: the nodes
@@ -44,7 +70,7 @@ describe("a counts event replaces what the node holds about tasks", () => {
     const nodeId = crypto.randomUUID();
     const { doc, data } = docWithNode(nodeId);
 
-    applyNodeTaskCounts(doc, {
+    apply(doc, {
       nodeId,
       counts: { running: 2, done: 1, failed: 0, expired: 0 },
     });
@@ -61,11 +87,11 @@ describe("a counts event replaces what the node holds about tasks", () => {
     const nodeId = crypto.randomUUID();
     const { doc, data } = docWithNode(nodeId);
 
-    applyNodeTaskCounts(doc, {
+    apply(doc, {
       nodeId,
       counts: { running: 1, done: 0, failed: 0, expired: 0 },
     });
-    applyNodeTaskCounts(doc, {
+    apply(doc, {
       nodeId,
       counts: { running: 0, done: 1, failed: 0, expired: 0 },
     });
@@ -86,8 +112,8 @@ describe("a counts event replaces what the node holds about tasks", () => {
       counts: { running: 0, done: 3, failed: 1, expired: 0 },
     };
 
-    applyNodeTaskCounts(doc, event);
-    applyNodeTaskCounts(doc, event);
+    apply(doc, event);
+    apply(doc, event);
 
     expect(data.get("taskCounts")).toEqual(event.counts);
   });
@@ -95,7 +121,7 @@ describe("a counts event replaces what the node holds about tasks", () => {
   it("leaves a node the document does not hold alone", () => {
     const { doc } = docWithNode(crypto.randomUUID());
     expect(() =>
-      applyNodeTaskCounts(doc, {
+      apply(doc, {
         nodeId: crypto.randomUUID(),
         counts: { running: 1, done: 0, failed: 0, expired: 0 },
       }),
@@ -108,7 +134,7 @@ describe("the transition that reaches done also lands the content", () => {
     const nodeId = crypto.randomUUID();
     const { doc, data } = docWithNode(nodeId);
 
-    applyNodeTaskCounts(doc, {
+    apply(doc, {
       nodeId,
       counts: { running: 0, done: 1, failed: 0, expired: 0 },
       result: {
@@ -137,7 +163,7 @@ describe("the transition that reaches done also lands the content", () => {
     const nodeId = crypto.randomUUID();
     const { doc, data } = docWithNode(nodeId);
 
-    applyNodeTaskCounts(doc, {
+    apply(doc, {
       nodeId,
       counts: { running: 0, done: 1, failed: 0, expired: 0 },
       result: {
@@ -163,7 +189,7 @@ describe("the transition that reaches done also lands the content", () => {
     const nodeId = crypto.randomUUID();
     const { doc, data } = docWithNode(nodeId);
 
-    applyNodeTaskCounts(doc, {
+    apply(doc, {
       nodeId,
       counts: { running: 0, done: 1, failed: 0, expired: 0 },
       result: {
@@ -190,7 +216,7 @@ describe("the transition that reaches done also lands the content", () => {
     data.set("height", 1080);
     data.set("coverUrl", "https://example.invalid/old.jpg");
 
-    applyNodeTaskCounts(doc, {
+    apply(doc, {
       nodeId,
       counts: { running: 0, done: 1, failed: 0, expired: 0 },
       result: {
@@ -224,7 +250,7 @@ describe("the transition that reaches done also lands the content", () => {
       seen.push({ done: counts?.done ?? 0, content: data.get("content") });
     });
 
-    applyNodeTaskCounts(doc, {
+    apply(doc, {
       nodeId,
       counts: { running: 0, done: 1, failed: 0, expired: 0 },
       result: {
@@ -250,7 +276,7 @@ describe("the transition that reaches done also lands the content", () => {
     const { doc, data } = docWithNode(nodeId);
     data.set("content", "https://example.invalid/earlier.png");
 
-    applyNodeTaskCounts(doc, {
+    apply(doc, {
       nodeId,
       counts: { running: 0, done: 0, failed: 1, expired: 0 },
     });
@@ -267,7 +293,7 @@ describe("a text node holds what it is told in its body", () => {
     const nodeId = crypto.randomUUID();
     const { doc, data } = docWithNode(nodeId, "text");
 
-    applyNodeTaskCounts(doc, {
+    apply(doc, {
       nodeId,
       counts: { running: 0, done: 1, failed: 0, expired: 0 },
       result: {
@@ -302,12 +328,12 @@ describe("a text node holds what it is told in its body", () => {
       size: null,
     };
 
-    applyNodeTaskCounts(doc, {
+    apply(doc, {
       nodeId,
       counts: first,
       result: { ...result, content: "First." },
     });
-    applyNodeTaskCounts(doc, {
+    apply(doc, {
       nodeId,
       counts: first,
       result: { ...result, content: "Second." },
@@ -322,24 +348,106 @@ describe("applyNodeTaskCounts — nothing new, nothing written", () => {
 
   it("writes nothing when the counts are the ones the node holds and no result rides along", () => {
     const { doc } = docWithNode("n-1");
-    applyNodeTaskCounts(doc, { nodeId: "n-1", counts });
+    apply(doc, { nodeId: "n-1", counts });
     const updates: Uint8Array[] = [];
     doc.on("update", (u: Uint8Array) => updates.push(u));
 
-    applyNodeTaskCounts(doc, { nodeId: "n-1", counts: { ...counts } });
+    apply(doc, { nodeId: "n-1", counts: { ...counts } });
 
     expect(updates).toHaveLength(0);
   });
 
   it("writes when one count moved", () => {
     const { doc, data } = docWithNode("n-1");
-    applyNodeTaskCounts(doc, { nodeId: "n-1", counts });
+    apply(doc, { nodeId: "n-1", counts });
     const updates: Uint8Array[] = [];
     doc.on("update", (u: Uint8Array) => updates.push(u));
 
-    applyNodeTaskCounts(doc, { nodeId: "n-1", counts: { ...counts, running: 0, done: 3 } });
+    apply(doc, { nodeId: "n-1", counts: { ...counts, running: 0, done: 3 } });
 
     expect(updates.length).toBeGreaterThan(0);
     expect(data.get("taskCounts")).toEqual({ ...counts, running: 0, done: 3 });
+  });
+});
+
+describe("counts and result each change only for an event newer than their own version", () => {
+  const nodeId = "n-1";
+  const running = { running: 1, done: 0, failed: 0, expired: 0 };
+  const finished = { running: 0, done: 1, failed: 0, expired: 0 };
+  const result = {
+    coverUrl: null,
+    width: 800,
+    height: 600,
+    duration: null,
+    mimeType: null,
+    size: null,
+  };
+
+  it("keeps the newer counts when an older counts event arrives after them", () => {
+    const { doc, data } = docWithNode(nodeId);
+    apply(doc, { nodeId, counts: finished }, "1700-5");
+    apply(doc, { nodeId, counts: running }, "1700-3");
+    expect(data.get("taskCounts")).toEqual(finished);
+  });
+
+  it("advances the counts version on a republish of the same counts without writing the document", () => {
+    const { doc } = docWithNode(nodeId);
+    apply(doc, { nodeId, counts: running }, "1700-1");
+    const updates: Uint8Array[] = [];
+    doc.on("update", (u: Uint8Array) => updates.push(u));
+    const held = apply(doc, { nodeId, counts: { ...running } }, "1700-9");
+    expect(updates).toHaveLength(0);
+    expect(held).toBe("1700-9");
+  });
+
+  it("does not let an older event undo counts a newer republish confirmed", () => {
+    const { doc, data } = docWithNode(nodeId);
+    apply(doc, { nodeId, counts: running }, "1700-1");
+    apply(doc, { nodeId, counts: { ...running } }, "1700-9");
+    apply(doc, { nodeId, counts: finished }, "1700-5");
+    expect(data.get("taskCounts")).toEqual(running);
+  });
+
+  it("keeps the newer content when an older result arrives after it", () => {
+    const { doc, data } = docWithNode(nodeId);
+    apply(doc, { nodeId, counts: finished, result: { ...result, content: "new.png" } }, "1700-7");
+    apply(doc, { nodeId, counts: finished, result: { ...result, content: "old.png" } }, "1700-4");
+    expect(data.get("content")).toBe("new.png");
+    expect(data.get("taskResultEventId")).toBe("1700-7");
+  });
+
+  it("writes an older result when no newer one landed, while leaving newer counts alone", () => {
+    const { doc, data } = docWithNode(nodeId);
+    apply(doc, { nodeId, counts: running }, "1700-8");
+    apply(doc, { nodeId, counts: finished, result: { ...result, content: "late.png" } }, "1700-6");
+    expect(data.get("content")).toBe("late.png");
+    expect(data.get("taskResultEventId")).toBe("1700-6");
+    expect(data.get("taskCounts")).toEqual(running);
+  });
+
+  it("compares versions as numbers, not as text", () => {
+    const { doc, data } = docWithNode(nodeId);
+    apply(doc, { nodeId, counts: finished }, "10000-0");
+    apply(doc, { nodeId, counts: running }, "9999-5");
+    expect(data.get("taskCounts")).toEqual(finished);
+  });
+
+  it("keeps the held counts version when the event is older", () => {
+    const { doc } = docWithNode(nodeId);
+    apply(doc, { nodeId, counts: finished }, "1700-5");
+    expect(apply(doc, { nodeId, counts: running }, "1700-3")).toBe("1700-5");
+  });
+});
+
+describe("a result that cannot be written", () => {
+  it("leaves the result version unset, so a retry writes it", () => {
+    const nodeId = "n-1";
+    const { doc, data } = docWithNode(nodeId, "text");
+    const broken = { coverUrl: null, width: null, height: null, duration: null, mimeType: null, size: null, content: 42 };
+
+    expect(() =>
+      apply(doc, { nodeId, counts: { running: 0, done: 1, failed: 0, expired: 0 }, result: broken as never }, "1700-9"),
+    ).toThrow();
+    expect(data.get("taskResultEventId")).toBeUndefined();
   });
 });

@@ -97,6 +97,24 @@ test('a Space tab shows its new name on every frame after Enter', async () => {
   expect(await seen()).not.toContain(before);
 });
 
+test('a Space drawer row shows its new name on every frame after Enter', async () => {
+  const before = `rename-d-${String(Date.now())}`;
+  const id = await createSpace(page, 'canvas', before);
+  spaces.push(id);
+  await page.getByTestId('space-drawer-trigger').click();
+  await page.getByTestId(`space-drawer-menu-${id}`).click();
+  await page.getByTestId(`space-drawer-rename-${id}`).click();
+  const box = page.getByTestId(`space-drawer-rename-input-${id}`);
+  await expect(box).toBeFocused();
+  await box.fill(`${before}-b`);
+  await record(`[data-testid="space-drawer-name-${id}"]`, `[data-testid="space-drawer-rename-input-${id}"]`);
+  await page.keyboard.press('Enter');
+  await expect(page.getByTestId(`space-drawer-name-${id}`)).toHaveText(`${before}-b`);
+  await page.waitForTimeout(1500);
+  expect(await seen()).not.toContain(before);
+  await expect(page.getByTestId(`space-tab-name-${id}`)).toHaveText(`${before}-b`);
+});
+
 for (const region of ['top-bar', 'agent-column'] as const) {
   const url = region === 'top-bar' ? /\/projects\/[^/]+$/ : /\/chat\/conversations\/[^/]+$/;
 

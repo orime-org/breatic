@@ -65,11 +65,9 @@ function setup(
 }) => void {
   const props = {
     allSpaces: SPACES,
-    openTabIds: SPACES.map((s) => s.id),
     projectId: 'p1',
     onActivate: vi.fn(),
     onCreate: vi.fn(),
-    onViewSpace: vi.fn(),
   };
   const view = rtlRender(
     <SpaceTabBar {...props} spaces={spaces} activeSpaceId={activeSpaceId} />,

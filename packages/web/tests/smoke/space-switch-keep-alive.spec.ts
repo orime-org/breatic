@@ -924,6 +924,25 @@ test('a closed tab leaves the page, and opens again on the camera it was closed 
   await expect.poll(() => camera(page)).toEqual(aimed);
 });
 
+test('View on a Space not on the strip opens it as the active tab', async ({ page }) => {
+  await openFreshProject(page);
+  await addSpaces(page, 1);
+  const [first, second] = (await stripIds(page)) as [string, string];
+  await showSpace(page, second);
+  await page.locator(`[data-testid="space-tab-${first}"]`).hover();
+  await page.locator(`[data-testid="space-tab-close-${first}"]`).click();
+  await expect.poll(() => stripIds(page)).not.toContain(first);
+
+  await page.getByTestId('space-drawer-trigger').click();
+  await page.getByTestId(`space-drawer-menu-${first}`).click();
+  await page.getByTestId(`space-drawer-view-${first}`).click();
+
+  await expect.poll(() => stripIds(page)).toContain(first);
+  await expect.poll(() => activeId(page)).toBe(first);
+  await expect(page.getByTestId('space-drawer')).toBeHidden();
+  await expect(visibleSpace(page).locator('.react-flow')).toBeVisible({ timeout: 20_000 });
+});
+
 test('a hidden document shows no floating bar, no caret to others, and takes in their writes', async ({
   page,
 }) => {

@@ -8,7 +8,7 @@
  *   - Real PostgreSQL (testcontainers): task rows, FK fixtures (user/project)
  *   - Real Redis (testcontainers): BullMQ queue + Redis Streams event bus
  *   - Real @breatic/core modules: taskService, DB schema
- *   - Real @breatic/collab: handleNodeTaskCountsEvent + startTaskListener
+ *   - Real @breatic/collab: startTaskListener (consumer group, document lease)
  *   - In-process Hocuspocus: DirectConnection for Yjs doc pre-population + assertion
  *   - Mocked provider boundary: runContainerJob (synthetic), reached through the registry's container tool
  *
@@ -19,7 +19,7 @@
  *   - Yjs data path bugs (wrong Y.Map nesting, wrong field key)
  *   - FK constraint failures in DB fixture setup
  *
- * @see packages/collab/src/task-listener.ts
+ * @see packages/collab/src/services/task-listener.ts
  * @see packages/worker/src/handlers.ts
  */
 
@@ -273,9 +273,10 @@ vi.mock("@breatic/domain", async (importOriginal) => {
 import type * as domain from "@breatic/domain";
 import { runTask } from "@worker/handlers/dispatch.js";
 import type { TaskJobData } from "@worker/handlers/dispatch.js";
-import { initCore, schema, createTestDb } from "@breatic/core";
+import { initCore, schema, createTestDb, createRedisClient, taskEventsStreamKey, type Redis } from "@breatic/core";
 import { taskService } from "@breatic/domain";
 import { startTaskListener } from "@collab/services/task-listener.js";
+import type { GroupConsumer } from "@collab/services/stream-group-consumer.js";
 import { openGenerationTasks } from "@server/modules/task/generation-task.js";
 import { canvasSpaceDocName } from "@breatic/shared";
 import { eq } from "drizzle-orm";
@@ -294,7 +295,8 @@ let wsServer: any; // Server from @hocuspocus/server — typed as any to avoid c
 // disconnect() in seedNode/readNodeData would lose all Y.Map state. The
 // anchor connection prevents that by keeping the document resident.
 let anchorConn: Awaited<ReturnType<Hocuspocus["openDirectConnection"]>> | null = null;
-let stopTaskListener: () => Promise<void>;
+let taskConsumer: GroupConsumer;
+let coordination: Redis;
 let bullWorker: Worker<TaskJobData>;
 let tasksQueue: Queue<TaskJobData>;
 // Schema-bound Drizzle client built via @breatic/core's createTestDb — core
@@ -554,16 +556,35 @@ beforeAll(async () => {
     context: { user: { id: "system" }, source: "test-anchor" },
   });
 
-  // 4. Start Collab task-listener on the dev Redis stream.
-  //    redisKeyPrefix = "dev" -> cursor key: dev:collab:task-events:last-id.
-  //    The STREAM key is separate and does NOT come from that argument:
-  //    This must match taskEventsStreamKey() in @breatic/core/infra/event-stream.ts,
-  //    which uses `${env.ENV}:stream:task-events` — and ENV="dev" in test-utils/env.ts.
-  stopTaskListener = startTaskListener(
+  // 4. Start Collab task-listener on the dev task-events stream
+  //    (`taskEventsStreamKey()`, `${ENV}:stream:task-events`, ENV="dev").
+  coordination = createRedisClient(inject("REDIS_COLLAB_URL"), { name: "itest-e2e-coord" });
+  taskConsumer = startTaskListener({
     hocuspocus,
-    REDIS_STREAM_URL,
-    "dev",
-  );
+    streamUrl: REDIS_STREAM_URL,
+    streamKey: taskEventsStreamKey(),
+    legacyCursorKey: "dev:collab:task-events:last-id",
+    keyPrefix: "dev",
+    instanceId: "itest-e2e",
+    coordination,
+    settings: {
+      maxHeld: 128,
+      blockMs: 100,
+      leaseRetryMs: 50,
+      claimIntervalMs: 15_000,
+      claimIdleMs: 60_000,
+      retryMinMs: 50,
+      retryMaxMs: 200,
+      maxFailures: 3,
+      stopDeadlineMs: 2000,
+      forgetIdleConsumerMs: 24 * 60 * 60 * 1000,
+      keyConcurrency: 4,
+      docLeaseMs: 30_000,
+      handoffPollMs: 20,
+      handoffWaitMs: 200,
+    },
+  });
+
 
   // 5. Start BullMQ Worker calling runTask — same setup as worker/src/index.ts
   const queueUrl = new URL(REDIS_QUEUE_URL);
@@ -596,7 +617,8 @@ beforeAll(async () => {
 afterAll(async () => {
   await tasksQueue.close();
   await bullWorker.close(true); // force close to avoid waiting for active jobs
-  await stopTaskListener();
+  await taskConsumer.stop();
+  await coordination.quit();
   // Close anchor connection before destroying wsServer
   if (anchorConn) await anchorConn.disconnect();
   // Destroy via wsServer (Server wrapper) — hocuspocus (core) has no .destroy()
