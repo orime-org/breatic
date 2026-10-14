@@ -29,7 +29,7 @@ import { DrawingEmptyError, type DrawingExport } from '@web/spaces/canvas/mini-t
 import { exportsBeforeRun } from '@web/spaces/canvas/mini-tool/mini-tool-view';
 import { outputPlacementOf, plannedOutputSizes, type PlacedOutput } from '@web/spaces/canvas/mini-tool/output-placement';
 import { groupBackgroundFor } from '@web/spaces/canvas/group-background';
-import { planGroupCreation } from '@web/spaces/canvas/group-creation';
+import { planGroupAround } from '@web/spaces/canvas/group-creation';
 import { writeGroup } from '@web/spaces/canvas/group-write';
 import { MODALITY_LABEL } from '@web/spaces/canvas/nodes/_shared/modality';
 import type { DrawingKind } from '@web/spaces/canvas/mini-tool/paint-drawing';
@@ -300,7 +300,7 @@ function groupResults(
   nodes: readonly { id: string; type: string; position: { x: number; y: number } }[],
   placements: readonly PlacedOutput[],
 ): BuiltGroup | undefined {
-  const plan = planGroupCreation(
+  const plan = planGroupAround(
     nodes.map((node, index) => ({
       id: node.id,
       type: node.type,
@@ -309,7 +309,6 @@ function groupResults(
       height: placements[index]?.height,
       data: {},
     })),
-    nodes.map((node) => node.id),
     newId(),
   );
   if (plan === null) return undefined;

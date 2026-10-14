@@ -15,8 +15,9 @@ import { isExpanded, sourceTooLargeToExpand, type ExpandFrame } from '@web/space
 import { markEmpty, type MarkDraft } from '@web/stores/mark-draft';
 import {
   defaultSizeTier,
+  gridShapeOf,
   isModelTool,
-  outputsOf,
+  pickedCellsOf,
   sizeTierOptions,
   tieredParamKeys,
   type MiniToolSlotValue,
@@ -65,6 +66,7 @@ export type MiniToolRefusal =
   | 'drawingEmpty'
   | 'adjustNeutral'
   | 'singleTile'
+  | 'noTilePicked'
   | 'sourceTooLargeToExpand'
   | 'frameNotExpanded'
   | 'markEmpty'
@@ -78,6 +80,7 @@ export const BLOCKING_REFUSALS: ReadonlySet<MiniToolRefusal> = new Set<MiniToolR
   'drawingEmpty',
   'adjustNeutral',
   'singleTile',
+  'noTilePicked',
   'frameNotExpanded',
   'markEmpty',
   'promptMissing',
@@ -264,8 +267,10 @@ export function miniToolRefusal(input: {
   // Every slider at zero changes nothing.
   const adjust = isModelTool(spec) ? undefined : spec.params.find((param) => param.kind === 'adjust');
   if (adjust !== undefined && isAdjustValueNeutral(parseAdjustValue(params[adjust.key]))) return 'adjustNeutral';
-  // A count multiplied out of params that comes to one leaves nothing cut.
-  if (spec.outputCount?.kind === 'product' && outputsOf(spec, params).length <= 1) return 'singleTile';
+  // A grid of one cell leaves nothing cut; a grid with no cell picked makes nothing.
+  const shape = gridShapeOf(spec, params);
+  if (shape !== null && shape.rows * shape.cols <= 1) return 'singleTile';
+  if (pickedCellsOf(spec, params)?.length === 0) return 'noTilePicked';
   if (promptRequired(spec, entry) && prompt.trim() === '') return 'promptMissing';
   return null;
 }

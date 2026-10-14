@@ -235,6 +235,20 @@ describe('a grid', () => {
   it('runs at the default three by three', () => {
     expect(miniToolRefusal({ ...grid, params: {} })).toBeNull();
   });
+
+  it('runs with a single tile of three by three picked', () => {
+    expect(miniToolRefusal({ ...grid, params: { rows: 3, cols: 3, skip: [0, 1, 2, 3, 5, 6, 7, 8] } })).toBeNull();
+  });
+
+  it('holds Run back while no tile is picked', () => {
+    expect(miniToolRefusal({ ...grid, params: { rows: 3, cols: 3, skip: [0, 1, 2, 3, 4, 5, 6, 7, 8] } })).toBe(
+      'noTilePicked',
+    );
+  });
+
+  it('still calls one by one a single tile, whatever is picked', () => {
+    expect(miniToolRefusal({ ...grid, params: { rows: 1, cols: 1, skip: [0] } })).toBe('singleTile');
+  });
 });
 
 describe.each(['image.adjust', 'video.adjust'])('%s', (id) => {
@@ -308,6 +322,7 @@ describe('BLOCKING_REFUSALS', () => {
       'exporting',
       'frameNotExpanded',
       'markEmpty',
+      'noTilePicked',
       'promptMissing',
       'singleTile',
       'slotMissing',

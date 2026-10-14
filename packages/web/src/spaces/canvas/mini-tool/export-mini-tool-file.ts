@@ -2,7 +2,14 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { parseAdjustValue } from '@breatic/shared';
-import { UPRIGHT, gridShapeOf, outputTemplateOf, type MiniToolSnapshot, type MiniToolSpec } from '@breatic/shared/mini-tools';
+import {
+  UPRIGHT,
+  gridShapeOf,
+  outputTemplateOf,
+  pickedCellsOf,
+  type MiniToolSnapshot,
+  type MiniToolSpec,
+} from '@breatic/shared/mini-tools';
 
 import {
   exportCropBlob,
@@ -19,7 +26,7 @@ import type { ExportedFile, MiniToolCapture } from '@web/spaces/canvas/mini-tool
 /**
  * Make a browser tool's file from the snapshot taken at the press
  * (inner#888 §7.5): the crop, the turned picture, the adjusted or marked-up
- * picture or the grid's tiles, as PNGs at the source's own resolution.
+ * picture or the grid's picked tiles, as PNGs at the source's own resolution.
  * @param spec - The browser tool.
  * @param snapshot - The draft as it stood at the press.
  * @param capture - What the reader made on the node, copied out at the press.
@@ -34,7 +41,7 @@ export async function exportMiniToolFile(
   const source: CropSource = { url: snapshot.source.url, timeSeconds: null };
   const shape = gridShapeOf(spec, snapshot.params);
   if (shape !== null) {
-    const tiles = await exportGridTiles(source, shape.rows, shape.cols);
+    const tiles = await exportGridTiles(source, shape.rows, shape.cols, pickedCellsOf(spec, snapshot.params) ?? []);
     const prefix = outputTemplateOf(spec).namePrefix;
     return tiles.map((tile) => ({ file: new File([tile.blob], `${prefix}.png`, { type: 'image/png' }) }));
   }

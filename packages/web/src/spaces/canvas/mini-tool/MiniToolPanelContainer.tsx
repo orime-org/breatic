@@ -41,8 +41,8 @@ import type { MiniToolCapture } from '@web/spaces/canvas/mini-tool/start-mini-to
 import { useEscapeInSpace } from '@web/spaces/canvas/use-escape-in-space';
 import { visibleOps } from '@web/stores/drawing-draft';
 
-/** The params a changed source resets: they are measured on the source. */
-const SOURCE_BOUND = new Set(['rect', 'range', 'orient']);
+/** The params a changed source resets: they are measured on, or picked from, the source. */
+const SOURCE_BOUND = new Set(['rect', 'range', 'orient', 'cells']);
 
 /** Nothing picked into any slot. */
 const NO_SLOTS = {} as const;

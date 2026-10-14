@@ -279,6 +279,31 @@ describe('startMiniToolRun', () => {
     );
   });
 
+  it('puts a single picked tile in its group too, and hands the group to the press', async () => {
+    const file = new File(['x'], 't.png', { type: 'image/png' });
+    const run = press({
+      spec: tool('image.grid'),
+      snapshot: { ...SNAPSHOT, params: { rows: 3, cols: 3, skip: [0, 1, 2, 3, 5, 6, 7, 8] } },
+      source: { id: 'src', name: 'IMG', position: { x: 0, y: 0 }, groupOrigin: null, mimeType: 'image/png' },
+      exportFile: vi.fn(() => Promise.resolve([{ file }])),
+    });
+
+    await startMiniToolRun(run);
+
+    const nodes = canvas.addNode.mock.calls.map((call) => call[2]);
+    expect(nodes.map((node) => node.data.name)).toEqual(['GRID-r2c2-IMG']);
+    expect(canvas.createGroup).toHaveBeenCalledOnce();
+    const [, , group, members] = canvas.createGroup.mock.calls[0]!;
+    expect(group.data.name).toBe('GRID-IMG');
+    expect(members.map((member: { id: string }) => member.id)).toEqual([nodes[0].id]);
+    expect(vi.mocked(run.onBuilt).mock.calls[0]![1]).toEqual({
+      id: group.id,
+      position: group.position,
+      width: group.data.width,
+      height: group.data.height,
+    });
+  });
+
   it('makes no group for a tool that does not group its results', async () => {
     const run = press();
     await startMiniToolRun(run);

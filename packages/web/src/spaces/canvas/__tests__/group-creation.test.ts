@@ -5,7 +5,7 @@ import { describe, it, expect } from 'vitest';
 import type { Node } from '@xyflow/react';
 
 import { batchCentresAt } from '@web/spaces/canvas/drop-layout';
-import { planGroupCreation } from '@web/spaces/canvas/group-creation';
+import { planGroupAround, planGroupCreation } from '@web/spaces/canvas/group-creation';
 import {
   EMPTY_NODE_SIZE,
   GROUP_PADDING,
@@ -130,6 +130,24 @@ describe('planGroupCreation', () => {
     const byId = Object.fromEntries(plan.members.map((m) => [m.id, m.position]));
     expect(byId['a']).toEqual({ x: 100 - top.x, y: 100 - top.y });
     expect(byId['b']).toEqual({ x: 200 - top.x, y: 180 - top.y });
+  });
+
+  describe('planGroupAround', () => {
+    it('frames a single member with the padding on every side', () => {
+      const plan = planGroupAround([node('a', 100, 100, 50, 60)], 'group');
+      expect(plan).toEqual({
+        groupId: 'group',
+        position: { x: 100 - GROUP_PADDING, y: 100 - GROUP_PADDING },
+        width: 50 + 2 * GROUP_PADDING,
+        height: 60 + 2 * GROUP_PADDING,
+        members: [{ id: 'a', position: { x: GROUP_PADDING, y: GROUP_PADDING } }],
+      });
+    });
+
+    it('frames the same rect Cmd+G does for two members', () => {
+      const nodes = [node('a', 100, 100, 50, 50), node('b', 200, 180, 40, 40)];
+      expect(planGroupAround(nodes, 'group')).toEqual(planGroupCreation(nodes, ['a', 'b'], 'group'));
+    });
   });
 
   describe('the Group one multi-file upload becomes (#2209)', () => {

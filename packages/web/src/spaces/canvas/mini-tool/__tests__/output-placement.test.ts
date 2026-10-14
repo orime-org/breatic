@@ -3,10 +3,10 @@
 
 import { describe, expect, it } from 'vitest';
 
-import type { MiniToolSpec } from '@breatic/shared/mini-tools';
+import { miniToolById, type MiniToolSpec } from '@breatic/shared/mini-tools';
 
 import { NODE_STEP } from '@web/spaces/canvas/drop-layout';
-import { outputPlacementOf } from '@web/spaces/canvas/mini-tool/output-placement';
+import { outputPlacementOf, plannedOutputSizes } from '@web/spaces/canvas/mini-tool/output-placement';
 
 const base = {
   source: 'image',
@@ -141,3 +141,46 @@ describe('outputPlacementOf', () => {
     expect(tile!.height).toBe(139 + 10);
   });
 });
+
+describe('outputPlacementOf for picked tiles', () => {
+  const PICKING = miniToolById('image.grid')!;
+  /**
+   * Every cell index of a grid except the ones listed.
+   * @param total - Cells in the grid.
+   * @param picked - The cells kept.
+   * @returns The cells skipped.
+   */
+  const skipAllBut = (total: number, picked: number[]): number[] =>
+    Array.from({ length: total }, (_, i) => i).filter((i) => !picked.includes(i));
+
+  it('gives each picked tile the name, column and row of its own cell', () => {
+    const sizes = tiles(900, 900, 3, 3);
+    const placed = outputPlacementOf(PICKING, { rows: 3, cols: 3, skip: skipAllBut(9, [1, 5, 6]) }, sizes, 'cat');
+    expect(placed.map((p) => p.name)).toEqual(['GRID-r1c2-cat', 'GRID-r2c3-cat', 'GRID-r3c1-cat']);
+    expect(placed.map((p) => p.x)).toEqual([NODE_STEP.x, 2 * NODE_STEP.x, 0]);
+    const full = outputPlacementOf(PICKING, { rows: 3, cols: 3, skip: [] }, sizes, 'cat');
+    expect(placed.map((p) => p.y)).toEqual([full[1]!.y, full[5]!.y, full[6]!.y]);
+    expect(placed.map((p) => p.height)).toEqual([full[1]!.height, full[5]!.height, full[6]!.height]);
+  });
+
+  it('closes up leading empty rows and columns and keeps an empty row between picked ones', () => {
+    // 4 rows by 2 columns; rows 2 and 4 picked in the second column only.
+    const sizes = tiles(400, 1600, 4, 2);
+    const placed = outputPlacementOf(PICKING, { rows: 4, cols: 2, skip: skipAllBut(8, [3, 7]) }, sizes, 'p');
+    const full = outputPlacementOf(PICKING, { rows: 4, cols: 2, skip: [] }, sizes, 'p');
+    expect(placed.map((p) => p.name)).toEqual(['GRID-r2c2-p', 'GRID-r4c2-p']);
+    expect(placed.map((p) => p.x)).toEqual([0, 0]);
+    expect(placed[0]!.y).toBe(0);
+    expect(placed[1]!.y).toBe(full[7]!.y - full[3]!.y);
+  });
+
+  it('places one picked tile at the batch origin', () => {
+    const placed = outputPlacementOf(PICKING, { rows: 3, cols: 3, skip: skipAllBut(9, [4]) }, tiles(900, 900, 3, 3), 'c');
+    expect(placed.map((p) => [p.name, p.x, p.y])).toEqual([['GRID-r2c2-c', 0, 0]]);
+  });
+
+  it('plans a size for every cell of the grid, picked or not', () => {
+    expect(plannedOutputSizes(PICKING, { rows: 3, cols: 3, skip: [0, 1] }, { width: 900, height: 900 })).toHaveLength(9);
+  });
+});
+

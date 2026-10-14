@@ -8,7 +8,13 @@
  * their tallest tile, which needs every tile's size at once.
  */
 
-import { gridShapeOf, outputsOf, type MiniToolOutput, type MiniToolSpec } from '@breatic/shared/mini-tools';
+import {
+  gridShapeOf,
+  outputsOf,
+  pickedCellsOf,
+  type MiniToolOutput,
+  type MiniToolSpec,
+} from '@breatic/shared/mini-tools';
 
 import { EMPTY_NODE_SIZE, mediaNodeHeight } from '@web/spaces/canvas/group-geometry';
 import { GAP_PX, NODE_STEP } from '@web/spaces/canvas/drop-layout';
@@ -44,14 +50,15 @@ function nodeHeight(size: OutputSize | undefined): number {
 /**
  * The pixel sizes a run's results will have, as far as they are known before
  * the browser makes them, so the nodes can be built at the press (inner#1303
- * §6.7): a grid's tiles come from the source's size by the export's own cut;
- * every other tool's layout does not depend on its results' sizes.
+ * §6.7): a grid's come from the source's size by the export's own cut, one per
+ * cell of the whole grid; every other tool's layout does not depend on its
+ * results' sizes.
  * @param spec - The tool.
  * @param params - The run's params.
  * @param source - The source's pixel size, where its node knows it.
  * @param source.width - Its width.
  * @param source.height - Its height.
- * @returns One size per result, or none when they are not known yet.
+ * @returns One size per grid cell, or none when they are not known yet.
  */
 export function plannedOutputSizes(
   spec: MiniToolSpec,
@@ -64,11 +71,15 @@ export function plannedOutputSizes(
 }
 
 /**
- * Lays a run's results out: a column for every tool, except a `"grid"` tool
- * whose results go rows by columns with each row as tall as its tallest tile.
+ * Lays a run's results out: a column for every tool, except a `"grid"` tool,
+ * whose results each sit at their own cell's row and column. Every row is as
+ * tall as its tallest tile across the whole grid, picked or not, so a row
+ * nobody picked between two that are keeps its height; the rows and columns
+ * before the first picked one are closed up.
  * @param spec - The tool.
  * @param params - The run's params.
- * @param sizes - Each result's pixel size, in order, where the run knows it.
+ * @param sizes - Each result's pixel size, where the run knows it: in result
+ *   order, or for a `"grid"` tool, one per cell of the whole grid by row-major index.
  * @param sourceName - The source node's name.
  * @returns One placement per result, in order.
  */
@@ -79,41 +90,52 @@ export function outputPlacementOf(
   sourceName: string | undefined,
 ): PlacedOutput[] {
   const outputs = outputsOf(spec, params);
-  const heights = outputs.map((_, index) => nodeHeight(sizes[index]));
   /**
    * One result's placement.
    * @param output - The result.
-   * @param index - Its place in the batch.
    * @param label - What goes between the prefix and the source name.
    * @param x - Its left, from the batch's.
    * @param y - Its top, from the batch's.
+   * @param height - Its node's height.
    * @returns The placement.
    */
-  const placed = (output: MiniToolOutput, index: number, label: string, x: number, y: number): PlacedOutput => ({
+  const placed = (output: MiniToolOutput, label: string, x: number, y: number, height: number): PlacedOutput => ({
     output,
     name: `${output.namePrefix}-${label}${sourceName ?? MODALITY_LABEL[output.modality]}`,
     x,
     y,
     width: EMPTY_NODE_SIZE.width,
-    height: heights[index]!,
+    height,
   });
 
   const shape = gridShapeOf(spec, params);
   if (shape === null) {
     return outputs.map((output, index) =>
-      placed(output, index, spec.output ? `${index + 1}-` : '', 0, index * NODE_STEP.y),
+      placed(output, spec.output ? `${index + 1}-` : '', 0, index * NODE_STEP.y, nodeHeight(sizes[index])),
     );
   }
 
-  const { cols } = shape;
-  const result: PlacedOutput[] = [];
+  const { rows, cols } = shape;
+  const cells = pickedCellsOf(spec, params) ?? [];
+  if (cells.length === 0) return [];
+  const firstRow = Math.floor(Math.min(...cells) / cols);
+  const firstCol = Math.min(...cells.map((cell) => cell % cols));
+  const tops: number[] = [];
   let top = 0;
-  for (let start = 0; start < outputs.length; start += cols) {
-    const row = start / cols + 1;
-    for (let col = 0; col < cols; col++) {
-      result.push(placed(outputs[start + col]!, start + col, `r${row}c${col + 1}-`, col * NODE_STEP.x, top));
-    }
-    top += Math.max(...heights.slice(start, start + cols)) + GAP_PX;
+  for (let row = firstRow; row < rows; row++) {
+    tops[row] = top;
+    const heights = Array.from({ length: cols }, (_, col) => nodeHeight(sizes[row * cols + col]));
+    top += Math.max(...heights) + GAP_PX;
   }
-  return result;
+  return cells.map((cell, index) => {
+    const row = Math.floor(cell / cols);
+    const col = cell % cols;
+    return placed(
+      outputs[index]!,
+      `r${row + 1}c${col + 1}-`,
+      (col - firstCol) * NODE_STEP.x,
+      tops[row]!,
+      nodeHeight(sizes[cell]),
+    );
+  });
 }

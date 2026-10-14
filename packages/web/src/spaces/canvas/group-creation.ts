@@ -80,6 +80,19 @@ export function planGroupCreation(
   );
   // Whatever the caller handed over, a Group needs two things it may hold.
   if (members.length < 2) return null;
+  return planGroupAround(members, groupId);
+}
+
+/**
+ * Plan a Group framing exactly these members, however many: the padded
+ * bounding box and each member's position inside it. A tool's results go into
+ * their group even when there is only one (inner#1303 A15); Cmd+G's rule that a
+ * Group needs two is {@link planGroupCreation}'s.
+ * @param members - The member flow nodes, each one a Group may hold.
+ * @param groupId - Pre-generated id for the new Group node.
+ * @returns The Group-creation plan, or `null` when there are no members.
+ */
+export function planGroupAround(members: ReadonlyArray<Node>, groupId: string): GroupCreationPlan | null {
   const rect = groupRectForMembers(members.map(flowNodeRect));
   if (!rect) return null;
   const position = { x: rect.x, y: rect.y };

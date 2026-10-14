@@ -684,7 +684,15 @@ export function createCanvasSessionStore(): CanvasSessionStore {
         }),
       setMiniToolParam: (key, value) =>
         set((s) => {
-          if (s.miniTool) s.miniTool = { ...s.miniTool, params: { ...s.miniTool.params, [key]: value } };
+          if (!s.miniTool) return;
+          const params = { ...s.miniTool.params, [key]: value };
+          // The cells a grid leaves out are indices of its old shape; a new
+          // shape picks every cell again (inner#1303 §6.4).
+          const count = miniToolById(s.miniTool.toolId)?.outputCount;
+          if (count?.kind === 'product' && count.except !== undefined && count.params.includes(key)) {
+            params[count.except] = [];
+          }
+          s.miniTool = { ...s.miniTool, params };
         }),
       setMiniToolPrompt: (prompt) =>
         set((s) => {

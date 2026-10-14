@@ -83,14 +83,25 @@ describe('exportMiniToolFile for a grid', () => {
   it('exports one PNG per tile, cut by the rows and columns asked', async () => {
     const made = await exportMiniToolFile(miniToolById('image.grid')!, snapshot({ rows: 1, cols: 2 }));
 
-    expect(grid.exportGridTiles).toHaveBeenCalledWith({ url: 'https://cdn/a.jpg', timeSeconds: null }, 1, 2);
+    expect(grid.exportGridTiles).toHaveBeenCalledWith({ url: 'https://cdn/a.jpg', timeSeconds: null }, 1, 2, [0, 1]);
     expect(made.map((tile) => tile.file.type)).toEqual(['image/png', 'image/png']);
   });
 
   it('cuts by the default rows and columns when the draft left them out', async () => {
     await exportMiniToolFile(miniToolById('image.grid')!, snapshot({}));
 
-    expect(grid.exportGridTiles).toHaveBeenCalledWith({ url: 'https://cdn/a.jpg', timeSeconds: null }, 3, 3);
+    expect(grid.exportGridTiles).toHaveBeenCalledWith(
+      { url: 'https://cdn/a.jpg', timeSeconds: null },
+      3,
+      3,
+      [0, 1, 2, 3, 4, 5, 6, 7, 8],
+    );
+  });
+
+  it('cuts only the picked tiles, row by row', async () => {
+    await exportMiniToolFile(miniToolById('image.grid')!, snapshot({ rows: 3, cols: 3, skip: [0, 2, 3, 4, 7, 8] }));
+
+    expect(grid.exportGridTiles).toHaveBeenCalledWith({ url: 'https://cdn/a.jpg', timeSeconds: null }, 3, 3, [1, 5, 6]);
   });
 });
 

@@ -159,6 +159,17 @@ describe('MiniToolPanelContainer', () => {
     expect(toast.warning).toHaveBeenCalledOnce();
   });
 
+  it('picks every grid tile again when the source changes', () => {
+    canvasSessions.of('').getState().openMiniTool('src', 'image.grid', {
+      sourceContent: 'a.png',
+      params: { rows: 3, cols: 3, skip: [] },
+    });
+    canvasSessions.of('').getState().setMiniToolParam('skip', [1, 2]);
+    const view = render(tree(source('a.png'), () => Promise.resolve()));
+    view.rerender(tree(source('b.png'), () => Promise.resolve()));
+    expect(canvasSessions.of('').getState().miniTool?.params).toEqual({ rows: 3, cols: 3, skip: [] });
+  });
+
   // The crop is converted with the size the crop box read off the shown
   // picture, the size the export crops in (inner#888 §7.4.1); the node's own
   // record of its size can be missing or stale.
