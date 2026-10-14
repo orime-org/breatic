@@ -4562,7 +4562,7 @@ describe('what an Understand press leaves on screen', () => {
     // The call, not the name: a dependency array mentions it too, and a
     // press that only lists it moves nothing.
     expect(press).toContain('setSelectAfterCreate([id])');
-    expect(press).toContain('frameNewNode(position, host.id)');
+    expect(press).toContain('frameBuilt(freshNodesBox([position]), host.id)');
   });
 
   // Both boxes are read where the reader is looking right now: the source
