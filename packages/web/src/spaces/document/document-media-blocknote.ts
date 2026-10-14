@@ -102,6 +102,7 @@ function propsOf(node: PMNode): MediaBlockProps {
     url: typeof attrs['url'] === 'string' ? attrs['url'] : '',
     name: typeof attrs['name'] === 'string' ? attrs['name'] : '',
     caption: typeof attrs['caption'] === 'string' ? attrs['caption'] : '',
+    uploadId: typeof attrs['uploadId'] === 'string' ? attrs['uploadId'] : '',
     ...(typeof attrs['previewWidth'] === 'number' && { previewWidth: attrs['previewWidth'] }),
     ...(typeof attrs['mediaWidth'] === 'number' && { mediaWidth: attrs['mediaWidth'] }),
     ...(typeof attrs['mediaHeight'] === 'number' && { mediaHeight: attrs['mediaHeight'] }),

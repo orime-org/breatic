@@ -48,6 +48,8 @@ export interface MediaBlockProps {
   readonly url: string;
   readonly name: string;
   readonly caption: string;
+  /** The upload the block waits for; empty once its address is written (inner#1351). */
+  readonly uploadId: string;
   /** Image and video only. */
   readonly previewWidth?: number;
   /** Image and video only: the pixel size the server read off the stored file (its upright copy for a picture with an EXIF orientation). */
