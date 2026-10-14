@@ -221,14 +221,26 @@ function userDrivenPlugin(marker: UserDrivenMarker): Plugin {
   });
 }
 
+/** The events whose edits are an undo step of their own. */
+const OWN_STEP_EVENTS = ['paste', 'drop'] as const;
+
 /**
  * The plugin that closes the undo step around a paste, a drop or a marked
  * insert, so it is one step and typing on either side is another.
  *
- * The step is closed before the edit reaches Yjs — state apply runs before
- * the sync plugin's view update writes the edit through — and again in this
- * plugin's own view update, which runs after the sync plugin's in the same
- * dispatch, whether or not the edit came to any Yjs change.
+ * A paste or a drop is closed around by its event, whichever hook writes it:
+ * a capturing listener closes the step before any handler runs, and a
+ * listener added after ProseMirror's own closes it once that one is done.
+ * Listeners on one element in one phase run in the order they were added,
+ * and the view adds its own before it builds plugin views
+ * (`prosemirror-view` `initInput`, then `updatePluginViews`). A microtask
+ * queued at the start would not do: a browser runs microtasks after each
+ * listener of an event the reader caused, before ProseMirror's.
+ *
+ * A marked insert is closed before the edit reaches Yjs — state apply runs
+ * before the sync plugin's view update writes the edit through — and again
+ * in this plugin's own view update, which runs after the sync plugin's in the
+ * same dispatch, whether or not the edit came to any Yjs change.
  * @param manager - The manager whose steps are closed.
  * @returns The ProseMirror plugin.
  */
@@ -243,8 +255,8 @@ function ownStepPlugin(manager: Y.UndoManager): Plugin {
        */
       init: (): null => null,
       /**
-       * Closes the step before an edit that is one of its own, and asks the
-       * view update to close it again once the edit is written through.
+       * Closes the step before a marked insert, and asks the view update to
+       * close it again once the insert is written through.
        * @param tr - The transaction being applied.
        * @returns Null.
        */
@@ -256,13 +268,29 @@ function ownStepPlugin(manager: Y.UndoManager): Plugin {
         return null;
       },
     },
-    view: () => ({
-      update: () => {
-        if (!closeAfter) return;
-        closeAfter = false;
+    view: (view) => {
+      /** Closes the step a paste or a drop opens or ends. */
+      const close = (): void => {
         manager.stopCapturing();
-      },
-    }),
+      };
+      for (const event of OWN_STEP_EVENTS) {
+        view.dom.addEventListener(event, close, true);
+        view.dom.addEventListener(event, close);
+      }
+      return {
+        update: () => {
+          if (!closeAfter) return;
+          closeAfter = false;
+          manager.stopCapturing();
+        },
+        destroy: () => {
+          for (const event of OWN_STEP_EVENTS) {
+            view.dom.removeEventListener(event, close, true);
+            view.dom.removeEventListener(event, close);
+          }
+        },
+      };
+    },
   });
 }
 

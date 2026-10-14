@@ -7,18 +7,16 @@
  * files, a canvas clipboard, the insert menu's media. Typing next to them,
  * however soon, is a step apart.
  *
- * ProseMirror marks its own paste and drop with the `uiEvent` meta
- * (`prosemirror-view` `doPaste`, `handleDrop`); the body's entries mark
- * theirs with {@link markOwnUndoStep}. The undo extension reads both.
+ * A paste or a drop is one by its event, whichever hook writes it; the undo
+ * extension closes the step around the event. An insert made outside one —
+ * the insert menu, files read after their event, media landing once a paste
+ * is done — is marked with {@link markOwnUndoStep}.
  */
 
 import type { Transaction } from '@tiptap/pm/state';
 
 /** The meta the body's own entries mark an insert with. */
 const OWN_UNDO_STEP = 'documentOwnUndoStep';
-
-/** The `uiEvent` values ProseMirror gives its paste and drop. */
-const OWN_STEP_EVENTS: ReadonlySet<unknown> = new Set(['paste', 'drop']);
 
 /**
  * Marks a transaction as an undo step of its own.
@@ -30,10 +28,10 @@ export function markOwnUndoStep(tr: Transaction): Transaction {
 }
 
 /**
- * Whether a transaction is an undo step of its own.
+ * Whether a transaction is a marked insert.
  * @param tr - The transaction.
- * @returns True for a paste, a drop, or a marked insert that changes the document.
+ * @returns True for a marked insert that changes the document.
  */
 export function isOwnUndoStep(tr: Transaction): boolean {
-  return tr.docChanged && (tr.getMeta(OWN_UNDO_STEP) === true || OWN_STEP_EVENTS.has(tr.getMeta('uiEvent')));
+  return tr.docChanged && tr.getMeta(OWN_UNDO_STEP) === true;
 }
