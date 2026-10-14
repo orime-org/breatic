@@ -82,45 +82,73 @@ describe('decideOnLoad', () => {
 
 describe('writesForClick', () => {
   it('accepts both on "accept all" with nothing against ads', () => {
-    expect(writesForClick({ role: 'all', window: 'banner', toggles: null, notice: false, gpc: false })).toEqual({
+    expect(writesForClick({ stored: null, role: 'all', window: 'banner', toggles: null, notice: false, gpc: false })).toEqual({
       analytics: { value: true, source: 'banner' },
       ads: { value: true, source: 'banner', noticeShown: false, gpcAtDecision: false },
     });
   });
 
   it('turns only analytics on for "accept all" under GPC, writing the ads refusal as GPC', () => {
-    expect(writesForClick({ role: 'all', window: 'settings', toggles: null, notice: 'gpc', gpc: true })).toEqual({
+    expect(writesForClick({ stored: null, role: 'all', window: 'settings', toggles: null, notice: 'gpc', gpc: true })).toEqual({
       analytics: { value: true, source: 'settings' },
       ads: { value: false, source: 'gpc', noticeShown: false, gpcAtDecision: true },
     });
   });
 
   it('leaves the ads choice as it is for "accept all" while the account is opted out', () => {
-    expect(writesForClick({ role: 'all', window: 'banner', toggles: null, notice: 'account', gpc: false })).toEqual({
+    expect(writesForClick({ stored: null, role: 'all', window: 'banner', toggles: null, notice: 'account', gpc: false })).toEqual({
       analytics: { value: true, source: 'banner' },
     });
   });
 
   it('refuses both on "reject all", keeping the notice only for a choice made in settings', () => {
-    expect(writesForClick({ role: 'necessary', window: 'banner', toggles: null, notice: 'gpc', gpc: true })).toEqual({
+    expect(writesForClick({ stored: null, role: 'necessary', window: 'banner', toggles: null, notice: 'gpc', gpc: true })).toEqual({
       analytics: { value: false, source: 'banner' },
       ads: { value: false, source: 'banner', noticeShown: false, gpcAtDecision: true },
     });
-    expect(writesForClick({ role: 'necessary', window: 'settings', toggles: null, notice: 'account', gpc: false }).ads).toEqual(
+    expect(writesForClick({ stored: null, role: 'necessary', window: 'settings', toggles: null, notice: 'account', gpc: false }).ads).toEqual(
       { value: false, source: 'settings', noticeShown: 'account', gpcAtDecision: false },
     );
   });
 
   it('saves the switches as set, marking ads switched on under a notice as an override', () => {
     expect(
-      writesForClick({ role: 'save', window: 'settings', toggles: { analytics: false, ads: true }, notice: 'account', gpc: true }),
+      writesForClick({ stored: null, role: 'save', window: 'settings', toggles: { analytics: false, ads: true }, notice: 'account', gpc: true }),
     ).toEqual({
       analytics: { value: false, source: 'settings' },
       ads: { value: true, source: 'settings', noticeShown: 'account', gpcAtDecision: true },
     });
     expect(
-      writesForClick({ role: 'save', window: 'settings', toggles: { analytics: true, ads: true }, notice: false, gpc: false }).ads,
+      writesForClick({ stored: null, role: 'save', window: 'settings', toggles: { analytics: true, ads: true }, notice: false, gpc: false }).ads,
     ).toEqual({ value: true, source: 'settings', noticeShown: false, gpcAtDecision: false });
+  });
+});
+
+describe('writesForClick with an override in force', () => {
+  const override = ads({ source: 'settings', noticeShown: 'gpc', gpcAtDecision: true });
+
+  it('keeps an override when "accept all" leaves ads on', () => {
+    expect(writesForClick({ stored: override, role: 'all', window: 'settings', toggles: null, notice: false, gpc: true })).toEqual({
+      analytics: { value: true, source: 'settings' },
+    });
+  });
+
+  it('keeps an override when a save leaves the ads switch on', () => {
+    const toggles = { analytics: false, ads: true };
+    expect(writesForClick({ stored: override, role: 'save', window: 'settings', toggles, notice: false, gpc: true })).toEqual({
+      analytics: { value: false, source: 'settings' },
+    });
+  });
+
+  it('writes a plain consent over a plain consent, and a refusal over an override', () => {
+    expect(writesForClick({ stored: ads(), role: 'all', window: 'banner', toggles: null, notice: false, gpc: false }).ads).toEqual({
+      value: true,
+      source: 'banner',
+      noticeShown: false,
+      gpcAtDecision: false,
+    });
+    expect(writesForClick({ stored: override, role: 'necessary', window: 'settings', toggles: null, notice: false, gpc: true }).ads)
+      .toMatchObject({ value: false });
   });
 });
 

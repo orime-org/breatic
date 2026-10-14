@@ -9,6 +9,7 @@
  */
 
 import {
+  adsConsentOverridesOptOut,
   browserSuppressesOwnGpc,
   httpRequest,
   type AdsOutcome,
@@ -67,6 +68,7 @@ export function decideOnLoad(input: { stored: BrowserChoices; optIn: boolean; gp
 /**
  * What a press in the banner or the settings window writes (design §4.4.4).
  * @param input - The press.
+ * @param input.stored - This browser's ads choice before the press; an override in force stays when ads stay on.
  * @param input.role - `all` (accept all), `necessary` (reject all) or `save`.
  * @param input.window - Where it was pressed.
  * @param input.toggles - The settings switches, for `save`.
@@ -75,13 +77,16 @@ export function decideOnLoad(input: { stored: BrowserChoices; optIn: boolean; gp
  * @returns The categories to write.
  */
 export function writesForClick(input: {
+  stored: BrowserAds | null;
   role: 'all' | 'necessary' | 'save';
   window: 'banner' | 'settings';
   toggles: { analytics: boolean; ads: boolean } | null;
   notice: NoticeShown;
   gpc: boolean;
 }): ConsentWrites {
-  const { role, window, toggles, notice, gpc } = input;
+  const { stored, role, window, toggles, notice, gpc } = input;
+  // With no notice showing, an override still in force needs no rewrite to keep ads on.
+  const keepOverride = notice === false && stored !== null && adsConsentOverridesOptOut(stored);
   const source = window;
   // Only the settings window shows the notice, and only there does switching ads on override an opt-out.
   const shown: NoticeShown = window === 'settings' ? notice : false;
@@ -89,9 +94,11 @@ export function writesForClick(input: {
     const analytics = { value: true, source };
     if (notice === 'account') return { analytics };
     if (notice === 'gpc') return { analytics, ads: { value: false, source: 'gpc', noticeShown: false, gpcAtDecision: true } };
+    if (keepOverride) return { analytics };
     return { analytics, ads: { value: true, source, noticeShown: false, gpcAtDecision: gpc } };
   }
   const on = role === 'save' && toggles !== null ? toggles : { analytics: false, ads: false };
+  if (on.ads && keepOverride) return { analytics: { value: on.analytics, source } };
   return {
     analytics: { value: on.analytics, source },
     ads: { value: on.ads, source, noticeShown: shown, gpcAtDecision: gpc },

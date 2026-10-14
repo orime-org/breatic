@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type * as AnalyticsModule from '@web/lib/analytics';
 
 const runtime = vi.hoisted(() => ({
   listener: null as null | ((choice: { analytics: boolean; ads: boolean }) => void),
@@ -66,7 +67,7 @@ function choices(value: boolean, source = 'banner'): Record<string, unknown> {
  * A fresh entry module with the runtime loaded.
  * @returns The module.
  */
-async function load(): Promise<typeof import('@web/lib/analytics')> {
+async function load(): Promise<typeof AnalyticsModule> {
   vi.resetModules();
   const analytics = await import('@web/lib/analytics');
   analytics.startProductAnalytics();

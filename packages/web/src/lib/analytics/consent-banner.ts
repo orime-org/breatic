@@ -98,14 +98,19 @@ export function readBrowserChoices(): BrowserChoices {
 /**
  * The one write path for this browser's choice (design §4.4.4 `setConsent()`):
  * each category written gets a new id and the same time; a category left out
- * keeps what the cookie holds.
+ * keeps the choice in force before the press. The library has already saved
+ * its own reading of a press by the time it calls back, so the categories
+ * come from that earlier choice.
  * @param writes - The categories to write.
+ * @param prior - The choices in force before this write.
  */
-function writeConsent(writes: ConsentWrites): void {
-  const cookie = CookieConsent.getCookie();
-  const stored = (cookie.data ?? {}) as Record<string, unknown>;
-  const data: Record<string, unknown> = { analytics: stored.analytics, ads: stored.ads };
-  const accepted = new Set((cookie.categories ?? []).filter((c) => c === 'analytics' || c === 'ads'));
+function writeConsent(writes: ConsentWrites, prior: BrowserChoices | null): void {
+  const stored = (CookieConsent.getCookie().data ?? {}) as Record<string, unknown>;
+  const data: Record<string, unknown> = {
+    analytics: prior?.analytics ? stored.analytics : undefined,
+    ads: prior?.ads ? stored.ads : undefined,
+  };
+  const accepted = new Set((['analytics', 'ads'] as const).filter((c) => prior?.[c]?.value === true));
   const decidedAt = new Date().toISOString();
   for (const category of ['analytics', 'ads'] as const) {
     const write = writes[category];
@@ -128,18 +133,23 @@ function writeConsent(writes: ConsentWrites): void {
 /** A choice the visitor made in the banner or the settings window. */
 function onVisitorChoice(): void {
   if (openedModal === null) return;
+  // Cleared before writing: the write's own save calls the library back, and that is not another press.
+  const modal = openedModal;
+  const role = pressed ?? 'save';
+  openedModal = null;
+  pressed = null;
   const accepted = CookieConsent.getUserPreferences().acceptedCategories;
   writeConsent(
     writesForClick({
-      role: pressed ?? 'save',
-      window: openedModal === 'preferencesModal' ? 'settings' : 'banner',
+      stored: lastSeen?.ads ?? null,
+      role,
+      window: modal === 'preferencesModal' ? 'settings' : 'banner',
       toggles: { analytics: accepted.includes('analytics'), ads: accepted.includes('ads') },
       notice: adsView.notice,
       gpc: sendsGpc(),
     }),
+    lastSeen,
   );
-  openedModal = null;
-  pressed = null;
   undecided = false;
   lastSeen = readBrowserChoices();
   onChoice(lastSeen);
@@ -373,7 +383,7 @@ async function boot(options: BannerOptions): Promise<void> {
     ...(decision.analytics ? { analytics: decision.analytics } : {}),
     ...(decision.ads ? { ads: decision.ads } : {}),
   };
-  if (writes.analytics || writes.ads) writeConsent(writes);
+  if (writes.analytics || writes.ads) writeConsent(writes, stored);
   undecided = decision.showBanner;
   running = true;
   placeBanner();

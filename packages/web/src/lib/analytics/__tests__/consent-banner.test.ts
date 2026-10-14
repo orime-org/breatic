@@ -413,10 +413,31 @@ describe('ads under an opt-out', () => {
     banner.setAdsView({ notice: 'account', adsOn: false });
     library.config?.onModalShow?.({ modalName: 'preferencesModal' });
     press('pm', 'all');
+    // The library has already saved its own reading of the press when it calls back.
+    library.cookie = { ...library.cookie, categories: ['necessary', 'analytics', 'ads'] };
     library.config?.onChange?.();
     expect(written().ads).toMatchObject({ decisionId: '22222222-2222-4222-8222-222222222222' });
     expect(written().analytics).toMatchObject({ source: 'settings' });
     expect(library.acceptCategory).toHaveBeenLastCalledWith(['analytics'], ['ads']);
+  });
+
+  it('writes one decision per press, though its own write calls the library back', async () => {
+    const banner = await startBanner('DE');
+    banner.setAdsView({ notice: 'gpc', adsOn: false });
+    library.config?.onModalShow?.({ modalName: 'consentModal' });
+    press('cm', 'all');
+    // As the real library does: saving changed categories calls onChange at once.
+    library.acceptCategory.mockImplementation((accept: string[]) => {
+      const next = ['necessary', ...accept];
+      const changed = next.join() !== library.cookie.categories.join();
+      library.consent = true;
+      library.cookie = { ...library.cookie, categories: next };
+      if (changed) library.config?.onChange?.();
+    });
+    library.consent = true;
+    library.cookie = { ...library.cookie, categories: ['necessary', 'analytics', 'ads'] };
+    library.config?.onFirstConsent?.();
+    expect(library.setCookieData).toHaveBeenCalledTimes(1);
   });
 
   it('writes a GPC refusal for ads when "accept all" is pressed in a browser sending GPC', async () => {

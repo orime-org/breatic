@@ -78,7 +78,8 @@ export function parseConsentChoices(raw: string | undefined, now: number): Brows
 function readEntry(entry: unknown, value: boolean, revision: number): BrowserAnalytics | null {
   if (!isRecord(entry) || typeof entry.decidedAt !== "string" || Number.isNaN(Date.parse(entry.decidedAt))) return null;
   const source = CONSENT_SOURCES.find((s) => s === entry.source);
-  if (source === undefined) return null;
+  // A GPC entry is only ever a refusal.
+  if (source === undefined || (source === "gpc" && value)) return null;
   const id = typeof entry.decisionId === "string" && UUID.test(entry.decisionId) ? { decisionId: entry.decisionId } : {};
   return { ...id, value, source, decidedAt: entry.decidedAt, revision };
 }
