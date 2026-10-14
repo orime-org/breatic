@@ -17,7 +17,8 @@
  */
 import { randomUUID } from 'node:crypto';
 
-import { test, expect, type Locator, type Page } from 'playwright/test';
+import { expect, type Locator, type Page } from 'playwright/test';
+import { test } from '../helpers/slot';
 
 import { openSmokeProject, smokeProjectId } from '../helpers/project';
 import { openTool, seedNode, zoomBy } from '../helpers/mini-tool';
@@ -132,6 +133,45 @@ async function pixelAlpha(url: string, x: number, y: number): Promise<number> {
 }
 
 /**
+ * One pixel of a stored picture, as red, green, blue and alpha.
+ * @param url - The picture.
+ * @param x - Across, in its pixels.
+ * @param y - Down, in its pixels.
+ * @returns The four channels.
+ */
+async function pixelAt(url: string, x: number, y: number): Promise<number[]> {
+  const response = await page.request.get(url);
+  const dataUrl = `data:${response.headers()['content-type'] ?? 'image/png'};base64,${(await response.body()).toString('base64')}`;
+  return page.evaluate(
+    async ({ src, px, py }) => {
+      const img = new Image();
+      img.src = src;
+      await img.decode();
+      const canvas = document.createElement('canvas');
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      const context = canvas.getContext('2d');
+      if (context === null) throw new Error('no 2d context');
+      context.drawImage(img, 0, 0);
+      return [...context.getImageData(px, py, 1, 1).data];
+    },
+    { src: dataUrl, px: x, py: y },
+  );
+}
+
+/**
+ * The centre pixel of the adjust's preview canvas.
+ * @param layer - The preview layer.
+ * @returns Its red, green, blue and alpha.
+ */
+async function previewCentre(layer: Locator): Promise<number[]> {
+  return layer.evaluate((el) => {
+    const canvas = el as HTMLCanvasElement;
+    return [...(canvas.getContext('2d')?.getImageData(canvas.width >> 1, canvas.height >> 1, 1, 1).data ?? [])];
+  });
+}
+
+/**
  * Wait for every result to hold a stored picture and give their addresses.
  * @param count - How many results.
  * @returns Their picture addresses.
@@ -179,6 +219,18 @@ test('the picture adjust previews on the node, resets, and Run fills a picture o
   await expect(page.getByTestId('mini-tool-adjust-exposure-value')).toHaveText('0');
   await expect(run).toBeDisabled();
 
+  // A2: the picture follows the thumb while it is held, not on release.
+  await expect.poll(() => previewCentre(layer).then((rgba) => rgba[3])).toBe(255);
+  const before = await previewCentre(layer);
+  const thumb = await page.getByTestId('mini-tool-adjust-exposure-slider').getByRole('slider').boundingBox();
+  if (thumb === null) throw new Error('no exposure thumb');
+  await page.mouse.move(thumb.x + thumb.width / 2, thumb.y + thumb.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(thumb.x + thumb.width / 2 + 60, thumb.y + thumb.height / 2, { steps: 6 });
+  await expect.poll(() => previewCentre(layer)).not.toEqual(before);
+  await page.mouse.up();
+  await page.getByTestId('mini-tool-adjust-reset').click();
+
   await stepSlider('mini-tool-adjust-contrast-slider', 'ArrowRight', 30);
   // The preview draws the picture: its middle is not empty, and nothing threw.
   await expect
@@ -203,6 +255,7 @@ test('markup draws, goes back to select, keeps Escape for itself, and Run fills 
   const run = page.getByTestId('mini-tool-run');
   await expect(run).toBeDisabled();
   await expect(page.getByTestId('mini-tool-mark-select')).toHaveAttribute('aria-pressed', 'true');
+  const placed = await nodeOf(imageNode).boundingBox();
 
   // A rectangle: one object, selected, and the tool back on select.
   await page.getByTestId('mini-tool-mark-rect').click();
@@ -210,6 +263,14 @@ test('markup draws, goes back to select, keeps Escape for itself, and Run fills 
   await expect(layer).toHaveAttribute('data-objects', '1');
   await expect(page.getByTestId('mini-tool-mark-select')).toHaveAttribute('aria-pressed', 'true');
   await expect(run).toBeEnabled();
+
+  // A4: `]` and `[` step the size of the selected object.
+  const size = page.getByTestId('mini-tool-mark-size-value');
+  const sizeBefore = Number(await size.textContent());
+  await page.keyboard.press(']');
+  await expect(size).toHaveText(String(sizeBefore + 1));
+  await page.keyboard.press('[');
+  await expect(size).toHaveText(String(sizeBefore));
 
   // Delete takes the selected object, not the node.
   await page.keyboard.press('Delete');
@@ -229,6 +290,7 @@ test('markup draws, goes back to select, keeps Escape for itself, and Run fills 
   await expect(run).toBeVisible();
 
   // The node did not move under the drags.
+  expect(await nodeOf(imageNode).boundingBox()).toEqual(placed);
   await run.click();
   const [marked] = await storedResults(1);
   await expect(results()).toContainText('MARK-');
@@ -239,6 +301,11 @@ test('markup draws, goes back to select, keeps Escape for itself, and Run fills 
   await expect
     .poll(() => pixelAlpha(original, 390, 290).catch(() => -1), { timeout: 30_000 })
     .toBe(255);
+  // The rectangle is drawn into it: its left edge at a fifth of the width, a
+  // third of the way down, differs from the source there.
+  const drawn = await pixelAt(original, 80, 105);
+  const plain = await pixelAt(image, 80, 105);
+  expect(Math.max(...drawn.slice(0, 3).map((value, i) => Math.abs(value - plain[i]!)))).toBeGreaterThan(40);
 });
 
 test('a 2×2 grid cuts four tiles of the source into a group @needs-internet', async () => {
@@ -256,6 +323,11 @@ test('a 2×2 grid cuts four tiles of the source into a group @needs-internet', a
   await expect(group).toHaveCount(1);
   await expect(group.getByTestId('group-name')).toContainText('GRID-');
   await expect(results()).toContainText(['GRID-r1c1-', 'GRID-r1c2-', 'GRID-r2c1-', 'GRID-r2c2-']);
+  // A7: the group is selected after the run, and one undo takes it all back.
+  await expect(visibleSpace(page).locator('.react-flow__node.selected').getByTestId('group-node')).toHaveCount(1);
+  await page.keyboard.press('ControlOrMeta+z');
+  await expect(group).toHaveCount(0);
+  await expect(results()).toHaveCount(0);
 });
 
 // A13: the group and its tiles are on the canvas at the press, and the

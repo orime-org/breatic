@@ -25,6 +25,7 @@ import { test } from '../helpers/slot';
 
 import { smokeProjectId } from '../helpers/project';
 import { CANVAS_SPACE, liveModuleUrl } from '../helpers/live-module';
+import { openTool, seedNode, zoomBy } from '../helpers/mini-tool';
 import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
 
 /** The marks store, as the page loaded it. */
@@ -186,4 +187,37 @@ test('the line goes when the starting tab leaves', async () => {
 
   await starter.close();
   await expect(line).toHaveCount(0, { timeout: PEER_TIMEOUT_MS });
+});
+
+// A14 through a real tool run: the press's operation runs on through its
+// upload, so the other tab reads the tool, not an upload, until the tickets
+// come back. The tickets are held so the wait is long enough to read.
+test('the other tab names the tool a real grid run is waiting on @needs-internet', async () => {
+  const source = crypto.randomUUID();
+  await seedNode(starter, { projectId, spaceId }, source, 'image', 600, {
+    content: `https://picsum.photos/seed/${crypto.randomUUID()}/400/300.jpg`,
+    mimeType: 'image/jpeg',
+    size: 40_000,
+  });
+  const shown = visibleSpace(starter).locator(`.react-flow__node[data-id="${source}"]`).getByTestId('image-node-img');
+  await expect(shown).toBeVisible({ timeout: 20_000 });
+  let release: () => void = () => undefined;
+  const held = new Promise<void>((resolve) => (release = resolve));
+  await starter.route('**/assets/upload-ticket*', async (route) => {
+    await held;
+    await route.continue();
+  });
+  await openTool(starter, source, 'image.grid');
+  await starter.getByTestId('mini-tool-run').click();
+
+  // The canvas draws only the nodes in view; zoom the other tab out until the
+  // whole group is.
+  await expect(visibleSpace(viewer).getByTestId('group-node')).toHaveCount(1, { timeout: SETTLE_MS * 2 });
+  for (let i = 0; i < 3; i += 1) await zoomBy(viewer, 600);
+  const lines = visibleSpace(viewer).getByTestId('node-peer-activity');
+  await expect(lines).toHaveCount(9, { timeout: SETTLE_MS * 2 });
+  await expect(lines.first()).toHaveText(/Grid split|宫格切图|宮格切圖|グリッド分割|격자 분할/);
+  release();
+  await starter.unroute('**/assets/upload-ticket*');
+  await expect(lines).toHaveCount(0, { timeout: 30_000 });
 });
