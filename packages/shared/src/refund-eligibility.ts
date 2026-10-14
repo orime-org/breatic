@@ -67,9 +67,9 @@ export interface RefundCandidate {
    */
   everSpent: boolean;
   /**
-   * Whether credits were restored to it after a refund failed. The buyer took
-   * the credits instead of the money, and Stripe accepts no further refund on
-   * that card, so the pack is never asked about again.
+   * Whether credits were restored to it after its refund did not go through.
+   * The buyer took the credits instead of the money, so the pack is never
+   * asked about again.
    */
   everRestored: boolean;
   /** How many earlier asks were refused. */

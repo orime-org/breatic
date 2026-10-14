@@ -244,7 +244,7 @@
       "operation_in_progress": "這筆點數包還有一個退款處置在進行中。",
       "request_in_progress": "使用這個 Idempotency-Key 的請求還在執行。",
       "stripe_blocks": "Stripe 上這筆付款的現狀或這筆點數包的退款處置紀錄不允許這個操作，原因見 reason。",
-      "mail_not_resendable": "只有以已退款、已駁回或點數已恢復做完的處置才有可重寄的買家郵件。",
+      "mail_not_resendable": "只有以已退款、已駁回或點數已恢復完成的處置才有可重寄的買家郵件。",
       "idempotency_key_reused": "這個 Idempotency-Key 已經用於另一個不同的請求。",
       "invalid_body": "請求內容或路徑不符合這個端點的要求。",
       "invalid_idempotency_key": "Idempotency-Key 標頭缺少或格式不對。",
@@ -257,7 +257,7 @@
       },
       "rejected": {
         "subject": "退款申請未通過",
-        "intro": "這筆購買的退款申請沒有通過。這筆點數已恢復為可用，可以繼續指定給 Studio 使用。"
+        "intro": "這筆購買的退款申請沒有通過。這筆點數已回到可用狀態，可以繼續指定給 Studio 使用。"
       },
       "restored": {
         "subject": "點數已恢復",

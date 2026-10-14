@@ -272,8 +272,11 @@ export function assessOneShot(input: OneShotInput): OneShotResult {
 }
 
 /**
- * Restoring credits (§5.3): only after a refund failed, and only while no
- * money reached the buyer by Stripe, by a payment outside, or by a dispute.
+ * Restoring credits (§5.3): only once a refund is left unanswered (an
+ * unresolved failed refund on a `refunded` or `refund_pending` lot, or an open
+ * needs_attention as the latest disposition on a `refunding` lot), and only
+ * while no money reached the buyer by Stripe, by a payment outside, or by a
+ * dispute.
  * @param input - The facts and the request.
  * @returns `proceed`, or why not.
  */

@@ -401,7 +401,7 @@ describe('BellMenu — a credit refund outcome is one sentence and mark-read (in
     expect(screen.getByText(glyph)).toBeInTheDocument();
     expect(screen.queryByText(initials)).toBeNull();
     // inner#1410 v9: a lone symbol at 12px reads as a speck, so it sits at
-    // 16px (text-base); two-letter initials stay at text-xs.
+    // 15px (text-base); two-letter initials stay at text-xs (12px).
     const fallback = screen.getByText(glyph);
     expect(fallback).toHaveClass('text-base');
     expect(fallback).not.toHaveClass('text-xs');

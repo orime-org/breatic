@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * The two Stripe calls of the refund disposition (inner#1410 §5.2), and how
- * their answers become the shapes the rules read.
+ * The three Stripe calls of the refund disposition: `refunds.list` and
+ * `refunds.create` (inner#1410 §5.2), and `paymentIntents.retrieve` for the
+ * charge's `disputed` (§5.3); and how their answers become the shapes the
+ * rules read.
  */
 
 import Stripe from "stripe";
