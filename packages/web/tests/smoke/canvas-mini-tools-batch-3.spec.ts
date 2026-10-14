@@ -489,13 +489,14 @@ test('an 8×8 grid uploads all sixty-four tiles @needs-internet', async () => {
 test('the expand grows past the picture and runs the model to a larger picture @needs-internet @needs-model', async () => {
   test.setTimeout(300_000);
   await openTool(page, imageNode, 'image.expand');
-  const frame = nodeOf(imageNode).getByTestId('mini-tool-expand-frame');
+  // The frame is drawn in the canvas's viewport, outside the node (§6.3).
+  const frame = visibleSpace(page).getByTestId('mini-tool-expand-frame');
   await expect(frame).toBeVisible({ timeout: 15_000 });
   const run = page.getByTestId('mini-tool-run');
   await expect(run).toBeDisabled();
 
   // Pull the right edge out by half the picture's width.
-  const handle = nodeOf(imageNode).getByTestId('mini-tool-expand-handle-e');
+  const handle = frame.getByTestId('mini-tool-expand-handle-e');
   const grip = await handle.boundingBox();
   const shown = await frame.boundingBox();
   if (grip === null || shown === null) throw new Error('no handle or frame');
