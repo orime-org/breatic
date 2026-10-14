@@ -410,10 +410,10 @@ describe('headings deeper than the body has (review round 4)', () => {
   it('land at the deepest level the body shows, keeping the levels above them', async () => {
     const handle = await open('One.');
 
-    await landProposal(handle, proposalOn(handle, 0, { body: '### Scene\n\n#### Shot 1\n\n###### Note' }), 'write', true);
+    await landProposal(handle, proposalOn(handle, 0, { body: '# Act\n\n## Scene\n\n#### Shot 1\n\n###### Note' }), 'write', true);
 
     const headings = (handle.editor.document as Array<{ type: string; props: { level?: number } }>).filter((b) => b.type === 'heading');
-    expect(headings.map((b) => b.props.level)).toEqual([3, 3, 3]);
+    expect(headings.map((b) => b.props.level)).toEqual([1, 2, 3, 3]);
   });
 
   it('are held to the levels of the body inside nested blocks too', async () => {
