@@ -22,7 +22,11 @@ import { createRedisClient, initCore, type Redis } from "@breatic/core";
 import { CANVAS_NODES_KEY, type NodeTaskCountsEvent } from "@breatic/shared";
 import { bodyToPlainText } from "@breatic/shared/canvas/text-body";
 import * as yjsRepo from "@collab/services/yjs-documents.repo.js";
-import { createPersistenceExtension, storeDocumentNow } from "@collab/services/persistence.js";
+import {
+  createPersistenceExtension,
+  staysLoaded,
+  storeDocumentNow,
+} from "@collab/services/persistence.js";
 import { createUnloadGate } from "@collab/hooks/unload-gate.js";
 import { createChangeTrackingExtension } from "@collab/services/change-tracking.js";
 import type { GroupConsumer } from "@collab/services/stream-group-consumer.js";
@@ -89,6 +93,7 @@ async function startInstance(name: string): Promise<Hocuspocus> {
   storeGate.current = createUnloadGate({
     instanceId: name,
     encode: (document: Y.Doc): Uint8Array => Y.encodeStateAsUpdate(document),
+    staysLoaded: (docName) => staysLoaded(server.hocuspocus, docName),
     storeNow: ({ name: docName }) => storeDocumentNow(server.hocuspocus, docName),
     writeRescue: async ({ documentName }) => {
       rescues.push(documentName);
