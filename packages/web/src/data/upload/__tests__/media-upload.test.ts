@@ -348,6 +348,19 @@ describe('runMediaUpload — ask for a ticket, send the bytes, hand back the out
     expect(deps.onFailure).toHaveBeenCalledExactlyOnceWith({ reason: 'storage' });
   });
 
+  // The server refuses a file over the cap when the browser could not check
+  // it first (the upload config was not read yet); sending it again changes
+  // nothing (inner#1351 design §5.3).
+  it('names a file the server refused as over the cap as too large', async () => {
+    const deps = makeUploadDeps({
+      requestTicket: vi.fn().mockRejectedValue(apiError(413)),
+    });
+
+    await runMediaUpload(file, context, deps);
+
+    expect(deps.onFailure).toHaveBeenCalledExactlyOnceWith({ reason: 'tooLarge' });
+  });
+
   it('names a rate limit at once, asking for the ticket only one time', async () => {
     const requestTicket = vi.fn().mockRejectedValue(apiError(429));
     const deps = makeUploadDeps({ requestTicket });

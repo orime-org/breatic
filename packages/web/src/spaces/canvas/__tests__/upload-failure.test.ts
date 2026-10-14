@@ -152,5 +152,11 @@ describe('which failures a retry can change (shared with the document body, inne
     expect(uploadFailureMessageKey('upload')).toBe('canvas.upload.failed');
     expect(uploadFailureMessageKey('transfer')).toBe('canvas.upload.failed');
     expect(uploadFailureMessageKey('rateLimited')).toBe('canvas.upload.rateLimited');
+    expect(uploadFailureMessageKey('tooLarge')).toBe('canvas.upload.tooLarge');
+  });
+
+  it('knows a file the server refused as over the cap, and a retry cannot change it (inner#1351 §5.3)', () => {
+    expect(UPLOAD_FAILURE_REASONS).toContain('tooLarge');
+    expect(uploadRetryCanChange('tooLarge')).toBe(false);
   });
 });
