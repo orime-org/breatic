@@ -132,3 +132,10 @@
     border-radius: var(--radius-content-md) var(--radius-content-md) 0 0;
   }
 }
+
+/* The opt-out notice under the banner text and above the ads switch (inner#1442 §4.4.4). */
+#cc-main .breatic-consent-notice {
+  margin: 0.5rem 0 0;
+  color: var(--cc-primary-color);
+  font-weight: 500;
+}

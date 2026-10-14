@@ -4,9 +4,30 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type * as BannerModule from '@web/lib/analytics/consent-banner';
 
+/**
+ * A stored cookie as the library holds it, each category's latest choice in its data.
+ * @param categories - The accepted categories.
+ * @param source - Where both choices came from.
+ * @param decidedAt - When.
+ * @param revision - The policy revision it was written under.
+ * @returns The cookie.
+ */
+function cookieOf(categories: string[], source = 'banner', decidedAt = '2026-10-12T00:00:00.000Z', revision = 1) {
+  const entry = { decidedAt, source };
+  return {
+    categories,
+    revision,
+    data: {
+      analytics: { ...entry, decisionId: '11111111-1111-4111-8111-111111111111' } as Record<string, unknown>,
+      ads: { ...entry, decisionId: '22222222-2222-4222-8222-222222222222', noticeShown: false, gpcAtDecision: false } as Record<string, unknown>,
+    },
+    lastConsentTimestamp: '',
+  };
+}
+
 const library = vi.hoisted(() => ({
   consent: false,
-  cookie: { categories: ['necessary'], revision: 1, data: { source: 'banner', decidedAt: '2026-10-12T00:00:00.000Z' }, lastConsentTimestamp: '' },
+  cookie: null as unknown as ReturnType<typeof cookieOf>,
   config: null as null | Record<string, (arg?: unknown) => void>,
   run: vi.fn(async (config: Record<string, (arg?: unknown) => void>) => {
     library.config = config;
@@ -14,6 +35,7 @@ const library = vi.hoisted(() => ({
   reset: vi.fn(),
   validConsent: vi.fn((): boolean => library.consent),
   getCookie: vi.fn(() => (library.consent ? library.cookie : {})),
+  getUserPreferences: vi.fn(() => ({ acceptedCategories: library.consent ? library.cookie.categories : [] })),
   acceptCategory: vi.fn(),
   // The library rewrites the stored cookie's data.
   setCookieData: vi.fn(({ value }: { value: unknown }) => {
@@ -30,12 +52,13 @@ vi.mock('vanilla-cookieconsent/dist/cookieconsent.css', () => ({}));
 vi.mock('@web/lib/analytics/consent-banner.css', () => ({}));
 
 const TEXT = {
-  banner: { text: 't', privacy: 'p', acceptAll: 'a', rejectAll: 'r', settings: 's' },
+  banner: { text: 't', privacy: 'p', acceptAll: 'a', rejectAll: 'r', settings: 's', gpc: 'g' },
   settings: {
     title: 't',
     save: 's',
     close: 'c',
     note: 'n',
+    notice: { gpc: 'notice-gpc', account: 'notice-account' },
     necessary: { title: 't', description: 'd' },
     analytics: { title: 't', description: 'd' },
     ads: { title: 't', description: 'd' },
@@ -89,7 +112,7 @@ afterEach(() => {
 beforeEach(() => {
   vi.clearAllMocks();
   library.consent = false;
-  library.cookie = { categories: ['necessary'], revision: 1, data: { source: 'banner', decidedAt: '2026-10-12T00:00:00.000Z' }, lastConsentTimestamp: '' };
+  library.cookie = cookieOf(['necessary']);
 });
 
 describe('consent banner placement', () => {
@@ -130,12 +153,14 @@ describe('consent banner placement', () => {
 describe('a choice changed in another tab', () => {
   it('is applied when this tab is shown again', async () => {
     library.consent = true;
-    library.cookie = { ...library.cookie, categories: ['necessary', 'analytics', 'ads'] };
+    library.cookie = cookieOf(['necessary', 'analytics', 'ads']);
     const seen: unknown[] = [];
     await startBanner('DE', (choice) => seen.push(choice));
-    library.cookie = { ...library.cookie, categories: ['necessary'], data: { source: 'settings', decidedAt: '2026-10-13T00:00:00.000Z' } };
+    library.cookie = cookieOf(['necessary'], 'settings', '2026-10-13T00:00:00.000Z');
     document.dispatchEvent(new Event('visibilitychange'));
-    await vi.waitFor(() => expect(seen.at(-1)).toMatchObject({ analytics: false, ads: false, source: 'settings' }));
+    await vi.waitFor(() =>
+      expect(seen.at(-1)).toMatchObject({ analytics: { value: false, source: 'settings' }, ads: { value: false } }),
+    );
   });
 
   it('changes nothing when the stored choice is the same', async () => {
@@ -149,7 +174,7 @@ describe('a choice changed in another tab', () => {
   it('restarts the banner library on the stored choice, so its settings window and its next save start from it', async () => {
     library.consent = true;
     await startBanner('DE');
-    library.cookie = { ...library.cookie, categories: ['necessary', 'analytics', 'ads'], data: { source: 'banner', decidedAt: '2026-10-13T00:00:00.000Z' } };
+    library.cookie = cookieOf(['necessary', 'analytics', 'ads'], 'banner', '2026-10-13T00:00:00.000Z');
     document.dispatchEvent(new Event('visibilitychange'));
     await vi.waitFor(() => expect(library.reset).toHaveBeenCalledWith(false));
     // Restarted after the reset, so the library's own copy of the choice is the cookie's.
@@ -186,13 +211,15 @@ describe('what counts as the visitor choosing', () => {
     // The library reports a choice saved in the window before it hides the window.
     library.config?.onFirstConsent?.();
     library.config?.onModalHide?.({ modalName: 'preferencesModal' });
-    expect(library.setCookieData).toHaveBeenCalledWith(expect.objectContaining({ value: expect.objectContaining({ source: 'settings' }) }));
+    expect(library.setCookieData).toHaveBeenCalledWith(
+      expect.objectContaining({ value: expect.objectContaining({ analytics: expect.objectContaining({ source: 'settings' }) }) }),
+    );
     expect(seen).toHaveLength(2);
   });
 
   it('files a save in the settings window that confirms the stored choice as the visitor\'s', async () => {
     library.consent = true;
-    library.cookie = { ...library.cookie, categories: ['necessary', 'analytics', 'ads'], data: { source: 'implicit', decidedAt: '2026-10-12T00:00:00.000Z' } };
+    library.cookie = cookieOf(['necessary', 'analytics', 'ads'], 'implicit', '2026-10-12T00:00:00.000Z');
     const seen: unknown[] = [];
     await startBanner('US', (choice) => seen.push(choice));
     library.config?.onModalShow?.({ modalName: 'preferencesModal' });
@@ -206,11 +233,18 @@ describe('what counts as the visitor choosing', () => {
     }
     expect(seen).toHaveLength(2);
     // The save is the latest decision, made now: the cookie records it, so a report from a later page carries it too.
-    const stamped = library.setCookieData.mock.calls.at(-1)?.[0] as { value: { source: string; decidedAt: string } };
-    expect(stamped.value.source).toBe('settings');
-    expect(Date.parse(stamped.value.decidedAt)).toBeGreaterThan(Date.parse('2026-10-12T00:00:00.000Z'));
-    expect((seen.at(-1) as { decidedAt: string }).decidedAt).toBe(stamped.value.decidedAt);
-    expect(seen.at(-1)).toMatchObject({ source: 'settings', analytics: true, ads: true });
+    const stamped = library.setCookieData.mock.calls.at(-1)?.[0] as {
+      value: { analytics: { source: string; decidedAt: string; decisionId: string }; ads: { decidedAt: string } };
+    };
+    expect(stamped.value.analytics.source).toBe('settings');
+    expect(Date.parse(stamped.value.analytics.decidedAt)).toBeGreaterThan(Date.parse('2026-10-12T00:00:00.000Z'));
+    // One press: both categories get a new id and the same time.
+    expect(stamped.value.ads.decidedAt).toBe(stamped.value.analytics.decidedAt);
+    expect(stamped.value.analytics.decisionId).not.toBe('11111111-1111-4111-8111-111111111111');
+    expect(seen.at(-1)).toMatchObject({
+      analytics: { value: true, source: 'settings', decidedAt: stamped.value.analytics.decidedAt },
+      ads: { value: true, source: 'settings' },
+    });
   });
 
   it('does not carry a press from a window that never hid into the next one', async () => {
@@ -245,7 +279,9 @@ describe('what counts as the visitor choosing', () => {
     library.acceptCategory.mockImplementationOnce(() => library.config?.onFirstConsent?.());
     document.dispatchEvent(new Event('visibilitychange'));
     await vi.waitFor(() => expect(library.acceptCategory).toHaveBeenCalled());
-    expect(library.setCookieData).not.toHaveBeenCalledWith(expect.objectContaining({ value: expect.objectContaining({ source: 'settings' }) }));
+    expect(library.setCookieData).not.toHaveBeenCalledWith(
+      expect.objectContaining({ value: expect.objectContaining({ analytics: expect.objectContaining({ source: 'settings' }) }) }),
+    );
   });
 });
 
@@ -269,7 +305,7 @@ describe('robustness', () => {
   it('picks up a choice made in another window when this one gets focus', async () => {
     library.consent = true;
     await startBanner('DE');
-    library.cookie = { ...library.cookie, categories: ['necessary', 'analytics'], data: { source: 'settings', decidedAt: '2026-10-14T00:00:00.000Z' } };
+    library.cookie = cookieOf(['necessary', 'analytics'], 'settings', '2026-10-14T00:00:00.000Z');
     window.dispatchEvent(new Event('focus'));
     await vi.waitFor(() => expect(library.reset).toHaveBeenCalledWith(false));
   });
@@ -281,7 +317,9 @@ describe('robustness', () => {
     library.config?.onModalShow?.({ modalName: 'preferencesModal' });
     library.config?.onModalHide?.({ modalName: 'preferencesModal' });
     library.config?.onFirstConsent?.();
-    expect(library.setCookieData).toHaveBeenCalledWith(expect.objectContaining({ value: expect.objectContaining({ source: 'banner' }) }));
+    expect(library.setCookieData).toHaveBeenCalledWith(
+      expect.objectContaining({ value: expect.objectContaining({ analytics: expect.objectContaining({ source: 'banner' }) }) }),
+    );
   });
 
   it('does not restart on every focus when the browser refuses the cookie', async () => {
@@ -315,7 +353,7 @@ describe('the country lookup', () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
     // Another tab decides while the lookup is still out.
     library.consent = true;
-    library.cookie = { ...library.cookie, categories: ['necessary'], data: { source: 'banner', decidedAt: '2026-10-14T00:00:00.000Z' } };
+    library.cookie = cookieOf(['necessary'], 'banner', '2026-10-14T00:00:00.000Z');
     document.dispatchEvent(new Event('visibilitychange'));
     answer('US');
     await started;
@@ -323,14 +361,14 @@ describe('the country lookup', () => {
     // The library started on an empty cookie; it starts again on the stored choice, so its settings window shows it.
     expect(library.reset).toHaveBeenCalledWith(false);
     expect(library.run.mock.invocationCallOrder.at(-1)).toBeGreaterThan(library.reset.mock.invocationCallOrder.at(-1) ?? Infinity);
-    expect(seen.at(-1)).toMatchObject({ analytics: false, ads: false, source: 'banner' });
+    expect(seen.at(-1)).toMatchObject({ analytics: { value: false, source: 'banner' }, ads: { value: false } });
   });
 });
 
 describe('a choice stored under a revision that is not a whole number', () => {
   it('counts as no choice, and the library runs on the current revision', async () => {
     library.consent = true;
-    library.cookie = { ...library.cookie, revision: 1.5, categories: ['necessary', 'analytics'] };
+    library.cookie = cookieOf(['necessary', 'analytics'], 'banner', '2026-10-12T00:00:00.000Z', 1.5);
     await startBanner('US');
     expect(library.run).toHaveBeenCalledWith(expect.objectContaining({ revision: 1 }));
   });
@@ -339,12 +377,100 @@ describe('a choice stored under a revision that is not a whole number', () => {
 describe('a choice stored under a newer policy revision', () => {
   it('stands in a tab still running the older code', async () => {
     library.consent = true;
-    library.cookie = { ...library.cookie, revision: 2, categories: ['necessary', 'analytics'] };
+    library.cookie = cookieOf(['necessary', 'analytics'], 'banner', '2026-10-12T00:00:00.000Z', 2);
     const seen: unknown[] = [];
     await startBanner('US', (choice) => seen.push(choice));
     expect(library.acceptCategory).not.toHaveBeenCalled();
-    expect(seen.at(-1)).toMatchObject({ analytics: true, ads: false });
+    expect(seen.at(-1)).toMatchObject({ analytics: { value: true }, ads: { value: false } });
     // The library runs on that revision too, so its settings window and its next save keep it.
     expect(library.run).toHaveBeenCalledWith(expect.objectContaining({ revision: 2 }));
+  });
+});
+
+describe('ads under an opt-out', () => {
+  /**
+   * Press a button in a window the library shows, as the visitor would.
+   * @param window - `cm` for the banner, `pm` for the settings window.
+   * @param role - The button.
+   */
+  function press(window: 'cm' | 'pm', role: string): void {
+    document.body.innerHTML = `<div id="cc-main"><div class="${window}"><button data-role="${role}"></button></div></div>`;
+    try {
+      document.querySelector<HTMLButtonElement>(`[data-role="${role}"]`)?.click();
+    } finally {
+      document.body.innerHTML = '';
+    }
+  }
+
+  /** The data the last write left. */
+  const written = (): { analytics: Record<string, unknown>; ads: Record<string, unknown> } =>
+    (library.setCookieData.mock.calls.at(-1)?.[0] as { value: { analytics: Record<string, unknown>; ads: Record<string, unknown> } }).value;
+
+  it('keeps the ads choice as it is when "accept all" is pressed while the account is opted out', async () => {
+    library.consent = true;
+    library.cookie = cookieOf(['necessary']);
+    const banner = await startBanner('US');
+    banner.setAdsView({ notice: 'account', adsOn: false });
+    library.config?.onModalShow?.({ modalName: 'preferencesModal' });
+    press('pm', 'all');
+    library.config?.onChange?.();
+    expect(written().ads).toMatchObject({ decisionId: '22222222-2222-4222-8222-222222222222' });
+    expect(written().analytics).toMatchObject({ source: 'settings' });
+    expect(library.acceptCategory).toHaveBeenLastCalledWith(['analytics'], ['ads']);
+  });
+
+  it('writes a GPC refusal for ads when "accept all" is pressed in a browser sending GPC', async () => {
+    const banner = await startBanner('DE');
+    banner.setAdsView({ notice: 'gpc', adsOn: false });
+    library.config?.onModalShow?.({ modalName: 'consentModal' });
+    press('cm', 'all');
+    library.config?.onFirstConsent?.();
+    expect(written().ads).toMatchObject({ source: 'gpc', gpcAtDecision: true, noticeShown: false });
+    expect(library.acceptCategory).toHaveBeenLastCalledWith(['analytics'], ['ads']);
+  });
+
+  it('starts the settings switch off and shows the notice while ads are stopped, and on once they run', async () => {
+    library.consent = true;
+    const banner = await startBanner('US');
+    document.body.innerHTML =
+      '<div id="cc-main"><div class="pm"><div class="pm__section"><input type="checkbox" value="ads" checked></div></div></div>';
+    try {
+      banner.setAdsView({ notice: 'account', adsOn: false });
+      library.config?.onModalShow?.({ modalName: 'preferencesModal' });
+      expect(document.querySelector<HTMLInputElement>('input[value="ads"]')?.checked).toBe(false);
+      expect(document.querySelector('.breatic-consent-notice')?.textContent).toBe('notice-account');
+      banner.setAdsView({ notice: false, adsOn: true });
+      library.config?.onModalShow?.({ modalName: 'preferencesModal' });
+      expect(document.querySelector<HTMLInputElement>('input[value="ads"]')?.checked).toBe(true);
+      expect(document.querySelector('.breatic-consent-notice')).toBeNull();
+    } finally {
+      document.body.innerHTML = '';
+    }
+  });
+
+  it('says on the banner when GPC keeps ads off', async () => {
+    const banner = await startBanner('DE');
+    document.body.innerHTML = '<div id="cc-main"><div class="cm"><div class="cm__desc"></div></div></div>';
+    try {
+      banner.setAdsView({ notice: 'gpc', adsOn: false });
+      library.config?.onModalShow?.({ modalName: 'consentModal' });
+      expect(document.querySelector('.cm__desc .breatic-consent-notice')?.textContent).toBe('g');
+    } finally {
+      document.body.innerHTML = '';
+    }
+  });
+
+  it('rewrites only the ads choice when GPC appears on a stored consent', async () => {
+    library.consent = true;
+    library.cookie = cookieOf(['necessary', 'analytics', 'ads']);
+    Object.defineProperty(navigator, 'globalPrivacyControl', { configurable: true, get: () => true });
+    try {
+      await startBanner('US');
+    } finally {
+      Object.defineProperty(navigator, 'globalPrivacyControl', { configurable: true, get: () => undefined });
+    }
+    expect(written().analytics).toMatchObject({ decisionId: '11111111-1111-4111-8111-111111111111' });
+    expect(written().ads).toMatchObject({ source: 'gpc', gpcAtDecision: true });
+    expect(library.acceptCategory).toHaveBeenLastCalledWith(['analytics'], ['ads']);
   });
 });

@@ -2,59 +2,160 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { describe, expect, it, vi } from 'vitest';
-import { countryFromTrace, decideOnLoad, fetchCountry } from '@web/lib/analytics/consent-decision';
+import { CONSENT_REVISION, type BrowserAds, type BrowserAnalytics, type BrowserChoices } from '@breatic/shared';
+import {
+  adsNotice,
+  countryFromTrace,
+  decideOnLoad,
+  fetchCountry,
+  reportBody,
+  writesForClick,
+} from '@web/lib/analytics/consent-decision';
 
 const NOW = '2026-10-12T01:00:00.000Z';
-const EARLIER = '2026-10-01T01:00:00.000Z';
+const ID_A = '11111111-1111-4111-8111-111111111111';
+const ID_B = '22222222-2222-4222-8222-222222222222';
+
+const analytics = (over: Partial<BrowserAnalytics> = {}): BrowserAnalytics => ({
+  decisionId: ID_A,
+  value: true,
+  source: 'banner',
+  decidedAt: NOW,
+  revision: CONSENT_REVISION,
+  ...over,
+});
+const ads = (over: Partial<BrowserAds> = {}): BrowserAds => ({
+  decisionId: ID_B,
+  value: true,
+  source: 'banner',
+  noticeShown: false,
+  gpcAtDecision: false,
+  decidedAt: NOW,
+  revision: CONSENT_REVISION,
+  ...over,
+});
+const NONE: BrowserChoices = { analytics: null, ads: null };
 
 describe('decideOnLoad', () => {
-  it('asks first in an opt-in region and loads nothing meanwhile', () => {
-    expect(decideOnLoad({ stored: null, optIn: true, gpc: false, now: NOW })).toEqual({
-      choice: null,
-      write: false,
-      showBanner: true,
-    });
+  it('asks first in an opt-in region and writes nothing meanwhile', () => {
+    expect(decideOnLoad({ stored: NONE, optIn: true, gpc: false })).toEqual({ analytics: null, ads: null, showBanner: true });
+    expect(decideOnLoad({ stored: NONE, optIn: true, gpc: true })).toEqual({ analytics: null, ads: null, showBanner: true });
   });
 
-  it('turns both on, implicitly, elsewhere', () => {
-    expect(decideOnLoad({ stored: null, optIn: false, gpc: false, now: NOW })).toEqual({
-      choice: { analytics: true, ads: true, source: 'implicit', decidedAt: NOW },
-      write: true,
+  it('turns both on, implicitly, elsewhere, and keeps ads off for a browser sending GPC', () => {
+    expect(decideOnLoad({ stored: NONE, optIn: false, gpc: false })).toEqual({
+      analytics: { value: true, source: 'implicit' },
+      ads: { value: true, source: 'implicit' },
       showBanner: false,
     });
+    expect(decideOnLoad({ stored: NONE, optIn: false, gpc: true }).ads).toEqual({ value: false, source: 'gpc', gpcAtDecision: true });
   });
 
-  it('keeps ads off for a browser sending GPC', () => {
-    expect(decideOnLoad({ stored: null, optIn: false, gpc: true, now: NOW }).choice).toEqual({
-      analytics: true,
-      ads: false,
+  it('keeps a stored choice without asking again', () => {
+    const stored = { analytics: analytics({ value: false }), ads: ads({ value: false }) };
+    expect(decideOnLoad({ stored, optIn: true, gpc: false })).toEqual({ analytics: null, ads: null, showBanner: false });
+  });
+
+  it('rewrites only the ads choice to a GPC refusal when GPC appears, unless it is an override saved under GPC', () => {
+    const stored = { analytics: analytics(), ads: ads() };
+    expect(decideOnLoad({ stored, optIn: false, gpc: true })).toEqual({
+      analytics: null,
+      ads: { value: false, source: 'gpc', gpcAtDecision: true },
+      showBanner: false,
+    });
+    const saved = { analytics: analytics(), ads: ads({ source: 'settings', noticeShown: 'gpc', gpcAtDecision: true }) };
+    expect(decideOnLoad({ stored: saved, optIn: false, gpc: true }).ads).toBeNull();
+    const before = { analytics: analytics(), ads: ads({ source: 'settings', noticeShown: 'account', gpcAtDecision: false }) };
+    expect(decideOnLoad({ stored: before, optIn: false, gpc: true }).ads).toEqual({
+      value: false,
       source: 'gpc',
-      decidedAt: NOW,
+      gpcAtDecision: true,
     });
   });
 
-  it('turns implicit ads off when GPC appears later, and leaves an explicit choice alone', () => {
-    const implicit = { analytics: true, ads: true, source: 'implicit' as const, decidedAt: EARLIER };
-    expect(decideOnLoad({ stored: implicit, optIn: false, gpc: true, now: NOW })).toEqual({
-      choice: { analytics: true, ads: false, source: 'gpc', decidedAt: NOW },
-      write: true,
-      showBanner: false,
-    });
-    const explicit = { ...implicit, source: 'banner' as const };
-    expect(decideOnLoad({ stored: explicit, optIn: false, gpc: true, now: NOW })).toEqual({
-      choice: explicit,
-      write: false,
-      showBanner: false,
+  it('asks again for a category that lapsed, keeping the ads refusal', () => {
+    const stored = { analytics: null, ads: ads({ value: false }) };
+    expect(decideOnLoad({ stored, optIn: true, gpc: false })).toEqual({ analytics: null, ads: null, showBanner: true });
+    expect(decideOnLoad({ stored, optIn: false, gpc: false }).analytics).toEqual({ value: true, source: 'implicit' });
+  });
+});
+
+describe('writesForClick', () => {
+  it('accepts both on "accept all" with nothing against ads', () => {
+    expect(writesForClick({ role: 'all', window: 'banner', toggles: null, notice: false, gpc: false })).toEqual({
+      analytics: { value: true, source: 'banner' },
+      ads: { value: true, source: 'banner', noticeShown: false, gpcAtDecision: false },
     });
   });
 
-  it('keeps a stored choice without asking again, wherever the visitor is', () => {
-    const stored = { analytics: false, ads: false, source: 'banner' as const, decidedAt: EARLIER };
-    expect(decideOnLoad({ stored, optIn: true, gpc: false, now: NOW })).toEqual({
-      choice: stored,
-      write: false,
-      showBanner: false,
+  it('turns only analytics on for "accept all" under GPC, writing the ads refusal as GPC', () => {
+    expect(writesForClick({ role: 'all', window: 'settings', toggles: null, notice: 'gpc', gpc: true })).toEqual({
+      analytics: { value: true, source: 'settings' },
+      ads: { value: false, source: 'gpc', noticeShown: false, gpcAtDecision: true },
     });
+  });
+
+  it('leaves the ads choice as it is for "accept all" while the account is opted out', () => {
+    expect(writesForClick({ role: 'all', window: 'banner', toggles: null, notice: 'account', gpc: false })).toEqual({
+      analytics: { value: true, source: 'banner' },
+    });
+  });
+
+  it('refuses both on "reject all", keeping the notice only for a choice made in settings', () => {
+    expect(writesForClick({ role: 'necessary', window: 'banner', toggles: null, notice: 'gpc', gpc: true })).toEqual({
+      analytics: { value: false, source: 'banner' },
+      ads: { value: false, source: 'banner', noticeShown: false, gpcAtDecision: true },
+    });
+    expect(writesForClick({ role: 'necessary', window: 'settings', toggles: null, notice: 'account', gpc: false }).ads).toEqual(
+      { value: false, source: 'settings', noticeShown: 'account', gpcAtDecision: false },
+    );
+  });
+
+  it('saves the switches as set, marking ads switched on under a notice as an override', () => {
+    expect(
+      writesForClick({ role: 'save', window: 'settings', toggles: { analytics: false, ads: true }, notice: 'account', gpc: true }),
+    ).toEqual({
+      analytics: { value: false, source: 'settings' },
+      ads: { value: true, source: 'settings', noticeShown: 'account', gpcAtDecision: true },
+    });
+    expect(
+      writesForClick({ role: 'save', window: 'settings', toggles: { analytics: true, ads: true }, notice: false, gpc: false }).ads,
+    ).toEqual({ value: true, source: 'settings', noticeShown: false, gpcAtDecision: false });
+  });
+});
+
+describe('reportBody', () => {
+  it('reports each category the visitor chose, with its id', () => {
+    const body = reportBody({ analytics: analytics(), ads: ads({ value: false, source: 'gpc' }) }, CONSENT_REVISION, NOW);
+    expect(body).toEqual({
+      decisions: [
+        { decisionId: ID_A, category: 'analytics', value: true, source: 'banner', noticeShown: false, gpcAtDecision: false, decidedAt: NOW },
+        { decisionId: ID_B, category: 'ads', value: false, source: 'gpc', noticeShown: false, gpcAtDecision: false, decidedAt: NOW },
+      ],
+      revision: CONSENT_REVISION,
+      sentAt: NOW,
+    });
+  });
+
+  it('leaves out regional defaults and choices without an id, and sends nothing when none is left', () => {
+    const body = reportBody({ analytics: analytics({ source: 'implicit' }), ads: ads({ decisionId: undefined }) }, 1, NOW);
+    expect(body).toBeNull();
+    expect(reportBody(NONE, 1, NOW)).toBeNull();
+  });
+});
+
+describe('adsNotice', () => {
+  it('shows the account notice to a signed-in visitor whose ads are stopped by an opt-out', () => {
+    expect(adsNotice({ signedIn: true, outcome: { allowed: false, notice: 'gpc' }, gpc: true, ads: null })).toBe('account');
+    expect(adsNotice({ signedIn: true, outcome: { allowed: false, notice: 'account' }, gpc: false, ads: null })).toBe('account');
+    expect(adsNotice({ signedIn: true, outcome: { allowed: true, notice: null }, gpc: true, ads: null })).toBe(false);
+  });
+
+  it('shows the GPC notice to a signed-out browser sending GPC, unless it saved an override under GPC', () => {
+    expect(adsNotice({ signedIn: false, outcome: { allowed: false, notice: 'gpc' }, gpc: true, ads: null })).toBe('gpc');
+    const saved = ads({ source: 'settings', noticeShown: 'gpc', gpcAtDecision: true });
+    expect(adsNotice({ signedIn: false, outcome: { allowed: true, notice: null }, gpc: true, ads: saved })).toBe(false);
+    expect(adsNotice({ signedIn: false, outcome: { allowed: true, notice: null }, gpc: false, ads: null })).toBe(false);
   });
 });
 

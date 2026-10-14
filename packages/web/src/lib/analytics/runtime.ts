@@ -13,7 +13,9 @@ import {
   adClickFrom,
   sanitizeEventProperties,
   type AnalyticsEventName,
+  type BrowserChoices,
   type ConsentSnapshot,
+  type NoticeShown,
 } from '@breatic/shared';
 import {
   AMPLITUDE_API_KEY,
@@ -25,12 +27,13 @@ import {
   consentRevision,
   followPage,
   openConsentSettings,
+  setAdsView,
   setConsentLanguage,
   startConsentBanner,
   type ConsentText,
 } from '@web/lib/analytics/consent-banner';
 import { readAttribution } from '@web/lib/analytics/attribution';
-import { fetchCountry, type BrowserChoice } from '@web/lib/analytics/consent-decision';
+import { fetchCountry } from '@web/lib/analytics/consent-decision';
 
 type Amplitude = typeof AmplitudeSdk;
 type EventStorage = NonNullable<NonNullable<Parameters<Amplitude['init']>[2]>['storageProvider']>;
@@ -49,7 +52,9 @@ let sdkImport: Promise<Amplitude> | null = null;
 let amplitude: Amplitude | null = null;
 // Settles once the SDK has started; calls made before then are queued by the SDK and replayed later.
 let sdkStarted: Promise<void> | null = null;
-let choice: BrowserChoice | null = null;
+let choice: BrowserChoices | null = null;
+// Whether `adsDecision` lets ads run in this browser; the page decides it, with the account's events when signed in.
+let adsAllowed = false;
 /** The signed-in account; null when nobody is, undefined until the app knows. */
 let account: AnalyticsUser | null | undefined = undefined;
 let reportError: (err: unknown) => void = ignoreError;
@@ -97,25 +102,24 @@ export async function start(options: {
 }
 
 /**
- * Apply a choice to both vendors and tell the listeners.
- * @param next - The choice in force.
+ * Apply a choice to analytics and tell the listeners; ads wait for the page's
+ * decision ({@link setAds}), and stop at once when this browser withdraws them.
+ * @param next - The choices in force.
  */
-async function apply(next: BrowserChoice | null): Promise<void> {
+async function apply(next: BrowserChoices | null): Promise<void> {
   choice = next;
-  applyAds(next?.ads === true);
-  // A category not granted keeps no cookies, whether or not this page loaded its vendor.
-  if (next?.ads !== true) clearStorage('_gcl_');
+  if (next?.ads?.value !== true) setAds({ allowed: false, notice: currentNotice });
   const snapshot = consentSnapshot();
   for (const listener of listeners) listener(snapshot);
   try {
-    await applyAnalytics(next?.analytics === true);
+    await applyAnalytics(next?.analytics?.value === true);
   } catch (err) {
     reportError(err);
   }
   // A later choice arrived while this one waited, and applies itself.
   if (choice !== next) return;
   // Last, because opting the SDK out and sending its queue rewrite what it stores.
-  if (next?.analytics !== true) {
+  if (next?.analytics?.value !== true) {
     clearStorage('AMP_');
     deleteDiagnostics();
   }
@@ -139,7 +143,7 @@ async function applyAnalytics(on: boolean): Promise<void> {
   sdkImport ??= import('@amplitude/analytics-browser');
   const sdk = await sdkImport;
   // The choice may have been withdrawn while the SDK downloaded.
-  if (choice?.analytics !== true) return;
+  if (choice?.analytics?.value !== true) return;
   if (amplitude === null) {
     amplitude = sdk;
     sdkStarted = sdk.init(AMPLITUDE_API_KEY, undefined, {
@@ -165,7 +169,7 @@ async function applyAnalytics(on: boolean): Promise<void> {
     }).promise;
   }
   await sdkStarted;
-  if (choice?.analytics !== true) return;
+  if (choice?.analytics?.value !== true) return;
   amplitude.setOptOut(false);
   followAccount(amplitude, false);
 }
@@ -206,7 +210,7 @@ const consentedStorage: EventStorage = {
   },
   getRaw: async (key: string) => readStored(key),
   set: async (key: string, value: unknown) => {
-    if (choice?.analytics !== true) return;
+    if (choice?.analytics?.value !== true) return;
     try {
       localStorage.setItem(key, JSON.stringify(value));
     } catch {
@@ -245,8 +249,27 @@ function accountChanged(refresh: boolean): void {
   const sdk = amplitude;
   if (sdk === null || sdkStarted === null) return;
   void sdkStarted.then(() => {
-    if (choice?.analytics === true) followAccount(sdk, refresh);
+    if (choice?.analytics?.value === true) followAccount(sdk, refresh);
   });
+}
+
+// The opt-out notice the page last decided on.
+let currentNotice: NoticeShown = false;
+
+/**
+ * Take the page's ads decision: load or stop the Google tag and set what the
+ * settings window shows.
+ * @param decision - The decision.
+ * @param decision.allowed - Whether ads may run in this browser.
+ * @param decision.notice - The opt-out notice the settings window shows.
+ */
+export function setAds(decision: { allowed: boolean; notice: NoticeShown }): void {
+  adsAllowed = decision.allowed;
+  currentNotice = decision.notice;
+  setAdsView({ notice: decision.notice, adsOn: decision.allowed });
+  applyAds(decision.allowed);
+  // A category not granted keeps no cookies, whether or not this page loaded its vendor.
+  if (!decision.allowed) clearStorage('_gcl_');
 }
 
 /**
@@ -333,14 +356,14 @@ function clearStorage(prefix: string): void {
  * @returns Both categories; off until a choice is in force.
  */
 export function consentSnapshot(): ConsentSnapshot {
-  return { analytics: choice?.analytics === true, ads: choice?.ads === true };
+  return { analytics: choice?.analytics?.value === true, ads: choice?.ads?.value === true };
 }
 
 /**
- * The choice in force with its source and time, for the account record.
- * @returns It, or null while none is.
+ * Each category's choice in force, for the account record and the ads decision.
+ * @returns The choices, or null while none was read.
  */
-export function browserChoice(): BrowserChoice | null {
+export function browserChoices(): BrowserChoices | null {
   return choice;
 }
 
@@ -360,7 +383,7 @@ export function onConsentChange(listener: (consent: ConsentSnapshot) => void): (
  * @param properties - Candidate properties; only the listed ones leave.
  */
 export function track(name: AnalyticsEventName, properties: Record<string, unknown> = {}): void {
-  if (amplitude === null || choice?.analytics !== true) return;
+  if (amplitude === null || choice?.analytics?.value !== true) return;
   const allowed = sanitizeEventProperties(name, {
     ...shared,
     ...(country !== null ? { country } : {}),
@@ -422,7 +445,7 @@ export function conversion(
   value?: { amountCents: number; currency: string },
 ): void {
   const label = conversionLabels()[conversion];
-  if (!gtagLoaded || choice?.ads !== true || label === undefined) return;
+  if (!gtagLoaded || !adsAllowed || label === undefined) return;
   // The same rule as the server upload: only a visitor who arrived from an ad in the click window.
   if (adClickFrom(readAttribution(), Date.now()) === null) return;
   gtag('event', 'conversion', {

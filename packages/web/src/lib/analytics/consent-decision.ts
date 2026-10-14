@@ -2,59 +2,150 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * What a page does with consent when it loads (inner#1442 design §4.4.2,
- * §4.4.4), kept apart from the banner library so the rules can be tested.
+ * What a page does with consent (inner#1442 design §4.4.2, §4.4.4, §4.4.6):
+ * on load, on a press in the banner or the settings window, and what it
+ * reports to the account; kept apart from the banner library so the rules can
+ * be tested.
  */
 
-import { httpRequest, type ConsentSource } from '@breatic/shared';
+import {
+  browserSuppressesOwnGpc,
+  httpRequest,
+  type AdsOutcome,
+  type BrowserAds,
+  type BrowserChoices,
+  type ConsentReport,
+  type ConsentSource,
+  type NoticeShown,
+} from '@breatic/shared';
 
-/** This browser's choice, as the consent cookie holds it. */
-export interface BrowserChoice {
-  readonly analytics: boolean;
-  readonly ads: boolean;
+/** What to write for one category; the writer adds the id and the time. */
+export interface CategoryWrite {
+  readonly value: boolean;
   readonly source: ConsentSource;
-  /** When the choice was made, as an ISO timestamp. */
-  readonly decidedAt: string;
+  /** Ads only: which opt-out notice the settings window showed. */
+  readonly noticeShown?: NoticeShown;
+  /** Ads only: whether this browser sent GPC when the choice was saved. */
+  readonly gpcAtDecision?: boolean;
+}
+
+/** The categories to write; a category left out keeps what the cookie holds. */
+export interface ConsentWrites {
+  readonly analytics?: CategoryWrite;
+  readonly ads?: CategoryWrite;
 }
 
 /** What to do on load. */
 export interface LoadDecision {
-  /** The choice in force; null while an opt-in visitor has not answered. */
-  readonly choice: BrowserChoice | null;
-  /** Whether `choice` differs from what is stored and has to be written. */
-  readonly write: boolean;
+  readonly analytics: CategoryWrite | null;
+  readonly ads: CategoryWrite | null;
   readonly showBanner: boolean;
 }
 
 /**
- * Decide on load.
+ * Decide on load, category by category (design §4.4.4).
  * @param input - What the page knows.
- * @param input.stored - The stored choice under the current policy, if any.
+ * @param input.stored - Each category's choice in force.
  * @param input.optIn - Whether the visitor's region asks before anything loads.
  * @param input.gpc - Whether the browser sends Global Privacy Control.
- * @param input.now - The current time, ISO.
- * @returns The choice in force and whether to write it or show the banner.
+ * @returns What to write now, and whether to ask.
  */
-export function decideOnLoad(input: {
-  stored: BrowserChoice | null;
-  optIn: boolean;
-  gpc: boolean;
-  now: string;
-}): LoadDecision {
-  const { stored, optIn, gpc, now } = input;
-  if (stored) {
-    // GPC withdraws ads that were only on by default; a choice the visitor made stands.
-    if (gpc && stored.ads && stored.source === 'implicit') {
-      return { choice: { ...stored, ads: false, source: 'gpc', decidedAt: now }, write: true, showBanner: false };
-    }
-    return { choice: stored, write: false, showBanner: false };
+export function decideOnLoad(input: { stored: BrowserChoices; optIn: boolean; gpc: boolean }): LoadDecision {
+  const { stored, optIn, gpc } = input;
+  const gpcRefusal: CategoryWrite = { value: false, source: 'gpc', gpcAtDecision: true };
+  let ads: CategoryWrite | null = null;
+  if (stored.ads !== null) {
+    // GPC withdraws an ads consent, except an override the visitor saved while this browser already sent GPC.
+    if (gpc && stored.ads.value && !browserSuppressesOwnGpc(stored.ads, 'none')) ads = gpcRefusal;
+  } else if (!optIn) {
+    ads = gpc ? gpcRefusal : { value: true, source: 'implicit' };
   }
-  if (optIn) return { choice: null, write: false, showBanner: true };
+  const analytics: CategoryWrite | null = stored.analytics === null && !optIn ? { value: true, source: 'implicit' } : null;
+  return { analytics, ads, showBanner: optIn && (stored.analytics === null || stored.ads === null) };
+}
+
+/**
+ * What a press in the banner or the settings window writes (design §4.4.4).
+ * @param input - The press.
+ * @param input.role - `all` (accept all), `necessary` (reject all) or `save`.
+ * @param input.window - Where it was pressed.
+ * @param input.toggles - The settings switches, for `save`.
+ * @param input.notice - The opt-out notice showing, if any.
+ * @param input.gpc - Whether the browser sends GPC.
+ * @returns The categories to write.
+ */
+export function writesForClick(input: {
+  role: 'all' | 'necessary' | 'save';
+  window: 'banner' | 'settings';
+  toggles: { analytics: boolean; ads: boolean } | null;
+  notice: NoticeShown;
+  gpc: boolean;
+}): ConsentWrites {
+  const { role, window, toggles, notice, gpc } = input;
+  const source = window;
+  // Only the settings window shows the notice, and only there does switching ads on override an opt-out.
+  const shown: NoticeShown = window === 'settings' ? notice : false;
+  if (role === 'all') {
+    const analytics = { value: true, source };
+    if (notice === 'account') return { analytics };
+    if (notice === 'gpc') return { analytics, ads: { value: false, source: 'gpc', noticeShown: false, gpcAtDecision: true } };
+    return { analytics, ads: { value: true, source, noticeShown: false, gpcAtDecision: gpc } };
+  }
+  const on = role === 'save' && toggles !== null ? toggles : { analytics: false, ads: false };
   return {
-    choice: { analytics: true, ads: !gpc, source: gpc ? 'gpc' : 'implicit', decidedAt: now },
-    write: true,
-    showBanner: false,
+    analytics: { value: on.analytics, source },
+    ads: { value: on.ads, source, noticeShown: shown, gpcAtDecision: gpc },
   };
+}
+
+/**
+ * The report a signed-in browser sends (design §4.4.6): each category the
+ * visitor chose and that carries an id.
+ * @param choices - The choices in force.
+ * @param revision - The revision the library writes under.
+ * @param sentAt - The browser's clock now.
+ * @returns The body, or null when there is nothing to report.
+ */
+export function reportBody(choices: BrowserChoices, revision: number, sentAt: string): ConsentReport | null {
+  const decisions: ConsentReport['decisions'][number][] = [];
+  for (const category of ['analytics', 'ads'] as const) {
+    const choice = choices[category];
+    // A regional default is no choice of the person's, and only an operator records a request.
+    if (choice === null || choice.decisionId === undefined || choice.source === 'implicit' || choice.source === 'request') {
+      continue;
+    }
+    const ads = category === 'ads' ? (choice as BrowserAds) : null;
+    decisions.push({
+      decisionId: choice.decisionId,
+      category,
+      value: choice.value,
+      source: choice.source,
+      noticeShown: ads?.noticeShown ?? false,
+      gpcAtDecision: ads?.gpcAtDecision ?? false,
+      decidedAt: choice.decidedAt,
+    });
+  }
+  return decisions.length === 0 ? null : { decisions, revision, sentAt };
+}
+
+/**
+ * Which opt-out notice the settings window shows above the ads switch.
+ * @param input - What the page knows.
+ * @param input.signedIn - Whether an account is signed in.
+ * @param input.outcome - `adsDecision` for this browser.
+ * @param input.gpc - Whether the browser sends GPC.
+ * @param input.ads - This browser's ads choice.
+ * @returns `account` while a signed-in account's ads are stopped by an opt-out,
+ *   `gpc` for a signed-out browser whose GPC counts, false otherwise.
+ */
+export function adsNotice(input: {
+  signedIn: boolean;
+  outcome: AdsOutcome;
+  gpc: boolean;
+  ads: BrowserAds | null;
+}): NoticeShown {
+  if (input.signedIn) return input.outcome.notice === null ? false : 'account';
+  return input.gpc && !browserSuppressesOwnGpc(input.ads, 'none') ? 'gpc' : false;
 }
 
 /**
