@@ -54,7 +54,6 @@ import { useHeldName } from '@web/lib/use-held-name';
 
 interface SpaceDrawerProps {
   spaces: ReadonlyArray<ProjectSpace>;
-  openTabIds: ReadonlyArray<string>;
   activeSpaceId: string;
   projectId: string;
   /** Activate a Space (opens its tab if not open + makes it active). */
@@ -96,16 +95,15 @@ const ROW_BODY = 'flex min-w-0 flex-1 items-start gap-3 pr-8 text-left';
  *
  * Row anatomy:
  *
- *   [type icon]  Space name  [editing / open chip] [lock if locked]
+ *   [type icon]  Space name  [lock if locked]          [editing chip]
  *                when this Space was made
  *
  *   hover actions (right):
  *     [view] [rename (disabled if locked)] [lock toggle] [delete (disabled if locked)]
  *
- * Status chip (decision B.1, user 2026-10-14):
- *   - editing → bg-muted        (this user's active tab)
- *   - open    → neutral outline (this user's open tab, not active)
- *   - (none)  → no chip         (Space exists but this user hasn't opened it)
+ * Status chip (user 2026-10-14): the row of this user's active tab carries
+ * an Editing chip, a neutral outline centred on the row like the type icon.
+ * Every other row carries none.
  *
  * View does what pressing the row does: it opens the Space as a tab, or
  * switches to the tab it already has (user 2026-10-14, inner#1528).
@@ -119,7 +117,6 @@ const ROW_BODY = 'flex min-w-0 flex-1 items-start gap-3 pr-8 text-left';
  *   - Delete is disabled when the Space is locked.
  * @param root0 - Component props.
  * @param root0.spaces - All spaces in the project to list in the drawer.
- * @param root0.openTabIds - Ids of the Spaces currently on the strip.
  * @param root0.activeSpaceId - Id of this user's active space, driving the "editing" chip.
  * @param root0.onActivate - Activates a space (opens its tab and makes it active).
  * @param root0.onDeleteSpace - RPC handler to delete a space; when omitted, rows render read-only.
@@ -129,7 +126,6 @@ const ROW_BODY = 'flex min-w-0 flex-1 items-start gap-3 pr-8 text-left';
  */
 export function SpaceDrawer({
   spaces,
-  openTabIds,
   activeSpaceId,
   onActivate,
   onDeleteSpace,
@@ -206,7 +202,6 @@ export function SpaceDrawer({
                   key={s.id}
                   space={s}
                   isActive={s.id === activeSpaceId}
-                  isOpen={openTabIds.includes(s.id)}
                   isLastSpace={spaces.length === 1}
                   onActivate={() => {
                     onActivate(s.id);
@@ -236,7 +231,6 @@ interface SpaceDrawerRowProps {
   onConfirmCloseAutoFocus: (event: Event) => void;
   space: ProjectSpace;
   isActive: boolean;
-  isOpen: boolean;
   /** True when this is the project's only space — its delete action is disabled. */
   isLastSpace: boolean;
   /** Opens this Space as a tab and closes the drawer; the row and View both run it. */
@@ -253,7 +247,6 @@ interface SpaceDrawerRowProps {
  * @param root0 - Component props.
  * @param root0.space - The space rendered by this row.
  * @param root0.isActive - Whether this space is the user's active tab (shows the "editing" chip).
- * @param root0.isOpen - Whether this space is open as one of the user's tabs (shows the "open" chip).
  * @param root0.isLastSpace - Whether this is the project's only space (disables delete — projects keep >=1).
  * @param root0.onActivate - Opens this space as a tab; the row and View both run it.
  * @param root0.onDeleteSpace - RPC handler to delete this space; when omitted, the delete action is read-only.
@@ -265,7 +258,6 @@ interface SpaceDrawerRowProps {
 function SpaceDrawerRow({
   space,
   isActive,
-  isOpen,
   isLastSpace,
   onActivate,
   onDeleteSpace,
@@ -428,26 +420,18 @@ function SpaceDrawerRow({
               aria-label={t('spaces.lockedAria')}
             />
           ) : null}
-          {/* At the right end of the line, against the room kept for the
-              menu button (user 2026-10-14). */}
-          {isActive ? (
-            <span className='ml-auto shrink-0 rounded-chrome bg-muted px-1 py-0.5 text-2xs font-medium text-muted-foreground'>
-              {t('spaces.drawer.status.editing')}
-            </span>
-          ) : isOpen ? (
-            <span
-              // The border takes 1px a side, so a 1px pad keeps this mark the
-              // height of the Editing mark.
-              className='ml-auto shrink-0 rounded-chrome border border-border px-1 py-px text-2xs font-medium text-foreground-secondary'
-            >
-              {t('spaces.drawer.status.open')}
-            </span>
-          ) : null}
         </span>
         <span className='truncate text-2xs tabular-nums text-muted-foreground'>
           {t(made.key, made.params)}
         </span>
       </span>
+      {/* Centred on the row's two lines like the type icon, at the right end
+          against the room kept for the menu button (user 2026-10-14). */}
+      {isActive ? (
+        <span className='ml-auto shrink-0 self-center rounded-chrome border border-border px-1 py-px text-2xs font-medium text-foreground-secondary'>
+          {t('spaces.drawer.status.editing')}
+        </span>
+      ) : null}
     </>
   );
 

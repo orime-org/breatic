@@ -1269,8 +1269,7 @@
       "openAria": "開啟 {name}",
       "rowActions": "檢視、重新命名、鎖定或刪除這個 Space",
       "status": {
-        "editing": "編輯中",
-        "open": "已開啟"
+        "editing": "編輯中"
       },
       "action": {
         "view": "檢視",

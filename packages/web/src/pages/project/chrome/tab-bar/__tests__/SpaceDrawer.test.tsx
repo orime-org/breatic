@@ -62,7 +62,6 @@ function setup(overrides: Partial<React.ComponentProps<typeof SpaceDrawer>> = {}
   render(
     <SpaceDrawer
       spaces={[SPACE, SIBLING]}
-      openTabIds={[]}
       activeSpaceId=''
       projectId='proj-1'
       onActivate={vi.fn()}
@@ -172,21 +171,10 @@ describe('SpaceDrawer', () => {
     );
   });
 
-  it('View opens a Space that is not on the strip, as pressing its row does', async () => {
+  it('View opens the Space as a tab, as pressing its row does', async () => {
     const user = userEvent.setup();
     const onActivate = vi.fn();
-    setup({ onActivate, openTabIds: [] });
-    await user.click(screen.getByTestId('space-drawer-trigger'));
-    await openRowMenu(user, 'sp-1');
-    await user.click(screen.getByTestId('space-drawer-view-sp-1'));
-    expect(onActivate).toHaveBeenCalledWith('sp-1');
-    expect(screen.queryByTestId('space-drawer')).toBeNull();
-  });
-
-  it('View switches to a Space already on the strip', async () => {
-    const user = userEvent.setup();
-    const onActivate = vi.fn();
-    setup({ onActivate, openTabIds: ['sp-1'] });
+    setup({ onActivate });
     await user.click(screen.getByTestId('space-drawer-trigger'));
     await openRowMenu(user, 'sp-1');
     await user.click(screen.getByTestId('space-drawer-view-sp-1'));
@@ -416,24 +404,25 @@ describe('SpaceDrawer', () => {
     expect(icon.parentElement?.className ?? '').not.toMatch(/bg-muted/);
   });
 
-  it('puts the Editing and Open marks at the right end of the name line', async () => {
+  it('centres the Editing mark on the row at its right end, beside the type icon', async () => {
     const user = userEvent.setup();
-    setup({ activeSpaceId: 'sp-1', openTabIds: ['sp-1', 'sp-2'] });
-    await user.click(screen.getByTestId('space-drawer-trigger'));
-    expect(screen.getByText('Editing').className.split(/\s+/)).toContain('ml-auto');
-    expect(screen.getByText('Open').className.split(/\s+/)).toContain('ml-auto');
-  });
-
-  it('marks the Space being edited with a grey fill and the open ones with an outline', async () => {
-    const user = userEvent.setup();
-    setup({ activeSpaceId: 'sp-1', openTabIds: ['sp-1', 'sp-2'] });
+    setup({ activeSpaceId: 'sp-1' });
     await user.click(screen.getByTestId('space-drawer-trigger'));
     const editing = screen.getByText('Editing');
-    expect(editing.className).toContain('bg-muted');
-    expect(editing.className).not.toMatch(/status-info/);
-    const open = screen.getByText('Open');
-    expect(open.className).toContain('border-border');
-    expect(open.className).toContain('text-foreground-secondary');
+    expect(editing.className.split(/\s+/)).toEqual(expect.arrayContaining(['ml-auto', 'self-center']));
+    expect(editing.parentElement).toBe(screen.getByTestId('space-drawer-type-icon-sp-1').parentElement);
+  });
+
+  it('marks only the Space being edited, with an outline', async () => {
+    const user = userEvent.setup();
+    setup({ activeSpaceId: 'sp-1' });
+    await user.click(screen.getByTestId('space-drawer-trigger'));
+    const editing = screen.getByText('Editing');
+    expect(editing.className.split(/\s+/)).toEqual(
+      expect.arrayContaining(['border', 'border-border', 'text-foreground-secondary']),
+    );
+    expect(editing.className).not.toMatch(/bg-muted|status-info/);
+    expect(screen.getAllByText('Editing')).toHaveLength(1);
   });
 
   it('opens as a modal sheet with a backdrop overlay, like dialogs', async () => {

@@ -201,8 +201,8 @@ export function renderProductGuide(): string {
       `${quoted(t("project.space.loading.create"))}; the new space then opens as a tab.`,
     "The second, three lines with the number of spaces beside them, opens " +
       `${quoted(t("spaces.drawer.title"))}: every space in the project, newest first, each with its type icon, ` +
-      `name and when it was made; the one open now is marked ${quoted(t("spaces.drawer.status.editing"))} and ` +
-      `others open as tabs ${quoted(t("spaces.drawer.status.open"))}. Clicking a row opens that space as a tab. ` +
+      `name and when it was made; the one open now is marked ${quoted(t("spaces.drawer.status.editing"))} at the ` +
+      `right of its row. Clicking a row opens that space as a tab. ` +
       `Hovering a row shows three dots at its right end, which open a menu: ${quoted(t("spaces.drawer.action.view"))}, ` +
       `${quoted(t("spaces.drawer.action.rename"))}, ` +
       `${quoted(t("spaces.drawer.action.lock"))} (${quoted(t("spaces.drawer.action.unlock"))} on a locked space) and ` +

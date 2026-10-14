@@ -1269,8 +1269,7 @@
       "openAria": "打开 {name}",
       "rowActions": "查看、重命名、加锁或删除这个 Space",
       "status": {
-        "editing": "编辑中",
-        "open": "已打开"
+        "editing": "编辑中"
       },
       "action": {
         "view": "查看",

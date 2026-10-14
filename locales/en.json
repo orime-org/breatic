@@ -1269,8 +1269,7 @@
       "openAria": "Open {name}",
       "rowActions": "View, rename, lock or delete this Space",
       "status": {
-        "editing": "Editing",
-        "open": "Open"
+        "editing": "Editing"
       },
       "action": {
         "view": "View",

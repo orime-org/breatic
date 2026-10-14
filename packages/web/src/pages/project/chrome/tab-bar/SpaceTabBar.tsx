@@ -206,7 +206,6 @@ interface SpaceTabBarProps {
   /** All Spaces in the project - used by the drawer to list everything. */
   allSpaces: ReadonlyArray<ProjectSpace>;
   /** Ids of the open tabs, for the drawer's status chip computation. */
-  openTabIds: ReadonlyArray<string>;
   activeSpaceId: string;
   /** Project id - drawer uses it for row test ids only (RPCs are by handler). */
   projectId: string;
@@ -262,7 +261,6 @@ interface SpaceTabBarProps {
  * @param root0 - Component props.
  * @param root0.spaces - Tabs currently open in the bar, in the order they are painted.
  * @param root0.allSpaces - All spaces in the project, used by the drawer to list everything.
- * @param root0.openTabIds - Ids of the open tabs, for the drawer's status chip computation.
  * @param root0.activeSpaceId - Id of the active space, used to highlight and scroll to its tab.
  * @param root0.projectId - Project id, threaded to the drawer for row test ids.
  * @param root0.onActivate - Activates the space with the given id.
@@ -280,7 +278,6 @@ interface SpaceTabBarProps {
 export function SpaceTabBar({
   spaces,
   allSpaces,
-  openTabIds,
   activeSpaceId,
   projectId,
   onActivate,
@@ -648,7 +645,6 @@ export function SpaceTabBar({
         )}
         <SpaceDrawer
           spaces={allSpaces}
-          openTabIds={openTabIds}
           activeSpaceId={activeSpaceId}
           projectId={projectId}
           onActivate={onActivate}

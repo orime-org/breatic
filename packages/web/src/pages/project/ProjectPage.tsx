@@ -983,7 +983,6 @@ function ProjectWorkspace({
                   <SpaceTabBar
                     spaces={openTabs}
                     allSpaces={spaces}
-                    openTabIds={tabs.openIds}
                     activeSpaceId={activeSpace?.id ?? ''}
                     projectId={projectId}
                     onActivate={onActivate}

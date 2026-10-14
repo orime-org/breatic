@@ -1269,8 +1269,7 @@
       "openAria": "{name} 열기",
       "rowActions": "이 Space 보기, 이름 변경, 잠금 또는 삭제",
       "status": {
-        "editing": "편집 중",
-        "open": "열림"
+        "editing": "편집 중"
       },
       "action": {
         "view": "보기",
