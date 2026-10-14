@@ -31,7 +31,7 @@ import type { LandingAction } from '@web/stores/document-proposals';
 
 /** How a press ended; a landing that throws is reported as failed by its caller. */
 type LandingResult =
-  | { outcome: 'applied'; blockId: string; leftOut?: number }
+  | ({ outcome: 'applied'; leftOut?: number } & Landed)
   | { outcome: 'mediaOnly'; leftOut: number }
   | { outcome: 'readOnly' | 'changed' | 'blockGone' };
 
@@ -135,13 +135,13 @@ function blockAt(doc: ProseMirrorNode, pos: number): string | null {
 }
 
 /**
- * The block the comment a proposal put on is in now: a thread carrying its id
+ * The comment a proposal put on, where it is now: a thread carrying its id
  * that still has a mark in the body, wherever that mark has moved.
  * @param handle - The document.
  * @param proposalId - The proposal.
- * @returns The block holding the comment's first words, or null when there is none.
+ * @returns The thread and the block holding its first words, or null when there is none.
  */
-function commentBlock(handle: Pick<Landable, 'editor'>, proposalId: string): string | null {
+function commentOf(handle: Pick<Landable, 'editor'>, proposalId: string): { threadId: string; blockId: string } | null {
   const threads = commentsOn(handle.editor)?.threadStore.getThreads();
   if (threads === undefined) return null;
   const ids = [...threads.values()]
@@ -152,16 +152,17 @@ function commentBlock(handle: Pick<Landable, 'editor'>, proposalId: string): str
   const marked = threadRangesByThread(doc);
   for (const id of ids) {
     const first = marked.get(id)?.[0];
-    if (first !== undefined) return blockAt(doc, first.from);
+    const blockId = first === undefined ? null : blockAt(doc, first.from);
+    if (blockId !== null) return { threadId: id, blockId };
   }
   return null;
 }
 
-/** How a proposal landed, and the block that shows it. */
-export interface Landed {
-  how: LandingAction;
-  blockId: string;
-}
+/**
+ * How a proposal landed, and the block that shows it; a comment also names
+ * its thread, which is how the panel is opened on it.
+ */
+export type Landed = { how: 'comment'; blockId: string; threadId: string } | { how: 'write'; blockId: string };
 
 /**
  * How a proposal has landed in the document, if it has, and where: the block
@@ -173,8 +174,8 @@ export interface Landed {
  */
 export function landedAt(handle: Pick<Landable, 'editor'>, proposal: DocumentProposal): Landed | null {
   if (proposal.kind !== 'insert') {
-    const blockId = commentBlock(handle, proposal.proposalId);
-    if (blockId !== null) return { how: 'comment', blockId };
+    const comment = commentOf(handle, proposal.proposalId);
+    if (comment !== null) return { how: 'comment', ...comment };
   }
   if (proposal.kind === 'comment') return null;
   const first = writtenBlockId(proposal.proposalId, 0);
@@ -293,7 +294,7 @@ export async function landProposal(
   writable: boolean,
 ): Promise<LandingResult> {
   const already = landedAt(handle, proposal);
-  if (already !== null) return { outcome: 'applied', blockId: already.blockId };
+  if (already !== null) return { outcome: 'applied', ...already };
   if (!writable) return { outcome: 'readOnly' };
   const problem = blockProblem(handle, proposal);
   if (problem !== null) return { outcome: problem };
@@ -301,6 +302,6 @@ export async function landProposal(
   if (action === 'comment') await landComment(handle, proposal);
   else leftOut = await landBlocks(handle, proposal);
   const landed = landedAt(handle, proposal);
-  if (landed !== null) return leftOut > 0 ? { outcome: 'applied', blockId: landed.blockId, leftOut } : { outcome: 'applied', blockId: landed.blockId };
+  if (landed !== null) return leftOut > 0 ? { outcome: 'applied', ...landed, leftOut } : { outcome: 'applied', ...landed };
   return leftOut > 0 ? { outcome: 'mediaOnly', leftOut } : { outcome: 'changed' };
 }

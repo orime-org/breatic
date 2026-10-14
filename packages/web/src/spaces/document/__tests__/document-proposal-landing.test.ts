@@ -140,9 +140,10 @@ describe('a comment', () => {
     const handle = await open('The hero arrives at the gate.');
     const proposal = proposalOn(handle, 0, { kind: 'comment', quote: 'the gate', body: 'Which gate?' });
 
-    expect(await landProposal(handle, proposal, 'comment', true)).toEqual({ outcome: 'applied', blockId: blocks(handle)[0]!.id });
+    const result = await landProposal(handle, proposal, 'comment', true);
 
     const [thread] = threads(handle);
+    expect(result).toEqual({ outcome: 'applied', how: 'comment', blockId: blocks(handle)[0]!.id, threadId: thread!.id });
     expect(thread?.metadata).toEqual({ proposalId: proposal.proposalId });
     expect(thread?.comments[0]).toMatchObject({ userId: 'reader-1', metadata: { fromAgent: true } });
     expect(marked(handle)).toEqual([{ threadId: thread!.id, text: 'the gate' }]);
@@ -283,6 +284,7 @@ describe('knowing a proposal has landed', () => {
 
     expect(await landProposal(handle, insert, 'write', true)).toEqual({
       outcome: 'applied',
+      how: 'write',
       blockId: deriveId(`document-proposal:${insert.proposalId}:0`),
     });
     expect(blocks(handle).map((b) => b.text)).toEqual(['One.', 'New.', 'Two.']);
@@ -313,7 +315,16 @@ describe('knowing a proposal has landed', () => {
 
     await landProposal(handle, proposal, 'comment', true);
 
-    expect(landedAt(handle, proposal)).toEqual({ how: 'comment', blockId: proposal.blockId });
+    expect(landedAt(handle, proposal)).toEqual({ how: 'comment', blockId: proposal.blockId, threadId: threads(handle)[0]!.id });
+  });
+
+  it('names the thread a comment landed as, for the panel to open on it', async () => {
+    const handle = await open('The hero arrives.');
+    const proposal = proposalOn(handle, 0, { kind: 'comment', quote: 'hero', body: 'Who?' });
+
+    const result = await landProposal(handle, proposal, 'comment', true);
+
+    expect(result).toEqual({ outcome: 'applied', how: 'comment', blockId: proposal.blockId, threadId: threads(handle)[0]!.id });
   });
 
   it('does not count a comment whose words have gone', async () => {
@@ -335,7 +346,7 @@ describe('the block a landed proposal is shown at (inner#1509 review round 1)', 
 
     const again = await landProposal(handle, proposal, 'write', true);
 
-    expect(again).toEqual({ outcome: 'applied', blockId: deriveId(`document-proposal:${proposal.proposalId}:0`) });
+    expect(again).toEqual({ outcome: 'applied', how: 'write', blockId: deriveId(`document-proposal:${proposal.proposalId}:0`) });
     expect(blocks(handle).map((b) => b.id)).toContain(again.outcome === 'applied' ? again.blockId : '');
   });
 
@@ -344,7 +355,12 @@ describe('the block a landed proposal is shown at (inner#1509 review round 1)', 
     const proposal = proposalOn(handle, 0, { kind: 'comment', quote: 'hero', body: 'Who?' });
     await landProposal(handle, proposal, 'comment', true);
 
-    expect(await landProposal(handle, proposal, 'comment', true)).toEqual({ outcome: 'applied', blockId: proposal.blockId });
+    expect(await landProposal(handle, proposal, 'comment', true)).toEqual({
+      outcome: 'applied',
+      how: 'comment',
+      blockId: proposal.blockId,
+      threadId: threads(handle)[0]!.id,
+    });
   });
 
   it('is the block the comment is in now, after its own block was merged into the one above (review round 2)', async () => {
@@ -356,8 +372,9 @@ describe('the block a landed proposal is shown at (inner#1509 review round 1)', 
     mergeIntoAbove(handle, 1);
 
     expect(blocks(handle).map((b) => b.text)).toEqual(['Scene two opens.The hero arrives.']);
-    expect(landedAt(handle, proposal)).toEqual({ how: 'comment', blockId: above!.id });
-    expect(await landProposal(handle, proposal, 'comment', true)).toEqual({ outcome: 'applied', blockId: above!.id });
+    const threadId = threads(handle)[0]!.id;
+    expect(landedAt(handle, proposal)).toEqual({ how: 'comment', blockId: above!.id, threadId });
+    expect(await landProposal(handle, proposal, 'comment', true)).toEqual({ outcome: 'applied', how: 'comment', blockId: above!.id, threadId });
   });
 });
 
@@ -381,6 +398,7 @@ describe('media in a proposal (review round 3)', () => {
 
     expect(await landProposal(handle, proposal, 'write', true)).toEqual({
       outcome: 'applied',
+      how: 'write',
       blockId: deriveId(`document-proposal:${proposal.proposalId}:0`),
       leftOut: 1,
     });

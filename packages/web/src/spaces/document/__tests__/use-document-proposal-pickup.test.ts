@@ -51,7 +51,7 @@ beforeEach(() => {
 describe('taking up the cards pressed for this document', () => {
   it('lands each in the order pressed, reports how it ended, and leaves other documents alone', async () => {
     landProposal.mockImplementation((_h: unknown, p: DocumentProposal) =>
-      Promise.resolve(p.proposalId === 'p1' ? { outcome: 'changed' } : { outcome: 'applied', blockId: 'b9' }),
+      Promise.resolve(p.proposalId === 'p1' ? { outcome: 'changed' } : { outcome: 'applied', how: 'write', blockId: 'b9' }),
     );
     useDocumentProposals.getState().start(proposal('p2'), 'write');
     useDocumentProposals.getState().start(proposal('p1'), 'comment');
@@ -69,11 +69,11 @@ describe('taking up the cards pressed for this document', () => {
     ]);
     expect(cards().p2?.state).toBe('applied');
     expect(cards().p3?.state).toBe('working');
-    expect(result.current).toEqual({ blockId: 'b9' });
+    expect(result.current).toEqual({ how: 'write', blockId: 'b9' });
   });
 
   it('takes up a card pressed after the document is already open', async () => {
-    landProposal.mockResolvedValue({ outcome: 'applied', blockId: 'b1' });
+    landProposal.mockResolvedValue({ outcome: 'applied', how: 'write', blockId: 'b1' });
     renderHook(() => useDocumentProposalPickup('d1', HANDLE, 'granted', false));
 
     act(() => {
@@ -146,7 +146,29 @@ describe('a card shown again (inner#1509 review round 1)', () => {
       expect(cards().p1).toEqual({ state: 'applied', action: 'write' });
     });
     expect(landProposal).not.toHaveBeenCalled();
-    expect(result.current).toEqual({ blockId: 'b-shown' });
+    expect(result.current).toEqual({ how: 'write', blockId: 'b-shown' });
+  });
+
+  it('hands the body the thread a comment card is shown at, for the panel to open on it', async () => {
+    landedAt.mockReturnValue({ how: 'comment', blockId: 'b-shown', threadId: 't-shown' });
+    useDocumentProposals.getState().view(proposal('p1'), 'comment');
+
+    const { result } = renderHook(() => useDocumentProposalPickup('d1', HANDLE, 'granted', false));
+
+    await waitFor(() => {
+      expect(result.current).toEqual({ how: 'comment', blockId: 'b-shown', threadId: 't-shown' });
+    });
+  });
+
+  it('hands the body the thread a comment just landed as, without how it was reported', async () => {
+    landProposal.mockResolvedValue({ outcome: 'applied', how: 'comment', blockId: 'b1', threadId: 't1', leftOut: 0 });
+    useDocumentProposals.getState().start(proposal('p1'), 'comment');
+
+    const { result } = renderHook(() => useDocumentProposalPickup('d1', HANDLE, 'granted', false));
+
+    await waitFor(() => {
+      expect(result.current).toEqual({ how: 'comment', blockId: 'b1', threadId: 't1' });
+    });
   });
 
   it('says the change is gone when it was taken back, and writes nothing', async () => {
@@ -176,7 +198,7 @@ describe('the document changing', () => {
 
 describe('media left out of a landing (review round 6)', () => {
   it('are counted in a toast once the press lands', async () => {
-    landProposal.mockResolvedValue({ outcome: 'applied', blockId: 'b', leftOut: 2 });
+    landProposal.mockResolvedValue({ outcome: 'applied', how: 'write', blockId: 'b', leftOut: 2 });
     useDocumentProposals.getState().start(proposal('p1'), 'write');
 
     renderHook(() => useDocumentProposalPickup('d1', HANDLE, 'granted', false));

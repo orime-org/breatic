@@ -38,7 +38,7 @@ import { useDocumentBars } from '@web/spaces/document/document-bars';
 import { bodyPartMark, recomputeBodyFocus, releaseBodyFocus } from '@web/spaces/document/document-body-focus';
 import { attachBodyScroller, BODY_BLANK } from '@web/spaces/document/document-body-press';
 import type { DocumentUploader } from '@web/spaces/document/document-uploads';
-import type { LandedBlock } from '@web/spaces/document/use-document-proposal-pickup';
+import type { Landed } from '@web/spaces/document/document-proposal-landing';
 
 interface DocumentEditorProps {
   /** The live editor and its surface, created and owned by the cache. */
@@ -57,8 +57,8 @@ interface DocumentEditorProps {
   myRole?: ProjectRole;
   /** What takes files into this body; a body without one offers no media entries. */
   uploader?: DocumentUploader | null;
-  /** The block an Agent proposal just landed, to bring into view and mark (inner#1509). */
-  landed?: LandedBlock | null;
+  /** Where an Agent proposal just landed, to show the reader (inner#1509). */
+  landed?: Landed | null;
 }
 
 /** How long a block an Agent proposal landed stays marked. */
@@ -185,14 +185,20 @@ export const DocumentEditor = React.memo(function DocumentEditor({
     );
   }, [handle]);
 
-  // A block an Agent proposal landed is scrolled to a third of the way down
-  // the viewport and outlined for a moment, so the reader sees what changed --
-  // once per landing: a hidden Space runs its effects again when shown, and
-  // the reader may have scrolled away since.
+  // Where an Agent proposal landed is shown once per landing: a hidden Space
+  // runs its effects again when shown, and the reader may have scrolled away
+  // since. A comment is shown the way the reader's own is, by reading its
+  // thread, which opens the panel on its card; a block written is scrolled to
+  // a third of the way down the viewport and outlined for a moment.
   const [landedBox, setLandedBox] = React.useState<LandedBox | null>(null);
-  const shown = React.useRef<LandedBlock | null>(null);
+  const shown = React.useRef<Landed | null>(null);
   React.useEffect(() => {
     if (landed === shown.current) return undefined;
+    if (landed?.how === 'comment') {
+      shown.current = landed;
+      selectThreads(handle.editor, [landed.threadId]);
+      return undefined;
+    }
     const block = landed === null ? null : body.current?.querySelector<HTMLElement>(`[data-id="${CSS.escape(landed.blockId)}"]`);
     if (viewport === null || block === null || block === undefined) return undefined;
     shown.current = landed;
@@ -206,7 +212,7 @@ export const DocumentEditor = React.memo(function DocumentEditor({
       window.clearTimeout(timer);
       setLandedBox(null);
     };
-  }, [landed, viewport]);
+  }, [landed, viewport, handle.editor]);
 
   // The scroller is where a press on blank space leaves the focus, and where
   // a press in the body is first read (inner#1127 A20). A Space hidden

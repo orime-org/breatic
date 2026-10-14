@@ -22,13 +22,8 @@ import * as React from 'react';
 
 import type { WriteAccess } from '@web/data/yjs/use-socket';
 import type { DocumentEditorHandle } from '@web/spaces/document/document-editor-cache';
-import { landedAt, landProposal } from '@web/spaces/document/document-proposal-landing';
+import { landedAt, landProposal, type Landed } from '@web/spaces/document/document-proposal-landing';
 import { pendingFor, useDocumentProposals } from '@web/stores/document-proposals';
-
-/** The block a card just landed, for the body to bring into view. */
-export interface LandedBlock {
-  blockId: string;
-}
 
 /**
  * Lands the cards waiting on one document.
@@ -36,16 +31,16 @@ export interface LandedBlock {
  * @param handle - Its editor, or null while there is none.
  * @param writeAccess - What the connection said about writing.
  * @param unbuildable - Whether this document's editor cannot be built.
- * @returns The block the latest landing put in the body, if any.
+ * @returns Where the latest landing is in the body, if any.
  */
 export function useDocumentProposalPickup(
   spaceId: string,
   handle: DocumentEditorHandle | null,
   writeAccess: WriteAccess,
   unbuildable: boolean,
-): LandedBlock | null {
+): Landed | null {
   const pending = useDocumentProposals((s) => s.pending);
-  const [landed, setLanded] = React.useState<LandedBlock | null>(null);
+  const [landed, setLanded] = React.useState<Landed | null>(null);
   // One loop at a time: a second run of the effect (StrictMode, or a press
   // arriving mid-landing) leaves the presses to the loop already running.
   const busy = React.useRef(false);
@@ -75,14 +70,17 @@ export function useDocumentProposalPickup(
         if (next.action === 'view') {
           const at = landedAt(handle, next.proposal);
           report(id, at === null ? 'gone' : 'applied');
-          if (at !== null) setLanded({ blockId: at.blockId });
+          if (at !== null) setLanded(at);
           continue;
         }
         const result = await landProposal(handle, next.proposal, next.action, writeAccess === 'granted').catch(
           () => ({ outcome: 'failed' }) as const,
         );
         report(id, result.outcome, 'leftOut' in result ? result.leftOut : 0);
-        if (result.outcome === 'applied') setLanded({ blockId: result.blockId });
+        if (result.outcome === 'applied') {
+          const { outcome: _outcome, leftOut: _leftOut, ...at } = result;
+          setLanded(at);
+        }
       }
       busy.current = false;
     })();
