@@ -16,31 +16,31 @@ const FAILURE = { messageKey: 'canvas.upload.failed', params: {}, retryable: tru
 describe('on the uploader\'s page', () => {
   it('in flight: uploading, with its progress', () => {
     expect(
-      pendingStatus({ entry: { phase: 'uploading', progress: 0.42, failure: null }, access: 'granted', refused: false, claim: null }),
+      pendingStatus({ entry: { phase: 'uploading', progress: 0.42 }, access: 'granted', refused: false, claim: null }),
     ).toEqual({ kind: 'uploading', progress: 0.42 });
   });
 
   it('failed: the failure, which says whether a retry can help', () => {
     expect(
-      pendingStatus({ entry: { phase: 'failed', progress: null, failure: FAILURE }, access: 'granted', refused: false, claim: null }),
+      pendingStatus({ entry: { phase: 'failed', failure: FAILURE }, access: 'granted', refused: false, claim: null }),
     ).toEqual({ kind: 'failed', failure: FAILURE });
   });
 
   it('done while the page may write: still uploading until the write lands', () => {
     expect(
-      pendingStatus({ entry: { phase: 'done', progress: null, failure: null }, access: 'granted', refused: false, claim: null }),
+      pendingStatus({ entry: { phase: 'done', result: { url: 'https://cdn.example/x.png' } }, access: 'granted', refused: false, claim: null }),
     ).toEqual({ kind: 'uploading', progress: null });
   });
 
   it('done on a page demoted to read-only: waiting for write access', () => {
     expect(
-      pendingStatus({ entry: { phase: 'done', progress: null, failure: null }, access: 'denied', refused: false, claim: null }),
+      pendingStatus({ entry: { phase: 'done', result: { url: 'https://cdn.example/x.png' } }, access: 'denied', refused: false, claim: null }),
     ).toEqual({ kind: 'waitingDemoted' });
   });
 
   it('done on a page the server refused: uploaded, not yet in the body', () => {
     expect(
-      pendingStatus({ entry: { phase: 'done', progress: null, failure: null }, access: 'denied', refused: true, claim: null }),
+      pendingStatus({ entry: { phase: 'done', result: { url: 'https://cdn.example/x.png' } }, access: 'denied', refused: true, claim: null }),
     ).toEqual({ kind: 'waitingRefused' });
   });
 });

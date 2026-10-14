@@ -54,7 +54,7 @@ export interface PendingFacts {
 export function pendingStatus(facts: PendingFacts): PendingStatus {
   const { entry } = facts;
   if (entry !== undefined) {
-    if (entry.phase === 'failed' && entry.failure !== null) return { kind: 'failed', failure: entry.failure };
+    if (entry.phase === 'failed') return { kind: 'failed', failure: entry.failure };
     if (entry.phase === 'done' && facts.access === 'denied') {
       return facts.refused ? { kind: 'waitingRefused' } : { kind: 'waitingDemoted' };
     }

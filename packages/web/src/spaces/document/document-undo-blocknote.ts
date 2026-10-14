@@ -226,21 +226,14 @@ function userDrivenPlugin(marker: UserDrivenMarker): Plugin {
  * insert, so it is one step and typing on either side is another.
  *
  * The step is closed before the edit reaches Yjs — state apply runs before
- * the sync plugin's view update writes the edit through — and again the
- * moment the manager records it, so the next edit starts a step of its own.
+ * the sync plugin's view update writes the edit through — and again in this
+ * plugin's own view update, which runs after the sync plugin's in the same
+ * dispatch, whether or not the edit came to any Yjs change.
  * @param manager - The manager whose steps are closed.
  * @returns The ProseMirror plugin.
  */
 function ownStepPlugin(manager: Y.UndoManager): Plugin {
   let closeAfter = false;
-  /** Closes the step the edit just went into. */
-  const recorded = (): void => {
-    if (!closeAfter) return;
-    closeAfter = false;
-    manager.stopCapturing();
-  };
-  manager.on('stack-item-added', recorded);
-  manager.on('stack-item-updated', recorded);
   return new Plugin({
     key: new PluginKey('documentUndoOwnStep'),
     state: {
@@ -250,8 +243,8 @@ function ownStepPlugin(manager: Y.UndoManager): Plugin {
        */
       init: (): null => null,
       /**
-       * Closes the step before an edit that is one of its own, and asks for
-       * it to be closed again once the edit is recorded.
+       * Closes the step before an edit that is one of its own, and asks the
+       * view update to close it again once the edit is written through.
        * @param tr - The transaction being applied.
        * @returns Null.
        */
@@ -263,6 +256,13 @@ function ownStepPlugin(manager: Y.UndoManager): Plugin {
         return null;
       },
     },
+    view: () => ({
+      update: () => {
+        if (!closeAfter) return;
+        closeAfter = false;
+        manager.stopCapturing();
+      },
+    }),
   });
 }
 

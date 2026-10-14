@@ -10,10 +10,8 @@
 import { EMPTY_NODE_SIZE } from '@web/spaces/canvas/group-geometry';
 import type { ClipboardNode, ClipboardPayload } from '@web/spaces/canvas/node-clipboard';
 import { bodyText } from '@web/spaces/canvas/paste-addresses';
+import { isMediaBlockType, type MediaBlockType } from '@web/spaces/document/document-media-types';
 import type { UploadSource } from '@web/spaces/document/document-upload-controller';
-
-/** The block types a canvas node can land as. */
-export type PastedMediaType = 'image' | 'video' | 'audio';
 
 /** Where a pasted medium's bytes come from: an address, never a file. */
 export type PastedMediaSource = Exclude<UploadSource, { kind: 'file' }>;
@@ -21,7 +19,7 @@ export type PastedMediaSource = Exclude<UploadSource, { kind: 'file' }>;
 /** One media block to insert as pending. */
 export interface PastedMedia {
   readonly kind: 'media';
-  readonly type: PastedMediaType;
+  readonly type: MediaBlockType;
   readonly name: string;
   readonly caption: string;
   /** The node's pixel size, when it has one, so the block keeps its shape while it loads. */
@@ -48,8 +46,6 @@ export interface CanvasPastePlan {
 
 /** How an outside address reaches storage. */
 export type AddressRoute = 'fetch' | 'file' | 'skip';
-
-const MEDIA_TYPES: ReadonlySet<string> = new Set<PastedMediaType>(['image', 'video', 'audio']);
 
 /**
  * The origin a `blob:` address belongs to, or null when it names none.
@@ -116,6 +112,7 @@ function readingOrder(nodes: readonly ClipboardNode[]): ClipboardNode[] {
  * @returns True when it can be ordered and read.
  */
 function isWellFormed(node: ClipboardNode): boolean {
+  if (typeof node !== 'object' || node === null) return false;
   const { position, height, data } = node as { position?: { x?: unknown; y?: unknown }; height?: unknown; data?: unknown };
   return (
     Number.isFinite(position?.x) &&
@@ -147,11 +144,11 @@ function itemOf(node: ClipboardNode): PastedItem | null {
     const words = bodyText(node.data['body']);
     return words === '' ? null : { kind: 'text', lines: words.split('\n') };
   }
-  if (!MEDIA_TYPES.has(node.type)) return null;
+  if (!isMediaBlockType(node.type)) return null;
   const content = text(node.data, 'content');
   if (content === '') return null;
   const name = text(node.data, 'name');
-  const type = node.type as PastedMediaType;
+  const { type } = node;
   const { mediaWidth, mediaHeight } = node.data;
   const size =
     typeof mediaWidth === 'number' && typeof mediaHeight === 'number' ? { mediaWidth, mediaHeight } : {};
@@ -178,11 +175,11 @@ function itemOf(node: ClipboardNode): PastedItem | null {
  * @returns The items in reading order and the count of nodes left out.
  */
 export function planCanvasPaste(payload: ClipboardPayload): CanvasPastePlan {
-  const content = payload.nodes.filter((node) => node.type !== 'group' && node.type !== 'annotation');
-  const readable = content.filter(isWellFormed);
+  const readable = payload.nodes.filter(isWellFormed);
+  const content = readable.filter((node) => node.type !== 'group' && node.type !== 'annotation');
   const items: PastedItem[] = [];
-  let notPasted = content.length - readable.length;
-  for (const node of readingOrder(readable)) {
+  let notPasted = payload.nodes.length - readable.length;
+  for (const node of readingOrder(content)) {
     const item = itemOf(node);
     if (item === null) notPasted += 1;
     else items.push(item);

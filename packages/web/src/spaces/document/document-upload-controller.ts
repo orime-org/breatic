@@ -52,16 +52,12 @@ export type UploadOutcome =
   | { readonly ok: true; readonly result: UploadResult }
   | { readonly ok: false; readonly failure: UploadFailure };
 
-/** Where an upload stands on this page. */
-export type UploadPhase = 'uploading' | 'failed' | 'done';
-
-/** What this page knows about one upload. */
-export interface UploadEntry {
-  readonly phase: UploadPhase;
-  /** Share sent, 0 to 1, while uploading with a known size; otherwise null. */
-  readonly progress: number | null;
-  readonly failure: UploadFailure | null;
-}
+/** Where an upload stands on this page: a failure always says why, a finished one always holds its result. */
+export type UploadEntry =
+  /** `progress` is the share sent, 0 to 1, when the size is known; otherwise null. */
+  | { readonly phase: 'uploading'; readonly progress: number | null }
+  | { readonly phase: 'failed'; readonly failure: UploadFailure }
+  | { readonly phase: 'done'; readonly result: UploadResult };
 
 /** The part of a body's awareness the controller publishes claims through. */
 export interface ClaimChannel {
@@ -131,13 +127,10 @@ export const UPLOAD_WRITE_ORIGIN: Readonly<{ name: string }> = Object.freeze({
 });
 
 /** One upload's whole record. */
-interface Record_ {
+interface UploadRecord {
   /** Where the bytes come from; let go once the upload has finished. */
   source: UploadSource | null;
-  phase: UploadPhase;
-  progress: number | null;
-  failure: UploadFailure | null;
-  result: UploadResult | null;
+  state: UploadEntry;
 }
 
 /** One attached body and what the controller holds for it. */
@@ -146,8 +139,8 @@ interface Watched {
   /** Upload ids this body has registered with the guard. */
   readonly registered: Set<string>;
   queued: boolean;
-  /** The claims last published in this body's awareness, as JSON. */
-  published: string;
+  /** Whether this body holds a pending block this page claims. */
+  claiming: boolean;
 }
 
 /** The awareness field claims are published in. */
@@ -191,7 +184,7 @@ function pendingElements(fragment: Y.XmlFragment): { element: Y.XmlElement; uplo
  * @returns The controller.
  */
 export function createUploadController(deps: UploadControllerDeps): UploadController {
-  const records = new Map<string, Record_>();
+  const records = new Map<string, UploadRecord>();
   const watched = new Set<Watched>();
   const listeners = new Set<() => void>();
 
@@ -211,12 +204,21 @@ export function createUploadController(deps: UploadControllerDeps): UploadContro
     entry.queued = false;
     const { body } = entry;
     const pending = pendingElements(documentBodyFragment(body.doc));
+    /**
+     * The result of an upload this page finished.
+     * @param uploadId - The upload.
+     * @returns Its result, or null while it is not finished.
+     */
+    const finished = (uploadId: string): UploadResult | null => {
+      const state = records.get(uploadId)?.state;
+      return state?.phase === 'done' ? state.result : null;
+    };
     const writable =
-      body.writeAccess() === 'granted' ? pending.filter(({ uploadId }) => records.get(uploadId)?.result != null) : [];
+      body.writeAccess() === 'granted' ? pending.filter(({ uploadId }) => finished(uploadId) !== null) : [];
     if (writable.length > 0) {
       body.doc.transact(() => {
         for (const { element, uploadId } of writable) {
-          const result = records.get(uploadId)!.result!;
+          const result = finished(uploadId)!;
           element.setAttribute('url', result.url);
           if (result.mediaWidth !== undefined) element.setAttribute('mediaWidth', result.mediaWidth as never);
           if (result.mediaHeight !== undefined) element.setAttribute('mediaHeight', result.mediaHeight as never);
@@ -226,7 +228,7 @@ export function createUploadController(deps: UploadControllerDeps): UploadContro
     }
     const written = new Set(writable.map(({ element }) => element));
     const present = new Set(pending.filter(({ element }) => !written.has(element)).map(({ uploadId }) => uploadId));
-    const busy = new Set([...present].filter((uploadId) => records.get(uploadId)?.phase === 'uploading'));
+    const busy = new Set([...present].filter((uploadId) => records.get(uploadId)?.state.phase === 'uploading'));
     publish(entry, present);
     for (const uploadId of [...entry.registered]) {
       if (!busy.has(uploadId)) {
@@ -244,17 +246,21 @@ export function createUploadController(deps: UploadControllerDeps): UploadContro
 
   let stopRenewal: (() => void) | null = null;
 
-  /** Renews every attached body's awareness. */
+  /**
+   * Renews every attached body's awareness, and scans each so claims a
+   * restored page's awareness lost are published again.
+   */
   const tick = (): void => {
-    watched.forEach(({ body }) => {
-      const state = body.awareness?.getLocalState() ?? null;
-      if (state !== null) body.awareness!.setLocalState(state);
+    watched.forEach((entry) => {
+      const state = entry.body.awareness?.getLocalState() ?? null;
+      if (state !== null) entry.body.awareness!.setLocalState(state);
+      queue(entry);
     });
   };
 
-  /** Runs the renewal while any body publishes a claim, and stops it otherwise. */
+  /** Runs the renewal while any body holds a claim, and stops it otherwise. */
   const steerRenewal = (): void => {
-    const claiming = [...watched].some(({ published }) => published !== '{}');
+    const claiming = [...watched].some((entry) => entry.claiming);
     if (claiming && stopRenewal === null && deps.renew !== undefined) stopRenewal = deps.renew(tick);
     if (!claiming && stopRenewal !== null) {
       stopRenewal();
@@ -273,14 +279,26 @@ export function createUploadController(deps: UploadControllerDeps): UploadContro
     const claims: Record<string, string> = {};
     for (const uploadId of present) {
       const record = records.get(uploadId);
-      if (record !== undefined) claims[uploadId] = record.phase === 'failed' ? 'failed' : 'uploading';
+      if (record !== undefined) claims[uploadId] = record.state.phase === 'failed' ? 'failed' : 'uploading';
     }
-    const json = JSON.stringify(claims);
-    if (json !== entry.published && entry.body.awareness?.getLocalState() != null) {
-      entry.body.awareness.setLocalStateField(CLAIMS_FIELD, claims);
-    }
-    entry.published = json;
+    setClaims(entry.body, claims);
+    entry.claiming = Object.keys(claims).length > 0;
     steerRenewal();
+  };
+
+  /**
+   * Writes a body's claims into its awareness when what is there differs:
+   * the awareness is the record, and a page restored from the back-forward
+   * cache comes back with it emptied.
+   * @param body - The body.
+   * @param claims - The claims.
+   */
+  const setClaims = (body: AttachedBody, claims: Readonly<Record<string, string>>): void => {
+    const state = body.awareness?.getLocalState() ?? null;
+    if (state === null) return;
+    if (JSON.stringify(state[CLAIMS_FIELD] ?? {}) !== JSON.stringify(claims)) {
+      body.awareness!.setLocalStateField(CLAIMS_FIELD, claims);
+    }
   };
 
   /**
@@ -306,21 +324,19 @@ export function createUploadController(deps: UploadControllerDeps): UploadContro
    * @param record - Its record.
    * @param source - Where its bytes come from.
    */
-  const run = (uploadId: string, record: Record_, source: UploadSource): void => {
+  const run = (uploadId: string, record: UploadRecord, source: UploadSource): void => {
+    record.state = { phase: 'uploading', progress: null };
     void deps
       .run(uploadId, source, (share) => {
-        record.progress = share;
+        record.state = { phase: 'uploading', progress: share };
         notify();
       })
       .then((outcome) => {
-        record.progress = null;
         if (outcome.ok) {
-          record.phase = 'done';
-          record.result = outcome.result;
+          record.state = { phase: 'done', result: outcome.result };
           record.source = null;
         } else {
-          record.phase = 'failed';
-          record.failure = outcome.failure;
+          record.state = { phase: 'failed', failure: outcome.failure };
         }
         queueAll();
         notify();
@@ -329,7 +345,7 @@ export function createUploadController(deps: UploadControllerDeps): UploadContro
 
   return {
     start(uploadId, source) {
-      const record: Record_ = { source, phase: 'uploading', progress: null, failure: null, result: null };
+      const record: UploadRecord = { source, state: { phase: 'uploading', progress: null } };
       records.set(uploadId, record);
       run(uploadId, record, source);
       queueAll();
@@ -337,15 +353,13 @@ export function createUploadController(deps: UploadControllerDeps): UploadContro
     },
     retry(uploadId) {
       const record = records.get(uploadId);
-      if (record?.phase !== 'failed' || record.failure?.retryable !== true || record.source === null) return;
-      record.phase = 'uploading';
-      record.failure = null;
+      if (record?.state.phase !== 'failed' || !record.state.failure.retryable || record.source === null) return;
       run(uploadId, record, record.source);
       queueAll();
       notify();
     },
     attach(body) {
-      const entry: Watched = { body, registered: new Set(), queued: false, published: '{}' };
+      const entry: Watched = { body, registered: new Set(), queued: false, claiming: false };
       const fragment = documentBodyFragment(body.doc);
       /** Queues a scan for any change in the body. */
       const onChange = (): void => {
@@ -361,17 +375,13 @@ export function createUploadController(deps: UploadControllerDeps): UploadContro
         stopAccess();
         for (const uploadId of entry.registered) deps.unregister(body.spaceId, uploadId);
         entry.registered.clear();
-        if (entry.published !== '{}' && body.awareness?.getLocalState() != null) {
-          body.awareness.setLocalStateField(CLAIMS_FIELD, {});
-        }
-        entry.published = '{}';
+        setClaims(body, {});
+        entry.claiming = false;
         steerRenewal();
       };
     },
     entry(uploadId) {
-      const record = records.get(uploadId);
-      if (record === undefined) return undefined;
-      return { phase: record.phase, progress: record.progress, failure: record.failure };
+      return records.get(uploadId)?.state;
     },
     subscribe(listener) {
       listeners.add(listener);
