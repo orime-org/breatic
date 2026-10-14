@@ -193,6 +193,7 @@ export type {
   ProposalShot,
   ProposalNodeType,
   CanvasProposal,
+  DocumentProposal,
   ProposalRefused,
   ProposalAnswer,
 } from "@shared/types/index.js";
@@ -221,6 +222,7 @@ export {
   insertRefusal,
   isReferenceMaterial,
   canvasProposalSchema,
+  documentProposalSchema,
   feedsOf,
   layersOf,
   proposalMarkSegments,
@@ -317,6 +319,7 @@ export type {
   ChatSpace,
   ChatCurrentSpace,
   ChatCanvasDetail,
+  ChatDocumentBlock,
   TaskCreateInput,
   UnderstandInput,
   CanvasPasteInput,
