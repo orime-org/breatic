@@ -183,8 +183,15 @@ test('a rewrite replaces the passage as one undo step', async () => {
   await expect(card).toHaveAttribute('data-state', 'applied');
   await expect.poll(paragraphs).toEqual(['Scene two opens.', 'He opens the door. Her bags are packed.']);
   expect(await undoStack(docId)).toBe(before + 1);
+
+  // "View" only shows the change; it writes nothing.
+  await card.getByRole('button').click();
+  await expect(card.getByRole('button')).not.toHaveAttribute('aria-busy', 'true');
+  expect(await undoStack(docId)).toBe(before + 1);
+
   await undoStack(docId, true);
   await expect.poll(paragraphs).toEqual(['Scene two opens.', 'He pushes the door open and sees her bags packed.']);
+  await expect(card).toHaveAttribute('data-state', 'idle');
 });
 
 test('an insert puts a table after the passage, opening the document when another Space is in front', async () => {
@@ -197,6 +204,7 @@ test('an insert puts a table after the passage, opening the document when anothe
   }));
 
   const card = await askForTheCard();
+  await expect(card.getByTestId('document-proposal-anchor')).toHaveText('He pushes the door open and sees her bags packed.');
   created.push(await createSpace(page, 'canvas', `doc-proposal-canvas-${String(Date.now())}`));
   await expect(visibleSpace(page).getByTestId('document-space')).toHaveCount(0);
   await card.getByRole('button').last().click();
