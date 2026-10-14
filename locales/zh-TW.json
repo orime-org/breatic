@@ -409,7 +409,12 @@
       "audio": "雙擊上傳",
       "3d": "雙擊上傳 3D 模型",
       "web": "雙擊嵌入網址",
-      "rightClickHint": "右鍵可生成等更多"
+      "rightClickHint": "右鍵可生成等更多",
+      "peer": {
+        "upload": "{name} 正在上傳",
+        "readText": "{name} 正在讀取檔案",
+        "tool": "{name} 正在{tool}"
+      }
     },
     "textNode": {
       "editorPlaceholder": "開始寫作"

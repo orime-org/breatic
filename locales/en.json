@@ -409,7 +409,12 @@
       "audio": "Double-click to upload",
       "3d": "Double-click to upload a 3D model",
       "web": "Double-click to embed a URL",
-      "rightClickHint": "right-click to generate & more"
+      "rightClickHint": "right-click to generate & more",
+      "peer": {
+        "upload": "{name} is uploading",
+        "readText": "{name} is reading the file",
+        "tool": "{name} is running {tool}"
+      }
     },
     "textNode": {
       "editorPlaceholder": "Start writing"

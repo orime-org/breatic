@@ -26,10 +26,26 @@ import { newId } from '@breatic/shared';
  */
 export type UploadMarkMessage = { key: string; params?: Record<string, string | number> } | { text: string };
 
+/**
+ * What an operation is doing to its node: `upload`, `readText`, or the id of
+ * the mini-tool it runs. Other people see it on the node (§6.8).
+ */
+export type UploadMarkAction = string;
+
+/** What every mark carries: the operation, what it does, and when it began. */
+interface MarkBase {
+  /** The operation's id. */
+  op: string;
+  /** What the operation is doing. */
+  action: UploadMarkAction;
+  /** When it began, by this machine's clock; orders people on one node. */
+  at: number;
+}
+
 /** One node's mark: the operation it belongs to and where it stands. */
 export type UploadMark =
-  | { op: string; state: 'waiting' }
-  | { op: string; state: 'failed'; message: UploadMarkMessage };
+  | (MarkBase & { state: 'waiting' })
+  | (MarkBase & { state: 'failed'; message: UploadMarkMessage });
 
 interface UploadMarksState {
   /** spaceId → nodeId → mark. */
@@ -38,7 +54,7 @@ interface UploadMarksState {
    * Start an operation on a node, replacing whatever mark it had.
    * @returns The operation's id, which its answer or failure must carry.
    */
-  begin: (spaceId: string, nodeId: string) => string;
+  begin: (spaceId: string, nodeId: string, action: UploadMarkAction) => string;
   /** The server answered this operation: the mark goes. */
   answer: (spaceId: string, nodeId: string, op: string) => void;
   /** This operation ended before the server answered. */
@@ -67,9 +83,10 @@ function withMark(
 
 export const useUploadMarksStore = create<UploadMarksState>()((set, get) => ({
   marks: {},
-  begin: (spaceId, nodeId) => {
+  begin: (spaceId, nodeId, action) => {
     const op = newId();
-    set((s) => ({ marks: withMark(s.marks, spaceId, nodeId, { op, state: 'waiting' }) }));
+    const mark: UploadMark = { op, action, at: Date.now(), state: 'waiting' };
+    set((s) => ({ marks: withMark(s.marks, spaceId, nodeId, mark) }));
     return op;
   },
   answer: (spaceId, nodeId, op) => {
@@ -80,7 +97,7 @@ export const useUploadMarksStore = create<UploadMarksState>()((set, get) => ({
   fail: (spaceId, nodeId, op, message) => {
     const mark = get().markOf(spaceId, nodeId);
     if (mark?.op !== op || mark.state !== 'waiting') return;
-    set((s) => ({ marks: withMark(s.marks, spaceId, nodeId, { op, state: 'failed', message }) }));
+    set((s) => ({ marks: withMark(s.marks, spaceId, nodeId, { ...mark, state: 'failed', message }) }));
   },
   markOf: (spaceId, nodeId) => get().marks[spaceId]?.[nodeId],
 }));

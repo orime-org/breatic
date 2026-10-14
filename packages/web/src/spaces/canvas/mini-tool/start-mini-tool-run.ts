@@ -370,7 +370,7 @@ export async function startMiniToolRun(run: MiniToolRun): Promise<void> {
   // The press has its place on the canvas at once; the uploader sees each node
   // wait until the server answers (inner#1303 §6.7).
   const marks = useUploadMarksStore.getState();
-  const ops = nodes.map((node) => marks.begin(spaceId, node.id));
+  const ops = nodes.map((node) => marks.begin(spaceId, node.id, spec.id));
   /**
    * End this press's marks: answered, or failed with a message.
    * @param message - Why it stopped, or undefined when the server answered.

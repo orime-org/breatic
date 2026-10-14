@@ -463,6 +463,7 @@ describe('usePublishPresence, the pointer', () => {
         synced: true,
         containerRef: { current: container },
         toFlowPosition,
+        spaceId: 'S',
       }),
     );
     await settled();
@@ -541,6 +542,7 @@ describe('usePublishPresence, the pointer', () => {
         synced: true,
         containerRef: { current: container },
         toFlowPosition: (screen) => ({ x: screen.x + shift, y: screen.y }),
+        spaceId: 'S',
       }),
     );
     sendPointer(container, 'pointermove', { clientX: 40, clientY: 60 });
@@ -569,6 +571,7 @@ describe('usePublishPresence, the pointer', () => {
         synced: true,
         containerRef: { current: container },
         toFlowPosition: (screen) => ({ x: screen.x + shift, y: screen.y }),
+        spaceId: 'S',
       }),
     );
     sendPointer(container, 'pointermove', { clientX: 40, clientY: 0 });

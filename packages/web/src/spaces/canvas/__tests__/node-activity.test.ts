@@ -12,6 +12,7 @@ import { describe, expect, it } from 'vitest';
 import {
   activityFromMarks,
   collectPeerActivity,
+  fillActionOf,
   samePeerActivity,
 } from '@web/spaces/canvas/node-activity';
 import type { UploadMark } from '@web/stores/upload-marks';
@@ -93,5 +94,15 @@ describe('samePeerActivity', () => {
     expect(samePeerActivity(a, new Map([['n', { userId: 'bob', action: 'readText', at: 5 }]]))).toBe(false);
     expect(samePeerActivity(a, new Map([['n', { userId: 'bob', action: 'upload', at: 6 }]]))).toBe(false);
     expect(samePeerActivity(a, new Map())).toBe(false);
+  });
+});
+
+describe('fillActionOf', () => {
+  it('calls a file whose bytes go to storage an upload', () => {
+    expect(fillActionOf({ needsUpload: true })).toBe('upload');
+  });
+
+  it('calls a text file read into the node reading the file', () => {
+    expect(fillActionOf({ needsUpload: false })).toBe('readText');
   });
 });

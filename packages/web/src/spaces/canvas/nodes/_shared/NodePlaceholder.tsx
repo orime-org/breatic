@@ -1,13 +1,21 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import type * as React from 'react';
+import { miniToolById } from '@breatic/shared/mini-tools';
+import { useNodeId } from '@xyflow/react';
+import * as React from 'react';
 
 import { Button } from '@web/components/ui/button';
 import { Skeleton } from '@web/components/ui/skeleton';
 import { cn } from '@web/lib/utils';
+import { useNamed } from '@web/features/collab-editor/collaborator-names-context';
 import { useTranslation } from '@web/i18n/use-translation';
+import type { PeerAct } from '@web/spaces/canvas/node-activity';
 import { MODALITY_ICONS } from '@web/spaces/canvas/nodes/_shared/modality';
+import {
+  NodeBusyContext,
+  PeerActivityContext,
+} from '@web/spaces/canvas/nodes/_shared/node-peer-activity-context';
 import { useUploadMark } from '@web/spaces/canvas/nodes/_shared/use-upload-mark';
 import type { Modality } from '@web/data/yjs/node-view';
 
@@ -25,13 +33,40 @@ interface NodePlaceholderProps {
   onActivate?: () => void;
 }
 
+/** Nobody, so `useNamed` sees the same array while no one is shown. */
+const NO_ONE: readonly PeerAct[] = [];
+
+/**
+ * The line saying who else is doing what to this node (inner#1303 §6.8), or
+ * null when there is none to show: no one is, the node has tasks, or the
+ * roster cannot name them.
+ * @returns The sentence, or null.
+ * @throws {never} Never.
+ */
+function usePeerLine(): string | null {
+  const t = useTranslation();
+  const nodeId = useNodeId();
+  const table = React.useContext(PeerActivityContext);
+  const busy = React.useContext(NodeBusyContext);
+  const act = nodeId === null || busy ? undefined : table.get(nodeId);
+  const people = React.useMemo(() => (act ? [act] : NO_ONE), [act]);
+  const named = useNamed(people)[0];
+  if (!named) return null;
+  if (named.action === 'upload') return t('canvas.nodePlaceholder.peer.upload', { name: named.name });
+  if (named.action === 'readText') return t('canvas.nodePlaceholder.peer.readText', { name: named.name });
+  const tool = miniToolById(named.action);
+  if (!tool) return null;
+  return t('canvas.nodePlaceholder.peer.tool', { name: named.name, tool: t(tool.labelKey) });
+}
+
 /**
  * Empty-state body shown when a content node has no `content` / `url` yet. Two
  * lines: the modality's primary double-click action (upload / write), then a
  * shared, smaller hint pointing at the right-click menu (generate & more). Both
  * lines are i18n keys. A single click selects the node; a **double**-click, or
  * Enter / Space on the focused button, fires `onActivate`. An explicit `hint`
- * (e.g. an in-progress status) overrides both lines with one line.
+ * (e.g. an in-progress status) overrides both lines with one line. While
+ * someone else fills the node, the first line says who and what instead.
  *
  * The keyboard half is not a bonus feature — `Button` renders a real
  * `<button>`, so it is
@@ -61,6 +96,8 @@ export function NodePlaceholder({
   const mark = useUploadMark();
   const waiting = mark?.state === 'waiting';
   const failed = mark?.state === 'failed' ? mark.message : undefined;
+  // Someone else's activity; the viewer's own mark above wins over it.
+  const peerLine = usePeerLine();
   return (
     <Button
       type='button'
@@ -97,7 +134,7 @@ export function NodePlaceholder({
         <span className='text-xs'>{hint}</span>
       ) : (
         <span className='flex flex-col gap-0.5'>
-          <span className='text-xs'>{t(`canvas.nodePlaceholder.${modality}`)}</span>
+          <span className='text-xs'>{peerLine ?? t(`canvas.nodePlaceholder.${modality}`)}</span>
           <span className='text-2xs text-muted-foreground'>
             {t('canvas.nodePlaceholder.rightClickHint')}
           </span>

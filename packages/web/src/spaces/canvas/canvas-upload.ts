@@ -348,7 +348,7 @@ export function fillNodesFromFiles(
       nodeId: entry.nodeId,
       // The node's content arrives from the server through Yjs.
       onSuccess: () => undefined,
-      ...markedSinks(deps.spaceId, entry.nodeId, marks.begin(deps.spaceId, entry.nodeId), entry.file, deps.onUploadFailure),
+      ...markedSinks(deps.spaceId, entry.nodeId, marks.begin(deps.spaceId, entry.nodeId, 'upload'), entry.file, deps.onUploadFailure),
     })),
     { projectId, spaceId: deps.spaceId, ...deps.tag },
     deps,

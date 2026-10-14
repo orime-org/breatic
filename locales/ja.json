@@ -409,7 +409,12 @@
       "audio": "ダブルクリックでアップロード",
       "3d": "ダブルクリックで 3D モデルをアップロード",
       "web": "ダブルクリックで URL を埋め込む",
-      "rightClickHint": "右クリックで生成など"
+      "rightClickHint": "右クリックで生成など",
+      "peer": {
+        "upload": "{name} がアップロード中",
+        "readText": "{name} がファイルを読み込み中",
+        "tool": "{name} が{tool}を実行中"
+      }
     },
     "textNode": {
       "editorPlaceholder": "入力を始めましょう"

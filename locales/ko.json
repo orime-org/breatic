@@ -409,7 +409,12 @@
       "audio": "더블클릭하여 업로드",
       "3d": "더블클릭하여 3D 모델 업로드",
       "web": "더블클릭하여 URL 삽입",
-      "rightClickHint": "우클릭으로 생성 등"
+      "rightClickHint": "우클릭으로 생성 등",
+      "peer": {
+        "upload": "{name} 님이 업로드 중",
+        "readText": "{name} 님이 파일을 읽는 중",
+        "tool": "{name} 님이 {tool} 실행 중"
+      }
     },
     "textNode": {
       "editorPlaceholder": "내용을 입력하세요"
