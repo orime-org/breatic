@@ -176,11 +176,52 @@ export function selectedMark(draft: MarkDraft, id: string | null): MarkDraft {
 }
 
 /**
- * Whether the markup leaves nothing on the picture: no object, and no text
- * with content being edited.
+ * How many objects leaving the text edit would leave (§6.6: a press during
+ * the edit leaves it first and acts on what is left), and whether leaving
+ * records a step. The text being edited is the selected one; it is already in
+ * the list when it existed before the edit, and a blank one is dropped.
  * @param draft - The draft.
- * @returns True when nothing is drawn.
+ * @returns The count after leaving, and whether leaving changes the list.
+ * @throws {never} Never.
+ */
+function afterLeavingEdit(draft: MarkDraft): { count: number; steps: boolean } {
+  const typed = draft.editingText;
+  if (typed === null) return { count: draft.objects.length, steps: false };
+  const blank = typed.trim() === '';
+  const held = draft.objects.find((object) => object.id === draft.selectedId);
+  if (held === undefined) return { count: draft.objects.length + (blank ? 0 : 1), steps: !blank };
+  if (blank) return { count: draft.objects.length - 1, steps: true };
+  return { count: draft.objects.length, steps: held.kind === 'text' && held.text !== typed };
+}
+
+/**
+ * Whether the markup would leave nothing on the picture once the text edit,
+ * if any, is left.
+ * @param draft - The draft.
+ * @returns True when nothing would be drawn.
+ * @throws {never} Never.
  */
 export function markEmpty(draft: MarkDraft): boolean {
-  return draft.objects.length === 0 && (draft.editingText ?? '').trim() === '';
+  return afterLeavingEdit(draft).count === 0;
+}
+
+/**
+ * Whether Clear has something to take, once the text edit, if any, is left.
+ * @param draft - The draft.
+ * @returns True when it does.
+ * @throws {never} Never.
+ */
+export function markCanClear(draft: MarkDraft): boolean {
+  return !markEmpty(draft);
+}
+
+/**
+ * Whether Undo has a step to take back, counting the step leaving the text
+ * edit would record.
+ * @param draft - The draft.
+ * @returns True when it does.
+ * @throws {never} Never.
+ */
+export function markCanUndo(draft: MarkDraft): boolean {
+  return draft.undo.length > 0 || afterLeavingEdit(draft).steps;
 }

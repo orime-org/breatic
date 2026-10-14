@@ -279,5 +279,27 @@ describe('MiniToolPanelContainer', () => {
         objects: [RECT, TEXT],
       });
     });
+
+    // A4, §6.6: the only text emptied in its edit leaves nothing; the press
+    // leaves the edit and finds nothing to run.
+    it('runs nothing when leaving the edit leaves the markup empty', () => {
+      const onRun = vi.fn(() => Promise.resolve());
+      const session = canvasSessions.of('').getState();
+      session.commitMark([TEXT]);
+      session.selectMark('t');
+      session.setMarkEditingText('look');
+      session.registerMarkChannel({
+        exitEditing: () => {
+          canvasSessions.of('').getState().commitMark([]);
+          canvasSessions.of('').getState().setMarkEditingText(null);
+        },
+        discardSelection: () => undefined,
+      });
+      render(tree(source('a.png'), onRun));
+      act(() => canvasSessions.of('').getState().setMarkEditingText(''));
+      expect(screen.getByTestId('mini-tool-run')).toBeDisabled();
+      fireEvent.click(screen.getByTestId('mini-tool-run'));
+      expect(onRun).not.toHaveBeenCalled();
+    });
   });
 });

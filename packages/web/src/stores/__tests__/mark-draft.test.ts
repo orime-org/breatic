@@ -10,7 +10,7 @@ import { describe, expect, it } from 'vitest';
 
 import { createCanvasSessionStore } from '@web/stores/canvas-session';
 import { BRUSH_SIZE, INK } from '@web/stores/drawing-draft';
-import { markEmpty, type MarkObject } from '@web/stores/mark-draft';
+import { markCanClear, markCanUndo, markEmpty, type MarkObject } from '@web/stores/mark-draft';
 
 const OPEN = { sourceContent: 'https://cdn.example.com/a.png', params: {} };
 const A: MarkObject = { id: 'a', kind: 'rect', color: INK[0], size: 5, x: 0.1, y: 0.1, w: 0.3, h: 0.2 };
@@ -154,5 +154,56 @@ describe('markEmpty', () => {
     expect(markEmpty(mark(store))).toBe(true);
     store.getState().setMarkEditingText('note');
     expect(markEmpty(mark(store))).toBe(false);
+  });
+});
+
+// §6.6: a press while a text is being edited leaves the edit first and acts on
+// what is left, so every judgement reads the list as leaving would make it.
+describe('the markup as leaving the text edit would leave it', () => {
+  const T: MarkObject = { id: 't', kind: 'text', color: INK[0], size: 5, x: 0.1, y: 0.1, text: 'hi' };
+
+  it('is empty when the only object is a text emptied in its edit', () => {
+    const store = withMark();
+    store.getState().commitMark([T]);
+    store.getState().selectMark('t');
+    store.getState().setMarkEditingText('');
+    expect(markEmpty(mark(store))).toBe(true);
+    expect(markCanClear(mark(store))).toBe(false);
+  });
+
+  it('is not empty while a text emptied in its edit sits beside another object', () => {
+    const store = withMark();
+    store.getState().commitMark([A, T]);
+    store.getState().selectMark('t');
+    store.getState().setMarkEditingText(' ');
+    expect(markEmpty(mark(store))).toBe(false);
+  });
+
+  it('can be cleared and undone while the first text is being typed', () => {
+    const store = withMark();
+    store.getState().selectMark('new');
+    store.getState().setMarkEditingText('hello');
+    expect(markCanClear(mark(store))).toBe(true);
+    expect(markCanUndo(mark(store))).toBe(true);
+  });
+
+  it('has nothing to clear or undo while a new text is still blank', () => {
+    const store = withMark();
+    store.getState().selectMark('new');
+    store.getState().setMarkEditingText('');
+    expect(markCanClear(mark(store))).toBe(false);
+    expect(markCanUndo(mark(store))).toBe(false);
+  });
+
+  it('has a step to undo once an existing text is changed in its edit', () => {
+    const fresh = withMark();
+    fresh.getState().commitMark([T]);
+    // The commit above is itself a step; the undo stack is emptied to read the
+    // edit alone.
+    fresh.getState().selectMark('t');
+    fresh.getState().setMarkEditingText('hi');
+    expect(markCanUndo({ ...mark(fresh), undo: [] })).toBe(false);
+    fresh.getState().setMarkEditingText('hi there');
+    expect(markCanUndo({ ...mark(fresh), undo: [] })).toBe(true);
   });
 });

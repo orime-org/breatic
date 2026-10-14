@@ -378,7 +378,10 @@ function OpenMiniToolPanel({
       // A text being edited is written back first, so the press takes it.
       const session = sessionStore.getState();
       if (session.miniTool?.mark?.editingText != null) session.markChannel?.exitEditing();
-      capture = { kind: 'mark', objects: sessionStore.getState().miniTool?.mark?.objects ?? [] };
+      const objects = sessionStore.getState().miniTool?.mark?.objects ?? [];
+      // §6.6: the press acts on what leaving the edit left.
+      if (objects.length === 0) return;
+      capture = { kind: 'mark', objects };
     }
     void onRun(nodeId, spec, snapshot, capture);
   }, [refusal, onRun, nodeId, spec, entry, slots, snapshot, drawingSteps, draft?.expand?.frame, source.width, source.height, sessionStore, t]);

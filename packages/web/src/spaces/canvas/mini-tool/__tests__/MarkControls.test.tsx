@@ -61,6 +61,18 @@ describe('MarkControls', () => {
     expect(store().miniTool?.mark?.objects).toEqual([RECT]);
   });
 
+  // §6.6: while the first text is typed, Clear and Undo act on it (leaving the
+  // edit first), as Run already does.
+  it('lets Clear and Undo act while the first text is being typed', () => {
+    mount();
+    act(() => {
+      store().selectMark('new');
+      store().setMarkEditingText('hello');
+    });
+    expect(screen.getByTestId('mini-tool-mark-clear')).toBeEnabled();
+    expect(screen.getByTestId('mini-tool-mark-undo')).toBeEnabled();
+  });
+
   it('leaves the text being edited before a tool, undo or clear acts', () => {
     mount();
     const calls: string[] = [];
