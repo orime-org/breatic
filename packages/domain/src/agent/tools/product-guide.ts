@@ -965,8 +965,10 @@ export function renderProductGuide(): string {
       `${quoted(t("chat.documentProposal.insertAfter"))}, naming a passage with no words by its kind, such as ` +
       `${quoted(t("spaces.document.media.image"))} or ${quoted(t("chat.documentProposal.headingBlock"))}; it ` +
       `shows the new content as it will look, tables included, with ${quoted(t("chat.documentProposal.insert"))}.`,
-    "Pressing a button opens the document, or switches to its tab, and the change lands; the document scrolls " +
-      "to it and outlines it for a moment. The pressed button spins meanwhile. A rewrite or an insert is one step " +
+    "Pressing a button opens the document, or switches to its tab, and the change lands. A rewrite or an insert " +
+      "is scrolled to and outlined for a moment; a comment opens the comments panel on its card, its words marked, " +
+      "as pressing its highlight does, with a wide table scrolled sideways to them. The pressed button spins " +
+      "meanwhile. A rewrite or an insert is one step " +
       "undo reverses. A comment lands under the reader's own name, marked " +
       `${quoted(t("spaces.document.comment.fromAgent"))}, and is taken back from its card in the comments panel ` +
       "like any other comment. The card then shows " +
