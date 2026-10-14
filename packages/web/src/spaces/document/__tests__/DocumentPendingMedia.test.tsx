@@ -54,6 +54,19 @@ describe('the frame', () => {
     expect(screen.getByTestId('doc-pending-name').textContent).toBe('cover.png');
   });
 
+  it('has its caption under it, as a media block does, when it has one', () => {
+    draw({ kind: 'uploading', progress: null }, 'Hero');
+    const caption = screen.getByTestId('doc-media-caption');
+    expect(caption).toHaveTextContent('Hero');
+    expect(root().compareDocumentPosition(caption) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(root().contains(caption)).toBe(false);
+  });
+
+  it('has no caption under it when it has none', () => {
+    draw({ kind: 'uploading', progress: null });
+    expect(screen.queryByTestId('doc-media-caption')).toBeNull();
+  });
+
   it('shows the state alone when the block has a caption', () => {
     draw({ kind: 'uploading', progress: null }, 'Hero');
     expect(screen.queryByTestId('doc-pending-name')).toBeNull();
