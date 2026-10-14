@@ -48,6 +48,7 @@ describe('the markup draft', () => {
       redo: [],
       selectedId: null,
       editingText: null,
+      editResized: false,
     });
   });
 
@@ -231,6 +232,51 @@ describe('redo as leaving the text edit would leave it', () => {
     expect(markCanRedo(mark(store))).toBe(false);
   });
 
+  // Leaving the edit writes the text's new colour or size back as a step, and
+  // a new step empties redo.
+  it.each([
+    ['colour', (store: ReturnType<typeof createCanvasSessionStore>) => store.getState().setMarkColor(INK[1])],
+    ['size', (store: ReturnType<typeof createCanvasSessionStore>) => store.getState().setMarkSize(20)],
+  ])('has nothing to redo once the %s of the text being edited changed', (_, restyle) => {
+    const store = withMark();
+    store.getState().commitMark([T]);
+    store.getState().commitMark([T, A]);
+    store.getState().undoMark();
+    store.getState().selectMark('t');
+    store.getState().setMarkEditingText('hi');
+    restyle(store);
+    expect(markCanRedo(mark(store))).toBe(false);
+  });
+
+  // Moved and moved back, the slider's size is what the text shows; a text
+  // scaled past it no longer has its own.
+  it('has nothing to redo once a scaled text\'s size was moved and moved back in its edit', () => {
+    const store = withMark();
+    const scaled = { ...T, size: 40.5 };
+    store.getState().commitMark([scaled]);
+    store.getState().commitMark([scaled, A]);
+    store.getState().undoMark();
+    store.getState().selectMark('t');
+    store.getState().setMarkEditingText('hi');
+    store.getState().setMarkSize(20);
+    store.getState().setMarkSize(BRUSH_SIZE.max);
+    expect(markCanRedo(mark(store))).toBe(false);
+    store.getState().setMarkEditingText(null);
+    store.getState().setMarkEditingText('hi');
+    expect(mark(store).editResized).toBe(false);
+  });
+
+  it('keeps redo while a text scaled past the slider is edited without a change', () => {
+    const store = withMark();
+    const scaled = { ...T, size: 40.5 };
+    store.getState().commitMark([scaled]);
+    store.getState().commitMark([scaled, A]);
+    store.getState().undoMark();
+    store.getState().selectMark('t');
+    store.getState().setMarkEditingText('hi');
+    expect(markCanRedo(mark(store))).toBe(true);
+  });
+
   it('keeps redo while the text being edited is unchanged', () => {
     const store = withMark();
     store.getState().commitMark([T]);
@@ -255,6 +301,26 @@ describe('steppedMarkSize', () => {
     store.getState().selectMark('s');
     expect(steppedMarkSize(mark(store), -1)).toBeNull();
     expect(steppedMarkSize(mark(store), 1)).toBe(1.5);
+  });
+
+  // In its edit a text shows the panel's size once that changed; the canvas
+  // writes it back only when the edit ends.
+  it('steps from the size a text shows in its edit', () => {
+    const store = withMark();
+    store.getState().commitMark([{ ...big, size: 5 }]);
+    store.getState().selectMark('b');
+    store.getState().setMarkEditingText('big');
+    store.getState().setMarkSize(20);
+    expect(steppedMarkSize(mark(store), 1)).toBe(20 + BRUSH_SIZE.step);
+  });
+
+  it('steps from a scaled text\'s own size in its edit while the size is untouched', () => {
+    const store = withMark();
+    store.getState().commitMark([big]);
+    store.getState().selectMark('b');
+    store.getState().setMarkEditingText('big');
+    expect(steppedMarkSize(mark(store), 1)).toBeNull();
+    expect(steppedMarkSize(mark(store), -1)).toBe(BRUSH_SIZE.max);
   });
 
   it('steps the pen size with nothing selected, holding at the ends', () => {

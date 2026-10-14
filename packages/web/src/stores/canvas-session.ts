@@ -35,6 +35,7 @@ import {
   redoneMark,
   restyled,
   undoneMark,
+  withEditingText,
   withObjects,
   selectedMark,
   type MarkChannel,
@@ -751,7 +752,7 @@ export function createCanvasSessionStore(): CanvasSessionStore {
       clearMark: () =>
         set((s) => updateMark(s, (m) => ({ ...withObjects(m, []), selectedId: null }))),
       selectMark: (id) => set((s) => updateMark(s, (m) => selectedMark(m, id))),
-      setMarkEditingText: (text) => set((s) => updateMark(s, (m) => ({ ...m, editingText: text }))),
+      setMarkEditingText: (text) => set((s) => updateMark(s, (m) => withEditingText(m, text))),
       setExpandDrop: (drop) =>
         set((s) => {
           if (s.miniTool?.expand && s.miniTool.expand.drop !== drop) {

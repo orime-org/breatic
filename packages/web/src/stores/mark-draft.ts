@@ -71,6 +71,8 @@ export interface MarkDraft {
   readonly selectedId: string | null;
   /** The text being edited, as typed so far; null when no text is being edited. */
   readonly editingText: string | null;
+  /** Whether the size changed since the text edit began; the text then shows the panel's size. */
+  readonly editResized: boolean;
 }
 
 /** How the handlers outside the markup's canvas ask it to leave a text edit or drop its selection. */
@@ -91,6 +93,7 @@ export const EMPTY_MARK: Readonly<MarkDraft> = Object.freeze({
   redo: [],
   selectedId: null,
   editingText: null,
+  editResized: false,
 });
 
 /**
@@ -153,7 +156,10 @@ export function redoneMark(draft: MarkDraft): MarkDraft {
  */
 export function restyled(draft: MarkDraft, style: { color?: string; size?: number }): MarkDraft {
   const next = { ...draft, ...style };
-  if (draft.editingText !== null || draft.selectedId === null) return next;
+  if (draft.editingText !== null) {
+    return { ...next, editResized: draft.editResized || (style.size !== undefined && style.size !== draft.size) };
+  }
+  if (draft.selectedId === null) return next;
   const objects = draft.objects.map((object) => (object.id === draft.selectedId ? { ...object, ...style } : object));
   return withObjects(next, objects);
 }
@@ -174,6 +180,34 @@ export function selectedMark(draft: MarkDraft, id: string | null): MarkDraft {
 }
 
 /**
+ * The draft with the text being edited as typed so far, or with no edit. An
+ * edit begins with the size untouched.
+ * @param draft - The draft.
+ * @param text - The text, or null when the edit ends.
+ * @returns The draft.
+ * @throws {never} Never.
+ */
+export function withEditingText(draft: MarkDraft, text: string | null): MarkDraft {
+  const resized = draft.editingText !== null && text !== null && draft.editResized;
+  return { ...draft, editingText: text, editResized: resized };
+}
+
+/**
+ * The selected text as it shows during its edit: as typed, in the panel's
+ * colour, and in the panel's size once that changed in the edit. Leaving the
+ * edit writes this back.
+ * @param draft - The draft, with a text being edited.
+ * @param held - The text as the list holds it.
+ * @returns The text as it shows.
+ * @throws {never} Never.
+ */
+function shownInEdit(draft: MarkDraft, held: MarkObject): MarkObject {
+  const size = draft.editResized ? draft.size : held.size;
+  if (held.kind !== 'text') return { ...held, color: draft.color, size };
+  return { ...held, text: draft.editingText ?? held.text, color: draft.color, size };
+}
+
+/**
  * How many objects leaving the text edit would leave (§6.6: a press during
  * the edit leaves it first and acts on what is left), and whether leaving
  * records a step. The text being edited is the selected one; it is already in
@@ -189,7 +223,7 @@ function afterLeavingEdit(draft: MarkDraft): { count: number; steps: boolean } {
   const held = draft.objects.find((object) => object.id === draft.selectedId);
   if (held === undefined) return { count: draft.objects.length + (blank ? 0 : 1), steps: !blank };
   if (blank) return { count: draft.objects.length - 1, steps: true };
-  return { count: draft.objects.length, steps: held.kind === 'text' && held.text !== typed };
+  return { count: draft.objects.length, steps: JSON.stringify(shownInEdit(draft, held)) !== JSON.stringify(held) };
 }
 
 /**
@@ -215,8 +249,8 @@ export function markCanClear(draft: MarkDraft): boolean {
 
 /**
  * Whether Redo has a step to put back once the text edit, if any, is left:
- * leaving it records a step whenever the text changed, and a new step empties
- * what redo held.
+ * leaving it records a step whenever the text, its colour or its size changed,
+ * and a new step empties what redo held.
  * @param draft - The draft.
  * @returns True when it does.
  * @throws {never} Never.
@@ -227,7 +261,7 @@ export function markCanRedo(draft: MarkDraft): boolean {
 
 /**
  * The size one press of `[` or `]` gives: one step from the selected object's
- * own size, or from the pen's with nothing selected, held to the slider's
+ * size as it shows, or from the pen's with nothing selected, held to the slider's
  * range. A text scaled past either end keeps its size until the key moves it
  * back toward the range.
  * @param draft - The draft.
@@ -237,7 +271,8 @@ export function markCanRedo(draft: MarkDraft): boolean {
  */
 export function steppedMarkSize(draft: MarkDraft, step: number): number | null {
   const held = draft.selectedId === null ? undefined : draft.objects.find((object) => object.id === draft.selectedId);
-  const from = held?.size ?? draft.size;
+  const shown = held !== undefined && draft.editingText !== null ? shownInEdit(draft, held) : held;
+  const from = shown?.size ?? draft.size;
   const next = Math.min(BRUSH_SIZE.max, Math.max(BRUSH_SIZE.min, from + step * BRUSH_SIZE.step));
   return (next - from) * step > 0 ? next : null;
 }
