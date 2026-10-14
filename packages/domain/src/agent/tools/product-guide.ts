@@ -201,8 +201,8 @@ export function renderProductGuide(): string {
       `${quoted(t("project.space.loading.create"))}; the new space then opens as a tab.`,
     "The second, three lines with the number of spaces beside them, opens " +
       `${quoted(t("spaces.drawer.title"))}: every space in the project, newest first, each with its type icon, ` +
-      `name and when it was made; the one open now is marked ${quoted(t("spaces.drawer.status.editing"))} at the ` +
-      `right of its row. Clicking a row opens that space as a tab. ` +
+      `name and when it was made; the space whose tab is showing now is marked ` +
+      `${quoted(t("spaces.drawer.status.editing"))} at the right of its row, and no other row is marked. Clicking a row opens that space as a tab. ` +
       `Hovering a row shows three dots at its right end, which open a menu: ${quoted(t("spaces.drawer.action.view"))}, ` +
       `${quoted(t("spaces.drawer.action.rename"))}, ` +
       `${quoted(t("spaces.drawer.action.lock"))} (${quoted(t("spaces.drawer.action.unlock"))} on a locked space) and ` +
@@ -215,7 +215,8 @@ export function renderProductGuide(): string {
       "clicking the row does: it opens the space as a tab, or switches to its tab if it already has one. " +
       `${quoted(t("spaces.drawer.action.rename"))} turns the name on that row into a box with the name selected; ` +
       "Enter or clicking elsewhere saves it and Esc leaves it as it was. On a locked space it is greyed, with " +
-      `${quoted(t("spaces.drawer.action.renameLocked"))} written under it.`,
+      `${quoted(t("spaces.drawer.action.renameLocked"))} written under it. A viewer's menu has no ` +
+      `${quoted(t("spaces.drawer.action.rename"))}.`,
     `The third, a pulse line, opens ${quoted(t("activity.header"))}: the project's uploads, generations and ` +
       "changes to spaces and members, newest first. Each finished generation shows the credits it used, a star " +
       "with a number; a failed one shows a red exclamation mark; picture, video and sound entries have a " +

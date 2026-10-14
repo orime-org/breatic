@@ -143,7 +143,7 @@ const REMOVED_DEAD_KEYS: readonly string[] = [
   'server.email.welcome_subject',
   'editor.accept',
   // View opens a Space as a tab, as pressing its drawer row does (inner#1528);
-  // the read-only panel these titled is gone.
+  // the read-only panel these were shown in is gone.
   'spaces.readonly.canvas.title',
   'spaces.readonly.document.title',
   'spaces.readonly.timeline.title',

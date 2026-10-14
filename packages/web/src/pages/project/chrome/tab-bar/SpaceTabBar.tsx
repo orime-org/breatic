@@ -205,7 +205,6 @@ interface SpaceTabBarProps {
   spaces: ReadonlyArray<ProjectSpace>;
   /** All Spaces in the project - used by the drawer to list everything. */
   allSpaces: ReadonlyArray<ProjectSpace>;
-  /** Ids of the open tabs, for the drawer's status chip computation. */
   activeSpaceId: string;
   /** Project id - drawer uses it for row test ids only (RPCs are by handler). */
   projectId: string;

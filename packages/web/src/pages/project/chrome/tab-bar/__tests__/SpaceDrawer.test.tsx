@@ -404,7 +404,7 @@ describe('SpaceDrawer', () => {
     expect(icon.parentElement?.className ?? '').not.toMatch(/bg-muted/);
   });
 
-  it('centres the Editing mark on the row at its right end, beside the type icon', async () => {
+  it('centres the Editing mark on the row at its right end, at the same level as the type icon', async () => {
     const user = userEvent.setup();
     setup({ activeSpaceId: 'sp-1' });
     await user.click(screen.getByTestId('space-drawer-trigger'));

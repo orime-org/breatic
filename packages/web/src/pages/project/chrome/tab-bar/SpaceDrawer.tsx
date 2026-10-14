@@ -83,8 +83,8 @@ const TYPE_META: Record<
 // name is being edited, a plain box (the rename box cannot sit in a button).
 // Room kept on the right for the menu button floating there (32px wide, 8px
 // in from the row's edge, which the row's own 16px pad already covers half
-// of), plus the 8px gap the line keeps between its items: the Editing and
-// Open marks end against it and the name truncates before it.
+// of), plus an 8px gap: the Editing mark ends against it and the name
+// truncates before it.
 const ROW_BODY = 'flex min-w-0 flex-1 items-start gap-3 pr-8 text-left';
 
 /**
@@ -380,8 +380,8 @@ function SpaceDrawerRow({
         aria-hidden='true'
       />
       <span className='flex min-w-0 flex-1 flex-col gap-1'>
-        {/* 20px tall whatever it holds: the marks are, so every row and a row
-            being renamed stand the same height. */}
+        {/* 20px tall whatever it holds, the height the rename box takes, so a
+            row being renamed stands as tall as every other row. */}
         <span className='flex min-h-5 items-center gap-2'>
           {renaming ? (
             <input
@@ -473,7 +473,8 @@ function SpaceDrawerRow({
           // Out of the flow and over the room the row button keeps free on
           // its right (`pr-8`), so the name truncates before it rather than
           // running under it. Shown while the row is hovered, while focus is
-          // inside it, and while its menu is open.
+          // inside it, while its menu is open and while its name is being
+          // renamed.
           className={cn(
             'absolute right-2 top-1/2 -translate-y-1/2 transition-opacity group-hover:opacity-100 focus-within:opacity-100',
             menuOpen || renaming ? 'opacity-100' : 'opacity-0',
