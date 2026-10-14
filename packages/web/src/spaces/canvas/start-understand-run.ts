@@ -19,7 +19,7 @@ import { ApiException } from '@web/data/api/types';
 import { addEdge, addNode, runCanvasUndoBatch } from '@web/data/yjs/canvas-space';
 import { formatBytes } from '@web/lib/format-bytes';
 import { toast } from '@web/lib/toast';
-import { getRunning, runOnce, useRunning } from '@web/stores/task-actions-in-flight';
+import { runOnce, useRunning, type RunOnceOutcome } from '@web/stores/task-actions-in-flight';
 import { refusalClause } from '@web/spaces/canvas/failure-sentence';
 import { createEmptyNode } from '@web/spaces/canvas/node-factory';
 import {
@@ -88,16 +88,6 @@ function understandIntent(spaceId: string, nodeId: string): string {
 }
 
 /**
- * Whether an Understand press on this node is still waiting, outside React.
- * @param spaceId - The Space the node lives in.
- * @param nodeId - The node being read.
- * @returns True while it waits.
- */
-export function isUnderstanding(spaceId: string, nodeId: string): boolean {
-  return getRunning(understandIntent(spaceId, nodeId)) !== undefined;
-}
-
-/**
  * Whether an Understand press on this node is still waiting; the menu item reads it.
  * @param spaceId - The Space the node lives in.
  * @param nodeId - The node being read.
@@ -122,7 +112,7 @@ export function useUnderstanding(spaceId: string, nodeId: string): boolean {
  * @param run - The press: where it happens, who pressed, and what is read.
  * @returns The press's whole run; what happens next is on the new node's task list.
  */
-export function startUnderstandRun(run: UnderstandRun): Promise<void> {
+export function startUnderstandRun(run: UnderstandRun): Promise<RunOnceOutcome<unknown>> {
   const { projectId, spaceId, userId, source, onBuilt } = run;
   return runOnce(understandIntent(spaceId, source.id), {
     scope: 'understand',

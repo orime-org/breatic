@@ -40,7 +40,8 @@ import { canvasApi, getCachedUnderstandMaxBytes } from '@web/data/api/canvas';
 import { ApiException } from '@web/data/api/types';
 import { toast } from '@web/lib/toast';
 
-import { isUnderstanding, startUnderstandRun } from '@web/spaces/canvas/start-understand-run';
+import { startUnderstandRun } from '@web/spaces/canvas/start-understand-run';
+import { getRunning } from '@web/stores/task-actions-in-flight';
 
 const RUN = {
   projectId: 'p-1',
@@ -77,14 +78,14 @@ describe('one press of Understand', () => {
     const first = startUnderstandRun(RUN);
     const again = startUnderstandRun(RUN);
     await Promise.resolve();
-    expect(isUnderstanding('s-1', 'n-1')).toBe(true);
+    expect(getRunning('understand:s-1:n-1') !== undefined).toBe(true);
     finish?.();
     await Promise.all([first, again]);
 
     expect(addNode).toHaveBeenCalledTimes(1);
     expect(vi.mocked(canvasApi.understand)).toHaveBeenCalledTimes(1);
     expect(vi.mocked(canvasApi.understand).mock.calls[0]?.[1]).toEqual(expect.any(String));
-    expect(isUnderstanding('s-1', 'n-1')).toBe(false);
+    expect(getRunning('understand:s-1:n-1') !== undefined).toBe(false);
   });
 
   // A canvas of several media nodes gets one paragraph per reading, and a

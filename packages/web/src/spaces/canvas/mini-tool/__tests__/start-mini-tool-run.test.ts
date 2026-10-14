@@ -27,10 +27,11 @@ import { toast } from '@web/lib/toast';
 import { DrawingEmptyError } from '@web/spaces/canvas/mini-tool/export-drawing';
 import { NODE_STEP } from '@web/spaces/canvas/drop-layout';
 import {
-  isMiniToolRunning,
+  miniToolIntent,
   startMiniToolRun,
   type MiniToolRun,
 } from '@web/spaces/canvas/mini-tool/start-mini-tool-run';
+import { getRunning } from '@web/stores/task-actions-in-flight';
 
 /**
  * A registry tool by id.
@@ -100,14 +101,14 @@ describe('startMiniToolRun', () => {
     const first = startMiniToolRun(press());
     const again = startMiniToolRun(press());
     await vi.waitFor(() => expect(api.run).toHaveBeenCalledTimes(1));
-    expect(isMiniToolRunning('22222222-2222-4222-8222-222222222222', 'src', 'audio.separate')).toBe(true);
+    expect(getRunning(miniToolIntent('22222222-2222-4222-8222-222222222222', 'src', 'audio.separate')) !== undefined).toBe(true);
     finish?.();
     await Promise.all([first, again]);
 
     expect(canvas.addNode).toHaveBeenCalledTimes(2);
     expect(api.run).toHaveBeenCalledTimes(1);
     expect(api.run.mock.calls[0]?.[1]).toEqual(expect.any(String));
-    expect(isMiniToolRunning('22222222-2222-4222-8222-222222222222', 'src', 'audio.separate')).toBe(false);
+    expect(getRunning(miniToolIntent('22222222-2222-4222-8222-222222222222', 'src', 'audio.separate')) !== undefined).toBe(false);
   });
 
   // A6: one node per declared output, named after the source, stacked to its right.

@@ -25,7 +25,7 @@ import type { MiniToolUploadTag } from '@web/data/upload/ingest-upload';
 import { UploadFailedError } from '@web/data/upload/media-upload';
 import { addEdge, addNode, runCanvasUndoBatch } from '@web/data/yjs/canvas-space';
 import { toast } from '@web/lib/toast';
-import { getRunning, runOnce, useRunning } from '@web/stores/task-actions-in-flight';
+import { runOnce, useRunning, type RunOnceOutcome } from '@web/stores/task-actions-in-flight';
 import { NODE_STEP } from '@web/spaces/canvas/drop-layout';
 import { DrawingEmptyError, type DrawingExport } from '@web/spaces/canvas/mini-tool/export-drawing';
 import { exportsBeforeRun } from '@web/spaces/canvas/mini-tool/mini-tool-view';
@@ -218,17 +218,6 @@ export function miniToolIntent(spaceId: string, nodeId: string, toolId: string):
 }
 
 /**
- * Whether a press of this tool on this node is still waiting, outside React.
- * @param spaceId - The Space the node lives in.
- * @param nodeId - The node the tool runs on.
- * @param toolId - The tool.
- * @returns True while it waits.
- */
-export function isMiniToolRunning(spaceId: string, nodeId: string, toolId: string): boolean {
-  return getRunning(miniToolIntent(spaceId, nodeId, toolId)) !== undefined;
-}
-
-/**
  * Whether a press of this tool on this node is still waiting; the Run button reads it.
  * @param spaceId - The Space the node lives in.
  * @param nodeId - The node the tool runs on.
@@ -254,7 +243,7 @@ export function useMiniToolRunning(spaceId: string, nodeId: string, toolId: stri
  * @param run - The press.
  * @returns The press's whole run; what happens next is on the new nodes' task rows.
  */
-export function startMiniToolRun(run: MiniToolRun): Promise<void> {
+export function startMiniToolRun(run: MiniToolRun): Promise<RunOnceOutcome<unknown>> {
   return runOnce(miniToolIntent(run.spaceId, run.source.id, run.spec.id), {
     scope: 'mini-tool',
     prepare: () => buildMiniToolRun(run),
