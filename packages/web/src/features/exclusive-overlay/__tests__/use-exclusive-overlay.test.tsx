@@ -29,15 +29,15 @@ describe('useExclusiveOverlay', () => {
     // slot the other one had just claimed, and BOTH overlays would end up
     // closed.
     const drawer = renderHook(() => useExclusiveOverlay('space-drawer'));
-    const peek = renderHook(() => useExclusiveOverlay('project-activity'));
+    const activity = renderHook(() => useExclusiveOverlay('project-activity'));
     act(() => drawer.result.current[1](true));
     expect(drawer.result.current[0]).toBe(true);
-    // one handler, no re-render in between: claim for peek, release drawer
+    // one handler, no re-render in between: claim for activity, release drawer
     act(() => {
-      peek.result.current[1](true);
+      activity.result.current[1](true);
       drawer.result.current[1](false);
     });
-    expect(peek.result.current[0]).toBe(true);
+    expect(activity.result.current[0]).toBe(true);
     expect(drawer.result.current[0]).toBe(false);
   });
 });

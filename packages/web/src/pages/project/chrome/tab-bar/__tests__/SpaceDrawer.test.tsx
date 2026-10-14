@@ -329,13 +329,11 @@ describe('SpaceDrawer', () => {
     const user = userEvent.setup();
     const onRenameSpace = vi.fn();
     setup({ onRenameSpace });
-    let box = await startRename(user, 'sp-1');
+    await startRename(user, 'sp-1');
     await user.keyboard('{Enter}');
-    box = await (async () => {
-      await openRowMenu(user, 'sp-1');
-      await user.click(screen.getByTestId('space-drawer-rename-sp-1'));
-      return (await screen.findByTestId('space-drawer-rename-input-sp-1')) as HTMLInputElement;
-    })();
+    await openRowMenu(user, 'sp-1');
+    await user.click(screen.getByTestId('space-drawer-rename-sp-1'));
+    const box = await screen.findByTestId('space-drawer-rename-input-sp-1');
     await user.clear(box);
     await user.type(box, '   {Enter}');
     expect(onRenameSpace).not.toHaveBeenCalled();

@@ -226,12 +226,12 @@ interface SpaceTabBarProps {
   /** Owner-only: restore a soft-deleted Space via collab `space:restore` RPC. */
   onRestoreSpace?: (spaceId: string) => Promise<void> | void;
 
-  /** Soft-delete a Space (drawer row × button). RPC handler from ProjectPage. */
+  /** Soft-delete a Space (drawer row menu item). RPC handler from ProjectPage. */
   onDeleteSpace?: (spaceId: string) => Promise<void> | void;
-  /** Toggle Space lock (drawer row 🔒 button). RPC handler from ProjectPage. */
+  /** Toggle Space lock (drawer row menu item). RPC handler from ProjectPage. */
   onSetSpaceLocked?: (spaceId: string, locked: boolean) => Promise<void> | void;
   /**
-   * Rename a Space inline from the tab strip. Caller role ≥ edit;
+   * Rename a Space inline from the tab strip and the drawer row menu. Caller role ≥ edit;
    * locked Spaces refuse rename on the server side. Handler from
    * ProjectPage wraps `space:rename` RPC via callRpc.
    */
@@ -271,9 +271,9 @@ interface SpaceTabBarProps {
  * @param root0.metaProvider - Live meta-doc provider carrying the activity:new signal.
  * @param root0.currentUserRole - Caller's role on the project, driving owner-only message actions.
  * @param root0.onRestoreSpace - Owner-only handler to restore a soft-deleted space.
- * @param root0.onDeleteSpace - Handler to soft-delete a space (drawer row delete button).
- * @param root0.onSetSpaceLocked - Handler to toggle a space's lock (drawer row lock button).
- * @param root0.onRenameSpace - Handler to rename a space inline from the tab strip.
+ * @param root0.onDeleteSpace - Handler to soft-delete a space (drawer row menu item).
+ * @param root0.onSetSpaceLocked - Handler to toggle a space's lock (drawer row menu item).
+ * @param root0.onRenameSpace - Handler to rename a space inline from the tab strip and the drawer row menu.
  * @param root0.onReorder - Handler for a tab dragged to a new place in the strip.
  * @returns The space tab bar toolbar.
  */

@@ -190,10 +190,13 @@ describe('frozen product terms (#1336)', () => {
    * stays localized (画布 = drawing surface, 文件/文档 = a file, 時間軸/タイムライン
    * = the video-editor track, スペース/스페이스 = a Workspace substring), so they
    * cannot go in the blanket no-translated-product-noun denylist. They are
-   * frozen per-key here instead: each space-type / entity key must CONTAIN the
-   * English term inside its (still-translated) sentence and NOT contain any of
-   * the localized noun forms. The blanket forms (Project / Collection / Work /
-   * Studio / Space's 工作面·作業面) are owned by the lint guard.
+   * frozen per-key here instead: each key must CONTAIN the English term inside
+   * its (still-translated) sentence and NOT contain any of the localized noun
+   * forms. Today only sentences naming a Space carry a row; Canvas, Document
+   * and Timeline are frozen as whole values by FROZEN_TERMS (`spaces.kind.*`),
+   * and a new sentence key that names one of them needs a row here with its
+   * forms. The blanket forms (Project / Collection / Work / Studio / Space's
+   * 工作面·作業面) are owned by the lint guard.
    */
   const SPACE_FORMS = ['工作面', '作業面', 'スペース', '스페이스', '작업면'];
 
