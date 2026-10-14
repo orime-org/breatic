@@ -100,6 +100,12 @@ const CARD_HEIGHT_GUESS_PX = 120;
 /** How close to the panel's header a card may come (user 2026-09-22). */
 const CLEARANCE_BELOW_HEADER_PX = 4;
 
+/**
+ * The token for how close to the bottom of the window a card brought into
+ * view may come: the gap the chat composer keeps from it (user 2026-10-14).
+ */
+const CLEARANCE_ABOVE_BOTTOM_VAR = '--space-5';
+
 /** One line of a wheel that counts in lines (Firefox), in pixels. */
 const WHEEL_LINE_PX = 16;
 
@@ -412,8 +418,11 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
   // carried it so far; after that the scroll is the reader's (design §9.4.0).
   // Computed from the two rectangles, as `scrollTabToEdge` does, with the
   // card's height as it is now: a card read opens up to all of its comments
-  // in the same commit, before the observer reports the new height.
-  const revealed = React.useRef<string | null>(null);
+  // in the same commit, before the observer reports the new height. A card
+  // that grows afterwards (an author's name arriving and taking a second
+  // line) is shown again at its new height, unless the reader has scrolled
+  // since.
+  const revealed = React.useRef<{ key: string; height: number; top: number } | null>(null);
   const draftEntry = draft?.kind === 'aimed' ? draft.entry : null;
   const reveal =
     reading === null
@@ -446,21 +455,21 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
     const bar = header.current;
     const readHeight =
       reading === null ? undefined : boxes.current.get(reading)?.offsetHeight;
+    const last = revealed.current;
     if (
-      revealed.current === reveal ||
       readTop === undefined ||
       readHeight === undefined ||
       scroller === null ||
       top === null ||
-      bar === null
+      bar === null ||
+      (last?.key === reveal && (last.height === readHeight || scroller.scrollTop !== last.top))
     ) {
       return;
     }
-    revealed.current = reveal;
     // The words may sit in a wide table scrolled away from them, which
     // scrolling the body up and down does not bring back.
     const words =
-      reading === null || reading === DRAFT_THREAD_ID
+      last?.key === reveal || reading === null || reading === DRAFT_THREAD_ID
         ? null
         : editor.prosemirrorView?.dom.querySelector<HTMLElement>(
             `.bn-thread-mark[data-bn-thread-id="${CSS.escape(reading)}"]`,
@@ -468,7 +477,9 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
     if (words !== null && words !== undefined) revealInTable(words);
     const cardTop = top.getBoundingClientRect().top + lifted + readTop;
     const clear = bar.getBoundingClientRect().bottom + CLEARANCE_BELOW_HEADER_PX;
-    const floor = scroller.getBoundingClientRect().bottom;
+    const floor =
+      scroller.getBoundingClientRect().bottom -
+      (parseFloat(getComputedStyle(scroller).getPropertyValue(CLEARANCE_ABOVE_BOTTOM_VAR)) || 0);
     const by =
       cardTop < clear
         ? cardTop - clear
@@ -476,6 +487,7 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
     if (by !== 0) {
       scroller.scrollTo({ top: scroller.scrollTop + by, behavior: 'instant' });
     }
+    revealed.current = { key: reveal, height: readHeight, top: scroller.scrollTop };
   }, [reveal, reading, readTop, heights, lifted, scroller, editor]);
   /**
    * How far a pushed card, or the most hidden of them, reaches above the
@@ -671,7 +683,9 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
         ref={column}
         data-testid='doc-comment-rail-column'
         className='relative flex-1 px-2.5'
-        style={{ minHeight: `${String(stackHeight)}px` }}
+        // With room under the lowest card for it to stop short of the
+        // window's bottom when it is scrolled up into view.
+        style={{ minHeight: `calc(${String(stackHeight)}px + var(${CLEARANCE_ABOVE_BOTTOM_VAR}))` }}
       >
         {nothingHere ? (
           <p

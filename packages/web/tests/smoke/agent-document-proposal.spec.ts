@@ -248,6 +248,45 @@ test('a comment in a column of a wide table scrolled out of view is scrolled int
   await expect.poll(async () => (await commentInTable()).inside).toBe(true);
 });
 
+test('a comment card brought up from the bottom of the window stops as far above it as the chat composer', async () => {
+  const id = await createSpace(page, 'document', `doc-proposal-${String(Date.now())}`);
+  created.push(id);
+  await page.locator(DOCUMENT_EDITOR).click();
+  for (let i = 1; i <= 40; i += 1) {
+    await page.keyboard.type(`Line ${String(i)}.`);
+    await page.keyboard.press('Enter');
+  }
+  await page.keyboard.type('The last line of the scene.');
+  await sendTheOpenSpace();
+  await answerWith((blocks, spaceId) => {
+    const last = blocks[blocks.length - 1]!;
+    return {
+      ...onSecondBlock({})(blocks, spaceId),
+      kind: 'comment',
+      blockId: last.id,
+      original: last.text,
+      quote: 'last line',
+      body: Array.from({ length: 8 }, (_, i) => `Note ${String(i + 1)} on how the scene should end.`).join('\n'),
+    };
+  });
+
+  const card = await askForTheCard();
+  await page.locator(`${DOCUMENT_EDITOR} p`).last().scrollIntoViewIfNeeded();
+  await card.getByRole('button').first().click();
+
+  const shown = visibleSpace(page).getByTestId('doc-comment-rail').getByTestId('doc-comment-card');
+  await expect(shown).toHaveAttribute('data-selected', 'true');
+  const gaps = async (): Promise<number> =>
+    page.evaluate(() => {
+      const bottom = (sel: string): number => document.querySelector(sel)!.getBoundingClientRect().bottom;
+      const card = [...document.querySelectorAll('[data-testid="doc-comment-card"]')].find((c) => c.getAttribute('data-selected') === 'true')!;
+      const fromCard = window.innerHeight - card.getBoundingClientRect().bottom;
+      const fromComposer = window.innerHeight - bottom('[data-testid="chat-composer"]');
+      return Math.round(Math.abs(fromCard - fromComposer));
+    });
+  await expect.poll(gaps).toBeLessThanOrEqual(1);
+});
+
 test('a rewrite replaces the passage as one undo step', async () => {
   const docId = await openDocumentWithText();
   await sendTheOpenSpace();
