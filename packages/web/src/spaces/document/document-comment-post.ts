@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Posting a comment on the range the open draft is aimed at (#18, A1 · A2 · A21).
+ * Posting a comment: `commentOn` for any caller that says where, and
+ * `postComment` for the reader's own draft (#18, A1 · A2 · A21; inner#1509).
  *
  * Two steps in this order, because the thread's id is what the mark carries:
  * create the thread, then mark the words. The library does not offer the
@@ -11,14 +12,15 @@
  * otherwise use is `setMark` on the current selection, which the block entry
  * has no way to hand a range to (design §6.1).
  *
- * Writing it here is what makes the two entries one operation: the bubble bar
- * opens the draft on the reader's selection, the block handle opens it on
- * `selectionOverBlockContent`, and from this point they are identical — which
- * is what A2 asks for, a whole-block comment reading the same as selecting
- * that block's text by hand.
+ * Writing it here is what makes every entry one operation: the bubble bar
+ * opens the draft on the reader's selection and the block handle opens it on
+ * `selectionOverBlockContent`, both posting through `postComment`, and an
+ * Agent proposal landing calls `commentOn` with the range it aims at. From
+ * `commentOn` on they are identical — which is what A2 asks for, a whole-block
+ * comment reading the same as selecting that block's text by hand.
  *
- * WHERE THE RANGE COMES FROM. Not from the caller: from the draft plugin, as
- * it stands at the moment of posting. The plugin is the one thing that has
+ * WHERE `postComment` TAKES THE RANGE FROM: the draft plugin, as it stands at
+ * the moment of posting. The plugin is the one thing that has
  * carried that range across every edit since the draft opened, and reading it
  * here closes a gap a caller cannot — a peer's deletion can arrive between
  * React rendering the draft card and the reader pressing post, and a range read

@@ -198,7 +198,7 @@ Text 工具(10 个):polish / expand / summarize / translate / rewrite / continue
 
 Agent 里没有选模板的控件,它按读者的需求自己调用。**提示词里留着的标记不检查、不拦生成**:点模板时弹一条提醒,提议落到画布时只要有画提示词框的节点带标记也弹同一条(`canvas.generatePanel.editMarks`),读者不改也照常发出去。
 
-### Agent tools (10)
+### Agent tools (11)
 
 **一个工具的用途、时机和用法只写在它自己的 `description` 和字段的 `.describe()` 里**(MANDATORY)。系统提示词(`packages/server/src/agent/context.ts`)只放对所有工具都成立的规则 —— 调用工具而不是把调用写出来、读报错并照它说的做、拿不到的要说出来。工具可以从注册表里拆掉,说明跟着它一起走;规定在 `packages/domain/CLAUDE.md`,守卫是 `packages/server/src/__tests__/agent/system-prompt.test.ts`(遍历 `TOOL_MAP`,提示词里出现任何一个工具名即红)和 `packages/domain/src/agent/tools/__tests__/tools-say-their-own-use.test.ts`。
 
@@ -240,9 +240,9 @@ Agent 里没有选模板的控件,它按读者的需求自己调用。**提示�
 
 **`save_image` —— 把网上找到的一张图存进读者的存储**,答复里给出存好之后的地址。提议里的 `material` 只认本 studio 存储里登记过的地址(聊天上传的文件,或经它存进来的图),网上的图要先经它存进来。服务端那一半在 `packages/server/src/agent/save-to-storage.ts`:跟画布粘贴链接走同样的限流、权限和存储额度检查,再交给 ingest Worker 去拉。一轮之内同一时刻只存一张,同一轮里并行的其余调用答 `turned_away`;读者停止时答「用户停止」。
 
-**`propose_document_edit` —— 对打开的 document 提议一条批注、一次改写或一次插入,等读者去按**(inner#1509)。它读的是这次请求随消息带来的当前 Space:浏览器发送时把 document 导出成 Markdown,每块标上序号,另附每块的 id、纯文字、类型、这一块有没有 Markdown 装不下的东西(`lossy`)和有没有被截断(`partial`)(`current_space.blocks`)。输入是块序号、`kind`(`comment` · `rewrite` · `insert`)、批注要挂的原文 `quote`(只有批注要)、正文 `body`(改写和插入是 Markdown)和标题。`execute` 只做检查:document 开着、序号在范围内、那一块没被截断、批注的 `quote` 在那块纯文字里有字且恰好出现一次;过了就把序号换成块 id、带上那一块当时的纯文字和类型交回并标 `placed: true`,没过只答一句为什么。**它自己不写文档**,写入在 web,等读者按下卡片。
+**`propose_document_edit` —— 对打开的 document 提议一条批注、一次改写或一次插入,等读者去按**(inner#1509)。它读的是这次请求随消息带来的当前 Space:浏览器发送时把 document 导出成 Markdown,每块标上序号,另附每块的 id、纯文字、类型、这一块有没有 Markdown 装不下的东西(`lossy`)和有没有被截断(`partial`)(`current_space.blocks`)。输入是块序号、`kind`(`comment` · `rewrite` · `insert`)、批注要挂的原文 `quote`(只有批注要)、正文 `body`(改写和插入是 Markdown)和标题。`execute` 只做检查:document 开着、批注和改写带块序号且序号在范围内、那一块没被截断、只有批注带 `quote`、`body` 不是空的、批注的 `quote` 在那块纯文字里有字且恰好出现一次;过了就把序号换成块 id、带上那一块当时的纯文字和类型交回并标 `placed: true`,没过就答为什么不行(`quote` 不在那块里时附上那块的原文)。**它自己不写文档**,写入在 web,等读者按下卡片。
 
-**文档提议卡和落地**:`to-chat-message.ts` 用 `@breatic/shared` 的 `documentProposalSchema` 核对存下的答复,读成 `documentProposals`,`DocumentProposalCard.tsx` 画成卡。按下后由 `stores/document-proposals.ts` 记下这次按下,`ProjectPage` 打开或切到那个 document,`DocumentSpace` 在编辑器就绪后逐张处理:先核这一段还是提议时的样子、连接可写,再写入(`document-proposal-landing.ts`)。批注走读者手动批注的同一个函数,跟读者手动加的一样不进撤销栈;改写和插入各是一个撤销步骤,新块的 id 由提议 id 推出。**落没落地由文档本身判**(`landedAt`:带这个提议 id 的批注还挂着、或由提议 id 推出的第一个块还在),刷新后只要这个 document 打开过就认得出(没打开时卡片显示成没落地,再按一次会在打开后先认出已经落地、不重复写),读者撤销改写或插入之后卡片也跟着回到可以再按。没做成的按下用 toast 告诉读者,卡片回到可以再按的样子。落地后,改写和插入滚到那一块并画 2 秒框;批注打开批注栏并选中它的卡片,批注在宽表格被横向滚走的一列里时,表格横向滚到那一格。
+**文档提议卡和落地**:`to-chat-message.ts` 用 `@breatic/shared` 的 `documentProposalSchema` 核对存下的答复,读成 `documentProposals`,`DocumentProposalCard.tsx` 画成卡。按下后由 `stores/document-proposals.ts` 记下这次按下,`ProjectPage` 打开或切到那个 document,`DocumentSpace` 在编辑器就绪后逐张处理:先核这一段还是提议时的样子、连接可写,再写入(`document-proposal-landing.ts`)。批注走读者手动批注的同一个函数,跟读者手动加的一样不进撤销栈;改写和插入各是一个撤销步骤,新块的 id 由提议 id 推出。**落没落地由文档本身判**(`landedAt`:带这个提议 id 的批注还挂着、或由提议 id 推出的第一个块还在),刷新后只要这个 document 打开过就认得出(没打开时卡片显示成没落地,再按一次会在打开后先认出已经落地、不重复写),读者撤销改写或插入之后卡片也跟着回到可以再按。没做成的按下用 toast 告诉读者,卡片回到可以再按的样子;「在 Document 中查看」没做成时什么都没写,卡片保持已落地、不弹 toast。落地后,改写和插入滚到那一块并画 2 秒框;批注打开批注栏并选中它的卡片,批注在宽表格被横向滚走的一列里时,表格横向滚到那一格。
 
 **这六个单列一组,不进 `BASELINE_TOOLS`**(`CANVAS_TOOLS`,`tools/index.ts`)。判据是**这个工具答的是不是「某个人眼前的我们的产品」**:搜索那两个虽然也由面板独自画出来,答的却不是画布,所以不在其列。
 
