@@ -1484,7 +1484,8 @@
         "close": "關閉",
         "download": "下載",
         "delete": "刪除",
-        "leftOut": "{count} 個圖片、影片或音訊沒有貼上，可以直接拖入或貼上檔案。"
+        "leftOut": "{count} 個圖片、影片或音訊沒有貼上，可以直接拖入或貼上檔案。",
+        "notPasted": "{count} 項沒有貼上。"
       }
     },
     "readOnlyReconnect": "重新連線"

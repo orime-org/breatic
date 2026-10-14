@@ -49,7 +49,7 @@ function sources(overrides: Partial<UploadSourceDeps> = {}): {
       state: 'completed',
       result: stored(`${PREFIX}fetched.png`),
     })),
-    register: vi.fn(async ({ urls, pairs }) =>
+    register: vi.fn(async ({ urls, pairs }: Parameters<UploadSourceDeps['register']>[0]) =>
       Object.fromEntries([...urls, ...pairs.flatMap((p) => [p.url, p.cover])].map((u) => [u, `${u}?copy`])),
     ),
     assetUrlPrefix: vi.fn(async () => PREFIX),

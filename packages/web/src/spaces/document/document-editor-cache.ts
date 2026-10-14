@@ -57,6 +57,7 @@
 
 import type * as Y from 'yjs';
 import type { BlockNoteEditor } from '@blocknote/core';
+import type { HocuspocusProvider } from '@hocuspocus/provider';
 
 import { documentBodyFragment, t } from '@breatic/shared';
 
@@ -66,6 +67,7 @@ import { toast } from '@web/lib/toast';
 import { useSpaceOperationsStore } from '@web/stores/space-operations';
 
 import { createDocScopedCache } from '@web/data/yjs/doc-scoped-cache';
+import { docName } from '@web/data/yjs/manager';
 import type { ResolveCollaboratorName } from '@web/features/collab-editor/caret-render';
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import type { DocumentCommentAuthInput } from '@web/spaces/document/document-comment-auth';
@@ -87,6 +89,8 @@ import {
   type DocumentUploader,
 } from '@web/spaces/document/document-uploads';
 import type { FilesArrival } from '@web/spaces/document/document-file-input';
+import { openPageBodyUploads } from '@web/spaces/document/document-page-uploads';
+import type { PendingUploadsStore } from '@web/spaces/document/document-pending-uploads';
 
 /** The editor plus what is handed out alongside it. */
 export interface DocumentEditorHandle {
@@ -124,6 +128,13 @@ export interface DocumentEditorHandle {
    * with nowhere to upload them to.
    */
   uploader: DocumentUploader | null;
+  /**
+   * What the body's pending media blocks read (inner#1351 + inner#1390), or
+   * null for an editor built with nowhere to upload to.
+   */
+  pending: PendingUploadsStore | null;
+  /** Closes the body's link to the page's uploads; run when it is evicted. */
+  closeUploads: () => void;
 }
 
 /** Where a body's uploads land. */
@@ -167,6 +178,11 @@ export interface DocumentEditorInputs {
    * no files: a drop or a paste of one does nothing.
    */
   uploadTarget?: DocumentUploadTarget;
+  /**
+   * This page's connection to the body, which says whether the page may write
+   * a finished upload's address into it. Left out, it is taken as writable.
+   */
+  provider?: HocuspocusProvider;
 }
 
 /**
@@ -215,6 +231,10 @@ function createDocumentEditor(
   const clearListeners = new Set<() => void>();
   const target = inputs.uploadTarget;
   const uploader = target === undefined ? null : uploaderFor(target, undoManager);
+  const uploads =
+    target === undefined
+      ? null
+      : openPageBodyUploads(target, doc, docName.documentSpace(target.projectId, target.spaceId), inputs.provider);
   if (uploader !== null) {
     // Fetched now so a paste can tell our media from outside links the moment
     // it lands (inner#1127 A18). A fetch that fails leaves every pasted
@@ -238,7 +258,19 @@ function createDocumentEditor(
       onLeftOut: (count) => {
         toast.warning(t('spaces.document.media.leftOut', { count }));
       },
+      ...(uploads !== null && { start: uploads.start }),
     },
+    ...(uploads !== null && {
+      onCanvasPaste: {
+        start: uploads.start,
+        notPasted: (count: number) => {
+          toast.warning(t('spaces.document.media.notPasted', { count }));
+        },
+        stopCapturing: () => {
+          undoManager.stopCapturing();
+        },
+      },
+    }),
     extensions: [
       // The awareness is withheld from BlockNote's own collaboration wiring and
       // handed to this plugin instead; `build-document-editor` carries why.
@@ -272,6 +304,10 @@ function createDocumentEditor(
     undoManager,
     surface,
     uploader,
+    pending: uploads?.pending ?? null,
+    closeUploads: () => {
+      uploads?.detach();
+    },
     onClearDocumentRequest: (listener) => {
       clearListeners.add(listener);
       return () => {
@@ -284,6 +320,7 @@ function createDocumentEditor(
 const cache = createDocScopedCache<DocumentEditorHandle, DocumentEditorInputs>(
   createDocumentEditor,
   (handle) => {
+    handle.closeUploads();
     handle.editor.unmount();
     handle.surface.remove();
   },

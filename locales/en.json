@@ -1484,7 +1484,8 @@
         "close": "Close",
         "download": "Download",
         "delete": "Delete",
-        "leftOut": "{count, plural, one {# image, video or audio was not pasted.} other {# images, videos or audio were not pasted.}} Drop or paste the files instead."
+        "leftOut": "{count, plural, one {# image, video or audio was not pasted.} other {# images, videos or audio were not pasted.}} Drop or paste the files instead.",
+        "notPasted": "{count, plural, one {# item was not pasted.} other {# items were not pasted.}}"
       }
     },
     "readOnlyReconnect": "Reconnect"

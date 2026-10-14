@@ -14,6 +14,7 @@
  * present or away.
  */
 
+import type { HocuspocusProvider } from '@hocuspocus/provider';
 import * as React from 'react';
 import type * as Y from 'yjs';
 
@@ -49,6 +50,8 @@ export interface UseDocumentEditorOptions {
   editable?: boolean;
   /** Where files put into the body are uploaded to; construction-time. */
   uploadTarget?: DocumentUploadTarget;
+  /** This page's connection to the body, for its uploads; construction-time. */
+  provider?: HocuspocusProvider;
   /**
    * False means no editor is BUILT. Used while the content has not arrived yet,
    * and when this build must not open the document at all (its vocabulary no
@@ -86,6 +89,7 @@ export interface UseDocumentEditorOptions {
  * @param options.editable - False for read-only.
  * @param options.enabled - False builds no editor. Destroying one that exists belongs to `DocumentInterceptGuard`, not here.
  * @param options.uploadTarget - Where files put into the body are uploaded to.
+ * @param options.provider - This page's connection to the body, for its uploads.
  * @returns The editor and its undo manager, or null while the wiring is absent.
  */
 export function useDocumentEditor({
@@ -96,6 +100,7 @@ export function useDocumentEditor({
   editable = true,
   enabled = true,
   uploadTarget,
+  provider,
 }: UseDocumentEditorOptions): DocumentEditorHandle | null {
   // From context, not from a prop: the roster is a project-level fact and every
   // layer between here and the project page used to have to forward it.
@@ -119,6 +124,7 @@ export function useDocumentEditor({
           readWho,
           editable,
           ...(uploadTarget !== undefined && { uploadTarget }),
+          ...(provider !== undefined && { provider }),
         })
         : null,
     // `editable` is deliberately NOT a dependency: it is construction-time

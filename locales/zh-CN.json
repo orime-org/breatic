@@ -1484,7 +1484,8 @@
         "close": "关闭",
         "download": "下载",
         "delete": "删除",
-        "leftOut": "{count} 个图片、视频或音频没有粘贴进来，可以直接拖入或粘贴文件。"
+        "leftOut": "{count} 个图片、视频或音频没有粘贴进来，可以直接拖入或粘贴文件。",
+        "notPasted": "{count} 项没有粘贴进来。"
       }
     },
     "readOnlyReconnect": "重新连接"

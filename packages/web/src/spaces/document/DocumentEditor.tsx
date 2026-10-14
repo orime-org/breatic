@@ -38,6 +38,7 @@ import { useDocumentBars } from '@web/spaces/document/document-bars';
 import { bodyPartMark, recomputeBodyFocus, releaseBodyFocus } from '@web/spaces/document/document-body-focus';
 import { attachBodyScroller, BODY_BLANK } from '@web/spaces/document/document-body-press';
 import type { DocumentUploader } from '@web/spaces/document/document-uploads';
+import { PendingUploadsContext, type PendingUploadsStore } from '@web/spaces/document/document-pending-uploads';
 
 interface DocumentEditorProps {
   /** The live editor and its surface, created and owned by the cache. */
@@ -56,6 +57,8 @@ interface DocumentEditorProps {
   myRole?: ProjectRole;
   /** What takes files into this body; a body without one offers no media entries. */
   uploader?: DocumentUploader | null;
+  /** What the body's pending media blocks read; null shows each as not finished. */
+  pending?: PendingUploadsStore | null;
 }
 
 /**
@@ -73,6 +76,7 @@ interface DocumentEditorProps {
  * @param root0.readOnly - True for a viewer.
  * @param root0.myRole - The reader's role on the project.
  * @param root0.uploader - What takes files into this body.
+ * @param root0.pending - What the body's pending media blocks read.
  * @returns The editor body, the comment panel beside it, the entry and the
  *   bubble bar.
  */
@@ -81,6 +85,7 @@ export const DocumentEditor = React.memo(function DocumentEditor({
   readOnly = false,
   myRole = 'viewer',
   uploader = null,
+  pending = null,
 }: DocumentEditorProps): React.JSX.Element {
   const body = React.useRef<HTMLDivElement>(null);
   // The one bit that says whether the panel is on screen, and the reader is
@@ -286,7 +291,13 @@ export const DocumentEditor = React.memo(function DocumentEditor({
       {/* Every image, video and audio block, drawn into its node view's
           container from inside this tree (inner#1127). A viewer sees them
           too; their controls are hidden while the body is not editable. */}
-      <DocumentMediaViews editor={handle.editor} />
+      {pending === null ? (
+        <DocumentMediaViews editor={handle.editor} />
+      ) : (
+        <PendingUploadsContext.Provider value={pending}>
+          <DocumentMediaViews editor={handle.editor} />
+        </PendingUploadsContext.Provider>
+      )}
       {/* What each upload in flight shows, in the body where it will land
           (inner#1127 A4). Kept for a body that turned read-only meanwhile:
           a failed file still has its placeholder to remove. */}
