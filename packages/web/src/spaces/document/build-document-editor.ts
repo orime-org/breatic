@@ -73,6 +73,7 @@ import { documentCommentSelection } from '@web/spaces/document/document-comment-
 import { documentNoNodeClickExtension } from '@web/spaces/document/document-no-node-click';
 import { LINK_ANCHOR_SELECTOR } from '@web/spaces/document/document-link';
 import {
+  cellMediaPasteHandler,
   documentPastedMediaExtension,
   type PastedMediaOptions,
 } from '@web/spaces/document/document-external-media';
@@ -253,13 +254,14 @@ export function buildDocumentEditor(
 
 /**
  * The body's paste hooks, in the order a paste is tried (inner#1351 design
- * §5.1): files, then a canvas clipboard, then everything else.
+ * §5.1): files, then a canvas clipboard, then web content with media in a
+ * table cell, then everything else.
  * @param options - The editor's options.
  * @returns The first hook.
  */
 function pasteChain(options: DocumentEditorOptions): PasteHandler {
-  const rest =
-    options.onCanvasPaste === undefined ? documentPasteHandler : canvasPasteHandler(options.onCanvasPaste, documentPasteHandler);
+  const html = options.media === undefined ? documentPasteHandler : cellMediaPasteHandler(options.media, documentPasteHandler);
+  const rest = options.onCanvasPaste === undefined ? html : canvasPasteHandler(options.onCanvasPaste, html);
   return options.onFiles === undefined ? rest : filesPasteHandler(options.onFiles, rest);
 }
 

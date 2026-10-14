@@ -88,7 +88,9 @@ function caretIn(editor: Editor, index: number): void {
  */
 function paste(editor: Editor, html: string, text: string): void {
   const event = new Event('paste', { bubbles: true, cancelable: true });
+  // Configurable, as the browser's own is: it lives on the prototype.
   Object.defineProperty(event, 'clipboardData', {
+    configurable: true,
     value: {
       types: ['text/html', 'text/plain'],
       files: [],

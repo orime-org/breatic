@@ -28,10 +28,18 @@
 import { createExtension, type ExtensionFactoryInstance } from '@blocknote/core';
 import { Fragment, Slice, type Node as PMNode } from '@tiptap/pm/model';
 import { Plugin } from '@tiptap/pm/state';
+import type { EditorView } from '@tiptap/pm/view';
 
 import { routeAddress } from '@web/spaces/document/document-canvas-paste';
-import { isMediaBlockType } from '@web/spaces/document/document-media-types';
+import {
+  insertAtGap,
+  pasteTarget,
+  type BlockSpec,
+  type PasteHandler,
+} from '@web/spaces/document/document-file-input';
+import { isMediaBlockType, type MediaBlockType } from '@web/spaces/document/document-media-types';
 import type { UploadSource } from '@web/spaces/document/document-upload-controller';
+import { pendingBlock } from '@web/spaces/document/document-uploads';
 
 /** What the body needs to judge pasted media. */
 export interface PastedMediaOptions {
@@ -188,4 +196,109 @@ export function documentPastedMediaExtension(
       ],
     };
   })();
+}
+
+/** Whether a piece of HTML carries an image, a video or an audio. */
+export const HTML_MEDIA = /<(img|video|audio)\b/i;
+
+/** The block type each media element becomes. */
+const TYPE_OF_TAG: Readonly<Record<string, MediaBlockType>> = { IMG: 'image', VIDEO: 'video', AUDIO: 'audio' };
+
+/** A medium taken out of pasted HTML. */
+interface TakenMedium {
+  readonly type: MediaBlockType;
+  readonly url: string;
+  readonly name: string;
+  readonly caption: string;
+}
+
+/**
+ * Takes every image, video and audio out of a parsed piece of HTML, with the
+ * figure around it, reading its address, its `alt` as the name and the
+ * figure's caption the way BlockNote's parse rules read them.
+ * @param body - The parsed HTML's body; the media are removed from it.
+ * @returns The media, in document order.
+ */
+function takeMedia(body: HTMLElement): TakenMedium[] {
+  return Array.from(body.querySelectorAll('img, video, audio')).map((element) => {
+    const figure = element.closest('figure');
+    const url = element.getAttribute('src') ?? element.querySelector('source')?.getAttribute('src') ?? '';
+    const caption = figure?.querySelector('figcaption')?.textContent?.trim() ?? '';
+    (figure ?? element).remove();
+    return {
+      type: TYPE_OF_TAG[element.tagName]!,
+      url,
+      name: element.getAttribute('alt') ?? '',
+      caption,
+    };
+  });
+}
+
+/**
+ * Whether the selection is inside a table cell.
+ * @param view - The editor view.
+ * @returns True when an ancestor of the selection's head is a cell.
+ */
+function inTableCell(view: EditorView): boolean {
+  const { $head } = view.state.selection;
+  for (let depth = $head.depth; depth > 0; depth -= 1) {
+    const name = $head.node(depth).type.name;
+    if (name === 'tableCell' || name === 'tableHeader') return true;
+  }
+  return false;
+}
+
+/**
+ * The paste of web content with the caret in a table cell (design §5.4).
+ *
+ * A table cell takes only words, so the default paste would flatten the HTML
+ * into the cell and every medium would be gone. Here the media come out
+ * first: the rest goes to the default paste, into the cell, and the media
+ * land under the table right after it, in the same undo step (nothing closes
+ * the step between the two dispatches).
+ * @param options - Our prefix, where the count goes and where uploads start.
+ * @param next - The paste every other clipboard goes to.
+ * @returns The hook.
+ */
+export function cellMediaPasteHandler(options: PastedMediaOptions, next: PasteHandler): PasteHandler {
+  return (context) => {
+    const { event } = context;
+    const view = context.editor.prosemirrorView;
+    const data = event.clipboardData;
+    const html = data?.getData('text/html') ?? '';
+    if (view === undefined || view === null || data === null || !HTML_MEDIA.test(html) || !inTableCell(view)) {
+      return next(context);
+    }
+    const parsed = new DOMParser().parseFromString(html, 'text/html');
+    const taken = takeMedia(parsed.body);
+    const rest = parsed.body.innerHTML;
+    const without: Pick<DataTransfer, 'types' | 'files' | 'items' | 'getData'> = {
+      types: data.types,
+      files: data.files,
+      items: data.items,
+      getData: (format: string): string => (format === 'text/html' ? rest : data.getData(format)),
+    };
+    Object.defineProperty(event, 'clipboardData', { value: without });
+    const handled = next(context);
+
+    const prefix = options.assetUrlPrefix();
+    const blocks: BlockSpec[] = [];
+    const started: { uploadId: string; url: string }[] = [];
+    let dropped = 0;
+    for (const medium of taken) {
+      if (prefix !== null && medium.url.startsWith(prefix)) {
+        blocks.push({ type: medium.type, props: { url: medium.url, name: medium.name, caption: medium.caption } });
+      } else if (medium.url === '' || routeAddress(medium.url) === 'skip' || options.start === undefined) {
+        dropped += 1;
+      } else {
+        const uploadId = crypto.randomUUID();
+        started.push({ uploadId, url: medium.url });
+        blocks.push(pendingBlock(medium.type, uploadId, medium.name, medium.caption));
+      }
+    }
+    if (blocks.length > 0) insertAtGap(view, pasteTarget(view.state).gap, false, blocks);
+    for (const { uploadId, url } of started) options.start?.(uploadId, { kind: 'address', url });
+    if (dropped > 0) options.onLeftOut(dropped);
+    return handled;
+  };
 }

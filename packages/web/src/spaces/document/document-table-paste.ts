@@ -21,6 +21,8 @@
 
 import type { BlockNoteEditorOptions } from '@blocknote/core';
 
+import { HTML_MEDIA } from '@web/spaces/document/document-external-media';
+
 /** BlockNote's paste hook, as this editor's options take it. */
 type PasteHandler = NonNullable<BlockNoteEditorOptions<never, never, never>['pasteHandler']>;
 
@@ -95,5 +97,7 @@ export const documentPasteHandler: PasteHandler = ({ event, defaultPasteHandler 
     };
     Object.defineProperty(event, 'clipboardData', { value: evened });
   }
-  return defaultPasteHandler();
+  // HTML carrying media is read as HTML even when its plain text looks like
+  // Markdown, which would drop every picture (inner#1351 design §5.1).
+  return HTML_MEDIA.test(even) ? defaultPasteHandler({ prioritizeMarkdownOverHTML: false }) : defaultPasteHandler();
 };
