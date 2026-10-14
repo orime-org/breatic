@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
+import { useStore } from '@xyflow/react';
 import * as React from 'react';
 
 import { parseAdjustValue, type AdjustValue } from '@breatic/shared';
@@ -11,6 +12,7 @@ import { miniToolOpenOn } from '@web/stores/canvas-session';
 import { useMediaGeometry } from '@web/spaces/canvas/crop/media-geometry';
 import { prepareCropSource } from '@web/spaces/canvas/focus/crop-export';
 import type { CropSourceEl } from '@web/spaces/canvas/focus/crop-source';
+import { cn } from '@web/lib/utils';
 import { drawAdjusted } from '@web/spaces/canvas/mini-tool/adjust-export';
 
 interface NodeAdjustLayerProps {
@@ -52,6 +54,9 @@ export function NodeAdjustLayer({ nodeId, wrapper }: NodeAdjustLayerProps): Reac
   // preview draws from a copy that is, loaded once per picture.
   const src = geometry?.src ?? null;
   const [el, setEl] = React.useState<HTMLImageElement | HTMLVideoElement | undefined>(undefined);
+  // The layer stays invisible until a frame is drawn on it, so the node's
+  // picture shows while the copy loads, and for good if it never does.
+  const [drawn, setDrawn] = React.useState(false);
   React.useEffect(() => {
     if (param === undefined || src === null) return undefined;
     let live = true;
@@ -60,17 +65,23 @@ export function NodeAdjustLayer({ nodeId, wrapper }: NodeAdjustLayerProps): Reac
         if (live) setEl(loaded);
       },
       () => {
-        // The preview stays the picture as it is; the export loads it again
-        // and says so if it fails.
+        // The layer stays invisible, so the node keeps showing its picture;
+        // the export loads it again and says so if it fails.
       },
     );
     return () => {
       live = false;
       setEl(undefined);
+      setDrawn(false);
     };
   }, [param, src]);
   const dpr = typeof window === 'undefined' ? 1 : window.devicePixelRatio || 1;
-  const width = box === undefined ? 0 : Math.max(1, Math.round(Math.min(box.width * dpr, natural?.width ?? Infinity)));
+  // Drawn at the pixels the node takes on screen, so zooming in shows what the
+  // export does to fine detail, as an editor's 1:1 view does; never past the
+  // source's own pixels.
+  const zoom = useStore((s) => s.transform[2]);
+  const width =
+    box === undefined ? 0 : Math.max(1, Math.round(Math.min(box.width * zoom * dpr, natural?.width ?? Infinity)));
   const height = box === undefined ? 0 : Math.max(1, Math.round((width * box.height) / box.width));
 
   React.useEffect(() => {
@@ -82,7 +93,7 @@ export function NodeAdjustLayer({ nodeId, wrapper }: NodeAdjustLayerProps): Reac
       const next = pending.current;
       const target = canvas.current;
       if (next === null || target === null) return;
-      void drawAdjusted(next.el, next.size, next.value, target);
+      void drawAdjusted(next.el, next.size, next.value, target).then(() => setDrawn(true));
     });
   }, [param, el, width, height, value]);
 
@@ -98,7 +109,7 @@ export function NodeAdjustLayer({ nodeId, wrapper }: NodeAdjustLayerProps): Reac
     <canvas
       ref={canvas}
       data-testid='mini-tool-adjust-layer'
-      className='pointer-events-none absolute bg-card'
+      className={cn('pointer-events-none absolute bg-card', drawn ? undefined : 'invisible')}
       style={{ left: geometry.at.x, top: geometry.at.y, width: geometry.box.width, height: geometry.box.height }}
     />
   );

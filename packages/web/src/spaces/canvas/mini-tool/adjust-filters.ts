@@ -335,22 +335,32 @@ type AdjustFilter = InstanceType<typeof filters.BaseFilter>;
 
 /**
  * The filters one adjust value comes to, in the order ffmpeg runs its stages.
- * Stages that change nothing are left out.
+ * Stages that change nothing are left out. A stage that reads neighbouring
+ * pixels reaches at least one of the source's own pixels, as ffmpeg's smallest
+ * unsharp matrix does; the reach stays a share of the width, so a smaller draw
+ * of the same source (the node's preview) shows the export's effect scaled.
  * @param value - The sliders.
  * @param seed - The grain's seed, fixed for one panel so the preview and the export match.
+ * @param sourceWidth - The source's width in pixels.
  * @returns The chain.
  */
-export function adjustFilters(value: AdjustValue, seed: number): AdjustFilter[] {
+export function adjustFilters(value: AdjustValue, seed: number, sourceWidth: number): AdjustFilter[] {
   const terms = adjustTerms(value);
+  const onePixel = 1 / Math.max(1, sourceWidth);
   const chain: AdjustFilter[] = [];
   if (terms.brightness !== 0 || terms.contrast !== 1 || terms.saturation !== 1) {
     chain.push(new filters.ColorMatrix({ matrix: eqMatrix(terms.brightness, terms.contrast, terms.saturation) }));
   }
   if (terms.hueRadians !== 0) chain.push(new filters.HueRotation({ rotation: terms.hueRadians / Math.PI }));
-  if (terms.blur > 0) chain.push(new filters.Blur({ blur: terms.blur * MAX_BLUR }));
+  // Fabric's blur reaches `blur * 0.12` of the width either side (Blur.getBlurValue).
+  if (terms.blur > 0) chain.push(new filters.Blur({ blur: Math.max(terms.blur * MAX_BLUR, onePixel / 0.12) }));
   if (terms.grain > 0) chain.push(new AdjustGrain({ strength: terms.grain, seed }));
-  if (terms.sharpen > 0) chain.push(new AdjustUnsharp({ amount: terms.sharpen, radius: SHARPEN_RADIUS }));
-  if (terms.clarity > 0) chain.push(new AdjustUnsharp({ amount: terms.clarity, radius: CLARITY_RADIUS }));
+  if (terms.sharpen > 0) {
+    chain.push(new AdjustUnsharp({ amount: terms.sharpen, radius: Math.max(SHARPEN_RADIUS, onePixel) }));
+  }
+  if (terms.clarity > 0) {
+    chain.push(new AdjustUnsharp({ amount: terms.clarity, radius: Math.max(CLARITY_RADIUS, onePixel) }));
+  }
   if (terms.channels !== null) {
     const { r, g, b } = terms.channels;
     chain.push(new filters.ColorMatrix({ matrix: [r, 0, 0, 0, 0, 0, g, 0, 0, 0, 0, 0, b, 0, 0, 0, 0, 0, 1, 0] }));
@@ -364,8 +374,14 @@ export function adjustFilters(value: AdjustValue, seed: number): AdjustFilter[] 
  * @param pixels - The picture, changed in place.
  * @param value - The sliders.
  * @param seed - The grain's seed.
+ * @param sourceWidth - The width of the source these pixels draw, when they are a smaller draw of it.
  */
-export function adjustPixels(pixels: PixelState['imageData'], value: AdjustValue, seed: number): void {
+export function adjustPixels(
+  pixels: PixelState['imageData'],
+  value: AdjustValue,
+  seed: number,
+  sourceWidth: number = pixels.width,
+): void {
   // `applyTo` rather than `applyTo2d`: a matrix filter such as the hue works its matrix out there.
-  for (const filter of adjustFilters(value, seed)) filter.applyTo({ imageData: pixels } as never);
+  for (const filter of adjustFilters(value, seed, sourceWidth)) filter.applyTo({ imageData: pixels } as never);
 }

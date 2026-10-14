@@ -45,11 +45,12 @@ function picture(size: number): Pixels {
  * @param source - The picture.
  * @param value - The sliders that move.
  * @param seed - The grain's seed.
+ * @param sourceWidth - The width of the picture the adjust is for, when this is a smaller draw of it.
  * @returns The adjusted copy.
  */
-function adjusted(source: Pixels, value: Partial<AdjustValue>, seed = 7): Pixels {
+function adjusted(source: Pixels, value: Partial<AdjustValue>, seed = 7, sourceWidth = source.width): Pixels {
   const copy = { ...source, data: new Uint8ClampedArray(source.data) };
-  adjustPixels(copy, { ...defaultAdjustValue, ...value }, seed);
+  adjustPixels(copy, { ...defaultAdjustValue, ...value }, seed, sourceWidth);
   return copy;
 }
 
@@ -101,13 +102,25 @@ describe('adjustPixels', () => {
     }
   });
 
+  // A radius kept as a share of the width falls under one pixel on a narrow
+  // picture (sharpness moved this one by 2 levels); the export reaches at
+  // least one of its own pixels, as ffmpeg's smallest unsharp matrix does.
+  it.each(['sharpness', 'clarity', 'noiseReduction'] as const)(
+    'changes a picture narrower than 512 px clearly at full %s',
+    (field) => {
+      const source = picture(64);
+      expect(maxDiff(adjusted(source, { [field]: 100 }).data, source.data)).toBeGreaterThan(20);
+    },
+  );
+
   it('lays the same grain twice for the same seed', () => {
     const source = picture(32);
     expect(maxDiff(adjusted(source, { grain: 80 }, 11).data, adjusted(source, { grain: 80 }, 11).data)).toBe(0);
   });
 
   it.each(['sharpness', 'clarity', 'grain'] as const)('looks the same at two resolutions with %s', (field) => {
-    const small = adjusted(picture(64), { [field]: 80 });
+    // The small one is a preview of the large: it draws the large picture's effect.
+    const small = adjusted(picture(64), { [field]: 80 }, 7, 128);
     const large = half(adjusted(picture(128), { [field]: 80 }));
     // Averaging a sharpened or grainy picture blurs it a little; what has to
     // hold is that the effect is the same size, not that every pixel matches.
