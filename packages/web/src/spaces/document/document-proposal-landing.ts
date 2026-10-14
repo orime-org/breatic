@@ -28,10 +28,8 @@ import { markdownBlocks } from '@web/spaces/document/document-markdown';
 import type { LandingAction } from '@web/stores/document-proposals';
 
 
-/** How a press ended. */
-export type LandingResult =
-  | { outcome: 'applied'; blockId: string }
-  | { outcome: 'readOnly' | 'changed' | 'blockGone' | 'failed' };
+/** How a press ended; a landing that throws is reported as failed by its caller. */
+type LandingResult = { outcome: 'applied'; blockId: string } | { outcome: 'readOnly' | 'changed' | 'blockGone' };
 
 /** The editor parts landing uses. */
 type Landable = Pick<DocumentEditorHandle, 'editor' | 'undoManager'>;
@@ -263,12 +261,8 @@ export async function landProposal(
   if (!writable) return { outcome: 'readOnly' };
   const problem = blockProblem(handle, proposal);
   if (problem !== null) return { outcome: problem };
-  try {
-    if (action === 'comment') await landComment(handle, proposal);
-    else await landBlocks(handle, proposal);
-    const landed = landedAt(handle, proposal);
-    return landed === null ? { outcome: 'changed' } : { outcome: 'applied', blockId: landed.blockId };
-  } catch {
-    return { outcome: 'failed' };
-  }
+  if (action === 'comment') await landComment(handle, proposal);
+  else await landBlocks(handle, proposal);
+  const landed = landedAt(handle, proposal);
+  return landed === null ? { outcome: 'changed' } : { outcome: 'applied', blockId: landed.blockId };
 }

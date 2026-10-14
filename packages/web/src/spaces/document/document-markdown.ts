@@ -5,12 +5,12 @@
  * Markdown read with the document's own schema, with no document open
  * (inner#1509).
  *
- * A proposal's body is drawn on its card, checked before it lands and written
- * into the document, and the document may not be open for the first two. Each
- * read builds a throwaway editor over an empty fragment, the way every
- * document editor is built, so the blocks it returns are the ones the open
- * document would parse and their plain text is read by the same function the
- * landing compares with.
+ * A proposal's body is drawn on its card and written into the document, and
+ * the document may not be open for the first. Each read builds a throwaway
+ * editor over an empty fragment, the way every document editor is built, so
+ * the blocks it returns are the ones the open document would parse and their
+ * plain text is read by the same function that reads the document's own
+ * blocks.
  */
 
 import type { BlockNoteEditor } from '@blocknote/core';

@@ -61,7 +61,7 @@ export function useDocumentProposalPickup(
 
   React.useEffect(() => {
     if (unbuildable) {
-      if (pendingFor(spaceId).length > 0) useDocumentProposals.getState().reportSpace(spaceId, 'failed');
+      useDocumentProposals.getState().reportSpace(spaceId, 'failed');
       return;
     }
     if (handle === null || writeAccess === 'unknown' || busy.current) return;

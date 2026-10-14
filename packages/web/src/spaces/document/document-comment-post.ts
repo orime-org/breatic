@@ -38,7 +38,7 @@ import {
 
 
 /** The editor surface this needs. */
-export interface CommentableEditor {
+interface CommentableEditor {
   /** The view, absent until the editor is mounted. */
   readonly prosemirrorView: {
     readonly state: EditorState;

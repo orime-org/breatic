@@ -4,11 +4,12 @@
 /**
  * Each document proposal card's state (inner#1509, design §5.7).
  *
- * A card's state is written in three places only: `start` when the reader
- * presses it, `view` when they press "View" on a card that landed, and
- * `report` when the press ends -- the project page
- * reports a document that is gone or a tab closed before the press was taken
- * up, the document Space reports the landing. Cards are kept by proposal id,
+ * A card's state is written by `start` when the reader presses it, `view`
+ * when they press "View" on a card that landed, and `report` (or
+ * `reportSpace` for every press on one document) when the press ends -- the
+ * project page reports a document that is gone or a tab closed before the
+ * press was taken up, the document Space reports the landing; `reset` clears
+ * them all when the project is left. Cards are kept by proposal id,
  * so several cards can wait on one document at once, and the document takes
  * them up in the order they were pressed.
  *
@@ -88,7 +89,7 @@ function ended(
   return { cards: { ...others, [proposalId]: { state: outcome, action: card.action } }, pending };
 }
 
-export const useDocumentProposals = create<DocumentProposalsState>()((set) => ({
+export const useDocumentProposals = create<DocumentProposalsState>()((set, get) => ({
   cards: {},
   pending: {},
   pressed: 0,
@@ -115,15 +116,9 @@ export const useDocumentProposals = create<DocumentProposalsState>()((set) => ({
     }),
   bump: (spaceId) => set((s) => ({ docVersion: { ...s.docVersion, [spaceId]: (s.docVersion[spaceId] ?? 0) + 1 } })),
   report: (proposalId, outcome) => set((s) => ended(s, proposalId, outcome)),
-  reportSpace: (spaceId, outcome) =>
-    set((s) =>
-      Object.values(s.pending)
-        .filter((p): p is PendingDocumentProposal => p?.proposal.spaceId === spaceId)
-        .reduce<Pick<DocumentProposalsState, 'cards' | 'pending'>>(
-          (acc, p) => ended({ ...s, ...acc }, p.proposal.proposalId, outcome),
-          { cards: s.cards, pending: s.pending },
-        ),
-    ),
+  reportSpace: (spaceId, outcome) => {
+    for (const p of pendingFor(spaceId)) get().report(p.proposal.proposalId, outcome);
+  },
   reset: () => set({ cards: {}, pending: {}, pressed: 0, docVersion: {} }),
 }));
 
