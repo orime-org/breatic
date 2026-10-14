@@ -601,6 +601,10 @@ function LocalParamControl({ param, spec, params, onParams, source }: LocalParam
                   origin={0}
                   value={value[field]}
                   format={String}
+                  // Each step goes into the session draft as the thumb moves,
+                  // so the node's picture follows it (A2); nothing here is in
+                  // the document, so no step becomes an undo entry.
+                  onDraft={(next) => onParams({ [param.key]: { ...value, [field]: next } })}
                   onChange={(partial) => onParams({ [param.key]: { ...value, ...partial } })}
                   testIdPrefix='mini-tool-adjust'
                   className={undefined}

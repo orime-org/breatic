@@ -257,6 +257,14 @@ describe('MiniToolPanel', () => {
       }
     });
 
+    // A2: the node's picture follows the slider while it moves, not on release.
+    it('hands each step on while the slider is still moving', () => {
+      const props = mount({ spec: tool(id), params: {}, source });
+      const thumb = screen.getByTestId('mini-tool-adjust-exposure-slider').querySelector('[role="slider"]')!;
+      fireEvent.keyDown(thumb, { key: 'ArrowRight', repeat: true });
+      expect(props.onParams).toHaveBeenLastCalledWith({ value: { ...defaultAdjustValue, exposure: 1 } });
+    });
+
     it('puts every slider back to zero from Reset', () => {
       const props = mount({ spec: tool(id), params: { value: { ...defaultAdjustValue, exposure: 40 } }, source });
       fireEvent.click(screen.getByTestId('mini-tool-adjust-reset'));
