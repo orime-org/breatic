@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * inner#1127 A18: media in pasted content is kept only when its address is one
- * of ours. Anything else is left out with the words around it pasted as they
- * are, and the reader is told how many were left out.
+ * Media in pasted or dropped content (inner#1351 + inner#1390 design §5.4,
+ * which replaces inner#1127 A18): an outside medium becomes a pending block
+ * whose upload fetches it into storage, so the outside address never reaches
+ * the shared document; one of ours stays as it is; one that cannot be
+ * fetched (`http:` and the like) is left out and counted.
  */
 
 import { describe, it, expect, afterEach, vi } from 'vitest';
@@ -26,16 +28,22 @@ afterEach(() => {
 
 const OURS = 'https://cdn.example/';
 
+/** Where the body hands pasted media. */
+interface Sink {
+  onLeftOut: ReturnType<typeof vi.fn>;
+  start: ReturnType<typeof vi.fn>;
+}
+
 /**
  * Opens an editor holding one empty line, focused on it.
  * @param prefix - What our addresses start with, or null while unknown.
- * @param onLeftOut - Told how many media a paste left out.
+ * @param sink - Told how many media a paste left out, and handed each upload.
  * @returns The editor.
  */
-function open(prefix: string | null, onLeftOut = vi.fn()): Editor {
+function open(prefix: string | null, sink: Sink = { onLeftOut: vi.fn(), start: vi.fn() }): Editor {
   const editor = buildDocumentEditor({
     fragment: documentBodyFragment(new Y.Doc()),
-    media: { assetUrlPrefix: () => prefix, onLeftOut },
+    media: { assetUrlPrefix: () => prefix, onLeftOut: sink.onLeftOut, start: sink.start },
   });
   const root = document.createElement('div');
   document.body.appendChild(root);
@@ -64,63 +72,91 @@ function text(editor: Editor): string {
   return editor.prosemirrorView!.state.doc.textContent;
 }
 
-describe('media in pasted HTML (A18)', () => {
-  it('leaves an outside image out, keeps the words, and says one was left out', () => {
-    const onLeftOut = vi.fn();
-    const editor = open(OURS, onLeftOut);
+/**
+ * A fresh sink.
+ * @returns It.
+ */
+function sink(): Sink {
+  return { onLeftOut: vi.fn(), start: vi.fn() };
+}
+
+/** A media block as the document holds it. */
+interface Medium {
+  type: string;
+  url: string;
+  uploadId: string;
+  caption: string;
+}
+
+/**
+ * Every media block in the document, nested ones included.
+ * @param editor - The editor.
+ * @returns Their props.
+ */
+function media(editor: Editor): Medium[] {
+  const out: Medium[] = [];
+  editor.prosemirrorView!.state.doc.descendants((node) => {
+    if (['image', 'video', 'audio'].includes(node.type.name)) {
+      out.push({ type: node.type.name, url: node.attrs['url'], uploadId: node.attrs['uploadId'], caption: node.attrs['caption'] });
+    }
+    return true;
+  });
+  return out;
+}
+
+describe('an outside medium in pasted HTML', () => {
+  it('becomes a pending block in its place, with the words around it, and its upload starts from its address', () => {
+    const s = sink();
+    const editor = open(OURS, s);
 
     editor.pasteHTML('<p>before</p><img src="https://elsewhere.example/a.png"><p>after</p>');
 
-    expect(types(editor)).not.toContain('image');
+    expect(types(editor)).toEqual(['paragraph', 'image', 'paragraph']);
     expect(text(editor)).toContain('before');
     expect(text(editor)).toContain('after');
-    expect(onLeftOut).toHaveBeenCalledWith(1);
+    const [image] = media(editor);
+    expect(image).toMatchObject({ url: '' });
+    expect(image!.uploadId).not.toBe('');
+    expect(s.start).toHaveBeenCalledExactlyOnceWith(image!.uploadId, { kind: 'address', url: 'https://elsewhere.example/a.png' });
+    expect(s.onLeftOut).not.toHaveBeenCalled();
   });
 
-  it('counts every medium it leaves out', () => {
-    const onLeftOut = vi.fn();
-    const editor = open(OURS, onLeftOut);
+  it('never reaches the shared document by its outside address', () => {
+    const editor = open(OURS);
+    editor.pasteHTML('<p>x</p><img src="https://elsewhere.example/a.png">');
+    expect(JSON.stringify(editor.document)).not.toContain('elsewhere');
+  });
+
+  it('turns every image, video and audio into a pending block of its kind', () => {
+    const s = sink();
+    const editor = open(OURS, s);
 
     editor.pasteHTML(
       '<p>x</p><img src="https://a.example/1.png"><video src="https://a.example/2.mp4"></video><audio src="https://a.example/3.mp3"></audio>',
     );
 
-    expect(onLeftOut).toHaveBeenCalledWith(3);
+    expect(media(editor).map((m) => m.type)).toEqual(['image', 'video', 'audio']);
+    expect(s.start).toHaveBeenCalledTimes(3);
   });
 
-  it('keeps media whose address is one of ours', () => {
-    const onLeftOut = vi.fn();
-    const editor = open(OURS, onLeftOut);
-
-    editor.pasteHTML(`<p>x</p><img src="${OURS}image/2026-10-07/a.png">`);
-
-    expect(types(editor)).toContain('image');
-    expect(onLeftOut).not.toHaveBeenCalled();
+  it('carries the caption of its figure', () => {
+    const editor = open(OURS);
+    editor.pasteHTML('<figure><img src="https://a.example/1.png"><figcaption>Seen here</figcaption></figure>');
+    expect(media(editor)[0]).toMatchObject({ caption: 'Seen here', url: '' });
   });
 
-  it('leaves every medium out while our addresses are not yet known', () => {
-    const onLeftOut = vi.fn();
-    const editor = open(null, onLeftOut);
-
-    editor.pasteHTML(`<p>x</p><img src="${OURS}image/2026-10-07/a.png">`);
-
-    expect(types(editor)).not.toContain('image');
-    expect(onLeftOut).toHaveBeenCalledWith(1);
-  });
-
-  it('leaves the image of a Markdown paste out', () => {
-    const onLeftOut = vi.fn();
-    const editor = open(OURS, onLeftOut);
+  it('in a Markdown paste becomes a pending block too', () => {
+    const s = sink();
+    const editor = open(OURS, s);
 
     editor.pasteMarkdown('words\n\n![alt](https://elsewhere.example/a.png)');
 
-    expect(types(editor)).not.toContain('image');
+    expect(media(editor)).toHaveLength(1);
     expect(text(editor)).toContain('words');
-    expect(onLeftOut).toHaveBeenCalledWith(1);
+    expect(s.start).toHaveBeenCalledOnce();
   });
 
-  it('takes out an outside medium nested as a row\'s only child, and the row stays', async () => {
-    const onLeftOut = vi.fn();
+  it('nested as a row\'s child stays nested, pending', async () => {
     const source = open(OURS);
     source.replaceBlocks(source.document, [
       {
@@ -130,48 +166,98 @@ describe('media in pasted HTML (A18)', () => {
       },
     ] as never);
     const html = await source.blocksToFullHTML(source.document);
-    const editor = open(OURS, onLeftOut);
+    const editor = open(OURS);
 
     editor.pasteHTML(html, true);
 
-    expect(types(editor)).not.toContain('image');
-    expect(text(editor)).toContain('parent');
+    expect((editor.document[0] as { children: { type: string }[] }).children.map((c) => c.type)).toEqual(['image']);
     expect(JSON.stringify(editor.document)).not.toContain('elsewhere');
-    // No empty child row is left where the image was.
-    expect((editor.document[0] as { children: unknown[] }).children).toEqual([]);
-    expect(onLeftOut).toHaveBeenCalledWith(1);
+  });
+});
+
+describe('media that stay as they are', () => {
+  it('a medium whose address is one of ours', () => {
+    const s = sink();
+    const editor = open(OURS, s);
+
+    editor.pasteHTML(`<p>x</p><img src="${OURS}image/2026-10-07/a.png">`);
+
+    expect(media(editor)).toEqual([{ type: 'image', url: `${OURS}image/2026-10-07/a.png`, uploadId: '', caption: '' }]);
+    expect(s.start).not.toHaveBeenCalled();
   });
 
-  it('keeps the rows nested under an outside medium, in its place', async () => {
-    const onLeftOut = vi.fn();
+  it('a pending block copied from a body keeps its upload id and starts nothing', async () => {
+    const source = open(OURS);
+    source.replaceBlocks(source.document, [{ type: 'image', props: { url: '', uploadId: 'u1', caption: 'Hero' } }] as never);
+    const html = await source.blocksToFullHTML(source.document);
+    const s = sink();
+    const editor = open(OURS, s);
+
+    editor.pasteHTML(html, true);
+
+    expect(media(editor)).toEqual([{ type: 'image', url: '', uploadId: 'u1', caption: 'Hero' }]);
+    expect(s.start).not.toHaveBeenCalled();
+  });
+});
+
+describe('while our addresses are not known yet', () => {
+  it('every medium with an address becomes pending, ours included, to be sorted once the prefix is in', () => {
+    const s = sink();
+    const editor = open(null, s);
+
+    editor.pasteHTML(`<p>x</p><img src="${OURS}image/2026-10-07/a.png">`);
+
+    expect(media(editor)[0]).toMatchObject({ url: '' });
+    expect(s.start).toHaveBeenCalledWith(expect.any(String), { kind: 'address', url: `${OURS}image/2026-10-07/a.png` });
+  });
+});
+
+describe('a medium that cannot be fetched', () => {
+  it('is left out and counted, and the words stay', () => {
+    const s = sink();
+    const editor = open(OURS, s);
+
+    editor.pasteHTML('<p>before</p><img src="http://elsewhere.example/a.png"><p>after</p>');
+
+    expect(types(editor)).not.toContain('image');
+    expect(text(editor)).toContain('before');
+    expect(text(editor)).toContain('after');
+    expect(s.onLeftOut).toHaveBeenCalledWith(1);
+    expect(s.start).not.toHaveBeenCalled();
+  });
+
+  it('leaves the rows nested under it in its place', async () => {
     const source = open(OURS);
     source.replaceBlocks(source.document, [
       { type: 'paragraph', content: 'above' },
       {
         type: 'image',
-        props: { url: 'https://elsewhere.example/a.png' },
+        props: { url: 'http://elsewhere.example/a.png' },
         children: [{ type: 'paragraph', content: 'caption notes' }],
       },
       { type: 'paragraph', content: 'below' },
     ] as never);
     const html = await source.blocksToFullHTML(source.document);
-    const editor = open(OURS, onLeftOut);
+    const s = sink();
+    const editor = open(OURS, s);
 
     editor.pasteHTML(html, true);
 
     expect(types(editor)).not.toContain('image');
-    expect(text(editor)).toContain('caption notes');
     expect(text(editor).indexOf('above')).toBeLessThan(text(editor).indexOf('caption notes'));
     expect(text(editor).indexOf('caption notes')).toBeLessThan(text(editor).indexOf('below'));
-    expect(onLeftOut).toHaveBeenCalledWith(1);
+    expect(s.onLeftOut).toHaveBeenCalledWith(1);
   });
+});
 
-  it('says nothing about a paste with no media in it', () => {
-    const onLeftOut = vi.fn();
-    const editor = open(OURS, onLeftOut);
+describe('a paste with no media in it', () => {
+  it('says nothing and starts nothing', () => {
+    const s = sink();
+    const editor = open(OURS, s);
 
     editor.pasteHTML('<p>just words</p>');
 
-    expect(onLeftOut).not.toHaveBeenCalled();
+    expect(s.onLeftOut).not.toHaveBeenCalled();
+    expect(s.start).not.toHaveBeenCalled();
   });
 });
