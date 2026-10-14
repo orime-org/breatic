@@ -231,6 +231,13 @@ describe('cookieAfterWrites', () => {
     expect(next.data.analytics).toEqual({ decisionId: 'id-1', decidedAt: NOW, source: 'settings' });
   });
 
+  it('keeps an ads consent the press leaves out, category and entry alike', () => {
+    const consenting: BrowserChoices = { analytics: analytics(), ads: ads() };
+    const next = cookieAfterWrites({ analytics: { value: true, source: 'settings' } }, consenting, stored, NOW, ids());
+    expect(next.accepted).toEqual(['analytics', 'ads']);
+    expect(next.data.ads).toBe(stored.ads);
+  });
+
   it('gives each written category its own id and the ads fields', () => {
     const next = cookieAfterWrites(
       { analytics: { value: false, source: 'banner' }, ads: { value: true, source: 'banner', gpcAtDecision: true } },

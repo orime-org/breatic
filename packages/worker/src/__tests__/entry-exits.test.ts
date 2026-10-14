@@ -61,10 +61,15 @@ describe("consent receipt clean-up", () => {
   };
 
   it("runs its worker and schedules the daily job on every deployment, outside any vendor check", () => {
-    for (const call of ["createWorker(ANALYTICS_CONSENT_QUEUE", "scheduleConsentPrune()"]) {
-      const at = code.indexOf(call);
-      expect(at, call).toBeGreaterThan(code.indexOf("export function startWorker"));
-      expect(depthInStartWorker(at), call).toBe(1);
+    const start = code.indexOf("export function startWorker");
+    // Each is a statement of its own, directly in startWorker's body: no condition can sit on its line.
+    for (const line of [/^ {2}const consentPrune = createWorker\(ANALYTICS_CONSENT_QUEUE, /m, /^ {2}scheduleConsentPrune\(\)\.catch\(/m]) {
+      const at = code.search(line);
+      expect(at, String(line)).toBeGreaterThan(start);
+      expect(depthInStartWorker(at), String(line)).toBe(1);
+      // Nothing in startWorker's own block returns before it.
+      const before = code.slice(start, at).split("\n").filter((l) => /^ {2}\S/.test(l));
+      expect(before.some((l) => /\breturn\b/.test(l)), String(line)).toBe(false);
     }
   });
 });
