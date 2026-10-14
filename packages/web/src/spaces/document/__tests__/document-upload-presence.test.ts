@@ -88,6 +88,15 @@ function pending(doc: Y.Doc, uploadId: string): void {
   });
 }
 
+/**
+ * Removes a body's last block.
+ * @param doc - The doc.
+ */
+function remove(doc: Y.Doc): void {
+  const group = documentBodyFragment(doc).get(0) as Y.XmlElement;
+  group.delete(group.length - 1, 1);
+}
+
 /** What the test controls. */
 interface Rig {
   controller: UploadController;
@@ -139,22 +148,24 @@ function seen(s: Side, uploadId: string): string | null {
 }
 
 describe('claims', () => {
-  it('an upload in flight is claimed as uploading in every attached body', async () => {
+  it('an upload in flight is claimed as uploading in the body holding its block, and in no other', async () => {
     const { controller } = rig();
     const a = side('space-a');
     const b = side('space-b');
     controller.attach(a.body);
     controller.attach(b.body);
+    pending(a.doc, 'u1');
     controller.start('u1', { kind: 'address', url: 'https://imgs.example/x.jpg' });
     await flush();
     expect(seen(a, 'u1')).toBe('uploading');
-    expect(seen(b, 'u1')).toBe('uploading');
+    expect(seen(b, 'u1')).toBeNull();
   });
 
   it('a failed upload is claimed as failed', async () => {
     const { controller, settle } = rig();
     const a = side('space-a');
     controller.attach(a.body);
+    pending(a.doc, 'u1');
     controller.start('u1', { kind: 'address', url: 'https://imgs.example/x.jpg' });
     settle.get('u1')!({ ok: false, failure: { messageKey: 'canvas.upload.failed', params: {}, retryable: true } });
     await flush();
@@ -187,10 +198,26 @@ describe('claims', () => {
     expect(seen(a, 'u1')).toBeNull();
   });
 
+  it('a failed upload whose block is removed is no longer claimed, and the renewal stops', async () => {
+    const { controller, settle, ticks } = rig();
+    const a = side('space-a');
+    controller.attach(a.body);
+    pending(a.doc, 'u1');
+    controller.start('u1', { kind: 'address', url: 'https://imgs.example/x.jpg' });
+    settle.get('u1')!({ ok: false, failure: { messageKey: 'canvas.upload.failed', params: {}, retryable: false } });
+    await flush();
+    expect(seen(a, 'u1')).toBe('failed');
+    remove(a.doc);
+    await flush();
+    expect(seen(a, 'u1')).toBeNull();
+    expect(ticks.stopped).toBe(1);
+  });
+
   it('a detached body withdraws its claims', async () => {
     const { controller } = rig();
     const a = side('space-a');
     const detach = controller.attach(a.body);
+    pending(a.doc, 'u1');
     controller.start('u1', { kind: 'address', url: 'https://imgs.example/x.jpg' });
     await flush();
     detach();
@@ -214,6 +241,7 @@ describe('renewal while the tab is in the background', () => {
     const b = side('space-b');
     controller.attach(a.body);
     controller.attach(b.body);
+    pending(a.doc, 'u1');
     expect(ticks.started).toBe(0);
     controller.start('u1', { kind: 'address', url: 'https://imgs.example/x.jpg' });
     await flush();
@@ -232,6 +260,7 @@ describe('renewal while the tab is in the background', () => {
     const { controller } = rig();
     const a = side('space-a');
     controller.attach(a.body);
+    pending(a.doc, 'u1');
     controller.start('u1', { kind: 'address', url: 'https://imgs.example/x.jpg' });
     await flush();
     const before = clockAtPeer(a);
