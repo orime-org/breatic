@@ -234,6 +234,11 @@
       "unavailable": "This tool is unavailable right now.",
       "invalidParam": "\"{name}\" has a value this tool does not take.",
       "foreignSource": "This file cannot be processed."
+    },
+    "idempotency": {
+      "missing": "This page was updated. Refresh it and try again.",
+      "mismatch": "This request does not match the one sent before.",
+      "in_progress": "This request is still being processed."
     }
   },
   "chat": {

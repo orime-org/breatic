@@ -234,6 +234,11 @@
       "unavailable": "이 도구는 지금 사용할 수 없습니다.",
       "invalidParam": "\"{name}\" 값은 이 도구에서 지원하지 않습니다.",
       "foreignSource": "이 파일은 처리할 수 없습니다."
+    },
+    "idempotency": {
+      "missing": "페이지가 업데이트되었습니다. 새로고침한 후 다시 시도하세요.",
+      "mismatch": "이 요청이 이전에 보낸 요청과 일치하지 않습니다.",
+      "in_progress": "이 요청은 아직 처리 중입니다."
     }
   },
   "chat": {
