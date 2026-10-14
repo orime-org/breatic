@@ -385,7 +385,10 @@ export function renderProductGuide(): string {
       "the person uploading sees a grey shimmering placeholder on the node; an upload that ends before then " +
       "leaves the node where it is and replaces the placeholder with a red line saying why (such as the two " +
       "messages above), which only that person sees and which goes away when the page is refreshed. After that " +
-      "the upload is a task, shown with the node's task icons.",
+      "the upload is a task, shown with the node's task icons. Meanwhile everyone else in the project sees, on an " +
+      "empty node someone is filling, that person's name followed by what they are doing in place of the first " +
+      "line: uploading, reading the file, or running the tool by its name. The line goes when they finish or " +
+      "leave.",
     "Apart from that placeholder, a running, failed or expired task changes nothing on the node, which keeps " +
       "showing what it holds, or its empty look; what its tasks did is in the column of task icons described under Generating. A picture or " +
       "video node shows its width × " +
