@@ -12,6 +12,9 @@
  * slide under them for no reason they can name.
  */
 
+import type { Viewport } from '@xyflow/react';
+
+import { frameProposal } from '@web/spaces/canvas/lib/place-flow';
 import {
   centerOf,
   groupRectForMembers,
@@ -88,4 +91,35 @@ export function framedBox(copies: readonly Rect[], viewport: Rect): Rect | null 
   const all = groupRectForMembers(copies, 0);
   if (all === null) return null;
   return all.width <= viewport.width && all.height <= viewport.height ? all : (copies[0] ?? null);
+}
+
+/**
+ * Where to move the camera after a press builds something to the right of the
+ * node it was read from — a tool's result, a grid's group, an Understand
+ * node (inner#1303). Nothing moves while what was built is in view; else the
+ * camera slides at the reader's zoom, framing the source too when both fit;
+ * what does not fit at that zoom is shown whole by zooming out just enough, as
+ * a proposal is (`frameProposal`). It never zooms in.
+ * @param built - What the press built, in canvas coordinates.
+ * @param source - The node it was read from, or null when it is not on this canvas.
+ * @param pane - The canvas pane's size in screen pixels.
+ * @param pane.width - Its width.
+ * @param pane.height - Its height.
+ * @param now - The viewport the reader is at.
+ * @returns The viewport to move to, or null to stay.
+ * @throws {never} Never.
+ */
+export function viewportForBuilt(
+  built: Rect,
+  source: Rect | null,
+  pane: { width: number; height: number },
+  now: Viewport,
+): Viewport | null {
+  const { zoom } = now;
+  if (zoom <= 0) return null;
+  const view = { x: -now.x / zoom, y: -now.y / zoom, width: pane.width / zoom, height: pane.height / zoom };
+  if (built.width > view.width || built.height > view.height) return frameProposal(built, pane, zoom);
+  const at = frameBuiltNode(built, source, view);
+  if (at === null) return null;
+  return { x: pane.width / 2 - at.x * zoom, y: pane.height / 2 - at.y * zoom, zoom };
 }

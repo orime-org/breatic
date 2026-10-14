@@ -12,7 +12,8 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { frameBuiltNode, framedBox } from '@web/spaces/canvas/frame-built-node';
+import { frameBuiltNode, framedBox, viewportForBuilt } from '@web/spaces/canvas/frame-built-node';
+import type { Rect } from '@web/spaces/canvas/group-geometry';
 
 const VIEWPORT = { x: 0, y: 0, width: 1000, height: 800 };
 /** A node near the right edge of what the reader can see. */
@@ -104,5 +105,56 @@ describe('what a paste or duplicate frames', () => {
 
   it('is nothing when there are no copies', () => {
     expect(framedBox([], VIEWPORT)).toBeNull();
+  });
+});
+
+describe('viewportForBuilt', () => {
+  const pane = { width: 1000, height: 800 };
+  /**
+   * What the reader sees at this viewport, in canvas coordinates.
+   * @param v - The viewport.
+   * @param v.x - Its x translation.
+   * @param v.y - Its y translation.
+   * @param v.zoom - Its zoom.
+   * @returns The visible rect.
+   */
+  const seen = (v: { x: number; y: number; zoom: number }): Rect => ({
+    x: -v.x / v.zoom,
+    y: -v.y / v.zoom,
+    width: pane.width / v.zoom,
+    height: pane.height / v.zoom,
+  });
+
+  it('leaves the canvas alone while what was built is in view', () => {
+    expect(viewportForBuilt({ x: 100, y: 100, width: 200, height: 200 }, null, pane, { x: 0, y: 0, zoom: 1 })).toBeNull();
+  });
+
+  it('slides at the reader’s zoom to show the built node with its source when both fit', () => {
+    const source = { x: 900, y: 100, width: 200, height: 200 };
+    const built = { x: 1200, y: 100, width: 200, height: 200 };
+    const v = viewportForBuilt(built, source, pane, { x: 0, y: 0, zoom: 1 })!;
+    expect(v.zoom).toBe(1);
+    const view = seen(v);
+    for (const r of [source, built]) {
+      expect(r.x).toBeGreaterThanOrEqual(view.x);
+      expect(r.x + r.width).toBeLessThanOrEqual(view.x + view.width);
+    }
+  });
+
+  it('zooms out just enough to show the whole of a built group too large for the view', () => {
+    const group = { x: 1200, y: 100, width: 2500, height: 1800 };
+    const v = viewportForBuilt(group, { x: 900, y: 100, width: 200, height: 200 }, pane, { x: 0, y: 0, zoom: 1 })!;
+    expect(v.zoom).toBeLessThan(1);
+    expect(v.zoom).toBeGreaterThan(0.3);
+    const view = seen(v);
+    expect(group.x).toBeGreaterThanOrEqual(view.x);
+    expect(group.y).toBeGreaterThanOrEqual(view.y);
+    expect(group.x + group.width).toBeLessThanOrEqual(view.x + view.width);
+    expect(group.y + group.height).toBeLessThanOrEqual(view.y + view.height);
+  });
+
+  it('never zooms in past the reader’s zoom', () => {
+    const v = viewportForBuilt({ x: 5000, y: 0, width: 100, height: 100 }, null, pane, { x: 0, y: 0, zoom: 0.5 })!;
+    expect(v.zoom).toBe(0.5);
   });
 });

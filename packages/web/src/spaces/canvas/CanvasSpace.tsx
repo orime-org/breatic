@@ -77,7 +77,13 @@ import { docGeometryView } from '@web/spaces/canvas/doc-geometry-view';
 import { batchCentresAt } from '@web/spaces/canvas/drop-layout';
 import { groupBackgroundFor } from '@web/spaces/canvas/group-background';
 import { writeGroup } from '@web/spaces/canvas/group-write';
-import { FRAME_PAN_MS, PROPOSAL_FRAME_MS, frameBuiltNode, framedBox } from '@web/spaces/canvas/frame-built-node';
+import {
+  FRAME_PAN_MS,
+  PROPOSAL_FRAME_MS,
+  frameBuiltNode,
+  framedBox,
+  viewportForBuilt,
+} from '@web/spaces/canvas/frame-built-node';
 import { exportCropBlob } from '@web/spaces/canvas/focus/crop-export';
 import { exportDrawing } from '@web/spaces/canvas/mini-tool/export-drawing';
 import { exportExpand } from '@web/spaces/canvas/mini-tool/expand-export';
@@ -2247,14 +2253,30 @@ function CanvasSpaceInner({
   // than a measured one: a node written this instant is not in ReactFlow's
   // store yet, and a node holding nothing is that size until something lands
   // in it.
-  const frameNewNode = React.useCallback(
-    (position: { x: number; y: number }, sourceNodeId: string): void => {
+  // Put what a press built to the right of a node in front of the reader
+  // (inner#1303): one rule for a tool's result, a grid's group and an
+  // Understand node — slide at the reader's zoom, and zoom out only when it
+  // does not fit.
+  const frameBuilt = React.useCallback(
+    (built: Rect, sourceNodeId: string): void => {
+      const { transform: [x, y, zoom], width, height } = rfStoreApi.getState();
       // A collaborator can delete the node being read while the menu stands
       // open. The press still produced a node, so it is still what has to be
       // in front of the reader — there is just no second box to frame it with.
-      panToFrame([{ ...position, ...EMPTY_NODE_SIZE }], measuredRects([sourceNodeId])[0] ?? null);
+      const next = viewportForBuilt(built, measuredRects([sourceNodeId])[0] ?? null, { width, height }, { x, y, zoom });
+      if (next === null) return;
+      void setViewport(next, {
+        duration: next.zoom === zoom ? FRAME_PAN_MS : PROPOSAL_FRAME_MS,
+        interpolate: 'linear',
+      });
     },
-    [measuredRects, panToFrame],
+    [measuredRects, rfStoreApi, setViewport],
+  );
+  const frameNewNode = React.useCallback(
+    (position: { x: number; y: number }, sourceNodeId: string): void => {
+      frameBuilt({ ...position, ...EMPTY_NODE_SIZE }, sourceNodeId);
+    },
+    [frameBuilt],
   );
 
   // ---- Node creation (library mailbox + right-click) ----
@@ -4029,10 +4051,7 @@ function CanvasSpaceInner({
           // selected and what the camera frames.
           if (group !== undefined) {
             setSelectAfterCreate([group.id]);
-            panToFrame(
-              [{ ...group.position, width: group.width, height: group.height }],
-              measuredRects([nodeId])[0] ?? null,
-            );
+            frameBuilt({ ...group.position, width: group.width, height: group.height }, nodeId);
             return;
           }
           setSelectAfterCreate(built.map((node) => node.id));
@@ -4052,8 +4071,7 @@ function CanvasSpaceInner({
       fillUpload,
       fillUploads,
       frameNewNode,
-      panToFrame,
-      measuredRects,
+      frameBuilt,
       trackOperation,
       sessionStore,
     ],
