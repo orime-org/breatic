@@ -855,10 +855,6 @@ export function createCanvasSessionStore(): CanvasSessionStore {
 }
 
 /**
- * Canvas sessions live as long as their Space's tab: created on first use,
- * dropped when the tab is closed, all cleared when the project is left.
- */
-/**
  * A selector for the mini-tool draft open on this node: its panel is open on
  * the node and no slot pick is under way. Every layer on the node reads it, so
  * they agree on when they are shown.
@@ -869,6 +865,10 @@ export function miniToolOpenOn(nodeId: string | null): (s: CanvasSessionState) =
   return (s) => (s.panelKind === 'miniTool' && s.panelHostId === nodeId && s.pickSession === null ? s.miniTool : null);
 }
 
+/**
+ * Canvas sessions live as long as their Space's tab: created on first use,
+ * dropped when the tab is closed, all cleared when the project is left.
+ */
 export const canvasSessions = createSpaceRegistry<CanvasSessionStore>(createCanvasSessionStore);
 
 /**

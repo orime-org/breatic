@@ -27,7 +27,7 @@ import { NODE_STEP } from '@web/spaces/canvas/drop-layout';
 import { ImageTooLargeError } from '@web/spaces/canvas/mini-tool/adjust-export';
 import { DrawingEmptyError, type DrawingExport } from '@web/spaces/canvas/mini-tool/export-drawing';
 import { exportsBeforeRun } from '@web/spaces/canvas/mini-tool/mini-tool-view';
-import { outputPlacementOf, plannedOutputSizes, type OutputSize, type PlacedOutput } from '@web/spaces/canvas/mini-tool/output-placement';
+import { outputPlacementOf, plannedOutputSizes, type PlacedOutput } from '@web/spaces/canvas/mini-tool/output-placement';
 import { groupBackgroundFor } from '@web/spaces/canvas/group-background';
 import { planGroupCreation } from '@web/spaces/canvas/group-creation';
 import { writeGroup } from '@web/spaces/canvas/group-write';
@@ -79,10 +79,9 @@ interface PressUploads {
   expand?: NonNullable<MiniToolRequest['expand']>;
 }
 
-/** One file a browser tool exported, and its pixel size when the export knows it. */
+/** One file a browser tool exported. */
 export interface ExportedFile {
   file: File;
-  size?: OutputSize;
 }
 
 /** The group a press put its results into, and the box it covers. */
@@ -105,7 +104,7 @@ export interface MiniToolRun {
   source: MiniToolSourceNode;
   /** Whether the source node is still on the canvas, asked at build time. */
   sourceExists: () => boolean;
-  /** Make a browser tool's files from the snapshot and the capture, one per result in order, with their pixel size when known. */
+  /** Make a browser tool's files from the snapshot and the capture, one per result in order. */
   exportFile: (spec: MiniToolSpec, snapshot: MiniToolSnapshot, capture?: MiniToolCapture) => Promise<ExportedFile[]>;
   /** Upload a browser tool's one file into its node, tagged with the tool, carrying on the press's operation. */
   fillUpload: (nodeId: string, file: File, modality: CreatableNodeType, tag: MiniToolUploadTag, markOp: string) => void;

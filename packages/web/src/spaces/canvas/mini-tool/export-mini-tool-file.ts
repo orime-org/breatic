@@ -36,10 +36,7 @@ export async function exportMiniToolFile(
   if (shape !== null) {
     const tiles = await exportGridTiles(source, shape.rows, shape.cols);
     const prefix = outputTemplateOf(spec).namePrefix;
-    return tiles.map((tile) => ({
-      file: new File([tile.blob], `${prefix}.png`, { type: 'image/png' }),
-      size: { width: tile.width, height: tile.height },
-    }));
+    return tiles.map((tile) => ({ file: new File([tile.blob], `${prefix}.png`, { type: 'image/png' }) }));
   }
   let blob: Blob;
   if (spec.id === 'image.crop') {

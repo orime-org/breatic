@@ -367,7 +367,7 @@ function OpenMiniToolPanel({
     if (refusal !== null) return;
     // What the reader made on the node is copied out now, so a later change
     // to the draft does not reach this run.
-    const expandFrame = draft?.expand?.frame;
+    const expandFrame = sessionStore.getState().miniTool?.expand?.frame;
     let capture: MiniToolCapture | undefined =
       spec.drawing !== undefined && drawingSteps !== undefined
         ? { kind: 'strokes', ops: visibleOps(drawingSteps) }
@@ -384,7 +384,7 @@ function OpenMiniToolPanel({
       capture = { kind: 'mark', objects };
     }
     void onRun(nodeId, spec, snapshot, capture);
-  }, [refusal, onRun, nodeId, spec, entry, slots, snapshot, drawingSteps, draft?.expand?.frame, source.width, source.height, sessionStore, t]);
+  }, [refusal, onRun, nodeId, spec, entry, slots, snapshot, drawingSteps, source.width, source.height, sessionStore, t]);
 
   // Escape closes the panel; a running pick takes the press first.
   useEscapeInSpace(pickSession === null, closeActivePanel);

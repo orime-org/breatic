@@ -210,7 +210,7 @@ describe('startMiniToolRun', () => {
       spec: tool('image.grid'),
       snapshot: { ...SNAPSHOT, params: { rows: 2, cols: 2 } },
       source: { id: 'src', name: 'IMG', position: { x: 0, y: 0 }, groupOrigin: null, mimeType: 'image/png' },
-      exportFile: vi.fn(() => Promise.resolve(files.map((file) => ({ file, size: { width: 50, height: 50 } })))),
+      exportFile: vi.fn(() => Promise.resolve(files.map((file) => ({ file })))),
     });
 
     await startMiniToolRun(run);
@@ -249,7 +249,7 @@ describe('startMiniToolRun', () => {
       spec: tool('image.grid'),
       snapshot: { ...SNAPSHOT, params: { rows: 2, cols: 2 } },
       source: { id: 'src', name: 'IMG', position: { x: 0, y: 0 }, groupOrigin: null, mimeType: 'image/png' },
-      exportFile: vi.fn(() => Promise.resolve(files.map((file) => ({ file, size: { width: 50, height: 50 } })))),
+      exportFile: vi.fn(() => Promise.resolve(files.map((file) => ({ file })))),
     });
 
     await startMiniToolRun(run);

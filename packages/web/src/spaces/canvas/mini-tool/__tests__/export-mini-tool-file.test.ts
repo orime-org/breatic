@@ -80,14 +80,11 @@ describe('exportMiniToolFile', () => {
 });
 
 describe('exportMiniToolFile for a grid', () => {
-  it('exports one PNG per tile with its pixel size, cut by the rows and columns asked', async () => {
+  it('exports one PNG per tile, cut by the rows and columns asked', async () => {
     const made = await exportMiniToolFile(miniToolById('image.grid')!, snapshot({ rows: 1, cols: 2 }));
 
     expect(grid.exportGridTiles).toHaveBeenCalledWith({ url: 'https://cdn/a.jpg', timeSeconds: null }, 1, 2);
-    expect(made.map((tile) => [tile.file.type, tile.size])).toEqual([
-      ['image/png', { width: 50, height: 40 }],
-      ['image/png', { width: 51, height: 40 }],
-    ]);
+    expect(made.map((tile) => tile.file.type)).toEqual(['image/png', 'image/png']);
   });
 
   it('cuts by the default rows and columns when the draft left them out', async () => {
