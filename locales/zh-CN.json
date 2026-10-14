@@ -1223,6 +1223,9 @@
     "pageUnavailable": {
       "message": "这个页面没能加载。",
       "action": "刷新"
+    },
+    "runOnce": {
+      "unknownResult": "无法确认刚才的操作是否完成，请查看结果。"
     }
   },
   "members": {

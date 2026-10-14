@@ -1223,6 +1223,9 @@
     "pageUnavailable": {
       "message": "このページを読み込めませんでした。",
       "action": "再読み込み"
+    },
+    "runOnce": {
+      "unknownResult": "先ほどの操作が完了したか確認できませんでした。結果を確認してください。"
     }
   },
   "members": {

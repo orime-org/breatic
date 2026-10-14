@@ -1223,6 +1223,9 @@
     "pageUnavailable": {
       "message": "This page didn't load.",
       "action": "Refresh"
+    },
+    "runOnce": {
+      "unknownResult": "Couldn't confirm whether that went through. Check the result."
     }
   },
   "members": {

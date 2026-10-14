@@ -1223,6 +1223,9 @@
     "pageUnavailable": {
       "message": "這個頁面未能載入。",
       "action": "重新整理"
+    },
+    "runOnce": {
+      "unknownResult": "無法確認剛才的操作是否完成，請查看結果。"
     }
   },
   "members": {

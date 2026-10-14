@@ -1223,6 +1223,9 @@
     "pageUnavailable": {
       "message": "이 페이지를 불러오지 못했습니다.",
       "action": "새로고침"
+    },
+    "runOnce": {
+      "unknownResult": "방금 작업이 완료되었는지 확인하지 못했습니다. 결과를 확인하세요."
     }
   },
   "members": {
