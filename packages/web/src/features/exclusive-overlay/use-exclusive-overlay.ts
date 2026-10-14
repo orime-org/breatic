@@ -48,8 +48,7 @@ export function useExclusiveOverlay(
         // taken over. MUST read the store's live value, not the render
         // closure: a handler that claims for overlay B and then
         // releases overlay A runs before any re-render, so A's closure
-        // still says A owns the slot and would null out B's claim
-        // (SpaceDrawer "view" -> read-only sheet handoff, 2026-07-04).
+        // still says A owns the slot and would null out B's claim.
         setActiveId(null);
       }
     },

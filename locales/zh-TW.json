@@ -1267,13 +1267,14 @@
       "description": "{count, plural, other {# 個 · 點擊切換或使用右側操作}}",
       "empty": "尚無 Spaces",
       "openAria": "開啟 {name}",
-      "rowActions": "檢視、鎖定或刪除這個 Space",
+      "rowActions": "檢視、重新命名、鎖定或刪除這個 Space",
       "status": {
-        "editing": "編輯中",
-        "open": "已開啟"
+        "editing": "編輯中"
       },
       "action": {
         "view": "檢視",
+        "rename": "重新命名",
+        "renameLocked": "鎖定的 Spaces 無法重新命名",
         "lock": "鎖定",
         "unlock": "解鎖",
         "delete": "刪除",
@@ -1312,22 +1313,6 @@
       "locked": "已鎖定 — 解鎖後才能修改名稱。",
       "error": {
         "failed": "重新命名失敗,請再試一次。"
-      }
-    },
-    "readonly": {
-      "label": "唯讀",
-      "description": "此 Space 未在標籤列開啟;唯讀預覽,可縮放與複製內容,不可編輯。",
-      "canvas": {
-        "title": "唯讀 Canvas",
-        "description": "真實 ReactFlow viewer 在 canvas-space 完整實作時接入;此處展示節點與邊的唯讀快照,支援縮放與複製。"
-      },
-      "document": {
-        "title": "唯讀 Document",
-        "description": "TipTap 唯讀 viewer 在 document-space 實作時接入;此處展示富文本快照,支援複製段落。"
-      },
-      "timeline": {
-        "title": "唯讀 Timeline",
-        "description": "Timeline viewer 在 timeline-space 實作時接入;此處展示軌道快照,支援複製片段。"
       }
     },
     "readOnlyNotice": "這個 Space 現在只能檢視 —— 你做的變更不會被儲存。",

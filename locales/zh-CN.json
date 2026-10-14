@@ -1267,13 +1267,14 @@
       "description": "{count, plural, other {# 个 · 点击切换或右侧操作}}",
       "empty": "暂无 Spaces",
       "openAria": "打开 {name}",
-      "rowActions": "查看、加锁或删除这个 Space",
+      "rowActions": "查看、重命名、加锁或删除这个 Space",
       "status": {
-        "editing": "编辑中",
-        "open": "已打开"
+        "editing": "编辑中"
       },
       "action": {
         "view": "查看",
+        "rename": "重命名",
+        "renameLocked": "锁住的 Spaces 无法重命名",
         "lock": "加锁",
         "unlock": "解锁",
         "delete": "删除",
@@ -1312,22 +1313,6 @@
       "locked": "已锁定 — 解锁后才能修改名称。",
       "error": {
         "failed": "重命名失败,请重试。"
-      }
-    },
-    "readonly": {
-      "label": "只读",
-      "description": "此 Space 未在标签栏打开;只读预览,可缩放与复制内容,不可编辑。",
-      "canvas": {
-        "title": "只读 Canvas",
-        "description": "真实 ReactFlow viewer 在 canvas-space 完整实现时接入; 此处展示节点与边的只读快照,支持缩放与复制。"
-      },
-      "document": {
-        "title": "只读 Document",
-        "description": "TipTap 只读 viewer 在 document-space 实施时接入; 此处展示富文本快照,支持复制段落。"
-      },
-      "timeline": {
-        "title": "只读 Timeline",
-        "description": "Timeline viewer 在 timeline-space 实施时接入; 此处展示轨道快照,支持复制片段。"
       }
     },
     "readOnlyNotice": "这个 Space 现在只能查看 —— 你做的改动不会被保存。",

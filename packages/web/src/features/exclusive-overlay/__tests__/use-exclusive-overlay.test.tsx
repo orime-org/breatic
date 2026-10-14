@@ -23,23 +23,21 @@ describe('useExclusiveOverlay', () => {
   });
 
   it('handoff race: closing A inside the same handler that opened B must not release B', () => {
-    // Real-world repro (found 2026-07-04, pre-existing): SpaceDrawer's
-    // "view" action runs `onView(id)` (ProjectPage claims the slot for
-    // the read-only sheet) and then `setOpen(false)` (the drawer
-    // releases) inside ONE event handler. The drawer's release check
-    // compared against the render-closure `activeOverlayId` — still the
-    // drawer's own id — so it nulled the slot the read-only sheet had
-    // just claimed, and BOTH overlays ended up closed.
+    // One overlay's action opens another and closes itself inside ONE event
+    // handler. A release check that compared against the render-closure
+    // `activeOverlayId` - still the closing overlay's own id - would null the
+    // slot the other one had just claimed, and BOTH overlays would end up
+    // closed.
     const drawer = renderHook(() => useExclusiveOverlay('space-drawer'));
-    const peek = renderHook(() => useExclusiveOverlay('space-readonly-sheet'));
+    const activity = renderHook(() => useExclusiveOverlay('project-activity'));
     act(() => drawer.result.current[1](true));
     expect(drawer.result.current[0]).toBe(true);
-    // one handler, no re-render in between: claim for peek, release drawer
+    // one handler, no re-render in between: claim for activity, release drawer
     act(() => {
-      peek.result.current[1](true);
+      activity.result.current[1](true);
       drawer.result.current[1](false);
     });
-    expect(peek.result.current[0]).toBe(true);
+    expect(activity.result.current[0]).toBe(true);
     expect(drawer.result.current[0]).toBe(false);
   });
 });

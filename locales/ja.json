@@ -1267,13 +1267,14 @@
       "description": "{count, plural, other {# 件 · クリックで切替、右側で操作}}",
       "empty": "Spaces はまだありません",
       "openAria": "{name} を開く",
-      "rowActions": "この Space を表示、ロック、または削除",
+      "rowActions": "この Space を表示、名前を変更、ロック、または削除",
       "status": {
-        "editing": "編集中",
-        "open": "開いています"
+        "editing": "編集中"
       },
       "action": {
         "view": "表示",
+        "rename": "名前を変更",
+        "renameLocked": "ロックされた Spaces は名前を変更できません",
         "lock": "ロック",
         "unlock": "解除",
         "delete": "削除",
@@ -1312,22 +1313,6 @@
       "locked": "ロック中 — 名前を変更するにはロックを解除してください。",
       "error": {
         "failed": "名前の変更に失敗しました。もう一度お試しください。"
-      }
-    },
-    "readonly": {
-      "label": "読み取り専用",
-      "description": "この Space はタブバーで開いていません。読み取り専用プレビューでズームとコピーは可能ですが編集はできません。",
-      "canvas": {
-        "title": "読み取り専用 Canvas",
-        "description": "実際の ReactFlow viewer は canvas-space 実装完了時に接続。ここではノードとエッジの読み取り専用スナップショットを表示します(ズーム/コピー可)。"
-      },
-      "document": {
-        "title": "読み取り専用 Document",
-        "description": "TipTap の読み取り専用 viewer は document-space 実装時に接続。ここではリッチテキストのスナップショットを表示します(段落コピー可)。"
-      },
-      "timeline": {
-        "title": "読み取り専用 Timeline",
-        "description": "Timeline viewer は timeline-space 実装時に接続。ここではトラックのスナップショットを表示します(クリップコピー可)。"
       }
     },
     "readOnlyNotice": "この Space は現在閲覧のみです —— 変更を加えても保存されません。",

@@ -6,6 +6,8 @@ import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type * as React from 'react';
 
+import { SPACE_NAME_MAX_LEN } from '@breatic/shared';
+
 import { SpaceDrawer } from '@web/pages/project/chrome/tab-bar/SpaceDrawer';
 import { useUIStore } from '@web/stores/ui';
 import type { ProjectSpace } from '@web/data/yjs/project-meta';
@@ -60,12 +62,11 @@ function setup(overrides: Partial<React.ComponentProps<typeof SpaceDrawer>> = {}
   render(
     <SpaceDrawer
       spaces={[SPACE, SIBLING]}
-      openTabIds={[]}
       activeSpaceId=''
       projectId='proj-1'
       onActivate={vi.fn()}
-      onView={vi.fn()}
       onDeleteSpace={onDeleteSpace}
+      onRenameSpace={vi.fn()}
       onSetSpaceLocked={vi.fn()}
       {...overrides}
     />,
@@ -154,13 +155,13 @@ describe('SpaceDrawer', () => {
     expect(confirm).not.toHaveAttribute('aria-busy');
   });
 
-  it('puts view, lock and delete in the row menu', async () => {
+  it('puts view, rename, lock and delete in the row menu', async () => {
     const user = userEvent.setup();
     setup();
     await user.click(screen.getByTestId('space-drawer-trigger'));
     await openRowMenu(user, 'sp-1');
     const items = screen.getAllByRole('menuitem').map((item) => item.textContent);
-    expect(items).toEqual(['View', 'Lock', 'Delete']);
+    expect(items).toEqual(['View', 'Rename', 'Lock', 'Delete']);
     // Delete is red, as every delete is (docs/ARCHITECTURE.md, design tokens).
     expect(screen.getByTestId('space-drawer-delete-sp-1').className).toContain(
       'text-status-error-foreground',
@@ -170,14 +171,25 @@ describe('SpaceDrawer', () => {
     );
   });
 
-  it('views the Space from the row menu', async () => {
+  it('View opens the Space as a tab, as pressing its row does', async () => {
     const user = userEvent.setup();
-    const onView = vi.fn();
-    setup({ onView });
+    const onActivate = vi.fn();
+    setup({ onActivate });
     await user.click(screen.getByTestId('space-drawer-trigger'));
     await openRowMenu(user, 'sp-1');
     await user.click(screen.getByTestId('space-drawer-view-sp-1'));
-    expect(onView).toHaveBeenCalledWith('sp-1');
+    expect(onActivate).toHaveBeenCalledWith('sp-1');
+    expect(screen.queryByTestId('space-drawer')).toBeNull();
+  });
+
+  it('offers no Rename when the drawer is given no rename handler', async () => {
+    // A viewer gets no handler, as on the tab strip.
+    const user = userEvent.setup();
+    setup({ onRenameSpace: undefined });
+    await user.click(screen.getByTestId('space-drawer-trigger'));
+    await openRowMenu(user, 'sp-1');
+    const items = screen.getAllByRole('menuitem').map((item) => item.textContent);
+    expect(items).toEqual(['View', 'Lock', 'Delete']);
   });
 
   it('locks an unlocked Space and offers Unlock on a locked one', async () => {
@@ -233,6 +245,184 @@ describe('SpaceDrawer', () => {
     expect(
       screen.queryByTestId('space-drawer-delete-confirm-sp-1'),
     ).not.toBeInTheDocument();
+  });
+
+  /**
+   * Choose Rename on `spaceId`'s row and return the box it opens.
+   * @param user - The user-event instance.
+   * @param spaceId - The row's Space id.
+   * @returns The rename box.
+   */
+  async function startRename(
+    user: ReturnType<typeof userEvent.setup>,
+    spaceId: string,
+  ): Promise<HTMLInputElement> {
+    await user.click(screen.getByTestId('space-drawer-trigger'));
+    await openRowMenu(user, spaceId);
+    await user.click(screen.getByTestId(`space-drawer-rename-${spaceId}`));
+    return (await screen.findByTestId(
+      `space-drawer-rename-input-${spaceId}`,
+    )) as HTMLInputElement;
+  }
+
+  it('Rename turns the name into a box holding the whole name, selected', async () => {
+    const user = userEvent.setup();
+    setup();
+    const box = await startRename(user, 'sp-1');
+    expect(box.value).toBe('Reel');
+    expect(document.activeElement).toBe(box);
+    expect(box.selectionStart).toBe(0);
+    expect(box.selectionEnd).toBe(4);
+    // Selected from the end back, so a long name shows its start.
+    expect(box.selectionDirection).toBe('backward');
+    expect(box.maxLength).toBe(SPACE_NAME_MAX_LEN);
+  });
+
+  it('Enter saves the trimmed name, shows it at once and gives the keyboard to the row menu', async () => {
+    const user = userEvent.setup();
+    const onRenameSpace = vi.fn(() => new Promise<void>(() => undefined));
+    setup({ onRenameSpace });
+    const box = await startRename(user, 'sp-1');
+    await user.clear(box);
+    await user.type(box, '  Cut 2  {Enter}');
+    expect(onRenameSpace).toHaveBeenCalledWith('sp-1', 'Cut 2');
+    expect(screen.queryByTestId('space-drawer-rename-input-sp-1')).toBeNull();
+    expect(screen.getByTestId('space-drawer-row-sp-1')).toHaveTextContent('Cut 2');
+    expect(document.activeElement).toBe(screen.getByTestId('space-drawer-menu-sp-1'));
+  });
+
+  it('pressing away saves the name', async () => {
+    const user = userEvent.setup();
+    const onRenameSpace = vi.fn();
+    setup({ onRenameSpace });
+    const box = await startRename(user, 'sp-1');
+    await user.clear(box);
+    await user.type(box, 'Cut 3');
+    await user.click(screen.getByTestId('space-drawer'));
+    expect(onRenameSpace).toHaveBeenCalledWith('sp-1', 'Cut 3');
+  });
+
+  it('Escape leaves the name as it was, keeps the drawer and gives the keyboard to the row menu', async () => {
+    const user = userEvent.setup();
+    const onRenameSpace = vi.fn();
+    setup({ onRenameSpace });
+    const box = await startRename(user, 'sp-1');
+    await user.type(box, 'zzz');
+    await user.keyboard('{Escape}');
+    expect(onRenameSpace).not.toHaveBeenCalled();
+    expect(screen.getByTestId('space-drawer')).toBeInTheDocument();
+    expect(screen.getByTestId('space-drawer-row-sp-1')).toHaveTextContent('Reel');
+    expect(document.activeElement).toBe(screen.getByTestId('space-drawer-menu-sp-1'));
+  });
+
+  it('an empty or unchanged name sends nothing', async () => {
+    const user = userEvent.setup();
+    const onRenameSpace = vi.fn();
+    setup({ onRenameSpace });
+    await startRename(user, 'sp-1');
+    await user.keyboard('{Enter}');
+    await openRowMenu(user, 'sp-1');
+    await user.click(screen.getByTestId('space-drawer-rename-sp-1'));
+    const box = await screen.findByTestId('space-drawer-rename-input-sp-1');
+    await user.clear(box);
+    await user.type(box, '   {Enter}');
+    expect(onRenameSpace).not.toHaveBeenCalled();
+    expect(screen.getByTestId('space-drawer-row-sp-1')).toHaveTextContent('Reel');
+  });
+
+  it('goes back to the saved name when the rename is refused', async () => {
+    const user = userEvent.setup();
+    let refuse: (err: Error) => void = () => undefined;
+    const onRenameSpace = vi.fn(
+      () =>
+        new Promise<void>((_resolve, reject) => {
+          refuse = reject;
+        }),
+    );
+    setup({ onRenameSpace });
+    const box = await startRename(user, 'sp-1');
+    await user.clear(box);
+    await user.type(box, 'Cut 4{Enter}');
+    expect(screen.getByTestId('space-drawer-row-sp-1')).toHaveTextContent('Cut 4');
+    await act(async () => {
+      refuse(new Error('refused'));
+    });
+    expect(screen.getByTestId('space-drawer-row-sp-1')).toHaveTextContent('Reel');
+  });
+
+  it('a press inside the box does not open the Space', async () => {
+    const user = userEvent.setup();
+    const onActivate = vi.fn();
+    setup({ onActivate });
+    const box = await startRename(user, 'sp-1');
+    await user.click(box);
+    expect(onActivate).not.toHaveBeenCalled();
+    expect(screen.getByTestId('space-drawer')).toBeInTheDocument();
+    expect(document.activeElement).toBe(box);
+  });
+
+  it('sizes the box to the name line and lets it shrink before the menu button', async () => {
+    const user = userEvent.setup();
+    setup();
+    const box = await startRename(user, 'sp-1');
+    for (const cls of ['min-w-0', 'flex-1', 'h-7', 'py-1', '-my-1', 'leading-[18px]', 'text-sm', 'font-normal']) {
+      expect(box.className.split(/\s+/)).toContain(cls);
+    }
+    expect(box).toHaveAttribute('autocomplete', 'off');
+  });
+
+  it('a locked Space offers Rename greyed, says why, and opens no box', async () => {
+    const user = userEvent.setup();
+    setup({ spaces: [{ ...SPACE, locked: true }, SIBLING] });
+    await user.click(screen.getByTestId('space-drawer-trigger'));
+    await openRowMenu(user, 'sp-1');
+    const item = screen.getByTestId('space-drawer-rename-sp-1');
+    expect(item).toHaveAttribute('data-disabled');
+    expect(item).toHaveTextContent('Locked spaces can\'t be renamed');
+    await user.click(item);
+    expect(screen.queryByTestId('space-drawer-rename-input-sp-1')).toBeNull();
+  });
+
+  it('sets the name and the time as the conversation history does', async () => {
+    const user = userEvent.setup();
+    setup();
+    await user.click(screen.getByTestId('space-drawer-trigger'));
+    const name = screen.getByTestId('space-drawer-name-sp-1');
+    for (const cls of ['text-sm', 'font-normal', 'text-foreground']) {
+      expect(name.className.split(/\s+/)).toContain(cls);
+    }
+    const time = screen.getByTestId('space-drawer-row-sp-1').querySelector('.tabular-nums');
+    expect(time?.className.split(/\s+/)).toContain('text-2xs');
+  });
+
+  it('draws the type icon on its own, centred on the row', async () => {
+    const user = userEvent.setup();
+    setup();
+    await user.click(screen.getByTestId('space-drawer-trigger'));
+    const icon = screen.getByTestId('space-drawer-type-icon-sp-1');
+    expect(icon.getAttribute('class')?.split(/\s+/)).toEqual(expect.arrayContaining(['h-5', 'w-5', 'self-center']));
+    expect(icon.parentElement?.className ?? '').not.toMatch(/bg-muted/);
+  });
+
+  it('centres the Editing mark on the row at its right end, at the same level as the type icon', async () => {
+    const user = userEvent.setup();
+    setup({ activeSpaceId: 'sp-1' });
+    await user.click(screen.getByTestId('space-drawer-trigger'));
+    const editing = screen.getByText('Editing');
+    expect(editing.className.split(/\s+/)).toEqual(expect.arrayContaining(['ml-auto', 'self-center']));
+    expect(editing.parentElement).toBe(screen.getByTestId('space-drawer-type-icon-sp-1').parentElement);
+  });
+
+  it('marks only the Space being edited, with an outline', async () => {
+    const user = userEvent.setup();
+    setup({ activeSpaceId: 'sp-1' });
+    await user.click(screen.getByTestId('space-drawer-trigger'));
+    const editing = screen.getByText('Editing');
+    expect(editing.className.split(/\s+/)).toEqual(
+      expect.arrayContaining(['border', 'border-border', 'text-foreground-secondary']),
+    );
+    expect(editing.className).not.toMatch(/bg-muted|status-info/);
+    expect(screen.getAllByText('Editing')).toHaveLength(1);
   });
 
   it('opens as a modal sheet with a backdrop overlay, like dialogs', async () => {
@@ -340,6 +530,6 @@ describe('SpaceDrawer', () => {
     ).toMatch(/(^|\s)absolute(\s|$)/);
     expect(
       screen.getByRole('button', { name: 'Open Reel' }).className,
-    ).toMatch(/(^|\s)pr-12(\s|$)/);
+    ).toMatch(/(^|\s)pr-8(\s|$)/);
   });
 });

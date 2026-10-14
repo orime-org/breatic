@@ -9,6 +9,7 @@ import {
   Menu,
   MoreVertical,
   Palette,
+  Pencil,
   Trash2,
   Unlock,
 } from 'lucide-react';
@@ -44,20 +45,19 @@ import {
 import { cn } from '@web/lib/utils';
 import { useExclusiveOverlay } from '@web/features/exclusive-overlay/use-exclusive-overlay';
 import type { ProjectSpace } from '@web/data/yjs/project-meta';
-import { spacesNewestFirst } from '@breatic/shared';
+import { SPACE_NAME_MAX_LEN, spacesNewestFirst } from '@breatic/shared';
 import { relativeTime } from '@web/pages/project/chrome/tab-bar/relative-time';
 import type { SpaceType } from '@breatic/shared';
 import { useTranslation } from '@web/i18n/use-translation';
+import { useInlineEditExit } from '@web/lib/inline-edit-exit';
+import { useHeldName } from '@web/lib/use-held-name';
 
 interface SpaceDrawerProps {
   spaces: ReadonlyArray<ProjectSpace>;
-  openTabIds: ReadonlyArray<string>;
   activeSpaceId: string;
   projectId: string;
   /** Activate a Space (opens its tab if not open + makes it active). */
   onActivate: (id: string) => void;
-  /** Open a Space in the read-only preview sheet (used for the "view" action). */
-  onView: (id: string) => void;
   /**
    * RPC handlers injected by ProjectPage (it owns the live meta-doc
    * provider). Drawer rows call these; ProjectPage routes through
@@ -66,6 +66,8 @@ interface SpaceDrawerProps {
    */
   onDeleteSpace?: (spaceId: string) => Promise<void> | void;
   onSetSpaceLocked?: (spaceId: string, locked: boolean) => Promise<void> | void;
+  /** Renames a Space; omitted for a viewer, whose rows then offer no Rename. */
+  onRenameSpace?: (spaceId: string, name: string) => Promise<void> | void;
 }
 
 const TYPE_META: Record<
@@ -77,6 +79,14 @@ const TYPE_META: Record<
   timeline: { icon: Clock, labelKey: 'spaces.kind.timeline' },
 };
 
+// The row's own layout, the same whether it is the row's button or, while the
+// name is being edited, a plain box (the rename box cannot sit in a button).
+// Room kept on the right for the menu button floating there (32px wide, 8px
+// in from the row's edge, which the row's own 16px pad already covers half
+// of), plus an 8px gap: the Editing mark ends against it and the name
+// truncates before it.
+const ROW_BODY = 'flex min-w-0 flex-1 items-start gap-3 pr-8 text-left';
+
 /**
  * "All Spaces" drawer — every Space in the project, with status chip,
  * metadata row, and hover actions. Mirrors user spec from image 43
@@ -85,22 +95,18 @@ const TYPE_META: Record<
  *
  * Row anatomy:
  *
- *   [type icon]  Space name  [editing / open chip] [lock if locked]
+ *   [type icon]  Space name  [lock if locked]          [editing chip]
  *                when this Space was made
  *
  *   hover actions (right):
- *     [view] [lock toggle] [delete (disabled if locked)]
+ *     [view] [rename (disabled if locked)] [lock toggle] [delete (disabled if locked)]
  *
- * Status chip (decision B.1):
- *   - editing → bg-status-info  (this user's active tab)
- *   - open    → bg-muted        (this user's open tab, not active)
- *   - (none)  → no chip         (Space exists but this user hasn't opened it)
+ * Status chip (user 2026-10-14): the row of this user's active tab carries
+ * an Editing chip, a neutral outline centred on the row like the type icon.
+ * Every other row carries none.
  *
- * View action (decision E.1):
- *   - if the Space is already on the strip → activate that tab
- *     (no read-only sheet — they have it open for editing)
- *   - otherwise → open the read-only preview sheet (browse + copy,
- *     no edit)
+ * View does what pressing the row does: it opens the Space as a tab, or
+ * switches to the tab it already has (user 2026-10-14, inner#1528).
  *
  * Lock + Delete actions (ADR 2026-05-23 yjs-collab-only-write-authz):
  *   - Both round-trip via `sendSpaceRpc` (caller: ProjectPage). The
@@ -111,22 +117,20 @@ const TYPE_META: Record<
  *   - Delete is disabled when the Space is locked.
  * @param root0 - Component props.
  * @param root0.spaces - All spaces in the project to list in the drawer.
- * @param root0.openTabIds - Ids of the Spaces currently on the strip.
  * @param root0.activeSpaceId - Id of this user's active space, driving the "editing" chip.
  * @param root0.onActivate - Activates a space (opens its tab and makes it active).
- * @param root0.onView - Opens a space in the read-only preview sheet.
  * @param root0.onDeleteSpace - RPC handler to delete a space; when omitted, rows render read-only.
  * @param root0.onSetSpaceLocked - RPC handler to lock/unlock a space; when omitted, rows render read-only.
+ * @param root0.onRenameSpace - RPC handler to rename a space; when omitted, rows offer no Rename.
  * @returns The "All Spaces" drawer trigger button and its sheet listing every space.
  */
 export function SpaceDrawer({
   spaces,
-  openTabIds,
   activeSpaceId,
   onActivate,
-  onView,
   onDeleteSpace,
   onSetSpaceLocked,
+  onRenameSpace,
 }: SpaceDrawerProps): React.JSX.Element {
   const t = useTranslation();
   const [open, setOpen] = useExclusiveOverlay('space-drawer');
@@ -137,6 +141,11 @@ export function SpaceDrawer({
     // return-to-trigger, which fails here and dropped focus on <body>.
     event.preventDefault();
     sheetContentRef.current?.focus();
+  }, []);
+  const handleEscapeKeyDown = React.useCallback((event: KeyboardEvent): void => {
+    // Escape inside a rename box ends the rename (the box's own handler);
+    // the drawer stays. The box carries `data-renaming` for this.
+    if (document.activeElement?.hasAttribute('data-renaming')) event.preventDefault();
   }, []);
   return (
     <Sheet open={open} onOpenChange={setOpen} modal>
@@ -165,6 +174,7 @@ export function SpaceDrawer({
         // (PR #138 user-driven alignment).
         className='flex w-[315px] flex-col p-0'
         data-testid='space-drawer'
+        onEscapeKeyDown={handleEscapeKeyDown}
       >
         <SheetHeader className='border-b border-border px-4 py-3'>
           <SheetTitle className='text-base font-semibold text-foreground'>
@@ -192,23 +202,14 @@ export function SpaceDrawer({
                   key={s.id}
                   space={s}
                   isActive={s.id === activeSpaceId}
-                  isOpen={openTabIds.includes(s.id)}
                   isLastSpace={spaces.length === 1}
                   onActivate={() => {
                     onActivate(s.id);
                     setOpen(false);
                   }}
-                  onView={() => {
-                    if (openTabIds.includes(s.id)) {
-                      onActivate(s.id);
-                      setOpen(false);
-                    } else {
-                      onView(s.id);
-                      setOpen(false);
-                    }
-                  }}
                   onDeleteSpace={onDeleteSpace}
                   onSetSpaceLocked={onSetSpaceLocked}
+                  onRenameSpace={onRenameSpace}
                   onConfirmCloseAutoFocus={handleConfirmCloseAutoFocus}
                 />
               ))
@@ -230,39 +231,38 @@ interface SpaceDrawerRowProps {
   onConfirmCloseAutoFocus: (event: Event) => void;
   space: ProjectSpace;
   isActive: boolean;
-  isOpen: boolean;
   /** True when this is the project's only space — its delete action is disabled. */
   isLastSpace: boolean;
+  /** Opens this Space as a tab and closes the drawer; the row and View both run it. */
   onActivate: () => void;
-  onView: () => void;
   onDeleteSpace?: (spaceId: string) => Promise<void> | void;
   onSetSpaceLocked?: (spaceId: string, locked: boolean) => Promise<void> | void;
+  onRenameSpace?: (spaceId: string, name: string) => Promise<void> | void;
 }
 
 /**
  * A single space row in the drawer: type icon, name, status chip, and a
- * menu button, shown on hover, holding view / lock / delete.
+ * menu button, shown on hover, holding view / rename / lock / delete. Rename
+ * turns the name into a box in place, as the conversation history rows do.
  * @param root0 - Component props.
  * @param root0.space - The space rendered by this row.
  * @param root0.isActive - Whether this space is the user's active tab (shows the "editing" chip).
- * @param root0.isOpen - Whether this space is open as one of the user's tabs (shows the "open" chip).
  * @param root0.isLastSpace - Whether this is the project's only space (disables delete — projects keep >=1).
- * @param root0.onActivate - Activates this space.
- * @param root0.onView - Opens this space (read-only preview, or activates if already open).
+ * @param root0.onActivate - Opens this space as a tab; the row and View both run it.
  * @param root0.onDeleteSpace - RPC handler to delete this space; when omitted, the delete action is read-only.
  * @param root0.onSetSpaceLocked - RPC handler to lock/unlock this space; when omitted, the lock action is read-only.
+ * @param root0.onRenameSpace - RPC handler to rename this space; when omitted, the row offers no Rename.
  * @param root0.onConfirmCloseAutoFocus - Close-focus handler for the delete-confirm dialog (#1539: drawer panel reclaims focus).
  * @returns The drawer row for the space.
  */
 function SpaceDrawerRow({
   space,
   isActive,
-  isOpen,
   isLastSpace,
   onActivate,
-  onView,
   onDeleteSpace,
   onSetSpaceLocked,
+  onRenameSpace,
   onConfirmCloseAutoFocus,
 }: SpaceDrawerRowProps): React.JSX.Element {
   const t = useTranslation();
@@ -277,7 +277,43 @@ function SpaceDrawerRow({
   const [deleteBusy, setDeleteBusy] = React.useState(false);
   const [menuOpen, setMenuOpen] = React.useState(false);
   const [confirmOpen, setConfirmOpen] = React.useState(false);
-  const choseDelete = React.useRef(false);
+  const [renaming, setRenaming] = React.useState(false);
+  // Which item was chosen, held until the menu has finished closing; see the
+  // menu's `onCloseAutoFocus` for why both of them wait.
+  const chose = React.useRef<'rename' | 'delete' | null>(null);
+  // The name reaches `space` once the server's write comes back through the
+  // project meta, after the box has closed.
+  const { shown: name, hold } = useHeldName(space.name);
+  const box = React.useRef<HTMLInputElement>(null);
+  const menuButton = React.useRef<HTMLButtonElement>(null);
+
+  React.useEffect(() => {
+    if (!renaming || !box.current) return;
+    box.current.focus();
+    // Selected from the end back, so the box scrolls to a long name's start.
+    box.current.setSelectionRange(0, box.current.value.length, 'backward');
+  }, [renaming]);
+
+  /**
+   * Takes what was typed, if it is a new name at all.
+   * @param typed - The contents of the box.
+   */
+  const commit = (typed: string): void => {
+    setRenaming(false);
+    const named = typed.trim().slice(0, SPACE_NAME_MAX_LEN);
+    if (named.length === 0 || named === name || !onRenameSpace) return;
+    // A refused rename has already raised its toast in ProjectPage's callRpc.
+    hold(named, onRenameSpace(space.id, named));
+  };
+
+  // Ending the box from the keyboard gives the keyboard to this row's menu
+  // button, where the rename started; the row itself opens the Space.
+  const exit = useInlineEditExit({
+    editing: renaming,
+    target: () => menuButton.current,
+    commit: () => commit(box.current?.value ?? ''),
+    cancel: () => setRenaming(false),
+  });
   // Why delete is not offered, said on the greyed item. The backend refuses
   // both cases too; this keeps the action from being offered at all.
   const deleteBlocked = space.locked
@@ -334,6 +370,71 @@ function SpaceDrawerRow({
     }
   };
 
+  const body = (
+    <>
+      {/* The type icon on its own, centred on the row's two lines (user
+          2026-10-14). */}
+      <Icon
+        className='h-5 w-5 shrink-0 self-center text-muted-foreground'
+        data-testid={`space-drawer-type-icon-${space.id}`}
+        aria-hidden='true'
+      />
+      <span className='flex min-w-0 flex-1 flex-col gap-1'>
+        {/* 20px tall whatever it holds, the height the rename box takes, so a
+            row being renamed stands as tall as every other row. */}
+        <span className='flex min-h-5 items-center gap-2'>
+          {renaming ? (
+            <input
+              ref={box}
+              autoComplete='off'
+              data-testid={`space-drawer-rename-input-${space.id}`}
+              defaultValue={name}
+              maxLength={SPACE_NAME_MAX_LEN}
+              aria-label={t('spaces.rename.inputAriaLabel')}
+              // The conversation history's rename box (28px: 18 of text, 4px
+              // pad and a 1px border either side); the negative margin keeps
+              // the name line at its 20px, so the row keeps its height. Shrinks
+              // before the menu button the row keeps room for.
+              className='-my-1 h-7 min-w-0 flex-1 rounded-content-sm border border-active-border bg-background px-2 py-1 text-sm font-normal leading-[18px] text-foreground outline-none'
+              // Marks what an Escape means while the focus is in here. The
+              // drawer reads it before dismissing.
+              data-renaming
+              onKeyDown={exit.onKeyDown}
+              onCompositionEnd={exit.onCompositionEnd}
+              onBlur={(e) => commit(e.currentTarget.value)}
+            />
+          ) : (
+            <span
+              // Set as the conversation history sets its names (user
+              // 2026-10-14).
+              className='truncate text-sm font-normal text-foreground'
+              data-testid={`space-drawer-name-${space.id}`}
+            >
+              {name}
+            </span>
+          )}
+          {space.locked ? (
+            <Lock
+              className='shrink-0 text-muted-foreground'
+              style={{ width: 12, height: 12 }}
+              aria-label={t('spaces.lockedAria')}
+            />
+          ) : null}
+        </span>
+        <span className='truncate text-2xs tabular-nums text-muted-foreground'>
+          {t(made.key, made.params)}
+        </span>
+      </span>
+      {/* Centred on the row's two lines like the type icon, at the right end
+          against the room kept for the menu button (user 2026-10-14). */}
+      {isActive ? (
+        <span className='ml-auto shrink-0 self-center rounded-chrome border border-border px-1 py-px text-2xs font-medium text-foreground-secondary'>
+          {t('spaces.drawer.status.editing')}
+        </span>
+      ) : null}
+    </>
+  );
+
   return (
     <li role='listitem'>
       <div
@@ -351,63 +452,39 @@ function SpaceDrawerRow({
         )}
         data-testid={`space-drawer-row-${space.id}`}
       >
-        <Button
-          variant={null}
-          size={null}
-          type='button'
-          onClick={onActivate}
-          aria-label={t('spaces.drawer.openAria', { name: space.name })}
-          aria-current={isActive ? 'true' : undefined}
-          // `justify-start` restates the left alignment the row had before the
-          // primitive's `justify-center` arrived with it.
-          // Room kept on the right for the menu button floating there, so the
-          // name truncates before it.
-          className='flex min-w-0 flex-1 items-start gap-3 pr-12 text-left'
-        >
-          <span className='mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-chrome bg-muted text-muted-foreground'>
-            <Icon className='h-4 w-4' />
-          </span>
-          <span className='flex min-w-0 flex-1 flex-col gap-1'>
-            <span className='flex items-center gap-2'>
-              <span className='truncate text-base font-semibold text-foreground'>
-                {space.name}
-              </span>
-              {isActive ? (
-                <span className='shrink-0 rounded-chrome bg-status-info-bg px-1 py-0.5 text-2xs font-medium text-status-info-foreground'>
-                  {t('spaces.drawer.status.editing')}
-                </span>
-              ) : isOpen ? (
-                <span className='shrink-0 rounded-chrome bg-muted px-1 py-0.5 text-2xs font-medium text-muted-foreground'>
-                  {t('spaces.drawer.status.open')}
-                </span>
-              ) : null}
-              {space.locked ? (
-                <Lock
-                  className='shrink-0 text-muted-foreground'
-                  style={{ width: 12, height: 12 }}
-                  aria-label={t('spaces.lockedAria')}
-                />
-              ) : null}
-            </span>
-            <span className='truncate text-xs tabular-nums text-muted-foreground'>
-              {t(made.key, made.params)}
-            </span>
-          </span>
-        </Button>
+        {renaming ? (
+          // The box cannot sit inside the row's button, so while renaming the
+          // row is laid out the same way without one.
+          <div className={ROW_BODY}>{body}</div>
+        ) : (
+          <Button
+            variant={null}
+            size={null}
+            type='button'
+            onClick={onActivate}
+            aria-label={t('spaces.drawer.openAria', { name })}
+            aria-current={isActive ? 'true' : undefined}
+            className={ROW_BODY}
+          >
+            {body}
+          </Button>
+        )}
         <div
           // Out of the flow and over the room the row button keeps free on
-          // its right (`pr-12`), so the name truncates before it rather than
+          // its right (`pr-8`), so the name truncates before it rather than
           // running under it. Shown while the row is hovered, while focus is
-          // inside it, and while its menu is open.
+          // inside it, while its menu is open and while its name is being
+          // renamed.
           className={cn(
             'absolute right-2 top-1/2 -translate-y-1/2 transition-opacity group-hover:opacity-100 focus-within:opacity-100',
-            menuOpen ? 'opacity-100' : 'opacity-0',
+            menuOpen || renaming ? 'opacity-100' : 'opacity-0',
           )}
           data-testid={`space-drawer-actions-${space.id}`}
         >
           <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
             <DropdownMenuTrigger asChild>
               <Button
+                ref={menuButton}
                 type='button'
                 variant='chrome-ghost'
                 size='chrome'
@@ -419,27 +496,52 @@ function SpaceDrawerRow({
             </DropdownMenuTrigger>
             <DropdownMenuContent
               align='end'
-              // Asking to delete opens a dialog. Opened from `onSelect`, it
-              // would mount into the press still finishing, read it as a
-              // press outside itself and close. So the item only records the
-              // choice and the dialog opens here, once the menu has closed;
-              // `preventDefault` keeps the focus off the trigger the dialog is
-              // about to take it from. The same shape as the conversation
-              // history rows.
+              // Asking to delete opens a dialog, and asking to rename opens a
+              // box. Opened from `onSelect`, the dialog would mount into the
+              // press still finishing, read it as a press outside itself and
+              // close, and the box would lose its focus to the trigger the
+              // menu hands it back to. So the item only records the choice and
+              // the dialog or box opens here, once the menu has closed;
+              // `preventDefault` keeps the focus off the trigger. The same
+              // shape as the conversation history rows.
               onCloseAutoFocus={(event) => {
-                if (!choseDelete.current) return;
-                choseDelete.current = false;
+                const choice = chose.current;
+                if (choice === null) return;
+                chose.current = null;
                 event.preventDefault();
-                setConfirmOpen(true);
+                if (choice === 'delete') setConfirmOpen(true);
+                else setRenaming(true);
               }}
             >
               <DropdownMenuItem
                 data-testid={`space-drawer-view-${space.id}`}
-                onSelect={onView}
+                onSelect={onActivate}
               >
                 <Eye className='mr-2 h-4 w-4' aria-hidden='true' />
                 {t('spaces.drawer.action.view')}
               </DropdownMenuItem>
+              {onRenameSpace ? (
+                <DropdownMenuItem
+                  data-testid={`space-drawer-rename-${space.id}`}
+                  disabled={space.locked}
+                  // Greyed with the not-allowed cursor while locked, saying
+                  // why underneath, as Delete does.
+                  className='items-start data-[disabled]:pointer-events-auto data-[disabled]:cursor-not-allowed'
+                  onSelect={() => {
+                    chose.current = 'rename';
+                  }}
+                >
+                  <Pencil className='mr-2 mt-0.5 h-4 w-4' aria-hidden='true' />
+                  <span className='flex flex-col'>
+                    {t('spaces.drawer.action.rename')}
+                    {space.locked ? (
+                      <span className='text-2xs text-muted-foreground'>
+                        {t('spaces.drawer.action.renameLocked')}
+                      </span>
+                    ) : null}
+                  </span>
+                </DropdownMenuItem>
+              ) : null}
               <DropdownMenuItem
                 data-testid={`space-drawer-lock-${space.id}`}
                 disabled={lockBusy}
@@ -465,7 +567,7 @@ function SpaceDrawerRow({
                   deleteBlocked === null && 'text-status-error-foreground',
                 )}
                 onSelect={() => {
-                  choseDelete.current = true;
+                  chose.current = 'delete';
                 }}
               >
                 <Trash2 className='mr-2 mt-0.5 h-4 w-4' aria-hidden='true' />

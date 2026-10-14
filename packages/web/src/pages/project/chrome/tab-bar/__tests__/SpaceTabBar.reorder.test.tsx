@@ -54,12 +54,10 @@ function setup(): {
     <SpaceTabBar
       spaces={SPACES}
       allSpaces={SPACES}
-      openTabIds={SPACES.map((s) => s.id)}
       activeSpaceId='s1'
       projectId='p1'
       onActivate={onActivate}
       onCreate={vi.fn()}
-      onViewSpace={vi.fn()}
       onReorder={onReorder}
     />,
     { wrapper: Providers },
