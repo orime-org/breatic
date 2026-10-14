@@ -16,6 +16,7 @@ import { Input } from '@web/components/ui/input';
 import { Label } from '@web/components/ui/label';
 import { Textarea } from '@web/components/ui/textarea';
 import { useTranslation } from '@web/i18n/use-translation';
+import { useCreatingProject } from '@web/pages/studio/container/dialogs/use-create-project';
 import { SlugField } from '@web/pages/studio/container/dialogs/SlugField';
 import {
   StudioSelectField,
@@ -98,7 +99,11 @@ export function NewItemDialog({
   const [spaceType, setSpaceType] = React.useState<SpaceType>('canvas');
   const [studioId, setStudioId] = React.useState(defaultStudioId ?? '');
   const slugCheck = useItemSlugCheck(slug);
-  const [submitting, setSubmitting] = React.useState(false);
+  const [pressed, setSubmitting] = React.useState(false);
+  // A project create is held outside this dialog (inner#1490): opened again
+  // while one is out, from either entry, it shows Create busy.
+  const creatingProject = useCreatingProject();
+  const submitting = pressed || (kind === 'project' && creatingProject);
   const showStudioSelect =
     kind === 'project' && studios !== undefined && studios.length > 0;
 

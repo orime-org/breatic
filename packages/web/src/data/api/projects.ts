@@ -3,7 +3,7 @@
 
 import type { QueryClient } from '@tanstack/react-query';
 import type { ProjectRole, SpaceType, StudioProjectSort } from '@breatic/shared';
-import { apiDelete, apiGet, apiPatch, apiPost, apiPut } from '@web/data/api/request';
+import { apiDelete, apiGet, apiPatch, apiPost, apiPut, runOnceRequest } from '@web/data/api/request';
 
 /**
  * Shared base shape for a single project (the fields `ProjectDetail` extends).
@@ -154,8 +154,9 @@ export const projectsApi = {
      */
     spaceType: SpaceType;
     description?: string;
-  }) {
-    return apiPost<ProjectDetail>('/projects', body);
+  }, key: string) {
+    // `key` is the press's Idempotency-Key: a re-send with it makes no second project.
+    return apiPost<ProjectDetail>('/projects', body, runOnceRequest(key));
   },
   duplicate(id: string) {
     return apiPost<ProjectDetail>(`/projects/${id}/duplicate`, {});
