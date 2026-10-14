@@ -59,7 +59,6 @@ function setup(): {
       projectId='p1'
       onActivate={onActivate}
       onCreate={vi.fn()}
-      onViewSpace={vi.fn()}
       onReorder={onReorder}
     />,
     { wrapper: Providers },

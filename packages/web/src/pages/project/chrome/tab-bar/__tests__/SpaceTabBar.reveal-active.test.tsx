@@ -69,7 +69,6 @@ function setup(
     projectId: 'p1',
     onActivate: vi.fn(),
     onCreate: vi.fn(),
-    onViewSpace: vi.fn(),
   };
   const view = rtlRender(
     <SpaceTabBar {...props} spaces={spaces} activeSpaceId={activeSpaceId} />,

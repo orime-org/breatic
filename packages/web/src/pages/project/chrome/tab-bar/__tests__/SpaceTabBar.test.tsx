@@ -46,7 +46,6 @@ function setup(overrides: Partial<Parameters<typeof SpaceTabBar>[0]> = {}) {
   const onActivate = vi.fn();
   const onCreate = vi.fn();
   const onClose = vi.fn();
-  const onViewSpace = vi.fn();
   const props = {
     spaces: SPACES,
     allSpaces: SPACES,
@@ -56,7 +55,6 @@ function setup(overrides: Partial<Parameters<typeof SpaceTabBar>[0]> = {}) {
     onActivate,
     onCreate,
     onClose,
-    onViewSpace,
     ...overrides,
   };
   const view = render(<SpaceTabBar {...props} />);
@@ -64,7 +62,7 @@ function setup(overrides: Partial<Parameters<typeof SpaceTabBar>[0]> = {}) {
   const setActiveSpace = (id: string): void => {
     view.rerender(<SpaceTabBar {...props} activeSpaceId={id} />);
   };
-  return { onActivate, onCreate, onClose, onViewSpace, setActiveSpace };
+  return { onActivate, onCreate, onClose, setActiveSpace };
 }
 
 describe('SpaceTabBar', () => {

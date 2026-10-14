@@ -21,7 +21,6 @@ import {
 } from '@web/data/use-project-members';
 import { CollaboratorNamesProvider } from '@web/features/collab-editor/collaborator-names-context';
 import { useCollaboratorNamesFrom } from '@web/features/collab-editor/use-collaborator-names';
-import { useExclusiveOverlay } from '@web/features/exclusive-overlay/use-exclusive-overlay';
 import { projectUuidFromRouteParam } from '@web/lib/project-route';
 import { useBlockSelectAll } from '@web/lib/use-block-select-all';
 import { useTrackActiveRegion } from '@web/features/active-region/use-track-active-region';
@@ -54,7 +53,6 @@ import { ConnectionBanner } from '@web/pages/project/chrome/ConnectionBanner';
 import {
   LeftFloatingMenu,
 } from '@web/pages/project/chrome/left-floating-menu/LeftFloatingMenu';
-import { SpaceReadOnlySheet } from '@web/pages/project/chrome/tab-bar/SpaceReadOnlySheet';
 import { TopBar, toCreditsReadout } from '@web/pages/project/chrome/top-bar/TopBar';
 import { useRefreshOnReauth } from '@web/pages/project/use-refresh-on-reauth';
 import { useRenameProject } from '@web/features/project-manage/use-rename-project';
@@ -506,11 +504,6 @@ function ProjectWorkspace({
   // ---- Loading overlay tracking ----
   const spaceOpInProgress = useUIStore((s) => s.spaceOpInProgress);
   const setSpaceOpInProgress = useUIStore((s) => s.setSpaceOpInProgress);
-  const readOnlyViewSpaceId = useUIStore((s) => s.readOnlyViewSpaceId);
-  const setReadOnlyViewSpaceId = useUIStore((s) => s.setReadOnlyViewSpaceId);
-  const [roSheetOpen, setRoSheetOpen] = useExclusiveOverlay(
-    'space-readonly-sheet',
-  );
 
 
   const pendingCreateTokenRef = React.useRef<string | null>(null);
@@ -768,22 +761,6 @@ function ProjectWorkspace({
     );
   };
 
-  /**
-   * Open the read-only preview sheet for a Space.
-   * @param id - The id of the Space to preview read-only.
-   */
-  const onViewSpace = (id: string): void => {
-    setReadOnlyViewSpaceId(id);
-    setRoSheetOpen(true);
-  };
-
-  // Resolve the currently-previewed Space (if any) for the read-only
-  // sheet. Bail to null if it's missing (race with deletion).
-  const readOnlySpace = React.useMemo(() => {
-    if (!readOnlyViewSpaceId) return null;
-    return spaces.find((s) => s.id === readOnlyViewSpaceId) ?? null;
-  }, [readOnlyViewSpaceId, spaces]);
-
   // Defer project page mount until the websocket has reached a final
   // state (connected / authFailed / disconnected). Without this gate,
   // `connecting` (the initial state from useSocket) makes the banner +
@@ -1012,7 +989,6 @@ function ProjectWorkspace({
                     onActivate={onActivate}
                     onCreate={onCreateSpace}
                     onClose={onCloseTab}
-                    onViewSpace={onViewSpace}
                     onDeleteSpace={onDeleteSpace}
                     onSetSpaceLocked={onSetSpaceLocked}
                     onRenameSpace={isViewer ? undefined : onRenameSpace}
@@ -1132,14 +1108,6 @@ function ProjectWorkspace({
               />
             ) : null}
           </div>
-          <SpaceReadOnlySheet
-            open={roSheetOpen}
-            space={readOnlySpace}
-            onClose={() => {
-              setRoSheetOpen(false);
-              setReadOnlyViewSpaceId(null);
-            }}
-          />
           {spaceOpInProgress === 'creating' ? (
             <LoadingOverlay
               message={t('project.space.loading.create')}

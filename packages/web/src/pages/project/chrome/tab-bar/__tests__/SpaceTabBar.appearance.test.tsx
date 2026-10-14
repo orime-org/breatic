@@ -52,7 +52,6 @@ function setup(): void {
       onActivate={vi.fn()}
       onCreate={vi.fn()}
       onClose={vi.fn()}
-      onViewSpace={vi.fn()}
     />,
   );
 }

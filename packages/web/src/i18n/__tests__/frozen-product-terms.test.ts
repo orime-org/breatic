@@ -142,6 +142,12 @@ const REMOVED_DEAD_KEYS: readonly string[] = [
   'message.addedToTimeline',
   'server.email.welcome_subject',
   'editor.accept',
+  // View opens a Space as a tab, as pressing its drawer row does (inner#1528);
+  // the read-only panel these titled is gone.
+  'spaces.readonly.canvas.title',
+  'spaces.readonly.document.title',
+  'spaces.readonly.timeline.title',
+  'spaces.readonly.timeline.description',
 ];
 
 describe('frozen product terms (#1336)', () => {
@@ -189,19 +195,12 @@ describe('frozen product terms (#1336)', () => {
    * the localized noun forms. The blanket forms (Project / Collection / Work /
    * Studio / Space's 工作面·作業面) are owned by the lint guard.
    */
-  const CANVAS_FORMS = ['画布', '畫布', 'キャンバス', '캔버스'];
-  const DOCUMENT_FORMS = ['文档', '文檔', '文件', 'ドキュメント', '문서'];
-  const TIMELINE_FORMS = ['时间线', '時間線', '時間軸', '时间轴', 'タイムライン', '타임라인'];
   const SPACE_FORMS = ['工作面', '作業面', 'スペース', '스페이스', '작업면'];
 
   /** Each collision key paired with its English term + the localized forms that must be absent. */
   const COLLISION_FROZEN: ReadonlyArray<
     readonly [key: string, term: string, forbidden: readonly string[]]
   > = [
-    ['spaces.readonly.canvas.title', 'Canvas', CANVAS_FORMS],
-    ['spaces.readonly.document.title', 'Document', DOCUMENT_FORMS],
-    ['spaces.readonly.timeline.title', 'Timeline', TIMELINE_FORMS],
-    ['spaces.readonly.timeline.description', 'Timeline', TIMELINE_FORMS],
     ['chrome.tooltip.newSpace', 'Space', SPACE_FORMS],
     ['chrome.tooltip.allSpaces', 'Space', SPACE_FORMS],
     ['project.space.noActive', 'Space', SPACE_FORMS],

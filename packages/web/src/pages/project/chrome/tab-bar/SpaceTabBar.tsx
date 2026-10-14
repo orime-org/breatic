@@ -215,8 +215,6 @@ interface SpaceTabBarProps {
   onCreate: (type: SpaceType, name: string) => Promise<void> | void;
   /** Close a tab - does NOT delete the Space, just removes from the bar. */
   onClose?: (id: string) => void;
-  /** Open the read-only preview sheet for a Space (drawer "view" action). */
-  onViewSpace: (id: string) => void;
   /**
    * Live meta-doc provider — ProjectActivityButton listens for the
    * `activity:new` stateless signal on it (ADR 2026-07-04
@@ -270,7 +268,6 @@ interface SpaceTabBarProps {
  * @param root0.onActivate - Activates the space with the given id.
  * @param root0.onCreate - Creates a new space of the given type and name.
  * @param root0.onClose - Closes a tab (removes it from the bar without deleting the space).
- * @param root0.onViewSpace - Opens the read-only preview sheet for a space (drawer "view" action).
  * @param root0.metaProvider - Live meta-doc provider carrying the activity:new signal.
  * @param root0.currentUserRole - Caller's role on the project, driving owner-only message actions.
  * @param root0.onRestoreSpace - Owner-only handler to restore a soft-deleted space.
@@ -289,7 +286,6 @@ export function SpaceTabBar({
   onActivate,
   onCreate,
   onClose,
-  onViewSpace,
   metaProvider,
   currentUserRole,
   onRestoreSpace,
@@ -656,9 +652,9 @@ export function SpaceTabBar({
           activeSpaceId={activeSpaceId}
           projectId={projectId}
           onActivate={onActivate}
-          onView={onViewSpace}
           onDeleteSpace={onDeleteSpace}
           onSetSpaceLocked={onSetSpaceLocked}
+          onRenameSpace={onRenameSpace}
         />
         <ProjectActivityButton
           projectId={projectId}
