@@ -12,6 +12,7 @@ import { miniToolOpenOn } from '@web/stores/canvas-session';
 import { OUTSIDE_DIM, handleScale } from '@web/spaces/canvas/crop/crop-geometry';
 import { useMediaGeometry } from '@web/spaces/canvas/crop/media-geometry';
 import { TOOL_LAYER_CLASS, stopNodeClick, useToolLayerKeys } from '@web/spaces/canvas/mini-tool/tool-layer-input';
+import { gridCuts } from '@web/spaces/canvas/mini-tool/grid-export';
 
 interface NodeGridLayerProps {
   /** The node this layer belongs to. */
@@ -66,6 +67,11 @@ export function NodeGridLayer({ nodeId, wrapper }: NodeGridLayerProps): React.JS
   );
   if (shape === null || geometry === null) return null;
   const { rows, cols } = shape;
+  // The lines sit where the export cuts the source (§6.4); an even split until
+  // the source's pixels are known.
+  const natural = geometry.natural;
+  const xs = (natural === null ? gridCuts(cols, cols) : gridCuts(natural.width, cols)).map((x, _, all) => x / (all.at(-1) || 1));
+  const ys = (natural === null ? gridCuts(rows, rows) : gridCuts(natural.height, rows)).map((y, _, all) => y / (all.at(-1) || 1));
   const line = 'absolute bg-background outline outline-foreground';
   const roomy =
     (geometry.box.width / cols) * zoom >= CHECK_ROOM_PX && (geometry.box.height / rows) * zoom >= CHECK_ROOM_PX;
@@ -80,8 +86,8 @@ export function NodeGridLayer({ nodeId, wrapper }: NodeGridLayerProps): React.JS
         top: geometry.at.y,
         width: geometry.box.width,
         height: geometry.box.height,
-        gridTemplateColumns: `repeat(${cols}, 1fr)`,
-        gridTemplateRows: `repeat(${rows}, 1fr)`,
+        gridTemplateColumns: xs.slice(1).map((x, i) => `${x - (xs[i] ?? 0)}fr`).join(' '),
+        gridTemplateRows: ys.slice(1).map((y, i) => `${y - (ys[i] ?? 0)}fr`).join(' '),
       }}
     >
       {Array.from({ length: rows * cols }, (_, cell) => {
@@ -123,7 +129,7 @@ export function NodeGridLayer({ nodeId, wrapper }: NodeGridLayerProps): React.JS
           key={`c${i}`}
           data-testid='mini-tool-grid-col'
           className={`${line} pointer-events-none inset-y-0`}
-          style={{ left: `${((i + 1) * 100) / cols}%`, width: scale, outlineWidth: scale }}
+          style={{ left: `${(xs[i + 1] ?? 0) * 100}%`, width: scale, outlineWidth: scale }}
         />
       ))}
       {Array.from({ length: rows - 1 }, (_, i) => (
@@ -131,7 +137,7 @@ export function NodeGridLayer({ nodeId, wrapper }: NodeGridLayerProps): React.JS
           key={`r${i}`}
           data-testid='mini-tool-grid-row'
           className={`${line} pointer-events-none inset-x-0`}
-          style={{ top: `${((i + 1) * 100) / rows}%`, height: scale, outlineWidth: scale }}
+          style={{ top: `${(ys[i + 1] ?? 0) * 100}%`, height: scale, outlineWidth: scale }}
         />
       ))}
     </div>

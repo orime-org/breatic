@@ -147,6 +147,15 @@ describe('NodeGridLayer tile picking', () => {
     expect(screen.getByTestId('mini-tool-grid-tile-0').dataset.picked).toBe('false');
   });
 
+  // §6.4: the node draws the cuts the export makes, from the source's pixels.
+  it('draws each line where the export cuts the source', () => {
+    vi.spyOn(HTMLImageElement.prototype, 'naturalWidth', 'get').mockReturnValue(1007);
+    vi.spyOn(HTMLImageElement.prototype, 'naturalHeight', 'get').mockReturnValue(1007);
+    mount('image.grid', { rows: 1, cols: 8, skip: [] });
+    const lines = screen.getAllByTestId('mini-tool-grid-col');
+    expect(parseFloat(lines[6]!.style.left)).toBeCloseTo((881 / 1007) * 100, 6);
+  });
+
   it('draws a round checkbox', () => {
     mount('image.grid', { rows: 2, cols: 2, skip: [] });
     expect(screen.getByTestId('mini-tool-grid-check-0')).toHaveClass('rounded-full');

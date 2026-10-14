@@ -3,7 +3,7 @@
 
 import { describe, it, expect } from 'vitest';
 
-import { gridTileRects } from '@web/spaces/canvas/mini-tool/grid-export';
+import { gridCuts, gridTileRects } from '@web/spaces/canvas/mini-tool/grid-export';
 
 describe('gridTileRects', () => {
   it('cuts an even picture into equal tiles, row by row', () => {
@@ -17,11 +17,17 @@ describe('gridTileRects', () => {
     ]);
   });
 
-  it('gives the pixels left over to the last row and the last column', () => {
-    const rects = gridTileRects(500, 500, 8, 8);
-    expect(rects[0]).toEqual({ x: 0, y: 0, width: 62, height: 62 });
-    expect(rects[7]).toEqual({ x: 434, y: 0, width: 66, height: 62 });
-    expect(rects[63]).toEqual({ x: 434, y: 434, width: 66, height: 66 });
+  // §6.4: the i-th cut sits at round(i × side / parts), where the node draws its
+  // i-th line, so no tile is more than a pixel off the others.
+  it('spreads the pixels left over across the tiles, a pixel at most apart', () => {
+    const rects = gridTileRects(1007, 1007, 8, 8);
+    expect(rects[7]).toEqual({ x: 881, y: 0, width: 126, height: 126 });
+    const widths = rects.slice(0, 8).map((r) => r.width);
+    expect(Math.max(...widths) - Math.min(...widths)).toBeLessThanOrEqual(1);
+  });
+
+  it('places each cut where an even split of the side would', () => {
+    expect(gridCuts(1007, 8)).toEqual([0, 126, 252, 378, 504, 629, 755, 881, 1007]);
   });
 
   it('covers every pixel exactly once', () => {
