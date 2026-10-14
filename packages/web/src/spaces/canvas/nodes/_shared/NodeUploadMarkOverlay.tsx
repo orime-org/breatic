@@ -10,7 +10,8 @@ import { useUploadMark } from '@web/spaces/canvas/nodes/_shared/use-upload-mark'
 /**
  * The uploader's own mark over a node that already shows something (inner#1303
  * §6.7): a skeleton over the content until the server answers, and a line along
- * the bottom saying why it ended before that. Drawn in the branch of
+ * the bottom saying why it ended before that, which presses go through to the
+ * content under it (a player's controls sit on that edge). Drawn in the branch of
  * `NodeContent` every content node shows its content through, so every
  * modality has it; an empty node's placeholder draws the mark itself.
  * @returns The overlay, or null when the node has no mark.
@@ -26,7 +27,7 @@ export function NodeUploadMarkOverlay(): React.JSX.Element | null {
   return (
     <span
       data-testid='node-upload-error'
-      className='absolute inset-x-1 bottom-1 bg-popover px-2 py-1 text-xs text-status-error'
+      className='pointer-events-none absolute inset-x-1 bottom-1 bg-popover px-2 py-1 text-xs text-status-error'
     >
       {'text' in mark.message ? mark.message.text : t(mark.message.key, mark.message.params)}
     </span>

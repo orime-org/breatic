@@ -90,6 +90,17 @@ describe('NodeContent with an upload mark', () => {
     expect(screen.getByTestId('node-upload-error')).toHaveTextContent('Upload failed.');
   });
 
+  // The line sits along the node's bottom edge, where a player's controls are:
+  // it says what happened and leaves the controls under it working.
+  it('lets presses through the line over what the node shows', () => {
+    act(() => {
+      const op = marks().begin('', 'n1', 'upload');
+      marks().fail('', 'n1', op, { key: 'canvas.upload.failed' });
+    });
+    renderFramed(<p>held content</p>);
+    expect(screen.getByTestId('node-upload-error')).toHaveClass('pointer-events-none');
+  });
+
   it('shows one skeleton on an empty node, in place of its call to action', () => {
     act(() => {
       marks().begin('', 'n1', 'upload');
