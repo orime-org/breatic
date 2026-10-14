@@ -115,6 +115,7 @@ describe('MiniToolPanelContainer', () => {
         source: { url: 'a.png' },
       }),
       undefined,
+      { width: 1600, height: 1000 },
     );
   });
 
@@ -177,6 +178,32 @@ describe('MiniToolPanelContainer', () => {
     expect((screen.getByTestId('mini-tool-rect-w') as HTMLInputElement).value).toBe('800');
   });
 
+  // A7: a grid lays its tiles out from the source's pixels. A node that does
+  // not record them has them read off the picture it shows (round 2, R8).
+  it('runs a grid with the size read off the shown picture when the node records none', () => {
+    const shown = document.createElement('div');
+    shown.className = 'react-flow__node';
+    shown.dataset.id = 'src';
+    const img = document.createElement('img');
+    img.dataset.testid = 'image-node-img';
+    Object.defineProperty(img, 'naturalWidth', { value: 1200 });
+    Object.defineProperty(img, 'naturalHeight', { value: 800 });
+    shown.append(img);
+    document.body.append(shown);
+    canvasSessions.of('').getState().openMiniTool('src', 'image.grid', { sourceContent: 'a.png', params: {} });
+    const onRun = vi.fn(() => Promise.resolve());
+    const sizeless: CanvasNodeView[] = [
+      { id: 'src', type: 'image', position: { x: 0, y: 0 }, data: { handling: false, content: 'a.png' } },
+    ];
+    render(tree(sizeless, onRun));
+    fireEvent.click(screen.getByTestId('mini-tool-run'));
+    expect(onRun).toHaveBeenCalledWith('src', expect.objectContaining({ id: 'image.grid' }), expect.anything(), undefined, {
+      width: 1200,
+      height: 800,
+    });
+    shown.remove();
+  });
+
   // A12: the range shows the whole clip until dragged, and that is what runs.
   it('runs a cut nobody dragged on the whole clip', () => {
     canvasSessions.of('').getState().openMiniTool('src', 'video.cut', { sourceContent: 'a.mp4', params: { range: null } });
@@ -190,6 +217,7 @@ describe('MiniToolPanelContainer', () => {
       'src',
       expect.objectContaining({ id: 'video.cut' }),
       expect.objectContaining({ params: { range: { start: 0, end: 12 } } }),
+      undefined,
       undefined,
     );
   });
@@ -244,10 +272,13 @@ describe('MiniToolPanelContainer', () => {
       canvasSessions.of('').getState().addDrawingStep({ ...STROKE, points: [[0.2, 0.2]] });
       render(tree(source('a.png'), onRun));
       fireEvent.click(screen.getByTestId('mini-tool-run'));
-      expect(onRun).toHaveBeenCalledWith('src', expect.objectContaining({ id: 'image.erase' }), expect.anything(), {
-        kind: 'strokes',
-        ops: [{ ...STROKE, points: [[0.2, 0.2]] }],
-      });
+      expect(onRun).toHaveBeenCalledWith(
+        'src',
+        expect.objectContaining({ id: 'image.erase' }),
+        expect.anything(),
+        { kind: 'strokes', ops: [{ ...STROKE, points: [[0.2, 0.2]] }] },
+        { width: 1600, height: 1000 },
+      );
     });
   });
 
@@ -274,10 +305,13 @@ describe('MiniToolPanelContainer', () => {
       });
       render(tree(source('a.png'), onRun));
       fireEvent.click(screen.getByTestId('mini-tool-run'));
-      expect(onRun).toHaveBeenCalledWith('src', expect.objectContaining({ id: 'image.mark' }), expect.anything(), {
-        kind: 'mark',
-        objects: [RECT, TEXT],
-      });
+      expect(onRun).toHaveBeenCalledWith(
+        'src',
+        expect.objectContaining({ id: 'image.mark' }),
+        expect.anything(),
+        { kind: 'mark', objects: [RECT, TEXT] },
+        { width: 1600, height: 1000 },
+      );
     });
 
     // A4, §6.6: the only text emptied in its edit leaves nothing; the press

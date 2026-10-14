@@ -63,6 +63,7 @@ export interface MiniToolPanelContainerProps {
     spec: MiniToolSpec,
     snapshot: MiniToolSnapshot,
     capture: MiniToolCapture | undefined,
+    sourceSize: { width: number; height: number } | undefined,
   ) => Promise<void>;
 }
 
@@ -203,7 +204,10 @@ function OpenMiniToolPanel({
     spaceId,
     nodeId,
     content,
-    (tieredParamKeys(spec).length > 0 || spec.drawing !== undefined || spec.expand !== undefined) &&
+    (tieredParamKeys(spec).length > 0 ||
+      spec.drawing !== undefined ||
+      spec.expand !== undefined ||
+      spec.outputLayout === 'grid') &&
       (dataWidth === undefined || dataHeight === undefined),
   );
   const source = React.useMemo<MiniToolSourceInfo>(
@@ -383,7 +387,10 @@ function OpenMiniToolPanel({
       if (objects.length === 0) return;
       capture = { kind: 'mark', objects };
     }
-    void onRun(nodeId, spec, snapshot, capture);
+    // A grid lays its tiles out from the source's pixels before the export.
+    const sourceSize =
+      source.width !== undefined && source.height !== undefined ? { width: source.width, height: source.height } : undefined;
+    void onRun(nodeId, spec, snapshot, capture, sourceSize);
   }, [refusal, onRun, nodeId, spec, entry, slots, snapshot, drawingSteps, source.width, source.height, sessionStore, t]);
 
   // Escape closes the panel; a running pick takes the press first.

@@ -3982,6 +3982,7 @@ function CanvasSpaceInner({
       spec: MiniToolSpec,
       snapshot: MiniToolSnapshot,
       capture: MiniToolCapture | undefined,
+      sourceSize: { width: number; height: number } | undefined,
     ): Promise<void> => {
       const host = nodes.find((n) => n.id === nodeId);
       const view = asContentView(host?.data);
@@ -4004,8 +4005,10 @@ function CanvasSpaceInner({
           position: host.position,
           groupOrigin: group?.position ?? null,
           mimeType: view.mimeType,
-          width: 'width' in view ? view.width : undefined,
-          height: 'height' in view ? view.height : undefined,
+          // The panel reads the size off the shown picture when the node
+          // records none.
+          width: ('width' in view ? view.width : undefined) ?? sourceSize?.width,
+          height: ('height' in view ? view.height : undefined) ?? sourceSize?.height,
         },
         sourceExists: () => buffer.settled().some((n) => n.id === nodeId),
         exportFile: exportMiniToolFile,
