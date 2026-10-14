@@ -56,6 +56,7 @@ import { documentTableColumnWidthsExtension } from '@web/spaces/document/documen
 import { documentTableTargetExtension } from '@web/spaces/document/document-table-target';
 import { documentTableDragExtension, holdDropLineInTableDrags } from '@web/spaces/document/document-table-drag';
 import { documentPasteHandler } from '@web/spaces/document/document-table-paste';
+import { canvasPasteHandler, type CanvasPasteSink } from '@web/spaces/document/document-canvas-paste-handler';
 import { documentQuoteInputExtension } from '@web/spaces/document/document-quote-input';
 import { documentSafariImeExtension } from '@web/spaces/document/document-safari-ime';
 import { documentTrailingPressExtension } from '@web/spaces/document/document-trailing-press';
@@ -80,6 +81,7 @@ import {
   fileDropPosition,
   filesPasteHandler,
   type FilesSink,
+  type PasteHandler,
 } from '@web/spaces/document/document-file-input';
 
 /** What a caller has to supply to open a document. */
@@ -106,6 +108,11 @@ export interface DocumentEditorOptions {
    * medium is left out.
    */
   readonly media?: PastedMediaOptions;
+  /**
+   * Where a pasted canvas clipboard's uploads start (inner#1351). Left out, a
+   * canvas clipboard pastes as the plain text it is.
+   */
+  readonly onCanvasPaste?: CanvasPasteSink;
 }
 
 /**
@@ -239,12 +246,21 @@ export function buildDocumentEditor(
       cellTextColor: false,
       headers: true,
     },
-    pasteHandler:
-      options.onFiles === undefined
-        ? documentPasteHandler
-        : filesPasteHandler(options.onFiles, documentPasteHandler),
+    pasteHandler: pasteChain(options),
     ...collaborative,
   } as never) as BlockNoteEditor<never, never, never>;
+}
+
+/**
+ * The body's paste hooks, in the order a paste is tried (inner#1351 design
+ * §5.1): files, then a canvas clipboard, then everything else.
+ * @param options - The editor's options.
+ * @returns The first hook.
+ */
+function pasteChain(options: DocumentEditorOptions): PasteHandler {
+  const rest =
+    options.onCanvasPaste === undefined ? documentPasteHandler : canvasPasteHandler(options.onCanvasPaste, documentPasteHandler);
+  return options.onFiles === undefined ? rest : filesPasteHandler(options.onFiles, rest);
 }
 
 /**
