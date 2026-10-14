@@ -18,23 +18,25 @@
  * While our prefix is not known yet, every medium with an address becomes
  * pending, and its upload sorts ours from outside once the prefix is in.
  *
- * `transformPasted` sees every paste and every drop from outside the editor;
- * a row dragged within the body never reaches it — `document-drag-move.ts`
- * takes that drop first. The slice it returns is what is synced, so an
- * outside address never reaches the shared document. The uploads start once
- * the paste is in: the next update that holds the pending blocks.
+ * `transformPasted` sees every paste and every drop; a row moved or copied
+ * within the body is already in the shared document and is passed over. The
+ * slice it returns is what is synced, so an outside address never reaches
+ * the shared document. The uploads start once the paste or the drop is done:
+ * a pending block that went in starts its upload, and one another hook kept
+ * out (a link pasted over a selection takes the whole paste) is counted as
+ * left out.
  *
- * A table cell takes only words, and ProseMirror fits a slice to the cell
- * it lands in while it reads the HTML, so the media would be gone before
- * `transformPasted` sees the slice. HTML landing in a cell is therefore read
- * into blocks first (`transformPastedHTML`, which a paste, a drop and a
- * Markdown paste all pass through); its media come out and are judged as
- * above, and the rest goes on to the cell the way it would have without them.
- * The media land under the table in the same dispatch, appended to the
- * transaction that put the rest in, so one undo takes both (design §5.4, A7).
+ * A table cell takes only words, and ProseMirror fits a slice to the cell it
+ * lands in while it reads the HTML, so the media would be gone before
+ * `transformPasted` sees the slice. HTML landing in a cell — a paste, a drop
+ * and a Markdown paste all pass through `transformPastedHTML` — has its media
+ * read out and judged as above, and the rest goes on as it was without them.
+ * The media land under that table in the dispatch that puts the rest in, or
+ * by themselves once the event is done when no dispatch changed the document
+ * (design §5.4, A7).
  */
 
-import { blockToNode, createExtension, type ExtensionFactoryInstance } from '@blocknote/core';
+import { createExtension, type ExtensionFactoryInstance } from '@blocknote/core';
 import { Fragment, Slice, type Node as PMNode } from '@tiptap/pm/model';
 import { Plugin, type EditorState, type Transaction } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
@@ -42,12 +44,11 @@ import type { EditorView } from '@tiptap/pm/view';
 import { routeAddress } from '@web/spaces/document/document-canvas-paste';
 import {
   inTableCell,
+  insertAtGapTr,
   pasteTarget,
-  quotedAs,
-  quotedBeside,
   type BlockSpec,
 } from '@web/spaces/document/document-file-input';
-import { isMediaBlockType, pendingUploadId } from '@web/spaces/document/document-media-types';
+import { MEDIA_BLOCK_TYPES, isMediaBlockType, pendingUploadId } from '@web/spaces/document/document-media-types';
 import type { UploadSource } from '@web/spaces/document/document-upload-controller';
 import { markOwnUndoStep } from '@web/spaces/document/document-undo-step';
 
@@ -65,27 +66,34 @@ export interface PastedMediaOptions {
   readonly start?: (uploadId: string, source: UploadSource) => void;
 }
 
-/** What becomes of one pasted medium. */
-type Verdict = 'keep' | 'pend' | 'drop';
-
-/** An upload a paste queued, started once its block is in. */
+/** An upload a paste waits on, started once its block is in. */
 interface Queued {
   readonly uploadId: string;
   readonly url: string;
 }
 
 /**
- * What becomes of a pasted medium.
+ * What a pasted medium becomes: its attributes as they are, a pending
+ * block's with its upload queued, or null when it is left out.
  * @param attrs - The medium's attributes or props.
  * @param prefix - Our prefix, or null.
- * @returns The verdict.
+ * @param queue - Collects the uploads pending blocks wait for; null when
+ *   nothing would start them, and a medium to fetch is left out instead.
+ * @returns The attributes it lands with, or null.
  */
-function verdictOf(attrs: Readonly<Record<string, unknown>>, prefix: string | null): Verdict {
-  if (pendingUploadId(attrs) !== null) return 'keep';
+function pended(
+  attrs: Readonly<Record<string, unknown>>,
+  prefix: string | null,
+  queue: Queued[] | null,
+): Readonly<Record<string, unknown>> | null {
+  if (pendingUploadId(attrs) !== null) return attrs;
   const url = attrs['url'];
-  if (typeof url !== 'string' || url === '') return 'drop';
-  if (prefix !== null && url.startsWith(prefix)) return 'keep';
-  return routeAddress(url) === 'skip' ? 'drop' : 'pend';
+  if (typeof url !== 'string' || url === '') return null;
+  if (prefix !== null && url.startsWith(prefix)) return attrs;
+  if (queue === null || routeAddress(url) === 'skip') return null;
+  const uploadId = crypto.randomUUID();
+  queue.push({ uploadId, url });
+  return { ...attrs, url: '', uploadId };
 }
 
 /**
@@ -96,29 +104,28 @@ function verdictOf(attrs: Readonly<Record<string, unknown>>, prefix: string | nu
  * nested under a medium taken out stay, in its place.
  * @param fragment - The fragment.
  * @param prefix - Our prefix, or null.
- * @param queued - Collects the uploads the pending blocks wait for; null
- *   when nothing would start them, and a medium to fetch is taken out instead.
+ * @param queue - Collects the uploads the pending blocks wait for, or null.
  * @returns The fragment and how many media were taken out.
  */
 function judge(
   fragment: Fragment,
   prefix: string | null,
-  queued: Queued[] | null,
+  queue: Queued[] | null,
 ): { fragment: Fragment; dropped: number } {
   let dropped = 0;
   let changed = false;
   const kept: PMNode[] = [];
   fragment.forEach((node) => {
     const own = node.type.name === 'blockContainer' ? node.firstChild : null;
-    const judged = own !== null && isMediaBlockType(own.type.name) ? verdictOf(own.attrs, prefix) : null;
-    const verdict = judged === 'pend' && queued === null ? 'drop' : judged;
-    if (verdict === 'drop') {
+    const medium = own !== null && isMediaBlockType(own.type.name) ? own : null;
+    const attrs = medium === null ? null : pended(medium.attrs, prefix, queue);
+    if (medium !== null && attrs === null) {
       changed = true;
       dropped += 1;
       // The rows nested under it are text the reader pasted: they take its place.
       const group = node.lastChild;
       if (group?.type.name === 'blockGroup') {
-        const inner = judge(group.content, prefix, queued);
+        const inner = judge(group.content, prefix, queue);
         dropped += inner.dropped;
         inner.fragment.forEach((child) => kept.push(child));
       }
@@ -128,13 +135,11 @@ function judge(
       kept.push(node);
       return;
     }
-    const inner = judge(node.content, prefix, queued);
+    const inner = judge(node.content, prefix, queue);
     dropped += inner.dropped;
     let content = inner.fragment;
-    if (verdict === 'pend') {
-      const uploadId = crypto.randomUUID();
-      queued!.push({ uploadId, url: own!.attrs['url'] as string });
-      content = content.replaceChild(0, own!.type.create({ ...own!.attrs, url: '', uploadId }, own!.content, own!.marks));
+    if (medium !== null && attrs !== medium.attrs) {
+      content = content.replaceChild(0, medium.type.create(attrs, medium.content, medium.marks));
     }
     if (content === node.content) {
       kept.push(node);
@@ -162,30 +167,46 @@ function pendingIds(doc: PMNode): Set<string> {
 }
 
 /** A block as BlockNote reads it out of HTML. */
-interface ReadBlock {
-  readonly type: string;
+interface ReadBlock extends BlockSpec {
   readonly props: Readonly<Record<string, unknown>>;
   readonly children: readonly ReadBlock[];
 }
 
 /**
- * Blocks with every medium taken out, in document order; the rows nested
- * under a medium stay, in its place.
+ * Every medium among blocks, nested ones too, in document order.
  * @param blocks - The blocks.
- * @param taken - Collects the media, without their nested rows.
- * @returns The blocks without them.
+ * @returns The media.
  */
-function mediaOut(blocks: readonly ReadBlock[], taken: ReadBlock[]): ReadBlock[] {
-  return blocks.flatMap((block) => {
-    if (isMediaBlockType(block.type)) {
-      taken.push(block);
-      return mediaOut(block.children, taken);
-    }
-    return [{ ...block, children: mediaOut(block.children, taken) }];
-  });
+function mediaIn(blocks: readonly ReadBlock[]): ReadBlock[] {
+  return blocks.flatMap((block) => [...(isMediaBlockType(block.type) ? [block] : []), ...mediaIn(block.children)]);
 }
 
-/** HTML landing in a table cell, with its media taken out and judged. */
+/** BlockNote's own HTML for a media block, as its export writes it. */
+const OWN_MEDIA = MEDIA_BLOCK_TYPES.map((type) => `[data-content-type="${type}"]`).join(', ');
+
+/**
+ * Pasted HTML with its media taken out and the rest as it was, so the rest
+ * lands the way it would have without them. A media block of BlockNote's own
+ * HTML goes with its row, the rows nested under it taking its place; an
+ * outside picture, video or audio goes with the figure around it.
+ * @param html - The HTML.
+ * @returns The HTML without its media; an empty paragraph when nothing else
+ *   was in it, since no HTML at all would have the plain text read instead.
+ */
+function withoutMedia(html: string): string {
+  const body = new DOMParser().parseFromString(html, 'text/html').body;
+  for (const content of Array.from(body.querySelectorAll(OWN_MEDIA))) {
+    const row = content.closest('[data-node-type="blockOuter"]') ?? content;
+    const nested = row.querySelector(':scope > [data-node-type="blockContainer"] > [data-node-type="blockGroup"]');
+    row.replaceWith(...Array.from(nested?.children ?? []));
+  }
+  for (const element of Array.from(body.querySelectorAll('img, video, audio'))) {
+    (element.closest('figure') ?? element).remove();
+  }
+  return body.innerHTML.trim() === '' ? '<p></p>' : body.innerHTML;
+}
+
+/** HTML landing in a table cell, its media taken out and judged. */
 interface CellLanding {
   /** Where it lands. */
   readonly at: number;
@@ -193,24 +214,17 @@ interface CellLanding {
   readonly media: readonly BlockSpec[];
   /** The uploads the pending ones among them wait for. */
   readonly queued: readonly Queued[];
-  /** Whether nothing but media was in it. */
-  readonly onlyMedia: boolean;
 }
 
 /**
- * Puts a cell landing's media under the table its place is in, as an undo
- * step of its own.
- * @param state - The state the media go into.
+ * A transaction putting a cell landing's media under the table its place is in.
+ * @param state - The state they go into.
  * @param at - Where the landing is, in that state's document.
  * @param media - The media.
  * @returns The transaction.
  */
 function mediaUnderTable(state: EditorState, at: number, media: readonly BlockSpec[]): Transaction {
-  const gap = pasteTarget(state, state.doc.resolve(at)).gap;
-  const nodes = quotedAs(media, quotedBeside(state.doc, gap, false)).map((block) =>
-    blockToNode({ id: crypto.randomUUID(), ...block } as never, state.schema),
-  );
-  return markOwnUndoStep(state.tr.insert(gap, Fragment.from(nodes)));
+  return insertAtGapTr(state, pasteTarget(state, state.doc.resolve(at)).gap, false, media);
 }
 
 /**
@@ -225,67 +239,77 @@ export function documentPastedMediaExtension(
 ): ExtensionFactoryInstance {
   return createExtension(({ editor }) => {
     let queued: Queued[] = [];
+    let flushing = false;
     let dropAt: number | null = null;
     let landing: CellLanding | null = null;
 
     /**
-     * Takes the media out of HTML landing in a table cell and judges them.
-     * @param html - The HTML.
-     * @param at - Where it lands.
-     * @returns The HTML that goes on to the cell.
+     * Once the paste or the drop is done, starts the uploads whose blocks
+     * went in and counts the rest as left out: another hook can take a paste
+     * and put in none of it.
+     * @param view - The editor view.
      */
-    const readForCell = (html: string, at: number): string => {
-      const taken: ReadBlock[] = [];
-      const rest = mediaOut(editor.tryParseHTMLToBlocks(html) as unknown as ReadBlock[], taken);
-      if (taken.length === 0) return html;
-      const prefix = options?.assetUrlPrefix() ?? null;
-      const media: BlockSpec[] = [];
-      const waiting: Queued[] = [];
-      let dropped = 0;
-      for (const { type, props } of taken) {
-        const verdict = verdictOf(props, prefix);
-        if (verdict === 'keep') {
-          media.push({ type, props });
-        } else if (verdict === 'pend' && options?.start !== undefined) {
-          const uploadId = crypto.randomUUID();
-          waiting.push({ uploadId, url: props['url'] as string });
-          media.push({ type, props: { ...props, url: '', uploadId } });
-        } else {
-          dropped += 1;
-        }
-      }
-      if (dropped > 0) options?.onLeftOut(dropped);
-      const held: CellLanding = { at, media, queued: waiting, onlyMedia: rest.length === 0 };
-      landing = held;
-      // A paste or a drop is put in within the event that read it.
+    const settle = (view: EditorView): void => {
+      if (flushing) return;
+      flushing = true;
       queueMicrotask(() => {
-        if (landing === held) landing = null;
+        flushing = false;
+        const present = pendingIds(view.state.doc);
+        const waiting = queued;
+        queued = [];
+        const missing = waiting.filter(({ uploadId }) => !present.has(uploadId)).length;
+        for (const { uploadId, url } of waiting) {
+          if (present.has(uploadId)) options?.start?.(uploadId, { kind: 'address', url });
+        }
+        if (missing > 0) options?.onLeftOut(missing);
       });
-      return rest.length === 0 ? '' : editor.blocksToFullHTML(rest as never);
     };
 
     /**
-     * Takes the landing whose HTML was read, starting its uploads' wait.
+     * Takes the landing whose HTML was read; its uploads join the queue.
+     * @param view - The editor view.
      * @returns The landing, or null when none is held.
      */
-    const take = (): CellLanding | null => {
+    const take = (view: EditorView): CellLanding | null => {
       const held = landing;
       landing = null;
-      if (held !== null) queued = [...queued, ...held.queued];
+      if (held === null) return null;
+      queued = [...queued, ...held.queued];
+      settle(view);
       return held;
     };
 
     /**
-     * Puts in a landing that held nothing but media: there is no rest for
-     * the paste or the drop to put in, so the media go in by themselves.
+     * Takes the media out of HTML landing in a table cell and judges them.
+     * The rest goes on the way it would have without them; the media follow
+     * in the dispatch that puts it in, or by themselves once the event is
+     * done when that dispatch changes nothing.
+     * @param html - The HTML.
+     * @param at - Where it lands.
      * @param view - The editor view.
-     * @returns True when it was such a landing.
+     * @returns The HTML that goes on to the cell.
      */
-    const landOnlyMedia = (view: EditorView): boolean => {
-      if (landing?.onlyMedia !== true) return false;
-      const held = take()!;
-      view.dispatch(mediaUnderTable(view.state, held.at, held.media).scrollIntoView());
-      return true;
+    const readForCell = (html: string, at: number, view: EditorView): string => {
+      const found = mediaIn(editor.tryParseHTMLToBlocks(html) as unknown as ReadBlock[]);
+      if (found.length === 0) return html;
+      const prefix = options?.assetUrlPrefix() ?? null;
+      const waiting: Queued[] = [];
+      const media: BlockSpec[] = [];
+      for (const { type, props } of found) {
+        const attrs = pended(props, prefix, options?.start === undefined ? null : waiting);
+        if (attrs !== null) media.push({ type, props: attrs });
+      }
+      if (media.length < found.length) options?.onLeftOut(found.length - media.length);
+      if (media.length > 0) {
+        const held: CellLanding = { at, media, queued: waiting };
+        landing = held;
+        queueMicrotask(() => {
+          if (landing !== held) return;
+          take(view);
+          view.dispatch(markOwnUndoStep(mediaUnderTable(view.state, held.at, held.media)).scrollIntoView());
+        });
+      }
+      return withoutMedia(html);
     };
 
     return {
@@ -307,46 +331,35 @@ export function documentPastedMediaExtension(
               const at = dropAt ?? view.state.selection.from;
               dropAt = null;
               landing = null;
-              return inTableCell(view.state.doc.resolve(at)) ? readForCell(html, at) : html;
+              return inTableCell(view.state.doc.resolve(at)) ? readForCell(html, at, view) : html;
             },
-            transformPasted: (slice) => {
+            transformPasted: (slice, view) => {
+              // A row moved or copied within the body is already ours.
+              if (view.dragging !== null) return slice;
               const found: Queued[] = [];
               const prefix = options?.assetUrlPrefix() ?? null;
               const { fragment, dropped } = judge(slice.content, prefix, options?.start === undefined ? null : found);
               queued = [...queued, ...found];
+              if (found.length > 0) settle(view);
               if (dropped > 0) options?.onLeftOut(dropped);
               if (fragment === slice.content) return slice;
               return fragment.childCount === 0 ? Slice.empty : Slice.maxOpen(fragment);
             },
-            handlePaste: (view) => landOnlyMedia(view),
-            handleDrop: (view, _event, _slice, moved) => !moved && landOnlyMedia(view),
           },
           // The rest went in the way it would have without the media; the
-          // media follow in the same dispatch.
+          // media follow in the same dispatch, mapped to the left of what went
+          // in, so they stay under the table the reader aimed at.
           appendTransaction: (transactions, _old, state) => {
-            if (landing === null || !transactions.some((tr) => tr.docChanged)) return null;
-            const held = take()!;
-            // Mapped to the left of what went in there, so it stays in the
-            // cell the reader pasted into, under the table they aimed at.
+            const held = landing;
+            if (held === null || !transactions.some((tr) => tr.docChanged)) return null;
+            const view = editor.prosemirrorView;
+            if (view === undefined || view === null) return null;
+            take(view);
             const at = transactions.reduce((pos, tr) => tr.mapping.map(pos, -1), held.at);
             return mediaUnderTable(state, at, held.media);
           },
-          view: () => ({
-            update: (view) => {
-              if (queued.length === 0) return;
-              // A drop updates the view (it focuses it) before it dispatches
-              // the slice, so a queued upload waits for its block to arrive.
-              const present = pendingIds(view.state.doc);
-              const ready = queued.filter(({ uploadId }) => present.has(uploadId));
-              queued = queued.filter(({ uploadId }) => !present.has(uploadId));
-              for (const { uploadId, url } of ready) options?.start?.(uploadId, { kind: 'address', url });
-            },
-          }),
         }),
       ],
     };
   })();
 }
-
-/** Whether a piece of HTML carries an image, a video or an audio. */
-export const HTML_MEDIA = /<(img|video|audio)\b/i;

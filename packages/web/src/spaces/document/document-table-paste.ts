@@ -19,12 +19,10 @@
  * its end to the widest row, the shape the reader saw on the page.
  */
 
-import type { BlockNoteEditorOptions } from '@blocknote/core';
+import type { PasteHandler } from '@web/spaces/document/document-file-input';
 
-import { HTML_MEDIA } from '@web/spaces/document/document-external-media';
-
-/** BlockNote's paste hook, as this editor's options take it. */
-type PasteHandler = NonNullable<BlockNoteEditorOptions<never, never, never>['pasteHandler']>;
+/** Whether a piece of HTML carries an image, a video or an audio. */
+const HTML_MEDIA = /<(img|video|audio)\b/i;
 
 /**
  * Evens one table's grid, in place.

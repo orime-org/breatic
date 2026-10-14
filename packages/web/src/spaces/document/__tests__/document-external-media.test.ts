@@ -104,12 +104,22 @@ function media(editor: Editor): Medium[] {
   return out;
 }
 
+
+/**
+ * Lets a paste or a drop finish: what lands after the event, and the uploads
+ * that start once it is done.
+ */
+async function settled(): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, 0));
+}
+
 describe('an outside medium in pasted HTML', () => {
-  it('becomes a pending block in its place, with the words around it, and its upload starts from its address', () => {
+  it('becomes a pending block in its place, with the words around it, and its upload starts from its address', async () => {
     const s = sink();
     const editor = open(OURS, s);
 
     editor.pasteHTML('<p>before</p><img src="https://elsewhere.example/a.png"><p>after</p>');
+    await settled();
 
     expect(types(editor)).toEqual(['paragraph', 'image', 'paragraph']);
     expect(text(editor)).toContain('before');
@@ -121,35 +131,39 @@ describe('an outside medium in pasted HTML', () => {
     expect(s.onLeftOut).not.toHaveBeenCalled();
   });
 
-  it('never reaches the shared document by its outside address', () => {
+  it('never reaches the shared document by its outside address', async () => {
     const editor = open(OURS);
     editor.pasteHTML('<p>x</p><img src="https://elsewhere.example/a.png">');
+    await settled();
     expect(JSON.stringify(editor.document)).not.toContain('elsewhere');
   });
 
-  it('turns every image, video and audio into a pending block of its kind', () => {
+  it('turns every image, video and audio into a pending block of its kind', async () => {
     const s = sink();
     const editor = open(OURS, s);
 
     editor.pasteHTML(
       '<p>x</p><img src="https://a.example/1.png"><video src="https://a.example/2.mp4"></video><audio src="https://a.example/3.mp3"></audio>',
     );
+    await settled();
 
     expect(media(editor).map((m) => m.type)).toEqual(['image', 'video', 'audio']);
     expect(s.start).toHaveBeenCalledTimes(3);
   });
 
-  it('carries the caption of its figure', () => {
+  it('carries the caption of its figure', async () => {
     const editor = open(OURS);
     editor.pasteHTML('<figure><img src="https://a.example/1.png"><figcaption>Seen here</figcaption></figure>');
+    await settled();
     expect(media(editor)[0]).toMatchObject({ caption: 'Seen here', url: '' });
   });
 
-  it('in a Markdown paste becomes a pending block too', () => {
+  it('in a Markdown paste becomes a pending block too', async () => {
     const s = sink();
     const editor = open(OURS, s);
 
     editor.pasteMarkdown('words\n\n![alt](https://elsewhere.example/a.png)');
+    await settled();
 
     expect(media(editor)).toHaveLength(1);
     expect(text(editor)).toContain('words');
@@ -169,6 +183,7 @@ describe('an outside medium in pasted HTML', () => {
     const editor = open(OURS);
 
     editor.pasteHTML(html, true);
+    await settled();
 
     expect((editor.document[0] as { children: { type: string }[] }).children.map((c) => c.type)).toEqual(['image']);
     expect(JSON.stringify(editor.document)).not.toContain('elsewhere');
@@ -176,11 +191,12 @@ describe('an outside medium in pasted HTML', () => {
 });
 
 describe('media that stay as they are', () => {
-  it('a medium whose address is one of ours', () => {
+  it('a medium whose address is one of ours', async () => {
     const s = sink();
     const editor = open(OURS, s);
 
     editor.pasteHTML(`<p>x</p><img src="${OURS}image/2026-10-07/a.png">`);
+    await settled();
 
     expect(media(editor)).toEqual([{ type: 'image', url: `${OURS}image/2026-10-07/a.png`, uploadId: '', caption: '' }]);
     expect(s.start).not.toHaveBeenCalled();
@@ -194,6 +210,7 @@ describe('media that stay as they are', () => {
     const editor = open(OURS, s);
 
     editor.pasteHTML(html, true);
+    await settled();
 
     expect(media(editor)).toEqual([{ type: 'image', url: '', uploadId: 'u1', caption: 'Hero' }]);
     expect(s.start).not.toHaveBeenCalled();
@@ -201,11 +218,12 @@ describe('media that stay as they are', () => {
 });
 
 describe('while our addresses are not known yet', () => {
-  it('every medium with an address becomes pending, ours included, to be sorted once the prefix is in', () => {
+  it('every medium with an address becomes pending, ours included, to be sorted once the prefix is in', async () => {
     const s = sink();
     const editor = open(null, s);
 
     editor.pasteHTML(`<p>x</p><img src="${OURS}image/2026-10-07/a.png">`);
+    await settled();
 
     expect(media(editor)[0]).toMatchObject({ url: '' });
     expect(s.start).toHaveBeenCalledWith(expect.any(String), { kind: 'address', url: `${OURS}image/2026-10-07/a.png` });
@@ -213,7 +231,7 @@ describe('while our addresses are not known yet', () => {
 });
 
 describe('a row dragged within the body', () => {
-  it('is left as it is, even while our addresses are not known yet', () => {
+  it('is left as it is, even while our addresses are not known yet', async () => {
     const s = sink();
     const editor = open(null, s);
     editor.replaceBlocks(editor.document, [{ type: 'image', props: { url: `${OURS}image/2026-10-07/a.png` } }] as never);
@@ -226,17 +244,18 @@ describe('a row dragged within the body', () => {
       out = transform(out, view, false);
     });
 
-    expect(out).toBe(slice);
+    expect(out.content.eq(slice.content)).toBe(true);
     expect(s.start).not.toHaveBeenCalled();
   });
 });
 
 describe('a medium that cannot be fetched', () => {
-  it('is left out and counted, and the words stay', () => {
+  it('is left out and counted, and the words stay', async () => {
     const s = sink();
     const editor = open(OURS, s);
 
     editor.pasteHTML('<p>before</p><img src="http://elsewhere.example/a.png"><p>after</p>');
+    await settled();
 
     expect(types(editor)).not.toContain('image');
     expect(text(editor)).toContain('before');
@@ -261,6 +280,7 @@ describe('a medium that cannot be fetched', () => {
     const editor = open(OURS, s);
 
     editor.pasteHTML(html, true);
+    await settled();
 
     expect(types(editor)).not.toContain('image');
     expect(text(editor).indexOf('above')).toBeLessThan(text(editor).indexOf('caption notes'));
@@ -270,11 +290,12 @@ describe('a medium that cannot be fetched', () => {
 });
 
 describe('a paste with no media in it', () => {
-  it('says nothing and starts nothing', () => {
+  it('says nothing and starts nothing', async () => {
     const s = sink();
     const editor = open(OURS, s);
 
     editor.pasteHTML('<p>just words</p>');
+    await settled();
 
     expect(s.onLeftOut).not.toHaveBeenCalled();
     expect(s.start).not.toHaveBeenCalled();

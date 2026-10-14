@@ -23,7 +23,7 @@ import {
   type ExtensionFactoryInstance,
 } from '@blocknote/core';
 import { Fragment, type Node as PMNode, type ResolvedPos } from '@tiptap/pm/model';
-import { Plugin, type EditorState } from '@tiptap/pm/state';
+import { Plugin, type EditorState, type Transaction } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 
 import { landingFor } from '@web/spaces/document/document-drag-move';
@@ -186,6 +186,26 @@ export function quotedBeside(doc: PMNode, gap: UploadGap, aimed: boolean): boole
 }
 
 /**
+ * A transaction inserting blocks at a gap, quoted as the line beside it.
+ * @param state - The state they go into.
+ * @param gap - Where they go.
+ * @param aimed - Whether the reader aimed at the line right after the gap.
+ * @param blocks - The blocks, in order.
+ * @returns The transaction.
+ */
+export function insertAtGapTr(
+  state: EditorState,
+  gap: UploadGap,
+  aimed: boolean,
+  blocks: readonly BlockSpec[],
+): Transaction {
+  const nodes = quotedAs(blocks, quotedBeside(state.doc, gap, aimed)).map((block) =>
+    blockToNode({ id: crypto.randomUUID(), ...block } as never, state.schema),
+  );
+  return state.tr.insert(gap, Fragment.from(nodes));
+}
+
+/**
  * Inserts blocks at a gap in one transaction, quoted as the line beside it,
  * as an undo step of its own.
  * @param view - The editor view.
@@ -194,10 +214,7 @@ export function quotedBeside(doc: PMNode, gap: UploadGap, aimed: boolean): boole
  * @param blocks - The blocks, in order.
  */
 export function insertAtGap(view: EditorView, gap: UploadGap, aimed: boolean, blocks: readonly BlockSpec[]): void {
-  const nodes = quotedAs(blocks, quotedBeside(view.state.doc, gap, aimed)).map((block) =>
-    blockToNode({ id: crypto.randomUUID(), ...block } as never, view.state.schema),
-  );
-  view.dispatch(markOwnUndoStep(view.state.tr.insert(gap, Fragment.from(nodes))));
+  view.dispatch(markOwnUndoStep(insertAtGapTr(view.state, gap, aimed, blocks)));
 }
 
 /**

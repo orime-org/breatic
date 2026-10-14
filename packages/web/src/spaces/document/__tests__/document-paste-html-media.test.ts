@@ -171,12 +171,22 @@ function firstCell(editor: Editor, index: number): string {
 
 const TABLE = { type: 'table', content: { type: 'tableContent', rows: [{ cells: [['cell ']] }] } };
 
+
+/**
+ * Lets a paste or a drop finish: what lands after the event, and the uploads
+ * that start once it is done.
+ */
+async function settled(): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, 0));
+}
+
 describe('HTML carrying media', () => {
-  it('is read as HTML even when its plain text looks like Markdown, so the picture is not lost', () => {
+  it('is read as HTML even when its plain text looks like Markdown, so the picture is not lost', async () => {
     const { editor, sink } = open([{ type: 'paragraph' }]);
     caretIn(editor, 0);
 
     paste(editor, '<p><b>bold</b> words</p><img src="https://elsewhere.example/a.png">', '**bold** words');
+    await settled();
 
     expect(shape(editor)).toContain('image[pending|]');
     expect(sink.start).toHaveBeenCalledOnce();
@@ -184,11 +194,12 @@ describe('HTML carrying media', () => {
 });
 
 describe('with the caret in a table cell (A7)', () => {
-  it('puts the words in the cell and the medium under the table, pending', () => {
+  it('puts the words in the cell and the medium under the table, pending', async () => {
     const { editor, sink } = open([TABLE, { type: 'paragraph', content: 'after' }]);
     caretIn(editor, 0);
 
     paste(editor, '<p>words</p><img src="https://elsewhere.example/a.png" alt="A">', 'words');
+    await settled();
 
     expect(firstCell(editor, 0)).toBe('cell words');
     expect(shape(editor)).toEqual(['table', 'image[pending|]', 'paragraph:after']);
@@ -199,7 +210,7 @@ describe('with the caret in a table cell (A7)', () => {
     });
   });
 
-  it('carries a figure\'s caption, keeps a medium of ours as it is, and loses none', () => {
+  it('carries a figure\'s caption, keeps a medium of ours as it is, and loses none', async () => {
     const { editor } = open([TABLE]);
     caretIn(editor, 0);
 
@@ -209,52 +220,58 @@ describe('with the caret in a table cell (A7)', () => {
         `<p>words</p><img src="${OURS}b.png">`,
       'Cap words',
     );
+    await settled();
 
     expect(shape(editor)).toEqual(['table', 'image[pending|Cap]', `image[${OURS}b.png|]`]);
     expect(firstCell(editor, 0)).toBe('cell words');
   });
 
-  it('counts a medium it cannot fetch as left out', () => {
+  it('counts a medium it cannot fetch as left out', async () => {
     const { editor, sink } = open([TABLE]);
     caretIn(editor, 0);
 
     paste(editor, '<p>words</p><img src="http://elsewhere.example/a.png">', 'words');
+    await settled();
 
     expect(shape(editor)).toEqual(['table']);
     expect(sink.onLeftOut).toHaveBeenCalledWith(1);
     expect(firstCell(editor, 0)).toBe('cell words');
   });
 
-  it('a drop of web content puts the words in the cell and the medium under the table, pending', () => {
+  it('a drop of web content puts the words in the cell and the medium under the table, pending', async () => {
     const { editor, sink } = open([TABLE, { type: 'paragraph', content: 'after' }]);
     const at = caretIn(editor, 0);
 
     drop(editor, at, '<p>dropped</p><img src="https://elsewhere.example/a.png">', 'dropped');
+    await settled();
 
     expect(firstCell(editor, 0)).toContain('cell dropped');
     expect(shape(editor)).toEqual(['table', 'image[pending|]', 'paragraph:after']);
     expect(sink.start).toHaveBeenCalledOnce();
   });
 
-  it('plain text carrying a Markdown picture puts the words in the cell and the picture under the table', () => {
+  it('plain text carrying a Markdown picture puts the words in the cell and the picture under the table', async () => {
     const { editor, sink } = open([TABLE, { type: 'paragraph', content: 'after' }]);
     caretIn(editor, 0);
 
     paste(editor, '', 'words\n\n![alt](https://elsewhere.example/a.png)');
+    await settled();
 
     expect(shape(editor)).toEqual(['table', 'image[pending|]', 'paragraph:after']);
     expect(sink.start).toHaveBeenCalledOnce();
   });
 
-  it('web content with a picture and a ragged table lands as it does without the picture, the picture under the table', () => {
+  it('web content with a picture and a ragged table lands as it does without the picture, the picture under the table', async () => {
     const TABLE_HTML = '<table><tr><td>a</td><td>b</td></tr><tr><td>c</td></tr></table>';
     const plain = open([TABLE, { type: 'paragraph', content: 'after' }]);
     caretIn(plain.editor, 0);
     paste(plain.editor, `<p>words</p>${TABLE_HTML}`, 'words a b c');
+    await settled();
     const withPicture = open([TABLE, { type: 'paragraph', content: 'after' }]);
     caretIn(withPicture.editor, 0);
 
     paste(withPicture.editor, `<p>words</p><img src="https://elsewhere.example/a.png">${TABLE_HTML}`, 'words a b c');
+    await settled();
 
     const expected = shape(plain.editor);
     expected.splice(expected.indexOf('table') + 1, 0, 'image[pending|]');
@@ -262,11 +279,12 @@ describe('with the caret in a table cell (A7)', () => {
     expect(withPicture.sink.start).toHaveBeenCalledOnce();
   });
 
-  it('a picture alone puts nothing in the cell and the picture under the table', () => {
+  it('a picture alone puts nothing in the cell and the picture under the table', async () => {
     const { editor, sink } = open([TABLE, { type: 'paragraph', content: 'after' }]);
     caretIn(editor, 0);
 
     paste(editor, '<img src="https://elsewhere.example/a.png">', '');
+    await settled();
 
     expect(firstCell(editor, 0)).toBe('cell ');
     expect(shape(editor)).toEqual(['table', 'image[pending|]', 'paragraph:after']);
@@ -277,37 +295,41 @@ describe('with the caret in a table cell (A7)', () => {
     ['a line break', '<img src="https://elsewhere.example/a.png"><br>'],
     ['a rule', '<img src="https://elsewhere.example/a.png"><hr>'],
     ['a break inside its paragraph', '<p><img src="https://elsewhere.example/a.png"><br></p>'],
-  ])('a picture followed by %s that leaves the cell as it was still lands under the table', (_what, html) => {
+  ])('a picture followed by %s that leaves the cell as it was still lands under the table', async (_what, html) => {
     const { editor, sink } = open([TABLE, { type: 'paragraph', content: 'after' }]);
     caretIn(editor, 0);
 
     paste(editor, html, '');
+    await settled();
 
     expect(shape(editor)).toEqual(['table', 'image[pending|]', 'paragraph:after']);
     expect(sink.start).toHaveBeenCalledOnce();
   });
 
-  it('a drop of a picture and a line break that leaves the cell as it was still lands the picture under the table', () => {
+  it('a drop of a picture and a line break that leaves the cell as it was still lands the picture under the table', async () => {
     const { editor, sink } = open([TABLE, { type: 'paragraph', content: 'after' }]);
     const at = caretIn(editor, 0);
 
     drop(editor, at, '<img src="https://elsewhere.example/a.png"><br>', '');
+    await settled();
 
     expect(shape(editor)).toEqual(['table', 'image[pending|]', 'paragraph:after']);
     expect(sink.start).toHaveBeenCalledOnce();
   });
 
-  it('web content dropped on a cell with the caret elsewhere lands as it does without its picture, the picture under the table', () => {
+  it('web content dropped on a cell with the caret elsewhere lands as it does without its picture, the picture under the table', async () => {
     const HTML = '<h2>Head</h2><p>para</p>';
     const plain = open([{ type: 'paragraph', content: 'before' }, TABLE, { type: 'paragraph', content: 'after' }]);
     const plainAt = caretIn(plain.editor, 1);
     caretIn(plain.editor, 2);
     drop(plain.editor, plainAt, HTML, 'Head para');
+    await settled();
     const withPicture = open([{ type: 'paragraph', content: 'before' }, TABLE, { type: 'paragraph', content: 'after' }]);
     const at = caretIn(withPicture.editor, 1);
     caretIn(withPicture.editor, 2);
 
     drop(withPicture.editor, at, `${HTML}<img src="https://elsewhere.example/a.png">`, 'Head para');
+    await settled();
 
     const expected = shape(plain.editor);
     expected.splice(expected.indexOf('table') + 1, 0, 'image[pending|]');
@@ -315,11 +337,12 @@ describe('with the caret in a table cell (A7)', () => {
     expect(firstCell(withPicture.editor, 1)).toBe(firstCell(plain.editor, 1));
   });
 
-  it('is taken away by one undo', () => {
+  it('is taken away by one undo', async () => {
     const { editor, manager } = open([TABLE]);
     caretIn(editor, 0);
 
     paste(editor, '<p>words</p><img src="https://elsewhere.example/a.png">', 'words');
+    await settled();
     manager.undo();
 
     expect(shape(editor)).toEqual(['table']);
@@ -328,7 +351,7 @@ describe('with the caret in a table cell (A7)', () => {
 });
 
 describe('web content dropped in (A5)', () => {
-  it('turns an outside picture into a pending block, as a paste does', () => {
+  it('turns an outside picture into a pending block, as a paste does', async () => {
     const { editor, sink } = open([{ type: 'paragraph', content: 'lead' }]);
     const view = editor.prosemirrorView!;
     const at = view.state.doc.content.size - 2;
@@ -346,6 +369,7 @@ describe('web content dropped in (A5)', () => {
     });
 
     view.dom.dispatchEvent(event);
+    await settled();
 
     expect(shape(editor)).toContain('image[pending|]');
     expect(sink.start).toHaveBeenCalledOnce();
@@ -353,22 +377,24 @@ describe('web content dropped in (A5)', () => {
 });
 
 describe('a paste or a drop is an undo step of its own (A6)', () => {
-  it('typing just before a paste of web content stays when the paste is undone', () => {
+  it('typing just before a paste of web content stays when the paste is undone', async () => {
     const { editor, manager } = open([{ type: 'paragraph', content: 'lead' }]);
     caretIn(editor, 0);
 
     type(editor, ' typed');
     paste(editor, '<p>web words</p><img src="https://elsewhere.example/a.png">', 'web words');
+    await settled();
     manager.undo();
 
     expect(shape(editor)).toEqual(['paragraph:lead typed']);
   });
 
-  it('typing just after a paste is undone on its own', () => {
+  it('typing just after a paste is undone on its own', async () => {
     const { editor, manager } = open([{ type: 'paragraph', content: 'lead' }]);
     caretIn(editor, 0);
 
     paste(editor, '<p>web words</p><img src="https://elsewhere.example/a.png">', 'web words');
+    await settled();
     type(editor, 'Z');
     manager.undo();
 
@@ -376,35 +402,38 @@ describe('a paste or a drop is an undo step of its own (A6)', () => {
     expect(shape(editor)).toContain('image[pending|]');
   });
 
-  it('typing just before a drop of web content stays when the drop is undone', () => {
+  it('typing just before a drop of web content stays when the drop is undone', async () => {
     const { editor, manager } = open([{ type: 'paragraph', content: 'lead' }]);
     const at = caretIn(editor, 0);
 
     type(editor, ' typed');
     drop(editor, at + ' typed'.length, '<p>dropped</p><img src="https://elsewhere.example/a.png">', 'dropped');
+    await settled();
     manager.undo();
 
     expect(shape(editor)).toEqual(['paragraph:lead typed']);
   });
 
-  it('typing just before a paste in a table cell stays when the paste is undone', () => {
+  it('typing just before a paste in a table cell stays when the paste is undone', async () => {
     const { editor, manager } = open([TABLE]);
     caretIn(editor, 0);
 
     type(editor, 'typed');
     paste(editor, '<p>words</p><img src="https://elsewhere.example/a.png">', 'words');
+    await settled();
     manager.undo();
 
     expect(shape(editor)).toEqual(['table']);
     expect(firstCell(editor, 0)).toBe('cell typed');
   });
 
-  it('typing just before a plain text paste stays when the paste is undone', () => {
+  it('typing just before a plain text paste stays when the paste is undone', async () => {
     const { editor, manager } = open([{ type: 'paragraph', content: 'lead' }]);
     caretIn(editor, 0);
 
     type(editor, ' typed');
     paste(editor, '', ' plain');
+    await settled();
     manager.undo();
 
     expect(shape(editor)).toEqual(['paragraph:lead typed']);
@@ -420,6 +449,7 @@ describe('a paste the editor does not put in', () => {
 
     // The link hook takes a paste whose words are one address, over a selection.
     paste(editor, '<p><a href="https://x.example/">https://x.example/</a></p><img src="https://elsewhere.example/a.png">', 'https://x.example/');
+    await settled();
     await Promise.resolve();
 
     expect(sink.start).not.toHaveBeenCalled();
