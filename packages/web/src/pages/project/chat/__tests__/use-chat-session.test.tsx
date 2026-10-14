@@ -488,7 +488,13 @@ describe('the Spaces a message carries (inner#1413)', () => {
       { id: 's2', name: 'Storyboard', kind: 'document' as const },
       { id: 's1', name: 'Cast', kind: 'canvas' as const },
     ],
-    current: { id: 's2', name: 'Storyboard', kind: 'document' as const, state: 'loaded' as const, text: 'abcdef' },
+    current: {
+      id: 's2',
+      name: 'Storyboard',
+      kind: 'document' as const,
+      state: 'loaded' as const,
+      blocks: [{ id: 'b1', type: 'paragraph', markdown: 'abcdef', text: 'abcdef', lossy: false }],
+    },
   };
 
   it('reads them at the press, before anything is waited on', async () => {
@@ -509,7 +515,7 @@ describe('the Spaces a message carries (inner#1413)', () => {
       heartbeatIntervalMs: 5000,
       attachmentMaxChars: 200_000,
       attachmentMaxItems: 10,
-      currentSpaceMaxChars: 4,
+      currentSpaceMaxChars: 16,
       spaceListMaxItems: 2,
     });
     const panel = renderHook(() => useChatSession('p-1', false, () => read));
@@ -528,7 +534,7 @@ describe('the Spaces a message carries (inner#1413)', () => {
       message: 'summarise this',
       spaces: [{ id: 's3' }, { id: 's2' }],
       spaces_total: 3,
-      current_space: { id: 's2', state: 'loaded', content: 'abcd', total_chars: 6 },
+      current_space: { id: 's2', state: 'loaded', content: '<!-- b:1 -->\nabc', total_chars: 19 },
     });
   });
 
