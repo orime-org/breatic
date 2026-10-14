@@ -820,6 +820,13 @@ export {
   type Ownership,
 } from "@shared/analytics/ads-decision.js";
 export {
+  CONSENT_REPORT_FIELDS,
+  ConsentDecisionSchema,
+  ConsentReportSchema,
+  type ConsentDecision,
+  type ConsentReport,
+} from "@shared/analytics/consent-report.js";
+export {
   adClickFrom,
   CLICK_WINDOW_MS,
   parseAttribution,
