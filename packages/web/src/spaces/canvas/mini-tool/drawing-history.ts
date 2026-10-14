@@ -11,7 +11,7 @@
 import type { HistoryShortcut } from '@web/spaces/canvas/canvas-history-shortcut';
 import type { CanvasSessionState } from '@web/stores/canvas-session';
 import type { DrawingDraft } from '@web/stores/drawing-draft';
-import type { MarkDraft } from '@web/stores/mark-draft';
+import { markCanRedo, markCanUndo, type MarkDraft } from '@web/stores/mark-draft';
 
 /**
  * Act on an undo or redo: on the drawing while a drawing tool is open, where
@@ -54,8 +54,10 @@ export function historyAvailability(
   canvasRedo: boolean,
 ): { canUndo: boolean; canRedo: boolean } {
   if (drawing === null) return { canUndo: canvasUndo, canRedo: canvasRedo };
-  const [back, forward] = 'steps' in drawing ? [drawing.steps, drawing.undone] : [drawing.undo, drawing.redo];
-  return { canUndo: !exporting && back.length > 0, canRedo: !exporting && forward.length > 0 };
+  if (exporting) return { canUndo: false, canRedo: false };
+  if ('steps' in drawing) return { canUndo: drawing.steps.length > 0, canRedo: drawing.undone.length > 0 };
+  // The markup is read as leaving a text edit would leave it, as its panel reads it.
+  return { canUndo: markCanUndo(drawing), canRedo: markCanRedo(drawing) };
 }
 
 /**

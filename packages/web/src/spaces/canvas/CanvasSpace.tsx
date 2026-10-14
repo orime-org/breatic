@@ -136,6 +136,7 @@ import {
   routeHistoryCommand,
 } from '@web/spaces/canvas/mini-tool/drawing-history';
 import { BRUSH_SIZE } from '@web/stores/drawing-draft';
+import { steppedMarkSize } from '@web/stores/mark-draft';
 import { uploadDerivedImage } from '@web/spaces/canvas/upload-derived-image';
 import { resolveUploadFailure } from '@web/spaces/canvas/upload-failure';
 import {
@@ -1316,10 +1317,14 @@ function CanvasSpaceInner({
       if (step !== null && (drawing != null || mark != null)) {
         event.preventDefault();
         if (session.miniTool?.exporting) return;
-        // Markup shares the brush's size slider and its keys (inner#1303 §6.2).
-        const size = Math.min(BRUSH_SIZE.max, Math.max(BRUSH_SIZE.min, (drawing ?? mark)!.size + step));
-        if (drawing != null) session.setDrawingSize(size);
-        else session.setMarkSize(size);
+        if (drawing != null) {
+          session.setDrawingSize(Math.min(BRUSH_SIZE.max, Math.max(BRUSH_SIZE.min, drawing.size + step)));
+          return;
+        }
+        // Markup shares the brush's size keys (inner#1303 §6.2), stepping a
+        // selected object from its own size.
+        const size = steppedMarkSize(mark!, step);
+        if (size !== null) session.setMarkSize(size);
         return;
       }
       const action = matchHistoryShortcut(event);

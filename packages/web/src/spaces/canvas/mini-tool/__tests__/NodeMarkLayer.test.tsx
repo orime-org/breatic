@@ -87,6 +87,37 @@ describe('NodeMarkLayer', () => {
     expect(store().miniTool).not.toBeNull();
   });
 
+  // Focus can leave Fabric's input while the edit stays open; a menu or list
+  // opened elsewhere then takes its own Escape.
+  it('leaves Escape to a menu over the canvas while a text is being edited', async () => {
+    await mount();
+    const exit = vi.fn();
+    act(() => {
+      store().registerMarkChannel({ exitEditing: exit, discardSelection: vi.fn() });
+      store().setMarkEditingText('hi');
+    });
+    const menu = document.createElement('div');
+    document.body.append(menu);
+    expect(pressEscape({}, menu).defaultPrevented).toBe(false);
+    expect(exit).not.toHaveBeenCalled();
+    menu.remove();
+  });
+
+  it('takes Escape pressed in Fabric\'s own text input', async () => {
+    await mount();
+    const exit = vi.fn();
+    act(() => {
+      store().registerMarkChannel({ exitEditing: exit, discardSelection: vi.fn() });
+      store().setMarkEditingText('hi');
+    });
+    const input = document.createElement('textarea');
+    input.dataset.fabric = 'textarea';
+    document.body.append(input);
+    expect(pressEscape({}, input).defaultPrevented).toBe(true);
+    expect(exit).toHaveBeenCalledOnce();
+    input.remove();
+  });
+
   it('takes Escape to drop the selection and keeps the panel open', async () => {
     await mount();
     act(() => {

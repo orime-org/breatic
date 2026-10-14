@@ -10,7 +10,7 @@ import { describe, expect, it } from 'vitest';
 
 import { createCanvasSessionStore } from '@web/stores/canvas-session';
 import { BRUSH_SIZE, INK } from '@web/stores/drawing-draft';
-import { markCanClear, markCanUndo, markEmpty, type MarkObject } from '@web/stores/mark-draft';
+import { markCanClear, markCanRedo, markCanUndo, markEmpty, steppedMarkSize, type MarkObject } from '@web/stores/mark-draft';
 
 const OPEN = { sourceContent: 'https://cdn.example.com/a.png', params: {} };
 const A: MarkObject = { id: 'a', kind: 'rect', color: INK[0], size: 5, x: 0.1, y: 0.1, w: 0.3, h: 0.2 };
@@ -215,5 +215,52 @@ describe('the markup as leaving the text edit would leave it', () => {
     expect(markCanUndo({ ...mark(fresh), undo: [] })).toBe(false);
     fresh.getState().setMarkEditingText('hi there');
     expect(markCanUndo({ ...mark(fresh), undo: [] })).toBe(true);
+  });
+});
+
+describe('redo as leaving the text edit would leave it', () => {
+  const T: MarkObject = { id: 't', kind: 'text', color: INK[0], size: 5, x: 0.1, y: 0.1, text: 'hi' };
+
+  it('has nothing to redo once leaving the edit would write a changed text back', () => {
+    const store = withMark();
+    store.getState().commitMark([A]);
+    store.getState().undoMark();
+    expect(markCanRedo(mark(store))).toBe(true);
+    store.getState().selectMark('new');
+    store.getState().setMarkEditingText('hi');
+    expect(markCanRedo(mark(store))).toBe(false);
+  });
+
+  it('keeps redo while the text being edited is unchanged', () => {
+    const store = withMark();
+    store.getState().commitMark([T]);
+    store.getState().commitMark([T, A]);
+    store.getState().undoMark();
+    store.getState().selectMark('t');
+    store.getState().setMarkEditingText('hi');
+    expect(markCanRedo(mark(store))).toBe(true);
+  });
+});
+
+describe('steppedMarkSize', () => {
+  const big: MarkObject = { id: 'b', kind: 'text', color: INK[0], size: 40.5, x: 0.1, y: 0.1, text: 'big' };
+  const small: MarkObject = { ...big, id: 's', size: 0.5 };
+
+  it('steps from the selected object\'s own size, never against the key', () => {
+    const store = withMark();
+    store.getState().commitMark([big, small]);
+    store.getState().selectMark('b');
+    expect(steppedMarkSize(mark(store), 1)).toBeNull();
+    expect(steppedMarkSize(mark(store), -1)).toBe(BRUSH_SIZE.max);
+    store.getState().selectMark('s');
+    expect(steppedMarkSize(mark(store), -1)).toBeNull();
+    expect(steppedMarkSize(mark(store), 1)).toBe(1.5);
+  });
+
+  it('steps the pen size with nothing selected, holding at the ends', () => {
+    const store = withMark();
+    expect(steppedMarkSize(mark(store), 1)).toBe(BRUSH_SIZE.initial + BRUSH_SIZE.step);
+    store.getState().setMarkSize(BRUSH_SIZE.max);
+    expect(steppedMarkSize(mark(store), 1)).toBeNull();
   });
 });

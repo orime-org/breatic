@@ -23,7 +23,7 @@ import { useCanvasSession, useCanvasSessionStore } from '@web/spaces/canvas/canv
 import { ParamSliderRow } from '@web/spaces/canvas/generate/ParamSliderRow';
 import { ICON_BUTTON, SWATCH, SWATCH_DOT, Tip } from '@web/spaces/canvas/mini-tool/DrawingControls';
 import { BRUSH_SIZE, INK } from '@web/stores/drawing-draft';
-import { MARK_TOOLS, markCanClear, markCanUndo, type MarkTool } from '@web/stores/mark-draft';
+import { MARK_TOOLS, markCanClear, markCanRedo, markCanUndo, type MarkTool } from '@web/stores/mark-draft';
 
 const TOOL_ICONS: Readonly<Record<MarkTool, LucideIcon>> = {
   select: MousePointer2,
@@ -94,7 +94,7 @@ export function MarkControls(): React.JSX.Element | null {
         {(
           [
             { id: 'undo', Icon: Undo2, can: markCanUndo(mark), act: () => store.getState().undoMark() },
-            { id: 'redo', Icon: Redo2, can: mark.redo.length > 0, act: () => store.getState().redoMark() },
+            { id: 'redo', Icon: Redo2, can: markCanRedo(mark), act: () => store.getState().redoMark() },
             { id: 'clear', Icon: Trash2, can: markCanClear(mark), act: () => store.getState().clearMark() },
           ] as const
         ).map(({ id, Icon, can, act }) => (

@@ -109,11 +109,16 @@ function MarkSurface({ geometry }: { geometry: MediaGeometry }): React.JSX.Eleme
       const session = store.getState();
       const mark = session.miniTool?.mark;
       if (mark == null || session.miniTool?.exporting === true) return;
-      // The text being edited holds the focus in Fabric's own input, outside
-      // every region; a selection answers only a press meant for this space,
-      // so a menu or dialog over it closes first.
+      // Markup answers only a press meant for it: one in Fabric's own text
+      // input, which sits outside every region, or one meant for this space.
+      // Focus can leave Fabric's input while its edit stays open, so a menu,
+      // dialog or list opened elsewhere closes on its own Escape first.
+      const ours =
+        (event.target instanceof Element && event.target.matches('[data-fabric="textarea"]')) ||
+        regionOwnsKeyboard(event.target, 'space');
+      if (!ours) return;
       if (mark.editingText !== null) session.markChannel?.exitEditing();
-      else if (mark.selectedId !== null && regionOwnsKeyboard(event.target, 'space')) session.markChannel?.discardSelection();
+      else if (mark.selectedId !== null) session.markChannel?.discardSelection();
       else return;
       event.preventDefault();
       event.stopPropagation();

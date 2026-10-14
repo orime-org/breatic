@@ -224,12 +224,19 @@ export class MarkCanvasController {
     if (this.edit === null || !(active instanceof IText)) return;
     // The panel shows a text's own size at the slider's nearest step, so
     // comparing the text against the panel would restyle it on entry; a change
-    // of the panel since the edit began is what restyles it.
+    // of the panel since the edit began is what restyles it. Only what changed is applied: the panel's size is the text's own at the
+    // slider's nearest step, so a colour change must not take it along.
     const seen = this.edit.style;
     if (seen === null || (seen.color === draft.color && seen.size === draft.size)) return;
     this.edit = { ...this.edit, style: { color: draft.color, size: draft.size } };
-    active.set({ fill: draft.color, fontSize: markFontPx(draft.size, this.box) });
-    Object.assign(active, { markColor: draft.color, markSize: draft.size });
+    if (seen.color !== draft.color) {
+      active.set({ fill: draft.color });
+      Object.assign(active, { markColor: draft.color });
+    }
+    if (seen.size !== draft.size) {
+      active.set({ fontSize: markFontPx(draft.size, this.box) });
+      Object.assign(active, { markSize: draft.size });
+    }
     this.canvas.requestRenderAll();
   }
 

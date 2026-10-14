@@ -214,6 +214,35 @@ export function markCanClear(draft: MarkDraft): boolean {
 }
 
 /**
+ * Whether Redo has a step to put back once the text edit, if any, is left:
+ * leaving it records a step whenever the text changed, and a new step empties
+ * what redo held.
+ * @param draft - The draft.
+ * @returns True when it does.
+ * @throws {never} Never.
+ */
+export function markCanRedo(draft: MarkDraft): boolean {
+  return draft.redo.length > 0 && !afterLeavingEdit(draft).steps;
+}
+
+/**
+ * The size one press of `[` or `]` gives: one step from the selected object's
+ * own size, or from the pen's with nothing selected, held to the slider's
+ * range. A text scaled past either end keeps its size until the key moves it
+ * back toward the range.
+ * @param draft - The draft.
+ * @param step - -1 for smaller, 1 for larger.
+ * @returns The new size, or null when the press would not move it the way it asks.
+ * @throws {never} Never.
+ */
+export function steppedMarkSize(draft: MarkDraft, step: number): number | null {
+  const held = draft.selectedId === null ? undefined : draft.objects.find((object) => object.id === draft.selectedId);
+  const from = held?.size ?? draft.size;
+  const next = Math.min(BRUSH_SIZE.max, Math.max(BRUSH_SIZE.min, from + step * BRUSH_SIZE.step));
+  return (next - from) * step > 0 ? next : null;
+}
+
+/**
  * Whether Undo has a step to take back, counting the step leaving the text
  * edit would record.
  * @param draft - The draft.

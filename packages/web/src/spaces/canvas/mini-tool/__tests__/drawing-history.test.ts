@@ -16,7 +16,7 @@ import {
 } from '@web/spaces/canvas/mini-tool/drawing-history';
 import { createCanvasSessionStore } from '@web/stores/canvas-session';
 import { EMPTY_DRAWING, type DrawingDraft, type DrawOp } from '@web/stores/drawing-draft';
-import type { MarkObject } from '@web/stores/mark-draft';
+import { EMPTY_MARK, type MarkObject } from '@web/stores/mark-draft';
 
 const STROKE: DrawOp = { kind: 'stroke', erase: false, size: 5, color: '#FF3B30', points: [[0.1, 0.1]] };
 const OPEN = { sourceContent: 'a.png', params: {} };
@@ -79,6 +79,13 @@ describe('historyAvailability', () => {
 
   it('offers neither while the run is exporting', () => {
     expect(historyAvailability(drawing(1, 1), true, true, true)).toEqual({ canUndo: false, canRedo: false });
+  });
+
+  it('reads the markup as leaving the text edit would leave it, as the panel does', () => {
+    // The first text is being typed: leaving the edit writes it as a step, and
+    // that step clears whatever redo held.
+    const typing = { ...EMPTY_MARK, redo: [[]], selectedId: 'new', editingText: 'hello' };
+    expect(historyAvailability(typing, false, false, false)).toEqual({ canUndo: true, canRedo: false });
   });
 });
 

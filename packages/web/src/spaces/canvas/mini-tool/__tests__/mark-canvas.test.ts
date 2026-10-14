@@ -175,6 +175,22 @@ describe('MarkCanvasController', () => {
     expect(mark().objects[0]).toMatchObject({ size: 40.5 });
   });
 
+  it('changes only the colour of a scaled text whose colour changes in its edit', () => {
+    store.getState().commitMark([{ ...TEXT, size: 40.5 }]);
+    controller.sync();
+    const text = controller.canvas.getObjects()[0] as IText;
+    const fontSize = text.fontSize;
+    controller.canvas.setActiveObject(text);
+    text.enterEditing();
+    controller.sync();
+    store.getState().setMarkColor(INK[3]);
+    controller.sync();
+    expect(text.fill).toBe(INK[3]);
+    expect(text.fontSize).toBe(fontSize);
+    controller.channel.exitEditing();
+    expect(mark().objects[0]).toMatchObject({ color: INK[3], size: 40.5 });
+  });
+
   it('keeps an existing text’s own colour through an edit with a different pen', () => {
     store.getState().commitMark([TEXT]);
     controller.sync();
