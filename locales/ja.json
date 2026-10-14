@@ -373,6 +373,7 @@
       "whereInsert": "Document「{name}」に挿入",
       "insertAfter": "この段落の後に挿入",
       "headingBlock": "見出し",
+      "mediaLeftOut": "{count} 件の画像・動画・音声はこの Project のファイルではないため、追加されません。",
       "end": "末尾",
       "addComment": "コメントを追加",
       "apply": "置き換える",

@@ -361,6 +361,17 @@ describe('a comment that lands', () => {
   });
 });
 
+describe('media in a proposal (review round 3)', () => {
+  it('lands only the media at our addresses, writing the rest of the body', async () => {
+    const handle = await open('One.');
+
+    await landProposal(handle, proposalOn(handle, 0, { body: 'Two.\n\n![shot](https://elsewhere.example/a.png)' }), 'write', true);
+
+    expect(blocks(handle).map((b) => b.text)).toEqual(['One.', 'Two.']);
+    expect((handle.editor.document as Array<{ type: string }>).some((b) => b.type === 'image')).toBe(false);
+  });
+});
+
 describe('an insert at the end', () => {
   it('takes the place of an empty last paragraph, so no blank line is left above it', async () => {
     const handle = await open('');

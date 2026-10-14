@@ -373,6 +373,7 @@
       "whereInsert": "插入到 Document「{name}」",
       "insertAfter": "插在这一段之后",
       "headingBlock": "标题",
+      "mediaLeftOut": "{count} 个图片、视频或音频不是这个 Project 里的文件，不会加进去。",
       "end": "文末",
       "addComment": "增加批注",
       "apply": "直接修改",

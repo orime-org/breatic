@@ -159,6 +159,26 @@ describe('an insert card', () => {
     expect(screen.getByTestId('document-proposal-anchor').textContent).toBe('Image');
   });
 
+  it('says how many media will not be added, and offers no press when nothing else would be (review round 3)', async () => {
+    const { quote: _quote, ...insert } = { ...BASE, kind: 'insert' as const, body: 'Text.\n\n![a](https://elsewhere.example/a.png)' };
+    draw(insert);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('document-proposal-media-left-out').textContent).toBe(
+        '1 image, video or audio is not a file in this project and will not be added.',
+      );
+    });
+    expect(screen.getAllByRole('button').map((b) => b.textContent)).toEqual(['Insert']);
+    cleanup();
+
+    const { quote: _q, ...onlyMedia } = { ...BASE, kind: 'insert' as const, body: '![a](https://elsewhere.example/a.png)' };
+    draw(onlyMedia);
+    await waitFor(() => {
+      expect(screen.getByTestId('document-proposal-media-left-out')).toBeTruthy();
+    });
+    expect(screen.queryAllByRole('button')).toHaveLength(0);
+  });
+
   it('shows the passage it goes after', () => {
     const { quote: _quote, ...insert } = { ...BASE, kind: 'insert' as const, body: 'She waits.' };
     draw(insert);

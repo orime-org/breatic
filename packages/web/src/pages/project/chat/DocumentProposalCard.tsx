@@ -13,6 +13,7 @@ import { useTranslation } from '@web/i18n/use-translation';
 import { projectUuidFromRouteParam } from '@web/lib/project-route';
 import { MarkdownMessage } from '@web/pages/project/chat/MarkdownMessage';
 import { peekDocumentEditor } from '@web/spaces/document/document-editor-cache';
+import { ourMediaPrefix, ownMediaOnly, type WrittenBlock } from '@web/spaces/document/document-external-media';
 import { markdownBlocks } from '@web/spaces/document/document-markdown';
 import { landedAt } from '@web/spaces/document/document-proposal-landing';
 import {
@@ -85,6 +86,37 @@ function pressKind(proposal: DocumentProposal, action: LandingAction): PressKind
  */
 const DIFF_TIMEOUT_MS = 100;
 
+/** What landing a proposal's body would leave out, once its Markdown is read. */
+interface MediaLeftOut {
+  /** How many media in it are not files in this project. */
+  count: number;
+  /** Whether anything else is left to write. */
+  writable: boolean;
+}
+
+/**
+ * How many media a rewrite or an insert would leave out when it lands, judged
+ * by the rule a paste follows.
+ * @param proposal - The proposal.
+ * @returns The count, and whether anything else would be written.
+ */
+function useMediaLeftOut(proposal: DocumentProposal): MediaLeftOut {
+  const [leftOut, setLeftOut] = React.useState<MediaLeftOut>({ count: 0, writable: true });
+  React.useEffect(() => {
+    if (proposal.kind === 'comment') return undefined;
+    let live = true;
+    void markdownBlocks(proposal.body).then((blocks) => {
+      if (!live) return;
+      const kept = ownMediaOnly(blocks.map((b) => b.block as WrittenBlock), ourMediaPrefix());
+      setLeftOut({ count: kept.count, writable: kept.blocks.length > 0 });
+    });
+    return () => {
+      live = false;
+    };
+  }, [proposal]);
+  return leftOut;
+}
+
 /**
  * The rewritten passage's words set against the original's, once its
  * Markdown is read.
@@ -141,6 +173,7 @@ export const DocumentProposalCard = React.memo(function DocumentProposalCard({
   const start = useDocumentProposals((s) => s.start);
   const view = useDocumentProposals((s) => s.view);
   const changes = useRewriteChanges(proposal);
+  const media = useMediaLeftOut(proposal);
 
   // Read again whenever the document changes or this card's press ends.
   const read = React.useMemo(() => {
@@ -242,6 +275,11 @@ export const DocumentProposalCard = React.memo(function DocumentProposalCard({
           <MarkdownMessage content={proposal.body} size='xs' />
         </div>
       ) : null}
+      {media.count > 0 ? (
+        <div data-testid='document-proposal-media-left-out' className='text-xs text-muted-foreground'>
+          {t('chat.documentProposal.mediaLeftOut', { count: media.count })}
+        </div>
+      ) : null}
       {status === null ? null : (
         <div
           data-testid='document-proposal-status'
@@ -276,7 +314,7 @@ export const DocumentProposalCard = React.memo(function DocumentProposalCard({
               {t('chat.documentProposal.addComment')}
             </Button>
           ) : null}
-          {proposal.kind === 'comment' ? null : (
+          {proposal.kind === 'comment' || !media.writable ? null : (
             <Button
               type='button'
               variant='outline'

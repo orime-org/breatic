@@ -964,7 +964,10 @@ export function renderProductGuide(): string {
       "An insert card that goes after a passage first shows that passage under " +
       `${quoted(t("chat.documentProposal.insertAfter"))}, naming a passage with no words by its kind, such as ` +
       `${quoted(t("spaces.document.media.image"))} or ${quoted(t("chat.documentProposal.headingBlock"))}; it ` +
-      `shows the new content as it will look, tables included, with ${quoted(t("chat.documentProposal.insert"))}.`,
+      `shows the new content as it will look, tables included, with ${quoted(t("chat.documentProposal.insert"))}. ` +
+      "An image, video or audio in a rewrite or an insert lands only when it is a file already in this project, " +
+      "and a card with nothing else to write offers no button to write it; the card says how many will not land, " +
+      `such as ${quoted(t("chat.documentProposal.mediaLeftOut", { count: 1 }))}`,
     "Pressing a button opens the document, or switches to its tab, and the change lands; the document scrolls " +
       "to it and outlines it for a moment. The pressed button spins meanwhile. A rewrite or an insert is one step " +
       "undo reverses. A comment lands under the reader's own name, marked " +

@@ -224,7 +224,8 @@ export function makeProposeDocumentEdit(): Tool<DocumentEditInput, DocumentPropo
       "your Markdown; an insert adds Markdown -- paragraphs, headings, lists, a table -- after a block or at the " +
       "end. Nothing changes in the document until the reader presses the card. One proposal per change: several " +
       "changes are several calls, and content that follows one place -- a run of paragraphs, several scenes -- " +
-      "goes in one insert, in the order it reads.",
+      "goes in one insert, in the order it reads. An image, video or audio in the Markdown lands only when its " +
+      "address is a file already in this project; others are left out.",
     inputSchema: documentEditInputSchema,
     contextSchema: proposeDocumentContextSchema,
     metadata: { runningLine: "chat.tool.proposingDocumentEdit" },
