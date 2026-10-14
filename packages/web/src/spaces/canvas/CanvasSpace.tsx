@@ -3656,6 +3656,7 @@ function CanvasSpaceInner({
       file: File,
       modality: UploadNodeSpec['nodeType'],
       tag?: MiniToolUploadTag,
+      continuing?: string,
     ): Promise<void> | undefined => {
       // Re-gate at fill time (adversarial round): activateNodeUpload gates at
       // picker-OPEN, but the OS picker then stays open for seconds — a
@@ -3668,13 +3669,15 @@ function CanvasSpaceInner({
       });
       if (gateBlock) {
         warnNodeGate(t(gateBlock.toastKey));
+        if (continuing !== undefined) useUploadMarksStore.getState().answer(spaceId, nodeId, continuing);
         return undefined;
       }
       // The uploader sees the node wait from this moment until the server
-      // answers (inner#1303 §6.7).
-      const markOp = useUploadMarksStore
-        .getState()
-        .begin(spaceId, nodeId, fillActionOf(fileToNodeSpec(file)));
+      // answers (inner#1303 §6.7); a tool's export carries on the operation
+      // its press began.
+      const markOp =
+        continuing ??
+        useUploadMarksStore.getState().begin(spaceId, nodeId, fillActionOf(fileToNodeSpec(file)));
       // Register SYNCHRONOUSLY (before the config-fetch await) by making the
       // whole flow the tracked work — otherwise the tab-close guard reads "not
       // busy" during the config round-trip and a close in that window loses the
@@ -3724,7 +3727,7 @@ function CanvasSpaceInner({
   // (inner#1303 §6.5): the same lock gate and busy registration as fillUpload,
   // one ticket request for every file.
   const fillUploads = React.useCallback(
-    (entries: { nodeId: string; file: File }[], tag: MiniToolUploadTag): void => {
+    (entries: { nodeId: string; file: File; markOp: string }[], tag: MiniToolUploadTag): void => {
       fillNodesFromFiles(entries, projectId, {
         getUploadConfig: assetsApi.fetchUploadConfig,
         hashFile,

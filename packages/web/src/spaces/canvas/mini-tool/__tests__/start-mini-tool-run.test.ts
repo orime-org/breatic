@@ -190,10 +190,17 @@ describe('startMiniToolRun', () => {
     });
     await startMiniToolRun(run);
     const [node] = canvas.addNode.mock.calls.map((call) => call[2]);
-    expect(run.fillUpload).toHaveBeenCalledWith(node.id, file, 'image', {
-      source: 'mini_tool',
-      toolName: 'image.rotate',
-    });
+    // The upload carries the press's own operation on to the server's answer,
+    // so the collaborators keep reading the tool (§6.8).
+    const [mark] = marksOfBuilt();
+    expect(mark).toMatchObject({ state: 'waiting', action: 'image.rotate' });
+    expect(run.fillUpload).toHaveBeenCalledWith(
+      node.id,
+      file,
+      'image',
+      { source: 'mini_tool', toolName: 'image.rotate' },
+      mark!.op,
+    );
     expect(api.run).not.toHaveBeenCalled();
   });
 
@@ -212,9 +219,10 @@ describe('startMiniToolRun', () => {
     expect(nodes.map((node) => node.data.name)).toEqual(['GRID-r1c1-IMG', 'GRID-r1c2-IMG', 'GRID-r2c1-IMG', 'GRID-r2c2-IMG']);
     expect(nodes[1].position.x - nodes[0].position.x).toBe(NODE_STEP.x);
     expect(run.fillUploads).toHaveBeenCalledWith(
-      nodes.map((node, i) => ({ nodeId: node.id, file: files[i] })),
+      nodes.map((node, i) => ({ nodeId: node.id, file: files[i], markOp: marksOfBuilt()[i]!.op })),
       { source: 'mini_tool', toolName: 'image.grid' },
     );
+    expect(marksOfBuilt().map((mark) => mark?.action)).toEqual(['image.grid', 'image.grid', 'image.grid', 'image.grid']);
     expect(run.fillUpload).not.toHaveBeenCalled();
   });
 

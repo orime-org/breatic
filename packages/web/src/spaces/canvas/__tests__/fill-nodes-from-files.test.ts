@@ -22,14 +22,16 @@ const markOf = (nodeId: string) => useUploadMarksStore.getState().markOf('s1', n
 const TAG = { source: 'mini_tool', toolName: 'image.grid' } as const;
 
 /**
- * Tiles for `count` nodes.
+ * Tiles for `count` nodes, each carrying the grid run's own operation, begun
+ * the way the tool begins it.
  * @param count - How many.
  * @returns One entry per node.
  */
-function tiles(count: number): { nodeId: string; file: File }[] {
+function tiles(count: number): { nodeId: string; file: File; markOp: string }[] {
   return Array.from({ length: count }, (_, i) => ({
     nodeId: `node-${i}`,
     file: new File([new Uint8Array(2)], `GRID-${i}.png`, { type: 'image/png' }),
+    markOp: useUploadMarksStore.getState().begin('s1', `node-${i}`, 'image.grid'),
   }));
 }
 
@@ -67,13 +69,15 @@ describe('fillNodesFromFiles', () => {
     expect(vi.mocked(d.track).mock.calls.map(([nodeId]) => nodeId)).toEqual(tiles(64).map((t) => t.nodeId));
   });
 
-  // inner#1303 §6.7: each tile waits on its node until its own answer.
-  it('marks every tile waiting, and clears each on its own answer', () => {
+  // inner#1303 §6.7: the tool's operation runs on to the answer, so the
+  // collaborators keep seeing the tool (§6.8).
+  it('carries on the operation each tile was handed, and clears each on its own answer', () => {
     vi.mocked(runMediaUploadBatch).mockClear();
     useUploadMarksStore.setState({ marks: {} });
-    fillNodesFromFiles(tiles(2), 'p1', deps());
-    expect([markOf('node-0')?.state, markOf('node-1')?.state]).toEqual(['waiting', 'waiting']);
-    expect(markOf('node-0')).toMatchObject({ action: 'upload' });
+    const handed = tiles(2);
+    fillNodesFromFiles(handed, 'p1', deps());
+    expect(markOf('node-0')).toEqual({ op: handed[0]!.markOp, action: 'image.grid', at: expect.any(Number), state: 'waiting' });
+    expect(markOf('node-1')?.state).toBe('waiting');
     const [entries] = vi.mocked(runMediaUploadBatch).mock.calls[0]!;
     entries[0]!.onAnswered!();
     expect([markOf('node-0'), markOf('node-1')?.state]).toEqual([undefined, 'waiting']);
@@ -112,5 +116,12 @@ describe('fillNodesFromFiles', () => {
     const [entries] = vi.mocked(runMediaUploadBatch).mock.calls[0]!;
     expect(entries.map((e) => e.nodeId)).toEqual(['node-0']);
     expect(d.onLocked).toHaveBeenCalledTimes(1);
+  });
+
+  it('ends the operation of a node it leaves out for being locked', () => {
+    vi.mocked(runMediaUploadBatch).mockClear();
+    useUploadMarksStore.setState({ marks: {} });
+    fillNodesFromFiles(tiles(2), 'p1', deps(['node-1']));
+    expect([markOf('node-0')?.state, markOf('node-1')]).toEqual(['waiting', undefined]);
   });
 });

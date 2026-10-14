@@ -107,10 +107,10 @@ export interface MiniToolRun {
   sourceExists: () => boolean;
   /** Make a browser tool's files from the snapshot and the capture, one per result in order, with their pixel size when known. */
   exportFile: (spec: MiniToolSpec, snapshot: MiniToolSnapshot, capture?: MiniToolCapture) => Promise<ExportedFile[]>;
-  /** Upload a browser tool's one file into its node, tagged with the tool. */
-  fillUpload: (nodeId: string, file: File, modality: CreatableNodeType, tag: MiniToolUploadTag) => void;
-  /** Upload a browser tool's files into their nodes in one batch, tagged with the tool. */
-  fillUploads: (entries: { nodeId: string; file: File }[], tag: MiniToolUploadTag) => void;
+  /** Upload a browser tool's one file into its node, tagged with the tool, carrying on the press's operation. */
+  fillUpload: (nodeId: string, file: File, modality: CreatableNodeType, tag: MiniToolUploadTag, markOp: string) => void;
+  /** Upload a browser tool's files into their nodes in one batch, tagged with the tool, each carrying on its node's operation. */
+  fillUploads: (entries: { nodeId: string; file: File; markOp: string }[], tag: MiniToolUploadTag) => void;
   /** What the reader made on the node, copied out at the press. */
   capture?: MiniToolCapture | undefined;
   /** Make a drawing tool's images from the source and the drawing. */
@@ -400,25 +400,34 @@ export async function startMiniToolRun(run: MiniToolRun): Promise<void> {
   const { files, uploads } = prepared;
 
   if (files !== undefined) {
-    // The upload marks the nodes again from its own start to its own answer.
-    settle();
+    // The press's operation runs on through the upload to the server's
+    // answer (§6.7), so the collaborators keep reading the tool (§6.8). A node
+    // the upload does not take ends its operation here.
     const tag: MiniToolUploadTag = { source: 'mini_tool', toolName: spec.id };
     const output = outputTemplateOf(spec);
-    const [node] = nodes;
-    const [only] = files;
+    const handed = new Set<number>();
     // A grouped run's files go up in one batch, which the server takes from a
     // grouping tool only; any other run's one file goes up on its own.
     if (spec.groupOutputs === true) {
-      run.fillUploads(
-        nodes.flatMap((built, index) => {
-          const made = files[index];
-          return made === undefined ? [] : [{ nodeId: built.id, file: made.file }];
-        }),
-        tag,
-      );
-    } else if (node !== undefined && only !== undefined && output.modality !== 'text') {
-      run.fillUpload(node.id, only.file, output.modality, tag);
+      const entries = nodes.flatMap((built, index) => {
+        const made = files[index];
+        if (made === undefined) return [];
+        handed.add(index);
+        return [{ nodeId: built.id, file: made.file, markOp: ops[index]! }];
+      });
+      run.fillUploads(entries, tag);
+    } else {
+      const [node] = nodes;
+      const [only] = files;
+      if (node !== undefined && only !== undefined && output.modality !== 'text') {
+        handed.add(0);
+        run.fillUpload(node.id, only.file, output.modality, tag, ops[0]!);
+      }
     }
+    const now = useUploadMarksStore.getState();
+    nodes.forEach((node, index) => {
+      if (!handed.has(index)) now.answer(spaceId, node.id, ops[index]!);
+    });
     return;
   }
 

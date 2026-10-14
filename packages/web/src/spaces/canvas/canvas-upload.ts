@@ -334,21 +334,26 @@ export interface FillNodesDeps extends BatchUploadDeps {
  * @param deps - The upload network and the canvas sinks.
  */
 export function fillNodesFromFiles(
-  entries: readonly { nodeId: string; file: File }[],
+  entries: readonly { nodeId: string; file: File; markOp: string }[],
   projectId: string,
   deps: FillNodesDeps,
 ): void {
   const open = entries.filter((entry) => !deps.isLocked(entry.nodeId));
-  if (open.length < entries.length) deps.onLocked();
+  if (open.length < entries.length) {
+    deps.onLocked();
+    const marks = useUploadMarksStore.getState();
+    for (const entry of entries) {
+      if (!open.includes(entry)) marks.answer(deps.spaceId, entry.nodeId, entry.markOp);
+    }
+  }
   if (open.length === 0) return;
-  const marks = useUploadMarksStore.getState();
   const work = runMediaUploadBatch(
     open.map((entry) => ({
       file: entry.file,
       nodeId: entry.nodeId,
       // The node's content arrives from the server through Yjs.
       onSuccess: () => undefined,
-      ...markedSinks(deps.spaceId, entry.nodeId, marks.begin(deps.spaceId, entry.nodeId, 'upload'), entry.file, deps.onUploadFailure),
+      ...markedSinks(deps.spaceId, entry.nodeId, entry.markOp, entry.file, deps.onUploadFailure),
     })),
     { projectId, spaceId: deps.spaceId, ...deps.tag },
     deps,
