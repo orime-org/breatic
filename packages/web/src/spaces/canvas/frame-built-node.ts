@@ -12,7 +12,7 @@
  * slide under them for no reason they can name.
  */
 
-import type { Viewport } from '@xyflow/react';
+import { getViewportForBounds, type Viewport } from '@xyflow/react';
 
 import { frameProposal } from '@web/spaces/canvas/lib/place-flow';
 import {
@@ -21,6 +21,9 @@ import {
   type Point,
   type Rect,
 } from '@web/spaces/canvas/group-geometry';
+
+/** Room left around a node framed for a close look, as a fit leaves around the canvas. */
+const INSPECT_PADDING = 0.1;
 
 /** How long the canvas takes to slide what an action just made into view. */
 export const FRAME_PAN_MS = 300;
@@ -122,4 +125,31 @@ export function viewportForBuilt(
   const at = frameBuiltNode(built, source, view);
   if (at === null) return null;
   return { x: pane.width / 2 - at.x * zoom, y: pane.height / 2 - at.y * zoom, zoom };
+}
+
+/**
+ * Where to move the camera when a tool whose effect is seen in fine detail
+ * opens on a node (the picture adjust, inner#1303 §6.1): close enough that the
+ * node and its panel fill the view, and no closer than shows the picture at
+ * its own pixels — the node then loads its full picture in place of the
+ * thumbnail. A reader already that close is left where they are; it never
+ * zooms out.
+ * @param target - The node and its panel, in canvas coordinates.
+ * @param pane - The canvas pane's size in screen pixels.
+ * @param pane.width - Its width.
+ * @param pane.height - Its height.
+ * @param now - The viewport the reader is at.
+ * @param oneToOne - The zoom at which the picture shows at its own pixels.
+ * @returns The viewport to move to, or null to stay.
+ * @throws {never} Never.
+ */
+export function viewportToInspect(
+  target: Rect,
+  pane: { width: number; height: number },
+  now: Viewport,
+  oneToOne: number,
+): Viewport | null {
+  const fit = getViewportForBounds(target, pane.width, pane.height, now.zoom, Math.max(now.zoom, oneToOne), INSPECT_PADDING);
+  if (fit.zoom <= now.zoom) return null;
+  return fit;
 }

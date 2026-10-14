@@ -12,7 +12,7 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { frameBuiltNode, framedBox, viewportForBuilt } from '@web/spaces/canvas/frame-built-node';
+import { frameBuiltNode, framedBox, viewportForBuilt, viewportToInspect } from '@web/spaces/canvas/frame-built-node';
 import type { Rect } from '@web/spaces/canvas/group-geometry';
 
 const VIEWPORT = { x: 0, y: 0, width: 1000, height: 800 };
@@ -156,5 +156,32 @@ describe('viewportForBuilt', () => {
   it('never zooms in past the reader’s zoom', () => {
     const v = viewportForBuilt({ x: 5000, y: 0, width: 100, height: 100 }, null, pane, { x: 0, y: 0, zoom: 0.5 })!;
     expect(v.zoom).toBe(0.5);
+  });
+});
+
+describe('viewportToInspect', () => {
+  const pane = { width: 1000, height: 800 };
+
+  it('zooms in until the node and its panel fill the view', () => {
+    const target = { x: 0, y: 0, width: 288, height: 500 };
+    const v = viewportToInspect(target, pane, { x: 0, y: 0, zoom: 0.5 }, 4)!;
+    // The taller side fills the height, less the padding a fit leaves.
+    expect(v.zoom).toBeGreaterThan(1.3);
+    expect(v.zoom).toBeLessThan(1.6);
+    const left = -v.x / v.zoom;
+    const top = -v.y / v.zoom;
+    expect(target.x).toBeGreaterThanOrEqual(left);
+    expect(target.y).toBeGreaterThanOrEqual(top);
+    expect(target.x + target.width).toBeLessThanOrEqual(left + pane.width / v.zoom);
+    expect(target.y + target.height).toBeLessThanOrEqual(top + pane.height / v.zoom);
+  });
+
+  it('stops at the zoom that shows the picture at its own pixels', () => {
+    const v = viewportToInspect({ x: 0, y: 0, width: 288, height: 300 }, pane, { x: 0, y: 0, zoom: 0.5 }, 1.2)!;
+    expect(v.zoom).toBe(1.2);
+  });
+
+  it('stays put when the reader is already as close as that, and never zooms out', () => {
+    expect(viewportToInspect({ x: 0, y: 0, width: 288, height: 500 }, pane, { x: 0, y: 0, zoom: 2 }, 4)).toBeNull();
   });
 });

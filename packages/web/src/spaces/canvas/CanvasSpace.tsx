@@ -43,6 +43,7 @@ import {
 } from '@breatic/shared';
 import {
   defaultParamsOf,
+  isModelTool,
   miniToolById,
   miniToolsFor,
   servedMiniToolsFor,
@@ -83,6 +84,7 @@ import {
   frameBuiltNode,
   framedBox,
   viewportForBuilt,
+  viewportToInspect,
 } from '@web/spaces/canvas/frame-built-node';
 import { exportCropBlob } from '@web/spaces/canvas/focus/crop-export';
 import { exportDrawing } from '@web/spaces/canvas/mini-tool/export-drawing';
@@ -184,6 +186,7 @@ import {
 } from '@web/spaces/canvas/group-creation';
 import {
   EMPTY_NODE_SIZE,
+  MEDIA_FRAME_PX,
   GROUP_MIN_SIZE,
   groupRectForMembers,
   GROUP_PADDING,
@@ -3931,6 +3934,38 @@ function CanvasSpaceInner({
     [menuDownloadUrl, nodeMenu.type, menuCatalog],
   );
   const openMiniTool = useCanvasSession((s) => s.openMiniTool);
+  // The picture adjust is judged in fine detail (inner#1303 §6.1): on opening
+  // it the camera comes close enough that the node and its panel fill the
+  // view, no closer than the picture's own pixels, so the node loads its full
+  // picture and the preview is drawn at that size.
+  const inspectNode = React.useCallback(
+    (nodeId: string): void => {
+      let tries = 0;
+      /** One frame of waiting for the node and the panel to be laid out. */
+      const step = (): void => {
+        const container = containerRef.current;
+        const [node] = measuredRects([nodeId]);
+        const panel = container?.querySelector<HTMLElement>('[data-canvas-panel]') ?? null;
+        if (container === null || node === undefined || panel === null) {
+          if (tries++ < 10) requestAnimationFrame(step);
+          return;
+        }
+        const box = panel.getBoundingClientRect();
+        const from = screenToFlowPosition({ x: box.left, y: box.top });
+        const to = screenToFlowPosition({ x: box.right, y: box.bottom });
+        const target =
+          groupRectForMembers([node, { x: from.x, y: from.y, width: to.x - from.x, height: to.y - from.y }], 0) ?? node;
+        const own = getInternalNode(nodeId)?.internals.userNode.data.width;
+        const media = node.width - MEDIA_FRAME_PX;
+        const oneToOne = typeof own === 'number' && media > 0 ? own / media : CANVAS_MAX_ZOOM;
+        const { transform: [x, y, zoom], width, height } = rfStoreApi.getState();
+        const next = viewportToInspect(target, { width, height }, { x, y, zoom }, Math.min(oneToOne, CANVAS_MAX_ZOOM));
+        if (next !== null) void setViewport(next, { duration: PROPOSAL_FRAME_MS, interpolate: 'linear' });
+      };
+      requestAnimationFrame(step);
+    },
+    [getInternalNode, measuredRects, rfStoreApi, screenToFlowPosition, setViewport],
+  );
   const openToolFromMenu = React.useCallback(
     (toolId: string): void => {
       const spec = miniToolById(toolId);
@@ -3941,8 +3976,11 @@ function CanvasSpaceInner({
         params: defaultParamsOf(spec),
       });
       selectOnlyNode(nodeId);
+      if (spec.source === 'image' && !isModelTool(spec) && spec.params.some((param) => param.kind === 'adjust')) {
+        inspectNode(nodeId);
+      }
     },
-    [menuDownloadUrl, nodeMenu.nodeId, openMiniTool, selectOnlyNode],
+    [inspectNode, menuDownloadUrl, nodeMenu.nodeId, openMiniTool, selectOnlyNode],
   );
   // Understand is offered on exactly what Download is offered on — the asset
   // the node's body is showing — so it reads the same answer. What happens

@@ -193,7 +193,7 @@ test.beforeEach(async ({ browser }) => {
   await expect(visibleSpace(page).locator('.react-flow')).toBeVisible({ timeout: 20_000 });
   imageNode = randomUUID();
   image = `https://picsum.photos/seed/${randomUUID()}/400/300.jpg`;
-  await seedNode(page, { projectId, spaceId }, imageNode, 'image', 0, { content: image, mimeType: 'image/jpeg', size: 40_000 });
+  await seedNode(page, { projectId, spaceId }, imageNode, 'image', 0, { content: image, mimeType: 'image/jpeg', size: 40_000, width: 400, height: 300 });
   await expect(nodeOf(imageNode).getByTestId('image-node-img')).toBeVisible({ timeout: 20_000 });
 });
 
@@ -206,7 +206,25 @@ test.afterEach(async () => {
 test('the picture adjust previews on the node, resets, and Run fills a picture of the source size @needs-internet', async () => {
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
+  const zoom = (): Promise<number> =>
+    visibleSpace(page)
+      .locator('.react-flow__viewport')
+      .evaluate((el) => new DOMMatrix(getComputedStyle(el).transform).a);
+  const zoomBefore = await zoom();
   await openTool(page, imageNode, 'image.adjust');
+  // The camera comes close so fine detail can be judged, never past the
+  // picture's own 400 pixels on screen.
+  await expect.poll(zoom, { timeout: 5_000 }).toBeGreaterThan(zoomBefore);
+  // Measure where the camera settles, not a frame of its flight.
+  await expect
+    .poll(async () => {
+      const first = await zoom();
+      await page.waitForTimeout(150);
+      return (await zoom()) === first;
+    })
+    .toBe(true);
+  const shown = await nodeOf(imageNode).getByTestId('image-node-img').boundingBox();
+  expect(shown?.width ?? Infinity).toBeLessThanOrEqual(401);
   const layer = nodeOf(imageNode).getByTestId('mini-tool-adjust-layer');
   await expect(layer).toBeVisible({ timeout: 15_000 });
   const run = page.getByTestId('mini-tool-run');

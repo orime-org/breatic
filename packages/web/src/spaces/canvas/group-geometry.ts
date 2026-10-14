@@ -54,7 +54,7 @@ export const EMPTY_NODE_SIZE = { width: 288, height: 192 } as const;
  * (`NodeShell`) and `NodeMediaInset`'s `p-1`, on each side. A 400×300 picture's
  * node measures 218.5 in the browser.
  */
-const MEDIA_FRAME_PX = 2 * 1 + 2 * 4;
+export const MEDIA_FRAME_PX = 2 * 1 + 2 * 4;
 
 /**
  * How tall a node is with this picture in it, drawn at the node's width.
