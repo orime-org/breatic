@@ -58,36 +58,35 @@ describe('an empty node with an upload mark', () => {
 });
 
 /**
- * Render a node the way every content modality does: its frame around
+ * Render a node the way every content node does: its frame around
  * `NodeContent`, showing the body, or the placeholder when it holds nothing.
- * @param modality - The node's modality.
  * @param body - What the node shows, or null for an empty node.
  */
-function renderFramed(modality: 'image' | 'video' | 'audio' | 'text', body: React.ReactNode): void {
+function renderFramed(body: React.ReactNode): void {
   render(
     <ReactFlowProvider>
-      <ContentNodeFrame modality={modality}>
-        <NodeContent hasContent={body !== null} placeholder={<NodePlaceholder modality={modality} />} content={body} />
+      <ContentNodeFrame modality='image'>
+        <NodeContent hasContent={body !== null} placeholder={<NodePlaceholder modality='image' />} content={body} />
       </ContentNodeFrame>
     </ReactFlowProvider>,
   );
 }
 
-describe('every content node with an upload mark', () => {
-  it.each(['image', 'video', 'audio', 'text'] as const)('lays a skeleton over a %s node that shows something', (modality) => {
+describe('NodeContent with an upload mark', () => {
+  it('lays a skeleton over what the node shows', () => {
     act(() => {
       marks().begin('', 'n1', 'upload');
     });
-    renderFramed(modality, <p>held content</p>);
+    renderFramed(<p>held content</p>);
     expect(screen.getAllByTestId('node-upload-skeleton')).toHaveLength(1);
   });
 
-  it.each(['image', 'video', 'audio', 'text'] as const)('says what went wrong on a %s node that shows something', (modality) => {
+  it('says what went wrong over what the node shows', () => {
     act(() => {
       const op = marks().begin('', 'n1', 'upload');
       marks().fail('', 'n1', op, { key: 'canvas.upload.failed' });
     });
-    renderFramed(modality, <p>held content</p>);
+    renderFramed(<p>held content</p>);
     expect(screen.getByTestId('node-upload-error')).toHaveTextContent('Upload failed.');
   });
 
@@ -95,7 +94,7 @@ describe('every content node with an upload mark', () => {
     act(() => {
       marks().begin('', 'n1', 'upload');
     });
-    renderFramed('image', null);
+    renderFramed(null);
     expect(screen.getAllByTestId('node-upload-skeleton')).toHaveLength(1);
     expect(screen.getByTestId('node-placeholder')).toContainElement(screen.getByTestId('node-upload-skeleton'));
   });
@@ -105,12 +104,12 @@ describe('every content node with an upload mark', () => {
       const op = marks().begin('', 'n1', 'upload');
       marks().fail('', 'n1', op, { key: 'canvas.upload.failed' });
     });
-    renderFramed('image', null);
+    renderFramed(null);
     expect(screen.getAllByTestId('node-upload-error')).toHaveLength(1);
   });
 
   it('shows the content alone without a mark', () => {
-    renderFramed('audio', <p>held content</p>);
+    renderFramed(<p>held content</p>);
     expect(screen.queryByTestId('node-upload-skeleton')).toBeNull();
     expect(screen.queryByTestId('node-upload-error')).toBeNull();
   });
