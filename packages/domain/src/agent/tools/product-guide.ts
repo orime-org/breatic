@@ -801,7 +801,7 @@ export function renderProductGuide(): string {
       "tools a text box. A crop shows a box with " +
       "eight handles on the node and takes a ratio and a size in pixels in the panel; rotating turns and flips the " +
       "picture on the node as you press. Adjusting gives a slider for each setting, starting at zero, and " +
-      "opening it zooms the canvas in until the node and its panel fill the view (no closer than shows the " +
+      "opening it on a picture zooms the canvas in until the node and its panel fill the view (no closer than shows the " +
       "picture at its own pixels, and never out); " +
       `${quoted(t("canvas.miniTool.panel.reset"))} above them puts every one back to zero, and the arrow stays ` +
       `greyed out while they are all at zero. ${quoted(t("canvas.miniTool.image.inpaint.label"))}, ` +
@@ -855,8 +855,8 @@ export function renderProductGuide(): string {
       `${quoted(t("canvas.miniTool.image.grid.label"))} cuts only the picked tiles and lays each out at the row and ` +
       "column it was cut from, inside a new group named GRID- followed by the source's name (even when one tile is " +
       "picked), each tile named by its place (GRID-r1c1- and so on, then the source's name), and selects the group. " +
-      "When the new nodes are not already in view, the canvas slides to show them with the source, zooming out " +
-      "only as far as it takes to show them all. " +
+      "When the new nodes are not already in view, the canvas slides to show them, with the source too when both " +
+      "fit at the current zoom, and zooms out only when the new nodes alone do not fit. " +
       "One undo takes them all away, and the source " +
       "stays as it was. The new nodes appear at once; until our server has taken the work in, the person who " +
       "pressed sees a grey shimmering placeholder on them, and a run that ends before then shows a red line on " +

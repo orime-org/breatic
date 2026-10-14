@@ -3951,7 +3951,7 @@ function CanvasSpaceInner({
         const { transform: [x, y, zoom], width, height } = rfStoreApi.getState();
         const next = viewportToInspect(
           node,
-          { width: box.width, height: box.height, gap },
+          { height: box.height, gap },
           { width, height },
           { x, y, zoom },
           Math.min(own / media, CANVAS_MAX_ZOOM),

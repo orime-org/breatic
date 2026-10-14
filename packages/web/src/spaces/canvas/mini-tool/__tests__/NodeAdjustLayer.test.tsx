@@ -41,6 +41,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 /** Let the CORS-loaded copy of the picture arrive. */
@@ -143,6 +144,17 @@ describe('NodeAdjustLayer', () => {
     flushFrames();
     const [, size] = drawing.drawAdjusted.mock.calls.at(-1) as unknown as [unknown, { width: number }];
     expect(size.width).toBe(800);
+  });
+
+  // Past the picture's own pixels a bigger preview shows nothing more (§6.1).
+  it('draws no wider than the picture’s own pixels', async () => {
+    vi.spyOn(HTMLImageElement.prototype, 'naturalWidth', 'get').mockReturnValue(600);
+    vi.spyOn(HTMLImageElement.prototype, 'naturalHeight', 'get').mockReturnValue(450);
+    mount('image.adjust', { value: { ...defaultAdjustValue, sharpness: 50 } }, 2);
+    await pictureLoaded();
+    flushFrames();
+    const [, size] = drawing.drawAdjusted.mock.calls.at(-1) as unknown as [unknown, { width: number }];
+    expect(size.width).toBe(600);
   });
 
   it('draws nothing for another tool', () => {

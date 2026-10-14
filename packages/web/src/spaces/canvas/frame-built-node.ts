@@ -153,11 +153,11 @@ export function viewportForBuilt(
  * node and its panel fill the view, and no closer than shows the picture at
  * its own pixels — the node then loads its full picture in place of the
  * thumbnail. The panel hangs under the node at its screen size whatever the
- * zoom, so only the node scales. A reader already that close is left where
- * they are; it never zooms out.
+ * zoom, so only the node scales; centred under the node in the centred view,
+ * it fits across whatever the zoom, so only its height takes part. A reader
+ * already that close is left where they are; it never zooms out.
  * @param node - The node, in canvas coordinates.
  * @param panel - The panel under it, in screen pixels.
- * @param panel.width - Its width.
  * @param panel.height - Its height.
  * @param panel.gap - The space between the node and it.
  * @param pane - The canvas pane's size in screen pixels.
@@ -170,7 +170,7 @@ export function viewportForBuilt(
  */
 export function viewportToInspect(
   node: Rect,
-  panel: { width: number; height: number; gap: number },
+  panel: { height: number; gap: number },
   pane: { width: number; height: number },
   now: Viewport,
   oneToOne: number,

@@ -4544,6 +4544,29 @@ describe('onLocateSource absolute-position contract (item 7 grouped source)', ()
 // jsdom cannot render the ReactFlow viewport, so this pins the wiring the way
 // the locate-source contract above does; what that move comes to is
 // `viewportForBuilt`'s, and it has its own tests.
+describe('what opening a tool on a node does to the camera and its layers', () => {
+  const src = readFileSync(resolve(__dirname, '../CanvasSpace.tsx'), 'utf8');
+  const inspect = src.slice(src.indexOf('const inspectNode'), src.indexOf('const openToolFromMenu'));
+  const open = src.slice(src.indexOf('const openToolFromMenu'), src.indexOf('const understandFromMenu'));
+
+  // §6.1: the picture adjust brings the camera close, no closer than the
+  // picture's own pixels and never past the canvas's own limit.
+  it('zooms in on a picture adjust when it opens', () => {
+    expect(open).toContain('inspectNode(nodeId)');
+    expect(open).toContain('spec.source === \'image\'');
+    expect(inspect).toContain('viewportToInspect(');
+    expect(inspect).toContain('- MEDIA_FRAME_PX');
+    expect(inspect).toContain('Math.min(own / media, CANVAS_MAX_ZOOM)');
+    expect(inspect).toContain('duration: PROPOSAL_FRAME_MS');
+  });
+
+  // §6.3: the expand frame reaches past its node and is drawn over every node.
+  it('draws the expand frame in the viewport, over every node', () => {
+    const portal = src.slice(src.lastIndexOf('<ViewportPortal>', src.indexOf('<ExpandFrameOverlay />')), src.indexOf('<ExpandFrameOverlay />'));
+    expect(portal).toContain('zIndex: ANNOTATION_COMPOSER_Z');
+  });
+});
+
 describe('what an Understand press leaves on screen', () => {
   const src = readFileSync(resolve(__dirname, '../CanvasSpace.tsx'), 'utf8');
   const press = src.slice(
