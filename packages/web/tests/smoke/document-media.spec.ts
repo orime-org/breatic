@@ -48,8 +48,8 @@ const PENDING = '[data-testid="doc-pending-media"]';
 /** An upload goes to the real ingest Worker and back. */
 const UPLOAD_TIMEOUT = 60_000;
 
-/** An outside picture the ingest Worker can fetch, the one the canvas ingest smoke stores. */
-const OUTSIDE_PICTURE = 'https://www.w3.org/Icons/w3c_home.png';
+/** An outside picture the ingest Worker can fetch from its egress. */
+const OUTSIDE_PICTURE = 'https://raw.githubusercontent.com/github/explore/main/topics/javascript/javascript.png';
 
 /**
  * Open a freshly made Document Space with the caret in the body.
@@ -374,7 +374,7 @@ test('a picture in pasted web content is fetched in and lands with the words (A5
   await expect(page.locator(`${IMAGE} img`)).toBeVisible({ timeout: UPLOAD_TIMEOUT });
   await expect(page.locator(PENDING)).toHaveCount(0);
   const [url] = await mediaAttr(page, 'url', ['image']);
-  expect(url).not.toContain('w3.org');
+  expect(url).not.toContain('githubusercontent');
   await expect(page.locator(EDITOR)).toContainText('From the web');
 });
 
@@ -858,7 +858,7 @@ test('a picture copied in the chat pastes in and is fetched into storage, named 
   await expect(page.locator(PENDING)).toBeVisible();
   await expect(page.locator(`${IMAGE} img`)).toBeVisible({ timeout: UPLOAD_TIMEOUT });
   const [url] = await mediaAttr(page, 'url', ['image']);
-  expect(url).not.toContain('w3.org');
+  expect(url).not.toContain('githubusercontent');
   expect(await rows(page)).toEqual(['Lead', 'image[Found]']);
 });
 
