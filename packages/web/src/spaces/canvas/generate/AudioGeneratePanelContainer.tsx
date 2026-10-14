@@ -18,7 +18,7 @@ import * as React from 'react';
 
 import type { Voice } from '@breatic/shared';
 
-import { canvasApi } from '@web/data/api/canvas';
+import { createNodeTask } from '@web/spaces/canvas/generate/create-node-task';
 import { ApiException } from '@web/data/api/types';
 import { voicesApi } from '@web/data/api/voices';
 import { firstVoiceKey, firstVoiceQuery } from '@web/spaces/canvas/generate/first-voice-query';
@@ -534,7 +534,7 @@ function AudioGeneratePanelBody({
         // the request rather than sending it empty.
         ...(freshLyrics !== undefined ? { lyricsText: freshLyrics } : {}),
       });
-      await canvasApi.createTask(payload);
+      await createNodeTask(spaceId, nodeId, payload);
       sessionStore.getState().closePanelOfSession(session);
     } catch (err) {
       // Unconditional: a submit that failed after the user closed the panel

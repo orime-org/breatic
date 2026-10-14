@@ -4,7 +4,7 @@
 import { useQuery } from '@tanstack/react-query';
 import * as React from 'react';
 
-import { canvasApi } from '@web/data/api/canvas';
+import { createNodeTask } from '@web/spaces/canvas/generate/create-node-task';
 import { ApiException } from '@web/data/api/types';
 import {
   getPromptFragment,
@@ -787,7 +787,7 @@ function VideoGeneratePanelBody({
         slotUrls: fresh.slotUrls,
         poolParams: poolParams(fresh.pool, fresh.referenceUrls),
       });
-      await canvasApi.createTask(payload);
+      await createNodeTask(spaceId, nodeId, payload);
       sessionStore.getState().closePanelOfSession(session);
     } catch (err) {
       // Unconditional (silent-fail mandate): a submit that failed after the

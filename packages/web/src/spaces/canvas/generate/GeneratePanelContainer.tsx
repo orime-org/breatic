@@ -3,9 +3,9 @@
 
 import { useQuery } from '@tanstack/react-query';
 import * as React from 'react';
+import { createNodeTask } from '@web/spaces/canvas/generate/create-node-task';
 import { toast } from '@web/lib/toast';
 
-import { canvasApi } from '@web/data/api/canvas';
 import { ApiException } from '@web/data/api/types';
 import {
   getPromptFragment,
@@ -647,7 +647,7 @@ function GeneratePanelBody({
         promptText: freshPrompt,
         poolParams: poolParams(fresh.pool, fresh.referenceUrls),
       });
-      await canvasApi.createTask(payload);
+      await createNodeTask(spaceId, nodeId, payload);
       sessionStore.getState().closePanelOfSession(session);
     } catch (err) {
       // The failure toast is UNCONDITIONAL (silent-fail mandate): sonner is a
