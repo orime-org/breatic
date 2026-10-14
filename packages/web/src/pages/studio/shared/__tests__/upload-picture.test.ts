@@ -97,6 +97,10 @@ describe('pictureErrorMessage', () => {
     );
   });
 
+  it('tells the person the file is over the upload size limit when the server refused it as too large', () => {
+    expect(pictureErrorMessage(new UploadFailedError('tooLarge'), t, KEYS)).toBe('server.error.upload_too_large');
+  });
+
   it('names a refused format with the shared sentence', () => {
     expect(pictureErrorMessage(new UploadFailedError('unsupportedType'), t, KEYS)).toBe(
       'studio.container.imageError.unsupported_type',
