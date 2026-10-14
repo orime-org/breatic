@@ -113,6 +113,16 @@ describe('a rewrite card', () => {
     expect(screen.queryByTestId('document-proposal-lossy')).toBeNull();
   });
 
+  it('compares Chinese word by word, not character by character', async () => {
+    const { quote: _quote, ...rewrite } = { ...REWRITE, original: '我们明天出发。', body: '你们明天出发。' };
+    draw(rewrite);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('document-proposal-removed').textContent).toBe('我们');
+    });
+    expect(screen.getByTestId('document-proposal-added').textContent).toBe('你们');
+  });
+
   it.each([
     ['an empty block', ''],
     ['a table whose cells are all empty', '\n\n\n'],

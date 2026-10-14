@@ -14,6 +14,7 @@ import type { ChatAttachedChip, ChatSpaceContext, ModelCatalog } from '@breatic/
 import { chatMessageSchema, documentBodyFragment } from '@breatic/shared';
 
 import type { ProjectSpace } from '@web/data/yjs/project-meta';
+import { COMMENT_MARK } from '@web/spaces/document/document-comment-extension';
 
 const synced = vi.hoisted(() => new Set<string>());
 const editors = vi.hoisted(() => new Map<string, unknown>());
@@ -412,6 +413,28 @@ describe('an open document', () => {
     editor.updateBlock(underlined!, { content: [{ type: 'text', text: 'Underlined', styles: { underline: true } }] } as never);
 
     expect(readBlocks().map((b) => b.lossy)).toEqual([false, true, true, true]);
+  });
+
+  it('marks a table with a column width and a passage with a comment on it', async () => {
+    const name = await openDocument('| A | B |\n| --- | --- |\n| 1 | 2 |\n\nCommented words');
+    const editor = (editors.get(name) as { editor: DocumentEditor }).editor;
+    const view = editor.prosemirrorView!;
+    let cellAt = -1;
+    let wordsAt = -1;
+    view.state.doc.descendants((node, pos) => {
+      if (cellAt < 0 && (node.type.name === 'tableHeader' || node.type.name === 'tableCell')) cellAt = pos;
+      if (wordsAt < 0 && node.isText && node.text === 'Commented words') wordsAt = pos;
+      return true;
+    });
+    const cell = view.state.doc.nodeAt(cellAt)!;
+    const comment = view.state.schema.marks[COMMENT_MARK]!.create({ threadId: 't1', orphan: false });
+    view.dispatch(
+      view.state.tr
+        .setNodeMarkup(cellAt, undefined, { ...cell.attrs, colwidth: [240] })
+        .addMark(wordsAt, wordsAt + 'Commented words'.length, comment),
+    );
+
+    expect(readBlocks().map((b) => b.lossy)).toEqual([true, true]);
   });
 
   it('marks a table with merged cells, which Markdown splits apart', async () => {
