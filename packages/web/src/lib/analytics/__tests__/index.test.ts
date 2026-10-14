@@ -29,6 +29,7 @@ const VIEW = vi.hoisted(() => ({
   ],
   gpcSeenAt: null,
   ownership: 'self',
+  serverTime: new Date().toISOString(),
 }));
 
 vi.mock('@web/lib/analytics/build-config', () => ({ ANALYTICS_CONFIGURED: true }));
@@ -48,18 +49,20 @@ vi.mock('@web/lib/analytics/runtime', () => ({
 vi.mock('@web/data/api/request', () => ({ apiPut: api.put, apiGet: api.get }));
 
 const ID = '22222222-2222-4222-8222-222222222222';
+const OTHER = '33333333-3333-4333-8333-333333333333';
 
 /**
  * Both categories as a press in the banner leaves them.
  * @param value - Accepted or refused.
  * @param source - Where the choice came from.
+ * @param adsId - The ads decision id.
  * @returns The choices.
  */
-function choices(value: boolean, source = 'banner'): Record<string, unknown> {
+function choices(value: boolean, source = 'banner', adsId = ID): Record<string, unknown> {
   const entry = { value, source, decidedAt: new Date().toISOString(), revision: 1 };
   return {
     analytics: { ...entry, decisionId: '11111111-1111-4111-8111-111111111111' },
-    ads: { ...entry, decisionId: ID, noticeShown: false, gpcAtDecision: false },
+    ads: { ...entry, decisionId: adsId, noticeShown: false, gpcAtDecision: false },
   };
 }
 
@@ -136,14 +139,14 @@ describe('whether ads run', () => {
     await load();
     runtime.listener?.({ analytics: true, ads: true });
     await vi.waitFor(() => expect(runtime.setAds).toHaveBeenCalled());
-    expect(lastAds()).toEqual({ allowed: false, notice: false });
+    expect(lastAds()).toEqual({ allowed: false, notice: false, known: false });
   });
 
   it('follows the browser alone when nobody is signed in', async () => {
     runtime.choices = choices(true);
     const analytics = await load();
     analytics.resetUser();
-    await vi.waitFor(() => expect(lastAds()).toEqual({ allowed: true, notice: false }));
+    await vi.waitFor(() => expect(lastAds()).toEqual({ allowed: true, notice: false, known: true }));
   });
 
   it('stops for an account that opted out on another device, and says so in settings', async () => {
@@ -152,19 +155,65 @@ describe('whether ads run', () => {
       receipts: [{ decisionId: '33333333-3333-4333-8333-333333333333', value: false, source: 'settings', noticeShown: false, decidedAt: new Date().toISOString(), revision: 1 }],
       gpcSeenAt: null,
       ownership: 'self',
+      serverTime: new Date().toISOString(),
     });
     const analytics = await load();
     analytics.identifyUser({ id: 'u3' } as never);
-    await vi.waitFor(() => expect(lastAds()).toEqual({ allowed: false, notice: 'account' }));
+    await vi.waitFor(() => expect(lastAds()).toEqual({ allowed: false, notice: 'account', known: true }));
   });
 
   it('runs once the account record allows them, and stays off when it cannot be read', async () => {
     runtime.choices = choices(true);
     const analytics = await load();
     analytics.identifyUser({ id: 'u4' } as never);
-    await vi.waitFor(() => expect(lastAds()).toEqual({ allowed: true, notice: false }));
+    await vi.waitFor(() => expect(lastAds()).toEqual({ allowed: true, notice: false, known: true }));
     api.put.mockRejectedValueOnce(new Error('offline'));
     runtime.listener?.({ analytics: true, ads: true });
-    await vi.waitFor(() => expect(lastAds()).toEqual({ allowed: false, notice: false }));
+    // Unknown is not refused: ads stay off for now, and the stored ad click is kept.
+    await vi.waitFor(() => expect(lastAds()).toEqual({ allowed: false, notice: false, known: false }));
+  });
+
+  it('stops at once when this browser refuses while its report is on the way', async () => {
+    runtime.choices = choices(true);
+    const analytics = await load();
+    analytics.identifyUser({ id: 'u5' } as never);
+    await vi.waitFor(() => expect(lastAds()).toEqual({ allowed: true, notice: false, known: true }));
+    api.put.mockReturnValueOnce(new Promise(() => undefined));
+    runtime.choices = choices(false, 'settings', OTHER);
+    runtime.listener?.({ analytics: false, ads: false });
+    // The refusal counts as the receipt it is about to become, as the server will answer.
+    expect(lastAds()).toEqual({ allowed: false, notice: 'account', known: true });
+  });
+
+  it('takes the answer to the latest report, not one that arrives after it', async () => {
+    runtime.choices = choices(true);
+    const analytics = await load();
+    let answerEarlier: (view: unknown) => void = () => undefined;
+    api.put.mockReturnValueOnce(new Promise((resolve) => (answerEarlier = resolve)));
+    analytics.identifyUser({ id: 'u6' } as never);
+    await vi.waitFor(() => expect(api.put).toHaveBeenCalledTimes(1));
+    api.put.mockResolvedValueOnce({ ...VIEW, receipts: [{ ...VIEW.receipts[0], decisionId: OTHER, value: false }] });
+    runtime.listener?.({ analytics: true, ads: true });
+    await vi.waitFor(() => expect(lastAds()).toEqual({ allowed: false, notice: 'account', known: true }));
+    answerEarlier(VIEW);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(lastAds()).toEqual({ allowed: false, notice: 'account', known: true });
+  });
+
+  it('times this browser on the server clock the account receipts are dated by', async () => {
+    // This browser's clock is two minutes behind the server.
+    const server = Date.now() + 120_000;
+    runtime.choices = choices(false, 'settings');
+    // Another account left this refusal; this account overrode its own opt-out 30 s ago by the server's clock.
+    api.put.mockResolvedValueOnce({
+      receipts: [{ decisionId: OTHER, value: true, source: 'settings', noticeShown: 'account', decidedAt: new Date(server - 30_000).toISOString(), revision: 1 }],
+      gpcSeenAt: null,
+      ownership: 'other',
+      serverTime: new Date(server).toISOString(),
+    });
+    const analytics = await load();
+    analytics.identifyUser({ id: 'u7' } as never);
+    await vi.waitFor(() => expect(api.put).toHaveBeenCalled());
+    await vi.waitFor(() => expect(lastAds()).toEqual({ allowed: false, notice: 'account', known: true }));
   });
 });

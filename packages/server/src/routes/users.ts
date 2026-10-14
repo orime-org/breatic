@@ -101,7 +101,7 @@ users.patch("/me/locale", validate("json", localeSchema), async (c) => {
 /**
  * The account's ads record, or 404 when the account is gone.
  * @param c - The request context.
- * @returns `200` with `{ data: { receipts, gpcSeenAt, ownership } }`.
+ * @returns `200` with `{ data: { receipts, gpcSeenAt, ownership, serverTime } }`.
  * @throws {NotFoundError} When the account is gone.
  */
 async function consentView(c: Context<{ Variables: AuthVariables }>): Promise<Response> {
@@ -117,7 +117,7 @@ async function consentView(c: Context<{ Variables: AuthVariables }>): Promise<Re
  * and whose receipt the ads decision in this browser's cookie is. The app and
  * the website combine it with the browser's own choice through `adsDecision`
  * before loading any ad tag (inner#1442 design §4.4.6).
- * @returns `200` with `{ data: { receipts, gpcSeenAt, ownership } }`
+ * @returns `200` with `{ data: { receipts, gpcSeenAt, ownership, serverTime } }`
  */
 users.get("/me/analytics-consent", consentView);
 

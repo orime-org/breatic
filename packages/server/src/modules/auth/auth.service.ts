@@ -288,6 +288,8 @@ export interface AnalyticsConsentView {
   readonly gpcSeenAt: string | null;
   /** Whose receipt the ads decision in the requesting browser's cookie is. */
   readonly ownership: Ownership;
+  /** The server's clock when the view was read; the browser times its own choice on it. */
+  readonly serverTime: string;
 }
 
 /**
@@ -310,9 +312,10 @@ export async function getAnalyticsConsentView(
   userId: string,
   cookieDecisionId: string | undefined,
 ): Promise<AnalyticsConsentView | null> {
-  const history = await getAccountAdsEvents(userId, Date.now());
+  const now = Date.now();
+  const history = await getAccountAdsEvents(userId, now);
   if (history === null) return null;
-  return { ...history, ownership: await adsOwnership(userId, cookieDecisionId) };
+  return { ...history, ownership: await adsOwnership(userId, cookieDecisionId), serverTime: new Date(now).toISOString() };
 }
 
 /**

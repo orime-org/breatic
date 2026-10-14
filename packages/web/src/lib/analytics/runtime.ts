@@ -108,7 +108,7 @@ export async function start(options: {
  */
 async function apply(next: BrowserChoices | null): Promise<void> {
   choice = next;
-  if (next?.ads?.value !== true) setAds({ allowed: false, notice: currentNotice });
+  if (next?.ads?.value !== true) setAds({ allowed: false, notice: currentNotice, known: true });
   const snapshot = consentSnapshot();
   for (const listener of listeners) listener(snapshot);
   try {
@@ -262,14 +262,16 @@ let currentNotice: NoticeShown = false;
  * @param decision - The decision.
  * @param decision.allowed - Whether ads may run in this browser.
  * @param decision.notice - The opt-out notice the settings window shows.
+ * @param decision.known - False while the account's answer is unknown: ads stay
+ *   off for now, but nothing was refused, so the stored ad click is kept.
  */
-export function setAds(decision: { allowed: boolean; notice: NoticeShown }): void {
+export function setAds(decision: { allowed: boolean; notice: NoticeShown; known: boolean }): void {
   adsAllowed = decision.allowed;
   currentNotice = decision.notice;
   setAdsView({ notice: decision.notice, adsOn: decision.allowed });
   applyAds(decision.allowed);
   // A category not granted keeps no cookies, whether or not this page loaded its vendor.
-  if (!decision.allowed) clearStorage('_gcl_');
+  if (!decision.allowed && decision.known) clearStorage('_gcl_');
 }
 
 /**

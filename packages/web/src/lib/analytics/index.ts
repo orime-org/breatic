@@ -41,14 +41,15 @@ let signedIn: string | null | undefined = undefined;
 /** The account's ads record as `/users/me/analytics-consent` returns it. */
 interface AccountConsentView extends AccountAdsHistory {
   readonly ownership: Ownership;
+  readonly serverTime: string;
 }
 
 // The account's ads record and the cookie's ads decision it was read for; null until read, or when the read failed.
 let account: { view: AccountConsentView; cookieId: string | undefined } | null = null;
-// The ads decision this browser just wrote and is still reporting: it counts as the account's meanwhile.
-let reporting: string | undefined;
-// Bumped when the account changes, so an answer for an earlier one is dropped.
-let generation = 0;
+// Bumped by every account request and every account change, so only the latest request's answer is taken.
+let syncSeq = 0;
+// The server's clock minus this browser's, from the last answer: the account's receipts are dated by the server.
+let clockOffset = 0;
 
 /**
  * The banner's text in the current interface language.
@@ -140,20 +141,21 @@ function withRuntime(fn: (module: Runtime) => void): void {
  */
 function ownershipOf(decisionId: string | undefined): Ownership {
   if (decisionId === undefined || account === null) return 'none';
-  if (decisionId === reporting || account.view.receipts.some((r) => r.decisionId === decisionId)) return 'self';
+  if (account.view.receipts.some((r) => r.decisionId === decisionId)) return 'self';
   return decisionId === account.cookieId ? account.view.ownership : 'none';
 }
 
 /**
  * Decide whether ads run in this browser (design §4.4.6) and hand the result
  * to the runtime: signed out, this browser's own choice and GPC; signed in,
- * with the account's events too; not while the account's record is unknown.
+ * with the account's events too; not while the account's record is unknown,
+ * which keeps ads off without counting as a refusal.
  * @param module - The loaded runtime.
  */
 function decideAds(module: Runtime): void {
   const choices = module.browserChoices();
   const gpc = (navigator as Navigator & { globalPrivacyControl?: boolean }).globalPrivacyControl === true;
-  const now = Date.now();
+  const now = Date.now() + clockOffset;
   const at = new Date(now).toISOString();
   const browser = { choice: choices?.ads ?? null, gpcAt: gpc ? at : null, at };
   let outcome: AdsOutcome = { allowed: false, notice: null };
@@ -161,40 +163,42 @@ function decideAds(module: Runtime): void {
   else if (signedIn !== undefined && account !== null) {
     outcome = adsAllowed(account.view, browser, ownershipOf(browser.choice?.decisionId), now);
   }
+  // Unknown only while the account's answer is awaited for a browser that consents; a refusal here is known at once.
+  const known = signedIn === null || account !== null || browser.choice?.value !== true;
   const notice = adsNotice({ signedIn: typeof signedIn === 'string', outcome, gpc, ads: browser.choice });
-  module.setAds({ allowed: outcome.allowed, notice });
+  module.setAds({ allowed: outcome.allowed, notice, known });
 }
 
 /**
  * Send this browser's choices to the account and read the account's ads record
  * back (design §4.4.6), then decide ads again. Signed out, decide on the
- * browser alone. A failed request leaves ads off.
+ * browser alone. A failed request leaves ads off. Only the latest request's
+ * answer is taken.
  * @param module - The loaded runtime.
  */
 async function syncAccount(module: Runtime): Promise<void> {
+  const seq = ++syncSeq;
   if (typeof signedIn !== 'string') {
     decideAds(module);
     return;
   }
-  const started = generation;
   const choices = module.browserChoices();
   const cookieId = choices?.ads?.decisionId;
   // sentAt lets the server correct this browser's clock, which stamped decidedAt.
   const body = choices === null ? null : reportBody(choices, module.consentRevision(), new Date().toISOString());
-  reporting = body?.decisions.some((d) => d.decisionId === cookieId) ? cookieId : undefined;
   decideAds(module);
   try {
     const view = body
       ? await apiPut<AccountConsentView>('/users/me/analytics-consent', body)
       : await apiGet<AccountConsentView>('/users/me/analytics-consent');
-    if (started !== generation) return;
+    if (seq !== syncSeq) return;
+    const serverTime = Date.parse(view.serverTime);
+    if (!Number.isNaN(serverTime)) clockOffset = serverTime - Date.now();
     account = { view, cookieId };
   } catch (err) {
-    if (started !== generation) return;
+    if (seq !== syncSeq) return;
     account = null;
     captureException(err, { tags: { area: 'product_analytics' } });
-  } finally {
-    if (started === generation) reporting = undefined;
   }
   decideAds(module);
 }
@@ -232,7 +236,7 @@ export function identifyUser(user: AnalyticsUser): void {
   const changed = signedIn !== user.id;
   signedIn = user.id;
   if (changed) {
-    generation += 1;
+    syncSeq += 1;
     account = null;
   }
   withRuntime((module) => {
@@ -244,7 +248,7 @@ export function identifyUser(user: AnalyticsUser): void {
 /** Forget the account on sign-out, and when the app starts without a session. */
 export function resetUser(): void {
   signedIn = null;
-  generation += 1;
+  syncSeq += 1;
   account = null;
   withRuntime((module) => {
     module.reset();

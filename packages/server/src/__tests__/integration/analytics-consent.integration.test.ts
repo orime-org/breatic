@@ -327,14 +327,18 @@ describe("GET /users/me/analytics-consent", () => {
     await recordConsentReceipts(id, parsed([old]), Date.now());
     await recordConsentReceipts(id, parsed([oldRefusal]), Date.now());
     await recordConsentReceipts(id, parsed([recent]), Date.now());
+    const before = Date.now();
     const res = await call(id, { cookieAds: decision() });
     expect(res.status).toBe(200);
     const { data } = (await res.json()) as {
-      data: { receipts: { decisionId: string }[]; gpcSeenAt: string | null; ownership: string };
+      data: { receipts: { decisionId: string }[]; gpcSeenAt: string | null; ownership: string; serverTime: string };
     };
     expect(data.receipts.map((r) => r.decisionId).sort()).toEqual([oldRefusal.decisionId, recent.decisionId].sort());
     expect(data.gpcSeenAt).toBeNull();
     expect(data.ownership).toBe("none");
+    // The browser times its own choice on this clock, the one the receipts are dated by.
+    expect(Date.parse(data.serverTime)).toBeGreaterThanOrEqual(before);
+    expect(Date.parse(data.serverTime)).toBeLessThanOrEqual(Date.now());
   });
 });
 
