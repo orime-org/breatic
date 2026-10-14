@@ -49,14 +49,12 @@ const logger = createLogger("main");
 if (monitoring === "invalid_dsn") logger.error({}, "sentry_dsn_invalid");
 
 /**
- * Deadline (ms) for the teardown drains that follow the store settle.
+ * Deadline (ms) for the teardown drains, the store settle among them.
  *
- * Predates the timed store by two months (`6e07f4fd`, the shared
- * graceful-shutdown refactor across all three services) and covers what it
- * always covered: a hung drain — a Redis quit that never returns, say — must
- * not hold the process open. It does NOT bound the store settle, which runs
- * before it and is deliberately unbounded; a store answers when the database
- * answers, and a clock over it would cancel nothing.
+ * A hung drain — a Redis quit that never returns, say — must not hold the
+ * process open. The store settle runs inside the `server.destroy()` drain, so
+ * this deadline bounds it too: a document whose last store has not finished
+ * when it passes leaves with the process.
  *
  * It no longer has to cover the listen socket either: that is released before
  * the settle now, so a dev `tsx watch` restart can rebind :1234 immediately.
