@@ -115,6 +115,22 @@ describe('a rewrite card', () => {
     expect(screen.getAllByRole('button').map((b) => b.textContent)).toEqual(['Replace']);
   });
 
+  it('shows the whole passage out and the whole rewrite in when the two are too far apart to compare word by word (review round 3)', async () => {
+    const original = Array.from({ length: 3000 }, (_, i) => `镜头${String(i % 97)}`).join('');
+    const body = Array.from({ length: 3000 }, (_, i) => `shot ${String(i % 89)}`).join(' ');
+    const { quote: _quote, ...rewrite } = { ...REWRITE, original, body };
+    draw(rewrite);
+
+    await waitFor(
+      () => {
+        expect(screen.getByTestId('document-proposal-removed').textContent).toBe(original);
+      },
+      { timeout: 5000 },
+    );
+    expect(screen.getAllByTestId('document-proposal-removed')).toHaveLength(1);
+    expect(screen.getByTestId('document-proposal-added').textContent).toBe(body);
+  }, 15000);
+
   it('says the passage loses formatting Markdown cannot hold', () => {
     const { quote: _quote, ...rewrite } = { ...REWRITE, lossy: true };
     draw(rewrite);

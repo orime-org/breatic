@@ -78,6 +78,14 @@ function pressKind(proposal: DocumentProposal, action: LandingAction): PressKind
 }
 
 /**
+ * How long the word-by-word comparison may run on the page's thread. Two
+ * passages that share almost nothing (a table translated whole) take seconds
+ * to compare, and past this the card shows the whole passage out and the
+ * whole rewrite in.
+ */
+const DIFF_TIMEOUT_MS = 100;
+
+/**
  * The rewritten passage's words set against the original's, once its
  * Markdown is read.
  * @param proposal - A rewrite.
@@ -92,7 +100,12 @@ function useRewriteChanges(proposal: DocumentProposal): Change[] | null {
       if (!live) return;
       const rewritten = blocks.map((b) => b.text).join('\n');
       const intlSegmenter = new Intl.Segmenter(getLocale(), { granularity: 'word' });
-      setChanges(diffWords(proposal.original, rewritten, { intlSegmenter }));
+      setChanges(
+        diffWords(proposal.original, rewritten, { intlSegmenter, timeout: DIFF_TIMEOUT_MS }) ?? [
+          { value: proposal.original, removed: true, added: false, count: 0 },
+          { value: rewritten, added: true, removed: false, count: 0 },
+        ],
+      );
     });
     return () => {
       live = false;
