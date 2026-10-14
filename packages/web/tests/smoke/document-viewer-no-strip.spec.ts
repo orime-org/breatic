@@ -300,6 +300,14 @@ test('a viewer reads a table and gets none of its controls, nor can type in it',
  * The owner pastes a 240x120 picture into the case's Space and waits for it to land.
  */
 async function ownerPastesAPicture(): Promise<void> {
+  await ownerPastes();
+  await expect(owner.locator(`${EDITOR} [data-content-type="image"] img`)).toBeVisible({ timeout: 60_000 });
+}
+
+/**
+ * The owner pastes a 240x120 picture into the case's Space.
+ */
+async function ownerPastes(): Promise<void> {
   await openTheSpace(owner);
   await owner.locator(EDITOR).click();
   const png = await owner.evaluate(async () => {
@@ -324,8 +332,27 @@ async function ownerPastesAPicture(): Promise<void> {
     transfer.items.add(new File([bytes], 'shared.png', { type: 'image/png' }));
     element.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: transfer }));
   }, png);
-  await expect(owner.locator(`${EDITOR} [data-content-type="image"] img`)).toBeVisible({ timeout: 60_000 });
 }
+
+test('a viewer sees the owner\'s upload as uploading, then as not finished once the owner leaves (inner#1351 A11)', async () => {
+  // The owner's upload never gets its ticket, so it is in flight until the page goes.
+  await owner.route('**/api/v1/assets/upload-ticket', () => new Promise<void>(() => undefined));
+  await ownerPastes();
+  await expect(owner.locator('[data-testid="doc-pending-media"]')).toHaveAttribute('data-status', 'uploading');
+
+  await openTheSpace(viewer);
+  const block = viewer.locator('[data-testid="doc-pending-media"]');
+  await expect(block).toHaveAttribute('data-status', 'peerUploading', { timeout: 20_000 });
+
+  await owner.close();
+  // The owner's claim goes with its page; y-protocols drops a silent one after 30 s.
+  await expect(block).toHaveAttribute('data-status', 'notFinished', { timeout: 40_000 });
+  await expect(viewer.getByTestId('doc-pending-remove')).toBeHidden();
+
+  // The case's teardown works from an owner page.
+  owner = await ownerContext.newPage();
+  await owner.goto(projectUrl);
+});
 
 test('a viewer sees a picture the owner added, and none of its controls (inner#1127 A11, A13)', async () => {
   await ownerPastesAPicture();
@@ -372,7 +399,7 @@ test('a viewer plays an audio the owner added, and files pasted or dropped do no
     element.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: make(), ...at }));
   });
   await viewer.waitForTimeout(1000);
-  await expect(viewer.locator('[data-testid="doc-upload-placeholder"]')).toHaveCount(0);
+  await expect(viewer.locator('[data-testid="doc-pending-media"]')).toHaveCount(0);
   await expect(viewer.locator(`${EDITOR} .bn-block-content`)).toHaveCount(before);
 });
 

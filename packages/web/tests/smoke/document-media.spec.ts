@@ -43,10 +43,13 @@ test.afterEach(async () => {
 const IMAGE = `${EDITOR} [data-content-type="image"]`;
 const VIDEO = `${EDITOR} [data-content-type="video"]`;
 const AUDIO = `${EDITOR} [data-content-type="audio"]`;
-const PLACEHOLDER = '[data-testid="doc-upload-placeholder"]';
+const PENDING = '[data-testid="doc-pending-media"]';
 
 /** An upload goes to the real ingest Worker and back. */
 const UPLOAD_TIMEOUT = 60_000;
+
+/** An outside picture the ingest Worker can fetch, the one the canvas ingest smoke stores. */
+const OUTSIDE_PICTURE = 'https://www.w3.org/Icons/w3c_home.png';
 
 /**
  * Open a freshly made Document Space with the caret in the body.
@@ -213,9 +216,9 @@ test('the plus menu offers image, audio and video after the table, and a picked 
     mimeType: 'image/png',
     buffer: await pngBytes(page),
   });
-  await expect(page.locator(PLACEHOLDER)).toBeVisible();
+  await expect(page.locator(PENDING)).toBeVisible();
   await expect(page.locator(`${IMAGE} img`)).toBeVisible({ timeout: UPLOAD_TIMEOUT });
-  await expect(page.locator(PLACEHOLDER)).toHaveCount(0);
+  await expect(page.locator(PENDING)).toHaveCount(0);
   // The picture loads from the address the server registered.
   await expect
     .poll(() => page.locator(`${IMAGE} img`).evaluate((img: HTMLImageElement) => img.naturalWidth))
@@ -320,11 +323,11 @@ test('three files dropped together land in the order they came in, at the line s
     { name: 'three.png', type: 'image/png', base64: third },
   ]);
 
-  await expect(page.locator(PLACEHOLDER)).toHaveCount(3);
+  await expect(page.locator(PENDING)).toHaveCount(3);
   await expect(page.locator(AUDIO)).toBeVisible({ timeout: UPLOAD_TIMEOUT });
   await expect(page.locator(IMAGE)).toHaveCount(1, { timeout: UPLOAD_TIMEOUT });
   // The two that finished stand where they belong, the first one's place kept.
-  await expect(page.locator(PLACEHOLDER)).toHaveCount(1);
+  await expect(page.locator(PENDING)).toHaveCount(1);
   release();
   await expect(page.locator(IMAGE)).toHaveCount(2, { timeout: UPLOAD_TIMEOUT });
   expect(await types(page)).toEqual(['paragraph', 'image', 'audio', 'image', 'paragraph']);
@@ -349,23 +352,29 @@ test('a format we do not take is refused with a toast and leaves nothing (A5)', 
   ]);
 
   await expect(page.locator('[data-sonner-toast]').filter({ hasText: 'loop.gif' })).toBeVisible();
-  await expect(page.locator(PLACEHOLDER)).toHaveCount(0);
+  await expect(page.locator(PENDING)).toHaveCount(0);
   expect(await types(page)).toEqual(['paragraph']);
 });
 
-test('pictures in pasted web content are left out, and the words come in (A18)', async () => {
+// inner#1351 + inner#1390 A5: an outside picture in pasted web content is
+// fetched into storage by the ingest Worker and lands as a picture of ours.
+test('a picture in pasted web content is fetched in and lands with the words (A5) @needs-internet @needs-ingest @needs-storage', async () => {
   await openFreshDocument(page);
 
-  await page.locator(EDITOR).evaluate((element) => {
+  await page.locator(EDITOR).evaluate((element, url) => {
     const transfer = new DataTransfer();
-    transfer.setData('text/html', '<p>words</p><img src="https://example.org/a.png">');
+    transfer.setData('text/html', `<p>words</p><figure><img src="${url}"><figcaption>From the web</figcaption></figure>`);
     transfer.setData('text/plain', 'words');
     element.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: transfer }));
-  });
+  }, OUTSIDE_PICTURE);
 
-  await expect(page.locator('[data-sonner-toast]').filter({ hasText: /not pasted/ })).toBeVisible();
+  await expect(page.locator(PENDING)).toBeVisible();
   await expect(page.locator(EDITOR)).toContainText('words');
-  expect(await types(page)).not.toContain('image');
+  await expect(page.locator(`${IMAGE} img`)).toBeVisible({ timeout: UPLOAD_TIMEOUT });
+  await expect(page.locator(PENDING)).toHaveCount(0);
+  const [url] = await mediaAttr(page, 'url', ['image']);
+  expect(url).not.toContain('w3.org');
+  await expect(page.locator(EDITOR)).toContainText('From the web');
 });
 
 test('the toolbar of a first block sits on the picture, never under it, centred, and works (A9, A16, A17, A19)', async () => {
@@ -759,6 +768,125 @@ async function pasteFile(p: Page, bytes: Buffer, name: string, type: string): Pr
 async function pastePicture(p: Page, name: string): Promise<void> {
   await pasteFile(p, await pngBytes(p, 220, 120), name, 'image/png');
 }
+
+/** The marker a canvas clipboard starts with (`CLIPBOARD_MARKER`, node-clipboard.ts). */
+const CANVAS_MARKER = '__breatic_canvas_nodes__:';
+
+/**
+ * A canvas clipboard, as Cmd+C on the canvas or the chat's copy writes it.
+ * @param nodes - The copied nodes.
+ * @returns The clipboard text.
+ */
+function canvasClipboard(nodes: Record<string, unknown>[]): string {
+  return CANVAS_MARKER + JSON.stringify({ version: 2, picked: nodes.map((n) => n['id']), nodes, edges: [] });
+}
+
+/**
+ * A text node's words, as the clipboard carries them.
+ * @param lines - Its lines.
+ * @returns The body snapshot.
+ */
+function textBody(...lines: string[]): unknown {
+  return { $y: 'xml', children: lines.map((line) => ({ el: 'paragraph', attrs: {}, children: [{ text: [{ insert: line }] }] })) };
+}
+
+/**
+ * Pastes clipboard text into the body as a reader's paste does.
+ * @param p - The page.
+ * @param text - The clipboard's plain text.
+ */
+async function pasteText(p: Page, text: string): Promise<void> {
+  await p.locator(EDITOR).evaluate((element, plain) => {
+    const transfer = new DataTransfer();
+    transfer.setData('text/plain', plain);
+    element.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: transfer }));
+  }, text);
+}
+
+/**
+ * The body's rows as short labels: a text row's words, a media row's type and caption.
+ * @param p - The page.
+ * @returns One label per row.
+ */
+async function rows(p: Page): Promise<string[]> {
+  return p.evaluate((selector) => {
+    const root = document.querySelector(selector);
+    return [...(root?.querySelectorAll('.bn-block-content') ?? [])].map((row) => {
+      const type = row.getAttribute('data-content-type') ?? '?';
+      if (type === 'paragraph') return row.textContent ?? '';
+      const caption = row.querySelector('[data-testid="doc-media-caption"]')?.textContent ?? '';
+      return `${type}[${caption}]`;
+    });
+  }, EDITOR);
+}
+
+test('nodes copied on the canvas paste in as their words and pictures, named in the captions, as one step (inner#1351 A1, A2, A6)', async () => {
+  await openFreshDocument(page);
+  await page.keyboard.type('Lead');
+  await pastePicture(page, 'seed.png');
+  await expect(page.locator(`${IMAGE} img`)).toBeVisible({ timeout: UPLOAD_TIMEOUT });
+  const [ours] = await mediaAttr(page, 'url', ['image']);
+  await page.locator(`${EDITOR} p`).first().click();
+  await page.keyboard.press('End');
+
+  await pasteText(
+    page,
+    canvasClipboard([
+      { id: 't', type: 'text', position: { x: 0, y: 0 }, height: 100, data: { body: textBody('One', '_two_') } },
+      { id: 'i', type: 'image', position: { x: 0, y: 200 }, data: { name: 'Hero', content: ours } },
+    ]),
+  );
+
+  await expect(page.locator(IMAGE)).toHaveCount(2);
+  await expect(page.locator(`${IMAGE} img`)).toHaveCount(2, { timeout: UPLOAD_TIMEOUT });
+  expect(await rows(page)).toEqual(['Lead', 'One', '_two_', 'image[Hero]', 'image[]']);
+
+  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+z' : 'Control+z');
+  await expect.poll(() => rows(page)).toEqual(['Lead', 'image[]']);
+});
+
+test('a picture copied in the chat pastes in and is fetched into storage, named in its caption (inner#1351 A4) @needs-internet @needs-ingest @needs-storage', async () => {
+  await openFreshDocument(page);
+  await page.keyboard.type('Lead');
+
+  await pasteText(
+    page,
+    canvasClipboard([{ id: 'x', type: 'image', position: { x: 0, y: 0 }, data: { name: 'Found', content: OUTSIDE_PICTURE }, external: true }]),
+  );
+
+  await expect(page.locator(PENDING)).toBeVisible();
+  await expect(page.locator(`${IMAGE} img`)).toBeVisible({ timeout: UPLOAD_TIMEOUT });
+  const [url] = await mediaAttr(page, 'url', ['image']);
+  expect(url).not.toContain('w3.org');
+  expect(await rows(page)).toEqual(['Lead', 'image[Found]']);
+});
+
+test('a picture still uploading goes with one undo and comes back with redo, uploaded once (inner#1351 A6)', async () => {
+  await openFreshDocument(page);
+  await page.keyboard.type('Lead');
+  let tickets = 0;
+  let release: () => void = () => undefined;
+  const held = new Promise<void>((done) => {
+    release = done;
+  });
+  await page.route('**/api/v1/assets/upload-ticket', async (route) => {
+    tickets += 1;
+    await held;
+    await route.continue();
+  });
+
+  await pastePicture(page, 'held.png');
+  await expect(page.locator(PENDING)).toHaveAttribute('data-status', 'uploading');
+  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+z' : 'Control+z');
+  await expect(page.locator(PENDING)).toHaveCount(0);
+  expect(await rows(page)).toEqual(['Lead']);
+  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+Shift+z' : 'Control+Shift+z');
+  await expect(page.locator(PENDING)).toHaveAttribute('data-status', 'uploading');
+
+  release();
+  await expect(page.locator(`${IMAGE} img`)).toBeVisible({ timeout: UPLOAD_TIMEOUT });
+  expect(tickets).toBe(1);
+});
 
 test('Shift+click on a picture while the body is let go selects the picture and leaves the old words out (A20)', async () => {
   await openFreshDocument(page);
@@ -1257,14 +1385,14 @@ test('a failed upload says so in place, and a retry lands it (A6)', async () => 
 
   await pastePicture(page, 'flaky.png');
 
-  const placeholder = page.locator(PLACEHOLDER);
-  await expect(placeholder).toHaveAttribute('data-phase', 'failed', { timeout: 30_000 });
-  await expect(placeholder).toContainText('flaky.png');
+  const pending = page.locator(PENDING);
+  await expect(pending).toHaveAttribute('data-status', 'failed', { timeout: 30_000 });
+  await expect(pending).toContainText('flaky.png');
   await page.unroute('**/api/v1/assets/upload-ticket');
-  await page.getByTestId('doc-upload-retry').click();
+  await page.getByTestId('doc-pending-retry').click();
 
   await expect(page.locator(`${IMAGE} img`)).toBeVisible({ timeout: UPLOAD_TIMEOUT });
-  await expect(placeholder).toHaveCount(0);
+  await expect(pending).toHaveCount(0);
 });
 
 test('closing the tab during an upload asks first (A12)', async () => {
@@ -1279,7 +1407,7 @@ test('closing the tab during an upload asks first (A12)', async () => {
   });
 
   await pastePicture(page, 'held.png');
-  await expect(page.locator(PLACEHOLDER)).toHaveAttribute('data-phase', 'uploading');
+  await expect(page.locator(PENDING)).toHaveAttribute('data-status', 'uploading');
 
   // The page's close guard asks the registry of operations in flight; the
   // browser's own prompt is shown on that answer.
