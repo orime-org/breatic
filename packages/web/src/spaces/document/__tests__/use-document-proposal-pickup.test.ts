@@ -93,7 +93,7 @@ describe('taking up the cards pressed for this document', () => {
 
     await waitFor(() => {
       expect(cards().p1).toBeUndefined();
-      expect(toast.warning).toHaveBeenCalledWith('This Document is read-only: too many people have it open.');
+      expect(toast.warning).toHaveBeenCalledWith('You can only view this Document right now.');
     });
     expect(landProposal.mock.calls[0]?.[3]).toBe(false);
   });

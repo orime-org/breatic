@@ -150,7 +150,7 @@ describe('how a press that did not land is told (inner#1509, design §5.7)', () 
   it.each([
     ['changed', 'This passage has changed since the proposal.'],
     ['blockGone', 'This passage has been deleted.'],
-    ['readOnly', 'This Document is read-only: too many people have it open.'],
+    ['readOnly', 'You can only view this Document right now.'],
     ['spaceGone', 'This Document has been deleted.'],
   ] as const)('warns with a toast when it is %s, leaving the card to be pressed again', (outcome, line) => {
     store().start(proposal('p1'), 'write');

@@ -385,7 +385,7 @@
       "view": "Document で見る",
       "changed": "この段落は提案のあとに変更されています。",
       "blockGone": "この段落は削除されています。",
-      "readOnly": "この Document は読み取り専用です。開いている人が多すぎます。",
+      "readOnly": "この Document は現在閲覧のみです。",
       "spaceGone": "この Document は削除されています。",
       "failedComment": "コメントを追加できませんでした。もう一度お試しください。",
       "failedRewrite": "置き換えられませんでした。もう一度お試しください。",

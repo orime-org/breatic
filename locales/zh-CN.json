@@ -385,7 +385,7 @@
       "view": "在 Document 中查看",
       "changed": "这一段在提议之后改过了。",
       "blockGone": "这一段已经删掉了。",
-      "readOnly": "这个 Document 现在是只读的，同时打开的人太多。",
+      "readOnly": "这个 Document 现在只能查看。",
       "spaceGone": "这个 Document 已经删掉了。",
       "failedComment": "没能增加批注，再试一次。",
       "failedRewrite": "没能修改，再试一次。",

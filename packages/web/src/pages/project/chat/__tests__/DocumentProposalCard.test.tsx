@@ -237,7 +237,7 @@ describe('after a press', () => {
   it.each([
     ['changed', 'This passage has changed since the proposal.'],
     ['blockGone', 'This passage has been deleted.'],
-    ['readOnly', 'This Document is read-only: too many people have it open.'],
+    ['readOnly', 'You can only view this Document right now.'],
     ['spaceGone', 'This Document has been deleted.'],
   ] as const)('tells %s with a toast and offers the press again', async (outcome, line) => {
     draw(BASE);

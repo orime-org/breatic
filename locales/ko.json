@@ -385,7 +385,7 @@
       "view": "Document에서 보기",
       "changed": "이 단락은 제안 이후에 바뀌었습니다.",
       "blockGone": "이 단락은 삭제되었습니다.",
-      "readOnly": "이 Document는 지금 읽기 전용입니다. 동시에 연 사람이 너무 많습니다.",
+      "readOnly": "이 Document는 지금 보기만 가능합니다.",
       "spaceGone": "이 Document는 삭제되었습니다.",
       "failedComment": "댓글을 추가하지 못했습니다. 다시 시도하세요.",
       "failedRewrite": "바꾸지 못했습니다. 다시 시도하세요.",

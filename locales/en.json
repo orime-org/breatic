@@ -385,7 +385,7 @@
       "view": "View in Document",
       "changed": "This passage has changed since the proposal.",
       "blockGone": "This passage has been deleted.",
-      "readOnly": "This Document is read-only: too many people have it open.",
+      "readOnly": "You can only view this Document right now.",
       "spaceGone": "This Document has been deleted.",
       "failedComment": "Could not add the comment. Try again.",
       "failedRewrite": "Could not replace the passage. Try again.",

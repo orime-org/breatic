@@ -960,7 +960,7 @@ export function renderProductGuide(): string {
       `${quoted(t("chat.documentProposal.addComment"))} puts the rewritten words on the passage as a comment, and ` +
       `${quoted(t("chat.documentProposal.apply"))} replaces the passage with them; a passage with no words, such ` +
       "as an empty code block, an image, a video or an audio block, has only the second. When the passage holds colours, " +
-      `an alignment, column widths or comments, a rewrite card adds ${quoted(t("chat.documentProposal.lossy"))} ` +
+      `an alignment, column widths, merged cells or comments, a rewrite card adds ${quoted(t("chat.documentProposal.lossy"))} ` +
       "An insert card that goes after a passage first shows that passage under " +
       `${quoted(t("chat.documentProposal.insertAfter"))}, naming a passage with no words by its kind, such as ` +
       `${quoted(t("spaces.document.media.image"))} or ${quoted(t("chat.documentProposal.headingBlock"))}; it ` +
@@ -982,7 +982,7 @@ export function renderProductGuide(): string {
     "A press that does not land says why in a toast that goes after a moment, and the card shows its buttons " +
       "to press again; nothing changes in the document. When the passage changed or was deleted after the proposal " +
       `the toast says ${quoted(t("chat.documentProposal.changed"))} or ${quoted(t("chat.documentProposal.blockGone"))} ` +
-      `When the reader's connection to the document is read-only it says ${quoted(t("chat.documentProposal.readOnly"))} ` +
+      `When the reader can only view the document right now it says ${quoted(t("chat.documentProposal.readOnly"))} ` +
       `When the document is gone it says ${quoted(t("chat.documentProposal.spaceGone"))} When writing fails it says ` +
       `${quoted(t("chat.documentProposal.failedComment"))} ${quoted(t("chat.documentProposal.failedRewrite"))} or ` +
       `${quoted(t("chat.documentProposal.failedInsert"))} Pressing ${quoted(t("chat.documentProposal.view"))} ` +
