@@ -91,7 +91,7 @@ export interface GesturePublisher {
 /**
  * Read back what this client last got into the awareness state.
  * @param awareness - The awareness to read.
- * @returns The three published fields.
+ * @returns The published fields.
  */
 function readPublished(awareness: Awareness): Presence {
   const state = awareness.getLocalState() as Record<string, unknown> | null;
@@ -154,8 +154,9 @@ function samePoint(a: Point | null, b: Point | null): boolean {
  * Writes are rate-limited by {@link createPublishThrottle}: the frame folds
  * together a rubber-band drag, where the holding genuinely changes on every
  * pointer move and comparing values damps nothing, and the interval caps the
- * rate. All three fields go through the same limiter and land in one write,
- * because awareness resends the whole state whatever field you touch.
+ * rate. The holding, the pointer and the gesture go through the same limiter,
+ * and every field lands in one write, because awareness resends the whole
+ * state whatever field you touch.
  *
  * The de-duplication compares against the values read back out of awareness
  * rather than a local copy, so a state removed from the outside reads as a
@@ -176,9 +177,9 @@ function samePoint(a: Point | null, b: Point | null): boolean {
  * A pointer that has left the canvas keeps no screen point, which is what stops
  * a later pan from reviving the arrow at a stale spot.
  *
- * `activity` is the one field written outside the limiter: it changes only
- * when an operation starts or ends, and an end has to reach the peers even when
- * the page is getting no animation frames, the same reason a withdrawal is
+ * `activity` is the one field written outside the limiter, gathered per task
+ * by a microtask: it changes only when an operation starts or ends, and an end
+ * has to reach the peers even when the page is getting no animation frames, the same reason a withdrawal is
  * written directly (`packages/web/CLAUDE.md`).
  * @param input - The awareness, the sources, the sync state, and the canvas.
  * @returns The commands a gesture publishes its geometry with.
@@ -244,13 +245,27 @@ export function usePublishPresence(input: PublishPresenceInput): GesturePublishe
     return (): void => throttle.cancel();
   }, [awareness, throttle, selectedIds, pickSession, focusTargetId]);
 
-  // Activity: written in the same turn a mark starts or ends. Every change to
-  // the store comes through here; the de-duplication drops the ones that leave
-  // this Space's list as it was.
+  // Activity: written in the same task a mark starts or ends. The changes one
+  // task makes (a press beginning a mark per tile, a batch answering them) are
+  // gathered into one write by a microtask, which runs without animation
+  // frames; the de-duplication drops a list that came out as it was.
   React.useEffect(() => {
     if (!awareness) return undefined;
     publish();
-    return useUploadMarksStore.subscribe(() => publish());
+    let queued = false;
+    let live = true;
+    const unsubscribe = useUploadMarksStore.subscribe(() => {
+      if (queued) return;
+      queued = true;
+      queueMicrotask(() => {
+        queued = false;
+        if (live) publish();
+      });
+    });
+    return () => {
+      live = false;
+      unsubscribe();
+    };
   }, [awareness, spaceId, publish]);
 
   // Reconnect. This also covers the first publish being scheduled before the

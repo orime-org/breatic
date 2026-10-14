@@ -1038,29 +1038,40 @@ describe('usePublishPresence, the activity', () => {
     vi.restoreAllMocks();
   });
 
-  it('publishes a waiting operation in the same turn it starts', () => {
+  it('publishes a waiting operation in the same task it starts, without waiting for a frame', async () => {
     const awareness = makeAwareness();
     mount(awareness);
     vi.spyOn(Date, 'now').mockReturnValue(42);
-    act(() => {
+    await act(async () => {
       useUploadMarksStore.getState().begin('S', 'n1', 'image.grid');
     });
     expect(activityOf(awareness)).toEqual([{ nodeId: 'n1', action: 'image.grid', at: 42 }]);
   });
 
-  it('takes a node off in the same turn its operation fails or is answered', () => {
+  it('takes a node off in the same task its operation fails or is answered', async () => {
     const awareness = makeAwareness();
     mount(awareness);
     let a = '';
     let b = '';
-    act(() => {
+    await act(async () => {
       a = useUploadMarksStore.getState().begin('S', 'n1', 'upload');
       b = useUploadMarksStore.getState().begin('S', 'n2', 'upload');
     });
-    act(() => useUploadMarksStore.getState().fail('S', 'n1', a, { key: 'canvas.upload.failed' }));
+    await act(async () => useUploadMarksStore.getState().fail('S', 'n1', a, { key: 'canvas.upload.failed' }));
     expect(activityOf(awareness)).toEqual([expect.objectContaining({ nodeId: 'n2' })]);
-    act(() => useUploadMarksStore.getState().answer('S', 'n2', b));
+    await act(async () => useUploadMarksStore.getState().answer('S', 'n2', b));
     expect(activityOf(awareness)).toBeNull();
+  });
+
+  it('sends the operations a press starts together in one write', async () => {
+    const awareness = makeAwareness();
+    mount(awareness);
+    const write = vi.spyOn(awareness, 'setLocalState');
+    await act(async () => {
+      for (let i = 0; i < 64; i += 1) useUploadMarksStore.getState().begin('S', `n${i}`, 'image.grid');
+    });
+    expect(write).toHaveBeenCalledOnce();
+    expect(activityOf(awareness)).toHaveLength(64);
   });
 
   it('leaves another Space’s operations out', () => {
