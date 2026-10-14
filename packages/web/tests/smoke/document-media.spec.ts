@@ -889,6 +889,103 @@ test('a picture still uploading goes with one undo and comes back with redo, upl
   expect(tickets).toBe(1);
 });
 
+/**
+ * Puts a 1×2 table under the first line, off its handle's menu, and the caret
+ * in its first cell.
+ * @param p - The page.
+ * @throws {Error} When the first row has no box.
+ */
+async function tableWithCaret(p: Page): Promise<void> {
+  const row = p.locator(`${EDITOR} .bn-block-content`).first();
+  const box = await row.boundingBox();
+  if (box === null) throw new Error('the first row has no box');
+  await p.mouse.move(box.x + 40, box.y + Math.min(box.height / 2, 12), { steps: 3 });
+  await visibleSpace(p).getByTestId('doc-block-handle').click();
+  await p.getByTestId('doc-block-row-insertBelow').hover();
+  await p.getByTestId('doc-block-insert-table').hover();
+  await p.getByTestId('doc-table-size-1-2').click();
+  await expect(p.locator(`${EDITOR} table`)).toHaveCount(1);
+  await p.locator(`${EDITOR} table td`).first().click();
+}
+
+/**
+ * Holds every address fetch, so a pasted outside picture stays pending.
+ * @param p - The page.
+ */
+async function holdFetches(p: Page): Promise<void> {
+  await p.route('**/api/v1/assets/ingest-url', () => new Promise<void>(() => undefined));
+}
+
+// inner#1351 + inner#1390 A7: web content pasted or dropped into a table cell
+// puts its words in the cell and its media under the table.
+test('web content pasted into a table cell puts its words in the cell and its picture under the table (inner#1351 A7)', async () => {
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  await openFreshDocument(page);
+  await page.keyboard.type('Lead');
+  await holdFetches(page);
+  await tableWithCaret(page);
+
+  await page.locator(EDITOR).evaluate((element, url) => {
+    const transfer = new DataTransfer();
+    transfer.setData(
+      'text/html',
+      `<p>words</p><img src="${url}"><table><tr><td>a</td><td>b</td></tr><tr><td>c</td></tr></table>`,
+    );
+    transfer.setData('text/plain', 'words');
+    element.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: transfer }));
+  }, OUTSIDE_PICTURE);
+
+  await expect(page.locator(PENDING)).toBeVisible();
+  await expect(page.locator(`${EDITOR} table td`).first()).toContainText('words');
+  const kinds = await types(page);
+  expect(kinds[kinds.indexOf('table') + 1]).toBe('image');
+  expect(errors).toEqual([]);
+});
+
+test('web content dropped into a table cell puts its words in the cell and its picture under the table (inner#1351 A5, A7)', async () => {
+  await openFreshDocument(page);
+  await page.keyboard.type('Lead');
+  await holdFetches(page);
+  await tableWithCaret(page);
+  const cell = await page.locator(`${EDITOR} table td`).first().boundingBox();
+  if (cell === null) throw new Error('the cell has no box');
+
+  await page.locator(EDITOR).evaluate(
+    (element, [url, x, y]) => {
+      const transfer = new DataTransfer();
+      transfer.setData('text/html', `<p>dropped</p><img src="${url}">`);
+      transfer.setData('text/plain', 'dropped');
+      const at = { clientX: x as number, clientY: y as number, bubbles: true, cancelable: true, dataTransfer: transfer };
+      element.dispatchEvent(new DragEvent('dragover', at));
+      element.dispatchEvent(new DragEvent('drop', at));
+    },
+    [OUTSIDE_PICTURE, cell.x + cell.width / 2, cell.y + cell.height / 2] as const,
+  );
+
+  await expect(page.locator(PENDING)).toBeVisible();
+  await expect(page.locator(`${EDITOR} table td`).first()).toContainText('dropped');
+  expect(await types(page)).toEqual(['paragraph', 'table', 'image', 'paragraph']);
+});
+
+test('words typed just before a paste stay when the paste is undone (inner#1351 A6)', async () => {
+  await openFreshDocument(page);
+  await holdFetches(page);
+  await page.keyboard.type('Lead typed');
+
+  await page.locator(EDITOR).evaluate((element, url) => {
+    const transfer = new DataTransfer();
+    transfer.setData('text/html', `<p>web words</p><img src="${url}">`);
+    transfer.setData('text/plain', 'web words');
+    element.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: transfer }));
+  }, OUTSIDE_PICTURE);
+  await expect(page.locator(PENDING)).toBeVisible();
+  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+z' : 'Control+z');
+
+  await expect(page.locator(PENDING)).toHaveCount(0);
+  expect(await rows(page)).toEqual(['Lead typed']);
+});
+
 test('Shift+click on a picture while the body is let go selects the picture and leaves the old words out (A20)', async () => {
   await openFreshDocument(page);
   await page.keyboard.type('hello world');

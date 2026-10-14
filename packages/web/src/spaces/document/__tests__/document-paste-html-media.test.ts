@@ -246,17 +246,30 @@ describe('with the caret in a table cell (A7)', () => {
     expect(sink.start).toHaveBeenCalledOnce();
   });
 
-  it('web content with a picture and a ragged table pastes whole', () => {
+  it('web content with a picture and a ragged table lands as it does without the picture, the picture under the table', () => {
+    const TABLE_HTML = '<table><tr><td>a</td><td>b</td></tr><tr><td>c</td></tr></table>';
+    const plain = open([TABLE, { type: 'paragraph', content: 'after' }]);
+    caretIn(plain.editor, 0);
+    paste(plain.editor, `<p>words</p>${TABLE_HTML}`, 'words a b c');
+    const withPicture = open([TABLE, { type: 'paragraph', content: 'after' }]);
+    caretIn(withPicture.editor, 0);
+
+    paste(withPicture.editor, `<p>words</p><img src="https://elsewhere.example/a.png">${TABLE_HTML}`, 'words a b c');
+
+    const expected = shape(plain.editor);
+    expected.splice(expected.indexOf('table') + 1, 0, 'image[pending|]');
+    expect(shape(withPicture.editor)).toEqual(expected);
+    expect(withPicture.sink.start).toHaveBeenCalledOnce();
+  });
+
+  it('a picture alone puts nothing in the cell and the picture under the table', () => {
     const { editor, sink } = open([TABLE, { type: 'paragraph', content: 'after' }]);
     caretIn(editor, 0);
 
-    paste(
-      editor,
-      '<img src="https://elsewhere.example/a.png"><table><tr><td>a</td><td>b</td></tr><tr><td>c</td></tr></table>',
-      'a b c',
-    );
+    paste(editor, '<img src="https://elsewhere.example/a.png">', '');
 
-    expect(shape(editor)).toContain('image[pending|]');
+    expect(firstCell(editor, 0)).toBe('cell ');
+    expect(shape(editor)).toEqual(['table', 'image[pending|]', 'paragraph:after']);
     expect(sink.start).toHaveBeenCalledOnce();
   });
 

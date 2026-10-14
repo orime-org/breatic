@@ -29,13 +29,14 @@
  * `transformPasted` sees the slice. HTML landing in a cell is therefore read
  * into blocks first (`transformPastedHTML`, which a paste, a drop and a
  * Markdown paste all pass through); its media come out and are judged as
- * above, the rest goes on to the cell, and `handlePaste` or `handleDrop` puts
- * both in, the media under the table, in one transaction (design §5.4, A7).
+ * above, and the rest goes on to the cell the way it would have without them.
+ * The media land under the table in the same dispatch, appended to the
+ * transaction that put the rest in, so one undo takes both (design §5.4, A7).
  */
 
 import { blockToNode, createExtension, type ExtensionFactoryInstance } from '@blocknote/core';
 import { Fragment, Slice, type Node as PMNode } from '@tiptap/pm/model';
-import { Plugin, type Transaction } from '@tiptap/pm/state';
+import { Plugin, type EditorState, type Transaction } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 
 import { routeAddress } from '@web/spaces/document/document-canvas-paste';
@@ -48,6 +49,7 @@ import {
 } from '@web/spaces/document/document-file-input';
 import { isMediaBlockType, pendingUploadId } from '@web/spaces/document/document-media-types';
 import type { UploadSource } from '@web/spaces/document/document-upload-controller';
+import { markOwnUndoStep } from '@web/spaces/document/document-undo-step';
 
 /** What the body needs to judge pasted media. */
 export interface PastedMediaOptions {
@@ -196,29 +198,19 @@ interface CellLanding {
 }
 
 /**
- * Puts HTML that landed in a table cell in: the rest, the way the paste or
- * the drop would, and the media under the table, in one transaction.
- * @param view - The editor view.
- * @param landing - What landed and where.
- * @param place - Puts the rest in.
- * @param uiEvent - `paste` or `drop`, as ProseMirror marks its own.
+ * Puts a cell landing's media under the table its place is in, as an undo
+ * step of its own.
+ * @param state - The state the media go into.
+ * @param at - Where the landing is, in that state's document.
+ * @param media - The media.
+ * @returns The transaction.
  */
-function landInCell(
-  view: EditorView,
-  landing: CellLanding,
-  place: (tr: Transaction) => void,
-  uiEvent: 'paste' | 'drop',
-): void {
-  const tr = view.state.tr;
-  const below = pasteTarget(view.state, view.state.doc.resolve(landing.at)).gap;
-  if (!landing.onlyMedia) place(tr);
-  const gap = tr.mapping.map(below);
-  const nodes = quotedAs(landing.media, quotedBeside(tr.doc, gap, false)).map((block) =>
-    blockToNode({ id: crypto.randomUUID(), ...block } as never, view.state.schema),
+function mediaUnderTable(state: EditorState, at: number, media: readonly BlockSpec[]): Transaction {
+  const gap = pasteTarget(state, state.doc.resolve(at)).gap;
+  const nodes = quotedAs(media, quotedBeside(state.doc, gap, false)).map((block) =>
+    blockToNode({ id: crypto.randomUUID(), ...block } as never, state.schema),
   );
-  tr.insert(gap, Fragment.from(nodes));
-  if (uiEvent === 'paste') tr.setMeta('paste', true);
-  view.dispatch(tr.scrollIntoView().setMeta('uiEvent', uiEvent));
+  return markOwnUndoStep(state.tr.insert(gap, Fragment.from(nodes)));
 }
 
 /**
@@ -263,23 +255,36 @@ export function documentPastedMediaExtension(
         }
       }
       if (dropped > 0) options?.onLeftOut(dropped);
-      landing = { at, media, queued: waiting, onlyMedia: rest.length === 0 };
+      const held: CellLanding = { at, media, queued: waiting, onlyMedia: rest.length === 0 };
+      landing = held;
+      // A paste or a drop is put in within the event that read it.
+      queueMicrotask(() => {
+        if (landing === held) landing = null;
+      });
       return rest.length === 0 ? '' : editor.blocksToFullHTML(rest as never);
     };
 
     /**
-     * Lands what {@link readForCell} kept, if anything.
-     * @param view - The editor view.
-     * @param place - Puts the rest in.
-     * @param uiEvent - `paste` or `drop`.
-     * @returns True when it landed.
+     * Takes the landing whose HTML was read, starting its uploads' wait.
+     * @returns The landing, or null when none is held.
      */
-    const land = (view: EditorView, place: (tr: Transaction) => void, uiEvent: 'paste' | 'drop'): boolean => {
+    const take = (): CellLanding | null => {
       const held = landing;
       landing = null;
-      if (held === null) return false;
-      queued = [...queued, ...held.queued];
-      landInCell(view, held, place, uiEvent);
+      if (held !== null) queued = [...queued, ...held.queued];
+      return held;
+    };
+
+    /**
+     * Puts in a landing that held nothing but media: there is no rest for
+     * the paste or the drop to put in, so the media go in by themselves.
+     * @param view - The editor view.
+     * @returns True when it was such a landing.
+     */
+    const landOnlyMedia = (view: EditorView): boolean => {
+      if (landing?.onlyMedia !== true) return false;
+      const held = take()!;
+      view.dispatch(mediaUnderTable(view.state, held.at, held.media).scrollIntoView());
       return true;
     };
 
@@ -313,11 +318,16 @@ export function documentPastedMediaExtension(
               if (fragment === slice.content) return slice;
               return fragment.childCount === 0 ? Slice.empty : Slice.maxOpen(fragment);
             },
-            handlePaste: (view, _event, slice) => land(view, (tr) => tr.replaceSelection(slice), 'paste'),
-            handleDrop: (view, _event, slice, moved) => {
-              const at = landing?.at;
-              return !moved && at !== undefined && land(view, (tr) => tr.replaceRange(at, at, slice), 'drop');
-            },
+            handlePaste: (view) => landOnlyMedia(view),
+            handleDrop: (view, _event, _slice, moved) => !moved && landOnlyMedia(view),
+          },
+          // The rest went in the way it would have without the media; the
+          // media follow in the same dispatch.
+          appendTransaction: (transactions, _old, state) => {
+            if (landing === null || !transactions.some((tr) => tr.docChanged)) return null;
+            const held = take()!;
+            const at = transactions.reduce((pos, tr) => tr.mapping.map(pos), held.at);
+            return mediaUnderTable(state, at, held.media);
           },
           view: () => ({
             update: (view) => {
