@@ -10,11 +10,18 @@
  */
 
 import { blockToNode } from '@blocknote/core';
-import { Fragment, Slice } from '@tiptap/pm/model';
+import { Fragment, Slice, type ResolvedPos } from '@tiptap/pm/model';
 
 import { parseClipboard } from '@web/spaces/canvas/node-clipboard';
 import { planCanvasPaste, type PastedMedia } from '@web/spaces/document/document-canvas-paste';
-import { insertAtGap, pasteTarget, type BlockSpec, type PasteHandler } from '@web/spaces/document/document-file-input';
+import {
+  inTableCell,
+  insertAtGap,
+  pasteTarget,
+  type BlockSpec,
+  type PasteHandler,
+} from '@web/spaces/document/document-file-input';
+import { markOwnUndoStep } from '@web/spaces/document/document-undo-step';
 import { pendingBlock } from '@web/spaces/document/document-uploads';
 import type { UploadSource } from '@web/spaces/document/document-upload-controller';
 
@@ -24,8 +31,6 @@ export interface CanvasPasteSink {
   start: (uploadId: string, source: UploadSource) => void;
   /** Tells the reader how many nodes could not be pasted. */
   notPasted: (count: number) => void;
-  /** Closes the undo step around the paste, so it is a step of its own. */
-  stopCapturing?: () => void;
 }
 
 /**
@@ -37,6 +42,33 @@ function sourceOf(media: PastedMedia): UploadSource {
   return media.source.kind === 'ours'
     ? { kind: 'ours', url: media.source.url, ...(media.source.coverUrl !== undefined && { coverUrl: media.source.coverUrl }) }
     : { kind: 'address', url: media.source.url };
+}
+
+/**
+ * Lines of a text node as the place they land takes them, the words as they
+ * are, never read as markdown. A paragraph takes one paragraph per line,
+ * opened at both ends so the first line joins the words before the caret and
+ * the last the words after it, as a plain text paste does; a table cell holds
+ * no paragraphs, so its lines are joined by line breaks; a code block holds
+ * only text, so they are joined by newlines.
+ * @param $at - Where they land.
+ * @param lines - The lines.
+ * @returns The slice.
+ */
+function textSlice($at: ResolvedPos, lines: readonly string[]): Slice {
+  const { schema } = $at.doc.type;
+  if ($at.parent.type.spec.code === true) return new Slice(Fragment.from(schema.text(lines.join('\n'))), 0, 0);
+  if (inTableCell($at)) {
+    const inline = lines.flatMap((line, index) => [
+      ...(index > 0 ? [schema.nodes['hardBreak']!.create()] : []),
+      ...(line === '' ? [] : [schema.text(line)]),
+    ]);
+    return new Slice(Fragment.from(inline), 0, 0);
+  }
+  const nodes = lines.map((line) =>
+    blockToNode({ id: crypto.randomUUID(), type: 'paragraph', content: line } as never, schema),
+  );
+  return new Slice(Fragment.from(nodes), 2, 2);
 }
 
 /**
@@ -54,17 +86,8 @@ export function canvasPasteHandler(sink: CanvasPasteSink, next: PasteHandler): P
     const view = editor.prosemirrorView;
     if (view !== undefined && view !== null && items.length > 0) {
       if (items.every((item) => item.kind === 'text')) {
-        // One paragraph per line, opened at both ends so the first line joins
-        // the words before the caret and the last the words after it, as a
-        // plain text paste does; the words go in as they are, never read as
-        // markdown.
         const lines = items.flatMap((item) => (item.kind === 'text' ? item.lines : []));
-        const nodes = lines.map((line) =>
-          blockToNode({ id: crypto.randomUUID(), type: 'paragraph', content: line } as never, view.state.schema),
-        );
-        sink.stopCapturing?.();
-        view.dispatch(view.state.tr.replaceSelection(new Slice(Fragment.from(nodes), 2, 2)));
-        sink.stopCapturing?.();
+        view.dispatch(markOwnUndoStep(view.state.tr.replaceSelection(textSlice(view.state.selection.$from, lines))));
       } else {
         const { gap, aimed } = pasteTarget(view.state);
         const started: { uploadId: string; source: UploadSource }[] = [];
@@ -79,9 +102,7 @@ export function canvasPasteHandler(sink: CanvasPasteSink, next: PasteHandler): P
             }),
           ];
         });
-        sink.stopCapturing?.();
         insertAtGap(view, gap, aimed, blocks);
-        sink.stopCapturing?.();
         for (const { uploadId, source } of started) sink.start(uploadId, source);
       }
     }

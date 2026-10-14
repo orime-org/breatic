@@ -15,7 +15,7 @@
 import * as React from 'react';
 
 import { uploadAcceptFor } from '@web/spaces/canvas/canvas-upload';
-import type { FileEntry, PendingBlock } from '@web/spaces/document/document-uploads';
+import type { FileUploads, PendingBlock } from '@web/spaces/document/document-uploads';
 import type { MediaBlockType } from '@web/spaces/document/document-media-types';
 
 /**
@@ -39,7 +39,7 @@ export function useDocumentMediaPick(): MediaPick | null {
 
 interface DocumentMediaPickerProps {
   /** What admits chosen files; null where nothing may be picked (a viewer). */
-  files: FileEntry | null;
+  files: FileUploads | null;
   children: React.ReactNode;
 }
 
@@ -74,10 +74,7 @@ export function DocumentMediaPicker({ files, children }: DocumentMediaPickerProp
       if (chosen.length === 0 || place === null || files === null) return;
       const prepared = files.prepare(chosen);
       if (prepared === null) return;
-      files.stopCapturing();
-      const placed = place(prepared.blocks);
-      files.stopCapturing();
-      if (placed) prepared.start();
+      if (place(prepared.blocks)) prepared.start();
     },
     [files],
   );

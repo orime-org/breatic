@@ -23,23 +23,31 @@
  * takes that drop first. The slice it returns is what is synced, so an
  * outside address never reaches the shared document. The uploads start once
  * the paste is in: the next update that holds the pending blocks.
+ *
+ * A table cell takes only words, and ProseMirror fits a slice to the cell
+ * it lands in while it reads the HTML, so the media would be gone before
+ * `transformPasted` sees the slice. HTML landing in a cell is therefore read
+ * into blocks first (`transformPastedHTML`, which a paste, a drop and a
+ * Markdown paste all pass through); its media come out and are judged as
+ * above, the rest goes on to the cell, and `handlePaste` or `handleDrop` puts
+ * both in, the media under the table, in one transaction (design §5.4, A7).
  */
 
-import { createExtension, type ExtensionFactoryInstance } from '@blocknote/core';
+import { blockToNode, createExtension, type ExtensionFactoryInstance } from '@blocknote/core';
 import { Fragment, Slice, type Node as PMNode } from '@tiptap/pm/model';
-import { Plugin } from '@tiptap/pm/state';
+import { Plugin, type Transaction } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 
 import { routeAddress } from '@web/spaces/document/document-canvas-paste';
 import {
-  insertAtGap,
+  inTableCell,
   pasteTarget,
+  quotedAs,
+  quotedBeside,
   type BlockSpec,
-  type PasteHandler,
 } from '@web/spaces/document/document-file-input';
-import { isMediaBlockType, type MediaBlockType } from '@web/spaces/document/document-media-types';
+import { isMediaBlockType } from '@web/spaces/document/document-media-types';
 import type { UploadSource } from '@web/spaces/document/document-upload-controller';
-import { pendingBlock } from '@web/spaces/document/document-uploads';
 
 /** What the body needs to judge pasted media. */
 export interface PastedMediaOptions {
@@ -65,15 +73,15 @@ interface Queued {
 }
 
 /**
- * What becomes of a pasted block's medium, or null when it holds none.
- * @param own - The block's own node, the container's first child.
+ * What becomes of a pasted medium.
+ * @param attrs - The medium's attributes or props.
  * @param prefix - Our prefix, or null.
  * @returns The verdict.
  */
-function verdictOf(own: PMNode, prefix: string | null): Verdict {
-  const uploadId = own.attrs['uploadId'];
+function verdictOf(attrs: Readonly<Record<string, unknown>>, prefix: string | null): Verdict {
+  const uploadId = attrs['uploadId'];
   if (typeof uploadId === 'string' && uploadId !== '') return 'keep';
-  const url = own.attrs['url'];
+  const url = attrs['url'];
   if (typeof url !== 'string' || url === '') return 'drop';
   if (prefix !== null && url.startsWith(prefix)) return 'keep';
   return routeAddress(url) === 'skip' ? 'drop' : 'pend';
@@ -101,7 +109,7 @@ function judge(
   const kept: PMNode[] = [];
   fragment.forEach((node) => {
     const own = node.type.name === 'blockContainer' ? node.firstChild : null;
-    const judged = own !== null && isMediaBlockType(own.type.name) ? verdictOf(own, prefix) : null;
+    const judged = own !== null && isMediaBlockType(own.type.name) ? verdictOf(own.attrs, prefix) : null;
     const verdict = judged === 'pend' && queued === null ? 'drop' : judged;
     if (verdict === 'drop') {
       changed = true;
@@ -154,6 +162,68 @@ function pendingIds(doc: PMNode): Set<string> {
   return ids;
 }
 
+/** A block as BlockNote reads it out of HTML. */
+interface ReadBlock {
+  readonly type: string;
+  readonly props: Readonly<Record<string, unknown>>;
+  readonly children: readonly ReadBlock[];
+}
+
+/**
+ * Blocks with every medium taken out, in document order; the rows nested
+ * under a medium stay, in its place.
+ * @param blocks - The blocks.
+ * @param taken - Collects the media, without their nested rows.
+ * @returns The blocks without them.
+ */
+function mediaOut(blocks: readonly ReadBlock[], taken: ReadBlock[]): ReadBlock[] {
+  return blocks.flatMap((block) => {
+    if (isMediaBlockType(block.type)) {
+      taken.push(block);
+      return mediaOut(block.children, taken);
+    }
+    return [{ ...block, children: mediaOut(block.children, taken) }];
+  });
+}
+
+/** HTML landing in a table cell, with its media taken out and judged. */
+interface CellLanding {
+  /** Where it lands. */
+  readonly at: number;
+  /** The media, judged, to go under the table. */
+  readonly media: readonly BlockSpec[];
+  /** The uploads the pending ones among them wait for. */
+  readonly queued: readonly Queued[];
+  /** Whether nothing but media was in it. */
+  readonly onlyMedia: boolean;
+}
+
+/**
+ * Puts HTML that landed in a table cell in: the rest, the way the paste or
+ * the drop would, and the media under the table, in one transaction.
+ * @param view - The editor view.
+ * @param landing - What landed and where.
+ * @param place - Puts the rest in.
+ * @param uiEvent - `paste` or `drop`, as ProseMirror marks its own.
+ */
+function landInCell(
+  view: EditorView,
+  landing: CellLanding,
+  place: (tr: Transaction) => void,
+  uiEvent: 'paste' | 'drop',
+): void {
+  const tr = view.state.tr;
+  const below = pasteTarget(view.state, view.state.doc.resolve(landing.at)).gap;
+  if (!landing.onlyMedia) place(tr);
+  const gap = tr.mapping.map(below);
+  const nodes = quotedAs(landing.media, quotedBeside(tr.doc, gap, false)).map((block) =>
+    blockToNode({ id: crypto.randomUUID(), ...block } as never, view.state.schema),
+  );
+  tr.insert(gap, Fragment.from(nodes));
+  if (uiEvent === 'paste') tr.setMeta('paste', true);
+  view.dispatch(tr.scrollIntoView().setMeta('uiEvent', uiEvent));
+}
+
 /**
  * The extension that judges pasted media.
  * @param options - Our prefix, where the count goes and where uploads start;
@@ -164,21 +234,92 @@ function pendingIds(doc: PMNode): Set<string> {
 export function documentPastedMediaExtension(
   options: PastedMediaOptions | undefined,
 ): ExtensionFactoryInstance {
-  return createExtension(() => {
+  return createExtension(({ editor }) => {
     let queued: Queued[] = [];
+    let dropAt: number | null = null;
+    let landing: CellLanding | null = null;
+
+    /**
+     * Takes the media out of HTML landing in a table cell and judges them.
+     * @param html - The HTML.
+     * @param at - Where it lands.
+     * @returns The HTML that goes on to the cell.
+     */
+    const readForCell = (html: string, at: number): string => {
+      const taken: ReadBlock[] = [];
+      const rest = mediaOut(editor.tryParseHTMLToBlocks(html) as unknown as ReadBlock[], taken);
+      if (taken.length === 0) return html;
+      const prefix = options?.assetUrlPrefix() ?? null;
+      const media: BlockSpec[] = [];
+      const waiting: Queued[] = [];
+      let dropped = 0;
+      for (const { type, props } of taken) {
+        const verdict = verdictOf(props, prefix);
+        if (verdict === 'keep') {
+          media.push({ type, props });
+        } else if (verdict === 'pend' && options?.start !== undefined) {
+          const uploadId = crypto.randomUUID();
+          waiting.push({ uploadId, url: props['url'] as string });
+          media.push({ type, props: { ...props, url: '', uploadId } });
+        } else {
+          dropped += 1;
+        }
+      }
+      if (dropped > 0) options?.onLeftOut(dropped);
+      landing = { at, media, queued: waiting, onlyMedia: rest.length === 0 };
+      return rest.length === 0 ? '' : editor.blocksToFullHTML(rest as never);
+    };
+
+    /**
+     * Lands what {@link readForCell} kept, if anything.
+     * @param view - The editor view.
+     * @param place - Puts the rest in.
+     * @param uiEvent - `paste` or `drop`.
+     * @returns True when it landed.
+     */
+    const land = (view: EditorView, place: (tr: Transaction) => void, uiEvent: 'paste' | 'drop'): boolean => {
+      const held = landing;
+      landing = null;
+      if (held === null) return false;
+      queued = [...queued, ...held.queued];
+      landInCell(view, held, place, uiEvent);
+      return true;
+    };
+
     return {
       key: 'documentPastedMedia',
       prosemirrorPlugins: [
         new Plugin({
           props: {
+            handleDOMEvents: {
+              // Where an outside drop lands, for the HTML it carries.
+              drop: (view, event) => {
+                dropAt = view.dragging === null ? (view.posAtCoords({ left: event.clientX, top: event.clientY })?.pos ?? null) : null;
+                queueMicrotask(() => {
+                  dropAt = null;
+                });
+                return false;
+              },
+            },
+            transformPastedHTML: (html, view) => {
+              const at = dropAt ?? view.state.selection.from;
+              dropAt = null;
+              landing = null;
+              return inTableCell(view.state.doc.resolve(at)) ? readForCell(html, at) : html;
+            },
             transformPasted: (slice) => {
               const found: Queued[] = [];
               const prefix = options?.assetUrlPrefix() ?? null;
               const { fragment, dropped } = judge(slice.content, prefix, options?.start === undefined ? null : found);
-              queued = found;
+              queued = [...queued, ...found];
               if (dropped > 0) options?.onLeftOut(dropped);
               if (fragment === slice.content) return slice;
               return fragment.childCount === 0 ? Slice.empty : Slice.maxOpen(fragment);
+            },
+            handlePaste: (view, _event, slice) => land(view, (tr) => tr.replaceSelection(slice), 'paste'),
+            handleDrop: (view, _event, slice, moved) => {
+              const at = landing?.at;
+              return !moved && at !== undefined && land(view, (tr) => tr.replaceRange(at, at, slice), 'drop');
             },
           },
           view: () => ({
@@ -200,105 +341,3 @@ export function documentPastedMediaExtension(
 
 /** Whether a piece of HTML carries an image, a video or an audio. */
 export const HTML_MEDIA = /<(img|video|audio)\b/i;
-
-/** The block type each media element becomes. */
-const TYPE_OF_TAG: Readonly<Record<string, MediaBlockType>> = { IMG: 'image', VIDEO: 'video', AUDIO: 'audio' };
-
-/** A medium taken out of pasted HTML. */
-interface TakenMedium {
-  readonly type: MediaBlockType;
-  readonly url: string;
-  readonly name: string;
-  readonly caption: string;
-}
-
-/**
- * Takes every image, video and audio out of a parsed piece of HTML, with the
- * figure around it, reading its address, its `alt` as the name and the
- * figure's caption the way BlockNote's parse rules read them.
- * @param body - The parsed HTML's body; the media are removed from it.
- * @returns The media, in document order.
- */
-function takeMedia(body: HTMLElement): TakenMedium[] {
-  return Array.from(body.querySelectorAll('img, video, audio')).map((element) => {
-    const figure = element.closest('figure');
-    const url = element.getAttribute('src') ?? element.querySelector('source')?.getAttribute('src') ?? '';
-    const caption = figure?.querySelector('figcaption')?.textContent?.trim() ?? '';
-    (figure ?? element).remove();
-    return {
-      type: TYPE_OF_TAG[element.tagName]!,
-      url,
-      name: element.getAttribute('alt') ?? '',
-      caption,
-    };
-  });
-}
-
-/**
- * Whether the selection is inside a table cell.
- * @param view - The editor view.
- * @returns True when an ancestor of the selection's head is a cell.
- */
-function inTableCell(view: EditorView): boolean {
-  const { $head } = view.state.selection;
-  for (let depth = $head.depth; depth > 0; depth -= 1) {
-    const name = $head.node(depth).type.name;
-    if (name === 'tableCell' || name === 'tableHeader') return true;
-  }
-  return false;
-}
-
-/**
- * The paste of web content with the caret in a table cell (design §5.4).
- *
- * A table cell takes only words, so the default paste would flatten the HTML
- * into the cell and every medium would be gone. Here the media come out
- * first: the rest goes to the default paste, into the cell, and the media
- * land under the table right after it, in the same undo step (nothing closes
- * the step between the two dispatches).
- * @param options - Our prefix, where the count goes and where uploads start.
- * @param next - The paste every other clipboard goes to.
- * @returns The hook.
- */
-export function cellMediaPasteHandler(options: PastedMediaOptions, next: PasteHandler): PasteHandler {
-  return (context) => {
-    const { event } = context;
-    const view = context.editor.prosemirrorView;
-    const data = event.clipboardData;
-    const html = data?.getData('text/html') ?? '';
-    if (view === undefined || view === null || data === null || !HTML_MEDIA.test(html) || !inTableCell(view)) {
-      return next(context);
-    }
-    const parsed = new DOMParser().parseFromString(html, 'text/html');
-    const taken = takeMedia(parsed.body);
-    const rest = parsed.body.innerHTML;
-    const without: Pick<DataTransfer, 'types' | 'files' | 'items' | 'getData'> = {
-      types: data.types,
-      files: data.files,
-      items: data.items,
-      getData: (format: string): string => (format === 'text/html' ? rest : data.getData(format)),
-    };
-    Object.defineProperty(event, 'clipboardData', { value: without });
-    const handled = next(context);
-
-    const prefix = options.assetUrlPrefix();
-    const blocks: BlockSpec[] = [];
-    const started: { uploadId: string; url: string }[] = [];
-    let dropped = 0;
-    for (const medium of taken) {
-      if (prefix !== null && medium.url.startsWith(prefix)) {
-        blocks.push({ type: medium.type, props: { url: medium.url, name: medium.name, caption: medium.caption } });
-      } else if (medium.url === '' || routeAddress(medium.url) === 'skip' || options.start === undefined) {
-        dropped += 1;
-      } else {
-        const uploadId = crypto.randomUUID();
-        started.push({ uploadId, url: medium.url });
-        blocks.push(pendingBlock(medium.type, uploadId, medium.name, medium.caption));
-      }
-    }
-    if (blocks.length > 0) insertAtGap(view, pasteTarget(view.state).gap, false, blocks);
-    for (const { uploadId, url } of started) options.start?.(uploadId, { kind: 'address', url });
-    if (dropped > 0) options.onLeftOut(dropped);
-    return handled;
-  };
-}

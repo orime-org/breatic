@@ -81,7 +81,7 @@ import {
 } from '@web/spaces/document/document-undo-blocknote';
 import { marksStayOnTextExtension } from '@web/spaces/document/document-marks-on-text';
 import { documentFallbackExtension } from '@web/spaces/document/document-unsupported-blocknote';
-import { createFileUploads, type FileEntry } from '@web/spaces/document/document-uploads';
+import { createFileUploads, type FileUploads } from '@web/spaces/document/document-uploads';
 import { insertAtGap, type FilesArrival } from '@web/spaces/document/document-file-input';
 import { openPageBodyUploads } from '@web/spaces/document/document-page-uploads';
 import type { PendingUploadsStore } from '@web/spaces/document/document-pending-uploads';
@@ -121,7 +121,7 @@ export interface DocumentEditorHandle {
    * What admits files into this body (inner#1127, inner#1351), or null for an
    * editor built with nowhere to upload them to.
    */
-  files: FileEntry | null;
+  files: FileUploads | null;
   /**
    * What the body's pending media blocks read (inner#1351 + inner#1390), or
    * null for an editor built with nowhere to upload to.
@@ -197,23 +197,18 @@ function createDocumentEditor(
     target === undefined
       ? null
       : openPageBodyUploads(target, doc, docName.documentSpace(target.projectId, target.spaceId), inputs.provider);
-  const files: FileEntry | null =
+  const files: FileUploads | null =
     uploads === null
       ? null
-      : {
-        ...createFileUploads({
-          // The ticket route refuses an oversize file itself; a cap not read
-          // yet only skips the early refusal.
-          maxUploadBytes: () => assetsApi.cachedUploadConfig()?.maxUploadBytes ?? Infinity,
-          refuse: (key, params) => {
-            toast.warning(t(key, params));
-          },
-          start: uploads.start,
-        }),
-        stopCapturing: () => {
-          undoManager.stopCapturing();
+      : createFileUploads({
+        // The ticket route refuses an oversize file itself; a cap not read
+        // yet only skips the early refusal.
+        maxUploadBytes: () => assetsApi.cachedUploadConfig()?.maxUploadBytes ?? Infinity,
+        refuse: (key, params) => {
+          toast.warning(t(key, params));
         },
-      };
+        start: uploads.start,
+      });
   if (uploads !== null) {
     // Fetched now so a paste can tell our media from outside links the moment
     // it lands (inner#1127 A18). A fetch that fails leaves every pasted
@@ -229,9 +224,7 @@ function createDocumentEditor(
         const view = viewOf(editor);
         const prepared = view === null ? null : files.prepare(arrival.files);
         if (view === null || prepared === null) return;
-        files.stopCapturing();
         insertAtGap(view, arrival.gap, arrival.aimed, prepared.blocks);
-        files.stopCapturing();
         prepared.start();
       },
     }),
@@ -247,9 +240,6 @@ function createDocumentEditor(
         start: uploads.start,
         notPasted: (count: number) => {
           toast.warning(t('spaces.document.media.notPasted', { count }));
-        },
-        stopCapturing: () => {
-          undoManager.stopCapturing();
         },
       },
     }),

@@ -22,12 +22,13 @@ import {
   type ComputeDropPositionContext,
   type ExtensionFactoryInstance,
 } from '@blocknote/core';
-import { Fragment, type Node as PMNode } from '@tiptap/pm/model';
+import { Fragment, type Node as PMNode, type ResolvedPos } from '@tiptap/pm/model';
 import { Plugin, type EditorState } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 
 import { landingFor } from '@web/spaces/document/document-drag-move';
 import { QUOTED } from '@web/spaces/document/document-list-block';
+import { markOwnUndoStep } from '@web/spaces/document/document-undo-step';
 
 /** A position between two blocks, where inserted blocks go. */
 export type UploadGap = number;
@@ -108,32 +109,46 @@ export interface PasteTarget {
 }
 
 /**
- * Where a paste of files goes: after the block the caret is in, or above it
- * when it is an empty line, which keeps the caret and counts as aimed at it.
+ * Where a paste goes: after the block a position is in, or above it when it
+ * is an empty line, which keeps the caret and counts as aimed at it. In a
+ * table cell the block is the whole table, so the gap is below it.
  * @param state - The editor state.
- * @returns The gap, and whether it is aimed at the caret's empty line.
+ * @param $at - The position; the caret's when left out.
+ * @returns The gap, and whether it is aimed at the empty line.
  */
-export function pasteTarget(state: EditorState): PasteTarget {
-  const line = caretLine(state);
+export function pasteTarget(state: EditorState, $at: ResolvedPos = state.selection.$head): PasteTarget {
+  const line = lineAt($at);
   if (line === null) return { gap: state.doc.content.size - 1, aimed: false };
   if (line.empty) return { gap: line.start, aimed: true };
   return { gap: line.start + line.container.nodeSize, aimed: false };
 }
 
 /**
- * The block the caret is in, and whether it is an empty line.
- * @param state - The editor state.
+ * The block a position is in, and whether it is an empty line.
+ * @param $at - The position.
  * @returns The block's start and node, or null outside any block.
  */
-function caretLine(state: EditorState): { start: number; container: PMNode; empty: boolean } | null {
-  const { $head } = state.selection;
-  for (let depth = $head.depth; depth > 0; depth -= 1) {
-    const container = $head.node(depth);
+function lineAt($at: ResolvedPos): { start: number; container: PMNode; empty: boolean } | null {
+  for (let depth = $at.depth; depth > 0; depth -= 1) {
+    const container = $at.node(depth);
     if (container.type.name !== 'blockContainer') continue;
     const empty = container.firstChild?.isTextblock === true && container.firstChild.content.size === 0;
-    return { start: $head.before(depth), container, empty };
+    return { start: $at.before(depth), container, empty };
   }
   return null;
+}
+
+/**
+ * Whether a position is inside a table cell.
+ * @param $at - The position.
+ * @returns True when one of its ancestors is a cell.
+ */
+export function inTableCell($at: ResolvedPos): boolean {
+  for (let depth = $at.depth; depth > 0; depth -= 1) {
+    const name = $at.node(depth).type.name;
+    if (name === 'tableCell' || name === 'tableHeader') return true;
+  }
+  return false;
 }
 
 /** A block to insert, as BlockNote takes one. */
@@ -144,25 +159,45 @@ export interface BlockSpec {
 }
 
 /**
- * Inserts blocks at a gap in one transaction, quoted as the line the reader
- * aimed at, else as the block before the gap (the block after it at the
- * start of the body) — the way a block made there by typing would be.
+ * Blocks quoted as the line they go beside: the schema's default is
+ * `quoted: false` (`document-schema-blocknote.ts:53`), and a block made
+ * inside a quote stays in it, the way Enter's does.
+ * @param blocks - The blocks.
+ * @param quoted - Whether that line is quoted.
+ * @returns The blocks, quoted as it.
+ */
+export function quotedAs(blocks: readonly BlockSpec[], quoted: boolean): BlockSpec[] {
+  return blocks.map((block) => ({ ...block, props: { ...block.props, [QUOTED]: quoted } }));
+}
+
+/**
+ * Whether the line beside a gap is quoted: the line the reader aimed at,
+ * else the block before the gap (the block after it at the start of the
+ * body) — the way a block made there by typing would be.
+ * @param doc - The document.
+ * @param gap - The gap.
+ * @param aimed - Whether the reader aimed at the line right after the gap.
+ * @returns True when that line is quoted.
+ */
+export function quotedBeside(doc: PMNode, gap: UploadGap, aimed: boolean): boolean {
+  const $gap = doc.resolve(gap);
+  const beside: PMNode | null = aimed ? $gap.nodeAfter : ($gap.nodeBefore ?? $gap.nodeAfter);
+  return beside?.firstChild?.attrs[QUOTED] === true;
+}
+
+/**
+ * Inserts blocks at a gap in one transaction, quoted as the line beside it,
+ * as an undo step of its own.
  * @param view - The editor view.
  * @param gap - Where they go.
  * @param aimed - Whether the reader aimed at the line right after the gap.
  * @param blocks - The blocks, in order.
  */
 export function insertAtGap(view: EditorView, gap: UploadGap, aimed: boolean, blocks: readonly BlockSpec[]): void {
-  const $gap = view.state.doc.resolve(gap);
-  const beside: PMNode | null = aimed ? $gap.nodeAfter : ($gap.nodeBefore ?? $gap.nodeAfter);
-  const quoted = beside?.firstChild?.attrs[QUOTED] === true;
-  const nodes = blocks.map((block) =>
-    blockToNode(
-      { id: crypto.randomUUID(), ...block, props: { ...block.props, [QUOTED]: quoted } } as never,
-      view.state.schema,
-    ),
+  const nodes = quotedAs(blocks, quotedBeside(view.state.doc, gap, aimed)).map((block) =>
+    blockToNode({ id: crypto.randomUUID(), ...block } as never, view.state.schema),
   );
-  view.dispatch(view.state.tr.insert(gap, Fragment.from(nodes)));
+  view.dispatch(markOwnUndoStep(view.state.tr.insert(gap, Fragment.from(nodes))));
 }
 
 /**

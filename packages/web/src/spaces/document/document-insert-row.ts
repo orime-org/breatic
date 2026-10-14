@@ -16,12 +16,13 @@
 import type { BlockTypeId } from '@web/spaces/document/document-block-ticks';
 import { runBlockType } from '@web/spaces/document/document-block-run';
 import { DIVIDER } from '@web/spaces/document/document-divider';
-import type { BlockSpec } from '@web/spaces/document/document-file-input';
+import { quotedAs, type BlockSpec } from '@web/spaces/document/document-file-input';
 import {
   type HandleEditor,
   type PressedBlock,
 } from '@web/spaces/document/document-handle-commands';
 import { QUOTED } from '@web/spaces/document/document-list-block';
+import { markOwnUndoStep } from '@web/spaces/document/document-undo-step';
 
 /** How many rows and columns a new table has. */
 export interface TableSize {
@@ -83,10 +84,7 @@ export function insertRowForMenu(
   const quoted = row.props?.[QUOTED] === true;
   const firstChild = row.children?.[0];
   const made = editor.insertBlocks(
-    [...lead, { type: 'paragraph' }].map((block) => ({
-      ...block,
-      props: { ...block.props, [QUOTED]: quoted },
-    })) as never,
+    quotedAs([...lead, { type: 'paragraph' }], quoted) as never,
     firstChild?.id ?? row.id,
     firstChild === undefined ? 'after' : 'before',
   ) as { id: string }[];
@@ -128,8 +126,8 @@ export function insertBelow(
 /**
  * The insert-below submenu's media entries: the blocks the chosen files
  * become go under the pressed row, with the empty line the menu makes under
- * them and the caret in that line, in one insert — one undo step takes both
- * away (inner#1351 + inner#1390 design §5.9).
+ * them and the caret in that line, in one insert that is an undo step of its
+ * own — one undo takes both away (inner#1351 + inner#1390 design §5.9).
  * @param editor - The editor to write to.
  * @param row - The block the menu was opened on.
  * @param blocks - The pending media blocks.
@@ -137,12 +135,16 @@ export function insertBelow(
  *   `insertBlocks`, when the pressed block is no longer in the document.
  */
 export function insertMediaBelow(editor: HandleEditor, row: PressedBlock, blocks: readonly BlockSpec[]): void {
-  insertRowForMenu(editor, row, blocks);
+  editor.transact((tr) => {
+    markOwnUndoStep(tr);
+    insertRowForMenu(editor, row, blocks);
+  });
 }
 
 /**
  * The plus menu's media entries: the blocks go above the empty line it was
- * opened on, quoted as that line, and the caret stays in it.
+ * opened on, quoted as that line, and the caret stays in it; the insert is an
+ * undo step of its own.
  * @param editor - The editor to write to.
  * @param row - The empty paragraph the plus is on.
  * @param blocks - The pending media blocks.
@@ -151,12 +153,9 @@ export function insertMediaBelow(editor: HandleEditor, row: PressedBlock, blocks
  */
 export function insertMediaOnRow(editor: HandleEditor, row: PressedBlock, blocks: readonly BlockSpec[]): void {
   const quoted = row.props?.[QUOTED] === true;
-  editor.transact(() => {
-    editor.insertBlocks(
-      blocks.map((block) => ({ ...block, props: { ...block.props, [QUOTED]: quoted } })) as never,
-      row.id,
-      'before',
-    );
+  editor.transact((tr) => {
+    markOwnUndoStep(tr);
+    editor.insertBlocks(quotedAs(blocks, quoted) as never, row.id, 'before');
     editor.setTextCursorPosition(row.id, 'start');
   });
 }

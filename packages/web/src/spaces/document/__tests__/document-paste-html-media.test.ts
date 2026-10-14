@@ -240,7 +240,7 @@ describe('with the caret in a table cell (A7)', () => {
     const { editor, sink } = open([TABLE, { type: 'paragraph', content: 'after' }]);
     caretIn(editor, 0);
 
-    paste(editor, '', 'words ![alt](https://elsewhere.example/a.png) more');
+    paste(editor, '', 'words\n\n![alt](https://elsewhere.example/a.png)');
 
     expect(shape(editor)).toEqual(['table', 'image[pending|]', 'paragraph:after']);
     expect(sink.start).toHaveBeenCalledOnce();

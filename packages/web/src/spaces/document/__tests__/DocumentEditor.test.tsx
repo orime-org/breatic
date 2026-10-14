@@ -31,7 +31,7 @@ import {
   _resetDocumentEditorCacheForTests,
   type DocumentEditorHandle,
 } from '@web/spaces/document/document-editor-cache';
-import type { FileEntry } from '@web/spaces/document/document-uploads';
+import type { FileUploads } from '@web/spaces/document/document-uploads';
 import { useDocumentEditor } from '@web/spaces/document/use-document-editor';
 
 describe('DocumentEditor', () => {
@@ -64,7 +64,7 @@ describe('DocumentEditor', () => {
   it('keeps the editor in the body when the reader turns read-only while it is open', () => {
     // A role change or an archive refetches the project with the Space open
     // (`use-refresh-on-reauth.ts`), so `readOnly` flips on a mounted body.
-    const files: FileEntry = { prepare: () => null, stopCapturing: () => undefined };
+    const files: FileUploads = { prepare: () => null };
     const { container, rerender } = render(
       <DocumentEditor handle={handle} files={files} />,
     );

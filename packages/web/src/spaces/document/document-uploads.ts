@@ -80,12 +80,6 @@ export interface FileUploads {
   prepare(files: readonly File[]): PreparedFiles | null;
 }
 
-/** What a body's file entries are handed: admission, and the undo step around an insert. */
-export interface FileEntry extends FileUploads {
-  /** Closes the reader's undo step, so an insert is a step of its own. */
-  stopCapturing(): void;
-}
-
 /**
  * Why a file may not enter the body, or null to admit it: the canvas's rules,
  * plus one of the body's own — a file that is not an image, a video or an

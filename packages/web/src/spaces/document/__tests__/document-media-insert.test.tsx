@@ -20,7 +20,7 @@ import {
   DocumentMediaPicker,
   useDocumentMediaPick,
 } from '@web/spaces/document/DocumentMediaPicker';
-import { pendingBlock, type FileEntry, type PendingBlock } from '@web/spaces/document/document-uploads';
+import { pendingBlock, type FileUploads, type PendingBlock } from '@web/spaces/document/document-uploads';
 
 /**
  * The insert menu, open.
@@ -98,12 +98,11 @@ describe('the file picker (inner#1351 + inner#1390 design §5.9)', () => {
   function setup(
     place: (blocks: readonly unknown[]) => boolean,
     admitted = true,
-  ): { entry: FileEntry; start: ReturnType<typeof vi.fn>; order: string[]; input: HTMLInputElement } {
+  ): { entry: FileUploads; start: ReturnType<typeof vi.fn>; order: string[]; input: HTMLInputElement } {
     const order: string[] = [];
     const start = vi.fn(() => order.push('start'));
-    const entry: FileEntry = {
+    const entry: FileUploads = {
       prepare: vi.fn(() => (admitted ? { blocks: BLOCKS, start } : null)),
-      stopCapturing: vi.fn(() => order.push('stop')),
     };
     render(
       <DocumentMediaPicker files={entry}>
@@ -131,7 +130,7 @@ describe('the file picker (inner#1351 + inner#1390 design §5.9)', () => {
     expect(input.accept.split(',').every((type) => type.startsWith('video/'))).toBe(true);
   });
 
-  it('puts the admitted files\' blocks in as one undo step, then starts their uploads', () => {
+  it('puts the admitted files\' blocks in, then starts their uploads', () => {
     const place = vi.fn(() => true);
     const { entry, order, input } = setup(place);
     fireEvent.click(screen.getByTestId('pick'));
@@ -142,7 +141,7 @@ describe('the file picker (inner#1351 + inner#1390 design §5.9)', () => {
 
     expect(entry.prepare).toHaveBeenCalledWith([chosen]);
     expect(place).toHaveBeenCalledWith(BLOCKS);
-    expect(order).toEqual(['stop', 'place', 'stop', 'start']);
+    expect(order).toEqual(['place', 'start']);
   });
 
   it('puts nothing in when no chosen file is admitted', () => {

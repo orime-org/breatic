@@ -35,7 +35,7 @@ import { DocumentMediaViews } from '@web/spaces/document/DocumentMediaViews';
 import { useDocumentBars } from '@web/spaces/document/document-bars';
 import { bodyPartMark, recomputeBodyFocus, releaseBodyFocus } from '@web/spaces/document/document-body-focus';
 import { attachBodyScroller, BODY_BLANK } from '@web/spaces/document/document-body-press';
-import type { FileEntry } from '@web/spaces/document/document-uploads';
+import type { FileUploads } from '@web/spaces/document/document-uploads';
 import { PendingUploadsContext, type PendingUploadsStore } from '@web/spaces/document/document-pending-uploads';
 
 interface DocumentEditorProps {
@@ -54,7 +54,7 @@ interface DocumentEditorProps {
    */
   myRole?: ProjectRole;
   /** What admits files into this body; a body without it offers no media entries. */
-  files?: FileEntry | null;
+  files?: FileUploads | null;
   /** What the body's pending media blocks read; null shows each as not finished. */
   pending?: PendingUploadsStore | null;
 }

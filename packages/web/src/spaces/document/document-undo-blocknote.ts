@@ -38,6 +38,7 @@ import * as Y from 'yjs';
 import { documentBodyFragment } from '@breatic/shared';
 import { withDestroyListenerCleanup } from '@web/data/yjs/undo-manager-cleanup';
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
+import { isOwnUndoStep } from '@web/spaces/document/document-undo-step';
 import { isCommentMarkWrite } from '@web/spaces/document/document-comment-undo-filter';
 import { documentUndoSelectionPlugin } from '@web/spaces/document/document-undo-selection';
 import { fromYjs } from '@web/spaces/document/document-yjs-origin';
@@ -221,6 +222,51 @@ function userDrivenPlugin(marker: UserDrivenMarker): Plugin {
 }
 
 /**
+ * The plugin that closes the undo step around a paste, a drop or a marked
+ * insert, so it is one step and typing on either side is another.
+ *
+ * The step is closed before the edit reaches Yjs — state apply runs before
+ * the sync plugin's view update writes the edit through — and again the
+ * moment the manager records it, so the next edit starts a step of its own.
+ * @param manager - The manager whose steps are closed.
+ * @returns The ProseMirror plugin.
+ */
+function ownStepPlugin(manager: Y.UndoManager): Plugin {
+  let closeAfter = false;
+  /** Closes the step the edit just went into. */
+  const recorded = (): void => {
+    if (!closeAfter) return;
+    closeAfter = false;
+    manager.stopCapturing();
+  };
+  manager.on('stack-item-added', recorded);
+  manager.on('stack-item-updated', recorded);
+  return new Plugin({
+    key: new PluginKey('documentUndoOwnStep'),
+    state: {
+      /**
+       * Contributes no state of its own.
+       * @returns Null.
+       */
+      init: (): null => null,
+      /**
+       * Closes the step before an edit that is one of its own, and asks for
+       * it to be closed again once the edit is recorded.
+       * @param tr - The transaction being applied.
+       * @returns Null.
+       */
+      apply: (tr): null => {
+        if (isOwnUndoStep(tr)) {
+          manager.stopCapturing();
+          closeAfter = true;
+        }
+        return null;
+      },
+    },
+  });
+}
+
+/**
  * The extension that registers the undo plugin over one manager.
  * @param manager - The manager the plugins drive.
  * @param marker - The marker that manager reads.
@@ -241,6 +287,7 @@ function undoExtension(
       yUndoPlugin({ undoManager: manager }),
       documentUndoSelectionPlugin(),
       userDrivenPlugin(marker),
+      ownStepPlugin(manager),
     ],
     dependsOn: ['yCursor', 'ySync'],
     undoCommand,

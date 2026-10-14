@@ -129,6 +129,17 @@ describe('text only', () => {
   });
 });
 
+describe('text only, as an undo step', () => {
+  it('typing just before it stays when the paste is undone', () => {
+    const { editor, manager } = open([{ type: 'paragraph', content: 'lead' }], 0);
+    const view = editor.prosemirrorView!;
+    view.dispatch(view.state.tr.insertText(' typed'));
+    paste(editor, clipboard({ id: 't', type: 'text', position: { x: 0, y: 0 }, data: { body: body('one', 'two') } }));
+    manager.undo();
+    expect(shape(editor)).toEqual(['paragraph:lead typed']);
+  });
+});
+
 describe('text only, in a table cell', () => {
   it('goes into the cell', () => {
     const { editor } = open(
@@ -150,6 +161,14 @@ describe('text only, in a table cell', () => {
     const table = (editor.document as { type: string; content: { rows: { cells: { content: { type: string; text?: string }[] }[] }[] } }[])[0]!;
     expect(table.content.rows[0]!.cells[0]!.content.map((c) => c.text ?? '\n').join('')).toBe('cell one\ntwo');
     expect(shape(editor)).toEqual(['table:', 'paragraph:after']);
+  });
+});
+
+describe('text only, in a code block', () => {
+  it('every line goes into the code block, joined by newlines', () => {
+    const { editor } = open([{ type: 'codeBlock', content: 'x = 1' }, { type: 'paragraph', content: 'after' }], 0);
+    paste(editor, clipboard({ id: 't', type: 'text', position: { x: 0, y: 0 }, data: { body: body('one', '', '_two_') } }));
+    expect(shape(editor)).toEqual(['codeBlock:x = 1one\n\n_two_', 'paragraph:after']);
   });
 });
 

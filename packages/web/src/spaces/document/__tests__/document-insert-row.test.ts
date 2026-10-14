@@ -256,6 +256,28 @@ describe('the media a pick brings in (inner#1351 + inner#1390 design §5.9)', ()
     expect(kinds(editor.document)).toEqual(['pressed']);
   });
 
+  it.each([
+    ['below a row', 0, insertMediaBelow],
+    ['on an empty line', 1, insertMediaOnRow],
+  ] as const)('%s is an undo step apart from typing just before it', (_where, row, insert) => {
+    const doc = new Y.Doc();
+    const { manager, extension } = createDocumentUndo(doc);
+    const editor = buildDocumentEditor({ fragment: documentBodyFragment(doc), extensions: [extension] });
+    const root = document.createElement('div');
+    document.body.appendChild(root);
+    editor.mount(root);
+    mounted.push(editor);
+    editor.replaceBlocks(editor.document, [{ type: 'paragraph', content: 'pressed' }, { type: 'paragraph' }] as never);
+    manager.clear();
+    editor.setTextCursorPosition((editor.document as Seen[])[0]!.id!, 'end');
+    editor.insertInlineContent(' typed');
+
+    insert(editor, (editor.document as Seen[])[row] as never, [pendingImage('u1')] as never);
+    manager.undo();
+
+    expect(kinds(editor.document)).toEqual(['pressed typed', '']);
+  });
+
   it('on an empty line lands above it, quoted as that line, and leaves the caret in it', () => {
     const editor = open([
       { type: 'paragraph', content: 'above' },
