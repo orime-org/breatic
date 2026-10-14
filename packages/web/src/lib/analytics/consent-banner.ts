@@ -131,16 +131,41 @@ function askServerToKeepCookie(): void {
   keeping?.abort();
   const controller = new AbortController();
   keeping = controller;
-  const url = new URL('/_consent/refresh', window.location.origin);
-  // The domain the library wrote under, so the server sets the same cookie and not a second one.
-  url.searchParams.set('domain', bannerOptions?.cookieDomain || window.location.hostname);
   void httpRequest(
-    url.href,
-    // keepalive: a navigation right after the choice (a sign-in redirect) must not end the request.
-    { credentials: 'same-origin', cache: 'no-store', keepalive: true },
-    // A stalled answer is dropped: the next write or page response writes the cookie back again.
+    writeBackUrl(),
+    { credentials: 'same-origin', cache: 'no-store' },
+    // A stalled delivery is dropped and sent again with the cookie of that moment, at most twice.
     { replaySafe: true, signal: controller.signal, timeoutMs: WRITE_BACK_TIMEOUT_MS },
-  ).catch(() => undefined);
+  )
+    .catch(() => undefined)
+    .finally(() => {
+      if (keeping === controller) keeping = null;
+    });
+}
+
+/**
+ * The page is going away with a write-back still on its way, which leaving would end: send it once more,
+ * kept alive past the page. A keepalive request cannot be cancelled, so only this last one is; nothing in
+ * this page writes after it.
+ */
+function keepCookieOnLeave(): void {
+  if (keeping === null) return;
+  keeping.abort();
+  keeping = null;
+  void httpRequest(writeBackUrl(), { credentials: 'same-origin', cache: 'no-store', keepalive: true }, { replaySafe: true }).catch(
+    () => undefined,
+  );
+}
+
+/**
+ * Where the write-back goes, naming the domain the library wrote the cookie under, so a self-hosted server
+ * sets the same cookie and not a second one.
+ * @returns The URL.
+ */
+function writeBackUrl(): string {
+  const url = new URL('/_consent/refresh', window.location.origin);
+  url.searchParams.set('domain', bannerOptions?.cookieDomain || window.location.hostname);
+  return url.href;
 }
 
 /** A choice the visitor made in the banner or the settings window. */
@@ -330,6 +355,7 @@ export async function startConsentBanner(options: BannerOptions): Promise<void> 
   // A restart while the lookup is still out would decide twice; the lookup ends within a second.
   await options.country;
   document.addEventListener('visibilitychange', () => void resync());
+  window.addEventListener('pagehide', keepCookieOnLeave);
   // A window beside the one where the choice changed stays visible; it learns of it when it gets focus.
   window.addEventListener('focus', () => void resync());
 }

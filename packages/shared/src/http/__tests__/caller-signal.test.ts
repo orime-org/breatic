@@ -4,7 +4,8 @@
 /**
  * The caller's signal reaches the delivery on every browser the web build
  * targets. `AbortSignal.any` arrived in Safari 17.4; on an older one a request
- * given a signal must still be sent, and still be cancellable.
+ * given a signal must still be sent. Cancelling it there is pinned with the
+ * other cancellation promises in cancellation.integration.test.ts.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -29,25 +30,5 @@ describe("a caller's signal without AbortSignal.any", () => {
     const response = await httpRequest("https://example.test/x", {}, { replaySafe: true, signal: new AbortController().signal });
     expect(response.status).toBe(204);
     expect(fetchMock).toHaveBeenCalledTimes(1);
-  });
-
-  it("cancels the delivery when the caller aborts", async () => {
-    let delivered: AbortSignal | undefined;
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(
-        (_url: string, init: RequestInit) =>
-          new Promise<Response>((_resolve, reject) => {
-            delivered = init.signal ?? undefined;
-            init.signal?.addEventListener("abort", () => reject(init.signal?.reason));
-          }),
-      ),
-    );
-    const caller = new AbortController();
-    const pending = httpRequest("https://example.test/x", {}, { replaySafe: true, signal: caller.signal });
-    await vi.waitFor(() => expect(delivered).toBeDefined());
-    caller.abort(new Error("superseded"));
-    await expect(pending).rejects.toThrow("superseded");
-    expect(delivered?.aborted).toBe(true);
   });
 });

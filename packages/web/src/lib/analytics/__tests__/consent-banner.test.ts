@@ -351,8 +351,9 @@ describe('the server writing the stored choice back (design §4.4.3a)', () => {
     expect(new URL(url).origin).toBe(window.location.origin);
     // The library writes under the page's host when no domain is configured.
     expect(new URL(url).searchParams.get('domain')).toBe(window.location.hostname);
-    // Kept alive past the page, so a navigation right after the choice does not end it.
-    expect(init).toMatchObject({ credentials: 'same-origin', cache: 'no-store', keepalive: true });
+    expect(init).toMatchObject({ credentials: 'same-origin', cache: 'no-store' });
+    // Cancellable: a keepalive request would still deliver its answer after being cancelled.
+    expect(init.keepalive).not.toBe(true);
     expect(refresh.mock.invocationCallOrder[0]).toBeGreaterThan(library.setCookieData.mock.invocationCallOrder.at(-1) ?? Infinity);
   });
 
@@ -414,6 +415,27 @@ describe('the server writing the stored choice back (design §4.4.3a)', () => {
     await vi.waitFor(() => expect(library.reset).toHaveBeenCalledWith(false));
     const [, init] = refresh.mock.calls[0] as unknown as [string, RequestInit];
     expect(init.signal?.aborted).toBe(true);
+  });
+
+  it('sends a write-back still on its way once more, kept alive, when the page is hidden for leaving', async () => {
+    refresh.mockImplementationOnce(() => new Promise<Response>(() => undefined));
+    await startBanner('US');
+    await vi.waitFor(() => expect(refresh).toHaveBeenCalledTimes(1));
+    window.dispatchEvent(new Event('pagehide'));
+    await vi.waitFor(() => expect(refresh).toHaveBeenCalledTimes(2));
+    const [[, first], [url, last]] = refresh.mock.calls as unknown as Array<[string, RequestInit]>;
+    expect(first.signal?.aborted).toBe(true);
+    expect(last.keepalive).toBe(true);
+    expect(new URL(url).pathname).toBe('/_consent/refresh');
+  });
+
+  it('sends nothing on leaving when no write-back is on its way', async () => {
+    await startBanner('US');
+    await vi.waitFor(() => expect(refresh).toHaveBeenCalledTimes(1));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    window.dispatchEvent(new Event('pagehide'));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(refresh).toHaveBeenCalledTimes(1);
   });
 
   it('keeps the choice when the request fails', async () => {
