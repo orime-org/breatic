@@ -63,10 +63,19 @@ export interface UploadEntry {
 /** What this page's connection to a body may do. */
 export type WriteAccess = 'unknown' | 'granted' | 'denied';
 
+/** The part of a body's awareness the controller publishes claims through. */
+export interface ClaimChannel {
+  getLocalState: () => Record<string, unknown> | null;
+  setLocalState: (state: Record<string, unknown> | null) => void;
+  setLocalStateField: (field: string, value: unknown) => void;
+}
+
 /** A body open on this page: its editor is built and not blocked. */
 export interface AttachedBody {
   readonly spaceId: string;
   readonly doc: Y.Doc;
+  /** Where this page's claims on the body's uploads are published. */
+  readonly awareness?: ClaimChannel;
   /** This page's write access to the body, read now. */
   writeAccess: () => WriteAccess;
   /**
@@ -88,6 +97,12 @@ export interface UploadControllerDeps {
   register: (spaceId: string, uploadId: string) => void;
   /** Releases what {@link UploadControllerDeps.register} marked. */
   unregister: (spaceId: string, uploadId: string) => void;
+  /**
+   * Calls `tick` on a timer the page's background throttling does not slow,
+   * while any claim is published; each tick renews every body's awareness.
+   * @returns What stops the timer.
+   */
+  renew?: (tick: () => void) => () => void;
 }
 
 /** The page's upload controller. */
@@ -132,7 +147,12 @@ interface Watched {
   /** Upload ids this body has registered with the guard. */
   readonly registered: Set<string>;
   queued: boolean;
+  /** The claims last published in this body's awareness, as JSON. */
+  published: string;
 }
+
+/** The awareness field claims are published in. */
+const CLAIMS_FIELD = 'uploads';
 
 /**
  * The upload id of a pending media element, or null.
@@ -210,11 +230,9 @@ export function createUploadController(deps: UploadControllerDeps): UploadContro
         }, UPLOAD_WRITE_ORIGIN);
       }
     }
-    const busy = new Set(
-      pendingElements(documentBodyFragment(body.doc))
-        .map(({ uploadId }) => uploadId)
-        .filter((uploadId) => records.get(uploadId)?.phase === 'uploading'),
-    );
+    const present = new Set(pendingElements(documentBodyFragment(body.doc)).map(({ uploadId }) => uploadId));
+    const busy = new Set([...present].filter((uploadId) => records.get(uploadId)?.phase === 'uploading'));
+    publish(entry, present);
     for (const uploadId of [...entry.registered]) {
       if (!busy.has(uploadId)) {
         entry.registered.delete(uploadId);
@@ -227,6 +245,48 @@ export function createUploadController(deps: UploadControllerDeps): UploadContro
         deps.register(body.spaceId, uploadId);
       }
     }
+  };
+
+  let stopRenewal: (() => void) | null = null;
+
+  /** Renews every attached body's awareness. */
+  const tick = (): void => {
+    watched.forEach(({ body }) => {
+      const state = body.awareness?.getLocalState() ?? null;
+      if (state !== null) body.awareness!.setLocalState(state);
+    });
+  };
+
+  /** Runs the renewal while any body publishes a claim, and stops it otherwise. */
+  const steerRenewal = (): void => {
+    const claiming = [...watched].some(({ published }) => published !== '{}');
+    if (claiming && stopRenewal === null && deps.renew !== undefined) stopRenewal = deps.renew(tick);
+    if (!claiming && stopRenewal !== null) {
+      stopRenewal();
+      stopRenewal = null;
+    }
+  };
+
+  /**
+   * Publishes this page's claims in one body's awareness: every upload in
+   * flight or failed, and every finished one whose block in this body still
+   * waits to be written.
+   * @param entry - The body.
+   * @param present - The upload ids of the pending blocks in it.
+   */
+  const publish = (entry: Watched, present: ReadonlySet<string>): void => {
+    const claims: Record<string, string> = {};
+    records.forEach((record, uploadId) => {
+      if (record.phase === 'uploading') claims[uploadId] = 'uploading';
+      else if (record.phase === 'failed') claims[uploadId] = 'failed';
+      else if (present.has(uploadId)) claims[uploadId] = 'uploading';
+    });
+    const json = JSON.stringify(claims);
+    if (json !== entry.published && entry.body.awareness?.getLocalState() != null) {
+      entry.body.awareness.setLocalStateField(CLAIMS_FIELD, claims);
+    }
+    entry.published = json;
+    steerRenewal();
   };
 
   /**
@@ -289,7 +349,7 @@ export function createUploadController(deps: UploadControllerDeps): UploadContro
       notify();
     },
     attach(body) {
-      const entry: Watched = { body, registered: new Set(), queued: false };
+      const entry: Watched = { body, registered: new Set(), queued: false, published: '{}' };
       const fragment = documentBodyFragment(body.doc);
       /** Queues a scan for any change in the body. */
       const onChange = (): void => {
@@ -305,6 +365,11 @@ export function createUploadController(deps: UploadControllerDeps): UploadContro
         stopAccess();
         for (const uploadId of entry.registered) deps.unregister(body.spaceId, uploadId);
         entry.registered.clear();
+        if (entry.published !== '{}' && body.awareness?.getLocalState() != null) {
+          body.awareness.setLocalStateField(CLAIMS_FIELD, {});
+        }
+        entry.published = '{}';
+        steerRenewal();
       };
     },
     entry(uploadId) {
