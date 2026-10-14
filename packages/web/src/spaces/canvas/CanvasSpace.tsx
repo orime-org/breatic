@@ -87,6 +87,7 @@ import {
   viewportToInspect,
 } from '@web/spaces/canvas/frame-built-node';
 import { exportCropBlob } from '@web/spaces/canvas/focus/crop-export';
+import { cropSourceSelector, intrinsicSize, isCropSource } from '@web/spaces/canvas/focus/crop-source';
 import { exportDrawing } from '@web/spaces/canvas/mini-tool/export-drawing';
 import { exportExpand } from '@web/spaces/canvas/mini-tool/expand-export';
 import { focusFailureMessageKey, runFocusCrop } from '@web/spaces/canvas/focus/run-focus-crop';
@@ -3946,25 +3947,29 @@ function CanvasSpaceInner({
         const container = containerRef.current;
         const [node] = measuredRects([nodeId]);
         const panel = container?.querySelector<HTMLElement>('[data-canvas-panel]') ?? null;
-        if (container === null || node === undefined || panel === null) {
+        const shell = container?.querySelector<HTMLElement>(`.react-flow__node[data-id="${CSS.escape(nodeId)}"]`) ?? null;
+        const picture = container?.querySelector(cropSourceSelector(nodeId)) ?? null;
+        const own = isCropSource(picture) ? intrinsicSize(picture).width : 0;
+        const media = (node?.width ?? 0) - MEDIA_FRAME_PX;
+        if (node === undefined || panel === null || shell === null || own === 0 || media <= 0) {
           if (tries++ < 10) requestAnimationFrame(step);
           return;
         }
         const box = panel.getBoundingClientRect();
-        const from = screenToFlowPosition({ x: box.left, y: box.top });
-        const to = screenToFlowPosition({ x: box.right, y: box.bottom });
-        const target =
-          groupRectForMembers([node, { x: from.x, y: from.y, width: to.x - from.x, height: to.y - from.y }], 0) ?? node;
-        const own = getInternalNode(nodeId)?.internals.userNode.data.width;
-        const media = node.width - MEDIA_FRAME_PX;
-        const oneToOne = typeof own === 'number' && media > 0 ? own / media : CANVAS_MAX_ZOOM;
+        const gap = box.top - shell.getBoundingClientRect().bottom;
         const { transform: [x, y, zoom], width, height } = rfStoreApi.getState();
-        const next = viewportToInspect(target, { width, height }, { x, y, zoom }, Math.min(oneToOne, CANVAS_MAX_ZOOM));
+        const next = viewportToInspect(
+          node,
+          { width: box.width, height: box.height, gap },
+          { width, height },
+          { x, y, zoom },
+          Math.min(own / media, CANVAS_MAX_ZOOM),
+        );
         if (next !== null) void setViewport(next, { duration: PROPOSAL_FRAME_MS, interpolate: 'linear' });
       };
       requestAnimationFrame(step);
     },
-    [getInternalNode, measuredRects, rfStoreApi, screenToFlowPosition, setViewport],
+    [measuredRects, rfStoreApi, setViewport],
   );
   const openToolFromMenu = React.useCallback(
     (toolId: string): void => {

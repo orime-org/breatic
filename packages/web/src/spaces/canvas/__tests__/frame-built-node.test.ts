@@ -160,28 +160,43 @@ describe('viewportForBuilt', () => {
 });
 
 describe('viewportToInspect', () => {
-  const pane = { width: 1000, height: 800 };
+  const pane = { width: 1440, height: 820 };
+  const node = { x: 100, y: 50, width: 288, height: 218.5 };
+  // The panel hangs under the node at its screen size whatever the zoom.
+  const panel = { width: 344, height: 430, gap: 10 };
 
-  it('zooms in until the node and its panel fill the view', () => {
-    const target = { x: 0, y: 0, width: 288, height: 500 };
-    const v = viewportToInspect(target, pane, { x: 0, y: 0, zoom: 0.5 }, 4)!;
-    // The taller side fills the height, less the padding a fit leaves.
-    expect(v.zoom).toBeGreaterThan(1.3);
-    expect(v.zoom).toBeLessThan(1.6);
-    const left = -v.x / v.zoom;
-    const top = -v.y / v.zoom;
-    expect(target.x).toBeGreaterThanOrEqual(left);
-    expect(target.y).toBeGreaterThanOrEqual(top);
-    expect(target.x + target.width).toBeLessThanOrEqual(left + pane.width / v.zoom);
-    expect(target.y + target.height).toBeLessThanOrEqual(top + pane.height / v.zoom);
+  /**
+   * Where the node and its panel sit on screen at a viewport.
+   * @param v - The viewport.
+   * @returns Their top, bottom, left and right in screen pixels.
+   */
+  function onScreen(v: { x: number; y: number; zoom: number }): { top: number; bottom: number; left: number; right: number } {
+    const top = node.y * v.zoom + v.y;
+    const nodeBottom = top + node.height * v.zoom;
+    const centre = (node.x + node.width / 2) * v.zoom + v.x;
+    const half = Math.max(node.width * v.zoom, panel.width) / 2;
+    return { top, bottom: nodeBottom + panel.gap + panel.height, left: centre - half, right: centre + half };
+  }
+
+  it('zooms in until the node and its panel fill the height, less a tenth either side', () => {
+    const v = viewportToInspect(node, panel, pane, { x: 0, y: 0, zoom: 0.5 }, 8)!;
+    const at = onScreen(v);
+    expect(at.top).toBeCloseTo(pane.height * 0.1, 3);
+    expect(at.bottom).toBeCloseTo(pane.height * 0.9, 3);
+    expect(at.left).toBeGreaterThanOrEqual(0);
+    expect(at.right).toBeLessThanOrEqual(pane.width);
+  });
+
+  it('comes to the same view from any zoom it starts at', () => {
+    const from = (zoom: number): number => viewportToInspect(node, panel, pane, { x: 0, y: 0, zoom }, 8)!.zoom;
+    expect(from(0.25)).toBeCloseTo(from(0.75), 6);
   });
 
   it('stops at the zoom that shows the picture at its own pixels', () => {
-    const v = viewportToInspect({ x: 0, y: 0, width: 288, height: 300 }, pane, { x: 0, y: 0, zoom: 0.5 }, 1.2)!;
-    expect(v.zoom).toBe(1.2);
+    expect(viewportToInspect(node, panel, pane, { x: 0, y: 0, zoom: 0.5 }, 0.8)!.zoom).toBe(0.8);
   });
 
   it('stays put when the reader is already as close as that, and never zooms out', () => {
-    expect(viewportToInspect({ x: 0, y: 0, width: 288, height: 500 }, pane, { x: 0, y: 0, zoom: 2 }, 4)).toBeNull();
+    expect(viewportToInspect(node, panel, pane, { x: 0, y: 0, zoom: 2 }, 8)).toBeNull();
   });
 });

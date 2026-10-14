@@ -193,7 +193,7 @@ test.beforeEach(async ({ browser }) => {
   await expect(visibleSpace(page).locator('.react-flow')).toBeVisible({ timeout: 20_000 });
   imageNode = randomUUID();
   image = `https://picsum.photos/seed/${randomUUID()}/400/300.jpg`;
-  await seedNode(page, { projectId, spaceId }, imageNode, 'image', 0, { content: image, mimeType: 'image/jpeg', size: 40_000, width: 400, height: 300 });
+  await seedNode(page, { projectId, spaceId }, imageNode, 'image', 0, { content: image, mimeType: 'image/jpeg', size: 40_000 });
   await expect(nodeOf(imageNode).getByTestId('image-node-img')).toBeVisible({ timeout: 20_000 });
 });
 

@@ -12,7 +12,7 @@
  * slide under them for no reason they can name.
  */
 
-import { getViewportForBounds, type Viewport } from '@xyflow/react';
+import type { Viewport } from '@xyflow/react';
 
 import { frameProposal } from '@web/spaces/canvas/lib/place-flow';
 import {
@@ -132,9 +132,14 @@ export function viewportForBuilt(
  * opens on a node (the picture adjust, inner#1303 §6.1): close enough that the
  * node and its panel fill the view, and no closer than shows the picture at
  * its own pixels — the node then loads its full picture in place of the
- * thumbnail. A reader already that close is left where they are; it never
- * zooms out.
- * @param target - The node and its panel, in canvas coordinates.
+ * thumbnail. The panel hangs under the node at its screen size whatever the
+ * zoom, so only the node scales. A reader already that close is left where
+ * they are; it never zooms out.
+ * @param node - The node, in canvas coordinates.
+ * @param panel - The panel under it, in screen pixels.
+ * @param panel.width - Its width.
+ * @param panel.height - Its height.
+ * @param panel.gap - The space between the node and it.
  * @param pane - The canvas pane's size in screen pixels.
  * @param pane.width - Its width.
  * @param pane.height - Its height.
@@ -144,12 +149,20 @@ export function viewportForBuilt(
  * @throws {never} Never.
  */
 export function viewportToInspect(
-  target: Rect,
+  node: Rect,
+  panel: { width: number; height: number; gap: number },
   pane: { width: number; height: number },
   now: Viewport,
   oneToOne: number,
 ): Viewport | null {
-  const fit = getViewportForBounds(target, pane.width, pane.height, now.zoom, Math.max(now.zoom, oneToOne), INSPECT_PADDING);
-  if (fit.zoom <= now.zoom) return null;
-  return fit;
+  const across = pane.width * (1 - 2 * INSPECT_PADDING);
+  const down = pane.height * (1 - 2 * INSPECT_PADDING);
+  const zoom = Math.min(oneToOne, across / node.width, (down - panel.gap - panel.height) / node.height);
+  if (zoom <= now.zoom) return null;
+  const tall = node.height * zoom + panel.gap + panel.height;
+  return {
+    x: pane.width / 2 - (node.x + node.width / 2) * zoom,
+    y: (pane.height - tall) / 2 - node.y * zoom,
+    zoom,
+  };
 }
