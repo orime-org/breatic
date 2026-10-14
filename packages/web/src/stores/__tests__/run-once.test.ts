@@ -257,6 +257,26 @@ describe('runOnce', () => {
     expect(getRunning('membership')).toBeUndefined();
   });
 
+  // Only a press leaving the page needs to hear about a restore; a listener
+  // left on the window otherwise holds this module for the page's life.
+  it('listens for a page restore only while a press is leaving', async () => {
+    const add = vi.spyOn(window, 'addEventListener');
+    const remove = vi.spyOn(window, 'removeEventListener');
+    await runOnce('generate:s:n', { scope: 'generate', prepare: () => ({}), send: () => Promise.resolve(null) });
+    expect(add.mock.calls.filter(([type]) => type === 'pageshow')).toHaveLength(0);
+
+    await runOnce('credits:checkout', {
+      scope: 'credits-checkout',
+      prepare: () => ({}),
+      send: () => Promise.resolve({ url: 'x' }),
+      onDone: () => 'leaving',
+    });
+    expect(add.mock.calls.filter(([type]) => type === 'pageshow')).toHaveLength(1);
+
+    window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }));
+    expect(remove.mock.calls.filter(([type]) => type === 'pageshow')).toHaveLength(1);
+  });
+
   it('lets every press go when the signed-in account changes', async () => {
     const send = vi.fn().mockRejectedValue(failed({ status: 0, message: 'net', network: true }));
     void runOnce('generate:s:n', { scope: 'generate', prepare: () => ({}), send });

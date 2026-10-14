@@ -153,6 +153,40 @@ function release(intentId: string, press: Press): void {
   presses.delete(intentId);
   press.cancel?.();
   publish(intentId, undefined);
+  if (![...presses.values()].some((p) => p.phase === 'leaving')) stopWatchingRestore();
+}
+
+/**
+ * A page restored from the back-forward cache comes back with the presses
+ * that were navigating away; that navigation is over.
+ * @param event - The `pageshow` event; `persisted` is true only on a restore.
+ */
+function onPageShow(event: PageTransitionEvent): void {
+  if (!event.persisted) return;
+  for (const [intentId, press] of [...presses]) {
+    if (press.phase === 'leaving') release(intentId, press);
+  }
+}
+
+/** Whether {@link onPageShow} is attached. */
+let watchingRestore = false;
+
+/**
+ * Listen for a back-forward-cache restore while a press is leaving the page.
+ */
+function watchRestore(): void {
+  if (watchingRestore || typeof window === 'undefined') return;
+  window.addEventListener('pageshow', onPageShow);
+  watchingRestore = true;
+}
+
+/**
+ * Stop listening once no press is leaving.
+ */
+function stopWatchingRestore(): void {
+  if (!watchingRestore) return;
+  window.removeEventListener('pageshow', onPageShow);
+  watchingRestore = false;
 }
 
 /**
@@ -258,6 +292,7 @@ async function drive<B, R>(intentId: string, press: Press, spec: RunOnceSpec<B, 
       if (!current()) return;
       if (spec.onDone?.(result) === 'leaving') {
         press.phase = 'leaving';
+        watchRestore();
         return;
       }
       release(intentId, press);
@@ -331,14 +366,3 @@ export function resetRunOnceForTests(): void {
 useCurrentUserStore.subscribe((state, previous) => {
   if (state.user?.id !== previous.user?.id) releaseAll();
 });
-
-// A page restored from the back-forward cache comes back with the presses
-// that were navigating away; that navigation is over.
-if (typeof window !== 'undefined' && 'addEventListener' in window) {
-  window.addEventListener('pageshow', (event) => {
-    if (!event.persisted) return;
-    for (const [intentId, press] of [...presses]) {
-      if (press.phase === 'leaving') release(intentId, press);
-    }
-  });
-}
