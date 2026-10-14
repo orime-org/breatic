@@ -12,12 +12,14 @@ import {
   adsConsentOverridesOptOut,
   browserSuppressesOwnGpc,
   httpRequest,
+  type AccountAdsHistory,
   type AdsOutcome,
   type BrowserAds,
   type BrowserChoices,
   type ConsentReport,
   type ConsentSource,
   type NoticeShown,
+  type Ownership,
 } from '@breatic/shared';
 
 /** What to write for one category; the writer adds the id and the time. */
@@ -224,6 +226,37 @@ export function cookieAfterWrites(
     else accepted.delete(category);
   }
   return { data, accepted: (['analytics', 'ads'] as const).filter((c) => accepted.has(c)) };
+}
+
+/** The account's ads record as `/users/me/analytics-consent` returns it. */
+export interface AccountConsentView extends AccountAdsHistory {
+  /** Whose receipt the ads decision in this browser's cookie is. */
+  readonly ownership: Ownership;
+  /** The server's clock when the record was read. */
+  readonly serverTime: string;
+}
+
+/**
+ * The account's record from an answer's `data`, checked before the page
+ * trusts it.
+ * @param data - The answer's `data`.
+ * @returns The record, or null when it is not one; the page then treats the answer as unknown.
+ */
+export function readConsentView(data: unknown): AccountConsentView | null {
+  if (typeof data !== 'object' || data === null) return null;
+  const { receipts, gpcSeenAt, ownership, serverTime } = data as Record<string, unknown>;
+  if (!Array.isArray(receipts)) return null;
+  if (ownership !== 'self' && ownership !== 'other' && ownership !== 'none') return null;
+  const times: unknown[] = [serverTime, ...(gpcSeenAt === null ? [] : [gpcSeenAt])];
+  for (const receipt of receipts as unknown[]) {
+    if (typeof receipt !== 'object' || receipt === null) return null;
+    const { decisionId, value, source, noticeShown, decidedAt, revision } = receipt as Record<string, unknown>;
+    const sources = ['banner', 'settings', 'implicit', 'gpc', 'request'];
+    if (typeof decisionId !== 'string' || typeof value !== 'boolean' || !sources.includes(source as string)) return null;
+    if ((noticeShown !== 'account' && noticeShown !== false) || !Number.isInteger(revision)) return null;
+    times.push(decidedAt);
+  }
+  return times.every((t) => typeof t === 'string' && !Number.isNaN(Date.parse(t))) ? (data as AccountConsentView) : null;
 }
 
 /**

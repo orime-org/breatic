@@ -13,7 +13,6 @@ import {
   getLocale,
   onLocaleChange,
   t,
-  type AccountAdsHistory,
   type AdsOutcome,
   type AnalyticsEventName,
   type Attribution,
@@ -25,7 +24,7 @@ import { ApiException } from '@web/data/api/types';
 import { getSupportedLocales } from '@web/i18n/locale-bootstrap';
 import { captureAttribution, clearAttribution, readAttribution } from '@web/lib/analytics/attribution';
 import { ANALYTICS_CONFIGURED } from '@web/lib/analytics/build-config';
-import { adsViewFor, reportBody } from '@web/lib/analytics/consent-decision';
+import { adsViewFor, readConsentView, reportBody, type AccountConsentView } from '@web/lib/analytics/consent-decision';
 import type { ConsentText } from '@web/lib/analytics/consent-banner';
 import type { AnalyticsUser } from '@web/lib/analytics/runtime';
 import type * as RuntimeModule from '@web/lib/analytics/runtime';
@@ -37,12 +36,6 @@ let runtime: Promise<Runtime> | null = null;
 let consent: ConsentSnapshot | undefined;
 /** The signed-in account; null when nobody is, undefined until the app knows. */
 let signedIn: string | null | undefined = undefined;
-
-/** The account's ads record as `/users/me/analytics-consent` returns it. */
-interface AccountConsentView extends AccountAdsHistory {
-  readonly ownership: Ownership;
-  readonly serverTime: string;
-}
 
 // The account's ads record and the cookie's ads decision it was read for; null until read, or when the read failed.
 let account: { view: AccountConsentView; cookieId: string | undefined } | null = null;
@@ -185,12 +178,13 @@ async function syncAccount(module: Runtime): Promise<void> {
   const body = choices === null ? null : reportBody(choices, module.consentRevision(), new Date().toISOString());
   decideAds(module);
   try {
-    const view = body
-      ? await apiPut<AccountConsentView>('/users/me/analytics-consent', body)
-      : await apiGet<AccountConsentView>('/users/me/analytics-consent');
+    const data = body
+      ? await apiPut<unknown>('/users/me/analytics-consent', body)
+      : await apiGet<unknown>('/users/me/analytics-consent');
     if (seq !== syncSeq) return;
-    const serverTime = Date.parse(view.serverTime);
-    if (!Number.isNaN(serverTime)) clockOffset = serverTime - Date.now();
+    const view = readConsentView(data);
+    if (view === null) throw new Error('account consent answer is not the account record');
+    clockOffset = Date.parse(view.serverTime) - Date.now();
     account = { view, cookieId };
   } catch (err) {
     if (seq !== syncSeq) return;

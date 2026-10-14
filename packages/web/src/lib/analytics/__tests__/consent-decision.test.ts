@@ -10,6 +10,7 @@ import {
   countryFromTrace,
   decideOnLoad,
   fetchCountry,
+  readConsentView,
   reportBody,
   writesForClick,
 } from '@web/lib/analytics/consent-decision';
@@ -246,6 +247,33 @@ describe('cookieAfterWrites', () => {
     const next = cookieAfterWrites({ analytics: { value: true, source: 'implicit' } }, { analytics: null, ads: null }, stored, NOW, ids());
     expect(next.data.ads).toBeUndefined();
     expect(next.accepted).toEqual(['analytics']);
+  });
+});
+
+describe('readConsentView', () => {
+  const receipt = { decisionId: ID_B, value: false, source: 'settings', noticeShown: false, decidedAt: NOW, revision: 1 };
+  const view = { receipts: [receipt], gpcSeenAt: null, ownership: 'self', serverTime: NOW };
+
+  it('takes an answer shaped as the account record', () => {
+    expect(readConsentView(view)).toEqual(view);
+    expect(readConsentView({ ...view, gpcSeenAt: NOW, receipts: [{ ...receipt, noticeShown: 'account', value: true }] })).not.toBeNull();
+  });
+
+  it('refuses anything else, so the page treats the answer as unknown', () => {
+    for (const bad of [
+      undefined,
+      null,
+      'x',
+      { ...view, receipts: undefined },
+      { ...view, receipts: [{ ...receipt, decidedAt: 'yesterday' }] },
+      { ...view, receipts: [{ ...receipt, source: 'cookie-wall' }] },
+      { ...view, receipts: [{ ...receipt, value: 'no' }] },
+      { ...view, gpcSeenAt: 'soon' },
+      { ...view, ownership: 'mine' },
+      { ...view, serverTime: undefined },
+    ]) {
+      expect(readConsentView(bad)).toBeNull();
+    }
   });
 });
 

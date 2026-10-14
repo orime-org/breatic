@@ -173,6 +173,18 @@ describe('whether ads run', () => {
     await vi.waitFor(() => expect(lastAds()).toEqual({ allowed: false, known: false, notice: false, adsOn: true }));
   });
 
+  it('treats an answer that is not the account record as unknown, and still applies a later refusal', async () => {
+    runtime.choices = choices(true);
+    api.put.mockResolvedValueOnce({ ownership: 'self', serverTime: new Date().toISOString() });
+    const analytics = await load();
+    analytics.identifyUser({ id: 'u8' } as never);
+    await vi.waitFor(() => expect(api.put).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => expect(lastAds()).toEqual({ allowed: false, known: false, notice: false, adsOn: true }));
+    runtime.choices = choices(false, 'settings', OTHER);
+    runtime.listener?.({ analytics: false, ads: false });
+    expect(lastAds()).toEqual({ allowed: false, known: true, notice: false, adsOn: false });
+  });
+
   it('stops at once when this browser refuses while its report is on the way', async () => {
     runtime.choices = choices(true);
     const analytics = await load();
