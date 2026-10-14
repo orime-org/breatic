@@ -806,6 +806,20 @@ export {
   type ConsentSource,
 } from "@shared/analytics/account-consent.js";
 export {
+  accountAdsEvents,
+  adsConsentOverridesOptOut,
+  adsDecision,
+  browserSuppressesOwnGpc,
+  normalizeBrowserAds,
+  type AccountAdsReceipt,
+  type AdsEvent,
+  type AdsOutcome,
+  type AdsSource,
+  type BrowserAds,
+  type NoticeShown,
+  type Ownership,
+} from "@shared/analytics/ads-decision.js";
+export {
   adClickFrom,
   CLICK_WINDOW_MS,
   parseAttribution,
