@@ -33,6 +33,8 @@ export const documentProposalSchema = z
     /** The nearest heading above the block, empty when there is none. */
     heading: z.string(),
     original: z.string(),
+    /** That block's BlockNote type, which names it on the card when it holds no words; null for the end. */
+    blockType: z.string().min(1).nullable(),
     /** Whether the block holds something a Markdown rewrite replaces. */
     lossy: z.boolean(),
   })

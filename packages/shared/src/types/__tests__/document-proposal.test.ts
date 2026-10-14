@@ -21,6 +21,7 @@ const COMMENT = {
   title: "Motive for the turn",
   heading: "Scene 2",
   original: "She turns.",
+  blockType: "paragraph",
   lossy: false,
 };
 

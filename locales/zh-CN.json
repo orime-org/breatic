@@ -372,6 +372,7 @@
       "where": "Document「{name}」",
       "whereInsert": "插入到 Document「{name}」",
       "insertAfter": "插在这一段之后",
+      "headingBlock": "标题",
       "end": "文末",
       "addComment": "增加批注",
       "apply": "直接修改",

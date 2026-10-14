@@ -174,6 +174,7 @@ export function answerDocumentEdit(
     title: input.title,
     heading: headingAbove(open.blocks, index),
     original: target?.text ?? "",
+    blockType: target?.type ?? null,
     lossy: input.kind === "rewrite" && target !== undefined ? target.lossy : false,
   };
 }

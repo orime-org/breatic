@@ -29,6 +29,7 @@ function proposal(proposalId: string, spaceId = 'd1'): DocumentProposal {
     title: 't',
     heading: '',
     original: '',
+    blockType: null,
     lossy: false,
   };
 }

@@ -36,6 +36,7 @@ const ACCEPTED = {
   title: 'Add scene 4',
   heading: 'Scene 3',
   original: '',
+  blockType: null,
   lossy: false,
 };
 

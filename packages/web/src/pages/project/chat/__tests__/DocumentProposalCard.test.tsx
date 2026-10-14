@@ -40,6 +40,7 @@ const BASE: DocumentProposal = {
   title: 'Scene 2 moves too fast',
   heading: 'Scene 2',
   original: 'He pushes the door open and sees her bags packed.',
+  blockType: 'paragraph',
   lossy: false,
 };
 
@@ -133,6 +134,13 @@ describe('an insert card', () => {
     expect(screen.getByText('Wide')).toBeTruthy();
     expect(screen.getAllByRole('button').map((b) => b.textContent)).toEqual(['Insert']);
     expect(screen.queryByTestId('document-proposal-anchor')).toBeNull();
+  });
+
+  it('names a passage with no words by its kind (review round 3)', () => {
+    const { quote: _quote, ...insert } = { ...BASE, kind: 'insert' as const, original: '\n', blockType: 'image', body: 'She waits.' };
+    draw(insert);
+
+    expect(screen.getByTestId('document-proposal-anchor').textContent).toBe('Image');
   });
 
   it('shows the passage it goes after', () => {

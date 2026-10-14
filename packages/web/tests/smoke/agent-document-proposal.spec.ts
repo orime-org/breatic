@@ -123,6 +123,7 @@ function onSecondBlock(fields: Record<string, unknown>): Propose {
     title: 'Second paragraph',
     heading: '',
     original: blocks[1]!.text,
+    blockType: 'paragraph',
     lossy: false,
     ...fields,
   });

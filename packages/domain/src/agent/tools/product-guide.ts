@@ -959,11 +959,12 @@ export function renderProductGuide(): string {
       "taken out struck through in red and the new words in green, and two buttons: " +
       `${quoted(t("chat.documentProposal.addComment"))} puts the rewritten words on the passage as a comment, and ` +
       `${quoted(t("chat.documentProposal.apply"))} replaces the passage with them; a passage with no words, such ` +
-      "as an empty code block or an image without a caption, has only the second. When the passage holds colours, " +
+      "as an empty code block, an image, a video or an audio block, has only the second. When the passage holds colours, " +
       `an alignment, column widths or comments, a rewrite card adds ${quoted(t("chat.documentProposal.lossy"))} ` +
       "An insert card that goes after a passage first shows that passage under " +
-      `${quoted(t("chat.documentProposal.insertAfter"))}; it shows the new content as it will look, tables ` +
-      `included, with ${quoted(t("chat.documentProposal.insert"))}.`,
+      `${quoted(t("chat.documentProposal.insertAfter"))}, naming a passage with no words by its kind, such as ` +
+      `${quoted(t("spaces.document.media.image"))} or ${quoted(t("chat.documentProposal.headingBlock"))}; it ` +
+      `shows the new content as it will look, tables included, with ${quoted(t("chat.documentProposal.insert"))}.`,
     "Pressing a button opens the document, or switches to its tab, and the change lands; the document scrolls " +
       "to it and outlines it for a moment. The pressed button spins meanwhile. A rewrite or an insert is one step " +
       "undo reverses. A comment lands under the reader's own name, marked " +

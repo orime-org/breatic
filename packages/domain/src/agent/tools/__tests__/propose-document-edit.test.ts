@@ -83,6 +83,7 @@ describe("a proposal that holds together", () => {
       title: "Shot size",
       heading: "Scene 2",
       original: "Shot\nAction\nClose\nShe turns",
+      blockType: "table",
       lossy: false,
     });
   });
@@ -106,6 +107,7 @@ describe("a proposal that holds together", () => {
       blockId: null,
       heading: "Scene 2",
       original: "",
+      blockType: null,
     });
   });
 

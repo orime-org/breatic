@@ -128,6 +128,7 @@ function proposalOn(handle: DocumentEditorHandle, index: number | null, fields: 
     title: 't',
     heading: '',
     original: target?.text ?? '',
+    blockType: target === undefined ? null : 'paragraph',
     lossy: false,
     ...fields,
   };

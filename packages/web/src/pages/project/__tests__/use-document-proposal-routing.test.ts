@@ -26,7 +26,7 @@ const CANVAS: ProjectSpace = { id: 'c1', name: 'Cast', type: 'canvas', createdAt
  * @returns The proposal.
  */
 function proposal(proposalId: string, spaceId = 'd1'): DocumentProposal {
-  return { proposalId, spaceId, spaceName: 'S', kind: 'insert', blockId: null, body: 'x', title: 't', heading: '', original: '', lossy: false };
+  return { proposalId, spaceId, spaceName: 'S', kind: 'insert', blockId: null, body: 'x', title: 't', heading: '', original: '', blockType: null, lossy: false };
 }
 
 const cards = (): ReturnType<typeof useDocumentProposals.getState>['cards'] => useDocumentProposals.getState().cards;

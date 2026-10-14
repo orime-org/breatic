@@ -34,6 +34,22 @@ const STATUS_KEY: Readonly<Record<Exclude<DocumentProposalCardState, 'working' |
   spaceGone: 'chat.documentProposal.spaceGone',
 };
 
+/** How a block with no words is named on the card, by its BlockNote type. */
+const BLOCK_NAME_KEY: Readonly<Record<string, string>> = {
+  paragraph: 'spaces.document.commands.paragraph',
+  heading: 'chat.documentProposal.headingBlock',
+  quote: 'spaces.document.commands.quote',
+  bulletListItem: 'spaces.document.commands.bulletList',
+  numberedListItem: 'spaces.document.commands.orderedList',
+  checkListItem: 'spaces.document.commands.taskList',
+  codeBlock: 'spaces.document.commands.codeBlock',
+  divider: 'spaces.document.commands.divider',
+  table: 'spaces.document.commands.table',
+  image: 'spaces.document.media.image',
+  video: 'spaces.document.media.video',
+  audio: 'spaces.document.media.audio',
+};
+
 /** What a press puts in the document: a comment either way, else the rewrite or the insert itself. */
 type PressKind = 'comment' | 'rewrite' | 'insert';
 
@@ -142,7 +158,7 @@ export const DocumentProposalCard = React.memo(function DocumentProposalCard({
     proposal.kind === 'insert' && proposal.blockId === null ? t('chat.documentProposal.end') : proposal.heading;
   const held = state !== 'idle' && state !== 'failed';
   // A comment hangs on words; a block with none (an empty code block, an
-  // image with no caption, a table of empty cells) has nowhere to put it.
+  // image, a table of empty cells) has nowhere to put it.
   const commentable = proposal.kind !== 'insert' && hasWords(proposal.original);
 
   let status: string | null = null;
@@ -202,7 +218,9 @@ export const DocumentProposalCard = React.memo(function DocumentProposalCard({
             data-testid='document-proposal-anchor'
             className='line-clamp-2 border-l border-border pl-2 text-xs text-muted-foreground'
           >
-            {proposal.original}
+            {hasWords(proposal.original)
+              ? proposal.original
+              : t(BLOCK_NAME_KEY[proposal.blockType ?? ''] ?? 'spaces.document.commands.paragraph')}
           </div>
         </div>
       ) : null}
