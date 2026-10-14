@@ -8,8 +8,10 @@
  * Two real y-protocols Awareness instances are linked the way the provider
  * links them. A hidden tab's main-thread timers run at most once in 30 s
  * (measured, `2026-10-14-1351-worker-timer-throttling-nodebug-probe.mjs`), so
- * the uploader's own renewal interval is stopped here and only the renewal
- * the controller is handed keeps the claim alive at the peer.
+ * the uploader's own renewal interval is stopped here; what keeps a claim
+ * alive at the peer is the clock each tick of the controller's renewal moves.
+ * The 30 s expiry itself is y-protocols' (`awareness.js:13`), read off a clock
+ * lib0 captures at load, which fake timers cannot move.
  */
 
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
@@ -196,8 +198,17 @@ describe('claims', () => {
   });
 });
 
+/**
+ * The awareness clock the peer holds for one of the uploader's bodies.
+ * @param s - The side.
+ * @returns The clock.
+ */
+function clockAtPeer(s: Side): number {
+  return s.peer.meta.get(s.mine.clientID)?.clock ?? -1;
+}
+
 describe('renewal while the tab is in the background', () => {
-  it('runs while there are claims, renews every attached body, and stops when none are left', async () => {
+  it('runs while there are claims, and each tick renews every attached body at the peer', async () => {
     const { controller, settle, ticks } = rig();
     const a = side('space-a');
     const b = side('space-b');
@@ -207,24 +218,24 @@ describe('renewal while the tab is in the background', () => {
     controller.start('u1', { kind: 'address', url: 'https://imgs.example/x.jpg' });
     await flush();
     expect(ticks.started).toBe(1);
-    for (let elapsed = 0; elapsed < 45_000; elapsed += 15_000) {
-      await vi.advanceTimersByTimeAsync(15_000);
-      ticks.tick?.();
-    }
+    const before = [clockAtPeer(a), clockAtPeer(b)];
+    ticks.tick?.();
+    ticks.tick?.();
+    expect([clockAtPeer(a), clockAtPeer(b)]).toEqual([before[0]! + 2, before[1]! + 2]);
     expect(seen(a, 'u1')).toBe('uploading');
-    expect(seen(b, 'u1')).toBe('uploading');
     settle.get('u1')!({ ok: true, result: { url: 'https://cdn.example/x.png' } });
     await flush();
     expect(ticks.stopped).toBe(1);
   });
 
-  it('without the renewal the peer drops the claim once it is 30 s old', async () => {
+  it('without a tick the peer\'s clock for the body does not move', async () => {
     const { controller } = rig();
     const a = side('space-a');
     controller.attach(a.body);
     controller.start('u1', { kind: 'address', url: 'https://imgs.example/x.jpg' });
     await flush();
+    const before = clockAtPeer(a);
     await vi.advanceTimersByTimeAsync(45_000);
-    expect(seen(a, 'u1')).toBeNull();
+    expect(clockAtPeer(a)).toBe(before);
   });
 });
