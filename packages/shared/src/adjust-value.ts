@@ -194,7 +194,7 @@ export function buildAdjustVideoFilter(value: AdjustValue): string {
   const parts = [
     `eq=brightness=${terms.brightness.toFixed(5)}:contrast=${terms.contrast.toFixed(5)}:saturation=${terms.saturation.toFixed(5)}`,
   ];
-  if (terms.hueRadians !== 0) parts.push(`hue=h=${terms.hueRadians.toFixed(6)}`);
+  if (terms.hueRadians !== 0) parts.push(`hue=H=${terms.hueRadians.toFixed(6)}`);
   if (terms.blur > 1e-4) parts.push(`gblur=sigma=${(terms.blur * 3).toFixed(4)}`);
   if (terms.grain > 0) parts.push(`noise=alls=${terms.grain}:allf=t+u`);
   if (terms.sharpen > 0) parts.push(`unsharp=5:5:${terms.sharpen.toFixed(4)}:5:5:0.0`);

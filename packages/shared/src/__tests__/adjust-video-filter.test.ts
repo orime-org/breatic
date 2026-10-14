@@ -51,7 +51,7 @@ describe("buildAdjustVideoFilter", () => {
         fade: 5,
       }),
     ).toBe(
-      "eq=brightness=0.21350:contrast=1.41012:saturation=0.83750,hue=h=-1.570796,gblur=sigma=1.3500," +
+      "eq=brightness=0.21350:contrast=1.41012:saturation=0.83750,hue=H=-1.570796,gblur=sigma=1.3500," +
         "noise=alls=12:allf=t+u,unsharp=5:5:0.6325:5:5:0.0,unsharp=7:7:0.2625:7:7:0.0," +
         "colorchannelmixer=rr=1.21800:gg=0.88200:bb=0.88400,vignette=angle=0.451604",
     );
@@ -74,7 +74,7 @@ describe("buildAdjustVideoFilter", () => {
         fade: 100,
       }),
     ).toBe(
-      "eq=brightness=-0.63000:contrast=0.53250:saturation=1.70000,hue=h=1.745329,gblur=sigma=3.0000," +
+      "eq=brightness=-0.63000:contrast=0.53250:saturation=1.70000,hue=H=1.745329,gblur=sigma=3.0000," +
         "noise=alls=54:allf=t+u,unsharp=5:5:1.1500:5:5:0.0,unsharp=7:7:0.7500:7:7:0.0," +
         "colorchannelmixer=rr=0.70000:gg=1.14000:bb=1.18000,vignette=angle=0.981748",
     );
