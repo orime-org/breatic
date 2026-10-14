@@ -154,6 +154,9 @@ function onVisitorChoice(): void {
  */
 export function setAdsView(view: { notice: NoticeShown; adsOn: boolean }): void {
   adsView = view;
+  // A decision that arrives while a window is open updates its notice; its switch stays as the visitor left it.
+  const text = bannerOptions?.text();
+  if (text !== undefined) showNotices(text);
 }
 
 /**
@@ -180,13 +183,24 @@ function presetWindow(modalName: string): void {
   const text = bannerOptions?.text();
   if (text === undefined) return;
   if (modalName === 'consentModal') {
-    showNotice(document.querySelector('#cc-main .cm__desc'), adsView.notice === 'gpc' ? text.banner.gpc : null);
+    showNotices(text);
     return;
   }
   const toggle = document.querySelector<HTMLInputElement>('#cc-main .pm input[value="ads"]');
   if (toggle !== null) toggle.checked = adsView.adsOn;
-  const notice = adsView.notice === false ? null : text.settings.notice[adsView.notice];
-  showNotice(toggle?.closest('.pm__section') ?? null, notice);
+  showNotices(text);
+}
+
+/**
+ * Show the current notice in whichever window is on the page.
+ * @param text - The consent text.
+ */
+function showNotices(text: ConsentText): void {
+  showNotice(document.querySelector('#cc-main .cm__desc'), adsView.notice === 'gpc' ? text.banner.gpc : null);
+  const section = document.querySelector('#cc-main .pm input[value="ads"]')?.closest('.pm__section--toggle') ?? null;
+  // Inside the ads card, under its description.
+  const body = section?.querySelector('.pm__section-desc-wrapper') ?? section;
+  showNotice(body, adsView.notice === false ? null : text.settings.notice[adsView.notice]);
 }
 
 /**

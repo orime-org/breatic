@@ -433,7 +433,7 @@ describe('ads under an opt-out', () => {
     library.consent = true;
     const banner = await startBanner('US');
     document.body.innerHTML =
-      '<div id="cc-main"><div class="pm"><div class="pm__section"><input type="checkbox" value="ads" checked></div></div></div>';
+      '<div id="cc-main"><div class="pm"><div class="pm__section--toggle"><input type="checkbox" value="ads" checked></div></div></div>';
     try {
       banner.setAdsView({ notice: 'account', adsOn: false });
       library.config?.onModalShow?.({ modalName: 'preferencesModal' });

@@ -136,6 +136,13 @@
 /* The opt-out notice under the banner text and above the ads switch (inner#1442 §4.4.4). */
 #cc-main .breatic-consent-notice {
   margin: 0.5rem 0 0;
+  font-size: inherit;
   color: var(--cc-primary-color);
   font-weight: 500;
+}
+
+/* Inside the ads card the notice sits under the description, padded the same way. */
+#cc-main .pm__section-desc-wrapper > .breatic-consent-notice {
+  margin: 0;
+  padding: 0 1rem 1rem;
 }
