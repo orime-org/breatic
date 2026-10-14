@@ -8,7 +8,6 @@ import type { CreditOverview } from '@breatic/shared';
 import { Button } from '@web/components/ui/button';
 import type { CreditPack } from '@web/data/api/payment';
 import { BuyConfirmDialog } from '@web/features/credits/sections/BuyConfirmDialog';
-import { startCreditsCheckout } from '@web/features/credits/sections/credits-checkout';
 import { SectionSkeleton } from '@web/components/section-skeleton';
 import {
   Card,
@@ -51,7 +50,6 @@ export function BuySection({ overview }: BuySectionProps): React.JSX.Element {
   const [chosen, setChosen] = React.useState<CreditPack | null>(null);
 
   const packs = usePaymentTiers(overview.billing);
-
 
   const close = React.useCallback((open: boolean): void => {
     if (!open) setChosen(null);
@@ -109,7 +107,6 @@ export function BuySection({ overview }: BuySectionProps): React.JSX.Element {
         refundLines={packs.data?.refundLines ?? []}
         consentText={packs.data?.consentText ?? ''}
         onOpenChange={close}
-        onConfirm={startCreditsCheckout}
       />
     </Section>
   );

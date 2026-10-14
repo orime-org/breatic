@@ -783,9 +783,9 @@ export function GeneratePanelContainer(
   return (
     <CatalogGatedFrame nodeId={nodeId} modality='image'>
       {/* key={nodeId} makes switching the panel to another node a full REMOUNT:
-          promptText / promptTextRef / submittingRef all reset to the new node's
-          fresh state, so a prompt typed for node A can never be submitted to
-          node B (nor can the execute button show A's enabled state on B). */}
+          promptText / promptTextRef reset to the new node's fresh state, so a
+          prompt typed for node A can never be submitted to node B (nor can the
+          execute button show A's enabled state on B). */}
       <GeneratePanelBody {...props} nodeId={nodeId} key={nodeId} />
     </CatalogGatedFrame>
   );

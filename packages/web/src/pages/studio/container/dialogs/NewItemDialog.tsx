@@ -99,7 +99,7 @@ export function NewItemDialog({
   const [spaceType, setSpaceType] = React.useState<SpaceType>('canvas');
   const [studioId, setStudioId] = React.useState(defaultStudioId ?? '');
   const slugCheck = useItemSlugCheck(slug);
-  const [pressed, setSubmitting] = React.useState(false);
+  const [pressed, setPressed] = React.useState(false);
   // A project create is held outside this dialog (inner#1490): opened again
   // while one is out, from either entry, it shows Create busy.
   const creatingProject = useCreatingProject();
@@ -125,7 +125,7 @@ export function NewItemDialog({
     setDescription('');
     setSpaceType('canvas');
     setStudioId(defaultStudioId ?? '');
-    setSubmitting(false);
+    setPressed(false);
   };
 
   /**
@@ -149,7 +149,7 @@ export function NewItemDialog({
   const submit = (event: React.FormEvent): void => {
     event.preventDefault();
     if (!canSubmit) return;
-    setSubmitting(true);
+    setPressed(true);
     // Awaited whether or not the caller returns a promise, so there is one
     // path out of a press. A caller that reports failure by rejecting leaves
     // the dialog up with what was typed still in it; saying what went wrong
@@ -170,7 +170,7 @@ export function NewItemDialog({
         handleOpenChange(false);
       },
       () => {
-        setSubmitting(false);
+        setPressed(false);
       },
     );
   };

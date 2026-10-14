@@ -15,7 +15,7 @@ import {
   DialogTitle,
 } from '@web/components/ui/dialog';
 import type { CreditPack } from '@web/data/api/payment';
-import { useCheckoutPack } from '@web/features/credits/sections/credits-checkout';
+import { startCreditsCheckout, useCheckoutPack } from '@web/features/credits/sections/credits-checkout';
 import { RuleLines, formatMoney } from '@web/features/credits/section-chrome';
 import { useTranslation } from '@web/i18n/use-translation';
 import { formatCreditAmount } from '@web/lib/format-credit-amount';
@@ -72,12 +72,6 @@ interface BuyConfirmDialogProps {
   consentText: string;
   /** Called when the dialog closes itself. */
   onOpenChange: (open: boolean) => void;
-  /**
-   * Called with the pack once the buyer confirms. Answers whether the buyer
-   * is on their way to Stripe; a false answer leaves the dialog open and
-   * usable, because there is nothing else for them to do here but try again.
-   */
-  onConfirm: (pack: CreditPack) => void;
 }
 
 /**
@@ -99,12 +93,14 @@ interface BuyConfirmDialogProps {
  * agreed to states when a purchase stops being refundable, and the rule it
  * refers to would otherwise be neither visible nor readable at the moment of
  * agreeing.
- * @param props - The pack, the rule and the callbacks.
+ *
+ * Confirming starts the checkout; the dialog stays open, its Pay waiting,
+ * until the browser leaves for Stripe or the checkout fails.
+ * @param props - The pack, the rule and the close callback.
  * @param props.pack - The chosen pack, or null when closed.
  * @param props.refundLines - The refund rule, in the reader's language.
  * @param props.consentText - The sentence the tick stands for.
  * @param props.onOpenChange - Called when the dialog closes itself.
- * @param props.onConfirm - Called with the pack once confirmed.
  * @returns The dialog.
  */
 export function BuyConfirmDialog({
@@ -112,7 +108,6 @@ export function BuyConfirmDialog({
   refundLines,
   consentText,
   onOpenChange,
-  onConfirm,
 }: BuyConfirmDialogProps): React.JSX.Element {
   const t = useTranslation();
   const [consented, setConsented] = React.useState(false);
@@ -130,8 +125,8 @@ export function BuyConfirmDialog({
 
   const confirm = React.useCallback((): void => {
     if (pack === null) return;
-    onConfirm(pack);
-  }, [onConfirm, pack]);
+    startCreditsCheckout(pack);
+  }, [pack]);
 
   const cancel = React.useCallback(() => {
     onOpenChange(false);
