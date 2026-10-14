@@ -42,3 +42,11 @@ export function LoadingScreen(): React.JSX.Element {
     </div>
   );
 }
+
+/**
+ * Placeholder for the single mounted loading screen.
+ * @returns Nothing yet.
+ */
+export function LoadingScreenHost(): null {
+  return null;
+}
