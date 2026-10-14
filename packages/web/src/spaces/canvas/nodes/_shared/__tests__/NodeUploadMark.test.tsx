@@ -8,11 +8,13 @@
  */
 
 import { act, render, screen } from '@testing-library/react';
+import { ReactFlowProvider } from '@xyflow/react';
+import type * as React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@xyflow/react', async (original) => ({ ...(await original<object>()), useNodeId: () => 'n1' }));
 
-import { NodeMediaInset } from '@web/spaces/canvas/nodes/_shared/NodeMediaInset';
+import { ContentNodeFrame } from '@web/spaces/canvas/nodes/_shared/ContentNodeFrame';
 import { NodePlaceholder } from '@web/spaces/canvas/nodes/_shared/NodePlaceholder';
 import { useUploadMarksStore } from '@web/stores/upload-marks';
 
@@ -54,38 +56,57 @@ describe('an empty node with an upload mark', () => {
   });
 });
 
-describe('a node with content and an upload mark', () => {
-  it('lays a skeleton over the media while it waits', () => {
+/**
+ * Render a node through the frame every content modality shares.
+ * @param modality - The node's modality.
+ * @param body - What the node shows.
+ */
+function renderFramed(modality: 'image' | 'video' | 'audio' | 'text', body: React.ReactNode): void {
+  render(
+    <ReactFlowProvider>
+      <ContentNodeFrame modality={modality}>{body}</ContentNodeFrame>
+    </ReactFlowProvider>,
+  );
+}
+
+describe('every content node with an upload mark', () => {
+  it.each(['image', 'video', 'audio', 'text'] as const)('lays a skeleton over a %s node that shows something', (modality) => {
     act(() => {
       marks().begin('', 'n1', 'upload');
     });
-    render(
-      <NodeMediaInset>
-        <img alt='' src='a.png' />
-      </NodeMediaInset>,
-    );
-    expect(screen.getByTestId('node-upload-skeleton')).toBeInTheDocument();
+    renderFramed(modality, <p>held content</p>);
+    expect(screen.getAllByTestId('node-upload-skeleton')).toHaveLength(1);
   });
 
-  it('says what went wrong along the media when it failed', () => {
+  it.each(['image', 'video', 'audio', 'text'] as const)('says what went wrong on a %s node that shows something', (modality) => {
     act(() => {
       const op = marks().begin('', 'n1', 'upload');
       marks().fail('', 'n1', op, { key: 'canvas.upload.failed' });
     });
-    render(
-      <NodeMediaInset>
-        <img alt='' src='a.png' />
-      </NodeMediaInset>,
-    );
+    renderFramed(modality, <p>held content</p>);
     expect(screen.getByTestId('node-upload-error')).toHaveTextContent('Upload failed.');
   });
 
-  it('shows the media alone without a mark', () => {
-    render(
-      <NodeMediaInset>
-        <img alt='' src='a.png' />
-      </NodeMediaInset>,
-    );
+  it('shows one skeleton on an empty node, in place of its call to action', () => {
+    act(() => {
+      marks().begin('', 'n1', 'upload');
+    });
+    renderFramed('image', <NodePlaceholder modality='image' />);
+    expect(screen.getAllByTestId('node-upload-skeleton')).toHaveLength(1);
+    expect(screen.getByTestId('node-placeholder')).toContainElement(screen.getByTestId('node-upload-skeleton'));
+  });
+
+  it('shows one error line on an empty node', () => {
+    act(() => {
+      const op = marks().begin('', 'n1', 'upload');
+      marks().fail('', 'n1', op, { key: 'canvas.upload.failed' });
+    });
+    renderFramed('image', <NodePlaceholder modality='image' />);
+    expect(screen.getAllByTestId('node-upload-error')).toHaveLength(1);
+  });
+
+  it('shows the content alone without a mark', () => {
+    renderFramed('audio', <p>held content</p>);
     expect(screen.queryByTestId('node-upload-skeleton')).toBeNull();
     expect(screen.queryByTestId('node-upload-error')).toBeNull();
   });

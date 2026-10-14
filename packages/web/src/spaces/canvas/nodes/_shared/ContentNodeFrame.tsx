@@ -12,6 +12,10 @@ import {
   type NodeResolution,
 } from '@web/spaces/canvas/nodes/_shared/NodeResolutionBadge';
 import { NodeShell } from '@web/spaces/canvas/nodes/_shared/NodeShell';
+import {
+  NodeUploadMarkOverlay,
+  UploadMarkPlaceholderContext,
+} from '@web/spaces/canvas/nodes/_shared/NodeUploadMarkOverlay';
 import { ZoomCounterScaled } from '@web/spaces/canvas/nodes/_shared/ZoomCounterScaled';
 import type { Modality } from '@web/data/yjs/node-view';
 
@@ -93,6 +97,9 @@ export function ContentNodeFrame({
   // badge matters more than the overlap.
   const occupants = React.useContext(NodeOccupantsContext);
   const badgeShown = resolution !== undefined;
+  // An empty node's placeholder draws the uploader's mark in place of its call
+  // to action; any other body gets it laid over (inner#1303 §6.7).
+  const [placeholderDrawsMark, setPlaceholderDrawsMark] = React.useState(false);
   return (
     <div className='relative'>
       <ZoomCounterScaled
@@ -131,7 +138,10 @@ export function ContentNodeFrame({
         className={cn('w-72', className)}
         testId={testId}
       >
-        {children}
+        <UploadMarkPlaceholderContext.Provider value={setPlaceholderDrawsMark}>
+          {children}
+        </UploadMarkPlaceholderContext.Provider>
+        {placeholderDrawsMark ? null : <NodeUploadMarkOverlay />}
       </NodeShell>
     </div>
   );

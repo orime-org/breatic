@@ -16,6 +16,7 @@ import {
   NodeBusyContext,
   PeerActivityContext,
 } from '@web/spaces/canvas/nodes/_shared/node-peer-activity-context';
+import { useClaimUploadMark } from '@web/spaces/canvas/nodes/_shared/NodeUploadMarkOverlay';
 import { useUploadMark } from '@web/spaces/canvas/nodes/_shared/use-upload-mark';
 import type { Modality } from '@web/data/yjs/node-view';
 
@@ -94,6 +95,7 @@ export function NodePlaceholder({
   // The uploader's own mark (inner#1303 §6.7): a skeleton while the server's
   // answer is awaited, a line saying why when it ended before that.
   const mark = useUploadMark();
+  useClaimUploadMark();
   const waiting = mark?.state === 'waiting';
   const failed = mark?.state === 'failed' ? mark.message : undefined;
   // Someone else's activity; the viewer's own mark above wins over it.
