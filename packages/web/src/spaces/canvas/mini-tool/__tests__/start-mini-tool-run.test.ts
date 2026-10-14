@@ -175,6 +175,8 @@ describe('startMiniToolRun', () => {
     expect(canvas.addNode).toHaveBeenCalledTimes(1);
     expect(run.onBuilt).toHaveBeenCalledOnce();
     expect(marksOfBuilt().map((mark) => mark?.state)).toEqual(['waiting']);
+    // A14: the mark says which tool the collaborators should see it running.
+    expect(marksOfBuilt()[0]).toMatchObject({ action: 'image.adjust' });
     done([{ file: new File(['x'], 'a.png', { type: 'image/png' }) }]);
     await work;
   });

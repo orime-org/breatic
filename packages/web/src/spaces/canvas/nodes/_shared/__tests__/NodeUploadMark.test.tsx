@@ -26,7 +26,7 @@ beforeEach(() => {
 describe('an empty node with an upload mark', () => {
   it('shows a skeleton in place of the call to action while it waits', () => {
     act(() => {
-      marks().begin('', 'n1');
+      marks().begin('', 'n1', 'upload');
     });
     render(<NodePlaceholder modality='image' />);
     expect(screen.getByTestId('node-upload-skeleton')).toBeInTheDocument();
@@ -35,7 +35,7 @@ describe('an empty node with an upload mark', () => {
 
   it('says what went wrong when it failed before the answer', () => {
     act(() => {
-      const op = marks().begin('', 'n1');
+      const op = marks().begin('', 'n1', 'upload');
       marks().fail('', 'n1', op, { key: 'canvas.upload.failed' });
     });
     render(<NodePlaceholder modality='image' />);
@@ -45,7 +45,7 @@ describe('an empty node with an upload mark', () => {
   it('goes back to the call to action once answered', () => {
     let op = '';
     act(() => {
-      op = marks().begin('', 'n1');
+      op = marks().begin('', 'n1', 'upload');
     });
     render(<NodePlaceholder modality='image' />);
     act(() => marks().answer('', 'n1', op));
@@ -57,7 +57,7 @@ describe('an empty node with an upload mark', () => {
 describe('a node with content and an upload mark', () => {
   it('lays a skeleton over the media while it waits', () => {
     act(() => {
-      marks().begin('', 'n1');
+      marks().begin('', 'n1', 'upload');
     });
     render(
       <NodeMediaInset>
@@ -69,7 +69,7 @@ describe('a node with content and an upload mark', () => {
 
   it('says what went wrong along the media when it failed', () => {
     act(() => {
-      const op = marks().begin('', 'n1');
+      const op = marks().begin('', 'n1', 'upload');
       marks().fail('', 'n1', op, { key: 'canvas.upload.failed' });
     });
     render(

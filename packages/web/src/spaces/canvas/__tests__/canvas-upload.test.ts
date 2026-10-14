@@ -203,7 +203,7 @@ describe('fillNodeFromFile — fill an EXISTING node from a picked file (double-
   let op = '';
   beforeEach(() => {
     useUploadMarksStore.setState({ marks: {} });
-    op = useUploadMarksStore.getState().begin('s1', 'n1');
+    op = useUploadMarksStore.getState().begin('s1', 'n1', 'upload');
   });
   /** n1's mark. */
   const mark = () => useUploadMarksStore.getState().markOf('s1', 'n1');

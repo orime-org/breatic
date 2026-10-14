@@ -12,13 +12,14 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { renderHook } from '@testing-library/react';
+import { act, renderHook } from '@testing-library/react';
 import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
 
 import type { ActiveNodeSources } from '@web/spaces/canvas/active-node-ids';
 import type { GestureGeometry } from '@web/spaces/canvas/gesture-table';
 import { usePublishPresence } from '@web/spaces/canvas/use-publish-presence';
+import { useUploadMarksStore } from '@web/stores/upload-marks';
 
 /** The three fields this client writes into awareness. */
 interface Published {
@@ -210,6 +211,7 @@ describe('usePublishPresence, the holding', () => {
         synced: true,
         containerRef: { current: container },
         toFlowPosition: SHIFTED,
+        spaceId: 'S',
       }),
     );
 
@@ -229,6 +231,7 @@ describe('usePublishPresence, the holding', () => {
           synced: true,
           containerRef: { current: container },
           toFlowPosition: SHIFTED,
+          spaceId: 'S',
         }),
       { initialProps: { ...NOTHING, selectedIds: ['a'] } },
     );
@@ -250,6 +253,7 @@ describe('usePublishPresence, the holding', () => {
         synced: true,
         containerRef: { current: container },
         toFlowPosition: SHIFTED,
+        spaceId: 'S',
       }),
     );
 
@@ -269,6 +273,7 @@ describe('usePublishPresence, the holding', () => {
           synced: true,
           containerRef: { current: container },
           toFlowPosition: SHIFTED,
+          spaceId: 'S',
         }),
       { initialProps: { ...NOTHING, selectedIds: ['a'] } },
     );
@@ -297,6 +302,7 @@ describe('usePublishPresence, the holding', () => {
           synced: true,
           containerRef: { current: container },
           toFlowPosition: SHIFTED,
+          spaceId: 'S',
         }),
       { initialProps: { ...NOTHING, selectedIds: ['a'] } },
     );
@@ -324,6 +330,7 @@ describe('usePublishPresence, the holding', () => {
           synced: true,
           containerRef: { current: container },
           toFlowPosition: SHIFTED,
+          spaceId: 'S',
         }),
       { initialProps: { ...NOTHING, selectedIds: ['a'] } },
     );
@@ -355,6 +362,7 @@ describe('usePublishPresence, the holding', () => {
           synced,
           containerRef: { current: container },
           toFlowPosition: SHIFTED,
+          spaceId: 'S',
         }),
       { initialProps: true },
     );
@@ -386,6 +394,7 @@ describe('usePublishPresence, the holding', () => {
         synced: true,
         containerRef: { current: container },
         toFlowPosition: SHIFTED,
+        spaceId: 'S',
       }),
     );
     await settled();
@@ -410,6 +419,7 @@ describe('usePublishPresence, the holding', () => {
         synced: true,
         containerRef: { current: container },
         toFlowPosition: SHIFTED,
+        spaceId: 'S',
       }),
     );
 
@@ -430,6 +440,7 @@ describe('usePublishPresence, the pointer', () => {
         synced: true,
         containerRef: { current: container },
         toFlowPosition: SHIFTED,
+        spaceId: 'S',
       }),
     );
     await settled();
@@ -472,6 +483,7 @@ describe('usePublishPresence, the pointer', () => {
         synced: true,
         containerRef: { current: container },
         toFlowPosition: SHIFTED,
+        spaceId: 'S',
       }),
     );
     sendPointer(container, 'pointermove', { clientX: 40, clientY: 60 });
@@ -498,6 +510,7 @@ describe('usePublishPresence, the pointer', () => {
         synced: true,
         containerRef: { current: container },
         toFlowPosition: SHIFTED,
+        spaceId: 'S',
       }),
     );
     sendPointer(container, 'pointermove', { clientX: 40, clientY: 60 });
@@ -582,6 +595,7 @@ describe('usePublishPresence, the pointer', () => {
         synced: true,
         containerRef: { current: container },
         toFlowPosition: SHIFTED,
+        spaceId: 'S',
       }),
     );
     sendPointer(container, 'pointermove', { clientX: 40, clientY: 60 });
@@ -607,6 +621,7 @@ describe('usePublishPresence, the pointer', () => {
         synced: true,
         containerRef: { current: container },
         toFlowPosition: SHIFTED,
+        spaceId: 'S',
       }),
     );
     sendPointer(container, 'pointermove', { clientX: 40, clientY: 60 });
@@ -636,6 +651,7 @@ describe('usePublishPresence, the pointer', () => {
         synced: true,
         containerRef: { current: container },
         toFlowPosition: SHIFTED,
+        spaceId: 'S',
       }),
     );
     await settled();
@@ -661,6 +677,7 @@ describe('usePublishPresence, the pointer', () => {
         synced: true,
         containerRef: { current: container },
         toFlowPosition: SHIFTED,
+        spaceId: 'S',
       }),
     );
 
@@ -682,6 +699,7 @@ describe('usePublishPresence, the write rate', () => {
         synced: true,
         containerRef: { current: container },
         toFlowPosition: SHIFTED,
+        spaceId: 'S',
       }),
     );
     await settled();
@@ -723,6 +741,7 @@ describe('usePublishPresence, the gesture geometry', () => {
         synced: true,
         containerRef,
         toFlowPosition: SHIFTED,
+        spaceId: 'S',
       }),
     );
     return { publisher: result.current, container };
@@ -930,6 +949,7 @@ describe('usePublishPresence, the gesture geometry', () => {
         synced: true,
         containerRef,
         toFlowPosition: SHIFTED,
+        spaceId: 'S',
       }),
     );
     result.current.publishGesture({ n1: { x: 10, y: 20, root: 'n1' } });
@@ -955,6 +975,7 @@ describe('usePublishPresence, the gesture geometry', () => {
           synced,
           containerRef,
           toFlowPosition: SHIFTED,
+          spaceId: 'S',
         }),
       { initialProps: { synced: true } },
     );
@@ -974,5 +995,97 @@ describe('usePublishPresence, the gesture geometry', () => {
 
     await vi.waitFor(() => expect(writes).toBeGreaterThan(0));
     expect(published(awareness).gesture).toEqual({ n1: { x: 10, y: 20, root: 'n1' } });
+  });
+});
+
+describe('usePublishPresence, the activity', () => {
+  /**
+   * Read back the activity this client publishes.
+   * @param awareness - The awareness to read.
+   * @returns The published list, or null.
+   */
+  function activityOf(awareness: Awareness): unknown {
+    return (awareness.getLocalState() as { activity?: unknown } | null)?.activity ?? null;
+  }
+
+  /**
+   * Mount the publisher for Space 'S'.
+   * @param awareness - The awareness to write.
+   * @returns The rendered hook.
+   */
+  function mount(awareness: Awareness): ReturnType<typeof renderHook> {
+    const { container } = makeCanvas();
+    return renderHook(() =>
+      usePublishPresence({
+        awareness,
+        sources: NOTHING,
+        synced: true,
+        containerRef: { current: container },
+        toFlowPosition: SHIFTED,
+        spaceId: 'S',
+      }),
+    );
+  }
+
+  beforeEach(() => {
+    useUploadMarksStore.setState({ marks: {} });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('publishes a waiting operation in the same turn it starts', () => {
+    const awareness = makeAwareness();
+    mount(awareness);
+    vi.spyOn(Date, 'now').mockReturnValue(42);
+    act(() => {
+      useUploadMarksStore.getState().begin('S', 'n1', 'image.grid');
+    });
+    expect(activityOf(awareness)).toEqual([{ nodeId: 'n1', action: 'image.grid', at: 42 }]);
+  });
+
+  it('takes a node off in the same turn its operation fails or is answered', () => {
+    const awareness = makeAwareness();
+    mount(awareness);
+    let a = '';
+    let b = '';
+    act(() => {
+      a = useUploadMarksStore.getState().begin('S', 'n1', 'upload');
+      b = useUploadMarksStore.getState().begin('S', 'n2', 'upload');
+    });
+    act(() => useUploadMarksStore.getState().fail('S', 'n1', a, { key: 'canvas.upload.failed' }));
+    expect(activityOf(awareness)).toEqual([expect.objectContaining({ nodeId: 'n2' })]);
+    act(() => useUploadMarksStore.getState().answer('S', 'n2', b));
+    expect(activityOf(awareness)).toBeNull();
+  });
+
+  it('leaves another Space’s operations out', () => {
+    const awareness = makeAwareness();
+    mount(awareness);
+    act(() => {
+      useUploadMarksStore.getState().begin('T', 'n1', 'upload');
+    });
+    expect(activityOf(awareness)).toBeNull();
+  });
+
+  it('publishes what was already waiting when it mounts', () => {
+    const awareness = makeAwareness();
+    act(() => {
+      useUploadMarksStore.getState().begin('S', 'n1', 'readText');
+    });
+    mount(awareness);
+    expect(activityOf(awareness)).toEqual([expect.objectContaining({ nodeId: 'n1', action: 'readText' })]);
+  });
+
+  it('withdraws the activity when it unmounts', () => {
+    const awareness = makeAwareness();
+    const rendered = mount(awareness);
+    act(() => {
+      useUploadMarksStore.getState().begin('S', 'n1', 'upload');
+    });
+    rendered.unmount();
+    expect(activityOf(awareness)).toBeNull();
+    expect(awareness.getLocalState()).not.toBeNull();
   });
 });

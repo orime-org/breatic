@@ -73,6 +73,7 @@ describe('fillNodesFromFiles', () => {
     useUploadMarksStore.setState({ marks: {} });
     fillNodesFromFiles(tiles(2), 'p1', deps());
     expect([markOf('node-0')?.state, markOf('node-1')?.state]).toEqual(['waiting', 'waiting']);
+    expect(markOf('node-0')).toMatchObject({ action: 'upload' });
     const [entries] = vi.mocked(runMediaUploadBatch).mock.calls[0]!;
     entries[0]!.onAnswered!();
     expect([markOf('node-0'), markOf('node-1')?.state]).toEqual([undefined, 'waiting']);

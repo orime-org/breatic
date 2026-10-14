@@ -125,7 +125,7 @@ describe('filling an existing node says a full account on the node', () => {
   // inner#1303 §6.7: refused before any ticket, so no task row; the node says it.
   it('marks the node with the full account and hands nothing to the caller', async () => {
     useUploadMarksStore.setState({ marks: {} });
-    const markOp = useUploadMarksStore.getState().begin('s1', 'n1');
+    const markOp = useUploadMarksStore.getState().begin('s1', 'n1', 'upload');
     const onUploadFailure = vi.fn((_outcome: UploadFailure) => {});
     await fillNodeFromFile('n1', pngFile(), 'image', 'p1', fillDeps({ onUploadFailure, markOp }));
     expect(onUploadFailure).not.toHaveBeenCalled();
