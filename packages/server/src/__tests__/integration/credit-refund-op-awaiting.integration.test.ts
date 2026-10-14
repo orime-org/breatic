@@ -294,6 +294,8 @@ describe("awaiting_stripe × E6: Stripe took the refund, then it failed (#10)", 
       expect(await readOp(suite.sql, opId)).toMatchObject({
         status: "needs_attention",
         attention_reason: "stripe_refund_failed_later",
+        // The failed fixture's failure_reason: what a person reads first (§5.1).
+        attention_detail: "lost_or_stolen_card",
         result: null,
       });
       expect(await readLot(suite.sql, lot.lotId)).toEqual(lotBefore);
@@ -305,6 +307,23 @@ describe("awaiting_stripe × E6: Stripe took the refund, then it failed (#10)", 
       ]);
     },
   );
+
+  it("a canceled refund carries no failure_reason: the person reads its status, canceled", async () => {
+    const refundId = reId("canceled_later");
+    const { opId } = await awaiting("approve", refundId);
+    const canceled = refundObject(refundId, "canceled", 1080, opId);
+    expect(canceled.failure_reason).toBeNull();
+
+    await inTx((tx) =>
+      transitionOperation(tx, { id: opId }, { type: "E6", refund: canceled, actor: "loop" }),
+    );
+
+    expect(await readOp(suite.sql, opId)).toMatchObject({
+      status: "needs_attention",
+      attention_reason: "stripe_refund_failed_later",
+      attention_detail: "canceled",
+    });
+  });
 });
 
 describe("awaiting_stripe × E10: the lookup after a 5xx found nothing", () => {

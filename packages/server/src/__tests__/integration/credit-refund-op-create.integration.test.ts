@@ -741,4 +741,101 @@ describe("(no row) × E1: a disposition's own stamps never run backwards (G1)", 
     expect(row).toBeDefined();
     expect(Number(row!.gap)).toBeGreaterThanOrEqual(0);
   });
+
+  it("a row inserted after its finisher's transaction began: the finish stamps finished_at and updated_at from the clock, not the transaction start (H5)", async () => {
+    const lot = await seedRefundLot(suite.sql, "refund_pending");
+
+    // T fixes its now() first; the approve is inserted and committed on
+    // another connection after that, so now() in T is before its created_at.
+    const approveId = await db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT 1`);
+      const approve = await inTx((other) => transitionOperation(other, null, e1(lot, "approve")));
+      await tx.execute(sql`SELECT pg_sleep(0.05)`);
+      await transitionOperation(tx, { id: approve!.id }, {
+        type: "E6",
+        failure: failure(400, { type: "invalid_request_error" }),
+        leaseToken: approve!.leaseToken!,
+        actor: "loop",
+      });
+      return approve!.id;
+    });
+
+    expect(await readOp(suite.sql, approveId)).toMatchObject({ status: "needs_attention" });
+    const stamps = await stampsPastCreated(approveId);
+    expect(stamps.finished!).toBeGreaterThanOrEqual(0);
+    expect(stamps.updated).toBeGreaterThanOrEqual(0);
+  });
+
+  describe("progress writes outside transitionOperation, with the app clock an hour behind the database (H1)", () => {
+    const BEHIND_MS = 60 * 60 * 1000;
+
+    /**
+     * Run work with only `Date` faked an hour behind the real clock, so the
+     * postgres driver's timers keep running; the clock is restored after.
+     * @param run - The work.
+     */
+    async function withAppClockBehind(run: () => Promise<void>): Promise<void> {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(Date.now() - BEHIND_MS);
+      try {
+        await run();
+      } finally {
+        vi.useRealTimers();
+      }
+    }
+
+    /**
+     * A disposition's created_at and updated_at in epoch microseconds.
+     * @param id - The disposition.
+     * @returns Both stamps.
+     */
+    async function createdAndUpdatedUs(id: string): Promise<{ created: number; updated: number }> {
+      const [row] = await suite.sql<{ created: string; updated: string }[]>`
+        SELECT (extract(epoch FROM created_at) * 1000000)::bigint::text AS created,
+               (extract(epoch FROM updated_at) * 1000000)::bigint::text AS updated
+        FROM credit_refund_operations WHERE id = ${id}
+      `;
+      return { created: Number(row!.created), updated: Number(row!.updated) };
+    }
+
+    /**
+     * Assert updated_at did not run backwards past created_at or its earlier value.
+     * @param id - The disposition.
+     * @param before - The stamps read just before the write.
+     */
+    async function expectUpdatedNotBackwards(id: string, before: { updated: number }): Promise<void> {
+      const after = await createdAndUpdatedUs(id);
+      expect(after.updated).toBeGreaterThanOrEqual(after.created);
+      expect(after.updated).toBeGreaterThanOrEqual(before.updated);
+    }
+
+    it("markFirstCalled on a started approve holding its lease", async () => {
+      const lot = await seedRefundLot(suite.sql, "refunding");
+      const op = await seedOperation(suite.sql, lot, { kind: "approve", status: "started" });
+      const before = await createdAndUpdatedUs(op.id);
+
+      await withAppClockBehind(async () => {
+        expect(await operationRepo.markFirstCalled(op.id, op.leaseToken!, 1000)).toBe(true);
+      });
+
+      await expectUpdatedNotBackwards(op.id, before);
+    });
+
+    it("scheduleNextLook on an awaiting_stripe disposition", async () => {
+      const lot = await seedRefundLot(suite.sql, "refunding");
+      const op = await seedOperation(suite.sql, lot, {
+        kind: "approve",
+        status: "awaiting_stripe",
+        stripeRefundId: reId("waiting"),
+        firstCalledHoursAgo: 1,
+        attemptCount: 1,
+      });
+      const before = await createdAndUpdatedUs(op.id);
+
+      await withAppClockBehind(() => inTx((tx) => operationRepo.scheduleNextLook(op.id, 60, tx)));
+
+      expect((await readOp(suite.sql, op.id)).status).toBe("awaiting_stripe");
+      await expectUpdatedNotBackwards(op.id, before);
+    });
+  });
 });
