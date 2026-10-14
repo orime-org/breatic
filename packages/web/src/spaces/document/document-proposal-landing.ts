@@ -16,18 +16,16 @@
  */
 
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
-import type { EditorState } from '@tiptap/pm/state';
-import { deriveId, type DocumentProposal } from '@breatic/shared';
+import { deriveId, occurrences, type DocumentProposal } from '@breatic/shared';
 
 import { blockPlainText } from '@web/spaces/document/document-blocks-read';
-import { commentOn } from '@web/spaces/document/document-comment-post';
+import { commentOn, type CommentAim } from '@web/spaces/document/document-comment-post';
 import { asCommentBody, commentsOn } from '@web/spaces/document/document-comment-extension';
 import { threadRangesByThread } from '@web/spaces/document/document-comment-ranges';
 import type { DocumentEditorHandle } from '@web/spaces/document/document-editor-cache';
 import { markdownBlocks } from '@web/spaces/document/document-markdown';
 import type { LandingAction } from '@web/stores/document-proposals';
 
-export type { LandingAction } from '@web/stores/document-proposals';
 
 /** How a press ended. */
 export type LandingResult =
@@ -95,13 +93,13 @@ function rangesOf(doc: ProseMirrorNode, blockId: string, start: number, end: num
  * @param quote - The words.
  * @returns The aim for {@link commentOn}.
  */
-function quoteAim(blockId: string, quote: string): (state: EditorState) => Array<{ from: number; to: number }> | null {
+function quoteAim(blockId: string, quote: string): CommentAim {
   return (state) => {
     const block = blockById(state.doc, blockId);
     if (block === null) return null;
     const text = blockPlainText(block.node);
+    if (occurrences(text, quote) !== 1) return null;
     const at = text.indexOf(quote);
-    if (at === -1 || text.indexOf(quote, at + 1) !== -1) return null;
     return rangesOf(state.doc, blockId, at, at + quote.length);
   };
 }
@@ -111,7 +109,7 @@ function quoteAim(blockId: string, quote: string): (state: EditorState) => Array
  * @param blockId - The block.
  * @returns The aim for {@link commentOn}.
  */
-function wholeBlockAim(blockId: string): (state: EditorState) => Array<{ from: number; to: number }> | null {
+function wholeBlockAim(blockId: string): CommentAim {
   return (state) => {
     const block = blockById(state.doc, blockId);
     return block === null ? null : rangesOf(state.doc, blockId, 0, blockPlainText(block.node).length);
@@ -210,9 +208,15 @@ async function landBlocks(handle: Landable, proposal: DocumentProposal): Promise
   undoManager.stopCapturing();
   if (proposal.kind === 'rewrite') {
     editor.replaceBlocks([proposal.blockId!], written as never);
+  } else if (proposal.blockId !== null) {
+    editor.insertBlocks(written as never, proposal.blockId, 'after');
   } else {
-    const anchor = proposal.blockId ?? (editor.document[editor.document.length - 1] as { id: string }).id;
-    editor.insertBlocks(written as never, anchor, 'after');
+    // An empty last paragraph is where the end of the document is, not a
+    // line to keep above what is added there.
+    const last = editor.document[editor.document.length - 1] as { id: string; type: string; content?: unknown; children?: unknown[] };
+    const empty = last.type === 'paragraph' && Array.isArray(last.content) && last.content.length === 0 && (last.children ?? []).length === 0;
+    if (empty) editor.replaceBlocks([last.id], written as never);
+    else editor.insertBlocks(written as never, last.id, 'after');
   }
   undoManager.stopCapturing();
   return writtenBlockId(proposal.proposalId, 0);
@@ -232,7 +236,10 @@ export async function landProposal(
   action: LandingAction,
   writable: boolean,
 ): Promise<LandingResult> {
-  if (landedOn(handle, proposal)) return { outcome: 'applied', blockId: proposal.blockId ?? writtenBlockId(proposal.proposalId, 0) };
+  const already = landedAs(handle, proposal);
+  if (already !== null) {
+    return { outcome: 'applied', blockId: already === 'comment' ? proposal.blockId! : writtenBlockId(proposal.proposalId, 0) };
+  }
   if (!writable) return { outcome: 'readOnly' };
   const problem = blockProblem(handle, proposal);
   if (problem !== null) return { outcome: problem };

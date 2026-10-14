@@ -962,10 +962,11 @@ export function renderProductGuide(): string {
       `an alignment, column widths or comments, a rewrite card adds ${quoted(t("chat.documentProposal.lossy"))} ` +
       "An insert card shows the new content as it will look, tables included, with " +
       `${quoted(t("chat.documentProposal.insert"))}.`,
-    "Pressing a button opens the document, or switches to its tab, and the change lands as one step undo " +
-      "reverses; the document scrolls to it and outlines it for a moment. The pressed button spins meanwhile. A " +
-      "comment lands under the reader's own name, marked " +
-      `${quoted(t("spaces.document.comment.fromAgent"))}. The card then shows ` +
+    "Pressing a button opens the document, or switches to its tab, and the change lands; the document scrolls " +
+      "to it and outlines it for a moment. The pressed button spins meanwhile. A rewrite or an insert is one step " +
+      "undo reverses. A comment lands under the reader's own name, marked " +
+      `${quoted(t("spaces.document.comment.fromAgent"))}, and is taken back from its card in the comments panel ` +
+      "like any other comment. The card then shows " +
       `${quoted(t("chat.documentProposal.appliedComment"))}, ${quoted(t("chat.documentProposal.appliedRewrite"))} ` +
       `or ${quoted(t("chat.documentProposal.appliedInsert"))} and a ` +
       `${quoted(t("chat.documentProposal.view"))} button that shows it again; a card that already landed shows ` +

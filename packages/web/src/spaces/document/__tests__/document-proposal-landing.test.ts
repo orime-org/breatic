@@ -11,7 +11,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
 import { Awareness } from 'y-protocols/awareness';
-import type { DocumentProposal } from '@breatic/shared';
+import { deriveId, type DocumentProposal } from '@breatic/shared';
 
 import { blockPlainText } from '@web/spaces/document/document-blocks-read';
 import { commentsOn } from '@web/spaces/document/document-comment-extension';
@@ -238,7 +238,10 @@ describe('knowing a proposal has landed', () => {
     const insert = proposalOn(handle, 0, { body: 'New.' });
     await landProposal(handle, insert, 'write', true);
 
-    expect(await landProposal(handle, insert, 'write', true)).toEqual({ outcome: 'applied', blockId: expect.any(String) as string });
+    expect(await landProposal(handle, insert, 'write', true)).toEqual({
+      outcome: 'applied',
+      blockId: deriveId(`document-proposal:${insert.proposalId}:0`),
+    });
     expect(blocks(handle).map((b) => b.text)).toEqual(['One.', 'New.', 'Two.']);
   });
 
@@ -278,5 +281,56 @@ describe('knowing a proposal has landed', () => {
 
     expect(threads(handle)).toHaveLength(1);
     expect(landedOn(handle, proposal)).toBe(false);
+  });
+});
+
+describe('the block a landed proposal is shown at (inner#1509 review round 1)', () => {
+  it('is the first block a rewrite wrote, when pressed again after it landed', async () => {
+    const handle = await open('One.');
+    const proposal = proposalOn(handle, 0, { kind: 'rewrite', body: 'Two.' });
+    await landProposal(handle, proposal, 'write', true);
+
+    const again = await landProposal(handle, proposal, 'write', true);
+
+    expect(again).toEqual({ outcome: 'applied', blockId: deriveId(`document-proposal:${proposal.proposalId}:0`) });
+    expect(blocks(handle).map((b) => b.id)).toContain(again.outcome === 'applied' ? again.blockId : '');
+  });
+
+  it('is the commented block, when a comment is pressed again after it landed', async () => {
+    const handle = await open('The hero arrives.');
+    const proposal = proposalOn(handle, 0, { kind: 'comment', quote: 'hero', body: 'Who?' });
+    await landProposal(handle, proposal, 'comment', true);
+
+    expect(await landProposal(handle, proposal, 'comment', true)).toEqual({ outcome: 'applied', blockId: proposal.blockId });
+  });
+});
+
+describe('a comment that lands', () => {
+  it('stays off the undo stack, like a comment the reader writes', async () => {
+    const handle = await open('Alpha bravo.');
+    const before = handle.undoManager.undoStack.length;
+
+    await landProposal(handle, proposalOn(handle, 0, { kind: 'comment', quote: 'Alpha', body: 'A?' }), 'comment', true);
+
+    expect(handle.undoManager.undoStack.length).toBe(before);
+    expect(marked(handle).map((m) => m.text)).toEqual(['Alpha']);
+  });
+});
+
+describe('an insert at the end', () => {
+  it('takes the place of an empty last paragraph, so no blank line is left above it', async () => {
+    const handle = await open('');
+
+    await landProposal(handle, proposalOn(handle, null, { body: '## Outline' }), 'write', true);
+
+    expect(blocks(handle).map((b) => b.text)).toEqual(['Outline']);
+  });
+
+  it('goes after a last paragraph that holds words', async () => {
+    const handle = await open('One.');
+
+    await landProposal(handle, proposalOn(handle, null, { body: 'Two.' }), 'write', true);
+
+    expect(blocks(handle).map((b) => b.text)).toEqual(['One.', 'Two.']);
   });
 });
