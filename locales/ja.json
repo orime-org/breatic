@@ -1065,6 +1065,11 @@
         "line": "直線",
         "pen": "ペン",
         "text": "テキスト"
+      },
+      "grid": {
+        "picked": "{picked} / {total} 件を選択",
+        "pickAll": "すべて選択",
+        "pickNone": "選択をすべて解除"
       }
     },
     "template": {

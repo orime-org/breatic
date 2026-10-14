@@ -118,7 +118,7 @@ export const MINI_TOOLS: readonly MiniToolSpec[] = [
     source: "image",
     run: { kind: "browser" },
     labelKey: key("image.grid", "label"),
-    guide: "cuts the picture into a grid of equal tiles, one node each, inside a group",
+    guide: "cuts the picture into a grid of equal tiles, one node for each tile picked, inside a group",
     icon: "Grid3x3",
     params: [
       { kind: "number", key: "rows", default: 3, min: 1, max: 8, step: 1 },

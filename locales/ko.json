@@ -1065,6 +1065,11 @@
         "line": "직선",
         "pen": "펜",
         "text": "텍스트"
+      },
+      "grid": {
+        "picked": "{picked} / {total}개 선택",
+        "pickAll": "모두 선택",
+        "pickNone": "모두 선택 해제"
       }
     },
     "template": {

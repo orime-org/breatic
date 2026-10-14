@@ -1065,6 +1065,11 @@
         "line": "直线",
         "pen": "画笔",
         "text": "文字"
+      },
+      "grid": {
+        "picked": "已选 {picked} / {total}",
+        "pickAll": "全选",
+        "pickNone": "全不选"
       }
     },
     "template": {

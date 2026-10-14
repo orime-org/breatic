@@ -2,11 +2,13 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * The grid tool's dividing lines on the node (inner#1303 §6.4): drawn over the
- * picture while the panel is open, following the rows and columns.
+ * The grid tool's layer on the node (inner#1303 §6.4, A15): the dividing lines
+ * over the picture while the panel is open, following the rows and columns,
+ * and a tile the reader picks or leaves out by clicking it.
  */
 
-import { act, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { cropCanvas, installLayout } from '@web/spaces/canvas/crop/__tests__/crop-harness';
@@ -30,9 +32,10 @@ afterEach(() => {
  * Render the node and open a tool on it.
  * @param toolId - The tool.
  * @param params - Its params.
+ * @param zoom - The canvas zoom.
  */
-function mount(toolId: string, params: Record<string, unknown>): void {
-  render(cropCanvas([NODE], null));
+function mount(toolId: string, params: Record<string, unknown>, zoom = 1): void {
+  render(cropCanvas([NODE], null, zoom));
   act(() => store().openMiniTool('n1', toolId, { sourceContent: NODE.src, params }));
 }
 
@@ -70,5 +73,68 @@ describe('NodeGridLayer', () => {
   it('draws nothing for another tool', () => {
     mount('image.crop', {});
     expect(screen.queryByTestId('mini-tool-grid-layer')).toBeNull();
+  });
+});
+
+describe('NodeGridLayer tile picking', () => {
+  /**
+   * Whether each tile is picked, row by row, as its checkbox shows it.
+   * @returns One flag per tile.
+   */
+  const ticks = (): boolean[] =>
+    screen.getAllByTestId(/^mini-tool-grid-check-/).map((box) => box.getAttribute('data-state') === 'checked');
+
+  it('ticks every tile when the panel opens', () => {
+    mount('image.grid', { rows: 2, cols: 2, skip: [] });
+    expect(ticks()).toEqual([true, true, true, true]);
+    expect(screen.getAllByTestId(/^mini-tool-grid-tile-/).map((tile) => tile.dataset.picked)).toEqual([
+      'true',
+      'true',
+      'true',
+      'true',
+    ]);
+  });
+
+  it('leaves a clicked tile out and dims it, and picks it again on a second click', () => {
+    mount('image.grid', { rows: 2, cols: 2, skip: [] });
+    fireEvent.click(screen.getByTestId('mini-tool-grid-tile-1'));
+    expect(store().miniTool?.params.skip).toEqual([1]);
+    expect(ticks()).toEqual([true, false, true, true]);
+    expect(screen.getByTestId('mini-tool-grid-tile-1').dataset.picked).toBe('false');
+    fireEvent.click(screen.getByTestId('mini-tool-grid-tile-1'));
+    expect(store().miniTool?.params.skip).toEqual([]);
+  });
+
+  it('toggles a tile once when its checkbox is clicked', () => {
+    mount('image.grid', { rows: 2, cols: 2, skip: [] });
+    fireEvent.click(screen.getByTestId('mini-tool-grid-check-2'));
+    expect(store().miniTool?.params.skip).toEqual([2]);
+  });
+
+  it('toggles a tile with Space on its focused checkbox', async () => {
+    mount('image.grid', { rows: 2, cols: 2, skip: [3] });
+    screen.getByTestId('mini-tool-grid-check-3').focus();
+    await userEvent.keyboard(' ');
+    expect(store().miniTool?.params.skip).toEqual([]);
+  });
+
+  it('keeps a press on a tile from dragging or panning the canvas', () => {
+    mount('image.grid', { rows: 2, cols: 2, skip: [] });
+    const tile = screen.getByTestId('mini-tool-grid-tile-0');
+    expect(tile).toHaveClass('nodrag');
+    expect(tile).toHaveClass('nopan');
+  });
+
+  it('draws a round checkbox', () => {
+    mount('image.grid', { rows: 2, cols: 2, skip: [] });
+    expect(screen.getByTestId('mini-tool-grid-check-0')).toHaveClass('rounded-full');
+  });
+
+  it('leaves the checkbox out of a tile too small on screen to hold it, dimming still showing the pick', () => {
+    // 300 px of picture over 8 rows at half zoom: 18.75 screen px a tile.
+    mount('image.grid', { rows: 8, cols: 1, skip: [0] }, 0.5);
+    expect(screen.queryAllByTestId(/^mini-tool-grid-check-/)).toEqual([]);
+    expect(screen.getByTestId('mini-tool-grid-tile-0').dataset.picked).toBe('false');
+    expect(screen.getByTestId('mini-tool-grid-tile-1').dataset.picked).toBe('true');
   });
 });

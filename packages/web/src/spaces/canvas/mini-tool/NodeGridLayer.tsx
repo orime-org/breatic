@@ -4,8 +4,10 @@
 import { useStore } from '@xyflow/react';
 import * as React from 'react';
 
-import { gridShapeOf, miniToolById } from '@breatic/shared/mini-tools';
+import { gridShapeOf, miniToolById, pickedCellsOf } from '@breatic/shared/mini-tools';
 
+import { Checkbox } from '@web/components/ui/checkbox';
+import { cn } from '@web/lib/utils';
 import { useCanvasSession } from '@web/spaces/canvas/canvas-context';
 import { miniToolOpenOn } from '@web/stores/canvas-session';
 import { handleScale } from '@web/spaces/canvas/crop/crop-geometry';
@@ -18,10 +20,18 @@ interface NodeGridLayerProps {
   wrapper: HTMLElement | null;
 }
 
+/** A tile's checkbox, in screen pixels: 16 across, 4 from the tile's corner. */
+const CHECK_PX = 16;
+const CHECK_INSET_PX = 4;
+/** The smallest tile side on screen that holds the checkbox and its inset on both sides. */
+const CHECK_ROOM_PX = CHECK_PX + 2 * CHECK_INSET_PX;
+
 /**
- * The lines a grid tool cuts the picture along, laid over the node's picture
- * while that tool's panel is open on it (inner#1303 §6.4). They follow the
- * rows and columns in the draft and take no input.
+ * The grid tool's layer over the node's picture while its panel is open on it
+ * (inner#1303 §6.4, A15): the lines the picture is cut along, and one tile per
+ * cell the reader picks or leaves out. The tile's checkbox is its one control
+ * (Tab, Space); a click anywhere on the tile toggles it too. A tile left out is
+ * dimmed; one too small on screen for its checkbox shows the dimming alone.
  * @param root0 - Component props.
  * @param root0.nodeId - The node.
  * @param root0.wrapper - The node's outer wrapper.
@@ -29,25 +39,85 @@ interface NodeGridLayerProps {
  */
 export function NodeGridLayer({ nodeId, wrapper }: NodeGridLayerProps): React.JSX.Element | null {
   const draft = useCanvasSession(miniToolOpenOn(nodeId));
+  const setMiniToolParam = useCanvasSession((s) => s.setMiniToolParam);
   const spec = draft === null ? undefined : miniToolById(draft.toolId);
   const shape = spec === undefined || draft === null ? null : gridShapeOf(spec, draft.params);
   const geometry = useMediaGeometry(wrapper, shape !== null);
-  // The lines counter the zoom, as the crop frame's do.
-  const scale = handleScale(useStore((s) => s.transform[2]));
+  const zoom = useStore((s) => s.transform[2]);
+  // The lines and checkboxes counter the zoom, as the crop frame's handles do.
+  const scale = handleScale(zoom);
+  const picked = React.useMemo(
+    () => new Set(spec === undefined || draft === null ? [] : (pickedCellsOf(spec, draft.params) ?? [])),
+    [spec, draft],
+  );
+  const skipKey = spec?.outputCount?.kind === 'product' ? spec.outputCount.except : undefined;
+  const toggle = React.useCallback(
+    (cell: number): void => {
+      if (skipKey === undefined || shape === null) return;
+      const total = shape.rows * shape.cols;
+      const skipped = Array.from({ length: total }, (_, index) => index).filter(
+        (index) => (index === cell) === picked.has(index),
+      );
+      setMiniToolParam(skipKey, skipped);
+    },
+    [skipKey, shape, picked, setMiniToolParam],
+  );
   if (shape === null || geometry === null) return null;
   const { rows, cols } = shape;
   const line = 'absolute bg-background outline outline-foreground';
+  const roomy =
+    (geometry.box.width / cols) * zoom >= CHECK_ROOM_PX && (geometry.box.height / rows) * zoom >= CHECK_ROOM_PX;
   return (
     <div
       data-testid='mini-tool-grid-layer'
-      className='pointer-events-none absolute'
-      style={{ left: geometry.at.x, top: geometry.at.y, width: geometry.box.width, height: geometry.box.height }}
+      className='absolute grid'
+      style={{
+        left: geometry.at.x,
+        top: geometry.at.y,
+        width: geometry.box.width,
+        height: geometry.box.height,
+        gridTemplateColumns: `repeat(${cols}, 1fr)`,
+        gridTemplateRows: `repeat(${rows}, 1fr)`,
+      }}
     >
+      {Array.from({ length: rows * cols }, (_, cell) => {
+        const on = picked.has(cell);
+        return (
+          // The tile's checkbox is its control, focusable and toggled by
+          // Space; a click on the rest of the tile is the larger target for
+          // the same toggle, and a tile too small for its checkbox is reached
+          // by zooming in.
+          // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
+          <div
+            key={cell}
+            data-testid={`mini-tool-grid-tile-${cell}`}
+            data-picked={on}
+            className={cn('nodrag nopan relative cursor-pointer', on ? undefined : 'bg-background/70')}
+            onClick={() => toggle(cell)}
+          >
+            {roomy ? (
+              <Checkbox
+                data-testid={`mini-tool-grid-check-${cell}`}
+                checked={on}
+                onClick={(event) => event.stopPropagation()}
+                onCheckedChange={() => toggle(cell)}
+                className='absolute rounded-full'
+                style={{
+                  top: CHECK_INSET_PX * scale,
+                  right: CHECK_INSET_PX * scale,
+                  transform: `scale(${scale})`,
+                  transformOrigin: 'top right',
+                }}
+              />
+            ) : null}
+          </div>
+        );
+      })}
       {Array.from({ length: cols - 1 }, (_, i) => (
         <div
           key={`c${i}`}
           data-testid='mini-tool-grid-col'
-          className={`${line} inset-y-0`}
+          className={`${line} pointer-events-none inset-y-0`}
           style={{ left: `${((i + 1) * 100) / cols}%`, width: scale, outlineWidth: scale }}
         />
       ))}
@@ -55,7 +125,7 @@ export function NodeGridLayer({ nodeId, wrapper }: NodeGridLayerProps): React.JS
         <div
           key={`r${i}`}
           data-testid='mini-tool-grid-row'
-          className={`${line} inset-x-0`}
+          className={`${line} pointer-events-none inset-x-0`}
           style={{ top: `${((i + 1) * 100) / rows}%`, height: scale, outlineWidth: scale }}
         />
       ))}

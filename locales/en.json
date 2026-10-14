@@ -1065,6 +1065,11 @@
         "line": "Line",
         "pen": "Pen",
         "text": "Text"
+      },
+      "grid": {
+        "picked": "{picked} / {total} selected",
+        "pickAll": "Select all",
+        "pickNone": "Select none"
       }
     },
     "template": {

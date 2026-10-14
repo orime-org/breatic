@@ -832,7 +832,12 @@ export function renderProductGuide(): string {
       "the frame reaches past the picture, and the node's task icons are hidden while the frame shows. " +
       `${quoted(t("canvas.miniTool.image.grid.label"))} draws the cut lines on the picture and has two sliders, ` +
       `${quoted(t("canvas.miniTool.param.rows.label"))} and ${quoted(t("canvas.miniTool.param.cols.label"))}, ` +
-      "each from 1 to 8 and starting at 3; the arrow stays greyed out at 1 by 1. " +
+      "each from 1 to 8 and starting at 3. Every tile starts picked, with a round check mark in its corner; " +
+      "clicking a tile on the picture, or its check mark, leaves it out and dims it, and clicking again picks it " +
+      "back. A line under the sliders counts the tiles picked out of all of them, with a button that reads " +
+      `${quoted(t("canvas.miniTool.grid.pickNone"))} while every tile is picked and ` +
+      `${quoted(t("canvas.miniTool.grid.pickAll"))} otherwise. Changing the rows or columns, or the picture ` +
+      "changing, picks every tile again. The arrow stays greyed out at 1 by 1 and while no tile is picked. " +
       `${quoted(t("canvas.miniTool.image.upscale.label"))} for a picture offers ` +
       `three output sizes, 2K, 4K and 8K, each showing the pixel size it comes to on that picture (its long edge ` +
       "becomes 2048, 4096 or 8192); a size no larger than the picture, or past what the model makes, is greyed out, " +
@@ -844,9 +849,10 @@ export function renderProductGuide(): string {
       `${quoted(t("canvas.miniTool.image.mark.label"))}, Esc first leaves the text being typed, then lets go of ` +
       "the selected object, and only then closes the panel. Pressing the arrow puts the result in new nodes to " +
       "the right of the source, joined to it by a line and named after it (such as CROP- followed by its name); " +
-      `${quoted(t("canvas.miniTool.image.grid.label"))} lays its tiles out in the rows and columns they were cut ` +
-      "from, inside a new group named GRID- followed by the source's name, each tile named by its place (GRID-r1c1- " +
-      "and so on, then the source's name), and selects the group. One undo takes them all away, and the source " +
+      `${quoted(t("canvas.miniTool.image.grid.label"))} cuts only the picked tiles and lays each out at the row and ` +
+      "column it was cut from, inside a new group named GRID- followed by the source's name (even when one tile is " +
+      "picked), each tile named by its place (GRID-r1c1- and so on, then the source's name), and selects the group. " +
+      "One undo takes them all away, and the source " +
       "stays as it was. The new nodes appear at once; until our server has taken the work in, the person who " +
       "pressed sees a grey shimmering placeholder on them, and a run that ends before then shows a red line on " +
       "them saying why, the same as an upload. What the run did shows in the new node's column of task icons and " +

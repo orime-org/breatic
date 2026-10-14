@@ -299,3 +299,22 @@ describe('MiniToolPanel', () => {
     expect(props.onPrompt).toHaveBeenCalledWith('walk');
   });
 });
+
+describe('MiniToolPanel grid tile picking', () => {
+  it('counts the picked tiles and offers to pick none while all are picked', () => {
+    const props = mount({ spec: tool('image.grid'), params: { rows: 3, cols: 3, skip: [] } });
+    expect(screen.getByTestId('mini-tool-grid-picked')).toHaveTextContent('9 / 9 selected');
+    fireEvent.click(screen.getByTestId('mini-tool-grid-pick-all'));
+    expect(screen.getByTestId('mini-tool-grid-pick-all')).toHaveTextContent('Select none');
+    expect(props.onParams).toHaveBeenCalledWith({ skip: [0, 1, 2, 3, 4, 5, 6, 7, 8] });
+  });
+
+  it('offers to pick all while some tile is left out', () => {
+    const props = mount({ spec: tool('image.grid'), params: { rows: 2, cols: 2, skip: [1, 3] } });
+    expect(screen.getByTestId('mini-tool-grid-picked')).toHaveTextContent('2 / 4 selected');
+    expect(screen.getByTestId('mini-tool-grid-pick-all')).toHaveTextContent('Select all');
+    fireEvent.click(screen.getByTestId('mini-tool-grid-pick-all'));
+    expect(props.onParams).toHaveBeenCalledWith({ skip: [] });
+  });
+});
+

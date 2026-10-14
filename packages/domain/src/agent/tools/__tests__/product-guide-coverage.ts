@@ -312,6 +312,7 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "canvas.miniTool.param.shakiness.label": { excluded: REASONS.MODEL_SETTING_NAME },
   "canvas.miniTool.param.smoothing.label": { excluded: REASONS.MODEL_SETTING_NAME },
   "canvas.miniTool.param.transfer.label": { excluded: REASONS.MODEL_SETTING_NAME },
+  "canvas.miniTool.grid.picked": { described: /counts the tiles picked out of all of them/ },
   "canvas.miniTool.panel.exportFailed": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "canvas.miniTool.panel.imageTooLarge": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "canvas.miniTool.panel.sourceTooLargeToExpand": { excluded: REASONS.SAYS_WHAT_HAPPENED },

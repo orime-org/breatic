@@ -12,8 +12,10 @@ import {
   type ModelEntry,
 } from '@breatic/shared';
 import {
+  gridShapeOf,
   isModelTool,
   localParamLabelKey,
+  pickedCellsOf,
   UPRIGHT,
   type LocalToolSpec,
   type MiniToolMedium,
@@ -642,6 +644,34 @@ function LocalParamControl({ param, spec, params, onParams, source }: LocalParam
               {button.label}
             </Button>
           ))}
+        </div>
+      );
+    }
+    case 'cells': {
+      // The tiles themselves are picked on the node (NodeGridLayer); this row
+      // counts them and picks all or none.
+      const shape = gridShapeOf(spec, params);
+      if (shape === null) return null;
+      const total = shape.rows * shape.cols;
+      const picked = pickedCellsOf(spec, params)?.length ?? total;
+      const all = picked === total;
+      return (
+        <div className='flex items-center gap-2'>
+          <span data-testid='mini-tool-grid-picked' className='text-xs text-muted-foreground'>
+            {t('canvas.miniTool.grid.picked', { picked, total })}
+          </span>
+          <Button
+            type='button'
+            variant='outline'
+            size='sm'
+            data-testid='mini-tool-grid-pick-all'
+            className='ml-auto text-xs'
+            onClick={() =>
+              onParams({ [param.key]: all ? Array.from({ length: total }, (_, index) => index) : [] })
+            }
+          >
+            {t(all ? 'canvas.miniTool.grid.pickNone' : 'canvas.miniTool.grid.pickAll')}
+          </Button>
         </div>
       );
     }
