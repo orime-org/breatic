@@ -9,13 +9,6 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
-const config = vi.hoisted(() => ({ COOKIE_DOMAIN: "" }));
-
-vi.mock("@breatic/core", async (importOriginal) => {
-  const actual = await importOriginal<Record<string, unknown>>();
-  return { ...actual, env: { get COOKIE_DOMAIN() { return config.COOKIE_DOMAIN; } } };
-});
-
 const { consentRefreshRoute } = await import("@server/routes/consent-refresh.js");
 
 const NOW = Date.parse("2026-10-14T00:00:00Z");
@@ -35,21 +28,27 @@ function consent(over: Record<string, unknown> = {}): string {
 /**
  * Ask the route as the self-hosted nginx forwards the page's request.
  * @param cookie - The Cookie header.
- * @param options - The page's host and scheme, and the method.
+ * @param options - The page's host, the domain it names, its scheme, and the method.
  * @param options.host - The page's host.
+ * @param options.domain - The domain the page's banner library wrote under; null for none.
  * @param options.proto - The page's scheme.
  * @param options.method - The method.
  * @returns The response.
  */
-async function refresh(cookie?: string, { host = "breatic.example.com", proto = "https", method = "GET" } = {}): Promise<Response> {
+async function refresh(
+  cookie?: string,
+  options: { host?: string; domain?: string | null; proto?: string; method?: string } = {},
+): Promise<Response> {
+  const { host = "breatic.example.com", proto = "https", method = "GET" } = options;
+  const domain = options.domain === undefined ? host : options.domain;
   const headers: Record<string, string> = { host, "x-forwarded-proto": proto };
   if (cookie !== undefined) headers.cookie = cookie;
-  return consentRefreshRoute.request(`http://${host}/`, { method, headers });
+  const query = domain === null ? "" : `?domain=${encodeURIComponent(domain)}`;
+  return consentRefreshRoute.request(`http://${host}/${query}`, { method, headers });
 }
 
 beforeEach(() => {
   vi.useFakeTimers({ now: NOW, toFake: ["Date"] });
-  config.COOKIE_DOMAIN = "";
 });
 afterEach(() => vi.useRealTimers());
 
@@ -74,10 +73,25 @@ describe("GET /_consent/refresh on a self-hosted copy", () => {
     expect(set.toLowerCase()).not.toContain("httponly");
   });
 
-  it("writes under COOKIE_DOMAIN when one is set", async () => {
-    config.COOKIE_DOMAIN = "example.com";
-    const set = (await refresh(`breatic_consent=${consent()}`)).headers.get("set-cookie") ?? "";
+  it("writes under the parent domain the page names", async () => {
+    const set = (await refresh(`breatic_consent=${consent()}`, { host: "app.example.com", domain: "example.com" })).headers.get("set-cookie") ?? "";
     expect(set).toContain("Domain=example.com");
+    const dotted = (await refresh(`breatic_consent=${consent()}`, { host: "app.example.com", domain: ".example.com" })).headers.get("set-cookie") ?? "";
+    expect(dotted).toContain("Domain=example.com;");
+  });
+
+  it("writes nothing for a domain the page's host does not belong to, or none at all", async () => {
+    for (const [host, domain] of [
+      ["app.example.com", "other.com"],
+      ["badexample.com", "example.com"],
+      ["app.example.com", "sub.app.example.com"],
+      ["app.example.com", ""],
+      ["app.example.com", null],
+    ] as const) {
+      const r = await refresh(`breatic_consent=${consent()}`, { host, domain });
+      expect(r.status).toBe(204);
+      expect(r.headers.get("set-cookie"), `${host} ${String(domain)}`).toBeNull();
+    }
   });
 
   it("follows the library on a plain-http host without a dot: no Secure, no Domain", async () => {

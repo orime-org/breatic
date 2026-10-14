@@ -45,7 +45,7 @@ vi.mock("@breatic/core", () =>
     adsConversionConfig: () => null,
     adsConversionState: () => "off",
     initServerAnalytics: () => "off",
-    env: moduleOf({ AMPLITUDE_API_KEY: "" }),
+    env: {},
   }),
 );
 vi.mock("@breatic/domain", () => moduleOf());

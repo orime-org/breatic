@@ -58,7 +58,7 @@ A self-hosted instance sends nothing to any analytics or advertising service. Wi
 
 The `VITE_*` values are embedded in the bundle like the connection settings above: changing them means rebuilding the frontend, not restarting a container. Dockerfile.web accepts them as build arguments. When the pages and the API sit on two subdomains, set `VITE_CONSENT_COOKIE_DOMAIN` to the same parent domain as the backend `COOKIE_DOMAIN`, so the API and collab read the visitor's choice.
 
-Safari keeps a cookie written from script for at most seven days. After each write the pages call `GET /_consent/refresh` on their own host; nginx (`docker/breatic-locations.conf`) passes it to the server, which writes the same value back in its response with the same lifetime. The server writes it under `COOKIE_DOMAIN`, or under the page's host when that is empty, so `VITE_CONSENT_COOKIE_DOMAIN` must be empty or equal to `COOKIE_DOMAIN`.
+Safari keeps a cookie written from script for at most seven days. After each write the pages call `GET /_consent/refresh` on their own host; nginx (`docker/breatic-locations.conf`) passes it to the server, which writes the same value back in its response with the same lifetime. The page names the domain its cookie was written under (`VITE_CONSENT_COOKIE_DOMAIN`, or its own host when that is empty), and the server writes under that domain only when the page's host belongs to it.
 
 What leaves when it is on:
 

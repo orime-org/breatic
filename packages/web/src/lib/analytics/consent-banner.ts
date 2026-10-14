@@ -53,8 +53,8 @@ let saving = false;
 let pressed: 'all' | 'necessary' | 'save' | null = null;
 // The page's ads view: the notice the windows show and where the settings window's ads switch stands.
 let adsView: { notice: NoticeShown; adsOn: boolean } = { notice: false, adsOn: false };
-// The visitor changed the ads switch since the settings window opened; a later decision leaves it there.
-let adsSwitchTouched = false;
+// Where the visitor put the ads switch since the settings window opened, or null; a later decision leaves it there.
+let touchedAds: boolean | null = null;
 
 /**
  * Whether the browser sends Global Privacy Control.
@@ -112,12 +112,29 @@ function writeConsent(writes: ConsentWrites, prior: BrowserChoices | null): void
   const { data, accepted } = cookieAfterWrites(writes, prior, stored, new Date().toISOString(), () => crypto.randomUUID());
   CookieConsent.acceptCategory(accepted, (['analytics', 'ads'] as const).filter((c) => !accepted.includes(c)));
   CookieConsent.setCookieData({ value: data, mode: 'overwrite' });
-  // A script-written cookie is capped at seven days in Safari; the server writes the same value back (design §4.4.3a).
-  // Without the route (a self-hosted copy that lacks it) the cookie keeps the browser's own limit.
+  askServerToKeepCookie();
+}
+
+// The write-back still on its way. The server echoes the value the request carried, so an answer landing
+// after a later write would put the earlier value back; the later write cancels it first.
+let keeping: AbortController | null = null;
+
+/**
+ * Ask the server to write the consent cookie back (design §4.4.3a): Safari caps a script-written cookie at
+ * seven days, a cookie set by a response is not capped. Without the route (a self-hosted copy that lacks it)
+ * the cookie keeps the browser's own limit.
+ */
+function askServerToKeepCookie(): void {
+  keeping?.abort();
+  const controller = new AbortController();
+  keeping = controller;
+  const url = new URL('/_consent/refresh', window.location.origin);
+  // The domain the library wrote under, so the server sets the same cookie and not a second one.
+  url.searchParams.set('domain', bannerOptions?.cookieDomain || window.location.hostname);
   void httpRequest(
-    new URL('/_consent/refresh', window.location.origin).href,
+    url.href,
     { credentials: 'same-origin', cache: 'no-store' },
-    { replaySafe: true },
+    { replaySafe: true, signal: controller.signal },
   ).catch(() => undefined);
 }
 
@@ -155,7 +172,7 @@ function onVisitorChoice(): void {
  */
 export function setAdsView(view: { notice: NoticeShown; adsOn: boolean }): void {
   // A new opt-out notice is a new question: a switch the visitor changed before it was not answering it.
-  if (view.notice !== false && view.notice !== adsView.notice) adsSwitchTouched = false;
+  if (view.notice !== false && view.notice !== adsView.notice) touchedAds = null;
   adsView = view;
   renderConsentWindows();
 }
@@ -168,7 +185,7 @@ export function setAdsView(view: { notice: NoticeShown; adsOn: boolean }): void 
 function renderConsentWindows(): void {
   const toggle = adsSwitch();
   if (toggle !== null) {
-    if (!adsSwitchTouched) toggle.checked = adsView.adsOn;
+    toggle.checked = touchedAds ?? adsView.adsOn;
     toggle.addEventListener('change', markAdsSwitchTouched);
   }
   const text = bannerOptions?.text();
@@ -183,9 +200,12 @@ function adsSwitch(): HTMLInputElement | null {
   return document.querySelector<HTMLInputElement>('#cc-main .pm input[value="ads"]');
 }
 
-/** The visitor changed the ads switch. */
-function markAdsSwitchTouched(): void {
-  adsSwitchTouched = true;
+/**
+ * The visitor changed the ads switch.
+ * @param event - The switch's change event.
+ */
+function markAdsSwitchTouched(event: Event): void {
+  touchedAds = (event.target as HTMLInputElement).checked;
 }
 
 /**
@@ -209,7 +229,7 @@ function showNotice(container: Element | null, text: string | null): void {
  * @param modalName - The window.
  */
 function presetWindow(modalName: string): void {
-  if (modalName === 'preferencesModal') adsSwitchTouched = false;
+  if (modalName === 'preferencesModal') touchedAds = null;
   renderConsentWindows();
 }
 
@@ -449,11 +469,8 @@ function toTranslation(text: ConsentText, privacyUrl: string): CookieConsent.Tra
  */
 export async function setConsentLanguage(language: string): Promise<void> {
   currentLanguage = language;
-  const kept = adsSwitchTouched ? adsSwitch()?.checked : undefined;
   // The library builds both windows afresh, from its own state.
   await CookieConsent.setLanguage(language, true);
-  const toggle = adsSwitch();
-  if (toggle !== null && kept !== undefined) toggle.checked = kept;
   renderConsentWindows();
 }
 

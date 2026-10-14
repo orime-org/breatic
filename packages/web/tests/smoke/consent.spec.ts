@@ -17,6 +17,7 @@ const ADS_ID = '22222222-2222-4222-8222-222222222222';
  */
 function storedConsent(): string {
   const decidedAt = new Date(Date.now() - 3_600_000).toISOString();
+  // Every field the banner library writes, so the library holds the choice as a real visitor's browser would.
   return encodeURIComponent(
     JSON.stringify({
       categories: ['necessary', 'analytics', 'ads'],
@@ -25,6 +26,12 @@ function storedConsent(): string {
         analytics: { decisionId: '11111111-1111-4111-8111-111111111111', decidedAt, source: 'banner' },
         ads: { decisionId: ADS_ID, decidedAt, source: 'banner', noticeShown: false, gpcAtDecision: false },
       },
+      consentTimestamp: decidedAt,
+      consentId: '44444444-4444-4444-8444-444444444444',
+      services: { necessary: [], analytics: [], ads: [] },
+      languageCode: 'en',
+      lastConsentTimestamp: decidedAt,
+      expirationTime: Date.now() + 300 * 86_400_000,
     }),
   );
 }

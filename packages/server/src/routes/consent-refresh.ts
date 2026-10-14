@@ -11,7 +11,6 @@
  */
 
 import { Hono } from "hono";
-import { env } from "@breatic/core";
 import { CONSENT_COOKIE_NAME, CONSENT_MAX_AGE_DAYS } from "@breatic/shared";
 
 const MAX_LENGTH = 4096;
@@ -61,12 +60,26 @@ function consentSetCookie(
 
 export const consentRefreshRoute = new Hono();
 
+/**
+ * The Domain attribute to write under: the domain the page's banner library wrote under, which only the page
+ * knows (it is fixed when the frontend is built). The library sends no Domain on a host without a dot
+ * (vanilla-cookieconsent 3.1.0); a domain the host does not belong to gets no write.
+ * @param host - The page's host.
+ * @param named - The domain the page names.
+ * @returns The attribute value, empty for none, or null when nothing should be written.
+ */
+function cookieDomain(host: string, named: string | undefined): string | null {
+  if (!host.includes(".")) return "";
+  // A leading dot names the same domain (RFC 6265 §5.2.3).
+  const domain = (named ?? "").replace(/^\./, "");
+  if (domain === "") return null;
+  return host === domain || host.endsWith(`.${domain}`) ? domain : null;
+}
+
 consentRefreshRoute.get("/", (c) => {
-  const host = new URL(c.req.url).hostname;
-  // The library writes under its configured domain, else the page's host when it has a dot (vanilla-cookieconsent 3.1.0).
-  const domain = env.COOKIE_DOMAIN.trim() || (host.includes(".") ? host : "");
+  const domain = cookieDomain(new URL(c.req.url).hostname, c.req.query("domain"));
   const secure = c.req.header("x-forwarded-proto") === "https";
-  const cookie = consentSetCookie(c.req.header("cookie"), { domain, secure }, Date.now());
+  const cookie = domain === null ? null : consentSetCookie(c.req.header("cookie"), { domain, secure }, Date.now());
   c.header("Cache-Control", "no-store");
   if (cookie !== null) c.header("Set-Cookie", cookie);
   return c.body(null, 204);

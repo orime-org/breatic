@@ -73,11 +73,12 @@ const TEXT = {
 async function startBanner(
   country: string,
   onChoice: (choice: unknown) => void = () => undefined,
+  cookieDomain = '',
 ): Promise<typeof BannerModule> {
   vi.resetModules();
   const banner = await import('@web/lib/analytics/consent-banner');
   await banner.startConsentBanner({
-    cookieDomain: '',
+    cookieDomain,
     language: 'en',
     languages: ['en'],
     text: () => TEXT,
@@ -348,6 +349,8 @@ describe('the server writing the stored choice back (design §4.4.3a)', () => {
     const [url, init] = refresh.mock.calls[0] as unknown as [string, RequestInit];
     expect(new URL(url).pathname).toBe('/_consent/refresh');
     expect(new URL(url).origin).toBe(window.location.origin);
+    // The library writes under the page's host when no domain is configured.
+    expect(new URL(url).searchParams.get('domain')).toBe(window.location.hostname);
     expect(init).toMatchObject({ credentials: 'same-origin', cache: 'no-store' });
     expect(refresh.mock.invocationCallOrder[0]).toBeGreaterThan(library.setCookieData.mock.invocationCallOrder.at(-1) ?? Infinity);
   });
@@ -363,6 +366,25 @@ describe('the server writing the stored choice back (design §4.4.3a)', () => {
     await startBanner('DE');
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(refresh).not.toHaveBeenCalled();
+  });
+
+  it('names the configured cookie domain, so the server writes the same cookie', async () => {
+    await startBanner('US', () => undefined, 'example.com');
+    await vi.waitFor(() => expect(refresh).toHaveBeenCalledTimes(1));
+    const [url] = refresh.mock.calls[0] as unknown as [string];
+    expect(new URL(url).searchParams.get('domain')).toBe('example.com');
+  });
+
+  it('cancels a request still on its way when the next write happens, so its answer cannot put the earlier value back', async () => {
+    refresh.mockImplementationOnce(() => new Promise<Response>(() => undefined));
+    await startBanner('US');
+    await vi.waitFor(() => expect(refresh).toHaveBeenCalledTimes(1));
+    library.config?.onModalShow?.({ modalName: 'preferencesModal' });
+    library.config?.onChange?.();
+    await vi.waitFor(() => expect(refresh).toHaveBeenCalledTimes(2));
+    const signals = (refresh.mock.calls as unknown as Array<[string, RequestInit]>).map(([, init]) => init.signal);
+    expect(signals[0]?.aborted).toBe(true);
+    expect(signals[1]?.aborted).toBe(false);
   });
 
   it('keeps the choice when the request fails', async () => {
@@ -606,6 +628,29 @@ describe('ads under an opt-out', () => {
       await banner.setConsentLanguage('ja');
       expect(document.querySelector<HTMLInputElement>('input[value="ads"]')?.checked).toBe(false);
       expect(document.querySelector('.cm__desc .breatic-consent-notice')?.textContent).toBe('g');
+    } finally {
+      document.body.innerHTML = '';
+    }
+  });
+
+  it('keeps the value the visitor gave the ads switch when a language change rebuilds the windows', async () => {
+    library.consent = true;
+    const banner = await startBanner('DE');
+    document.body.innerHTML = SETTINGS_WITH_ADS;
+    library.setLanguage.mockImplementationOnce(async () => {
+      // Built afresh from the library's own state, which still has ads off.
+      document.body.innerHTML =
+        '<div id="cc-main"><div class="pm"><div class="pm__section--toggle"><input type="checkbox" value="ads"></div></div></div>';
+      return true;
+    });
+    try {
+      banner.setAdsView({ notice: 'gpc', adsOn: false });
+      library.config?.onModalShow?.({ modalName: 'preferencesModal' });
+      const toggle = document.querySelector<HTMLInputElement>('input[value="ads"]');
+      toggle?.click();
+      expect(toggle?.checked).toBe(true);
+      await banner.setConsentLanguage('ja');
+      expect(document.querySelector<HTMLInputElement>('input[value="ads"]')?.checked).toBe(true);
     } finally {
       document.body.innerHTML = '';
     }
