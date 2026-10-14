@@ -6,6 +6,7 @@ import { describe, it, expect } from "vitest";
 import {
   MINI_TOOLS,
   defaultParamsOf,
+  isModelTool,
   miniToolById,
   miniToolEstimateInput,
   miniToolRequestSchema,
@@ -27,16 +28,16 @@ const BATCH_ONE = {
   image: [
     "image.crop",
     "image.rotate",
+    "image.adjust",
+    "image.mark",
+    "image.grid",
     "image.remove-bg",
     "image.upscale",
     "image.digital-human",
     "image.inpaint",
     "image.erase",
     "image.sketch",
-    "image.adjust",
-    "image.mark",
     "image.expand",
-    "image.grid",
   ],
   video: [
     "video.cut",
@@ -193,14 +194,22 @@ describe("servedMiniToolsFor", () => {
     credit_multiplier: 1,
   } as never;
 
+  it("lists every source's edits before its model tools, so the menu draws one separator", () => {
+    for (const source of new Set(MINI_TOOLS.map((tool) => tool.source))) {
+      const model = MINI_TOOLS.filter((tool) => tool.source === source).map(isModelTool);
+      const firstModel = model.indexOf(true);
+      expect(firstModel === -1 ? [] : model.slice(firstModel), source).not.toContain(false);
+    }
+  });
+
   it("keeps browser tools and the model tools the catalog serves, in order", () => {
     expect(servedMiniToolsFor("image", catalog).map((tool) => tool.id)).toEqual([
       "image.crop",
       "image.rotate",
-      "image.upscale",
       "image.adjust",
       "image.mark",
       "image.grid",
+      "image.upscale",
     ]);
   });
 
