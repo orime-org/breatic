@@ -104,7 +104,7 @@ export const ProposalCard = React.memo(function ProposalCard({
   return (
     <div
       data-testid='proposal-card'
-      className='mt-2 flex flex-col gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2.5'
+      className='mt-2 flex flex-col gap-2 rounded-lg border border-border bg-popover px-3 py-2.5'
     >
       {proposal.rationale ? (
         <div className='text-sm font-semibold text-foreground'>{proposal.rationale}</div>

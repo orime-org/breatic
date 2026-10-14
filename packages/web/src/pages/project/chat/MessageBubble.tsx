@@ -196,7 +196,7 @@ export const MessageBubble = React.memo(function MessageBubble({
           {running || message.hasExpiredProposal !== true ? null : (
             <div
               data-testid='proposal-expired'
-              className='mt-2 rounded-lg border border-border bg-muted/40 px-3 py-2.5 text-xs text-muted-foreground'
+              className='mt-2 rounded-lg border border-border bg-popover px-3 py-2.5 text-xs text-muted-foreground'
             >
               {t('chat.proposal.expired')}
             </div>
