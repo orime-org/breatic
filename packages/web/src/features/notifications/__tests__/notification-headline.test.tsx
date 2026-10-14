@@ -246,8 +246,8 @@ describe('notificationHeadline', () => {
       type: 'credit.refund_restored' as Notification['type'],
       payload: { lotId: 'lot-3', credits: '880.000000' },
       key: 'notifications.headline.creditRefundRestored',
-      template: '{credits} 积分已恢复到你的账户',
-      sentence: '880 积分已恢复到你的账户',
+      template: '{credits} 积分已恢复到你的账号',
+      sentence: '880 积分已恢复到你的账号',
     },
   ])('renders $type as a plain sentence naming the credits', ({ type, payload, key, template, sentence }) => {
     const tt = fakeT({ [key]: template });
@@ -366,8 +366,8 @@ describe('notificationHeadline', () => {
   describe('credit.refund_restored in every shipped language', () => {
     const KEY = 'notifications.headline.creditRefundRestored';
     const EXACT: Partial<Record<LocaleTag, string>> = {
-      en: '{credits} credits are back in your account',
-      'zh-CN': '{credits} 积分已恢复到你的账户',
+      en: '{credits} credits have been restored to your account',
+      'zh-CN': '{credits} 积分已恢复到你的账号',
     };
     const restored = (credits: string) =>
       makeNotification({

@@ -400,6 +400,26 @@ describe('BellMenu — a credit refund outcome is one sentence and mark-read (in
 
     expect(screen.getByText(glyph)).toBeInTheDocument();
     expect(screen.queryByText(initials)).toBeNull();
+    // inner#1410 v9: a lone symbol at 12px reads as a speck, so it sits at
+    // 16px (text-base); two-letter initials stay at text-xs.
+    const fallback = screen.getByText(glyph);
+    expect(fallback).toHaveClass('text-base');
+    expect(fallback).not.toHaveClass('text-xs');
+  });
+
+  it('a row with initials keeps them at text-xs', async () => {
+    vi.mocked(notificationsApi.list).mockResolvedValue({
+      items: [fakeNotification('n-me', 'membership.ended')],
+      resolved: EMPTY_RESOLVED,
+    });
+    const user = userEvent.setup();
+    setup();
+    await user.click(screen.getByTestId('bell-trigger'));
+    await screen.findByTestId('bell-notification-headline-n-me');
+
+    const fallback = screen.getByText('ME');
+    expect(fallback).toHaveClass('text-xs');
+    expect(fallback).not.toHaveClass('text-base');
   });
 
   it('the three outcomes say different things', async () => {
