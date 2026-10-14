@@ -144,22 +144,17 @@ export class MarkCanvasController {
    * redo, clear and a new source drop it there, a restyle keeps it.
    */
   sync(): void {
+    const before = this.draft();
+    if (before === null || this.disposed) return;
+    this.settleEdit(before);
     const draft = this.draft();
-    if (draft === null || this.disposed) return;
+    if (draft === null) return;
     this.applyTool(draft);
     this.restyleEdit(draft);
     const json = JSON.stringify(draft.objects);
     this.suppressed = true;
     try {
       if (json !== this.shown) {
-        if (json !== this.lastWritten) {
-          // Somebody else changed the objects: a text edit ends without
-          // writing back over the new list.
-          const active = this.canvas.getActiveObject();
-          if (active instanceof IText && active.isEditing) active.exitEditing();
-          this.edit = null;
-          if (draft.editingText !== null) this.session().setMarkEditingText(null);
-        }
         this.canvas.discardActiveObject();
         for (const shape of this.canvas.getObjects()) this.canvas.remove(shape);
         for (const object of draft.objects) this.canvas.add(toFabric(object, this.box));
@@ -171,6 +166,33 @@ export class MarkCanvasController {
       this.suppressed = false;
     }
     this.canvas.requestRenderAll();
+  }
+
+  /**
+   * End a text edit the canvas is about to lose, before it is rebuilt. The
+   * draft having left the edit (a new source) or changed under it (an undo, a
+   * clear) drops it unwritten; a rebuild of the canvas alone (a new size)
+   * writes it back by the usual rules.
+   * @param draft - The draft.
+   */
+  private settleEdit(draft: MarkDraft): void {
+    if (this.edit === null) return;
+    const json = JSON.stringify(draft.objects);
+    if (draft.editingText === null || (json !== this.shown && json !== this.lastWritten)) {
+      this.edit = null;
+      this.suppressed = true;
+      try {
+        const active = this.canvas.getActiveObject();
+        if (active instanceof IText && active.isEditing) active.exitEditing();
+      } finally {
+        this.suppressed = false;
+      }
+      // A new text is on the canvas only; the rebuild takes it off.
+      this.shown = '';
+      if (draft.editingText !== null) this.session().setMarkEditingText(null);
+      return;
+    }
+    if (json !== this.shown) this.exitEditing();
   }
 
   /**
@@ -233,7 +255,7 @@ export class MarkCanvasController {
     canvas.on('path:created', ({ path }) => this.onPath(path));
     canvas.on('text:editing:entered', ({ target }) => this.onEditEntered(target));
     canvas.on('text:changed', ({ target }) => {
-      if (this.edit !== null && !this.suppressed) this.session().setMarkEditingText(target.text);
+      if (this.edit !== null && !this.suppressed && idOf(target) === this.edit.id) this.session().setMarkEditingText(target.text);
     });
     canvas.on('text:editing:exited', ({ target }) => this.onEditExited(target));
     canvas.on('object:modified', ({ target }) => this.onModified(target));
@@ -424,7 +446,8 @@ export class MarkCanvasController {
    */
   private onEditExited(target: IText): void {
     const edit = this.edit;
-    if (this.suppressed || edit === null) return;
+    // Only the text being edited ends this edit.
+    if (this.suppressed || edit === null || idOf(target) !== edit.id) return;
     this.edit = null;
     // Fabric follows a changed text's exit with `object:modified`, which this
     // exit already writes back; an unchanged one sends none.
@@ -434,9 +457,9 @@ export class MarkCanvasController {
     if (draft !== null) {
       if (target.text.trim() === '') {
         if (edit.isNew) {
-          this.suppressed = true;
-          this.canvas.remove(target);
-          this.suppressed = false;
+          // Fabric goes on to read this text's canvas once this handler
+          // returns, so the next sync takes it off by rebuilding.
+          this.shown = '';
         } else {
           // Fabric goes on to fire `object:modified` from this text, so it
           // stays on the canvas until the next sync takes it off.

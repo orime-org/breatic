@@ -112,14 +112,18 @@ export function sliderSizeOf(size: number): number {
 /**
  * The draft with a new object list, as one step when it differs from the one
  * held. A write that changes nothing is no step, so a canvas echoing back what
- * it was just told leaves undo and redo alone.
+ * it was just told leaves undo and redo alone. The selected object's style
+ * becomes the controls' own.
  * @param draft - The draft.
  * @param objects - The new list, as the canvas wrote it.
  * @returns The draft.
  */
 export function withObjects(draft: MarkDraft, objects: readonly MarkObject[]): MarkDraft {
   if (JSON.stringify(objects) === JSON.stringify(draft.objects)) return draft;
-  return { ...draft, objects, undo: [...draft.undo, draft.objects], redo: [] };
+  const next = { ...draft, objects, undo: [...draft.undo, draft.objects], redo: [] };
+  // The controls show the selected object's style, also after the canvas
+  // changed it (a scaled text), by the rule selecting it applies.
+  return draft.selectedId === null ? next : selectedMark(next, draft.selectedId);
 }
 
 /**

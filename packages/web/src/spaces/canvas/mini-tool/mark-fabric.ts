@@ -167,18 +167,20 @@ export function toFabric(object: MarkObject, box: DrawBox): MarkFabricObject {
       const path = new Path(data, { fill: '', stroke: object.color, strokeWidth: stroke, strokeLineCap: 'round', strokeLineJoin: 'round' });
       return tagged(path, { ...base, markPoints: points });
     }
-    case 'text':
-      return tagged(
-        new IText(object.text, {
-          left: object.x * box.width,
-          top: object.y * box.height,
-          fill: object.color,
-          fontSize: markFontPx(object.size, box),
-          originX: 'left',
-          originY: 'top',
-        }),
-        base,
-      );
+    case 'text': {
+      const text = new IText(object.text, {
+        left: object.x * box.width,
+        top: object.y * box.height,
+        fill: object.color,
+        fontSize: markFontPx(object.size, box),
+        originX: 'left',
+        originY: 'top',
+      });
+      // Fabric drags a selection inside a text onto another text by default;
+      // the draft has no such move. These three are how its docs turn it off.
+      Object.assign(text, { shouldStartDragging: () => false, onDragStart: () => false, canDrop: () => false });
+      return tagged(text, base);
+    }
   }
 }
 

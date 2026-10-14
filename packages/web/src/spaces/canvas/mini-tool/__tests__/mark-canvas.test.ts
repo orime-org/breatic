@@ -72,6 +72,46 @@ const idOfActive = (): string | undefined => (controller.canvas.getActiveObject(
 const editing = (): IText => controller.canvas.getActiveObject() as IText;
 
 describe('MarkCanvasController', () => {
+  // Fabric reads its canvas again after `text:editing:exited` when the text
+  // changed, so a new text holding only a space must still be on it then.
+  it('drops a new text holding only a space without throwing', () => {
+    store.getState().setMarkTool('text');
+    controller.sync();
+    drag([200, 150], [200, 150]);
+    editing().set({ text: ' ' });
+    controller.canvas.fire('text:changed', { target: editing() });
+    expect(() => controller.channel.exitEditing()).not.toThrow();
+    controller.sync();
+    expect(mark().objects).toEqual([]);
+    expect(mark().undo).toHaveLength(0);
+    expect(controller.canvas.getObjects()).toHaveLength(0);
+  });
+
+  // §6.6: the source changing during a text edit leaves the edit without
+  // writing it back, a new text included.
+  it('drops a new text being typed when the source changes', () => {
+    store.getState().setMarkTool('text');
+    controller.sync();
+    drag([200, 150], [200, 150]);
+    editing().set({ text: 'hello' });
+    controller.canvas.fire('text:changed', { target: editing() });
+    store.getState().resetMiniToolSource('b.png', {});
+    controller.sync();
+    controller.dispose();
+    expect(mark().objects).toEqual([]);
+    expect(mark().undo).toHaveLength(0);
+  });
+
+  // Fabric lets a selection inside a text be dragged onto another text; the
+  // draft has no such move.
+  it('offers no dragging of text from one text to another', () => {
+    store.getState().commitMark([TEXT]);
+    controller.sync();
+    const text = controller.canvas.getObjects()[0] as IText;
+    expect(text.shouldStartDragging()).toBe(false);
+    expect(text.canDrop(new Event('drop') as DragEvent)).toBe(false);
+  });
+
   it('draws what the draft holds', () => {
     store.getState().commitMark([RECT, TEXT]);
     controller.sync();
@@ -135,6 +175,8 @@ describe('MarkCanvasController', () => {
     controller.channel.exitEditing();
     expect(mark().objects).toHaveLength(0);
     expect(mark().undo).toHaveLength(0);
+    // The store's next sync, a microtask after the edit ends, takes it off.
+    controller.sync();
     expect(controller.canvas.getObjects()).toHaveLength(0);
   });
 

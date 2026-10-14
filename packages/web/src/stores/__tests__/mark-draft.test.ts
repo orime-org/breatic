@@ -157,6 +157,26 @@ describe('the markup draft', () => {
   });
 });
 
+// §6.2: with an object selected the size slider shows its size, also after
+// the canvas scaled it.
+describe('the panel with an object selected', () => {
+  it('shows the size the canvas gave the selected object', () => {
+    const store = withMark();
+    store.getState().commitMark([A]);
+    store.getState().selectMark('a');
+    store.getState().commitMark([{ ...A, size: 10 }]);
+    expect(mark(store).size).toBe(10);
+  });
+
+  it('keeps the pen size when another object changes', () => {
+    const store = withMark();
+    store.getState().commitMark([A, B]);
+    store.getState().selectMark('a');
+    store.getState().commitMark([A, { ...B, size: 12 }]);
+    expect(mark(store).size).toBe(A.size);
+  });
+});
+
 describe('markEmpty', () => {
   it('counts a text still being edited', () => {
     const store = withMark();
