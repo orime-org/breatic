@@ -39,7 +39,7 @@ export interface RefundCandidate {
    * Whether anyone paid for these credits.
    *
    * A refund returns money, and there is none to return on credits that were
-   * granted. Unlike the four conditions below this is not a state the lot
+   * granted. Unlike the conditions below this is not a state the lot
    * passes through — it is what the lot is, and no later event changes it.
    */
   purchased: boolean;
@@ -84,8 +84,9 @@ export interface RefundCandidate {
  * The answers come in the order a buyer can act on them. What the credits
  * are comes first, because it is the one answer no state could change: a
  * refund returns money, and none was taken for a grant. Then where the
- * purchase stands. Then the two nothing can be done about — what was drawn
- * from it, and whether the window has shut. The designation comes last
+ * purchase stands. Then the three nothing can be done about — whether its
+ * credits were restored after a failed refund, what was drawn from it, and
+ * whether the window has shut. The designation comes last
  * because it is the only one the buyer can undo: reaching it means every
  * other condition is already met, so undoing it is worth their trouble.
  * @param lot - The purchase.

@@ -567,13 +567,14 @@ export async function designateLot(input: {
  * (`markRefunding`, `settleRefund`, `sendBackRefund`, `rejectRefund`,
  * `restoreRefundedCredits`) are below.
  *
- * Five conditions gate it. The first asks whether anybody paid: a refund
+ * Six conditions gate it. The first asks whether anybody paid: a refund
  * returns money, and credits that were granted had none. Two come from the
  * published promise: a purchase is refundable in full within thirty days if
  * no credit was ever drawn from it. The fourth is that the lot carries no
  * designation, because a refund is asked for on a lot the buyer has already
  * released — we never release it for them. The fifth keeps one lot to one
- * ask at a time.
+ * ask at a time. The sixth refuses a purchase whose credits were restored
+ * after a failed refund: the buyer took the credits instead of the money.
  *
  * "Nothing spent" asks the ledger, not the balance. The promise turns on
  * whether a credit was ever drawn, and the ledger is the record of that; the
@@ -592,8 +593,8 @@ export async function designateLot(input: {
  * @param input.requestingUserId - Who is asking. Must be the buyer.
  * @returns The lot as it now stands.
  * @throws {NotFoundError} If the lot does not exist or belongs to someone else.
- * @throws {AppError} 409 if it still carries a designation or is already in
- * the refund flow; 422 if nobody paid for it, it has been spent from, or its
+ * @throws {AppError} 409 if it still carries a designation, is already in
+ * the refund flow, or had its credits restored; 422 if nobody paid for it, it has been spent from, or its
  * window has closed.
  */
 export async function requestRefund(input: {

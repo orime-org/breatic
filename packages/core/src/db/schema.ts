@@ -1872,6 +1872,8 @@ export const notifications = pgTable(
      * - 'membership.upgrade_incomplete' - an upgrade's invoice went unpaid (0056)
      * - 'storage.quota_exceeded' - a write was refused because the admin's
      *   account is out of storage (0060)
+     * - 'credit.refund_completed' / 'credit.refund_rejected' / 'credit.refund_restored' -
+     *   a credit-pack refund's outcome for the buyer (0094)
      */
     type: varchar("type", { length: 64 }).notNull(),
     /**
