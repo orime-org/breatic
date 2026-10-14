@@ -176,9 +176,11 @@ export function documentPastedMediaExtension(
           view: () => ({
             update: (view) => {
               if (queued.length === 0) return;
+              // A drop updates the view (it focuses it) before it dispatches
+              // the slice, so a queued upload waits for its block to arrive.
               const present = pendingIds(view.state.doc);
               const ready = queued.filter(({ uploadId }) => present.has(uploadId));
-              queued = [];
+              queued = queued.filter(({ uploadId }) => !present.has(uploadId));
               for (const { uploadId, url } of ready) options?.start?.(uploadId, { kind: 'address', url });
             },
           }),
