@@ -81,7 +81,7 @@ export function useDocumentProposalPickup(
         const result = await landProposal(handle, next.proposal, next.action, writeAccess === 'granted').catch(
           () => ({ outcome: 'failed' }) as const,
         );
-        report(id, result.outcome);
+        report(id, result.outcome, 'leftOut' in result ? result.leftOut : 0);
         if (result.outcome === 'applied') setLanded({ blockId: result.blockId });
       }
       busy.current = false;

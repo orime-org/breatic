@@ -964,10 +964,7 @@ export function renderProductGuide(): string {
       "An insert card that goes after a passage first shows that passage under " +
       `${quoted(t("chat.documentProposal.insertAfter"))}, naming a passage with no words by its kind, such as ` +
       `${quoted(t("spaces.document.media.image"))} or ${quoted(t("chat.documentProposal.headingBlock"))}; it ` +
-      `shows the new content as it will look, tables included, with ${quoted(t("chat.documentProposal.insert"))}. ` +
-      "An image, video or audio in a rewrite or an insert lands only when it is a file already in this project, " +
-      "and a card with nothing else to write offers no button to write it; the card says how many will not land, " +
-      `such as ${quoted(t("chat.documentProposal.mediaLeftOut", { count: 1 }))}`,
+      `shows the new content as it will look, tables included, with ${quoted(t("chat.documentProposal.insert"))}.`,
     "Pressing a button opens the document, or switches to its tab, and the change lands; the document scrolls " +
       "to it and outlines it for a moment. The pressed button spins meanwhile. A rewrite or an insert is one step " +
       "undo reverses. A comment lands under the reader's own name, marked " +
@@ -978,17 +975,18 @@ export function renderProductGuide(): string {
       `${quoted(t("chat.documentProposal.view"))} button that shows it again. A card reads whether it landed ` +
       "from its document while that document is open, after a reload too, and a rewrite or insert card goes back " +
       "to its buttons once the reader undoes it; with the document closed it shows its buttons, and pressing one " +
-      "opens the document and finds the change already there, writing nothing again. When the passage changed or " +
-      "was deleted after the proposal the card shows " +
-      `${quoted(t("chat.documentProposal.changed"))} or ${quoted(t("chat.documentProposal.blockGone"))} and ` +
-      `nothing changes; ${quoted(t("chat.documentProposal.readOnly"))} when the reader's connection to the ` +
-      `document is read-only; ${quoted(t("chat.documentProposal.spaceGone"))} when the document is gone. When ` +
-      "writing fails the buttons can be pressed again, and the card shows the line for what was pressed: " +
-      `${quoted(t("chat.documentProposal.failedComment"))} ${quoted(t("chat.documentProposal.failedRewrite"))} ` +
-      `${quoted(t("chat.documentProposal.failedInsert"))}`,
-    `Pressing ${quoted(t("chat.documentProposal.view"))} after the change has left the document, undone or ` +
-      "deleted, gives the card its buttons back, which write the proposal again, under " +
-      `${quoted(t("chat.documentProposal.gone"))}`,
+      "opens the document and finds the change already there, writing nothing again.",
+    "A press that does not land says why in a toast that goes after a moment, and the card keeps its buttons to " +
+      "press again; nothing changes in the document. When the passage changed or was deleted after the proposal " +
+      `the toast says ${quoted(t("chat.documentProposal.changed"))} or ${quoted(t("chat.documentProposal.blockGone"))} ` +
+      `When the reader's connection to the document is read-only it says ${quoted(t("chat.documentProposal.readOnly"))} ` +
+      `When the document is gone it says ${quoted(t("chat.documentProposal.spaceGone"))} When writing fails it says ` +
+      `${quoted(t("chat.documentProposal.failedComment"))} ${quoted(t("chat.documentProposal.failedRewrite"))} or ` +
+      `${quoted(t("chat.documentProposal.failedInsert"))} Pressing ${quoted(t("chat.documentProposal.view"))} ` +
+      `after the change has left the document, undone or deleted, says ${quoted(t("chat.documentProposal.gone"))} ` +
+      "An image, video or audio in a rewrite or an insert lands only when it is a file already in this project; " +
+      "the others are left out when it lands, and a toast says how many, such as " +
+      `${quoted(t("chat.documentProposal.mediaLeftOut", { count: 1 }))}`,
     "",
     "## Document spaces",
     "- Markdown at the start of a line: `# `, `## `, `### ` for headings; a number, a full stop and a space " +

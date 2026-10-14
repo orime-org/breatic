@@ -7,8 +7,11 @@
  * be waiting on the same document at once.
  */
 
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DocumentProposal } from '@breatic/shared';
+
+const toast = vi.hoisted(() => ({ warning: vi.fn(), error: vi.fn() }));
+vi.mock('@web/lib/toast', () => ({ toast }));
 
 import { pendingFor, useDocumentProposals } from '@web/stores/document-proposals';
 
@@ -38,6 +41,8 @@ const store = (): ReturnType<typeof useDocumentProposals.getState> => useDocumen
 
 beforeEach(() => {
   store().reset();
+  toast.warning.mockReset();
+  toast.error.mockReset();
 });
 
 describe('a card', () => {
@@ -61,8 +66,9 @@ describe('a card', () => {
   it('can be pressed again after it failed', () => {
     store().start(proposal('p1'), 'write');
     store().report('p1', 'failed');
-    store().start(proposal('p1'), 'write');
+    expect(store().cards.p1).toBeUndefined();
 
+    store().start(proposal('p1'), 'write');
     expect(store().cards.p1?.state).toBe('working');
   });
 
@@ -90,7 +96,8 @@ describe('the cards waiting on a document', () => {
 
     store().reportSpace('d1', 'failed');
 
-    expect([store().cards.p1?.state, store().cards.p2?.state, store().cards.p3?.state]).toEqual(['failed', 'failed', 'working']);
+    expect([store().cards.p1?.state, store().cards.p2?.state, store().cards.p3?.state]).toEqual([undefined, undefined, 'working']);
+    expect(toast.error).toHaveBeenCalledTimes(2);
   });
 });
 
@@ -109,12 +116,13 @@ describe('showing a landed card again (inner#1509 review round 1)', () => {
     expect(store().cards.p1).toEqual({ state: 'applied', action: 'comment' });
   });
 
-  it('says the change is gone when it is no longer in the document', () => {
+  it('says with a toast that the change is gone, and goes back to how it first was', () => {
     store().view(proposal('p1'), 'write');
     store().report('p1', 'gone');
 
-    expect(store().cards.p1).toEqual({ state: 'gone', action: 'write' });
+    expect(store().cards.p1).toBeUndefined();
     expect(pendingFor('d1')).toEqual([]);
+    expect(toast.warning).toHaveBeenCalledWith('This change is no longer in the Document.');
   });
 
   it('can be pressed again once its change is gone', () => {
@@ -133,5 +141,48 @@ describe('a document changing', () => {
     store().bump('d2');
 
     expect(store().docVersion).toEqual({ d1: 2, d2: 1 });
+  });
+});
+
+describe('how a press that did not land is told (inner#1509, design §5.7)', () => {
+  it.each([
+    ['changed', 'This passage has changed since the proposal.'],
+    ['blockGone', 'This passage has been deleted.'],
+    ['readOnly', 'This Document is read-only: too many people have it open.'],
+    ['spaceGone', 'This Document has been deleted.'],
+  ] as const)('warns with a toast when it is %s, leaving the card to be pressed again', (outcome, line) => {
+    store().start(proposal('p1'), 'write');
+    store().report('p1', outcome);
+
+    expect(toast.warning).toHaveBeenCalledWith(line);
+    expect(toast.error).not.toHaveBeenCalled();
+    expect(store().cards.p1).toBeUndefined();
+  });
+
+  it.each([
+    ['comment', 'comment', 'Could not add the comment. Try again.'],
+    ['rewrite', 'write', 'Could not replace the passage. Try again.'],
+    ['insert', 'write', 'Could not insert. Try again.'],
+  ] as const)('raises an error toast naming what a failed %s press was', (kind, action, line) => {
+    store().start({ ...proposal('p1'), kind }, action);
+    store().report('p1', 'failed');
+
+    expect(toast.error).toHaveBeenCalledWith(line);
+  });
+
+  it('says how many media were left out, with the card landed', () => {
+    store().start(proposal('p1'), 'write');
+    store().report('p1', 'applied', 2);
+
+    expect(store().cards.p1).toEqual({ state: 'applied', action: 'write' });
+    expect(toast.warning).toHaveBeenCalledWith('2 images, videos or audio are not files in this project and will not be added.');
+  });
+
+  it('says the media were left out when nothing else was to land', () => {
+    store().start(proposal('p1'), 'write');
+    store().report('p1', 'mediaOnly', 1);
+
+    expect(store().cards.p1).toBeUndefined();
+    expect(toast.warning).toHaveBeenCalledWith('1 image, video or audio is not a file in this project and will not be added.');
   });
 });

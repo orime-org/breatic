@@ -13,32 +13,72 @@
  * so several cards can wait on one document at once, and the document takes
  * them up in the order they were pressed.
  *
+ * A card holds only where it stands: working, or landed. A press that did not
+ * land is told with a toast, here where it is reported, and the card goes
+ * back to how it first was so it can be pressed again (design §5.7).
+ *
  * Nothing is stored: a reload shows every card as it first was, and a card
  * that already landed is known from the document itself.
  */
 
 import { create } from 'zustand';
-import type { DocumentProposal } from '@breatic/shared';
+import { t, type DocumentProposal } from '@breatic/shared';
+
+import { toast } from '@web/lib/toast';
 
 /** What the reader pressed: put it on as a comment, or write it into the body. */
 export type LandingAction = 'comment' | 'write';
 
 /** Where a card stands. */
-export type DocumentProposalCardState =
-  | 'working'
+export type DocumentProposalCardState = 'working' | 'applied';
+
+/**
+ * How a press ended. `gone`: a "View" press found the change no longer in
+ * the document. `mediaOnly`: nothing was left to write once the media that
+ * are not files in this project were left out.
+ */
+export type DocumentProposalOutcome =
   | 'applied'
   | 'changed'
   | 'blockGone'
   | 'readOnly'
   | 'spaceGone'
   | 'gone'
+  | 'mediaOnly'
   | 'failed';
 
+/** The warning a press that was stopped is told with: nothing broke, it was not done. */
+const WARNING_KEY: Readonly<Record<'changed' | 'blockGone' | 'readOnly' | 'spaceGone' | 'gone', string>> = {
+  changed: 'chat.documentProposal.changed',
+  blockGone: 'chat.documentProposal.blockGone',
+  readOnly: 'chat.documentProposal.readOnly',
+  spaceGone: 'chat.documentProposal.spaceGone',
+  gone: 'chat.documentProposal.gone',
+};
+
+/** The error a press whose writing failed is told with, by what was pressed. */
+const FAILED_KEY: Readonly<Record<'comment' | 'rewrite' | 'insert', string>> = {
+  comment: 'chat.documentProposal.failedComment',
+  rewrite: 'chat.documentProposal.failedRewrite',
+  insert: 'chat.documentProposal.failedInsert',
+};
+
 /**
- * How a press ended. `gone`: a "View" press found the change no longer in
- * the document; the card says so and offers its buttons again.
+ * Tells the reader how a press ended, when it is anything a toast says.
+ * @param proposal - The proposal pressed.
+ * @param action - What it was pressed to do.
+ * @param outcome - How it ended.
+ * @param leftOut - How many media were left out of what it wrote.
  */
-export type DocumentProposalOutcome = Exclude<DocumentProposalCardState, 'working'>;
+function tell(proposal: DocumentProposal, action: LandingAction, outcome: DocumentProposalOutcome, leftOut: number): void {
+  if (outcome === 'failed') {
+    toast.error(t(FAILED_KEY[action === 'comment' ? 'comment' : proposal.kind === 'insert' ? 'insert' : 'rewrite']));
+  } else if (outcome === 'applied' || outcome === 'mediaOnly') {
+    if (leftOut > 0) toast.warning(t('chat.documentProposal.mediaLeftOut', { count: leftOut }));
+  } else {
+    toast.warning(t(WARNING_KEY[outcome]));
+  }
+}
 
 /** A press waiting for its document: landing it, or only showing where it landed. */
 export interface PendingDocumentProposal {
@@ -62,8 +102,8 @@ interface DocumentProposalsState {
   view: (proposal: DocumentProposal, landed: LandingAction) => void;
   /** One document changed. */
   bump: (spaceId: string) => void;
-  /** How a press ended: ignored for a card with no press waiting. */
-  report: (proposalId: string, outcome: DocumentProposalOutcome) => void;
+  /** How a press ended, and how many media it left out: ignored for a card with no press waiting. */
+  report: (proposalId: string, outcome: DocumentProposalOutcome, leftOut?: number) => void;
   /** The same ending for every press waiting on one document. */
   reportSpace: (spaceId: string, outcome: DocumentProposalOutcome) => void;
   reset: () => void;
@@ -85,8 +125,8 @@ function ended(
   if (waiting === undefined) return { cards: s.cards, pending: s.pending };
   const { [proposalId]: _gone, ...pending } = s.pending;
   const { [proposalId]: card, ...others } = s.cards;
-  if (card === undefined) return { cards: others, pending };
-  return { cards: { ...others, [proposalId]: { state: outcome, action: card.action } }, pending };
+  if (card === undefined || outcome !== 'applied') return { cards: others, pending };
+  return { cards: { ...others, [proposalId]: { state: 'applied', action: card.action } }, pending };
 }
 
 export const useDocumentProposals = create<DocumentProposalsState>()((set, get) => ({
@@ -115,7 +155,14 @@ export const useDocumentProposals = create<DocumentProposalsState>()((set, get) 
       };
     }),
   bump: (spaceId) => set((s) => ({ docVersion: { ...s.docVersion, [spaceId]: (s.docVersion[spaceId] ?? 0) + 1 } })),
-  report: (proposalId, outcome) => set((s) => ended(s, proposalId, outcome)),
+  report: (proposalId, outcome, leftOut = 0) => {
+    const { pending, cards } = get();
+    const waiting = pending[proposalId];
+    const card = cards[proposalId];
+    if (waiting === undefined) return;
+    set((s) => ended(s, proposalId, outcome));
+    if (card !== undefined) tell(waiting.proposal, card.action, outcome, leftOut);
+  },
   reportSpace: (spaceId, outcome) => {
     for (const p of pendingFor(spaceId)) get().report(p.proposal.proposalId, outcome);
   },

@@ -13,9 +13,11 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import type { DocumentProposal } from '@breatic/shared';
 
-import { assetsApi } from '@web/data/api/assets';
 import { DocumentProposalCard } from '@web/pages/project/chat/DocumentProposalCard';
 import { useDocumentProposals } from '@web/stores/document-proposals';
+
+const toast = vi.hoisted(() => ({ warning: vi.fn(), error: vi.fn() }));
+vi.mock('@web/lib/toast', () => ({ toast }));
 
 const landedHow = vi.hoisted(() => vi.fn<() => 'comment' | 'write' | null>(() => null));
 const landedAt = vi.hoisted(() =>
@@ -66,6 +68,8 @@ beforeEach(() => {
   useDocumentProposals.getState().reset();
   landedHow.mockReturnValue(null);
   peek.mockReturnValue(undefined);
+  toast.warning.mockReset();
+  toast.error.mockReset();
 });
 
 afterEach(() => {
@@ -183,40 +187,13 @@ describe('an insert card', () => {
     expect(screen.getByTestId('document-proposal-anchor').textContent).toBe('Image');
   });
 
-  it('says how many media will not be added, and offers no press when nothing else would be (review round 3)', async () => {
-    const { quote: _quote, ...insert } = { ...BASE, kind: 'insert' as const, body: 'Text.\n\n![a](https://elsewhere.example/a.png)' };
+  it('offers its press whatever media the body holds, which are judged when it lands', async () => {
+    const { quote: _quote, ...insert } = { ...BASE, kind: 'insert' as const, body: '![a](https://elsewhere.example/a.png)' };
     draw(insert);
 
     await waitFor(() => {
-      expect(screen.getByTestId('document-proposal-media-left-out').textContent).toBe(
-        '1 image, video or audio is not a file in this project and will not be added.',
-      );
+      expect((screen.getByRole('button', { name: 'Insert' }) as HTMLButtonElement).disabled).toBe(false);
     });
-    expect(screen.getAllByRole('button').map((b) => b.textContent)).toEqual(['Insert']);
-    cleanup();
-
-    const { quote: _q, ...onlyMedia } = { ...BASE, kind: 'insert' as const, body: '![a](https://elsewhere.example/a.png)' };
-    draw(onlyMedia);
-    await waitFor(() => {
-      expect(screen.getByTestId('document-proposal-media-left-out')).toBeTruthy();
-    });
-    expect(screen.queryAllByRole('button')).toHaveLength(0);
-  });
-
-  it('counts our own media as ours once our address is fetched, and keeps the press (review round 4)', async () => {
-    const ours = 'https://cdn.example/';
-    const spy = vi.spyOn(assetsApi, 'fetchUploadConfig').mockResolvedValue({ assetUrlPrefix: ours } as never);
-    try {
-      const { quote: _quote, ...insert } = { ...BASE, kind: 'insert' as const, body: `![own](${ours}a.png)` };
-      draw(insert);
-
-      await waitFor(() => {
-        expect((screen.getByRole('button', { name: 'Insert' }) as HTMLButtonElement).disabled).toBe(false);
-      });
-      expect(screen.queryByTestId('document-proposal-media-left-out')).toBeNull();
-    } finally {
-      spy.mockRestore();
-    }
   });
 
   it('shows the passage it goes after', () => {
@@ -247,7 +224,7 @@ describe('after a press', () => {
     ['blockGone', 'This passage has been deleted.'],
     ['readOnly', 'This Document is read-only: too many people have it open.'],
     ['spaceGone', 'This Document has been deleted.'],
-  ] as const)('says %s and holds its button', async (outcome, line) => {
+  ] as const)('tells %s with a toast and offers the press again', async (outcome, line) => {
     draw(BASE);
     await userEvent.click(screen.getByRole('button', { name: 'Add comment' }));
 
@@ -255,11 +232,12 @@ describe('after a press', () => {
       useDocumentProposals.getState().report(BASE.proposalId, outcome);
     });
 
-    expect(screen.getByTestId('document-proposal-status').textContent).toBe(line);
-    expect((screen.getByRole('button', { name: 'Add comment' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(toast.warning).toHaveBeenCalledWith(line);
+    expect(screen.queryByTestId('document-proposal-status')).toBeNull();
+    expect((screen.getByRole('button', { name: 'Add comment' }) as HTMLButtonElement).disabled).toBe(false);
   });
 
-  it('says its change is no longer in the Document and offers the press again (review round 3)', async () => {
+  it('tells with a toast that its change is no longer in the Document, and offers the press again', async () => {
     draw(BASE);
     await userEvent.click(screen.getByRole('button', { name: 'Add comment' }));
     act(() => {
@@ -270,11 +248,12 @@ describe('after a press', () => {
       useDocumentProposals.getState().report(BASE.proposalId, 'gone');
     });
 
-    expect(screen.getByTestId('document-proposal-status').textContent).toBe('This change is no longer in the Document.');
+    expect(toast.warning).toHaveBeenCalledWith('This change is no longer in the Document.');
+    expect(screen.queryByTestId('document-proposal-status')).toBeNull();
     expect((screen.getByRole('button', { name: 'Add comment' }) as HTMLButtonElement).disabled).toBe(false);
   });
 
-  it('says it failed and can be pressed again', async () => {
+  it('tells a failure with an error toast and can be pressed again', async () => {
     draw(BASE);
     await userEvent.click(screen.getByRole('button', { name: 'Add comment' }));
 
@@ -282,7 +261,8 @@ describe('after a press', () => {
       useDocumentProposals.getState().report(BASE.proposalId, 'failed');
     });
 
-    expect(screen.getByTestId('document-proposal-status').textContent).toBe('Could not add the comment. Try again.');
+    expect(toast.error).toHaveBeenCalledWith('Could not add the comment. Try again.');
+    expect(screen.queryByTestId('document-proposal-status')).toBeNull();
     expect((screen.getByRole('button', { name: 'Add comment' }) as HTMLButtonElement).disabled).toBe(false);
   });
 

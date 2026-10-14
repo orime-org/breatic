@@ -16,6 +16,9 @@ import type { ProjectSpace } from '@web/data/yjs/project-meta';
 import { useDocumentProposalRouting } from '@web/pages/project/use-document-proposal-routing';
 import { useDocumentProposals } from '@web/stores/document-proposals';
 
+const toast = vi.hoisted(() => ({ warning: vi.fn(), error: vi.fn() }));
+vi.mock('@web/lib/toast', () => ({ toast }));
+
 const DOC: ProjectSpace = { id: 'd1', name: 'Storyboard', type: 'document', createdAt: 1 };
 const CANVAS: ProjectSpace = { id: 'c1', name: 'Cast', type: 'canvas', createdAt: 2 };
 
@@ -53,6 +56,8 @@ function run(initial: Props): { open: ReturnType<typeof vi.fn>; rerender: (next:
 
 beforeEach(() => {
   useDocumentProposals.getState().reset();
+  toast.warning.mockReset();
+  toast.error.mockReset();
 });
 
 describe('a pressed document card', () => {
@@ -86,7 +91,8 @@ describe('a pressed document card', () => {
       useDocumentProposals.getState().start(proposal('p2', 'c1'), 'write');
     });
 
-    expect([cards().p1?.state, cards().p2?.state]).toEqual(['spaceGone', 'spaceGone']);
+    expect([cards().p1, cards().p2]).toEqual([undefined, undefined]);
+    expect(toast.warning).toHaveBeenCalledWith('This Document has been deleted.');
   });
 
   it('waits for the project\'s Spaces to arrive before judging', () => {
@@ -109,7 +115,8 @@ describe('a pressed document card', () => {
 
     rerender({ spaces: [DOC], openIds: [], activeId: null, ready: true });
 
-    expect(cards().p1?.state).toBe('failed');
+    expect(cards().p1).toBeUndefined();
+    expect(toast.error).toHaveBeenCalledWith('Could not insert. Try again.');
   });
 
   it('says the document is gone when it is deleted before the document took it up', () => {
@@ -120,6 +127,7 @@ describe('a pressed document card', () => {
 
     rerender({ spaces: [], openIds: [], activeId: null, ready: true });
 
-    expect(cards().p1?.state).toBe('spaceGone');
+    expect(cards().p1).toBeUndefined();
+    expect(toast.warning).toHaveBeenCalledWith('This Document has been deleted.');
   });
 });

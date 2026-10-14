@@ -218,7 +218,7 @@ test('an insert puts a table after the passage, opening the document when anothe
   expect(box !== null && box.y >= 0 && box.y + box.height <= 900).toBe(true);
 });
 
-test('a passage changed after the proposal is left alone', async () => {
+test('a passage changed after the proposal is left alone, and a toast says so', async () => {
   await openDocumentWithText();
   await sendTheOpenSpace();
   await answerWith(onSecondBlock({ kind: 'rewrite', body: 'Something else.' }));
@@ -229,11 +229,12 @@ test('a passage changed after the proposal is left alone', async () => {
   await page.keyboard.type(' Then silence.');
   await card.getByRole('button').last().click();
 
-  await expect(card).toHaveAttribute('data-state', 'changed');
+  await expect(page.locator('[data-sonner-toast]').filter({ hasText: 'This passage has changed since the proposal.' })).toBeVisible();
+  await expect(card).toHaveAttribute('data-state', 'idle');
   await expect.poll(paragraphs).toEqual(['Scene two opens.', 'He pushes the door open and sees her bags packed. Then silence.']);
 });
 
-test('a card whose document was deleted says so and writes nothing', async () => {
+test('a card whose document was deleted says so in a toast and writes nothing', async () => {
   const docId = await openDocumentWithText();
   await sendTheOpenSpace();
   await answerWith(onSecondBlock({ kind: 'rewrite', body: 'Something else.' }));
@@ -243,5 +244,6 @@ test('a card whose document was deleted says so and writes nothing', async () =>
   created.splice(created.indexOf(docId), 1);
   await card.getByRole('button').last().click();
 
-  await expect(card).toHaveAttribute('data-state', 'spaceGone');
+  await expect(page.locator('[data-sonner-toast]').filter({ hasText: 'This Document has been deleted.' })).toBeVisible();
+  await expect(card).toHaveAttribute('data-state', 'idle');
 });

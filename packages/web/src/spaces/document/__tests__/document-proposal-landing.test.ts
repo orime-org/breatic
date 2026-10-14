@@ -377,10 +377,27 @@ describe('media in a proposal (review round 3)', () => {
   it('lands only the media at our addresses, writing the rest of the body', async () => {
     const handle = await open('One.');
 
-    await landProposal(handle, proposalOn(handle, 0, { body: 'Two.\n\n![shot](https://elsewhere.example/a.png)' }), 'write', true);
+    const proposal = proposalOn(handle, 0, { body: 'Two.\n\n![shot](https://elsewhere.example/a.png)' });
 
+    expect(await landProposal(handle, proposal, 'write', true)).toEqual({
+      outcome: 'applied',
+      blockId: deriveId(`document-proposal:${proposal.proposalId}:0`),
+      leftOut: 1,
+    });
     expect(blocks(handle).map((b) => b.text)).toEqual(['One.', 'Two.']);
     expect((handle.editor.document as Array<{ type: string }>).some((b) => b.type === 'image')).toBe(false);
+  });
+});
+
+describe('a proposal of nothing but outside media (inner#1509, design §5.7)', () => {
+  it('writes nothing and says how many were left out', async () => {
+    const handle = await open('One.');
+
+    expect(await landProposal(handle, proposalOn(handle, 0, { body: '![x](https://elsewhere.example/a.png)' }), 'write', true)).toEqual({
+      outcome: 'mediaOnly',
+      leftOut: 1,
+    });
+    expect(blocks(handle).map((b) => b.text)).toEqual(['One.']);
   });
 });
 

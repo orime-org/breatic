@@ -30,7 +30,10 @@ import type { LandingAction } from '@web/stores/document-proposals';
 
 
 /** How a press ended; a landing that throws is reported as failed by its caller. */
-type LandingResult = { outcome: 'applied'; blockId: string } | { outcome: 'readOnly' | 'changed' | 'blockGone' };
+type LandingResult =
+  | { outcome: 'applied'; blockId: string; leftOut?: number }
+  | { outcome: 'mediaOnly'; leftOut: number }
+  | { outcome: 'readOnly' | 'changed' | 'blockGone' };
 
 /** The editor parts landing uses. */
 type Landable = Pick<DocumentEditorHandle, 'editor' | 'undoManager'>;
@@ -250,12 +253,12 @@ function withinBodyLevels(blocks: readonly WrittenBlock[]): WrittenBlock[] {
  * Writes a rewrite or an insert into the body as one undo step.
  * @param handle - The document.
  * @param proposal - The proposal.
- * @returns Nothing; the blocks are in the body when it resolves.
+ * @returns How many media were left out of what it wrote.
  */
-async function landBlocks(handle: Landable, proposal: DocumentProposal): Promise<void> {
+async function landBlocks(handle: Landable, proposal: DocumentProposal): Promise<number> {
   const parsed = await markdownBlocks(proposal.body);
-  const { blocks: kept } = ownMediaOnly(parsed.map((b) => b.block as WrittenBlock), await ourMediaPrefixReady());
-  if (kept.length === 0) return;
+  const { blocks: kept, count } = ownMediaOnly(parsed.map((b) => b.block as WrittenBlock), await ourMediaPrefixReady());
+  if (kept.length === 0) return count;
   const written = withinBodyLevels(kept).map((block, n) => ({ ...block, id: writtenBlockId(proposal.proposalId, n) }));
   const { editor, undoManager } = handle;
   undoManager.stopCapturing();
@@ -272,6 +275,7 @@ async function landBlocks(handle: Landable, proposal: DocumentProposal): Promise
     else editor.insertBlocks(written as never, last.id, 'after');
   }
   undoManager.stopCapturing();
+  return count;
 }
 
 /**
@@ -293,8 +297,10 @@ export async function landProposal(
   if (!writable) return { outcome: 'readOnly' };
   const problem = blockProblem(handle, proposal);
   if (problem !== null) return { outcome: problem };
+  let leftOut = 0;
   if (action === 'comment') await landComment(handle, proposal);
-  else await landBlocks(handle, proposal);
+  else leftOut = await landBlocks(handle, proposal);
   const landed = landedAt(handle, proposal);
-  return landed === null ? { outcome: 'changed' } : { outcome: 'applied', blockId: landed.blockId };
+  if (landed !== null) return leftOut > 0 ? { outcome: 'applied', blockId: landed.blockId, leftOut } : { outcome: 'applied', blockId: landed.blockId };
+  return leftOut > 0 ? { outcome: 'mediaOnly', leftOut } : { outcome: 'changed' };
 }

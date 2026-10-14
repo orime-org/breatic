@@ -14,6 +14,9 @@ import type { DocumentProposal } from '@breatic/shared';
 
 import { useDocumentProposals } from '@web/stores/document-proposals';
 
+const toast = vi.hoisted(() => ({ warning: vi.fn(), error: vi.fn() }));
+vi.mock('@web/lib/toast', () => ({ toast }));
+
 const landProposal = vi.hoisted(() => vi.fn());
 const landedAt = vi.hoisted(() => vi.fn());
 vi.mock('@web/spaces/document/document-proposal-landing', () => ({ landProposal, landedAt }));
@@ -39,6 +42,8 @@ beforeEach(() => {
   useDocumentProposals.getState().reset();
   landProposal.mockReset();
   landedAt.mockReset();
+  toast.warning.mockReset();
+  toast.error.mockReset();
   onChange.mockReset();
   onChange.mockReturnValue(() => undefined);
 });
@@ -55,7 +60,8 @@ describe('taking up the cards pressed for this document', () => {
     const { result } = renderHook(() => useDocumentProposalPickup('d1', HANDLE, 'granted', false));
 
     await waitFor(() => {
-      expect(cards().p1?.state).toBe('changed');
+      expect(cards().p1).toBeUndefined();
+      expect(toast.warning).toHaveBeenCalledWith('This passage has changed since the proposal.');
     });
     expect(landProposal.mock.calls.map(([, p, action, writable]) => [(p as DocumentProposal).proposalId, action, writable])).toEqual([
       ['p2', 'write', true],
@@ -86,7 +92,8 @@ describe('taking up the cards pressed for this document', () => {
     renderHook(() => useDocumentProposalPickup('d1', HANDLE, 'denied', false));
 
     await waitFor(() => {
-      expect(cards().p1?.state).toBe('readOnly');
+      expect(cards().p1).toBeUndefined();
+      expect(toast.warning).toHaveBeenCalledWith('This Document is read-only: too many people have it open.');
     });
     expect(landProposal.mock.calls[0]?.[3]).toBe(false);
   });
@@ -109,7 +116,8 @@ describe('taking up the cards pressed for this document', () => {
     renderHook(() => useDocumentProposalPickup('d1', null, 'granted', true));
 
     await waitFor(() => {
-      expect([cards().p1?.state, cards().p2?.state]).toEqual(['failed', 'failed']);
+      expect([cards().p1, cards().p2]).toEqual([undefined, undefined]);
+      expect(toast.error).toHaveBeenCalledTimes(2);
     });
     expect(landProposal).not.toHaveBeenCalled();
   });
@@ -121,7 +129,8 @@ describe('taking up the cards pressed for this document', () => {
     renderHook(() => useDocumentProposalPickup('d1', HANDLE, 'granted', false));
 
     await waitFor(() => {
-      expect(cards().p1?.state).toBe('failed');
+      expect(cards().p1).toBeUndefined();
+      expect(toast.error).toHaveBeenCalledWith('Could not insert. Try again.');
     });
   });
 });
@@ -147,7 +156,8 @@ describe('a card shown again (inner#1509 review round 1)', () => {
     renderHook(() => useDocumentProposalPickup('d1', HANDLE, 'granted', false));
 
     await waitFor(() => {
-      expect(cards().p1).toEqual({ state: 'gone', action: 'write' });
+      expect(cards().p1).toBeUndefined();
+      expect(toast.warning).toHaveBeenCalledWith('This change is no longer in the Document.');
     });
     expect(landProposal).not.toHaveBeenCalled();
   });

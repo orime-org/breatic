@@ -13,7 +13,6 @@ import { useTranslation } from '@web/i18n/use-translation';
 import { projectUuidFromRouteParam } from '@web/lib/project-route';
 import { MarkdownMessage } from '@web/pages/project/chat/MarkdownMessage';
 import { peekDocumentEditor } from '@web/spaces/document/document-editor-cache';
-import { ourMediaPrefixReady, ownMediaOnly, type WrittenBlock } from '@web/spaces/document/document-external-media';
 import { markdownBlocks } from '@web/spaces/document/document-markdown';
 import { commentTextOf, landedAt } from '@web/spaces/document/document-proposal-landing';
 import {
@@ -26,15 +25,6 @@ interface DocumentProposalCardProps {
   /** The edit the Agent proposed, as the tool answered with it. */
   proposal: DocumentProposal;
 }
-
-/** The line a finished press shows, by how it ended; `failed` and `applied` depend on the press. */
-const STATUS_KEY: Readonly<Record<Exclude<DocumentProposalCardState, 'working' | 'applied' | 'failed'>, string>> = {
-  changed: 'chat.documentProposal.changed',
-  blockGone: 'chat.documentProposal.blockGone',
-  readOnly: 'chat.documentProposal.readOnly',
-  spaceGone: 'chat.documentProposal.spaceGone',
-  gone: 'chat.documentProposal.gone',
-};
 
 /** How a block with no words is named on the card, by its BlockNote type. */
 const BLOCK_NAME_KEY: Readonly<Record<string, string>> = {
@@ -62,13 +52,6 @@ const APPLIED_KEY: Readonly<Record<PressKind, string>> = {
   insert: 'chat.documentProposal.appliedInsert',
 };
 
-/** The line a press that failed shows. */
-const FAILED_KEY: Readonly<Record<PressKind, string>> = {
-  comment: 'chat.documentProposal.failedComment',
-  rewrite: 'chat.documentProposal.failedRewrite',
-  insert: 'chat.documentProposal.failedInsert',
-};
-
 /**
  * What a press puts in the document.
  * @param proposal - The proposal.
@@ -91,18 +74,13 @@ const DIFF_TIMEOUT_MS = 100;
 interface ReadBody {
   /** The rewrite's words set against the original's; null for an insert. */
   changes: Change[] | null;
-  /** How many media in it are not files in this project. */
-  mediaLeftOut: number;
-  /** Whether anything is left to write once those are taken out. */
-  writable: boolean;
   /** Whether its text holds anything to put in a comment. */
   hasCommentText: boolean;
 }
 
 /**
  * A rewrite's or an insert's body, read once: its Markdown parsed with the
- * document's schema and its media judged against our address, both of which
- * the card waits for.
+ * document's schema, which the card waits for.
  * @param proposal - The proposal.
  * @returns What the card draws from the body, or null until it is read.
  */
@@ -111,9 +89,8 @@ function useReadBody(proposal: DocumentProposal): ReadBody | null {
   React.useEffect(() => {
     if (proposal.kind === 'comment') return undefined;
     let live = true;
-    void Promise.all([markdownBlocks(proposal.body), ourMediaPrefixReady()]).then(([blocks, prefix]) => {
+    void markdownBlocks(proposal.body).then((blocks) => {
       if (!live) return;
-      const kept = ownMediaOnly(blocks.map((b) => b.block as WrittenBlock), prefix);
       const rewritten = blocks.map((b) => b.text).join('\n');
       const intlSegmenter = new Intl.Segmenter(getLocale(), { granularity: 'word' });
       setRead({
@@ -124,8 +101,6 @@ function useReadBody(proposal: DocumentProposal): ReadBody | null {
               { value: rewritten, added: true, removed: false, count: 0 },
             ])
             : null,
-        mediaLeftOut: kept.count,
-        writable: kept.blocks.length > 0,
         hasCommentText: commentTextOf(blocks).length > 0,
       });
     });
@@ -192,7 +167,7 @@ export const DocumentProposalCard = React.memo(function DocumentProposalCard({
   });
   const place =
     proposal.kind === 'insert' && proposal.blockId === null ? t('chat.documentProposal.end') : proposal.heading;
-  const held = state !== 'idle' && state !== 'failed' && state !== 'gone';
+  const held = state !== 'idle';
   // A comment hangs on words; a block with none (an empty code block, an
   // image, a table of empty cells) has nowhere to put it. A rewrite's comment
   // carries the rewrite's words, so one with none offers no comment either.
@@ -203,10 +178,7 @@ export const DocumentProposalCard = React.memo(function DocumentProposalCard({
   // Until a rewrite's or an insert's body is read, what it would write is not known.
   const unread = proposal.kind !== 'comment' && body === null;
 
-  let status: string | null = null;
-  if (state === 'applied' && action !== undefined) status = t(APPLIED_KEY[pressKind(proposal, action)]);
-  else if (state === 'failed' && action !== undefined) status = t(FAILED_KEY[pressKind(proposal, action)]);
-  else if (state !== 'idle' && state !== 'working' && state !== 'applied' && state !== 'failed') status = t(STATUS_KEY[state]);
+  const status = state === 'applied' && action !== undefined ? t(APPLIED_KEY[pressKind(proposal, action)]) : null;
 
   return (
     <div
@@ -271,15 +243,10 @@ export const DocumentProposalCard = React.memo(function DocumentProposalCard({
           <MarkdownMessage content={proposal.body} size='xs' />
         </div>
       ) : null}
-      {body !== null && body.mediaLeftOut > 0 ? (
-        <div data-testid='document-proposal-media-left-out' className='text-xs text-muted-foreground'>
-          {t('chat.documentProposal.mediaLeftOut', { count: body.mediaLeftOut })}
-        </div>
-      ) : null}
       {status === null ? null : (
         <div
           data-testid='document-proposal-status'
-          className={state === 'failed' ? 'text-xs text-status-error' : 'text-xs text-muted-foreground'}
+          className='text-xs text-muted-foreground'
         >
           {status}
         </div>
@@ -310,7 +277,7 @@ export const DocumentProposalCard = React.memo(function DocumentProposalCard({
               {t('chat.documentProposal.addComment')}
             </Button>
           ) : null}
-          {proposal.kind === 'comment' || body?.writable === false ? null : (
+          {proposal.kind === 'comment' ? null : (
             <Button
               type='button'
               variant='outline'
