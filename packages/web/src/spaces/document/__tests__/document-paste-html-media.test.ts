@@ -519,4 +519,85 @@ describe('a paste the editor does not put in', () => {
     expect(sink.start).not.toHaveBeenCalled();
     expect(sink.onLeftOut).toHaveBeenCalledWith(1);
   });
+
+  it('tells how many were left out once, counting those it could not fetch with those the hook kept out', async () => {
+    const { editor, sink } = open([{ type: 'paragraph', content: 'lead word' }]);
+    const view = editor.prosemirrorView!;
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 8, 12)));
+    view.focus();
+
+    paste(
+      editor,
+      '<p><a href="https://x.example/">https://x.example/</a></p>' +
+        '<img src="http://elsewhere.example/a.png"><img src="https://elsewhere.example/b.png">',
+      'https://x.example/',
+    );
+    await settled();
+
+    expect(sink.onLeftOut.mock.calls).toEqual([[2]]);
+  });
+});
+
+/**
+ * Every block but the media, nested ones too, without ids.
+ * @param editor - The editor.
+ * @returns The blocks as JSON.
+ */
+function withoutMediaBlocks(editor: Editor): string {
+  type Block = { type: string; children?: Block[] };
+  const strip = (blocks: Block[]): Block[] =>
+    blocks
+      .filter((block) => !['image', 'video', 'audio'].includes(block.type))
+      .map((block) => ({ ...block, children: strip(block.children ?? []) }));
+  return JSON.stringify(strip(editor.document as Block[]), (key, value: unknown) => (key === 'id' ? undefined : value));
+}
+
+describe('pasted in the middle of a line', () => {
+  it.each([
+    ['an outside picture', 'https://elsewhere.example/a.png', 1],
+    ['a picture it cannot fetch', 'http://elsewhere.example/a.png', 0],
+  ])('web content ending in a table, with %s, leaves the rest of the line as it does with a picture of ours', async (_what, src, starts) => {
+    const html = (url: string): string => `<p>words</p><img src="${url}"><table><tr><td>a</td></tr></table>`;
+    const ours = open([{ type: 'paragraph', content: 'lead tail' }]);
+    const view = ours.editor.prosemirrorView!;
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 8)));
+    view.focus();
+    paste(ours.editor, html(`${OURS}a.png`), 'words a');
+    await settled();
+    const other = open([{ type: 'paragraph', content: 'lead tail' }]);
+    const otherView = other.editor.prosemirrorView!;
+    otherView.dispatch(otherView.state.tr.setSelection(TextSelection.create(otherView.state.doc, 8)));
+    otherView.focus();
+
+    paste(other.editor, html(src), 'words a');
+    await settled();
+
+    expect(withoutMediaBlocks(other.editor)).toBe(withoutMediaBlocks(ours.editor));
+    expect(other.sink.start).toHaveBeenCalledTimes(starts);
+  });
+});
+
+describe('the body\'s own HTML pasted into a table cell', () => {
+  it('a medium nested under a row lands under the table and the cell gets the words as without it', async () => {
+    const rows = (children: unknown[]): unknown[] => [
+      { type: 'paragraph', content: 'p1', children },
+      { type: 'paragraph', content: 'kid' },
+    ];
+    const plain = open([TABLE]);
+    caretIn(plain.editor, 0);
+    paste(plain.editor, plain.editor.blocksToFullHTML(rows([]) as never), 'p1\nkid');
+    await settled();
+    const withMedium = open([TABLE]);
+    caretIn(withMedium.editor, 0);
+
+    paste(
+      withMedium.editor,
+      withMedium.editor.blocksToFullHTML(rows([{ type: 'image', props: { url: 'https://elsewhere.example/a.png' } }]) as never),
+      'p1\nkid',
+    );
+    await settled();
+
+    expect(firstCell(withMedium.editor, 0)).toBe(firstCell(plain.editor, 0));
+    expect(shape(withMedium.editor)).toEqual(['table', 'image[pending|]']);
+  });
 });
