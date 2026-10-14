@@ -37,7 +37,10 @@ export class RefundRefusal extends Error {
 }
 
 /**
- * Stripe could not be read; nothing was stored.
+ * A Stripe read failed: the refund list (`copyStripe`) or the charge's
+ * `disputed` (`readDisputed`), both through `readStripe` in
+ * disposition.service.ts. No disposition and no key is stored; refunds copied
+ * before a failed `disputed` read stay (§6.4).
  * @returns The 503.
  */
 export function stripeUnavailable(): RefundRefusal {
