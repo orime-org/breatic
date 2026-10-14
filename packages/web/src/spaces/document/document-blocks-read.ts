@@ -26,8 +26,12 @@ export interface ReadBlock {
   lossy: boolean;
 }
 
-/** Block attributes Markdown writes out; any other one set off its default is lost by a Markdown rewrite. */
-const CARRIED_ATTRS = new Set(['id', 'level', 'checked', 'language', 'start', 'url', 'name', 'caption', 'colspan', 'rowspan']);
+/**
+ * Block attributes Markdown writes out; any other one set off its default is
+ * lost by a Markdown rewrite. A merged cell's span is lost too: the export
+ * splits it into the cell and empty cells beside it.
+ */
+const CARRIED_ATTRS = new Set(['id', 'level', 'checked', 'language', 'start', 'url', 'name', 'caption']);
 
 /** Marks Markdown writes out. */
 const CARRIED_MARKS = new Set(['bold', 'italic', 'strike', 'code', 'link']);
