@@ -82,9 +82,11 @@ const TYPE_META: Record<
 
 // The row's own layout, the same whether it is the row's button or, while the
 // name is being edited, a plain box (the rename box cannot sit in a button).
-// Room kept on the right for the menu button floating there, so the name
-// truncates before it.
-const ROW_BODY = 'flex min-w-0 flex-1 items-start gap-3 pr-12 text-left';
+// Room kept on the right for the menu button floating there (32px wide, 8px
+// in from the row's edge, which the row's own 16px pad already covers half
+// of), plus the 8px gap the line keeps between its items: the Editing and
+// Open marks end against it and the name truncates before it.
+const ROW_BODY = 'flex min-w-0 flex-1 items-start gap-3 pr-8 text-left';
 
 /**
  * "All Spaces" drawer — every Space in the project, with status chip,
@@ -381,7 +383,9 @@ function SpaceDrawerRow({
         <Icon className='h-4 w-4' />
       </span>
       <span className='flex min-w-0 flex-1 flex-col gap-1'>
-        <span className='flex items-center gap-2'>
+        {/* 20px tall whatever it holds: the marks are, so every row and a row
+            being renamed stand the same height. */}
+        <span className='flex min-h-5 items-center gap-2'>
           {renaming ? (
             <input
               ref={box}
@@ -390,10 +394,10 @@ function SpaceDrawerRow({
               defaultValue={name}
               maxLength={SPACE_NAME_MAX_LEN}
               aria-label={t('spaces.rename.inputAriaLabel')}
-              // Same height as the name line (22px: 20 of text and a 1px
-              // border either side), so the row keeps its height; shrinks
-              // before the menu button the row keeps room for.
-              className='h-[22px] min-w-0 flex-1 rounded-content-sm border border-active-border bg-background px-2 text-base font-semibold leading-5 text-foreground outline-none'
+              // The name line's 20px (18 of text and a 1px border either
+              // side), so the row keeps its height; shrinks before the menu
+              // button the row keeps room for.
+              className='h-5 min-w-0 flex-1 rounded-content-sm border border-active-border bg-background px-2 text-sm font-normal leading-[18px] text-foreground outline-none'
               // Marks what an Escape means while the focus is in here. The
               // drawer reads it before dismissing.
               data-renaming
@@ -403,31 +407,35 @@ function SpaceDrawerRow({
             />
           ) : (
             <span
-              className='truncate text-base font-semibold text-foreground'
+              // Set as the conversation history sets its names (user
+              // 2026-10-14).
+              className='truncate text-sm font-normal text-foreground'
               data-testid={`space-drawer-name-${space.id}`}
             >
               {name}
             </span>
           )}
-          {isActive ? (
-            <span
-              // The border takes 1px a side, so a 1px pad keeps this mark the
-              // height of the Open mark beside other rows.
-              className='shrink-0 rounded-chrome border border-border px-1 py-px text-2xs font-medium text-foreground-secondary'
-            >
-              {t('spaces.drawer.status.editing')}
-            </span>
-          ) : isOpen ? (
-            <span className='shrink-0 rounded-chrome bg-muted px-1 py-0.5 text-2xs font-medium text-muted-foreground'>
-              {t('spaces.drawer.status.open')}
-            </span>
-          ) : null}
           {space.locked ? (
             <Lock
               className='shrink-0 text-muted-foreground'
               style={{ width: 12, height: 12 }}
               aria-label={t('spaces.lockedAria')}
             />
+          ) : null}
+          {/* At the right end of the line, against the room kept for the
+              menu button (user 2026-10-14). */}
+          {isActive ? (
+            <span
+              // The border takes 1px a side, so a 1px pad keeps this mark the
+              // height of the Open mark beside other rows.
+              className='ml-auto shrink-0 rounded-chrome border border-border px-1 py-px text-2xs font-medium text-foreground-secondary'
+            >
+              {t('spaces.drawer.status.editing')}
+            </span>
+          ) : isOpen ? (
+            <span className='ml-auto shrink-0 rounded-chrome bg-muted px-1 py-0.5 text-2xs font-medium text-muted-foreground'>
+              {t('spaces.drawer.status.open')}
+            </span>
           ) : null}
         </span>
         <span className='truncate text-xs tabular-nums text-muted-foreground'>
@@ -473,7 +481,7 @@ function SpaceDrawerRow({
         )}
         <div
           // Out of the flow and over the room the row button keeps free on
-          // its right (`pr-12`), so the name truncates before it rather than
+          // its right (`pr-8`), so the name truncates before it rather than
           // running under it. Shown while the row is hovered, while focus is
           // inside it, and while its menu is open.
           className={cn(

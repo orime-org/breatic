@@ -375,7 +375,7 @@ describe('SpaceDrawer', () => {
     const user = userEvent.setup();
     setup();
     const box = await startRename(user, 'sp-1');
-    for (const cls of ['min-w-0', 'flex-1', 'h-[22px]', 'leading-5', 'text-base', 'font-semibold']) {
+    for (const cls of ['min-w-0', 'flex-1', 'h-5', 'leading-[18px]', 'text-sm', 'font-normal']) {
       expect(box.className.split(/\s+/)).toContain(cls);
     }
     expect(box).toHaveAttribute('autocomplete', 'off');
@@ -391,6 +391,24 @@ describe('SpaceDrawer', () => {
     expect(item).toHaveTextContent('Locked — unlock the space before renaming.');
     await user.click(item);
     expect(screen.queryByTestId('space-drawer-rename-input-sp-1')).toBeNull();
+  });
+
+  it('sets the name as the conversation history does', async () => {
+    const user = userEvent.setup();
+    setup();
+    await user.click(screen.getByTestId('space-drawer-trigger'));
+    const name = screen.getByTestId('space-drawer-name-sp-1');
+    for (const cls of ['text-sm', 'font-normal', 'text-foreground']) {
+      expect(name.className.split(/\s+/)).toContain(cls);
+    }
+  });
+
+  it('puts the Editing and Open marks at the right end of the name line', async () => {
+    const user = userEvent.setup();
+    setup({ activeSpaceId: 'sp-1', openTabIds: ['sp-1', 'sp-2'] });
+    await user.click(screen.getByTestId('space-drawer-trigger'));
+    expect(screen.getByText('Editing').className.split(/\s+/)).toContain('ml-auto');
+    expect(screen.getByText('Open').className.split(/\s+/)).toContain('ml-auto');
   });
 
   it('marks the Space being edited with a neutral outline, apart from the open ones', async () => {
@@ -509,6 +527,6 @@ describe('SpaceDrawer', () => {
     ).toMatch(/(^|\s)absolute(\s|$)/);
     expect(
       screen.getByRole('button', { name: 'Open Reel' }).className,
-    ).toMatch(/(^|\s)pr-12(\s|$)/);
+    ).toMatch(/(^|\s)pr-8(\s|$)/);
   });
 });
