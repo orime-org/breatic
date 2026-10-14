@@ -21,7 +21,7 @@ import {
   type BrowserChoices,
   type NoticeShown,
 } from '@breatic/shared';
-import { decideOnLoad, writesForClick, type ConsentWrites } from '@web/lib/analytics/consent-decision';
+import { cookieAfterWrites, decideOnLoad, writesForClick, type ConsentWrites } from '@web/lib/analytics/consent-decision';
 
 /** Interface text, already translated. */
 export interface ConsentText {
@@ -106,27 +106,8 @@ export function readBrowserChoices(): BrowserChoices {
  */
 function writeConsent(writes: ConsentWrites, prior: BrowserChoices | null): void {
   const stored = (CookieConsent.getCookie().data ?? {}) as Record<string, unknown>;
-  const data: Record<string, unknown> = {
-    analytics: prior?.analytics ? stored.analytics : undefined,
-    ads: prior?.ads ? stored.ads : undefined,
-  };
-  const accepted = new Set((['analytics', 'ads'] as const).filter((c) => prior?.[c]?.value === true));
-  const decidedAt = new Date().toISOString();
-  for (const category of ['analytics', 'ads'] as const) {
-    const write = writes[category];
-    if (write === undefined) continue;
-    const entry = { decisionId: crypto.randomUUID(), decidedAt, source: write.source };
-    data[category] =
-      category === 'ads'
-        ? { ...entry, noticeShown: write.noticeShown ?? false, gpcAtDecision: write.gpcAtDecision ?? false }
-        : entry;
-    if (write.value) accepted.add(category);
-    else accepted.delete(category);
-  }
-  CookieConsent.acceptCategory(
-    [...accepted],
-    (['analytics', 'ads'] as const).filter((c) => !accepted.has(c)),
-  );
+  const { data, accepted } = cookieAfterWrites(writes, prior, stored, new Date().toISOString(), () => crypto.randomUUID());
+  CookieConsent.acceptCategory(accepted, (['analytics', 'ads'] as const).filter((c) => !accepted.includes(c)));
   CookieConsent.setCookieData({ value: data, mode: 'overwrite' });
 }
 

@@ -139,14 +139,14 @@ describe('whether ads run', () => {
     await load();
     runtime.listener?.({ analytics: true, ads: true });
     await vi.waitFor(() => expect(runtime.setAds).toHaveBeenCalled());
-    expect(lastAds()).toEqual({ allowed: false, notice: false, known: false });
+    expect(lastAds()).toEqual({ allowed: false, known: false, notice: false, adsOn: true });
   });
 
   it('follows the browser alone when nobody is signed in', async () => {
     runtime.choices = choices(true);
     const analytics = await load();
     analytics.resetUser();
-    await vi.waitFor(() => expect(lastAds()).toEqual({ allowed: true, notice: false, known: true }));
+    await vi.waitFor(() => expect(lastAds()).toEqual({ allowed: true, known: true, notice: false, adsOn: true }));
   });
 
   it('stops for an account that opted out on another device, and says so in settings', async () => {
@@ -159,30 +159,30 @@ describe('whether ads run', () => {
     });
     const analytics = await load();
     analytics.identifyUser({ id: 'u3' } as never);
-    await vi.waitFor(() => expect(lastAds()).toEqual({ allowed: false, notice: 'account', known: true }));
+    await vi.waitFor(() => expect(lastAds()).toEqual({ allowed: false, known: true, notice: 'account', adsOn: false }));
   });
 
   it('runs once the account record allows them, and stays off when it cannot be read', async () => {
     runtime.choices = choices(true);
     const analytics = await load();
     analytics.identifyUser({ id: 'u4' } as never);
-    await vi.waitFor(() => expect(lastAds()).toEqual({ allowed: true, notice: false, known: true }));
+    await vi.waitFor(() => expect(lastAds()).toEqual({ allowed: true, known: true, notice: false, adsOn: true }));
     api.put.mockRejectedValueOnce(new Error('offline'));
     runtime.listener?.({ analytics: true, ads: true });
-    // Unknown is not refused: ads stay off for now, and the stored ad click is kept.
-    await vi.waitFor(() => expect(lastAds()).toEqual({ allowed: false, notice: false, known: false }));
+    // Unknown is not refused: ads stay off for now, the stored ad click is kept, and the switch shows this browser's consent.
+    await vi.waitFor(() => expect(lastAds()).toEqual({ allowed: false, known: false, notice: false, adsOn: true }));
   });
 
   it('stops at once when this browser refuses while its report is on the way', async () => {
     runtime.choices = choices(true);
     const analytics = await load();
     analytics.identifyUser({ id: 'u5' } as never);
-    await vi.waitFor(() => expect(lastAds()).toEqual({ allowed: true, notice: false, known: true }));
+    await vi.waitFor(() => expect(lastAds()).toEqual({ allowed: true, known: true, notice: false, adsOn: true }));
     api.put.mockReturnValueOnce(new Promise(() => undefined));
     runtime.choices = choices(false, 'settings', OTHER);
     runtime.listener?.({ analytics: false, ads: false });
     // The refusal counts as the receipt it is about to become, as the server will answer.
-    expect(lastAds()).toEqual({ allowed: false, notice: 'account', known: true });
+    expect(lastAds()).toEqual({ allowed: false, known: true, notice: 'account', adsOn: false });
   });
 
   it('takes the answer to the latest report, not one that arrives after it', async () => {
@@ -194,10 +194,10 @@ describe('whether ads run', () => {
     await vi.waitFor(() => expect(api.put).toHaveBeenCalledTimes(1));
     api.put.mockResolvedValueOnce({ ...VIEW, receipts: [{ ...VIEW.receipts[0], decisionId: OTHER, value: false }] });
     runtime.listener?.({ analytics: true, ads: true });
-    await vi.waitFor(() => expect(lastAds()).toEqual({ allowed: false, notice: 'account', known: true }));
+    await vi.waitFor(() => expect(lastAds()).toEqual({ allowed: false, known: true, notice: 'account', adsOn: false }));
     answerEarlier(VIEW);
     await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(lastAds()).toEqual({ allowed: false, notice: 'account', known: true });
+    expect(lastAds()).toEqual({ allowed: false, known: true, notice: 'account', adsOn: false });
   });
 
   it('times this browser on the server clock the account receipts are dated by', async () => {
@@ -214,6 +214,6 @@ describe('whether ads run', () => {
     const analytics = await load();
     analytics.identifyUser({ id: 'u7' } as never);
     await vi.waitFor(() => expect(api.put).toHaveBeenCalled());
-    await vi.waitFor(() => expect(lastAds()).toEqual({ allowed: false, notice: 'account', known: true }));
+    await vi.waitFor(() => expect(lastAds()).toEqual({ allowed: false, known: true, notice: 'account', adsOn: false }));
   });
 });

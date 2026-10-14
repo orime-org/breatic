@@ -33,7 +33,7 @@ import {
   type ConsentText,
 } from '@web/lib/analytics/consent-banner';
 import { readAttribution } from '@web/lib/analytics/attribution';
-import { fetchCountry } from '@web/lib/analytics/consent-decision';
+import { fetchCountry, type AdsView } from '@web/lib/analytics/consent-decision';
 
 type Amplitude = typeof AmplitudeSdk;
 type EventStorage = NonNullable<NonNullable<Parameters<Amplitude['init']>[2]>['storageProvider']>;
@@ -108,7 +108,7 @@ export async function start(options: {
  */
 async function apply(next: BrowserChoices | null): Promise<void> {
   choice = next;
-  if (next?.ads?.value !== true) setAds({ allowed: false, notice: currentNotice, known: true });
+  if (next?.ads?.value !== true) setAds({ allowed: false, known: true, notice: currentNotice, adsOn: false });
   const snapshot = consentSnapshot();
   for (const listener of listeners) listener(snapshot);
   try {
@@ -259,16 +259,13 @@ let currentNotice: NoticeShown = false;
 /**
  * Take the page's ads decision: load or stop the Google tag and set what the
  * settings window shows.
- * @param decision - The decision.
- * @param decision.allowed - Whether ads may run in this browser.
- * @param decision.notice - The opt-out notice the settings window shows.
- * @param decision.known - False while the account's answer is unknown: ads stay
- *   off for now, but nothing was refused, so the stored ad click is kept.
+ * @param decision - The page's ads view; while it is not `known` nothing was
+ *   refused, so the stored ad click is kept.
  */
-export function setAds(decision: { allowed: boolean; notice: NoticeShown; known: boolean }): void {
+export function setAds(decision: AdsView): void {
   adsAllowed = decision.allowed;
   currentNotice = decision.notice;
-  setAdsView({ notice: decision.notice, adsOn: decision.allowed });
+  setAdsView({ notice: decision.notice, adsOn: decision.adsOn });
   applyAds(decision.allowed);
   // A category not granted keeps no cookies, whether or not this page loaded its vendor.
   if (!decision.allowed && decision.known) clearStorage('_gcl_');

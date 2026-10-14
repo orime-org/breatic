@@ -155,6 +155,76 @@ export function adsNotice(input: {
   return input.gpc && !browserSuppressesOwnGpc(input.ads, 'none') ? 'gpc' : false;
 }
 
+/** What the page does with ads, and what the settings window starts with. */
+export interface AdsView {
+  readonly allowed: boolean;
+  /** False while the account's answer is awaited for a browser that consents: nothing is refused yet. */
+  readonly known: boolean;
+  readonly notice: NoticeShown;
+  /** Whether the settings window's ads switch starts on. */
+  readonly adsOn: boolean;
+}
+
+/**
+ * The page's ads view (design §4.4.4, §4.4.6). While the account's answer is
+ * unknown ads stay off, and the switch shows this browser's own choice.
+ * @param input - What the page knows.
+ * @param input.signedIn - Whether an account is signed in.
+ * @param input.outcome - `adsAllowed` for this browser, or null while the account's answer is unknown.
+ * @param input.gpc - Whether the browser sends GPC.
+ * @param input.ads - This browser's ads choice.
+ * @returns The view.
+ */
+export function adsViewFor(input: {
+  signedIn: boolean;
+  outcome: AdsOutcome | null;
+  gpc: boolean;
+  ads: BrowserAds | null;
+}): AdsView {
+  const { signedIn, outcome, gpc, ads } = input;
+  const notice = adsNotice({ signedIn, outcome: outcome ?? { allowed: false, notice: null }, gpc, ads });
+  if (outcome !== null) return { allowed: outcome.allowed, known: true, notice, adsOn: outcome.allowed };
+  const consents = ads?.value === true;
+  return { allowed: false, known: !consents, notice, adsOn: consents };
+}
+
+/**
+ * The cookie's data and accepted categories after a write (design §4.4.4
+ * `setConsent()`): each category written gets a new id and the same time; a
+ * category left out keeps the choice in force before the press.
+ * @param writes - The categories to write.
+ * @param prior - The choices in force before this write.
+ * @param stored - The cookie's data entries as stored.
+ * @param decidedAt - The time of this write.
+ * @param newId - Makes a decision id.
+ * @returns The data to store and the categories to accept.
+ */
+export function cookieAfterWrites(
+  writes: ConsentWrites,
+  prior: BrowserChoices | null,
+  stored: Record<string, unknown>,
+  decidedAt: string,
+  newId: () => string,
+): { data: Record<string, unknown>; accepted: ('analytics' | 'ads')[] } {
+  const data: Record<string, unknown> = {
+    analytics: prior?.analytics ? stored.analytics : undefined,
+    ads: prior?.ads ? stored.ads : undefined,
+  };
+  const accepted = new Set((['analytics', 'ads'] as const).filter((c) => prior?.[c]?.value === true));
+  for (const category of ['analytics', 'ads'] as const) {
+    const write = writes[category];
+    if (write === undefined) continue;
+    const entry = { decisionId: newId(), decidedAt, source: write.source };
+    data[category] =
+      category === 'ads'
+        ? { ...entry, noticeShown: write.noticeShown ?? false, gpcAtDecision: write.gpcAtDecision ?? false }
+        : entry;
+    if (write.value) accepted.add(category);
+    else accepted.delete(category);
+  }
+  return { data, accepted: (['analytics', 'ads'] as const).filter((c) => accepted.has(c)) };
+}
+
 /**
  * The country Cloudflare reports for this visitor.
  * @param trace - The body of `/cdn-cgi/trace`.

@@ -25,7 +25,7 @@ import { ApiException } from '@web/data/api/types';
 import { getSupportedLocales } from '@web/i18n/locale-bootstrap';
 import { captureAttribution, clearAttribution, readAttribution } from '@web/lib/analytics/attribution';
 import { ANALYTICS_CONFIGURED } from '@web/lib/analytics/build-config';
-import { adsNotice, reportBody } from '@web/lib/analytics/consent-decision';
+import { adsViewFor, reportBody } from '@web/lib/analytics/consent-decision';
 import type { ConsentText } from '@web/lib/analytics/consent-banner';
 import type { AnalyticsUser } from '@web/lib/analytics/runtime';
 import type * as RuntimeModule from '@web/lib/analytics/runtime';
@@ -158,15 +158,12 @@ function decideAds(module: Runtime): void {
   const now = Date.now() + clockOffset;
   const at = new Date(now).toISOString();
   const browser = { choice: choices?.ads ?? null, gpcAt: gpc ? at : null, at };
-  let outcome: AdsOutcome = { allowed: false, notice: null };
+  let outcome: AdsOutcome | null = null;
   if (signedIn === null) outcome = adsAllowed({ receipts: [], gpcSeenAt: null }, browser, 'none', now);
   else if (signedIn !== undefined && account !== null) {
     outcome = adsAllowed(account.view, browser, ownershipOf(browser.choice?.decisionId), now);
   }
-  // Unknown only while the account's answer is awaited for a browser that consents; a refusal here is known at once.
-  const known = signedIn === null || account !== null || browser.choice?.value !== true;
-  const notice = adsNotice({ signedIn: typeof signedIn === 'string', outcome, gpc, ads: browser.choice });
-  module.setAds({ allowed: outcome.allowed, notice, known });
+  module.setAds(adsViewFor({ signedIn: typeof signedIn === 'string', outcome, gpc, ads: browser.choice }));
 }
 
 /**

@@ -5,6 +5,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { CONSENT_REVISION, type BrowserAds, type BrowserAnalytics, type BrowserChoices } from '@breatic/shared';
 import {
   adsNotice,
+  adsViewFor,
+  cookieAfterWrites,
   countryFromTrace,
   decideOnLoad,
   fetchCountry,
@@ -184,6 +186,59 @@ describe('adsNotice', () => {
     const saved = ads({ source: 'settings', noticeShown: 'gpc', gpcAtDecision: true });
     expect(adsNotice({ signedIn: false, outcome: { allowed: true, notice: null }, gpc: true, ads: saved })).toBe(false);
     expect(adsNotice({ signedIn: false, outcome: { allowed: true, notice: null }, gpc: false, ads: null })).toBe(false);
+  });
+});
+
+describe('adsViewFor', () => {
+  const allowed = { allowed: true, notice: null } as const;
+  const optedOut = { allowed: false, notice: 'account' } as const;
+
+  it('follows the outcome once it is known', () => {
+    expect(adsViewFor({ signedIn: true, outcome: allowed, gpc: false, ads: ads() })).toEqual({ allowed: true, known: true, notice: false, adsOn: true });
+    expect(adsViewFor({ signedIn: true, outcome: optedOut, gpc: false, ads: ads() })).toEqual({ allowed: false, known: true, notice: 'account', adsOn: false });
+  });
+
+  it('keeps ads off while the account answer is unknown, but shows this browser’s own consent on the switch', () => {
+    expect(adsViewFor({ signedIn: true, outcome: null, gpc: false, ads: ads() })).toEqual({ allowed: false, known: false, notice: false, adsOn: true });
+  });
+
+  it('treats a refusal or no choice here as known at once, whatever the account says', () => {
+    expect(adsViewFor({ signedIn: true, outcome: null, gpc: false, ads: ads({ value: false }) })).toEqual({ allowed: false, known: true, notice: false, adsOn: false });
+    expect(adsViewFor({ signedIn: false, outcome: null, gpc: true, ads: null })).toEqual({ allowed: false, known: true, notice: 'gpc', adsOn: false });
+  });
+});
+
+describe('cookieAfterWrites', () => {
+  const ids = (): (() => string) => {
+    let n = 0;
+    return () => `id-${(n += 1)}`;
+  };
+  const prior: BrowserChoices = { analytics: analytics(), ads: ads({ value: false, source: 'settings' }) };
+  const stored = { analytics: { decisionId: ID_A, decidedAt: NOW, source: 'banner' }, ads: { decisionId: ID_B, decidedAt: NOW, source: 'settings', noticeShown: false, gpcAtDecision: false } };
+
+  it('keeps a category the press leaves out exactly as it was before the press', () => {
+    const next = cookieAfterWrites({ analytics: { value: true, source: 'settings' } }, prior, stored, NOW, ids());
+    expect(next.accepted).toEqual(['analytics']);
+    expect(next.data.ads).toBe(stored.ads);
+    expect(next.data.analytics).toEqual({ decisionId: 'id-1', decidedAt: NOW, source: 'settings' });
+  });
+
+  it('gives each written category its own id and the ads fields', () => {
+    const next = cookieAfterWrites(
+      { analytics: { value: false, source: 'banner' }, ads: { value: true, source: 'banner', gpcAtDecision: true } },
+      prior,
+      stored,
+      NOW,
+      ids(),
+    );
+    expect(next.accepted).toEqual(['ads']);
+    expect(next.data.ads).toEqual({ decisionId: 'id-2', decidedAt: NOW, source: 'banner', noticeShown: false, gpcAtDecision: true });
+  });
+
+  it('drops an entry that is no longer in force', () => {
+    const next = cookieAfterWrites({ analytics: { value: true, source: 'implicit' } }, { analytics: null, ads: null }, stored, NOW, ids());
+    expect(next.data.ads).toBeUndefined();
+    expect(next.accepted).toEqual(['analytics']);
   });
 });
 

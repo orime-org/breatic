@@ -38,7 +38,7 @@ const sdk = vi.hoisted(() => ({
     }
   },
 }));
-const banner = vi.hoisted(() => ({ onChoice: null as ((choice: BrowserChoices | null) => void) | null }));
+const banner = vi.hoisted(() => ({ onChoice: null as ((choice: BrowserChoices | null) => void) | null, setAdsView: vi.fn() }));
 const sdkGate = vi.hoisted(() => ({ release: (): void => undefined, wait: Promise.resolve() }));
 
 vi.mock('@amplitude/analytics-browser', async () => {
@@ -58,7 +58,7 @@ vi.mock('@web/lib/analytics/consent-banner', () => ({
   setConsentLanguage: async (): Promise<void> => undefined,
   openConsentSettings: (): void => undefined,
   followPage: (): void => undefined,
-  setAdsView: (): void => undefined,
+  setAdsView: banner.setAdsView,
 }));
 vi.mock('@web/lib/analytics/consent-decision', () => ({ fetchCountry: async () => 'US' }));
 
@@ -114,16 +114,16 @@ describe('analytics runtime', () => {
     const tag = (): boolean => [...document.head.querySelectorAll('script')].some((el) => el.src.includes('googletagmanager'));
     expect(tag()).toBe(false);
     runtime.conversion('signup', 'signup:user-1');
-    runtime.setAds({ allowed: false, notice: 'account', known: true });
+    runtime.setAds({ allowed: false, known: true, notice: 'account', adsOn: false });
     expect(tag()).toBe(false);
-    runtime.setAds({ allowed: true, notice: false, known: true });
+    runtime.setAds({ allowed: true, known: true, notice: false, adsOn: true });
     expect(tag()).toBe(true);
   });
 
   it('stops ads at once when this browser withdraws them, before the page decides again', async () => {
     const runtime = await startRuntime();
     await choose(accepted);
-    runtime.setAds({ allowed: true, notice: false, known: true });
+    runtime.setAds({ allowed: true, known: true, notice: false, adsOn: true });
     document.cookie = '_gcl_au=1; Path=/';
     await choose(rejected);
     const last = ((window as Window & { dataLayer?: IArguments[] }).dataLayer ?? [])
@@ -137,15 +137,17 @@ describe('analytics runtime', () => {
   it('keeps the ad click while the account’s answer is unknown, and drops it once ads are refused', async () => {
     const runtime = await startRuntime();
     await choose(accepted);
-    runtime.setAds({ allowed: true, notice: false, known: true });
+    runtime.setAds({ allowed: true, known: true, notice: false, adsOn: true });
     document.cookie = '_gcl_aw=1; Path=/';
-    runtime.setAds({ allowed: false, notice: false, known: false });
+    runtime.setAds({ allowed: false, known: false, notice: false, adsOn: true });
+    // The settings window starts from this browser's own consent, which nothing has refused yet.
+    expect(banner.setAdsView).toHaveBeenLastCalledWith({ notice: false, adsOn: true });
     const updates = ((window as Window & { dataLayer?: IArguments[] }).dataLayer ?? [])
       .map((entry) => Array.from(entry))
       .filter((entry) => entry[0] === 'consent' && entry[1] === 'update');
     expect(updates.at(-1)?.[2]).toMatchObject({ ad_storage: 'denied' });
     expect(document.cookie).toMatch(/_gcl_aw/);
-    runtime.setAds({ allowed: false, notice: 'account', known: true });
+    runtime.setAds({ allowed: false, known: true, notice: 'account', adsOn: false });
     expect(document.cookie).not.toMatch(/_gcl_/);
   });
 
@@ -186,7 +188,7 @@ describe('analytics runtime', () => {
   it('writes vendor cookies on the consent cookie’s domain', async () => {
     const runtime = await startRuntime();
     await choose(accepted);
-    runtime.setAds({ allowed: true, notice: false, known: true });
+    runtime.setAds({ allowed: true, known: true, notice: false, adsOn: true });
     expect(sdk.init).toHaveBeenCalledWith('test-key', undefined, expect.objectContaining({ cookieOptions: { domain: '' } }));
     const layer = (window as Window & { dataLayer?: IArguments[] }).dataLayer ?? [];
     const config = layer.map((entry) => Array.from(entry)).find((entry) => entry[0] === 'config');
@@ -213,7 +215,7 @@ describe('analytics runtime', () => {
   it('reports a browser conversion only for a visitor who arrived from an ad in the last 90 days', async () => {
     const runtime = await startRuntime();
     await choose(accepted);
-    runtime.setAds({ allowed: true, notice: false, known: true });
+    runtime.setAds({ allowed: true, known: true, notice: false, adsOn: true });
     const conversions = (): unknown[][] =>
       ((window as Window & { dataLayer?: IArguments[] }).dataLayer ?? [])
         .map((entry) => Array.from(entry))
@@ -229,7 +231,7 @@ describe('analytics runtime', () => {
   it('never grants ad personalisation', async () => {
     const runtime = await startRuntime();
     await choose(accepted);
-    runtime.setAds({ allowed: true, notice: false, known: true });
+    runtime.setAds({ allowed: true, known: true, notice: false, adsOn: true });
     const updates = ((window as Window & { dataLayer?: IArguments[] }).dataLayer ?? [])
       .map((entry) => Array.from(entry))
       .filter((entry) => entry[0] === 'consent' && entry[1] === 'update');
@@ -252,7 +254,7 @@ describe('analytics runtime', () => {
     });
     const runtime = await startRuntime();
     banner.onChoice?.(accepted);
-    runtime.setAds({ allowed: true, notice: false, known: true });
+    runtime.setAds({ allowed: true, known: true, notice: false, adsOn: true });
     banner.onChoice?.(rejected);
     release();
     await new Promise((resolve) => setTimeout(resolve, 10));
