@@ -298,17 +298,31 @@ export function withMediaView<T extends MediaSpec>(spec: T): T {
   });
   // The library's own export, which falls back to the block's render.
   const toExternalHTML = spec.implementation['toExternalHTML'] as ExternalHTML;
+  const render = spec.implementation['render'] as Render;
   return {
     ...spec,
     implementation: {
       ...spec.implementation,
       node,
+      // The node view above draws the block, so the library's render is
+      // reached only to serialize (pasted HTML goes to blocks and back to
+      // HTML). That render hangs its resize handlers on the window and only
+      // its `destroy` takes them off, which no serializer calls; the DOM is
+      // all a serializer reads.
+      render(this: unknown, ...args: unknown[]) {
+        const rendered = render.call(this, ...args);
+        rendered.destroy?.();
+        return rendered;
+      },
       toExternalHTML(this: unknown, block: { props: Record<string, unknown> }, ...rest: unknown[]) {
         return pendingExternalHTML(block) ?? toExternalHTML.call(this, block, ...rest);
       },
     },
   };
 }
+
+/** The library's render of one block. */
+type Render = (this: unknown, ...args: unknown[]) => { dom: HTMLElement; destroy?: () => void };
 
 /** The library's export of one block to outside HTML. */
 type ExternalHTML = (
