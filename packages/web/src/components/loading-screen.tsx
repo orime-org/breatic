@@ -51,7 +51,8 @@ function changeOpenWaits(delta: 1 | -1): void {
  * preferences load, then while the Hocuspocus connection settles (without that
  * wait the page paints once with `connectionStatus === 'connecting'` and the
  * banner and workspace overlay pop in on the next frame, 2026-05-26 user spec).
- * Entering a project runs three of them back to back. Each renders this, and
+ * Entering a project from inside the app runs the last three back to back; a
+ * cold load of the project address runs all four. Each renders this, and
  * `LoadingScreenHost` draws the one screen they all share, so the hand-over
  * from one wait to the next leaves the screen and its spinner untouched
  * (inner#1373).
