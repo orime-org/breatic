@@ -5,14 +5,13 @@
  * Subscription starts and renewals for analytics and the ad platform
  * (inner#1442 design §4.8, §4.9). A start follows the consent the subscribing
  * browser left on the subscription's metadata; a renewal has no browser
- * behind it and follows the account's latest choice.
+ * behind it and follows the account's consent receipts (§4.4.6).
  */
 
-import { enqueueAdsConversion, getSubscriptionPlan, logger, trackServerEvent } from "@breatic/core";
+import { accountOnlyConsent, enqueueAdsConversion, getSubscriptionPlan, logger, trackServerEvent } from "@breatic/core";
 import type { SubscriptionWrite } from "@breatic/core";
 import { SUBSCRIBABLE_MEMBERSHIP_TIERS, type SubscribableMembershipTier } from "@breatic/shared";
 import { readCheckoutSnapshot } from "@server/modules/analytics/checkout-snapshot.js";
-import { getAnalyticsConsent } from "@server/modules/auth/auth.service.js";
 
 /**
  * The plan a stored subscription is on, for its price.
@@ -63,8 +62,7 @@ export async function reportSubscriptionRenewed(input: {
 }): Promise<void> {
   const properties = planProperties(input.subscription);
   if (properties === null) return;
-  const consent = await getAnalyticsConsent(input.userId);
-  if (consent === null) return;
+  const consent = await accountOnlyConsent(input.userId, Date.now());
   trackServerEvent("subscription_renewed", { userId: input.userId, insertId: input.eventId, properties }, consent);
 }
 

@@ -7,15 +7,9 @@
  * from server, worker and collab, so it lives here.
  */
 
-import {
-  adClickFrom,
-  accountConsentCurrent,
-  type AccountConsent,
-  type ConsentSnapshot,
-  type ProjectActivityType,
-} from "@breatic/shared";
+import { adClickFrom, type ConsentSnapshot, type ProjectActivityType } from "@breatic/shared";
 import { adsConversionConfig, enqueueAdsConversion } from "@core/ads/ads-conversion.js";
-import { getAccountAttribution, getAccountConsent } from "@core/analytics/account.repo.js";
+import { accountOnlyConsent, getAccountAttribution } from "@core/analytics/account.repo.js";
 import { currentConsent } from "@core/analytics/consent-context.js";
 import { claimMilestone } from "@core/analytics/milestone.repo.js";
 import { reportAnalyticsFailure, serverAnalyticsOn, trackServerEvent } from "@core/analytics/server-analytics.js";
@@ -38,19 +32,9 @@ export function collaborationActionOf(type: ProjectActivityType): CollaborationA
 }
 
 /**
- * The account's latest consent, while it still counts: made under the current
- * policy and no older than the consent cookie lasts.
- * @param userId - The account.
- * @returns The choice, or null; callers treat null as no consent.
- */
-export async function accountConsentInForce(userId: string): Promise<AccountConsent | null> {
-  return accountConsentCurrent(await getAccountConsent(userId), Date.now());
-}
-
-/**
  * Report a collaborator's first action in a project, once per person and
  * project; the project's first one also counts as the owner's collaboration
- * conversion, under the owner's latest consent. Never rejects: a failure goes
+ * conversion, under the owner's account consent. Never rejects: a failure goes
  * to the entry's error callback, and the action it rides on carries on.
  * @param input - The action.
  * @param input.projectId - Where it happened.
@@ -80,8 +64,8 @@ export async function reportCollaboratorFirstAction(
       consent,
     );
     const ownerId = await getOwner(input.projectId);
-    const ownerConsent = ownerId ? await accountConsentInForce(ownerId) : null;
-    if (!ownerId || !ownerConsent) return;
+    if (!ownerId) return;
+    const ownerConsent = await accountOnlyConsent(ownerId, Date.now());
     await enqueueAdsConversion(
       {
         conversion: "collaboration",

@@ -31,7 +31,7 @@ import {
 // A self-referencing FK needs its column type spelled out, since the table is
 // still being defined at the point the reference is written.
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
-import type { AccountConsent, Attribution, ConsentSnapshot, MessagePart } from "@breatic/shared";
+import type { Attribution, ConsentSnapshot, MessagePart } from "@breatic/shared";
 import type { AdsConversionJob } from "@core/ads/ads-types.js";
 import { PROJECT_NAME_MAX_CHARS } from "@breatic/shared";
 
@@ -131,10 +131,9 @@ export const users = pgTable(
     // negotiated in, and changed only when the user switches the interface
     // language.
     locale: varchar("locale", { length: 10 }).default("en").notNull(),
-    // The latest analytics consent this account's browsers reported (0094,
-    // inner#1442). Events with no browser behind them follow it; null means
-    // no browser ever reported a choice, and nothing is sent.
-    analyticsConsent: jsonb("analytics_consent").$type<AccountConsent>(),
+    // When a signed-in request last carried GPC (0094, inner#1442 §4.4.6):
+    // an ads opt-out for the whole account that never lapses.
+    analyticsGpcSeenAt: timestamp("analytics_gpc_seen_at", { withTimezone: true }),
     // First-touch and last-touch campaign source, written at sign-up from
     // what the browser kept after consent (0094, inner#1442).
     attribution: jsonb("attribution").$type<Attribution>(),
@@ -2578,6 +2577,8 @@ export const adsConversionUploads = pgTable(
     job: jsonb("job").$type<AdsConversionJob>().notNull(),
     /** The platform's id for the accepted upload; its processing status decides whether a restatement may follow. */
     requestId: varchar("request_id", { length: 128 }),
+    /** Why the row stopped short of the platform, e.g. `consent_withdrawn`. */
+    failureReason: varchar("failure_reason", { length: 32 }),
     ...timestamps,
   },
   (table) => [
@@ -2586,6 +2587,45 @@ export const adsConversionUploads = pgTable(
     check(
       "ads_conversion_uploads_status_check",
       sql`${table.status} IN ('queued', 'uploaded', 'failed', 'restate_pending', 'restating', 'restated', 'restate_failed')`,
+    ),
+  ],
+);
+
+// ── Analytics consent receipts (0094, inner#1442 §4.4.6) ────────────
+
+/**
+ * One receipt per consent choice a signed-in browser reported, keyed by the
+ * choice's id from the cookie. A choice is recorded once, on the first account
+ * that reports it; a repeat or another account's report changes nothing.
+ */
+export const analyticsConsentEvents = pgTable(
+  "analytics_consent_events",
+  {
+    decisionId: uuid("decision_id").primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    category: varchar("category", { length: 16 }).notNull(),
+    value: boolean("value").notNull(),
+    source: varchar("source", { length: 16 }).notNull(),
+    /** `account` for a consent that lifts the account's opt-out; null otherwise. */
+    noticeShown: varchar("notice_shown", { length: 16 }),
+    /** Whether the reporting browser sent GPC when the choice was saved. */
+    gpcAtDecision: boolean("gpc_at_decision").default(false).notNull(),
+    decidedAt: timestamp("decided_at", { withTimezone: true }).notNull(),
+    revision: integer("revision").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index("analytics_consent_events_user_idx").on(table.userId, table.category, table.decidedAt),
+    check("analytics_consent_events_category_check", sql`${table.category} IN ('analytics', 'ads')`),
+    check(
+      "analytics_consent_events_source_check",
+      sql`${table.source} IN ('banner', 'settings', 'gpc', 'request')`,
+    ),
+    check(
+      "analytics_consent_events_notice_check",
+      sql`${table.noticeShown} IS NULL OR ${table.noticeShown} = 'account'`,
     ),
   ],
 );

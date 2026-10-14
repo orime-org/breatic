@@ -22,16 +22,16 @@ import { isUniqueViolation } from "@server/utils/pg-error.js";
 import { getRedis } from "@breatic/core";
 import { sendMail, type SendMailResult } from "@breatic/core";
 import {
-  accountConsentInForce,
+  adsOwnership,
   currentConsent,
-  db,
   enqueueAdsConversion,
   env,
-  getAccountConsent,
+  getAccountAdsEvents,
   getHonouredTierForUser,
   logger,
-  setAccountConsent,
+  recordConsentReceipts,
   trackServerEvent,
+  type AccountAdsHistory,
 } from "@breatic/core";
 import {
   setSession,
@@ -43,8 +43,8 @@ import {
   ConflictError,
   UnauthorizedError,
 } from "@breatic/core";
-import { adClickFrom, getActiveLocale, mergeAccountConsent, normalizeEmail, revisionInForce, t } from "@breatic/shared";
-import type { AccountConsent, Attribution, UserEntity } from "@breatic/shared";
+import { adClickFrom, getActiveLocale, normalizeEmail, t } from "@breatic/shared";
+import type { Attribution, ConsentReport, Ownership, UserEntity } from "@breatic/shared";
 
 const BCRYPT_ROUNDS = 12;
 
@@ -282,51 +282,37 @@ export async function setLocale(userId: string, locale: string): Promise<void> {
   await userRepo.updateUser(userId, { locale });
 }
 
-/**
- * Keep a stored choice only if its policy revision is still in force.
- * @param stored - What the column holds.
- * @returns The choice, or null when it is missing or from an older revision.
- */
-function currentRevisionOnly(stored: AccountConsent | null): AccountConsent | null {
-  return stored !== null && revisionInForce(stored.revision) ? stored : null;
+/** The account's ads record as `GET`/`PUT /me/analytics-consent` return it (inner#1442 design §4.4.6). */
+export interface AnalyticsConsentView {
+  readonly receipts: AccountAdsHistory["receipts"];
+  readonly gpcSeenAt: string | null;
+  /** Whose receipt the ads decision in the requesting browser's cookie is. */
+  readonly ownership: Ownership;
 }
 
 /**
- * Fold a logged-in browser's consent report into the account's latest choice.
- *
- * The one write path for `users.analytics_consent` (inner#1442 design §4.4.6).
- * The row is locked so two browsers reporting at once both get merged. The
- * browser stamps the choice with its own clock, so the time is moved by how
- * far that clock was off when the report was sent (`sentAt` against ours, as
- * Segment, RudderStack, Snowplow, PostHog and Amplitude correct event times);
- * a report still dated in the future, or one without `sentAt`, is taken as
- * made now.
+ * Record a signed-in browser's consent report, one receipt per decision.
  * @param userId - The account.
- * @param report - The browser's choice, when it was made and when it was sent.
+ * @param report - The validated report.
  */
-export async function recordAnalyticsConsent(
+export async function recordAnalyticsConsent(userId: string, report: ConsentReport): Promise<void> {
+  await recordConsentReceipts(userId, report, Date.now());
+}
+
+/**
+ * The account's ads receipts in force, its GPC signal, and whose receipt the
+ * requesting browser's ads decision is.
+ * @param userId - The account.
+ * @param cookieDecisionId - The ads decision id in the browser's cookie, if any.
+ * @returns The view, or null when the account is gone.
+ */
+export async function getAnalyticsConsentView(
   userId: string,
-  report: AccountConsent & { readonly sentAt?: string },
-): Promise<void> {
-  const { sentAt, ...incoming } = report;
-  const now = Date.now();
-  const skew = sentAt === undefined ? 0 : now - Date.parse(sentAt);
-  const decidedAt = new Date(Math.min(Date.parse(incoming.decidedAt) + skew, now)).toISOString();
-  await db.transaction(async (tx) => {
-    const stored = currentRevisionOnly(await getAccountConsent(userId, tx));
-    const next = mergeAccountConsent(stored, { ...incoming, decidedAt });
-    if (next !== null && next !== stored) await setAccountConsent(userId, next, tx);
-  });
-}
-
-/**
- * Read the account's latest consent, for events no browser is behind.
- * @param userId - The account.
- * @returns The choice, or null when none under the current policy is on
- *   record; callers treat null as no consent.
- */
-export async function getAnalyticsConsent(userId: string): Promise<AccountConsent | null> {
-  return accountConsentInForce(userId);
+  cookieDecisionId: string | undefined,
+): Promise<AnalyticsConsentView | null> {
+  const history = await getAccountAdsEvents(userId, Date.now());
+  if (history === null) return null;
+  return { ...history, ownership: await adsOwnership(userId, cookieDecisionId) };
 }
 
 /**

@@ -263,10 +263,19 @@ export {
   type AdsUploadStatus,
 } from "@core/ads/ads-types.js";
 export {
-  accountConsentInForce,
   collaborationActionOf,
   reportCollaboratorFirstAction,
   type CollaborationAction,
 } from "@core/analytics/collaboration.js";
 export { claimFirstMilestone, type FirstMilestone } from "@core/analytics/first-milestone.js";
-export { getAccountAttribution, getAccountConsent, setAccountConsent } from "@core/analytics/account.repo.js";
+export {
+  accountOnlyConsent,
+  adsOwnership,
+  getAccountAdsEvents,
+  getAccountAnalytics,
+  getAccountAttribution,
+  recordConsentReceipts,
+  recordGpcSignal,
+  recordOptOutRequest,
+  type AccountAdsHistory,
+} from "@core/analytics/account.repo.js";

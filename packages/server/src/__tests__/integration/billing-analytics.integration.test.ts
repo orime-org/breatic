@@ -32,6 +32,7 @@ vi.mock("@server/infra/stripe.js", () => ({ getStripeClient: () => stripe }));
 vi.mock("@server/modules/payment/purchase-mail.js", () => ({ sendPurchaseConfirmation: vi.fn() }));
 vi.mock("@server/utils/send-best-effort-mail.js", () => ({ sendBestEffortMail: vi.fn() }));
 
+import crypto from "node:crypto";
 import type Stripe from "stripe";
 import postgres from "postgres";
 import {
@@ -250,7 +251,7 @@ describe("subscriptions", () => {
     expect(await getUploadStatus({ conversion: "subscription", transactionId: txn })).toBe("queued");
   });
 
-  it("reports a renewal under the account's latest choice, and nothing without one", async () => {
+  it("reports a renewal under the account's analytics receipts, and nothing without one", async () => {
     const { userId, customerId } = await account();
     await handleSubscriptionEvent(event("customer.subscription.created", stripeSub(customerId, "active")));
     sent.splice(0);
@@ -259,8 +260,10 @@ describe("subscriptions", () => {
     await handleSubscriptionEvent(event("invoice.paid", renewal));
     expect(sent).toEqual([]);
 
-    const choice = { analytics: true, ads: false, decidedAt: new Date().toISOString(), source: "banner", revision: CONSENT_REVISION };
-    await sql`UPDATE users SET analytics_consent = ${sql.json(choice)} WHERE id = ${userId}`;
+    await sql`
+      INSERT INTO analytics_consent_events (decision_id, user_id, category, value, source, decided_at, revision)
+      VALUES (${crypto.randomUUID()}, ${userId}, 'analytics', true, 'banner', now(), ${CONSENT_REVISION})
+    `;
     const paid = event("invoice.paid", renewal);
     await handleSubscriptionEvent(paid);
     expect(sent).toEqual([

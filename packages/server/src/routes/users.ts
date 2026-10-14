@@ -17,12 +17,20 @@
  * to the email local-part and a null avatar.
  */
 
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
+import { getCookie } from "hono/cookie";
+import { NotFoundError } from "@breatic/core";
 import { validate } from "@server/middleware/validate.js";
 import { z } from "zod";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
-import { CONSENT_SOURCES, USER_LOOKUP_MAX_IDS } from "@breatic/shared";
+import {
+  CONSENT_COOKIE_NAME,
+  ConsentReportSchema,
+  parseConsentChoices,
+  t,
+  USER_LOOKUP_MAX_IDS,
+} from "@breatic/shared";
 import { SUPPORTED } from "@server/middleware/i18n.js";
 
 import { authService, studioService } from "@server/modules";
@@ -93,29 +101,49 @@ users.patch("/me/locale", validate("json", localeSchema), async (c) => {
   return c.json({ data: { locale } });
 });
 
-const analyticsConsentSchema = z.object({
-  analytics: z.boolean(),
-  ads: z.boolean(),
-  decidedAt: z.string().datetime({ offset: true }),
-  source: z.enum(CONSENT_SOURCES),
-  revision: z.number().int(),
-  /** The browser's clock when it sent the report, so the server can correct a skewed clock. */
-  sentAt: z.string().datetime({ offset: true }).optional(),
-});
+/**
+ * The ads decision id in the requesting browser's consent cookie, if any.
+ * @param c - The request context.
+ * @returns The id.
+ */
+function cookieAdsDecisionId(c: Context): string | undefined {
+  return parseConsentChoices(getCookie(c, CONSENT_COOKIE_NAME), Date.now()).ads?.decisionId;
+}
 
 /**
- * `PUT /api/v1/users/me/analytics-consent` — report this browser's consent.
- *
- * A logged-in browser sends its choice when the app opens, after sign-in and
- * whenever the choice changes. Events no browser is behind (renewals, approved
- * refunds) follow the account's latest choice (inner#1442 design §4.4.6). A
- * report from an older policy revision, or decided before the stored one, is
- * accepted and ignored.
- * @returns `204`
+ * The account's ads record, or 404 when the account is gone.
+ * @param c - The request context.
+ * @returns `200` with `{ data: { receipts, gpcSeenAt, ownership } }`.
+ * @throws {NotFoundError} When the account is gone.
  */
-users.put("/me/analytics-consent", validate("json", analyticsConsentSchema), async (c) => {
+async function consentView(c: Context<{ Variables: AuthVariables }>): Promise<Response> {
+  const view = await authService.getAnalyticsConsentView(c.get("user").id, cookieAdsDecisionId(c));
+  if (view === null) throw new NotFoundError(t("server.error.not_found"));
+  return c.json({ data: view });
+}
+
+/**
+ * `GET /api/v1/users/me/analytics-consent` — the account's ads record.
+ *
+ * The ads receipts still in force, when a signed-in request last carried GPC,
+ * and whose receipt the ads decision in this browser's cookie is. The app and
+ * the website combine it with the browser's own choice through `adsDecision`
+ * before loading any ad tag (inner#1442 design §4.4.6).
+ * @returns `200` with `{ data: { receipts, gpcSeenAt, ownership } }`
+ */
+users.get("/me/analytics-consent", consentView);
+
+/**
+ * `PUT /api/v1/users/me/analytics-consent` — report this browser's choices.
+ *
+ * One receipt per decision; a decision already on file, on this account or
+ * another, is left as it is. A logged-in browser sends its choices when the
+ * app opens, after sign-in and whenever a choice changes.
+ * @returns `200` with the same body as `GET`
+ */
+users.put("/me/analytics-consent", validate("json", ConsentReportSchema), async (c) => {
   await authService.recordAnalyticsConsent(c.get("user").id, c.req.valid("json"));
-  return c.body(null, 204);
+  return consentView(c);
 });
 
 export { users as usersRoute };

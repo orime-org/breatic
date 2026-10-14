@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * The account's latest analytics consent (`users.analytics_consent`,
- * inner#1442 design §4.4.6) — real PG + Redis.
+ * Consent receipts and the GPC signal on the account (inner#1442 design
+ * §4.4.6) — real PG + Redis.
  *
- * Events no browser is behind follow this record, so it has to settle on the
- * choice the person made last, whichever device reported it, and never on a
- * choice made under an older policy.
+ * A browser's choice is recorded once, on the first account that reports it;
+ * a signed-in request carrying GPC opts the whole account out of ads; and the
+ * account's ads record comes back with whose receipt the browser's cookie is.
  */
 
 import { describe, it, expect, beforeAll, afterAll, afterEach, inject, vi } from "vitest";
@@ -26,8 +26,23 @@ vi.mock("ai", () => ({
 
 import crypto from "node:crypto";
 import postgres from "postgres";
-import { initCore, getRedis, setSession, sessionCookieName, loadLocales } from "@breatic/core";
-import { CONSENT_MAX_AGE_DAYS, CONSENT_REVISION, type AccountConsent } from "@breatic/shared";
+import {
+  accountOnlyConsent,
+  getAccountAdsEvents,
+  getRedis,
+  initCore,
+  loadLocales,
+  recordConsentReceipts,
+  sessionCookieName,
+  setSession,
+} from "@breatic/core";
+import {
+  CONSENT_COOKIE_NAME,
+  CONSENT_MAX_AGE_DAYS,
+  CONSENT_REVISION,
+  ConsentReportSchema,
+  type ConsentReport,
+} from "@breatic/shared";
 import type { Hono } from "hono";
 
 try {
@@ -49,6 +64,7 @@ beforeAll(async () => {
 
 afterEach(async () => {
   for (const id of created.splice(0)) {
+    await sql`DELETE FROM analytics_consent_events WHERE user_id = ${id}`;
     await sql`UPDATE users SET deleted_at = now() WHERE id = ${id}`;
   }
 });
@@ -57,8 +73,12 @@ afterAll(async () => {
   await sql?.end({ timeout: 5 });
 });
 
+const HOUR = 3_600_000;
+const DAY = 24 * HOUR;
+const ago = (ms: number): string => new Date(Date.now() - ms).toISOString();
+
 /**
- * Inserts an account with no consent on record.
+ * Inserts an account with nothing on record.
  * @returns The account's id.
  */
 async function insertUser(): Promise<string> {
@@ -72,153 +92,289 @@ async function insertUser(): Promise<string> {
 }
 
 /**
- * Builds a report as a browser sends it.
- * @param analytics - Analytics category.
- * @param ads - Ads category.
- * @param decidedAt - When the choice was made.
- * @returns The report.
+ * One decision as a browser reports it.
+ * @param over - Fields to change.
+ * @returns The decision.
  */
-function choice(analytics: boolean, ads: boolean, decidedAt: string): AccountConsent {
-  return { analytics, ads, decidedAt, source: "banner", revision: CONSENT_REVISION };
+type Decision = Record<string, unknown> & { value: boolean };
+
+function decision(over: Record<string, unknown> = {}): Decision {
+  return {
+    decisionId: crypto.randomUUID(),
+    category: "ads",
+    value: true,
+    source: "banner",
+    noticeShown: false,
+    gpcAtDecision: false,
+    decidedAt: ago(HOUR),
+    ...over,
+  };
 }
 
 /**
- * A time this many hours before now, as an ISO timestamp.
- * @param hours - How long ago.
- * @returns The timestamp.
+ * A report as the server validated it.
+ * @param decisions - The decisions.
+ * @returns The parsed report.
  */
-function hoursAgo(hours: number): string {
-  return new Date(Date.now() - hours * 3_600_000).toISOString();
+function parsed(decisions: Decision[]): ConsentReport {
+  return ConsentReportSchema.parse(report(decisions));
 }
 
 /**
- * Sends `PUT /users/me/analytics-consent` as the given account.
+ * A report body.
+ * @param decisions - The decisions.
+ * @param extra - Other fields to set.
+ * @returns The body.
+ */
+function report(decisions: Decision[], extra: Record<string, unknown> = {}): Record<string, unknown> {
+  return { decisions, revision: CONSENT_REVISION, ...extra };
+}
+
+/**
+ * The consent cookie a browser holding this ads choice sends.
+ * @param ads - The ads entry, with its value.
+ * @returns The cookie pair.
+ */
+function consentCookie(ads: Decision): string {
+  const { value, category: _category, ...entry } = ads;
+  const body = { categories: ["necessary", ...(value ? ["ads"] : [])], revision: CONSENT_REVISION, data: { ads: entry } };
+  return `${CONSENT_COOKIE_NAME}=${encodeURIComponent(JSON.stringify(body))}`;
+}
+
+/**
+ * Sends a request to `/users/me/analytics-consent` as the given account.
  * @param userId - The account.
- * @param body - The report.
+ * @param init - Method, body, the browser's ads choice for its cookie, and whether it sends GPC.
+ * @param init.method - `GET` or `PUT`.
+ * @param init.body - The report, for `PUT`.
+ * @param init.cookieAds - The ads choice the browser's cookie holds.
+ * @param init.gpc - Whether the request carries `Sec-GPC: 1`.
  * @returns The response.
  */
-async function putConsent(userId: string, body: unknown): Promise<Response> {
+async function call(
+  userId: string,
+  init: { method?: string; body?: unknown; cookieAds?: Decision; gpc?: boolean } = {},
+): Promise<Response> {
   const token = crypto.randomBytes(24).toString("hex");
   await setSession(getRedis(), token, userId);
+  const cookies = [`${sessionCookieName()}=${token}`];
+  if (init.cookieAds) cookies.push(consentCookie(init.cookieAds));
   return app.request("/api/v1/users/me/analytics-consent", {
-    method: "PUT",
-    headers: { Cookie: `${sessionCookieName()}=${token}`, "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+    method: init.method ?? "GET",
+    headers: {
+      Cookie: cookies.join("; "),
+      "Content-Type": "application/json",
+      ...(init.gpc ? { "Sec-GPC": "1" } : {}),
+    },
+    ...(init.body === undefined ? {} : { body: JSON.stringify(init.body) }),
   });
 }
 
 /**
- * Reads the account's choice through the service events use.
+ * The account's receipts as stored.
  * @param userId - The account.
- * @returns The choice, or null.
+ * @returns The rows, oldest first.
  */
-async function accountConsent(userId: string): Promise<AccountConsent | null> {
-  const { authService } = await import("@server/modules");
-  return authService.getAnalyticsConsent(userId);
+async function receipts(userId: string): Promise<Record<string, unknown>[]> {
+  return sql`SELECT decision_id, category, value, source, notice_shown, gpc_at_decision, decided_at, revision
+    FROM analytics_consent_events WHERE user_id = ${userId} ORDER BY decided_at, category`;
 }
 
-describe("users.analytics_consent", () => {
-  it("starts empty and keeps the first report", async () => {
+/**
+ * When the account last sent GPC, as stored.
+ * @param userId - The account.
+ * @returns The time, or null.
+ */
+async function gpcSeenAt(userId: string): Promise<Date | null> {
+  const rows = await sql<{ at: Date | null }[]>`SELECT analytics_gpc_seen_at AS at FROM users WHERE id = ${userId}`;
+  return rows[0]!.at;
+}
+
+describe("PUT /users/me/analytics-consent", () => {
+  it("records one receipt per decision and returns the account's ads record", async () => {
     const id = await insertUser();
-    expect(await accountConsent(id)).toBeNull();
-    const res = await putConsent(id, choice(true, false, hoursAgo(6)));
-    expect(res.status).toBe(204);
-    expect(await accountConsent(id)).toMatchObject({ analytics: true, ads: false });
+    const ads = decision();
+    const res = await call(id, {
+      method: "PUT",
+      body: report([ads, decision({ category: "analytics", value: false })]),
+      cookieAds: ads,
+    });
+    expect(res.status).toBe(200);
+    const rows = await receipts(id);
+    expect(rows.map((r) => [r.category, r.value])).toEqual(
+      expect.arrayContaining([
+        ["ads", true],
+        ["analytics", false],
+      ]),
+    );
+    const { data } = (await res.json()) as { data: { receipts: { decisionId: string }[]; ownership: string } };
+    expect(data.receipts.map((r) => r.decisionId)).toEqual([ads.decisionId]);
+    expect(data.ownership).toBe("self");
   });
 
-  it("ignores a report decided before the stored one", async () => {
+  it("records a decision once, however often and with whatever value it is sent again", async () => {
     const id = await insertUser();
-    await putConsent(id, choice(false, false, hoursAgo(5)));
-    const res = await putConsent(id, choice(true, true, hoursAgo(6)));
-    expect(res.status).toBe(204);
-    expect(await accountConsent(id)).toMatchObject({ analytics: false, ads: false });
+    const ads = decision();
+    await call(id, { method: "PUT", body: report([ads]) });
+    await call(id, { method: "PUT", body: report([{ ...ads, value: false }]) });
+    const rows = await receipts(id);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.value).toBe(true);
   });
 
-  it("keeps a category on only if both of two simultaneous reports accepted it", async () => {
-    const id = await insertUser();
-    const at = hoursAgo(4);
-    await Promise.all([putConsent(id, choice(true, false, at)), putConsent(id, choice(true, true, at))]);
-    expect(await accountConsent(id)).toMatchObject({ analytics: true, ads: false });
+  it("does not take over a decision another account already recorded", async () => {
+    const first = await insertUser();
+    const second = await insertUser();
+    const ads = decision({ value: false });
+    await call(first, { method: "PUT", body: report([ads]) });
+    const res = await call(second, { method: "PUT", body: report([ads]), cookieAds: ads });
+    expect(await receipts(second)).toHaveLength(0);
+    const { data } = (await res.json()) as { data: { ownership: string } };
+    expect(data.ownership).toBe("other");
   });
 
-  it("takes a report dated in the future as made now", async () => {
+  it("corrects a fast browser clock by the time the report was sent, and never dates a receipt ahead", async () => {
     const id = await insertUser();
-    await putConsent(id, choice(true, true, "2099-01-01T00:00:00.000Z"));
-    await putConsent(id, choice(false, false, new Date(Date.now() + 1000).toISOString()));
-    expect(await accountConsent(id)).toMatchObject({ analytics: false, ads: false });
+    const now = Date.now();
+    const skewed = decision({ decidedAt: new Date(now + 40 * 60_000).toISOString() });
+    await call(id, { method: "PUT", body: report([skewed], { sentAt: new Date(now + HOUR).toISOString() }) });
+    const ahead = decision({ category: "analytics", decidedAt: new Date(now + DAY).toISOString() });
+    await call(id, { method: "PUT", body: report([ahead]) });
+    const rows = await receipts(id);
+    const byCategory = Object.fromEntries(rows.map((r) => [r.category, (r.decided_at as Date).getTime()]));
+    expect(Math.abs(byCategory.ads! - (now - 20 * 60_000))).toBeLessThan(5_000);
+    expect(byCategory.analytics).toBeLessThanOrEqual(Date.now());
   });
 
-  it("corrects a fast device clock by the time the report was sent, so a later choice elsewhere still wins", async () => {
+  it("keeps an account-notice override and stores a GPC-notice override as a plain consent", async () => {
     const id = await insertUser();
-    const minutes = (n: number): string => new Date(Date.now() + n * 60_000).toISOString();
-    // Device B, clock right, turned everything off ten minutes ago.
-    await putConsent(id, { ...choice(false, false, minutes(-10)), sentAt: minutes(0) });
-    // Device A, clock an hour fast, accepted twenty minutes ago and re-reports on a page load now.
-    const res = await putConsent(id, { ...choice(true, true, minutes(40)), sentAt: minutes(60) });
-    expect(res.status).toBe(204);
-    expect(await accountConsent(id)).toMatchObject({ analytics: false, ads: false });
+    await call(id, {
+      method: "PUT",
+      body: report([decision({ source: "settings", noticeShown: "account" })]),
+    });
+    await call(id, {
+      method: "PUT",
+      body: report([decision({ source: "settings", noticeShown: "gpc", gpcAtDecision: true })]),
+    });
+    const rows = await receipts(id);
+    expect(rows.map((r) => r.notice_shown).sort()).toEqual(["account", null]);
+    expect(rows.find((r) => r.notice_shown === null)!.gpc_at_decision).toBe(true);
   });
 
-  it("ignores a report from an older policy revision", async () => {
+  it("rejects a malformed report and records nothing", async () => {
     const id = await insertUser();
-    const res = await putConsent(id, { ...choice(true, true, hoursAgo(3)), revision: CONSENT_REVISION - 1 });
-    expect(res.status).toBe(204);
-    expect(await accountConsent(id)).toBeNull();
-  });
-
-  it("records a withdrawal reported under a newer revision, from code deployed ahead of this server", async () => {
-    const id = await insertUser();
-    await putConsent(id, choice(true, true, hoursAgo(2)));
-    const res = await putConsent(id, { ...choice(false, false, hoursAgo(1)), revision: CONSENT_REVISION + 1 });
-    expect(res.status).toBe(204);
-    expect(await accountConsent(id)).toMatchObject({ analytics: false, ads: false, revision: CONSENT_REVISION + 1 });
-  });
-
-  it("keeps an explicit choice when a regional default the person never chose arrives later", async () => {
-    const id = await insertUser();
-    await putConsent(id, choice(false, false, hoursAgo(2)));
-    const res = await putConsent(id, { ...choice(true, true, hoursAgo(1)), source: "implicit" });
-    expect(res.status).toBe(204);
-    expect(await accountConsent(id)).toMatchObject({ analytics: false, ads: false, source: "banner" });
-  });
-
-  it("reads no consent for a choice older than the consent cookie lasts", async () => {
-    const id = await insertUser();
-    const old = choice(true, true, new Date(Date.now() - (CONSENT_MAX_AGE_DAYS + 1) * 86_400_000).toISOString());
-    await sql`UPDATE users SET analytics_consent = ${sql.json({ ...old })} WHERE id = ${id}`;
-    expect(await accountConsent(id)).toBeNull();
-  });
-
-  it("reads no consent for a stored choice from an older policy revision", async () => {
-    const id = await insertUser();
-    const stale = { ...choice(true, true, hoursAgo(3)), revision: CONSENT_REVISION - 1 };
-    await sql`UPDATE users SET analytics_consent = ${sql.json(stale)} WHERE id = ${id}`;
-    expect(await accountConsent(id)).toBeNull();
-  });
-
-  it("rejects a malformed report and leaves the record alone", async () => {
-    const id = await insertUser();
-    await putConsent(id, choice(true, false, hoursAgo(2)));
-    const good = choice(false, false, hoursAgo(1));
+    const shared = crypto.randomUUID();
     for (const bad of [
-      { ...good, decidedAt: "yesterday" },
-      { ...good, source: "cookie-wall" },
-      { ...good, analytics: "yes" },
-      { ...good, revision: 1.5 },
+      report([decision({ decisionId: undefined })]),
+      report([decision({ decisionId: "not-a-uuid" })]),
+      report([decision({ source: "implicit" })]),
+      report([decision({ source: "request", value: false })]),
+      report([decision({ source: "gpc", value: true })]),
+      report([decision({ source: "gpc", value: false, category: "analytics" })]),
+      report([decision({ noticeShown: "account" })]),
+      report([decision({ category: "analytics", source: "settings", noticeShown: "gpc" })]),
+      report([decision({ decisionId: shared }), decision({ decisionId: shared, category: "analytics" })]),
+      report([]),
       {},
     ]) {
-      const res = await putConsent(id, bad);
+      const res = await call(id, { method: "PUT", body: bad });
       expect(res.status, JSON.stringify(bad)).toBe(422);
     }
-    expect(await accountConsent(id)).toMatchObject({ analytics: true, ads: false });
+    expect(await receipts(id)).toHaveLength(0);
   });
 
   it("refuses a report without a session", async () => {
     const res = await app.request("/api/v1/users/me/analytics-consent", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(choice(true, true, hoursAgo(1))),
+      body: JSON.stringify(report([decision()])),
     });
     expect(res.status).toBe(401);
+  });
+});
+
+describe("GET /users/me/analytics-consent", () => {
+  it("returns the ads receipts in force, the GPC signal and whose receipt the cookie is", async () => {
+    const id = await insertUser();
+    const old = decision({ decidedAt: ago((CONSENT_MAX_AGE_DAYS + 1) * DAY) });
+    const oldRefusal = decision({ value: false, decidedAt: ago(1000 * DAY) });
+    const recent = decision({ decidedAt: ago(DAY) });
+    await recordConsentReceipts(id, parsed([old]), Date.now());
+    await recordConsentReceipts(id, parsed([oldRefusal]), Date.now());
+    await recordConsentReceipts(id, parsed([recent]), Date.now());
+    const res = await call(id, { cookieAds: decision() });
+    expect(res.status).toBe(200);
+    const { data } = (await res.json()) as {
+      data: { receipts: { decisionId: string }[]; gpcSeenAt: string | null; ownership: string };
+    };
+    expect(data.receipts.map((r) => r.decisionId).sort()).toEqual([oldRefusal.decisionId, recent.decisionId].sort());
+    expect(data.gpcSeenAt).toBeNull();
+    expect(data.ownership).toBe("none");
+  });
+});
+
+describe("the GPC signal", () => {
+  it("records when a signed-in request carries GPC, and not again within the hour", async () => {
+    const id = await insertUser();
+    await call(id, { gpc: true });
+    const first = await gpcSeenAt(id);
+    expect(first).not.toBeNull();
+    await call(id, { gpc: true });
+    expect(await gpcSeenAt(id)).toEqual(first);
+  });
+
+  it("records again when an ads consent was given after it", async () => {
+    const id = await insertUser();
+    await sql`UPDATE users SET analytics_gpc_seen_at = now() - interval '10 minutes' WHERE id = ${id}`;
+    await recordConsentReceipts(
+      id,
+      parsed([decision({ decidedAt: ago(60_000) })]),
+      Date.now(),
+    );
+    const before = await gpcSeenAt(id);
+    await call(id, { gpc: true });
+    expect((await gpcSeenAt(id))!.getTime()).toBeGreaterThan(before!.getTime());
+  });
+
+  it("leaves out this browser's GPC for an override saved while it sent GPC", async () => {
+    const id = await insertUser();
+    const override = decision({ source: "settings", noticeShown: "gpc", gpcAtDecision: true });
+    await call(id, { gpc: true, cookieAds: override });
+    expect(await gpcSeenAt(id)).toBeNull();
+    await call(id, { method: "PUT", body: report([override]), gpc: true, cookieAds: override });
+    expect(await gpcSeenAt(id)).toBeNull();
+  });
+
+  it("counts GPC for an override another account left in the cookie", async () => {
+    const owner = await insertUser();
+    const id = await insertUser();
+    const override = decision({ source: "settings", noticeShown: "gpc", gpcAtDecision: true });
+    await call(owner, { method: "PUT", body: report([override]) });
+    await call(id, { gpc: true, cookieAds: override });
+    expect(await gpcSeenAt(id)).not.toBeNull();
+  });
+});
+
+describe("the account's consent for events no browser is behind", () => {
+  it("takes analytics from the receipts and ads from the account's events alone", async () => {
+    const id = await insertUser();
+    await recordConsentReceipts(
+      id,
+      parsed([decision({ category: "analytics", value: true }), decision({ value: true })]),
+      Date.now(),
+    );
+    expect(await accountOnlyConsent(id, Date.now())).toEqual({ analytics: true, ads: true });
+    await call(id, { gpc: true });
+    expect(await accountOnlyConsent(id, Date.now())).toEqual({ analytics: true, ads: false });
+  });
+
+  it("is nothing for a deleted account, and a deleted account records nothing", async () => {
+    const id = await insertUser();
+    await recordConsentReceipts(id, parsed([decision()]), Date.now());
+    await sql`UPDATE users SET deleted_at = now() WHERE id = ${id}`;
+    await recordConsentReceipts(id, parsed([decision()]), Date.now());
+    expect(await receipts(id)).toHaveLength(1);
+    expect(await getAccountAdsEvents(id, Date.now())).toBeNull();
+    expect(await accountOnlyConsent(id, Date.now())).toEqual({ analytics: false, ads: false });
   });
 });

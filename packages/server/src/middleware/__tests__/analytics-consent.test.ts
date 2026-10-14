@@ -18,7 +18,9 @@ function appSeeingConsent(): Hono {
 }
 
 function cookieHeader(categories: string[], revision = CONSENT_REVISION): string {
-  const value = encodeURIComponent(JSON.stringify({ categories, revision }));
+  const entry = { decidedAt: new Date().toISOString(), source: "banner" };
+  const data = { analytics: entry, ads: { ...entry, noticeShown: false, gpcAtDecision: false } };
+  const value = encodeURIComponent(JSON.stringify({ categories, revision, data }));
   return `${CONSENT_COOKIE_NAME}=${value}; other=1`;
 }
 

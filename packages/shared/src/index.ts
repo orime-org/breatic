@@ -787,7 +787,6 @@ export {
   ConsentSnapshotSchema,
   CONSENT_REVISION,
   NO_CONSENT,
-  parseConsentCookie,
   revisionInForce,
   requiresOptIn,
   type ConsentSnapshot,
@@ -799,17 +798,21 @@ export {
   type AnalyticsProperties,
 } from "@shared/analytics/events.js";
 export {
-  accountConsentCurrent,
+  accountAnalyticsValue,
+  CONSENT_DATA_FIELDS,
   CONSENT_SOURCES,
-  mergeAccountConsent,
-  type AccountConsent,
+  parseConsentChoices,
+  parseConsentCookie,
+  type BrowserAnalytics,
+  type BrowserChoices,
   type ConsentSource,
-} from "@shared/analytics/account-consent.js";
+} from "@shared/analytics/consent-choices.js";
 export {
   accountAdsEvents,
   adsConsentOverridesOptOut,
   adsDecision,
   browserSuppressesOwnGpc,
+  choiceInForce,
   normalizeBrowserAds,
   type AccountAdsReceipt,
   type AdsEvent,

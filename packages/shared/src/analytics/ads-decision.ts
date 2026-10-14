@@ -75,12 +75,13 @@ export function browserSuppressesOwnGpc(ads: BrowserAds | null, ownership: Owner
 }
 
 /**
- * Whether a consent is still in force; refusals never lapse.
+ * Whether an ads choice is still in force: a consent lapses after 395 days or
+ * when its revision is no longer in force; a refusal never lapses.
  * @param choice - The choice.
  * @param now - The current time.
  * @returns Whether it counts.
  */
-function inForce(choice: Pick<BrowserAds, "value" | "decidedAt" | "revision">, now: number): boolean {
+export function choiceInForce(choice: Pick<BrowserAds, "value" | "decidedAt" | "revision">, now: number): boolean {
   if (!choice.value) return true;
   return revisionInForce(choice.revision) && now - Date.parse(choice.decidedAt) <= MAX_AGE_MS;
 }
@@ -98,7 +99,7 @@ export function normalizeBrowserAds(
   ownership: Ownership,
   now: number,
 ): { event: AdsEvent | null; unset: boolean } {
-  if (ads === null || !inForce(ads, now)) return { event: null, unset: true };
+  if (ads === null || !choiceInForce(ads, now)) return { event: null, unset: true };
   if (ownership === "self") return { event: null, unset: false };
   if (!ads.value) return { event: { kind: "refusal", at: now }, unset: false };
   return { event: { kind: "consent", at: Math.min(Date.parse(ads.decidedAt), now) }, unset: false };
@@ -117,7 +118,7 @@ export function accountAdsEvents(
   now: number,
 ): AdsEvent[] {
   const events: AdsEvent[] = receipts
-    .filter((r) => inForce(r, now))
+    .filter((r) => choiceInForce(r, now))
     .map((r): AdsEvent => {
       const at = Date.parse(r.decidedAt);
       if (!r.value) return { kind: "refusal", at };

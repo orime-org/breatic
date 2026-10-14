@@ -49,48 +49,6 @@ export const NO_CONSENT: ConsentSnapshot = Object.freeze({ analytics: false, ads
 /** A consent snapshot as a client sends it, e.g. on a collab request (design §4.4.5). */
 export const ConsentSnapshotSchema = z.object({ analytics: z.boolean(), ads: z.boolean() }).strict();
 
-/**
- * Read the consent cookie's value.
- * @param raw - The cookie value as sent by the browser, URI-encoded or not.
- * @returns The categories the browser accepted; {@link NO_CONSENT} when the
- *   value is missing, malformed or from an older revision.
- */
-export function parseConsentCookie(raw: string | undefined): ConsentSnapshot {
-  if (!raw) return NO_CONSENT;
-  const parsed = parseJson(raw) ?? parseJson(safeDecode(raw));
-  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return NO_CONSENT;
-  const { categories, revision } = parsed as { categories?: unknown; revision?: unknown };
-  if (!revisionInForce(revision) || !Array.isArray(categories)) return NO_CONSENT;
-  return { analytics: categories.includes("analytics"), ads: categories.includes("ads") };
-}
-
-/**
- * Parse JSON without throwing.
- * @param text - The text to parse; null passes through.
- * @returns The parsed value, or null when the text is null or not JSON.
- */
-function parseJson(text: string | null): unknown {
-  if (text === null) return null;
-  try {
-    return JSON.parse(text);
-  } catch {
-    return null;
-  }
-}
-
-/**
- * URI-decode without throwing.
- * @param text - The encoded text.
- * @returns The decoded text, or null when the encoding is malformed.
- */
-function safeDecode(text: string): string | null {
-  try {
-    return decodeURIComponent(text);
-  } catch {
-    return null;
-  }
-}
-
 // EU 27, the rest of the EEA (IS, LI, NO), the UK, Switzerland and mainland
 // China: visitors there are asked before anything optional loads.
 const OPT_IN_COUNTRIES: ReadonlySet<string> = new Set([

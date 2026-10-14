@@ -55,7 +55,11 @@ function upgrade(cookies: Record<string, string>): Headers {
   });
 }
 
-const ACCEPTED = JSON.stringify({ categories: ["necessary", "analytics"], revision: CONSENT_REVISION });
+const ACCEPTED = JSON.stringify({
+  categories: ["necessary", "analytics"],
+  revision: CONSENT_REVISION,
+  data: { analytics: { decidedAt: new Date().toISOString(), source: "banner" } },
+});
 
 beforeEach(() => {
   vi.clearAllMocks();

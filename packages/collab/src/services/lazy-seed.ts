@@ -156,7 +156,7 @@ async function reportSeededSpace(
   // Reporting is best-effort: a cookie it cannot read must not fail the project's load.
   try {
     const cookies = opener.requestHeaders?.get("cookie") ?? undefined;
-    const consent = parseConsentCookie(readCookie(cookies, CONSENT_COOKIE_NAME) ?? undefined);
+    const consent = parseConsentCookie(readCookie(cookies, CONSENT_COOKIE_NAME) ?? undefined, Date.now());
     if (!consent.analytics) return;
     const fromContext = (opener.context as { user?: { id?: string } } | undefined)?.user?.id;
     const token = readCookie(cookies, sessionCookieName());
