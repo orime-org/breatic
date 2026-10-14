@@ -83,6 +83,7 @@ import {
   PROPOSAL_FRAME_MS,
   frameBuiltNode,
   framedBox,
+  freshNodesBox,
   viewportForBuilt,
   viewportToInspect,
 } from '@web/spaces/canvas/frame-built-node';
@@ -2252,11 +2253,6 @@ function CanvasSpaceInner({
     },
     [rfStoreApi, setCenter],
   );
-  // Put a node a press just wrote in front of the reader, together with the
-  // node it was read from. The built node's size is the fresh-node size rather
-  // than a measured one: a node written this instant is not in ReactFlow's
-  // store yet, and a node holding nothing is that size until something lands
-  // in it.
   // Put what a press built to the right of a node in front of the reader
   // (inner#1303): one rule for a tool's result, a grid's group and an
   // Understand node — slide at the reader's zoom, and zoom out only when it
@@ -2275,12 +2271,6 @@ function CanvasSpaceInner({
       });
     },
     [measuredRects, rfStoreApi, setViewport],
-  );
-  const frameNewNode = React.useCallback(
-    (position: { x: number; y: number }, sourceNodeId: string): void => {
-      frameBuilt({ ...position, ...EMPTY_NODE_SIZE }, sourceNodeId);
-    },
-    [frameBuilt],
   );
 
   // ---- Node creation (library mailbox + right-click) ----
@@ -4027,11 +4017,11 @@ function CanvasSpaceInner({
       // reader — a selection flag moves nothing.
       onBuilt: ({ id, position }) => {
         setSelectAfterCreate([id]);
-        frameNewNode(position, host.id);
+        frameBuilt(freshNodesBox([position]), host.id);
       },
     });
   }, [
-    frameNewNode,
+    frameBuilt,
     menuDownloadUrl,
     nodes,
     nodeMenu.nodeId,
@@ -4098,8 +4088,8 @@ function CanvasSpaceInner({
             return;
           }
           setSelectAfterCreate(built.map((node) => node.id));
-          const [first] = built;
-          if (first !== undefined) frameNewNode(first.position, nodeId);
+          const [first, ...rest] = built;
+          if (first !== undefined) frameBuilt(freshNodesBox([first.position, ...rest.map((node) => node.position)]), nodeId);
         },
       });
       if (exportsBeforeRun(spec)) trackOperation(newId(), work);
@@ -4113,7 +4103,6 @@ function CanvasSpaceInner({
       buffer,
       fillUpload,
       fillUploads,
-      frameNewNode,
       frameBuilt,
       trackOperation,
       sessionStore,

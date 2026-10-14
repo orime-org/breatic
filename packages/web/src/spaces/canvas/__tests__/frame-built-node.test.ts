@@ -12,7 +12,7 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { frameBuiltNode, framedBox, viewportForBuilt, viewportToInspect } from '@web/spaces/canvas/frame-built-node';
+import { frameBuiltNode, framedBox, freshNodesBox, viewportForBuilt, viewportToInspect } from '@web/spaces/canvas/frame-built-node';
 import type { Rect } from '@web/spaces/canvas/group-geometry';
 
 const VIEWPORT = { x: 0, y: 0, width: 1000, height: 800 };
@@ -198,5 +198,17 @@ describe('viewportToInspect', () => {
 
   it('stays put when the reader is already as close as that, and never zooms out', () => {
     expect(viewportToInspect(node, panel, pane, { x: 0, y: 0, zoom: 2 }, 8)).toBeNull();
+  });
+});
+
+describe('freshNodesBox', () => {
+  // A press that builds two results stacked down the column (a vocal split)
+  // frames both, not the first one alone.
+  it('covers every node a press built, each at the fresh-node size', () => {
+    expect(freshNodesBox([{ x: 400, y: 100 }, { x: 400, y: 316 }])).toEqual({ x: 400, y: 100, width: 288, height: 408 });
+  });
+
+  it('is the one fresh node for a press that built one', () => {
+    expect(freshNodesBox([{ x: 10, y: 20 }])).toEqual({ x: 10, y: 20, width: 288, height: 192 });
   });
 });
