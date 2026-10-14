@@ -147,12 +147,14 @@ export function MembershipContent({
       ? subscription.period
       : null;
 
-  // Which period the reader is looking at. It starts on the one this account
-  // is being charged over, because opening on the other one would answer
-  // "what do I have" with a price they do not pay. An account with no
-  // subscription starts on yearly, which is what the page is recommending.
+  // Which period the reader is looking at. A checkout or plan change still
+  // waiting from an earlier opening comes first, so its card is on screen
+  // spinning (inner#1490). Otherwise it starts on the one this account is
+  // being charged over, because opening on the other one would answer "what
+  // do I have" with a price they do not pay. An account with no subscription
+  // starts on yearly, which is what the page is recommending.
   const [selectedPeriod, setSelectedPeriod] = React.useState<BillingPeriod>(
-    boughtPeriod ?? 'year',
+    pending?.kind === 'choose' ? pending.offer.period : (boughtPeriod ?? 'year'),
   );
 
   // The table offers every comparable tier, `base` included; only the ones
