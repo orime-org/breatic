@@ -104,6 +104,16 @@ describe('a rewrite card', () => {
     expect(screen.queryByTestId('document-proposal-lossy')).toBeNull();
   });
 
+  it.each([
+    ['an empty block', ''],
+    ['a table whose cells are all empty', '\n\n\n'],
+  ])('offers no comment on %s, which has no words to hang it on', (_label, original) => {
+    const { quote: _quote, ...rewrite } = { ...REWRITE, original };
+    draw(rewrite);
+
+    expect(screen.getAllByRole('button').map((b) => b.textContent)).toEqual(['Replace']);
+  });
+
   it('says the passage loses formatting Markdown cannot hold', () => {
     const { quote: _quote, ...rewrite } = { ...REWRITE, lossy: true };
     draw(rewrite);

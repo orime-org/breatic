@@ -61,6 +61,15 @@ export interface CommentMetadata {
 }
 
 /**
+ * Whether an aim found words to mark: a block with no text gives no ranges.
+ * @param ranges - What the aim read off the body.
+ * @returns True when there is at least one range.
+ */
+function somewhere(ranges: ReturnType<CommentAim>): ranges is NonNullable<ReturnType<CommentAim>> {
+  return ranges !== null && ranges.length > 0;
+}
+
+/**
  * Creates a thread and marks the words it is about.
  *
  * The aim is read twice: once to see there is somewhere to comment before
@@ -83,7 +92,7 @@ export async function commentOn(
   metadata: CommentMetadata = {},
 ): Promise<ThreadData | null> {
   const view = editor.prosemirrorView;
-  if (view === null || aim(view.state) === null) return null;
+  if (view === null || !somewhere(aim(view.state))) return null;
 
   const comments = commentsOn(editor);
   if (comments === undefined) return null;
@@ -94,7 +103,7 @@ export async function commentOn(
   })) as ThreadData;
 
   const landing = aim(view.state);
-  if (landing === null) return thread;
+  if (!somewhere(landing)) return thread;
 
   const mark = view.state.schema.marks[COMMENT_MARK]!.create({
     threadId: thread.id,

@@ -242,6 +242,15 @@ describe('what is checked before anything is written', () => {
     expect(blocks(handle).map((b) => b.text)).toEqual(['One.']);
   });
 
+  it('creates no comment on a block with no words, and says nothing landed (review round 2)', async () => {
+    const handle = await open('Before.\n\n```\n```');
+    const proposal = proposalOn(handle, 1, { kind: 'rewrite', body: 'Something.' });
+    expect(proposal.original).toBe('');
+
+    expect(await landProposal(handle, proposal, 'comment', true)).toEqual({ outcome: 'changed' });
+    expect(threads(handle)).toHaveLength(0);
+  });
+
   it('says the block changed when the quoted words no longer appear once', async () => {
     const handle = await open('She turns.');
     const proposal = { ...proposalOn(handle, 0, { kind: 'comment', quote: 'turns', body: 'Why?' }), original: 'She turns.' };

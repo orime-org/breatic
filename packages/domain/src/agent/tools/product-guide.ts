@@ -958,7 +958,8 @@ export function renderProductGuide(): string {
       `button, ${quoted(t("chat.documentProposal.addComment"))}. A rewrite card shows the passage with the words ` +
       "taken out struck through in red and the new words in green, and two buttons: " +
       `${quoted(t("chat.documentProposal.addComment"))} puts the rewritten words on the passage as a comment, and ` +
-      `${quoted(t("chat.documentProposal.apply"))} replaces the passage with them. When the passage holds colours, ` +
+      `${quoted(t("chat.documentProposal.apply"))} replaces the passage with them; a passage with no words, such ` +
+      "as an empty code block or an image without a caption, has only the second. When the passage holds colours, " +
       `an alignment, column widths or comments, a rewrite card adds ${quoted(t("chat.documentProposal.lossy"))} ` +
       "An insert card that goes after a passage first shows that passage under " +
       `${quoted(t("chat.documentProposal.insertAfter"))}; it shows the new content as it will look, tables ` +

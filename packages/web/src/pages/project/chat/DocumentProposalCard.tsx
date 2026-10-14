@@ -141,6 +141,9 @@ export const DocumentProposalCard = React.memo(function DocumentProposalCard({
   const place =
     proposal.kind === 'insert' && proposal.blockId === null ? t('chat.documentProposal.end') : proposal.heading;
   const held = state !== 'idle' && state !== 'failed';
+  // A comment hangs on words; a block with none (an empty code block, an
+  // image with no caption, a table of empty cells) has nowhere to put it.
+  const commentable = proposal.kind !== 'insert' && /[^\n]/.test(proposal.original);
 
   let status: string | null = null;
   if (state === 'applied' && action !== undefined) status = t(APPLIED_KEY[pressKind(proposal, action)]);
@@ -229,7 +232,7 @@ export const DocumentProposalCard = React.memo(function DocumentProposalCard({
         </Button>
       ) : (
         <div className='flex w-full max-w-[270px] gap-2 self-center'>
-          {proposal.kind === 'insert' ? null : (
+          {commentable ? (
             <Button
               type='button'
               variant='outline'
@@ -241,7 +244,7 @@ export const DocumentProposalCard = React.memo(function DocumentProposalCard({
             >
               {t('chat.documentProposal.addComment')}
             </Button>
-          )}
+          ) : null}
           {proposal.kind === 'comment' ? null : (
             <Button
               type='button'
