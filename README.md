@@ -2,130 +2,81 @@
 
 **English** | [简体中文](README-CN.md)
 
-Breatic is an AI operating system for content creators, built around **projects with multiple Spaces**. Keep a script in a Document Space, develop scenes in separate Canvas Spaces, and work with AI and collaborators in the same project. You choose how to divide the work: by scene, episode, deliverable or creative direction.
+**The AI operating system for content creators.**
 
-## Organize a project with Spaces
+Bring your brief, scenes and media into one project. Write in Document Spaces, generate and refine assets in Canvas Spaces, and work with an AI agent and collaborators in the context of your production.
 
-A **Studio** holds your projects and assets. A **Project** brings together the work for a particular production. Each project can contain multiple **Spaces**, including several of the same type, which you switch between using tabs.
+**Beta · Source-available · Desktop browser**
 
-| Space | What you do there | Examples |
+[Try Breatic](https://breatic.ai/login) · [User guide](docs/USAGE.md) · [Self-host](self-host/LOCAL.md) · [Releases](https://github.com/orime-org/breatic/releases)
+
+![Coffee-shop image candidates on a Breatic canvas beside the project chat](docs/images/readme/workspace-en.png)
+
+*A canvas example: compare generated visuals alongside the project's chat.*
+
+## What you can do
+
+| Capability | Use it to |
+| --- | --- |
+| **Projects with multiple Spaces** | Keep a brief, scenes and alternative creative directions together, with a separate tab for each Space. |
+| **Document Spaces** | Write scripts, shot descriptions and production checklists with headings, lists and formatted text. |
+| **Canvas Spaces** | Arrange references and media on an infinite canvas; generate and refine assets using prompts, models and reference inputs. |
+| **An AI agent in your project** | Discuss ideas, provide document or canvas context, and review proposed work alongside your materials. |
+| **Real-time collaboration** | Invite collaborators, set project access permissions and work on synchronized canvases and documents. |
+
+Supported media includes images, video, audio and 3D assets. Generation capabilities depend on configured providers and model access. Canvas and Document Spaces are available now; **Timeline is not yet available**.
+
+## A creative workflow: a 30-second coffee-shop video
+
+A **Studio** holds your projects and assets. A **Project** brings together one production; its **Spaces** divide the work by scene, deliverable or creative direction.
+
+| Space | Type | What it holds |
 | --- | --- | --- |
-| **Document Space** | Write and structure the text that guides the work, using headings, lists and formatted text | A creative brief, script, shot descriptions or production checklist |
-| **Canvas Space** | Arrange references and media on an infinite canvas; use prompts, models and reference inputs to generate and refine assets | A scene workspace, character exploration, visual direction or a set of alternative shots |
-
-A Canvas Space is a creative work area within the project. Its nodes hold the individual references, prompts and media you work with. Give different parts of a production their own Spaces so the script and each scene remain easy to find as the project grows.
-
-### Example: a 30-second video
-
-Create one project with four Spaces:
-
-| Space name | Type | Contents |
-| --- | --- | --- |
-| Script and brief | Document | The story, dialogue, visual direction and a description of each segment |
-| 01 · Opening · 0–10s | Canvas | Opening-shot references, prompts and candidate images or clips |
-| 02 · Main scene · 10–20s | Canvas | The main action, scene assets and variations to compare |
+| Script and brief | Document | The story, brand direction, dialogue and shot descriptions |
+| 01 · Opening · 0–10s | Canvas | References and candidate visuals for the opening shot |
+| 02 · Main scene · 10–20s | Canvas | Scene assets and variations to compare |
 | 03 · Ending · 20–30s | Canvas | The closing shot and its supporting assets |
 
-Keep the script in its Document Space and switch to each Canvas Space to develop that segment. For a one-minute short drama, you could use six scene canvases alongside the script. For a different project, organize Spaces by character, topic or deliverable instead.
+1. **Write the brief.** Describe the coffee shop, audience and visual direction in the document.
+2. **Work with the agent.** Bring relevant context into chat, discuss the shots and review its proposed work.
+3. **Develop each scene.** Choose a configured model, add prompts and references, and generate or refine assets on its canvas.
+4. **Review and deliver.** Compare results with collaborators, keep the chosen assets and download them for production.
 
-The ten-second divisions are your planning convention; Space names do not set clip duration or assemble a finished video. Download the chosen assets and use a video editor for final sequencing. Canvas and Document Spaces are available now; Timeline is not yet available.
+The time ranges are a planning convention: Space names do not set clip duration or assemble a finished video. Use a video editor for final sequencing. The [illustrated user guide](docs/USAGE.md#example-from-a-brief-to-a-visual) shows a brief-to-visual example.
 
-## Create with AI and collaborators
+## Get started
 
-Use the project chat to discuss ideas and work with the AI agent. On the canvas, choose a model, add a prompt and references, and compare or refine the results alongside the rest of your scene. Supported media includes images, video, audio and 3D assets; available generation capabilities depend on your provider credentials and model access.
-
-Invite collaborators with the project's access controls to work on the same production. Canvas and document changes synchronize in real time, so the written plan and visual work can be developed together. Breatic is under active development.
-
-## Choose how to run it
-
-**Installing Breatic and developing Breatic are different workflows.** Running it on your own computer does not require a development server.
-
-| Your goal | Guide |
+| Your goal | Start here |
 | --- | --- |
-| Use it yourself, or share it with a household/private team on your LAN | [Personal and LAN deployment](self-host/LOCAL.md) |
-| Modify source code, debug or contribute | [Development setup](self-host/DEVELOPMENT.md) |
+| Use the hosted product | [Open Breatic](https://breatic.ai/login) in a desktop browser and register or sign in |
+| Install for personal, private-group or internal organizational use | [Personal and LAN deployment](self-host/LOCAL.md) |
+| Modify the source or contribute | [Development setup](self-host/DEVELOPMENT.md) |
 
-For installation, the application runs as published Docker images: web, API, background jobs and collaboration, backed by PostgreSQL and Redis. File uploads use an Ingest Worker and media container deployed to **your Cloudflare account**, with files stored in your R2 bucket. AI calls use your provider accounts. This is not an offline or wholly on-premises installation.
+After signing in, finish your personal Studio setup, create a project and add Document or Canvas Spaces with the **+** button. Start with a brief or upload references, then use chat and the canvas tools. The [user guide](docs/USAGE.md) covers registration, your first project, canvas operations and [keyboard shortcuts](docs/USAGE.md#keyboard-shortcuts).
 
-Start with the personal/LAN guide. It covers Cloudflare provisioning, secrets, application configuration and startup in order. Do not run `pnpm dev` or a local upload Worker just to use the product. The current Cloudflare provisioning step does use Node/pnpm/Wrangler once to publish the matching Worker; they are not long-running application requirements.
+### Before self-hosting
 
-## Your first project
+Installation uses published Docker images for web, API, background jobs and collaboration, backed by PostgreSQL and Redis. Uploads and media processing use an Ingest Worker and media container in **your Cloudflare account**, with storage in your R2 bucket. AI calls use your provider accounts and quota.
 
-After completing installation:
+This is not an offline or wholly on-premises installation. LAN access needs trusted HTTPS. Cloud services and model calls can incur charges; SMTP, Google sign-in, Stripe payments and search are optional integrations. Follow the installation guide for cloud provisioning and verification; its one-time Node/pnpm/Wrangler step does not mean running a development server for normal use.
 
-1. Open the instance in a desktop browser, register an account and finish your personal Studio setup. With email enabled you confirm the six-digit code mailed to you; with email disabled you save the recovery code shown after signing up. There is no shared default password or login bypass.
-2. Create a project for the work you want to make and choose its initial Space type.
-3. Use the **+** button in the project's Space bar to add a **Document** Space. Name it “Script and brief” and write the story or requirements. If you started with a Document Space, use that one.
-4. Add one or more **Canvas** Spaces for your scenes or creative directions. Give each a meaningful name, then upload references or add nodes to begin working.
-5. Switch between Spaces using their tabs; use the Space list to find and manage the project's other Spaces. Use chat and the canvas tools to generate and refine assets with a configured provider.
-6. Share the project with permitted collaborators and choose their access permissions.
+## Project status and help
 
-If you are joining an existing instance, use the address provided by its operator and start with account registration; you do not need to deploy another copy. Operators should complete the deployment guide's login, persistence, collaboration, upload and generation checks before inviting users.
+Breatic is in Beta and under active development. Use [Releases](https://github.com/orime-org/breatic/releases) for published versions and release notes.
 
-## Working in Breatic
+[Report a bug](https://github.com/orime-org/breatic/issues/new?template=bug_report.yml) · [Suggest a feature](https://github.com/orime-org/breatic/issues/new?template=feature_request.yml) · [Ask the community](https://discord.gg/Yeu6A4aejN)
 
-- **Write the plan:** in a Document Space, use headings for scenes, lists for shot descriptions and to-dos for production tasks. Select text to format it, or use the document shortcuts below.
-- **Add and arrange content:** upload references, or right-click an empty canvas area to choose a node type. Drag nodes to arrange them; drag across empty canvas to select an area.
-- **Navigate the canvas:** scroll with a mouse wheel or two fingers to pan; pinch or use Ctrl+wheel to zoom. The viewport toolbar also provides zoom, fit-to-window, grid snapping and a minimap. Double-clicking empty canvas does not zoom.
-- **Work with selected nodes:** right-click a node or selection for available actions such as copy, duplicate, group, rename, lock/unlock, download and delete. The menu depends on the selection and your permissions; not every action applies to every node.
-- **Generate and refine:** choose a model you have configured, provide a prompt and any references, and wait for the task result before continuing with the asset. Missing provider credentials or quota can prevent generation even when the application is healthy.
-- **Collaborate and keep your work:** canvas changes synchronize through the collaboration service. Check that synchronization and uploads have completed before leaving; a disconnected browser or unfinished task is not proof that work has been stored. Refresh and reopen the project when verifying persistence.
+For vulnerabilities, follow the private reporting instructions in [SECURITY.md](SECURITY.md).
 
-<a id="keyboard-shortcuts"></a>
-## Keyboard shortcuts
+## Contribute
 
-Canvas shortcuts apply when the canvas Space owns keyboard focus, not while typing in chat, a text field or an editor. Editing actions require write permission. Locked items and nodes with running tasks may restrict deletion. Click the canvas before using a canvas shortcut.
+The application uses TypeScript, React/Vite, Hono, PostgreSQL, Redis/BullMQ and Hocuspocus/Yjs, with a separate Cloudflare Worker for uploads.
 
-### Canvas
+[Contribution workflow](CONTRIBUTING.md) · [Development setup](self-host/DEVELOPMENT.md) · [Architecture](docs/ARCHITECTURE.md) · [Testing](docs/TEST-MANDATE.md)
 
-| Action | macOS | Windows / Linux |
-| --- | --- | --- |
-| Copy selected nodes | `Cmd+C` | `Ctrl+C` |
-| Paste supported clipboard content | `Cmd+V` | `Ctrl+V` |
-| Duplicate selected nodes without replacing the clipboard | `Cmd+D` | `Ctrl+D` |
-| Undo a canvas edit | `Cmd+Z` | `Ctrl+Z` |
-| Redo a canvas edit | `Cmd+Shift+Z` | `Ctrl+Shift+Z` or `Ctrl+Y` |
-| Group an eligible selection | `Cmd+G` | `Ctrl+G` |
-| Ungroup a selected group | `Cmd+Shift+G` | `Ctrl+Shift+G` |
-| Delete eligible selected nodes / edges | `Backspace` or `Delete` | `Backspace` or `Delete` |
-| Cancel active reference picking or annotation placement | `Esc` | `Esc` |
+## Follow Breatic
 
-Copy/paste can depend on browser clipboard permissions and a secure context; use the trusted HTTPS setup in the LAN guide. `Cmd/Ctrl+A` is **not** a select-all-nodes shortcut: outside editable content, the project suppresses page-wide selection. Use canvas selection gestures instead.
-
-### Document editing
-
-These shortcuts act inside the document editor, not on canvas nodes. On macOS, `Option` is the key also labeled `Alt`.
-
-| Action | macOS | Windows / Linux |
-| --- | --- | --- |
-| Bold / italic / underline | `Cmd+B` / `Cmd+I` / `Cmd+U` | `Ctrl+B` / `Ctrl+I` / `Ctrl+U` |
-| Strikethrough | `Cmd+Shift+S` | `Ctrl+Shift+S` |
-| Inline code | `Cmd+E` | `Ctrl+E` |
-| Paragraph | `Cmd+Option+0` | `Ctrl+Alt+0` |
-| Heading 1 / 2 / 3 | `Cmd+Option+1` / `2` / `3` | `Ctrl+Alt+1` / `2` / `3` |
-| Bulleted list | `Cmd+Shift+8` | `Ctrl+Shift+8` |
-| Numbered list | `Cmd+Shift+7` | `Ctrl+Shift+7` |
-| To-do list | `Cmd+Shift+9` | `Ctrl+Shift+9` |
-| Code block | `Cmd+Option+C` | `Ctrl+Alt+C` |
-| Quote | `Cmd+Shift+B` | `Ctrl+Shift+B` |
-
-### Chat
-
-| Action | Shortcut |
-| --- | --- |
-| Send the current message | `Enter` |
-| Insert a line break | `Shift+Enter` |
-
-Enter used to confirm an active input-method composition does not send the message. Submission still depends on the current input and task state.
-
-## What you need
-
-- Docker with Compose for the application and databases.
-- A Cloudflare account with R2 and access to Containers for the deployed upload/media service.
-- Your own AI provider credentials and available quota for the models you want to use.
-- For LAN access, a trusted HTTPS certificate and network access limited to your intended users.
-
-SMTP mail, Google sign-in, Stripe payments and search are optional integrations. The guides distinguish these from the services required for file storage and generation. Cloud services and model calls can incur charges even when Breatic payments are disabled.
+[Website](https://breatic.ai) · [Discord](https://discord.gg/Yeu6A4aejN) · [X](https://x.com/breatic_ai) · [YouTube](https://www.youtube.com/@breatic_ai) · [Instagram](https://www.instagram.com/breatic_ai)
 
 ## License and permitted use
 
@@ -133,17 +84,6 @@ Breatic is **source-available** under the [Breatic Source-Available License v1.0
 
 The license permits individual use, private groups that are not publicly advertised or open to general sign-up, and internal deployment within one organization. It prohibits offering Breatic to the public without separate authorization, **whether paid or free**. A domain or a server does not by itself determine the permitted audience. Preserve the product's branding and copyright notices. See the license for the complete terms; public-facing licensing inquiries go to [licensing@orime.ai](mailto:licensing@orime.ai).
 
-## For contributors
-
-Breatic uses TypeScript, React/Vite, Hono, PostgreSQL, Redis/BullMQ and Hocuspocus/Yjs, with a separate Cloudflare Worker for uploads.
-
-- [Development setup](self-host/DEVELOPMENT.md): dependencies, local services and tests.
-- [Contributing](CONTRIBUTING.md): contribution workflow and conventions.
-- [Architecture](docs/ARCHITECTURE.md): packages, services, data flow and frontend structure.
-- [Testing](docs/TEST-MANDATE.md): unit, integration and browser verification.
-
-## Security
-
-Report vulnerabilities privately according to [SECURITY.md](SECURITY.md), rather than opening a public issue. Third-party components and notices are documented in [THIRD-PARTY.md](THIRD-PARTY.md).
+Third-party components and notices are documented in [THIRD-PARTY.md](THIRD-PARTY.md).
 
 © 2026 Orime, Inc.
