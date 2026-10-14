@@ -21,6 +21,8 @@ import type { Hono } from "hono";
 import { db, initCore, loadLocales } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 import { creditLotService } from "@breatic/domain";
+import type { StripePendingReason } from "@server/modules/credit-refund/types.js";
+import type { FakeRefundInput, FakeStripeRefunds } from "./fake-stripe-refunds.js";
 
 export type Sql = ReturnType<typeof postgres>;
 
@@ -281,7 +283,7 @@ export interface RefundFixture {
   status: RefundStatus;
   failure_reason: string | null;
   /** Stripe's `pending_reason`: set while `pending`, null otherwise (v9 §5.1). */
-  pending_reason: string | null;
+  pending_reason: StripePendingReason | null;
   metadata: Record<string, string>;
 }
 
@@ -299,7 +301,7 @@ export function refundObject(
   status: RefundStatus,
   amount: number,
   operationId?: string,
-  pendingReason?: string,
+  pendingReason?: StripePendingReason,
 ): RefundFixture {
   return {
     id,
@@ -317,19 +319,50 @@ export function reId(label: string): string {
   return `re_${label}_${randomUUID().replace(/-/g, "").slice(0, 16)}`;
 }
 
+/**
+ * A refunded lot whose booked refund failed later on Stripe (§6.3 L8): the
+ * copy remembers it succeeded, so it is an unresolved failed refund. Stripe
+ * holds the failed refund and `extra`.
+ * @param sql - Raw client.
+ * @param stripe - The fake Stripe the suite answers from.
+ * @param opts - `label` names the failed refund, `createdSecondsAgo` dates
+ *   the approval, `extra` adds more refunds on Stripe.
+ * @returns The lot, the approval that booked it and the failed refund.
+ */
+export async function refundedThenFailed(
+  sql: Sql,
+  stripe: FakeStripeRefunds,
+  opts: { label?: string; createdSecondsAgo?: number; extra?: RefundFixture[] } = {},
+): Promise<{ lot: SeededLot; approve: string; failed: string }> {
+  const lot = await seedRefundLot(sql, "refunded");
+  const approve = await seedOperation(sql, lot, {
+    kind: "approve",
+    status: "succeeded",
+    result: "refunded",
+    createdSecondsAgo: opts.createdSecondsAgo ?? 600,
+  });
+  const failed = reId(opts.label ?? "failed_later");
+  await seedCopy(sql, lot, { id: failed, amountCents: PAID_CENTS, status: "succeeded", operationId: approve.id });
+  stripe.register(lot.paymentIntentId, PAID_CENTS, [
+    refundObject(failed, "failed", PAID_CENTS, approve.id),
+    ...(opts.extra ?? []),
+  ]);
+  return { lot, approve: approve.id, failed };
+}
+
 export type RefundEventType = "refund.created" | "refund.updated" | "refund.failed";
 
 /**
  * A Stripe event carrying a refund object.
  * @param type - The event type.
- * @param refund - The refund as the event carries it.
+ * @param refund - The refund as the event carries it: Stripe's raw shape.
  * @param paymentIntent - The refund's payment intent.
  * @param id - The event id; fresh when absent.
  * @returns The event body.
  */
 export function refundEvent(
   type: RefundEventType,
-  refund: RefundFixture,
+  refund: FakeRefundInput,
   paymentIntent: string,
   id = `evt_${randomUUID().replace(/-/g, "")}`,
 ): Record<string, unknown> {

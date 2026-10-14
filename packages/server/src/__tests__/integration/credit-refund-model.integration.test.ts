@@ -12,7 +12,7 @@
  *   production judges (`assessRefundCreate`, `assessOneShot`) pass it
  *   against Stripe's current state, read the way the endpoint reads it (the
  *   unresolved failed refunds from the view `credit_refunds_unresolved_failed`
- *   through `pickUnresolvedFailedRefunds`), and, as the endpoint does, it
+ *   through `listUnresolvedFailed`), and, as the endpoint does, it
  *   first hands Stripe's list to `applyRefundSnapshot` in the same
  *   transaction. restore_credits goes through the endpoint's service
  *   (`requestOneShot`) itself, which reads the refunds and the charge's
@@ -67,7 +67,7 @@
  *    resolved by it;
  * 8. every `sent_back` disposition has no earlier `stripe_declined` one;
  * 9. the views agree with an independent SQL: `credit_refunds_unresolved_failed`
- *    (and `pickUnresolvedFailedRefunds`) with the §5.3 definition, and
+ *    (and `listUnresolvedFailed`) with the §5.3 definition, and
  *    `credit_lot_refund_failures` with "an unresolved failed refund, or
  *    refunding with nothing in flight and a `stripe_declined` disposition";
  * 10. across each E6 under `started` the lot row is unchanged, and the
@@ -148,7 +148,7 @@ import { runRefundLoopOnce } from "@server/modules/credit-refund/refund-loop.js"
 import { applyRefundSnapshot } from "@server/modules/credit-refund/refund-snapshot.js";
 import { RefundRefusal } from "@server/modules/credit-refund/refusal.js";
 import type { RefundCopy } from "@server/modules/credit-refund/types.js";
-import { pickUnresolvedFailedRefunds } from "@server/modules/credit-refund/unresolved.repo.js";
+import { listUnresolvedFailed } from "@server/modules/credit-refund/unresolved.repo.js";
 import { fakeStripe } from "./fake-stripe-refunds.js";
 import {
   PAID_CENTS,
@@ -482,7 +482,7 @@ class Harness {
         const { ledgerSum } = await creditLotRepo.readRefundFacts(this.lot.lotId, tx);
         const refunds = await refundCopyRepo.listForPayment(this.lot.paymentId, tx);
         const unresolvedIds = new Set(
-          (await pickUnresolvedFailedRefunds(tx, this.lot.lotId)).map((r) => r.stripeRefundId),
+          (await listUnresolvedFailed(this.lot.lotId, tx)).map((r) => r.stripeRefundId),
         );
         read = {
           lot,
@@ -1148,7 +1148,7 @@ class Harness {
     // 9. The views are the definitions.
     const viewIds = (await unresolvedViewOf(sql, lot.lotId)).map((r) => r.stripe_refund_id);
     expect(viewIds).toEqual(v.unresolved.map((u) => u.id));
-    const picked = await inTx(async (tx) => pickUnresolvedFailedRefunds(tx, lot.lotId));
+    const picked = await inTx(async (tx) => listUnresolvedFailed(lot.lotId, tx));
     expect(picked.map((r) => r.stripeRefundId).sort()).toEqual(v.unresolved.map((u) => u.id));
     const [failures] = await sql<{ expected: boolean }[]>`
       SELECT (

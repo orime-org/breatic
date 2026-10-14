@@ -43,7 +43,10 @@ vi.mock("ai", () => ({
 }));
 
 import { randomUUID } from "node:crypto";
-import type { DbTx } from "@breatic/core";
+import { sql } from "drizzle-orm";
+import { db, type DbTx } from "@breatic/core";
+import { assessRefundCreate } from "@server/modules/credit-refund/assess.js";
+import * as operationRepo from "@server/modules/credit-refund/operation.repo.js";
 import {
   transitionOperation,
   ImpossibleTransitionError,
@@ -54,6 +57,7 @@ import {
 import { getCreditRefundConfig } from "@server/config/credit-refund.js";
 import {
   CREDITS,
+  PAID_CENTS,
   bellsOf,
   copiesOf,
   dbClockUs,
@@ -80,6 +84,7 @@ import {
   expectClosedBy,
   expectImpossible,
   expectRestored,
+  failure,
   newEventsOn,
   type EventType,
 } from "./credit-refund-cells.js";
@@ -600,5 +605,60 @@ describe("E1 while another disposition is in flight (§5.1 one-in-flight)", () =
     ).rejects.toThrow();
 
     expect(await worldOf(suite.sql, lot)).toEqual(before);
+  });
+});
+
+describe("(no row) × E1: a lot's dispositions are ordered as they were inserted under the lot lock (F12)", () => {
+  it("a request whose transaction began first but inserted second is created after, listed after, and is the latest the retry table reads", async () => {
+    const lot = await seedRefundLot(suite.sql, "refunding");
+    await seedOperation(suite.sql, lot, {
+      kind: "approve",
+      status: "needs_attention",
+      attentionReason: "stripe_declined",
+      createdSecondsAgo: 600,
+    });
+
+    // A: begins, fixes its now(), then waits while B (send_back) runs and
+    // commits on another connection; only then does A take the lot lock and
+    // insert its approval on the refund_pending lot B left.
+    const [s, p] = await db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT now()`);
+      const sendBack = await inTx((other) => transitionOperation(other, null, e1(lot, "send_back")));
+      const approve = await transitionOperation(tx, null, e1(lot, "approve"));
+      return [sendBack!, approve!] as const;
+    });
+
+    const [order] = await suite.sql<{ later: boolean }[]>`
+      SELECT (SELECT created_at FROM credit_refund_operations WHERE id = ${p.id})
+           > (SELECT created_at FROM credit_refund_operations WHERE id = ${s.id}) AS later
+    `;
+    expect(order!.later).toBe(true);
+    const listed = await inTx((tx) => operationRepo.listForLot(lot.lotId, tx));
+    expect(listed.map((o) => o.id).filter((id) => id === s.id || id === p.id)).toEqual([s.id, p.id]);
+
+    // Stripe refuses the approval: it needs attention and the lot stays refunding.
+    await inTx((tx) =>
+      transitionOperation(tx, { id: p.id }, {
+        type: "E6",
+        failure: failure(400, { type: "invalid_request_error" }),
+        leaseToken: p.leaseToken!,
+        actor: "loop",
+      }),
+    );
+    expect(await readOp(suite.sql, p.id)).toMatchObject({ status: "needs_attention", attention_closed_at: null });
+    expect((await readLot(suite.sql, lot.lotId)).lifecycle).toBe("refunding");
+
+    // The retry table reads the lot's latest disposition: the open approval, not the send-back.
+    const ops = await inTx((tx) => operationRepo.listForLot(lot.lotId, tx));
+    expect(
+      assessRefundCreate({
+        kind: "retry",
+        lot: { lifecycle: "refunding", remainingCredits: CREDITS, ledgerSum: CREDITS },
+        payment: { status: "completed", stripePaymentIntentId: lot.paymentIntentId, paidCents: PAID_CENTS },
+        ops,
+        refunds: [],
+        confirmedRefundIds: [],
+      }),
+    ).toEqual({ outcome: "create_refund", amountCents: PAID_CENTS });
   });
 });

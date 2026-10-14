@@ -62,6 +62,7 @@ import {
   readOp,
   reId,
   refundObject,
+  refundedThenFailed,
   seedCopy,
   seedOperation,
   seedRefundLot,
@@ -566,21 +567,11 @@ describe("POST …/refund/send-back", () => {
 });
 
 describe("POST …/refund/resolved-outside", () => {
-  /**
-   * A refunded lot whose product refund later failed on Stripe.
-   * @returns The lot and the failed refund's id.
-   */
-  async function refundedThenFailed() {
-    const lot = await seedRefundLot(suite.sql, "refunded");
-    const approve = await seedOperation(suite.sql, lot, { kind: "approve", status: "succeeded", result: "refunded", createdSecondsAgo: 120 });
-    const failed = reId("failed");
-    await seedCopy(suite.sql, lot, { id: failed, amountCents: PAID_CENTS, status: "succeeded", operationId: approve.id });
-    fakeStripe.register(lot.paymentIntentId, PAID_CENTS, [refundObject(failed, "failed", PAID_CENTS, approve.id)]);
-    return { lot, failed };
-  }
+  /** A refunded lot whose product refund later failed on Stripe. */
+  const failedLater = () => refundedThenFailed(suite.sql, fakeStripe, { label: "failed", createdSecondsAgo: 120 });
 
   it("answers for the failed refund, moves neither lot nor ledger, tells nobody, creates nothing", async () => {
-    const { lot, failed } = await refundedThenFailed();
+    const { lot, failed } = await failedLater();
     const ledgerBefore = await ledgerOf(suite.sql, lot.lotId);
 
     const res = await post(paths.resolvedOutside(lot.lotId), { reason: "Paid back by bank transfer.", failedRefundIds: [failed], confirmedSucceededCents: 0 });
@@ -599,7 +590,7 @@ describe("POST …/refund/resolved-outside", () => {
   });
 
   it("failedRefundIds that differ from the unresolved set is 409 stripe_blocks failed_refunds_changed", async () => {
-    const { lot } = await refundedThenFailed();
+    const { lot } = await failedLater();
     const before = await worldOf(suite.sql, lot);
 
     const res = await post(paths.resolvedOutside(lot.lotId), { reason: "r", failedRefundIds: [reId("other")], confirmedSucceededCents: 0 });
@@ -609,7 +600,7 @@ describe("POST …/refund/resolved-outside", () => {
   });
 
   it("a refused request (failed_refunds_changed) still copies the succeeded refund it read; no disposition, no key (v6 §4.6, finding [2])", async () => {
-    const { lot } = await refundedThenFailed();
+    const { lot } = await failedLater();
     const external = reId("dash_unseen");
     fakeStripe.register(lot.paymentIntentId, PAID_CENTS, [
       ...fakeStripe.refundsOf(lot.paymentIntentId),
@@ -635,7 +626,7 @@ describe("POST …/refund/resolved-outside", () => {
   });
 
   it("a body without confirmedSucceededCents is 422 invalid_body (v6 §4.5)", async () => {
-    const { lot, failed } = await refundedThenFailed();
+    const { lot, failed } = await failedLater();
     const before = await worldOf(suite.sql, lot);
 
     const res = await post(paths.resolvedOutside(lot.lotId), { reason: "r", failedRefundIds: [failed] });
@@ -646,7 +637,7 @@ describe("POST …/refund/resolved-outside", () => {
   });
 
   it("a confirmed sum that differs from Stripe's succeeded sum is 409 stripe_blocks succeeded_sum_changed", async () => {
-    const { lot, failed } = await refundedThenFailed();
+    const { lot, failed } = await failedLater();
     const before = await worldOf(suite.sql, lot);
 
     const res = await post(paths.resolvedOutside(lot.lotId), { reason: "r", failedRefundIds: [failed], confirmedSucceededCents: 1 });
@@ -656,7 +647,7 @@ describe("POST …/refund/resolved-outside", () => {
   });
 
   it("a refund still processing on Stripe is 409 stripe_blocks", async () => {
-    const { lot, failed } = await refundedThenFailed();
+    const { lot, failed } = await failedLater();
     fakeStripe.register(lot.paymentIntentId, PAID_CENTS, [
       ...fakeStripe.refundsOf(lot.paymentIntentId),
       refundObject(reId("pend"), "pending", 100),

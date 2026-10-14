@@ -31,7 +31,7 @@ vi.mock("@server/infra/stripe.js", async () => {
   };
 });
 
-import { fakeStripe, stripeError } from "./fake-stripe-refunds.js";
+import { fakeStripe, stripeError, type FakeRefundInput } from "./fake-stripe-refunds.js";
 import { call, freshKey, mailsSettled, paths, useInternalApp } from "./internal-api-harness.js";
 import {
   PAID_CENTS,
@@ -39,11 +39,10 @@ import {
   pendingReasonsOf,
   reId,
   refundObject,
-  seedCopy,
+  refundedThenFailed,
   seedOperation,
   seedRefundLot,
   type LotState,
-  type RefundFixture,
   type SeededLot,
 } from "./credit-refund-fixtures.js";
 
@@ -55,7 +54,7 @@ const suite = useInternalApp("internal-api-refund-preview-test");
  * @param refunds - What Stripe holds for the payment.
  * @returns The lot.
  */
-async function lotOnStripe(state: LotState, refunds: RefundFixture[] = []): Promise<SeededLot> {
+async function lotOnStripe(state: LotState, refunds: FakeRefundInput[] = []): Promise<SeededLot> {
   const lot = await seedRefundLot(suite.sql, state);
   fakeStripe.register(lot.paymentIntentId, PAID_CENTS, refunds);
   return lot;
@@ -68,19 +67,6 @@ async function lotOnStripe(state: LotState, refunds: RefundFixture[] = []): Prom
  */
 function preview(lot: SeededLot) {
   return call(suite.baseUrl, paths.preview(lot.lotId));
-}
-
-/**
- * A refunded lot whose booked refund failed later.
- * @returns The lot and the failed refund.
- */
-async function refundedThenFailed(): Promise<{ lot: SeededLot; failed: string }> {
-  const lot = await seedRefundLot(suite.sql, "refunded");
-  const approve = await seedOperation(suite.sql, lot, { kind: "approve", status: "succeeded", result: "refunded", createdSecondsAgo: 600 });
-  const failed = reId("failed_later");
-  await seedCopy(suite.sql, lot, { id: failed, amountCents: PAID_CENTS, status: "succeeded", operationId: approve.id });
-  fakeStripe.register(lot.paymentIntentId, PAID_CENTS, [refundObject(failed, "failed", PAID_CENTS, approve.id)]);
-  return { lot, failed };
 }
 
 describe("preview: refunds[].pendingReason (v9 §5.1)", () => {
@@ -117,7 +103,9 @@ describe("preview: refunds[].pendingReason (v9 §5.1)", () => {
 
   it("a pending_reason outside Stripe's documented three is read and stored as processing (decision 5)", async () => {
     const odd = reId("odd");
-    const lot = await lotOnStripe("refund_pending", [refundObject(odd, "pending", 300, undefined, "some_future_reason")]);
+    // Stripe's raw answer, not the product's normalized refund shape.
+    const raw: FakeRefundInput = { ...refundObject(odd, "pending", 300), pending_reason: "some_future_reason" };
+    const lot = await lotOnStripe("refund_pending", [raw]);
 
     const res = await preview(lot);
 
@@ -142,7 +130,7 @@ describe("preview: disputed (v9 §4.5, §5.3)", () => {
   });
 
   it("true when the charge is disputed, and restoreCredits is then blocked by disputed", async () => {
-    const { lot } = await refundedThenFailed();
+    const { lot } = await refundedThenFailed(suite.sql, fakeStripe);
     fakeStripe.setDisputed(lot.paymentIntentId, true);
 
     const res = await preview(lot);
@@ -176,7 +164,7 @@ describe("preview: refundFailure (v9 §5.3, the view credit_lot_refund_failures)
   });
 
   it("true for a refunded lot whose refund failed later", async () => {
-    const { lot } = await refundedThenFailed();
+    const { lot } = await refundedThenFailed(suite.sql, fakeStripe);
     const res = await preview(lot);
     expect(res.json.refundFailure).toBe(true);
   });
@@ -205,7 +193,7 @@ describe("preview: refundFailure (v9 §5.3, the view credit_lot_refund_failures)
 
 describe("preview: restoreCredits and action on a refunded lot (v9 §4.5, §5.3)", () => {
   it("a refunded lot whose refund failed: action null, restoreCredits allowed — and the restore with the listed ids goes through", async () => {
-    const { lot, failed } = await refundedThenFailed();
+    const { lot, failed } = await refundedThenFailed(suite.sql, fakeStripe);
 
     const res = await preview(lot);
 
@@ -223,7 +211,7 @@ describe("preview: restoreCredits and action on a refunded lot (v9 §4.5, §5.3)
   });
 
   it("a refunded lot that was resolved outside: restoreCredits blocked by paid_outside", async () => {
-    const { lot, failed } = await refundedThenFailed();
+    const { lot, failed } = await refundedThenFailed(suite.sql, fakeStripe);
     const outside = await seedOperation(suite.sql, lot, { kind: "resolve_outside", status: "succeeded", result: "resolved_outside", createdSecondsAgo: 60 });
     await suite.sql`UPDATE credit_refunds SET resolved_by_operation_id = ${outside.id} WHERE stripe_refund_id = ${failed}`;
 

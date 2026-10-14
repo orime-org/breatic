@@ -51,6 +51,7 @@ import {
 } from "@server/modules/credit-refund/assess.js";
 import type { AttentionReason } from "@server/modules/credit-refund/operation.repo.js";
 import type { RefundCopy, StripeRefundStatus } from "@server/modules/credit-refund/types.js";
+import { unresolvedOf } from "./unresolved-oracle.js";
 
 const OWN_OP = "11111111-1111-4111-8111-111111111111";
 const RESOLVER = "22222222-2222-4222-8222-222222222222";
@@ -81,23 +82,6 @@ function refund(
     failureReason: null,
     ...overrides,
   };
-}
-
-/**
- * The view's definition of an unresolved failed refund (§5.3), as this
- * suite's oracle.
- * @param lifecycle - The lot's state.
- * @param refunds - The payment's refund copies.
- * @returns The unresolved ones.
- */
-function unresolvedOf(lifecycle: CreditLotLifecycle, refunds: readonly RefundCopy[]): RefundCopy[] {
-  if (lifecycle !== "refunded" && lifecycle !== "refunding" && lifecycle !== "refund_pending") return [];
-  return refunds.filter(
-    (r) =>
-      (r.status === "failed" || r.status === "canceled") &&
-      r.resolvedByOperationId === null &&
-      (lifecycle !== "refunded" || r.everSucceeded),
-  );
 }
 
 const at = (minute: number): Date => new Date(Date.UTC(2026, 9, 12, 9, minute));

@@ -67,6 +67,7 @@ import {
   readOp,
   reId,
   refundObject,
+  refundedThenFailed,
   seedCopy,
   seedOperation,
   seedRefundLot,
@@ -136,26 +137,6 @@ async function expectRefused(
 }
 
 /**
- * A refunded lot whose booked refund failed later on Stripe (§6.3 L8): the
- * copy remembers it succeeded, so it is an unresolved failed refund.
- * @param extra - More refunds Stripe holds for the payment.
- * @returns The lot, the approval that booked it and the failed refund.
- */
-async function refundedThenFailed(extra: RefundFixture[] = []) {
-  const lot = await seedRefundLot(suite.sql, "refunded");
-  const approve = await seedOperation(suite.sql, lot, {
-    kind: "approve",
-    status: "succeeded",
-    result: "refunded",
-    createdSecondsAgo: 600,
-  });
-  const failed = reId("failed_later");
-  await seedCopy(suite.sql, lot, { id: failed, amountCents: PAID_CENTS, status: "succeeded", operationId: approve.id });
-  fakeStripe.register(lot.paymentIntentId, PAID_CENTS, [refundObject(failed, "failed", PAID_CENTS, approve.id), ...extra]);
-  return { lot, approve: approve.id, failed };
-}
-
-/**
  * A refunding lot Stripe declined at the first request: an open
  * needs_attention stripe_declined and no refund on Stripe.
  * @returns The lot and the open disposition.
@@ -186,7 +167,7 @@ async function pendingWithFailed(extra: RefundFixture[] = []) {
 
 describe("POST …/refund/restore-credits — the credits come back (v9 §5.3, §6.3 L9)", () => {
   it("a refunded lot whose refund failed later: 200 restored; credits back by a refund_reversed row of the booked amount; the failed refund answered for; bell and auto mail; nothing created on Stripe", async () => {
-    const { lot, failed } = await refundedThenFailed();
+    const { lot, failed } = await refundedThenFailed(suite.sql, fakeStripe);
 
     const res = await restore(lot, [failed]);
 
@@ -266,7 +247,7 @@ describe("POST …/refund/restore-credits — the credits come back (v9 §5.3, �
   });
 
   it("the same key and body again replays the snapshot: one disposition, one refund_reversed row, one bell", async () => {
-    const { lot, failed } = await refundedThenFailed();
+    const { lot, failed } = await refundedThenFailed(suite.sql, fakeStripe);
     const key = freshKey("restore_once");
 
     const first = await restore(lot, [failed], key);
@@ -282,7 +263,7 @@ describe("POST …/refund/restore-credits — the credits come back (v9 §5.3, �
   });
 
   it("the same key with another body is 422 idempotency_key_reused and changes nothing", async () => {
-    const { lot, failed } = await refundedThenFailed();
+    const { lot, failed } = await refundedThenFailed(suite.sql, fakeStripe);
     const key = freshKey("restore_reused");
     expect((await restore(lot, [failed], key)).status).toBe(200);
     await mailsSettled(suite.sql, lot);
@@ -296,7 +277,7 @@ describe("POST …/refund/restore-credits — the credits come back (v9 §5.3, �
   });
 
   it("a restored lot's mail can be resent: a resend row of kind refund_restored beside the auto one", async () => {
-    const { lot, failed } = await refundedThenFailed();
+    const { lot, failed } = await refundedThenFailed(suite.sql, fakeStripe);
     const restored = await restore(lot, [failed]);
     expect(restored.status).toBe(200);
     await mailsSettled(suite.sql, lot);
@@ -314,7 +295,7 @@ describe("POST …/refund/restore-credits — the credits come back (v9 §5.3, �
   });
 
   it("the restored lot is active, its preview judges no operation and lists no failed refund", async () => {
-    const { lot, failed } = await refundedThenFailed();
+    const { lot, failed } = await refundedThenFailed(suite.sql, fakeStripe);
     expect((await restore(lot, [failed])).status).toBe(200);
 
     const preview = await call(suite.baseUrl, paths.preview(lot.lotId));
@@ -330,7 +311,7 @@ describe("POST …/refund/restore-credits — the credits come back (v9 §5.3, �
 
 describe("POST …/refund/restore-credits — refusals, in the order of §5.3 (design 3535a275)", () => {
   it("1. a disposition in flight is 409 operation_in_progress — before paid_outside", async () => {
-    const { lot, failed } = await refundedThenFailed();
+    const { lot, failed } = await refundedThenFailed(suite.sql, fakeStripe);
     await seedOperation(suite.sql, lot, {
       kind: "resolve_outside",
       status: "succeeded",
@@ -349,7 +330,7 @@ describe("POST …/refund/restore-credits — refusals, in the order of §5.3 (d
   it("2. a lot once resolved outside is 409 stripe_blocks paid_outside — even with nothing left unanswered, before the lot state", async () => {
     // The failed refund was answered by resolve_outside: the lot is refunded
     // with no unresolved failed refund, which alone would be lot_state_changed.
-    const { lot, failed } = await refundedThenFailed();
+    const { lot, failed } = await refundedThenFailed(suite.sql, fakeStripe);
     const outside = await seedOperation(suite.sql, lot, {
       kind: "resolve_outside",
       status: "succeeded",
@@ -367,7 +348,7 @@ describe("POST …/refund/restore-credits — refusals, in the order of §5.3 (d
 
   it("2. paid_outside also when another refund failed after the resolve_outside (the money went out once already)", async () => {
     const later = reId("failed_after_outside");
-    const { lot, failed } = await refundedThenFailed([refundObject(later, "failed", 200)]);
+    const { lot, failed } = await refundedThenFailed(suite.sql, fakeStripe, { extra: [refundObject(later, "failed", 200)] });
     const outside = await seedOperation(suite.sql, lot, {
       kind: "resolve_outside",
       status: "succeeded",
@@ -418,7 +399,7 @@ describe("POST …/refund/restore-credits — refusals, in the order of §5.3 (d
   });
 
   it("4. a disputed charge is 409 stripe_blocks disputed — before failed_refunds_changed", async () => {
-    const { lot } = await refundedThenFailed();
+    const { lot } = await refundedThenFailed(suite.sql, fakeStripe);
     fakeStripe.setDisputed(lot.paymentIntentId, true);
     const before = await worldOf(suite.sql, lot);
 
@@ -490,7 +471,7 @@ describe("POST …/refund/restore-credits — refusals, in the order of §5.3 (d
 
 describe("POST …/refund/restore-credits — Stripe unreadable (v9 §4.6, §5.3)", () => {
   it("refunds.list fails: 503 stripe_unavailable, nothing stored, the charge is never read; the same key works afterwards", async () => {
-    const { lot, failed } = await refundedThenFailed();
+    const { lot, failed } = await refundedThenFailed(suite.sql, fakeStripe);
     const before = await worldOf(suite.sql, lot);
     const key = freshKey("restore");
     fakeStripe.failLists(stripeError(500));
@@ -509,7 +490,7 @@ describe("POST …/refund/restore-credits — Stripe unreadable (v9 §4.6, §5.3
   });
 
   it("paymentIntents.retrieve fails: 503 stripe_unavailable; the copies the list read wrote are kept; no disposition, no mail, no ledger row, lot unchanged", async () => {
-    const { lot, failed } = await refundedThenFailed();
+    const { lot, failed } = await refundedThenFailed(suite.sql, fakeStripe);
     const before = await worldOf(suite.sql, lot);
     const key = freshKey("restore");
     fakeStripe.failRetrieves(stripeError(502));
@@ -534,7 +515,7 @@ describe("POST …/refund/restore-credits — body (v9 §4.5)", () => {
     ["no reason", { failedRefundIds: [] }],
     ["an unknown field", { reason: "r", failedRefundIds: [], notify: false }],
   ])("a body with %s is 422 invalid_body", async (_name, body) => {
-    const { lot } = await refundedThenFailed();
+    const { lot } = await refundedThenFailed(suite.sql, fakeStripe);
     const before = await worldOf(suite.sql, lot);
 
     const res = await post(paths.restoreCredits(lot.lotId), body);
@@ -545,7 +526,7 @@ describe("POST …/refund/restore-credits — body (v9 §4.5)", () => {
   });
 
   it("the restore is recorded on the disposition: failedRefundIds and the request's reason, never notify false", async () => {
-    const { lot, failed } = await refundedThenFailed();
+    const { lot, failed } = await refundedThenFailed(suite.sql, fakeStripe);
 
     const res = await restore(lot, [failed]);
 

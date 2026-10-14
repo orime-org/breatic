@@ -25,7 +25,7 @@
  *   it. No other disposition is touched.
  *
  * The unresolved failed refunds are read the way production reads them:
- * `pickUnresolvedFailedRefunds(tx, lotId)`, which queries the view
+ * `listUnresolvedFailed(lotId, tx)`, which queries the view
  * `credit_refunds_unresolved_failed` in the caller's transaction (v9 §5.3).
  * A `refunded` lot lists the copies that once succeeded and are now `failed`
  * or `canceled`, unanswered; a `refund_pending` or `refunding` lot lists
@@ -55,7 +55,7 @@ import {
 } from "@server/modules/credit-refund/refund-snapshot.js";
 import * as refundCopyRepo from "@server/modules/credit-refund/refund-copy.repo.js";
 import type { RefundCopy } from "@server/modules/credit-refund/types.js";
-import { pickUnresolvedFailedRefunds } from "@server/modules/credit-refund/unresolved.repo.js";
+import { listUnresolvedFailed } from "@server/modules/credit-refund/unresolved.repo.js";
 import {
   bellsOf,
   copiesOf,
@@ -95,27 +95,6 @@ async function apply(lot: SeededLot, refunds: StripeRefundObject[]): Promise<voi
  */
 async function copyOf(lot: SeededLot, id: string): Promise<CopyRow | undefined> {
   return (await copiesOf(suite.sql, lot.lotId)).find((c) => c.stripe_refund_id === id);
-}
-
-/** An unresolved failed refund as the tests read it back. */
-interface Unresolved {
-  stripeRefundId: string;
-  amountCents: number;
-  status: string;
-}
-
-/**
- * The lot's unresolved failed refunds, read as production reads them: the
- * view, in the caller's transaction (v9 §5.3).
- * @param tx - The caller's transaction.
- * @param lot - The lot.
- * @returns Id, amount and status of each, by refund id.
- */
-async function unresolvedOf(tx: DbTx, lot: SeededLot): Promise<Unresolved[]> {
-  const rows = await pickUnresolvedFailedRefunds(tx, lot.lotId);
-  return rows
-    .map((r) => ({ stripeRefundId: r.stripeRefundId, amountCents: Number(r.amountCents), status: r.status }))
-    .sort((a, b) => a.stripeRefundId.localeCompare(b.stripeRefundId));
 }
 
 describe("shapes", () => {
@@ -527,7 +506,7 @@ describe("applyRefundSnapshot: re-judging an awaiting_stripe approve or retry (�
     await expectBooked(suite.sql, lot, opId, { refundId: own, settledCents: 1080, notify: true, amountCents: 1080 });
     expect((await copyOf(lot, failedExt))!.resolved_by_operation_id).toBe(opId);
     expect((await copyOf(lot, own))!.resolved_by_operation_id).toBeNull();
-    expect(await inTx((tx) => unresolvedOf(tx, lot))).toEqual([]);
+    expect(await inTx((tx) => listUnresolvedFailed(lot.lotId, tx))).toEqual([]);
   });
 
   it("a list read before the refund it waits on existed: copies are written, the disposition is left as it was, no event", async () => {
@@ -706,7 +685,7 @@ describe("unresolved failed refunds, read as production reads them (v9 §5.3: th
     const other = await seedRefundLot(suite.sql, "refunded");
     await seedCopy(suite.sql, other, { id: reId("other_lot"), amountCents: 9, status: "failed", everSucceeded: true });
 
-    const listed = await inTx((tx) => unresolvedOf(tx, lot));
+    const listed = await inTx((tx) => listUnresolvedFailed(lot.lotId, tx));
 
     expect(listed).toEqual([
       { stripeRefundId: failedOwn, amountCents: 880, status: "failed" },
@@ -722,7 +701,7 @@ describe("unresolved failed refunds, read as production reads them (v9 §5.3: th
       status: "failed",
       everSucceeded: true,
     });
-    expect(await inTx((tx) => unresolvedOf(tx, lot))).toEqual([]);
+    expect(await inTx((tx) => listUnresolvedFailed(lot.lotId, tx))).toEqual([]);
   });
 
   it.each(["refund_pending", "refunding"] as const)(
@@ -744,7 +723,7 @@ describe("unresolved failed refunds, read as production reads them (v9 §5.3: th
       await seedCopy(suite.sql, lot, { id: reId("e_ok"), amountCents: 2, status: "succeeded" });
       await seedCopy(suite.sql, lot, { id: reId("f_open"), amountCents: 3, status: "pending" });
 
-      const listed = await inTx((tx) => unresolvedOf(tx, lot));
+      const listed = await inTx((tx) => listUnresolvedFailed(lot.lotId, tx));
 
       expect(listed.map((r) => r.stripeRefundId).sort()).toEqual([once, never, canceled].sort());
     },
@@ -756,7 +735,7 @@ describe("unresolved failed refunds, read as production reads them (v9 §5.3: th
     const seen = await inTx(async (tx) => {
       await applyRefundSnapshot(tx, lot.paymentId, [refundObject(id, "succeeded", 1080)], "webhook");
       await applyRefundSnapshot(tx, lot.paymentId, [refundObject(id, "failed", 1080)], "webhook");
-      return unresolvedOf(tx, lot);
+      return listUnresolvedFailed(lot.lotId, tx);
     });
     expect(seen.map((r) => r.stripeRefundId)).toEqual([id]);
     expect(seen[0]!.amountCents).toBe(1080);
@@ -766,7 +745,7 @@ describe("unresolved failed refunds, read as production reads them (v9 §5.3: th
     const lot = await seedRefundLot(suite.sql, "refunded");
     const id = reId("answered_later");
     await seedCopy(suite.sql, lot, { id, amountCents: 1080, status: "failed", everSucceeded: true });
-    expect((await inTx((tx) => unresolvedOf(tx, lot))).map((r) => r.stripeRefundId)).toEqual([id]);
+    expect((await inTx((tx) => listUnresolvedFailed(lot.lotId, tx))).map((r) => r.stripeRefundId)).toEqual([id]);
 
     const resolver = await seedOperation(suite.sql, lot, {
       kind: "resolve_outside",
@@ -776,6 +755,6 @@ describe("unresolved failed refunds, read as production reads them (v9 §5.3: th
     await suite.sql`
       UPDATE credit_refunds SET resolved_by_operation_id = ${resolver.id} WHERE stripe_refund_id = ${id}
     `;
-    expect(await inTx((tx) => unresolvedOf(tx, lot))).toEqual([]);
+    expect(await inTx((tx) => listUnresolvedFailed(lot.lotId, tx))).toEqual([]);
   });
 });

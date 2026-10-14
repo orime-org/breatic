@@ -46,6 +46,7 @@ import {
   type AssessOperation,
 } from "@server/modules/credit-refund/assess.js";
 import type { RefundCopy, StripeRefundStatus } from "@server/modules/credit-refund/types.js";
+import { unresolvedOf } from "./unresolved-oracle.js";
 
 const OWN_OP = "11111111-1111-4111-8111-111111111111";
 const RESOLVER = "22222222-2222-4222-8222-222222222222";
@@ -599,17 +600,6 @@ describe("assessRefundPreview: restoreCredits is the restore endpoint's own answ
 });
 
 // ── §9: the preview and the endpoints agree ──────────────────────────
-
-/** The view's definition of an unresolved failed refund (§5.3), as the test's oracle. */
-function unresolvedOf(lifecycle: CreditLotLifecycle, refunds: readonly RefundCopy[]): RefundCopy[] {
-  if (lifecycle !== "refunded" && lifecycle !== "refunding" && lifecycle !== "refund_pending") return [];
-  return refunds.filter(
-    (r) =>
-      (r.status === "failed" || r.status === "canceled") &&
-      r.resolvedByOperationId === null &&
-      (lifecycle !== "refunded" || r.everSucceeded),
-  );
-}
 
 describe("§9: the preview and the endpoints agree when the operator confirms what the preview showed", () => {
   const statusArb = fc.constantFrom<StripeRefundStatus>("pending", "requires_action", "succeeded", "failed", "canceled");

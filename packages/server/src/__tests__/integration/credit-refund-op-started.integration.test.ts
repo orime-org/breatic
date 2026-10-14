@@ -624,6 +624,54 @@ describe("started × E11: attempts used up — the reason follows the create ans
 
     expect((await readOp(suite.sql, c.op.id)).attention_reason).toBe("attempts_exhausted");
   });
+
+  // attention_detail is the reason's own original text, first line (§5.1,
+  // acceptance #9). last_error is overwritten by every later attempt and a
+  // late answer never writes it, so stripe_declined reads the refusal itself.
+  const REFUSAL_LINE = "A previous attempt to refund charge ch_x to card failed";
+  const refusalWithText = (): Fail => ({
+    message: `${REFUSAL_LINE}\nsecond line`,
+    httpStatus: 400,
+    type: "invalid_request_error",
+  });
+  const plainTimeout = (): Fail => ({ message: "Request timed out" });
+  /** A 400 refusal (E6) under a lease the row no longer holds: a late_answer row. */
+  const lateRefusalE6: Step = (c) =>
+    inTx((tx) =>
+      transitionOperation(tx, { id: c.op.id }, { type: "E6", failure: refusalWithText(), leaseToken: randomUUID(), actor: "loop" }),
+    );
+  /** A failed refund object (E6) under a lease the row no longer holds: a late_answer row. */
+  const lateFailedRefund: Step = (c) =>
+    inTx((tx) =>
+      transitionOperation(tx, { id: c.op.id }, {
+        type: "E6",
+        refund: { ...refundObject(reId("late_failed"), "failed", 1080), failure_reason: "expired_or_canceled_card" },
+        leaseToken: randomUUID(),
+        actor: "loop",
+      }),
+    );
+
+  it.each<[string, string, string, () => Step[]]>([
+    ["a 400 refusal (E17), then a timeout (E7)", "stripe_declined", REFUSAL_LINE, () => [later(refusalWithText()), retryable(plainTimeout())]],
+    ["a timeout (E7), then the refusal only in a late_answer (E6)", "stripe_declined", REFUSAL_LINE, () => [retryable(plainTimeout()), lateRefusalE6]],
+    ["a timeout (E7), then the refusal only in a late_answer (E17)", "stripe_declined", REFUSAL_LINE, () => [retryable(plainTimeout()), late(refusalWithText())]],
+    ["a timeout (E7), then a late_answer with a failed refund object", "stripe_declined", "expired_or_canceled_card", () => [retryable(plainTimeout()), lateFailedRefund]],
+    ["no refusal anywhere: a timeout", "attempts_exhausted", "Request timed out", () => [retryable(timeout())]],
+  ])("F15: %s → needs_attention %s, attention_detail %j", async (_name, reason, detail, steps) => {
+    for (const make of [startedApprove, startedRetry]) {
+      const c = await make();
+      for (const step of steps()) await step(c);
+      expect((await readOp(suite.sql, c.op.id)).last_error).toMatch(/^Request timed out/);
+
+      await inTx((tx) => transitionOperation(tx, { id: c.op.id }, { type: "E11", actor: "loop" }));
+
+      expect(await readOp(suite.sql, c.op.id)).toMatchObject({
+        status: "needs_attention",
+        attention_reason: reason,
+        attention_detail: detail,
+      });
+    }
+  });
 });
 
 describe("started × E12: 24 hours since the first call — the attempt cap governs started", () => {
