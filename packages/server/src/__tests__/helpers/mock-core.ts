@@ -68,6 +68,9 @@ const mockRedis = {
   incr: () => Promise.resolve(1),
   expire: () => Promise.resolve(1),
   pipeline: () => mockPipeline,
+  // `runOnce`'s scripts: the claim (the one that sets with 'PX') answers
+  // "nothing here yet", so the route runs; renew and finish answer success.
+  eval: (script: string) => Promise.resolve(script.includes("'PX'") ? null : 1),
 };
 
 /** Shared `queue.add` mock — reused across all `createQueue()` calls so tests can

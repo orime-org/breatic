@@ -6,7 +6,12 @@
  * and the shipped file's lease is what the accessor returns.
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
+
+// The package setup stubs this loader for the route suites; this file tests
+// the loader itself.
+vi.unmock("@server/config/idempotency.js");
+
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { parse } from "yaml";

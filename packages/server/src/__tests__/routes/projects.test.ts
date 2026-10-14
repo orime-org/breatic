@@ -29,7 +29,13 @@ vi.mock("@server/modules", async (importOriginal) => {
 import { createApp } from "../../app.js";
 import { mocks } from "../helpers/mock-core.js";
 
-const AUTH = { Cookie: "breatic_session=valid-token", "Content-Type": "application/json" };
+// The run-once routes need a key per press; the Redis double in mock-core
+// answers every claim as a first press, so one key serves the whole file.
+const AUTH = {
+  Cookie: "breatic_session=valid-token",
+  "Content-Type": "application/json",
+  "Idempotency-Key": "test-press",
+};
 
 // A real uuid: the role middleware validates the shape before it puts the
 // param into a uuid comparison, so a placeholder id is refused up front.

@@ -34,7 +34,13 @@ import { createApp } from "../../app.js";
 import { ForbiddenError } from "@breatic/core";
 import { mocks } from "../helpers/mock-core.js";
 
-const AUTH = { Cookie: "breatic_session=valid-token", "Content-Type": "application/json" };
+// The run-once routes need a key per press; the Redis double in mock-core
+// answers every claim as a first press, so one key serves the whole file.
+const AUTH = {
+  Cookie: "breatic_session=valid-token",
+  "Content-Type": "application/json",
+  "Idempotency-Key": "test-press",
+};
 const PROJ_UUID = "11111111-1111-4111-8111-111111111111";
 const SPACE_UUID = "33333333-3333-4333-9333-333333333333";
 const CONV_UUID = "22222222-2222-4222-8222-222222222222";

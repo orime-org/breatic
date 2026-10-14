@@ -11,7 +11,9 @@
 
 import { Hono } from "hono";
 import { validate } from "@server/middleware/validate.js";
+import { runOnce } from "@server/middleware/run-once.js";
 import {
+  idempotencyKeyHeaderSchema,
   checkoutSchema,
   paymentConfirmSchema,
   paymentCancelSchema,
@@ -47,7 +49,9 @@ payment.post(
   requireAuth,
   requirePayments,
   rateLimitFor("payment-checkout", "user"),
+  validate("header", idempotencyKeyHeaderSchema),
   validate("json", checkoutSchema),
+  runOnce("credits-checkout"),
   async (c) => {
     const user = c.get("user");
     const body = c.req.valid("json");
