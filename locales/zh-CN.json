@@ -1275,6 +1275,7 @@
       "action": {
         "view": "查看",
         "rename": "重命名",
+        "renameLocked": "锁住的 Spaces 无法重命名",
         "lock": "加锁",
         "unlock": "解锁",
         "delete": "删除",

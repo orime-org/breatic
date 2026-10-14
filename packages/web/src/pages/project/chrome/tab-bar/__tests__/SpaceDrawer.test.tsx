@@ -285,6 +285,8 @@ describe('SpaceDrawer', () => {
     expect(document.activeElement).toBe(box);
     expect(box.selectionStart).toBe(0);
     expect(box.selectionEnd).toBe(4);
+    // Selected from the end back, so a long name shows its start.
+    expect(box.selectionDirection).toBe('backward');
     expect(box.maxLength).toBe(SPACE_NAME_MAX_LEN);
   });
 
@@ -375,7 +377,7 @@ describe('SpaceDrawer', () => {
     const user = userEvent.setup();
     setup();
     const box = await startRename(user, 'sp-1');
-    for (const cls of ['min-w-0', 'flex-1', 'h-5', 'leading-[18px]', 'text-sm', 'font-normal']) {
+    for (const cls of ['min-w-0', 'flex-1', 'h-7', 'py-1', '-my-1', 'leading-[18px]', 'text-sm', 'font-normal']) {
       expect(box.className.split(/\s+/)).toContain(cls);
     }
     expect(box).toHaveAttribute('autocomplete', 'off');
@@ -388,12 +390,12 @@ describe('SpaceDrawer', () => {
     await openRowMenu(user, 'sp-1');
     const item = screen.getByTestId('space-drawer-rename-sp-1');
     expect(item).toHaveAttribute('data-disabled');
-    expect(item).toHaveTextContent('Locked — unlock the space before renaming.');
+    expect(item).toHaveTextContent('Locked spaces can\'t be renamed');
     await user.click(item);
     expect(screen.queryByTestId('space-drawer-rename-input-sp-1')).toBeNull();
   });
 
-  it('sets the name as the conversation history does', async () => {
+  it('sets the name and the time as the conversation history does', async () => {
     const user = userEvent.setup();
     setup();
     await user.click(screen.getByTestId('space-drawer-trigger'));
@@ -401,6 +403,8 @@ describe('SpaceDrawer', () => {
     for (const cls of ['text-sm', 'font-normal', 'text-foreground']) {
       expect(name.className.split(/\s+/)).toContain(cls);
     }
+    const time = screen.getByTestId('space-drawer-row-sp-1').querySelector('.tabular-nums');
+    expect(time?.className.split(/\s+/)).toContain('text-2xs');
   });
 
   it('puts the Editing and Open marks at the right end of the name line', async () => {
@@ -411,15 +415,16 @@ describe('SpaceDrawer', () => {
     expect(screen.getByText('Open').className.split(/\s+/)).toContain('ml-auto');
   });
 
-  it('marks the Space being edited with a neutral outline, apart from the open ones', async () => {
+  it('marks the Space being edited with a grey fill and the open ones with an outline', async () => {
     const user = userEvent.setup();
     setup({ activeSpaceId: 'sp-1', openTabIds: ['sp-1', 'sp-2'] });
     await user.click(screen.getByTestId('space-drawer-trigger'));
     const editing = screen.getByText('Editing');
-    expect(editing.className).toContain('border-border');
-    expect(editing.className).toContain('text-foreground-secondary');
+    expect(editing.className).toContain('bg-muted');
     expect(editing.className).not.toMatch(/status-info/);
-    expect(screen.getByText('Open').className).toContain('bg-muted');
+    const open = screen.getByText('Open');
+    expect(open.className).toContain('border-border');
+    expect(open.className).toContain('text-foreground-secondary');
   });
 
   it('opens as a modal sheet with a backdrop overlay, like dialogs', async () => {

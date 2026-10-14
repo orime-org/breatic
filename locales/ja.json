@@ -1275,6 +1275,7 @@
       "action": {
         "view": "表示",
         "rename": "名前を変更",
+        "renameLocked": "ロックされた Spaces は名前を変更できません",
         "lock": "ロック",
         "unlock": "解除",
         "delete": "削除",

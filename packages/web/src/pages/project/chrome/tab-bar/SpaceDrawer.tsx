@@ -102,9 +102,9 @@ const ROW_BODY = 'flex min-w-0 flex-1 items-start gap-3 pr-8 text-left';
  *   hover actions (right):
  *     [view] [rename (disabled if locked)] [lock toggle] [delete (disabled if locked)]
  *
- * Status chip (decision B.1):
- *   - editing → neutral outline (this user's active tab)
- *   - open    → bg-muted        (this user's open tab, not active)
+ * Status chip (decision B.1, user 2026-10-14):
+ *   - editing → bg-muted        (this user's active tab)
+ *   - open    → neutral outline (this user's open tab, not active)
  *   - (none)  → no chip         (Space exists but this user hasn't opened it)
  *
  * View does what pressing the row does: it opens the Space as a tab, or
@@ -296,9 +296,10 @@ function SpaceDrawerRow({
   const menuButton = React.useRef<HTMLButtonElement>(null);
 
   React.useEffect(() => {
-    if (!renaming) return;
-    box.current?.focus();
-    box.current?.select();
+    if (!renaming || !box.current) return;
+    box.current.focus();
+    // Selected from the end back, so the box scrolls to a long name's start.
+    box.current.setSelectionRange(0, box.current.value.length, 'backward');
   }, [renaming]);
 
   /**
@@ -394,10 +395,11 @@ function SpaceDrawerRow({
               defaultValue={name}
               maxLength={SPACE_NAME_MAX_LEN}
               aria-label={t('spaces.rename.inputAriaLabel')}
-              // The name line's 20px (18 of text and a 1px border either
-              // side), so the row keeps its height; shrinks before the menu
-              // button the row keeps room for.
-              className='h-5 min-w-0 flex-1 rounded-content-sm border border-active-border bg-background px-2 text-sm font-normal leading-[18px] text-foreground outline-none'
+              // The conversation history's rename box (28px: 18 of text, 4px
+              // pad and a 1px border either side); the negative margin keeps
+              // the name line at its 20px, so the row keeps its height. Shrinks
+              // before the menu button the row keeps room for.
+              className='-my-1 h-7 min-w-0 flex-1 rounded-content-sm border border-active-border bg-background px-2 py-1 text-sm font-normal leading-[18px] text-foreground outline-none'
               // Marks what an Escape means while the focus is in here. The
               // drawer reads it before dismissing.
               data-renaming
@@ -425,20 +427,20 @@ function SpaceDrawerRow({
           {/* At the right end of the line, against the room kept for the
               menu button (user 2026-10-14). */}
           {isActive ? (
-            <span
-              // The border takes 1px a side, so a 1px pad keeps this mark the
-              // height of the Open mark beside other rows.
-              className='ml-auto shrink-0 rounded-chrome border border-border px-1 py-px text-2xs font-medium text-foreground-secondary'
-            >
+            <span className='ml-auto shrink-0 rounded-chrome bg-muted px-1 py-0.5 text-2xs font-medium text-muted-foreground'>
               {t('spaces.drawer.status.editing')}
             </span>
           ) : isOpen ? (
-            <span className='ml-auto shrink-0 rounded-chrome bg-muted px-1 py-0.5 text-2xs font-medium text-muted-foreground'>
+            <span
+              // The border takes 1px a side, so a 1px pad keeps this mark the
+              // height of the Editing mark.
+              className='ml-auto shrink-0 rounded-chrome border border-border px-1 py-px text-2xs font-medium text-foreground-secondary'
+            >
               {t('spaces.drawer.status.open')}
             </span>
           ) : null}
         </span>
-        <span className='truncate text-xs tabular-nums text-muted-foreground'>
+        <span className='truncate text-2xs tabular-nums text-muted-foreground'>
           {t(made.key, made.params)}
         </span>
       </span>
@@ -545,7 +547,7 @@ function SpaceDrawerRow({
                     {t('spaces.drawer.action.rename')}
                     {space.locked ? (
                       <span className='text-2xs text-muted-foreground'>
-                        {t('spaces.rename.locked')}
+                        {t('spaces.drawer.action.renameLocked')}
                       </span>
                     ) : null}
                   </span>

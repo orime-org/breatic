@@ -1275,6 +1275,7 @@
       "action": {
         "view": "View",
         "rename": "Rename",
+        "renameLocked": "Locked spaces can't be renamed",
         "lock": "Lock",
         "unlock": "Unlock",
         "delete": "Delete",

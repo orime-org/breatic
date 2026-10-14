@@ -1275,6 +1275,7 @@
       "action": {
         "view": "보기",
         "rename": "이름 변경",
+        "renameLocked": "잠긴 Spaces는 이름을 변경할 수 없습니다",
         "lock": "잠금",
         "unlock": "잠금 해제",
         "delete": "삭제",

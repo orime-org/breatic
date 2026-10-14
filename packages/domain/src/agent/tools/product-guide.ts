@@ -215,7 +215,7 @@ export function renderProductGuide(): string {
       "clicking the row does: it opens the space as a tab, or switches to its tab if it already has one. " +
       `${quoted(t("spaces.drawer.action.rename"))} turns the name on that row into a box with the name selected; ` +
       "Enter or clicking elsewhere saves it and Esc leaves it as it was. On a locked space it is greyed, with " +
-      `${quoted(t("spaces.rename.locked"))} written under it.`,
+      `${quoted(t("spaces.drawer.action.renameLocked"))} written under it.`,
     `The third, a pulse line, opens ${quoted(t("activity.header"))}: the project's uploads, generations and ` +
       "changes to spaces and members, newest first. Each finished generation shows the credits it used, a star " +
       "with a number; a failed one shows a red exclamation mark; picture, video and sound entries have a " +
