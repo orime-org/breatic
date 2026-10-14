@@ -134,7 +134,12 @@ export function NodePlaceholder({
         <span className='text-xs'>{hint}</span>
       ) : (
         <span className='flex flex-col gap-0.5'>
-          <span className='text-xs'>{peerLine ?? t(`canvas.nodePlaceholder.${modality}`)}</span>
+          <span
+            className='text-xs'
+            data-testid={peerLine === null ? undefined : 'node-peer-activity'}
+          >
+            {peerLine ?? t(`canvas.nodePlaceholder.${modality}`)}
+          </span>
           <span className='text-2xs text-muted-foreground'>
             {t('canvas.nodePlaceholder.rightClickHint')}
           </span>
