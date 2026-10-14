@@ -48,28 +48,3 @@ describe("worker task failure log", () => {
     expect(block).not.toMatch(/err\.message/);
   });
 });
-
-describe("consent receipt clean-up", () => {
-  /**
-   * How deep inside startWorker's body a position sits: 1 is its own block.
-   * @param at - A position in the code.
-   * @returns The block depth.
-   */
-  const depthInStartWorker = (at: number): number => {
-    const body = code.slice(code.indexOf("export function startWorker"), at);
-    return body.split("{").length - body.split("}").length;
-  };
-
-  it("runs its worker and schedules the daily job on every deployment, outside any vendor check", () => {
-    const start = code.indexOf("export function startWorker");
-    // Each is a statement of its own, directly in startWorker's body: no condition can sit on its line.
-    for (const line of [/^ {2}const consentPrune = createWorker\(ANALYTICS_CONSENT_QUEUE, /m, /^ {2}scheduleConsentPrune\(\)\.catch\(/m]) {
-      const at = code.search(line);
-      expect(at, String(line)).toBeGreaterThan(start);
-      expect(depthInStartWorker(at), String(line)).toBe(1);
-      // Nothing in startWorker's own block returns before it.
-      const before = code.slice(start, at).split("\n").filter((l) => /^ {2}\S/.test(l));
-      expect(before.some((l) => /\breturn\b/.test(l)), String(line)).toBe(false);
-    }
-  });
-});

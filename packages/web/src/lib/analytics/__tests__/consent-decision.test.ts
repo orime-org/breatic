@@ -284,6 +284,11 @@ describe('readConsentView', () => {
       { ...view, gpcSeenAt: 'soon' },
       { ...view, ownership: 'mine' },
       { ...view, serverTime: undefined },
+      { ...view, receipts: [null] },
+      { ...view, receipts: [{ ...receipt, noticeShown: 'gpc' }] },
+      { ...view, receipts: [{ ...receipt, revision: 1.5 }] },
+      { ...view, receipts: [{ ...receipt, decisionId: 7 }] },
+      { receipts: view.receipts, ownership: view.ownership, serverTime: view.serverTime },
     ]) {
       expect(readConsentView(bad)).toBeNull();
     }
