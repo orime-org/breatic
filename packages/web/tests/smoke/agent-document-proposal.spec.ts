@@ -165,10 +165,87 @@ test('a comment lands on the quoted words, marked as from the Agent', async () =
   const card = await askForTheCard();
   await card.getByRole('button').first().click();
 
+  // Shown the way a comment the reader wrote is: the panel opens on its card.
   await expect(card).toHaveAttribute('data-state', 'applied');
+  const rail = visibleSpace(page).getByTestId('doc-comment-rail');
+  await expect(rail).toBeVisible();
+  await expect(rail.getByTestId('doc-comment-card')).toHaveAttribute('data-selected', 'true');
+  await expect(rail.getByTestId('doc-comment-from-agent')).toBeVisible();
+  await expect(rail.getByText('Why is she leaving?')).toBeVisible();
+
+  // "View" opens it on the card again once the reader has closed it.
+  await rail.getByTestId('doc-comment-rail-close').click();
+  await expect(rail).toHaveCount(0);
+  await card.getByRole('button').click();
+  await expect(rail).toBeVisible();
+  await expect(rail.getByTestId('doc-comment-card')).toHaveAttribute('data-selected', 'true');
+});
+
+/** A table wider than the body column, its last column holding `LASTCELL`. */
+const WIDE_TABLE = [
+  `| ${Array.from({ length: 8 }, (_, i) => `Column ${String(i + 1)}`).join(' | ')} |`,
+  `|${' --- |'.repeat(8)}`,
+  `| ${[...Array.from({ length: 7 }, () => 'a'.repeat(30)), 'LASTCELL'].join(' | ')} |`,
+].join('\n');
+
+/**
+ * Where the commented words in a wide table sit against the table's frame.
+ * @returns Whether the frame scrolls sideways, how far it is scrolled, and
+ * whether the words are inside it.
+ */
+async function commentInTable(): Promise<{ overflows: boolean; scrolled: number; inside: boolean }> {
+  return page.evaluate(() => {
+    const mark = [...document.querySelectorAll<HTMLElement>('.bn-thread-mark')].find((m) => m.textContent?.includes('LASTCELL'));
+    const frame = mark?.closest('.doc-table-scroller')?.querySelector<HTMLElement>('[data-radix-scroll-area-viewport]');
+    if (mark === undefined || frame === null || frame === undefined) return { overflows: false, scrolled: -1, inside: false };
+    const at = mark.getBoundingClientRect();
+    const box = frame.getBoundingClientRect();
+    return {
+      overflows: frame.scrollWidth > frame.clientWidth,
+      scrolled: frame.scrollLeft,
+      inside: at.left >= box.left - 1 && at.right <= box.right + 1,
+    };
+  });
+}
+
+test('a comment in a column of a wide table scrolled out of view is scrolled into it', async () => {
+  await openDocumentWithText();
+  await sendTheOpenSpace();
+  await answerWith((blocks, spaceId) => ({ ...onSecondBlock({})(blocks, spaceId), kind: 'insert', body: WIDE_TABLE }));
+  const insert = await askForTheCard();
+  await insert.getByRole('button').last().click();
+  await expect(insert).toHaveAttribute('data-state', 'applied');
+
+  await page.unroute('**/chat/message');
+  await answerWith((blocks, spaceId) => {
+    const table = blocks.find((b) => b.type === 'table')!;
+    return {
+      ...onSecondBlock({})(blocks, spaceId),
+      kind: 'comment',
+      blockId: table.id,
+      original: table.text,
+      blockType: 'table',
+      quote: 'LASTCELL',
+      body: 'Is this the last shot?',
+    };
+  });
+  const comment = await askForTheCard();
+  await comment.getByRole('button').first().click();
+
+  await expect(comment).toHaveAttribute('data-state', 'applied');
+  await expect.poll(commentInTable).toEqual({ overflows: true, scrolled: expect.any(Number), inside: true });
+  expect((await commentInTable()).scrolled).toBeGreaterThan(0);
+
+  // Pressing its card in the panel does the same once the table is scrolled back.
+  const rail = visibleSpace(page).getByTestId('doc-comment-rail');
+  await rail.getByTestId('doc-comment-rail-close').click();
+  await page.evaluate(() => {
+    for (const frame of document.querySelectorAll<HTMLElement>('.doc-table-scroller [data-radix-scroll-area-viewport]')) frame.scrollLeft = 0;
+  });
+  await expect.poll(async () => (await commentInTable()).inside).toBe(false);
   await openCommentRail(page);
-  await expect(visibleSpace(page).getByTestId('doc-comment-from-agent')).toBeVisible();
-  await expect(visibleSpace(page).getByText('Why is she leaving?')).toBeVisible();
+  await rail.getByTestId('doc-comment-card').click();
+  await expect.poll(async () => (await commentInTable()).inside).toBe(true);
 });
 
 test('a rewrite replaces the passage as one undo step', async () => {

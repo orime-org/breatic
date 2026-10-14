@@ -67,6 +67,7 @@ import {
   writeReply,
 } from '@web/spaces/document/document-comment-unsent';
 import { DocumentCommentDraftCard } from '@web/spaces/document/DocumentCommentDraftCard';
+import { revealInTable } from '@web/spaces/document/document-table-reveal';
 import {
   useCommentCards,
   type CommentCardView,
@@ -456,6 +457,15 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
       return;
     }
     revealed.current = reveal;
+    // The words may sit in a wide table scrolled away from them, which
+    // scrolling the body up and down does not bring back.
+    const words =
+      reading === null || reading === DRAFT_THREAD_ID
+        ? null
+        : editor.prosemirrorView?.dom.querySelector<HTMLElement>(
+            `.bn-thread-mark[data-bn-thread-id="${CSS.escape(reading)}"]`,
+        );
+    if (words !== null && words !== undefined) revealInTable(words);
     const cardTop = top.getBoundingClientRect().top + lifted + readTop;
     const clear = bar.getBoundingClientRect().bottom + CLEARANCE_BELOW_HEADER_PX;
     const floor = scroller.getBoundingClientRect().bottom;
@@ -466,7 +476,7 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
     if (by !== 0) {
       scroller.scrollTo({ top: scroller.scrollTop + by, behavior: 'instant' });
     }
-  }, [reveal, reading, readTop, heights, lifted, scroller]);
+  }, [reveal, reading, readTop, heights, lifted, scroller, editor]);
   /**
    * How far a pushed card, or the most hidden of them, reaches above the
    * header — from the layout, the one reading both the wheel and the focus
