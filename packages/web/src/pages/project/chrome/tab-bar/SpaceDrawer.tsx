@@ -380,9 +380,13 @@ function SpaceDrawerRow({
 
   const body = (
     <>
-      <span className='mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-chrome bg-muted text-muted-foreground'>
-        <Icon className='h-4 w-4' />
-      </span>
+      {/* The type icon on its own, as tall as the name line it sits beside
+          (user 2026-10-14). */}
+      <Icon
+        className='h-5 w-5 shrink-0 text-muted-foreground'
+        data-testid={`space-drawer-type-icon-${space.id}`}
+        aria-hidden='true'
+      />
       <span className='flex min-w-0 flex-1 flex-col gap-1'>
         {/* 20px tall whatever it holds: the marks are, so every row and a row
             being renamed stand the same height. */}
