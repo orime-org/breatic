@@ -263,6 +263,20 @@ describe('writing the address', () => {
     expectEverywhere(world, [WRITTEN()]);
   });
 
+  it('a write after the paste\'s undo step has closed is still not a step: one undo takes the whole block away', async () => {
+    const world = open();
+    pastePending(world, 'u1');
+    world.manager.stopCapturing();
+    world.controller.start('u1', { kind: 'address', url: 'https://imgs.example/x.jpg' });
+    await finish(world, 'u1');
+    expect(world.manager.undoStack).toHaveLength(1);
+    undo(world);
+    expectEverywhere(world, []);
+    redo(world);
+    await settle();
+    expectEverywhere(world, [WRITTEN()]);
+  });
+
   it('touches no block of another upload and no block that already has an address', async () => {
     const world = open();
     pastePending(world, 'u1');
@@ -349,8 +363,8 @@ describe('undo and redo around the upload (A6)', () => {
     pastePending(world, 'u1');
     world.manager.stopCapturing();
     world.controller.start('u1', { kind: 'address', url: 'https://imgs.example/x.jpg' });
-    const block = world.editor.document.find((b) => b.type === 'image')!;
-    world.editor.updateBlock(block, { props: { caption: 'Mine' } } as never);
+    const block = (world.editor.document as { id: string; type: string }[]).find((b) => b.type === 'image')!;
+    world.editor.updateBlock(block.id, { props: { caption: 'Mine' } } as never);
     await finish(world, 'u1');
     expectEverywhere(world, [WRITTEN('Mine')]);
     undo(world);
