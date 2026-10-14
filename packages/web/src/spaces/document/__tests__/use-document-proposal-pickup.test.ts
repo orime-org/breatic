@@ -15,11 +15,14 @@ import type { DocumentProposal } from '@breatic/shared';
 import { useDocumentProposals } from '@web/stores/document-proposals';
 
 const landProposal = vi.hoisted(() => vi.fn());
-vi.mock('@web/spaces/document/document-proposal-landing', () => ({ landProposal }));
+const landedAs = vi.hoisted(() => vi.fn());
+const revealBlockOf = vi.hoisted(() => vi.fn(() => 'b-shown'));
+vi.mock('@web/spaces/document/document-proposal-landing', () => ({ landProposal, landedAs, revealBlockOf }));
 
 const { useDocumentProposalPickup } = await import('@web/spaces/document/use-document-proposal-pickup');
 
-const HANDLE = { editor: {}, undoManager: {} } as never;
+const onChange = vi.hoisted(() => vi.fn());
+const HANDLE = { editor: { onChange }, undoManager: {} } as never;
 
 /**
  * A proposal for a document.
@@ -36,6 +39,9 @@ const cards = (): ReturnType<typeof useDocumentProposals.getState>['cards'] => u
 beforeEach(() => {
   useDocumentProposals.getState().reset();
   landProposal.mockReset();
+  landedAs.mockReset();
+  onChange.mockReset();
+  onChange.mockReturnValue(() => undefined);
 });
 
 describe('taking up the cards pressed for this document', () => {
@@ -118,5 +124,43 @@ describe('taking up the cards pressed for this document', () => {
     await waitFor(() => {
       expect(cards().p1?.state).toBe('failed');
     });
+  });
+});
+
+describe('a card shown again (inner#1509 review round 1)', () => {
+  it('shows a landed proposal and writes nothing', async () => {
+    landedAs.mockReturnValue('write');
+    useDocumentProposals.getState().view(proposal('p1'), 'write');
+
+    const { result } = renderHook(() => useDocumentProposalPickup('d1', HANDLE, 'granted', false));
+
+    await waitFor(() => {
+      expect(cards().p1).toEqual({ state: 'applied', action: 'write' });
+    });
+    expect(landProposal).not.toHaveBeenCalled();
+    expect(result.current).toEqual({ blockId: 'b-shown', proposalId: 'p1' });
+  });
+
+  it('puts back a card whose change was taken back, and writes nothing', async () => {
+    landedAs.mockReturnValue(null);
+    useDocumentProposals.getState().view(proposal('p1'), 'write');
+
+    renderHook(() => useDocumentProposalPickup('d1', HANDLE, 'granted', false));
+
+    await waitFor(() => {
+      expect(cards().p1).toBeUndefined();
+    });
+    expect(landProposal).not.toHaveBeenCalled();
+  });
+});
+
+describe('the document changing', () => {
+  it('is counted once the editor is there and on each change', () => {
+    renderHook(() => useDocumentProposalPickup('d1', HANDLE, 'granted', false));
+    expect(useDocumentProposals.getState().docVersion.d1).toBe(1);
+
+    (onChange.mock.calls[0]?.[0] as () => void)();
+
+    expect(useDocumentProposals.getState().docVersion.d1).toBe(2);
   });
 });

@@ -4,8 +4,9 @@
 /**
  * Each document proposal card's state (inner#1509, design §5.7).
  *
- * A card's state is written in two places only: `start` when the reader
- * presses it, and `report` when the press ends -- the project page
+ * A card's state is written in three places only: `start` when the reader
+ * presses it, `view` when they press "View" on a card that landed, and
+ * `report` when the press ends -- the project page
  * reports a document that is gone or a tab closed before the press was taken
  * up, the document Space reports the landing. Cards are kept by proposal id,
  * so several cards can wait on one document at once, and the document takes
@@ -31,13 +32,16 @@ export type DocumentProposalCardState =
   | 'spaceGone'
   | 'failed';
 
-/** How a press ended. */
-export type DocumentProposalOutcome = Exclude<DocumentProposalCardState, 'working'>;
+/**
+ * How a press ended. `reset`: a "View" press found the change no longer in
+ * the document, so the card goes back to how it first was.
+ */
+export type DocumentProposalOutcome = Exclude<DocumentProposalCardState, 'working'> | 'reset';
 
-/** A press waiting for its document. */
+/** A press waiting for its document: landing it, or only showing where it landed. */
 export interface PendingDocumentProposal {
   proposal: DocumentProposal;
-  action: LandingAction;
+  action: LandingAction | 'view';
   /** When it was pressed, relative to the other presses. */
   order: number;
 }
@@ -48,8 +52,14 @@ interface DocumentProposalsState {
   pending: Readonly<Partial<Record<string, PendingDocumentProposal>>>;
   /** How many presses there have been, for their order. */
   pressed: number;
+  /** How many times each document has changed since it was opened here, for cards to read it again. */
+  docVersion: Readonly<Partial<Record<string, number>>>;
   /** A press: ignored while the same card is working. */
   start: (proposal: DocumentProposal, action: LandingAction) => void;
+  /** A "View" press on a card that landed the way given; writes nothing. */
+  view: (proposal: DocumentProposal, landed: LandingAction) => void;
+  /** One document changed. */
+  bump: (spaceId: string) => void;
   /** How a press ended: ignored for a card that is not working. */
   report: (proposalId: string, outcome: DocumentProposalOutcome) => void;
   /** The same ending for every press waiting on one document. */
@@ -72,13 +82,16 @@ function ended(
   const waiting = s.pending[proposalId];
   if (waiting === undefined) return { cards: s.cards, pending: s.pending };
   const { [proposalId]: _gone, ...pending } = s.pending;
-  return { cards: { ...s.cards, [proposalId]: { state: outcome, action: waiting.action } }, pending };
+  const { [proposalId]: card, ...others } = s.cards;
+  if (outcome === 'reset' || card === undefined) return { cards: others, pending };
+  return { cards: { ...others, [proposalId]: { state: outcome, action: card.action } }, pending };
 }
 
 export const useDocumentProposals = create<DocumentProposalsState>()((set) => ({
   cards: {},
   pending: {},
   pressed: 0,
+  docVersion: {},
   start: (proposal, action) =>
     set((s) => {
       const id = proposal.proposalId;
@@ -89,6 +102,17 @@ export const useDocumentProposals = create<DocumentProposalsState>()((set) => ({
         pressed: s.pressed + 1,
       };
     }),
+  view: (proposal, landed) =>
+    set((s) => {
+      const id = proposal.proposalId;
+      if (s.pending[id] !== undefined) return s;
+      return {
+        cards: { ...s.cards, [id]: { state: 'applied', action: landed } },
+        pending: { ...s.pending, [id]: { proposal, action: 'view', order: s.pressed } },
+        pressed: s.pressed + 1,
+      };
+    }),
+  bump: (spaceId) => set((s) => ({ docVersion: { ...s.docVersion, [spaceId]: (s.docVersion[spaceId] ?? 0) + 1 } })),
   report: (proposalId, outcome) => set((s) => ended(s, proposalId, outcome)),
   reportSpace: (spaceId, outcome) =>
     set((s) =>
@@ -99,7 +123,7 @@ export const useDocumentProposals = create<DocumentProposalsState>()((set) => ({
           { cards: s.cards, pending: s.pending },
         ),
     ),
-  reset: () => set({ cards: {}, pending: {}, pressed: 0 }),
+  reset: () => set({ cards: {}, pending: {}, pressed: 0, docVersion: {} }),
 }));
 
 /**

@@ -21,7 +21,7 @@ import {
   getDocumentEditor,
   type DocumentEditorHandle,
 } from '@web/spaces/document/document-editor-cache';
-import { landedAs, landedOn, landProposal } from '@web/spaces/document/document-proposal-landing';
+import { landedAs, landProposal } from '@web/spaces/document/document-proposal-landing';
 
 afterEach(() => {
   _resetDocumentEditorCacheForTests();
@@ -249,9 +249,9 @@ describe('knowing a proposal has landed', () => {
     const handle = await open('Scene 1');
     const proposal = proposalOn(handle, 0, { kind: 'rewrite', body: '## Scene 1' });
 
-    expect(landedOn(handle, proposal)).toBe(false);
+    expect(landedAs(handle, proposal)).toBeNull();
     await landProposal(handle, proposal, 'write', true);
-    expect(landedOn(handle, proposal)).toBe(true);
+    expect(landedAs(handle, proposal)).toBe('write');
     expect((handle.editor.document[0] as { type?: string } | undefined)?.type).toBe('heading');
   });
 
@@ -280,7 +280,7 @@ describe('knowing a proposal has landed', () => {
     handle.editor.removeBlocks([blocks(handle)[0]!.id]);
 
     expect(threads(handle)).toHaveLength(1);
-    expect(landedOn(handle, proposal)).toBe(false);
+    expect(landedAs(handle, proposal)).toBeNull();
   });
 });
 

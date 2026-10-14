@@ -159,7 +159,7 @@ describe('after a press', () => {
     expect((screen.getByRole('button', { name: 'Add comment' }) as HTMLButtonElement).disabled).toBe(false);
   });
 
-  it('says it landed, offers to show it, and showing it presses again', async () => {
+  it('says it landed, and showing it asks only to be shown, waiting on that button', async () => {
     draw(BASE);
     await userEvent.click(screen.getByRole('button', { name: 'Add comment' }));
     act(() => {
@@ -168,7 +168,8 @@ describe('after a press', () => {
 
     expect(screen.getByTestId('document-proposal-status').textContent).toBe('Comment added');
     await userEvent.click(screen.getByRole('button', { name: 'View in Document' }));
-    expect(useDocumentProposals.getState().pending[BASE.proposalId]).toMatchObject({ action: 'comment' });
+    expect(useDocumentProposals.getState().pending[BASE.proposalId]).toMatchObject({ action: 'view' });
+    expect(screen.getByRole('button', { name: 'View in Document' }).getAttribute('aria-busy')).toBe('true');
   });
 });
 
@@ -182,5 +183,35 @@ describe('a card drawn again', () => {
 
     expect(peek).toHaveBeenCalledWith(`project-${PROJECT}/document-${BASE.spaceId}`);
     expect(screen.getByTestId('document-proposal-status').textContent).toBe('Replaced');
+  });
+});
+
+describe('a landed card whose document changes', () => {
+  it('goes back to how it first was when the open document no longer holds the change', () => {
+    const { quote: _quote, ...rewrite } = { ...BASE, kind: 'rewrite' as const };
+    peek.mockReturnValue({ editor: {} });
+    landedAs.mockReturnValue('write');
+    draw(rewrite);
+    expect(screen.getByTestId('document-proposal-status').textContent).toBe('Replaced');
+
+    landedAs.mockReturnValue(null);
+    act(() => {
+      useDocumentProposals.getState().bump(BASE.spaceId);
+    });
+
+    expect(screen.queryByTestId('document-proposal-status')).toBeNull();
+    expect(screen.getAllByRole('button').map((b) => b.textContent)).toEqual(['Add comment', 'Replace']);
+  });
+
+  it('trusts the open document over a landing reported earlier', async () => {
+    peek.mockReturnValue({ editor: {} });
+    draw(BASE);
+    await userEvent.click(screen.getByRole('button', { name: 'Add comment' }));
+    act(() => {
+      useDocumentProposals.getState().report(BASE.proposalId, 'applied');
+    });
+
+    expect(screen.queryByTestId('document-proposal-status')).toBeNull();
+    expect((screen.getByRole('button', { name: 'Add comment' }) as HTMLButtonElement).disabled).toBe(false);
   });
 });

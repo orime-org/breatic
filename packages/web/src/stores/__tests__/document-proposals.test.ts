@@ -92,3 +92,37 @@ describe('the cards waiting on a document', () => {
     expect([store().cards.p1?.state, store().cards.p2?.state, store().cards.p3?.state]).toEqual(['failed', 'failed', 'working']);
   });
 });
+
+describe('showing a landed card again (inner#1509 review round 1)', () => {
+  it('waits as a view, keeping the card as landed', () => {
+    store().view(proposal('p1'), 'write');
+
+    expect(store().cards.p1).toEqual({ state: 'applied', action: 'write' });
+    expect(pendingFor('d1')[0]).toMatchObject({ action: 'view' });
+  });
+
+  it('stays as landed when the change is still there', () => {
+    store().view(proposal('p1'), 'comment');
+    store().report('p1', 'applied');
+
+    expect(store().cards.p1).toEqual({ state: 'applied', action: 'comment' });
+  });
+
+  it('puts the card back as it first was when told to reset', () => {
+    store().view(proposal('p1'), 'write');
+    store().report('p1', 'reset');
+
+    expect(store().cards.p1).toBeUndefined();
+    expect(pendingFor('d1')).toEqual([]);
+  });
+});
+
+describe('a document changing', () => {
+  it('counts up for that document alone', () => {
+    store().bump('d1');
+    store().bump('d1');
+    store().bump('d2');
+
+    expect(store().docVersion).toEqual({ d1: 2, d2: 1 });
+  });
+});

@@ -148,13 +148,14 @@ export function landedAs(handle: Pick<Landable, 'editor'>, proposal: DocumentPro
 }
 
 /**
- * Whether a proposal has already landed in the document.
- * @param handle - The document.
+ * The block to bring into view for a proposal that landed: the one its
+ * comment is on, or the first block it wrote.
  * @param proposal - The proposal.
- * @returns True when it has landed.
+ * @param how - How it landed.
+ * @returns The block's id.
  */
-export function landedOn(handle: Pick<Landable, 'editor'>, proposal: DocumentProposal): boolean {
-  return landedAs(handle, proposal) !== null;
+export function revealBlockOf(proposal: DocumentProposal, how: LandingAction): string {
+  return how === 'comment' ? proposal.blockId! : writtenBlockId(proposal.proposalId, 0);
 }
 
 /**
@@ -199,9 +200,9 @@ async function landComment(handle: Landable, proposal: DocumentProposal): Promis
  * Writes a rewrite or an insert into the body as one undo step.
  * @param handle - The document.
  * @param proposal - The proposal.
- * @returns The id of the first block written.
+ * @returns Nothing; the blocks are in the body when it resolves.
  */
-async function landBlocks(handle: Landable, proposal: DocumentProposal): Promise<string> {
+async function landBlocks(handle: Landable, proposal: DocumentProposal): Promise<void> {
   const parsed = await markdownBlocks(proposal.body);
   const written = parsed.map((b, n) => ({ ...(b.block as object), id: writtenBlockId(proposal.proposalId, n) }));
   const { editor, undoManager } = handle;
@@ -219,7 +220,6 @@ async function landBlocks(handle: Landable, proposal: DocumentProposal): Promise
     else editor.insertBlocks(written as never, last.id, 'after');
   }
   undoManager.stopCapturing();
-  return writtenBlockId(proposal.proposalId, 0);
 }
 
 /**
@@ -237,17 +237,16 @@ export async function landProposal(
   writable: boolean,
 ): Promise<LandingResult> {
   const already = landedAs(handle, proposal);
-  if (already !== null) {
-    return { outcome: 'applied', blockId: already === 'comment' ? proposal.blockId! : writtenBlockId(proposal.proposalId, 0) };
-  }
+  if (already !== null) return { outcome: 'applied', blockId: revealBlockOf(proposal, already) };
   if (!writable) return { outcome: 'readOnly' };
   const problem = blockProblem(handle, proposal);
   if (problem !== null) return { outcome: problem };
   try {
     if (action === 'comment') {
-      return (await landComment(handle, proposal)) ? { outcome: 'applied', blockId: proposal.blockId! } : { outcome: 'changed' };
+      return (await landComment(handle, proposal)) ? { outcome: 'applied', blockId: revealBlockOf(proposal, 'comment') } : { outcome: 'changed' };
     }
-    return { outcome: 'applied', blockId: await landBlocks(handle, proposal) };
+    await landBlocks(handle, proposal);
+    return { outcome: 'applied', blockId: revealBlockOf(proposal, 'write') };
   } catch {
     return { outcome: 'failed' };
   }

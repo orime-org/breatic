@@ -91,9 +91,11 @@ function useRewriteChanges(proposal: DocumentProposal): Change[] | null {
  * offers the press; the project page opens the document and the document
  * Space lands it, then the card says how that ended.
  *
- * Whether it already landed is read off the open document each time the card
- * is drawn, so a reload knows too; pressing again checks the same thing first,
- * so nothing lands twice.
+ * Whether it landed is read off the open document whenever the document
+ * changes, so a reload knows too and an undo takes the card back; while the
+ * document is open it is the truth, over what a press reported. Pressing
+ * again checks the same thing first, so nothing lands twice; "View" only
+ * shows where it is.
  * @param root0 - The component props.
  * @param root0.proposal - The edit the Agent proposed.
  * @returns The card.
@@ -105,20 +107,23 @@ export const DocumentProposalCard = React.memo(function DocumentProposalCard({
   const { projectId: routeParam = '' } = useParams<{ projectId: string }>();
   const projectId = projectUuidFromRouteParam(routeParam);
   const card = useDocumentProposals((s) => s.cards[proposal.proposalId]);
+  const viewing = useDocumentProposals((s) => s.pending[proposal.proposalId]?.action === 'view');
+  const docVersion = useDocumentProposals((s) => s.docVersion[proposal.spaceId] ?? 0);
   const start = useDocumentProposals((s) => s.start);
+  const view = useDocumentProposals((s) => s.view);
   const changes = useRewriteChanges(proposal);
 
-  // Read again whenever this card's press ends, since that is when the
-  // document may have changed under it.
-  const landed = React.useMemo(() => {
+  // Read again whenever the document changes or this card's press ends.
+  const read = React.useMemo(() => {
     const handle = peekDocumentEditor(docName.documentSpace(projectId, proposal.spaceId));
-    return handle === undefined ? null : landedAs(handle, proposal);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- re-read when this card's state changes
-  }, [projectId, proposal, card?.state]);
+    return handle === undefined ? { open: false, landed: null } : { open: true, landed: landedAs(handle, proposal) };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- re-read when the document or this card's state changes
+  }, [projectId, proposal, docVersion, card?.state]);
 
   const working = card?.state === 'working';
-  const state: DocumentProposalCardState | 'idle' = working ? 'working' : landed !== null ? 'applied' : card?.state ?? 'idle';
-  const action: LandingAction | undefined = !working && landed !== null ? landed : card?.action;
+  const reported = read.open && card?.state === 'applied' ? undefined : card?.state;
+  const state: DocumentProposalCardState | 'idle' = working ? 'working' : read.landed !== null ? 'applied' : reported ?? 'idle';
+  const action: LandingAction | undefined = !working && read.landed !== null ? read.landed : card?.action;
 
   const onComment = React.useCallback(() => {
     start(proposal, 'comment');
@@ -127,8 +132,8 @@ export const DocumentProposalCard = React.memo(function DocumentProposalCard({
     start(proposal, 'write');
   }, [proposal, start]);
   const onView = React.useCallback(() => {
-    start(proposal, action ?? 'write');
-  }, [action, proposal, start]);
+    view(proposal, action ?? 'write');
+  }, [action, proposal, view]);
 
   const where = t(proposal.kind === 'insert' ? 'chat.documentProposal.whereInsert' : 'chat.documentProposal.where', {
     name: proposal.spaceName,
@@ -199,7 +204,14 @@ export const DocumentProposalCard = React.memo(function DocumentProposalCard({
         </div>
       )}
       {state === 'applied' ? (
-        <Button type='button' variant='outline' size='sm' onClick={onView} className='w-full max-w-[270px] self-center'>
+        <Button
+          type='button'
+          variant='outline'
+          size='sm'
+          loading={viewing}
+          onClick={onView}
+          className='w-full max-w-[270px] self-center'
+        >
           {t('chat.documentProposal.view')}
         </Button>
       ) : (

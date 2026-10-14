@@ -7,7 +7,11 @@
  *
  * The project page has opened this document; here every card waiting on it is
  * landed one after another in the order it was pressed, and how each ended is
- * reported back to the card. Nothing is taken while there is no editor yet or
+ * reported back to the card. A "View" press writes nothing: it shows where the
+ * change is, or, when the change is no longer in the document (the reader
+ * undid it), puts the card back as it first was. Each change to the document
+ * is counted, so a card reads again whether its change is still there.
+ * Nothing is taken while there is no editor yet or
  * while the connection has not said whether it may write. When the editor
  * cannot be built at all -- this build is too old for the document, or the
  * document was refused before any content arrived -- every card waiting on it
@@ -18,7 +22,7 @@ import * as React from 'react';
 
 import type { WriteAccess } from '@web/data/yjs/use-socket';
 import type { DocumentEditorHandle } from '@web/spaces/document/document-editor-cache';
-import { landProposal } from '@web/spaces/document/document-proposal-landing';
+import { landedAs, landProposal, revealBlockOf } from '@web/spaces/document/document-proposal-landing';
 import { pendingFor, useDocumentProposals } from '@web/stores/document-proposals';
 
 /** The block a card just landed, for the body to bring into view. */
@@ -50,6 +54,15 @@ export function useDocumentProposalPickup(
   const busy = React.useRef(false);
 
   React.useEffect(() => {
+    if (handle === null) return undefined;
+    const { bump } = useDocumentProposals.getState();
+    bump(spaceId);
+    return handle.editor.onChange(() => {
+      bump(spaceId);
+    });
+  }, [handle, spaceId]);
+
+  React.useEffect(() => {
     if (unbuildable) {
       if (pendingFor(spaceId).length > 0) useDocumentProposals.getState().reportSpace(spaceId, 'failed');
       return;
@@ -62,6 +75,12 @@ export function useDocumentProposalPickup(
         const next = pendingFor(spaceId).find((p) => !taken.current.has(p.proposal.proposalId));
         if (next === undefined) break;
         const id = next.proposal.proposalId;
+        if (next.action === 'view') {
+          const how = landedAs(handle, next.proposal);
+          report(id, how === null ? 'reset' : 'applied');
+          if (how !== null) setLanded({ blockId: revealBlockOf(next.proposal, how), proposalId: id });
+          continue;
+        }
         taken.current.add(id);
         const result = await landProposal(handle, next.proposal, next.action, writeAccess === 'granted').catch(
           () => ({ outcome: 'failed' }) as const,
