@@ -21,7 +21,7 @@ import { expect, type Locator, type Page } from 'playwright/test';
 import { test } from '../helpers/slot';
 
 import { openSmokeProject, smokeProjectId } from '../helpers/project';
-import { openTool, seedNode, zoomBy } from '../helpers/mini-tool';
+import { openTool, seedNode } from '../helpers/mini-tool';
 import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
 
 /**
@@ -323,6 +323,20 @@ test('a 2×2 grid cuts four tiles of the source into a group @needs-internet', a
   await expect(group).toHaveCount(1);
   await expect(group.getByTestId('group-name')).toContainText('GRID-');
   await expect(results()).toContainText(['GRID-r1c1-', 'GRID-r1c2-', 'GRID-r2c1-', 'GRID-r2c2-']);
+  // The tiles sit in their rows, laid out from the shown picture when the
+  // node records no size, and the group holds every one of them.
+  const named = (label: string): Locator => results().filter({ hasText: `GRID-${label}-` });
+  const r1 = (await named('r1c1').boundingBox())!;
+  const r2 = (await named('r2c1').boundingBox())!;
+  expect(r2.y).toBeGreaterThanOrEqual(r1.y + r1.height);
+  const frame = (await group.boundingBox())!;
+  for (const label of ['r1c1', 'r1c2', 'r2c1', 'r2c2']) {
+    const tile = (await named(label).boundingBox())!;
+    expect(tile.x).toBeGreaterThanOrEqual(frame.x);
+    expect(tile.y).toBeGreaterThanOrEqual(frame.y);
+    expect(tile.x + tile.width).toBeLessThanOrEqual(frame.x + frame.width + 1);
+    expect(tile.y + tile.height).toBeLessThanOrEqual(frame.y + frame.height + 1);
+  }
   // A7: the group is selected after the run, and one undo takes it all back.
   await expect(visibleSpace(page).locator('.react-flow__node.selected').getByTestId('group-node')).toHaveCount(1);
   await page.keyboard.press('ControlOrMeta+z');
@@ -439,10 +453,17 @@ test('an 8×8 grid uploads all sixty-four tiles @needs-internet', async () => {
   await stepSlider('mini-tool-param-rows-slider', 'ArrowRight', 5);
   await stepSlider('mini-tool-param-cols-slider', 'ArrowRight', 5);
   await page.getByTestId('mini-tool-run').click();
-  // The canvas draws only the nodes in view and keeps the reader's zoom, so
-  // zoom out until the whole group is in view.
-  await expect(visibleSpace(page).getByTestId('group-node')).toHaveCount(1, { timeout: 20_000 });
-  for (let i = 0; i < 4; i += 1) await zoomBy(page, 600);
+  // The camera zooms out to show the whole group the press built.
+  const group = visibleSpace(page).getByTestId('group-node');
+  await expect(group).toHaveCount(1, { timeout: 20_000 });
+  await expect
+    .poll(async () => {
+      const box = await group.boundingBox();
+      const pane = await visibleSpace(page).locator('.react-flow').boundingBox();
+      if (box === null || pane === null) return false;
+      return box.x >= pane.x && box.y >= pane.y && box.x + box.width <= pane.x + pane.width && box.y + box.height <= pane.y + pane.height;
+    }, { timeout: 5_000 })
+    .toBe(true);
   const urls = await storedResults(64);
   expect(new Set(urls).size).toBe(64);
 });
