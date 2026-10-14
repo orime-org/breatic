@@ -66,14 +66,6 @@ canvas.use("*", requireAuth);
 const tasksQueue = createQueue("tasks");
 
 /**
- * Pulling a source address into R2 (#207).
- *
- * Its own queue rather than a branch of `tasks`: everything after that queue's
- * dispatch runs unconditionally — recording a provider result, persisting
- * outputs, billing, announcing a generation — and an ingest wants none of it.
- */
-
-/**
  * `GET /canvas/limits` — frontend-consumed canvas knobs from
  * `config/limits.yaml` (#1782).
  *

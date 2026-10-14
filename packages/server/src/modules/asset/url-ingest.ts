@@ -29,7 +29,13 @@ import { assertStorageAllowance } from "@server/modules/asset/storageQuota.servi
 import { openUpload, type OpenedUpload } from "@server/modules/asset/upload-opening.js";
 import * as projectService from "@server/modules/project/project.service.js";
 
-/** The queue the worker's `runUrlIngest` reads. */
+/**
+ * The queue the worker's `runUrlIngest` reads (#207).
+ *
+ * Its own queue rather than a branch of `tasks`: everything after that queue's
+ * dispatch runs unconditionally — recording a provider result, persisting
+ * outputs, billing, announcing a generation — and an ingest wants none of it.
+ */
 const urlIngestQueue = createQueue("url-ingest");
 
 /** One address to fetch, and where its result lands. */
