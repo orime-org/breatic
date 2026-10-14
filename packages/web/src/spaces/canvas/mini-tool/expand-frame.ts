@@ -208,8 +208,13 @@ function resizeLocked(
   if (least > most + EPS) return frame;
   const width = clamp(wanted, least, most);
   const height = width / shareRatio;
-  const x = handle.includes('w') ? right - width : handle.includes('e') ? frame.x : 0.5 - width / 2;
-  const y = handle.includes('n') ? bottom - height : handle.includes('s') ? frame.y : 0.5 - height / 2;
+  // The side not dragged grows about the frame's own middle, as the crop box
+  // does (crop-math.ts), so a picture moved inside the frame stays where it
+  // is; it is held just far enough to keep wrapping the picture.
+  const middleX = clamp(frame.x + frame.width / 2 - width / 2, 1 - width, 0);
+  const middleY = clamp(frame.y + frame.height / 2 - height / 2, 1 - height, 0);
+  const x = handle.includes('w') ? right - width : handle.includes('e') ? frame.x : middleX;
+  const y = handle.includes('n') ? bottom - height : handle.includes('s') ? frame.y : middleY;
   return { x, y, width, height };
 }
 

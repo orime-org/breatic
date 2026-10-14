@@ -11,6 +11,7 @@ import { describe, it, expect } from 'vitest';
 
 import {
   UNIT_FRAME,
+  expandLayout,
   frameForRatio,
   isExpanded,
   moveSource,
@@ -99,6 +100,27 @@ describe('resizeFrame', () => {
     expect(frame.y + frame.height / 2).toBeCloseTo(0.5, 6);
   });
 
+  it('keeps a locked frame centred on its own middle across the drag, where the picture was moved in it', () => {
+    // The picture moved to the frame's top edge: the frame's top is the picture's.
+    const moved = { ...frameForRatio('9:16', LANDSCAPE, UNIT_FRAME), y: 0 };
+    const middle = moved.y + moved.height / 2;
+    const frame = resizeFrame(moved, 'e', { x: 1.2, y: 0.5 }, '9:16', LANDSCAPE, CAP);
+    expect(frame.height).toBeGreaterThan(moved.height);
+    expect(frame.y + frame.height / 2).toBeCloseTo(middle, 6);
+    expect(frame.y).toBeLessThanOrEqual(0);
+    expect(frame.y + frame.height).toBeGreaterThanOrEqual(1);
+  });
+
+  it('shifts a locked frame only as far as it takes to keep wrapping the picture', () => {
+    // The picture sits at the very top of a tall frame; growing it about its
+    // middle would leave the picture's top outside, so the frame stops at it.
+    const tall = { x: 0, y: 0, width: 1, height: 1.6 };
+    const frame = resizeFrame(tall, 's', { x: 0.5, y: 2.2 }, '1:1', { width: 1000, height: 1000 }, CAP);
+    expect(frame.y).toBeLessThanOrEqual(0);
+    expect(frame.x).toBeLessThanOrEqual(0);
+    expect(frame.x + frame.width).toBeGreaterThanOrEqual(1);
+  });
+
   it('can drag a locked frame back down to the source when the ratio is the source’s own', () => {
     const source = { width: 1600, height: 900 };
     const grown = resizeFrame(UNIT_FRAME, 'e', { x: 1.5, y: 0.5 }, '16:9', source, CAP);
@@ -141,5 +163,23 @@ describe('sourceTooLargeToExpand', () => {
 
   it('lets a source at the cap one way grow the other way', () => {
     expect(sourceTooLargeToExpand({ width: CAP, height: 6000 }, CAP)).toBe(false);
+  });
+});
+
+describe('expandLayout', () => {
+  it('sizes the canvas to the frame in source pixels and puts the source where the frame leaves it', () => {
+    expect(expandLayout({ x: -0.25, y: -0.1, width: 1.5, height: 1.3 }, { width: 1600, height: 1000 })).toEqual({
+      width: 2400,
+      height: 1300,
+      sourceX: 400,
+      sourceY: 100,
+    });
+  });
+
+  it('rounds to whole pixels and never cuts into the source', () => {
+    const layout = expandLayout({ x: -0.3333, y: 0, width: 1.6667, height: 1 }, { width: 999, height: 500 });
+    expect(Number.isInteger(layout.width)).toBe(true);
+    expect(layout.sourceX + 999).toBeLessThanOrEqual(layout.width);
+    expect(layout.height).toBe(500);
   });
 });

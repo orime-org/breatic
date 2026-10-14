@@ -4,8 +4,8 @@
 /**
  * The expand tool's two images (inner#1303 §6.3): the source padded onto the
  * frame's canvas, the new area transparent, and a mask of the same size,
- * white where the canvas is new and black over the source. The layout is
- * pure; the raster half is checked in the browser.
+ * white where the canvas is new and black over the source, laid out by
+ * `expandLayout`. Drawing them is checked in the browser.
  */
 
 import { pngOf, prepareCropSource } from '@web/spaces/canvas/focus/crop-export';
