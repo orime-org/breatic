@@ -128,9 +128,9 @@ export async function drawAdjusted(
 ): Promise<void> {
   const [fabric, { adjustFilters, ADJUST_GRAIN_SEED }] = await loadRuntime();
   const through = backend ?? fabric.getFilterBackend();
-  // A WebGL backend draws its last pass on a square of its tile size and cuts
-  // off what is past it.
-  const size = fitWithin(asked, 'tileSize' in through ? through.tileSize : Infinity);
+  const side = drawableSide(through);
+  if (side === 0) throw new Error('The filter backend has no WebGL context to draw with');
+  const size = fitWithin(asked, side);
   target.width = size.width;
   target.height = size.height;
   const chain = adjustFilters(value, ADJUST_GRAIN_SEED, intrinsicSize(el));
@@ -139,7 +139,42 @@ export async function drawAdjusted(
     target.getContext('2d')?.drawImage(source, 0, 0, size.width, size.height);
     return;
   }
-  through.applyFilters(chain, source, size.width, size.height, target);
+  const state = through.applyFilters(chain, source, size.width, size.height, target);
+  // Without a cache key Fabric uploads the source as a texture of its own and
+  // hands it back undeleted.
+  if ('gl' in through && through.gl !== undefined && state !== undefined && 'originalTexture' in state) {
+    through.gl.deleteTexture(state.originalTexture);
+  }
+}
+
+/** A filter backend, WebGL or 2D. */
+type FilterBackend = ReturnType<typeof import('fabric')['getFilterBackend']>;
+
+/**
+ * The longest side a backend can draw. A WebGL backend draws its last pass on
+ * a square of its tile size, in the drawing buffer the browser gave that
+ * canvas, which may be smaller than asked (Chrome gave 8192 for 16384 here);
+ * a lost context, or none, draws nothing. A 2D backend has no such bound.
+ * @param backend - The backend.
+ * @returns The side in pixels, 0 when it cannot draw.
+ * @throws {never} Never.
+ */
+export function drawableSide(backend: FilterBackend): number {
+  if (!('tileSize' in backend)) return Infinity;
+  const gl = backend.gl;
+  if (gl === undefined || gl.isContextLost()) return 0;
+  return Math.min(backend.tileSize, gl.drawingBufferWidth, gl.drawingBufferHeight);
+}
+
+/**
+ * Let a backend made for one export go, giving its WebGL context back first:
+ * Fabric's dispose drops the canvas only, and the browser holds a few contexts
+ * at a time.
+ * @param backend - The backend.
+ */
+export function releaseBackend(backend: InstanceType<typeof import('fabric')['WebGLFilterBackend']>): void {
+  backend.gl?.getExtension('WEBGL_lose_context')?.loseContext();
+  backend.dispose();
 }
 
 /**
@@ -174,10 +209,11 @@ export async function exportAdjustedBlob(source: CropSource, value: AdjustValue)
   // A backend of its own for a picture past the shared square, released at once.
   const own = side === 'shared' ? undefined : new fabric.WebGLFilterBackend({ tileSize: side });
   try {
+    if (drawableSide(own ?? fabric.getFilterBackend()) < Math.max(size.width, size.height)) throw new ImageTooLargeError();
     const canvas = document.createElement('canvas');
     await drawAdjusted(el, size, value, canvas, own);
     return await pngOf(canvas);
   } finally {
-    own?.dispose();
+    if (own !== undefined) releaseBackend(own);
   }
 }

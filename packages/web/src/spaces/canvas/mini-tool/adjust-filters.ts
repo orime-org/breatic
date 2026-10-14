@@ -131,13 +131,27 @@ class AdjustUnsharp extends filters.BaseFilter<'AdjustUnsharp', { amount: number
       uniform sampler2D uTexture;
       uniform float uAmount;
       uniform vec2 uDelta;
+      uniform float uStepW;
+      uniform float uStepH;
       varying vec2 vTexCoord;
+      // Fabric's textures sample by nearest neighbour, which snaps an offset
+      // under a texel to none or a whole one; this blends the four texels
+      // around it, as the 2D path's sample() does.
+      vec4 between(vec2 at) {
+        vec2 step = vec2(uStepW, uStepH);
+        vec2 texel = at / step - 0.5;
+        vec2 part = fract(texel);
+        vec2 base = (floor(texel) + 0.5) * step;
+        vec4 top = mix(texture2D(uTexture, base), texture2D(uTexture, base + vec2(step.x, 0.0)), part.x);
+        vec4 bottom = mix(texture2D(uTexture, base + vec2(0.0, step.y)), texture2D(uTexture, base + step), part.x);
+        return mix(top, bottom, part.y);
+      }
       void main() {
         vec4 c = texture2D(uTexture, vTexCoord);
-        vec4 around = (texture2D(uTexture, vTexCoord + vec2(uDelta.x, 0.0))
-          + texture2D(uTexture, vTexCoord - vec2(uDelta.x, 0.0))
-          + texture2D(uTexture, vTexCoord + vec2(0.0, uDelta.y))
-          + texture2D(uTexture, vTexCoord - vec2(0.0, uDelta.y))) * 0.25;
+        vec4 around = (between(vTexCoord + vec2(uDelta.x, 0.0))
+          + between(vTexCoord - vec2(uDelta.x, 0.0))
+          + between(vTexCoord + vec2(0.0, uDelta.y))
+          + between(vTexCoord - vec2(0.0, uDelta.y))) * 0.25;
         gl_FragColor = vec4(c.rgb + uAmount * (c.rgb - around.rgb), c.a);
       }`;
   }

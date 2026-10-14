@@ -11,7 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { defaultAdjustValue } from '@breatic/shared';
 
-import { drawAdjusted, exportBackendSide, previewSourceOf } from '@web/spaces/canvas/mini-tool/adjust-export';
+import { drawAdjusted, drawableSide, exportBackendSide, previewSourceOf, releaseBackend } from '@web/spaces/canvas/mini-tool/adjust-export';
 import { adjustFilters } from '@web/spaces/canvas/mini-tool/adjust-filters';
 
 vi.mock('@web/spaces/canvas/mini-tool/adjust-filters', async (importOriginal) => {
@@ -85,6 +85,43 @@ describe('previewSourceOf', () => {
   });
 });
 
+/**
+ * A WebGL context stub with a drawing buffer of a given side.
+ * @param side - The buffer's side.
+ * @param lost - Whether the context is lost.
+ * @returns The stub.
+ */
+function liveGl(side: number, lost = false) {
+  return { drawingBufferWidth: side, drawingBufferHeight: side, isContextLost: () => lost, deleteTexture: vi.fn() };
+}
+
+// The browser may give a WebGL canvas a smaller drawing buffer than asked
+// (Chrome on this Mac: 8192 for 16384), and the last pass is cut to it.
+describe('drawableSide', () => {
+  it('is the drawing buffer when it is smaller than the backend square', () => {
+    expect(drawableSide({ tileSize: 16384, gl: liveGl(8192) } as never)).toBe(8192);
+  });
+
+  it('is nothing on a lost context, or a WebGL backend that got none', () => {
+    expect(drawableSide({ tileSize: 4096, gl: liveGl(4096, true) } as never)).toBe(0);
+    expect(drawableSide({ tileSize: 4096 } as never)).toBe(0);
+  });
+
+  it('is unbounded without WebGL', () => {
+    expect(drawableSide({ applyFilters: vi.fn() } as never)).toBe(Infinity);
+  });
+});
+
+describe('releaseBackend', () => {
+  it('gives back its WebGL context before letting it go', () => {
+    const loseContext = vi.fn();
+    const dispose = vi.fn();
+    releaseBackend({ gl: { getExtension: () => ({ loseContext }) }, dispose } as never);
+    expect(loseContext).toHaveBeenCalledOnce();
+    expect(dispose).toHaveBeenCalledOnce();
+  });
+});
+
 describe('drawAdjusted', () => {
   let context: { mockRestore: () => void } | undefined;
   beforeEach(() => {
@@ -98,16 +135,27 @@ describe('drawAdjusted', () => {
   // A smaller draw shows the source's effect scaled, so the filters are set
   // for the source's own pixels, not the draw's.
   it('sets the filters for the source picture at any draw size', async () => {
-    const backend = { tileSize: 4096, applyFilters: vi.fn() };
+    const backend = { tileSize: 4096, gl: liveGl(4096), applyFilters: vi.fn() };
     const value = { ...defaultAdjustValue, sharpness: 50 };
     await drawAdjusted(picture(1000, 500), { width: 250, height: 125 }, value, document.createElement('canvas'), backend as never);
     expect(vi.mocked(adjustFilters)).toHaveBeenCalledWith(value, expect.any(Number), { width: 1000, height: 500 });
   });
 
+  // Fabric keeps the source's texture when it is given no cache key; nothing
+  // else deletes it.
+  it('deletes the source texture each draw leaves behind', () => {
+    const gl = liveGl(4096);
+    const backend = { tileSize: 4096, gl, applyFilters: vi.fn(() => ({ originalTexture: 'source-texture' })) };
+    const value = { ...defaultAdjustValue, sharpness: 50 };
+    return drawAdjusted(picture(100, 50), { width: 100, height: 50 }, value, document.createElement('canvas'), backend as never).then(() => {
+      expect(gl.deleteTexture).toHaveBeenCalledWith('source-texture');
+    });
+  });
+
   // The backend draws its last pass on a square of its tile size and cuts off
   // what is past it.
   it('draws no longer than the backend square, keeping the shape', async () => {
-    const backend = { tileSize: 100, applyFilters: vi.fn() };
+    const backend = { tileSize: 100, gl: liveGl(100), applyFilters: vi.fn() };
     const target = document.createElement('canvas');
     const value = { ...defaultAdjustValue, sharpness: 50 };
     await drawAdjusted(picture(1000, 500), { width: 400, height: 200 }, value, target, backend as never);
