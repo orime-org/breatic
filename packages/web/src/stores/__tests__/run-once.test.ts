@@ -230,7 +230,7 @@ describe('runOnce', () => {
     expect(send).toHaveBeenCalledTimes(1);
   });
 
-  it('shows the server sentence for a page too old to send the key', async () => {
+  it('hands a 400 the server words itself to the press, like any refusal', async () => {
     const onFailure = vi.fn();
     const err = failed({ status: 400, message: 'Refresh it', fromServer: true });
     await runOnce('generate:s:n', {
@@ -239,8 +239,37 @@ describe('runOnce', () => {
       send: vi.fn().mockRejectedValueOnce(err),
       onFailure,
     });
-    expect(toast.error).toHaveBeenCalledWith('Refresh it');
-    expect(onFailure).not.toHaveBeenCalled();
+    expect(onFailure).toHaveBeenCalledWith(err);
+    expect(toast.error).not.toHaveBeenCalled();
+  });
+
+  it('resolves with how the press ended', async () => {
+    const err = failed({ status: 422, message: 'bad', fromServer: true });
+    await expect(
+      runOnce('a', { scope: 'project', prepare: () => ({}), send: () => Promise.resolve('p1') }),
+    ).resolves.toEqual({ kind: 'done', result: 'p1' });
+    await expect(
+      runOnce('b', { scope: 'project', prepare: () => ({}), send: () => Promise.reject(err) }),
+    ).resolves.toEqual({ kind: 'failed', error: err });
+    await expect(
+      runOnce('c', { scope: 'project', prepare: () => null, send: vi.fn() }),
+    ).resolves.toEqual({ kind: 'released' });
+
+    const answer = pending<string>();
+    const outcome = runOnce('d', { scope: 'project', prepare: () => ({}), send: () => answer.promise });
+    await vi.advanceTimersByTimeAsync(0);
+    useCurrentUserStore.getState().setUser(null);
+    answer.resolve('late');
+    await expect(outcome).resolves.toEqual({ kind: 'released' });
+  });
+
+  it('gives a second press of the same intent the first press\'s outcome', async () => {
+    const answer = pending<string>();
+    const spec = { scope: 'project' as const, prepare: () => ({}), send: () => answer.promise };
+    const first = runOnce('project:create', spec);
+    const second = runOnce('project:create', spec);
+    answer.resolve('p1');
+    await expect(second).resolves.toEqual(await first);
   });
 
   it('stops asking before the server forgets the press, and says so', async () => {

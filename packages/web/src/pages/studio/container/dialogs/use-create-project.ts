@@ -61,11 +61,8 @@ export function useCreateProject(
       // The dialog selector sets `studioId`; fall back to the computed default
       // (defends the case where the dialog rendered without a selector).
       const studioId = values.studioId ?? defaultCreateStudioId(studios);
-      let created: ProjectDetail | null = null;
-      let failure: { err: unknown } | null = null;
-      await runOnce(PROJECT_CREATE_INTENT, {
+      const outcome = await runOnce(PROJECT_CREATE_INTENT, {
         scope: 'project',
-        meta: studioId,
         prepare: (): ProjectCreateBody => {
           if (studioId === undefined) throw new Error('no creatable studio');
           return {
@@ -78,7 +75,6 @@ export function useCreateProject(
         },
         send: (key, body: ProjectCreateBody) => projectsApi.create(body, key),
         onDone: (project: ProjectDetail) => {
-          created = project;
           const target = studios.find((s) => s.id === project.studioId);
           void queryClient.invalidateQueries({
             queryKey: ['studio', target?.slug, 'projects'],
@@ -93,15 +89,14 @@ export function useCreateProject(
           return undefined;
         },
         onFailure: (err) => {
-          failure = { err };
           const message = err instanceof Error ? err.message : '';
           toast.error(t('studio.container.projects.createError'), {
             description: message || undefined,
           });
         },
       });
-      if (failure !== null) throw (failure as { err: unknown }).err;
-      return created;
+      if (outcome.kind === 'failed') throw outcome.error;
+      return outcome.kind === 'done' ? outcome.result : null;
     },
     [studios, t, navigate, queryClient],
   );

@@ -1071,22 +1071,13 @@ export function useStartingNew(projectId: string): boolean {
  * @throws {unknown} The final failure, when the server refused.
  */
 async function createConversationOnce(projectId: string): Promise<ConversationOnTheWire | null> {
-  let created: ConversationOnTheWire | null = null;
-  let failure: { err: unknown } | null = null;
-  await runOnce(newConversationIntent(projectId), {
+  const outcome = await runOnce(newConversationIntent(projectId), {
     scope: 'conversation',
     prepare: () => projectId,
     send: (key, id: string) => chatApi.createConversation(id, key),
-    onDone: (made) => {
-      created = made;
-      return undefined;
-    },
-    onFailure: (err) => {
-      failure = { err };
-    },
   });
-  if (failure !== null) throw (failure as { err: unknown }).err;
-  return created;
+  if (outcome.kind === 'failed') throw outcome.error;
+  return outcome.kind === 'done' ? outcome.result : null;
 }
 
 /**

@@ -63,7 +63,7 @@ export interface MiniToolPanelContainerProps {
     spec: MiniToolSpec,
     snapshot: MiniToolSnapshot,
     drawing: MiniToolDrawingSnapshot | undefined,
-  ) => Promise<void>;
+  ) => Promise<unknown>;
 }
 
 /**

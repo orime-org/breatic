@@ -111,6 +111,16 @@ export interface RunOnceSpec<B, R> {
   onFailure?: (err: unknown) => void;
 }
 
+/**
+ * How a press ended: the server's final success, its final failure, or let go
+ * without an answer to act on (nothing to send, the account changed, the page
+ * came back, the server would no longer remember it).
+ */
+export type RunOnceOutcome<R> =
+  | { kind: 'done'; result: R }
+  | { kind: 'failed'; error: unknown }
+  | { kind: 'released' };
+
 /** One press in flight. */
 interface Press {
   /** `leaving` survives until the page leaves or comes back from the cache. */
@@ -118,8 +128,11 @@ interface Press {
   /** Clears the pending re-send, when one is scheduled. */
   cancel: (() => void) | null;
   /** The press's whole run, handed to a second press of the same intent. */
-  promise: Promise<void>;
+  promise: Promise<RunOnceOutcome<unknown>>;
 }
+
+/** The outcome of a press let go without an answer to act on. */
+const RELEASED: RunOnceOutcome<never> = { kind: 'released' };
 
 /** Each press waiting, by intent. */
 const presses = new Map<string, Press>();
@@ -239,33 +252,17 @@ function wait(press: Press, ms: number): Promise<boolean> {
 }
 
 /**
- * Tell the reader a press failed for good.
- *
- * A page opened before this release sends no key and is refused with a 400
- * the server words itself; that sentence is shown as it came.
- * @param err - The final failure.
- * @param onFailure - The press's own way of telling the reader.
- */
-function reportFailure(err: unknown, onFailure: ((err: unknown) => void) | undefined): void {
-  if (
-    err instanceof ApiException &&
-    err.status === 400 &&
-    err.fromServer &&
-    err.idempotencyStatus === undefined
-  ) {
-    toast.error(err.message);
-    return;
-  }
-  onFailure?.(err);
-}
-
-/**
  * Run one press from preparing to its final answer.
  * @param intentId - The press's intent.
  * @param press - The press.
  * @param spec - What the press does.
+ * @returns How the press ended.
  */
-async function drive<B, R>(intentId: string, press: Press, spec: RunOnceSpec<B, R>): Promise<void> {
+async function drive<B, R>(
+  intentId: string,
+  press: Press,
+  spec: RunOnceSpec<B, R>,
+): Promise<RunOnceOutcome<R>> {
   /**
    * Whether this press is still the one registered for its intent.
    * @returns False once it was let go.
@@ -275,45 +272,45 @@ async function drive<B, R>(intentId: string, press: Press, spec: RunOnceSpec<B, 
   try {
     body = spec.prepare ? await spec.prepare() : null;
   } catch (err) {
-    if (!current()) return;
+    if (!current()) return RELEASED;
     release(intentId, press);
     spec.onFailure?.(err);
-    return;
+    return { kind: 'failed', error: err };
   }
-  if (!current()) return;
+  if (!current()) return RELEASED;
   if (body === null || spec.send === undefined) {
     release(intentId, press);
-    return;
+    return RELEASED;
   }
   const key = newId();
   const stopAt = idempotencyRetryDeadline(spec.scope, Date.now());
   for (let attempt = 0; ; attempt += 1) {
     try {
       const result = await spec.send(key, body);
-      if (!current()) return;
+      if (!current()) return RELEASED;
       if (spec.onDone?.(result) === 'leaving') {
         press.phase = 'leaving';
         watchRestore();
-        return;
+      } else {
+        release(intentId, press);
       }
-      release(intentId, press);
-      return;
+      return { kind: 'done', result };
     } catch (err) {
-      if (!current()) return;
+      if (!current()) return RELEASED;
       const ms = resendWait(err, attempt);
       if (ms === null) {
         release(intentId, press);
-        reportFailure(err, spec.onFailure);
-        return;
+        spec.onFailure?.(err);
+        return { kind: 'failed', error: err };
       }
-      if (!(await wait(press, ms)) || !current()) return;
+      if (!(await wait(press, ms)) || !current()) return RELEASED;
       // Wall clock, checked as the re-send goes out: a laptop asleep in
       // between fires this timer on waking, and the server may have
       // forgotten the press by then.
       if (Date.now() >= stopAt) {
         release(intentId, press);
         toast.error(t('common.runOnce.unknownResult'));
-        return;
+        return RELEASED;
       }
     }
   }
@@ -326,16 +323,22 @@ async function drive<B, R>(intentId: string, press: Press, spec: RunOnceSpec<B, 
  * A press while one of the same intent waits does nothing and joins it.
  * @param intentId - Which press this is (`generate:{spaceId}:{nodeId}`, …).
  * @param spec - What the press does.
- * @returns The press's whole run.
+ * @returns How the press ended; a joining press gets the waiting one's.
  */
-export function runOnce<B, R>(intentId: string, spec: RunOnceSpec<B, R>): Promise<void> {
+export function runOnce<B, R>(
+  intentId: string,
+  spec: RunOnceSpec<B, R>,
+): Promise<RunOnceOutcome<R>> {
   const waiting = presses.get(intentId);
-  if (waiting) return waiting.promise;
-  const press: Press = { phase: 'working', cancel: null, promise: Promise.resolve() };
+  // One intent id names one request, so the waiting press answers with the
+  // same `R` as this one.
+  if (waiting) return waiting.promise as Promise<RunOnceOutcome<R>>;
+  const press: Press = { phase: 'working', cancel: null, promise: Promise.resolve(RELEASED) };
   presses.set(intentId, press);
   publish(intentId, spec.meta ?? true);
-  press.promise = drive(intentId, press, spec);
-  return press.promise;
+  const run = drive(intentId, press, spec);
+  press.promise = run;
+  return run;
 }
 
 /**

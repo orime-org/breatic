@@ -3981,7 +3981,7 @@ function CanvasSpaceInner({
       spec: MiniToolSpec,
       snapshot: MiniToolSnapshot,
       drawing: MiniToolDrawingSnapshot | undefined,
-    ): Promise<void> => {
+    ): Promise<unknown> => {
       const host = nodes.find((n) => n.id === nodeId);
       const view = asContentView(host?.data);
       if (host === undefined || view === undefined) return Promise.resolve();
