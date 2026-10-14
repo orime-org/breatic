@@ -86,7 +86,7 @@ describe('previewSourceOf', () => {
 });
 
 describe('drawAdjusted', () => {
-  let context: ReturnType<typeof vi.spyOn> | undefined;
+  let context: { mockRestore: () => void } | undefined;
   beforeEach(() => {
     context = vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({ drawImage: vi.fn() } as never);
   });
