@@ -7,9 +7,17 @@
  * than that square gets a backend of its own, up to what the graphics take.
  */
 
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { exportBackendSide, previewSourceOf } from '@web/spaces/canvas/mini-tool/adjust-export';
+import { defaultAdjustValue } from '@breatic/shared';
+
+import { drawAdjusted, exportBackendSide, previewSourceOf } from '@web/spaces/canvas/mini-tool/adjust-export';
+import { adjustFilters } from '@web/spaces/canvas/mini-tool/adjust-filters';
+
+vi.mock('@web/spaces/canvas/mini-tool/adjust-filters', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@web/spaces/canvas/mini-tool/adjust-filters')>();
+  return { ...actual, adjustFilters: vi.fn(actual.adjustFilters) };
+});
 
 describe('exportBackendSide', () => {
   it('uses the shared backend for a picture that fits its square', () => {
@@ -74,5 +82,36 @@ describe('previewSourceOf', () => {
   it('uses a picture no larger than the preview as it is', () => {
     const el = picture(400, 300);
     expect(previewSourceOf(el, { width: 400, height: 300 })).toBe(el);
+  });
+});
+
+describe('drawAdjusted', () => {
+  let context: ReturnType<typeof vi.spyOn> | undefined;
+  beforeEach(() => {
+    context = vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({ drawImage: vi.fn() } as never);
+  });
+  afterEach(() => {
+    context?.mockRestore();
+    vi.mocked(adjustFilters).mockClear();
+  });
+
+  // A smaller draw shows the source's effect scaled, so the filters are set
+  // for the source's own pixels, not the draw's.
+  it('sets the filters for the source picture at any draw size', async () => {
+    const backend = { tileSize: 4096, applyFilters: vi.fn() };
+    const value = { ...defaultAdjustValue, sharpness: 50 };
+    await drawAdjusted(picture(1000, 500), { width: 250, height: 125 }, value, document.createElement('canvas'), backend as never);
+    expect(vi.mocked(adjustFilters)).toHaveBeenCalledWith(value, expect.any(Number), { width: 1000, height: 500 });
+  });
+
+  // The backend draws its last pass on a square of its tile size and cuts off
+  // what is past it.
+  it('draws no longer than the backend square, keeping the shape', async () => {
+    const backend = { tileSize: 100, applyFilters: vi.fn() };
+    const target = document.createElement('canvas');
+    const value = { ...defaultAdjustValue, sharpness: 50 };
+    await drawAdjusted(picture(1000, 500), { width: 400, height: 200 }, value, target, backend as never);
+    expect([target.width, target.height]).toEqual([100, 50]);
+    expect(backend.applyFilters).toHaveBeenCalledWith(expect.anything(), expect.anything(), 100, 50, target);
   });
 });

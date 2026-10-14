@@ -341,19 +341,23 @@ type AdjustFilter = InstanceType<typeof filters.BaseFilter>;
  * of the same source (the node's preview) shows the export's effect scaled.
  * @param value - The sliders.
  * @param seed - The grain's seed, fixed for one panel so the preview and the export match.
- * @param sourceWidth - The source's width in pixels.
+ * @param source - The source's size in pixels.
+ * @param source.width - Its width.
+ * @param source.height - Its height.
  * @returns The chain.
  */
-export function adjustFilters(value: AdjustValue, seed: number, sourceWidth: number): AdjustFilter[] {
+export function adjustFilters(value: AdjustValue, seed: number, source: { width: number; height: number }): AdjustFilter[] {
   const terms = adjustTerms(value);
-  const onePixel = 1 / Math.max(1, sourceWidth);
+  // The unsharp reaches a share of the width both ways; Fabric's blur a share
+  // of the short side both ways (Blur.getBlurValue).
+  const onePixel = 1 / Math.max(1, source.width);
+  const oneShortPixel = 1 / Math.max(1, Math.min(source.width, source.height));
   const chain: AdjustFilter[] = [];
   if (terms.brightness !== 0 || terms.contrast !== 1 || terms.saturation !== 1) {
     chain.push(new filters.ColorMatrix({ matrix: eqMatrix(terms.brightness, terms.contrast, terms.saturation) }));
   }
   if (terms.hueRadians !== 0) chain.push(new filters.HueRotation({ rotation: terms.hueRadians / Math.PI }));
-  // Fabric's blur reaches `blur * 0.12` of the width either side (Blur.getBlurValue).
-  if (terms.blur > 0) chain.push(new filters.Blur({ blur: Math.max(terms.blur * MAX_BLUR, onePixel / 0.12) }));
+  if (terms.blur > 0) chain.push(new filters.Blur({ blur: Math.max(terms.blur * MAX_BLUR, oneShortPixel / 0.12) }));
   if (terms.grain > 0) chain.push(new AdjustGrain({ strength: terms.grain, seed }));
   if (terms.sharpen > 0) {
     chain.push(new AdjustUnsharp({ amount: terms.sharpen, radius: Math.max(SHARPEN_RADIUS, onePixel) }));
@@ -374,14 +378,16 @@ export function adjustFilters(value: AdjustValue, seed: number, sourceWidth: num
  * @param pixels - The picture, changed in place.
  * @param value - The sliders.
  * @param seed - The grain's seed.
- * @param sourceWidth - The width of the source these pixels draw, when they are a smaller draw of it.
+ * @param source - The size of the source these pixels draw, when they are a smaller draw of it.
+ * @param source.width - Its width.
+ * @param source.height - Its height.
  */
 export function adjustPixels(
   pixels: PixelState['imageData'],
   value: AdjustValue,
   seed: number,
-  sourceWidth: number = pixels.width,
+  source: { width: number; height: number } = pixels,
 ): void {
   // `applyTo` rather than `applyTo2d`: a matrix filter such as the hue works its matrix out there.
-  for (const filter of adjustFilters(value, seed, sourceWidth)) filter.applyTo({ imageData: pixels } as never);
+  for (const filter of adjustFilters(value, seed, source)) filter.applyTo({ imageData: pixels } as never);
 }

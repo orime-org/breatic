@@ -6,11 +6,12 @@
  * through each filter's 2D path. The WebGL path is checked in the browser.
  */
 
+import { filters } from 'fabric';
 import { describe, it, expect } from 'vitest';
 
 import { ADJUST_RANGES, defaultAdjustValue, type AdjustValue } from '@breatic/shared';
 
-import { adjustPixels } from '@web/spaces/canvas/mini-tool/adjust-filters';
+import { adjustFilters, adjustPixels } from '@web/spaces/canvas/mini-tool/adjust-filters';
 
 /** A picture's pixels. */
 interface Pixels {
@@ -45,12 +46,12 @@ function picture(size: number): Pixels {
  * @param source - The picture.
  * @param value - The sliders that move.
  * @param seed - The grain's seed.
- * @param sourceWidth - The width of the picture the adjust is for, when this is a smaller draw of it.
+ * @param sourceSide - The side of the picture the adjust is for, when this is a smaller draw of it.
  * @returns The adjusted copy.
  */
-function adjusted(source: Pixels, value: Partial<AdjustValue>, seed = 7, sourceWidth = source.width): Pixels {
+function adjusted(source: Pixels, value: Partial<AdjustValue>, seed = 7, sourceSide = source.width): Pixels {
   const copy = { ...source, data: new Uint8ClampedArray(source.data) };
-  adjustPixels(copy, { ...defaultAdjustValue, ...value }, seed, sourceWidth);
+  adjustPixels(copy, { ...defaultAdjustValue, ...value }, seed, { width: sourceSide, height: sourceSide });
   return copy;
 }
 
@@ -105,13 +106,27 @@ describe('adjustPixels', () => {
   // A radius kept as a share of the width falls under one pixel on a narrow
   // picture (sharpness moved this one by 2 levels); the export reaches at
   // least one of its own pixels, as ffmpeg's smallest unsharp matrix does.
-  it.each(['sharpness', 'clarity', 'noiseReduction'] as const)(
+  it.each(['sharpness', 'clarity'] as const)(
     'changes a picture narrower than 512 px clearly at full %s',
     (field) => {
       const source = picture(64);
       expect(maxDiff(adjusted(source, { [field]: 100 }).data, source.data)).toBeGreaterThan(20);
     },
   );
+
+  // Fabric's blur reaches a share of the short side both ways (Blur.getBlurValue),
+  // so the floor is a pixel of the short side.
+  it.each([
+    [64, 64],
+    [128, 64],
+    [64, 128],
+  ])('reaches at least one source pixel with the least noise reduction on a %ix%i picture', (width, height) => {
+    const blur = adjustFilters({ ...defaultAdjustValue, noiseReduction: 1 }, 7, { width, height }).find(
+      (filter) => filter instanceof filters.Blur,
+    );
+    expect(blur).toBeInstanceOf(filters.Blur);
+    expect((blur as InstanceType<typeof filters.Blur>).blur * 0.12 * Math.min(width, height)).toBeGreaterThanOrEqual(1);
+  });
 
   it('lays the same grain twice for the same seed', () => {
     const source = picture(32);

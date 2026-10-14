@@ -112,30 +112,49 @@ export function previewSourceOf(
  * Draw a picture through the adjust onto a canvas sized to the picture. The
  * picture must be CORS-loaded: WebGL refuses a cross-origin image outright.
  * @param el - The picture.
- * @param size - The size to draw it at.
- * @param size.width - Its width.
- * @param size.height - Its height.
+ * @param asked - The size to draw it at, held to what the backend can draw.
+ * @param asked.width - Its width.
+ * @param asked.height - Its height.
  * @param value - The sliders.
- * @param target - The canvas, resized to `size`.
+ * @param target - The canvas, resized to the size drawn.
  * @param backend - The filter backend to draw through; Fabric's shared one by default.
  */
 export async function drawAdjusted(
   el: CropSourceEl,
-  size: { width: number; height: number },
+  asked: { width: number; height: number },
   value: AdjustValue,
   target: HTMLCanvasElement,
   backend?: ReturnType<typeof import('fabric')['getFilterBackend']>,
 ): Promise<void> {
   const [fabric, { adjustFilters, ADJUST_GRAIN_SEED }] = await loadRuntime();
+  const through = backend ?? fabric.getFilterBackend();
+  // A WebGL backend draws its last pass on a square of its tile size and cuts
+  // off what is past it.
+  const size = fitWithin(asked, 'tileSize' in through ? through.tileSize : Infinity);
   target.width = size.width;
   target.height = size.height;
-  const chain = adjustFilters(value, ADJUST_GRAIN_SEED, intrinsicSize(el).width);
+  const chain = adjustFilters(value, ADJUST_GRAIN_SEED, intrinsicSize(el));
   const source = previewSourceOf(el, size);
   if (chain.length === 0) {
     target.getContext('2d')?.drawImage(source, 0, 0, size.width, size.height);
     return;
   }
-  (backend ?? fabric.getFilterBackend()).applyFilters(chain, source, size.width, size.height, target);
+  through.applyFilters(chain, source, size.width, size.height, target);
+}
+
+/**
+ * A size scaled down, keeping its shape, so neither side passes a length.
+ * @param size - The size.
+ * @param size.width - Its width.
+ * @param size.height - Its height.
+ * @param side - The longest a side may be.
+ * @returns The size, unchanged when it fits.
+ * @throws {never} Never.
+ */
+function fitWithin(size: { width: number; height: number }, side: number): { width: number; height: number } {
+  const scale = side / Math.max(size.width, size.height);
+  if (scale >= 1) return size;
+  return { width: Math.max(1, Math.round(size.width * scale)), height: Math.max(1, Math.round(size.height * scale)) };
 }
 
 /**
