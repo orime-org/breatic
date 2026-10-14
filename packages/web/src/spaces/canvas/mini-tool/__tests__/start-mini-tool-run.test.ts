@@ -252,10 +252,23 @@ describe('startMiniToolRun', () => {
       exportFile: vi.fn(() => Promise.resolve(files.map((file) => ({ file })))),
     });
 
+    // One undo takes back the tiles and their group, so both are written
+    // inside the one batch.
+    let inBatch = false;
+    const writtenInBatch: boolean[] = [];
+    canvas.runCanvasUndoBatch.mockImplementationOnce((_p: string, _s: string, body: () => void) => {
+      inBatch = true;
+      body();
+      inBatch = false;
+    });
+    for (let i = 0; i < 4; i++) canvas.addNode.mockImplementationOnce(() => void writtenInBatch.push(inBatch));
+    canvas.createGroup.mockImplementationOnce(() => void writtenInBatch.push(inBatch));
+
     await startMiniToolRun(run);
 
     expect(canvas.runCanvasUndoBatch).toHaveBeenCalledOnce();
     expect(canvas.createGroup).toHaveBeenCalledOnce();
+    expect(writtenInBatch).toEqual([true, true, true, true, true]);
     const [, , group, members] = canvas.createGroup.mock.calls[0]!;
     const nodes = canvas.addNode.mock.calls.map((call) => call[2]);
     expect(group.data.name).toBe('GRID-IMG');
