@@ -949,6 +949,34 @@ export function renderProductGuide(): string {
     "- Into a song model's lyrics box: a text node @'d in the lyrics box, where a proposal arrives with it " +
       "already @'d; it is not @'d in the style prompt above it.",
     "",
+    "## Document proposal cards",
+    "A comment, a rewrite or an insert you propose for the document the reader has open appears in this chat as " +
+      "a card: its title; a line naming the document, which for an insert says the content goes into it, " +
+      "followed after a · by the heading the passage sits under, or " +
+      `${quoted(t("chat.documentProposal.end"))} for an insert at the end; then the passage. A comment card ` +
+      "quotes the words the comment hangs on and shows the comment, with one " +
+      `button, ${quoted(t("chat.documentProposal.addComment"))}. A rewrite card shows the passage with the words ` +
+      "taken out struck through in red and the new words in green, and two buttons: " +
+      `${quoted(t("chat.documentProposal.addComment"))} puts the rewritten words on the passage as a comment, and ` +
+      `${quoted(t("chat.documentProposal.apply"))} replaces the passage with them. When the passage holds colours, ` +
+      `an alignment, column widths or comments, a rewrite card adds ${quoted(t("chat.documentProposal.lossy"))} ` +
+      "An insert card shows the new content as it will look, tables included, with " +
+      `${quoted(t("chat.documentProposal.insert"))}.`,
+    "Pressing a button opens the document, or switches to its tab, and the change lands as one step undo " +
+      "reverses; the document scrolls to it and outlines it for a moment. The pressed button spins meanwhile. A " +
+      "comment lands under the reader's own name, marked " +
+      `${quoted(t("spaces.document.comment.fromAgent"))}. The card then shows ` +
+      `${quoted(t("chat.documentProposal.appliedComment"))}, ${quoted(t("chat.documentProposal.appliedRewrite"))} ` +
+      `or ${quoted(t("chat.documentProposal.appliedInsert"))} and a ` +
+      `${quoted(t("chat.documentProposal.view"))} button that shows it again; a card that already landed shows ` +
+      "the same after a reload. When the passage changed or was deleted after the proposal the card shows " +
+      `${quoted(t("chat.documentProposal.changed"))} or ${quoted(t("chat.documentProposal.blockGone"))} and ` +
+      `nothing changes; ${quoted(t("chat.documentProposal.readOnly"))} when the reader's connection to the ` +
+      `document is read-only; ${quoted(t("chat.documentProposal.spaceGone"))} when the document is gone. When ` +
+      "writing fails the buttons can be pressed again, and the card shows the line for what was pressed: " +
+      `${quoted(t("chat.documentProposal.failedComment"))} ${quoted(t("chat.documentProposal.failedRewrite"))} ` +
+      `${quoted(t("chat.documentProposal.failedInsert"))}`,
+    "",
     "## Document spaces",
     "- Markdown at the start of a line: `# `, `## `, `### ` for headings; a number, a full stop and a space " +
       "(`1. `) for an ordered list (on a heading it numbers the heading instead); `- `, `* ` or `+ ` for a bullet " +
@@ -1135,7 +1163,9 @@ export function renderProductGuide(): string {
       `${quoted(t("spaces.document.comment.filterOpen"))} (chosen at first), ` +
       `${quoted(t("spaces.document.comment.filterAll"))} and an X that closes it; closing it drops anything not ` +
       "yet posted. Each card sits level with its words and quotes them, then shows each comment's writer (" +
-      `${quoted(t("spaces.document.comment.unknownAuthor"))} when not known), when, and what they wrote. ` +
+      `${quoted(t("spaces.document.comment.unknownAuthor"))} when not known, followed by ` +
+      `${quoted(t("spaces.document.comment.fromAgent"))} on a comment that came from a document proposal), when, ` +
+      "and what they wrote. " +
       "Clicking highlighted words opens the panel at their comment. Clicking a card opens it; a closed card " +
       "with more than two comments shows the first and the latest, with " +
       `${quoted(t("spaces.document.comment.folded", { count: 2 }))} between them. An open card has ` +

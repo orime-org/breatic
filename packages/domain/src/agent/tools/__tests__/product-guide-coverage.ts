@@ -418,6 +418,8 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "chat.relative.monthsAgo": { excluded: REASONS.FILLS_A_VALUE },
   "chat.relative.weeksAgo": { excluded: REASONS.FILLS_A_VALUE },
   "chat.relative.yesterday": { excluded: REASONS.FILLS_A_VALUE },
+  "chat.documentProposal.where": { described: /a line naming the document/ },
+  "chat.documentProposal.whereInsert": { described: /for an insert says the content goes into it/ },
   "chat.tool.checkingCanvas": { described: /a line may name what it is doing/ },
   "chat.tool.checkingModels": { described: /a line may name what it is doing/ },
   "chat.tool.failure.unreachable": { described: /A step that failed while the reply carried on leaves a red line/ },

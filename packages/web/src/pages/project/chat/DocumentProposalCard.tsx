@@ -34,16 +34,31 @@ const STATUS_KEY: Readonly<Record<Exclude<DocumentProposalCardState, 'working' |
   spaceGone: 'chat.documentProposal.spaceGone',
 };
 
+/** What a press puts in the document: a comment either way, else the rewrite or the insert itself. */
+type PressKind = 'comment' | 'rewrite' | 'insert';
+
+/** The line a press that landed shows. */
+const APPLIED_KEY: Readonly<Record<PressKind, string>> = {
+  comment: 'chat.documentProposal.appliedComment',
+  rewrite: 'chat.documentProposal.appliedRewrite',
+  insert: 'chat.documentProposal.appliedInsert',
+};
+
+/** The line a press that failed shows. */
+const FAILED_KEY: Readonly<Record<PressKind, string>> = {
+  comment: 'chat.documentProposal.failedComment',
+  rewrite: 'chat.documentProposal.failedRewrite',
+  insert: 'chat.documentProposal.failedInsert',
+};
+
 /**
- * Which word of the proposal's kind a press is: a comment either way, else the
- * rewrite or the insert itself.
+ * What a press puts in the document.
  * @param proposal - The proposal.
  * @param action - What was pressed.
- * @returns The word.
+ * @returns The kind of change.
  */
-function pressWord(proposal: DocumentProposal, action: LandingAction): 'Comment' | 'Rewrite' | 'Insert' {
-  if (action === 'comment') return 'Comment';
-  return proposal.kind === 'insert' ? 'Insert' : 'Rewrite';
+function pressKind(proposal: DocumentProposal, action: LandingAction): PressKind {
+  return action === 'comment' ? 'comment' : proposal.kind === 'insert' ? 'insert' : 'rewrite';
 }
 
 /**
@@ -123,8 +138,8 @@ export const DocumentProposalCard = React.memo(function DocumentProposalCard({
   const held = state !== 'idle' && state !== 'failed';
 
   let status: string | null = null;
-  if (state === 'applied' && action !== undefined) status = t(`chat.documentProposal.applied${pressWord(proposal, action)}`);
-  else if (state === 'failed' && action !== undefined) status = t(`chat.documentProposal.failed${pressWord(proposal, action)}`);
+  if (state === 'applied' && action !== undefined) status = t(APPLIED_KEY[pressKind(proposal, action)]);
+  else if (state === 'failed' && action !== undefined) status = t(FAILED_KEY[pressKind(proposal, action)]);
   else if (state !== 'idle' && state !== 'working' && state !== 'applied' && state !== 'failed') status = t(STATUS_KEY[state]);
 
   return (
