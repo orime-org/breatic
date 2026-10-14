@@ -11,7 +11,7 @@
 
 import { z } from "zod";
 
-import { defaultAdjustValue } from "@shared/adjust-value.js";
+import { ADJUST_RANGES } from "@shared/adjust-value.js";
 import { isModelTool } from "@shared/mini-tools/derive.js";
 import { outputsOf } from "@shared/mini-tools/outputs.js";
 import { MINI_TOOLS } from "@shared/mini-tools/tools.js";
@@ -50,7 +50,9 @@ function paramSchema(param: MiniToolParam): z.ZodType {
         .refine((range) => range.end > range.start);
     case "adjust":
       return z.strictObject(
-        Object.fromEntries(Object.keys(defaultAdjustValue).map((name) => [name, z.number().min(-100).max(100)])),
+        Object.fromEntries(
+          Object.entries(ADJUST_RANGES).map(([name, range]) => [name, z.number().min(range.min).max(range.max)]),
+        ),
       );
     case "orient":
       return z.object({ turns: z.number().int(), flipX: z.boolean(), flipY: z.boolean() });

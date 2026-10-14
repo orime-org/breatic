@@ -147,7 +147,7 @@ const ExpandRatioGroup = React.memo(function ExpandRatioGroup({
 /** The icon an empty slot shows: what it wants. */
 const SLOT_ICONS = { image: ImageIcon, audio: Music, video: Film } as const;
 
-/** Signed adjust sliders run from -100 to 100, as the request schema bounds them. */
+/** The adjust's channels, in the order the panel lists them; each runs over its `ADJUST_RANGES` range. */
 const ADJUST_FIELDS = Object.keys(defaultAdjustValue) as (keyof AdjustValue)[];
 
 /**

@@ -19,6 +19,7 @@ import {
   toolFilledParams,
   toolParamKeys,
 } from "@shared/mini-tools/index.js";
+import { defaultAdjustValue } from "@shared/adjust-value.js";
 import { MINI_TOOL_JOB_MAX_OUTPUTS } from "@shared/upload/mini-tool-job.js";
 import { UPLOAD_STATUS_MAX_KEYS } from "@shared/upload/upload-status.js";
 
@@ -287,6 +288,20 @@ describe("miniToolRequestSchema", () => {
   it("refuses a browser tool, which never reaches the server", () => {
     const parsed = miniToolRequestSchema.safeParse({ ...base, tool: "image.crop", params: {} });
     expect(parsed.success).toBe(false);
+  });
+
+  // Each channel's range is the one the sliders offer (ADJUST_RANGES).
+  it("holds each adjust channel to its own range", () => {
+    const adjust = (value: Record<string, number>) =>
+      miniToolRequestSchema.safeParse({
+        ...base,
+        tool: "video.adjust",
+        source: { url: "https://cdn.example.com/a.mp4" },
+        params: { value: { ...defaultAdjustValue, ...value } },
+      }).success;
+    expect(adjust({ grain: 100, exposure: -100 })).toBe(true);
+    expect(adjust({ grain: -50 })).toBe(false);
+    expect(adjust({ vignette: -1 })).toBe(false);
   });
 
   it("refuses a node count that differs from the tool's outputs", () => {
