@@ -140,6 +140,17 @@ describe('text only, in a table cell', () => {
     expect(table.content.rows[0]!.cells[0]!.content.map((c) => c.text).join('')).toBe('cell _x_');
     expect(editor.document).toHaveLength(1);
   });
+
+  it('every line goes into the cell, as a plain text paste of the same lines does', () => {
+    const { editor } = open(
+      [{ type: 'table', content: { type: 'tableContent', rows: [{ cells: [['cell ']] }] } }, { type: 'paragraph', content: 'after' }],
+      0,
+    );
+    paste(editor, clipboard({ id: 't', type: 'text', position: { x: 0, y: 0 }, data: { body: body('one', 'two') } }));
+    const table = (editor.document as { type: string; content: { rows: { cells: { content: { type: string; text?: string }[] }[] }[] } }[])[0]!;
+    expect(table.content.rows[0]!.cells[0]!.content.map((c) => c.text ?? '\n').join('')).toBe('cell one\ntwo');
+    expect(shape(editor)).toEqual(['table:', 'paragraph:after']);
+  });
 });
 
 describe('with media', () => {

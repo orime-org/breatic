@@ -65,8 +65,9 @@ function open(blocks: unknown[]): { editor: Editor; manager: Y.UndoManager; sink
  * Puts the caret at the end of the first text block inside a top-level block.
  * @param editor - The editor.
  * @param index - Which top-level block.
+ * @returns The caret's position.
  */
-function caretIn(editor: Editor, index: number): void {
+function caretIn(editor: Editor, index: number): number {
   const view = editor.prosemirrorView!;
   let end = -1;
   view.state.doc.firstChild!.forEach((container, offset, i) => {
@@ -78,6 +79,7 @@ function caretIn(editor: Editor, index: number): void {
   });
   view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, end)));
   view.focus();
+  return end;
 }
 
 /**
@@ -87,10 +89,40 @@ function caretIn(editor: Editor, index: number): void {
  * @param text - The clipboard's plain text.
  */
 function paste(editor: Editor, html: string, text: string): void {
-  const event = new Event('paste', { bubbles: true, cancelable: true });
-  // Configurable, as the browser's own is: it lives on the prototype.
-  Object.defineProperty(event, 'clipboardData', {
-    configurable: true,
+  const data = {
+    types: html === '' ? ['text/plain'] : ['text/html', 'text/plain'],
+    files: [],
+    items: [],
+    getData: (type: string): string => (type === 'text/html' ? html : type === 'text/plain' ? text : ''),
+  };
+  // The clipboard read through a getter on the prototype, as a browser's
+  // ClipboardEvent holds it: a hook that redefines it makes an own property.
+  class PasteEvent extends Event {
+    /**
+     * The clipboard.
+     * @returns The data.
+     */
+    get clipboardData(): typeof data {
+      return data;
+    }
+  }
+  editor.prosemirrorView!.dom.dispatchEvent(new PasteEvent('paste', { bubbles: true, cancelable: true }));
+}
+
+/**
+ * Drops clipboard data at a document position, the way a drop from another
+ * page delivers it.
+ * @param editor - The editor.
+ * @param at - Where the pointer is.
+ * @param html - The dragged HTML.
+ * @param text - The dragged plain text.
+ */
+function drop(editor: Editor, at: number, html: string, text: string): void {
+  const view = editor.prosemirrorView!;
+  view.posAtCoords = (): { pos: number; inside: number } => ({ pos: at, inside: -1 });
+  const event = new Event('drop', { bubbles: true, cancelable: true });
+  Object.assign(event, { clientX: 1, clientY: 1 });
+  Object.defineProperty(event, 'dataTransfer', {
     value: {
       types: ['text/html', 'text/plain'],
       files: [],
@@ -98,7 +130,17 @@ function paste(editor: Editor, html: string, text: string): void {
       getData: (type: string): string => (type === 'text/html' ? html : type === 'text/plain' ? text : ''),
     },
   });
-  editor.prosemirrorView!.dom.dispatchEvent(event);
+  view.dom.dispatchEvent(event);
+}
+
+/**
+ * Types words at the caret, as one keystroke-sized edit.
+ * @param editor - The editor.
+ * @param words - The words.
+ */
+function type(editor: Editor, words: string): void {
+  const view = editor.prosemirrorView!;
+  view.dispatch(view.state.tr.insertText(words));
 }
 
 /**
@@ -183,6 +225,41 @@ describe('with the caret in a table cell (A7)', () => {
     expect(firstCell(editor, 0)).toBe('cell words');
   });
 
+  it('a drop of web content puts the words in the cell and the medium under the table, pending', () => {
+    const { editor, sink } = open([TABLE, { type: 'paragraph', content: 'after' }]);
+    const at = caretIn(editor, 0);
+
+    drop(editor, at, '<p>dropped</p><img src="https://elsewhere.example/a.png">', 'dropped');
+
+    expect(firstCell(editor, 0)).toContain('cell dropped');
+    expect(shape(editor)).toEqual(['table', 'image[pending|]', 'paragraph:after']);
+    expect(sink.start).toHaveBeenCalledOnce();
+  });
+
+  it('plain text carrying a Markdown picture puts the words in the cell and the picture under the table', () => {
+    const { editor, sink } = open([TABLE, { type: 'paragraph', content: 'after' }]);
+    caretIn(editor, 0);
+
+    paste(editor, '', 'words ![alt](https://elsewhere.example/a.png) more');
+
+    expect(shape(editor)).toEqual(['table', 'image[pending|]', 'paragraph:after']);
+    expect(sink.start).toHaveBeenCalledOnce();
+  });
+
+  it('web content with a picture and a ragged table pastes whole', () => {
+    const { editor, sink } = open([TABLE, { type: 'paragraph', content: 'after' }]);
+    caretIn(editor, 0);
+
+    paste(
+      editor,
+      '<img src="https://elsewhere.example/a.png"><table><tr><td>a</td><td>b</td></tr><tr><td>c</td></tr></table>',
+      'a b c',
+    );
+
+    expect(shape(editor)).toContain('image[pending|]');
+    expect(sink.start).toHaveBeenCalledOnce();
+  });
+
   it('is taken away by one undo', () => {
     const { editor, manager } = open([TABLE]);
     caretIn(editor, 0);
@@ -217,5 +294,64 @@ describe('web content dropped in (A5)', () => {
 
     expect(shape(editor)).toContain('image[pending|]');
     expect(sink.start).toHaveBeenCalledOnce();
+  });
+});
+
+describe('a paste or a drop is an undo step of its own (A6)', () => {
+  it('typing just before a paste of web content stays when the paste is undone', () => {
+    const { editor, manager } = open([{ type: 'paragraph', content: 'lead' }]);
+    caretIn(editor, 0);
+
+    type(editor, ' typed');
+    paste(editor, '<p>web words</p><img src="https://elsewhere.example/a.png">', 'web words');
+    manager.undo();
+
+    expect(shape(editor)).toEqual(['paragraph:lead typed']);
+  });
+
+  it('typing just after a paste is undone on its own', () => {
+    const { editor, manager } = open([{ type: 'paragraph', content: 'lead' }]);
+    caretIn(editor, 0);
+
+    paste(editor, '<p>web words</p><img src="https://elsewhere.example/a.png">', 'web words');
+    type(editor, 'Z');
+    manager.undo();
+
+    expect(shape(editor).join(' ')).not.toContain('Z');
+    expect(shape(editor)).toContain('image[pending|]');
+  });
+
+  it('typing just before a drop of web content stays when the drop is undone', () => {
+    const { editor, manager } = open([{ type: 'paragraph', content: 'lead' }]);
+    const at = caretIn(editor, 0);
+
+    type(editor, ' typed');
+    drop(editor, at + ' typed'.length, '<p>dropped</p><img src="https://elsewhere.example/a.png">', 'dropped');
+    manager.undo();
+
+    expect(shape(editor)).toEqual(['paragraph:lead typed']);
+  });
+
+  it('typing just before a paste in a table cell stays when the paste is undone', () => {
+    const { editor, manager } = open([TABLE]);
+    caretIn(editor, 0);
+
+    type(editor, 'typed');
+    paste(editor, '<p>words</p><img src="https://elsewhere.example/a.png">', 'words');
+    manager.undo();
+
+    expect(shape(editor)).toEqual(['table']);
+    expect(firstCell(editor, 0)).toBe('cell typed');
+  });
+
+  it('typing just before a plain text paste stays when the paste is undone', () => {
+    const { editor, manager } = open([{ type: 'paragraph', content: 'lead' }]);
+    caretIn(editor, 0);
+
+    type(editor, ' typed');
+    paste(editor, '', ' plain');
+    manager.undo();
+
+    expect(shape(editor)).toEqual(['paragraph:lead typed']);
   });
 });
