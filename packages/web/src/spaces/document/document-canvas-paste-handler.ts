@@ -72,7 +72,12 @@ export function canvasPasteHandler(sink: CanvasPasteSink, next: PasteHandler): P
           if (item.kind === 'text') return item.lines.map((line) => ({ type: 'paragraph', content: line }));
           const uploadId = crypto.randomUUID();
           started.push({ uploadId, source: sourceOf(item) });
-          return [pendingBlock(item.type, uploadId, item.name, item.caption)];
+          return [
+            pendingBlock(item.type, uploadId, item.name, item.caption, {
+              ...(item.mediaWidth !== undefined && { mediaWidth: item.mediaWidth }),
+              ...(item.mediaHeight !== undefined && { mediaHeight: item.mediaHeight }),
+            }),
+          ];
         });
         sink.stopCapturing?.();
         insertAtGap(view, gap, aimed, blocks);

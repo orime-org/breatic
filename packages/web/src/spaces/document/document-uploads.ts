@@ -29,6 +29,8 @@ export interface PendingBlock {
     readonly uploadId: string;
     readonly name: string;
     readonly caption: string;
+    readonly mediaWidth?: number;
+    readonly mediaHeight?: number;
   };
 }
 
@@ -38,10 +40,19 @@ export interface PendingBlock {
  * @param uploadId - The upload behind it.
  * @param name - The file's or the node's name.
  * @param caption - Its caption.
+ * @param size - Its pixel size, when known before the upload ends.
+ * @param size.mediaWidth - Its width.
+ * @param size.mediaHeight - Its height.
  * @returns The block.
  */
-export function pendingBlock(type: MediaBlockType, uploadId: string, name: string, caption: string): PendingBlock {
-  return { type, props: { url: '', uploadId, name, caption } };
+export function pendingBlock(
+  type: MediaBlockType,
+  uploadId: string,
+  name: string,
+  caption: string,
+  size: { mediaWidth?: number; mediaHeight?: number } = {},
+): PendingBlock {
+  return { type, props: { url: '', uploadId, name, caption, ...size } };
 }
 
 /** What the file entries need from the page. */

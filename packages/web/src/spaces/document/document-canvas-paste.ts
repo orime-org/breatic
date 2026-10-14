@@ -25,6 +25,9 @@ export interface PastedMedia {
   readonly type: PastedMediaType;
   readonly name: string;
   readonly caption: string;
+  /** The node's pixel size, when it has one, so the block keeps its shape while it loads. */
+  readonly mediaWidth?: number;
+  readonly mediaHeight?: number;
   readonly source: PastedMediaSource;
 }
 
@@ -114,10 +117,13 @@ function itemOf(node: ClipboardNode): PastedItem | null {
   if (content === '') return null;
   const name = text(node.data, 'name');
   const type = node.type as PastedMediaType;
+  const { mediaWidth, mediaHeight } = node.data;
+  const size =
+    typeof mediaWidth === 'number' && typeof mediaHeight === 'number' ? { mediaWidth, mediaHeight } : {};
   if (node.external === true) {
     return routeAddress(content) === 'skip'
       ? null
-      : { kind: 'media', type, name, caption: name, source: { kind: 'address', url: content } };
+      : { kind: 'media', type, name, caption: name, ...size, source: { kind: 'address', url: content } };
   }
   const coverUrl = text(node.data, 'coverUrl');
   return {
@@ -125,6 +131,7 @@ function itemOf(node: ClipboardNode): PastedItem | null {
     type,
     name,
     caption: name,
+    ...size,
     source: { kind: 'ours', url: content, ...(coverUrl !== '' && { coverUrl }) },
   };
 }
