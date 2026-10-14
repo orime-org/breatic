@@ -159,44 +159,52 @@ export function NodeExpandLayer({ nodeId, wrapper }: NodeExpandLayerProps): Reac
   const scale = handleScale(zoom);
   const grown = isExpanded(frame, sourceSize);
   return (
-    <div
-      data-testid='mini-tool-expand-frame'
-      className='nodrag nopan absolute touch-none border-solid border-background bg-muted outline outline-foreground'
-      style={{
-        left: at.x + (frame.x + shift.x) * box.width,
-        top: at.y + (frame.y + shift.y) * box.height,
-        width: frame.width * box.width,
-        height: frame.height * box.height,
-        borderWidth: scale,
-        outlineWidth: scale,
-      }}
-      onPointerMove={onMove}
-      onPointerUp={onUp}
-      onPointerCancel={onUp}
-    >
-      {geometry.src === null ? null : (
-        <img
-          data-testid='mini-tool-expand-source'
-          src={geometry.src}
-          alt=''
-          draggable={false}
-          className={`absolute select-none ${grown && !exporting ? 'cursor-move' : ''}`}
-          style={{ left: -frame.x * box.width, top: -frame.y * box.height, width: box.width, height: box.height }}
-          onPointerDown={(e) => {
-            if (grown) begin(e, { type: 'move', start: { x: e.clientX, y: e.clientY } });
-          }}
-        />
-      )}
-      {CROP_HANDLES.map(({ id, className }) => (
-        <div
-          key={id}
-          data-testid={`mini-tool-expand-handle-${id}`}
-          // Round while the frame is free, square while a ratio holds it.
-          className={`absolute h-2 w-2 border border-foreground bg-background ${ratio === 'free' ? 'rounded-full ' : ''}${className}`}
-          style={{ scale: String(scale) }}
-          onPointerDown={(e) => begin(e, { type: 'resize', handle: id })}
-        />
-      ))}
-    </div>
+    <>
+      {/* The node's own picture stays put while its copy moves in the frame. */}
+      <div
+        data-testid='mini-tool-expand-cover'
+        className='pointer-events-none absolute bg-muted'
+        style={{ left: at.x, top: at.y, width: box.width, height: box.height }}
+      />
+      <div
+        data-testid='mini-tool-expand-frame'
+        className='nodrag nopan absolute touch-none border-solid border-background bg-muted outline outline-foreground'
+        style={{
+          left: at.x + (frame.x + shift.x) * box.width,
+          top: at.y + (frame.y + shift.y) * box.height,
+          width: frame.width * box.width,
+          height: frame.height * box.height,
+          borderWidth: scale,
+          outlineWidth: scale,
+        }}
+        onPointerMove={onMove}
+        onPointerUp={onUp}
+        onPointerCancel={onUp}
+      >
+        {geometry.src === null ? null : (
+          <img
+            data-testid='mini-tool-expand-source'
+            src={geometry.src}
+            alt=''
+            draggable={false}
+            className={`absolute select-none ${grown && !exporting ? 'cursor-move' : ''}`}
+            style={{ left: -frame.x * box.width, top: -frame.y * box.height, width: box.width, height: box.height }}
+            onPointerDown={(e) => {
+              if (grown) begin(e, { type: 'move', start: { x: e.clientX, y: e.clientY } });
+            }}
+          />
+        )}
+        {CROP_HANDLES.map(({ id, className }) => (
+          <div
+            key={id}
+            data-testid={`mini-tool-expand-handle-${id}`}
+            // Round while the frame is free, square while a ratio holds it.
+            className={`absolute h-2 w-2 border border-foreground bg-background ${ratio === 'free' ? 'rounded-full ' : ''}${className}`}
+            style={{ scale: String(scale) }}
+            onPointerDown={(e) => begin(e, { type: 'resize', handle: id })}
+          />
+        ))}
+      </div>
+    </>
   );
 }

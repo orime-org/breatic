@@ -91,6 +91,19 @@ describe('NodeExpandLayer', () => {
     expect(screen.getByTestId('mini-tool-expand-source').style.left).toBe('100px');
   });
 
+  // The node's own picture stays where it is while its copy moves in the
+  // frame; a frame shrunk off that spot must not let it show beside the copy.
+  it('covers the node\'s own picture wherever the frame is', () => {
+    mount();
+    act(() => store().setExpand({ frame: { x: 0, y: 0, width: 2, height: 1 }, ratio: 'free' }));
+    drag(screen.getByTestId('mini-tool-expand-source'), [200, 150], [400, 150]);
+    drag(screen.getByTestId('mini-tool-expand-handle-w'), [200, 150], [400, 150]);
+    const frame = screen.getByTestId('mini-tool-expand-frame');
+    expect(parseFloat(frame.style.left)).toBeGreaterThan(0);
+    const cover = screen.getByTestId('mini-tool-expand-cover');
+    expect([cover.style.left, cover.style.top, cover.style.width, cover.style.height]).toEqual(['0px', '0px', '400px', '300px']);
+  });
+
   it('keeps a moved picture where it is when Free leaves the frame as it was', () => {
     mount();
     act(() => store().setExpand({ frame: { x: -0.5, y: 0, width: 2, height: 1 }, ratio: '16:9' }));
