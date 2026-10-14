@@ -13,6 +13,7 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import type { DocumentProposal } from '@breatic/shared';
 
+import { assetsApi } from '@web/data/api/assets';
 import { DocumentProposalCard } from '@web/pages/project/chat/DocumentProposalCard';
 import { useDocumentProposals } from '@web/stores/document-proposals';
 
@@ -177,6 +178,22 @@ describe('an insert card', () => {
       expect(screen.getByTestId('document-proposal-media-left-out')).toBeTruthy();
     });
     expect(screen.queryAllByRole('button')).toHaveLength(0);
+  });
+
+  it('counts our own media as ours once our address is fetched, and keeps the press (review round 4)', async () => {
+    const ours = 'https://cdn.example/';
+    const spy = vi.spyOn(assetsApi, 'fetchUploadConfig').mockResolvedValue({ assetUrlPrefix: ours } as never);
+    try {
+      const { quote: _quote, ...insert } = { ...BASE, kind: 'insert' as const, body: `![own](${ours}a.png)` };
+      draw(insert);
+
+      await waitFor(() => {
+        expect((screen.getByRole('button', { name: 'Insert' }) as HTMLButtonElement).disabled).toBe(false);
+      });
+      expect(screen.queryByTestId('document-proposal-media-left-out')).toBeNull();
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it('shows the passage it goes after', () => {

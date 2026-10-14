@@ -21,7 +21,7 @@ import { deriveId, occurrences, type DocumentProposal } from '@breatic/shared';
 import { blockPlainText } from '@web/spaces/document/document-blocks-read';
 import { commentOn, type CommentAim } from '@web/spaces/document/document-comment-post';
 import { asCommentBody, commentsOn } from '@web/spaces/document/document-comment-extension';
-import { ourMediaPrefix, ownMediaOnly, type WrittenBlock } from '@web/spaces/document/document-external-media';
+import { ourMediaPrefixReady, ownMediaOnly, type WrittenBlock } from '@web/spaces/document/document-external-media';
 import { threadRangesByThread } from '@web/spaces/document/document-comment-ranges';
 import type { DocumentEditorHandle } from '@web/spaces/document/document-editor-cache';
 import { markdownBlocks } from '@web/spaces/document/document-markdown';
@@ -222,7 +222,7 @@ async function landComment(handle: Landable, proposal: DocumentProposal): Promis
  */
 async function landBlocks(handle: Landable, proposal: DocumentProposal): Promise<void> {
   const parsed = await markdownBlocks(proposal.body);
-  const { blocks: kept } = ownMediaOnly(parsed.map((b) => b.block as WrittenBlock), ourMediaPrefix());
+  const { blocks: kept } = ownMediaOnly(parsed.map((b) => b.block as WrittenBlock), await ourMediaPrefixReady());
   if (kept.length === 0) return;
   const written = kept.map((block, n) => ({ ...block, id: writtenBlockId(proposal.proposalId, n) }));
   const { editor, undoManager } = handle;

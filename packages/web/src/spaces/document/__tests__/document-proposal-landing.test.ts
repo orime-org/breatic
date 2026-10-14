@@ -8,11 +8,12 @@
  * id was derived from it.
  */
 
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as Y from 'yjs';
 import { Awareness } from 'y-protocols/awareness';
 import { deriveId, type DocumentProposal } from '@breatic/shared';
 
+import { assetsApi } from '@web/data/api/assets';
 import { blockPlainText } from '@web/spaces/document/document-blocks-read';
 import { commentsOn } from '@web/spaces/document/document-comment-extension';
 import {
@@ -369,6 +370,28 @@ describe('media in a proposal (review round 3)', () => {
 
     expect(blocks(handle).map((b) => b.text)).toEqual(['One.', 'Two.']);
     expect((handle.editor.document as Array<{ type: string }>).some((b) => b.type === 'image')).toBe(false);
+  });
+});
+
+describe('our own media in a proposal (review round 4)', () => {
+  it('lands once our address is known, even when it was not known yet at the press', async () => {
+    const ours = 'https://cdn.example/';
+    const spy = vi.spyOn(assetsApi, 'fetchUploadConfig').mockResolvedValue({ assetUrlPrefix: ours } as never);
+    try {
+      const handle = await open('One.');
+
+      await landProposal(
+        handle,
+        proposalOn(handle, 0, { body: `![own](${ours}a.png)\n\n![x](https://elsewhere.example/b.png)` }),
+        'write',
+        true,
+      );
+
+      const images = (handle.editor.document as Array<{ type: string; props: { url?: string } }>).filter((b) => b.type === 'image');
+      expect(images.map((b) => b.props.url)).toEqual([`${ours}a.png`]);
+    } finally {
+      spy.mockRestore();
+    }
   });
 });
 

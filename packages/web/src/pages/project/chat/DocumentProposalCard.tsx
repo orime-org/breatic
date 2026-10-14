@@ -13,7 +13,7 @@ import { useTranslation } from '@web/i18n/use-translation';
 import { projectUuidFromRouteParam } from '@web/lib/project-route';
 import { MarkdownMessage } from '@web/pages/project/chat/MarkdownMessage';
 import { peekDocumentEditor } from '@web/spaces/document/document-editor-cache';
-import { ourMediaPrefix, ownMediaOnly, type WrittenBlock } from '@web/spaces/document/document-external-media';
+import { ourMediaPrefixReady, ownMediaOnly, type WrittenBlock } from '@web/spaces/document/document-external-media';
 import { markdownBlocks } from '@web/spaces/document/document-markdown';
 import { landedAt } from '@web/spaces/document/document-proposal-landing';
 import {
@@ -106,9 +106,9 @@ function useMediaLeftOut(proposal: DocumentProposal): MediaLeftOut {
   React.useEffect(() => {
     if (proposal.kind === 'comment') return undefined;
     let live = true;
-    void markdownBlocks(proposal.body).then((blocks) => {
+    void Promise.all([markdownBlocks(proposal.body), ourMediaPrefixReady()]).then(([blocks, prefix]) => {
       if (!live) return;
-      const kept = ownMediaOnly(blocks.map((b) => b.block as WrittenBlock), ourMediaPrefix());
+      const kept = ownMediaOnly(blocks.map((b) => b.block as WrittenBlock), prefix);
       setLeftOut({ count: kept.count, writable: kept.blocks.length > 0 });
     });
     return () => {

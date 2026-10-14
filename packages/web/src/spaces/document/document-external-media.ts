@@ -47,6 +47,19 @@ export function ourMediaPrefix(): string | null {
 }
 
 /**
+ * What every address of ours starts with, waiting for it when this session
+ * has not fetched it yet. Readers that can wait use this one; a paste cannot,
+ * and reads {@link ourMediaPrefix}.
+ * @returns The prefix, or null when it could not be fetched.
+ */
+export async function ourMediaPrefixReady(): Promise<string | null> {
+  return assetsApi.fetchUploadConfig().then(
+    (config) => config.assetUrlPrefix,
+    () => null,
+  );
+}
+
+/**
  * Whether a medium's address is one of ours.
  * @param url - The address, as the block holds it.
  * @param prefix - Our prefix, or null.
