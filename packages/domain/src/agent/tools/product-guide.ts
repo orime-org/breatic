@@ -971,9 +971,11 @@ export function renderProductGuide(): string {
       "like any other comment. The card then shows " +
       `${quoted(t("chat.documentProposal.appliedComment"))}, ${quoted(t("chat.documentProposal.appliedRewrite"))} ` +
       `or ${quoted(t("chat.documentProposal.appliedInsert"))} and a ` +
-      `${quoted(t("chat.documentProposal.view"))} button that shows it again; a card that already landed shows ` +
-      "the same after a reload, and a rewrite or insert card goes back to its buttons once the reader undoes " +
-      "it. When the passage changed or was deleted after the proposal the card shows " +
+      `${quoted(t("chat.documentProposal.view"))} button that shows it again. A card reads whether it landed ` +
+      "from its document while that document is open, after a reload too, and a rewrite or insert card goes back " +
+      "to its buttons once the reader undoes it; with the document closed it shows its buttons, and pressing one " +
+      "opens the document and finds the change already there, writing nothing again. When the passage changed or " +
+      "was deleted after the proposal the card shows " +
       `${quoted(t("chat.documentProposal.changed"))} or ${quoted(t("chat.documentProposal.blockGone"))} and ` +
       `nothing changes; ${quoted(t("chat.documentProposal.readOnly"))} when the reader's connection to the ` +
       `document is read-only; ${quoted(t("chat.documentProposal.spaceGone"))} when the document is gone. When ` +

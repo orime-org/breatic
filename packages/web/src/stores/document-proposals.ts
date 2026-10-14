@@ -54,13 +54,13 @@ interface DocumentProposalsState {
   pressed: number;
   /** How many times each document has changed since it was opened here, for cards to read it again. */
   docVersion: Readonly<Partial<Record<string, number>>>;
-  /** A press: ignored while the same card is working. */
+  /** A press: ignored while a press of the same card is waiting. */
   start: (proposal: DocumentProposal, action: LandingAction) => void;
   /** A "View" press on a card that landed the way given; writes nothing. */
   view: (proposal: DocumentProposal, landed: LandingAction) => void;
   /** One document changed. */
   bump: (spaceId: string) => void;
-  /** How a press ended: ignored for a card that is not working. */
+  /** How a press ended: ignored for a card with no press waiting. */
   report: (proposalId: string, outcome: DocumentProposalOutcome) => void;
   /** The same ending for every press waiting on one document. */
   reportSpace: (spaceId: string, outcome: DocumentProposalOutcome) => void;

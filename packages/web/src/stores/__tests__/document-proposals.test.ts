@@ -65,7 +65,7 @@ describe('a card', () => {
     expect(store().cards.p1?.state).toBe('working');
   });
 
-  it('takes no report when it is not working', () => {
+  it('takes no report for a card with no press waiting', () => {
     store().report('p1', 'applied');
 
     expect(store().cards.p1).toBeUndefined();
