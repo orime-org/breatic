@@ -118,8 +118,16 @@ function ensureSharedSocket(url: string): HocuspocusProviderWebsocket {
   if (!sharedSocket) {
     sharedSocket = new HocuspocusProviderWebsocket({ url: toAbsoluteWsUrl(url) });
     // The connection reports its own drops: each attached provider re-emits
-    // this close, so reporting there sent one alert per open document.
+    // this close, so reporting there sent one alert per open document. Only a
+    // connection that had opened counts as dropped; while it is down every
+    // failed reconnect attempt closes too, and those belong to the same drop.
+    let opened = false;
+    sharedSocket.on('open', () => {
+      opened = true;
+    });
     sharedSocket.on('close', (data: { event?: { code?: number; reason?: string } } | undefined) => {
+      if (!opened) return;
+      opened = false;
       reportCollabFailure({
         kind: 'disconnect',
         code: data?.event?.code,
