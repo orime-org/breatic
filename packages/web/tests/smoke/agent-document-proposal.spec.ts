@@ -181,31 +181,42 @@ test('a comment lands on the quoted words, marked as from the Agent', async () =
   await expect(rail.getByTestId('doc-comment-card')).toHaveAttribute('data-selected', 'true');
 });
 
-/** A table wider than the body column, its last column holding `LASTCELL`. */
+/** A table wider than the body column: its second column holds `MIDCELL`, its last `LASTCELL`. */
 const WIDE_TABLE = [
   `| ${Array.from({ length: 8 }, (_, i) => `Column ${String(i + 1)}`).join(' | ')} |`,
   `|${' --- |'.repeat(8)}`,
-  `| ${[...Array.from({ length: 7 }, () => 'a'.repeat(30)), 'LASTCELL'].join(' | ')} |`,
+  `| ${['a'.repeat(30), 'MIDCELL', 'a'.repeat(30), 'a'.repeat(30), 'a'.repeat(30), 'a'.repeat(30), 'a'.repeat(30), 'LASTCELL'].join(' | ')} |`,
 ].join('\n');
 
 /**
  * Where the commented words in a wide table sit against the table's frame.
+ * @param word - The commented word.
  * @returns Whether the frame scrolls sideways, how far it is scrolled, and
  * whether the words are inside it.
  */
-async function commentInTable(): Promise<{ overflows: boolean; scrolled: number; inside: boolean }> {
-  return page.evaluate(() => {
-    const mark = [...document.querySelectorAll<HTMLElement>('.bn-thread-mark')].find((m) => m.textContent?.includes('LASTCELL'));
-    const frame = mark?.closest('.doc-table-scroller')?.querySelector<HTMLElement>('[data-radix-scroll-area-viewport]');
-    if (mark === undefined || frame === null || frame === undefined) return { overflows: false, scrolled: -1, inside: false };
-    const at = mark.getBoundingClientRect();
+async function commentInTable(word = 'LASTCELL'): Promise<{ overflows: boolean; scrolled: number; inside: boolean }> {
+  return page.evaluate((w) => {
+    const mark = [...document.querySelectorAll<HTMLElement>('.bn-thread-mark')].find((m) => m.textContent?.includes(w));
+    const outer = mark?.closest('.doc-table-frame');
+    const frame = outer?.querySelector<HTMLElement>('[data-radix-scroll-area-viewport]');
+    const cell = mark?.closest('td, th');
+    if (outer === null || outer === undefined || frame === null || frame === undefined || cell === null || cell === undefined) {
+      return { overflows: false, scrolled: -1, inside: false };
+    }
+    // The whole cell, clear of a "more to scroll" edge on whichever side
+    // still shows one.
+    const edge = (side: string): number => {
+      const el = outer.querySelector<HTMLElement>(`.doc-table-overflow-edge[data-overflow-edge="${side}"]`);
+      return el?.hasAttribute('data-on') === true ? el.offsetWidth : 0;
+    };
+    const at = cell.getBoundingClientRect();
     const box = frame.getBoundingClientRect();
     return {
       overflows: frame.scrollWidth > frame.clientWidth,
       scrolled: frame.scrollLeft,
-      inside: at.left >= box.left - 1 && at.right <= box.right + 1,
+      inside: at.left >= box.left + edge('left') - 1 && at.right <= box.right - edge('right') + 1,
     };
-  });
+  }, word);
 }
 
 test('a comment in a column of a wide table scrolled out of view is scrolled into it', async () => {
@@ -246,6 +257,23 @@ test('a comment in a column of a wide table scrolled out of view is scrolled int
   await openCommentRail(page);
   await rail.getByTestId('doc-comment-card').click();
   await expect.poll(async () => (await commentInTable()).inside).toBe(true);
+
+  // A cell cut off on the left comes clear of the left edge the same way.
+  await rail.getByTestId('doc-comment-rail-close').click();
+  await page.unroute('**/chat/message');
+  await answerWith((blocks, spaceId) => {
+    const table = blocks.find((b) => b.type === 'table')!;
+    return { ...onSecondBlock({})(blocks, spaceId), kind: 'comment', blockId: table.id, original: table.text, blockType: 'table', quote: 'MIDCELL', body: 'Why this shot?' };
+  });
+  const middle = await askForTheCard();
+  await page.evaluate(() => {
+    for (const frame of document.querySelectorAll<HTMLElement>('.doc-table-scroller [data-radix-scroll-area-viewport]')) frame.scrollLeft = frame.scrollWidth;
+  });
+  expect((await commentInTable('MIDCELL')).inside).toBe(false);
+  await middle.getByRole('button').first().click();
+  await expect(middle).toHaveAttribute('data-state', 'applied');
+  await expect.poll(() => commentInTable('MIDCELL')).toEqual({ overflows: true, scrolled: expect.any(Number), inside: true });
+  expect(await page.locator('.doc-table-overflow-edge[data-overflow-edge="left"]').first().getAttribute('data-on')).toBe('');
 });
 
 test('a comment card brought up from the bottom of the window stops as far above it as the chat composer', async () => {
@@ -300,6 +328,14 @@ test('a rewrite replaces the passage as one undo step', async () => {
   await expect(card).toHaveAttribute('data-state', 'applied');
   await expect.poll(paragraphs).toEqual(['Scene two opens.', 'He opens the door. Her bags are packed.']);
   expect(await undoStack(docId)).toBe(before + 1);
+  // The mark stands off the rewritten words on every side.
+  const mark = await page.getByTestId('document-proposal-landed').boundingBox();
+  const words = await page.locator(`${DOCUMENT_EDITOR} p`).last().boundingBox();
+  expect(mark !== null && words !== null).toBe(true);
+  expect(mark!.x).toBeLessThan(words!.x);
+  expect(mark!.y).toBeLessThan(words!.y);
+  expect(mark!.x + mark!.width).toBeGreaterThan(words!.x + words!.width);
+  expect(mark!.y + mark!.height).toBeGreaterThan(words!.y + words!.height);
 
   // "View" only shows the change; it writes nothing.
   await card.getByRole('button').click();

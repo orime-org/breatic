@@ -64,6 +64,18 @@ interface DocumentEditorProps {
 /** How long a block an Agent proposal landed stays marked. */
 const LANDED_MARK_MS = 2000;
 
+/** How long the mark takes to fade at the end of that time. */
+const LANDED_FADE_MS = 300;
+
+/** The token for how far the mark stands off the block's words on each side. */
+const LANDED_MARK_GAP_VAR = '--space-2';
+
+/** The fade at the end of the mark's time, as tw-animate-css reads it. */
+const LANDED_MARK_FADE = {
+  '--tw-animation-delay': `${String(LANDED_MARK_MS - LANDED_FADE_MS)}ms`,
+  '--tw-animation-duration': `${String(LANDED_FADE_MS)}ms`,
+} as React.CSSProperties;
+
 /** Where the mark around a landed block is drawn, in the viewport's coordinates. */
 interface LandedBox {
   top: number;
@@ -202,10 +214,19 @@ export const DocumentEditor = React.memo(function DocumentEditor({
     const block = landed === null ? null : body.current?.querySelector<HTMLElement>(`[data-id="${CSS.escape(landed.blockId)}"]`);
     if (viewport === null || block === null || block === undefined) return undefined;
     shown.current = landed;
-    const at = block.getBoundingClientRect();
+    // Around the block's own words, standing off them on every side: the
+    // block's outer box starts where its first letter does and carries the
+    // spacing above it.
+    const at = (block.querySelector('.bn-block-content') ?? block).getBoundingClientRect();
     const frame = viewport.getBoundingClientRect();
-    const top = at.top - frame.top + viewport.scrollTop;
-    setLandedBox({ top, left: at.left - frame.left + viewport.scrollLeft, width: at.width, height: at.height });
+    const gap = parseFloat(getComputedStyle(viewport).getPropertyValue(LANDED_MARK_GAP_VAR)) || 0;
+    const top = at.top - frame.top + viewport.scrollTop - gap;
+    setLandedBox({
+      top,
+      left: at.left - frame.left + viewport.scrollLeft - gap,
+      width: at.width + gap * 2,
+      height: at.height + gap * 2,
+    });
     viewport.scrollTo({ top: Math.max(0, top - viewport.clientHeight / 3), behavior: 'smooth' });
     const timer = window.setTimeout(() => setLandedBox(null), LANDED_MARK_MS);
     return () => {
@@ -289,8 +310,8 @@ export const DocumentEditor = React.memo(function DocumentEditor({
               <div
                 data-testid='document-proposal-landed'
                 aria-hidden='true'
-                className='pointer-events-none absolute rounded-md border border-status-info'
-                style={landedBox}
+                className='pointer-events-none absolute rounded-content-xs border border-content-link animate-out fade-out fill-mode-forwards'
+                style={{ ...landedBox, ...LANDED_MARK_FADE }}
               />
             )}
             <div
