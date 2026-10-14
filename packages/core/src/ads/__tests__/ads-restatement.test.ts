@@ -4,7 +4,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AdsConversionJob, AdsUploadStatus } from "@core/ads/ads-types.js";
 
-const row = vi.hoisted(() => ({ status: "queued" as AdsUploadStatus }));
+const row = vi.hoisted((): { status: AdsUploadStatus } => ({ status: "queued" }));
 const repo = vi.hoisted(() => ({
   findUploadByPayment: vi.fn(),
   moveUpload: vi.fn(),
