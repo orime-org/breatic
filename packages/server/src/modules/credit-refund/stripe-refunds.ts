@@ -11,7 +11,11 @@ import { getStripeClient } from "@server/infra/stripe.js";
 import { getCreditRefundConfig } from "@server/config/credit-refund.js";
 import type { StripeFailure } from "@server/modules/credit-refund/operation-transitions.js";
 import type { CreateAnswer } from "@server/modules/credit-refund/stripe-answer.js";
-import type { StripeRefundObject, StripeRefundStatus } from "@server/modules/credit-refund/types.js";
+import type {
+  StripePendingReason,
+  StripeRefundObject,
+  StripeRefundStatus,
+} from "@server/modules/credit-refund/types.js";
 import * as paymentRepo from "@server/modules/payment/payment.repo.js";
 
 /** `autoPagingToArray` requires a ceiling; no payment has anywhere near this many refunds. */
@@ -25,17 +29,24 @@ const STATUSES: ReadonlySet<string> = new Set<StripeRefundStatus>([
   "canceled",
 ]);
 
-/** `refunds.list` failed; nothing was read. */
+const PENDING_REASONS: ReadonlySet<string> = new Set<StripePendingReason>([
+  "processing",
+  "insufficient_funds",
+  "charge_pending",
+]);
+
+/** A Stripe read (`refunds.list` or `paymentIntents.retrieve`) failed; nothing was read. */
 export class StripeReadError extends Error {
   declare readonly failure: StripeFailure;
 
   /**
    * Wrap the read's error.
    * @param err - What the read threw.
+   * @param call - Which Stripe call failed.
    */
-  constructor(err: unknown) {
+  constructor(err: unknown, call: "refunds.list" | "paymentIntents.retrieve" = "refunds.list") {
     const failure = toFailure(err);
-    super(`Stripe refunds.list failed: ${failure.message}`, { cause: err });
+    super(`Stripe ${call} failed: ${failure.message}`, { cause: err });
     this.name = "StripeReadError";
     // Not enumerable: pino's err serializer would copy it and rename Stripe's
     // error type to "Object"; log lines carry it under `failure` instead.
@@ -46,17 +57,23 @@ export class StripeReadError extends Error {
 /**
  * A Stripe refund in the shape the rules read. A status outside Stripe's
  * documented five is read as `pending`: not an outcome, so nothing is
- * booked on it.
+ * booked on it. A pending refund's reason outside the documented three is
+ * read as `processing` for the same reason (§5.1); every other status has no
+ * pending reason.
  * @param r - The refund as stripe-node returns it.
  * @returns The refund object.
  */
 export function toRefundObject(r: Stripe.Refund): StripeRefundObject {
+  const status: StripeRefundStatus = STATUSES.has(r.status ?? "") ? (r.status as StripeRefundStatus) : "pending";
+  const reason = r.pending_reason ?? null;
   return {
     id: r.id,
     amount: r.amount,
     currency: r.currency,
-    status: STATUSES.has(r.status ?? "") ? (r.status as StripeRefundStatus) : "pending",
+    status,
     failure_reason: r.failure_reason ?? null,
+    pending_reason:
+      status !== "pending" ? null : PENDING_REASONS.has(reason ?? "") ? (reason as StripePendingReason) : "processing",
     metadata: r.metadata ?? {},
   };
 }
@@ -93,6 +110,29 @@ export async function listRefundsForPayment(paymentId: string): Promise<StripeRe
 }
 
 /**
+ * Whether Stripe holds the payment's charge as disputed (§5.3): the latest
+ * charge's `disputed`. A payment with no payment intent, or an intent with no
+ * charge, has nothing to dispute.
+ * @param paymentIntent - `pi_…`, or null when the payment has none.
+ * @returns True when the charge is disputed.
+ * @throws {StripeReadError} When the read fails.
+ */
+export async function readChargeDisputed(paymentIntent: string | null): Promise<boolean> {
+  if (paymentIntent === null) return false;
+  try {
+    const intent = await getStripeClient().paymentIntents.retrieve(
+      paymentIntent,
+      { expand: ["latest_charge"] },
+      callOptions(),
+    );
+    const charge = intent.latest_charge;
+    return typeof charge === "object" && charge !== null && charge.disputed === true;
+  } catch (err) {
+    throw new StripeReadError(err, "paymentIntents.retrieve");
+  }
+}
+
+/**
  * The options every Stripe call of a disposition runs with: its own timeout
  * and no retries, so an attempt fits inside its lease (§7.4).
  * @returns The request options.
@@ -102,23 +142,21 @@ function callOptions(): { timeout: number; maxNetworkRetries: 0 } {
 }
 
 /**
- * Ask Stripe for a disposition's refund under its own idempotency key.
+ * Ask Stripe for a disposition's refund under its own idempotency key. No
+ * amount is sent: Stripe refunds what is left of the payment (§5.2).
  * @param input - The disposition and what to refund.
  * @param input.operationId - The disposition; names the key and the metadata.
  * @param input.paymentIntent - The payment intent to refund.
- * @param input.amountCents - The exact amount (refund_again), or null for what is left.
  * @returns The classified answer, with the refund object or the failure behind it.
  */
 export async function createRefund(input: {
   operationId: string;
   paymentIntent: string;
-  amountCents: number | null;
 }): Promise<{ answer: CreateAnswer; refund?: StripeRefundObject; failure?: StripeFailure }> {
   try {
     const created = await getStripeClient().refunds.create(
       {
         payment_intent: input.paymentIntent,
-        ...(input.amountCents !== null && { amount: input.amountCents }),
         metadata: { refund_operation_id: input.operationId },
       },
       { idempotencyKey: `credit-refund-${input.operationId}`, ...callOptions() },

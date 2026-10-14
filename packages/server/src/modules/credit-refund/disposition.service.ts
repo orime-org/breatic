@@ -25,6 +25,7 @@ import {
   type AssessInput,
   type AssessResult,
   type OneShotKind,
+  type OneShotResult,
   type RefundCreateKind,
 } from "@server/modules/credit-refund/assess.js";
 import { executeRefund } from "@server/modules/credit-refund/executor.js";
@@ -41,9 +42,17 @@ import type { RefundMail } from "@server/modules/credit-refund/refund-mail.repo.
 import { sendOperationMailsLater, sendRefundMailLater } from "@server/modules/credit-refund/refund-mail.js";
 import { applyRefundSnapshot } from "@server/modules/credit-refund/refund-snapshot.js";
 import { RefundRefusal, stripeUnavailable } from "@server/modules/credit-refund/refusal.js";
-import { StripeReadError, listRefundsForPayment } from "@server/modules/credit-refund/stripe-refunds.js";
+import {
+  StripeReadError,
+  listRefundsForPayment,
+  readChargeDisputed,
+} from "@server/modules/credit-refund/stripe-refunds.js";
 import type { RefundCopy, StripeRefundObject } from "@server/modules/credit-refund/types.js";
-import { pickUnresolvedFailedRefunds } from "@server/modules/credit-refund/unresolved.js";
+import {
+  isOnRefundFailureList,
+  pickUnresolvedFailedRefunds,
+  type UnresolvedFailedRefund,
+} from "@server/modules/credit-refund/unresolved.js";
 import * as paymentRepo from "@server/modules/payment/payment.repo.js";
 
 /** A disposition as the API reports it: its columns, less the executor's lease. */
@@ -74,6 +83,8 @@ interface Facts {
   currency: string;
   ops: CreditRefundOperation[];
   refunds: RefundCopy[];
+  /** The lot's unresolved failed refunds, from the view (§5.3). */
+  unresolved: UnresolvedFailedRefund[];
 }
 
 // ── preview ──────────────────────────────────────────────────────────
@@ -87,11 +98,12 @@ interface Facts {
 export async function preview(lotId: string): Promise<Record<string, unknown>> {
   const { payment } = await loadTarget(lotId);
   await copyStripe(payment);
+  const disputed = await readDisputed(payment);
   return db.transaction(async (tx) => {
     const lot = await creditLotRepo.lockLot(lotId, tx);
     if (lot === null) throw new RefundRefusal(404, "not_found", "lot_not_found");
     const facts = await readFacts(tx, lot, payment);
-    const judged = assessRefundPreview(assessFacts(facts));
+    const judged = assessRefundPreview({ ...assessFacts(facts), unresolvedFailedRefunds: facts.unresolved, disputed });
     const inFlight = facts.ops.find(isInFlight);
     return {
       lot: {
@@ -107,14 +119,18 @@ export async function preview(lotId: string): Promise<Record<string, unknown>> {
         stripeRefundId: r.stripeRefundId,
         amountCents: r.amountCents,
         status: r.status,
+        pendingReason: r.pendingReason,
         madeByProduct: r.operationId !== null,
         everSucceeded: r.everSucceeded,
       })),
       operationInProgress: inFlight ? snapshotOf(inFlight) : null,
-      unresolvedFailedRefunds: pickUnresolvedFailedRefunds(facts.lot.lifecycle, facts.refunds).map((r) => ({
+      unresolvedFailedRefunds: facts.unresolved.map((r) => ({
         stripeRefundId: r.stripeRefundId,
         amountCents: r.amountCents,
       })),
+      disputed,
+      refundFailure: await isOnRefundFailureList(tx, lot.id),
+      restoreCredits: restoreAnswerOf(judged.restoreCredits),
       action:
         judged.kind === null
           ? null
@@ -125,72 +141,74 @@ export async function preview(lotId: string): Promise<Record<string, unknown>> {
   });
 }
 
-// ── approve, retry, refund_again ─────────────────────────────────────
+/**
+ * What the preview reports about restoring credits.
+ * @param verdict - The restore rule's answer.
+ * @returns `allowed`, or `blocked` with the code (and Stripe reason) the endpoint would answer.
+ */
+function restoreAnswerOf(verdict: OneShotResult): Record<string, unknown> {
+  return verdict.outcome === "proceed" ? { outcome: "allowed" } : verdict;
+}
+
+// ── approve, retry ───────────────────────────────────────────────────
 
 /**
- * Approve, retry or refund again (§5.2): phase 1 here, then phases 2 and 3.
- * @param kind - Which of the three.
+ * Approve or retry (§5.2): phase 1 here, then phases 2 and 3.
+ * @param kind - Which of the two.
  * @param req - The request.
  * @param body - What the confirmation page sent back.
- * @param body.confirmedRefundIds - approve, retry: the external refunds shown.
- * @param body.failedRefundIds - refund_again: the unresolved failed refunds shown.
- * @param body.notify - refund_again: whether to tell the buyer.
+ * @param body.confirmedRefundIds - The external refunds shown.
  * @returns The disposition: 200 when finished, 202 while Stripe has not decided.
  */
 export async function requestRefund(
   kind: RefundCreateKind,
   req: WriteRequest,
-  body: { confirmedRefundIds?: string[]; failedRefundIds?: string[]; notify?: boolean },
+  body: { confirmedRefundIds?: string[] },
 ): Promise<Answer<unknown>> {
   const outcome = await decide(req, (facts) => {
     const verdict = assessRefundCreate({
       kind,
       ...assessFacts(facts),
       confirmedRefundIds: body.confirmedRefundIds ?? [],
-      failedRefundIds: body.failedRefundIds ?? [],
     });
     if (verdict.outcome === "blocked") throw refusalOf(verdict);
-    return {
-      ...newOperation(kind, req, facts.payment),
-      confirmedRefundIds: body.confirmedRefundIds,
-      failedRefundIds: body.failedRefundIds,
-      notify: body.notify,
-      refundAmountCents: verdict.sendAmount ? verdict.amountCents : undefined,
-    };
+    return { ...newOperation(kind, req, facts.payment), confirmedRefundIds: body.confirmedRefundIds };
   });
   if ("replay" in outcome) return answerReplay(outcome.replay);
   await executeRefund(outcome.op, "request");
   return answerOperation((await operationRepo.findById(outcome.op.id))!);
 }
 
-// ── reject, settle, send_back, resolve_outside ───────────────────────
+// ── reject, settle, send_back, resolve_outside, restore_credits ──────
 
 /**
- * A disposition that finishes in its request (§5.3).
- * @param kind - Which of the four.
+ * A disposition that finishes in its request (§5.3). Restoring credits also
+ * reads whether the charge is disputed, after the refunds are copied.
+ * @param kind - Which of the five.
  * @param req - The request.
  * @param body - The kind's own fields.
  * @param body.notify - settle: whether to tell the buyer.
  * @param body.confirmedSucceededCents - settle, resolve_outside: the succeeded sum the operator saw.
- * @param body.acceptPartial - settle: book a refund short of what was paid.
- * @param body.failedRefundIds - resolve_outside: the refunds answered for.
+ * @param body.failedRefundIds - resolve_outside, restore_credits: the refunds answered for.
  * @returns The finished disposition.
  */
 export async function requestOneShot(
   kind: OneShotKind,
   req: WriteRequest,
-  body: {
-    notify?: boolean;
-    confirmedSucceededCents?: number;
-    acceptPartial?: boolean;
-    failedRefundIds?: string[];
-  },
+  body: { notify?: boolean; confirmedSucceededCents?: number; failedRefundIds?: string[] },
 ): Promise<Answer<unknown>> {
-  const outcome = await decide(req, (facts) => {
-    const verdict = assessOneShot({ kind, ...assessFacts(facts), paidCents: facts.paidCents, ...body });
+  const outcome = await decide(req, (facts, disputed) => {
+    const verdict = assessOneShot({
+      kind,
+      ...assessFacts(facts),
+      paidCents: facts.paidCents,
+      unresolvedFailedRefunds: facts.unresolved,
+      disputed,
+      ...body,
+    });
     if (verdict.outcome === "blocked") throw refusalOf(verdict);
     return { ...newOperation(kind, req, facts.payment), ...body };
-  });
+  }, { readDisputed: kind === "restore_credits" });
   if ("replay" in outcome) return answerReplay(outcome.replay);
   sendOperationMailsLater(outcome.op.id);
   return answerOperation(outcome.op);
@@ -202,21 +220,26 @@ export async function requestOneShot(
  * lot's, look the key up again, judge and insert (E1). A refusal stores no
  * disposition and no key; the copy stays (§6.4).
  * @param req - The request.
- * @param judge - Turns the facts into the new disposition, or throws its refusal.
+ * @param judge - Turns the facts (and whether the charge is disputed) into
+ *   the new disposition, or throws its refusal.
+ * @param options - What else to read from Stripe.
+ * @param options.readDisputed - Read the charge's `disputed` after copying the refunds.
  * @returns What to replay, or the new disposition.
  */
 async function decide(
   req: WriteRequest,
-  judge: (facts: Facts) => NewOperation,
+  judge: (facts: Facts, disputed: boolean) => NewOperation,
+  { readDisputed: wantsDisputed = false }: { readDisputed?: boolean } = {},
 ): Promise<{ replay: Replay } | { op: CreditRefundOperation }> {
   const replay = await lookupKey(req.key, req.hash);
   if (replay) return { replay };
   const { payment } = await loadTarget(req.lotId);
   await copyStripe(payment);
+  const disputed = wantsDisputed ? await readDisputed(payment) : false;
   return db.transaction(async (tx) => {
     const locked = await lockAndRecheck(tx, req);
     if ("replay" in locked) return { replay: locked.replay };
-    const create = judge(await readFacts(tx, locked.lot, payment));
+    const create = judge(await readFacts(tx, locked.lot, payment), disputed);
     const op = await transitionOperation(tx, null, { type: "E1", create, actor: "request" });
     return { op: op! };
   });
@@ -243,6 +266,25 @@ async function copyStripe(payment: PaymentEntity): Promise<void> {
   }
   const rejudged = await db.transaction((tx) => applyRefundSnapshot(tx, payment.id, listed, "request"));
   if (rejudged !== null) sendOperationMailsLater(rejudged);
+}
+
+/**
+ * Whether Stripe holds the payment's charge as disputed (§5.3), read after
+ * the refunds were copied; a failure keeps those copies (§6.4).
+ * @param payment - The payment.
+ * @returns True when disputed.
+ * @throws {RefundRefusal} 503 `stripe_unavailable` when the read fails.
+ */
+async function readDisputed(payment: PaymentEntity): Promise<boolean> {
+  try {
+    return await readChargeDisputed(payment.stripePaymentIntentId);
+  } catch (err) {
+    if (err instanceof StripeReadError) {
+      logger.error({ err, failure: err.failure, paymentId: payment.id }, "credit_refund_stripe_read_failed");
+      throw stripeUnavailable();
+    }
+    throw err;
+  }
 }
 
 // ── mail resend ──────────────────────────────────────────────────────
@@ -272,7 +314,9 @@ export async function resendMail(
           ? "refund_completed"
           : current.result === "rejected"
             ? "refund_rejected"
-            : null;
+            : current.result === "restored"
+              ? "refund_restored"
+              : null;
     if (kind === null) throw new RefundRefusal(409, "mail_not_resendable", "mail_not_resendable");
     const mail = await refundMailRepo.insertResend(
       {
@@ -345,6 +389,7 @@ async function readFacts(tx: DbTx, lot: CreditLotEntity, payment: PaymentEntity)
     currency: paid.currency,
     ops: await operationRepo.listForLot(lot.id, tx),
     refunds: await refundCopyRepo.listForPayment(payment.id, tx),
+    unresolved: await pickUnresolvedFailedRefunds(tx, lot.id),
   };
 }
 

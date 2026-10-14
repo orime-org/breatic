@@ -18,10 +18,10 @@ export type OperationKind =
   | "settle"
   | "send_back"
   | "retry"
-  | "refund_again"
-  | "resolve_outside";
+  | "resolve_outside"
+  | "restore_credits";
 export type OperationStatus = "started" | "awaiting_stripe" | "succeeded" | "needs_attention";
-export type OperationResult = "refunded" | "rejected" | "sent_back" | "resolved_outside";
+export type OperationResult = "refunded" | "rejected" | "sent_back" | "resolved_outside" | "restored";
 export type AttentionReason =
   | "partial_refund"
   | "unexpected_external_refund"
@@ -30,6 +30,7 @@ export type AttentionReason =
   | "stripe_result_unknown"
   | "already_refunded_elsewhere"
   | "stripe_declined"
+  | "stripe_request_invalid"
   | "state_mismatch";
 
 /** One disposition, as its row stands. */
@@ -53,7 +54,6 @@ export interface CreditRefundOperation {
   confirmedRefundIds: string[];
   confirmedSucceededCents: number | null;
   failedRefundIds: string[];
-  refundAmountCents: number | null;
   settledSucceededCents: number | null;
   stripeRefundId: string | null;
   firstCalledAt: Date | null;
@@ -83,7 +83,6 @@ export interface OperationInsert {
   confirmedRefundIds: string[];
   confirmedSucceededCents: number | null;
   failedRefundIds: string[];
-  refundAmountCents: number | null;
   settledSucceededCents: number | null;
   /** A lease of this many seconds and `next_attempt_at = now()`; null for none. */
   lease: { token: string; seconds: number } | null;
@@ -247,6 +246,27 @@ export async function appendEvent(
   // The wall clock, so events written in one transaction keep their order;
   // `now()` is the same for the whole transaction.
   await tx.insert(creditRefundOperationEvents).values({ ...row, createdAt: sql`clock_timestamp()` });
+}
+
+/** One event row of a disposition, as E11 reads it. */
+export interface OperationEventRow {
+  event: string;
+  detail: Record<string, unknown>;
+}
+
+/**
+ * Every event row of a disposition, oldest first.
+ * @param operationId - The disposition.
+ * @param tx - The caller's transaction.
+ * @returns Its events.
+ */
+export async function listEvents(operationId: string, tx: DbTx): Promise<OperationEventRow[]> {
+  const rows = await tx
+    .select({ event: creditRefundOperationEvents.event, detail: creditRefundOperationEvents.detail })
+    .from(creditRefundOperationEvents)
+    .where(eq(creditRefundOperationEvents.operationId, operationId))
+    .orderBy(asc(creditRefundOperationEvents.createdAt));
+  return rows.map((r) => ({ event: r.event, detail: (r.detail ?? {}) as Record<string, unknown> }));
 }
 
 /**

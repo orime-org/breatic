@@ -18,7 +18,7 @@ import type { DbTx } from "@breatic/core";
 import type { RefundMailView } from "@server/modules/credit-refund/refund-mail-template.js";
 
 /** Which buyer email. */
-export type RefundMailKind = "refund_completed" | "refund_rejected";
+export type RefundMailKind = "refund_completed" | "refund_rejected" | "refund_restored";
 
 /** One mail row, as the internal API reports it. */
 export interface RefundMail {
@@ -210,7 +210,6 @@ export async function getMailView(mailId: string): Promise<RefundMailView | null
       purchasedAt: creditLots.createdAt,
       requestedAt: creditRefundOperations.refundRequestedAt,
       settledCents: creditRefundOperations.settledSucceededCents,
-      refundAmountCents: creditRefundOperations.refundAmountCents,
       finishedAt: creditRefundOperations.finishedAt,
       operationCreatedAt: creditRefundOperations.createdAt,
     })
@@ -234,14 +233,14 @@ export async function getMailView(mailId: string): Promise<RefundMailView | null
     credits: Number(row.credits),
     purchasedAt: row.purchasedAt,
   };
-  if (row.kind === "refund_rejected") {
-    return { ...base, kind: "refund_rejected", requestedAt: row.requestedAt ?? row.operationCreatedAt };
-  }
+  const requestedAt = row.requestedAt ?? row.operationCreatedAt;
+  if (row.kind === "refund_rejected") return { ...base, kind: "refund_rejected", requestedAt };
+  if (row.kind === "refund_restored") return { ...base, kind: "refund_restored", requestedAt };
   return {
     ...base,
     kind: "refund_completed",
-    // The amount the bell named: the succeeded sum booked, or refund_again's own amount.
-    amountCents: row.settledCents ?? row.refundAmountCents ?? 0,
+    // The amount the bell named: the succeeded sum booked.
+    amountCents: row.settledCents ?? 0,
     currency: row.currency,
     refundedAt: row.finishedAt ?? row.operationCreatedAt,
   };

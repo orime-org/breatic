@@ -111,3 +111,35 @@ export function eventForRefund(
       return "E6";
   }
 }
+
+/** A stored create answer: an event row's detail, of which these fields decide whether Stripe refused. */
+export interface StoredCreateAnswer {
+  [key: string]: unknown;
+  refund?: { status?: string } | undefined;
+  httpStatus?: number | undefined;
+  type?: string | undefined;
+  code?: string | undefined;
+  shouldRetry?: boolean | undefined;
+}
+
+/** 400 codes that are not a refusal: retry it, or the money is already back. */
+const NOT_REFUSAL_CODES = new Set(["rate_limit", "lock_timeout", "charge_already_refunded"]);
+
+/**
+ * Whether a stored create answer is Stripe refusing this refund (§5.4, the
+ * one definition): a refund object that failed or was canceled, or a 400 that
+ * is not rate limiting, a lock timeout, an already-refunded charge, an
+ * idempotency mismatch or a request Stripe says to retry. 401, 403 and 404
+ * mean Stripe never executed the request, so they are not refusals.
+ * @param detail - The answer as an event row's detail keeps it.
+ * @returns True when Stripe refused.
+ */
+export function isStripeRefusal(detail: StoredCreateAnswer): boolean {
+  if (detail.refund) return detail.refund.status === "failed" || detail.refund.status === "canceled";
+  return (
+    detail.httpStatus === 400 &&
+    !(detail.code !== undefined && NOT_REFUSAL_CODES.has(detail.code)) &&
+    detail.type !== "idempotency_error" &&
+    detail.shouldRetry !== true
+  );
+}

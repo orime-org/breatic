@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * What the two buyer emails about a refund say (inner#1410 §8), in the
+ * What the three buyer emails about a refund say (inner#1410 §8), in the
  * language the pack was bought in and the buyer's own time zone, in the
  * layout every product mail wears. The operator's reason is not part of the
  * view, so it cannot reach a buyer.
@@ -36,7 +36,8 @@ export type RefundMailView =
       currency: string;
       refundedAt: Date;
     })
-  | (RefundMailViewBase & { kind: "refund_rejected"; requestedAt: Date });
+  | (RefundMailViewBase & { kind: "refund_rejected"; requestedAt: Date })
+  | (RefundMailViewBase & { kind: "refund_restored"; requestedAt: Date });
 
 const DETAILS = "margin:16px 0 0;font-size:14px;line-height:1.7;";
 
@@ -48,7 +49,8 @@ const DETAILS = "margin:16px 0 0;font-size:14px;line-height:1.7;";
 export function renderRefundMail(view: RefundMailView): Promise<RenderedMail> {
   // A language we do not write in reads as English, numbers and dates too.
   const locale = getAvailableLocales().includes(view.locale) ? view.locale : "en";
-  const section = view.kind === "refund_completed" ? "completed" : "rejected";
+  const section =
+    view.kind === "refund_completed" ? "completed" : view.kind === "refund_rejected" ? "rejected" : "restored";
 
   const details = runWithLocale(locale, () => {
     /**

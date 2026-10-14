@@ -13,6 +13,9 @@ export type StripeRefundStatus =
   | "failed"
   | "canceled";
 
+/** Why Stripe holds a refund as pending (§5.1). */
+export type StripePendingReason = "processing" | "insufficient_funds" | "charge_pending";
+
 /** A Stripe refund object, with the fields the product reads. */
 export interface StripeRefundObject {
   id: string;
@@ -20,6 +23,11 @@ export interface StripeRefundObject {
   currency: string;
   status: StripeRefundStatus;
   failure_reason?: string | null;
+  /**
+   * Why it is still pending; null in every other status (§5.1). Read from
+   * Stripe through `toRefundObject`, which keeps it to the three documented values.
+   */
+  pending_reason?: string | null;
   metadata?: Record<string, string> | null;
 }
 
@@ -32,6 +40,7 @@ export interface RefundCopy {
   stripeRefundId: string;
   amountCents: number;
   status: StripeRefundStatus;
+  pendingReason: StripePendingReason | null;
   operationId: string | null;
   everSucceeded: boolean;
   resolvedByOperationId: string | null;

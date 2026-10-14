@@ -9,7 +9,11 @@
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { creditRefunds } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
-import type { RefundCopy, StripeRefundStatus } from "@server/modules/credit-refund/types.js";
+import type {
+  RefundCopy,
+  StripePendingReason,
+  StripeRefundStatus,
+} from "@server/modules/credit-refund/types.js";
 
 /** One refund as Stripe reported it, ready to be copied. */
 export interface CopyWrite {
@@ -21,6 +25,7 @@ export interface CopyWrite {
   currency: string;
   status: StripeRefundStatus;
   failureReason: string | null;
+  pendingReason: StripePendingReason | null;
 }
 
 /**
@@ -33,6 +38,7 @@ function toCopy(row: typeof creditRefunds.$inferSelect): RefundCopy {
     stripeRefundId: row.stripeRefundId,
     amountCents: row.amountCents,
     status: row.status as StripeRefundStatus,
+    pendingReason: row.pendingReason as StripePendingReason | null,
     operationId: row.operationId,
     everSucceeded: row.everSucceeded,
     resolvedByOperationId: row.resolvedByOperationId,
@@ -42,9 +48,9 @@ function toCopy(row: typeof creditRefunds.$inferSelect): RefundCopy {
 
 /**
  * Insert a refund not seen before, or take the reported status, with the
- * failure reason reported alongside it, for one that was. `failed` and
- * `canceled` are final on Stripe, so a copy in either keeps it: a report that
- * says otherwise was read before. A report that changes nothing writes
+ * failure and pending reasons reported alongside it, for one that was.
+ * `failed` and `canceled` are final on Stripe, so a copy in either keeps its
+ * status and reasons: a report that says otherwise was read before. A report that changes nothing writes
  * nothing. `ever_succeeded` only turns true, whatever the status does;
  * `operation_id` and `resolved_by_operation_id` are never changed by a later
  * report.
@@ -62,10 +68,13 @@ export async function upsert(copy: CopyWrite, tx: DbTx): Promise<void> {
       set: {
         status: sql`CASE WHEN ${isFinal} THEN ${creditRefunds.status} ELSE ${copy.status} END`,
         failureReason: sql`CASE WHEN ${isFinal} THEN ${creditRefunds.failureReason} ELSE ${copy.failureReason} END`,
+        pendingReason: sql`CASE WHEN ${isFinal} THEN ${creditRefunds.pendingReason} ELSE ${copy.pendingReason} END`,
         everSucceeded: sql`${creditRefunds.everSucceeded} OR ${succeeded}`,
         updatedAt: sql`now()`,
       },
-      setWhere: sql`(${creditRefunds.status} IS DISTINCT FROM ${copy.status} AND NOT ${isFinal})
+      // A pending refund's reason can change while its status stays pending.
+      setWhere: sql`((${creditRefunds.status} IS DISTINCT FROM ${copy.status}
+          OR ${creditRefunds.pendingReason} IS DISTINCT FROM ${copy.pendingReason}) AND NOT ${isFinal})
         OR (${succeeded} AND NOT ${creditRefunds.everSucceeded})`,
     });
 }

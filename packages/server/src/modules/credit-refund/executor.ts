@@ -80,11 +80,7 @@ export async function executeRefund(op: CreditRefundOperation, actor: Actor): Pr
     logger.warn({ operationId: op.id }, "credit_refund_create_skipped_lease");
     return commit(attempt, reads);
   }
-  const created = await createRefund({
-    operationId: op.id,
-    paymentIntent,
-    amountCents: op.kind === "refund_again" ? op.refundAmountCents : null,
-  });
+  const created = await createRefund({ operationId: op.id, paymentIntent });
   const verdict = classifyCreateAnswer(created.answer, op.attemptCount);
   if (verdict.kind === "event") {
     return commit(attempt, reads, () => ({ type: verdict.event, failure: created.failure! }));

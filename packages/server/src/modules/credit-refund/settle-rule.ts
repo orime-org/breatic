@@ -24,16 +24,6 @@ export function succeededCents(refunds: readonly Pick<RefundCopy, "status" | "am
 }
 
 /**
- * What the payment's failed refunds add up to: Stripe keeps it out of what
- * it will still refund (§5.2).
- * @param refunds - The payment's refund copies.
- * @returns The sum in cents.
- */
-export function failedCents(refunds: readonly Pick<RefundCopy, "status" | "amountCents">[]): number {
-  return sumOf(refunds, "failed");
-}
-
-/**
  * Whether Stripe has not decided one of the payment's refunds yet.
  * @param refunds - The payment's refund copies.
  * @returns True when one is `pending` or `requires_action`.

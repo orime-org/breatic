@@ -810,6 +810,38 @@ export async function createCreditRefundRejected(input: {
   );
 }
 
+/** Payload for `credit.refund_restored`: the lot and the credits back in the account. */
+export interface CreditRefundRestoredPayload {
+  lotId: string;
+  /** The credits back in use, as the `numeric` column reads. */
+  credits: string;
+}
+
+/**
+ * Tell a buyer their credits were restored after the refund failed and they
+ * chose the credits over the money (inner#1410 §8). Written in the
+ * disposition's transaction, so the bell and the restore commit together.
+ * @param input - Who, what, and the transaction.
+ * @param input.userId - The buyer.
+ * @param input.payload - The lot and its credits.
+ * @param input.tx - The transaction the restore is made in.
+ * @returns The inserted `credit.refund_restored` notification.
+ */
+export async function createCreditRefundRestored(input: {
+  userId: string;
+  payload: CreditRefundRestoredPayload;
+  tx: DbTx;
+}): Promise<NotificationEntity> {
+  return notificationRepo.create(
+    {
+      userId: input.userId,
+      type: "credit.refund_restored",
+      payload: input.payload as unknown as Record<string, unknown>,
+    },
+    input.tx,
+  );
+}
+
 /** Payload for `project.join_request` — a studio member asks to join a project. */
 export interface ProjectJoinRequestPayload {
   /** Names the request in `/decision?token=`; the bell builds its link from it. */

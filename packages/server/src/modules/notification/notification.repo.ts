@@ -46,7 +46,8 @@ export type NotificationType =
   | "membership.upgrade_incomplete"
   | "storage.quota_exceeded"
   | "credit.refund_completed"
-  | "credit.refund_rejected";
+  | "credit.refund_rejected"
+  | "credit.refund_restored";
 
 REQUEST_NOTIFICATION_TYPES satisfies readonly NotificationType[];
 

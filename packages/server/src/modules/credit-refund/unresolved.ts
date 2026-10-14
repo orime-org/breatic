@@ -2,37 +2,45 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * The one definition of an unresolved failed refund (inner#1410 §5.3).
- *
- * The preview, the judgement tables (including both endpoints that answer for
- * such a refund) and booking all ask this function, so a refund cannot be
- * listed by one and refused by another. The daily reconcile selects the same
- * refunds in SQL (`reconcile.repo.ts`), and so must any list outside this
- * module (the back office reads the product DB itself); a change here changes
- * those too.
+ * Reads of the two views that hold the one definition of an unresolved failed
+ * refund and of the "refund failed" list (inner#1410 §5.3, migration 0094).
+ * The preview, the judgement tables, booking, the daily reconcile and the back
+ * office all read these views, so a refund cannot be listed by one and refused
+ * by another.
  */
 
-import type { CreditLotLifecycle } from "@breatic/shared";
-import type { RefundCopy } from "@server/modules/credit-refund/types.js";
+import { sql } from "drizzle-orm";
+import type { DbTx } from "@breatic/core";
+import type { RefundCopy, StripeRefundStatus } from "@server/modules/credit-refund/types.js";
+
+/** One unresolved failed refund, as the view gives it. */
+export type UnresolvedFailedRefund = Pick<RefundCopy, "stripeRefundId" | "amountCents" | "status">;
 
 /**
- * The payment's failed or canceled refunds no disposition has answered for.
- * On a refunded lot only the ones that had succeeded count: booking answers
- * for whatever had failed by then (§5.5), so these failed after it. A lot not
- * yet booked counts every one; any other lot has none.
- * @param lifecycle - The lot's lifecycle.
- * @param refunds - The payment's refund copies.
- * @returns The matching copies, in input order.
+ * The lot's failed or canceled refunds no disposition has answered for, read
+ * in the caller's transaction so it sees the copies just written.
+ * @param tx - The caller's transaction.
+ * @param lotId - The lot.
+ * @returns The refunds, by refund id.
  */
-export function pickUnresolvedFailedRefunds(
-  lifecycle: CreditLotLifecycle,
-  refunds: readonly RefundCopy[],
-): RefundCopy[] {
-  if (lifecycle !== "refunded" && lifecycle !== "refunding" && lifecycle !== "refund_pending") return [];
-  return refunds.filter(
-    (r) =>
-      (r.status === "failed" || r.status === "canceled") &&
-      r.resolvedByOperationId === null &&
-      (lifecycle !== "refunded" || r.everSucceeded),
-  );
+export async function pickUnresolvedFailedRefunds(tx: DbTx, lotId: string): Promise<UnresolvedFailedRefund[]> {
+  const rows = await tx.execute<{ stripe_refund_id: string; amount_cents: string; status: StripeRefundStatus }>(sql`
+    SELECT stripe_refund_id, amount_cents::text AS amount_cents, status
+    FROM credit_refunds_unresolved_failed WHERE lot_id = ${lotId}
+    ORDER BY stripe_refund_id
+  `);
+  return rows.map((r) => ({ stripeRefundId: r.stripe_refund_id, amountCents: Number(r.amount_cents), status: r.status }));
+}
+
+/**
+ * Whether the lot is on the "refund failed" list.
+ * @param tx - The caller's transaction.
+ * @param lotId - The lot.
+ * @returns True when the view lists it.
+ */
+export async function isOnRefundFailureList(tx: DbTx, lotId: string): Promise<boolean> {
+  const rows = await tx.execute<{ n: number }>(sql`
+    SELECT count(*)::int AS n FROM credit_lot_refund_failures WHERE lot_id = ${lotId}
+  `);
+  return (rows[0]?.n ?? 0) > 0;
 }

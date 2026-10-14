@@ -20,7 +20,7 @@ import {
 import * as refundCopyRepo from "@server/modules/credit-refund/refund-copy.repo.js";
 import { canSettle } from "@server/modules/credit-refund/settle-rule.js";
 import { eventForRefund } from "@server/modules/credit-refund/stripe-answer.js";
-import type { StripeRefundObject } from "@server/modules/credit-refund/types.js";
+import type { StripePendingReason, StripeRefundObject } from "@server/modules/credit-refund/types.js";
 import * as paymentRepo from "@server/modules/payment/payment.repo.js";
 
 export type { StripeRefundObject } from "@server/modules/credit-refund/types.js";
@@ -69,6 +69,7 @@ export async function applyRefundSnapshot(
         currency: r.currency,
         status: r.status,
         failureReason: r.failure_reason ?? null,
+        pendingReason: (r.pending_reason ?? null) as StripePendingReason | null,
       },
       tx,
     );
@@ -82,8 +83,7 @@ export async function applyRefundSnapshot(
 
 /**
  * The §5.4 event for a disposition's own refund, read against the copies
- * already written in this transaction: approve and retry by the settle
- * rule, refund_again by its own refund alone.
+ * already written in this transaction, by the settle rule.
  * @param tx - The caller's transaction.
  * @param op - The disposition.
  * @param read - Its refund, as Stripe reported it.
@@ -99,12 +99,6 @@ export async function judgeOwnRefund(
   // failed or canceled (§6.4): the copy's status and reason are the ones judged.
   const copy = copies.find((c) => c.stripeRefundId === read.id);
   const own = copy ? { ...read, status: copy.status, failure_reason: copy.failureReason } : read;
-  if (op.kind === "refund_again") {
-    // It asked Stripe for exactly the failed refunds' amount, so its own
-    // refund alone decides: succeeded settles.
-    const type = eventForRefund(own.status, "settle");
-    return type === "E6" ? { type, refund: own } : { type: type as "E2" | "E5", refund: own };
-  }
   const paid = await paymentRepo.readPaidAmount(op.paymentId, tx);
   const verdict = canSettle({
     refunds: copies,

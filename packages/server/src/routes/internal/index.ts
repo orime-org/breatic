@@ -45,7 +45,6 @@ const uuid = z.string().uuid();
 const BODIES = {
   approve: z.object({ reason, confirmedRefundIds: refundIds }).strict(),
   retry: z.object({ reason, confirmedRefundIds: refundIds }).strict(),
-  refund_again: z.object({ reason, failedRefundIds: refundIds, notify: z.boolean() }).strict(),
   reject: z.object({ reason }).strict(),
   send_back: z.object({ reason }).strict(),
   settle: z
@@ -53,12 +52,12 @@ const BODIES = {
       reason,
       notify: z.boolean(),
       confirmedSucceededCents: z.number().int().nonnegative(),
-      acceptPartial: z.boolean(),
     })
     .strict(),
   resolve_outside: z
     .object({ reason, failedRefundIds: refundIds, confirmedSucceededCents: z.number().int().nonnegative() })
     .strict(),
+  restore_credits: z.object({ reason, failedRefundIds: refundIds }).strict(),
   resend: z.object({ reason }).strict(),
 };
 
@@ -163,11 +162,11 @@ const ROUTES: Route[] = [
   },
   lotWrite("approve", `${LOT}/approve`, requestRefund),
   lotWrite("retry", `${LOT}/retry`, requestRefund),
-  lotWrite("refund_again", `${LOT}/refund-again`, requestRefund),
   lotWrite("reject", `${LOT}/reject`, requestOneShot),
   lotWrite("settle", `${LOT}/settle`, requestOneShot),
   lotWrite("send_back", `${LOT}/send-back`, requestOneShot),
   lotWrite("resolve_outside", `${LOT}/resolved-outside`, requestOneShot),
+  lotWrite("restore_credits", `${LOT}/restore-credits`, requestOneShot),
   {
     method: "post",
     path: RESEND,

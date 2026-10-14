@@ -80,10 +80,7 @@ export async function listPaymentsInScope(windowDays: number): Promise<string[]>
     SELECT payment_id FROM credit_refund_operations
       WHERE finished_at >= now() - make_interval(days => ${windowDays}::int)
     UNION
-    -- The SQL form of pickUnresolvedFailedRefunds (unresolved.ts); keep the two equal.
-    SELECT r.payment_id FROM credit_refunds r JOIN credit_lots l ON l.id = r.lot_id
-      WHERE r.status IN ('failed', 'canceled') AND r.resolved_by_operation_id IS NULL
-        AND (l.lifecycle IN ('refund_pending', 'refunding') OR (l.lifecycle = 'refunded' AND r.ever_succeeded))
+    SELECT payment_id FROM credit_refunds_unresolved_failed
     UNION
     SELECT unnest(failing_payment_ids) FROM credit_refund_reconcile_status WHERE name = ${NAME}
   `);
