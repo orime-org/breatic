@@ -194,7 +194,9 @@ test('the line goes when the starting tab leaves', async () => {
 // come back. The tickets are held so the wait is long enough to read.
 test('the other tab names the tool a real grid run is waiting on @needs-internet', async () => {
   const source = crypto.randomUUID();
-  await seedNode(starter, { projectId, spaceId }, source, 'image', 600, {
+  // Close enough to the middle that the grid panel opening under it clears the
+  // minimap in the bottom-right corner.
+  await seedNode(starter, { projectId, spaceId }, source, 'image', 360, {
     content: `https://picsum.photos/seed/${crypto.randomUUID()}/400/300.jpg`,
     mimeType: 'image/jpeg',
     size: 40_000,
