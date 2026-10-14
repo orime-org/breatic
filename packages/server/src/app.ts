@@ -37,6 +37,7 @@ import { studiosRoute, studioRoute } from "@server/routes/studios.js";
 import { decisionsRoute } from "@server/routes/decisions.js";
 import { projectInvitesRoute } from "@server/routes/project-invitations.js";
 import { notificationsRoute } from "@server/routes/notifications.js";
+import { consentRefreshRoute } from "@server/routes/consent-refresh.js";
 import {
   projectRoleUpgradeRequestsRoute,
   roleUpgradeRequestWithdrawRoute,
@@ -68,6 +69,8 @@ export function createApp(): Hono {
   // started in `index.ts`, not on the hono main port, so probe
   // traffic stays isolated and LB per-port failure semantics stay
   // clean. See `packages/server/src/index.ts` `startHealthServer`.
+  // Outside /api: nginx forwards it from the pages' own host (inner#1442 §4.4.3a).
+  app.route("/_consent/refresh", consentRefreshRoute);
   app.route("/api/v1/auth", authRoute);
   app.route("/api/v1/chat", chatRoute);
   app.route("/api/v1/canvas", canvasRoute);

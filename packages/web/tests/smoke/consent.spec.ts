@@ -102,8 +102,15 @@ test.describe('signed out', () => {
     await page.getByTestId('lang-trigger').click();
     await page.getByTestId('lang-option-ja').click();
     await expect(notice).toBeVisible();
+    const refreshed = page.waitForResponse((r) => new URL(r.url()).pathname === '/_consent/refresh');
     await page.locator('#cc-main .cm [data-role="all"]').click();
     await expect.poll(async () => (await consentCookie(context))?.categories.toSorted()).toEqual(['analytics', 'necessary']);
+    // The server wrote the value back (design §4.4.3a), so Safari's cap on script-written cookies does not apply.
+    const response = await refreshed;
+    expect(response.status()).toBe(204);
+    const written = (await response.allHeaders())['set-cookie'] ?? '';
+    const stored = (await context.cookies()).find((c) => c.name === 'breatic_consent');
+    expect(written.startsWith(`breatic_consent=${stored?.value};`)).toBe(true);
   });
 });
 

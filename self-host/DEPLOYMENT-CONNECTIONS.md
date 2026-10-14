@@ -58,6 +58,8 @@ A self-hosted instance sends nothing to any analytics or advertising service. Wi
 
 The `VITE_*` values are embedded in the bundle like the connection settings above: changing them means rebuilding the frontend, not restarting a container. Dockerfile.web accepts them as build arguments. When the pages and the API sit on two subdomains, set `VITE_CONSENT_COOKIE_DOMAIN` to the same parent domain as the backend `COOKIE_DOMAIN`, so the API and collab read the visitor's choice.
 
+Safari keeps a cookie written from script for at most seven days. After each write the pages call `GET /_consent/refresh` on their own host; nginx (`docker/breatic-locations.conf`) passes it to the server, which writes the same value back in its response with the same lifetime. The server writes it under `COOKIE_DOMAIN`, or under the page's host when that is empty, so `VITE_CONSENT_COOKIE_DOMAIN` must be empty or equal to `COOKIE_DOMAIN`.
+
 What leaves when it is on:
 
 - Only after consent. Visitors in the EEA, the UK, Switzerland and mainland China are asked first; elsewhere both categories start on and can be turned off. A browser sending Global Privacy Control starts with advertising off. Backend events follow the choice of the browser that caused them; events without a browser (renewals) use the account's latest choice and are not sent for an account that never chose.

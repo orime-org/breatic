@@ -109,11 +109,17 @@ afterEach(() => {
   for (const [target, type, listener] of added.splice(0)) target.removeEventListener(type, listener);
 });
 
+// The request asking the server to write the cookie back; no test reaches the network.
+const refresh = vi.fn(async () => new Response(null, { status: 204 }));
+
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.stubGlobal('fetch', refresh);
   library.consent = false;
   library.cookie = cookieOf(['necessary']);
 });
+
+afterEach(() => vi.unstubAllGlobals());
 
 describe('consent banner placement', () => {
   it('asks an undecided visitor only on the sign-in and sign-up pages', async () => {
@@ -329,6 +335,44 @@ describe('robustness', () => {
     window.dispatchEvent(new Event('focus'));
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(library.reset).not.toHaveBeenCalled();
+  });
+});
+
+describe('the server writing the stored choice back (design §4.4.3a)', () => {
+  it('asks for it once after the visitor\'s choice is written', async () => {
+    await startBanner('DE');
+    library.config?.onModalShow?.({ modalName: 'consentModal' });
+    expect(refresh).not.toHaveBeenCalled();
+    library.config?.onFirstConsent?.();
+    await vi.waitFor(() => expect(refresh).toHaveBeenCalledTimes(1));
+    const [url, init] = refresh.mock.calls[0] as unknown as [string, RequestInit];
+    expect(new URL(url).pathname).toBe('/_consent/refresh');
+    expect(new URL(url).origin).toBe(window.location.origin);
+    expect(init).toMatchObject({ credentials: 'same-origin', cache: 'no-store' });
+    expect(refresh.mock.invocationCallOrder[0]).toBeGreaterThan(library.setCookieData.mock.invocationCallOrder.at(-1) ?? Infinity);
+  });
+
+  it('asks for it after the regional default is written on load', async () => {
+    await startBanner('US');
+    expect(library.setCookieData).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => expect(refresh).toHaveBeenCalledTimes(1));
+  });
+
+  it('does not ask when nothing was written', async () => {
+    library.consent = true;
+    await startBanner('DE');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(refresh).not.toHaveBeenCalled();
+  });
+
+  it('keeps the choice when the request fails', async () => {
+    refresh.mockRejectedValueOnce(new TypeError('offline'));
+    const seen: unknown[] = [];
+    await startBanner('DE', (choice) => seen.push(choice));
+    library.config?.onModalShow?.({ modalName: 'consentModal' });
+    library.config?.onFirstConsent?.();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(seen).toHaveLength(2);
   });
 });
 

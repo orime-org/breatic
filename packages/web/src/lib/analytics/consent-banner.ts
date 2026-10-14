@@ -15,6 +15,7 @@ import {
   CONSENT_COOKIE_NAME,
   CONSENT_MAX_AGE_DAYS,
   CONSENT_REVISION,
+  httpRequest,
   parseConsentChoices,
   requiresOptIn,
   revisionInForce,
@@ -111,6 +112,13 @@ function writeConsent(writes: ConsentWrites, prior: BrowserChoices | null): void
   const { data, accepted } = cookieAfterWrites(writes, prior, stored, new Date().toISOString(), () => crypto.randomUUID());
   CookieConsent.acceptCategory(accepted, (['analytics', 'ads'] as const).filter((c) => !accepted.includes(c)));
   CookieConsent.setCookieData({ value: data, mode: 'overwrite' });
+  // A script-written cookie is capped at seven days in Safari; the server writes the same value back (design §4.4.3a).
+  // Without the route (a self-hosted copy that lacks it) the cookie keeps the browser's own limit.
+  void httpRequest(
+    new URL('/_consent/refresh', window.location.origin).href,
+    { credentials: 'same-origin', cache: 'no-store' },
+    { replaySafe: true },
+  ).catch(() => undefined);
 }
 
 /** A choice the visitor made in the banner or the settings window. */
