@@ -248,6 +248,7 @@ describe('collab-socket manager — one report per closed connection', () => {
     acquireDocProvider('project-p1/canvas-a', getDoc('project-p1/canvas-a'));
     acquireDocProvider('project-p1/canvas-b', getDoc('project-p1/canvas-b'));
 
+    wsInstances[0]!.emit('open');
     wsInstances[0]!.emit('close', { event: { code: 4408, reason: 'Connection Timeout' } });
 
     expect(reportCollabFailure).toHaveBeenCalledOnce();
@@ -259,11 +260,28 @@ describe('collab-socket manager — one report per closed connection', () => {
     });
   });
 
-  it('reports each later drop of the same connection again', () => {
+  it('reports a drop again once the connection has come back', () => {
     acquireDocProvider(META, getDoc(META));
+    wsInstances[0]!.emit('open');
     wsInstances[0]!.emit('close', { event: { code: 1006, reason: '' } });
+    wsInstances[0]!.emit('open');
     wsInstances[0]!.emit('close', { event: { code: 1006, reason: '' } });
     expect(reportCollabFailure).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not report the reconnect attempts that fail while the connection is down', () => {
+    acquireDocProvider(META, getDoc(META));
+    wsInstances[0]!.emit('open');
+    wsInstances[0]!.emit('close', { event: { code: 1006, reason: '' } });
+    wsInstances[0]!.emit('close', { event: { code: 1006, reason: '' } });
+    wsInstances[0]!.emit('close', { event: { code: 1006, reason: '' } });
+    expect(reportCollabFailure).toHaveBeenCalledOnce();
+  });
+
+  it('does not report a first connection attempt that never opened', () => {
+    acquireDocProvider(META, getDoc(META));
+    wsInstances[0]!.emit('close', { event: { code: 1006, reason: '' } });
+    expect(reportCollabFailure).not.toHaveBeenCalled();
   });
 
   it('does not report a document closed on its own while the connection stays up', () => {
