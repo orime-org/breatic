@@ -85,7 +85,34 @@ export function deletionRequests(userIds, keys) {
 
 /**
  * Erase the accounts' consent records, then ask Amplitude to delete their
- * events, one request per second, printing its answers.
+ * events, one request per second, printing its answers. The database part is
+ * done first, so a failure at Amplitude leaves it in place.
+ * @param {string[]} userIds - The accounts' `users.id`.
+ * @param {{ apiKey: string, secretKey: string } | null} keys - The Amplitude keys, or null without product analytics.
+ * @param {{ erase: (ids: string[]) => Promise<{ notDeleted: string[] }>, send: typeof fetch, pauseMs?: number }} deps - The database erase and the HTTP client.
+ */
+export async function run(userIds, keys, { erase, send, pauseMs = PAUSE_MS }) {
+  const { notDeleted } = await erase(userIds);
+  if (notDeleted.length > 0) {
+    throw new Error(`Soft-delete these accounts first, nothing was changed: ${notDeleted.join(', ')}`);
+  }
+  console.log(`Erased consent records of ${userIds.length} account(s)`);
+  if (keys === null) {
+    console.log('AMPLITUDE_API_KEY is not set, so there are no Amplitude events to delete');
+    return;
+  }
+  const requests = deletionRequests(userIds, keys);
+  for (const [index, request] of requests.entries()) {
+    if (index > 0) await new Promise((resolve) => setTimeout(resolve, pauseMs));
+    const response = await send(request.url, request.init);
+    const body = await response.text();
+    if (!response.ok) throw new Error(`Amplitude answered ${response.status}: ${body}`);
+    console.log(body);
+  }
+}
+
+/**
+ * Load the environment and the database, then {@link run}.
  * @param {string[]} args - The command line arguments.
  */
 async function main(args) {
@@ -95,27 +122,14 @@ async function main(args) {
   const keys = amplitudeKeys(process.env);
   const core = await import('../packages/core/dist/index.js');
   core.initCore(process.env);
-  try {
-    const { notDeleted } = await core.eraseAccountAnalytics(userIds);
-    if (notDeleted.length > 0) {
-      throw new Error(`Soft-delete these accounts first, nothing was changed: ${notDeleted.join(', ')}`);
+  const erase = async (ids) => {
+    try {
+      return await core.eraseAccountAnalytics(ids);
+    } finally {
+      await core.closeDb();
     }
-  } finally {
-    await core.closeDb();
-  }
-  console.log(`Erased consent records of ${userIds.length} account(s)`);
-  if (keys === null) {
-    console.log('AMPLITUDE_API_KEY is not set, so there are no Amplitude events to delete');
-    return;
-  }
-  const requests = deletionRequests(userIds, keys);
-  for (const [index, request] of requests.entries()) {
-    if (index > 0) await new Promise((resolve) => setTimeout(resolve, PAUSE_MS));
-    const response = await fetch(request.url, request.init);
-    const body = await response.text();
-    if (!response.ok) throw new Error(`Amplitude answered ${response.status}: ${body}`);
-    console.log(body);
-  }
+  };
+  await run(userIds, keys, { erase, send: fetch });
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {

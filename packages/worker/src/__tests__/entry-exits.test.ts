@@ -48,3 +48,13 @@ describe("worker task failure log", () => {
     expect(block).not.toMatch(/err\.message/);
   });
 });
+
+describe("consent receipt clean-up", () => {
+  it("is scheduled on every deployment, outside any vendor check", () => {
+    const at = code.indexOf("scheduleConsentPrune()");
+    expect(at).toBeGreaterThanOrEqual(0);
+    const line = code.slice(code.lastIndexOf("\n", at) + 1, at);
+    expect(line.trim()).toBe("");
+    expect(code.slice(code.lastIndexOf("createWorker(ANALYTICS_CONSENT_QUEUE", at), at)).not.toMatch(/\bif \(|\?\s*schedule/);
+  });
+});

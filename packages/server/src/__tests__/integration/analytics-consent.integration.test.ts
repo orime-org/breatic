@@ -27,7 +27,10 @@ vi.mock("ai", () => ({
 import crypto from "node:crypto";
 import postgres from "postgres";
 import {
+  ANALYTICS_CONSENT_QUEUE,
+  CONSENT_PRUNE_JOB,
   accountOnlyConsent,
+  createQueue,
   eraseAccountAnalytics,
   getAccountAdsEvents,
   getRedis,
@@ -36,6 +39,7 @@ import {
   pruneConsentReceipts,
   recordConsentReceipts,
   recordOptOutRequest,
+  scheduleConsentPrune,
   sessionCookieName,
   setSession,
 } from "@breatic/core";
@@ -213,6 +217,18 @@ describe("PUT /users/me/analytics-consent", () => {
     const { data } = (await res.json()) as { data: { receipts: { decisionId: string }[]; ownership: string } };
     expect(data.receipts.map((r) => r.decisionId)).toEqual([ads.decisionId]);
     expect(data.ownership).toBe("self");
+  });
+
+  it("records every decision of reports one account sends at the same time", async () => {
+    const id = await insertUser();
+    const first = decision();
+    const second = decision({ value: false });
+    const answers = await Promise.all([
+      call(id, { method: "PUT", body: report([first]), cookieAds: first }),
+      call(id, { method: "PUT", body: report([second]), cookieAds: second }),
+    ]);
+    expect(answers.map((r) => r.status)).toEqual([200, 200]);
+    expect((await receipts(id)).map((r) => r.decision_id).sort()).toEqual([first.decisionId, second.decisionId].sort());
   });
 
   it("records a decision once, however often and with whatever value it is sent again", async () => {
@@ -451,6 +467,14 @@ describe("pruneConsentReceipts", () => {
     const left = (await receipts(id)).map((r) => r.decision_id as string);
     expect(left.sort()).toEqual([...kept].sort());
     expect(left.some((d) => gone.includes(d))).toBe(false);
+  });
+
+  it("runs daily on its own queue, with nothing about any vendor needed to register it", async () => {
+    await scheduleConsentPrune();
+    const queue = createQueue(ANALYTICS_CONSENT_QUEUE);
+    const scheduler = await queue.getJobScheduler(CONSENT_PRUNE_JOB);
+    expect(scheduler).toMatchObject({ every: DAY });
+    expect(scheduler?.template?.opts).toMatchObject({ removeOnComplete: expect.anything(), removeOnFail: expect.anything() });
   });
 });
 
