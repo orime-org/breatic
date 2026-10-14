@@ -50,11 +50,21 @@ describe("worker task failure log", () => {
 });
 
 describe("consent receipt clean-up", () => {
-  it("is scheduled on every deployment, outside any vendor check", () => {
-    const at = code.indexOf("scheduleConsentPrune()");
-    expect(at).toBeGreaterThanOrEqual(0);
-    const line = code.slice(code.lastIndexOf("\n", at) + 1, at);
-    expect(line.trim()).toBe("");
-    expect(code.slice(code.lastIndexOf("createWorker(ANALYTICS_CONSENT_QUEUE", at), at)).not.toMatch(/\bif \(|\?\s*schedule/);
+  /**
+   * How deep inside startWorker's body a position sits: 1 is its own block.
+   * @param at - A position in the code.
+   * @returns The block depth.
+   */
+  const depthInStartWorker = (at: number): number => {
+    const body = code.slice(code.indexOf("export function startWorker"), at);
+    return body.split("{").length - body.split("}").length;
+  };
+
+  it("runs its worker and schedules the daily job on every deployment, outside any vendor check", () => {
+    for (const call of ["createWorker(ANALYTICS_CONSENT_QUEUE", "scheduleConsentPrune()"]) {
+      const at = code.indexOf(call);
+      expect(at, call).toBeGreaterThan(code.indexOf("export function startWorker"));
+      expect(depthInStartWorker(at), call).toBe(1);
+    }
   });
 });

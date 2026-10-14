@@ -75,8 +75,13 @@ describe("parseConsentChoices", () => {
     expect(parseConsentChoices(cookie(["ads"], { ads: adsData({ decidedAt: "yesterday" }) }), NOW).ads).toBeNull();
     expect(parseConsentChoices(cookie(["ads"], { ads: adsData({ source: "cookie-wall" }) }), NOW).ads).toBeNull();
     expect(parseConsentChoices(cookie(["ads"], { ads: adsData({ noticeShown: "yes" }) }), NOW).ads).toBeNull();
-    // A GPC entry is only ever a refusal; one that reads as a consent is not ours.
-    expect(parseConsentChoices(cookie(["ads"], { ads: adsData({ source: "gpc" }) }), NOW).ads).toBeNull();
+  });
+
+  it("reads a GPC entry as the refusal it always is, whatever the categories say", () => {
+    expect(parseConsentChoices(cookie(["ads"], { ads: adsData({ source: "gpc", gpcAtDecision: true }) }), NOW).ads).toMatchObject({
+      value: false,
+      source: "gpc",
+    });
   });
 
   it("expires each category on its own decidedAt", () => {
