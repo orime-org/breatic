@@ -20,6 +20,7 @@ import { create } from 'zustand';
 import {
   exponentialJitterDelay,
   idempotencyRetryDeadline,
+  newId,
   t,
   type IdempotencyScope,
 } from '@breatic/shared';
@@ -284,7 +285,7 @@ async function drive<B, R>(intentId: string, press: Press, spec: RunOnceSpec<B, 
     release(intentId, press);
     return;
   }
-  const key = crypto.randomUUID();
+  const key = newId();
   const stopAt = idempotencyRetryDeadline(spec.scope, Date.now());
   for (let attempt = 0; ; attempt += 1) {
     try {

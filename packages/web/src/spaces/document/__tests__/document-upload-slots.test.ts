@@ -9,7 +9,7 @@
  * whichever finishes first, however the gaps moved meanwhile.
  */
 
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import * as Y from 'yjs';
 import { TextSelection, type EditorState } from '@tiptap/pm/state';
 
@@ -850,5 +850,23 @@ describe('placeholders stay out of the shared document (A4)', () => {
       gapBefore(view.state.doc, idOf(editor, 'B')), ['m1']);
 
     expect(view.state.doc.eq(before)).toBe(true);
+  });
+});
+
+// A self-hosted deployment opened over plain http on a LAN address is not a
+// secure context, and browsers leave `crypto.randomUUID` out there.
+describe('a page that is not a secure context', () => {
+  it('still draws the placeholder and lands the block', () => {
+    const { editor } = open();
+    const view = editor.prosemirrorView!;
+    const real = globalThis.crypto;
+    vi.stubGlobal('crypto', { getRandomValues: real.getRandomValues.bind(real) });
+    try {
+      const ids = addUploadBatch(view, gapBefore(view.state.doc, idOf(editor, 'B')), ['m1']);
+      expect(land(editor, ids[0]!)).toMatch(/^[0-9a-f-]{36}$/);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+    expect(shape(editor)).toEqual(['A', 'm1', 'B', 'C']);
   });
 });

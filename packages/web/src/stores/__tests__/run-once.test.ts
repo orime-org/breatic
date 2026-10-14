@@ -117,6 +117,22 @@ describe('runOnce', () => {
     expect(send.mock.calls[0]?.[0]).not.toBe(send.mock.calls[1]?.[0]);
   });
 
+  // A self-hosted deployment opened over plain http on a LAN address is not a
+  // secure context, and browsers leave `crypto.randomUUID` out there.
+  it('sends from a page that is not a secure context', async () => {
+    const real = globalThis.crypto;
+    vi.stubGlobal('crypto', { getRandomValues: real.getRandomValues.bind(real) });
+    try {
+      const send = vi.fn((_key: string, _body: unknown) => Promise.resolve(null));
+      await runOnce('generate:s:n', { scope: 'generate', prepare: () => ({}), send });
+      expect(send).toHaveBeenCalledTimes(1);
+      expect(send.mock.calls[0]?.[0]).toMatch(/^[0-9a-f-]{36}$/);
+      expect(getRunning('generate:s:n')).toBeUndefined();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('ends without sending when prepare decides there is nothing to send', async () => {
     const send = vi.fn();
     await runOnce('mini-tool:s:n:x', { scope: 'mini-tool', prepare: () => null, send });
