@@ -132,7 +132,7 @@ export function replaceAddresses(
  * @param body - The body tag from a snapshot.
  * @returns Its plain text.
  */
-function bodyText(body: unknown): string {
+export function bodyText(body: unknown): string {
   if (!isRecord(body) || !Array.isArray(body.children)) return '';
   /**
    * The text inside one element.
