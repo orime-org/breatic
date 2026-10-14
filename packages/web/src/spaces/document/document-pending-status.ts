@@ -7,7 +7,12 @@
  * what other clients claim in awareness.
  */
 
-import type { UploadEntry, UploadFailure, WriteAccess } from '@web/spaces/document/document-upload-controller';
+import type { WriteAccess } from '@web/data/yjs/collab-socket';
+import {
+  CLAIMS_FIELD,
+  type UploadEntry,
+  type UploadFailure,
+} from '@web/spaces/document/document-upload-controller';
 
 /** What other clients say about an upload: running it, or it failed for them. */
 export type UploadClaim = 'uploading' | 'failed';
@@ -70,7 +75,7 @@ export function pendingStatus(facts: PendingFacts): PendingStatus {
 export function claimIn(states: ReadonlyMap<number, Record<string, unknown>>, uploadId: string): UploadClaim | null {
   let claim: UploadClaim | null = null;
   for (const state of states.values()) {
-    const uploads = state['uploads'];
+    const uploads = state[CLAIMS_FIELD];
     if (typeof uploads !== 'object' || uploads === null) continue;
     const said: unknown = (uploads as Record<string, unknown>)[uploadId];
     if (said === 'uploading') return 'uploading';

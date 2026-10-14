@@ -17,7 +17,7 @@
  *   Studio, with every other one started in the same task, in one request.
  */
 
-import { formatNameOf, readTaskFailure, type PastePair, type TaskFailureReason } from '@breatic/shared';
+import { formatNameOf, type PastePair, type TaskFailureReason } from '@breatic/shared';
 
 import { ApiException } from '@web/data/api/types';
 import { UploadFailedError, type StoredUpload } from '@web/data/upload/media-upload';
@@ -205,11 +205,10 @@ export function createUploadSources(deps: UploadSourceDeps): UploadControllerDep
     const ending = await deps.waitForEnding(key);
     if (ending.state === 'completed') return done(ending.result.fileUrl, ending.result.width, ending.result.height);
     if (ending.state === 'failed') {
-      const { reason } = readTaskFailure(ending.reason);
       const message = failureMessage(ending.reason);
-      return reason === null || message === null
+      return message === null
         ? fail(FAILED_KEY, true)
-        : fail(message.key, FETCH_RETRY_CAN_CHANGE[reason], message.params);
+        : fail(message.key, FETCH_RETRY_CAN_CHANGE[message.reason], message.params);
     }
     return fail(FAILED_KEY, true);
   };

@@ -10,14 +10,13 @@
 import { EMPTY_NODE_SIZE } from '@web/spaces/canvas/group-geometry';
 import type { ClipboardNode, ClipboardPayload } from '@web/spaces/canvas/node-clipboard';
 import { bodyText } from '@web/spaces/canvas/paste-addresses';
+import type { UploadSource } from '@web/spaces/document/document-upload-controller';
 
 /** The block types a canvas node can land as. */
 export type PastedMediaType = 'image' | 'video' | 'audio';
 
-/** Where a pasted medium's bytes come from. */
-export type PastedMediaSource =
-  | { readonly kind: 'ours'; readonly url: string; readonly coverUrl?: string }
-  | { readonly kind: 'address'; readonly url: string };
+/** Where a pasted medium's bytes come from: an address, never a file. */
+export type PastedMediaSource = Exclude<UploadSource, { kind: 'file' }>;
 
 /** One media block to insert as pending. */
 export interface PastedMedia {

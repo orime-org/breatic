@@ -104,8 +104,9 @@ export interface DocumentEditorOptions {
    */
   readonly onFiles?: FilesSink;
   /**
-   * How pasted media are judged (inner#1127 A18). Left out, every pasted
-   * medium is left out.
+   * How pasted media are judged (inner#1351 design §5.4). Left out, every
+   * pasted medium with an address is left out; a pending block copied from a
+   * body is kept.
    */
   readonly media?: PastedMediaOptions;
   /**

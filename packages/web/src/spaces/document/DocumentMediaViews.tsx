@@ -11,6 +11,7 @@ import { createPortal } from 'react-dom';
 
 import { DocumentMediaBlock } from '@web/spaces/document/DocumentMediaBlock';
 import { mediaBarShown, setHoveredMedia, useDocumentBars } from '@web/spaces/document/document-bars';
+import { pendingUploadId } from '@web/spaces/document/document-media-types';
 import { DocumentPendingMediaBlock } from '@web/spaces/document/document-pending-uploads';
 import {
   mediaViewKey,
@@ -46,7 +47,7 @@ export function DocumentMediaViews({ editor }: DocumentMediaViewsProps): React.J
     <>
       {views.map(([host, entry]) =>
         createPortal(
-          entry.props.uploadId !== '' ? (
+          pendingUploadId(entry.props) !== null ? (
             <DocumentPendingMediaBlock props={entry.props} actions={entry.actions} />
           ) : (
             <DocumentMediaBlock

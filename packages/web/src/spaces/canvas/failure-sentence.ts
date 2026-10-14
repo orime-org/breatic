@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { readTaskFailure, uploadableFormatList } from '@breatic/shared';
+import { readTaskFailure, uploadableFormatList, type TaskFailureReason } from '@breatic/shared';
 
 import { getCachedUnderstandMaxBytes } from '@web/data/api/canvas';
 import { formatBytes } from '@web/lib/format-bytes';
@@ -75,12 +75,13 @@ export function failureSentence(
  * with, for a reader that holds the two apart until it renders.
  * @param stored - What the row holds — a code of ours, or a provider's words.
  * @param medium - What the host node holds, for a refusal that names formats.
- * @returns The key and its values, or null when the stored text is not ours.
+ * @returns The cause it read, the key and its values, or null when the stored
+ *   text is not ours.
  */
 export function failureMessage(
   stored: string | null | undefined,
   medium?: Medium,
-): { key: string; params: Record<string, string> } | null {
+): { reason: TaskFailureReason; key: string; params: Record<string, string> } | null {
   const held = readTaskFailure(stored ?? null);
   const reason = held.reason;
   if (reason === null) return null;
@@ -90,6 +91,7 @@ export function failureMessage(
   // no listed medium falls to the `other` arm, which names nothing and needs
   // nothing.
   return {
+    reason,
     key: `canvas.task.failure.${reason}`,
     params: {
       kind: medium ?? 'other',

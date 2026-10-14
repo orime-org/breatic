@@ -15,6 +15,8 @@
 
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import * as Y from 'yjs';
+
+import type { WriteAccess } from '@web/data/yjs/collab-socket';
 import type { Node as PMNode } from '@tiptap/pm/model';
 import { TextSelection } from '@tiptap/pm/state';
 
@@ -27,7 +29,6 @@ import {
   type AttachedBody,
   type UploadOutcome,
   type UploadController,
-  type WriteAccess,
 } from '@web/spaces/document/document-upload-controller';
 
 type Editor = ReturnType<typeof buildDocumentEditor>;
@@ -107,7 +108,7 @@ function open(attach = true): World {
     spaceId: SPACE,
     doc,
     writeAccess: () => access.value,
-    onWriteAccess: (listener) => {
+    onChange: (listener) => {
       access.listeners.add(listener);
       return () => access.listeners.delete(listener);
     },

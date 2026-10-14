@@ -211,8 +211,8 @@ function createDocumentEditor(
       });
   if (uploads !== null) {
     // Fetched now so a paste can tell our media from outside links the moment
-    // it lands (inner#1127 A18). A fetch that fails leaves every pasted
-    // medium out until a later fetch lands, which an upload also makes.
+    // it lands. Until it lands, every pasted medium with an address becomes
+    // pending, and its upload sorts ours from outside (design §5.4).
     void assetsApi.fetchUploadConfig().catch(() => undefined);
   }
 

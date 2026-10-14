@@ -49,7 +49,7 @@ import {
   type MediaBlockActions,
   type MediaBlockProps,
 } from '@web/spaces/document/DocumentMediaBlock';
-import type { MediaBlockType } from '@web/spaces/document/document-media-types';
+import { pendingUploadId, type MediaBlockType } from '@web/spaces/document/document-media-types';
 import { dropMediaView, putMediaView } from '@web/spaces/document/document-media-views';
 import { selectWordlessBlock } from '@web/spaces/document/document-block-place';
 import { drawnSelected } from '@web/spaces/document/document-body-focus';
@@ -340,8 +340,8 @@ type ExternalHTML = (
  * @returns The line, or null for a block with an address.
  */
 function pendingExternalHTML(block: { props: Record<string, unknown> }): { dom: HTMLElement } | null {
-  const { uploadId, name } = block.props;
-  if (typeof uploadId !== 'string' || uploadId === '') return null;
+  if (pendingUploadId(block.props) === null) return null;
+  const { name } = block.props;
   const line = document.createElement('p');
   line.textContent = t('spaces.document.media.pendingExport', { name: typeof name === 'string' ? name : '' });
   return { dom: line };

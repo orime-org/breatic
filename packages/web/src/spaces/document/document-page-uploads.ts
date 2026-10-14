@@ -122,16 +122,8 @@ function pageController(): UploadController {
   if (controller === null) {
     const operations = useSpaceOperationsStore.getState();
     controller = createUploadController({
-      run: (uploadId, source, onProgress) => {
-        const target = targets.get(uploadId);
-        if (target === undefined) {
-          return Promise.resolve({
-            ok: false,
-            failure: { messageKey: 'canvas.upload.failed', params: {}, retryable: false },
-          });
-        }
-        return runnerFor(target)(uploadId, source, onProgress);
-      },
+      // `start` records an upload's target before it runs (see openPageBodyUploads).
+      run: (uploadId, source, onProgress) => runnerFor(targets.get(uploadId)!)(uploadId, source, onProgress),
       register: (spaceId, uploadId) => {
         operations.register(spaceId, uploadId);
       },
@@ -188,11 +180,12 @@ export function openPageBodyUploads(
   name: string,
   provider: HocuspocusProvider | undefined,
 ): BodyUploads {
-  return openBodyUploads(
-    pageController(),
-    { spaceId: target.spaceId, doc, connection: connectionOf(name, provider) },
-    (uploadId) => {
+  const link = openBodyUploads(pageController(), { spaceId: target.spaceId, doc, connection: connectionOf(name, provider) });
+  return {
+    ...link,
+    start: (uploadId, source) => {
       targets.set(uploadId, target);
+      link.start(uploadId, source);
     },
-  );
+  };
 }

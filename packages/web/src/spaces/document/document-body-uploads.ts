@@ -16,12 +16,8 @@ import type * as Y from 'yjs';
 
 import { claimIn } from '@web/spaces/document/document-pending-status';
 import type { PendingUploadsStore } from '@web/spaces/document/document-pending-uploads';
-import type {
-  ClaimChannel,
-  UploadController,
-  UploadSource,
-  WriteAccess,
-} from '@web/spaces/document/document-upload-controller';
+import type { WriteAccess } from '@web/data/yjs/collab-socket';
+import type { ClaimChannel, UploadController, UploadSource } from '@web/spaces/document/document-upload-controller';
 
 /** The awareness a body publishes claims in and reads others' from. */
 export interface BodyAwareness extends ClaimChannel {
@@ -62,22 +58,14 @@ export interface BodyUploads {
  * @param body.spaceId - Its Space.
  * @param body.doc - Its document.
  * @param body.connection - This page's connection to it.
- * @param onStart - Told of each upload started here, before it runs.
  * @returns The link.
  */
 export function openBodyUploads(
   controller: UploadController,
   body: { spaceId: string; doc: Y.Doc; connection: BodyConnection },
-  onStart: (uploadId: string) => void = () => {},
 ): BodyUploads {
   const { connection } = body;
-  const detach = controller.attach({
-    spaceId: body.spaceId,
-    doc: body.doc,
-    ...(connection.awareness !== undefined && { awareness: connection.awareness }),
-    writeAccess: connection.writeAccess,
-    onWriteAccess: connection.onChange,
-  });
+  const detach = controller.attach({ spaceId: body.spaceId, doc: body.doc, ...connection });
   const pending: PendingUploadsStore = {
     factsOf: (uploadId) => ({
       entry: controller.entry(uploadId),
@@ -101,7 +89,6 @@ export function openBodyUploads(
   };
   return {
     start: (uploadId, source) => {
-      onStart(uploadId);
       controller.start(uploadId, source);
     },
     pending,

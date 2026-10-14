@@ -22,6 +22,9 @@ import * as Y from 'yjs';
 
 import { documentBodyFragment } from '@breatic/shared';
 
+import type { WriteAccess } from '@web/data/yjs/collab-socket';
+import { isMediaBlockType, pendingUploadId } from '@web/spaces/document/document-media-types';
+
 /** Where a pending block's bytes come from. */
 export type UploadSource =
   | { readonly kind: 'file'; readonly file: File }
@@ -60,9 +63,6 @@ export interface UploadEntry {
   readonly failure: UploadFailure | null;
 }
 
-/** What this page's connection to a body may do. */
-export type WriteAccess = 'unknown' | 'granted' | 'denied';
-
 /** The part of a body's awareness the controller publishes claims through. */
 export interface ClaimChannel {
   getLocalState: () => Record<string, unknown> | null;
@@ -82,7 +82,7 @@ export interface AttachedBody {
    * Calls back whenever the write access may have changed.
    * @returns What stops listening.
    */
-  onWriteAccess: (listener: () => void) => () => void;
+  onChange: (listener: () => void) => () => void;
 }
 
 /** What the controller needs from the rest of the page. */
@@ -130,11 +130,10 @@ export const UPLOAD_WRITE_ORIGIN: Readonly<{ name: string }> = Object.freeze({
   name: 'document-upload-write',
 });
 
-const MEDIA_NODES: ReadonlySet<string> = new Set(['image', 'video', 'audio']);
-
 /** One upload's whole record. */
 interface Record_ {
-  source: UploadSource;
+  /** Where the bytes come from; let go once the upload has finished. */
+  source: UploadSource | null;
   phase: UploadPhase;
   progress: number | null;
   failure: UploadFailure | null;
@@ -152,7 +151,7 @@ interface Watched {
 }
 
 /** The awareness field claims are published in. */
-const CLAIMS_FIELD = 'uploads';
+export const CLAIMS_FIELD = 'uploads';
 
 /**
  * The upload id of a pending media element, or null.
@@ -160,11 +159,7 @@ const CLAIMS_FIELD = 'uploads';
  * @returns The id, when the element is a media block with an id and no url.
  */
 function pendingId(element: Y.XmlElement): string | null {
-  if (!MEDIA_NODES.has(element.nodeName)) return null;
-  const uploadId = element.getAttribute('uploadId');
-  const url = element.getAttribute('url');
-  if (typeof uploadId !== 'string' || uploadId === '') return null;
-  return typeof url === 'string' && url !== '' ? null : uploadId;
+  return isMediaBlockType(element.nodeName) ? pendingUploadId(element.getAttributes()) : null;
 }
 
 /**
@@ -216,21 +211,21 @@ export function createUploadController(deps: UploadControllerDeps): UploadContro
     entry.queued = false;
     const { body } = entry;
     const pending = pendingElements(documentBodyFragment(body.doc));
-    if (body.writeAccess() === 'granted') {
-      const writable = pending.filter(({ uploadId }) => records.get(uploadId)?.result != null);
-      if (writable.length > 0) {
-        body.doc.transact(() => {
-          for (const { element, uploadId } of writable) {
-            const result = records.get(uploadId)!.result!;
-            element.setAttribute('url', result.url);
-            if (result.mediaWidth !== undefined) element.setAttribute('mediaWidth', result.mediaWidth as never);
-            if (result.mediaHeight !== undefined) element.setAttribute('mediaHeight', result.mediaHeight as never);
-            element.setAttribute('uploadId', '');
-          }
-        }, UPLOAD_WRITE_ORIGIN);
-      }
+    const writable =
+      body.writeAccess() === 'granted' ? pending.filter(({ uploadId }) => records.get(uploadId)?.result != null) : [];
+    if (writable.length > 0) {
+      body.doc.transact(() => {
+        for (const { element, uploadId } of writable) {
+          const result = records.get(uploadId)!.result!;
+          element.setAttribute('url', result.url);
+          if (result.mediaWidth !== undefined) element.setAttribute('mediaWidth', result.mediaWidth as never);
+          if (result.mediaHeight !== undefined) element.setAttribute('mediaHeight', result.mediaHeight as never);
+          element.setAttribute('uploadId', '');
+        }
+      }, UPLOAD_WRITE_ORIGIN);
     }
-    const present = new Set(pendingElements(documentBodyFragment(body.doc)).map(({ uploadId }) => uploadId));
+    const written = new Set(writable.map(({ element }) => element));
+    const present = new Set(pending.filter(({ element }) => !written.has(element)).map(({ uploadId }) => uploadId));
     const busy = new Set([...present].filter((uploadId) => records.get(uploadId)?.phase === 'uploading'));
     publish(entry, present);
     for (const uploadId of [...entry.registered]) {
@@ -268,19 +263,18 @@ export function createUploadController(deps: UploadControllerDeps): UploadContro
   };
 
   /**
-   * Publishes this page's claims in one body's awareness: every upload in
-   * flight or failed, and every finished one whose block in this body still
-   * waits to be written.
+   * Publishes this page's claims in one body's awareness, for the pending
+   * blocks in it this page ran: failed, or in flight — a finished one whose
+   * block still waits to be written is still in flight to a reader.
    * @param entry - The body.
    * @param present - The upload ids of the pending blocks in it.
    */
   const publish = (entry: Watched, present: ReadonlySet<string>): void => {
     const claims: Record<string, string> = {};
-    records.forEach((record, uploadId) => {
-      if (record.phase === 'uploading') claims[uploadId] = 'uploading';
-      else if (record.phase === 'failed') claims[uploadId] = 'failed';
-      else if (present.has(uploadId)) claims[uploadId] = 'uploading';
-    });
+    for (const uploadId of present) {
+      const record = records.get(uploadId);
+      if (record !== undefined) claims[uploadId] = record.phase === 'failed' ? 'failed' : 'uploading';
+    }
     const json = JSON.stringify(claims);
     if (json !== entry.published && entry.body.awareness?.getLocalState() != null) {
       entry.body.awareness.setLocalStateField(CLAIMS_FIELD, claims);
@@ -310,10 +304,11 @@ export function createUploadController(deps: UploadControllerDeps): UploadContro
    * Runs one upload and records how it ended.
    * @param uploadId - The upload.
    * @param record - Its record.
+   * @param source - Where its bytes come from.
    */
-  const run = (uploadId: string, record: Record_): void => {
+  const run = (uploadId: string, record: Record_, source: UploadSource): void => {
     void deps
-      .run(uploadId, record.source, (share) => {
+      .run(uploadId, source, (share) => {
         record.progress = share;
         notify();
       })
@@ -322,6 +317,7 @@ export function createUploadController(deps: UploadControllerDeps): UploadContro
         if (outcome.ok) {
           record.phase = 'done';
           record.result = outcome.result;
+          record.source = null;
         } else {
           record.phase = 'failed';
           record.failure = outcome.failure;
@@ -335,16 +331,16 @@ export function createUploadController(deps: UploadControllerDeps): UploadContro
     start(uploadId, source) {
       const record: Record_ = { source, phase: 'uploading', progress: null, failure: null, result: null };
       records.set(uploadId, record);
-      run(uploadId, record);
+      run(uploadId, record, source);
       queueAll();
       notify();
     },
     retry(uploadId) {
       const record = records.get(uploadId);
-      if (record?.phase !== 'failed' || record.failure?.retryable !== true) return;
+      if (record?.phase !== 'failed' || record.failure?.retryable !== true || record.source === null) return;
       record.phase = 'uploading';
       record.failure = null;
-      run(uploadId, record);
+      run(uploadId, record, record.source);
       queueAll();
       notify();
     },
@@ -356,7 +352,7 @@ export function createUploadController(deps: UploadControllerDeps): UploadContro
         queue(entry);
       };
       fragment.observeDeep(onChange);
-      const stopAccess = body.onWriteAccess(onChange);
+      const stopAccess = body.onChange(onChange);
       watched.add(entry);
       queue(entry);
       return () => {

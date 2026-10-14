@@ -12,17 +12,18 @@ import { describe, it, expect, vi } from 'vitest';
 import * as Y from 'yjs';
 import { Awareness } from 'y-protocols/awareness';
 
-import { encodeInitialSpaceContent } from '@breatic/shared';
+import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared';
 
+import type { WriteAccess } from '@web/data/yjs/collab-socket';
 import { openBodyUploads, type BodyConnection } from '@web/spaces/document/document-body-uploads';
 import {
   createUploadController,
   type UploadOutcome,
-  type WriteAccess,
 } from '@web/spaces/document/document-upload-controller';
 
 /** What the test controls. */
 interface Rig {
+  doc: Y.Doc;
   open: ReturnType<typeof openBodyUploads>;
   settle: Map<string, (outcome: UploadOutcome) => void>;
   awareness: Awareness;
@@ -58,6 +59,7 @@ function rig(): Rig {
   };
   const open = openBodyUploads(controller, { spaceId: 'space-a', doc, connection });
   return {
+    doc,
     open,
     settle,
     awareness,
@@ -69,6 +71,21 @@ function rig(): Rig {
       });
     },
   };
+}
+
+/**
+ * Inserts a pending image straight into a body.
+ * @param doc - The doc.
+ * @param uploadId - The upload.
+ */
+function pending(doc: Y.Doc, uploadId: string): void {
+  const container = new Y.XmlElement('blockContainer');
+  const image = new Y.XmlElement('image');
+  image.setAttribute('url', '');
+  image.setAttribute('uploadId', uploadId);
+  container.insert(0, [image]);
+  const group = documentBodyFragment(doc).get(0) as Y.XmlElement;
+  group.insert(group.length, [container]);
 }
 
 /**
@@ -133,7 +150,8 @@ describe('what tells it something changed', () => {
 
 describe('closing the body', () => {
   it('withdraws its claims', async () => {
-    const { open, awareness } = rig();
+    const { doc, open, awareness } = rig();
+    pending(doc, 'u1');
     open.start('u1', { kind: 'address', url: 'https://imgs.example/x.jpg' });
     await flush();
     expect(awareness.getLocalState()?.['uploads']).toEqual({ u1: 'uploading' });

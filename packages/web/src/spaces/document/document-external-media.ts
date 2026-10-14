@@ -46,7 +46,7 @@ import {
   quotedBeside,
   type BlockSpec,
 } from '@web/spaces/document/document-file-input';
-import { isMediaBlockType } from '@web/spaces/document/document-media-types';
+import { isMediaBlockType, pendingUploadId } from '@web/spaces/document/document-media-types';
 import type { UploadSource } from '@web/spaces/document/document-upload-controller';
 
 /** What the body needs to judge pasted media. */
@@ -79,8 +79,7 @@ interface Queued {
  * @returns The verdict.
  */
 function verdictOf(attrs: Readonly<Record<string, unknown>>, prefix: string | null): Verdict {
-  const uploadId = attrs['uploadId'];
-  if (typeof uploadId === 'string' && uploadId !== '') return 'keep';
+  if (pendingUploadId(attrs) !== null) return 'keep';
   const url = attrs['url'];
   if (typeof url !== 'string' || url === '') return 'drop';
   if (prefix !== null && url.startsWith(prefix)) return 'keep';
@@ -153,10 +152,8 @@ function judge(
 function pendingIds(doc: PMNode): Set<string> {
   const ids = new Set<string>();
   doc.descendants((node) => {
-    const uploadId = node.attrs['uploadId'];
-    if (isMediaBlockType(node.type.name) && typeof uploadId === 'string' && uploadId !== '' && node.attrs['url'] === '') {
-      ids.add(uploadId);
-    }
+    const uploadId = isMediaBlockType(node.type.name) ? pendingUploadId(node.attrs) : null;
+    if (uploadId !== null) ids.add(uploadId);
     return true;
   });
   return ids;

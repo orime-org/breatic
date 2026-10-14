@@ -13,7 +13,7 @@ import { blockToNode } from '@blocknote/core';
 import { Fragment, Slice, type ResolvedPos } from '@tiptap/pm/model';
 
 import { parseClipboard } from '@web/spaces/canvas/node-clipboard';
-import { planCanvasPaste, type PastedMedia } from '@web/spaces/document/document-canvas-paste';
+import { planCanvasPaste } from '@web/spaces/document/document-canvas-paste';
 import {
   inTableCell,
   insertAtGap,
@@ -31,17 +31,6 @@ export interface CanvasPasteSink {
   start: (uploadId: string, source: UploadSource) => void;
   /** Tells the reader how many nodes could not be pasted. */
   notPasted: (count: number) => void;
-}
-
-/**
- * Where a pasted medium's bytes come from, as the controller takes them.
- * @param media - The medium.
- * @returns The source.
- */
-function sourceOf(media: PastedMedia): UploadSource {
-  return media.source.kind === 'ours'
-    ? { kind: 'ours', url: media.source.url, ...(media.source.coverUrl !== undefined && { coverUrl: media.source.coverUrl }) }
-    : { kind: 'address', url: media.source.url };
 }
 
 /**
@@ -94,7 +83,7 @@ export function canvasPasteHandler(sink: CanvasPasteSink, next: PasteHandler): P
         const blocks = items.flatMap((item): BlockSpec[] => {
           if (item.kind === 'text') return item.lines.map((line) => ({ type: 'paragraph', content: line }));
           const uploadId = crypto.randomUUID();
-          started.push({ uploadId, source: sourceOf(item) });
+          started.push({ uploadId, source: item.source });
           return [
             pendingBlock(item.type, uploadId, item.name, item.caption, {
               ...(item.mediaWidth !== undefined && { mediaWidth: item.mediaWidth }),

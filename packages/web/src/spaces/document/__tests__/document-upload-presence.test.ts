@@ -65,7 +65,7 @@ function side(spaceId: string): Side {
     doc,
     awareness: mine,
     writeAccess: () => 'granted',
-    onWriteAccess: () => () => {},
+    onChange: () => () => {},
   };
   return { doc, mine, peer, body };
 }
@@ -180,7 +180,7 @@ describe('claims', () => {
     controller.attach({
       ...a.body,
       writeAccess: () => access,
-      onWriteAccess: (listener) => {
+      onChange: (listener) => {
         listeners.add(listener);
         return () => listeners.delete(listener);
       },
