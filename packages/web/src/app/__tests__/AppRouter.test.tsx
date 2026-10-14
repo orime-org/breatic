@@ -8,6 +8,7 @@ import { createMemoryRouter, RouterProvider } from 'react-router-dom';
 
 import { AppRouter } from '@web/app/AppRouter';
 import { behindLoadingScreen } from '@web/app/loading-boundary';
+import { LoadingScreenHost } from '@web/components/loading-screen';
 
 vi.mock('react-router-dom', async (original) => {
   const actual = await original<typeof import('react-router-dom')>();
@@ -64,7 +65,12 @@ describe('AppRouter', () => {
       { initialEntries: ['/'] },
     );
 
-    render(<AppRouter router={router} />);
+    render(
+      <>
+        <AppRouter router={router} />
+        <LoadingScreenHost />
+      </>,
+    );
     expect(screen.getByTestId('loading-screen')).toBeInTheDocument();
 
     deliver();

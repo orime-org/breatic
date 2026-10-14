@@ -74,8 +74,8 @@ describe('LoadingScreen', () => {
 
     const shown = screen.getByTestId('loading-screen');
     expect(shown).toHaveAttribute('role', 'status');
-    expect(shown.className).toContain('h-screen');
-    expect(shown.className).toContain('w-screen');
+    expect(shown.className).toContain('fixed');
+    expect(shown.className).toContain('inset-0');
     expect(shown.querySelector('.animate-spin')).not.toBeNull();
     expect(shown).toHaveTextContent(/\S/);
   });
