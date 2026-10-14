@@ -633,7 +633,6 @@ function GeneratePanelBody({
       spaceId,
       nodeId,
       panelKind: 'generate',
-      closePanelOn: sessionStore.getState().closePanelOn,
       buildPayload: () =>
         buildGenerateTaskPayload({
           nodeId,
@@ -646,7 +645,7 @@ function GeneratePanelBody({
           poolParams: poolParams(fresh.pool, fresh.referenceUrls),
         }),
     });
-  }, [sessionStore,
+  }, [
     nodeId,
     projectId,
     spaceId,

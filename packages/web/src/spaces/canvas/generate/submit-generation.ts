@@ -15,7 +15,7 @@ import { t, type TaskCreateInput } from '@breatic/shared';
 import { canvasApi } from '@web/data/api/canvas';
 import { ApiException } from '@web/data/api/types';
 import { toast } from '@web/lib/toast';
-import type { CanvasSessionState } from '@web/stores/canvas-session';
+import { canvasSessions, type CanvasSessionState } from '@web/stores/canvas-session';
 import { getRunning, runOnce, useRunning } from '@web/stores/task-actions-in-flight';
 import { executeErrorMessage } from '@web/spaces/canvas/generate/execute-error-message';
 
@@ -62,22 +62,22 @@ export function useGenerating(spaceId: string, nodeId: string): boolean {
  * @param opts.spaceId - The Space the node lives in.
  * @param opts.nodeId - The node.
  * @param opts.panelKind - Which Generate panel the press came from.
- * @param opts.closePanelOn - The Space's own way of closing a panel on a node.
  * @param opts.buildPayload - Builds the request body at the press.
  */
 export function submitGeneration(opts: {
   spaceId: string;
   nodeId: string;
   panelKind: GeneratePanelKind;
-  closePanelOn: CanvasSessionState['closePanelOn'];
   buildPayload: () => TaskCreateInput;
 }): void {
   void runOnce(generateIntent(opts.spaceId, opts.nodeId), {
     scope: 'generate',
     prepare: opts.buildPayload,
     send: (key, body: TaskCreateInput) => canvasApi.createTask(body, key),
+    // The Space's session as it is now: its tab may have been closed and
+    // opened again since the press.
     onDone: () => {
-      opts.closePanelOn(opts.nodeId, opts.panelKind);
+      canvasSessions.peek(opts.spaceId)?.getState().closePanelOn(opts.nodeId, opts.panelKind);
       return undefined;
     },
     // Unconditional: a press that failed after the reader closed the panel

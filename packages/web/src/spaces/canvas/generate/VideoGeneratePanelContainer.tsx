@@ -769,7 +769,6 @@ function VideoGeneratePanelBody({
       spaceId,
       nodeId,
       panelKind: 'generateVideo',
-      closePanelOn: sessionStore.getState().closePanelOn,
       buildPayload: () =>
         buildVideoTaskPayload({
           nodeId,
@@ -787,7 +786,7 @@ function VideoGeneratePanelBody({
           poolParams: poolParams(fresh.pool, fresh.referenceUrls),
         }),
     });
-  }, [sessionStore,
+  }, [
     nodeId,
     projectId,
     spaceId,

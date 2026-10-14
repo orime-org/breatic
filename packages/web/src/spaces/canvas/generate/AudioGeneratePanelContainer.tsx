@@ -515,7 +515,6 @@ function AudioGeneratePanelBody({
       spaceId,
       nodeId,
       panelKind: 'generateAudio',
-      closePanelOn: sessionStore.getState().closePanelOn,
       buildPayload: () =>
         buildAudioTaskPayload({
           nodeId,
@@ -537,7 +536,7 @@ function AudioGeneratePanelBody({
           ...(freshLyrics !== undefined ? { lyricsText: freshLyrics } : {}),
         }),
     });
-  }, [sessionStore,
+  }, [
     nodeId,
     projectId,
     spaceId,
