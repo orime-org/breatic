@@ -17,6 +17,8 @@ import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { MessageBubble } from '@web/pages/project/chat/MessageBubble';
+import { TurnEnding } from '@web/pages/project/chat/TurnEnding';
+import type { ChatMessage } from '@web/pages/project/chat/types';
 import { COPY_ANSWER_MS } from '@web/pages/project/chat/copy-answer';
 
 afterEach(cleanup);
@@ -76,6 +78,20 @@ describe('the line that says nothing came back', () => {
     );
 
     expect(screen.getByTestId('message-bubble-empty')).toBeInTheDocument();
+  });
+
+  it('stays away from a turn whose only answer is a document proposal card', () => {
+    const message = { id: 'm', role: 'assistant', content: '', documentProposals: [{}] } as unknown as ChatMessage;
+    render(<TurnEnding message={message} />);
+
+    expect(screen.queryByTestId('message-bubble-empty')).toBeNull();
+  });
+
+  it('stays away from a turn whose only answer is a canvas proposal card', () => {
+    const message = { id: 'm', role: 'assistant', content: '', proposals: [{}] } as unknown as ChatMessage;
+    render(<TurnEnding message={message} />);
+
+    expect(screen.queryByTestId('message-bubble-empty')).toBeNull();
   });
 
   it('still says it when the turn produced nothing at all', () => {
