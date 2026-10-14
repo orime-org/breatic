@@ -1362,8 +1362,9 @@ export const creditLedger = pgTable(
     projectId: uuid("project_id").references(() => projects.id, {
       onDelete: "restrict",
     }),
-    // One of `topup` / `spend` / `refund` / `refund_rejected` (0061) or
-    // `debt_incurred` / `debt_repayment` (0063). CHECK in 0063.
+    // One of `topup` / `spend` / `refund` / `refund_rejected` (0061),
+    // `debt_incurred` / `debt_repayment` (0063) or `refund_reversed` (0094).
+    // CHECK in 0094.
     entryType: varchar("entry_type", { length: 24 }).notNull(),
     // Positive in, negative out.
     amount: numeric("amount", { precision: 20, scale: 6 }).notNull(),
@@ -1446,10 +1447,9 @@ export const creditRefundOperations = pgTable(
     refundRequestedAt: timestamp("refund_requested_at", { withTimezone: true }),
     confirmedRefundIds: text("confirmed_refund_ids").array().default(sql`'{}'`).notNull(),
     confirmedSucceededCents: bigint("confirmed_succeeded_cents", { mode: "number" }),
-    // refund_again only: the failed refunds it covers and the exact amount it
-    // asks Stripe for, kept so the loop can resume it after a crash.
+    // resolve_outside and restore_credits: the failed refunds the operator
+    // answered for, as the confirmation page showed them.
     failedRefundIds: text("failed_refund_ids").array().default(sql`'{}'`).notNull(),
-    refundAmountCents: bigint("refund_amount_cents", { mode: "number" }),
     settledSucceededCents: bigint("settled_succeeded_cents", { mode: "number" }),
     stripeRefundId: varchar("stripe_refund_id", { length: 255 }),
     firstCalledAt: timestamp("first_called_at", { withTimezone: true }),
@@ -1524,6 +1524,8 @@ export const creditRefunds = pgTable(
     currency: varchar("currency", { length: 3 }).notNull(),
     status: varchar("status", { length: 20 }).notNull(),
     failureReason: varchar("failure_reason", { length: 64 }),
+    // Stripe's reason while the refund is pending; NULL in every other status.
+    pendingReason: varchar("pending_reason", { length: 20 }),
     everSucceeded: boolean("ever_succeeded").default(false).notNull(),
     resolvedByOperationId: uuid("resolved_by_operation_id").references(
       () => creditRefundOperations.id,

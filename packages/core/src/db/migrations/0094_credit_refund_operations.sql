@@ -37,10 +37,9 @@ CREATE TABLE "credit_refund_operations" (
   "refund_requested_at" timestamp with time zone,
   "confirmed_refund_ids" text[] DEFAULT '{}' NOT NULL,
   "confirmed_succeeded_cents" bigint,
-  -- refund_again only: the failed refunds it covers and the exact amount it
-  -- asks Stripe for, kept so the loop can resume it after a crash.
+  -- resolve_outside and restore_credits: the failed refunds the operator
+  -- answered for, as the confirmation page showed them.
   "failed_refund_ids" text[] DEFAULT '{}' NOT NULL,
-  "refund_amount_cents" bigint,
   "settled_succeeded_cents" bigint,
   "stripe_refund_id" varchar(255),
   "first_called_at" timestamp with time zone,
@@ -57,7 +56,7 @@ CREATE TABLE "credit_refund_operations" (
   CONSTRAINT "credit_refund_operations_payment_fk" FOREIGN KEY ("payment_id") REFERENCES "payments"("id") ON DELETE RESTRICT,
   CONSTRAINT "credit_refund_operations_closed_by_fk" FOREIGN KEY ("attention_closed_by") REFERENCES "credit_refund_operations"("id") ON DELETE RESTRICT,
   CONSTRAINT "credit_refund_operations_kind_check" CHECK (
-    "kind" IN ('approve', 'reject', 'settle', 'send_back', 'retry', 'refund_again', 'resolve_outside')
+    "kind" IN ('approve', 'reject', 'settle', 'send_back', 'retry', 'resolve_outside', 'restore_credits')
   ),
   CONSTRAINT "credit_refund_operations_status_check" CHECK (
     "status" IN ('started', 'awaiting_stripe', 'succeeded', 'needs_attention')
@@ -67,14 +66,14 @@ CREATE TABLE "credit_refund_operations" (
   -- NULL.
   CONSTRAINT "credit_refund_operations_result_check" CHECK (
     ("status" = 'succeeded' AND "result" IS NOT NULL
-      AND "result" IN ('refunded', 'rejected', 'sent_back', 'resolved_outside'))
+      AND "result" IN ('refunded', 'rejected', 'sent_back', 'resolved_outside', 'restored'))
     OR ("status" <> 'succeeded' AND "result" IS NULL)
   ),
   CONSTRAINT "credit_refund_operations_attention_check" CHECK (
     "attention_reason" IS NULL OR "attention_reason" IN (
       'partial_refund', 'unexpected_external_refund', 'stripe_refund_failed_later',
       'attempts_exhausted', 'stripe_result_unknown', 'already_refunded_elsewhere',
-      'stripe_declined', 'state_mismatch'
+      'stripe_declined', 'stripe_request_invalid', 'state_mismatch'
     )
   )
 );--> statement-breakpoint
@@ -109,6 +108,8 @@ CREATE TABLE "credit_refunds" (
   "currency" varchar(3) NOT NULL,
   "status" varchar(20) NOT NULL,
   "failure_reason" varchar(64),
+  -- Stripe's reason while the refund is pending; NULL in every other status.
+  "pending_reason" varchar(20),
   -- Stripe's refund object keeps no memory of having succeeded; this column
   -- does, and only ever turns from false to true.
   "ever_succeeded" boolean DEFAULT false NOT NULL,
@@ -121,6 +122,9 @@ CREATE TABLE "credit_refunds" (
   CONSTRAINT "credit_refunds_resolved_by_fk" FOREIGN KEY ("resolved_by_operation_id") REFERENCES "credit_refund_operations"("id") ON DELETE RESTRICT,
   CONSTRAINT "credit_refunds_status_check" CHECK (
     "status" IN ('pending', 'requires_action', 'succeeded', 'failed', 'canceled')
+  ),
+  CONSTRAINT "credit_refunds_pending_reason_check" CHECK (
+    "pending_reason" IS NULL OR "pending_reason" IN ('processing', 'insufficient_funds', 'charge_pending')
   )
 );--> statement-breakpoint
 CREATE INDEX "credit_refunds_payment_idx" ON "credit_refunds" USING btree ("payment_id");--> statement-breakpoint
@@ -144,7 +148,7 @@ CREATE TABLE "refund_mail_outbox" (
   "updated_at" timestamp with time zone DEFAULT now() NOT NULL,
   CONSTRAINT "refund_mail_outbox_idempotency_key_unique" UNIQUE ("idempotency_key"),
   CONSTRAINT "refund_mail_outbox_operation_fk" FOREIGN KEY ("operation_id") REFERENCES "credit_refund_operations"("id") ON DELETE RESTRICT,
-  CONSTRAINT "refund_mail_outbox_kind_check" CHECK ("kind" IN ('refund_completed', 'refund_rejected')),
+  CONSTRAINT "refund_mail_outbox_kind_check" CHECK ("kind" IN ('refund_completed', 'refund_rejected', 'refund_restored')),
   CONSTRAINT "refund_mail_outbox_origin_check" CHECK ("origin" IN ('auto', 'resend')),
   CONSTRAINT "refund_mail_outbox_status_check" CHECK (
     "status" IN ('pending', 'sending', 'sent', 'failed', 'skipped', 'unknown')
@@ -187,6 +191,46 @@ ALTER TABLE "notifications" ADD CONSTRAINT "notifications_type_check" CHECK (
 		'membership.upgrade_incomplete',
 		'storage.quota_exceeded',
 		'credit.refund_completed',
-		'credit.refund_rejected'
+		'credit.refund_rejected',
+		'credit.refund_restored'
 	)
-);
+);--> statement-breakpoint
+
+-- Restoring a pack's credits after a failed refund books a reversing row.
+ALTER TABLE "credit_ledger" DROP CONSTRAINT "credit_ledger_entry_type_check";--> statement-breakpoint
+ALTER TABLE "credit_ledger" ADD CONSTRAINT "credit_ledger_entry_type_check" CHECK (
+	"entry_type" IN ('topup', 'spend', 'refund', 'refund_rejected',
+	                 'debt_incurred', 'debt_repayment', 'refund_reversed')
+);--> statement-breakpoint
+
+-- The one definition of an unresolved failed refund (inner#1410 §5.3): failed
+-- or canceled, answered by no disposition, on a lot still in the refund flow;
+-- on a booked lot only one that failed after it had succeeded counts, since
+-- booking answered for those already failed. The product and the back office
+-- both read this view.
+CREATE VIEW "credit_refunds_unresolved_failed" AS
+SELECT r."lot_id", r."payment_id", r."stripe_refund_id", r."amount_cents", r."currency", r."status"
+FROM "credit_refunds" r
+JOIN "credit_lots" l ON l."id" = r."lot_id"
+WHERE r."status" IN ('failed', 'canceled')
+  AND r."resolved_by_operation_id" IS NULL
+  AND (l."lifecycle" IN ('refund_pending', 'refunding')
+       OR (l."lifecycle" = 'refunded' AND r."ever_succeeded"));--> statement-breakpoint
+
+-- The lots on the back office's "refund failed" list (§5.3): an unresolved
+-- failed refund, or a lot still refunding, with nothing in flight, that
+-- Stripe once refused outright (no refund object, so no copy to point at).
+CREATE VIEW "credit_lot_refund_failures" AS
+SELECT DISTINCT u."lot_id" FROM "credit_refunds_unresolved_failed" u
+UNION
+SELECT l."id" AS "lot_id"
+FROM "credit_lots" l
+WHERE l."lifecycle" = 'refunding'
+  AND EXISTS (
+    SELECT 1 FROM "credit_refund_operations" o
+    WHERE o."lot_id" = l."id" AND o."attention_reason" = 'stripe_declined'
+  )
+  AND NOT EXISTS (
+    SELECT 1 FROM "credit_refund_operations" o
+    WHERE o."lot_id" = l."id" AND o."status" IN ('started', 'awaiting_stripe')
+  );
