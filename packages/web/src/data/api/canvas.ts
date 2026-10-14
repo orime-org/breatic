@@ -3,7 +3,7 @@
 
 import type { CanvasPasteInput, NodeTaskCounts, NodeTaskEntry, TaskCreateInput } from '@breatic/shared';
 
-import { apiDelete, apiGet, apiPost } from '@web/data/api/request';
+import { apiDelete, apiGet, apiPost, runOnceRequest } from '@web/data/api/request';
 
 export interface CanvasTask {
   id: string;
@@ -129,11 +129,12 @@ export const canvasApi = {
    * `TaskCreateInput` wire contract (snake_case); build it with
    * `buildGenerateTaskPayload` for image-node Generate.
    * @param body - The `POST /canvas/tasks` request body.
+   * @param key - The press's `Idempotency-Key`; a re-send with it runs nothing new.
    * @returns The created task (unwrapped from the `{ data }` envelope).
    * @throws {import('@web/data/api/types').ApiException} On 402 / 409 / 503 etc.
    */
-  createTask(body: TaskCreateInput): Promise<CanvasTask> {
-    return apiPost<CanvasTask>('/canvas/tasks', body);
+  createTask(body: TaskCreateInput, key: string): Promise<CanvasTask> {
+    return apiPost<CanvasTask>('/canvas/tasks', body, runOnceRequest(key));
   },
   /**
    * Start a run that reads one node's media into a text node the browser has
@@ -146,6 +147,7 @@ export const canvasApi = {
    * @param body.node_ids - The node this run writes to, which already exists.
    * @param body.reader_locale - The language the answer is read in.
    * @param body.source_mime_type - What the ledger judged the file to be.
+   * @param key - The press's `Idempotency-Key`; a re-send with it runs nothing new.
    * @returns The queued task.
    * @throws {import('@web/data/api/types').ApiException} On 402 / 403 / 503.
    */
@@ -157,8 +159,8 @@ export const canvasApi = {
     node_ids: string[];
     reader_locale: string;
     source_mime_type?: string;
-  }): Promise<CanvasTask> {
-    return apiPost<CanvasTask>('/canvas/understand', body);
+  }, key: string): Promise<CanvasTask> {
+    return apiPost<CanvasTask>('/canvas/understand', body, runOnceRequest(key));
   },
   /**
    * Have the server fetch an address into storage for a node (#207).

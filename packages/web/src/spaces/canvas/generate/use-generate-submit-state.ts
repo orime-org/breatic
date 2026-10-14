@@ -8,9 +8,9 @@
  * every part of it is here for a reason a click makes: a text box contributes
  * a state value, a ref mirroring it, the setter that writes both, and the
  * editor handle that serializes it at that instant — because React state lags
- * a frame and the handler reads it synchronously. Beside the boxes sits the
- * in-flight flag, mirrored for the same reason. Which opening of the panel a
- * submit closes is the canvas session's `panelSession`, not this hook's.
+ * a frame and the handler reads it synchronously. Whether a press is still
+ * waiting is the run-once registry's (`submit-generation.ts`), which outlives
+ * the panel.
  *
  * Held together rather than declared per panel because they are one mechanism:
  * a fourth panel that copied all but one part would look right and drop a
@@ -52,17 +52,11 @@ export interface GenerateSubmitState {
   onLyricsChange: (text: string) => void;
   /** The mounted lyrics editor, which serializes them at click time. */
   lyricsEditorRef: React.RefObject<PromptEditorHandle | null>;
-  /** Whether a submit is out — what the button draws a spinner from. */
-  isSubmitting: boolean;
-  /** Sets the flag above; the ref below is the one a click reads. */
-  setIsSubmitting: React.Dispatch<React.SetStateAction<boolean>>;
-  /** The synchronous re-entry latch: state cannot answer soon enough. */
-  submittingRef: React.RefObject<boolean>;
 }
 
 /**
  * Builds the submit-time state for one Generate panel.
- * @returns The prompt mirrors, the editor handles and the in-flight mirrors.
+ * @returns The prompt mirrors and the editor handles.
  */
 export function useGenerateSubmitState(): GenerateSubmitState {
   const [promptText, setPromptText] = React.useState('');
@@ -81,9 +75,6 @@ export function useGenerateSubmitState(): GenerateSubmitState {
   }, []);
   const lyricsEditorRef = React.useRef<PromptEditorHandle>(null);
 
-  const [isSubmitting, setIsSubmitting] = React.useState(false);
-  const submittingRef = React.useRef(false);
-
   return {
     lyricsText,
     lyricsTextRef,
@@ -93,8 +84,5 @@ export function useGenerateSubmitState(): GenerateSubmitState {
     promptTextRef,
     onPromptChange,
     promptEditorRef,
-    isSubmitting,
-    setIsSubmitting,
-    submittingRef,
   };
 }

@@ -74,6 +74,7 @@ afterEach(() => {
   // end any way it likes, including throwing mid-way.
   vi.useRealTimers();
   cleanup();
+
   // `cleanup()` only takes back what testing-library rendered. A test that
   // attaches an element itself — mounting an editor needs one — leaves it
   // behind, and with one process per package every later FILE shares this
@@ -270,4 +271,13 @@ if (
 // `new URL(...)` at import time throw "URL is not a constructor".
 afterAll(() => {
   vi.unstubAllGlobals();
+});
+
+// Run-once presses live in a module-level registry, outside any component.
+// Imported here, after the case, so a file that mocks `sonner` has already
+// put its mock in place: a static import from this file would load the toast
+// wrapper first, bound to the real one.
+afterEach(async () => {
+  const { resetRunOnceForTests } = await import('@web/stores/task-actions-in-flight');
+  resetRunOnceForTests();
 });

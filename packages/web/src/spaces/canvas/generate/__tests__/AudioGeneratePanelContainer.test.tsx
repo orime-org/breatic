@@ -741,6 +741,41 @@ describe('AudioGeneratePanelContainer — submitting', () => {
     settle?.();
   });
 
+  // inner#1490: the press is held outside the panel, so a reopened panel
+  // shows it still waiting and a second press sends nothing.
+  it('keeps the press waiting across closing and reopening the panel', async () => {
+    let finish: (() => void) | undefined;
+    const create = vi.spyOn(canvasApi, 'createTask').mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finish = () => resolve({} as never);
+        }),
+    );
+    await openPanel({
+      model: 'elevenlabs-v3',
+      paramsByModel: { 'elevenlabs-v3': { voice_id: 'Aria' } },
+    });
+    typePrompt('Good evening.');
+    fireEvent.click(screen.getByTestId('generate-audio-execute'));
+    await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
+    const kind = canvasSessions.of('s').getState().panelKind;
+    act(() => {
+      canvasSessions.of('s').getState().closeActivePanel();
+    });
+    act(() => {
+      canvasSessions.of('s').getState().openGeneratePanel('target', 'audio');
+    });
+    const reopened = await screen.findByTestId('generate-audio-execute');
+    await waitFor(() => expect(reopened).toHaveAttribute('aria-busy', 'true'));
+    fireEvent.click(reopened);
+    expect(create).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      finish?.();
+    });
+    expect(kind).toBe('generateAudio');
+    expect(canvasSessions.of('s').getState().panelHostId).toBeNull();
+  });
+
   it('stops waiting once a refused submit is answered', async () => {
     let refuse: (() => void) | undefined;
     vi.spyOn(canvasApi, 'createTask').mockImplementation(

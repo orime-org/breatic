@@ -340,6 +340,19 @@ describe('NodeContextMenu', () => {
     expect(item.className).toContain('data-[disabled]:cursor-not-allowed');
   });
 
+  // inner#1490: a press still waiting shows on the item, and choosing it
+  // again does nothing.
+  it('shows the understand item waiting while a press of it waits', () => {
+    const onUnderstand = vi.fn();
+    setup({ target: 'node', onUpload: () => {}, onUnderstand, understanding: true });
+
+    const item = screen.getByTestId('node-menu-understand');
+    expect(item).toHaveAttribute('aria-busy', 'true');
+    expect(item).toHaveAttribute('data-disabled');
+    fireEvent.click(item);
+    expect(onUnderstand).not.toHaveBeenCalled();
+  });
+
   it('fires onUnderstand when the understand item is chosen', () => {
     const onUnderstand = vi.fn();
     setup({ target: 'node', onUpload: () => {}, onUnderstand });

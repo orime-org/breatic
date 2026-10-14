@@ -379,8 +379,12 @@ export interface CanvasSessionState {
   openAnnotationPanel: (nodeId: string) => void;
   /** Close whichever bottom panel is open (exit button, or execute hands off). */
   closeActivePanel: () => void;
-  /** Close the panel only while it is still the opening `session` names. */
-  closePanelOfSession: (session: number) => void;
+  /**
+   * Close the panel of `kind` on `nodeId`, if that is the one open. A
+   * generation's answer closes the Generate panel on its node, whichever
+   * opening that is (inner#1490).
+   */
+  closePanelOn: (nodeId: string, kind: NonNullable<CanvasSessionState['panelKind']>) => void;
   /**
    * The text node being written in, or null. Here rather than on the node:
    * one text node per canvas is written in at a time, and the reader who comes
@@ -710,9 +714,9 @@ export function createCanvasSessionStore(): CanvasSessionStore {
         set((s) => {
           if (s.editingTextNode === nodeId) s.editingTextNode = null;
         }),
-      closePanelOfSession: (session) =>
+      closePanelOn: (nodeId, kind) =>
         set((s) => {
-          if (s.panelSession === session) endPanel(s);
+          if (s.panelHostId === nodeId && s.panelKind === kind) endPanel(s);
         }),
       startReferencePick: (nodeId) => set((s) => claimTheNextClick(s, { nodeId, purpose: 'reference' })),
       startFirstFramePick: (nodeId) => set((s) => claimTheNextClick(s, { nodeId, purpose: 'firstFrame' })),
