@@ -99,6 +99,22 @@ describe('a refusal that says how long to wait', () => {
     });
   });
 
+  it('reads the Retry-After header when the envelope does not carry the wait, as the rate-limit middleware answers', async () => {
+    const failure = request.get('/limited', {
+      adapter: (config) =>
+        Promise.reject(
+          new AxiosError('Request failed', 'ERR_BAD_REQUEST', config, null, {
+            status: 429,
+            statusText: 'Too Many Requests',
+            headers: { 'retry-after': '60' },
+            config,
+            data: { error: { code: 429, message: 'Too many requests' } },
+          }),
+        ),
+    });
+    await expect(failure).rejects.toMatchObject({ status: 429, retryAfterSeconds: 60 });
+  });
+
   it('leaves retryAfterSeconds undefined when the server did not send one', async () => {
     const failure = request.get('/plain', {
       adapter: (config) =>

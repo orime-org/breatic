@@ -53,7 +53,7 @@ function sources(overrides: Partial<UploadSourceDeps> = {}): {
       Object.fromEntries([...urls, ...pairs.flatMap((p) => [p.url, p.cover])].map((u) => [u, `${u}?copy`])),
     ),
     assetUrlPrefix: vi.fn(async () => PREFIX),
-    readAddress: vi.fn(async () => new File(['x'], 'pasted', { type: 'image/png' })),
+    readAddress: vi.fn(async () => new Blob(['x'], { type: 'image/png' })),
     sleep: vi.fn(async () => {}),
     ...overrides,
   };
@@ -190,6 +190,20 @@ describe('a data: or blob: address', () => {
     expect(deps.readAddress).toHaveBeenCalledWith('data:image/png;base64,eA==');
     expect(deps.uploadFile).toHaveBeenCalledTimes(1);
     expect(outcome.ok).toBe(true);
+  });
+
+  it.each([
+    ['image/png', 'pasted.png'],
+    ['image/jpeg', 'pasted.jpg'],
+    ['video/quicktime', 'pasted.mov'],
+    ['audio/mpeg', 'pasted.mp3'],
+    ['audio/mp4', 'pasted.m4a'],
+  ])('read as %s is uploaded under a name carrying its extension, %s', async (type, name) => {
+    const { run, deps } = sources({ readAddress: vi.fn(async () => new Blob(['x'], { type })) });
+    await run('u1', { kind: 'address', url: 'data:x;base64,eA==' }, noProgress);
+    const file = vi.mocked(deps.uploadFile).mock.calls[0]![0] as File;
+    expect(file.name).toBe(name);
+    expect(file.type).toBe(type);
   });
 
   it('that cannot be read any more fails with no retry', async () => {

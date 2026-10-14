@@ -181,11 +181,25 @@ describe('reading order', () => {
   });
 });
 
+describe('nodes a clipboard should not hold', () => {
+  it('a node whose position is not two numbers, or whose data is not an object, is counted out and the rest still land', () => {
+    const p = payload(
+      node('a', 'text', 0, 0, { body: body('A') }),
+      { id: 'b', type: 'image', position: {}, data: { content: OURS } } as unknown as ClipboardNode,
+      { id: 'c', type: 'text', position: { x: 0, y: 0 }, height: 'tall', data: { body: body('C') } } as unknown as ClipboardNode,
+      { id: 'd', type: 'image', position: { x: 0, y: 50 } } as unknown as ClipboardNode,
+    );
+    expect(order(p)).toEqual(['A']);
+    expect(planCanvasPaste(p).notPasted).toBe(3);
+  });
+});
+
 describe('where an outside address goes', () => {
   it.each([
     ['https://imgs.example/x.jpg', 'fetch'],
     ['data:image/png;base64,AAAA', 'file'],
-    ['blob:https://app.example/123', 'file'],
+    [`blob:${location.origin}/123`, 'file'],
+    ['blob:https://elsewhere.example/123', 'skip'],
     ['http://imgs.example/x.jpg', 'skip'],
     ['ftp://imgs.example/x.jpg', 'skip'],
     ['not a url', 'skip'],
