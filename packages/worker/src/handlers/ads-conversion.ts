@@ -10,9 +10,13 @@ import { DelayedError, UnrecoverableError, type Job } from "bullmq";
 import { IngestionServiceClient } from "@google-ads/datamanager";
 import {
   ADS_SWEEP_JOB,
+  adsAllowedFor,
+  AdsConversionJobSchema,
   adsConversionConfig,
   getUploadStatus,
+  logger,
   requeueStaleAdsUploads,
+  settleAdsRefused,
   settleAdsUpload,
   type AdsConversionConfig,
   type AdsConversionJob,
@@ -57,7 +61,7 @@ export function googleDataManagerSink(config: AdsConversionConfig): AdsConversio
       const { gclid, gbraid, wbraid } = job.click;
       const [response] = await client.ingestEvents({
         destinations: [{ operatingAccount: account, loginAccount: account, productDestinationId: conversionActionId }],
-        // Only browsers that accepted ads are queued (design §4.4.5); ads are for measurement, never personalisation.
+        // Only conversions `adsAllowed` lets through are uploaded (design §4.4.6); ads are for measurement, never personalisation.
         consent: { adUserData: "CONSENT_GRANTED", adPersonalization: "CONSENT_DENIED" },
         events: [
           {
@@ -146,8 +150,8 @@ function isPermanent(err: unknown): boolean {
  * @param job - The queued upload.
  * @param sink - Builds where it goes from the configuration the conversion was checked against.
  * @param token - The worker's lock token for the job.
- * @throws {UnrecoverableError} When ad conversions are no longer configured or
- *   the platform refused it for good.
+ * @throws {UnrecoverableError} When the job does not parse, ad conversions are
+ *   no longer configured, or the platform refused it for good.
  * @throws {DelayedError} When a restatement waits for Google to process the original.
  * @throws {unknown} When the upload failed otherwise, so the queue retries.
  */
@@ -160,6 +164,11 @@ export async function runAdsConversion(
     await requeueStaleAdsUploads();
     return;
   }
+  if (!AdsConversionJobSchema.safeParse(job.data).success) {
+    // Marked failed so the sweep does not queue the same unreadable job again.
+    await settleAdsUpload(job.data, false);
+    throw new UnrecoverableError("the queued conversion does not parse");
+  }
   const config = adsConversionConfig();
   const actionId = config?.actions[job.data.conversion];
   if (config === null || actionId === undefined) {
@@ -171,6 +180,11 @@ export async function runAdsConversion(
     // A job queued again after its upload settled (the sweep racing the last attempt) uploads nothing.
     const status = await getUploadStatus({ conversion: job.data.conversion, transactionId: job.data.transactionId });
     if (status === null || !uploadAwaited(job.data, status)) return;
+    // Consent may have been withdrawn since the conversion was queued (design §4.9, last column).
+    if (!(await adsAllowedFor(job.data.userId, job.data.browser, Date.now()))) {
+      await settleAdsRefused(job.data);
+      return;
+    }
     const platform = sink(config);
     // A restatement of a conversion Google never recorded would count as a new conversion.
     if (job.data.kind === "restatement" && job.data.originalRequestId) {
@@ -187,5 +201,10 @@ export async function runAdsConversion(
     if (permanent) throw err instanceof UnrecoverableError ? err : new UnrecoverableError((err as Error).message);
     throw err;
   }
-  await settleAdsUpload(job.data, true, requestId);
+  if (await settleAdsUpload(job.data, true, requestId)) {
+    logger.info(
+      { conversion: job.data.conversion, transactionId: job.data.transactionId },
+      "ads_restatement_skipped_consent_withdrawn",
+    );
+  }
 }

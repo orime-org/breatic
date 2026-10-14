@@ -809,16 +809,20 @@ export {
 } from "@shared/analytics/consent-choices.js";
 export {
   accountAdsEvents,
+  adsAllowed,
   adsConsentOverridesOptOut,
+  BrowserAdsSnapshotSchema,
   adsDecision,
   browserSuppressesOwnGpc,
   choiceInForce,
   normalizeBrowserAds,
+  type AccountAdsHistory,
   type AccountAdsReceipt,
   type AdsEvent,
   type AdsOutcome,
   type AdsSource,
   type BrowserAds,
+  type BrowserAdsSnapshot,
   type NoticeShown,
   type Ownership,
 } from "@shared/analytics/ads-decision.js";

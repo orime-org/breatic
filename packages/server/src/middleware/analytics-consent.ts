@@ -21,13 +21,25 @@ import {
 } from "@breatic/shared";
 
 /**
- * Put the requesting browser's consent in scope for the rest of the request.
+ * Put the requesting browser's consent in scope for the rest of the request:
+ * analytics as its cookie says, and for ads the cookie's choice with whether
+ * this request carried GPC, which ad conversions weigh with the account's
+ * events (inner#1442 design §4.4.5).
  * @param c - The request context.
  * @param next - The rest of the chain.
  * @returns The chain's response.
  */
-export const analyticsConsentMiddleware: MiddlewareHandler = (c, next) =>
-  runWithConsent(parseConsentCookie(getCookie(c, CONSENT_COOKIE_NAME), Date.now()), next);
+export const analyticsConsentMiddleware: MiddlewareHandler = (c, next) => {
+  const raw = getCookie(c, CONSENT_COOKIE_NAME);
+  const now = Date.now();
+  const at = new Date(now).toISOString();
+  const adsBrowser = {
+    choice: parseConsentChoices(raw, now).ads,
+    gpcAt: c.req.header("Sec-GPC") === "1" ? at : null,
+    at,
+  };
+  return runWithConsent(parseConsentCookie(raw, now), next, adsBrowser);
+};
 
 /**
  * Record that a signed-in request carried GPC: an ads opt-out for the whole

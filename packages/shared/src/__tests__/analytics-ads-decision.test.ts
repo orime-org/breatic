@@ -6,7 +6,10 @@ import {
   type AccountAdsReceipt,
   type AdsEvent,
   type BrowserAds,
+  type BrowserAdsSnapshot,
+  BrowserAdsSnapshotSchema,
   accountAdsEvents,
+  adsAllowed,
   adsConsentOverridesOptOut,
   adsDecision,
   browserSuppressesOwnGpc,
@@ -212,5 +215,70 @@ describe("adsDecision", () => {
             const seq = [a, b, c, d].map((e, i) => ({ ...e, at: T + i }));
             expect(adsDecision([...seq].reverse())).toEqual(adsDecision(seq));
           }
+  });
+});
+
+describe("adsAllowed", () => {
+  const at = iso(NOW);
+  const browser = (choice: BrowserAds | null, gpc = false): BrowserAdsSnapshot => ({
+    choice,
+    gpcAt: gpc ? at : null,
+    at,
+  });
+  const history = (receipts: AccountAdsReceipt[] = [], gpcSeenAt: string | null = null) => ({ receipts, gpcSeenAt });
+
+  it("does not allow ads for a missing or deleted account", () => {
+    expect(adsAllowed(null, browser(cookie()), "none", NOW)).toEqual({ allowed: false, notice: null });
+    expect(adsAllowed(null, null, "none", NOW).allowed).toBe(false);
+  });
+
+  it("allows a browser consent with nothing against it", () => {
+    expect(adsAllowed(history(), browser(cookie()), "none", NOW)).toEqual({ allowed: true, notice: null });
+  });
+
+  it("does not let the account grant ads to a browser that has no choice", () => {
+    expect(adsAllowed(history([receipt()]), browser(null), "none", NOW).allowed).toBe(false);
+  });
+
+  it("uses the account's events alone where no browser is behind the event", () => {
+    expect(adsAllowed(history([receipt()]), null, "none", NOW).allowed).toBe(true);
+    expect(adsAllowed(history(), null, "none", NOW).allowed).toBe(false);
+  });
+
+  it("stops ads for the account's GPC signal or the request's own GPC", () => {
+    expect(adsAllowed(history([], iso(NOW - 1000)), browser(cookie()), "none", NOW)).toEqual({
+      allowed: false,
+      notice: "gpc",
+    });
+    expect(adsAllowed(history(), browser(cookie(), true), "none", NOW).notice).toBe("gpc");
+  });
+
+  it("leaves out this browser's GPC for an override saved under GPC, unless another account recorded it", () => {
+    const override = cookie({ source: "settings", noticeShown: "gpc", gpcAtDecision: true });
+    expect(adsAllowed(history(), browser(override, true), "none", NOW).allowed).toBe(true);
+    expect(adsAllowed(history(), browser(override, true), "other", NOW).allowed).toBe(false);
+  });
+
+  it("times the browser's events at the snapshot, not at the check", () => {
+    const snap: BrowserAdsSnapshot = { choice: cookie({ value: false }), gpcAt: null, at: iso(NOW - 10 * DAY) };
+    const laterOverride = receipt({ source: "settings", noticeShown: "account", decidedAt: iso(NOW - DAY) });
+    expect(adsAllowed(history([laterOverride]), snap, "none", NOW).allowed).toBe(true);
+  });
+
+  it("drops the cookie copy of a decision the account holds", () => {
+    const consent = cookie({ decisionId: "22222222-2222-4222-8222-222222222222" });
+    const refusal = receipt({ value: false, decidedAt: iso(NOW - 2 * DAY) });
+    expect(adsAllowed(history([refusal]), browser(consent), "self", NOW).allowed).toBe(false);
+    expect(adsAllowed(history([refusal]), browser(consent), "none", NOW).allowed).toBe(false);
+  });
+});
+
+describe("BrowserAdsSnapshotSchema", () => {
+  it("accepts a snapshot and rejects a malformed one", () => {
+    const snap = { choice: cookie(), gpcAt: null, at: iso(NOW) };
+    expect(BrowserAdsSnapshotSchema.parse(snap)).toEqual(snap);
+    expect(BrowserAdsSnapshotSchema.safeParse({ choice: null, gpcAt: null, at: iso(NOW) }).success).toBe(true);
+    expect(BrowserAdsSnapshotSchema.safeParse({ ...snap, at: "now" }).success).toBe(false);
+    expect(BrowserAdsSnapshotSchema.safeParse({ ...snap, choice: { ...cookie(), noticeShown: "yes" } }).success).toBe(false);
   });
 });

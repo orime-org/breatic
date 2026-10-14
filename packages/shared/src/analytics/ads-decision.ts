@@ -8,6 +8,7 @@
  * verbatim copy that the contract test compares.
  */
 
+import { z } from "zod";
 import { CONSENT_MAX_AGE_DAYS, revisionInForce } from "@shared/analytics/consent.js";
 
 /** Which opt-out notice the settings window showed when the choice was saved. */
@@ -154,4 +155,72 @@ export function adsDecision(events: readonly AdsEvent[]): AdsOutcome {
   if (byAccount) return { allowed: false, notice: "account" };
   if (byGpc) return { allowed: false, notice: "gpc" };
   return { allowed: consented, notice: null };
+}
+
+/** The account's ads receipts still in force and its GPC signal. */
+export interface AccountAdsHistory {
+  readonly receipts: readonly AccountAdsReceipt[];
+  readonly gpcSeenAt: string | null;
+}
+
+/** The ads side of a browser's consent at one moment, as requests, orders and upload jobs keep it. */
+export interface BrowserAdsSnapshot {
+  /** The cookie's ads choice; null when the browser has none. */
+  readonly choice: BrowserAds | null;
+  /** When the browser was seen sending GPC, if it was. */
+  readonly gpcAt: string | null;
+  /** When the snapshot was taken. */
+  readonly at: string;
+}
+
+const isoTime = z.string().datetime({ offset: true });
+
+/** A stored {@link BrowserAdsSnapshot}, checked before it is used. */
+export const BrowserAdsSnapshotSchema = z
+  .object({
+    choice: z
+      .object({
+        decisionId: z.string().uuid().optional(),
+        value: z.boolean(),
+        source: z.enum(["banner", "settings", "implicit", "gpc", "request"]),
+        noticeShown: z.union([z.literal("gpc"), z.literal("account"), z.literal(false)]),
+        gpcAtDecision: z.boolean(),
+        decidedAt: isoTime,
+        revision: z.number().int(),
+      })
+      .strict()
+      .nullable(),
+    gpcAt: isoTime.nullable(),
+    at: isoTime,
+  })
+  .strict();
+
+/**
+ * Whether ads may run for an event: the account's events plus, where a
+ * browser is behind it, that browser's choice and GPC as the snapshot holds
+ * them. A missing or deleted account, or a browser with no choice in force,
+ * never allows ads.
+ * @param history - The account's ads record; null when the account is gone.
+ * @param browser - The browser behind the event; null for an event with none.
+ * @param ownership - Whose receipt the browser's decision is.
+ * @param now - The current time, epoch ms.
+ * @returns The outcome.
+ */
+export function adsAllowed(
+  history: AccountAdsHistory | null,
+  browser: BrowserAdsSnapshot | null,
+  ownership: Ownership,
+  now: number,
+): AdsOutcome {
+  if (history === null) return { allowed: false, notice: null };
+  const events = accountAdsEvents(history.receipts, history.gpcSeenAt, now);
+  if (browser !== null) {
+    const { event, unset } = normalizeBrowserAds(browser.choice, ownership, Date.parse(browser.at));
+    if (unset) return { allowed: false, notice: adsDecision(events).notice };
+    if (event !== null) events.push(event);
+    if (browser.gpcAt !== null && !browserSuppressesOwnGpc(browser.choice, ownership)) {
+      events.push({ kind: "gpc", at: Date.parse(browser.gpcAt) });
+    }
+  }
+  return adsDecision(events);
 }

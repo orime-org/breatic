@@ -4,7 +4,7 @@
 /** Data access for `ads_conversion_uploads`. */
 
 import { and, eq, inArray, lt } from "drizzle-orm";
-import type { AdsConversionJob, AdsConversionName, AdsUploadStatus } from "@core/ads/ads-types.js";
+import type { AdsConversionJob, AdsConversionName, AdsFailureReason, AdsUploadStatus } from "@core/ads/ads-types.js";
 import { db } from "@core/db/client.js";
 import { adsConversionUploads } from "@core/db/schema.js";
 
@@ -30,18 +30,21 @@ export async function claimUpload(job: AdsConversionJob, paymentId: string | nul
  * @param key.transactionId - Its transaction id.
  * @param from - The states the move is allowed from.
  * @param to - The new state.
- * @param requestId - The platform's id for an accepted upload, recorded with the move.
+ * @param extra - Recorded with the move.
+ * @param extra.requestId - The platform's id for an accepted upload.
+ * @param extra.failureReason - Why the upload stopped short of the platform.
  * @returns True when the row was in one of `from` and moved.
  */
 export async function moveUpload(
   key: { conversion: AdsConversionName; transactionId: string },
   from: readonly AdsUploadStatus[],
   to: AdsUploadStatus,
-  requestId?: string,
+  extra: { requestId?: string; failureReason?: AdsFailureReason } = {},
 ): Promise<boolean> {
+  const { requestId, failureReason } = extra;
   const rows = await db
     .update(adsConversionUploads)
-    .set({ status: to, updatedAt: new Date(), ...(requestId ? { requestId } : {}) })
+    .set({ status: to, updatedAt: new Date(), ...(requestId ? { requestId } : {}), ...(failureReason ? { failureReason } : {}) })
     .where(
       and(
         eq(adsConversionUploads.conversion, key.conversion),

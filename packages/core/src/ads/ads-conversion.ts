@@ -7,16 +7,18 @@
  *
  * Off unless the deployment sets all three `GOOGLE_ADS_*` /
  * `GOOGLE_DATA_MANAGER_CREDENTIALS` values. A conversion is queued only when
- * the browser behind it accepted ads and the account or order carries a click
- * from the last 90 days; the worker uploads it. Credit purchases also keep an
+ * `adsAllowed` lets ads run for the account and the browser behind it, and the
+ * account or order carries a click from the last 90 days; the worker checks
+ * consent again and uploads it. Credit purchases also keep an
  * upload state on the order, because a refund restates the value and a
  * restatement whose transaction id Google has not seen counts as a new
  * conversion.
  */
 
 import { z } from "zod";
-import { CLICK_WINDOW_MS, type AdClick, type ConsentSnapshot } from "@breatic/shared";
-import { currentConsent } from "@core/analytics/consent-context.js";
+import { CLICK_WINDOW_MS, type AdClick, type BrowserAdsSnapshot } from "@breatic/shared";
+import { adsAllowedFor } from "@core/analytics/account.repo.js";
+import { currentAdsBrowser } from "@core/analytics/consent-context.js";
 import { createHash } from "node:crypto";
 import { claimUpload, findStaleUploads, findUploadByPayment, moveUpload } from "@core/ads/ads-conversion.repo.js";
 import { ADS_CONVERSIONS, ADS_SWEEP_JOB, type AdsConversionJob, type AdsConversionName } from "@core/ads/ads-types.js";
@@ -114,21 +116,9 @@ async function addJob(job: AdsConversionJob): Promise<void> {
 }
 
 /**
- * Whether a conversion would be queued, before its click is looked up.
- * @param conversion - The conversion.
- * @param consent - The choice of the browser behind it; defaults to the request's.
- * @returns True when the browser accepted ads and the conversion has a configured action.
- */
-export function adsConversionWanted(
-  conversion: AdsConversionName,
-  consent: ConsentSnapshot = currentConsent(),
-): boolean {
-  return consent.ads && adsConversionConfig()?.actions[conversion] !== undefined;
-}
-
-/**
  * Queue a conversion for upload, once per conversion and transaction id.
  * @param input - The conversion.
+ * @param input.userId - The account it is credited to.
  * @param input.conversion - Which conversion action it counts toward.
  * @param input.transactionId - Shared with the browser tag for deduplication.
  * @param input.click - The click it is credited to (`adClickFrom`); none means nothing to upload.
@@ -136,25 +126,30 @@ export function adsConversionWanted(
  * @param input.value.amountCents - Amount in the currency's minor unit.
  * @param input.value.currency - ISO currency code.
  * @param input.paymentId - The credit order, which a refund restates by.
- * @param consent - The choice of the browser behind it; defaults to the request's.
+ * @param browser - The browser behind it as it stood then; defaults to the
+ *   request's; null for an event no browser is behind.
  * @returns Whether it was queued.
  * @throws {unknown} When the database or the queue cannot be reached; callers log and carry on.
  */
 export async function enqueueAdsConversion(
   input: {
+    userId: string;
     conversion: AdsConversionName;
     transactionId: string;
     click: AdClick | null;
     value?: { amountCents: number; currency: string };
     paymentId?: string;
   },
-  consent: ConsentSnapshot = currentConsent(),
+  browser: BrowserAdsSnapshot | null = currentAdsBrowser(),
 ): Promise<boolean> {
-  if (!adsConversionWanted(input.conversion, consent)) return false;
+  if (adsConversionConfig()?.actions[input.conversion] === undefined) return false;
   const { click } = input;
   if (click === null || Date.now() - Date.parse(click.at) > CLICK_WINDOW_MS) return false;
+  if (!(await adsAllowedFor(input.userId, browser, Date.now()))) return false;
   const job: AdsConversionJob = {
     kind: "conversion",
+    userId: input.userId,
+    browser,
     conversion: input.conversion,
     transactionId: input.transactionId,
     occurredAt: new Date().toISOString(),
@@ -167,24 +162,40 @@ export async function enqueueAdsConversion(
 }
 
 /**
+ * Whether ads still may run for an upload: the account's current events with
+ * the browser as the job recorded it.
+ * @param job - The upload.
+ * @returns Whether it may go to the platform.
+ */
+function stillAllowed(job: AdsConversionJob): Promise<boolean> {
+  return adsAllowedFor(job.userId, job.browser, Date.now());
+}
+
+/**
  * Ask for the zero-value restatement of a refunded credit purchase. Only a
  * conversion Google received is restated: one it never saw would be counted
  * as a new conversion. A conversion still queued is marked, and the worker
  * queues the restatement once the upload lands; one whose upload failed is
- * left alone.
+ * left alone, and so is one whose account or browser no longer allows ads.
  * @param paymentId - The refunded order.
- * @returns Whether a restatement was queued or marked to follow the upload.
+ * @returns `queued`, `after_upload` when it follows the upload still queued,
+ *   `consent_withdrawn` when ads are no longer allowed (the caller logs it), or
+ *   `none` when there is nothing Google received to restate.
  * @throws {unknown} When the database or the queue cannot be reached.
  */
-export async function enqueueAdsRestatement(paymentId: string): Promise<boolean> {
-  if (adsConversionConfig() === null) return false;
+export async function enqueueAdsRestatement(
+  paymentId: string,
+): Promise<"queued" | "after_upload" | "consent_withdrawn" | "none"> {
+  if (adsConversionConfig() === null) return "none";
   const upload = await findUploadByPayment(paymentId);
-  if (!upload) return false;
+  if (!upload) return "none";
   const key = { conversion: upload.job.conversion, transactionId: upload.job.transactionId };
-  if (await moveUpload(key, ["queued"], "restate_pending")) return true;
-  if (!(await moveUpload(key, ["uploaded"], "restating"))) return false;
+  if (await moveUpload(key, ["queued"], "restate_pending")) return "after_upload";
+  if (upload.status !== "uploaded") return "none";
+  if (!(await stillAllowed(upload.job))) return "consent_withdrawn";
+  if (!(await moveUpload(key, ["uploaded"], "restating"))) return "none";
   await addJob(restatementOf(upload.job, upload.requestId));
-  return true;
+  return "queued";
 }
 
 /**
@@ -204,26 +215,48 @@ function restatementOf(job: AdsConversionJob, requestId: string | null): AdsConv
 
 /**
  * Record how a conversion upload ended; called by the worker. A refund that
- * arrived while it was queued is restated now that Google has it.
+ * arrived while it was queued is restated now that Google has it, while ads
+ * are still allowed.
  * @param job - The upload.
  * @param uploaded - True when Google accepted it; false once retries are exhausted.
  * @param requestId - Google's id for the accepted request.
+ * @returns True when a waiting restatement was dropped because ads are no
+ *   longer allowed, for the worker to log.
  * @throws {unknown} When the database or the queue cannot be reached.
  */
-export async function settleAdsUpload(job: AdsConversionJob, uploaded: boolean, requestId?: string): Promise<void> {
+export async function settleAdsUpload(job: AdsConversionJob, uploaded: boolean, requestId?: string): Promise<boolean> {
   const key = { conversion: job.conversion, transactionId: job.transactionId };
   if (job.kind === "restatement") {
     await moveUpload(key, ["restating"], uploaded ? "restated" : "restate_failed");
-    return;
+    return false;
   }
   if (!uploaded) {
     await moveUpload(key, ["queued", "restate_pending"], "failed");
-    return;
+    return false;
   }
-  if (await moveUpload(key, ["queued"], "uploaded", requestId)) return;
-  if (await moveUpload(key, ["restate_pending"], "restating", requestId)) {
+  if (await moveUpload(key, ["queued"], "uploaded", { requestId })) return false;
+  // A refund waits on this upload; it is forwarded only while ads are still allowed.
+  if (!(await stillAllowed(job))) return moveUpload(key, ["restate_pending"], "uploaded", { requestId });
+  if (await moveUpload(key, ["restate_pending"], "restating", { requestId })) {
     await addJob(restatementOf(job, requestId ?? null));
   }
+  return false;
+}
+
+/**
+ * Record that an upload was stopped because ads are no longer allowed for it;
+ * called by the worker before it uploads (design §4.9, last column).
+ * @param job - The upload.
+ * @throws {unknown} When the database cannot be reached.
+ */
+export async function settleAdsRefused(job: AdsConversionJob): Promise<void> {
+  const key = { conversion: job.conversion, transactionId: job.transactionId };
+  const failureReason = "consent_withdrawn" as const;
+  if (job.kind === "restatement") {
+    await moveUpload(key, ["restating"], "restate_failed", { failureReason });
+    return;
+  }
+  await moveUpload(key, ["queued", "restate_pending"], "failed", { failureReason });
 }
 
 /** How long a row may wait in a queued state before its job is presumed lost. */

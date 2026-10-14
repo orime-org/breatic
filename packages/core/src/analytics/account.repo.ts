@@ -10,26 +10,21 @@
 
 import { and, eq, isNull, sql } from "drizzle-orm";
 import {
-  accountAdsEvents,
   accountAnalyticsValue,
-  adsDecision,
+  adsAllowed,
   choiceInForce,
   NO_CONSENT,
+  type AccountAdsHistory,
   type AccountAdsReceipt,
   type AdsSource,
   type Attribution,
+  type BrowserAdsSnapshot,
   type ConsentReport,
   type ConsentSnapshot,
   type Ownership,
 } from "@breatic/shared";
 import { db } from "@core/db/client.js";
 import { analyticsConsentEvents, users } from "@core/db/schema.js";
-
-/** The account's ads receipts still in force and its GPC signal. */
-export interface AccountAdsHistory {
-  readonly receipts: AccountAdsReceipt[];
-  readonly gpcSeenAt: string | null;
-}
 
 // Time between two GPC writes for the same account, so a browser sending GPC on every request writes once an hour.
 const GPC_REFRESH = "1 hour";
@@ -137,8 +132,23 @@ export async function getAccountAnalytics(userId: string, now: number): Promise<
 export async function accountOnlyConsent(userId: string, now: number): Promise<ConsentSnapshot> {
   const history = await getAccountAdsEvents(userId, now);
   if (history === null) return NO_CONSENT;
-  const ads = adsDecision(accountAdsEvents(history.receipts, history.gpcSeenAt, now)).allowed;
+  const ads = adsAllowed(history, null, "none", now).allowed;
   return { analytics: (await getAccountAnalytics(userId, now)) ?? false, ads };
+}
+
+/**
+ * Whether ads may run for an event credited to the account (inner#1442 design
+ * §4.4.6): the account's events plus the browser behind it, if any.
+ * @param userId - The account.
+ * @param browser - The browser behind the event as it stood then; null for an event with none.
+ * @param now - The current time, epoch ms.
+ * @returns Whether ads may run; never for a missing or deleted account.
+ */
+export async function adsAllowedFor(userId: string, browser: BrowserAdsSnapshot | null, now: number): Promise<boolean> {
+  const history = await getAccountAdsEvents(userId, now);
+  if (history === null) return false;
+  const ownership = browser === null ? "none" : await adsOwnership(userId, browser.choice?.decisionId);
+  return adsAllowed(history, browser, ownership, now).allowed;
 }
 
 /**

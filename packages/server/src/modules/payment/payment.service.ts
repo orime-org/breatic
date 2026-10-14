@@ -409,7 +409,7 @@ export async function fulfillPayment(
  * @param payment - The order, as read before the grant.
  */
 function reportPurchase(payment: PaymentEntity): void {
-  const { consent, click } = readCheckoutSnapshot(payment.metadata);
+  const { consent, adsBrowser, click } = readCheckoutSnapshot(payment.metadata);
   const transactionId = `purchase:${payment.stripeSessionId}`;
   trackServerEvent(
     "credit_purchase_completed",
@@ -422,13 +422,14 @@ function reportPurchase(payment: PaymentEntity): void {
   );
   enqueueAdsConversion(
     {
+      userId: payment.userId,
       conversion: "credit_purchase",
       transactionId,
       click,
       value: { amountCents: payment.amountCents, currency: payment.currency },
       paymentId: payment.id,
     },
-    consent,
+    adsBrowser,
   ).catch((err: unknown) => {
     logger.error({ err, paymentId: payment.id }, "ads_conversion_enqueue_failed");
   });
@@ -632,9 +633,10 @@ export async function createCheckout(input: {
           consentTextVersion: CONSENT_CREDITS_VERSION,
           refundTextVersion: REFUND_CREDITS_VERSION,
           consentedAt: consentedAt.toISOString(),
-          // The buying browser's analytics consent and ad click: the purchase
+          // The buying browser's consent and ad click: the purchase
           // completes in a webhook or a later visit without its cookie.
           analyticsConsent: snapshot.consent,
+          adsBrowser: snapshot.adsBrowser,
           ...(snapshot.click ? { adClick: snapshot.click } : {}),
         },
       },

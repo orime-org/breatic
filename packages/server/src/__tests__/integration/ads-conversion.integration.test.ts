@@ -4,8 +4,10 @@
 /**
  * Ad conversion queueing (inner#1442 design §4.9) — real PG + Redis.
  *
- * A conversion is queued once, only with ads consent and a recent click, and
- * a refund restates only a conversion that was queued or uploaded.
+ * A conversion is queued once, only when `adsAllowed` lets ads run for the
+ * account and the browser behind it and a recent click exists; a refund
+ * restates only a conversion that was queued or uploaded, and an opt-out made
+ * in between stops the upload or the restatement.
  */
 
 import { describe, it, expect, beforeAll, afterAll, afterEach, inject } from "vitest";
@@ -24,10 +26,11 @@ import {
   requeueStaleAdsUploads,
   scheduleAdsUploadSweep,
   setAdsConversionConfigForTest,
+  settleAdsRefused,
   settleAdsUpload,
   unscheduleAdsUploadSweep,
 } from "@breatic/core";
-import type { AdClick, ConsentSnapshot } from "@breatic/shared";
+import { CONSENT_REVISION, type AdClick, type BrowserAdsSnapshot } from "@breatic/shared";
 
 try {
   initCore(process.env);
@@ -37,7 +40,70 @@ try {
 
 let sql: ReturnType<typeof postgres>;
 let queue: ReturnType<typeof createQueue>;
-const ADS: ConsentSnapshot = { analytics: false, ads: true };
+const HOUR = 3_600_000;
+
+/**
+ * The ads side of a browser's consent, as a request snapshot holds it.
+ * @param value - Whether the cookie accepts ads; null for no choice.
+ * @param gpc - Whether the request carried GPC.
+ * @returns The snapshot.
+ */
+function browser(value: boolean | null, gpc = false): BrowserAdsSnapshot {
+  const now = new Date().toISOString();
+  return {
+    choice:
+      value === null
+        ? null
+        : {
+            value,
+            source: "banner",
+            noticeShown: false,
+            gpcAtDecision: false,
+            decidedAt: new Date(Date.now() - HOUR).toISOString(),
+            revision: CONSENT_REVISION,
+          },
+    gpcAt: gpc ? now : null,
+    at: now,
+  };
+}
+
+const ADS = browser(true);
+
+/**
+ * An account with nothing on record.
+ * @returns Its id.
+ */
+async function account(): Promise<string> {
+  const [user] = await sql<{ id: string }[]>`
+    INSERT INTO users (email) VALUES (${`ads-${crypto.randomUUID()}@example.test`}) RETURNING id
+  `;
+  return user!.id;
+}
+
+/**
+ * Record an ads receipt on the account, as a browser report would.
+ * @param userId - The account.
+ * @param value - Consent or refusal.
+ * @param agoMs - How long ago it was made.
+ */
+async function adsReceipt(userId: string, value: boolean, agoMs = 0): Promise<void> {
+  await sql`
+    INSERT INTO analytics_consent_events (decision_id, user_id, category, value, source, decided_at, revision)
+    VALUES (${crypto.randomUUID()}, ${userId}, 'ads', ${value}, 'settings', ${new Date(Date.now() - agoMs)}, ${CONSENT_REVISION})
+  `;
+}
+
+/**
+ * The status and failure reason of an upload row.
+ * @param txn - Its transaction id.
+ * @returns Them.
+ */
+async function row(txn: string): Promise<{ status: string; failure_reason: string | null }> {
+  const [r] = await sql<{ status: string; failure_reason: string | null }[]>`
+    SELECT status, failure_reason FROM ads_conversion_uploads WHERE transaction_id = ${txn}
+  `;
+  return r!;
+}
 const CONFIG = {
   customerId: "1234567890",
   actions: { signup: "11", credit_purchase: "22" },
@@ -84,7 +150,7 @@ afterAll(async () => {
 describe("enqueueAdsConversion", () => {
   it("queues a conversion once however many times it is reported", async () => {
     const txn = `signup:${crypto.randomUUID()}`;
-    const input = { conversion: "signup" as const, transactionId: txn, click: clicked(1) };
+    const input = { userId: await account(), conversion: "signup" as const, transactionId: txn, click: clicked(1) };
     expect(await enqueueAdsConversion(input, ADS)).toBe(true);
     expect(await enqueueAdsConversion(input, ADS)).toBe(false);
     expect(await jobsFor(txn)).toEqual([{ name: "conversion", value: undefined }]);
@@ -93,13 +159,65 @@ describe("enqueueAdsConversion", () => {
 
   it("queues nothing without ads consent, a recent click, a configured action or configuration", async () => {
     const txn = `signup:${crypto.randomUUID()}`;
-    expect(await enqueueAdsConversion({ conversion: "signup", transactionId: txn, click: clicked(1) }, { analytics: true, ads: false })).toBe(false);
-    expect(await enqueueAdsConversion({ conversion: "signup", transactionId: txn, click: clicked(91) }, ADS)).toBe(false);
-    expect(await enqueueAdsConversion({ conversion: "signup", transactionId: txn, click: null }, ADS)).toBe(false);
-    expect(await enqueueAdsConversion({ conversion: "subscription", transactionId: txn, click: clicked(1) }, ADS)).toBe(false);
+    expect(await enqueueAdsConversion({ userId: await account(), conversion: "signup", transactionId: txn, click: clicked(1) }, browser(false))).toBe(false);
+    expect(await enqueueAdsConversion({ userId: await account(), conversion: "signup", transactionId: txn, click: clicked(91) }, ADS)).toBe(false);
+    expect(await enqueueAdsConversion({ userId: await account(), conversion: "signup", transactionId: txn, click: null }, ADS)).toBe(false);
+    expect(await enqueueAdsConversion({ userId: await account(), conversion: "subscription", transactionId: txn, click: clicked(1) }, ADS)).toBe(false);
     setAdsConversionConfigForTest(null);
-    expect(await enqueueAdsConversion({ conversion: "signup", transactionId: txn, click: clicked(1) }, ADS)).toBe(false);
+    expect(await enqueueAdsConversion({ userId: await account(), conversion: "signup", transactionId: txn, click: clicked(1) }, ADS)).toBe(false);
     expect(await getUploadStatus({ conversion: "signup", transactionId: txn })).toBeNull();
+  });
+
+  it("queues nothing when the account or the request opted out, or the browser has no choice", async () => {
+    const txn = `signup:${crypto.randomUUID()}`;
+    const input = { conversion: "signup" as const, transactionId: txn, click: clicked(1) };
+    const refused = await account();
+    await adsReceipt(refused, false);
+    expect(await enqueueAdsConversion({ ...input, userId: refused }, ADS)).toBe(false);
+    const gpcAccount = await account();
+    await sql`UPDATE users SET analytics_gpc_seen_at = now() WHERE id = ${gpcAccount}`;
+    expect(await enqueueAdsConversion({ ...input, userId: gpcAccount }, ADS)).toBe(false);
+    expect(await enqueueAdsConversion({ ...input, userId: await account() }, browser(true, true))).toBe(false);
+    const withConsent = await account();
+    await adsReceipt(withConsent, true);
+    expect(await enqueueAdsConversion({ ...input, userId: withConsent }, browser(null))).toBe(false);
+    expect(await getUploadStatus({ conversion: "signup", transactionId: txn })).toBeNull();
+  });
+
+  it("queues nothing for a deleted account", async () => {
+    const txn = `signup:${crypto.randomUUID()}`;
+    const userId = await account();
+    await sql`UPDATE users SET deleted_at = now() WHERE id = ${userId}`;
+    expect(await enqueueAdsConversion({ userId, conversion: "signup", transactionId: txn, click: clicked(1) }, ADS)).toBe(false);
+  });
+
+  it("queues an event no browser is behind under the account's own receipts only", async () => {
+    const txn = `signup:${crypto.randomUUID()}`;
+    const input = { conversion: "signup" as const, transactionId: txn, click: clicked(1) };
+    expect(await enqueueAdsConversion({ ...input, userId: await account() }, null)).toBe(false);
+    const userId = await account();
+    await adsReceipt(userId, true);
+    expect(await enqueueAdsConversion({ ...input, userId }, null)).toBe(true);
+  });
+});
+
+describe("settleAdsRefused", () => {
+  it("fails a queued conversion and a queued restatement with consent_withdrawn", async () => {
+    const txn = `signup:${crypto.randomUUID()}`;
+    const userId = await account();
+    await enqueueAdsConversion({ userId, conversion: "signup", transactionId: txn, click: clicked(1) }, ADS);
+    const [job] = (await queue.getJobs(["waiting", "delayed", "prioritized"])).filter((j) => j.data.transactionId === txn);
+    await settleAdsRefused(job!.data);
+    expect(await row(txn)).toEqual({ status: "failed", failure_reason: "consent_withdrawn" });
+
+    const restated = `signup:${crypto.randomUUID()}`;
+    await enqueueAdsConversion({ userId, conversion: "signup", transactionId: restated, click: clicked(1) }, ADS);
+    await moveUpload({ conversion: "signup", transactionId: restated }, ["queued"], "restating");
+    const [original] = (await queue.getJobs(["waiting", "delayed", "prioritized"])).filter(
+      (j) => j.data.transactionId === restated,
+    );
+    await settleAdsRefused({ ...original!.data, kind: "restatement" });
+    expect(await row(restated)).toEqual({ status: "restate_failed", failure_reason: "consent_withdrawn" });
   });
 });
 
@@ -108,20 +226,19 @@ describe("enqueueAdsRestatement", () => {
    * A credit order with a queued conversion.
    * @returns The order id and its transaction id.
    */
-  async function purchase(): Promise<{ paymentId: string; txn: string }> {
-    const [user] = await sql<{ id: string }[]>`
-      INSERT INTO users (email) VALUES (${`ads-${crypto.randomUUID()}@example.test`}) RETURNING id
-    `;
+  async function purchase(): Promise<{ paymentId: string; txn: string; userId: string }> {
+    const userId = await account();
     const [source] = await sql<{ id: string }[]>`
       INSERT INTO credit_sources (id, kind) VALUES (gen_random_uuid(), 'payment') RETURNING id
     `;
     await sql`
       INSERT INTO payments (id, user_id, amount_cents, status, credits_granted)
-      VALUES (${source!.id}, ${user!.id}, 1000, 'completed', 1000)
+      VALUES (${source!.id}, ${userId}, 1000, 'completed', 1000)
     `;
     const txn = `purchase:${crypto.randomUUID()}`;
     await enqueueAdsConversion(
       {
+        userId,
         conversion: "credit_purchase",
         transactionId: txn,
         click: clicked(1),
@@ -130,14 +247,14 @@ describe("enqueueAdsRestatement", () => {
       },
       ADS,
     );
-    return { paymentId: source!.id, txn };
+    return { paymentId: source!.id, txn, userId };
   }
 
   it("restates an uploaded purchase to zero, once", async () => {
     const { paymentId, txn } = await purchase();
     await moveUpload({ conversion: "credit_purchase", transactionId: txn }, ["queued"], "uploaded");
-    expect(await enqueueAdsRestatement(paymentId)).toBe(true);
-    expect(await enqueueAdsRestatement(paymentId)).toBe(false);
+    expect(await enqueueAdsRestatement(paymentId)).toBe("queued");
+    expect(await enqueueAdsRestatement(paymentId)).toBe("none");
     expect(await getUploadStatus({ conversion: "credit_purchase", transactionId: txn })).toBe("restating");
     expect(await jobsFor(txn)).toContainEqual({ name: "restatement", value: { amountCents: 0, currency: "USD" } });
   });
@@ -145,7 +262,7 @@ describe("enqueueAdsRestatement", () => {
   it("restates a purchase refunded while queued only after its upload lands", async () => {
     const { paymentId, txn } = await purchase();
     const key = { conversion: "credit_purchase" as const, transactionId: txn };
-    expect(await enqueueAdsRestatement(paymentId)).toBe(true);
+    expect(await enqueueAdsRestatement(paymentId)).toBe("after_upload");
     expect(await getUploadStatus(key)).toBe("restate_pending");
     expect((await jobsFor(txn)).map((j) => j.name)).toEqual(["conversion"]);
 
@@ -171,21 +288,39 @@ describe("enqueueAdsRestatement", () => {
     expect((await jobsFor(txn)).map((j) => j.name)).toEqual(["conversion"]);
   });
 
+  it("keeps an uploaded purchase as it is when ads were withdrawn before the refund", async () => {
+    const { paymentId, txn, userId } = await purchase();
+    await moveUpload({ conversion: "credit_purchase", transactionId: txn }, ["queued"], "uploaded");
+    await adsReceipt(userId, false);
+    expect(await enqueueAdsRestatement(paymentId)).toBe("consent_withdrawn");
+    expect(await getUploadStatus({ conversion: "credit_purchase", transactionId: txn })).toBe("uploaded");
+  });
+
+  it("does not forward a pending restatement when ads were withdrawn before the upload landed", async () => {
+    const { paymentId, txn, userId } = await purchase();
+    await enqueueAdsRestatement(paymentId);
+    await adsReceipt(userId, false);
+    const [job] = (await queue.getJobs(["waiting", "delayed", "prioritized"])).filter((j) => j.data.transactionId === txn);
+    expect(await settleAdsUpload(job!.data, true, "req-1")).toBe(true);
+    expect(await getUploadStatus({ conversion: "credit_purchase", transactionId: txn })).toBe("uploaded");
+    expect((await jobsFor(txn)).map((j) => j.name)).toEqual(["conversion"]);
+  });
+
   it("does not restate a purchase whose upload failed", async () => {
     const { paymentId, txn } = await purchase();
     await moveUpload({ conversion: "credit_purchase", transactionId: txn }, ["queued"], "failed");
-    expect(await enqueueAdsRestatement(paymentId)).toBe(false);
+    expect(await enqueueAdsRestatement(paymentId)).toBe("none");
   });
 
   it("does not restate an order that never had a conversion", async () => {
-    expect(await enqueueAdsRestatement(crypto.randomUUID())).toBe(false);
+    expect(await enqueueAdsRestatement(crypto.randomUUID())).toBe("none");
   });
 });
 
 describe("requeueStaleAdsUploads", () => {
   it("queues again a conversion whose job never reached the queue, once", async () => {
     const txn = `signup:${crypto.randomUUID()}`;
-    expect(await enqueueAdsConversion({ conversion: "signup", transactionId: txn, click: clicked(1) }, ADS)).toBe(true);
+    expect(await enqueueAdsConversion({ userId: await account(), conversion: "signup", transactionId: txn, click: clicked(1) }, ADS)).toBe(true);
     // The job is lost (Redis down between the claim and the add, or the process died).
     for (const lost of (await queue.getJobs(["waiting", "delayed", "prioritized"])).filter((j) => j.data.transactionId === txn)) {
       await lost.remove();
@@ -199,7 +334,7 @@ describe("requeueStaleAdsUploads", () => {
   it("queues again the conversion of a refund waiting on an upload whose job was lost", async () => {
     const txn = `signup:${crypto.randomUUID()}`;
     const key = { conversion: "signup" as const, transactionId: txn };
-    await enqueueAdsConversion({ conversion: "signup", transactionId: txn, click: clicked(1) }, ADS);
+    await enqueueAdsConversion({ userId: await account(), conversion: "signup", transactionId: txn, click: clicked(1) }, ADS);
     await moveUpload(key, ["queued"], "restate_pending");
     for (const lost of (await queue.getJobs(["waiting", "delayed", "prioritized"])).filter((j) => j.data.transactionId === txn)) {
       await lost.remove();
@@ -213,7 +348,7 @@ describe("requeueStaleAdsUploads", () => {
   it("replaces a job the queue gave up on while its row still waits", async () => {
     await queue.obliterate({ force: true });
     const txn = `signup:${crypto.randomUUID()}`;
-    await enqueueAdsConversion({ conversion: "signup", transactionId: txn, click: clicked(1) }, ADS);
+    await enqueueAdsConversion({ userId: await account(), conversion: "signup", transactionId: txn, click: clicked(1) }, ADS);
     // The last attempt failed but its outcome was never recorded (the database was unreachable).
     const worker = new Worker(ADS_CONVERSION_QUEUE, null, { connection: queue.opts.connection, autorun: false });
     const taken = await worker.getNextJob("audit-token");
@@ -229,7 +364,7 @@ describe("requeueStaleAdsUploads", () => {
   it("queues again a restatement whose job was lost", async () => {
     const txn = `signup:${crypto.randomUUID()}`;
     const key = { conversion: "signup" as const, transactionId: txn };
-    await enqueueAdsConversion({ conversion: "signup", transactionId: txn, click: clicked(1) }, ADS);
+    await enqueueAdsConversion({ userId: await account(), conversion: "signup", transactionId: txn, click: clicked(1) }, ADS);
     await moveUpload(key, ["queued"], "restating");
     for (const lost of (await queue.getJobs(["waiting", "delayed", "prioritized"])).filter((j) => j.data.transactionId === txn)) {
       await lost.remove();
@@ -241,7 +376,7 @@ describe("requeueStaleAdsUploads", () => {
 
   it("leaves a recently queued conversion alone", async () => {
     const txn = `signup:${crypto.randomUUID()}`;
-    await enqueueAdsConversion({ conversion: "signup", transactionId: txn, click: clicked(1) }, ADS);
+    await enqueueAdsConversion({ userId: await account(), conversion: "signup", transactionId: txn, click: clicked(1) }, ADS);
     await requeueStaleAdsUploads(10 * 60_000);
     expect((await jobsFor(txn)).map((j) => j.name)).toEqual(["conversion"]);
   });

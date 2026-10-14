@@ -61,6 +61,9 @@ vi.mock("@breatic/core", async (importActual: () => Promise<Record<string, unkno
     ...actual,
     // The account has not claimed its first project yet (inner#1442 §4.8).
     claimFirstMilestone: vi.fn(async () => true),
+    // The first-project conversion is queued after the create; nothing to upload here.
+    getAccountAttribution: vi.fn(async () => null),
+    enqueueAdsConversion: vi.fn(async () => false),
     db: {
       // Pass-through transaction — runs the callback immediately with a stub tx
       // handle. createProject is mocked, so no real DB is needed.

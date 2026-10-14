@@ -2,31 +2,60 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { describe, expect, it } from "vitest";
-import { NO_CONSENT } from "@breatic/shared";
+import { CONSENT_REVISION, NO_CONSENT, type BrowserAdsSnapshot } from "@breatic/shared";
 import { readCheckoutSnapshot, toStripeMetadata } from "@server/modules/analytics/checkout-snapshot.js";
 
 const CLICK = { gclid: "c1", at: "2026-10-12T01:00:00.000Z" };
+const AT = "2026-10-12T02:00:00.000Z";
+const ADS_BROWSER: BrowserAdsSnapshot = {
+  choice: {
+    decisionId: "11111111-1111-4111-8111-111111111111",
+    value: true,
+    source: "settings",
+    noticeShown: "account",
+    gpcAtDecision: false,
+    decidedAt: CLICK.at,
+    revision: CONSENT_REVISION,
+  },
+  gpcAt: AT,
+  at: AT,
+};
+const UNSET: BrowserAdsSnapshot = { choice: null, gpcAt: null, at: new Date(0).toISOString() };
 
 describe("checkout snapshot", () => {
   it("round-trips through Stripe metadata strings", () => {
-    const snapshot = { consent: { analytics: true, ads: true }, click: CLICK };
-    expect(readCheckoutSnapshot(toStripeMetadata(snapshot))).toEqual(snapshot);
+    const snapshot = { consent: { analytics: true, ads: true }, adsBrowser: ADS_BROWSER, click: CLICK };
+    const metadata = toStripeMetadata(snapshot);
+    expect(Object.values(metadata).every((v) => v.length <= 500)).toBe(true);
+    expect(readCheckoutSnapshot(metadata)).toEqual(snapshot);
   });
 
   it("reads the object form an order row stores", () => {
-    expect(readCheckoutSnapshot({ analyticsConsent: { analytics: false, ads: true }, adClick: CLICK })).toEqual({
-      consent: { analytics: false, ads: true },
-      click: CLICK,
-    });
+    expect(
+      readCheckoutSnapshot({ analyticsConsent: { analytics: false, ads: true }, adsBrowser: ADS_BROWSER, adClick: CLICK }),
+    ).toEqual({ consent: { analytics: false, ads: true }, adsBrowser: ADS_BROWSER, click: CLICK });
   });
 
   it("leaves the click out of Stripe metadata when there is none", () => {
-    expect(toStripeMetadata({ consent: NO_CONSENT, click: null })).toEqual({ analyticsConsent: JSON.stringify(NO_CONSENT) });
+    expect(toStripeMetadata({ consent: NO_CONSENT, adsBrowser: UNSET, click: null })).toEqual({
+      analyticsConsent: JSON.stringify(NO_CONSENT),
+      adsBrowser: JSON.stringify(UNSET),
+    });
   });
 
-  it("reads no consent and no click from missing or malformed metadata", () => {
-    for (const metadata of [null, undefined, {}, { analyticsConsent: "{oops", adClick: "x" }, { analyticsConsent: { analytics: "yes" } }]) {
-      expect(readCheckoutSnapshot(metadata as Record<string, unknown> | null)).toEqual({ consent: NO_CONSENT, click: null });
+  it("reads no consent, a browser with no ads choice and no click from missing or malformed metadata", () => {
+    for (const metadata of [
+      null,
+      undefined,
+      {},
+      { analyticsConsent: "{oops", adsBrowser: "{oops", adClick: "x" },
+      { analyticsConsent: { analytics: "yes" }, adsBrowser: { choice: { value: "yes" }, gpcAt: null, at: AT } },
+    ]) {
+      expect(readCheckoutSnapshot(metadata as Record<string, unknown> | null)).toEqual({
+        consent: NO_CONSENT,
+        adsBrowser: UNSET,
+        click: null,
+      });
     }
   });
 

@@ -214,7 +214,7 @@ export type {
 
 // ── i18n (node-side adapter; engine lives in @breatic/shared) ──
 export { loadLocales, runWithLocale } from "@core/i18n/locale-loader.js";
-export { currentConsent, runWithConsent } from "@core/analytics/consent-context.js";
+export { currentAdsBrowser, currentConsent, runWithConsent } from "@core/analytics/consent-context.js";
 export {
   flushServerAnalytics,
   initServerAnalytics,
@@ -243,12 +243,12 @@ export {
   ADS_CONVERSION_QUEUE,
   adsConversionConfig,
   adsConversionState,
-  adsConversionWanted,
   enqueueAdsConversion,
   enqueueAdsRestatement,
   requeueStaleAdsUploads,
   unscheduleAdsUploadSweep,
   scheduleAdsUploadSweep,
+  settleAdsRefused,
   settleAdsUpload,
   setAdsConversionConfigForTest,
   type AdsConversionConfig,
@@ -258,6 +258,7 @@ export {
   ADS_CONVERSIONS,
   ADS_SWEEP_JOB,
   ADS_UPLOAD_STATUSES,
+  AdsConversionJobSchema,
   type AdsConversionJob,
   type AdsConversionName,
   type AdsUploadStatus,
@@ -270,6 +271,7 @@ export {
 export { claimFirstMilestone, type FirstMilestone } from "@core/analytics/first-milestone.js";
 export {
   accountOnlyConsent,
+  adsAllowedFor,
   adsOwnership,
   getAccountAdsEvents,
   getAccountAnalytics,
@@ -277,5 +279,4 @@ export {
   recordConsentReceipts,
   recordGpcSignal,
   recordOptOutRequest,
-  type AccountAdsHistory,
 } from "@core/analytics/account.repo.js";

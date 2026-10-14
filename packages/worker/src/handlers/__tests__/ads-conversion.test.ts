@@ -12,6 +12,8 @@ import { DelayedError, UnrecoverableError, type Job } from "bullmq";
 import type * as CoreModule from "@breatic/core";
 
 const settleAdsUpload = vi.hoisted(() => vi.fn(async () => undefined));
+const settleAdsRefused = vi.hoisted(() => vi.fn(async () => undefined));
+const adsAllowedFor = vi.hoisted(() => vi.fn(async () => true));
 const requeueStaleAdsUploads = vi.hoisted(() => vi.fn(async () => 0));
 const adsConversionConfig = vi.hoisted(() => vi.fn());
 const getUploadStatus = vi.hoisted(() => vi.fn(async (): Promise<string | null> => "queued"));
@@ -22,7 +24,15 @@ const retrieveRequestStatus = vi.hoisted(() =>
 
 vi.mock("@breatic/core", async (importOriginal) => {
   const actual = await importOriginal<typeof CoreModule>();
-  return { ...actual, settleAdsUpload, adsConversionConfig, requeueStaleAdsUploads, getUploadStatus };
+  return {
+    ...actual,
+    settleAdsUpload,
+    settleAdsRefused,
+    adsAllowedFor,
+    adsConversionConfig,
+    requeueStaleAdsUploads,
+    getUploadStatus,
+  };
 });
 vi.mock("@google-ads/datamanager", () => ({
   IngestionServiceClient: class {
@@ -42,6 +52,8 @@ const CONFIG = {
 
 const DATA: AdsConversionJob = {
   kind: "conversion",
+  userId: "11111111-1111-4111-8111-111111111111",
+  browser: { choice: null, gpcAt: null, at: "2026-10-12T01:00:00.000Z" },
   conversion: "credit_purchase",
   transactionId: "purchase:cs_1",
   occurredAt: "2026-10-12T01:00:00.000Z",
@@ -88,6 +100,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   adsConversionConfig.mockReturnValue(CONFIG);
   getUploadStatus.mockImplementation(async () => "queued");
+  adsAllowedFor.mockResolvedValue(true);
 });
 
 describe("runAdsConversion", () => {
@@ -221,6 +234,33 @@ describe("runAdsConversion", () => {
     const sink: AdsConversionSink = { upload: vi.fn(async () => Promise.reject(Object.assign(new Error("bad"), { code: 3 }))), status: vi.fn() };
     await expect(runAdsConversion(job(0), () => sink)).rejects.toBeInstanceOf(UnrecoverableError);
     expect(settleAdsUpload).toHaveBeenCalledWith(DATA, false);
+  });
+
+  it("uploads nothing and records consent_withdrawn when ads are no longer allowed", async () => {
+    adsAllowedFor.mockResolvedValue(false);
+    const sink: AdsConversionSink = { upload: vi.fn(), status: vi.fn() };
+    await runAdsConversion(job(), () => sink);
+    expect(adsAllowedFor).toHaveBeenCalledWith(DATA.userId, DATA.browser, expect.any(Number));
+    expect(sink.upload).not.toHaveBeenCalled();
+    expect(settleAdsRefused).toHaveBeenCalledWith(DATA);
+    expect(settleAdsUpload).not.toHaveBeenCalled();
+  });
+
+  it("checks consent before a restatement too", async () => {
+    getUploadStatus.mockResolvedValue("restating");
+    adsAllowedFor.mockResolvedValue(false);
+    const sink = sinkWithStatus("success");
+    await runAdsConversion(job(0, RESTATEMENT), () => sink);
+    expect(sink.upload).not.toHaveBeenCalled();
+    expect(settleAdsRefused).toHaveBeenCalledWith(RESTATEMENT);
+  });
+
+  it("stops at once on a job whose data does not parse", async () => {
+    const sink: AdsConversionSink = { upload: vi.fn(), status: vi.fn() };
+    const broken = { ...DATA, userId: undefined } as unknown as AdsConversionJob;
+    await expect(runAdsConversion(job(0, broken), () => sink)).rejects.toBeInstanceOf(UnrecoverableError);
+    expect(sink.upload).not.toHaveBeenCalled();
+    expect(settleAdsUpload).toHaveBeenCalledWith(broken, false);
   });
 
   it("stops at once when the conversion is no longer configured", async () => {

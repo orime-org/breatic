@@ -31,7 +31,6 @@ import {
   logger,
   recordConsentReceipts,
   trackServerEvent,
-  type AccountAdsHistory,
 } from "@breatic/core";
 import {
   setSession,
@@ -44,7 +43,7 @@ import {
   UnauthorizedError,
 } from "@breatic/core";
 import { adClickFrom, getActiveLocale, normalizeEmail, t } from "@breatic/shared";
-import type { Attribution, ConsentReport, Ownership, UserEntity } from "@breatic/shared";
+import type { AccountAdsHistory, Attribution, ConsentReport, Ownership, UserEntity } from "@breatic/shared";
 
 const BCRYPT_ROUNDS = 12;
 
@@ -86,6 +85,7 @@ export async function createAccount(data: Parameters<typeof userRepo.createUser>
     properties: { method: data.googleId ? "google" : "email" },
   });
   enqueueAdsConversion({
+    userId: user.id,
     conversion: "signup",
     transactionId: `signup:${user.id}`,
     click: adClickFrom(attribution, Date.now()),

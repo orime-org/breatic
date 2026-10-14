@@ -1,7 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import type { AdClick } from "@breatic/shared";
+import { z } from "zod";
+import { BrowserAdsSnapshotSchema, type AdClick, type BrowserAdsSnapshot } from "@breatic/shared";
 
 /** The conversions the product reports, each a conversion action in Google Ads. */
 export const ADS_CONVERSIONS = ["signup", "first_project", "collaboration", "credit_purchase", "subscription"] as const;
@@ -23,6 +24,10 @@ export type AdsUploadStatus = (typeof ADS_UPLOAD_STATUSES)[number];
 export interface AdsConversionJob {
   /** `conversion` uploads a new conversion; `restatement` sets its value to zero. */
   readonly kind: "conversion" | "restatement";
+  /** The account the conversion is credited to; its ads events are checked again before upload. */
+  readonly userId: string;
+  /** The browser behind the conversion, as it stood then; null when none was (inner#1442 §4.4.6). */
+  readonly browser: BrowserAdsSnapshot | null;
   readonly conversion: AdsConversionName;
   /** Shared with the browser tag, which is how Google counts the two once. */
   readonly transactionId: string;
@@ -37,3 +42,27 @@ export interface AdsConversionJob {
 
 /** Name of the recurring job that queues again uploads whose job was lost. */
 export const ADS_SWEEP_JOB = "sweep";
+
+/** Why an upload stopped short of the platform, kept on its row. */
+export const ADS_FAILURE_REASONS = ["consent_withdrawn"] as const;
+export type AdsFailureReason = (typeof ADS_FAILURE_REASONS)[number];
+
+const isoTime = z.string().datetime({ offset: true });
+
+/** A queued or stored job, checked before the worker uploads it. */
+export const AdsConversionJobSchema: z.ZodType<AdsConversionJob> = z
+  .object({
+    kind: z.enum(["conversion", "restatement"]),
+    userId: z.string().uuid(),
+    browser: BrowserAdsSnapshotSchema.nullable(),
+    conversion: z.enum(ADS_CONVERSIONS),
+    transactionId: z.string().min(1),
+    occurredAt: isoTime,
+    click: z
+      .object({ gclid: z.string().optional(), gbraid: z.string().optional(), wbraid: z.string().optional(), at: isoTime })
+      .strict(),
+    value: z.object({ amountCents: z.number().int(), currency: z.string().min(3) }).strict().optional(),
+    originalRequestId: z.string().optional(),
+    statusChecks: z.number().int().optional(),
+  })
+  .strict();

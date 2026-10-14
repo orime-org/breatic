@@ -9,7 +9,7 @@
 
 import { adClickFrom, type ConsentSnapshot, type ProjectActivityType } from "@breatic/shared";
 import { adsConversionConfig, enqueueAdsConversion } from "@core/ads/ads-conversion.js";
-import { accountOnlyConsent, getAccountAttribution } from "@core/analytics/account.repo.js";
+import { getAccountAttribution } from "@core/analytics/account.repo.js";
 import { currentConsent } from "@core/analytics/consent-context.js";
 import { claimMilestone } from "@core/analytics/milestone.repo.js";
 import { reportAnalyticsFailure, serverAnalyticsOn, trackServerEvent } from "@core/analytics/server-analytics.js";
@@ -65,14 +65,15 @@ export async function reportCollaboratorFirstAction(
     );
     const ownerId = await getOwner(input.projectId);
     if (!ownerId) return;
-    const ownerConsent = await accountOnlyConsent(ownerId, Date.now());
+    // No browser of the owner's is behind this, so only the owner's account events count.
     await enqueueAdsConversion(
       {
+        userId: ownerId,
         conversion: "collaboration",
         transactionId: `collab:${ownerId}`,
         click: adClickFrom(await getAccountAttribution(ownerId), Date.now()),
       },
-      ownerConsent,
+      null,
     );
   } catch (err) {
     reportAnalyticsFailure(`collaborator_first_action: ${err instanceof Error ? err.message : String(err)}`);

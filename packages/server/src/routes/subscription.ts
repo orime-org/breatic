@@ -15,7 +15,7 @@
 
 import { subscriptionConversion } from "@server/modules/subscription/subscription-analytics.js";
 import { Hono } from "hono";
-import { logger } from "@breatic/core";
+import { adsAllowedFor, currentAdsBrowser, logger } from "@breatic/core";
 import { requireAuth } from "@server/middleware/auth.js";
 import { assertPaymentsEnabled } from "@server/middleware/require-payments.js";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
@@ -131,8 +131,8 @@ subscription.post("/resume", async (c) => {
  * so the person who just paid sees the tier they bought. The webhook still
  * arrives and finds the work done.
  * @returns `200` with the membership panel's answer and, once the
- *   subscription is active, the ad conversion the page reports
- *   (inner#1442 §4.9); `404` when the session
+ *   subscription is active and `adsAllowed` lets ads run for this account and
+ *   browser, the ad conversion the page reports (inner#1442 §4.9); `404` when the session
  *   is not a membership checkout of theirs; `503` when it could not be
  *   confirmed yet.
  */
@@ -146,7 +146,10 @@ subscription.post(
     const stored = await subscriptionService.confirmCheckout(user.id, sessionId);
     logger.info({ userId: user.id, sessionId }, "subscription_checkout_confirmed");
     const membership = await readAccountMembership(user.id);
-    return c.json({ data: { ...membership, conversion: subscriptionConversion(stored) } });
+    const candidate = subscriptionConversion(stored);
+    const conversion =
+      candidate !== null && (await adsAllowedFor(user.id, currentAdsBrowser(), Date.now())) ? candidate : null;
+    return c.json({ data: { ...membership, conversion } });
   },
 );
 
