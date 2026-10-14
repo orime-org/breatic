@@ -194,6 +194,14 @@ describe('nodes a clipboard should not hold', () => {
   });
 });
 
+describe('a clipboard holding something that is not a node', () => {
+  it('counts it out and lands the rest', () => {
+    const p = { ...payload(node('a', 'text', 0, 0, { body: body('A') })), nodes: [null, node('a', 'text', 0, 0, { body: body('A') })] } as unknown as ClipboardPayload;
+    expect(order(p)).toEqual(['A']);
+    expect(planCanvasPaste(p).notPasted).toBe(1);
+  });
+});
+
 describe('where an outside address goes', () => {
   it.each([
     ['https://imgs.example/x.jpg', 'fetch'],

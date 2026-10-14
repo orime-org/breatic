@@ -427,6 +427,21 @@ describe('a paste or a drop is an undo step of its own (A6)', () => {
     expect(firstCell(editor, 0)).toBe('cell typed');
   });
 
+  it('a paste that puts back the very words it replaces leaves the typing after it one step', async () => {
+    const { editor, manager } = open([{ type: 'paragraph', content: 'lead word' }]);
+    const view = editor.prosemirrorView!;
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 8, 12)));
+    view.focus();
+
+    paste(editor, '', 'word');
+    await settled();
+    type(editor, 'x');
+    type(editor, 'y');
+    manager.undo();
+
+    expect(shape(editor)).toEqual(['paragraph:lead word']);
+  });
+
   it('typing just before a plain text paste stays when the paste is undone', async () => {
     const { editor, manager } = open([{ type: 'paragraph', content: 'lead' }]);
     caretIn(editor, 0);

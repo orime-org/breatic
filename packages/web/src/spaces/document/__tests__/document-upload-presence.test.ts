@@ -213,6 +213,24 @@ describe('claims', () => {
     expect(ticks.stopped).toBe(1);
   });
 
+  it('claims cleared by a page restored from the back-forward cache come back on the next renewal', async () => {
+    const { controller, ticks } = rig();
+    const a = side('space-a');
+    controller.attach(a.body);
+    pending(a.doc, 'u1');
+    controller.start('u1', { kind: 'address', url: 'https://imgs.example/x.jpg' });
+    await flush();
+    expect(seen(a, 'u1')).toBe('uploading');
+
+    // What the provider and collab-socket do on pagehide and pageshow.
+    a.mine.setLocalState(null);
+    a.mine.setLocalState({});
+    ticks.tick?.();
+    await flush();
+
+    expect(seen(a, 'u1')).toBe('uploading');
+  });
+
   it('a detached body withdraws its claims', async () => {
     const { controller } = rig();
     const a = side('space-a');
