@@ -27,6 +27,7 @@
  */
 
 import { CommentsExtension, type ThreadData } from '@blocknote/core/comments';
+import type { EditorState } from '@tiptap/pm/state';
 
 import { draftRangeIn } from '@web/spaces/document/document-comment-draft-range';
 import {
@@ -37,10 +38,10 @@ import {
 
 
 /** The editor surface this needs. */
-interface CommentableEditor {
+export interface CommentableEditor {
   /** The view, absent until the editor is mounted. */
   readonly prosemirrorView: {
-    readonly state: import('@tiptap/pm/state').EditorState;
+    readonly state: EditorState;
     dispatch(tr: import('@tiptap/pm/state').Transaction): void;
   } | null;
   /**
@@ -48,6 +49,62 @@ interface CommentableEditor {
    * @param extension - The factory to match on.
    */
   getExtension(extension: typeof CommentsExtension): unknown;
+}
+
+/** Where a comment goes, read off the body as it stands. */
+export type CommentAim = (state: EditorState) => ReadonlyArray<{ from: number; to: number }> | null;
+
+/** What a comment carries beside its words: on the thread, and on its first comment. */
+export interface CommentMetadata {
+  thread?: Record<string, unknown>;
+  comment?: Record<string, unknown>;
+}
+
+/**
+ * Creates a thread and marks the words it is about.
+ *
+ * The aim is read twice: once to see there is somewhere to comment before
+ * anything is created, and again after the thread exists, because creating it
+ * was a round trip and the words may have moved or gone meanwhile. Gone, the
+ * thread stays in the map with no mark, so the panel leaves it out like any
+ * thread whose words are gone -- §9.2's S3.
+ * @param editor - The document editor, with the comments extension registered.
+ * @param body - The first comment, as a comment body.
+ * @param aim - Where the comment goes, read off the body as it stands.
+ * @param metadata - What the thread and its first comment carry, if anything.
+ * @returns The thread created, or null when there was nowhere to comment --
+ *   in which case nothing was created.
+ * @throws {Error} Whatever the thread store throws while creating the thread.
+ */
+export async function commentOn(
+  editor: CommentableEditor,
+  body: unknown,
+  aim: CommentAim,
+  metadata: CommentMetadata = {},
+): Promise<ThreadData | null> {
+  const view = editor.prosemirrorView;
+  if (view === null || aim(view.state) === null) return null;
+
+  const comments = commentsOn(editor);
+  if (comments === undefined) return null;
+
+  const thread = (await comments.threadStore.createThread({
+    initialComment: { body, ...(metadata.comment === undefined ? {} : { metadata: metadata.comment }) },
+    ...(metadata.thread === undefined ? {} : { metadata: metadata.thread }),
+  })) as ThreadData;
+
+  const landing = aim(view.state);
+  if (landing === null) return thread;
+
+  const mark = view.state.schema.marks[COMMENT_MARK]!.create({
+    threadId: thread.id,
+    orphan: false,
+  });
+  const tr = view.state.tr;
+  for (const { from, to } of landing) tr.addMark(from, to, mark);
+  view.dispatch(tr);
+
+  return thread;
 }
 
 /**
@@ -59,37 +116,6 @@ interface CommentableEditor {
  *   text it was aimed at is gone — in which case nothing was created.
  * @throws {Error} Whatever the thread store throws while creating the thread.
  */
-export async function postComment(
-  editor: CommentableEditor,
-  body: string,
-): Promise<ThreadData | null> {
-  const view = editor.prosemirrorView;
-  if (view === null) return null;
-
-  const range = draftRangeIn(view.state);
-  if (range === null) return null;
-
-  const comments = commentsOn(editor);
-  if (comments === undefined) return null;
-
-  const thread = (await comments.threadStore.createThread({
-    initialComment: { body: asCommentBody(body) },
-  })) as ThreadData;
-
-  // Read again: creating the thread was a round trip, and the body may have
-  // moved or lost those words while it was in flight. The thread stays in
-  // the map, but with no mark it has no entry in the position table, so the
-  // panel leaves it out like any thread whose words are gone — §9.2's S3.
-  const landing = draftRangeIn(view.state);
-  if (landing === null) return thread;
-
-  const mark = view.state.schema.marks[COMMENT_MARK]!.create({
-    threadId: thread.id,
-    orphan: false,
-  });
-  const tr = view.state.tr;
-  for (const { from, to } of landing.segments) tr.addMark(from, to, mark);
-  view.dispatch(tr);
-
-  return thread;
+export function postComment(editor: CommentableEditor, body: string): Promise<ThreadData | null> {
+  return commentOn(editor, asCommentBody(body), (state) => draftRangeIn(state)?.segments ?? null);
 }

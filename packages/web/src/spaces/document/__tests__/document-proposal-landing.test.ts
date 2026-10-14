@@ -1,0 +1,282 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+
+/**
+ * A document proposal landing (inner#1509): checked against the document as
+ * it is when the reader presses, written as one undo step, and recognised as
+ * landed from the marks it left -- a thread carrying its id, or a block whose
+ * id was derived from it.
+ */
+
+import { afterEach, describe, expect, it } from 'vitest';
+import * as Y from 'yjs';
+import { Awareness } from 'y-protocols/awareness';
+import type { DocumentProposal } from '@breatic/shared';
+
+import { blockPlainText } from '@web/spaces/document/document-blocks-read';
+import { commentsOn } from '@web/spaces/document/document-comment-extension';
+import {
+  _resetDocumentEditorCacheForTests,
+  adoptDocumentEditor,
+  getDocumentEditor,
+  type DocumentEditorHandle,
+} from '@web/spaces/document/document-editor-cache';
+import { landedOn, landProposal } from '@web/spaces/document/document-proposal-landing';
+
+afterEach(() => {
+  _resetDocumentEditorCacheForTests();
+  document.body.innerHTML = '';
+});
+
+/**
+ * A mounted document holding some Markdown, with comments and undo wired the
+ * way a document Space gets them.
+ * @param markdown - What it holds.
+ * @returns The handle.
+ */
+async function open(markdown: string): Promise<DocumentEditorHandle> {
+  const doc = new Y.Doc();
+  const handle = getDocumentEditor(doc, `project-p/document-${String(Math.random())}`, {
+    caretProvider: { awareness: new Awareness(doc) },
+    readWho: () => ({ role: 'editor', viewerId: 'reader-1' }),
+    editable: true,
+  });
+  const root = document.createElement('div');
+  document.body.appendChild(root);
+  adoptDocumentEditor(handle, root);
+  const { editor } = handle;
+  editor.replaceBlocks(editor.document, await editor.tryParseMarkdownToBlocks(markdown));
+  handle.undoManager.clear();
+  return handle;
+}
+
+/**
+ * The top-level blocks: id and plain text.
+ * @param handle - The document.
+ * @returns The blocks.
+ */
+function blocks(handle: DocumentEditorHandle): Array<{ id: string; text: string }> {
+  const out: Array<{ id: string; text: string }> = [];
+  handle.editor.prosemirrorState.doc.firstChild?.forEach((node) => {
+    out.push({ id: String(node.attrs.id), text: blockPlainText(node) });
+  });
+  return out;
+}
+
+/**
+ * Every comment mark in the body, with the words it covers.
+ * @param handle - The document.
+ * @returns The marked words, by thread.
+ */
+function marked(handle: DocumentEditorHandle): Array<{ threadId: string; text: string }> {
+  const found: Array<{ threadId: string; text: string }> = [];
+  handle.editor.prosemirrorState.doc.descendants((node) => {
+    for (const mark of node.marks) {
+      if (mark.type.name === 'comment') found.push({ threadId: String(mark.attrs.threadId), text: node.text ?? '' });
+    }
+    return true;
+  });
+  return found;
+}
+
+/**
+ * The threads in the document's comment store.
+ * @param handle - The document.
+ * @returns The threads.
+ */
+function threads(handle: DocumentEditorHandle): Array<{ id: string; metadata: unknown; comments: Array<{ userId: string; metadata: unknown; body: unknown }> }> {
+  return [...(commentsOn(handle.editor)?.threadStore.getThreads().values() ?? [])] as never;
+}
+
+/**
+ * A proposal on one of the document's blocks.
+ * @param handle - The document.
+ * @param index - Which top-level block.
+ * @param fields - What else it says.
+ * @returns The proposal.
+ */
+function proposalOn(handle: DocumentEditorHandle, index: number | null, fields: Partial<DocumentProposal>): DocumentProposal {
+  const target = index === null ? undefined : blocks(handle)[index];
+  return {
+    proposalId: '33333333-3333-4333-8333-333333333333',
+    spaceId: '44444444-4444-4444-8444-444444444444',
+    spaceName: 'Storyboard',
+    kind: 'insert',
+    blockId: target?.id ?? null,
+    body: 'x',
+    title: 't',
+    heading: '',
+    original: target?.text ?? '',
+    lossy: false,
+    ...fields,
+  };
+}
+
+describe('a comment', () => {
+  it('hangs on the quoted words, written by the reader and marked as from the Agent', async () => {
+    const handle = await open('The hero arrives at the gate.');
+    const proposal = proposalOn(handle, 0, { kind: 'comment', quote: 'the gate', body: 'Which gate?' });
+
+    expect(await landProposal(handle, proposal, 'comment', true)).toEqual({ outcome: 'applied', blockId: blocks(handle)[0]!.id });
+
+    const [thread] = threads(handle);
+    expect(thread?.metadata).toEqual({ proposalId: proposal.proposalId });
+    expect(thread?.comments[0]).toMatchObject({ userId: 'reader-1', metadata: { fromAgent: true } });
+    expect(marked(handle)).toEqual([{ threadId: thread!.id, text: 'the gate' }]);
+  });
+
+  it('hangs on words that run across table cells, one stretch per cell', async () => {
+    const handle = await open('| Shot | Action |\n| --- | --- |\n| Close | She turns |');
+    const proposal = proposalOn(handle, 0, { kind: 'comment', quote: 'Close\nShe turns', body: 'Why close?' });
+
+    await landProposal(handle, proposal, 'comment', true);
+
+    expect(marked(handle).map((m) => m.text)).toEqual(['Close', 'She turns']);
+  });
+
+  it('from a rewrite card carries the rewritten words with no Markdown in them', async () => {
+    const handle = await open('Morning light falls on the table.');
+    const proposal = proposalOn(handle, 0, { kind: 'rewrite', body: 'Morning **light**.\n\n## Then' });
+
+    await landProposal(handle, proposal, 'comment', true);
+
+    const body = JSON.stringify(threads(handle)[0]?.comments[0]?.body);
+    expect(body).toContain('"Morning light."');
+    expect(body).toContain('"Then"');
+    expect(body).not.toMatch(/\*\*|##/);
+    expect(marked(handle).map((m) => m.text)).toEqual(['Morning light falls on the table.']);
+  });
+});
+
+describe('a rewrite', () => {
+  it('replaces the block with the body, and one undo puts it back', async () => {
+    const handle = await open('Before.\n\nMorning light falls on the table.\n\nAfter.');
+    const proposal = proposalOn(handle, 1, { kind: 'rewrite', body: 'Light on the table.\n\nThe coffee is cold.' });
+
+    await landProposal(handle, proposal, 'write', true);
+    expect(blocks(handle).map((b) => b.text)).toEqual(['Before.', 'Light on the table.', 'The coffee is cold.', 'After.']);
+
+    handle.undoManager.undo();
+    expect(blocks(handle).map((b) => b.text)).toEqual(['Before.', 'Morning light falls on the table.', 'After.']);
+  });
+});
+
+describe('one undo step', () => {
+  it('takes back the landing and leaves what the reader typed just before it', async () => {
+    const handle = await open('Typed here.\n\nTarget.');
+    const proposal = proposalOn(handle, 1, { kind: 'rewrite', body: 'Rewritten.' });
+    const view = handle.editor.prosemirrorView!;
+    view.dispatch(view.state.tr.insertText(' More', 3 + 'Typed here.'.length));
+
+    await landProposal(handle, proposal, 'write', true);
+    handle.undoManager.undo();
+
+    expect(blocks(handle).map((b) => b.text)).toEqual(['Typed here. More', 'Target.']);
+  });
+});
+
+describe('an insert', () => {
+  it('goes after its block, keeping a table a table, and one undo takes it out', async () => {
+    const handle = await open('Scene 3.\n\nAfter.');
+    const proposal = proposalOn(handle, 0, { body: '| Shot | Size |\n|---|---|\n| 1 | Wide |' });
+
+    await landProposal(handle, proposal, 'write', true);
+    expect(blocks(handle).map((b) => b.text)).toEqual(['Scene 3.', 'Shot\nSize\n1\nWide', 'After.']);
+    expect((handle.editor.document[1] as { type?: string } | undefined)?.type).toBe('table');
+
+    handle.undoManager.undo();
+    expect(blocks(handle).map((b) => b.text)).toEqual(['Scene 3.', 'After.']);
+  });
+
+  it('goes at the end when it names no block', async () => {
+    const handle = await open('One.\n\nTwo.');
+
+    await landProposal(handle, proposalOn(handle, null, { body: '## Scene 4' }), 'write', true);
+
+    expect(blocks(handle).map((b) => b.text)).toEqual(['One.', 'Two.', 'Scene 4']);
+  });
+});
+
+describe('what is checked before anything is written', () => {
+  it('writes nothing on a connection that is read only', async () => {
+    const handle = await open('One.');
+
+    expect(await landProposal(handle, proposalOn(handle, 0, { kind: 'rewrite', body: 'Two.' }), 'write', false)).toEqual({ outcome: 'readOnly' });
+    expect(blocks(handle).map((b) => b.text)).toEqual(['One.']);
+  });
+
+  it('says the block is gone when it was deleted', async () => {
+    const handle = await open('One.\n\nTwo.');
+    const proposal = proposalOn(handle, 1, { kind: 'rewrite', body: 'Three.' });
+    handle.editor.removeBlocks([proposal.blockId!]);
+
+    expect(await landProposal(handle, proposal, 'write', true)).toEqual({ outcome: 'blockGone' });
+  });
+
+  it('says the block changed when its words are not the ones proposed on', async () => {
+    const handle = await open('One.');
+    const proposal = proposalOn(handle, 0, { kind: 'rewrite', body: 'Two.', original: 'Something else.' });
+
+    expect(await landProposal(handle, proposal, 'write', true)).toEqual({ outcome: 'changed' });
+    expect(blocks(handle).map((b) => b.text)).toEqual(['One.']);
+  });
+
+  it('says the block changed when the quoted words no longer appear once', async () => {
+    const handle = await open('She turns.');
+    const proposal = { ...proposalOn(handle, 0, { kind: 'comment', quote: 'turns', body: 'Why?' }), original: 'She turns.' };
+    handle.editor.insertInlineContent(' She turns again.');
+    const now = blocks(handle)[0]!.text;
+
+    expect(await landProposal(handle, { ...proposal, original: now }, 'comment', true)).toEqual({ outcome: 'changed' });
+    expect(threads(handle)).toHaveLength(0);
+  });
+});
+
+describe('knowing a proposal has landed', () => {
+  it('lands once: pressed again, it is already there and nothing more is written', async () => {
+    const handle = await open('One.\n\nTwo.');
+    const insert = proposalOn(handle, 0, { body: 'New.' });
+    await landProposal(handle, insert, 'write', true);
+
+    expect(await landProposal(handle, insert, 'write', true)).toEqual({ outcome: 'applied', blockId: expect.any(String) as string });
+    expect(blocks(handle).map((b) => b.text)).toEqual(['One.', 'New.', 'Two.']);
+  });
+
+  it('is not fooled by a rewrite that only changes how the words look', async () => {
+    const handle = await open('Scene 1');
+    const proposal = proposalOn(handle, 0, { kind: 'rewrite', body: '## Scene 1' });
+
+    expect(landedOn(handle, proposal)).toBe(false);
+    await landProposal(handle, proposal, 'write', true);
+    expect(landedOn(handle, proposal)).toBe(true);
+    expect((handle.editor.document[0] as { type?: string } | undefined)?.type).toBe('heading');
+  });
+
+  it('knows a rewrite into several blocks landed', async () => {
+    const handle = await open('One long paragraph.');
+    const proposal = proposalOn(handle, 0, { kind: 'rewrite', body: 'One.\n\nLong paragraph.' });
+
+    await landProposal(handle, proposal, 'write', true);
+
+    expect(landedOn(handle, proposal)).toBe(true);
+  });
+
+  it('knows a rewrite card whose words went on as a comment', async () => {
+    const handle = await open('One.');
+    const proposal = proposalOn(handle, 0, { kind: 'rewrite', body: 'Two.' });
+
+    await landProposal(handle, proposal, 'comment', true);
+
+    expect(landedOn(handle, proposal)).toBe(true);
+  });
+
+  it('does not count a comment whose words have gone', async () => {
+    const handle = await open('The hero arrives.');
+    const proposal = proposalOn(handle, 0, { kind: 'comment', quote: 'hero', body: 'Who?' });
+    await landProposal(handle, proposal, 'comment', true);
+    handle.editor.removeBlocks([blocks(handle)[0]!.id]);
+
+    expect(threads(handle)).toHaveLength(1);
+    expect(landedOn(handle, proposal)).toBe(false);
+  });
+});
