@@ -408,7 +408,7 @@ async function fromStarted(ctx: Ctx, event: OperationEvent): Promise<CreditRefun
     case "E6":
       // A person decides and the lot stays refunding (§6.2): money that went
       // out and came back, a request Stripe never executed, or a refusal.
-      return toAttention(ctx, event, await declineReason(ctx, event), declineDetail(event), {
+      return toAttention(ctx, event, await declineReason(ctx, event), answerText(detailOf(event)), {
         ...refundIdOf(event),
         ...(event.failure && { lastError: event.failure.message }),
       });
@@ -468,7 +468,7 @@ async function fromAwaiting(ctx: Ctx, event: OperationEvent): Promise<CreditRefu
     case "E4":
       return toAttention(ctx, event, event.reason, null, { stripeRefundId: event.refund.id });
     case "E6":
-      return toAttention(ctx, event, "stripe_refund_failed_later", declineDetail(event), refundIdOf(event));
+      return toAttention(ctx, event, "stripe_refund_failed_later", answerText(detailOf(event)), refundIdOf(event));
     case "E10":
       if (known) break;
       // Only the loop's recheck sets the next look: a preview or webhook
@@ -784,19 +784,19 @@ async function exhaustedAttention(ctx: Ctx): Promise<{ reason: AttentionReason; 
     const readFailed = e.event === EVENT_NAME.E16 || (e.event === "late_answer" && e.detail["answer"] === "E16");
     const created = readFailed ? e.detail["createFailure"] : CREATE_ANSWER_EVENTS.has(e.event) ? e.detail : undefined;
     if (typeof created === "object" && created !== null && isStripeRefusal(created as StoredCreateAnswer)) {
-      return { reason: "stripe_declined", detail: refusalText(created as StoredCreateAnswer) };
+      return { reason: "stripe_declined", detail: answerText(created as StoredCreateAnswer) };
     }
   }
   return { reason: "attempts_exhausted", detail: lastErrorLine(ctx) };
 }
 
 /**
- * What a person reads first about a stored refusal, as {@link declineDetail}
- * reads it off the live answer.
- * @param answer - The refusal as an event row keeps it.
+ * What a person reads first about a create answer that did not make a
+ * refund, E6's live one and E11's stored one alike (§5.1).
+ * @param answer - The answer as an event row keeps it.
  * @returns Stripe's failure reason, or the first line of its error.
  */
-function refusalText(answer: StoredCreateAnswer): string | null {
+function answerText(answer: StoredCreateAnswer): string | null {
   if (answer.refund) return answer.refund.failureReason ?? answer.refund.status ?? null;
   return typeof answer["message"] === "string" ? firstLine(answer["message"]) : null;
 }
@@ -808,16 +808,6 @@ function refusalText(answer: StoredCreateAnswer): string | null {
  */
 function refundIdOf(event: DeclineEvent): OperationPatch {
   return event.refund ? { stripeRefundId: event.refund.id } : {};
-}
-
-/**
- * What a person reads first about a refund Stripe did not make.
- * @param event - The E6 event.
- * @returns Stripe's failure reason, or the first line of its error.
- */
-function declineDetail(event: DeclineEvent): string | null {
-  if (event.refund) return event.refund.failure_reason ?? event.refund.status;
-  return event.failure ? firstLine(event.failure.message) : null;
 }
 
 /**

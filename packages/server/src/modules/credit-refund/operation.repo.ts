@@ -91,8 +91,9 @@ export interface OperationInsert {
 
 /**
  * A change to one disposition. Times are taken from the database clock:
- * `nextAttemptInSeconds` and `lease` from `now()`, `finished` and
- * `attentionClosedBy` stamp `now()`. Absent keys are left as they are.
+ * `nextAttemptInSeconds` and `lease` count from `now()`; `finished`,
+ * `attentionClosedBy` and `updated_at` stamp {@link STAMP}. Absent keys are
+ * left as they are.
  */
 export interface OperationPatch {
   status?: OperationStatus;
@@ -125,6 +126,13 @@ function toEntity(row: typeof creditRefundOperations.$inferSelect): CreditRefund
     attentionReason: row.attentionReason as AttentionReason | null,
   };
 }
+
+/**
+ * When something happened to a row: the wall clock at the statement, taken
+ * under the lot lock. `now()` is the transaction's start, which can precede
+ * a row inserted later in the same transaction (§9).
+ */
+const STAMP = sql`clock_timestamp()`;
 
 /**
  * `now() + seconds`, in the database's clock.
@@ -181,10 +189,9 @@ export async function insert(values: OperationInsert, tx: DbTx): Promise<CreditR
       leaseToken: lease?.token ?? null,
       lockedUntil: lease ? fromNow(lease.seconds) : null,
       nextAttemptAt: lease ? sql`now()` : null,
-      finishedAt: finished ? sql`now()` : null,
-      // The wall clock at insert, taken under the lot lock: a transaction that
-      // began earlier but inserted later still sorts after (§9).
-      createdAt: sql`clock_timestamp()`,
+      finishedAt: finished ? STAMP : null,
+      createdAt: STAMP,
+      updatedAt: STAMP,
     })
     .returning();
   return toEntity(rows[0]!);
@@ -214,12 +221,12 @@ export async function update(
         leaseToken: lease?.token ?? null,
         lockedUntil: lease ? fromNow(lease.seconds) : null,
       }),
-      ...(finished && { finishedAt: sql`now()` }),
+      ...(finished && { finishedAt: STAMP }),
       ...(attentionClosedBy !== undefined && {
         attentionClosedBy,
-        attentionClosedAt: sql`now()`,
+        attentionClosedAt: STAMP,
       }),
-      updatedAt: sql`now()`,
+      updatedAt: STAMP,
     })
     .where(eq(creditRefundOperations.id, id))
     .returning();
@@ -246,9 +253,7 @@ export async function appendEvent(
   },
   tx: DbTx,
 ): Promise<void> {
-  // The wall clock, so events written in one transaction keep their order;
-  // `now()` is the same for the whole transaction.
-  await tx.insert(creditRefundOperationEvents).values({ ...row, createdAt: sql`clock_timestamp()` });
+  await tx.insert(creditRefundOperationEvents).values({ ...row, createdAt: STAMP });
 }
 
 /** One event row of a disposition, as E11 reads it. */

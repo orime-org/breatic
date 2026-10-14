@@ -316,7 +316,7 @@ export async function resendMail(
     const locked = await lockAndRecheck(tx, { ...req, lotId: op.lotId });
     if ("replay" in locked) return { replay: locked.replay };
     const current = (await operationRepo.lockById(op.id, tx))!;
-    const kind = current.status === "succeeded" && current.result !== null ? MAIL_KIND[current.result] : undefined;
+    const kind = current.result === null ? undefined : MAIL_KIND[current.result];
     if (kind === undefined) throw new RefundRefusal(409, "mail_not_resendable", "mail_not_resendable");
     const mail = await refundMailRepo.insertResend(
       {

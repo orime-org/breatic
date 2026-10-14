@@ -112,7 +112,11 @@ export function eventForRefund(
   }
 }
 
-/** A stored create answer: an event row's detail, of which these fields decide whether Stripe refused. */
+/**
+ * A stored create answer: an event row's detail. `httpStatus`, `type`,
+ * `code`, `shouldRetry` and `refund.status` decide whether Stripe refused;
+ * `refund.failureReason` and `message` are the text a person reads.
+ */
 export interface StoredCreateAnswer {
   [key: string]: unknown;
   refund?: { status?: string; failureReason?: string | null } | undefined;
