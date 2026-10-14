@@ -131,6 +131,7 @@
       "checkout_unconfirmed": "メンバーシップをまだ確認できません。",
       "same_tier": "すでにこのメンバーシップです。",
       "payment_overdue": "このメンバーシップの支払いが遅延しています。",
+      "upgrade_pending": "このメンバーシップのアップグレードはまだ支払い待ちです。",
       "unavailable": "メンバーシップは利用できません。"
     },
     "storage": {

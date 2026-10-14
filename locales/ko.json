@@ -131,6 +131,7 @@
       "checkout_unconfirmed": "아직 멤버십을 확인할 수 없습니다.",
       "same_tier": "이미 이 멤버십입니다.",
       "payment_overdue": "이 멤버십의 결제가 연체되었습니다.",
+      "upgrade_pending": "이 멤버십의 업그레이드가 아직 결제를 기다리고 있습니다.",
       "unavailable": "멤버십을 사용할 수 없습니다."
     },
     "storage": {

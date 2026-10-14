@@ -131,6 +131,7 @@
       "checkout_unconfirmed": "We could not confirm your membership yet.",
       "same_tier": "You are already on this membership.",
       "payment_overdue": "Payment for this membership is overdue.",
+      "upgrade_pending": "An upgrade to this membership is still waiting for payment.",
       "unavailable": "Memberships are unavailable."
     },
     "storage": {

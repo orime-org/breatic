@@ -131,6 +131,7 @@
       "checkout_unconfirmed": "暫時無法確認你的會員。",
       "same_tier": "你已經在這一檔會員。",
       "payment_overdue": "這個會員有一期款項未付。",
+      "upgrade_pending": "這個會員有一筆升級仍在等待付款。",
       "unavailable": "會員目前無法使用。"
     },
     "storage": {

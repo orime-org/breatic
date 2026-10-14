@@ -15,7 +15,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { IDEMPOTENCY_RETENTION_SECONDS } from "@breatic/shared";
+import { IDEMPOTENCY_RETENTION_SECONDS, t } from "@breatic/shared";
 
 const stripe = {
   customers: { create: vi.fn() },
@@ -632,6 +632,16 @@ describe("changePlan — an account that already subscribes (#106 §7.3)", () =>
     await expect(
       service.changePlan({ userId: USER, tier: "team", period: "month" }),
     ).rejects.toBeInstanceOf(ConflictError);
+  });
+
+  // inner#1493: an upgrade already waiting for its payment is the move; a
+  // second one on top would leave two pending updates for one membership.
+  it("refuses another move while an upgrade waits for its payment", async () => {
+    situationIs("upgradePending", proRow());
+    await expect(
+      service.changePlan({ userId: USER, tier: "team", period: "month" }),
+    ).rejects.toThrow(t("server.membership.upgrade_pending"));
+    expect(stripe.subscriptions.update).not.toHaveBeenCalled();
   });
 
   it("hands back the payment link when the difference was not charged", async () => {
