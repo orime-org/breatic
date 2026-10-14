@@ -417,27 +417,6 @@ describe('the server writing the stored choice back (design §4.4.3a)', () => {
     expect(init.signal?.aborted).toBe(true);
   });
 
-  it('sends a write-back still on its way once more, kept alive, when the page is hidden for leaving', async () => {
-    refresh.mockImplementationOnce(() => new Promise<Response>(() => undefined));
-    await startBanner('US');
-    await vi.waitFor(() => expect(refresh).toHaveBeenCalledTimes(1));
-    window.dispatchEvent(new Event('pagehide'));
-    await vi.waitFor(() => expect(refresh).toHaveBeenCalledTimes(2));
-    const [[, first], [url, last]] = refresh.mock.calls as unknown as Array<[string, RequestInit]>;
-    expect(first.signal?.aborted).toBe(true);
-    expect(last.keepalive).toBe(true);
-    expect(new URL(url).pathname).toBe('/_consent/refresh');
-  });
-
-  it('sends nothing on leaving when no write-back is on its way', async () => {
-    await startBanner('US');
-    await vi.waitFor(() => expect(refresh).toHaveBeenCalledTimes(1));
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    window.dispatchEvent(new Event('pagehide'));
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(refresh).toHaveBeenCalledTimes(1);
-  });
-
   it('keeps the choice when the request fails', async () => {
     refresh.mockRejectedValueOnce(new TypeError('offline'));
     const seen: unknown[] = [];

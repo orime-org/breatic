@@ -136,25 +136,7 @@ function askServerToKeepCookie(): void {
     { credentials: 'same-origin', cache: 'no-store' },
     // A stalled delivery is dropped and sent again with the cookie of that moment, at most twice.
     { replaySafe: true, signal: controller.signal, timeoutMs: WRITE_BACK_TIMEOUT_MS },
-  )
-    .catch(() => undefined)
-    .finally(() => {
-      if (keeping === controller) keeping = null;
-    });
-}
-
-/**
- * The page is going away with a write-back still on its way, which leaving would end: send it once more,
- * kept alive past the page. A keepalive request cannot be cancelled, so only this last one is; nothing in
- * this page writes after it.
- */
-function keepCookieOnLeave(): void {
-  if (keeping === null) return;
-  keeping.abort();
-  keeping = null;
-  void httpRequest(writeBackUrl(), { credentials: 'same-origin', cache: 'no-store', keepalive: true }, { replaySafe: true }).catch(
-    () => undefined,
-  );
+  ).catch(() => undefined);
 }
 
 /**
@@ -355,7 +337,6 @@ export async function startConsentBanner(options: BannerOptions): Promise<void> 
   // A restart while the lookup is still out would decide twice; the lookup ends within a second.
   await options.country;
   document.addEventListener('visibilitychange', () => void resync());
-  window.addEventListener('pagehide', keepCookieOnLeave);
   // A window beside the one where the choice changed stays visible; it learns of it when it gets focus.
   window.addEventListener('focus', () => void resync());
 }
