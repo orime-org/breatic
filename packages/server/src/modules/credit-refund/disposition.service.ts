@@ -52,7 +52,7 @@ import {
   isOnRefundFailureList,
   pickUnresolvedFailedRefunds,
   type UnresolvedFailedRefund,
-} from "@server/modules/credit-refund/unresolved.js";
+} from "@server/modules/credit-refund/unresolved.repo.js";
 import * as paymentRepo from "@server/modules/payment/payment.repo.js";
 
 /** A disposition as the API reports it: its columns, less the executor's lease. */

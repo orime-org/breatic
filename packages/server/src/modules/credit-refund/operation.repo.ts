@@ -266,7 +266,7 @@ export async function listEvents(operationId: string, tx: DbTx): Promise<Operati
     .from(creditRefundOperationEvents)
     .where(eq(creditRefundOperationEvents.operationId, operationId))
     .orderBy(asc(creditRefundOperationEvents.createdAt));
-  return rows.map((r) => ({ event: r.event, detail: (r.detail ?? {}) as Record<string, unknown> }));
+  return rows.map((r) => ({ event: r.event, detail: r.detail ?? {} }));
 }
 
 /**

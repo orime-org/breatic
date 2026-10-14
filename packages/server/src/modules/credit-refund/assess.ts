@@ -19,7 +19,7 @@ import {
   succeededCents,
 } from "@server/modules/credit-refund/settle-rule.js";
 import type { RefundCopy } from "@server/modules/credit-refund/types.js";
-import type { UnresolvedFailedRefund } from "@server/modules/credit-refund/unresolved.js";
+import type { UnresolvedFailedRefund } from "@server/modules/credit-refund/unresolved.repo.js";
 
 /** The two dispositions that create a Stripe refund. */
 export type RefundCreateKind = "approve" | "retry";

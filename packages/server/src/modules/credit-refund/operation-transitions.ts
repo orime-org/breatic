@@ -30,7 +30,7 @@ import * as refundCopyRepo from "@server/modules/credit-refund/refund-copy.repo.
 import * as refundMailRepo from "@server/modules/credit-refund/refund-mail.repo.js";
 import { succeededCents } from "@server/modules/credit-refund/settle-rule.js";
 import { isStripeRefusal, type StoredCreateAnswer } from "@server/modules/credit-refund/stripe-answer.js";
-import { pickUnresolvedFailedRefunds } from "@server/modules/credit-refund/unresolved.js";
+import { pickUnresolvedFailedRefunds } from "@server/modules/credit-refund/unresolved.repo.js";
 import type { RefundCopy, StripeRefundObject } from "@server/modules/credit-refund/types.js";
 import * as notificationService from "@server/modules/notification/notification.service.js";
 import * as paymentRepo from "@server/modules/payment/payment.repo.js";
@@ -783,7 +783,7 @@ async function exhaustedReason(ctx: Ctx): Promise<AttentionReason> {
   const refused = events.some((e) => {
     // A late answer carries the event it would have been under `answer`.
     const readFailed = e.event === EVENT_NAME.E16 || (e.event === "late_answer" && e.detail["answer"] === "E16");
-    if (!readFailed && CREATE_ANSWER_EVENTS.has(e.event) && isStripeRefusal(e.detail as StoredCreateAnswer)) return true;
+    if (!readFailed && CREATE_ANSWER_EVENTS.has(e.event) && isStripeRefusal(e.detail)) return true;
     const created = readFailed ? e.detail["createFailure"] : undefined;
     return typeof created === "object" && created !== null && isStripeRefusal(created as StoredCreateAnswer);
   });

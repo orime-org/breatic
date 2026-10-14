@@ -148,7 +148,7 @@ import { runRefundLoopOnce } from "@server/modules/credit-refund/refund-loop.js"
 import { applyRefundSnapshot } from "@server/modules/credit-refund/refund-snapshot.js";
 import { RefundRefusal } from "@server/modules/credit-refund/refusal.js";
 import type { RefundCopy } from "@server/modules/credit-refund/types.js";
-import { pickUnresolvedFailedRefunds } from "@server/modules/credit-refund/unresolved.js";
+import { pickUnresolvedFailedRefunds } from "@server/modules/credit-refund/unresolved.repo.js";
 import { fakeStripe } from "./fake-stripe-refunds.js";
 import {
   PAID_CENTS,

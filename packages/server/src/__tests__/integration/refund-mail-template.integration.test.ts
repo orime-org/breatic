@@ -106,16 +106,13 @@ function rejected(over: Partial<Extract<RefundMailView, { kind: "refund_rejected
   };
 }
 
-/** The v9 view of a restore (§8): credits, purchase time, request time, order reference. */
-type RestoredView = Omit<Extract<RefundMailView, { kind: "refund_rejected" }>, "kind"> & { kind: "refund_restored" };
-
 /**
- * A restored lot's view (v9).
+ * A restored lot's view (v9 §8): credits, purchase time, request time, order reference.
  * @param over - Fields to change.
- * @returns The view, typed as the renderer takes it.
+ * @returns The view.
  */
-function restored(over: Partial<RestoredView> = {}): RefundMailView {
-  const view: RestoredView = {
+function restored(over: Partial<Extract<RefundMailView, { kind: "refund_restored" }>> = {}): RefundMailView {
+  return {
     kind: "refund_restored",
     email: "buyer@example.test",
     locale: "en",
@@ -126,8 +123,6 @@ function restored(over: Partial<RestoredView> = {}): RefundMailView {
     requestedAt: REQUESTED_AT,
     ...over,
   };
-  // The renderer's union gains this member in v9.
-  return view as unknown as RefundMailView;
 }
 
 /**
@@ -283,7 +278,8 @@ describe("refund_restored: the detail block (v9 §8)", () => {
     expect(wording?.restored?.subject, `${locale} server.refund_mail.restored.subject`).toEqual(expect.any(String));
     expect(wording?.restored?.intro, `${locale} server.refund_mail.restored.intro`).toEqual(expect.any(String));
     const mail = await renderRefundMail(restored({ locale }));
-    expect(mail.subject).toBe(wording!.restored!.subject);
+    // Every product mail's subject is "Breatic - <heading>" (utils/mail-shell.ts).
+    expect(mail.subject).toBe(`Breatic - ${wording!.restored!.subject}`);
   });
 });
 

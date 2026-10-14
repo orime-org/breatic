@@ -157,7 +157,7 @@ describe("createCreditRefundRestored (inner#1410 v9 §8)", () => {
       deletedAt: null,
       createdAt: new Date(),
       updatedAt: new Date(),
-    } as never);
+    });
 
     const out = await notificationService.createCreditRefundRestored({
       userId: REQUESTER,

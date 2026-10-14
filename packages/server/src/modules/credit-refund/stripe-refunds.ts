@@ -73,7 +73,7 @@ export function toRefundObject(r: Stripe.Refund): StripeRefundObject {
     status,
     failure_reason: r.failure_reason ?? null,
     pending_reason:
-      status !== "pending" ? null : PENDING_REASONS.has(reason ?? "") ? (reason as StripePendingReason) : "processing",
+      status !== "pending" ? null : PENDING_REASONS.has(reason ?? "") ? reason : "processing",
     metadata: r.metadata ?? {},
   };
 }

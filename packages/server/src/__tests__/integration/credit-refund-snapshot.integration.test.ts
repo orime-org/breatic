@@ -55,7 +55,7 @@ import {
 } from "@server/modules/credit-refund/refund-snapshot.js";
 import * as refundCopyRepo from "@server/modules/credit-refund/refund-copy.repo.js";
 import type { RefundCopy } from "@server/modules/credit-refund/types.js";
-import { pickUnresolvedFailedRefunds } from "@server/modules/credit-refund/unresolved.js";
+import { pickUnresolvedFailedRefunds } from "@server/modules/credit-refund/unresolved.repo.js";
 import {
   bellsOf,
   copiesOf,
