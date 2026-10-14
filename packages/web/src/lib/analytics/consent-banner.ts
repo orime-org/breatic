@@ -146,10 +146,22 @@ function onVisitorChoice(): void {
  * @param view.adsOn - Whether the ads switch is on.
  */
 export function setAdsView(view: { notice: NoticeShown; adsOn: boolean }): void {
+  // A new opt-out notice is a new question: a switch the visitor changed before it was not answering it.
+  if (view.notice !== false && view.notice !== adsView.notice) adsSwitchTouched = false;
   adsView = view;
-  if (!adsSwitchTouched) {
-    const toggle = adsSwitch();
-    if (toggle !== null) toggle.checked = view.adsOn;
+  renderConsentWindows();
+}
+
+/**
+ * Draw both windows from the page's ads view: the banner's GPC line, the
+ * settings window's notice, and its ads switch, which follows the view until
+ * the visitor changes it. Every place that changes the view or rebuilds a window calls this.
+ */
+function renderConsentWindows(): void {
+  const toggle = adsSwitch();
+  if (toggle !== null) {
+    if (!adsSwitchTouched) toggle.checked = adsView.adsOn;
+    toggle.addEventListener('change', markAdsSwitchTouched);
   }
   const text = bannerOptions?.text();
   if (text !== undefined) showNotices(text);
@@ -189,19 +201,8 @@ function showNotice(container: Element | null, text: string | null): void {
  * @param modalName - The window.
  */
 function presetWindow(modalName: string): void {
-  const text = bannerOptions?.text();
-  if (text === undefined) return;
-  if (modalName === 'consentModal') {
-    showNotices(text);
-    return;
-  }
-  const toggle = adsSwitch();
-  adsSwitchTouched = false;
-  if (toggle !== null) {
-    toggle.checked = adsView.adsOn;
-    toggle.addEventListener('change', markAdsSwitchTouched);
-  }
-  showNotices(text);
+  if (modalName === 'preferencesModal') adsSwitchTouched = false;
+  renderConsentWindows();
 }
 
 /**
@@ -440,7 +441,12 @@ function toTranslation(text: ConsentText, privacyUrl: string): CookieConsent.Tra
  */
 export async function setConsentLanguage(language: string): Promise<void> {
   currentLanguage = language;
+  const kept = adsSwitchTouched ? adsSwitch()?.checked : undefined;
+  // The library builds both windows afresh, from its own state.
   await CookieConsent.setLanguage(language, true);
+  const toggle = adsSwitch();
+  if (toggle !== null && kept !== undefined) toggle.checked = kept;
+  renderConsentWindows();
 }
 
 /** Open the settings window; the "Cookie settings" entries call this. */

@@ -187,7 +187,8 @@ export function adsViewFor(input: {
   // Until the account answers, the notice is the one this browser decides alone: GPC.
   const notice = adsNotice({ signedIn: signedIn && outcome !== null, outcome: outcome ?? { allowed: false, notice: null }, gpc, ads });
   if (outcome !== null) return { allowed: outcome.allowed, known: true, notice, adsOn: outcome.allowed };
-  const consents = ads?.value === true;
+  // This browser's own GPC refuses at once; only a consent with no notice waits for the account.
+  const consents = ads?.value === true && notice === false;
   return { allowed: false, known: !consents, notice, adsOn: consents };
 }
 

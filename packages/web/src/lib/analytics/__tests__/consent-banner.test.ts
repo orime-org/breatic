@@ -387,6 +387,9 @@ describe('a choice stored under a newer policy revision', () => {
   });
 });
 
+const SETTINGS_WITH_ADS =
+  '<div id="cc-main"><div class="pm"><div class="pm__section--toggle"><input type="checkbox" value="ads"></div></div></div>';
+
 describe('ads under an opt-out', () => {
   /**
    * Press a button in a window the library shows, as the visitor would.
@@ -502,6 +505,63 @@ describe('ads under an opt-out', () => {
       expect(toggle?.checked).toBe(false);
       banner.setAdsView({ notice: false, adsOn: true });
       expect(toggle?.checked).toBe(false);
+    } finally {
+      document.body.innerHTML = '';
+    }
+  });
+
+  it('asks again when an opt-out notice appears after the visitor changed the switch', async () => {
+    library.consent = true;
+    const banner = await startBanner('US');
+    document.body.innerHTML = SETTINGS_WITH_ADS;
+    try {
+      banner.setAdsView({ notice: false, adsOn: true });
+      library.config?.onModalShow?.({ modalName: 'preferencesModal' });
+      const toggle = document.querySelector<HTMLInputElement>('input[value="ads"]');
+      toggle?.click();
+      toggle?.click();
+      expect(toggle?.checked).toBe(true);
+      // The account turns out to be opted out: a switch-on made before this notice is not a choice made under it.
+      banner.setAdsView({ notice: 'account', adsOn: false });
+      expect(toggle?.checked).toBe(false);
+    } finally {
+      document.body.innerHTML = '';
+    }
+  });
+
+  it('follows the decision again once the window is reopened, though the visitor changed the switch before', async () => {
+    library.consent = true;
+    const banner = await startBanner('US');
+    document.body.innerHTML = SETTINGS_WITH_ADS;
+    try {
+      banner.setAdsView({ notice: false, adsOn: true });
+      library.config?.onModalShow?.({ modalName: 'preferencesModal' });
+      const toggle = document.querySelector<HTMLInputElement>('input[value="ads"]');
+      toggle?.click();
+      library.config?.onModalShow?.({ modalName: 'preferencesModal' });
+      expect(toggle?.checked).toBe(true);
+      banner.setAdsView({ notice: false, adsOn: false });
+      expect(toggle?.checked).toBe(false);
+    } finally {
+      document.body.innerHTML = '';
+    }
+  });
+
+  it('draws the notices and the switch again after a language change rebuilds the windows', async () => {
+    library.consent = true;
+    const banner = await startBanner('DE');
+    document.body.innerHTML = SETTINGS_WITH_ADS + '<div id="cc-main"><div class="cm"><div class="cm__desc"></div></div></div>';
+    library.setLanguage.mockImplementationOnce(async () => {
+      // As the library does with force: both windows are built afresh from its own state.
+      document.body.innerHTML =
+        '<div id="cc-main"><div class="pm"><div class="pm__section--toggle"><input type="checkbox" value="ads" checked></div></div><div class="cm"><div class="cm__desc"></div></div></div>';
+      return true;
+    });
+    try {
+      banner.setAdsView({ notice: 'gpc', adsOn: false });
+      await banner.setConsentLanguage('ja');
+      expect(document.querySelector<HTMLInputElement>('input[value="ads"]')?.checked).toBe(false);
+      expect(document.querySelector('.cm__desc .breatic-consent-notice')?.textContent).toBe('g');
     } finally {
       document.body.innerHTML = '';
     }
