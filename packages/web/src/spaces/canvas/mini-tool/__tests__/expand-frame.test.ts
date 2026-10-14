@@ -112,13 +112,25 @@ describe('resizeFrame', () => {
   });
 
   it('shifts a locked frame only as far as it takes to keep wrapping the picture', () => {
-    // The picture sits at the very top of a tall frame; growing it about its
-    // middle would leave the picture's top outside, so the frame stops at it.
-    const tall = { x: 0, y: 0, width: 1, height: 1.6 };
-    const frame = resizeFrame(tall, 's', { x: 0.5, y: 2.2 }, '1:1', { width: 1000, height: 1000 }, CAP);
-    expect(frame.y).toBeLessThanOrEqual(0);
-    expect(frame.x).toBeLessThanOrEqual(0);
-    expect(frame.x + frame.width).toBeGreaterThanOrEqual(1);
+    // Grown, then the picture moved to the frame's top: shrinking about the
+    // frame's middle would leave the picture's top outside, so the frame stops at it.
+    const grown = resizeFrame(frameForRatio('9:16', LANDSCAPE, UNIT_FRAME), 'e', { x: 1.5, y: 0.5 }, '9:16', LANDSCAPE, CAP);
+    const atTop = moveSource(grown, { x: 0, y: -10 });
+    expect(atTop.y).toBe(0);
+    const shrunk = resizeFrame(atTop, 'e', { x: 1.1, y: 0.5 }, '9:16', LANDSCAPE, CAP);
+    expect(shrunk.height).toBeLessThan(atTop.height);
+    expect(shrunk.y).toBe(0);
+    expect(shrunk.y + shrunk.height).toBeGreaterThanOrEqual(1);
+  });
+
+  // A source past the cap cannot be expanded; its frame stays wrapping it
+  // whatever the handles do.
+  it.each([
+    ['e', { x: 1.5, y: 0.5 }],
+    ['w', { x: -0.5, y: 0.5 }],
+  ] as const)('leaves the frame of a source past the cap where it is on a free %s drag', (handle, pointer) => {
+    const panorama = { width: 13000, height: 2000 };
+    expect(resizeFrame(UNIT_FRAME, handle, pointer, 'free', panorama, CAP)).toEqual(UNIT_FRAME);
   });
 
   it('can drag a locked frame back down to the source when the ratio is the source’s own', () => {

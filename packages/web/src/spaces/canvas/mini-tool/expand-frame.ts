@@ -143,7 +143,8 @@ export function sourceTooLargeToExpand(source: PixelSize, cap: number): boolean 
 
 /**
  * A free drag: each dragged edge follows the pointer, stays outside the source
- * and stops where the side would pass the cap.
+ * and stops where the side would pass the cap; nothing moves on a source
+ * already past it.
  * @param frame - The frame at the start.
  * @param handle - The handle.
  * @param pointer - The pointer, in shares of the source.
@@ -160,6 +161,8 @@ function resizeFree(
   pointer: { x: number; y: number },
   max: PixelSize,
 ): ExpandFrame {
+  // A source past the cap has no room to grow into either way.
+  if (max.width < 1 || max.height < 1) return frame;
   let left = frame.x;
   let right = frame.x + frame.width;
   let top = frame.y;
@@ -174,7 +177,8 @@ function resizeFree(
 /**
  * A drag held to a ratio. The dragged edge moves and the opposite one stays;
  * on a side handle the other direction follows the ratio, centred on the
- * source, and on a corner the opposite corner stays.
+ * frame's own middle and held just far enough to keep wrapping the source,
+ * and on a corner the opposite corner stays.
  * @param frame - The frame at the start.
  * @param handle - The handle.
  * @param pointer - The pointer, in shares of the source.
@@ -208,9 +212,7 @@ function resizeLocked(
   if (least > most + EPS) return frame;
   const width = clamp(wanted, least, most);
   const height = width / shareRatio;
-  // The side not dragged grows about the frame's own middle, as the crop box
-  // does (crop-math.ts), so a picture moved inside the frame stays where it
-  // is; it is held just far enough to keep wrapping the picture.
+  // As the crop box does (crop-math.ts), so a picture moved inside the frame stays where it is.
   const middleX = clamp(frame.x + frame.width / 2 - width / 2, 1 - width, 0);
   const middleY = clamp(frame.y + frame.height / 2 - height / 2, 1 - height, 0);
   const x = handle.includes('w') ? right - width : handle.includes('e') ? frame.x : middleX;
