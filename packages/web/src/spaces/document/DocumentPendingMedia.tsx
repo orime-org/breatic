@@ -35,6 +35,20 @@ interface DocumentPendingMediaProps {
 const FRAME = 'flex items-center gap-3 rounded-chrome border px-3.5 py-3 text-sm';
 
 /**
+ * What each status says when no percent is shown. A failed upload says its
+ * own failure; a status added to `PendingStatus` does not compile until it is
+ * placed here.
+ */
+const STATUS_MESSAGE: Readonly<Record<Exclude<PendingStatus['kind'], 'failed'>, string>> = {
+  uploading: 'spaces.document.media.uploading',
+  peerUploading: 'spaces.document.media.uploading',
+  peerFailed: 'spaces.document.media.uploadFailed',
+  waitingDemoted: 'spaces.document.media.readOnlyWaiting',
+  waitingRefused: 'spaces.document.media.notWrittenYet',
+  notFinished: 'spaces.document.media.notFinished',
+};
+
+/**
  * A pending media block.
  * @param props - See {@link DocumentPendingMediaProps}.
  * @param props.name - The block's name.
@@ -61,17 +75,9 @@ export const DocumentPendingMedia = React.memo(function DocumentPendingMedia({
   const said =
     status.kind === 'failed'
       ? t(status.failure.messageKey, status.failure.params)
-      : status.kind === 'peerFailed'
-        ? t('spaces.document.media.uploadFailed')
-        : status.kind === 'waitingDemoted'
-          ? t('spaces.document.media.readOnlyWaiting')
-          : status.kind === 'waitingRefused'
-            ? t('spaces.document.media.notWrittenYet')
-            : status.kind === 'notFinished'
-              ? t('spaces.document.media.notFinished')
-              : percent === null
-                ? t('spaces.document.media.uploading')
-                : t('spaces.document.media.uploadingPercent', { percent });
+      : percent === null
+        ? t(STATUS_MESSAGE[status.kind])
+        : t('spaces.document.media.uploadingPercent', { percent });
   const retry = status.kind === 'failed' && status.failure.retryable;
   const remove = status.kind === 'failed' || status.kind === 'notFinished';
   const named = caption === '';
