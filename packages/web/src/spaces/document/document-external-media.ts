@@ -326,7 +326,9 @@ export function documentPastedMediaExtension(
           appendTransaction: (transactions, _old, state) => {
             if (landing === null || !transactions.some((tr) => tr.docChanged)) return null;
             const held = take()!;
-            const at = transactions.reduce((pos, tr) => tr.mapping.map(pos), held.at);
+            // Mapped to the left of what went in there, so it stays in the
+            // cell the reader pasted into, under the table they aimed at.
+            const at = transactions.reduce((pos, tr) => tr.mapping.map(pos, -1), held.at);
             return mediaUnderTable(state, at, held.media);
           },
           view: () => ({
