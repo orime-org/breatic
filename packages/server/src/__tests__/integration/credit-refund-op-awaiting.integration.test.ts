@@ -8,23 +8,23 @@
  * `awaiting_stripe` only looks Stripe up, never creates, and holds no lease;
  * the refund id is set after a pending answer and empty after a 5xx.
  *
- * | event | approve, retry                                         | refund_again                                |
- * |-------|--------------------------------------------------------|---------------------------------------------|
- * | E1    | impossible                                             | impossible                                  |
- * | E2    | succeeded/refunded, booked, bell + mail                | succeeded/refunded, no ledger, resolved     |
- * | E3    | stays, refund id kept                                  | impossible                                  |
- * | E4    | needs_attention (reason given)                         | impossible                                  |
- * | E5    | stays, refund id kept                                  | same                                        |
- * | E6    | needs_attention stripe_refund_failed_later, lot stays  | same, lot stays refunded                    |
- * | E7–E9 | impossible                                             | impossible                                  |
- * | E10   | id empty: stays, next_attempt_at untouched, no attempt counted; id set: impossible |                 |
- * | E11   | impossible                                             | impossible                                  |
- * | E12   | id empty: needs_attention stripe_result_unknown; id set: stays |                                     |
- * | E13   | stays (no lease to lose)                               | same                                        |
- * | E14   | impossible                                             | impossible                                  |
- * | E15   | discarded                                              | discarded                                   |
- * | E16   | stays, last_error kept, backoff, no attempt counted    | same                                        |
- * | E17   | impossible                                             | impossible                                  |
+ * | event | approve, retry                                                                    |
+ * |-------|-----------------------------------------------------------------------------------|
+ * | E1    | impossible                                                                        |
+ * | E2    | succeeded/refunded, booked, bell + mail                                           |
+ * | E3    | stays, refund id kept                                                             |
+ * | E4    | needs_attention (reason given)                                                    |
+ * | E5    | stays, refund id kept                                                             |
+ * | E6    | needs_attention stripe_refund_failed_later, lot stays                             |
+ * | E7–E9 | impossible                                                                        |
+ * | E10   | id empty: stays, next_attempt_at untouched, no attempt counted; id set: impossible |
+ * | E11   | impossible                                                                        |
+ * | E12   | id empty: needs_attention stripe_result_unknown; id set: stays                    |
+ * | E13   | stays (no lease to lose)                                                          |
+ * | E14   | impossible                                                                        |
+ * | E15   | discarded                                                                         |
+ * | E16   | stays, last_error kept, backoff, no attempt counted                               |
+ * | E17   | impossible                                                                        |
  */
 
 import { describe, it, expect, vi } from "vitest";
@@ -44,7 +44,6 @@ import { randomUUID } from "node:crypto";
 import { transitionOperation } from "@server/modules/credit-refund/operation-transitions.js";
 import {
   bellsOf,
-  copiesOf,
   dbClockUs,
   eventsOf,
   inTx,
@@ -64,10 +63,8 @@ import {
   type SeededLot,
 } from "./credit-refund-fixtures.js";
 import {
-  autoMail,
   eventOf,
   expectBooked,
-  expectCompletedBell,
   expectImpossible,
   expectStays,
   failure,
@@ -79,50 +76,20 @@ const suite = useRefundSuite("credit-refund-op-awaiting-test");
 interface AwaitingCase {
   lot: SeededLot;
   opId: string;
-  /** refund_again only: the failed refund it covers. */
-  failed?: string;
 }
 
 /**
  * A disposition waiting on Stripe.
- * @param kind - approve, retry or refund_again.
+ * @param kind - approve or retry.
  * @param stripeRefundId - The refund it waits on; null after a 5xx.
  * @param firstCalledHoursAgo - When it first called Stripe.
  * @returns The lot and the disposition.
  */
 async function awaiting(
-  kind: Extract<OpKind, "approve" | "retry" | "refund_again">,
+  kind: Extract<OpKind, "approve" | "retry">,
   stripeRefundId: string | null,
   firstCalledHoursAgo = 1,
 ): Promise<AwaitingCase> {
-  if (kind === "refund_again") {
-    const lot = await seedRefundLot(suite.sql, "refunded");
-    const approve = await seedOperation(suite.sql, lot, {
-      kind: "approve",
-      status: "succeeded",
-      result: "refunded",
-      createdSecondsAgo: 600,
-    });
-    const failed = reId("failed_later");
-    await seedCopy(suite.sql, lot, {
-      id: failed,
-      amountCents: 1080,
-      status: "failed",
-      everSucceeded: true,
-      operationId: approve.id,
-    });
-    const op = await seedOperation(suite.sql, lot, {
-      kind,
-      status: "awaiting_stripe",
-      stripeRefundId,
-      failedRefundIds: [failed],
-      refundAmountCents: 1080,
-      notify: true,
-      firstCalledHoursAgo,
-      attemptCount: 1,
-    });
-    return { lot, opId: op.id, failed };
-  }
   const lot = await seedRefundLot(suite.sql, "refunding");
   if (kind === "retry") {
     await seedOperation(suite.sql, lot, {
@@ -167,11 +134,6 @@ describe("awaiting_stripe × E1, E7, E8, E9, E11, E14, E17: impossible", () => {
       await expectImpossible(suite.sql, lot, { id: opId }, "awaiting_stripe", eventOf(type));
     },
   );
-
-  it.each(["E3", "E4"] as const)("refund_again × %s is refused and writes nothing", async (type) => {
-    const { lot, opId } = await awaiting("refund_again", reId("p"));
-    await expectImpossible(suite.sql, lot, { id: opId }, "awaiting_stripe", eventOf(type));
-  });
 
   it("E10 with a refund id is refused: looking it up by id always finds it", async () => {
     const { lot, opId } = await awaiting("approve", reId("p"));
@@ -239,32 +201,6 @@ describe("awaiting_stripe × E2: the refund it waited on succeeded and the lot c
     });
     expect((await readOp(suite.sql, opId)).stripe_refund_id).toBe(refundId);
   });
-
-  it("refund_again: no ledger row, the failed refund is resolved by it, bell and mail", async () => {
-    const refundId = reId("again");
-    const { lot, opId, failed } = await awaiting("refund_again", refundId);
-    const before = await worldOf(suite.sql, lot);
-
-    await inTx((tx) =>
-      transitionOperation(tx, { id: opId }, {
-        type: "E2",
-        refund: refundObject(refundId, "succeeded", 1080, opId),
-        actor: "loop",
-      }),
-    );
-
-    expect(await readOp(suite.sql, opId)).toMatchObject({ status: "succeeded", result: "refunded" });
-    expect(await ledgerOf(suite.sql, lot.lotId)).toHaveLength(before.ledger.length);
-    expect(await readLot(suite.sql, lot.lotId)).toEqual({
-      lifecycle: "refunded",
-      remaining: "0.000000",
-      attempts: 0,
-    });
-    const copy = (await copiesOf(suite.sql, lot.lotId)).find((c) => c.stripe_refund_id === failed);
-    expect(copy!.resolved_by_operation_id).toBe(opId);
-    await expectCompletedBell(suite.sql, lot, 1080);
-    expect(await mailsOf(suite.sql, lot.lotId)).toEqual([autoMail(opId, "refund_completed")]);
-  });
 });
 
 describe("awaiting_stripe × E3 / E5: still open at Stripe", () => {
@@ -300,16 +236,6 @@ describe("awaiting_stripe × E3 / E5: still open at Stripe", () => {
       ]);
     },
   );
-
-  it("refund_again × E5 stays awaiting_stripe", async () => {
-    const refundId = reId("again_pending");
-    const { lot, opId } = await awaiting("refund_again", refundId);
-    await expectStays(suite.sql, lot, opId, "awaiting_stripe", {
-      type: "E5",
-      refund: refundObject(refundId, "pending", 1080, opId),
-      actor: "loop",
-    });
-  });
 });
 
 describe("awaiting_stripe × E4: succeeded, but the payment is not covered as confirmed", () => {
@@ -349,11 +275,11 @@ describe("awaiting_stripe × E4: succeeded, but the payment is not covered as co
 });
 
 describe("awaiting_stripe × E6: Stripe took the refund, then it failed (#10)", () => {
-  it.each(["approve", "retry", "refund_again"] as const)(
+  it.each(["approve", "retry"] as const)(
     "%s → needs_attention stripe_refund_failed_later, the lot does not move, nothing is told",
     async (kind) => {
       const refundId = reId("failed_later");
-      const { lot, opId, failed } = await awaiting(kind, refundId);
+      const { lot, opId } = await awaiting(kind, refundId);
       const lotBefore = await readLot(suite.sql, lot.lotId);
       const before = await worldOf(suite.sql, lot);
 
@@ -374,10 +300,6 @@ describe("awaiting_stripe × E6: Stripe took the refund, then it failed (#10)", 
       expect(await ledgerOf(suite.sql, lot.lotId)).toHaveLength(before.ledger.length);
       expect(await bellsOf(suite.sql, lot.userId)).toEqual([]);
       expect(await mailsOf(suite.sql, lot.lotId)).toEqual([]);
-      if (failed) {
-        const copy = (await copiesOf(suite.sql, lot.lotId)).find((c) => c.stripe_refund_id === failed);
-        expect(copy!.resolved_by_operation_id).toBeNull();
-      }
       expect(await newEventsOn(suite.sql, lot, before, opId)).toEqual([
         { event: "refund_declined", from_status: "awaiting_stripe", to_status: "needs_attention" },
       ]);
@@ -491,7 +413,7 @@ describe("awaiting_stripe × E15: a late executor's answer", () => {
 });
 
 describe("awaiting_stripe × E16: reading Stripe failed", () => {
-  it.each(["approve", "refund_again"] as const)(
+  it.each(["approve", "retry"] as const)(
     "%s stays, leaves last_error to the create error, does not count an attempt, pushes the next look out",
     async (kind) => {
       const { lot, opId } = await awaiting(kind, reId("p"));

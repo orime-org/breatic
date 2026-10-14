@@ -391,6 +391,48 @@ describe("which payments a pass reconciles", () => {
     expect(listed(lot)).toBe(true);
   });
 
+  // v9 §5.3, §7.2: the definition of an unresolved failed refund lives only
+  // in the view; the reconcile selects those payments from it rather than
+  // repeating the condition. Proven by widening the view for one payment the
+  // condition itself would never select (an active lot), then restoring it.
+  it("selects the unresolved part from the view credit_refunds_unresolved_failed, not from its own copy of the condition", async () => {
+    const window = getCreditRefundConfig().reconcileWindowDays;
+    const sentinelId = reId("view_sentinel");
+    const sentinel = await lotOnStripe("active", [refundObject(sentinelId, "failed", 100)]);
+    await seedCopy(suite.sql, sentinel, { id: sentinelId, amountCents: 100, status: "failed", everSucceeded: true });
+    await copyCreatedDaysAgo(sentinelId, window + 10);
+    await setStatus({ finishedHoursAgo: null });
+
+    const [{ def } = { def: "" }] = await suite.sql<{ def: string }[]>`
+      SELECT pg_get_viewdef('credit_refunds_unresolved_failed'::regclass) AS def
+    `;
+    const original = def.trim().replace(/;$/, "");
+    const columns = await suite.sql<{ name: string; type: string }[]>`
+      SELECT a.attname AS name, format_type(a.atttypid, a.atttypmod) AS type
+      FROM pg_attribute a
+      WHERE a.attrelid = 'credit_refunds_unresolved_failed'::regclass AND a.attnum > 0 AND NOT a.attisdropped
+      ORDER BY a.attnum
+    `;
+    const copyColumns = new Set(["lot_id", "payment_id", "stripe_refund_id", "amount_cents", "currency", "status"]);
+    const sentinelRow = columns
+      .map((c) => `${copyColumns.has(c.name) ? `r.${c.name}` : "NULL"}::${c.type} AS ${c.name}`)
+      .join(", ");
+    try {
+      await suite.sql.unsafe(`
+        CREATE OR REPLACE VIEW credit_refunds_unresolved_failed AS
+        SELECT * FROM (${original}) o
+        UNION ALL
+        SELECT ${sentinelRow} FROM credit_refunds r WHERE r.stripe_refund_id = '${sentinelId}'
+      `);
+
+      await runDailyReconcile();
+    } finally {
+      await suite.sql.unsafe(`CREATE OR REPLACE VIEW credit_refunds_unresolved_failed AS ${original}`);
+    }
+
+    expect(listed(sentinel)).toBe(true);
+  });
+
   it("what Stripe lists is copied: a refund made outside the product appears, a status change lands", async () => {
     const own = reId("own");
     const external = reId("external");

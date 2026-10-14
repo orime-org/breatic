@@ -16,17 +16,21 @@
  *   §6.4);
  * - `ever_succeeded` turns true when a `succeeded` status is seen and never
  *   turns back, also when the status itself is not taken;
+ * - `pending_reason` (v9 §5.1, §6.4) is Stripe's while the refund is
+ *   `pending`, null in any other status, and stays null once the copy is
+ *   `failed` or `canceled`; a change of reason alone is written;
  * - then, in the same transaction, a disposition of this payment that is
- *   `awaiting_stripe` is judged once more through `transitionOperation`:
- *   approve and retry by the settle rule, refund_again by its own refund.
- *   Exactly one event row lands on it. No other disposition is touched.
+ *   `awaiting_stripe` is judged once more through `transitionOperation`
+ *   (approve and retry, by the settle rule). Exactly one event row lands on
+ *   it. No other disposition is touched.
  *
  * The unresolved failed refunds are read the way production reads them:
- * `pickUnresolvedFailedRefunds(lot.lifecycle, refundCopyRepo.listForPayment(…))`
- * in the caller's transaction (§5.3). A `refunded` lot lists the copies that
- * once succeeded and are now `failed` or `canceled`, unanswered; a
- * `refund_pending` or `refunding` lot lists every unanswered `failed` or
- * `canceled` copy; any other lot lists none.
+ * `pickUnresolvedFailedRefunds(tx, lotId)`, which queries the view
+ * `credit_refunds_unresolved_failed` in the caller's transaction (v9 §5.3).
+ * A `refunded` lot lists the copies that once succeeded and are now `failed`
+ * or `canceled`, unanswered; a `refund_pending` or `refunding` lot lists
+ * every unanswered `failed` or `canceled` copy; any other lot lists none.
+ * Every combination of both views is in `credit-refund-views.integration.test.ts`.
  */
 
 import { describe, it, expect, expectTypeOf, vi } from "vitest";
@@ -45,7 +49,6 @@ vi.mock("ai", () => ({
 import { randomUUID } from "node:crypto";
 import { db } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
-import { creditLotRepo } from "@breatic/domain";
 import {
   applyRefundSnapshot,
   type StripeRefundObject,
@@ -54,31 +57,24 @@ import * as refundCopyRepo from "@server/modules/credit-refund/refund-copy.repo.
 import type { RefundCopy } from "@server/modules/credit-refund/types.js";
 import { pickUnresolvedFailedRefunds } from "@server/modules/credit-refund/unresolved.js";
 import {
-  REFUND_AGAIN_CENTS,
   bellsOf,
   copiesOf,
   inTx,
   ledgerOf,
-  mailsOf,
+  pendingReasonsOf,
   readLot,
   readOp,
   refundObject,
   reId,
   seedCopy,
   seedOperation,
-  seedRefundAgainOn,
   seedRefundLot,
   useRefundSuite,
   worldOf,
   type CopyRow,
   type SeededLot,
 } from "./credit-refund-fixtures.js";
-import {
-  autoMail,
-  expectBooked,
-  expectCompletedBell,
-  newEventsOn,
-} from "./credit-refund-cells.js";
+import { expectBooked, newEventsOn } from "./credit-refund-cells.js";
 
 const suite = useRefundSuite("credit-refund-snapshot-test");
 
@@ -101,16 +97,25 @@ async function copyOf(lot: SeededLot, id: string): Promise<CopyRow | undefined> 
   return (await copiesOf(suite.sql, lot.lotId)).find((c) => c.stripe_refund_id === id);
 }
 
+/** An unresolved failed refund as the tests read it back. */
+interface Unresolved {
+  stripeRefundId: string;
+  amountCents: number;
+  status: string;
+}
+
 /**
  * The lot's unresolved failed refunds, read as production reads them: the
- * locked lot's state and every copy of its payment.
+ * view, in the caller's transaction (v9 §5.3).
  * @param tx - The caller's transaction.
  * @param lot - The lot.
- * @returns The copies, by refund id.
+ * @returns Id, amount and status of each, by refund id.
  */
-async function unresolvedOf(tx: DbTx, lot: SeededLot): Promise<RefundCopy[]> {
-  const locked = await creditLotRepo.lockLot(lot.lotId, tx);
-  return pickUnresolvedFailedRefunds(locked!.lifecycle, await refundCopyRepo.listForPayment(lot.paymentId, tx));
+async function unresolvedOf(tx: DbTx, lot: SeededLot): Promise<Unresolved[]> {
+  const rows = await pickUnresolvedFailedRefunds(tx, lot.lotId);
+  return rows
+    .map((r) => ({ stripeRefundId: r.stripeRefundId, amountCents: Number(r.amountCents), status: r.status }))
+    .sort((a, b) => a.stripeRefundId.localeCompare(b.stripeRefundId));
 }
 
 describe("shapes", () => {
@@ -579,171 +584,87 @@ describe("applyRefundSnapshot: re-judging an awaiting_stripe approve or retry (�
   });
 });
 
-describe("applyRefundSnapshot: re-judging an awaiting_stripe refund_again by its own refund (§5.2)", () => {
-  /**
-   * A refunded lot whose booked refund failed, and a refund_again waiting on Stripe.
-   * @param own - The refund_again's refund.
-   * @returns The lot, the failed refund and the disposition.
-   */
-  async function waitingRefundAgain(
-    own: string,
-  ): Promise<{ lot: SeededLot; opId: string; failed: string; approve: string }> {
-    const lot = await seedRefundLot(suite.sql, "refunded");
-    const approve = await seedOperation(suite.sql, lot, {
-      kind: "approve",
-      status: "succeeded",
-      result: "refunded",
-      createdSecondsAgo: 600,
+describe("applyRefundSnapshot: pending_reason (v9 §5.1, §6.4)", () => {
+  it("writes Stripe's pending_reason with a new pending refund, and null with any other status", async () => {
+    const lot = await seedRefundLot(suite.sql, "refund_pending");
+    const waiting = reId("short_balance");
+    const charge = reId("charge_pending");
+    const done = reId("done");
+
+    await apply(lot, [
+      refundObject(waiting, "pending", 600, undefined, "insufficient_funds"),
+      refundObject(charge, "pending", 200, undefined, "charge_pending"),
+      refundObject(done, "succeeded", 280),
+    ]);
+
+    expect(await pendingReasonsOf(suite.sql, lot.lotId)).toEqual({
+      [waiting]: "insufficient_funds",
+      [charge]: "charge_pending",
+      [done]: null,
     });
-    const failed = reId("failed");
-    await seedCopy(suite.sql, lot, {
-      id: failed,
-      amountCents: 1080,
-      status: "failed",
-      everSucceeded: true,
-      operationId: approve.id,
-    });
+  });
+
+  it("a change of reason alone is written: processing, then insufficient_funds, status still pending", async () => {
+    const lot = await seedRefundLot(suite.sql, "refund_pending");
+    const id = reId("reason_moves");
+
+    await apply(lot, [refundObject(id, "pending", 1080, undefined, "processing")]);
+    expect((await pendingReasonsOf(suite.sql, lot.lotId))[id]).toBe("processing");
+
+    await apply(lot, [refundObject(id, "pending", 1080, undefined, "insufficient_funds")]);
+
+    expect((await pendingReasonsOf(suite.sql, lot.lotId))[id]).toBe("insufficient_funds");
+    expect(await copyOf(lot, id)).toMatchObject({ status: "pending" });
+  });
+
+  it("is cleared when the refund leaves pending", async () => {
+    const lot = await seedRefundLot(suite.sql, "refund_pending");
+    const id = reId("leaves_pending");
+
+    await apply(lot, [refundObject(id, "pending", 1080, undefined, "insufficient_funds")]);
+    await apply(lot, [refundObject(id, "succeeded", 1080)]);
+
+    expect((await pendingReasonsOf(suite.sql, lot.lotId))[id]).toBeNull();
+  });
+
+  it("stays null once the copy is failed: an older read that says pending changes neither status nor reason", async () => {
+    const lot = await seedRefundLot(suite.sql, "refund_pending");
+    const id = reId("frozen");
+
+    await apply(lot, [refundObject(id, "pending", 1080, undefined, "insufficient_funds")]);
+    await apply(lot, [refundObject(id, "failed", 1080)]);
+    expect((await pendingReasonsOf(suite.sql, lot.lotId))[id]).toBeNull();
+
+    await apply(lot, [refundObject(id, "pending", 1080, undefined, "insufficient_funds")]);
+
+    expect(await copyOf(lot, id)).toMatchObject({ status: "failed" });
+    expect((await pendingReasonsOf(suite.sql, lot.lotId))[id]).toBeNull();
+  });
+
+  it("an awaiting approval whose refund Stripe holds for insufficient_funds stays awaiting_stripe (E5), nothing booked", async () => {
+    const lot = await seedRefundLot(suite.sql, "refunding");
+    const own = reId("held");
     const op = await seedOperation(suite.sql, lot, {
-      kind: "refund_again",
-      status: "awaiting_stripe",
-      stripeRefundId: own,
-      failedRefundIds: [failed],
-      refundAmountCents: 1080,
-      notify: true,
-      firstCalledHoursAgo: 1,
-      attemptCount: 1,
-    });
-    return { lot, opId: op.id, failed, approve: approve.id };
-  }
-
-  it("its refund succeeded: done, no ledger, the failed refund resolved by it, bell and mail", async () => {
-    const own = reId("again");
-    const { lot, opId, failed, approve } = await waitingRefundAgain(own);
-    const before = await worldOf(suite.sql, lot);
-
-    await apply(lot, [
-      refundObject(failed, "failed", 1080, approve),
-      refundObject(own, "succeeded", 1080, opId),
-    ]);
-
-    expect(await readOp(suite.sql, opId)).toMatchObject({ status: "succeeded", result: "refunded" });
-    expect(await ledgerOf(suite.sql, lot.lotId)).toHaveLength(before.ledger.length);
-    expect(await readLot(suite.sql, lot.lotId)).toEqual({
-      lifecycle: "refunded",
-      remaining: "0.000000",
-      attempts: 0,
-    });
-    expect((await copyOf(lot, failed))!.resolved_by_operation_id).toBe(opId);
-    expect(await copyOf(lot, own)).toMatchObject({ ever_succeeded: true, operation_id: opId });
-    await expectCompletedBell(suite.sql, lot, 1080);
-    expect(await mailsOf(suite.sql, lot.lotId)).toEqual([autoMail(opId, "refund_completed")]);
-    expect(await newEventsOn(suite.sql, lot, before, opId)).toEqual([
-      { event: "refund_succeeded", from_status: "awaiting_stripe", to_status: "succeeded" },
-    ]);
-  });
-
-  it("its refund failed: needs attention, lot stays refunded, the failed refund stays unresolved", async () => {
-    const own = reId("again");
-    const { lot, opId, failed } = await waitingRefundAgain(own);
-
-    await apply(lot, [refundObject(own, "failed", 1080, opId)]);
-
-    expect(await readOp(suite.sql, opId)).toMatchObject({
-      status: "needs_attention",
-      attention_reason: "stripe_refund_failed_later",
-    });
-    expect((await readLot(suite.sql, lot.lotId)).lifecycle).toBe("refunded");
-    expect((await copyOf(lot, failed))!.resolved_by_operation_id).toBeNull();
-    const unresolved = await inTx((tx) => unresolvedOf(tx, lot));
-    expect(unresolved.map((r) => r.stripeRefundId)).toEqual([failed]);
-  });
-});
-
-describe("a refund_again that ends on E6 answers for its own refund (v6 §6.2, §9, finding [39])", () => {
-  it("awaiting: its refund was seen succeeded, then failed → stripe_refund_failed_later; its own refund is resolved by it, only the original stays unresolved", async () => {
-    const lot = await seedRefundLot(suite.sql, "refunded");
-    // Booked short on purpose; the 300 refund it was booked on failed later.
-    await seedOperation(suite.sql, lot, {
-      kind: "settle",
-      status: "succeeded",
-      result: "refunded",
-      notify: false,
-      createdSecondsAgo: 600,
-    });
-    const original = reId("original");
-    await seedCopy(suite.sql, lot, { id: original, amountCents: 300, status: "failed", everSucceeded: true });
-    const own = reId("again_own");
-    const again = await seedOperation(suite.sql, lot, {
-      kind: "refund_again",
-      status: "awaiting_stripe",
-      stripeRefundId: own,
-      failedRefundIds: [original],
-      refundAmountCents: 300,
-      notify: true,
-      firstCalledHoursAgo: 1,
-      attemptCount: 1,
-    });
-    // Seen succeeded once (a webhook while it was still pending elsewhere).
-    await seedCopy(suite.sql, lot, { id: own, amountCents: 300, status: "succeeded", everSucceeded: true, operationId: again.id });
-
-    await apply(lot, [refundObject(original, "failed", 300), refundObject(own, "failed", 300, again.id)]);
-
-    expect(await readOp(suite.sql, again.id)).toMatchObject({
-      status: "needs_attention",
-      attention_reason: "stripe_refund_failed_later",
-    });
-    expect(await copyOf(lot, own)).toMatchObject({ status: "failed", ever_succeeded: true, resolved_by_operation_id: again.id });
-    expect((await copyOf(lot, original))!.resolved_by_operation_id).toBeNull();
-    const unresolved = await inTx((tx) => unresolvedOf(tx, lot));
-    expect(unresolved.map((r) => r.stripeRefundId)).toEqual([original]);
-  });
-});
-
-describe("a snapshot leaves a refund_again in needs_attention alone (v8 §6.2, §6.4: only the copies update)", () => {
-  it("its own refund is listed succeeded: the copy updates, but the disposition gets no event, keeps its attention open and its failed refund stays unanswered; an approve in needs_attention on the lot is left alone too", async () => {
-    const { lot, failed, againId } = await seedRefundAgainOn(suite.sql, {
-      status: "needs_attention",
-      attentionReason: "attempts_exhausted",
-    });
-    // An earlier approval still in needs_attention on the same lot: its
-    // refund read again must not move it either.
-    const approve = await seedOperation(suite.sql, lot, {
       kind: "approve",
-      status: "needs_attention",
-      attentionReason: "partial_refund",
-      createdSecondsAgo: 1200,
+      status: "awaiting_stripe",
+      stripeRefundId: own,
+      firstCalledHoursAgo: 1,
+      attemptCount: 1,
     });
-    const approveRefund = reId("approve_own");
-    await seedCopy(suite.sql, lot, { id: approveRefund, amountCents: 780, status: "pending", operationId: approve.id });
-    const own = reId("again_own");
-    const againBefore = await readOp(suite.sql, againId);
-    const approveBefore = await readOp(suite.sql, approve.id);
     const before = await worldOf(suite.sql, lot);
 
-    await apply(lot, [
-      refundObject(failed, "failed", REFUND_AGAIN_CENTS),
-      refundObject(approveRefund, "succeeded", 780, approve.id),
-      refundObject(own, "succeeded", REFUND_AGAIN_CENTS, againId),
+    await apply(lot, [refundObject(own, "pending", 1080, op.id, "insufficient_funds")]);
+
+    expect(await readOp(suite.sql, op.id)).toMatchObject({ status: "awaiting_stripe", result: null, attention_reason: null });
+    expect((await pendingReasonsOf(suite.sql, lot.lotId))[own]).toBe("insufficient_funds");
+    expect((await readLot(suite.sql, lot.lotId)).lifecycle).toBe("refunding");
+    expect(await newEventsOn(suite.sql, lot, before, op.id)).toEqual([
+      { event: "refund_pending", from_status: "awaiting_stripe", to_status: "awaiting_stripe" },
     ]);
-
-    expect(await readOp(suite.sql, againId)).toEqual(againBefore);
-    expect(await newEventsOn(suite.sql, lot, before, againId)).toEqual([]);
-    expect((await copyOf(lot, failed))!.resolved_by_operation_id).toBeNull();
-    expect(await copyOf(lot, own)).toMatchObject({ status: "succeeded", operation_id: againId });
-    expect((await inTx((tx) => unresolvedOf(tx, lot))).map((r) => r.stripeRefundId)).toEqual([failed]);
-
-    expect(await readOp(suite.sql, approve.id)).toEqual(approveBefore);
-    expect(await newEventsOn(suite.sql, lot, before, approve.id)).toEqual([]);
-    expect(await copyOf(lot, approveRefund)).toMatchObject({ status: "succeeded", ever_succeeded: true });
-    const after = await worldOf(suite.sql, lot);
-    expect(after.lot).toEqual(before.lot);
-    expect(after.ledger).toEqual(before.ledger);
-    expect(after.bells).toEqual(before.bells);
-    expect(after.mails).toEqual(before.mails);
   });
 });
 
-describe("unresolved failed refunds, read as production reads them (§5.3)", () => {
+describe("unresolved failed refunds, read as production reads them (v9 §5.3: the view)", () => {
   it("lists exactly the once-succeeded, now failed or canceled, unanswered refunds of a refunded lot", async () => {
     const lot = await seedRefundLot(suite.sql, "refunded");
     const approve = await seedOperation(suite.sql, lot, {
@@ -787,29 +708,10 @@ describe("unresolved failed refunds, read as production reads them (§5.3)", () 
 
     const listed = await inTx((tx) => unresolvedOf(tx, lot));
 
-    const expected: RefundCopy[] = [
-      {
-        stripeRefundId: failedOwn,
-        amountCents: 880,
-        status: "failed",
-        operationId: approve.id,
-        everSucceeded: true,
-        resolvedByOperationId: null,
-        failureReason: null,
-      },
-      {
-        stripeRefundId: canceledExt,
-        amountCents: 200,
-        status: "canceled",
-        operationId: null,
-        everSucceeded: true,
-        resolvedByOperationId: null,
-        failureReason: null,
-      },
-    ];
-    expect([...listed].sort((a, b) => a.stripeRefundId.localeCompare(b.stripeRefundId))).toEqual(
-      expected,
-    );
+    expect(listed).toEqual([
+      { stripeRefundId: failedOwn, amountCents: 880, status: "failed" },
+      { stripeRefundId: canceledExt, amountCents: 200, status: "canceled" },
+    ]);
   });
 
   it("lists nothing while the lot is active", async () => {

@@ -155,20 +155,19 @@ export type OpKind =
   | "settle"
   | "send_back"
   | "retry"
-  | "refund_again"
-  | "resolve_outside";
+  | "resolve_outside"
+  | "restore_credits";
 export type OpStatus = "started" | "awaiting_stripe" | "succeeded" | "needs_attention";
 
 export interface SeedOp {
   kind: OpKind;
   status: OpStatus;
-  result?: "refunded" | "rejected" | "sent_back" | "resolved_outside";
+  result?: "refunded" | "rejected" | "sent_back" | "resolved_outside" | "restored";
   attentionReason?: string;
   stripeRefundId?: string | null;
   notify?: boolean;
   confirmedRefundIds?: string[];
   failedRefundIds?: string[];
-  refundAmountCents?: number;
   attemptCount?: number;
   /** `first_called_at` this many hours ago; null leaves it empty. */
   firstCalledHoursAgo?: number | null;
@@ -200,7 +199,7 @@ export async function seedOperation(
     INSERT INTO credit_refund_operations
       (lot_id, payment_id, kind, status, result, attention_reason, attention_detail,
        idempotency_key, request_hash, requested_by, reason, notify,
-       confirmed_refund_ids, failed_refund_ids, refund_amount_cents,
+       confirmed_refund_ids, failed_refund_ids,
        stripe_refund_id, first_called_at, attempt_count, next_attempt_at,
        lease_token, locked_until, finished_at, created_at)
     VALUES
@@ -210,7 +209,6 @@ export async function seedOperation(
        ${`seed-${randomUUID()}`}, ${"0".repeat(64)}, ${"admin_seed"}, ${"seeded"}, ${notify},
        string_to_array(${(op.confirmedRefundIds ?? []).join(",")}, ','),
        string_to_array(${(op.failedRefundIds ?? []).join(",")}, ','),
-       ${op.refundAmountCents ?? null},
        ${op.stripeRefundId ?? null},
        ${
          op.firstCalledHoursAgo === null || op.firstCalledHoursAgo === undefined
@@ -245,6 +243,11 @@ export interface SeedCopy {
   resolvedBy?: string | null;
   /** Stripe's `failure_reason`; empty when not given. */
   failureReason?: string | null;
+  /**
+   * Stripe's `pending_reason` (v9 §5.1). The column is written only when
+   * given, so a case that does not name it leaves it to the column default.
+   */
+  pendingReason?: string | null;
 }
 
 /**
@@ -254,16 +257,20 @@ export interface SeedCopy {
  * @param copy - The refund's facts.
  */
 export async function seedCopy(sql: Sql, lot: SeededLot, copy: SeedCopy): Promise<void> {
-  await sql`
-    INSERT INTO credit_refunds
-      (stripe_refund_id, payment_id, lot_id, operation_id, amount_cents, currency, status,
-       ever_succeeded, resolved_by_operation_id, failure_reason)
-    VALUES
-      (${copy.id}, ${lot.paymentId}, ${lot.lotId}, ${copy.operationId ?? null},
-       ${copy.amountCents}, 'usd', ${copy.status},
-       ${copy.everSucceeded ?? copy.status === "succeeded"}, ${copy.resolvedBy ?? null},
-       ${copy.failureReason ?? null})
-  `;
+  const row: Record<string, string | number | boolean | null> = {
+    stripe_refund_id: copy.id,
+    payment_id: lot.paymentId,
+    lot_id: lot.lotId,
+    operation_id: copy.operationId ?? null,
+    amount_cents: copy.amountCents,
+    currency: "usd",
+    status: copy.status,
+    ever_succeeded: copy.everSucceeded ?? copy.status === "succeeded",
+    resolved_by_operation_id: copy.resolvedBy ?? null,
+    failure_reason: copy.failureReason ?? null,
+  };
+  if (copy.pendingReason !== undefined) row.pending_reason = copy.pendingReason;
+  await sql`INSERT INTO credit_refunds ${sql(row)}`;
 }
 
 /** A Stripe refund object with the fields the product reads. */
@@ -273,6 +280,8 @@ export interface RefundFixture {
   currency: string;
   status: RefundStatus;
   failure_reason: string | null;
+  /** Stripe's `pending_reason`: set while `pending`, null otherwise (v9 §5.1). */
+  pending_reason: string | null;
   metadata: Record<string, string>;
 }
 
@@ -282,6 +291,7 @@ export interface RefundFixture {
  * @param status - Stripe's status.
  * @param amount - Cents.
  * @param operationId - The disposition named in `metadata.refund_operation_id`.
+ * @param pendingReason - `pending_reason` while pending; `processing` when absent.
  * @returns The object.
  */
 export function refundObject(
@@ -289,6 +299,7 @@ export function refundObject(
   status: RefundStatus,
   amount: number,
   operationId?: string,
+  pendingReason?: string,
 ): RefundFixture {
   return {
     id,
@@ -296,6 +307,7 @@ export function refundObject(
     currency: "usd",
     status,
     failure_reason: status === "failed" ? "lost_or_stolen_card" : null,
+    pending_reason: status === "pending" ? (pendingReason ?? "processing") : null,
     metadata: operationId ? { refund_operation_id: operationId } : {},
   };
 }
@@ -419,7 +431,6 @@ export interface OpRow {
   confirmed_refund_ids: string[];
   confirmed_succeeded_cents: number | null;
   failed_refund_ids: string[];
-  refund_amount_cents: number | null;
   attempt_count: number;
   last_error: string | null;
   lease_token: string | null;
@@ -445,13 +456,12 @@ export async function readOp(sql: Sql, id: string): Promise<OpRow> {
     locked_until_us: string | null;
     settled_succeeded_cents: string | null;
     confirmed_succeeded_cents: string | null;
-    refund_amount_cents: string | null;
   })[]>`
     SELECT kind, status, result, attention_reason, attention_detail,
            attention_closed_at::text AS attention_closed_at, attention_closed_by,
            notify, stripe_refund_id, settled_succeeded_cents::text AS settled_succeeded_cents,
            confirmed_refund_ids, confirmed_succeeded_cents::text AS confirmed_succeeded_cents,
-           failed_refund_ids, refund_amount_cents::text AS refund_amount_cents,
+           failed_refund_ids,
            attempt_count, last_error, lease_token, idempotency_key, request_hash,
            requested_by, reason, finished_at::text AS finished_at,
            (extract(epoch FROM next_attempt_at) * 1000000)::bigint::text AS next_attempt_us,
@@ -463,7 +473,6 @@ export async function readOp(sql: Sql, id: string): Promise<OpRow> {
     ...row!,
     settled_succeeded_cents: num(row!.settled_succeeded_cents),
     confirmed_succeeded_cents: num(row!.confirmed_succeeded_cents),
-    refund_amount_cents: num(row!.refund_amount_cents),
     next_attempt_us: num(row!.next_attempt_us),
     locked_until_us: num(row!.locked_until_us),
   };
@@ -599,13 +608,14 @@ export interface BellRow {
  * The buyer's refund bells, oldest first.
  * @param sql - Raw client.
  * @param userId - The buyer.
- * @returns The rows of the two refund types.
+ * @returns The rows of the three refund types.
  */
 export async function bellsOf(sql: Sql, userId: string): Promise<BellRow[]> {
   return sql<BellRow[]>`
     SELECT type, payload, expires_at::text AS expires_at, project_id
     FROM notifications
-    WHERE user_id = ${userId} AND type IN ('credit.refund_completed', 'credit.refund_rejected')
+    WHERE user_id = ${userId}
+      AND type IN ('credit.refund_completed', 'credit.refund_rejected', 'credit.refund_restored')
     ORDER BY created_at, id
   `;
 }
@@ -722,56 +732,6 @@ export async function refusedAndCommitted(run: (tx: DbTx) => Promise<unknown>): 
   return caught;
 }
 
-/** What the refund_again of {@link seedRefundAgainOn} asks for: the failed refund's amount. */
-export const REFUND_AGAIN_CENTS = 300;
-
-/** A refunded lot with an unresolved failed refund and a refund_again sent for it. */
-export interface RefundAgainCase {
-  lot: SeededLot;
-  /** The settle that booked the lot short. */
-  settleId: string;
-  /** The external refund the lot was booked on, failed since: unresolved. */
-  failed: string;
-  /** The refund_again sent for it. */
-  againId: string;
-  /** Its lease, when seeded `started`. */
-  leaseToken: string | null;
-}
-
-/**
- * The finding [1]/[6]/[8] world (v7 §5.2, §6.2): a settle with acceptPartial
- * booked the lot `refunded` on an external refund of
- * {@link REFUND_AGAIN_CENTS}, that refund failed later (its copy `failed`,
- * once succeeded, unanswered), and a refund_again of the same amount was
- * sent for it. Stripe is not registered: the case says what Stripe holds.
- * @param sql - Raw client.
- * @param again - The refund_again's status and the columns that matter for the case.
- * @returns The ids.
- */
-export async function seedRefundAgainOn(
-  sql: Sql,
-  again: Omit<SeedOp, "kind" | "failedRefundIds" | "refundAmountCents">,
-): Promise<RefundAgainCase> {
-  const lot = await seedRefundLot(sql, "refunded");
-  const settle = await seedOperation(sql, lot, {
-    kind: "settle",
-    status: "succeeded",
-    result: "refunded",
-    notify: false,
-    createdSecondsAgo: 900,
-  });
-  const failed = reId("failed_later");
-  await seedCopy(sql, lot, { id: failed, amountCents: REFUND_AGAIN_CENTS, status: "failed", everSucceeded: true });
-  const op = await seedOperation(sql, lot, {
-    createdSecondsAgo: 300,
-    ...again,
-    kind: "refund_again",
-    failedRefundIds: [failed],
-    refundAmountCents: REFUND_AGAIN_CENTS,
-  });
-  return { lot, settleId: settle.id, failed, againId: op.id, leaseToken: op.leaseToken };
-}
-
 /**
  * Give a disposition the error an earlier `refunds.create` left in `last_error`.
  * @param sql - Raw client.
@@ -795,4 +755,52 @@ export async function expectLeaseReleased(sql: Sql, opId: string, token?: string
   if (token === undefined) expect(op.lease_token).not.toBeNull();
   else expect(op.lease_token).toBe(token);
   expect(op.locked_until_us!).toBeLessThanOrEqual(await dbClockUs(sql));
+}
+
+/**
+ * The `pending_reason` of each refund copy of a lot (v9 §5.1, §6.4), by
+ * refund id. Read on its own so the suites that compare whole copy rows
+ * ({@link copiesOf}) do not depend on the column.
+ * @param sql - Raw client.
+ * @param lotId - The lot.
+ * @returns Refund id → pending_reason.
+ */
+export async function pendingReasonsOf(sql: Sql, lotId: string): Promise<Record<string, string | null>> {
+  const rows = await sql<{ id: string; pending_reason: string | null }[]>`
+    SELECT stripe_refund_id AS id, pending_reason FROM credit_refunds WHERE lot_id = ${lotId}
+  `;
+  return Object.fromEntries(rows.map((r) => [r.id, r.pending_reason]));
+}
+
+/**
+ * The rows of `credit_refunds_unresolved_failed` (v9 §5.3) for one lot,
+ * the view the preview, the one-shot dispositions, the reconcile and the
+ * back office read.
+ * @param sql - Raw client.
+ * @param lotId - The lot.
+ * @returns Its rows, by refund id.
+ */
+export async function unresolvedViewOf(
+  sql: Sql,
+  lotId: string,
+): Promise<{ lot_id: string; payment_id: string; stripe_refund_id: string; amount_cents: number; currency: string; status: string }[]> {
+  const rows = await sql<{ lot_id: string; payment_id: string; stripe_refund_id: string; amount_cents: string; currency: string; status: string }[]>`
+    SELECT lot_id, payment_id, stripe_refund_id, amount_cents::text AS amount_cents, currency, status
+    FROM credit_refunds_unresolved_failed WHERE lot_id = ${lotId} ORDER BY stripe_refund_id
+  `;
+  return rows.map((r) => ({ ...r, amount_cents: Number(r.amount_cents) }));
+}
+
+/**
+ * Whether the lot is on the "refund failed" list, the view
+ * `credit_lot_refund_failures` (v9 §5.3).
+ * @param sql - Raw client.
+ * @param lotId - The lot.
+ * @returns True when the view has a row for it.
+ */
+export async function inFailureList(sql: Sql, lotId: string): Promise<boolean> {
+  const [row] = await sql<{ n: number }[]>`
+    SELECT count(*)::int AS n FROM credit_lot_refund_failures WHERE lot_id = ${lotId}
+  `;
+  return row!.n > 0;
 }

@@ -29,6 +29,7 @@ import {
   CREDITS,
   EVENT_NAME,
   bellsOf,
+  copiesOf,
   inTx,
   ledgerOf,
   mailsOf,
@@ -271,7 +272,7 @@ export async function expectCompletedBell(
  */
 export function autoMail(
   opId: string,
-  kind: "refund_completed" | "refund_rejected",
+  kind: "refund_completed" | "refund_rejected" | "refund_restored",
 ): {
   operation_id: string;
   kind: string;
@@ -315,4 +316,70 @@ export async function expectClosedBy(
   expect(await newEventsOn(sql, lot, before, closedId)).toEqual([
     { event: "attention_closed", from_status: "needs_attention", to_status: "needs_attention" },
   ]);
+}
+
+/**
+ * The lot restored by a restore_credits disposition (v9 §5.3 row 5, §6.3
+ * L9, §8): the disposition `succeeded/restored`; the lot `active` with its
+ * credits back and `refund_attempts` unchanged; one `refund_reversed` ledger
+ * row naming the disposition, worth the negation of the lot's `refund` row
+ * when it had been booked and 0 when not; the failed refunds it answered
+ * for resolved by it; one `credit.refund_restored` bell and one auto
+ * `refund_restored` mail row.
+ * @param sql - Raw client.
+ * @param lot - The lot.
+ * @param opId - The restore_credits disposition.
+ * @param expected - What the restore rests on.
+ * @param expected.wasBooked - True when the lot was `refunded` (a `refund` row exists).
+ * @param expected.resolved - The refunds it answered for.
+ * @param expected.attempts - `refund_attempts` before the restore; it must not move.
+ * @param expected.mailStatuses - Statuses the auto mail row may already have reached; `pending` when absent.
+ */
+export async function expectRestored(
+  sql: Sql,
+  lot: SeededLot,
+  opId: string,
+  expected: { wasBooked: boolean; resolved: readonly string[]; attempts?: number; mailStatuses?: readonly string[] },
+): Promise<void> {
+  const op = await readOp(sql, opId);
+  expect(op).toMatchObject({ kind: "restore_credits", status: "succeeded", result: "restored", notify: true });
+  expect(op.finished_at).not.toBeNull();
+  expect(await readLot(sql, lot.lotId)).toEqual({
+    lifecycle: "active",
+    remaining: `${CREDITS}.000000`,
+    attempts: expected.attempts ?? 0,
+  });
+  const ledger = await ledgerOf(sql, lot.lotId);
+  expect(ledger.filter((r) => r.entry_type === "refund_reversed")).toEqual([
+    {
+      entry_type: "refund_reversed",
+      amount: expected.wasBooked ? `${CREDITS}.000000` : "0.000000",
+      reference_id: opId,
+    },
+  ]);
+  expect(ledger.filter((r) => r.entry_type === "refund")).toHaveLength(expected.wasBooked ? 1 : 0);
+  const resolvedBy = new Map((await copiesOf(sql, lot.lotId)).map((c) => [c.stripe_refund_id, c.resolved_by_operation_id]));
+  for (const id of expected.resolved) expect(resolvedBy.get(id)).toBe(opId);
+  await expectRestoredBell(sql, lot);
+  const mails = await mailsOf(sql, lot.lotId);
+  expect(mails.filter((m) => m.operation_id === opId)).toEqual([
+    { ...autoMail(opId, "refund_restored"), status: expect.any(String) },
+  ]);
+  const status = mails.find((m) => m.operation_id === opId)!.status;
+  expect(expected.mailStatuses ?? ["pending"]).toContain(status);
+}
+
+/**
+ * Exactly one `credit.refund_restored` bell (v9 §8): informational, no
+ * expiry, payload `lotId` and `credits`.
+ * @param sql - Raw client.
+ * @param lot - The lot and buyer.
+ */
+export async function expectRestoredBell(sql: Sql, lot: SeededLot): Promise<void> {
+  const bells = (await bellsOf(sql, lot.userId)).filter((b) => b.type === "credit.refund_restored");
+  expect(bells).toHaveLength(1);
+  expect(bells[0]).toMatchObject({ type: "credit.refund_restored", expires_at: null, project_id: null });
+  expect(Object.keys(bells[0]!.payload).sort()).toEqual(["credits", "lotId"]);
+  expect(bells[0]!.payload.lotId).toBe(lot.lotId);
+  expect(Number(bells[0]!.payload.credits)).toBe(CREDITS);
 }

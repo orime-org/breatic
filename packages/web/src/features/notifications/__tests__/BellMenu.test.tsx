@@ -268,6 +268,7 @@ describe('BellMenu — every waiting request is a link, not a decision', () => {
       'storage.quota_exceeded',
       'credit.refund_completed',
       'credit.refund_rejected',
+      'credit.refund_restored',
     ] as const satisfies readonly NotifType[];
     // A list written by hand can fall behind the union it claims to cover, so
     // the gap is a type error rather than a quieter run of this test: leaving a
@@ -353,6 +354,11 @@ describe('BellMenu — a credit refund outcome is one sentence and mark-read (in
       type: 'credit.refund_rejected',
       payload: { lotId: 'lot-2', credits: '880.000000' },
     },
+    {
+      id: 'n-rs',
+      type: 'credit.refund_restored' as NotifType,
+      payload: { lotId: 'lot-3', credits: '880.000000' },
+    },
   ];
 
   it.each(OUTCOMES)('$type reads as a sentence with no link and offers mark-read only', async ({ id, type, payload }) => {
@@ -380,6 +386,8 @@ describe('BellMenu — a credit refund outcome is one sentence and mark-read (in
   it.each([
     { ...OUTCOMES[0], glyph: '✓', initials: 'RF' },
     { ...OUTCOMES[1], glyph: '✕', initials: 'RX' },
+    // inner#1410 v9 §8: credits back in the account, an arrow coming round.
+    { ...OUTCOMES[2], glyph: '↺', initials: 'RS' },
   ])('$type shows $glyph as its glyph', async ({ id, type, payload, glyph, initials }) => {
     vi.mocked(notificationsApi.list).mockResolvedValue({
       items: [fakeNotification(id, type, payload)],
@@ -394,7 +402,7 @@ describe('BellMenu — a credit refund outcome is one sentence and mark-read (in
     expect(screen.queryByText(initials)).toBeNull();
   });
 
-  it('the two outcomes say different things', async () => {
+  it('the three outcomes say different things', async () => {
     vi.mocked(notificationsApi.list).mockResolvedValue({
       items: OUTCOMES.map((o) => fakeNotification(o.id, o.type, o.payload)),
       resolved: EMPTY_RESOLVED,
@@ -405,9 +413,10 @@ describe('BellMenu — a credit refund outcome is one sentence and mark-read (in
 
     const completed = await screen.findByTestId('bell-notification-headline-n-rc');
     const rejected = screen.getByTestId('bell-notification-headline-n-rr');
-    // Different sentences, not two raw type names that happen to differ.
-    for (const row of [completed, rejected]) expect(row.textContent).not.toMatch(/credit\.refund_/);
-    expect(completed.textContent).not.toBe(rejected.textContent);
+    const restored = screen.getByTestId('bell-notification-headline-n-rs');
+    // Different sentences, not raw type names that happen to differ.
+    for (const row of [completed, rejected, restored]) expect(row.textContent).not.toMatch(/credit\.refund_/);
+    expect(new Set([completed, rejected, restored].map((r) => r.textContent)).size).toBe(3);
   });
 });
 

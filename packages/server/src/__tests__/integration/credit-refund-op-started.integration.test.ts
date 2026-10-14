@@ -9,25 +9,25 @@
  * its `leaseToken` with every answer, and an answer whose token the row no
  * longer holds is E15 — discarded, one `late_answer` event row, nothing else.
  *
- * | event | approve, retry                                  | refund_again                                |
- * |-------|-------------------------------------------------|---------------------------------------------|
- * | E1    | impossible                                      | impossible                                  |
- * | E2    | succeeded/refunded, booked (§5.5), bell + mail  | succeeded/refunded, no ledger, failed refunds resolved |
- * | E3    | awaiting_stripe, refund id kept                 | impossible                                  |
- * | E4    | needs_attention (reason given)                  | impossible                                  |
- * | E5    | awaiting_stripe, refund id kept                 | same                                        |
- * | E6    | succeeded/sent_back, lot back to refund_pending; a refund whose copy once succeeded: needs_attention stripe_refund_failed_later, lot stays refunding | needs_attention stripe_declined, lot stays  |
- * | E7    | stays, attempt + 1, backoff, lease released     | same                                        |
- * | E8    | awaiting_stripe, no refund id                   | same                                        |
- * | E9    | needs_attention already_refunded_elsewhere      | same                                        |
- * | E10   | impossible                                      | impossible                                  |
- * | E11   | needs_attention attempts_exhausted              | same                                        |
- * | E12   | stays                                           | stays                                       |
- * | E13   | stays, new lease                                | same                                        |
- * | E14   | impossible                                      | impossible                                  |
- * | E15   | discarded                                       | discarded                                   |
- * | E16   | stays, attempt + 1, backoff, lease released, last_error kept | same                           |
- * | E17   | stays, attempt + 1, backoff, lease released     | same                                        |
+ * | event | approve, retry (v9)                                                       |
+ * |-------|---------------------------------------------------------------------------|
+ * | E1    | impossible                                                                |
+ * | E2    | succeeded/refunded, booked (§5.5), bell + mail                            |
+ * | E3    | awaiting_stripe, refund id kept                                           |
+ * | E4    | needs_attention (reason given)                                            |
+ * | E5    | awaiting_stripe, refund id kept                                           |
+ * | E6    | needs_attention, the lot neither read nor changed: stripe_refund_failed_later when the refund's copy ever succeeded; stripe_request_invalid for a first-request 401/403/404; stripe_declined otherwise |
+ * | E7    | stays, attempt + 1, backoff, lease released                               |
+ * | E8    | awaiting_stripe, no refund id                                             |
+ * | E9    | needs_attention already_refunded_elsewhere                                |
+ * | E10   | impossible                                                                |
+ * | E11   | needs_attention: stripe_declined when a create answer in this disposition's event rows is a Stripe refusal (isStripeRefusal, §5.4), attempts_exhausted otherwise |
+ * | E12   | stays                                                                     |
+ * | E13   | stays, new lease                                                          |
+ * | E14   | impossible                                                                |
+ * | E15   | discarded                                                                 |
+ * | E16   | stays, attempt + 1, backoff, lease released, last_error kept              |
+ * | E17   | stays, attempt + 1, backoff, lease released                               |
  *
  * A retry that finishes `succeeded` closes the approval's open
  * needs_attention it was started from (E14).
@@ -50,9 +50,7 @@ import { randomUUID } from "node:crypto";
 import { transitionOperation } from "@server/modules/credit-refund/operation-transitions.js";
 import { getCreditRefundConfig } from "@server/config/credit-refund.js";
 import {
-  CREDITS,
   bellsOf,
-  copiesOf,
   dbClockUs,
   expectLeaseReleased,
   inTx,
@@ -71,11 +69,9 @@ import {
   type SeededLot,
 } from "./credit-refund-fixtures.js";
 import {
-  autoMail,
   eventOf,
   expectBooked,
   expectClosedBy,
-  expectCompletedBell,
   expectImpossible,
   expectStays,
   failure,
@@ -113,40 +109,6 @@ async function startedRetry(): Promise<StartedCase & { open: string }> {
   });
   const op = await seedOperation(suite.sql, lot, { kind: "retry", status: "started" });
   return { lot, open: open.id, op: { id: op.id, leaseToken: op.leaseToken! } };
-}
-
-/**
- * A refunded lot whose approval's refund later failed, and the refund_again
- * started for it.
- * @param notify - The refund_again's notify.
- * @returns The lot, the failed refund id, and the started refund_again.
- */
-async function startedRefundAgain(
-  notify = true,
-): Promise<StartedCase & { failed: string; approve: string }> {
-  const lot = await seedRefundLot(suite.sql, "refunded");
-  const approve = await seedOperation(suite.sql, lot, {
-    kind: "approve",
-    status: "succeeded",
-    result: "refunded",
-    createdSecondsAgo: 600,
-  });
-  const failed = reId("failed_later");
-  await seedCopy(suite.sql, lot, {
-    id: failed,
-    amountCents: 1080,
-    status: "failed",
-    everSucceeded: true,
-    operationId: approve.id,
-  });
-  const op = await seedOperation(suite.sql, lot, {
-    kind: "refund_again",
-    status: "started",
-    notify,
-    failedRefundIds: [failed],
-    refundAmountCents: 1080,
-  });
-  return { lot, failed, approve: approve.id, op: { id: op.id, leaseToken: op.leaseToken! } };
 }
 
 describe("started × E1: impossible", () => {
@@ -232,88 +194,6 @@ describe("started × E2: the refund succeeded and the lot can be booked", () => 
     });
     await expectClosedBy(suite.sql, lot, before, open, op.id);
   });
-
-  it("refund_again: no ledger row, the failed refunds it covers are resolved by it, bell and mail", async () => {
-    const { lot, op, failed } = await startedRefundAgain(true);
-    const fresh = reId("again");
-    await seedCopy(suite.sql, lot, {
-      id: fresh,
-      amountCents: 1080,
-      status: "succeeded",
-      operationId: op.id,
-    });
-    const before = await worldOf(suite.sql, lot);
-
-    await inTx((tx) =>
-      transitionOperation(tx, { id: op.id }, {
-        type: "E2",
-        refund: refundObject(fresh, "succeeded", 1080, op.id),
-        leaseToken: op.leaseToken,
-        actor: "loop",
-      }),
-    );
-
-    const row = await readOp(suite.sql, op.id);
-    expect(row).toMatchObject({ status: "succeeded", result: "refunded", stripe_refund_id: fresh });
-    expect(await readLot(suite.sql, lot.lotId)).toEqual({
-      lifecycle: "refunded",
-      remaining: "0.000000",
-      attempts: 0,
-    });
-    expect(await ledgerOf(suite.sql, lot.lotId)).toHaveLength(before.ledger.length);
-    const byId = new Map((await copiesOf(suite.sql, lot.lotId)).map((c) => [c.stripe_refund_id, c]));
-    expect(byId.get(failed)!.resolved_by_operation_id).toBe(op.id);
-    expect(byId.get(fresh)!.resolved_by_operation_id).toBeNull();
-    await expectCompletedBell(suite.sql, lot, 1080);
-    expect(await mailsOf(suite.sql, lot.lotId)).toEqual([autoMail(op.id, "refund_completed")]);
-    expect(await newEventsOn(suite.sql, lot, before, op.id)).toEqual([
-      { event: "refund_succeeded", from_status: "started", to_status: "succeeded" },
-    ]);
-  });
-
-  it("refund_again with notify false: resolved, but no bell and no mail", async () => {
-    const { lot, op, failed } = await startedRefundAgain(false);
-    const fresh = reId("again_quiet");
-
-    await inTx((tx) =>
-      transitionOperation(tx, { id: op.id }, {
-        type: "E2",
-        refund: refundObject(fresh, "succeeded", 1080, op.id),
-        leaseToken: op.leaseToken,
-        actor: "loop",
-      }),
-    );
-
-    expect((await readOp(suite.sql, op.id)).result).toBe("refunded");
-    const copy = (await copiesOf(suite.sql, lot.lotId)).find((c) => c.stripe_refund_id === failed);
-    expect(copy!.resolved_by_operation_id).toBe(op.id);
-    expect(await bellsOf(suite.sql, lot.userId)).toEqual([]);
-    expect(await mailsOf(suite.sql, lot.lotId)).toEqual([]);
-  });
-
-  it("refund_again closes an earlier refund_again's open needs_attention on the same lot", async () => {
-    const { lot, op, failed } = await startedRefundAgain(true);
-    const earlier = await seedOperation(suite.sql, lot, {
-      kind: "refund_again",
-      status: "needs_attention",
-      attentionReason: "already_refunded_elsewhere",
-      failedRefundIds: [failed],
-      refundAmountCents: 1080,
-      createdSecondsAgo: 120,
-    });
-    const before = await worldOf(suite.sql, lot);
-
-    await inTx((tx) =>
-      transitionOperation(tx, { id: op.id }, {
-        type: "E2",
-        refund: refundObject(reId("again"), "succeeded", 1080, op.id),
-        leaseToken: op.leaseToken,
-        actor: "loop",
-      }),
-    );
-
-    await expectClosedBy(suite.sql, lot, before, earlier.id, op.id);
-  });
 });
 
 describe("started × E3 / E5: Stripe holds the refund open", () => {
@@ -348,29 +228,6 @@ describe("started × E3 / E5: Stripe holds the refund open", () => {
       ]);
     },
   );
-
-  it("refund_again × E5 → awaiting_stripe with the refund id", async () => {
-    const { lot, op } = await startedRefundAgain();
-    const refundId = reId("again_pending");
-    await inTx((tx) =>
-      transitionOperation(tx, { id: op.id }, {
-        type: "E5",
-        refund: refundObject(refundId, "pending", 1080, op.id),
-        leaseToken: op.leaseToken,
-        actor: "loop",
-      }),
-    );
-    expect(await readOp(suite.sql, op.id)).toMatchObject({
-      status: "awaiting_stripe",
-      stripe_refund_id: refundId,
-    });
-    expect((await readLot(suite.sql, lot.lotId)).lifecycle).toBe("refunded");
-  });
-
-  it("refund_again × E3 is impossible: it does not use the settle rule", async () => {
-    const { lot, op } = await startedRefundAgain();
-    await expectImpossible(suite.sql, lot, { id: op.id }, "started", eventOf("E3"));
-  });
 });
 
 describe("started × E4: the refund succeeded but the payment is not covered as confirmed", () => {
@@ -411,102 +268,144 @@ describe("started × E4: the refund succeeded but the payment is not covered as 
       ]);
     },
   );
-
-  it("refund_again × E4 is impossible", async () => {
-    const { lot, op } = await startedRefundAgain();
-    await expectImpossible(suite.sql, lot, { id: op.id }, "started", eventOf("E4"));
-  });
 });
 
-describe("started × E6: the first definite answer is that Stripe did not refund (#9)", () => {
-  it("approve → succeeded/sent_back, lot back to refund_pending, credits and ledger untouched, nobody told", async () => {
-    const { lot, op } = await startedApprove();
-    const before = await worldOf(suite.sql, lot);
-
-    await inTx((tx) =>
-      transitionOperation(tx, { id: op.id }, {
-        type: "E6",
-        refund: refundObject(reId("declined"), "failed", 1080, op.id),
-        leaseToken: op.leaseToken,
-        actor: "loop",
-      }),
-    );
-
-    const row = await readOp(suite.sql, op.id);
-    expect(row).toMatchObject({ status: "succeeded", result: "sent_back" });
-    expect(row.finished_at).not.toBeNull();
-    expect(await readLot(suite.sql, lot.lotId)).toEqual({
-      lifecycle: "refund_pending",
-      remaining: `${CREDITS}.000000`,
-      attempts: 0,
-    });
-    expect(await ledgerOf(suite.sql, lot.lotId)).toHaveLength(before.ledger.length);
-    expect(await bellsOf(suite.sql, lot.userId)).toEqual([]);
-    expect(await mailsOf(suite.sql, lot.lotId)).toEqual([]);
-    expect(await newEventsOn(suite.sql, lot, before, op.id)).toEqual([
-      { event: "refund_declined", from_status: "started", to_status: "succeeded" },
-    ]);
-  });
-
-  it("approve × E6 with no refund object (a first-request 400) behaves the same", async () => {
-    const { lot, op } = await startedApprove();
-    await inTx((tx) =>
-      transitionOperation(tx, { id: op.id }, {
-        type: "E6",
-        failure: failure(400, { code: "parameter_invalid_integer" }),
-        leaseToken: op.leaseToken,
-        actor: "loop",
-      }),
-    );
-    expect(await readOp(suite.sql, op.id)).toMatchObject({ status: "succeeded", result: "sent_back" });
-    expect((await readLot(suite.sql, lot.lotId)).lifecycle).toBe("refund_pending");
-  });
-
-  it("retry → succeeded/sent_back, lot back to refund_pending, and the open approval is closed", async () => {
-    const { lot, op, open } = await startedRetry();
-    const before = await worldOf(suite.sql, lot);
-
-    await inTx((tx) =>
-      transitionOperation(tx, { id: op.id }, {
-        type: "E6",
-        refund: refundObject(reId("declined"), "canceled", 780, op.id),
-        leaseToken: op.leaseToken,
-        actor: "loop",
-      }),
-    );
-
-    expect(await readOp(suite.sql, op.id)).toMatchObject({ status: "succeeded", result: "sent_back" });
-    expect((await readLot(suite.sql, lot.lotId)).lifecycle).toBe("refund_pending");
-    await expectClosedBy(suite.sql, lot, before, open, op.id);
-  });
-
-  it("refund_again → needs_attention stripe_declined, lot stays refunded, the failed refund stays unresolved", async () => {
-    const { lot, op, failed } = await startedRefundAgain();
-    const before = await worldOf(suite.sql, lot);
-
-    await inTx((tx) =>
-      transitionOperation(tx, { id: op.id }, {
-        type: "E6",
-        failure: failure(400, { code: "amount_too_large" }),
-        leaseToken: op.leaseToken,
-        actor: "loop",
-      }),
-    );
-
-    expect(await readOp(suite.sql, op.id)).toMatchObject({
+describe("started × E6: Stripe did not refund — a person decides, the lot is left as it is (v9 §6.2, #9)", () => {
+  /**
+   * The cell's v9 outcome: needs_attention with `reason`, open, and every
+   * other row of the lot exactly as before (lot, ledger, copies, bells,
+   * mails), save the disposition's own row and its one new event row.
+   * @param c - The started case.
+   * @param before - The world before the event.
+   * @param reason - The expected attention reason.
+   * @param refundId - The refund id the row must record, or null.
+   */
+  async function expectDeclined(
+    c: StartedCase,
+    before: Awaited<ReturnType<typeof worldOf>>,
+    reason: string,
+    refundId: string | null,
+  ): Promise<void> {
+    const row = await readOp(suite.sql, c.op.id);
+    expect(row).toMatchObject({
       status: "needs_attention",
       result: null,
-      attention_reason: "stripe_declined",
+      attention_reason: reason,
+      attention_closed_at: null,
+      stripe_refund_id: refundId,
+      lease_token: null,
     });
-    expect(await readLot(suite.sql, lot.lotId)).toEqual({
-      lifecycle: "refunded",
-      remaining: "0.000000",
-      attempts: 0,
-    });
-    expect(await ledgerOf(suite.sql, lot.lotId)).toHaveLength(before.ledger.length);
-    const copy = (await copiesOf(suite.sql, lot.lotId)).find((c) => c.stripe_refund_id === failed);
-    expect(copy!.resolved_by_operation_id).toBeNull();
-    expect(await bellsOf(suite.sql, lot.userId)).toEqual([]);
+    expect(row.finished_at).not.toBeNull();
+    const after = await worldOf(suite.sql, c.lot);
+    expect(after.lot).toEqual(before.lot);
+    expect(after.ledger).toEqual(before.ledger);
+    expect(after.copies).toEqual(before.copies);
+    expect(after.bells).toEqual(before.bells);
+    expect(after.mails).toEqual(before.mails);
+    expect(await newEventsOn(suite.sql, c.lot, before, c.op.id)).toEqual([
+      { event: "refund_declined", from_status: "started", to_status: "needs_attention" },
+    ]);
+  }
+
+  it("approve, its refund object failed and never succeeded → stripe_declined, lot stays refunding, nobody told", async () => {
+    const c = await startedApprove();
+    const refundId = reId("declined");
+    const before = await worldOf(suite.sql, c.lot);
+
+    await inTx((tx) =>
+      transitionOperation(tx, { id: c.op.id }, {
+        type: "E6",
+        refund: refundObject(refundId, "failed", 1080, c.op.id),
+        leaseToken: c.op.leaseToken,
+        actor: "loop",
+      }),
+    );
+
+    await expectDeclined(c, before, "stripe_declined", refundId);
+    expect((await readLot(suite.sql, c.lot.lotId)).lifecycle).toBe("refunding");
+    expect(await bellsOf(suite.sql, c.lot.userId)).toEqual([]);
+  });
+
+  it("retry, its refund object canceled → stripe_declined, lot stays refunding", async () => {
+    const c = await startedRetry();
+    const refundId = reId("canceled");
+    const before = await worldOf(suite.sql, c.lot);
+
+    await inTx((tx) =>
+      transitionOperation(tx, { id: c.op.id }, {
+        type: "E6",
+        refund: refundObject(refundId, "canceled", 780, c.op.id),
+        leaseToken: c.op.leaseToken,
+        actor: "loop",
+      }),
+    );
+
+    await expectDeclined(c, before, "stripe_declined", refundId);
+    expect((await readLot(suite.sql, c.lot.lotId)).lifecycle).toBe("refunding");
+  });
+
+  it("a first-request 400 (no refund object) → stripe_declined; attention_detail is the first line of Stripe's message", async () => {
+    const c = await startedApprove();
+    const fail = failure(400, { code: "charge_disputed", type: "invalid_request_error" });
+    const before = await worldOf(suite.sql, c.lot);
+
+    await inTx((tx) =>
+      transitionOperation(tx, { id: c.op.id }, { type: "E6", failure: fail, leaseToken: c.op.leaseToken, actor: "loop" }),
+    );
+
+    await expectDeclined(c, before, "stripe_declined", null);
+    expect((await readOp(suite.sql, c.op.id)).attention_detail).toBe(fail.message.split("\n")[0]);
+  });
+
+  it.each([401, 403, 404])(
+    "a first-request %i (our key, permission or payment id is wrong) → stripe_request_invalid, lot stays refunding",
+    async (httpStatus) => {
+      const c = await startedApprove();
+      const fail = failure(httpStatus, { type: httpStatus === 404 ? "invalid_request_error" : "authentication_error" });
+      const before = await worldOf(suite.sql, c.lot);
+
+      await inTx((tx) =>
+        transitionOperation(tx, { id: c.op.id }, { type: "E6", failure: fail, leaseToken: c.op.leaseToken, actor: "loop" }),
+      );
+
+      await expectDeclined(c, before, "stripe_request_invalid", null);
+    },
+  );
+
+  it("its refund failed after its copy once succeeded → stripe_refund_failed_later, lot stays refunding", async () => {
+    const c = await startedApprove();
+    const refundId = reId("back_again");
+    await seedCopy(suite.sql, c.lot, { id: refundId, amountCents: 1080, status: "failed", everSucceeded: true, operationId: c.op.id });
+    const before = await worldOf(suite.sql, c.lot);
+
+    await inTx((tx) =>
+      transitionOperation(tx, { id: c.op.id }, {
+        type: "E6",
+        refund: refundObject(refundId, "failed", 1080, c.op.id),
+        leaseToken: c.op.leaseToken,
+        actor: "loop",
+      }),
+    );
+
+    await expectDeclined(c, before, "stripe_refund_failed_later", refundId);
+  });
+
+  it("never reads the lot: a lot moved out of refunding by hand stays where it is, and the reason still follows Stripe's answer (no state_mismatch)", async () => {
+    const c = await startedApprove();
+    await suite.sql`UPDATE credit_lots SET lifecycle = 'refund_pending' WHERE id = ${c.lot.lotId}`;
+    const before = await worldOf(suite.sql, c.lot);
+
+    await inTx((tx) =>
+      transitionOperation(tx, { id: c.op.id }, {
+        type: "E6",
+        failure: failure(400, { code: "parameter_invalid" }),
+        leaseToken: c.op.leaseToken,
+        actor: "loop",
+      }),
+    );
+
+    await expectDeclined(c, before, "stripe_declined", null);
+    expect((await readLot(suite.sql, c.lot.lotId)).lifecycle).toBe("refund_pending");
   });
 });
 
@@ -520,7 +419,7 @@ describe("started × E7 / E16 / E17: try again later with the same key", () => {
   ] as const)(
     "%s stays started, counts the attempt, records only a create error, releases the lease, and pushes next_attempt_at out",
     async (type, fail) => {
-      for (const make of [startedApprove, startedRefundAgain]) {
+      for (const make of [startedApprove, startedRetry]) {
         const { lot, op } = await make();
         await setLastError(suite.sql, op.id, EARLIER_CREATE_ERROR);
         const before = await worldOf(suite.sql, lot);
@@ -544,9 +443,7 @@ describe("started × E7 / E16 / E17: try again later with the same key", () => {
         expect(row.next_attempt_us!).toBeLessThanOrEqual(
           (await dbClockUs(suite.sql)) + backoffMaxSeconds * 1_000_000,
         );
-        expect((await readLot(suite.sql, lot.lotId)).lifecycle).toBe(
-          make === startedApprove ? "refunding" : "refunded",
-        );
+        expect((await readLot(suite.sql, lot.lotId)).lifecycle).toBe("refunding");
         expect(await ledgerOf(suite.sql, lot.lotId)).toHaveLength(before.ledger.length);
         const added = await newEventsOn(suite.sql, lot, before, op.id);
         expect(added).toEqual([
@@ -580,7 +477,7 @@ describe("started × E7 / E16 / E17: try again later with the same key", () => {
 });
 
 describe("started × E8: a 5xx — outcome unknown", () => {
-  it.each([startedApprove, startedRefundAgain])(
+  it.each([startedApprove, startedRetry])(
     "→ awaiting_stripe with no refund id, the error kept, a next look scheduled (%#)",
     async (make) => {
       const { lot, op } = await make();
@@ -605,7 +502,7 @@ describe("started × E8: a 5xx — outcome unknown", () => {
 });
 
 describe("started × E9: charge_already_refunded and no refund of ours", () => {
-  it.each([startedApprove, startedRefundAgain])(
+  it.each([startedApprove, startedRetry])(
     "→ needs_attention already_refunded_elsewhere with the first line of Stripe's message (%#)",
     async (make) => {
       const { lot, op } = await make();
@@ -645,27 +542,88 @@ describe("started × E10 / E14: impossible", () => {
   });
 });
 
-describe("started × E11: attempts used up", () => {
-  it.each([startedApprove, startedRefundAgain])(
-    "→ needs_attention attempts_exhausted, lot where it was (%#)",
-    async (make) => {
-      const { lot, op } = await make();
-      const lifecycle = (await readLot(suite.sql, lot.lotId)).lifecycle;
-      const before = await worldOf(suite.sql, lot);
+describe("started × E11: attempts used up — the reason follows the create answers in the event rows (v9 §5.4, §6.2)", () => {
+  type Step = (c: StartedCase) => Promise<unknown>;
+  type Fail = ReturnType<typeof failure>;
 
-      await inTx((tx) => transitionOperation(tx, { id: op.id }, { type: "E11", actor: "loop" }));
+  /** A create answer from the second attempt on, under the held lease: E17, stays started. */
+  const later = (fail: Fail): Step => (c) =>
+    inTx((tx) => transitionOperation(tx, { id: c.op.id }, { type: "E17", failure: fail, leaseToken: c.op.leaseToken, actor: "loop" }));
+  /** A retryable create answer: E7, stays started. */
+  const retryable = (fail: Fail): Step => (c) =>
+    inTx((tx) => transitionOperation(tx, { id: c.op.id }, { type: "E7", failure: fail, leaseToken: c.op.leaseToken, actor: "loop" }));
+  /** A create answer whose list read after it failed: E16 carrying the create's failure. */
+  const readFailedAfter = (createFailure: Fail): Step => (c) =>
+    inTx((tx) =>
+      transitionOperation(tx, { id: c.op.id }, {
+        type: "E16",
+        failure: failure(503),
+        createFailure,
+        leaseToken: c.op.leaseToken,
+        actor: "loop",
+      }),
+    );
+  /** A create answer under a lease the row no longer holds: a late_answer row. */
+  const late = (fail: Fail): Step => (c) =>
+    inTx((tx) => transitionOperation(tx, { id: c.op.id }, { type: "E17", failure: fail, leaseToken: randomUUID(), actor: "loop" }));
 
-      expect(await readOp(suite.sql, op.id)).toMatchObject({
+  const refusal400 = (): Fail => failure(400, { code: "charge_disputed", type: "invalid_request_error" });
+  const timeout = (): Fail => ({ message: "Request timed out\nsecond line" });
+
+  it.each<[string, string, () => Step[]]>([
+    ["a later 400 refusal (E17)", "stripe_declined", () => [later(refusal400())]],
+    ["a refusal, then a timeout (E17, then E7)", "stripe_declined", () => [later(refusal400()), retryable(timeout())]],
+    ["a refusal carried in an E16 createFailure", "stripe_declined", () => [readFailedAfter(refusal400())]],
+    ["a refusal in a late_answer row", "stripe_declined", () => [late(refusal400())]],
+    ["no create answer at all", "attempts_exhausted", () => []],
+    ["a timeout and a 429", "attempts_exhausted", () => [retryable(timeout()), retryable(failure(429, { code: "rate_limit" }))]],
+    ["a 402 and a 400 rate_limit", "attempts_exhausted", () => [later(failure(402, { code: "card_declined" })), later(failure(400, { code: "rate_limit" }))]],
+    ["a 400 lock_timeout, a 400 charge_already_refunded and a 400 idempotency_error", "attempts_exhausted", () => [
+        later(failure(400, { code: "lock_timeout" })),
+        later(failure(400, { code: "charge_already_refunded" })),
+        later(failure(400, { type: "idempotency_error" })),
+      ]],
+    ["a 400 with Stripe-Should-Retry: true", "attempts_exhausted", () => [later(failure(400, { shouldRetry: true }))]],
+    ["a 5xx inside an E16 createFailure", "attempts_exhausted", () => [readFailedAfter(failure(502, { type: "api_error" }))]],
+  ])("%s → needs_attention %s, lot where it was", async (_name, reason, steps) => {
+    for (const make of [startedApprove, startedRetry]) {
+      const c = await make();
+      for (const step of steps()) await step(c);
+      const lotBefore = await readLot(suite.sql, c.lot.lotId);
+      const before = await worldOf(suite.sql, c.lot);
+
+      await inTx((tx) => transitionOperation(tx, { id: c.op.id }, { type: "E11", actor: "loop" }));
+
+      expect(await readOp(suite.sql, c.op.id)).toMatchObject({
         status: "needs_attention",
-        attention_reason: "attempts_exhausted",
+        attention_reason: reason,
         result: null,
       });
-      expect((await readLot(suite.sql, lot.lotId)).lifecycle).toBe(lifecycle);
-      expect(await newEventsOn(suite.sql, lot, before, op.id)).toEqual([
+      expect(await readLot(suite.sql, c.lot.lotId)).toEqual(lotBefore);
+      expect(await newEventsOn(suite.sql, c.lot, before, c.op.id)).toEqual([
         { event: "attempts_exhausted", from_status: "started", to_status: "needs_attention" },
       ]);
-    },
-  );
+    }
+  });
+
+  it("a refusal recorded on another disposition of the same lot does not count", async () => {
+    const c = await startedRetry();
+    const other = await seedOperation(suite.sql, c.lot, {
+      kind: "approve",
+      status: "needs_attention",
+      attentionReason: "attempts_exhausted",
+      createdSecondsAgo: 900,
+    });
+    await suite.sql`
+      INSERT INTO credit_refund_operation_events (operation_id, event, from_status, to_status, detail)
+      VALUES (${other.id}, 'unclassified_error', 'started', 'started',
+              ${suite.sql.json({ message: "refused", httpStatus: 400, code: "charge_disputed", actor: "loop" })})
+    `;
+
+    await inTx((tx) => transitionOperation(tx, { id: c.op.id }, { type: "E11", actor: "loop" }));
+
+    expect((await readOp(suite.sql, c.op.id)).attention_reason).toBe("attempts_exhausted");
+  });
 });
 
 describe("started × E12: 24 hours since the first call — the attempt cap governs started", () => {

@@ -12,9 +12,14 @@
  * the copies, re-checks against them and inserts the disposition already
  * `succeeded`. A request refused at its preconditions still keeps the copies
  * of what it read (v6 §4.6, §6.4), and a copy that reached `failed` or
- * `canceled` keeps that status whatever an older read says. Resolved-outside
- * carries `confirmedSucceededCents`, the succeeded sum the operator saw, and
- * is refused when Stripe's differs (v6 §5.3). Who is told follows §5.1's `notify` column: reject always,
+ * `canceled` keeps that status whatever an older read says. Settle and
+ * resolved-outside carry `confirmedSucceededCents`, the succeeded sum the
+ * operator saw, and are refused when Stripe's differs; settle is also
+ * refused when that sum is below what was paid (v9 §5.3: only whole
+ * refunds, no acceptPartial). Reject is refused while a failed refund is
+ * unanswered, send-back once Stripe declined the lot (v9 §5.3). The
+ * restore-credits endpoint is in `internal-api-restore-credits.integration.test.ts`.
+ * Who is told follows §5.1's `notify` column: reject always,
  * settle as asked, send-back and resolved-outside never. Resolved-outside on
  * a `refund_pending` or `refunding` lot books it (§5.3, §5.5); on a
  * `refunded` lot it only answers for the failed refunds.
@@ -183,6 +188,50 @@ describe("POST …/refund/reject", () => {
     await expectRefused(await post(paths.reject(lot.lotId), body), lot, before, "lot_state_changed");
   });
 
+  it.each(["failed", "canceled"] as const)(
+    "an unresolved %s refund on Stripe is 409 stripe_blocks refund_failed: the exits are restore-credits or resolved-outside (v9 §5.3)",
+    async (status) => {
+      const lot = await lotOnStripe("refund_pending", [refundObject(reId("gone"), status, 300)]);
+      const before = await worldOf(suite.sql, lot);
+
+      const res = await post(paths.reject(lot.lotId), body);
+
+      await expectRefused(res, lot, before, "stripe_blocks");
+      expect(res.json.reason).toBe("refund_failed");
+    },
+  );
+
+  it("a succeeded refund is answered before an unresolved failed one (v9 §5.3 check order): 409 stripe_blocks refund_succeeded", async () => {
+    const lot = await lotOnStripe("refund_pending", [
+      refundObject(reId("done"), "succeeded", 300),
+      refundObject(reId("gone"), "failed", 200),
+    ]);
+    const before = await worldOf(suite.sql, lot);
+
+    const res = await post(paths.reject(lot.lotId), body);
+
+    await expectRefused(res, lot, before, "stripe_blocks");
+    expect(res.json.reason).toBe("refund_succeeded");
+  });
+
+  it("a failed refund already answered for does not block: the rejection goes through", async () => {
+    const lot = await seedRefundLot(suite.sql, "refund_pending");
+    const resolver = await seedOperation(suite.sql, lot, {
+      kind: "resolve_outside",
+      status: "succeeded",
+      result: "resolved_outside",
+      createdSecondsAgo: 600,
+    });
+    const answered = reId("answered");
+    await seedCopy(suite.sql, lot, { id: answered, amountCents: 300, status: "failed", resolvedBy: resolver.id });
+    fakeStripe.register(lot.paymentIntentId, PAID_CENTS, [refundObject(answered, "failed", 300)]);
+
+    const res = await post(paths.reject(lot.lotId), body);
+
+    expect(res.status).toBe(200);
+    expect(res.json).toMatchObject({ kind: "reject", result: "rejected" });
+  });
+
   it("a failed Stripe read is 503 stripe_unavailable and writes nothing", async () => {
     const lot = await lotOnStripe("refund_pending");
     const before = await worldOf(suite.sql, lot);
@@ -223,20 +272,23 @@ describe("POST …/refund/settle", () => {
     return { lot, stuck, own };
   }
 
-  it("accepting a partial refund with notify false: books on the product's refund, records both sums, closes the attention, tells nobody", async () => {
+  it("the product's 500 plus an external 580 cover the payment, notify false: books on the product's refund, records both sums, closes the attention, tells nobody", async () => {
     const { lot, stuck, own } = await partiallyRefunded();
+    fakeStripe.register(lot.paymentIntentId, PAID_CENTS, [
+      ...fakeStripe.refundsOf(lot.paymentIntentId),
+      refundObject(reId("ext_rest"), "succeeded", PAID_CENTS - 500),
+    ]);
 
     const res = await post(paths.settle(lot.lotId), {
-      reason: "Buyer agreed to a partial refund.",
+      reason: "The rest was refunded from the dashboard.",
       notify: false,
-      confirmedSucceededCents: 500,
-      acceptPartial: true,
+      confirmedSucceededCents: PAID_CENTS,
     });
 
     expect(res.status).toBe(200);
     const opId: string = res.json.id;
     expect(res.json).toMatchObject({ kind: "settle", status: "succeeded", result: "refunded", notify: false });
-    expect(await readOp(suite.sql, opId)).toMatchObject({ settled_succeeded_cents: 500, confirmed_succeeded_cents: 500 });
+    expect(await readOp(suite.sql, opId)).toMatchObject({ settled_succeeded_cents: PAID_CENTS, confirmed_succeeded_cents: PAID_CENTS });
     expect(await readLot(suite.sql, lot.lotId)).toEqual({ lifecycle: "refunded", remaining: "0.000000", attempts: 0 });
     expect((await ledgerOf(suite.sql, lot.lotId)).filter((r) => r.entry_type === "refund")).toEqual([
       { entry_type: "refund", amount: `-${CREDITS}.000000`, reference_id: own },
@@ -257,7 +309,6 @@ describe("POST …/refund/settle", () => {
       reason: "Refunded from the Stripe dashboard.",
       notify: true,
       confirmedSucceededCents: PAID_CENTS,
-      acceptPartial: false,
     });
 
     expect(res.status).toBe(200);
@@ -273,31 +324,34 @@ describe("POST …/refund/settle", () => {
     ]);
   });
 
-  it("a partial refund without acceptPartial is 409 stripe_blocks", async () => {
+  it("a succeeded sum below what was paid is 409 stripe_blocks succeeded_below_paid (v9 §5.3: only whole refunds)", async () => {
     const { lot } = await partiallyRefunded();
     const before = await worldOf(suite.sql, lot);
 
-    const res = await post(paths.settle(lot.lotId), { reason: "r", notify: false, confirmedSucceededCents: 500, acceptPartial: false });
+    const res = await post(paths.settle(lot.lotId), { reason: "r", notify: false, confirmedSucceededCents: 500 });
 
     await expectRefused(res, lot, before, "stripe_blocks");
+    expect(res.json.reason).toBe("succeeded_below_paid");
   });
 
-  it("a confirmed sum that no longer matches Stripe is 409 stripe_blocks", async () => {
+  it("a confirmed sum that no longer matches Stripe is 409 stripe_blocks succeeded_sum_changed, checked before the paid amount", async () => {
     const { lot } = await partiallyRefunded();
     const before = await worldOf(suite.sql, lot);
 
-    const res = await post(paths.settle(lot.lotId), { reason: "r", notify: false, confirmedSucceededCents: 400, acceptPartial: true });
+    const res = await post(paths.settle(lot.lotId), { reason: "r", notify: false, confirmedSucceededCents: 400 });
 
     await expectRefused(res, lot, before, "stripe_blocks");
+    expect(res.json.reason).toBe("succeeded_sum_changed");
   });
 
-  it("nothing succeeded on Stripe is 409 stripe_blocks even with acceptPartial", async () => {
+  it("nothing succeeded on Stripe is 409 stripe_blocks succeeded_below_paid", async () => {
     const lot = await lotOnStripe("refund_pending");
     const before = await worldOf(suite.sql, lot);
 
-    const res = await post(paths.settle(lot.lotId), { reason: "r", notify: false, confirmedSucceededCents: 0, acceptPartial: true });
+    const res = await post(paths.settle(lot.lotId), { reason: "r", notify: false, confirmedSucceededCents: 0 });
 
     await expectRefused(res, lot, before, "stripe_blocks");
+    expect(res.json.reason).toBe("succeeded_below_paid");
   });
 
   it("a refund still processing is 409 stripe_blocks", async () => {
@@ -308,9 +362,10 @@ describe("POST …/refund/settle", () => {
     ]);
     const before = await worldOf(suite.sql, lot);
 
-    const res = await post(paths.settle(lot.lotId), { reason: "r", notify: false, confirmedSucceededCents: 500, acceptPartial: true });
+    const res = await post(paths.settle(lot.lotId), { reason: "r", notify: false, confirmedSucceededCents: 500 });
 
     await expectRefused(res, lot, before, "stripe_blocks");
+    expect(res.json.reason).toBe("refund_in_progress");
   });
 
   it("a disposition still in flight is 409 operation_in_progress", async () => {
@@ -321,7 +376,7 @@ describe("POST …/refund/settle", () => {
 
     const res = await post(
       paths.settle(lot.lotId),
-      { reason: "r", notify: true, confirmedSucceededCents: PAID_CENTS, acceptPartial: false },
+      { reason: "r", notify: true, confirmedSucceededCents: PAID_CENTS },
       key,
     );
 
@@ -332,7 +387,7 @@ describe("POST …/refund/settle", () => {
     const lot = await lotOnStripe("active", [refundObject(reId("full"), "succeeded", PAID_CENTS)]);
     const before = await worldOf(suite.sql, lot);
 
-    const res = await post(paths.settle(lot.lotId), { reason: "r", notify: true, confirmedSucceededCents: PAID_CENTS, acceptPartial: false });
+    const res = await post(paths.settle(lot.lotId), { reason: "r", notify: true, confirmedSucceededCents: PAID_CENTS });
 
     await expectRefused(res, lot, before, "lot_state_changed");
   });
@@ -349,12 +404,12 @@ describe("POST …/refund/settle", () => {
 
     const res = await post(
       paths.settle(lot.lotId),
-      { reason: "r", notify: false, confirmedSucceededCents: 580, acceptPartial: false },
+      { reason: "r", notify: false, confirmedSucceededCents: 580 },
       key,
     );
 
     await expectRefused(res, lot, before, "stripe_blocks");
-    expect(res.json.reason).toBe("partial_not_accepted");
+    expect(res.json.reason).toBe("succeeded_below_paid");
     expect((await copiesOf(suite.sql, lot.lotId)).find((c) => c.stripe_refund_id === external)).toMatchObject({
       operation_id: null,
       status: "succeeded",
@@ -382,7 +437,6 @@ describe("POST …/refund/settle", () => {
       reason: "Stripe shows it refunded.",
       notify: true,
       confirmedSucceededCents: PAID_CENTS,
-      acceptPartial: false,
     });
 
     await expectRefused(res, lot, before, "stripe_blocks");
@@ -394,14 +448,19 @@ describe("POST …/refund/settle", () => {
     expect(await bellsOf(suite.sql, lot.userId)).toEqual([]);
   });
 
-  it("a body missing acceptPartial is 422 invalid_body", async () => {
-    const { lot } = await partiallyRefunded();
+  it.each([true, false])(
+    "a body carrying acceptPartial (%s) is 422 invalid_body: the field is gone and the body is strict (v9 §4.5)",
+    async (acceptPartial) => {
+      const { lot } = await partiallyRefunded();
+      const before = await worldOf(suite.sql, lot);
 
-    const res = await post(paths.settle(lot.lotId), { reason: "r", notify: false, confirmedSucceededCents: 500 });
+      const res = await post(paths.settle(lot.lotId), { reason: "r", notify: false, confirmedSucceededCents: 500, acceptPartial });
 
-    expect(res.status).toBe(422);
-    expect(res.json.code).toBe("invalid_body");
-  });
+      expect(res.status).toBe(422);
+      expect(res.json.code).toBe("invalid_body");
+      expect(await worldOf(suite.sql, lot)).toEqual(before);
+    },
+  );
 });
 
 describe("POST …/refund/send-back", () => {
@@ -453,6 +512,56 @@ describe("POST …/refund/send-back", () => {
     const before = await worldOf(suite.sql, lot);
 
     await expectRefused(await post(paths.sendBack(lot.lotId), body), lot, before, "operation_in_progress");
+  });
+
+  it("a lot Stripe declined is 409 stripe_blocks stripe_declined: a rejection would contradict the approval (v9 §5.3)", async () => {
+    const lot = await lotOnStripe("refunding");
+    await seedOperation(suite.sql, lot, { kind: "approve", status: "needs_attention", attentionReason: "stripe_declined" });
+    const before = await worldOf(suite.sql, lot);
+
+    const res = await post(paths.sendBack(lot.lotId), body);
+
+    await expectRefused(res, lot, before, "stripe_blocks");
+    expect(res.json.reason).toBe("stripe_declined");
+  });
+
+  it("Stripe declined the approval, then a retry ran out of attempts: still 409 stripe_blocks stripe_declined — the history counts, not the latest reason", async () => {
+    const lot = await lotOnStripe("refunding");
+    await seedOperation(suite.sql, lot, {
+      kind: "approve",
+      status: "needs_attention",
+      attentionReason: "stripe_declined",
+      createdSecondsAgo: 900,
+    });
+    await seedOperation(suite.sql, lot, {
+      kind: "retry",
+      status: "needs_attention",
+      attentionReason: "attempts_exhausted",
+      createdSecondsAgo: 60,
+    });
+    const before = await worldOf(suite.sql, lot);
+
+    const res = await post(paths.sendBack(lot.lotId), body);
+
+    await expectRefused(res, lot, before, "stripe_blocks");
+    expect(res.json.reason).toBe("stripe_declined");
+  });
+
+  it("after stripe_request_invalid (our configuration, not Stripe declining) send-back is allowed", async () => {
+    const lot = await lotOnStripe("refunding");
+    const stuck = await seedOperation(suite.sql, lot, {
+      kind: "approve",
+      status: "needs_attention",
+      attentionReason: "stripe_request_invalid",
+      createdSecondsAgo: 60,
+    });
+
+    const res = await post(paths.sendBack(lot.lotId), body);
+
+    expect(res.status).toBe(200);
+    expect(res.json).toMatchObject({ kind: "send_back", status: "succeeded", result: "sent_back" });
+    expect(await readLot(suite.sql, lot.lotId)).toEqual({ lifecycle: "refund_pending", remaining: `${CREDITS}.000000`, attempts: 0 });
+    expect((await readOp(suite.sql, stuck.id)).attention_closed_by).toBe(res.json.id);
   });
 });
 
@@ -741,8 +850,8 @@ describe("POST …/refund/resolved-outside on a lot not yet refunded (§5.3: it 
   });
 });
 
-describe("settle with acceptPartial after a refund had failed (§5.5, finding [7])", () => {
-  it("the failed refund is answered for by the settle: the preview lists none and refund-again is 409 lot_state_changed", async () => {
+describe("settle after a refund had failed (§5.5, finding [7])", () => {
+  it("the failed refund is answered for by the settle: the preview lists none, and restore-credits on the refunded lot is 409 lot_state_changed", async () => {
     const lot = await seedRefundLot(suite.sql, "refunding");
     const stuck = await seedOperation(suite.sql, lot, {
       kind: "approve",
@@ -751,18 +860,17 @@ describe("settle with acceptPartial after a refund had failed (§5.5, finding [7
       createdSecondsAgo: 120,
     });
     const failed = reId("approve_failed");
-    const external = reId("ext_kept");
+    const external = reId("ext_whole");
     await seedCopy(suite.sql, lot, { id: failed, amountCents: 680, status: "succeeded", operationId: stuck.id });
     fakeStripe.register(lot.paymentIntentId, PAID_CENTS, [
       refundObject(failed, "failed", 680, stuck.id),
-      refundObject(external, "succeeded", 400),
+      refundObject(external, "succeeded", PAID_CENTS),
     ]);
 
     const settled = await post(paths.settle(lot.lotId), {
-      reason: "Buyer agreed to keep the partial refund.",
+      reason: "The whole payment was refunded from the dashboard.",
       notify: false,
-      confirmedSucceededCents: 400,
-      acceptPartial: true,
+      confirmedSucceededCents: PAID_CENTS,
     });
     expect(settled.status).toBe(200);
     const settleId: string = settled.json.id;
@@ -775,11 +883,11 @@ describe("settle with acceptPartial after a refund had failed (§5.5, finding [7
     const preview = await call(suite.baseUrl, paths.preview(lot.lotId));
     expect(preview.status).toBe(200);
     expect(preview.json.unresolvedFailedRefunds).toEqual([]);
-    expect(preview.json.action).toMatchObject({ kind: "refund_again", outcome: "blocked", code: "lot_state_changed" });
+    expect(preview.json.action).toBeNull();
 
-    const again = await post(paths.refundAgain(lot.lotId), { reason: "r", failedRefundIds: [failed], notify: true });
-    expect(again.status).toBe(409);
-    expect(errorShape(again.json)).toEqual({ code: "lot_state_changed", reason: undefined, detailTranslated: true });
+    const restore = await post(paths.restoreCredits(lot.lotId), { reason: "r", failedRefundIds: [failed] });
+    expect(restore.status).toBe(409);
+    expect(errorShape(restore.json)).toEqual({ code: "lot_state_changed", reason: undefined, detailTranslated: true });
     expect(fakeStripe.createCalls).toEqual([]);
   });
 });

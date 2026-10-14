@@ -18,15 +18,15 @@
  *    itself when none succeeded; `succeeded/resolved_outside` with
  *    `settled_succeeded_cents` = the succeeded sum; nobody is told; the open
  *    needs_attention is closed.
- * 3. state_mismatch: when approve or retry would book (E2) or send back (E6
- *    under `started`) a lot that is no longer `refunding` — only a hand edit
- *    of the row does that — the disposition turns
- *    `needs_attention/state_mismatch`, `attention_detail` names the state
- *    found, the lot is not touched, one event row is appended, and the
- *    transaction commits instead of throwing.
- * 4. A refund_again that ends on E6 writes `resolved_by_operation_id` = itself
- *    on its own refund (v6 §6.2, §9): the debt stays with the failed refunds
- *    it was sent for, so its own refund is never counted a second time.
+ * 3. state_mismatch: when approve or retry would book (E2) a lot that is no
+ *    longer `refunding` — only a hand edit of the row does that — the
+ *    disposition turns `needs_attention/state_mismatch`, `attention_detail`
+ *    names the state found, the lot is not touched, one event row is
+ *    appended, and the transaction commits instead of throwing. E6 never
+ *    reads the lot (v9 §6.2) and is covered in the `started` suite.
+ *
+ * The unresolved failed refunds are read from the view
+ * `credit_refunds_unresolved_failed` (v9 §5.3), the one definition.
  */
 
 import { describe, it, expect, vi } from "vitest";
@@ -48,13 +48,10 @@ import {
   type NewOperation,
   type OperationEvent,
 } from "@server/modules/credit-refund/operation-transitions.js";
-import * as refundCopyRepo from "@server/modules/credit-refund/refund-copy.repo.js";
-import { pickUnresolvedFailedRefunds } from "@server/modules/credit-refund/unresolved.js";
-import { creditLotRepo } from "@breatic/domain";
 import {
   CREDITS,
   EVENT_NAME,
-  REFUND_AGAIN_CENTS,
+  PAID_CENTS,
   bellsOf,
   copiesOf,
   inTx,
@@ -66,15 +63,15 @@ import {
   reId,
   seedCopy,
   seedOperation,
-  seedRefundAgainOn,
   seedRefundLot,
+  unresolvedViewOf,
   useRefundSuite,
   worldOf,
   type LotState,
   type OpKind,
   type SeededLot,
 } from "./credit-refund-fixtures.js";
-import { expectBooked, expectClosedBy, expectStays, newEventsOn } from "./credit-refund-cells.js";
+import { expectBooked, expectClosedBy, newEventsOn } from "./credit-refund-cells.js";
 
 const suite = useRefundSuite("credit-refund-op-booking-test");
 
@@ -112,19 +109,13 @@ async function resolvers(lot: SeededLot): Promise<Map<string, string | null>> {
 }
 
 /**
- * The unresolved failed refunds of a lot, read the way production reads
- * them: the lot's state and every copy of its payment.
+ * The unresolved failed refunds of a lot, read from the view production
+ * reads (v9 §5.3).
  * @param lot - The lot.
  * @returns Their ids, sorted.
  */
 async function unresolvedIds(lot: SeededLot): Promise<string[]> {
-  return inTx(async (tx) => {
-    const locked = await creditLotRepo.lockLot(lot.lotId, tx);
-    const copies = await refundCopyRepo.listForPayment(lot.paymentId, tx);
-    return pickUnresolvedFailedRefunds(locked!.lifecycle, copies)
-      .map((r) => r.stripeRefundId)
-      .sort();
-  });
+  return (await unresolvedViewOf(suite.sql, lot.lotId)).map((r) => r.stripe_refund_id).sort();
 }
 
 describe("booking answers for the refunds that had already failed (§5.5)", () => {
@@ -196,9 +187,9 @@ describe("booking answers for the refunds that had already failed (§5.5)", () =
     expect(await unresolvedIds(lot)).toEqual([]);
   });
 
-  it("settle with a partial sum: the refund that failed before booking is resolved by the settle and is not offered again", async () => {
-    // The [7] scenario: the approval's refund succeeded, then failed; an
-    // external refund of 400 succeeded; the operator settles on 400 on purpose.
+  it("settle: the refund that failed before booking is resolved by the settle and is not offered again", async () => {
+    // The approval's refund succeeded, then failed; an external refund of
+    // the whole payment succeeded; the operator settles on it.
     const lot = await seedRefundLot(suite.sql, "refunding");
     const approve = await seedOperation(suite.sql, lot, {
       kind: "approve",
@@ -216,15 +207,15 @@ describe("booking answers for the refunds that had already failed (§5.5)", () =
     const external = reId("ext_partial");
     const answered = reId("answered");
     await seedCopy(suite.sql, lot, { id: approveRefund, amountCents: 680, status: "failed", everSucceeded: true, operationId: approve.id });
-    await seedCopy(suite.sql, lot, { id: external, amountCents: 400, status: "succeeded" });
+    await seedCopy(suite.sql, lot, { id: external, amountCents: PAID_CENTS, status: "succeeded" });
     await seedCopy(suite.sql, lot, { id: answered, amountCents: 1, status: "canceled", everSucceeded: true, resolvedBy: earlier.id });
     const before = await worldOf(suite.sql, lot);
 
     const settled = await inTx((tx) =>
-      transitionOperation(tx, null, e1(lot, "settle", { notify: false, confirmedSucceededCents: 400 })),
+      transitionOperation(tx, null, e1(lot, "settle", { notify: false, confirmedSucceededCents: PAID_CENTS })),
     );
 
-    await expectBooked(suite.sql, lot, settled!.id, { refundId: external, settledCents: 400, notify: false, amountCents: 400 });
+    await expectBooked(suite.sql, lot, settled!.id, { refundId: external, settledCents: PAID_CENTS, notify: false, amountCents: PAID_CENTS });
     const by = await resolvers(lot);
     expect(by.get(approveRefund)).toBe(settled!.id);
     expect(by.get(answered)).toBe(earlier.id);
@@ -328,11 +319,11 @@ describe("resolve_outside books a lot that is not yet refunded (§5.3, §5.5)", 
   });
 });
 
-describe("state_mismatch: approve or retry finding a lot that is not refunding (§5.5, §6.1)", () => {
+describe("state_mismatch: approve or retry booking a lot that is not refunding (§5.5, §6.1)", () => {
   interface MismatchCase {
     kind: "approve" | "retry";
     status: "started" | "awaiting_stripe";
-    type: "E2" | "E6";
+    type: "E2";
     lifecycle: Exclude<LotState, "refunding">;
   }
   const cases: MismatchCase[] = [
@@ -341,9 +332,6 @@ describe("state_mismatch: approve or retry finding a lot that is not refunding (
     { kind: "retry", status: "started", type: "E2", lifecycle: "active" },
     { kind: "approve", status: "awaiting_stripe", type: "E2", lifecycle: "refunded" },
     { kind: "retry", status: "awaiting_stripe", type: "E2", lifecycle: "refund_pending" },
-    { kind: "approve", status: "started", type: "E6", lifecycle: "refund_pending" },
-    { kind: "retry", status: "started", type: "E6", lifecycle: "refunded" },
-    { kind: "approve", status: "started", type: "E6", lifecycle: "active" },
   ];
 
   it.each(cases)(
@@ -358,18 +346,10 @@ describe("state_mismatch: approve or retry finding a lot that is not refunding (
         firstCalledHoursAgo: 1,
         attemptCount: 1,
       });
-      await seedCopy(suite.sql, lot, {
-        id: own,
-        amountCents: 1080,
-        status: type === "E2" ? "succeeded" : "failed",
-        operationId: seeded.id,
-      });
+      await seedCopy(suite.sql, lot, { id: own, amountCents: 1080, status: "succeeded", operationId: seeded.id });
       const before = await worldOf(suite.sql, lot);
       const lease = seeded.leaseToken ? { leaseToken: seeded.leaseToken } : {};
-      const event: OperationEvent =
-        type === "E2"
-          ? { type, refund: refundObject(own, "succeeded", 1080, seeded.id), ...lease, actor: "loop" }
-          : { type, refund: refundObject(own, "failed", 1080, seeded.id), ...lease, actor: "loop" };
+      const event: OperationEvent = { type, refund: refundObject(own, "succeeded", 1080, seeded.id), ...lease, actor: "loop" };
 
       const returned = await inTx((tx) => transitionOperation(tx, { id: seeded.id }, event));
 
@@ -387,80 +367,6 @@ describe("state_mismatch: approve or retry finding a lot that is not refunding (
       expect(await newEventsOn(suite.sql, lot, before, seeded.id)).toEqual([
         { event: EVENT_NAME[type], from_status: status, to_status: "needs_attention" },
       ]);
-    },
-  );
-});
-
-describe("a refund_again that ends on E6 answers for its own refund (v6 §6.2, finding [39])", () => {
-  it("started: its refund was seen succeeded and then failed before it was judged → stripe_declined; its own refund resolved by it; only the original stays unresolved", async () => {
-    const lot = await seedRefundLot(suite.sql, "refunded");
-    // Booked short on purpose on a 300 refund that failed later.
-    await seedOperation(suite.sql, lot, { kind: "settle", status: "succeeded", result: "refunded", notify: false, createdSecondsAgo: 900 });
-    const original = reId("original");
-    await seedCopy(suite.sql, lot, { id: original, amountCents: 300, status: "failed", everSucceeded: true });
-    const again = await seedOperation(suite.sql, lot, {
-      kind: "refund_again",
-      status: "started",
-      failedRefundIds: [original],
-      refundAmountCents: 300,
-      notify: true,
-      firstCalledHoursAgo: 1,
-      attemptCount: 1,
-    });
-    // While it was still started, webhooks copied its refund as succeeded,
-    // then as failed (pm_card_refundFail behaviour).
-    const own = reId("again_own");
-    await seedCopy(suite.sql, lot, { id: own, amountCents: 300, status: "failed", everSucceeded: true, operationId: again.id });
-    expect(await unresolvedIds(lot)).toEqual([original, own].sort());
-    const before = await worldOf(suite.sql, lot);
-
-    await inTx((tx) =>
-      transitionOperation(tx, { id: again.id }, {
-        type: "E6",
-        refund: refundObject(own, "failed", 300, again.id),
-        leaseToken: again.leaseToken!,
-        actor: "loop",
-      }),
-    );
-
-    expect(await readOp(suite.sql, again.id)).toMatchObject({
-      status: "needs_attention",
-      attention_reason: "stripe_declined",
-      stripe_refund_id: own,
-    });
-    const by = await resolvers(lot);
-    expect(by.get(own)).toBe(again.id);
-    expect(by.get(original)).toBeNull();
-    expect(await unresolvedIds(lot)).toEqual([original]);
-    const after = await worldOf(suite.sql, lot);
-    expect(after.lot).toEqual(before.lot);
-    expect(after.ledger).toEqual(before.ledger);
-    expect(after.bells).toEqual(before.bells);
-    expect(after.mails).toEqual(before.mails);
-    expect(await newEventsOn(suite.sql, lot, before, again.id)).toEqual([
-      { event: EVENT_NAME.E6, from_status: "started", to_status: "needs_attention" },
-    ]);
-  });
-});
-
-describe("needs_attention × E2 for a refund_again is unchanged (v8 §6.2: no needs_attention without a read that found no refund of its own)", () => {
-  it.each(["attempts_exhausted", "stripe_result_unknown"])(
-    "ended %s, then its own refund is seen succeeded: unchanged — attention stays open, the failed refund stays unanswered, one event row",
-    async (attentionReason) => {
-      const { lot, failed, againId } = await seedRefundAgainOn(suite.sql, { status: "needs_attention", attentionReason });
-      const own = reId("again_own");
-      await seedCopy(suite.sql, lot, { id: own, amountCents: REFUND_AGAIN_CENTS, status: "succeeded", operationId: againId });
-
-      await expectStays(
-        suite.sql,
-        lot,
-        againId,
-        "needs_attention",
-        { type: "E2", refund: refundObject(own, "succeeded", REFUND_AGAIN_CENTS, againId), actor: "reconcile" },
-      );
-
-      expect(await readOp(suite.sql, againId)).toMatchObject({ attention_reason: attentionReason, attention_closed_at: null });
-      expect(await unresolvedIds(lot)).toEqual([failed]);
     },
   );
 });

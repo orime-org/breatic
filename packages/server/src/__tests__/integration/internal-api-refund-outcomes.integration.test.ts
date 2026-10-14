@@ -189,8 +189,8 @@ describe("a booking transaction that fails after the bell row is written leaves 
   });
 });
 
-describe("Stripe's first definite answer is that it did not refund: sent back, Stripe's words kept (acceptance #9)", () => {
-  it("refunds.create answers a canceled refund: 200 sent_back, lot back to refund_pending, credits untouched, nobody told", async () => {
+describe("Stripe's first definite answer is that it did not refund: a person decides, the lot stays refunding, Stripe's words kept (v9 §6.2, acceptance #9)", () => {
+  it("refunds.create answers a canceled refund: 200 needs_attention stripe_declined, lot stays refunding, credits untouched, nobody told", async () => {
     const lot = await lotOnStripe("refund_pending");
     fakeStripe.nextCreate({ kind: "refund", status: "canceled" });
 
@@ -198,8 +198,14 @@ describe("Stripe's first definite answer is that it did not refund: sent back, S
 
     expect(res.status).toBe(200);
     const [created] = fakeStripe.refundsOf(lot.paymentIntentId);
-    expect(res.json).toMatchObject({ kind: "approve", status: "succeeded", result: "sent_back", stripeRefundId: created!.id });
-    await expectNotBooked(lot, "refund_pending");
+    expect(res.json).toMatchObject({
+      kind: "approve",
+      status: "needs_attention",
+      result: null,
+      attentionReason: "stripe_declined",
+      stripeRefundId: created!.id,
+    });
+    await expectNotBooked(lot, "refunding");
     expect(await bellsOf(suite.sql, lot.userId)).toEqual([]);
     expect(await mailsOf(suite.sql, lot.lotId)).toEqual([]);
     expect(await copiesOf(suite.sql, lot.lotId)).toEqual([
@@ -217,14 +223,15 @@ describe("Stripe's first definite answer is that it did not refund: sent back, S
     const res = await post(paths.approve(lot.lotId), APPROVE);
 
     expect(res.status).toBe(200);
-    expect(res.json).toMatchObject({ status: "succeeded", result: "sent_back" });
-    await expectNotBooked(lot, "refund_pending");
+    expect(res.json).toMatchObject({ status: "needs_attention", attentionReason: "stripe_declined", attentionDetail: "synthetic 400" });
+    await expectNotBooked(lot, "refunding");
+    // last_error records the refunds.create error (§5.1).
     expect(await readOp(suite.sql, res.json.id)).toMatchObject({ last_error: "synthetic 400" });
     const declined = (await eventsOf(suite.sql, res.json.id)).at(-1)!;
     expect(declined).toMatchObject({
       event: "refund_declined",
       from_status: "started",
-      to_status: "succeeded",
+      to_status: "needs_attention",
       detail: {
         message: "synthetic 400",
         httpStatus: 400,
@@ -242,8 +249,8 @@ describe("Stripe's first definite answer is that it did not refund: sent back, S
     const res = await post(paths.approve(lot.lotId), APPROVE);
 
     expect(res.status).toBe(200);
-    expect(res.json).toMatchObject({ status: "succeeded", result: "sent_back" });
-    await expectNotBooked(lot, "refund_pending");
+    expect(res.json).toMatchObject({ status: "needs_attention", attentionReason: "stripe_declined" });
+    await expectNotBooked(lot, "refunding");
     const [created] = fakeStripe.refundsOf(lot.paymentIntentId);
     expect((await eventsOf(suite.sql, res.json.id)).at(-1)).toMatchObject({
       event: "refund_declined",
@@ -332,7 +339,7 @@ describe("a create that ends without an answer is retried under the same key unt
 });
 
 describe("the preview lists every refund Stripe holds for the payment (acceptance #12)", () => {
-  it("one succeeded partial and one failed: both listed, the failed one unresolved, approve offers what Stripe can still refund", async () => {
+  it("one succeeded partial and one failed: both listed, the failed one unresolved, approve blocked by refund_failed (v9 §5.2)", async () => {
     const partial = reId("partial");
     const failed = reId("failed");
     const lot = await lotOnStripe("refund_pending", [
@@ -351,7 +358,7 @@ describe("the preview lists every refund Stripe holds for the payment (acceptanc
       ]),
     );
     expect(res.json.unresolvedFailedRefunds).toEqual([expect.objectContaining({ stripeRefundId: failed, amountCents: 200 })]);
-    expect(res.json.action).toMatchObject({ kind: "approve", outcome: "create_refund", amountCents: PAID_CENTS - 300 - 200 });
+    expect(res.json.action).toMatchObject({ kind: "approve", outcome: "blocked", code: "stripe_blocks", reason: "refund_failed" });
   });
 
   it("three refunds — succeeded, failed, pending — all listed with their statuses; approve blocked while one is processing", async () => {

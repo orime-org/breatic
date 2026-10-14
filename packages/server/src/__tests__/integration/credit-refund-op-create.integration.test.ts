@@ -13,15 +13,16 @@
  * | kind                                         | lands in            | lot                         |
  * |----------------------------------------------|---------------------|-----------------------------|
  * | approve                                      | started, with lease | refund_pending → refunding  |
- * | retry, refund_again                          | started, with lease | unchanged                   |
+ * | retry                                        | started, with lease | unchanged                   |
  * | reject                                       | succeeded/rejected  | refund_pending → active     |
  * | settle                                       | succeeded/refunded  | → refunded, booked (§5.5)   |
  * | send_back                                    | succeeded/sent_back | refunding → refund_pending  |
  * | resolve_outside                              | succeeded/resolved  | refunded lot: unchanged, copies resolved; refund_pending / refunding: → refunded, booked (§5.5) |
+ * | restore_credits (v9)                         | succeeded/restored  | refunded / refunding / refund_pending → active, refund_reversed row (§5.3, §6.3 L9) |
  *
- * `notify` is fixed for five kinds (§5.1): approve, retry, reject always
- * true, send_back and resolve_outside always false; settle and refund_again
- * take the request's. A disposition that finishes `succeeded` closes every
+ * `notify` is fixed for six kinds (§5.1): approve, retry, reject,
+ * restore_credits always true, send_back and resolve_outside always false;
+ * settle takes the request's. A disposition that finishes `succeeded` closes every
  * open `needs_attention` of the same lot (E14) and of no other lot.
  *
  * Every other event with no row is impossible, except E14 which has
@@ -78,6 +79,7 @@ import {
   expectBooked,
   expectClosedBy,
   expectImpossible,
+  expectRestored,
   newEventsOn,
   type EventType,
 } from "./credit-refund-cells.js";
@@ -247,54 +249,59 @@ describe("(no row) × E1, retry → started", () => {
   });
 });
 
-describe("(no row) × E1, refund_again → started (§5.2)", () => {
-  it.each([true, false])(
-    "keeps the failed refunds and the amount, notify %s as asked, lot and ledger untouched",
-    async (notify) => {
-      const lot = await seedRefundLot(suite.sql, "refunded");
-      const earlier = await seedOperation(suite.sql, lot, {
-        kind: "approve",
-        status: "succeeded",
-        result: "refunded",
-        createdSecondsAgo: 600,
-      });
-      const failed = reId("failed");
-      await seedCopy(suite.sql, lot, {
-        id: failed,
-        amountCents: 1080,
-        status: "failed",
-        everSucceeded: true,
-        operationId: earlier.id,
-      });
-      const ledgerBefore = await ledgerOf(suite.sql, lot.lotId);
-      const copiesBefore = await copiesOf(suite.sql, lot.lotId);
+describe("(no row) × E1, restore_credits → succeeded/restored (v9 §5.3, §6.3 L9, §8)", () => {
+  it("a refunded lot whose refund failed later: credits back by a refund_reversed row of the booked amount, the failed refund answered for, bell and auto mail, notify fixed true", async () => {
+    const lot = await seedRefundLot(suite.sql, "refunded");
+    const approve = await seedOperation(suite.sql, lot, {
+      kind: "approve",
+      status: "succeeded",
+      result: "refunded",
+      createdSecondsAgo: 600,
+    });
+    const failed = reId("failed_later");
+    await seedCopy(suite.sql, lot, { id: failed, amountCents: 1080, status: "failed", everSucceeded: true, operationId: approve.id });
+    const before = await worldOf(suite.sql, lot);
 
-      const returned = await inTx((tx) =>
-        transitionOperation(
-          tx,
-          null,
-          e1(lot, "refund_again", { failedRefundIds: [failed], refundAmountCents: 1080, notify }),
-        ),
-      );
+    const returned = await inTx((tx) =>
+      transitionOperation(tx, null, e1(lot, "restore_credits", { failedRefundIds: [failed], notify: false })),
+    );
 
-      const op = await readOp(suite.sql, returned!.id);
-      expect(op).toMatchObject({
-        kind: "refund_again",
-        status: "started",
-        notify,
-        failed_refund_ids: [failed],
-        refund_amount_cents: 1080,
-      });
-      expect(op.lease_token).not.toBeNull();
-      expect(await readLot(suite.sql, lot.lotId)).toEqual({
-        lifecycle: "refunded",
-        remaining: "0.000000",
-        attempts: 0,
-      });
-      expect(await ledgerOf(suite.sql, lot.lotId)).toEqual(ledgerBefore);
-      expect(await copiesOf(suite.sql, lot.lotId)).toEqual(copiesBefore);
-    },
-  );
+    expect(returned).toMatchObject({ status: "succeeded", result: "restored" });
+    await expectRestored(suite.sql, lot, returned!.id, { wasBooked: true, resolved: [failed] });
+    expect((await readOp(suite.sql, returned!.id)).failed_refund_ids).toEqual([failed]);
+    expect(await newEventsOn(suite.sql, lot, before, returned!.id)).toEqual([
+      { event: "requested", from_status: null, to_status: "succeeded" },
+    ]);
+  });
+
+  it("a refunding lot Stripe declined (no copy): a zero refund_reversed row, the open needs_attention closed", async () => {
+    const lot = await seedRefundLot(suite.sql, "refunding");
+    const open = await seedOperation(suite.sql, lot, {
+      kind: "approve",
+      status: "needs_attention",
+      attentionReason: "stripe_declined",
+      createdSecondsAgo: 60,
+    });
+    const before = await worldOf(suite.sql, lot);
+
+    const returned = await inTx((tx) => transitionOperation(tx, null, e1(lot, "restore_credits", { failedRefundIds: [] })));
+
+    await expectRestored(suite.sql, lot, returned!.id, { wasBooked: false, resolved: [] });
+    await expectClosedBy(suite.sql, lot, before, open.id, returned!.id);
+  });
+
+  it("a refund_pending lot with an unresolved failed refund: a zero refund_reversed row, the refund answered for, refund_attempts unchanged", async () => {
+    const lot = await seedRefundLot(suite.sql, "refund_pending");
+    await suite.sql`UPDATE credit_lots SET refund_attempts = 1 WHERE id = ${lot.lotId}`;
+    const failed = reId("failed_ext");
+    await seedCopy(suite.sql, lot, { id: failed, amountCents: 1080, status: "failed", everSucceeded: false });
+
+    const returned = await inTx((tx) =>
+      transitionOperation(tx, null, e1(lot, "restore_credits", { failedRefundIds: [failed] })),
+    );
+
+    await expectRestored(suite.sql, lot, returned!.id, { wasBooked: false, resolved: [failed], attempts: 1 });
+  });
 });
 
 describe("(no row) × E1, reject → succeeded/rejected (§5.3, §8)", () => {
@@ -438,24 +445,6 @@ describe("(no row) × E1, settle → succeeded/refunded (§5.3, §5.5)", () => {
     ]);
     expect((await readOp(suite.sql, returned!.id)).settled_succeeded_cents).toBe(1080);
   });
-
-  it("records a partial settlement's succeeded sum, and still takes every credit off", async () => {
-    const lot = await seedRefundLot(suite.sql, "refunding");
-    const partial = reId("partial");
-    await seedCopy(suite.sql, lot, { id: partial, amountCents: 500, status: "succeeded" });
-    await seedCopy(suite.sql, lot, { id: reId("gone"), amountCents: 580, status: "failed" });
-
-    const returned = await inTx((tx) =>
-      transitionOperation(tx, null, e1(lot, "settle", { notify: true, confirmedSucceededCents: 500 })),
-    );
-
-    await expectBooked(suite.sql, lot, returned!.id, {
-      refundId: partial,
-      settledCents: 500,
-      notify: true,
-      amountCents: 500,
-    });
-  });
 });
 
 describe("(no row) × E1, send_back → succeeded/sent_back (§5.3)", () => {
@@ -489,7 +478,7 @@ describe("(no row) × E1, send_back → succeeded/sent_back (§5.3)", () => {
 });
 
 describe("(no row) × E1, resolve_outside → succeeded/resolved_outside (§5.3)", () => {
-  it("marks exactly the named failed refunds resolved, leaves lot and ledger, tells nobody, closes refund_again's attention", async () => {
+  it("marks exactly the named failed refunds resolved, leaves lot and ledger, tells nobody, closes the open attention", async () => {
     const lot = await seedRefundLot(suite.sql, "refunded");
     const approve = await seedOperation(suite.sql, lot, {
       kind: "approve",
@@ -515,11 +504,9 @@ describe("(no row) × E1, resolve_outside → succeeded/resolved_outside (§5.3)
     });
     await seedCopy(suite.sql, lot, { id: untouched, amountCents: 1, status: "succeeded" });
     const declined = await seedOperation(suite.sql, lot, {
-      kind: "refund_again",
+      kind: "retry",
       status: "needs_attention",
       attentionReason: "stripe_declined",
-      failedRefundIds: [failedOwn, canceledExt],
-      refundAmountCents: 1080,
       createdSecondsAgo: 60,
     });
     const before = await worldOf(suite.sql, lot);

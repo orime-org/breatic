@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * What the two refund mails say (inner#1410 §8).
+ * What the three refund mails say (inner#1410 §8; `refund_restored` is v9).
  *
  * Contract this suite specifies, in
  * `packages/server/src/modules/credit-refund/refund-mail-template.ts`:
@@ -18,7 +18,8 @@
  * }
  * export type RefundMailView =
  *   | (RefundMailViewBase & { kind: "refund_completed"; amountCents: number; currency: string; refundedAt: Date })
- *   | (RefundMailViewBase & { kind: "refund_rejected"; requestedAt: Date });
+ *   | (RefundMailViewBase & { kind: "refund_rejected"; requestedAt: Date })
+ *   | (RefundMailViewBase & { kind: "refund_restored"; requestedAt: Date });
  * export function renderRefundMail(view: RefundMailView): Promise<RenderedMail>;
  * ```
  *
@@ -105,6 +106,30 @@ function rejected(over: Partial<Extract<RefundMailView, { kind: "refund_rejected
   };
 }
 
+/** The v9 view of a restore (§8): credits, purchase time, request time, order reference. */
+type RestoredView = Omit<Extract<RefundMailView, { kind: "refund_rejected" }>, "kind"> & { kind: "refund_restored" };
+
+/**
+ * A restored lot's view (v9).
+ * @param over - Fields to change.
+ * @returns The view, typed as the renderer takes it.
+ */
+function restored(over: Partial<RestoredView> = {}): RefundMailView {
+  const view: RestoredView = {
+    kind: "refund_restored",
+    email: "buyer@example.test",
+    locale: "en",
+    timeZone: "UTC",
+    paymentId: PAYMENT_ID,
+    credits: 880,
+    purchasedAt: PURCHASED_AT,
+    requestedAt: REQUESTED_AT,
+    ...over,
+  };
+  // The renderer's union gains this member in v9.
+  return view as unknown as RefundMailView;
+}
+
 /**
  * The amount as the buyer's language writes it.
  * @param cents - Smallest unit.
@@ -176,6 +201,7 @@ function leafPaths(node: unknown, prefix = ""): string[] {
 describe.each([
   ["refund_completed", completed],
   ["refund_rejected", rejected],
+  ["refund_restored", restored],
 ] as const)("%s wears the layout every product mail wears", (_kind, make) => {
   it("has the header, the heading, the footer and a plain-text part, addressed to the buyer", async () => {
     const mail = await renderRefundMail(make());
@@ -237,15 +263,41 @@ describe("refund_rejected: the detail block", () => {
   });
 });
 
-describe("the two mails in five languages", () => {
-  it("the two kinds are two different letters", async () => {
-    const a = await renderRefundMail(completed());
-    const b = await renderRefundMail(rejected());
-    expect(a.subject).not.toBe(b.subject);
+describe("refund_restored: the detail block (v9 §8)", () => {
+  it("names the credits and the order reference", async () => {
+    const mail = await renderRefundMail(restored());
+    for (const body of [mail.text, mail.html]) {
+      expect(body).toContain("880");
+      expect(body).toContain(PAYMENT_ID);
+    }
   });
 
-  it.each(LOCALES.filter((l) => l !== "en"))("writes both kinds in %s, not English", async (locale) => {
-    for (const make of [completed, rejected]) {
+  it("gives the purchase time and the request time in the buyer's own zone", async () => {
+    const mail = await renderRefundMail(restored({ timeZone: "Asia/Shanghai" }));
+    expect(mail.text).toMatch(/9:30/);
+    expect(mail.text).toMatch(/10:45/);
+  });
+
+  it.each(LOCALES)("in %s, its subject and intro come from server.refund_mail.restored", async (locale) => {
+    const wording = refundWording(locale) as { restored?: { subject?: string; intro?: string } } | undefined;
+    expect(wording?.restored?.subject, `${locale} server.refund_mail.restored.subject`).toEqual(expect.any(String));
+    expect(wording?.restored?.intro, `${locale} server.refund_mail.restored.intro`).toEqual(expect.any(String));
+    const mail = await renderRefundMail(restored({ locale }));
+    expect(mail.subject).toBe(wording!.restored!.subject);
+  });
+});
+
+describe("the three mails in five languages", () => {
+  it("the three kinds are three different letters", async () => {
+    const a = await renderRefundMail(completed());
+    const b = await renderRefundMail(rejected());
+    const c = await renderRefundMail(restored());
+    expect(new Set([a.subject, b.subject, c.subject]).size).toBe(3);
+    expect(c.text).not.toBe(b.text);
+  });
+
+  it.each(LOCALES.filter((l) => l !== "en"))("writes every kind in %s, not English", async (locale) => {
+    for (const make of [completed, rejected, restored] as ((over?: { locale?: string }) => RefundMailView)[]) {
       const english = await renderRefundMail(make());
       const mail = await renderRefundMail(make({ locale }));
       expect(mail.subject).not.toBe(english.subject);
@@ -254,7 +306,7 @@ describe("the two mails in five languages", () => {
   });
 
   it.each(LOCALES)("leaves no untranslated key in %s", async (locale) => {
-    for (const make of [completed, rejected]) {
+    for (const make of [completed, rejected, restored] as ((over?: { locale?: string }) => RefundMailView)[]) {
       const mail = await renderRefundMail(make({ locale }));
       for (const body of [mail.subject, mail.text, mail.html]) {
         expect(body).not.toContain("server.refund_mail");
@@ -264,7 +316,7 @@ describe("the two mails in five languages", () => {
   });
 
   it.each(["fr", "de", "pt-BR"])("writes a %s buyer's letter exactly as the English one", async (locale) => {
-    for (const make of [completed, rejected]) {
+    for (const make of [completed, rejected, restored] as ((over?: { locale?: string }) => RefundMailView)[]) {
       const english = await renderRefundMail(make());
       const mail = await renderRefundMail(make({ locale }));
       expect(mail.subject).toBe(english.subject);

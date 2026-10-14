@@ -29,6 +29,7 @@ import fc from "fast-check";
 import {
   classifyCreateAnswer,
   eventForRefund,
+  isStripeRefusal,
   type CreateAnswer,
 } from "@server/modules/credit-refund/stripe-answer.js";
 import type { StripeRefundStatus } from "@server/modules/credit-refund/types.js";
@@ -273,5 +274,121 @@ describe("eventForRefund", () => {
     expect(eventForRefund(status, "settle")).toBe("E6");
     expect(eventForRefund(status, "wait")).toBe("E6");
     expect(eventForRefund(status, "attention")).toBe("E6");
+  });
+});
+
+/**
+ * `isStripeRefusal(detail)` (v9 §5.4): the one definition of "Stripe refused
+ * this refund", read off the detail a create-answer event row stores — the
+ * refund object (`detail.refund`) or Stripe's error fields (`httpStatus`,
+ * `type`, `code`, `shouldRetry`, `message`), as `detailOf` writes them.
+ *
+ * A refusal is a refund object that is failed or canceled, or an HTTP 400
+ * whose code is not rate_limit, lock_timeout or charge_already_refunded,
+ * whose type is not idempotency_error, and without Stripe-Should-Retry: true.
+ */
+describe("isStripeRefusal: every class of create answer", () => {
+  /** A stored refund object, as the event row keeps it. */
+  const refundDetail = (status: StripeRefundStatus) => ({
+    refund: { id: "re_1", status, amount: 1080, currency: "usd", failureReason: null },
+    actor: "request",
+  });
+  /** A stored Stripe error, as the event row keeps it. */
+  const errorDetail = (httpStatus: number, extra: { type?: string; code?: string; shouldRetry?: boolean } = {}) => ({
+    message: `synthetic ${httpStatus}`,
+    httpStatus,
+    ...extra,
+    actor: "loop",
+  });
+
+  it.each<StripeRefundStatus>(["failed", "canceled"])("a %s refund object is a refusal", (status) => {
+    expect(isStripeRefusal(refundDetail(status))).toBe(true);
+  });
+
+  it.each<StripeRefundStatus>(["succeeded", "pending", "requires_action"])(
+    "a %s refund object is not a refusal",
+    (status) => {
+      expect(isStripeRefusal(refundDetail(status))).toBe(false);
+    },
+  );
+
+  it("a plain 400 is a refusal", () => {
+    expect(isStripeRefusal(errorDetail(400, { type: "invalid_request_error" }))).toBe(true);
+  });
+
+  it.each(["charge_disputed", "refund_disputed_payment", "amount_too_large", "charge_already_refunded_other"])(
+    "a 400 with code %s is a refusal",
+    (code) => {
+      expect(isStripeRefusal(errorDetail(400, { type: "invalid_request_error", code }))).toBe(true);
+    },
+  );
+
+  it("the measured 'A previous attempt to refund charge … failed' 400 is a refusal", () => {
+    expect(
+      isStripeRefusal({
+        message: "A previous attempt to refund charge ch_1 to card card_1 failed",
+        httpStatus: 400,
+        type: "invalid_request_error",
+        actor: "request",
+      }),
+    ).toBe(true);
+  });
+
+  it("a 400 with Stripe-Should-Retry false is a refusal", () => {
+    expect(isStripeRefusal(errorDetail(400, { shouldRetry: false }))).toBe(true);
+  });
+
+  it.each(["rate_limit", "lock_timeout", "charge_already_refunded"])("a 400 with code %s is not a refusal", (code) => {
+    expect(isStripeRefusal(errorDetail(400, { code }))).toBe(false);
+  });
+
+  it("a 400 idempotency_error is not a refusal", () => {
+    expect(isStripeRefusal(errorDetail(400, { type: "idempotency_error" }))).toBe(false);
+  });
+
+  it("a 400 with Stripe-Should-Retry true is not a refusal", () => {
+    expect(isStripeRefusal(errorDetail(400, { shouldRetry: true }))).toBe(false);
+  });
+
+  it.each([401, 403, 404])("a %i is not a refusal: Stripe did not execute (stripe_request_invalid, or E17 later)", (status) => {
+    expect(isStripeRefusal(errorDetail(status, { type: "invalid_request_error" }))).toBe(false);
+  });
+
+  it.each([402, 409, 424, 429, 500, 502, 503])("a %i is not a refusal", (status) => {
+    expect(isStripeRefusal(errorDetail(status))).toBe(false);
+  });
+
+  it("a timeout or network error (no HTTP status) is not a refusal", () => {
+    expect(isStripeRefusal({ message: "Request timed out", actor: "loop" })).toBe(false);
+  });
+
+  it("an event row with neither a refund nor an error (a claim, a request) is not a refusal", () => {
+    expect(isStripeRefusal({ actor: "loop" })).toBe(false);
+    expect(isStripeRefusal({ kind: "approve", notify: true, confirmedRefundIds: [], actor: "request" })).toBe(false);
+  });
+
+  it("a late answer's detail (the answer's event name beside its fields) is judged the same way", () => {
+    expect(isStripeRefusal({ answer: "E17", ...errorDetail(400) })).toBe(true);
+    expect(isStripeRefusal({ answer: "E7", ...errorDetail(400, { code: "rate_limit" }) })).toBe(false);
+  });
+
+  it("agrees with the first-request E6 classification on every 400 (§5.4: the E6 400 is the same rule)", () => {
+    fc.assert(
+      fc.property(
+        fc.record({
+          type: fc.option(fc.constantFrom("invalid_request_error", "api_error", "idempotency_error"), { nil: undefined }),
+          code: fc.option(
+            fc.constantFrom("rate_limit", "lock_timeout", "charge_already_refunded", "charge_disputed", "amount_too_large"),
+            { nil: undefined },
+          ),
+          shouldRetry: fc.option(fc.boolean(), { nil: undefined }),
+        }),
+        (e) => {
+          const verdict = classifyCreateAnswer({ kind: "stripe_error", httpStatus: 400, ...e }, FIRST);
+          const isE6 = verdict.kind === "event" && verdict.event === "E6";
+          expect(isStripeRefusal({ message: "x", httpStatus: 400, ...e, actor: "request" })).toBe(isE6);
+        },
+      ),
+    );
   });
 });

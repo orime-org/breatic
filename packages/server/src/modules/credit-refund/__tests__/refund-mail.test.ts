@@ -131,6 +131,27 @@ describe("sending one refund mail", () => {
     expect(recordSend.mock.calls[0]!.slice(0, 2)).toEqual([MAIL_ID, "sent"]);
   });
 
+  it("sends a refund_restored letter (v9 §8) the same way: rendered from its view, recorded sent", async () => {
+    const restored = {
+      kind: "refund_restored",
+      email: "buyer@example.test",
+      locale: "zh-CN",
+      timeZone: "Asia/Shanghai",
+      paymentId: "9f1c7c2e-0000-4000-8000-000000000002",
+      credits: 880,
+      purchasedAt: new Date("2026-09-01T01:30:00.000Z"),
+      requestedAt: new Date("2026-09-03T02:45:00.000Z"),
+    };
+    getMailView.mockResolvedValue(restored);
+    sendMail.mockResolvedValue({ status: "sent" });
+
+    expect(await sendRefundMail(MAIL_ID)).toBe(true);
+
+    expect(renderRefundMail).toHaveBeenCalledWith(restored);
+    expect(sendMail).toHaveBeenCalledTimes(1);
+    expect(recordSend.mock.calls[0]!.slice(0, 2)).toEqual([MAIL_ID, "sent"]);
+  });
+
   it.each([
     ["the console backend", { status: "backend_console", to: "x", subject: "s", html: "h" }],
     ["the disabled backend", { status: "skipped", reason: "backend_disabled" }],

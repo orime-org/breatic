@@ -394,6 +394,26 @@ describe("getMailView: what the letter says, from our own rows (§8)", () => {
     expect(Math.abs((view as { refundedAt: Date }).refundedAt.getTime() - finished!.at.getTime())).toBeLessThan(60_000);
   });
 
+  it("a restored lot (v9 §8): credits, order ref, purchase time and the disposition's request time, kind refund_restored", async () => {
+    const lot = await seedRefundLot(suite.sql, "active");
+    const op = await seedOperation(suite.sql, lot, { kind: "restore_credits", status: "succeeded", result: "restored" });
+    await suite.sql`UPDATE credit_refund_operations SET refund_requested_at = ${REJECTED_ASK} WHERE id = ${op.id}`;
+    const [mail] = await suite.sql<{ id: string }[]>`
+      INSERT INTO refund_mail_outbox (operation_id, kind, origin)
+      VALUES (${op.id}, 'refund_restored', 'auto') RETURNING id
+    `;
+
+    const view = await mailRepo.getMailView(mail!.id);
+
+    expect(view).toMatchObject({
+      kind: "refund_restored",
+      email: await emailOf(lot),
+      paymentId: lot.paymentId,
+      credits: CREDITS,
+    });
+    expect((view as unknown as { requestedAt: Date }).requestedAt.toISOString()).toBe(REJECTED_ASK.toISOString());
+  });
+
   it("a payment with no stored language or zone reads as en and UTC", async () => {
     const { lot, mailId } = await seedMail("pending");
     await setMetadata(lot, {});
@@ -466,8 +486,8 @@ describe("refund_requested_at on the disposition: copied from the lot at E1 (§5
     settle: { state: "refunding", extra: { notify: false, confirmedSucceededCents: PAID_CENTS } },
     send_back: { state: "refunding" },
     retry: { state: "refunding", extra: { confirmedRefundIds: [] } },
-    refund_again: { state: "refunded", extra: { notify: false, failedRefundIds: [], refundAmountCents: 100 } },
     resolve_outside: { state: "refunded", extra: { failedRefundIds: [] } },
+    restore_credits: { state: "refunding", extra: { failedRefundIds: [] } },
   };
 
   it.each(Object.keys(READY) as OpKind[])("%s: the new row carries the lot's request time", async (kind) => {

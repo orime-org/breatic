@@ -369,6 +369,8 @@ describe("authorisation table (§4.3)", () => {
     ["POST", "/internal/v1/credit-lots/00000000-0000-4000-8000-000000000000/refund/delete"],
     ["GET", "/internal/v1/credit-lots/00000000-0000-4000-8000-000000000000/refund/approve"],
     ["POST", "/internal/v2/credit-lots/00000000-0000-4000-8000-000000000000/refund/approve"],
+    // v9 removed refund-again: it is no longer in the table.
+    ["POST", "/internal/v1/credit-lots/00000000-0000-4000-8000-000000000000/refund/refund-again"],
     ["GET", "/api/v1/credits/lots"],
   ] as const)("a correctly signed %s %s that is not in the table is 403 forbidden", async (method, path) => {
     const res = await call(running.baseUrl, path, {
@@ -401,8 +403,8 @@ describe("authorisation table (§4.3)", () => {
         "POST /internal/v1/credit-lots/:lotId/refund/settle",
         "POST /internal/v1/credit-lots/:lotId/refund/send-back",
         "POST /internal/v1/credit-lots/:lotId/refund/retry",
-        "POST /internal/v1/credit-lots/:lotId/refund/refund-again",
         "POST /internal/v1/credit-lots/:lotId/refund/resolved-outside",
+        "POST /internal/v1/credit-lots/:lotId/refund/restore-credits",
         "POST /internal/v1/refund-operations/:operationId/mail/resend",
       ].sort(),
     );
@@ -516,8 +518,8 @@ describe("body contract of every write endpoint (§4.5, §4.6)", () => {
     ["settle", paths.settle(NO_LOT)],
     ["send-back", paths.sendBack(NO_LOT)],
     ["retry", paths.retry(NO_LOT)],
-    ["refund-again", paths.refundAgain(NO_LOT)],
     ["resolved-outside", paths.resolvedOutside(NO_LOT)],
+    ["restore-credits", paths.restoreCredits(NO_LOT)],
     ["mail resend", paths.resend(NO_LOT)],
   ] as const;
 

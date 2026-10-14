@@ -56,7 +56,6 @@ import { fakeStripe } from "./fake-stripe-refunds.js";
 import { call, freshKey, mailsSettled, paths, useInternalApp } from "./internal-api-harness.js";
 import {
   PAID_CENTS,
-  REFUND_AGAIN_CENTS,
   deliverWebhook,
   eventsOf,
   giveIntentlessPaymentsAnIntent,
@@ -65,8 +64,8 @@ import {
   refundEvent,
   refundObject,
   reId,
+  seedCopy,
   seedOperation,
-  seedRefundAgainOn,
   seedRefundLot,
   type LotState,
   type RefundFixture,
@@ -177,7 +176,7 @@ describe("request: rows written while an internal API request runs", () => {
     );
 
     const res = await call(suite.baseUrl, paths.settle(lot.lotId), {
-      body: { reason: "Refunded in full outside.", notify: false, confirmedSucceededCents: PAID_CENTS, acceptPartial: false },
+      body: { reason: "Refunded in full outside.", notify: false, confirmedSucceededCents: PAID_CENTS },
       idempotencyKey: freshKey(),
     });
 
@@ -199,23 +198,24 @@ describe("request: the E1 row carries the request body (v7 §6.2 E1, finding [23
     return requested!.detail;
   }
 
-  it("a settle booked short on purpose: acceptPartial, notify and confirmedSucceededCents", async () => {
-    const outside = reId("partial");
-    const lot = await lotOnStripe("refunding", [refundObject(outside, "succeeded", 300)]);
+  it("a settle: notify and confirmedSucceededCents, and no acceptPartial (v9: gone)", async () => {
+    const outside = reId("full_outside");
+    const lot = await lotOnStripe("refunding", [refundObject(outside, "succeeded", PAID_CENTS)]);
 
     const res = await call(suite.baseUrl, paths.settle(lot.lotId), {
-      body: { reason: "Partial refund agreed.", notify: false, confirmedSucceededCents: 300, acceptPartial: true },
+      body: { reason: "Refunded in full outside.", notify: false, confirmedSucceededCents: PAID_CENTS },
       idempotencyKey: freshKey(),
     });
 
     expect(res.status).toBe(200);
-    expect(await requestedDetail(res.json.id)).toMatchObject({
+    const detail = await requestedDetail(res.json.id);
+    expect(detail).toMatchObject({
       kind: "settle",
       actor: "request",
       notify: false,
-      confirmedSucceededCents: 300,
-      acceptPartial: true,
+      confirmedSucceededCents: PAID_CENTS,
     });
+    expect(detail).not.toHaveProperty("acceptPartial");
   });
 
   it("an approval: confirmedRefundIds", async () => {
@@ -236,25 +236,24 @@ describe("request: the E1 row carries the request body (v7 §6.2 E1, finding [23
     });
   });
 
-  it("a refund_again: failedRefundIds and notify", async () => {
-    const { lot, failed } = await seedRefundAgainOn(suite.sql, {
-      status: "needs_attention",
-      attentionReason: "stripe_declined",
-    });
-    fakeStripe.register(lot.paymentIntentId, PAID_CENTS, [refundObject(failed, "failed", REFUND_AGAIN_CENTS)]);
+  it("a restore_credits (v9): failedRefundIds", async () => {
+    const lot = await seedRefundLot(suite.sql, "refunded");
+    const approve = await seedOperation(suite.sql, lot, { kind: "approve", status: "succeeded", result: "refunded", createdSecondsAgo: 600 });
+    const failed = reId("failed_later");
+    await seedCopy(suite.sql, lot, { id: failed, amountCents: PAID_CENTS, status: "failed", everSucceeded: true, operationId: approve.id });
+    fakeStripe.register(lot.paymentIntentId, PAID_CENTS, [refundObject(failed, "failed", PAID_CENTS, approve.id)]);
 
-    const res = await call(suite.baseUrl, paths.refundAgain(lot.lotId), {
-      body: { reason: "Pay the failed refund again.", failedRefundIds: [failed], notify: true },
+    const res = await call(suite.baseUrl, paths.restoreCredits(lot.lotId), {
+      body: { reason: "Buyer agreed to take the credits back.", failedRefundIds: [failed] },
       idempotencyKey: freshKey(),
     });
 
     expect(res.status).toBe(200);
     await mailsSettled(suite.sql, lot);
     expect(await requestedDetail(res.json.id)).toMatchObject({
-      kind: "refund_again",
+      kind: "restore_credits",
       actor: "request",
       failedRefundIds: [failed],
-      notify: true,
     });
   });
 });

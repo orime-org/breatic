@@ -270,8 +270,8 @@ export const paths = {
   settle: (lotId: string) => `/internal/v1/credit-lots/${lotId}/refund/settle`,
   sendBack: (lotId: string) => `/internal/v1/credit-lots/${lotId}/refund/send-back`,
   retry: (lotId: string) => `/internal/v1/credit-lots/${lotId}/refund/retry`,
-  refundAgain: (lotId: string) => `/internal/v1/credit-lots/${lotId}/refund/refund-again`,
   resolvedOutside: (lotId: string) => `/internal/v1/credit-lots/${lotId}/refund/resolved-outside`,
+  restoreCredits: (lotId: string) => `/internal/v1/credit-lots/${lotId}/refund/restore-credits`,
   resend: (operationId: string) => `/internal/v1/refund-operations/${operationId}/mail/resend`,
 };
 

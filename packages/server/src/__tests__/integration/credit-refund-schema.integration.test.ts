@@ -22,8 +22,13 @@
  *   5. `refund_mail_outbox`: one automatic mail per disposition, resends are
  *      new rows, an idempotency key takes effect once.
  *   6. `credit_refund_reconcile_status` is one row of progress, keyed by name.
- *   7. `notifications.type` takes the two new bell types and nothing else new.
+ *   7. `notifications.type` takes the three new bell types and nothing else new.
  *   8. None of the five tables can be soft-deleted; all carry `created_at`.
+ *   9. v9: `credit_refunds.pending_reason` takes Stripe's three reasons;
+ *      `attention_reason` takes `stripe_request_invalid`; `credit_ledger`
+ *      takes `refund_reversed`; `refund_amount_cents` is gone; the two views
+ *      of §5.3 exist with their columns and a read-only role given default
+ *      privileges can SELECT them.
  *
  * Rejections are asserted by SQLSTATE: 23514 check, 23505 unique, 23503
  * foreign key. Against a database without 0094 every case fails on 42P01 /
@@ -54,10 +59,25 @@ const OP_KINDS = [
   "settle",
   "send_back",
   "retry",
-  "refund_again",
   "resolve_outside",
+  "restore_credits",
 ] as const;
-const OP_RESULTS = ["refunded", "rejected", "sent_back", "resolved_outside"] as const;
+const OP_RESULTS = ["refunded", "rejected", "sent_back", "resolved_outside", "restored"] as const;
+const ATTENTION_REASONS = [
+  "partial_refund",
+  "unexpected_external_refund",
+  "stripe_refund_failed_later",
+  "attempts_exhausted",
+  "stripe_result_unknown",
+  "already_refunded_elsewhere",
+  "stripe_declined",
+  "stripe_request_invalid",
+  "state_mismatch",
+] as const;
+const MAIL_KINDS = ["refund_completed", "refund_rejected", "refund_restored"] as const;
+const BELL_TYPES = ["credit.refund_completed", "credit.refund_rejected", "credit.refund_restored"] as const;
+const PENDING_REASONS = ["processing", "insufficient_funds", "charge_pending"] as const;
+const VIEWS = ["credit_refunds_unresolved_failed", "credit_lot_refund_failures"] as const;
 const STRIPE_REFUND_STATUSES = [
   "pending",
   "requires_action",
@@ -200,6 +220,7 @@ interface OperationRow {
   kind?: string;
   status?: string;
   result?: string | null;
+  attentionReason?: string | null;
   idempotencyKey?: string;
 }
 
@@ -212,12 +233,12 @@ interface OperationRow {
 function insertOperation(lot: Lot, row: OperationRow = {}): postgres.PendingQuery<{ id: string }[]> {
   return sql<{ id: string }[]>`
     INSERT INTO credit_refund_operations
-      (id, lot_id, payment_id, kind, status, result,
+      (id, lot_id, payment_id, kind, status, result, attention_reason,
        idempotency_key, request_hash, requested_by, reason, notify)
     VALUES (
       ${row.id ?? crypto.randomUUID()}, ${lot.lotId}, ${lot.paymentId},
       ${row.kind ?? "approve"}, ${row.status ?? "needs_attention"},
-      ${row.result ?? null},
+      ${row.result ?? null}, ${row.attentionReason ?? null},
       ${row.idempotencyKey ?? crypto.randomUUID()}, ${crypto.randomBytes(32).toString("hex")},
       ${crypto.randomUUID()}, 'schema test', true
     )
@@ -268,24 +289,28 @@ function insertMail(operationId: string, row: MailRow = {}): postgres.PendingQue
  * Insert one refund copy directly.
  * @param lot - The lot and payment the refund belongs to.
  * @param status - Stripe's status, verbatim.
- * @param extra - Optional refund id and the disposition that answered for it.
+ * @param extra - Optional refund id, the disposition that answered for it, and the pending reason.
  * @returns The pending insert.
  */
 function insertRefund(
   lot: Lot,
   status: string,
-  extra: { stripeRefundId?: string; resolvedBy?: string | null; operationId?: string | null } = {},
+  extra: { stripeRefundId?: string; resolvedBy?: string | null; operationId?: string | null; pendingReason?: string | null } = {},
 ): postgres.PendingQuery<postgres.Row[]> {
-  return sql`
-    INSERT INTO credit_refunds
-      (stripe_refund_id, payment_id, lot_id, operation_id, amount_cents, currency,
-       status, ever_succeeded, resolved_by_operation_id)
-    VALUES (
-      ${extra.stripeRefundId ?? `re_${crypto.randomUUID().replaceAll("-", "")}`},
-      ${lot.paymentId}, ${lot.lotId}, ${extra.operationId ?? null}, 1000, 'usd',
-      ${status}, ${status === "succeeded"}, ${extra.resolvedBy ?? null}
-    )
-  `;
+  const row: Record<string, string | number | boolean | null> = {
+    stripe_refund_id: extra.stripeRefundId ?? `re_${crypto.randomUUID().replaceAll("-", "")}`,
+    payment_id: lot.paymentId,
+    lot_id: lot.lotId,
+    operation_id: extra.operationId ?? null,
+    amount_cents: 1000,
+    currency: "usd",
+    status,
+    ever_succeeded: status === "succeeded",
+    resolved_by_operation_id: extra.resolvedBy ?? null,
+  };
+  // Written only when given, so the other cases do not depend on the v9 column.
+  if (extra.pendingReason !== undefined) row.pending_reason = extra.pendingReason;
+  return sql`INSERT INTO credit_refunds ${sql(row)}`;
 }
 
 describe("credit_lots.refund_requested_at", () => {
@@ -348,9 +373,12 @@ describe("credit_refund_operations", () => {
       "confirmed_refund_ids", "confirmed_succeeded_cents", "settled_succeeded_cents",
       "stripe_refund_id", "first_called_at", "attempt_count", "next_attempt_at", "last_error",
       "lease_token", "locked_until", "created_at", "updated_at", "finished_at",
+      "failed_refund_ids", "refund_requested_at",
     ]) {
       expect(cols.has(name), `credit_refund_operations.${name}`).toBe(true);
     }
+    // v9: the product never sends an amount, so the column is gone (§5.2).
+    expect(cols.has("refund_amount_cents"), "credit_refund_operations.refund_amount_cents").toBe(false);
     expect(cols.get("confirmed_refund_ids")?.data_type).toBe("ARRAY");
     expect(await primaryKeyOf("credit_refund_operations")).toEqual(["id"]);
   });
@@ -362,9 +390,9 @@ describe("credit_refund_operations", () => {
     }
   });
 
-  it("refuses a kind outside the seven", async () => {
+  it("refuses a kind outside the seven, refund_again included (v9 removed it)", async () => {
     const lot = await seedLot();
-    for (const kind of ["refund", "cancel", "resend"]) {
+    for (const kind of ["refund", "cancel", "resend", "refund_again"]) {
       expect(await codeOf(insertOperation(lot, { kind })), kind).toBe("23514");
     }
   });
@@ -381,7 +409,7 @@ describe("credit_refund_operations", () => {
     }
   });
 
-  it("has a result exactly when it succeeded, and only one of the four", async () => {
+  it("has a result exactly when it succeeded, and only one of the five", async () => {
     const lot = await seedLot();
     for (const result of OP_RESULTS) {
       expect(
@@ -399,6 +427,13 @@ describe("credit_refund_operations", () => {
         status,
       ).toBe("23514");
     }
+  });
+
+  it("takes each attention reason of §5.4, stripe_request_invalid included, and refuses any other", async () => {
+    for (const attentionReason of ATTENTION_REASONS) {
+      expect(await codeOf(insertOperation(await seedLot(), { attentionReason })), attentionReason).toBeNull();
+    }
+    expect(await codeOf(insertOperation(await seedLot(), { attentionReason: "stripe_unreachable" }))).toBe("23514");
   });
 
   it("lets an idempotency key take effect once, across lots", async () => {
@@ -492,10 +527,11 @@ describe("credit_refunds", () => {
     for (const name of [
       "stripe_refund_id", "payment_id", "lot_id", "operation_id", "amount_cents", "currency",
       "status", "failure_reason", "ever_succeeded", "resolved_by_operation_id",
-      "created_at", "updated_at",
+      "pending_reason", "created_at", "updated_at",
     ]) {
       expect(cols.has(name), `credit_refunds.${name}`).toBe(true);
     }
+    expect(cols.get("pending_reason")?.is_nullable).toBe("YES");
     // A refund made on the Stripe dashboard has no disposition behind it.
     expect(cols.get("operation_id")?.is_nullable).toBe("YES");
     expect(cols.get("resolved_by_operation_id")?.is_nullable).toBe("YES");
@@ -530,6 +566,17 @@ describe("credit_refunds", () => {
     }
   });
 
+  it("takes Stripe's three pending reasons and null, and refuses any other (v9 §5.1)", async () => {
+    const lot = await seedLot();
+    for (const pendingReason of PENDING_REASONS) {
+      expect(await codeOf(insertRefund(lot, "pending", { pendingReason })), pendingReason).toBeNull();
+    }
+    expect(await codeOf(insertRefund(lot, "succeeded", { pendingReason: null }))).toBeNull();
+    for (const pendingReason of ["expired_card", "unknown", ""]) {
+      expect(await codeOf(insertRefund(lot, "pending", { pendingReason })), pendingReason).toBe("23514");
+    }
+  });
+
   it("answers a failed refund only with a disposition that exists", async () => {
     const { operationId, ...lot } = await seedOperation();
     expect(await codeOf(insertRefund(lot, "failed", { resolvedBy: operationId }))).toBeNull();
@@ -555,8 +602,8 @@ describe("refund_mail_outbox", () => {
     }
   });
 
-  it("takes the two kinds and refuses any other", async () => {
-    for (const kind of ["refund_completed", "refund_rejected"]) {
+  it("takes the three kinds and refuses any other", async () => {
+    for (const kind of MAIL_KINDS) {
       const { operationId } = await seedOperation();
       expect(await codeOf(insertMail(operationId, { kind })), kind).toBeNull();
     }
@@ -620,9 +667,9 @@ describe("credit_refund_reconcile_status", () => {
 });
 
 describe("notifications.type (0094)", () => {
-  it("takes the two refund bell types and still refuses one nobody defined", async () => {
+  it("takes the three refund bell types and still refuses one nobody defined", async () => {
     const { userId } = await seedLot();
-    for (const type of ["credit.refund_completed", "credit.refund_rejected"]) {
+    for (const type of BELL_TYPES) {
       expect(
         await codeOf(sql`
           INSERT INTO notifications (user_id, type, payload)
@@ -648,5 +695,70 @@ describe("none of the five new tables can be soft-deleted", () => {
       expect(cols.has("deleted_at"), `${table}.deleted_at`).toBe(false);
       expect(cols.get("created_at")?.is_nullable, `${table}.created_at`).toBe("NO");
     }
+  });
+});
+
+describe("credit_ledger.entry_type (v9 §5.1)", () => {
+  it("takes refund_reversed and still refuses a type nobody defined", async () => {
+    const lot = await seedLot("active");
+    expect(
+      await codeOf(sql`
+        INSERT INTO credit_ledger (payer_user_id, lot_id, entry_type, amount, reference_id)
+        VALUES (${lot.userId}, ${lot.lotId}, 'refund_reversed', 0, ${crypto.randomUUID()})
+      `),
+    ).toBeNull();
+    expect(
+      await codeOf(sql`
+        INSERT INTO credit_ledger (payer_user_id, lot_id, entry_type, amount, reference_id)
+        VALUES (${lot.userId}, ${lot.lotId}, 'refund_restored', 0, ${crypto.randomUUID()})
+      `),
+    ).toBe("23514");
+  });
+});
+
+describe("the two views of §5.3 (v9)", () => {
+  it("both exist, the unresolved one with the columns the back office reads", async () => {
+    const rows = await sql<{ table_name: string }[]>`
+      SELECT table_name FROM information_schema.views
+      WHERE table_schema = 'public' AND table_name IN ${sql([...VIEWS])}
+    `;
+    expect(rows.map((r) => r.table_name).sort()).toEqual([...VIEWS].sort());
+    const cols = await columnsOf("credit_refunds_unresolved_failed");
+    for (const name of ["lot_id", "payment_id", "stripe_refund_id", "amount_cents", "currency", "status"]) {
+      expect(cols.has(name), `credit_refunds_unresolved_failed.${name}`).toBe(true);
+    }
+    expect((await columnsOf("credit_lot_refund_failures")).has("lot_id"), "credit_lot_refund_failures.lot_id").toBe(true);
+  });
+
+  it("a read-only role given default SELECT on tables can read both views as 0094 creates them (ALTER DEFAULT PRIVILEGES covers views, §5.1)", async () => {
+    // Replayed inside a rolled-back transaction: a fresh role stands in for
+    // backoffice_ro, the default privilege the deploy step grants is set,
+    // and 0094's view statements run again so they are created under it.
+    const statements = (await readFile(MIGRATION, "utf8"))
+      .split("--> statement-breakpoint")
+      .filter((s) => /CREATE\s+(OR\s+REPLACE\s+)?VIEW/i.test(s));
+    expect(statements.length, "0094 creates the views").toBeGreaterThanOrEqual(2);
+    const role = `bo_ro_test_${crypto.randomUUID().replaceAll("-", "").slice(0, 12)}`;
+
+    let read: { unresolved: number; failures: number } | null = null;
+    await sql
+      .begin(async (tx) => {
+        await tx.unsafe(`DROP VIEW IF EXISTS credit_lot_refund_failures, credit_refunds_unresolved_failed CASCADE`);
+        await tx.unsafe(`CREATE ROLE ${role} NOLOGIN`);
+        await tx.unsafe(`ALTER DEFAULT PRIVILEGES GRANT SELECT ON TABLES TO ${role}`);
+        for (const statement of statements) await tx.unsafe(statement);
+        await tx.unsafe(`SET LOCAL ROLE ${role}`);
+        const [u] = await tx.unsafe<{ n: number }[]>(`SELECT count(*)::int AS n FROM credit_refunds_unresolved_failed`);
+        const [f] = await tx.unsafe<{ n: number }[]>(`SELECT count(*)::int AS n FROM credit_lot_refund_failures`);
+        read = { unresolved: u!.n, failures: f!.n };
+        throw new Rollback();
+      })
+      .catch((err: unknown) => {
+        if (!(err instanceof Rollback)) throw err;
+      });
+
+    expect(read).not.toBeNull();
+    expect(read!.unresolved).toBeGreaterThanOrEqual(0);
+    expect(read!.failures).toBeGreaterThanOrEqual(0);
   });
 });

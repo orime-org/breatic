@@ -75,6 +75,7 @@ import {
   deliverWebhook,
   ledgerOf,
   mailsOf,
+  pendingReasonsOf,
   readLot,
   readOp,
   refundEvent,
@@ -184,6 +185,29 @@ describe("credit-pack payment: Stripe is read and copied", () => {
     expect((await copiesOf(suite.sql, lot.lotId)).map((c) => [c.stripe_refund_id, c.status, c.ever_succeeded])).toEqual([
       [external, "succeeded", true],
     ]);
+  });
+
+  it("refund.updated to pending with insufficient_funds (Stripe balance short): the approval stays awaiting_stripe, the copy records the reason, nothing booked (v9 §5.2, §5.1)", async () => {
+    const own = reId("held");
+    const lot = await seedRefundLot(suite.sql, "refunding");
+    const { id: opId } = await seedOperation(suite.sql, lot, {
+      kind: "approve",
+      status: "awaiting_stripe",
+      stripeRefundId: own,
+      firstCalledHoursAgo: 1,
+      attemptCount: 1,
+    });
+    await seedCopy(suite.sql, lot, { id: own, amountCents: PAID_CENTS, status: "pending", operationId: opId, pendingReason: "processing" });
+    const held = refundObject(own, "pending", PAID_CENTS, opId, "insufficient_funds");
+    fakeStripe.register(lot.paymentIntentId, PAID_CENTS, [held]);
+
+    const res = await deliver(refundEvent("refund.updated", held, lot.paymentIntentId));
+
+    expect(res.status).toBe(200);
+    expect(await readOp(suite.sql, opId)).toMatchObject({ status: "awaiting_stripe", result: null, attention_reason: null });
+    expect((await pendingReasonsOf(suite.sql, lot.lotId))[own]).toBe("insufficient_funds");
+    expect(await readLot(suite.sql, lot.lotId)).toMatchObject({ lifecycle: "refunding", remaining: `${CREDITS}.000000` });
+    expect((await ledgerOf(suite.sql, lot.lotId)).filter((r) => r.entry_type === "refund")).toEqual([]);
   });
 
   it("refund.updated to succeeded settles the approval waiting on it", async () => {

@@ -21,10 +21,11 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import Stripe from "stripe";
 
 const list = vi.fn();
+const retrieve = vi.fn();
 const getPaymentById = vi.fn();
 
 vi.mock("@server/infra/stripe.js", () => ({
-  getStripeClient: () => ({ refunds: { list } }),
+  getStripeClient: () => ({ refunds: { list }, paymentIntents: { retrieve } }),
 }));
 
 vi.mock("@server/modules/payment/payment.repo.js", () => ({
@@ -32,7 +33,13 @@ vi.mock("@server/modules/payment/payment.repo.js", () => ({
 }));
 
 import { getCreditRefundConfig } from "@server/config/credit-refund.js";
-import { StripeReadError, listRefunds, listRefundsForPayment } from "@server/modules/credit-refund/stripe-refunds.js";
+import {
+  StripeReadError,
+  listRefunds,
+  listRefundsForPayment,
+  readChargeDisputed,
+  toRefundObject,
+} from "@server/modules/credit-refund/stripe-refunds.js";
 
 /** The slice of a pino logger this suite calls. */
 type PinoFactory = (opts: object, stream: Writable) => { error: (obj: object, msg: string) => void };
@@ -64,6 +71,7 @@ function listAnswer(data: unknown[]): Promise<unknown> {
 
 beforeEach(() => {
   list.mockReset();
+  retrieve.mockReset();
   getPaymentById.mockReset();
   list.mockImplementation(() => listAnswer([REFUND]));
 });
@@ -98,6 +106,7 @@ describe("listRefundsForPayment — one rule for a payment without an intent", (
         amount: 1080,
         currency: "usd",
         status: "succeeded",
+        pending_reason: null,
         failure_reason: null,
         metadata: { refund_operation_id: "op_1" },
       },
@@ -157,5 +166,92 @@ describe("StripeReadError — logged under pino's err key (round 10 [3][7])", ()
 
   it("carries Stripe's own text in its message, so a status row's last_error says why the read failed", () => {
     expect(new StripeReadError(forbidden()).message).toBe("Stripe refunds.list failed: synthetic 403");
+  });
+});
+
+/**
+ * `pending_reason` (v9 §5.1, §6.4): Stripe's own reason a refund is still
+ * pending — processing, insufficient_funds or charge_pending. Any other
+ * value is kept as processing (as an unknown status is kept as pending);
+ * a refund that is not pending has none.
+ */
+describe("toRefundObject — pending_reason", () => {
+  /**
+   * A refund as stripe-node returns it.
+   * @param status - Its status.
+   * @param pendingReason - Its pending_reason.
+   * @returns The refund.
+   */
+  const stripeRefund = (status: string, pendingReason: string | null) =>
+    ({ ...REFUND, status, pending_reason: pendingReason }) as unknown as Stripe.Refund;
+
+  it.each(["processing", "insufficient_funds", "charge_pending"])("a pending refund keeps pending_reason %s", (reason) => {
+    expect(toRefundObject(stripeRefund("pending", reason)).pending_reason).toBe(reason);
+  });
+
+  it("a pending refund with a pending_reason Stripe may add later is stored as processing", () => {
+    expect(toRefundObject(stripeRefund("pending", "some_future_reason")).pending_reason).toBe("processing");
+  });
+
+  it.each(["succeeded", "failed", "canceled", "requires_action"])(
+    "a %s refund has no pending_reason, whatever Stripe left on it",
+    (status) => {
+      expect(toRefundObject(stripeRefund(status, "insufficient_funds")).pending_reason).toBeNull();
+    },
+  );
+});
+
+/**
+ * `readChargeDisputed(paymentIntent)` (v9 §5.3): whether Stripe holds the
+ * payment's charge as disputed, read with
+ * `paymentIntents.retrieve(pi, { expand: ["latest_charge"] })`, bounded like
+ * every other read of a disposition. A failed read is a StripeReadError (the
+ * endpoint answers 503); a payment with no PaymentIntent has no charge on
+ * Stripe and reads as not disputed.
+ */
+describe("readChargeDisputed", () => {
+  it("retrieves the intent with its latest charge, bounded like listRefunds", async () => {
+    retrieve.mockResolvedValue({ id: "pi_1", latest_charge: { id: "ch_1", disputed: false } });
+
+    await readChargeDisputed("pi_1");
+
+    expect(retrieve).toHaveBeenCalledTimes(1);
+    expect(retrieve.mock.calls[0]![0]).toBe("pi_1");
+    expect(retrieve.mock.calls[0]![1]).toEqual({ expand: ["latest_charge"] });
+    expect(retrieve.mock.calls[0]![2]).toEqual({
+      timeout: getCreditRefundConfig().stripeCallTimeoutMs,
+      maxNetworkRetries: 0,
+    });
+  });
+
+  it("answers true for a disputed charge", async () => {
+    retrieve.mockResolvedValue({ id: "pi_1", latest_charge: { id: "ch_1", disputed: true } });
+    expect(await readChargeDisputed("pi_1")).toBe(true);
+  });
+
+  it("answers false for an undisputed charge", async () => {
+    retrieve.mockResolvedValue({ id: "pi_1", latest_charge: { id: "ch_1", disputed: false } });
+    expect(await readChargeDisputed("pi_1")).toBe(false);
+  });
+
+  it("answers false when the intent has no charge", async () => {
+    retrieve.mockResolvedValue({ id: "pi_1", latest_charge: null });
+    expect(await readChargeDisputed("pi_1")).toBe(false);
+  });
+
+  it("answers false for a payment with no PaymentIntent, without reading Stripe", async () => {
+    expect(await readChargeDisputed(null)).toBe(false);
+    expect(retrieve).not.toHaveBeenCalled();
+  });
+
+  it("wraps a failed read as a StripeReadError carrying Stripe's failure", async () => {
+    retrieve.mockRejectedValue(
+      new Stripe.errors.StripeAPIError({ type: "api_error", message: "synthetic 500", statusCode: 500 }),
+    );
+
+    const err = await readChargeDisputed("pi_1").catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(StripeReadError);
+    expect((err as StripeReadError).failure).toEqual({ message: "synthetic 500", httpStatus: 500, type: "api_error" });
   });
 });

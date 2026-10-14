@@ -32,6 +32,7 @@ function refund(
     stripeRefundId,
     amountCents,
     status,
+    pendingReason: status === "pending" ? "processing" : null,
     operationId: own ? OP : null,
     everSucceeded: status === "succeeded",
     resolvedByOperationId: null,

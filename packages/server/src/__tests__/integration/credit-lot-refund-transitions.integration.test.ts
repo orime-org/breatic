@@ -14,6 +14,7 @@
  * | `settleRefund`   | `refund_pending`, `refunding` | `refunded`, 0    | one `refund`, `-remaining`, ref = refund |
  * | `sendBackRefund` | `refunding`                   | `refund_pending` | none                                    |
  * | `rejectRefund`   | `refund_pending`, remaining>0 | `active`, +1     | one `refund_rejected`, 0, ref = op      |
+ * | `restoreRefundedCredits` (v9 L9) | `refunded`, `refunding`, `refund_pending` | `active`, attempts unchanged | one `refund_reversed`, ref = op: minus the `refund` row when booked (credits back), else 0 |
  *
  * Every other starting state answers 409 and writes nothing. "Writes
  * nothing" is checked in a transaction that catches the refusal and then
@@ -23,7 +24,7 @@
  * `refund_requested_at` is written by the ask alone (L1) and no later edge
  * touches it.
  *
- * The last block runs random sequences of all five edges on one lot and
+ * The last block runs random sequences of all six edges on one lot and
  * checks the ledger invariants of §9 after every step, against a model of
  * which edge each state allows.
  */
@@ -58,7 +59,7 @@ import fc from "fast-check";
 import postgres from "postgres";
 import { initCore, loadLocales, db, AppError } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
-import type { CreditLotEntity } from "@breatic/shared";
+import { t, type CreditLotEntity } from "@breatic/shared";
 import { creditLotService } from "@breatic/domain";
 
 const PG_DRIVER_LOCAL = "credit-lot-refund-transitions-test-driver";
@@ -305,6 +306,107 @@ describe("the four edges take the caller's transaction (§9)", () => {
     expect(typeof creditLotService.settleRefund).toBe("function");
     expect(typeof creditLotService.sendBackRefund).toBe("function");
     expect(typeof creditLotService.rejectRefund).toBe("function");
+  });
+});
+
+describe("restoreRefundedCredits (v9 L9: refunded | refunding | refund_pending → active, §5.3, §6.3)", () => {
+  it("takes the caller's transaction and the disposition it records, and resolves to the lot", () => {
+    expectTypeOf(creditLotService.restoreRefundedCredits).parameter(1).toEqualTypeOf<DbTx>();
+    expectTypeOf<{ lotId: string; operationId: string }>().toExtend<
+      Parameters<typeof creditLotService.restoreRefundedCredits>[0]
+    >();
+    expectTypeOf(creditLotService.restoreRefundedCredits).returns.resolves.toEqualTypeOf<CreditLotEntity>();
+    expect(typeof creditLotService.restoreRefundedCredits).toBe("function");
+  });
+
+  it("a refunded lot: active again, the booked credits back, one refund_reversed row of minus the refund row naming the disposition, refund_attempts unchanged", async () => {
+    const { userId, lotId } = await seedLotIn("refunded", 37.25);
+    await sql`UPDATE credit_lots SET refund_attempts = 1 WHERE id = ${lotId}`;
+    const ledgerBefore = await ledgerOf(lotId);
+    const operationId = randomUUID();
+
+    const returned = await inTx((tx) => creditLotService.restoreRefundedCredits({ lotId, operationId }, tx));
+
+    expect(returned.lifecycle).toBe("active");
+    const after = await readLot(lotId);
+    expect(after).toMatchObject({ lifecycle: "active", remaining: "37.250000", attempts: 1, designated: null });
+    const ledgerAfter = await ledgerOf(lotId);
+    expect(ledgerAfter.slice(0, ledgerBefore.length)).toEqual(ledgerBefore);
+    expect(ledgerAfter.slice(ledgerBefore.length)).toEqual([
+      { entryType: "refund_reversed", amount: "37.250000", payer: userId, lotId, studioId: null, referenceId: operationId },
+    ]);
+    const [sum] = await sql<{ total: string }[]>`
+      SELECT COALESCE(SUM(amount), 0)::text AS total FROM credit_ledger WHERE lot_id = ${lotId}
+    `;
+    expect(sum!.total).toBe(after.remaining);
+  });
+
+  it("gives back exactly what was booked, not what was bought: a lot spent from before it was refunded", async () => {
+    const { userId, lotId } = await seedLotIn("refunding", 100);
+    await sql`
+      INSERT INTO credit_ledger (payer_user_id, actor_user_id, lot_id, entry_type, amount)
+      VALUES (${userId}, ${userId}, ${lotId}, 'spend', -12.345678)
+    `;
+    await sql`UPDATE credit_lots SET remaining_credits = 87.654322 WHERE id = ${lotId}`;
+    await inTx((tx) => creditLotService.settleRefund({ lotId, refundId: "re_spent_then_refunded" }, tx));
+
+    await inTx((tx) => creditLotService.restoreRefundedCredits({ lotId, operationId: randomUUID() }, tx));
+
+    expect((await readLot(lotId)).remaining).toBe("87.654322");
+    expect((await ledgerOf(lotId)).filter((r) => r.entryType === "refund_reversed").map((r) => r.amount)).toEqual(["87.654322"]);
+  });
+
+  it.each<Lifecycle>(["refunding", "refund_pending"])(
+    "a %s lot (credits never left): active, balance unchanged, one zero refund_reversed row",
+    async (state) => {
+      const { userId, lotId } = await seedLotIn(state, 64);
+      const before = await readLot(lotId);
+      const operationId = randomUUID();
+
+      await inTx((tx) => creditLotService.restoreRefundedCredits({ lotId, operationId }, tx));
+
+      const after = await readLot(lotId);
+      expect(after).toMatchObject({ lifecycle: "active", remaining: "64.000000", attempts: before.attempts, designated: null });
+      expect((await ledgerOf(lotId)).filter((r) => r.entryType === "refund_reversed")).toEqual([
+        { entryType: "refund_reversed", amount: "0.000000", payer: userId, lotId, studioId: null, referenceId: operationId },
+      ]);
+    },
+  );
+
+  it.each<Lifecycle>(["active", "depleted"])("refuses a %s lot with 409 and writes nothing", async (state) => {
+    const { lotId } = await seedLotIn(state);
+    const before = await readLot(lotId);
+    const ledgerBefore = await ledgerOf(lotId);
+
+    const err = await refusedAndCommitted((tx) =>
+      creditLotService.restoreRefundedCredits({ lotId, operationId: randomUUID() }, tx),
+    );
+
+    expectConflict(err);
+    expect(await readLot(lotId)).toEqual(before);
+    expect(await ledgerOf(lotId)).toEqual(ledgerBefore);
+  });
+
+  it("refuses a second restore: the lot is active by then, 409, still one refund_reversed row", async () => {
+    const { lotId } = await seedLotIn("refunded", 10);
+    await inTx((tx) => creditLotService.restoreRefundedCredits({ lotId, operationId: randomUUID() }, tx));
+    const before = await readLot(lotId);
+
+    const err = await refusedAndCommitted((tx) =>
+      creditLotService.restoreRefundedCredits({ lotId, operationId: randomUUID() }, tx),
+    );
+
+    expectConflict(err);
+    expect(await readLot(lotId)).toEqual(before);
+    expect((await ledgerOf(lotId)).filter((r) => r.entryType === "refund_reversed")).toHaveLength(1);
+  });
+
+  it("a restored lot cannot be asked about again: the buyer's ask is 409 with the refund_restored sentence (v9 §5.3)", async () => {
+    const { userId, lotId } = await seedLotIn("refunded", 10);
+    await inTx((tx) => creditLotService.restoreRefundedCredits({ lotId, operationId: randomUUID() }, tx));
+
+    await expect(ask(userId, lotId)).rejects.toMatchObject({ statusCode: 409, message: t("server.credit.refund_restored") });
+    expect((await readLot(lotId)).lifecycle).toBe("active");
   });
 });
 
@@ -653,13 +755,21 @@ describe("rejectRefund (L6: refund_pending → active, §5.3)", () => {
 
 // ── Model test ────────────────────────────────────────────────────────────
 
-type Step = "ask" | "markRefunding" | "settle" | "sendBack" | "reject";
+type Step = "ask" | "markRefunding" | "settle" | "sendBack" | "reject" | "restore";
 
-/** Which edge each state allows, and where it lands. Null means 409. */
-function expectedAfter(lifecycle: Lifecycle, step: Step): Lifecycle | null {
+/**
+ * Which edge each state allows, and where it lands. Null means 409.
+ * @param lifecycle - Where the lot stands.
+ * @param step - The edge.
+ * @param restored - Whether the lot's credits were restored before (v9: no more asks).
+ * @returns The state after, or null.
+ */
+function expectedAfter(lifecycle: Lifecycle, step: Step, restored: boolean): Lifecycle | null {
   switch (step) {
     case "ask":
-      return lifecycle === "active" ? "refund_pending" : null;
+      return lifecycle === "active" && !restored ? "refund_pending" : null;
+    case "restore":
+      return lifecycle === "refund_pending" || lifecycle === "refunding" || lifecycle === "refunded" ? "active" : null;
     case "markRefunding":
       return lifecycle === "refund_pending" ? "refunding" : null;
     case "settle":
@@ -700,6 +810,11 @@ async function runStep(
           creditLotService.rejectRefund({ lotId, operationId: randomUUID() }, tx),
         );
         break;
+      case "restore":
+        await inTx((tx) =>
+          creditLotService.restoreRefundedCredits({ lotId, operationId: randomUUID() }, tx),
+        );
+        break;
     }
     return "ok";
   } catch (err) {
@@ -711,6 +826,7 @@ async function runStep(
 /** The §9 ledger figures for one lot, computed by Postgres. */
 async function ledgerFacts(lotId: string): Promise<{
   refundRows: number;
+  reversedRows: number;
   rejectedRows: number;
   rejectedNonZero: number;
   balanced: boolean;
@@ -719,6 +835,7 @@ async function ledgerFacts(lotId: string): Promise<{
   const [row] = await sql<
     {
       refund_rows: string;
+      reversed_rows: string;
       rejected_rows: string;
       rejected_non_zero: string;
       balanced: boolean;
@@ -728,6 +845,8 @@ async function ledgerFacts(lotId: string): Promise<{
     SELECT
       (SELECT COUNT(*) FROM credit_ledger WHERE lot_id = l.id AND entry_type = 'refund')::text
         AS refund_rows,
+      (SELECT COUNT(*) FROM credit_ledger WHERE lot_id = l.id AND entry_type = 'refund_reversed')::text
+        AS reversed_rows,
       (SELECT COUNT(*) FROM credit_ledger WHERE lot_id = l.id AND entry_type = 'refund_rejected')::text
         AS rejected_rows,
       (SELECT COUNT(*) FROM credit_ledger
@@ -740,6 +859,7 @@ async function ledgerFacts(lotId: string): Promise<{
   `;
   return {
     refundRows: Number(row!.refund_rows),
+    reversedRows: Number(row!.reversed_rows),
     rejectedRows: Number(row!.rejected_rows),
     rejectedNonZero: Number(row!.rejected_non_zero),
     balanced: row!.balanced,
@@ -755,6 +875,7 @@ describe("any sequence of refund edges on one lot (§9 ledger invariants)", () =
       "settle",
       "sendBack",
       "reject",
+      "restore",
     );
     await fc.assert(
       fc.asyncProperty(
@@ -769,13 +890,17 @@ describe("any sequence of refund edges on one lot (§9 ledger invariants)", () =
           let attempts = 0;
           let requestedUs: number | null = null;
           let rowsAtRefund: number | null = null;
+          let booked = false;
+          let restored = false;
 
           for (const [i, step] of steps.entries()) {
-            const expected = expectedAfter(model, step);
+            const expected = expectedAfter(model, step, restored);
             const outcome = await runStep(step, userId, lotId, i);
             expect(outcome).toBe(expected === null ? "refused" : "ok");
             if (expected !== null) {
               if (step === "reject") attempts += 1;
+              if (step === "settle") booked = true;
+              if (step === "restore") restored = true;
               model = expected;
             }
 
@@ -789,7 +914,10 @@ describe("any sequence of refund edges on one lot (§9 ledger invariants)", () =
 
             // At most one refund row per lot.
             expect(facts.refundRows).toBeLessThanOrEqual(1);
-            expect(facts.refundRows).toBe(model === "refunded" ? 1 : 0);
+            expect(facts.refundRows).toBe(booked ? 1 : 0);
+            // At most one refund_reversed row, and no refund_pending after it (v9 §9).
+            expect(facts.reversedRows).toBe(restored ? 1 : 0);
+            if (restored) expect(lot.lifecycle).not.toBe("refund_pending");
             // remaining_credits equals the ledger summed over the lot.
             expect(facts.balanced).toBe(true);
             // A refunded lot holds nothing, and gets no row after booking.

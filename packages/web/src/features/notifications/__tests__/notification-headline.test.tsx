@@ -241,6 +241,14 @@ describe('notificationHeadline', () => {
       template: '{credits} 积分的退款申请未通过',
       sentence: '880 积分的退款申请未通过',
     },
+    {
+      // inner#1410 v9 §8: the buyer took the credits back instead of the money.
+      type: 'credit.refund_restored' as Notification['type'],
+      payload: { lotId: 'lot-3', credits: '880.000000' },
+      key: 'notifications.headline.creditRefundRestored',
+      template: '{credits} 积分已恢复到你的账户',
+      sentence: '880 积分已恢复到你的账户',
+    },
   ])('renders $type as a plain sentence naming the credits', ({ type, payload, key, template, sentence }) => {
     const tt = fakeT({ [key]: template });
     const n = makeNotification({ type, payload });
@@ -350,6 +358,49 @@ describe('notificationHeadline', () => {
     });
   });
 
+  // inner#1410 v9 §8: `credit.refund_restored`, key
+  // `notifications.headline.creditRefundRestored`. The design fixes the en and
+  // zh-CN sentences; zh-TW, ja and ko follow the same structure, so for those
+  // three this asserts the slot, the formatted amount and that the locale has
+  // its own sentence rather than English.
+  describe('credit.refund_restored in every shipped language', () => {
+    const KEY = 'notifications.headline.creditRefundRestored';
+    const EXACT: Partial<Record<LocaleTag, string>> = {
+      en: '{credits} credits are back in your account',
+      'zh-CN': '{credits} 积分已恢复到你的账户',
+    };
+    const restored = (credits: string) =>
+      makeNotification({
+        type: 'credit.refund_restored' as Notification['type'],
+        payload: { lotId: 'lot-3', credits },
+      });
+
+    it.each(LOCALE_CATALOGS)('%s carries the sentence with a {credits} slot', (_tag, catalog) => {
+      const message = readPath(catalog, KEY);
+      expect(typeof message).toBe('string');
+      expect(message as string).toContain('{credits}');
+    });
+
+    it.each(LOCALE_CATALOGS)('%s names a whole amount without its stored decimals', (tag) => {
+      const text = renderInLocale(tag, restored('880.000000'));
+      const exact = EXACT[tag];
+      if (exact !== undefined) {
+        expect(text).toBe(exact.replace('{credits}', '880'));
+      } else {
+        expect(text).toContain('880');
+        expect(text).not.toContain('880.000000');
+        expect(text).not.toBe(EXACT.en!.replace('{credits}', '880'));
+        expect(text).not.toContain('credit.refund_restored');
+      }
+    });
+
+    it.each(LOCALE_CATALOGS)('%s groups a large amount the way the locale groups it', (tag) => {
+      const text = renderInLocale(tag, restored('12500.000000'));
+      expect(text).toContain(formatCredits(12500, tag));
+      expect(text).not.toContain('12500.000000');
+    });
+  });
+
   // A row with no usable `credits` follows membership.ended's missing tier:
   // the slot is filled with an empty string, so the sentence still renders
   // and no stand-in figure ('0', 'NaN', 'undefined') is ever shown as if it
@@ -357,6 +408,7 @@ describe('notificationHeadline', () => {
   describe.each([
     { type: 'credit.refund_completed' as const, key: 'notifications.headline.creditRefundCompleted' },
     { type: 'credit.refund_rejected' as const, key: 'notifications.headline.creditRefundRejected' },
+    { type: 'credit.refund_restored' as Notification['type'], key: 'notifications.headline.creditRefundRestored' },
   ])('$type without a usable credits value', ({ type, key }) => {
     it.each([
       { label: 'missing', payload: { lotId: 'lot-3' } },

@@ -2,16 +2,21 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * A stateful stand-in for the two Stripe calls the refund disposition makes:
- * `refunds.list({ payment_intent })` and `refunds.create(params, options)`
- * (inner#1410 §5.2, §5.3). Not a test file: the internal API suites inject it
- * at `@server/infra/stripe.js`.
+ * A stateful stand-in for the three Stripe calls the refund disposition
+ * makes: `refunds.list({ payment_intent })`, `refunds.create(params, options)`
+ * and `paymentIntents.retrieve(id, { expand: ["latest_charge"] })` (inner#1410
+ * §5.2, §5.3). Not a test file: the internal API suites inject it at
+ * `@server/infra/stripe.js`.
  *
  * It keeps each payment intent's refunds the way Stripe does, so a refund the
  * product creates shows up in the next list, and a create without `amount`
- * refunds "the remaining, unrefunded amount". Every call is recorded with its
- * exact arguments, which is how the suites prove a disposition created at most
- * one refund, under which idempotency key, and for how much.
+ * refunds "the remaining, unrefunded amount". Two Stripe behaviours measured
+ * in test mode are kept (§5.2, §11): once a payment has a `failed` refund,
+ * every later create is refused on its first request with HTTP 400 "A
+ * previous attempt to refund charge … failed"; and the product never sends
+ * `amount` (a create carrying one throws). Every call is recorded with its
+ * exact arguments, which is how the suites prove a disposition created at
+ * most one refund, under which idempotency key.
  *
  * Errors are real stripe-node error objects, so whatever the classifier reads
  * off them (`statusCode`, `code`, `headers`, the raw `type`) is what Stripe's
@@ -32,8 +37,15 @@ export interface FakeRefund {
   payment_intent: string;
   metadata: Record<string, string>;
   failure_reason: string | null;
+  /** Stripe's `pending_reason`: set while `pending`, null otherwise. */
+  pending_reason: string | null;
   created: number;
 }
+
+/** A refund as a suite hands it to {@link FakeStripeRefunds.register}. */
+export type FakeRefundInput = Omit<FakeRefund, "object" | "payment_intent" | "created" | "pending_reason"> & {
+  pending_reason?: string | null;
+};
 
 /** How the next `refunds.create` answers. */
 export type CreateBehavior =
@@ -65,11 +77,12 @@ export function fakeRefundId(label: string): string {
  * @param opts.code - Stripe's error `code`.
  * @param opts.type - Stripe's error `type`; derived from the status when absent.
  * @param opts.shouldRetry - The `Stripe-Should-Retry` header, when sent.
+ * @param opts.message - The error message; a synthetic one when absent.
  * @returns The error object.
  */
 export function stripeError(
   httpStatus: number,
-  opts: { code?: string; type?: string; shouldRetry?: boolean } = {},
+  opts: { code?: string; type?: string; shouldRetry?: boolean; message?: string } = {},
 ): Error {
   const type =
     opts.type ?? (httpStatus >= 500 ? "api_error" : httpStatus === 429 ? "rate_limit_error" : "invalid_request_error");
@@ -82,7 +95,7 @@ export function stripeError(
   };
   return generateV1Error({
     type,
-    message: `synthetic ${httpStatus}`,
+    message: opts.message ?? `synthetic ${httpStatus}`,
     code: opts.code,
     statusCode: httpStatus,
     headers,
@@ -117,6 +130,30 @@ function apiList(answer: Promise<FakeRefund[]>): FakeApiList {
   });
 }
 
+/**
+ * The answer Stripe gave (2026-10-14, test mode) to a create on a payment
+ * whose earlier refund failed: a first-request 400 (inner#1410 §5.2).
+ * @param paymentIntent - `pi_…`.
+ * @returns The error object.
+ */
+export function previousRefundFailedError(paymentIntent: string): Error {
+  return stripeError(400, {
+    message: `A previous attempt to refund charge ch_${paymentIntent.slice(3)} to card card_fake failed`,
+  });
+}
+
+/**
+ * The pending_reason a refund carries in a status: `processing` while
+ * pending unless told otherwise, null in every other status.
+ * @param status - The refund's status.
+ * @param given - The reason the suite asked for, if any.
+ * @returns The value.
+ */
+function pendingReasonFor(status: FakeRefundStatus, given: string | null | undefined): string | null {
+  if (status !== "pending") return null;
+  return given === undefined ? "processing" : given;
+}
+
 /** Stripe, as far as the refund disposition talks to it. */
 export class FakeStripeRefunds {
   private readonly refunds = new Map<string, FakeRefund[]>();
@@ -124,8 +161,12 @@ export class FakeStripeRefunds {
   private readonly script: CreateBehavior[] = [];
   private listFailure: Error | null = null;
   private readonly listFailureFor = new Map<string, Error>();
+  private readonly disputed = new Map<string, boolean>();
+  private retrieveFailure: Error | null = null;
   readonly listCalls: Record<string, unknown>[] = [];
   readonly createCalls: CreateCall[] = [];
+  /** Every `paymentIntents.retrieve`, with its id, params and options. */
+  readonly retrieveCalls: { id: string; params: Record<string, unknown> | undefined; options: Record<string, unknown> | undefined }[] = [];
 
   /** The object handed out as the Stripe client. */
   readonly client = {
@@ -133,6 +174,10 @@ export class FakeStripeRefunds {
       list: (params: Record<string, unknown>) => this.list(params),
       create: (params: Record<string, unknown>, options?: Record<string, unknown>) =>
         this.create(params, options),
+    },
+    paymentIntents: {
+      retrieve: (id: string, params?: Record<string, unknown>, options?: Record<string, unknown>) =>
+        this.retrieve(id, params, options),
     },
   };
 
@@ -143,8 +188,29 @@ export class FakeStripeRefunds {
     this.script.length = 0;
     this.listFailure = null;
     this.listFailureFor.clear();
+    this.disputed.clear();
+    this.retrieveFailure = null;
     this.listCalls.length = 0;
     this.createCalls.length = 0;
+    this.retrieveCalls.length = 0;
+  }
+
+  /**
+   * Set whether the payment's charge is disputed on Stripe (`latest_charge.disputed`).
+   * An intent never set answers false.
+   * @param paymentIntent - `pi_…`.
+   * @param value - The flag.
+   */
+  setDisputed(paymentIntent: string, value: boolean): void {
+    this.disputed.set(paymentIntent, value);
+  }
+
+  /**
+   * Make every `paymentIntents.retrieve` throw until cleared.
+   * @param error - What to throw; null restores normal answers.
+   */
+  failRetrieves(error: Error | null): void {
+    this.retrieveFailure = error;
   }
 
   /**
@@ -153,11 +219,17 @@ export class FakeStripeRefunds {
    * @param paidCents - What was charged.
    * @param existing - Refunds already on it.
    */
-  register(paymentIntent: string, paidCents: number, existing: Omit<FakeRefund, "object" | "payment_intent" | "created">[] = []): void {
+  register(paymentIntent: string, paidCents: number, existing: FakeRefundInput[] = []): void {
     this.paid.set(paymentIntent, paidCents);
     this.refunds.set(
       paymentIntent,
-      existing.map((r) => ({ ...r, object: "refund", payment_intent: paymentIntent, created: 1_700_000_000 })),
+      existing.map((r) => ({
+        ...r,
+        pending_reason: pendingReasonFor(r.status, r.pending_reason),
+        object: "refund",
+        payment_intent: paymentIntent,
+        created: 1_700_000_000,
+      })),
     );
   }
 
@@ -200,11 +272,15 @@ export class FakeStripeRefunds {
    * Change a refund's status on Stripe, as Stripe would later.
    * @param refundId - The refund.
    * @param status - Its new status.
+   * @param pendingReason - Its pending_reason while pending; `processing` when absent.
    */
-  setStatus(refundId: string, status: FakeRefundStatus): void {
+  setStatus(refundId: string, status: FakeRefundStatus, pendingReason?: string | null): void {
     for (const list of this.refunds.values()) {
       const r = list.find((x) => x.id === refundId);
-      if (r) r.status = status;
+      if (r) {
+        r.status = status;
+        r.pending_reason = pendingReasonFor(status, pendingReason);
+      }
     }
   }
 
@@ -226,7 +302,32 @@ export class FakeStripeRefunds {
 
   private async create(params: Record<string, unknown>, options?: Record<string, unknown>): Promise<FakeRefund> {
     this.createCalls.push({ params: structuredClone(params), options: options ? structuredClone(options) : undefined });
+    if (params.amount !== undefined) {
+      throw new Error(`fake Stripe: refunds.create was sent amount ${String(params.amount)}; the product never sends one`);
+    }
     return this.answer(this.script.shift() ?? { kind: "refund", status: "succeeded" }, params);
+  }
+
+  private async retrieve(
+    id: string,
+    params?: Record<string, unknown>,
+    options?: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    this.retrieveCalls.push({
+      id,
+      params: params ? structuredClone(params) : undefined,
+      options: options ? structuredClone(options) : undefined,
+    });
+    if (this.retrieveFailure) throw this.retrieveFailure;
+    const chargeId = `ch_${id.slice(3)}`;
+    const expanded = Array.isArray(params?.expand) && (params.expand as unknown[]).includes("latest_charge");
+    return {
+      id,
+      object: "payment_intent",
+      latest_charge: expanded
+        ? { id: chargeId, object: "charge", disputed: this.disputed.get(id) ?? false }
+        : chargeId,
+    };
   }
 
   private async answer(behavior: CreateBehavior, params: Record<string, unknown>): Promise<FakeRefund> {
@@ -239,18 +340,20 @@ export class FakeStripeRefunds {
     const paid = this.paid.get(pi);
     if (paid === undefined) throw new Error(`fake Stripe: unknown payment intent ${pi}`);
     const list = this.refunds.get(pi) ?? [];
+    if (list.some((r) => r.status === "failed")) throw previousRefundFailedError(pi);
     const held = list
       .filter((r) => r.status === "succeeded" || r.status === "pending" || r.status === "requires_action")
       .reduce((sum, r) => sum + r.amount, 0);
     const refund: FakeRefund = {
       id: fakeRefundId("created"),
       object: "refund",
-      amount: typeof params.amount === "number" ? params.amount : paid - held,
+      amount: paid - held,
       currency: "usd",
       status: behavior.status,
       payment_intent: pi,
       metadata: { ...((params.metadata as Record<string, string> | undefined) ?? {}) },
       failure_reason: behavior.status === "failed" ? "lost_or_stolen_card" : null,
+      pending_reason: pendingReasonFor(behavior.status, undefined),
       created: 1_700_000_100,
     };
     this.refunds.set(pi, [...list, refund]);

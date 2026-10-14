@@ -17,9 +17,11 @@
  * | E17     | impossible                        | impossible                                      |
  *
  * "Unchanged" means no lot, ledger, copy, bell or mail write: a finished
- * refund_again does not resolve again, a finished approve does not book or
- * tell the buyer twice. Each case runs against a finished approve and a
- * finished refund_again (and a rejection, for `succeeded`).
+ * approve does not book or tell the buyer twice, a finished restore does not
+ * give the credits back twice. Each case runs against a finished approve, a
+ * rejection and a restore_credits (v9) for `succeeded`, and against an
+ * approve stopped at partial_refund and one Stripe declined for
+ * `needs_attention`.
  */
 
 import { describe, it, expect, vi } from "vitest";
@@ -65,54 +67,6 @@ interface Terminal {
   make: () => Promise<{ lot: SeededLot; opId: string; refundId: string }>;
 }
 
-/**
- * A refunded lot with a refund_again on it, in the given terminal state.
- * @param status - succeeded/refunded or needs_attention (stripe_declined).
- * @returns The lot, the refund_again, and its refund.
- */
-async function refundAgainIn(
-  status: "succeeded" | "needs_attention",
-): Promise<{ lot: SeededLot; opId: string; refundId: string }> {
-  const lot = await seedRefundLot(suite.sql, "refunded");
-  const approve = await seedOperation(suite.sql, lot, {
-    kind: "approve",
-    status: "succeeded",
-    result: "refunded",
-    createdSecondsAgo: 600,
-  });
-  const failed = reId("failed");
-  await seedCopy(suite.sql, lot, {
-    id: failed,
-    amountCents: 1080,
-    status: "failed",
-    everSucceeded: true,
-    operationId: approve.id,
-  });
-  const refundId = reId("again");
-  const op = await seedOperation(suite.sql, lot, {
-    kind: "refund_again",
-    status,
-    result: status === "succeeded" ? "refunded" : undefined,
-    attentionReason: status === "needs_attention" ? "stripe_declined" : undefined,
-    stripeRefundId: status === "succeeded" ? refundId : null,
-    failedRefundIds: [failed],
-    refundAmountCents: 1080,
-    notify: true,
-  });
-  if (status === "succeeded") {
-    await suite.sql`
-      UPDATE credit_refunds SET resolved_by_operation_id = ${op.id} WHERE stripe_refund_id = ${failed}
-    `;
-    await seedCopy(suite.sql, lot, {
-      id: refundId,
-      amountCents: 1080,
-      status: "succeeded",
-      operationId: op.id,
-    });
-  }
-  return { lot, opId: op.id, refundId };
-}
-
 const TERMINALS: Terminal[] = [
   {
     label: "succeeded approve (refunded lot)",
@@ -149,9 +103,18 @@ const TERMINALS: Terminal[] = [
     },
   },
   {
-    label: "succeeded refund_again (refunded lot)",
+    label: "succeeded restore_credits (active lot)",
     status: "succeeded",
-    make: () => refundAgainIn("succeeded"),
+    make: async () => {
+      const lot = await seedRefundLot(suite.sql, "active");
+      const op = await seedOperation(suite.sql, lot, {
+        kind: "restore_credits",
+        status: "succeeded",
+        result: "restored",
+        notify: true,
+      });
+      return { lot, opId: op.id, refundId: reId("none") };
+    },
   },
   {
     label: "needs_attention approve (refunding lot)",
@@ -175,9 +138,17 @@ const TERMINALS: Terminal[] = [
     },
   },
   {
-    label: "needs_attention refund_again (refunded lot)",
+    label: "needs_attention approve Stripe declined (refunding lot, no refund)",
     status: "needs_attention",
-    make: () => refundAgainIn("needs_attention"),
+    make: async () => {
+      const lot = await seedRefundLot(suite.sql, "refunding");
+      const op = await seedOperation(suite.sql, lot, {
+        kind: "approve",
+        status: "needs_attention",
+        attentionReason: "stripe_declined",
+      });
+      return { lot, opId: op.id, refundId: reId("none") };
+    },
   },
 ];
 

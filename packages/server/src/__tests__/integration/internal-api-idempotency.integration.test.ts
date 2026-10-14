@@ -385,7 +385,7 @@ describe("a NUL character in the body is 422 invalid_body and stores nothing (§
     ["the reason of a rejection", "refund_pending", (l: SeededLot) => paths.reject(l.lotId), { reason: NUL }],
     ["the reason of an approval", "refund_pending", (l: SeededLot) => paths.approve(l.lotId), { reason: NUL, confirmedRefundIds: [] }],
     ["a confirmed refund id", "refund_pending", (l: SeededLot) => paths.approve(l.lotId), { reason: "ok", confirmedRefundIds: [`re_${NUL}`] }],
-    ["a failed refund id to refund again", "refunded", (l: SeededLot) => paths.refundAgain(l.lotId), { reason: "ok", failedRefundIds: [`re_${NUL}`], notify: false }],
+    ["a failed refund id to restore credits for", "refunded", (l: SeededLot) => paths.restoreCredits(l.lotId), { reason: "ok", failedRefundIds: [`re_${NUL}`] }],
     ["a failed refund id resolved outside", "refunded", (l: SeededLot) => paths.resolvedOutside(l.lotId), { reason: "ok", failedRefundIds: [`re_${NUL}`], confirmedSucceededCents: 0 }],
   ] as const)("%s", async (_name, state, pathOf, body) => {
     const lot = await lotOnStripe(state);
