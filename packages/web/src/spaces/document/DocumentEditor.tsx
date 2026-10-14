@@ -186,11 +186,16 @@ export const DocumentEditor = React.memo(function DocumentEditor({
   }, [handle]);
 
   // A block an Agent proposal landed is scrolled to a third of the way down
-  // the viewport and outlined for a moment, so the reader sees what changed.
+  // the viewport and outlined for a moment, so the reader sees what changed --
+  // once per landing: a hidden Space runs its effects again when shown, and
+  // the reader may have scrolled away since.
   const [landedBox, setLandedBox] = React.useState<LandedBox | null>(null);
+  const shown = React.useRef<LandedBlock | null>(null);
   React.useEffect(() => {
+    if (landed === shown.current) return undefined;
     const block = landed === null ? null : body.current?.querySelector<HTMLElement>(`[data-id="${CSS.escape(landed.blockId)}"]`);
     if (viewport === null || block === null || block === undefined) return undefined;
+    shown.current = landed;
     const at = block.getBoundingClientRect();
     const frame = viewport.getBoundingClientRect();
     const top = at.top - frame.top + viewport.scrollTop;

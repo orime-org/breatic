@@ -16,7 +16,8 @@
  * deleted is the tests, not the invariant.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import * as React from 'react';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, renderHook, screen, waitFor } from '@testing-library/react';
 import * as Y from 'yjs';
 import { TextSelection } from '@tiptap/pm/state';
@@ -241,5 +242,30 @@ describe('DocumentEditor', () => {
     await waitFor(() =>
       expect(screen.queryByTestId('doc-link-toolbar')).not.toBeInTheDocument(),
     );
+  });
+
+  it('brings a landed block into view once, not again each time its Space is shown (inner#1509)', async () => {
+    const uploader = { start: () => Promise.resolve(), retry: () => undefined, remove: () => undefined } as unknown as DocumentUploader;
+    const scrollTo = vi.fn();
+    const original = HTMLElement.prototype.scrollTo;
+    HTMLElement.prototype.scrollTo = scrollTo as typeof HTMLElement.prototype.scrollTo;
+    try {
+      const landed = { blockId: handle.editor.document[0]!.id, proposalId: 'p1' };
+      const at = (mode: 'visible' | 'hidden'): React.JSX.Element => (
+        <React.Activity mode={mode}>
+          <DocumentEditor handle={handle} uploader={uploader} landed={landed} />
+        </React.Activity>
+      );
+      const { rerender } = render(at('visible'));
+      await waitFor(() => expect(scrollTo).toHaveBeenCalledTimes(1));
+
+      rerender(at('hidden'));
+      rerender(at('visible'));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(scrollTo).toHaveBeenCalledTimes(1);
+    } finally {
+      HTMLElement.prototype.scrollTo = original;
+    }
   });
 });
