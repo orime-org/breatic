@@ -33,6 +33,7 @@ const STATUS_KEY: Readonly<Record<Exclude<DocumentProposalCardState, 'working' |
   blockGone: 'chat.documentProposal.blockGone',
   readOnly: 'chat.documentProposal.readOnly',
   spaceGone: 'chat.documentProposal.spaceGone',
+  gone: 'chat.documentProposal.gone',
 };
 
 /** How a block with no words is named on the card, by its BlockNote type. */
@@ -202,7 +203,7 @@ export const DocumentProposalCard = React.memo(function DocumentProposalCard({
   });
   const place =
     proposal.kind === 'insert' && proposal.blockId === null ? t('chat.documentProposal.end') : proposal.heading;
-  const held = state !== 'idle' && state !== 'failed';
+  const held = state !== 'idle' && state !== 'failed' && state !== 'gone';
   // A comment hangs on words; a block with none (an empty code block, an
   // image, a table of empty cells) has nowhere to put it.
   const commentable = proposal.kind !== 'insert' && hasWords(proposal.original);

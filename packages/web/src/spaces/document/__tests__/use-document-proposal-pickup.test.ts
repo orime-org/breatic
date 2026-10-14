@@ -140,14 +140,14 @@ describe('a card shown again (inner#1509 review round 1)', () => {
     expect(result.current).toEqual({ blockId: 'b-shown' });
   });
 
-  it('puts back a card whose change was taken back, and writes nothing', async () => {
+  it('says the change is gone when it was taken back, and writes nothing', async () => {
     landedAt.mockReturnValue(null);
     useDocumentProposals.getState().view(proposal('p1'), 'write');
 
     renderHook(() => useDocumentProposalPickup('d1', HANDLE, 'granted', false));
 
     await waitFor(() => {
-      expect(cards().p1).toBeUndefined();
+      expect(cards().p1).toEqual({ state: 'gone', action: 'write' });
     });
     expect(landProposal).not.toHaveBeenCalled();
   });

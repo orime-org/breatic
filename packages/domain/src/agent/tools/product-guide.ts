@@ -986,6 +986,9 @@ export function renderProductGuide(): string {
       "writing fails the buttons can be pressed again, and the card shows the line for what was pressed: " +
       `${quoted(t("chat.documentProposal.failedComment"))} ${quoted(t("chat.documentProposal.failedRewrite"))} ` +
       `${quoted(t("chat.documentProposal.failedInsert"))}`,
+    `Pressing ${quoted(t("chat.documentProposal.view"))} after the change has left the document, undone or ` +
+      "deleted, gives the card its buttons back, which write the proposal again, under " +
+      `${quoted(t("chat.documentProposal.gone"))}`,
     "",
     "## Document spaces",
     "- Markdown at the start of a line: `# `, `## `, `### ` for headings; a number, a full stop and a space " +

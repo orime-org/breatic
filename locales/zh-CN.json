@@ -374,6 +374,7 @@
       "insertAfter": "插在这一段之后",
       "headingBlock": "标题",
       "mediaLeftOut": "{count} 个图片、视频或音频不是这个 Project 里的文件，不会加进去。",
+      "gone": "这条改动已经不在这个 Document 里了。",
       "end": "文末",
       "addComment": "增加批注",
       "apply": "直接修改",

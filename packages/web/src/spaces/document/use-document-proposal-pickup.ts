@@ -9,7 +9,7 @@
  * landed one after another in the order it was pressed, and how each ended is
  * reported back to the card. A "View" press writes nothing: it shows where the
  * change is, or, when the change is no longer in the document (the reader
- * undid it), puts the card back as it first was. Each change to the document
+ * undid it), tells the card the change is gone. Each change to the document
  * is counted, so a card reads again whether its change is still there.
  * Nothing is taken while there is no editor yet or
  * while the connection has not said whether it may write. When the editor
@@ -74,7 +74,7 @@ export function useDocumentProposalPickup(
         const id = next.proposal.proposalId;
         if (next.action === 'view') {
           const at = landedAt(handle, next.proposal);
-          report(id, at === null ? 'reset' : 'applied');
+          report(id, at === null ? 'gone' : 'applied');
           if (at !== null) setLanded({ blockId: at.blockId });
           continue;
         }

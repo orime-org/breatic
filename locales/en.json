@@ -374,6 +374,7 @@
       "insertAfter": "Goes after this passage",
       "headingBlock": "Heading",
       "mediaLeftOut": "{count, plural, one {# image, video or audio is not a file in this project and will not be added.} other {# images, videos or audio are not files in this project and will not be added.}}",
+      "gone": "This change is no longer in the Document.",
       "end": "End",
       "addComment": "Add comment",
       "apply": "Replace",

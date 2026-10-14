@@ -30,13 +30,14 @@ export type DocumentProposalCardState =
   | 'blockGone'
   | 'readOnly'
   | 'spaceGone'
+  | 'gone'
   | 'failed';
 
 /**
- * How a press ended. `reset`: a "View" press found the change no longer in
- * the document, so the card goes back to how it first was.
+ * How a press ended. `gone`: a "View" press found the change no longer in
+ * the document; the card says so and offers its buttons again.
  */
-export type DocumentProposalOutcome = Exclude<DocumentProposalCardState, 'working'> | 'reset';
+export type DocumentProposalOutcome = Exclude<DocumentProposalCardState, 'working'>;
 
 /** A press waiting for its document: landing it, or only showing where it landed. */
 export interface PendingDocumentProposal {
@@ -83,7 +84,7 @@ function ended(
   if (waiting === undefined) return { cards: s.cards, pending: s.pending };
   const { [proposalId]: _gone, ...pending } = s.pending;
   const { [proposalId]: card, ...others } = s.cards;
-  if (outcome === 'reset' || card === undefined) return { cards: others, pending };
+  if (card === undefined) return { cards: others, pending };
   return { cards: { ...others, [proposalId]: { state: outcome, action: card.action } }, pending };
 }
 

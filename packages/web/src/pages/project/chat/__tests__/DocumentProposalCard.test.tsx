@@ -216,6 +216,21 @@ describe('after a press', () => {
     expect((screen.getByRole('button', { name: 'Add comment' }) as HTMLButtonElement).disabled).toBe(true);
   });
 
+  it('says its change is no longer in the Document and offers the press again (review round 3)', async () => {
+    draw(BASE);
+    await userEvent.click(screen.getByRole('button', { name: 'Add comment' }));
+    act(() => {
+      useDocumentProposals.getState().report(BASE.proposalId, 'applied');
+    });
+    await userEvent.click(screen.getByRole('button', { name: 'View in Document' }));
+    act(() => {
+      useDocumentProposals.getState().report(BASE.proposalId, 'gone');
+    });
+
+    expect(screen.getByTestId('document-proposal-status').textContent).toBe('This change is no longer in the Document.');
+    expect((screen.getByRole('button', { name: 'Add comment' }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
   it('says it failed and can be pressed again', async () => {
     draw(BASE);
     await userEvent.click(screen.getByRole('button', { name: 'Add comment' }));

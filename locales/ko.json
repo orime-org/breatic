@@ -374,6 +374,7 @@
       "insertAfter": "이 단락 뒤에 삽입",
       "headingBlock": "제목",
       "mediaLeftOut": "이미지, 동영상, 오디오 {count}개는 이 Project의 파일이 아니어서 추가되지 않습니다.",
+      "gone": "이 변경 사항은 더 이상 이 Document에 없습니다.",
       "end": "맨 끝",
       "addComment": "코멘트 추가",
       "apply": "바꾸기",

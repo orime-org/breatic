@@ -109,12 +109,20 @@ describe('showing a landed card again (inner#1509 review round 1)', () => {
     expect(store().cards.p1).toEqual({ state: 'applied', action: 'comment' });
   });
 
-  it('puts the card back as it first was when told to reset', () => {
+  it('says the change is gone when it is no longer in the document', () => {
     store().view(proposal('p1'), 'write');
-    store().report('p1', 'reset');
+    store().report('p1', 'gone');
 
-    expect(store().cards.p1).toBeUndefined();
+    expect(store().cards.p1).toEqual({ state: 'gone', action: 'write' });
     expect(pendingFor('d1')).toEqual([]);
+  });
+
+  it('can be pressed again once its change is gone', () => {
+    store().view(proposal('p1'), 'write');
+    store().report('p1', 'gone');
+    store().start(proposal('p1'), 'write');
+
+    expect(store().cards.p1).toEqual({ state: 'working', action: 'write' });
   });
 });
 
