@@ -634,7 +634,6 @@ describe("started × E11: attempts used up — the reason follows the create ans
     httpStatus: 400,
     type: "invalid_request_error",
   });
-  const plainTimeout = (): Fail => ({ message: "Request timed out" });
   /** A 400 refusal (E6) under a lease the row no longer holds: a late_answer row. */
   const lateRefusalE6: Step = (c) =>
     inTx((tx) =>
@@ -652,10 +651,10 @@ describe("started × E11: attempts used up — the reason follows the create ans
     );
 
   it.each<[string, string, string, () => Step[]]>([
-    ["a 400 refusal (E17), then a timeout (E7)", "stripe_declined", REFUSAL_LINE, () => [later(refusalWithText()), retryable(plainTimeout())]],
-    ["a timeout (E7), then the refusal only in a late_answer (E6)", "stripe_declined", REFUSAL_LINE, () => [retryable(plainTimeout()), lateRefusalE6]],
-    ["a timeout (E7), then the refusal only in a late_answer (E17)", "stripe_declined", REFUSAL_LINE, () => [retryable(plainTimeout()), late(refusalWithText())]],
-    ["a timeout (E7), then a late_answer with a failed refund object", "stripe_declined", "expired_or_canceled_card", () => [retryable(plainTimeout()), lateFailedRefund]],
+    ["a 400 refusal (E17), then a timeout (E7)", "stripe_declined", REFUSAL_LINE, () => [later(refusalWithText()), retryable(timeout())]],
+    ["a timeout (E7), then the refusal only in a late_answer (E6)", "stripe_declined", REFUSAL_LINE, () => [retryable(timeout()), lateRefusalE6]],
+    ["a timeout (E7), then the refusal only in a late_answer (E17)", "stripe_declined", REFUSAL_LINE, () => [retryable(timeout()), late(refusalWithText())]],
+    ["a timeout (E7), then a late_answer with a failed refund object", "stripe_declined", "expired_or_canceled_card", () => [retryable(timeout()), lateFailedRefund]],
     ["no refusal anywhere: a timeout", "attempts_exhausted", "Request timed out", () => [retryable(timeout())]],
   ])("F15: %s → needs_attention %s, attention_detail %j", async (_name, reason, detail, steps) => {
     for (const make of [startedApprove, startedRetry]) {

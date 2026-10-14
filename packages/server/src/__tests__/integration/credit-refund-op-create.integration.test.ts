@@ -662,3 +662,83 @@ describe("(no row) × E1: a lot's dispositions are ordered as they were inserted
     ).toEqual({ outcome: "create_refund", amountCents: PAID_CENTS });
   });
 });
+
+/**
+ * Run work in one committed transaction that has already been open a while,
+ * so its now() is visibly earlier than the wall clock at the work.
+ * @param run - The work.
+ * @returns What it returned.
+ */
+async function afterAWait<T>(run: (tx: DbTx) => Promise<T>): Promise<T> {
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_sleep(0.05)`);
+    return run(tx);
+  });
+}
+
+/**
+ * How far one disposition's later stamps sit past its own created_at, in
+ * microseconds; null where the stamp is unset.
+ * @param id - The disposition.
+ * @returns finished_at and updated_at minus created_at.
+ */
+async function stampsPastCreated(id: string): Promise<{ finished: number | null; updated: number }> {
+  const [row] = await suite.sql<{ finished: string | null; updated: string }[]>`
+    SELECT (extract(epoch FROM finished_at - created_at) * 1000000)::bigint::text AS finished,
+           (extract(epoch FROM updated_at - created_at) * 1000000)::bigint::text AS updated
+    FROM credit_refund_operations WHERE id = ${id}
+  `;
+  return { finished: row!.finished === null ? null : Number(row!.finished), updated: Number(row!.updated) };
+}
+
+describe("(no row) × E1: a disposition's own stamps never run backwards (G1)", () => {
+  it("a one-shot finished in a transaction that waited first: finished_at and updated_at are not before created_at", async () => {
+    const lot = await seedRefundLot(suite.sql, "refund_pending");
+
+    const returned = await afterAWait((tx) => transitionOperation(tx, null, e1(lot, "reject")));
+
+    const stamps = await stampsPastCreated(returned!.id);
+    expect(stamps.finished!).toBeGreaterThanOrEqual(0);
+    expect(stamps.updated).toBeGreaterThanOrEqual(0);
+  });
+
+  it("an approve inserted after a wait: updated_at is not before created_at, then or after a later event moves it", async () => {
+    const lot = await seedRefundLot(suite.sql, "refund_pending");
+
+    const approve = await afterAWait((tx) => transitionOperation(tx, null, e1(lot, "approve")));
+    expect((await stampsPastCreated(approve!.id)).updated).toBeGreaterThanOrEqual(0);
+
+    await inTx((tx) =>
+      transitionOperation(tx, { id: approve!.id }, {
+        type: "E6",
+        failure: failure(400, { type: "invalid_request_error" }),
+        leaseToken: approve!.leaseToken!,
+        actor: "loop",
+      }),
+    );
+    expect(await readOp(suite.sql, approve!.id)).toMatchObject({ status: "needs_attention" });
+    expect((await stampsPastCreated(approve!.id)).updated).toBeGreaterThanOrEqual(0);
+  });
+
+  it("an open needs_attention closed by a one-shot that waited first: attention_closed_at is not before the closer's created_at", async () => {
+    const lot = await seedRefundLot(suite.sql, "refunding");
+    const open = await seedOperation(suite.sql, lot, {
+      kind: "approve",
+      status: "needs_attention",
+      attentionReason: "stripe_declined",
+      createdSecondsAgo: 60,
+    });
+
+    const closer = await afterAWait((tx) =>
+      transitionOperation(tx, null, e1(lot, "restore_credits", { failedRefundIds: [] })),
+    );
+
+    const [row] = await suite.sql<{ gap: string | null }[]>`
+      SELECT (extract(epoch FROM o.attention_closed_at - c.created_at) * 1000000)::bigint::text AS gap
+      FROM credit_refund_operations o, credit_refund_operations c
+      WHERE o.id = ${open.id} AND c.id = ${closer!.id} AND o.attention_closed_by = c.id
+    `;
+    expect(row).toBeDefined();
+    expect(Number(row!.gap)).toBeGreaterThanOrEqual(0);
+  });
+});

@@ -27,6 +27,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import type { StripeRefundObject } from "@server/modules/credit-refund/types.js";
 
 const TX = { tx: "the caller's transaction" };
 const OP_ID = "33333333-3333-4333-8333-333333333333";
@@ -153,13 +154,14 @@ function copy(id: string, status: string, everSucceeded: boolean) {
   };
 }
 
-/** A stored refund object (event row detail). */
-const refundObject = (status: string) => ({
+/** The live refund object an E6 event carries. */
+const refundObject = (status: "failed" | "canceled"): StripeRefundObject => ({
   id: "re_1",
   amount: 1080,
   currency: "usd",
   status,
   failure_reason: status === "failed" ? "expired_or_canceled_card" : null,
+  pending_reason: null,
   metadata: { refund_operation_id: OP_ID },
 });
 
@@ -255,11 +257,11 @@ describe("E6 under started: needs_attention, the lot unchanged", () => {
     expectLotUntouched();
   });
 
-  it.each(["failed", "canceled"])("a %s refund object whose copy never succeeded is stripe_declined", async (status) => {
+  it.each(["failed", "canceled"] as const)("a %s refund object whose copy never succeeded is stripe_declined", async (status) => {
     given({ copies: [copy("re_1", status, false)] });
     await transitionOperation(TX as never, { id: OP_ID }, {
       type: "E6",
-      refund: refundObject(status) as never,
+      refund: refundObject(status),
       actor: "request",
       leaseToken: LEASE,
     });
@@ -271,7 +273,7 @@ describe("E6 under started: needs_attention, the lot unchanged", () => {
     given({ copies: [copy("re_1", "failed", true)] });
     await transitionOperation(TX as never, { id: OP_ID }, {
       type: "E6",
-      refund: refundObject("failed") as never,
+      refund: refundObject("failed"),
       actor: "loop",
       leaseToken: LEASE,
     });
