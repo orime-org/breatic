@@ -223,6 +223,7 @@ export {
   isReferenceMaterial,
   canvasProposalSchema,
   documentProposalSchema,
+  hasWords,
   occurrences,
   feedsOf,
   layersOf,

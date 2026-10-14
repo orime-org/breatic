@@ -197,7 +197,13 @@ describe("an empty quote (inner#1509 review round 1)", () => {
   });
 
   it("is refused by the check rather than searched for", () => {
-    expect(refusal({ kind: "comment", block: 2, quote: "", body: "x", title: "t" })).toMatch(/not in block 2/i);
+    expect(refusal({ kind: "comment", block: 2, quote: "", body: "x", title: "t" })).toMatch(/hangs on words/i);
+  });
+});
+
+describe("a quote with no words (inner#1509 review round 3)", () => {
+  it("is refused, saying a comment hangs on words", () => {
+    expect(refusal({ kind: "comment", block: 4, quote: "\n", body: "x", title: "t" })).toMatch(/hangs on words/i);
   });
 });
 

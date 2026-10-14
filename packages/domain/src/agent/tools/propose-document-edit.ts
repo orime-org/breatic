@@ -19,7 +19,7 @@ import { randomUUID } from "node:crypto";
 import { tool, type Tool } from "ai";
 import { z } from "zod";
 
-import { occurrences, type ChatDocumentBlock, type DocumentProposal, type ProposalRefused } from "@breatic/shared";
+import { hasWords, occurrences, type ChatDocumentBlock, type DocumentProposal, type ProposalRefused } from "@breatic/shared";
 
 /** The document a proposal goes to: the one the reader has open this turn. */
 export interface OpenDocument {
@@ -95,6 +95,9 @@ function headingAbove(blocks: readonly ChatDocumentBlock[], index: number): stri
  * @throws {never} Never.
  */
 function quoteProblem(quote: string, n: number, text: string): string | null {
+  if (!hasWords(quote)) {
+    return "A comment hangs on words, and line breaks alone mark none; quote words from the block, or propose a rewrite or an insert.";
+  }
   const times = occurrences(text, quote);
   if (times === 1) return null;
   if (times > 1) {

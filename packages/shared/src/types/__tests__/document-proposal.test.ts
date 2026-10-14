@@ -8,7 +8,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { documentProposalSchema, occurrences } from "@shared/types/document-proposal.js";
+import { documentProposalSchema, hasWords, occurrences } from "@shared/types/document-proposal.js";
 
 const COMMENT = {
   proposalId: "33333333-3333-4333-8333-333333333333",
@@ -65,5 +65,12 @@ describe("occurrences", () => {
   it("finds nothing for an empty quote", () => {
     expect(occurrences("abc", "")).toBe(0);
     expect(occurrences("", "")).toBe(0);
+  });
+});
+
+describe("hasWords (inner#1509 review round 3)", () => {
+  it("is false for text that is empty or only line breaks, and true once anything else is there", () => {
+    expect([hasWords(""), hasWords("\n"), hasWords("\n\n\n")]).toEqual([false, false, false]);
+    expect([hasWords("a"), hasWords(" "), hasWords("\nb\n")]).toEqual([true, true, true]);
   });
 });

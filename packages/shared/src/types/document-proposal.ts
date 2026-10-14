@@ -64,3 +64,17 @@ export function occurrences(text: string, quote: string): number {
   for (let at = text.indexOf(quote); at !== -1; at = text.indexOf(quote, at + 1)) count += 1;
   return count;
 }
+
+/**
+ * Whether a block's plain text holds any words. Line breaks alone are the
+ * separators between a block's parts (paragraphs, table cells), and a block
+ * with nothing else -- an image, an empty code block, a table of empty cells
+ * -- has no text a comment can hang on. The tool refuses a quote with none,
+ * and the card offers no comment on a passage with none.
+ * @param text - A block's plain text, or a quote from it.
+ * @returns True when it holds something other than line breaks.
+ * @throws {never} Never.
+ */
+export function hasWords(text: string): boolean {
+  return /[^\n]/.test(text);
+}

@@ -136,7 +136,7 @@ export {
 } from "@shared/types/canvas-proposal.js";
 
 export type { DocumentProposal } from "@shared/types/document-proposal.js";
-export { documentProposalSchema, occurrences } from "@shared/types/document-proposal.js";
+export { documentProposalSchema, hasWords, occurrences } from "@shared/types/document-proposal.js";
 
 export type {
   ReferenceRefusal,

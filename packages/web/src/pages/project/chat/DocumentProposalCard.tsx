@@ -5,7 +5,7 @@ import { diffWords, type Change } from 'diff';
 import * as React from 'react';
 import { useParams } from 'react-router-dom';
 
-import { getLocale, type DocumentProposal } from '@breatic/shared';
+import { getLocale, hasWords, type DocumentProposal } from '@breatic/shared';
 
 import { Button } from '@web/components/ui/button';
 import { docName } from '@web/data/yjs/manager';
@@ -143,7 +143,7 @@ export const DocumentProposalCard = React.memo(function DocumentProposalCard({
   const held = state !== 'idle' && state !== 'failed';
   // A comment hangs on words; a block with none (an empty code block, an
   // image with no caption, a table of empty cells) has nowhere to put it.
-  const commentable = proposal.kind !== 'insert' && /[^\n]/.test(proposal.original);
+  const commentable = proposal.kind !== 'insert' && hasWords(proposal.original);
 
   let status: string | null = null;
   if (state === 'applied' && action !== undefined) status = t(APPLIED_KEY[pressKind(proposal, action)]);
