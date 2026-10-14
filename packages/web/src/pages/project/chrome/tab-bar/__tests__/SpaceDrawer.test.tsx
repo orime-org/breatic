@@ -407,12 +407,12 @@ describe('SpaceDrawer', () => {
     expect(time?.className.split(/\s+/)).toContain('text-2xs');
   });
 
-  it('draws the type icon on its own, at the name line\'s height', async () => {
+  it('draws the type icon on its own, centred on the row', async () => {
     const user = userEvent.setup();
     setup();
     await user.click(screen.getByTestId('space-drawer-trigger'));
     const icon = screen.getByTestId('space-drawer-type-icon-sp-1');
-    expect(icon.getAttribute('class')?.split(/\s+/)).toEqual(expect.arrayContaining(['h-5', 'w-5']));
+    expect(icon.getAttribute('class')?.split(/\s+/)).toEqual(expect.arrayContaining(['h-5', 'w-5', 'self-center']));
     expect(icon.parentElement?.className ?? '').not.toMatch(/bg-muted/);
   });
 

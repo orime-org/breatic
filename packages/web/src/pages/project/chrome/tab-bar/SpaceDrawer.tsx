@@ -380,10 +380,10 @@ function SpaceDrawerRow({
 
   const body = (
     <>
-      {/* The type icon on its own, as tall as the name line it sits beside
-          (user 2026-10-14). */}
+      {/* The type icon on its own, centred on the row's two lines (user
+          2026-10-14). */}
       <Icon
-        className='h-5 w-5 shrink-0 text-muted-foreground'
+        className='h-5 w-5 shrink-0 self-center text-muted-foreground'
         data-testid={`space-drawer-type-icon-${space.id}`}
         aria-hidden='true'
       />
