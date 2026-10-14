@@ -234,8 +234,8 @@ export async function getMailView(mailId: string): Promise<RefundMailView | null
     purchasedAt: row.purchasedAt,
   };
   const requestedAt = row.requestedAt ?? row.operationCreatedAt;
-  if (row.kind === "refund_rejected") return { ...base, kind: "refund_rejected", requestedAt };
-  if (row.kind === "refund_restored") return { ...base, kind: "refund_restored", requestedAt };
+  const kind = row.kind as RefundMailKind;
+  if (kind !== "refund_completed") return { ...base, kind, requestedAt };
   return {
     ...base,
     kind: "refund_completed",

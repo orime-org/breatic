@@ -115,7 +115,7 @@ export function eventForRefund(
 /** A stored create answer: an event row's detail, of which these fields decide whether Stripe refused. */
 export interface StoredCreateAnswer {
   [key: string]: unknown;
-  refund?: { status?: string } | undefined;
+  refund?: { status?: string; failureReason?: string | null } | undefined;
   httpStatus?: number | undefined;
   type?: string | undefined;
   code?: string | undefined;
@@ -123,7 +123,7 @@ export interface StoredCreateAnswer {
 }
 
 /** 400 codes that are not a refusal: retry it, or the money is already back. */
-const NOT_REFUSAL_CODES = new Set(["rate_limit", "lock_timeout", "charge_already_refunded"]);
+const NOT_REFUSAL_CODES = new Set([...RETRY_CODES, "charge_already_refunded"]);
 
 /**
  * Whether a stored create answer is Stripe refusing this refund (§5.4, the

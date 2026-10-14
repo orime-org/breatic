@@ -19,11 +19,11 @@ export type UnresolvedFailedRefund = Pick<RefundCopy, "stripeRefundId" | "amount
 /**
  * The lot's failed or canceled refunds no disposition has answered for, read
  * in the caller's transaction so it sees the copies just written.
- * @param tx - The caller's transaction.
  * @param lotId - The lot.
+ * @param tx - The caller's transaction.
  * @returns The refunds, by refund id.
  */
-export async function pickUnresolvedFailedRefunds(tx: DbTx, lotId: string): Promise<UnresolvedFailedRefund[]> {
+export async function listUnresolvedFailed(lotId: string, tx: DbTx): Promise<UnresolvedFailedRefund[]> {
   const rows = await tx.execute<{ stripe_refund_id: string; amount_cents: string; status: StripeRefundStatus }>(sql`
     SELECT stripe_refund_id, amount_cents::text AS amount_cents, status
     FROM credit_refunds_unresolved_failed WHERE lot_id = ${lotId}
@@ -34,13 +34,13 @@ export async function pickUnresolvedFailedRefunds(tx: DbTx, lotId: string): Prom
 
 /**
  * Whether the lot is on the "refund failed" list.
- * @param tx - The caller's transaction.
  * @param lotId - The lot.
+ * @param tx - The caller's transaction.
  * @returns True when the view lists it.
  */
-export async function isOnRefundFailureList(tx: DbTx, lotId: string): Promise<boolean> {
-  const rows = await tx.execute<{ n: number }>(sql`
-    SELECT count(*)::int AS n FROM credit_lot_refund_failures WHERE lot_id = ${lotId}
+export async function isOnRefundFailureList(lotId: string, tx: DbTx): Promise<boolean> {
+  const rows = await tx.execute<{ listed: boolean }>(sql`
+    SELECT EXISTS (SELECT 1 FROM credit_lot_refund_failures WHERE lot_id = ${lotId}) AS listed
   `);
-  return (rows[0]?.n ?? 0) > 0;
+  return rows[0]?.listed === true;
 }

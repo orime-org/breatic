@@ -31,14 +31,14 @@ import {
 import { executeRefund } from "@server/modules/credit-refund/executor.js";
 import { lookupKey, type Replay } from "@server/modules/credit-refund/idempotency.js";
 import * as operationRepo from "@server/modules/credit-refund/operation.repo.js";
-import type { CreditRefundOperation } from "@server/modules/credit-refund/operation.repo.js";
+import type { CreditRefundOperation, OperationResult } from "@server/modules/credit-refund/operation.repo.js";
 import {
   transitionOperation,
   type NewOperation,
 } from "@server/modules/credit-refund/operation-transitions.js";
 import * as refundCopyRepo from "@server/modules/credit-refund/refund-copy.repo.js";
 import * as refundMailRepo from "@server/modules/credit-refund/refund-mail.repo.js";
-import type { RefundMail } from "@server/modules/credit-refund/refund-mail.repo.js";
+import type { RefundMail, RefundMailKind } from "@server/modules/credit-refund/refund-mail.repo.js";
 import { sendOperationMailsLater, sendRefundMailLater } from "@server/modules/credit-refund/refund-mail.js";
 import { applyRefundSnapshot } from "@server/modules/credit-refund/refund-snapshot.js";
 import { RefundRefusal, stripeUnavailable } from "@server/modules/credit-refund/refusal.js";
@@ -47,10 +47,10 @@ import {
   listRefundsForPayment,
   readChargeDisputed,
 } from "@server/modules/credit-refund/stripe-refunds.js";
-import type { RefundCopy, StripeRefundObject } from "@server/modules/credit-refund/types.js";
+import type { RefundCopy } from "@server/modules/credit-refund/types.js";
 import {
   isOnRefundFailureList,
-  pickUnresolvedFailedRefunds,
+  listUnresolvedFailed,
   type UnresolvedFailedRefund,
 } from "@server/modules/credit-refund/unresolved.repo.js";
 import * as paymentRepo from "@server/modules/payment/payment.repo.js";
@@ -129,7 +129,7 @@ export async function preview(lotId: string): Promise<Record<string, unknown>> {
         amountCents: r.amountCents,
       })),
       disputed,
-      refundFailure: await isOnRefundFailureList(tx, lot.id),
+      refundFailure: await isOnRefundFailureList(lot.id, tx),
       restoreCredits: restoreAnswerOf(judged.restoreCredits),
       action:
         judged.kind === null
@@ -253,17 +253,7 @@ async function decide(
  * @throws {RefundRefusal} 503 `stripe_unavailable` when the read fails.
  */
 async function copyStripe(payment: PaymentEntity): Promise<void> {
-  let listed: StripeRefundObject[];
-  try {
-    listed = await listRefundsForPayment(payment.id);
-  } catch (err) {
-    if (err instanceof StripeReadError) {
-      // err keeps the stack and cause chain; failure keeps Stripe's own error type.
-      logger.error({ err, failure: err.failure, paymentId: payment.id }, "credit_refund_stripe_read_failed");
-      throw stripeUnavailable();
-    }
-    throw err;
-  }
+  const listed = await readStripe(payment, () => listRefundsForPayment(payment.id));
   const rejudged = await db.transaction((tx) => applyRefundSnapshot(tx, payment.id, listed, "request"));
   if (rejudged !== null) sendOperationMailsLater(rejudged);
 }
@@ -275,11 +265,23 @@ async function copyStripe(payment: PaymentEntity): Promise<void> {
  * @returns True when disputed.
  * @throws {RefundRefusal} 503 `stripe_unavailable` when the read fails.
  */
-async function readDisputed(payment: PaymentEntity): Promise<boolean> {
+function readDisputed(payment: PaymentEntity): Promise<boolean> {
+  return readStripe(payment, () => readChargeDisputed(payment.stripePaymentIntentId));
+}
+
+/**
+ * One read of the payment on Stripe; a failed read is logged and answers 503.
+ * @param payment - The payment the read is about.
+ * @param read - The read.
+ * @returns What the read returned.
+ * @throws {RefundRefusal} 503 `stripe_unavailable` when the read fails.
+ */
+async function readStripe<T>(payment: PaymentEntity, read: () => Promise<T>): Promise<T> {
   try {
-    return await readChargeDisputed(payment.stripePaymentIntentId);
+    return await read();
   } catch (err) {
     if (err instanceof StripeReadError) {
+      // err keeps the stack and cause chain; failure keeps Stripe's own error type.
       logger.error({ err, failure: err.failure, paymentId: payment.id }, "credit_refund_stripe_read_failed");
       throw stripeUnavailable();
     }
@@ -288,6 +290,13 @@ async function readDisputed(payment: PaymentEntity): Promise<boolean> {
 }
 
 // ── mail resend ──────────────────────────────────────────────────────
+
+/** The buyer mail each finished result sends (§6.5); the rest send none. */
+const MAIL_KIND: Partial<Record<OperationResult, RefundMailKind>> = {
+  refunded: "refund_completed",
+  rejected: "refund_rejected",
+  restored: "refund_restored",
+};
 
 /**
  * Queue another buyer email for a finished disposition (§6.5).
@@ -307,17 +316,8 @@ export async function resendMail(
     const locked = await lockAndRecheck(tx, { ...req, lotId: op.lotId });
     if ("replay" in locked) return { replay: locked.replay };
     const current = (await operationRepo.lockById(op.id, tx))!;
-    const kind =
-      current.status !== "succeeded"
-        ? null
-        : current.result === "refunded"
-          ? "refund_completed"
-          : current.result === "rejected"
-            ? "refund_rejected"
-            : current.result === "restored"
-              ? "refund_restored"
-              : null;
-    if (kind === null) throw new RefundRefusal(409, "mail_not_resendable", "mail_not_resendable");
+    const kind = current.status === "succeeded" && current.result !== null ? MAIL_KIND[current.result] : undefined;
+    if (kind === undefined) throw new RefundRefusal(409, "mail_not_resendable", "mail_not_resendable");
     const mail = await refundMailRepo.insertResend(
       {
         operationId: op.id,
@@ -389,7 +389,7 @@ async function readFacts(tx: DbTx, lot: CreditLotEntity, payment: PaymentEntity)
     currency: paid.currency,
     ops: await operationRepo.listForLot(lot.id, tx),
     refunds: await refundCopyRepo.listForPayment(payment.id, tx),
-    unresolved: await pickUnresolvedFailedRefunds(tx, lot.id),
+    unresolved: await listUnresolvedFailed(lot.id, tx),
   };
 }
 

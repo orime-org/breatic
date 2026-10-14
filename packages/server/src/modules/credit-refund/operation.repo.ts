@@ -182,6 +182,9 @@ export async function insert(values: OperationInsert, tx: DbTx): Promise<CreditR
       lockedUntil: lease ? fromNow(lease.seconds) : null,
       nextAttemptAt: lease ? sql`now()` : null,
       finishedAt: finished ? sql`now()` : null,
+      // The wall clock at insert, taken under the lot lock: a transaction that
+      // began earlier but inserted later still sorts after (§9).
+      createdAt: sql`clock_timestamp()`,
     })
     .returning();
   return toEntity(rows[0]!);

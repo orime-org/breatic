@@ -20,7 +20,7 @@ import {
 import * as refundCopyRepo from "@server/modules/credit-refund/refund-copy.repo.js";
 import { canSettle } from "@server/modules/credit-refund/settle-rule.js";
 import { eventForRefund } from "@server/modules/credit-refund/stripe-answer.js";
-import type { StripePendingReason, StripeRefundObject } from "@server/modules/credit-refund/types.js";
+import type { StripeRefundObject } from "@server/modules/credit-refund/types.js";
 import * as paymentRepo from "@server/modules/payment/payment.repo.js";
 
 export type { StripeRefundObject } from "@server/modules/credit-refund/types.js";
@@ -69,7 +69,7 @@ export async function applyRefundSnapshot(
         currency: r.currency,
         status: r.status,
         failureReason: r.failure_reason ?? null,
-        pendingReason: (r.pending_reason ?? null) as StripePendingReason | null,
+        pendingReason: r.pending_reason ?? null,
       },
       tx,
     );

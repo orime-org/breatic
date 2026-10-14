@@ -221,7 +221,7 @@ WHERE r."status" IN ('failed', 'canceled')
 -- failed refund, or a lot still refunding, with nothing in flight, that
 -- Stripe once refused outright (no refund object, so no copy to point at).
 CREATE VIEW "credit_lot_refund_failures" AS
-SELECT DISTINCT u."lot_id" FROM "credit_refunds_unresolved_failed" u
+SELECT u."lot_id" FROM "credit_refunds_unresolved_failed" u
 UNION
 SELECT l."id" AS "lot_id"
 FROM "credit_lots" l

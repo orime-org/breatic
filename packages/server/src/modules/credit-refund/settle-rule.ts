@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * When a succeeded refund may be booked (inner#1410 §5.4), and the sums of a
- * payment's refund copies every rule reads.
+ * When a succeeded refund may be booked (inner#1410 §5.4), and the succeeded
+ * sum of a payment's refund copies every rule reads.
  */
 
 import type { RefundCopy } from "@server/modules/credit-refund/types.js";
@@ -20,7 +20,7 @@ export type SettleVerdict =
  * @returns The sum in cents.
  */
 export function succeededCents(refunds: readonly Pick<RefundCopy, "status" | "amountCents">[]): number {
-  return sumOf(refunds, "succeeded");
+  return refunds.reduce((sum, r) => (r.status === "succeeded" ? sum + r.amountCents : sum), 0);
 }
 
 /**
@@ -47,19 +47,6 @@ export function hasUnconfirmedExternal(
   return refunds.some(
     (r) => r.status === "succeeded" && r.operationId === null && !confirmed.has(r.stripeRefundId),
   );
-}
-
-/**
- * The sum of the refunds in one status.
- * @param refunds - The copies.
- * @param status - The status to add up.
- * @returns The sum in cents.
- */
-function sumOf(
-  refunds: readonly Pick<RefundCopy, "status" | "amountCents">[],
-  status: RefundCopy["status"],
-): number {
-  return refunds.reduce((sum, r) => (r.status === status ? sum + r.amountCents : sum), 0);
 }
 
 /**

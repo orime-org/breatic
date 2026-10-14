@@ -30,7 +30,7 @@ import * as refundCopyRepo from "@server/modules/credit-refund/refund-copy.repo.
 import * as refundMailRepo from "@server/modules/credit-refund/refund-mail.repo.js";
 import { succeededCents } from "@server/modules/credit-refund/settle-rule.js";
 import { isStripeRefusal, type StoredCreateAnswer } from "@server/modules/credit-refund/stripe-answer.js";
-import { pickUnresolvedFailedRefunds } from "@server/modules/credit-refund/unresolved.repo.js";
+import { listUnresolvedFailed } from "@server/modules/credit-refund/unresolved.repo.js";
 import type { RefundCopy, StripeRefundObject } from "@server/modules/credit-refund/types.js";
 import * as notificationService from "@server/modules/notification/notification.service.js";
 import * as paymentRepo from "@server/modules/payment/payment.repo.js";
@@ -373,7 +373,7 @@ function finishingValues(
  * @returns Their Stripe ids.
  */
 async function unresolvedIds(tx: DbTx, lotId: string): Promise<string[]> {
-  return (await pickUnresolvedFailedRefunds(tx, lotId)).map((c) => c.stripeRefundId);
+  return (await listUnresolvedFailed(lotId, tx)).map((c) => c.stripeRefundId);
 }
 
 /**
@@ -433,8 +433,10 @@ async function fromStarted(ctx: Ctx, event: OperationEvent): Promise<CreditRefun
       return toAttention(ctx, event, "already_refunded_elsewhere", firstLine(event.failure.message), {
         lastError: event.failure.message,
       });
-    case "E11":
-      return toAttention(ctx, event, await exhaustedReason(ctx), lastErrorLine(ctx));
+    case "E11": {
+      const { reason, detail } = await exhaustedAttention(ctx);
+      return toAttention(ctx, event, reason, detail);
+    }
     case "E12":
       return move(ctx, EVENT_NAME.E12, {}, detailOf(event));
     case "E13":
@@ -743,23 +745,18 @@ function detailOf(event: OperationEvent): Record<string, unknown> {
   };
 }
 
-/** Statuses of a first request Stripe never executed: our key, permission or payment id (§5.4). */
-const REQUEST_INVALID_STATUSES = new Set([401, 403, 404]);
-
 /**
  * Why a person is needed after E6 under `started` (§5.4, §6.2): a refund that
- * had succeeded before it failed came back; a first request Stripe never
- * executed is ours to fix; anything else is Stripe refusing the refund.
+ * had succeeded before it failed came back; Stripe refusing the refund, by
+ * the one definition E11 reads too; otherwise a first request Stripe never
+ * executed (401, 403, 404), which is ours to fix.
  * @param ctx - The locked row.
  * @param event - The E6 event.
  * @returns The attention reason.
  */
 async function declineReason(ctx: Ctx, event: Made<DeclineEvent>): Promise<AttentionReason> {
   if (await everSucceeded(ctx, event)) return "stripe_refund_failed_later";
-  if (!event.refund && event.failure?.httpStatus !== undefined && REQUEST_INVALID_STATUSES.has(event.failure.httpStatus)) {
-    return "stripe_request_invalid";
-  }
-  return "stripe_declined";
+  return isStripeRefusal(detailOf(event)) ? "stripe_declined" : "stripe_request_invalid";
 }
 
 /** The event rows that carry a create answer in `detail`; E16 keeps it in `detail.createFailure`. */
@@ -773,21 +770,35 @@ const CREATE_ANSWER_EVENTS = new Set([
 ]);
 
 /**
- * Why a person is needed when the attempts ran out (§5.4, §6.2 E11): Stripe
- * refused if any create answer this disposition received was a refusal.
+ * Why a person is needed when the attempts ran out, and what they read first
+ * (§5.1, §5.4, §6.2 E11): Stripe refused if any create answer this
+ * disposition received was a refusal, and that answer's own text is shown;
+ * otherwise the last error recorded.
  * @param ctx - The locked row.
- * @returns stripe_declined or attempts_exhausted.
+ * @returns stripe_declined with the refusal's text, or attempts_exhausted.
  */
-async function exhaustedReason(ctx: Ctx): Promise<AttentionReason> {
+async function exhaustedAttention(ctx: Ctx): Promise<{ reason: AttentionReason; detail: string | null }> {
   const events = await operationRepo.listEvents(ctx.row.id, ctx.tx);
-  const refused = events.some((e) => {
+  for (const e of events) {
     // A late answer carries the event it would have been under `answer`.
     const readFailed = e.event === EVENT_NAME.E16 || (e.event === "late_answer" && e.detail["answer"] === "E16");
-    if (!readFailed && CREATE_ANSWER_EVENTS.has(e.event) && isStripeRefusal(e.detail)) return true;
-    const created = readFailed ? e.detail["createFailure"] : undefined;
-    return typeof created === "object" && created !== null && isStripeRefusal(created as StoredCreateAnswer);
-  });
-  return refused ? "stripe_declined" : "attempts_exhausted";
+    const created = readFailed ? e.detail["createFailure"] : CREATE_ANSWER_EVENTS.has(e.event) ? e.detail : undefined;
+    if (typeof created === "object" && created !== null && isStripeRefusal(created as StoredCreateAnswer)) {
+      return { reason: "stripe_declined", detail: refusalText(created as StoredCreateAnswer) };
+    }
+  }
+  return { reason: "attempts_exhausted", detail: lastErrorLine(ctx) };
+}
+
+/**
+ * What a person reads first about a stored refusal, as {@link declineDetail}
+ * reads it off the live answer.
+ * @param answer - The refusal as an event row keeps it.
+ * @returns Stripe's failure reason, or the first line of its error.
+ */
+function refusalText(answer: StoredCreateAnswer): string | null {
+  if (answer.refund) return answer.refund.failureReason ?? answer.refund.status ?? null;
+  return typeof answer["message"] === "string" ? firstLine(answer["message"]) : null;
 }
 
 /**

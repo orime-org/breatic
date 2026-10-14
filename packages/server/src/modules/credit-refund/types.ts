@@ -23,11 +23,8 @@ export interface StripeRefundObject {
   currency: string;
   status: StripeRefundStatus;
   failure_reason?: string | null;
-  /**
-   * Why it is still pending; null in every other status (§5.1). Read from
-   * Stripe through `toRefundObject`, which keeps it to the three documented values.
-   */
-  pending_reason?: string | null;
+  /** Why it is still pending; null in every other status (§5.1). */
+  pending_reason?: StripePendingReason | null;
   metadata?: Record<string, string> | null;
 }
 

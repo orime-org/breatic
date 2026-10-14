@@ -243,7 +243,7 @@
       "lot_state_changed": "The credit pack is not in the state this operation starts from.",
       "operation_in_progress": "Another refund disposition of this credit pack is still in progress.",
       "request_in_progress": "The request with this Idempotency-Key is still running.",
-      "stripe_blocks": "Stripe's current refunds for this payment do not allow this operation.",
+      "stripe_blocks": "Stripe's current state for this payment, or this credit pack's refund history, does not allow this operation; see reason.",
       "mail_not_resendable": "Only a disposition that finished refunded, rejected or restored has a buyer email to resend.",
       "idempotency_key_reused": "This Idempotency-Key was already used for a different request.",
       "invalid_body": "The request body or path does not match what this endpoint accepts.",

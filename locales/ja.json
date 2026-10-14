@@ -243,7 +243,7 @@
       "lot_state_changed": "クレジットパックがこの操作の開始条件の状態にありません。",
       "operation_in_progress": "このクレジットパックの別の返金処理がまだ進行中です。",
       "request_in_progress": "この Idempotency-Key のリクエストはまだ実行中です。",
-      "stripe_blocks": "この支払いに対する Stripe 上の現在の返金状況では、この操作はできません。",
+      "stripe_blocks": "この支払いの Stripe 上の現在の状態、またはこのクレジットパックの返金処理の履歴により、この操作はできません。理由は reason を参照してください。",
       "mail_not_resendable": "返金済み・却下・クレジット復元で完了した処理だけが、購入者へのメールを再送できます。",
       "idempotency_key_reused": "この Idempotency-Key は別のリクエストですでに使われています。",
       "invalid_body": "リクエスト本文またはパスがこのエンドポイントの要件に合いません。",

@@ -49,8 +49,7 @@ const DETAILS = "margin:16px 0 0;font-size:14px;line-height:1.7;";
 export function renderRefundMail(view: RefundMailView): Promise<RenderedMail> {
   // A language we do not write in reads as English, numbers and dates too.
   const locale = getAvailableLocales().includes(view.locale) ? view.locale : "en";
-  const section =
-    view.kind === "refund_completed" ? "completed" : view.kind === "refund_rejected" ? "rejected" : "restored";
+  const section = view.kind.slice("refund_".length);
 
   const details = runWithLocale(locale, () => {
     /**
