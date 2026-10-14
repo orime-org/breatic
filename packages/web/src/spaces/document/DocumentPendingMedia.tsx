@@ -9,7 +9,8 @@
  * and a drag moves it like any media block; its buttons sit in the media
  * chrome, which the node view hands their events to and the body hides while
  * the editor is not editable. The frame names the file only when the block
- * has no caption: a pasted canvas or Agent item carries its name there.
+ * has no caption: a pasted canvas or Agent item carries its name there, shown
+ * under the frame as a media block's caption is.
  */
 
 import { Loader2 } from 'lucide-react';
@@ -18,6 +19,7 @@ import * as React from 'react';
 import { Button } from '@web/components/ui/button';
 import { useTranslation } from '@web/i18n/use-translation';
 import { cn } from '@web/lib/utils';
+import { MediaCaption } from '@web/spaces/document/DocumentMediaBlock';
 import type { PendingStatus } from '@web/spaces/document/document-pending-status';
 
 /** Props of {@link DocumentPendingMedia}. */
@@ -75,54 +77,57 @@ export const DocumentPendingMedia = React.memo(function DocumentPendingMedia({
   const named = caption === '';
 
   return (
-    <div
-      data-testid='doc-pending-media'
-      data-media-frame=''
-      data-status={status.kind}
-      className={cn(
-        FRAME,
-        failed
-          ? 'border-solid border-status-error-border text-status-error-foreground'
-          : 'border-dashed border-border text-muted-foreground',
-      )}
-    >
-      {spinning && <Loader2 className='h-3.5 w-3.5 shrink-0 animate-spin' aria-hidden />}
-      {named && (
-        <span data-testid='doc-pending-name' className={cn('min-w-0 flex-1 truncate', !failed && 'text-foreground')}>
-          {name}
-        </span>
-      )}
-      <span className={cn('min-w-0 truncate', named ? 'shrink' : 'flex-1 text-right')}>{said}</span>
-      {percent !== null && (
-        <span
-          data-testid='doc-pending-progress'
-          role='progressbar'
-          aria-valuenow={percent}
-          aria-valuemin={0}
-          aria-valuemax={100}
-          className='h-1 w-24 shrink-0 overflow-hidden rounded-full bg-muted'
-        >
-          <span className='block h-full bg-foreground/60' style={{ width: `${percent}%` }} />
-        </span>
-      )}
-      {(retry || remove) && (
+    <div>
+      <div
+        data-testid='doc-pending-media'
+        data-media-frame=''
+        data-status={status.kind}
+        className={cn(
+          FRAME,
+          failed
+            ? 'border-solid border-status-error-border text-status-error-foreground'
+            : 'border-dashed border-border text-muted-foreground',
+        )}
+      >
+        {spinning && <Loader2 className='h-3.5 w-3.5 shrink-0 animate-spin' aria-hidden />}
+        {named && (
+          <span data-testid='doc-pending-name' className={cn('min-w-0 flex-1 truncate', !failed && 'text-foreground')}>
+            {name}
+          </span>
+        )}
+        <span className={cn('min-w-0 truncate', named ? 'shrink' : 'flex-1 text-right')}>{said}</span>
+        {percent !== null && (
+          <span
+            data-testid='doc-pending-progress'
+            role='progressbar'
+            aria-valuenow={percent}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            className='h-1 w-24 shrink-0 overflow-hidden rounded-full bg-muted'
+          >
+            <span className='block h-full bg-foreground/60' style={{ width: `${percent}%` }} />
+          </span>
+        )}
+        {(retry || remove) && (
         // The body hides `[data-media-chrome]` while it is not editable
         // (`index.css`); a display class on that element would win over it.
-        <span data-media-chrome='' className='shrink-0'>
-          <span className='flex gap-1.5'>
-            {retry && (
-              <Button variant='outline' size='compact' className='text-foreground' data-testid='doc-pending-retry' onClick={onRetry}>
-                {t('spaces.document.media.retry')}
-              </Button>
-            )}
-            {remove && (
-              <Button variant='outline' size='compact' className='text-foreground' data-testid='doc-pending-remove' onClick={onRemove}>
-                {t('spaces.document.media.remove')}
-              </Button>
-            )}
+          <span data-media-chrome='' className='shrink-0'>
+            <span className='flex gap-1.5'>
+              {retry && (
+                <Button variant='outline' size='compact' className='text-foreground' data-testid='doc-pending-retry' onClick={onRetry}>
+                  {t('spaces.document.media.retry')}
+                </Button>
+              )}
+              {remove && (
+                <Button variant='outline' size='compact' className='text-foreground' data-testid='doc-pending-remove' onClick={onRemove}>
+                  {t('spaces.document.media.remove')}
+                </Button>
+              )}
+            </span>
           </span>
-        </span>
-      )}
+        )}
+      </div>
+      {caption !== '' && <MediaCaption caption={caption} />}
     </div>
   );
 });

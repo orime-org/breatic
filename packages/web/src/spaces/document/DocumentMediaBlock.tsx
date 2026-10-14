@@ -109,6 +109,20 @@ export const MEDIA_CHROME = '[data-media-chrome]';
 /** What the block shows: the picture or the player. */
 export const MEDIA_FRAME = '[data-media-frame]';
 
+/**
+ * A media block's caption, under the media.
+ * @param props - The caption.
+ * @param props.caption - Its words.
+ * @returns The line.
+ */
+export function MediaCaption({ caption }: { readonly caption: string }): React.JSX.Element {
+  return (
+    <div data-testid='doc-media-caption' className='mt-1.5 text-center text-sm text-muted-foreground'>
+      {caption}
+    </div>
+  );
+}
+
 /** The caption field, open while the caption is edited. */
 export const MEDIA_CAPTION_INPUT = '[data-testid="doc-media-caption-input"]';
 
@@ -603,12 +617,7 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
             }}
           />
         ) : props.caption !== '' ? (
-          <div
-            data-testid='doc-media-caption'
-            className='mt-1.5 text-center text-sm text-muted-foreground'
-          >
-            {props.caption}
-          </div>
+          <MediaCaption caption={props.caption} />
         ) : null}
       </div>
       {type === 'image' && (
