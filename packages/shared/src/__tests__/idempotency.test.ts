@@ -41,7 +41,13 @@ describe("idempotency scopes", () => {
 
   it("keep a credits checkout as long as its Stripe session lives", () => {
     expect(IDEMPOTENCY_RETENTION_SECONDS["credits-checkout"]).toBe(2 * 60 * 60);
-    expect(IDEMPOTENCY_RETENTION_SECONDS.membership).toBe(24 * 60 * 60);
+  });
+
+  // A membership checkout keeps Stripe's default lifetime, 24 hours from its
+  // creation, which is also the most Stripe accepts; a press that replays it
+  // must stop within that.
+  it("keep a membership press no longer than a Stripe Checkout Session can stay open", () => {
+    expect(IDEMPOTENCY_RETENTION_SECONDS.membership).toBeLessThanOrEqual(24 * 60 * 60);
   });
 });
 

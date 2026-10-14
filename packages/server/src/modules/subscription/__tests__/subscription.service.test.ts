@@ -15,7 +15,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { IDEMPOTENCY_RETENTION_SECONDS, t } from "@breatic/shared";
+import { t } from "@breatic/shared";
 
 const stripe = {
   customers: { create: vi.fn() },
@@ -201,11 +201,10 @@ describe("startCheckout — no live subscription (#106 §7.2)", () => {
     expect(call.customer_update).toEqual({ address: "auto" });
   });
 
-  // A press that never heard back is replayed this checkout for as long as
-  // the run-once answer is kept, so the session must still be open that long.
-  it("keeps the checkout open as long as a repeated press is answered with it", async () => {
+  // Stripe refuses an `expires_at` more than 24 hours after the session is
+  // created, so the session keeps Stripe's default lifetime of 24 hours.
+  it("leaves the checkout's lifetime to Stripe's default", async () => {
     situationIs("none");
-    const before = Math.floor(Date.now() / 1000);
     await service.startCheckout({
       userId: USER,
       tier: "pro",
@@ -214,9 +213,7 @@ describe("startCheckout — no live subscription (#106 §7.2)", () => {
     });
 
     const call = stripe.checkout.sessions.create.mock.calls[0]?.[0];
-    const kept = IDEMPOTENCY_RETENTION_SECONDS.membership;
-    expect(call.expires_at).toBeGreaterThanOrEqual(before + kept - 5);
-    expect(call.expires_at).toBeLessThanOrEqual(before + kept + 30);
+    expect(call).not.toHaveProperty("expires_at");
   });
 
   it("keeps the checkout in the query when the page left had a fragment (#307 A5)", async () => {

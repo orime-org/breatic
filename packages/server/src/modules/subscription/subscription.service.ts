@@ -51,7 +51,6 @@ import type {
 import {
   canMoveTo,
   holdsActionableSubscription,
-  IDEMPOTENCY_RETENTION_SECONDS,
   subscriptionActions,
   t,
 } from "@breatic/shared";
@@ -252,9 +251,8 @@ export async function startCheckout(input: {
   const session = await getStripeClient().checkout.sessions.create({
     mode: "subscription",
     customer: customerId,
-    // A repeated press is answered with this session for as long as the
-    // run-once answer is kept (inner#1490), so it stays open that long.
-    expires_at: Math.floor(Date.now() / 1000) + IDEMPOTENCY_RETENTION_SECONDS.membership,
+    // Stripe's default lifetime of 24 hours, the most it accepts: the last
+    // re-send of this press (inner#1490) arrives before it runs out.
     line_items: [
       {
         price: getSubscriptionPlan(input.tier, input.period).stripePriceId,

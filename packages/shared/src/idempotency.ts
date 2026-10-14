@@ -31,7 +31,9 @@ const DAY_SECONDS = 24 * 60 * 60;
 /**
  * How long the server keeps a finished answer, per scope.
  *
- * A checkout's retention is also its Stripe session's lifetime, so a replay
+ * A credits checkout's retention is also its Stripe session's lifetime. A
+ * membership checkout keeps Stripe's default lifetime of 24 hours, the most
+ * Stripe accepts, so its retention stays within that. Either way a replay
  * never hands back a session that has already expired.
  */
 export const IDEMPOTENCY_RETENTION_SECONDS: Readonly<Record<IdempotencyScope, number>> = {
