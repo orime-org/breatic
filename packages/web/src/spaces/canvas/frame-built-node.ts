@@ -23,6 +23,13 @@ import {
 export const FRAME_PAN_MS = 300;
 
 /**
+ * How long the camera takes to follow a proposal onto the canvas. Longer than
+ * a slide, because it often travels further and zooms out on the way, and at
+ * the slide's pace the reader loses where it went (user 2026-10-13).
+ */
+export const PROPOSAL_FRAME_MS = 800;
+
+/**
  * Whether one rect lies entirely within another.
  * @param inner - The rect being looked for.
  * @param outer - The rect being looked in.

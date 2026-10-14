@@ -600,7 +600,10 @@ test('a Shift+click inside a range past the last block keeps the longer part (A6
   const made = await read(page);
   expect(made.head).toBe(made.size - 2);
   const x30 = await page.evaluate((selector) => {
-    const words = document.querySelector(`${selector} .bn-inline-content`)!.firstChild!;
+    // The first text node: a selection the body draws itself wraps its text
+    // in a band element.
+    const line = document.querySelector(`${selector} .bn-inline-content`)!;
+    const words = document.createTreeWalker(line, NodeFilter.SHOW_TEXT).nextNode()!;
     const range = document.createRange();
     range.setStart(words, 30);
     return range.getBoundingClientRect().x;

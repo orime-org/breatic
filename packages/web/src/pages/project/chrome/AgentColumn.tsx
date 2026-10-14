@@ -92,9 +92,8 @@ export function AgentColumn({ projectId, activeSpace, spaces }: AgentColumnProps
   }, [projectId]);
 
   const renameCurrent = React.useCallback(
-    (next: string): void => {
-      if (currentId) void conversationRuntime.rename(projectId, currentId, next);
-    },
+    (next: string): Promise<void> | undefined =>
+      currentId ? conversationRuntime.rename(projectId, currentId, next) : undefined,
     [projectId, currentId],
   );
 

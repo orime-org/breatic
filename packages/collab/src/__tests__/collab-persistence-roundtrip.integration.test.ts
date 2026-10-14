@@ -34,6 +34,7 @@ import { initCore, yjsDocuments, createTestDb } from "@breatic/core";
 import * as yjsRepo from "@collab/services/yjs-documents.repo.js";
 import {
   createPersistenceExtension,
+  staysLoaded,
   storeDocumentNow,
 } from "@collab/services/persistence.js";
 import { createUnloadGate } from "@collab/hooks/unload-gate.js";
@@ -124,13 +125,16 @@ beforeAll(async () => {
   storeGate.current = createUnloadGate({
     instanceId: "inst-test",
     encode: (document: Y.Doc): Uint8Array => Y.encodeStateAsUpdate(document),
+    staysLoaded: (name) => staysLoaded(hocuspocus, name),
     storeNow: ({ name }) => storeDocumentNow(hocuspocus, name),
     writeRescue: async () => {
       throw new Error("no rescue path in this test — the store is expected to land");
     },
     writeRescueNote: async () => {},
     alert: async () => {},
-  });
+  retry: { windowMs: 0, intervalMs: 10, rescueReserveMs: 0 },
+  shutdownDeadline: () => undefined,
+});
   await wsServer.listen();
 });
 

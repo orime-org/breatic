@@ -4,15 +4,16 @@
 /**
  * Redis Streams publisher for the task event bus.
  *
- * Replaces the previous Redis Pub/Sub mechanism with a durable
- * stream. Messages survive Collab restarts — the consumer resumes
- * from the last processed stream id after reconnect.
+ * Messages survive Collab restarts: collab reads each stream as a consumer
+ * group, so an entry stays pending until an instance acknowledges it.
  *
- * Current stream:
+ * Streams:
  *   `${env}:stream:task-events` — a node's task counts, published by the
  *   server and the Worker whenever a task changes state. Consumed by the
  *   Collab service and routed to the target Yjs document by the event's
  *   `docName` field.
+ *   `${env}:stream:project-lifecycle` — project duplicate / archive /
+ *   restore commands, forwarded by the server's outbox relay.
  *
  * The low-level `publishToStream` remains generic so future event
  * types can reuse the same transport without adding new helpers.
@@ -21,6 +22,9 @@
 import type Redis from "ioredis";
 import type { NodeEvent } from "@breatic/shared";
 import { env } from "@core/config/env.js";
+
+/** Approximate length cap of every stream we write, dead-letter streams included. */
+export const STREAM_MAXLEN = 10_000;
 
 /**
  * Build the Redis stream key for task lifecycle events.
@@ -31,8 +35,8 @@ export function taskEventsStreamKey(): string {
 }
 
 /**
- * Build the Redis stream key for project-lifecycle commands (delete /
- * duplicate) forwarded from the transactional outbox to collab.
+ * Build the Redis stream key for project-lifecycle commands (duplicate /
+ * archive / restore) forwarded from the transactional outbox to collab.
  *
  * Kept here as the single source of truth so the server-side relay
  * (publisher) and the collab consumer never drift on the key.
@@ -61,7 +65,7 @@ export async function publishToStream(
     streamKey,
     "MAXLEN",
     "~",
-    "10000",
+    STREAM_MAXLEN,
     "*",
     "payload",
     JSON.stringify(payload),

@@ -142,6 +142,12 @@ const REMOVED_DEAD_KEYS: readonly string[] = [
   'message.addedToTimeline',
   'server.email.welcome_subject',
   'editor.accept',
+  // View opens a Space as a tab, as pressing its drawer row does (inner#1528);
+  // the read-only panel these were shown in is gone.
+  'spaces.readonly.canvas.title',
+  'spaces.readonly.document.title',
+  'spaces.readonly.timeline.title',
+  'spaces.readonly.timeline.description',
 ];
 
 describe('frozen product terms (#1336)', () => {
@@ -184,24 +190,20 @@ describe('frozen product terms (#1336)', () => {
    * stays localized (画布 = drawing surface, 文件/文档 = a file, 時間軸/タイムライン
    * = the video-editor track, スペース/스페이스 = a Workspace substring), so they
    * cannot go in the blanket no-translated-product-noun denylist. They are
-   * frozen per-key here instead: each space-type / entity key must CONTAIN the
-   * English term inside its (still-translated) sentence and NOT contain any of
-   * the localized noun forms. The blanket forms (Project / Collection / Work /
-   * Studio / Space's 工作面·作業面) are owned by the lint guard.
+   * frozen per-key here instead: each key must CONTAIN the English term inside
+   * its (still-translated) sentence and NOT contain any of the localized noun
+   * forms. Today only sentences naming a Space carry a row; Canvas, Document
+   * and Timeline are frozen as whole values by FROZEN_TERMS (`spaces.kind.*`),
+   * and a new sentence key that names one of them needs a row here with its
+   * forms. The blanket forms (Project / Collection / Work / Studio / Space's
+   * 工作面·作業面) are owned by the lint guard.
    */
-  const CANVAS_FORMS = ['画布', '畫布', 'キャンバス', '캔버스'];
-  const DOCUMENT_FORMS = ['文档', '文檔', '文件', 'ドキュメント', '문서'];
-  const TIMELINE_FORMS = ['时间线', '時間線', '時間軸', '时间轴', 'タイムライン', '타임라인'];
   const SPACE_FORMS = ['工作面', '作業面', 'スペース', '스페이스', '작업면'];
 
   /** Each collision key paired with its English term + the localized forms that must be absent. */
   const COLLISION_FROZEN: ReadonlyArray<
     readonly [key: string, term: string, forbidden: readonly string[]]
   > = [
-    ['spaces.readonly.canvas.title', 'Canvas', CANVAS_FORMS],
-    ['spaces.readonly.document.title', 'Document', DOCUMENT_FORMS],
-    ['spaces.readonly.timeline.title', 'Timeline', TIMELINE_FORMS],
-    ['spaces.readonly.timeline.description', 'Timeline', TIMELINE_FORMS],
     ['chrome.tooltip.newSpace', 'Space', SPACE_FORMS],
     ['chrome.tooltip.allSpaces', 'Space', SPACE_FORMS],
     ['project.space.noActive', 'Space', SPACE_FORMS],

@@ -358,29 +358,38 @@ async function undoContentRows(
 }
 
 /**
- * Run a cleanup that must never change the answer the caller already has.
+ * Hand an RPC's direct connection to the meta doc back, without waiting for
+ * it.
  *
- * `finally` blocks throw here for real reasons — `disconnect()` runs the
- * disconnect hooks, and any of those can reject. A throw inside `finally`
- * REPLACES the function's return value, which turns an operation that
- * already broadcast successfully into an internal error carrying the
- * database's own words. So every cleanup in THIS file goes through here
- * (§6); the cross-instance lock guards its own release inside
- * space-delete-lock.ts, at the site where that failure happens.
- * @param label - What is being cleaned up, for the log line.
- * @param logCtx - Extra fields for the log line.
- * @param run - The cleanup itself.
+ * `disconnect()` awaits the store hooks, and `@hocuspocus/extension-redis`
+ * holds its `afterStoreDocument` for `disconnectDelay` (1000ms by default)
+ * whenever a direct connection's disconnect reaches that hook, whether or
+ * not the connection wrote anything: `disconnect()` always stamps the
+ * store's origin "local", which is the one thing the extension checks. The
+ * hook is skipped only when another instance holds the document's store
+ * lock. Nothing the caller is waiting on depends on that store: the change
+ * was broadcast inside `transact`. Awaited, the second sat in every answer
+ * given after the connection opened and, for delete and restore, inside the
+ * cross-instance delete lock — a Space left every screen in under a tenth
+ * of a second while the lock stayed held for over a second, and the next
+ * delete a person made was refused (inner#867).
+ * `project-space-list.ts` releases the meta doc it loads the same way: it
+ * starts `unloadDocument` without awaiting it, which keeps the extension's
+ * one-second `beforeUnloadDocument` delay out of its answer.
+ *
+ * A failure is logged, never thrown: the answer has already been decided,
+ * and by the time this settles it may already have gone out.
+ * @param conn - The direct connection the RPC opened.
+ * @param conn.disconnect - Releases it.
+ * @param logCtx - Fields for the line written when it fails.
  */
-async function safeCleanup(
-  label: string,
+function handBack(
+  conn: { disconnect: () => Promise<unknown> },
   logCtx: Record<string, unknown>,
-  run: () => Promise<unknown>,
-): Promise<void> {
-  try {
-    await run();
-  } catch (cleanupError) {
-    logger.warn({ err: cleanupError, ...logCtx }, `space_rpc_${label}_failed`);
-  }
+): void {
+  void conn.disconnect().catch((cleanupError: unknown) => {
+    logger.warn({ err: cleanupError, ...logCtx }, "space_rpc_disconnect_failed");
+  });
 }
 
 /** The direct-connection surface the publish/read helpers need. */
@@ -675,11 +684,7 @@ async function handleCreate(
       { err: seedError, projectId, spaceId, callerId: caller.userId },
       "space_rpc_create_seed_failed",
     );
-    await safeCleanup(
-      "disconnect",
-      { projectId, spaceId, callerId: caller.userId, during: "create" },
-      () => conn.disconnect(),
-    );
+    handBack(conn, { projectId, spaceId, callerId: caller.userId, during: "create" });
     return err(req.id, "INTERNAL", "Could not prepare the new Space");
   }
   const seededKinds: TouchedKinds = seeded ? [type] : [];
@@ -726,7 +731,7 @@ async function handleCreate(
     });
     return ok(req.id, { spaceId, type, name });
   } finally {
-    await safeCleanup("disconnect", logCtx, () => conn.disconnect());
+    handBack(conn, logCtx);
   }
 }
 
@@ -908,7 +913,7 @@ async function runDelete(
     );
     return ok(req.id);
   } finally {
-    await safeCleanup("disconnect", logCtx, () => conn.disconnect());
+    handBack(conn, logCtx);
   }
 }
 
@@ -960,7 +965,7 @@ async function handleLock(
     });
     return ok(req.id);
   } finally {
-    await safeCleanup("disconnect", logCtx, () => conn.disconnect());
+    handBack(conn, logCtx);
   }
 }
 
@@ -1035,7 +1040,7 @@ async function handleRename(
     });
     return ok(req.id);
   } finally {
-    await safeCleanup("disconnect", logCtx, () => conn.disconnect());
+    handBack(conn, logCtx);
   }
 }
 
@@ -1239,7 +1244,7 @@ async function runRestore(
     }
     return ok(req.id);
   } finally {
-    await safeCleanup("disconnect", logCtx, () => conn.disconnect());
+    handBack(conn, logCtx);
   }
 }
 

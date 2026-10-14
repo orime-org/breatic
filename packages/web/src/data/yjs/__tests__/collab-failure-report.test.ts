@@ -63,9 +63,25 @@ describe('reportCollabFailure', () => {
 
   it('reports a non-auth disconnect at warning level (transient, not terminal)', () => {
     const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    reportCollabFailure({ kind: 'disconnect', docName: 'project-7/meta', code: 1006 });
+    reportCollabFailure({ kind: 'disconnect', code: 1006, documents: 2 });
     const [, context] = vi.mocked(Sentry.captureMessage).mock.calls[0];
     expect(context).toMatchObject({ level: 'warning', tags: { kind: 'disconnect' } });
+    spy.mockRestore();
+  });
+
+  it('keeps the close reason and the attached-document count of a disconnect', () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    reportCollabFailure({
+      kind: 'disconnect',
+      code: 4408,
+      reason: 'Connection Timeout',
+      documents: 12,
+    });
+    const [message, context] = vi.mocked(Sentry.captureMessage).mock.calls[0];
+    expect(message).toBe('collab disconnect (close 4408): Connection Timeout');
+    expect(context).toMatchObject({
+      extra: { code: 4408, reason: 'Connection Timeout', documents: 12 },
+    });
     spy.mockRestore();
   });
 });

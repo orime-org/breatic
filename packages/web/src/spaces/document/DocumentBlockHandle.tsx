@@ -41,6 +41,8 @@ import {
   useExtensionState,
 } from '@blocknote/react';
 
+import { cn } from '@web/lib/utils';
+import { useDragSourceHidden } from '@web/spaces/document/use-drag-source-hidden';
 import { Button } from '@web/components/ui/button';
 import {
   DropdownMenu,
@@ -160,6 +162,7 @@ export function DocumentBlockHandle(): React.JSX.Element | null {
   // and the drag's own first act is to select the row it moves, which is what
   // the gate below would otherwise read as the reader having a selection.
   const [dragActive, setDragActive] = React.useState(false);
+  const source = useDragSourceHidden();
 
   // A1: a reader holding a selection is served by the bubble bar, and the two
   // are never on screen together. The library's side menu answers to the
@@ -289,7 +292,7 @@ export function DocumentBlockHandle(): React.JSX.Element | null {
       // thing the library does for its own chrome (`.bn-trailing-block`,
       // `.bn-toggle-button`). The handle's own half is also covered by the UA
       // style on `[draggable=true]`; this reaches the rest of the strip.
-      className='flex select-none items-center gap-0.5'
+      className={cn('flex select-none items-center gap-0.5', source.hidden && 'invisible')}
       style={{ transform: `translateY(${String(offset)}px)` }}
     >
       <DropdownMenu open={menuOpen} onOpenChange={onMenuOpenChange}>
@@ -322,9 +325,17 @@ export function DocumentBlockHandle(): React.JSX.Element | null {
               setDragActive(true);
               setMenuFace(face);
               endDrag.current = startRowDrag(editor as never, event.nativeEvent, block.id);
+              // The menu is this drag's source. Left to itself it goes on the
+              // first scroll, and a drag whose source left the page sends its
+              // `dragend` nowhere the document hears (inner#1350 §5.2); frozen,
+              // it stays put while the rows scroll, so it is hidden as well.
+              sideMenu.freezeMenu();
+              source.hideAfterStart();
             }}
             onDragEnd={() => {
               setDragActive(false);
+              source.show();
+              sideMenu.unfreezeMenu();
               endDrag.current?.();
               endDrag.current = null;
             }}

@@ -401,6 +401,7 @@
       "use": "Use",
       "building": "Creating…",
       "failed": "Could not create these nodes.",
+      "expired": "This proposal has expired. Ask the Agent for a new one.",
       "needCanvas": "Open a canvas first.",
       "promptReady": "Prompt ready. Right-click the node and choose Generate to open the generation panel and see it.",
       "settingsReady": "Settings ready. Right-click the node and choose Generate to open the generation panel and see them."
@@ -1305,13 +1306,14 @@
       "description": "{count, plural, one {# space · click to open or use the right menu} other {# spaces · click to open or use the right menu}}",
       "empty": "No spaces yet",
       "openAria": "Open {name}",
-      "rowActions": "View, lock or delete this Space",
+      "rowActions": "View, rename, lock or delete this Space",
       "status": {
-        "editing": "Editing",
-        "open": "Open"
+        "editing": "Editing"
       },
       "action": {
         "view": "View",
+        "rename": "Rename",
+        "renameLocked": "Locked spaces can't be renamed",
         "lock": "Lock",
         "unlock": "Unlock",
         "delete": "Delete",
@@ -1350,22 +1352,6 @@
       "locked": "Locked — unlock the space before renaming.",
       "error": {
         "failed": "Could not rename the space. Please try again."
-      }
-    },
-    "readonly": {
-      "label": "Read-only",
-      "description": "This space is not open in the tab bar; read-only preview lets you pan/zoom and copy content, but not edit.",
-      "canvas": {
-        "title": "Read-only canvas",
-        "description": "Real ReactFlow viewer plugs in once canvas-space is complete; here we show a read-only snapshot of nodes and edges, with zoom and copy."
-      },
-      "document": {
-        "title": "Read-only document",
-        "description": "TipTap read-only viewer plugs in when document-space ships; here we show a rich-text snapshot, with paragraph copy."
-      },
-      "timeline": {
-        "title": "Read-only timeline",
-        "description": "Timeline viewer plugs in when timeline-space ships; here we show a track snapshot, with clip copy."
       }
     },
     "readOnlyNotice": "You can only view this Space right now — anything you change will not be saved.",

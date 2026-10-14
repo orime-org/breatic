@@ -28,10 +28,10 @@ TS strict 零 `any` · 关键路径 / invariant(StrictMode-safe resource hook / 
 实测两者的计算样式只差 `text-underline-offset`(2px 对 auto),给一段已加下划线的文字粘上 URL 屏幕上零变化。
 
 所以内容里的链接一律 **`color: var(--color-content-link)` 加下划线两样都要**:颜色让它跟正文分开,下划线
-保住「颜色不能是唯一信号」这条(WCAG 1.4.1)。这个 token 指向 palette 的 blue,而 palette 那段注释自己写着
-identity 值就是给彩色文字用的;我们的 blue 是 Radix 的一档 —— 亮色 step 10、暗色 step 9(#923)。两档都紧贴
-Primer 的 accent 蓝(也就是 Primer 的链接色):CAM02-UCS 下亮色差 10.7、暗色差 3.5,2026-09-16 重定值后实测。
-业界三家(GitHub 蓝 + 下划线 ·
+保住「颜色不能是唯一信号」这条(WCAG 1.4.1)。亮色下它就是 Primer 的链接蓝 `#0969da`:palette 的 blue 在页面底色
+`#f0f0f0` 上只有 3.18:1,正文要 4.5:1(WCAG 2.2 SC 1.4.3),`#0969da` 是 4.56:1(inner#1462)。暗色下它指向 palette
+的 blue(Radix 暗色 step 9,`#0090ff`),在页面底色 `#1c1c1c` 上 5.22:1。`src/theme/__tests__/content-link-contrast.test.ts`
+按 token 量这几处对比度。业界三家(GitHub 蓝 + 下划线 ·
 Notion 灰 + 下划线 · NN/g 的通则)没有一家让链接跟正文同色。
 
 判定题:**这条链接嵌在一段话里、要让人看出它能点吗?是 → `--color-content-link` 加下划线**。chrome 里的
@@ -55,7 +55,7 @@ Notion 灰 + 下划线 · NN/g 的通则)没有一家让链接跟正文同色。
 
 **三步,一步都不许跳(user 2026-08-18 定死)**:① **任何 UI 表现,先看组件库里有没有** —— 不分类别,浮层 / 表单 / 交互控件算,骨架屏 / 徽章 / 分隔线 / 头像 / 空态 / 进度条这些纯展示的一样算;② **有就用它**,别照着它再写一个(手写 `className='skeleton-shimmer'` 拿到的是同样的像素,但等于把 `Skeleton` 的实现复制了一份 —— 它以后换动画、改圆角、加分支,都跟这一处无关了);③ **确实没有才自己做,而且做出来必须跟仓里已有的视觉表现一致** —— 尺寸、间距、圆角、颜色一律去数仓里同类现在用的是什么,别自己挑一套。**理由是视觉一致性**:user 原话「不然的话,就没办法保证整个视觉效果的一致性了」。判定题:**我正要给这个新组件填一个尺寸 / 颜色 / 圆角吗?仓里同类现在用的是什么?数过了吗?**
 
-**严禁手写浮层** —— 尤其 `fixed inset-0` 遮罩:它在 ReactFlow 的 `transform` 容器里会相对被变换的祖先定位、不覆盖真视口,导致「点画布关不掉」这类诡异 bug;Radix primitive 走 Portal 逃 transform + 自带 outside-click / Escape / 碰撞翻转,是既定用法(语言 / 主题 / `GroupBackgroundPicker` 都用 `components/ui/popover`)。**这句里全站成立的只有「别手写、用 `components/ui/` 里的那个」** —— 「走 Portal 逃 transform」解决的是 ReactFlow 那个 `transform` 祖先,画布之外没有它,所以 Portal 在别处只是那几个 primitive 的默认实现、不是一条不许动的约束(`components/ui/tooltip` 的 `portal` 默认就关着,两种情况才传它:trigger 落在 CSS transform 祖先里,或者落在会裁剪的滚动容器里 —— 后者目前是 `SpaceDrawer` 的行操作按钮,它们在 `ScrollArea` 里,内联渲染的提示会被可视区上沿裁掉)。判定题:**我正要写一个 UI 组件吗?是 → 先 grep `components/ui/`,别手写**。**找到了就用它,别照着它再写一个** —— 复用的是那个组件,不是它的样式类名(手写 `className='skeleton-shimmer'` 等于把 `Skeleton` 的实现抄了一遍,它以后怎么改都跟这一处无关了)。确实需要**新建共享 primitive**(要进 `components/ui/`、design system 级,非一次性 feature 组件)→ **先跟用户确认再建**,不擅自造轮子;一次性 feature 组件(某个具体 chip / 面板)照常建、不用问。承接根 [CLAUDE.md](../../CLAUDE.md) 禁止清单外的 #5「已有同类模式必须对齐,不发明半套」,本条是其 web UI 层的具体化。
+**严禁手写浮层** —— 尤其 `fixed inset-0` 遮罩:它在 ReactFlow 的 `transform` 容器里会相对被变换的祖先定位、不覆盖真视口,导致「点画布关不掉」这类诡异 bug;Radix primitive 走 Portal 逃 transform + 自带 outside-click / Escape / 碰撞翻转,是既定用法(语言 / 主题 / `GroupBackgroundPicker` 都用 `components/ui/popover`)。**这句里全站成立的只有「别手写、用 `components/ui/` 里的那个」** —— 「走 Portal 逃 transform」解决的是 ReactFlow 那个 `transform` 祖先,画布之外没有它,所以 Portal 在别处只是那几个 primitive 的默认实现、不是一条不许动的约束(`components/ui/tooltip` 的 `portal` 默认就关着,两种情况才传它:trigger 落在 CSS transform 祖先里,或者落在会裁剪的滚动容器里 —— 后者目前是聊天输入卡片里的 `SpaceContextChip`,卡片会裁掉超出它的部分,内联渲染的提示会被卡片上沿裁掉)。判定题:**我正要写一个 UI 组件吗?是 → 先 grep `components/ui/`,别手写**。**找到了就用它,别照着它再写一个** —— 复用的是那个组件,不是它的样式类名(手写 `className='skeleton-shimmer'` 等于把 `Skeleton` 的实现抄了一遍,它以后怎么改都跟这一处无关了)。确实需要**新建共享 primitive**(要进 `components/ui/`、design system 级,非一次性 feature 组件)→ **先跟用户确认再建**,不擅自造轮子;一次性 feature 组件(某个具体 chip / 面板)照常建、不用问。承接根 [CLAUDE.md](../../CLAUDE.md) 禁止清单外的 #5「已有同类模式必须对齐,不发明半套」,本条是其 web UI 层的具体化。
 
 ## demo 表达功能逻辑,数值一律对齐产品既有 token(MANDATORY)
 
@@ -156,7 +156,7 @@ demo 里那些动画参数是随手写的示意,不是定稿 —— 完全实现
 
 判定题:**我正要在 `index.css` 里写一条 `.scope 元素 { ... }` 吗?它在 `@layer` 里吗?** 以及 **这个 scope 和它元素上的 utility,有没有都会设的属性?有 → 那个属性归元素。**
 `packages/web/src/pages/project/chat/__tests__/chat-markdown-css.test.ts` 用 postcss 遍历规则的父节点强制这两条,**但它只认 `.chat-markdown` 这一个 scope**;`.doc-body` 有自己的那一个(见下一段),只管分层、不管交集属性。别的 scope 没有守卫替你判,判定题每个新 scope 都要自己过一遍。
-**document 正文那族(`.doc-body`)在 `@layer components` 里,只有两类规则留在层外**:三条 `::selection` 规则,和 gap cursor 的颜色(`.doc-body .ProseMirror-gapcursor::after`)。两类面对的都是 `@tiptap/core` 建编辑器时往 `<head>` 末尾注入的那张**未分层**样式表(`style.ts`):gap cursor 那条要盖掉它的 `border-top: 1px solid black`(否则暗色主题下是一条黑线,#101),分层的规则盖不掉任何未分层的;`::selection` 那几条面对它的 `.ProseMirror-hideselection *::selection { background: transparent }`,分层后同样必输 —— 但这几条不分层时 `.doc-body ::selection` 跟它同特异性、按顺序也输,`:not([data-body-holds])` 那条赢它而说的同样是 `transparent`,所以这几条放进层里屏幕上没有差别,留在层外只是保持现状。不带 `.doc-body` 却必须跟正文规则同层的有两条:合作者选区色带(`.collaboration-carets__selection:not(:has(.reference-mention))`)和链接面板的选区替身(`[data-show-selection]`)—— 正文对它们的覆盖(色带的 `padding-block`、评论高亮在合并 span 上的底色)靠同层里的特异性和先后顺序成立,它们留在层外就会按层赢过正文。正文里带工具类的元素是媒体块的工具条、缩放手柄、说明文字输入框、说明文字、图片与它的骨架屏、音视频播放器和上传占位条;收层时实测(空闲 · 选中文字 · 悬停图片 · 选中图片 · 说明框打开 · 选中单元格 · 写评论草稿 · 上传中加失败,8 种状态各量一遍正文里每个元素)正文规则跟它们的工具类**零重叠**,收层前后每个元素的计算样式逐项相同(上传中那个转圈图标的动画角度除外)。`src/spaces/document/__tests__/document-body-layer-css.test.ts` 用 postcss 守这件事:每条 `.doc-body` 规则要么在 `@layer components`,要么是上面那两类、在层外。
+**document 正文那族(`.doc-body`)在 `@layer components` 里,只有两类规则留在层外**:四条 `::selection` 规则,和 gap cursor 的颜色(`.doc-body .ProseMirror-gapcursor::after`)。两类面对的都是 `@tiptap/core` 建编辑器时往 `<head>` 末尾注入的那张**未分层**样式表(`style.ts`):gap cursor 那条要盖掉它的 `border-top: 1px solid black`(否则暗色主题下是一条黑线,#101),分层的规则盖不掉任何未分层的;`::selection` 那几条面对它的 `.ProseMirror-hideselection *::selection { background: transparent }`,分层后同样必输 —— 但这几条不分层时 `.doc-body ::selection` 跟它同特异性、按顺序也输,`:not([data-body-holds])` 那条赢它而说的同样是 `transparent`,所以这几条放进层里屏幕上没有差别,留在层外只是保持现状。不带 `.doc-body` 却必须跟正文规则同层的有两条:合作者选区色带(`.collaboration-carets__selection:not(:has(.reference-mention))`)和链接面板的选区替身(`[data-show-selection]`)—— 正文对它们的覆盖(色带的 `padding-block`、评论高亮在合并 span 上的底色)靠同层里的特异性和先后顺序成立,它们留在层外就会按层赢过正文。正文里带工具类的元素是媒体块的工具条、缩放手柄、说明文字输入框、说明文字、图片与它的骨架屏、音视频播放器和上传占位条;收层时实测(空闲 · 选中文字 · 悬停图片 · 选中图片 · 说明框打开 · 选中单元格 · 写评论草稿 · 上传中加失败,8 种状态各量一遍正文里每个元素)正文规则跟它们的工具类**零重叠**,收层前后每个元素的计算样式逐项相同(上传中那个转圈图标的动画角度除外)。`src/spaces/document/__tests__/document-body-layer-css.test.ts` 用 postcss 守这件事:每条 `.doc-body` 规则要么在 `@layer components`,要么是上面那两类、在层外。
 
 ## 禁止浏览器 / OS 原生渲染的交互控件(MANDATORY,CI 强制)
 **凡「视觉皮肤由浏览器 / 操作系统绘制」的交互控件,一律禁用,必须自绘(Radix primitive 或自绘组件)。** 根因:各引擎(Chrome / Safari / Firefox)画同一个原生控件长得不一样,**对创作类产品这种跨引擎不一致是致命的**;「跨引擎像素一致」是硬功能需求,不是锦上添花。这是滚动条 / toast / tooltip 那些单点守卫背后的**总原则** —— 它们都是本条的实例,本条把教训泛化,让每个新原生控件(color → range → 未来 date)被**机械挡住**,而不是每次靠真机 review 一个个逮。

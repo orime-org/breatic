@@ -80,6 +80,31 @@ interface MediaPlayerProps {
  */
 const BUTTON_SIZE = 'h-[var(--btn-inline)] w-[var(--btn-inline)]';
 
+/** Where the off-screen load of an original cover stands. */
+type CoverOutcome = 'loading' | 'loaded' | 'failed';
+
+/**
+ * Loads an original cover off-screen and reports how it went.
+ * @param url - The original cover's address, or nothing when none is wanted.
+ * @returns 'loaded' when there is nothing to load.
+ */
+function useOriginalCover(url: string | undefined): CoverOutcome {
+  const [settled, setSettled] = React.useState<{ url: string; outcome: CoverOutcome } | null>(null);
+  React.useEffect(() => {
+    if (url === undefined) return undefined;
+    const image = new Image();
+    image.onload = (): void => setSettled({ url, outcome: 'loaded' });
+    image.onerror = (): void => setSettled({ url, outcome: 'failed' });
+    image.src = url;
+    return () => {
+      image.onload = null;
+      image.onerror = null;
+    };
+  }, [url]);
+  if (url === undefined) return 'loaded';
+  return settled?.url === url ? settled.outcome : 'loading';
+}
+
 /**
  * Unified canvas media player built on a native `<audio>`/`<video>` element +
  * {@link useMediaPlayer}. Sliders are div-based {@link Slider} (Radix) so they
@@ -117,14 +142,28 @@ export function MediaPlayer({
   const ref = React.useRef<HTMLMediaElement>(null);
   const p = useMediaPlayer(ref, duration);
   const isVideo = modality === 'video';
+  // Zoomed past the cover preview, the original cover is loaded off-screen (a
+  // poster has no load or error event of its own). Until it arrives the
+  // stretched preview is hidden under the skeleton; a cover that fails gives
+  // the poster back its preview (inner#1472).
+  const coverOutcome = useOriginalCover(fullPoster ? poster : undefined);
+  const showsOriginalCover = fullPoster && coverOutcome !== 'failed';
   // A poster has no error event of its own, so the cover's preview is tried
   // off-screen and the original stands in when it is missing (inner#1320).
-  const shownPoster = usePreviewSrc(poster, { probe: true, enabled: !fullPoster }).src ?? undefined;
+  const shownPoster =
+    usePreviewSrc(poster, { probe: true, enabled: !showsOriginalCover }).src ?? undefined;
   // The poster's preview has loaded once its width is recorded; the video's
   // own data ends the wait for a poster that has none.
   const posterLoaded = usePreviewWidth(poster) !== null;
   const [frameFor, setFrameFor] = React.useState<string | null>(null);
   const loading = size !== undefined && !posterLoaded && frameFor !== src;
+  // The poster shows until the video first plays (HTML's "show poster" flag);
+  // after that the element paints the video's own frames.
+  const [startedFor, setStartedFor] = React.useState<string | null>(null);
+  const awaitsCover = showsOriginalCover && coverOutcome === 'loading' && startedFor !== src;
+  // Under the skeleton the video is hidden: a half-loaded or stretched poster
+  // would show through it.
+  const covered = loading || awaitsCover;
   // #1622: the hover-preview variant drops volume (a portaled Popover) and
   // fullscreen so it can live inside an auto-close HoverCard.
   const showVolume = variant !== 'preview';
@@ -229,7 +268,8 @@ export function MediaPlayer({
           data-testid='media-element'
           width={size?.width}
           height={size?.height}
-          className={cn('block w-full', size !== undefined && 'h-auto')}
+          className={cn('block w-full', size !== undefined && 'h-auto', covered && 'opacity-0')}
+          onPlay={() => setStartedFor(src)}
           onLoadedData={() => setFrameFor(src)}
           onLoadedMetadata={(e) => {
             setFrameFor(src);
@@ -239,7 +279,7 @@ export function MediaPlayer({
             }
           }}
         />
-        {loading ? (
+        {covered ? (
           <Skeleton
             data-testid='media-skeleton'
             className='pointer-events-none absolute inset-0 rounded-none'

@@ -1,0 +1,511 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+
+/**
+ * Scrolls the document body — or, for a table column drag, the table's own
+ * frame — while something is dragged or a selection is pulled past its edge
+ * (inner#1350 A2–A5, A7).
+ *
+ * Chrome's own drag autoscroll only acts inside a 20px band of the scroller
+ * under the pointer and stops when the pointer leaves the window; the page gets
+ * no drag events out there at all. So one loop driven by the last pointer
+ * reading does the scrolling, the way Plane does for its editor.
+ *
+ * Inside the hitbox the step is Pragmatic drag and drop's (`get-scroll-change.ts`,
+ * `configuration.ts`): a hitbox of a quarter of the scroller capped at 180px,
+ * full speed over its outer half, 900px/s normalised by frame time, ramped in
+ * over 400ms. Past the edge it is Chrome's selection autoscroll step
+ * (`20 + distance`, per frame) plus that 15px maximum, so pushing further out
+ * is never slower than Chrome's own band added to ours.
+ *
+ * A selection pulled past the edge (a press the browser does not own) takes
+ * Chrome's selection step alone, so it feels the same as one Chrome scrolls.
+ */
+
+import type { EditorView } from '@tiptap/pm/view';
+
+/** The element a scroll area scrolls. */
+export const SCROLL_VIEWPORT = '[data-radix-scroll-area-viewport]';
+
+/**
+ * The element the body scrolls in.
+ * @param view - The editor view.
+ * @returns The scroller, or null when the body is not in one.
+ */
+export function bodyScrollerOf(view: EditorView): HTMLElement | null {
+  return view.dom.closest<HTMLElement>(SCROLL_VIEWPORT);
+}
+
+/** The box of a scroller, in client coordinates. */
+export interface EdgeBox {
+  readonly top: number;
+  readonly bottom: number;
+  readonly left: number;
+  readonly right: number;
+}
+
+/** A pointer position, in client coordinates. */
+export interface PointerAt {
+  readonly x: number;
+  readonly y: number;
+}
+
+/** The axis a scroller moves along. */
+export type ScrollAxis = 'x' | 'y';
+
+/** Where the pointer is against a scroller's edges along one axis. */
+export interface EdgeReading {
+  /** Towards which edge: -1 the start, 1 the end, 0 neither. */
+  readonly dir: -1 | 0 | 1;
+  /** 0–1 through the hitbox; 1 over its outer half and past the edge. */
+  readonly factor: number;
+  /** How far past the edge, in px; 0 inside the scroller. */
+  readonly beyond: number;
+}
+
+/** What a drag session scrolls. */
+export interface DragTarget {
+  readonly el: HTMLElement;
+  readonly axis: ScrollAxis;
+}
+
+/** What the session needs from the page. */
+export interface AutoScrollDeps {
+  readonly requestFrame: (cb: (time: number) => void) => number;
+  readonly cancelFrame: (id: number) => void;
+  readonly viewport: () => { width: number; height: number };
+}
+
+/** Share of the scroller the hitbox takes, before the cap. */
+const HITBOX_SHARE = 0.25;
+/** The hitbox's largest size, in px. */
+const HITBOX_CAP = 180;
+/** Share of the hitbox, at its outer end, that scrolls at full speed. */
+const FULL_SHARE = 0.5;
+/** Full speed inside the hitbox, px per second. */
+const MAX_PER_SECOND = 900;
+/** The most one frame moves inside the hitbox: full speed at 60fps. */
+const MAX_STEP = MAX_PER_SECOND / 60;
+/** Time from the pointer coming over the scroller to full speed, in ms. */
+const RAMP_MS = 400;
+/** Chrome's autoscroll band, in px (`autoscroll_controller.cc`). */
+const NATIVE_BAND = 20;
+
+/** A reading of nothing. */
+const STILL: EdgeReading = { dir: 0, factor: 0, beyond: 0 };
+
+/**
+ * Reads where the pointer is against a scroller's edges along one axis.
+ * @param box - The scroller's box.
+ * @param at - The pointer.
+ * @param axis - The axis it scrolls along.
+ * @returns The reading.
+ */
+export function readEdge(box: EdgeBox, at: PointerAt, axis: ScrollAxis): EdgeReading {
+  const [start, end, along] = axis === 'y' ? [box.top, box.bottom, at.y] : [box.left, box.right, at.x];
+  if (!isOver(box, at, axis)) return STILL;
+  if (along < start) return { dir: -1, factor: 1, beyond: start - along };
+  if (along > end) return { dir: 1, factor: 1, beyond: along - end };
+  const hitbox = Math.min((end - start) * HITBOX_SHARE, HITBOX_CAP);
+  const ramp = hitbox * (1 - FULL_SHARE);
+  if (along < start + hitbox) return { dir: -1, factor: Math.min(1, (start + hitbox - along) / ramp), beyond: 0 };
+  if (along > end - hitbox) return { dir: 1, factor: Math.min(1, (along - (end - hitbox)) / ramp), beyond: 0 };
+  return STILL;
+}
+
+/**
+ * Whether the pointer is over the scroller, or past its edge along the axis it
+ * scrolls: the reach over which a drag reads its edges and keeps its ramp. The
+ * body (vertical) needs the pointer within it across, so the Agent column
+ * beside it does not scroll it; a table frame (sideways) does not, since a
+ * column's handle sits half above the frame.
+ * @param box - The scroller's box.
+ * @param at - The pointer.
+ * @param axis - The axis it scrolls along.
+ * @returns Whether it is.
+ */
+function isOver(box: EdgeBox, at: PointerAt, axis: ScrollAxis): boolean {
+  return axis === 'x' || (at.x >= box.left && at.x <= box.right);
+}
+
+/**
+ * The pixels one frame of a drag moves.
+ * @param reading - Where the pointer is.
+ * @param sinceEngagedMs - Time since the pointer came over the scroller.
+ * @param frameMs - Time since the last frame.
+ * @returns The signed step.
+ */
+export function dragStep(reading: EdgeReading, sinceEngagedMs: number, frameMs: number): number {
+  if (reading.dir === 0) return 0;
+  const ramp = rampAt(sinceEngagedMs);
+  if (reading.beyond > 0) return pastEdgeStep(reading, ramp);
+  const cap = Math.min(Math.ceil((MAX_PER_SECOND / 1000) * frameMs), MAX_STEP);
+  return reading.dir * Math.max(cap * reading.factor * ramp, 1);
+}
+
+/**
+ * How far into the ramp a drag is.
+ * @param sinceEngagedMs - Time since the pointer came over the scroller.
+ * @returns 0–1.
+ */
+function rampAt(sinceEngagedMs: number): number {
+  return Math.min(1, Math.max(0, sinceEngagedMs) / RAMP_MS);
+}
+
+/**
+ * The step past the edge: Chrome's selection step plus the hitbox's maximum,
+ * per frame.
+ * @param reading - Where the pointer is.
+ * @param ramp - How far into the ramp.
+ * @returns The signed step.
+ */
+function pastEdgeStep(reading: EdgeReading, ramp: number): number {
+  return reading.dir * Math.max((MAX_STEP + NATIVE_BAND + reading.beyond) * ramp, 1);
+}
+
+/**
+ * The pixels one frame of a pulled selection moves: Chrome's selection
+ * autoscroll, which reads only the vertical position.
+ * @param box - The body scroller's box.
+ * @param at - The pointer.
+ * @returns The signed step.
+ */
+export function pressStep(box: EdgeBox, at: PointerAt): number {
+  if (at.y < box.top) return -(NATIVE_BAND + (box.top - at.y));
+  if (at.y < box.top + NATIVE_BAND) return -(NATIVE_BAND - (at.y - box.top));
+  if (at.y > box.bottom) return NATIVE_BAND + (at.y - box.bottom);
+  if (at.y > box.bottom - NATIVE_BAND) return NATIVE_BAND - (box.bottom - at.y);
+  return 0;
+}
+
+/** An edge of the window. */
+export type WindowEdge = 'top' | 'bottom' | 'left' | 'right';
+
+/** The window's size, in CSS px. */
+export interface WindowSize {
+  readonly width: number;
+  readonly height: number;
+}
+
+/** A drag event's pointer and the buttons it reports. */
+export interface DragReading {
+  readonly x: number;
+  readonly y: number;
+  readonly buttons: number;
+}
+
+/**
+ * The window edge a dragged pointer went out through: the last move, from the
+ * last two dragovers at different points, extended to the edge it meets first;
+ * with no such move, the edge nearest the last point. A dragleave's own point
+ * cannot say: Chrome gives (0,0), and Firefox on Windows a point that has
+ * nothing to do with the exit (inner#1350 design §5.2).
+ * @param prev - The dragover before the last one at a different point, if any.
+ * @param last - The last dragover.
+ * @param size - The window.
+ * @returns The edge.
+ */
+export function exitEdgeOf(prev: PointerAt | null, last: PointerAt, size: WindowSize): WindowEdge {
+  const dx = prev === null ? 0 : last.x - prev.x;
+  const dy = prev === null ? 0 : last.y - prev.y;
+  const meets: [WindowEdge, number][] = [];
+  if (dy > 0) meets.push(['bottom', (size.height - last.y) / dy]);
+  if (dy < 0) meets.push(['top', -last.y / dy]);
+  if (dx > 0) meets.push(['right', (size.width - last.x) / dx]);
+  if (dx < 0) meets.push(['left', -last.x / dx]);
+  if (meets.length === 0) {
+    meets.push(['top', last.y], ['bottom', size.height - last.y], ['left', last.x], ['right', size.width - last.x]);
+  }
+  return meets.reduce((a, b) => (b[1] < a[1] ? b : a))[0];
+}
+
+/**
+ * Whether a dragleave out of the page is the drag ending inside the window — an
+ * Esc, or a release where nothing takes the drop — and not the pointer
+ * leaving it. Measured (design §5.2): Firefox and Safari give such a dragleave
+ * the last dragover's point; Chrome gives (0,0) and, after a release, no
+ * button held. Chrome's Esc keeps the button and reads as leaving; its
+ * `dragend` follows within milliseconds.
+ * @param leave - The dragleave.
+ * @param lastOver - The last dragover, if any.
+ * @returns Whether the drag ended in the window.
+ */
+export function endsWithinWindow(leave: DragReading, lastOver: DragReading | null): boolean {
+  if (lastOver === null) return false;
+  return (leave.x === lastOver.x && leave.y === lastOver.y) || leave.buttons !== lastOver.buttons;
+}
+
+/**
+ * Whether a dragleave shows the pointer left the window through an edge: its
+ * point lies beyond that edge, as Firefox's and Safari's do on macOS. The
+ * screen's origin proves nothing: Firefox on Windows sends a point it never
+ * set (`nsNativeDragTarget.cpp` `gDragLastPoint`), which is zero.
+ * @param leave - The dragleave's client and screen points.
+ * @param leave.x - Client x.
+ * @param leave.y - Client y.
+ * @param leave.screenX - Screen x.
+ * @param leave.screenY - Screen y.
+ * @param exit - The edge the dragovers headed for.
+ * @param size - The window.
+ * @returns Whether it proves the exit.
+ */
+export function provesExit(
+  leave: { x: number; y: number; screenX: number; screenY: number },
+  exit: WindowEdge,
+  size: WindowSize,
+): boolean {
+  if (leave.screenX === 0 && leave.screenY === 0) return false;
+  if (exit === 'top') return leave.y < 0;
+  if (exit === 'bottom') return leave.y > size.height;
+  if (exit === 'left') return leave.x < 0;
+  return leave.x > size.width;
+}
+
+/** How a drag left the window. */
+export interface WindowLeave {
+  /** Whether the drag started on the page. */
+  readonly fromPage: boolean;
+  /** The edge it went out through. */
+  readonly exit: WindowEdge;
+  /** Whether the dragleave proves that exit. */
+  readonly proven: boolean;
+}
+
+/**
+ * Which way along an axis an edge lies.
+ * @param edge - The window edge.
+ * @param axis - The axis.
+ * @returns 1 the end, -1 the start, 0 when the edge is across the axis.
+ */
+function towards(edge: WindowEdge, axis: ScrollAxis): -1 | 0 | 1 {
+  if (axis === 'y') return edge === 'bottom' ? 1 : edge === 'top' ? -1 : 0;
+  return edge === 'right' ? 1 : edge === 'left' ? -1 : 0;
+}
+
+/**
+ * Whether a drag that left the window carries on scrolling. It carries on only
+ * out through an edge on the axis it scrolls, with the last reading heading
+ * that way. A drag started on the page carries on: its Esc ends it with a
+ * `dragend`. One dragged in from outside sends no `dragend` on an Esc, so it
+ * carries on when the dragleave proves the exit, and otherwise only from a
+ * pointer past the edge, or at full speed against an edge that is the window's
+ * own.
+ * @param last - The reading before the pointer left.
+ * @param how - How it left.
+ * @param how.exit - The edge it went out through.
+ * @param how.axis - The axis the target scrolls along.
+ * @param how.edgeIsWindowEdge - Whether that edge of the scroller is the window's.
+ * @param how.fromPage - Whether the drag started on the page.
+ * @param how.proven - Whether the dragleave proves the exit.
+ * @returns Whether to keep scrolling.
+ */
+export function carriesOutside(
+  last: EdgeReading,
+  how: { exit: WindowEdge; axis: ScrollAxis; edgeIsWindowEdge: boolean; fromPage: boolean; proven: boolean },
+): boolean {
+  const way = towards(how.exit, how.axis);
+  if (way === 0 || last.dir !== way) return false;
+  return how.fromPage || how.proven || last.beyond > 0 || (how.edgeIsWindowEdge && last.factor >= 1);
+}
+
+/** What a session was started by. */
+export type AutoScrollSource = 'drag' | 'press';
+
+/** Where a session stands (design §5.3). */
+export type AutoScrollState = 'idle' | 'tracking' | 'outside';
+
+/** One running session. */
+interface Session {
+  readonly source: AutoScrollSource;
+  readonly target: DragTarget;
+  at: PointerAt | null;
+  /** The reading the pointer left the window with. */
+  last: EdgeReading;
+  engagedAt: number | null;
+  lastFrame: number | null;
+  outside: boolean;
+  carry: boolean;
+}
+
+/**
+ * The single loop that scrolls while a drag or a pulled selection is on. Its
+ * own methods are the only writers of its state.
+ */
+export class BodyAutoScroll {
+  private session: Session | null = null;
+  private frame: number | null = null;
+
+  /**
+   * Creates an idle loop.
+   * @param deps - Frames and the window size.
+   */
+  constructor(private readonly deps: AutoScrollDeps) {}
+
+  /**
+   * Where the session stands.
+   * @returns The state.
+   */
+  get state(): AutoScrollState {
+    if (this.session === null) return 'idle';
+    return this.session.outside ? 'outside' : 'tracking';
+  }
+
+  /**
+   * What started the running session.
+   * @returns The source, or null when idle.
+   */
+  get source(): AutoScrollSource | null {
+    return this.session?.source ?? null;
+  }
+
+  /**
+   * What the running session scrolls.
+   * @returns The target, or null when idle.
+   */
+  get target(): DragTarget | null {
+    return this.session?.target ?? null;
+  }
+
+  /**
+   * Starts a drag session; one already running is replaced.
+   * @param target - What it scrolls.
+   */
+  beginDrag(target: DragTarget): void {
+    this.start('drag', target);
+  }
+
+  /**
+   * Starts a pulled-selection session on the body scroller.
+   * @param el - The body scroller.
+   * @param at - The pointer to start from; null for a press that has not
+   * moved, which Chrome does not scroll until it is dragged.
+   */
+  beginPress(el: HTMLElement, at: PointerAt | null): void {
+    this.start('press', { el, axis: 'y' });
+    if (at !== null) this.follow(at);
+  }
+
+  /**
+   * Takes the pointer's latest position; inside the window again after it left.
+   * @param at - The pointer.
+   */
+  follow(at: PointerAt): void {
+    const { session } = this;
+    if (session === null) return;
+    session.at = at;
+    session.outside = false;
+  }
+
+  /**
+   * The pointer left the window during a drag.
+   * @param leave - How it left.
+   */
+  leaveWindow(leave: WindowLeave): void {
+    const { session } = this;
+    if (session === null || session.source !== 'drag') return;
+    session.outside = true;
+    // Outside the window the loop goes on from the last dragover, which no
+    // frame may have read yet.
+    const { target } = session;
+    const left = session.at === null ? STILL : readEdge(target.el.getBoundingClientRect(), session.at, target.axis);
+    session.last = left;
+    session.carry = carriesOutside(left, {
+      exit: leave.exit,
+      axis: target.axis,
+      edgeIsWindowEdge: this.edgeIsWindowEdge(target, left.dir),
+      fromPage: leave.fromPage,
+      proven: leave.proven,
+    });
+  }
+
+  /**
+   * Ends the session.
+   * @param source - Ends it only when it was started by this; any when omitted.
+   */
+  end(source?: AutoScrollSource): void {
+    if (this.session === null || (source !== undefined && this.session.source !== source)) return;
+    this.session = null;
+    if (this.frame !== null) this.deps.cancelFrame(this.frame);
+    this.frame = null;
+  }
+
+  /**
+   * Starts a session and its loop.
+   * @param source - What started it.
+   * @param target - What it scrolls.
+   */
+  private start(source: AutoScrollSource, target: DragTarget): void {
+    this.end();
+    this.session = { source, target, at: null, last: STILL, engagedAt: null, lastFrame: null, outside: false, carry: false };
+    this.schedule();
+  }
+
+  /** Asks for the next frame. */
+  private schedule(): void {
+    this.frame = this.deps.requestFrame((time) => {
+      this.step(time);
+    });
+  }
+
+  /**
+   * Moves the scroller one frame.
+   * @param time - The frame's time.
+   */
+  private step(time: number): void {
+    const { session } = this;
+    if (session === null) return;
+    const frameMs = session.lastFrame === null ? 1000 / 60 : time - session.lastFrame;
+    session.lastFrame = time;
+    const delta = this.delta(session, time, frameMs);
+    if (delta !== 0) {
+      const { el, axis } = session.target;
+      if (axis === 'y') el.scrollTop += delta;
+      else el.scrollLeft += delta;
+    }
+    this.schedule();
+  }
+
+  /**
+   * The step this frame, and the ramp bookkeeping behind it.
+   * @param session - The session.
+   * @param time - The frame's time.
+   * @param frameMs - Time since the last frame.
+   * @returns The signed step.
+   */
+  private delta(session: Session, time: number, frameMs: number): number {
+    const { target } = session;
+    if (session.outside) {
+      // Outside the window the scroll goes on at the step past the edge, from
+      // the distance the pointer had when it left.
+      if (!session.carry) return 0;
+      // A pointer flung out before any frame saw it over the scroller starts
+      // its ramp here.
+      session.engagedAt ??= time;
+      return pastEdgeStep(session.last, rampAt(time - session.engagedAt));
+    }
+    if (session.at === null) return 0;
+    const box = target.el.getBoundingClientRect();
+    if (session.source === 'press') return pressStep(box, session.at);
+    if (!isOver(box, session.at, target.axis)) {
+      session.engagedAt = null;
+      return 0;
+    }
+    // Pragmatic starts the ramp as soon as the pointer is over the scroller,
+    // not when it enters the hitbox (`try-scroll.ts`, `engagement-history.ts`).
+    session.engagedAt ??= time;
+    return dragStep(readEdge(box, session.at, target.axis), time - session.engagedAt, frameMs);
+  }
+
+  /**
+   * Whether a scroller's edge towards a direction is the window's own edge.
+   * @param target - The scroller.
+   * @param dir - Towards which edge.
+   * @returns Whether it is.
+   */
+  private edgeIsWindowEdge(target: DragTarget, dir: EdgeReading['dir']): boolean {
+    const box = target.el.getBoundingClientRect();
+    const { width, height } = this.deps.viewport();
+    if (target.axis === 'y') return dir < 0 ? box.top <= 1 : box.bottom >= height - 1;
+    return dir < 0 ? box.left <= 1 : box.right >= width - 1;
+  }
+}

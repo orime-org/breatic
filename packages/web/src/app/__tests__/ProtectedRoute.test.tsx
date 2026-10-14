@@ -7,6 +7,7 @@ import { render, screen } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 
 import ProtectedRoute from '@web/app/ProtectedRoute';
+import { LoadingScreenHost } from '@web/components/loading-screen';
 import type { PersonalStudioRef } from '@breatic/shared';
 import { useCurrentUserStore } from '@web/stores';
 
@@ -20,23 +21,26 @@ function renderAt(
   requirePersonalStudio = true,
 ) {
   return render(
-    <MemoryRouter initialEntries={[initialPath]}>
-      <Routes>
-        <Route
-          path='/protected'
-          element={
-            <ProtectedRoute requirePersonalStudio={requirePersonalStudio}>
-              {protectedChildren}
-            </ProtectedRoute>
-          }
-        />
-        <Route path='/login' element={<LoginProbe />} />
-        <Route
-          path='/choose-slug'
-          element={<div data-testid='onboarding-page' />}
-        />
-      </Routes>
-    </MemoryRouter>,
+    <>
+      <LoadingScreenHost />
+      <MemoryRouter initialEntries={[initialPath]}>
+        <Routes>
+          <Route
+            path='/protected'
+            element={
+              <ProtectedRoute requirePersonalStudio={requirePersonalStudio}>
+                {protectedChildren}
+              </ProtectedRoute>
+            }
+          />
+          <Route path='/login' element={<LoginProbe />} />
+          <Route
+            path='/choose-slug'
+            element={<div data-testid='onboarding-page' />}
+          />
+        </Routes>
+      </MemoryRouter>
+    </>,
   );
 }
 

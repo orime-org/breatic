@@ -134,12 +134,14 @@ export type { MailLogCtx, MailLogLine, SendMailOptions, SendMailResult } from "@
 export {
   publishNodeEvent,
   publishToStream,
+  STREAM_MAXLEN,
   taskEventsStreamKey,
   lifecycleStreamKey,
 } from "@core/infra/event-stream.js";
 export {
   publishMembersChanged,
   publishActivityNew,
+  publishProjectConnectionsClose,
   projectControlChannelPattern,
 } from "@core/infra/control-events.js";
 export { setSession, getSession, deleteSession, deleteAllSessions, sessionCookieName } from "@core/infra/session-store.js";

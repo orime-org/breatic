@@ -161,6 +161,21 @@ export async function storeDocumentNow(
   return true;
 }
 
+/**
+ * Whether the library will keep a document it is in the middle of unloading.
+ *
+ * Asks the library's own `shouldUnloadDocument`, which it checks again after
+ * `beforeUnloadDocument` returns: a connection, or a store waiting on its
+ * timer or running, cancels the unload.
+ * @param driver - The running Hocuspocus instance.
+ * @param documentName - Full Yjs document name.
+ * @returns True when the document is loaded and the library would keep it.
+ */
+export function staysLoaded(driver: Hocuspocus, documentName: string): boolean {
+  const document = driver.documents.get(documentName);
+  return document !== undefined && !driver.shouldUnloadDocument(document);
+}
+
 /** Collaborators the extension needs, overridable so tests can count them. */
 export interface PersistenceDeps {
   /** Read a document's stored bytes. */

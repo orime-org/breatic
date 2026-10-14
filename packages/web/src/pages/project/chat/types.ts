@@ -234,4 +234,10 @@ export interface ChatMessage {
    * nowhere for that to live and the message may be several turns old.
    */
   proposals?: CanvasProposal[];
+  /**
+   * Whether this turn stored a proposal in a shape this build can no longer
+   * place (inner#1499). The turn draws one line saying so, with nothing to
+   * press, however many there were.
+   */
+  hasExpiredProposal?: true;
 }

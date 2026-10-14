@@ -201,19 +201,22 @@ export function renderProductGuide(): string {
       `${quoted(t("project.space.loading.create"))}; the new space then opens as a tab.`,
     "The second, three lines with the number of spaces beside them, opens " +
       `${quoted(t("spaces.drawer.title"))}: every space in the project, newest first, each with its type icon, ` +
-      `name and when it was made; the one open now is marked ${quoted(t("spaces.drawer.status.editing"))} and ` +
-      `others open as tabs ${quoted(t("spaces.drawer.status.open"))}. Clicking a row opens that space as a tab. ` +
+      `name and when it was made; the space whose tab is showing now is marked ` +
+      `${quoted(t("spaces.drawer.status.editing"))} at the right of its row, and no other row is marked. Clicking a row opens that space as a tab. ` +
       `Hovering a row shows three dots at its right end, which open a menu: ${quoted(t("spaces.drawer.action.view"))}, ` +
+      `${quoted(t("spaces.drawer.action.rename"))}, ` +
       `${quoted(t("spaces.drawer.action.lock"))} (${quoted(t("spaces.drawer.action.unlock"))} on a locked space) and ` +
       `${quoted(t("spaces.drawer.action.delete"))}, which asks whether to delete the space by name, says the ` +
       `owner can restore it (from ${quoted(t("activity.header"))}, below), with ` +
       `${quoted(t("common.cancel"))} and ${quoted(t("spaces.drawer.action.delete"))}. ` +
       `${quoted(t("spaces.drawer.action.delete"))} is greyed on a locked space, with ` +
       `${quoted(t("spaces.drawer.action.deleteLocked"))} written under it, and on the project's only space, with ` +
-      `${quoted(t("spaces.drawer.action.deleteLastSpace"))}. ${quoted(t("spaces.drawer.action.view"))} switches to a space ` +
-      "already open as a tab; on any other " +
-      "space it opens a read-only panel that does not show the space's content yet, so open the space itself to " +
-      "see it.",
+      `${quoted(t("spaces.drawer.action.deleteLastSpace"))}. ${quoted(t("spaces.drawer.action.view"))} does what ` +
+      "clicking the row does: it opens the space as a tab, or switches to its tab if it already has one. " +
+      `${quoted(t("spaces.drawer.action.rename"))} turns the name on that row into a box with the name selected; ` +
+      "Enter or clicking elsewhere saves it and Esc leaves it as it was. On a locked space it is greyed, with " +
+      `${quoted(t("spaces.drawer.action.renameLocked"))} written under it. A viewer's menu has no ` +
+      `${quoted(t("spaces.drawer.action.rename"))}.`,
     `The third, a pulse line, opens ${quoted(t("activity.header"))}: the project's uploads, generations and ` +
       "changes to spaces and members, newest first. Each finished generation shows the credits it used, a star " +
       "with a number; a failed one shows a red exclamation mark; picture, video and sound entries have a " +
@@ -900,10 +903,13 @@ export function renderProductGuide(): string {
       "the same list share one heading, joined by ·. Each generating node's list ends with one of these two " +
       "lines, the second where the model has no prompt box: " +
       `${quoted(t("chat.proposal.promptReady"))} ${quoted(t("chat.proposal.settingsReady"))}`,
-    `Pressing ${quoted(t("chat.proposal.use"))} places the nodes near the middle of the reader's view, joined ` +
-      "by the proposal's edges (a node filling a slot through fills gets no line) and grouped when there are two or more, as one step undo reverses; the button reads " +
+    `Pressing ${quoted(t("chat.proposal.use"))} places the nodes in the middle of the reader's view or, when ` +
+      "something is already there, at the first spot to its right where they cover nothing already on the canvas, joined " +
+      "by the proposal's edges (a node filling a slot through fills gets no line) and grouped when there are two or more, as one step undo reverses; " +
+      "the view then moves to centre them, zooming out only as far as it takes to show all of them. The button reads " +
       `${quoted(t("chat.proposal.building"))} meanwhile, and ${quoted(t("chat.proposal.failed"))} appears if it ` +
-      "fails. A canvas has to be open: " +
+      "fails, with nothing placed. A proposal kept from before its shape changed shows " +
+      `${quoted(t("chat.proposal.expired"))} where its card would be, with no button. A canvas has to be open: ` +
       `anywhere else pressing it shows the message ${quoted(t("chat.proposal.needCanvas"))} and places nothing. ` +
       "With one generating node its panel opens by itself; with several, the group is selected and the reader " +
       `right-clicks each node and chooses ${quoted(t("canvas.nodeMenu.generate"))}.`,

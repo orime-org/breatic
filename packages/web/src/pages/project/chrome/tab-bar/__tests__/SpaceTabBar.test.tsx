@@ -46,17 +46,14 @@ function setup(overrides: Partial<Parameters<typeof SpaceTabBar>[0]> = {}) {
   const onActivate = vi.fn();
   const onCreate = vi.fn();
   const onClose = vi.fn();
-  const onViewSpace = vi.fn();
   const props = {
     spaces: SPACES,
     allSpaces: SPACES,
-    openTabIds: SPACES.map((s) => s.id),
     activeSpaceId: 's1',
     projectId: 'p1',
     onActivate,
     onCreate,
     onClose,
-    onViewSpace,
     ...overrides,
   };
   const view = render(<SpaceTabBar {...props} />);
@@ -64,7 +61,7 @@ function setup(overrides: Partial<Parameters<typeof SpaceTabBar>[0]> = {}) {
   const setActiveSpace = (id: string): void => {
     view.rerender(<SpaceTabBar {...props} activeSpaceId={id} />);
   };
-  return { onActivate, onCreate, onClose, onViewSpace, setActiveSpace };
+  return { onActivate, onCreate, onClose, setActiveSpace };
 }
 
 describe('SpaceTabBar', () => {
@@ -619,7 +616,6 @@ describe('SpaceTabBar', () => {
     const withLongName = {
       spaces: [{ id: 's1', name: LONG, type: 'canvas' as const }],
       allSpaces: [{ id: 's1', name: LONG, type: 'canvas' as const }],
-      openTabIds: ['s1'],
     };
 
     it('caps the tab and clips the name that overflows it', () => {
@@ -783,5 +779,38 @@ describe('ending a tab rename', () => {
     fireEvent.keyDown(field, init);
     expect(screen.getByTestId('space-tab-name-input-s1')).toBe(field);
     expect(onRenameSpace).not.toHaveBeenCalled();
+  });
+});
+
+// inner#1440: the name only reaches the tab once the server's write comes back
+// through the project meta, so the tab shows what was committed until then.
+describe('the name shown after a tab rename is committed', () => {
+  /**
+   * Opens the Notes tab's name field, replaces the name and presses Enter.
+   * @param name - What to type.
+   */
+  async function renameNotesTo(name: string): Promise<void> {
+    const user = userEvent.setup();
+    await user.dblClick(screen.getByTestId('space-tab-name-s2'));
+    const field = screen.getByTestId('space-tab-name-input-s2');
+    await user.clear(field);
+    await user.type(field, `${name}{Enter}`);
+  }
+
+  it('shows the new name while the meta still holds the old one', async () => {
+    setup({ onRenameSpace: vi.fn(() => new Promise<void>(() => undefined)) });
+    await renameNotesTo('Ideas');
+    expect(screen.getByTestId('space-tab-name-s2')).toHaveTextContent('Ideas');
+  });
+
+  it('goes back to the meta name when the rename is refused', async () => {
+    let refuse: (reason: Error) => void = () => undefined;
+    setup({
+      onRenameSpace: vi.fn(() => new Promise<void>((_, reject) => { refuse = reject; })),
+    });
+    await renameNotesTo('Ideas');
+    expect(screen.getByTestId('space-tab-name-s2')).toHaveTextContent('Ideas');
+    await act(async () => { refuse(new Error('refused')); });
+    expect(screen.getByTestId('space-tab-name-s2')).toHaveTextContent('Notes');
   });
 });

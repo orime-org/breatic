@@ -569,13 +569,13 @@ prosemirror-highlight 0.15.3  MIT  https://github.com/ocavue/prosemirror-highlig
 prosemirror-history 1.5.0  MIT  https://github.com/prosemirror/prosemirror-history#readme
 prosemirror-inputrules 1.5.1  MIT  https://github.com/prosemirror/prosemirror-inputrules#readme
 prosemirror-keymap 1.2.3  MIT  https://github.com/prosemirror/prosemirror-keymap#readme
-prosemirror-model 1.25.11  MIT
+prosemirror-model 1.25.12  MIT
 prosemirror-safari-ime-span 1.0.2  MIT  https://github.com/ocavue/prosemirror-safari-ime-span#readme
 prosemirror-schema-list 1.5.1  MIT  https://github.com/prosemirror/prosemirror-schema-list#readme
 prosemirror-state 1.4.4  MIT  https://github.com/prosemirror/prosemirror-state#readme
 prosemirror-tables 1.8.5  MIT  https://github.com/ProseMirror/prosemirror-tables#readme
 prosemirror-transform 1.12.0  MIT  https://github.com/prosemirror/prosemirror-transform#readme
-prosemirror-view 1.42.2  MIT
+prosemirror-view 1.42.6  MIT
 proxy-from-env 2.1.0  MIT  https://github.com/Rob--W/proxy-from-env#readme
 pwacompat 2.0.17  Apache-2.0  https://github.com/GoogleChrome/pwacompat
 rc-motion 2.9.5  MIT  https://react-component.github.io/motion
