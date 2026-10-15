@@ -23,6 +23,9 @@ import type { MarkChannel, MarkDraft, MarkObject } from '@web/stores/mark-draft'
 /** Below this drag, in screen pixels, a shape tool's press is a click and draws nothing. */
 export const MARK_MIN_DRAG_PX = 4;
 
+/** How far, in canvas pixels, from a hollow object's stroke a press still hits it. */
+const MARK_HIT_TOLERANCE_PX = 6;
+
 /** What a pointer event from Fabric carries that this canvas reads. */
 interface PointerInfo {
   e: { button?: number };
@@ -107,6 +110,8 @@ export class MarkCanvasController {
       stopContextMenu: false,
       fireRightClick: false,
       preserveObjectStacking: true,
+      // How far from a hollow object's stroke a press still hits it.
+      targetFindTolerance: MARK_HIT_TOLERANCE_PX,
     });
     this.fitToScreen();
     const brush = new PencilBrush(this.canvas);

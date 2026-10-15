@@ -104,6 +104,9 @@ function tagged<T extends FabricObject>(shape: T, tags: MarkTags): T & MarkTags 
   // A text keeps its four corners only: its scale becomes its font size, which
   // has one value for both directions (inner#1303 §6.2).
   if (tags.markKind === 'text') shape.setControlsVisibility({ ml: false, mr: false, mt: false, mb: false });
+  // Every object but a text is hollow: it is hit where it is drawn, and a press
+  // inside it reaches what lies under it (A4).
+  else shape.set({ perPixelTargetFind: true });
   return Object.assign(shape, tags);
 }
 
