@@ -1045,6 +1045,30 @@ test('a web table with a picture in a cell and a srcset picture paste in with bo
   expect(kinds.filter((kind) => kind === 'image')).toHaveLength(2);
 });
 
+// A picture in the middle of a sentence and two pictures in one figure are
+// each read into a pending block, in the reader's own browser.
+test('a picture in a sentence and a figure of two pictures paste in as three pending pictures (inner#1351 A5)', async () => {
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+  await openFreshDocument(page);
+  await holdFetches(page);
+  await page.keyboard.type('Lead');
+  await page.keyboard.press('Enter');
+  await page.evaluate((url) => {
+    const html = `<p>see <img src="${url}?a"> here</p><figure><img src="${url}?b"><img src="${url}?c"></figure>`;
+    return navigator.clipboard.write([
+      new ClipboardItem({
+        'text/html': new Blob([html], { type: 'text/html' }),
+        'text/plain': new Blob(['see here'], { type: 'text/plain' }),
+      }),
+    ]);
+  }, OUTSIDE_PICTURE);
+
+  await page.keyboard.press('ControlOrMeta+v');
+
+  await expect(page.locator(PENDING)).toHaveCount(3);
+  expect(await rows(page)).toEqual(expect.arrayContaining(['see', 'here']));
+});
+
 test('Shift+click on a picture while the body is let go selects the picture and leaves the old words out (A20)', async () => {
   await openFreshDocument(page);
   await page.keyboard.type('hello world');
