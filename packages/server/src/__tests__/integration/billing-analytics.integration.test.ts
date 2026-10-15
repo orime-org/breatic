@@ -139,7 +139,7 @@ async function pendingOrder(metadata: Record<string, unknown>): Promise<{ userId
  * @returns The snapshot.
  */
 function adsAccepted(): BrowserAdsSnapshot {
-  return { consent: true, gpc: false };
+  return { consent: true };
 }
 
 describe("credit purchases", () => {
@@ -260,7 +260,7 @@ describe("subscriptions", () => {
     expect(await getUploadStatus({ conversion: "subscription", transactionId: txn })).toBe("queued");
   });
 
-  it("reports a renewal under the analytics choice last seen, and nothing without one", async () => {
+  it("reports a renewal under the latest reported consent, and nothing without one", async () => {
     const { userId, customerId } = await account();
     await handleSubscriptionEvent(event("customer.subscription.created", stripeSub(customerId, "active")));
     sent.splice(0);
@@ -269,7 +269,11 @@ describe("subscriptions", () => {
     await handleSubscriptionEvent(event("invoice.paid", renewal));
     expect(sent).toEqual([]);
 
-    await sql`UPDATE users SET consent_seen = ${sql.json({ analytics: { value: true, revision: CONSENT_REVISION } })} WHERE id = ${userId}`;
+    await sql`UPDATE users SET consent_seen = ${sql.json({
+      analytics: { value: true, revision: CONSENT_REVISION },
+      ads: { value: false, revision: CONSENT_REVISION },
+      reportedAt: new Date().toISOString(),
+    })} WHERE id = ${userId}`;
     const paid = event("invoice.paid", renewal);
     await handleSubscriptionEvent(paid);
     expect(sent).toEqual([

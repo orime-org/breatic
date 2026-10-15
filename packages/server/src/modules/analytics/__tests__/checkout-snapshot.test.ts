@@ -6,8 +6,8 @@ import { NO_CONSENT, type BrowserAdsSnapshot } from "@breatic/shared";
 import { readCheckoutSnapshot, toStripeMetadata } from "@server/modules/analytics/checkout-snapshot.js";
 
 const CLICK = { gclid: "c1", at: "2026-10-12T01:00:00.000Z" };
-const ADS_BROWSER: BrowserAdsSnapshot = { consent: true, gpc: true };
-const UNSET: BrowserAdsSnapshot = { consent: false, gpc: false };
+const ADS_BROWSER: BrowserAdsSnapshot = { consent: true };
+const UNSET: BrowserAdsSnapshot = { consent: false };
 
 describe("checkout snapshot", () => {
   it("round-trips through Stripe metadata strings", () => {
@@ -36,7 +36,8 @@ describe("checkout snapshot", () => {
       undefined,
       {},
       { analyticsConsent: "{oops", adsBrowser: "{oops", adClick: "x" },
-      { analyticsConsent: { analytics: "yes" }, adsBrowser: { consent: "yes", gpc: false } },
+      { analyticsConsent: { analytics: "yes" }, adsBrowser: { consent: "yes" } },
+      { adsBrowser: { consent: true, extra: 1 } },
       // An order placed before this shape existed.
       { adsBrowser: { choice: null, gpcAt: null, at: "2026-10-12T02:00:00.000Z" } },
     ]) {

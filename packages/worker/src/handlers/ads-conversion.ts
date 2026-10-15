@@ -6,7 +6,7 @@
  * behind `AdsConversionSink`; Google's Data Manager API is the one sink today.
  */
 
-import { DelayedError, UnrecoverableError, type Job } from "bullmq";
+import { UnrecoverableError, type Job } from "bullmq";
 import { IngestionServiceClient } from "@google-ads/datamanager";
 import {
   ADS_SWEEP_JOB,
@@ -14,34 +14,22 @@ import {
   AdsConversionJobSchema,
   adsConversionConfig,
   getUploadStatus,
-  logger,
   requeueStaleAdsUploads,
   settleAdsRefused,
   settleAdsUpload,
   type AdsConversionConfig,
   type AdsConversionJob,
-  type AdsUploadStatus,
 } from "@breatic/core";
-
-/** How the platform's processing of an accepted request ended. */
-export type UploadProcessing = "success" | "processing" | "failed";
 
 /** Where conversions are reported. */
 export interface AdsConversionSink {
   /**
-   * Send one conversion or restatement.
+   * Send one conversion.
    * @param job - The upload.
    * @param conversionActionId - The platform's id for the conversion action.
    * @returns The platform's id for the accepted request.
    */
   upload(job: AdsConversionJob, conversionActionId: string): Promise<string | undefined>;
-  /**
-   * How processing of an accepted request ended; acceptance alone does not
-   * mean the platform recorded the conversion.
-   * @param requestId - The id `upload` returned.
-   * @returns The outcome.
-   */
-  status(requestId: string): Promise<UploadProcessing>;
 }
 
 // gRPC status codes a retry cannot change: INVALID_ARGUMENT, NOT_FOUND,
@@ -77,62 +65,7 @@ export function googleDataManagerSink(config: AdsConversionConfig): AdsConversio
       });
       return response.requestId ?? undefined;
     },
-    async status(requestId) {
-      const [response] = await client.retrieveRequestStatus({ requestId });
-      const outcome = response.requestStatusPerDestination?.[0]?.requestStatus;
-      if (outcome === "SUCCESS" || outcome === "PARTIAL_SUCCESS") return "success";
-      if (outcome === "FAILED") return "failed";
-      return "processing";
-    },
   };
-}
-
-// Google's schedule for polling a request it is still processing: first check
-// 30 minutes after ingestion, backoff ×1.3 capped at an hour, give up after a
-// day, with a little jitter (Data Manager API diagnostics guide).
-const STATUS_FIRST_WAIT_MS = 30 * 60_000;
-const STATUS_MAX_WAIT_MS = 60 * 60_000;
-const STATUS_BACKOFF = 1.3;
-const STATUS_JITTER = 0.1;
-const STATUS_GIVE_UP_MS = 24 * 60 * 60_000;
-
-/**
- * How long to wait before checking the original upload again.
- * @param checks - Checks that already found it processing.
- * @returns The wait in ms.
- */
-function statusCheckWait(checks: number): number {
-  const wait = Math.min(STATUS_MAX_WAIT_MS, STATUS_FIRST_WAIT_MS * STATUS_BACKOFF ** checks);
-  return wait * (1 + Math.random() * STATUS_JITTER);
-}
-
-/**
- * Put a restatement back on the queue until Google has processed the
- * original upload; a delayed job spends none of its attempts.
- * @param job - The restatement.
- * @param token - The worker's lock token for the job.
- * @throws {DelayedError} Always, once the job is delayed.
- * @throws {UnrecoverableError} When the original is still processing a day on.
- */
-async function waitForOriginal(job: Job<AdsConversionJob>, token: string | undefined): Promise<never> {
-  if (token === undefined) throw new Error("the original upload is still processing");
-  if (Date.now() - job.timestamp > STATUS_GIVE_UP_MS) {
-    throw new UnrecoverableError("the original upload was still processing a day later");
-  }
-  const checks = job.data.statusChecks ?? 0;
-  await job.updateData({ ...job.data, statusChecks: checks + 1 });
-  await job.moveToDelayed(Date.now() + statusCheckWait(checks), token);
-  throw new DelayedError();
-}
-
-/**
- * Whether an upload's row still waits for this job.
- * @param job - The upload.
- * @param status - Where its row stands.
- * @returns True while the row expects this job to upload.
- */
-function uploadAwaited(job: AdsConversionJob, status: AdsUploadStatus): boolean {
-  return job.kind === "restatement" ? status === "restating" : status === "queued" || status === "restate_pending";
 }
 
 /**
@@ -149,16 +82,13 @@ function isPermanent(err: unknown): boolean {
  * Upload one queued conversion and record how it ended.
  * @param job - The queued upload.
  * @param sink - Builds where it goes from the configuration the conversion was checked against.
- * @param token - The worker's lock token for the job.
  * @throws {UnrecoverableError} When the job does not parse, ad conversions are
  *   no longer configured, or the platform refused it for good.
- * @throws {DelayedError} When a restatement waits for Google to process the original.
  * @throws {unknown} When the upload failed otherwise, so the queue retries.
  */
 export async function runAdsConversion(
   job: Job<AdsConversionJob>,
   sink: (config: AdsConversionConfig) => AdsConversionSink,
-  token?: string,
 ): Promise<void> {
   if (job.name === ADS_SWEEP_JOB) {
     await requeueStaleAdsUploads();
@@ -179,32 +109,19 @@ export async function runAdsConversion(
   try {
     // A job queued again after its upload settled (the sweep racing the last attempt) uploads nothing.
     const status = await getUploadStatus({ conversion: job.data.conversion, transactionId: job.data.transactionId });
-    if (status === null || !uploadAwaited(job.data, status)) return;
+    if (status !== "queued") return;
     // Consent may have been withdrawn since the conversion was queued (design §4.9, last column).
     if (!(await adsAllowedFor(job.data.userId, job.data.browser))) {
       await settleAdsRefused(job.data);
       return;
     }
-    const platform = sink(config);
-    // A restatement of a conversion Google never recorded would count as a new conversion.
-    if (job.data.kind === "restatement" && job.data.originalRequestId) {
-      const original = await platform.status(job.data.originalRequestId);
-      if (original === "failed") throw new UnrecoverableError("the original upload was rejected");
-      if (original === "processing") await waitForOriginal(job, token);
-    }
-    requestId = await platform.upload(job.data, actionId);
+    requestId = await sink(config).upload(job.data, actionId);
   } catch (err) {
-    if (err instanceof DelayedError) throw err;
     const lastAttempt = job.attemptsMade + 1 >= (job.opts.attempts ?? 1);
     const permanent = err instanceof UnrecoverableError || isPermanent(err);
     if (permanent || lastAttempt) await settleAdsUpload(job.data, false);
     if (permanent) throw err instanceof UnrecoverableError ? err : new UnrecoverableError((err as Error).message);
     throw err;
   }
-  if (await settleAdsUpload(job.data, true, requestId)) {
-    logger.info(
-      { conversion: job.data.conversion, transactionId: job.data.transactionId },
-      "ads_restatement_skipped_consent_withdrawn",
-    );
-  }
+  await settleAdsUpload(job.data, true, requestId);
 }

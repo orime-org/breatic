@@ -4,7 +4,7 @@
 import { describe, expect, it } from "vitest";
 import { Hono } from "hono";
 import { CONSENT_COOKIE_NAME, CONSENT_REVISION, NO_CONSENT } from "@breatic/shared";
-import { currentAdsBrowser, currentConsent, currentConsentSeen } from "@breatic/core";
+import { currentAdsBrowser, currentConsent } from "@breatic/core";
 import { analyticsConsentMiddleware } from "@server/middleware/analytics-consent.js";
 
 function appSeeingConsent(): Hono {
@@ -14,7 +14,7 @@ function appSeeingConsent(): Hono {
     await Promise.resolve();
     return c.json(currentConsent());
   });
-  app.get("/browser", (c) => c.json({ ads: currentAdsBrowser(), seen: currentConsentSeen() }));
+  app.get("/browser", (c) => c.json(currentAdsBrowser()));
   return app;
 }
 
@@ -45,20 +45,25 @@ describe("analyticsConsentMiddleware", () => {
     expect(await res.json()).toEqual(NO_CONSENT);
   });
 
-  it("hands on the browser's ads consent, whether it sent GPC, and the choices it would record", async () => {
+  it("keeps the visitor's own ads choice under GPC", async () => {
     const res = await appSeeingConsent().request("/browser", {
       headers: { Cookie: cookieHeader(["necessary", "ads"]), "Sec-GPC": "1" },
     });
-    expect(await res.json()).toEqual({
-      ads: { consent: true, gpc: true },
-      seen: { analytics: { value: false, revision: CONSENT_REVISION }, ads: { value: true, revision: CONSENT_REVISION } },
-    });
+    expect(await res.json()).toEqual({ consent: true });
   });
 
-  it("records nothing as seen for regional defaults", async () => {
-    const res = await appSeeingConsent().request("/browser", {
-      headers: { Cookie: cookieHeader(["necessary", "analytics"], CONSENT_REVISION, "implicit") },
+  it("lets GPC refuse a regional default for ads", async () => {
+    const implicit = cookieHeader(["necessary", "analytics", "ads"], CONSENT_REVISION, "implicit");
+    const withGpc = await appSeeingConsent().request("/browser", { headers: { Cookie: implicit, "Sec-GPC": "1" } });
+    expect(await withGpc.json()).toEqual({ consent: false });
+    const without = await appSeeingConsent().request("/browser", { headers: { Cookie: implicit } });
+    expect(await without.json()).toEqual({ consent: true });
+  });
+
+  it("leaves analytics to the cookie under GPC", async () => {
+    const res = await appSeeingConsent().request("/probe", {
+      headers: { Cookie: cookieHeader(["necessary", "analytics"], CONSENT_REVISION, "implicit"), "Sec-GPC": "1" },
     });
-    expect(await res.json()).toEqual({ ads: { consent: false, gpc: false }, seen: null });
+    expect(await res.json()).toEqual({ analytics: true, ads: false });
   });
 });

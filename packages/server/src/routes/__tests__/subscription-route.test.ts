@@ -233,7 +233,7 @@ describe("POST /confirm — the return from a membership checkout (#307 A5–A7)
     adsAllowedFor.mockResolvedValueOnce(true);
     const allowed = (await (await post("/confirm", { session_id: "cs_1" })).json()) as { data: { conversion: unknown } };
     expect(allowed.data.conversion).toMatchObject({ transactionId: "sub:sub_1" });
-    expect(adsAllowedFor).toHaveBeenCalledWith("u-1", { consent: false, gpc: false });
+    expect(adsAllowedFor).toHaveBeenCalledWith("u-1", { consent: false });
 
     adsAllowedFor.mockResolvedValueOnce(false);
     const refused = (await (await post("/confirm", { session_id: "cs_1" })).json()) as { data: { conversion: unknown } };

@@ -96,7 +96,7 @@ function eventsOf(type: string): OutgoingEvent[] {
  * @returns The snapshot.
  */
 function adsAccepted(): RequestBrowser {
-  return { ads: { consent: true, gpc: false }, seen: null };
+  return { ads: { consent: true } };
 }
 
 describe("project_created", () => {

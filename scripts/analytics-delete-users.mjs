@@ -7,9 +7,8 @@
  * then run it with their ids (`users.id`). It refuses any account that is not
  * soft-deleted and lists them.
  *
- * It first removes, in this database, the accounts' ad switch, the choices last
- * seen while they were signed in, and the consent kept on their orders, upload
- * tickets and ad uploads.
+ * It first removes, in this database, the accounts' latest reported consent
+ * and the consent kept on their orders, upload tickets and ad uploads.
  * Then, on a deployment that sends product analytics (`AMPLITUDE_API_KEY`
  * set), it asks Amplitude to delete their events; otherwise it says so and
  * stops. A failure at Amplitude leaves the database part done; run it again.

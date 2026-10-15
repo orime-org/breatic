@@ -157,6 +157,7 @@ describe("collaborator_first_action", () => {
       UPDATE users SET consent_seen = ${sql.json({
         analytics: { value: false, revision: CONSENT_REVISION },
         ads: { value: true, revision: CONSENT_REVISION },
+        reportedAt: new Date().toISOString(),
       })} WHERE id = ${ownerId}
     `;
     await sql`

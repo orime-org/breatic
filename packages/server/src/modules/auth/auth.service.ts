@@ -25,10 +25,9 @@ import {
   currentConsent,
   enqueueAdsConversion,
   env,
-  getAdsSharing as readAdsSharing,
   getHonouredTierForUser,
   logger,
-  setAdsSharing as writeAdsSharing,
+  recordReportedConsent,
   trackServerEvent,
 } from "@breatic/core";
 import {
@@ -42,7 +41,7 @@ import {
   UnauthorizedError,
 } from "@breatic/core";
 import { adClickFrom, getActiveLocale, normalizeEmail, t } from "@breatic/shared";
-import type { AdsSharing, Attribution, UserEntity } from "@breatic/shared";
+import type { Attribution, ReportedConsent, UserEntity } from "@breatic/shared";
 
 const BCRYPT_ROUNDS = 12;
 
@@ -282,26 +281,14 @@ export async function setLocale(userId: string, locale: string): Promise<void> {
 }
 
 /**
- * Read the account's ad switch (`GET /me/ads-sharing`, inner#1442 design §4.4.6).
+ * Keep what a signed-in browser reports as the account's latest consent
+ * (`PUT /users/me/consent`, inner#1442 design §4.4.6); a deleted account is
+ * left as it is.
  * @param userId - The account.
- * @returns The switch, or null when the account is gone.
+ * @param report - The browser's consent in force.
  */
-export async function getAdsSharing(userId: string): Promise<AdsSharing | null> {
-  return readAdsSharing(userId);
-}
-
-/**
- * Open or close the account's ad switch from its settings (`PUT
- * /me/ads-sharing`). Closing keeps a switch already closed as it is.
- * @param userId - The account.
- * @param allowed - Whether the account holder turned ads on.
- * @param gpc - Whether the request carried GPC; ads cannot be turned on then.
- * @returns The switch afterwards, or null when the account is gone.
- * @throws {ConflictError} When ads are turned on from a browser that sends GPC.
- */
-export async function setAdsSharing(userId: string, allowed: boolean, gpc: boolean): Promise<AdsSharing | null> {
-  if (allowed && gpc) throw new ConflictError(t("server.error.ads_gpc"));
-  return writeAdsSharing(userId, allowed ? { allowed } : { allowed, source: "settings" });
+export async function reportConsent(userId: string, report: ReportedConsent): Promise<void> {
+  await recordReportedConsent(userId, report);
 }
 
 /**

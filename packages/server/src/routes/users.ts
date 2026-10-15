@@ -18,12 +18,11 @@
  */
 
 import { Hono } from "hono";
-import { currentAdsBrowser, NotFoundError } from "@breatic/core";
 import { validate } from "@server/middleware/validate.js";
 import { z } from "zod";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
-import { t, USER_LOOKUP_MAX_IDS, type AdsSharing } from "@breatic/shared";
+import { ReportedConsentSchema, USER_LOOKUP_MAX_IDS } from "@breatic/shared";
 import { SUPPORTED } from "@server/middleware/i18n.js";
 
 import { authService, studioService } from "@server/modules";
@@ -95,40 +94,17 @@ users.patch("/me/locale", validate("json", localeSchema), async (c) => {
 });
 
 /**
- * The account's ad switch as the answer, or 404 when the account is gone.
- * @param sharing - The switch, or null.
- * @returns The switch.
- * @throws {NotFoundError} When the account is gone.
- */
-function sharingOrNotFound(sharing: AdsSharing | null): AdsSharing {
-  if (sharing === null) throw new NotFoundError(t("server.error.not_found"));
-  return sharing;
-}
-
-/**
- * `GET /api/v1/users/me/ads-sharing` — the account's ad switch.
+ * `PUT /api/v1/users/me/consent` — the signed-in browser's consent in force.
  *
- * The app and the website weigh it with the browser's own choice through
- * `adsAllowed` before loading any ad tag (inner#1442 design §4.4.6).
- * @returns `200` with `{ data: { optedOut, source } }`
+ * The app and the website send it after sign-in and after each write of the
+ * consent cookie. The latest report from any browser replaces the previous
+ * one; events no browser causes, such as renewals, follow it (inner#1442
+ * design §4.4.6).
+ * @returns `204`
  */
-users.get("/me/ads-sharing", async (c) => {
-  return c.json({ data: sharingOrNotFound(await authService.getAdsSharing(c.get("user").id)) });
-});
-
-const adsSharingBody = z.object({ allowed: z.boolean() }).strict();
-
-/**
- * `PUT /api/v1/users/me/ads-sharing` — switch ads off or on for the account.
- *
- * Sent when a signed-in visitor saves ads off, and when they confirm turning
- * ads back on. Turning them on from a browser that sends GPC is refused.
- * @returns `200` with the same body as `GET`; `409` when turned on under GPC
- */
-users.put("/me/ads-sharing", validate("json", adsSharingBody), async (c) => {
-  const { allowed } = c.req.valid("json");
-  const sharing = await authService.setAdsSharing(c.get("user").id, allowed, currentAdsBrowser().gpc);
-  return c.json({ data: sharingOrNotFound(sharing) });
+users.put("/me/consent", validate("json", ReportedConsentSchema), async (c) => {
+  await authService.reportConsent(c.get("user").id, c.req.valid("json"));
+  return c.body(null, 204);
 });
 
 export { users as usersRoute };

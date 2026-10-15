@@ -282,8 +282,8 @@ export function startWorker(): void {
   // built on the first job, so a deployment without Google Ads configured
   // never constructs a client.
   let adsSink: AdsConversionSink | undefined;
-  const adsConversion = createWorker<AdsConversionJob>(ADS_CONVERSION_QUEUE, (job, token) =>
-    runAdsConversion(job, (config) => (adsSink ??= googleDataManagerSink(config)), token),
+  const adsConversion = createWorker<AdsConversionJob>(ADS_CONVERSION_QUEUE, (job) =>
+    runAdsConversion(job, (config) => (adsSink ??= googleDataManagerSink(config))),
   );
   // Queues again any upload whose job was lost between the claim and the add.
   (adsConversionConfig() ? scheduleAdsUploadSweep() : unscheduleAdsUploadSweep()).catch((err: unknown) =>
@@ -296,7 +296,6 @@ export function startWorker(): void {
         err,
         conversion: job?.data.conversion,
         transactionId: job?.data.transactionId,
-        kind: job?.data.kind,
         attemptsMade: job?.attemptsMade,
         attemptsAllowed: job?.opts?.attempts,
       },
