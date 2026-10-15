@@ -341,7 +341,7 @@ describe('drawAdjusted', () => {
     const backend = { tileSize: 4096, gl: liveGl(2048, false, 2048, { width: 4096, height: 4096 }), applyFilters: vi.fn() };
     const value = { ...defaultAdjustValue, sharpness: 50 };
     const draw = drawAdjusted(picture(100, 50), { width: 100, height: 50 }, value, document.createElement('canvas'), backend as never);
-    await expect(draw).rejects.toThrow(Error);
+    await expect(draw).rejects.toThrow(/drawing buffer smaller than its canvas/);
     expect(backend.applyFilters).not.toHaveBeenCalled();
   });
 });
