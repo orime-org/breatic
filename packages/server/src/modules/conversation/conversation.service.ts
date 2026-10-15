@@ -235,7 +235,9 @@ export async function titleForTurn(
  * "is there one?" and "then make one" indivisible, so two tabs racing cannot
  * each leave an empty conversation behind. There is no such pair here — this
  * asks nothing before creating, so two presses producing two conversations is
- * the correct answer to two presses, not a race to be closed.
+ * the correct answer to two presses, not a race to be closed. One press sent
+ * again carries the same `Idempotency-Key` and is answered by the route's
+ * `runOnce` with the conversation it already made (inner#1490).
  * @param userId - The signed-in user
  * @param projectId - Project the new conversation belongs to
  * @returns The conversation that was just created
