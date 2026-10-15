@@ -64,7 +64,6 @@ export function usePublishActivity(input: PublishActivityInput): void {
       const prev = Array.isArray(state?.activity) ? (state.activity as NodeActivity[]) : null;
       if (!sameActivityList(prev, next)) writeActivity(awareness, next);
     };
-    publish();
     let queued = false;
     let live = true;
     const unsubscribe = useUploadMarksStore.subscribe(() => {
@@ -82,8 +81,8 @@ export function usePublishActivity(input: PublishActivityInput): void {
     };
   }, [awareness, spaceId]);
 
-  // A reconnect needs a write even though nothing local changed: the peers
-  // dropped this state while the socket was closed.
+  // Written on mount and on every reconnect, even though nothing local
+  // changed: the peers dropped this state while the socket was closed.
   React.useEffect(() => {
     if (!awareness || !synced) return;
     writeActivity(awareness, currentActivity(spaceId));
