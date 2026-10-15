@@ -65,30 +65,28 @@ function typesText(target: EventTarget | null): boolean {
 }
 
 /**
- * Keep the arrows pressed in a node of this canvas while a tool layer is open:
- * xyflow would move the node under the tool, whichever region holds the
- * keyboard. Text boxes keep theirs, and so does every control outside the
- * nodes (a panel's slider, the focus crop's timeline) and every other canvas,
- * a hidden Space's included. Mounted once by the canvas, which stays mounted
- * while any node is culled.
+ * Keep the arrows pressed in a node while a tool layer is open: xyflow would
+ * move the node under the tool, whichever region holds the keyboard. Text
+ * boxes keep theirs, and so does every control outside the nodes (a panel's
+ * slider, the focus crop's timeline). Mounted once by the canvas, which stays
+ * mounted while any node is culled; a hidden Space's effects are torn down,
+ * so only the shown canvas listens.
  * @param active - Whether a tool layer is open.
- * @param within - This canvas's root.
  */
-export function useToolLayerArrows(active: boolean, within: React.RefObject<HTMLElement | null>): void {
+export function useToolLayerArrows(active: boolean): void {
   React.useEffect(() => {
     if (!active) return undefined;
     /**
-     * Take an arrow pressed in a node of this space.
+     * Take an arrow pressed in a node.
      * @param event - The key.
      */
     const onKeyDown = (event: KeyboardEvent): void => {
       if (!ARROWS.has(event.key) || typesText(event.target)) return;
       if (!(event.target instanceof Element) || event.target.closest(MOVED_BY_ARROWS) === null) return;
-      if (within.current?.contains(event.target) !== true) return;
       event.preventDefault();
       event.stopPropagation();
     };
     window.addEventListener('keydown', onKeyDown, true);
     return () => window.removeEventListener('keydown', onKeyDown, true);
-  }, [active, within]);
+  }, [active]);
 }

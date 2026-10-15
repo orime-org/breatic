@@ -27,21 +27,14 @@ import { useUIStore } from '@web/stores/ui';
  * @returns The canvas.
  */
 function Canvas({ active }: { active: boolean }): React.JSX.Element {
-  const container = React.useRef<HTMLDivElement>(null);
-  useToolLayerArrows(active, container);
+  useToolLayerArrows(active);
   return (
     <div data-region='space'>
-      <div ref={container}>
-        <div className='react-flow__node'>
-          <button type='button' data-testid='control'>tile</button>
-          <textarea data-testid='typing' />
-        </div>
-        <div role='slider' tabIndex={0} aria-valuenow={0} data-testid='slider' />
-      </div>
-      {/* Another Space's canvas, kept mounted while hidden. */}
       <div className='react-flow__node'>
-        <button type='button' data-testid='elsewhere'>other</button>
+        <button type='button' data-testid='control'>tile</button>
+        <textarea data-testid='typing' />
       </div>
+      <div role='slider' tabIndex={0} aria-valuenow={0} data-testid='slider' />
     </div>
   );
 }
@@ -97,13 +90,6 @@ describe('useToolLayerArrows', () => {
     render(<Canvas active />);
     expect(fireEvent.keyDown(screen.getByTestId('control'), { key: 'ArrowDown' })).toBe(false);
     expect(reached).not.toHaveBeenCalled();
-  });
-
-  it('leaves arrows pressed in another canvas’s nodes to that canvas', () => {
-    document.addEventListener('keydown', reached);
-    render(<Canvas active />);
-    expect(fireEvent.keyDown(screen.getByTestId('elsewhere'), { key: 'ArrowRight' })).toBe(true);
-    expect(reached).toHaveBeenCalledOnce();
   });
 
   // xyflow moves a node by the arrows pressed in it; a control outside every
