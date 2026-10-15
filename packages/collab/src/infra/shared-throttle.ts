@@ -47,7 +47,10 @@ export function createSharedThrottle(deps: SharedThrottleDeps): Throttle {
       if (await deps.redis.get(banKey)) {
         allowed = false;
       } else {
-        allowed = await checkRateLimit(deps.redis, `collab-connect:${identity}`, deps.maxAttempts, WINDOW_SECONDS);
+        const verdict = await checkRateLimit(deps.redis, [
+          { key: `collab-connect:${identity}`, max: deps.maxAttempts, windowSeconds: WINDOW_SECONDS },
+        ]);
+        allowed = verdict.allowed;
         if (!allowed) await deps.redis.set(banKey, "1", "EX", deps.banMinutes * 60);
       }
     } catch (err) {
