@@ -10,10 +10,9 @@
  * wants the same history split differently: a tool call belongs to the
  * assistant, its result arrives as a message of its own.
  *
- * The conversion is one function because both chat entry points need it and a
- * second copy would drift; it is here rather than in the repository because
- * the repository answers to every reader, and only this one wants the
- * protocol's shape.
+ * A row kept as it was sent (`for_model`) goes back as kept; this renders
+ * the rows stored before that copy was kept, and is the replay's only way to
+ * send them (`history-replay.ts`).
  */
 
 import type { ModelMessage } from "ai";
@@ -35,13 +34,10 @@ type ToolPart = Extract<MessagePart, { type: "tool" }>;
  * never finished arriving is left out along with its own half: what was
  * stored is a partial parse, and replaying it puts words in the model's
  * mouth.
- *
- * Exported because compaction counts in the same unit. Counting the ones the
- * model never sees would spend the configured window on them.
  * @param part - The tool part to judge.
  * @returns True when it reaches the model.
  */
-export function reachesTheModel(part: ToolPart): boolean {
+function reachesTheModel(part: ToolPart): boolean {
   // A question the model asked is in the reply as words, written there by the
   // turn from this call's own payload. Sending the call and its result too
   // would put the same question in the context twice, on this turn and every
@@ -150,12 +146,11 @@ export function endingNote(parts: readonly MessagePart[]): string | undefined {
 }
 
 /**
- * Turn stored messages into the messages the model is sent.
+ * Turn rows stored without a kept copy into the messages the model is sent.
  *
- * Reasoning never goes back: it is the model's own working, and returning it
- * teaches nothing while costing every turn. A call still in flight is left out
- * along with its own half — a call with no answer puts the exchange in a state
- * the protocol has no move for.
+ * Such rows kept no signed thinking, so none goes back. A call still in flight
+ * is left out along with its own half — a call with no answer puts the
+ * exchange in a state the protocol has no move for.
  *
  * A call the user stopped does go back, saying so. It used to be dropped whole,
  * which left the next turn reading as one the model had finished answering: it

@@ -278,17 +278,17 @@ export async function getMessages(
  *
  * Skips already-consolidated turns and drops the flat `thinking` field. That
  * field is a view read off the reasoning parts, and the parts themselves stay
- * -- what does or does not reach the model is decided one field at a time in
- * `toModelMessages`, not here.
+ * -- what does or does not reach the model is decided by the replay
+ * (`replayRows`), not here.
  *
  * It used to drop the creation time and the turn index as well, on the
  * grounds that the model is not shown them. But the model is not shown these
- * objects at all — `toModelMessages` names the fields it sends, one at a
- * time — so withholding them here reached nobody, and it cost a cast that
+ * objects at all — the replay sends each row's kept copy, or renders the
+ * fields it names — so withholding them here reached nobody, and it cost a cast that
  * told the compiler a message with no timestamp was a whole one.
  *
  * What it did reach is the budget, which prices the history one turn at a
- * time (`turn-budget.ts`, `costPerTurn`) and hands a fold the turns it took.
+ * time (`request-size.ts`, `costPerTurn`) and hands a fold the turns it took.
  * Both key on this field, and a consolidation that cannot tell one turn from
  * another takes nothing at all.
  * @param id - Conversation UUID
