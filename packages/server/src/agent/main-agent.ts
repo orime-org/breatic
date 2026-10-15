@@ -385,18 +385,17 @@ export class MainAgent {
 
       // The open Space goes as one line while it is what the history,
       // folded as it is now, last sent of it in full.
-      const current = ask.turn.current_space;
-      const key = openSpaceKey(current);
-      const unchanged = key !== undefined && current !== undefined && lastFullSnapshotKey(history, current.id) === key;
+      const open = openSpaceKey(ask.turn.current_space);
+      const unchanged = open !== undefined && lastFullSnapshotKey(history, open.spaceId) === open.key;
       const userMessage: ModelMessage = {
         role: "user",
-        content: userMessageForModel(ask.clockNote, ask.turn, { spaceUnchanged: unchanged }),
+        content: userMessageForModel(ask.clockNote, ask.turn, unchanged),
       };
       const replayed = replayRows(history, agentConfig);
       // Kept as it is so what is stored is what went out.
       const userKept: UserForModel = {
         messages: [userMessage],
-        ...(key === undefined || current === undefined ? {} : { snapshot: { spaceId: current.id, key, full: !unchanged } }),
+        ...(open === undefined ? {} : { snapshot: { ...open, full: !unchanged } }),
       };
       return {
         agentConfig,

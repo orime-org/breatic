@@ -80,12 +80,13 @@ function openSpaceSection(current: ChatCurrentSpace, unchanged = false): string 
  * Taken over the whole section, heading and note on what was cut included:
  * a renamed Space or a different cut is not the copy above.
  * @param current - The Space the reader has open, if any.
- * @returns The hash, or undefined when its section is already one line.
+ * @returns The Space and the hash, or undefined when its section is already
+ *   one line.
  * @throws {never} Never.
  */
-export function openSpaceKey(current: ChatCurrentSpace | undefined): string | undefined {
+export function openSpaceKey(current: ChatCurrentSpace | undefined): { spaceId: string; key: string } | undefined {
   if (current?.state !== "loaded" || current.content === "") return undefined;
-  return createHash("sha256").update(openSpaceSection(current)).digest("hex");
+  return { spaceId: current.id, key: createHash("sha256").update(openSpaceSection(current)).digest("hex") };
 }
 
 /**
@@ -130,17 +131,16 @@ function canvasNote(shown: string, detail: ChatCanvasDetail): string {
  * One user message as the model is sent it: the Spaces, the attachments, then
  * the words under their own heading.
  * @param turn - What the message is made of.
- * @param sent - What the history already holds.
- * @param sent.spaceUnchanged - The open Space is what the history last sent
- *   of it in full, so it goes as one line.
+ * @param spaceUnchanged - The open Space is what the history last sent of it
+ *   in full, so it goes as one line.
  * @returns The typed words alone when there is no Space and nothing attached.
  * @throws {never} Never.
  */
-export function userTurnForModel(turn: UserTurn, sent: { spaceUnchanged?: boolean } = {}): string {
+export function userTurnForModel(turn: UserTurn, spaceUnchanged = false): string {
   const { chips, message, spaces = [], spaces_total: spacesTotal = spaces.length, current_space: current } = turn;
   const sections: string[] = [];
   if (spaces.length > 0) sections.push(spaceListSection(spaces, spacesTotal, current?.id));
-  if (current) sections.push(openSpaceSection(current, sent.spaceUnchanged === true));
+  if (current) sections.push(openSpaceSection(current, spaceUnchanged));
   if (chips.length > 0) sections.push(attachmentSection(chips));
   if (sections.length === 0) return message;
   const words = writeReferences(chips, message, (chip, n) => `[Attachment ${String(n)}: ${attachmentTitle(chip)}]`);
@@ -166,15 +166,10 @@ export const READER_LANGUAGE_REMINDER =
  * message itself, then the reminder of the reader's language.
  * @param clockNote - The line that says what time it is for the reader.
  * @param turn - What the message is made of.
- * @param sent - What the history already holds.
- * @param sent.spaceUnchanged - The open Space goes as one line.
+ * @param spaceUnchanged - The open Space goes as one line.
  * @returns The message text.
  * @throws {never} Never.
  */
-export function userMessageForModel(
-  clockNote: string,
-  turn: UserTurn,
-  sent: { spaceUnchanged?: boolean } = {},
-): string {
-  return `${clockNote}\n\n${userTurnForModel(turn, sent)}\n\n${READER_LANGUAGE_REMINDER}`;
+export function userMessageForModel(clockNote: string, turn: UserTurn, spaceUnchanged = false): string {
+  return `${clockNote}\n\n${userTurnForModel(turn, spaceUnchanged)}\n\n${READER_LANGUAGE_REMINDER}`;
 }

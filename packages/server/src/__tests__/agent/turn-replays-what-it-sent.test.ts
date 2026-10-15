@@ -278,7 +278,7 @@ describe("a turn sends the open Space once while it stays the same", () => {
         parts: [{ type: "text", text: "earlier" }],
         ts: "",
         turnIndex: 6,
-        forModel: { messages: [ASKED], snapshot: { spaceId: "s1", key: openSpaceKey(open), full: true } },
+        forModel: { messages: [ASKED], snapshot: { ...openSpaceKey(open), full: true } },
       },
     ];
   }
@@ -291,7 +291,7 @@ describe("a turn sends the open Space once while it stays the same", () => {
     const kept = setUserForModel.mock.calls[0]?.[2] as { messages: Array<{ content: string }>; snapshot: unknown };
     expect(kept.messages[0]?.content).toContain(UNCHANGED_SPACE_NOTE);
     expect(kept.messages[0]?.content).not.toContain(content);
-    expect(kept.snapshot).toEqual({ spaceId: "s1", key: openSpaceKey(open), full: false });
+    expect(kept.snapshot).toEqual({ ...openSpaceKey(open), full: false });
   });
 
   it("sends it in full when it changed", async () => {
@@ -302,7 +302,7 @@ describe("a turn sends the open Space once while it stays the same", () => {
 
     const kept = setUserForModel.mock.calls[0]?.[2] as { messages: Array<{ content: string }>; snapshot: unknown };
     expect(kept.messages[0]?.content).toContain("Villain");
-    expect(kept.snapshot).toEqual({ spaceId: "s1", key: openSpaceKey(changed), full: true });
+    expect(kept.snapshot).toEqual({ ...openSpaceKey(changed), full: true });
   });
 });
 

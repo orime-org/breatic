@@ -342,7 +342,7 @@ describe("an open Space unchanged since it was last sent in full", () => {
   it("is one line under its heading", () => {
     const turn = userTurnForModel(
       { chips: [], message: "hi", spaces: [cast], spaces_total: 1, current_space: open },
-      { spaceUnchanged: true },
+      true,
     );
 
     expect(turn).toContain(`## The Space the reader has open: "Cast" (canvas)\n\n${UNCHANGED_SPACE_NOTE}\n\n## User message`);
@@ -356,9 +356,12 @@ describe("an open Space unchanged since it was last sent in full", () => {
   });
 
   it("is known by the section it would be sent as, heading included", () => {
-    expect(openSpaceKey({ ...open })).toBe(openSpaceKey(open));
-    expect(openSpaceKey({ ...open, content: `${content} ` })).not.toBe(openSpaceKey(open));
-    expect(openSpaceKey({ ...open, name: "Renamed" })).not.toBe(openSpaceKey(open));
+    const key = openSpaceKey(open)?.key;
+
+    expect(openSpaceKey(open)?.spaceId).toBe("s2");
+    expect(openSpaceKey({ ...open })?.key).toBe(key);
+    expect(openSpaceKey({ ...open, content: `${content} ` })?.key).not.toBe(key);
+    expect(openSpaceKey({ ...open, name: "Renamed" })?.key).not.toBe(key);
   });
 
   it("has nothing to be known by when it holds nothing to stand in for", () => {
