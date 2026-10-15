@@ -116,6 +116,27 @@ async function secondPressSendsNothing(
   expect(held.count()).toBe(1);
 }
 
+/** Where a checkout's answer sends the browser in place of Stripe. */
+const STRIPE_STAND_IN = '/stripe-checkout-stand-in';
+
+/**
+ * Answer the held checkout, let the browser leave for the page standing in
+ * for Stripe, and come back with the browser's Back button (A5, A7).
+ * @param page - The page.
+ * @param held - The held checkout requests.
+ */
+async function backFromStripe(page: Page, held: HeldPosts): Promise<void> {
+  await page.route(
+    (url) => url.pathname === STRIPE_STAND_IN,
+    (route) => route.fulfill({ contentType: 'text/html', body: '<p>Checkout</p>' }),
+  );
+  const left = page.url();
+  await held.answer({ url: STRIPE_STAND_IN });
+  await page.waitForURL((url) => url.pathname === STRIPE_STAND_IN);
+  await page.goBack();
+  await page.waitForURL(left);
+}
+
 /** The canvas Space this case made, removed when it ends. */
 let made: { page: Page; spaceId: string } | null = null;
 
@@ -259,11 +280,32 @@ test('a new-conversation press keeps waiting after the Agent column is hidden', 
   await secondPressSendsNothing(page, newConversation, held);
 });
 
-test('a project create keeps Create waiting when the dialog is opened from the other entry', async ({
-  page,
-}) => {
+/** The team Studio the new-project case picks; made once and kept, since a Studio cannot be deleted. */
+const TEAM_STUDIO_NAME = 'Run once smoke';
+
+/**
+ * This account's team Studio for the new-project case, made the first time.
+ * @param page - A signed-in page.
+ * @returns Its name, as the dialog's Studio picker lists it.
+ */
+async function teamStudio(page: Page): Promise<string> {
   const listed = await page.request.get('/api/v1/studios');
   expect(listed.ok()).toBe(true);
+  const { data } = (await listed.json()) as { data: { name: string; type: string }[] };
+  if (!data.some((studio) => studio.type === 'team' && studio.name === TEAM_STUDIO_NAME)) {
+    const made = await page.request.post('/api/v1/studios', {
+      data: { name: TEAM_STUDIO_NAME, slug: `run-once-smoke-${Date.now().toString(36)}` },
+    });
+    expect(made.ok(), await made.text()).toBe(true);
+  }
+  return TEAM_STUDIO_NAME;
+}
+
+test('a project create in a team Studio keeps Create waiting when the dialog is opened from the other entry', async ({
+  page,
+}) => {
+  const team = await teamStudio(page);
+  const listed = await page.request.get('/api/v1/studios');
   const { data } = (await listed.json()) as { data: { slug: string; type: string }[] };
   const personal = data.find((studio) => studio.type === 'personal');
   if (personal === undefined) throw new Error('the smoke account has no personal studio');
@@ -272,8 +314,10 @@ test('a project create keeps Create waiting when the dialog is opened from the o
 
   const dialog = page.getByTestId('new-project-dialog');
   const create = dialog.getByRole('button', { name: 'Create', exact: true });
-  await page.getByTestId('rail-create-project').click();
+  await page.getByTestId('container-toolbar').getByRole('button', { name: 'New project' }).click();
   await expect(dialog).toBeVisible();
+  await page.locator('#new-project-studio').click();
+  await page.getByRole('option', { name: team, exact: true }).click();
   await page.locator('#new-project-name').fill('Run once');
   await page.locator('#new-project-slug').fill(`run-once-${Date.now()}`);
   await expect(create).toBeEnabled();
@@ -282,8 +326,8 @@ test('a project create keeps Create waiting when the dialog is opened from the o
 
   await page.keyboard.press('Escape');
   await expect(dialog).toHaveCount(0);
-  // The Projects tab's own entry opens a dialog of its own.
-  await page.getByTestId('container-toolbar').getByRole('button', { name: 'New project' }).click();
+  // The rail's entry opens a dialog of its own, on the default Studio.
+  await page.getByTestId('rail-create-project').click();
   await expect(dialog).toBeVisible();
 
   await secondPressSendsNothing(page, create, held);
@@ -314,6 +358,11 @@ test('a membership checkout keeps its choice waiting after the panel closes @nee
   await expect(choose).toBeVisible({ timeout: 20_000 });
 
   await secondPressSendsNothing(page, choose, held);
+
+  await backFromStripe(page, held);
+  await openAccountPanel(page, 'Membership');
+  await expect(choose).toBeEnabled({ timeout: 20_000 });
+  await expect(choose).not.toHaveAttribute('aria-busy', 'true');
 });
 
 test('a credits checkout keeps its pack waiting and holds every other pack @needs-payments', async ({
@@ -342,5 +391,13 @@ test('a credits checkout keeps its pack waiting and holds every other pack @need
   await expect(pay).toHaveCount(0);
   await packs.nth(1).getByRole('button', { name: 'Buy' }).click();
   await expect(pay).toBeDisabled();
+  await expect(pay).not.toHaveAttribute('aria-busy', 'true');
+
+  await backFromStripe(page, held);
+  await openAccountPanel(page, 'Credits');
+  await page.getByRole('tab', { name: 'Buy credits' }).click();
+  await packs.nth(0).getByRole('button', { name: 'Buy' }).click();
+  await page.getByTestId('confirm-consent').click();
+  await expect(pay).toBeEnabled();
   await expect(pay).not.toHaveAttribute('aria-busy', 'true');
 });
