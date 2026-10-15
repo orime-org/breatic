@@ -170,7 +170,7 @@ describe("replaying the history as it was sent", () => {
   it("keeps the thinking of a reply produced after an earlier one lost its own", () => {
     // Turn two was asked after turn one had already lost its thinking, so
     // its stored hash matches the history as it is now: its thinking was made
-    // on that prefix, and the blocks kept are an unbroken run.
+    // on that prefix.
     const asked1: ModelMessage = { role: "user", content: "a different question" };
     const asked2: ModelMessage = { role: "user", content: "and more" };
     const rows = [
@@ -183,6 +183,26 @@ describe("replaying the history as it was sent", () => {
     const out = historyForModel(rows, PREFIX);
 
     expect(out).toEqual([asked1, ...stripThinking(ANSWERED), asked2, ...ANSWERED]);
+  });
+
+  it("keeps the first and third replies' thinking after the system prompt goes A, B, A, A", () => {
+    const B: RequestPrefix = { ...PREFIX, instructions: "The reader switched language." };
+    const q1: ModelMessage = { role: "user", content: "one" };
+    const q2: ModelMessage = { role: "user", content: "two" };
+    const q3: ModelMessage = { role: "user", content: "three" };
+    const bare = stripThinking(ANSWERED);
+    const rows = [
+      userRow(1, { messages: [q1] }),
+      replyAfter(1, [q1], ANSWERED),
+      // Asked under B, which took turn one's thinking out.
+      userRow(2, { messages: [q2] }),
+      replyAfter(2, [q1, ...bare, q2], ANSWERED, B),
+      // Asked under A again, which put turn one's back and took turn two's out.
+      userRow(3, { messages: [q3] }),
+      replyAfter(3, [q1, ...ANSWERED, q2, ...bare, q3], ANSWERED),
+    ];
+
+    expect(historyForModel(rows, PREFIX)).toEqual([q1, ...ANSWERED, q2, ...bare, q3, ...ANSWERED]);
   });
 
   it("takes the thinking out of a reply produced while an earlier block was there, once that block is gone", () => {
