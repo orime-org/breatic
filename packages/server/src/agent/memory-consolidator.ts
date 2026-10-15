@@ -75,9 +75,8 @@ export interface ConsolidationWindow {
   /**
    * The window, as the model would have been sent it.
    *
-   * The assembled messages rather than the stored rows: compression has
-   * already replaced the body of every old tool result, and reading storage
-   * would put all of it back — the very bulk this exists to be rid of.
+   * The assembled messages rather than the stored rows: the summary covers
+   * what the model was given, in the form it was given it.
    */
   transcript: readonly ModelMessage[];
   /** Where the watermark stood before this window was taken. */

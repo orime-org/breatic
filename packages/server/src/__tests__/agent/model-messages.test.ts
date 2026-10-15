@@ -18,9 +18,8 @@
 import { describe, it, expect } from "vitest";
 import { FAILURE_LINES, NOTHING_SAID_WHY } from "@breatic/shared";
 import { userTurnForModel } from "@server/agent/user-turn.js";
-import type { MessageData, MessagePart } from "@breatic/shared";
+import type { MessageData } from "@breatic/shared";
 
-import { DROPPED_TOOL_RESULT, compressForContext } from "@server/agent/message-compressor.js";
 import { toModelMessages } from "@server/agent/model-messages.js";
 import { EARLIER_RESULT_NOTE } from "@server/agent/stored-model-output.js";
 
@@ -172,31 +171,6 @@ describe("history on its way to the model", () => {
     expect(output).toEqual({ type: "text", value: "1. A picture" });
   });
 
-  it("hands back the placeholder for a picture search past the window", () => {
-    // Compaction writes the placeholder over the model's copy and leaves the
-    // tool's answer alone, so what reaches the model is the placeholder.
-    const searches = Array.from({ length: 2 }, (_, i): MessagePart => ({
-      type: "tool",
-      toolCallId: `tc-img-${String(i)}`,
-      toolName: "search_images",
-      input: { query: "cyberpunk city" },
-      status: "success",
-      output: { query: "cyberpunk city", images: [], sent: 0 },
-      forModel: { type: "text", value: `search ${String(i)}` },
-    }));
-    const [compressed] = compressForContext([stored("assistant", searches)], 1);
-
-    const toolMessages = toModelMessages(compressed === undefined ? [] : [compressed]).filter(
-      (m) => m.role === "tool",
-    );
-    const outputs = toolMessages.map(
-      (m) => (m as { content: Array<{ output: unknown }> }).content[0]?.output,
-    );
-    expect(outputs).toEqual([
-      { type: "text", value: DROPPED_TOOL_RESULT },
-      { type: "text", value: "search 1" },
-    ]);
-  });
 
   it("says so even for a turn stopped before it got a word out", () => {
     const history = [

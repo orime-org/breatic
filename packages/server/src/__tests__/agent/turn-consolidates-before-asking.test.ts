@@ -53,8 +53,8 @@ const contexts = vi.hoisted(() => ({
   later: null as null | (() => unknown),
 }));
 const buildTurnContext = vi.fn(async () => {
-  const next = (contexts.queue.shift() ?? contexts.later?.()) as { compressedHistory: never[] };
-  contexts.lastHistory = next.compressedHistory;
+  const next = (contexts.queue.shift() ?? contexts.later?.()) as { history: never[] };
+  contexts.lastHistory = next.history;
   return next;
 });
 
@@ -181,7 +181,7 @@ function toolTurn(turnIndex: number, size: number): MessageData[] {
 function context(history: MessageData[], conversationMemory = "", projectMemory = "") {
   return {
     memoryContext: { projectMemory, conversationMemory },
-    compressedHistory: history,
+    history: history,
     // Nothing folded yet, which is what a history starting at turn 1 means.
     watermark: 0,
   };
@@ -301,11 +301,9 @@ async function sentLength(): Promise<number> {
 }
 
 describe("an ordinary turn", () => {
-  it("compresses but does not fold, and pays for nothing extra", async () => {
-    // C3: an everyday conversation is nowhere near the budget. The pass that
-    // shortens tool results still runs — that is `buildTurnContext`'s job on
-    // every turn — but no consolidating model call happens and no second
-    // charge appears.
+  it("does not fold, and pays for nothing extra", async () => {
+    // C3: an everyday conversation is nowhere near the budget, so no
+    // consolidating model call happens and no second charge appears.
     contexts.queue = [context([...turn(1, 2000), ...turn(2, 2000)])];
 
     await runTurn();

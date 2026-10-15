@@ -290,8 +290,7 @@ export async function getMessagesForLlm(
         gt(conversationMessages.turnIndex, lastConsolidatedTurn),
         // The turn being run is not history: its own message is put in front
         // of the model separately, and a copy here would be the model reading
-        // the same question twice -- and a candidate for compression, which
-        // could shorten the very thing being asked.
+        // the same question twice.
         ...(beforeTurn === undefined
           ? []
           : [lt(conversationMessages.turnIndex, beforeTurn)]),

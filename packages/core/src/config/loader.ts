@@ -104,16 +104,6 @@ const agentConfigSchema = z.object({
    * would start killing turns that were doing fine.
    */
   sse_heartbeat_interval_ms: z.number().int().positive().default(5000),
-  /**
-   * How many of the most recent tool uses keep their result in the context.
-   *
-   * Counted in tool use/result pairs rather than turns: one turn can run
-   * forty model calls whose whole output lands in a single stored row, so a
-   * turn-shaped window is three orders of magnitude coarser than the thing
-   * filling the context. The default matches the one figure the industry
-   * agrees on — Anthropic's `clear_tool_uses_20250919` keeps three.
-   */
-  tool_result_keep: z.number().int().positive().default(3),
   memory_project_max_size: z.number().int().positive().default(8192),
   /**
    * How much of a conversation's own memory reaches the system prompt.

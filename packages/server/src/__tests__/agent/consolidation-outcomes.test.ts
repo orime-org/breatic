@@ -91,16 +91,10 @@ const CONVERSATION = "22222222-2222-4222-8222-222222222222";
 const PROJECT = "33333333-3333-4333-8333-333333333333";
 
 /**
- * The window as the caller hands it over: compressed, then converted.
- *
- * Run through the real compressor rather than written out with a placeholder
- * already in it. N10 is the claim that a consolidation reads what compression
- * left behind, and a fixture carrying its own placeholder proves only that a
- * string put in comes back out.
+ * The window as the caller hands it over, converted.
  * @returns The window, in the shape `foldIfOverBudget` builds it.
  */
-async function compressedWindow(): Promise<ModelMessage[]> {
-  const { compressForContext } = await import("@server/agent/message-compressor.js");
+async function handedWindow(): Promise<ModelMessage[]> {
   const { toModelMessages } = await import("@server/agent/model-messages.js");
   const history = [1, 2, 3, 4].flatMap((n) => [
     {
@@ -128,11 +122,10 @@ async function compressedWindow(): Promise<ModelMessage[]> {
       turnIndex: n,
     },
   ]);
-  // One use more than the keep window, so the oldest loses its body.
-  return toModelMessages(compressForContext(history, 3));
+  return toModelMessages(history);
 }
 
-const TRANSCRIPT: ModelMessage[] = await compressedWindow();
+const TRANSCRIPT: ModelMessage[] = await handedWindow();
 
 /**
  * Ask for one consolidation, with everything the caller would have worked out.
@@ -224,18 +217,16 @@ describe("a consolidation that works", () => {
     expect(said).not.toContain("memory_consolidation_written");
   });
 
-  it("reads the window it was handed, placeholders and all", async () => {
+  it("reads the window it was handed", async () => {
     // N10: the input is the assembled messages the budget was measured
-    // against, not the stored rows. A consolidation reading storage would see
-    // the whole of every tool result, which is the thing compression just
-    // took out.
+    // against, not the stored rows.
     await consolidate();
 
     const prompt = String(
       (generateTextRetry.mock.calls[0]?.[0] as { messages: { content: string }[] })
         .messages[0]?.content,
     );
-    expect(prompt).toContain("[earlier tool result omitted from context]");
+    expect(prompt).toContain("the whole of page 1");
     expect(prompt).toContain("they all describe the same technique");
   });
 

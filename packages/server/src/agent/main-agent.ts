@@ -56,7 +56,7 @@ const FAILED_TEXT = "The assistant could not finish this turn.";
  *
  * Reads who is speaking and where -- userId, conversationId, projectId -- from
  * the AsyncLocalStorage request context (set by the route handler). What the
- * turn runs against is not in there: the memories and the compressed history
+ * turn runs against is not in there: the memories and the history
  * are read here, after the turn has said what it holds, because they are this
  * turn's own working rather than anything about the request.
  */
@@ -132,8 +132,8 @@ export class MainAgent {
     );
 
     // Everything slow happens inside the stream, not before it. The three
-    // round trips for memory, the conversation and its history, and then the
-    // compression, all used to run before the stream was even opened -- so
+    // round trips for memory, the conversation and its history all used to
+    // run before the stream was even opened -- so
     // nothing of the turn could reach the reader until they were done, the
     // first word of the reply included, which is the one thing they were
     // waiting for.
@@ -168,7 +168,7 @@ export class MainAgent {
    * front of the reply, on the turn whose assembled request it can shorten.
    * Assembling what the model is asked happens inside `execute`, not before
    * the stream is built. Everything it takes -- the two memory reads,
-   * the conversation and its history, then the compression -- is time the
+   * the conversation and its history -- is time the
    * reader spends in front of a screen where nothing has happened, and a
    * stream that exists already has somewhere to put the name in the meantime.
    * @param forModel - This turn's user message as the model is sent it: the
@@ -303,10 +303,8 @@ export class MainAgent {
     const assemble = async (): Promise<Assembly> => {
       // The running turn is left out of the history on purpose. Its message
       // is put in front of the model separately, below, so a copy in the
-      // history would be the same question asked twice -- and it would be a
-      // candidate for compression, which could shorten the very thing being
-      // asked.
-      const { memoryContext, compressedHistory, watermark } = await buildTurnContext(
+      // history would be the same question asked twice.
+      const { memoryContext, history, watermark } = await buildTurnContext(
         userId,
         conversationId,
         projectId,
@@ -322,9 +320,9 @@ export class MainAgent {
 
       return {
         agentConfig,
-        history: compressedHistory,
+        history,
         watermark,
-        messages: [...toModelMessages(compressedHistory), { role: "user", content: forModel }],
+        messages: [...toModelMessages(history), { role: "user", content: forModel }],
       };
     };
 

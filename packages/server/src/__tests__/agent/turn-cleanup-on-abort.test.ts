@@ -48,7 +48,7 @@ const usageRead = vi.fn();
 vi.mock("@server/agent/turn-context.js", () => ({
   buildTurnContext: vi.fn(async () => ({
     memoryContext: { projectMemory: "", conversationMemory: "" },
-    compressedHistory: [],
+    history: [],
   })),
 }));
 // The real `createUIMessageStream` and its helpers stay: they are what the

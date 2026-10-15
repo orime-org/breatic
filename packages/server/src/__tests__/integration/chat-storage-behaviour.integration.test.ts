@@ -40,7 +40,6 @@ import { initCore } from "@breatic/core";
 import { waitUntilBlockedOn } from "@server/__tests__/integration/lock-probe.js";
 import * as conversationRepo from "@server/modules/conversation/conversation.repo.js";
 import * as messageRepo from "@server/modules/conversation/conversation-message.repo.js";
-import { compressForContext } from "@server/agent/message-compressor.js";
 
 try {
   initCore(process.env);
@@ -484,7 +483,7 @@ describe("the memory chain still sees the same messages", () => {
     expect(forLlm[1]?.turnIndex).toBe(turn);
   });
 
-  it("drops the results of tool uses past the window, read the way the route reads them", async () => {
+  it("hands back every tool result as it was stored, read the way the route reads them", async () => {
     const { userId, projectId } = await seedProject();
     const conv = await seedConversation(userId, projectId);
 
@@ -511,27 +510,12 @@ describe("the memory chain still sees the same messages", () => {
       });
     }
 
-    // Both chat routes build the model's context in exactly these two steps,
-    // so the test takes them together: whether compression runs is a property
-    // of the pair, not of either half.
     const forLlm = await messageRepo.getMessagesForLlm(conv.id, 0);
-    // What the model was given comes back out of storage as it went in.
-    const firstCall = forLlm[1]?.parts.find((p) => p.type === "tool");
-    expect(firstCall).toMatchObject({ forModel: { type: "text", value: "page text" } });
-    const context = compressForContext(forLlm, 3);
-
-    // Every call is still on the record: what the assistant did is small, and
-    // a result with no call in front of it is a page the model cannot place.
-    const called = context.filter((m) => m.parts.some((p) => p.type === "tool"));
-    expect(called.map((m) => m.content)).toEqual(["a1", "a2", "a3", "a4", "a5"]);
-
-    // Five uses, the last three keeping what the model was given. The first
-    // two are past the window, and their copies are what the compression saves.
-    const keptResult = context.filter((m) =>
-      m.parts.some(
-        (p) => p.type === "tool" && p.forModel?.type === "text" && p.forModel.value === "page text",
-      ),
+    // What the model was given comes back out of storage as it went in, the
+    // oldest use as whole as the newest.
+    const given = forLlm.flatMap((m) =>
+      m.parts.flatMap((p) => (p.type === "tool" && p.forModel?.type === "text" ? [p.forModel.value] : [])),
     );
-    expect(keptResult.map((m) => m.content)).toEqual(["a3", "a4", "a5"]);
+    expect(given).toEqual(["page text", "page text", "page text", "page text", "page text"]);
   });
 });
