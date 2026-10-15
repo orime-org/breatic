@@ -108,7 +108,7 @@ export {
 // clients) type their client refs without taking a
 // direct `ioredis` dependency — the driver lives only in core.
 export type { Redis } from "ioredis";
-export { checkRateLimit } from "@core/infra/rate-limiter.js";
+export { checkRateLimit, type RateLimitQuota, type RateLimitVerdict } from "@core/infra/rate-limiter.js";
 export {
   startHealthServer,
   type HealthCheck,
