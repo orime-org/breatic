@@ -45,6 +45,7 @@ export function SettingsTab({
         uploading={settings.uploadingAvatar}
         error={settings.avatarError}
         onUpload={settings.uploadAvatar}
+        removing={settings.removingAvatar}
         onRemove={settings.removeAvatar}
         onDismissError={settings.clearAvatarError}
       />
@@ -52,6 +53,7 @@ export function SettingsTab({
         studio={studio}
         canEdit={canEdit}
         saving={settings.saving}
+        savingDetails={settings.savingDetails}
         onSave={settings.save}
       />
       <DangerZone

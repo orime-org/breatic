@@ -242,6 +242,25 @@ describe("what a conversation hands back when it is opened", () => {
     });
   });
 
+  it("keeps the model's copy of a result out of what the browser is sent", () => {
+    // The panel draws from the tool's own answer. The model's copy is for
+    // replay, and can be the size of the whole model catalogue.
+    const ui = toUiParts([
+      {
+        type: "tool",
+        toolCallId: "call-1",
+        toolName: "list_generation_models",
+        input: {},
+        status: "success",
+        output: { available: true, models: [] },
+        forModel: { type: "text", value: "the models, as the model read them" },
+      },
+    ]);
+
+    expect(ui[0]).not.toHaveProperty("forModel");
+    expect(JSON.stringify(ui)).not.toContain("the models, as the model read them");
+  });
+
   it("carries a stopped turn back as something the reader can see", () => {
     const ui = toUiParts([{ type: "text", text: "写到一半" }, { type: "interrupted" }]);
 

@@ -59,7 +59,6 @@ const NOW = 1_757_000_000_000;
  * @returns The node view the component renders.
  */
 const sticky = (over: Partial<AnnotationNodeView> = {}): AnnotationNodeView => ({
-  kind: 'annotation',
   content: 'a cooler shot here',
   createdBy: ME,
   createdAt: NOW,

@@ -257,6 +257,29 @@ describe('starting another conversation', () => {
     expect(conversationRuntime.draftOf('c-1')).toBe('half a sentence');
   });
 
+  // inner#1490: one press, one conversation, however often it is pressed
+  // while the first is out.
+  it('makes one conversation for presses made while the first is out', async () => {
+    openAnswers([{ id: 'c-1', title: 'first' }], 'c-1');
+    await conversationRuntime.ensureLoaded(PROJECT);
+    let settle!: () => void;
+    vi.mocked(chatApi.createConversation).mockReturnValue(
+      new Promise((resolve) => {
+        settle = () => resolve({ id: 'c-new', title: null } as never);
+      }),
+    );
+
+    const first = conversationRuntime.startNew(PROJECT);
+    const again = conversationRuntime.startNew(PROJECT);
+    settle();
+    await Promise.all([first, again]);
+
+    expect(chatApi.createConversation).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(chatApi.createConversation).mock.calls[0]?.[1]).toEqual(expect.any(String));
+    expect(listedIds()).toEqual(['c-new', 'c-1']);
+    expect(currentId()).toBe('c-new');
+  });
+
   it('puts the new one at the top, where the most recent one belongs', async () => {
     openAnswers([{ id: 'c-1', title: 'first' }], 'c-1');
     await conversationRuntime.ensureLoaded(PROJECT);
@@ -292,12 +315,15 @@ describe('naming a conversation', () => {
     expect(listed?.[0]?.title).toBe('Storyboard notes');
   });
 
-  it('leaves the old name in place when the rename fails', async () => {
+  it('leaves the old name in place and refuses to the caller when the rename fails', async () => {
     openAnswers([{ id: 'c-1', title: 'the old one' }], 'c-1');
     await conversationRuntime.ensureLoaded(PROJECT);
     vi.mocked(chatApi.renameConversation).mockRejectedValue(new Error('offline'));
 
-    await conversationRuntime.rename(PROJECT, 'c-1', 'never lands');
+    // The box that took the name shows it until told otherwise (inner#1440).
+    await expect(conversationRuntime.rename(PROJECT, 'c-1', 'never lands')).rejects.toThrow(
+      'offline',
+    );
 
     const listed = useConversationRuntime.getState().listByProject[PROJECT];
     expect(listed?.[0]?.title).toBe('the old one');

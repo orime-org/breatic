@@ -16,7 +16,10 @@
  * paints only a divider: the reader makes one by clicking it or walking onto
  * it with the arrows, and the 2026-09-18 rule that the machinery's own node
  * selections are not drawn (`index.css`, "A node-selected block is not drawn") stays for every other block. A
- * media block the reader selects draws itself (see `NODE_SELECTED`).
+ * media block the reader selects draws itself (see `NODE_SELECTED`). An edge
+ * takeover (`BodyEdgeSelection`) has its text drawn here too, and the native
+ * selection hidden: during a pull the page selection is still the browser's
+ * own, not the takeover's (inner#1350 A8).
  *
  * WHEN. Only while the reader can see a selection at all. In an editable body
  * that is while it holds the focus. A read-only body never takes the focus —
@@ -31,16 +34,12 @@
 
 import { createExtension } from '@blocknote/core';
 import { ShowSelectionExtension } from '@blocknote/core/extensions';
-import type { Node as PMNode } from '@tiptap/pm/model';
-import { AllSelection, NodeSelection, Plugin, PluginKey } from '@tiptap/pm/state';
-import type { EditorState, Selection } from '@tiptap/pm/state';
+import { NodeSelection, Plugin, PluginKey } from '@tiptap/pm/state';
+import type { EditorState } from '@tiptap/pm/state';
+import { CellSelection } from '@tiptap/pm/tables';
 import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view';
 
-import {
-  bodyEdgeAt,
-  emptyEdgeLinePos,
-  type BodyEdge,
-} from '@web/spaces/document/document-body-edge-selection';
+import { BodyEdgeSelection } from '@web/spaces/document/document-body-edge-selection';
 import { bodyHolds } from '@web/spaces/document/document-body-focus';
 import { UNSUPPORTED_BLOCK } from '@web/spaces/document/document-unsupported-blocknote';
 import { DIVIDER } from '@web/spaces/document/document-divider';
@@ -50,9 +49,22 @@ import { MEDIA_BLOCK_TYPES, isMediaBlockType } from '@web/spaces/document/docume
 export const IN_SELECTION_CLASS = 'doc-in-selection';
 
 /**
- * The class `index.css` marks an empty line with: an empty line an end of a
- * range sits on, and the empty line at an end of the body that a selection
- * past that end, or the whole document, holds.
+ * The body's attribute while the selection is one the body draws itself — a
+ * cell selection or an edge takeover; `index.css` draws no native selection
+ * under it.
+ */
+export const SELECTION_DRAWN_ATTR = 'data-selection-drawn';
+
+/**
+ * The class `index.css` marks every empty line a selection holds with (#124).
+ * An empty line has one position, so a range that holds it takes it when
+ * deleted, yet only Chromium marks a selected empty line itself, and the one at
+ * an end of the body only once the range is written back to the page, which
+ * during a drag in Chrome it is not; a range the body draws (an edge takeover)
+ * clears the browser's mark entirely. Marked here, `index.css` draws the
+ * browser's sliver itself and clears the browser's own, so a selected empty
+ * line shows one mark in every browser, however it was selected. A cell
+ * selection holds cells, not the lines between its ends.
  */
 export const EMPTY_LINE_CLASS = 'doc-empty-line-in-selection';
 
@@ -87,35 +99,6 @@ function paintClassOf(name: string): string {
 const KEY = new PluginKey('documentSelectionPaint');
 
 /**
- * The empty lines a range holds at its ends (#124): the empty line at an end
- * of the body that a selection reaching past it, or one holding the whole
- * document, holds; and any empty line an end of a text range sits on. An empty
- * line has one position, so a range ending there holds the line — deleting the
- * range takes it — yet the browser marks it only when the range runs over it,
- * and the one at an end of the body only once the range is written back to the
- * page, which during a drag in Chrome it is not. Marked here, `index.css` draws
- * the browser's sliver itself and clears the browser's own, so the line shows
- * one mark throughout, the same one any selected empty line shows.
- * @param selection - The selection.
- * @param doc - The document.
- * @returns A decoration per empty line the selection holds at an end.
- */
-function emptyLinesAtEnds(selection: Selection, doc: PMNode): Decoration[] {
-  const edges: BodyEdge[] =
-    selection instanceof AllSelection
-      ? ['start', 'end']
-      : [selection.anchor, selection.head].flatMap((end) => bodyEdgeAt(doc, end) ?? []);
-  const atEdges = edges.flatMap((edge) => emptyEdgeLinePos(doc, edge) ?? []);
-  const atText = [selection.anchor, selection.head].flatMap((end) => {
-    const $end = doc.resolve(end);
-    return $end.parent.isTextblock && $end.parent.content.size === 0 ? [$end.before()] : [];
-  });
-  return [...new Set([...atEdges, ...atText])].map((pos) =>
-    Decoration.node(pos, pos + doc.nodeAt(pos)!.nodeSize, { class: EMPTY_LINE_CLASS }),
-  );
-}
-
-/**
  * The decorations for the blocks the current selection holds.
  * @param state - The editor state.
  * @returns The set, empty when nothing is to be painted.
@@ -133,14 +116,25 @@ function paintFor(state: EditorState): DecorationSet {
     }
   } else if (!selection.empty) {
     // A no-text block is a leaf of size one, so reaching it here means the
-    // range holds all of it.
+    // range holds all of it; so does an empty line, whose one position lies
+    // inside any range that reaches it.
+    const holdsLines = !(selection instanceof CellSelection);
     doc.nodesBetween(selection.from, selection.to, (node, pos) => {
-      if (node.isTextblock) return false;
+      if (node.isTextblock) {
+        if (holdsLines && node.content.size === 0) {
+          found.push(Decoration.node(pos, pos + node.nodeSize, { class: EMPTY_LINE_CLASS }));
+        }
+        return false;
+      }
       if (!NO_TEXT.has(node.type.name)) return true;
       found.push(Decoration.node(pos, pos + node.nodeSize, { class: paintClassOf(node.type.name) }));
       return false;
     });
-    found.push(...emptyLinesAtEnds(selection, doc));
+    // The text an edge takeover holds, in the colour the panel stand-in
+    // paints with (`index.css`, `[data-show-selection]`).
+    if (selection instanceof BodyEdgeSelection) {
+      found.push(Decoration.inline(selection.from, selection.to, { 'data-show-selection': 'true' }));
+    }
   }
   return found.length > 0 ? DecorationSet.create(doc, found) : DecorationSet.empty;
 }
@@ -232,6 +226,16 @@ export const documentSelectionPaintExtension = createExtension(({ editor }) => {
             (mounted !== null && visible(mounted)) || shownByPanel()
               ? paintFor(state)
               : DecorationSet.empty,
+          // A cell selection draws its cells (`.selectedCell`) and an edge
+          // takeover its range (`paintFor`), and neither the native selection:
+          // the page selection is not theirs while the mouse is down, as
+          // Chrome holds ProseMirror's write back until the release
+          // (`selectionToDOM`). The attribute takes effect on the transaction,
+          // so what a pull shows is what it keeps (inner#1350 design §5.7).
+          attributes: (state): Record<string, string> =>
+            state.selection instanceof CellSelection || state.selection instanceof BodyEdgeSelection
+              ? { [SELECTION_DRAWN_ATTR]: '' }
+              : {},
         },
       }),
     ],

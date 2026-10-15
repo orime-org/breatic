@@ -132,12 +132,31 @@ function noteRemovalFailure(spaceId: string, err: unknown): void {
  */
 export async function deleteSpace(page: Page, spaceId: string): Promise<void> {
   try {
+    // A case that failed with a dialog open (a picture shown full screen, a
+    // confirmation) leaves its overlay over the drawer trigger, and the click
+    // below would wait out the test's whole timeout behind it; one red then
+    // leaves its Space behind and every later case that opens the Project
+    // lands on it. A confirmation is an AlertDialog, whose role is
+    // `alertdialog`.
+    const strayDialog = page.locator(
+      '[role="dialog"]:not([data-testid="space-drawer"]), [role="alertdialog"]',
+    );
+    for (let tries = 0; tries < 3 && (await strayDialog.count()) > 0; tries += 1) {
+      await page.keyboard.press('Escape');
+    }
+    await expect(strayDialog).toHaveCount(0, { timeout: 5_000 });
+
     // Open the drawer only when it is shut. The trigger toggles, so calling
     // this twice in a row on one page — which is what a case creating two
     // Spaces does — would close the drawer the second time and then wait out
     // the timeout looking for it. Measured: 84 removals in a row came out 42
     // done, 42 timed out, strictly alternating.
     const drawer = page.getByTestId('space-drawer');
+    // A drawer still sliding shut is in the page but its rows no longer take
+    // a press; counted as open, the click below would wait out the timeout.
+    await expect(
+      page.locator('[data-testid="space-drawer"][data-state="closed"]'),
+    ).toHaveCount(0, { timeout: 5_000 });
     if ((await drawer.count()) === 0) {
       await page.getByTestId('space-drawer-trigger').click();
       await expect(drawer).toBeVisible({ timeout: 10_000 });

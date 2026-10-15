@@ -40,7 +40,7 @@ const ROWS: ConversationRow[] = [
 function renderSheet(over: Partial<React.ComponentProps<typeof ConversationHistorySheet>> = {}) {
   const onPick = vi.fn();
   const onRename = vi.fn();
-  const onDelete = vi.fn();
+  const onDelete = vi.fn().mockResolvedValue(undefined);
   render(
     <ConversationHistorySheet
       open
@@ -74,7 +74,7 @@ function renderSheetFor(props: Partial<React.ComponentProps<typeof ConversationH
     activeId: 'c1',
     onPick: vi.fn(),
     onRename: vi.fn(),
-    onDelete: vi.fn(),
+    onDelete: vi.fn().mockResolvedValue(undefined),
     hasMore: false,
     onReachEnd: vi.fn(),
     nextPageFailed: false,
@@ -553,7 +553,7 @@ describe('a rename or a delete that did not work', () => {
       activeId: 'c1',
       onPick: vi.fn(),
       onRename: vi.fn(),
-      onDelete: vi.fn(),
+      onDelete: vi.fn().mockResolvedValue(undefined),
       hasMore: false,
       onReachEnd: vi.fn(),
       nextPageFailed: false,

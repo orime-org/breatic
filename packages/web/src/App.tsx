@@ -5,6 +5,7 @@ import type * as React from 'react';
 
 import { AppRouter } from '@web/app/AppRouter';
 import AuthBootstrap from '@web/app/AuthBootstrap';
+import { LoadingScreenHost } from '@web/components/loading-screen';
 import { Toaster } from '@web/components/ui/sonner';
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { QueryClientProvider } from '@web/app/providers/QueryClientProvider';
@@ -38,6 +39,7 @@ export default function App(): React.JSX.Element {
       <TooltipProvider delayDuration={100}>
         <AuthBootstrap>
           <AppRouter router={router} />
+          <LoadingScreenHost />
           {/* Toast surface mounts at the top-center of the viewport so
               critical / interaction-blocking messages (lock notice,
               RPC failures, rename refusals) sit in the user's primary

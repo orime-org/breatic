@@ -85,3 +85,81 @@ export async function clickAndSettle(p: Page, target: Locator): Promise<void> {
   await target.click();
   await expect.poll(() => selectionOf(p)).not.toBe(before);
 }
+
+/** How many times a range is written before the editor counts as never taking it. */
+const SELECTION_WRITES = 3;
+
+/**
+ * Write the page's selection inside the body and wait for the editor to hold
+ * that range.
+ *
+ * `write` sets the range with `Selection.addRange`; the range it adds is
+ * recorded in the editor's own positions as it is added, and that is what the
+ * editor has to come to hold. A range written while the focus write-back
+ * above is still due is undone by it, and so is one any transaction dispatched
+ * before ProseMirror reads the change back on `selectionchange` (a peer's
+ * update arriving through the collaboration doc is one): the editor then
+ * writes its old selection over the new one. Both happen only on a busy page
+ * and only in the few milliseconds a script leaves between the write and the
+ * next step, so a range the editor did not take is written again.
+ * @param p - The page.
+ * @param write - Sets the selection in the page with `addRange`; what it returns is passed on.
+ * @returns What `write` returned the last time it ran.
+ * @throws {Error} When the editor never holds the range written.
+ */
+export async function selectInBody<T>(p: Page, write: () => Promise<T>): Promise<T> {
+  await p.evaluate((selector) => {
+    (document.querySelector(selector) as HTMLElement).focus({ preventScroll: true });
+  }, EDITOR);
+  await focusSettled(p);
+  for (let attempt = 1; ; attempt += 1) {
+    await p.evaluate((selector) => {
+      type Recorder = { armed: boolean; wanted: { from: number; to: number } | null };
+      const page = window as unknown as { __bodyRange?: Recorder };
+      if (page.__bodyRange === undefined) {
+        const recorder: Recorder = { armed: false, wanted: null };
+        page.__bodyRange = recorder;
+        const add = Selection.prototype.addRange;
+        Selection.prototype.addRange = function (this: Selection, range: Range): void {
+          // The editor writing its own selection back goes through here too,
+          // after the case's write; only the first range added once armed is
+          // the one to wait for.
+          if (recorder.armed) {
+            recorder.armed = false;
+            const { view } = (document.querySelector(selector) as unknown as {
+              editor: { view: { posAtDOM: (node: Node, offset: number) => number } };
+            }).editor;
+            recorder.wanted = {
+              from: view.posAtDOM(range.startContainer, range.startOffset),
+              to: view.posAtDOM(range.endContainer, range.endOffset),
+            };
+          }
+          add.call(this, range);
+        };
+      }
+      page.__bodyRange.wanted = null;
+      page.__bodyRange.armed = true;
+    }, EDITOR);
+    const written = await write();
+    const held = await expect
+      .poll(
+        () =>
+          p.evaluate((selector) => {
+            const { wanted } = (window as unknown as {
+              __bodyRange: { wanted: { from: number; to: number } | null };
+            }).__bodyRange;
+            const { selection } = (document.querySelector(selector) as unknown as {
+              editor: { state: { selection: { from: number; to: number } } };
+            }).editor.state;
+            return wanted !== null && selection.from === wanted.from && selection.to === wanted.to;
+          }, EDITOR),
+        { timeout: 2_000 },
+      )
+      .toBe(true)
+      .then(() => true, () => false);
+    if (held) return written;
+    if (attempt === SELECTION_WRITES) {
+      throw new Error(`the editor did not hold the range written, after ${String(attempt)} writes`);
+    }
+  }
+}

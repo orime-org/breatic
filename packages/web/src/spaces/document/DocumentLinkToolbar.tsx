@@ -343,15 +343,18 @@ export function DocumentLinkToolbar({
       focus.holds &&
       focus.focused !== null &&
       (focus.focused === domElementOf(editor) || surfaceRef.current?.contains(focus.focused) === true);
-    const atCaret = caretCounts ? linkAtCaret(state) : { range: null, href: null };
+    const caretOn = linkAtCaret(state);
+    const atCaret = caretCounts ? caretOn : { range: null, href: null };
     const atPointer = resolveTrackedLink(state, pointerOn.current);
 
     // A dismissal lasts while a reason that raised it is still on its link.
+    // The caret is on its link wherever the focus is: Escape also takes the
+    // focus off the body, and the caret it leaves has not moved.
     dismissed.current = dismissed.current.filter((one) => {
       const where = spanOf(one.tracked);
       if (where === null) return false;
       return (
-        (one.byCaret && sameSpan(where, atCaret.range)) ||
+        (one.byCaret && sameSpan(where, caretOn.range)) ||
         (one.byPointer && sameSpan(where, atPointer.range))
       );
     });

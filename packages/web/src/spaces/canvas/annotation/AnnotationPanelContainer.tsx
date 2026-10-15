@@ -51,11 +51,11 @@ export function AnnotationPanelContainer({
   const draftsHeld = useCanvasSession((s) => s.annotationDrafts);
   const placing = useCanvasSession((s) => s.placingAnnotation);
   const nodeId = kind === 'annotation' ? host : null;
-  const view =
-    nodeId === null ? undefined : nodes.find((n) => n.id === nodeId)?.data;
+  const node =
+    nodeId === null ? undefined : nodes.find((n) => n.id === nodeId);
   // A collaborator deleting the note takes the sticky with it (§6.2's "deleted
   // in Yjs" row): there is nothing left to draw and nothing left to write to.
-  const gone = nodeId !== null && view?.kind !== 'annotation';
+  const gone = nodeId !== null && node?.type !== 'annotation';
   React.useEffect(() => {
     if (!gone) return;
     // §6.2 and §8.4 both ask for a word here, and the drop notice that carries
@@ -127,7 +127,7 @@ export function AnnotationPanelContainer({
   // tool AND collapsed the sticky.
   const open = nodeId !== null && !gone && !placing;
   useEscapeInSpace(open, closeActivePanel);
-  if (nodeId === null || view?.kind !== 'annotation') return null;
+  if (nodeId === null || node?.type !== 'annotation') return null;
   return (
     <NodeToolbar
       nodeId={nodeId}
@@ -143,9 +143,9 @@ export function AnnotationPanelContainer({
     >
       <AnnotationSticky
         key={nodeId}
-        data={view satisfies AnnotationNodeView}
+        data={node.data satisfies AnnotationNodeView}
         nodeId={nodeId}
-        locked={view.locked === true}
+        locked={node.data.locked === true}
       />
     </NodeToolbar>
   );

@@ -10,7 +10,7 @@ import '@testing-library/jest-dom/vitest';
 // silently does nothing and tests fail with "Invalid Chai property:
 // toHaveNoViolations". Wiring the matcher by hand is the documented
 // workaround until vitest-axe ships a fixed dist.
-import { afterEach, beforeAll, expect, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, expect, vi } from 'vitest';
 // Namespace import: vitest-axe v0.1.0's `dist/matchers.d.ts` mis-types
 // `toHaveNoViolations` as a type-only re-export (it is actually a
 // runtime function), so a named import errors at tsc. Importing as a
@@ -263,3 +263,20 @@ if (
 ) {
   document.elementsFromPoint = () => [];
 }
+
+// A file's stubbed globals end with the file. Every file in this package runs
+// in one process, and a stub left standing reaches the next file as it imports
+// its modules: a test that replaced `URL` with an object made the next file's
+// `new URL(...)` at import time throw "URL is not a constructor".
+afterAll(() => {
+  vi.unstubAllGlobals();
+});
+
+// Run-once presses live in a module-level registry, outside any component.
+// Imported here, after the case, so a file that mocks `sonner` has already
+// put its mock in place: a static import from this file would load the toast
+// wrapper first, bound to the real one.
+afterEach(async () => {
+  const { resetRunOnceForTests } = await import('@web/stores/task-actions-in-flight');
+  resetRunOnceForTests();
+});

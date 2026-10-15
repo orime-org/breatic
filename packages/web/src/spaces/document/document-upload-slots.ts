@@ -25,6 +25,7 @@
  * happen. Design 3.3 holds the transition table.
  */
 
+import { newId } from '@breatic/shared';
 import { blockToNode, createExtension } from '@blocknote/core';
 import type { Node as PMNode } from '@tiptap/pm/model';
 import { Plugin, PluginKey, type EditorState, type Transaction } from '@tiptap/pm/state';
@@ -488,7 +489,7 @@ export function addUploadBatch(
   undo?: UndoCapture,
 ): string[] {
   const slots = names.map((name) => ({
-    id: crypto.randomUUID(),
+    id: newId(),
     name,
     phase: 'uploading' as const,
     progress: null,
@@ -499,7 +500,7 @@ export function addUploadBatch(
   const next = view.state.doc.resolve(at).nodeAfter;
   const aimedRow = aimed && typeof next?.attrs['id'] === 'string' ? next.attrs['id'] : null;
   undo?.stopCapturing();
-  send(view, { kind: 'add', batch: { id: crypto.randomUUID(), gap: at, aimedRow, slots } });
+  send(view, { kind: 'add', batch: { id: newId(), gap: at, aimedRow, slots } });
   return slots.map((slot) => slot.id);
 }
 
@@ -562,7 +563,7 @@ export function insertSlotBlock(
   for (const batch of batches) {
     const k = batch.slots.findIndex((slot) => slot.id === slotId);
     if (k < 0 || batch.slots[k]!.phase !== 'uploading') continue;
-    const blockId = crypto.randomUUID();
+    const blockId = newId();
     const { at, quoted } = placeSlot(batch, k, view.state.doc);
     const props = { ...block.props, [QUOTED]: quoted };
     const node = blockToNode({ ...block, props, id: blockId } as never, view.state.schema);

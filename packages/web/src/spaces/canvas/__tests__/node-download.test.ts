@@ -12,38 +12,38 @@
 
 import { describe, it, expect } from 'vitest';
 import { downloadableAsset } from '@web/spaces/canvas/node-download';
-import type { NodeView } from '@web/data/yjs/node-view';
+import type { TypedNodeView } from '@web/data/yjs/node-view';
 import { LOCALE_CATALOGS, readPath } from '@web/test-utils/locale-catalogs';
 
 const ASSET = 'https://assets.example.com/image/2026-09-13/a.png';
 
 describe('the asset a node offers for download', () => {
   it('is the image a filled image node is showing', () => {
-    const node: NodeView = { kind: 'image', handling: false, content: ASSET };
+    const node: TypedNodeView = { type: 'image', data: { handling: false, content: ASSET } };
 
     expect(downloadableAsset(node)).toBe(ASSET);
   });
 
   it('is the file a filled video node is showing', () => {
-    const node: NodeView = { kind: 'video', handling: false, content: ASSET };
+    const node: TypedNodeView = { type: 'video', data: { handling: false, content: ASSET } };
 
     expect(downloadableAsset(node)).toBe(ASSET);
   });
 
   it('is the file a filled audio node is showing', () => {
-    const node: NodeView = { kind: 'audio', handling: false, content: ASSET };
+    const node: TypedNodeView = { type: 'audio', data: { handling: false, content: ASSET } };
 
     expect(downloadableAsset(node)).toBe(ASSET);
   });
 
   it('is nothing on an empty node', () => {
-    const node: NodeView = { kind: 'image', handling: false };
+    const node: TypedNodeView = { type: 'image', data: { handling: false } };
 
     expect(downloadableAsset(node)).toBeNull();
   });
 
   it('is nothing when the node holds an empty address', () => {
-    const node: NodeView = { kind: 'image', handling: false, content: '' };
+    const node: TypedNodeView = { type: 'image', data: { handling: false, content: '' } };
 
     expect(downloadableAsset(node)).toBeNull();
   });
@@ -51,19 +51,19 @@ describe('the asset a node offers for download', () => {
   it('is the content a node keeps showing after a task on it failed', () => {
     // A node shows no task state (inner#888 §7.8): a failed task leaves the
     // body on what it holds.
-    const node: NodeView = { kind: 'image', handling: false, content: ASSET };
+    const node: TypedNodeView = { type: 'image', data: { handling: false, content: ASSET } };
 
     expect(downloadableAsset(node)).toBe(ASSET);
   });
 
   it('is the content a node keeps showing while a task writes to it', () => {
-    const node: NodeView = { kind: 'video', handling: true, content: ASSET };
+    const node: TypedNodeView = { type: 'video', data: { handling: true, content: ASSET } };
 
     expect(downloadableAsset(node)).toBe(ASSET);
   });
 
   it('is still nothing when an empty node has a task running', () => {
-    const node: NodeView = { kind: 'audio', handling: true };
+    const node: TypedNodeView = { type: 'audio', data: { handling: true } };
 
     expect(downloadableAsset(node)).toBeNull();
   });
@@ -71,36 +71,38 @@ describe('the asset a node offers for download', () => {
 
 describe('the modalities that offer download', () => {
   it('leaves out a text node', () => {
-    const node: NodeView = { kind: 'text', handling: false };
+    const node: TypedNodeView = { type: 'text', data: { handling: false } };
 
     expect(downloadableAsset(node)).toBeNull();
   });
 
   it('leaves out a 3d node', () => {
-    const node: NodeView = { kind: '3d', handling: false, content: ASSET };
+    const node: TypedNodeView = { type: '3d', data: { handling: false, content: ASSET } };
 
     expect(downloadableAsset(node)).toBeNull();
   });
 
   it('leaves out a web node', () => {
-    const node: NodeView = { kind: 'web', handling: false, content: ASSET };
+    const node: TypedNodeView = { type: 'web', data: { handling: false, content: ASSET } };
 
     expect(downloadableAsset(node)).toBeNull();
   });
 
   it('leaves out a group container', () => {
-    const node: NodeView = { kind: 'group' };
+    const node: TypedNodeView = { type: 'group', data: {} };
 
     expect(downloadableAsset(node)).toBeNull();
   });
 
   it('leaves out an annotation sticky', () => {
-    const node: NodeView = {
-      kind: 'annotation',
-      content: 'a remark',
-      createdBy: 'u-1',
-      createdAt: 0,
-      replies: [],
+    const node: TypedNodeView = {
+      type: 'annotation',
+      data: {
+        content: 'a remark',
+        createdBy: 'u-1',
+        createdAt: 0,
+        replies: [],
+      },
     };
 
     expect(downloadableAsset(node)).toBeNull();

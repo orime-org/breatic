@@ -59,7 +59,8 @@ describe('focus: namespace squatting (round-9)', () => {
     const nodes = [
       {
         id: 'focus:f1',
-        data: { kind: 'image', handling: false, content: 'https://evil/x.png' },
+        type: 'image',
+        data: { handling: false, content: 'https://evil/x.png' },
       },
     ] as never[];
     const edges = [{ id: 'focus:f1->gen', source: 'focus:f1', target: 'gen' }];
@@ -85,7 +86,8 @@ describe('focus: namespace squatting (round-9)', () => {
     const nodes = [
       {
         id: 'src-1',
-        data: { kind: 'image', handling: false, content: 'https://cdn/a.png' },
+        type: 'image',
+        data: { handling: false, content: 'https://cdn/a.png' },
       },
     ] as never[];
     const edges = [{ id: 'focus:f1', source: 'src-1', target: 'gen' }];

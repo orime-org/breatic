@@ -13,6 +13,7 @@ import * as Y from 'yjs';
 import { documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
+import { ownMediaOnly } from '@web/spaces/document/document-external-media';
 
 type Editor = ReturnType<typeof buildDocumentEditor>;
 
@@ -173,5 +174,27 @@ describe('media in pasted HTML (A18)', () => {
     editor.pasteHTML('<p>just words</p>');
 
     expect(onLeftOut).not.toHaveBeenCalled();
+  });
+});
+
+describe('blocks written from an Agent proposal (inner#1509 review round 3)', () => {
+  it('keep media at our addresses, leave others out, and keep the rows nested under one left out', () => {
+    const blocks = [
+      { type: 'image', props: { url: `${OURS}a.png` } },
+      { type: 'image', props: { url: 'https://elsewhere.example/b.png' } },
+      { type: 'paragraph', content: 'Words.' },
+      { type: 'video', props: { url: 'https://elsewhere.example/c.mp4' }, children: [{ type: 'paragraph', content: 'Under it.' }] },
+      { type: 'bulletListItem', content: 'Item', children: [{ type: 'audio', props: { url: 'https://elsewhere.example/d.mp3' } }] },
+    ];
+
+    const got = ownMediaOnly(blocks, OURS);
+
+    expect(got.count).toBe(3);
+    expect(got.blocks.map((b) => b.type)).toEqual(['image', 'paragraph', 'paragraph', 'bulletListItem']);
+    expect(got.blocks[3]?.children).toEqual([]);
+  });
+
+  it('leaves every medium out while our address is not known', () => {
+    expect(ownMediaOnly([{ type: 'image', props: { url: `${OURS}a.png` } }], null)).toEqual({ blocks: [], count: 1 });
   });
 });

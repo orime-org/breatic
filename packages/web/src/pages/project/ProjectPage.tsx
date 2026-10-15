@@ -21,7 +21,6 @@ import {
 } from '@web/data/use-project-members';
 import { CollaboratorNamesProvider } from '@web/features/collab-editor/collaborator-names-context';
 import { useCollaboratorNamesFrom } from '@web/features/collab-editor/use-collaborator-names';
-import { useExclusiveOverlay } from '@web/features/exclusive-overlay/use-exclusive-overlay';
 import { projectUuidFromRouteParam } from '@web/lib/project-route';
 import { useBlockSelectAll } from '@web/lib/use-block-select-all';
 import { useTrackActiveRegion } from '@web/features/active-region/use-track-active-region';
@@ -54,8 +53,8 @@ import { ConnectionBanner } from '@web/pages/project/chrome/ConnectionBanner';
 import {
   LeftFloatingMenu,
 } from '@web/pages/project/chrome/left-floating-menu/LeftFloatingMenu';
-import { SpaceReadOnlySheet } from '@web/pages/project/chrome/tab-bar/SpaceReadOnlySheet';
 import { TopBar, toCreditsReadout } from '@web/pages/project/chrome/top-bar/TopBar';
+import { useDocumentProposalRouting } from '@web/pages/project/use-document-proposal-routing';
 import { useRefreshOnReauth } from '@web/pages/project/use-refresh-on-reauth';
 import { useRenameProject } from '@web/features/project-manage/use-rename-project';
 import {
@@ -352,6 +351,14 @@ function ProjectWorkspace({
     dispatchTabs({ type: 'spaces', spaces });
   }, [metaSynced, spaces]);
 
+  // A document card pressed in the chat opens its document here, where the
+  // strip is held; a card whose document is gone or whose tab closed before
+  // the document took it up is told so (inner#1509).
+  const openSpace = React.useCallback((spaceId: string) => {
+    dispatchTabs({ type: 'open', spaceId });
+  }, []);
+  useDocumentProposalRouting(spaces, tabs.openIds, tabs.activeId, openSpace, metaSynced);
+
   // Hand the strip back to the browser so the next visit opens on it. Held
   // until `ready`, because the strip is empty before the Spaces arrive and
   // storing that would erase what is being restored, and until `persist`,
@@ -506,11 +513,6 @@ function ProjectWorkspace({
   // ---- Loading overlay tracking ----
   const spaceOpInProgress = useUIStore((s) => s.spaceOpInProgress);
   const setSpaceOpInProgress = useUIStore((s) => s.setSpaceOpInProgress);
-  const readOnlyViewSpaceId = useUIStore((s) => s.readOnlyViewSpaceId);
-  const setReadOnlyViewSpaceId = useUIStore((s) => s.setReadOnlyViewSpaceId);
-  const [roSheetOpen, setRoSheetOpen] = useExclusiveOverlay(
-    'space-readonly-sheet',
-  );
 
 
   const pendingCreateTokenRef = React.useRef<string | null>(null);
@@ -708,8 +710,8 @@ function ProjectWorkspace({
    * the deleted tab vanishes the moment Yjs sync lands. Showing the
    * full-screen LoadingOverlay for that window just flashes a black
    * backdrop in and out, which the user reads as flicker rather than
-   * progress. The SpaceDrawer row keeps its own inline `deleteBusy`
-   * spinner to prevent double-click within the same row.
+   * progress. Instead the SpaceDrawer's delete confirm dialog stays open
+   * while this RPC runs, its delete button spinning and swallowing presses.
    *
    * Errors still surface - callRpc raises a toast on RPC failure.
    * @param spaceId - The id of the Space to soft-delete.
@@ -764,25 +766,9 @@ function ProjectWorkspace({
   const onRestoreSpace = async (spaceId: string): Promise<void> => {
     await callRpc(
       { type: 'space:restore', payload: { spaceId } },
-      'project.space.error.create',
+      'project.space.error.restore',
     );
   };
-
-  /**
-   * Open the read-only preview sheet for a Space.
-   * @param id - The id of the Space to preview read-only.
-   */
-  const onViewSpace = (id: string): void => {
-    setReadOnlyViewSpaceId(id);
-    setRoSheetOpen(true);
-  };
-
-  // Resolve the currently-previewed Space (if any) for the read-only
-  // sheet. Bail to null if it's missing (race with deletion).
-  const readOnlySpace = React.useMemo(() => {
-    if (!readOnlyViewSpaceId) return null;
-    return spaces.find((s) => s.id === readOnlyViewSpaceId) ?? null;
-  }, [readOnlyViewSpaceId, spaces]);
 
   // Defer project page mount until the websocket has reached a final
   // state (connected / authFailed / disconnected). Without this gate,
@@ -1006,13 +992,11 @@ function ProjectWorkspace({
                   <SpaceTabBar
                     spaces={openTabs}
                     allSpaces={spaces}
-                    openTabIds={tabs.openIds}
                     activeSpaceId={activeSpace?.id ?? ''}
                     projectId={projectId}
                     onActivate={onActivate}
                     onCreate={onCreateSpace}
                     onClose={onCloseTab}
-                    onViewSpace={onViewSpace}
                     onDeleteSpace={onDeleteSpace}
                     onSetSpaceLocked={onSetSpaceLocked}
                     onRenameSpace={isViewer ? undefined : onRenameSpace}
@@ -1132,14 +1116,6 @@ function ProjectWorkspace({
               />
             ) : null}
           </div>
-          <SpaceReadOnlySheet
-            open={roSheetOpen}
-            space={readOnlySpace}
-            onClose={() => {
-              setRoSheetOpen(false);
-              setReadOnlyViewSpaceId(null);
-            }}
-          />
           {spaceOpInProgress === 'creating' ? (
             <LoadingOverlay
               message={t('project.space.loading.create')}

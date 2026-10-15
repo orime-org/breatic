@@ -15,13 +15,14 @@
  *
  *   pnpm --filter @breatic/web test:smoke
  */
-import { test, expect, type Page } from 'playwright/test';
+import { expect, type Page } from 'playwright/test';
+import { test } from '../helpers/slot';
 
-import { STATE_FILE, openSmokeProject } from '../helpers/project';
+import { openSmokeProject } from '../helpers/project';
 import { CANVAS_SPACE, liveModuleUrl } from '../helpers/live-module';
 import { VISIBLE_SPACE, createSpace, deleteSpace, visibleSpace } from '../helpers/space';
 
-test.use({ storageState: STATE_FILE.A, viewport: { width: 1500, height: 900 } });
+test.use({ viewport: { width: 1500, height: 900 } });
 let page: Page;
 let projectId = '';
 let spaceId = '';

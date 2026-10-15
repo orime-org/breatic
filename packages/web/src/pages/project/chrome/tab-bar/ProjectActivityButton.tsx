@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { Activity, AlertCircle, Film, Music, RotateCcw, Star } from 'lucide-react';
-import { useEffect, useRef, useState, type JSX } from 'react';
+import { useEffect, useRef, type JSX } from 'react';
 import {
   useInfiniteQuery,
   useQueryClient,
@@ -30,6 +30,7 @@ import {
 } from '@web/components/ui/sheet';
 import { Button } from '@web/components/ui/button';
 import { cn } from '@web/lib/utils';
+import { usePendingKeys } from '@web/lib/use-pending-keys';
 import { formatCredits } from '@web/lib/format-credits';
 import { useExclusiveOverlay } from '@web/features/exclusive-overlay/use-exclusive-overlay';
 import { HoverPreview } from '@web/spaces/canvas/nodes/_shared/HoverPreview';
@@ -289,7 +290,7 @@ export function ProjectActivityButton({
   const t = useTranslation();
   const [open, setOpen] = useExclusiveOverlay('project-activity');
   const isOwner = currentUserRole === 'owner';
-  const [busyId, setBusyId] = useState<string | null>(null);
+  const restoring = usePendingKeys();
   const queryClient = useQueryClient();
   const sentinelRef = useRef<HTMLLIElement | null>(null);
 
@@ -359,20 +360,25 @@ export function ProjectActivityButton({
   }, [open, hasNextPage, isFetchingNextPage, fetchNextPage]);
 
   /**
-   * Restores a deleted space via `onRestore`, tracking per-entry busy
-   * state, then refreshes the feed (the restore appends its own row).
+   * Restores a deleted space via `onRestore`, then refreshes the feed (the
+   * restore marks its row restored and appends its own row). That space's
+   * button keeps waiting until the refreshed feed is in (inner#1374): the
+   * row only turns into the restored badge then, and a press in between
+   * would send a restore the server refuses.
    * @param spaceId - Id of the deleted space to restore.
    */
   const onClickRestore = async (spaceId: string): Promise<void> => {
     if (!onRestore) return;
-    setBusyId(spaceId);
     try {
-      await onRestore(spaceId);
-      void queryClient.invalidateQueries({
-        queryKey: ['project-activities', projectId],
-      });
-    } finally {
-      setBusyId(null);
+      await restoring.track(
+        spaceId,
+        Promise.resolve(onRestore(spaceId)).then(() =>
+          queryClient.invalidateQueries({ queryKey: ['project-activities', projectId] }),
+        ),
+      );
+    } catch {
+      // The host has already toasted the failure (`callRpc` reports before
+      // it throws); the button only has to come back for another try.
     }
   };
 
@@ -531,11 +537,11 @@ export function ProjectActivityButton({
                         size={null}
                         type='button'
                         onClick={() => m.spaceId && onClickRestore(m.spaceId)}
-                        disabled={busyId === m.spaceId}
+                        loading={restoring.isPending(m.spaceId ?? '')}
+                        icon={<RotateCcw className='h-3 w-3' aria-hidden />}
                         data-testid={`project-activity-restore-${m.id}`}
-                        className='mt-0.5 inline-flex items-center gap-1 rounded-md border border-border bg-background px-2 py-1 text-2xs text-foreground hover:bg-accent disabled:opacity-50'
+                        className='mt-0.5 inline-flex items-center gap-1 rounded-md border border-border bg-background px-2 py-1 text-2xs text-foreground hover-enabled:bg-accent disabled:opacity-50'
                       >
-                        <RotateCcw className='h-3 w-3' aria-hidden />
                         {t('activity.action.restore')}
                       </Button>
                     ) : showRestoredBadge ? (

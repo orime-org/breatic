@@ -33,6 +33,7 @@ function setup(overrides: Partial<Parameters<typeof AgentColHeader>[0]> = {}) {
       conversationNamePlaceholder='Untitled conversation'
       onToggleHistory={onToggleHistory}
       onNewConversation={onNewConversation}
+      creating={false}
       onRenameConversation={onRenameConversation}
       {...overrides}
     />,

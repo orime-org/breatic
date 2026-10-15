@@ -13,7 +13,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { NodeToolbar, Position, useStore } from '@xyflow/react';
 import * as React from 'react';
 
-import type { CanvasNodeView } from '@web/data/yjs/canvas-space';
+import type { NodeRef } from '@web/data/yjs/node-view';
 import type { NodeTaskEntry } from '@breatic/shared';
 
 import { canvasApi } from '@web/data/api/canvas';
@@ -29,12 +29,18 @@ import {
 } from '@web/spaces/canvas/upload-retry-files';
 import { countsColumnOffset } from '@web/spaces/canvas/overlay-scale';
 import { useCanvasSession } from '@web/spaces/canvas/canvas-context';
+import {
+  taskActionKey,
+  trackTaskAction,
+  useTaskActionsInFlight,
+  type TaskActionRequest,
+} from '@web/stores/task-actions-in-flight';
 
 /** The media a refusal can name formats for. */
 const LISTED_MEDIA = ['image', 'video', 'audio'] as const;
 
 /** What this panel reads off its host: that it exists, and its four counts. */
-type TaskHostNode = Pick<CanvasNodeView, 'id' | 'data'>;
+type TaskHostNode = NodeRef;
 
 /** What {@link NodeTaskPanelContainer} needs from the canvas around it. */
 export interface NodeTaskPanelContainerProps {
@@ -50,8 +56,11 @@ export interface NodeTaskPanelContainerProps {
   spaceId: string;
   /** Whether this reader may write; a read-only row carries no buttons. */
   readOnly: boolean;
-  /** Send one task's stashed File again as a new task. */
-  onRetry: (nodeId: string, taskId: string) => void;
+  /**
+   * Send one task's stashed File again as a new task. Returns the upload's
+   * work, or undefined when nothing was sent (a lock, or no File held).
+   */
+  onRetry: (nodeId: string, taskId: string) => Promise<void> | undefined;
 }
 
 /** The open panel's own props, once there is a host to render for. */
@@ -101,9 +110,9 @@ function OpenNodeTaskPanel({
   // A deleted host draws nothing here; `CanvasSpaceInner` closes the panel.
   const hostNode = nodes.find((n) => n.id === nodeId);
   // What the node holds, for the refusal sentence that names the formats we
-  // would have taken. Only the three media have a list; every other kind
+  // would have taken. Only the three media have a list; every other type
   // leaves the sentence its short form.
-  const hostMedium = LISTED_MEDIA.find((name) => hostNode?.data.kind === name);
+  const hostMedium = LISTED_MEDIA.find((name) => hostNode?.type === name);
 
   // The counts come off the document and move live; these rows are one fetch.
   // Keying on them is what keeps the two from contradicting each other on
@@ -148,6 +157,14 @@ function OpenNodeTaskPanel({
     (taskId: string): boolean => hasRetryFile(projectId, spaceId, taskId),
     [projectId, spaceId],
   );
+  // Read from a store, not this panel's state: a button still waits after the
+  // panel is closed and opened again.
+  const inFlight = useTaskActionsInFlight((s) => s.inFlight);
+  const isWaiting = React.useCallback(
+    (taskId: string, request: TaskActionRequest): boolean =>
+      inFlight.has(taskActionKey(projectId, spaceId, taskId, request)),
+    [inFlight, projectId, spaceId],
+  );
   const reload = React.useCallback((): void => {
     void query.refetch();
   }, [query]);
@@ -160,16 +177,23 @@ function OpenNodeTaskPanel({
     },
     [entries, openHistoryPanel, nodeId],
   );
+  // Retry waits for the whole re-send: the failed row stays where it is (the
+  // re-send is a new task), so a second press would send the File twice.
   const retry = React.useCallback(
-    (taskId: string): void => onRetry(nodeId, taskId),
-    [onRetry, nodeId],
+    (taskId: string): void => {
+      const work = onRetry(nodeId, taskId);
+      if (work !== undefined) {
+        trackTaskAction(taskActionKey(projectId, spaceId, taskId, 'retry'), work);
+      }
+    },
+    [onRetry, nodeId, projectId, spaceId],
   );
   // Finish and Clear are the same request (§7.4). The row leaves this list as
   // soon as the server takes it — the list is this reader's own fetch, not the
   // shared document. The node's counts wait for the event that follows.
   const dismiss = React.useCallback(
     (taskId: string): void => {
-      void canvasApi
+      const request = canvasApi
         .dismissNodeTask(taskId, { projectId, spaceId, nodeId })
         .then(() => {
           const left = (
@@ -188,6 +212,7 @@ function OpenNodeTaskPanel({
         .catch(() => {
           toast.error(t('canvas.task.dismissFailed'));
         });
+      trackTaskAction(taskActionKey(projectId, spaceId, taskId, 'dismiss'), request);
     },
     [projectId, spaceId, nodeId, queryClient, queryKey, t, closeActivePanel, status],
   );
@@ -219,6 +244,7 @@ function OpenNodeTaskPanel({
         isLoading={query.isPending}
         isError={query.isLoadingError}
         hasRetryFile={holdsFile}
+        isWaiting={isWaiting}
         onReload={reload}
         onClose={closeActivePanel}
         onView={view}

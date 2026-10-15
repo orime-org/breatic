@@ -78,6 +78,7 @@ function toLotView(lot: CreditLotEntity & LotContext): CreditLotView {
     refundAttempts: lot.refundAttempts,
     designated: lot.designated,
     everSpent: lot.everSpent,
+    everRestored: lot.everRestored,
     createdAt: lot.createdAt.toISOString(),
   };
 }

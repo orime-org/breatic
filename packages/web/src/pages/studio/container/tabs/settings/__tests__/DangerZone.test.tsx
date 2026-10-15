@@ -15,7 +15,7 @@
 
 import * as React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import { DangerZone } from '@web/pages/studio/container/tabs/settings/DangerZone';
@@ -160,5 +160,49 @@ describe('DangerZone — the line explaining the box', () => {
   it('tells a team member about what leaving costs', () => {
     renderZone(studio({ type: 'team', myStudioRole: 'maintainer' }));
     expect(screen.getByText(HINT.member)).toBeInTheDocument();
+  });
+});
+
+describe('DangerZone — leaving the studio', () => {
+  /**
+   * Render the zone for a team maintainer with a given leave state.
+   * @param leaving - Whether the leave request is out.
+   * @param onLeave - The leave handler.
+   * @returns The element tree.
+   */
+  function tree(leaving: boolean, onLeave: () => void): React.JSX.Element {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    return (
+      <QueryClientProvider client={qc}>
+        <DangerZone
+          studio={studio({ type: 'team', myStudioRole: 'maintainer' })}
+          members={[]}
+          leaving={leaving}
+          onLeave={onLeave}
+          saving={false}
+          renaming={false}
+          onSave={vi.fn()}
+        />
+      </QueryClientProvider>
+    );
+  }
+
+  it('keeps the confirmation open with a busy Leave while the leave is out, and clears it on failure', () => {
+    const onLeave = vi.fn();
+    const { rerender } = render(tree(false, onLeave));
+    fireEvent.click(screen.getByTestId('settings-leave-open'));
+    fireEvent.click(screen.getByTestId('settings-leave-confirm'));
+    expect(onLeave).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId('settings-leave-dialog')).toBeInTheDocument();
+
+    rerender(tree(true, onLeave));
+    const confirm = screen.getByTestId('settings-leave-confirm');
+    expect(confirm).toHaveAttribute('aria-busy', 'true');
+    expect(confirm).toHaveAttribute('aria-disabled', 'true');
+
+    // A refused leave: the dialog stays so the reader can press again.
+    rerender(tree(false, onLeave));
+    expect(confirm).not.toHaveAttribute('aria-busy');
+    expect(screen.getByTestId('settings-leave-dialog')).toBeInTheDocument();
   });
 });

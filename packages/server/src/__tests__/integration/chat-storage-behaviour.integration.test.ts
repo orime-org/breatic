@@ -503,7 +503,8 @@ describe("the memory chain still sees the same messages", () => {
             toolName: "web_search",
             input: { url: "https://example.com" },
             status: "success",
-            output: "page text",
+            output: { page: "page text" },
+            forModel: { type: "text", value: "page text" },
           },
           { type: "text", text: `a${i}` },
         ],
@@ -514,6 +515,9 @@ describe("the memory chain still sees the same messages", () => {
     // so the test takes them together: whether compression runs is a property
     // of the pair, not of either half.
     const forLlm = await messageRepo.getMessagesForLlm(conv.id, 0);
+    // What the model was given comes back out of storage as it went in.
+    const firstCall = forLlm[1]?.parts.find((p) => p.type === "tool");
+    expect(firstCall).toMatchObject({ forModel: { type: "text", value: "page text" } });
     const context = compressForContext(forLlm, 3);
 
     // Every call is still on the record: what the assistant did is small, and
@@ -521,10 +525,12 @@ describe("the memory chain still sees the same messages", () => {
     const called = context.filter((m) => m.parts.some((p) => p.type === "tool"));
     expect(called.map((m) => m.content)).toEqual(["a1", "a2", "a3", "a4", "a5"]);
 
-    // Five uses, the last three keeping what came back. The first two are past
-    // the window, and their bodies are what the compression saves.
+    // Five uses, the last three keeping what the model was given. The first
+    // two are past the window, and their copies are what the compression saves.
     const keptResult = context.filter((m) =>
-      m.parts.some((p) => p.type === "tool" && p.output === "page text"),
+      m.parts.some(
+        (p) => p.type === "tool" && p.forModel?.type === "text" && p.forModel.value === "page text",
+      ),
     );
     expect(keptResult.map((m) => m.content)).toEqual(["a3", "a4", "a5"]);
   });

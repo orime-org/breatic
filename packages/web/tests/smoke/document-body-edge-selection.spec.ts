@@ -15,8 +15,10 @@
  * Wants dev running:
  *   pnpm --filter @breatic/web test:smoke
  */
-import { test, expect, type Page } from 'playwright/test';
+import { expect, type Page } from 'playwright/test';
+import { test } from '../helpers/slot';
 
+import { pressAndSettle } from '../helpers/editor-keys';
 import { openSmokeProject } from '../helpers/project';
 import { createSpace, deleteSpace, DOCUMENT_EDITOR as EDITOR } from '../helpers/space';
 
@@ -34,7 +36,6 @@ test.afterEach(async () => {
   }
   await page?.close();
 });
-
 
 /** How long the pointer rests before a press. */
 const SETTLE_MS = 400;
@@ -543,12 +544,12 @@ test('Shift+Down from the last line of words in a code block ending in a line br
   const clicked = await read(page);
   expect(clicked.text).toBe('');
 
-  await page.keyboard.press('Shift+ArrowDown');
+  await pressAndSettle(page, 'Shift+ArrowDown');
   const empty = await read(page);
   expect(empty.kind).toBe('_TextSelection');
   expect(empty.head).toBe(clicked.head + 1);
 
-  await page.keyboard.press('Shift+ArrowDown');
+  await pressAndSettle(page, 'Shift+ArrowDown');
   const edge = await read(page);
   expect([edge.kind, edge.head]).toEqual(['BodyEdgeSelectionClass', edge.size - 2]);
 });
@@ -599,7 +600,10 @@ test('a Shift+click inside a range past the last block keeps the longer part (A6
   const made = await read(page);
   expect(made.head).toBe(made.size - 2);
   const x30 = await page.evaluate((selector) => {
-    const words = document.querySelector(`${selector} .bn-inline-content`)!.firstChild!;
+    // The first text node: a selection the body draws itself wraps its text
+    // in a band element.
+    const line = document.querySelector(`${selector} .bn-inline-content`)!;
+    const words = document.createTreeWalker(line, NodeFilter.SHOW_TEXT).nextNode()!;
     const range = document.createRange();
     range.setStart(words, 30);
     return range.getBoundingClientRect().x;

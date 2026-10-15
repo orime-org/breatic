@@ -15,14 +15,15 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-import { test, expect, type Page } from 'playwright/test';
+import { expect, type Page } from 'playwright/test';
+import { test } from '../helpers/slot';
 
-import { STATE_FILE, openSmokeProject } from '../helpers/project';
+import { openSmokeProject } from '../helpers/project';
 import { blankPoint, bodySelection } from '../helpers/document-body';
 import { pressAndSettle } from '../helpers/editor-keys';
 import { wavBytes } from '../helpers/media-bytes';
 import { storedPicture, uniquePicture, watchQueuedFinish } from '../helpers/upload';
-import { createSpace, deleteSpace, DOCUMENT_EDITOR as EDITOR } from '../helpers/space';
+import { createSpace, deleteSpace, DOCUMENT_EDITOR as EDITOR, visibleSpace } from '../helpers/space';
 
 let page: Page;
 
@@ -161,7 +162,7 @@ async function pickFromPlus(
 ): Promise<void> {
   const firstRow = p.locator(`${EDITOR} .bn-block-content`).first();
   await firstRow.hover();
-  await p.getByTestId('doc-block-plus').click();
+  await visibleSpace(p).getByTestId('doc-block-plus').click();
   const chooser = p.waitForEvent('filechooser');
   await p.getByTestId(`doc-block-insert-${kind}`).click();
   await (await chooser).setFiles(file);
@@ -195,7 +196,7 @@ test('the plus menu offers image, audio and video after the table, and a picked 
   await openFreshDocument(page);
   const firstRow = page.locator(`${EDITOR} .bn-block-content`).first();
   await firstRow.hover();
-  await page.getByTestId('doc-block-plus').click();
+  await visibleSpace(page).getByTestId('doc-block-plus').click();
   const order = await page
     .locator('[role="menuitem"][data-testid^="doc-block-insert-"]')
     .evaluateAll((items) => items.map((item) => item.getAttribute('data-testid')));
@@ -262,7 +263,7 @@ test('the grip menu inserts the picked files below its row, side by side, one em
   await page.locator(EDITOR).click();
   await page.keyboard.type('a row to act on');
   await page.locator(`${EDITOR} .bn-block-content`).first().hover();
-  await page.getByTestId('doc-block-handle').click();
+  await visibleSpace(page).getByTestId('doc-block-handle').click();
   await page.getByTestId('doc-block-row-insertBelow').hover();
   const chooser = page.waitForEvent('filechooser');
   await page.getByTestId('doc-block-insert-image').click();
@@ -405,15 +406,15 @@ test('the toolbar of a first block sits on the picture, never under it, centred,
   expect(Math.abs(bar!.x + bar!.width / 2 - (media!.x + media!.width / 2))).toBeLessThan(1);
 
   // Narrower than the body, so alignment is offered.
-  await page.getByTestId('doc-media-align-center').click();
+  await visibleSpace(page).getByTestId('doc-media-align-center').click();
   await expect(page.locator(IMAGE)).toHaveAttribute('data-text-alignment', 'center');
   const centred = (await img.boundingBox())!;
   const row = (await page.locator(`${IMAGE} [data-testid="doc-media-row"]`).boundingBox())!;
   expect(Math.abs(centred.x + centred.width / 2 - (row.x + row.width / 2))).toBeLessThan(1);
 
   await img.hover();
-  await page.getByTestId('doc-media-caption-button').click();
-  await page.getByTestId('doc-media-caption-input').fill('Dusk');
+  await visibleSpace(page).getByTestId('doc-media-caption-button').click();
+  await visibleSpace(page).getByTestId('doc-media-caption-input').fill('Dusk');
   await page.keyboard.press('Enter');
   await expect(page.locator(`${IMAGE} [data-testid="doc-media-caption"]`)).toHaveText('Dusk');
 
@@ -452,7 +453,7 @@ for (const kind of ['image', 'video', 'audio'] as const) {
     // download would leave this waiting.
     const [download] = await Promise.all([
       page.waitForEvent('download', { timeout: 30_000 }),
-      page.getByTestId('doc-media-download').click(),
+      visibleSpace(page).getByTestId('doc-media-download').click(),
     ]);
 
     expect(download.suggestedFilename()).toBe(
@@ -500,7 +501,7 @@ test('a selected picture is framed with a knob on each corner, and its handle st
   await expect(img).toBeVisible({ timeout: UPLOAD_TIMEOUT });
 
   await img.hover();
-  const handle = page.getByTestId('doc-block-handle');
+  const handle = visibleSpace(page).getByTestId('doc-block-handle');
   await expect(handle).toBeVisible();
   const [grip, media] = await Promise.all([handle.boundingBox(), img.boundingBox()]);
   expect(grip!.y + grip!.height / 2).toBeLessThan(media!.y + 30);
@@ -544,7 +545,7 @@ test('a selected picture is framed with a knob on each corner, and its handle st
     expect(square).toEqual(['8px', '8px', '1px']);
   }
   // The rule after the alignments sits 5px from each neighbour, as the selection bar's does.
-  const ruleGaps = await page.getByTestId('doc-media-align-right').evaluate((button) => {
+  const ruleGaps = await visibleSpace(page).getByTestId('doc-media-align-right').evaluate((button) => {
     const box = button.getBoundingClientRect();
     const style = getComputedStyle(button, '::after');
     const ruleLeft = box.right - parseFloat(style.right) - parseFloat(style.width);
@@ -1133,7 +1134,7 @@ for (const kind of ['image', 'video', 'audio'] as const) {
     await expect.poll(() => bodySelection(page)).toEqual({ kind: `_NodeSelection:${kind}`, text: '' });
 
     await page.mouse.move(box.x - 30, box.y + 10);
-    await page.getByTestId('doc-block-handle').click();
+    await visibleSpace(page).getByTestId('doc-block-handle').click();
     await expect(page.getByRole('menu')).toBeVisible();
     await page.mouse.click(corner.x, corner.y);
 
@@ -1379,7 +1380,7 @@ test('a media block stays selected while its own controls drawn outside the body
   // So is the menu of its row; closing it leaves the block selected and no caret.
   const row = (await audio.boundingBox())!;
   await page.mouse.move(row.x + 40, row.y + 11);
-  await page.getByTestId('doc-block-handle').click();
+  await visibleSpace(page).getByTestId('doc-block-handle').click();
   await expect(page.getByRole('menu')).toBeVisible();
   expect(await selected()).toBe('true');
   await page.keyboard.press('Escape');
@@ -1406,7 +1407,7 @@ test('in a document of media alone, a picture let go of is drawn as not selected
   await expect(rows).toHaveCount(2);
   const line = (await rows.nth(1).boundingBox())!;
   await page.mouse.move(line.x + 40, line.y + 11);
-  await page.getByTestId('doc-block-plus').click();
+  await visibleSpace(page).getByTestId('doc-block-plus').click();
   await page.getByTestId('doc-block-plus-delete').click();
   await expect(rows).toHaveCount(1);
   const selected = (): Promise<string | null> => picture.getByTestId('doc-media-box').getAttribute('data-selected');
@@ -1547,12 +1548,12 @@ test('a picture and its caption show in a second client opening the document (A1
   const img = page.locator(`${IMAGE} img`);
   await expect(img).toBeVisible({ timeout: UPLOAD_TIMEOUT });
   await img.click();
-  await page.getByTestId('doc-media-caption-button').click();
-  await page.getByTestId('doc-media-caption-input').fill('Shared');
+  await visibleSpace(page).getByTestId('doc-media-caption-button').click();
+  await visibleSpace(page).getByTestId('doc-media-caption-input').fill('Shared');
   await page.keyboard.press('Enter');
   await expect(page.locator(`${IMAGE} [data-testid="doc-media-caption"]`)).toHaveText('Shared');
 
-  const second = await browser.newContext({ storageState: STATE_FILE.A, viewport: { width: 1680, height: 950 } });
+  const second = await browser.newContext({ viewport: { width: 1680, height: 950 } });
   const peer = await second.newPage();
   try {
     await peer.goto(page.url());

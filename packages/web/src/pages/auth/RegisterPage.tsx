@@ -206,7 +206,7 @@ export default function RegisterPage(): React.JSX.Element {
             <FieldError role='alert' className='mt-1'>{formError}</FieldError>
           ) : null}
 
-          <Button type='submit' size='form' disabled={submitting} className='mt-2'>
+          <Button type='submit' size='form' loading={submitting} className='mt-2'>
             {submitting
               ? t('auth.register.creating')
               : t('auth.register.create')}

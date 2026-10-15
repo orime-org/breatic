@@ -129,12 +129,17 @@ export function TurnEnding({ message }: TurnEndingProps): React.JSX.Element | nu
   }
 
   // "Produced nothing", not "wrote no prose": a turn that searched and drew a
-  // row of thumbnails has produced something, and saying nothing came back
-  // directly under them contradicts what is on screen. Only what survives the
+  // row of thumbnails, or proposed a card to press, has produced something,
+  // and saying nothing came back directly under it contradicts what is on
+  // screen. Only what survives the
   // end of the turn counts -- the tool line is drawn while a call runs and
   // gone once it has, so a turn whose only act was a call that came back
   // empty leaves nothing behind and is exactly what this line is for.
-  const producedSomething = message.assets !== undefined || message.sources !== undefined;
+  const producedSomething =
+    message.assets !== undefined ||
+    message.sources !== undefined ||
+    message.proposals !== undefined ||
+    message.documentProposals !== undefined;
   if (message.content === '' && !producedSomething && message.role === 'assistant') {
     return (
       <EndingLine testId='message-bubble-empty' text={t('chat.message.empty')} tone='neutral' />

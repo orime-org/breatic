@@ -25,6 +25,7 @@ import type { MiniToolUploadTag } from '@web/data/upload/ingest-upload';
 import { UploadFailedError } from '@web/data/upload/media-upload';
 import { addEdge, addNode, runCanvasUndoBatch } from '@web/data/yjs/canvas-space';
 import { toast } from '@web/lib/toast';
+import { runOnce, useRunning, type RunOnceOutcome } from '@web/stores/task-actions-in-flight';
 import { NODE_STEP } from '@web/spaces/canvas/drop-layout';
 import { DrawingEmptyError, type DrawingExport } from '@web/spaces/canvas/mini-tool/export-drawing';
 import { exportsBeforeRun } from '@web/spaces/canvas/mini-tool/mini-tool-view';
@@ -206,6 +207,28 @@ async function prepare(run: MiniToolRun): Promise<{ file?: File; drawing?: Drawi
 }
 
 /**
+ * The run-once intent of a press of one tool on one node (inner#1490).
+ * @param spaceId - The Space the node lives in.
+ * @param nodeId - The node the tool runs on.
+ * @param toolId - The tool.
+ * @returns The intent id.
+ */
+export function miniToolIntent(spaceId: string, nodeId: string, toolId: string): string {
+  return `mini-tool:${spaceId}:${nodeId}:${toolId}`;
+}
+
+/**
+ * Whether a press of this tool on this node is still waiting; the Run button reads it.
+ * @param spaceId - The Space the node lives in.
+ * @param nodeId - The node the tool runs on.
+ * @param toolId - The tool.
+ * @returns True while it waits.
+ */
+export function useMiniToolRunning(spaceId: string, nodeId: string, toolId: string): boolean {
+  return useRunning(miniToolIntent(spaceId, nodeId, toolId)) !== undefined;
+}
+
+/**
  * Build the result nodes, wire them to the source, and start the run.
  *
  * A browser tool's file, or a drawing tool's images and their upload, are made
@@ -213,10 +236,38 @@ async function prepare(run: MiniToolRun): Promise<{ file?: File; drawing?: Drawi
  * nothing and says so. A server tool's request
  * goes out after the nodes exist; a refusal opened no row, so the press is
  * where it is said, and the nodes stay.
+ *
+ * One press per tool and node runs at a time (inner#1490): a press while one
+ * waits builds nothing, and an unanswered request is re-sent with the same key
+ * without building a second set of nodes.
  * @param run - The press.
- * @returns Nothing; what happens next is on the new nodes' task rows.
+ * @returns The press's whole run; what happens next is on the new nodes' task rows.
  */
-export async function startMiniToolRun(run: MiniToolRun): Promise<void> {
+export function startMiniToolRun(run: MiniToolRun): Promise<RunOnceOutcome<unknown>> {
+  return runOnce(miniToolIntent(run.spaceId, run.source.id, run.spec.id), {
+    scope: 'mini-tool',
+    prepare: () => buildMiniToolRun(run),
+    send: (key, body: MiniToolRequest) => miniToolsApi.run(body, key),
+    onFailure: (err) => {
+      // The server's sentence when it gave one, already in the reader's
+      // language; a request that never arrived has none.
+      toast.error(
+        err instanceof ApiException && err.fromServer && err.message
+          ? err.message
+          : t('canvas.miniTool.panel.couldNotStart'),
+      );
+    },
+  });
+}
+
+/**
+ * The browser's half of a press: make what the tool needs, build and wire the
+ * result nodes, and fix the request body. A browser tool hands its file to
+ * the upload and sends nothing.
+ * @param run - The press.
+ * @returns The request body, or null when nothing is to be sent.
+ */
+async function buildMiniToolRun(run: MiniToolRun): Promise<MiniToolRequest | null> {
   const { projectId, spaceId, userId, spec, source } = run;
 
   const exports = exportsBeforeRun(spec);
@@ -227,7 +278,7 @@ export async function startMiniToolRun(run: MiniToolRun): Promise<void> {
   } finally {
     if (exports) run.setExporting(false);
   }
-  if (prepared === null) return;
+  if (prepared === null) return null;
   const { file, drawing } = prepared;
 
   const base = {
@@ -258,18 +309,8 @@ export async function startMiniToolRun(run: MiniToolRun): Promise<void> {
     if (node !== undefined && output !== undefined && output.modality !== 'text') {
       run.fillUpload(node.id, file, output.modality, { source: 'mini_tool', toolName: spec.id });
     }
-    return;
+    return null;
   }
 
-  try {
-    await miniToolsApi.run(requestOf(run, nodes.map((node) => node.id), drawing));
-  } catch (err) {
-    // The server's sentence when it gave one, already in the reader's
-    // language; a request that never arrived has none.
-    toast.error(
-      err instanceof ApiException && err.fromServer && err.message
-        ? err.message
-        : t('canvas.miniTool.panel.couldNotStart'),
-    );
-  }
+  return requestOf(run, nodes.map((node) => node.id), drawing);
 }

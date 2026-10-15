@@ -2,14 +2,14 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { describe, it, expect } from 'vitest';
-import type { FocusImage, ModelEntry } from '@breatic/shared';
+import type { FocusImage, ModelEntry, NodeType } from '@breatic/shared';
 
 import { resolveModeSwitch } from '@web/spaces/canvas/generate/mode-selection';
 import {
   buildGeneratePanelViewModel,
 } from '@web/spaces/canvas/generate/panel-view-model';
 import type { CanvasEdge, CanvasNodeView } from '@web/data/yjs/canvas-space';
-import type { NodeView } from '@web/data/yjs/node-view';
+import type { ImageNodeView, NodeViewOf } from '@web/data/yjs/node-view';
 
 /**
  * Builds a view model with no body text, which is what every case here wants:
@@ -68,18 +68,19 @@ function makeModel(name: string, over: Partial<ModelEntry> = {}): ModelEntry {
 }
 
 /**
- * Builds a canvas node view fixture.
+ * Builds a render-ready {@link CanvasNodeView} fixture.
  * @param id - Node id.
- * @param data - The node's view data.
- * @returns A CanvasNodeView.
+ * @param type - The node type.
+ * @param data - The view of that type.
+ * @returns A CanvasNodeView positioned at the origin.
  */
-function node(id: string, data: NodeView): CanvasNodeView {
-  return { id, type: data.kind, position: { x: 0, y: 0 }, data };
+function node<T extends NodeType>(id: string, type: T, data: NodeViewOf[T]): CanvasNodeView {
+  return { id, type, position: { x: 0, y: 0 }, data } as CanvasNodeView;
 }
 
 /** An image node view carrying generate inputs. */
-function imageView(over: Partial<Extract<NodeView, { kind: 'image' }>> = {}): NodeView {
-  return { kind: 'image', handling: false, ...over };
+function imageView(over: Partial<ImageNodeView> = {}): ImageNodeView {
+  return { handling: false, ...over };
 }
 
 describe('buildGeneratePanelViewModel', () => {
@@ -100,25 +101,25 @@ describe('buildGeneratePanelViewModel', () => {
    * @returns An i2i image node view.
    */
   function i2iView(
-    over: Partial<Extract<NodeView, { kind: 'image' }>> = {},
-  ): NodeView {
+    over: Partial<ImageNodeView> = {},
+  ): ImageNodeView {
     return imageView({ mode: 'i2i', model: 'mj-i2i', ...over });
   }
 
   it('uses the stored model when it is present in the mode catalog', () => {
-    const nodes = [node('n1', imageView({ model: 'flux' }))];
+    const nodes = [node('n1', 'image', imageView({ model: 'flux' }))];
     const vm = buildVm({ nodeId: 'n1', nodes, edges: [], models });
     expect(vm.model).toBe('flux');
   });
 
   it('picks the FIRST offered model when the node has none (user 2026-07-11)', () => {
-    const nodes = [node('n1', imageView())];
+    const nodes = [node('n1', 'image', imageView())];
     const vm = buildVm({ nodeId: 'n1', nodes, edges: [], models });
     expect(vm.model).toBe('flux'); // first in the list; sdxl's badge does not promote it
   });
 
   it('restores the mode\'s remembered model over the first', () => {
-    const nodes = [node('n1', imageView({ modelByMode: { t2i: 'sdxl' } }))];
+    const nodes = [node('n1', 'image', imageView({ modelByMode: { t2i: 'sdxl' } }))];
     const vm = buildVm({ nodeId: 'n1', nodes, edges: [], models });
     expect(vm.model).toBe('sdxl'); // remembered t2i pick beats list order
   });
@@ -132,26 +133,26 @@ describe('buildGeneratePanelViewModel', () => {
     // branch; without this one, resolving a wrong-mode model to the first
     // offered model goes unnoticed.
     const nodes = [
-      node('n1', imageView({ model: 'mj-i2i', modelByMode: { t2i: 'sdxl' } })),
+      node('n1', 'image', imageView({ model: 'mj-i2i', modelByMode: { t2i: 'sdxl' } })),
     ];
     const vm = buildVm({ nodeId: 'n1', nodes, edges: [], models });
     expect(vm.model).toBe('sdxl');
   });
 
   it('defaults the mode to t2i when the node stores none', () => {
-    const nodes = [node('n1', imageView())];
+    const nodes = [node('n1', 'image', imageView())];
     const vm = buildVm({ nodeId: 'n1', nodes, edges: [], models });
     expect(vm.mode).toBe('t2i');
   });
 
   it('reads a stored i2i mode', () => {
-    const nodes = [node('n1', i2iView())];
+    const nodes = [node('n1', 'image', i2iView())];
     const vm = buildVm({ nodeId: 'n1', nodes, edges: [], models: i2iModels });
     expect(vm.mode).toBe('i2i');
   });
 
   it('sanitizes a malformed stored mode to t2i', () => {
-    const nodes = [node('n1', imageView({ mode: 'garbage' }))];
+    const nodes = [node('n1', 'image', imageView({ mode: 'garbage' }))];
     const vm = buildVm({ nodeId: 'n1', nodes, edges: [], models });
     expect(vm.mode).toBe('t2i');
   });
@@ -164,14 +165,14 @@ describe('buildGeneratePanelViewModel', () => {
     ];
     const t2iVm = buildVm({
       nodeId: 'n1',
-      nodes: [node('n1', imageView())],
+      nodes: [node('n1', 'image', imageView())],
       edges: [],
       models: mixed,
     });
     expect(t2iVm.models.map((m) => m.name)).toEqual(['flux']);
     const i2iVm = buildVm({
       nodeId: 'n1',
-      nodes: [node('n1', imageView({ mode: 'i2i' }))],
+      nodes: [node('n1', 'image', imageView({ mode: 'i2i' }))],
       edges: [],
       models: mixed,
     });
@@ -181,7 +182,7 @@ describe('buildGeneratePanelViewModel', () => {
   it('resolves params against the current model (keeps valid, fills defaults, drops undeclared)', () => {
     const nodes = [
       node(
-        'n1',
+        'n1', 'image',
         imageView({
           model: 'flux',
           paramsByModel: { flux: { aspect_ratio: '16:9', bogus: 'x' } },
@@ -200,8 +201,8 @@ describe('buildGeneratePanelViewModel', () => {
 
   it('i2i sends ONLY @-mentioned reference URLs (subset of the rail)', () => {
     const nodes = [
-      node('n1', i2iView()),
-      node('src', imageView({ name: 'Source', content: 'https://cdn/x.png' })),
+      node('n1', 'image', i2iView()),
+      node('src', 'image', imageView({ name: 'Source', content: 'https://cdn/x.png' })),
     ];
     const edges: CanvasEdge[] = [{ id: 'e1', source: 'src', target: 'n1' }];
     const vm = buildVm({
@@ -226,9 +227,9 @@ describe('buildGeneratePanelViewModel', () => {
       }),
     ];
     const nodes = [
-      node('n1', imageView({ mode: 'i2i', model: 'muse-image-edit' })),
-      node('a', imageView({ name: 'A', content: 'https://cdn/a.png' })),
-      node('b', imageView({ name: 'B', content: 'https://cdn/b.png' })),
+      node('n1', 'image', imageView({ mode: 'i2i', model: 'muse-image-edit' })),
+      node('a', 'image', imageView({ name: 'A', content: 'https://cdn/a.png' })),
+      node('b', 'image', imageView({ name: 'B', content: 'https://cdn/b.png' })),
     ];
     const edges: CanvasEdge[] = [
       { id: 'e1', source: 'a', target: 'n1' },
@@ -246,8 +247,8 @@ describe('buildGeneratePanelViewModel', () => {
 
   it('i2i with an incoming edge but NO @-mention submits no source image (design B)', () => {
     const nodes = [
-      node('n1', i2iView()),
-      node('src', imageView({ name: 'Source', content: 'https://cdn/x.png' })),
+      node('n1', 'image', i2iView()),
+      node('src', 'image', imageView({ name: 'Source', content: 'https://cdn/x.png' })),
     ];
     const edges: CanvasEdge[] = [{ id: 'e1', source: 'src', target: 'n1' }];
     // No atMentionedSourceIds → nothing @-picked. Design B: i2i without an
@@ -262,8 +263,8 @@ describe('buildGeneratePanelViewModel', () => {
     // node can be @-mentioned. Its URL must NEVER ride into params.images — an
     // i2i source is definitionally an image (adversarial 2026-07-10).
     const nodes = [
-      node('n1', i2iView()),
-      node('aud', { kind: 'audio', handling: false, name: 'Song', content: 'https://cdn/x.mp3' }),
+      node('n1', 'image', i2iView()),
+      node('aud', 'audio', { handling: false, name: 'Song', content: 'https://cdn/x.mp3' }),
     ];
     const edges: CanvasEdge[] = [{ id: 'e1', source: 'aud', target: 'n1' }];
     const vm = buildVm({
@@ -281,8 +282,8 @@ describe('buildGeneratePanelViewModel', () => {
     // Design §2.5: t2i ignores source images — the rail still renders (greyed in
     // the panel) but no reference URL reaches the execute payload.
     const nodes = [
-      node('n1', imageView({ model: 'flux' })), // default t2i
-      node('src', imageView({ name: 'Source', content: 'https://cdn/x.png' })),
+      node('n1', 'image', imageView({ model: 'flux' })), // default t2i
+      node('src', 'image', imageView({ name: 'Source', content: 'https://cdn/x.png' })),
     ];
     const edges: CanvasEdge[] = [{ id: 'e1', source: 'src', target: 'n1' }];
     const vm = buildVm({ nodeId: 'n1', nodes, edges, models });
@@ -292,9 +293,9 @@ describe('buildGeneratePanelViewModel', () => {
 
   it('keeps only string URLs in referenceUrls (filters a malformed non-string content, i2i)', () => {
     const nodes = [
-      node('n1', i2iView()),
+      node('n1', 'image', i2iView()),
       // malformed: content is an object, not a URL string
-      node('src', imageView({ name: 'Bad', content: { u: 1 } as unknown as string })),
+      node('src', 'image', imageView({ name: 'Bad', content: { u: 1 } as unknown as string })),
     ];
     const edges: CanvasEdge[] = [{ id: 'e1', source: 'src', target: 'n1' }];
     const vm = buildVm({
@@ -309,8 +310,8 @@ describe('buildGeneratePanelViewModel', () => {
 
   it('skips references whose source carries no asset URL (i2i)', () => {
     const nodes = [
-      node('n1', i2iView()),
-      node('src', imageView({ name: 'Empty' })), // no content
+      node('n1', 'image', i2iView()),
+      node('src', 'image', imageView({ name: 'Empty' })), // no content
     ];
     const edges: CanvasEdge[] = [{ id: 'e1', source: 'src', target: 'n1' }];
     const vm = buildVm({
@@ -341,7 +342,7 @@ describe('buildGeneratePanelViewModel', () => {
       width: 640,
       height: 360,
     };
-    const nodes = [node('n1', imageView({ focusImages: [crop] }))];
+    const nodes = [node('n1', 'image', imageView({ focusImages: [crop] }))];
     const vm = buildVm({ nodeId: 'n1', nodes, edges: [], models });
     expect(vm.focusImages).toEqual([crop]);
   });
@@ -356,7 +357,7 @@ describe('buildGeneratePanelViewModel', () => {
     };
     const nodes = [
       node(
-        'n1',
+        'n1', 'image',
         imageView({
           focusImages: [
             good,
@@ -370,7 +371,7 @@ describe('buildGeneratePanelViewModel', () => {
     const vm = buildVm({ nodeId: 'n1', nodes, edges: [], models });
     expect(vm.focusImages).toEqual([good]);
     const nodes2 = [
-      node('n1', imageView({ focusImages: 'nope' as unknown as FocusImage[] })),
+      node('n1', 'image', imageView({ focusImages: 'nope' as unknown as FocusImage[] })),
     ];
     const vm2 = buildVm({ nodeId: 'n1', nodes: nodes2, edges: [], models });
     expect(vm2.focusImages).toEqual([]);
@@ -384,7 +385,7 @@ describe('buildGeneratePanelViewModel', () => {
       width: 1,
       height: 1,
     }));
-    const nodes = [node('n1', imageView({ focusImages: many }))];
+    const nodes = [node('n1', 'image', imageView({ focusImages: many }))];
     const vm = buildVm({ nodeId: 'n1', nodes, edges: [], models });
     expect(vm.focusImages).toHaveLength(200);
   });
@@ -392,7 +393,7 @@ describe('buildGeneratePanelViewModel', () => {
   it('dedupes duplicate-id focus entries — first occurrence wins (round-3)', () => {
     const a = { id: 'k', url: 'https://cdn/a.png', name: 'a', width: 1, height: 1 };
     const b = { id: 'k', url: 'https://cdn/b.png', name: 'b', width: 1, height: 1 };
-    const nodes = [node('n1', imageView({ focusImages: [a, b] }))];
+    const nodes = [node('n1', 'image', imageView({ focusImages: [a, b] }))];
     const vm = buildVm({ nodeId: 'n1', nodes, edges: [], models });
     expect(vm.focusImages).toEqual([a]);
   });
@@ -406,8 +407,8 @@ describe('buildGeneratePanelViewModel', () => {
       height: 10,
     };
     const nodes = [
-      node('n1', imageView({ mode: 'i2i', model: 'mj-i2i', focusImages: [crop] })),
-      node('src', imageView({ content: 'https://cdn/source.png' })),
+      node('n1', 'image', imageView({ mode: 'i2i', model: 'mj-i2i', focusImages: [crop] })),
+      node('src', 'image', imageView({ content: 'https://cdn/source.png' })),
     ];
     const edges = [{ id: 'src->n1', source: 'src', target: 'n1' }];
     const vm = buildVm({
@@ -442,7 +443,7 @@ describe('buildGeneratePanelViewModel', () => {
       width: 10,
       height: 10,
     };
-    const nodes = [node('n1', imageView({ mode: 't2i', focusImages: [crop] }))];
+    const nodes = [node('n1', 'image', imageView({ mode: 't2i', focusImages: [crop] }))];
     const vm = buildVm({
       nodeId: 'n1',
       nodes,
@@ -462,7 +463,7 @@ describe('buildGeneratePanelViewModel', () => {
   it('yields an empty model when the catalog is empty', () => {
     // Guards the empty-catalog path: with no models the execute gate must see
     // model='' and refuse to submit an invalid task.
-    const nodes = [node('n1', imageView())];
+    const nodes = [node('n1', 'image', imageView())];
     const vm = buildVm({ nodeId: 'n1', nodes, edges: [], models: [] });
     expect(vm.model).toBe('');
   });
@@ -473,7 +474,7 @@ describe('buildGeneratePanelViewModel', () => {
     expect(
       buildVm({
         nodeId: 'n1',
-        nodes: [node('n1', imageView({ mode: 'i2i' }))],
+        nodes: [node('n1', 'image', imageView({ mode: 'i2i' }))],
         edges: [],
         models, // 只有 t2i 模型
       }).mode,
@@ -482,7 +483,7 @@ describe('buildGeneratePanelViewModel', () => {
     expect(
       buildVm({
         nodeId: 'n1',
-        nodes: [node('n1', imageView({ mode: 'i2i' }))],
+        nodes: [node('n1', 'image', imageView({ mode: 'i2i' }))],
         edges: [],
         models: [...models, ...i2iModels],
       }).mode,
@@ -495,7 +496,7 @@ describe('buildGeneratePanelViewModel', () => {
       makeModel('bg-remover', { mode: 'remove_bg', tier: 'internal' }), // tool
       makeModel('topaz', { mode: 'upscale', tier: 'internal' }), // tool
     ];
-    const nodes = [node('n1', imageView())]; // default t2i
+    const nodes = [node('n1', 'image', imageView())]; // default t2i
     const vm = buildVm({ nodeId: 'n1', nodes, edges: [], models: mixed });
     expect(vm.models.map((m) => m.name)).toEqual(['flux']); // tools dropped
     expect(vm.model).toBe('flux'); // default never a tool
@@ -507,14 +508,14 @@ describe('buildGeneratePanelViewModel', () => {
       makeModel('bg-remover', { mode: 'remove_bg', tier: 'internal' }),
     ];
     // node somehow stored a tool model — it must not resolve to the tool.
-    const nodes = [node('n1', imageView({ model: 'bg-remover' }))];
+    const nodes = [node('n1', 'image', imageView({ model: 'bg-remover' }))];
     const vm = buildVm({ nodeId: 'n1', nodes, edges: [], models: mixed });
     expect(vm.model).toBe('flux');
     expect(vm.models.some((m) => m.name === 'bg-remover')).toBe(false);
   });
 
   it('reports that the node is on the board, which the execute gate reads', () => {
-    const nodes = [node('n1', imageView({ model: 'flux' }))];
+    const nodes = [node('n1', 'image', imageView({ model: 'flux' }))];
     expect(buildVm({ nodeId: 'n1', nodes, edges: [], models }).nodeExists).toBe(true);
     expect(buildVm({ nodeId: 'gone', nodes, edges: [], models }).nodeExists).toBe(false);
   });
@@ -522,26 +523,26 @@ describe('buildGeneratePanelViewModel', () => {
   // `missing` drives the #1675 execute gate: a model whose mode needs a
   // source image (i2i / edit) must not submit with an empty image list.
   it('misses nothing for a t2i model (generates from scratch)', () => {
-    const nodes = [node('n1', imageView({ model: 'flux' }))];
+    const nodes = [node('n1', 'image', imageView({ model: 'flux' }))];
     const vm = buildVm({ nodeId: 'n1', nodes, edges: [], models });
     expect(vm.missing).toEqual([]);
   });
 
   it('misses the reference pool for an i2i model with none picked (#1675 gate)', () => {
-    const nodes = [node('n1', i2iView())];
+    const nodes = [node('n1', 'image', i2iView())];
     const vm = buildVm({ nodeId: 'n1', nodes, edges: [], models: i2iModels });
     expect(vm.missing).toEqual([['images']]);
   });
 
   it('misses the reference pool for an edit-capable model', () => {
     const editModels = [makeModel('nano-edit', { mode: ['i2i', 'edit'] })];
-    const nodes = [node('n1', imageView({ mode: 'i2i', model: 'nano-edit' }))];
+    const nodes = [node('n1', 'image', imageView({ mode: 'i2i', model: 'nano-edit' }))];
     const vm = buildVm({ nodeId: 'n1', nodes, edges: [], models: editModels });
     expect(vm.missing).toEqual([['images']]);
   });
 
   it('misses nothing when the catalog is empty (no model resolved)', () => {
-    const nodes = [node('n1', imageView())];
+    const nodes = [node('n1', 'image', imageView())];
     const vm = buildVm({ nodeId: 'n1', nodes, edges: [], models: [] });
     expect(vm.missing).toEqual([]);
   });
@@ -554,14 +555,14 @@ describe('buildGeneratePanelViewModel', () => {
   // clears referenceUrls, so the "needs source image" gate could never pass).
   it('misses nothing for a hybrid (t2i+i2i) model running under t2i', () => {
     const hybrid = [makeModel('seedream', { mode: ['t2i', 'i2i'] })];
-    const nodes = [node('n1', imageView({ mode: 't2i', model: 'seedream' }))];
+    const nodes = [node('n1', 'image', imageView({ mode: 't2i', model: 'seedream' }))];
     const vm = buildVm({ nodeId: 'n1', nodes, edges: [], models: hybrid });
     expect(vm.missing).toEqual([]);
   });
 
   it('misses the pool for the same hybrid model running under i2i', () => {
     const hybrid = [makeModel('seedream', { mode: ['t2i', 'i2i'] })];
-    const nodes = [node('n1', imageView({ mode: 'i2i', model: 'seedream' }))];
+    const nodes = [node('n1', 'image', imageView({ mode: 'i2i', model: 'seedream' }))];
     const vm = buildVm({ nodeId: 'n1', nodes, edges: [], models: hybrid });
     expect(vm.missing).toEqual([['images']]);
   });
@@ -692,7 +693,7 @@ describe('buildGeneratePanelViewModel — the pool cap (#1735 count gate)', () =
     });
     const vm = buildVm({
       nodeId: 'n1',
-      nodes: [node('n1', imageView({ mode: 'i2i', model: 'nano-edit' }))],
+      nodes: [node('n1', 'image', imageView({ mode: 'i2i', model: 'nano-edit' }))],
       edges: [],
       models: [capped],
     });
@@ -704,7 +705,7 @@ describe('buildGeneratePanelViewModel — the pool cap (#1735 count gate)', () =
     // The default makeModel params carry aspect_ratio / resolution — no pool.
     const vm = buildVm({
       nodeId: 'n1',
-      nodes: [node('n1', imageView({ mode: 't2i', model: 'flux' }))],
+      nodes: [node('n1', 'image', imageView({ mode: 't2i', model: 'flux' }))],
       edges: [],
       models: [makeModel('flux', { mode: 't2i' })],
     });
@@ -719,7 +720,7 @@ describe('buildGeneratePanelViewModel — the pool cap (#1735 count gate)', () =
     for (const cap of [0, -1, Number.NaN]) {
       const vm = buildVm({
         nodeId: 'n1',
-        nodes: [node('n1', imageView({ mode: 'i2i', model: 'nano-edit' }))],
+        nodes: [node('n1', 'image', imageView({ mode: 'i2i', model: 'nano-edit' }))],
         edges: [],
         models: [
           makeModel('nano-edit', {
@@ -740,19 +741,19 @@ describe('buildGeneratePanelViewModel — the pool cap (#1735 count gate)', () =
 describe('promptRequired 读模型自己的声明 (#1966)', () => {
   it('模型说吃提示词就是 true', () => {
     const models = [makeModel('m-yes', { takes_prompt: true })];
-    const nodes = [node('n1', imageView({ model: 'm-yes' }))];
+    const nodes = [node('n1', 'image', imageView({ model: 'm-yes' }))];
     expect(buildVm({ nodeId: 'n1', nodes, edges: [], models }).promptRequired).toBe(true);
   });
 
   it('模型说不吃就是 false，跟模式名无关', () => {
     const models = [makeModel('m-no', { takes_prompt: false })];
-    const nodes = [node('n1', imageView({ model: 'm-no' }))];
+    const nodes = [node('n1', 'image', imageView({ model: 'm-no' }))];
     expect(buildVm({ nodeId: 'n1', nodes, edges: [], models }).promptRequired).toBe(false);
   });
 
   // 跟视频面板同一条兜底：认不出的模型不是「可以少一道要求」的许可。
   it('目录里一个模型都没有时回落到 true', () => {
-    const nodes = [node('n1', imageView({ model: 'gone' }))];
+    const nodes = [node('n1', 'image', imageView({ model: 'gone' }))];
     expect(buildVm({ nodeId: 'n1', nodes, edges: [], models: [] }).promptRequired).toBe(true);
   });
 });
@@ -772,7 +773,7 @@ describe('the style slot (inner#826)', () => {
   const plain = makeModel('plain');
 
   it('puts the node\'s style images into the params every reader takes', () => {
-    const nodes = [node('n1', imageView({ model: 'krea', styleImageUrls: ['s1', 's2'] }))];
+    const nodes = [node('n1', 'image', imageView({ model: 'krea', styleImageUrls: ['s1', 's2'] }))];
     const vm = buildVm({ nodeId: 'n1', nodes, edges: [], models: [krea] });
     expect(vm.params.style_images).toEqual(['s1', 's2']);
     expect(vm.styleCap).toBe(3);
@@ -780,7 +781,7 @@ describe('the style slot (inner#826)', () => {
   });
 
   it('leaves style images out for a model that declares no style slot', () => {
-    const nodes = [node('n1', imageView({ model: 'plain', styleImageUrls: ['s1'] }))];
+    const nodes = [node('n1', 'image', imageView({ model: 'plain', styleImageUrls: ['s1'] }))];
     const vm = buildVm({ nodeId: 'n1', nodes, edges: [], models: [plain] });
     expect(vm.params.style_images).toBeUndefined();
     expect(vm.styleCap).toBeUndefined();
@@ -789,17 +790,17 @@ describe('the style slot (inner#826)', () => {
 
   it('draws no style slot when the declaration gives no usable cap', () => {
     const uncapped = makeModel('uncapped', { params: { style_images: { ...style(true), max_items: 0 } } });
-    const vm = buildVm({ nodeId: 'n1', nodes: [node('n1', imageView({ model: 'uncapped', styleImageUrls: ['s1'] }))], edges: [], models: [uncapped] });
+    const vm = buildVm({ nodeId: 'n1', nodes: [node('n1', 'image', imageView({ model: 'uncapped', styleImageUrls: ['s1'] }))], edges: [], models: [uncapped] });
     expect(vm.styleCap).toBeUndefined();
     expect(vm.slots).toEqual([]);
   });
 
   it('counts a required style slot as missing until an image is in it', () => {
-    const empty = buildVm({ nodeId: 'n1', nodes: [node('n1', imageView({ model: 'recraft' }))], edges: [], models: [recraft] });
+    const empty = buildVm({ nodeId: 'n1', nodes: [node('n1', 'image', imageView({ model: 'recraft' }))], edges: [], models: [recraft] });
     expect(empty.missing).toEqual([['style_images']]);
     const filled = buildVm({
       nodeId: 'n1',
-      nodes: [node('n1', imageView({ model: 'recraft', styleImageUrls: ['s1'] }))],
+      nodes: [node('n1', 'image', imageView({ model: 'recraft', styleImageUrls: ['s1'] }))],
       edges: [],
       models: [recraft],
     });

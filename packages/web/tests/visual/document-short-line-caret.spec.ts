@@ -41,11 +41,11 @@
  *
  *   pnpm --filter @breatic/web test:visual
  */
-import { test, expect, type Page } from 'playwright/test';
+import { expect, type Page } from 'playwright/test';
+import { test } from '../helpers/slot';
 
 import { openSmokeProject } from '../helpers/project';
 import { createSpace, deleteSpace, DOCUMENT_EDITOR as EDITOR } from '../helpers/space';
-
 
 const BLOCK = `${EDITOR} .bn-block-content`;
 const MOD = process.platform === 'darwin' ? 'Meta' : 'Control';
@@ -102,6 +102,10 @@ test.beforeEach(async ({ browser }) => {
     await lineOf(line.text).click({ position: { x: 6, y: 10 } });
     for (const row of line.rows) await applyRow(row);
   }
+  // The last row leaves its line selected, and the bubble bar over it lies
+  // across the line above; a click meant for that line would land on the bar.
+  await page.keyboard.press('ArrowRight');
+  await expect(page.getByTestId('doc-selection-bubble-bar')).not.toBeAttached({ timeout: 10_000 });
 });
 
 test.afterEach(async () => {

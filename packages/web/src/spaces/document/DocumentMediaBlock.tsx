@@ -107,6 +107,9 @@ export const MEDIA_CHROME = '[data-media-chrome]';
 /** What the block shows: the picture or the player. */
 export const MEDIA_FRAME = '[data-media-frame]';
 
+/** The caption field, open while the caption is edited. */
+export const MEDIA_CAPTION_INPUT = '[data-testid="doc-media-caption-input"]';
+
 /**
  * Whether a press belongs to the block's own controls or the player's.
  * @param target - Where it landed.
@@ -525,7 +528,7 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
               testId='doc-media-delete'
               // The red every delete row in the body uses (block and table
               // menus), kept on hover.
-              className='text-status-error-foreground hover:text-status-error-foreground'
+              className='text-status-error-foreground hover-enabled:text-status-error-foreground'
               onPress={actions.remove}
             >
               <Trash2 />

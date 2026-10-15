@@ -139,7 +139,7 @@ describe('sameGroupResizeBounds (#1783)', () => {
 });
 
 /** One data object shared across a pass, the way the merge hands it down. */
-const DATA = { kind: 'image' };
+const DATA = {};
 
 describe('reconcilePlainNodes reference stability (#2010 — 30 frames a second)', () => {
   // A locked node and the focus target come out of `renderNodes` as fresh
@@ -204,7 +204,7 @@ describe('reconcileGroupNodes reference stability (#1783 — GroupNode.memo need
       height: 100,
       draggable: true,
       zIndex: 0,
-      data: { kind: 'group', groupResizeBounds: [{ minWidth: 10, minHeight: 10 }] },
+      data: { groupResizeBounds: [{ minWidth: 10, minHeight: 10 }] },
       ...over,
     }) as Node;
 
@@ -214,7 +214,6 @@ describe('reconcileGroupNodes reference stability (#1783 — GroupNode.memo need
     const fresh = [
       group({
         data: {
-          kind: 'group',
           groupResizeBounds: [{ minWidth: 10, minHeight: 10 }],
         },
       }),
@@ -228,7 +227,6 @@ describe('reconcileGroupNodes reference stability (#1783 — GroupNode.memo need
     const fresh = [
       group({
         data: {
-          kind: 'group',
           groupResizeBounds: [{ minWidth: 42, minHeight: 10 }],
         },
       }),

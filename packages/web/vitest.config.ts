@@ -17,15 +17,14 @@ export default defineConfig({
     // (b35ae386). Raised everywhere so one package's contention does not
     // decide another's limit.
     testTimeout: 15_000,
-    // Undo `vi.stubGlobal` after every test. A stubbed global is a
-    // process-wide singleton, so with one process per package a file that
-    // forgets to restore one hands the broken value to every file after it —
-    // A crop-dialog test replaced `URL` with an object spread from the class,
-    // which carries the static methods but cannot be constructed, so `new
-    // URL(...)` threw for the rest of the run. Most files already call
-    // `vi.unstubAllGlobals()` themselves; this makes forgetting impossible
-    // rather than leaving it to each author. Safe here because no suite stubs
-    // in `beforeAll` and expects the stub to outlive a test.
+    // Undo `vi.stubGlobal` before every test (vitest runs it from
+    // `onBeforeTryTask`). A stubbed global is a process-wide singleton, and
+    // every file here runs in one process, so the stubs the last test of a
+    // file leaves are undone by vitest.setup.ts as that file ends: a
+    // crop-dialog test replaced `URL` with an object that cannot be
+    // constructed, and the next file's `new URL(...)` at import time threw.
+    // Safe here because no suite stubs in `beforeAll` and expects the stub to
+    // outlive a test.
     unstubGlobals: true,
     // `pool: 'forks'` + `singleFork: true` — one process for the whole
     // package instead of one per file. Measured on a 12-core machine: turbo

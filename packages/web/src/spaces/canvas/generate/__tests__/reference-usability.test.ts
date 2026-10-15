@@ -26,12 +26,12 @@ import { describe, it, expect } from 'vitest';
 import {
   insertRefusal,
   isReferenceMaterial,
+  type NodeType,
   type ReferenceUsabilityContext,
 } from '@breatic/shared';
-import type { NodeKind } from '@web/data/yjs/node-view';
 
 /** The four upstream modalities the connection rules let reach a video node. */
-const ROW_KINDS: NodeKind[] = ['text', 'image', 'audio', 'video'];
+const ROW_KINDS: NodeType[] = ['text', 'image', 'audio', 'video'];
 
 /**
  * The video panel's six modes, with the one thing the rail asks of a mode.
@@ -112,7 +112,7 @@ describe('insertRefusal — media rows need BOTH conditions', () => {
 
   it('refuses 3d / web / group / annotation rows too — none of them is an image', () => {
     const ref = VIDEO_MODES.find((m) => m.mode === 'ref')!.ctx;
-    for (const kind of ['3d', 'web', 'group', 'annotation'] as NodeKind[]) {
+    for (const kind of ['3d', 'web', 'group', 'annotation'] as NodeType[]) {
       expect(insertRefusal(kind, ref), `${kind} row`).toBe('source-type-unused');
     }
   });
@@ -171,7 +171,7 @@ describe('insertRefusal — the criterion depends on nothing asynchronous', () =
     // panel's `focusImages` append for crops — require an image, so a
     // non-image row has nothing to give either one.
     const ref: ReferenceUsabilityContext = { referenceKinds: ['image'], takesPrompt: true };
-    for (const kind of ['audio', 'video', '3d', 'web'] as NodeKind[]) {
+    for (const kind of ['audio', 'video', '3d', 'web'] as NodeType[]) {
       expect(insertRefusal(kind, ref), kind).toBe('source-type-unused');
     }
   });
@@ -191,7 +191,7 @@ describe('isReferenceMaterial — one name for what `referenceKinds` reads on', 
     // "is it text" and answering by "is it one of the three" diverge exactly
     // here, and two spellings of one concept is how the rail ended up with a
     // row that was lit but whose x was frozen.
-    for (const kind of ['3d', 'web'] as NodeKind[]) {
+    for (const kind of ['3d', 'web'] as NodeType[]) {
       expect(isReferenceMaterial(kind), kind).toBe(true);
     }
   });

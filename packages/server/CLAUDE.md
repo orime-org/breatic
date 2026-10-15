@@ -6,9 +6,9 @@
 **HTTP 壳**(Hono):把 HTTP 请求翻译成业务调用。只它认识 Hono。
 
 ## 分层(包内)
-- `routes/` + `middleware/` = 路由层,**只当接线员,不写业务**(禁止清单 #1)
-- 自己的**领域 service 层**(`src/modules/`,**按域分功能文件夹**:`account/` · `activity/` · `asset/` · `auth/`〔auth + recovery-code + signup-code + user.repo〕· `conversation/` · `credit/` · `decision/` · `memory/` · `notification/` · `payment/` · `project/`〔project + projectMembers〕· `project-invite/`〔含 project-invite-mail〕· `project-join-request/` · `recent/` · `role-upgrade-request/` · `studio/` · `subscription/` · `task/`〔节点任务行的开启与计数发布〕· `text-tool/`,每域放自己的 service + repo + test,镜像 `@breatic/domain` 功能文件夹;`index.ts` barrel 统一 re-export,消费方经 `@server/modules` 整桶引)放 server 私有业务逻辑,**不 import Hono**(禁止清单 #2),**不塞进 core**(只 server 用的不进共享内核)
-- `index.ts` = composition root,启动第一件事 `dotenv` + `initCore(process.env)`,是**唯一**读 env 的地方
+- `routes/` + `middleware/` = 路由层,**只当接线员,不写业务**(禁止清单 #1)。`routes/internal/`(后台内部接口的授权表)与 `middleware/internal-*`(`internal-signature` 签名 · `internal-auth` 签名加随机数 · `internal-errors` 答 `{ code, detail?, reason? }` 的异常出口(`reason` 只有 `stripe_blocks` 带))只挂在 `internal-app.ts` 建的第二个 app 上,公开 app 不挂
+- 自己的**领域 service 层**(`src/modules/`,**按域分功能文件夹**:`account/` · `activity/` · `asset/` · `auth/`〔auth + recovery-code + signup-code + user.repo〕· `conversation/` · `credit/` · `credit-refund/`〔积分包退款处置:执行器、转移、Stripe 答复分类与 webhook 退款事件、对账、买家邮件、定时循环;不进 barrel,调用方直接 import 它的文件〕· `decision/` · `memory/` · `notification/` · `payment/` · `project/`〔project + projectMembers〕· `project-invite/`〔含 project-invite-mail〕· `project-join-request/` · `recent/` · `role-upgrade-request/` · `studio/` · `subscription/` · `task/`〔节点任务行的开启与计数发布〕· `text-tool/`,每域放自己的 service + repo + test,镜像 `@breatic/domain` 功能文件夹;`index.ts` barrel 统一 re-export,消费方经 `@server/modules` 整桶引)放 server 私有业务逻辑,**不 import Hono**(禁止清单 #2),**不塞进 core**(只 server 用的不进共享内核)
+- `index.ts` = composition root,启动第一件事 `dotenv` + `initCore(process.env)`,是**唯一**读 env 的地方。`INTERNAL_API_ENABLED=true` 时它另起第二个监听(`INTERNAL_API_HOST:INTERNAL_API_PORT`,默认 `127.0.0.1:3002`)跑 `createInternalApp()`,只给后台调,每个请求验签;同时启动退款定时循环,`config/credit-refund.yaml` 读不出来就在启动时退出
 - `sentry.ts` = 错误上报:`initSentry()` 紧跟配置引导、在第一条日志之前调用;它启动之后的退出都经 `exitProcess(code)`(先 flush 再 `process.exit`);`bootstrap-config.ts` 配置校验失败时 Sentry 还没启动,直接 `process.exit(1)`
 
 ## 可 import 谁

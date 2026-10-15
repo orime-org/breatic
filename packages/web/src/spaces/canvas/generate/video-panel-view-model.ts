@@ -17,7 +17,7 @@ import { referenceKinds, referencePool, VIDEO_GENERATION_MODES, type ReferencePo
 import type { FocusImage, ModelEntry } from '@breatic/shared';
 
 import { validFocusImages } from '@web/data/focus-images';
-import type { CanvasEdge, CanvasNodeView } from '@web/data/yjs/canvas-space';
+import type { CanvasEdge } from '@web/data/yjs/canvas-space';
 import {
   deriveReferences,
   type ReferenceRailItem,
@@ -49,7 +49,7 @@ import type {
   VideoSlot,
   VideoSlotUrls,
 } from '@web/spaces/canvas/generate/video-slots';
-import { asContentView } from '@web/data/yjs/node-view';
+import { asContentView, type NodeRef } from '@web/data/yjs/node-view';
 
 /**
  * The generation modes the video panel offers — the six the user decided
@@ -238,7 +238,7 @@ const NO_AVAILABLE_MODE_FALLBACK: VideoGenMode = 't2v';
  *   whose models this deployment lacks, or a node that is gone.
  */
 export function nodeVideoMode(
-  nodes: ReadonlyArray<Pick<CanvasNodeView, 'id' | 'data'>>,
+  nodes: ReadonlyArray<NodeRef>,
   nodeId: string,
   availableModes: readonly { value: string }[],
 ): VideoGenMode {
@@ -292,7 +292,7 @@ export function selectVideoModeModels(
  */
 export function buildVideoPanelViewModel(input: {
   nodeId: string;
-  nodes: ReadonlyArray<Pick<CanvasNodeView, 'id' | 'data'>>;
+  nodes: ReadonlyArray<NodeRef>;
   models: ModelEntry[];
   mode: VideoGenMode;
   edges: ReadonlyArray<CanvasEdge>;

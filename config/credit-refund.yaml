@@ -1,0 +1,32 @@
+# ── Credit-pack refund disposition: time limits and attempt counts ─────
+# Read once at server start, when INTERNAL_API_ENABLED=true, by
+# packages/server/src/config/credit-refund.ts; every key is required and a
+# malformed file then refuses to start.
+
+# How long one Stripe call may take before it counts as a timeout. A resumed
+# attempt makes three calls (list, create, list), so three times this plus 10
+# seconds must stay below the lease: a claim's holder never outlives its lease
+# while it is still waiting on Stripe.
+stripe_call_timeout_ms: 20000
+
+# How long a claim on a started disposition lasts before the loop may take it
+# over.
+lease_seconds: 120
+
+# How often the refund loop wakes up.
+loop_interval_seconds: 60
+
+# Exponential backoff between retries and between Stripe status reads.
+backoff_base_seconds: 60
+backoff_max_seconds: 3600
+
+# Same-key attempts at a refund creation, the first included, before the
+# disposition turns to needs_attention (attempts_exhausted, E11).
+max_attempts: 8
+
+# A refund mail left in "sending" this long is marked "unknown".
+stale_sending_minutes: 10
+
+# Stripe can report a refund as failed up to 30 days after it succeeded; the
+# daily reconcile covers refunds and dispositions this many days back.
+reconcile_window_days: 30

@@ -221,7 +221,7 @@ describe('the menu', () => {
       expect(row?.getAttribute('data-active')).toBeNull();
       // The hover fill stays; what went is the second mark that said the same
       // thing as the tick, one shade along from hover in the same direction.
-      expect(row?.className ?? '').not.toMatch(/(?<!hover:)bg-accent/);
+      expect(row?.className ?? '').not.toMatch(/(?<!hover:|hover-enabled:)bg-accent/);
     }
   });
 });

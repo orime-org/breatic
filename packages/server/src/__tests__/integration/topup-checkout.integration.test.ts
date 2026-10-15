@@ -66,6 +66,7 @@ vi.mock("@server/infra/stripe.js", () => ({
 }));
 
 import postgres from "postgres";
+import { IDEMPOTENCY_RETENTION_SECONDS } from "@breatic/shared";
 import { initCore, loadLocales, MONOREPO_ROOT, runWithLocale } from "@breatic/core";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -230,7 +231,7 @@ describe("createCheckout — what reaches Stripe", () => {
     }
   });
 
-  it("has Stripe work out the tax, and lets the session go stale in two hours", async () => {
+  it("has Stripe work out the tax, and keeps the session open as long as a repeated press is answered with it", async () => {
     const userId = await seedUser();
     const before = Math.floor(Date.now() / 1000);
     try {
@@ -246,9 +247,9 @@ describe("createCheckout — what reaches Stripe", () => {
       expect(arg["automatic_tax"]).toEqual({ enabled: true });
 
       const expiresAt = arg["expires_at"] as number;
-      const twoHours = 2 * 60 * 60;
-      expect(expiresAt).toBeGreaterThanOrEqual(before + twoHours - 5);
-      expect(expiresAt).toBeLessThanOrEqual(before + twoHours + 30);
+      const kept = IDEMPOTENCY_RETENTION_SECONDS["credits-checkout"];
+      expect(expiresAt).toBeGreaterThanOrEqual(before + kept - 5);
+      expect(expiresAt).toBeLessThanOrEqual(before + kept + 30);
     } finally {
       await dropUser(userId);
     }

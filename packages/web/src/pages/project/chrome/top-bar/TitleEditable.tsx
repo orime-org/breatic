@@ -4,10 +4,15 @@
 import * as React from 'react';
 
 import { useInlineEditExit } from '@web/lib/inline-edit-exit';
+import { useHeldName } from '@web/lib/use-held-name';
 
 interface TitleEditableProps {
   value: string;
-  onChange: (next: string) => void;
+  /**
+   * Saves a committed rename. The box shows the committed name until `value`
+   * changes; a returned promise that rejects puts `value` back on screen.
+   */
+  onChange: (next: string) => void | Promise<unknown>;
   /**
    * Visible width cap (px). Defaults to 320, which is what the Agent column
    * was fixed at when this box was written; the column can now be dragged
@@ -101,11 +106,8 @@ export function TitleEditable({
   const [editing, setEditing] = React.useState(false);
   const [draft, setDraft] = React.useState(value);
   const inputRef = React.useRef<HTMLInputElement>(null);
-
-  // Sync draft when external rename happens and we're not actively editing.
-  React.useEffect(() => {
-    if (!editing) setDraft(value);
-  }, [editing, value]);
+  // The caller's `value` catches up with a commit a render or a request later.
+  const { shown: name, hold } = useHeldName(value);
 
   // Autofocus the input when we transition into edit mode.
   React.useEffect(() => {
@@ -121,17 +123,23 @@ export function TitleEditable({
    */
   const commit = (): void => {
     const next = draft.replace(/\n/g, '').trim().slice(0, maxLength);
-    if (next.length > 0 && next !== value) onChange(next);
-    if (next.length === 0) setDraft(value);
+    if (next.length > 0 && next !== name) hold(next, onChange(next));
     setEditing(false);
   };
 
   /**
-   * Cancels the edit — restores the draft to the current value and leaves edit mode.
+   * Cancels the edit and leaves edit mode.
    */
   const cancel = (): void => {
-    setDraft(value);
     setEditing(false);
+  };
+
+  /**
+   * Opens the box on the name as it is shown.
+   */
+  const startEdit = (): void => {
+    setDraft(name);
+    setEditing(true);
   };
 
   // Ending the edit from the keyboard gives the keyboard back to the title.
@@ -143,10 +151,10 @@ export function TitleEditable({
     cancel,
   });
 
-  // What the static span reads. `draft` is the name, and while there is none
-  // the stand-in takes its place on screen -- without ever becoming the value
-  // the box opens with or the one a commit is compared against.
-  const shown = draft.length > 0 ? draft : (placeholder ?? '');
+  // What the static span reads. While there is no name the stand-in takes its
+  // place on screen -- without ever becoming the value the box opens with or
+  // the one a commit is compared against.
+  const shown = name.length > 0 ? name : (placeholder ?? '');
 
   const sharedStyle: React.CSSProperties = {
     padding: '2px var(--space-2)',
@@ -199,24 +207,18 @@ export function TitleEditable({
     );
   }
 
-  // Render `draft` (not `value`) so the optimistic title is visible
-  // immediately on commit — the parent's optimistic cache write goes
-  // through a microtask (onMutate awaits cancelQueries), so reading
-  // `value` here would briefly show the stale name for one frame.
-  // The useEffect above keeps `draft === value` whenever editing is
-  // false, so rollback on failure still flows back through `draft`.
   return (
     <span
       ref={display}
       role='textbox'
       tabIndex={0}
-      onDoubleClick={() => setEditing(true)}
+      onDoubleClick={startEdit}
       onKeyDown={(e) => {
         // Keyboard a11y: Enter or Space starts edit mode (no double-
         // key needed — keyboard users couldn't double-click anyway).
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
-          setEditing(true);
+          startEdit();
         }
       }}
       className='inline-block min-w-0 cursor-text truncate align-middle text-sm font-medium outline-none hover:bg-accent'

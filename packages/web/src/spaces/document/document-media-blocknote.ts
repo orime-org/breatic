@@ -41,6 +41,7 @@ import type { Decoration } from '@tiptap/pm/view';
 
 import { downloadAsset } from '@web/lib/download';
 import {
+  MEDIA_CAPTION_INPUT,
   MEDIA_CHROME,
   MEDIA_FRAME,
   type MediaBlockActions,
@@ -69,7 +70,7 @@ interface MediaSpec {
 }
 
 /** Where a media block's drags may start: the media, and its caption field. */
-const MEDIA_BLOCK_DRAGS = `${MEDIA_FRAME}, [data-testid="doc-media-caption-input"]`;
+const MEDIA_BLOCK_DRAGS = `${MEDIA_FRAME}, ${MEDIA_CAPTION_INPUT}`;
 
 /**
  * Writes the block's props onto its own element the way the library does:

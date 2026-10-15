@@ -21,9 +21,8 @@ import { vi } from "vitest";
 // it); test code is exempt from the alias rule.
 import {
   ASK_USER as REAL_ASK_USER,
-  GET_CANVAS_CAPABILITIES as REAL_GET_CANVAS_CAPABILITIES,
-  LIST_GENERATION_MODELS as REAL_LIST_GENERATION_MODELS,
   PROPOSE_CANVAS_ACTION as REAL_PROPOSE_CANVAS_ACTION,
+  PROPOSE_DOCUMENT_EDIT as REAL_PROPOSE_DOCUMENT_EDIT,
   SAVE_IMAGE as REAL_SAVE_IMAGE,
 } from "../../../../domain/src/agent/tools/tool-names.js";
 import { STOPPED_BY_USER as REAL_STOPPED_BY_USER } from "../../../../domain/src/agent/tools/failure.js";
@@ -70,6 +69,9 @@ const mockRedis = {
   incr: () => Promise.resolve(1),
   expire: () => Promise.resolve(1),
   pipeline: () => mockPipeline,
+  // `runOnce`'s scripts: the claim (the one that sets with 'PX') answers
+  // "nothing here yet", so the route runs; renew and finish answer success.
+  eval: (script: string) => Promise.resolve(script.includes("'PX'") ? null : 1),
 };
 
 /** Shared `queue.add` mock — reused across all `createQueue()` calls so tests can
@@ -612,11 +614,10 @@ export const domainMock = () => ({
   // and a copy that drifts throws nothing: the match simply never happens and
   // a turn carries on talking past the question it just asked.
   ASK_USER: REAL_ASK_USER,
-  // Read at module evaluation, as the keys of the render registry, so this
-  // stub has to carry them or every file mocking the barrel fails to load.
-  GET_CANVAS_CAPABILITIES: REAL_GET_CANVAS_CAPABILITIES,
-  LIST_GENERATION_MODELS: REAL_LIST_GENERATION_MODELS,
+  // Read by the turn when it hands the tools their context.
   PROPOSE_CANVAS_ACTION: REAL_PROPOSE_CANVAS_ACTION,
+  // Read by the turn when it hands the document proposal the open document (inner#1509).
+  PROPOSE_DOCUMENT_EDIT: REAL_PROPOSE_DOCUMENT_EDIT,
   // Read by the turn when it hands the save its context (inner#1315).
   SAVE_IMAGE: REAL_SAVE_IMAGE,
   extFromUrl: REAL_EXT_FROM_URL,

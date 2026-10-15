@@ -770,6 +770,7 @@ describe("POST /payment/checkout — who may start a purchase", () => {
       method: "POST",
       headers: {
         "content-type": "application/json",
+        "idempotency-key": crypto.randomUUID(),
         ...(cookie === null ? {} : { cookie }),
       },
       body: JSON.stringify({

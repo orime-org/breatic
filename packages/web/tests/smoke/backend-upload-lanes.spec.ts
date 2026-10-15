@@ -22,9 +22,10 @@
  *
  *   pnpm --filter @breatic/web test:smoke
  */
-import { test, expect, type BrowserContext, type Page } from 'playwright/test';
+import { expect, type BrowserContext, type Page } from 'playwright/test';
+import { test } from '../helpers/slot';
 
-import { STATE_FILE, openSmokeProject } from '../helpers/project';
+import { openSmokeProject } from '../helpers/project';
 import { createSpace, deleteSpace, VISIBLE_SPACE } from '../helpers/space';
 
 let context: BrowserContext;
@@ -97,7 +98,7 @@ async function soleImageNodeId(target: Page): Promise<string> {
 }
 
 test.beforeEach(async ({ browser }) => {
-  context = await browser.newContext({ storageState: STATE_FILE.A });
+  context = await browser.newContext();
   page = await context.newPage();
 
   // Reuse an existing Project: this spec is about what a generation does with
@@ -138,7 +139,7 @@ test('a generated image lands on the node under our own url, not the provider’
     async ([project, space, node]: [string, string, string]) => {
       const response = await fetch('/api/v1/canvas/tasks', {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: { 'content-type': 'application/json', 'idempotency-key': crypto.randomUUID() },
         credentials: 'include',
         body: JSON.stringify({
           task_type: 'image',

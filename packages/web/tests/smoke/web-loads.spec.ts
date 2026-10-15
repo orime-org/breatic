@@ -10,7 +10,8 @@
  * project — that's covered by the round-trip script in /tmp/f1-smoke.mjs
  * and by the human smoke checklist in PR #52.
  */
-import { test, expect } from 'playwright/test';
+import { expect } from 'playwright/test';
+import { test } from '../helpers/slot';
 
 test('app boots without console errors', async ({ page }) => {
   const consoleErrors: string[] = [];

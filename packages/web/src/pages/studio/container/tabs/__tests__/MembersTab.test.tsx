@@ -222,6 +222,131 @@ describe('MembersTab — remove member (confirm gate)', () => {
       expect(studiosApi.removeMember).toHaveBeenCalledWith('acme', GUEST.id);
     });
   });
+
+  /**
+   * Open the remove confirmation for the guest and press its confirm button.
+   * @param user - The user-event session.
+   * @returns The confirm button.
+   */
+  async function confirmRemove(
+    user: ReturnType<typeof userEvent.setup>,
+  ): Promise<HTMLElement> {
+    renderTab(
+      <MembersTab
+        slug='acme'
+        members={[ADMIN, GUEST]}
+        studioRole='admin'
+        studioType='team' pendingInvitations={[]}
+      />,
+    );
+    await user.click(screen.getByTestId(`member-row-menu-${GUEST.id}`));
+    await user.click(await screen.findByTestId(`member-remove-${GUEST.id}`));
+    const dialog = await screen.findByTestId('member-confirm-dialog');
+    const confirm = within(dialog).getByTestId('member-confirm-action');
+    await user.click(confirm);
+    return confirm;
+  }
+
+  it('keeps the dialog open with a busy confirm while the removal is out, and closes it on success', async () => {
+    const user = userEvent.setup();
+    let answer: (value: { ok: true }) => void = () => {};
+    vi.mocked(studiosApi.removeMember).mockReturnValueOnce(
+      new Promise((resolve) => {
+        answer = resolve;
+      }),
+    );
+    const confirm = await confirmRemove(user);
+
+    await waitFor(() => expect(confirm).toHaveAttribute('aria-busy', 'true'));
+    expect(confirm).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getByTestId('member-confirm-dialog')).toBeInTheDocument();
+
+    answer({ ok: true });
+    await waitFor(() =>
+      expect(screen.queryByTestId('member-confirm-dialog')).toBeNull(),
+    );
+  });
+
+  it('keeps the dialog open with confirm pressable again when the removal fails', async () => {
+    const user = userEvent.setup();
+    let refuse: (reason: Error) => void = () => {};
+    vi.mocked(studiosApi.removeMember).mockReturnValueOnce(
+      new Promise((_resolve, reject) => {
+        refuse = reject;
+      }),
+    );
+    const confirm = await confirmRemove(user);
+    await waitFor(() => expect(confirm).toHaveAttribute('aria-busy', 'true'));
+
+    refuse(new Error('nope'));
+    await waitFor(() => expect(confirm).not.toHaveAttribute('aria-busy'));
+    expect(screen.getByTestId('member-confirm-dialog')).toBeInTheDocument();
+  });
+
+  /**
+   * Confirm removing the guest, dismiss that dialog with Esc while the
+   * removal is still out, then open the remove confirmation for the
+   * maintainer.
+   * @param user - The user-event session.
+   * @returns The resolver for the guest's removal and the maintainer's confirm button.
+   */
+  async function removeGuestThenOpenMaintainer(
+    user: ReturnType<typeof userEvent.setup>,
+  ): Promise<{ answer: (value: { ok: true }) => void; confirm: HTMLElement }> {
+    let answer: (value: { ok: true }) => void = () => {};
+    vi.mocked(studiosApi.removeMember).mockReturnValueOnce(
+      new Promise((resolve) => {
+        answer = resolve;
+      }),
+    );
+    renderTab(
+      <MembersTab
+        slug='acme'
+        members={[ADMIN, GUEST, MAINTAINER]}
+        studioRole='admin'
+        studioType='team' pendingInvitations={[]}
+      />,
+    );
+    await user.click(screen.getByTestId(`member-row-menu-${GUEST.id}`));
+    await user.click(await screen.findByTestId(`member-remove-${GUEST.id}`));
+    const first = await screen.findByTestId('member-confirm-dialog');
+    await user.click(within(first).getByTestId('member-confirm-action'));
+    await waitFor(() => expect(studiosApi.removeMember).toHaveBeenCalledTimes(1));
+    await user.keyboard('{Escape}');
+    await waitFor(() =>
+      expect(screen.queryByTestId('member-confirm-dialog')).toBeNull(),
+    );
+
+    await user.click(screen.getByTestId(`member-row-menu-${MAINTAINER.id}`));
+    await user.click(await screen.findByTestId(`member-remove-${MAINTAINER.id}`));
+    const second = await screen.findByTestId('member-confirm-dialog');
+    expect(second).toHaveTextContent(MAINTAINER.name);
+    return { answer, confirm: within(second).getByTestId('member-confirm-action') };
+  }
+
+  it('shows no wait on a second member\'s confirm while an earlier removal is out, and keeps it unpressable', async () => {
+    const user = userEvent.setup();
+    const { confirm } = await removeGuestThenOpenMaintainer(user);
+
+    expect(confirm).not.toHaveAttribute('aria-busy');
+    expect(confirm).toBeDisabled();
+  });
+
+  it('leaves a second member\'s confirm open when the earlier removal answers', async () => {
+    const user = userEvent.setup();
+    const { answer } = await removeGuestThenOpenMaintainer(user);
+
+    answer({ ok: true });
+    await waitFor(() =>
+      expect(toast.success).toHaveBeenCalledWith(
+        'Member removed.',
+        expect.anything(),
+      ),
+    );
+    expect(screen.queryByTestId('member-confirm-dialog')).toHaveTextContent(
+      MAINTAINER.name,
+    );
+  });
 });
 
 // Transferring studio admin moved to the Settings tab (2026-07-08 decision A);
@@ -281,6 +406,79 @@ describe('MembersTab — pending invitations', () => {
       );
     });
     expect(toast.success).toHaveBeenCalled();
+  });
+
+  it.each([
+    ['succeeds', true],
+    ['fails', false],
+  ])('marks that row’s Revoke busy while the revoke is out, and clears it once it %s', async (_label, succeeds) => {
+    const user = userEvent.setup();
+    let settle: () => void = () => {};
+    vi.mocked(studiosApi.revokeInvitation).mockReturnValueOnce(
+      new Promise((resolve, reject) => {
+        settle = succeeds ? () => resolve({ ok: true }) : () => reject(new Error('nope'));
+      }),
+    );
+    renderTab(
+      <MembersTab
+        slug='acme'
+        members={[ADMIN]}
+        studioRole='admin'
+        studioType='team'
+        pendingInvitations={[PENDING]}
+      />,
+    );
+    const revoke = screen.getByRole('button', { name: 'Revoke' });
+    await user.click(revoke);
+
+    await waitFor(() => expect(revoke).toHaveAttribute('aria-busy', 'true'));
+    expect(revoke).toHaveAttribute('aria-disabled', 'true');
+
+    settle();
+    await waitFor(() => expect(revoke).not.toHaveAttribute('aria-busy'));
+  });
+
+  it('keeps the first Revoke busy when a second invitation is revoked before it answers', async () => {
+    const user = userEvent.setup();
+    const second: PendingInvitationSummary = {
+      ...PENDING,
+      invitationId: 'inv-2',
+      invitedUserId: 'u-eve',
+      name: 'Eve',
+      email: 'eve@x.example',
+    };
+    const settlers: Map<string, () => void> = new Map();
+    vi.mocked(studiosApi.revokeInvitation).mockImplementation(
+      (_slug, invitationId) =>
+        new Promise((resolve) => {
+          settlers.set(invitationId, () => resolve({ ok: true }));
+        }),
+    );
+    renderTab(
+      <MembersTab
+        slug='acme'
+        members={[ADMIN]}
+        studioRole='admin'
+        studioType='team'
+        pendingInvitations={[PENDING, second]}
+      />,
+    );
+    const [revokeA, revokeB] = screen.getAllByRole('button', { name: 'Revoke' });
+    await user.click(revokeA);
+    await waitFor(() => expect(revokeA).toHaveAttribute('aria-busy', 'true'));
+    await user.click(revokeB);
+
+    await waitFor(() => expect(revokeB).toHaveAttribute('aria-busy', 'true'));
+    expect(revokeA).toHaveAttribute('aria-busy', 'true');
+    expect(revokeA).toHaveAttribute('aria-disabled', 'true');
+
+    settlers.get(PENDING.invitationId)?.();
+    await waitFor(() => expect(revokeA).not.toHaveAttribute('aria-busy'));
+    expect(revokeA).not.toHaveAttribute('aria-disabled');
+    expect(revokeB).toHaveAttribute('aria-busy', 'true');
+
+    settlers.get(second.invitationId)?.();
+    await waitFor(() => expect(revokeB).not.toHaveAttribute('aria-busy'));
   });
 });
 

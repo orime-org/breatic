@@ -33,6 +33,7 @@ vi.mock("@core/config/runtime.js", () => ({ env: envMock }));
 import {
   publishMembersChanged,
   publishActivityNew,
+  publishProjectConnectionsClose,
   projectControlChannelPattern,
 } from "@core/infra/control-events.js";
 
@@ -77,6 +78,18 @@ describe("control-events — deployment prefix", () => {
     expect(lastChannel()).toBe(`dev:project:${PID}:activity:new`);
   });
 
+  it("publishes connections:close on the prefixed channel with the reason", async () => {
+    await publishProjectConnectionsClose(PID, "archived");
+
+    expect(lastChannel()).toBe(`dev:project:${PID}:connections:close`);
+    const call = publishMock.mock.calls.at(-1) as unknown as [string, string];
+    expect(JSON.parse(call[1])).toMatchObject({
+      type: "project-connections:close",
+      projectId: PID,
+      reason: "archived",
+    });
+  });
+
   it("derives the subscribe pattern from the same prefix", () => {
     envMock.REDIS_KEY_PREFIX = "dev-agent";
 
@@ -96,6 +109,9 @@ describe("control-events — deployment prefix", () => {
       expect(patternMatches(pattern, lastChannel())).toBe(true);
 
       await publishActivityNew(PID);
+      expect(patternMatches(pattern, lastChannel())).toBe(true);
+
+      await publishProjectConnectionsClose(PID, "restored");
       expect(patternMatches(pattern, lastChannel())).toBe(true);
     },
   );

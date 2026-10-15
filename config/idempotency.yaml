@@ -1,0 +1,8 @@
+# ── Run-once requests (inner#1490) ─────────────────────
+# running_lease_ms: how long a request's "running" record survives without
+#   a renewal. The server renews it every third of this while the handler
+#   runs, so a slow handler keeps its record; a process that dies stops
+#   renewing and the record frees within this many milliseconds, after which
+#   a re-sent press runs again. Retention of the finished answer is a
+#   contract with the browser and lives in @breatic/shared.
+running_lease_ms: 30000

@@ -9,6 +9,8 @@ import userEvent from '@testing-library/user-event';
 
 import { NewItemDialog } from '@web/pages/studio/container/dialogs/NewItemDialog';
 import { NewStudioDialog } from '@web/pages/studio/container/dialogs/NewStudioDialog';
+import { PROJECT_CREATE_INTENT } from '@web/pages/studio/container/dialogs/use-create-project';
+import { runOnce } from '@web/stores/task-actions-in-flight';
 import {
   slugFieldShowsConflict,
   useSlugAvailability,
@@ -150,6 +152,19 @@ describe('NewItemDialog (spec §3.12)', () => {
     );
   });
 
+  // inner#1490: a create is held outside the dialog, so a dialog opened while
+  // one is out — from either entry, with any studio picked — shows Create busy.
+  it('shows Create busy while a project create is out', () => {
+    void runOnce(PROJECT_CREATE_INTENT, {
+      scope: 'project',
+      prepare: () => new Promise<null>(() => {}),
+      send: vi.fn(),
+    });
+    render(<NewItemDialog kind='project' open onOpenChange={vi.fn()} onCreate={vi.fn()} />);
+    const button = screen.getByRole('button', { name: 'Create' });
+    expect(button).toHaveAttribute('aria-busy', 'true');
+  });
+
   it('stays open with a busy Create button until the create settles (#255)', async () => {
     const user = userEvent.setup();
     let settle: () => void = () => {};
@@ -175,8 +190,8 @@ describe('NewItemDialog (spec §3.12)', () => {
     // The label stays, so the button is still addressable by its name — which
     // is the reason the label stays.
     const button = screen.getByRole('button', { name: 'Create' });
-    expect(button).toBeDisabled();
-    expect(screen.getByTestId('new-project-pending')).toBeInTheDocument();
+    expect(button).toHaveAttribute('aria-busy', 'true');
+    expect(button).toHaveAttribute('aria-disabled', 'true');
     expect(screen.getByLabelText('Name')).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Cancel' })).not.toBeDisabled();
     expect(onOpenChange).not.toHaveBeenCalled();
@@ -185,6 +200,7 @@ describe('NewItemDialog (spec §3.12)', () => {
       settle();
     });
     expect(onOpenChange).toHaveBeenCalledWith(false);
+    expect(button).not.toHaveAttribute('aria-busy');
   });
 
   it('stays open with Create pressable again when the create is refused (#255)', async () => {
@@ -214,7 +230,7 @@ describe('NewItemDialog (spec §3.12)', () => {
     });
     expect(onOpenChange).not.toHaveBeenCalled();
     expect(screen.getByRole('button', { name: 'Create' })).not.toBeDisabled();
-    expect(screen.queryByTestId('new-project-pending')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Create' })).not.toHaveAttribute('aria-busy');
     // What was typed is still there to press again.
     expect(screen.getByLabelText('Name')).toHaveValue('Fresh');
   });
@@ -376,6 +392,30 @@ describe('NewStudioDialog (spec §3.12 + §5.7 — live slug availability)', () 
     renderStudio(<NewStudioDialog open onOpenChange={() => {}} />);
     expect(screen.getByLabelText('Name')).toBeDisabled();
     expect(screen.getByLabelText('Slug')).toBeDisabled();
+  });
+
+  it('marks Create busy while the create is out, and clears it once answered', () => {
+    const client = new QueryClient();
+    const tree = (): ReactElement => (
+      <QueryClientProvider client={client}>
+        <NewStudioDialog open onOpenChange={() => {}} />
+      </QueryClientProvider>
+    );
+    vi.mocked(useCreateStudio).mockReturnValue({
+      mutate: mockMutate,
+      isPending: true,
+    } as unknown as ReturnType<typeof useCreateStudio>);
+    const { rerender } = render(tree());
+    const create = screen.getByRole('button', { name: 'Create' });
+    expect(create).toHaveAttribute('aria-busy', 'true');
+    expect(create).toHaveAttribute('aria-disabled', 'true');
+
+    vi.mocked(useCreateStudio).mockReturnValue({
+      mutate: mockMutate,
+      isPending: false,
+    } as unknown as ReturnType<typeof useCreateStudio>);
+    rerender(tree());
+    expect(create).not.toHaveAttribute('aria-busy');
   });
 
   it('keeps a 409 that is not about the slug as a form error', async () => {

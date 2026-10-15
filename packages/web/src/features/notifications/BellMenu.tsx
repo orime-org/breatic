@@ -1,7 +1,12 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  useMutation,
+  useMutationState,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
 import { Bell } from 'lucide-react';
 import * as React from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -26,6 +31,9 @@ import { EMPTY_RESOLVED } from '@web/data/api/notifications';
 import type { NotificationResolved } from '@web/data/api/notifications';
 import { useTranslation } from '@web/i18n/use-translation';
 import { useCurrentUserStore } from '@web/stores/current-user';
+
+/** Groups single-row mark-read requests so each row can find its own. */
+const MARK_READ_KEY = ['notifications', 'mark-read'] as const;
 
 /**
  * Returns the first two characters of a string, uppercased, for an avatar glyph.
@@ -97,12 +105,19 @@ export function BellMenu(): React.JSX.Element {
   const count = notifications.length;
 
   const markReadMutation = useMutation({
+    mutationKey: MARK_READ_KEY,
     mutationFn: (id: string) => notificationsApi.markRead(id),
     onSuccess: async () => {
       await queryClient.invalidateQueries({
         queryKey: ['notifications', 'unread'],
       });
     },
+  });
+  // Every row whose own mark-read is still out — one entry per request, so
+  // marking a second row never ends the first row's wait.
+  const markingIds = useMutationState({
+    filters: { mutationKey: MARK_READ_KEY, status: 'pending' },
+    select: (m) => m.state.variables as string,
   });
   const markAllReadMutation = useMutation({
     mutationFn: () => notificationsApi.markAllRead(),
@@ -154,7 +169,7 @@ export function BellMenu(): React.JSX.Element {
                 size='compact'
                 className='text-2xs'
                 onClick={() => markAllReadMutation.mutate()}
-                disabled={markAllReadMutation.isPending}
+                loading={markAllReadMutation.isPending}
                 data-testid='bell-mark-all-read'
               >
                 {t('notifications.markAllRead')}
@@ -188,6 +203,7 @@ export function BellMenu(): React.JSX.Element {
                     navigate(`/decision?token=${token}`);
                   }}
                   onMarkRead={() => markReadMutation.mutate(n.id)}
+                  pending={markingIds.includes(n.id)}
                 />
               </li>
             ))}
@@ -204,6 +220,8 @@ interface NotificationItemProps {
   resolved: NotificationResolved;
   onOpenDecision: (token: string) => void;
   onMarkRead: () => void;
+  /** Whether this row's mark-read is waiting on the server. */
+  pending: boolean;
 }
 
 /**
@@ -215,6 +233,7 @@ interface NotificationItemProps {
  * @param root0.resolved - Current identities for the ids it carries.
  * @param root0.onOpenDecision - Opens the shared landing page for this request.
  * @param root0.onMarkRead - Called when an informational notification is marked read.
+ * @param root0.pending - Whether this row's mark-read is waiting on the server.
  * @returns the notification row with its type-specific actions.
  */
 function NotificationItem({
@@ -222,6 +241,7 @@ function NotificationItem({
   resolved,
   onOpenDecision,
   onMarkRead,
+  pending,
 }: NotificationItemProps): React.JSX.Element {
   const t = useTranslation();
   const headline = notificationHeadline(notification, resolved, t);
@@ -234,13 +254,14 @@ function NotificationItem({
   // the button anyway is how you get an affordance that silently does nothing.
   const token = shareTokenOf(notification.payload);
   const isDecidable = isRequestNotification(notification.type) && token !== null;
+  const icon = iconForType(notification.type);
 
   return (
     <div className='flex flex-col gap-2 rounded-chrome px-2 py-2 hover:bg-accent'>
       <div className='flex items-start gap-2'>
         <Avatar className='h-9 w-9 shrink-0'>
-          <AvatarFallback className='text-xs font-semibold'>
-            {iconForType(notification.type)}
+          <AvatarFallback className={`${isMark(icon) ? 'text-base' : 'text-xs'} font-semibold`}>
+            {icon}
           </AvatarFallback>
         </Avatar>
         <div className='flex min-w-0 flex-1 flex-col gap-0.5'>
@@ -280,6 +301,7 @@ function NotificationItem({
             size='sm'
             className='h-7 px-2 text-xs'
             onClick={onMarkRead}
+            loading={pending}
             data-testid={`bell-mark-read-${notification.id}`}
           >
             {t('notifications.markRead')}
@@ -297,7 +319,8 @@ function NotificationItem({
  * what the pair they belong to already established — a studio invite is IN and
  * a project one PI, so a studio transfer is TR and a project one PT. A settled
  * outcome is a mark rather than initials: a tick when the answer was yes, a
- * cross when it was no.
+ * cross when it was no, and ↺ when credits were restored after a refund did
+ * not go through.
  * @param type - Notification type to represent.
  * @returns the glyph for the type, or `?` for a type this build does not know
  *   about, which is a wire carrying something newer than this bundle rather
@@ -339,9 +362,26 @@ function iconForType(type: NotificationType): string {
       return initialsFromString('UI');
     case 'storage.quota_exceeded':
       return initialsFromString('SF');
+    case 'credit.refund_completed':
+      return '✓';
+    case 'credit.refund_rejected':
+      return '✕';
+    case 'credit.refund_restored':
+      return '↺';
     default:
       return '?';
   }
+}
+
+/**
+ * Whether an avatar glyph is a single mark (✓, ✕, ↺, ?) rather than two
+ * letters of initials. A mark has a fraction of the ink of two letters, so it
+ * is drawn a size up to read at the same weight in the same circle.
+ * @param icon - What {@link iconForType} returned.
+ * @returns True for a single mark.
+ */
+function isMark(icon: string): boolean {
+  return [...icon].length === 1;
 }
 
 /** Maps a studio role payload value to its localized member-role label. */

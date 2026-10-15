@@ -42,6 +42,7 @@ const EVERY_FIELD: CanvasNodeFields['data'] = {
   createdBy: 'u1',
   locked: false,
   taskCounts: { running: 0, done: 1, failed: 0, expired: 0 },
+  taskResultEventId: '1700-3',
   content: URL,
   coverUrl: URL,
   width: 10,
@@ -133,7 +134,7 @@ function entryOf(type: string, data: Record<string, unknown>, current?: Record<s
     type,
     position: { x: 5, y: 5 },
     parentId: 'g1',
-    data: { kind: type, name: 'Shot', createdAt: 1, createdBy: 'u1', ...data },
+    data: { name: 'Shot', createdAt: 1, createdBy: 'u1', ...data },
     ...(current ? { current } : {}),
   };
 }

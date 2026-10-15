@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import * as React from 'react';
-import { Loader2 } from 'lucide-react';
 
 import { Button } from '@web/components/ui/button';
 import {
@@ -17,6 +16,7 @@ import { Input } from '@web/components/ui/input';
 import { Label } from '@web/components/ui/label';
 import { Textarea } from '@web/components/ui/textarea';
 import { useTranslation } from '@web/i18n/use-translation';
+import { useCreatingProject } from '@web/pages/studio/container/dialogs/use-create-project';
 import { SlugField } from '@web/pages/studio/container/dialogs/SlugField';
 import {
   StudioSelectField,
@@ -99,7 +99,11 @@ export function NewItemDialog({
   const [spaceType, setSpaceType] = React.useState<SpaceType>('canvas');
   const [studioId, setStudioId] = React.useState(defaultStudioId ?? '');
   const slugCheck = useItemSlugCheck(slug);
-  const [submitting, setSubmitting] = React.useState(false);
+  const [pressed, setPressed] = React.useState(false);
+  // A project create is held outside this dialog (inner#1490): opened again
+  // while one is out, from either entry, it shows Create busy.
+  const creatingProject = useCreatingProject();
+  const submitting = pressed || (kind === 'project' && creatingProject);
   const showStudioSelect =
     kind === 'project' && studios !== undefined && studios.length > 0;
 
@@ -121,7 +125,7 @@ export function NewItemDialog({
     setDescription('');
     setSpaceType('canvas');
     setStudioId(defaultStudioId ?? '');
-    setSubmitting(false);
+    setPressed(false);
   };
 
   /**
@@ -145,7 +149,7 @@ export function NewItemDialog({
   const submit = (event: React.FormEvent): void => {
     event.preventDefault();
     if (!canSubmit) return;
-    setSubmitting(true);
+    setPressed(true);
     // Awaited whether or not the caller returns a promise, so there is one
     // path out of a press. A caller that reports failure by rejecting leaves
     // the dialog up with what was typed still in it; saying what went wrong
@@ -166,7 +170,7 @@ export function NewItemDialog({
         handleOpenChange(false);
       },
       () => {
-        setSubmitting(false);
+        setPressed(false);
       },
     );
   };
@@ -266,14 +270,8 @@ export function NewItemDialog({
             <Button
               type='submit'
               disabled={!canSubmit}
+              loading={submitting}
             >
-              {submitting ? (
-                <Loader2
-                  data-testid={`new-${kind}-pending`}
-                  aria-hidden='true'
-                  className='mr-2 h-3.5 w-3.5 animate-spin'
-                />
-              ) : null}
               {t('studio.container.dialog.create')}
             </Button>
           </DialogFooter>

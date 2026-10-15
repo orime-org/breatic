@@ -10,23 +10,21 @@
  * address itself: the item's presence and its target then cannot disagree.
  */
 
-import { asContentView, type NodeView } from '@web/data/yjs/node-view';
+import type { TypedNodeView } from '@web/data/yjs/node-view';
 
 /**
  * The asset a node is showing right now, as an address to download.
- * @param data - The node's view, or nothing when the canvas holds no such node.
+ * @param node - The node's type and view, or nothing when the canvas holds no such node.
  * @returns The asset URL, or null when the node is showing none.
  */
 export function downloadableAsset(
-  data: NodeView | undefined,
+  node: TypedNodeView | undefined,
 ): string | null {
-  const view = asContentView(data);
-  if (view === undefined) return null;
   // The three modalities the node menu offers this on (#2108). Text is not a
   // stored file, and 3d / web are outside what that task asked for.
-  if (view.kind !== 'image' && view.kind !== 'video' && view.kind !== 'audio') {
+  if (node?.type !== 'image' && node?.type !== 'video' && node?.type !== 'audio') {
     return null;
   }
-  const url = view.content ?? '';
+  const url = node.data.content ?? '';
   return url === '' ? null : url;
 }

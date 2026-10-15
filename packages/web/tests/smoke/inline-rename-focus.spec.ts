@@ -11,9 +11,11 @@
  * the one that matters most for the history row: the box used to hand the
  * keystroke on to the row button, which switched the conversation on screen.
  */
-import { expect, test, type Page } from 'playwright/test';
+import { expect, type Page } from 'playwright/test';
+import { test } from '../helpers/slot';
+import { startNewConversation } from '../helpers/conversation';
 
-import { STATE_FILE, openSmokeProject } from '../helpers/project';
+import { openSmokeProject } from '../helpers/project';
 import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
 
 let page: Page;
@@ -46,7 +48,6 @@ async function focused(): Promise<{
 
 test.beforeEach(async ({ browser }) => {
   page = await browser.newPage({
-    storageState: STATE_FILE.A,
     viewport: { width: 1600, height: 950 },
   });
   await openSmokeProject(page);
@@ -161,7 +162,7 @@ async function openHistoryAtAnotherRow(): Promise<{ rowId: string; currentBefore
   if ((await others.count()) === 0) {
     await page.keyboard.press('Escape');
     await expect(page.getByTestId('conversation-history-sheet')).toHaveCount(0);
-    await page.getByTestId('new-conversation').click();
+    await startNewConversation(page);
     await page.getByTestId('open-conversation-history').click();
     await expect(others.first()).toBeAttached({ timeout: 15_000 });
   }
@@ -194,6 +195,31 @@ test('a history row rename gives the row menu the keyboard and keeps the convers
     await expect(page.getByTestId(`conversation-menu-${rowId}`)).toBeFocused();
     await expect(page.getByTestId('conversation-history-sheet')).toBeVisible();
     expect(await list.locator('[aria-current="true"]').getAttribute('data-testid')).toBe(currentBefore);
+  }
+});
+
+test('a Space drawer row rename gives the row menu the keyboard and keeps the drawer', async () => {
+  const id = await createSpace(page, 'canvas', `drawer-focus-${String(Date.now())}`);
+  spaces.push(id);
+  await page.getByTestId('space-drawer-trigger').click();
+  const active = await page.locator('[data-testid^="space-tab-"][aria-selected="true"]').getAttribute('data-testid');
+
+  for (const key of ['Enter', 'Escape']) {
+    await page.getByTestId(`space-drawer-menu-${id}`).focus();
+    await page.keyboard.press('Enter');
+    await expect(page.getByTestId(`space-drawer-rename-${id}`)).toBeVisible();
+    // View is the first item; Rename is the next.
+    await page.keyboard.press('ArrowDown');
+    await expect(page.getByTestId(`space-drawer-rename-${id}`)).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect(page.getByTestId(`space-drawer-rename-input-${id}`)).toBeFocused();
+    await page.keyboard.press(key);
+    await expect(page.getByTestId(`space-drawer-rename-input-${id}`)).toHaveCount(0);
+    await expect(page.getByTestId(`space-drawer-menu-${id}`)).toBeFocused();
+    await expect(page.getByTestId('space-drawer')).toBeVisible();
+    expect(
+      await page.locator('[data-testid^="space-tab-"][aria-selected="true"]').getAttribute('data-testid'),
+    ).toBe(active);
   }
 });
 

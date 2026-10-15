@@ -29,6 +29,7 @@ export type {
   MessageData,
   MessageInput,
   MessagePart,
+  StoredModelOutput,
   StoredMessageMetadata,
   TaskEntity,
   NodeHistoryEntity,
@@ -113,6 +114,8 @@ export type {
   Space,
   MembersChangedEvent,
   ActivityNewControlEvent,
+  ProjectConnectionsCloseEvent,
+  ProjectConnectionsCloseReason,
   ProjectDuplicatedLifecycleEvent,
   ProjectArchivedLifecycleEvent,
   ProjectRestoredLifecycleEvent,
@@ -145,6 +148,7 @@ export {
   CANVAS_NODES_KEY,
   membersChangedChannel,
   activityNewChannel,
+  projectConnectionsCloseChannel,
   allProjectChannelsPattern,
   SpaceTypeSchema,
   SPACE_NAME_MAX_LEN,
@@ -192,6 +196,7 @@ export type {
   ProposalShot,
   ProposalNodeType,
   CanvasProposal,
+  DocumentProposal,
   ProposalRefused,
   ProposalAnswer,
 } from "@shared/types/index.js";
@@ -219,6 +224,10 @@ export {
   PANEL_EDITOR_PARAM,
   insertRefusal,
   isReferenceMaterial,
+  canvasProposalSchema,
+  documentProposalSchema,
+  hasWords,
+  occurrences,
   feedsOf,
   layersOf,
   proposalMarkSegments,
@@ -315,6 +324,7 @@ export type {
   ChatSpace,
   ChatCurrentSpace,
   ChatCanvasDetail,
+  ChatDocumentBlock,
   TaskCreateInput,
   UnderstandInput,
   CanvasPasteInput,
@@ -404,6 +414,15 @@ export {
   refundWindowCloses,
   withinRefundWindow,
 } from "@shared/refund-window.js";
+// Run-once requests: the server keeps a finished answer for the scope's
+// retention, the browser stops re-sending before that. Both read this copy.
+export {
+  IDEMPOTENCY_SCOPES,
+  IDEMPOTENCY_RETENTION_SECONDS,
+  IDEMPOTENCY_CLIENT_MARGIN_SECONDS,
+  idempotencyRetryDeadline,
+} from "@shared/idempotency.js";
+export type { IdempotencyScope } from "@shared/idempotency.js";
 export {
   REFUND_LIFECYCLES,
   refundRefusal,
@@ -476,6 +495,7 @@ export {
 export { SSE_HEARTBEAT_MISSES_ALLOWED } from "@shared/agent/heartbeat.js";
 export { extractPromptText } from "@shared/agent/extract-prompt.js";
 export { stripUnicodeTags } from "@shared/agent/strip-unicode-tags.js";
+export { dsmlBlockStart, dsmlHeldFrom, stripDsml } from "@shared/agent/dsml.js";
 export {
   ATTACHMENT_DATA_PART,
   attachmentMarker,

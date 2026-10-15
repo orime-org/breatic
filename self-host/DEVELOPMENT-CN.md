@@ -74,7 +74,7 @@ EMAIL_BACKEND=console
 
 `PAYMENT_ENABLED=false` 关闭站内支付和对应扣费检查，**不会免除外部 AI 服务费用**。`EMAIL_BACKEND=console` 将邮件内容输出到本机日志，不投递真实邮件；邮箱密码注册可用，不需要 Google OAuth。注册时需要输入 6 位验证码，`console` 模式下验证码在 server 日志的 `[console] email` 那一行里。`EMAIL_BACKEND=disabled` 时没有验证码这一步，注册后会显示恢复码，请自行保存。
 
-本文假设本机只有一套 Breatic。需要空闲端口：`5432`、`6379`、`3000`、`3001`、`1234`、`1235`、`9101`、`8000`、`8787`。如果已有其他实例，先停止自己不再使用的实例，不要让新实例误连已有业务数据。多实例隔离说明见 `.env.dev` 文件头。
+本文假设本机只有一套 Breatic。需要空闲端口：`5432`、`6379`、`3000`、`3001`、`1234`、`1235`、`9101`、`8000`、`8787`；`INTERNAL_API_ENABLED=true` 时还要 `3002`。如果已有其他实例，先停止自己不再使用的实例，不要让新实例误连已有业务数据。多实例隔离说明见 `.env.dev` 文件头。
 
 ## 3. 配置 R2 文件存储
 
@@ -146,13 +146,14 @@ pnpm --filter @breatic/ingest exec wrangler whoami
 | 顶层 `[[r2_buckets]]` 的 `bucket_name` | 与根目录 `.env` 的 `R2_BUCKET` 完全相同 |
 | 顶层 `[[r2_buckets]]` 的 `remote` | 保留 `true` |
 | 顶层 `[[containers]]` 的 `max_instances` | 整数 `5`，不加引号 |
+| 顶层 `[[containers]]` 的 `image_vars` | 三个块都填 `{ DEV_COPY = "breatic" }`；同一台机器上有几份仓库副本同时运行时，每份填不同的名字 |
 | `[dev]` 的 `port` | 整数 `8787` |
 | `[vars]` 的 `ALLOWED_ORIGINS` | `"http://localhost:8000"` |
 | `[env.production.vars]` 的 `ALLOWED_ORIGINS` | 此次可先填 `"http://localhost:8000"`，使模板值完整 |
 | `[[env.production.r2_buckets]]` 的 `bucket_name` | 此次可先填同一本地试用 bucket 名 |
 | `[[env.production.containers]]` 的 `max_instances` | 整数 `5` |
 
-保留两个 `image_build_context = "../.."`，以及模板原有的 `compatibility_date`、`compatibility_flags`、Durable Object 绑定和 `exports` 设置。production 部分仅补齐模板，**本文不执行 `deploy:worker`**；正式部署上传服务时，按 [Cloudflare 部署步骤](LOCAL-CN.md#cloudflare) 单独配置云端资源。
+保留每一行 `image_build_context = "../.."`，以及模板原有的 `compatibility_date`、`compatibility_flags`、Durable Object 绑定和 `exports` 设置。production 部分仅补齐模板，**本文不执行 `deploy:worker`**；正式部署上传服务时，按 [Cloudflare 部署步骤](LOCAL-CN.md#cloudflare) 单独配置云端资源。
 
 编辑 `packages/ingest/.dev.vars`：
 

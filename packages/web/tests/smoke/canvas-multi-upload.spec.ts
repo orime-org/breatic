@@ -12,13 +12,13 @@
  *
  * Needs a running dev stack (`pnpm dev`) and the smoke account setup.
  */
-import { test, expect, type Page } from 'playwright/test';
+import { expect, type Page } from 'playwright/test';
+import { test } from '../helpers/slot';
 
 import { CANVAS_SPACE, liveModuleUrl } from '../helpers/live-module';
-import { STATE_FILE, openSmokeProject } from '../helpers/project';
+import { openSmokeProject } from '../helpers/project';
 import { createSpace, deleteSpace, visibleSpace, VISIBLE_SPACE } from '../helpers/space';
-
-test.use({ storageState: STATE_FILE.A });
+import { roomForUploads } from '../helpers/upload-budget';
 
 /** A 320x240 solid PNG, inline so it decodes with no network. */
 const SOLID_PNG =
@@ -101,6 +101,20 @@ async function selectedOnScreen(page: Page): Promise<string[]> {
 }
 
 /**
+ * Hand a batch of files to the left menu's upload tool, as picking them does.
+ * Two inputs carry this id and only one takes a batch: the canvas has its own
+ * single-file picker. The left menu's tool clicks the multiple one.
+ * @param page - The page with the Space open.
+ * @param count - How many files the batch carries.
+ */
+async function pickFiles(page: Page, count: number): Promise<void> {
+  await roomForUploads(count);
+  await page
+    .locator('input[data-testid="canvas-upload-input"][multiple]')
+    .setInputFiles(Array.from({ length: count }, (_, i) => pngFile(i)));
+}
+
+/**
  * Hand a batch of files to the canvas the way a drag or a paste does: one
  * event carrying every file, aimed at the middle of the pane.
  * @param page - The page with the Space open.
@@ -112,6 +126,7 @@ async function handOverFiles(
   how: 'drop' | 'paste',
   count: number,
 ): Promise<void> {
+  await roomForUploads(count);
   await page.evaluate(
     async ([entry, total, encoded, space]: [string, number, string, string]) => {
       const binary = atob(encoded);
@@ -191,7 +206,7 @@ let spaceId = '';
 
 test.beforeEach(async ({ page }) => {
   await openSmokeProject(page);
-  projectId = (/([0-9a-f-]{36})$/.exec(page.url()) ?? [])[1] as string;
+  projectId = (/([0-9a-f-]{36})$/.exec(page.url()) ?? [])[1];
   spaceId = await createSpace(page, 'canvas', `multi-upload ${Date.now()}`);
 });
 
@@ -201,11 +216,7 @@ test.afterEach(async ({ page }) => {
 
 test('the upload tool turns one batch into one Group', async ({ page }) => {
   const files = 5;
-  // Two inputs carry this id and only one takes a batch: the canvas has its
-  // own single-file picker. The left menu's tool clicks the multiple one.
-  await page
-    .locator('input[data-testid="canvas-upload-input"][multiple]')
-    .setInputFiles(Array.from({ length: files }, (_, i) => pngFile(i)));
+  await pickFiles(page, files);
 
   // The Group is what the reader grabs next, so it is what is selected — and
   // the only thing, or a right-click routes to the selection menu (#1477).
@@ -233,14 +244,16 @@ test('a row leaves each node its task counts', async ({ page }) => {
   await handOverFiles(page, 'drop', 3);
   await theGroupOver(page, 3);
 
-  const anchors = page.locator('[data-testid="node-task-counts-anchor"]');
+  // Read in the Space on screen: the Spaces kept open behind it hold nodes of
+  // their own.
+  const anchors = visibleSpace(page).locator('[data-testid="node-task-counts-anchor"]');
   await anchors.first().waitFor({ timeout: 40_000 });
   await expect.poll(async () => anchors.count(), { timeout: 40_000 }).toBe(3);
 
-  const boxes = await page.evaluate(() =>
+  const boxes = await page.evaluate((space: string) =>
     [
       ...document.querySelectorAll(
-        '.react-flow__node:not(.react-flow__node-group)',
+        `${space} .react-flow__node:not(.react-flow__node-group)`,
       ),
     ]
       .map((el) => {
@@ -253,6 +266,7 @@ test('a row leaves each node its task counts', async ({ page }) => {
         };
       })
       .sort((a, b) => a.left - b.left),
+  VISIBLE_SPACE,
   );
 
   // Every neighbour starts to the right of the counts belonging to the node
@@ -267,9 +281,7 @@ test('the members keep the grid, and the Group takes them along', async ({
   page,
 }) => {
   const files = 5;
-  await page
-    .locator('input[data-testid="canvas-upload-input"][multiple]')
-    .setInputFiles(Array.from({ length: files }, (_, i) => pngFile(i)));
+  await pickFiles(page, files);
   const groupId = await theGroupOver(page, files);
 
   /**
@@ -374,9 +386,7 @@ test('one undo takes the whole batch back', async ({ page }) => {
 });
 
 test('one file stays one node, with no Group around it', async ({ page }) => {
-  await page
-    .locator('input[data-testid="canvas-upload-input"][multiple]')
-    .setInputFiles([pngFile(0)]);
+  await pickFiles(page, 1);
 
   const nodes = await settledNodes(page, 1);
   expect(nodes[0].parentId).toBeNull();

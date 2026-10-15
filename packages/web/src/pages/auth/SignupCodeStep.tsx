@@ -91,6 +91,7 @@ export function SignupCodeStep({
   const inputRef = React.useRef<HTMLInputElement>(null);
   const [code, setCode] = React.useState('');
   const [submitting, setSubmitting] = React.useState(false);
+  const [resending, setResending] = React.useState(false);
   const [usedUp, setUsedUp] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [info, setInfo] = React.useState<string | null>(null);
@@ -159,6 +160,7 @@ export function SignupCodeStep({
   const resend = React.useCallback((): void => {
     setError(null);
     setInfo(null);
+    setResending(true);
     void (async (): Promise<void> => {
       try {
         acceptNewCode(await authApi.resendSignupCode());
@@ -171,6 +173,8 @@ export function SignupCodeStep({
           setWaitLeft(err.retryAfterSeconds);
         }
         setError(messageOf(err, t('auth.register.failed')));
+      } finally {
+        setResending(false);
       }
     })();
   }, [acceptNewCode, startOver, t]);
@@ -236,8 +240,9 @@ export function SignupCodeStep({
           type='button'
           variant='link'
           size={null}
-          className='h-auto p-0 text-sm font-medium text-foreground disabled:text-muted-foreground'
+          className='h-auto p-0 text-sm font-medium text-foreground disabled:text-muted-foreground aria-disabled:text-muted-foreground'
           disabled={waiting || submitting}
+          loading={resending}
           onClick={resend}
         >
           {waiting

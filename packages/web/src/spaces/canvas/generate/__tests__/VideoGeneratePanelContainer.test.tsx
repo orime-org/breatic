@@ -66,6 +66,7 @@ import {
   nodeDataMap,
 } from '@web/data/yjs/canvas-space';
 import { _resetForTests, docName, getDoc } from '@web/data/yjs/manager';
+import type { VideoNodeView } from '@web/data/yjs/node-view';
 import { enterStoryboardShots, readShots, shotListOf } from '@web/data/yjs/node-storyboard';
 import { canvasApi } from '@web/data/api/canvas';
 
@@ -319,13 +320,12 @@ function panelTree(
             nodes={[
               {
                 id: 'target',
-                data: { kind, handling: false, ...reactNodeData } as Parameters<
-                  typeof VideoGeneratePanelContainer
-                >[0]['nodes'][number]['data'],
+                type: kind,
+                data: { handling: false, ...reactNodeData } as VideoNodeView,
               },
               // A second node on the board, so a case that moves the panel
               // elsewhere does not trip the node-is-gone close first.
-              { id: 'other', data: { kind: 'video', handling: false } },
+              { id: 'other', type: 'video', data: { handling: false } },
               ...(board.nodes ?? []),
             ]}
             getLastWriteWasLocal={author}
@@ -808,6 +808,34 @@ describe('VideoGeneratePanelContainer', () => {
       expect(canvasSessions.of('s').getState().panelHostId).toBe('target');
     });
 
+    // inner#1490: the press is held outside the panel, so a reopened panel
+    // shows it still waiting and a second press sends nothing.
+    it('keeps the press waiting across closing and reopening the panel', async () => {
+      let finish: (() => void) | undefined;
+      const create = vi.spyOn(canvasApi, 'createTask').mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            finish = () => resolve({ id: 't1' } as Awaited<ReturnType<typeof canvasApi.createTask>>);
+          }),
+      );
+      fireEvent.click(await openReadyPanel());
+      await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
+      act(() => {
+        canvasSessions.of('s').getState().closeActivePanel();
+      });
+      act(() => {
+        canvasSessions.of('s').getState().openGeneratePanel('target', 'video');
+      });
+      const reopened = await screen.findByTestId('generate-video-execute');
+      await waitFor(() => expect(reopened).toHaveAttribute('aria-busy', 'true'));
+      fireEvent.click(reopened);
+      expect(create).toHaveBeenCalledTimes(1);
+      await act(async () => {
+        finish?.();
+      });
+      expect(canvasSessions.of('s').getState().panelHostId).toBeNull();
+    });
+
     it('explains a rejected submit and lets the user try again', async () => {
       // A refused task (no credits, node already busy, upstream down) must
       // both say so and release the latch — otherwise the arrow stays dead
@@ -890,8 +918,8 @@ describe('VideoGeneratePanelContainer', () => {
     /** An image node on the board, wired into the target as a reference. */
     const SOURCE = {
       id: 'src',
+      type: 'image' as const,
       data: {
-        kind: 'image' as const,
         handling: false as const,
         name: 'A still',
         content: 'https://cdn/a.png',
@@ -1246,8 +1274,8 @@ describe('VideoGeneratePanelContainer', () => {
     const SOURCES = [
       {
         id: 'ref-a',
+        type: 'image' as const,
         data: {
-          kind: 'image' as const,
           handling: false as const,
           name: 'A',
           content: 'https://cdn/a.png',
@@ -1255,8 +1283,8 @@ describe('VideoGeneratePanelContainer', () => {
       },
       {
         id: 'ref-b',
+        type: 'image' as const,
         data: {
-          kind: 'image' as const,
           handling: false as const,
           name: 'B',
           content: 'https://cdn/b.png',
@@ -1264,8 +1292,8 @@ describe('VideoGeneratePanelContainer', () => {
       },
       {
         id: 'ref-c',
+        type: 'image' as const,
         data: {
-          kind: 'image' as const,
           handling: false as const,
           name: 'C',
           content: 'https://cdn/c.png',
@@ -1633,7 +1661,8 @@ describe('VideoGeneratePanelContainer', () => {
             id: 'src',
             // 正文不进这个投影（node-view.ts:149），轨道那行的预览靠
             // `textById` 单独取，这一条不需要它。
-            data: { kind: 'text', handling: false },
+            type: 'text',
+            data: { handling: false },
           },
         ],
         edges: [{ id: 'e1', source: 'src', target: 'target' }],
@@ -1775,7 +1804,7 @@ describe('VideoGeneratePanelContainer', () => {
       // 留着它是因为编辑器在这一档不挂载了，那句吞掉的代码从此没有别的
       // 东西挡在前面。
       await openMode('talking_head', 'omnihuman-1.5', {
-        nodes: [{ id: 'src', data: { kind: 'image', handling: false, content: 'https://cdn/a.png' } }],
+        nodes: [{ id: 'src', type: 'image', data: { handling: false, content: 'https://cdn/a.png' } }],
         edges: [{ id: 'e1', source: 'src', target: 'target' }],
       });
       const row = await screen.findByTestId('generate-ref-insert-e1');
@@ -1858,10 +1887,53 @@ describe('VideoGeneratePanelContainer — 点不动的时候说清缺什么 (#19
     const btn = await screen.findByTestId('generate-video-execute');
     await waitFor(() => expect(btn).not.toBeDisabled());
     fireEvent.click(btn);
-    await waitFor(() => expect(btn).toBeDisabled());
-    expect(
-      screen.getByTestId('generate-video-execute-pending'),
-    ).toBeInTheDocument();
+    await waitFor(() => expect(btn).toHaveAttribute('aria-busy', 'true'));
+    expect(btn).toHaveAttribute('aria-disabled', 'true');
+    createTask.mockRestore();
+  });
+
+  it.each([
+    ['a refused', false],
+    ['an accepted', true],
+  ] as const)('stops waiting once %s submit is answered', async (_answer, accepted) => {
+    let answer: (() => void) | undefined;
+    const createTask = vi
+      .spyOn(canvasApi, 'createTask')
+      .mockImplementation(
+        () =>
+          new Promise((resolve, reject) => {
+            answer = accepted
+              ? () => resolve({ id: 'task-1' } as Awaited<ReturnType<typeof canvasApi.createTask>>)
+              : () => reject(new Error('refused'));
+          }) as ReturnType<typeof canvasApi.createTask>,
+      );
+    await openPanelInMode('t2v', 'veo-3.1');
+    const fragment = getPromptFragment('p', 's', 'target', storedMode());
+    if (!fragment) throw new Error('node has no prompt fragment');
+    act(() => {
+      const paragraph = new Y.XmlElement('paragraph');
+      const words = new Y.XmlText();
+      words.insert(0, 'a line');
+      paragraph.insert(0, [words]);
+      fragment.insert(0, [paragraph]);
+    });
+    const btn = await screen.findByTestId('generate-video-execute');
+    await waitFor(() => expect(btn).not.toBeDisabled());
+    fireEvent.click(btn);
+    await waitFor(() => expect(btn).toHaveAttribute('aria-busy', 'true'));
+    await act(async () => {
+      answer?.();
+      await Promise.resolve();
+    });
+    if (accepted) {
+      // An accepted submit closes the panel it came from.
+      await waitFor(() =>
+        expect(screen.queryByTestId('generate-video-execute')).toBeNull(),
+      );
+    } else {
+      await waitFor(() => expect(btn).not.toHaveAttribute('aria-busy'));
+      expect(btn).not.toHaveAttribute('aria-disabled');
+    }
     createTask.mockRestore();
   });
 
@@ -1925,8 +1997,8 @@ describe('VideoGeneratePanelContainer — what the @ list says when it has nothi
 
   const PICTURE = {
     id: 'src',
+    type: 'image' as const,
     data: {
-      kind: 'image' as const,
       handling: false as const,
       name: 'Alpha',
       content: 'https://cdn/a.png',

@@ -95,7 +95,7 @@ describe('official Google login', () => {
     respond();
     respond();
     expect(authApi.google).toHaveBeenCalledExactlyOnceWith({ credential: 'signed-google-id-token' });
-    expect(screen.getByRole('button', { name: 'Signing in...' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Signing in...' })).toHaveAttribute('aria-disabled', 'true');
     await act(async () => finish({ user: { id: 'g-1', email: 'demo@gmail.com', personalStudio: null, membershipTier: 'base', locale: 'en' }, created: false }));
     expect(useCurrentUserStore.getState().user?.id).toBe('g-1');
     expect(useCurrentUserStore.getState().user?.personalStudio).toBeNull();

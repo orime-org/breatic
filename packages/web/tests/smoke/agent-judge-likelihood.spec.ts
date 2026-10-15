@@ -15,9 +15,11 @@
  * to a few fresh conversations and holds the first call it gets, and prints how
  * much material that call carried.
  */
-import { expect, test, type Page } from 'playwright/test';
+import { expect, type Page } from 'playwright/test';
+import { test } from '../helpers/slot';
+import { startNewConversation } from '../helpers/conversation';
 
-import { STATE_FILE, openSmokeProject } from '../helpers/project';
+import { openSmokeProject } from '../helpers/project';
 
 let page: Page;
 
@@ -69,7 +71,6 @@ async function callsOfLatestConversation(p: Page): Promise<StoredCall[]> {
 
 test.beforeEach(async ({ browser }) => {
   page = await browser.newPage({
-    storageState: STATE_FILE.A,
     viewport: { width: 1400, height: 900 },
   });
   await openSmokeProject(page);
@@ -90,7 +91,7 @@ const ATTEMPTS = 3;
 async function runOneTurn(p: Page): Promise<StoredCall[]> {
   const composer = p.getByTestId('chat-composer-box');
   await expect(composer).toBeVisible({ timeout: 20_000 });
-  await p.getByTestId('new-conversation').click();
+  await startNewConversation(p);
   await expect(p.getByTestId('message-bubble')).toHaveCount(0, { timeout: 20_000 });
   await composer.fill(PROMPT);
   await composer.press('Enter');

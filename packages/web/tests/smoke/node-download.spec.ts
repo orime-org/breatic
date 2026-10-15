@@ -26,7 +26,8 @@
 import { randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 
-import { test, expect, type Page } from 'playwright/test';
+import { expect, type Page } from 'playwright/test';
+import { test } from '../helpers/slot';
 
 import { openSmokeProject } from '../helpers/project';
 import { createSpace, deleteSpace, visibleSpace, VISIBLE_SPACE } from '../helpers/space';

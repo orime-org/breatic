@@ -26,7 +26,7 @@ import {
   type NodeMediaFields,
 } from '@breatic/shared';
 import { bodyFromText, bodyToPlainText, writePlainTextIntoBody } from '@breatic/shared/canvas/text-body';
-import type { NodeKind, NodeView } from '@web/data/yjs/node-view';
+import type { TypedNodeView } from '@web/data/yjs/node-view';
 import { toNodeView } from '@web/data/yjs/node-view';
 import { fillNestedData, splitSnapshot } from '@web/data/yjs/node-data-snapshot';
 
@@ -54,11 +54,14 @@ import { fillNestedData, splitSnapshot } from '@web/data/yjs/node-data-snapshot'
  * `type` or a missing `data` Y.Map are skipped).
  */
 
-/** A render-ready canvas node: identity + position + the narrowed view. */
-export interface CanvasNodeView {
+/**
+ * A render-ready canvas node: identity, position, and its type paired with the
+ * view of that type. `type` is the stored node type and doubles as the
+ * ReactFlow node type (the `NODE_TYPES` registry key); checking it narrows
+ * `data`.
+ */
+export type CanvasNodeView = TypedNodeView & {
   id: string;
-  /** ReactFlow node type = the view kind (the `NODE_TYPES` registry key). */
-  type: NodeKind;
   position: { x: number; y: number };
   /**
    * Containing Group id (group redesign 2026-06-23) — present on a member
@@ -66,8 +69,7 @@ export interface CanvasNodeView {
    * top-level nodes.
    */
   parentId?: string;
-  data: NodeView;
-}
+};
 
 /**
  * A canvas connection. Its data meaning IS a reference relationship: an edge
@@ -155,6 +157,14 @@ const EDGES_KEY = 'edgesMap';
  */
 export const CANVAS_UNDO = Symbol('canvas-undo');
 
+/**
+ * Marks a canvas transaction that took back everything it wrote, so the undo
+ * manager leaves it out: it changed nothing the reader could undo, and as a
+ * step it would cost them a press of undo that does nothing and the redo they
+ * had before it.
+ */
+export const CANVAS_ROLLED_BACK = Symbol('canvas-rolled-back');
+
 /** One entry on a canvas undo stack. */
 export type CanvasUndoStep = Y.UndoManager['undoStack'][number];
 
@@ -205,6 +215,7 @@ export function createCanvasUndoManager(doc: Y.Doc): Y.UndoManager {
       new Y.UndoManager([nodesMap, edgesMap], {
         trackedOrigins: new Set([CANVAS_UNDO]),
         captureTimeout: 0,
+        captureTransaction: (tr) => !tr.meta.has(CANVAS_ROLLED_BACK),
       }),
   );
   undoManager.on('stack-item-added', () => {
@@ -286,7 +297,8 @@ export function _resetCanvasUndoCacheForTests(): void {
  * `joinStep` — any other write in between leaves a different step on top.
  * @param projectId - Project the canvas space belongs to.
  * @param spaceId - Canvas space whose doc to mutate.
- * @param fn - Runs the individual mutations; their writes join this one transaction.
+ * @param fn - Runs the individual mutations; their writes join this one
+ *   transaction, which it is handed so it can mark a write it took back.
  * @param joinStep - The undo step to merge into, when it is still on top.
  * @returns The undo step this batch landed in: `joinStep` when it merged into
  *   it, otherwise the new step on top, or undefined when it wrote nothing.
@@ -294,7 +306,7 @@ export function _resetCanvasUndoCacheForTests(): void {
 export function runCanvasUndoBatch(
   projectId: string,
   spaceId: string,
-  fn: () => void,
+  fn: (tr: Y.Transaction) => void,
   joinStep?: CanvasUndoStep,
 ): CanvasUndoStep | undefined {
   const name = docName.canvasSpace(projectId, spaceId);
@@ -2059,34 +2071,54 @@ export function readNodes(doc: Y.Doc): ReadonlyArray<CanvasNodeView> {
       },
       data: dataMap.toJSON() as CanvasNodeFields['data'],
     };
-    const view = toNodeView(fields);
-    if (!view) return;
+    const typed = toNodeView(fields);
+    if (!typed) return;
     const parentId = nodeMap.get('parentId');
     out.push({
       id: fields.id,
-      type: view.kind,
+      ...typed,
       position: fields.position,
       ...(typeof parentId === 'string' ? { parentId } : {}),
-      data: view,
     });
   });
   return out;
 }
 
 /**
- * Where every node of a canvas space sits on the canvas, as absolute top-lefts.
+ * What the document says about one node's place and the facts its size
+ * follows from: a Group's own rect, a picture's or video's pixel size, a text
+ * node's words.
+ */
+export interface NodePlacement {
+  id: string;
+  type: string;
+  /** Absolute left edge: a Group member's stored position plus its Group's. */
+  x: number;
+  /** Absolute top edge, likewise. */
+  y: number;
+  /** A Group's own width. */
+  width?: number;
+  /** A Group's own height. */
+  height?: number;
+  /** A picture's or video's pixel width. */
+  mediaWidth?: number;
+  /** A picture's or video's pixel height. */
+  mediaHeight?: number;
+  /** A text node's words, one line per paragraph. */
+  bodyText?: string;
+}
+
+/**
+ * Where every node of a canvas space sits, with the facts its size follows from.
  *
- * Read from the document, so a paste made a moment ago counts before it has
+ * Read from the document, so a node written a moment ago counts before it has
  * rendered. A Group member's stored position is relative to its Group, so its
  * Group's position is added.
  * @param projectId - Project the canvas space belongs to.
  * @param spaceId - Canvas space to read.
- * @returns One top-left per node, in no particular order.
+ * @returns One placement per node, in no particular order.
  */
-export function readNodeCorners(
-  projectId: string,
-  spaceId: string,
-): Array<{ x: number; y: number }> {
+export function readNodePlacements(projectId: string, spaceId: string): NodePlacement[] {
   const nodesMap = getDoc(docName.canvasSpace(projectId, spaceId)).getMap<Y.Map<unknown>>(
     NODES_KEY,
   );
@@ -2097,13 +2129,35 @@ export function readNodeCorners(
    */
   const positionOf = (node: unknown): { x: number; y: number } | undefined =>
     node instanceof Y.Map ? (node.get('position') as { x: number; y: number } | undefined) : undefined;
-  const out: Array<{ x: number; y: number }> = [];
-  nodesMap.forEach((node) => {
+  /**
+   * A number the node's data holds under this key.
+   * @param data - The node's data map, if any.
+   * @param key - The key.
+   * @returns The number, or undefined.
+   */
+  const numberIn = (data: unknown, key: string): number | undefined => {
+    const value = data instanceof Y.Map ? data.get(key) : undefined;
+    return typeof value === 'number' ? value : undefined;
+  };
+  const out: NodePlacement[] = [];
+  nodesMap.forEach((node, id) => {
     const at = positionOf(node);
     if (at === undefined) return;
     const parentId = node.get('parentId');
     const parent = typeof parentId === 'string' ? positionOf(nodesMap.get(parentId)) : undefined;
-    out.push(parent === undefined ? at : { x: at.x + parent.x, y: at.y + parent.y });
+    const data = node.get('data');
+    const body = data instanceof Y.Map ? data.get('body') : undefined;
+    out.push({
+      id,
+      type: String(node.get('type')),
+      x: parent === undefined ? at.x : at.x + parent.x,
+      y: parent === undefined ? at.y : at.y + parent.y,
+      width: numberIn(data, 'width'),
+      height: numberIn(data, 'height'),
+      mediaWidth: numberIn(data, 'mediaWidth'),
+      mediaHeight: numberIn(data, 'mediaHeight'),
+      bodyText: body instanceof Y.XmlFragment ? bodyToPlainText(body) : undefined,
+    });
   });
   return out;
 }

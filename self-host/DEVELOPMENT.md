@@ -74,7 +74,7 @@ EMAIL_BACKEND=console
 
 `PAYMENT_ENABLED=false` disables application payments and the corresponding credit checks; **external model charges still apply**. `EMAIL_BACKEND=console` prints email content to local logs without delivering it. Email/password registration works without Google OAuth. Signing up asks for a six-digit code; with `console` it is in the server log line `[console] email`. With `EMAIL_BACKEND=disabled` there is no code step and a recovery code is shown instead; save it.
 
-This guide assumes one local instance. Required free ports are `5432`, `6379`, `3000`, `3001`, `1234`, `1235`, `9101`, `8000` and, for local Ingest, `8787`. Do not accidentally connect to another instance's data. See the `.env.dev` header for multi-instance isolation.
+This guide assumes one local instance. Required free ports are `5432`, `6379`, `3000`, `3001`, `1234`, `1235`, `9101`, `8000` and, for local Ingest, `8787`; with `INTERNAL_API_ENABLED=true`, also `3002`. Do not accidentally connect to another instance's data. See the `.env.dev` header for multi-instance isolation.
 
 ## 3. Configure R2 storage
 
@@ -146,13 +146,14 @@ Replace **every angle-bracket placeholder** in `packages/ingest/wrangler.toml`. 
 | Top-level `[[r2_buckets]].bucket_name` | Exactly the root `.env`'s `R2_BUCKET` |
 | Top-level `[[r2_buckets]].remote` | Keep `true` |
 | Top-level `[[containers]].max_instances` | Integer `5`, unquoted |
+| Top-level `[[containers]].image_vars` | `{ DEV_COPY = "breatic" }` in all three blocks; when several copies of the repository run on one machine, give each its own name |
 | `[dev].port` | Integer `8787` |
 | `[vars].ALLOWED_ORIGINS` | `"http://localhost:8000"` |
 | `[env.production.vars].ALLOWED_ORIGINS` | For this local-only setup, fill with `"http://localhost:8000"` to complete the template |
 | `[[env.production.r2_buckets]].bucket_name` | For this local-only setup, use the same development bucket |
 | `[[env.production.containers]].max_instances` | Integer `5` |
 
-Keep both `image_build_context = "../.."` lines and the template's `compatibility_date`, `compatibility_flags`, Durable Object bindings and `exports`. Filling production fields here only makes the template valid; **this local workflow does not run `deploy:worker`**. For a deployed upload service, configure cloud resources using the [Cloudflare deployment steps](LOCAL.md#cloudflare).
+Keep every `image_build_context = "../.."` line and the template's `compatibility_date`, `compatibility_flags`, Durable Object bindings and `exports`. Filling production fields here only makes the template valid; **this local workflow does not run `deploy:worker`**. For a deployed upload service, configure cloud resources using the [Cloudflare deployment steps](LOCAL.md#cloudflare).
 
 Edit `packages/ingest/.dev.vars`:
 

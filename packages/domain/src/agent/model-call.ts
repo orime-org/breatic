@@ -14,18 +14,21 @@
  * Being the one way in is also why every prompt is cleaned here: the model is
  * wrapped so each step's prompt loses its Unicode tag characters before it is
  * sent, except in what the model wrote itself -- its reasoning, text and tool
- * calls go back unchanged (`strip-unicode-tags.ts`).
+ * calls go back unchanged (`strip-unicode-tags.ts`). The reply text it
+ * streams back loses any DSML tool-call markup (`dsml-middleware.ts`).
  */
 
 import { generateText, streamText, wrapLanguageModel, type LanguageModel } from "ai";
 import { getAgentConfig } from "@breatic/core";
 
+import { dsmlMiddleware } from "@domain/agent/dsml-middleware.js";
 import { unicodeTagMiddleware } from "@domain/agent/strip-unicode-tags.js";
 
 /**
- * The model, wrapped so every prompt it is sent is cleaned first.
+ * The model, wrapped so every prompt it is sent is cleaned first and the
+ * reply text it streams loses DSML markup.
  * @param model - The model a call site built.
- * @returns The same model behind the cleaning middleware.
+ * @returns The same model behind both middlewares.
  * @throws {TypeError} when the model is named by id: the SDK resolves an id
  *   through its global provider, which has no place for the middleware.
  */
@@ -33,7 +36,7 @@ function cleaned(model: LanguageModel): Exclude<LanguageModel, string> {
   if (typeof model === "string") {
     throw new TypeError(`A model named by id ("${model}") cannot be cleaned; pass getModel()'s model`);
   }
-  return wrapLanguageModel({ model, middleware: unicodeTagMiddleware });
+  return wrapLanguageModel({ model, middleware: [unicodeTagMiddleware, dsmlMiddleware] });
 }
 
 /**

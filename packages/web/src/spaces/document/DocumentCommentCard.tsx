@@ -201,9 +201,14 @@ function Entry({
       />
       <div className='min-w-0 flex-1'>
         <div className='flex items-center text-2xs'>
-          <span className='font-medium'>{author}</span>
+          <span className='min-w-0 truncate font-medium'>{author}</span>
+          {entry.fromAgent ? (
+            <span className='ml-1.5 shrink-0 whitespace-nowrap text-muted-foreground' data-testid='doc-comment-from-agent'>
+              {t('spaces.document.comment.fromAgent')}
+            </span>
+          ) : null}
           <time
-            className='ml-1.5 text-muted-foreground'
+            className='ml-1.5 shrink-0 whitespace-nowrap text-muted-foreground'
             dateTime={entry.createdAt.toISOString()}
           >
             {formatRelativeTime(entry.createdAt.getTime(), t)}
@@ -212,7 +217,7 @@ function Entry({
             <Button
               variant='chrome-ghost'
               size='icon'
-              className='ml-auto size-4.5 hover:text-status-error-foreground'
+              className='ml-auto size-4.5 hover-enabled:text-status-error-foreground'
               aria-label={t('spaces.document.comment.deleteReply')}
               data-testid='doc-comment-delete-reply'
               onClick={onDelete}
@@ -389,7 +394,7 @@ export const DocumentCommentCard = React.memo(function DocumentCommentCard({
             <Button
               variant='outline'
               size='sm'
-              className='ml-auto hover:text-status-error-foreground'
+              className='ml-auto hover-enabled:text-status-error-foreground'
               data-testid='doc-comment-delete'
               onClick={() => {
                 onDelete(card.id);

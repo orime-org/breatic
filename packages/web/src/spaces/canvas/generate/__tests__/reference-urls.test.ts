@@ -11,11 +11,10 @@
  * list of its own kind, under the param the model reads that kind from.
  */
 
-import type { ReferencePool } from '@breatic/shared';
+import type { NodeType, ReferencePool } from '@breatic/shared';
 import { describe, it, expect } from 'vitest';
 
-import type { CanvasNodeView } from '@web/data/yjs/canvas-space';
-import type { NodeView } from '@web/data/yjs/node-view';
+import type { NodeRef, NodeViewOf } from '@web/data/yjs/node-view';
 import { focusRefId } from '@web/spaces/canvas/generate/derive-references';
 import {
   mentionDurations,
@@ -28,21 +27,22 @@ import {
 /**
  * A canvas node carrying whatever a case needs it to.
  * @param id - Node id.
+ * @param type - The node type.
  * @param data - The node's view data.
- * @returns The node view pair the derivation reads.
+ * @returns The node the derivation reads.
  */
-function node(id: string, data: NodeView): Pick<CanvasNodeView, 'id' | 'data'> {
-  return { id, data };
+function node<T extends NodeType>(id: string, type: T, data: NodeViewOf[T]): NodeRef {
+  return { id, type, data } as NodeRef;
 }
 
 /** An image node with a URL. */
-const IMAGE_A = node('a', { kind: 'image', handling: false, content: 'https://cdn/a.png' });
+const IMAGE_A = node('a', 'image', { handling: false, content: 'https://cdn/a.png' });
 /** A second image node, so order is observable. */
-const IMAGE_B = node('b', { kind: 'image', handling: false, content: 'https://cdn/b.png' });
+const IMAGE_B = node('b', 'image', { handling: false, content: 'https://cdn/b.png' });
 /** A video node. */
-const CLIP = node('v', { kind: 'video', handling: false, content: 'https://cdn/v.mp4' });
+const CLIP = node('v', 'video', { handling: false, content: 'https://cdn/v.mp4' });
 /** An audio node. */
-const TRACK = node('s', { kind: 'audio', handling: false, content: 'https://cdn/s.mp3' });
+const TRACK = node('s', 'audio', { handling: false, content: 'https://cdn/s.mp3' });
 
 /**
  * Rail rows for the given source ids, in rail order.
@@ -63,7 +63,7 @@ function rows(...ids: string[]): { sourceNodeId: string }[] {
 function mentioned(
   ids: string[],
   mentioned: string[],
-  nodes: Array<Pick<CanvasNodeView, 'id' | 'data'>>,
+  nodes: Array<NodeRef>,
 ): ReturnType<typeof mentionedReferenceUrls> {
   return mentionedReferenceUrls({
     references: rows(...ids),
@@ -96,10 +96,9 @@ describe('mentionedReferenceUrls — rows', () => {
   });
 
   it('sends nothing for a text row, an empty one, a malformed one or a missing one', () => {
-    const text = node('t', { kind: 'text', handling: false });
-    const empty = node('e', { kind: 'image', handling: false, content: '' });
-    const malformed = node('m', {
-      kind: 'image',
+    const text = node('t', 'text', { handling: false });
+    const empty = node('e', 'image', { handling: false, content: '' });
+    const malformed = node('m', 'image', {
       handling: false,
       content: { url: 'x' } as unknown as string,
     });
@@ -143,7 +142,7 @@ describe('mentionedReferenceUrls — crops', () => {
         references: rows('c1'),
         focusImages: [CROP],
         atMentioned: new Set(['c1']),
-        nodes: [node('c1', { kind: 'image', handling: false, content: 'https://cdn/node-c1.png' })],
+        nodes: [node('c1', 'image', { handling: false, content: 'https://cdn/node-c1.png' })],
       }).image,
     ).toEqual(['https://cdn/node-c1.png']);
   });
@@ -250,10 +249,10 @@ describe('mentionDurations — how long the mentioned clips and tracks run', () 
     video: { param: 'videos', cap: undefined },
     audio: { param: 'audios', cap: undefined },
   };
-  const clip = (id: string, duration?: number): Pick<CanvasNodeView, 'id' | 'data'> =>
-    node(id, { kind: 'video', handling: false, content: `https://cdn/${id}.mp4`, duration });
-  const track = (id: string, duration?: number): Pick<CanvasNodeView, 'id' | 'data'> =>
-    node(id, { kind: 'audio', handling: false, content: `https://cdn/${id}.mp3`, duration });
+  const clip = (id: string, duration?: number): NodeRef =>
+    node(id, 'video', { handling: false, content: `https://cdn/${id}.mp4`, duration });
+  const track = (id: string, duration?: number): NodeRef =>
+    node(id, 'audio', { handling: false, content: `https://cdn/${id}.mp3`, duration });
 
   it('lists each kind\'s lengths in the order its files are sent, under its param', () => {
     const durations = mentionDurations(pool, {

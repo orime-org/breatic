@@ -10,9 +10,10 @@
  *
  *   pnpm --filter @breatic/web test:smoke
  */
-import { test, expect, type Page } from 'playwright/test';
+import { expect, type Page } from 'playwright/test';
+import { test } from '../helpers/slot';
 
-import { STATE_FILE, openSmokeProject } from '../helpers/project';
+import { openSmokeProject } from '../helpers/project';
 import { CANVAS_SPACE, liveModuleUrl } from '../helpers/live-module';
 import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
 
@@ -53,7 +54,7 @@ async function openPanelOnNewNode(kind: 'image' | 'video'): Promise<string> {
 }
 
 test.beforeEach(async ({ browser }) => {
-  page = await browser.newPage({ storageState: STATE_FILE.A });
+  page = await browser.newPage();
   await openSmokeProject(page);
   projectId = (/([0-9a-f-]{36})$/.exec(page.url()) ?? [])[1] ?? '';
   if (!projectId) throw new Error(`no project id in ${page.url()}`);
@@ -138,7 +139,13 @@ test('a note at the top of a prompt shows in orange, and generation does not get
   let sent: { params?: { prompt?: string } } | null = null;
   await page.route('**/canvas/tasks', async (route) => {
     sent = route.request().postDataJSON() as { params?: { prompt?: string } };
-    await route.abort();
+    // A final answer: an aborted request has no answer, and the press would
+    // keep sending it (inner#1490).
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ data: { id: crypto.randomUUID(), status: 'queued' } }),
+    });
   });
   await page.getByTestId('generate-execute').click();
   await expect.poll(() => sent, { timeout: 15_000 }).not.toBeNull();

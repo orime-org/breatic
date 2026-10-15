@@ -325,3 +325,21 @@ describe('a call turned away to steer the model', () => {
     expect(view.toolCalls?.[0]?.failureKey).toBeUndefined();
   });
 });
+
+describe('a stored reply with DSML markup in its text', () => {
+  it('shows the prose without the markup', () => {
+    const stored = {
+      id: 'm1',
+      role: 'assistant',
+      parts: [
+        {
+          type: 'text',
+          text: 'Here is the plan.\n\n<｜DSML｜tool_calls>\n<｜DSML｜invoke name="propose_canvas_action">\n',
+        },
+        { type: 'text', text: 'Add the <｜DSML｜parameter name="groupName">` line.' },
+      ],
+    } as unknown as UIMessage;
+
+    expect(toChatMessage(stored, { streaming: false }).content).toBe('Here is the plan.\n\nAdd the ` line.');
+  });
+});

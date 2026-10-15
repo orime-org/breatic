@@ -252,9 +252,9 @@ function renderSource(source: SearchSource): string {
  * The count of unreadable entries is stated, because a set the model reads as
  * complete is what makes "nothing I found mentions X" a wrong answer.
  *
- * Each source carries the number it was given when the search ran, so this
- * says the same thing however it is reached -- the SDK's own conversion mid
- * turn, or the request assembler replaying stored history.
+ * Each source carries the number it was given when the search ran, so the
+ * text depends on nothing but the answer. The turn writes it down with the
+ * call, and a replayed history hands that copy back.
  * @param answer - What the search found.
  * @returns The text handed to the model.
  */
@@ -341,8 +341,8 @@ export function makeSearchTools(): {
     metadata: { runningLine: "chat.tool.searching" },
     // The SDK's own conversion, which is what a running turn reaches
     // (`ai@7.0.68` dist/index.js:4868 builds each step's tool result through it).
-    // The numbers are already on the sources, so this and the request assembler
-    // produce the same text.
+    // The turn writes the result down with the call (`forModel`), and replay
+    // hands that copy back.
     toModelOutput: ({ output }) => ({ type: "text", value: renderSearchForModel(output) }),
     execute: async (
       { query: asked, count },

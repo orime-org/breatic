@@ -10,14 +10,17 @@ import { createClassPatternRule } from "#rules/class-pattern-rule";
  * backdrop. A solid token swap or `hover:opacity-90` keeps the result the
  * same wherever the element is placed.
  *
+ * `hover-enabled:` (the hover of a control that can wait or be disabled) is
+ * held to the same rule.
+ *
  * Black and white overlays are the exception: those are scrims over media,
  * where the whole point is that the image shows through.
  */
 export const hoverPattern = createClassPatternRule({
   name: "hover-pattern",
   description: "Hover states swap a token rather than fading it with alpha",
-  forbidden: /hover:bg-[a-z][a-z0-9-]*\/[0-9]{2}/,
-  exemptWholeString: /hover:bg-(black|white)\/[0-9]/,
+  forbidden: /hover(?:-enabled)?:bg-[a-z][a-z0-9-]*\/[0-9]{2}/,
+  exemptWholeString: /hover(?:-enabled)?:bg-(black|white)\/[0-9]/,
   message:
     "{{match}} fades the surface, so the hover colour depends on whatever is behind it. Swap the token, or use hover:opacity-90.",
 });

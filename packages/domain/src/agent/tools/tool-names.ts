@@ -30,11 +30,8 @@ export const ASK_USER = "ask_user";
 /**
  * Ask which modes each generation node can be set to.
  *
- * Written here for the reason above: the registry key, the plain-chat tool
- * list and the server's render registry all have to name the same tool, and
- * the render registry is the one where a disagreement is silent -- the turn
- * that ran the tool reads the rendered text, and every later turn reads the
- * raw payload as JSON instead.
+ * Written here for the reason above: the registry key and `CANVAS_TOOLS`
+ * both have to name the same tool.
  */
 export const GET_CANVAS_CAPABILITIES = "get_canvas_capabilities";
 
@@ -51,6 +48,13 @@ export const GET_PRODUCT_GUIDE = "get_product_guide";
 
 /** Proposes a wired group of nodes for the reader to place (#229). */
 export const PROPOSE_CANVAS_ACTION = "propose_canvas_action";
+
+/**
+ * Proposes a comment, a rewrite or an insert for the open document
+ * (inner#1509). Named here because the turn's tool context hands this tool
+ * the open document under its name.
+ */
+export const PROPOSE_DOCUMENT_EDIT = "propose_document_edit";
 
 /**
  * Saves a found picture into our storage (inner#1315).

@@ -266,6 +266,9 @@ describe('BellMenu — every waiting request is a link, not a decision', () => {
       'membership.ended',
       'membership.upgrade_incomplete',
       'storage.quota_exceeded',
+      'credit.refund_completed',
+      'credit.refund_rejected',
+      'credit.refund_restored',
     ] as const satisfies readonly NotifType[];
     // A list written by hand can fall behind the union it claims to cover, so
     // the gap is a type error rather than a quieter run of this test: leaving a
@@ -337,6 +340,106 @@ describe('BellMenu — every waiting request is a link, not a decision', () => {
   });
 });
 
+describe('BellMenu — a credit refund outcome is one sentence and mark-read (inner#1410 §8)', () => {
+  // Like membership.ended: nobody to name, nothing to open. The buyer is told
+  // how their refund request ended, and the row only offers mark-read.
+  const OUTCOMES: Array<{ id: string; type: NotifType; payload: Record<string, unknown> }> = [
+    {
+      id: 'n-rc',
+      type: 'credit.refund_completed',
+      payload: { lotId: 'lot-1', credits: '880.000000', amountCents: 1080, currency: 'usd' },
+    },
+    {
+      id: 'n-rr',
+      type: 'credit.refund_rejected',
+      payload: { lotId: 'lot-2', credits: '880.000000' },
+    },
+    {
+      id: 'n-rs',
+      type: 'credit.refund_restored' as NotifType,
+      payload: { lotId: 'lot-3', credits: '880.000000' },
+    },
+  ];
+
+  it.each(OUTCOMES)('$type reads as a sentence with no link and offers mark-read only', async ({ id, type, payload }) => {
+    vi.mocked(notificationsApi.list).mockResolvedValue({
+      items: [fakeNotification(id, type, payload)],
+      resolved: EMPTY_RESOLVED,
+    });
+    const user = userEvent.setup();
+    setup();
+    await user.click(screen.getByTestId('bell-trigger'));
+
+    const headline = await screen.findByTestId(`bell-notification-headline-${id}`);
+    const text = headline.textContent ?? '';
+    expect(text.trim()).not.toBe('');
+    expect(text).not.toContain(type);
+    expect(text).not.toContain('notifications.');
+    expect(headline.querySelectorAll('a')).toHaveLength(0);
+    expect(screen.getByTestId(`bell-mark-read-${id}`)).toBeInTheDocument();
+    expect(screen.queryByTestId(`bell-open-decision-${id}`)).toBeNull();
+  });
+
+  // A refund outcome is a settled answer, so it takes the mark the rest of the
+  // inbox uses for one (the rule above `iconForType`): a tick when the refund
+  // went through, a cross when it was turned down. Not initials (RF/RX).
+  it.each([
+    { ...OUTCOMES[0], glyph: '✓', initials: 'RF' },
+    { ...OUTCOMES[1], glyph: '✕', initials: 'RX' },
+    // inner#1410 v9 §8: credits back in the account, an arrow coming round.
+    { ...OUTCOMES[2], glyph: '↺', initials: 'RS' },
+  ])('$type shows $glyph as its glyph', async ({ id, type, payload, glyph, initials }) => {
+    vi.mocked(notificationsApi.list).mockResolvedValue({
+      items: [fakeNotification(id, type, payload)],
+      resolved: EMPTY_RESOLVED,
+    });
+    const user = userEvent.setup();
+    setup();
+    await user.click(screen.getByTestId('bell-trigger'));
+    await screen.findByTestId(`bell-notification-headline-${id}`);
+
+    expect(screen.getByText(glyph)).toBeInTheDocument();
+    expect(screen.queryByText(initials)).toBeNull();
+    // inner#1410 v9: a lone symbol at 12px reads as a speck, so it sits at
+    // 15px (text-base); two-letter initials stay at text-xs (12px).
+    const fallback = screen.getByText(glyph);
+    expect(fallback).toHaveClass('text-base');
+    expect(fallback).not.toHaveClass('text-xs');
+  });
+
+  it('a row with initials keeps them at text-xs', async () => {
+    vi.mocked(notificationsApi.list).mockResolvedValue({
+      items: [fakeNotification('n-me', 'membership.ended')],
+      resolved: EMPTY_RESOLVED,
+    });
+    const user = userEvent.setup();
+    setup();
+    await user.click(screen.getByTestId('bell-trigger'));
+    await screen.findByTestId('bell-notification-headline-n-me');
+
+    const fallback = screen.getByText('ME');
+    expect(fallback).toHaveClass('text-xs');
+    expect(fallback).not.toHaveClass('text-base');
+  });
+
+  it('the three outcomes say different things', async () => {
+    vi.mocked(notificationsApi.list).mockResolvedValue({
+      items: OUTCOMES.map((o) => fakeNotification(o.id, o.type, o.payload)),
+      resolved: EMPTY_RESOLVED,
+    });
+    const user = userEvent.setup();
+    setup();
+    await user.click(screen.getByTestId('bell-trigger'));
+
+    const completed = await screen.findByTestId('bell-notification-headline-n-rc');
+    const rejected = screen.getByTestId('bell-notification-headline-n-rr');
+    const restored = screen.getByTestId('bell-notification-headline-n-rs');
+    // Different sentences, not raw type names that happen to differ.
+    for (const row of [completed, rejected, restored]) expect(row.textContent).not.toMatch(/credit\.refund_/);
+    expect(new Set([completed, rejected, restored].map((r) => r.textContent)).size).toBe(3);
+  });
+});
+
 describe('BellMenu — mark all read', () => {
   const NEWS = '33333333-3333-4333-8333-333333333333';
   const WAITING = '44444444-4444-4444-8444-444444444444';
@@ -390,5 +493,111 @@ describe('BellMenu — mark all read', () => {
     await user.click(await screen.findByTestId('bell-mark-all-read'));
     await waitFor(() => expect(notificationsApi.markAllRead).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(notificationsApi.list).toHaveBeenCalledTimes(2));
+  });
+});
+
+/** A promise and the handles that settle it. */
+interface Deferred<T> {
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+  reject: (reason: Error) => void;
+}
+
+/**
+ * A promise the test settles by hand.
+ * @returns The promise and its settlers.
+ */
+function deferred<T>(): Deferred<T> {
+  let resolve!: (value: T) => void;
+  let reject!: (reason: Error) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
+describe('BellMenu — the mark-read buttons spin while the server answers', () => {
+  const NEWS_A = '55555555-5555-4555-8555-555555555555';
+  const NEWS_B = '66666666-6666-4666-8666-666666666666';
+
+  beforeEach(() => {
+    vi.mocked(notificationsApi.list).mockResolvedValue({
+      items: [
+        fakeNotification(NEWS_A, 'studio.invite_accepted'),
+        fakeNotification(NEWS_B, 'studio.invite_accepted'),
+      ],
+      resolved: EMPTY_RESOLVED,
+    });
+  });
+
+  it.each(['answers', 'fails'] as const)(
+    'spins mark-all-read until the server %s',
+    async (outcome) => {
+      const reply = deferred<{ count: number }>();
+      vi.mocked(notificationsApi.markAllRead).mockReturnValue(reply.promise);
+      const user = userEvent.setup();
+      setup();
+      await user.click(screen.getByTestId('bell-trigger'));
+      const button = await screen.findByTestId('bell-mark-all-read');
+      await user.click(button);
+
+      await waitFor(() => expect(button).toHaveAttribute('aria-busy', 'true'));
+      expect(button).toHaveAttribute('aria-disabled', 'true');
+
+      if (outcome === 'answers') reply.resolve({ count: 2 });
+      else reply.reject(new Error('offline'));
+      await waitFor(() => expect(button).not.toHaveAttribute('aria-busy'));
+      expect(button).not.toHaveAttribute('aria-disabled');
+    },
+  );
+
+  it.each(['answers', 'fails'] as const)(
+    'spins only the row being marked read until the server %s',
+    async (outcome) => {
+      const reply = deferred<{ ok: true }>();
+      vi.mocked(notificationsApi.markRead).mockReturnValue(reply.promise);
+      const user = userEvent.setup();
+      setup();
+      await user.click(screen.getByTestId('bell-trigger'));
+      const marked = await screen.findByTestId(`bell-mark-read-${NEWS_A}`);
+      const other = screen.getByTestId(`bell-mark-read-${NEWS_B}`);
+      await user.click(marked);
+
+      await waitFor(() => expect(marked).toHaveAttribute('aria-busy', 'true'));
+      expect(marked).toHaveAttribute('aria-disabled', 'true');
+      expect(other).not.toHaveAttribute('aria-busy');
+
+      if (outcome === 'answers') reply.resolve({ ok: true });
+      else reply.reject(new Error('offline'));
+      await waitFor(() => expect(marked).not.toHaveAttribute('aria-busy'));
+      expect(marked).not.toHaveAttribute('aria-disabled');
+    },
+  );
+
+  it('keeps the first row spinning when a second row is marked read before it answers', async () => {
+    const replyA = deferred<{ ok: true }>();
+    const replyB = deferred<{ ok: true }>();
+    vi.mocked(notificationsApi.markRead).mockImplementation((id) =>
+      id === NEWS_A ? replyA.promise : replyB.promise,
+    );
+    const user = userEvent.setup();
+    setup();
+    await user.click(screen.getByTestId('bell-trigger'));
+    const rowA = await screen.findByTestId(`bell-mark-read-${NEWS_A}`);
+    const rowB = screen.getByTestId(`bell-mark-read-${NEWS_B}`);
+    await user.click(rowA);
+    await waitFor(() => expect(rowA).toHaveAttribute('aria-busy', 'true'));
+    await user.click(rowB);
+
+    await waitFor(() => expect(rowB).toHaveAttribute('aria-busy', 'true'));
+    expect(rowA).toHaveAttribute('aria-busy', 'true');
+
+    replyA.resolve({ ok: true });
+    await waitFor(() => expect(rowA).not.toHaveAttribute('aria-busy'));
+    expect(rowB).toHaveAttribute('aria-busy', 'true');
+
+    replyB.resolve({ ok: true });
+    await waitFor(() => expect(rowB).not.toHaveAttribute('aria-busy'));
   });
 });

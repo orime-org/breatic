@@ -26,6 +26,8 @@ import { toast } from '@web/lib/toast';
 import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
 import { MiniToolPanelContainer } from '@web/spaces/canvas/mini-tool/MiniToolPanelContainer';
 import { hasInk } from '@web/spaces/canvas/mini-tool/paint-drawing';
+import { runOnce } from '@web/stores/task-actions-in-flight';
+import { miniToolIntent } from '@web/spaces/canvas/mini-tool/start-mini-tool-run';
 import { canvasSessions } from '@web/stores/canvas-session';
 import type { DrawOp } from '@web/stores/drawing-draft';
 
@@ -63,7 +65,7 @@ function source(content: string): CanvasNodeView[] {
       id: 'src',
       type: 'image',
       position: { x: 0, y: 0 },
-      data: { kind: 'image', handling: false, content, width: 1600, height: 1000 },
+      data: { handling: false, content, width: 1600, height: 1000 },
     },
   ];
 }
@@ -121,7 +123,43 @@ describe('MiniToolPanelContainer', () => {
   it('shows a press under way while the draft says it is exporting', () => {
     render(tree(source('a.png'), () => Promise.resolve()));
     act(() => canvasSessions.of('').getState().setMiniToolExporting(true, canvasSessions.of('').getState().panelSession));
-    expect(screen.getByTestId('mini-tool-run')).toBeDisabled();
+    const run = screen.getByTestId('mini-tool-run');
+    expect(run).toHaveAttribute('aria-busy', 'true');
+    expect(run).toHaveAttribute('aria-disabled', 'true');
+  });
+
+  // inner#1490: the press lives in the run-once registry, so a panel opened
+  // while it waits shows it under way and takes no press.
+  it('shows a press under way while the registry holds one for this tool and node', () => {
+    const onRun = vi.fn(() => Promise.resolve());
+    let release: (() => void) | undefined;
+    void runOnce(miniToolIntent('', 'src', 'image.rotate'), {
+      scope: 'mini-tool',
+      prepare: () =>
+        new Promise<null>((resolve) => {
+          release = () => resolve(null);
+        }),
+      send: vi.fn(),
+    });
+    render(tree(source('a.png'), onRun));
+    const run = screen.getByTestId('mini-tool-run');
+    expect(run).toHaveAttribute('aria-busy', 'true');
+    fireEvent.click(run);
+    expect(onRun).not.toHaveBeenCalled();
+    release?.();
+  });
+
+  it('stops waiting once the export is over, whichever way it went', () => {
+    // `startMiniToolRun` clears the flag in a `finally`, after a delivered
+    // export and a failed one alike.
+    render(tree(source('a.png'), () => Promise.resolve()));
+    const session = canvasSessions.of('').getState().panelSession;
+    act(() => canvasSessions.of('').getState().setMiniToolExporting(true, session));
+    const run = screen.getByTestId('mini-tool-run');
+    expect(run).toHaveAttribute('aria-busy', 'true');
+    act(() => canvasSessions.of('').getState().setMiniToolExporting(false, session));
+    expect(run).not.toHaveAttribute('aria-busy');
+    expect(run).not.toHaveAttribute('aria-disabled');
   });
 
   // A7: nothing to export yet, so nothing is started and the reader is told.
@@ -167,7 +205,7 @@ describe('MiniToolPanelContainer', () => {
     canvasSessions.of('').getState().openMiniTool('src', 'video.cut', { sourceContent: 'a.mp4', params: { range: null } });
     const onRun = vi.fn(() => Promise.resolve());
     const video: CanvasNodeView[] = [
-      { id: 'src', type: 'video', position: { x: 0, y: 0 }, data: { kind: 'video', handling: false, content: 'a.mp4', duration: 12 } },
+      { id: 'src', type: 'video', position: { x: 0, y: 0 }, data: { handling: false, content: 'a.mp4', duration: 12 } },
     ];
     render(tree(video, onRun));
     fireEvent.click(screen.getByTestId('mini-tool-run'));

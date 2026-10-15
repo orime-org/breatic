@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import * as React from 'react';
-import { Loader2 } from 'lucide-react';
 import { cardAction, getLocale } from '@breatic/shared';
 import type {
   BillingPeriod,
@@ -447,16 +446,10 @@ function TierCardAction({
       size='sm'
       className='w-full'
       disabled={busy || action === 'inProgress'}
+      loading={working}
       data-testid={`membership-choose-${tier}`}
       onClick={handleClick}
     >
-      {working ? (
-        <Loader2
-          data-testid='membership-choose-pending'
-          aria-hidden='true'
-          className='mr-2 h-3.5 w-3.5 animate-spin'
-        />
-      ) : null}
       {action === 'inProgress' ? inProgressLabel : label}
     </Button>
   );

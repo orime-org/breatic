@@ -1,0 +1,183 @@
+diff --git a/dist/index.cjs b/dist/index.cjs
+index d52a5260a7b9924b2865053ea1e8c6484225277b..030b595daf42f6b3534c637051e81c1d07060930 100644
+--- a/dist/index.cjs
++++ b/dist/index.cjs
+@@ -300,23 +300,15 @@ function restoreScrollStack(stack, dTop) {
+     if (dom.scrollLeft != left) dom.scrollLeft = left;
+   }
+ }
+-var preventScrollSupported = null;
+ function focusPreventScroll(dom) {
+   if (dom.setActive) return dom.setActive();
+-  if (preventScrollSupported) return dom.focus(preventScrollSupported);
++  // WebKit honours preventScroll and still scrolls an editable element to its
++  // selection as it takes the focus, so the positions are always put back.
+   var stored = scrollStack(dom);
+-  dom.focus(preventScrollSupported == null ? {
+-    get preventScroll() {
+-      preventScrollSupported = {
+-        preventScroll: true
+-      };
+-      return true;
+-    }
+-  } : undefined);
+-  if (!preventScrollSupported) {
+-    preventScrollSupported = false;
+-    restoreScrollStack(stored, 0);
+-  }
++  dom.focus({
++    preventScroll: true
++  });
++  restoreScrollStack(stored, 0);
+ }
+ function findOffsetInNode(node, coords) {
+   var closest;
+@@ -778,10 +770,16 @@ var ViewDesc = function () {
+         }
+       }
+       var atEnd;
+-      if (dom == this.dom && this.contentDOM) {
++      if (this.contentDOM && this.contentDOM != this.dom && this.dom.contains(this.contentDOM)) {
++        if (dom.contains(this.contentDOM)) {
++          var child = this.contentDOM;
++          while (child.parentNode != dom) child = child.parentNode;
++          atEnd = offset > domIndex(child);
++        } else {
++          atEnd = !!(dom.compareDocumentPosition(this.contentDOM) & 2);
++        }
++      } else if (dom == this.dom && this.contentDOM) {
+         atEnd = offset > domIndex(this.contentDOM);
+-      } else if (this.contentDOM && this.contentDOM != this.dom && this.dom.contains(this.contentDOM)) {
+-        atEnd = !!(dom.compareDocumentPosition(this.contentDOM) & 4);
+       } else if (this.dom.firstChild) {
+         if (offset == 0) for (var search = dom;; search = search.parentNode) {
+           if (search == this.dom) {
+@@ -2441,7 +2439,7 @@ function skipIgnoredNodesBefore(view) {
+       } else {
+         break;
+       }
+-    } else if (isBlockNode(node)) {
++    } else if (isBlockNode(node) || isBlockContent(node)) {
+       break;
+     } else {
+       var prev = node.previousSibling;
+@@ -2479,7 +2477,7 @@ function skipIgnoredNodesAfter(view) {
+       } else {
+         break;
+       }
+-    } else if (isBlockNode(node)) {
++    } else if (isBlockNode(node) || isBlockContent(node)) {
+       break;
+     } else {
+       var next = node.nextSibling;
+@@ -2505,6 +2503,13 @@ function isBlockNode(dom) {
+   var desc = dom.pmViewDesc;
+   return desc && desc.node && desc.node.isBlock;
+ }
++function isBlockContent(dom) {
++  for (var cur = dom.parentNode; cur; cur = cur.parentNode) {
++    var desc = cur.pmViewDesc;
++    if (desc) return desc.contentDOM == dom && !!desc.node && desc.node.isBlock;
++  }
++  return false;
++}
+ function textNodeAfter(node, offset) {
+   while (node && offset == node.childNodes.length && !hasBlockDesc(node)) {
+     offset = domIndex(node) + 1;
+diff --git a/dist/index.js b/dist/index.js
+index dc0d117b85e1da3eae915b4d8ff8e5e604683861..a49f58073f913e2019e5e180c8eee942ae9ed5ca 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -301,25 +301,14 @@ function restoreScrollStack(stack, dTop) {
+             dom.scrollLeft = left;
+     }
+ }
+-let preventScrollSupported = null;
+-// Feature-detects support for .focus({preventScroll: true}), and uses
+-// a fallback kludge when not supported.
+ function focusPreventScroll(dom) {
+     if (dom.setActive)
+         return dom.setActive(); // in IE
+-    if (preventScrollSupported)
+-        return dom.focus(preventScrollSupported);
++    // WebKit honours preventScroll and still scrolls an editable element to its
++    // selection as it takes the focus, so the positions are always put back.
+     let stored = scrollStack(dom);
+-    dom.focus(preventScrollSupported == null ? {
+-        get preventScroll() {
+-            preventScrollSupported = { preventScroll: true };
+-            return true;
+-        }
+-    } : undefined);
+-    if (!preventScrollSupported) {
+-        preventScrollSupported = false;
+-        restoreScrollStack(stored, 0);
+-    }
++    dom.focus({ preventScroll: true });
++    restoreScrollStack(stored, 0);
+ }
+ function findOffsetInNode(node, coords) {
+     let closest;
+@@ -846,11 +835,22 @@ class ViewDesc {
+         // parameter, to determine whether to return the position at the
+         // start or at the end of this view desc.
+         let atEnd;
+-        if (dom == this.dom && this.contentDOM) {
+-            atEnd = offset > domIndex(this.contentDOM);
++        if (this.contentDOM && this.contentDOM != this.dom && this.dom.contains(this.contentDOM)) {
++            // Compare the boundary point (dom, offset) with the content: inside
++            // an element holding the content, by the index of the child that
++            // holds it; elsewhere the content lies wholly before or after dom.
++            if (dom.contains(this.contentDOM)) {
++                let child = this.contentDOM;
++                while (child.parentNode != dom)
++                    child = child.parentNode;
++                atEnd = offset > domIndex(child);
++            }
++            else {
++                atEnd = !!(dom.compareDocumentPosition(this.contentDOM) & 2);
++            }
+         }
+-        else if (this.contentDOM && this.contentDOM != this.dom && this.dom.contains(this.contentDOM)) {
+-            atEnd = !!(dom.compareDocumentPosition(this.contentDOM) & 4);
++        else if (dom == this.dom && this.contentDOM) {
++            atEnd = offset > domIndex(this.contentDOM);
+         }
+         else if (this.dom.firstChild) {
+             if (offset == 0)
+@@ -2551,7 +2551,7 @@ function skipIgnoredNodesBefore(view) {
+                 break;
+             }
+         }
+-        else if (isBlockNode(node)) {
++        else if (isBlockNode(node) || isBlockContent(node)) {
+             break;
+         }
+         else {
+@@ -2600,7 +2600,7 @@ function skipIgnoredNodesAfter(view) {
+                 break;
+             }
+         }
+-        else if (isBlockNode(node)) {
++        else if (isBlockNode(node) || isBlockContent(node)) {
+             break;
+         }
+         else {
+@@ -2630,6 +2630,17 @@ function isBlockNode(dom) {
+     let desc = dom.pmViewDesc;
+     return desc && desc.node && desc.node.isBlock;
+ }
++// The content element of a block node view. What the view draws around
++// it (a checkbox, a badge) holds no cursor positions, so skipping
++// uneditable elements stops at its edge.
++function isBlockContent(dom) {
++    for (let cur = dom.parentNode; cur; cur = cur.parentNode) {
++        let desc = cur.pmViewDesc;
++        if (desc)
++            return desc.contentDOM == dom && !!desc.node && desc.node.isBlock;
++    }
++    return false;
++}
+ function textNodeAfter(node, offset) {
+     while (node && offset == node.childNodes.length && !hasBlockDesc(node)) {
+         offset = domIndex(node) + 1;

@@ -46,7 +46,7 @@ export function ArchivedBanner({ projectId, canRestore }: ArchivedBannerProps): 
           type='button'
           variant='outline'
           size='sm'
-          disabled={pending}
+          loading={pending}
           onClick={onRestore}
         >
           {t('project.archived.restore')}

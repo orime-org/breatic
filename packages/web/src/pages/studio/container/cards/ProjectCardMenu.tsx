@@ -111,8 +111,16 @@ export function ProjectCardMenu({ project, placement = 'card' }: ProjectCardMenu
   const { duplicate, archive, restore } = actions;
   // Wrapped so the menu's event never reaches `mutate` as its variables.
   const runDuplicate = React.useCallback((): void => duplicate(), [duplicate]);
-  const runArchive = React.useCallback((): void => archive(), [archive]);
+  const runArchive = React.useCallback(
+    (): void => archive({ onSuccess: () => setConfirmingArchive(false) }),
+    [archive],
+  );
   const runRestore = React.useCallback((): void => restore(), [restore]);
+  const { leave } = leaving;
+  const runLeave = React.useCallback(
+    (): void => leave({ onSuccess: () => setConfirmingLeave(false) }),
+    [leave],
+  );
 
   const closeCrop = React.useCallback((): void => {
     setPicked(null);
@@ -213,6 +221,7 @@ export function ProjectCardMenu({ project, placement = 'card' }: ProjectCardMenu
             onOpenChange={setRenaming}
             currentName={project.name}
             onRename={renameTo}
+            pending={rename.isPending}
           />
         </>
       ) : null}
@@ -222,6 +231,7 @@ export function ProjectCardMenu({ project, placement = 'card' }: ProjectCardMenu
           onOpenChange={setConfirmingArchive}
           name={project.name}
           onConfirm={runArchive}
+          pending={actions.archiving}
         />
       ) : null}
       {project.canLeave ? (
@@ -229,7 +239,7 @@ export function ProjectCardMenu({ project, placement = 'card' }: ProjectCardMenu
           open={confirmingLeave}
           onOpenChange={setConfirmingLeave}
           name={project.name}
-          onConfirm={leaving.leave}
+          onConfirm={runLeave}
           pending={leaving.pending}
         />
       ) : null}

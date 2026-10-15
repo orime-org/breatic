@@ -56,6 +56,7 @@ import {
   readCanvasGraph,
 } from '@web/data/yjs/canvas-space';
 import { _resetForTests, docName, getDoc } from '@web/data/yjs/manager';
+import type { AudioNodeView } from '@web/data/yjs/node-view';
 import { canvasApi } from '@web/data/api/canvas';
 import { modelsApi } from '@web/data/api';
 import {
@@ -346,7 +347,8 @@ function textSource(id: string, body: string): BoardExtras {
     nodes: [
       {
         id,
-        data: { kind: 'text', handling: false, name: 'Lines' },
+        type: 'text',
+        data: { handling: false, name: 'Lines' },
       } as Parameters<typeof AudioGeneratePanelContainer>[0]['nodes'][number],
     ],
     edges: [{ id: `e-${id}`, source: id, target: 'target' }],
@@ -389,9 +391,8 @@ function panelTree(
             nodes={[
               {
                 id: 'target',
-                data: { kind: 'audio', handling: false, ...nodeData } as Parameters<
-                  typeof AudioGeneratePanelContainer
-                >[0]['nodes'][number]['data'],
+                type: 'audio',
+                data: { handling: false, ...nodeData } as AudioNodeView,
               },
               ...(board.nodes ?? []),
             ]}
@@ -733,10 +734,99 @@ describe('AudioGeneratePanelContainer — submitting', () => {
     typePrompt('Good evening.');
     fireEvent.click(screen.getByTestId('generate-audio-execute'));
 
-    await screen.findByTestId('generate-audio-execute-pending');
-    expect(screen.getByTestId('generate-audio-execute')).toBeDisabled();
+    const btn = screen.getByTestId('generate-audio-execute');
+    await waitFor(() => expect(btn).toHaveAttribute('aria-busy', 'true'));
+    expect(btn).toHaveAttribute('aria-disabled', 'true');
 
     settle?.();
+  });
+
+  // inner#1490: the press is held outside the panel, so a reopened panel
+  // shows it still waiting and a second press sends nothing.
+  it('keeps the press waiting across closing and reopening the panel', async () => {
+    let finish: (() => void) | undefined;
+    const create = vi.spyOn(canvasApi, 'createTask').mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finish = () => resolve({} as never);
+        }),
+    );
+    await openPanel({
+      model: 'elevenlabs-v3',
+      paramsByModel: { 'elevenlabs-v3': { voice_id: 'Aria' } },
+    });
+    typePrompt('Good evening.');
+    fireEvent.click(screen.getByTestId('generate-audio-execute'));
+    await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
+    const kind = canvasSessions.of('s').getState().panelKind;
+    act(() => {
+      canvasSessions.of('s').getState().closeActivePanel();
+    });
+    act(() => {
+      canvasSessions.of('s').getState().openGeneratePanel('target', 'audio');
+    });
+    const reopened = await screen.findByTestId('generate-audio-execute');
+    await waitFor(() => expect(reopened).toHaveAttribute('aria-busy', 'true'));
+    fireEvent.click(reopened);
+    expect(create).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      finish?.();
+    });
+    expect(kind).toBe('generateAudio');
+    expect(canvasSessions.of('s').getState().panelHostId).toBeNull();
+  });
+
+  it('stops waiting once a refused submit is answered', async () => {
+    let refuse: (() => void) | undefined;
+    vi.spyOn(canvasApi, 'createTask').mockImplementation(
+      () =>
+        new Promise((_resolve, reject) => {
+          refuse = () => reject(new Error('refused'));
+        }),
+    );
+    await openPanel({
+      model: 'elevenlabs-v3',
+      paramsByModel: { 'elevenlabs-v3': { voice_id: 'Aria' } },
+    });
+    typePrompt('Good evening.');
+    const btn = screen.getByTestId('generate-audio-execute');
+    fireEvent.click(btn);
+    await waitFor(() => expect(btn).toHaveAttribute('aria-busy', 'true'));
+
+    await act(async () => {
+      refuse?.();
+      await Promise.resolve();
+    });
+
+    await waitFor(() => expect(btn).not.toHaveAttribute('aria-busy'));
+    expect(btn).not.toHaveAttribute('aria-disabled');
+  });
+
+  it('closes the panel, spinner and all, once an accepted submit is answered', async () => {
+    let accept: (() => void) | undefined;
+    vi.spyOn(canvasApi, 'createTask').mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          accept = () => resolve({} as never);
+        }),
+    );
+    await openPanel({
+      model: 'elevenlabs-v3',
+      paramsByModel: { 'elevenlabs-v3': { voice_id: 'Aria' } },
+    });
+    typePrompt('Good evening.');
+    const btn = screen.getByTestId('generate-audio-execute');
+    fireEvent.click(btn);
+    await waitFor(() => expect(btn).toHaveAttribute('aria-busy', 'true'));
+
+    await act(async () => {
+      accept?.();
+      await Promise.resolve();
+    });
+
+    await waitFor(() =>
+      expect(screen.queryByTestId('generate-audio-execute')).toBeNull(),
+    );
   });
 
   it('refuses on a locked node', async () => {

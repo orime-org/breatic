@@ -30,6 +30,7 @@ const { wsInstances, providerInstances } = vi.hoisted(() => ({
 vi.mock('@hocuspocus/provider', () => ({
   HocuspocusProviderWebsocket: class {
     destroy = vi.fn();
+    on = vi.fn();
     constructor() {
       wsInstances.push(this);
     }
@@ -61,6 +62,9 @@ vi.mock('@hocuspocus/provider', () => ({
     }
   },
 }));
+
+vi.mock('@web/data/yjs/collab-failure-report', () => ({ reportCollabFailure: vi.fn() }));
+import { reportCollabFailure } from '@web/data/yjs/collab-failure-report';
 
 import { CollabSocketProvider } from '@web/data/yjs/collab-socket';
 import { useSocket } from '@web/data/yjs/use-socket';
@@ -207,6 +211,24 @@ describe('useSocket — attach a doc to the shared socket via the manager', () =
     expect(result.current.synced).toBe(false);
     expect(result.current.status).toBe('disconnected');
     expect(result.current.hasEverSynced).toBe(true);
+  });
+
+  it('leaves reporting a dropped connection to the shared socket', () => {
+    // One connection carries every open document; each document hearing the
+    // close and reporting it turned one drop into a dozen alerts.
+    vi.mocked(reportCollabFailure).mockClear();
+    const doc = new Y.Doc();
+    const name = 'project-p1/document-s4';
+    const { result } = renderHook(() => useSocket({ name, doc }), {
+      wrapper: wrapper('u1'),
+    });
+
+    act(() => {
+      providerInstances[0]!.emit('close', { event: { code: 1006 } });
+    });
+
+    expect(result.current.status).toBe('disconnected');
+    expect(reportCollabFailure).not.toHaveBeenCalled();
   });
 
   it('does not call it a disconnect when collab closes the document to re-check it', () => {

@@ -27,9 +27,10 @@ import { mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { test, expect, type BrowserContext, type Page } from 'playwright/test';
+import { expect, type BrowserContext, type Page } from 'playwright/test';
+import { test } from '../helpers/slot';
 
-import { STATE_FILE, openSmokeProject } from '../helpers/project';
+import { openSmokeProject } from '../helpers/project';
 import { createSpace, deleteSpace, visibleSpace, VISIBLE_SPACE } from '../helpers/space';
 import { dropFile } from '../helpers/upload';
 
@@ -58,10 +59,14 @@ const TINY_PNG = Buffer.from(
   'base64',
 );
 
-/** Every image node's `src` currently on the canvas. */
+/**
+ * Every image node's `src` currently on the canvas, one per node: zoomed past
+ * the preview, a node lays the original over it as a second img, and the
+ * node's own picture is the one with this test id.
+ */
 async function imageSources(target: Page): Promise<string[]> {
   return target.evaluate((space: string) =>
-    [...document.querySelectorAll(`${space} .react-flow__node img`)].map(
+    [...document.querySelectorAll(`${space} .react-flow__node img[data-testid="image-node-img"]`)].map(
       (img) => (img as HTMLImageElement).src,
     ), VISIBLE_SPACE);
 }
@@ -124,7 +129,7 @@ async function videoSources(target: Page): Promise<string[]> {
 }
 
 test.beforeEach(async ({ browser }) => {
-  context = await browser.newContext({ storageState: STATE_FILE.A });
+  context = await browser.newContext();
   page = await context.newPage();
 
   // Reuse an existing Project: this spec is about uploads, and minting one per

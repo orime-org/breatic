@@ -14,9 +14,11 @@
  * The same file checks the reply formats the prompt asks for, since both are
  * about what the model writes and both need a real turn to show.
  */
-import { expect, test, type Page } from 'playwright/test';
+import { expect, type Page } from 'playwright/test';
+import { test } from '../helpers/slot';
+import { startNewConversation } from '../helpers/conversation';
 
-import { STATE_FILE, openSmokeProject } from '../helpers/project';
+import { openSmokeProject } from '../helpers/project';
 import { createSpace, deleteSpace, visibleSpace, DOCUMENT_EDITOR } from '../helpers/space';
 
 let page: Page;
@@ -52,7 +54,7 @@ async function toolsUsed(p: Page): Promise<string[]> {
  * @returns The reply's bubble.
  */
 async function ask(p: Page, question: string): Promise<ReturnType<Page['getByTestId']>> {
-  await p.getByTestId('new-conversation').click();
+  await startNewConversation(p);
   await expect(p.getByTestId('message-bubble')).toHaveCount(0, { timeout: 20_000 });
   const composer = p.getByTestId('chat-composer-box');
   await composer.fill(question);
@@ -64,7 +66,6 @@ async function ask(p: Page, question: string): Promise<ReturnType<Page['getByTes
 
 test.beforeEach(async ({ browser }) => {
   page = await browser.newPage({
-    storageState: STATE_FILE.A,
     viewport: { width: 1500, height: 900 },
   });
   await openSmokeProject(page);

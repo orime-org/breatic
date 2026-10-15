@@ -1,6 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
+import type { TaskStatus } from '@web/spaces/canvas/tasks/TaskStatusDot';
+
 /**
  * Canvas zoom at and above which screen-anchored overlays keep a constant
  * screen size; below it they stop growing and shrink with the canvas instead.
@@ -55,12 +57,37 @@ const COUNTS_COLUMN_WIDTH =
   COUNTS_CELL_MARK + COUNTS_CELL_PADDING * 2 + COUNTS_CELL_BORDER * 2;
 
 /**
+ * The counts column, top to bottom. The order is the task's own lifecycle:
+ * what is happening now, then the three ways it can end.
+ */
+export const TASK_COUNT_ORDER: readonly TaskStatus[] = ['running', 'done', 'failed', 'expired'];
+
+/** The screen gap between two cells of the column (`gap-1`). */
+const COUNTS_CELL_GAP = 4;
+
+/**
  * Screen gap between the node's edge and the column. It counter-scales with
  * the column so the two read as one piece: measured in flow units it grew
  * with the canvas and pulled the column away from the node it belongs to
  * (user 2026-09-06).
  */
 const COUNTS_COLUMN_GAP = 8;
+
+/**
+ * The farthest the counts column reaches past a node's right edge in flow
+ * coordinates, at any zoom: its screen width over the counter-scale floor,
+ * which is where the column stops shrinking with the canvas.
+ */
+export const COUNTS_COLUMN_FLOW_REACH = (COUNTS_COLUMN_GAP + COUNTS_COLUMN_WIDTH) / OVERLAY_SCALE_FLOOR_ZOOM;
+
+/**
+ * The farthest the counts column reaches below a node's top edge in flow
+ * coordinates, at any zoom: every state's cell stacked, square cells, over the
+ * counter-scale floor.
+ */
+export const COUNTS_COLUMN_FLOW_DEPTH =
+  (TASK_COUNT_ORDER.length * COUNTS_COLUMN_WIDTH + (TASK_COUNT_ORDER.length - 1) * COUNTS_CELL_GAP) /
+  OVERLAY_SCALE_FLOOR_ZOOM;
 
 /** Gap the reader sees between the column and whatever is anchored past it. */
 const CLEARANCE = 8;

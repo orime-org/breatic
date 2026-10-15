@@ -92,6 +92,16 @@ export type StoredMessageMetadata = {
   ts: string;
 };
 
+/**
+ * What a model was given for one tool call: the two arms of the SDK's tool
+ * result union that every provider takes and that stay the same across SDK
+ * versions. Declared here rather than taken from `ai`, which this package
+ * does not depend on.
+ */
+export type StoredModelOutput =
+  | { type: "text"; value: string }
+  | { type: "json"; value: unknown };
+
 export type MessagePart =
   | { type: "text"; text: string }
   /**
@@ -137,18 +147,28 @@ export type MessagePart =
       /** How far this use of the tool got. */
       status: "pending" | "success" | "error";
       /**
-       * What the tool returned, as the tool returned it.
+       * What the tool returned, as the tool returned it -- what the panel
+       * draws from.
        *
-       * Whatever the tool's own return type is: the search tools answer with
-       * prose, the four interaction tools answer with the object the panel
-       * needs to draw their question. Narrowing this to a string would be a
-       * type that disagrees with the rows already in the table -- and the
-       * disagreement shows up two turns later, when the history goes back to
-       * the model in the wrong arm of its output union.
+       * Whatever the tool's own return type is, usually the structured object
+       * the panel draws from. Narrowing this to a string would be a type that
+       * disagrees with the rows already in the table.
        *
        * Absent while the status is still `pending`.
        */
       output?: unknown;
+      /**
+       * What the model was given for this call, computed once when the turn
+       * was written down. Replay hands this back as it is, so a change to a
+       * tool's output type cannot change what an older conversation shows the
+       * model.
+       *
+       * Written on every `success` part this code stores. Rows written before
+       * this field existed have none: a string `output` goes back as it was,
+       * since that string is what the model read, and a structured one as a
+       * note saying the result is no longer available.
+       */
+      forModel?: StoredModelOutput;
       /**
        * Why it ended with nothing to show. Set only when the status is
        * `error`, and written on every such part this code stores.
@@ -466,6 +486,10 @@ export type CreditLotLifecycle =
  * paying it down. Both carry a negative amount: `debt_incurred` says credits
  * were consumed that no lot supplied, `debt_repayment` says a lot supplied
  * them after the fact.
+ *
+ * `refund_reversed` puts back what a `refund` row took out, when the buyer
+ * takes the credits instead of money after a refund failed (0 when the lot
+ * was never booked).
  */
 export type CreditLedgerEntryType =
   | "topup"
@@ -473,7 +497,8 @@ export type CreditLedgerEntryType =
   | "refund"
   | "refund_rejected"
   | "debt_incurred"
-  | "debt_repayment";
+  | "debt_repayment"
+  | "refund_reversed";
 
 /**
  * One top-up, tracked for the rest of its life.

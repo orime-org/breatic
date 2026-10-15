@@ -20,10 +20,10 @@
  *   - `createdAt` on an annotation is an epoch-ms `number` (the wire's
  *     canonical timestamp), not an ISO string.
  *
- * `kind` is the view discriminant; it carries the same string values as
- * wire `type`. Every wire `type` now has a view (the 6 content modalities,
- * `annotation`, and `group`); `toNodeView` returns `null` only for a dirty
- * or unknown `type`.
+ * The node's type lives once, on the node: `toNodeView` pairs the wire `type`
+ * with its view (`TypedNodeView`), and checking `type` narrows `data`. Every
+ * wire `type` has a view (the 6 content modalities, `annotation`, and
+ * `group`); `toNodeView` returns `null` only for a dirty or unknown `type`.
  *
  * Content views also project the Generate panel's inputs (model /
  * paramsByModel / mode / modelByMode); the prompts are fragments, read
@@ -37,13 +37,11 @@ import type {
   CanvasNodeFields,
   FocusImage,
   NodeTaskCounts,
+  NodeType,
 } from '@breatic/shared';
 
 /** The 6 content modalities that own a renderable payload. */
 export type Modality = 'text' | 'image' | 'audio' | 'video' | '3d' | 'web';
-
-/** Every kind the canvas node components render: the 6 content + annotation + group. */
-export type NodeKind = Modality | 'annotation' | 'group';
 
 /** Fields shared by every node view (content + annotation). */
 interface NodeViewCommon {
@@ -188,18 +186,15 @@ interface ContentNodeViewBase extends NodeViewCommon {
   focusImages?: FocusImage[];
 }
 
-export interface TextNodeView extends ContentNodeViewBase {
-  kind: 'text';
-  // No body here, on purpose (#1774). The text is a shared fragment on the
-  // node, and keeping it out of this projection is what makes a keystroke
-  // change nothing the canvas compares — so no OTHER node re-renders while
-  // somebody types. The node being typed in does re-render, by construction:
-  // it subscribes to its own body. Whoever displays it subscribes through
-  // `useTextBody`.
-}
+// No body here, on purpose (#1774). The text is a shared fragment on the
+// node, and keeping it out of this projection is what makes a keystroke
+// change nothing the canvas compares — so no OTHER node re-renders while
+// somebody types. The node being typed in does re-render, by construction:
+// it subscribes to its own body. Whoever displays it subscribes through
+// `useTextBody`.
+export type TextNodeView = ContentNodeViewBase;
 
 export interface ImageNodeView extends ContentNodeViewBase {
-  kind: 'image';
   /** Image asset URL. */
   content?: string;
   /**
@@ -212,7 +207,6 @@ export interface ImageNodeView extends ContentNodeViewBase {
 }
 
 export interface AudioNodeView extends ContentNodeViewBase {
-  kind: 'audio';
   /** Audio asset URL. */
   content?: string;
   /** Duration in seconds. */
@@ -220,7 +214,6 @@ export interface AudioNodeView extends ContentNodeViewBase {
 }
 
 export interface VideoNodeView extends ContentNodeViewBase {
-  kind: 'video';
   /** Video asset URL. */
   content?: string;
   /** Poster / first-frame thumbnail URL. */
@@ -233,19 +226,16 @@ export interface VideoNodeView extends ContentNodeViewBase {
 }
 
 export interface ThreeDNodeView extends ContentNodeViewBase {
-  kind: '3d';
   /** .glb / .gltf / .usdz model URL. */
   content?: string;
 }
 
 export interface WebNodeView extends ContentNodeViewBase {
-  kind: 'web';
   /** External page URL embedded in a sandboxed iframe. */
   content?: string;
 }
 
 export interface AnnotationNodeView extends NodeViewCommon {
-  kind: 'annotation';
   /** Message body. */
   content: string;
   /** Author user id (sticky, set at creation; never transferred). */
@@ -265,7 +255,6 @@ export interface AnnotationNodeView extends NodeViewCommon {
  * dedicated group slice. This view carries what the container renders.
  */
 export interface GroupNodeView extends NodeViewCommon {
-  kind: 'group';
   /** Group display name shown in the group header (default "Group"). */
   name?: string;
   /**
@@ -289,8 +278,45 @@ export type ContentNodeView =
   | ThreeDNodeView
   | WebNodeView;
 
-/** Discriminated union of every renderable node view. */
+/** Any node's view. Which one it is comes from the node's `type`. */
 export type NodeView = ContentNodeView | AnnotationNodeView | GroupNodeView;
+
+/** The view each node type renders: one entry per `NodeType` (a missing one fails `TypedNodeView`). */
+export interface NodeViewOf {
+  text: TextNodeView;
+  image: ImageNodeView;
+  audio: AudioNodeView;
+  video: VideoNodeView;
+  '3d': ThreeDNodeView;
+  web: WebNodeView;
+  annotation: AnnotationNodeView;
+  group: GroupNodeView;
+}
+
+/** A node's type paired with its view: checking `type` narrows `data`. */
+export type TypedNodeView = { [T in NodeType]: { type: T; data: NodeViewOf[T] } }[NodeType];
+
+/**
+ * A node by id with its type and view. A function that tells node types apart
+ * takes this: `Pick` / `Omit` over `CanvasNodeView` do not distribute over the
+ * union, so they lose the pairing of `type` and `data`.
+ */
+export type NodeRef = TypedNodeView & { id: string };
+
+/**
+ * Reads an xyflow node as the typed view it was built from.
+ *
+ * Every flow node on the canvas is built from `toNodeView`'s result
+ * (`canvas-space.ts`), which drops an unknown `type`, so the cast holds; xyflow
+ * only types `type` as a string and `data` loosely.
+ * @param node - The xyflow node, or its props.
+ * @param node.type - Its type.
+ * @param node.data - Its view.
+ * @returns Its type paired with its view.
+ */
+export function typedViewOf(node: { type?: string; data: unknown }): TypedNodeView {
+  return { type: node.type, data: node.data } as TypedNodeView;
+}
 
 /**
  * Whether a task is writing to this node (inner#888 §7.8): anything still
@@ -312,9 +338,9 @@ export function deriveHandling(
  * only for a dirty / unknown `type` — the caller treats `null` as "skip
  * this node" rather than crashing.
  * @param fields - The wire node fields read from the canvas Yjs doc.
- * @returns The matching node view, or `null` when the type is unknown.
+ * @returns The type paired with its view, or `null` when the type is unknown.
  */
-export function toNodeView(fields: CanvasNodeFields): NodeView | null {
+export function toNodeView(fields: CanvasNodeFields): TypedNodeView | null {
   const { type, data } = fields;
   const locked = data.locked;
   // Common content-view fields: the editable name (node name header), the
@@ -355,76 +381,73 @@ export function toNodeView(fields: CanvasNodeFields): NodeView | null {
   };
   switch (type) {
     case 'text':
-      return { kind: 'text', ...contentCommon };
+      return { type: 'text', data: { ...contentCommon } };
     case 'image':
       return {
-        kind: 'image',
-        content: data.content,
-        width: data.mediaWidth,
-        height: data.mediaHeight,
-        ...contentCommon,
+        type: 'image',
+        data: {
+          content: data.content,
+          width: data.mediaWidth,
+          height: data.mediaHeight,
+          ...contentCommon,
+        },
       };
     case 'audio':
-      return { kind: 'audio', content: data.content, duration: data.duration, ...contentCommon };
+      return { type: 'audio', data: { content: data.content, duration: data.duration, ...contentCommon } };
     case 'video':
       return {
-        kind: 'video',
-        content: data.content,
-        coverUrl: data.coverUrl,
-        duration: data.duration,
-        width: data.mediaWidth,
-        height: data.mediaHeight,
-        ...contentCommon,
+        type: 'video',
+        data: {
+          content: data.content,
+          coverUrl: data.coverUrl,
+          duration: data.duration,
+          width: data.mediaWidth,
+          height: data.mediaHeight,
+          ...contentCommon,
+        },
       };
     case '3d':
-      return { kind: '3d', content: data.content, ...contentCommon };
+      return { type: '3d', data: { content: data.content, ...contentCommon } };
     case 'web':
-      return { kind: 'web', content: data.content, ...contentCommon };
+      return { type: 'web', data: { content: data.content, ...contentCommon } };
     case 'annotation':
       return {
-        kind: 'annotation',
-        content: data.content ?? '',
-        createdBy: data.createdBy,
-        createdAt: data.createdAt,
-        editedAt: data.editedAt,
-        // Oldest first, settled here rather than in the document. Two people
-        // replying in the same sync window converge on an order Yjs decides
-        // from their client ids: measured on yjs 13.6.32, the same pair of
-        // pushes lands `newer, older` one way round and `older, newer` with
-        // the ids swapped. The id breaks a tie so two boards agree when the
-        // stamps do.
-        //
-        // `?? []` narrows what the document hands back, not a sticky without
-        // a container: every sticky is born holding one (`buildDataMap`), and
-        // nothing removes it.
-        replies: [...(data.replies ?? [])].sort(
-          (a, b) => a.createdAt - b.createdAt || (a.id < b.id ? -1 : 1),
-        ),
-        locked,
+        type: 'annotation',
+        data: {
+          content: data.content ?? '',
+          createdBy: data.createdBy,
+          createdAt: data.createdAt,
+          editedAt: data.editedAt,
+          // Oldest first, settled here rather than in the document. Two people
+          // replying in the same sync window converge on an order Yjs decides
+          // from their client ids: measured on yjs 13.6.32, the same pair of
+          // pushes lands `newer, older` one way round and `older, newer` with
+          // the ids swapped. The id breaks a tie so two boards agree when the
+          // stamps do.
+          //
+          // `?? []` narrows what the document hands back, not a sticky without
+          // a container: every sticky is born holding one (`buildDataMap`), and
+          // nothing removes it.
+          replies: [...(data.replies ?? [])].sort(
+            (a, b) => a.createdAt - b.createdAt || (a.id < b.id ? -1 : 1),
+          ),
+          locked,
+        },
       };
     case 'group':
       return {
-        kind: 'group',
-        name: data.name,
-        width: data.width,
-        height: data.height,
-        backgroundColor: data.backgroundColor,
-        locked,
+        type: 'group',
+        data: {
+          name: data.name,
+          width: data.width,
+          height: data.height,
+          backgroundColor: data.backgroundColor,
+          locked,
+        },
       };
     default:
       return null;
   }
-}
-
-/**
- * Narrows a {@link NodeView} to the 6 content modalities, excluding the
- * annotation sticky. Useful where only content nodes are valid mini-tool
- * sources.
- * @param view - The node view to test.
- * @returns True when the view is a content node (i.e. not an annotation).
- */
-export function isContentNodeView(view: NodeView): view is ContentNodeView {
-  return view.kind !== 'annotation';
 }
 
 /**
