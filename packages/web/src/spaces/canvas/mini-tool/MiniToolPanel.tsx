@@ -32,6 +32,7 @@ import { Textarea } from '@web/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tooltip';
 import { useTranslation } from '@web/i18n/use-translation';
 import { CanvasPanel } from '@web/spaces/canvas/_shared/CanvasPanel';
+import { useCanvasSession } from '@web/spaces/canvas/canvas-context';
 import { SlotTool, type SlotPick } from '@web/spaces/canvas/generate/generate-tools';
 import type { ModelControl } from '@web/spaces/canvas/generate/model-controls';
 import { ModelParamControls } from '@web/spaces/canvas/generate/ModelParamControls';
@@ -82,15 +83,10 @@ export interface MiniToolPanelProps {
   refusal: MiniToolRefusal;
   onRun: () => void;
   onClose: () => void;
-  /**
-   * An expand tool's ratio presets: the one in use, which fit under the
-   * model's cap, whether the panel's own press is exporting (as the frame
-   * reads it), and the setter.
-   */
+  /** An expand tool's ratio presets: the one in use, which fit under the model's cap, and the setter. */
   expand?: {
     ratio: ExpandRatio;
     fits: (ratio: ExpandRatio) => boolean;
-    exporting: boolean;
     onRatio: (ratio: ExpandRatio) => void;
   };
 }
@@ -110,7 +106,8 @@ const ExpandRatioGroup = React.memo(function ExpandRatioGroup({
   expand: NonNullable<MiniToolPanelProps['expand']>;
 }): React.JSX.Element {
   const t = useTranslation();
-  const { exporting } = expand;
+  // The draft's own export, as the frame and the drawing controls read it.
+  const exporting = useCanvasSession((s) => s.miniTool?.exporting ?? false);
   return (
     <div>
       <p className='mb-1.5 text-xs font-medium text-muted-foreground'>{t('canvas.miniTool.param.aspect.label')}</p>

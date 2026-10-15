@@ -254,13 +254,12 @@ function OpenMiniToolPanel({
     return {
       ratio: expandRatio,
       fits: (ratio: ExpandRatio): boolean => ratioFits(ratio, size, expandCapOf(entry)),
-      exporting: draftExporting,
       onRatio: (ratio: ExpandRatio): void => {
         const frame = sessionStore.getState().miniTool?.expand?.frame;
         if (frame !== undefined) setExpand({ frame: frameForRatio(ratio, size, frame), ratio });
       },
     };
-  }, [expandRatio, sourceWidth, sourceHeight, entry, draftExporting, setExpand, sessionStore]);
+  }, [expandRatio, sourceWidth, sourceHeight, entry, setExpand, sessionStore]);
 
   // The source took new content while the panel was open: whatever was
   // measured on the old one is reset, and the reader is told (§7.2).
