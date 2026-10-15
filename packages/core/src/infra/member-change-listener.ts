@@ -25,7 +25,7 @@ import { CANONICAL_UUID } from "@core/db/canonical-uuid.js";
 /** The channel the 0095 trigger notifies on. */
 export const PROJECT_MEMBER_CHANGED_CHANNEL = "project_member_changed";
 
-/** The channel {@link probeMemberListen} round-trips on. */
+/** The channel a listener's `probe` round-trips on. */
 const PROBE_CHANNEL = "project_member_listen_probe";
 
 /** One changed membership row. */
@@ -48,15 +48,17 @@ export interface MemberChangeHandlers {
 export interface MemberChangeListener {
   /** Stop delivering; nothing reaches the handlers afterwards. */
   stop: () => Promise<void>;
+  /**
+   * Whether this listener receives notifications right now: send a random
+   * nonce on the probe channel and wait for it to come back.
+   */
+  probe: (timeoutMs: number) => Promise<boolean>;
 }
 
 const changeSchema = z.object({
   projectId: z.string().regex(CANONICAL_UUID),
   userId: z.string().regex(CANONICAL_UUID),
 });
-
-/** Probe nonces waiting to come back, for the listener that is running. */
-let probes: Map<string, () => void> | null = null;
 
 /**
  * Read one notification payload.
@@ -100,47 +102,49 @@ export async function listenProjectMemberChanges(
   await rawPg.listen(PROBE_CHANNEL, (nonce) => {
     if (!stopped) pending.get(nonce)?.();
   });
-  probes = pending;
+
+  /**
+   * Round-trip one nonce through the listen connection.
+   * @param timeoutMs - How long to wait for it once it has been sent.
+   * @returns True when it came back in time; false when it did not, when the
+   *   listener is stopped, or when the send failed.
+   */
+  const probe = async (timeoutMs: number): Promise<boolean> => {
+    if (stopped) return false;
+    const nonce = randomUUID();
+    let received = false;
+    const arrived = new Promise<void>((resolve) => {
+      pending.set(nonce, () => {
+        received = !stopped;
+        resolve();
+      });
+    });
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await rawPg.notify(PROBE_CHANNEL, nonce);
+      // The wait starts once the nonce is sent, so it measures delivery over
+      // the listen connection, not queueing for a pool connection.
+      await Promise.race([
+        arrived,
+        new Promise<void>((resolve) => {
+          timer = setTimeout(resolve, timeoutMs);
+        }),
+      ]);
+    } catch {
+      return false;
+    } finally {
+      clearTimeout(timer);
+      pending.delete(nonce);
+    }
+    return received;
+  };
+
   return {
     stop: async () => {
       stopped = true;
-      if (probes === pending) probes = null;
       for (const resolve of pending.values()) resolve();
       pending.clear();
     },
+    probe,
   };
-}
-
-/**
- * Whether the running listener receives notifications right now: send a
- * random nonce on the probe channel and wait for it to come back.
- * @param timeoutMs - How long to wait.
- * @returns True when it came back in time; false when it did not, when no
- *   listener is running, or when the send failed.
- */
-export async function probeMemberListen(timeoutMs: number): Promise<boolean> {
-  const pending = probes;
-  if (pending === null) return false;
-  const nonce = randomUUID();
-  let received = false;
-  const arrived = new Promise<void>((resolve) => {
-    pending.set(nonce, () => {
-      received = probes === pending;
-      resolve();
-    });
-  });
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const timedOut = new Promise<void>((resolve) => {
-    timer = setTimeout(resolve, timeoutMs);
-  });
-  try {
-    await rawPg.notify(PROBE_CHANNEL, nonce);
-    await Promise.race([arrived, timedOut]);
-  } catch {
-    return false;
-  } finally {
-    clearTimeout(timer);
-    pending.delete(nonce);
-  }
-  return received;
 }

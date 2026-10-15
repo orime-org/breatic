@@ -19,22 +19,12 @@
  *
  *   pnpm --filter @breatic/web test:smoke member-revocation
  */
-import { expect, type APIRequestContext, type Browser, type BrowserContext, type Page } from 'playwright/test';
+import { expect, type Browser, type BrowserContext, type Page } from 'playwright/test';
 import { test, stateFile } from '../helpers/slot';
 
 import { credentialsFor } from '../helpers/credentials';
+import { dataOf } from '../helpers/api';
 import { CANVAS_SPACE, liveModuleUrl } from '../helpers/live-module';
-
-/**
- * Read a `{ data }` envelope, failing with the server's words when the call did.
- * @param res - The response.
- * @param label - What the call was, for the failure message.
- * @returns The data.
- */
-async function dataOf<T>(res: Awaited<ReturnType<APIRequestContext['get']>>, label: string): Promise<T> {
-  expect(res.ok(), `${label}: ${res.status()} ${await res.text()}`).toBe(true);
-  return ((await res.json()) as { data: T }).data;
-}
 
 /**
  * The share token of a request notification, once it is in the bell.
@@ -106,8 +96,7 @@ async function buildScene(browser: Browser, role: 'editor' | 'viewer'): Promise<
   );
   const projectToken = await tokenFrom(b, 'project.invite_request', 'projectId', project.id);
   await dataOf(await b.request.post('/api/v1/decisions/respond', { data: { token: projectToken, action: 'confirm' } }), 'B joins project');
-  const me = await dataOf<{ user?: { id: string }; id?: string }>(await b.request.get('/api/v1/auth/me'), 'me B');
-  const bId = me.user?.id ?? me.id ?? '';
+  const { id: bId } = await dataOf<{ id: string }>(await b.request.get('/api/v1/auth/me'), 'me B');
 
   const pageA = await a.newPage();
   const pageB = await b.newPage();
@@ -177,7 +166,10 @@ test('removing a member from the studio closes their open canvas and stops their
     await dataOf(await scene.a.request.delete(`/api/v1/studio/${scene.studioSlug}/members/${scene.bId}`), 'remove B');
 
     await expect(scene.pageB.getByTestId('not-found-page')).toBeVisible({ timeout: 5_000 });
-    test.info().annotations.push({ type: 'removal to not-found (ms)', description: String(Date.now() - removedAt) });
+    // The not-found screen comes after the close, so this bounds the close too.
+    const elapsed = Date.now() - removedAt;
+    test.info().annotations.push({ type: 'removal to not-found (ms)', description: String(elapsed) });
+    expect(elapsed).toBeLessThanOrEqual(2_000);
 
     await writeFromB(scene, 'after-removal').catch(() => undefined);
     await scene.pageA.waitForTimeout(3_000);

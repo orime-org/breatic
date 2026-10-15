@@ -12,26 +12,22 @@
  * re-authenticates against the row as it now stands.
  *
  * A change committed while nobody is listening is not delivered. Listening
- * starts after the WebSocket port opens, and it restarts after the listen
- * connection drops, so every time it (re)starts each registered connection is
- * checked against its current role.
+ * restarts after the listen connection drops, so every time it (re)starts each
+ * registered connection is checked against its current role.
  */
 
-import type { Connection, Hocuspocus } from "@hocuspocus/server";
+import type { Hocuspocus } from "@hocuspocus/server";
 import {
   createLogger,
   type MemberChangeHandlers,
   type MemberChangeListener,
 } from "@breatic/core";
-import { COLLAB_REAUTH_REASONS, type ProjectRole } from "@breatic/shared";
+import { COLLAB_REAUTH_REASONS } from "@breatic/shared";
 import { forEachProjectConnection } from "@collab/services/project-connections.js";
-import { recheckRoleOnConnect } from "@collab/services/role-recheck.js";
+import { recheckRoleOnConnect, type LoadRole } from "@collab/services/role-recheck.js";
 import type { AuthContext } from "@collab/hooks/auth.js";
 
 const logger = createLogger("member-change-sync");
-
-/** Reads a person's current role on a project, archive cap included. */
-type LoadRole = (userId: string, projectId: string) => Promise<ProjectRole | null>;
 
 /** What {@link startMemberChangeSync} needs from outside. */
 export interface MemberChangeSyncDeps {
@@ -75,7 +71,7 @@ export async function recheckAllConnections(
 ): Promise<void> {
   const checks: Array<Promise<void>> = [];
   for (const [documentName, doc] of hocuspocus.documents?.entries() ?? []) {
-    for (const [connection] of doc.connections as Map<Connection, unknown>) {
+    for (const [connection] of doc.connections) {
       const user = (connection.context as AuthContext | undefined)?.user;
       if (!user) continue;
       checks.push(

@@ -170,6 +170,7 @@ describe("startMemberChangeSync", () => {
           stop: async () => {
             stopped = true;
           },
+          probe: async () => true,
         };
       },
       loadRole,

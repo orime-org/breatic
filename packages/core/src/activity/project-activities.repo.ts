@@ -58,7 +58,6 @@ export interface ActivityCursor {
 const PG_TIMESTAMPTZ =
   /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})(?:\.\d{1,6})?[+-](\d{2})(?::(\d{2}))?$/;
 
-
 /**
  * Whether a timestamp of the right shape also holds a real instant.
  *

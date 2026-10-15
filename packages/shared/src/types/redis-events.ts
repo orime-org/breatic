@@ -28,7 +28,6 @@
  * auth-related DB0 (session / lock / rate-limit).
  */
 
-
 // ── Project lifecycle (transactional outbox → durable stream) ───────
 //
 // Yjs document store lives in a SEPARATE Postgres database from the
@@ -73,7 +72,6 @@ export type ProjectLifecycleEvent =
   | ProjectRestoredLifecycleEvent;
 
 // ── Channel names (single source of truth) ──────────────────────────
-
 
 /**
  * Glob pattern that matches every project-scoped pub/sub channel

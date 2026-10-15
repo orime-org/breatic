@@ -32,7 +32,6 @@ import {
   taskEventsStreamKey,
   lifecycleStreamKey,
   listenProjectMemberChanges,
-  probeMemberListen,
   projectAuthService,
   type MemberChangeListener,
 } from "@breatic/core";
@@ -233,6 +232,22 @@ async function main(): Promise<void> {
     void flushLogger().then(() => exitProcess(1));
   });
 
+  // Membership changes, from the trigger on project_members (inner#911).
+  // Started before the WebSocket port opens, so a failed first LISTEN ends
+  // startup with no client connected, like the infra check above.
+  let memberChanges: MemberChangeListener;
+  try {
+    memberChanges = await startMemberChangeSync(hocuspocus, {
+      listen: listenProjectMemberChanges,
+      loadRole: projectAuthService.loadProjectRole,
+    });
+  } catch (err) {
+    logger.error({ err }, "member_change_listen_failed");
+    await flushLogger();
+    await exitProcess(1);
+    return;
+  }
+
   await server.listen();
   logger.info({ port: env.COLLAB_PORT }, "Hocuspocus collaboration server started");
 
@@ -303,23 +318,6 @@ async function main(): Promise<void> {
     );
   });
   const stopProjectControlSync = startProjectControlSync(hocuspocus, controlRedis);
-
-  // Membership changes, from the trigger on project_members (inner#911). Starts
-  // after the WebSocket port opened, so its first `onListening` re-checks the
-  // connections that registered before it. A first LISTEN that fails ends
-  // startup, like the infra check above.
-  let memberChanges: MemberChangeListener;
-  try {
-    memberChanges = await startMemberChangeSync(hocuspocus, {
-      listen: listenProjectMemberChanges,
-      loadRole: projectAuthService.loadProjectRole,
-    });
-  } catch (err) {
-    logger.error({ err }, "member_change_listen_failed");
-    await flushLogger();
-    await exitProcess(1);
-    return;
-  }
 
   // Health probe server - separate port so probe traffic doesn't
   // touch the WS port. Probes every critical dependency: the
@@ -393,7 +391,7 @@ async function main(): Promise<void> {
       // that catches "alive but not serving" (the throttle-ban / doc-wedge
       // failure mode that the infra probes above all miss).
       probeWsProcessing: probeDocProcessing,
-      probeMemberListen: () => probeMemberListen(MEMBER_LISTEN_PROBE_TIMEOUT_MS),
+      probeMemberListen: () => memberChanges.probe(MEMBER_LISTEN_PROBE_TIMEOUT_MS),
     }),
   });
 

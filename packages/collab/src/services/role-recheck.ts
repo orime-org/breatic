@@ -21,6 +21,9 @@ interface ClosableConnection {
   close: (event: { code: number; reason: string }) => void;
 }
 
+/** Reads a person's current role on a project, archive cap included. */
+export type LoadRole = (userId: string, projectId: string) => Promise<ProjectRole | null>;
+
 /** One registered connection and the role its handshake granted. */
 export interface RegisteredConnection {
   documentName: string;
@@ -38,7 +41,7 @@ export interface RegisteredConnection {
  */
 export async function recheckRoleOnConnect(
   registered: RegisteredConnection,
-  loadRole: (userId: string, projectId: string) => Promise<ProjectRole | null>,
+  loadRole: LoadRole,
 ): Promise<void> {
   const parsed = parseDocName(registered.documentName);
   if (!parsed) return;

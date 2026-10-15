@@ -146,7 +146,6 @@ export {
 export {
   PROJECT_MEMBER_CHANGED_CHANNEL,
   listenProjectMemberChanges,
-  probeMemberListen,
   type MemberChange,
   type MemberChangeHandlers,
   type MemberChangeListener,
