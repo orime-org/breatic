@@ -327,7 +327,7 @@ import { useCurrentUserStore } from '@web/stores/current-user';
 import { readSpaceViewport, writeSpaceViewport } from '@web/lib/project-tabs-storage';
 import { useSpaceOperationsStore } from '@web/stores/space-operations';
 import { useUploadMarksStore } from '@web/stores/upload-marks';
-import type { CanvasSessionStore } from '@web/stores/canvas-session';
+import { miniToolOpenOn, type CanvasSessionStore } from '@web/stores/canvas-session';
 
 /** Node types a focus pick can crop (#1782 images, #1987 video frames). */
 const FOCUS_SOURCE_TYPES: ReadonlySet<string> = new Set(['image', 'video']);
@@ -3940,8 +3940,19 @@ function CanvasSpaceInner({
     (nodeId: string): void => {
       let tries = 0;
       let decoding = false;
+      const opened = sessionStore.getState().panelSession;
+      /**
+       * Whether the adjust this zoom is for is still the open panel; the wait
+       * can outlast it.
+       * @returns True while it is.
+       */
+      const stillInspecting = (): boolean => {
+        const session = sessionStore.getState();
+        return session.panelSession === opened && miniToolOpenOn(nodeId)(session) !== null;
+      };
       /** One frame of waiting for the node and the panel to be laid out. */
       const step = (): void => {
+        if (!stillInspecting()) return;
         const container = containerRef.current;
         const [node] = measuredRects([nodeId]);
         const panel = container?.querySelector<HTMLElement>('[data-canvas-panel]') ?? null;
@@ -3972,7 +3983,7 @@ function CanvasSpaceInner({
       };
       requestAnimationFrame(step);
     },
-    [measuredRects, rfStoreApi, setViewport],
+    [measuredRects, rfStoreApi, setViewport, sessionStore],
   );
   const openToolFromMenu = React.useCallback(
     (toolId: string): void => {

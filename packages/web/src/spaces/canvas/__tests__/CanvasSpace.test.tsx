@@ -4613,6 +4613,14 @@ describe('what opening a tool on a node does to the camera and its layers', () =
     expect(inspect).toContain('whenDecoded(picture, step)');
   });
 
+  // The wait can outlast the panel: a step after the reader closed the adjust
+  // or moved to another node moves nothing.
+  it('zooms only while the adjust is still open on that node', () => {
+    const step = inspect.slice(inspect.indexOf('const step'));
+    expect(step.indexOf('stillInspecting()')).toBeGreaterThan(-1);
+    expect(step.indexOf('stillInspecting()')).toBeLessThan(step.indexOf('whenDecoded('));
+  });
+
   // §6.3: the expand frame reaches past its node and is drawn over every node.
   it('draws the expand frame in the viewport, over every node', () => {
     const portal = src.slice(src.lastIndexOf('<ViewportPortal>', src.indexOf('<ExpandFrameOverlay ')), src.indexOf('<ExpandFrameOverlay '));
