@@ -98,6 +98,8 @@ function toMessageData(row: StoredRow): MessageData {
  * @param message - The message. A question opens a turn and is numbered here;
  *   a reply says which turn it answers, because nothing readable off the table
  *   can tell one turn's answer from a later turn's
+ * @param forModel - The message as it was sent to the model, kept so later
+ *   turns replay it as it is. Absent on a message nothing was sent of
  * @returns The turn index this message went into — callers billing by turn
  *   need this exact number and recomputing it later would race
  * @throws {NotFoundError} if the conversation does not exist or is soft-deleted.
@@ -107,7 +109,7 @@ function toMessageData(row: StoredRow): MessageData {
  *   billing: a failure there is recorded and the turn still settles, having
  *   already spent whatever its finished steps spent.
  */
-export async function addMessage(id: string, message: MessageInput): Promise<number> {
+export async function addMessage(id: string, message: MessageInput, forModel?: unknown): Promise<number> {
   return db.transaction(async (tx) => {
     const owner = await tx
       .select({ userId: conversations.userId })
@@ -159,6 +161,7 @@ export async function addMessage(id: string, message: MessageInput): Promise<num
       turnIndex,
       seq,
       parts: message.parts,
+      ...(forModel === undefined ? {} : { forModel }),
     });
 
     await tx
@@ -168,6 +171,30 @@ export async function addMessage(id: string, message: MessageInput): Promise<num
 
     return turnIndex;
   });
+}
+
+/**
+ * Keep what a turn's user message was sent to the model as.
+ *
+ * Written after the message itself: the message is stored first to number
+ * the turn, and what it is sent as is known only once the turn has assembled
+ * its request.
+ * @param id - Conversation UUID
+ * @param turnIndex - The turn the message opened
+ * @param forModel - The message as it was sent
+ */
+export async function setUserForModel(id: string, turnIndex: number, forModel: unknown): Promise<void> {
+  await db
+    .update(conversationMessages)
+    .set({ forModel })
+    .where(
+      and(
+        eq(conversationMessages.conversationId, id),
+        eq(conversationMessages.turnIndex, turnIndex),
+        eq(conversationMessages.role, "user"),
+        isNull(conversationMessages.deletedAt),
+      ),
+    );
 }
 
 /**
@@ -267,13 +294,15 @@ export async function getMessages(
  * @param id - Conversation UUID
  * @param lastConsolidatedTurn - Turn index up to which messages are consolidated
  * @param beforeTurn - Stop short of this turn, leaving the running turn out
- * @returns Unconsolidated messages, without the model's reasoning
+ * @returns Unconsolidated messages, without the flat mirror of the model's
+ *   reasoning, each with what was sent of it (`forModel`, null when nothing
+ *   was kept)
  */
 export async function getMessagesForLlm(
   id: string,
   lastConsolidatedTurn = 0,
   beforeTurn?: number,
-): Promise<MessageData[]> {
+): Promise<Array<MessageData & { forModel: unknown }>> {
   const rows = await db
     .select({
       id: conversationMessages.id,
@@ -281,6 +310,7 @@ export async function getMessagesForLlm(
       turnIndex: conversationMessages.turnIndex,
       parts: conversationMessages.parts,
       createdAt: conversationMessages.createdAt,
+      forModel: conversationMessages.forModel,
     })
     .from(conversationMessages)
     .innerJoin(conversations, eq(conversations.id, conversationMessages.conversationId))
@@ -302,7 +332,7 @@ export async function getMessagesForLlm(
 
   return rows.map((row) => {
     const { thinking: _th, ...rest } = toMessageData(row);
-    return rest;
+    return { ...rest, forModel: row.forModel };
   });
 }
 
