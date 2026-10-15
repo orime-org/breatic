@@ -155,6 +155,51 @@ export function prefixHash(prefix: RequestPrefix, messages: readonly ModelMessag
   return messages.reduce(extendHash, seedHash(prefix));
 }
 
+/** One stored message, as it is replayed. */
+export interface ReplayedRow {
+  /** The stored message. */
+  row: ReplayRow;
+  /** What it is sent as. */
+  messages: ModelMessage[];
+  /** What a reply row kept of what was sent, when it kept anything. */
+  reply?: ReplyForModel;
+  /** A reply sent again as it was sent, thinking included. */
+  asSent: boolean;
+}
+
+/**
+ * The history as it is replayed, row by row, oldest first.
+ * @param rows - Stored messages, oldest first.
+ * @param prefix - What the request carries besides its messages.
+ * @returns Each row with what it is sent as.
+ * @throws {never} Never.
+ */
+export function replayRows(rows: readonly ReplayRow[], prefix: RequestPrefix): ReplayedRow[] {
+  const out: ReplayedRow[] = [];
+  let hash = seedHash(prefix);
+  let thinkingOut = false;
+
+  for (const row of rows) {
+    let replayed: ReplayedRow;
+    if (row.role === "user") {
+      const kept = userForModel.safeParse(row.forModel);
+      replayed = { row, messages: kept.success ? kept.data.messages : toModelMessages([row]), asSent: false };
+    } else {
+      const kept = replyForModel.safeParse(row.forModel);
+      if (!kept.success) replayed = { row, messages: toModelMessages([row]), asSent: false };
+      else if (!thinkingOut && kept.data.prefixHash === hash) {
+        replayed = { row, messages: kept.data.messages, reply: kept.data, asSent: true };
+      } else {
+        thinkingOut = true;
+        replayed = { row, messages: stripThinking(kept.data.messages), reply: kept.data, asSent: false };
+      }
+    }
+    for (const message of replayed.messages) hash = extendHash(hash, message);
+    out.push(replayed);
+  }
+  return out;
+}
+
 /**
  * The history the model is sent, oldest first.
  * @param rows - Stored messages, oldest first.
@@ -163,30 +208,7 @@ export function prefixHash(prefix: RequestPrefix, messages: readonly ModelMessag
  * @throws {never} Never.
  */
 export function historyForModel(rows: readonly ReplayRow[], prefix: RequestPrefix): ModelMessage[] {
-  const out: ModelMessage[] = [];
-  let hash = seedHash(prefix);
-  let thinkingOut = false;
-
-  for (const row of rows) {
-    let replayed: ModelMessage[];
-    if (row.role === "user") {
-      const kept = userForModel.safeParse(row.forModel);
-      replayed = kept.success ? kept.data.messages : toModelMessages([row]);
-    } else {
-      const kept = replyForModel.safeParse(row.forModel);
-      if (!kept.success) replayed = toModelMessages([row]);
-      else if (!thinkingOut && kept.data.prefixHash === hash) replayed = kept.data.messages;
-      else {
-        thinkingOut = true;
-        replayed = stripThinking(kept.data.messages);
-      }
-    }
-    for (const message of replayed) {
-      out.push(message);
-      hash = extendHash(hash, message);
-    }
-  }
-  return out;
+  return replayRows(rows, prefix).flatMap((replayed) => replayed.messages);
 }
 
 /**

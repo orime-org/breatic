@@ -13,15 +13,13 @@
 
 import type { ModelMessage } from "ai";
 import { effectiveKeepTokens, getAgentConfig } from "@breatic/core";
-import type { MessageData } from "@breatic/shared";
 import type { ResolvedAgentConfig } from "@breatic/domain";
 import { measureMessages, measurePayload } from "@server/agent/payload-size.js";
 import { planConsolidation } from "@server/agent/consolidation-window.js";
 import type { TurnCost } from "@server/agent/consolidation-window.js";
-import { toModelMessages } from "@server/agent/model-messages.js";
 import { consolidateWindow } from "@server/agent/memory-consolidator.js";
-import { historyForModel, stripThinking } from "@server/agent/history-replay.js";
-import type { ReplayRow } from "@server/agent/history-replay.js";
+import { historyForModel, replayRows, stripThinking } from "@server/agent/history-replay.js";
+import type { ReplayRow, ReplayedRow } from "@server/agent/history-replay.js";
 
 /** One reading of everything a turn sends, and what it was built from. */
 export interface Assembly {
@@ -52,28 +50,64 @@ export interface TurnIdentity {
 }
 
 /**
- * What each turn in the history costs the assembled request.
+ * What each turn in the history added to the conversation, oldest first.
  *
- * Priced one turn at a time with the same function the whole is priced with:
- * a consolidation takes whole turns, and what it needs to know about each of
- * them is how much taking it saves.
- * @param history - The unconsolidated history, oldest first.
- * @returns Each turn and its cost, oldest first.
+ * The provider's count where its reply kept one, which takes in thinking that
+ * is replayed but stored only as a summary; otherwise what the turn is sent
+ * as, a character counted as a token.
+ * @param replayed - The history, row by row, as it is replayed.
+ * @returns Each turn and what taking it saves.
+ * @throws {never} Never.
  */
-function costPerTurn(history: readonly MessageData[]): TurnCost[] {
-  const byTurn = new Map<number, MessageData[]>();
-  for (const message of history) {
-    const found = byTurn.get(message.turnIndex);
-    if (found) found.push(message);
-    else byTurn.set(message.turnIndex, [message]);
+function costPerTurn(replayed: readonly ReplayedRow[]): TurnCost[] {
+  const byTurn = new Map<number, ReplayedRow[]>();
+  for (const one of replayed) {
+    const found = byTurn.get(one.row.turnIndex);
+    if (found) found.push(one);
+    else byTurn.set(one.row.turnIndex, [one]);
   }
 
   return [...byTurn.entries()]
     .sort(([a], [b]) => a - b)
-    .map(([turnIndex, messages]) => ({
+    .map(([turnIndex, rows]) => ({
       turnIndex,
-      chars: measureMessages(toModelMessages(messages)),
+      tokens:
+        rows.find((one) => one.reply !== undefined)?.reply?.turnTokens ??
+        measureMessages(rows.flatMap((one) => one.messages)),
     }));
+}
+
+/**
+ * How big the request is, in tokens.
+ *
+ * The newest reply sent again as it was sent says how big the conversation
+ * was when its turn ended, by the provider's count; what came after it is
+ * added on. Without one -- the conversation was folded since, or nothing was
+ * kept -- it is the system prompt and tools, what each turn added, and this
+ * turn's question.
+ * @param assembly - What this turn would send.
+ * @param replayed - Its history, row by row, as it is replayed.
+ * @param turns - What each turn of that history added.
+ * @returns The size, a character counted as a token where there is no count.
+ * @throws {never} Never.
+ */
+function assembledTokens(assembly: Assembly, replayed: readonly ReplayedRow[], turns: readonly TurnCost[]): number {
+  const question = measureMessages(assembly.messages.slice(-1));
+  let newestAsSent = -1;
+  replayed.forEach((one, i) => {
+    if (one.asSent) newestAsSent = i;
+  });
+  const sized = replayed[newestAsSent]?.reply;
+  if (sized !== undefined) {
+    const after = replayed.slice(newestAsSent + 1).flatMap((one) => one.messages);
+    return sized.endTokens + measureMessages(after) + question;
+  }
+  const fixed = measurePayload({
+    instructions: assembly.agentConfig.instructions,
+    tools: assembly.agentConfig.tools,
+    messages: [],
+  });
+  return fixed + turns.reduce((sum, turn) => sum + turn.tokens, 0) + question;
 }
 
 /**
@@ -87,19 +121,19 @@ export async function foldIfOverBudget(
   who: TurnIdentity,
 ): Promise<boolean> {
   const config = getAgentConfig();
-  const assembled = measurePayload({
-    instructions: assembly.agentConfig.instructions,
+  const replayed = replayRows(assembly.history, {
+    system: assembly.agentConfig.instructions,
     tools: assembly.agentConfig.tools,
-    messages: assembly.messages,
+    modelId: assembly.agentConfig.modelId,
   });
-  // The planner asks this again and is the authority on it. Asked here first
-  // because the answer is no on almost every turn, and the pricing below
-  // renders every turn of the history to find out what it costs.
+  const turns = costPerTurn(replayed);
+  const assembled = assembledTokens(assembly, replayed, turns);
+  // The planner asks this again and is the authority on it.
   if (assembled <= config.memory_budget_tokens) return false;
 
   const plan = planConsolidation({
     assembled,
-    turns: costPerTurn(assembly.history),
+    turns,
     budget: config.memory_budget_tokens,
     // The keep line a pass runs to: the configured line less the room the
     // fold is about to add, from the one place that arithmetic lives.

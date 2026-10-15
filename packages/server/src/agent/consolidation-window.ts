@@ -12,16 +12,16 @@
  * budget after this" a property of the loop rather than an argument about how
  * fast a conversation grows.
  *
- * In the ordinary case the two lines are 850,000 and 500,000 and a pass takes
- * about the 350,000 between them.
+ * In the ordinary case the two lines are 850,000 and 500,000 tokens and a pass
+ * takes about the 350,000 between them.
  */
 
 /** One turn and what it costs the assembled payload. */
 export interface TurnCost {
   /** The turn's index, as the store filed it. */
   turnIndex: number;
-  /** What this turn contributes to the assembled `messages`, in characters. */
-  chars: number;
+  /** What this turn adds to the assembled request, in tokens. */
+  tokens: number;
 }
 
 /** What the planner was asked. */
@@ -39,7 +39,7 @@ export interface ConsolidationRequest {
 /** What one pass would do. */
 export interface ConsolidationPlan {
   /** What the payload measures once they are gone. */
-  remainingChars: number;
+  remaining: number;
   /**
    * Where the watermark lands, and `null` when this pass does nothing.
    *
@@ -62,13 +62,13 @@ export function planConsolidation(request: ConsolidationRequest): ConsolidationP
   const { assembled, turns, budget, keep } = request;
 
   const nothing: ConsolidationPlan = {
-    remainingChars: assembled,
+    remaining: assembled,
     newWatermark: null,
   };
 
   if (assembled <= budget) return nothing;
 
-  let remainingChars = assembled;
+  let remaining = assembled;
   let newWatermark: number | null = null;
 
   // The turns arrive oldest first and are taken from that end without a gap,
@@ -77,10 +77,10 @@ export function planConsolidation(request: ConsolidationRequest): ConsolidationP
   // and the watermark stays null — over the budget on the fixed cost alone,
   // which no pass can shorten.
   for (const turn of turns) {
-    if (remainingChars <= keep) break;
+    if (remaining <= keep) break;
     newWatermark = turn.turnIndex;
-    remainingChars -= turn.chars;
+    remaining -= turn.tokens;
   }
 
-  return { remainingChars, newWatermark };
+  return { remaining, newWatermark };
 }
