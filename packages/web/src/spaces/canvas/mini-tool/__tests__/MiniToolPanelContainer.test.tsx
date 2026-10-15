@@ -409,6 +409,23 @@ describe('MiniToolPanelContainer', () => {
       canvasSessions.of('').getState().openMiniTool('src', 'image.expand', { sourceContent: 'a.png', params: {} });
     });
 
+    // inner#1303 round 14: an earlier press still waiting holds Run only.
+    it('leaves the ratios live while an earlier press still waits', () => {
+      let release: (() => void) | undefined;
+      void runOnce(miniToolIntent('', 'src', 'image.expand'), {
+        scope: 'mini-tool',
+        prepare: () =>
+          new Promise<null>((resolve) => {
+            release = () => resolve(null);
+          }),
+        send: vi.fn(),
+      });
+      render(tree(source('a.png'), () => Promise.resolve()));
+      expect(screen.getByTestId('mini-tool-run')).toHaveAttribute('aria-busy', 'true');
+      expect(screen.getByTestId('mini-tool-expand-ratio-1:1')).not.toHaveAttribute('aria-disabled', 'true');
+      release?.();
+    });
+
     it('holds the ratios to the model\'s longest side', () => {
       render(tree(source('a.png'), () => Promise.resolve()));
       expect(screen.getByTestId('mini-tool-expand-ratio-1:1')).not.toHaveAttribute('aria-disabled', 'true');

@@ -2,12 +2,15 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, it, expect, vi } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 import { ADJUST_RANGES, defaultAdjustValue, setLocale } from '@breatic/shared';
 import { miniToolById, type MiniToolSpec } from '@breatic/shared/mini-tools';
 
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { MiniToolPanel, type MiniToolPanelProps } from '@web/spaces/canvas/mini-tool/MiniToolPanel';
+import { canvasSessions } from '@web/stores/canvas-session';
+
+afterEach(() => canvasSessions.clear());
 
 /**
  * A registry tool by id.
@@ -202,7 +205,7 @@ describe('MiniToolPanel', () => {
       return mount({
         spec: tool('image.expand'),
         params: {},
-        expand: { ratio: '1:1', fits, exporting: false, onRatio: vi.fn() },
+        expand: { ratio: '1:1', fits, onRatio: vi.fn() },
       });
     }
 
@@ -220,15 +223,16 @@ describe('MiniToolPanel', () => {
       expect(props.expand?.onRatio).toHaveBeenCalledWith('16:9');
     });
 
-    // The draft's export, as the frame and the drawing controls read it; a
-    // press of an earlier opening still waiting holds only Run.
-    it('takes no ratio while the press is exporting', () => {
-      const props = mount({
-        spec: tool('image.expand'),
-        params: {},
-        expand: { ratio: 'free', fits: () => true, exporting: true, onRatio: vi.fn() },
-      });
-      fireEvent.click(screen.getByTestId('mini-tool-expand-ratio-1:1'));
+    // The draft's export, read from the session as the frame and the drawing
+    // controls read it; a press of an earlier opening still waiting holds only Run.
+    it('takes no ratio while the draft is exporting', () => {
+      const session = canvasSessions.of('');
+      session.getState().openMiniTool('n1', 'image.expand', { sourceContent: 'a.png', params: {} });
+      session.getState().setMiniToolExporting(true, session.getState().panelSession);
+      const props = mountExpand();
+      const button = screen.getByTestId('mini-tool-expand-ratio-1:1');
+      expect(button).toHaveAttribute('aria-disabled', 'true');
+      fireEvent.click(button);
       expect(props.expand?.onRatio).not.toHaveBeenCalled();
     });
 
@@ -237,7 +241,7 @@ describe('MiniToolPanel', () => {
         spec: tool('image.expand'),
         params: {},
         refusal: 'exporting',
-        expand: { ratio: 'free', fits: () => true, exporting: false, onRatio: vi.fn() },
+        expand: { ratio: 'free', fits: () => true, onRatio: vi.fn() },
       });
       fireEvent.click(screen.getByTestId('mini-tool-expand-ratio-1:1'));
       expect(props.expand?.onRatio).toHaveBeenCalledWith('1:1');
