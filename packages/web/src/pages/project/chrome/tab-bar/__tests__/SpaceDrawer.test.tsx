@@ -9,6 +9,7 @@ import type * as React from 'react';
 import { SPACE_NAME_MAX_LEN } from '@breatic/shared';
 
 import { SpaceDrawer } from '@web/pages/project/chrome/tab-bar/SpaceDrawer';
+import { toast } from '@web/lib/toast';
 import { useUIStore } from '@web/stores/ui';
 import type { ProjectSpace } from '@web/data/yjs/project-meta';
 import {
@@ -190,6 +191,22 @@ describe('SpaceDrawer', () => {
     await openRowMenu(user, 'sp-1');
     const items = screen.getAllByRole('menuitem').map((item) => item.textContent);
     expect(items).toEqual(['View', 'Lock', 'Delete']);
+  });
+
+  it('leaves the failure notice of a lock toggle to the RPC layer', async () => {
+    const user = userEvent.setup();
+    const errorSpy = vi.spyOn(toast, 'error');
+    const onSetSpaceLocked = vi.fn(() => Promise.reject(new Error('Space sp-1 not found')));
+    setup({ spaces: [SPACE, SIBLING], onSetSpaceLocked });
+    await user.click(screen.getByTestId('space-drawer-trigger'));
+    await openRowMenu(user, 'sp-1');
+    await user.click(screen.getByTestId('space-drawer-lock-sp-1'));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(onSetSpaceLocked).toHaveBeenCalled();
+    expect(errorSpy).not.toHaveBeenCalled();
+    errorSpy.mockRestore();
   });
 
   it('locks an unlocked Space and offers Unlock on a locked one', async () => {

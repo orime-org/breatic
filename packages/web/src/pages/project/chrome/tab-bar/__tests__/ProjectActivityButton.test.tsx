@@ -152,6 +152,35 @@ describe('ProjectActivityButton (activity feed)', () => {
     expect(onRestore).toHaveBeenCalledWith('sp-9');
   });
 
+  it('turns the Restore button off once the project holds the Space cap', async () => {
+    const onRestore = vi.fn();
+    listMock.mockResolvedValue({
+      items: [
+        entry({
+          id: 'del-cap',
+          type: 'space:deleted',
+          spaceId: 'sp-9',
+          payload: { spaceName: 'Doomed', spaceSnapshot: { id: 'sp-9' } },
+        }),
+      ],
+      nextCursor: null,
+    });
+    const user = userEvent.setup();
+    render(
+      <ProjectActivityButton
+        projectId={PID}
+        currentUserRole='owner'
+        onRestore={onRestore}
+        spaceLimitReached
+      />,
+    );
+    await user.click(screen.getByTestId('project-activity-trigger'));
+    const btn = await screen.findByTestId('project-activity-restore-del-cap');
+    expect(btn).toBeDisabled();
+    await user.click(btn);
+    expect(onRestore).not.toHaveBeenCalled();
+  });
+
   it('reads the Restore button busy while the restore is in flight, and settles after it lands', async () => {
     let land!: () => void;
     const onRestore = vi.fn(
