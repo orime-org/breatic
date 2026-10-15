@@ -15,10 +15,12 @@ import type { ModelMessage } from "ai";
 import type * as CoreModule from "@breatic/core";
 import type { MessageData } from "@breatic/shared";
 import { prefixHash, type RequestPrefix } from "@server/agent/history-replay.js";
+import { FAILED_NOTE } from "@server/agent/model-messages.js";
+import { measureMessages } from "@server/agent/payload-size.js";
 import { saying } from "../helpers/model-double.js";
 import type { ModelStreamPart } from "../helpers/model-double.js";
 
-const addMessage = vi.fn(async (_id: string, _msg: Record<string, unknown>) => 7);
+const addMessage = vi.fn(async (_id: string, _msg: Record<string, unknown>, _forModel?: unknown) => 7);
 const setUserForModel = vi.fn(async (_id: string, _turn: number, _forModel: unknown) => undefined);
 const modelSays = vi.hoisted(() => ({
   parts: [] as unknown[],
@@ -191,5 +193,53 @@ describe("a turn keeps its own message as it was sent", () => {
 
     expect(modelSays.prompts).toHaveLength(1);
     expect(vi.mocked(logger.error).mock.calls.map((call) => call[1])).toContain("turn_user_for_model_write_failed");
+  });
+});
+
+/**
+ * What the turn kept of its reply as sent.
+ * @returns The copy handed to the store with the reply.
+ */
+function keptReply(): { messages: ModelMessage[]; prefixHash: string; turnTokens: number; endTokens: number } {
+  const call = addMessage.mock.calls.find((c) => (c[1] as { role: string }).role === "assistant");
+  return call?.[2] as never;
+}
+
+/**
+ * This turn's user message as it was sent.
+ * @returns The message.
+ */
+function sentUserMessage(): ModelMessage {
+  return (setUserForModel.mock.calls[0]?.[2] as { messages: ModelMessage[] }).messages[0] as ModelMessage;
+}
+
+describe("a turn keeps its reply as it was sent", () => {
+  it("keeps the step it sent on, under the hash of the request that asked for it", async () => {
+    modelSays.history = earlierTurn();
+
+    await runOneTurn("next question");
+
+    const kept = keptReply();
+    expect(kept.messages).toEqual([{ role: "assistant", content: [{ type: "text", text: "the reply" }] }]);
+    expect(kept.prefixHash).toBe(prefixHash(PREFIX, [ASKED, ...ANSWERED, sentUserMessage()]));
+  });
+
+  it("keeps how much the turn added and how big the conversation ended, from the provider's count", async () => {
+    await runOneTurn("next question");
+
+    // The double reports one input and one output token on its call.
+    const kept = keptReply();
+    expect(kept.endTokens).toBe(2);
+    expect(kept.turnTokens).toBe(2 - 1 + measureMessages([sentUserMessage()]));
+  });
+
+  it("keeps a turn that broke off as a note saying so", async () => {
+    modelSays.parts = [{ type: "error", error: new Error("provider connection dropped") }];
+    await runWithContext({ userId: "u1", conversationId: "c1", projectId: "p1" }, async () => {
+      const turn = await new MainAgent().chat("next question", undefined, [], "UTC");
+      for await (const _chunk of turn) void _chunk;
+    });
+
+    expect(keptReply().messages.at(-1)).toEqual({ role: "assistant", content: FAILED_NOTE });
   });
 });
