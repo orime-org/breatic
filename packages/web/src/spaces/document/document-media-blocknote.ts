@@ -6,7 +6,7 @@
  *
  * The library's own blocks keep their props, parse rules and HTML export;
  * the node view is ours, and a picture given only by `srcset` is read from
- * its first candidate, where the library reads `src` alone
+ * its largest candidate, where the library reads `src` alone
  * (`parseImageElement.ts`). Three things the view does that the library's
  * does not:
  *
@@ -290,11 +290,12 @@ export function withMediaView<T extends MediaSpec>(spec: T): T {
   const parse = spec.implementation['parse'] as Parse | undefined;
   const implementation = {
     ...spec.implementation,
-    ...(parse !== undefined && {
+    ...(parse !== undefined &&
+      spec.config.type === 'image' && {
       parse(this: unknown, element: HTMLElement) {
         const props = parse.call(this, element);
         if (props === undefined || (typeof props['url'] === 'string' && props['url'] !== '')) return props;
-        const url = firstSrcsetCandidate(element);
+        const url = largestSrcsetCandidate(element);
         return url === null ? props : { ...props, url };
       },
     }),
@@ -341,16 +342,28 @@ export function withMediaView<T extends MediaSpec>(spec: T): T {
 type Parse = (this: unknown, element: HTMLElement) => Record<string, unknown> | undefined;
 
 /**
- * The address of the first image candidate in a picture's `srcset`.
+ * The address of the largest image candidate in a picture's `srcset`: the
+ * widest, or the densest. A browser picks one by the width it shows the
+ * picture at and the screen's density, neither of which a clipboard carries;
+ * the largest is never worse than the one the reader saw.
  * @param element - The picture, or the figure around it.
  * @returns The address, or null when there is no `srcset`.
  */
-function firstSrcsetCandidate(element: HTMLElement): string | null {
+function largestSrcsetCandidate(element: HTMLElement): string | null {
   const image = element.matches('img') ? element : element.querySelector('img');
+  const tokens = image?.getAttribute('srcset')?.trim().split(/\s+/) ?? [];
+  let largest: { url: string; size: number } | null = null;
   // A candidate's address runs to the first space; one written without a
-  // descriptor ends at its comma (HTML, "parse a srcset attribute").
-  const url = image?.getAttribute('srcset')?.trim().split(/\s+/)[0]?.replace(/,+$/, '') ?? '';
-  return url === '' ? null : url;
+  // descriptor ends at its comma and counts as 1x (HTML, "parse a srcset
+  // attribute"). A descriptor is a number followed by `w` or `x`.
+  for (let index = 0; index < tokens.length; index += 1) {
+    const token = tokens[index]!;
+    const bare = token.endsWith(',') || index + 1 === tokens.length;
+    const url = token.replace(/,+$/, '');
+    const size = bare ? 1 : Number.parseFloat(tokens[(index += 1)]!) || 1;
+    if (url !== '' && (largest === null || size > largest.size)) largest = { url, size };
+  }
+  return largest?.url ?? null;
 }
 
 /** The library's render of one block. */

@@ -100,7 +100,9 @@ export function liftCellMedia(html: string): string {
     // Gone from its cell with a figure moved before it.
     const cell = element.closest('td, th');
     if (cell === null) continue;
-    let table = cell.closest('table')!;
+    // A td in an SVG is no table cell.
+    let table = cell.closest('table');
+    if (table === null) continue;
     for (let outer = table.parentElement?.closest('table'); outer; outer = outer.parentElement?.closest('table')) {
       table = outer;
     }
