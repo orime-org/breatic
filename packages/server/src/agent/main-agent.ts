@@ -300,12 +300,13 @@ export class MainAgent {
     const whatToolAnswered = new Map<string, unknown>();
 
     // What the reply row keeps of what was sent (`for_model`). Each finished
-    // step, in order, with whether a provider error cut it off, and how many
-    // requests the SDK has started: a step went out as it is once a later
-    // request carried it. The hash is of the request the turn's first call
-    // sent; the provider's counts size the turn for the fold.
-    const steps: Array<{ messages: ModelMessage[]; erred: boolean }> = [];
-    let requested = 0;
+    // step's messages, in order; a step went out as it is once a later request
+    // carried it. The hash is of the request the turn's first call sent; the
+    // provider's counts size the turn for the fold.
+    const steps: ModelMessage[][] = [];
+    // True while the last finished step ended on a provider error and no later
+    // request has started: that step is partial and went nowhere.
+    let lastStepUnsent = false;
     let reported: ReportedUsage = {};
     // The assembly the turn's first call sent, once the model has been asked.
     let sent: Assembly | undefined;
@@ -331,10 +332,9 @@ export class MainAgent {
       settled: SettledCalls;
     }): Promise<ReplyForModel | undefined> => {
       if (sent === undefined) return undefined;
-      // An errored step is partial. When no later request carried it, it is
-      // rebuilt from what reached the reader.
-      const sentOn = steps.at(-1)?.erred === true && requested <= steps.length ? steps.slice(0, -1) : steps;
-      const collected = sentOn.flatMap((step) => step.messages);
+      // A partial step nothing carried on is rebuilt from what reached the reader.
+      const sentOn = lastStepUnsent ? steps.slice(0, -1) : steps;
+      const collected = sentOn.flat();
       let unfinished: ModelMessage[] = [];
       if (ended.exit === "aborted" || ended.exit === "failed") {
         try {
@@ -555,12 +555,14 @@ export class MainAgent {
           watch.callEnded(event);
           reported = noteUsage(reported, event.usage);
         },
-        // Fires as each request is about to go out, once per attempt.
-        onStepStart: ({ stepNumber }) => {
-          requested = Math.max(requested, stepNumber + 1);
+        // Fires as each request is about to go out, after the previous
+        // step's onStepFinish: the request carries that step as it is.
+        onStepStart: () => {
+          lastStepUnsent = false;
         },
         onStepFinish: (step) => {
-          steps.push({ messages: step.response.messages, erred: step.finishReason === "error" });
+          steps.push(step.response.messages);
+          lastStepUnsent = step.finishReason === "error";
           for (const part of step.content) {
             // A question, reaching the reader as words rather than as a payload
             // on a tool part, and written here rather than inside the tool
