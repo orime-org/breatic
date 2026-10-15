@@ -394,11 +394,31 @@ const ENDINGS: Ending[] = [
     stopOnChunk: "text-delta",
     carries: "half an ans",
   },
-  { name: "stopped while the tool ran", calls: [ASKS_FOR_LOOKUP], toolStops: true, carries: '"toolCallId":"tc-1"' },
+  { name: "stopped while the tool ran", calls: [ASKS_FOR_LOOKUP], toolStops: true, carries: '"type":"tool-result"' },
   {
     name: "a provider error after the tool call",
     calls: [[...ASKS_FOR_LOOKUP.slice(0, -1), { type: "error", error: new Error("overloaded") }]],
     carries: "could not be finished",
+  },
+  {
+    // Through OpenRouter the error arrives with a finish after it: the call
+    // runs and the SDK goes on to the next step.
+    name: "a provider error after the tool call, then a next step",
+    calls: [[...ASKS_FOR_LOOKUP.slice(0, -1), { type: "error", error: new Error("overloaded") }, finishing("error", 1)], saying("found three")],
+    carries: "found three",
+  },
+  {
+    name: "a provider error after some prose, with a finish after it",
+    calls: [
+      [
+        ...THINKING,
+        { type: "text-start", id: "t1" },
+        { type: "text-delta", id: "t1", delta: "partly there" },
+        { type: "error", error: new Error("overloaded") },
+        finishing("error", 1),
+      ],
+    ],
+    carries: "partly there",
   },
   {
     name: "a provider error in the middle of thinking",
@@ -470,6 +490,9 @@ describe("the turn after one that ended", () => {
     // Every call sent has its result beside it, or the provider refuses it.
     const { asked, answered } = callsIn(second);
     expect(answered.sort()).toEqual(asked.sort());
+    // Each step goes back once.
+    const replayedTexts = JSON.stringify(second.slice(lastOfFirst.length, -1));
+    expect(replayedTexts.split(ending.carries).length - 1).toBe(1);
     // Thinking goes back only from a step that finished.
     if (ending.stopOnChunk !== undefined || ending.calls.some((call) => call.some((part) => part.type === "error"))) {
       expect(JSON.stringify(second.slice(lastOfFirst.length, -1))).not.toContain('"reasoning"');
