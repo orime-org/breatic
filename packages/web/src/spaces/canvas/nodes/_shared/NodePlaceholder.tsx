@@ -8,9 +8,8 @@ import * as React from 'react';
 import { Button } from '@web/components/ui/button';
 import { Skeleton } from '@web/components/ui/skeleton';
 import { cn } from '@web/lib/utils';
-import { useNamed } from '@web/features/collab-editor/collaborator-names-context';
+import { useCollaboratorNames } from '@web/features/collab-editor/collaborator-names-context';
 import { useTranslation } from '@web/i18n/use-translation';
-import type { PeerAct } from '@web/spaces/canvas/node-activity';
 import { MODALITY_ICONS } from '@web/spaces/canvas/nodes/_shared/modality';
 import {
   NodeBusyContext,
@@ -28,9 +27,6 @@ interface NodePlaceholderProps {
   onActivate?: () => void;
 }
 
-/** Nobody, so `useNamed` sees the same array while no one is shown. */
-const NO_ONE: readonly PeerAct[] = [];
-
 /**
  * The line saying who else is doing what to this node (inner#1303 §6.8), or
  * null when there is none to show: no one is, the node has tasks, or the
@@ -43,15 +39,15 @@ function usePeerLine(): string | null {
   const nodeId = useNodeId();
   const table = React.useContext(PeerActivityContext);
   const busy = React.useContext(NodeBusyContext);
+  const names = useCollaboratorNames();
   const act = nodeId === null || busy ? undefined : table.get(nodeId);
-  const people = React.useMemo(() => (act ? [act] : NO_ONE), [act]);
-  const named = useNamed(people)[0];
-  if (!named) return null;
-  if (named.action === 'upload') return t('canvas.nodePlaceholder.peer.upload', { name: named.name });
-  if (named.action === 'readText') return t('canvas.nodePlaceholder.peer.readText', { name: named.name });
-  const tool = miniToolById(named.action);
+  const name = act ? names?.resolve(act.userId) : null;
+  if (!act || !name) return null;
+  if (act.action === 'upload') return t('canvas.nodePlaceholder.peer.upload', { name });
+  if (act.action === 'readText') return t('canvas.nodePlaceholder.peer.readText', { name });
+  const tool = miniToolById(act.action);
   if (!tool) return null;
-  return t('canvas.nodePlaceholder.peer.tool', { name: named.name, tool: t(tool.labelKey) });
+  return t('canvas.nodePlaceholder.peer.tool', { name, tool: t(tool.labelKey) });
 }
 
 /**
@@ -120,7 +116,7 @@ export function NodePlaceholder({
       {waiting ? (
         <Skeleton data-testid='node-upload-skeleton' className='h-full w-full rounded-sm' />
       ) : (
-        <Icon className='h-5 w-5 opacity-70' aria-hidden='true' />
+        <Icon className='h-5 w-5 shrink-0 opacity-70' aria-hidden='true' />
       )}
       {waiting ? null : failed ? (
         <span data-testid='node-upload-error' className='text-xs'>
