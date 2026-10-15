@@ -63,6 +63,9 @@ export class MarkCanvasController {
 
   private readonly session: () => CanvasSessionState;
 
+  /** The opening of the panel this canvas draws for; a later one has its own draft. */
+  private readonly opening: number;
+
   /** Set while this canvas changes itself to match the draft; no event is written back then. */
   private suppressed = false;
 
@@ -96,6 +99,7 @@ export class MarkCanvasController {
     this.box = box;
     this.zoom = zoom;
     this.session = session;
+    this.opening = session().panelSession;
     this.canvas = new Canvas(el, {
       width: box.width,
       height: box.height,
@@ -118,11 +122,12 @@ export class MarkCanvasController {
   }
 
   /**
-   * The open markup draft.
-   * @returns It, or null when markup is not open.
+   * The markup draft of the opening this canvas was built for.
+   * @returns It, or null when markup is not open or the panel was opened again since.
    */
   private draft(): MarkDraft | null {
-    return this.session().miniTool?.mark ?? null;
+    const session = this.session();
+    return session.panelSession === this.opening ? (session.miniTool?.mark ?? null) : null;
   }
 
   /**
@@ -535,6 +540,8 @@ export class MarkCanvasController {
    */
   dispose(): void {
     if (this.disposed) return;
+    // The panel opened again before this canvas went: the edit is that opening's to drop.
+    if (this.draft() === null) this.suppressed = true;
     if (this.edit !== null) this.exitEditing();
     this.pending = null;
     if (this.draft()?.selectedId != null) this.session().selectMark(null);

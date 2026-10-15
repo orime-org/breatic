@@ -449,6 +449,18 @@ describe('MarkCanvasController', () => {
     expect(mark().objects).toEqual([expect.objectContaining({ text: 'kept' })]);
   });
 
+  // Markup opened on another node replaces the draft before this canvas goes.
+  it('writes a text being edited into no other opening’s draft when the canvas goes away', () => {
+    store.getState().setMarkTool('text');
+    controller.sync();
+    drag([200, 150], [200, 150]);
+    editing().set({ text: 'node one' });
+    controller.canvas.fire('text:changed', { target: editing() });
+    store.getState().openMiniTool('n2', 'image.mark', { sourceContent: 'b.png', params: {} });
+    controller.dispose();
+    expect(mark()).toMatchObject({ objects: [], undo: [], editingText: null, selectedId: null });
+  });
+
   it('writes nothing back when the source changes during an edit', () => {
     store.getState().setMarkTool('text');
     controller.sync();
