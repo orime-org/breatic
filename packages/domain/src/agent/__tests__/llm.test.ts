@@ -315,9 +315,9 @@ const SPELLINGS = [
     authHeader: "x-api-key",
     authPrefix: "",
     on: { thinking: { type: "adaptive", display: "summarized" } },
-    off: { thinking: { type: "disabled" } },
+    off: {},
     onWire: { thinking: { type: "adaptive", display: "summarized" } },
-    offWire: { thinking: { type: "disabled" } },
+    offWire: {},
   },
   {
     model: "google/gemini-2.5-flash",
@@ -357,23 +357,129 @@ const SPELLINGS = [
   },
 ] as const;
 
-describe("reasoningFor", () => {
+describe("callOptionsFor", () => {
   it.each(SPELLINGS)(
     "spells $name's on and off the way $name takes them",
     async ({ model, key, name, on, off }) => {
       keys.current = { [key]: "k" };
-      const { reasoningFor } = await freshLlm();
-      expect(reasoningFor(model, true).providerOptions).toEqual({ [name]: on });
-      expect(reasoningFor(model, false).providerOptions).toEqual({ [name]: off });
+      const { callOptionsFor } = await freshLlm();
+      expect(callOptionsFor(model, { thinking: true, cache: false }).providerOptions).toEqual({ [name]: on });
+      expect(callOptionsFor(model, { thinking: false, cache: false }).providerOptions).toEqual({ [name]: off });
     },
   );
 
   it("takes the fallback when the caller has no model to name", async () => {
     keys.current = { OPENROUTER_API_KEY: "sk-or-test" };
-    const { reasoningFor } = await freshLlm();
-    expect(reasoningFor(undefined, true).providerOptions).toEqual({
+    const { callOptionsFor } = await freshLlm();
+    expect(callOptionsFor(undefined, { thinking: true, cache: false }).providerOptions).toEqual({
       openrouter: { reasoning: { effort: "high" } },
     });
+  });
+});
+
+/**
+ * Prompt caching, asked for the way each route takes it.
+ *
+ * A request-level `cache_control` is Anthropic's automatic caching: the
+ * breakpoint goes on the last cacheable block and moves forward as the
+ * conversation grows. DeepSeek and OpenAI cache a repeated prefix on their own,
+ * so nothing is sent to them.
+ */
+describe("prompt caching", () => {
+  /**
+   * Runs one call with the options `callOptionsFor` hands back.
+   * @param model - The model id to route.
+   * @param cache - The cache lifetime asked for, or false for none.
+   * @returns The intercepted request.
+   */
+  async function sendCached(model: string, cache: false | "5m" | "1h"): Promise<Seen> {
+    const { getModel, callOptionsFor } = await freshLlm();
+    const { generateText } = await import("ai");
+    seen = undefined;
+    await generateText({ model: getModel(model), prompt: "hi", ...callOptionsFor(model, { thinking: true, cache }) });
+    if (!seen) throw new Error("no request was made");
+    return seen;
+  }
+
+  it("asks Anthropic directly for automatic caching", async () => {
+    keys.current = { ANTHROPIC_API_KEY: "k" };
+    expect((await sendCached("anthropic/claude-opus-5.5", "5m")).body.cache_control).toEqual({ type: "ephemeral" });
+  });
+
+  it("asks for the one-hour lifetime when that is configured", async () => {
+    keys.current = { ANTHROPIC_API_KEY: "k" };
+    expect((await sendCached("anthropic/claude-opus-5.5", "1h")).body.cache_control).toEqual({
+      type: "ephemeral",
+      ttl: "1h",
+    });
+  });
+
+  it("asks OpenRouter for automatic caching on a Claude model", async () => {
+    keys.current = { OPENROUTER_API_KEY: "sk-or-test" };
+    expect((await sendCached("anthropic/claude-opus-5.5", "5m")).body.cache_control).toEqual({ type: "ephemeral" });
+  });
+
+  it("sends nothing about caching for a model that caches a prefix on its own", async () => {
+    keys.current = { OPENROUTER_API_KEY: "sk-or-test" };
+    expect((await sendCached("deepseek/deepseek-v4-pro", "5m")).body.cache_control).toBeUndefined();
+  });
+
+  it("sends nothing about caching when the caller does not ask", async () => {
+    keys.current = { ANTHROPIC_API_KEY: "k" };
+    expect((await sendCached("anthropic/claude-opus-5.5", false)).body.cache_control).toBeUndefined();
+  });
+});
+
+/**
+ * Not asking for thinking on a Claude model.
+ *
+ * Claude Opus 5.5 rejects `thinking: {type: "disabled"}` with a 400, and the
+ * 4.x models turn thinking off when the field is absent (Anthropic thinking
+ * docs, "Configuring thinking"). Leaving the field out is the one spelling
+ * every Claude model accepts.
+ */
+describe("a Claude call that does not ask for thinking", () => {
+  it("leaves the thinking field out when calling Anthropic directly", async () => {
+    keys.current = { ANTHROPIC_API_KEY: "k" };
+    const { getModel, callOptionsFor } = await freshLlm();
+    const { generateText } = await import("ai");
+    seen = undefined;
+    await generateText({
+      model: getModel("anthropic/claude-opus-5.5"),
+      prompt: "hi",
+      ...callOptionsFor("anthropic/claude-opus-5.5", { thinking: false, cache: false }),
+    });
+    expect(seen?.body.thinking).toBeUndefined();
+  });
+
+  it("leaves the reasoning field out when reaching Claude through OpenRouter", async () => {
+    keys.current = { OPENROUTER_API_KEY: "sk-or-test" };
+    const { getModel, callOptionsFor } = await freshLlm();
+    const { generateText } = await import("ai");
+    seen = undefined;
+    await generateText({
+      model: getModel("anthropic/claude-opus-5.5"),
+      prompt: "hi",
+      ...callOptionsFor("anthropic/claude-opus-5.5", { thinking: false, cache: false }),
+    });
+    expect(seen?.body.reasoning).toBeUndefined();
+  });
+});
+
+describe("the Anthropic direct route", () => {
+  it("sends the hyphenated id Anthropic serves for a dotted version", async () => {
+    keys.current = { ANTHROPIC_API_KEY: "k" };
+    expect((await callWith("anthropic/claude-opus-5.5")).body.model).toBe("claude-opus-5-5");
+  });
+
+  it("leaves an id that is already hyphenated as it is", async () => {
+    keys.current = { ANTHROPIC_API_KEY: "k" };
+    expect((await callWith("anthropic/claude-sonnet-4-6")).body.model).toBe("claude-sonnet-4-6");
+  });
+
+  it("passes the dotted id through to OpenRouter unchanged", async () => {
+    keys.current = { OPENROUTER_API_KEY: "sk-or-test" };
+    expect((await callWith("anthropic/claude-opus-5.5")).body.model).toBe("anthropic/claude-opus-5.5");
   });
 });
 
@@ -389,13 +495,13 @@ describe("what each route actually sends", () => {
     thinking: boolean,
   ): Promise<Seen> {
     keys.current = { [spelling.key]: `REAL-${spelling.name}` };
-    const { getModel, reasoningFor } = await freshLlm();
+    const { getModel, callOptionsFor } = await freshLlm();
     const { generateText } = await import("ai");
     seen = undefined;
     await generateText({
       model: getModel(spelling.model),
       prompt: "hi",
-      ...reasoningFor(spelling.model, thinking),
+      ...callOptionsFor(spelling.model, { thinking, cache: false }),
     });
     if (!seen) throw new Error(`${spelling.name} made no request`);
     return seen;
