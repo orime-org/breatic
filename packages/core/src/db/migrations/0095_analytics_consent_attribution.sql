@@ -17,6 +17,7 @@ CREATE TABLE "analytics_milestones" (
   "key" varchar(255) PRIMARY KEY NOT NULL,
   "created_at" timestamp with time zone DEFAULT now() NOT NULL
 );--> statement-breakpoint
+-- >>> milestones backfill
 -- A collaborator who already acted in a project before this shipped has had
 -- their first action, so it is claimed here: their next one is not reported.
 -- The actions are those the milestone counts: a Space change, an upload, a
@@ -48,7 +49,9 @@ UNION
 SELECT 'first-generation:' || t."user_id" FROM "tasks" t WHERE t."status" = 'completed'
 UNION
 SELECT 'first-project:' || p."created_by_user_id" FROM "projects" p
-ON CONFLICT DO NOTHING;--> statement-breakpoint
+ON CONFLICT DO NOTHING;
+-- <<< milestones backfill
+--> statement-breakpoint
 -- What was reported to the ad platform (inner#1442 §4.9). The key makes one
 -- conversion queue once; the status lets a refund restate only a conversion
 -- the platform received, since an unknown transaction id counts as new.
