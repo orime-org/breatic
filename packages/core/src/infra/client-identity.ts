@@ -27,6 +27,8 @@
  * `connection-gate.ts`, so the rule itself can be exercised without one.
  */
 
+import { isIPv6 } from "node:net";
+
 /** Loopback addresses that are not covered by a prefix test. */
 const LOOPBACK_EXACT = new Set(["::1", "::ffff:127.0.0.1", "localhost"]);
 
@@ -89,5 +91,44 @@ export function decideClientIdentity(
   const claimed = input.realIpHeader?.trim() ?? "";
   if (!claimed) return { kind: "refuse", reason: "missing-real-ip" };
 
-  return { kind: "identify", identity: claimed };
+  return { kind: "identify", identity: countingIdentity(claimed) };
+}
+
+/**
+ * The identity a client address is counted under.
+ *
+ * An ISP hands one subscriber at least a /64, so an IPv6 address is counted by
+ * its /64; counting each address would let one subscriber rotate through 2^64
+ * identities. An IPv4-mapped address is the IPv4 address. Anything else is
+ * kept as it is.
+ * @param address - The client address our proxy wrote.
+ * @returns The identity.
+ */
+function countingIdentity(address: string): string {
+  const ip = address.split("%")[0] ?? address;
+  if (!isIPv6(ip)) return address;
+  const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/i.exec(ip);
+  if (mapped?.[1]) return mapped[1];
+  const network = [...ipv6Groups(ip).slice(0, 4), 0, 0, 0, 0].map((g) => g.toString(16)).join(":");
+  // WHATWG URL parsing prints an IPv6 host in its canonical compressed form.
+  return `${new URL(`http://[${network}]`).hostname.slice(1, -1)}/64`;
+}
+
+/**
+ * The eight 16-bit groups of a valid IPv6 address.
+ * @param ip - A valid IPv6 address without a zone id.
+ * @returns The groups, most significant first.
+ */
+function ipv6Groups(ip: string): number[] {
+  let text = ip.toLowerCase();
+  const dotted = /(\d+)\.(\d+)\.(\d+)\.(\d+)$/.exec(text);
+  if (dotted) {
+    const [a, b, c, d] = dotted.slice(1).map(Number) as [number, number, number, number];
+    text = `${text.slice(0, dotted.index)}${((a << 8) | b).toString(16)}:${((c << 8) | d).toString(16)}`;
+  }
+  const [head = "", tail] = text.split("::");
+  const front = head ? head.split(":") : [];
+  const back = tail ? tail.split(":") : [];
+  const gap = tail === undefined ? [] : Array<string>(8 - front.length - back.length).fill("0");
+  return [...front, ...gap, ...back].map((g) => Number.parseInt(g, 16));
 }
