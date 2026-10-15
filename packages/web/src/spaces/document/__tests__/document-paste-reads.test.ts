@@ -8,6 +8,7 @@
  * they stand in the line, and none goes without the reader knowing.
  */
 
+import { Fragment, Slice, type Node as PMNode } from '@tiptap/pm/model';
 import { describe, it, expect, afterEach } from 'vitest';
 
 import {
@@ -731,5 +732,146 @@ describe('content of another body a cell cannot take, dropped on a table cell', 
     await settled();
 
     expect(blocksAndCells(editor)).toEqual([[['cell ']], 'paragraph:first', `image[${OURS}a.png|]`, [['t']], 'paragraph:next']);
+  });
+});
+
+describe('a drop read where it lands, wherever the caret was', () => {
+  it.each([
+    ['words and a medium', `<p>w1</p><p>w2</p><img src="${U}a.png">`],
+    ['a medium between words', `<p>w1</p><img src="${U}a.png"><p>w2</p>`],
+    ['words alone', '<p>w1</p><p>w2</p>'],
+    ['a list with a medium', `<ul><li>a</li><li>b <img src="${U}a.png"></li></ul>`],
+  ])('on a table cell, %s land as the same paste there', async (_what, html) => {
+    const land = async (how: 'paste' | 'drop'): Promise<unknown[]> => {
+      const { editor } = open([{ type: 'paragraph', content: 'caret' }, TABLE, { type: 'paragraph', content: 'next' }]);
+      laidOut(editor);
+      const at = positionOf(editor, 'cell ', 2);
+      select(editor, how === 'paste' ? at : 2);
+      if (how === 'paste') paste(editor, html, 'x');
+      else drop(editor, at, html, 'x');
+      await settled();
+      return blocksAndCells(editor);
+    };
+
+    expect(await land('drop')).toEqual(await land('paste'));
+  });
+
+  it('on a line outside the table the caret is in, lands its medium', async () => {
+    const { editor, sink } = open([TABLE, { type: 'paragraph', content: 'lead' }, { type: 'paragraph', content: 'next' }]);
+    laidOut(editor);
+    select(editor, positionOf(editor, 'cell ', 2));
+
+    drop(editor, positionOf(editor, 'lead', 4), `<p>a</p><img src="${U}a.png"><p>b</p>`, 'x');
+    await settled();
+
+    expect(blocksAndCells(editor)).toEqual([[['cell ']], 'paragraph:leada', 'image[pending|]', 'paragraph:b', 'paragraph:next']);
+    expect(sink.start).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('a table holding no cell', () => {
+  it.each(['paste', 'drop'] as const)('is no table: a %s on a cell lands its medium under the table', async (how) => {
+    const { editor, sink } = open([TABLE, { type: 'paragraph', content: 'next' }]);
+    laidOut(editor);
+    const at = positionOf(editor, 'cell ', 2);
+    select(editor, at);
+    const html = `<table><tr></tr></table><img src="${U}a.png">`;
+
+    if (how === 'paste') paste(editor, html, 'x');
+    else drop(editor, at, html, 'x');
+    await settled();
+
+    expect(blocksAndCells(editor)).toEqual([[['cell ']], 'image[pending|]', 'paragraph:next']);
+    expect(sink.onLeftOut).not.toHaveBeenCalled();
+  });
+});
+
+describe('a medium lost after the read', () => {
+  it.each(['paste', 'drop'] as const)('is told as left out on a %s', async (how) => {
+    const { editor, sink } = open([{ type: 'paragraph', content: 'lead' }]);
+    const view = editor.prosemirrorView!;
+    // A transform ahead of ours that loses the medium, as BlockNote's own does
+    // when it reads the slice as words for a cell.
+    const withoutImages = (fragment: Fragment): Fragment => {
+      const kept: PMNode[] = [];
+      fragment.forEach((node) => {
+        if (node.type.name === 'blockContainer' && node.firstChild?.type.name === 'image') return;
+        kept.push(node.isLeaf ? node : node.copy(withoutImages(node.content)));
+      });
+      return Fragment.from(kept);
+    };
+    view.setProps({ transformPasted: (slice) => Slice.maxOpen(withoutImages(slice.content)) });
+    const at = positionOf(editor, 'lead', 4);
+    select(editor, at);
+
+    if (how === 'paste') paste(editor, `<p>a</p><img src="${U}a.png">`, 'x');
+    else drop(editor, at, `<p>a</p><img src="${U}a.png">`, 'x');
+    await settled();
+
+    expect(mediaBlocks(editor)).toBe(0);
+    expect(told(sink)).toBe(1);
+  });
+});
+
+describe('a medium in a heading beside a rule', () => {
+  it('leaves no empty heading: a heading reads no rule', async () => {
+    const land = async (html: string): Promise<string[]> => {
+      const { editor } = open([{ type: 'paragraph', content: 'lead' }, { type: 'paragraph', content: '' }]);
+      caretIn(editor, 1);
+      paste(editor, html, 'x');
+      await settled();
+      const blocks = shape(editor);
+      unmountAll();
+      return blocks;
+    };
+
+    expect(await land(`<h2>Title <img src="${U}a.png"> <hr></h2>`)).toEqual(['paragraph:lead', 'heading:Title', 'image[pending|]']);
+    expect(await land(`<h2><span>Title <img src="${U}a.png"> <hr></span></h2>`)).toEqual(['paragraph:lead', 'heading:Title', 'image[pending|]']);
+  });
+
+  it('keeps a table a paragraph reads after its medium', async () => {
+    const { editor } = open([{ type: 'paragraph', content: 'lead' }, { type: 'paragraph', content: '' }]);
+    caretIn(editor, 1);
+
+    paste(editor, `<p>x <img src="${U}a.png"> <table><tr><td></td></tr></table></p>`, 'x');
+    await settled();
+
+    expect(blocksAndCells(editor)).toEqual(['paragraph:lead', 'paragraph:x', 'image[pending|]', [['']]]);
+  });
+});
+
+describe('words copied out of a table cell', () => {
+  /**
+   * Copies a range of a body the way the browser's copy does.
+   * @param editor - The editor.
+   * @param from - Where the range starts.
+   * @param to - Where it ends.
+   * @returns The clipboard formats written.
+   */
+  function copied(editor: Editor, from: number, to: number): Record<string, string> {
+    const data: Record<string, string> = {};
+    select(editor, from, to);
+    const event = new Event('copy', { bubbles: true, cancelable: true });
+    Object.defineProperty(event, 'clipboardData', {
+      value: { setData: (type: string, value: string) => (data[type] = value), clearData: () => undefined, getData: (type: string) => data[type] ?? '' },
+    });
+    editor.prosemirrorView!.dom.dispatchEvent(event);
+    return data;
+  }
+
+  it.each([
+    ['a paragraph', { type: 'paragraph', content: 'lead' }, 'paragraph:leadhello'],
+    ['a heading', { type: 'heading', content: 'lead' }, 'heading:leadhello'],
+  ])('join %s they are pasted into', async (_where, block, joined) => {
+    const source = open([{ type: 'table', content: { type: 'tableContent', rows: [{ cells: [['hello world']] }] } }]);
+    const from = positionOf(source.editor, 'hello world', 0);
+    const formats = copied(source.editor, from, from + 5);
+    const { editor } = open([TABLE, block]);
+    select(editor, positionOf(editor, 'lead', 4));
+
+    pasteFormats(editor, formats);
+    await settled();
+
+    expect(blocksAndCells(editor)).toEqual([[['cell ']], joined]);
   });
 });
