@@ -70,9 +70,9 @@ export async function fetchDoc({
 /**
  * Persist a document's binary state.
  *
- * The upsert clears `deleted_at`, so a store after a soft-delete would
- * resurrect the doc; in practice a soft-deleted project refuses WebSocket
- * auth before a store is ever reached (defense in depth).
+ * On conflict only the data and `updated_at` change: a soft-deleted row stays
+ * deleted (see `upsertDocData`), so a late store never brings a deleted Space
+ * back into the live count the Space cap reads.
  * @param args - Store payload.
  * @param args.documentName - Full Yjs doc name (the `yjs_documents.name` key).
  * @param args.state - Encoded Yjs update bytes to persist.

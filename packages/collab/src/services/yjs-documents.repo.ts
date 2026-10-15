@@ -133,9 +133,10 @@ export async function softDeleteByName(name: string): Promise<boolean> {
  * uuid parse and the connection is refused before any RPC dispatches. If
  * a non-authenticated call site is ever added, assert UUID shape here.
  *
- * Used by the `space:delete` guard (under the cross-instance lock in
- * `space-count-lock.ts`) to enforce "a project always keeps >=1 Space"
- * against PG rather than a possibly-stale in-memory doc.
+ * Read under the Space count lock (`space-count-lock.ts`) by the delete floor
+ * ("a project always keeps >=1 Space") and by the create / restore cap
+ * (`MAX_SPACES_PER_PROJECT`), against PG rather than a possibly-stale
+ * in-memory doc.
  * @param projectId - Project whose live Spaces are counted.
  * @returns The number of live content docs (Spaces) for the project.
  */
@@ -226,8 +227,9 @@ function listedContentDocNames(projectId: string, metaData: Uint8Array): string[
  *     the first Space's content-doc row, but under the deterministic
  *     `deriveId(newId)` spaceId — never a SOURCE spaceId the copy carries
  *     over — so a conflict here is still only a redelivery; skipping it is
- *     the idempotent no-op. (A racing lazy-seed leaves a harmless orphaned
- *     content doc the meta `DO UPDATE` below never references.)
+ *     the idempotent no-op. (A racing lazy-seed leaves an orphaned content
+ *     doc the meta `DO UPDATE` below never references; it holds one place
+ *     under the Space cap until the repair script clears it, inner#1557.)
  *   - the meta doc uses `DO UPDATE` — it MUST win over a lazy-seeded
  *     default meta so the duplicate reflects the SOURCE's Spaces, not a
  *     fresh default one. The consumer kicks the new project's live
