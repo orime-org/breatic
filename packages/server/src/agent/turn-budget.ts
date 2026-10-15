@@ -18,7 +18,7 @@ import { measureMessages, measurePayload } from "@server/agent/payload-size.js";
 import { planConsolidation } from "@server/agent/consolidation-window.js";
 import type { TurnCost } from "@server/agent/consolidation-window.js";
 import { consolidateWindow } from "@server/agent/memory-consolidator.js";
-import { historyForModel, replayRows, stripThinking } from "@server/agent/history-replay.js";
+import { replayRows, requestPrefixOf, stripThinking } from "@server/agent/history-replay.js";
 import type { ReplayRow, ReplayedRow } from "@server/agent/history-replay.js";
 
 /** One reading of everything a turn sends, and what it was built from. */
@@ -67,14 +67,13 @@ function costPerTurn(replayed: readonly ReplayedRow[]): TurnCost[] {
     else byTurn.set(one.row.turnIndex, [one]);
   }
 
-  return [...byTurn.entries()]
-    .sort(([a], [b]) => a - b)
-    .map(([turnIndex, rows]) => ({
-      turnIndex,
-      tokens:
-        rows.find((one) => one.reply !== undefined)?.reply?.turnTokens ??
-        measureMessages(rows.flatMap((one) => one.messages)),
-    }));
+  // In turn order: the history is read oldest first.
+  return [...byTurn.entries()].map(([turnIndex, rows]) => ({
+    turnIndex,
+    tokens:
+      rows.find((one) => one.reply !== undefined)?.reply?.turnTokens ??
+      measureMessages(rows.flatMap((one) => one.messages)),
+  }));
 }
 
 /**
@@ -93,10 +92,7 @@ function costPerTurn(replayed: readonly ReplayedRow[]): TurnCost[] {
  */
 function assembledTokens(assembly: Assembly, replayed: readonly ReplayedRow[], turns: readonly TurnCost[]): number {
   const question = measureMessages(assembly.messages.slice(-1));
-  let newestAsSent = -1;
-  replayed.forEach((one, i) => {
-    if (one.asSent) newestAsSent = i;
-  });
+  const newestAsSent = replayed.findLastIndex((one) => one.asSent);
   const sized = replayed[newestAsSent]?.reply;
   if (sized !== undefined) {
     const after = replayed.slice(newestAsSent + 1).flatMap((one) => one.messages);
@@ -121,11 +117,7 @@ export async function foldIfOverBudget(
   who: TurnIdentity,
 ): Promise<boolean> {
   const config = getAgentConfig();
-  const replayed = replayRows(assembly.history, {
-    system: assembly.agentConfig.instructions,
-    tools: assembly.agentConfig.tools,
-    modelId: assembly.agentConfig.modelId,
-  });
+  const replayed = replayRows(assembly.history, requestPrefixOf(assembly.agentConfig));
   const turns = costPerTurn(replayed);
   const assembled = assembledTokens(assembly, replayed, turns);
   // The planner asks this again and is the authority on it.
@@ -150,14 +142,7 @@ export async function foldIfOverBudget(
     projectId: who.projectId,
     // The window as the model was sent it, less the model's own working.
     transcript: stripThinking(
-      historyForModel(
-        assembly.history.filter((m) => m.turnIndex <= newWatermark),
-        {
-          system: assembly.agentConfig.instructions,
-          tools: assembly.agentConfig.tools,
-          modelId: assembly.agentConfig.modelId,
-        },
-      ),
+      replayed.filter((one) => one.row.turnIndex <= newWatermark).flatMap((one) => one.messages),
     ),
     watermarkBefore: assembly.watermark,
     newWatermark,

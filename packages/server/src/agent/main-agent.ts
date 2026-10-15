@@ -39,7 +39,7 @@ import { foldIfOverBudget } from "@server/agent/turn-budget.js";
 import type { Assembly } from "@server/agent/turn-budget.js";
 import { getContext } from "@breatic/core";
 import { logger } from "@breatic/core";
-import { historyForModel, lastFullSnapshotKey, prefixHash } from "@server/agent/history-replay.js";
+import { historyForModel, lastFullSnapshotKey, prefixHash, requestPrefixOf } from "@server/agent/history-replay.js";
 import type { ReplyForModel, UserForModel } from "@server/agent/history-replay.js";
 import { endingNote } from "@server/agent/model-messages.js";
 import { inProgressStep, replyTokens, type ReportedUsage, type SettledCalls } from "@server/agent/reply-for-model.js";
@@ -396,11 +396,7 @@ export class MainAgent {
         content: userMessageForModel(ask.clockNote, ask.turn, { spaceUnchanged: unchanged }),
       };
       const messages = [
-        ...historyForModel(history, {
-          system: agentConfig.instructions,
-          tools: agentConfig.tools,
-          modelId: agentConfig.modelId,
-        }),
+        ...historyForModel(history, requestPrefixOf(agentConfig)),
         userMessage,
       ];
       userKept = {
@@ -460,10 +456,7 @@ export class MainAgent {
 
       const { agentConfig, messages } = assembly;
       modelId = agentConfig.modelId;
-      sentPrefixHash = prefixHash(
-        { system: agentConfig.instructions, tools: agentConfig.tools, modelId: agentConfig.modelId },
-        messages,
-      );
+      sentPrefixHash = prefixHash(requestPrefixOf(agentConfig), messages);
       requestChars = measurePayload({ instructions: agentConfig.instructions, tools: agentConfig.tools, messages });
 
       // Kept as it is about to go out, after any fold, so later turns send it

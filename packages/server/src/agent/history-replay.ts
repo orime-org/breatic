@@ -45,6 +45,23 @@ export interface RequestPrefix {
   modelId: string;
 }
 
+/**
+ * The prefix of a request a turn assembles from its agent config.
+ * @param config - Model, instructions and tools, as the factory resolved them.
+ * @param config.instructions - The system prompt.
+ * @param config.tools - The tools, keyed by name.
+ * @param config.modelId - The model id.
+ * @returns What the request carries besides its messages.
+ * @throws {never} Never.
+ */
+export function requestPrefixOf(config: {
+  instructions: string;
+  tools: Readonly<Record<string, Tool>>;
+  modelId: string;
+}): RequestPrefix {
+  return { system: config.instructions, tools: config.tools, modelId: config.modelId };
+}
+
 const ROLES = new Set(["system", "user", "assistant", "tool"]);
 
 // Read as it was written, never rebuilt: a schema that strips or reorders
