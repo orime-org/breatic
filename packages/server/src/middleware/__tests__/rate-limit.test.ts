@@ -10,12 +10,14 @@
  */
 
 import { createHash } from "node:crypto";
+import type * as CoreModule from "@breatic/core";
+import type * as SharedModule from "@breatic/shared";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { z } from "zod";
 
 const checkRateLimit = vi.fn();
 vi.mock("@breatic/core", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@breatic/core")>();
+  const actual = await importOriginal<typeof CoreModule>();
   return {
     getRedis: () => ({}),
     checkRateLimit: (...args: unknown[]) => checkRateLimit(...args),
@@ -24,7 +26,7 @@ vi.mock("@breatic/core", async (importOriginal) => {
   };
 });
 vi.mock("@breatic/shared", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@breatic/shared")>()),
+  ...(await importOriginal<typeof SharedModule>()),
   t: (k: string) => k,
 }));
 
