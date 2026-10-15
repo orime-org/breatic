@@ -142,6 +142,17 @@ describe('writesForClick under GPC', () => {
     }
   });
 
+  it('records the GPC refusal from either window while this browser has no ads choice, so the banner does not ask again', () => {
+    const fresh = { ...base, browserAds: null };
+    for (const press of ['all', 'save'] as const) {
+      expect(writesForClick({ ...fresh, press, window: 'settings', toggles: { analytics: true, ads: false } })).toEqual({
+        kind: 'write',
+        writes: { analytics: { value: true, source: 'settings' }, ads: { value: false, source: 'gpc' } },
+        put: null,
+      });
+    }
+  });
+
   it('refuses both on "reject all"', () => {
     expect(writesForClick({ ...base, press: 'necessary', window: 'settings', toggles: null })).toEqual({
       kind: 'write',
@@ -199,6 +210,26 @@ describe('writesForClick while ads are opted out here', () => {
   it('opens the account switch when a signed-in browser that refused here confirms', () => {
     const press = { situation: 'browserRefused' as const, browserAds: false, signedIn: true, toggles: null };
     expect(writesForClick({ ...press, press: 'all', window: 'settings', confirmed: true })).toMatchObject({ put: true });
+  });
+});
+
+describe('writesForClick on a save that leaves the ads switch untouched', () => {
+  const untouched = { press: 'save' as const, window: 'settings' as const, toggles: { analytics: true, ads: null } };
+
+  it('writes analytics alone and leaves the account switch as it was', () => {
+    expect(writesForClick({ ...untouched, situation: 'browserRefused', browserAds: false, signedIn: true })).toEqual({
+      kind: 'write',
+      writes: { analytics: { value: true, source: 'settings' } },
+      put: null,
+    });
+  });
+
+  it('saves analytics without waiting for an account switch it does not touch', () => {
+    expect(writesForClick({ ...untouched, situation: 'accountUnknown', browserAds: true, signedIn: true })).toEqual({
+      kind: 'write',
+      writes: { analytics: { value: true, source: 'settings' } },
+      put: null,
+    });
   });
 });
 

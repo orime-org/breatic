@@ -168,6 +168,15 @@ const view = (over: Partial<AdsView> = {}): AdsView => ({
 });
 
 const adsToggle = (): HTMLInputElement | null => document.querySelector<HTMLInputElement>('.pm input[value="ads"]');
+/**
+ * Move the ads switch as the visitor would, so the banner hears it.
+ * @param on - Where the switch ends up.
+ */
+function setAdsSwitch(on: boolean): void {
+  const toggle = adsToggle()!;
+  toggle.checked = on;
+  toggle.dispatchEvent(new Event('change', { bubbles: true }));
+}
 const adsLine = (): string | null | undefined =>
   adsToggle()?.closest('.pm__section--toggle')?.querySelector('.breatic-consent-notice')?.textContent;
 
@@ -358,7 +367,8 @@ describe('a press', () => {
     document.querySelector<HTMLInputElement>('.pm input[value="analytics"]')!.checked = false;
     await press('.pm [data-role="save"]');
     expect(library.acceptCategory).toHaveBeenLastCalledWith(['ads'], ['analytics']);
-    expect(written()).toMatchObject({ analytics: { source: 'settings' }, ads: { source: 'settings' } });
+    // The ads switch was left as preset, so ads keep the choice they had.
+    expect(written()).toMatchObject({ analytics: { source: 'settings' }, ads: { source: 'implicit' } });
     expect(library.hidePreferences).toHaveBeenCalled();
   });
 
@@ -451,7 +461,7 @@ describe('turning ads back on while they are opted out', () => {
     const host = hostOf({ optedOut: false, source: null });
     await refusedHere(host);
     document.querySelector<HTMLInputElement>('.pm input[value="analytics"]')!.checked = true;
-    adsToggle()!.checked = true;
+    setAdsSwitch(true);
     await press('.pm [data-role="save"]');
     await press('[data-breatic-confirm="yes"]');
     expect(host.putAdsSharing).toHaveBeenCalledWith(true);
@@ -462,7 +472,7 @@ describe('turning ads back on while they are opted out', () => {
 
   it('leaves ads off and writes the rest when declined', async () => {
     await refusedHere();
-    adsToggle()!.checked = true;
+    setAdsSwitch(true);
     document.querySelector<HTMLInputElement>('.pm input[value="analytics"]')!.checked = false;
     await press('.pm [data-role="save"]');
     await press('[data-breatic-confirm="no"]');
@@ -594,7 +604,7 @@ describe('status lines and the ads switch', () => {
     // As the library does with force: both windows are built afresh from its own state.
     library.setLanguage.mockImplementationOnce(async () => {
       drawWindows();
-      adsToggle()!.checked = true;
+      setAdsSwitch(true);
       return true;
     });
     await banner.setConsentLanguage('ja');

@@ -95,7 +95,7 @@ let adsView: AdsView = { allowed: false, known: true, status: null, optedOut: fa
 // Where the visitor put the ads switch since the settings window opened, or null; a later view leaves it there.
 let touchedAds: boolean | null = null;
 // A press waiting for the visitor to confirm turning ads on, with the switches it was made with.
-let confirming: { press: 'all' | 'save'; toggles: { analytics: boolean; ads: boolean } | null } | null = null;
+let confirming: { press: 'all' | 'save'; toggles: { analytics: boolean; ads: boolean | null } | null } | null = null;
 // The window whose last press could not be saved, which shows the error line.
 let failedIn: 'banner' | 'settings' | null = null;
 // A press is being carried out; another one waits for it.
@@ -158,10 +158,12 @@ function writeConsent(writes: ConsentWrites, prior: BrowserChoices | null): void
 }
 
 /**
- * The switches in the settings window.
+ * The switches in the settings window. An ads switch the visitor left as it was
+ * preset reads `null` once this browser holds an ads choice: the save is then no
+ * answer about ads (design §4.4.4, "analytics changed only").
  * @returns Where the analytics and ads switches stand.
  */
-function readToggles(): { analytics: boolean; ads: boolean } {
+function readToggles(): { analytics: boolean; ads: boolean | null } {
   /**
    * Whether one switch is on.
    * @param value - The switch's category.
@@ -169,7 +171,7 @@ function readToggles(): { analytics: boolean; ads: boolean } {
    */
   const on = (value: string): boolean =>
     document.querySelector<HTMLInputElement>(`#cc-main .pm input[value="${value}"]`)?.checked === true;
-  return { analytics: on('analytics'), ads: on('ads') };
+  return { analytics: on('analytics'), ads: touchedAds ?? (lastSeen?.ads ? null : on('ads')) };
 }
 
 /**
@@ -186,7 +188,7 @@ function readToggles(): { analytics: boolean; ads: boolean } {
 async function answerPress(
   press: 'all' | 'necessary' | 'save',
   window: 'banner' | 'settings',
-  toggles: { analytics: boolean; ads: boolean } | null,
+  toggles: { analytics: boolean; ads: boolean | null } | null,
   confirmed?: boolean,
 ): Promise<void> {
   if (busy || host === null) return;

@@ -101,7 +101,7 @@ export type PressOutcome =
 export function writesForClick(input: {
   press: 'all' | 'necessary' | 'save';
   window: 'banner' | 'settings';
-  toggles: { analytics: boolean; ads: boolean } | null;
+  toggles: { analytics: boolean; ads: boolean | null } | null;
   situation: AdsSituation;
   browserAds: boolean | null;
   signedIn: boolean;
@@ -127,11 +127,14 @@ export function writesForClick(input: {
    * @returns The outcome.
    */
   const refuse = (): PressOutcome => write({ value: false, source }, signedIn ? false : null);
-  // Under GPC the ads switch cannot be moved, so a save only says what analytics should be.
-  if (situation === 'gpc' && press === 'save') return write(undefined);
+  // Under GPC ads stay off; a browser with no ads choice yet records the GPC refusal, so it is not asked again.
+  const gpcRefusal: CategoryWrite | undefined = source === 'banner' || browserAds === null ? { value: false, source: 'gpc' } : undefined;
+  if (situation === 'gpc' && press === 'save') return write(gpcRefusal);
+  // A switch left as it was preset is no answer about ads.
+  if (on.ads === null) return write(undefined);
   if (!on.ads) return refuse();
   if (situation === 'open') return write({ value: true, source });
-  if (situation === 'gpc') return write(source === 'banner' ? { value: false, source: 'gpc' } : undefined);
+  if (situation === 'gpc') return write(gpcRefusal);
   if (source === 'banner') {
     // The banner never turns ads on while they are opted out; a browser without a choice records the refusal.
     return situation === 'accountOptedOut' && browserAds === null ? refuse() : write(undefined);
