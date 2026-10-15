@@ -28,6 +28,18 @@ const CHECK_INSET_PX = 4;
 const CHECK_ROOM_PX = CHECK_PX + 2 * CHECK_INSET_PX;
 
 /**
+ * Where the export cuts a side, as fractions of it; an even split while the
+ * side's pixels are not known.
+ * @param side - The side in pixels, when known.
+ * @param parts - How many parts.
+ * @returns The cuts from 0 to 1.
+ */
+function cutFractions(side: number | undefined, parts: number): number[] {
+  const length = side ?? parts;
+  return gridCuts(length, parts).map((cut) => cut / length);
+}
+
+/**
  * The grid tool's layer over the node's picture while its panel is open on it
  * (inner#1303 §6.4, A15): the lines the picture is cut along, and one tile per
  * cell the reader picks or leaves out. The tile's checkbox is its one control
@@ -69,8 +81,8 @@ export function NodeGridLayer({ nodeId, wrapper }: NodeGridLayerProps): React.JS
   // The lines sit where the export cuts the source (§6.4); an even split until
   // the source's pixels are known.
   const natural = geometry.natural;
-  const xs = (natural === null ? gridCuts(cols, cols) : gridCuts(natural.width, cols)).map((x, _, all) => x / (all.at(-1) || 1));
-  const ys = (natural === null ? gridCuts(rows, rows) : gridCuts(natural.height, rows)).map((y, _, all) => y / (all.at(-1) || 1));
+  const xs = cutFractions(natural?.width, cols);
+  const ys = cutFractions(natural?.height, rows);
   const line = 'absolute bg-background outline outline-foreground';
   const roomy =
     (geometry.box.width / cols) * zoom >= CHECK_ROOM_PX && (geometry.box.height / rows) * zoom >= CHECK_ROOM_PX;
