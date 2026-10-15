@@ -45,7 +45,8 @@ vi.mock('@amplitude/analytics-browser', async () => {
   await sdkGate.wait;
   return sdk;
 });
-vi.mock('@web/lib/analytics/build-config', () => ({
+vi.mock('@web/lib/analytics/build-config', async (importOriginal: () => Promise<Record<string, unknown>>) => ({
+  ...(await importOriginal()),
   AMPLITUDE_API_KEY: 'test-key',
   GOOGLE_ADS_TAG_ID: 'AW-1',
   CONSENT_COOKIE_DOMAIN: '',
