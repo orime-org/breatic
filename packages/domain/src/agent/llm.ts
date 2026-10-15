@@ -177,10 +177,7 @@ export const DIRECT_ROUTES: readonly DirectRoute[] = [
     vendorId: (modelId) => modelId.replace(/(\d)\.(\d)/g, "$1-$2"),
     reasoning: {
       on: { thinking: { type: "adaptive", display: "summarized" } },
-      // No `thinking` field: the 4.x models then do not think, and Opus 5.5,
-      // which rejects `{ type: "disabled" }` with a 400, falls to the adaptive
-      // thinking it cannot leave (Anthropic thinking docs, "Configuring
-      // thinking").
+      // Not read: `callOptionsFor` sends Claude nothing when thinking is off.
       off: {},
     },
     cache: (_modelString, ttl) => ({ cacheControl: cacheControl(ttl) }),
@@ -307,6 +304,10 @@ export function resolveProvider(modelString: string | undefined): string {
  */
 export function callOptionsFor(modelString: string | undefined, wants: CallWants): CallOptions {
   const route = directRouteFor(modelString) ?? FALLBACK_ROUTE;
+  // Claude, on either route, gets no thinking field when it is off: the 4.x
+  // models then do not think, and Opus 5.5, which rejects
+  // `{ type: "disabled" }` with a 400, falls to the adaptive thinking it
+  // cannot leave (Anthropic thinking docs, "Configuring thinking").
   const reasoning = wants.thinking
     ? route.reasoning.on
     : isClaude(modelString)
