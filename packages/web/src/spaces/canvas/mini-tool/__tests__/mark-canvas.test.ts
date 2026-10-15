@@ -415,6 +415,34 @@ describe('MarkCanvasController', () => {
     expect(mark().undo).toHaveLength(2);
   });
 
+  // A press on another object while a text is typed ends the edit, which
+  // writes the text back before Fabric's first move; the sync that follows
+  // keeps the pressed object, so Fabric's drag of it goes on (§6.6).
+  it.each(['hi', ''])('keeps dragging an object pressed straight out of a text edit (typed "%s")', (typed) => {
+    store.getState().commitMark([RECT]);
+    controller.sync();
+    const rect = controller.canvas.getObjects()[0]!;
+    store.getState().setMarkTool('text');
+    controller.sync();
+    drag([300, 200], [300, 200]);
+    if (typed !== '') {
+      editing().set({ text: typed });
+      controller.canvas.fire('text:changed', { target: editing() });
+    }
+    const press = new MouseEvent('mousedown', { clientX: 60, clientY: 40, button: 0 });
+    const canvas = controller.canvas as unknown as {
+      _setupCurrentTransform: (e: MouseEvent, target: unknown, alreadySelected: boolean) => void;
+      _currentTransform: { target: unknown } | null;
+    };
+    controller.canvas.setActiveObject(rect, press);
+    canvas._setupCurrentTransform(press, rect, false);
+    controller.sync();
+    expect(controller.canvas.getObjects()).toContain(rect);
+    expect(controller.canvas.getActiveObject()).toBe(rect);
+    expect(canvas._currentTransform?.target).toBe(rect);
+    expect(controller.canvas.getObjects()).toHaveLength(typed === '' ? 1 : 2);
+  });
+
   it('drops the selection when undo changes the objects', () => {
     store.getState().commitMark([RECT]);
     store.getState().commitMark([RECT, TEXT]);
