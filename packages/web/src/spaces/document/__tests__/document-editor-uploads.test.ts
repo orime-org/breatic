@@ -15,6 +15,8 @@ import { encodeInitialSpaceContent } from '@breatic/shared';
 
 import { serializeClipboard, type ClipboardPayload } from '@web/spaces/canvas/node-clipboard';
 
+import { drop, settled } from './paste-harness';
+
 const upload = vi.hoisted(() => ({ media: vi.fn() }));
 vi.mock('@web/data/upload/media-upload', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@web/data/upload/media-upload')>()),
@@ -174,6 +176,16 @@ describe('a read-only body (A8)', () => {
     const handle = openBody([{ type: 'paragraph', content: 'lead' }], 0, false);
 
     paste(handle, data);
+
+    expect(shape(handle)).toEqual(['paragraph:lead']);
+    expect(upload.media).not.toHaveBeenCalled();
+  });
+
+  it('takes no drop of web HTML with an outside picture', async () => {
+    const handle = openBody([{ type: 'paragraph', content: 'lead' }], 0, false);
+
+    drop(handle.editor, 3, '<p>a</p><img src="https://imgs.example/x.jpg"><p>b</p>', 'a b');
+    await settled();
 
     expect(shape(handle)).toEqual(['paragraph:lead']);
     expect(upload.media).not.toHaveBeenCalled();
