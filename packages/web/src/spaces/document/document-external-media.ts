@@ -48,7 +48,12 @@ import {
   pasteTarget,
   type BlockSpec,
 } from '@web/spaces/document/document-file-input';
-import { MEDIA_BLOCK_TYPES, isMediaBlockType, pendingUploadId } from '@web/spaces/document/document-media-types';
+import {
+  HTML_MEDIA_ELEMENTS,
+  MEDIA_BLOCK_TYPES,
+  isMediaBlockType,
+  pendingUploadId,
+} from '@web/spaces/document/document-media-types';
 import type { UploadSource } from '@web/spaces/document/document-upload-controller';
 import { markOwnUndoStep } from '@web/spaces/document/document-undo-step';
 
@@ -204,7 +209,7 @@ function withoutMedia(html: string): string {
     // would come back holding a blank line.
     if (group?.matches('[data-node-type="blockGroup"]') === true && group.childElementCount === 0) group.remove();
   }
-  for (const element of Array.from(body.querySelectorAll('img, video, audio'))) {
+  for (const element of Array.from(body.querySelectorAll(HTML_MEDIA_ELEMENTS.join(', ')))) {
     (element.closest('figure') ?? element).remove();
   }
   return body.innerHTML.trim() === '' ? '<p></p>' : body.innerHTML;

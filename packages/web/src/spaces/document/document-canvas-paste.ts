@@ -111,7 +111,7 @@ function readingOrder(nodes: readonly ClipboardNode[]): ClipboardNode[] {
  * @param node - The node.
  * @returns True when it can be ordered and read.
  */
-function isWellFormed(node: ClipboardNode): boolean {
+function isWellFormed(node: unknown): node is ClipboardNode {
   if (typeof node !== 'object' || node === null) return false;
   const { position, height, data } = node as { position?: { x?: unknown; y?: unknown }; height?: unknown; data?: unknown };
   return (
@@ -169,8 +169,9 @@ function itemOf(node: ClipboardNode): PastedItem | null {
 }
 
 /**
- * What a canvas clipboard becomes in the body. Groups and stickies are not
- * content: a group's members land on their own, and neither is counted.
+ * What a canvas clipboard becomes in the body. A node of a broken shape is
+ * counted as not pasted whatever its type. Well-formed groups and stickies
+ * are not content and are not counted: a group's members land on their own.
  * @param payload - The parsed clipboard.
  * @returns The items in reading order and the count of nodes left out.
  */

@@ -179,7 +179,7 @@ export function quotedAs(blocks: readonly BlockSpec[], quoted: boolean): BlockSp
  * @param aimed - Whether the reader aimed at the line right after the gap.
  * @returns True when that line is quoted.
  */
-export function quotedBeside(doc: PMNode, gap: UploadGap, aimed: boolean): boolean {
+function quotedBeside(doc: PMNode, gap: UploadGap, aimed: boolean): boolean {
   const $gap = doc.resolve(gap);
   const beside: PMNode | null = aimed ? $gap.nodeAfter : ($gap.nodeBefore ?? $gap.nodeAfter);
   return beside?.firstChild?.attrs[QUOTED] === true;

@@ -16,13 +16,15 @@
  * that row's words to the right.
  *
  * Here every rowspan is cut to the rows below it and every row is filled at
- * its end to the widest row, the shape the reader saw on the page.
+ * its end to the widest row, the shape the reader saw on the page. The HTML
+ * is then read as HTML whenever it carries media (inner#1351 design §5.1).
  */
 
 import type { PasteHandler } from '@web/spaces/document/document-file-input';
+import { HTML_MEDIA_ELEMENTS } from '@web/spaces/document/document-media-types';
 
 /** Whether a piece of HTML carries an image, a video or an audio. */
-const HTML_MEDIA = /<(img|video|audio)\b/i;
+const HTML_MEDIA = new RegExp(`<(${HTML_MEDIA_ELEMENTS.join('|')})\\b`, 'i');
 
 /**
  * Evens one table's grid, in place.
