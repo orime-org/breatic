@@ -650,16 +650,23 @@ class AdjustGrain extends filters.BaseFilter<
 /**
  * ffmpeg's `vignette`: each value scaled by the fourth power of the cosine of
  * its angle off centre, the distance a circle in pixels over the half
- * diagonal. On codes, Y scales toward 0 and the chroma toward 127; on RGB,
- * which ffmpeg's frame is once `colorchannelmixer` ran, every channel toward 0.
+ * diagonal. ffmpeg measures from a pixel's integer index to half the frame
+ * (`x - w/2`), half a source pixel short of the pixel's centre. On codes, Y
+ * scales toward 0 and the chroma toward 127; on RGB, which ffmpeg's frame is
+ * once `colorchannelmixer` ran, every channel toward 0.
  */
-class AdjustVignette extends filters.BaseFilter<'AdjustVignette', { angle: number; aspect: number; onCodes: boolean }> {
+class AdjustVignette extends filters.BaseFilter<
+  'AdjustVignette',
+  { angle: number; aspect: number; onCodes: boolean; pixel: [number, number] }
+> {
   declare angle: number;
   declare aspect: number;
   declare onCodes: boolean;
+  /** One source pixel, as shares of the source's width and height. */
+  declare pixel: [number, number];
   static type = 'AdjustVignette';
-  static defaults = { angle: 0, aspect: 1, onCodes: true };
-  static uniformLocations = ['uAngle', 'uAspect', 'uCenter'];
+  static defaults = { angle: 0, aspect: 1, onCodes: true, pixel: [0, 0] as [number, number] };
+  static uniformLocations = ['uAngle', 'uAspect', 'uCenter', 'uPixel'];
 
   /**
    * The shader.
@@ -672,10 +679,11 @@ class AdjustVignette extends filters.BaseFilter<'AdjustVignette', { angle: numbe
       uniform float uAngle;
       uniform float uAspect;
       uniform vec3 uCenter;
+      uniform vec2 uPixel;
       varying vec2 vTexCoord;
       void main() {
         vec4 c = texture2D(uTexture, vTexCoord);
-        vec2 off = (vTexCoord - 0.5) * vec2(uAspect, 1.0);
+        vec2 off = (vTexCoord - 0.5 * uPixel - 0.5) * vec2(uAspect, 1.0);
         float d = length(off) / length(vec2(uAspect, 1.0) * 0.5);
         float f = pow(cos(uAngle * d), 4.0);
         gl_FragColor = vec4((c.rgb - uCenter) * f + uCenter, c.a);
@@ -700,9 +708,12 @@ class AdjustVignette extends filters.BaseFilter<'AdjustVignette', { angle: numbe
     const { data, width, height } = options.imageData;
     const reach = Math.hypot(this.aspect, 1) / 2;
     const centers = this.centers().map((share) => 255 * share);
+    const [shiftX, shiftY] = this.pixel.map((share) => share / 2);
     for (let y = 0; y < height; y++) {
       for (let x = 0; x < width; x++) {
-        const d = Math.hypot(((x + 0.5) / width - 0.5) * this.aspect, (y + 0.5) / height - 0.5) / reach;
+        const across = (x + 0.5) / width - (shiftX ?? 0) - 0.5;
+        const down = (y + 0.5) / height - (shiftY ?? 0) - 0.5;
+        const d = Math.hypot(across * this.aspect, down) / reach;
         const f = Math.cos(this.angle * d) ** 4;
         const at = (y * width + x) * 4;
         for (let ch = 0; ch < 3; ch++) {
@@ -714,7 +725,7 @@ class AdjustVignette extends filters.BaseFilter<'AdjustVignette', { angle: numbe
   }
 
   /**
-   * Hand the angle, the source's shape and the centres to the shader.
+   * Hand the angle, the source's shape, the centres and the source pixel to the shader.
    * @param gl - The context.
    * @param locations - The uniforms.
    */
@@ -722,6 +733,7 @@ class AdjustVignette extends filters.BaseFilter<'AdjustVignette', { angle: numbe
     gl.uniform1f(locations.uAngle ?? null, this.angle);
     gl.uniform1f(locations.uAspect ?? null, this.aspect);
     gl.uniform3fv(locations.uCenter ?? null, this.centers());
+    gl.uniform2fv(locations.uPixel ?? null, this.pixel);
   }
 }
 
@@ -762,7 +774,7 @@ export function adjustFilters(value: AdjustValue, seed: number, source: Size, dr
   if (terms.clarity > 0) codes.push(new AdjustUnsharp({ amount: terms.clarity, row: CLARITY_ROW, pixel }));
   const vignette =
     terms.vignetteAngle > 0
-      ? new AdjustVignette({ angle: terms.vignetteAngle, aspect: width / height, onCodes: terms.channels === null })
+      ? new AdjustVignette({ angle: terms.vignetteAngle, aspect: width / height, onCodes: terms.channels === null, pixel })
       : null;
   if (terms.channels === null) {
     if (vignette !== null) codes.push(vignette);
