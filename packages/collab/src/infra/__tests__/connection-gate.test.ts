@@ -35,7 +35,7 @@ vi.mock("@breatic/core", async (importOriginal) => ({
   }),
 }));
 
-import { createConnectionGate } from "@collab/infra/connection-gate.js";
+import { createConnectionGate, recordingFailedAuth } from "@collab/infra/connection-gate.js";
 
 beforeEach(() => {
   loggerWarnMock.mockClear();
@@ -413,5 +413,27 @@ describe("connection gate — failed authentication", () => {
     await gate.recordFailedAuth(connectPayload(upgrade.request.headers as Record<string, string>));
 
     expect(throttle.count).not.toHaveBeenCalled();
+  });
+});
+
+describe("recordingFailedAuth", () => {
+  it("records a rejected authentication with the gate and rethrows the same rejection", async () => {
+    const gate = { recordFailedAuth: vi.fn(async () => undefined) };
+    const rejection = new Error("session_not_found");
+    const onAuthenticate = recordingFailedAuth(async () => {
+      throw rejection;
+    }, gate);
+    const payload = { request: { headers: new Headers({ "x-real-ip": "203.0.113.9" }) } };
+
+    expect(await settle(onAuthenticate(payload))).toBe(rejection);
+    expect(gate.recordFailedAuth).toHaveBeenCalledExactlyOnceWith(payload);
+  });
+
+  it("passes an accepted authentication through untouched", async () => {
+    const gate = { recordFailedAuth: vi.fn(async () => undefined) };
+    const onAuthenticate = recordingFailedAuth(async () => ({ user: { id: "u-1" } }), gate);
+
+    await expect(onAuthenticate({ request: { headers: new Headers() } })).resolves.toEqual({ user: { id: "u-1" } });
+    expect(gate.recordFailedAuth).not.toHaveBeenCalled();
   });
 });
