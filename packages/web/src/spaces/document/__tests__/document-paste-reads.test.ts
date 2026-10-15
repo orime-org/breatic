@@ -299,3 +299,72 @@ describe('a block opening what is pasted', () => {
     expect(shape(editor)).toEqual(expected);
   });
 });
+
+describe('a block landing at the start of a line with words', () => {
+  const NESTED = [{ type: 'paragraph', content: 'lead', children: [{ type: 'paragraph', content: 'kid' }] }];
+
+  it.each([
+    ['a picture', `<img src="${U}x.png">`, ['image[pending|]', 'paragraph:lead']],
+    ['a table', '<table><tr><td>x</td></tr></table>', ['table', 'paragraph:lead']],
+  ])('%s pasted on a line holding nested lines leaves no blank line above it', async (_what, html, expected) => {
+    const { editor } = open(NESTED);
+    select(editor, positionOf(editor, 'lead', 0));
+
+    paste(editor, html, 'x');
+    await settled();
+
+    expect(shape(editor)).toEqual(expected);
+    expect(editor.prosemirrorView!.state.doc.textContent).toContain('kid');
+  });
+
+  it.each([
+    ['a picture and words', `<img src="${U}x.png"><p>after</p>`, ['image[pending|]', 'paragraph:afterlead']],
+    ['a table and words', '<table><tr><td>t</td></tr></table><p>after</p>', ['table', 'paragraph:afterlead']],
+    ['a rule and words', '<hr><p>after</p>', ['divider:', 'paragraph:afterlead']],
+  ])('%s dropped at the start of a line leaves no blank line above it', async (_what, html, expected) => {
+    const { editor } = open([{ type: 'paragraph', content: 'lead' }]);
+
+    drop(editor, positionOf(editor, 'lead', 0), html, 'x');
+    await settled();
+
+    expect(shape(editor)).toEqual(expected);
+  });
+});
+
+describe('a medium that cannot land, in a sentence', () => {
+  it.each([
+    ['an http address', '<p>see <img src="http://e.example/a.png"> here</p>'],
+    ['no address', `<p>see <img data-src="${U}a.png"> here</p>`],
+    ['an empty video', '<p>see <video></video> here</p>'],
+  ])('with %s, leaves the sentence whole, pasted or dropped, and is told', async (_what, html) => {
+    for (const how of ['paste', 'drop'] as const) {
+      const { editor, sink } = open([{ type: 'paragraph', content: 'abcd' }]);
+      const at = positionOf(editor, 'abcd', 2);
+      if (how === 'paste') {
+        select(editor, at);
+        paste(editor, html, 'see here');
+      } else {
+        drop(editor, at, html, 'see here');
+      }
+      await settled();
+
+      expect(shape(editor)).toHaveLength(1);
+      expect(sink.onLeftOut.mock.calls).toEqual([[1]]);
+    }
+  });
+});
+
+describe('web content dropped at the end of the last table cell', () => {
+  it.each([
+    ['words', '<p>words</p>', ['table']],
+    ['words and a picture', `<p>words</p><img src="${U}a.png">`, ['table', 'image[pending|]']],
+  ])('%s land, the words in the cell', async (_what, html, rows) => {
+    const { editor } = open([TABLE]);
+
+    drop(editor, positionOf(editor, 'cell ', 5), html, 'words');
+    await settled();
+
+    expect(firstCell(editor, 0)).toBe('cell words');
+    expect(shape(editor)).toEqual(rows);
+  });
+});
