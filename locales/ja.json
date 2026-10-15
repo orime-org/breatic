@@ -8,7 +8,8 @@
       "upload_too_large": "ファイルがアップロードサイズの上限を超えています。",
       "insufficient_credits": "クレジット不足：必要 {required}、残高 {available}",
       "rate_limited": "リクエストが多すぎます。しばらくしてから再試行してください",
-      "internal": "内部サーバーエラー"
+      "internal": "内部サーバーエラー",
+      "ads_gpc": "このブラウザはグローバル・プライバシー・コントロール（GPC）を送信しているため、広告はオフのままです。"
     },
     "credit": {
       "not_studio_admin": "クレジットを割り当てられるのは、自分が管理する Studio だけです。",

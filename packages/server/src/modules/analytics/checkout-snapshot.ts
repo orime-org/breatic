@@ -27,7 +27,7 @@ export interface CheckoutSnapshot {
 }
 
 /** A browser with no ads choice: what a missing or unreadable snapshot stands for. */
-const UNSET_ADS_BROWSER: BrowserAdsSnapshot = Object.freeze({ choice: null, gpcAt: null, at: new Date(0).toISOString() });
+const UNSET_ADS_BROWSER: BrowserAdsSnapshot = Object.freeze({ consent: false, gpc: false });
 
 /**
  * Take the snapshot for an order placed in the current request. The click is

@@ -87,8 +87,8 @@ const ATTRIBUTION = {
  * @returns A `Cookie` header value.
  */
 function consentCookie(categories: string[]): string {
-  const entry = { decisionId: crypto.randomUUID(), decidedAt: new Date().toISOString(), source: "banner" };
-  const data = { analytics: entry, ads: { ...entry, decisionId: crypto.randomUUID(), noticeShown: false, gpcAtDecision: false } };
+  const entry = { decidedAt: new Date().toISOString(), source: "banner" };
+  const data = { analytics: entry, ads: entry };
   return `${CONSENT_COOKIE_NAME}=${encodeURIComponent(JSON.stringify({ categories, revision: CONSENT_REVISION, data }))}`;
 }
 

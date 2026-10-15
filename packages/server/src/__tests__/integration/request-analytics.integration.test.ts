@@ -34,8 +34,9 @@ import {
   resetServerAnalyticsForTest,
   runWithConsent,
   type OutgoingEvent,
+  type RequestBrowser,
 } from "@breatic/core";
-import { CONSENT_REVISION, type BrowserAdsSnapshot, type ConsentSnapshot } from "@breatic/shared";
+import type { ConsentSnapshot } from "@breatic/shared";
 
 try {
   initCore(process.env);
@@ -91,13 +92,11 @@ function eventsOf(type: string): OutgoingEvent[] {
 }
 
 /**
- * The ads side of a browser that accepted ads, as a request or order snapshot holds it.
+ * A browser that accepted ads, as the request context holds it.
  * @returns The snapshot.
  */
-function adsAccepted(): BrowserAdsSnapshot {
-  const at = new Date().toISOString();
-  const choice = { value: true, source: "banner", noticeShown: false, gpcAtDecision: false, decidedAt: at, revision: CONSENT_REVISION } as const;
-  return { choice, gpcAt: null, at };
+function adsAccepted(): RequestBrowser {
+  return { ads: { consent: true, gpc: false }, seen: null };
 }
 
 describe("project_created", () => {

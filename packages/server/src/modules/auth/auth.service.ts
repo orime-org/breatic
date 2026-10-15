@@ -22,14 +22,13 @@ import { isUniqueViolation } from "@server/utils/pg-error.js";
 import { getRedis } from "@breatic/core";
 import { sendMail, type SendMailResult } from "@breatic/core";
 import {
-  adsOwnership,
   currentConsent,
   enqueueAdsConversion,
   env,
-  getAccountAdsEvents,
+  getAdsSharing as readAdsSharing,
   getHonouredTierForUser,
   logger,
-  recordConsentReceipts,
+  setAdsSharing as writeAdsSharing,
   trackServerEvent,
 } from "@breatic/core";
 import {
@@ -43,7 +42,7 @@ import {
   UnauthorizedError,
 } from "@breatic/core";
 import { adClickFrom, getActiveLocale, normalizeEmail, t } from "@breatic/shared";
-import type { AccountAdsHistory, Attribution, ConsentReport, Ownership, UserEntity } from "@breatic/shared";
+import type { AdsSharing, Attribution, UserEntity } from "@breatic/shared";
 
 const BCRYPT_ROUNDS = 12;
 
@@ -282,40 +281,27 @@ export async function setLocale(userId: string, locale: string): Promise<void> {
   await userRepo.updateUser(userId, { locale });
 }
 
-/** The account's ads record as `GET`/`PUT /me/analytics-consent` return it (inner#1442 design §4.4.6). */
-export interface AnalyticsConsentView {
-  readonly receipts: AccountAdsHistory["receipts"];
-  readonly gpcSeenAt: string | null;
-  /** Whose receipt the ads decision in the requesting browser's cookie is. */
-  readonly ownership: Ownership;
-  /** The server's clock when the view was read; the browser times its own choice on it. */
-  readonly serverTime: string;
+/**
+ * Read the account's ad switch (`GET /me/ads-sharing`, inner#1442 design §4.4.6).
+ * @param userId - The account.
+ * @returns The switch, or null when the account is gone.
+ */
+export async function getAdsSharing(userId: string): Promise<AdsSharing | null> {
+  return readAdsSharing(userId);
 }
 
 /**
- * Record a signed-in browser's consent report, one receipt per decision.
+ * Open or close the account's ad switch from its settings (`PUT
+ * /me/ads-sharing`). Closing keeps a switch already closed as it is.
  * @param userId - The account.
- * @param report - The validated report.
+ * @param allowed - Whether the account holder turned ads on.
+ * @param gpc - Whether the request carried GPC; ads cannot be turned on then.
+ * @returns The switch afterwards, or null when the account is gone.
+ * @throws {ConflictError} When ads are turned on from a browser that sends GPC.
  */
-export async function recordAnalyticsConsent(userId: string, report: ConsentReport): Promise<void> {
-  await recordConsentReceipts(userId, report, Date.now());
-}
-
-/**
- * The account's ads receipts in force, its GPC signal, and whose receipt the
- * requesting browser's ads decision is.
- * @param userId - The account.
- * @param cookieDecisionId - The ads decision id in the browser's cookie, if any.
- * @returns The view, or null when the account is gone.
- */
-export async function getAnalyticsConsentView(
-  userId: string,
-  cookieDecisionId: string | undefined,
-): Promise<AnalyticsConsentView | null> {
-  const now = Date.now();
-  const history = await getAccountAdsEvents(userId, now);
-  if (history === null) return null;
-  return { ...history, ownership: await adsOwnership(userId, cookieDecisionId), serverTime: new Date(now).toISOString() };
+export async function setAdsSharing(userId: string, allowed: boolean, gpc: boolean): Promise<AdsSharing | null> {
+  if (allowed && gpc) throw new ConflictError(t("server.error.ads_gpc"));
+  return writeAdsSharing(userId, allowed ? { allowed } : { allowed, source: "settings" });
 }
 
 /**

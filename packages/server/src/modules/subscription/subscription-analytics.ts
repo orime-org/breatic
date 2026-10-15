@@ -63,7 +63,7 @@ export async function reportSubscriptionRenewed(input: {
 }): Promise<void> {
   const properties = planProperties(input.subscription);
   if (properties === null) return;
-  const consent = await accountOnlyConsent(input.userId, Date.now());
+  const consent = await accountOnlyConsent(input.userId);
   trackServerEvent("subscription_renewed", { userId: input.userId, insertId: input.eventId, properties }, consent);
 }
 

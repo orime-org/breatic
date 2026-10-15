@@ -53,7 +53,7 @@ const CONFIG = {
 const DATA: AdsConversionJob = {
   kind: "conversion",
   userId: "11111111-1111-4111-8111-111111111111",
-  browser: { choice: null, gpcAt: null, at: "2026-10-12T01:00:00.000Z" },
+  browser: { consent: true, gpc: false },
   conversion: "credit_purchase",
   transactionId: "purchase:cs_1",
   occurredAt: "2026-10-12T01:00:00.000Z",
@@ -240,7 +240,7 @@ describe("runAdsConversion", () => {
     adsAllowedFor.mockResolvedValue(false);
     const sink: AdsConversionSink = { upload: vi.fn(), status: vi.fn() };
     await runAdsConversion(job(), () => sink);
-    expect(adsAllowedFor).toHaveBeenCalledWith(DATA.userId, DATA.browser, expect.any(Number));
+    expect(adsAllowedFor).toHaveBeenCalledWith(DATA.userId, DATA.browser);
     expect(sink.upload).not.toHaveBeenCalled();
     expect(settleAdsRefused).toHaveBeenCalledWith(DATA);
     expect(settleAdsUpload).not.toHaveBeenCalled();

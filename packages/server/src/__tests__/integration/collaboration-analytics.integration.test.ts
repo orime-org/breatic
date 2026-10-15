@@ -154,9 +154,10 @@ describe("collaborator_first_action", () => {
     const { projectId, ownerId, collaboratorId } = await sharedProject();
     const at = new Date().toISOString();
     await sql`
-      INSERT INTO analytics_consent_events (decision_id, user_id, category, value, source, decided_at, revision)
-      VALUES (${crypto.randomUUID()}, ${ownerId}, 'analytics', false, 'banner', ${at}, ${CONSENT_REVISION}),
-             (${crypto.randomUUID()}, ${ownerId}, 'ads', true, 'banner', ${at}, ${CONSENT_REVISION})
+      UPDATE users SET consent_seen = ${sql.json({
+        analytics: { value: false, revision: CONSENT_REVISION },
+        ads: { value: true, revision: CONSENT_REVISION },
+      })} WHERE id = ${ownerId}
     `;
     await sql`
       UPDATE users SET attribution = ${sql.json({ first: { gclid: "g", at }, last: { gclid: "g", at } })}

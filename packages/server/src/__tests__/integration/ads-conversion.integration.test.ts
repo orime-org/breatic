@@ -40,7 +40,6 @@ try {
 
 let sql: ReturnType<typeof postgres>;
 let queue: ReturnType<typeof createQueue>;
-const HOUR = 3_600_000;
 
 /**
  * The ads side of a browser's consent, as a request snapshot holds it.
@@ -49,22 +48,7 @@ const HOUR = 3_600_000;
  * @returns The snapshot.
  */
 function browser(value: boolean | null, gpc = false): BrowserAdsSnapshot {
-  const now = new Date().toISOString();
-  return {
-    choice:
-      value === null
-        ? null
-        : {
-            value,
-            source: "banner",
-            noticeShown: false,
-            gpcAtDecision: false,
-            decidedAt: new Date(Date.now() - HOUR).toISOString(),
-            revision: CONSENT_REVISION,
-          },
-    gpcAt: gpc ? now : null,
-    at: now,
-  };
+  return { consent: value === true, gpc };
 }
 
 const ADS = browser(true);
@@ -81,16 +65,20 @@ async function account(): Promise<string> {
 }
 
 /**
- * Record an ads receipt on the account, as a browser report would.
+ * Close the account's ad switch, as a signed-in opt-out would.
  * @param userId - The account.
- * @param value - Consent or refusal.
- * @param agoMs - How long ago it was made.
+ * @param source - What closed it.
  */
-async function adsReceipt(userId: string, value: boolean, agoMs = 0): Promise<void> {
-  await sql`
-    INSERT INTO analytics_consent_events (decision_id, user_id, category, value, source, decided_at, revision)
-    VALUES (${crypto.randomUUID()}, ${userId}, 'ads', ${value}, 'settings', ${new Date(Date.now() - agoMs)}, ${CONSENT_REVISION})
-  `;
+async function optOut(userId: string, source: "settings" | "gpc" = "settings"): Promise<void> {
+  await sql`UPDATE users SET ads_opted_out_at = now(), ads_opt_out_source = ${source} WHERE id = ${userId}`;
+}
+
+/**
+ * Record ads consent as the choice last seen on a signed-in request.
+ * @param userId - The account.
+ */
+async function seenAdsConsent(userId: string): Promise<void> {
+  await sql`UPDATE users SET consent_seen = ${sql.json({ ads: { value: true, revision: CONSENT_REVISION } })} WHERE id = ${userId}`;
 }
 
 /**
@@ -172,14 +160,14 @@ describe("enqueueAdsConversion", () => {
     const txn = `signup:${crypto.randomUUID()}`;
     const input = { conversion: "signup" as const, transactionId: txn, click: clicked(1) };
     const refused = await account();
-    await adsReceipt(refused, false);
+    await optOut(refused);
     expect(await enqueueAdsConversion({ ...input, userId: refused }, ADS)).toBe(false);
     const gpcAccount = await account();
-    await sql`UPDATE users SET analytics_gpc_seen_at = now() WHERE id = ${gpcAccount}`;
+    await optOut(gpcAccount, "gpc");
     expect(await enqueueAdsConversion({ ...input, userId: gpcAccount }, ADS)).toBe(false);
     expect(await enqueueAdsConversion({ ...input, userId: await account() }, browser(true, true))).toBe(false);
     const withConsent = await account();
-    await adsReceipt(withConsent, true);
+    await seenAdsConsent(withConsent);
     expect(await enqueueAdsConversion({ ...input, userId: withConsent }, browser(null))).toBe(false);
     expect(await getUploadStatus({ conversion: "signup", transactionId: txn })).toBeNull();
   });
@@ -191,12 +179,12 @@ describe("enqueueAdsConversion", () => {
     expect(await enqueueAdsConversion({ userId, conversion: "signup", transactionId: txn, click: clicked(1) }, ADS)).toBe(false);
   });
 
-  it("queues an event no browser is behind under the account's own receipts only", async () => {
+  it("queues an event no browser is behind under the ads choice last seen", async () => {
     const txn = `signup:${crypto.randomUUID()}`;
     const input = { conversion: "signup" as const, transactionId: txn, click: clicked(1) };
     expect(await enqueueAdsConversion({ ...input, userId: await account() }, null)).toBe(false);
     const userId = await account();
-    await adsReceipt(userId, true);
+    await seenAdsConsent(userId);
     expect(await enqueueAdsConversion({ ...input, userId }, null)).toBe(true);
   });
 });
@@ -291,7 +279,7 @@ describe("enqueueAdsRestatement", () => {
   it("keeps an uploaded purchase as it is when ads were withdrawn before the refund", async () => {
     const { paymentId, txn, userId } = await purchase();
     await moveUpload({ conversion: "credit_purchase", transactionId: txn }, ["queued"], "uploaded");
-    await adsReceipt(userId, false);
+    await optOut(userId);
     expect(await enqueueAdsRestatement(paymentId)).toBe("consent_withdrawn");
     expect(await getUploadStatus({ conversion: "credit_purchase", transactionId: txn })).toBe("uploaded");
   });
@@ -299,7 +287,7 @@ describe("enqueueAdsRestatement", () => {
   it("does not forward a pending restatement when ads were withdrawn before the upload landed", async () => {
     const { paymentId, txn, userId } = await purchase();
     await enqueueAdsRestatement(paymentId);
-    await adsReceipt(userId, false);
+    await optOut(userId);
     const [job] = (await queue.getJobs(["waiting", "delayed", "prioritized"])).filter((j) => j.data.transactionId === txn);
     expect(await settleAdsUpload(job!.data, true, "req-1")).toBe(true);
     expect(await getUploadStatus({ conversion: "credit_purchase", transactionId: txn })).toBe("uploaded");

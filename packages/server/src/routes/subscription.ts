@@ -156,7 +156,7 @@ subscription.post(
     let conversion: typeof candidate = null;
     // The subscription is already confirmed; a failed ads lookup only withholds the conversion.
     try {
-      if (candidate !== null && (await adsAllowedFor(user.id, currentAdsBrowser(), Date.now()))) conversion = candidate;
+      if (candidate !== null && (await adsAllowedFor(user.id, currentAdsBrowser()))) conversion = candidate;
     } catch (err) {
       logger.error({ err, userId: user.id }, "ads_conversion_gate_failed");
     }

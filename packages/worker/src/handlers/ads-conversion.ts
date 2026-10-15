@@ -181,7 +181,7 @@ export async function runAdsConversion(
     const status = await getUploadStatus({ conversion: job.data.conversion, transactionId: job.data.transactionId });
     if (status === null || !uploadAwaited(job.data, status)) return;
     // Consent may have been withdrawn since the conversion was queued (design §4.9, last column).
-    if (!(await adsAllowedFor(job.data.userId, job.data.browser, Date.now()))) {
+    if (!(await adsAllowedFor(job.data.userId, job.data.browser))) {
       await settleAdsRefused(job.data);
       return;
     }

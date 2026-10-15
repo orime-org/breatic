@@ -56,6 +56,8 @@ vi.mock("@breatic/core", async (importOriginal: () => Promise<Record<string, unk
     deleteSession: vi.fn(),
     deleteAllSessions: mockDeleteAllSessions,
     env: { ENV: "test" },
+    // Sign-up queues its ad conversion; the queue is not what these tests lock.
+    enqueueAdsConversion: vi.fn(async () => false),
   };
 });
 

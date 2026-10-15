@@ -2,16 +2,16 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Records an ads opt-out a person asked us for by email or support, on their
- * account (inner#1442 design §4.4.6, §4.14). The receipt is an ads refusal
- * with source `request`, timed now and under the current policy revision; it
- * never lapses, and it stops ad conversions for the account on every browser.
+ * Switches ads off for an account whose holder asked us by email or support
+ * (inner#1442 design §4.4.6, §4.14). The account's ad switch closes with
+ * source `request`, unless it is already closed; it stays closed until the
+ * account holder turns ads back on, and stops ad conversions for the account
+ * on every browser.
  *
  * Usage, from the repository root:
  *   pnpm analytics:opt-out-user <user id>
  */
 
-import { randomUUID } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -28,7 +28,7 @@ export function parseAccountId(args) {
 }
 
 /**
- * Record the opt-out.
+ * Switch ads off for the account.
  * @param {string[]} args - The command line arguments.
  */
 async function main(args) {
@@ -36,16 +36,15 @@ async function main(args) {
   const { findRoot, loadEnv } = await import('./load-env.ts');
   loadEnv(findRoot());
   const core = await import('../packages/core/dist/index.js');
-  const { CONSENT_REVISION } = await import('../packages/shared/dist/index.js');
   core.initCore(process.env);
   try {
-    if (!(await core.recordOptOutRequest(userId, randomUUID(), CONSENT_REVISION))) {
+    if ((await core.setAdsSharing(userId, { allowed: false, source: 'request' })) === null) {
       throw new Error(`No account ${userId}, or it is deleted`);
     }
   } finally {
     await core.closeDb();
   }
-  console.log(`Recorded the ads opt-out for ${userId}`);
+  console.log(`Switched ads off for ${userId}`);
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {

@@ -30,7 +30,7 @@ vi.mock("@server/infra/stripe.js", () => ({
 vi.mock("@breatic/core", () => ({
   trackServerEvent: vi.fn(),
   currentConsent: vi.fn(() => ({ analytics: false, ads: false })),
-  currentAdsBrowser: vi.fn(() => ({ choice: null, gpcAt: null, at: new Date(0).toISOString() })),
+  currentAdsBrowser: vi.fn(() => ({ consent: false, gpc: false })),
   getAccountAttribution: vi.fn(async () => null),
   enqueueAdsConversion: vi.fn(async () => false),
   markFirstActive: vi.fn(async () => false),
@@ -272,7 +272,7 @@ describe("startCheckout — no live subscription (#106 §7.2)", () => {
           metadata: {
             userId: USER,
             analyticsConsent: JSON.stringify({ analytics: false, ads: false }),
-            adsBrowser: JSON.stringify({ choice: null, gpcAt: null, at: new Date(0).toISOString() }),
+            adsBrowser: JSON.stringify({ consent: false, gpc: false }),
           },
         },
       }),

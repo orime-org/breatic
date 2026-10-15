@@ -2,25 +2,12 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { describe, expect, it } from "vitest";
-import { CONSENT_REVISION, NO_CONSENT, type BrowserAdsSnapshot } from "@breatic/shared";
+import { NO_CONSENT, type BrowserAdsSnapshot } from "@breatic/shared";
 import { readCheckoutSnapshot, toStripeMetadata } from "@server/modules/analytics/checkout-snapshot.js";
 
 const CLICK = { gclid: "c1", at: "2026-10-12T01:00:00.000Z" };
-const AT = "2026-10-12T02:00:00.000Z";
-const ADS_BROWSER: BrowserAdsSnapshot = {
-  choice: {
-    decisionId: "11111111-1111-4111-8111-111111111111",
-    value: true,
-    source: "settings",
-    noticeShown: "account",
-    gpcAtDecision: false,
-    decidedAt: CLICK.at,
-    revision: CONSENT_REVISION,
-  },
-  gpcAt: AT,
-  at: AT,
-};
-const UNSET: BrowserAdsSnapshot = { choice: null, gpcAt: null, at: new Date(0).toISOString() };
+const ADS_BROWSER: BrowserAdsSnapshot = { consent: true, gpc: true };
+const UNSET: BrowserAdsSnapshot = { consent: false, gpc: false };
 
 describe("checkout snapshot", () => {
   it("round-trips through Stripe metadata strings", () => {
@@ -49,7 +36,9 @@ describe("checkout snapshot", () => {
       undefined,
       {},
       { analyticsConsent: "{oops", adsBrowser: "{oops", adClick: "x" },
-      { analyticsConsent: { analytics: "yes" }, adsBrowser: { choice: { value: "yes" }, gpcAt: null, at: AT } },
+      { analyticsConsent: { analytics: "yes" }, adsBrowser: { consent: "yes", gpc: false } },
+      // An order placed before this shape existed.
+      { adsBrowser: { choice: null, gpcAt: null, at: "2026-10-12T02:00:00.000Z" } },
     ]) {
       expect(readCheckoutSnapshot(metadata as Record<string, unknown> | null)).toEqual({
         consent: NO_CONSENT,

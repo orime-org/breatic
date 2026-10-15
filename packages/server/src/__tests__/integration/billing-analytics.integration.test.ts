@@ -32,7 +32,6 @@ vi.mock("@server/infra/stripe.js", () => ({ getStripeClient: () => stripe }));
 vi.mock("@server/modules/payment/purchase-mail.js", () => ({ sendPurchaseConfirmation: vi.fn() }));
 vi.mock("@server/utils/send-best-effort-mail.js", () => ({ sendBestEffortMail: vi.fn() }));
 
-import crypto from "node:crypto";
 import type Stripe from "stripe";
 import postgres from "postgres";
 import {
@@ -140,9 +139,7 @@ async function pendingOrder(metadata: Record<string, unknown>): Promise<{ userId
  * @returns The snapshot.
  */
 function adsAccepted(): BrowserAdsSnapshot {
-  const at = new Date().toISOString();
-  const choice = { value: true, source: "banner", noticeShown: false, gpcAtDecision: false, decidedAt: at, revision: CONSENT_REVISION } as const;
-  return { choice, gpcAt: null, at };
+  return { consent: true, gpc: false };
 }
 
 describe("credit purchases", () => {
@@ -263,7 +260,7 @@ describe("subscriptions", () => {
     expect(await getUploadStatus({ conversion: "subscription", transactionId: txn })).toBe("queued");
   });
 
-  it("reports a renewal under the account's analytics receipts, and nothing without one", async () => {
+  it("reports a renewal under the analytics choice last seen, and nothing without one", async () => {
     const { userId, customerId } = await account();
     await handleSubscriptionEvent(event("customer.subscription.created", stripeSub(customerId, "active")));
     sent.splice(0);
@@ -272,10 +269,7 @@ describe("subscriptions", () => {
     await handleSubscriptionEvent(event("invoice.paid", renewal));
     expect(sent).toEqual([]);
 
-    await sql`
-      INSERT INTO analytics_consent_events (decision_id, user_id, category, value, source, decided_at, revision)
-      VALUES (${crypto.randomUUID()}, ${userId}, 'analytics', true, 'banner', now(), ${CONSENT_REVISION})
-    `;
+    await sql`UPDATE users SET consent_seen = ${sql.json({ analytics: { value: true, revision: CONSENT_REVISION } })} WHERE id = ${userId}`;
     const paid = event("invoice.paid", renewal);
     await handleSubscriptionEvent(paid);
     expect(sent).toEqual([
