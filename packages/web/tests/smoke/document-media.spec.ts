@@ -1094,6 +1094,34 @@ test('web content opening on a picture, pasted mid-line, splits the line around 
   expect(await page.locator(`${EDITOR} .bn-block-group .bn-block-group`).count()).toBe(0);
 });
 
+// A code sample that only looks like media markup pastes as its words, and
+// plain text that looks like Markdown is read as Markdown, as BlockNote reads it.
+test('a code sample pastes as its words and plain Markdown text as formatted words (inner#1351 A5)', async () => {
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+  await openFreshDocument(page);
+  await page.keyboard.type('Lead');
+  await page.keyboard.press('Enter');
+  await page.evaluate(() =>
+    navigator.clipboard.write([
+      new ClipboardItem({
+        'text/html': new Blob(['<pre><code>![logo](./logo.png)</code></pre>'], { type: 'text/html' }),
+        'text/plain': new Blob(['![logo](./logo.png)'], { type: 'text/plain' }),
+      }),
+    ]),
+  );
+
+  await page.keyboard.press('ControlOrMeta+v');
+
+  await expect(page.locator(EDITOR)).toContainText('![logo](./logo.png)');
+  await expect(page.locator(`${EDITOR} [data-content-type="image"]`)).toHaveCount(0);
+
+  await page.keyboard.press('Enter');
+  await page.evaluate(() => navigator.clipboard.writeText('**bold** words'));
+  await page.keyboard.press('ControlOrMeta+v');
+
+  await expect(page.locator(`${EDITOR} strong`, { hasText: 'bold' })).toHaveCount(1);
+});
+
 test('Shift+click on a picture while the body is let go selects the picture and leaves the old words out (A20)', async () => {
   await openFreshDocument(page);
   await page.keyboard.type('hello world');
