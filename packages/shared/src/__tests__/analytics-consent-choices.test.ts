@@ -4,7 +4,7 @@
 import { describe, expect, it } from "vitest";
 import {
   CONSENT_DATA_FIELDS,
-  accountAnalyticsValue,
+  consentSeenFrom,
   parseConsentChoices,
   parseConsentCookie,
 } from "../analytics/consent-choices.js";
@@ -13,22 +13,13 @@ import { CONSENT_MAX_AGE_DAYS, CONSENT_REVISION, NO_CONSENT } from "../analytics
 const DAY = 86_400_000;
 const NOW = Date.parse("2026-10-14T00:00:00.000Z");
 const iso = (ms: number): string => new Date(ms).toISOString();
-const ID_A = "11111111-1111-4111-8111-111111111111";
-const ID_B = "22222222-2222-4222-8222-222222222222";
 
 function analyticsData(over: Record<string, unknown> = {}): Record<string, unknown> {
-  return { decisionId: ID_A, decidedAt: iso(NOW - DAY), source: "banner", ...over };
+  return { decidedAt: iso(NOW - DAY), source: "banner", ...over };
 }
 
 function adsData(over: Record<string, unknown> = {}): Record<string, unknown> {
-  return {
-    decisionId: ID_B,
-    decidedAt: iso(NOW - DAY),
-    source: "banner",
-    noticeShown: false,
-    gpcAtDecision: false,
-    ...over,
-  };
+  return { decidedAt: iso(NOW - DAY), source: "banner", ...over };
 }
 
 function cookie(
@@ -42,16 +33,8 @@ function cookie(
 describe("parseConsentChoices", () => {
   it("reads each category's latest choice", () => {
     expect(parseConsentChoices(cookie(["analytics"]), NOW)).toEqual({
-      analytics: { decisionId: ID_A, value: true, source: "banner", decidedAt: iso(NOW - DAY), revision: CONSENT_REVISION },
-      ads: {
-        decisionId: ID_B,
-        value: false,
-        source: "banner",
-        noticeShown: false,
-        gpcAtDecision: false,
-        decidedAt: iso(NOW - DAY),
-        revision: CONSENT_REVISION,
-      },
+      analytics: { value: true, source: "banner", decidedAt: iso(NOW - DAY), revision: CONSENT_REVISION },
+      ads: { value: false, source: "banner", decidedAt: iso(NOW - DAY), revision: CONSENT_REVISION },
     });
   });
 
@@ -62,23 +45,22 @@ describe("parseConsentChoices", () => {
     expect(parseConsentChoices(encodeURIComponent("[1]"), NOW)).toEqual(none);
   });
 
-  it("reads a category without a decisionId by its value, and leaves the id out", () => {
-    const parsed = parseConsentChoices(cookie(["analytics"], { analytics: analyticsData({ decisionId: undefined }) }), NOW);
-    expect(parsed.analytics).toMatchObject({ value: true });
-    expect(parsed.analytics).not.toHaveProperty("decisionId");
-    expect(parseConsentChoices(cookie(["analytics"], { analytics: analyticsData({ decisionId: "x" }) }), NOW).analytics)
-      .not.toHaveProperty("decisionId");
+  it("reads an entry written with the fields of an earlier shape by its value", () => {
+    const parsed = parseConsentChoices(
+      cookie(["ads"], { ads: adsData({ decisionId: "11111111-1111-4111-8111-111111111111", noticeShown: "gpc" }) }),
+      NOW,
+    );
+    expect(parsed.ads).toEqual({ value: true, source: "banner", decidedAt: iso(NOW - DAY), revision: CONSENT_REVISION });
   });
 
   it("treats a category whose data is missing or unreadable as unset", () => {
     expect(parseConsentChoices(cookie(["analytics", "ads"], {}), NOW)).toEqual({ analytics: null, ads: null });
     expect(parseConsentChoices(cookie(["ads"], { ads: adsData({ decidedAt: "yesterday" }) }), NOW).ads).toBeNull();
     expect(parseConsentChoices(cookie(["ads"], { ads: adsData({ source: "cookie-wall" }) }), NOW).ads).toBeNull();
-    expect(parseConsentChoices(cookie(["ads"], { ads: adsData({ noticeShown: "yes" }) }), NOW).ads).toBeNull();
   });
 
   it("reads a GPC entry as the refusal it always is, whatever the categories say", () => {
-    expect(parseConsentChoices(cookie(["ads"], { ads: adsData({ source: "gpc", gpcAtDecision: true }) }), NOW).ads).toMatchObject({
+    expect(parseConsentChoices(cookie(["ads"], { ads: adsData({ source: "gpc" }) }), NOW).ads).toMatchObject({
       value: false,
       source: "gpc",
     });
@@ -117,18 +99,10 @@ describe("parseConsentChoices", () => {
     expect(parseConsentChoices(cookie(["ads"], undefined, CONSENT_REVISION - 1), NOW).ads).toBeNull();
   });
 
-  it("reads the override fields of an ads choice", () => {
-    const parsed = parseConsentChoices(
-      cookie(["ads"], { ads: adsData({ source: "settings", noticeShown: "gpc", gpcAtDecision: true }) }),
-      NOW,
-    );
-    expect(parsed.ads).toMatchObject({ value: true, source: "settings", noticeShown: "gpc", gpcAtDecision: true });
-  });
-
   it("names the data fields both repos write", () => {
     expect(CONSENT_DATA_FIELDS).toEqual({
-      analytics: ["decisionId", "decidedAt", "source"],
-      ads: ["decisionId", "decidedAt", "source", "noticeShown", "gpcAtDecision"],
+      analytics: ["decidedAt", "source"],
+      ads: ["decidedAt", "source"],
     });
   });
 });
@@ -157,30 +131,34 @@ describe("parseConsentCookie", () => {
   });
 });
 
-describe("accountAnalyticsValue", () => {
-  const receipt = (value: boolean, daysAgo: number, revision = CONSENT_REVISION) => ({
-    value,
-    decidedAt: iso(NOW - daysAgo * DAY),
-    revision,
+describe("consentSeenFrom — what a signed-in request records (design §4.4.6)", () => {
+  it("takes each category's own choice with its revision", () => {
+    const choices = parseConsentChoices(cookie(["analytics"]), NOW);
+    expect(consentSeenFrom(choices)).toEqual({
+      analytics: { value: true, revision: CONSENT_REVISION },
+      ads: { value: false, revision: CONSENT_REVISION },
+    });
   });
 
-  it("is null with nothing on record", () => {
-    expect(accountAnalyticsValue([], NOW)).toBeNull();
+  it("leaves out a regional default and a category without a choice", () => {
+    const choices = parseConsentChoices(
+      cookie(["analytics", "ads"], { analytics: analyticsData({ source: "implicit" }), ads: adsData({ source: "settings" }) }),
+      NOW,
+    );
+    expect(consentSeenFrom(choices)).toEqual({ ads: { value: true, revision: CONSENT_REVISION } });
   });
 
-  it("takes the latest receipt, in any order", () => {
-    expect(accountAnalyticsValue([receipt(true, 1), receipt(false, 2)], NOW)).toBe(true);
-    expect(accountAnalyticsValue([receipt(true, 2), receipt(false, 1)], NOW)).toBe(false);
+  it("records a GPC refusal as a choice", () => {
+    const choices = parseConsentChoices(cookie([], { ads: adsData({ source: "gpc" }) }), NOW);
+    expect(consentSeenFrom(choices)).toEqual({ ads: { value: false, revision: CONSENT_REVISION } });
   });
 
-  it("takes the stricter of two receipts at the same instant", () => {
-    expect(accountAnalyticsValue([receipt(true, 1), receipt(false, 1)], NOW)).toBe(false);
-    expect(accountAnalyticsValue([receipt(false, 1), receipt(true, 1)], NOW)).toBe(false);
-  });
-
-  it("skips receipts past 395 days or from an older revision, consent or refusal", () => {
-    expect(accountAnalyticsValue([receipt(false, CONSENT_MAX_AGE_DAYS + 1), receipt(true, 3)], NOW)).toBe(true);
-    expect(accountAnalyticsValue([receipt(true, 1, CONSENT_REVISION - 1)], NOW)).toBeNull();
-    expect(accountAnalyticsValue([receipt(false, CONSENT_MAX_AGE_DAYS + 1)], NOW)).toBeNull();
+  it("is null when nothing is left to record", () => {
+    expect(consentSeenFrom({ analytics: null, ads: null })).toBeNull();
+    const implicit = parseConsentChoices(
+      cookie(["analytics", "ads"], { analytics: analyticsData({ source: "implicit" }), ads: adsData({ source: "implicit" }) }),
+      NOW,
+    );
+    expect(consentSeenFrom(implicit)).toBeNull();
   });
 });
