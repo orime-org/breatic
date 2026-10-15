@@ -168,7 +168,7 @@ describe("what the guide says", () => {
     expect(webSource("spaces/canvas/mini-tool/drawing-history.ts")).toContain("if (draft?.mark != null) {");
     const markup = renderProductGuide().split(`"${t("canvas.miniTool.image.mark.label")}" writes notes`)[1] ?? "";
     expect(markup.split(`"${t("canvas.miniTool.image.expand.label")}"`)[0]).toMatch(
-      /Cmd\+Z or Ctrl\+Z and the undo and redo in the view bar step through the markup.*\[ and \] keys/s,
+      /Cmd\+Z or Ctrl\+Z and the view bar's undo and redo step through the markup.*\[ and \] keys.*next one drawn when none is selected.*while a text is being typed, these keys act on the text itself/s,
     );
   });
 

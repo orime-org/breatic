@@ -388,8 +388,9 @@ export function renderProductGuide(): string {
       "upload to the node again, or once a generation they run from the node's panel is accepted. After that " +
       "the upload is a task, shown with the node's task icons. Meanwhile everyone else in the project sees, on an " +
       "empty node someone is filling, that person's name followed by what they are doing in place of the first " +
-      "line: uploading, reading the file, or running the tool by its name. The line goes when they finish or " +
-      "leave.",
+      "line: uploading, reading the file, or running the tool by its name. The line goes when they finish, close " +
+      "that Space's tab or leave the page; it stays while they look at another Space. While it shows, it takes " +
+      "the place of the viewer's own red line on that node, which comes back once the other person is done.",
     "Apart from that placeholder, a running, failed or expired task changes nothing on the node, which keeps " +
       "showing what it holds, or its empty look; what its tasks did is in the column of task icons described under Generating. A picture or " +
       "video node shows its width × " +
@@ -826,8 +827,9 @@ export function renderProductGuide(): string {
       `${quoted(t("canvas.miniTool.mark.text"))}, then undo, redo and clear, with the same size slider and colour ` +
       "dots below. A shape or text drawn goes back to selecting; until the arrow is pressed, anything drawn can be " +
       "selected, moved, resized, restyled or deleted with Delete or Backspace, which then deletes that object and " +
-      "not the node. While the panel is open, Cmd+Z or Ctrl+Z and the undo and redo in the view bar step through " +
-      "the markup, and the [ and ] keys step the size, of the selected object when one is selected. " +
+      "not the node. While the panel is open, Cmd+Z or Ctrl+Z and the view bar's undo and redo step through the " +
+      "markup as a whole, and the [ and ] keys step the size of the selected object, or of the next one drawn when " +
+      "none is selected; while a text is being typed, these keys act on the text itself. " +
       "The arrow stays greyed out until something is drawn or written, and the result is a plain " +
       `picture. ${quoted(t("canvas.miniTool.image.expand.label"))} puts a frame with eight handles over the ` +
       "picture: drag them out past its edges, and once the frame is larger the picture can be dragged inside it. " +
