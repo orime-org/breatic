@@ -4,15 +4,26 @@
 /**
  * The gate every incoming collab WebSocket passes through.
  *
- * It spans two hooks because the two things it needs live in different places:
+ * The throttle counts attempts per address: one per new WebSocket, plus one
+ * per WebSocket whose authentication failed. Counting per WebSocket rather
+ * than per document is the point — one socket carries a whole project, the
+ * meta doc and up to `MAX_SPACES_PER_PROJECT` Spaces, so a member opening a
+ * full project is one attempt, not two hundred.
  *
- *   onUpgrade   the ONLY hook that sees the raw socket, and therefore the only
- *               place the connection's peer address exists. It decides, then
- *               either rewrites `x-real-ip` so the decision survives, or
- *               refuses the connection outright.
- *   onConnect   sees a standard Request and nothing else. It reads the
- *               identity onUpgrade left behind and either exempts it or hands
- *               it to the throttle to be counted.
+ *   onUpgrade         the ONLY hook that sees the raw socket, and therefore the
+ *                     only place the connection's peer address exists. It
+ *                     decides, rewrites `x-real-ip` so the decision survives,
+ *                     then refuses the connection outright, exempts it, or
+ *                     counts it and refuses it with 429 when the address is over.
+ *   onConnect         runs once per DOCUMENT and sees a standard Request and
+ *                     nothing else. It counts nothing; it refuses a document
+ *                     whose address is banned, before any session or role
+ *                     lookup runs.
+ *   recordFailedAuth  called when `onAuthenticate` rejects a document (wired by
+ *                     `recordingFailedAuth`). Counts once per WebSocket however
+ *                     many of its documents fail: hocuspocus hands every
+ *                     document on one socket the same request object
+ *                     (hocuspocus-server.esm.js:331, 974).
  *
  * Why the verdict travels as a header rather than a side channel: hocuspocus
  * runs the upgrade hooks BEFORE handing the request to crossws, and crossws
@@ -41,14 +52,21 @@ import { createLogger, decideClientIdentity, type RefusalReason } from "@breatic
 
 const logger = createLogger("connection-gate");
 
-/** Counts one connection of an identity; rejects falsy to refuse it quietly. */
-export type Throttle = (identity: string) => Promise<void>;
+/** The two questions the gate asks of the shared throttle. */
+export interface Throttle {
+  /** Record one attempt by `identity`; resolves whether it is allowed. */
+  count(identity: string): Promise<boolean>;
+  /** Whether `identity` is banned right now; counts nothing. */
+  isBanned(identity: string): Promise<boolean>;
+}
 
-/** Just enough of a socket to answer and hang up on it. */
+/** Just enough of a socket to answer, watch and hang up on it. */
 interface RefusableSocket {
   remoteAddress?: string;
   write(chunk: string): unknown;
   destroy(): unknown;
+  on(event: "error", listener: (err: Error) => void): unknown;
+  off(event: "error", listener: (err: Error) => void): unknown;
 }
 
 /** The upgrade hook's payload, narrowed to what the gate reads. */
@@ -62,10 +80,11 @@ export interface ConnectHookPayload {
   request: { headers: Headers };
 }
 
-/** The two hooks hocuspocus wires this gate in through. */
+/** The two hooks hocuspocus wires this gate in through, plus the failed-auth count. */
 export interface ConnectionGate {
   onUpgrade(data: UpgradeHookPayload): Promise<void>;
   onConnect(data: ConnectHookPayload): Promise<void>;
+  recordFailedAuth(data: ConnectHookPayload): Promise<void>;
 }
 
 /** Header carrying the client identity, which the throttle keys on. */
@@ -92,8 +111,11 @@ const VERDICT_EXEMPT = "exempt";
 /** Header this gate always removes, because a client can prepend to it. */
 const FORWARDED_FOR_HEADER = "x-forwarded-for";
 
-/** What a refused client is told before the socket goes away. */
+/** What a client with no trustworthy identity is told before the socket goes away. */
 const REFUSAL_RESPONSE = "HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n";
+
+/** What a client over the attempt limit is told before the socket goes away. */
+const THROTTLED_RESPONSE = "HTTP/1.1 429 Too Many Requests\r\nConnection: close\r\n\r\n";
 
 /**
  * Refuse an upgrade: record it, answer the client, release the socket, then
@@ -123,7 +145,17 @@ function refuseUpgrade(
     { reason, peerAddress: socket.remoteAddress },
     "collab_upgrade_refused",
   );
-  socket.write(REFUSAL_RESPONSE);
+  hangUp(socket, REFUSAL_RESPONSE);
+}
+
+/**
+ * Answer the client, release the socket, and abort the upgrade quietly.
+ * @param socket - The raw socket the upgrade arrived on.
+ * @param response - The HTTP response written before the socket goes away.
+ * @throws {undefined} Always — see {@link refuseUpgrade}.
+ */
+function hangUp(socket: RefusableSocket, response: string): never {
+  socket.write(response);
   socket.destroy();
   // A falsy rejection is hocuspocus's own signal for "abort this upgrade
   // quietly"; anything truthy is rethrown out of an async event listener and
@@ -132,14 +164,81 @@ function refuseUpgrade(
 }
 
 /**
+ * Count a new WebSocket against its address, refusing it with 429 when the
+ * address is over the limit.
+ *
+ * The count awaits Redis while the raw socket belongs to nobody: hocuspocus
+ * has not handed it to the WebSocket server yet, so nothing else listens for
+ * its errors. A client that resets in that window would raise an 'error'
+ * with no listener, which Node turns into an uncaught exception. The gate
+ * holds a listener for exactly that window and removes it once the socket is
+ * handed on.
+ * @param throttle - The shared throttle.
+ * @param socket - The raw socket the upgrade arrived on.
+ * @param identity - The address the throttle keys on.
+ * @returns Resolves when the WebSocket may proceed.
+ * @throws {undefined} When the socket failed or the address is over the limit.
+ */
+async function countUpgrade(
+  throttle: Throttle,
+  socket: RefusableSocket,
+  identity: string,
+): Promise<void> {
+  let failed = false;
+  /**
+   * The client went away while the count was pending: record it and release
+   * the socket.
+   * @param err - The socket error.
+   */
+  const onError = (err: Error): void => {
+    failed = true;
+    logger.info({ err, identity }, "collab_upgrade_socket_error");
+    socket.destroy();
+  };
+  socket.on("error", onError);
+  let allowed: boolean;
+  try {
+    allowed = await throttle.count(identity);
+  } finally {
+    socket.off("error", onError);
+  }
+  // The client went away mid-count; there is nobody left to answer.
+  if (failed) throw undefined;
+  if (!allowed) {
+    logger.warn(
+      { identity, peerAddress: socket.remoteAddress },
+      "collab_upgrade_throttled",
+    );
+    hangUp(socket, THROTTLED_RESPONSE);
+  }
+}
+
+/**
+ * The address a later hook keys on, or null for a connection the upgrade
+ * judged a developer's own machine.
+ * @param data - A per-document hook payload.
+ * @returns The identity, or null when the connection is exempt.
+ */
+function countedIdentity(data: ConnectHookPayload): string | null {
+  // Reads the verdict rather than re-deriving one. The identity cannot be
+  // re-judged here: these hooks never see the peer address, so a loopback
+  // identity is indistinguishable from a claim to be loopback.
+  if (data.request.headers.get(VERDICT_HEADER) === VERDICT_EXEMPT) return null;
+  return data.request.headers.get(REAL_IP_HEADER) ?? "";
+}
+
+/**
  * Build the connection gate.
- * @param throttle - Counts the connections the gate does not exempt; the
- *   shared Redis throttle in production (`infra/shared-throttle.ts`).
+ * @param throttle - Counts the attempts the gate does not exempt; the shared
+ *   Redis throttle in production (`infra/shared-throttle.ts`).
  * @returns The hooks to register on the Hocuspocus server.
  */
 export function createConnectionGate(throttle: Throttle): ConnectionGate {
+  // Requests whose failed authentication has already been counted, one per
+  // WebSocket. Weak, so a closed socket's request leaves with it.
+  const failureCounted = new WeakSet<object>();
   return {
-    onUpgrade: (data: UpgradeHookPayload): Promise<void> => {
+    onUpgrade: async (data: UpgradeHookPayload): Promise<void> => {
       const headers = data.request.headers;
       // Dropped unconditionally: nothing downstream may fall back to a header
       // whose first hop the client chose.
@@ -163,17 +262,46 @@ export function createConnectionGate(throttle: Throttle): ConnectionGate {
       // out; every other verdict is "count it", which is what an unset or
       // unrecognised value has to mean.
       headers[VERDICT_HEADER] = decision.kind === "exempt" ? VERDICT_EXEMPT : "count";
-      return Promise.resolve();
+      if (decision.kind === "exempt") return;
+      await countUpgrade(throttle, data.socket, decision.identity);
     },
 
-    onConnect: (data: ConnectHookPayload): Promise<void> => {
-      // Reads the verdict rather than re-deriving one. The identity cannot be
-      // re-judged here: `onConnect` never sees the peer address, so a loopback
-      // identity is indistinguishable from a claim to be loopback.
-      if (data.request.headers.get(VERDICT_HEADER) === VERDICT_EXEMPT) {
-        return Promise.resolve();
-      }
-      return throttle(data.request.headers.get(REAL_IP_HEADER) ?? "");
+    onConnect: async (data: ConnectHookPayload): Promise<void> => {
+      const identity = countedIdentity(data);
+      if (identity === null) return;
+      // A falsy rejection refuses the document quietly, before any session
+      // or role lookup runs for an address that is already banned.
+      if (await throttle.isBanned(identity)) throw undefined;
     },
+
+    recordFailedAuth: async (data: ConnectHookPayload): Promise<void> => {
+      const identity = countedIdentity(data);
+      if (identity === null || failureCounted.has(data.request)) return;
+      failureCounted.add(data.request);
+      if (!(await throttle.count(identity))) {
+        logger.warn({ identity }, "collab_failed_auth_throttled");
+      }
+    },
+  };
+}
+
+/**
+ * Wrap an `onAuthenticate` hook so every rejection it gives is counted by the
+ * gate before it goes on to hocuspocus unchanged.
+ * @param onAuthenticate - The authentication hook to wrap.
+ * @param gate - Where the failure is recorded.
+ * @returns The hook to register in its place.
+ */
+export function recordingFailedAuth<P extends ConnectHookPayload, R>(
+  onAuthenticate: (payload: P) => Promise<R>,
+  gate: Pick<ConnectionGate, "recordFailedAuth">,
+): (payload: P) => Promise<R> {
+  return async (payload: P): Promise<R> => {
+    try {
+      return await onAuthenticate(payload);
+    } catch (rejection) {
+      await gate.recordFailedAuth(payload);
+      throw rejection;
+    }
   };
 }

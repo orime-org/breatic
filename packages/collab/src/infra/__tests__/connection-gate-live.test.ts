@@ -25,14 +25,22 @@
  * non-loopback address, whose peer is that address.
  */
 
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, vi } from "vitest";
 import { connect as connectTcp } from "node:net";
 import { networkInterfaces } from "node:os";
 import WebSocket from "ws";
 import * as encoding from "lib0/encoding";
 import { Server } from "@hocuspocus/server";
+import type * as CoreModule from "@breatic/core";
 import { createConnectionGate } from "@collab/infra/connection-gate.js";
 import { isLoopbackIp } from "@breatic/core";
+
+// The gate logs its refusals; this file runs without initCore, so the logger
+// is a stand-in and everything else is the real module.
+vi.mock("@breatic/core", async (importOriginal) => ({
+  ...(await importOriginal<typeof CoreModule>()),
+  createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }),
+}));
 
 /** Outer message type of an auth frame, as it appears on the wire. */
 const WIRE_AUTH = 2;
