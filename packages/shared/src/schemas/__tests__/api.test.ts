@@ -109,7 +109,7 @@ describe("chatMessageSchema — the reader's Spaces (inner#1413)", () => {
       ...message,
       spaces: [space, { id: "s2", name: "Cast", kind: "canvas" }],
       spaces_total: 2,
-      current_space: { ...space, state: "loaded", content: "# Scene 1", total_chars: 9 },
+      current_space: { ...space, state: "loaded", content: "# Scene 1", total_chars: 9, blocks: [] },
     });
     expect(parsed.spaces).toHaveLength(2);
     expect(parsed.spaces_total).toBe(2);
@@ -167,7 +167,7 @@ describe("chatMessageSchema — how much of an open canvas is shown (inner#1413)
   });
 
   it("refuses a document that carries a canvas's fitting", () => {
-    const document = { ...canvas, kind: "document" as const };
+    const document = { ...canvas, kind: "document" as const, blocks: [] };
     expect(chatMessageSchema.safeParse({ ...message, current_space: { ...document, detail } }).success).toBe(false);
     expect(chatMessageSchema.safeParse({ ...message, current_space: document }).success).toBe(true);
   });
@@ -181,5 +181,67 @@ describe("chatMessageSchema — how much of an open canvas is shown (inner#1413)
   it("refuses more selected nodes whole or attached than were selected", () => {
     const over = { ...detail, selected_total: 2, selected_attached: 1, selected_whole: 2 };
     expect(chatMessageSchema.safeParse({ ...message, current_space: { ...canvas, detail: over } }).success).toBe(false);
+  });
+});
+
+describe("chatMessageSchema — an open document's blocks (inner#1509)", () => {
+  const message = {
+    message: "comment on scene 2",
+    project_id: "11111111-1111-4111-8111-111111111111",
+    conversation_id: "22222222-2222-4222-8222-222222222222",
+  };
+  const document = {
+    id: "s1",
+    name: "Storyboard",
+    kind: "document" as const,
+    state: "loaded" as const,
+    content: "<!-- b:1 -->\n# Scene 2\n\n<!-- b:2 -->\nShe turns.",
+    total_chars: 40,
+  };
+  const heading = { id: "b-1", type: "heading", text: "Scene 2", lossy: false, partial: false };
+  const paragraph = { id: "b-2", type: "paragraph", text: "She turns.", lossy: true, partial: false };
+
+  it("takes a loaded document with the blocks its content shows", () => {
+    const parsed = chatMessageSchema.parse({ ...message, current_space: { ...document, blocks: [heading, paragraph] } });
+    expect(parsed.current_space).toMatchObject({ blocks: [heading, paragraph] });
+  });
+
+  it("refuses a loaded document without blocks", () => {
+    expect(chatMessageSchema.safeParse({ ...message, current_space: document }).success).toBe(false);
+  });
+
+  it("refuses a canvas that carries blocks", () => {
+    const canvas = {
+      ...document,
+      kind: "canvas" as const,
+      content: "{}",
+      detail: {
+        selected_total: 0,
+        selected_attached: 0,
+        selected_whole: 0,
+        slim: false,
+        texts_cut: 0,
+        names_only: 0,
+        edges_not_listed: 0,
+        nodes_not_listed: 0,
+        groups_not_listed: 0,
+      },
+    };
+    expect(chatMessageSchema.safeParse({ ...message, current_space: canvas }).success).toBe(true);
+    expect(chatMessageSchema.safeParse({ ...message, current_space: { ...canvas, blocks: [] } }).success).toBe(false);
+  });
+
+  it("refuses a block without an id or a type", () => {
+    for (const bad of [{ ...heading, id: "" }, { ...heading, type: "" }]) {
+      expect(chatMessageSchema.safeParse({ ...message, current_space: { ...document, blocks: [bad] } }).success).toBe(false);
+    }
+  });
+
+  it("refuses a partial block that still carries its text", () => {
+    const partial = { ...paragraph, partial: true };
+    expect(chatMessageSchema.safeParse({ ...message, current_space: { ...document, blocks: [partial] } }).success).toBe(false);
+    expect(
+      chatMessageSchema.safeParse({ ...message, current_space: { ...document, blocks: [{ ...partial, text: "" }] } }).success,
+    ).toBe(true);
   });
 });

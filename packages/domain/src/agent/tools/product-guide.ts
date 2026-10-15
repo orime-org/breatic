@@ -952,6 +952,49 @@ export function renderProductGuide(): string {
     "- Into a song model's lyrics box: a text node @'d in the lyrics box, where a proposal arrives with it " +
       "already @'d; it is not @'d in the style prompt above it.",
     "",
+    "## Document proposal cards",
+    "A comment, a rewrite or an insert you propose for the document the reader has open appears in this chat as " +
+      "a card: its title; a line naming the document, which for an insert says the content goes into it, " +
+      "followed after a · by the nearest heading at or above the passage, or " +
+      `${quoted(t("chat.documentProposal.end"))} for an insert at the end; then the passage. A comment card ` +
+      "quotes the words the comment hangs on and shows the comment, with one " +
+      `button, ${quoted(t("chat.documentProposal.addComment"))}. A rewrite card shows the passage with the words ` +
+      "taken out struck through in red and the new words in green, and two buttons: " +
+      `${quoted(t("chat.documentProposal.addComment"))} puts the rewritten words on the passage as a comment, and ` +
+      `${quoted(t("chat.documentProposal.apply"))} replaces the passage with them; a passage with no words, such ` +
+      "as an empty code block, an image, a video or an audio block, has only the second. When the passage holds something " +
+      `Markdown cannot write, such as colours, an alignment, underlining, column widths, merged cells or comments, a rewrite card adds ${quoted(t("chat.documentProposal.lossy"))} ` +
+      "An insert card that goes after a passage first shows that passage under " +
+      `${quoted(t("chat.documentProposal.insertAfter"))}, naming a passage with no words by its kind, such as ` +
+      `${quoted(t("spaces.document.media.image"))} or ${quoted(t("chat.documentProposal.headingBlock"))}; it ` +
+      `shows the new content drawn from its Markdown, tables included, with ${quoted(t("chat.documentProposal.insert"))}.`,
+    "Pressing a button opens the document, or switches to its tab, and the change lands. A rewrite or an insert " +
+      "is scrolled to and outlined for a moment; a comment opens the comments panel on its card, its words marked, " +
+      "as pressing its highlight does, with a wide table scrolled sideways to them. The pressed button spins " +
+      "meanwhile. A rewrite or an insert is one step " +
+      "undo reverses. A comment lands under the reader's own name, marked " +
+      `${quoted(t("spaces.document.comment.fromAgent"))}, and is taken back from its card in the comments panel ` +
+      "like any other comment. The card then shows " +
+      `${quoted(t("chat.documentProposal.appliedComment"))}, ${quoted(t("chat.documentProposal.appliedRewrite"))} ` +
+      `or ${quoted(t("chat.documentProposal.appliedInsert"))} and a ` +
+      `${quoted(t("chat.documentProposal.view"))} button that shows it again. A card reads whether it landed ` +
+      "from its document while that document is open, after a reload too, and a rewrite or insert card goes back " +
+      "to its buttons once the reader undoes it. With the document closed, a card pressed in this visit keeps " +
+      "showing how its press ended; after a reload it shows its buttons, and pressing one opens the document and " +
+      "finds the change already there, writing nothing again.",
+    "A press that does not land says why in a toast that goes after a moment, and the card shows its buttons " +
+      "to press again; nothing changes in the document. When the passage changed or was deleted after the proposal " +
+      `the toast says ${quoted(t("chat.documentProposal.changed"))} or ${quoted(t("chat.documentProposal.blockGone"))} ` +
+      `When the reader can only view the document right now it says ${quoted(t("chat.documentProposal.readOnly"))} ` +
+      `When the document is gone it says ${quoted(t("chat.documentProposal.spaceGone"))} When writing fails it says ` +
+      `${quoted(t("chat.documentProposal.failedComment"))} ${quoted(t("chat.documentProposal.failedRewrite"))} or ` +
+      `${quoted(t("chat.documentProposal.failedInsert"))} Pressing ${quoted(t("chat.documentProposal.view"))} ` +
+      `after the change has left the document, undone or deleted, says ${quoted(t("chat.documentProposal.gone"))} ` +
+      "and the card shows its buttons again, which write the proposal again. An image, video or audio in a " +
+      "rewrite or an insert lands only when its address is in our storage; outside links are left out, and " +
+      "when nothing else is left nothing lands and the card keeps its buttons; a toast says how many, such as " +
+      `${quoted(t("chat.documentProposal.mediaLeftOut", { count: 1 }))}`,
+    "",
     "## Document spaces",
     "- Markdown at the start of a line: `# `, `## `, `### ` for headings; a number, a full stop and a space " +
       "(`1. `) for an ordered list (on a heading it numbers the heading instead); `- `, `* ` or `+ ` for a bullet " +
@@ -1138,7 +1181,9 @@ export function renderProductGuide(): string {
       `${quoted(t("spaces.document.comment.filterOpen"))} (chosen at first), ` +
       `${quoted(t("spaces.document.comment.filterAll"))} and an X that closes it; closing it drops anything not ` +
       "yet posted. Each card sits level with its words and quotes them, then shows each comment's writer (" +
-      `${quoted(t("spaces.document.comment.unknownAuthor"))} when not known), when, and what they wrote. ` +
+      `${quoted(t("spaces.document.comment.unknownAuthor"))} when not known, followed by ` +
+      `${quoted(t("spaces.document.comment.fromAgent"))} on a comment that came from a document proposal), when, ` +
+      "and what they wrote. " +
       "Clicking highlighted words opens the panel at their comment. Clicking a card opens it; a closed card " +
       "with more than two comments shows the first and the latest, with " +
       `${quoted(t("spaces.document.comment.folded", { count: 2 }))} between them. An open card has ` +

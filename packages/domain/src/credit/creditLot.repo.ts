@@ -269,6 +269,61 @@ export async function lockLot(
 }
 
 /**
+ * The two facts of a lot the refund disposition reads besides the lot row:
+ * what its ledger sums to, and when the buyer asked for the refund.
+ * @param lotId - The lot.
+ * @param tx - The caller's transaction.
+ * @returns The ledger sum as Postgres `numeric` text, and the ask time.
+ */
+export async function readRefundFacts(
+  lotId: string,
+  tx: DbTx,
+): Promise<{ ledgerSum: string; refundRequestedAt: Date | null }> {
+  const [ledger] = await tx
+    .select({ sum: sql<string>`COALESCE(SUM(${creditLedger.amount}), 0)::text` })
+    .from(creditLedger)
+    .where(eq(creditLedger.lotId, lotId));
+  const [lot] = await tx
+    .select({ refundRequestedAt: creditLots.refundRequestedAt })
+    .from(creditLots)
+    .where(eq(creditLots.id, lotId));
+  return { ledgerSum: ledger?.sum ?? "0", refundRequestedAt: lot?.refundRequestedAt ?? null };
+}
+
+/**
+ * Whether a payment opened a lot, unlocked.
+ * @param paymentId - The payment.
+ * @returns The lot's id, or null.
+ */
+export async function findLotIdByPayment(paymentId: string): Promise<string | null> {
+  const rows = await db
+    .select({ id: creditLots.id })
+    .from(creditLots)
+    .where(eq(creditLots.sourceId, paymentId))
+    .limit(1);
+  return rows[0]?.id ?? null;
+}
+
+/**
+ * {@link lockLot}, for the lot a payment opened. `source_id` is unique, so a
+ * payment opens at most one lot.
+ * @param paymentId - The payment the lot was granted from.
+ * @param tx - The transaction holding the lock.
+ * @returns The locked lot, or null if the payment opened none.
+ */
+export async function lockLotByPayment(
+  paymentId: string,
+  tx: DbTx,
+): Promise<CreditLotEntity | null> {
+  const rows = await tx
+    .select()
+    .from(creditLots)
+    .where(eq(creditLots.sourceId, paymentId))
+    .for("update");
+  return rows[0] ? toLotEntity(rows[0]) : null;
+}
+
+/**
  * Subtract from a lot's remaining balance, in `numeric`.
  *
  * Reaching zero moves the lot to `depleted` in the same statement: a lot with
@@ -792,19 +847,18 @@ export async function hasEverSpent(lotId: string, tx: DbTx): Promise<boolean> {
 }
 
 /**
- * Take the one refund transition this repository writes: `active` to
- * `refund_pending`.
+ * The buyer's ask: `active` to `refund_pending`, stamping when it was asked.
  *
- * The other three edges — approve, refuse, settle — are decided in the back
- * office, so naming this one edge is what the function can promise. A generic
- * mover would compile `refunded` back to `active`, which hands credits to a
- * buyer who has already been paid out.
+ * Each refund edge has its own function naming the state it starts from. A
+ * generic mover would compile `refunded` back to `active`, which hands
+ * credits to a buyer who has already been paid out.
  *
- * `active` is in the predicate so the write applies to the state the caller
- * decided on. The caller holds the row lock, which is what makes the decision
- * and the write see the same row; the predicate is what says so in the
- * statement, and it turns a lock that is ever missing into no rows updated
- * rather than a transition taken from a state nobody checked.
+ * The starting state is in the predicate so the write applies to the state
+ * the caller decided on. The caller holds the row lock, which is what makes
+ * the decision and the write see the same row; the predicate is what says so
+ * in the statement, and it turns a lock that is ever missing into no rows
+ * updated rather than a transition taken from a state nobody checked. The
+ * same holds for the four edges below.
  * @param lotId - The lot to move.
  * @param tx - The transaction holding the lock.
  * @returns The lot as it now stands, or null if it was not `active`.
@@ -815,10 +869,159 @@ export async function markRefundPending(
 ): Promise<CreditLotEntity | null> {
   const rows = await tx
     .update(creditLots)
-    .set({ lifecycle: "refund_pending" })
+    .set({ lifecycle: "refund_pending", refundRequestedAt: sql`now()` })
     .where(and(eq(creditLots.id, lotId), eq(creditLots.lifecycle, "active")))
     .returning();
   return rows[0] ? toLotEntity(rows[0]) : null;
+}
+
+/**
+ * An approval begins: `refund_pending` to `refunding`.
+ * @param lotId - The lot to move.
+ * @param tx - The transaction holding the lock.
+ * @returns The lot as it now stands, or null if it was not `refund_pending`.
+ */
+export async function markRefunding(
+  lotId: string,
+  tx: DbTx,
+): Promise<CreditLotEntity | null> {
+  const rows = await tx
+    .update(creditLots)
+    .set({ lifecycle: "refunding" })
+    .where(and(eq(creditLots.id, lotId), eq(creditLots.lifecycle, "refund_pending")))
+    .returning();
+  return rows[0] ? toLotEntity(rows[0]) : null;
+}
+
+/**
+ * The money is back with the buyer: `refunding` or `refund_pending` to
+ * `refunded`, with nothing left on the lot. The caller appends the matching
+ * ledger row in the same transaction.
+ * @param lotId - The lot to move.
+ * @param tx - The transaction holding the lock.
+ * @returns The lot as it now stands, or null if it was in neither state.
+ */
+export async function markRefunded(
+  lotId: string,
+  tx: DbTx,
+): Promise<CreditLotEntity | null> {
+  const rows = await tx
+    .update(creditLots)
+    .set({ lifecycle: "refunded", remainingCredits: "0" })
+    .where(
+      and(
+        eq(creditLots.id, lotId),
+        inArray(creditLots.lifecycle, ["refunding", "refund_pending"]),
+      ),
+    )
+    .returning();
+  return rows[0] ? toLotEntity(rows[0]) : null;
+}
+
+/**
+ * Stripe did not take the money back, or the operator sent the approval back:
+ * `refunding` to `refund_pending`.
+ * @param lotId - The lot to move.
+ * @param tx - The transaction holding the lock.
+ * @returns The lot as it now stands, or null if it was not `refunding`.
+ */
+export async function markSentBack(
+  lotId: string,
+  tx: DbTx,
+): Promise<CreditLotEntity | null> {
+  const rows = await tx
+    .update(creditLots)
+    .set({ lifecycle: "refund_pending" })
+    .where(and(eq(creditLots.id, lotId), eq(creditLots.lifecycle, "refunding")))
+    .returning();
+  return rows[0] ? toLotEntity(rows[0]) : null;
+}
+
+/**
+ * The request was turned down: `refund_pending` with credits on it back to
+ * `active`, counting the attempt.
+ * @param lotId - The lot to move.
+ * @param tx - The transaction holding the lock.
+ * @returns The lot as it now stands, or null if it was not such a lot.
+ */
+export async function markRejected(
+  lotId: string,
+  tx: DbTx,
+): Promise<CreditLotEntity | null> {
+  const rows = await tx
+    .update(creditLots)
+    .set({ lifecycle: "active", refundAttempts: sql`${creditLots.refundAttempts} + 1` })
+    .where(
+      and(
+        eq(creditLots.id, lotId),
+        eq(creditLots.lifecycle, "refund_pending"),
+        sql`${creditLots.remainingCredits} > 0`,
+      ),
+    )
+    .returning();
+  return rows[0] ? toLotEntity(rows[0]) : null;
+}
+
+/**
+ * Credits are restored after a refund failed: `refunded`, `refunding` or
+ * `refund_pending` back to `active`, with `remaining_credits` set to what the
+ * caller computed. `refund_attempts` is left alone: the buyer did not ask
+ * twice. The caller appends the reversing ledger row in the same transaction.
+ * @param lotId - The lot to move.
+ * @param remainingCredits - Its balance afterwards, as a `numeric` string.
+ * @param tx - The transaction holding the lock.
+ * @returns The lot as it now stands, or null if it was in none of the three states.
+ */
+export async function markRestored(
+  lotId: string,
+  remainingCredits: string,
+  tx: DbTx,
+): Promise<CreditLotEntity | null> {
+  const rows = await tx
+    .update(creditLots)
+    .set({ lifecycle: "active", remainingCredits })
+    .where(
+      and(
+        eq(creditLots.id, lotId),
+        inArray(creditLots.lifecycle, ["refunded", "refunding", "refund_pending"]),
+      ),
+    )
+    .returning();
+  return rows[0] ? toLotEntity(rows[0]) : null;
+}
+
+/**
+ * What booking the lot took out of the account: the negation of its `refund`
+ * ledger row, or "0" when the lot was never booked. A lot is booked at most
+ * once, so there is at most one such row.
+ * @param lotId - The lot.
+ * @param tx - The transaction holding the lot's lock.
+ * @returns The credits the booking removed, as a non-negative `numeric` string.
+ */
+export async function readBookedCredits(lotId: string, tx: DbTx): Promise<string> {
+  const rows = await tx
+    .select({ credits: sql<string>`(-${creditLedger.amount})::text` })
+    .from(creditLedger)
+    .where(and(eq(creditLedger.lotId, lotId), eq(creditLedger.entryType, "refund")))
+    .limit(1);
+  return rows[0]?.credits ?? "0";
+}
+
+/**
+ * Whether credits were ever restored to this purchase after a refund failed.
+ * Read off the ledger, as `hasEverSpent` is: the `refund_reversed` row is the
+ * record of it.
+ * @param lotId - The lot to ask about.
+ * @param tx - The transaction reading it.
+ * @returns True if the lot has a `refund_reversed` row.
+ */
+export async function hasEverRestored(lotId: string, tx: DbTx): Promise<boolean> {
+  const rows = await tx
+    .select({ id: creditLedger.id })
+    .from(creditLedger)
+    .where(and(eq(creditLedger.lotId, lotId), eq(creditLedger.entryType, "refund_reversed")))
+    .limit(1);
+  return rows.length > 0;
 }
 
 /** What a lot's row carries beyond the lot itself. */
@@ -845,6 +1048,8 @@ export interface LotContext {
    * repayment of a studio's debt.
    */
   everSpent: boolean;
+  /** Whether credits were restored to it after a refund failed (a `refund_reversed` row). */
+  everRestored: boolean;
 }
 
 /**
@@ -908,6 +1113,11 @@ export async function listLotsByUser(
         WHERE ${creditLedger.lotId} = ${creditLots.id}
           AND ${inArray(creditLedger.entryType, SPENDING_ENTRY_TYPES)}
       )`,
+      everRestored: sql<boolean>`EXISTS (
+        SELECT 1 FROM ${creditLedger}
+        WHERE ${creditLedger.lotId} = ${creditLots.id}
+          AND ${creditLedger.entryType} = 'refund_reversed'
+      )`,
       // What the caller's cursor is built from. The mapped `Date` beside it
       // has already lost the microseconds this column keeps.
       cursorAt: sql<string>`${creditLots.createdAt}::text`,
@@ -946,6 +1156,7 @@ export async function listLotsByUser(
     designatedStudioName: row.designatedStudioName,
     designated: row.designated,
     everSpent: row.everSpent,
+    everRestored: row.everRestored,
     cursorAt: row.cursorAt,
   }));
 }

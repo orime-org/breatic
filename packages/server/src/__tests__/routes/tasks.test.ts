@@ -568,6 +568,7 @@ describe("Tasks routes", () => {
       expect.stringContaining("understand:"),
       expect.any(Number),
       expect.any(Number),
+      { strict: false },
     );
   });
 

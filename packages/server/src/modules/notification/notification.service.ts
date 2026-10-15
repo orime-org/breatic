@@ -744,6 +744,104 @@ export async function createStorageQuotaExceeded(input: {
   );
 }
 
+/** Payload for `credit.refund_completed` — the money is back with the buyer. */
+export interface CreditRefundCompletedPayload {
+  lotId: string;
+  /** The credits the pack granted, as the `numeric` column reads. */
+  credits: string;
+  /** What Stripe refunded, in the smallest unit of `currency`. */
+  amountCents: number;
+  currency: string;
+}
+
+/** Payload for `credit.refund_rejected` — the request was turned down. */
+export interface CreditRefundRejectedPayload {
+  lotId: string;
+  /** The credits back in use, as the `numeric` column reads. */
+  credits: string;
+}
+
+/**
+ * Tell a buyer their credit pack was refunded (inner#1410 §8).
+ *
+ * Informational, like `membership.ended`: written in the disposition's
+ * transaction, the always-delivered half beside the best-effort mail.
+ * @param input - Recipient inbox, the refund, and the disposition's transaction.
+ * @param input.userId - The buyer.
+ * @param input.payload - The lot, credits and amount refunded.
+ * @param input.tx - The transaction the disposition finishes in.
+ * @returns The inserted `credit.refund_completed` notification.
+ */
+export async function createCreditRefundCompleted(input: {
+  userId: string;
+  payload: CreditRefundCompletedPayload;
+  tx: DbTx;
+}): Promise<NotificationEntity> {
+  return notificationRepo.create(
+    {
+      userId: input.userId,
+      type: "credit.refund_completed",
+      payload: input.payload as unknown as Record<string, unknown>,
+    },
+    input.tx,
+  );
+}
+
+/**
+ * Tell a buyer their refund request was turned down (inner#1410 §8).
+ * @param input - Recipient inbox, the lot, and the disposition's transaction.
+ * @param input.userId - The buyer.
+ * @param input.payload - The lot and its credits.
+ * @param input.tx - The transaction the rejection is made in.
+ * @returns The inserted `credit.refund_rejected` notification.
+ */
+export async function createCreditRefundRejected(input: {
+  userId: string;
+  payload: CreditRefundRejectedPayload;
+  tx: DbTx;
+}): Promise<NotificationEntity> {
+  return notificationRepo.create(
+    {
+      userId: input.userId,
+      type: "credit.refund_rejected",
+      payload: input.payload as unknown as Record<string, unknown>,
+    },
+    input.tx,
+  );
+}
+
+/** Payload for `credit.refund_restored`: the lot and the credits back in the account. */
+export interface CreditRefundRestoredPayload {
+  lotId: string;
+  /** The credits back in use, as the `numeric` column reads. */
+  credits: string;
+}
+
+/**
+ * Tell a buyer their credits were restored after the refund failed and they
+ * chose the credits over the money (inner#1410 §8). Written in the
+ * disposition's transaction, so the bell and the restore commit together.
+ * @param input - Who, what, and the transaction.
+ * @param input.userId - The buyer.
+ * @param input.payload - The lot and its credits.
+ * @param input.tx - The transaction the restore is made in.
+ * @returns The inserted `credit.refund_restored` notification.
+ */
+export async function createCreditRefundRestored(input: {
+  userId: string;
+  payload: CreditRefundRestoredPayload;
+  tx: DbTx;
+}): Promise<NotificationEntity> {
+  return notificationRepo.create(
+    {
+      userId: input.userId,
+      type: "credit.refund_restored",
+      payload: input.payload as unknown as Record<string, unknown>,
+    },
+    input.tx,
+  );
+}
+
 /** Payload for `project.join_request` — a studio member asks to join a project. */
 export interface ProjectJoinRequestPayload {
   /** Names the request in `/decision?token=`; the bell builds its link from it. */

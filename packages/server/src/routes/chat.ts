@@ -59,7 +59,7 @@ import type { ChatAttachedChip, ChatSpaceContext } from "@breatic/shared";
  * @param space - The project's Spaces and the one the reader has open.
  * @throws {AppError} With 422 when the words, the number of references, the
  *   number of attached items, the attachments' length, the open Space's
- *   content or the number of Spaces listed is over its limit.
+ *   content or its blocks' text, or the number of Spaces listed is over its limit.
  */
 function assertSayable(
   message: string,
@@ -106,7 +106,11 @@ function assertSayable(
   if (listed > space_list_max_items) {
     throw new ValidationError(t("server.chat.spaces_too_many", { limit: space_list_max_items, actual: listed }));
   }
-  const content = space.current_space?.state === "loaded" ? space.current_space.content.length : 0;
+  const loaded = space.current_space?.state === "loaded" ? space.current_space : undefined;
+  // The blocks' plain text rides beside the content for the document proposal
+  // to check against (inner#1509); it is held to the same limit.
+  const blocksText = loaded?.blocks?.reduce((sum, block) => sum + block.text.length, 0) ?? 0;
+  const content = Math.max(loaded?.content.length ?? 0, blocksText);
   if (content > current_space_max_chars) {
     throw new ValidationError(
       t("server.chat.current_space_too_long", { limit: current_space_max_chars, actual: content }),

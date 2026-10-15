@@ -69,6 +69,9 @@ const SIZE_CLASS = {
   // written there it would lose to the utility and the prose would set 3.45px
   // tighter than it reads at.
   sm: 'chat-markdown text-sm leading-[1.65]',
+  // A table at this size stays at the size of the words around it: shrunk
+  // like the other sizes' tables, it falls below every other line of a card.
+  xs: 'chat-markdown text-xs leading-[1.65] [&_table]:text-[length:1em]',
   '2xs': 'chat-markdown text-2xs leading-[1.65]',
 } as const;
 
@@ -181,7 +184,7 @@ const REHYPE_TAIL: Rehype = [rehypeHighlight];
  */
 function ScrollableTable({ children }: { children?: ReactNode }): ReactElement {
   return (
-    <ScrollArea className='my-[1.1em]' scrollbars='horizontal'>
+    <ScrollArea className='my-[1.1em] first:mt-0 last:mb-0' scrollbars='horizontal'>
       <table>{children}</table>
     </ScrollArea>
   );

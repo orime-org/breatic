@@ -14,6 +14,7 @@ import type { ChatAttachedChip, ChatSpaceContext, ModelCatalog } from '@breatic/
 import { chatMessageSchema, documentBodyFragment } from '@breatic/shared';
 
 import type { ProjectSpace } from '@web/data/yjs/project-meta';
+import { COMMENT_MARK } from '@web/spaces/document/document-comment-extension';
 
 const synced = vi.hoisted(() => new Set<string>());
 const editors = vi.hoisted(() => new Map<string, unknown>());
@@ -35,6 +36,8 @@ const { _resetForTests, docName, getDoc, hasDoc } = await import('@web/data/yjs/
 const { modelCatalogQuery } = await import('@web/spaces/canvas/generate/model-catalog-query');
 const { buildDocumentEditor } = await import('@web/spaces/document/build-document-editor');
 const { clipSpaceContext, readSpaceContext } = await import('@web/pages/project/chat/space-context');
+type ReadBlock = import('@web/spaces/document/document-blocks-read').ReadBlock;
+type DocumentEditor = ReturnType<typeof buildDocumentEditor>;
 
 const PID = 'p1';
 const CATALOG = {
@@ -366,21 +369,102 @@ describe('an open canvas', () => {
 });
 
 describe('an open document', () => {
-  it('carries its text as Markdown', async () => {
-    await openDocument('# Scene 1\n\nThe hero arrives.');
+  /**
+   * The blocks read from the open document.
+   * @returns What each top-level block holds.
+   */
+  const readBlocks = (): ReadBlock[] => {
+    const got = read({ activeSpace: doc }).current;
+    return got?.state === 'loaded' && 'blocks' in got ? got.blocks : [];
+  };
 
-    const got = read({ activeSpace: doc });
+  it('carries each top-level block as Markdown with its id, type and plain text', async () => {
+    const name = await openDocument('# Scene 1\n\nThe **hero** reads [the map](https://example.com).');
+    const ids = (editors.get(name) as { editor: { document: Array<{ id: string }> } }).editor.document.map((b) => b.id);
 
-    expect(got.current).toMatchObject({ id: 'd1', kind: 'document', state: 'loaded' });
-    const text = got.current?.state === 'loaded' && 'text' in got.current ? got.current.text : '';
-    expect(text).toContain('# Scene 1');
-    expect(text).toContain('The hero arrives.');
+    const blocks = readBlocks();
+
+    expect(blocks.map((b) => [b.id, b.type, b.text])).toEqual([
+      [ids[0], 'heading', 'Scene 1'],
+      [ids[1], 'paragraph', 'The hero reads the map.'],
+    ]);
+    expect(blocks[0]?.markdown).toBe('# Scene 1');
+    expect(blocks[1]?.markdown).toContain('**hero**');
   });
 
-  it('is empty when it holds only whitespace', async () => {
+  it('reads a table cell by cell and a list item with the items under it', async () => {
+    await openDocument('| Shot | Action |\n| --- | --- |\n| Close | She turns |\n\n* Props\n  * A map');
+
+    expect(readBlocks().map((b) => b.text)).toEqual(['Shot\nAction\nClose\nShe turns', 'Props\nA map']);
+  });
+
+  it('numbers each item of an ordered list as the editor shows it', async () => {
+    await openDocument('1. Wide\n2. Medium\n3. Close');
+
+    expect(readBlocks().map((b) => b.markdown)).toEqual(['1. Wide', '2. Medium', '3. Close']);
+  });
+
+  it('marks a block whose colour, alignment or underline Markdown cannot carry', async () => {
+    const name = await openDocument('Plain **bold** words\n\nColoured\n\nCentred\n\nUnderlined');
+    const editor = (editors.get(name) as { editor: DocumentEditor }).editor;
+    const [, coloured, centred, underlined] = editor.document;
+    editor.updateBlock(coloured!, { props: { textColor: 'red' } } as never);
+    editor.updateBlock(centred!, { props: { textAlignment: 'center' } } as never);
+    editor.updateBlock(underlined!, { content: [{ type: 'text', text: 'Underlined', styles: { underline: true } }] } as never);
+
+    expect(readBlocks().map((b) => b.lossy)).toEqual([false, true, true, true]);
+  });
+
+  it('marks a table with a column width and a passage with a comment on it', async () => {
+    const name = await openDocument('| A | B |\n| --- | --- |\n| 1 | 2 |\n\nCommented words');
+    const editor = (editors.get(name) as { editor: DocumentEditor }).editor;
+    const view = editor.prosemirrorView!;
+    let cellAt = -1;
+    let wordsAt = -1;
+    view.state.doc.descendants((node, pos) => {
+      if (cellAt < 0 && (node.type.name === 'tableHeader' || node.type.name === 'tableCell')) cellAt = pos;
+      if (wordsAt < 0 && node.isText && node.text === 'Commented words') wordsAt = pos;
+      return true;
+    });
+    const cell = view.state.doc.nodeAt(cellAt)!;
+    const comment = view.state.schema.marks[COMMENT_MARK]!.create({ threadId: 't1', orphan: false });
+    view.dispatch(
+      view.state.tr
+        .setNodeMarkup(cellAt, undefined, { ...cell.attrs, colwidth: [240] })
+        .addMark(wordsAt, wordsAt + 'Commented words'.length, comment),
+    );
+
+    expect(readBlocks().map((b) => b.lossy)).toEqual([true, true]);
+  });
+
+  it('marks a table with merged cells, which Markdown splits apart', async () => {
+    const name = await openDocument('| A | B |\n| --- | --- |\n| 1 | 2 |\n\n| C | D |\n| --- | --- |\n| 3 | 4 |');
+    const editor = (editors.get(name) as { editor: DocumentEditor }).editor;
+    const view = editor.prosemirrorView!;
+    let cellAt = -1;
+    view.state.doc.descendants((node, pos) => {
+      if (cellAt < 0 && (node.type.name === 'tableHeader' || node.type.name === 'tableCell')) cellAt = pos;
+      return cellAt < 0;
+    });
+    const cell = view.state.doc.nodeAt(cellAt)!;
+    view.dispatch(view.state.tr.setNodeMarkup(cellAt, undefined, { ...cell.attrs, colspan: 2 }));
+
+    expect(readBlocks().map((b) => b.lossy)).toEqual([true, false]);
+  });
+
+  it('leaves out blocks that hold nothing', async () => {
+    await openDocument('Before\n\n\n\nAfter');
+    const name = docName.documentSpace(PID, doc.id);
+    const editor = (editors.get(name) as { editor: DocumentEditor }).editor;
+    editor.insertBlocks([{ type: 'paragraph' }] as never, editor.document[0]!, 'after');
+
+    expect(readBlocks().map((b) => b.text)).toEqual(['Before', 'After']);
+  });
+
+  it('holds no blocks when it holds only whitespace', async () => {
     await openDocument('');
 
-    expect(read({ activeSpace: doc }).current).toMatchObject({ state: 'loaded', text: '' });
+    expect(read({ activeSpace: doc }).current).toMatchObject({ state: 'loaded', blocks: [] });
   });
 
   it('has not loaded while there is no editor for it', () => {
@@ -421,47 +505,91 @@ describe('cutting what was read to the limits', () => {
     expect(cut).not.toHaveProperty('current_space');
   });
 
-  it('keeps the start of the open Space content and says how long it was', () => {
-    const cut = clipSpaceContext(
-      { spaces: [], current: { id: 'd1', name: 'Storyboard', kind: 'document', state: 'loaded', text: 'abcdef' } },
-      limits,
-      [],
-    );
+  /**
+   * A read block, its plain text standing in for its Markdown.
+   * @param id - Its id.
+   * @param markdown - What it reads as.
+   * @returns The block.
+   */
+  const block = (id: string, markdown: string): ReadBlock => ({ id, type: 'paragraph', markdown, text: markdown, lossy: false });
 
-    expect(cut.current_space).toEqual({
+  /**
+   * A document cut to a limit.
+   * @param blocks - What the document holds.
+   * @param max - The limit.
+   * @returns The open Space as it goes.
+   */
+  const cutDocument = (blocks: ReadBlock[], max: number): ChatSpaceContext['current_space'] =>
+    clipSpaceContext(
+      { spaces: [], current: { id: 'd1', name: 'Storyboard', kind: 'document', state: 'loaded', blocks } },
+      { currentSpaceMaxChars: max, spaceListMaxItems: 2 },
+      [],
+    ).current_space;
+
+  it('numbers each block in the content and lists the blocks it shows', () => {
+    const got = cutDocument([block('a', 'One'), block('b', 'Two')], 1000);
+
+    expect(got).toEqual({
       id: 'd1',
       name: 'Storyboard',
       kind: 'document',
       state: 'loaded',
-      content: 'abcd',
-      total_chars: 6,
+      content: '<!-- b:1 -->\nOne\n\n<!-- b:2 -->\nTwo',
+      total_chars: 34,
+      blocks: [
+        { id: 'a', type: 'paragraph', text: 'One', lossy: false, partial: false },
+        { id: 'b', type: 'paragraph', text: 'Two', lossy: false, partial: false },
+      ],
     });
   });
 
-  /**
-   * A document's content cut to the limit.
-   * @param text - What the document holds.
-   * @returns What goes and how long it was.
-   */
-  const cutDocument = (text: string): { content: string; total: number } => {
-    const current = clipSpaceContext(
-      { spaces: [], current: { id: 'd1', name: 'Storyboard', kind: 'document', state: 'loaded', text } },
-      limits,
-      [],
-    ).current_space;
-    return current?.state === 'loaded' ? { content: current.content, total: current.total_chars } : { content: '', total: -1 };
-  };
+  it('cuts the block that crosses the limit, whichever it is, and sends none after it', () => {
+    const got = cutDocument([block('a', 'One'), block('b', 'A long second block'), block('c', 'Three')], 33);
 
-  it('keeps a document within the limit whole', () => {
-    expect(cutDocument('abc')).toEqual({ content: 'abc', total: 3 });
+    expect(got).toMatchObject({ content: '<!-- b:1 -->\nOne\n\n<!-- b:2 -->\nA ', total_chars: 70 });
+    expect(got?.state === 'loaded' ? got.blocks : undefined).toEqual([
+      { id: 'a', type: 'paragraph', text: 'One', lossy: false, partial: false },
+      { id: 'b', type: 'paragraph', text: '', lossy: false, partial: true },
+    ]);
   });
 
-  it('cuts a CJK text by its characters', () => {
-    expect(cutDocument('分镜表格子')).toEqual({ content: '分镜表格', total: 5 });
+  it('cuts the first block when it alone is over the limit', () => {
+    const got = cutDocument([block('a', '分镜表格子很长'), block('b', 'Two')], 16);
+
+    expect(got).toMatchObject({ content: '<!-- b:1 -->\n分镜表' });
+    expect(got?.state === 'loaded' ? got.blocks : undefined).toEqual([
+      { id: 'a', type: 'paragraph', text: '', lossy: false, partial: true },
+    ]);
+  });
+
+  it('sends nothing of a block whose marker the limit cuts through', () => {
+    const got = cutDocument([block('a', 'One'), block('b', 'Two')], 20);
+
+    expect(got).toMatchObject({ content: '<!-- b:1 -->\nOne', total_chars: 34 });
+    expect(got?.state === 'loaded' ? got.blocks?.map((b) => b.id) : undefined).toEqual(['a']);
   });
 
   it('does not leave half of a character when the limit falls inside one', () => {
-    expect(cutDocument('abc😀d')).toEqual({ content: 'abc', total: 6 });
+    const got = cutDocument([block('a', 'abc😀d')], 17);
+
+    expect(got).toMatchObject({ content: '<!-- b:1 -->\nabc' });
+  });
+
+  it('goes as empty when it holds no blocks', () => {
+    expect(cutDocument([], 10)).toMatchObject({ content: '', total_chars: 0, blocks: [] });
+  });
+
+  it('passes the server check', () => {
+    const current = cutDocument([block('a', 'One')], 1000);
+
+    expect(
+      chatMessageSchema.safeParse({
+        message: 'hi',
+        project_id: '11111111-1111-4111-8111-111111111111',
+        conversation_id: '22222222-2222-4222-8222-222222222222',
+        current_space: current,
+      }).success,
+    ).toBe(true);
   });
 
   it('passes an open Space that has not loaded as it is', () => {

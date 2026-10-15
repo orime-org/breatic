@@ -107,6 +107,7 @@ describe("parseConfig — blank numeric vars fall back to their default", () => 
     ["UPLOAD_MAX_3D_MB", 200],
     ["UPLOAD_MAX_DOCUMENT_MB", 20],
     ["SMTP_PORT", 587],
+    ["INTERNAL_API_PORT", 3002],
   ];
 
   it.each(NUMERIC_DEFAULTS)(
@@ -386,5 +387,100 @@ describe("parseConfig — STORAGE_PROVIDER accepts only r2", () => {
   it("accepts r2 and defaults to it when absent", () => {
     expect(parseConfig(baseEnv({ STORAGE_PROVIDER: "r2" })).STORAGE_PROVIDER).toBe("r2");
     expect(parseConfig(baseEnv()).STORAGE_PROVIDER).toBe("r2");
+  });
+});
+
+/**
+ * The internal API is the second listener the back office calls to dispose of
+ * credit-pack refunds (inner#1410 §4.1). It is off unless switched on, binds
+ * the loopback address unless told otherwise, and a deployment that switches
+ * it on without a signing secret must not start: every request would either
+ * be refused or, worse, be checked against an empty key.
+ */
+describe("parseConfig — internal API", () => {
+  it("is off, on loopback port 3002, with no secrets when nothing is set", () => {
+    const cfg = parseConfig(baseEnv());
+    expect(cfg.INTERNAL_API_ENABLED).toBe(false);
+    expect(cfg.INTERNAL_API_HOST).toBe("127.0.0.1");
+    expect(cfg.INTERNAL_API_PORT).toBe(3002);
+    expect(cfg.INTERNAL_API_SECRET).toBe("");
+    expect(cfg.INTERNAL_API_SECRET_PREVIOUS).toBe("");
+  });
+
+  it("reads INTERNAL_API_ENABLED=true as on and anything else as off", () => {
+    expect(
+      parseConfig(baseEnv({ INTERNAL_API_ENABLED: "true", INTERNAL_API_SECRET: "s3cret" }))
+        .INTERNAL_API_ENABLED,
+    ).toBe(true);
+    expect(parseConfig(baseEnv({ INTERNAL_API_ENABLED: "false" })).INTERNAL_API_ENABLED).toBe(false);
+  });
+
+  it("hands back the host, port and both secrets as configured", () => {
+    const cfg = parseConfig(
+      baseEnv({
+        INTERNAL_API_ENABLED: "true",
+        INTERNAL_API_HOST: "0.0.0.0",
+        INTERNAL_API_PORT: "3102",
+        INTERNAL_API_SECRET: "current-key",
+        INTERNAL_API_SECRET_PREVIOUS: "previous-key",
+      }),
+    );
+    expect(cfg.INTERNAL_API_HOST).toBe("0.0.0.0");
+    expect(cfg.INTERNAL_API_PORT).toBe(3102);
+    expect(cfg.INTERNAL_API_SECRET).toBe("current-key");
+    expect(cfg.INTERNAL_API_SECRET_PREVIOUS).toBe("previous-key");
+  });
+
+  // Same rule as every other port: blank is unset, garbage is a misconfiguration.
+  it("rejects a port that is not a positive integer", () => {
+    expect(() => parseConfig(baseEnv({ INTERNAL_API_PORT: "abc" }))).toThrow();
+    expect(() => parseConfig(baseEnv({ INTERNAL_API_PORT: "0" }))).toThrow();
+    expect(() => parseConfig(baseEnv({ INTERNAL_API_PORT: "-1" }))).toThrow();
+  });
+
+  it("starts with the API off and no secret", () => {
+    expect(() =>
+      parseConfig(baseEnv({ INTERNAL_API_ENABLED: "false", INTERNAL_API_SECRET: "" })),
+    ).not.toThrow();
+  });
+
+  // Same refusal, and the same wording, as PAYMENT_ENABLED without its Stripe
+  // secrets: the error has to name the variable the operator must set.
+  it.each([
+    ["unset", undefined],
+    ["empty", ""],
+    ["whitespace only", "   "],
+  ])("refuses to start with the API on and the secret %s", (_label, secret) => {
+    const env = baseEnv({ INTERNAL_API_ENABLED: "true" });
+    if (secret !== undefined) env["INTERNAL_API_SECRET"] = secret;
+    expect(() => parseConfig(env)).toThrow(/^FATAL: .*INTERNAL_API_SECRET.*Refusing to start\.$/s);
+  });
+
+  // The previous key only widens what is accepted during a rotation; it cannot
+  // stand in for the current one.
+  it("refuses to start with only the previous secret set", () => {
+    expect(() =>
+      parseConfig(
+        baseEnv({ INTERNAL_API_ENABLED: "true", INTERNAL_API_SECRET_PREVIOUS: "previous-key" }),
+      ),
+    ).toThrow(/^FATAL: .*INTERNAL_API_SECRET.*Refusing to start\.$/s);
+  });
+
+  // A previous key of only whitespace is still an HMAC key, one anyone can
+  // compute; a blank previous key means none, so this is a typo to name.
+  it.each([
+    ["a space", " "],
+    ["a tab", "\t"],
+    ["spaces and a newline", "  \n"],
+  ])("refuses to start with a previous secret of only %s", (_label, previous) => {
+    expect(() =>
+      parseConfig(
+        baseEnv({
+          INTERNAL_API_ENABLED: "true",
+          INTERNAL_API_SECRET: "current-key",
+          INTERNAL_API_SECRET_PREVIOUS: previous,
+        }),
+      ),
+    ).toThrow(/^FATAL: .*INTERNAL_API_SECRET_PREVIOUS.*Refusing to start\.$/s);
   });
 });

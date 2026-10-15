@@ -266,6 +266,9 @@ describe('BellMenu — every waiting request is a link, not a decision', () => {
       'membership.ended',
       'membership.upgrade_incomplete',
       'storage.quota_exceeded',
+      'credit.refund_completed',
+      'credit.refund_rejected',
+      'credit.refund_restored',
     ] as const satisfies readonly NotifType[];
     // A list written by hand can fall behind the union it claims to cover, so
     // the gap is a type error rather than a quieter run of this test: leaving a
@@ -334,6 +337,106 @@ describe('BellMenu — every waiting request is a link, not a decision', () => {
 
     expect(await screen.findByTestId('bell-mark-read-n-10')).toBeInTheDocument();
     expect(screen.queryByTestId('bell-open-decision-n-10')).toBeNull();
+  });
+});
+
+describe('BellMenu — a credit refund outcome is one sentence and mark-read (inner#1410 §8)', () => {
+  // Like membership.ended: nobody to name, nothing to open. The buyer is told
+  // how their refund request ended, and the row only offers mark-read.
+  const OUTCOMES: Array<{ id: string; type: NotifType; payload: Record<string, unknown> }> = [
+    {
+      id: 'n-rc',
+      type: 'credit.refund_completed',
+      payload: { lotId: 'lot-1', credits: '880.000000', amountCents: 1080, currency: 'usd' },
+    },
+    {
+      id: 'n-rr',
+      type: 'credit.refund_rejected',
+      payload: { lotId: 'lot-2', credits: '880.000000' },
+    },
+    {
+      id: 'n-rs',
+      type: 'credit.refund_restored' as NotifType,
+      payload: { lotId: 'lot-3', credits: '880.000000' },
+    },
+  ];
+
+  it.each(OUTCOMES)('$type reads as a sentence with no link and offers mark-read only', async ({ id, type, payload }) => {
+    vi.mocked(notificationsApi.list).mockResolvedValue({
+      items: [fakeNotification(id, type, payload)],
+      resolved: EMPTY_RESOLVED,
+    });
+    const user = userEvent.setup();
+    setup();
+    await user.click(screen.getByTestId('bell-trigger'));
+
+    const headline = await screen.findByTestId(`bell-notification-headline-${id}`);
+    const text = headline.textContent ?? '';
+    expect(text.trim()).not.toBe('');
+    expect(text).not.toContain(type);
+    expect(text).not.toContain('notifications.');
+    expect(headline.querySelectorAll('a')).toHaveLength(0);
+    expect(screen.getByTestId(`bell-mark-read-${id}`)).toBeInTheDocument();
+    expect(screen.queryByTestId(`bell-open-decision-${id}`)).toBeNull();
+  });
+
+  // A refund outcome is a settled answer, so it takes the mark the rest of the
+  // inbox uses for one (the rule above `iconForType`): a tick when the refund
+  // went through, a cross when it was turned down. Not initials (RF/RX).
+  it.each([
+    { ...OUTCOMES[0], glyph: '✓', initials: 'RF' },
+    { ...OUTCOMES[1], glyph: '✕', initials: 'RX' },
+    // inner#1410 v9 §8: credits back in the account, an arrow coming round.
+    { ...OUTCOMES[2], glyph: '↺', initials: 'RS' },
+  ])('$type shows $glyph as its glyph', async ({ id, type, payload, glyph, initials }) => {
+    vi.mocked(notificationsApi.list).mockResolvedValue({
+      items: [fakeNotification(id, type, payload)],
+      resolved: EMPTY_RESOLVED,
+    });
+    const user = userEvent.setup();
+    setup();
+    await user.click(screen.getByTestId('bell-trigger'));
+    await screen.findByTestId(`bell-notification-headline-${id}`);
+
+    expect(screen.getByText(glyph)).toBeInTheDocument();
+    expect(screen.queryByText(initials)).toBeNull();
+    // inner#1410 v9: a lone symbol at 12px reads as a speck, so it sits at
+    // 15px (text-base); two-letter initials stay at text-xs (12px).
+    const fallback = screen.getByText(glyph);
+    expect(fallback).toHaveClass('text-base');
+    expect(fallback).not.toHaveClass('text-xs');
+  });
+
+  it('a row with initials keeps them at text-xs', async () => {
+    vi.mocked(notificationsApi.list).mockResolvedValue({
+      items: [fakeNotification('n-me', 'membership.ended')],
+      resolved: EMPTY_RESOLVED,
+    });
+    const user = userEvent.setup();
+    setup();
+    await user.click(screen.getByTestId('bell-trigger'));
+    await screen.findByTestId('bell-notification-headline-n-me');
+
+    const fallback = screen.getByText('ME');
+    expect(fallback).toHaveClass('text-xs');
+    expect(fallback).not.toHaveClass('text-base');
+  });
+
+  it('the three outcomes say different things', async () => {
+    vi.mocked(notificationsApi.list).mockResolvedValue({
+      items: OUTCOMES.map((o) => fakeNotification(o.id, o.type, o.payload)),
+      resolved: EMPTY_RESOLVED,
+    });
+    const user = userEvent.setup();
+    setup();
+    await user.click(screen.getByTestId('bell-trigger'));
+
+    const completed = await screen.findByTestId('bell-notification-headline-n-rc');
+    const rejected = screen.getByTestId('bell-notification-headline-n-rr');
+    const restored = screen.getByTestId('bell-notification-headline-n-rs');
+    // Different sentences, not raw type names that happen to differ.
+    for (const row of [completed, rejected, restored]) expect(row.textContent).not.toMatch(/credit\.refund_/);
+    expect(new Set([completed, rejected, restored].map((r) => r.textContent)).size).toBe(3);
   });
 });
 

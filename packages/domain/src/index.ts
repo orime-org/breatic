@@ -106,8 +106,10 @@ export {
   TOOL_MAP,
   ASK_USER,
   PROPOSE_CANVAS_ACTION,
+  PROPOSE_DOCUMENT_EDIT,
   SAVE_IMAGE,
 } from "@domain/agent/tools/index.js";
+export type { OpenDocument } from "@domain/agent/tools/propose-document-edit.js";
 export type { AskUserPayload } from "@domain/agent/tools/ask-user.js";
 export { STOPPED_BY_USER } from "@domain/agent/tools/failure.js";
 export { SaveRefused, type SavedMaterial, type SaveToStorage } from "@domain/agent/tools/save-image.js";

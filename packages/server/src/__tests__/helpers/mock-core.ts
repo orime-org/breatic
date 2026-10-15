@@ -22,6 +22,7 @@ import { vi } from "vitest";
 import {
   ASK_USER as REAL_ASK_USER,
   PROPOSE_CANVAS_ACTION as REAL_PROPOSE_CANVAS_ACTION,
+  PROPOSE_DOCUMENT_EDIT as REAL_PROPOSE_DOCUMENT_EDIT,
   SAVE_IMAGE as REAL_SAVE_IMAGE,
 } from "../../../../domain/src/agent/tools/tool-names.js";
 import { STOPPED_BY_USER as REAL_STOPPED_BY_USER } from "../../../../domain/src/agent/tools/failure.js";
@@ -615,6 +616,8 @@ export const domainMock = () => ({
   ASK_USER: REAL_ASK_USER,
   // Read by the turn when it hands the tools their context.
   PROPOSE_CANVAS_ACTION: REAL_PROPOSE_CANVAS_ACTION,
+  // Read by the turn when it hands the document proposal the open document (inner#1509).
+  PROPOSE_DOCUMENT_EDIT: REAL_PROPOSE_DOCUMENT_EDIT,
   // Read by the turn when it hands the save its context (inner#1315).
   SAVE_IMAGE: REAL_SAVE_IMAGE,
   extFromUrl: REAL_EXT_FROM_URL,

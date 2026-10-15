@@ -50,6 +50,13 @@ export const GET_PRODUCT_GUIDE = "get_product_guide";
 export const PROPOSE_CANVAS_ACTION = "propose_canvas_action";
 
 /**
+ * Proposes a comment, a rewrite or an insert for the open document
+ * (inner#1509). Named here because the turn's tool context hands this tool
+ * the open document under its name.
+ */
+export const PROPOSE_DOCUMENT_EDIT = "propose_document_edit";
+
+/**
  * Saves a found picture into our storage (inner#1315).
  *
  * Named here because the proposal check points the model at it when an

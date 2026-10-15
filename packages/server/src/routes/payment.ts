@@ -9,6 +9,11 @@
  * All other endpoints require a valid session token.
  */
 
+import {
+  REFUND_EVENT_TYPES,
+  handleRefundEvent,
+  type RefundEvent,
+} from "@server/modules/credit-refund/refund-webhook.js";
 import { Hono } from "hono";
 import { validate } from "@server/middleware/validate.js";
 import { runOnce } from "@server/middleware/run-once.js";
@@ -196,6 +201,12 @@ payment.post("/webhook", async (c) => {
     } else {
       logger.info(line, "subscription_webhook_handled");
     }
+    return c.json({ received: true });
+  }
+
+  if (REFUND_EVENT_TYPES.has(event.type)) {
+    const outcome = await handleRefundEvent(event as unknown as RefundEvent);
+    if (outcome === "unreadable") return c.json({ received: false }, 500);
     return c.json({ received: true });
   }
 

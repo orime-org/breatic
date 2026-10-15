@@ -13,11 +13,13 @@ import "@server/bootstrap-config.js";
 import { exitProcess, initSentry } from "@server/sentry.js";
 import { serve } from "@hono/node-server";
 import { createApp } from "@server/app.js";
+import { createInternalApp } from "@server/internal-app.js";
 import { env,
   getAgentConfig,
   getSubscriptionPlans,
 } from "@breatic/core";
 import { getPricingTiers } from "@server/config/pricing.js";
+import { getCreditRefundConfig } from "@server/config/credit-refund.js";
 import { closeDb } from "@breatic/core";
 import { closeRedis } from "@breatic/core";
 import { closeQueues } from "@breatic/core";
@@ -30,6 +32,7 @@ import { renderMetrics } from "@server/infra/metrics.js";
 import { logger, initLogger } from "@breatic/core";
 import { loadLocales } from "@breatic/core";
 import { startLifecycleRelay } from "@server/modules/project/lifecycle-relay.js";
+import { startRefundLoop } from "@server/modules/credit-refund/refund-loop.js";
 import { settleAfterReply, pendingAfterReply } from "@server/utils/after-reply.js";
 import { agentModelIds, assertModelsPriced, modelCatalog } from "@breatic/domain";
 import { textToolModels } from "@server/config/text-tools.js";
@@ -136,6 +139,17 @@ if (env.PAYMENT_ENABLED) {
   }
 }
 
+// The refund time limits are read lazily by the internal API and the refund
+// loop; a malformed file must stop the boot, not the first approval.
+if (env.INTERNAL_API_ENABLED) {
+  try {
+    getCreditRefundConfig();
+  } catch (err) {
+    logger.error({ err }, "credit_refund_config_invalid");
+    await exitProcess(1);
+  }
+}
+
 // Fail-fast: verify PG + Redis are reachable before starting the
 // server. `checkInfraReady` throws InfraNotReadyError per the
 // "process lifecycle (forbidden in the library layer)" mandate - application entry catches,
@@ -185,6 +199,22 @@ const server = serve(
   },
 );
 
+// The internal API for the back office (inner#1410 §4.1): its own port,
+// bound to INTERNAL_API_HOST; reachability is decided by where the port is
+// published, and every request is signed.
+const internalServer = env.INTERNAL_API_ENABLED
+  ? serve(
+      { fetch: createInternalApp().fetch, port: env.INTERNAL_API_PORT, hostname: env.INTERNAL_API_HOST },
+      (info) => {
+        logger.info({ port: info.port, host: env.INTERNAL_API_HOST }, "internal_api_listening");
+      },
+    )
+  : null;
+internalServer?.on("error", (err) => {
+  logger.fatal({ err, port: env.INTERNAL_API_PORT }, "internal_listen_error");
+  void exitProcess(1);
+});
+
 /** Cap graceful shutdown so a stuck teardown can't hold the process / port. */
 const SHUTDOWN_DEADLINE_MS = 4000;
 
@@ -201,6 +231,10 @@ server.on("error", (err) => {
 // lifecycle Redis Stream (the yjs store is a separate DB, so their yjs
 // side cannot run inside the business transaction).
 const lifecycleRelay = startLifecycleRelay();
+
+// The refund disposition loop (inner#1410 §7.1); it runs whenever the
+// internal API is on, since it finishes every disposition the API accepts.
+const refundLoop = startRefundLoop();
 
 // Health probe - separate port so probe traffic stays off the main
 // hono port and per-port failure semantics in the LB stay clean.
@@ -270,7 +304,10 @@ async function shutdown(signal: string): Promise<void> {
   await runGracefulShutdown({
     // Close the HTTP socket up front (in-flight requests finish within the
     // deadline), then drain the relay + pools concurrently and bounded.
-    releaseListenSocket: () => server.close(),
+    releaseListenSocket: () => {
+      server.close();
+      internalServer?.close();
+    },
     drains: [
       () => {
         lifecycleRelay.stop();
@@ -279,9 +316,12 @@ async function shutdown(signal: string): Promise<void> {
       // Work a route left running after its reply (a password-reset send)
       // still needs the pools, so they close once it has finished.
       () =>
-        settleAfterReply().then(() =>
-          Promise.allSettled([closeDb(), closeRedis(), closeQueues()]),
-        ),
+        // The loop's last tick can still queue a buyer mail, so it stops
+        // before the after-reply work is waited for.
+        refundLoop
+          .stop()
+          .then(() => settleAfterReply())
+          .then(() => Promise.allSettled([closeDb(), closeRedis(), closeQueues()])),
     ],
     deadlineMs: SHUTDOWN_DEADLINE_MS,
   });

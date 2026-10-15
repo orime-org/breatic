@@ -110,7 +110,15 @@ services:
   server:
     image: ghcr.io/orime-org/breatic:v0.0.12
     command: ["node", "packages/server/dist/index.js"]
+    # The back office internal API (INTERNAL_API_*, off by default) listens on
+    # 3002 on all container interfaces. It is exposed on the compose network
+    # only, never published to the host: other containers there reach it as
+    # `server:3002`.
+    expose:
+      - "3002"
     env_file: .env
+    environment:
+      INTERNAL_API_HOST: "0.0.0.0"
     volumes:
       - ./logs:/app/logs
     depends_on:
