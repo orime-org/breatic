@@ -184,7 +184,7 @@ understand_media_max_output_tokens: 8192
 # would have to be wrong for one of the two.
 #
 # A call that has a preference states it where it makes the call, by passing
-# a boolean to `reasoningFor` in `@breatic/domain`, which turns that into
+# `thinking` to `callOptionsFor` in `@breatic/domain`, which turns that into
 # whatever the provider on the other end takes. Chat and memory consolidation
 # do that today; the rest take whatever their provider does by default.
 
