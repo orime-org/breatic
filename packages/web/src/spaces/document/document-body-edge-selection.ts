@@ -494,14 +494,16 @@ function pageEdgeAt(doc: Node, pos: number): BodyEdge | null {
  * Shift+key the browser handles (Shift+Option+arrow, Shift+Home/End) extends
  * the browser's range from there, and `TextSelection.between` would pull that
  * end back into text.
- * @param view - The view.
+ * @param _view - The view.
  * @param $anchor - The browser's anchor.
  * @param $head - The browser's head.
  * @returns The selection, or null when the range is collapsed or neither end
  *   is an edge {@link pageEdgeAt} counts.
  */
-function readBackAtEdge(view: EditorView, $anchor: ResolvedPos, $head: ResolvedPos): Selection | null {
-  const { doc } = view.state;
+function readBackAtEdge(_view: EditorView, $anchor: ResolvedPos, $head: ResolvedPos): Selection | null {
+  // A drop asks with the positions of the document it is building, before
+  // the view holds it.
+  const doc = $anchor.doc;
   if ($anchor.pos === $head.pos) return null;
   const anchorEdge = pageEdgeAt(doc, $anchor.pos);
   const headEdge = pageEdgeAt(doc, $head.pos);
