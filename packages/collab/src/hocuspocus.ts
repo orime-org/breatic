@@ -30,6 +30,7 @@ import {
   MONOREPO_ROOT,
 } from "@breatic/core";
 import { createConnectionGate } from "@collab/infra/connection-gate.js";
+import { createSharedThrottle } from "@collab/infra/shared-throttle.js";
 import { socketCeilings } from "@collab/infra/socket-ceilings.js";
 import {
   createConnectionRegistry,
@@ -63,7 +64,11 @@ import {
 import { createPongHandler } from "@collab/services/socket-liveness.js";
 import { publishDocumentSchema } from "@collab/services/document-schema-publisher.js";
 import { isMetaWriteAttempt } from "@collab/hooks/meta-write-attempt-log.js";
-import { createPersistenceExtension, storeDocumentNow } from "@collab/services/persistence.js";
+import {
+  createPersistenceExtension,
+  staysLoaded,
+  storeDocumentNow,
+} from "@collab/services/persistence.js";
 import { createUnloadGate, type UnloadGate } from "@collab/hooks/unload-gate.js";
 import { createStoreLoop, type StoreLoop } from "@collab/services/store-loop.js";
 import { createStoreAlerter } from "@collab/services/store-alert.js";
@@ -96,6 +101,11 @@ export interface CollabServerInfra {
    * `REDIS_*_URL` split isolates every ordinary key but not channels.
    */
   redisKeyPrefix: string;
+  /**
+   * The end of the shutdown drains, once shutdown has reached them; undefined
+   * before. The unload gate stops retrying in time to rescue before it.
+   */
+  shutdownDeadline: () => number | undefined;
 }
 
 /**
@@ -104,9 +114,9 @@ export interface CollabServerInfra {
  * Behavior parameters are loaded from `config/collab.yaml`.
  * Infrastructure connections (DB, Redis) are passed as arguments.
  * @param infra - Database and Redis connection details
- * @returns Configured Server + Hocuspocus instances + the seat-handover channel (caller stops it on shutdown) + the timed store loop
+ * @returns Configured Server + Hocuspocus instances + the seat-handover channel (caller stops it on shutdown) + the timed store loop + this process's instance id
  */
-export async function createCollabServer(infra: CollabServerInfra): Promise<{ server: Server; hocuspocus: Hocuspocus; seatHandover: SeatHandover; storeLoop: StoreLoop }> {
+export async function createCollabServer(infra: CollabServerInfra): Promise<{ server: Server; hocuspocus: Hocuspocus; seatHandover: SeatHandover; storeLoop: StoreLoop; instanceId: string }> {
   const cfg = getCollabConfig();
   const timings = getConnectionTimings();
 
@@ -208,10 +218,14 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
   // early and why it travels as a header.
   if (cfg.throttle_enabled) {
     extensions.push(
-      createConnectionGate({
-        throttle: cfg.throttle_max_attempts,
-        banTime: cfg.throttle_ban_time,
-      }),
+      createConnectionGate(
+        createSharedThrottle({
+          redis: getRedis(),
+          maxAttempts: cfg.throttle_max_attempts,
+          banMinutes: cfg.throttle_ban_time,
+          onError: (err, identity) => logger.warn({ err, identity }, "connection_throttle_unavailable"),
+        }),
+      ),
     );
   }
 
@@ -608,6 +622,7 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
   storeGate.current = createUnloadGate({
     instanceId,
     encode: (document: Y.Doc): Uint8Array => Y.encodeStateAsUpdate(document),
+    staysLoaded: (name) => staysLoaded(wsServer.hocuspocus, name),
     storeNow: ({ name }) => storeDocumentNow(wsServer.hocuspocus, name),
     writeRescue: ({ documentName, state }) =>
       writeRescueFile({
@@ -618,6 +633,12 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
       }),
     writeRescueNote,
     alert: (failure) => storeAlerter.alert(failure),
+    retry: {
+      windowMs: cfg.unload_store_retry_ms,
+      intervalMs: cfg.unload_store_retry_interval_ms,
+      rescueReserveMs: cfg.unload_rescue_reserve_ms,
+    },
+    shutdownDeadline: infra.shutdownDeadline,
   });
   const storeLoop = createStoreLoop({
     intervalMs: cfg.store_interval_ms,
@@ -632,5 +653,6 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     hocuspocus: wsServer.hocuspocus,
     seatHandover,
     storeLoop,
+    instanceId,
   };
 }

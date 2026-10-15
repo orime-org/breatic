@@ -314,15 +314,15 @@ importers:
       '@hocuspocus/extension-redis':
         specifier: 'catalog:'
         version: 4.6.0(y-protocols@1.0.7(yjs@13.6.32))(yjs@13.6.32)
-      '@hocuspocus/extension-throttle':
-        specifier: ^4.6.0
-        version: 4.6.0(y-protocols@1.0.7(yjs@13.6.32))(yjs@13.6.32)
       '@hocuspocus/server':
         specifier: 'catalog:'
         version: 4.6.0(y-protocols@1.0.7(yjs@13.6.32))(yjs@13.6.32)
       '@sentry/node':
         specifier: 'catalog:'
         version: 11.4.0(@babel/core@7.29.7)(rollup@4.62.4)
+      '@sesamecare-oss/redlock':
+        specifier: ^1.4.0
+        version: 1.4.0(ioredis@5.11.1)
       dotenv:
         specifier: 'catalog:'
         version: 16.6.1
@@ -929,6 +929,9 @@ importers:
       dayjs:
         specifier: ^1.11.21
         version: 1.11.21
+      diff:
+        specifier: 9.0.0
+        version: 9.0.0
       hash-wasm:
         specifier: ^4.12.0
         version: 4.12.0
@@ -3074,9 +3077,6 @@ packages:
     peerDependencies:
       y-protocols: ^1.0.6
       yjs: ^13.6.8
-
-  '@hocuspocus/extension-throttle@4.6.0':
-    resolution: {integrity: sha512-3cgjGfX61SYmiR9U1HxhYQ0mmw5ct0P8gSyTudg/kEBTlDAR4Z7YRneIuxcLA+MRCp3RbftquZmF0jLHxVotGg==}
 
   '@hocuspocus/provider@4.6.0':
     resolution: {integrity: sha512-twKgZb1PbDSapfdghvLWR1zQEvSiQLCH7DjKL4QmSoG2P1a0D7p5MUrm/RzXKscPpzVjHyGzHPlIWAXEEcvfxQ==}
@@ -7132,6 +7132,10 @@ packages:
 
   devlop@1.1.0:
     resolution: {integrity: sha512-RWmIqhcFf1lRYBvNmr7qTNuyCt/7/ns2jbpp1+PalgE/rDQcBT0fioSMUpJ93irlUhC5hrg4cYqe6U+0ImW0rA==}
+
+  diff@9.0.0:
+    resolution: {integrity: sha512-svtcdpS8CgJyqAjEQIXdb3OjhFVVYjzGAPO8WGCmRbrml64SPw/jJD4GoE98aR7r25A0XcgrK3F02yw9R/vhQw==}
+    engines: {node: '>=0.3.1'}
 
   dingbat-to-unicode@1.0.1:
     resolution: {integrity: sha512-98l0sW87ZT58pU4i61wa2OHwxbiYSbuxsCBozaVnYX2iCnr3bLM3fIes1/ej7h1YdOKuKt/MLs706TVnALA65w==}
@@ -13450,14 +13454,6 @@ snapshots:
       - srvx
       - supports-color
 
-  '@hocuspocus/extension-throttle@4.6.0(y-protocols@1.0.7(yjs@13.6.32))(yjs@13.6.32)':
-    dependencies:
-      '@hocuspocus/server': 4.6.0(y-protocols@1.0.7(yjs@13.6.32))(yjs@13.6.32)
-    transitivePeerDependencies:
-      - srvx
-      - y-protocols
-      - yjs
-
   '@hocuspocus/provider@4.6.0(y-protocols@1.0.7(yjs@13.6.32))(yjs@13.6.32)':
     dependencies:
       '@hocuspocus/common': 4.6.0
@@ -17534,6 +17530,8 @@ snapshots:
   devlop@1.1.0:
     dependencies:
       dequal: 2.0.3
+
+  diff@9.0.0: {}
 
   dingbat-to-unicode@1.0.1: {}
 

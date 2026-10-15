@@ -48,8 +48,8 @@ const collabConfigSchema = z.object({
   // Throttle (coarse per-IP DoS backstop; loopback is exempt)
   throttle_enabled: z.boolean().default(true),
   throttle_max_attempts: z.number().int().positive().default(200),
-  // ban length in MINUTES — the throttle extension multiplies by 60*1000, so
-  // this is NOT milliseconds (the 60000-read-as-ms bug = a 41.7-day ban).
+  // ban length in MINUTES — shared-throttle.ts sets the ban key with EX
+  // minutes*60, so this is NOT milliseconds (the 60000-read-as-ms bug = a 41.7-day ban).
   throttle_ban_time: z.number().int().positive().default(1),
 
   // Logging
@@ -67,6 +67,23 @@ const collabConfigSchema = z.object({
   store_alert_email: z.string().default(""),
   store_alert_window_ms: z.number().int().positive().default(600_000),
   store_alert_timeout_ms: z.number().int().positive().default(3_000),
+  event_max_held: z.number().int().positive().default(128),
+  event_block_ms: z.number().int().positive().default(5000),
+  event_doc_concurrency: z.number().int().positive().default(16),
+  event_doc_lease_ms: z.number().int().positive().default(30_000),
+  event_lease_retry_ms: z.number().int().positive().default(1000),
+  event_handoff_poll_ms: z.number().int().positive().default(50),
+  event_handoff_wait_ms: z.number().int().positive().default(5000),
+  event_claim_interval_ms: z.number().int().positive().default(15_000),
+  event_claim_idle_ms: z.number().int().positive().default(60_000),
+  event_retry_min_ms: z.number().int().positive().default(10_000),
+  event_retry_max_ms: z.number().int().positive().default(600_000),
+  event_max_failures: z.number().int().positive().default(5),
+  event_stop_deadline_ms: z.number().int().positive().default(3000),
+  event_forget_idle_consumer_ms: z.number().int().positive().default(86_400_000),
+  unload_store_retry_ms: z.number().int().positive().default(1200),
+  unload_store_retry_interval_ms: z.number().int().positive().default(200),
+  unload_rescue_reserve_ms: z.number().int().nonnegative().default(1000),
 });
 
 /** Validated collab configuration type. */

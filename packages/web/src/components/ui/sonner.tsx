@@ -60,7 +60,10 @@ const Toaster = ({ ...props }: ToasterProps) => {
       // breakable, `fit-content` inside the nested flex shrank to
       // `min-content`. `max-content` takes the natural one-line width
       // and is capped at 28rem by the `max-w-md` toast className.
-      style={{ '--width': 'max-content' } as React.CSSProperties}
+      //
+      // sonner sets its own system-ui stack on the list; the toasts take the
+      // app's font from the page instead.
+      style={{ '--width': 'max-content', fontFamily: 'inherit' } as React.CSSProperties}
       toastOptions={{
         // Inline style (specificity 1,0,0,0) is the only reliable way
         // to override sonner's vendor CSS for bg / text / border /

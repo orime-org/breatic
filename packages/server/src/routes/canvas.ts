@@ -11,9 +11,11 @@
 
 import { Hono } from "hono";
 import { validate } from "@server/middleware/validate.js";
+import { runOnce } from "@server/middleware/run-once.js";
 
 import { z } from "zod";
 import {
+  idempotencyKeyHeaderSchema,
   taskCreateSchema,
   understandSchema,
   nodeHistorySnapshotSchema,
@@ -149,7 +151,13 @@ canvas.post(
   },
 );
 
-canvas.post("/tasks", validate("json", taskCreateSchema), async (c) => {
+canvas.post(
+  "/tasks",
+  rateLimitFor("generate", "user"),
+  validate("header", idempotencyKeyHeaderSchema),
+  validate("json", taskCreateSchema),
+  runOnce("generate"),
+  async (c) => {
   const user = c.get("user");
   const body = c.req.valid("json");
 
@@ -384,7 +392,9 @@ canvas.post(
 canvas.post(
   "/understand",
   rateLimitFor("understand", "user"),
+  validate("header", idempotencyKeyHeaderSchema),
   validate("json", understandSchema),
+  runOnce("understand"),
   async (c) => {
     const user = c.get("user");
     const body = c.req.valid("json");

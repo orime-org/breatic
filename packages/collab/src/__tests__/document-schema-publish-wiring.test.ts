@@ -97,6 +97,7 @@ async function loadHook(): Promise<LoadHook> {
     collabRedisUrl: "redis://localhost:6379/3",
     port: 1234,
     redisKeyPrefix: "test",
+    shutdownDeadline: () => undefined,
   });
   const config = serverSpy.mock.calls[0]?.[0] as {
     afterLoadDocument?: LoadHook;

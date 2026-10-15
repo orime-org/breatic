@@ -10,16 +10,19 @@
  * empty document. From the moment the document is destroyed nothing holds
  * that content — not the browser, not another instance, not the database.
  *
- * So this is the one place left to act, and it gets exactly one attempt.
- * Holding the document instead would protect the content but hand a long
- * outage the ability to fill memory with every document ever opened, and a
- * collab that falls over costs everyone rather than one person.
+ * So this is the one place left to act, and it gets one attempt — repeated
+ * only while the store lock of another instance holding the same document
+ * kept our write from running (inner#1497 §6.4). Holding the document instead
+ * would protect the content but hand a long outage the ability to fill memory
+ * with every document ever opened, and a collab that falls over costs
+ * everyone rather than one person.
  *
  * IT MUST NEVER THROW. hocuspocus aborts the unload when a
  * `beforeUnloadDocument` hook rejects, which would strand the document in
  * memory with zero connections and no further re-check to release it.
  */
 
+import { setTimeout as delay } from "node:timers/promises";
 import type * as Y from "yjs";
 import { createLogger } from "@breatic/core";
 import type { StoreFailureAlert } from "@collab/services/store-alert.js";
@@ -106,6 +109,12 @@ export interface UnloadGateDeps {
   /** Turn a live document into the bytes to store or rescue. */
   encode(document: Y.Doc): Uint8Array;
   /**
+   * Whether the library will keep this document once the hook returns: it
+   * re-checks `shouldUnloadDocument`, and a connection or a pending store that
+   * arrived meanwhile cancels the unload.
+   */
+  staysLoaded(documentName: string): boolean;
+  /**
    * Ask hocuspocus to store this document immediately.
    * @returns Whether the document was still loaded. False means the library
    *   unloaded it before we got there, so nothing was written and nothing
@@ -118,6 +127,21 @@ export interface UnloadGateDeps {
   writeRescueNote(rescuePath: string, note: RescueNote): Promise<void>;
   /** Tell operations about a rescued document. */
   alert(failure: StoreFailureAlert): Promise<void>;
+  /**
+   * Retrying a final store our extension never reached: another instance
+   * holding the document has the store lock, which lasts a second and is not
+   * extended.
+   */
+  retry: {
+    /** Longest to keep retrying one unload. */
+    windowMs: number;
+    /** Gap between attempts. */
+    intervalMs: number;
+    /** Kept free before the shutdown deadline for the rescue file and alert. */
+    rescueReserveMs: number;
+  };
+  /** The end of the shutdown drains, once shutdown has reached them. */
+  shutdownDeadline(): number | undefined;
 }
 
 /** What hocuspocus hands the unload hook. */
@@ -224,6 +248,37 @@ export function createUnloadGate(deps: UnloadGateDeps): UnloadGate {
   }
 
   /**
+   * The moment retrying must stop: the window's end, or earlier when shutdown
+   * has begun and the rescue still has to fit before the process exits.
+   * @param startedAt - When this unload's first attempt began.
+   * @returns Epoch milliseconds.
+   */
+  function retryUntil(startedAt: number): number {
+    const windowEnd = startedAt + deps.retry.windowMs;
+    const deadline = deps.shutdownDeadline();
+    return deadline === undefined ? windowEnd : Math.min(windowEnd, deadline - deps.retry.rescueReserveMs);
+  }
+
+  /**
+   * Make the final store attempt, and make it again while our extension was
+   * never reached and there is time left.
+   * @param documentName - Full Yjs document name.
+   * @returns What the last attempt turned out to be.
+   */
+  async function attemptUntilReached(documentName: string): Promise<AttemptResult> {
+    const startedAt = Date.now();
+    let result = await attemptStore(documentName);
+    for (let attempt = 2; result.attempt === "not-reached"; attempt += 1) {
+      if (Date.now() + deps.retry.intervalMs > retryUntil(startedAt)) break;
+      logger.warn({ documentName, attempt }, "collab_final_store_retry");
+      await delay(deps.retry.intervalMs);
+      if (!hasUnsavedContent(documentName)) return { attempt: "stored" };
+      result = await attemptStore(documentName);
+    }
+    return result;
+  }
+
+  /**
    * Put the content on disk and tell operations where it is.
    * @param documentName - Full Yjs document name.
    * @param state - The bytes the database would not take.
@@ -302,12 +357,16 @@ export function createUnloadGate(deps: UnloadGateDeps): UnloadGate {
   async function settle({ documentName, document }: UnloadPayload): Promise<void> {
     if (!hasUnsavedContent(documentName)) return;
 
-    const result = await attemptStore(documentName);
+    const result = await attemptUntilReached(documentName);
     // Two separate questions. What the attempt did decides what the operator
     // is told; whether the document still holds unstored content decides
     // whether there is anything left to rescue. A write can land AND leave the
     // document dirty, when an edit arrived while it was in flight.
     if (!hasUnsavedContent(documentName)) return;
+    // That edit came from a connection or a server write, and either one keeps
+    // the document in memory, where a later store takes the content. The
+    // document's next departure is settled on its own.
+    if (deps.staysLoaded(documentName)) return;
 
     const state = deps.encode(document);
     const path = await rescue(documentName, state);

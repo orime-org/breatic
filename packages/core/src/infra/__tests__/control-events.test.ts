@@ -13,7 +13,7 @@
  * And the failure is silent in the worst way. A publisher writing to a channel
  * nobody is subscribed to throws nothing: `PUBLISH` to a channel with zero
  * subscribers is a valid Redis command returning 0. The symptom is "collab
- * stopped reacting to membership changes", days later, with no error anywhere.
+ * stopped closing archived projects", days later, with no error anywhere.
  * Hence: assert the exact channel a publish lands on, and assert the pattern
  * the subscriber uses actually matches it.
  */
@@ -31,8 +31,8 @@ vi.mock("@core/infra/redis.js", () => ({
 vi.mock("@core/config/runtime.js", () => ({ env: envMock }));
 
 import {
-  publishMembersChanged,
   publishActivityNew,
+  publishProjectConnectionsClose,
   projectControlChannelPattern,
 } from "@core/infra/control-events.js";
 
@@ -65,16 +65,22 @@ describe("control-events — deployment prefix", () => {
     envMock.REDIS_KEY_PREFIX = "dev";
   });
 
-  it("publishes members:changed on the prefixed channel", async () => {
-    await publishMembersChanged(PID, { affectedUserId: "u1", action: "invite" });
-
-    expect(lastChannel()).toBe(`dev:project:${PID}:members:changed`);
-  });
-
   it("publishes activity:new on the prefixed channel", async () => {
     await publishActivityNew(PID);
 
     expect(lastChannel()).toBe(`dev:project:${PID}:activity:new`);
+  });
+
+  it("publishes connections:close on the prefixed channel with the reason", async () => {
+    await publishProjectConnectionsClose(PID, "archived");
+
+    expect(lastChannel()).toBe(`dev:project:${PID}:connections:close`);
+    const call = publishMock.mock.calls.at(-1) as unknown as [string, string];
+    expect(JSON.parse(call[1])).toMatchObject({
+      type: "project-connections:close",
+      projectId: PID,
+      reason: "archived",
+    });
   });
 
   it("derives the subscribe pattern from the same prefix", () => {
@@ -92,10 +98,10 @@ describe("control-events — deployment prefix", () => {
       envMock.REDIS_KEY_PREFIX = prefix;
       const pattern = projectControlChannelPattern();
 
-      await publishMembersChanged(PID, { affectedUserId: "u1", action: "invite" });
+      await publishActivityNew(PID);
       expect(patternMatches(pattern, lastChannel())).toBe(true);
 
-      await publishActivityNew(PID);
+      await publishProjectConnectionsClose(PID, "restored");
       expect(patternMatches(pattern, lastChannel())).toBe(true);
     },
   );
@@ -108,7 +114,7 @@ describe("control-events — deployment prefix", () => {
     const theirs = projectControlChannelPattern();
 
     envMock.REDIS_KEY_PREFIX = "dev";
-    await publishMembersChanged(PID, { affectedUserId: "u1", action: "invite" });
+    await publishActivityNew(PID);
 
     expect(patternMatches(theirs, lastChannel())).toBe(false);
   });

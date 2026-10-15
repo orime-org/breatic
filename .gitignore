@@ -53,8 +53,12 @@ sandbox/
 # Worktrees (optional parallel dev setup, see docs/WORKTREE.md)
 worktrees/
 
-# Claude Code local config
-.claude/
+# Claude Code local config. Only .claude/rules/ is tracked: its files are one-line
+# @imports of rule bodies kept on each machine under ~/.claude/. The per-machine
+# symlink .claude/rules/shared stays ignored.
+.claude/*
+!.claude/rules/
+.claude/rules/shared
 .remember/
 CLAUDE.local.md
 # Private task store: completed-task json archive + index (kept out of the sensitive .claude/ path)

@@ -19,10 +19,12 @@
       "none": "Not enough credits. Add credits to continue.",
       "granted_elsewhere": "Your credits were granted, and can only be used in your personal Studio.",
       "refund_already_asked": "This purchase has already been sent for a refund.",
+      "refund_restored": "Credits were restored to this purchase after its refund failed, so it can no longer be refunded.",
       "refund_not_purchased": "These credits were granted, not paid for, so there is nothing to refund.",
       "refund_still_designated": "This purchase is assigned to a Studio. Unassign it first.",
       "refund_already_spent": "Credits from this purchase have been spent, so it cannot be refunded.",
-      "refund_window_closed": "The refund window for this purchase has closed."
+      "refund_window_closed": "The refund window for this purchase has closed.",
+      "refund_state_changed": "This purchase's refund status has changed. Refresh and try again."
     },
     "auth": {
       "invalid_credentials": "Invalid email or password",
@@ -131,6 +133,7 @@
       "checkout_unconfirmed": "We could not confirm your membership yet.",
       "same_tier": "You are already on this membership.",
       "payment_overdue": "Payment for this membership is overdue.",
+      "upgrade_pending": "An upgrade to this membership is still waiting for payment.",
       "unavailable": "Memberships are unavailable."
     },
     "storage": {
@@ -234,6 +237,48 @@
       "unavailable": "This tool is unavailable right now.",
       "invalidParam": "\"{name}\" has a value this tool does not take.",
       "foreignSource": "This file cannot be processed."
+    },
+    "idempotency": {
+      "missing": "This page was updated. Refresh it and try again.",
+      "mismatch": "This request does not match the one sent before.",
+      "in_progress": "This request is still being processed."
+    },
+    "internal": {
+      "lot_not_found": "No credit pack with this id was bought with a payment.",
+      "operation_not_found": "No refund disposition has this id.",
+      "lot_state_changed": "The credit pack is not in the state this operation starts from.",
+      "operation_in_progress": "Another refund disposition of this credit pack is still in progress.",
+      "request_in_progress": "The request with this Idempotency-Key is still running.",
+      "stripe_blocks": "Stripe's current state for this payment, or this credit pack's refund history, does not allow this operation; see reason.",
+      "mail_not_resendable": "Only a disposition that finished refunded, rejected or restored has a buyer email to resend.",
+      "idempotency_key_reused": "This Idempotency-Key was already used for a different request.",
+      "invalid_body": "The request body or path does not match what this endpoint accepts.",
+      "invalid_idempotency_key": "The Idempotency-Key header is missing or malformed.",
+      "unreadable_body": "The request body is not valid JSON."
+    },
+    "refund_mail": {
+      "completed": {
+        "subject": "Your refund is on its way",
+        "intro": "We have refunded this purchase to your original payment method. Banks usually take a few business days to show it. The credits from this purchase have been removed from your account."
+      },
+      "rejected": {
+        "subject": "Your refund request was not approved",
+        "intro": "Your refund request for this purchase was not approved. The credits are available again, and you can keep assigning them to a Studio."
+      },
+      "restored": {
+        "subject": "Your credits have been restored",
+        "intro": "We could not return the money to your original payment method. As agreed with you, the credits from this purchase have been restored to your account, and you can keep assigning them to a Studio."
+      },
+      "label": {
+        "amount": "Amount refunded",
+        "credits": "Credits",
+        "purchased_at": "Purchased",
+        "refunded_at": "Refunded",
+        "requested_at": "Refund requested",
+        "order_ref": "Order reference"
+      },
+      "credits_amount": "{credits}",
+      "fact_line": "{label}: {value}"
     }
   },
   "chat": {
@@ -312,6 +357,7 @@
       "searchingImages": "Looking for pictures of “{query}”",
       "checkingCanvas": "Checking what the canvas can make",
       "proposingNodes": "Drafting a proposal",
+      "proposingDocumentEdit": "Drafting an edit",
       "savingImage": "Saving the picture",
       "checkingModels": "Looking up the models",
       "readingGuide": "Reading how the product works",
@@ -366,6 +412,30 @@
       "needCanvas": "Open a canvas first.",
       "promptReady": "Prompt ready. Right-click the node and choose Generate to open the generation panel and see it.",
       "settingsReady": "Settings ready. Right-click the node and choose Generate to open the generation panel and see them."
+    },
+    "documentProposal": {
+      "where": "Document “{name}”",
+      "whereInsert": "Insert into Document “{name}”",
+      "insertAfter": "Goes after this passage",
+      "headingBlock": "Heading",
+      "mediaLeftOut": "{count, plural, one {# image, video or audio is an outside link and will not be added.} other {# images, videos or audio are outside links and will not be added.}}",
+      "gone": "This change is no longer in the Document.",
+      "end": "End",
+      "addComment": "Add comment",
+      "apply": "Replace",
+      "insert": "Insert",
+      "appliedComment": "Comment added",
+      "appliedRewrite": "Replaced",
+      "appliedInsert": "Inserted",
+      "view": "View in Document",
+      "changed": "This passage has changed since the proposal.",
+      "blockGone": "This passage has been deleted.",
+      "readOnly": "You can only view this Document right now.",
+      "spaceGone": "This Document has been deleted.",
+      "failedComment": "Could not add the comment. Try again.",
+      "failedRewrite": "Could not replace the passage. Try again.",
+      "failedInsert": "Could not insert. Try again.",
+      "lossy": "The formatting and comments in this passage will be replaced."
     },
     "thinking": "Thought for a moment",
     "thinkingNow": "Thinking",
@@ -1217,6 +1287,9 @@
     "pageUnavailable": {
       "message": "This page didn't load.",
       "action": "Refresh"
+    },
+    "runOnce": {
+      "unknownResult": "Couldn't confirm whether that went through. Check the result."
     }
   },
   "members": {
@@ -1267,13 +1340,14 @@
       "description": "{count, plural, one {# space · click to open or use the right menu} other {# spaces · click to open or use the right menu}}",
       "empty": "No spaces yet",
       "openAria": "Open {name}",
-      "rowActions": "View, lock or delete this Space",
+      "rowActions": "View, rename, lock or delete this Space",
       "status": {
-        "editing": "Editing",
-        "open": "Open"
+        "editing": "Editing"
       },
       "action": {
         "view": "View",
+        "rename": "Rename",
+        "renameLocked": "Locked spaces can't be renamed",
         "lock": "Lock",
         "unlock": "Unlock",
         "delete": "Delete",
@@ -1312,22 +1386,6 @@
       "locked": "Locked — unlock the space before renaming.",
       "error": {
         "failed": "Could not rename the space. Please try again."
-      }
-    },
-    "readonly": {
-      "label": "Read-only",
-      "description": "This space is not open in the tab bar; read-only preview lets you pan/zoom and copy content, but not edit.",
-      "canvas": {
-        "title": "Read-only canvas",
-        "description": "Real ReactFlow viewer plugs in once canvas-space is complete; here we show a read-only snapshot of nodes and edges, with zoom and copy."
-      },
-      "document": {
-        "title": "Read-only document",
-        "description": "TipTap read-only viewer plugs in when document-space ships; here we show a rich-text snapshot, with paragraph copy."
-      },
-      "timeline": {
-        "title": "Read-only timeline",
-        "description": "Timeline viewer plugs in when timeline-space ships; here we show a track snapshot, with clip copy."
       }
     },
     "readOnlyNotice": "You can only view this Space right now — anything you change will not be saved.",
@@ -1402,6 +1460,7 @@
         "nothingUnresolved": "Nothing unresolved.",
         "writeFailed": "That change could not be saved.",
         "unknownAuthor": "Unknown",
+        "fromAgent": "from Agent",
         "folded": "{count, plural, one {# more comment} other {# more comments}}",
         "reply": "Reply…",
         "save": "Save",
@@ -1565,7 +1624,10 @@
       "membershipEnded": "Your {tier} membership has ended",
       "membershipUpgradeIncomplete": "Payment for your move to {tier} {period} was not completed",
       "membershipUpgradeIncompleteNoPeriod": "Payment for your move to {tier} was not completed",
-      "storageQuotaExceeded": "Your storage is full"
+      "storageQuotaExceeded": "Your storage is full",
+      "creditRefundCompleted": "Your refund for {credits} credits is complete",
+      "creditRefundRejected": "Your refund request for {credits} credits was not approved",
+      "creditRefundRestored": "{credits} credits have been restored to your account"
     },
     "actorFallback": "Someone",
     "subtitle": {
@@ -2264,7 +2326,8 @@
     },
     "refundReason": {
       "spent": "Already used",
-      "expired": "Over 30 days"
+      "expired": "Over 30 days",
+      "restored": "Credits restored"
     },
     "refundHint": {
       "assigned": "Unassign it to ask for a refund"

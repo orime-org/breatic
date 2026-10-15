@@ -15,7 +15,7 @@
 
 import type { QueryClient } from '@tanstack/react-query';
 import { isGenerationNodeType, spacesNewestFirst } from '@breatic/shared';
-import type { ChatAttachedChip, ChatSpace, ChatSpaceContext, ModelCatalog } from '@breatic/shared';
+import type { ChatAttachedChip, ChatDocumentBlock, ChatSpace, ChatSpaceContext, ModelCatalog } from '@breatic/shared';
 
 import { readEdges, readNodes } from '@web/data/yjs/canvas-space';
 import { readDocFacts } from '@web/data/yjs/collab-socket';
@@ -30,11 +30,13 @@ import type { FitInput, FitNode } from '@web/pages/project/chat/canvas-fit';
 import { canvasGraphs } from '@web/stores/canvas-graph';
 import { spaceContentReadable } from '@web/pages/project/space-type';
 import { peekDocumentEditor } from '@web/spaces/document/document-editor-cache';
+import { readTopBlocks } from '@web/spaces/document/document-blocks-read';
+import type { ReadBlock } from '@web/spaces/document/document-blocks-read';
 
 /** The open Space as read at the press, before its content is cut. */
 export type ReadCurrentSpace = ChatSpace &
   (
-    | { state: 'loaded'; text: string }
+    | { state: 'loaded'; blocks: ReadBlock[] }
     | { state: 'loaded'; canvas: FitInput }
     | { state: 'loading' }
     | { state: 'unreadable' }
@@ -157,19 +159,54 @@ function clipSpaceContent(text: string, max: number): ClippedSpaceContent {
 }
 
 /**
- * An open document's text, as Markdown.
+ * An open document's top-level blocks that hold something.
  * @param source - Where the read starts from.
  * @param space - The document.
- * @returns Its text, empty when it holds only whitespace, or null while it
- *   has not loaded or has no editor yet.
+ * @returns Its blocks, or null while it has not loaded or has no editor yet.
  */
-function documentText(source: SpaceContextSource, space: ProjectSpace): string | null {
+function documentBlocks(source: SpaceContextSource, space: ProjectSpace): ReadBlock[] | null {
   const name = docName.documentSpace(source.projectId, space.id);
   if (!holdsSynced(name)) return null;
   const handle = peekDocumentEditor(name);
-  if (handle === undefined) return null;
-  const markdown = handle.editor.blocksToMarkdownLossy(handle.editor.document);
-  return markdown.trim() === '' ? '' : markdown.trimEnd();
+  return handle === undefined ? null : readTopBlocks(handle.editor);
+}
+
+/** An open document as it goes: its content and the blocks the content shows. */
+interface ClippedDocument {
+  content: string;
+  total: number;
+  blocks: ChatDocumentBlock[];
+}
+
+/**
+ * A document's blocks as one text, each behind the `<!-- b:N -->` marker that
+ * numbers it, cut to the limit. The block the limit falls in goes cut and
+ * marked partial, and none after it go; a block whose marker the cut would
+ * split goes not at all.
+ * @param blocks - The blocks.
+ * @param max - The limit.
+ * @returns The content, its length before the cut, and the blocks it shows.
+ */
+function clipDocument(blocks: readonly ReadBlock[], max: number): ClippedDocument {
+  const pieces = blocks.map((b, i) => `${i === 0 ? '' : '\n\n'}<!-- b:${String(i + 1)} -->\n${b.markdown}`);
+  const total = pieces.reduce((sum, piece) => sum + piece.length, 0);
+  let content = '';
+  const shown: ChatDocumentBlock[] = [];
+  for (const [i, piece] of pieces.entries()) {
+    const { id, type, text, lossy } = blocks[i]!;
+    if (content.length + piece.length <= max) {
+      content += piece;
+      shown.push({ id, type, text, lossy, partial: false });
+      continue;
+    }
+    const kept = clipSpaceContent(piece, max - content.length).text;
+    if (kept.length >= piece.length - blocks[i]!.markdown.length) {
+      content += kept;
+      shown.push({ id, type, text: '', lossy, partial: true });
+    }
+    break;
+  }
+  return { content, total, blocks: shown };
 }
 
 /**
@@ -185,8 +222,8 @@ function readCurrent(source: SpaceContextSource, space: ProjectSpace): ReadCurre
     const canvas = readCanvas(source, space);
     return canvas === null ? { ...base, state: 'loading' } : { ...base, state: 'loaded', canvas };
   }
-  const text = documentText(source, space);
-  return text === null ? { ...base, state: 'loading' } : { ...base, state: 'loaded', text };
+  const blocks = documentBlocks(source, space);
+  return blocks === null ? { ...base, state: 'loading' } : { ...base, state: 'loaded', blocks };
 }
 
 /**
@@ -244,8 +281,11 @@ export function clipSpaceContext(
   if (current.state !== 'loaded') return { ...out, current_space: current };
   const { id, name, kind } = current;
   if (!('canvas' in current)) {
-    const clipped = clipSpaceContent(current.text, limits.currentSpaceMaxChars);
-    return { ...out, current_space: { id, name, kind, state: 'loaded', content: clipped.text, total_chars: clipped.total } };
+    const clipped = clipDocument(current.blocks, limits.currentSpaceMaxChars);
+    return {
+      ...out,
+      current_space: { id, name, kind, state: 'loaded', content: clipped.content, total_chars: clipped.total, blocks: clipped.blocks },
+    };
   }
   const held = heldUnchanged(current.canvas.nodes, attached);
   const nodes = current.canvas.nodes.map((n) => (held.has(n.id) ? { ...n, last: false } : n));

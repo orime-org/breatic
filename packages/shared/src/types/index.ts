@@ -135,6 +135,9 @@ export {
   promptTextOf,
 } from "@shared/types/canvas-proposal.js";
 
+export type { DocumentProposal } from "@shared/types/document-proposal.js";
+export { documentProposalSchema, hasWords, occurrences } from "@shared/types/document-proposal.js";
+
 export type {
   ReferenceRefusal,
   ReferenceUsabilityContext,
@@ -254,13 +257,14 @@ export type {
 } from "@shared/types/space-rpc.js";
 
 export {
-  membersChangedChannel,
   activityNewChannel,
+  projectConnectionsCloseChannel,
   allProjectChannelsPattern,
 } from "@shared/types/redis-events.js";
 export type {
-  MembersChangedEvent,
   ActivityNewControlEvent,
+  ProjectConnectionsCloseEvent,
+  ProjectConnectionsCloseReason,
   ProjectDuplicatedLifecycleEvent,
   ProjectArchivedLifecycleEvent,
   ProjectRestoredLifecycleEvent,

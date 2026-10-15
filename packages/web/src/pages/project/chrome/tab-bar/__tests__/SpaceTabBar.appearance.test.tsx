@@ -46,13 +46,11 @@ function setup(): void {
     <SpaceTabBar
       spaces={SPACES}
       allSpaces={SPACES}
-      openTabIds={SPACES.map((s) => s.id)}
       activeSpaceId='s1'
       projectId='p1'
       onActivate={vi.fn()}
       onCreate={vi.fn()}
       onClose={vi.fn()}
-      onViewSpace={vi.fn()}
     />,
   );
 }

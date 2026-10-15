@@ -16,7 +16,8 @@
  * deleted is the tests, not the invariant.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import * as React from 'react';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, renderHook, screen, waitFor } from '@testing-library/react';
 import * as Y from 'yjs';
 import { TextSelection } from '@tiptap/pm/state';
@@ -27,6 +28,8 @@ import { documentBodyFragment } from '@breatic/shared';
 
 import { BODY_SCROLLER_CLASS } from '@web/spaces/document/document-body-scroller';
 import { DocumentEditor } from '@web/spaces/document/DocumentEditor';
+import { selectedThreadsIn } from '@web/spaces/document/document-comment-selection';
+import { landedAt, landProposal } from '@web/spaces/document/document-proposal-landing';
 import {
   _resetDocumentEditorCacheForTests,
   type DocumentEditorHandle,
@@ -237,5 +240,61 @@ describe('DocumentEditor', () => {
     await waitFor(() =>
       expect(screen.queryByTestId('doc-link-toolbar')).not.toBeInTheDocument(),
     );
+  });
+
+  it('brings a landed block into view once, not again each time its Space is shown (inner#1509)', async () => {
+    const files: FileUploads = { prepare: () => null };
+    const scrollTo = vi.fn();
+    const original = HTMLElement.prototype.scrollTo;
+    HTMLElement.prototype.scrollTo = scrollTo as typeof HTMLElement.prototype.scrollTo;
+    try {
+      const landed = { how: 'write' as const, blockId: (handle.editor.document[0] as { id: string }).id };
+      const at = (mode: 'visible' | 'hidden'): React.JSX.Element => (
+        <React.Activity mode={mode}>
+          <DocumentEditor handle={handle} files={files} landed={landed} />
+        </React.Activity>
+      );
+      const { rerender } = render(at('visible'));
+      await waitFor(() => expect(scrollTo).toHaveBeenCalledTimes(1));
+
+      rerender(at('hidden'));
+      rerender(at('visible'));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(scrollTo).toHaveBeenCalledTimes(1);
+    } finally {
+      HTMLElement.prototype.scrollTo = original;
+    }
+  });
+
+  it('opens the panel on a comment an Agent proposal landed, the way a comment the reader wrote is shown (inner#1509)', async () => {
+    const files: FileUploads = { prepare: () => null };
+    const { editor } = handle;
+    const { rerender } = render(<DocumentEditor handle={handle} files={files} />);
+    editor.replaceBlocks(editor.document, await editor.tryParseMarkdownToBlocks('The hero arrives.'));
+    const block = editor.document[0] as { id: string };
+    const proposal = {
+      proposalId: '33333333-3333-4333-8333-333333333333',
+      spaceId: '44444444-4444-4444-8444-444444444444',
+      spaceName: 'Storyboard',
+      kind: 'comment' as const,
+      blockId: block.id,
+      quote: 'hero',
+      body: 'Who?',
+      title: 't',
+      heading: '',
+      original: 'The hero arrives.',
+      blockType: 'paragraph',
+      lossy: false,
+    };
+    await landProposal(handle, proposal, 'comment', true);
+    const landed = landedAt(handle, proposal);
+    expect(landed?.how).toBe('comment');
+
+    rerender(<DocumentEditor handle={handle} files={files} landed={landed} />);
+
+    await waitFor(() => expect(screen.getByTestId('doc-comment-rail')).toBeInTheDocument());
+    expect(selectedThreadsIn(editor.prosemirrorState)).toEqual([landed?.how === 'comment' ? landed.threadId : '']);
+    expect(screen.queryByTestId('document-proposal-landed')).not.toBeInTheDocument();
   });
 });

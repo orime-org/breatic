@@ -37,6 +37,7 @@ import { bodyPartMark, recomputeBodyFocus, releaseBodyFocus } from '@web/spaces/
 import { attachBodyScroller, BODY_BLANK } from '@web/spaces/document/document-body-press';
 import type { FileUploads } from '@web/spaces/document/document-uploads';
 import { PendingUploadsContext, type PendingUploadsStore } from '@web/spaces/document/document-pending-uploads';
+import type { Landed } from '@web/spaces/document/document-proposal-landing';
 
 interface DocumentEditorProps {
   /** The live editor and its surface, created and owned by the cache. */
@@ -57,6 +58,31 @@ interface DocumentEditorProps {
   files?: FileUploads | null;
   /** What the body's pending media blocks read; null shows each as not finished. */
   pending?: PendingUploadsStore | null;
+  /** Where an Agent proposal just landed, to show the reader (inner#1509). */
+  landed?: Landed | null;
+}
+
+/** How long a block an Agent proposal landed stays marked. */
+const LANDED_MARK_MS = 2000;
+
+/** How long the mark takes to fade at the end of that time. */
+const LANDED_FADE_MS = 300;
+
+/** The token for how far the mark stands off the block's words on each side. */
+const LANDED_MARK_GAP_VAR = '--space-2';
+
+/** The fade at the end of the mark's time, as tw-animate-css reads it. */
+const LANDED_MARK_FADE = {
+  '--tw-animation-delay': `${String(LANDED_MARK_MS - LANDED_FADE_MS)}ms`,
+  '--tw-animation-duration': `${String(LANDED_FADE_MS)}ms`,
+} as React.CSSProperties;
+
+/** Where the mark around a landed block is drawn, in the viewport's coordinates. */
+interface LandedBox {
+  top: number;
+  left: number;
+  width: number;
+  height: number;
 }
 
 /**
@@ -75,6 +101,7 @@ interface DocumentEditorProps {
  * @param root0.myRole - The reader's role on the project.
  * @param root0.files - What admits files into this body.
  * @param root0.pending - What the body's pending media blocks read.
+ * @param root0.landed - The block an Agent proposal just landed.
  * @returns The editor body, the comment panel beside it, the entry and the
  *   bubble bar.
  */
@@ -84,6 +111,7 @@ export const DocumentEditor = React.memo(function DocumentEditor({
   myRole = 'viewer',
   files = null,
   pending = null,
+  landed = null,
 }: DocumentEditorProps): React.JSX.Element {
   const body = React.useRef<HTMLDivElement>(null);
   // The one bit that says whether the panel is on screen, and the reader is
@@ -172,6 +200,44 @@ export const DocumentEditor = React.memo(function DocumentEditor({
     );
   }, [handle]);
 
+  // Where an Agent proposal landed is shown once per landing: a hidden Space
+  // runs its effects again when shown, and the reader may have scrolled away
+  // since. A comment is shown the way the reader's own is, by reading its
+  // thread, which opens the panel on its card; a block written is scrolled to
+  // a third of the way down the viewport and outlined for a moment.
+  const [landedBox, setLandedBox] = React.useState<LandedBox | null>(null);
+  const shown = React.useRef<Landed | null>(null);
+  React.useEffect(() => {
+    if (landed === shown.current) return undefined;
+    if (landed?.how === 'comment') {
+      shown.current = landed;
+      selectThreads(handle.editor, [landed.threadId]);
+      return undefined;
+    }
+    const block = landed === null ? null : body.current?.querySelector<HTMLElement>(`[data-id="${CSS.escape(landed.blockId)}"]`);
+    if (viewport === null || block === null || block === undefined) return undefined;
+    shown.current = landed;
+    // Around the block's own words, standing off them on every side: the
+    // block's outer box starts where its first letter does and carries the
+    // spacing above it.
+    const at = (block.querySelector('.bn-block-content') ?? block).getBoundingClientRect();
+    const frame = viewport.getBoundingClientRect();
+    const gap = parseFloat(getComputedStyle(viewport).getPropertyValue(LANDED_MARK_GAP_VAR)) || 0;
+    const top = at.top - frame.top + viewport.scrollTop - gap;
+    setLandedBox({
+      top,
+      left: at.left - frame.left + viewport.scrollLeft - gap,
+      width: at.width + gap * 2,
+      height: at.height + gap * 2,
+    });
+    viewport.scrollTo({ top: Math.max(0, top - viewport.clientHeight / 3), behavior: 'smooth' });
+    const timer = window.setTimeout(() => setLandedBox(null), LANDED_MARK_MS);
+    return () => {
+      window.clearTimeout(timer);
+      setLandedBox(null);
+    };
+  }, [landed, viewport, handle.editor]);
+
   // The scroller is where a press on blank space leaves the focus, and where
   // a press in the body is first read (inner#1127 A20). A Space hidden
   // lets go of the focus at once: its layers stay on the page, so nothing
@@ -238,6 +304,14 @@ export const DocumentEditor = React.memo(function DocumentEditor({
               takes that height, and a flex container, so the text column and
               the panel beside it each take it in turn. */}
           <div {...{ [BODY_BLANK]: '' }} className='flex flex-1'>
+            {landedBox === null ? null : (
+              <div
+                data-testid='document-proposal-landed'
+                aria-hidden='true'
+                className='pointer-events-none absolute rounded-content-xs border border-content-link animate-out fade-out fill-mode-forwards'
+                style={{ ...landedBox, ...LANDED_MARK_FADE }}
+              />
+            )}
             <div
               {...{ [BODY_BLANK]: '' }}
               className='flex min-w-0 flex-1 flex-col px-[var(--doc-body-gutter)]'

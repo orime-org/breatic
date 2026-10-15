@@ -19,13 +19,13 @@ import {
   ASK_USER,
 } from "@breatic/domain";
 import type { AskUserPayload } from "@breatic/domain";
-import type { ResolvedAgentConfig } from "@breatic/domain";
+import type { OpenDocument, ResolvedAgentConfig } from "@breatic/domain";
 import { buildSystemPrompt } from "@server/agent/context.js";
 import { readerClockNote } from "@server/agent/reader-clock.js";
 import { getAgentConfig } from "@breatic/core";
 import { assetService, creditLotService, createUsageRecorder } from "@breatic/domain";
 import { saveToStorageFor } from "@server/agent/save-to-storage.js";
-import { turnToolsContext } from "@server/agent/turn-tools-context.js";
+import { openDocumentOf, turnToolsContext } from "@server/agent/turn-tools-context.js";
 import { buildTurnContext } from "@server/agent/turn-context.js";
 import { watchModelCalls, type ModelCallWatch } from "@server/agent/model-call-watch.js";
 import type { ChatAttachedChip, ChatSpaceContext, MessagePart, ToolFailure } from "@breatic/shared";
@@ -146,7 +146,7 @@ export class MainAgent {
     // goes out without it from here on. The reader's Spaces follow it on the
     // same terms: read fresh with each message, never stored.
     const forModel = `${readerClockNote(new Date(), timeZone)}\n\n${userTurnForModel({ ...space, chips: attached, message: said })}`;
-    return this.runStream(forModel, turnIndex, title, signal);
+    return this.runStream(forModel, turnIndex, title, openDocumentOf(space), signal);
   }
 
   /**
@@ -184,6 +184,8 @@ export class MainAgent {
    *   null), so this is sent on every turn and the client writes down the
    *   same name again -- which is what keeps the list and the header from
    *   showing a placeholder after the turn that named it.
+   * @param openDocument - The document the reader has open, which a document
+   *   proposal goes to, or null when none can be read.
    * @param signal - Raised when the user stops the turn or the client goes away.
    * @returns The turn's chunks, in the SDK's own protocol.
    */
@@ -191,6 +193,7 @@ export class MainAgent {
     forModel: string,
     turnIndex: number,
     title: string | null,
+    openDocument: OpenDocument | null,
     signal?: AbortSignal,
   ): ReadableStream<UIMessageChunk> {
     const { userId, conversationId, projectId } = this.ctx;
@@ -393,14 +396,16 @@ export class MainAgent {
         messages,
         tools: agentConfig.tools,
         // The paying tools record their calls on this turn's recorder, the
-        // save stores for this project and reader, and the proposal check
-        // reads material for this studio. Cast because the tool set arrives as
+        // save stores for this project and reader, the canvas proposal check
+        // reads material for this studio, and the document proposal checks
+        // against the document the reader has open. Cast because the tool set arrives as
         // a plain record, whose context type the SDK reads as absent; each
         // tool's `contextSchema` is what checks this at run time, before its
         // `execute`.
         toolsContext: turnToolsContext(agentConfig.tools, usage, {
           saveToStorage: saveToStorageFor({ projectId, userId }),
           studioId,
+          openDocument,
         }) as never,
         stopWhen: [stepCountIs(agentCfg.max_tool_iterations), stopIfItAsked],
         // Per call, which is the only unit there is: the `stopWhen` above

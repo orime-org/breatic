@@ -37,24 +37,14 @@
  */
 
 import type { IncomingMessage } from "node:http";
-import { Throttle } from "@hocuspocus/extension-throttle";
 import { createLogger } from "@breatic/core";
 import { decideClientIdentity } from "@collab/infra/client-identity.js";
 import type { RefusalReason } from "@collab/infra/client-identity.js";
 
 const logger = createLogger("connection-gate");
 
-/** Throttle tuning: connections per window before a ban, and ban length in minutes. */
-export interface ThrottleConfig {
-  throttle: number;
-  banTime: number;
-}
-
-/** The part of the throttle extension this gate uses. */
-export interface ThrottleLike {
-  onConnect(data: unknown): Promise<unknown>;
-  onDestroy(): Promise<unknown>;
-}
+/** Counts one connection of an identity; rejects falsy to refuse it quietly. */
+export type Throttle = (identity: string) => Promise<void>;
 
 /** Just enough of a socket to answer and hang up on it. */
 interface RefusableSocket {
@@ -74,11 +64,10 @@ export interface ConnectHookPayload {
   request: { headers: Headers };
 }
 
-/** The three hooks hocuspocus wires this gate in through. */
+/** The two hooks hocuspocus wires this gate in through. */
 export interface ConnectionGate {
   onUpgrade(data: UpgradeHookPayload): Promise<void>;
   onConnect(data: ConnectHookPayload): Promise<void>;
-  onDestroy(): Promise<void>;
 }
 
 /** Header carrying the client identity, which the throttle keys on. */
@@ -146,18 +135,11 @@ function refuseUpgrade(
 
 /**
  * Build the connection gate.
- * @param config - Throttle tuning passed through to the throttle extension.
- * @param deps - Overridable collaborators.
- * @param deps.throttle - Throttle implementation; defaults to the real extension.
+ * @param throttle - Counts the connections the gate does not exempt; the
+ *   shared Redis throttle in production (`infra/shared-throttle.ts`).
  * @returns The hooks to register on the Hocuspocus server.
  */
-export function createConnectionGate(
-  config: ThrottleConfig,
-  deps: { throttle?: ThrottleLike } = {},
-): ConnectionGate {
-  const throttle: ThrottleLike =
-    deps.throttle ?? new Throttle(config);
-
+export function createConnectionGate(throttle: Throttle): ConnectionGate {
   return {
     onUpgrade: (data: UpgradeHookPayload): Promise<void> => {
       const headers = data.request.headers;
@@ -193,9 +175,7 @@ export function createConnectionGate(
       if (data.request.headers.get(VERDICT_HEADER) === VERDICT_EXEMPT) {
         return Promise.resolve();
       }
-      return throttle.onConnect(data).then(() => undefined);
+      return throttle(data.request.headers.get(REAL_IP_HEADER) ?? "");
     },
-
-    onDestroy: (): Promise<void> => throttle.onDestroy().then(() => undefined),
   };
 }

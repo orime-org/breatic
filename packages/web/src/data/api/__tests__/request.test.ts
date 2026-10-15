@@ -133,3 +133,75 @@ describe('a refusal that says how long to wait', () => {
     expect((err as ApiException).retryAfterSeconds).toBeUndefined();
   });
 });
+
+// inner#1490: a run-once press tells "the server finished" from "nothing
+// reliable came back" by the response headers, which only the error path
+// has to read.
+describe('what a failed answer says about a run-once press', () => {
+  /**
+   * Post through the real client with an adapter that answers as given.
+   * @param answer - The response the adapter fails with, or null for none.
+   * @returns The ApiException the client rejected with.
+   */
+  async function failWith(
+    answer: { status: number; headers?: Record<string, string>; data?: unknown } | null,
+  ): Promise<ApiException> {
+    const caught = await request
+      .post('/x', {}, {
+        adapter: (config) =>
+          Promise.reject(
+            new AxiosError(
+              'failed',
+              answer ? 'ERR_BAD_RESPONSE' : 'ERR_NETWORK',
+              config,
+              null,
+              answer
+                ? {
+                  status: answer.status,
+                  statusText: '',
+                  headers: answer.headers ?? {},
+                  config,
+                  data: answer.data ?? {},
+                }
+                : undefined,
+            ),
+          ),
+      })
+      .catch((err: unknown) => err);
+    expect(caught).toBeInstanceOf(ApiException);
+    return caught as ApiException;
+  }
+
+  it('reads the Idempotency-Status the server set', async () => {
+    const err = await failWith({ status: 409, headers: { 'idempotency-status': 'in_progress' } });
+    expect(err.idempotencyStatus).toBe('in_progress');
+    expect(err.network).toBe(false);
+  });
+
+  it('reads a finished error as done', async () => {
+    const err = await failWith({ status: 403, headers: { 'idempotency-status': 'done' } });
+    expect(err.idempotencyStatus).toBe('done');
+  });
+
+  it('has no status when a proxy answered', async () => {
+    const err = await failWith({ status: 524 });
+    expect(err.idempotencyStatus).toBeUndefined();
+    expect(err.status).toBe(524);
+  });
+
+  it('marks an answer that never arrived as a network failure', async () => {
+    const err = await failWith(null);
+    expect(err.status).toBe(0);
+    expect(err.network).toBe(true);
+  });
+
+  it('reads the wait from Retry-After when the body names none', async () => {
+    const err = await failWith({ status: 429, headers: { 'retry-after': '12' } });
+    expect(err.retryAfterSeconds).toBe(12);
+  });
+
+  it('does not mark a local throw as a network failure', () => {
+    const err = new ApiException({ status: 0, message: 'boom' });
+    expect(err.network).toBe(false);
+  });
+});

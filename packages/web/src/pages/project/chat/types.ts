@@ -7,7 +7,7 @@
  * regardless of the backend wire schema (data/api/chat.ts adapts).
  */
 
-import type { CanvasProposal, ChatAttachedChip, ToolFailureKind } from '@breatic/shared';
+import type { CanvasProposal, ChatAttachedChip, DocumentProposal, ToolFailureKind } from '@breatic/shared';
 
 export type ChatRole = 'user' | 'assistant' | 'system';
 
@@ -234,6 +234,12 @@ export interface ChatMessage {
    * nowhere for that to live and the message may be several turns old.
    */
   proposals?: CanvasProposal[];
+  /**
+   * The document edits this turn proposed (inner#1509), each drawn as a card
+   * the reader presses to land it. Rebuilt from the stored tool calls; whether
+   * one already landed is read off the document.
+   */
+  documentProposals?: DocumentProposal[];
   /**
    * Whether this turn stored a proposal in a shape this build can no longer
    * place (inner#1499). The turn draws one line saying so, with nothing to

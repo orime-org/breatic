@@ -93,3 +93,44 @@ describe("the store's knobs", () => {
     expect(yaml).not.toMatch(/^\s*store_shutdown_settle_budget_ms\s*:/m);
   });
 });
+
+describe("the knobs of several collab instances (inner#1497)", () => {
+  it("reads every event-consumer and unload-retry knob from the YAML", async () => {
+    const yaml = readFileSync(resolve(import.meta.dirname, "../../../../config/collab.yaml"), "utf-8");
+    for (const key of [
+      "event_max_held",
+      "event_block_ms",
+      "event_doc_concurrency",
+      "event_doc_lease_ms",
+      "event_lease_retry_ms",
+      "event_handoff_poll_ms",
+      "event_handoff_wait_ms",
+      "event_claim_interval_ms",
+      "event_claim_idle_ms",
+      "event_retry_min_ms",
+      "event_retry_max_ms",
+      "event_max_failures",
+      "event_stop_deadline_ms",
+      "event_forget_idle_consumer_ms",
+      "unload_store_retry_ms",
+      "unload_store_retry_interval_ms",
+      "unload_rescue_reserve_ms",
+    ]) {
+      expect(yaml).toMatch(new RegExp(`^${key}\\s*:`, "m"));
+    }
+  });
+
+  it("keeps the values consistent with one another", async () => {
+    const cfg = await loadConfig();
+
+    // A waiting entry is taken over only once its holder is clearly gone.
+    expect(cfg.event_claim_idle_ms).toBeGreaterThan(cfg.event_doc_lease_ms);
+    // Redlock refuses a lease shorter than its extension threshold plus 100ms.
+    expect(cfg.event_doc_lease_ms).toBeGreaterThan(600);
+    expect(cfg.event_retry_max_ms).toBeGreaterThanOrEqual(cfg.event_retry_min_ms);
+    expect(cfg.event_handoff_wait_ms).toBeGreaterThan(cfg.event_handoff_poll_ms);
+    // A peer's store lock lasts one second and is not extended.
+    expect(cfg.unload_store_retry_ms).toBeGreaterThan(1000);
+    expect(cfg.unload_store_retry_ms).toBeGreaterThan(cfg.unload_store_retry_interval_ms);
+  });
+});

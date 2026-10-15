@@ -4,12 +4,15 @@
 /**
  * Cross-process control-plane events (Redis pub/sub on DB2).
  *
- * One fire-and-forget notification path remains:
+ * Two fire-and-forget notification paths, both per project:
  *
- *   - `members:changed` — API publishes after a write to
- *                         `project_members`; Collab kicks the
- *                         affected user's ws and broadcasts a
- *                         stateless invalidate signal.
+ *   - `activity:new`      — server or worker publishes after writing an
+ *                           activity row; every collab instance relays
+ *                           it on the meta doc.
+ *   - `connections:close` — collab's lifecycle consumer publishes after
+ *                           a duplicate / archive / restore; every collab
+ *                           instance closes its connections to the
+ *                           project so the clients re-authenticate.
  *
  * Space lifecycle (create / delete / lock / restore) used to live
  * here as `publishSpace*` + `space:*` channels — removed 2026-05-23
@@ -20,17 +23,18 @@
  *
  * Why pub/sub (not Streams):
  *
- *   - Notification-only: a consumer that's offline can safely miss
- *     a message — its next reconnect re-queries PG.
+ *   - Notification-only. A missed `activity:new` is made up by the next
+ *     reconnect, which re-queries PG; a missed
+ *     `connections:close` leaves that instance's connections on the role
+ *     they had until they next reconnect.
  *   - No replay / consumer-group semantics needed.
  *
  * Why DB2 (REDIS_STREAM_URL):
  *
- *   - `members:changed` is a CROSS-SERVICE notification (API publishes,
- *     Collab consumes), so it belongs with the cross-service Streams on
- *     DB2 — NOT with the collab-cluster coordination that moved to
- *     REDIS_COLLAB_URL (DB3: Hocuspocus cross-instance pub/sub + the
- *     space-delete serialization lock).
+ *   - These are CROSS-SERVICE notifications (server, worker or collab
+ *     publish; every collab instance consumes), so they belong with the
+ *     cross-service Streams on DB2 — NOT with the collab instances' own
+ *     coordination on REDIS_COLLAB_URL (DB3).
  *   - Pub/sub channels are global (not DB-scoped) on the same Redis
  *     instance — DB choice only affects which connection publishes /
  *     listens, not who can hear it. Auth (DB0) stays untouched.
@@ -39,11 +43,12 @@
 import { getStreamRedis } from "@core/infra/redis.js";
 import { env } from "@core/config/runtime.js";
 import {
-  membersChangedChannel,
   activityNewChannel,
+  projectConnectionsCloseChannel,
   allProjectChannelsPattern,
   type ActivityNewControlEvent,
-  type MembersChangedEvent,
+  type ProjectConnectionsCloseEvent,
+  type ProjectConnectionsCloseReason,
 } from "@breatic/shared";
 
 /**
@@ -54,35 +59,12 @@ import {
  * stay browser-safe and cannot read env), and this file is the only place that
  * supplies it. A subscriber reaching for the shared builder directly would have
  * to re-derive the prefix and could silently disagree with the publishers —
- * which reads as "collab stopped reacting to membership changes", with no error
+ * which reads as "collab stopped closing archived projects", with no error
  * anywhere.
  * @returns The `PSUBSCRIBE` pattern for this deployment's control channels.
  */
 export function projectControlChannelPattern(): string {
   return allProjectChannelsPattern(env.REDIS_KEY_PREFIX);
-}
-
-/**
- * Publish a `members:changed` event for a project.
- *
- * Caller (typically `projectMembers.service`) supplies the diff
- * (`affectedUserId`, `action`, optional `newRole` / transfer details).
- * The event timestamp is stamped here.
- * @param projectId - Project UUID
- * @param detail - Per-action detail (without the auto-stamped fields)
- */
-export async function publishMembersChanged(
-  projectId: string,
-  detail: Omit<MembersChangedEvent, "type" | "projectId" | "ts">,
-): Promise<void> {
-  const event: MembersChangedEvent = {
-    type: "project-members:changed",
-    projectId,
-    ts: Date.now(),
-    ...detail,
-  };
-  const redis = getStreamRedis();
-  await redis.publish(membersChangedChannel(env.REDIS_KEY_PREFIX, projectId), JSON.stringify(event));
 }
 
 /**
@@ -102,4 +84,27 @@ export async function publishActivityNew(projectId: string): Promise<void> {
   };
   const redis = getStreamRedis();
   await redis.publish(activityNewChannel(env.REDIS_KEY_PREFIX, projectId), JSON.stringify(event));
+}
+
+/**
+ * Ask every collab instance to close its connections to a project (inner#1497
+ * §6.2). Each instance holds some of the project's connections, so the
+ * instance that handled the lifecycle command cannot close them all itself.
+ * @param projectId - Project whose connections are closed.
+ * @param reason - Why; picks the close frame the client re-authenticates on.
+ * @returns Nothing.
+ * @throws {Error} When Redis rejects the publish.
+ */
+export async function publishProjectConnectionsClose(
+  projectId: string,
+  reason: ProjectConnectionsCloseReason,
+): Promise<void> {
+  const event: ProjectConnectionsCloseEvent = {
+    type: "project-connections:close",
+    projectId,
+    reason,
+    ts: Date.now(),
+  };
+  const redis = getStreamRedis();
+  await redis.publish(projectConnectionsCloseChannel(env.REDIS_KEY_PREFIX, projectId), JSON.stringify(event));
 }

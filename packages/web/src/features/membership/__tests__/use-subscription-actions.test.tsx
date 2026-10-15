@@ -87,8 +87,10 @@ describe('useSubscriptionActions — a refusal re-reads the account (#307 A10b)'
   });
 
   it('leaves the account alone when a checkout fails for any other reason', async () => {
+    // The server's own final answer: without `Idempotency-Status: done` a 503
+    // leaves the outcome unknown and the press keeps asking (inner#1490).
     api.startSubscriptionCheckout.mockRejectedValue(
-      new ApiException({ status: 503, message: 'down', fromServer: true }),
+      new ApiException({ status: 503, message: 'down', fromServer: true, idempotencyStatus: 'done' }),
     );
     const { result } = setup();
 
@@ -100,5 +102,43 @@ describe('useSubscriptionActions — a refusal re-reads the account (#307 A10b)'
       expect(result.current.busy).toBe(false);
     });
     expect(refreshCurrentUser).not.toHaveBeenCalled();
+  });
+});
+
+// inner#1490: a checkout or a plan change is one press of the account, held
+// outside the panel; closing and reopening the panel finds it still waiting.
+describe('useSubscriptionActions — one press, outside the panel', () => {
+  it('keeps the chosen offer waiting when the panel is opened again', async () => {
+    api.startSubscriptionCheckout.mockReturnValue(new Promise(() => {}));
+    const first = setup();
+    act(() => {
+      first.result.current.choose({ tier: 'pro', period: 'month' });
+    });
+    await waitFor(() => expect(api.startSubscriptionCheckout).toHaveBeenCalledTimes(1));
+
+    const reopened = setup();
+    expect(reopened.result.current.busy).toBe(true);
+    expect(reopened.result.current.pending).toEqual({
+      kind: 'choose',
+      offer: { tier: 'pro', period: 'month' },
+    });
+    act(() => {
+      reopened.result.current.choose({ tier: 'team', period: 'month' });
+    });
+    expect(api.startSubscriptionCheckout).toHaveBeenCalledTimes(1);
+    expect(api.startSubscriptionCheckout.mock.calls[0]?.[2]).toEqual(expect.any(String));
+  });
+
+  it('holds cancel and resume while a checkout is out', async () => {
+    api.startSubscriptionCheckout.mockReturnValue(new Promise(() => {}));
+    const { result } = setup();
+    act(() => {
+      result.current.choose({ tier: 'pro', period: 'month' });
+    });
+    await waitFor(() => expect(result.current.busy).toBe(true));
+    act(() => {
+      result.current.cancel();
+    });
+    expect(api.cancelSubscription).not.toHaveBeenCalled();
   });
 });

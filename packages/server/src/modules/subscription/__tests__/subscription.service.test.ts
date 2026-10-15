@@ -15,6 +15,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { t } from "@breatic/shared";
 
 const stripe = {
   customers: { create: vi.fn() },
@@ -198,6 +199,21 @@ describe("startCheckout — no live subscription (#106 §7.2)", () => {
     const call = stripe.checkout.sessions.create.mock.calls[0]?.[0];
     expect(call.automatic_tax).toEqual({ enabled: true });
     expect(call.customer_update).toEqual({ address: "auto" });
+  });
+
+  // Stripe refuses an `expires_at` more than 24 hours after the session is
+  // created, so the session keeps Stripe's default lifetime of 24 hours.
+  it("leaves the checkout's lifetime to Stripe's default", async () => {
+    situationIs("none");
+    await service.startCheckout({
+      userId: USER,
+      tier: "pro",
+      period: "month",
+      returnUrl: RETURN_URL,
+    });
+
+    const call = stripe.checkout.sessions.create.mock.calls[0]?.[0];
+    expect(call).not.toHaveProperty("expires_at");
   });
 
   it("keeps the checkout in the query when the page left had a fragment (#307 A5)", async () => {
@@ -613,6 +629,16 @@ describe("changePlan — an account that already subscribes (#106 §7.3)", () =>
     await expect(
       service.changePlan({ userId: USER, tier: "team", period: "month" }),
     ).rejects.toBeInstanceOf(ConflictError);
+  });
+
+  // inner#1493: an upgrade already waiting for its payment is the move; a
+  // second one on top would leave two pending updates for one membership.
+  it("refuses another move while an upgrade waits for its payment", async () => {
+    situationIs("upgradePending", proRow());
+    await expect(
+      service.changePlan({ userId: USER, tier: "team", period: "month" }),
+    ).rejects.toThrow(t("server.membership.upgrade_pending"));
+    expect(stripe.subscriptions.update).not.toHaveBeenCalled();
   });
 
   it("hands back the payment link when the difference was not charged", async () => {

@@ -351,6 +351,55 @@ describe('the confirmation before paying', () => {
     }
   });
 
+  // inner#1490: the checkout is held outside the dialog, so choosing the same
+  // pack again while it is out finds Pay still waiting and sends nothing.
+  it('keeps Pay waiting when the same pack is chosen again while its checkout is out', async () => {
+    const user = userEvent.setup();
+    startCheckout.mockReturnValue(new Promise(() => {}));
+    vi.stubGlobal('location', { assign: vi.fn(), href: 'https://app.test/s/mine' });
+    try {
+      renderBuy();
+      const packs = await screen.findAllByTestId('credit-pack');
+      await user.click(within(packs[0]!).getByRole('button'));
+      await user.click(await screen.findByTestId('confirm-consent'));
+      await user.click(screen.getByTestId('confirm-pay'));
+      await waitFor(() => expect(startCheckout).toHaveBeenCalledTimes(1));
+      expect(startCheckout.mock.calls[0]![1]).toEqual(expect.any(String));
+
+      await user.click(screen.getByRole('button', { name: /cancel/i }));
+      await user.click(within(packs[0]!).getByRole('button'));
+      const pay = await screen.findByTestId('confirm-pay');
+      expect(pay).toHaveAttribute('aria-busy', 'true');
+      await user.click(pay);
+      expect(startCheckout).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('holds Pay without a spin on another pack while one checkout is out', async () => {
+    const user = userEvent.setup();
+    startCheckout.mockReturnValue(new Promise(() => {}));
+    vi.stubGlobal('location', { assign: vi.fn(), href: 'https://app.test/s/mine' });
+    try {
+      renderBuy();
+      const packs = await screen.findAllByTestId('credit-pack');
+      await user.click(within(packs[0]!).getByRole('button'));
+      await user.click(await screen.findByTestId('confirm-consent'));
+      await user.click(screen.getByTestId('confirm-pay'));
+      await waitFor(() => expect(startCheckout).toHaveBeenCalledTimes(1));
+
+      await user.click(screen.getByRole('button', { name: /cancel/i }));
+      await user.click(within(packs[1]!).getByRole('button'));
+      await user.click(await screen.findByTestId('confirm-consent'));
+      const pay = screen.getByTestId('confirm-pay');
+      expect(pay).toBeDisabled();
+      expect(pay).not.toHaveAttribute('aria-busy');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('keeps the spin on the pay button once the browser is leaving for Stripe', async () => {
     const user = userEvent.setup();
     const assign = vi.fn();

@@ -4,11 +4,15 @@
 /**
  * Cross-process control-plane events.
  *
- * One pub/sub channel remains:
+ * Two pub/sub channels:
  *
- *   - `members:changed`  — kick affected user's ws + broadcast
- *                          stateless invalidate signal to the
- *                          project's connected clients
+ *   - `activity:new`       — relay a new activity row to the project's
+ *                            connected clients
+ *   - `connections:close`  — close every connection to a project after a
+ *                            duplicate / archive / restore
+ *
+ * Membership changes do not travel here: collab hears them from the trigger
+ * on `project_members` (core `listenProjectMemberChanges`).
  *
  * Space lifecycle (`space:created` / `:deleted` / `:locked`) used
  * to live here but moved to collab stateless RPC 2026-05-23 (ADR
@@ -23,30 +27,6 @@
  * cross-instance pub/sub usage and avoid mixing semantics with the
  * auth-related DB0 (session / lock / rate-limit).
  */
-
-import type { ProjectRole } from "@shared/types/role.js";
-
-// ── Members ─────────────────────────────────────────────────────────
-
-/**
- * Permission state changed for a project.
- *
- * `affectedUserId === 'all'` is the owner-transfer broadcast (V2;
- * not used in V1 because transfer-owner is deferred — but the type
- * leaves room so PR-D's frontend invalidate handler is forward
- * compatible).
- */
-export interface MembersChangedEvent {
-  type: "project-members:changed";
-  projectId: string;
-  affectedUserId: string | "all";
-  action: "invite" | "update" | "remove" | "owner-transfer";
-  newRole?: ProjectRole;
-  fromUserId?: string;
-  toUserId?: string;
-  /** Epoch ms — for staleness checks on the consumer side. */
-  ts: number;
-}
 
 // ── Project lifecycle (transactional outbox → durable stream) ───────
 //
@@ -94,22 +74,6 @@ export type ProjectLifecycleEvent =
 // ── Channel names (single source of truth) ──────────────────────────
 
 /**
- * Channel for `members:changed`.
- *
- * The `prefix` is a parameter rather than something this module reads, because
- * `@breatic/shared` must stay browser-safe and therefore cannot touch env. Its
- * value is decided in exactly one place — `@core/infra/control-events` — so no
- * caller has to remember to namespace anything. See {@link allProjectChannelsPattern}
- * for why the namespace exists at all.
- * @param prefix - Deployment namespace (`REDIS_KEY_PREFIX`, defaults to `ENV`).
- * @param projectId - the project whose membership-change channel is built
- * @returns the channel name `{prefix}:project:{projectId}:members:changed`
- */
-export function membersChangedChannel(prefix: string, projectId: string): string {
-  return `${prefix}:project:${projectId}:members:changed`;
-}
-
-/**
  * Glob pattern that matches every project-scoped pub/sub channel
  * the Collab process needs to subscribe to. Using a single
  * `psubscribe` keeps the connection count down vs subscribing each
@@ -140,6 +104,32 @@ export function activityNewChannel(prefix: string, projectId: string): string {
   return `${prefix}:project:${projectId}:activity:new`;
 }
 
+/** Why every collab instance closes a project's connections. */
+export type ProjectConnectionsCloseReason = "content-updated" | "archived" | "restored";
+
+/**
+ * Control event asking every collab instance to close its connections to one
+ * project (inner#1497 §6.2). The lifecycle consumer that handled the command runs
+ * on one instance; the connections are spread across all of them.
+ */
+export interface ProjectConnectionsCloseEvent {
+  type: "project-connections:close";
+  projectId: string;
+  reason: ProjectConnectionsCloseReason;
+  ts: number;
+}
+
+/**
+ * Pub/sub channel for {@link ProjectConnectionsCloseEvent}. Matched by
+ * {@link allProjectChannelsPattern}.
+ * @param prefix - Deployment namespace (`REDIS_KEY_PREFIX`, defaults to `ENV`).
+ * @param projectId - Project whose connections are closed.
+ * @returns The channel name `{prefix}:project:{projectId}:connections:close`.
+ */
+export function projectConnectionsCloseChannel(prefix: string, projectId: string): string {
+  return `${prefix}:project:${projectId}:connections:close`;
+}
+
 /**
  * Glob pattern matching every project-scoped control channel the collab process
  * subscribes to. One `psubscribe` instead of one subscription per channel keeps
@@ -148,13 +138,13 @@ export function activityNewChannel(prefix: string, projectId: string): string {
  * The `prefix` is what keeps two deployments sharing a Redis instance from
  * hearing each other: pub/sub ignores the DB number (`SUBSCRIBE` is
  * instance-wide), so the `REDIS_*_URL` split isolates every ordinary key but
- * NOT these channels — and what travels on them is membership changes and Space
- * CRUD, i.e. writes (#1831).
+ * NOT these channels — and what travels on them changes what connected clients
+ * may do (#1831).
  *
  * What actually keeps `dev` from hearing `dev-agent` is that a LITERAL `:`
  * follows the prefix, not the fact that the prefix comes first. Verified
  * against a real Redis: `PSUBSCRIBE dev:*` does NOT receive a publish to
- * `dev-agent:project:x:members:changed`, while `PSUBSCRIBE dev*` DOES — the
+ * `dev-agent:project:x:activity:new`, while `PSUBSCRIBE dev*` DOES — the
  * separator is the whole defence. So the rule for any future channel family is:
  * never let a wildcard sit directly against the prefix. (Leading vs trailing is
  * a separate, weaker question — `project:*:dev` is also safe. The prefix leads

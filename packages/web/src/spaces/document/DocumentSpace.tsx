@@ -25,6 +25,7 @@ import { useDocumentSchemaIntercept } from '@web/spaces/document/use-document-sc
 import { clearDocument } from '@web/spaces/document/document-select-all-guard';
 import { DocumentEditor } from '@web/spaces/document/DocumentEditor';
 import { DocumentProjectProvider } from '@web/spaces/document/document-project-context';
+import { useDocumentProposalPickup } from '@web/spaces/document/use-document-proposal-pickup';
 import { useDocumentEditor } from '@web/spaces/document/use-document-editor';
 import { bodyLayerMark } from '@web/spaces/document/document-body-focus';
 
@@ -74,7 +75,7 @@ export function DocumentSpace({
   // subscription of its own would start over as "never synced" on the way
   // back and put a loading placeholder in front of content the local Y.Doc
   // already holds.
-  const { provider, hasEverSynced, status } = useSpaceConnection();
+  const { provider, hasEverSynced, status, writeAccess } = useSpaceConnection();
 
   // This Space's own document was REFUSED — deleted, membership revoked, or the
   // session expired. It is told to the user and does NOT disable the editor:
@@ -162,6 +163,10 @@ export function DocumentSpace({
   // 2026-07-29 weighed this against the alternative and chose it).
   const shown = hasEverSynced ? handle : null;
 
+  // Cards the reader pressed in the chat for this document land here, once
+  // there is an editor and the connection has said whether it may write.
+  const landed = useDocumentProposalPickup(spaceId, shown, writeAccess, intercepted || unavailable);
+
   // The guarded whole-document delete: the extension asks instead of deleting
   // (see document-select-all-guard.ts), and this mount answers with the dialog.
   const [clearAsked, setClearAsked] = React.useState(false);
@@ -233,6 +238,7 @@ export function DocumentSpace({
             myRole={myRole}
             files={shown.files}
             pending={shown.pending}
+            landed={landed}
           />
         </DocumentProjectProvider>
       ) : (

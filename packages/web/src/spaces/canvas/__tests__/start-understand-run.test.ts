@@ -41,6 +41,7 @@ import { ApiException } from '@web/data/api/types';
 import { toast } from '@web/lib/toast';
 
 import { startUnderstandRun } from '@web/spaces/canvas/start-understand-run';
+import { getRunning } from '@web/stores/task-actions-in-flight';
 
 const RUN = {
   projectId: 'p-1',
@@ -62,6 +63,29 @@ const RUN = {
 describe('one press of Understand', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  // inner#1490: the press waits outside the menu, so pressing again from a
+  // reopened menu builds no second node and sends nothing.
+  it('builds one node and sends one run for a press made while the first waits', async () => {
+    let finish: (() => void) | undefined;
+    vi.mocked(canvasApi.understand).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = () => resolve({ task_id: 't-1', status: 'pending' } as never);
+        }),
+    );
+    const first = startUnderstandRun(RUN);
+    const again = startUnderstandRun(RUN);
+    await Promise.resolve();
+    expect(getRunning('understand:s-1:n-1') !== undefined).toBe(true);
+    finish?.();
+    await Promise.all([first, again]);
+
+    expect(addNode).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(canvasApi.understand)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(canvasApi.understand).mock.calls[0]?.[1]).toEqual(expect.any(String));
+    expect(getRunning('understand:s-1:n-1') !== undefined).toBe(false);
   });
 
   // A canvas of several media nodes gets one paragraph per reading, and a
@@ -103,6 +127,7 @@ describe('one press of Understand', () => {
         source_url: RUN.source.url,
         node_ids: [(node as { id: string }).id],
       }),
+      expect.any(String),
     );
   });
 
@@ -115,6 +140,7 @@ describe('one press of Understand', () => {
 
     expect(vi.mocked(canvasApi.understand)).toHaveBeenCalledWith(
       expect.objectContaining({ source_mime_type: RUN.source.mimeType }),
+      expect.any(String),
     );
   });
 
@@ -126,6 +152,7 @@ describe('one press of Understand', () => {
 
     expect(vi.mocked(canvasApi.understand)).toHaveBeenCalledWith(
       expect.objectContaining({ reader_locale: 'zh-CN' }),
+      expect.any(String),
     );
   });
 
@@ -253,8 +280,6 @@ describe('when the press cannot reach its end', () => {
   // place the reason can be said, whatever the status was.
   it.each([
     ['a caller the project would not take', 403],
-    ['a row the server could not open', 503],
-    ['a request that never arrived', 0],
     ['a run that named no node, refused for credits', 402],
   ])('says so on %s', async (_case, status) => {
     vi.mocked(canvasApi.understand).mockRejectedValueOnce(
@@ -271,18 +296,29 @@ describe('when the press cannot reach its end', () => {
   // two just happened. Saying "try again" over it sends the reader back into
   // the window they are already inside, where the next press fails the same
   // way and leaves another node behind.
-  it('says what the server said when the server said it', async () => {
-    vi.mocked(canvasApi.understand).mockRejectedValueOnce(
-      new ApiException({
-        status: 429,
-        message: '请求过于频繁，请稍后再试',
-        fromServer: true,
-      }),
-    );
+  // inner#1490: without a final answer the press may have run, so it asks
+  // again with the same key and body, and builds no second node.
+  it.each([
+    ['a row the server could not open', new ApiException({ status: 503, message: 'no' })],
+    ['a request that never arrived', new ApiException({ status: 0, message: 'no', network: true })],
+    [
+      'a throttle',
+      new ApiException({ status: 429, message: 'slow', fromServer: true, retryAfterSeconds: 2 }),
+    ],
+  ])('asks again with the same key after %s', async (_case, err) => {
+    vi.useFakeTimers();
+    vi.mocked(canvasApi.understand).mockRejectedValueOnce(err);
 
-    await startUnderstandRun(RUN);
+    const press = startUnderstandRun(RUN);
+    await vi.advanceTimersByTimeAsync(30_000);
+    await press;
 
-    expect(toast.error).toHaveBeenCalledWith('请求过于频繁，请稍后再试');
+    expect(addNode).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(canvasApi.understand)).toHaveBeenCalledTimes(2);
+    const [first, again] = vi.mocked(canvasApi.understand).mock.calls;
+    expect(again?.[1]).toBe(first?.[1]);
+    expect(again?.[0]).toBe(first?.[0]);
+    expect(toast.error).not.toHaveBeenCalled();
   });
 
   // A permission refusal is written for the reader and it repeats: telling

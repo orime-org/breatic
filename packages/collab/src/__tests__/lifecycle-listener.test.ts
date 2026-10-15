@@ -2,27 +2,23 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Unit tests for the project-lifecycle consumer's dispatch + kick.
+ * What the project-lifecycle consumer does with one command (inner#1497 §6.2).
  *
- * Pins the critical-path routing the outbox stream drives:
- *   - project:duplicated → copy the source's docs + close the NEW
- *     project's connections (4406) so a client that raced in and
- *     lazy-seeded reloads the copied content — the SOURCE is untouched;
+ * The consumer group hands each command to one collab instance, so that
+ * instance does the part that happens once — copying a duplicate's documents —
+ * and then asks every instance, through the project control channel, to close
+ * its own connections to the project:
+ *   - project:duplicated → copy the source's docs, then close the NEW
+ *     project's connections so a client that raced in reloads the copy;
  *   - project:archived / project:restored → close every connection of the
  *     project with the reason the client re-authenticates on;
- *   - an unknown command is skipped (no repo call, no kick) so one bad
- *     event can't block the stream.
+ *   - an unknown command does nothing, so one bad event can't block the stream.
  *
- * The yjs repo is mocked (no DB); Hocuspocus is a minimal fake exposing
- * the `documents` → `connections` shape the kick walks.
+ * The yjs repo and the publisher are stand-ins.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import type { Hocuspocus } from "@hocuspocus/server";
 
-// `createLogger` now comes from `@breatic/core` (the unified logger). Spread
-// the real core barrel (so `lifecycleStreamKey` etc. stay intact) and
-// override only `createLogger` with a no-op spy factory.
 vi.mock("@breatic/core", async (importOriginal) => {
   const orig = await importOriginal<Record<string, unknown>>();
   return {
@@ -49,123 +45,64 @@ import { handleLifecycleEvent } from "@collab/services/lifecycle-listener.js";
 const PID = "11111111-1111-4111-8111-111111111111";
 const NEW_PID = "22222222-2222-4222-9222-222222222222";
 
-interface ClosedFrame {
-  docName: string;
-  code: number;
-}
-
-/**
- * Build a minimal fake Hocuspocus whose `documents` map carries one
- * connection per doc name; closing records the (docName, code).
- * @param docNames - Doc names to populate with a single connection each
- * @returns The fake hocuspocus + the list closures are recorded into
- */
-function makeHocuspocus(docNames: string[]): {
-  hocuspocus: Hocuspocus;
-  closed: ClosedFrame[];
-  reasons: { docName: string; reason: string }[];
-} {
-  const closed: ClosedFrame[] = [];
-  const reasons: { docName: string; reason: string }[] = [];
-  const documents = new Map<string, { connections: Map<unknown, unknown> }>();
-  for (const docName of docNames) {
-    // Connection as the KEY, matching the real Document; the value only
-    // carries the set of client ids, which the kick path never reads.
-    const connections = new Map<unknown, unknown>();
-    connections.set(
-      {
-        context: { user: { id: "u1" } },
-        close: ({ code, reason }: { code: number; reason: string }) => {
-          closed.push({ docName, code });
-          reasons.push({ docName, reason });
-        },
-      },
-      { clients: new Set<number>() },
-    );
-    documents.set(docName, { connections });
-  }
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return { hocuspocus: { documents } as any, closed, reasons };
-}
-
 describe("handleLifecycleEvent", () => {
-  beforeEach(() => {
-    duplicateByProjectPrefixMock.mockReset().mockResolvedValue(undefined);
+  const order: string[] = [];
+  const publish = vi.fn(async (projectId: string, reason: string) => {
+    order.push(`publish:${projectId}:${reason}`);
   });
 
-  it("project:duplicated copies the source + closes the NEW project's connections (4406), source untouched", async () => {
-    const { hocuspocus, closed } = makeHocuspocus([
-      `project-${PID}/meta`, // source — must NOT be kicked
-      `project-${NEW_PID}/meta`,
-    ]);
-
-    await handleLifecycleEvent(hocuspocus, {
-      type: "project:duplicated",
-      sourceId: PID,
-      newId: NEW_PID,
-      ts: 1,
+  beforeEach(() => {
+    order.length = 0;
+    publish.mockClear();
+    duplicateByProjectPrefixMock.mockReset().mockImplementation(async () => {
+      order.push("copy");
     });
+  });
+
+  it("project:duplicated copies the source, then asks every instance to close the NEW project's connections", async () => {
+    await handleLifecycleEvent({ type: "project:duplicated", sourceId: PID, newId: NEW_PID, ts: 1 }, publish);
 
     expect(duplicateByProjectPrefixMock).toHaveBeenCalledWith(PID, NEW_PID);
-    expect(closed).toEqual([
-      { docName: `project-${NEW_PID}/meta`, code: 4406 },
-    ]);
+    expect(order).toEqual(["copy", `publish:${NEW_PID}:content-updated`]);
   });
 
-  it("project:archived closes every connection of the project with the reason the client re-authenticates on", async () => {
-    const { hocuspocus, reasons } = makeHocuspocus([
-      `project-${PID}/meta`,
-      `project-${PID}/canvas-${NEW_PID}`,
-      `project-${NEW_PID}/meta`, // another project — must be untouched
-    ]);
+  it("project:archived asks every instance to close the project's connections", async () => {
+    await handleLifecycleEvent({ type: "project:archived", projectId: PID, ts: 1 }, publish);
 
-    await handleLifecycleEvent(hocuspocus, { type: "project:archived", projectId: PID, ts: 1 });
-
-    expect(reasons).toEqual([
-      { docName: `project-${PID}/meta`, reason: "Project archived" },
-      { docName: `project-${PID}/canvas-${NEW_PID}`, reason: "Project archived" },
-    ]);
-    // Archiving keeps every document as it is: nothing is copied.
+    expect(order).toEqual([`publish:${PID}:archived`]);
     expect(duplicateByProjectPrefixMock).not.toHaveBeenCalled();
   });
 
-  it("project:restored closes every connection of the project with its own reason", async () => {
-    const { hocuspocus, reasons } = makeHocuspocus([
-      `project-${PID}/meta`,
-      `project-${NEW_PID}/meta`,
-    ]);
+  it("project:restored asks every instance to close the project's connections with its own reason", async () => {
+    await handleLifecycleEvent({ type: "project:restored", projectId: PID, ts: 1 }, publish);
 
-    await handleLifecycleEvent(hocuspocus, { type: "project:restored", projectId: PID, ts: 1 });
-
-    expect(reasons).toEqual([{ docName: `project-${PID}/meta`, reason: "Project restored" }]);
-    expect(duplicateByProjectPrefixMock).not.toHaveBeenCalled();
+    expect(order).toEqual([`publish:${PID}:restored`]);
   });
 
-  it("skips an unknown command (no repo call, no kick)", async () => {
-    const { hocuspocus, closed } = makeHocuspocus([`project-${PID}/meta`]);
-
-    await handleLifecycleEvent(hocuspocus, {
+  it("does nothing for an unknown command", async () => {
+    await handleLifecycleEvent(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      type: "project:unknown" as any,
-      projectId: PID,
-      ts: 1,
-    });
+      { type: "project:unknown" as any, projectId: PID, ts: 1 },
+      publish,
+    );
 
-    expect(duplicateByProjectPrefixMock).not.toHaveBeenCalled();
-    expect(closed).toHaveLength(0);
+    expect(order).toEqual([]);
   });
 
-  it("propagates a repo error so the stream consumer retries (no cursor advance)", async () => {
+  it("propagates a copy error without closing anything, so the consumer retries", async () => {
     duplicateByProjectPrefixMock.mockRejectedValue(new Error("yjs db down"));
-    const { hocuspocus } = makeHocuspocus([`project-${NEW_PID}/meta`]);
 
     await expect(
-      handleLifecycleEvent(hocuspocus, {
-        type: "project:duplicated",
-        sourceId: PID,
-        newId: NEW_PID,
-        ts: 1,
-      }),
+      handleLifecycleEvent({ type: "project:duplicated", sourceId: PID, newId: NEW_PID, ts: 1 }, publish),
     ).rejects.toThrow("yjs db down");
+    expect(publish).not.toHaveBeenCalled();
+  });
+
+  it("propagates a publish error, so the command is retried rather than acknowledged", async () => {
+    publish.mockRejectedValueOnce(new Error("redis down"));
+
+    await expect(handleLifecycleEvent({ type: "project:archived", projectId: PID, ts: 1 }, publish)).rejects.toThrow(
+      "redis down",
+    );
   });
 });

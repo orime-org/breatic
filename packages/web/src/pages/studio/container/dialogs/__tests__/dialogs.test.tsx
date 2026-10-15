@@ -9,6 +9,8 @@ import userEvent from '@testing-library/user-event';
 
 import { NewItemDialog } from '@web/pages/studio/container/dialogs/NewItemDialog';
 import { NewStudioDialog } from '@web/pages/studio/container/dialogs/NewStudioDialog';
+import { PROJECT_CREATE_INTENT } from '@web/pages/studio/container/dialogs/use-create-project';
+import { runOnce } from '@web/stores/task-actions-in-flight';
 import {
   slugFieldShowsConflict,
   useSlugAvailability,
@@ -148,6 +150,19 @@ describe('NewItemDialog (spec §3.12)', () => {
     expect(onCreate).toHaveBeenCalledWith(
       expect.objectContaining({ slug: 'fresh-proj' }),
     );
+  });
+
+  // inner#1490: a create is held outside the dialog, so a dialog opened while
+  // one is out — from either entry, with any studio picked — shows Create busy.
+  it('shows Create busy while a project create is out', () => {
+    void runOnce(PROJECT_CREATE_INTENT, {
+      scope: 'project',
+      prepare: () => new Promise<null>(() => {}),
+      send: vi.fn(),
+    });
+    render(<NewItemDialog kind='project' open onOpenChange={vi.fn()} onCreate={vi.fn()} />);
+    const button = screen.getByRole('button', { name: 'Create' });
+    expect(button).toHaveAttribute('aria-busy', 'true');
   });
 
   it('stays open with a busy Create button until the create settles (#255)', async () => {

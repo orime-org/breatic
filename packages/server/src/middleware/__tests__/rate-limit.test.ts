@@ -6,6 +6,8 @@
  * sliding-window check itself is core's concern); this pins the middleware's
  * own logic: the bucket key it builds per `keyBy` dimension, the 429 +
  * `Retry-After` response when the limit is hit, and pass-through otherwise.
+ * `checkRateLimit` always gets its options argument; without `failClosed` it
+ * is `{ strict: false }`.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -31,7 +33,7 @@ describe("rateLimit middleware", () => {
     app.get("/", (c) => c.text("ok"));
     const res = await app.request("/", { headers: { "x-forwarded-for": "1.2.3.4" } });
     expect(res.status).toBe(200);
-    expect(checkRateLimit).toHaveBeenCalledWith(expect.anything(), "x:1.2.3.4", 5, 60);
+    expect(checkRateLimit).toHaveBeenCalledWith(expect.anything(), "x:1.2.3.4", 5, 60, { strict: false });
   });
 
   it("returns 429 + Retry-After when over the limit", async () => {
@@ -55,7 +57,7 @@ describe("rateLimit middleware", () => {
     app.get("/", (c) => c.text("ok"));
     const res = await app.request("/");
     expect(res.status).toBe(200);
-    expect(checkRateLimit).toHaveBeenCalledWith(expect.anything(), "sc:user-9", 10, 3600);
+    expect(checkRateLimit).toHaveBeenCalledWith(expect.anything(), "sc:user-9", 10, 3600, { strict: false });
   });
 
   it("falls back to 'anonymous' for keyBy='user' with no user on context", async () => {
@@ -64,6 +66,6 @@ describe("rateLimit middleware", () => {
     app.use("*", rateLimit({ prefix: "sc", max: 10, windowSeconds: 3600, keyBy: "user" }));
     app.get("/", (c) => c.text("ok"));
     await app.request("/");
-    expect(checkRateLimit).toHaveBeenCalledWith(expect.anything(), "sc:anonymous", 10, 3600);
+    expect(checkRateLimit).toHaveBeenCalledWith(expect.anything(), "sc:anonymous", 10, 3600, { strict: false });
   });
 });

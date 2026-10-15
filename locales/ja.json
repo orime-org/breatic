@@ -19,10 +19,12 @@
       "none": "クレジットが不足しています。チャージしてください。",
       "granted_elsewhere": "お持ちのクレジットは付与されたもので、個人 Studio でのみ使用できます。",
       "refund_already_asked": "この購入はすでに返金を申請済みです。",
+      "refund_restored": "この購入は返金に失敗した後クレジットに戻されたため、返金を申請できません。",
       "refund_not_purchased": "このクレジットは付与されたもので、お支払いがないため返金できません。",
       "refund_still_designated": "この購入は Studio に割り当てられています。先に割り当てを解除してください。",
       "refund_already_spent": "この購入のクレジットは使用済みのため、返金できません。",
-      "refund_window_closed": "この購入の返金期限は終了しました。"
+      "refund_window_closed": "この購入の返金期限は終了しました。",
+      "refund_state_changed": "この購入の返金状況が変わりました。再読み込みしてからもう一度お試しください。"
     },
     "auth": {
       "invalid_credentials": "メールアドレスまたはパスワードが正しくありません",
@@ -131,6 +133,7 @@
       "checkout_unconfirmed": "メンバーシップをまだ確認できません。",
       "same_tier": "すでにこのメンバーシップです。",
       "payment_overdue": "このメンバーシップの支払いが遅延しています。",
+      "upgrade_pending": "このメンバーシップのアップグレードはまだ支払い待ちです。",
       "unavailable": "メンバーシップは利用できません。"
     },
     "storage": {
@@ -234,6 +237,48 @@
       "unavailable": "このツールは現在利用できません。",
       "invalidParam": "「{name}」の値はこのツールでは使えません。",
       "foreignSource": "このファイルは処理できません。"
+    },
+    "idempotency": {
+      "missing": "ページが更新されました。再読み込みしてからもう一度お試しください。",
+      "mismatch": "このリクエストは前に送信したものと一致しません。",
+      "in_progress": "このリクエストはまだ処理中です。"
+    },
+    "internal": {
+      "lot_not_found": "この ID の、支払いで購入されたクレジットパックはありません。",
+      "operation_not_found": "この ID の返金処理はありません。",
+      "lot_state_changed": "クレジットパックがこの操作の開始条件の状態にありません。",
+      "operation_in_progress": "このクレジットパックの別の返金処理がまだ進行中です。",
+      "request_in_progress": "この Idempotency-Key のリクエストはまだ実行中です。",
+      "stripe_blocks": "この支払いの Stripe 上の現在の状態、またはこのクレジットパックの返金処理の履歴により、この操作はできません。理由は reason を参照してください。",
+      "mail_not_resendable": "返金済み・却下、またはクレジットに戻して完了した処理だけが、購入者へのメールを再送できます。",
+      "idempotency_key_reused": "この Idempotency-Key は別のリクエストですでに使われています。",
+      "invalid_body": "リクエスト本文またはパスがこのエンドポイントの要件に合いません。",
+      "invalid_idempotency_key": "Idempotency-Key ヘッダーがないか、形式が正しくありません。",
+      "unreadable_body": "リクエスト本文が有効な JSON ではありません。"
+    },
+    "refund_mail": {
+      "completed": {
+        "subject": "返金が完了しました",
+        "intro": "このご購入の代金を元のお支払い方法に返金しました。銀行での反映には通常数営業日かかります。このご購入のクレジットはアカウントから削除されました。"
+      },
+      "rejected": {
+        "subject": "返金リクエストは承認されませんでした",
+        "intro": "このご購入の返金リクエストは承認されませんでした。クレジットは再び利用可能になり、引き続き Studio に割り当てて使えます。"
+      },
+      "restored": {
+        "subject": "クレジットを元に戻しました",
+        "intro": "元のお支払い方法へ返金できませんでした。お客様とのご相談に基づき、このご購入のクレジットをアカウントに戻しました。引き続き Studio に割り当てて使えます。"
+      },
+      "label": {
+        "amount": "返金額",
+        "credits": "クレジット",
+        "purchased_at": "購入日時",
+        "refunded_at": "返金日時",
+        "requested_at": "返金リクエスト日時",
+        "order_ref": "注文番号"
+      },
+      "credits_amount": "{credits} クレジット",
+      "fact_line": "{label}：{value}"
     }
   },
   "chat": {
@@ -312,6 +357,7 @@
       "searchingImages": "「{query}」の画像を検索中",
       "checkingCanvas": "キャンバスでできることを確認中",
       "proposingNodes": "提案をまとめています",
+      "proposingDocumentEdit": "修正案をまとめています",
       "savingImage": "画像を保存中",
       "checkingModels": "利用できるモデルを確認中",
       "readingGuide": "製品の使い方を確認中",
@@ -366,6 +412,30 @@
       "needCanvas": "先にキャンバスを開いてください。",
       "promptReady": "プロンプトは作成済みです。ノードを右クリックして「生成」を選ぶと、開いた生成パネルで確認できます。",
       "settingsReady": "設定は完了しています。ノードを右クリックして「生成」を選ぶと、開いた生成パネルで確認できます。"
+    },
+    "documentProposal": {
+      "where": "Document「{name}」",
+      "whereInsert": "Document「{name}」に挿入",
+      "insertAfter": "この段落の後に挿入",
+      "headingBlock": "見出し",
+      "mediaLeftOut": "{count} 件の画像・動画・音声は外部リンクのため、追加されません。",
+      "gone": "この変更はもうこの Document にありません。",
+      "end": "末尾",
+      "addComment": "コメントを追加",
+      "apply": "置き換える",
+      "insert": "挿入",
+      "appliedComment": "コメントを追加しました",
+      "appliedRewrite": "置き換えました",
+      "appliedInsert": "挿入しました",
+      "view": "Document で見る",
+      "changed": "この段落は提案のあとに変更されています。",
+      "blockGone": "この段落は削除されています。",
+      "readOnly": "この Document は現在閲覧のみです。",
+      "spaceGone": "この Document は削除されています。",
+      "failedComment": "コメントを追加できませんでした。もう一度お試しください。",
+      "failedRewrite": "置き換えられませんでした。もう一度お試しください。",
+      "failedInsert": "挿入できませんでした。もう一度お試しください。",
+      "lossy": "この段落の書式とコメントは置き換えられます。"
     },
     "thinking": "少し考えました",
     "thinkingNow": "考え中",
@@ -1217,6 +1287,9 @@
     "pageUnavailable": {
       "message": "このページを読み込めませんでした。",
       "action": "再読み込み"
+    },
+    "runOnce": {
+      "unknownResult": "先ほどの操作が完了したか確認できませんでした。結果を確認してください。"
     }
   },
   "members": {
@@ -1267,13 +1340,14 @@
       "description": "{count, plural, other {# 件 · クリックで切替、右側で操作}}",
       "empty": "Spaces はまだありません",
       "openAria": "{name} を開く",
-      "rowActions": "この Space を表示、ロック、または削除",
+      "rowActions": "この Space を表示、名前を変更、ロック、または削除",
       "status": {
-        "editing": "編集中",
-        "open": "開いています"
+        "editing": "編集中"
       },
       "action": {
         "view": "表示",
+        "rename": "名前を変更",
+        "renameLocked": "ロックされた Spaces は名前を変更できません",
         "lock": "ロック",
         "unlock": "解除",
         "delete": "削除",
@@ -1312,22 +1386,6 @@
       "locked": "ロック中 — 名前を変更するにはロックを解除してください。",
       "error": {
         "failed": "名前の変更に失敗しました。もう一度お試しください。"
-      }
-    },
-    "readonly": {
-      "label": "読み取り専用",
-      "description": "この Space はタブバーで開いていません。読み取り専用プレビューでズームとコピーは可能ですが編集はできません。",
-      "canvas": {
-        "title": "読み取り専用 Canvas",
-        "description": "実際の ReactFlow viewer は canvas-space 実装完了時に接続。ここではノードとエッジの読み取り専用スナップショットを表示します(ズーム/コピー可)。"
-      },
-      "document": {
-        "title": "読み取り専用 Document",
-        "description": "TipTap の読み取り専用 viewer は document-space 実装時に接続。ここではリッチテキストのスナップショットを表示します(段落コピー可)。"
-      },
-      "timeline": {
-        "title": "読み取り専用 Timeline",
-        "description": "Timeline viewer は timeline-space 実装時に接続。ここではトラックのスナップショットを表示します(クリップコピー可)。"
       }
     },
     "readOnlyNotice": "この Space は現在閲覧のみです —— 変更を加えても保存されません。",
@@ -1402,6 +1460,7 @@
         "nothingUnresolved": "未解決のコメントはありません。",
         "writeFailed": "この変更を保存できませんでした。",
         "unknownAuthor": "不明",
+        "fromAgent": "Agent から",
         "folded": "他 {count} 件",
         "reply": "返信…",
         "save": "保存",
@@ -1565,7 +1624,10 @@
       "membershipEnded": "{tier} メンバーシップが終了しました",
       "membershipUpgradeIncomplete": "{tier} {period} への変更のお支払いが完了しませんでした",
       "membershipUpgradeIncompleteNoPeriod": "{tier} への変更のお支払いが完了しませんでした",
-      "storageQuotaExceeded": "ストレージがいっぱいです"
+      "storageQuotaExceeded": "ストレージがいっぱいです",
+      "creditRefundCompleted": "{credits} クレジットの返金が完了しました",
+      "creditRefundRejected": "{credits} クレジットの返金リクエストは承認されませんでした",
+      "creditRefundRestored": "{credits} クレジットがアカウントに戻りました"
     },
     "actorFallback": "誰か",
     "subtitle": {
@@ -2264,7 +2326,8 @@
     },
     "refundReason": {
       "spent": "使用済み",
-      "expired": "30 日超過"
+      "expired": "30 日超過",
+      "restored": "クレジットに戻しました"
     },
     "refundHint": {
       "assigned": "割り当てを解除すると返金を申請できます"

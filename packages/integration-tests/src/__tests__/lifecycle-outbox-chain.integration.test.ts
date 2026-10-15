@@ -8,10 +8,12 @@
  * This is the async path that the unit/integration tests above only cover
  * piecewise: archiving a project enqueues an outbox row in the business tx;
  * the server relay forwards it to the durable `project-lifecycle` Redis
- * Stream; the collab consumer reads it and closes the project's live
- * connections so they re-authenticate read-only. Here we drive the real relay
- * + the real consumer and assert the connection was closed with the archive
- * reason, the yjs docs are untouched, and the outbox row is marked sent.
+ * Stream; the collab consumer reads it and asks every collab instance, over
+ * the project control channel, to close the project's live connections so
+ * they re-authenticate read-only. Here we drive the real relay, the real
+ * consumer and the real control-plane subscriber, and assert the connection
+ * was closed with the archive reason, the yjs docs are untouched, and the
+ * outbox row is marked sent.
  */
 
 import { describe, it, expect, beforeAll, afterAll, inject } from "vitest";
@@ -19,13 +21,18 @@ import { eq, isNull } from "drizzle-orm";
 
 import {
   initCore,
+  createRedisClient,
   db as coreDb,
+  lifecycleStreamKey,
   projectLifecycleOutbox,
+  type Redis,
 } from "@breatic/core";
 import * as yjsRepo from "@collab/services/yjs-documents.repo.js";
 import { insertOutboxEvent } from "@server/modules/project/lifecycle-outbox.repo.js";
 import { startLifecycleRelay } from "@server/modules/project/lifecycle-relay.js";
 import { startLifecycleListener } from "@collab/services/lifecycle-listener.js";
+import { startProjectControlSync } from "@collab/services/project-control-sync.js";
+import type { GroupConsumer } from "@collab/services/stream-group-consumer.js";
 
 initCore(process.env);
 
@@ -49,7 +56,10 @@ const liveConnections = new Map<unknown, unknown>([
 const fakeHocuspocus = { documents: new Map([[META, { connections: liveConnections }]]) } as any;
 
 let stopRelay: { stop(): void };
-let stopConsumer: () => Promise<void>;
+let consumer: GroupConsumer;
+let stopProjectControlSync: () => Promise<void>;
+let streamRedis: Redis;
+let coordination: Redis;
 
 /**
  * Poll until `check` resolves true or the timeout elapses.
@@ -71,17 +81,39 @@ async function waitFor(
 }
 
 beforeAll(() => {
+  streamRedis = createRedisClient(inject("REDIS_STREAM_URL"), { name: "itest-chain-stream" });
+  coordination = createRedisClient(inject("REDIS_COLLAB_URL"), { name: "itest-chain-coord" });
+  stopProjectControlSync = startProjectControlSync(fakeHocuspocus, streamRedis);
   stopRelay = startLifecycleRelay();
-  stopConsumer = startLifecycleListener(
-    fakeHocuspocus,
-    inject("REDIS_STREAM_URL"),
-    "dev",
-  );
+  consumer = startLifecycleListener({
+    streamUrl: inject("REDIS_STREAM_URL"),
+    streamKey: lifecycleStreamKey(),
+    legacyCursorKey: "dev:collab:project-lifecycle:last-id",
+    keyPrefix: "dev",
+    instanceId: "itest-chain",
+    coordination,
+    settings: {
+      maxHeld: 16,
+      keyConcurrency: 16,
+      blockMs: 100,
+      leaseRetryMs: 50,
+      claimIntervalMs: 15_000,
+      claimIdleMs: 60_000,
+      retryMinMs: 50,
+      retryMaxMs: 200,
+      maxFailures: 3,
+      stopDeadlineMs: 2000,
+      forgetIdleConsumerMs: 24 * 60 * 60 * 1000,
+    },
+  });
 });
 
 afterAll(async () => {
   stopRelay.stop();
-  await stopConsumer();
+  await consumer.stop();
+  await stopProjectControlSync();
+  await streamRedis.quit();
+  await coordination.quit();
   await coreDb
     .delete(projectLifecycleOutbox)
     .where(eq(projectLifecycleOutbox.kind, "project:archived"));

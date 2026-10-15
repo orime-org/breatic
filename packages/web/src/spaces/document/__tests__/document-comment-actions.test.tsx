@@ -122,8 +122,9 @@ describe('what a card lets a reader do', () => {
   /**
    * Writes one comment over the first word.
    * @param body - What it says.
+   * @param metadata - What the comment carries beside its words.
    */
-  async function comment(body: string): Promise<void> {
+  async function comment(body: string, metadata?: Record<string, unknown>): Promise<void> {
     let run: { from: number; to: number } | undefined;
     handle.editor.prosemirrorState.doc.descendants((node, pos) => {
       if (node.isText && run === undefined) {
@@ -134,7 +135,7 @@ describe('what a card lets a reader do', () => {
     const comments = handle.editor.getExtension(CommentsExtension)!;
     await act(async () => {
       const thread = await comments.threadStore.createThread({
-        initialComment: { body: asCommentBody(body) },
+        initialComment: { body: asCommentBody(body), ...(metadata === undefined ? {} : { metadata }) },
       });
       const view = handle.editor.prosemirrorView!;
       const mark = view.state.schema.marks[COMMENT_MARK]!.create({
@@ -176,6 +177,21 @@ describe('what a card lets a reader do', () => {
     const store = handle.editor.getExtension(CommentsExtension)!.threadStore;
     return [...store.getThreads().values()][0] as never;
   }
+
+  it('marks a comment that came from an Agent proposal (inner#1509)', async () => {
+    await open();
+    await comment('the Agent wrote this', { fromAgent: true });
+
+    expect((await screen.findByTestId('doc-comment-from-agent')).textContent).toBe('from Agent');
+  });
+
+  it('marks no comment the reader wrote', async () => {
+    await open();
+    await comment('the reader wrote this');
+    await screen.findByText('the reader wrote this');
+
+    expect(screen.queryByTestId('doc-comment-from-agent')).toBeNull();
+  });
 
   it('takes a reply and shows it under the first comment', async () => {
     await open();

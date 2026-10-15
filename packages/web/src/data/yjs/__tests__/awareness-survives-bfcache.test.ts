@@ -47,6 +47,7 @@ const { providerInstances } = vi.hoisted(() => ({
 vi.mock('@hocuspocus/provider', () => ({
   HocuspocusProviderWebsocket: class {
     destroy = vi.fn();
+    on = vi.fn();
   },
   HocuspocusProvider: class {
     destroy = vi.fn();

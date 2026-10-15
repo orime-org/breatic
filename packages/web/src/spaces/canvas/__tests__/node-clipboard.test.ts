@@ -234,14 +234,21 @@ describe('cloneForPaste', () => {
     expect(nodes[0]?.data).toMatchObject({ content: 'clip.mp4', ...media });
   });
 
-  it('copies content only: no lock, task counts or failure message (R2-F)', () => {
+  it('copies content only: no lock, task counts, result version or failure message (R2-F)', () => {
     const p = payload([
       node('g', 'group', { x: 0, y: 0 }, { locked: true, width: 100, height: 100 }),
-      node('m', 'image', { x: 10, y: 10 }, { locked: true, taskCounts: { done: 1 }, errorMessage: 'boom' }, { parentId: 'g' }),
+      node(
+        'm',
+        'image',
+        { x: 10, y: 10 },
+        { locked: true, taskCounts: { done: 1 }, taskResultEventId: '1700-3', errorMessage: 'boom' },
+        { parentId: 'g' },
+      ),
     ]);
     for (const clone of cloneForPaste(p, 'u-1', { dx: 0, dy: 0 }).nodes) {
       expect(clone.data.locked).toBe(false);
       expect(clone.data).not.toHaveProperty('taskCounts');
+      expect(clone.data).not.toHaveProperty('taskResultEventId');
       expect(clone.data).not.toHaveProperty('errorMessage');
     }
   });

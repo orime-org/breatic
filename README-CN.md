@@ -2,130 +2,81 @@
 
 [English](README.md) | **简体中文**
 
-Breatic 是内容创作者的 AI 操作系统，以**项目和多个 Space（空间）**组织工作。你可以在 Document Space 中写剧本，在不同的 Canvas Space 中创作各个场景，并在同一个项目里与 AI 和团队协作。按场景、剧集、交付内容还是创意方向拆分工作，由你决定。
+**内容创作者的 AI 操作系统。**
 
-## 用 Space 组织一个项目
+将创作简报、场景与媒体组织在同一个项目里。在 Document Space 中写作，在 Canvas Space 中生成和调整素材，与 AI Agent 和团队共同推进创作，让每个环节都保留作品的上下文。
 
-**Studio** 管理项目与资产；**Project（项目）** 汇集一部作品或一次创作任务的内容。每个项目可以创建多个 **Space**，同一种类型也可以创建多个，通过标签页切换。
+**Beta · 源码可用 · 桌面浏览器**
 
-| Space | 在这里做什么 | 使用示例 |
+[在线体验](https://breatic.ai/login) · [使用指南](docs/USAGE-CN.md) · [自行部署](self-host/LOCAL-CN.md) · [发布版本](https://github.com/orime-org/breatic/releases)
+
+![Breatic 项目中的咖啡店图片候选，画布旁是项目聊天](docs/images/readme/workspace-zh-CN.png)
+
+*画布示例：在项目聊天旁排列、比较生成的视觉素材。*
+
+## 可以用它做什么
+
+| 核心能力 | 用来完成什么 |
+| --- | --- |
+| **一个项目，多个 Space** | 将创作简报、各个场景和不同创意方向组织在一起，每个 Space 有独立标签页。 |
+| **Document Space（文档空间）** | 用标题、列表和格式化文字编写剧本、镜头描述及制作清单。 |
+| **Canvas Space（画布空间）** | 在无限画布上排列参考素材和媒体，结合提示词、模型及参考输入生成、调整资产。 |
+| **项目中的 AI Agent** | 讨论创意、提供文档或画布上下文，结合已有素材查看和评审提案。 |
+| **实时协作** | 邀请协作者、设置项目访问权限，共同编辑实时同步的画布和文档。 |
+
+支持的媒体包括图片、视频、音频和 3D 资产，具体生成能力取决于已配置的供应商及模型权限。目前可使用 Canvas 和 Document Space；**Timeline 尚未开放**。
+
+## 创作流程：一条 30 秒咖啡店视频
+
+**Studio** 管理项目与资产；**Project（项目）** 汇集一次创作任务的内容；项目里的 **Space** 按场景、交付内容或创意方向拆分工作。
+
+| Space | 类型 | 内容 |
 | --- | --- | --- |
-| **Document Space（文档空间）** | 用标题、列表和格式化文字编写、组织创作所需的文字内容 | 创作简报、剧本、镜头描述、制作清单 |
-| **Canvas Space（画布空间）** | 在无限画布上排列参考素材和媒体，结合提示词、模型与参考输入生成、调整资产 | 单个场景的创作台、角色探索、视觉风格方案、备选镜头 |
-
-Canvas Space 是项目中的一块创作工作区，画布里的节点承载具体的参考素材、提示词和媒体。把作品的不同部分放进各自的 Space，即使项目内容不断增加，也能清楚地找到剧本和每个场景。
-
-### 示例：制作一条 30 秒视频
-
-在一个项目里创建四个 Space：
-
-| Space 名称 | 类型 | 内容 |
-| --- | --- | --- |
-| 剧本与创作简报 | Document | 故事、对白、视觉方向，以及每个片段的描述 |
-| 01 · 开场 · 0–10 秒 | Canvas | 开场镜头的参考素材、提示词、候选图片或视频片段 |
-| 02 · 主场景 · 10–20 秒 | Canvas | 主要情节、场景资产，以及供比较的不同方案 |
+| 剧本与创作简报 | Document | 故事、品牌方向、对白及镜头描述 |
+| 01 · 开场 · 0–10 秒 | Canvas | 开场镜头的参考素材和候选画面 |
+| 02 · 主场景 · 10–20 秒 | Canvas | 场景资产，以及供比较的不同方案 |
 | 03 · 结尾 · 20–30 秒 | Canvas | 收尾镜头及其配套素材 |
 
-剧本保留在 Document Space 中，创作时切换到对应的 Canvas Space 推进各个片段。一分钟短剧可以采用“一个剧本文档 + 六个场景画布”的组织方式；其他项目也可以按角色、主题或交付内容划分 Space。
+1. **写下创作简报。** 在文档中描述咖啡店、目标受众和视觉方向。
+2. **与 Agent 一起推进。** 将相关上下文加入聊天，讨论镜头，查看和评审它的提案。
+3. **创作各个场景。** 选择已配置的模型，添加提示词和参考素材，在对应画布中生成或调整资产。
+4. **一起评审和交付。** 与协作者比较结果，选定素材并下载，用于最终制作。
 
-这里的十秒划分是你的创作规划：Space 名称不会设置视频时长，也不会自动合成成片。选定素材后可下载到视频编辑器中完成剪辑。目前可使用 Canvas 和 Document Space，Timeline 尚未开放。
+时间范围是创作规划：Space 名称不会设置片段时长，也不会自动合成成片，最终编排请使用视频编辑器。[配图使用指南](docs/USAGE-CN.md#example-from-a-brief-to-a-visual) 展示从简报到视觉素材的实例。
 
-## 与 AI 和团队共同创作
+## 开始使用
 
-在项目聊天中讨论想法、与 AI Agent 协作；在画布中选择模型，添加提示词和参考素材，将生成结果与场景中的其他内容一起比较、调整。支持的媒体包括图片、视频、音频和 3D 资产；具体生成能力取决于供应商凭据及模型访问权限。
-
-通过项目的访问权限设置邀请协作者，共同推进同一部作品。画布和文档的修改会实时同步，文字规划与视觉创作可以同步开展。Breatic 仍在持续开发中。
-
-## 选择运行方式
-
-**安装使用与开发 Breatic 是两种工作流程。** 在自己的电脑上使用产品，不需要启动开发服务器。
-
-| 你的目标 | 指南 |
+| 你的目标 | 从这里开始 |
 | --- | --- |
-| 自己使用，或与局域网内的家庭成员、私密团队共享 | [个人与局域网部署](self-host/LOCAL-CN.md) |
-| 修改源码、调试或参与贡献 | [开发环境搭建](self-host/DEVELOPMENT-CN.md) |
+| 使用官方在线产品 | 在桌面浏览器中[打开 Breatic](https://breatic.ai/login)，注册或登录 |
+| 个人、私密群体或组织内部自行部署 | [个人与局域网部署](self-host/LOCAL-CN.md) |
+| 修改源码或参与贡献 | [开发环境搭建](self-host/DEVELOPMENT-CN.md) |
 
-安装使用时，Web、API、后台任务和协作服务运行在已发布的 Docker 镜像中，依赖 PostgreSQL 与 Redis。文件上传通过部署到**你自己的 Cloudflare 账户**的 Ingest Worker 和媒体容器处理，文件保存在你的 R2 bucket 中；AI 调用使用你的供应商账户。这不是离线或完全本地化的部署。
+登录后完成个人 Studio 设置，创建项目，用 **+** 添加 Document 或 Canvas Space。写下简报或上传参考素材，再使用聊天和画布工具。[使用指南](docs/USAGE-CN.md) 包含注册、首个项目、画布操作和[快捷键](docs/USAGE-CN.md#keyboard-shortcuts)。
 
-从个人与局域网指南开始，按顺序完成 Cloudflare 资源、密钥、应用配置和启动。日常使用不需要运行 `pnpm dev` 或本地上传 Worker。目前首次发布配套云端组件仍需使用 Node/pnpm/Wrangler，但这些工具不需要作为应用服务持续运行。
+### 自行部署前
 
-## 创建第一个项目
+Web、API、后台任务和协作服务使用已发布的 Docker 镜像，依赖 PostgreSQL 与 Redis。上传和媒体处理通过部署到**你自己的 Cloudflare 账户**的 Ingest Worker 与媒体容器完成，文件保存在你的 R2 bucket；AI 调用使用你的供应商账户和额度。
 
-安装完成后：
+这不是离线或完全本地化部署，局域网访问需要可信 HTTPS。云服务与模型调用可能产生费用；SMTP、Google 登录、Stripe 支付和搜索是可选集成。按安装指南完成云端配置与验收，其中一次性的 Node/pnpm/Wrangler 配置步骤不代表日常使用需要启动开发服务器。
 
-1. 在桌面浏览器中打开实例地址，注册账号并完成个人 Studio 设置。启用了邮件时，输入邮件里的 6 位验证码完成注册；未启用邮件时，保存注册后显示的恢复码。没有共用的默认密码，也没有免登录模式。
-2. 为要创作的内容创建项目，选择初始 Space 类型。
-3. 点击项目 Space 栏中的 **+**，添加 **Document** Space，命名为“剧本与创作简报”，写下故事或需求。如果初始 Space 已选文档，直接使用它即可。
-4. 按场景或创意方向添加一个或多个 **Canvas** Space，分别命名，上传参考素材或添加节点，开始创作。
-5. 通过标签页切换 Space，通过 Space 列表查找、管理项目中的其他空间。使用聊天和画布工具，通过已配置的模型生成、调整资产。
-6. 与允许访问该实例的协作者分享项目，并设置他们的访问权限。
+## 产品状态与帮助
 
-如果加入的是现有实例，直接使用部署者提供的地址，从注册账号开始，不需要另外部署。部署者应在邀请用户前，完成部署指南中的登录、持久化、协作、上传和生成检查。
+Breatic 处于 Beta 阶段，持续开发中。已发布版本和更新说明见 [Releases](https://github.com/orime-org/breatic/releases)。
 
-## 在 Breatic 中工作
+[报告问题](https://github.com/orime-org/breatic/issues/new?template=bug_report.yml) · [建议功能](https://github.com/orime-org/breatic/issues/new?template=feature_request.yml) · [社区交流](https://discord.gg/Yeu6A4aejN)
 
-- **编写创作计划：** 在 Document Space 中用标题划分场景、列表记录镜头描述、待办列表跟进制作任务。选中文字进行格式调整，或使用下方的文档快捷键。
-- **添加与排列内容：** 上传参考素材，或在画布空白处右键选择节点类型。拖动节点调整位置，在空白处拖拽框选区域。
-- **浏览画布：** 鼠标滚轮或触控板双指滚动用于平移；双指捏合或 `Ctrl+滚轮` 用于缩放。视图工具栏提供缩放、适应窗口、网格吸附和小地图。双击空白画布不会缩放。
-- **处理选中节点：** 右键节点或选区，查看复制、创建副本、分组、重命名、锁定/解锁、下载、删除等可用操作。菜单由当前选区和权限决定，并非每种节点都有所有操作。
-- **生成与调整：** 选择已配置的模型，提供提示词及所需参考素材，等待任务产出后继续处理。即使应用服务健康，缺少供应商凭据或额度仍可能阻止生成。
-- **协作与保留工作：** 画布修改通过协作服务同步。离开前确认同步和上传已经完成；浏览器断线或任务尚未结束，不能视为内容已经保存。验收持久化时应刷新并重新打开项目。
+安全漏洞请按 [SECURITY.md](SECURITY.md) 中的方式私下报告。
 
-<a id="keyboard-shortcuts"></a>
-## 操作快捷键
+## 参与贡献
 
-画布快捷键只在画布空间拥有键盘焦点时生效，不会替代聊天框、文本输入框或编辑器内的输入操作。编辑操作需要写权限，锁定状态或运行中的任务可能限制删除。使用画布快捷键前先点击画布。
+应用使用 TypeScript、React/Vite、Hono、PostgreSQL、Redis/BullMQ 与 Hocuspocus/Yjs，上传由独立的 Cloudflare Worker 处理。
 
-### 画布
+[贡献流程](CONTRIBUTING.md) · [开发环境搭建](self-host/DEVELOPMENT-CN.md) · [架构说明](docs/ARCHITECTURE.md) · [测试说明](docs/TEST-MANDATE.md)
 
-| 操作 | macOS | Windows / Linux |
-| --- | --- | --- |
-| 复制选中节点 | `Cmd+C` | `Ctrl+C` |
-| 粘贴支持的剪贴板内容 | `Cmd+V` | `Ctrl+V` |
-| 创建选中节点的副本，不替换剪贴板 | `Cmd+D` | `Ctrl+D` |
-| 撤销画布修改 | `Cmd+Z` | `Ctrl+Z` |
-| 重做画布修改 | `Cmd+Shift+Z` | `Ctrl+Shift+Z` 或 `Ctrl+Y` |
-| 将符合条件的选区分组 | `Cmd+G` | `Ctrl+G` |
-| 取消选中组的分组 | `Cmd+Shift+G` | `Ctrl+Shift+G` |
-| 删除允许删除的选中节点 / 连线 | `Backspace` 或 `Delete` | `Backspace` 或 `Delete` |
-| 取消正在进行的参考选择或批注放置 | `Esc` | `Esc` |
+## 关注 Breatic
 
-复制粘贴可能依赖浏览器剪贴板权限与安全上下文，局域网使用应按指南配置可信 HTTPS。`Cmd/Ctrl+A` **不是全选画布节点**：在可编辑内容之外，项目会拦截网页全选，请使用画布选区操作。
-
-### 文档编辑
-
-以下快捷键作用于文档编辑器内部，不用于操作画布节点。macOS 的 `Option` 也可能标为 `Alt`。
-
-| 操作 | macOS | Windows / Linux |
-| --- | --- | --- |
-| 加粗 / 斜体 / 下划线 | `Cmd+B` / `Cmd+I` / `Cmd+U` | `Ctrl+B` / `Ctrl+I` / `Ctrl+U` |
-| 删除线 | `Cmd+Shift+S` | `Ctrl+Shift+S` |
-| 行内代码 | `Cmd+E` | `Ctrl+E` |
-| 正文段落 | `Cmd+Option+0` | `Ctrl+Alt+0` |
-| 一级 / 二级 / 三级标题 | `Cmd+Option+1` / `2` / `3` | `Ctrl+Alt+1` / `2` / `3` |
-| 无序列表 | `Cmd+Shift+8` | `Ctrl+Shift+8` |
-| 有序列表 | `Cmd+Shift+7` | `Ctrl+Shift+7` |
-| 待办列表 | `Cmd+Shift+9` | `Ctrl+Shift+9` |
-| 代码块 | `Cmd+Option+C` | `Ctrl+Alt+C` |
-| 引用 | `Cmd+Shift+B` | `Ctrl+Shift+B` |
-
-### 聊天
-
-| 操作 | 快捷键 |
-| --- | --- |
-| 发送当前消息 | `Enter` |
-| 插入换行 | `Shift+Enter` |
-
-使用输入法时，按 Enter 确认正在组词的候选内容不会发送消息。是否允许发送仍取决于当前输入和任务状态。
-
-## 需要准备什么
-
-- Docker 和 Compose，用于运行应用及数据库。
-- 已开通 R2、具备 Containers 使用资格的 Cloudflare 账户，用于部署上传与媒体处理服务。
-- 所需模型的供应商凭据和可用额度。
-- 局域网访问所需的可信 HTTPS 证书，以及限定到目标用户的网络访问配置。
-
-SMTP 邮件、Google 登录、Stripe 支付和搜索是可选集成。指南会区分它们与存储、生成所需的服务。即使关闭 Breatic 站内支付，云服务与模型调用仍可能产生费用。
+[官网](https://breatic.ai) · [Discord](https://discord.gg/Yeu6A4aejN) · [X](https://x.com/breatic_ai) · [YouTube](https://www.youtube.com/@breatic_ai) · [Instagram](https://www.instagram.com/breatic_ai)
 
 ## 许可证与允许用途
 
@@ -133,17 +84,6 @@ Breatic 采用 [Breatic Source-Available License v1.0](LICENSE)，属于**源码
 
 许可证允许个人使用、不公开宣传且不开放公众注册的私密群体使用，以及同一组织内部部署。未经另行授权，禁止向公众提供 Breatic 平台，**无论收费还是免费**。是否有域名、是否部署在服务器上，本身不决定允许的访问群体。请保留产品品牌与版权标识。完整条款以许可证为准；面向公众部署的授权咨询请联系 [licensing@orime.ai](mailto:licensing@orime.ai)。
 
-## 参与贡献
-
-Breatic 使用 TypeScript、React/Vite、Hono、PostgreSQL、Redis/BullMQ 与 Hocuspocus/Yjs，文件上传由独立的 Cloudflare Worker 处理。
-
-- [开发环境搭建](self-host/DEVELOPMENT-CN.md)：依赖、本地服务与测试。
-- [贡献指南](CONTRIBUTING.md)：贡献流程与约定。
-- [架构说明](docs/ARCHITECTURE.md)：包、服务、数据流与前端结构。
-- [测试说明](docs/TEST-MANDATE.md)：单测、集成测试与浏览器验证。
-
-## 安全
-
-发现安全问题时，请按 [SECURITY.md](SECURITY.md) 私下报告，不要提交公开 issue。第三方组件及许可说明见 [THIRD-PARTY.md](THIRD-PARTY.md)。
+第三方组件及许可说明见 [THIRD-PARTY.md](THIRD-PARTY.md)。
 
 © 2026 Orime, Inc.

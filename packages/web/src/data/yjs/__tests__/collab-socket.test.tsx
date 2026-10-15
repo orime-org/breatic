@@ -7,7 +7,11 @@ import * as Y from 'yjs';
 // Spy transport. We assert how many shared sockets / per-doc providers get
 // constructed + attached + destroyed, never opening a real WebSocket.
 const { wsInstances, providerInstances } = vi.hoisted(() => ({
-  wsInstances: [] as Array<{ destroy: ReturnType<typeof vi.fn>; receivedOnOpenPayload?: Event }>,
+  wsInstances: [] as Array<{
+    destroy: ReturnType<typeof vi.fn>;
+    receivedOnOpenPayload?: Event;
+    emit: (event: string, data?: unknown) => void;
+  }>,
   providerInstances: [] as Array<{
     destroy: ReturnType<typeof vi.fn>;
     attach: ReturnType<typeof vi.fn>;
@@ -22,6 +26,13 @@ vi.mock('@hocuspocus/provider', () => ({
   HocuspocusProviderWebsocket: class {
     destroy = vi.fn();
     receivedOnOpenPayload?: Event = undefined;
+    listeners: Record<string, Array<(data?: unknown) => void>> = {};
+    on(event: string, cb: (data?: unknown) => void): void {
+      (this.listeners[event] ??= []).push(cb);
+    }
+    emit(event: string, data?: unknown): void {
+      for (const cb of [...(this.listeners[event] ?? [])]) cb(data);
+    }
     constructor() {
       wsInstances.push(this);
     }
@@ -45,6 +56,9 @@ vi.mock('@hocuspocus/provider', () => ({
     }
   },
 }));
+
+vi.mock('@web/data/yjs/collab-failure-report', () => ({ reportCollabFailure: vi.fn() }));
+import { reportCollabFailure } from '@web/data/yjs/collab-failure-report';
 
 import {
   acquireDocProvider,
@@ -213,5 +227,66 @@ describe('collab-socket manager — a document closed to be re-checked comes str
     acquireDocProvider(META, getDoc(META));
     providerInstances[0]!.emit('close', { event: { code: 1000, reason: 'Project archived' } });
     expect(providerInstances[0]!.onOpen).not.toHaveBeenCalled();
+  });
+});
+
+describe('collab-socket manager — one report per closed connection', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    _resetCollabSocketForTests();
+    _resetDocsForTests();
+    wsInstances.length = 0;
+    providerInstances.length = 0;
+    vi.mocked(reportCollabFailure).mockClear();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('reports a dropped connection once, with its code, reason and attached documents', () => {
+    acquireDocProvider(META, getDoc(META));
+    acquireDocProvider('project-p1/canvas-a', getDoc('project-p1/canvas-a'));
+    acquireDocProvider('project-p1/canvas-b', getDoc('project-p1/canvas-b'));
+
+    wsInstances[0]!.emit('open');
+    wsInstances[0]!.emit('close', { event: { code: 4408, reason: 'Connection Timeout' } });
+
+    expect(reportCollabFailure).toHaveBeenCalledOnce();
+    expect(reportCollabFailure).toHaveBeenCalledWith({
+      kind: 'disconnect',
+      code: 4408,
+      reason: 'Connection Timeout',
+      documents: 3,
+    });
+  });
+
+  it('reports a drop again once the connection has come back', () => {
+    acquireDocProvider(META, getDoc(META));
+    wsInstances[0]!.emit('open');
+    wsInstances[0]!.emit('close', { event: { code: 1006, reason: '' } });
+    wsInstances[0]!.emit('open');
+    wsInstances[0]!.emit('close', { event: { code: 1006, reason: '' } });
+    expect(reportCollabFailure).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not report the reconnect attempts that fail while the connection is down', () => {
+    acquireDocProvider(META, getDoc(META));
+    wsInstances[0]!.emit('open');
+    wsInstances[0]!.emit('close', { event: { code: 1006, reason: '' } });
+    wsInstances[0]!.emit('close', { event: { code: 1006, reason: '' } });
+    wsInstances[0]!.emit('close', { event: { code: 1006, reason: '' } });
+    expect(reportCollabFailure).toHaveBeenCalledOnce();
+  });
+
+  it('does not report a first connection attempt that never opened', () => {
+    acquireDocProvider(META, getDoc(META));
+    wsInstances[0]!.emit('close', { event: { code: 1006, reason: '' } });
+    expect(reportCollabFailure).not.toHaveBeenCalled();
+  });
+
+  it('does not report a document closed on its own while the connection stays up', () => {
+    acquireDocProvider(META, getDoc(META));
+    providerInstances[0]!.emit('close', { event: { code: 1000, reason: 'Connection Timeout' } });
+    expect(reportCollabFailure).not.toHaveBeenCalled();
   });
 });

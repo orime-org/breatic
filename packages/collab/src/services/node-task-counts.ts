@@ -6,9 +6,10 @@
  *
  * The document holds four numbers about tasks and nothing else, so the event
  * carries all four, recounted on the server after every state change. Collab
- * writes what it is told: no task ids on the wire, no per-entry merge, no
- * compare-and-set. A number is either the current one or an older one, and
- * the next state change on that node replaces it outright.
+ * writes what it is told, but only when the event is newer than what the node
+ * holds: the result version sits in the node, the counts version in DB3
+ * (inner#1497). Counts and result are versioned apart: an event older than
+ * the version it would replace changes nothing.
  *
  * All judgement happens before the event is published — which task moved,
  * what the counts now are, whether a result rides along. Collab reaches no
@@ -20,13 +21,28 @@ import type { NodeTaskCounts, NodeTaskResult } from "@breatic/shared";
 import { CANVAS_NODES_KEY } from "@breatic/shared";
 import { writeNodeMedia } from "@breatic/shared";
 import { writePlainTextIntoBody } from "@breatic/shared/canvas/text-body";
+import { isNewerStreamId } from "@collab/services/stream-id.js";
+
+/** Node field naming the event the node's content last came from. */
+export const TASK_RESULT_EVENT_ID_KEY = "taskResultEventId";
 
 /**
- * Write the counts, and the content fields when the event carries them.
+ * Write the counts, and the content fields when the event carries them, each
+ * only when the event is newer than what the node holds (inner#1497 §6.1).
  *
- * Both land in one transaction. Split across two there is a moment where the
- * counts say a task succeeded and the node is still empty, and every client
- * watching that node renders it.
+ * Counts and content are versioned apart. A result can arrive after a newer
+ * counts-only event and still be the newest content the node has seen; it
+ * lands while the newer counts stay.
+ *
+ * The counts version lives outside the document, in the caller's hands: the
+ * server republishes a node's counts whenever its task list is read, and
+ * writing a version into the document for each of those would store the
+ * document and count it as an edit of the project. A newer event carrying the
+ * counts the node already holds only moves the version.
+ *
+ * What does land, lands in one transaction. Split across two there is a
+ * moment where the counts say a task succeeded and the node is still empty,
+ * and every client watching that node renders it.
  * A node the document no longer holds is left alone: the user may have
  * deleted it while the task was still running.
  * @param doc - The canvas document.
@@ -35,27 +51,35 @@ import { writePlainTextIntoBody } from "@breatic/shared/canvas/text-body";
  * @param event.counts - All four, freshly counted from the table.
  * @param event.result - The content fields, present only on the transition
  *   that reached `done`.
+ * @param at - Versions.
+ * @param at.version - This event's version: its origin id, else its stream id.
+ * @param at.countsVersion - The counts version the caller holds for this node.
+ * @returns The counts version to hold after this event.
+ * @throws {Error} When `at.version` is not a stream id.
  */
 export function applyNodeTaskCounts(
   doc: Y.Doc,
   event: { nodeId: string; counts: NodeTaskCounts; result?: NodeTaskResult },
-): void {
+  at: { version: string; countsVersion: string | undefined },
+): string | undefined {
   const nodes = doc.getMap(CANVAS_NODES_KEY);
   const node = nodes.get(event.nodeId);
-  if (!(node instanceof Y.Map)) return;
+  if (!(node instanceof Y.Map)) return at.countsVersion;
   const data = node.get("data");
-  if (!(data instanceof Y.Map)) return;
+  if (!(data instanceof Y.Map)) return at.countsVersion;
   const isText = node.get("type") === "text";
-  // The server republishes a node's counts whenever its task list is read,
-  // by anyone who may view it. Writing the same four numbers again would
-  // still be a document update, stored and counted as an edit of the project.
-  if (event.result === undefined && sameCounts(data.get("taskCounts"), event.counts)) return;
+
+  const countsNewer = isNewerStreamId(at.version, at.countsVersion);
+  const writeCounts = countsNewer && !sameCounts(data.get("taskCounts"), event.counts);
+  const result = event.result;
+  const writeResult =
+    result !== undefined && isNewerStreamId(at.version, data.get(TASK_RESULT_EVENT_ID_KEY));
+  const heldAfter = countsNewer ? at.version : at.countsVersion;
+  if (!writeCounts && !writeResult) return heldAfter;
 
   doc.transact(() => {
-    data.set("taskCounts", { ...event.counts });
-
-    const result = event.result;
-    if (result === undefined) return;
+    if (writeCounts) data.set("taskCounts", { ...event.counts });
+    if (!writeResult || result === undefined) return;
     if (isText) {
       // A text node holds its words in the `Y.XmlFragment` the editor binds
       // to; its `content` is retired (#1774). Written there, a finished read
@@ -66,11 +90,14 @@ export function applyNodeTaskCounts(
         data.set("body", body);
       }
       writePlainTextIntoBody(body as Y.XmlFragment, result.content);
-      return;
+    } else {
+      data.set("content", result.content);
+      writeNodeMedia(data, result);
     }
-    data.set("content", result.content);
-    writeNodeMedia(data, result);
+    // Last, so a write that throws leaves the version for the retry.
+    data.set(TASK_RESULT_EVENT_ID_KEY, at.version);
   });
+  return heldAfter;
 }
 
 /**

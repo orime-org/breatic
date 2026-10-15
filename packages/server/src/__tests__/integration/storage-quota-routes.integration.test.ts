@@ -219,7 +219,7 @@ describe("the two write paths behind the storage gate", () => {
 
     const res = await app.request("/api/v1/canvas/tasks", {
       method: "POST",
-      headers: { Cookie: cookie, "Content-Type": "application/json" },
+      headers: { Cookie: cookie, "Content-Type": "application/json", "Idempotency-Key": crypto.randomUUID() },
       body: JSON.stringify({
         task_type: "image",
         params: { prompt: "a cat" },
@@ -245,7 +245,7 @@ describe("the two write paths behind the storage gate", () => {
 
     const res = await app.request("/api/v1/canvas/tasks", {
       method: "POST",
-      headers: { Cookie: cookie, "Content-Type": "application/json" },
+      headers: { Cookie: cookie, "Content-Type": "application/json", "Idempotency-Key": crypto.randomUUID() },
       body: JSON.stringify({
         task_type: "image",
         params: { prompt: "a cat" },
@@ -258,5 +258,35 @@ describe("the two write paths behind the storage gate", () => {
     });
 
     expect(res.status).toBe(201);
+  });
+
+  // inner#1490: the browser re-sends an unanswered press with the same key.
+  it("starts one generation for a press sent twice", async () => {
+    const { cookie, projectId } = await fullAccount(1024);
+    const press = {
+      method: "POST",
+      headers: { Cookie: cookie, "Content-Type": "application/json", "Idempotency-Key": crypto.randomUUID() },
+      body: JSON.stringify({
+        task_type: "image",
+        params: { prompt: "a cat" },
+        model: "test-model",
+        source: "task",
+        project_id: projectId,
+        space_id: crypto.randomUUID(),
+        mode: "append",
+      }),
+    };
+
+    const first = await app.request("/api/v1/canvas/tasks", press);
+    const again = await app.request("/api/v1/canvas/tasks", press);
+
+    expect(first.status).toBe(201);
+    expect(again.status).toBe(201);
+    expect(again.headers.get("Idempotent-Replayed")).toBe("true");
+    expect(await again.json()).toEqual(await first.json());
+    const rows = await sql<{ n: number }[]>`
+      SELECT count(*)::int AS n FROM tasks WHERE project_id = ${projectId}
+    `;
+    expect(rows[0]!.n).toBe(1);
   });
 });

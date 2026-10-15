@@ -173,6 +173,7 @@ function lot(over: Partial<CreditLotView> = {}): CreditLotView {
     lifecycle: 'active' as CreditLotView['lifecycle'],
     refundAttempts: 0,
     everSpent: false,
+    everRestored: false,
     createdAt: '2026-08-21T10:00:00.000Z',
     ...over,
   };

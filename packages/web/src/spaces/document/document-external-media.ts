@@ -20,6 +20,9 @@
  * storage becomes pending, and its upload sorts ours from outside once the
  * prefix is in.
  *
+ * Blocks an Agent proposal writes keep only media of ours (inner#1509),
+ * through {@link ownMediaOnly}.
+ *
  * `transformPasted` sees every paste and every drop; a row moved or copied
  * within the body is already in the shared document and is passed over. The
  * slice it returns is what is synced, so an outside address never reaches
@@ -43,6 +46,7 @@ import { Fragment, Slice, type Node as PMNode } from '@tiptap/pm/model';
 import { Plugin, type EditorState, type Transaction } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 
+import { assetsApi } from '@web/data/api/assets';
 import { addressLanding } from '@web/spaces/document/document-media-address';
 import {
   inTableCell,
@@ -60,6 +64,60 @@ import {
 } from '@web/spaces/document/document-paste-html';
 import type { UploadSource } from '@web/spaces/document/document-upload-controller';
 import { markOwnUndoStep } from '@web/spaces/document/document-undo-step';
+
+/**
+ * What every address of ours starts with, or null while it is not known.
+ * @returns The prefix.
+ */
+export function ourMediaPrefix(): string | null {
+  return assetsApi.cachedUploadConfig()?.assetUrlPrefix ?? null;
+}
+
+/**
+ * What every address of ours starts with, waiting for it when this session
+ * has not fetched it yet. Readers that can wait use this one; a paste cannot,
+ * and reads {@link ourMediaPrefix}.
+ * @returns The prefix, or null when it could not be fetched.
+ */
+export async function ourMediaPrefixReady(): Promise<string | null> {
+  return assetsApi.fetchUploadConfig().then(
+    (config) => config.assetUrlPrefix,
+    () => null,
+  );
+}
+
+/** A block about to be written, as BlockNote's parser hands it back. */
+export interface WrittenBlock {
+  type?: string;
+  props?: Record<string, unknown>;
+  children?: WrittenBlock[];
+}
+
+/**
+ * Blocks with every medium that is not ours taken out, and how many were:
+ * the rule Agent proposals follow (inner#1509). The rows nested under a
+ * medium taken out stay, in its place.
+ * @param blocks - The blocks.
+ * @param prefix - Our prefix, or null.
+ * @returns The blocks kept and the count.
+ */
+export function ownMediaOnly(blocks: readonly WrittenBlock[], prefix: string | null): { blocks: WrittenBlock[]; count: number } {
+  let count = 0;
+  const kept: WrittenBlock[] = [];
+  for (const block of blocks) {
+    const inner = ownMediaOnly(block.children ?? [], prefix);
+    count += inner.count;
+    const url = block.props?.['url'];
+    const ours = typeof url === 'string' && addressLanding(url, prefix, false) === 'ours';
+    if (block.type !== undefined && isMediaBlockType(block.type) && !ours) {
+      count += 1;
+      kept.push(...inner.blocks);
+      continue;
+    }
+    kept.push(block.children === undefined ? block : { ...block, children: inner.blocks });
+  }
+  return { blocks: kept, count };
+}
 
 /** What the body needs to judge pasted media. */
 export interface PastedMediaOptions {
