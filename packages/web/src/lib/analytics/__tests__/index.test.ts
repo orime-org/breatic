@@ -194,15 +194,37 @@ describe('what the banner asks about the account', () => {
     const analytics = await load();
     analytics.identifyUser({ id: 'u2' } as never);
     await vi.waitFor(() => expect(runtime.host!.account()).toEqual(OPEN));
-    expect(await runtime.host!.putAdsSharing(false)).toBe(true);
+    expect(await runtime.host!.putAdsSharing(false)).toBe('took');
     expect(api.put).toHaveBeenCalledWith('/users/me/ads-sharing', { allowed: false });
     expect(runtime.host!.account()).toEqual({ optedOut: true, source: 'settings' });
     await vi.waitFor(() => expect(lastAds()).toMatchObject({ allowed: false, status: 'account' }));
     api.put.mockRejectedValueOnce(new Error('offline'));
-    expect(await runtime.host!.putAdsSharing(true)).toBe(false);
+    expect(await runtime.host!.putAdsSharing(true)).toBe('failed');
     api.put.mockResolvedValueOnce({ optedOut: 'no' });
-    expect(await runtime.host!.putAdsSharing(true)).toBe(false);
+    expect(await runtime.host!.putAdsSharing(true)).toBe('failed');
     expect(runtime.host!.account()).toEqual({ optedOut: true, source: 'settings' });
+  });
+
+  it('forgets the account when the server answers that the session is gone', async () => {
+    const analytics = await load();
+    analytics.identifyUser({ id: 'u4' } as never);
+    await vi.waitFor(() => expect(runtime.host!.account()).toEqual(OPEN));
+    // The class the freshly loaded module sees.
+    const { ApiException } = await import('@web/data/api/types');
+    api.put.mockRejectedValueOnce(new ApiException({ status: 401, message: 'unauthorized', fromServer: true }));
+    expect(await runtime.host!.putAdsSharing(false)).toBe('signedOut');
+    expect(runtime.host!.account()).toBe('signedOut');
+  });
+
+  it('knows the session once the app has signed someone in or found nobody', async () => {
+    const analytics = await load();
+    let known = false;
+    void runtime.host!.sessionKnown().then(() => (known = true));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(known).toBe(false);
+    analytics.resetUser();
+    await vi.waitFor(() => expect(known).toBe(true));
+    await runtime.host!.sessionKnown();
   });
 
   it('asks the account again on request, and answers false while nobody is signed in', async () => {

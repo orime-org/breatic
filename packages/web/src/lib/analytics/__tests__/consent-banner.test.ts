@@ -65,6 +65,7 @@ const TEXT = {
     status: { gpc: 'status-gpc', account: 'status-account', browser: 'status-browser' },
     confirm: { body: 'confirm-body', yes: 'confirm-yes', no: 'confirm-no' },
     error: 'save-error',
+    accountError: 'account-error',
     necessary: { title: 't', description: 'd' },
     analytics: { title: 't', description: 'd' },
     ads: { title: 't', description: 'd' },
@@ -99,9 +100,10 @@ function hostOf(account: AccountAdsView = 'signedOut') {
   const host = {
     view: account,
     account: () => host.view,
+    sessionKnown: vi.fn(async () => undefined),
     accountSettled: vi.fn(async () => undefined),
     refreshAccount: vi.fn(async () => false),
-    putAdsSharing: vi.fn(async () => true),
+    putAdsSharing: vi.fn(async (): Promise<'took' | 'signedOut' | 'failed'> => 'took'),
   };
   return host;
 }
@@ -387,7 +389,7 @@ describe('a signed-in press that writes ads off', () => {
     const order: string[] = [];
     host.putAdsSharing.mockImplementation(async () => {
       order.push('put');
-      return true;
+      return 'took';
     });
     library.setCookieData.mockImplementationOnce(({ value }: { value: unknown }) => {
       order.push('cookie');
@@ -401,35 +403,73 @@ describe('a signed-in press that writes ads off', () => {
     expect(order).toEqual(['put', 'cookie']);
   });
 
-  it('writes nothing, keeps the window open and says so when the account cannot be reached, then saves on a retry', async () => {
+  it('keeps a refusal in this browser when the account cannot be reached, says so, and closes the account switch on a retry', async () => {
     library.consent = true;
     library.cookie = cookieOf(['necessary', 'analytics', 'ads']);
     const host = hostOf({ optedOut: false, source: null });
-    host.putAdsSharing.mockResolvedValueOnce(false);
+    host.putAdsSharing.mockResolvedValueOnce('failed');
     const banner = await startBanner('US', { host });
     drawWindows();
     banner.setAdsView(view({ allowed: true, adsOn: true }));
     document.querySelector<HTMLInputElement>('.pm input[value="analytics"]')!.checked = true;
-    adsToggle()!.click();
-    await press('.pm [data-role="save"]');
-    expect(library.setCookieData).not.toHaveBeenCalled();
-    expect(library.hidePreferences).not.toHaveBeenCalled();
-    expect(document.querySelector('.pm .breatic-consent-error')?.textContent).toBe('save-error');
+    setAdsSwitch(false);
     await press('.pm [data-role="save"]');
     expect(written().ads).toMatchObject({ source: 'settings' });
     expect(library.acceptCategory).toHaveBeenLastCalledWith(['analytics'], ['ads']);
+    expect(library.hidePreferences).not.toHaveBeenCalled();
+    expect(document.querySelector('.pm .breatic-consent-error')?.textContent).toBe('account-error');
+    await press('.pm [data-role="necessary"]');
+    expect(host.putAdsSharing).toHaveBeenLastCalledWith(false);
+    expect(library.hidePreferences).toHaveBeenCalled();
     expect(document.querySelector('.breatic-consent-error')).toBeNull();
   });
 
-  it('shows the error under the banner text when the press came from the banner', async () => {
+  it('keeps a banner refusal in this browser when the account cannot be reached, and says so under the banner text', async () => {
     const host = hostOf({ optedOut: false, source: null });
-    host.putAdsSharing.mockResolvedValue(false);
+    host.putAdsSharing.mockResolvedValue('failed');
     const banner = await startBanner('DE', { host });
     banner.followPage('/login');
     drawWindows();
     await press('.cm [data-role="necessary"]');
-    expect(document.querySelector('.cm__desc .breatic-consent-error')?.textContent).toBe('save-error');
+    expect(written().ads).toMatchObject({ source: 'banner' });
+    expect(library.acceptCategory).toHaveBeenLastCalledWith([], ['analytics', 'ads']);
+    expect(document.querySelector('.cm__desc .breatic-consent-error')?.textContent).toBe('account-error');
     expect(bannerShown()).toBe(true);
+  });
+
+  it('counts the refusal for this browser alone when the server says nobody is signed in', async () => {
+    const host = hostOf({ optedOut: false, source: null });
+    host.putAdsSharing.mockImplementation(async () => {
+      host.view = 'signedOut';
+      return 'signedOut';
+    });
+    const banner = await startBanner('DE', { host });
+    banner.followPage('/login');
+    drawWindows();
+    await press('.cm [data-role="necessary"]');
+    expect(host.putAdsSharing).toHaveBeenCalledTimes(1);
+    expect(written().ads).toMatchObject({ source: 'banner' });
+    expect(library.acceptCategory).toHaveBeenLastCalledWith([], ['analytics', 'ads']);
+    expect(bannerShown()).toBe(false);
+    expect(document.querySelector('.breatic-consent-error')).toBeNull();
+  });
+
+  it('waits for the session before deciding whether the account is asked', async () => {
+    const host = hostOf('unknown');
+    let known: () => void = () => undefined;
+    host.sessionKnown.mockReturnValue(new Promise<undefined>((resolve) => (known = () => resolve(undefined))));
+    const banner = await startBanner('DE', { host });
+    banner.followPage('/login');
+    drawWindows();
+    await press('.cm [data-role="necessary"]');
+    expect(host.putAdsSharing).not.toHaveBeenCalled();
+    expect(library.setCookieData).not.toHaveBeenCalled();
+    host.view = 'signedOut';
+    known();
+    await press('#nothing');
+    expect(host.putAdsSharing).not.toHaveBeenCalled();
+    expect(written().ads).toMatchObject({ source: 'banner' });
+    expect(library.acceptCategory).toHaveBeenLastCalledWith([], ['analytics', 'ads']);
   });
 });
 
@@ -653,14 +693,14 @@ describe('robustness', () => {
 
   it('answers one press at a time', async () => {
     const host = hostOf({ optedOut: false, source: null });
-    let release = (_ok: boolean): void => undefined;
-    host.putAdsSharing.mockImplementationOnce(() => new Promise<boolean>((resolve) => (release = resolve)));
+    let release = (_sent: 'took' | 'signedOut' | 'failed'): void => undefined;
+    host.putAdsSharing.mockImplementationOnce(() => new Promise((resolve) => (release = resolve)));
     const banner = await startBanner('DE', { host });
     banner.followPage('/login');
     drawWindows();
     await press('.cm [data-role="necessary"]');
     await press('.cm [data-role="all"]');
-    release(true);
+    release('took');
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(host.putAdsSharing).toHaveBeenCalledTimes(1);
     expect(library.setCookieData).toHaveBeenCalledTimes(1);

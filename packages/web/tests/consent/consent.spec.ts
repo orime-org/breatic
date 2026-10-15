@@ -177,22 +177,31 @@ test.describe('signed in', () => {
     await expect.poll(async () => (await consentCookie(context))?.categories).toContain('ads');
   });
 
-  test('a refusal that cannot reach the account keeps the window open and the cookie as it was', async ({ page, context, baseURL }) => {
+  test('a refusal that cannot reach the account still holds in this browser, keeps the window open saying so, and reaches the account on a retry', async ({ page, context, baseURL }) => {
+    let accountUp = false;
+    const puts: unknown[] = [];
     await context.addCookies([{ name: 'breatic_consent', value: storedConsent(), url: baseURL }]);
     await prepare(context, {
       country: 'US',
-      account: (route) =>
-        route.request().method() === 'PUT'
-          ? route.fulfill({ status: 500, contentType: 'application/json', body: '{}' })
-          : route.fulfill({ status: 200, contentType: 'application/json', body: sharing(false) }),
+      account: (route) => {
+        if (route.request().method() !== 'PUT') return route.fulfill({ status: 200, contentType: 'application/json', body: sharing(false) });
+        puts.push(route.request().postDataJSON());
+        return accountUp
+          ? route.fulfill({ status: 200, contentType: 'application/json', body: sharing(true) })
+          : route.fulfill({ status: 500, contentType: 'application/json', body: '{}' });
+      },
     });
     await page.goto('/studio');
     await openCookieSettings(page);
     await expect(adsSwitch(page)).toBeChecked();
     await settings(page).locator('[data-role="necessary"]').click();
-    await expect(settings(page).locator('.breatic-consent-error')).toBeVisible();
+    await expect(settings(page).locator('.breatic-consent-error')).toHaveText(/Saved in this browser/);
     await expect(settings(page)).toBeVisible();
-    expect((await consentCookie(context))?.categories).toContain('ads');
+    await expect.poll(async () => (await consentCookie(context))?.categories).toEqual(['necessary']);
+    accountUp = true;
+    await settings(page).locator('[data-role="necessary"]').click();
+    await expect(settings(page)).toBeHidden();
+    expect(puts).toEqual([{ allowed: false }, { allowed: false }]);
   });
 
   test('a GPC browser shows the switch off and locked, and a save sends nothing to the account', async ({ page, context, baseURL }) => {

@@ -2372,6 +2372,7 @@
         "no": "Cancel"
       },
       "error": "Couldn't save your choice. Please try again.",
+      "accountError": "Saved in this browser, but your account couldn't be updated. Please try again.",
       "necessary": {
         "title": "Necessary",
         "description": "Sign-in, theme and language, and this choice itself. Always on."

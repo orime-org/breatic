@@ -56,6 +56,7 @@ export interface ConsentText {
     status: { gpc: string; account: string; browser: string };
     confirm: { body: string; yes: string; no: string };
     error: string;
+    accountError: string;
     necessary: { title: string; description: string };
     analytics: { title: string; description: string };
     ads: { title: string; description: string };
@@ -66,6 +67,8 @@ export interface ConsentText {
 export interface ConsentHost {
   /** The account as ads decisions see it. */
   account(): AccountAdsView;
+  /** Settles once the app knows whether anyone is signed in. */
+  sessionKnown(): Promise<void>;
   /** Settles once the account's switch is known or cannot be: signed out, answered or failed. */
   accountSettled(): Promise<void>;
   /**
@@ -76,9 +79,9 @@ export interface ConsentHost {
   /**
    * Open or close the account's ad switch.
    * @param allowed - Whether ads are turned on.
-   * @returns True once the server took it.
+   * @returns Whether the server took it, answered that nobody is signed in, or could not be reached.
    */
-  putAdsSharing(allowed: boolean): Promise<boolean>;
+  putAdsSharing(allowed: boolean): Promise<'took' | 'signedOut' | 'failed'>;
 }
 
 /** How long a signed-in visitor's banner waits for the account; the same second as the region lookup. */
@@ -97,7 +100,7 @@ let touchedAds: boolean | null = null;
 // A press waiting for the visitor to confirm turning ads on, with the switches it was made with.
 let confirming: { press: 'all' | 'save'; toggles: { analytics: boolean; ads: boolean | null } | null } | null = null;
 // The window whose last press could not be saved, which shows the error line.
-let failedIn: 'banner' | 'settings' | null = null;
+let failedIn: { window: 'banner' | 'settings'; line: 'error' | 'accountError' } | null = null;
 // A press is being carried out; another one waits for it.
 let busy = false;
 
@@ -176,10 +179,13 @@ function readToggles(): { analytics: boolean; ads: boolean | null } {
 
 /**
  * Answer a press in the banner or the settings window (design §4.4.4): wait
- * for the account when its switch decides the press, ask for confirmation
- * before ads go back on, send the account's switch first when signed in, then
- * write the cookie and close the windows. Anything that cannot be sent keeps
- * the window open with an error line and writes nothing.
+ * until the app knows whether anyone is signed in, and for the account when
+ * its switch decides the press; ask for confirmation before ads go back on;
+ * send the account's switch first when signed in, then write the cookie and
+ * close the windows. A refusal the account cannot take still holds in this
+ * browser, and the window stays open saying so; turning ads on that cannot be
+ * sent writes nothing. A server answering that nobody is signed in makes the
+ * press count for this browser alone.
  * @param press - The button.
  * @param window - Where it was pressed.
  * @param toggles - The settings switches, for a save.
@@ -195,6 +201,7 @@ async function answerPress(
   busy = true;
   failedIn = null;
   try {
+    await host.sessionKnown();
     /**
      * What the press does, given the account as it stands now.
      * @returns The outcome.
@@ -208,23 +215,41 @@ async function answerPress(
     let outcome = decide();
     if (outcome.kind === 'wait') outcome = (await host.refreshAccount()) ? decide() : outcome;
     if (outcome.kind === 'wait') {
-      failedIn = window;
+      failedIn = { window, line: 'error' };
       return;
     }
     if (outcome.kind === 'confirm') {
       confirming = { press: press === 'necessary' ? 'save' : press, toggles };
       return;
     }
-    if (outcome.put !== null && !(await host.putAdsSharing(outcome.put))) {
-      failedIn = window;
-      return;
+    let accountFailed = false;
+    if (outcome.put !== null) {
+      const sent = await host.putAdsSharing(outcome.put);
+      if (sent === 'signedOut') {
+        // Nobody is signed in after all: the press counts for this browser alone.
+        outcome = decide();
+        if (outcome.kind !== 'write' || outcome.put !== null) {
+          failedIn = { window, line: 'error' };
+          return;
+        }
+      } else if (sent === 'failed') {
+        // Turning ads on waits for the account; a refusal holds in this browser all the same.
+        if (outcome.put) {
+          failedIn = { window, line: 'error' };
+          return;
+        }
+        accountFailed = true;
+      }
     }
     confirming = null;
     writeConsent(outcome.writes, lastSeen);
-    CookieConsent.hidePreferences();
     undecided = false;
     lastSeen = readBrowserChoices();
-    placeBanner();
+    if (accountFailed) failedIn = { window, line: 'accountError' };
+    else {
+      CookieConsent.hidePreferences();
+      placeBanner();
+    }
     onChoice(lastSeen);
   } finally {
     busy = false;
@@ -287,12 +312,12 @@ function renderConsentWindows(): void {
   const bannerLine = adsView.status === 'gpc' ? text.banner.gpc : adsView.optedOut ? text.banner.optedOut : null;
   const bannerDesc = document.querySelector('#cc-main .cm__desc');
   showLine(bannerDesc, 'breatic-consent-notice', bannerLine);
-  showLine(bannerDesc, 'breatic-consent-error', failedIn === 'banner' ? text.settings.error : null);
+  showLine(bannerDesc, 'breatic-consent-error', failedIn?.window === 'banner' ? text.settings[failedIn.line] : null);
   const section = toggle?.closest('.pm__section--toggle') ?? null;
   // Inside the ads card, under its description.
   const body = section?.querySelector('.pm__section-desc-wrapper') ?? section;
   showLine(body, 'breatic-consent-notice', adsView.status === null ? null : text.settings.status[adsView.status]);
-  showLine(body, 'breatic-consent-error', failedIn === 'settings' ? text.settings.error : null);
+  showLine(body, 'breatic-consent-error', failedIn?.window === 'settings' ? text.settings[failedIn.line] : null);
   showConfirm(text);
 }
 
@@ -371,7 +396,7 @@ function presetWindow(modalName: string): void {
   if (modalName === 'preferencesModal') {
     touchedAds = null;
     confirming = null;
-    if (failedIn === 'settings') failedIn = null;
+    if (failedIn?.window === 'settings') failedIn = null;
   }
   renderConsentWindows();
 }

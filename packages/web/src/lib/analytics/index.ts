@@ -42,6 +42,8 @@ let sharing: AdsSharing | null = null;
 let syncSeq = 0;
 // Callers waiting for the account's switch to be known or to fail.
 const settledWaiters: Array<() => void> = [];
+// Callers waiting for the app to know whether anyone is signed in.
+const sessionWaiters: Array<() => void> = [];
 
 /**
  * The banner's text in the current interface language.
@@ -74,6 +76,7 @@ function consentText(): ConsentText {
         no: t('consent.settings.confirm.no'),
       },
       error: t('consent.settings.error'),
+      accountError: t('consent.settings.accountError'),
       necessary: { title: t('consent.settings.necessary.title'), description: t('consent.settings.necessary.description') },
       analytics: { title: t('consent.settings.analytics.title'), description: t('consent.settings.analytics.description') },
       ads: { title: t('consent.settings.ads.title'), description: t('consent.settings.ads.description') },
@@ -193,27 +196,39 @@ async function syncAccount(module: Runtime): Promise<boolean> {
 
 /**
  * Open or close the account's ad switch (design §4.4.4), then decide ads again.
+ * A 401 means the session is gone: the account is forgotten here as on sign-out.
  * @param allowed - Whether ads are turned on.
- * @returns True once the server took it.
+ * @returns Whether the server took it, answered that nobody is signed in, or could not be reached.
  */
-async function putAdsSharing(allowed: boolean): Promise<boolean> {
+async function putAdsSharing(allowed: boolean): Promise<'took' | 'signedOut' | 'failed'> {
   const seq = ++syncSeq;
   try {
     const answer = readAdsSharing(await apiPut<unknown>('/users/me/ads-sharing', { allowed }));
     if (answer === null) throw new Error('ads sharing answer is not the account switch');
     if (seq === syncSeq) sharing = answer;
-    return true;
+    return 'took';
   } catch (err) {
+    if (err instanceof ApiException && err.status === 401) {
+      resetUser();
+      return 'signedOut';
+    }
     captureException(err, { tags: { area: 'product_analytics' } });
-    return false;
+    return 'failed';
   } finally {
     withRuntime(decideAds);
   }
 }
 
+/** Release whoever waits for the app to know whether anyone is signed in. */
+function settleSession(): void {
+  for (const resolve of sessionWaiters.splice(0)) resolve();
+}
+
 /** What the banner asks about the account. */
 const consentHost: ConsentHost = {
   account: accountView,
+  sessionKnown: () =>
+    signedIn === undefined ? new Promise((resolve) => sessionWaiters.push(resolve)) : Promise.resolve(),
   accountSettled: () =>
     signedIn === null || sharing !== null ? Promise.resolve() : new Promise((resolve) => settledWaiters.push(resolve)),
   refreshAccount: async () => (typeof signedIn === 'string' && runtime !== null ? syncAccount(await runtime) : false),
@@ -252,6 +267,7 @@ export function reportConversion(
 export function identifyUser(user: AnalyticsUser): void {
   const changed = signedIn !== user.id;
   signedIn = user.id;
+  settleSession();
   if (changed) {
     syncSeq += 1;
     sharing = null;
@@ -267,6 +283,7 @@ export function resetUser(): void {
   signedIn = null;
   syncSeq += 1;
   sharing = null;
+  settleSession();
   settleAccount();
   withRuntime((module) => {
     module.reset();
