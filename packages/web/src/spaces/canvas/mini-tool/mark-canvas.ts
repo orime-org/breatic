@@ -135,11 +135,13 @@ export class MarkCanvasController {
   }
 
   /**
-   * Resize the canvas to the picture's drawn size and redraw.
+   * Resize the canvas to the picture's drawn size and redraw. A text being
+   * edited is written back first, in the box it was drawn in.
    * @param box - The size.
    */
   setBox(box: DrawBox): void {
     if (box.width === this.box.width && box.height === this.box.height) return;
+    if (this.edit !== null) this.exitEditing();
     this.box = box;
     this.fitToScreen();
     this.shown = '';
@@ -200,10 +202,9 @@ export class MarkCanvasController {
   }
 
   /**
-   * End a text edit the canvas is about to lose, before it is rebuilt. The
+   * End a text edit the canvas is about to lose, before it is rebuilt: the
    * draft having left the edit (a new source) or changed under it (an undo, a
-   * clear) drops it unwritten; a rebuild of the canvas alone (a new size)
-   * writes it back by the usual rules.
+   * clear) drops it unwritten. A new size writes it back first, in `setBox`.
    * @param draft - The draft.
    */
   private settleEdit(draft: MarkDraft): void {
@@ -221,9 +222,7 @@ export class MarkCanvasController {
       // A new text is on the canvas only; the rebuild takes it off.
       this.shown = '';
       if (draft.editingText !== null) this.session().setMarkEditingText(null);
-      return;
     }
-    if (json !== this.shown) this.exitEditing();
   }
 
   /**
@@ -400,14 +399,8 @@ export class MarkCanvasController {
     const session = this.session();
     session.setMarkTool('select');
     session.selectMark(id);
+    // The sync selects it, as the draft now says.
     this.sync();
-    const made = this.canvas.getObjects().find((shape) => idOf(shape) === id);
-    if (made !== undefined) {
-      this.suppressed = true;
-      this.canvas.setActiveObject(made);
-      this.suppressed = false;
-    }
-    this.canvas.requestRenderAll();
   }
 
   /**

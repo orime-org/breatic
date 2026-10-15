@@ -140,22 +140,11 @@ class MarkText extends IText {
   constructor(box: DrawBox, text: string, options: ConstructorParameters<typeof IText>[1]) {
     super(text, options);
     this.box = box;
-  }
-
-  /**
-   * Never start dragging the selected words.
-   * @returns False.
-   */
-  override shouldStartDragging(): boolean {
-    return false;
-  }
-
-  /**
-   * Never drag the selected words.
-   * @returns False.
-   */
-  override onDragStart(): boolean {
-    return false;
+    // A press over the selected words is a press, so a drag selects a range:
+    // the override Fabric names for "disable dragging and default to
+    // mousedown logic" (`DraggableTextDelegate.ts` `start`). Without it no
+    // drag begins, so `shouldStartDragging` and `onDragStart` answer false too.
+    this.draggableTextDelegate.start = (): boolean => false;
   }
 
   /**

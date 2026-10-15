@@ -6,7 +6,7 @@
  * through a real Fabric canvas by firing the events Fabric itself fires.
  */
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { IText, Path, Point } from 'fabric';
 
 import { MarkCanvasController } from '@web/spaces/canvas/mini-tool/mark-canvas';
@@ -167,6 +167,20 @@ describe('MarkCanvasController', () => {
     expect(text.canDrop(new Event('drop') as DragEvent)).toBe(false);
   });
 
+  // §6.6: a drag in a text being edited selects a range. Fabric's drag
+  // delegate takes a press over the selected words and the press's own
+  // handling stops there (`ITextClickBehavior.ts:108-110`); its `start` is the
+  // place Fabric names to turn that off and keep the press
+  // (`DraggableTextDelegate.ts:62`).
+  it('leaves a press over the selected words to the text, so a drag selects a range', () => {
+    store.getState().commitMark([TEXT]);
+    controller.sync();
+    const text = controller.canvas.getObjects()[0] as IText;
+    const delegate = (text as unknown as { draggableTextDelegate: { start: (e: MouseEvent) => boolean; isPointerOverSelection: (e: MouseEvent) => boolean } }).draggableTextDelegate;
+    vi.spyOn(delegate, 'isPointerOverSelection').mockReturnValue(true);
+    expect(delegate.start(new MouseEvent('mousedown'))).toBe(false);
+  });
+
   it('draws what the draft holds', () => {
     store.getState().commitMark([RECT, TEXT]);
     controller.sync();
@@ -246,6 +260,21 @@ describe('MarkCanvasController', () => {
     controller.channel.exitEditing();
     expect(mark().objects).toHaveLength(0);
     expect(mark().undo).toHaveLength(2);
+  });
+
+  // A text is written back in the box it was drawn in; the new box only
+  // draws what the draft then holds.
+  it('writes a text being edited back where it was when the picture is drawn at a new size', () => {
+    store.getState().commitMark([TEXT]);
+    controller.sync();
+    const text = controller.canvas.getObjects()[0] as IText;
+    controller.canvas.setActiveObject(text);
+    text.enterEditing();
+    text.set({ text: 'eyes' });
+    controller.canvas.fire('text:changed', { target: text });
+    controller.setBox({ width: BOX.width * 2, height: BOX.height * 2 });
+    expect(mark().objects[0]).toMatchObject({ text: 'eyes', x: TEXT.x, y: TEXT.y });
+    expect(mark().editingText).toBeNull();
   });
 
   it('takes no step for a text entered and left unchanged', () => {

@@ -74,8 +74,8 @@ function MarkSurface({ geometry }: { geometry: MediaGeometry }): React.JSX.Eleme
         made.sync();
         el.dataset.objects = String(made.canvas.getObjects().length);
       };
-      // A store write made from inside a Fabric event is drawn after that
-      // event is through, so the canvas never rebuilds under its own handler.
+      // A store write is drawn once the code that made it has returned; the
+      // controller's own pointer handlers draw what they commit at once.
       let queued = false;
       unsubscribe = store.subscribe(() => {
         if (queued) return;
