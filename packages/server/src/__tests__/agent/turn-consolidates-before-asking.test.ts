@@ -267,10 +267,11 @@ async function lastAssembledLength(): Promise<number> {
     await import("@server/agent/model-messages.js")
   ).toModelMessages(contexts.lastHistory);
   const { readerClockNote } = await import("@server/agent/reader-clock.js");
+  const { userMessageForModel } = await import("@server/agent/user-turn.js");
   return measurePayload({
     instructions: resolved.instructions,
     tools: resolved.tools,
-    messages: [...sent, { role: "user", content: `${readerClockNote(new Date(), undefined)}\n\nhi` }],
+    messages: [...sent, { role: "user", content: userMessageForModel(readerClockNote(new Date(), undefined), { chips: [], message: "hi" }) }],
   });
 }
 

@@ -118,3 +118,29 @@ export function userTurnForModel(turn: UserTurn): string {
   const words = writeReferences(chips, message, (chip, n) => `[Attachment ${String(n)}: ${attachmentTitle(chip)}]`);
   return `${sections.join("\n\n")}\n\n## User message\n\n${words}`;
 }
+
+/**
+ * The reminder each user message closes with.
+ *
+ * The rule is in the system prompt. From there alone, DeepSeek wrote the
+ * proposal prompts in the reader's language in 14 of 18 runs; with this line
+ * under the reader's own words (before the exceptions clause was added), Claude
+ * Opus 5.5 did in 27 of 27 (inner#1447). Written into the message, it is
+ * stored and replayed with it, so it never changes a prefix the provider has
+ * cached.
+ */
+export const READER_LANGUAGE_REMINDER =
+  "(Reply and write every text the user will read or edit in the language this message is written in, " +
+  "unless the user has asked for a specific language or the work itself sets one.)";
+
+/**
+ * One user message exactly as the turn sends it: the reader's clock, the
+ * message itself, then the reminder of the reader's language.
+ * @param clockNote - The line that says what time it is for the reader.
+ * @param turn - What the message is made of.
+ * @returns The message text.
+ * @throws {never} Never.
+ */
+export function userMessageForModel(clockNote: string, turn: UserTurn): string {
+  return `${clockNote}\n\n${userTurnForModel(turn)}\n\n${READER_LANGUAGE_REMINDER}`;
+}

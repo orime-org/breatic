@@ -11,7 +11,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type * as CoreModule from "@breatic/core";
-import { userTurnForModel } from "@server/agent/user-turn.js";
+import { READER_LANGUAGE_REMINDER, userTurnForModel } from "@server/agent/user-turn.js";
 import type { ChatAttachedChip, MessageData } from "@breatic/shared";
 import { saying } from "../helpers/model-double.js";
 import type { ModelStreamPart } from "../helpers/model-double.js";
@@ -134,21 +134,21 @@ describe("a turn tells the model the reader's local time", () => {
   it("opens the user message with the note, then a blank line, then the words", async () => {
     await runOneTurn("what time is it?", [], "Asia/Shanghai");
 
-    expect(userTextsSent().at(-1)).toBe(`${SHANGHAI_NOTE}\n\nwhat time is it?`);
+    expect(userTextsSent().at(-1)).toBe(`${SHANGHAI_NOTE}\n\nwhat time is it?\n\n${READER_LANGUAGE_REMINDER}`);
   });
 
   it("puts the note ahead of the attached content when something is attached", async () => {
     await runOneTurn("what is in this?", [image], "Asia/Shanghai");
 
     expect(userTextsSent().at(-1)).toBe(
-      `${SHANGHAI_NOTE}\n\n${userTurnForModel({ chips: [image], message: "what is in this?" })}`,
+      `${SHANGHAI_NOTE}\n\n${userTurnForModel({ chips: [image], message: "what is in this?" })}\n\n${READER_LANGUAGE_REMINDER}`,
     );
   });
 
   it("gives UTC and says the zone is unknown when none came with the message", async () => {
     await runOneTurn("what time is it?", [], undefined);
 
-    expect(userTextsSent().at(-1)).toBe(`${UNKNOWN_ZONE_NOTE}\n\nwhat time is it?`);
+    expect(userTextsSent().at(-1)).toBe(`${UNKNOWN_ZONE_NOTE}\n\nwhat time is it?\n\n${READER_LANGUAGE_REMINDER}`);
   });
 
   it("stores the words without the note", async () => {
@@ -168,7 +168,7 @@ describe("a turn tells the model the reader's local time", () => {
 
     await runOneTurn("and now?", [], "Asia/Shanghai");
 
-    expect(userTextsSent()).toEqual(["earlier question", `${SHANGHAI_NOTE}\n\nand now?`]);
+    expect(userTextsSent()).toEqual(["earlier question", `${SHANGHAI_NOTE}\n\nand now?\n\n${READER_LANGUAGE_REMINDER}`]);
   });
 
   it("reads the clock again on every turn", async () => {
@@ -177,7 +177,7 @@ describe("a turn tells the model the reader's local time", () => {
     await runOneTurn("second", [], "Asia/Shanghai");
 
     expect(userTextsSent().at(-1)).toBe(
-      "[The reader's local time when they sent this message: Friday, 2026-10-02 09:00 (Asia/Shanghai, GMT+08:00).]\n\nsecond",
+      `[The reader's local time when they sent this message: Friday, 2026-10-02 09:00 (Asia/Shanghai, GMT+08:00).]\n\nsecond\n\n${READER_LANGUAGE_REMINDER}`,
     );
   });
 

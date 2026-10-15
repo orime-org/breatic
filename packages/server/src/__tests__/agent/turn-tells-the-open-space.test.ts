@@ -8,7 +8,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type * as CoreModule from "@breatic/core";
-import { userTurnForModel } from "@server/agent/user-turn.js";
+import { READER_LANGUAGE_REMINDER, userTurnForModel } from "@server/agent/user-turn.js";
 import type { ChatCurrentSpace, ChatSpace, MessageData } from "@breatic/shared";
 import { saying } from "../helpers/model-double.js";
 import { readerClockNote } from "@server/agent/reader-clock.js";
@@ -127,7 +127,7 @@ describe("a turn tells the model about the reader's Spaces", () => {
         spaces,
         spaces_total: spaces.length,
         current_space: open,
-      })}`,
+      })}\n\n${READER_LANGUAGE_REMINDER}`,
     );
     expect(userTextsSent().at(-1)).toContain('## The Space the reader has open: "Storyboard" (document)');
   });

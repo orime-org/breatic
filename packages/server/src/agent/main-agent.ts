@@ -30,7 +30,7 @@ import { buildTurnContext } from "@server/agent/turn-context.js";
 import { watchModelCalls, type ModelCallWatch } from "@server/agent/model-call-watch.js";
 import type { ChatAttachedChip, ChatSpaceContext, MessagePart, ToolFailure } from "@breatic/shared";
 import { toolFailureOf, wireLineOf, wordsForTitle } from "@breatic/shared";
-import { userTurnForModel } from "@server/agent/user-turn.js";
+import { userMessageForModel } from "@server/agent/user-turn.js";
 import * as messageRepo from "@server/modules/conversation/conversation-message.repo.js";
 import { toStoredParts } from "@server/modules/conversation/message-part-mapping.js";
 import * as conversationService from "@server/modules/conversation/conversation.service.js";
@@ -145,7 +145,7 @@ export class MainAgent {
     // turn's user message: that message went out with its note last time and
     // goes out without it from here on. The reader's Spaces follow it on the
     // same terms: read fresh with each message, never stored.
-    const forModel = `${readerClockNote(new Date(), timeZone)}\n\n${userTurnForModel({ ...space, chips: attached, message: said })}`;
+    const forModel = userMessageForModel(readerClockNote(new Date(), timeZone), { ...space, chips: attached, message: said });
     return this.runStream(forModel, turnIndex, title, openDocumentOf(space), signal);
   }
 
