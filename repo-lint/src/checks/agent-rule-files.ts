@@ -46,7 +46,7 @@ const POINTER_MENTION_ALLOWED: ReadonlyMap<string, string> = new Map([
  * not read as part of it.
  */
 const REFERENCE =
-  /(\]\(\s*)?((?:\.{1,2}\/|[\w.-]+\/)*(?:AGENTS|SKILL)\.md)(#[\p{L}\p{N}_-]*)?(\s*["“「][^"”」]+["”」])?/gu;
+  /(\]\(\s*)?((?:\.{1,2}\/|[\w.-]+\/)*(?:AGENTS|SKILL)\.md)(#[\p{L}\p{N}_-]*)?(\s*["\u201C\u300C][^"\u201D\u300D]+["\u201D\u300D])?/gu;
 
 /**
  * Whether a path is a rules file.
