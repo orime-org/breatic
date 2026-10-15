@@ -18,6 +18,7 @@ import { Hono } from "hono";
 import { frontendOrigin } from "@server/utils/frontend-origin.js";
 import { validate } from "@server/middleware/validate.js";
 import { runOnce } from "@server/middleware/run-once.js";
+import { rateLimitFor } from "@server/middleware/rate-limit.js";
 import { z } from "zod";
 import { idempotencyKeyHeaderSchema, projectCreateSchema } from "@server/routes/schemas.js";
 import { requireAuth } from "@server/middleware/auth.js";
@@ -50,6 +51,7 @@ projects.use(requireAuth);
  */
 projects.post(
   "/",
+  rateLimitFor("project-create", "user"),
   validate("header", idempotencyKeyHeaderSchema),
   validate("json", projectCreateSchema),
   runOnce("project"),

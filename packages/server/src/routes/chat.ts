@@ -13,6 +13,7 @@ import type { Context } from "hono";
 import { stream } from "hono/streaming";
 import { validate } from "@server/middleware/validate.js";
 import { runOnce } from "@server/middleware/run-once.js";
+import { rateLimitFor } from "@server/middleware/rate-limit.js";
 
 import {
   idempotencyKeyHeaderSchema,
@@ -324,6 +325,7 @@ chat.get(
  */
 chat.post(
   "/conversations",
+  rateLimitFor("conversation-create", "user"),
   validate("header", idempotencyKeyHeaderSchema),
   validate("json", chatCreateConversationSchema),
   runOnce("conversation"),

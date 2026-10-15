@@ -227,6 +227,7 @@ canvas.post(
 
 canvas.post(
   "/tasks",
+  rateLimitFor("generate", "user"),
   validate("header", idempotencyKeyHeaderSchema),
   validate("json", taskCreateSchema),
   runOnce("generate"),
