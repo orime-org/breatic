@@ -97,14 +97,6 @@
   padding-left: 1.2em;
 }
 
-/* The note under the categories reads as a footnote. */
-#cc-main .pm__section-toggles + .pm__section {
-  border: none;
-  margin-top: 1em;
-  padding: 0 0.2em;
-  font-size: var(--text-sm);
-}
-
 @media screen and (max-width: 640px) {
   /* Accept and reject side by side, settings as a link, so the page shows above the banner. */
   #cc-main .cm__btns {

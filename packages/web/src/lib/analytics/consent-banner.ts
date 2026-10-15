@@ -91,7 +91,7 @@ export function followPage(pathname: string): void {
  * time, so a choice another tab or the website made is seen.
  * @returns The choices in force.
  */
-export function readBrowserChoices(): BrowserChoices {
+function readBrowserChoices(): BrowserChoices {
   return parseConsentChoices(JSON.stringify(CookieConsent.getCookie()), Date.now());
 }
 
@@ -194,7 +194,7 @@ function showLine(container: Element | null, className: string, text: string | n
  * The policy revision the library runs under and writes: the code's, or a newer one the stored choice was made under.
  * @returns The revision.
  */
-export function consentRevision(): number {
+function consentRevision(): number {
   return Math.max(CONSENT_REVISION, storedRevision());
 }
 
