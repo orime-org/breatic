@@ -10,12 +10,10 @@
 import type { WriteAccess } from '@web/data/yjs/collab-socket';
 import {
   CLAIMS_FIELD,
+  type UploadClaim,
   type UploadEntry,
   type UploadFailure,
 } from '@web/spaces/document/document-upload-controller';
-
-/** What other clients say about an upload: running it, or it failed for them. */
-export type UploadClaim = 'uploading' | 'failed';
 
 /** What a pending block shows. */
 export type PendingStatus =

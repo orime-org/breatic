@@ -139,12 +139,24 @@ interface Watched {
   /** Upload ids this body has registered with the guard. */
   readonly registered: Set<string>;
   queued: boolean;
-  /** Whether this body holds a pending block this page claims. */
-  claiming: boolean;
+  /** This page's claims on the pending blocks in this body. */
+  claims: Readonly<Record<string, UploadClaim>>;
 }
 
 /** The awareness field claims are published in. */
 export const CLAIMS_FIELD = 'uploads';
+
+/** What a client says about an upload in {@link CLAIMS_FIELD}: running it, or it failed. */
+export type UploadClaim = 'uploading' | 'failed';
+
+/**
+ * Whether a body holds a pending block this page claims.
+ * @param entry - The body.
+ * @returns True when it does.
+ */
+function claiming(entry: Watched): boolean {
+  return Object.keys(entry.claims).length > 0;
+}
 
 /**
  * The upload id of a pending media element, or null.
@@ -247,22 +259,21 @@ export function createUploadController(deps: UploadControllerDeps): UploadContro
   let stopRenewal: (() => void) | null = null;
 
   /**
-   * Renews every attached body's awareness, and scans each so claims a
-   * restored page's awareness lost are published again.
+   * Renews every attached body's awareness with its claims written in, so
+   * claims a restored page's awareness lost are published again.
    */
   const tick = (): void => {
     watched.forEach((entry) => {
       const state = entry.body.awareness?.getLocalState() ?? null;
-      if (state !== null) entry.body.awareness!.setLocalState(state);
-      queue(entry);
+      if (state !== null) entry.body.awareness!.setLocalState({ ...state, [CLAIMS_FIELD]: entry.claims });
     });
   };
 
   /** Runs the renewal while any body holds a claim, and stops it otherwise. */
   const steerRenewal = (): void => {
-    const claiming = [...watched].some((entry) => entry.claiming);
-    if (claiming && stopRenewal === null && deps.renew !== undefined) stopRenewal = deps.renew(tick);
-    if (!claiming && stopRenewal !== null) {
+    const any = [...watched].some(claiming);
+    if (any && stopRenewal === null && deps.renew !== undefined) stopRenewal = deps.renew(tick);
+    if (!any && stopRenewal !== null) {
       stopRenewal();
       stopRenewal = null;
     }
@@ -276,13 +287,13 @@ export function createUploadController(deps: UploadControllerDeps): UploadContro
    * @param present - The upload ids of the pending blocks in it.
    */
   const publish = (entry: Watched, present: ReadonlySet<string>): void => {
-    const claims: Record<string, string> = {};
+    const claims: Record<string, UploadClaim> = {};
     for (const uploadId of present) {
       const record = records.get(uploadId);
       if (record !== undefined) claims[uploadId] = record.state.phase === 'failed' ? 'failed' : 'uploading';
     }
     setClaims(entry.body, claims);
-    entry.claiming = Object.keys(claims).length > 0;
+    entry.claims = claims;
     steerRenewal();
   };
 
@@ -293,7 +304,7 @@ export function createUploadController(deps: UploadControllerDeps): UploadContro
    * @param body - The body.
    * @param claims - The claims.
    */
-  const setClaims = (body: AttachedBody, claims: Readonly<Record<string, string>>): void => {
+  const setClaims = (body: AttachedBody, claims: Readonly<Record<string, UploadClaim>>): void => {
     const state = body.awareness?.getLocalState() ?? null;
     if (state === null) return;
     if (JSON.stringify(state[CLAIMS_FIELD] ?? {}) !== JSON.stringify(claims)) {
@@ -359,7 +370,7 @@ export function createUploadController(deps: UploadControllerDeps): UploadContro
       notify();
     },
     attach(body) {
-      const entry: Watched = { body, registered: new Set(), queued: false, claiming: false };
+      const entry: Watched = { body, registered: new Set(), queued: false, claims: {} };
       const fragment = documentBodyFragment(body.doc);
       /** Queues a scan for any change in the body. */
       const onChange = (): void => {
@@ -376,7 +387,7 @@ export function createUploadController(deps: UploadControllerDeps): UploadContro
         for (const uploadId of entry.registered) deps.unregister(body.spaceId, uploadId);
         entry.registered.clear();
         setClaims(body, {});
-        entry.claiming = false;
+        entry.claims = {};
         steerRenewal();
       };
     },
