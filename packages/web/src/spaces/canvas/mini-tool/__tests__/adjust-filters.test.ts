@@ -150,10 +150,12 @@ describe('adjustPixels', () => {
       for (let y = 0; y < 8; y++) for (let x = 20; x < width; x++) data.set([200, 60, 40, 255], (y * width + x) * 4);
       const out = { data, width, height: 8 };
       adjustPixels(out, { ...defaultAdjustValue, ...value }, 7);
+      // An inside pixel, out of every kernel's reach of the edge, is what the whole subject turns into.
+      const inside = (4 * width + 32) * 4;
       for (let x = 20; x < width; x++) {
         const i = (4 * width + x) * 4;
-        const gap = Math.max(...[200, 60, 40].map((v, k) => Math.abs((out.data[i + k] ?? 0) - v)));
-        expect(gap, `x=${x}`).toBeLessThanOrEqual(4);
+        const gap = Math.max(...[0, 1, 2].map((k) => Math.abs((out.data[i + k] ?? 0) - (out.data[inside + k] ?? 0))));
+        expect(gap, `x=${x}`).toBeLessThanOrEqual(2);
         expect(out.data[i + 3]).toBe(255);
       }
       expect(out.data[(4 * width + 10) * 4 + 3]).toBe(0);

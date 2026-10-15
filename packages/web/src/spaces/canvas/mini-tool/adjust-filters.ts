@@ -7,11 +7,14 @@
  * order ffmpeg runs its stages, so a slider means the same on a picture and a
  * video.
  *
- * ffmpeg runs the video's stages on limited-range BT.601 YUV, the format it
- * turns an RGB frame into: `eq` moves Y's codes, saturation and `hue` the
- * chroma, `noise` and `vignette` every plane, `unsharp` Y alone. Each stage
- * here does the same to an RGB picture, and `adjust-ffmpeg.test.ts` holds it
- * to what ffmpeg makes of the video's own filter string.
+ * ffmpeg hands its stages 8-bit limited-range BT.601 YUV codes, each stage
+ * clipping its planes to 0..255 before the next reads them, and turns the
+ * frame into RGB only for `colorchannelmixer`, after which `vignette` works on
+ * RGB too. The chain does the same: the picture's RGB becomes Y, Cb and Cr
+ * codes held in the red, green and blue channels, the YUV stages work on those
+ * codes, and the codes become RGB again where ffmpeg's frame does.
+ * `adjust-ffmpeg.test.ts` holds it to what ffmpeg makes of the video's own
+ * filter string.
  *
  * Distances are in source pixels, as ffmpeg's are, and are handed to the
  * filters as shares of the source, so the preview drawn at the node's size
@@ -32,35 +35,25 @@ interface PixelState {
   imageData: { data: Uint8ClampedArray; width: number; height: number };
 }
 
+/** A size in pixels. */
+interface Size {
+  width: number;
+  height: number;
+}
+
 /** BT.601 luma weights, red and blue: ffmpeg's RGB to YUV conversion uses them. */
 const KR = 0.299;
 const KB = 0.114;
 const KG = 1 - KR - KB;
 
-/** Limited-range codes: Y spans 16 to 235, chroma 16 to 240. */
+/** Limited-range codes: Y spans 16 to 235, chroma 16 to 240 about 128. */
 const Y_SPAN = 219;
 const C_SPAN = 224;
 const Y_FLOOR = 16;
+const C_MID = 128;
 
-/** Y's middle code, 127.5, and its lowest and highest codes, 0 and 255, as full-range shares. */
-const PIVOT = (127.5 - Y_FLOOR) / Y_SPAN;
-const Y_LOW = -Y_FLOOR / Y_SPAN;
-const Y_HIGH = (255 - Y_FLOOR) / Y_SPAN;
-
-/** The chroma's lowest and highest codes, 0 and 255, about its middle code of 128, as full-range shares. */
-const C_LOW = -128 / C_SPAN;
-const C_HIGH = 127 / C_SPAN;
-
-/**
- * A number held between two others.
- * @param value - The number.
- * @param low - The least.
- * @param high - The most.
- * @returns It, held.
- */
-function clamp(value: number, low: number, high: number): number {
-  return Math.min(high, Math.max(low, value));
-}
+/** `vignette` scales a chroma plane about this code. */
+const VIGNETTE_C_MID = 127;
 
 /** The strongest noise reduction's spread in source pixels: the video's `gblur=sigma=3*blur` (adjust-value.ts). */
 const MAX_BLUR_SIGMA_PX = 3;
@@ -71,6 +64,53 @@ const CLARITY_ROW = [1, 6, 15, 20, 15, 6, 1].map((w) => w / 64);
 
 /** The grain's seed: fixed, so the preview and the export lay the same grain. */
 export const ADJUST_GRAIN_SEED = 1;
+
+/** A weight below which a pixel's neighbours are all transparent. */
+const NO_WEIGHT = 1e-6;
+
+/**
+ * RGB channel values to Y, Cb and Cr codes, as ffmpeg's BT.601 conversion.
+ * @param r - Red, 0 to 255.
+ * @param g - Green, 0 to 255.
+ * @param b - Blue, 0 to 255.
+ * @returns The three codes.
+ */
+function toCodes(r: number, g: number, b: number): [number, number, number] {
+  const y = (KR * r + KG * g + KB * b) / 255;
+  return [
+    Y_FLOOR + Y_SPAN * y,
+    C_MID + (C_SPAN * (b / 255 - y)) / (2 * (1 - KB)),
+    C_MID + (C_SPAN * (r / 255 - y)) / (2 * (1 - KR)),
+  ];
+}
+
+/**
+ * Y, Cb and Cr codes to RGB channel values.
+ * @param yc - Y's code.
+ * @param cbc - Cb's code.
+ * @param crc - Cr's code.
+ * @returns Red, green and blue, 0 to 255 before clamping.
+ */
+function fromCodes(yc: number, cbc: number, crc: number): [number, number, number] {
+  const y = (yc - Y_FLOOR) / Y_SPAN;
+  const r = y + (2 * (1 - KR) * (crc - C_MID)) / C_SPAN;
+  const b = y + (2 * (1 - KB) * (cbc - C_MID)) / C_SPAN;
+  return [255 * r, (255 * (y - KR * r - KB * b)) / KG, 255 * b];
+}
+
+/** The same two conversions in GLSL, on codes held as channel shares. */
+const CODES_GLSL = `
+  vec3 toCodes(vec3 c) {
+    float y = dot(c, vec3(${KR}, ${KG}, ${KB}));
+    return vec3(${Y_FLOOR}.0 + ${Y_SPAN}.0 * y, ${C_MID}.0 + ${C_SPAN}.0 * (c.b - y) / ${2 * (1 - KB)}, ${C_MID}.0 + ${C_SPAN}.0 * (c.r - y) / ${2 * (1 - KR)}) / 255.0;
+  }
+  vec3 fromCodes(vec3 k) {
+    vec3 c = k * 255.0;
+    float y = (c.x - ${Y_FLOOR}.0) / ${Y_SPAN}.0;
+    float r = y + ${2 * (1 - KR)} * (c.z - ${C_MID}.0) / ${C_SPAN}.0;
+    float b = y + ${2 * (1 - KB)} * (c.y - ${C_MID}.0) / ${C_SPAN}.0;
+    return vec3(r, (y - ${KR} * r - ${KB} * b) / ${KG}, b);
+  }`;
 
 /**
  * A pixel's channel read at a fractional position, clamped to the edges.
@@ -103,17 +143,6 @@ function sample(pixels: PixelState['imageData'], x: number, y: number, channel: 
 }
 
 /**
- * A pixel's BT.601 luma at a fractional position.
- * @param pixels - The picture.
- * @param x - Its x.
- * @param y - Its y.
- * @returns The luma, in channel levels.
- */
-function lumaAt(pixels: PixelState['imageData'], x: number, y: number): number {
-  return KR * sample(pixels, x, y, 0) + KG * sample(pixels, x, y, 1) + KB * sample(pixels, x, y, 2);
-}
-
-/**
  * A repeatable pseudo-random number for a cell, the same formula the shader runs.
  * @param x - The cell's column.
  * @param y - The cell's row.
@@ -137,18 +166,82 @@ const BETWEEN_GLSL = `
     return mix(top, bottom, part.y);
   }`;
 
+/** Which way a {@link AdjustCodes} pass turns the picture. */
+type CodesWay = 'to' | 'from';
+
 /**
- * ffmpeg's `eq` then `hue` on a limited-range BT.601 frame: contrast about the
- * middle code and the brightness lift on Y, saturation and the turn on the
- * chroma, each plane held to its codes before the frame turns back to RGB.
+ * The frame's conversion between RGB and YUV codes, where ffmpeg's frame
+ * changes format: into codes before the YUV stages, back to RGB after them.
  */
-class AdjustColor extends filters.BaseFilter<'AdjustColor', { contrast: number; lift: number; turn: [number, number] }> {
+class AdjustCodes extends filters.BaseFilter<'AdjustCodes', { way: CodesWay }> {
+  declare way: CodesWay;
+  static type = 'AdjustCodes';
+  static defaults = { way: 'to' as CodesWay };
+
+  /**
+   * The shader for this direction.
+   * @returns Its source.
+   */
+  getFragmentSource(): string {
+    return `
+      precision highp float;
+      uniform sampler2D uTexture;
+      varying vec2 vTexCoord;
+      ${CODES_GLSL}
+      void main() {
+        vec4 c = texture2D(uTexture, vTexCoord);
+        gl_FragColor = vec4(${this.way === 'to' ? 'toCodes' : 'fromCodes'}(c.rgb), c.a);
+      }`;
+  }
+
+  /**
+   * Fabric keys compiled programs by this; the two directions are two programs.
+   * @returns The key.
+   */
+  getCacheKey(): string {
+    return `AdjustCodes-${this.way}`;
+  }
+
+  /**
+   * The same on a pixel array.
+   * @param options - The pipeline state.
+   */
+  applyTo2d(options: PixelState): void {
+    const { data } = options.imageData;
+    const turn = this.way === 'to' ? toCodes : fromCodes;
+    for (let i = 0; i < data.length; i += 4) {
+      const [a, b, c] = turn(data[i] ?? 0, data[i + 1] ?? 0, data[i + 2] ?? 0);
+      data[i] = a;
+      data[i + 1] = b;
+      data[i + 2] = c;
+    }
+  }
+
+  /**
+   * A conversion always changes the pixels.
+   * @returns False.
+   */
+  isNeutralState(): boolean {
+    return false;
+  }
+}
+
+/**
+ * ffmpeg's `eq` then `hue` on the codes: contrast about the middle code and
+ * the brightness lift on Y, saturation about 128 on the chroma, each plane
+ * held to 0..255; then the chroma turned and held again.
+ */
+class AdjustColor extends filters.BaseFilter<
+  'AdjustColor',
+  { contrast: number; lift: number; saturation: number; turn: [number, number] }
+> {
   declare contrast: number;
   declare lift: number;
+  declare saturation: number;
   declare turn: [number, number];
   static type = 'AdjustColor';
-  static defaults = { contrast: 1, lift: 0, turn: [1, 0] as [number, number] };
-  static uniformLocations = ['uContrast', 'uLift', 'uTurn'];
+  static defaults = { contrast: 1, lift: 0, saturation: 1, turn: [1, 0] as [number, number] };
+  static uniformLocations = ['uContrast', 'uLift', 'uSaturation', 'uTurn'];
 
   /**
    * The shader.
@@ -160,17 +253,15 @@ class AdjustColor extends filters.BaseFilter<'AdjustColor', { contrast: number; 
       uniform sampler2D uTexture;
       uniform float uContrast;
       uniform float uLift;
+      uniform float uSaturation;
       uniform vec2 uTurn;
       varying vec2 vTexCoord;
       void main() {
         vec4 c = texture2D(uTexture, vTexCoord);
-        float y = dot(c.rgb, vec3(${KR}, ${KG}, ${KB}));
-        vec2 ch = vec2((c.b - y) / ${2 * (1 - KB)}, (c.r - y) / ${2 * (1 - KR)});
-        y = clamp(uContrast * (y - ${PIVOT}) + ${PIVOT} + uLift, ${Y_LOW}, ${Y_HIGH});
-        ch = clamp(vec2(ch.x * uTurn.x - ch.y * uTurn.y, ch.x * uTurn.y + ch.y * uTurn.x), ${C_LOW}, ${C_HIGH});
-        float r = y + ${2 * (1 - KR)} * ch.y;
-        float b = y + ${2 * (1 - KB)} * ch.x;
-        gl_FragColor = vec4(r, (y - ${KR} * r - ${KB} * b) / ${KG}, b, c.a);
+        float y = clamp(uContrast * (c.r - 0.5) + 0.5 + uLift, 0.0, 1.0);
+        vec2 ch = clamp((c.gb * 255.0 - ${C_MID}.0) * uSaturation, -${C_MID}.0, ${255 - C_MID}.0);
+        ch = clamp(vec2(ch.x * uTurn.x - ch.y * uTurn.y, ch.x * uTurn.y + ch.y * uTurn.x), -${C_MID}.0, ${255 - C_MID}.0);
+        gl_FragColor = vec4(y, (ch + ${C_MID}.0) / 255.0, c.a);
       }`;
   }
 
@@ -182,40 +273,34 @@ class AdjustColor extends filters.BaseFilter<'AdjustColor', { contrast: number; 
     const { data } = options.imageData;
     const [cos, sin] = this.turn;
     for (let i = 0; i < data.length; i += 4) {
-      const r = (data[i] ?? 0) / 255;
-      const g = (data[i + 1] ?? 0) / 255;
-      const b = (data[i + 2] ?? 0) / 255;
-      const y0 = KR * r + KG * g + KB * b;
-      const cb0 = (b - y0) / (2 * (1 - KB));
-      const cr0 = (r - y0) / (2 * (1 - KR));
-      const y = clamp(this.contrast * (y0 - PIVOT) + PIVOT + this.lift, Y_LOW, Y_HIGH);
-      const cb = clamp(cb0 * cos - cr0 * sin, C_LOW, C_HIGH);
-      const cr = clamp(cb0 * sin + cr0 * cos, C_LOW, C_HIGH);
-      const r2 = y + 2 * (1 - KR) * cr;
-      const b2 = y + 2 * (1 - KB) * cb;
-      data[i] = 255 * r2;
-      data[i + 1] = (255 * (y - KR * r2 - KB * b2)) / KG;
-      data[i + 2] = 255 * b2;
+      data[i] = 255 * (this.contrast * ((data[i] ?? 0) / 255 - 0.5) + 0.5 + this.lift);
+      const cb = Math.min(255, Math.max(0, C_MID + ((data[i + 1] ?? 0) - C_MID) * this.saturation)) - C_MID;
+      const cr = Math.min(255, Math.max(0, C_MID + ((data[i + 2] ?? 0) - C_MID) * this.saturation)) - C_MID;
+      data[i + 1] = C_MID + cb * cos - cr * sin;
+      data[i + 2] = C_MID + cb * sin + cr * cos;
     }
   }
 
   /**
-   * Hand the contrast, the lift and the chroma turn to the shader.
+   * Hand the contrast, lift, saturation and chroma turn to the shader.
    * @param gl - The context.
    * @param locations - The uniforms.
    */
   sendUniformData(gl: WebGLRenderingContext, locations: Record<string, WebGLUniformLocation | null>): void {
     gl.uniform1f(locations.uContrast ?? null, this.contrast);
     gl.uniform1f(locations.uLift ?? null, this.lift);
+    gl.uniform1f(locations.uSaturation ?? null, this.saturation);
     gl.uniform2fv(locations.uTurn ?? null, this.turn);
   }
 
   /**
    * Whether the pass changes nothing.
-   * @returns True with no contrast, lift or turn.
+   * @returns True with no contrast, lift, saturation or turn.
    */
   isNeutralState(): boolean {
-    return this.contrast === 1 && this.lift === 0 && this.turn[0] === 1 && this.turn[1] === 0;
+    return (
+      this.contrast === 1 && this.lift === 0 && this.saturation === 1 && this.turn[0] === 1 && this.turn[1] === 0
+    );
   }
 }
 
@@ -238,7 +323,9 @@ function blurFalloff(sigma: number): number {
 /**
  * ffmpeg's `gblur` on every plane of a 4:2:0 frame: Y's kernel falls by the
  * factor a source pixel, the chroma's by the same factor a chroma pixel, which
- * is two source pixels. Fabric's two passes, across then down, carry it.
+ * is two source pixels. Each neighbour weighs as much as it is opaque, so a
+ * cut-out's transparent surround adds nothing; a pixel keeps its own alpha.
+ * Fabric's two passes, across then down, carry it.
  */
 class AdjustBlur extends filters.Blur {
   declare sigma: number;
@@ -262,25 +349,22 @@ class AdjustBlur extends filters.Blur {
       varying vec2 vTexCoord;
       ${BETWEEN_GLSL}
       void main() {
+        vec4 own = texture2D(uTexture, vTexCoord);
         float y = 0.0;
         vec2 c = vec2(0.0);
         float wy = 0.0;
         float wc = 0.0;
         for (int t = -${BLUR_TAPS}; t <= ${BLUR_TAPS}; t++) {
           float at = abs(float(t));
-          vec3 s = between(vTexCoord + uPixel * float(t)).rgb;
-          float sy = dot(s, vec3(${KR}, ${KG}, ${KB}));
-          float ky = pow(uFalloff, at);
-          float kc = pow(uFalloff, at / 2.0);
-          y += ky * sy;
-          c += kc * vec2(s.b - sy, s.r - sy);
+          vec4 s = between(vTexCoord + uPixel * float(t));
+          float ky = pow(uFalloff, at) * s.a;
+          float kc = pow(uFalloff, at / 2.0) * s.a;
+          y += ky * s.r;
+          c += kc * s.gb;
           wy += ky;
           wc += kc;
         }
-        y /= wy;
-        c /= wc;
-        vec3 rgb = vec3(y + c.y, y - (${KR} * c.y + ${KB} * c.x) / ${KG}, y + c.x);
-        gl_FragColor = vec4(rgb, texture2D(uTexture, vTexCoord).a);
+        gl_FragColor = wy < ${NO_WEIGHT} ? own : vec4(y / wy, c / wc, own.a);
       }`;
   }
 
@@ -306,32 +390,26 @@ class AdjustBlur extends filters.Blur {
     const falloff = blurFalloff(this.sigma);
     for (let y = 0; y < pixels.height; y++) {
       for (let x = 0; x < pixels.width; x++) {
-        let sy = 0;
-        let cb = 0;
-        let cr = 0;
+        const sum = [0, 0, 0];
         let wy = 0;
         let wc = 0;
         for (let t = -BLUR_TAPS; t <= BLUR_TAPS; t++) {
           const px = x + t * dx;
           const py = y + t * dy;
-          const r = sample(source, px, py, 0);
-          const b = sample(source, px, py, 2);
-          const l = KR * r + KG * sample(source, px, py, 1) + KB * b;
-          const ky = falloff ** Math.abs(t);
-          const kc = falloff ** (Math.abs(t) / 2);
-          sy += ky * l;
-          cb += kc * (b - l);
-          cr += kc * (r - l);
+          const alpha = sample(source, px, py, 3) / 255;
+          const ky = falloff ** Math.abs(t) * alpha;
+          const kc = falloff ** (Math.abs(t) / 2) * alpha;
+          sum[0] = (sum[0] ?? 0) + ky * sample(source, px, py, 0);
+          sum[1] = (sum[1] ?? 0) + kc * sample(source, px, py, 1);
+          sum[2] = (sum[2] ?? 0) + kc * sample(source, px, py, 2);
           wy += ky;
           wc += kc;
         }
-        sy /= wy;
-        cb /= wc;
-        cr /= wc;
+        if (wy < NO_WEIGHT) continue;
         const i = (y * pixels.width + x) * 4;
-        pixels.data[i] = sy + cr;
-        pixels.data[i + 1] = sy - (KR * cr + KB * cb) / KG;
-        pixels.data[i + 2] = sy + cb;
+        pixels.data[i] = (sum[0] ?? 0) / wy;
+        pixels.data[i + 1] = (sum[1] ?? 0) / wc;
+        pixels.data[i + 2] = (sum[2] ?? 0) / wc;
       }
     }
   }
@@ -356,8 +434,8 @@ class AdjustBlur extends filters.Blur {
 }
 
 /**
- * ffmpeg's `unsharp` on luma alone: Y moves by the amount times its difference
- * from a binomial blur of it, and every channel moves with Y.
+ * ffmpeg's `unsharp` on Y alone: Y moves by the amount times its difference
+ * from a binomial blur of it, each neighbour weighing as much as it is opaque.
  */
 class AdjustUnsharp extends filters.BaseFilter<'AdjustUnsharp', { amount: number; row: number[]; pixel: [number, number] }> {
   declare amount: number;
@@ -382,17 +460,22 @@ class AdjustUnsharp extends filters.BaseFilter<'AdjustUnsharp', { amount: number
       uniform float uStepH;
       varying vec2 vTexCoord;
       ${BETWEEN_GLSL}
-      float luma(vec4 c) { return dot(c.rgb, vec3(${KR}, ${KG}, ${KB})); }
       void main() {
         vec4 c = texture2D(uTexture, vTexCoord);
         float blur = 0.0;
+        float weight = 0.0;
         for (int j = 0; j < 7; j++) {
           for (int i = 0; i < 7; i++) {
             float w = uRow[i] * uRow[j];
-            if (w > 0.0) blur += w * luma(between(vTexCoord + vec2(float(i - 3), float(j - 3)) * uPixel));
+            if (w > 0.0) {
+              vec4 s = between(vTexCoord + vec2(float(i - 3), float(j - 3)) * uPixel);
+              blur += w * s.a * s.r;
+              weight += w * s.a;
+            }
           }
         }
-        gl_FragColor = vec4(c.rgb + uAmount * (luma(c) - blur), c.a);
+        float y = weight < ${NO_WEIGHT} ? c.r : c.r + uAmount * (c.r - blur / weight);
+        gl_FragColor = vec4(y, c.gba);
       }`;
   }
 
@@ -404,20 +487,26 @@ class AdjustUnsharp extends filters.BaseFilter<'AdjustUnsharp', { amount: number
     if (this.amount === 0) return;
     const pixels = options.imageData;
     const source = { ...pixels, data: new Uint8ClampedArray(pixels.data) };
-    const half = (this.row.length - 1) / 2;
+    const reach = (this.row.length - 1) / 2;
     const dx = this.pixel[0] * pixels.width;
     const dy = this.pixel[1] * pixels.height;
     for (let y = 0; y < pixels.height; y++) {
       for (let x = 0; x < pixels.width; x++) {
         let blur = 0;
+        let weight = 0;
         for (let j = 0; j < this.row.length; j++) {
           for (let i = 0; i < this.row.length; i++) {
-            blur += (this.row[i] ?? 0) * (this.row[j] ?? 0) * lumaAt(source, x + (i - half) * dx, y + (j - half) * dy);
+            const px = x + (i - reach) * dx;
+            const py = y + (j - reach) * dy;
+            const w = ((this.row[i] ?? 0) * (this.row[j] ?? 0) * sample(source, px, py, 3)) / 255;
+            blur += w * sample(source, px, py, 0);
+            weight += w;
           }
         }
-        const move = this.amount * (lumaAt(source, x, y) - blur);
+        if (weight < NO_WEIGHT) continue;
         const at = (y * pixels.width + x) * 4;
-        for (let ch = 0; ch < 3; ch++) pixels.data[at + ch] = (source.data[at + ch] ?? 0) + move;
+        const own = source.data[at] ?? 0;
+        pixels.data[at] = own + this.amount * (own - blur / weight);
       }
     }
   }
@@ -446,15 +535,30 @@ class AdjustUnsharp extends filters.BaseFilter<'AdjustUnsharp', { amount: number
 /**
  * ffmpeg's `noise` on every plane: Y and the two chroma planes each take their
  * own uniform noise of half the strength in codes, Y per source pixel and the
- * chroma per 2×2 block, as a 4:2:0 frame holds them.
+ * chroma per 2×2 block, as a 4:2:0 frame holds them. Drawn smaller than the
+ * source, a pixel shows one cell of the many the result shown at that size
+ * averages, so each plane's noise is scaled down by that averaging.
  */
-class AdjustGrain extends filters.BaseFilter<'AdjustGrain', { strength: number; seed: number; cells: [number, number] }> {
+class AdjustGrain extends filters.BaseFilter<
+  'AdjustGrain',
+  { strength: number; seed: number; cells: [number, number]; share: number }
+> {
   declare strength: number;
   declare seed: number;
   declare cells: [number, number];
+  declare share: number;
   static type = 'AdjustGrain';
-  static defaults = { strength: 0, seed: 0, cells: [1, 1] as [number, number] };
+  static defaults = { strength: 0, seed: 0, cells: [1, 1] as [number, number], share: 1 };
   static uniformLocations = ['uStrength', 'uSeed', 'uCells'];
+
+  /**
+   * The noise's half-span in codes for Y and for the chroma at the size drawn.
+   * @returns Y's, then the chroma's.
+   */
+  private amplitudes(): [number, number] {
+    const half = this.strength / 2;
+    return [half * Math.min(1, this.share), half * Math.min(1, 2 * this.share)];
+  }
 
   /**
    * The shader.
@@ -464,7 +568,7 @@ class AdjustGrain extends filters.BaseFilter<'AdjustGrain', { strength: number; 
     return `
       precision highp float;
       uniform sampler2D uTexture;
-      uniform float uStrength;
+      uniform vec2 uStrength;
       uniform float uSeed;
       uniform vec2 uCells;
       varying vec2 vTexCoord;
@@ -475,12 +579,12 @@ class AdjustGrain extends filters.BaseFilter<'AdjustGrain', { strength: number; 
         vec4 c = texture2D(uTexture, vTexCoord);
         vec2 cell = floor(vTexCoord * uCells);
         vec2 block = floor(cell / 2.0);
-        float amp = uStrength / 2.0;
-        float y = (hash(cell, uSeed) - 0.5) * 2.0 * amp / ${Y_SPAN}.0;
-        float cb = (hash(block, uSeed + 17.0) - 0.5) * 2.0 * amp / ${C_SPAN}.0;
-        float cr = (hash(block, uSeed + 43.0) - 0.5) * 2.0 * amp / ${C_SPAN}.0;
-        vec3 add = vec3(y + ${2 * (1 - KR)} * cr, y - ${(2 * (1 - KB) * KB) / KG} * cb - ${(2 * (1 - KR) * KR) / KG} * cr, y + ${2 * (1 - KB)} * cb);
-        gl_FragColor = vec4(c.rgb + add, c.a);
+        vec3 add = vec3(
+          (hash(cell, uSeed) - 0.5) * 2.0 * uStrength.x,
+          (hash(block, uSeed + 17.0) - 0.5) * 2.0 * uStrength.y,
+          (hash(block, uSeed + 43.0) - 0.5) * 2.0 * uStrength.y
+        );
+        gl_FragColor = vec4(c.rgb + add / 255.0, c.a);
       }`;
   }
 
@@ -491,34 +595,28 @@ class AdjustGrain extends filters.BaseFilter<'AdjustGrain', { strength: number; 
   applyTo2d(options: PixelState): void {
     if (this.strength === 0) return;
     const { data, width, height } = options.imageData;
-    const half = this.strength / 2;
+    const [ampY, ampC] = this.amplitudes();
     for (let y = 0; y < height; y++) {
       for (let x = 0; x < width; x++) {
         const cx = Math.floor((x / width) * this.cells[0]);
         const cy = Math.floor((y / height) * this.cells[1]);
         const bx = Math.floor(cx / 2);
         const by = Math.floor(cy / 2);
-        const dy = ((hash(cx, cy, this.seed) - 0.5) * 2 * half * 255) / Y_SPAN;
-        const dcb = ((hash(bx, by, this.seed + 17) - 0.5) * 2 * half * 255) / C_SPAN;
-        const dcr = ((hash(bx, by, this.seed + 43) - 0.5) * 2 * half * 255) / C_SPAN;
-        const add = [
-          dy + 2 * (1 - KR) * dcr,
-          dy - ((2 * (1 - KB) * KB) / KG) * dcb - ((2 * (1 - KR) * KR) / KG) * dcr,
-          dy + 2 * (1 - KB) * dcb,
-        ];
         const at = (y * width + x) * 4;
-        for (let ch = 0; ch < 3; ch++) data[at + ch] = (data[at + ch] ?? 0) + (add[ch] ?? 0);
+        data[at] = (data[at] ?? 0) + (hash(cx, cy, this.seed) - 0.5) * 2 * ampY;
+        data[at + 1] = (data[at + 1] ?? 0) + (hash(bx, by, this.seed + 17) - 0.5) * 2 * ampC;
+        data[at + 2] = (data[at + 2] ?? 0) + (hash(bx, by, this.seed + 43) - 0.5) * 2 * ampC;
       }
     }
   }
 
   /**
-   * Hand the strength, the seed and the source's pixel grid to the shader.
+   * Hand the two amplitudes, the seed and the source's pixel grid to the shader.
    * @param gl - The context.
    * @param locations - The uniforms.
    */
   sendUniformData(gl: WebGLRenderingContext, locations: Record<string, WebGLUniformLocation | null>): void {
-    gl.uniform1f(locations.uStrength ?? null, this.strength);
+    gl.uniform2fv(locations.uStrength ?? null, this.amplitudes());
     gl.uniform1f(locations.uSeed ?? null, this.seed);
     gl.uniform2fv(locations.uCells ?? null, this.cells);
   }
@@ -533,16 +631,18 @@ class AdjustGrain extends filters.BaseFilter<'AdjustGrain', { strength: number; 
 }
 
 /**
- * ffmpeg's `vignette`: each pixel's codes, Y's floor of 16 with them, scaled by
- * the fourth power of the cosine of its angle off centre, the distance a
- * circle in pixels over the half diagonal.
+ * ffmpeg's `vignette`: each value scaled by the fourth power of the cosine of
+ * its angle off centre, the distance a circle in pixels over the half
+ * diagonal. On codes, Y scales toward 0 and the chroma toward 127; on RGB,
+ * which ffmpeg's frame is once `colorchannelmixer` ran, every channel toward 0.
  */
-class AdjustVignette extends filters.BaseFilter<'AdjustVignette', { angle: number; aspect: number }> {
+class AdjustVignette extends filters.BaseFilter<'AdjustVignette', { angle: number; aspect: number; onCodes: boolean }> {
   declare angle: number;
   declare aspect: number;
+  declare onCodes: boolean;
   static type = 'AdjustVignette';
-  static defaults = { angle: 0, aspect: 1 };
-  static uniformLocations = ['uAngle', 'uAspect'];
+  static defaults = { angle: 0, aspect: 1, onCodes: true };
+  static uniformLocations = ['uAngle', 'uAspect', 'uCenter'];
 
   /**
    * The shader.
@@ -554,14 +654,24 @@ class AdjustVignette extends filters.BaseFilter<'AdjustVignette', { angle: numbe
       uniform sampler2D uTexture;
       uniform float uAngle;
       uniform float uAspect;
+      uniform vec3 uCenter;
       varying vec2 vTexCoord;
       void main() {
         vec4 c = texture2D(uTexture, vTexCoord);
         vec2 off = (vTexCoord - 0.5) * vec2(uAspect, 1.0);
         float d = length(off) / length(vec2(uAspect, 1.0) * 0.5);
         float f = pow(cos(uAngle * d), 4.0);
-        gl_FragColor = vec4(max(c.rgb * f - ${Y_FLOOR / Y_SPAN} * (1.0 - f), 0.0), c.a);
+        gl_FragColor = vec4((c.rgb - uCenter) * f + uCenter, c.a);
       }`;
+  }
+
+  /**
+   * The values each channel scales toward, as channel shares.
+   * @returns Red's, green's and blue's.
+   */
+  private centers(): [number, number, number] {
+    const chroma = this.onCodes ? VIGNETTE_C_MID / 255 : 0;
+    return [0, chroma, chroma];
   }
 
   /**
@@ -572,24 +682,29 @@ class AdjustVignette extends filters.BaseFilter<'AdjustVignette', { angle: numbe
     if (this.angle === 0) return;
     const { data, width, height } = options.imageData;
     const reach = Math.hypot(this.aspect, 1) / 2;
+    const centers = this.centers().map((share) => 255 * share);
     for (let y = 0; y < height; y++) {
       for (let x = 0; x < width; x++) {
         const d = Math.hypot(((x + 0.5) / width - 0.5) * this.aspect, (y + 0.5) / height - 0.5) / reach;
         const f = Math.cos(this.angle * d) ** 4;
         const at = (y * width + x) * 4;
-        for (let ch = 0; ch < 3; ch++) data[at + ch] = (data[at + ch] ?? 0) * f - ((255 * Y_FLOOR) / Y_SPAN) * (1 - f);
+        for (let ch = 0; ch < 3; ch++) {
+          const center = centers[ch] ?? 0;
+          data[at + ch] = ((data[at + ch] ?? 0) - center) * f + center;
+        }
       }
     }
   }
 
   /**
-   * Hand the angle and the source's shape to the shader.
+   * Hand the angle, the source's shape and the centres to the shader.
    * @param gl - The context.
    * @param locations - The uniforms.
    */
   sendUniformData(gl: WebGLRenderingContext, locations: Record<string, WebGLUniformLocation | null>): void {
     gl.uniform1f(locations.uAngle ?? null, this.angle);
     gl.uniform1f(locations.uAspect ?? null, this.aspect);
+    gl.uniform3fv(locations.uCenter ?? null, this.centers());
   }
 
   /**
@@ -610,30 +725,48 @@ type AdjustFilter = InstanceType<typeof filters.BaseFilter>;
  * @param value - The sliders.
  * @param seed - The grain's seed, fixed for one panel so the preview and the export match.
  * @param source - The source's size in pixels.
- * @param source.width - Its width.
- * @param source.height - Its height.
+ * @param drawn - The size the chain draws at, the source's own by default.
  * @returns The chain.
  */
-export function adjustFilters(value: AdjustValue, seed: number, source: { width: number; height: number }): AdjustFilter[] {
+export function adjustFilters(value: AdjustValue, seed: number, source: Size, drawn: Size = source): AdjustFilter[] {
   const terms = adjustTerms(value);
   const width = Math.max(1, source.width);
   const height = Math.max(1, source.height);
   const pixel: [number, number] = [1 / width, 1 / height];
-  const chain: AdjustFilter[] = [];
+  const share = Math.sqrt((Math.max(1, drawn.width) * Math.max(1, drawn.height)) / (width * height));
+  const codes: AdjustFilter[] = [];
   if (terms.brightness !== 0 || terms.contrast !== 1 || terms.saturation !== 1 || terms.hueRadians !== 0) {
-    const turn: [number, number] = [Math.cos(terms.hueRadians) * terms.saturation, Math.sin(terms.hueRadians) * terms.saturation];
-    chain.push(new AdjustColor({ contrast: terms.contrast, lift: (255 / Y_SPAN) * terms.brightness, turn }));
+    codes.push(
+      new AdjustColor({
+        contrast: terms.contrast,
+        lift: terms.brightness,
+        saturation: terms.saturation,
+        turn: [Math.cos(terms.hueRadians), Math.sin(terms.hueRadians)],
+      }),
+    );
   }
-  if (terms.blur > 0) chain.push(new AdjustBlur({ sigma: terms.blur * MAX_BLUR_SIGMA_PX, pixel }));
-  if (terms.grain > 0) chain.push(new AdjustGrain({ strength: terms.grain, seed, cells: [width, height] }));
-  if (terms.sharpen > 0) chain.push(new AdjustUnsharp({ amount: terms.sharpen, row: SHARPEN_ROW, pixel }));
-  if (terms.clarity > 0) chain.push(new AdjustUnsharp({ amount: terms.clarity, row: CLARITY_ROW, pixel }));
-  if (terms.channels !== null) {
-    const { r, g, b } = terms.channels;
-    chain.push(new filters.ColorMatrix({ matrix: [r, 0, 0, 0, 0, 0, g, 0, 0, 0, 0, 0, b, 0, 0, 0, 0, 0, 1, 0] }));
+  if (terms.blur > 0) codes.push(new AdjustBlur({ sigma: terms.blur * MAX_BLUR_SIGMA_PX, pixel }));
+  if (terms.grain > 0) {
+    codes.push(new AdjustGrain({ strength: terms.grain, seed, cells: [width, height], share }));
   }
-  if (terms.vignetteAngle > 0) chain.push(new AdjustVignette({ angle: terms.vignetteAngle, aspect: width / height }));
-  return chain;
+  if (terms.sharpen > 0) codes.push(new AdjustUnsharp({ amount: terms.sharpen, row: SHARPEN_ROW, pixel }));
+  if (terms.clarity > 0) codes.push(new AdjustUnsharp({ amount: terms.clarity, row: CLARITY_ROW, pixel }));
+  const vignette =
+    terms.vignetteAngle > 0
+      ? new AdjustVignette({ angle: terms.vignetteAngle, aspect: width / height, onCodes: terms.channels === null })
+      : null;
+  if (terms.channels === null) {
+    if (vignette !== null) codes.push(vignette);
+    return codes.length === 0 ? [] : [new AdjustCodes({ way: 'to' }), ...codes, new AdjustCodes({ way: 'from' })];
+  }
+  const { r, g, b } = terms.channels;
+  return [
+    new AdjustCodes({ way: 'to' }),
+    ...codes,
+    new AdjustCodes({ way: 'from' }),
+    new filters.ColorMatrix({ matrix: [r, 0, 0, 0, 0, 0, g, 0, 0, 0, 0, 0, b, 0, 0, 0, 0, 0, 1, 0] }),
+    ...(vignette === null ? [] : [vignette]),
+  ];
 }
 
 /**
@@ -642,14 +775,7 @@ export function adjustFilters(value: AdjustValue, seed: number, source: { width:
  * @param value - The sliders.
  * @param seed - The grain's seed.
  * @param source - The size of the source these pixels draw, when they are a smaller draw of it.
- * @param source.width - Its width.
- * @param source.height - Its height.
  */
-export function adjustPixels(
-  pixels: PixelState['imageData'],
-  value: AdjustValue,
-  seed: number,
-  source: { width: number; height: number } = pixels,
-): void {
-  for (const filter of adjustFilters(value, seed, source)) filter.applyTo({ imageData: pixels } as never);
+export function adjustPixels(pixels: PixelState['imageData'], value: AdjustValue, seed: number, source: Size = pixels): void {
+  for (const filter of adjustFilters(value, seed, source, pixels)) filter.applyTo({ imageData: pixels } as never);
 }

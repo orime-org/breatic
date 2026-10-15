@@ -161,7 +161,7 @@ export async function drawAdjusted(
   const size = fitWithin(asked, side);
   target.width = size.width;
   target.height = size.height;
-  const chain = adjustFilters(value, ADJUST_GRAIN_SEED, intrinsicSize(el));
+  const chain = adjustFilters(value, ADJUST_GRAIN_SEED, intrinsicSize(el), size);
   const source = previewSourceOf(el, size);
   if (chain.length === 0) {
     target.getContext('2d')?.drawImage(source, 0, 0, size.width, size.height);

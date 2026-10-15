@@ -226,12 +226,17 @@ describe('drawAdjusted', () => {
   });
 
   // A smaller draw shows the source's effect scaled, so the filters are set
-  // for the source's own pixels, not the draw's.
+  // for the source's own pixels and told the size they are drawn at.
   it('sets the filters for the source picture at any draw size', async () => {
     const backend = { tileSize: 4096, gl: liveGl(4096), applyFilters: vi.fn() };
     const value = { ...defaultAdjustValue, sharpness: 50 };
     await drawAdjusted(picture(1000, 500), { width: 250, height: 125 }, value, document.createElement('canvas'), backend as never);
-    expect(vi.mocked(adjustFilters)).toHaveBeenCalledWith(value, expect.any(Number), { width: 1000, height: 500 });
+    expect(vi.mocked(adjustFilters)).toHaveBeenCalledWith(
+      value,
+      expect.any(Number),
+      { width: 1000, height: 500 },
+      { width: 250, height: 125 },
+    );
   });
 
   // Fabric keeps the source's texture when it is given no cache key; nothing
