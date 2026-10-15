@@ -262,8 +262,6 @@ export default defineConfig(({ command, mode }) => {
           target: devApiTarget,
           changeOrigin: true,
         },
-        // The server writes the consent cookie back under the page's own host, as nginx does in self-host.
-        '/_consent/refresh': { target: devApiTarget },
         // Yjs client connects to `/ws` (without trailing slash), so proxy key
         // must also match `/ws` to avoid bypassing Vite proxy in dev.
         '/ws': {

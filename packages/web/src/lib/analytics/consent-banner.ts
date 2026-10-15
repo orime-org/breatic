@@ -15,7 +15,6 @@ import {
   CONSENT_COOKIE_NAME,
   CONSENT_MAX_AGE_DAYS,
   CONSENT_REVISION,
-  httpRequest,
   parseConsentChoices,
   requiresOptIn,
   revisionInForce,
@@ -112,42 +111,6 @@ function writeConsent(writes: ConsentWrites, prior: BrowserChoices | null): void
   const { data, accepted } = cookieAfterWrites(writes, prior, stored, new Date().toISOString(), () => crypto.randomUUID());
   CookieConsent.acceptCategory(accepted, (['analytics', 'ads'] as const).filter((c) => !accepted.includes(c)));
   CookieConsent.setCookieData({ value: data, mode: 'overwrite' });
-  askServerToKeepCookie();
-}
-
-/** How long one write-back may take; it carries the value of its moment, which grows stale. */
-const WRITE_BACK_TIMEOUT_MS = 10_000;
-
-// The write-back still on its way. The server echoes the value the request carried, so an answer landing
-// after a later write would put the earlier value back; the later write cancels it first.
-let keeping: AbortController | null = null;
-
-/**
- * Ask the server to write the consent cookie back (design §4.4.3a): Safari caps a script-written cookie at
- * seven days, a cookie set by a response is not capped. Without the route (a self-hosted copy that lacks it)
- * the cookie keeps the browser's own limit.
- */
-function askServerToKeepCookie(): void {
-  keeping?.abort();
-  const controller = new AbortController();
-  keeping = controller;
-  void httpRequest(
-    writeBackUrl(),
-    { credentials: 'same-origin', cache: 'no-store' },
-    // A stalled delivery is dropped and sent again with the cookie of that moment, at most twice.
-    { replaySafe: true, signal: controller.signal, timeoutMs: WRITE_BACK_TIMEOUT_MS },
-  ).catch(() => undefined);
-}
-
-/**
- * Where the write-back goes, naming the domain the library wrote the cookie under, so a self-hosted server
- * sets the same cookie and not a second one.
- * @returns The URL.
- */
-function writeBackUrl(): string {
-  const url = new URL('/_consent/refresh', window.location.origin);
-  url.searchParams.set('domain', bannerOptions?.cookieDomain || window.location.hostname);
-  return url.href;
 }
 
 /** A choice the visitor made in the banner or the settings window. */
@@ -333,8 +296,6 @@ export async function startConsentBanner(options: BannerOptions): Promise<void> 
     },
     true,
   );
-  // A page kept in the back/forward cache is frozen: its time limit stops, and no other page can cancel it.
-  window.addEventListener('pagehide', () => keeping?.abort());
   await boot(options);
   // A restart while the lookup is still out would decide twice; the lookup ends within a second.
   await options.country;
@@ -352,8 +313,6 @@ export async function startConsentBanner(options: BannerOptions): Promise<void> 
 async function resync(): Promise<void> {
   if (document.visibilityState !== 'visible' || bannerOptions === null) return;
   if (sameChoices(readBrowserChoices(), lastSeen)) return;
-  // A write-back still on its way carries this page's value, which the cookie no longer holds.
-  keeping?.abort();
   CookieConsent.reset(false);
   await boot(bannerOptions);
 }
@@ -432,8 +391,6 @@ async function boot(options: BannerOptions): Promise<void> {
     ...(decision.ads ? { ads: decision.ads } : {}),
   };
   if (writes.analytics || writes.ads) writeConsent(writes, stored);
-  // Every visit renews a stored choice, which a write-back that never completed left under the browser's cap.
-  else if (CookieConsent.validConsent()) askServerToKeepCookie();
   undecided = decision.showBanner;
   running = true;
   placeBanner();
