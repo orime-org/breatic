@@ -38,12 +38,6 @@ const collabConfigSchema = z.object({
   // from the membership tier of the studio that owns the project
   // (`concurrent_editors` in config/membership.yaml), so it differs per
   // project and cannot be a process-wide constant (#88).
-  //
-  // Documents one socket must carry, which several library ceilings are
-  // derived from — see infra/socket-ceilings.ts and collab.yaml. Not
-  // `min(0)`: the library compares the pending count with `>=`, so zero would
-  // close every socket on its first document.
-  max_documents_per_socket: z.number().int().positive().default(1000),
 
   // Throttle (coarse per-IP DoS backstop; loopback is exempt)
   throttle_enabled: z.boolean().default(true),

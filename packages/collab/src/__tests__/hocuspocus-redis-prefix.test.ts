@@ -124,7 +124,7 @@ vi.mock("@collab/services/connection-registry.js", async () => {
 import * as Y from "yjs";
 
 import { createCollabServer } from "../hocuspocus.js";
-import { getCollabConfig, getConnectionTimings } from "../config.js";
+import { getConnectionTimings } from "../config.js";
 import { readPresence } from "../hooks/presence.js";
 import { socketCeilings } from "../infra/socket-ceilings.js";
 
@@ -199,8 +199,8 @@ describe("createCollabServer — Redis channel prefix", () => {
 
     const config = serverSpy.mock.calls[0]?.[0] as Record<string, unknown>;
     expect(config).toMatchObject({
-      // Both ceilings that close a whole socket, derived from one number.
-      ...socketCeilings(getCollabConfig().max_documents_per_socket),
+      // Both ceilings that close a whole socket, derived from the Space cap.
+      ...socketCeilings(),
       // Broadcast on apply rather than coalescing per event-loop turn. The
       // library's own default is `0`, which batches; the Space RPC commit
       // boundary is built on the broadcast being the synchronous, observable

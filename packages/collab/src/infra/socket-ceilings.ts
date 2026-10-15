@@ -2,28 +2,29 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * The per-socket limits the collab server runs with, derived from one number.
+ * The per-socket limits the collab server runs with, derived from a project's
+ * Space cap.
  *
  * The library closes a WHOLE socket — close code 4205, every Space on it goes
  * blank — in four places (hocuspocus-server.esm.js: 819, 886 twice, 958). All
  * four are calibrated for one document per socket. Ours carries a project: the
- * meta doc plus one per open Space tab. A first visit opens one Space, so the
- * usual figure is small; what has no ceiling is how many tabs a member goes on
- * to open, and nothing in the product stops them opening every Space there is.
+ * meta doc plus one per open Space tab, and a member can open every Space the
+ * project has. A project holds at most `MAX_SPACES_PER_PROJECT` live Spaces,
+ * so one socket carries at most that many plus the meta doc.
  *
  * They are derived here rather than listed in the config file because raising
  * one alone is not a fix: the next one down fires with the same close code and
  * the same symptom, so a socket that survived the first wall reconnects
  * straight into the second. That is not hypothetical — it is what happened
  * when only `maxPendingDocuments` was raised, and it took a live test sending
- * the frames a real client sends to see it. Deriving both from one declared
- * number is what stops them drifting apart again.
+ * the frames a real client sends to see it. Deriving both from the Space cap
+ * is what stops them drifting apart again.
  *
- * Measured for a 1000-document socket carrying real client frames:
+ * Measured against sockets carrying real client frames:
  *
- *   pending documents    default 100    fires first; derived here
- *   queued frame count   default 1000   fires at ~500 documents; derived here
- *   queued frame bytes   default 5 MB   ~390 KB used, so left alone
+ *   pending documents    default 100    fires first; set to a full project
+ *   queued frame count   default 1000   fires at ~500 documents; never set below it
+ *   queued frame bytes   default 5 MB   ~390 KB for 1000 documents, so left alone
  *   idle timeout         default 60 s   client resends awareness every 15 s, left alone
  *
  * The byte ceiling is deliberately NOT derived. It is the one that actually
@@ -31,6 +32,7 @@
  * in place behind the two generous ones above; `socket-ceilings.test.ts` pins
  * that the derived frame count can never outgrow it.
  */
+import { MAX_SPACES_PER_PROJECT } from "@breatic/shared";
 
 /**
  * Frames one pending document puts in the queue before its authentication
@@ -49,6 +51,13 @@ export const QUEUED_FRAMES_PER_DOCUMENT = 2;
  */
 const QUEUE_HEADROOM = 2;
 
+/**
+ * The library's own queued-frame ceiling. A full project needs fewer frames
+ * than this, so the derived figure never goes below it: the spare entries are
+ * what a reconnecting client's offline backlog lands in.
+ */
+const LIBRARY_QUEUE_FRAME_CEILING = 1000;
+
 /** The per-socket limits the Hocuspocus server is configured with. */
 export interface SocketCeilings {
   /** Documents that may await authentication on one socket at once. */
@@ -58,15 +67,17 @@ export interface SocketCeilings {
 }
 
 /**
- * Derive the per-socket ceilings from the documents one socket must carry.
- * @param maxDocumentsPerSocket - Documents a single socket has to hold, which
- *   for us is one project's Space count plus its meta doc.
+ * Derive the per-socket ceilings from the documents one socket carries at
+ * most: a full project's Spaces plus its meta doc.
  * @returns The limits to pass to the Hocuspocus server.
  */
-export function socketCeilings(maxDocumentsPerSocket: number): SocketCeilings {
+export function socketCeilings(): SocketCeilings {
+  const documentsPerSocket = MAX_SPACES_PER_PROJECT + 1;
   return {
-    maxPendingDocuments: maxDocumentsPerSocket,
-    maxUnauthenticatedQueueMessages:
-      maxDocumentsPerSocket * QUEUED_FRAMES_PER_DOCUMENT * QUEUE_HEADROOM,
+    maxPendingDocuments: documentsPerSocket,
+    maxUnauthenticatedQueueMessages: Math.max(
+      LIBRARY_QUEUE_FRAME_CEILING,
+      documentsPerSocket * QUEUED_FRAMES_PER_DOCUMENT * QUEUE_HEADROOM,
+    ),
   };
 }

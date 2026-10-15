@@ -167,15 +167,16 @@ async function serverHoldingAuth(ceilings?: {
  * @param documents - How many documents to request.
  * @param full - True sends the auth, sync and awareness frames a real client
  *   sends per document; false sends only the auth frame.
- * @param extraFrames - Further queued frames per document, standing in for a
- *   client with buffered work to replay. This is what the headroom absorbs.
+ * @param backlogFrames - Further queued frames spread across the documents,
+ *   standing in for a client with buffered work to replay. This is what the
+ *   headroom absorbs.
  * @returns The close code if the server closed the socket, else null.
  */
 async function openDocuments(
   port: number,
   documents: number,
   full: boolean,
-  extraFrames = 0,
+  backlogFrames = 0,
 ): Promise<number | null> {
   const socket = new WebSocket(`ws://127.0.0.1:${port}/`);
   client = socket;
@@ -196,9 +197,12 @@ async function openDocuments(
       socket.send(frame(name, WIRE_SYNC, 0));
       socket.send(frame(name, WIRE_AWARENESS));
     }
-    for (let extra = 0; extra < extraFrames; extra += 1) {
-      socket.send(frame(name, WIRE_SYNC, 0));
-    }
+  }
+  for (let i = 0; i < backlogFrames; i += 1) {
+    if (socket.readyState !== WebSocket.OPEN) break;
+    const doc = i % documents;
+    const name = doc === 0 ? "project-many/meta" : `project-many/canvas-${doc}`;
+    socket.send(frame(name, WIRE_SYNC, 0));
   }
   // Long enough for the frames to be read and the close, if any, to arrive.
   await new Promise((resolve) => setTimeout(resolve, 700));
@@ -234,12 +238,13 @@ describe("the ceilings that close a whole socket", () => {
 
   it("has room left when a reconnecting client replays an offline backlog", async () => {
     // A client back from being offline replays the edits it buffered while
-    // every document is still waiting for authentication. Two extra frames per
-    // document for a full project is 402 frames of backlog on top of the two
-    // the documents need, which a ceiling of 804 would not hold.
+    // every document is still waiting for authentication. A full project's
+    // own frames are 402; 500 frames of backlog on top makes 902, which the
+    // library's ceiling of 1000 holds and the bare derivation (201 x 2 x 2 =
+    // 804) would not.
     const port = await serverHoldingAuth(productionCeilings());
 
-    expect(await openDocuments(port, FULL_PROJECT, true, 2)).toBeNull();
+    expect(await openDocuments(port, FULL_PROJECT, true, 500)).toBeNull();
   });
 
   it("is capped by the library at half that once the sync and awareness frames ride along", async () => {
