@@ -333,6 +333,8 @@ export async function startConsentBanner(options: BannerOptions): Promise<void> 
     },
     true,
   );
+  // A page kept in the back/forward cache is frozen: its time limit stops, and no other page can cancel it.
+  window.addEventListener('pagehide', () => keeping?.abort());
   await boot(options);
   // A restart while the lookup is still out would decide twice; the lookup ends within a second.
   await options.country;
@@ -430,6 +432,8 @@ async function boot(options: BannerOptions): Promise<void> {
     ...(decision.ads ? { ads: decision.ads } : {}),
   };
   if (writes.analytics || writes.ads) writeConsent(writes, stored);
+  // Every visit renews a stored choice, which a write-back that never completed left under the browser's cap.
+  else if (CookieConsent.validConsent()) askServerToKeepCookie();
   undecided = decision.showBanner;
   running = true;
   placeBanner();

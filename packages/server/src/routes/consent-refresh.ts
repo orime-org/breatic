@@ -4,8 +4,9 @@
 /**
  * `GET /_consent/refresh` (inner#1442 design §4.4.3a). The banner library
  * writes `breatic_consent` from script, and Safari caps script-written
- * cookies at seven days; a cookie set in an HTTP response is not capped. The
- * pages call this after every write, and the server writes the same value
+ * cookies at seven days (24 hours on a page reached from an ad link); a cookie
+ * set in an HTTP response is not capped. The pages call this after every write
+ * and on load when a stored choice is not rewritten, and the server writes the same value
  * back with the attributes the library used. The hosted site does this in its
  * frontend Worker; a self-hosted copy reaches here through nginx.
  */

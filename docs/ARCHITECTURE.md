@@ -580,7 +580,7 @@ Login and registration cards (including the signup-code step) show their build i
 | `VITE_AMPLITUDE_API_KEY` | Amplitude 项目 key(可选;留空不加载浏览器产品分析)。与 `VITE_GOOGLE_ADS_TAG_ID` 都空时构建常量 `__ANALYTICS_CONFIGURED__` 为假,横幅与分析代码不进产物 |
 | `VITE_GOOGLE_ADS_TAG_ID` | Google tag id `AW-…`(可选;留空不加载 Google tag) |
 | `VITE_GOOGLE_ADS_CONVERSION_LABELS` | JSON,转化名到转化标签;读不出时只关浏览器转化 |
-| `VITE_CONSENT_COOKIE_DOMAIN` | `breatic_consent` cookie 写在哪个域;空为当前主机。页面每次写入后调 `GET /_consent/refresh?domain=<这个域,空则页面主机>`,server 在页面主机属于该域时按原值回写,绕开 Safari 对脚本 cookie 的 7 天上限 |
+| `VITE_CONSENT_COOKIE_DOMAIN` | `breatic_consent` cookie 写在哪个域;空为当前主机。页面每次写入后、以及加载时已有选择而这次没有写入时,调 `GET /_consent/refresh?domain=<这个域,空则页面主机>`,server 在页面主机属于该域时按原值回写,绕开 Safari 对脚本 cookie 的 7 天上限 |
 
 产品分析与广告转化的同意、事件、出口见 [self-host/DEPLOYMENT-CONNECTIONS.md](../self-host/DEPLOYMENT-CONNECTIONS.md#product-analytics-off-by-default)。
 

@@ -113,6 +113,16 @@ afterEach(() => {
 // The request asking the server to write the cookie back; no test reaches the network.
 const refresh = vi.fn(async () => new Response(null, { status: 204 }));
 
+/**
+ * A delivery that never answers; like fetch, it fails once its signal is aborted.
+ * @param _url - Unused.
+ * @param init - Carries the signal.
+ * @returns A response that never comes.
+ */
+function stall(_url?: unknown, init?: RequestInit): Promise<Response> {
+  return new Promise((_resolve, reject) => init?.signal?.addEventListener('abort', () => reject(init.signal?.reason)));
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   vi.stubGlobal('fetch', refresh);
@@ -363,8 +373,17 @@ describe('the server writing the stored choice back (design §4.4.3a)', () => {
     await vi.waitFor(() => expect(refresh).toHaveBeenCalledTimes(1));
   });
 
-  it('does not ask when nothing was written', async () => {
+  it('asks once on load for a stored choice the page does not rewrite, so every visit renews it', async () => {
     library.consent = true;
+    await startBanner('DE');
+    expect(library.setCookieData).not.toHaveBeenCalled();
+    await vi.waitFor(() => expect(refresh).toHaveBeenCalledTimes(1));
+    const [url, init] = refresh.mock.calls[0] as unknown as [string, RequestInit];
+    expect(new URL(url).pathname).toBe('/_consent/refresh');
+    expect(init.signal?.aborted).toBe(false);
+  });
+
+  it('does not ask on load when there is no stored choice', async () => {
     await startBanner('DE');
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(refresh).not.toHaveBeenCalled();
@@ -378,7 +397,7 @@ describe('the server writing the stored choice back (design §4.4.3a)', () => {
   });
 
   it('cancels a request still on its way when the next write happens, so its answer cannot put the earlier value back', async () => {
-    refresh.mockImplementationOnce(() => new Promise<Response>(() => undefined));
+    refresh.mockImplementationOnce(stall);
     await startBanner('US');
     await vi.waitFor(() => expect(refresh).toHaveBeenCalledTimes(1));
     library.config?.onModalShow?.({ modalName: 'preferencesModal' });
@@ -390,7 +409,7 @@ describe('the server writing the stored choice back (design §4.4.3a)', () => {
   });
 
   it('gives up on a write-back after ten seconds, so a stalled answer cannot land long after', async () => {
-    refresh.mockImplementationOnce(() => new Promise<Response>(() => undefined));
+    refresh.mockImplementationOnce(stall);
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     try {
       await startBanner('US');
@@ -400,13 +419,18 @@ describe('the server writing the stored choice back (design §4.4.3a)', () => {
       expect(init.signal?.aborted).toBe(false);
       await vi.advanceTimersByTimeAsync(1_000);
       expect(init.signal?.aborted).toBe(true);
+      // Sent again after the backoff, with the cookie of that moment.
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(refresh).toHaveBeenCalledTimes(2);
+      const [, again] = refresh.mock.calls[1] as unknown as [string, RequestInit];
+      expect(again.signal?.aborted).toBe(false);
     } finally {
       vi.useRealTimers();
     }
   });
 
   it('cancels its write-back on its way when another tab changed the choice, since it carries a value no longer stored', async () => {
-    refresh.mockImplementationOnce(() => new Promise<Response>(() => undefined));
+    refresh.mockImplementationOnce(stall);
     await startBanner('US');
     await vi.waitFor(() => expect(refresh).toHaveBeenCalledTimes(1));
     library.consent = true;
@@ -415,6 +439,17 @@ describe('the server writing the stored choice back (design §4.4.3a)', () => {
     await vi.waitFor(() => expect(library.reset).toHaveBeenCalledWith(false));
     const [, init] = refresh.mock.calls[0] as unknown as [string, RequestInit];
     expect(init.signal?.aborted).toBe(true);
+  });
+
+  it('cancels its write-back on its way when the page is hidden for leaving, since a cached page cannot be cancelled by the next one', async () => {
+    refresh.mockImplementationOnce(stall);
+    await startBanner('US');
+    await vi.waitFor(() => expect(refresh).toHaveBeenCalledTimes(1));
+    window.dispatchEvent(new Event('pagehide'));
+    const [, init] = refresh.mock.calls[0] as unknown as [string, RequestInit];
+    expect(init.signal?.aborted).toBe(true);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(refresh).toHaveBeenCalledTimes(1);
   });
 
   it('keeps the choice when the request fails', async () => {
