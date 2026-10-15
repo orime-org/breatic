@@ -622,8 +622,9 @@ class AdjustGrain extends filters.BaseFilter<
     const [ampY, ampC] = this.amplitudes();
     for (let y = 0; y < height; y++) {
       for (let x = 0; x < width; x++) {
-        const cx = Math.floor((x / width) * this.cells[0]);
-        const cy = Math.floor((y / height) * this.cells[1]);
+        // The pixel's centre, as the shader samples it.
+        const cx = Math.floor(((x + 0.5) / width) * this.cells[0]);
+        const cy = Math.floor(((y + 0.5) / height) * this.cells[1]);
         const bx = Math.floor(cx / 2);
         const by = Math.floor(cy / 2);
         const at = (y * width + x) * 4;
