@@ -82,7 +82,7 @@ vi.mock("@collab/services/yjs-documents.repo.js", () => ({
   countLiveSpaceDocs: countLiveSpaceDocsMock,
 }));
 
-// The cross-instance delete lock has its own unit tests. Here it is a
+// The cross-instance Space count lock has its own unit tests. Here it is a
 // pass-through by default so the critical section is exercised directly;
 // one test replaces it with a version that throws while releasing, which
 // is the shape the real `finally { await redis.eval(...) }` has.
@@ -875,7 +875,7 @@ describe("finishing steps cannot change the answer already decided", () => {
 describe("no answer waits for the meta connection to be handed back", () => {
   // `disconnect()` awaits the store hooks, and `@hocuspocus/extension-redis`
   // holds its `afterStoreDocument` for `disconnectDelay` (1000ms) whenever a
-  // direct-connection disconnect reaches it, written or not. Awaited inside the delete lock, that
+  // direct-connection disconnect reaches it, written or not. Awaited inside the Space count lock, that
   // second kept the lock held long after the Space had left every screen,
   // so the next delete a person made was refused (inner#867).
   const cases: ReadonlyArray<{

@@ -86,7 +86,7 @@ const logger = createLogger("hocuspocus");
 
 /** External infra config (env-based, not in YAML). */
 export interface CollabServerInfra {
-  /** Collab Redis (DB 3) — Hocuspocus cross-instance pub/sub + space-delete lock. */
+  /** Collab Redis (DB 3) — Hocuspocus cross-instance pub/sub + Space count lock. */
   collabRedisUrl: string;
   /**
    * WebSocket listen port (`COLLAB_PORT`). Passed in rather than read here so
@@ -122,7 +122,7 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
 
   // Cross-instance connection registry (#1421). Records each connection
   // in Redis DB3 (the collab-coordination singleton — same connection
-  // family as the Hocuspocus pub/sub + the space-delete lock) so the
+  // family as the Hocuspocus pub/sub + the Space count lock) so the
   // per-document connection cap counts across instances, not just this
   // process's local connections. `instanceId` namespaces this process's
   // members cluster-wide: hostname + pid for log correlation, plus a

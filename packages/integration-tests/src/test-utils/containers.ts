@@ -58,7 +58,7 @@ export async function setup({ provide }: ProvideContext): Promise<void> {
     REDIS_QUEUE_URL: `${redisBase}/1`,
     REDIS_STREAM_URL: `${redisBase}/2`,
     // DB3 is collab's instance-coordination database (Hocuspocus pub/sub, the
-    // Space-delete lock, the connection registry). A test that runs two collab
+    // Space count lock, the connection registry). A test that runs two collab
     // instances needs it to be the same Redis for both, which is what makes
     // cross-instance behaviour observable at all.
     REDIS_COLLAB_URL: `${redisBase}/3`,

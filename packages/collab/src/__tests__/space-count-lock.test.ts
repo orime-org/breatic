@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Unit tests for the collab space-delete distributed lock.
+ * Unit tests for the collab Space count distributed lock.
  *
  * The lock serializes `space:delete` per project ACROSS collab instances
  * (production runs multiple instances synced via Redis pub/sub). Without
@@ -159,7 +159,7 @@ describe("withSpaceCountLock", () => {
     // short wait, not correctness.
     const redis = makeFakeRedis();
     redis.eval.mockRejectedValue(
-      new Error("ECONNREFUSED releasing space-delete lock"),
+      new Error("ECONNREFUSED releasing Space count lock"),
     );
     getCollabRedisMock.mockReturnValue(redis);
 

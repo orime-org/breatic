@@ -11,7 +11,7 @@
  * | getRedis()       | REDIS_URL          | /0  | Session, lock, rate-limit, health    |
  * | getQueueRedis()  | REDIS_QUEUE_URL    | /1  | BullMQ task queue                    |
  * | getStreamRedis() | REDIS_STREAM_URL   | /2  | Redis Streams (cross-service)        |
- * | getCollabRedis() | REDIS_COLLAB_URL   | /3  | Collab pub/sub + space-delete lock   |
+ * | getCollabRedis() | REDIS_COLLAB_URL   | /3  | Collab pub/sub + Space count lock   |
  *
  * Early stage: all three can point to the same Redis instance (different DBs).
  * At scale: swap URLs to independent Redis instances without code changes.

@@ -68,8 +68,10 @@ import {
   spaceContentDocName,
   projectMetaDocName,
   encodeInitialSpaceContent,
+  MAX_SPACES_PER_PROJECT,
   type DocKind,
   type ProjectRole,
+  type SpaceRpcErrorCode,
   type SpaceRpcRequest,
   type SpaceRpcResponse,
   ACTIVITY_NEW_SIGNAL,
@@ -119,12 +121,7 @@ function ok(
  */
 function err(
   id: string,
-  code:
-    | "FORBIDDEN"
-    | "NOT_FOUND"
-    | "CONFLICT"
-    | "INVALID_INPUT"
-    | "INTERNAL",
+  code: SpaceRpcErrorCode,
   message: string,
 ): SpaceRpcResponse {
   return { id, ok: false, error: { code, message } };
@@ -370,7 +367,7 @@ async function undoContentRows(
  * lock. Nothing the caller is waiting on depends on that store: the change
  * was broadcast inside `transact`. Awaited, the second sat in every answer
  * given after the connection opened and, for delete and restore, inside the
- * cross-instance delete lock — a Space left every screen in under a tenth
+ * cross-instance Space count lock — a Space left every screen in under a tenth
  * of a second while the lock stayed held for over a second, and the next
  * delete a person made was refused (inner#867).
  * `project-space-list.ts` releases the meta doc it loads the same way: it
@@ -626,6 +623,59 @@ export function settlePublish(
 // ── Handlers ────────────────────────────────────────────────────────
 
 /**
+ * Run a Space RPC's critical section under the per-project Space count lock,
+ * answering `BUSY` when the lock stays held by other Space changes for the
+ * whole retry budget.
+ *
+ * Once the critical section has answered, that answer is what happened. The
+ * lock guards its own release (space-count-lock.ts swallows + logs a failing
+ * eval), so the only rejection that can reach here after acquisition is one
+ * thrown by the critical section itself; it goes on to the dispatcher, which
+ * logs it and answers INTERNAL.
+ * @param projectId - Project whose Space count changes are serialized.
+ * @param requestId - Request id echoed on the `BUSY` answer.
+ * @param section - The critical section.
+ * @returns The critical section's answer, or a `BUSY` error.
+ * @throws {Error} Whatever the critical section throws.
+ */
+async function underCountLock(
+  projectId: string,
+  requestId: string,
+  section: () => Promise<SpaceRpcResponse>,
+): Promise<SpaceRpcResponse> {
+  try {
+    return await withSpaceCountLock(projectId, section);
+  } catch (e) {
+    if (e instanceof SpaceCountLockBusyError) {
+      return err(requestId, "BUSY", "Other Space changes in this project are in progress");
+    }
+    throw e;
+  }
+}
+
+/**
+ * Answer `SPACE_LIMIT` when the project already holds the cap of live
+ * Spaces. Reads the authoritative PG count, so it must run under the Space
+ * count lock: the lock is what makes the count still true when the caller
+ * writes.
+ * @param projectId - Project to count.
+ * @param requestId - Request id echoed on the refusal.
+ * @returns The refusal, or null when there is room for one more Space.
+ */
+async function refuseAtCap(
+  projectId: string,
+  requestId: string,
+): Promise<SpaceRpcResponse | null> {
+  const liveCount = await yjsDocumentsRepo.countLiveSpaceDocs(projectId);
+  if (liveCount < MAX_SPACES_PER_PROJECT) return null;
+  return err(
+    requestId,
+    "SPACE_LIMIT",
+    `A project holds at most ${MAX_SPACES_PER_PROJECT} Spaces`,
+  );
+}
+
+/**
  * Create a new Space entry in `meta.spaces`. Caller role ≥ editor.
  *
  * **The id is minted here**, not supplied by the caller. When clients
@@ -641,7 +691,7 @@ export function settlePublish(
  * @param projectId - Project whose meta doc the Space is added to.
  * @param caller - Authenticated caller's userId + role, gating the operation.
  * @param req - The `space:create` request carrying the Space type, name, and claim token.
- * @returns A success response carrying the minted Space, or a `FORBIDDEN` / `CONFLICT` error.
+ * @returns A success response carrying the minted Space, or a `FORBIDDEN` / `SPACE_LIMIT` / `BUSY` error.
  */
 async function handleCreate(
   ctx: SpaceRpcContext,
@@ -652,6 +702,29 @@ async function handleCreate(
   if (!requireAtLeast(caller.role, "editor")) {
     return err(req.id, "FORBIDDEN", `Role ${caller.role} cannot create Space`);
   }
+  // Serialized with restore and delete: the cap check reads the PG count and
+  // the seed below adds to it, so two creates on different instances must
+  // not both read 199.
+  return underCountLock(projectId, req.id, () => runCreate(ctx, projectId, caller, req));
+}
+
+/**
+ * The `space:create` critical section, run under the per-project lock.
+ * @param ctx - Collab context providing the Hocuspocus server.
+ * @param projectId - Project whose meta doc the Space is added to.
+ * @param caller - Authenticated caller's userId (creator + audit actor).
+ * @param req - The `space:create` request carrying the Space type, name, and claim token.
+ * @returns A success response carrying the minted Space, or a `SPACE_LIMIT` / `CONFLICT` / `INTERNAL` error.
+ */
+async function runCreate(
+  ctx: SpaceRpcContext,
+  projectId: string,
+  caller: SpaceRpcCaller,
+  req: Extract<SpaceRpcRequest, { type: "space:create" }>,
+): Promise<SpaceRpcResponse> {
+  // Before anything opens or is written: a full project changes nothing.
+  const atCap = await refuseAtCap(projectId, req.id);
+  if (atCap) return atCap;
   const { type, name, claimToken } = req.payload;
   const spaceId = randomUUID();
   // Seed the new Space's content doc BEFORE making it visible in meta — a
@@ -738,12 +811,12 @@ async function handleCreate(
 /**
  * Delete a Space, serialized across collab instances by a per-project
  * distributed lock so the "keep >=1 Space" guard cannot be raced to zero.
- * Caller role ≥ editor. Maps a contended lock to `CONFLICT`.
+ * Caller role ≥ editor. Maps a contended lock to `BUSY`.
  * @param ctx - Collab context providing the Hocuspocus server.
  * @param projectId - Project whose meta doc the Space is removed from.
  * @param caller - Authenticated caller's userId + role, gating the operation.
  * @param req - The `space:delete` request carrying the target spaceId.
- * @returns A success response, or a `FORBIDDEN` / `NOT_FOUND` / `CONFLICT` error.
+ * @returns A success response, or a `FORBIDDEN` / `NOT_FOUND` / `CONFLICT` / `BUSY` error.
  */
 async function handleDelete(
   ctx: SpaceRpcContext,
@@ -755,30 +828,14 @@ async function handleDelete(
     return err(req.id, "FORBIDDEN", `Role ${caller.role} cannot delete Space`);
   }
   const { spaceId } = req.payload;
-  try {
-    // Serialize deletes for THIS project across every collab instance. The
-    // "keep >=1 Space" guard is a read-modify-write; without cross-instance
-    // mutual exclusion two collaborators on different instances can each
-    // pass it against their own not-yet-synced in-memory doc and race the
-    // project to zero Spaces (see the DD 2026-07-01).
-    //
-    // Once the critical section has answered, that answer is what
-    // happened. The lock guards its own release (space-count-lock.ts
-    // swallows + logs a failing eval), so the only rejection that can
-    // reach here after acquisition is one thrown by runDelete itself.
-    return await withSpaceCountLock(projectId, () =>
-      runDelete(ctx, projectId, caller, req, spaceId),
-    );
-  } catch (e) {
-    if (e instanceof SpaceCountLockBusyError) {
-      return err(
-        req.id,
-        "CONFLICT",
-        "Another delete is in progress for this project; please retry",
-      );
-    }
-    throw e; // unexpected — let the dispatcher log + return INTERNAL
-  }
+  // Serialize deletes for THIS project across every collab instance. The
+  // "keep >=1 Space" guard is a read-modify-write; without cross-instance
+  // mutual exclusion two collaborators on different instances can each
+  // pass it against their own not-yet-synced in-memory doc and race the
+  // project to zero Spaces (see the DD 2026-07-01).
+  return underCountLock(projectId, req.id, () =>
+    runDelete(ctx, projectId, caller, req, spaceId),
+  );
 }
 
 /**
@@ -829,9 +886,10 @@ async function runDelete(
     // authority (read under the lock above), so this holds even when two
     // instances delete near-simultaneously: the lock serializes them and
     // each reads the count left by the previous holder's soft-delete.
-    // INVARIANT: any future RPC that can REDUCE a project's live Space
-    // count must run under withSpaceCountLock + this PG-count guard too,
-    // or the cross-instance protection is defeated.
+    // INVARIANT: any RPC that can CHANGE a project's live Space count must
+    // run under withSpaceCountLock and check the PG count it moves (this
+    // floor for delete, the cap for create and restore), or the
+    // cross-instance protection is defeated.
     if (liveCount <= 1) {
       return err(
         req.id,
@@ -1072,7 +1130,7 @@ async function handleRename(
  * @param projectId - Project whose meta doc the Space is restored into.
  * @param caller - Authenticated caller's userId + role; only `owner` may restore.
  * @param req - The `space:restore` request carrying the target spaceId.
- * @returns A success response, or a `FORBIDDEN` / `NOT_FOUND` / `CONFLICT` error.
+ * @returns A success response, or a `FORBIDDEN` / `NOT_FOUND` / `CONFLICT` / `SPACE_LIMIT` / `BUSY` error.
  */
 async function handleRestore(
   ctx: SpaceRpcContext,
@@ -1095,21 +1153,11 @@ async function handleRestore(
   // same spaceId and leave a ghost (live content, no meta entry) that
   // inflates countLiveSpaceDocs. The lock also serializes cross-instance
   // restore-vs-restore; the repo CAS below is the airtight backstop for
-  // the residual lock-TTL window.
-  try {
-    return await withSpaceCountLock(projectId, () =>
-      runRestore(ctx, projectId, caller, req, spaceId),
-    );
-  } catch (e) {
-    if (e instanceof SpaceCountLockBusyError) {
-      return err(
-        req.id,
-        "CONFLICT",
-        "Another Space operation is in progress for this project; please retry",
-      );
-    }
-    throw e;
-  }
+  // the residual lock-TTL window. It is also what keeps the cap check true:
+  // a restore adds one to the count, exactly like a create.
+  return underCountLock(projectId, req.id, () =>
+    runRestore(ctx, projectId, caller, req, spaceId),
+  );
 }
 
 /**
@@ -1119,7 +1167,7 @@ async function handleRestore(
  * @param caller - Authenticated caller's userId + role (audit actor).
  * @param req - The `space:restore` request (for the echoed id).
  * @param spaceId - Target Space id.
- * @returns A success response, or a `NOT_FOUND` / `CONFLICT` error.
+ * @returns A success response, or a `NOT_FOUND` / `CONFLICT` / `SPACE_LIMIT` error.
  */
 async function runRestore(
   ctx: SpaceRpcContext,
@@ -1163,6 +1211,10 @@ async function runRestore(
     if (metaDocOf(conn).getMap("spaces").has(spaceId)) {
       return err(req.id, "CONFLICT", `Space ${spaceId} is not deleted`);
     }
+    // The Space's own rows are still soft-deleted, so the count does not
+    // include it: at the cap, bringing it back would make one too many.
+    const atCap = await refuseAtCap(projectId, req.id);
+    if (atCap) return atCap;
 
     // ── Content rows, BEFORE the broadcast ──────────────────────────
     // A Space must never be visible without its content, so the rows come

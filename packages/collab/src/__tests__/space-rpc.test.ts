@@ -56,7 +56,7 @@ vi.mock("@collab/services/project-edit-recorder.js", () => ({
   recordProjectEdit: recordEditMock,
 }));
 
-// The cross-instance delete lock is unit-tested in space-count-lock.test.ts.
+// The cross-instance Space count lock is unit-tested in space-count-lock.test.ts.
 // Here we bypass it so the delete guard logic (PG authoritative count +
 // type-correct content-doc naming) is tested in isolation: the default just
 // runs the critical section directly (lock always acquired). The lock-busy
