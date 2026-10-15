@@ -10,7 +10,7 @@ import { describe, it, expect } from 'vitest';
 
 import { ADJUST_RANGES, defaultAdjustValue, type AdjustValue } from '@breatic/shared';
 
-import { adjustPixels } from '@web/spaces/canvas/mini-tool/adjust-filters';
+import { adjustFilters, adjustPixels } from '@web/spaces/canvas/mini-tool/adjust-filters';
 
 /** A picture's pixels. */
 interface Pixels {
@@ -110,6 +110,21 @@ describe('adjustPixels', () => {
     (field) => {
       const source = picture(64);
       expect(maxDiff(adjusted(source, { [field]: 100 }).data, source.data)).toBeGreaterThan(20);
+    },
+  );
+
+  // FabricImage.applyFilters drops every pass whose isNeutralState() is true
+  // before it runs the rest (fabric dist/index.mjs:19588), and the preview and
+  // the export both run through it.
+  it.each(Object.keys(ADJUST_RANGES) as (keyof AdjustValue)[])(
+    'builds no pass for %s that Fabric would skip as neutral',
+    (field) => {
+      const { min, max } = ADJUST_RANGES[field];
+      for (const end of [min, max].filter((value) => value !== 0)) {
+        const passes = adjustFilters({ ...defaultAdjustValue, [field]: end }, 7, { width: 64, height: 64 });
+        expect(passes.length, `${field}=${end}`).toBeGreaterThan(0);
+        for (const pass of passes) expect(pass.isNeutralState(), `${field}=${end} ${pass.type}`).toBe(false);
+      }
     },
   );
 
