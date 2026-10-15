@@ -21,6 +21,12 @@ vi.mock("ai", () => ({
   tool: (config: Record<string, unknown>) => config,
 }));
 
+// Google's token check is answered here; the rest of the route runs for real.
+const google = vi.hoisted(() => ({ verifyIdToken: vi.fn() }));
+vi.mock("google-auth-library", () => ({
+  OAuth2Client: vi.fn().mockImplementation(() => ({ verifyIdToken: google.verifyIdToken })),
+}));
+
 import crypto from "node:crypto";
 import postgres from "postgres";
 import {
@@ -189,5 +195,41 @@ describe("sign-up analytics", () => {
     });
     expect(res.status).toBe(200);
     expect(sent.map((e) => [e.event_type, e.event_properties])).toEqual([["login_completed", { method: "email" }]]);
+  });
+});
+
+describe("the Google sign-in route", () => {
+  beforeAll(() => {
+    initCore({ ...process.env, GOOGLE_CLIENT_ID: "test-client.apps.googleusercontent.com" });
+  });
+
+  afterAll(() => {
+    initCore(process.env);
+  });
+
+  it("reports the first sign-in as a sign-up only, with its source kept, and a later one as a login", async () => {
+    const sub = crypto.randomUUID();
+    const email = `signup-analytics-route-${crypto.randomUUID()}@example.test`;
+    google.verifyIdToken.mockResolvedValue({
+      getPayload: () => ({ iss: "https://accounts.google.com", sub, email, email_verified: true }),
+    });
+    const signIn = () =>
+      app.request("/api/v1/auth/google", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: consentCookie(["necessary", "analytics"]) },
+        body: JSON.stringify({ credential: "signed-token", attribution: ATTRIBUTION }),
+      });
+
+    const first = await signIn();
+    expect(first.status).toBe(200);
+    const { user, created: wasCreated } = ((await first.json()) as { data: { user: { id: string }; created: boolean } }).data;
+    created.push(user.id);
+    expect(wasCreated).toBe(true);
+    expect(sent.map((e) => e.event_type)).toEqual(["signup_completed"]);
+    expect(await storedAttribution(user.id)).not.toBeNull();
+
+    sent.splice(0);
+    expect((await signIn()).status).toBe(200);
+    expect(sent.map((e) => [e.event_type, e.event_properties])).toEqual([["login_completed", { method: "google" }]]);
   });
 });

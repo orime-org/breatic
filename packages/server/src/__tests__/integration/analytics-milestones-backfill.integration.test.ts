@@ -69,6 +69,7 @@ describe("the 0096 milestones backfill", () => {
         const collaborator = await user();
         const failedOnly = await user();
         const joinedOnly = await user();
+        const agentOnly = await user();
         const [studio] = await tx<{ id: string }[]>`
           INSERT INTO studios (created_by_user_id, slug, type, name)
           VALUES (${owner}, ${`bf-${crypto.randomUUID().slice(0, 8)}`}, 'team', 'Team') RETURNING id`;
@@ -82,6 +83,12 @@ describe("the 0096 milestones backfill", () => {
           VALUES (${conversation!.id}, ${userId}, 'assistant', ${turn}, 1, ${tx.json(parts as postgres.JSONValue)})`;
         await reply(owner, [{ type: "text", text: "done" }], 0);
         await reply(failedOnly, [{ type: "failed" }], 1);
+        // A collaborator who only talked to the project's Agent, and the owner doing the same.
+        const say = (userId: string, turn: number) => tx`
+          INSERT INTO conversation_messages (conversation_id, user_id, role, turn_index, seq, parts)
+          VALUES (${conversation!.id}, ${userId}, 'user', ${turn}, 0, ${tx.json([])})`;
+        await say(agentOnly, 2);
+        await say(owner, 3);
         await tx`
           INSERT INTO tasks (user_id, space_id, task_type, mode, status)
           VALUES (${owner}, ${crypto.randomUUID()}, 'image', 'direct', 'completed'),
@@ -89,13 +96,14 @@ describe("the 0096 milestones backfill", () => {
         await tx`
           INSERT INTO project_activities (project_id, actor_user_id, type, payload)
           VALUES (${project!.id}, ${collaborator}, 'space:created', '{}'::jsonb),
-                 (${project!.id}, ${joinedOnly}, 'member:joined', '{}'::jsonb)`;
+                 (${project!.id}, ${joinedOnly}, 'member:joined', '{}'::jsonb),
+                 (${project!.id}, ${owner}, 'asset:uploaded', '{}'::jsonb)`;
 
         for (const statement of statements) await tx.unsafe(statement);
         const rows = await tx<{ key: string }[]>`
-          SELECT key FROM analytics_milestones WHERE key LIKE ANY(${[owner, collaborator, failedOnly, joinedOnly].map((id) => `%${id}%`)})`;
+          SELECT key FROM analytics_milestones WHERE key LIKE ANY(${[owner, collaborator, failedOnly, joinedOnly, agentOnly].map((id) => `%${id}%`)})`;
         keys = rows.map((r) => r.key).sort();
-        ids = { owner, collaborator, failedOnly, project: project!.id };
+        ids = { owner, collaborator, failedOnly, agentOnly, project: project!.id };
         throw ROLLBACK;
       })
       .catch((err: unknown) => {
@@ -104,6 +112,7 @@ describe("the 0096 milestones backfill", () => {
 
     expect(keys).toEqual(
       [
+        `collab:${ids.project}:${ids.agentOnly}`,
         `collab:${ids.project}:${ids.collaborator}`,
         `first-agent:${ids.owner}`,
         `first-generation:${ids.owner}`,

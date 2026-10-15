@@ -10,6 +10,9 @@
  * the app with and without the vendor variables: cases tagged `@no-vendors`
  * run against the build without them, the rest against the build with them.
  */
+import { readdirSync, readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
 import { expect, type BrowserContext, type Page, type Request, type Route } from 'playwright/test';
 
 import { stateFile, test } from '../helpers/slot';
@@ -242,6 +245,20 @@ test.describe('what leaves the app', () => {
     expect(outside.map((r) => r.url())).toEqual([]);
   });
 
+  test('a build without the analytics variables ships no analytics, ad or banner code', { tag: NO_VENDORS_TAG }, () => {
+    // The build the no-vendors preview serves (playwright.consent.config.ts). Exact hostnames and selectors:
+    // the bare word "amplitude" also appears in unrelated markup.
+    const build = resolve(__dirname, '../../playwright/.consent/no-vendors');
+    const markers = ['googletagmanager.com', 'api2.amplitude.com', 'cookieconsent', '#cc-main'];
+    const files = readdirSync(build, { recursive: true, encoding: 'utf8' }).filter((file) => /\.(js|html)$/.test(file));
+    expect(files.length).toBeGreaterThan(0);
+    const found = files.flatMap((file) => {
+      const text = readFileSync(resolve(build, file), 'utf8');
+      return markers.filter((marker) => text.includes(marker)).map((marker) => `${file}: ${marker}`);
+    });
+    expect(found).toEqual([]);
+  });
+
   test.describe('signed out', () => {
     test.use({ storageState: { cookies: [], origins: [] } });
 
@@ -258,6 +275,8 @@ test.describe('what leaves the app', () => {
       await page.goto('/login');
       await page.locator('#cc-main .cm [data-role="all"]').click();
       await expect.poll(() => outside.some((r) => new URL(r.url()).hostname === 'www.googletagmanager.com')).toBe(true);
+      // Session tracking sends a start event as soon as the SDK loads, so the project check below has something to read.
+      await expect.poll(() => outside.some((r) => new URL(r.url()).hostname === 'api2.amplitude.com')).toBe(true);
       await page.waitForTimeout(SETTLE_MS);
       expect([...new Set(vendorHosts(outside))].filter((h) => !['www.googletagmanager.com', 'api2.amplitude.com'].includes(h))).toEqual([]);
       const tagIds = outside.filter((r) => new URL(r.url()).hostname === 'www.googletagmanager.com').map((r) => new URL(r.url()).searchParams.get('id'));

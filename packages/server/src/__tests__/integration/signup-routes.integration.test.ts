@@ -36,6 +36,7 @@ vi.mock("ai", () => ({
 import crypto from "node:crypto";
 import postgres from "postgres";
 import { env, getRedis, initCore, loadLocales, sessionCookieName } from "@breatic/core";
+import { CONSENT_COOKIE_NAME, CONSENT_REVISION } from "@breatic/shared";
 import type { Hono } from "hono";
 
 loadLocales();
@@ -176,6 +177,22 @@ describe("POST /auth/register/verify", () => {
 
     const me = await app.request("/api/v1/auth/me", { headers: { Cookie: session! } });
     expect(me.status).toBe(200);
+  });
+
+  it("keeps the campaign source the verifying browser sends when it accepted analytics (inner#1442 §4.5)", async () => {
+    const email = freshEmail();
+    const started = await post("/register", { email, password: "password1" });
+    const ticket = cookiePair(started, "breatic_signup_")!;
+    const entry = { decidedAt: new Date().toISOString(), source: "banner" };
+    const consent = `${CONSENT_COOKIE_NAME}=${encodeURIComponent(
+      JSON.stringify({ categories: ["necessary", "analytics"], revision: CONSENT_REVISION, data: { analytics: entry, ads: entry } }),
+    )}`;
+    const at = new Date().toISOString();
+    const attribution = { first: { utm_source: "google", landing_page: "/pricing?x=1", at }, last: { utm_source: "google", at } };
+    const res = await post("/register/verify", { code: lastCode(), attribution }, `${ticket}; ${consent}`);
+    expect(res.status).toBe(201);
+    const [row] = await sql<{ attribution: unknown }[]>`SELECT attribution FROM users WHERE email = ${email} AND deleted_at IS NULL`;
+    expect(row!.attribution).toEqual({ first: { utm_source: "google", landing_page: "/pricing", at }, last: { utm_source: "google", at } });
   });
 
   it("answers 400 to a wrong code", async () => {

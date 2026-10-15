@@ -23,6 +23,17 @@ vi.mock("ai", () => ({
   tool: (config: Record<string, unknown>) => config,
 }));
 
+// Stripe answers from the in-memory fake, so the real disposition paths run.
+vi.mock("@server/infra/stripe.js", async () => {
+  const { fakeStripe } = await import("./fake-stripe-refunds.js");
+  return {
+    getStripeClient: () => fakeStripe.client,
+    verifyWebhookSignature: () => {
+      throw new Error("not used by this suite");
+    },
+  };
+});
+
 import crypto from "node:crypto";
 import {
   ADS_CONVERSION_QUEUE,
@@ -36,8 +47,23 @@ import {
   type OutgoingEvent,
 } from "@breatic/core";
 import { CONSENT_REVISION } from "@breatic/shared";
+import { requestOneShot } from "@server/modules/credit-refund/disposition.service.js";
 import { reportRefundOutcome } from "@server/modules/credit-refund/refund-follow-up.js";
-import { CREDITS, PAID_CENTS, seedOperation, seedRefundLot, useRefundSuite, type SeededLot } from "./credit-refund-fixtures.js";
+import { handleRefundEvent, type RefundEvent } from "@server/modules/credit-refund/refund-webhook.js";
+import { settleAfterReply } from "@server/utils/after-reply.js";
+import {
+  CREDITS,
+  PAID_CENTS,
+  reId,
+  refundEvent,
+  refundObject,
+  seedOperation,
+  seedRefundLot,
+  useRefundSuite,
+  type LotState,
+  type SeededLot,
+} from "./credit-refund-fixtures.js";
+import { fakeStripe } from "./fake-stripe-refunds.js";
 
 const suite = useRefundSuite("refund-follow-up-test-driver");
 const sent: OutgoingEvent[] = [];
@@ -56,6 +82,7 @@ beforeAll(() => {
 
 beforeEach(() => {
   sent.splice(0);
+  fakeStripe.reset();
 });
 
 afterAll(async () => {
@@ -65,12 +92,13 @@ afterAll(async () => {
 });
 
 /**
- * A refunded lot whose order's conversion Google has, and whose account last
- * chose analytics and ads while signed in.
+ * A lot whose order's conversion Google has, and whose account last chose
+ * analytics and ads while signed in.
+ * @param state - Where the lot stands; refunded unless a path still has to book it.
  * @returns The lot and the conversion's transaction id.
  */
-async function refundedPurchase(): Promise<{ lot: SeededLot; txn: string }> {
-  const lot = await seedRefundLot(suite.sql, "refunded");
+async function refundedPurchase(state: LotState = "refunded"): Promise<{ lot: SeededLot; txn: string }> {
+  const lot = await seedRefundLot(suite.sql, state);
   await suite.sql`UPDATE users SET consent_seen = ${suite.sql.json({
     analytics: { value: true, revision: CONSENT_REVISION },
     ads: { value: true, revision: CONSENT_REVISION },
@@ -118,5 +146,41 @@ describe("reportRefundOutcome", () => {
 
     expect(sent).toEqual([]);
     expect(await getUploadStatus({ conversion: "credit_purchase", transactionId: txn })).toBe("uploaded");
+  });
+});
+
+describe("the dispositions that book a refund report it after they commit", () => {
+  /**
+   * What the follow-up left once it ran.
+   * @param lot - The lot.
+   * @param txn - The conversion.
+   */
+  async function expectReported(lot: SeededLot, txn: string): Promise<void> {
+    await settleAfterReply();
+    expect(sent).toContainEqual(
+      expect.objectContaining({ event_type: "refund_completed", user_id: lot.userId, insert_id: `refund:${lot.lotId}` }),
+    );
+    expect(await getUploadStatus({ conversion: "credit_purchase", transactionId: txn })).toBe("restating");
+  }
+
+  it("resolve_outside on a lot whose refund succeeded on Stripe", async () => {
+    const { lot, txn } = await refundedPurchase("refunding");
+    fakeStripe.register(lot.paymentIntentId, PAID_CENTS, [refundObject(reId("outside"), "succeeded", PAID_CENTS)]);
+    await requestOneShot(
+      "resolve_outside",
+      { lotId: lot.lotId, adminId: "admin_follow_up", key: `follow-up-${crypto.randomUUID()}`, hash: "e".repeat(64), reason: "booked outside" },
+      { confirmedSucceededCents: PAID_CENTS, failedRefundIds: [] },
+    );
+    await expectReported(lot, txn);
+  });
+
+  it("an approval booked by Stripe's refund event", async () => {
+    const { lot, txn } = await refundedPurchase("refunding");
+    const approve = await seedOperation(suite.sql, lot, { kind: "approve", status: "awaiting_stripe", attemptCount: 1, firstCalledHoursAgo: 0 });
+    const refund = refundObject(reId("booked"), "succeeded", PAID_CENTS, approve.id);
+    await suite.sql`UPDATE credit_refund_operations SET stripe_refund_id = ${refund.id} WHERE id = ${approve.id}`;
+    fakeStripe.register(lot.paymentIntentId, PAID_CENTS, [refund]);
+    expect(await handleRefundEvent(refundEvent("refund.updated", refund, lot.paymentIntentId) as unknown as RefundEvent)).toBe("handled");
+    await expectReported(lot, txn);
   });
 });
