@@ -69,7 +69,7 @@ describe('toolLayerOpen', () => {
     },
   );
 
-  it.each(['image.adjust', 'image.upscale'])('is false while %s, which draws nothing on the node, is open', (toolId) => {
+  it.each(['image.adjust', 'image.upscale'])('is false while %s, whose work is held in its panel, is open', (toolId) => {
     act(() => session().openMiniTool('n1', toolId, { sourceContent: 'https://cdn/a.png', params: {} }));
     expect(toolLayerOpen(session())).toBe(false);
   });

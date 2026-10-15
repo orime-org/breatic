@@ -10,11 +10,12 @@
  * The canvas's copy, paste and duplicate ask `toolLayerOpen` themselves.
  */
 
+// Pinned to the version `@xyflow/react` depends on; the two are upgraded together.
+import { isInputDOMNode } from '@xyflow/system';
 import * as React from 'react';
 
 import { gridShapeOf, isModelTool, miniToolById } from '@breatic/shared/mini-tools';
 
-import { isEditableTarget } from '@web/lib/is-editable-target';
 import { miniToolOpenOn, type CanvasSessionState } from '@web/stores/canvas-session';
 
 /** The classes a tool layer's root carries: no node drag, no canvas pan, no Shift marquee. */
@@ -29,9 +30,10 @@ const ARROWS = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
 const MOVED_BY_ARROWS = '.react-flow__node.selected, .react-flow__nodesselection';
 
 /**
- * Whether a tool that draws on its node is open: the focus crop, or the panel
- * of a markup, drawing, expand, grid or crop tool. These are the drafts the
- * node's layers render from.
+ * Whether a tool whose work is drawn on its node is open: the focus crop, or
+ * the panel of a markup, drawing, expand, grid or crop tool (a frame, cut
+ * lines, objects or strokes). The picture adjust draws only a preview there
+ * and keeps its work in the panel's params, as every other tool does.
  * @param s - The canvas session.
  * @returns True while such a layer is on a node.
  */
@@ -54,13 +56,14 @@ export function stopNodeClick(event: React.MouseEvent): void {
 }
 
 /**
- * Keep the arrows pressed in a selected node while a tool layer is open:
- * xyflow would move the node under the tool, whichever region holds the
- * keyboard. Text boxes keep theirs, and so does every control xyflow moves
- * nothing from (a panel's slider, the focus crop's timeline, a player in a
- * node that is not selected). Mounted once by the canvas, which stays
- * mounted while any node is culled; a hidden Space's effects are torn down,
- * so only the shown canvas listens.
+ * Keep from xyflow, while a tool layer is open, the arrows it would move a
+ * selected node by, whichever region holds the keyboard: those pressed in a
+ * selected node or the box around several, on anything xyflow does not skip
+ * (`isInputDOMNode`: an input, a select, a textarea, editable content, or
+ * anything under `.nokey`, as a player's seek bar and the tool layers are).
+ * Every other arrow keeps its own meaning. Mounted once by the canvas, which
+ * stays mounted while any node is culled; a hidden Space's effects are torn
+ * down, so only the shown canvas listens.
  * @param active - Whether a tool layer is open.
  */
 export function useToolLayerArrows(active: boolean): void {
@@ -72,7 +75,7 @@ export function useToolLayerArrows(active: boolean): void {
      */
     const onKeyDown = (event: KeyboardEvent): void => {
       const target = event.target;
-      if (!ARROWS.has(event.key) || !(target instanceof Element) || isEditableTarget(target)) return;
+      if (!ARROWS.has(event.key) || isInputDOMNode(event) || !(target instanceof Element)) return;
       if (target.closest(MOVED_BY_ARROWS) === null) return;
       event.preventDefault();
       event.stopPropagation();
