@@ -31,7 +31,7 @@ export async function exportMarkBlob(source: CropSource, objects: readonly MarkO
     scene.backgroundImage = markBackground(el);
     for (const object of objects) scene.add(toFabric(object, size));
     scene.renderAll();
-    return await pngOf(scene.toCanvasElement());
+    return await pngOf(scene.getElement());
   } finally {
     void scene.dispose();
   }
