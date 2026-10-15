@@ -162,6 +162,36 @@ describe('adjustPixels', () => {
     },
   );
 
+  // Fabric's 2D backend hands the filters a real ImageData, whose width and
+  // height are getters on its prototype rather than fields of its own.
+  it.each([{ noiseReduction: 100 }, { sharpness: 100 }, { clarity: 100 }])(
+    'reads an ImageData-shaped picture the same as a plain one with %o',
+    (value) => {
+      class Shaped {
+        readonly #width: number;
+        readonly #height: number;
+        constructor(
+          readonly data: Uint8ClampedArray,
+          width: number,
+          height: number,
+        ) {
+          this.#width = width;
+          this.#height = height;
+        }
+        get width(): number {
+          return this.#width;
+        }
+        get height(): number {
+          return this.#height;
+        }
+      }
+      const source = picture(32);
+      const shaped = new Shaped(new Uint8ClampedArray(source.data), 32, 32);
+      adjustPixels(shaped, { ...defaultAdjustValue, ...value }, 7);
+      expect(maxDiff(shaped.data, adjusted(source, value).data)).toBe(0);
+    },
+  );
+
   it.each(['sharpness', 'clarity'] as const)('looks the same at two resolutions with %s', (field) => {
     // The small one is a preview of the large: it draws the large picture's effect.
     const small = adjusted(picture(64), { [field]: 80 }, 7, 128);
