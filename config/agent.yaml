@@ -86,20 +86,18 @@ current_space_max_chars: 100000
 space_list_max_items: 200
 
 # How long an assembled request may be before a consolidation runs, in
-# characters. Measured against everything about to go to the model: system
-# prompt, memory, tool definitions, history and this turn's
-# question.
-#
-# Characters rather than tokens because no library counts tokens for a model
-# reached through OpenRouter, and a character is never more than a token in
-# the tokenizers this build meets — so this can only fire early.
-memory_budget_chars: 850000
+# tokens: 85% of the smallest context window among the providers that serve
+# the model. Measured against everything about to go to the model: system
+# prompt, memory, tool definitions, history and this turn's question. The
+# size comes from the provider's own count on the last turn; where there is
+# none, a character is counted as a token, which can only fire early.
+memory_budget_tokens: 850000
 
-# What one consolidation leaves behind, in characters. A pass takes whole
-# turns from the oldest end until what remains is under this, less the room
-# the fold may add to memory — the two memory ceilings, doubled, since they
-# are counted in code points and the payload is measured in code units.
-memory_keep_chars: 500000
+# What one consolidation leaves behind, in tokens. A pass takes whole turns
+# from the oldest end until what remains is under this, less the room the
+# fold may add to memory -- the two memory ceilings, doubled, counted as
+# tokens at a character each.
+memory_keep_tokens: 500000
 
 # ── Tools ─────────────────────────────────────────────────
 # How much page text one web_search asks for, in tokens. The service refuses

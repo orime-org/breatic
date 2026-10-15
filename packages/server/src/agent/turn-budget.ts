@@ -12,7 +12,7 @@
  */
 
 import type { ModelMessage } from "ai";
-import { effectiveKeepChars, getAgentConfig } from "@breatic/core";
+import { effectiveKeepTokens, getAgentConfig } from "@breatic/core";
 import type { MessageData } from "@breatic/shared";
 import type { ResolvedAgentConfig } from "@breatic/domain";
 import { measureMessages, measurePayload } from "@server/agent/payload-size.js";
@@ -95,15 +95,15 @@ export async function foldIfOverBudget(
   // The planner asks this again and is the authority on it. Asked here first
   // because the answer is no on almost every turn, and the pricing below
   // renders every turn of the history to find out what it costs.
-  if (assembled <= config.memory_budget_chars) return false;
+  if (assembled <= config.memory_budget_tokens) return false;
 
   const plan = planConsolidation({
     assembled,
     turns: costPerTurn(assembly.history),
-    budget: config.memory_budget_chars,
+    budget: config.memory_budget_tokens,
     // The keep line a pass runs to: the configured line less the room the
     // fold is about to add, from the one place that arithmetic lives.
-    keep: effectiveKeepChars(config),
+    keep: effectiveKeepTokens(config),
   });
   const newWatermark = plan.newWatermark;
   if (newWatermark === null) return false;

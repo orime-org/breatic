@@ -18,11 +18,11 @@ import { MONOREPO_ROOT } from "@core/config/env.js";
 /**
  * Code units per code point, at worst.
  *
- * Memory is cut in code points, which is where a character ends, and the
- * assembled payload is measured in code units, which is what a string's
- * length is. Everything above the basic plane is two units per point, and the
- * consolidating prompt asks the model to answer in the language of the
- * conversation.
+ * Memory is cut in code points, which is where a character ends. What a fold
+ * adds to the request is counted as tokens at a code unit each, which is what
+ * a string's length is. Everything above the basic plane is two units per
+ * point, and the consolidating prompt asks the model to answer in the
+ * language of the conversation.
  */
 const MEMORY_RESERVE_FACTOR = 2;
 
@@ -35,7 +35,7 @@ const MEMORY_RESERVE_FACTOR = 2;
  * @param ceilings - An object carrying the two memory ceilings, in code points.
  * @param ceilings.memory_conversation_max_size - The conversation ceiling.
  * @param ceilings.memory_project_max_size - The project ceiling.
- * @returns The reserve, in code units.
+ * @returns The reserve, in tokens at a code unit each.
  */
 function reservedForMemory(ceilings: {
   memory_conversation_max_size: number;
@@ -162,20 +162,21 @@ const agentConfigSchema = z.object({
   space_list_max_items: z.number().int().positive().default(200),
   /**
    * How long an assembled request may be before a consolidation runs, in
-   * characters.
+   * tokens.
    *
    * Measured against everything about to go to the model — system prompt,
    * memory, tool definitions, history and this turn's question
    * — because those are what fill a context window, and a budget that only
    * counted the history would be blind to the segments it cannot shorten.
    *
-   * Characters rather than tokens: no library counts tokens for a model
-   * reached through OpenRouter, and a character is never more than a token in
-   * the tokenizers this build meets, so this can only fire early.
+   * The size is the provider's own count from the last turn. What it has no
+   * count for is measured in characters, a character counted as a token: a
+   * character is never more than a token in the tokenizers this build meets,
+   * so that can only fire early.
    */
-  memory_budget_chars: z.number().int().positive().default(850000),
+  memory_budget_tokens: z.number().int().positive().default(850000),
   /**
-   * What one consolidation leaves behind, in characters.
+   * What one consolidation leaves behind, in tokens.
    *
    * A pass takes whole turns from the oldest end until what remains is at or
    * under this. Written as "what is left" rather than "how much to take"
@@ -183,7 +184,7 @@ const agentConfigSchema = z.object({
    * stored whole — so no fixed amount can promise the reassembled request
    * lands under the budget, and that promise is the point.
    */
-  memory_keep_chars: z.number().int().positive().default(500000),
+  memory_keep_tokens: z.number().int().positive().default(500000),
   /**
    * How much page text one `web_search` call asks the service for, in tokens.
    *
@@ -318,11 +319,11 @@ const agentConfigSchema = z.object({
   // above the budget and the loop stops before it has taken anything: the
   // plan comes back empty, folding never happens, and every turn from then on
   // goes out at whatever length it happens to be — with nothing said anywhere.
-  if (config.memory_keep_chars >= config.memory_budget_chars) {
+  if (config.memory_keep_tokens >= config.memory_budget_tokens) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
-      path: ["memory_keep_chars"],
-      message: `memory_keep_chars (${config.memory_keep_chars}) must be below memory_budget_chars (${config.memory_budget_chars})`,
+      path: ["memory_keep_tokens"],
+      message: `memory_keep_tokens (${config.memory_keep_tokens}) must be below memory_budget_tokens (${config.memory_budget_tokens})`,
     });
   }
 
@@ -335,11 +336,11 @@ const agentConfigSchema = z.object({
   // first reader whose conversation grows past the budget.
   // The room the fold may add, held back from the keep line below.
   const reserved = reservedForMemory(config);
-  if (reserved >= config.memory_keep_chars) {
+  if (reserved >= config.memory_keep_tokens) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       path: ["memory_conversation_max_size"],
-      message: `the reserve held back for a fold, twice memory_conversation_max_size + memory_project_max_size (${reserved}), must be below memory_keep_chars (${config.memory_keep_chars})`,
+      message: `the reserve held back for a fold, twice memory_conversation_max_size + memory_project_max_size (${reserved}), must be below memory_keep_tokens (${config.memory_keep_tokens})`,
     });
   }
 
@@ -374,17 +375,17 @@ export type AgentConfig = z.infer<typeof agentConfigSchema>;
  * that would put this at or below zero, and it can only do that if it holds
  * back the same amount the pass will.
  * @param config - An object carrying the three figures this is worked out from.
- * @param config.memory_keep_chars - The configured keep line.
+ * @param config.memory_keep_tokens - The configured keep line.
  * @param config.memory_conversation_max_size - The conversation ceiling.
  * @param config.memory_project_max_size - The project ceiling.
- * @returns The line, in code units.
+ * @returns The line, in tokens.
  */
-export function effectiveKeepChars(config: {
-  memory_keep_chars: number;
+export function effectiveKeepTokens(config: {
+  memory_keep_tokens: number;
   memory_conversation_max_size: number;
   memory_project_max_size: number;
 }): number {
-  return config.memory_keep_chars - reservedForMemory(config);
+  return config.memory_keep_tokens - reservedForMemory(config);
 }
 
 /**
