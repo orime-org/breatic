@@ -462,16 +462,6 @@ class AdjustBlur extends filters.Blur {
     gl.uniform2fv(locations.uPixel ?? null, this.horizontal ? [this.pixel[0], 0] : [0, this.pixel[1]]);
     gl.uniform1f(locations.uFalloff ?? null, blurFalloff(this.sigma));
   }
-
-  /**
-   * Whether the pass changes nothing. FabricImage.applyFilters drops a pass
-   * that says so before it runs the rest, and Blur's own answer reads its
-   * `blur` field, which this pass leaves at 0.
-   * @returns True at no spread.
-   */
-  isNeutralState(): boolean {
-    return this.sigma === 0;
-  }
 }
 
 /**
