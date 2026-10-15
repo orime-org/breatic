@@ -290,6 +290,10 @@ export class MainAgent {
     /** What a tool answered, for calls whose result chunk never got read. */
     const whatToolAnswered = new Map<string, unknown>();
 
+    // One object for every assembly and for the copy kept of it, so what is
+    // stored is what went out.
+    const userMessage: ModelMessage = { role: "user", content: forModel };
+
     /**
      * Read everything the model is given, and lay it out as it will be sent.
      *
@@ -299,10 +303,6 @@ export class MainAgent {
      * result, which would leave the folded turns missing from both places.
      * @returns The request, and what it was built from.
      */
-    // One object for every assembly and for the copy kept of it, so what is
-    // stored is what went out.
-    const userMessage: ModelMessage = { role: "user", content: forModel };
-
     const assemble = async (): Promise<Assembly> => {
       // The running turn is left out of the history on purpose. Its message
       // is put in front of the model separately, below, so a copy in the

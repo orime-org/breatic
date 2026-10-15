@@ -20,6 +20,7 @@ import { planConsolidation } from "@server/agent/consolidation-window.js";
 import type { TurnCost } from "@server/agent/consolidation-window.js";
 import { toModelMessages } from "@server/agent/model-messages.js";
 import { consolidateWindow } from "@server/agent/memory-consolidator.js";
+import { historyForModel, stripThinking } from "@server/agent/history-replay.js";
 import type { ReplayRow } from "@server/agent/history-replay.js";
 
 /** One reading of everything a turn sends, and what it was built from. */
@@ -113,9 +114,16 @@ export async function foldIfOverBudget(
     userId: who.userId,
     conversationId: who.conversationId,
     projectId: who.projectId,
-    // The window as the model would have been sent it, placeholders and all.
-    transcript: toModelMessages(
-      assembly.history.filter((m) => m.turnIndex <= newWatermark),
+    // The window as the model was sent it, less the model's own working.
+    transcript: stripThinking(
+      historyForModel(
+        assembly.history.filter((m) => m.turnIndex <= newWatermark),
+        {
+          system: assembly.agentConfig.instructions,
+          tools: assembly.agentConfig.tools,
+          modelId: assembly.agentConfig.modelId,
+        },
+      ),
     ),
     watermarkBefore: assembly.watermark,
     newWatermark,

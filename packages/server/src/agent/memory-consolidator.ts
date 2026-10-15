@@ -116,6 +116,30 @@ interface ConsolidationAnswer {
 }
 
 /**
+ * One part of a message, as the prompt reads it: the words, a tool's name and
+ * arguments, or what it answered. Anything else is left out -- the model's
+ * working, and a provider's private metadata.
+ * @param part - A part of a message's content.
+ * @returns Its text, or null when it is left out.
+ */
+function partText(part: unknown): string | null {
+  const p = part as { type?: string; text?: string; toolName?: string; input?: unknown; output?: unknown };
+  switch (p.type) {
+    case "text":
+      return p.text ?? "";
+    case "tool-call":
+      return `[called ${p.toolName ?? ""}] ${JSON.stringify(p.input ?? null)}`;
+    case "tool-result": {
+      const output = p.output as { value?: unknown } | undefined;
+      const value = output?.value;
+      return `[${p.toolName ?? ""} answered] ${typeof value === "string" ? value : JSON.stringify(value ?? output ?? null)}`;
+    }
+    default:
+      return null;
+  }
+}
+
+/**
  * Render the window the way the prompt reads it.
  * @param transcript - The window, as assembled messages.
  * @returns One block of text, speaker by speaker.
@@ -126,7 +150,7 @@ function transcribe(transcript: readonly ModelMessage[]): string {
       const said =
         typeof message.content === "string"
           ? message.content
-          : JSON.stringify(message.content);
+          : message.content.flatMap((part) => partText(part) ?? []).join("\n");
       return `[${message.role}]: ${said}`;
     })
     .join("\n\n");
