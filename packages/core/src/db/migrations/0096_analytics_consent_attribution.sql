@@ -55,7 +55,6 @@ ON CONFLICT DO NOTHING;
 CREATE TABLE "ads_conversion_uploads" (
   "conversion" varchar(32) NOT NULL,
   "transaction_id" varchar(255) NOT NULL,
-  "payment_id" uuid,
   "status" varchar(16) NOT NULL,
   "job" jsonb NOT NULL,
   "request_id" varchar(128),
@@ -66,9 +65,6 @@ CREATE TABLE "ads_conversion_uploads" (
   CONSTRAINT "ads_conversion_uploads_status_check"
     CHECK ("status" IN ('queued', 'uploaded', 'failed'))
 );--> statement-breakpoint
-ALTER TABLE "ads_conversion_uploads" ADD CONSTRAINT "ads_conversion_uploads_payment_id_payments_id_fk"
-  FOREIGN KEY ("payment_id") REFERENCES "public"."payments"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
-CREATE INDEX "ads_conversion_uploads_payment_idx" ON "ads_conversion_uploads" USING btree ("payment_id");--> statement-breakpoint
 ALTER TABLE "users" ADD COLUMN "consent_seen" jsonb;--> statement-breakpoint
 ALTER TABLE "users" ADD COLUMN "attribution" jsonb;--> statement-breakpoint
 ALTER TABLE "upload_grants" ADD COLUMN "analytics_consent" jsonb;--> statement-breakpoint

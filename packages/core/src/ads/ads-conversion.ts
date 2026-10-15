@@ -20,7 +20,7 @@ import { createHash } from "node:crypto";
 import {
   claimUpload,
   findStaleUploads,
-  moveUpload,
+  settleQueuedUpload,
 } from "@core/ads/ads-conversion.repo.js";
 import { ADS_CONVERSIONS, ADS_SWEEP_JOB, type AdsConversionJob, type AdsConversionName } from "@core/ads/ads-types.js";
 import { env } from "@core/config/env.js";
@@ -126,7 +126,6 @@ async function addJob(job: AdsConversionJob): Promise<void> {
  * @param input.value - Revenue, for purchases.
  * @param input.value.amountCents - Amount in the currency's minor unit.
  * @param input.value.currency - ISO currency code.
- * @param input.paymentId - The credit order it is for.
  * @param browser - The browser behind it as it stood then; defaults to the
  *   request's; null for an event no browser is behind.
  * @returns Whether it was queued.
@@ -139,7 +138,6 @@ export async function enqueueAdsConversion(
     transactionId: string;
     click: AdClick | null;
     value?: { amountCents: number; currency: string };
-    paymentId?: string;
   },
   browser: BrowserAdsSnapshot | null = currentAdsBrowser(),
 ): Promise<boolean> {
@@ -156,7 +154,7 @@ export async function enqueueAdsConversion(
     click,
     ...(input.value ? { value: input.value } : {}),
   };
-  if (!(await claimUpload(job, input.paymentId ?? null))) return false;
+  if (!(await claimUpload(job))) return false;
   await addJob(job);
   return true;
 }
@@ -170,7 +168,7 @@ export async function enqueueAdsConversion(
  */
 export async function settleAdsUpload(job: AdsConversionJob, uploaded: boolean, requestId?: string): Promise<void> {
   const key = { conversion: job.conversion, transactionId: job.transactionId };
-  await moveUpload(key, ["queued"], uploaded ? "uploaded" : "failed", uploaded ? { requestId } : {});
+  await settleQueuedUpload(key, uploaded ? "uploaded" : "failed", uploaded ? { requestId } : {});
 }
 
 /**
@@ -181,7 +179,7 @@ export async function settleAdsUpload(job: AdsConversionJob, uploaded: boolean, 
  */
 export async function settleAdsRefused(job: AdsConversionJob): Promise<void> {
   const key = { conversion: job.conversion, transactionId: job.transactionId };
-  await moveUpload(key, ["queued"], "failed", { failureReason: "consent_withdrawn" });
+  await settleQueuedUpload(key, "failed", { failureReason: "consent_withdrawn" });
 }
 
 /** How long a row may wait in a queued state before its job is presumed lost. */
@@ -197,13 +195,13 @@ const STALE_AFTER_MS = 10 * 60_000;
  * @throws {unknown} When the database or the queue cannot be reached.
  */
 export async function requeueStaleAdsUploads(staleAfterMs: number = STALE_AFTER_MS): Promise<number> {
-  const rows = await findStaleUploads(["queued"], new Date(Date.now() - staleAfterMs));
-  for (const row of rows) {
-    const existing = await adsQueue().getJob(jobIdOf(row.job));
+  const jobs = await findStaleUploads(new Date(Date.now() - staleAfterMs));
+  for (const job of jobs) {
+    const existing = await adsQueue().getJob(jobIdOf(job));
     if (existing && (await existing.isFailed())) await existing.remove();
-    await addJob(row.job);
+    await addJob(job);
   }
-  return rows.length;
+  return jobs.length;
 }
 
 /**

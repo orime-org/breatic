@@ -2759,8 +2759,6 @@ export const adsConversionUploads = pgTable(
   {
     conversion: varchar("conversion", { length: 32 }).notNull(),
     transactionId: varchar("transaction_id", { length: 255 }).notNull(),
-    /** The credit order this conversion is for. */
-    paymentId: uuid("payment_id").references(() => payments.id, { onDelete: "restrict" }),
     status: varchar("status", { length: 16 }).notNull(),
     /** The job to upload. */
     job: jsonb("job").$type<AdsConversionJob>().notNull(),
@@ -2772,7 +2770,6 @@ export const adsConversionUploads = pgTable(
   },
   (table) => [
     primaryKey({ columns: [table.conversion, table.transactionId] }),
-    index("ads_conversion_uploads_payment_idx").on(table.paymentId),
     check(
       "ads_conversion_uploads_status_check",
       sql`${table.status} IN ('queued', 'uploaded', 'failed')`,

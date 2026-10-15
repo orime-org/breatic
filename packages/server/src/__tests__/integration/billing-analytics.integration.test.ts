@@ -144,7 +144,7 @@ function adsAccepted(): BrowserAdsSnapshot {
 
 describe("credit purchases", () => {
   it("reports the grant once, under the order's consent, and queues its conversion", async () => {
-    const { userId, paymentId, sessionId } = await pendingOrder({
+    const { userId, sessionId } = await pendingOrder({
       analyticsConsent: { analytics: true, ads: true },
       adsBrowser: adsAccepted(),
       adClick: recentClick(),
@@ -163,10 +163,11 @@ describe("credit purchases", () => {
       }),
     ]);
     expect(await getUploadStatus({ conversion: "credit_purchase", transactionId: `purchase:${sessionId}` })).toBe("queued");
-    const [row] = await sql<{ payment_id: string }[]>`
-      SELECT payment_id FROM ads_conversion_uploads WHERE transaction_id = ${`purchase:${sessionId}`}
+    // The upload keeps no link to the order, so the order's row is never held by it.
+    const columns = await sql<{ column_name: string }[]>`
+      SELECT column_name FROM information_schema.columns WHERE table_name = 'ads_conversion_uploads'
     `;
-    expect(row!.payment_id).toBe(paymentId);
+    expect(columns.map((c) => c.column_name)).not.toContain("payment_id");
     expect(await paidOrder(sessionId)).toEqual({ paid: true, amountCents: 2000, currency: "usd" });
   });
 

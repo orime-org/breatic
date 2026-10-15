@@ -238,8 +238,8 @@ describe("eraseAccountAnalytics", () => {
     `;
     const job = { userId: id, browser: { consent: true } };
     await sql`
-      INSERT INTO ads_conversion_uploads (conversion, transaction_id, payment_id, status, job)
-      VALUES ('signup', ${`signup:${id}`}, null, 'uploaded', ${sql.json(job)})
+      INSERT INTO ads_conversion_uploads (conversion, transaction_id, status, job)
+      VALUES ('signup', ${`signup:${id}`}, 'uploaded', ${sql.json(job)})
     `;
     return id;
   }

@@ -427,7 +427,6 @@ function reportPurchase(payment: PaymentEntity): void {
       transactionId,
       click,
       value: { amountCents: payment.amountCents, currency: payment.currency },
-      paymentId: payment.id,
     },
     adsBrowser,
   ).catch((err: unknown) => {
