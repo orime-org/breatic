@@ -10,7 +10,7 @@ import { describe, it, expect } from "vitest";
 
 import { attachmentMarker, attachmentSection } from "@breatic/shared";
 import type { ChatAttachedChip } from "@breatic/shared";
-import { userTurnForModel } from "@server/agent/user-turn.js";
+import { userMessageForModel, userTurnForModel } from "@server/agent/user-turn.js";
 
 const image: ChatAttachedChip = {
   id: "a1",
@@ -316,5 +316,20 @@ describe("the Spaces the reader is in (inner#1413)", () => {
 
   it("is the bare words when the project has no Space and nothing is attached", () => {
     expect(userTurnForModel({ chips: [], message: "hi", spaces: [], spaces_total: 0 })).toBe("hi");
+  });
+});
+
+describe("userMessageForModel", () => {
+  it("opens with the reader's clock and closes with the reminder of the reader's language", () => {
+    expect(userMessageForModel("The reader's clock reads 09:00.", { chips: [], message: "画一只猫" })).toBe(
+      "The reader's clock reads 09:00.\n\n画一只猫\n\n" +
+        "(Reply and write every text the user will read or edit in the language this message is written in, " +
+        "unless the user has asked for a specific language or the work itself sets one.)",
+    );
+  });
+
+  it("keeps the message body between the clock and the reminder", () => {
+    const message = userMessageForModel("clock", { chips: [image], message: "what is in this?" });
+    expect(message).toContain(userTurnForModel({ chips: [image], message: "what is in this?" }));
   });
 });
