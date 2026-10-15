@@ -18,6 +18,7 @@ import {
   useToolLayerArrows,
 } from '@web/spaces/canvas/mini-tool/tool-layer-input';
 import { canvasSessions } from '@web/stores/canvas-session';
+import { useUIStore } from '@web/stores/ui';
 
 /**
  * A canvas node and a panel slider beside it, in the space region.
@@ -26,14 +27,21 @@ import { canvasSessions } from '@web/stores/canvas-session';
  * @returns The canvas.
  */
 function Canvas({ active }: { active: boolean }): React.JSX.Element {
-  useToolLayerArrows(active);
+  const container = React.useRef<HTMLDivElement>(null);
+  useToolLayerArrows(active, container);
   return (
     <div data-region='space'>
-      <div className='react-flow__node'>
-        <button type='button' data-testid='control'>tile</button>
-        <textarea data-testid='typing' />
+      <div ref={container}>
+        <div className='react-flow__node'>
+          <button type='button' data-testid='control'>tile</button>
+          <textarea data-testid='typing' />
+        </div>
+        <div role='slider' tabIndex={0} aria-valuenow={0} data-testid='slider' />
       </div>
-      <div role='slider' tabIndex={0} aria-valuenow={0} data-testid='slider' />
+      {/* Another Space's canvas, kept mounted while hidden. */}
+      <div className='react-flow__node'>
+        <button type='button' data-testid='elsewhere'>other</button>
+      </div>
     </div>
   );
 }
@@ -42,6 +50,7 @@ const reached = vi.fn();
 afterEach(() => {
   document.removeEventListener('keydown', reached);
   reached.mockClear();
+  useUIStore.setState({ activeRegion: 'space' });
   canvasSessions.clear();
 });
 
@@ -78,6 +87,23 @@ describe('useToolLayerArrows', () => {
     render(<Canvas active />);
     expect(fireEvent.keyDown(screen.getByTestId('control'), { key })).toBe(false);
     expect(reached).not.toHaveBeenCalled();
+  });
+
+  // xyflow moves the node whichever region holds the keyboard (a scrollbar
+  // press in the agent column hands it over and leaves focus on the node).
+  it('keeps arrows pressed in a node from it while another region holds the keyboard', () => {
+    useUIStore.setState({ activeRegion: 'agent' });
+    document.addEventListener('keydown', reached);
+    render(<Canvas active />);
+    expect(fireEvent.keyDown(screen.getByTestId('control'), { key: 'ArrowDown' })).toBe(false);
+    expect(reached).not.toHaveBeenCalled();
+  });
+
+  it('leaves arrows pressed in another canvas’s nodes to that canvas', () => {
+    document.addEventListener('keydown', reached);
+    render(<Canvas active />);
+    expect(fireEvent.keyDown(screen.getByTestId('elsewhere'), { key: 'ArrowRight' })).toBe(true);
+    expect(reached).toHaveBeenCalledOnce();
   });
 
   // xyflow moves a node by the arrows pressed in it; a control outside every

@@ -14,7 +14,6 @@ import * as React from 'react';
 
 import { gridShapeOf, isModelTool, miniToolById } from '@breatic/shared/mini-tools';
 
-import { regionOwnsKeyboard } from '@web/features/active-region/keyboard-scope';
 import { miniToolOpenOn, type CanvasSessionState } from '@web/stores/canvas-session';
 
 /** The classes a tool layer's root carries: no node drag, no canvas pan, no Shift marquee. */
@@ -66,13 +65,16 @@ function typesText(target: EventTarget | null): boolean {
 }
 
 /**
- * Keep the arrows pressed in a node while a tool layer is open: xyflow would
- * move the node under the tool. Text boxes keep theirs, and so does every
- * control outside the nodes (a panel's slider, the focus crop's timeline).
- * Mounted once by the canvas, which stays mounted while any node is culled.
+ * Keep the arrows pressed in a node of this canvas while a tool layer is open:
+ * xyflow would move the node under the tool, whichever region holds the
+ * keyboard. Text boxes keep theirs, and so does every control outside the
+ * nodes (a panel's slider, the focus crop's timeline) and every other canvas,
+ * a hidden Space's included. Mounted once by the canvas, which stays mounted
+ * while any node is culled.
  * @param active - Whether a tool layer is open.
+ * @param within - This canvas's root.
  */
-export function useToolLayerArrows(active: boolean): void {
+export function useToolLayerArrows(active: boolean, within: React.RefObject<HTMLElement | null>): void {
   React.useEffect(() => {
     if (!active) return undefined;
     /**
@@ -81,12 +83,12 @@ export function useToolLayerArrows(active: boolean): void {
      */
     const onKeyDown = (event: KeyboardEvent): void => {
       if (!ARROWS.has(event.key) || typesText(event.target)) return;
-      if (!regionOwnsKeyboard(event.target, 'space')) return;
       if (!(event.target instanceof Element) || event.target.closest(MOVED_BY_ARROWS) === null) return;
+      if (within.current?.contains(event.target) !== true) return;
       event.preventDefault();
       event.stopPropagation();
     };
     window.addEventListener('keydown', onKeyDown, true);
     return () => window.removeEventListener('keydown', onKeyDown, true);
-  }, [active]);
+  }, [active, within]);
 }

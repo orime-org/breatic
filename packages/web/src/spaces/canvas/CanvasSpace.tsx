@@ -801,7 +801,7 @@ function CanvasSpaceInner({
   const sessionStore = useCanvasSessionStore();
   // A tool drawing on a node keeps the arrows pressed in it, while that node
   // is culled too (inner#1303 §6.6).
-  useToolLayerArrows(useCanvasSession(toolLayerOpen));
+  useToolLayerArrows(useCanvasSession(toolLayerOpen), containerRef);
   const onExitPick = React.useCallback((): void => {
     const { pickSession: session, miniTool } = sessionStore.getState();
     endPick();
