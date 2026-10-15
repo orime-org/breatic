@@ -394,6 +394,19 @@ describe("connection gate — failed authentication", () => {
     expect(throttle.count).toHaveBeenCalledExactlyOnceWith("203.0.113.9");
   });
 
+  it("keeps counting a WebSocket that goes on failing past a full project", async () => {
+    // One socket carries at most a full project (MAX_SPACES_PER_PROJECT + 1
+    // documents), so failures beyond that are repeated attempts, and each one
+    // counts toward the ban.
+    const throttle = fakeThrottle();
+    const gate = createConnectionGate(throttle);
+    const request = { headers: new Headers({ "x-real-ip": "203.0.113.9" }) };
+
+    for (let i = 0; i < 210; i += 1) await gate.recordFailedAuth({ request });
+
+    expect(throttle.count).toHaveBeenCalledTimes(1 + 9);
+  });
+
   it("counts failures on two WebSockets separately", async () => {
     const throttle = fakeThrottle();
     const gate = createConnectionGate(throttle);

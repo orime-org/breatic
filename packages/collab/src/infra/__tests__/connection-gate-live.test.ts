@@ -32,7 +32,7 @@ import WebSocket from "ws";
 import * as encoding from "lib0/encoding";
 import { Server } from "@hocuspocus/server";
 import type * as CoreModule from "@breatic/core";
-import { createConnectionGate } from "@collab/infra/connection-gate.js";
+import { createConnectionGate, recordingFailedAuth } from "@collab/infra/connection-gate.js";
 import { isLoopbackIp } from "@breatic/core";
 
 // The gate logs its refusals; this file runs without initCore, so the logger
@@ -179,15 +179,26 @@ function lanAddress(): string {
  * @param throttle - The throttle the gate counts with.
  * @returns The port.
  */
-async function serverCounting(throttle: {
-  count: (identity: string) => Promise<boolean>;
-  isBanned: (identity: string) => Promise<boolean>;
-}): Promise<number> {
+async function serverCounting(
+  throttle: {
+    count: (identity: string) => Promise<boolean>;
+    isBanned: (identity: string) => Promise<boolean>;
+  },
+  rejectAuth = false,
+): Promise<number> {
+  const gate = createConnectionGate(throttle);
   const server = new Server({
     port: 0,
     address: "0.0.0.0",
     quiet: true,
-    extensions: [createConnectionGate(throttle)],
+    extensions: [gate],
+    ...(rejectAuth
+      ? {
+          onAuthenticate: recordingFailedAuth(async () => {
+            throw new Error("session_not_found");
+          }, gate),
+        }
+      : {}),
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } as any);
   running = server;
@@ -196,6 +207,27 @@ async function serverCounting(throttle: {
 }
 
 describe("connection gate counting on a live server", () => {
+  it("counts a WebSocket and its failed authentication once, however many documents fail", async () => {
+    // Pins what the failure tally relies on: hocuspocus hands every document
+    // on one socket the same request object.
+    const host = lanAddress();
+    const count = vi.fn(async () => true);
+    const port = await serverCounting({ count, isBanned: async () => false }, true);
+
+    const socket = new WebSocket(`ws://${host}:${port}/`, { headers: { "x-real-ip": "203.0.113.9" } });
+    await new Promise<void>((resolve, reject) => {
+      socket.on("open", () => resolve());
+      socket.on("error", reject);
+    });
+    for (const doc of ["project-live/meta", "project-live/canvas-a", "project-live/canvas-b"]) {
+      socket.send(authFrame(doc));
+    }
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    socket.close();
+
+    expect(count).toHaveBeenCalledTimes(2);
+  });
+
   it("answers 429 and releases the socket for an address over the limit", async () => {
     const host = lanAddress();
     const port = await serverCounting({ count: async () => false, isBanned: async () => false });

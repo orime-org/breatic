@@ -30,6 +30,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 import type * as ConnectionRegistryModuleShape from "@collab/services/connection-registry.js";
+import type * as ConnectionGateModuleShape from "@collab/infra/connection-gate.js";
 
 /** The real module, so the mock can keep everything it does not replace. */
 type ConnectionRegistryModule = typeof ConnectionRegistryModuleShape;
@@ -41,7 +42,9 @@ const {
   registryFactorySpy,
   collabRedisStub,
   loadProjectRoleStub,
+  failedAuthWrapperSpy,
 } = vi.hoisted(() => ({
+  failedAuthWrapperSpy: vi.fn(),
   redisExtensionSpy: vi.fn(),
   serverSpy: vi.fn(),
   registryStub: {
@@ -103,6 +106,20 @@ vi.mock("@breatic/core", () => ({
   getProjectConcurrentEditorLimit: vi.fn(async () => 100),
   projectAuthService: { loadProjectRole: loadProjectRoleStub },
 }));
+
+vi.mock("@collab/infra/connection-gate.js", async () => {
+  const real = await vi.importActual<typeof ConnectionGateModuleShape>(
+    "@collab/infra/connection-gate.js",
+  );
+  return {
+    ...real,
+    recordingFailedAuth: ((...args: Parameters<typeof real.recordingFailedAuth>) => {
+      const wrapped = real.recordingFailedAuth(...args);
+      failedAuthWrapperSpy(wrapped);
+      return wrapped;
+    }) as typeof real.recordingFailedAuth,
+  };
+});
 
 vi.mock("@collab/services/persistence.js", () => ({
   createPersistenceExtension: vi.fn(() => ({ name: "persistence-stub" })),
@@ -208,6 +225,20 @@ describe("createCollabServer — Redis channel prefix", () => {
       // would also let the activity signal overtake the change it announces.
       flushDelay: false,
     });
+  });
+
+  it("counts a rejected authentication with the connection gate", async () => {
+    failedAuthWrapperSpy.mockClear();
+    await createCollabServer({
+      collabRedisUrl: "redis://localhost:6379/3",
+      port: 1234,
+      redisKeyPrefix: "dev",
+      shutdownDeadline: () => undefined,
+    });
+
+    const config = serverSpy.mock.calls[0]?.[0] as { onAuthenticate: unknown };
+    expect(failedAuthWrapperSpy).toHaveBeenCalledTimes(1);
+    expect(config.onAuthenticate).toBe(failedAuthWrapperSpy.mock.calls[0]?.[0]);
   });
 
   it("never uses the Redis URL as the prefix", async () => {

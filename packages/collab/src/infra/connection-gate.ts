@@ -20,10 +20,14 @@
  *                     whose address is banned, before any session or role
  *                     lookup runs.
  *   recordFailedAuth  called when `onAuthenticate` rejects a document (wired by
- *                     `recordingFailedAuth`). Counts once per WebSocket however
- *                     many of its documents fail: hocuspocus hands every
- *                     document on one socket the same request object
- *                     (hocuspocus-server.esm.js:331, 974).
+ *                     `recordingFailedAuth`). A WebSocket's first failure
+ *                     counts once, so a whole project failing together (a
+ *                     removed member, an expired session) is one attempt;
+ *                     past a full project's documents every further failure
+ *                     on that socket counts, because those are repeated
+ *                     attempts. hocuspocus hands every document on one socket
+ *                     the same request object (hocuspocus-server.esm.js:331,
+ *                     974), which is what the failures are tallied on.
  *
  * Why the verdict travels as a header rather than a side channel: hocuspocus
  * runs the upgrade hooks BEFORE handing the request to crossws, and crossws
@@ -49,6 +53,7 @@
 
 import type { IncomingMessage } from "node:http";
 import { createLogger, decideClientIdentity, type RefusalReason } from "@breatic/core";
+import { MAX_SPACES_PER_PROJECT } from "@breatic/shared";
 
 const logger = createLogger("connection-gate");
 
@@ -113,6 +118,9 @@ const FORWARDED_FOR_HEADER = "x-forwarded-for";
 
 /** What a client with no trustworthy identity is told before the socket goes away. */
 const REFUSAL_RESPONSE = "HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n";
+
+/** Documents one WebSocket carries at most: a full project's Spaces plus its meta doc. */
+const FULL_PROJECT_DOCUMENTS = MAX_SPACES_PER_PROJECT + 1;
 
 /** What a client over the attempt limit is told before the socket goes away. */
 const THROTTLED_RESPONSE = "HTTP/1.1 429 Too Many Requests\r\nConnection: close\r\n\r\n";
@@ -234,9 +242,9 @@ function countedIdentity(data: ConnectHookPayload): string | null {
  * @returns The hooks to register on the Hocuspocus server.
  */
 export function createConnectionGate(throttle: Throttle): ConnectionGate {
-  // Requests whose failed authentication has already been counted, one per
-  // WebSocket. Weak, so a closed socket's request leaves with it.
-  const failureCounted = new WeakSet<object>();
+  // Failed authentications so far on each WebSocket, keyed on its request.
+  // Weak, so a closed socket's request leaves with it.
+  const failures = new WeakMap<object, number>();
   return {
     onUpgrade: async (data: UpgradeHookPayload): Promise<void> => {
       const headers = data.request.headers;
@@ -276,8 +284,10 @@ export function createConnectionGate(throttle: Throttle): ConnectionGate {
 
     recordFailedAuth: async (data: ConnectHookPayload): Promise<void> => {
       const identity = countedIdentity(data);
-      if (identity === null || failureCounted.has(data.request)) return;
-      failureCounted.add(data.request);
+      if (identity === null) return;
+      const failed = (failures.get(data.request) ?? 0) + 1;
+      failures.set(data.request, failed);
+      if (failed !== 1 && failed <= FULL_PROJECT_DOCUMENTS) return;
       if (!(await throttle.count(identity))) {
         logger.warn({ identity }, "collab_failed_auth_throttled");
       }
