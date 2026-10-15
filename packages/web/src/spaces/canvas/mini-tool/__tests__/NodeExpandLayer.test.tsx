@@ -243,6 +243,21 @@ describe('NodeExpandLayer', () => {
     expect(store().miniTool?.expand?.shift.x).toBeCloseTo(-90 / 400, 9);
   });
 
+  // A drag the panel closed under (the host deleted while the button is held)
+  // ends with the opening; the next opening's handles answer.
+  it('drops a drag cut short by closing the panel, so the next opening drags', () => {
+    mount();
+    fireEvent.pointerDown(screen.getByTestId('mini-tool-expand-handle-e'), { clientX: 500, clientY: 200, button: 0, pointerId: 1 });
+    act(() => store().closeActivePanel());
+    act(() => {
+      store().openMiniTool('n1', 'image.expand', { sourceContent: NODE.src, params: {} });
+      store().setMiniToolSourceSize({ width: 1600, height: 1000 });
+      store().setExpandCap(12288);
+    });
+    drag(screen.getByTestId('mini-tool-expand-handle-w'), [100, 200], [0, 200]);
+    expect(store().miniTool?.expand?.frame.x).toBeCloseTo(-0.25, 9);
+  });
+
   // §6.3: the copy sits at the picture's own place; the frame's border is
   // drawn around it, not under its top-left corner.
   it('draws the picture copy at the node picture’s place, inside the border', () => {
