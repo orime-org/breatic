@@ -5,9 +5,10 @@
  * Where a turn tells the model the reader's local time.
  *
  * The note opens this turn's user message and nothing else: the system prompt
- * stays word for word what it was, and the history the model is sent, which is
- * what was stored, never carries a note. So the request is the same prefix up
- * to this turn's message, which is what a provider's prefix cache matches on.
+ * stays word for word what it was. The words are stored without it; the copy
+ * of the message as it was sent keeps it, and later turns send that copy, so
+ * the request is the same prefix up to this turn's message, which is what a
+ * provider's prefix cache matches on.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type * as CoreModule from "@breatic/core";
@@ -160,7 +161,7 @@ describe("a turn tells the model the reader's local time", () => {
     });
   });
 
-  it("sends earlier user messages as they were stored, with no note", async () => {
+  it("renders an earlier message stored before its copy was kept from its words, with no note", async () => {
     modelSays.history = [
       { role: "user", content: "earlier question", parts: [{ type: "text", text: "earlier question" }] },
       { role: "assistant", content: "earlier answer", parts: [{ type: "text", text: "earlier answer" }] },
