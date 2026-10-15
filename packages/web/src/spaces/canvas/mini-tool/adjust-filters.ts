@@ -226,22 +226,52 @@ class AdjustCodes extends filters.BaseFilter<'AdjustCodes', { way: CodesWay }> {
   }
 }
 
+/** One plane of ffmpeg's `eq` as its integer pass runs it: a gain in 1/4096 steps, then a lift in codes. */
+type EqPlane = [gain: number, lift: number];
+
+/** The plane `eq` leaves as it is. */
+const EQ_IDENTITY: EqPlane = [4096, 0];
+
+/** `hue`'s turn in 1/65536 steps: cosine, sine. */
+type HueTurn = [cos: number, sin: number];
+
 /**
- * ffmpeg's `eq` then `hue` on the codes: contrast about the middle code and
- * the brightness lift on Y, saturation about 128 on the chroma, each plane
- * held to 0..255; then the chroma turned and held again.
+ * ffmpeg's `eq` for one plane, the integer pass it runs for a contrast under
+ * 7.9 at gamma 1 (vf_eq.c `process_c` and `check_values`): the brightness
+ * kept to hundredths, Y pivoting on code 128 and the chroma on 127. A plane
+ * with contrast 1 and no brightness is left alone.
+ * @param contrast - The plane's contrast; the saturation for the chroma.
+ * @param brightness - Its brightness; zero for the chroma.
+ * @returns The plane's gain and lift.
  */
-class AdjustColor extends filters.BaseFilter<
-  'AdjustColor',
-  { contrast: number; lift: number; saturation: number; turn: [number, number] }
-> {
-  declare contrast: number;
-  declare lift: number;
-  declare saturation: number;
-  declare turn: [number, number];
+function eqPlane(contrast: number, brightness: number): EqPlane {
+  if (contrast === 1 && brightness === 0) return EQ_IDENTITY;
+  const gain = Math.trunc(contrast * 256 * 16);
+  return [gain, Math.trunc((Math.trunc(100 * brightness + 100) * 511) / 200) - 128 - Math.trunc(gain / 32)];
+}
+
+/**
+ * A number as the video's filter string writes it.
+ * @param value - The number.
+ * @param digits - Its decimals in the string.
+ * @returns The number ffmpeg reads back.
+ */
+function asWritten(value: number, digits: number): number {
+  return Number(value.toFixed(digits));
+}
+
+/**
+ * ffmpeg's `eq` then `hue` on the codes, in their integer arithmetic: each
+ * plane's gain and lift, held to 0..255; then the chroma turned about 128
+ * (vf_hue.c), rounded and held again.
+ */
+class AdjustColor extends filters.BaseFilter<'AdjustColor', { luma: EqPlane; chroma: EqPlane; turn: HueTurn }> {
+  declare luma: EqPlane;
+  declare chroma: EqPlane;
+  declare turn: HueTurn;
   static type = 'AdjustColor';
-  static defaults = { contrast: 1, lift: 0, saturation: 1, turn: [1, 0] as [number, number] };
-  static uniformLocations = ['uContrast', 'uLift', 'uSaturation', 'uTurn'];
+  static defaults = { luma: EQ_IDENTITY, chroma: EQ_IDENTITY, turn: [65536, 0] as HueTurn };
+  static uniformLocations = ['uLuma', 'uChroma', 'uTurn'];
 
   /**
    * The shader.
@@ -251,17 +281,17 @@ class AdjustColor extends filters.BaseFilter<
     return `
       precision highp float;
       uniform sampler2D uTexture;
-      uniform float uContrast;
-      uniform float uLift;
-      uniform float uSaturation;
+      uniform vec2 uLuma;
+      uniform vec2 uChroma;
       uniform vec2 uTurn;
       varying vec2 vTexCoord;
       void main() {
         vec4 c = texture2D(uTexture, vTexCoord);
-        float y = clamp(uContrast * (c.r - 0.5) + 0.5 + uLift, 0.0, 1.0);
-        vec2 ch = clamp((c.gb * 255.0 - ${C_MID}.0) * uSaturation, -${C_MID}.0, ${255 - C_MID}.0);
-        ch = clamp(vec2(ch.x * uTurn.x - ch.y * uTurn.y, ch.x * uTurn.y + ch.y * uTurn.x), -${C_MID}.0, ${255 - C_MID}.0);
-        gl_FragColor = vec4(y, (ch + ${C_MID}.0) / 255.0, c.a);
+        vec3 k = floor(c.rgb * 255.0 + 0.5);
+        float y = clamp(floor(k.x * uLuma.x / 4096.0) + uLuma.y, 0.0, 255.0);
+        vec2 ch = clamp(floor(k.yz * uChroma.x / 4096.0) + uChroma.y, 0.0, 255.0) - ${C_MID}.0;
+        vec2 turned = floor((vec2(uTurn.x * ch.x - uTurn.y * ch.y, uTurn.y * ch.x + uTurn.x * ch.y) + 32768.0) / 65536.0);
+        gl_FragColor = vec4(vec3(y, clamp(turned + ${C_MID}.0, 0.0, 255.0)) / 255.0, c.a);
       }`;
   }
 
@@ -271,36 +301,44 @@ class AdjustColor extends filters.BaseFilter<
    */
   applyTo2d(options: PixelState): void {
     const { data } = options.imageData;
+    const [yGain, yLift] = this.luma;
+    const [cGain, cLift] = this.chroma;
     const [cos, sin] = this.turn;
+    /**
+     * One code through `eq`.
+     * @param code - The code.
+     * @param gain - The plane's gain.
+     * @param lift - The plane's lift.
+     * @returns The new code, held to 0..255.
+     */
+    const eq = (code: number, gain: number, lift: number): number =>
+      Math.min(255, Math.max(0, Math.floor((code * gain) / 4096) + lift));
     for (let i = 0; i < data.length; i += 4) {
-      data[i] = 255 * (this.contrast * ((data[i] ?? 0) / 255 - 0.5) + 0.5 + this.lift);
-      const cb = Math.min(255, Math.max(0, C_MID + ((data[i + 1] ?? 0) - C_MID) * this.saturation)) - C_MID;
-      const cr = Math.min(255, Math.max(0, C_MID + ((data[i + 2] ?? 0) - C_MID) * this.saturation)) - C_MID;
-      data[i + 1] = C_MID + cb * cos - cr * sin;
-      data[i + 2] = C_MID + cb * sin + cr * cos;
+      data[i] = eq(data[i] ?? 0, yGain, yLift);
+      const u = eq(data[i + 1] ?? 0, cGain, cLift) - C_MID;
+      const v = eq(data[i + 2] ?? 0, cGain, cLift) - C_MID;
+      data[i + 1] = Math.floor((cos * u - sin * v + 32768) / 65536) + C_MID;
+      data[i + 2] = Math.floor((sin * u + cos * v + 32768) / 65536) + C_MID;
     }
   }
 
   /**
-   * Hand the contrast, lift, saturation and chroma turn to the shader.
+   * Hand the two planes and the turn to the shader.
    * @param gl - The context.
    * @param locations - The uniforms.
    */
   sendUniformData(gl: WebGLRenderingContext, locations: Record<string, WebGLUniformLocation | null>): void {
-    gl.uniform1f(locations.uContrast ?? null, this.contrast);
-    gl.uniform1f(locations.uLift ?? null, this.lift);
-    gl.uniform1f(locations.uSaturation ?? null, this.saturation);
+    gl.uniform2fv(locations.uLuma ?? null, this.luma);
+    gl.uniform2fv(locations.uChroma ?? null, this.chroma);
     gl.uniform2fv(locations.uTurn ?? null, this.turn);
   }
 
   /**
    * Whether the pass changes nothing.
-   * @returns True with no contrast, lift, saturation or turn.
+   * @returns True with both planes left alone and no turn.
    */
   isNeutralState(): boolean {
-    return (
-      this.contrast === 1 && this.lift === 0 && this.saturation === 1 && this.turn[0] === 1 && this.turn[1] === 0
-    );
+    return this.luma === EQ_IDENTITY && this.chroma === EQ_IDENTITY && this.turn[0] === 65536 && this.turn[1] === 0;
   }
 }
 
@@ -386,7 +424,7 @@ class AdjustBlur extends filters.Blur {
    * @param dy - One source pixel down, in the picture's pixels.
    */
   private pass2d(pixels: PixelState['imageData'], dx: number, dy: number): void {
-    const source = { ...pixels, data: new Uint8ClampedArray(pixels.data) };
+    const source = { data: new Uint8ClampedArray(pixels.data), width: pixels.width, height: pixels.height };
     const falloff = blurFalloff(this.sigma);
     for (let y = 0; y < pixels.height; y++) {
       for (let x = 0; x < pixels.width; x++) {
@@ -486,7 +524,7 @@ class AdjustUnsharp extends filters.BaseFilter<'AdjustUnsharp', { amount: number
   applyTo2d(options: PixelState): void {
     if (this.amount === 0) return;
     const pixels = options.imageData;
-    const source = { ...pixels, data: new Uint8ClampedArray(pixels.data) };
+    const source = { data: new Uint8ClampedArray(pixels.data), width: pixels.width, height: pixels.height };
     const reach = (this.row.length - 1) / 2;
     const dx = this.pixel[0] * pixels.width;
     const dy = this.pixel[1] * pixels.height;
@@ -736,12 +774,12 @@ export function adjustFilters(value: AdjustValue, seed: number, source: Size, dr
   const share = Math.sqrt((Math.max(1, drawn.width) * Math.max(1, drawn.height)) / (width * height));
   const codes: AdjustFilter[] = [];
   if (terms.brightness !== 0 || terms.contrast !== 1 || terms.saturation !== 1 || terms.hueRadians !== 0) {
+    const hue = asWritten(terms.hueRadians, 6);
     codes.push(
       new AdjustColor({
-        contrast: terms.contrast,
-        lift: terms.brightness,
-        saturation: terms.saturation,
-        turn: [Math.cos(terms.hueRadians), Math.sin(terms.hueRadians)],
+        luma: eqPlane(asWritten(terms.contrast, 5), asWritten(terms.brightness, 5)),
+        chroma: eqPlane(asWritten(terms.saturation, 5), 0),
+        turn: [Math.round(Math.cos(hue) * 65536), Math.round(Math.sin(hue) * 65536)],
       }),
     );
   }
