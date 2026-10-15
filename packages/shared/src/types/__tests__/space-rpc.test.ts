@@ -4,6 +4,8 @@
 import { describe, it, expect } from "vitest";
 
 import {
+  MAX_SPACES_PER_PROJECT,
+  SpaceRpcErrorCodeSchema,
   SpaceRpcRequestSchema,
   SpaceRpcResponseSchema,
 } from "../space-rpc.js";
@@ -105,6 +107,11 @@ describe("SpaceRpcResponseSchema", () => {
     if (!r.ok) expect(r.error.code).toBe("FORBIDDEN");
   });
 
+  it("accepts SPACE_LIMIT and BUSY as error codes", () => {
+    expect(SpaceRpcErrorCodeSchema.safeParse("SPACE_LIMIT").success).toBe(true);
+    expect(SpaceRpcErrorCodeSchema.safeParse("BUSY").success).toBe(true);
+  });
+
   it("rejects unknown error code", () => {
     const r = SpaceRpcResponseSchema.safeParse({
       id: "r1",
@@ -182,5 +189,11 @@ describe("SpaceRpcRequestSchema — server-minted ids and the claim token", () =
       });
       expect(r.success, `claimToken ${JSON.stringify(bad)}`).toBe(false);
     }
+  });
+});
+
+describe("MAX_SPACES_PER_PROJECT", () => {
+  it("caps a project at 200 live Spaces", () => {
+    expect(MAX_SPACES_PER_PROJECT).toBe(200);
   });
 });

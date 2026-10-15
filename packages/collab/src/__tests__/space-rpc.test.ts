@@ -95,6 +95,7 @@ import {
   spaceContentDocName,
   documentBodyFragment,
   ACTIVITY_NEW_SIGNAL,
+  MAX_SPACES_PER_PROJECT,
 } from "@breatic/shared";
 
 const PID = "11111111-1111-4111-8111-111111111111";
@@ -486,7 +487,7 @@ describe("handleSpaceRpc — happy paths write PG activity rows", () => {
     }
   });
 
-  it("space:delete maps a busy cross-instance lock to CONFLICT", async () => {
+  it("space:delete maps a busy cross-instance lock to BUSY", async () => {
     withSpaceCountLockMock.mockRejectedValue(new FakeLockBusyError("busy"));
     seedSpace(SID, { type: "canvas", name: "Main" });
     seedSpace("sp-sib", { type: "canvas" });
@@ -498,7 +499,7 @@ describe("handleSpaceRpc — happy paths write PG activity rows", () => {
       { id: "r1", type: "space:delete", payload: { spaceId: SID } },
     );
     expect(res.ok).toBe(false);
-    if (!res.ok) expect(res.error.code).toBe("CONFLICT");
+    if (!res.ok) expect(res.error.code).toBe("BUSY");
   });
 
   it("space:lock true/false inserts space:locked / space:unlocked rows", async () => {
@@ -687,7 +688,7 @@ describe("handleSpaceRpc — restore sources from the PG activity row", () => {
     expect(fakeMetaDoc.broadcastStateless).not.toHaveBeenCalled();
   });
 
-  it("maps a busy cross-instance lock to CONFLICT (restore serializes under the delete lock)", async () => {
+  it("maps a busy cross-instance lock to BUSY (restore serializes under the count lock)", async () => {
     activityLatestUnrestoredMock.mockResolvedValue(DELETED_ROW);
     withSpaceCountLockMock.mockRejectedValue(new FakeLockBusyError("busy"));
 
@@ -698,7 +699,37 @@ describe("handleSpaceRpc — restore sources from the PG activity row", () => {
       { id: "r1", type: "space:restore", payload: { spaceId: SID } },
     );
     expect(res.ok).toBe(false);
-    if (!res.ok) expect(res.error.code).toBe("CONFLICT");
+    if (!res.ok) expect(res.error.code).toBe("BUSY");
+  });
+
+  it("refuses with SPACE_LIMIT and changes nothing when the project already has the cap", async () => {
+    activityLatestUnrestoredMock.mockResolvedValue(DELETED_ROW);
+    countLiveSpaceDocsMock.mockResolvedValue(MAX_SPACES_PER_PROJECT);
+
+    const res = await handleSpaceRpc(
+      { hocuspocus: makeHocuspocus() },
+      PID,
+      { userId: "owner-1", role: "owner" },
+      { id: "r1", type: "space:restore", payload: { spaceId: SID } },
+    );
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.error.code).toBe("SPACE_LIMIT");
+    expect(restoreByNameMock).not.toHaveBeenCalled();
+    expect(activityConsumeRestoreMock).not.toHaveBeenCalled();
+    expect(fakeMetaDoc.doc.getMap("spaces").has(SID)).toBe(false);
+  });
+
+  it("restores when the project is one under the cap", async () => {
+    activityLatestUnrestoredMock.mockResolvedValue(DELETED_ROW);
+    countLiveSpaceDocsMock.mockResolvedValue(MAX_SPACES_PER_PROJECT - 1);
+
+    const res = await handleSpaceRpc(
+      { hocuspocus: makeHocuspocus() },
+      PID,
+      { userId: "owner-1", role: "owner" },
+      { id: "r1", type: "space:restore", payload: { spaceId: SID } },
+    );
+    expect(res.ok).toBe(true);
   });
 
   it("returns CONFLICT and does NOT consume the row when the space already exists (retry-safety guard)", async () => {
@@ -746,5 +777,54 @@ describe("handleSpaceRpc — restore sources from the PG activity row", () => {
     expect(res.ok).toBe(false);
     if (!res.ok) expect(res.error.code).toBe("NOT_FOUND");
     expect(fakeMetaDoc.doc.getMap("spaces").has(SID)).toBe(false);
+  });
+});
+
+describe("handleSpaceRpc — space:create under the Space cap", () => {
+  /**
+   * Send a space:create as an editor.
+   * @returns The RPC answer.
+   */
+  async function create(): Promise<Awaited<ReturnType<typeof handleSpaceRpc>>> {
+    return handleSpaceRpc(
+      { hocuspocus: makeHocuspocus() },
+      PID,
+      { userId: "u-1", role: "editor" },
+      {
+        id: "r1",
+        type: "space:create",
+        payload: { type: "canvas", name: "Main", claimToken: TOKEN },
+      },
+    );
+  }
+
+  it("runs under the per-project count lock", async () => {
+    countLiveSpaceDocsMock.mockResolvedValue(1);
+    await create();
+    expect(withSpaceCountLockMock).toHaveBeenCalledWith(PID, expect.any(Function));
+  });
+
+  it("creates when the project is one under the cap", async () => {
+    countLiveSpaceDocsMock.mockResolvedValue(MAX_SPACES_PER_PROJECT - 1);
+    const res = await create();
+    expect(res.ok).toBe(true);
+  });
+
+  it("refuses with SPACE_LIMIT and writes nothing when the project already has the cap", async () => {
+    countLiveSpaceDocsMock.mockResolvedValue(MAX_SPACES_PER_PROJECT);
+    const res = await create();
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.error.code).toBe("SPACE_LIMIT");
+    expect(seedInitialStateMock).not.toHaveBeenCalled();
+    expect(fakeMetaDoc.doc.getMap("spaces").size).toBe(0);
+    expect(activityInsertMock).not.toHaveBeenCalled();
+  });
+
+  it("maps a busy count lock to BUSY", async () => {
+    withSpaceCountLockMock.mockRejectedValue(new FakeLockBusyError("busy"));
+    const res = await create();
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.error.code).toBe("BUSY");
+    expect(seedInitialStateMock).not.toHaveBeenCalled();
   });
 });
