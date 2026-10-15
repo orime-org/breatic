@@ -39,6 +39,7 @@ export * from "@core/db/yjs-schema.js";
 export {
   defaultSpaceName,
   encodeInitialMetaState,
+  listedContentDocNames,
   writeSpaceEntry,
 } from "@core/db/yjs-bootstrap.js";
 export type { SpaceEntryInit, SpaceKind } from "@core/db/yjs-bootstrap.js";
