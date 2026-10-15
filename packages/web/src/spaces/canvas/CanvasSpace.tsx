@@ -3133,7 +3133,6 @@ function CanvasSpaceInner({
     synced,
     containerRef,
     toFlowPosition: publishedPoint,
-    spaceId,
   });
   const gesture = useGestureBroadcast(publisher, buffer.onScreen, setLocalGestureIds);
   useGestureRelease(gesture.abandon);

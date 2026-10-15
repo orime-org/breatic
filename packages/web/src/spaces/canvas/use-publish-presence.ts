@@ -8,13 +8,7 @@ import type { ActiveNodeSources } from '@web/spaces/canvas/active-node-ids';
 import type { GestureBatch } from '@web/spaces/canvas/gesture-table';
 import { sameGeometry } from '@web/spaces/canvas/gesture-table';
 import { deriveActiveNodeIds, sameIdList } from '@web/spaces/canvas/active-node-ids';
-import {
-  activityFromMarks,
-  sameActivityList,
-  type NodeActivity,
-} from '@web/spaces/canvas/node-activity';
 import { createPublishThrottle } from '@web/spaces/canvas/publish-throttle';
-import { useUploadMarksStore } from '@web/stores/upload-marks';
 import { observeViewportTransform } from '@web/spaces/canvas/viewport-observer';
 
 /**
@@ -53,8 +47,6 @@ export interface PublishPresenceInput {
   containerRef: React.RefObject<HTMLElement | null>;
   /** Turn a screen point into a canvas point. */
   toFlowPosition: (screen: Point) => Point;
-  /** This Space, whose waiting upload marks are published as `activity`. */
-  spaceId: string;
 }
 
 /** The shape this client writes into awareness. */
@@ -65,8 +57,6 @@ interface Presence {
   pointer: Point | null;
   /** The geometry this client's gesture is showing, or null while it has none. */
   gesture: GestureBatch | null;
-  /** The nodes this client is waiting on (§6.8), or null while it waits on none. */
-  activity: readonly NodeActivity[] | null;
 }
 
 /** The commands a gesture drives the publisher with. */
@@ -98,24 +88,11 @@ function readPublished(awareness: Awareness): Presence {
   const ids = state?.activeNodeIds;
   const pointer = state?.pointer;
   const gesture = state?.gesture;
-  const activity = state?.activity;
   return {
     activeNodeIds: Array.isArray(ids) ? (ids as string[]) : null,
     pointer: (pointer as Point | undefined) ?? null,
     gesture: (gesture as GestureBatch | undefined) ?? null,
-    activity: Array.isArray(activity) ? (activity as NodeActivity[]) : null,
   };
-}
-
-/**
- * The activity this client publishes for a Space, read from the marks store.
- * @param spaceId - The Space.
- * @returns The waiting nodes, or null when there are none.
- * @throws {never} Never.
- */
-function currentActivity(spaceId: string): readonly NodeActivity[] | null {
-  const list = activityFromMarks(useUploadMarksStore.getState().marks[spaceId]);
-  return list.length === 0 ? null : list;
 }
 
 /**
@@ -148,8 +125,10 @@ function samePoint(a: Point | null, b: Point | null): boolean {
 }
 
 /**
- * Publish what this client is doing into awareness — the single writer of
- * `activeNodeIds`, `pointer`, `gesture` and `activity`.
+ * Publish where this client is on the canvas into awareness — the single
+ * writer of `activeNodeIds`, `pointer` and `gesture`. They describe the Space
+ * on screen and go with it; `activity` is the tab's and has its own writer
+ * (`use-publish-activity.ts`).
  *
  * Writes are rate-limited by {@link createPublishThrottle}: the frame folds
  * together a rubber-band drag, where the holding genuinely changes on every
@@ -176,16 +155,11 @@ function samePoint(a: Point | null, b: Point | null): boolean {
  * screen point becomes a different canvas point and has to be converted again.
  * A pointer that has left the canvas keeps no screen point, which is what stops
  * a later pan from reviving the arrow at a stale spot.
- *
- * `activity` is the one field written outside the limiter, gathered per task
- * by a microtask: it changes only when an operation starts or ends, and an end
- * has to reach the peers even when the page is getting no animation frames, the same reason a withdrawal is
- * written directly (`packages/web/CLAUDE.md`).
  * @param input - The awareness, the sources, the sync state, and the canvas.
  * @returns The commands a gesture publishes its geometry with.
  */
 export function usePublishPresence(input: PublishPresenceInput): GesturePublisher {
-  const { awareness, sources, synced, containerRef, toFlowPosition, spaceId } = input;
+  const { awareness, sources, synced, containerRef, toFlowPosition } = input;
   const { selectedIds, pickSession, focusTargetId } = sources;
 
   // Read inside the write callback instead of closing over the values, so a
@@ -194,8 +168,6 @@ export function usePublishPresence(input: PublishPresenceInput): GesturePublishe
   latestSources.current = sources;
   const latestConvert = React.useRef(toFlowPosition);
   latestConvert.current = toFlowPosition;
-  const latestSpaceId = React.useRef(spaceId);
-  latestSpaceId.current = spaceId;
 
   // The pointer's last screen position, or null once it left the canvas. It is
   // a ref rather than state: it changes at pointer rates and no render reads
@@ -218,14 +190,12 @@ export function usePublishPresence(input: PublishPresenceInput): GesturePublishe
       activeNodeIds: deriveActiveNodeIds(latestSources.current),
       pointer: at === null ? null : latestConvert.current(at),
       gesture: gesture.current,
-      activity: currentActivity(latestSpaceId.current),
     };
     const prev = readPublished(awareness);
     const unchanged =
       sameIdList(prev.activeNodeIds, next.activeNodeIds) &&
       samePoint(prev.pointer, next.pointer) &&
-      sameBatch(prev.gesture, next.gesture) &&
-      sameActivityList(prev.activity, next.activity);
+      sameBatch(prev.gesture, next.gesture);
     const skip = !force.current && unchanged;
     force.current = false;
     if (skip) return;
@@ -244,29 +214,6 @@ export function usePublishPresence(input: PublishPresenceInput): GesturePublishe
     throttle.schedule();
     return (): void => throttle.cancel();
   }, [awareness, throttle, selectedIds, pickSession, focusTargetId]);
-
-  // Activity: written in the same task a mark starts or ends. The changes one
-  // task makes (a press beginning a mark per tile, a batch answering them) are
-  // gathered into one write by a microtask, which runs without animation
-  // frames; the de-duplication drops a list that came out as it was.
-  React.useEffect(() => {
-    if (!awareness) return undefined;
-    publish();
-    let queued = false;
-    let live = true;
-    const unsubscribe = useUploadMarksStore.subscribe(() => {
-      if (queued) return;
-      queued = true;
-      queueMicrotask(() => {
-        queued = false;
-        if (live) publish();
-      });
-    });
-    return () => {
-      live = false;
-      unsubscribe();
-    };
-  }, [awareness, spaceId, publish]);
 
   // Reconnect. This also covers the first publish being scheduled before the
   // document finished syncing, since a fresh mount starts out unsynced.
@@ -362,7 +309,6 @@ export function usePublishPresence(input: PublishPresenceInput): GesturePublishe
         activeNodeIds: null,
         pointer: null,
         gesture: null,
-        activity: null,
       });
     };
   }, [awareness]);
