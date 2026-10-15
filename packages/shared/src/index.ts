@@ -150,6 +150,7 @@ export {
   allProjectChannelsPattern,
   SpaceTypeSchema,
   SPACE_NAME_MAX_LEN,
+  MAX_SPACES_PER_PROJECT,
   SpaceRpcRequestSchema,
   SpaceRpcResponseSchema,
   SpaceRpcErrorCodeSchema,
