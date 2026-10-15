@@ -9,178 +9,29 @@
  * the table; a drop of web content is judged as a paste is.
  */
 
-import { describe, it, expect, afterEach, vi } from 'vitest';
-import * as Y from 'yjs';
+import { describe, it, expect, afterEach } from 'vitest';
 import { TextSelection } from '@tiptap/pm/state';
 import { CellSelection } from '@tiptap/pm/tables';
 
-import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared';
+import {
+  OURS,
+  TABLE,
+  TWO_CELLS,
+  blockOrder,
+  caretIn,
+  drop,
+  firstCell,
+  open,
+  paste,
+  settled,
+  shape,
+  type,
+  unmountAll,
+  type Editor,
+  type Sink,
+} from './paste-harness';
 
-import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
-import { createDocumentUndo } from '@web/spaces/document/document-undo-blocknote';
-
-type Editor = ReturnType<typeof buildDocumentEditor>;
-
-const OURS = 'https://cdn.example/';
-
-const mounted: Editor[] = [];
-
-afterEach(() => {
-  mounted.splice(0).forEach((editor) => {
-    editor.unmount();
-  });
-  document.body.innerHTML = '';
-});
-
-/** Where the body hands pasted media. */
-interface Sink {
-  onLeftOut: ReturnType<typeof vi.fn>;
-  start: ReturnType<typeof vi.fn>;
-}
-
-/**
- * Opens a body holding these blocks, with an undo manager.
- * @param blocks - The document.
- * @returns The editor, its undo manager and its sink.
- */
-function open(blocks: unknown[]): { editor: Editor; manager: Y.UndoManager; sink: Sink } {
-  const doc = new Y.Doc();
-  Y.applyUpdate(doc, encodeInitialSpaceContent('document'));
-  const { manager, extension } = createDocumentUndo(doc);
-  const sink: Sink = { onLeftOut: vi.fn(), start: vi.fn() };
-  const editor = buildDocumentEditor({
-    fragment: documentBodyFragment(doc),
-    extensions: [extension],
-    media: { assetUrlPrefix: () => OURS, onLeftOut: sink.onLeftOut, start: sink.start },
-  });
-  const root = document.createElement('div');
-  document.body.appendChild(root);
-  editor.mount(root);
-  mounted.push(editor);
-  editor.replaceBlocks(editor.document, blocks as never);
-  manager.clear();
-  return { editor, manager, sink };
-}
-
-/**
- * Puts the caret at the end of the first text block inside a top-level block.
- * @param editor - The editor.
- * @param index - Which top-level block.
- * @returns The caret's position.
- */
-function caretIn(editor: Editor, index: number): number {
-  const view = editor.prosemirrorView!;
-  let end = -1;
-  view.state.doc.firstChild!.forEach((container, offset, i) => {
-    if (i !== index) return;
-    container.descendants((child, at) => {
-      if (end < 0 && child.isTextblock) end = 1 + offset + 1 + at + 1 + child.content.size;
-      return end < 0;
-    });
-  });
-  view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, end)));
-  view.focus();
-  return end;
-}
-
-/**
- * Pastes clipboard data the way a reader's paste delivers it.
- * @param editor - The editor.
- * @param html - The clipboard's HTML.
- * @param text - The clipboard's plain text.
- */
-function paste(editor: Editor, html: string, text: string): void {
-  const data = {
-    types: html === '' ? ['text/plain'] : ['text/html', 'text/plain'],
-    files: [],
-    items: [],
-    getData: (type: string): string => (type === 'text/html' ? html : type === 'text/plain' ? text : ''),
-  };
-  // The clipboard read through a getter on the prototype, as a browser's
-  // ClipboardEvent holds it: a hook that redefines it makes an own property.
-  class PasteEvent extends Event {
-    /**
-     * The clipboard.
-     * @returns The data.
-     */
-    get clipboardData(): typeof data {
-      return data;
-    }
-  }
-  editor.prosemirrorView!.dom.dispatchEvent(new PasteEvent('paste', { bubbles: true, cancelable: true }));
-}
-
-/**
- * Drops clipboard data at a document position, the way a drop from another
- * page delivers it.
- * @param editor - The editor.
- * @param at - Where the pointer is.
- * @param html - The dragged HTML.
- * @param text - The dragged plain text.
- */
-function drop(editor: Editor, at: number, html: string, text: string): void {
-  const view = editor.prosemirrorView!;
-  view.posAtCoords = (): { pos: number; inside: number } => ({ pos: at, inside: -1 });
-  const event = new Event('drop', { bubbles: true, cancelable: true });
-  Object.assign(event, { clientX: 1, clientY: 1 });
-  Object.defineProperty(event, 'dataTransfer', {
-    value: {
-      types: ['text/html', 'text/plain'],
-      files: [],
-      items: [],
-      getData: (type: string): string => (type === 'text/html' ? html : type === 'text/plain' ? text : ''),
-    },
-  });
-  view.dom.dispatchEvent(event);
-}
-
-/**
- * Types words at the caret, as one keystroke-sized edit.
- * @param editor - The editor.
- * @param words - The words.
- */
-function type(editor: Editor, words: string): void {
-  const view = editor.prosemirrorView!;
-  view.dispatch(view.state.tr.insertText(words));
-}
-
-/**
- * The top-level blocks as short labels.
- * @param editor - The editor.
- * @returns `type:text` for text blocks, `type[pending|url]` for media, `table` for tables.
- */
-function shape(editor: Editor): string[] {
-  return (editor.document as { type: string; props: Record<string, unknown>; content?: unknown }[]).map((b) => {
-    if (b.type === 'image' || b.type === 'video' || b.type === 'audio') {
-      return `${b.type}[${b.props['uploadId'] !== '' ? 'pending' : String(b.props['url'])}|${String(b.props['caption'])}]`;
-    }
-    if (b.type === 'table') return 'table';
-    return `${b.type}:${Array.isArray(b.content) ? (b.content as { text?: string }[]).map((c) => c.text ?? '').join('') : ''}`;
-  });
-}
-
-/**
- * The words in the first cell of the table at a top-level index.
- * @param editor - The editor.
- * @param index - The table's index.
- * @returns Its text.
- */
-function firstCell(editor: Editor, index: number): string {
-  const table = (editor.document as { content: { rows: { cells: { content: { text?: string }[] }[] }[] } }[])[index]!;
-  return table.content.rows[0]!.cells[0]!.content.map((c) => c.text ?? '').join('');
-}
-
-const TABLE = { type: 'table', content: { type: 'tableContent', rows: [{ cells: [['cell ']] }] } };
-const TWO_CELLS = { type: 'table', content: { type: 'tableContent', rows: [{ cells: [['c1'], ['c2']] }] } };
-
-
-/**
- * Lets a paste or a drop finish: what lands after the event, and the uploads
- * that start once it is done.
- */
-async function settled(): Promise<void> {
-  await new Promise((resolve) => setTimeout(resolve, 0));
-}
+afterEach(unmountAll);
 
 describe('HTML carrying media', () => {
   it('is read as HTML even when its plain text looks like Markdown, so the picture is not lost', async () => {
@@ -258,21 +109,6 @@ describe('HTML carrying media', () => {
     expect(sink.start).toHaveBeenCalledWith(expect.any(String), { kind: 'address', url: 'https://e.example/b.png' });
   });
 });
-
-/**
- * Every block's type in document order, nested ones too; media carry their caption.
- * @param editor - The editor.
- * @returns The labels.
- */
-function blockOrder(editor: Editor): string[] {
-  type Block = { type: string; props: Record<string, unknown>; children?: Block[] };
-  const walk = (blocks: Block[]): string[] =>
-    blocks.flatMap((block) => [
-      ['image', 'video', 'audio'].includes(block.type) ? `${block.type}|${String(block.props['caption'])}` : block.type,
-      ...walk(block.children ?? []),
-    ]);
-  return walk(editor.document as Block[]);
-}
 
 describe('where a pasted picture stands and what it shows (inner#1351 A3, A5)', () => {
   /**
