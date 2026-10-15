@@ -21,10 +21,11 @@ export const TOOL_LAYER_CLASS = 'nodrag nopan nokey';
 
 const ARROWS = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
 /**
- * Where xyflow moves nodes by the arrows: a node, or the box around several,
- * each from the keys pressed in it (`@xyflow/react@12.11.2` index.mjs:2091, 2309).
+ * Where xyflow moves nodes by the arrows: a selected node, which carries the
+ * `selected` class, or the box around several, each from the keys pressed in
+ * it (`@xyflow/react@12.11.2` index.mjs:2091, 2309, 2350).
  */
-const MOVED_BY_ARROWS = '.react-flow__node, .react-flow__nodesselection';
+const MOVED_BY_ARROWS = '.react-flow__node.selected, .react-flow__nodesselection';
 
 /**
  * Whether a tool that draws on its node is open: the focus crop, or the panel
@@ -65,10 +66,11 @@ function typesText(target: EventTarget | null): boolean {
 }
 
 /**
- * Keep the arrows pressed in a node while a tool layer is open: xyflow would
- * move the node under the tool, whichever region holds the keyboard. Text
- * boxes keep theirs, and so does every control outside the nodes (a panel's
- * slider, the focus crop's timeline). Mounted once by the canvas, which stays
+ * Keep the arrows pressed in a selected node while a tool layer is open:
+ * xyflow would move the node under the tool, whichever region holds the
+ * keyboard. Text boxes keep theirs, and so does every control xyflow moves
+ * nothing from (a panel's slider, the focus crop's timeline, a player in a
+ * node that is not selected). Mounted once by the canvas, which stays
  * mounted while any node is culled; a hidden Space's effects are torn down,
  * so only the shown canvas listens.
  * @param active - Whether a tool layer is open.

@@ -30,9 +30,13 @@ function Canvas({ active }: { active: boolean }): React.JSX.Element {
   useToolLayerArrows(active);
   return (
     <div data-region='space'>
-      <div className='react-flow__node'>
+      <div className='react-flow__node selected'>
         <button type='button' data-testid='control'>tile</button>
         <textarea data-testid='typing' />
+      </div>
+      {/* Another node, not selected: an audio node's seek bar, say. */}
+      <div className='react-flow__node'>
+        <div role='slider' tabIndex={0} aria-valuenow={0} data-testid='unselected' />
       </div>
       <div role='slider' tabIndex={0} aria-valuenow={0} data-testid='slider' />
     </div>
@@ -90,6 +94,15 @@ describe('useToolLayerArrows', () => {
     render(<Canvas active />);
     expect(fireEvent.keyDown(screen.getByTestId('control'), { key: 'ArrowDown' })).toBe(false);
     expect(reached).not.toHaveBeenCalled();
+  });
+
+  // xyflow moves the selected nodes by the arrows pressed in a selected one
+  // (`@xyflow/react` index.mjs:2309); a control in any other node keeps them.
+  it('lets arrows pressed in a node that is not selected through', () => {
+    document.addEventListener('keydown', reached);
+    render(<Canvas active />);
+    expect(fireEvent.keyDown(screen.getByTestId('unselected'), { key: 'ArrowRight' })).toBe(true);
+    expect(reached).toHaveBeenCalledOnce();
   });
 
   // xyflow moves a node by the arrows pressed in it; a control outside every
