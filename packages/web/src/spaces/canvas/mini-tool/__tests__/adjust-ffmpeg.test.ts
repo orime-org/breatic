@@ -106,8 +106,8 @@ describe('the picture adjust against ffmpeg', () => {
     expect(worst).toBeLessThanOrEqual(left === '404040' ? 8 : 10);
   });
 
-  it.each(fixture.vignettes)('darkens $color as ffmpeg does with $filter', ({ value, color, points }) => {
-    const out = adjust(solid(rgbOf(color), 320, 180), value);
+  it.each(fixture.vignettes)('darkens $color at $width×$height as ffmpeg does with $filter', ({ value, color, points, width, height }) => {
+    const out = adjust(solid(rgbOf(color), width ?? 320, height ?? 180), value);
     for (const { x, y, rgb } of points) expect(gap(at(out, x, y), rgb), `${x},${y}`).toBeLessThanOrEqual(6);
   });
 
