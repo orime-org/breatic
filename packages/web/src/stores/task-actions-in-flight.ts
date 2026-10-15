@@ -137,10 +137,16 @@ const RELEASED: RunOnceOutcome<never> = { kind: 'released' };
 /** Each press waiting, by intent. */
 const presses = new Map<string, Press>();
 
-/** Ceiling of one wait between re-sends (inner#1490 §6.2). */
+/**
+ * Ceiling of one backoff wait between re-sends (inner#1490 §6.2); a wait the
+ * server names with Retry-After is taken as given.
+ */
 const MAX_RESEND_WAIT_MS = 30_000;
 
-/** First wait between re-sends; doubles up to the ceiling. */
+/**
+ * Ceiling of the first jittered wait between re-sends; it doubles per re-send,
+ * up to MAX_RESEND_WAIT_MS.
+ */
 const RESEND_BASE_MS = 1_000;
 
 /**

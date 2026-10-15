@@ -33,8 +33,9 @@ const DAY_SECONDS = 24 * 60 * 60;
  *
  * A credits checkout's retention is also its Stripe session's lifetime. A
  * membership checkout keeps Stripe's default lifetime of 24 hours, the most
- * Stripe accepts, so its retention stays within that. Either way a replay
- * never hands back a session that has already expired.
+ * Stripe accepts, so its retention stays within that. Because the browser
+ * stops re-sending IDEMPOTENCY_CLIENT_MARGIN_SECONDS before the retention runs
+ * out, a replay it receives never hands back a session that has expired.
  */
 export const IDEMPOTENCY_RETENTION_SECONDS: Readonly<Record<IdempotencyScope, number>> = {
   generate: DAY_SECONDS,
@@ -49,10 +50,10 @@ export const IDEMPOTENCY_RETENTION_SECONDS: Readonly<Record<IdempotencyScope, nu
 /**
  * How long before the server forgets that the browser stops re-sending.
  *
- * Longer than one HTTP request can stay on the wire (the platform cuts one
- * off at about 301 seconds), so the last re-send reaches the server while the
- * answer is still kept, and a replayed checkout session still has ten
- * minutes to run.
+ * Longer than a request can take to reach the server once sent (Node's
+ * `requestTimeout` gives one 300 seconds), so the last re-send reaches the
+ * server while the answer is still kept, and a replayed checkout session has
+ * at least about five minutes left.
  */
 export const IDEMPOTENCY_CLIENT_MARGIN_SECONDS = 600;
 

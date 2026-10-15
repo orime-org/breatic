@@ -34,7 +34,7 @@ import { runOnce, useRunning } from '@web/stores/task-actions-in-flight';
 import { ApiException } from '@web/data/api/types';
 import { MEMBERSHIP_QUERY_ROOT } from '@web/features/membership/membership-query';
 
-/** The run-once intent of a checkout or a plan change; one per account. */
+/** The run-once intent of a checkout or a plan change; one per page at a time. */
 const MEMBERSHIP_INTENT = 'membership';
 
 /** Which of the panel's actions is running. */

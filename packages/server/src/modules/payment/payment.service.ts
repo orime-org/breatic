@@ -444,8 +444,8 @@ async function startConfirmationMail(paymentId: string): Promise<void> {
 
 /**
  * How long a checkout session stays open, in seconds — the run-once
- * retention of a credits checkout, so a press replayed this session still
- * finds it open (inner#1490).
+ * retention of a credits checkout, so a press the browser is still re-sending
+ * is replayed a session that is still open (inner#1490).
  *
  * Stripe's own example uses two hours; the parameter takes thirty minutes to
  * twenty-four, and defaults to twenty-four. This is a backstop for the buyer

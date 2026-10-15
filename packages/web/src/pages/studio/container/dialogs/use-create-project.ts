@@ -14,7 +14,7 @@ import type { StudioSummary } from '@web/pages/studio/shared/studio-types';
 import { runOnce, useRunning } from '@web/stores/task-actions-in-flight';
 
 /**
- * The run-once intent of creating a project: one per account, whichever entry
+ * The run-once intent of creating a project: one per page at a time, whichever entry
  * opened the dialog and whichever studio it picked (inner#1490).
  */
 export const PROJECT_CREATE_INTENT = 'project:create';

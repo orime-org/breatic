@@ -15,8 +15,10 @@
  * created or charged. The canvas ones are answered once the case has read what
  * it came for. The two checkouts are answered with a same-origin page standing
  * in for Stripe, which the case leaves with the browser's Back button. The new
- * project and the new conversation are left unanswered, because their answer
- * moves the page somewhere else, and a held request never reaches the server.
+ * project and the new conversation are left unanswered: a project's answer
+ * moves the page into the new project, a conversation's would put one the
+ * server never made into the Agent column, and a held request never reaches
+ * the server.
  *
  *   pnpm --filter @breatic/web test:smoke
  */

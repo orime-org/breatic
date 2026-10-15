@@ -60,9 +60,8 @@ describe("the instant the browser stops re-sending", () => {
   });
 
   it("leaves more room than one HTTP request can take", () => {
-    // A request the platform has not cut off yet can still be on the wire
-    // for about 301 seconds; the last re-send must land before the record
-    // expires.
-    expect(IDEMPOTENCY_CLIENT_MARGIN_SECONDS).toBeGreaterThan(301);
+    // Node's requestTimeout gives a request 300 seconds to arrive; the last
+    // re-send must land before the record expires.
+    expect(IDEMPOTENCY_CLIENT_MARGIN_SECONDS).toBeGreaterThan(300);
   });
 });

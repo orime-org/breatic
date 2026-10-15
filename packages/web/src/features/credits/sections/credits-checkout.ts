@@ -4,7 +4,7 @@
 /**
  * Starting a credits checkout, once per press (inner#1490).
  *
- * One checkout per account is out at a time, held in the run-once registry so
+ * One checkout is out at a time in this page, held in the run-once registry so
  * closing and reopening the confirmation keeps Pay waiting, and an unanswered
  * request is re-sent with the same key rather than opening a second Stripe
  * session. The registry carries which pack it was for, so that pack's Pay
@@ -17,7 +17,7 @@ import { paymentApi, type CheckoutRequest, type CreditPack } from '@web/data/api
 import { toast } from '@web/lib/toast';
 import { runOnce, useRunning } from '@web/stores/task-actions-in-flight';
 
-/** The run-once intent of a credits checkout; one per account. */
+/** The run-once intent of a credits checkout; one per page at a time. */
 const CREDITS_CHECKOUT_INTENT = 'credits:checkout';
 
 /**
