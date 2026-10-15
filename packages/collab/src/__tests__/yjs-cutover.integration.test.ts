@@ -73,7 +73,7 @@ async function cleanup(): Promise<void> {
 /** Read the raw yjs row (including `deletedAt`) for a doc name, or null. */
 async function rawRow(
   name: string,
-): Promise<{ deletedAt: Date | null; updatedAt: Date } | null> {
+): Promise<{ deletedAt: Date | null; updatedAt: Date | null } | null> {
   const rows = await yjsTestDb
     .select()
     .from(yjsDocuments)
@@ -136,7 +136,7 @@ describe("yjs repo against the separate yjs DB", () => {
     await yjsRepo.softDeleteByName(CANVAS);
     const before = Date.now();
     await yjsRepo.restoreByName(CANVAS);
-    expect((await rawRow(CANVAS))!.updatedAt.getTime()).toBeGreaterThanOrEqual(before - 1000);
+    expect((await rawRow(CANVAS))!.updatedAt!.getTime()).toBeGreaterThanOrEqual(before - 1000);
   });
 
   it("seedInitialState inserts once and is idempotent under a race (DO NOTHING)", async () => {
