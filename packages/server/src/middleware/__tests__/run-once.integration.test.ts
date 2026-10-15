@@ -300,6 +300,33 @@ describe("runOnce", () => {
     expect(runs).toBe(1);
   });
 
+  it("stops renewing and logs it once every renewal fails past the lease", async () => {
+    const key = crypto.randomUUID();
+    const redis = getRedis();
+    const real = redis.eval.bind(redis);
+    let renewals = 0;
+    vi.spyOn(redis, "eval").mockImplementation(((...args: Parameters<typeof redis.eval>) => {
+      if (String(args[0]).includes("pexpire")) {
+        renewals += 1;
+        return Promise.reject(new Error("Command timed out"));
+      }
+      return real(...args);
+    }));
+    const error = vi.spyOn(logger, "error");
+    hold = gate();
+    const first = post(app, { key });
+    await sleep(600);
+    expect(error).toHaveBeenCalledWith(
+      expect.objectContaining({ scope: "generate" }),
+      "idempotency_lease_expired",
+    );
+    const renewedBefore = renewals;
+    await sleep(400);
+    expect(renewals).toBe(renewedBefore);
+    hold.open();
+    expect((await first).status).toBe(201);
+  });
+
   it("still answers when the finished answer cannot be stored", async () => {
     const key = crypto.randomUUID();
     const error = vi.spyOn(logger, "error");
