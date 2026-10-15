@@ -29,3 +29,25 @@ export const LOOPBACK_PEER = peer("127.0.0.1");
 
 /** A request that came through our nginx, which sets `x-real-ip`. */
 export const PROXY_PEER = peer("172.18.0.4");
+
+/** Anything with Hono's `request`. */
+interface Requestable {
+  request: (input: string | Request | URL, init?: RequestInit, env?: unknown) => Response | Promise<Response>;
+}
+
+/**
+ * The same app, with every `request()` arriving from the given peer.
+ * @param app - The app.
+ * @param bindings - The peer; this machine when absent.
+ * @returns A view of the app whose `request` passes the bindings.
+ */
+export function withPeer<T extends Requestable>(app: T, bindings: PeerBindings = LOOPBACK_PEER): T {
+  return new Proxy(app, {
+    get(target, prop, receiver) {
+      if (prop === "request") {
+        return (input: string | Request | URL, init?: RequestInit) => target.request(input, init, bindings);
+      }
+      return Reflect.get(target, prop, receiver) as unknown;
+    },
+  });
+}
