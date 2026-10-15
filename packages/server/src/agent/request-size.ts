@@ -6,7 +6,7 @@
  * added: the figures the fold check and a reply row's sizes are read from.
  */
 
-import { measureMessages, measurePayload } from "@server/agent/payload-size.js";
+import { measureInstructionsAndTools, measureMessages } from "@server/agent/payload-size.js";
 import type { TurnCost } from "@server/agent/consolidation-window.js";
 import type { ReplayedRow } from "@server/agent/history-replay.js";
 import type { Assembly } from "@server/agent/turn-budget.js";
@@ -63,10 +63,5 @@ export function requestTokens(
     const after = replayed.slice(newestAsSent + 1).flatMap((one) => one.messages);
     return sized.endTokens + measureMessages(after) + question;
   }
-  const fixed = measurePayload({
-    instructions: assembly.agentConfig.instructions,
-    tools: assembly.agentConfig.tools,
-    messages: [],
-  });
-  return fixed + turns.reduce((sum, turn) => sum + turn.tokens, 0) + question;
+  return measureInstructionsAndTools(assembly.agentConfig) + turns.reduce((sum, turn) => sum + turn.tokens, 0) + question;
 }

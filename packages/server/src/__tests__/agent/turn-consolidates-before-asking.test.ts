@@ -256,7 +256,7 @@ afterAll(() => {
  * @returns The assembled length in characters.
  */
 async function lastAssembledLength(): Promise<number> {
-  const { measurePayload } = await import("@server/agent/payload-size.js");
+  const { measureInstructionsAndTools, measureMessages } = await import("@server/agent/payload-size.js");
   const call = buildAgentConfig.mock.calls.at(-1)?.[0] as Parameters<
     typeof DomainModule.buildAgentConfig
   >[0];
@@ -268,11 +268,10 @@ async function lastAssembledLength(): Promise<number> {
   ).toModelMessages(contexts.lastHistory);
   const { readerClockNote } = await import("@server/agent/reader-clock.js");
   const { userMessageForModel } = await import("@server/agent/user-turn.js");
-  return measurePayload({
-    instructions: resolved.instructions,
-    tools: resolved.tools,
-    messages: [...sent, { role: "user", content: userMessageForModel(readerClockNote(new Date(), undefined), { chips: [], message: "hi" }) }],
-  });
+  return (
+    measureInstructionsAndTools(resolved) +
+    measureMessages([...sent, { role: "user", content: userMessageForModel(readerClockNote(new Date(), undefined), { chips: [], message: "hi" }) }])
+  );
 }
 
 /**

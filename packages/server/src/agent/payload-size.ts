@@ -13,8 +13,9 @@
  *
  * Characters are the fallback: the fold is decided by the provider's own
  * token counts, and these measure only what no count covers -- a turn whose
- * calls reported nothing, what came after the newest counted reply, and this
- * turn's question. A character is never more than a token in the tokenizers
+ * calls reported nothing, what came after the newest counted reply, this
+ * turn's question, and the system prompt and tools when no reply went out as
+ * it was sent. A character is never more than a token in the tokenizers
  * this build meets, so counting one as a token can only make a fold come
  * early. There is no library that counts tokens for a model reached through
  * OpenRouter — see the design's DD section.
@@ -23,15 +24,6 @@
 import { asSchema } from "ai";
 import type { ModelMessage, Tool } from "ai";
 
-/** The three segments a request is assembled from. */
-export interface AssembledPayload {
-  /** The system prompt, persona through memory. */
-  instructions: string;
-  /** The tools as the factory resolved them, keyed by name. */
-  tools: Readonly<Record<string, Tool>>;
-  /** The history and this turn's question, as the SDK will send them. */
-  messages: readonly ModelMessage[];
-}
 
 /**
  * The length of one content part, by what the model is shown of it.
@@ -102,15 +94,18 @@ export function measureMessages(messages: readonly ModelMessage[]): number {
 }
 
 /**
- * How long the assembled request is, in characters.
- * @param payload - The three segments, as they will be sent.
+ * How long the system prompt and the tool definitions are, in characters.
+ * @param request - What the request carries besides its messages.
+ * @param request.instructions - The system prompt, persona through memory.
+ * @param request.tools - The tools as the factory resolved them, keyed by name.
  * @returns The total length.
  */
-export function measurePayload(payload: AssembledPayload): number {
-  const instructions = payload.instructions.length;
-  const tools = Object.entries(payload.tools).reduce(
+export function measureInstructionsAndTools(request: {
+  instructions: string;
+  tools: Readonly<Record<string, Tool>>;
+}): number {
+  return Object.entries(request.tools).reduce(
     (sum, [name, definition]) => sum + measureTool(name, definition),
-    0,
+    request.instructions.length,
   );
-  return instructions + tools + measureMessages(payload.messages);
 }
