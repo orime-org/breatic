@@ -103,7 +103,11 @@ interface DirectRoute extends Route {
   vendorId: (modelId: string) => string;
 }
 
-/** The id as written, for vendors that serve the model under it. */
+/**
+ * The id as written, for vendors that serve the model under it.
+ * @param modelId - What follows the prefix.
+ * @returns The same id.
+ */
 const asWritten = (modelId: string): string => modelId;
 
 /**
@@ -130,7 +134,10 @@ function cacheControl(ttl: Exclude<PromptCache, false>): { type: "ephemeral"; tt
   return ttl === "1h" ? { type: "ephemeral", ttl: "1h" } : { type: "ephemeral" };
 }
 
-/** Routes whose provider caches a repeated prefix without being asked. */
+/**
+ * Routes whose provider caches a repeated prefix without being asked.
+ * @returns No options.
+ */
 const cachesOnItsOwn = (): ProviderOptionsFor => ({});
 
 /**
