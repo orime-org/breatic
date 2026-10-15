@@ -258,6 +258,24 @@ describe('NodeExpandLayer', () => {
     expect(store().miniTool?.expand?.frame.x).toBeCloseTo(-0.25, 9);
   });
 
+  // A source reset that leaves the frame at the picture takes the frame off
+  // the page under a held handle; a frame not drawn has no drag, so the
+  // handles answer once it is back and a pointer only passing over moves nothing.
+  it('drops a drag whose frame was taken off the page by a source reset', () => {
+    mount();
+    fireEvent.pointerDown(screen.getByTestId('mini-tool-expand-handle-e'), { clientX: 500, clientY: 200, button: 0, pointerId: 1 });
+    act(() => store().resetMiniToolSource(NODE.src, {}));
+    act(() => {
+      store().setMiniToolSourceSize({ width: 1600, height: 1000 });
+      store().setExpandCap(12288);
+    });
+    const before = store().miniTool?.expand?.frame;
+    fireEvent.pointerMove(screen.getByTestId('mini-tool-expand-handle-w'), { clientX: 700, clientY: 200, pointerId: 1, buttons: 0 });
+    expect(store().miniTool?.expand?.frame).toEqual(before);
+    drag(screen.getByTestId('mini-tool-expand-handle-w'), [100, 200], [0, 200]);
+    expect(store().miniTool?.expand?.frame.x).toBeCloseTo(-0.25, 9);
+  });
+
   // §6.3: the copy sits at the picture's own place; the frame's border is
   // drawn around it, not under its top-left corner.
   it('draws the picture copy at the node picture’s place, inside the border', () => {

@@ -64,18 +64,19 @@ export function ExpandFrameOverlay({ onNodeContextMenu }: ExpandFrameOverlayProp
   const gesture = React.useRef<Gesture | null>(null);
   // A frame written by anyone but this drag ends the drag.
   const ours = React.useRef<{ frame: ExpandFrame; ratio: ExpandRatio } | null>(null);
-  // The frame outlives one opening of the panel; a drag the panel closed
-  // under (the host deleted while the button is held) ends with it.
-  if (gesture.current !== null && (expand === null || gesture.current.opening !== opening)) gesture.current = null;
+  const sourceSize = draft?.sourceSize ?? null;
+  const view = expand?.view ?? null;
+  const drawn = expand !== null && view !== null && sourceSize !== null && draft !== null && node !== undefined;
+  // A frame not drawn holds no handle to release a drag on: a panel closed
+  // under it, a host gone, a source reset. The frame also outlives one
+  // opening of the panel; a drag belongs to the opening it began in.
+  if (gesture.current !== null && (!drawn || gesture.current.opening !== opening)) gesture.current = null;
   if (gesture.current !== null && expand !== null && ours.current !== null) {
     const same =
       expand.ratio === ours.current.ratio && JSON.stringify(expand.frame) === JSON.stringify(ours.current.frame);
     if (!same) gesture.current = null;
   }
-
-  const sourceSize = draft?.sourceSize ?? null;
-  const view = expand?.view ?? null;
-  if (expand === null || view === null || sourceSize === null || draft === null || node === undefined) return null;
+  if (!drawn) return null;
   const { frame, ratio, shift } = expand;
   const { box } = view;
   // The picture's corner on the canvas: the node's place plus where it shows it.
