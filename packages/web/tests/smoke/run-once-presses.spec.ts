@@ -13,9 +13,10 @@
  *
  * Every request under test is intercepted and held, so nothing is generated,
  * created or charged. The canvas ones are answered once the case has read what
- * it came for; the rest are left unanswered, because their answer moves the
- * page somewhere else (a new project, a new conversation, Stripe), and a held
- * request never reaches the server.
+ * it came for. The two checkouts are answered with a same-origin page standing
+ * in for Stripe, which the case leaves with the browser's Back button. The new
+ * project and the new conversation are left unanswered, because their answer
+ * moves the page somewhere else, and a held request never reaches the server.
  *
  *   pnpm --filter @breatic/web test:smoke
  */
