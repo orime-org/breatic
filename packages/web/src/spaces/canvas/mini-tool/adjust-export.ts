@@ -62,6 +62,22 @@ type FilterBackend = ReturnType<typeof import('fabric')['getFilterBackend']>;
 /** Why a backend cannot draw: no WebGL context. */
 const NO_CONTEXT = 'The filter backend has no WebGL context to draw with';
 
+/** Fabric's WebGL filter backend. */
+type WebGLBackend = Extract<FilterBackend, { tileSize: number }>;
+
+/**
+ * A WebGL backend's context while it can draw. Fabric sets `gl` to null on
+ * dispose and leaves it so when the browser refuses a new context; a lost one
+ * stays lost (Khronos wiki, HandlingContextLost).
+ * @param backend - The backend.
+ * @returns The context, or null when there is none to draw with.
+ * @throws {never} Never.
+ */
+function liveContext(backend: WebGLBackend): WebGLRenderingContext | null {
+  const gl = backend.gl as WebGLRenderingContext | null | undefined;
+  return gl == null || gl.isContextLost() ? null : gl;
+}
+
 /** Fabric's own calls for its shared filter backend. */
 type BackendRegistry = Pick<typeof import('fabric'), 'getFilterBackend' | 'initFilterBackend' | 'setFilterBackend'>;
 
@@ -76,7 +92,7 @@ type BackendRegistry = Pick<typeof import('fabric'), 'getFilterBackend' | 'initF
  */
 export function liveSharedBackend(fabric: BackendRegistry): FilterBackend {
   const current = fabric.getFilterBackend();
-  if (!('tileSize' in current) || (current.gl !== undefined && !current.gl.isContextLost())) return current;
+  if (!('tileSize' in current) || liveContext(current) !== null) return current;
   const next = fabric.initFilterBackend();
   fabric.setFilterBackend(next);
   return next;
@@ -93,8 +109,8 @@ export function liveSharedBackend(fabric: BackendRegistry): FilterBackend {
  */
 export function backendSides(backend: FilterBackend): BackendSides {
   if (!('tileSize' in backend)) return { shared: Infinity, max: Infinity };
-  const gl = backend.gl;
-  if (gl === undefined || gl.isContextLost()) throw new Error(NO_CONTEXT);
+  const gl = liveContext(backend);
+  if (gl === null) throw new Error(NO_CONTEXT);
   return { shared: backend.tileSize, max: gl.getParameter(gl.MAX_TEXTURE_SIZE) as number };
 }
 
@@ -157,7 +173,7 @@ export async function drawAdjusted(
   const [fabric, { adjustFilters, ADJUST_GRAIN_SEED }] = await loadRuntime();
   const through = backend ?? liveSharedBackend(fabric);
   const drawable = drawableSize(through);
-  if (drawable.width === 0) throw new Error(NO_CONTEXT);
+  if (drawable.width === 0 || bufferShort(through)) throw new Error(NO_CONTEXT);
   const size = fitWithin(asked, drawable);
   target.width = size.width;
   target.height = size.height;
@@ -168,11 +184,31 @@ export async function drawAdjusted(
     return;
   }
   const state = through.applyFilters(chain, source, size.width, size.height, target);
+  if (!('tileSize' in through)) return;
+  // A context lost during the draw leaves Fabric copying a blank canvas out
+  // without a word; the draw is checked once it is done.
+  const gl = liveContext(through);
+  if (gl === null) throw new Error(NO_CONTEXT);
   // Without a cache key Fabric uploads the source as a texture of its own and
   // hands it back undeleted.
-  if ('gl' in through && through.gl !== undefined && state !== undefined && 'originalTexture' in state) {
-    through.gl.deleteTexture(state.originalTexture);
-  }
+  if (state !== undefined && 'originalTexture' in state) gl.deleteTexture(state.originalTexture);
+}
+
+/**
+ * Whether a WebGL backend's drawing buffer is smaller than its canvas, as a
+ * browser short of memory may grant. Fabric copies the last pass out in
+ * canvas coordinates (`WebGLFilterBackend.copyGLTo2D`), so such a backend
+ * puts the picture's pixels somewhere else and cannot draw it.
+ * @param backend - The backend.
+ * @returns True when the buffer is short of the canvas on either side.
+ * @throws {never} Never.
+ */
+function bufferShort(backend: FilterBackend): boolean {
+  if (!('tileSize' in backend)) return false;
+  const gl = liveContext(backend);
+  if (gl === null) return false;
+  const canvas = gl.canvas as { width: number; height: number };
+  return gl.drawingBufferWidth < canvas.width || gl.drawingBufferHeight < canvas.height;
 }
 
 /** A size in pixels. */
@@ -192,16 +228,16 @@ interface Size {
  */
 export function drawableSize(backend: FilterBackend): Size {
   if (!('tileSize' in backend)) return { width: Infinity, height: Infinity };
-  const gl = backend.gl;
-  if (gl === undefined || gl.isContextLost()) return { width: 0, height: 0 };
+  const gl = liveContext(backend);
+  if (gl === null) return { width: 0, height: 0 };
   return { width: gl.drawingBufferWidth, height: gl.drawingBufferHeight };
 }
 
 /**
  * A backend for one export, drawing on a canvas of the picture's own shape:
  * the browser grants a buffer as long as a panorama that it refuses as a
- * square. Fabric builds its first context as a square of `tileSize`; that one
- * is given back before the shaped one is made.
+ * square. Fabric builds a first context as a square of `tileSize`, which is
+ * made 1×1 and given back before the shaped one is made.
  * @param fabric - Fabric.
  * @param fabric.WebGLFilterBackend - Its WebGL filter backend.
  * @param size - The picture's size.
@@ -212,7 +248,7 @@ export function ownExportBackend(
   fabric: Pick<typeof import('fabric'), 'WebGLFilterBackend'>,
   size: Size,
 ): InstanceType<typeof import('fabric')['WebGLFilterBackend']> {
-  const backend = new fabric.WebGLFilterBackend({ tileSize: Math.max(size.width, size.height) });
+  const backend = new fabric.WebGLFilterBackend({ tileSize: 1 });
   backend.gl?.getExtension('WEBGL_lose_context')?.loseContext();
   backend.setupGLContext(size.width, size.height);
   return backend;
