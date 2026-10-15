@@ -166,7 +166,7 @@ test.describe('signed in', () => {
     await settings(page).locator('[data-role="save"]').click();
     expect(await second).toEqual({ body: { analytics: true, ads: false }, status: 204 });
     await expect(settings(page)).toBeHidden();
-    await expect.poll(async () => (await consentCookie(context))?.categories).toEqual(['necessary', 'analytics']);
+    await expect.poll(async () => (await consentCookie(context))?.categories.toSorted()).toEqual(['analytics', 'necessary']);
   });
 
   test('a GPC browser shows the GPC line under a switch that can be turned on, and turning it on loads the ad tag', async ({ page, context }) => {
