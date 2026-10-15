@@ -123,6 +123,11 @@ const STRIPE_STAND_IN = '/stripe-checkout-stand-in';
 /**
  * Answer the held checkout, let the browser leave for the page standing in
  * for Stripe, and come back with the browser's Back button (A5, A7).
+ *
+ * The page comes back by loading again: Chromium under Playwright keeps no
+ * page in the back-forward cache (it reports
+ * `BackForwardCacheDisabledForDelegate`). A page restored from that cache is
+ * pinned by the `pageshow` case in `stores/__tests__/run-once.test.ts`.
  * @param page - The page.
  * @param held - The held checkout requests.
  */

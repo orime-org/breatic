@@ -261,10 +261,9 @@ export interface CanvasSessionState {
    */
   taskPanelStatus: 'running' | 'done' | 'failed' | 'expired' | null;
   /**
-   * Which opening of a panel this is. Every opener takes a new number, so a
-   * generation submitted from one opening closes that opening only: when the
-   * reader has closed the panel and opened it again meanwhile, the late answer
-   * leaves the new one alone.
+   * Which opening of a panel this is. Every opener takes a new number, so what
+   * belongs to one opening ends with it: the prompt editor built for it, and a
+   * mini-tool press's exporting flag and the selection it makes once built.
    */
   panelSession: number;
   /**

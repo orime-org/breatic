@@ -7,9 +7,10 @@
  * The browser sends one `Idempotency-Key` per press and re-sends it, unchanged,
  * while it has no answer. The first arrival claims a Redis record and runs the
  * handler; a repeat while it runs gets `409`, a repeat after it finished gets
- * the stored answer back. Every answer that went through here carries
+ * the stored answer back. The handler's answer, its replay and the 409 carry
  * `Idempotency-Status`, which is how the browser tells "finished" from "the
- * network or a proxy failed before we heard back".
+ * network or a proxy failed before we heard back"; the 400 and 422 this
+ * refuses with before running carry none, and the browser takes them as final.
  *
  * The running record holds a lease renewed while the handler runs, so a slow
  * handler keeps it and a process that dies frees it within one lease. The

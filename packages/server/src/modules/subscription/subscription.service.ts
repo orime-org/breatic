@@ -251,8 +251,9 @@ export async function startCheckout(input: {
   const session = await getStripeClient().checkout.sessions.create({
     mode: "subscription",
     customer: customerId,
-    // Stripe's default lifetime of 24 hours, the most it accepts: the last
-    // re-send of this press (inner#1490) arrives before it runs out.
+    // No expires_at: Stripe's default lifetime of 24 hours is the most it
+    // accepts, and the last re-send of this press (inner#1490) arrives before
+    // it runs out.
     line_items: [
       {
         price: getSubscriptionPlan(input.tier, input.period).stripePriceId,
