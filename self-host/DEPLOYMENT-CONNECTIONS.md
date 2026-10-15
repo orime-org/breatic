@@ -58,7 +58,7 @@ A self-hosted instance sends nothing to any analytics or advertising service. Wi
 
 The `VITE_*` values are embedded in the bundle like the connection settings above: changing them means rebuilding the frontend, not restarting a container. Dockerfile.web accepts them as build arguments. When the pages and the API sit on two subdomains, set `VITE_CONSENT_COOKIE_DOMAIN` to the same parent domain as the backend `COOKIE_DOMAIN`, so the API and collab read the visitor's choice.
 
-The consent choice lives in a cookie the banner library writes from script, so browsers apply their own limits to it: Safari and the other browsers on iPhone and iPad delete it after 7 days without interaction on the site (24 hours when it was written on a page reached from an ad link), and Brave after 7 days. The visitor is then asked again, or the rule for their region applies.
+The consent choice lives in a cookie the banner library writes from script, so browsers apply their own limits to it: Safari and the other browsers on iPhone and iPad delete it after 7 days without interaction on the site (24 hours when it was written on a page reached from an ad link), and Brave 180 days after it was written. The visitor is then asked again, or the rule for their region applies.
 
 What leaves when it is on:
 

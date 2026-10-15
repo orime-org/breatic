@@ -73,12 +73,11 @@ const TEXT = {
 async function startBanner(
   country: string,
   onChoice: (choice: unknown) => void = () => undefined,
-  cookieDomain = '',
 ): Promise<typeof BannerModule> {
   vi.resetModules();
   const banner = await import('@web/lib/analytics/consent-banner');
   await banner.startConsentBanner({
-    cookieDomain,
+    cookieDomain: '',
     language: 'en',
     languages: ['en'],
     text: () => TEXT,
