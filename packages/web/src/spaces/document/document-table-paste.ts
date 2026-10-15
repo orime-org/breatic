@@ -16,18 +16,24 @@
  * that row's words to the right.
  *
  * Here every rowspan is cut to the rows below it and every row is filled at
- * its end to the widest row, the shape the reader saw on the page; the paste
- * and the drop both do it while the HTML is made ready to read
+ * its end to the widest row, the shape the reader saw on the page; a table
+ * holding no cell at all goes, since ProseMirror builds no table from it. The
+ * paste and the drop both do it while the HTML is made ready to read
  * (`document-paste-html.ts`).
  */
 
 /**
- * Evens one table's grid, in place.
+ * Evens one table's grid, in place; a table holding no cell has no grid and
+ * goes, since no table can be built from it.
  * @param table - The table.
  * @returns Whether anything changed.
  */
 function evenTable(table: HTMLTableElement): boolean {
   const rows = Array.from(table.rows);
+  if (rows.every((row) => row.cells.length === 0)) {
+    table.remove();
+    return true;
+  }
   const taken: Set<number>[] = rows.map(() => new Set());
   let changed = false;
   rows.forEach((row, r) => {

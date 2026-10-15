@@ -48,7 +48,7 @@
 
 import { createExtension, type ExtensionFactoryInstance } from '@blocknote/core';
 import { Fragment, Slice, type Node as PMNode } from '@tiptap/pm/model';
-import { Plugin, TextSelection, type EditorState, type Transaction } from '@tiptap/pm/state';
+import { Plugin, Selection, TextSelection, type EditorState, type Transaction } from '@tiptap/pm/state';
 import { dropPoint } from '@tiptap/pm/transform';
 import type { EditorView } from '@tiptap/pm/view';
 
@@ -67,7 +67,9 @@ import {
   PASTED_MEDIA_KEY,
   holdsTable,
   mediaIn,
+  ownHTMLHolds,
   preparePastedHTML,
+  readBlocks,
   readPrepared,
   withoutMedia,
   type ReadBlock,
@@ -262,7 +264,9 @@ function opensOnBlock(node: PMNode | null): boolean {
  * its blocks in one open group, which ProseMirror fits into the line as that
  * line's nested group when the group opens on such a block; the blocks come
  * out of it first. A slice opening on text joins the line and is left as it
- * is.
+ * is, and so is one opening inside such a block (words copied out of a table
+ * cell): the nodes along its open start are cut, and only ProseMirror's
+ * fitting takes them in.
  * @param slice - The slice.
  * @returns It, or its blocks with the start closed.
  */
@@ -273,7 +277,7 @@ function closedAtBlock(slice: Slice): Slice {
     openStart -= 1;
     openEnd -= 1;
   }
-  return opensOnBlock(content.firstChild) ? new Slice(content, 0, openEnd) : slice;
+  return openStart <= 1 && opensOnBlock(content.firstChild) ? new Slice(content, 0, openEnd) : slice;
 }
 
 /**
@@ -349,6 +353,8 @@ export function documentPastedMediaExtension(
     // A drop the body may put in itself: where it was dropped, and whether a
     // table cell there cannot take its words.
     let heldDrop: { at: number; aside: boolean } | null = null;
+    // How many media the HTML handed on to ProseMirror carries into its slice.
+    let expected: number | null = null;
 
     /**
      * Once the paste or the drop is done, starts the uploads whose blocks
@@ -408,14 +414,13 @@ export function documentPastedMediaExtension(
      * lines as they were; the media follow in the dispatch that puts the words
      * in, or by themselves once the event is done when that dispatch changes
      * nothing.
-     * @param found - The media the HTML was read into.
-     * @param words - The HTML with its media taken out.
+     * @param found - The media the HTML was read into, at least one.
+     * @param html - The HTML.
      * @param at - Where it lands.
      * @param view - The editor view.
-     * @returns The HTML that goes on to the cell.
+     * @returns The HTML that goes on to the cell, without its media.
      */
-    const readForCell = (found: readonly ReadBlock[], words: string, at: number, view: EditorView): string => {
-      if (found.length === 0) return words;
+    const readForCell = (found: readonly ReadBlock[], html: string, at: number, view: EditorView): string => {
       const prefix = options?.assetUrlPrefix() ?? null;
       const waiting: Queued[] = [];
       const media: BlockSpec[] = [];
@@ -433,7 +438,7 @@ export function documentPastedMediaExtension(
           view.dispatch(markOwnUndoStep(mediaUnderTable(view.state, held.at, held.media)).scrollIntoView());
         });
       }
-      return words;
+      return withoutMedia(html);
     };
 
     return {
@@ -467,9 +472,13 @@ export function documentPastedMediaExtension(
               return true;
             },
             handleDOMEvents: {
-              // Where an outside drop lands, for the HTML it carries.
+              // Where an outside drop lands, for the HTML it carries. The
+              // caret goes there first: BlockNote reads a slice by where the
+              // selection is (whether it lands in a table cell), and
+              // ProseMirror reads a drop where it lands.
               drop: (view, event) => {
                 dropAt = view.dragging === null ? (view.posAtCoords({ left: event.clientX, top: event.clientY })?.pos ?? null) : null;
+                if (dropAt !== null) view.dispatch(view.state.tr.setSelection(Selection.near(view.state.doc.resolve(dropAt))));
                 queueMicrotask(() => {
                   dropAt = null;
                 });
@@ -486,26 +495,26 @@ export function documentPastedMediaExtension(
               dropAt = null;
               landing = null;
               heldDrop = null;
+              expected = null;
               into = at;
               const inCell = inTableCell(view.state.doc.resolve(at));
-              let html = pasted;
-              let blocks: readonly ReadBlock[] | null = null;
-              if (!own) {
-                const prepared = preparePastedHTML(pasted, lands);
-                html = prepared.html;
-                if (prepared.media > 0) {
-                  const read = readPrepared(prepared, (ready) => editor.tryParseHTMLToBlocks(ready) as unknown as ReadBlock[]);
-                  leaveOut(read.lost);
-                  blocks = read.blocks;
-                }
-              } else if (inCell) {
-                blocks = editor.tryParseHTMLToBlocks(pasted) as unknown as ReadBlock[];
+              if (own) {
+                const holds = ownHTMLHolds(pasted);
+                const aside = isDrop && inCell && holds.table;
+                if (inCell && !aside && holds.media > 0) return readForCell(mediaIn(readBlocks(editor, pasted)), pasted, at, view);
+                if (aside) heldDrop = { at, aside };
+                expected = holds.media;
+                return pasted;
               }
-              if (blocks === null) return html;
-              const aside = isDrop && inCell && holdsTable(blocks);
+              const prepared = preparePastedHTML(pasted, lands);
+              if (prepared.media === 0) return prepared.html;
+              const read = readPrepared(prepared, editor);
+              leaveOut(read.lost);
+              const aside = isDrop && inCell && holdsTable(read.blocks);
+              if (inCell && !aside) return read.media.length > 0 ? readForCell(read.media, pasted, at, view) : withoutMedia(pasted);
               if (isDrop) heldDrop = { at, aside };
-              if (inCell && !aside) return readForCell(mediaIn(blocks), withoutMedia(pasted), at, view);
-              return own ? pasted : editor.blocksToFullHTML(blocks as never);
+              expected = read.media.length;
+              return editor.blocksToFullHTML(read.blocks as never);
             },
             transformPasted: (slice, view) => {
               // A row moved or copied within the body is already ours.
@@ -517,6 +526,17 @@ export function documentPastedMediaExtension(
               const at = into;
               into = null;
               const fit = at !== null && inTableCell(view.state.doc.resolve(at)) ? (read: Slice): Slice => read : closedAtBlock;
+              // A medium the HTML carried in that is not in the slice was lost
+              // on the way (BlockNote reading the slice as words for a cell).
+              if (expected !== null) {
+                let carried = 0;
+                slice.content.descendants((node) => {
+                  if (isMediaBlockType(node.type.name)) carried += 1;
+                  return true;
+                });
+                leaveOut(expected - carried);
+                expected = null;
+              }
               const found: Queued[] = [];
               const prefix = options?.assetUrlPrefix() ?? null;
               const { fragment, dropped } = judge(slice.content, prefix, options?.start === undefined ? null : found);

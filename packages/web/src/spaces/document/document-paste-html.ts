@@ -218,12 +218,27 @@ function liftCellMedia(root: Element): boolean {
 }
 
 /**
- * Whether a block left by a split holds nothing to read.
- * @param block - The block.
- * @returns True when it has no words, no medium, no rule and no table.
+ * What BlockNote reads as a block of its own inside a container, besides a
+ * medium: a heading reads only its words, a paragraph reads a table in it,
+ * any other container a rule and a table.
+ * @param container - The container.
+ * @returns A selector for those elements, or an empty string.
  */
-function holdsNothing(block: Element): boolean {
-  return (block.textContent ?? '').trim() === '' && block.querySelector(`${HTML_MEDIA_SELECTOR}, hr, table`) === null;
+function blocksReadIn(container: Element): string {
+  if (/^H[1-6]$/.test(container.tagName)) return '';
+  return container.tagName === 'P' ? 'table' : 'hr, table';
+}
+
+/**
+ * Whether a part cut out of a container holds nothing BlockNote reads there.
+ * @param part - The part.
+ * @param container - The container it was cut out of.
+ * @returns True when it has no words, no medium and nothing the container
+ *   reads as a block.
+ */
+function holdsNothing(part: Element, container: Element): boolean {
+  const reads = [HTML_MEDIA_SELECTOR, blocksReadIn(container)].filter(Boolean).join(', ');
+  return (part.textContent ?? '').trim() === '' && part.querySelector(reads) === null;
 }
 
 /**
@@ -257,10 +272,11 @@ function trimBreaks(part: Element | DocumentFragment, end: 'start' | 'end'): voi
  * cuts through into the part, and an empty heading or list item copied that
  * way would be read as a line of its own. Only the outermost empty copy goes.
  * @param part - The part.
+ * @param container - The container the part was cut out of.
  * @param depth - How many ancestors the medium had inside the container.
  * @param end - Which end of the part the copies run along.
  */
-function dropEmptyCopy(part: DocumentFragment, depth: number, end: 'start' | 'end'): void {
+function dropEmptyCopy(part: DocumentFragment, container: Element, depth: number, end: 'start' | 'end'): void {
   /**
    * The next copy in from a node, along the end the copies run along.
    * @param node - The node.
@@ -269,7 +285,7 @@ function dropEmptyCopy(part: DocumentFragment, depth: number, end: 'start' | 'en
   const next = (node: ParentNode): Element | null => (end === 'end' ? node.lastElementChild : node.firstElementChild);
   let copy = next(part);
   for (let level = 0; copy !== null && level < depth; level += 1) {
-    if (holdsNothing(copy)) {
+    if (holdsNothing(copy, container)) {
       copy.remove();
       return;
     }
@@ -297,8 +313,8 @@ function cutAround(container: Element, medium: Element): [DocumentFragment, Docu
   const after = range.extractContents();
   trimBreaks(before, 'end');
   trimBreaks(after, 'start');
-  dropEmptyCopy(before, depth, 'end');
-  dropEmptyCopy(after, depth, 'start');
+  dropEmptyCopy(before, container, depth, 'end');
+  dropEmptyCopy(after, container, depth, 'start');
   return [before, after];
 }
 
@@ -374,7 +390,7 @@ function splitTextAroundMedia(root: Element): boolean {
     head.append(before);
     const tail = block.cloneNode(false) as Element;
     tail.append(after);
-    block.replaceWith(...[head, element, tail].filter((part) => part === element || !holdsNothing(part)));
+    block.replaceWith(...[head, element, tail].filter((part) => part === element || !holdsNothing(part, block)));
     changed = true;
   }
   return changed;
@@ -432,9 +448,25 @@ export function preparePastedHTML(html: string, lands: (url: string) => boolean)
   return { html: changed ? body.innerHTML : html, media };
 }
 
-/** Prepared HTML read into blocks, with how many of its media were lost. */
+/** What reads HTML into blocks: the editor. */
+export interface BlockReader {
+  tryParseHTMLToBlocks(html: string): unknown;
+}
+
+/**
+ * HTML read into blocks the way BlockNote reads it.
+ * @param reader - The editor.
+ * @param html - The HTML.
+ * @returns The blocks.
+ */
+export function readBlocks(reader: BlockReader, html: string): ReadBlock[] {
+  return reader.tryParseHTMLToBlocks(html) as ReadBlock[];
+}
+
+/** Prepared HTML read into blocks, with the media in them and how many were lost. */
 export interface PreparedRead {
   readonly blocks: readonly ReadBlock[];
+  readonly media: readonly ReadBlock[];
   /** Media taken out as not landing, and media the read lost. */
   readonly lost: number;
 }
@@ -444,16 +476,34 @@ export interface PreparedRead {
  * those taken out before the read and those the read lost. A paste and a
  * drop both read outside HTML this way.
  * @param prepared - The prepared HTML.
- * @param read - Reads HTML into blocks, as BlockNote does.
- * @returns The blocks and the count.
+ * @param reader - The editor.
+ * @returns The blocks, their media and the count.
  */
-export function readPrepared(prepared: PreparedHTML, read: (html: string) => readonly ReadBlock[]): PreparedRead {
-  const blocks = read(prepared.html);
-  return { blocks, lost: prepared.media - mediaIn(blocks).length };
+export function readPrepared(prepared: PreparedHTML, reader: BlockReader): PreparedRead {
+  const blocks = readBlocks(reader, prepared.html);
+  const media = mediaIn(blocks);
+  return { blocks, media, lost: prepared.media - media.length };
 }
 
 /** BlockNote's own HTML for a media block, as its export writes it. */
 const OWN_MEDIA = MEDIA_BLOCK_TYPES.map((type) => `[data-content-type="${type}"]`).join(', ');
+
+/** What BlockNote's own HTML holds, nested blocks too. */
+export interface OwnHTMLHolds {
+  readonly media: number;
+  readonly table: boolean;
+}
+
+/**
+ * How many media blocks BlockNote's own HTML holds, and whether it holds a
+ * table, nested blocks too.
+ * @param html - The HTML.
+ * @returns What it holds.
+ */
+export function ownHTMLHolds(html: string): OwnHTMLHolds {
+  const body = new DOMParser().parseFromString(html, 'text/html').body;
+  return { media: body.querySelectorAll(OWN_MEDIA).length, table: body.querySelector('[data-content-type="table"]') !== null };
+}
 
 /**
  * Pasted HTML with its media taken out and the rest as it reads with them,
@@ -553,11 +603,10 @@ export const documentPasteHandler: PasteHandler = ({ event, editor, defaultPaste
     if (prepared !== html) Object.defineProperty(event, 'clipboardData', { value: withHTML(data, prepared) });
     return defaultPasteHandler();
   }
-  const { blocks, lost } = readPrepared(preparePastedHTML(source, lands), (html) => editor.tryParseHTMLToBlocks(html) as unknown as ReadBlock[]);
-  const media = mediaIn(blocks);
+  const { blocks, media, lost } = readPrepared(preparePastedHTML(source, lands), editor);
   pasted?.leaveOut(lost);
   const landing = inTableCell($from)
-    ? [...editor.tryParseHTMLToBlocks(withoutMedia(source)), ...media.map(({ type, props }) => ({ type, props, children: [] }))]
+    ? [...readBlocks(editor, withoutMedia(source)), ...media.map(({ type, props }) => ({ type, props, children: [] }))]
     : blocks;
   editor.pasteHTML(editor.blocksToFullHTML(landing as never), true);
   return true;
