@@ -3,32 +3,23 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type * as AnalyticsModule from '@web/lib/analytics';
-import type { ConsentHost } from '@web/lib/analytics/consent-banner';
 
 const runtime = vi.hoisted(() => ({
   listener: null as null | ((choice: { analytics: boolean; ads: boolean }) => void),
-  host: null as null | ConsentHost,
   started: Promise.resolve(),
   choices: null as null | undefined | Record<string, unknown>,
   setAds: vi.fn(),
 }));
-const OPEN = { optedOut: false, source: null };
-const api = vi.hoisted(() => ({
-  put: vi.fn(async (_path: string, body: { allowed: boolean }): Promise<unknown> =>
-    body.allowed ? { optedOut: false, source: null } : { optedOut: true, source: 'settings' },
-  ),
-  get: vi.fn(async (_path: string): Promise<unknown> => ({ optedOut: false, source: null })),
-}));
+const api = vi.hoisted(() => ({ put: vi.fn(async (_path: string, _body: unknown): Promise<unknown> => undefined) }));
+const sentry = vi.hoisted(() => ({ captureException: vi.fn() }));
 
+vi.mock('@sentry/react', () => sentry);
 vi.mock('@web/lib/analytics/build-config', () => ({ ANALYTICS_CONFIGURED: true }));
 vi.mock('@web/lib/analytics/runtime', () => ({
   onConsentChange: (listener: typeof runtime.listener) => {
     runtime.listener = listener;
   },
-  start: (options: { host: ConsentHost }) => {
-    runtime.host = options.host;
-    return runtime.started;
-  },
+  start: () => runtime.started,
   followPage: () => undefined,
   setLanguage: async () => undefined,
   browserChoices: () => runtime.choices,
@@ -36,10 +27,10 @@ vi.mock('@web/lib/analytics/runtime', () => ({
   reset: () => undefined,
   setAds: runtime.setAds,
 }));
-vi.mock('@web/data/api/request', () => ({ apiPut: api.put, apiGet: api.get }));
+vi.mock('@web/data/api/request', () => ({ apiPut: api.put }));
 
 /**
- * Both categories as a press in the banner leaves them.
+ * Both categories with one value and source.
  * @param value - Accepted or refused.
  * @param source - Where the choice came from.
  * @returns The choices.
@@ -57,17 +48,36 @@ async function load(): Promise<typeof AnalyticsModule> {
   vi.resetModules();
   const analytics = await import('@web/lib/analytics');
   analytics.startProductAnalytics();
-  await vi.waitFor(() => expect(runtime.host).not.toBeNull());
+  await vi.waitFor(() => expect(runtime.listener).not.toBeNull());
+  await new Promise((resolve) => setTimeout(resolve, 0));
   return analytics;
+}
+
+/**
+ * A choice change in this browser, as the runtime reports it.
+ * @param next - The choices now in force.
+ */
+function change(next: Record<string, unknown> | null): void {
+  runtime.choices = next;
+  runtime.listener?.({ analytics: next !== null, ads: next !== null });
 }
 
 /** The last ads view handed to the runtime. */
 const lastAds = (): unknown => runtime.setAds.mock.calls.at(-1)?.[0];
 
+/**
+ * Send GPC from this browser, or stop.
+ * @param on - Whether it is sent.
+ */
+function gpc(on: boolean): void {
+  Object.defineProperty(navigator, 'globalPrivacyControl', { configurable: true, get: () => (on ? true : undefined) });
+}
+
 afterEach(() => {
   vi.clearAllMocks();
+  gpc(false);
   runtime.listener = null;
-  runtime.host = null;
+  runtime.choices = null;
   localStorage.clear();
   window.history.replaceState(null, '', '/');
 });
@@ -86,154 +96,83 @@ describe('the landing a sign-up is credited to', () => {
 });
 
 describe('whether ads run', () => {
-  it('stays off until the app knows who is signed in, showing this browser’s consent on the switch', async () => {
-    runtime.choices = choices(true);
-    await load();
-    runtime.listener?.({ analytics: true, ads: true });
-    expect(lastAds()).toEqual({ allowed: false, known: false, status: null, optedOut: false, adsOn: true });
-  });
-
-  it('decides nothing before the page has read this browser’s choice, so an early answer keeps the stored ad click', async () => {
-    runtime.choices = undefined;
+  it('follows this browser’s choice, signed in or not, and asks the server nothing', async () => {
     const analytics = await load();
-    analytics.resetUser();
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(runtime.setAds).not.toHaveBeenCalled();
-  });
-
-  it('follows the browser alone when nobody is signed in, and reads nothing from the server', async () => {
-    runtime.choices = choices(true);
-    const analytics = await load();
-    analytics.resetUser();
-    await vi.waitFor(() =>
-      expect(lastAds()).toEqual({ allowed: true, known: true, status: 'browser', optedOut: false, adsOn: true }),
-    );
-    expect(api.get).not.toHaveBeenCalled();
-  });
-
-  it('reads the account switch on sign-in and runs ads while it is open', async () => {
-    runtime.choices = choices(true);
-    const analytics = await load();
+    change(choices(true));
+    expect(lastAds()).toEqual({ allowed: true });
+    change(choices(false, 'settings'));
+    expect(lastAds()).toEqual({ allowed: false });
     analytics.identifyUser({ id: 'u1' } as never);
-    await vi.waitFor(() => expect(api.get).toHaveBeenCalledWith('/users/me/ads-sharing'));
-    await vi.waitFor(() => expect(lastAds()).toEqual({ allowed: true, known: true, status: null, optedOut: false, adsOn: true }));
-    expect(api.put).not.toHaveBeenCalled();
+    change(choices(true));
+    expect(lastAds()).toEqual({ allowed: true });
   });
 
-  it('stops for an account that opted out on another device, and says so in settings', async () => {
-    runtime.choices = choices(true);
-    api.get.mockResolvedValueOnce({ optedOut: true, source: 'gpc' });
-    const analytics = await load();
-    analytics.identifyUser({ id: 'u2' } as never);
-    await vi.waitFor(() =>
-      expect(lastAds()).toEqual({ allowed: false, known: true, status: 'account', optedOut: true, adsOn: false }),
-    );
-  });
-
-  it('treats a failed read or an answer that is not the switch as unknown, which keeps ads off without a refusal', async () => {
-    runtime.choices = choices(true);
-    api.get.mockRejectedValueOnce(new Error('offline'));
-    const analytics = await load();
-    analytics.identifyUser({ id: 'u3' } as never);
-    await vi.waitFor(() => expect(api.get).toHaveBeenCalledTimes(1));
-    await vi.waitFor(() => expect(lastAds()).toMatchObject({ allowed: false, known: false, adsOn: true }));
-    api.get.mockResolvedValueOnce({ optedOut: true, source: null });
-    analytics.identifyUser({ id: 'u4' } as never);
-    await vi.waitFor(() => expect(api.get).toHaveBeenCalledTimes(2));
-    await vi.waitFor(() => expect(lastAds()).toMatchObject({ allowed: false, known: false }));
-  });
-
-  it('decides again on a new choice in this browser without asking the server', async () => {
-    runtime.choices = choices(true);
-    const analytics = await load();
-    analytics.identifyUser({ id: 'u5' } as never);
-    await vi.waitFor(() => expect(lastAds()).toMatchObject({ allowed: true }));
-    runtime.choices = choices(false, 'settings');
-    runtime.listener?.({ analytics: false, ads: false });
-    expect(lastAds()).toEqual({ allowed: false, known: true, status: null, optedOut: true, adsOn: false });
-    expect(api.get).toHaveBeenCalledTimes(1);
-  });
-
-  it('takes the answer for the account signed in now, not one that arrives after it', async () => {
-    runtime.choices = choices(true);
-    const analytics = await load();
-    let answerEarlier: (answer: unknown) => void = () => undefined;
-    api.get.mockReturnValueOnce(new Promise((resolve) => (answerEarlier = resolve)));
-    analytics.identifyUser({ id: 'u6' } as never);
-    await vi.waitFor(() => expect(api.get).toHaveBeenCalledTimes(1));
-    api.get.mockResolvedValueOnce({ optedOut: true, source: 'settings' });
-    analytics.identifyUser({ id: 'u7' } as never);
-    await vi.waitFor(() => expect(lastAds()).toMatchObject({ status: 'account' }));
-    answerEarlier(OPEN);
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(lastAds()).toMatchObject({ allowed: false, status: 'account' });
+  it('lets GPC refuse a regional default, not the visitor’s own consent', async () => {
+    gpc(true);
+    await load();
+    change(choices(true, 'implicit'));
+    expect(lastAds()).toEqual({ allowed: false });
+    change(choices(true, 'settings'));
+    expect(lastAds()).toEqual({ allowed: true });
   });
 });
 
-describe('what the banner asks about the account', () => {
-  it('waits for the account until it is known, and not at all when nobody is signed in', async () => {
-    const analytics = await load();
-    let answer: (value: unknown) => void = () => undefined;
-    api.get.mockReturnValueOnce(new Promise((resolve) => (answer = resolve)));
-    analytics.identifyUser({ id: 'u1' } as never);
-    let settled = false;
-    void runtime.host!.accountSettled().then(() => (settled = true));
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(settled).toBe(false);
-    expect(runtime.host!.account()).toBe('unknown');
-    answer(OPEN);
-    await vi.waitFor(() => expect(settled).toBe(true));
-    expect(runtime.host!.account()).toEqual(OPEN);
-    analytics.resetUser();
-    expect(runtime.host!.account()).toBe('signedOut');
-    await runtime.host!.accountSettled();
-  });
-
-  it('sends the switch and takes the answer, reporting a failure', async () => {
+describe('reporting this browser’s choice to the account (design §4.4.6)', () => {
+  it('sends it after sign-in, and again after each change while signed in', async () => {
     runtime.choices = choices(true);
     const analytics = await load();
-    analytics.identifyUser({ id: 'u2' } as never);
-    await vi.waitFor(() => expect(runtime.host!.account()).toEqual(OPEN));
-    expect(await runtime.host!.putAdsSharing(false)).toBe('took');
-    expect(api.put).toHaveBeenCalledWith('/users/me/ads-sharing', { allowed: false });
-    expect(runtime.host!.account()).toEqual({ optedOut: true, source: 'settings' });
-    await vi.waitFor(() => expect(lastAds()).toMatchObject({ allowed: false, status: 'account' }));
-    api.put.mockRejectedValueOnce(new Error('offline'));
-    expect(await runtime.host!.putAdsSharing(true)).toBe('failed');
-    api.put.mockResolvedValueOnce({ optedOut: 'no' });
-    expect(await runtime.host!.putAdsSharing(true)).toBe('failed');
-    expect(runtime.host!.account()).toEqual({ optedOut: true, source: 'settings' });
+    analytics.identifyUser({ id: 'u1' } as never);
+    await vi.waitFor(() => expect(api.put).toHaveBeenCalledWith('/users/me/consent', { analytics: true, ads: true }));
+    change(choices(false, 'settings'));
+    await vi.waitFor(() => expect(api.put).toHaveBeenLastCalledWith('/users/me/consent', { analytics: false, ads: false }));
   });
 
-  it('forgets the account when the server answers that the session is gone', async () => {
+  it('sends nothing while nobody is signed in', async () => {
     const analytics = await load();
-    analytics.identifyUser({ id: 'u4' } as never);
-    await vi.waitFor(() => expect(runtime.host!.account()).toEqual(OPEN));
+    change(choices(true));
+    analytics.resetUser();
+    change(choices(false));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(api.put).not.toHaveBeenCalled();
+  });
+
+  it('reports a missing choice as refused, and a regional ads default under GPC as refused', async () => {
+    runtime.choices = null;
+    const analytics = await load();
+    analytics.identifyUser({ id: 'u1' } as never);
+    await vi.waitFor(() => expect(api.put).toHaveBeenCalledWith('/users/me/consent', { analytics: false, ads: false }));
+    gpc(true);
+    change(choices(true, 'implicit'));
+    await vi.waitFor(() => expect(api.put).toHaveBeenLastCalledWith('/users/me/consent', { analytics: true, ads: false }));
+  });
+
+  it('does not send the same choice twice for the same account, but does for another account', async () => {
+    runtime.choices = choices(true);
+    const analytics = await load();
+    analytics.identifyUser({ id: 'u1' } as never);
+    await vi.waitFor(() => expect(api.put).toHaveBeenCalledTimes(1));
+    change(choices(true));
+    analytics.identifyUser({ id: 'u1' } as never);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(api.put).toHaveBeenCalledTimes(1);
+    analytics.identifyUser({ id: 'u2' } as never);
+    await vi.waitFor(() => expect(api.put).toHaveBeenCalledTimes(2));
+  });
+
+  it('sends again after a failure, and does not report a session that ended', async () => {
+    runtime.choices = choices(true);
+    api.put.mockRejectedValueOnce(new Error('offline'));
+    const analytics = await load();
+    analytics.identifyUser({ id: 'u1' } as never);
+    await vi.waitFor(() => expect(sentry.captureException).toHaveBeenCalledTimes(1));
+    change(choices(true));
+    await vi.waitFor(() => expect(api.put).toHaveBeenCalledTimes(2));
     // The class the freshly loaded module sees.
     const { ApiException } = await import('@web/data/api/types');
     api.put.mockRejectedValueOnce(new ApiException({ status: 401, message: 'unauthorized', fromServer: true }));
-    expect(await runtime.host!.putAdsSharing(false)).toBe('signedOut');
-    expect(runtime.host!.account()).toBe('signedOut');
-  });
-
-  it('knows the session once the app has signed someone in or found nobody', async () => {
-    const analytics = await load();
-    let known = false;
-    void runtime.host!.sessionKnown().then(() => (known = true));
+    change(choices(false));
+    await vi.waitFor(() => expect(api.put).toHaveBeenCalledTimes(3));
     await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(known).toBe(false);
-    analytics.resetUser();
-    await vi.waitFor(() => expect(known).toBe(true));
-    await runtime.host!.sessionKnown();
-  });
-
-  it('asks the account again on request, and answers false while nobody is signed in', async () => {
-    const analytics = await load();
-    expect(await runtime.host!.refreshAccount()).toBe(false);
-    api.get.mockRejectedValueOnce(new Error('offline'));
-    analytics.identifyUser({ id: 'u3' } as never);
-    await vi.waitFor(() => expect(api.get).toHaveBeenCalledTimes(1));
-    expect(await runtime.host!.refreshAccount()).toBe(true);
-    expect(api.get).toHaveBeenCalledTimes(2);
+    expect(sentry.captureException).toHaveBeenCalledTimes(1);
   });
 });

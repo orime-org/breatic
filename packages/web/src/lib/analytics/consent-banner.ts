@@ -7,11 +7,9 @@
  * `breatic_consent`, categories `necessary` / `analytics` / `ads`, the policy
  * revision, and per category the latest choice in `data` (`CONSENT_DATA_FIELDS`).
  *
- * The library draws the windows and holds the cookie; what a press does is
+ * The library draws the windows and holds the cookie; what a press writes is
  * decided here (`writesForClick`), so its buttons are answered before the
- * library sees them: a signed-in press sends the account's ad switch first,
- * turning ads back on asks for confirmation, and a failed send keeps the
- * window open with an error line (design §4.4.4).
+ * library sees them (design §4.4.4).
  */
 
 import * as CookieConsent from 'vanilla-cookieconsent';
@@ -24,18 +22,9 @@ import {
   parseConsentChoices,
   requiresOptIn,
   revisionInForce,
-  type AccountAdsView,
   type BrowserChoices,
 } from '@breatic/shared';
-import {
-  adsSituation,
-  cookieAfterWrites,
-  decideOnLoad,
-  writesForClick,
-  type AdsView,
-  type PressOutcome,
-  type ConsentWrites,
-} from '@web/lib/analytics/consent-decision';
+import { cookieAfterWrites, decideOnLoad, writesForClick, type ConsentWrites } from '@web/lib/analytics/consent-decision';
 
 /** Interface text, already translated. */
 export interface ConsentText {
@@ -46,46 +35,17 @@ export interface ConsentText {
     rejectAll: string;
     settings: string;
     gpc: string;
-    optedOut: string;
   };
   readonly settings: {
     title: string;
     save: string;
     close: string;
-    note: string;
-    status: { gpc: string; account: string; browser: string };
-    confirm: { body: string; yes: string; no: string };
-    error: string;
-    accountError: string;
+    status: { gpc: string };
     necessary: { title: string; description: string };
     analytics: { title: string; description: string };
     ads: { title: string; description: string };
   };
 }
-
-/** What the banner asks the page about the signed-in account (design §4.4.4, §4.4.6). */
-export interface ConsentHost {
-  /** The account as ads decisions see it. */
-  account(): AccountAdsView;
-  /** Settles once the app knows whether anyone is signed in. */
-  sessionKnown(): Promise<void>;
-  /** Settles once the account's switch is known or cannot be: signed out, answered or failed. */
-  accountSettled(): Promise<void>;
-  /**
-   * Ask the account for its switch again.
-   * @returns True once it answered.
-   */
-  refreshAccount(): Promise<boolean>;
-  /**
-   * Open or close the account's ad switch.
-   * @param allowed - Whether ads are turned on.
-   * @returns Whether the server took it, answered that nobody is signed in, or could not be reached.
-   */
-  putAdsSharing(allowed: boolean): Promise<'took' | 'signedOut' | 'failed'>;
-}
-
-/** How long a signed-in visitor's banner waits for the account; the same second as the region lookup. */
-const ACCOUNT_WAIT_MS = 1000;
 
 let onChoice: (choices: BrowserChoices | null) => void = ignoreChoice;
 
@@ -93,17 +53,6 @@ let onChoice: (choices: BrowserChoices | null) => void = ignoreChoice;
 function ignoreChoice(): void {
   // Nothing listens yet.
 }
-// The page's ads view: the lines the windows show and where the settings window's ads switch stands.
-let adsView: AdsView = { allowed: false, known: true, status: null, optedOut: false, adsOn: false };
-// Where the visitor put the ads switch since the settings window opened, or null; a later view leaves it there.
-let touchedAds: boolean | null = null;
-// A press waiting for the visitor to confirm turning ads on, with the switches it was made with.
-let confirming: { press: 'all' | 'save'; toggles: { analytics: boolean; ads: boolean | null } | null } | null = null;
-// The window whose last press could not be saved, which shows the error line.
-let failedIn: { window: 'banner' | 'settings'; line: 'error' | 'accountError' } | null = null;
-// A press is being carried out; another one waits for it.
-let busy = false;
-
 /**
  * Whether the browser sends Global Privacy Control.
  * @returns True when it does.
@@ -161,12 +110,10 @@ function writeConsent(writes: ConsentWrites, prior: BrowserChoices | null): void
 }
 
 /**
- * The switches in the settings window. An ads switch the visitor left as it was
- * preset reads `null` once this browser holds an ads choice: the save is then no
- * answer about ads (design §4.4.4, "analytics changed only").
+ * The switches in the settings window.
  * @returns Where the analytics and ads switches stand.
  */
-function readToggles(): { analytics: boolean; ads: boolean | null } {
+function readToggles(): { analytics: boolean; ads: boolean } {
   /**
    * Whether one switch is on.
    * @param value - The switch's category.
@@ -174,167 +121,58 @@ function readToggles(): { analytics: boolean; ads: boolean | null } {
    */
   const on = (value: string): boolean =>
     document.querySelector<HTMLInputElement>(`#cc-main .pm input[value="${value}"]`)?.checked === true;
-  return { analytics: on('analytics'), ads: touchedAds ?? (lastSeen?.ads ? null : on('ads')) };
+  return { analytics: on('analytics'), ads: on('ads') };
 }
 
 /**
- * Answer a press in the banner or the settings window (design §4.4.4): wait
- * until the app knows whether anyone is signed in, and for the account when
- * its switch decides the press; ask for confirmation before ads go back on;
- * send the account's switch first when signed in, then write the cookie and
- * close the windows. A refusal the account cannot take still holds in this
- * browser, and the window stays open saying so; turning ads on that cannot be
- * sent writes nothing. A server answering that nobody is signed in makes the
- * press count for this browser alone.
+ * Answer a press in the banner or the settings window (design §4.4.4): write
+ * the cookie, close the windows and report the choice.
  * @param press - The button.
  * @param window - Where it was pressed.
  * @param toggles - The settings switches, for a save.
- * @param confirmed - The answer to the confirmation, once asked.
  */
-async function answerPress(
+function answerPress(
   press: 'all' | 'necessary' | 'save',
   window: 'banner' | 'settings',
-  toggles: { analytics: boolean; ads: boolean | null } | null,
-  confirmed?: boolean,
-): Promise<void> {
-  if (busy || host === null) return;
-  busy = true;
-  failedIn = null;
-  try {
-    await host.sessionKnown();
-    /**
-     * What the press does, given the account as it stands now.
-     * @returns The outcome.
-     */
-    const decide = (): PressOutcome => {
-      const account = host!.account();
-      const browserAds = lastSeen?.ads?.value ?? null;
-      const situation = adsSituation({ browserAds, gpc: sendsGpc(), account });
-      return writesForClick({ press, window, toggles, situation, browserAds, signedIn: account !== 'signedOut', confirmed });
-    };
-    let outcome = decide();
-    if (outcome.kind === 'wait') outcome = (await host.refreshAccount()) ? decide() : outcome;
-    if (outcome.kind === 'wait') {
-      failedIn = { window, line: 'error' };
-      return;
-    }
-    if (outcome.kind === 'confirm') {
-      confirming = { press: press === 'necessary' ? 'save' : press, toggles };
-      return;
-    }
-    let accountFailed = false;
-    if (outcome.put !== null) {
-      const sent = await host.putAdsSharing(outcome.put);
-      if (sent === 'signedOut') {
-        // Nobody is signed in after all: the press counts for this browser alone.
-        outcome = decide();
-        if (outcome.kind !== 'write' || outcome.put !== null) {
-          failedIn = { window, line: 'error' };
-          return;
-        }
-      } else if (sent === 'failed') {
-        // Turning ads on waits for the account; a refusal holds in this browser all the same.
-        if (outcome.put) {
-          failedIn = { window, line: 'error' };
-          return;
-        }
-        accountFailed = true;
-      }
-    }
-    confirming = null;
-    writeConsent(outcome.writes, lastSeen);
-    undecided = false;
-    lastSeen = readBrowserChoices();
-    if (accountFailed) failedIn = { window, line: 'accountError' };
-    else {
-      CookieConsent.hidePreferences();
-      placeBanner();
-    }
-    onChoice(lastSeen);
-  } finally {
-    busy = false;
-    renderConsentWindows();
-  }
+  toggles: { analytics: boolean; ads: boolean } | null,
+): void {
+  writeConsent(writesForClick({ press, window, toggles }), lastSeen);
+  undecided = false;
+  lastSeen = readBrowserChoices();
+  CookieConsent.hidePreferences();
+  placeBanner();
+  onChoice(lastSeen);
 }
 
 /**
- * Take a press away from the library and answer it here: its buttons carry
- * `data-role`, and the confirmation's buttons ours.
+ * Take a press away from the library and answer it here: its buttons carry `data-role`.
  * @param event - The click, in the capture phase, before the library's handlers.
  */
 function onPress(event: Event): void {
   const target = event.target instanceof Element ? event.target : null;
-  const answer = target?.closest('#cc-main [data-breatic-confirm]')?.getAttribute('data-breatic-confirm');
   const button = target?.closest('#cc-main [data-role]');
   const role = button?.getAttribute('data-role');
-  if (answer !== undefined && answer !== null && confirming !== null) {
-    event.preventDefault();
-    event.stopImmediatePropagation();
-    const { press, toggles } = confirming;
-    if (answer === 'no') confirming = null;
-    void answerPress(press, 'settings', toggles, answer === 'yes');
-    return;
-  }
   if (button === null || button === undefined || (role !== 'all' && role !== 'necessary' && role !== 'save')) return;
   event.preventDefault();
   event.stopImmediatePropagation();
   const window = button.closest('.pm') ? 'settings' : 'banner';
-  void answerPress(role, window, window === 'settings' ? readToggles() : null);
+  answerPress(role, window, window === 'settings' ? readToggles() : null);
 }
 
 /**
- * Take the page's ads view: the windows show its lines, and the settings
- * window's ads switch follows it until the visitor changes the switch.
- * @param view - The page's ads view.
- */
-export function setAdsView(view: AdsView): void {
-  // Ads newly opted out are a new question: a switch the visitor changed before is not answering it.
-  if (view.optedOut && !adsView.optedOut) touchedAds = null;
-  adsView = view;
-  renderConsentWindows();
-}
-
-/**
- * Draw both windows from the page's state: the banner's status line, the
- * settings window's status line, its ads switch, the confirmation and the
- * error line. Every place that changes that state or rebuilds a window calls this.
+ * Draw the GPC line in both windows: in the banner, and in the settings
+ * window under the ads switch, which stays free to turn on (design §4.4.3).
+ * Every place that rebuilds a window calls this.
  */
 function renderConsentWindows(): void {
-  const toggle = adsSwitch();
-  if (toggle !== null) {
-    // GPC keeps ads off: the switch cannot be turned on (design §4.4.3).
-    toggle.disabled = adsView.status === 'gpc';
-    toggle.checked = !toggle.disabled && (touchedAds ?? adsView.adsOn);
-    toggle.addEventListener('change', markAdsSwitchTouched);
-  }
   const text = bannerOptions?.text();
   if (text === undefined) return;
-  const bannerLine = adsView.status === 'gpc' ? text.banner.gpc : adsView.optedOut ? text.banner.optedOut : null;
-  const bannerDesc = document.querySelector('#cc-main .cm__desc');
-  showLine(bannerDesc, 'breatic-consent-notice', bannerLine);
-  showLine(bannerDesc, 'breatic-consent-error', failedIn?.window === 'banner' ? text.settings[failedIn.line] : null);
-  const section = toggle?.closest('.pm__section--toggle') ?? null;
+  const gpc = sendsGpc();
+  showLine(document.querySelector('#cc-main .cm__desc'), 'breatic-consent-notice', gpc ? text.banner.gpc : null);
+  const section = document.querySelector('#cc-main .pm input[value="ads"]')?.closest('.pm__section--toggle') ?? null;
   // Inside the ads card, under its description.
   const body = section?.querySelector('.pm__section-desc-wrapper') ?? section;
-  showLine(body, 'breatic-consent-notice', adsView.status === null ? null : text.settings.status[adsView.status]);
-  showLine(body, 'breatic-consent-error', failedIn?.window === 'settings' ? text.settings[failedIn.line] : null);
-  showConfirm(text);
-}
-
-/**
- * The settings window's ads switch, once the library has built it.
- * @returns The switch, or null.
- */
-function adsSwitch(): HTMLInputElement | null {
-  return document.querySelector<HTMLInputElement>('#cc-main .pm input[value="ads"]');
-}
-
-/**
- * The visitor changed the ads switch.
- * @param event - The switch's change event.
- */
-function markAdsSwitchTouched(event: Event): void {
-  touchedAds = (event.target as HTMLInputElement).checked;
+  showLine(body, 'breatic-consent-notice', gpc ? text.settings.status.gpc : null);
 }
 
 /**
@@ -350,55 +188,6 @@ function showLine(container: Element | null, className: string, text: string | n
   line.className = className;
   line.textContent = text;
   container.append(line);
-}
-
-/**
- * Put the confirmation in place of the settings window's buttons while a
- * press waits for it, and the buttons back otherwise.
- * @param text - The consent text.
- */
-function showConfirm(text: ConsentText): void {
-  const footer = document.querySelector('#cc-main .pm .pm__footer');
-  const shown = footer?.querySelector('.breatic-consent-confirm') ?? null;
-  shown?.remove();
-  footer?.classList.toggle('breatic-consent-confirming', confirming !== null);
-  if (footer === null || footer === undefined || confirming === null) return;
-  const box = document.createElement('div');
-  box.className = 'breatic-consent-confirm';
-  const body = document.createElement('p');
-  body.textContent = text.settings.confirm.body;
-  const buttons = document.createElement('div');
-  buttons.className = 'pm__btn-group';
-  for (const [answer, label, extra] of [
-    ['yes', text.settings.confirm.yes, ''],
-    ['no', text.settings.confirm.no, ' pm__btn--secondary'],
-  ] as const) {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = `pm__btn${extra}`;
-    button.dataset.breaticConfirm = answer;
-    button.textContent = label;
-    buttons.append(button);
-  }
-  box.append(body, buttons);
-  footer.append(box);
-  // Focus moves to the question when it appears, not each time it is drawn again.
-  if (shown === null) box.querySelector('button')?.focus();
-}
-
-/**
- * Bring a window that just opened in line with the page's state; the
- * settings window starts its ads switch from the view, without a
- * confirmation or an error from before.
- * @param modalName - The window.
- */
-function presetWindow(modalName: string): void {
-  if (modalName === 'preferencesModal') {
-    touchedAds = null;
-    confirming = null;
-    if (failedIn?.window === 'settings') failedIn = null;
-  }
-  renderConsentWindows();
 }
 
 /**
@@ -428,17 +217,13 @@ interface BannerOptions {
   text: () => ConsentText;
   privacyUrl: string;
   country: Promise<string | null>;
-  host: ConsentHost;
   onChoice: (choices: BrowserChoices | null) => void;
 }
 
 let bannerOptions: BannerOptions | null = null;
-let host: ConsentHost | null = null;
 let currentLanguage = '';
 // The choice the cookie held when last read, so a cookie the browser refuses does not look like a change.
 let lastSeen: BrowserChoices | null = null;
-// Settles one second after the banner started: the longest an opt-in visitor waits for the region and the account.
-let firstSecond: Promise<void> = Promise.resolve();
 
 /**
  * Whether the library would decline to run here: the same test as its `hideFromBots`.
@@ -452,14 +237,13 @@ function isBot(): boolean {
  * Show the banner when the visitor has to be asked, on the pages
  * {@link followPage} allows; apply the default otherwise; and report every
  * choice in force, including one another tab or the website makes.
- * @param options - Where to write, what to say and how to reach the account.
+ * @param options - Where to write and what to say.
  * @param options.cookieDomain - The cookie's domain; empty for the current host.
  * @param options.language - The interface language.
  * @param options.languages - Every interface language.
  * @param options.text - Reads the text in the current interface language.
  * @param options.privacyUrl - The privacy policy, linked from the banner.
  * @param options.country - The visitor's country lookup; null asks first.
- * @param options.host - The signed-in account, for presses that depend on it.
  * @param options.onChoice - Called with the choice in force, now and after each change.
  */
 export async function startConsentBanner(options: BannerOptions): Promise<void> {
@@ -469,9 +253,7 @@ export async function startConsentBanner(options: BannerOptions): Promise<void> 
     return;
   }
   bannerOptions = options;
-  host = options.host;
   currentLanguage = options.language;
-  firstSecond = new Promise((resolve) => setTimeout(resolve, ACCOUNT_WAIT_MS));
   // Capture phase: runs before the library's own handlers, which would save and hide the window themselves.
   document.addEventListener('click', onPress, true);
   await boot(options);
@@ -527,7 +309,7 @@ async function boot(options: BannerOptions): Promise<void> {
         options.languages.map((language) => [language, () => toTranslation(options.text(), options.privacyUrl)]),
       ),
     },
-    onModalShow: ({ modalName }) => presetWindow(modalName),
+    onModalShow: () => renderConsentWindows(),
   });
 
   // What the library loaded into its own memory, which its settings window shows.
@@ -549,8 +331,6 @@ async function boot(options: BannerOptions): Promise<void> {
   if (writes.analytics || writes.ads) writeConsent(writes, stored);
   lastSeen = readBrowserChoices();
   onChoice(lastSeen);
-  // A signed-in visitor is asked once the account is known, within the same first second (§4.4.4).
-  if (decision.showBanner) await Promise.race([options.host.accountSettled(), firstSecond]);
   undecided = decision.showBanner;
   running = true;
   placeBanner();
@@ -590,7 +370,6 @@ function toTranslation(text: ConsentText, privacyUrl: string): CookieConsent.Tra
         { title: text.settings.necessary.title, description: text.settings.necessary.description, linkedCategory: 'necessary' },
         { title: text.settings.analytics.title, description: text.settings.analytics.description, linkedCategory: 'analytics' },
         { title: text.settings.ads.title, description: text.settings.ads.description, linkedCategory: 'ads' },
-        { description: text.settings.note },
       ],
     },
   };

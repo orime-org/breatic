@@ -11,7 +11,7 @@
 import { describe, it, expect } from "vitest";
 import { CONSENT_REVISION } from "../analytics/consent.js";
 import type { BrowserChoice } from "../analytics/consent-choices.js";
-import { adsAllowed, browserAdsConsent, reportedConsent } from "../analytics/ads-sharing.js";
+import { adsAllowed, browserAdsConsent, reportedConsent } from "../analytics/ads-consent.js";
 
 const choice = (value: boolean, source: BrowserChoice["source"]): BrowserChoice => ({
   value,

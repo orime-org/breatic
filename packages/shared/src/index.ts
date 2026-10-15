@@ -836,7 +836,7 @@ export {
   type ConsentRecord,
   type ReportedConsent,
   type SeenChoice,
-} from "@shared/analytics/ads-sharing.js";
+} from "@shared/analytics/ads-consent.js";
 export {
   adClickFrom,
   CLICK_WINDOW_MS,

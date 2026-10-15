@@ -8,8 +8,7 @@
       "upload_too_large": "檔案超過上傳大小限制。",
       "insufficient_credits": "點數不足：需要 {required}，可用 {available}",
       "rate_limited": "請求過於頻繁，請稍後再試",
-      "internal": "伺服器內部錯誤",
-      "ads_gpc": "這個瀏覽器傳送了全球隱私控制（GPC）訊號，廣告維持關閉。"
+      "internal": "伺服器內部錯誤"
     },
     "credit": {
       "not_studio_admin": "只能指定給你管理的 Studio。",
@@ -2353,26 +2352,15 @@
       "acceptAll": "全部接受",
       "rejectAll": "全部拒絕",
       "settings": "設定",
-      "gpc": "這個瀏覽器傳送了全球隱私控制（GPC）訊號，廣告維持關閉。",
-      "optedOut": "廣告維持關閉。要開啟，請到「Cookie 設定」中開啟並確認。"
+      "gpc": "你的瀏覽器傳送了 Global Privacy Control，廣告預設關閉。"
     },
     "settings": {
       "title": "Cookie 設定",
       "save": "儲存",
       "close": "關閉",
-      "note": "登入時，關閉廣告會作用於你所有已登入的裝置。分析的選擇只對這個瀏覽器生效。",
       "status": {
-        "gpc": "已依全球隱私控制（GPC）退出",
-        "account": "你的帳號已退出廣告共享",
-        "browser": "只對這個瀏覽器生效，登入後在這裡選擇會記錄到你的帳號"
+        "gpc": "你的瀏覽器傳送了 Global Privacy Control，廣告預設關閉。"
       },
-      "confirm": {
-        "body": "開啟後，我們會與廣告平台共享註冊、第一個 Project、協作者第一次在你的 Project 裡動手、購買與訂閱，用來衡量廣告成效。",
-        "yes": "確認開啟廣告共享",
-        "no": "取消"
-      },
-      "error": "無法儲存你的選擇，請再試一次。",
-      "accountError": "已儲存在這個瀏覽器，但無法記錄到你的帳號，請再試一次。",
       "necessary": {
         "title": "必要",
         "description": "登入、主題與語言偏好，以及這項選擇本身。一律開啟。"

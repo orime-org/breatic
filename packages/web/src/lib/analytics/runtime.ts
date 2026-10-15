@@ -26,10 +26,8 @@ import {
   consentRevision,
   followPage,
   openConsentSettings,
-  setAdsView,
   setConsentLanguage,
   startConsentBanner,
-  type ConsentHost,
   type ConsentText,
 } from '@web/lib/analytics/consent-banner';
 import { readAttribution } from '@web/lib/analytics/attribution';
@@ -54,7 +52,7 @@ let amplitude: Amplitude | null = null;
 let sdkStarted: Promise<void> | null = null;
 // Undefined until this page has read the cookie; null once read with no choice in it.
 let choice: BrowserChoices | null | undefined = undefined;
-// Whether `adsAllowed` lets ads run in this browser; the page decides it, with the account's switch when signed in.
+// Whether ads run in this browser; the page decides it from the cookie (`adsViewFor`).
 let adsAllowed = false;
 /** The signed-in account; null when nobody is, undefined until the app knows. */
 let account: AnalyticsUser | null | undefined = undefined;
@@ -77,7 +75,6 @@ const listeners = new Set<(consent: ConsentSnapshot) => void>();
  * @param options.appVersion - The build's version, sent with every event.
  * @param options.text - Reads the banner's text in the current language.
  * @param options.privacyUrl - The privacy policy.
- * @param options.host - The signed-in account, for presses that depend on it.
  * @param options.onError - Receives a failure applying a choice.
  */
 export async function start(options: {
@@ -86,7 +83,6 @@ export async function start(options: {
   appVersion: string;
   text: () => ConsentText;
   privacyUrl: string;
-  host: ConsentHost;
   onError: (err: unknown) => void;
 }): Promise<void> {
   reportError = options.onError;
@@ -99,7 +95,6 @@ export async function start(options: {
     text: options.text,
     privacyUrl: options.privacyUrl,
     country: countryLookup,
-    host: options.host,
     onChoice: (next) => void apply(next),
   });
   country = await countryLookup;
@@ -112,7 +107,7 @@ export async function start(options: {
  */
 async function apply(next: BrowserChoices | null): Promise<void> {
   choice = next;
-  if (next?.ads?.value !== true) setAds({ ...currentView, allowed: false, known: true, adsOn: false });
+  if (next?.ads?.value !== true) setAds({ allowed: false });
   const snapshot = consentSnapshot();
   for (const listener of listeners) listener(snapshot);
   try {
@@ -257,22 +252,15 @@ function accountChanged(refresh: boolean): void {
   });
 }
 
-// The ads view the page last decided on.
-let currentView: AdsView = { allowed: false, known: true, status: null, optedOut: false, adsOn: false };
-
 /**
- * Take the page's ads decision: load or stop the Google tag and set what the
- * windows show.
- * @param decision - The page's ads view; while it is not `known` nothing was
- *   refused, so the stored ad click is kept.
+ * Take the page's ads decision: load or stop the Google tag.
+ * @param decision - The page's ads view.
  */
 export function setAds(decision: AdsView): void {
   adsAllowed = decision.allowed;
-  currentView = decision;
-  setAdsView(decision);
   applyAds(decision.allowed);
   // A category not granted keeps no cookies, whether or not this page loaded its vendor.
-  if (!decision.allowed && decision.known) clearStorage('_gcl_');
+  if (!decision.allowed) clearStorage('_gcl_');
 }
 
 /**

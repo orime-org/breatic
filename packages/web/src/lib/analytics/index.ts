@@ -11,20 +11,19 @@ import { captureException } from '@sentry/react';
 import {
   getLocale,
   onLocaleChange,
+  reportedConsent,
   t,
-  type AccountAdsView,
-  type AdsSharing,
   type AnalyticsEventName,
   type Attribution,
   type ConsentSnapshot,
 } from '@breatic/shared';
-import { apiGet, apiPut } from '@web/data/api/request';
+import { apiPut } from '@web/data/api/request';
 import { ApiException } from '@web/data/api/types';
 import { getSupportedLocales } from '@web/i18n/locale-bootstrap';
 import { captureAttribution, clearAttribution, readAttribution } from '@web/lib/analytics/attribution';
 import { ANALYTICS_CONFIGURED } from '@web/lib/analytics/build-config';
-import { adsViewFor, readAdsSharing } from '@web/lib/analytics/consent-decision';
-import type { ConsentHost, ConsentText } from '@web/lib/analytics/consent-banner';
+import { adsViewFor } from '@web/lib/analytics/consent-decision';
+import type { ConsentText } from '@web/lib/analytics/consent-banner';
 import type { AnalyticsUser } from '@web/lib/analytics/runtime';
 import type * as RuntimeModule from '@web/lib/analytics/runtime';
 import { PRIVACY_URL } from '@web/lib/official-home';
@@ -35,15 +34,8 @@ let runtime: Promise<Runtime> | null = null;
 let consent: ConsentSnapshot | undefined;
 /** The signed-in account; null when nobody is, undefined until the app knows. */
 let signedIn: string | null | undefined = undefined;
-
-// The account's ad switch; null until read for the signed-in account, or when the read failed.
-let sharing: AdsSharing | null = null;
-// Bumped by every account request and every account change, so only the latest answer is taken.
-let syncSeq = 0;
-// Callers waiting for the account's switch to be known or to fail.
-const settledWaiters: Array<() => void> = [];
-// Callers waiting for the app to know whether anyone is signed in.
-const sessionWaiters: Array<() => void> = [];
+// The last report sent, as account and body, so the same choice is not sent twice.
+let lastReport: string | null = null;
 
 /**
  * The banner's text in the current interface language.
@@ -58,25 +50,12 @@ function consentText(): ConsentText {
       rejectAll: t('consent.banner.rejectAll'),
       settings: t('consent.banner.settings'),
       gpc: t('consent.banner.gpc'),
-      optedOut: t('consent.banner.optedOut'),
     },
     settings: {
       title: t('consent.settings.title'),
       save: t('consent.settings.save'),
       close: t('consent.settings.close'),
-      note: t('consent.settings.note'),
-      status: {
-        gpc: t('consent.settings.status.gpc'),
-        account: t('consent.settings.status.account'),
-        browser: t('consent.settings.status.browser'),
-      },
-      confirm: {
-        body: t('consent.settings.confirm.body'),
-        yes: t('consent.settings.confirm.yes'),
-        no: t('consent.settings.confirm.no'),
-      },
-      error: t('consent.settings.error'),
-      accountError: t('consent.settings.accountError'),
+      status: { gpc: t('consent.settings.status.gpc') },
       necessary: { title: t('consent.settings.necessary.title'), description: t('consent.settings.necessary.description') },
       analytics: { title: t('consent.settings.analytics.title'), description: t('consent.settings.analytics.description') },
       ads: { title: t('consent.settings.ads.title'), description: t('consent.settings.ads.description') },
@@ -116,6 +95,7 @@ export function startProductAnalytics(): void {
         attributionCaptured = false;
       }
       decideAds(module);
+      void reportConsent(module);
     });
     onLocaleChange((language) => void module.setLanguage(language));
     await module.start({
@@ -124,7 +104,6 @@ export function startProductAnalytics(): void {
       appVersion: import.meta.env.VITE_APP_VERSION ?? '',
       text: consentText,
       privacyUrl: PRIVACY_URL,
-      host: consentHost,
       onError: (err) => captureException(err, { tags: { area: 'product_analytics' } }),
     });
     module.followPage(pathname);
@@ -142,98 +121,43 @@ function withRuntime(fn: (module: Runtime) => void): void {
 }
 
 /**
- * The account as ads decisions see it.
- * @returns Signed out, not known yet, or the account's switch.
+ * Whether the browser sends Global Privacy Control.
+ * @returns True when it does.
  */
-function accountView(): AccountAdsView {
-  if (signedIn === null) return 'signedOut';
-  return signedIn === undefined || sharing === null ? 'unknown' : sharing;
+function sendsGpc(): boolean {
+  return (navigator as Navigator & { globalPrivacyControl?: boolean }).globalPrivacyControl === true;
 }
 
 /**
- * Decide whether ads run in this browser (design §4.4.6) and hand the result
- * to the runtime: this browser's own choice and GPC, with the account's switch
- * when signed in; not while the switch is unknown, which keeps ads off without
- * counting as a refusal.
+ * Decide whether ads run in this browser from its own choice (design §4.4.4)
+ * and hand the result to the runtime.
  * @param module - The loaded runtime.
  */
 function decideAds(module: Runtime): void {
-  const choices = module.browserChoices();
-  // Before the cookie is read nothing is known: an account answer arriving first must not count as a refusal.
-  if (choices === undefined) return;
-  const gpc = (navigator as Navigator & { globalPrivacyControl?: boolean }).globalPrivacyControl === true;
-  module.setAds(adsViewFor({ browserAds: choices?.ads?.value ?? null, gpc, account: accountView() }));
-}
-
-/** Release whoever waits for the account's switch to be known or to fail. */
-function settleAccount(): void {
-  for (const resolve of settledWaiters.splice(0)) resolve();
+  module.setAds(adsViewFor({ ads: module.browserChoices()?.ads ?? null, gpc: sendsGpc() }));
 }
 
 /**
- * Read the account's ad switch (design §4.4.6), then decide ads again. A
- * failed read leaves the switch unknown, which keeps ads off. Only the
- * latest request's answer is taken.
+ * Report this browser's choice to the signed-in account (design §4.4.6):
+ * after sign-in and after each change. A failure leaves the choice in this
+ * browser as it is; the next change or page load reports again.
  * @param module - The loaded runtime.
- * @returns True once the switch is known.
  */
-async function syncAccount(module: Runtime): Promise<boolean> {
-  const seq = ++syncSeq;
+async function reportConsent(module: Runtime): Promise<void> {
+  const choices = module.browserChoices();
+  if (typeof signedIn !== 'string' || choices === undefined) return;
+  const body = reportedConsent(choices ?? { analytics: null, ads: null }, sendsGpc());
+  const key = `${signedIn}:${JSON.stringify(body)}`;
+  if (key === lastReport) return;
+  lastReport = key;
   try {
-    const answer = readAdsSharing(await apiGet<unknown>('/users/me/ads-sharing'));
-    if (seq !== syncSeq) return false;
-    if (answer === null) throw new Error('ads sharing answer is not the account switch');
-    sharing = answer;
+    await apiPut('/users/me/consent', body);
   } catch (err) {
-    if (seq !== syncSeq) return false;
-    sharing = null;
-    captureException(err, { tags: { area: 'product_analytics' } });
-  }
-  settleAccount();
-  decideAds(module);
-  return sharing !== null;
-}
-
-/**
- * Open or close the account's ad switch (design §4.4.4), then decide ads again.
- * A 401 means the session is gone: the account is forgotten here as on sign-out.
- * @param allowed - Whether ads are turned on.
- * @returns Whether the server took it, answered that nobody is signed in, or could not be reached.
- */
-async function putAdsSharing(allowed: boolean): Promise<'took' | 'signedOut' | 'failed'> {
-  const seq = ++syncSeq;
-  try {
-    const answer = readAdsSharing(await apiPut<unknown>('/users/me/ads-sharing', { allowed }));
-    if (answer === null) throw new Error('ads sharing answer is not the account switch');
-    if (seq === syncSeq) sharing = answer;
-    return 'took';
-  } catch (err) {
-    if (err instanceof ApiException && err.status === 401) {
-      resetUser();
-      return 'signedOut';
-    }
-    captureException(err, { tags: { area: 'product_analytics' } });
-    return 'failed';
-  } finally {
-    withRuntime(decideAds);
+    if (lastReport === key) lastReport = null;
+    // A session that ended is not a failure.
+    if (!(err instanceof ApiException && err.status === 401)) captureException(err, { tags: { area: 'product_analytics' } });
   }
 }
-
-/** Release whoever waits for the app to know whether anyone is signed in. */
-function settleSession(): void {
-  for (const resolve of sessionWaiters.splice(0)) resolve();
-}
-
-/** What the banner asks about the account. */
-const consentHost: ConsentHost = {
-  account: accountView,
-  sessionKnown: () =>
-    signedIn === undefined ? new Promise((resolve) => sessionWaiters.push(resolve)) : Promise.resolve(),
-  accountSettled: () =>
-    signedIn === null || sharing !== null ? Promise.resolve() : new Promise((resolve) => settledWaiters.push(resolve)),
-  refreshAccount: async () => (typeof signedIn === 'string' && runtime !== null ? syncAccount(await runtime) : false),
-  putAdsSharing,
-};
 
 /**
  * Send a browser event.
@@ -261,34 +185,21 @@ export function reportConversion(
 }
 
 /**
- * Name the signed-in account and read its ad switch.
+ * Name the signed-in account and report this browser's choice to it.
  * @param user - The account.
  */
 export function identifyUser(user: AnalyticsUser): void {
-  const changed = signedIn !== user.id;
   signedIn = user.id;
-  settleSession();
-  if (changed) {
-    syncSeq += 1;
-    sharing = null;
-  }
   withRuntime((module) => {
     module.identify(user);
-    if (changed) void syncAccount(module);
+    void reportConsent(module);
   });
 }
 
 /** Forget the account on sign-out, and when the app starts without a session. */
 export function resetUser(): void {
   signedIn = null;
-  syncSeq += 1;
-  sharing = null;
-  settleSession();
-  settleAccount();
-  withRuntime((module) => {
-    module.reset();
-    decideAds(module);
-  });
+  withRuntime((module) => module.reset());
 }
 
 /** Open the cookie settings window. */

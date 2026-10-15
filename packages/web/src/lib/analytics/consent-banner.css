@@ -133,37 +133,16 @@
   }
 }
 
-/* The status line under the banner text and under the ads switch, and the error line (inner#1442 §4.4.3). */
-#cc-main .breatic-consent-notice,
-#cc-main .breatic-consent-error {
+/* The GPC line under the banner text and under the ads switch (inner#1442 §4.4.3). */
+#cc-main .breatic-consent-notice {
   margin: 0.5rem 0 0;
   font-size: inherit;
   color: var(--cc-primary-color);
   font-weight: 500;
 }
-#cc-main .breatic-consent-error {
-  color: var(--color-status-error);
-}
 
-/* Inside the ads card the lines sit under the description, padded the same way. */
-#cc-main .pm__section-desc-wrapper > .breatic-consent-notice,
-#cc-main .pm__section-desc-wrapper > .breatic-consent-error {
+/* Inside the ads card the line sits under the description, padded the same way. */
+#cc-main .pm__section-desc-wrapper > .breatic-consent-notice {
   margin: 0;
   padding: 0 1rem 1rem;
-}
-
-/* While a press waits for confirmation, the question takes the place of the window's buttons. */
-#cc-main .pm__footer.breatic-consent-confirming > .pm__btn-group {
-  display: none;
-}
-#cc-main .breatic-consent-confirm {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-  width: 100%;
-}
-#cc-main .breatic-consent-confirm > p {
-  margin: 0;
-  font-size: var(--text-sm);
-  color: var(--cc-primary-color);
 }

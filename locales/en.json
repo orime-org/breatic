@@ -8,8 +8,7 @@
       "upload_too_large": "File exceeds the upload size limit.",
       "insufficient_credits": "Insufficient credits: required {required}, available {available}",
       "rate_limited": "Too many requests, please try again later",
-      "internal": "Internal server error",
-      "ads_gpc": "This browser sends Global Privacy Control (GPC), so advertising stays off."
+      "internal": "Internal server error"
     },
     "credit": {
       "not_studio_admin": "You can only assign credits to a studio you administer.",
@@ -2353,26 +2352,15 @@
       "acceptAll": "Accept all",
       "rejectAll": "Reject all",
       "settings": "Settings",
-      "gpc": "This browser sends Global Privacy Control (GPC), so advertising stays off.",
-      "optedOut": "Advertising stays off. To turn it on, open Cookie settings and confirm."
+      "gpc": "Your browser sends Global Privacy Control, so advertising is off by default."
     },
     "settings": {
       "title": "Cookie settings",
       "save": "Save",
       "close": "Close",
-      "note": "When you're signed in, switching advertising off applies on every device you're signed in on. Your analytics choice applies to this browser only.",
       "status": {
-        "gpc": "Opted out via Global Privacy Control (GPC)",
-        "account": "Your account has opted out of ad sharing",
-        "browser": "Applies to this browser only. Sign in and choose here to record it with your account."
+        "gpc": "Your browser sends Global Privacy Control, so advertising is off by default."
       },
-      "confirm": {
-        "body": "Once on, we share sign-ups, first Projects, a collaborator's first action in your Project, purchases and subscriptions with our ad platform to measure our ads.",
-        "yes": "Turn on ad sharing",
-        "no": "Cancel"
-      },
-      "error": "Couldn't save your choice. Please try again.",
-      "accountError": "Saved in this browser, but your account couldn't be updated. Please try again.",
       "necessary": {
         "title": "Necessary",
         "description": "Sign-in, theme and language, and this choice itself. Always on."

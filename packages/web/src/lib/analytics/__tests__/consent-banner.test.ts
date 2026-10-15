@@ -2,9 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { AccountAdsView } from '@breatic/shared';
 import type * as BannerModule from '@web/lib/analytics/consent-banner';
-import type { AdsView } from '@web/lib/analytics/consent-decision';
 
 /**
  * A stored cookie as the library holds it, each category's latest choice in its data.
@@ -56,16 +54,12 @@ vi.mock('vanilla-cookieconsent/dist/cookieconsent.css', () => ({}));
 vi.mock('@web/lib/analytics/consent-banner.css', () => ({}));
 
 const TEXT = {
-  banner: { text: 't', privacy: 'p', acceptAll: 'a', rejectAll: 'r', settings: 's', gpc: 'g', optedOut: 'opted-out' },
+  banner: { text: 't', privacy: 'p', acceptAll: 'a', rejectAll: 'r', settings: 's', gpc: 'g' },
   settings: {
     title: 't',
     save: 's',
     close: 'c',
-    note: 'n',
-    status: { gpc: 'status-gpc', account: 'status-account', browser: 'status-browser' },
-    confirm: { body: 'confirm-body', yes: 'confirm-yes', no: 'confirm-no' },
-    error: 'save-error',
-    accountError: 'account-error',
+    status: { gpc: 'status-gpc' },
     necessary: { title: 't', description: 'd' },
     analytics: { title: 't', description: 'd' },
     ads: { title: 't', description: 'd' },
@@ -95,30 +89,16 @@ function drawWindows(): void {
   for (const button of document.querySelectorAll('[data-role]')) button.addEventListener('click', libraryHandler);
 }
 
-/** A page's answer to the banner about the account, controllable by each test. */
-function hostOf(account: AccountAdsView = 'signedOut') {
-  const host = {
-    view: account,
-    account: () => host.view,
-    sessionKnown: vi.fn(async () => undefined),
-    accountSettled: vi.fn(async () => undefined),
-    refreshAccount: vi.fn(async () => false),
-    putAdsSharing: vi.fn(async (): Promise<'took' | 'signedOut' | 'failed'> => 'took'),
-  };
-  return host;
-}
-
 /**
  * A fresh banner, started for a visitor from a country.
  * @param country - The visitor's country.
- * @param options - What the page answers and hears.
- * @param options.host - The account.
+ * @param options - What the page hears.
  * @param options.onChoice - Receives each choice in force.
  * @returns The module.
  */
 async function startBanner(
   country: string,
-  options: { host?: ReturnType<typeof hostOf>; onChoice?: (choice: unknown) => void } = {},
+  options: { onChoice?: (choice: unknown) => void } = {},
 ): Promise<typeof BannerModule> {
   vi.resetModules();
   const banner = await import('@web/lib/analytics/consent-banner');
@@ -129,7 +109,6 @@ async function startBanner(
     text: () => TEXT,
     privacyUrl: '/privacy',
     country: Promise.resolve(country),
-    host: options.host ?? hostOf(),
     onChoice: options.onChoice ?? (() => undefined),
   });
   return banner;
@@ -155,30 +134,7 @@ async function press(selector: string): Promise<void> {
 const written = (): Record<string, Record<string, unknown> | undefined> =>
   (library.setCookieData.mock.calls.at(-1)?.[0] as { value: Record<string, Record<string, unknown> | undefined> }).value;
 
-/**
- * A page's ads view.
- * @param over - Fields to change.
- * @returns The view.
- */
-const view = (over: Partial<AdsView> = {}): AdsView => ({
-  allowed: false,
-  known: true,
-  status: null,
-  optedOut: false,
-  adsOn: false,
-  ...over,
-});
-
 const adsToggle = (): HTMLInputElement | null => document.querySelector<HTMLInputElement>('.pm input[value="ads"]');
-/**
- * Move the ads switch as the visitor would, so the banner hears it.
- * @param on - Where the switch ends up.
- */
-function setAdsSwitch(on: boolean): void {
-  const toggle = adsToggle()!;
-  toggle.checked = on;
-  toggle.dispatchEvent(new Event('change', { bubbles: true }));
-}
 const adsLine = (): string | null | undefined =>
   adsToggle()?.closest('.pm__section--toggle')?.querySelector('.breatic-consent-notice')?.textContent;
 
@@ -241,55 +197,6 @@ describe('consent banner placement', () => {
     banner.followPage('/studio');
     banner.openConsentSettings();
     expect(library.showPreferences).toHaveBeenCalled();
-  });
-
-  it('waits for the account before asking, within the first second', async () => {
-    vi.useFakeTimers();
-    try {
-      const host = hostOf('unknown');
-      let settle = (): void => undefined;
-      host.accountSettled.mockImplementation(() => new Promise<undefined>((resolve) => (settle = () => resolve(undefined))));
-      vi.resetModules();
-      const banner = await import('@web/lib/analytics/consent-banner');
-      const started = banner.startConsentBanner({
-        cookieDomain: '',
-        language: 'en',
-        languages: ['en'],
-        text: () => TEXT,
-        privacyUrl: '/privacy',
-        country: Promise.resolve('DE'),
-        host,
-        onChoice: () => undefined,
-      });
-      await vi.advanceTimersByTimeAsync(0);
-      banner.followPage('/login');
-      expect(bannerShown()).toBe(false);
-      settle();
-      await started;
-      banner.followPage('/login');
-      expect(bannerShown()).toBe(true);
-      // With no answer at all, the banner opens once the first second is over.
-      host.accountSettled.mockImplementation(() => new Promise<undefined>(() => undefined));
-      vi.resetModules();
-      const late = await import('@web/lib/analytics/consent-banner');
-      const waiting = late.startConsentBanner({
-        cookieDomain: '',
-        language: 'en',
-        languages: ['en'],
-        text: () => TEXT,
-        privacyUrl: '/privacy',
-        country: Promise.resolve('DE'),
-        host,
-        onChoice: () => undefined,
-      });
-      late.followPage('/login');
-      library.show.mockClear();
-      await vi.advanceTimersByTimeAsync(1000);
-      await waiting;
-      expect(library.show).toHaveBeenCalled();
-    } finally {
-      vi.useRealTimers();
-    }
   });
 });
 
@@ -360,17 +267,18 @@ describe('a press', () => {
     expect(seen.at(-1)).toMatchObject({ analytics: { value: true }, ads: { value: true } });
   });
 
-  it('writes the settings switches as set, and closes the settings window', async () => {
+  it('writes both settings switches as set, and closes the settings window', async () => {
     library.consent = true;
     library.cookie = cookieOf(['necessary', 'analytics', 'ads'], 'implicit');
-    const banner = await startBanner('US');
+    await startBanner('US');
     drawWindows();
-    banner.setAdsView(view({ allowed: true, adsOn: true }));
+    // As the library presets them from the stored choice; the visitor turns analytics off.
+    adsToggle()!.checked = true;
     document.querySelector<HTMLInputElement>('.pm input[value="analytics"]')!.checked = false;
     await press('.pm [data-role="save"]');
     expect(library.acceptCategory).toHaveBeenLastCalledWith(['ads'], ['analytics']);
-    // The ads switch was left as preset, so ads keep the choice they had.
-    expect(written()).toMatchObject({ analytics: { source: 'settings' }, ads: { source: 'implicit' } });
+    expect(written()).toMatchObject({ analytics: { source: 'settings' }, ads: { source: 'settings' } });
+    expect(written().ads?.decidedAt).toBe(written().analytics?.decidedAt);
     expect(library.hidePreferences).toHaveBeenCalled();
   });
 
@@ -383,275 +291,59 @@ describe('a press', () => {
   });
 });
 
-describe('a signed-in press that writes ads off', () => {
-  it('closes the account switch before the cookie is written', async () => {
-    const host = hostOf({ optedOut: false, source: null });
-    const order: string[] = [];
-    host.putAdsSharing.mockImplementation(async () => {
-      order.push('put');
-      return 'took';
-    });
-    library.setCookieData.mockImplementationOnce(({ value }: { value: unknown }) => {
-      order.push('cookie');
-      library.cookie = { ...library.cookie, data: value as typeof library.cookie.data };
-    });
-    const banner = await startBanner('DE', { host });
-    banner.followPage('/login');
-    drawWindows();
-    await press('.cm [data-role="necessary"]');
-    expect(host.putAdsSharing).toHaveBeenCalledWith(false);
-    expect(order).toEqual(['put', 'cookie']);
-  });
-
-  it('keeps a refusal in this browser when the account cannot be reached, says so, and closes the account switch on a retry', async () => {
-    library.consent = true;
-    library.cookie = cookieOf(['necessary', 'analytics', 'ads']);
-    const host = hostOf({ optedOut: false, source: null });
-    host.putAdsSharing.mockResolvedValueOnce('failed');
-    const banner = await startBanner('US', { host });
-    drawWindows();
-    banner.setAdsView(view({ allowed: true, adsOn: true }));
-    document.querySelector<HTMLInputElement>('.pm input[value="analytics"]')!.checked = true;
-    setAdsSwitch(false);
-    await press('.pm [data-role="save"]');
-    expect(written().ads).toMatchObject({ source: 'settings' });
-    expect(library.acceptCategory).toHaveBeenLastCalledWith(['analytics'], ['ads']);
-    expect(library.hidePreferences).not.toHaveBeenCalled();
-    expect(document.querySelector('.pm .breatic-consent-error')?.textContent).toBe('account-error');
-    await press('.pm [data-role="necessary"]');
-    expect(host.putAdsSharing).toHaveBeenLastCalledWith(false);
-    expect(library.hidePreferences).toHaveBeenCalled();
-    expect(document.querySelector('.breatic-consent-error')).toBeNull();
-  });
-
-  it('keeps a banner refusal in this browser when the account cannot be reached, and says so under the banner text', async () => {
-    const host = hostOf({ optedOut: false, source: null });
-    host.putAdsSharing.mockResolvedValue('failed');
-    const banner = await startBanner('DE', { host });
-    banner.followPage('/login');
-    drawWindows();
-    await press('.cm [data-role="necessary"]');
-    expect(written().ads).toMatchObject({ source: 'banner' });
-    expect(library.acceptCategory).toHaveBeenLastCalledWith([], ['analytics', 'ads']);
-    expect(document.querySelector('.cm__desc .breatic-consent-error')?.textContent).toBe('account-error');
-    expect(bannerShown()).toBe(true);
-  });
-
-  it('counts the refusal for this browser alone when the server says nobody is signed in', async () => {
-    const host = hostOf({ optedOut: false, source: null });
-    host.putAdsSharing.mockImplementation(async () => {
-      host.view = 'signedOut';
-      return 'signedOut';
-    });
-    const banner = await startBanner('DE', { host });
-    banner.followPage('/login');
-    drawWindows();
-    await press('.cm [data-role="necessary"]');
-    expect(host.putAdsSharing).toHaveBeenCalledTimes(1);
-    expect(written().ads).toMatchObject({ source: 'banner' });
-    expect(library.acceptCategory).toHaveBeenLastCalledWith([], ['analytics', 'ads']);
-    expect(bannerShown()).toBe(false);
-    expect(document.querySelector('.breatic-consent-error')).toBeNull();
-  });
-
-  it('waits for the session before deciding whether the account is asked', async () => {
-    const host = hostOf('unknown');
-    let known: () => void = () => undefined;
-    host.sessionKnown.mockReturnValue(new Promise<undefined>((resolve) => (known = () => resolve(undefined))));
-    const banner = await startBanner('DE', { host });
-    banner.followPage('/login');
-    drawWindows();
-    await press('.cm [data-role="necessary"]');
-    expect(host.putAdsSharing).not.toHaveBeenCalled();
-    expect(library.setCookieData).not.toHaveBeenCalled();
-    host.view = 'signedOut';
-    known();
-    await press('#nothing');
-    expect(host.putAdsSharing).not.toHaveBeenCalled();
-    expect(written().ads).toMatchObject({ source: 'banner' });
-    expect(library.acceptCategory).toHaveBeenLastCalledWith([], ['analytics', 'ads']);
-  });
-});
-
-describe('turning ads back on while they are opted out', () => {
+describe('the GPC line', () => {
   /**
-   * A stored refusal here, and the settings window drawn.
-   * @param host - The account.
-   * @returns The banner.
+   * Start a banner in a browser that sends GPC.
+   * @param country - The visitor's country.
+   * @returns The module.
    */
-  async function refusedHere(host = hostOf()): Promise<typeof BannerModule> {
-    library.consent = true;
-    library.cookie = cookieOf(['necessary', 'analytics']);
-    const banner = await startBanner('US', { host });
-    drawWindows();
-    banner.setAdsView(view({ optedOut: true, status: host.view === 'signedOut' ? 'browser' : null }));
-    return banner;
+  async function withGpc(country: string): Promise<typeof BannerModule> {
+    Object.defineProperty(navigator, 'globalPrivacyControl', { configurable: true, get: () => true });
+    return startBanner(country);
   }
 
-  it('asks first, writing nothing, in place of the window’s buttons', async () => {
-    await refusedHere();
-    await press('.pm [data-role="all"]');
-    expect(library.setCookieData).not.toHaveBeenCalled();
-    expect(document.querySelector('.pm__footer')?.classList.contains('breatic-consent-confirming')).toBe(true);
-    expect(document.querySelector('.breatic-consent-confirm p')?.textContent).toBe('confirm-body');
-    expect(document.activeElement?.getAttribute('data-breatic-confirm')).toBe('yes');
+  afterEach(() => {
+    Object.defineProperty(navigator, 'globalPrivacyControl', { configurable: true, get: () => undefined });
   });
 
-  it('turns ads on once confirmed, opening the account switch first when signed in', async () => {
-    const host = hostOf({ optedOut: false, source: null });
-    await refusedHere(host);
-    document.querySelector<HTMLInputElement>('.pm input[value="analytics"]')!.checked = true;
-    setAdsSwitch(true);
-    await press('.pm [data-role="save"]');
-    await press('[data-breatic-confirm="yes"]');
-    expect(host.putAdsSharing).toHaveBeenCalledWith(true);
-    expect(written().ads).toMatchObject({ source: 'settings' });
-    expect(library.acceptCategory).toHaveBeenLastCalledWith(['analytics', 'ads'], []);
-    expect(document.querySelector('.breatic-consent-confirm')).toBeNull();
-  });
-
-  it('leaves ads off and writes the rest when declined', async () => {
-    await refusedHere();
-    setAdsSwitch(true);
-    document.querySelector<HTMLInputElement>('.pm input[value="analytics"]')!.checked = false;
-    await press('.pm [data-role="save"]');
-    await press('[data-breatic-confirm="no"]');
-    expect(written()).toMatchObject({ analytics: { source: 'settings' }, ads: { source: 'banner' } });
-    expect(library.acceptCategory).toHaveBeenLastCalledWith([], ['analytics', 'ads']);
-    expect(document.querySelector('.breatic-consent-confirm')).toBeNull();
-  });
-
-  it('never turns ads on from the banner: "accept all" turns on analytics only and keeps ads off', async () => {
-    const host = hostOf({ optedOut: true, source: 'settings' });
-    library.consent = true;
-    library.cookie = cookieOf(['necessary', 'ads']);
-    library.cookie.data.analytics = undefined;
-    const banner = await startBanner('DE', { host });
-    banner.followPage('/login');
+  it('shows on the banner and under the ads switch, which stays free to turn on', async () => {
+    await withGpc('DE');
     drawWindows();
-    banner.setAdsView(view({ optedOut: true, status: 'account' }));
-    expect(document.querySelector('.cm__desc .breatic-consent-notice')?.textContent).toBe('opted-out');
-    await press('.cm [data-role="all"]');
-    expect(written().analytics).toMatchObject({ source: 'banner' });
-    expect(written().ads).toMatchObject({ source: 'banner', decidedAt: '2026-10-12T00:00:00.000Z' });
-    expect(host.putAdsSharing).not.toHaveBeenCalled();
-  });
-
-  it('asks the account again before turning ads on while its switch is unknown, and says so when it cannot', async () => {
-    const host = hostOf('unknown');
-    library.consent = true;
-    library.cookie = cookieOf(['necessary', 'analytics', 'ads']);
-    const banner = await startBanner('US', { host });
-    drawWindows();
-    banner.setAdsView(view({ known: false, adsOn: true }));
-    await press('.pm [data-role="all"]');
-    expect(host.refreshAccount).toHaveBeenCalled();
-    expect(library.setCookieData).not.toHaveBeenCalled();
-    expect(document.querySelector('.pm .breatic-consent-error')?.textContent).toBe('save-error');
-    host.refreshAccount.mockImplementationOnce(async () => {
-      host.view = { optedOut: false, source: null };
-      return true;
-    });
-    await press('.pm [data-role="all"]');
-    expect(written()).toMatchObject({ analytics: { source: 'settings' }, ads: { source: 'settings' } });
-  });
-});
-
-describe('status lines and the ads switch', () => {
-  it('says GPC keeps ads off, on the banner and under a switch that cannot be turned on', async () => {
-    const banner = await startBanner('DE');
-    drawWindows();
-    banner.setAdsView(view({ status: 'gpc', optedOut: true }));
+    library.config?.onModalShow?.({ modalName: 'preferencesModal' });
     expect(document.querySelector('.cm__desc .breatic-consent-notice')?.textContent).toBe('g');
     expect(adsLine()).toBe('status-gpc');
-    expect(adsToggle()?.disabled).toBe(true);
-    expect(adsToggle()?.checked).toBe(false);
-  });
-
-  it('says the account opted out, and that a signed-out choice is this browser’s only', async () => {
-    library.consent = true;
-    const banner = await startBanner('US');
-    drawWindows();
-    banner.setAdsView(view({ status: 'account', optedOut: true }));
-    expect(adsLine()).toBe('status-account');
     expect(adsToggle()?.disabled).toBe(false);
-    banner.setAdsView(view({ status: 'browser', allowed: true, adsOn: true }));
-    expect(adsLine()).toBe('status-browser');
-    expect(document.querySelector('.cm__desc .breatic-consent-notice')).toBeNull();
-    banner.setAdsView(view({ allowed: true, adsOn: true }));
-    expect(adsLine()).toBeUndefined();
   });
 
-  it('moves an untouched ads switch with a view that arrives while the window is open', async () => {
-    library.consent = true;
-    const banner = await startBanner('US');
+  it('lets the visitor’s own consent turn ads on', async () => {
+    await withGpc('US');
     drawWindows();
-    // The account's answer is still on its way: the switch shows this browser's consent.
-    banner.setAdsView(view({ known: false, adsOn: true }));
-    library.config?.onModalShow?.({ modalName: 'preferencesModal' });
-    expect(adsToggle()?.checked).toBe(true);
-    // The answer: another device opted the account out.
-    banner.setAdsView(view({ status: 'account', optedOut: true }));
-    expect(adsToggle()?.checked).toBe(false);
+    adsToggle()!.checked = true;
+    await press('.pm [data-role="save"]');
+    expect(written().ads).toMatchObject({ source: 'settings' });
+    expect(library.acceptCategory).toHaveBeenLastCalledWith(['ads'], ['analytics']);
+    await press('.cm [data-role="all"]');
+    expect(library.acceptCategory).toHaveBeenLastCalledWith(['analytics', 'ads'], []);
   });
 
-  it('keeps the ads switch where the visitor put it when a view arrives afterwards', async () => {
-    library.consent = true;
-    const banner = await startBanner('US');
+  it('is drawn again after a language change rebuilds the windows', async () => {
+    const banner = await withGpc('DE');
     drawWindows();
-    banner.setAdsView(view({ allowed: true, adsOn: true }));
-    library.config?.onModalShow?.({ modalName: 'preferencesModal' });
-    adsToggle()?.click();
-    expect(adsToggle()?.checked).toBe(false);
-    banner.setAdsView(view({ allowed: true, adsOn: true }));
-    expect(adsToggle()?.checked).toBe(false);
-  });
-
-  it('starts over when ads become opted out after the visitor changed the switch', async () => {
-    library.consent = true;
-    const banner = await startBanner('US');
-    drawWindows();
-    banner.setAdsView(view({ allowed: true, adsOn: true }));
-    library.config?.onModalShow?.({ modalName: 'preferencesModal' });
-    adsToggle()?.click();
-    adsToggle()?.click();
-    expect(adsToggle()?.checked).toBe(true);
-    banner.setAdsView(view({ status: 'account', optedOut: true }));
-    expect(adsToggle()?.checked).toBe(false);
-  });
-
-  it('follows the view again once the window is reopened, and drops a question or an error left open', async () => {
-    library.consent = true;
-    library.cookie = cookieOf(['necessary', 'analytics']);
-    const banner = await startBanner('US');
-    drawWindows();
-    banner.setAdsView(view({ optedOut: true, status: 'browser' }));
-    library.config?.onModalShow?.({ modalName: 'preferencesModal' });
-    await press('.pm [data-role="all"]');
-    expect(document.querySelector('.breatic-consent-confirm')).not.toBeNull();
-    library.config?.onModalShow?.({ modalName: 'preferencesModal' });
-    expect(document.querySelector('.breatic-consent-confirm')).toBeNull();
-    expect(document.querySelector('.pm__footer')?.classList.contains('breatic-consent-confirming')).toBe(false);
-  });
-
-  it('draws the lines, the switch and a pending question again after a language change rebuilds the windows', async () => {
-    library.consent = true;
-    library.cookie = cookieOf(['necessary', 'analytics']);
-    const banner = await startBanner('DE');
-    drawWindows();
-    banner.setAdsView(view({ optedOut: true, status: 'browser' }));
-    await press('.pm [data-role="all"]');
     // As the library does with force: both windows are built afresh from its own state.
     library.setLanguage.mockImplementationOnce(async () => {
       drawWindows();
-      setAdsSwitch(true);
       return true;
     });
     await banner.setConsentLanguage('ja');
-    expect(adsToggle()?.checked).toBe(false);
-    expect(adsLine()).toBe('status-browser');
-    expect(document.querySelector('.cm__desc .breatic-consent-notice')?.textContent).toBe('opted-out');
-    expect(document.querySelector('.breatic-consent-confirm')).not.toBeNull();
+    expect(adsLine()).toBe('status-gpc');
+    expect(document.querySelector('.cm__desc .breatic-consent-notice')?.textContent).toBe('g');
+  });
+
+  it('is absent without GPC', async () => {
+    await startBanner('DE');
+    drawWindows();
+    library.config?.onModalShow?.({ modalName: 'preferencesModal' });
+    expect(document.querySelector('.breatic-consent-notice')).toBeNull();
   });
 });
 
@@ -690,31 +382,13 @@ describe('robustness', () => {
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(library.reset).not.toHaveBeenCalled();
   });
-
-  it('answers one press at a time', async () => {
-    const host = hostOf({ optedOut: false, source: null });
-    let release = (_sent: 'took' | 'signedOut' | 'failed'): void => undefined;
-    host.putAdsSharing.mockImplementationOnce(() => new Promise((resolve) => (release = resolve)));
-    const banner = await startBanner('DE', { host });
-    banner.followPage('/login');
-    drawWindows();
-    await press('.cm [data-role="necessary"]');
-    await press('.cm [data-role="all"]');
-    release('took');
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(host.putAdsSharing).toHaveBeenCalledTimes(1);
-    expect(library.setCookieData).toHaveBeenCalledTimes(1);
-    expect(written().ads).toMatchObject({ source: 'banner' });
-    expect(library.acceptCategory).toHaveBeenLastCalledWith([], ['analytics', 'ads']);
-  });
 });
 
 describe('the consent cookie stays with the browser (design §4.4.3a)', () => {
-  it('sends no request when a signed-out visitor’s choice or the regional default is written', async () => {
-    const banner = await startBanner('US');
+  it('sends no request when a choice or the regional default is written', async () => {
+    await startBanner('US');
     expect(library.setCookieData).toHaveBeenCalledTimes(1);
     drawWindows();
-    banner.setAdsView(view({ allowed: true, adsOn: true, status: 'browser' }));
     await press('.pm [data-role="necessary"]');
     expect(library.setCookieData).toHaveBeenCalledTimes(2);
     expect(network).not.toHaveBeenCalled();
@@ -744,7 +418,6 @@ describe('the country lookup', () => {
       text: () => TEXT,
       privacyUrl: '/privacy',
       country,
-      host: hostOf(),
       onChoice: (choice) => seen.push(choice),
     });
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -784,17 +457,29 @@ describe('a choice stored under a newer policy revision', () => {
 });
 
 describe('GPC on load', () => {
-  it('rewrites only the ads choice when GPC appears on a stored consent', async () => {
-    library.consent = true;
-    library.cookie = cookieOf(['necessary', 'analytics', 'ads']);
+  /** Start a banner on the stored cookie in a browser that sends GPC. */
+  async function startWithGpc(): Promise<void> {
     Object.defineProperty(navigator, 'globalPrivacyControl', { configurable: true, get: () => true });
     try {
       await startBanner('US');
     } finally {
       Object.defineProperty(navigator, 'globalPrivacyControl', { configurable: true, get: () => undefined });
     }
-    expect(written().analytics).toMatchObject({ source: 'banner', decidedAt: '2026-10-12T00:00:00.000Z' });
+  }
+
+  it('rewrites only a regional ads default to a GPC refusal', async () => {
+    library.consent = true;
+    library.cookie = cookieOf(['necessary', 'analytics', 'ads'], 'implicit');
+    await startWithGpc();
+    expect(written().analytics).toMatchObject({ source: 'implicit', decidedAt: '2026-10-12T00:00:00.000Z' });
     expect(written().ads).toMatchObject({ source: 'gpc' });
     expect(library.acceptCategory).toHaveBeenLastCalledWith(['analytics'], ['ads']);
+  });
+
+  it('keeps the visitor’s own ads consent', async () => {
+    library.consent = true;
+    library.cookie = cookieOf(['necessary', 'analytics', 'ads']);
+    await startWithGpc();
+    expect(library.setCookieData).not.toHaveBeenCalled();
   });
 });

@@ -8,8 +8,7 @@
       "upload_too_large": "文件超过上传大小限制。",
       "insufficient_credits": "积分不足：需要 {required}，可用 {available}",
       "rate_limited": "请求过于频繁，请稍后再试",
-      "internal": "服务器内部错误",
-      "ads_gpc": "这个浏览器发送了全球隐私控制（GPC）信号，广告保持关闭。"
+      "internal": "服务器内部错误"
     },
     "credit": {
       "not_studio_admin": "只能指定给你管理的 Studio。",
@@ -2353,26 +2352,15 @@
       "acceptAll": "接受全部",
       "rejectAll": "拒绝全部",
       "settings": "设置",
-      "gpc": "这个浏览器发送了全球隐私控制（GPC）信号，广告保持关闭。",
-      "optedOut": "广告保持关闭。要打开，请到「Cookie 设置」里打开并确认。"
+      "gpc": "你的浏览器发送了 Global Privacy Control，广告默认关闭。"
     },
     "settings": {
       "title": "Cookie 设置",
       "save": "保存",
       "close": "关闭",
-      "note": "已登录时，关闭广告会作用于你所有已登录的设备。分析的选择只对这个浏览器生效。",
       "status": {
-        "gpc": "已按全球隐私控制（GPC）退出",
-        "account": "你的账号已退出广告共享",
-        "browser": "只对这个浏览器生效，登录后在这里选择会记到你的账号"
+        "gpc": "你的浏览器发送了 Global Privacy Control，广告默认关闭。"
       },
-      "confirm": {
-        "body": "打开后，我们会与广告平台共享注册、第一个 Project、协作者第一次在你的 Project 里动手、购买和订阅，用来衡量广告效果。",
-        "yes": "确认打开广告共享",
-        "no": "取消"
-      },
-      "error": "没能保存你的选择，请再试一次。",
-      "accountError": "已保存在这个浏览器，但没能记到你的账号，请再试一次。",
       "necessary": {
         "title": "必要",
         "description": "登录、主题和语言偏好，以及这项选择本身。一直开启。"
