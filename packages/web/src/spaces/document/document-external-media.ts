@@ -5,11 +5,12 @@
  * Media in pasted or dropped content (inner#1351 + inner#1390 design §5.4,
  * which replaces inner#1127 A18).
  *
- * With image, video and audio blocks in the schema, BlockNote's parse rules
- * turn every `<img>`, `<video>`, `<audio>` and Markdown `![]()` in a paste
- * into a media block pointing wherever the source pointed
- * (`Image/block.ts:55-75`, `Video/block.ts:35-49`, `Audio/block.ts:53-67`).
- * A block in this body carries an address our storage registered, so each
+ * Pasted HTML is made ready to read first (`document-paste-html.ts`): its
+ * media stand where a block can, and BlockNote's parse rules read each into
+ * a media block pointing wherever the source pointed (`Image/block.ts:55-75`,
+ * `Video/block.ts:35-49`, `Audio/block.ts:53-67`); a medium a read still
+ * loses is counted as left out. A block in this body carries an address our
+ * storage registered, so each
  * pasted medium is judged by its own address: under our public prefix it
  * stays; an outside address the ingest Worker can fetch, or a `data:` or
  * `blob:` one the browser can read, becomes a pending block whose upload
@@ -54,7 +55,13 @@ import {
   isMediaBlockType,
   pendingUploadId,
 } from '@web/spaces/document/document-media-types';
-import { liftCellMedia } from '@web/spaces/document/document-table-paste';
+import {
+  PASTED_MEDIA_KEY,
+  mediaElementCount,
+  mediaIn,
+  preparePastedHTML,
+  type ReadBlock,
+} from '@web/spaces/document/document-paste-html';
 import type { UploadSource } from '@web/spaces/document/document-upload-controller';
 import { markOwnUndoStep } from '@web/spaces/document/document-undo-step';
 
@@ -172,20 +179,8 @@ function pendingIds(doc: PMNode): Set<string> {
   return ids;
 }
 
-/** A block as BlockNote reads it out of HTML. */
-interface ReadBlock extends BlockSpec {
-  readonly props: Readonly<Record<string, unknown>>;
-  readonly children: readonly ReadBlock[];
-}
-
-/**
- * Every medium among blocks, nested ones too, in document order.
- * @param blocks - The blocks.
- * @returns The media.
- */
-function mediaIn(blocks: readonly ReadBlock[]): ReadBlock[] {
-  return blocks.flatMap((block) => [...(isMediaBlockType(block.type) ? [block] : []), ...mediaIn(block.children)]);
-}
+/** HTML BlockNote wrote, as a paste hands it on after reading. */
+const BLOCKNOTE_HTML = /data-node-type="blockContainer"/;
 
 /** BlockNote's own HTML for a media block, as its export writes it. */
 const OWN_MEDIA = MEDIA_BLOCK_TYPES.map((type) => `[data-content-type="${type}"]`).join(', ');
@@ -252,6 +247,9 @@ export function documentPastedMediaExtension(
     let leftOut = 0;
     let flushing = false;
     let dropAt: number | null = null;
+    // Media in outside HTML about to be read; null for HTML BlockNote wrote,
+    // which a paste's own read already counted.
+    let expected: number | null = null;
     let landing: CellLanding | null = null;
 
     /**
@@ -280,11 +278,11 @@ export function documentPastedMediaExtension(
     };
 
     /**
-     * Counts media judged out, told once the event is done.
+     * Counts media judged out or lost in a read, told once the event is done.
      * @param count - How many.
      */
     const leaveOut = (count: number): void => {
-      if (count === 0) return;
+      if (count <= 0) return;
       leftOut += count;
       settle();
     };
@@ -310,6 +308,8 @@ export function documentPastedMediaExtension(
      */
     const readForCell = (html: string, at: number, view: EditorView): string => {
       const found = mediaIn(editor.tryParseHTMLToBlocks(html) as unknown as ReadBlock[]);
+      leaveOut((expected ?? found.length) - found.length);
+      expected = null;
       if (found.length === 0) return html;
       const prefix = options?.assetUrlPrefix() ?? null;
       const waiting: Queued[] = [];
@@ -332,7 +332,8 @@ export function documentPastedMediaExtension(
     };
 
     return {
-      key: 'documentPastedMedia',
+      key: PASTED_MEDIA_KEY,
+      leaveOut,
       prosemirrorPlugins: [
         new Plugin({
           props: {
@@ -347,9 +348,10 @@ export function documentPastedMediaExtension(
               },
             },
             transformPastedHTML: (pasted, view) => {
-              // A drop's HTML reaches the parse here; a paste's had its
-              // cells' media moved out before BlockNote read it.
-              const html = liftCellMedia(pasted);
+              // A drop's HTML reaches the read here; a paste's was made
+              // ready before BlockNote read it.
+              const html = preparePastedHTML(pasted);
+              expected = BLOCKNOTE_HTML.test(html) ? null : mediaElementCount(html);
               const at = dropAt ?? view.state.selection.from;
               dropAt = null;
               landing = null;
@@ -358,6 +360,15 @@ export function documentPastedMediaExtension(
             transformPasted: (slice, view) => {
               // A row moved or copied within the body is already ours.
               if (view.dragging !== null) return slice;
+              if (expected !== null) {
+                let read = 0;
+                slice.content.descendants((node) => {
+                  if (isMediaBlockType(node.type.name)) read += 1;
+                  return true;
+                });
+                leaveOut(expected - read);
+                expected = null;
+              }
               const found: Queued[] = [];
               const prefix = options?.assetUrlPrefix() ?? null;
               const { fragment, dropped } = judge(slice.content, prefix, options?.start === undefined ? null : found);

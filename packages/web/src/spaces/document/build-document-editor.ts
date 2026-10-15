@@ -55,7 +55,7 @@ import { documentTableKeysExtension } from '@web/spaces/document/document-table-
 import { documentTableColumnWidthsExtension } from '@web/spaces/document/document-table-column-widths';
 import { documentTableTargetExtension } from '@web/spaces/document/document-table-target';
 import { documentTableDragExtension, holdDropLineInTableDrags } from '@web/spaces/document/document-table-drag';
-import { documentPasteHandler } from '@web/spaces/document/document-table-paste';
+import { documentPasteHandler } from '@web/spaces/document/document-paste-html';
 import { canvasPasteHandler, type CanvasPasteSink } from '@web/spaces/document/document-canvas-paste-handler';
 import { documentQuoteInputExtension } from '@web/spaces/document/document-quote-input';
 import { documentSafariImeExtension } from '@web/spaces/document/document-safari-ime';

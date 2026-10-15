@@ -16,19 +16,10 @@
  * that row's words to the right.
  *
  * Here every rowspan is cut to the rows below it and every row is filled at
- * its end to the widest row, the shape the reader saw on the page. The HTML
- * is then read as HTML whenever it carries media (inner#1351 design §5.1).
- *
- * A cell holds words only, so the media in a pasted table's cells would be
- * gone once the HTML is read; they are moved out first, to land under the
- * table the way media pasted into a cell do (inner#1351 design §5.4, A7).
+ * its end to the widest row, the shape the reader saw on the page; the paste
+ * and the drop both do it while the HTML is made ready to read
+ * (`document-paste-html.ts`).
  */
-
-import type { PasteHandler } from '@web/spaces/document/document-file-input';
-import { HTML_MEDIA_ELEMENTS } from '@web/spaces/document/document-media-types';
-
-/** Whether a piece of HTML carries an image, a video or an audio. */
-const HTML_MEDIA = new RegExp(`<(${HTML_MEDIA_ELEMENTS.join('|')})\\b`, 'i');
 
 /**
  * Evens one table's grid, in place.
@@ -66,78 +57,14 @@ function evenTable(table: HTMLTableElement): boolean {
 }
 
 /**
- * Evens every table in a piece of pasted HTML.
- * @param html - The HTML.
- * @returns The same HTML when every table is already even, the evened HTML otherwise.
+ * Evens every table under a root, in place.
+ * @param root - Where the tables are.
+ * @returns Whether anything changed.
  */
-export function evenPastedTables(html: string): string {
-  if (!/<table/i.test(html)) return html;
-  const doc = new DOMParser().parseFromString(html, 'text/html');
+export function evenTables(root: Element): boolean {
   let changed = false;
-  for (const table of Array.from(doc.querySelectorAll('table'))) {
+  for (const table of Array.from(root.querySelectorAll('table'))) {
     if (evenTable(table)) changed = true;
   }
-  return changed ? doc.body.innerHTML : html;
+  return changed;
 }
-
-/** The media elements inside table cells. */
-const CELL_MEDIA = HTML_MEDIA_ELEMENTS.flatMap((name) => [`td ${name}`, `th ${name}`]).join(', ');
-
-/**
- * Pasted HTML with the media its table cells hold moved out, right after the
- * outermost table around them — after the figure around that table, when
- * there is one, which would otherwise be read as a captioned picture — in the
- * order they came in. A medium moves with the figure around it when that
- * figure is inside the cell too.
- * @param html - The HTML.
- * @returns The same HTML when no cell holds a medium, the moved HTML otherwise.
- */
-export function liftCellMedia(html: string): string {
-  if (!/<t[dh]\b/i.test(html) || !HTML_MEDIA.test(html)) return html;
-  const doc = new DOMParser().parseFromString(html, 'text/html');
-  const last = new Map<Element, Element>();
-  for (const element of Array.from(doc.body.querySelectorAll(CELL_MEDIA))) {
-    // Gone from its cell with a figure moved before it.
-    const cell = element.closest('td, th');
-    if (cell === null) continue;
-    // A td in an SVG is no table cell.
-    let table = cell.closest('table');
-    if (table === null) continue;
-    for (let outer = table.parentElement?.closest('table'); outer; outer = outer.parentElement?.closest('table')) {
-      table = outer;
-    }
-    const anchor = table.closest('figure') ?? table;
-    const figure = element.closest('figure');
-    const carried = figure !== null && cell.contains(figure) ? figure : element;
-    (last.get(anchor) ?? anchor).after(carried);
-    last.set(anchor, carried);
-  }
-  return last.size === 0 ? html : doc.body.innerHTML;
-}
-
-/**
- * BlockNote's own paste, given the clipboard's HTML with its tables evened
- * and the media in their cells moved out.
- * The clipboard is the event's, and BlockNote's handler reads it from there.
- * @param context - What BlockNote hands the paste hook.
- * @param context.event - The paste.
- * @param context.defaultPasteHandler - BlockNote's own paste.
- * @returns Whether the paste was handled.
- */
-export const documentPasteHandler: PasteHandler = ({ event, defaultPasteHandler }) => {
-  const data = event.clipboardData;
-  const html = data?.getData('text/html') ?? '';
-  const prepared = liftCellMedia(evenPastedTables(html));
-  if (data !== null && prepared !== html) {
-    const preparedData: Pick<DataTransfer, 'types' | 'files' | 'items' | 'getData'> = {
-      types: data.types,
-      files: data.files,
-      items: data.items,
-      getData: (format: string): string => (format === 'text/html' ? prepared : data.getData(format)),
-    };
-    Object.defineProperty(event, 'clipboardData', { value: preparedData });
-  }
-  // HTML carrying media is read as HTML even when its plain text looks like
-  // Markdown, which would drop every picture (inner#1351 design §5.1).
-  return HTML_MEDIA.test(prepared) ? defaultPasteHandler({ prioritizeMarkdownOverHTML: false }) : defaultPasteHandler();
-};
