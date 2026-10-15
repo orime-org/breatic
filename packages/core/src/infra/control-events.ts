@@ -4,12 +4,8 @@
 /**
  * Cross-process control-plane events (Redis pub/sub on DB2).
  *
- * Three fire-and-forget notification paths, all per project:
+ * Two fire-and-forget notification paths, both per project:
  *
- *   - `members:changed`   — server publishes after a write to
- *                           `project_members`; every collab instance
- *                           kicks the affected user's ws and relays a
- *                           stateless invalidate signal.
  *   - `activity:new`      — server or worker publishes after writing an
  *                           activity row; every collab instance relays
  *                           it on the meta doc.
@@ -27,8 +23,8 @@
  *
  * Why pub/sub (not Streams):
  *
- *   - Notification-only. A missed `members:changed` or `activity:new` is
- *     made up by the next reconnect, which re-queries PG; a missed
+ *   - Notification-only. A missed `activity:new` is made up by the next
+ *     reconnect, which re-queries PG; a missed
  *     `connections:close` leaves that instance's connections on the role
  *     they had until they next reconnect.
  *   - No replay / consumer-group semantics needed.
@@ -47,12 +43,10 @@
 import { getStreamRedis } from "@core/infra/redis.js";
 import { env } from "@core/config/runtime.js";
 import {
-  membersChangedChannel,
   activityNewChannel,
   projectConnectionsCloseChannel,
   allProjectChannelsPattern,
   type ActivityNewControlEvent,
-  type MembersChangedEvent,
   type ProjectConnectionsCloseEvent,
   type ProjectConnectionsCloseReason,
 } from "@breatic/shared";
@@ -65,35 +59,12 @@ import {
  * stay browser-safe and cannot read env), and this file is the only place that
  * supplies it. A subscriber reaching for the shared builder directly would have
  * to re-derive the prefix and could silently disagree with the publishers —
- * which reads as "collab stopped reacting to membership changes", with no error
+ * which reads as "collab stopped closing archived projects", with no error
  * anywhere.
  * @returns The `PSUBSCRIBE` pattern for this deployment's control channels.
  */
 export function projectControlChannelPattern(): string {
   return allProjectChannelsPattern(env.REDIS_KEY_PREFIX);
-}
-
-/**
- * Publish a `members:changed` event for a project.
- *
- * Caller (typically `projectMembers.service`) supplies the diff
- * (`affectedUserId`, `action`, optional `newRole` / transfer details).
- * The event timestamp is stamped here.
- * @param projectId - Project UUID
- * @param detail - Per-action detail (without the auto-stamped fields)
- */
-export async function publishMembersChanged(
-  projectId: string,
-  detail: Omit<MembersChangedEvent, "type" | "projectId" | "ts">,
-): Promise<void> {
-  const event: MembersChangedEvent = {
-    type: "project-members:changed",
-    projectId,
-    ts: Date.now(),
-    ...detail,
-  };
-  const redis = getStreamRedis();
-  await redis.publish(membersChangedChannel(env.REDIS_KEY_PREFIX, projectId), JSON.stringify(event));
 }
 
 /**

@@ -10,10 +10,9 @@
  * ultimate guard, but the service catches these earlier with a
  * 409 Conflict so the route layer can surface a friendly message.
  *
- * `db`, `projectMembersRepo`, `publishMembersChanged`, and the error
- * classes all come from `@breatic/core` (the repo moved there in the
- * auth-unification PR). The whole barrel is replaced so every one of those
- * four is under the test's control and no real database connection is ever
+ * `db`, `projectMembersRepo` and the error classes all come from
+ * `@breatic/core` (the repo moved there in the auth-unification PR). The
+ * whole barrel is replaced so every one of them is under the test's control and no real database connection is ever
  * opened — the same hermetic-test shape as collab/auth.test.
  * The error classes are defined inside the factory so the service's
  * `throw new ConflictError()` and the test's `toBeInstanceOf` resolve
@@ -56,11 +55,6 @@ vi.mock("@breatic/core", () => {
       updateRole: vi.fn(),
       softDelete: vi.fn(),
     },
-    // PR-C wired publishMembersChanged into every successful service
-    // path (after the repo mutates); stubbed so the unit test runs
-    // without an ioredis connection.
-    publishMembersChanged: vi.fn().mockResolvedValue(undefined),
-    logger: { error: vi.fn() },
     ConflictError,
     NotFoundError,
   };
@@ -68,8 +62,6 @@ vi.mock("@breatic/core", () => {
 
 import {
   projectMembersRepo,
-  publishMembersChanged,
-  logger,
   ConflictError,
   NotFoundError,
 } from "@breatic/core";
@@ -149,30 +141,6 @@ describe("remove", () => {
     vi.mocked(projectMembersRepo.softDelete).mockResolvedValueOnce(true);
     await remove(PID, "u-target");
     expect(projectMembersRepo.getRole).not.toHaveBeenCalled();
-  });
-});
-
-describe("changeRole after the commit", () => {
-  it("still succeeds and logs when announcing the change fails", async () => {
-    vi.mocked(projectMembersRepo.lockMemberRole).mockResolvedValueOnce("editor");
-    vi.mocked(projectMembersRepo.updateRole).mockResolvedValueOnce(true);
-    vi.mocked(publishMembersChanged).mockRejectedValueOnce(new Error("redis down"));
-    await expect(changeRole(PID, "u-target", "viewer", "u-owner")).resolves.toBeUndefined();
-    expect(logger.error).toHaveBeenCalledTimes(1);
-    expect(recordProjectActivity).toHaveBeenCalledTimes(1);
-  });
-});
-
-describe("remove after the commit", () => {
-  it("still succeeds and logs when announcing the change fails", async () => {
-    // The row is already soft-deleted when the announcement runs; the answer
-    // has to say so, or the caller is told the removal failed when it did not.
-    vi.mocked(projectMembersRepo.lockMemberRole).mockResolvedValueOnce("editor");
-    vi.mocked(projectMembersRepo.softDelete).mockResolvedValueOnce(true);
-    vi.mocked(publishMembersChanged).mockRejectedValueOnce(new Error("redis down"));
-    await expect(remove(PID, "u-target", "u-owner")).resolves.toBeUndefined();
-    expect(logger.error).toHaveBeenCalledTimes(1);
-    expect(recordProjectActivity).toHaveBeenCalledTimes(1);
   });
 });
 

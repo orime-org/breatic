@@ -22,6 +22,7 @@ import { and, eq, isNull, lt, or, desc, sql } from "drizzle-orm";
 import { db } from "@core/db/client.js";
 import type { DbTx } from "@core/db/client.js";
 import { projectActivities, studios } from "@core/db/schema.js";
+import { CANONICAL_UUID } from "@core/db/canonical-uuid.js";
 import type {
   ProjectActivityEntry,
   ProjectActivityType,
@@ -57,8 +58,6 @@ export interface ActivityCursor {
 const PG_TIMESTAMPTZ =
   /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})(?:\.\d{1,6})?[+-](\d{2})(?::(\d{2}))?$/;
 
-/** Matches a canonical UUID, which is what the id columns hold. */
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
  * Whether a timestamp of the right shape also holds a real instant.
@@ -126,7 +125,7 @@ export function decodeActivityCursor(cursor: string): ActivityCursor | null {
     if (typeof c !== "string") return null;
     const shape = PG_TIMESTAMPTZ.exec(c);
     if (!shape || !isRealTimestamp(shape)) return null;
-    if (typeof i !== "string" || !UUID.test(i)) return null;
+    if (typeof i !== "string" || !CANONICAL_UUID.test(i)) return null;
     return { createdAt: c, id: i };
   } catch {
     // Malformed base64 / JSON - treated as "no cursor" by callers.

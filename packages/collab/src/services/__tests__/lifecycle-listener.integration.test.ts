@@ -4,7 +4,7 @@
 /**
  * Lifecycle commands across two collab instances (inner#1497 §6.2, B4, B5).
  *
- * Two lifecycle consumers share one stream, and two members-sync subscribers
+ * Two lifecycle consumers share one stream, and two control-plane subscribers
  * stand for the two instances' control planes. Each instance's Hocuspocus is a
  * stand-in holding one connection per document, which records how it was
  * closed: what is under test is that the copy runs once and that both
@@ -19,7 +19,7 @@ import * as Y from "yjs";
 import { createRedisClient, initCore, publishProjectConnectionsClose, type Redis } from "@breatic/core";
 import type { ProjectConnectionsCloseReason, ProjectLifecycleEvent } from "@breatic/shared";
 import * as yjsRepo from "@collab/services/yjs-documents.repo.js";
-import { startMembersSync } from "@collab/services/members-sync.js";
+import { startProjectControlSync } from "@collab/services/project-control-sync.js";
 import type { GroupConsumer, GroupConsumerSettings } from "@collab/services/stream-group-consumer.js";
 import { startLifecycleListener } from "@collab/services/lifecycle-listener.js";
 
@@ -141,7 +141,7 @@ describe("lifecycle commands across two collab instances", () => {
     const pid = randomUUID();
     const a = fakeInstance([`project-${pid}/meta`]);
     const b = fakeInstance([`project-${pid}/canvas-${randomUUID()}`]);
-    stops.push(startMembersSync(a.hocuspocus, stream), startMembersSync(b.hocuspocus, stream));
+    stops.push(startProjectControlSync(a.hocuspocus, stream), startProjectControlSync(b.hocuspocus, stream));
     const { streamKey, published } = startTwoConsumers();
     await new Promise((r) => setTimeout(r, 200));
 
@@ -157,7 +157,7 @@ describe("lifecycle commands across two collab instances", () => {
     const pid = randomUUID();
     const a = fakeInstance([`project-${pid}/meta`]);
     const b = fakeInstance([`project-${pid}/canvas-${randomUUID()}`]);
-    stops.push(startMembersSync(a.hocuspocus, stream), startMembersSync(b.hocuspocus, stream));
+    stops.push(startProjectControlSync(a.hocuspocus, stream), startProjectControlSync(b.hocuspocus, stream));
     const { streamKey, published } = startTwoConsumers();
     await new Promise((r) => setTimeout(r, 200));
 
@@ -172,7 +172,7 @@ describe("lifecycle commands across two collab instances", () => {
   it("skips an entry whose payload is not an object without failing the rest of its batch", async () => {
     const pid = randomUUID();
     const a = fakeInstance([`project-${pid}/meta`]);
-    stops.push(startMembersSync(a.hocuspocus, stream));
+    stops.push(startProjectControlSync(a.hocuspocus, stream));
     // Both written before any consumer reads, so they arrive in one batch.
     const id = randomUUID();
     const streamKey = `itest:stream:lifecycle:${id}`;
@@ -193,7 +193,7 @@ describe("lifecycle commands across two collab instances", () => {
     await yjsRepo.seedInitialState(`project-${source}/meta`, Y.encodeStateAsUpdate(sourceMeta));
     const a = fakeInstance([`project-${target}/meta`]);
     const b = fakeInstance([`project-${target}/meta`]);
-    stops.push(startMembersSync(a.hocuspocus, stream), startMembersSync(b.hocuspocus, stream));
+    stops.push(startProjectControlSync(a.hocuspocus, stream), startProjectControlSync(b.hocuspocus, stream));
     const { streamKey, published } = startTwoConsumers();
     await new Promise((r) => setTimeout(r, 200));
 
