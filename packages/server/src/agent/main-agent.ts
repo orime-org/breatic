@@ -300,11 +300,12 @@ export class MainAgent {
     const whatToolAnswered = new Map<string, unknown>();
 
     // What the reply row keeps of what was sent (`for_model`). Each finished
-    // step's messages are what the SDK sent on with the next request; the
-    // hash is of the request the turn's first call sent; the provider's
-    // counts size the turn for the fold.
-    const stepMessages: ModelMessage[] = [];
-    let stepsDone = 0;
+    // step, in order, with whether a provider error cut it off: the SDK sends
+    // a step on with the next request unless it is the turn's last, so every
+    // step but an errored last one went out as it is here. The hash is of the
+    // request the turn's first call sent; the provider's counts size the turn
+    // for the fold.
+    const steps: Array<{ messages: ModelMessage[]; erred: boolean }> = [];
     let reported: ReportedUsage = {};
     // The assembly the turn's first call sent, once the model has been asked.
     let sent: Assembly | undefined;
@@ -330,10 +331,14 @@ export class MainAgent {
       settled: SettledCalls;
     }): Promise<ReplyForModel | undefined> => {
       if (sent === undefined) return undefined;
+      // An errored last step was never sent on: it is unfinished, and is
+      // rebuilt from what reached the reader.
+      const sentOn = steps.at(-1)?.erred === true ? steps.slice(0, -1) : steps;
+      const collected = sentOn.flatMap((step) => step.messages);
       let unfinished: ModelMessage[] = [];
       if (ended.exit === "aborted" || ended.exit === "failed") {
         try {
-          unfinished = await inProgressStep(ended.parts, stepsDone, ended.tools, ended.settled, stepMessages);
+          unfinished = await inProgressStep(ended.parts, sentOn.length, ended.tools, ended.settled, collected);
         } catch (err) {
           // Left out, the step reaches later turns only as the note below.
           logger.error({ err, userId, conversationId, projectId, turnIndex }, "turn_unfinished_step_unconvertible");
@@ -341,7 +346,7 @@ export class MainAgent {
       }
       const note = endingNote(ended.stored);
       const messages: ModelMessage[] = [
-        ...stepMessages,
+        ...collected,
         ...unfinished,
         ...(note === undefined ? [] : [{ role: "assistant" as const, content: note }]),
       ];
@@ -551,12 +556,7 @@ export class MainAgent {
           reported = noteUsage(reported, event.usage);
         },
         onStepFinish: (step) => {
-          // A step cut off by a provider error is unfinished: its calls never
-          // ran and its thinking is partial. It is rebuilt with the rest of an
-          // unfinished turn, from what reached the reader.
-          if (step.finishReason === "error") return;
-          stepMessages.push(...step.response.messages);
-          stepsDone += 1;
+          steps.push({ messages: step.response.messages, erred: step.finishReason === "error" });
           for (const part of step.content) {
             // A question, reaching the reader as words rather than as a payload
             // on a tool part, and written here rather than inside the tool
