@@ -157,22 +157,53 @@ describe("replaying the history as it was sent", () => {
     expect(carriesThinking(historyForModel(rows, now))).toBe(false);
   });
 
-  it("takes the thinking out of every reply after one that lost it, even one that would match", () => {
+  it("keeps the thinking of a reply produced after an earlier one lost its own", () => {
     // Turn two was asked after turn one had already lost its thinking, so
-    // its stored hash matches the history as it is now. Once a block is
-    // removed it stays out, and everything after it moved with it.
+    // its stored hash matches the history as it is now: its thinking was made
+    // on that prefix, and the blocks kept are an unbroken run.
+    const asked1: ModelMessage = { role: "user", content: "a different question" };
     const asked2: ModelMessage = { role: "user", content: "and more" };
-    const strippedOne = stripThinking(ANSWERED);
     const rows = [
-      userRow(1, { messages: [{ role: "user", content: "a different question" }] }),
+      userRow(1, { messages: [asked1] }),
       replyAfter(1, [ASKED], ANSWERED),
       userRow(2, { messages: [asked2] }),
-      replyAfter(2, [{ role: "user", content: "a different question" }, ...strippedOne, asked2], ANSWERED),
+      replyAfter(2, [asked1, ...stripThinking(ANSWERED), asked2], ANSWERED),
     ];
 
     const out = historyForModel(rows, PREFIX);
 
-    expect(carriesThinking(out)).toBe(false);
+    expect(out).toEqual([asked1, ...stripThinking(ANSWERED), asked2, ...ANSWERED]);
+  });
+
+  it("takes the thinking out of a reply produced while an earlier block was there, once that block is gone", () => {
+    const asked1: ModelMessage = { role: "user", content: "a different question" };
+    const asked2: ModelMessage = { role: "user", content: "and more" };
+    const rows = [
+      userRow(1, { messages: [asked1] }),
+      replyAfter(1, [ASKED], ANSWERED),
+      userRow(2, { messages: [asked2] }),
+      replyAfter(2, [asked1, ...ANSWERED, asked2], ANSWERED),
+    ];
+
+    expect(carriesThinking(historyForModel(rows, PREFIX))).toBe(false);
+  });
+
+  it("sends the next turn as the last request of a multi-step turn that followed a stripped reply, with more at the end", () => {
+    const asked1: ModelMessage = { role: "user", content: "a different question" };
+    const asked2: ModelMessage = { role: "user", content: "search for it" };
+    const before = [asked1, ...stripThinking(ANSWERED), asked2];
+    // The turn's second call sent everything before it plus its first step.
+    const lastRequest = [...before, ANSWERED[0] as ModelMessage, ANSWERED[1] as ModelMessage];
+    const rows = [
+      userRow(1, { messages: [asked1] }),
+      replyAfter(1, [ASKED], ANSWERED),
+      userRow(2, { messages: [asked2] }),
+      replyAfter(2, before, ANSWERED),
+    ];
+
+    const out = historyForModel(rows, PREFIX);
+
+    expect(JSON.stringify(out.slice(0, lastRequest.length))).toBe(JSON.stringify(lastRequest));
   });
 
   it("takes the thinking out of a reply that follows a row stored before anything was kept", () => {
@@ -291,9 +322,15 @@ describe("the most recent full copy of an open Space", () => {
   });
 
   it("is of that Space only", () => {
-    const rows = [sentSpace(1, "s1", "A", true), sentSpace(2, "s2", "C", true)];
+    const rows = [sentSpace(1, "s2", "C", true), sentSpace(2, "s1", "A", true)];
 
     expect(lastFullSnapshotKey(rows, "s1")).toBe("A");
+  });
+
+  it("is none once another Space was sent in full after it, so a same-named Space is never taken for it", () => {
+    const rows = [sentSpace(1, "s1", "A", true), sentSpace(2, "s2", "C", true)];
+
+    expect(lastFullSnapshotKey(rows, "s1")).toBeUndefined();
   });
 
   it("is none when no row in the history sent it", () => {

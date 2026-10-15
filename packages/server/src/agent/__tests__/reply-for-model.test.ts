@@ -84,6 +84,26 @@ describe("the step a turn stopped inside", () => {
     ]);
   });
 
+  it("leaves out the signed thinking a provider hung on the step's tool call", async () => {
+    const signed = { openrouter: { reasoning_details: [{ type: "reasoning.text", signature: "sig" }] } };
+    const parts: Parts = [
+      { type: "step-start" },
+      {
+        type: "tool-web_search",
+        toolCallId: "a",
+        state: "output-available",
+        input: { query: "q" },
+        output: "R",
+        callProviderMetadata: signed,
+      },
+    ];
+
+    const out = await inProgressStep(parts, 0, tools, NOTHING_SETTLED, []);
+
+    expect(JSON.stringify(out)).not.toContain("reasoning_details");
+    expect(JSON.stringify(out)).not.toContain("providerOptions");
+  });
+
   it("is nothing when it names a call already among the collected steps", async () => {
     const parts: Parts = [
       { type: "step-start" },
