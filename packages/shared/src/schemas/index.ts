@@ -56,6 +56,7 @@ export type {
   ChatSpace,
   ChatCurrentSpace,
   ChatCanvasDetail,
+  ChatDocumentBlock,
   TaskCreateInput,
   UnderstandInput,
   CanvasPasteInput,

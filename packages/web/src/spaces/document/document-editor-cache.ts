@@ -70,6 +70,7 @@ import type { ResolveCollaboratorName } from '@web/features/collab-editor/caret-
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import type { DocumentCommentAuthInput } from '@web/spaces/document/document-comment-auth';
 import { viewOf } from '@web/spaces/document/document-editor-view';
+import { ourMediaPrefix } from '@web/spaces/document/document-external-media';
 import { documentChordsExtension } from '@web/spaces/document/document-block-chords';
 import { documentCaretExtension } from '@web/spaces/document/document-caret';
 import { documentDecorationsExtension } from '@web/spaces/document/document-decorations';
@@ -234,7 +235,7 @@ function createDocumentEditor(
       },
     }),
     media: {
-      assetUrlPrefix: () => assetsApi.cachedUploadConfig()?.assetUrlPrefix ?? null,
+      assetUrlPrefix: ourMediaPrefix,
       onLeftOut: (count) => {
         toast.warning(t('spaces.document.media.leftOut', { count }));
       },

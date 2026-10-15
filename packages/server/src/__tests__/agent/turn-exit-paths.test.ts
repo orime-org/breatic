@@ -224,6 +224,7 @@ describe("what a plain chat turn hands the model", () => {
       "get_product_guide",
       "list_generation_models",
       "propose_canvas_action",
+      "propose_document_edit",
       "save_image",
       "search_images",
       "web_search",

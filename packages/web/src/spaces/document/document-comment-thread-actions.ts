@@ -10,7 +10,7 @@
  * drawn by mistake fails rather than damaging anything.
  *
  * Opening a thread is NOT here: it writes a mark into the body as well as a
- * thread into the store, and that pairing is what `postComment` owns.
+ * thread into the store, and that pairing is what `commentOn` owns.
  */
 
 import {

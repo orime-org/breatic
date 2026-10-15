@@ -54,6 +54,7 @@ import {
   LeftFloatingMenu,
 } from '@web/pages/project/chrome/left-floating-menu/LeftFloatingMenu';
 import { TopBar, toCreditsReadout } from '@web/pages/project/chrome/top-bar/TopBar';
+import { useDocumentProposalRouting } from '@web/pages/project/use-document-proposal-routing';
 import { useRefreshOnReauth } from '@web/pages/project/use-refresh-on-reauth';
 import { useRenameProject } from '@web/features/project-manage/use-rename-project';
 import {
@@ -349,6 +350,14 @@ function ProjectWorkspace({
     if (!metaSynced) return;
     dispatchTabs({ type: 'spaces', spaces });
   }, [metaSynced, spaces]);
+
+  // A document card pressed in the chat opens its document here, where the
+  // strip is held; a card whose document is gone or whose tab closed before
+  // the document took it up is told so (inner#1509).
+  const openSpace = React.useCallback((spaceId: string) => {
+    dispatchTabs({ type: 'open', spaceId });
+  }, []);
+  useDocumentProposalRouting(spaces, tabs.openIds, tabs.activeId, openSpace, metaSynced);
 
   // Hand the strip back to the browser so the next visit opens on it. Held
   // until `ready`, because the strip is empty before the Spaces arrive and

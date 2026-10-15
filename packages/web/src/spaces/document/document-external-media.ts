@@ -17,12 +17,16 @@
  * A row dragged within the body never reaches it — `document-drag-move.ts`
  * takes that drop first. While our prefix is not known yet, every medium is
  * left out: undo brings the paste back as it was before it.
+ *
+ * Blocks an Agent proposal writes are judged by the same rule before they land
+ * (inner#1509), through {@link ownMediaOnly}.
  */
 
 import { createExtension, type ExtensionFactoryInstance } from '@blocknote/core';
 import { Fragment, Slice, type Node as PMNode } from '@tiptap/pm/model';
 import { Plugin } from '@tiptap/pm/state';
 
+import { assetsApi } from '@web/data/api/assets';
 import { isMediaBlockType } from '@web/spaces/document/document-media-types';
 
 
@@ -35,6 +39,37 @@ export interface PastedMediaOptions {
 }
 
 /**
+ * What every address of ours starts with, or null while it is not known.
+ * @returns The prefix.
+ */
+export function ourMediaPrefix(): string | null {
+  return assetsApi.cachedUploadConfig()?.assetUrlPrefix ?? null;
+}
+
+/**
+ * What every address of ours starts with, waiting for it when this session
+ * has not fetched it yet. Readers that can wait use this one; a paste cannot,
+ * and reads {@link ourMediaPrefix}.
+ * @returns The prefix, or null when it could not be fetched.
+ */
+export async function ourMediaPrefixReady(): Promise<string | null> {
+  return assetsApi.fetchUploadConfig().then(
+    (config) => config.assetUrlPrefix,
+    () => null,
+  );
+}
+
+/**
+ * Whether a medium's address is one of ours.
+ * @param url - The address, as the block holds it.
+ * @param prefix - Our prefix, or null.
+ * @returns True when it starts with our prefix.
+ */
+function isOurs(url: unknown, prefix: string | null): boolean {
+  return prefix !== null && typeof url === 'string' && url.startsWith(prefix);
+}
+
+/**
  * Whether a block container holds a medium that is not ours.
  * @param node - A node of the pasted slice.
  * @param prefix - Our prefix, or null.
@@ -44,8 +79,38 @@ function isOutsideMedium(node: PMNode, prefix: string | null): boolean {
   if (node.type.name !== 'blockContainer') return false;
   const own = node.firstChild;
   if (own === null || !isMediaBlockType(own.type.name)) return false;
-  const url = own.attrs['url'];
-  return prefix === null || typeof url !== 'string' || !url.startsWith(prefix);
+  return !isOurs(own.attrs['url'], prefix);
+}
+
+/** A block about to be written, as BlockNote's parser hands it back. */
+export interface WrittenBlock {
+  type?: string;
+  props?: Record<string, unknown>;
+  children?: WrittenBlock[];
+}
+
+/**
+ * Blocks with every medium that is not ours taken out, and how many were:
+ * the rule a paste follows, for blocks written by other means. The rows
+ * nested under a medium taken out stay, in its place.
+ * @param blocks - The blocks.
+ * @param prefix - Our prefix, or null.
+ * @returns The blocks kept and the count.
+ */
+export function ownMediaOnly(blocks: readonly WrittenBlock[], prefix: string | null): { blocks: WrittenBlock[]; count: number } {
+  let count = 0;
+  const kept: WrittenBlock[] = [];
+  for (const block of blocks) {
+    const inner = ownMediaOnly(block.children ?? [], prefix);
+    count += inner.count;
+    if (block.type !== undefined && isMediaBlockType(block.type) && !isOurs(block.props?.['url'], prefix)) {
+      count += 1;
+      kept.push(...inner.blocks);
+      continue;
+    }
+    kept.push(block.children === undefined ? block : { ...block, children: inner.blocks });
+  }
+  return { blocks: kept, count };
 }
 
 /**
