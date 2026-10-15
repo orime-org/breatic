@@ -91,7 +91,7 @@ export const MINI_TOOLS: readonly MiniToolSpec[] = [
     source: "image",
     run: { kind: "browser" },
     labelKey: key("image.adjust", "label"),
-    guide: "tunes exposure, color and detail with sliders",
+    guide: "tunes exposure, colour and detail with sliders",
     icon: "SlidersHorizontal",
     params: [{ kind: "adjust", key: "value" }],
     slots: [],
