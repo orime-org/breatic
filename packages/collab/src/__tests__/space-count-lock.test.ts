@@ -133,6 +133,26 @@ describe("withSpaceCountLock", () => {
     expect(redis.eval).not.toHaveBeenCalled();
   });
 
+  it("by default waits about five seconds for a held lock before giving up", async () => {
+    // Collaborators changing Spaces at the same moment queue up behind each
+    // other; only a lock held through the whole wait answers BUSY.
+    vi.useFakeTimers();
+    try {
+      const redis = makeFakeRedis({ busy: true });
+      getCollabRedisMock.mockReturnValue(redis);
+      const settled = withSpaceCountLock(PID, async () => "ran").catch((e: unknown) => e);
+
+      await vi.advanceTimersByTimeAsync(4_800);
+      expect(redis.set.mock.calls.length).toBeLessThan(50);
+      await vi.advanceTimersByTimeAsync(1_000);
+
+      expect(await settled).toBeInstanceOf(SpaceCountLockBusyError);
+      expect(redis.set).toHaveBeenCalledTimes(50);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("does NOT release a lock it no longer owns (fencing — another instance's token survives)", async () => {
     const redis = makeFakeRedis();
     getCollabRedisMock.mockReturnValue(redis);

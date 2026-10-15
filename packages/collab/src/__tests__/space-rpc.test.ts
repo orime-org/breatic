@@ -702,6 +702,34 @@ describe("handleSpaceRpc — restore sources from the PG activity row", () => {
     if (!res.ok) expect(res.error.code).toBe("BUSY");
   });
 
+  it("reads the Space count for the cap while holding the lock", async () => {
+    activityLatestUnrestoredMock.mockResolvedValue(DELETED_ROW);
+    let held = false;
+    const readsUnderLock: boolean[] = [];
+    withSpaceCountLockMock.mockImplementation(async (_projectId: string, fn: () => Promise<unknown>) => {
+      held = true;
+      try {
+        return await fn();
+      } finally {
+        held = false;
+      }
+    });
+    countLiveSpaceDocsMock.mockImplementation(async () => {
+      readsUnderLock.push(held);
+      return 1;
+    });
+
+    await handleSpaceRpc(
+      { hocuspocus: makeHocuspocus() },
+      PID,
+      { userId: "owner-1", role: "owner" },
+      { id: "r1", type: "space:restore", payload: { spaceId: SID } },
+    );
+
+    expect(readsUnderLock.length).toBeGreaterThan(0);
+    expect(readsUnderLock.every(Boolean)).toBe(true);
+  });
+
   it("refuses with SPACE_LIMIT and changes nothing when the project already has the cap", async () => {
     activityLatestUnrestoredMock.mockResolvedValue(DELETED_ROW);
     countLiveSpaceDocsMock.mockResolvedValue(MAX_SPACES_PER_PROJECT);
@@ -802,6 +830,28 @@ describe("handleSpaceRpc — space:create under the Space cap", () => {
     countLiveSpaceDocsMock.mockResolvedValue(1);
     await create();
     expect(withSpaceCountLockMock).toHaveBeenCalledWith(PID, expect.any(Function));
+  });
+
+  it("reads the Space count while holding the lock", async () => {
+    let held = false;
+    const readsUnderLock: boolean[] = [];
+    withSpaceCountLockMock.mockImplementation(async (_projectId: string, fn: () => Promise<unknown>) => {
+      held = true;
+      try {
+        return await fn();
+      } finally {
+        held = false;
+      }
+    });
+    countLiveSpaceDocsMock.mockImplementation(async () => {
+      readsUnderLock.push(held);
+      return 1;
+    });
+
+    await create();
+
+    expect(readsUnderLock.length).toBeGreaterThan(0);
+    expect(readsUnderLock.every(Boolean)).toBe(true);
   });
 
   it("creates when the project is one under the cap", async () => {
