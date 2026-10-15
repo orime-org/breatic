@@ -46,7 +46,7 @@ import {
   setAdsConversionConfigForTest,
   type OutgoingEvent,
 } from "@breatic/core";
-import { CONSENT_REVISION, type BrowserAdsSnapshot } from "@breatic/shared";
+import { CONSENT_REVISION } from "@breatic/shared";
 
 try {
   initCore(process.env);
@@ -134,19 +134,10 @@ async function pendingOrder(metadata: Record<string, unknown>): Promise<{ userId
   return { userId, paymentId: source!.id, sessionId };
 }
 
-/**
- * The ads side of a browser that accepted ads, as a request or order snapshot holds it.
- * @returns The snapshot.
- */
-function adsAccepted(): BrowserAdsSnapshot {
-  return { consent: true };
-}
-
 describe("credit purchases", () => {
   it("reports the grant once, under the order's consent, and queues its conversion", async () => {
     const { userId, sessionId } = await pendingOrder({
       analyticsConsent: { analytics: true, ads: true },
-      adsBrowser: adsAccepted(),
       adClick: recentClick(),
     });
 
@@ -213,7 +204,6 @@ describe("subscriptions", () => {
       latest_invoice: null,
       metadata: {
         analyticsConsent: JSON.stringify({ analytics: true, ads: true }),
-        adsBrowser: JSON.stringify(adsAccepted()),
         adClick: JSON.stringify(recentClick()),
       },
       items: {

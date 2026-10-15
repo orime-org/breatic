@@ -20,12 +20,12 @@ import { CONSENT_COOKIE_NAME, parseConsentCookie } from "@breatic/shared";
  * each category as its cookie says, with this request's GPC refusing a
  * regional ads default and leaving the visitor's own choice as it is
  * (inner#1442 design §4.4.5). The cookie is read once here; later steps take
- * it from `currentConsent` and `currentAdsBrowser`.
+ * it from `currentConsent`.
  * @param c - The request context.
  * @param next - The rest of the chain.
  * @returns The chain's response.
  */
 export const analyticsConsentMiddleware: MiddlewareHandler = (c, next) => {
   const consent = parseConsentCookie(getCookie(c, CONSENT_COOKIE_NAME), Date.now(), c.req.header("Sec-GPC") === "1");
-  return runWithConsent(consent, next, { ads: { consent: consent.ads } });
+  return runWithConsent(consent, next);
 };

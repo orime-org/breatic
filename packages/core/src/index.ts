@@ -226,7 +226,6 @@ export {
   currentAdsBrowser,
   currentConsent,
   runWithConsent,
-  type RequestBrowser,
 } from "@core/analytics/consent-context.js";
 export {
   flushServerAnalytics,

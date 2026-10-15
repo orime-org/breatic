@@ -39,15 +39,9 @@ describe("request consent context", () => {
     expect(currentConsent()).toEqual(NO_CONSENT);
   });
 
-  it("reads a browser with no ads choice when no browser was read", async () => {
+  it("reads the ads side of the consent in scope as the browser's ads snapshot", async () => {
     expect(currentAdsBrowser()).toEqual({ consent: false });
-    const inside = await runWithConsent({ analytics: true, ads: true }, async () => currentAdsBrowser());
-    expect(inside).toEqual({ consent: false });
-  });
-
-  it("exposes the browser's ads snapshot", async () => {
-    const browser = { ads: { consent: true } };
-    const inside = await runWithConsent({ analytics: false, ads: true }, async () => currentAdsBrowser(), browser);
-    expect(inside).toEqual(browser.ads);
+    expect(await runWithConsent({ analytics: false, ads: true }, async () => currentAdsBrowser())).toEqual({ consent: true });
+    expect(await runWithConsent({ analytics: true, ads: false }, async () => currentAdsBrowser())).toEqual({ consent: false });
   });
 });

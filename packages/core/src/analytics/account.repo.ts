@@ -114,8 +114,8 @@ export async function eraseAccountAnalytics(userIds: readonly string[]): Promise
       UPDATE users SET consent_seen = NULL
       WHERE id = ANY(${ids}::uuid[])`;
     await tx`
-      UPDATE payments SET metadata = metadata - 'analyticsConsent' - 'adsBrowser'
-      WHERE user_id = ANY(${ids}::uuid[]) AND metadata ?| array['analyticsConsent', 'adsBrowser']`;
+      UPDATE payments SET metadata = metadata - 'analyticsConsent'
+      WHERE user_id = ANY(${ids}::uuid[]) AND metadata ? 'analyticsConsent'`;
     await tx`UPDATE upload_grants SET analytics_consent = NULL WHERE user_id = ANY(${ids}::uuid[]) AND analytics_consent IS NOT NULL`;
     await tx`
       UPDATE ads_conversion_uploads SET job = jsonb_set(job, '{browser}', 'null'::jsonb), updated_at = now()

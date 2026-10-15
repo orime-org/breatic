@@ -827,7 +827,6 @@ export {
 } from "@shared/analytics/consent-choices.js";
 export {
   BrowserAdsSnapshotSchema,
-  NO_ADS_BROWSER,
   ReportedConsentSchema,
   adsAllowed,
   browserAdsConsent,

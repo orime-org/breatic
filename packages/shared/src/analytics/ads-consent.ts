@@ -20,9 +20,6 @@ export const BrowserAdsSnapshotSchema = z.object({ consent: z.boolean() }).stric
 /** This browser's ads consent with GPC applied. */
 export type BrowserAdsSnapshot = z.infer<typeof BrowserAdsSnapshotSchema>;
 
-/** A browser with no ads consent. */
-export const NO_ADS_BROWSER: BrowserAdsSnapshot = Object.freeze({ consent: false });
-
 /** What a signed-in browser reports to its account (`PUT /users/me/consent`): its consent snapshot. */
 export const ReportedConsentSchema = z.object({ analytics: z.boolean(), ads: z.boolean() }).strict();
 

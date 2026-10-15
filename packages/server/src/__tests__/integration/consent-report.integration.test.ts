@@ -225,7 +225,7 @@ describe("eraseAccountAnalytics", () => {
     await sql`
       INSERT INTO payments (id, user_id, amount_cents, status, credits_granted, metadata)
       VALUES (${source!.id}, ${id}, 1000, 'completed', 1000,
-              ${sql.json({ locale: "en", analyticsConsent: { analytics: true, ads: true }, adsBrowser: { consent: true } })})
+              ${sql.json({ locale: "en", analyticsConsent: { analytics: true, ads: true } })})
     `;
     const [studio] = await sql<{ id: string }[]>`
       INSERT INTO studios (created_by_user_id, slug, type, name)

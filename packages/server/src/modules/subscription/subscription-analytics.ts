@@ -32,7 +32,7 @@ function planProperties(write: Pick<SubscriptionWrite, "tier" | "period">): Reco
 export function reportSubscriptionStarted(write: SubscriptionWrite, metadata: Record<string, unknown> | null): void {
   const properties = planProperties(write);
   if (properties === null) return;
-  const { consent, adsBrowser, click } = readCheckoutSnapshot(metadata);
+  const { consent, click } = readCheckoutSnapshot(metadata);
   const transactionId = `sub:${write.stripeSubscriptionId}`;
   trackServerEvent("subscription_started", { userId: write.userId, insertId: transactionId, properties }, consent);
   enqueueAdsConversion(
@@ -43,7 +43,7 @@ export function reportSubscriptionStarted(write: SubscriptionWrite, metadata: Re
       click,
       value: { amountCents: properties.amount_cents as number, currency: properties.currency as string },
     },
-    adsBrowser,
+    { consent: consent.ads },
   ).catch((err: unknown) => {
     logger.error({ err, userId: write.userId, transactionId }, "ads_conversion_enqueue_failed");
   });

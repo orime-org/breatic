@@ -12,26 +12,18 @@
  */
 
 import { AsyncLocalStorage } from "node:async_hooks";
-import { NO_ADS_BROWSER, NO_CONSENT, type BrowserAdsSnapshot, type ConsentSnapshot } from "@breatic/shared";
+import { NO_CONSENT, type BrowserAdsSnapshot, type ConsentSnapshot } from "@breatic/shared";
 
-/** What a request's browser says beyond its consent snapshot. */
-export interface RequestBrowser {
-  /** Its ads consent, with this request's GPC applied. */
-  readonly ads: BrowserAdsSnapshot;
-}
-
-const store = new AsyncLocalStorage<{ consent: ConsentSnapshot; browser: RequestBrowser | null }>();
+const store = new AsyncLocalStorage<ConsentSnapshot>();
 
 /**
  * Run a request with the given consent in scope.
  * @param consent - The browser's choice, already parsed.
  * @param fn - The request handler.
- * @param browser - The rest of what the browser says, for ad conversions
- *   (inner#1442 design §4.4.5); absent where the caller has no cookie to read.
  * @returns Whatever the handler returns.
  */
-export function runWithConsent<T>(consent: ConsentSnapshot, fn: () => T, browser: RequestBrowser | null = null): T {
-  return store.run({ consent, browser }, fn);
+export function runWithConsent<T>(consent: ConsentSnapshot, fn: () => T): T {
+  return store.run(consent, fn);
 }
 
 /**
@@ -39,14 +31,13 @@ export function runWithConsent<T>(consent: ConsentSnapshot, fn: () => T, browser
  * @returns The snapshot in scope; {@link NO_CONSENT} outside any request.
  */
 export function currentConsent(): ConsentSnapshot {
-  return store.getStore()?.consent ?? NO_CONSENT;
+  return store.getStore() ?? NO_CONSENT;
 }
 
 /**
- * The ads side of the requesting browser's consent.
- * @returns The snapshot in scope; outside a request, or where none was read,
- *   a browser with no choice, which never allows ads.
+ * The ads side of the consent in scope, as an ad conversion records it.
+ * @returns Its ads consent; outside a request, a browser that never allows ads.
  */
 export function currentAdsBrowser(): BrowserAdsSnapshot {
-  return store.getStore()?.browser?.ads ?? NO_ADS_BROWSER;
+  return { consent: currentConsent().ads };
 }

@@ -34,7 +34,6 @@ import {
   resetServerAnalyticsForTest,
   runWithConsent,
   type OutgoingEvent,
-  type RequestBrowser,
 } from "@breatic/core";
 import type { ConsentSnapshot } from "@breatic/shared";
 
@@ -91,14 +90,6 @@ function eventsOf(type: string): OutgoingEvent[] {
   return sent.filter((e) => e.event_type === type);
 }
 
-/**
- * A browser that accepted ads, as the request context holds it.
- * @returns The snapshot.
- */
-function adsAccepted(): RequestBrowser {
-  return { ads: { consent: true } };
-}
-
 describe("project_created", () => {
   it("marks only the account's first project, and counts a copy", async () => {
     const me = await member();
@@ -128,8 +119,8 @@ describe("project_created", () => {
       const at = new Date().toISOString();
       await sql`UPDATE users SET attribution = ${sql.json({ first: { gclid: "g", at }, last: { gclid: "g", at } })} WHERE id = ${me.id}`;
       const ads = { analytics: false, ads: true };
-      await runWithConsent(ads, () => projectService.create(me.id, me.studioId, "A", "a", "canvas"), adsAccepted());
-      await runWithConsent(ads, () => projectService.create(me.id, me.studioId, "B", "b", "canvas"), adsAccepted());
+      await runWithConsent(ads, () => projectService.create(me.id, me.studioId, "A", "a", "canvas"));
+      await runWithConsent(ads, () => projectService.create(me.id, me.studioId, "B", "b", "canvas"));
       expect(await getUploadStatus({ conversion: "first_project", transactionId: `first-project:${me.id}` })).toBe("queued");
       const [{ n }] = await sql<[{ n: number }]>`
         SELECT count(*)::int AS n FROM ads_conversion_uploads WHERE transaction_id = ${`first-project:${me.id}`}
