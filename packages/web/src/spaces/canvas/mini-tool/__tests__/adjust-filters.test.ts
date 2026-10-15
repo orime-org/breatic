@@ -128,6 +128,21 @@ describe('adjustPixels', () => {
     expect((blur as InstanceType<typeof filters.Blur>).blur * 0.12 * Math.min(width, height)).toBeGreaterThanOrEqual(1);
   });
 
+  // The video's noise reduction is `gblur=sigma=3*blur` source pixels
+  // (adjust-value.ts); Fabric's kernel is a triangle, whose spread is its
+  // reach over √6, so the same value reaches 3·√6·blur source pixels.
+  it.each([
+    [1024, 768, 50],
+    [1024, 768, 100],
+    [4096, 3072, 50],
+    [4096, 3072, 100],
+  ])('on a %ix%i picture, noise reduction %i reaches as far as the video blurs', (width, height, value) => {
+    const blur = adjustFilters({ ...defaultAdjustValue, noiseReduction: value }, 7, { width, height }).find(
+      (filter) => filter instanceof filters.Blur,
+    ) as InstanceType<typeof filters.Blur>;
+    expect(blur.blur * 0.12 * Math.min(width, height)).toBeCloseTo(3 * Math.sqrt(6) * (value / 100), 9);
+  });
+
   it('lays the same grain twice for the same seed', () => {
     const source = picture(32);
     expect(maxDiff(adjusted(source, { grain: 80 }, 11).data, adjusted(source, { grain: 80 }, 11).data)).toBe(0);

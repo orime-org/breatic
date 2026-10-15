@@ -35,8 +35,12 @@ interface GLState {
 /** Luma weights (Rec. 709) the saturation turns about. */
 const LUMA = [0.2126, 0.7152, 0.0722] as const;
 
-/** The strongest noise reduction, as Fabric's blur share of the picture. */
-const MAX_BLUR = 0.01;
+/**
+ * How far the strongest noise reduction reaches, in source pixels: the
+ * video's `gblur` spread of 3 pixels (adjust-value.ts) for Fabric's triangle
+ * kernel, whose spread is its reach over √6.
+ */
+const MAX_BLUR_REACH_PX = 3 * Math.sqrt(6);
 
 /** The sharpening radius, as a share of the picture's width. */
 const SHARPEN_RADIUS = 1 / 1024;
@@ -372,7 +376,10 @@ export function adjustFilters(value: AdjustValue, seed: number, source: { width:
     chain.push(new filters.ColorMatrix({ matrix: eqMatrix(terms.brightness, terms.contrast, terms.saturation) }));
   }
   if (terms.hueRadians !== 0) chain.push(new filters.HueRotation({ rotation: terms.hueRadians / Math.PI }));
-  if (terms.blur > 0) chain.push(new filters.Blur({ blur: Math.max(terms.blur * MAX_BLUR, oneShortPixel / 0.12) }));
+  if (terms.blur > 0) {
+    const reach = Math.max(terms.blur * MAX_BLUR_REACH_PX, 1);
+    chain.push(new filters.Blur({ blur: (reach * oneShortPixel) / 0.12 }));
+  }
   if (terms.grain > 0) chain.push(new AdjustGrain({ strength: terms.grain, seed }));
   if (terms.sharpen > 0) {
     chain.push(new AdjustUnsharp({ amount: terms.sharpen, radius: Math.max(SHARPEN_RADIUS, onePixel) }));
