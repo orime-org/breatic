@@ -120,7 +120,8 @@ function MarkSurface({ geometry }: { geometry: MediaGeometry }): React.JSX.Eleme
       const mark = session.miniTool?.mark;
       if (mark == null || session.miniTool?.exporting === true) return;
       // Markup answers only a press meant for it: one in Fabric's own text
-      // input, which sits outside every region, or one meant for this space.
+      // input, which keeps focus when a scrollbar press hands the keyboard to
+      // another region, or one meant for this space.
       // Focus can leave Fabric's input while its edit stays open, so a menu,
       // dialog or list opened elsewhere closes on its own Escape first.
       const ours =
