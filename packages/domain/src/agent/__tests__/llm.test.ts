@@ -468,6 +468,49 @@ describe("a Claude call that does not ask for thinking", () => {
   });
 });
 
+/**
+ * A fixed temperature, where the model takes one.
+ *
+ * Claude Opus 5.5 and the other current Claude models return a 400 for any
+ * non-default `temperature` on every request, and the older ones for any
+ * `temperature` while thinking is on (Anthropic thinking docs, "Sampling
+ * parameters"). The other routes take the value as given.
+ */
+describe("the temperature a call asks for", () => {
+  /**
+   * Runs one call asking for a temperature.
+   * @param model - The model id to route.
+   * @returns The intercepted request.
+   */
+  async function sendAt(model: string): Promise<Seen> {
+    const { getModel, callOptionsFor } = await freshLlm();
+    const { generateText } = await import("ai");
+    seen = undefined;
+    await generateText({
+      model: getModel(model),
+      prompt: "hi",
+      ...callOptionsFor(model, { thinking: false, cache: false, temperature: 0 }),
+    });
+    if (!seen) throw new Error("no request was made");
+    return seen;
+  }
+
+  it("reaches a model that takes it", async () => {
+    keys.current = { OPENROUTER_API_KEY: "sk-or-test" };
+    expect((await sendAt("deepseek/deepseek-v4-pro")).body.temperature).toBe(0);
+  });
+
+  it("is left out for Claude reached directly", async () => {
+    keys.current = { ANTHROPIC_API_KEY: "k" };
+    expect((await sendAt("anthropic/claude-opus-5.5")).body.temperature).toBeUndefined();
+  });
+
+  it("is left out for Claude reached through OpenRouter", async () => {
+    keys.current = { OPENROUTER_API_KEY: "sk-or-test" };
+    expect((await sendAt("anthropic/claude-opus-5.5")).body.temperature).toBeUndefined();
+  });
+});
+
 describe("the Anthropic direct route", () => {
   it("sends the hyphenated id Anthropic serves for a dotted version", async () => {
     keys.current = { ANTHROPIC_API_KEY: "k" };
