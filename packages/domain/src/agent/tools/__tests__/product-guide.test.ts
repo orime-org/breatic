@@ -162,6 +162,16 @@ describe("what the guide says", () => {
     }
   });
 
+  // drawing-history.ts routes undo and redo to an open markup draft, and the
+  // canvas steps the markup size on [ and ] (CanvasSpace.tsx).
+  it("says the undo keys, the view bar's undo and [ ] act on markup while its panel is open", () => {
+    expect(webSource("spaces/canvas/mini-tool/drawing-history.ts")).toContain("if (draft?.mark != null) {");
+    const markup = renderProductGuide().split(`"${t("canvas.miniTool.image.mark.label")}" writes notes`)[1] ?? "";
+    expect(markup.split(`"${t("canvas.miniTool.image.expand.label")}"`)[0]).toMatch(
+      /Cmd\+Z or Ctrl\+Z and the undo and redo in the view bar step through the markup.*\[ and \] keys/s,
+    );
+  });
+
   it("says a reference is wired, then chosen from the prompt's list", () => {
     // Three halves, each of which has been the whole sentence at some point and
     // read as complete: the edge that offers the node, the @ that opens the

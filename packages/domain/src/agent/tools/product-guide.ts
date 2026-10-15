@@ -826,7 +826,9 @@ export function renderProductGuide(): string {
       `${quoted(t("canvas.miniTool.mark.text"))}, then undo, redo and clear, with the same size slider and colour ` +
       "dots below. A shape or text drawn goes back to selecting; until the arrow is pressed, anything drawn can be " +
       "selected, moved, resized, restyled or deleted with Delete or Backspace, which then deletes that object and " +
-      "not the node. The arrow stays greyed out until something is drawn or written, and the result is a plain " +
+      "not the node. While the panel is open, Cmd+Z or Ctrl+Z and the undo and redo in the view bar step through " +
+      "the markup, and the [ and ] keys step the size, of the selected object when one is selected. " +
+      "The arrow stays greyed out until something is drawn or written, and the result is a plain " +
       `picture. ${quoted(t("canvas.miniTool.image.expand.label"))} puts a frame with eight handles over the ` +
       "picture: drag them out past its edges, and once the frame is larger the picture can be dragged inside it. " +
       `The panel's ${quoted(t("canvas.miniTool.param.aspect.label"))} offers Free, 1:1, 2:3, 3:2, 3:4, 4:3, ` +
