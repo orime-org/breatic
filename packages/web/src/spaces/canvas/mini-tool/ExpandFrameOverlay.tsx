@@ -19,10 +19,9 @@ import {
 } from '@web/spaces/canvas/mini-tool/expand-frame';
 
 /**
- * An in-progress drag, with the frame and ratio as they stood when it began
- * and the panel opening it belongs to.
+ * An in-progress drag, with the frame and ratio as they stood when it began.
  */
-type Gesture = { pointerId: number; opening: number; frame: ExpandFrame; ratio: ExpandRatio } & (
+type Gesture = { pointerId: number; frame: ExpandFrame; ratio: ExpandRatio } & (
   | { type: 'resize'; handle: CropHandle }
   | { type: 'move'; start: { x: number; y: number } }
 );
@@ -54,7 +53,6 @@ interface ExpandFrameOverlayProps {
 export function ExpandFrameOverlay({ onNodeContextMenu }: ExpandFrameOverlayProps): React.JSX.Element | null {
   const store = useCanvasSessionStore();
   const hostId = useCanvasSession((s) => s.panelHostId);
-  const opening = useCanvasSession((s) => s.panelSession);
   const draft = useCanvasSession(miniToolOpenOn(hostId));
   const expand = draft?.expand ?? null;
   // Read only while the frame shows, so a zoom does not re-render it otherwise.
@@ -68,9 +66,9 @@ export function ExpandFrameOverlay({ onNodeContextMenu }: ExpandFrameOverlayProp
   const view = expand?.view ?? null;
   const drawn = expand !== null && view !== null && sourceSize !== null && draft !== null && node !== undefined;
   // A frame not drawn holds no handle to release a drag on: a panel closed
-  // under it, a host gone, a source reset. The frame also outlives one
-  // opening of the panel; a drag belongs to the opening it began in.
-  if (gesture.current !== null && (!drawn || gesture.current.opening !== opening)) gesture.current = null;
+  // under it, a host gone, a source reset. A new opening starts with no view
+  // and no source size, so it ends a drag begun in the one before.
+  if (gesture.current !== null && !drawn) gesture.current = null;
   if (gesture.current !== null && expand !== null && ours.current !== null) {
     const same =
       expand.ratio === ours.current.ratio && JSON.stringify(expand.frame) === JSON.stringify(ours.current.frame);
@@ -132,7 +130,7 @@ export function ExpandFrameOverlay({ onNodeContextMenu }: ExpandFrameOverlayProp
     e.stopPropagation();
     e.currentTarget.setPointerCapture?.(e.pointerId);
     ours.current = { frame, ratio };
-    gesture.current = { pointerId: e.pointerId, opening, frame, ratio, ...start };
+    gesture.current = { pointerId: e.pointerId, frame, ratio, ...start };
   };
 
   /**
