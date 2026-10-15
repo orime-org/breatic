@@ -112,22 +112,18 @@ export async function listenProjectMemberChanges(
   const probe = async (timeoutMs: number): Promise<boolean> => {
     if (stopped) return false;
     const nonce = randomUUID();
-    let received = false;
-    const arrived = new Promise<void>((resolve) => {
-      pending.set(nonce, () => {
-        received = !stopped;
-        resolve();
-      });
+    const arrived = new Promise<boolean>((resolve) => {
+      pending.set(nonce, () => resolve(true));
     });
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
       await rawPg.notify(PROBE_CHANNEL, nonce);
       // The wait starts once the nonce is sent, so it measures delivery over
       // the listen connection, not queueing for a pool connection.
-      await Promise.race([
+      return await Promise.race([
         arrived,
-        new Promise<void>((resolve) => {
-          timer = setTimeout(resolve, timeoutMs);
+        new Promise<boolean>((resolve) => {
+          timer = setTimeout(() => resolve(false), timeoutMs);
         }),
       ]);
     } catch {
@@ -136,14 +132,11 @@ export async function listenProjectMemberChanges(
       clearTimeout(timer);
       pending.delete(nonce);
     }
-    return received;
   };
 
   return {
     stop: async () => {
       stopped = true;
-      for (const resolve of pending.values()) resolve();
-      pending.clear();
     },
     probe,
   };

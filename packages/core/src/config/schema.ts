@@ -162,7 +162,8 @@ export const coreConfigSchema = z.object({
   // Namespace for the two things neither the Redis DB number nor the port
   // split can separate:
   //   1. Redis PUB/SUB CHANNELS — the Hocuspocus document-sync family and the
-  //      `project:*` control family (membership changes + Space CRUD).
+  //      `project:*` control family (activity signals + connection closes
+  //      after a duplicate / archive / restore).
   //   2. The SESSION COOKIE NAME (`sessionCookieName()`), because cookies are
   //      not scoped by port (RFC 6265 §8.5).
   // Nothing else. Resolved by the transform below: unset or blank means `ENV`.
@@ -189,7 +190,7 @@ export const coreConfigSchema = z.object({
   // keys (sessions, locks, BullMQ, streams) are already separated by DB number;
   // channels are not. Two deployments sharing a Redis instance therefore need
   // distinct prefixes here, or each hears the other's document updates and
-  // membership writes whenever both hold the same UUID (#1831).
+  // project control events whenever both hold the same UUID (#1831).
   //
   // Deliberately NOT used for anything Redis keys the DB number already covers:
   //   - cross-service STREAM keys (`taskEventsStreamKey()` etc.) — server,
