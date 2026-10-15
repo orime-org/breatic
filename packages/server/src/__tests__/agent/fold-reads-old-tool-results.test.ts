@@ -11,7 +11,7 @@
  */
 import { describe, it, expect, vi } from "vitest";
 import type * as CoreModule from "@breatic/core";
-import type { MessageData } from "@breatic/shared";
+import type { ReplayRow } from "@server/agent/history-replay.js";
 
 vi.mock("@breatic/core", async (importOriginal) => {
   const actual = await importOriginal<typeof CoreModule>();
@@ -33,7 +33,7 @@ const { foldIfOverBudget } = await import("@server/agent/turn-budget.js");
 const { EARLIER_RESULT_NOTE } = await import("@server/agent/stored-model-output.js");
 
 /** A turn whose model listing was written before the listing carried `needs`. */
-const HISTORY: MessageData[] = [
+const HISTORY: ReplayRow[] = [
   {
     id: "u1",
     role: "user",
@@ -41,6 +41,7 @@ const HISTORY: MessageData[] = [
     content: "which models make pictures?",
     ts: "2026-10-07T06:23:00Z",
     turnIndex: 1,
+    forModel: null,
   },
   {
     id: "a1",
@@ -62,6 +63,7 @@ const HISTORY: MessageData[] = [
     content: "these ones",
     ts: "2026-10-07T06:23:16Z",
     turnIndex: 1,
+    forModel: null,
   },
 ];
 

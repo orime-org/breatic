@@ -20,13 +20,14 @@ import { planConsolidation } from "@server/agent/consolidation-window.js";
 import type { TurnCost } from "@server/agent/consolidation-window.js";
 import { toModelMessages } from "@server/agent/model-messages.js";
 import { consolidateWindow } from "@server/agent/memory-consolidator.js";
+import type { ReplayRow } from "@server/agent/history-replay.js";
 
 /** One reading of everything a turn sends, and what it was built from. */
 export interface Assembly {
   /** Model, instructions and tools, as the factory resolved them. */
   agentConfig: ResolvedAgentConfig;
   /** The unconsolidated history this assembly read. */
-  history: MessageData[];
+  history: ReplayRow[];
   /** How far the conversation was folded when this was read. */
   watermark: number;
   /** The history and this turn's question, as they will be sent. */

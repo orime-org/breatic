@@ -10,7 +10,7 @@
 
 import { createUIMessageStream, stepCountIs } from "ai";
 import { streamTextRetry } from "@breatic/domain";
-import type { StopCondition, Tool, ToolSet, UIMessageChunk, UIMessageStreamWriter } from "ai";
+import type { ModelMessage, StopCondition, Tool, ToolSet, UIMessageChunk, UIMessageStreamWriter } from "ai";
 
 import { callOptionsFor, getModel, resolveProvider } from "@breatic/domain";
 import {
@@ -38,7 +38,7 @@ import { foldIfOverBudget } from "@server/agent/turn-budget.js";
 import type { Assembly } from "@server/agent/turn-budget.js";
 import { getContext } from "@breatic/core";
 import { logger } from "@breatic/core";
-import { toModelMessages } from "@server/agent/model-messages.js";
+import { historyForModel } from "@server/agent/history-replay.js";
 import { withModelOutputs } from "@server/agent/stored-model-output.js";
 import { endingOf, endingWithNothingRun } from "@server/agent/tool-ending.js";
 import { writeAskUserText } from "@server/agent/ask-user-text.js";
@@ -140,11 +140,10 @@ export class MainAgent {
     //
     // The reader's clock opens this turn's message, on its own line, ahead of
     // any attached content, so it never sits under the "User message"
-    // heading. It is never stored, and the system prompt does not carry it,
-    // so a provider's prefix cache still matches everything up to the last
-    // turn's user message: that message went out with its note last time and
-    // goes out without it from here on. The reader's Spaces follow it on the
-    // same terms: read fresh with each message, never stored.
+    // heading. The system prompt does not carry it. The reader's Spaces
+    // follow it, read fresh with each message. The message is kept as it was
+    // sent and later turns send it again as it is, so a provider's prefix
+    // cache matches everything up to the new message.
     const forModel = userMessageForModel(readerClockNote(new Date(), timeZone), { ...space, chips: attached, message: said });
     return this.runStream(forModel, turnIndex, title, openDocumentOf(space), signal);
   }
@@ -300,6 +299,10 @@ export class MainAgent {
      * result, which would leave the folded turns missing from both places.
      * @returns The request, and what it was built from.
      */
+    // One object for every assembly and for the copy kept of it, so what is
+    // stored is what went out.
+    const userMessage: ModelMessage = { role: "user", content: forModel };
+
     const assemble = async (): Promise<Assembly> => {
       // The running turn is left out of the history on purpose. Its message
       // is put in front of the model separately, below, so a copy in the
@@ -322,7 +325,14 @@ export class MainAgent {
         agentConfig,
         history,
         watermark,
-        messages: [...toModelMessages(history), { role: "user", content: forModel }],
+        messages: [
+          ...historyForModel(history, {
+            system: agentConfig.instructions,
+            tools: agentConfig.tools,
+            modelId: agentConfig.modelId,
+          }),
+          userMessage,
+        ],
       };
     };
 
@@ -376,6 +386,16 @@ export class MainAgent {
 
       const { agentConfig, messages } = assembly;
       modelId = agentConfig.modelId;
+
+      // Kept as it is about to go out, after any fold, so later turns send it
+      // again as it is. Losing the copy costs this turn nothing: later turns
+      // render the message from its parts the way they always did, and only
+      // the cache match past it is lost.
+      try {
+        await messageRepo.setUserForModel(conversationId, turnIndex, { messages: [userMessage] });
+      } catch (err) {
+        logger.error({ err, userId, conversationId, projectId, turnIndex }, "turn_user_for_model_write_failed");
+      }
       turnTools = agentConfig.tools;
       // The studio whose material a proposal may name: the project's owner,
       // which is also where a saved picture is charged.

@@ -12,14 +12,15 @@
  */
 
 import { conversationService, memoryService } from "@server/modules";
-import type { MemoryContext, MessageData } from "@breatic/shared";
+import type { MemoryContext } from "@breatic/shared";
+import type { ReplayRow } from "@server/agent/history-replay.js";
 
 /** Everything a turn reads before its first token. */
 export interface TurnContext {
   /** Both memory layers, loaded once for this turn. */
   memoryContext: MemoryContext;
   /** What has been said since the watermark, as stored. */
-  history: MessageData[];
+  history: ReplayRow[];
   /**
    * How far the conversation is already folded into memory.
    *
