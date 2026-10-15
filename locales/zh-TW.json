@@ -2378,7 +2378,7 @@
       },
       "analytics": {
         "title": "產品分析",
-        "description": "統計功能的使用情況，不含你的作品內容。"
+        "description": "統計功能的使用情況，不含你 Project 裡的內容。"
       },
       "ads": {
         "title": "廣告",

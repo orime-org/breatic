@@ -275,7 +275,7 @@ export function setAdsView(view: AdsView): void {
 function renderConsentWindows(): void {
   const toggle = adsSwitch();
   if (toggle !== null) {
-    // GPC keeps ads off: the switch cannot be turned on (§4.4.3 「界面」).
+    // GPC keeps ads off: the switch cannot be turned on (design §4.4.3).
     toggle.disabled = adsView.status === 'gpc';
     toggle.checked = !toggle.disabled && (touchedAds ?? adsView.adsOn);
     toggle.addEventListener('change', markAdsSwitchTouched);
@@ -346,7 +346,6 @@ function showConfirm(text: ConsentText): void {
     ['yes', text.settings.confirm.yes, ''],
     ['no', text.settings.confirm.no, ' pm__btn--secondary'],
   ] as const) {
-    // eslint-disable-next-line breatic/no-raw-button -- the consent library draws this window outside React; these join its own pm__btn buttons
     const button = document.createElement('button');
     button.type = 'button';
     button.className = `pm__btn${extra}`;

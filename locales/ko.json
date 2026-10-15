@@ -2378,7 +2378,7 @@
       },
       "analytics": {
         "title": "제품 분석",
-        "description": "기능 사용 현황을 집계합니다. 작품 내용은 포함하지 않습니다."
+        "description": "기능 사용 현황을 집계합니다. Project 안의 내용은 포함하지 않습니다."
       },
       "ads": {
         "title": "광고",

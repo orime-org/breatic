@@ -2378,7 +2378,7 @@
       },
       "analytics": {
         "title": "製品分析",
-        "description": "機能の利用状況を集計します。作品の内容は含みません。"
+        "description": "機能の利用状況を集計します。Project の中身は含みません。"
       },
       "ads": {
         "title": "広告",

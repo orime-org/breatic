@@ -2378,7 +2378,7 @@
       },
       "analytics": {
         "title": "Product analytics",
-        "description": "Counts how features are used. Never includes your work."
+        "description": "Counts how features are used. Never includes the content of your Projects."
       },
       "ads": {
         "title": "Advertising",
