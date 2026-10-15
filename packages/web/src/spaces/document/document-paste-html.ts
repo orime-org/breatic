@@ -12,9 +12,14 @@
  * media are put where a block stands, each in its own place: one in a table
  * cell under the table (A7), one in a line of text between the two halves of
  * that line, the media of a figure holding several each on its own. A
- * picture's address is the one a browser shows from its `srcset`, when it
- * can be fetched. Whatever a read still loses is counted with what the paste
- * left out, so no medium goes without the reader being told.
+ * picture's address is the largest candidate of its `srcset` that can be
+ * fetched. Whatever a read still loses is counted with what the paste left
+ * out, so no medium goes without the reader being told.
+ *
+ * A paste is read here, from the format BlockNote's own paste would read
+ * (`pasteExtension.ts`), whenever that read carries media: the HTML is made
+ * ready, read once, counted from that read and put in. A paste whose read
+ * carries none goes to BlockNote with its tables evened.
  */
 
 import { markdownToHTML } from '@blocknote/core';
@@ -28,13 +33,13 @@ import { evenTables } from '@web/spaces/document/document-table-paste';
 export const PASTED_MEDIA_KEY = 'documentPastedMedia';
 
 /** What a paste hook tells the pasted-media extension. */
-export interface PasteLossSink {
+interface PasteLossSink {
   /** Counts media a read lost with what the paste left out. */
   leaveOut(count: number): void;
 }
 
 /** Whether a piece of HTML carries an image, a video or an audio. */
-export const HTML_MEDIA = new RegExp(`<(${HTML_MEDIA_ELEMENTS.join('|')})\\b`, 'i');
+const HTML_MEDIA = new RegExp(`<(${HTML_MEDIA_ELEMENTS.join('|')})\\b`, 'i');
 
 /** The blocks of text a medium can stand in the middle of. */
 const TEXT_BLOCKS = 'p, h1, h2, h3, h4, h5, h6';
@@ -52,16 +57,6 @@ export interface ReadBlock extends BlockSpec {
  */
 export function mediaIn(blocks: readonly ReadBlock[]): ReadBlock[] {
   return blocks.flatMap((block) => [...(isMediaBlockType(block.type) ? [block] : []), ...mediaIn(block.children)]);
-}
-
-/**
- * How many media elements a piece of HTML holds.
- * @param html - The HTML.
- * @returns The count.
- */
-export function mediaElementCount(html: string): number {
-  if (!HTML_MEDIA.test(html)) return 0;
-  return new DOMParser().parseFromString(html, 'text/html').body.querySelectorAll(HTML_MEDIA_SELECTOR).length;
 }
 
 /** One image candidate of a `srcset`. */
@@ -116,8 +111,17 @@ export function srcsetCandidates(srcset: string): Candidate[] {
   return out;
 }
 
+/** A valid non-negative floating-point number, as HTML writes one. */
+const FLOAT = /^(?:\d+(?:\.\d+)?|\.\d+)(?:[eE][+-]?\d+)?$/;
+
+/** A valid non-negative integer. */
+const INTEGER = /^\d+$/;
+
 /**
- * A candidate with its descriptors read, or null when HTML would not take it.
+ * A candidate with its descriptors read the way HTML reads them, or null when
+ * HTML would drop it: a width and a height are positive integers, a density
+ * is a non-negative number, a candidate has a width or a density but not
+ * both, and a height only beside a width.
  * @param url - Its address.
  * @param descriptors - Its descriptor tokens.
  * @returns The candidate, or null.
@@ -125,13 +129,21 @@ export function srcsetCandidates(srcset: string): Candidate[] {
 function withDescriptors(url: string, descriptors: readonly string[]): Candidate | null {
   let width: number | undefined;
   let density: number | undefined;
+  let height: number | undefined;
   for (const descriptor of descriptors) {
-    const w = /^(\d+)w$/.exec(descriptor);
-    const x = /^(\d*\.?\d+(?:e[+-]?\d+)?)x$/i.exec(descriptor);
-    if (w !== null && width === undefined && density === undefined) width = Number(w[1]);
-    else if (x !== null && width === undefined && density === undefined) density = Number(x[1]);
-    else if (!/^\d+h$/.test(descriptor)) return null;
+    const value = descriptor.slice(0, -1);
+    const unit = descriptor.slice(-1);
+    if (unit === 'w' && INTEGER.test(value) && Number(value) > 0 && width === undefined && density === undefined) {
+      width = Number(value);
+    } else if (unit === 'x' && FLOAT.test(value) && width === undefined && density === undefined) {
+      density = Number(value);
+    } else if (unit === 'h' && INTEGER.test(value) && Number(value) > 0 && height === undefined && density === undefined) {
+      height = Number(value);
+    } else {
+      return null;
+    }
   }
+  if (height !== undefined && width === undefined) return null;
   return { url, ...(width !== undefined && { width }), ...(density !== undefined && { density }) };
 }
 
@@ -187,21 +199,18 @@ function liftCellMedia(root: Element): boolean {
 }
 
 /**
- * Takes apart every figure holding more than one medium, outermost first, so
- * each medium is read on its own, with the figure around it when it has one.
+ * Takes apart every figure holding more than one medium, so each medium is
+ * read on its own, with the figure around it when it has one. Taking a
+ * figure apart leaves the figures inside it as they were.
  * @param root - The HTML's body.
  * @returns Whether any figure was taken apart.
  */
 function unwrapCrowdedFigures(root: Element): boolean {
-  let changed = false;
-  for (;;) {
-    const crowded = Array.from(root.querySelectorAll('figure')).find(
-      (figure) => figure.querySelectorAll(HTML_MEDIA_SELECTOR).length > 1,
-    );
-    if (crowded === undefined) return changed;
-    crowded.replaceWith(...Array.from(crowded.childNodes));
-    changed = true;
-  }
+  const crowded = Array.from(root.querySelectorAll('figure')).filter(
+    (figure) => figure.querySelectorAll(HTML_MEDIA_SELECTOR).length > 1,
+  );
+  for (const figure of crowded) figure.replaceWith(...Array.from(figure.childNodes));
+  return crowded.length > 0;
 }
 
 /**
@@ -214,8 +223,23 @@ function holdsNothing(block: Element): boolean {
 }
 
 /**
+ * Takes the line breaks and the white space off the start of a block.
+ * @param block - The block.
+ */
+function trimBreaks(block: Element): void {
+  let node = block.firstChild;
+  while (node !== null && (node.nodeName === 'BR' || (node.nodeType === Node.TEXT_NODE && (node.textContent ?? '').trim() === ''))) {
+    node.remove();
+    node = block.firstChild;
+  }
+}
+
+/**
  * Splits every line of text a medium stands in at the medium, so the medium
- * is read between the two halves; a half with no words goes.
+ * is read between the two halves. A line break right after the medium ended
+ * the line at it, so the second half loses the breaks it starts with (a
+ * break the first half ends on is dropped by the read); a half with no words
+ * goes.
  * @param root - The HTML's body.
  * @returns Whether any line was split.
  */
@@ -232,6 +256,7 @@ function splitTextAroundMedia(root: Element): boolean {
     const head = block.cloneNode(false) as Element;
     head.append(before.extractContents());
     block.before(head, carried);
+    trimBreaks(block);
     for (const part of [head, block]) if (holdsNothing(part)) part.remove();
     changed = true;
   }
@@ -239,8 +264,8 @@ function splitTextAroundMedia(root: Element): boolean {
 }
 
 /**
- * Gives every picture with a `srcset` the address a browser shows, when one
- * of its candidates can be fetched.
+ * Gives every picture with a `srcset` the address of its largest candidate
+ * that can be fetched, when it has one.
  * @param root - The HTML's body.
  * @returns Whether any address changed.
  */
@@ -256,42 +281,76 @@ function readPictureAddresses(root: Element): boolean {
   return changed;
 }
 
+/** Pasted HTML ready to read, with how many media it carries. */
+export interface PreparedHTML {
+  readonly html: string;
+  readonly media: number;
+}
+
 /**
  * Pasted HTML ready to read: its tables evened and its media where a block
- * stands, each picture with the address a browser shows.
+ * stands, each picture with the address of its largest fetchable candidate.
  * @param html - The HTML.
- * @returns The same HTML when nothing needed doing, the ready HTML otherwise.
+ * @returns The same HTML when nothing needed doing, the ready HTML otherwise,
+ *   and how many media it carries.
  */
-export function preparePastedHTML(html: string): string {
-  if (!/<table\b/i.test(html) && !HTML_MEDIA.test(html)) return html;
+export function preparePastedHTML(html: string): PreparedHTML {
+  if (!/<table\b/i.test(html) && !HTML_MEDIA.test(html)) return { html, media: 0 };
   const body = new DOMParser().parseFromString(html, 'text/html').body;
   const steps = [evenTables, liftCellMedia, unwrapCrowdedFigures, splitTextAroundMedia, readPictureAddresses];
   const changed = steps.map((step) => step(body)).some(Boolean);
-  return changed ? body.innerHTML : html;
+  return { html: changed ? body.innerHTML : html, media: body.querySelectorAll(HTML_MEDIA_SELECTOR).length };
 }
 
 /**
- * The HTML a paste brings: its clipboard's HTML, or the HTML a Markdown or
- * plain-text paste carrying media becomes, the way BlockNote reads it
- * (`pasteExtension.ts`, `parseMarkdown.ts`). The body's own clipboard and
- * an editor's code are left to BlockNote.
- * @param data - The clipboard.
- * @returns The HTML, or '' when the paste brings none to prepare.
+ * HTML holding media, or null.
+ * @param html - The HTML.
+ * @returns It, when it carries an image, a video or an audio.
  */
-function pastedHTML(data: DataTransfer): string {
-  const html = data.getData('text/html');
-  if (html !== '') return html;
-  if (data.types.includes('blocknote/html') || data.types.includes('vscode-editor-data')) return '';
-  const markdown = data.getData('text/markdown') || data.getData('text/plain');
-  if (markdown === '') return '';
-  const converted = markdownToHTML(markdown);
-  return HTML_MEDIA.test(converted) ? converted : '';
+function withMedia(html: string): string | null {
+  return HTML_MEDIA.test(html) ? html : null;
 }
 
 /**
- * BlockNote's own paste, given the paste's HTML made ready to read, with the
- * media BlockNote's read loses counted as left out. A paste into code is
- * read as plain text and left as it is.
+ * The HTML a paste is read from when that read carries media, taking the
+ * format BlockNote's own paste would (`pasteExtension.ts`): Markdown the
+ * clipboard names, then HTML, then plain text read as Markdown. HTML carrying
+ * media is read as HTML even when its plain text looks like Markdown, which
+ * would drop every picture (design §5.1); HTML carrying none gives way to
+ * plain text whose Markdown carries some.
+ * @param data - The clipboard.
+ * @returns The HTML, or null when the read carries no media or is the
+ *   body's own clipboard or an editor's code.
+ */
+function mediaSource(data: DataTransfer): string | null {
+  if (data.types.includes('vscode-editor-data') || data.types.includes('blocknote/html')) return null;
+  if (data.types.includes('text/markdown')) return withMedia(markdownToHTML(data.getData('text/markdown')));
+  const html = data.getData('text/html');
+  if (HTML_MEDIA.test(html)) return html;
+  const plain = data.getData('text/plain');
+  return plain === '' ? null : withMedia(markdownToHTML(plain));
+}
+
+/**
+ * The clipboard with its HTML replaced.
+ * @param data - The clipboard.
+ * @param html - The HTML.
+ * @returns The clipboard.
+ */
+function withHTML(data: DataTransfer, html: string): Pick<DataTransfer, 'types' | 'files' | 'items' | 'getData'> {
+  return {
+    types: data.types,
+    files: data.files,
+    items: data.items,
+    getData: (format: string): string => (format === 'text/html' ? html : data.getData(format)),
+  };
+}
+
+/**
+ * Reads a paste whose read carries media: its HTML made ready, read once, the
+ * media that read loses counted as left out, and the blocks put in. Otherwise
+ * BlockNote's own paste, given the clipboard's HTML with its tables evened. A
+ * paste with the whole selection in code is read by BlockNote as plain text.
  * @param context - What BlockNote hands the paste hook.
  * @param context.event - The paste.
  * @param context.editor - The editor.
@@ -301,26 +360,20 @@ function pastedHTML(data: DataTransfer): string {
 export const documentPasteHandler: PasteHandler = ({ event, editor, defaultPasteHandler }) => {
   const data = event.clipboardData;
   const view = editor.prosemirrorView;
-  if (data === null || view === undefined || view === null || view.state.selection.$from.parent.type.spec.code === true) {
+  if (data === null || view === undefined || view === null) return defaultPasteHandler();
+  const { $from, $to } = view.state.selection;
+  const inCode = $from.parent.type.spec.code === true && $to.parent.type.spec.code === true;
+  const source = inCode ? null : mediaSource(data);
+  if (source === null) {
+    const html = data.getData('text/html');
+    const prepared = preparePastedHTML(html).html;
+    if (prepared !== html) Object.defineProperty(event, 'clipboardData', { value: withHTML(data, prepared) });
     return defaultPasteHandler();
   }
-  const source = pastedHTML(data);
   const prepared = preparePastedHTML(source);
-  if (prepared !== data.getData('text/html')) {
-    const preparedData: Pick<DataTransfer, 'types' | 'files' | 'items' | 'getData'> = {
-      types: data.types.includes('text/html') ? data.types : [...data.types, 'text/html'],
-      files: data.files,
-      items: data.items,
-      getData: (format: string): string => (format === 'text/html' ? prepared : data.getData(format)),
-    };
-    Object.defineProperty(event, 'clipboardData', { value: preparedData });
-  }
-  const expected = mediaElementCount(prepared);
-  if (expected > 0) {
-    const read = mediaIn(editor.tryParseHTMLToBlocks(prepared) as unknown as ReadBlock[]).length;
-    (editor.getExtension(PASTED_MEDIA_KEY) as PasteLossSink | undefined)?.leaveOut(expected - read);
-  }
-  // HTML carrying media is read as HTML even when its plain text looks like
-  // Markdown, which would drop every picture (inner#1351 design §5.1).
-  return expected > 0 ? defaultPasteHandler({ prioritizeMarkdownOverHTML: false }) : defaultPasteHandler();
+  const blocks = editor.tryParseHTMLToBlocks(prepared.html);
+  const read = mediaIn(blocks as unknown as ReadBlock[]).length;
+  (editor.getExtension(PASTED_MEDIA_KEY) as PasteLossSink | undefined)?.leaveOut(prepared.media - read);
+  editor.pasteHTML(editor.blocksToFullHTML(blocks), true);
+  return true;
 };

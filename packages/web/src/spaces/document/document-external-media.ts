@@ -55,13 +55,7 @@ import {
   isMediaBlockType,
   pendingUploadId,
 } from '@web/spaces/document/document-media-types';
-import {
-  PASTED_MEDIA_KEY,
-  mediaElementCount,
-  mediaIn,
-  preparePastedHTML,
-  type ReadBlock,
-} from '@web/spaces/document/document-paste-html';
+import { PASTED_MEDIA_KEY, mediaIn, preparePastedHTML, type ReadBlock } from '@web/spaces/document/document-paste-html';
 import type { UploadSource } from '@web/spaces/document/document-upload-controller';
 import { markOwnUndoStep } from '@web/spaces/document/document-undo-step';
 
@@ -156,10 +150,10 @@ function judge(
     }
     if (content === node.content) {
       kept.push(node);
-    } else if (node.type.name !== 'blockGroup' || content.childCount > 0) {
-      changed = true;
-      kept.push(node.copy(content));
+      return;
     }
+    changed = true;
+    if (node.type.name !== 'blockGroup' || content.childCount > 0) kept.push(node.copy(content));
   });
   return { fragment: changed ? Fragment.from(kept) : fragment, dropped };
 }
@@ -177,6 +171,37 @@ function pendingIds(doc: PMNode): Set<string> {
     return true;
   });
   return ids;
+}
+
+/**
+ * Whether a block is a medium.
+ * @param node - The block, or null.
+ * @returns True for a block container holding a picture, a video or an audio.
+ */
+function mediumAt(node: PMNode | null): boolean {
+  const own = node?.type.name === 'blockContainer' ? node.firstChild : null;
+  return own !== null && isMediaBlockType(own.type.name);
+}
+
+/**
+ * A slice opening on a medium, closed there, so the medium lands beside the
+ * line it is put into and the line splits around it, as a file or a canvas
+ * paste puts one. A slice read out of HTML holds its blocks in one open
+ * group, which ProseMirror fits into the line as that line's nested group
+ * when the group opens on a block with no text to join the line; the blocks
+ * come out of it first. A slice opening on text joins the line and is left
+ * as it is.
+ * @param slice - The slice.
+ * @returns It, or its blocks closed at the media on their edges.
+ */
+function closedAtMedia(slice: Slice): Slice {
+  let { content, openStart, openEnd } = slice;
+  while (content.childCount === 1 && content.firstChild!.type.name === 'blockGroup' && openStart > 0 && openEnd > 0) {
+    content = content.firstChild!.content;
+    openStart -= 1;
+    openEnd -= 1;
+  }
+  return mediumAt(content.firstChild) ? new Slice(content, 0, openEnd) : slice;
 }
 
 /** HTML BlockNote wrote, as a paste hands it on after reading. */
@@ -349,9 +374,10 @@ export function documentPastedMediaExtension(
             },
             transformPastedHTML: (pasted, view) => {
               // A drop's HTML reaches the read here; a paste's was made
-              // ready before BlockNote read it.
-              const html = preparePastedHTML(pasted);
-              expected = BLOCKNOTE_HTML.test(html) ? null : mediaElementCount(html);
+              // ready and counted before BlockNote wrote it out again.
+              const own = BLOCKNOTE_HTML.test(pasted);
+              const { html, media } = own ? { html: pasted, media: 0 } : preparePastedHTML(pasted);
+              expected = own ? null : media;
               const at = dropAt ?? view.state.selection.from;
               dropAt = null;
               landing = null;
@@ -375,10 +401,10 @@ export function documentPastedMediaExtension(
               queued = [...queued, ...found];
               if (found.length > 0) settle();
               leaveOut(dropped);
-              if (fragment === slice.content) return slice;
+              if (fragment === slice.content) return closedAtMedia(slice);
               // Opened as ProseMirror opens HTML it reads, up to an isolating
               // node, so a table's last cell does not take the line's tail.
-              return fragment.childCount === 0 ? Slice.empty : Slice.maxOpen(fragment, false);
+              return fragment.childCount === 0 ? Slice.empty : closedAtMedia(Slice.maxOpen(fragment, false));
             },
           },
           // The rest went in the way it would have without the media; the
