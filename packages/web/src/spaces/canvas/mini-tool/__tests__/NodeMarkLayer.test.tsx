@@ -9,6 +9,7 @@
  */
 
 import { act, render, screen, waitFor } from '@testing-library/react';
+import * as React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { cropCanvas, installLayout } from '@web/spaces/canvas/crop/__tests__/crop-harness';
@@ -69,6 +70,22 @@ describe('NodeMarkLayer', () => {
     const drawn = screen.getByTestId('mini-tool-mark-layer').querySelector('canvas')!;
     expect(drawn.width).toBe(200);
     expect(drawn.style.width).toBe('400px');
+  });
+
+  // A Space left for another keeps its page under a hidden Activity; Fabric's
+  // teardown puts its canvas element back where it built (CanvasDOMManager).
+  it('holds one canvas after its Space is hidden and shown again', async () => {
+    const page = cropCanvas([NODE], null);
+    const { rerender } = render(<React.Activity mode='visible'>{page}</React.Activity>);
+    act(() => store().openMiniTool('n1', 'image.mark', { sourceContent: NODE.src, params: {} }));
+    await waitFor(() => expect(store().markChannel).not.toBeNull());
+    rerender(<React.Activity mode='hidden'>{page}</React.Activity>);
+    await waitFor(() => expect(store().markChannel).toBeNull());
+    rerender(<React.Activity mode='visible'>{page}</React.Activity>);
+    await waitFor(() => expect(store().markChannel).not.toBeNull());
+    const layer = screen.getByTestId('mini-tool-mark-layer');
+    expect(layer.children).toHaveLength(1);
+    expect(layer.querySelectorAll('canvas')).toHaveLength(2);
   });
 
   it('registers its channel while open and takes it back on close', async () => {
