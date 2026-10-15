@@ -87,8 +87,7 @@ export const ImageNode = React.memo(function ImageNode({
       locked={locked}
       onRename={onRename}
       testId='image-node'
-      // A planned size describes a picture still to come.
-      resolution={hasContent ? resolution : undefined}
+      resolution={resolution}
     >
       <NodeContent
         hasContent={hasContent}

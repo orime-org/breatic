@@ -137,17 +137,17 @@ describe('startMiniToolRun', () => {
     const run = press({
       spec: tool('image.adjust'),
       snapshot: { ...SNAPSHOT, params: {} },
-      source: { id: 'src', name: 'IMG', position: { x: 0, y: 0 }, groupOrigin: null, mimeType: 'image/png', width: 1600, height: 400 },
+      source: { id: 'src', name: 'IMG', position: { x: 0, y: 0 }, groupOrigin: null, mimeType: 'image/png', width: 1600, height: 1200 },
       exportFile: vi.fn(() => Promise.resolve([{ file: new File(['x'], 'a.png', { type: 'image/png' }) }])),
     });
     await startMiniToolRun(run);
     const [node] = canvas.addNode.mock.calls.map((call) => call[2]);
     // A picture's own size lives in `mediaWidth` / `mediaHeight`; `width` /
     // `height` are a Group's footprint, which a result's write never touches.
-    expect(node.data).toMatchObject({ mediaWidth: 1600, mediaHeight: 400 });
+    expect(node.data).toMatchObject({ mediaWidth: 1600, mediaHeight: 1200 });
     expect(node.data).not.toHaveProperty('width');
     expect(run.onBuilt).toHaveBeenCalledWith(
-      [{ id: node.id, position: node.position, width: EMPTY_NODE_SIZE.width, height: mediaNodeHeight(1600, 400) }],
+      [{ id: node.id, position: node.position, width: EMPTY_NODE_SIZE.width, height: mediaNodeHeight(1600, 1200) }],
       undefined,
     );
   });

@@ -57,6 +57,14 @@ export const EMPTY_NODE_SIZE = { width: 288, height: 192 } as const;
 export const MEDIA_FRAME_PX = 2 * 1 + 2 * 4;
 
 /**
+ * The least height of an empty node's body when the node already knows its
+ * picture's size (inner#1303 §6.7): what `NodePlaceholder` draws in it, its
+ * `p-4` top and bottom (32), the 20px icon, `gap-2` (8) and two 16px text-xs
+ * lines 2px apart (34). Layout reserves at least this much too.
+ */
+export const PLANNED_BODY_MIN_PX = 94;
+
+/**
  * How tall a node is with this picture in it, drawn at the node's width.
  * @param width - The picture's width in pixels.
  * @param height - Its height in pixels.

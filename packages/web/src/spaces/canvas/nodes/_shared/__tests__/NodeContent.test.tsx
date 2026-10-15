@@ -4,6 +4,7 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 
+import { PLANNED_BODY_MIN_PX } from '@web/spaces/canvas/group-geometry';
 import { NodeContent } from '@web/spaces/canvas/nodes/_shared/NodeContent';
 
 describe('NodeContent', () => {
@@ -34,6 +35,9 @@ describe('NodeContent', () => {
     expect(empty.className).not.toContain('h-48');
     expect(empty.closest('[data-testid="node-media-inset"]')).not.toBeNull();
     expect(empty.style.aspectRatio).toBe('1600 / 400');
+    // Never shorter than what the placeholder needs, which layout reserves too.
+    expect(empty.style.minHeight).toBe(`${PLANNED_BODY_MIN_PX}px`);
+    expect(empty).not.toHaveClass('overflow-hidden');
     expect(screen.getByTestId('ph')).toBeInTheDocument();
   });
 

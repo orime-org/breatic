@@ -8,6 +8,13 @@ import userEvent from '@testing-library/user-event';
 import { NodePlaceholder } from '@web/spaces/canvas/nodes/_shared/NodePlaceholder';
 
 describe('NodePlaceholder', () => {
+  // inner#1303 §6.7: a failure line can be longer than the node is wide; it
+  // wraps inside the node (the Button primitive keeps its text on one line).
+  it('lets its lines wrap inside the node', () => {
+    render(<NodePlaceholder modality='image' />);
+    expect(screen.getByTestId('node-placeholder')).toHaveClass('whitespace-normal');
+  });
+
   it('text modality: two lines — "write" action + the shared right-click hint', () => {
     render(<NodePlaceholder modality='text' />);
     const ph = screen.getByTestId('node-placeholder');

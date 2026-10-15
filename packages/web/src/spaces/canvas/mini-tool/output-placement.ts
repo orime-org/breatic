@@ -17,7 +17,7 @@ import {
   type MiniToolSpec,
 } from '@breatic/shared/mini-tools';
 
-import { EMPTY_NODE_SIZE, mediaNodeHeight } from '@web/spaces/canvas/group-geometry';
+import { EMPTY_NODE_SIZE, MEDIA_FRAME_PX, PLANNED_BODY_MIN_PX, mediaNodeHeight } from '@web/spaces/canvas/group-geometry';
 import { GAP_PX, NODE_STEP } from '@web/spaces/canvas/drop-layout';
 import { gridTileRects } from '@web/spaces/canvas/mini-tool/grid-export';
 import { MODALITY_LABEL } from '@web/spaces/canvas/nodes/_shared/modality';
@@ -41,13 +41,14 @@ export interface PlacedOutput {
 }
 
 /**
- * How tall a node is with this picture in it, drawn at the node's width.
+ * How tall a node is with this picture in it, drawn at the node's width, and
+ * never shorter than its body while it waits for the picture.
  * @param size - The picture's pixels, when known.
  * @returns The node's height in flow coordinates.
  */
 function nodeHeight(size: OutputSize | undefined): number {
   if (!size || size.width <= 0 || size.height <= 0) return EMPTY_NODE_SIZE.height;
-  return mediaNodeHeight(size.width, size.height);
+  return Math.max(mediaNodeHeight(size.width, size.height), PLANNED_BODY_MIN_PX + MEDIA_FRAME_PX);
 }
 
 /**
@@ -58,8 +59,9 @@ function nodeHeight(size: OutputSize | undefined): number {
  * @returns True for those tools.
  */
 export function keepsSourceSize(spec: MiniToolSpec): boolean {
-  if (spec.markup === true) return true;
-  return !isModelTool(spec) && spec.params.some((param) => param.kind === 'adjust');
+  // A browser tool's result is drawn here; a server tool's size is the server's.
+  if (isModelTool(spec) || spec.run.kind !== 'browser') return false;
+  return spec.markup === true || spec.params.some((param) => param.kind === 'adjust');
 }
 
 /**

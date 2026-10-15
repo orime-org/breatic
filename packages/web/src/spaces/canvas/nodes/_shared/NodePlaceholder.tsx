@@ -116,7 +116,7 @@ export function NodePlaceholder({
       data-testid='node-placeholder'
       data-modality={modality}
       className={cn(
-        'flex h-full w-full flex-col items-center justify-center gap-2 text-center',
+        'flex h-full w-full flex-col items-center justify-center gap-2 whitespace-normal text-center',
         waiting ? 'p-1' : 'p-4',
         failed ? 'text-status-error' : 'text-muted-foreground hover:text-foreground',
       )}

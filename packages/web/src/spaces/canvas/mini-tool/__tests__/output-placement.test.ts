@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { miniToolById, type MiniToolSpec } from '@breatic/shared/mini-tools';
 
 import { NODE_STEP } from '@web/spaces/canvas/drop-layout';
+import { MEDIA_FRAME_PX, PLANNED_BODY_MIN_PX, mediaNodeHeight } from '@web/spaces/canvas/group-geometry';
 import { outputPlacementOf, plannedOutputSizes } from '@web/spaces/canvas/mini-tool/output-placement';
 
 const base = {
@@ -195,11 +196,25 @@ describe('plannedOutputSizes for a result the size of its source', () => {
     expect(plannedOutputSizes(miniToolById(id)!, {}, SOURCE)).toEqual([SOURCE]);
   });
 
-  it.each(['image.crop', 'image.expand', 'image.upscale'])('plans nothing for %s, whose result size is not the source’s', (id) => {
+  it.each(['image.crop', 'image.expand', 'image.upscale', 'video.adjust'])('plans nothing for %s, whose result size is not the source’s', (id) => {
     expect(plannedOutputSizes(miniToolById(id)!, {}, SOURCE)).toEqual([]);
   });
 
   it('plans nothing while the source’s size is not known', () => {
     expect(plannedOutputSizes(miniToolById('image.adjust')!, {}, {})).toEqual([]);
+  });
+});
+
+// A planned result too flat for its placeholder is laid out at the height the
+// placeholder needs, so the failure line and the peer line are seen (§6.7).
+describe('outputPlacementOf for a flat planned result', () => {
+  it('lays a result out no shorter than its waiting body needs', () => {
+    const [placed] = outputPlacementOf(miniToolById('image.adjust')!, {}, [{ width: 1920, height: 135 }], 'a');
+    expect(placed?.height).toBe(PLANNED_BODY_MIN_PX + MEDIA_FRAME_PX);
+  });
+
+  it('lays a taller result out at its own height', () => {
+    const [placed] = outputPlacementOf(miniToolById('image.adjust')!, {}, [{ width: 400, height: 300 }], 'a');
+    expect(placed?.height).toBe(mediaNodeHeight(400, 300));
   });
 });

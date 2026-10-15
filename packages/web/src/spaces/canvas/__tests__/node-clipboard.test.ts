@@ -214,6 +214,15 @@ describe('cloneForPaste', () => {
     expect(typeof nodes[0]?.data.createdAt).toBe('number');
   });
 
+  // A result node still waiting carries the size its picture will have; that
+  // belongs to its run, and the copy has none (copy carries content, not state).
+  it('leaves the media fields of a node that holds nothing behind', () => {
+    const p = payload([node('a', 'image', { x: 0, y: 0 }, { name: 'ADJUST-x', mediaWidth: 1000, mediaHeight: 4000 })]);
+    const [clone] = cloneForPaste(p, 'u-7', { dx: 0, dy: 0 }).nodes;
+    expect(clone?.data).not.toHaveProperty('mediaWidth');
+    expect(clone?.data).not.toHaveProperty('mediaHeight');
+  });
+
   it('keeps a video copy\'s six media fields, so the cut panel can lay frames on it', () => {
     const media = {
       coverUrl: 'clip-cover.jpg',

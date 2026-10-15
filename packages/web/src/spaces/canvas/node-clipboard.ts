@@ -12,7 +12,7 @@
  */
 
 import type { CanvasNodeFields } from '@breatic/shared';
-import { newId } from '@breatic/shared';
+import { NODE_MEDIA_KEYS, newId } from '@breatic/shared';
 import type { CanvasEdge, SnapshotNode } from '@web/data/yjs/canvas-space';
 import { MENTION_SOURCE_ID_ATTR, REFERENCE_MENTION_NODE } from '@web/features/reference-mention/mention-node';
 import { MENTION_LABEL_ATTR } from '@web/spaces/canvas/generate/reference-mention';
@@ -382,6 +382,9 @@ export function cloneForPaste(
 function contentOf(data: Record<string, unknown>): Record<string, unknown> {
   const out = { ...data };
   for (const key of NOT_COPIED) delete out[key];
+  // With nothing in the node, its media fields describe a result still to come
+  // (inner#1303 §6.7), which is its run's, not content.
+  if (typeof out.content !== 'string' || out.content === '') for (const key of NODE_MEDIA_KEYS) delete out[key];
   return out;
 }
 

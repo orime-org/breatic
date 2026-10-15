@@ -21,6 +21,12 @@ afterEach(() => {
 });
 
 describe('VideoNode', () => {
+  // A node that holds nothing shows no pixel size, whatever its data carries.
+  it('shows no pixel size while it holds nothing', () => {
+    render(<VideoNode data={{ handling: false, width: 1280, height: 720 }} />);
+    expect(screen.queryByTestId('node-resolution-badge')).toBeNull();
+  });
+
   it('renders placeholder when no url', () => {
     render(<VideoNode data={{ handling: false }} />);
     expect(screen.getByTestId('node-placeholder')).toBeInTheDocument();

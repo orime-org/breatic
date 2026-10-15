@@ -103,3 +103,12 @@ describe('a node whose content is swapped', () => {
     expect(result.current.resolution).toBeUndefined();
   });
 });
+
+// inner#1303 §6.7: a tool's result node is built carrying the size its picture
+// will have; until the picture lands there is no picture to give a size of.
+describe('a node that holds nothing yet', () => {
+  it('shows no size, whatever its data says', () => {
+    const { result } = renderHook(() => useNodeResolution(undefined, 1920, 1080));
+    expect(result.current.resolution).toBeUndefined();
+  });
+});

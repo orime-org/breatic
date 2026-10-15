@@ -3,6 +3,7 @@
 
 import * as React from 'react';
 
+import { PLANNED_BODY_MIN_PX } from '@web/spaces/canvas/group-geometry';
 import { NodeMediaInset } from '@web/spaces/canvas/nodes/_shared/NodeMediaInset';
 import { NodeUploadMarkOverlay } from '@web/spaces/canvas/nodes/_shared/NodeUploadMarkOverlay';
 
@@ -53,8 +54,7 @@ export function NodeContent({
       <NodeMediaInset>
         <div
           data-testid='node-content-empty'
-          className='overflow-hidden'
-          style={{ aspectRatio: `${emptySize.width} / ${emptySize.height}` }}
+          style={{ aspectRatio: `${emptySize.width} / ${emptySize.height}`, minHeight: PLANNED_BODY_MIN_PX }}
         >
           {placeholder}
         </div>
