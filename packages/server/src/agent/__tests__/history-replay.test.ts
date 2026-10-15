@@ -149,7 +149,7 @@ describe("replaying the history as it was sent", () => {
   it.each([
     ["the system prompt", { ...PREFIX, system: "Memory changed." }],
     ["the model", { ...PREFIX, modelId: "deepseek/deepseek-v4-pro" }],
-    ["the tools", { ...PREFIX, tools: {} }],
+    ["the tool set", { ...PREFIX, tools: {} }],
   ])("takes a reply's thinking out when %s is no longer what its turn sent", (_, now) => {
     const rows = [userRow(1, { messages: [ASKED] }), replyAfter(1, [ASKED], ANSWERED)];
 
