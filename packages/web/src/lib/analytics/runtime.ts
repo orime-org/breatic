@@ -15,7 +15,6 @@ import {
   type AnalyticsEventName,
   type BrowserChoices,
   type ConsentSnapshot,
-  type NoticeShown,
 } from '@breatic/shared';
 import {
   AMPLITUDE_API_KEY,
@@ -30,6 +29,7 @@ import {
   setAdsView,
   setConsentLanguage,
   startConsentBanner,
+  type ConsentHost,
   type ConsentText,
 } from '@web/lib/analytics/consent-banner';
 import { readAttribution } from '@web/lib/analytics/attribution';
@@ -53,7 +53,7 @@ let amplitude: Amplitude | null = null;
 // Settles once the SDK has started; calls made before then are queued by the SDK and replayed later.
 let sdkStarted: Promise<void> | null = null;
 let choice: BrowserChoices | null = null;
-// Whether `adsDecision` lets ads run in this browser; the page decides it, with the account's events when signed in.
+// Whether `adsAllowed` lets ads run in this browser; the page decides it, with the account's switch when signed in.
 let adsAllowed = false;
 /** The signed-in account; null when nobody is, undefined until the app knows. */
 let account: AnalyticsUser | null | undefined = undefined;
@@ -76,6 +76,7 @@ const listeners = new Set<(consent: ConsentSnapshot) => void>();
  * @param options.appVersion - The build's version, sent with every event.
  * @param options.text - Reads the banner's text in the current language.
  * @param options.privacyUrl - The privacy policy.
+ * @param options.host - The signed-in account, for presses that depend on it.
  * @param options.onError - Receives a failure applying a choice.
  */
 export async function start(options: {
@@ -84,6 +85,7 @@ export async function start(options: {
   appVersion: string;
   text: () => ConsentText;
   privacyUrl: string;
+  host: ConsentHost;
   onError: (err: unknown) => void;
 }): Promise<void> {
   reportError = options.onError;
@@ -96,6 +98,7 @@ export async function start(options: {
     text: options.text,
     privacyUrl: options.privacyUrl,
     country: countryLookup,
+    host: options.host,
     onChoice: (next) => void apply(next),
   });
   country = await countryLookup;
@@ -108,7 +111,7 @@ export async function start(options: {
  */
 async function apply(next: BrowserChoices | null): Promise<void> {
   choice = next;
-  if (next?.ads?.value !== true) setAds({ allowed: false, known: true, notice: currentNotice, adsOn: false });
+  if (next?.ads?.value !== true) setAds({ ...currentView, allowed: false, known: true, adsOn: false });
   const snapshot = consentSnapshot();
   for (const listener of listeners) listener(snapshot);
   try {
@@ -253,19 +256,19 @@ function accountChanged(refresh: boolean): void {
   });
 }
 
-// The opt-out notice the page last decided on.
-let currentNotice: NoticeShown = false;
+// The ads view the page last decided on.
+let currentView: AdsView = { allowed: false, known: true, status: null, optedOut: false, adsOn: false };
 
 /**
  * Take the page's ads decision: load or stop the Google tag and set what the
- * settings window shows.
+ * windows show.
  * @param decision - The page's ads view; while it is not `known` nothing was
  *   refused, so the stored ad click is kept.
  */
 export function setAds(decision: AdsView): void {
   adsAllowed = decision.allowed;
-  currentNotice = decision.notice;
-  setAdsView({ notice: decision.notice, adsOn: decision.adsOn });
+  currentView = decision;
+  setAdsView(decision);
   applyAds(decision.allowed);
   // A category not granted keeps no cookies, whether or not this page loaded its vendor.
   if (!decision.allowed && decision.known) clearStorage('_gcl_');
@@ -359,7 +362,7 @@ export function consentSnapshot(): ConsentSnapshot {
 }
 
 /**
- * Each category's choice in force, for the account record and the ads decision.
+ * Each category's choice in force, for the ads decision.
  * @returns The choices, or null while none was read.
  */
 export function browserChoices(): BrowserChoices | null {

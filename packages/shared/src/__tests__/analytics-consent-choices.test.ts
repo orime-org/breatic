@@ -45,11 +45,8 @@ describe("parseConsentChoices", () => {
     expect(parseConsentChoices(encodeURIComponent("[1]"), NOW)).toEqual(none);
   });
 
-  it("reads an entry written with the fields of an earlier shape by its value", () => {
-    const parsed = parseConsentChoices(
-      cookie(["ads"], { ads: adsData({ decisionId: "11111111-1111-4111-8111-111111111111", noticeShown: "gpc" }) }),
-      NOW,
-    );
+  it("reads an entry that carries fields it does not know by its value", () => {
+    const parsed = parseConsentChoices(cookie(["ads"], { ads: adsData({ legacyId: "1", legacyNotice: "gpc" }) }), NOW);
     expect(parsed.ads).toEqual({ value: true, source: "banner", decidedAt: iso(NOW - DAY), revision: CONSENT_REVISION });
   });
 

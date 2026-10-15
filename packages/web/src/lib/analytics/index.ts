@@ -9,23 +9,22 @@
 
 import { captureException } from '@sentry/react';
 import {
-  adsAllowed,
   getLocale,
   onLocaleChange,
   t,
-  type AdsOutcome,
+  type AccountAdsView,
+  type AdsSharing,
   type AnalyticsEventName,
   type Attribution,
   type ConsentSnapshot,
-  type Ownership,
 } from '@breatic/shared';
 import { apiGet, apiPut } from '@web/data/api/request';
 import { ApiException } from '@web/data/api/types';
 import { getSupportedLocales } from '@web/i18n/locale-bootstrap';
 import { captureAttribution, clearAttribution, readAttribution } from '@web/lib/analytics/attribution';
 import { ANALYTICS_CONFIGURED } from '@web/lib/analytics/build-config';
-import { adsViewFor, readConsentView, reportBody, type AccountConsentView } from '@web/lib/analytics/consent-decision';
-import type { ConsentText } from '@web/lib/analytics/consent-banner';
+import { adsViewFor, readAdsSharing } from '@web/lib/analytics/consent-decision';
+import type { ConsentHost, ConsentText } from '@web/lib/analytics/consent-banner';
 import type { AnalyticsUser } from '@web/lib/analytics/runtime';
 import type * as RuntimeModule from '@web/lib/analytics/runtime';
 import { PRIVACY_URL } from '@web/lib/official-home';
@@ -37,12 +36,12 @@ let consent: ConsentSnapshot | undefined;
 /** The signed-in account; null when nobody is, undefined until the app knows. */
 let signedIn: string | null | undefined = undefined;
 
-// The account's ads record and the cookie's ads decision it was read for; null until read, or when the read failed.
-let account: { view: AccountConsentView; cookieId: string | undefined } | null = null;
-// Bumped by every account request and every account change, so only the latest request's answer is taken.
+// The account's ad switch; null until read for the signed-in account, or when the read failed.
+let sharing: AdsSharing | null = null;
+// Bumped by every account request and every account change, so only the latest answer is taken.
 let syncSeq = 0;
-// The server's clock minus this browser's, from the last answer: the account's receipts are dated by the server.
-let clockOffset = 0;
+// Callers waiting for the account's switch to be known or to fail.
+const settledWaiters: Array<() => void> = [];
 
 /**
  * The banner's text in the current interface language.
@@ -57,13 +56,24 @@ function consentText(): ConsentText {
       rejectAll: t('consent.banner.rejectAll'),
       settings: t('consent.banner.settings'),
       gpc: t('consent.banner.gpc'),
+      optedOut: t('consent.banner.optedOut'),
     },
     settings: {
       title: t('consent.settings.title'),
       save: t('consent.settings.save'),
       close: t('consent.settings.close'),
       note: t('consent.settings.note'),
-      notice: { gpc: t('consent.settings.notice.gpc'), account: t('consent.settings.notice.account') },
+      status: {
+        gpc: t('consent.settings.status.gpc'),
+        account: t('consent.settings.status.account'),
+        browser: t('consent.settings.status.browser'),
+      },
+      confirm: {
+        body: t('consent.settings.confirm.body'),
+        yes: t('consent.settings.confirm.yes'),
+        no: t('consent.settings.confirm.no'),
+      },
+      error: t('consent.settings.error'),
       necessary: { title: t('consent.settings.necessary.title'), description: t('consent.settings.necessary.description') },
       analytics: { title: t('consent.settings.analytics.title'), description: t('consent.settings.analytics.description') },
       ads: { title: t('consent.settings.ads.title'), description: t('consent.settings.ads.description') },
@@ -102,7 +112,7 @@ export function startProductAnalytics(): void {
         clearAttribution();
         attributionCaptured = false;
       }
-      void syncAccount(module);
+      decideAds(module);
     });
     onLocaleChange((language) => void module.setLanguage(language));
     await module.start({
@@ -111,6 +121,7 @@ export function startProductAnalytics(): void {
       appVersion: import.meta.env.VITE_APP_VERSION ?? '',
       text: consentText,
       privacyUrl: PRIVACY_URL,
+      host: consentHost,
       onError: (err) => captureException(err, { tags: { area: 'product_analytics' } }),
     });
     module.followPage(pathname);
@@ -128,71 +139,83 @@ function withRuntime(fn: (module: Runtime) => void): void {
 }
 
 /**
- * Whose receipt the cookie's ads decision is, as far as this page knows.
- * @param decisionId - The cookie's ads decision id.
- * @returns The ownership to weigh the cookie with.
+ * The account as ads decisions see it.
+ * @returns Signed out, not known yet, or the account's switch.
  */
-function ownershipOf(decisionId: string | undefined): Ownership {
-  if (decisionId === undefined || account === null) return 'none';
-  if (account.view.receipts.some((r) => r.decisionId === decisionId)) return 'self';
-  return decisionId === account.cookieId ? account.view.ownership : 'none';
+function accountView(): AccountAdsView {
+  if (signedIn === null) return 'signedOut';
+  return signedIn === undefined || sharing === null ? 'unknown' : sharing;
 }
 
 /**
  * Decide whether ads run in this browser (design §4.4.6) and hand the result
- * to the runtime: signed out, this browser's own choice and GPC; signed in,
- * with the account's events too; not while the account's record is unknown,
- * which keeps ads off without counting as a refusal.
+ * to the runtime: this browser's own choice and GPC, with the account's switch
+ * when signed in; not while the switch is unknown, which keeps ads off without
+ * counting as a refusal.
  * @param module - The loaded runtime.
  */
 function decideAds(module: Runtime): void {
-  const choices = module.browserChoices();
   const gpc = (navigator as Navigator & { globalPrivacyControl?: boolean }).globalPrivacyControl === true;
-  const now = Date.now() + clockOffset;
-  const at = new Date(now).toISOString();
-  const browser = { choice: choices?.ads ?? null, gpcAt: gpc ? at : null, at };
-  let outcome: AdsOutcome | null = null;
-  if (signedIn === null) outcome = adsAllowed({ receipts: [], gpcSeenAt: null }, browser, 'none', now);
-  else if (signedIn !== undefined && account !== null) {
-    outcome = adsAllowed(account.view, browser, ownershipOf(browser.choice?.decisionId), now);
-  }
-  module.setAds(adsViewFor({ signedIn: typeof signedIn === 'string', outcome, gpc, ads: browser.choice }));
+  module.setAds(adsViewFor({ browserAds: module.browserChoices()?.ads?.value ?? null, gpc, account: accountView() }));
+}
+
+/** Release whoever waits for the account's switch to be known or to fail. */
+function settleAccount(): void {
+  for (const resolve of settledWaiters.splice(0)) resolve();
 }
 
 /**
- * Send this browser's choices to the account and read the account's ads record
- * back (design §4.4.6), then decide ads again. Signed out, decide on the
- * browser alone. A failed request leaves ads off. Only the latest request's
- * answer is taken.
+ * Read the account's ad switch (design §4.4.6), then decide ads again. A
+ * failed read leaves the switch unknown, which keeps ads off. Only the
+ * latest request's answer is taken.
  * @param module - The loaded runtime.
+ * @returns True once the switch is known.
  */
-async function syncAccount(module: Runtime): Promise<void> {
+async function syncAccount(module: Runtime): Promise<boolean> {
   const seq = ++syncSeq;
-  if (typeof signedIn !== 'string') {
-    decideAds(module);
-    return;
-  }
-  const choices = module.browserChoices();
-  const cookieId = choices?.ads?.decisionId;
-  // sentAt lets the server correct this browser's clock, which stamped decidedAt.
-  const body = choices === null ? null : reportBody(choices, module.consentRevision(), new Date().toISOString());
-  decideAds(module);
   try {
-    const data = body
-      ? await apiPut<unknown>('/users/me/analytics-consent', body)
-      : await apiGet<unknown>('/users/me/analytics-consent');
-    if (seq !== syncSeq) return;
-    const view = readConsentView(data);
-    if (view === null) throw new Error('account consent answer is not the account record');
-    clockOffset = Date.parse(view.serverTime) - Date.now();
-    account = { view, cookieId };
+    const answer = readAdsSharing(await apiGet<unknown>('/users/me/ads-sharing'));
+    if (seq !== syncSeq) return false;
+    if (answer === null) throw new Error('ads sharing answer is not the account switch');
+    sharing = answer;
   } catch (err) {
-    if (seq !== syncSeq) return;
-    account = null;
+    if (seq !== syncSeq) return false;
+    sharing = null;
     captureException(err, { tags: { area: 'product_analytics' } });
   }
+  settleAccount();
   decideAds(module);
+  return sharing !== null;
 }
+
+/**
+ * Open or close the account's ad switch (design §4.4.4), then decide ads again.
+ * @param allowed - Whether ads are turned on.
+ * @returns True once the server took it.
+ */
+async function putAdsSharing(allowed: boolean): Promise<boolean> {
+  const seq = ++syncSeq;
+  try {
+    const answer = readAdsSharing(await apiPut<unknown>('/users/me/ads-sharing', { allowed }));
+    if (answer === null) throw new Error('ads sharing answer is not the account switch');
+    if (seq === syncSeq) sharing = answer;
+    return true;
+  } catch (err) {
+    captureException(err, { tags: { area: 'product_analytics' } });
+    return false;
+  } finally {
+    withRuntime(decideAds);
+  }
+}
+
+/** What the banner asks about the account. */
+const consentHost: ConsentHost = {
+  account: accountView,
+  accountSettled: () =>
+    signedIn === null || sharing !== null ? Promise.resolve() : new Promise((resolve) => settledWaiters.push(resolve)),
+  refreshAccount: async () => (typeof signedIn === 'string' && runtime !== null ? syncAccount(await runtime) : false),
+  putAdsSharing,
+};
 
 /**
  * Send a browser event.
@@ -220,7 +243,7 @@ export function reportConversion(
 }
 
 /**
- * Name the signed-in account, send it this browser's choices and read its ads record.
+ * Name the signed-in account and read its ad switch.
  * @param user - The account.
  */
 export function identifyUser(user: AnalyticsUser): void {
@@ -228,7 +251,7 @@ export function identifyUser(user: AnalyticsUser): void {
   signedIn = user.id;
   if (changed) {
     syncSeq += 1;
-    account = null;
+    sharing = null;
   }
   withRuntime((module) => {
     module.identify(user);
@@ -240,7 +263,8 @@ export function identifyUser(user: AnalyticsUser): void {
 export function resetUser(): void {
   signedIn = null;
   syncSeq += 1;
-  account = null;
+  sharing = null;
+  settleAccount();
   withRuntime((module) => {
     module.reset();
     decideAds(module);
