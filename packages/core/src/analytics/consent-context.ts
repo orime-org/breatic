@@ -12,7 +12,7 @@
  */
 
 import { AsyncLocalStorage } from "node:async_hooks";
-import { NO_CONSENT, type BrowserAdsSnapshot, type ConsentSeen, type ConsentSnapshot } from "@breatic/shared";
+import { NO_ADS_BROWSER, NO_CONSENT, type BrowserAdsSnapshot, type ConsentSeen, type ConsentSnapshot } from "@breatic/shared";
 
 /** What a request's browser says beyond its consent snapshot. */
 export interface RequestBrowser {
@@ -23,9 +23,6 @@ export interface RequestBrowser {
 }
 
 const store = new AsyncLocalStorage<{ consent: ConsentSnapshot; browser: RequestBrowser | null }>();
-
-// A browser with no choice, which never allows ads.
-const NO_ADS: BrowserAdsSnapshot = Object.freeze({ consent: false, gpc: false });
 
 /**
  * Run a request with the given consent in scope.
@@ -54,7 +51,7 @@ export function currentConsent(): ConsentSnapshot {
  *   a browser with no choice, which never allows ads.
  */
 export function currentAdsBrowser(): BrowserAdsSnapshot {
-  return store.getStore()?.browser?.ads ?? NO_ADS;
+  return store.getStore()?.browser?.ads ?? NO_ADS_BROWSER;
 }
 
 /**

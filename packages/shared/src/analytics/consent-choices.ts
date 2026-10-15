@@ -89,14 +89,22 @@ function readEntry(entry: unknown, value: boolean, revision: number): BrowserCho
 }
 
 /**
+ * Each category's value in these choices, unset meaning off.
+ * @param choices - The choices in force.
+ * @returns The snapshot.
+ */
+export function snapshotOf(choices: BrowserChoices): ConsentSnapshot {
+  return { analytics: choices.analytics?.value ?? false, ads: choices.ads?.value ?? false };
+}
+
+/**
  * This browser's own value per category, unset meaning off.
  * @param raw - The cookie value.
  * @param now - The current time, epoch ms.
  * @returns The snapshot.
  */
 export function parseConsentCookie(raw: string | undefined, now: number): ConsentSnapshot {
-  const { analytics, ads } = parseConsentChoices(raw, now);
-  return { analytics: analytics?.value ?? false, ads: ads?.value ?? false };
+  return snapshotOf(parseConsentChoices(raw, now));
 }
 
 /** The choices a signed-in request records on the account (`users.consent_seen`). */
@@ -112,6 +120,11 @@ export interface ConsentSeen {
  * @returns The record, or null when there is nothing to record.
  */
 export function consentSeenFrom(choices: BrowserChoices): ConsentSeen | null {
+  /**
+   * One category's choice as the account records it.
+   * @param c - The choice in force, or null.
+   * @returns The record, or undefined for none or a regional default.
+   */
   const pick = (c: BrowserChoice | null): SeenChoice | undefined =>
     c === null || c.source === "implicit" ? undefined : { value: c.value, revision: c.revision };
   const analytics = pick(choices.analytics);

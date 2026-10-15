@@ -41,6 +41,9 @@ export const BrowserAdsSnapshotSchema = z.object({ consent: z.boolean(), gpc: z.
 /** This browser's ads consent and whether it sent GPC. */
 export type BrowserAdsSnapshot = z.infer<typeof BrowserAdsSnapshotSchema>;
 
+/** A browser with no ads choice, which never allows ads. */
+export const NO_ADS_BROWSER: BrowserAdsSnapshot = Object.freeze({ consent: false, gpc: false });
+
 /** A category's choice last seen on a signed-in request (`users.consent_seen`). */
 export interface SeenChoice {
   readonly value: boolean;
@@ -58,6 +61,7 @@ function accountAllows(account: AccountAdsView): boolean {
 
 /**
  * Whether ads may run.
+ * @param input - What decides it.
  * @param input.browser - This browser's ads consent and GPC, or null for an event no browser caused.
  * @param input.account - The account's view.
  * @param input.seen - The ads choice last seen while signed in, for events no browser caused.
@@ -79,6 +83,7 @@ export function adsAllowed(input: {
 /**
  * Whether ads are opted out here: the banner then offers no ads and turning
  * them on takes a confirmation (design §4.4.4).
+ * @param input - What decides it.
  * @param input.browserAds - This browser's ads choice in force, or null without one.
  * @param input.gpc - Whether this browser sends GPC.
  * @param input.account - The account's view; an unknown switch counts as not opted out.
@@ -94,6 +99,7 @@ export type AdsStatus = "gpc" | "account" | "browser" | null;
 
 /**
  * The settings window's status line (design §4.4.6).
+ * @param input - What decides it.
  * @param input.gpc - Whether this browser sends GPC.
  * @param input.account - The account's view.
  * @returns Which line to show, or null for none.

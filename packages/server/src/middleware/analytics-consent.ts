@@ -13,7 +13,7 @@
 import type { MiddlewareHandler } from "hono";
 import { getCookie } from "hono/cookie";
 import { currentAdsBrowser, currentConsentSeen, logger, recordSignedInRequest, runWithConsent } from "@breatic/core";
-import { CONSENT_COOKIE_NAME, consentSeenFrom, parseConsentChoices } from "@breatic/shared";
+import { CONSENT_COOKIE_NAME, consentSeenFrom, parseConsentChoices, snapshotOf } from "@breatic/shared";
 
 /**
  * Put the requesting browser's consent in scope for the rest of the request:
@@ -27,7 +27,7 @@ import { CONSENT_COOKIE_NAME, consentSeenFrom, parseConsentChoices } from "@brea
  */
 export const analyticsConsentMiddleware: MiddlewareHandler = (c, next) => {
   const choices = parseConsentChoices(getCookie(c, CONSENT_COOKIE_NAME), Date.now());
-  const consent = { analytics: choices.analytics?.value ?? false, ads: choices.ads?.value ?? false };
+  const consent = snapshotOf(choices);
   const browser = { ads: { consent: consent.ads, gpc: c.req.header("Sec-GPC") === "1" }, seen: consentSeenFrom(choices) };
   return runWithConsent(consent, next, browser);
 };

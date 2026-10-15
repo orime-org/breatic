@@ -12,6 +12,7 @@
 import {
   adClickFrom,
   BrowserAdsSnapshotSchema,
+  NO_ADS_BROWSER,
   NO_CONSENT,
   type AdClick,
   type BrowserAdsSnapshot,
@@ -27,7 +28,6 @@ export interface CheckoutSnapshot {
 }
 
 /** A browser with no ads choice: what a missing or unreadable snapshot stands for. */
-const UNSET_ADS_BROWSER: BrowserAdsSnapshot = Object.freeze({ consent: false, gpc: false });
 
 /**
  * Take the snapshot for an order placed in the current request. The click is
@@ -69,7 +69,7 @@ export function readCheckoutSnapshot(metadata: Record<string, unknown> | null | 
       typeof consent?.analytics === "boolean" && typeof consent.ads === "boolean"
         ? { analytics: consent.analytics, ads: consent.ads }
         : NO_CONSENT,
-    adsBrowser: adsBrowser.success ? adsBrowser.data : UNSET_ADS_BROWSER,
+    adsBrowser: adsBrowser.success ? adsBrowser.data : NO_ADS_BROWSER,
     click: typeof click?.at === "string" && hasClickId(click) ? (click as unknown as AdClick) : null,
   };
 }
