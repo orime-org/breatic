@@ -50,7 +50,10 @@ interface Made {
  */
 async function createProject(a: BrowserContext, studioId: string, slug: string, name: string): Promise<Made> {
   const created = await dataOf<{ id: string; name: string }>(
-    await a.request.post('/api/v1/projects', { data: { studioId, name, slug, spaceType: 'canvas' } }),
+    await a.request.post('/api/v1/projects', {
+      headers: { 'Idempotency-Key': crypto.randomUUID() },
+      data: { studioId, name, slug, spaceType: 'canvas' },
+    }),
     `create ${name}`,
   );
   return { id: created.id, slug, name: created.name };

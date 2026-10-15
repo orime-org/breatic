@@ -251,6 +251,9 @@ export async function startCheckout(input: {
   const session = await getStripeClient().checkout.sessions.create({
     mode: "subscription",
     customer: customerId,
+    // No expires_at: Stripe's default lifetime of 24 hours is the most it
+    // accepts, and the last re-send of this press (inner#1490) arrives before
+    // it runs out.
     line_items: [
       {
         price: getSubscriptionPlan(input.tier, input.period).stripePriceId,
@@ -572,7 +575,8 @@ function subscriptionGoneAtStripe(err: unknown): boolean {
  * @param input.period - The period to be billed over from now on.
  * @returns Whether the new tier is in force, and where to pay if not.
  * @throws {ConflictError} if nothing is live, the same tier and period are
- *   already held, or payment is overdue.
+ *   already held, payment is overdue, or an upgrade still waits for its
+ *   payment.
  * @throws {ValidationError} if the target is a lower tier or a shorter period
  *   than the one held.
  */
@@ -602,11 +606,18 @@ export async function changePlan(input: {
   ) {
     throw new ValidationError(t("server.membership.change_not_offered"));
   }
-  if (subscriptionActions(situation, record.cancelAtPeriodEnd).move === "withheld") {
+  const move = subscriptionActions(situation, record.cancelAtPeriodEnd).move;
+  if (move === "withheld") {
     // The paid tier is held while Stripe retries, but selling more during that
     // window would bill a card that is already failing. The panel reads the
     // same answer and draws no entrance, so nobody arrives here by clicking.
     throw new ConflictError(t("server.membership.payment_overdue"));
+  }
+  if (move === "pending") {
+    // An upgrade already waits for its payment; a second move on top of it
+    // would leave two updates pending on one membership. The panel draws no
+    // entrance here either.
+    throw new ConflictError(t("server.membership.upgrade_pending"));
   }
 
   const changedAt = new Date();

@@ -930,6 +930,51 @@ describe('GeneratePanelContainer — 提交路径读模型的提示词声明 (#1
     createSpy.mockRestore();
   });
 
+  // inner#1490: the press is held outside the panel, so a reopened panel
+  // shows it still waiting and a second press sends nothing.
+  it('keeps the press waiting across closing and reopening the panel', async () => {
+    const listSpy = vi
+      .spyOn(modelsApi, 'list')
+      .mockResolvedValue(imageCatalog([{ ...T2I_MODEL, takes_prompt: false }]));
+    let finish: ((v: Awaited<ReturnType<typeof canvasApi.createTask>>) => void) | undefined;
+    const createSpy = vi.spyOn(canvasApi, 'createTask').mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    seedImageNode();
+    mountContainer();
+    act(() => {
+      canvasSessions.of('s').getState().openGeneratePanel('target', 'image');
+    });
+    const first = await screen.findByTestId('generate-execute');
+    await waitFor(() => {
+      expect((first as HTMLButtonElement).disabled).toBe(false);
+    });
+    fireEvent.click(first);
+    await waitFor(() => expect(createSpy).toHaveBeenCalledTimes(1));
+
+    act(() => {
+      canvasSessions.of('s').getState().closeActivePanel();
+    });
+    act(() => {
+      canvasSessions.of('s').getState().openGeneratePanel('target', 'image');
+    });
+    const reopened = await screen.findByTestId('generate-execute');
+    await waitFor(() => expect(reopened).toHaveAttribute('aria-busy', 'true'));
+    fireEvent.click(reopened);
+    expect(createSpy).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      finish?.({ id: 'task-1' } as Awaited<ReturnType<typeof canvasApi.createTask>>);
+    });
+    // The answer closes the panel open on this node, whichever opening it is.
+    expect(canvasSessions.of('s').getState().panelHostId).toBeNull();
+    listSpy.mockRestore();
+    createSpy.mockRestore();
+  });
+
   // A Space hidden while its panel is submitting is the same mount, shown
   // again (inner#1235 A7): the answer that arrives meanwhile still belongs to
   // the opening it was sent from.

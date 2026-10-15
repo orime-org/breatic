@@ -133,6 +133,7 @@
       "checkout_unconfirmed": "暂时无法确认你的会员。",
       "same_tier": "你已经在这一档会员。",
       "payment_overdue": "这个会员有一期款项未付。",
+      "upgrade_pending": "这个会员有一笔升级仍在等待付款。",
       "unavailable": "会员当前不可用。"
     },
     "storage": {
@@ -236,6 +237,11 @@
       "unavailable": "这个工具暂时不可用。",
       "invalidParam": "“{name}”的值这个工具不支持。",
       "foreignSource": "这个文件无法处理。"
+    },
+    "idempotency": {
+      "missing": "页面已更新，请刷新后重试。",
+      "mismatch": "这次请求与之前发出的不一致。",
+      "in_progress": "这次请求仍在处理中。"
     },
     "internal": {
       "lot_not_found": "没有这个编号、经付款购买的积分包。",
@@ -1281,6 +1287,9 @@
     "pageUnavailable": {
       "message": "这个页面没能加载。",
       "action": "刷新"
+    },
+    "runOnce": {
+      "unknownResult": "无法确认刚才的操作是否完成，请查看结果。"
     }
   },
   "members": {

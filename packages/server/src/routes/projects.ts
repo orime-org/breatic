@@ -17,8 +17,10 @@
 import { Hono } from "hono";
 import { frontendOrigin } from "@server/utils/frontend-origin.js";
 import { validate } from "@server/middleware/validate.js";
+import { runOnce } from "@server/middleware/run-once.js";
+import { rateLimitFor } from "@server/middleware/rate-limit.js";
 import { z } from "zod";
-import { projectCreateSchema } from "@server/routes/schemas.js";
+import { idempotencyKeyHeaderSchema, projectCreateSchema } from "@server/routes/schemas.js";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
 import { requireRoleOnParam } from "@server/middleware/role.js";
@@ -47,7 +49,13 @@ projects.use(requireAuth);
  * the first space of that type on first open (B.2).
  * @returns `201` with `{ data: ProjectEntity }`
  */
-projects.post("/", validate("json", projectCreateSchema), async (c) => {
+projects.post(
+  "/",
+  rateLimitFor("project-create", "user"),
+  validate("header", idempotencyKeyHeaderSchema),
+  validate("json", projectCreateSchema),
+  runOnce("project"),
+  async (c) => {
   const user = c.get("user");
   const { studioId, name, slug, spaceType, description } = c.req.valid("json");
   const project = await projectService.create(

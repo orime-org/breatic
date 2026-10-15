@@ -133,6 +133,7 @@
       "checkout_unconfirmed": "아직 멤버십을 확인할 수 없습니다.",
       "same_tier": "이미 이 멤버십입니다.",
       "payment_overdue": "이 멤버십의 결제가 연체되었습니다.",
+      "upgrade_pending": "이 멤버십의 업그레이드가 아직 결제를 기다리고 있습니다.",
       "unavailable": "멤버십을 사용할 수 없습니다."
     },
     "storage": {
@@ -236,6 +237,11 @@
       "unavailable": "이 도구는 지금 사용할 수 없습니다.",
       "invalidParam": "\"{name}\" 값은 이 도구에서 지원하지 않습니다.",
       "foreignSource": "이 파일은 처리할 수 없습니다."
+    },
+    "idempotency": {
+      "missing": "페이지가 업데이트되었습니다. 새로고침한 후 다시 시도하세요.",
+      "mismatch": "이 요청이 이전에 보낸 요청과 일치하지 않습니다.",
+      "in_progress": "이 요청은 아직 처리 중입니다."
     },
     "internal": {
       "lot_not_found": "이 ID로 결제해 구매한 크레딧 팩이 없습니다.",
@@ -1281,6 +1287,9 @@
     "pageUnavailable": {
       "message": "이 페이지를 불러오지 못했습니다.",
       "action": "새로고침"
+    },
+    "runOnce": {
+      "unknownResult": "방금 작업이 완료되었는지 확인하지 못했습니다. 결과를 확인하세요."
     }
   },
   "members": {

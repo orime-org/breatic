@@ -414,6 +414,15 @@ export {
   refundWindowCloses,
   withinRefundWindow,
 } from "@shared/refund-window.js";
+// Run-once requests: the server keeps a finished answer for the scope's
+// retention, the browser stops re-sending before that. Both read this copy.
+export {
+  IDEMPOTENCY_SCOPES,
+  IDEMPOTENCY_RETENTION_SECONDS,
+  IDEMPOTENCY_CLIENT_MARGIN_SECONDS,
+  idempotencyRetryDeadline,
+} from "@shared/idempotency.js";
+export type { IdempotencyScope } from "@shared/idempotency.js";
 export {
   REFUND_LIFECYCLES,
   refundRefusal,

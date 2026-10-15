@@ -4,7 +4,7 @@
 import type { ConversationEntity, StoredMessageMetadata } from '@breatic/shared';
 import type { UIMessage } from 'ai';
 
-import { apiDelete, apiGet, apiPatch, apiPost } from '@web/data/api/request';
+import { apiDelete, apiGet, apiPatch, apiPost, runOnceRequest } from '@web/data/api/request';
 
 /**
  * What a stored message carries besides its parts.
@@ -211,12 +211,14 @@ export const chatApi = {
    * always makes a new one, because being given the existing conversation is
    * exactly what pressing "new conversation" is refusing.
    * @param projectId - Project the new conversation belongs to
+   * @param key - The press's `Idempotency-Key`; a re-send with it makes nothing new
    * @returns The conversation that was just created
    */
-  createConversation(projectId: string): Promise<ConversationOnTheWire> {
+  createConversation(projectId: string, key: string): Promise<ConversationOnTheWire> {
     return apiPost<ConversationOnTheWire, { project_id: string }>(
       '/chat/conversations',
       { project_id: projectId },
+      runOnceRequest(key),
     );
   },
   /**

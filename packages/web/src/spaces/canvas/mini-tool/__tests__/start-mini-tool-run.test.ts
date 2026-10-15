@@ -26,7 +26,12 @@ import { UploadFailedError } from '@web/data/upload/media-upload';
 import { toast } from '@web/lib/toast';
 import { DrawingEmptyError } from '@web/spaces/canvas/mini-tool/export-drawing';
 import { NODE_STEP } from '@web/spaces/canvas/drop-layout';
-import { startMiniToolRun, type MiniToolRun } from '@web/spaces/canvas/mini-tool/start-mini-tool-run';
+import {
+  miniToolIntent,
+  startMiniToolRun,
+  type MiniToolRun,
+} from '@web/spaces/canvas/mini-tool/start-mini-tool-run';
+import { getRunning } from '@web/stores/task-actions-in-flight';
 
 /**
  * A registry tool by id.
@@ -83,6 +88,29 @@ beforeEach(() => {
 });
 
 describe('startMiniToolRun', () => {
+  // inner#1490: the press waits outside the panel, so pressing again from a
+  // reopened panel builds no second set of nodes and sends nothing.
+  it('builds one set of nodes and sends one run for a press made while the first waits', async () => {
+    let finish: (() => void) | undefined;
+    api.run.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = () => resolve({ task_id: 't', status: 'pending' });
+        }),
+    );
+    const first = startMiniToolRun(press());
+    const again = startMiniToolRun(press());
+    await vi.waitFor(() => expect(api.run).toHaveBeenCalledTimes(1));
+    expect(getRunning(miniToolIntent('22222222-2222-4222-8222-222222222222', 'src', 'audio.separate')) !== undefined).toBe(true);
+    finish?.();
+    await Promise.all([first, again]);
+
+    expect(canvas.addNode).toHaveBeenCalledTimes(2);
+    expect(api.run).toHaveBeenCalledTimes(1);
+    expect(api.run.mock.calls[0]?.[1]).toEqual(expect.any(String));
+    expect(getRunning(miniToolIntent('22222222-2222-4222-8222-222222222222', 'src', 'audio.separate')) !== undefined).toBe(false);
+  });
+
   // A6: one node per declared output, named after the source, stacked to its right.
   it('builds one node per output to the right of the source, in one undo entry', async () => {
     const run = press();
@@ -109,7 +137,7 @@ describe('startMiniToolRun', () => {
       source: { url: 'https://cdn/a.mp3', mime_type: 'audio/mpeg', duration: 12 },
       params: {},
       slots: {},
-    });
+    }, expect.any(String));
   });
 
   // A8: a refused request opened no row, so the press is where it is said; the nodes stay.
@@ -208,6 +236,7 @@ describe('startMiniToolRun', () => {
           prompt: 'a cat',
           drawing: { mask: 'https://cdn/INPAINT-mask.png' },
         }),
+        expect.any(String),
       );
     });
 
@@ -215,6 +244,7 @@ describe('startMiniToolRun', () => {
       await startMiniToolRun(drawingPress('image.sketch', 'sketch'));
       expect(api.run).toHaveBeenCalledWith(
         expect.objectContaining({ drawing: { image: 'https://cdn/SKETCH-sketch.png' } }),
+        expect.any(String),
       );
     });
 

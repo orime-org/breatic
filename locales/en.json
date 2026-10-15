@@ -133,6 +133,7 @@
       "checkout_unconfirmed": "We could not confirm your membership yet.",
       "same_tier": "You are already on this membership.",
       "payment_overdue": "Payment for this membership is overdue.",
+      "upgrade_pending": "An upgrade to this membership is still waiting for payment.",
       "unavailable": "Memberships are unavailable."
     },
     "storage": {
@@ -236,6 +237,11 @@
       "unavailable": "This tool is unavailable right now.",
       "invalidParam": "\"{name}\" has a value this tool does not take.",
       "foreignSource": "This file cannot be processed."
+    },
+    "idempotency": {
+      "missing": "This page was updated. Refresh it and try again.",
+      "mismatch": "This request does not match the one sent before.",
+      "in_progress": "This request is still being processed."
     },
     "internal": {
       "lot_not_found": "No credit pack with this id was bought with a payment.",
@@ -1281,6 +1287,9 @@
     "pageUnavailable": {
       "message": "This page didn't load.",
       "action": "Refresh"
+    },
+    "runOnce": {
+      "unknownResult": "Couldn't confirm whether that went through. Check the result."
     }
   },
   "members": {

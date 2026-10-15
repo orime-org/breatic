@@ -37,6 +37,12 @@ vi.mock("@server/middleware/rate-limit.js", () => ({
   },
 }));
 
+// What a repeated press gets back is runOnce's own suite; this one is the
+// route's translation into a service call.
+vi.mock("@server/middleware/run-once.js", () => ({
+  runOnce: () => async (_c: unknown, next: () => Promise<void>) => next(),
+}));
+
 vi.mock("@server/middleware/auth.js", () => ({
   requireAuth: async (c: { set: (k: string, v: unknown) => void }, next: () => Promise<void>) => {
     c.set("user", { id: "u-1" });

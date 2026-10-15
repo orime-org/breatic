@@ -133,6 +133,7 @@
       "checkout_unconfirmed": "暫時無法確認你的會員。",
       "same_tier": "你已經在這一檔會員。",
       "payment_overdue": "這個會員有一期款項未付。",
+      "upgrade_pending": "這個會員有一筆升級仍在等待付款。",
       "unavailable": "會員目前無法使用。"
     },
     "storage": {
@@ -236,6 +237,11 @@
       "unavailable": "這個工具暫時無法使用。",
       "invalidParam": "「{name}」的值這個工具不支援。",
       "foreignSource": "這個檔案無法處理。"
+    },
+    "idempotency": {
+      "missing": "頁面已更新，請重新整理後再試。",
+      "mismatch": "這次請求與之前送出的不一致。",
+      "in_progress": "這次請求仍在處理中。"
     },
     "internal": {
       "lot_not_found": "沒有這個編號、經付款購買的點數包。",
@@ -1281,6 +1287,9 @@
     "pageUnavailable": {
       "message": "這個頁面未能載入。",
       "action": "重新整理"
+    },
+    "runOnce": {
+      "unknownResult": "無法確認剛才的操作是否完成，請查看結果。"
     }
   },
   "members": {

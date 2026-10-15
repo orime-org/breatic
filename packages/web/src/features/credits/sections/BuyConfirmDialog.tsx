@@ -15,6 +15,7 @@ import {
   DialogTitle,
 } from '@web/components/ui/dialog';
 import type { CreditPack } from '@web/data/api/payment';
+import { startCreditsCheckout, useCheckoutPack } from '@web/features/credits/sections/credits-checkout';
 import { RuleLines, formatMoney } from '@web/features/credits/section-chrome';
 import { useTranslation } from '@web/i18n/use-translation';
 import { formatCreditAmount } from '@web/lib/format-credit-amount';
@@ -71,12 +72,6 @@ interface BuyConfirmDialogProps {
   consentText: string;
   /** Called when the dialog closes itself. */
   onOpenChange: (open: boolean) => void;
-  /**
-   * Called with the pack once the buyer confirms. Answers whether the buyer
-   * is on their way to Stripe; a false answer leaves the dialog open and
-   * usable, because there is nothing else for them to do here but try again.
-   */
-  onConfirm: (pack: CreditPack) => Promise<boolean>;
 }
 
 /**
@@ -98,12 +93,14 @@ interface BuyConfirmDialogProps {
  * agreed to states when a purchase stops being refundable, and the rule it
  * refers to would otherwise be neither visible nor readable at the moment of
  * agreeing.
- * @param props - The pack, the rule and the callbacks.
+ *
+ * Confirming starts the checkout; the dialog stays open, its Pay waiting,
+ * until the browser leaves for Stripe or the checkout fails.
+ * @param props - The pack, the rule and the close callback.
  * @param props.pack - The chosen pack, or null when closed.
  * @param props.refundLines - The refund rule, in the reader's language.
  * @param props.consentText - The sentence the tick stands for.
  * @param props.onOpenChange - Called when the dialog closes itself.
- * @param props.onConfirm - Called with the pack once confirmed.
  * @returns The dialog.
  */
 export function BuyConfirmDialog({
@@ -111,30 +108,25 @@ export function BuyConfirmDialog({
   refundLines,
   consentText,
   onOpenChange,
-  onConfirm,
 }: BuyConfirmDialogProps): React.JSX.Element {
   const t = useTranslation();
   const [consented, setConsented] = React.useState(false);
-  const [starting, setStarting] = React.useState(false);
+  // The checkout out, if any, is held outside this dialog (inner#1490): its
+  // own pack's Pay spins, and every other pack's Pay holds without a spin.
+  const outFor = useCheckoutPack();
+  const starting = pack !== null && outFor === pack.priceCents;
 
   // Every purchase is confirmed on its own. Reopening on a different pack with
   // the previous tick still set would carry one purchase's consent
   // into the next.
   React.useEffect(() => {
-    if (pack !== null) {
-      setConsented(false);
-      setStarting(false);
-    }
+    if (pack !== null) setConsented(false);
   }, [pack]);
 
-  const confirm = React.useCallback(async (): Promise<void> => {
+  const confirm = React.useCallback((): void => {
     if (pack === null) return;
-    setStarting(true);
-    // Left disabled on success: the browser is leaving for Stripe, and a
-    // button that comes back to life during that moment is one a second tap
-    // can reach.
-    if (!(await onConfirm(pack))) setStarting(false);
-  }, [onConfirm, pack]);
+    startCreditsCheckout(pack);
+  }, [pack]);
 
   const cancel = React.useCallback(() => {
     onOpenChange(false);
@@ -201,7 +193,7 @@ export function BuyConfirmDialog({
           </Button>
           <Button
             data-testid='confirm-pay'
-            disabled={!consented || starting}
+            disabled={!consented || outFor !== undefined}
             loading={starting}
             onClick={confirm}
           >

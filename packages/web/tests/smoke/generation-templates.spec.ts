@@ -139,7 +139,13 @@ test('a note at the top of a prompt shows in orange, and generation does not get
   let sent: { params?: { prompt?: string } } | null = null;
   await page.route('**/canvas/tasks', async (route) => {
     sent = route.request().postDataJSON() as { params?: { prompt?: string } };
-    await route.abort();
+    // A final answer: an aborted request has no answer, and the press would
+    // keep sending it (inner#1490).
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ data: { id: crypto.randomUUID(), status: 'queued' } }),
+    });
   });
   await page.getByTestId('generate-execute').click();
   await expect.poll(() => sent, { timeout: 15_000 }).not.toBeNull();

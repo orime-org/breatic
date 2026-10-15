@@ -323,7 +323,7 @@ describe("POST /chat/conversations — starting one on purpose", () => {
 
     const res = await app.request("/api/v1/chat/conversations", {
       method: "POST",
-      headers: { "Content-Type": "application/json", Cookie: cookie },
+      headers: { "Content-Type": "application/json", Cookie: cookie, "Idempotency-Key": crypto.randomUUID() },
       body: JSON.stringify({ project_id: projectId }),
     });
 
@@ -332,6 +332,28 @@ describe("POST /chat/conversations — starting one on purpose", () => {
     expect(payload.data.id).not.toBe(first);
     expect(payload.data.title).toBeNull();
 
+    const rows = await sql<{ n: string }[]>`
+      SELECT count(*)::text AS n FROM conversations
+      WHERE project_id = ${projectId} AND deleted_at IS NULL
+    `;
+    expect(Number(rows[0]!.n)).toBe(2);
+  });
+
+  // inner#1490: the browser re-sends an unanswered press with the same key.
+  it("makes one conversation for a press sent twice", async () => {
+    const { projectId, cookie } = await seedProject();
+    await openAndGetId(projectId, cookie);
+    const press = {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: cookie, "Idempotency-Key": crypto.randomUUID() },
+      body: JSON.stringify({ project_id: projectId }),
+    };
+
+    const first = await app.request("/api/v1/chat/conversations", press);
+    const again = await app.request("/api/v1/chat/conversations", press);
+
+    expect(again.headers.get("Idempotent-Replayed")).toBe("true");
+    expect(await again.json()).toEqual(await first.json());
     const rows = await sql<{ n: string }[]>`
       SELECT count(*)::text AS n FROM conversations
       WHERE project_id = ${projectId} AND deleted_at IS NULL
@@ -351,6 +373,7 @@ describe("POST /chat/conversations — starting one on purpose", () => {
       headers: {
         "Content-Type": "application/json",
         Cookie: await loginCookie(outsider!.id),
+        "Idempotency-Key": crypto.randomUUID(),
       },
       body: JSON.stringify({ project_id: projectId }),
     });

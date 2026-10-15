@@ -133,6 +133,7 @@
       "checkout_unconfirmed": "メンバーシップをまだ確認できません。",
       "same_tier": "すでにこのメンバーシップです。",
       "payment_overdue": "このメンバーシップの支払いが遅延しています。",
+      "upgrade_pending": "このメンバーシップのアップグレードはまだ支払い待ちです。",
       "unavailable": "メンバーシップは利用できません。"
     },
     "storage": {
@@ -236,6 +237,11 @@
       "unavailable": "このツールは現在利用できません。",
       "invalidParam": "「{name}」の値はこのツールでは使えません。",
       "foreignSource": "このファイルは処理できません。"
+    },
+    "idempotency": {
+      "missing": "ページが更新されました。再読み込みしてからもう一度お試しください。",
+      "mismatch": "このリクエストは前に送信したものと一致しません。",
+      "in_progress": "このリクエストはまだ処理中です。"
     },
     "internal": {
       "lot_not_found": "この ID の、支払いで購入されたクレジットパックはありません。",
@@ -1281,6 +1287,9 @@
     "pageUnavailable": {
       "message": "このページを読み込めませんでした。",
       "action": "再読み込み"
+    },
+    "runOnce": {
+      "unknownResult": "先ほどの操作が完了したか確認できませんでした。結果を確認してください。"
     }
   },
   "members": {

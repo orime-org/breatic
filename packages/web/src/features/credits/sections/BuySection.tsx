@@ -6,7 +6,6 @@ import { accountTotal } from '@breatic/shared';
 import type { CreditOverview } from '@breatic/shared';
 
 import { Button } from '@web/components/ui/button';
-import { paymentApi } from '@web/data/api/payment';
 import type { CreditPack } from '@web/data/api/payment';
 import { BuyConfirmDialog } from '@web/features/credits/sections/BuyConfirmDialog';
 import { SectionSkeleton } from '@web/components/section-skeleton';
@@ -22,7 +21,6 @@ import {
 } from '@web/features/credits/section-chrome';
 import { useTranslation } from '@web/i18n/use-translation';
 import { formatCreditAmount } from '@web/lib/format-credit-amount';
-import { toast } from '@web/lib/toast';
 import { usePaymentTiers } from '@web/features/credits/use-payment-tiers';
 
 /** The overview to read a balance from. */
@@ -52,30 +50,6 @@ export function BuySection({ overview }: BuySectionProps): React.JSX.Element {
   const [chosen, setChosen] = React.useState<CreditPack | null>(null);
 
   const packs = usePaymentTiers(overview.billing);
-
-  const start = React.useCallback(async (pack: CreditPack): Promise<boolean> => {
-    try {
-      const { url } = await paymentApi.checkout({
-        price_cents: pack.priceCents,
-        // Both ways back are derived from this one: Stripe substitutes the
-        // session id into one and the server writes our own row's id into the
-        // other, so the landing page can tell which way it was.
-        return_url: window.location.href,
-        // Nothing later in the chain knows this. A webhook carries no hint of
-        // it, and the confirmation email prints the purchase time in it.
-        time_zone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-        // Reaching here means the dialog's tick is set: it is what releases
-        // the button this runs from. The server stamps the instant it
-        // arrives, and refuses a request that does not carry it.
-        consented: true,
-      });
-      window.location.assign(url);
-      return true;
-    } catch {
-      toast.error(t('credits.buy.failed'));
-      return false;
-    }
-  }, [t]);
 
   const close = React.useCallback((open: boolean): void => {
     if (!open) setChosen(null);
@@ -133,7 +107,6 @@ export function BuySection({ overview }: BuySectionProps): React.JSX.Element {
         refundLines={packs.data?.refundLines ?? []}
         consentText={packs.data?.consentText ?? ''}
         onOpenChange={close}
-        onConfirm={start}
       />
     </Section>
   );

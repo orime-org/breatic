@@ -18,6 +18,8 @@ import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
 import { validate } from "@server/middleware/validate.js";
+import { runOnce } from "@server/middleware/run-once.js";
+import { idempotencyKeyHeaderSchema } from "@server/routes/schemas.js";
 import { projectService } from "@server/modules";
 import { prepareRun } from "@server/modules/mini-tool/mini-tool.service.js";
 import { startRowedRun } from "@server/modules/task/generation-task.js";
@@ -36,7 +38,13 @@ const tasksQueue = createQueue("tasks");
  * the cause).
  * @throws {AppError} The refusal itself, when no row was opened to carry it.
  */
-miniTools.post("/", rateLimitFor("mini_tool", "user"), validate("json", miniToolRequestSchema), async (c) => {
+miniTools.post(
+  "/",
+  rateLimitFor("mini_tool", "user"),
+  validate("header", idempotencyKeyHeaderSchema),
+  validate("json", miniToolRequestSchema),
+  runOnce("mini-tool"),
+  async (c) => {
   const user = c.get("user");
   const body = c.req.valid("json");
   const spec = miniToolById(body.tool)!;

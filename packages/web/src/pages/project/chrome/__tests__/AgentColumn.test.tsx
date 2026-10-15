@@ -346,4 +346,33 @@ describe('the new conversation button', () => {
       await waitFor(() => expect(button).not.toHaveAttribute('aria-busy'));
     });
   }
+
+  // inner#1490: the press lives outside the column, so collapsing and
+  // reopening it finds the button still waiting, and pressing it again makes
+  // nothing more.
+  it('keeps waiting after the column is closed and opened again', async () => {
+    opensWith([{ id: 'c-1', title: 'Storyboard notes' }]);
+    let settle!: () => void;
+    vi.mocked(chatApi.createConversation).mockReturnValue(
+      new Promise((resolve) => {
+        settle = () => resolve({ id: 'c-2', title: null } as never);
+      }),
+    );
+    const user = userEvent.setup();
+    const first = renderColumn();
+    await waitFor(() =>
+      expect(screen.getByTestId('agent-col-header')).toHaveTextContent('Storyboard notes'),
+    );
+    await user.click(screen.getByTestId('new-conversation'));
+    first.unmount();
+
+    renderColumn();
+    const button = await screen.findByTestId('new-conversation');
+    await waitFor(() => expect(button).toHaveAttribute('aria-busy', 'true'));
+    await user.click(button);
+    expect(chatApi.createConversation).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      settle();
+    });
+  });
 });

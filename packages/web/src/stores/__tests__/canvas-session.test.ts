@@ -46,19 +46,29 @@ describe('canvas session store', () => {
     expect(store.getState().pickSession).toBeNull();
   });
 
-  it('gives each opening of a panel its own session, so a late submit only closes its own', () => {
+  it('gives each opening of a panel its own session', () => {
     const store = createCanvasSessionStore();
 
     store.getState().openGeneratePanel('node-a', 'image');
     const first = store.getState().panelSession;
     store.getState().closeActivePanel();
     store.getState().openGeneratePanel('node-a', 'image');
-    const second = store.getState().panelSession;
 
-    expect(second).not.toBe(first);
-    store.getState().closePanelOfSession(first);
+    expect(store.getState().panelSession).not.toBe(first);
+  });
+
+  // inner#1490: a generation's answer closes the Generate panel open on its
+  // node, whichever opening that is, and nothing else.
+  it('closes the panel of a kind on a node, and only that one', () => {
+    const store = createCanvasSessionStore();
+
+    store.getState().openGeneratePanel('node-a', 'image');
+    store.getState().closePanelOn('node-b', 'generate');
     expect(store.getState().panelHostId).toBe('node-a');
-    store.getState().closePanelOfSession(second);
+    store.getState().closePanelOn('node-a', 'generateVideo');
+    expect(store.getState().panelHostId).toBe('node-a');
+
+    store.getState().closePanelOn('node-a', 'generate');
     expect(store.getState().panelHostId).toBeNull();
   });
 

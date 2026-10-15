@@ -27,8 +27,11 @@ export const corsMiddleware = cors({
   origin: env.ALLOWED_ORIGINS.split(",").map((o) => o.trim()),
   credentials: true,
   allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-  allowHeaders: ["Content-Type"],
+  // `Idempotency-Key` is the one-per-press key the run-once routes need
+  // (inner#1490).
+  allowHeaders: ["Content-Type", "Idempotency-Key"],
   // Not readable cross-origin unless named: the upload status list backs off
-  // by the wait a 429 names (inner#1367).
-  exposeHeaders: ["Retry-After"],
+  // by the wait a 429 names (inner#1367), and a run-once press reads whether
+  // its answer is final (inner#1490).
+  exposeHeaders: ["Retry-After", "Idempotency-Status", "Idempotent-Replayed"],
 });

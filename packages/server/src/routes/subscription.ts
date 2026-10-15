@@ -20,6 +20,8 @@ import { assertPaymentsEnabled } from "@server/middleware/require-payments.js";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
 import { validate } from "@server/middleware/validate.js";
+import { runOnce } from "@server/middleware/run-once.js";
+import { idempotencyKeyHeaderSchema } from "@server/routes/schemas.js";
 import {
   paymentConfirmSchema,
   subscriptionChangeSchema,
@@ -48,7 +50,9 @@ subscription.use(rateLimitFor("subscription-write", "user"));
  */
 subscription.post(
   "/checkout",
+  validate("header", idempotencyKeyHeaderSchema),
   validate("json", subscriptionPlanSchema),
+  runOnce("membership"),
   async (c) => {
     assertPaymentsEnabled();
     const user = c.get("user");
@@ -75,7 +79,9 @@ subscription.post(
  */
 subscription.post(
   "/change",
+  validate("header", idempotencyKeyHeaderSchema),
   validate("json", subscriptionChangeSchema),
+  runOnce("membership"),
   async (c) => {
     assertPaymentsEnabled();
     const user = c.get("user");

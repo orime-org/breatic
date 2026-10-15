@@ -12,7 +12,7 @@
 
 import type { CreditPage, PurchaseRow } from '@breatic/shared';
 
-import { apiGet, apiPost } from '@web/data/api/request';
+import { apiGet, apiPost, runOnceRequest } from '@web/data/api/request';
 
 /** One pack on offer. */
 export interface CreditPack {
@@ -75,10 +75,15 @@ export const paymentApi = {
   /**
    * Start paying for one pack.
    * @param body - Which pack, where from, and the buyer's zone.
+   * @param key - The press's `Idempotency-Key`; a re-send with it opens no second checkout.
    * @returns Where to send the buyer.
    */
-  checkout(body: CheckoutRequest): Promise<{ url: string }> {
-    return apiPost<{ url: string }, CheckoutRequest>('/payment/checkout', body);
+  checkout(body: CheckoutRequest, key: string): Promise<{ url: string }> {
+    return apiPost<{ url: string }, CheckoutRequest>(
+      '/payment/checkout',
+      body,
+      runOnceRequest(key),
+    );
   },
 
   /**

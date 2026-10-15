@@ -32,7 +32,13 @@ import { assetRepo, modelCatalog } from "@breatic/domain";
 import { createApp } from "../../app.js";
 import { mocks, mockQueueAdd } from "../helpers/mock-core.js";
 
-const AUTH = { Cookie: "breatic_session=valid-token", "Content-Type": "application/json" };
+// The run-once routes need a key per press; the Redis double in mock-core
+// answers every claim as a first press, so one key serves the whole file.
+const AUTH = {
+  Cookie: "breatic_session=valid-token",
+  "Content-Type": "application/json",
+  "Idempotency-Key": "test-press",
+};
 const PID = "11111111-1111-4111-8111-111111111111";
 const SID = "22222222-2222-4222-9222-222222222222";
 const NODE_A = "33333333-3333-4333-8333-333333333333";

@@ -5,8 +5,6 @@ import { useQuery } from '@tanstack/react-query';
 import * as React from 'react';
 import { toast } from '@web/lib/toast';
 
-import { canvasApi } from '@web/data/api/canvas';
-import { ApiException } from '@web/data/api/types';
 import {
   getPromptFragment,
   isNodeLocked,
@@ -24,7 +22,6 @@ import { useStyleSlot } from '@web/spaces/canvas/generate/use-style-slot';
 import { useTextBodies } from '@web/data/yjs/use-text-body';
 import { useTranslation } from '@web/i18n/use-translation';
 import { GeneratePanel } from '@web/spaces/canvas/generate/GeneratePanel';
-import { executeErrorMessage } from '@web/spaces/canvas/generate/execute-error-message';
 import { pickEndToastKey } from '@web/spaces/canvas/generate/pick-end-notice';
 import { removeReferenceRow } from '@web/spaces/canvas/generate/remove-reference-row';
 import {
@@ -79,6 +76,11 @@ import { useCanvasSession, useCanvasSessionStore } from '@web/spaces/canvas/canv
 import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
 import { useContentStable } from '@web/spaces/canvas/generate/use-content-stable';
 import { useGenerateSubmitState } from '@web/spaces/canvas/generate/use-generate-submit-state';
+import {
+  isGenerating,
+  submitGeneration,
+  useGenerating,
+} from '@web/spaces/canvas/generate/submit-generation';
 import { useCreditText } from '@web/spaces/canvas/generate/use-credit-estimate';
 import { PromptNotUsedNotice } from '@web/spaces/canvas/generate/PromptNotUsedNotice';
 import { useApplyTemplate } from '@web/spaces/canvas/generate/use-apply-template';
@@ -180,10 +182,10 @@ function GeneratePanelBody({
     promptTextRef,
     onPromptChange,
     promptEditorRef,
-    isSubmitting,
-    setIsSubmitting,
-    submittingRef,
   } = useGenerateSubmitState();
+  // The press lives in the run-once registry, so a reopened panel still
+  // shows it waiting (inner#1490).
+  const isSubmitting = useGenerating(spaceId, nodeId);
 
   // The `@`-picked source ids, mirrored to a ref for the same reason as the
   // prompt text: onExecute reads them SYNCHRONOUSLY so the i2i source subset is
@@ -528,18 +530,18 @@ function GeneratePanelBody({
     [projectId, spaceId, nodeId],
   );
 
-  const onExecute = React.useCallback(async () => {
+  const onExecute = React.useCallback((): void => {
     // Every execute-critical value is read SYNCHRONOUSLY here — never trusting a
     // render-time closure, which React batching + live collab make stale:
-    //   - submittingRef: a synchronous re-entry latch (state lags a frame, so a
-    //     rapid second click would slip past an isSubmitting-state guard).
+    //   - isGenerating: the run-once registry, read synchronously (state lags
+    //     a frame, so a rapid second click would slip past a state guard).
     //   - isNodeLocked: a fresh Yjs read, so a node a collaborator locked
     //     can't get a task submitted. Deletion is
     //     NOT one of theirs — it answers false for a node that is gone; the
     //     execute gate below is what refuses that, with `node-gone`.
     //   - promptTextRef: the prompt at click time (a collaborator's batched
     //     keystroke may not have flushed into promptText state yet).
-    if (submittingRef.current) return;
+    if (isGenerating(spaceId, nodeId)) return;
     // No separate existence check: the execute gate below derives from a fresh
     // graph read, so a node a collaborator deleted has no status and
     // `evaluateExecute` answers `node-gone`. A line that can never change the
@@ -588,7 +590,7 @@ function GeneratePanelBody({
     // different value here (the editor re-serializes so a text chip carries
     // its source node's CURRENT words).
     //
-    // `isSubmitting: false` because the synchronous latch above already
+    // `isSubmitting: false` because the synchronous registry read above already
     // answered that question, and it answers it earlier than a state flag can
     // (a rapid second click would slip past a re-render). So `'submitting'`
     // never reaches the check below — it exists for the button.
@@ -627,43 +629,23 @@ function GeneratePanelBody({
       if (key) toast.warning(t(key, { max: maxInputChars ?? 0 }));
       return;
     }
-    submittingRef.current = true;
-    // Which opening of the panel this submit came from: the answer may land
-    // after the reader closed or replaced this panel, and then it closes
-    // nothing they opened since.
-    const session = sessionStore.getState().panelSession;
-    setIsSubmitting(true);
-    try {
-      // Payload build is INSIDE the try: if it (or the lease read) throws, the
-      // catch resets the submitting latch — otherwise the panel would stick
-      // permanently disabled.
-      const payload = buildGenerateTaskPayload({
-        nodeId,
-        projectId,
-        spaceId,
-        model: fresh.model,
-        params: fresh.params,
-        generation: { mode: fresh.mode, declared: fresh.modelEntry?.params ?? {} },
-        promptText: freshPrompt,
-        poolParams: poolParams(fresh.pool, fresh.referenceUrls),
-      });
-      await canvasApi.createTask(payload);
-      sessionStore.getState().closePanelOfSession(session);
-    } catch (err) {
-      // The failure toast is UNCONDITIONAL (silent-fail mandate): sonner is a
-      // global outlet, so a submit that failed AFTER the user closed the panel
-      // (fire-and-move-on, then 402/409/503) still explains itself. The state
-      // writes below do nothing once this body has been unmounted.
-      toast.error(
-        executeErrorMessage(
-          err instanceof ApiException ? err.status : undefined,
-          t,
-        ),
-      );
-      submittingRef.current = false;
-      setIsSubmitting(false);
-    }
-  }, [sessionStore,
+    submitGeneration({
+      spaceId,
+      nodeId,
+      panelKind: 'generate',
+      buildPayload: () =>
+        buildGenerateTaskPayload({
+          nodeId,
+          projectId,
+          spaceId,
+          model: fresh.model,
+          params: fresh.params,
+          generation: { mode: fresh.mode, declared: fresh.modelEntry?.params ?? {} },
+          promptText: freshPrompt,
+          poolParams: poolParams(fresh.pool, fresh.referenceUrls),
+        }),
+    });
+  }, [
     nodeId,
     projectId,
     spaceId,
@@ -673,8 +655,6 @@ function GeneratePanelBody({
     // where the linter cannot see that for itself.
     promptEditorRef,
     promptTextRef,
-    setIsSubmitting,
-    submittingRef,
   ]);
 
   // Stabilize the prompt-editor element (#1783): `GeneratePanel` is `React.memo`,
@@ -802,9 +782,9 @@ export function GeneratePanelContainer(
   return (
     <CatalogGatedFrame nodeId={nodeId} modality='image'>
       {/* key={nodeId} makes switching the panel to another node a full REMOUNT:
-          promptText / promptTextRef / submittingRef all reset to the new node's
-          fresh state, so a prompt typed for node A can never be submitted to
-          node B (nor can the execute button show A's enabled state on B). */}
+          promptText / promptTextRef reset to the new node's fresh state, so a
+          prompt typed for node A can never be submitted to node B (nor can the
+          execute button show A's enabled state on B). */}
       <GeneratePanelBody {...props} nodeId={nodeId} key={nodeId} />
     </CatalogGatedFrame>
   );
