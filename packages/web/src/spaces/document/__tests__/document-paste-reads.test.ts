@@ -397,14 +397,22 @@ describe('a figure holding a medium and more than its caption', () => {
       ['paragraph:leadbefore', 'image[pending|cap]', 'paragraph:after'],
     ],
     ['a table beside it', `<figure><img src="${U}a.png"><table><tr><td>t</td></tr></table></figure>`, ['paragraph:lead', 'image[pending|]', 'table']],
-  ])('with %s keeps everything in it, in its order', async (_what, html, expected) => {
-    const { editor } = open([{ type: 'paragraph', content: 'lead' }]);
-    caretIn(editor, 0);
+    [
+      'words in its line and a caption',
+      `<figure><p>before <img src="${U}a.png"> after</p><figcaption>cap</figcaption></figure>`,
+      ['paragraph:leadbefore', 'image[pending|cap]', 'paragraph:after'],
+    ],
+  ])('with %s keeps everything in it, in its order, pasted or dropped', async (_what, html, expected) => {
+    for (const how of ['paste', 'drop'] as const) {
+      const { editor } = open([{ type: 'paragraph', content: 'lead' }]);
+      const at = caretIn(editor, 0);
 
-    paste(editor, html, 'x');
-    await settled();
+      if (how === 'paste') paste(editor, html, 'x');
+      else drop(editor, at, html, 'x');
+      await settled();
 
-    expect(shape(editor)).toEqual(expected);
+      expect(shape(editor)).toEqual(expected);
+    }
   });
 
   it.each([
@@ -428,18 +436,22 @@ describe('a figure holding a medium and more than its caption', () => {
 });
 
 describe('web content holding a table, dropped on a table cell', () => {
-  it('lands below the table as it does without its picture, the picture where it stands', async () => {
-    const land = async (html: string): Promise<string[]> => {
+  it('lands as the same content pasted there does, the picture between the words and the table', async () => {
+    const html = `<p>first</p><img src="${U}a.png"><table><tr><td>t</td></tr></table>`;
+    const land = async (how: 'paste' | 'drop'): Promise<string[]> => {
       const { editor } = open([TABLE, { type: 'paragraph', content: 'next' }]);
-      drop(editor, positionOf(editor, 'cell ', 5), html, 'first t');
+      const at = positionOf(editor, 'cell ', 5);
+      select(editor, at);
+      if (how === 'paste') paste(editor, html, 'first t');
+      else drop(editor, at, html, 'first t');
       await settled();
       return [firstCell(editor, 0), ...shape(editor)];
     };
-    const plain = await land('<p>first</p><table><tr><td>t</td></tr></table>');
-    const landed = await land(`<p>first</p><img src="${U}a.png"><table><tr><td>t</td></tr></table>`);
 
-    const at = plain.indexOf('paragraph:first') + 1;
-    expect(landed).toEqual([...plain.slice(0, at), 'image[pending|]', ...plain.slice(at)]);
+    const dropped = await land('drop');
+
+    expect(dropped).toEqual(await land('paste'));
+    expect(dropped).toEqual(['cell first', 'table', 'image[pending|]', 'table', 'paragraph:next']);
   });
 });
 
