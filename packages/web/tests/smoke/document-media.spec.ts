@@ -1069,6 +1069,31 @@ test('a picture in a sentence and a figure of two pictures paste in as three pen
   expect(await rows(page)).toEqual(expect.arrayContaining(['see', 'here']));
 });
 
+// Web content opening on a picture, pasted in the middle of a line, puts the
+// picture beside the line, the line split around it, nothing nested under it.
+test('web content opening on a picture, pasted mid-line, splits the line around the picture (inner#1351 A5)', async () => {
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+  await openFreshDocument(page);
+  await holdFetches(page);
+  await page.keyboard.type('Lead');
+  await page.keyboard.press('ArrowLeft');
+  await page.keyboard.press('ArrowLeft');
+  await page.evaluate((url) => {
+    return navigator.clipboard.write([
+      new ClipboardItem({
+        'text/html': new Blob([`<img src="${url}"><p>after</p>`], { type: 'text/html' }),
+        'text/plain': new Blob(['after'], { type: 'text/plain' }),
+      }),
+    ]);
+  }, OUTSIDE_PICTURE);
+
+  await page.keyboard.press('ControlOrMeta+v');
+
+  await expect(page.locator(PENDING)).toHaveCount(1);
+  expect(await rows(page)).toEqual(['Le', 'image[]', 'afterad']);
+  expect(await page.locator(`${EDITOR} .bn-block-group .bn-block-group`).count()).toBe(0);
+});
+
 test('Shift+click on a picture while the body is let go selects the picture and leaves the old words out (A20)', async () => {
   await openFreshDocument(page);
   await page.keyboard.type('hello world');
