@@ -69,6 +69,13 @@ export interface CallWants {
   cache: PromptCache;
   /** A fixed sampling temperature, sent only where the model accepts one. */
   temperature?: number;
+  /**
+   * The conversation the call belongs to. Through OpenRouter it pins every
+   * call of the conversation to one provider from the first request, so a
+   * prefix cached on one provider is read on the next call (OpenRouter prompt
+   * caching, "Using session_id for sticky sessions").
+   */
+  session?: string;
 }
 
 /** One provider: how to reach it, and how it is spoken to. */
@@ -318,5 +325,6 @@ export function callOptionsFor(modelString: string | undefined, wants: CallWants
   // older ones for any temperature while thinking is on (Anthropic thinking
   // docs, "Sampling parameters").
   const temperature = wants.temperature === undefined || isClaude(modelString) ? {} : { temperature: wants.temperature };
-  return { providerOptions: { [route.name]: { ...reasoning, ...cache } }, ...temperature };
+  const session = wants.session !== undefined && route === FALLBACK_ROUTE ? { session_id: wants.session } : {};
+  return { providerOptions: { [route.name]: { ...reasoning, ...cache, ...session } }, ...temperature };
 }

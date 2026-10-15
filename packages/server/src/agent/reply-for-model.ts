@@ -116,13 +116,38 @@ export interface ReportedUsage {
   lastOutput?: number;
 }
 
+/**
+ * What the provider reported, with one more call's count added.
+ *
+ * A call that reported nothing leaves the counts as they were: a step that
+ * broke off reports no usage, and the count an earlier call gave is still the
+ * best figure there is.
+ * @param reported - What earlier calls of the turn reported.
+ * @param usage - What this call reported.
+ * @param usage.inputTokens - Its input tokens, cache reads and writes included.
+ * @param usage.outputTokens - Its output tokens.
+ * @returns The counts with this call's added.
+ * @throws {never} Never.
+ */
+export function noteUsage(
+  reported: ReportedUsage,
+  usage: { inputTokens: number | undefined; outputTokens: number | undefined },
+): ReportedUsage {
+  if (usage.inputTokens === undefined || usage.outputTokens === undefined) return reported;
+  return {
+    firstInput: reported.firstInput ?? usage.inputTokens,
+    lastInput: usage.inputTokens,
+    lastOutput: usage.outputTokens,
+  };
+}
+
 /** Character counts to fall back on when nothing was reported. */
 export interface MeasuredChars {
   /** This turn's user message. */
   user: number;
   /** What the reply row keeps. */
   reply: number;
-  /** The whole first request, instructions and tools included. */
+  /** The size of the first request, as the turn estimated it before sending. */
   request: number;
 }
 

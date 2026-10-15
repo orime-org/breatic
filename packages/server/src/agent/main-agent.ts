@@ -36,14 +36,15 @@ import * as messageRepo from "@server/modules/conversation/conversation-message.
 import { toStoredParts } from "@server/modules/conversation/message-part-mapping.js";
 import * as conversationService from "@server/modules/conversation/conversation.service.js";
 import { foldIfOverBudget } from "@server/agent/turn-budget.js";
+import { requestTokens } from "@server/agent/request-size.js";
 import type { Assembly } from "@server/agent/turn-budget.js";
 import { getContext } from "@breatic/core";
 import { logger } from "@breatic/core";
 import { historyForModel, lastFullSnapshotKey, prefixHash, requestPrefixOf } from "@server/agent/history-replay.js";
 import type { ReplyForModel, UserForModel } from "@server/agent/history-replay.js";
 import { endingNote } from "@server/agent/model-messages.js";
-import { inProgressStep, replyTokens, type ReportedUsage, type SettledCalls } from "@server/agent/reply-for-model.js";
-import { measureMessages, measurePayload } from "@server/agent/payload-size.js";
+import { inProgressStep, noteUsage, replyTokens, type ReportedUsage, type SettledCalls } from "@server/agent/reply-for-model.js";
+import { measureMessages } from "@server/agent/payload-size.js";
 import { withModelOutputs } from "@server/agent/stored-model-output.js";
 import { endingOf, endingWithNothingRun } from "@server/agent/tool-ending.js";
 import { writeAskUserText } from "@server/agent/ask-user-text.js";
@@ -304,9 +305,9 @@ export class MainAgent {
     // counts size the turn for the fold.
     const stepMessages: ModelMessage[] = [];
     let stepsDone = 0;
-    const reported: ReportedUsage = {};
+    let reported: ReportedUsage = {};
     let sentPrefixHash: string | undefined;
-    let requestChars = 0;
+    let requestSize = 0;
 
     /**
      * What the reply row keeps of what was sent: the finished steps, the step
@@ -350,7 +351,7 @@ export class MainAgent {
         ...replyTokens(reported, {
           user: measureMessages(userKept.messages),
           reply: measureMessages(messages),
-          request: requestChars,
+          request: requestSize,
         }),
       };
     };
@@ -457,7 +458,7 @@ export class MainAgent {
       const { agentConfig, messages } = assembly;
       modelId = agentConfig.modelId;
       sentPrefixHash = prefixHash(requestPrefixOf(agentConfig), messages);
-      requestChars = measurePayload({ instructions: agentConfig.instructions, tools: agentConfig.tools, messages });
+      requestSize = requestTokens(assembly);
 
       // Kept as it is about to go out, after any fold, so later turns send it
       // again as it is. Losing the copy costs this turn nothing: later turns
@@ -485,7 +486,11 @@ export class MainAgent {
         // searches and decides between tools, and shows its working. It is
         // also the one whose prefix repeats -- every step of a turn and every
         // later turn resends it -- so it is the one that asks for caching.
-        ...callOptionsFor(agentConfig.modelId, { thinking: true, cache: agentCfg.prompt_cache_ttl }),
+        ...callOptionsFor(agentConfig.modelId, {
+          thinking: true,
+          cache: agentCfg.prompt_cache_ttl,
+          session: conversationId,
+        }),
         system: agentConfig.instructions,
         messages,
         tools: agentConfig.tools,
@@ -545,9 +550,7 @@ export class MainAgent {
         // the call that asked for it.
         onLanguageModelCallEnd: (event) => {
           watch.callEnded(event);
-          reported.firstInput ??= event.usage.inputTokens;
-          reported.lastInput = event.usage.inputTokens;
-          reported.lastOutput = event.usage.outputTokens;
+          reported = noteUsage(reported, event.usage);
         },
         onStepFinish: (step) => {
           stepMessages.push(...step.response.messages);

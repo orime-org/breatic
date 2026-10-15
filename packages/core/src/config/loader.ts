@@ -63,7 +63,7 @@ const agentConfigSchema = z.object({
    * reads cost a fraction of it, so the longer lifetime pays off when readers
    * come back between five minutes and an hour later.
    */
-  prompt_cache_ttl: z.enum(["5m", "1h"]).default("5m"),
+  prompt_cache_ttl: z.enum(["5m", "1h"]).default("1h"),
   /**
    * How much of the first message a conversation keeps as its name.
    *

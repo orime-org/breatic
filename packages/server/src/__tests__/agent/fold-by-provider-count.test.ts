@@ -34,7 +34,8 @@ vi.mock("@breatic/core", async (importOriginal) => {
 const consolidateWindow = vi.fn(async (_request: { newWatermark: number }) => "written");
 vi.mock("@server/agent/memory-consolidator.js", () => ({ consolidateWindow }));
 
-const { foldIfOverBudget, requestTokens } = await import("@server/agent/turn-budget.js");
+const { foldIfOverBudget } = await import("@server/agent/turn-budget.js");
+const { requestTokens } = await import("@server/agent/request-size.js");
 const { historyForModel, prefixHash } = await import("@server/agent/history-replay.js");
 
 const PREFIX: RequestPrefix = { system: "s", tools: {}, modelId: "test" };
