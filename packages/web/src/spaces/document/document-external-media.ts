@@ -49,7 +49,7 @@ import {
   type BlockSpec,
 } from '@web/spaces/document/document-file-input';
 import {
-  HTML_MEDIA_ELEMENTS,
+  HTML_MEDIA_SELECTOR,
   MEDIA_BLOCK_TYPES,
   isMediaBlockType,
   pendingUploadId,
@@ -210,7 +210,7 @@ function withoutMedia(html: string): string {
     // would come back holding a blank line.
     if (group?.matches('[data-node-type="blockGroup"]') === true && group.childElementCount === 0) group.remove();
   }
-  for (const element of Array.from(body.querySelectorAll(HTML_MEDIA_ELEMENTS.join(', ')))) {
+  for (const element of Array.from(body.querySelectorAll(HTML_MEDIA_SELECTOR))) {
     (element.closest('figure') ?? element).remove();
   }
   return body.innerHTML.trim() === '' ? '<p></p>' : body.innerHTML;

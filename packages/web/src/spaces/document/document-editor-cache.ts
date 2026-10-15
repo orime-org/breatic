@@ -82,7 +82,7 @@ import {
 import { marksStayOnTextExtension } from '@web/spaces/document/document-marks-on-text';
 import { documentFallbackExtension } from '@web/spaces/document/document-unsupported-blocknote';
 import { createFileUploads, type FileUploads } from '@web/spaces/document/document-uploads';
-import { insertAtGap, type FilesArrival } from '@web/spaces/document/document-file-input';
+import { insertAtGapTr, type FilesArrival } from '@web/spaces/document/document-file-input';
 import { openPageBodyUploads } from '@web/spaces/document/document-page-uploads';
 import type { PendingUploadsStore } from '@web/spaces/document/document-pending-uploads';
 
@@ -224,7 +224,7 @@ function createDocumentEditor(
         const view = viewOf(editor);
         const prepared = view === null ? null : files.prepare(arrival.files);
         if (view === null || prepared === null) return;
-        insertAtGap(view, arrival.gap, arrival.aimed, prepared.blocks);
+        view.dispatch(insertAtGapTr(view.state, arrival.gap, arrival.aimed, prepared.blocks));
         prepared.start();
       },
     }),

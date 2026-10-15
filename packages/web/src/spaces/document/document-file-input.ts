@@ -24,11 +24,10 @@ import {
 } from '@blocknote/core';
 import { Fragment, type Node as PMNode, type ResolvedPos } from '@tiptap/pm/model';
 import { Plugin, type EditorState, type Transaction } from '@tiptap/pm/state';
-import type { EditorView } from '@tiptap/pm/view';
 
 import { landingFor } from '@web/spaces/document/document-drag-move';
 import { QUOTED } from '@web/spaces/document/document-list-block';
-import { HTML_MEDIA_ELEMENTS } from '@web/spaces/document/document-media-types';
+import { HTML_MEDIA_SELECTOR } from '@web/spaces/document/document-media-types';
 
 /** A position between two blocks, where inserted blocks go. */
 export type UploadGap = number;
@@ -68,7 +67,7 @@ export function pastedFiles(data: DataTransfer): File[] | null {
   const elements = Array.from(body.children);
   const onlyMedia =
     elements.length === 1 &&
-    elements[0]!.matches(HTML_MEDIA_ELEMENTS.join(', ')) &&
+    elements[0]!.matches(HTML_MEDIA_SELECTOR) &&
     body.textContent?.trim() === '';
   return onlyMedia ? files : null;
 }
@@ -200,19 +199,6 @@ export function insertAtGapTr(
     blockToNode({ id: crypto.randomUUID(), ...block } as never, state.schema),
   );
   return state.tr.insert(gap, Fragment.from(nodes));
-}
-
-/**
- * Inserts blocks at a gap in one transaction, quoted as the line beside it.
- * Its callers run inside a paste or a drop, whose event closes the undo step
- * around it.
- * @param view - The editor view.
- * @param gap - Where they go.
- * @param aimed - Whether the reader aimed at the line right after the gap.
- * @param blocks - The blocks, in order.
- */
-export function insertAtGap(view: EditorView, gap: UploadGap, aimed: boolean, blocks: readonly BlockSpec[]): void {
-  view.dispatch(insertAtGapTr(view.state, gap, aimed, blocks));
 }
 
 /**

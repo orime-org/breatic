@@ -127,17 +127,17 @@ export function liftCellMedia(html: string): string {
 export const documentPasteHandler: PasteHandler = ({ event, defaultPasteHandler }) => {
   const data = event.clipboardData;
   const html = data?.getData('text/html') ?? '';
-  const even = liftCellMedia(evenPastedTables(html));
-  if (data !== null && even !== html) {
-    const evened: Pick<DataTransfer, 'types' | 'files' | 'items' | 'getData'> = {
+  const prepared = liftCellMedia(evenPastedTables(html));
+  if (data !== null && prepared !== html) {
+    const preparedData: Pick<DataTransfer, 'types' | 'files' | 'items' | 'getData'> = {
       types: data.types,
       files: data.files,
       items: data.items,
-      getData: (format: string): string => (format === 'text/html' ? even : data.getData(format)),
+      getData: (format: string): string => (format === 'text/html' ? prepared : data.getData(format)),
     };
-    Object.defineProperty(event, 'clipboardData', { value: evened });
+    Object.defineProperty(event, 'clipboardData', { value: preparedData });
   }
   // HTML carrying media is read as HTML even when its plain text looks like
   // Markdown, which would drop every picture (inner#1351 design §5.1).
-  return HTML_MEDIA.test(even) ? defaultPasteHandler({ prioritizeMarkdownOverHTML: false }) : defaultPasteHandler();
+  return HTML_MEDIA.test(prepared) ? defaultPasteHandler({ prioritizeMarkdownOverHTML: false }) : defaultPasteHandler();
 };

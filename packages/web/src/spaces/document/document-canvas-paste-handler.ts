@@ -16,7 +16,7 @@ import { parseClipboard } from '@web/spaces/canvas/node-clipboard';
 import { planCanvasPaste } from '@web/spaces/document/document-canvas-paste';
 import {
   inTableCell,
-  insertAtGap,
+  insertAtGapTr,
   pasteTarget,
   type BlockSpec,
   type PasteHandler,
@@ -90,7 +90,7 @@ export function canvasPasteHandler(sink: CanvasPasteSink, next: PasteHandler): P
             }),
           ];
         });
-        insertAtGap(view, gap, aimed, blocks);
+        view.dispatch(insertAtGapTr(view.state, gap, aimed, blocks));
         for (const { uploadId, source } of started) sink.start(uploadId, source);
       }
     }

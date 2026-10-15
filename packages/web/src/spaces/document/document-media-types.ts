@@ -12,6 +12,9 @@ export const MEDIA_BLOCK_TYPES = ['image', 'video', 'audio'] as const;
 /** The HTML elements that carry a picture, a video or a sound. */
 export const HTML_MEDIA_ELEMENTS = ['img', 'video', 'audio'] as const;
 
+/** A selector for {@link HTML_MEDIA_ELEMENTS}. */
+export const HTML_MEDIA_SELECTOR = HTML_MEDIA_ELEMENTS.join(', ');
+
 /** One media block type. */
 export type MediaBlockType = (typeof MEDIA_BLOCK_TYPES)[number];
 
