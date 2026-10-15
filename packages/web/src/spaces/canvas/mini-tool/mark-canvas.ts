@@ -6,7 +6,7 @@
  * Fabric canvas. The draft's object list is the only copy of what is drawn:
  * the reader's gestures are written back to it, one step each, and a change
  * made elsewhere (undo, redo, clear, a source reset) is reconciled onto the
- * canvas with the selection and any text edit dropped first.
+ * canvas object by object, dropping a text edit it changed first.
  *
  * Kept apart from React so its rules can be driven through a real Fabric
  * canvas in tests. Loaded only with the markup canvas.
@@ -72,6 +72,9 @@ export class MarkCanvasController {
   /** The object list the canvas shows. */
   private shown = '[]';
 
+  /** Each draft object on the canvas, by id, as it stood when it was drawn. */
+  private readonly drawn = new Map<string, string>();
+
   /** The object list this canvas last wrote, to tell its own writes from others'. */
   private lastWritten = '[]';
 
@@ -115,7 +118,7 @@ export class MarkCanvasController {
       discardSelection: () => {
         this.canvas.discardActiveObject();
         this.canvas.requestRenderAll();
-        if (this.draft()?.selectedId != null) this.live()?.selectMark(null);
+        this.unselect();
       },
     };
     this.wire();
@@ -140,6 +143,12 @@ export class MarkCanvasController {
     return this.live()?.miniTool?.mark ?? null;
   }
 
+  /** Clear the draft's selection, when it has one. */
+  private unselect(): void {
+    const session = this.live();
+    if (session?.miniTool?.mark?.selectedId != null) session.selectMark(null);
+  }
+
   /**
    * Write an object list back, as one step when it changed.
    * @param objects - The list.
@@ -159,7 +168,7 @@ export class MarkCanvasController {
     if (this.edit !== null) this.exitEditing();
     this.box = box;
     this.fitToScreen();
-    this.shown = '';
+    this.drawn.clear();
     this.sync();
   }
 
@@ -189,7 +198,8 @@ export class MarkCanvasController {
   /**
    * Bring the canvas in line with the draft: the tool, an edited text's style,
    * the objects and the selection. The draft alone says what is selected: undo,
-   * redo, clear and a new source drop it there, a restyle keeps it.
+   * redo, clear and a new source drop it there, a restyle keeps it. Objects the
+   * draft did not change stay as they are, with any drag Fabric has of them.
    */
   sync(): void {
     const before = this.draft();
@@ -202,10 +212,8 @@ export class MarkCanvasController {
     const json = JSON.stringify(draft.objects);
     this.suppressed = true;
     try {
+      this.reconcile(draft.objects);
       if (json !== this.shown) {
-        this.canvas.discardActiveObject();
-        for (const shape of this.canvas.getObjects()) this.canvas.remove(shape);
-        for (const object of draft.objects) this.canvas.add(toFabric(object, this.box));
         this.shown = json;
         this.lastWritten = json;
       }
@@ -217,7 +225,37 @@ export class MarkCanvasController {
   }
 
   /**
-   * End a text edit the canvas is about to lose, before it is rebuilt: the
+   * Make the canvas's objects the draft's: one whose draft object changed or
+   * went is taken off, and the selection with it when it was selected; one the
+   * draft has and the canvas lacks is drawn; all are stacked in the draft's
+   * order. The text being edited stays, being the canvas's own until it is left.
+   * @param objects - The draft's objects.
+   */
+  private reconcile(objects: readonly MarkObject[]): void {
+    const wanted = new Map(objects.map((object) => [object.id, JSON.stringify(object)]));
+    for (const shape of this.canvas.getObjects()) {
+      const id = idOf(shape);
+      if (id !== undefined && id === this.edit?.id) continue;
+      const want = id === undefined ? undefined : wanted.get(id);
+      if (id !== undefined && want !== undefined && want === this.drawn.get(id)) continue;
+      if (shape === this.canvas.getActiveObject()) this.canvas.discardActiveObject();
+      this.canvas.remove(shape);
+      if (id !== undefined) this.drawn.delete(id);
+    }
+    const kept = new Map(this.canvas.getObjects().map((shape) => [idOf(shape), shape]));
+    objects.forEach((object, index) => {
+      let shape = kept.get(object.id);
+      if (shape === undefined) {
+        shape = toFabric(object, this.box);
+        this.canvas.add(shape);
+        this.drawn.set(object.id, wanted.get(object.id) ?? '');
+      }
+      this.canvas.moveObjectTo(shape, index);
+    });
+  }
+
+  /**
+   * End a text edit the canvas is about to lose, before it is reconciled: the
    * draft having left the edit (a new source) or changed under it (an undo, a
    * clear) drops it unwritten. A new size writes it back first, in `setBox`.
    * @param draft - The draft.
@@ -226,6 +264,8 @@ export class MarkCanvasController {
     if (this.edit === null) return;
     const json = JSON.stringify(draft.objects);
     if (draft.editingText === null || (json !== this.shown && json !== this.lastWritten)) {
+      // What was typed is dropped: the text is drawn again from the draft.
+      this.drawn.delete(this.edit.id);
       this.edit = null;
       this.suppressed = true;
       try {
@@ -234,8 +274,6 @@ export class MarkCanvasController {
       } finally {
         this.suppressed = false;
       }
-      // A new text is on the canvas only; the rebuild takes it off.
-      this.shown = '';
       if (draft.editingText !== null) this.live()?.setMarkEditingText(null);
     }
   }
@@ -306,7 +344,7 @@ export class MarkCanvasController {
     canvas.on('selection:created', ({ selected }) => this.onSelected(selected));
     canvas.on('selection:updated', ({ selected }) => this.onSelected(selected));
     canvas.on('selection:cleared', () => {
-      if (!this.suppressed && this.draft()?.selectedId != null) this.live()?.selectMark(null);
+      if (!this.suppressed) this.unselect();
     });
     canvas.on('before:transform', ({ transform }) => {
       // A text scales from its corners and always evenly; its scale becomes
@@ -474,8 +512,9 @@ export class MarkCanvasController {
     if (this.edit === null) {
       this.edit = { id, isNew: false, textAtEntry: target.text };
       // The text being edited is the selected one, so the controls show its style.
-      this.live()?.selectMark(id);
-      this.live()?.setMarkEditingText(target.text);
+      const session = this.live();
+      session?.selectMark(id);
+      session?.setMarkEditingText(target.text);
     }
   }
 
@@ -496,15 +535,9 @@ export class MarkCanvasController {
     const session = this.live();
     if (draft !== null) {
       if (target.text.trim() === '') {
-        if (edit.isNew) {
-          // Fabric goes on to read this text's canvas once this handler
-          // returns, so the next sync takes it off by rebuilding.
-          this.shown = '';
-        } else {
-          // Fabric goes on to fire `object:modified` from this text, so it
-          // stays on the canvas until the next sync takes it off.
-          this.commit(draft.objects.filter((object) => object.id !== edit.id));
-        }
+        // Fabric goes on to read this text once this handler returns, so it
+        // stays on the canvas until the next sync, which finds it in no draft.
+        if (!edit.isNew) this.commit(draft.objects.filter((object) => object.id !== edit.id));
         session?.selectMark(null);
       } else {
         const written = fromFabric(target, this.box);
@@ -553,7 +586,7 @@ export class MarkCanvasController {
     if (this.disposed) return;
     if (this.edit !== null) this.exitEditing();
     this.pending = null;
-    if (this.draft()?.selectedId != null) this.live()?.selectMark(null);
+    this.unselect();
     this.disposed = true;
     void this.canvas.dispose();
   }
