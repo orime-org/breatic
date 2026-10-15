@@ -39,7 +39,9 @@ test('the picture adjust draws through WebGL as ffmpeg does', async ({ page }) =
   test.setTimeout(120_000);
   await page.goto('/');
   const report: Report = await page.evaluate(async (fx) => {
-    const exporter = await import('/spaces/canvas/mini-tool/adjust-export.ts');
+    // Page URLs the dev server serves, read from a variable so the type checker leaves them to the page.
+    const exportModule = '/spaces/canvas/mini-tool/adjust-export.ts';
+    const exporter = await import(exportModule);
     const text = await (await fetch('/spaces/canvas/mini-tool/adjust-filters.ts')).text();
     const fabric = await import(/from\s+"([^"]*\/fabric\.js[^"]*)"/.exec(text)?.[1] ?? '');
     const shared = await import(
