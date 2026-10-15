@@ -38,7 +38,9 @@ export interface RateLimitAnswers {
  * `'user'` reads the authenticated user's id (the middleware must run AFTER
  * `requireAuth`); it falls back to `"anonymous"` if no user is present so a
  * misconfigured chain degrades to a single shared bucket rather than throwing.
- * `'ip'` reads the first `x-forwarded-for` hop. `'socket'` reads the
+ * `{ userAndParam }` reads the same id plus the named route param, one bucket
+ * per user and thing; a route without that param falls back to an empty
+ * string, so the user gets one bucket for all of it. `'ip'` reads the first `x-forwarded-for` hop. `'socket'` reads the
  * connection's own address, for a listener no proxy stands in front of.
  * @param c - The Hono context for the current request
  * @param keyBy - The key dimension

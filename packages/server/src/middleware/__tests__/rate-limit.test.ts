@@ -68,4 +68,20 @@ describe("rateLimit middleware", () => {
     await app.request("/");
     expect(checkRateLimit).toHaveBeenCalledWith(expect.anything(), "sc:anonymous", 10, 3600, { strict: false });
   });
+
+  it("keys by user id and the named route param when keyBy is userAndParam", async () => {
+    checkRateLimit.mockResolvedValue(true);
+    const app = new Hono<{ Variables: { user: { id: string } } }>();
+    app.use("*", async (c, next) => {
+      c.set("user", { id: "user-9" });
+      await next();
+    });
+    const limiter = rateLimit({ prefix: "up", max: 3, windowSeconds: 60, keyBy: { userAndParam: "uploadId" } });
+    app.post("/uploads/:uploadId/parts", limiter, (c) => c.text("ok"));
+    app.post("/uploads", limiter, (c) => c.text("ok"));
+    await app.request("/uploads/u-1/parts", { method: "POST" });
+    await app.request("/uploads", { method: "POST" });
+    expect(checkRateLimit).toHaveBeenNthCalledWith(1, expect.anything(), "up:user-9:u-1", 3, 60, { strict: false });
+    expect(checkRateLimit).toHaveBeenNthCalledWith(2, expect.anything(), "up:user-9:", 3, 60, { strict: false });
+  });
 });
