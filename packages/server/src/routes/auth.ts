@@ -23,7 +23,7 @@ import { env, NotFoundError } from "@breatic/core";
 import { logger } from "@breatic/core";
 import { emailSchema, getActiveLocale, normalizeEmail, t } from "@breatic/shared";
 import type { PersonalStudioRef } from "@breatic/shared";
-import { rateLimitFor } from "@server/middleware/rate-limit.js";
+import { rateLimitFor, rateLimitForAll } from "@server/middleware/rate-limit.js";
 import {
   setSessionCookie,
   clearSessionCookie,
@@ -238,20 +238,25 @@ auth.post("/setup-studio", requireAuth, validate("json", setupStudioSchema), asy
  * @returns `200` with `{ user: { ...user, personalStudio } }` + Set-Cookie
  * @throws {AppError} `401` if credentials are invalid
  */
-auth.post("/login", rateLimitFor("login"), validate("json", loginSchema), async (c) => {
-  const { email, password } = c.req.valid("json");
-  const { user, token } = await authService.loginEmail(email, password);
-  setSessionCookie(c, token);
-  const [shown, studio] = await Promise.all([
-    authService.withTierInForce(user),
-    studioService.getPersonalStudio(user.id),
-  ]);
-  // Audit log moved from auth.service.ts (17B mandate).
-  logger.info({ userId: user.id, method: "email" }, "user_logged_in");
-  return c.json({
-    data: { user: { ...shown, personalStudio: toPersonalStudioRef(studio) } },
-  });
-});
+auth.post(
+  "/login",
+  validate("json", loginSchema),
+  rateLimitForAll([{ action: "login-ip" }, { action: "login", keyBy: "ip+email" }]),
+  async (c) => {
+    const { email, password } = c.req.valid("json");
+    const { user, token } = await authService.loginEmail(email, password);
+    setSessionCookie(c, token);
+    const [shown, studio] = await Promise.all([
+      authService.withTierInForce(user),
+      studioService.getPersonalStudio(user.id),
+    ]);
+    // Audit log moved from auth.service.ts (17B mandate).
+    logger.info({ userId: user.id, method: "email" }, "user_logged_in");
+    return c.json({
+      data: { user: { ...shown, personalStudio: toPersonalStudioRef(studio) } },
+    });
+  },
+);
 
 /**
  * `POST /auth/logout` - invalidate the current session.
@@ -388,8 +393,8 @@ const forgotPasswordSchema = z.object({
 
 auth.post(
   "/forgot-password",
-  rateLimitFor("forgot"),
   validate("json", forgotPasswordSchema),
+  rateLimitForAll([{ action: "forgot-ip" }, { action: "forgot", keyBy: "ip+email" }]),
   async (c) => {
     const { email } = c.req.valid("json");
     const resetBaseUrl = `${frontendOrigin(c.req.header("Origin"))}/reset-password`;
@@ -454,9 +459,10 @@ const resetWithRecoveryCodeSchema = z.object({
  *
  * Returns a fresh recovery code on success - frontend (PR-b) MUST
  * re-display it with the same "save this now" modal as registration.
- * Rate limited 5/hour per IP to slow online code-guessing attacks
- * (80 bits of entropy makes offline infeasible already, but rate
- * limit hardens the online surface).
+ * Rate limited per client address and per address-and-email
+ * (`reset-recovery-ip` / `reset-recovery` in `config/rate-limits.yaml`) to
+ * slow online code-guessing attacks (80 bits of entropy makes offline
+ * infeasible already, but rate limit hardens the online surface).
  * @returns `200` with `{ data: { newRecoveryCode } }`
  * @throws {AppError} `401` on any failure (uniform: email-not-found / code-used /
  *   code-mismatch all surface as "Invalid email or recovery code"
@@ -464,8 +470,8 @@ const resetWithRecoveryCodeSchema = z.object({
  */
 auth.post(
   "/reset-password-with-recovery-code",
-  rateLimitFor("reset-recovery"),
   validate("json", resetWithRecoveryCodeSchema),
+  rateLimitForAll([{ action: "reset-recovery-ip" }, { action: "reset-recovery", keyBy: "ip+email" }]),
   async (c) => {
     const { email, recoveryCode, newPassword } = c.req.valid("json");
     const { newRecoveryCode, userId } = await authService.resetPasswordWithRecoveryCode(

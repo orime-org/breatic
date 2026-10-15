@@ -37,9 +37,7 @@
  */
 
 import type { IncomingMessage } from "node:http";
-import { createLogger } from "@breatic/core";
-import { decideClientIdentity } from "@collab/infra/client-identity.js";
-import type { RefusalReason } from "@collab/infra/client-identity.js";
+import { createLogger, decideClientIdentity, type RefusalReason } from "@breatic/core";
 
 const logger = createLogger("connection-gate");
 

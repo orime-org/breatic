@@ -45,8 +45,7 @@ test.describe('a new account and its trial credits', () => {
       'this case registers an account, so it runs against the local stack only',
     ).toBe(true);
 
-    // Registration and the studio through the real endpoints. A 429 here is
-    // the ten-an-hour ceiling in config/rate-limits.yaml, not a defect.
+    // Registration and the studio through the real endpoints.
     const api = await request.newContext({ baseURL });
     const made = freshCredentials();
     await registerAccount(api, made);
