@@ -481,8 +481,8 @@ export class MarkCanvasController {
 
   /**
    * Take a pen stroke as one object, kept as the points the pencil sampled.
-   * Fabric's pencil curves through them with one `Q` per sample, its control
-   * point being the sample itself, and ends on an `L`; a click is `M`, `L`.
+   * Fabric's pencil draws one `Q` per sample, the sample being its control
+   * point, and ends on an `L`; a click is `M`, `L`.
    * @param path - The stroke Fabric drew.
    */
   private onPath(path: FabricObject): void {
