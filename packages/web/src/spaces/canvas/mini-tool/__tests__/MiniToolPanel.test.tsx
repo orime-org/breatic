@@ -202,7 +202,7 @@ describe('MiniToolPanel', () => {
       return mount({
         spec: tool('image.expand'),
         params: {},
-        expand: { ratio: '1:1', fits, onRatio: vi.fn() },
+        expand: { ratio: '1:1', fits, exporting: false, onRatio: vi.fn() },
       });
     }
 
@@ -220,15 +220,27 @@ describe('MiniToolPanel', () => {
       expect(props.expand?.onRatio).toHaveBeenCalledWith('16:9');
     });
 
+    // The draft's export, as the frame and the drawing controls read it; a
+    // press of an earlier opening still waiting holds only Run.
     it('takes no ratio while the press is exporting', () => {
       const props = mount({
         spec: tool('image.expand'),
         params: {},
-        refusal: 'exporting',
-        expand: { ratio: 'free', fits: () => true, onRatio: vi.fn() },
+        expand: { ratio: 'free', fits: () => true, exporting: true, onRatio: vi.fn() },
       });
       fireEvent.click(screen.getByTestId('mini-tool-expand-ratio-1:1'));
       expect(props.expand?.onRatio).not.toHaveBeenCalled();
+    });
+
+    it('takes a ratio while only Run waits on an earlier press', () => {
+      const props = mount({
+        spec: tool('image.expand'),
+        params: {},
+        refusal: 'exporting',
+        expand: { ratio: 'free', fits: () => true, exporting: false, onRatio: vi.fn() },
+      });
+      fireEvent.click(screen.getByTestId('mini-tool-expand-ratio-1:1'));
+      expect(props.expand?.onRatio).toHaveBeenCalledWith('1:1');
     });
 
     it('holds back a ratio too large for the model', () => {
