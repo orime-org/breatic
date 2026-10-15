@@ -2,15 +2,14 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Each category's latest choice as the consent cookie holds it, and the
- * account's analytics value from its receipts (inner#1442 design §4.4.3,
- * §4.4.6). The cookie parse is one of the functions the website copies
- * verbatim; the contract test compares them.
+ * Each category's latest choice as the consent cookie holds it, and what a
+ * signed-in request records of it (inner#1442 design §4.4.3, §4.4.6). The
+ * cookie parse is one of the functions the website copies verbatim; the
+ * contract test compares them.
  */
 
-import type { BrowserAds } from "@shared/analytics/ads-decision.js";
-import { choiceInForce } from "@shared/analytics/ads-decision.js";
-import type { ConsentSnapshot } from "@shared/analytics/consent.js";
+import { CONSENT_MAX_AGE_DAYS, revisionInForce, type ConsentSnapshot } from "@shared/analytics/consent.js";
+import type { SeenChoice } from "@shared/analytics/ads-sharing.js";
 
 /** How a browser arrived at a choice it holds in its cookie. */
 export const CONSENT_SOURCES = ["banner", "settings", "implicit", "gpc"] as const;
@@ -18,13 +17,12 @@ export type ConsentSource = (typeof CONSENT_SOURCES)[number];
 
 /** The fields each category's entry in the cookie data holds; both repos export the same table. */
 export const CONSENT_DATA_FIELDS = {
-  analytics: ["decisionId", "decidedAt", "source"],
-  ads: ["decisionId", "decidedAt", "source", "noticeShown", "gpcAtDecision"],
+  analytics: ["decidedAt", "source"],
+  ads: ["decidedAt", "source"],
 } as const;
 
-/** The analytics part of this browser's consent cookie. */
-export interface BrowserAnalytics {
-  readonly decisionId?: string;
+/** One category's choice in this browser's consent cookie. */
+export interface BrowserChoice {
   readonly value: boolean;
   readonly source: ConsentSource;
   readonly decidedAt: string;
@@ -33,18 +31,30 @@ export interface BrowserAnalytics {
 
 /** Each category's choice in force in this browser; null where it has none. */
 export interface BrowserChoices {
-  readonly analytics: BrowserAnalytics | null;
-  readonly ads: BrowserAds | null;
+  readonly analytics: BrowserChoice | null;
+  readonly ads: BrowserChoice | null;
 }
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const NONE: BrowserChoices = Object.freeze({ analytics: null, ads: null });
+const MAX_AGE_MS = CONSENT_MAX_AGE_DAYS * 86_400_000;
 
 /**
- * Read each category's latest choice from the consent cookie. A consent lapses
- * 395 days after its own `decidedAt` or when its revision is no longer in
- * force; an ads refusal never lapses. A category whose entry is missing or
- * unreadable counts as unset.
+ * Whether a choice is still in force: a consent lapses 395 days after its own
+ * `decidedAt` or when its revision is no longer in force; a refusal does not.
+ * @param choice - The choice.
+ * @param now - The current time, epoch ms.
+ * @returns Whether it counts.
+ */
+export function choiceInForce(choice: Pick<BrowserChoice, "value" | "decidedAt" | "revision">, now: number): boolean {
+  if (!choice.value) return true;
+  return revisionInForce(choice.revision) && now - Date.parse(choice.decidedAt) <= MAX_AGE_MS;
+}
+
+/**
+ * Read each category's latest choice from the consent cookie. Either
+ * category's consent lapses on its own `decidedAt` and revision; an analytics
+ * refusal lapses the same way, an ads refusal never does. A category whose
+ * entry is missing or unreadable counts as unset.
  * @param raw - The cookie value as sent by the browser, URI-encoded or not.
  * @param now - The current time, epoch ms.
  * @returns The choices in force.
@@ -56,14 +66,9 @@ export function parseConsentChoices(raw: string | undefined, now: number): Brows
   const { categories, revision, data } = parsed;
   if (!Array.isArray(categories) || typeof revision !== "number" || !isRecord(data)) return NONE;
   const analytics = readEntry(data.analytics, categories.includes("analytics"), revision);
-  const adsBase = readEntry(data.ads, categories.includes("ads"), revision);
-  const notice = isRecord(data.ads) ? data.ads.noticeShown : undefined;
-  const ads: BrowserAds | null =
-    adsBase === null || (notice !== false && notice !== "gpc" && notice !== "account")
-      ? null
-      : { ...adsBase, noticeShown: notice, gpcAtDecision: isRecord(data.ads) && data.ads.gpcAtDecision === true };
+  const ads = readEntry(data.ads, categories.includes("ads"), revision);
   return {
-    analytics: analytics !== null && analyticsInForce(analytics, now) ? analytics : null,
+    analytics: analytics !== null && choiceInForce({ ...analytics, value: true }, now) ? analytics : null,
     ads: ads !== null && choiceInForce(ads, now) ? ads : null,
   };
 }
@@ -75,23 +80,12 @@ export function parseConsentChoices(raw: string | undefined, now: number): Brows
  * @param revision - The cookie's revision.
  * @returns The choice, or null when the entry is missing or unreadable.
  */
-function readEntry(entry: unknown, value: boolean, revision: number): BrowserAnalytics | null {
+function readEntry(entry: unknown, value: boolean, revision: number): BrowserChoice | null {
   if (!isRecord(entry) || typeof entry.decidedAt !== "string" || Number.isNaN(Date.parse(entry.decidedAt))) return null;
   const source = CONSENT_SOURCES.find((s) => s === entry.source);
   if (source === undefined) return null;
-  const id = typeof entry.decisionId === "string" && UUID.test(entry.decisionId) ? { decisionId: entry.decisionId } : {};
   // A GPC entry is only ever written as a refusal.
-  return { ...id, value: value && source !== "gpc", source, decidedAt: entry.decidedAt, revision };
-}
-
-/**
- * Whether an analytics choice counts: either value lapses with age and revision.
- * @param choice - The choice.
- * @param now - The current time.
- * @returns Whether it counts.
- */
-function analyticsInForce(choice: Pick<BrowserAnalytics, "decidedAt" | "revision">, now: number): boolean {
-  return choiceInForce({ ...choice, value: true }, now);
+  return { value: value && source !== "gpc", source, decidedAt: entry.decidedAt, revision };
 }
 
 /**
@@ -105,25 +99,25 @@ export function parseConsentCookie(raw: string | undefined, now: number): Consen
   return { analytics: analytics?.value ?? false, ads: ads?.value ?? false };
 }
 
+/** The choices a signed-in request records on the account (`users.consent_seen`). */
+export interface ConsentSeen {
+  readonly analytics?: SeenChoice;
+  readonly ads?: SeenChoice;
+}
+
 /**
- * The account's analytics value, for events no browser is behind: the latest
- * receipt still in force, the stricter one on a tie.
- * @param receipts - The account's analytics receipts.
- * @param now - The current time, epoch ms.
- * @returns The value, or null when none is in force.
+ * What a signed-in request records of this browser's choices: each category
+ * the visitor chose, leaving out a regional default.
+ * @param choices - This browser's choices in force.
+ * @returns The record, or null when there is nothing to record.
  */
-export function accountAnalyticsValue(
-  receipts: readonly { value: boolean; decidedAt: string; revision: number }[],
-  now: number,
-): boolean | null {
-  let latest: { at: number; value: boolean } | null = null;
-  for (const r of receipts) {
-    if (!analyticsInForce(r, now)) continue;
-    const at = Date.parse(r.decidedAt);
-    if (latest === null || at > latest.at) latest = { at, value: r.value };
-    else if (at === latest.at) latest = { at, value: latest.value && r.value };
-  }
-  return latest?.value ?? null;
+export function consentSeenFrom(choices: BrowserChoices): ConsentSeen | null {
+  const pick = (c: BrowserChoice | null): SeenChoice | undefined =>
+    c === null || c.source === "implicit" ? undefined : { value: c.value, revision: c.revision };
+  const analytics = pick(choices.analytics);
+  const ads = pick(choices.ads);
+  if (analytics === undefined && ads === undefined) return null;
+  return { ...(analytics && { analytics }), ...(ads && { ads }) };
 }
 
 /**

@@ -818,13 +818,14 @@ export {
   type AnalyticsProperties,
 } from "@shared/analytics/events.js";
 export {
-  accountAnalyticsValue,
   CONSENT_DATA_FIELDS,
   CONSENT_SOURCES,
+  consentSeenFrom,
   parseConsentChoices,
   parseConsentCookie,
-  type BrowserAnalytics,
+  type BrowserChoice,
   type BrowserChoices,
+  type ConsentSeen,
   type ConsentSource,
 } from "@shared/analytics/consent-choices.js";
 export {
