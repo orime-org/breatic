@@ -216,6 +216,7 @@ describe('NodeExpandLayer', () => {
       store().closeActivePanel();
       store().openMiniTool('n1', 'image.expand', { sourceContent: NODE.src, params: {} });
       store().setMiniToolSourceSize({ width: 1600, height: 1000 });
+      store().setExpandCap(12288);
     });
     expect(screen.getByTestId('mini-tool-expand-frame').style.left).toBe('0px');
   });

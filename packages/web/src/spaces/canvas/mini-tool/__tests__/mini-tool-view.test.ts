@@ -10,6 +10,7 @@ import {
   BLOCKING_REFUSALS,
   aspectRatioOf,
   creditMode,
+  expandCapOf,
   exportsBeforeRun,
   miniToolRefusal,
   promptRequired,
@@ -311,6 +312,11 @@ describe('the expand tool', () => {
       miniToolRefusal({ ...expand, source: { width: 13000, height: 900 }, expandFrame: { x: 0, y: 0, width: 1, height: 1 } }),
     ).toBe('sourceTooLargeToExpand');
     expect(BLOCKING_REFUSALS.has('sourceTooLargeToExpand')).toBe(false);
+  });
+
+  it('stops the frame at the model\'s longest side, and nowhere for a model without one', () => {
+    expect(expandCapOf(genfill)).toBe(12288);
+    expect(expandCapOf(entry({}, true))).toBe(Infinity);
   });
 });
 

@@ -376,4 +376,22 @@ describe('MiniToolPanelContainer', () => {
       expect(onRun).not.toHaveBeenCalled();
     });
   });
+
+  describe('expand', () => {
+    const GENFILL = { ...ERASER, name: 'bria-genfill', mode: ['expand'], max_output_side: 4000 } as unknown as ModelEntry;
+
+    beforeEach(() => {
+      client.setQueryData(modelCatalogQuery().queryKey, { ...CATALOG, image: [GENFILL] });
+      canvasSessions.of('').getState().openMiniTool('src', 'image.expand', { sourceContent: 'a.png', params: {} });
+    });
+
+    it('gives the frame the model\'s cap once the catalog is read', () => {
+      client.removeQueries({ queryKey: modelCatalogQuery().queryKey });
+      const view = render(tree(source('a.png'), () => Promise.resolve()));
+      expect(canvasSessions.of('').getState().miniTool?.expand?.cap).toBeNull();
+      act(() => client.setQueryData(modelCatalogQuery().queryKey, { ...CATALOG, image: [GENFILL] }));
+      view.rerender(tree(source('a.png'), () => Promise.resolve()));
+      expect(canvasSessions.of('').getState().miniTool?.expand?.cap).toBe(4000);
+    });
+  });
 });

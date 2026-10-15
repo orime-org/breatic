@@ -63,10 +63,13 @@ export function ExpandFrameOverlay({ onNodeContextMenu }: ExpandFrameOverlayProp
   const gesture = React.useRef<Gesture | null>(null);
   const sourceSize = draft?.sourceSize ?? null;
   const view = expand?.view ?? null;
-  const drawn = expand !== null && view !== null && sourceSize !== null && draft !== null && node !== undefined;
+  const cap = expand?.cap ?? null;
+  const drawn =
+    expand !== null && view !== null && sourceSize !== null && cap !== null && draft !== null && node !== undefined;
   // A frame not drawn holds no handle to release a drag on: a panel closed
   // under it, a host gone, a source reset. A new opening starts with no view
-  // and no source size, so it ends a drag begun in the one before.
+  // and no source size, so it ends a drag begun in the one before. Nor is it
+  // drawn before the model's catalog gives the long-side cap the handles stop at.
   if (
     gesture.current !== null &&
     (!drawn ||
@@ -83,7 +86,6 @@ export function ExpandFrameOverlay({ onNodeContextMenu }: ExpandFrameOverlayProp
     x: node.internals.positionAbsolute.x + view.at.x,
     y: node.internals.positionAbsolute.y + view.at.y,
   };
-  const cap = expand.cap ?? Infinity;
   const exporting = draft.exporting;
 
   /**

@@ -30,6 +30,7 @@ import { useCreditText } from '@web/spaces/canvas/generate/use-credit-estimate';
 import { MiniToolPanel } from '@web/spaces/canvas/mini-tool/MiniToolPanel';
 import {
   creditMode,
+  expandCapOf,
   laysOutInSourcePixels,
   miniToolRefusal,
   resolvedParams,
@@ -240,7 +241,9 @@ function OpenMiniToolPanel({
     if (heldSize?.width === sourceWidth && heldSize.height === sourceHeight) return;
     setMiniToolSourceSize({ width: sourceWidth, height: sourceHeight });
   }, [spec, sourceWidth, sourceHeight, heldSize, setMiniToolSourceSize]);
-  const cap = entry?.max_output_side;
+  // Null in the draft means the catalog is not read yet; the frame waits for it.
+  // Only a new opening resets it, and that opening mounts this panel afresh.
+  const cap = entry === undefined ? undefined : expandCapOf(entry);
   React.useEffect(() => {
     if (spec.expand !== undefined && cap !== undefined) setExpandCap(cap);
   }, [spec, cap, setExpandCap]);

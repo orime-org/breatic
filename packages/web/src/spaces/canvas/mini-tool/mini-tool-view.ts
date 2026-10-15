@@ -267,7 +267,7 @@ export function miniToolRefusal(input: {
   if (spec.drawing !== undefined && input.inked !== true) return 'drawingEmpty';
   if (laysOutInSourcePixels(spec) && (source.width === undefined || source.height === undefined)) return 'sourceMissing';
   if (spec.expand !== undefined && source.width !== undefined && source.height !== undefined) {
-    const cap = entry?.max_output_side ?? Infinity;
+    const cap = expandCapOf(entry);
     if (sourceTooLargeToExpand({ width: source.width, height: source.height }, cap)) return 'sourceTooLargeToExpand';
     if (input.expandFrame === undefined || !isExpanded(input.expandFrame, { width: source.width, height: source.height })) {
       return 'frameNotExpanded';
@@ -283,6 +283,18 @@ export function miniToolRefusal(input: {
   if (pickedCellsOf(spec, params)?.length === 0) return 'noTilePicked';
   if (promptRequired(spec, entry) && prompt.trim() === '') return 'promptMissing';
   return null;
+}
+
+/**
+ * The expand frame's long-side cap in source pixels, from the pinned model's
+ * catalog entry.
+ * @param entry - The entry, undefined before the catalog is read.
+ * @param entry.max_output_side - The model's longest output side, when it has one.
+ * @returns The cap, unbounded for a model that sets none.
+ * @throws {never} Never.
+ */
+export function expandCapOf(entry: { max_output_side?: number } | undefined): number {
+  return entry?.max_output_side ?? Infinity;
 }
 
 /**
