@@ -292,24 +292,23 @@ export function createUploadController(deps: UploadControllerDeps): UploadContro
       const record = records.get(uploadId);
       if (record !== undefined) claims[uploadId] = record.state.phase === 'failed' ? 'failed' : 'uploading';
     }
-    setClaims(entry.body, claims);
-    entry.claims = claims;
-    steerRenewal();
+    claim(entry, claims);
   };
 
   /**
-   * Writes a body's claims into its awareness when what is there differs:
-   * the awareness is the record, and a page restored from the back-forward
-   * cache comes back with it emptied.
-   * @param body - The body.
+   * Sets a body's claims: the entry holds this page's record, which the
+   * renewal tick writes back; the awareness is written now only when what it
+   * holds differs, so a scan that changes nothing broadcasts nothing.
+   * @param entry - The body.
    * @param claims - The claims.
    */
-  const setClaims = (body: AttachedBody, claims: Readonly<Record<string, UploadClaim>>): void => {
-    const state = body.awareness?.getLocalState() ?? null;
-    if (state === null) return;
-    if (JSON.stringify(state[CLAIMS_FIELD] ?? {}) !== JSON.stringify(claims)) {
-      body.awareness!.setLocalStateField(CLAIMS_FIELD, claims);
+  const claim = (entry: Watched, claims: Readonly<Record<string, UploadClaim>>): void => {
+    entry.claims = claims;
+    const state = entry.body.awareness?.getLocalState() ?? null;
+    if (state !== null && JSON.stringify(state[CLAIMS_FIELD] ?? {}) !== JSON.stringify(claims)) {
+      entry.body.awareness!.setLocalStateField(CLAIMS_FIELD, claims);
     }
+    steerRenewal();
   };
 
   /**
@@ -386,9 +385,7 @@ export function createUploadController(deps: UploadControllerDeps): UploadContro
         stopAccess();
         for (const uploadId of entry.registered) deps.unregister(body.spaceId, uploadId);
         entry.registered.clear();
-        setClaims(body, {});
-        entry.claims = {};
-        steerRenewal();
+        claim(entry, {});
       };
     },
     entry(uploadId) {
