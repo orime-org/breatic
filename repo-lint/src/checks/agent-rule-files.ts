@@ -3,6 +3,7 @@
 import { posix } from "node:path";
 import type { Check, CheckContext, Finding } from "#repo-lint/check";
 import { assertAllowlistIsLive } from "#repo-lint/allowlist";
+import { TEST_FILE } from "#repo-lint/file-kinds";
 
 /** The rules themselves: one per directory that has any. */
 const RULES_FILE = "AGENTS.md";
@@ -18,9 +19,6 @@ const POINTER_CONTENT = "@AGENTS.md\n";
 
 /** Claude Code's guidance for a memory file; past it adherence drops. */
 const MAX_RULE_LINES = 200;
-
-/** Project skills, which hold the long procedures the rules point to. */
-const SKILLS_DIRECTORY = ".claude/skills/";
 
 /** The skill that explains how rule files work, and so has to name them. */
 const EDITING_SKILL = ".claude/skills/editing-agent-rules/";
@@ -42,11 +40,19 @@ const POINTER_MENTION_ALLOWED: ReadonlyMap<string, string> = new Map([
  * A mention of a rules file in running text, with what follows it.
  *
  * Groups: 1 the `](` of a markdown link, 2 the path, 3 the anchor, 4 a quoted
- * section name. The anchor class stops at `.` so a sentence's full stop is
- * not read as part of it.
+ * section name, which may follow a `:`, `,` or `'s` the way citations in
+ * this repository are written. The anchor class stops at `.` so a
+ * sentence's full stop is not read as part of it.
  */
 const REFERENCE =
-  /(\]\(\s*)?((?:\.{1,2}\/|[\w.-]+\/)*(?:AGENTS|SKILL)\.md)(#[\p{L}\p{N}_-]*)?(\s*["\u201C\u300C][^"\u201D\u300D]+["\u201D\u300D])?/gu;
+  /(\]\(\s*)?((?:\.{1,2}\/|[\w.-]+\/)*(?:AGENTS|SKILL)\.md)(#[\p{L}\p{N}_-]*)?(\s*(?:'s|:|,)?\s*["'`\u201C\u300C][^"'`\u201D\u300D]+["'`\u201D\u300D])?/gu;
+
+/**
+ * Text that looks like a reference but is not one: the visible text of a
+ * markdown link (its target is checked instead) and absolute URLs, which
+ * point outside this checkout.
+ */
+const NOT_A_REFERENCE = /\[[^\]]*\](?=\()|\bhttps?:\/\/\S+/g;
 
 /**
  * Whether a path is a rules file.
@@ -67,15 +73,6 @@ function isPointerFile(path: string): boolean {
 }
 
 /**
- * Whether a path is one of the files agents read as instructions.
- * @param path Repo-relative path.
- * @returns True for rules, pointers and project skills.
- */
-function isInstructionFile(path: string): boolean {
-  return isRulesFile(path) || isPointerFile(path) || path.startsWith(SKILLS_DIRECTORY);
-}
-
-/**
  * The GitHub anchor slugs of every heading in a markdown file.
  *
  * GitHub lower-cases the heading text, drops everything that is not a
@@ -88,12 +85,20 @@ function isInstructionFile(path: string): boolean {
 export function headingSlugs(markdown: string): Set<string> {
   const slugs = new Set<string>();
   const seen = new Map<string, number>();
+  // CommonMark: a fence closes only on a bare run of the same character at
+  // least as long as the run that opened it.
   let fence: string | null = null;
   for (const line of markdown.split("\n")) {
-    const fenceMatch = /^\s*(`{3,}|~{3,})/.exec(line);
+    const fenceMatch = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line);
     if (fenceMatch) {
-      const marker = fenceMatch[1]!.charAt(0);
-      fence = fence === null ? marker : fence === marker ? null : fence;
+      const run = fenceMatch[1]!;
+      if (fence === null) {
+        fence = run;
+        continue;
+      }
+      if (run.startsWith(fence) && run.charAt(0) === fence.charAt(0) && fenceMatch[2]!.trim() === "") {
+        fence = null;
+      }
       continue;
     }
     if (fence !== null) continue;
@@ -129,9 +134,10 @@ function checkLayout(context: CheckContext, rulesFiles: readonly string[]): Find
       message: `${POINTER_FILE} must hold only the line \`@AGENTS.md\`. Write the rule into the ${RULES_FILE} beside it.`,
     });
   }
+  const pointerSet = new Set(pointers);
   for (const file of rulesFiles) {
     const pointer = posix.join(posix.dirname(file), POINTER_FILE);
-    if (!context.exists(pointer)) {
+    if (!pointerSet.has(pointer)) {
       findings.push({
         file,
         message: `No ${POINTER_FILE} beside this file, so Claude Code never loads it: it is not loaded until ${pointer} exists holding \`@AGENTS.md\`.`,
@@ -186,12 +192,20 @@ function checkPointerMentions(file: string, lines: readonly string[]): Finding[]
  * @returns A finding per unresolvable reference.
  */
 function checkReferences(context: CheckContext, file: string, lines: readonly string[]): Finding[] {
-  if (isInstructionFile(file) || file.startsWith("repo-lint/src/") || /(^|\/)\.(docker|git)ignore$/.test(file)) {
+  if (
+    isRulesFile(file) ||
+    isPointerFile(file) ||
+    file.startsWith(EDITING_SKILL) ||
+    (file.startsWith("repo-lint/") && TEST_FILE.test(file)) ||
+    THIS_CHECK.test(file) ||
+    /(^|\/)\.(docker|git)ignore$/.test(file)
+  ) {
     return [];
   }
   const findings: Finding[] = [];
   lines.forEach((text, index) => {
-    for (const match of text.matchAll(REFERENCE)) {
+    const scan = text.replace(NOT_A_REFERENCE, (m) => (m.startsWith("[") ? `${" ".repeat(m.length - 1)}]` : ""));
+    for (const match of scan.matchAll(REFERENCE)) {
       const [, link, path = "", anchor, quoted] = match;
       // A bare word in prose ("each package's AGENTS.md") is not a reference.
       if (!link && !anchor && !quoted && !path.includes("/")) continue;

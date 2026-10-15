@@ -1,8 +1,12 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
+import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { agentRuleFiles, headingSlugs } from "#repo-lint/checks/agent-rule-files";
 import { fakeContext } from "#repo-lint/__tests__/fake-context";
+import type { CheckContext } from "#repo-lint/check";
 
 // The pointer file's name, assembled so this file does not itself trip the
 // "no references to the pointer file" rule it is testing.
@@ -69,6 +73,17 @@ describe("agent-rule-files", () => {
           file: "packages/web/AGENTS.md",
           message: expect.stringMatching(/not loaded/),
         }),
+      ]);
+    });
+
+    it("does not count a pointer that exists on disk but is not part of the repository", () => {
+      // An ignored or wrongly cased CLAUDE.md passes a filesystem lookup but
+      // never reaches the commit; rule 2 judges the same file set as rule 1.
+      const files = cleanRepo();
+      delete files[`packages/web/${POINTER}`];
+      const context: CheckContext = { ...fakeContext(files), exists: () => true };
+      expect(agentRuleFiles.run(context)).toEqual([
+        expect.objectContaining({ file: "packages/web/AGENTS.md", message: expect.stringMatching(/not loaded/) }),
       ]);
     });
   });
@@ -214,6 +229,77 @@ describe("agent-rule-files", () => {
       };
       expect(run(files)).toEqual([]);
     });
+
+    it("checks references made inside an ordinary project skill", () => {
+      const files = {
+        ...cleanRepo(),
+        ".claude/skills/build-tooling/SKILL.md":
+          "---\nname: build-tooling\n---\n\n# Build tooling\n\n## Shared dist\n\nThe rule is in packages/web/AGENTS.md.\n",
+      };
+      expect(run(files)).toEqual([
+        expect.objectContaining({ file: ".claude/skills/build-tooling/SKILL.md", message: expect.stringMatching(/#anchor/) }),
+      ]);
+    });
+
+    it("leaves the editing skill's own examples alone", () => {
+      const files = {
+        ...cleanRepo(),
+        ".claude/skills/editing-agent-rules/SKILL.md":
+          "---\nname: editing-agent-rules\n---\n\n# Editing\n\nA reference reads like packages/<pkg>/AGENTS.md#<heading>.\n",
+      };
+      expect(run(files)).toEqual([]);
+    });
+
+    it.each([
+      ['AGENTS.md: "Key conventions" applies.'],
+      ["root AGENTS.md's \"Key conventions\" rule."],
+      ["AGENTS.md, \"Key conventions\"."],
+      ["AGENTS.md 'Key conventions'."],
+      ["AGENTS.md `Key conventions`."],
+    ])("reports a quoted section name written as %s", (comment) => {
+      const files = { ...cleanRepo(), "packages/core/src/q.ts": `// ${comment}\nexport const q = 1;\n` };
+      expect(run(files)).toEqual([expect.objectContaining({ file: "packages/core/src/q.ts" })]);
+    });
+
+    it("accepts an anchored link whose visible text is the file path", () => {
+      const files = { ...cleanRepo(), "docs/p.md": "See [packages/web/AGENTS.md](../packages/web/AGENTS.md#scroll-areas).\n" };
+      expect(run(files)).toEqual([]);
+    });
+
+    it("resolves a link target without ./ relative to the linking file", () => {
+      const files = {
+        ...cleanRepo(),
+        "docs/sub/AGENTS.md": "# Sub\n\n## Here\n",
+        "docs/sub/CLAUDE.md": "@AGENTS.md\n",
+        "docs/r.md": "See [the rule](sub/AGENTS.md#here).\n",
+      };
+      expect(run(files)).toEqual([]);
+    });
+
+    it("leaves absolute URLs alone", () => {
+      const files = { ...cleanRepo(), "docs/u.md": "Upstream: https://github.com/example/repo/blob/main/AGENTS.md#x\n" };
+      expect(run(files)).toEqual([]);
+    });
+
+    it("checks repo-lint sources but not repo-lint tests", () => {
+      const files = {
+        ...cleanRepo(),
+        "repo-lint/src/checks/other.ts": "// See AGENTS.md#gone.\nexport const o = 1;\n",
+        "repo-lint/src/checks/__tests__/other.test.ts": "// Fixture: AGENTS.md#gone.\nexport const t = 1;\n",
+      };
+      expect(run(files)).toEqual([expect.objectContaining({ file: "repo-lint/src/checks/other.ts" })]);
+    });
+
+    it("accepts the real opening of the root AGENTS.md", () => {
+      const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../../../AGENTS.md");
+      const opening = readFileSync(root, "utf8").split("\n").slice(0, 6).join("\n") + "\n";
+      const files = {
+        ...cleanRepo(),
+        "AGENTS.md": `${opening}\n## Key conventions\n`,
+        ".claude/skills/editing-agent-rules/SKILL.md": "---\nname: editing-agent-rules\n---\n\n# Editing\n",
+      };
+      expect(run(files)).toEqual([]);
+    });
   });
 
   it("fails rather than reports clean when the repository has no AGENTS.md", () => {
@@ -232,5 +318,9 @@ describe("headingSlugs", () => {
 
   it("ignores heading-shaped lines inside code fences", () => {
     expect([...headingSlugs("## Real\n\n```sh\n# not a heading\n```\n")]).toEqual(["real"]);
+  });
+
+  it("closes a fence only with a fence at least as long as the one that opened it", () => {
+    expect([...headingSlugs("````md\n```\n## inside\n````\n## after\n")]).toEqual(["after"]);
   });
 });
