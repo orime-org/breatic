@@ -624,12 +624,25 @@ describe('the words a table cell takes', () => {
   });
 });
 
+/**
+ * Gives the body a box the drop falls inside, as a browser lays it out:
+ * BlockNote's side menu takes a drop outside that box for one beside the
+ * editor and collapses the selection after it lands.
+ * @param editor - The editor.
+ */
+function laidOut(editor: Editor): void {
+  const box = { left: 0, top: 0, right: 1000, bottom: 1000, width: 1000, height: 1000, x: 0, y: 0, toJSON: (): unknown => ({}) } as DOMRect;
+  const view = editor.prosemirrorView!;
+  for (const element of [view.dom, view.dom.firstElementChild as HTMLElement]) element.getBoundingClientRect = (): DOMRect => box;
+}
+
 describe('a drop put under a table or under a line by the body', () => {
   it.each([
     ['under the table it was dropped on', [TABLE, { type: 'paragraph', content: 'next' }], (editor: Editor): number => positionOf(editor, 'cell ', 5), `<p>first</p><img src="${U}a.png"><table><tr><td>t</td></tr></table>`, 'first'],
     ['under the line it was dropped below', [{ type: 'paragraph', content: 'lead' }], (editor: Editor): number => editor.prosemirrorView!.state.doc.content.size - 2, `<p>dropped</p><img src="${U}a.png">`, 'dropped'],
   ])('%s selects what it put in', async (_where, blocks, at, html, words) => {
     const { editor } = open([{ type: 'paragraph', content: 'caret' }, ...blocks]);
+    laidOut(editor);
     select(editor, 2);
 
     drop(editor, at(editor), html, 'x');
@@ -658,7 +671,6 @@ describe('a drop whose media all fail to land', () => {
   it.each([
     ['words in a cell', [TABLE, { type: 'paragraph', content: 'next' }], 'cell ', 2, `<p>w</p>${OUT}`],
     ['words and a table in a cell', [TABLE, { type: 'paragraph', content: 'next' }], 'cell ', 2, `<p>w</p>${OUT}<table><tr><td>t</td></tr></table>`],
-    ['a quote after a split line', [{ type: 'paragraph', content: 'lead' }, { type: 'paragraph', content: 'tail' }], 'lead', 4, `<div><p>x ${OUT} y</p><blockquote><p>q</p></blockquote></div>`],
   ])('with %s lands as the same drop with a medium that lands, without that medium, and is told once', async (_what, blocks, words, offset, html) => {
     const land = async (dropped: string): Promise<{ blocks: unknown[]; told: unknown[] }> => {
       const { editor, sink } = open(blocks as unknown[]);
@@ -672,6 +684,24 @@ describe('a drop whose media all fail to land', () => {
 
     expect(out.blocks).toEqual(landed.blocks.filter((block) => block !== 'image[pending|]'));
     expect(out.told).toEqual([[1]]);
+  });
+
+  it('in a line lands as the same content pasted there, the line whole, and is told once', async () => {
+    const html = `<div><p>x ${OUT} y</p><blockquote><p>q</p></blockquote></div>`;
+    const land = async (how: 'paste' | 'drop'): Promise<{ blocks: string[]; told: unknown[] }> => {
+      const { editor, sink } = open([{ type: 'paragraph', content: 'lead' }, { type: 'paragraph', content: 'tail' }]);
+      const at = positionOf(editor, 'lead', 4);
+      select(editor, at);
+      if (how === 'paste') paste(editor, html, 'x');
+      else drop(editor, at, html, 'x');
+      await settled();
+      return { blocks: shape(editor), told: sink.onLeftOut.mock.calls };
+    };
+
+    const dropped = await land('drop');
+
+    expect(dropped).toEqual(await land('paste'));
+    expect(dropped.told).toEqual([[1]]);
   });
 });
 
