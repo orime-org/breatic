@@ -62,6 +62,9 @@ type FilterBackend = ReturnType<typeof import('fabric')['getFilterBackend']>;
 /** Why a backend cannot draw: no WebGL context. */
 const NO_CONTEXT = 'The filter backend has no WebGL context to draw with';
 
+/** Why a backend cannot draw: the browser gave it a drawing buffer smaller than its canvas. */
+const SHORT_BUFFER = 'The filter backend was given a drawing buffer smaller than its canvas';
+
 /** Fabric's WebGL filter backend. */
 type WebGLBackend = Extract<FilterBackend, { tileSize: number }>;
 
@@ -161,7 +164,7 @@ export function previewSourceOf(
  * @param value - The sliders.
  * @param target - The canvas, resized to the size drawn.
  * @param backend - The filter backend to draw through; Fabric's shared one by default.
- * @throws {Error} When the backend has no WebGL context to draw with.
+ * @throws {Error} When the backend has no live WebGL context, loses it during the draw, or was given a drawing buffer smaller than its canvas.
  */
 export async function drawAdjusted(
   el: CropSourceEl,
@@ -173,7 +176,8 @@ export async function drawAdjusted(
   const [fabric, { adjustFilters, ADJUST_GRAIN_SEED }] = await loadRuntime();
   const through = backend ?? liveSharedBackend(fabric);
   const drawable = drawableSize(through);
-  if (drawable.width === 0 || bufferShort(through)) throw new Error(NO_CONTEXT);
+  if (drawable.width === 0) throw new Error(NO_CONTEXT);
+  if (bufferShort(through)) throw new Error(SHORT_BUFFER);
   const size = fitWithin(asked, drawable);
   target.width = size.width;
   target.height = size.height;
@@ -185,8 +189,9 @@ export async function drawAdjusted(
   }
   const state = through.applyFilters(chain, source, size.width, size.height, target);
   if (!('tileSize' in through)) return;
-  // A context lost during the draw leaves Fabric copying a blank canvas out
-  // without a word; the draw is checked once it is done.
+  // A context lost during the draw makes Fabric throw on a shader it still has
+  // to compile or, with every program cached, copy a blank canvas out without
+  // a word; the second is caught here.
   const gl = liveContext(through);
   if (gl === null) throw new Error(NO_CONTEXT);
   // Without a cache key Fabric uploads the source as a texture of its own and
