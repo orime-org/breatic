@@ -31,13 +31,17 @@ import {
   InfraNotReadyError,
   taskEventsStreamKey,
   lifecycleStreamKey,
+  listenProjectMemberChanges,
+  projectAuthService,
+  type MemberChangeListener,
 } from "@breatic/core";
 import { getCollabConfig } from "@collab/config.js";
 import { buildCollabHealthChecks } from "@collab/infra/health-checks.js";
 import { createCollabServer } from "@collab/hocuspocus.js";
 import { startTaskListener } from "@collab/services/task-listener.js";
 import { startLifecycleListener } from "@collab/services/lifecycle-listener.js";
-import { startMembersSync } from "@collab/services/members-sync.js";
+import { startProjectControlSync } from "@collab/services/project-control-sync.js";
+import { startMemberChangeSync } from "@collab/services/member-change-sync.js";
 
 // Initialize the root logger with the collab service name before any child
 // (`createLogger("main")` below) is created — otherwise children would bind
@@ -73,6 +77,12 @@ const HEALTHZ_PROBE_DOC = "__healthz_probe__";
  * declaring the WS processing path wedged.
  */
 const HEALTHZ_PROBE_TIMEOUT_MS = 2000;
+
+/**
+ * Max time the healthz member-listen probe waits for its nonce to come back
+ * over the project_members listen connection (inner#911).
+ */
+const MEMBER_LISTEN_PROBE_TIMEOUT_MS = 1000;
 
 /**
  * Flush the pino transport's worker-thread buffer before an explicit
@@ -222,6 +232,22 @@ async function main(): Promise<void> {
     void flushLogger().then(() => exitProcess(1));
   });
 
+  // Membership changes, from the trigger on project_members (inner#911).
+  // Started before the WebSocket port opens, so a failed first LISTEN ends
+  // startup with no client connected, like the infra check above.
+  let memberChanges: MemberChangeListener;
+  try {
+    memberChanges = await startMemberChangeSync(hocuspocus, {
+      listen: listenProjectMemberChanges,
+      loadRole: projectAuthService.loadProjectRole,
+    });
+  } catch (err) {
+    logger.error({ err }, "member_change_listen_failed");
+    await flushLogger();
+    await exitProcess(1);
+    return;
+  }
+
   await server.listen();
   logger.info({ port: env.COLLAB_PORT }, "Hocuspocus collaboration server started");
 
@@ -271,15 +297,14 @@ async function main(): Promise<void> {
     settings: consumerSettings,
   });
 
-  // Start the control-plane subscriber (members changed, activity, project
-  // connection closes). Same Redis instance as the streams (DB2);
-  // members-sync .duplicate()s the connection for its dedicated subscriber.
-  // Members-sync subscriber client. Uses the core factory so it
+  // Start the control-plane subscriber (activity, project connection closes).
+  // Same Redis instance as the streams (DB2); it .duplicate()s the connection
+  // for its dedicated subscriber. The client uses the core factory so it
   // inherits the production-safety knobs (keepAlive,
   // commandTimeout: undefined for the subscribe path's blocking
   // semantics, READONLY-aware reconnect, error log tagging).
   const controlRedis = createRedisClient(REDIS_STREAM_URL, {
-    name: "collab-members-sync-control",
+    name: "collab-project-control",
     lazyConnect: false,
     commandTimeout: undefined,
   });
@@ -288,17 +313,15 @@ async function main(): Promise<void> {
   // application entry attaches the real logger per the "core and shared must not log" mandate.
   controlRedis.on("error", (err) => {
     logger.error(
-      { err, client: "collab-members-sync-control" },
+      { err, client: "collab-project-control" },
       "redis_error",
     );
   });
-  const stopMembersSync = startMembersSync(hocuspocus, controlRedis);
+  const stopProjectControlSync = startProjectControlSync(hocuspocus, controlRedis);
 
   // Health probe server - separate port so probe traffic doesn't
-  // touch the WS port. Probes all five critical dependencies: the
-  // general Redis (DB0 - sessions + auth), the members-sync control
-  // Redis (DB2 stream), both Postgres DBs (Yjs doc store + auth), and
-  // the Hocuspocus WS listen socket. LB / docker healthcheck kills
+  // touch the WS port. Probes every critical dependency; the list is
+  // `buildCollabHealthChecks` in infra/health-checks.ts. LB / docker healthcheck kills
   // the instance on N consecutive 503s so a drifted connection pool
   // gets a fresh process automatically - per CLAUDE.md "industrial-grade server standards" and memory `feedback_dev_collab_long_running_drift`.
   const healthServer = startHealthServer({
@@ -366,6 +389,7 @@ async function main(): Promise<void> {
       // that catches "alive but not serving" (the throttle-ban / doc-wedge
       // failure mode that the infra probes above all miss).
       probeWsProcessing: probeDocProcessing,
+      probeMemberListen: () => memberChanges.probe(MEMBER_LISTEN_PROBE_TIMEOUT_MS),
     }),
   });
 
@@ -373,7 +397,8 @@ async function main(): Promise<void> {
   /**
    * Gracefully tear down the collab process: stop the two stream consumers
    * and hand over what they still hold, then stop the Hocuspocus server, the
-   * health server, the members-sync subscriber and the Redis clients
+   * health server, the control-plane subscriber, the member-change listener and
+   * the Redis clients
    * together, then exit with code 0.
    * @param signal - Name of the OS signal that triggered shutdown (`SIGTERM` / `SIGINT`), logged for traceability.
    */
@@ -417,7 +442,8 @@ async function main(): Promise<void> {
       drains: [
         () => server.destroy(),
         () => healthServer.stop(),
-        () => stopMembersSync(),
+        () => stopProjectControlSync(),
+        () => memberChanges.stop(),
         // Stop answering demote requests. This unsubscribes and nothing more
         // — the SUBSCRIBE client it rides on is made inside
         // createCollabServer, is not exposed here, and goes when the process

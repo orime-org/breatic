@@ -139,11 +139,17 @@ export {
   lifecycleStreamKey,
 } from "@core/infra/event-stream.js";
 export {
-  publishMembersChanged,
   publishActivityNew,
   publishProjectConnectionsClose,
   projectControlChannelPattern,
 } from "@core/infra/control-events.js";
+export {
+  PROJECT_MEMBER_CHANGED_CHANNEL,
+  listenProjectMemberChanges,
+  type MemberChange,
+  type MemberChangeHandlers,
+  type MemberChangeListener,
+} from "@core/infra/member-change-listener.js";
 export { setSession, getSession, deleteSession, deleteAllSessions, sessionCookieName } from "@core/infra/session-store.js";
 export { runWithContext, tryGetContext, getContext } from "@core/infra/request-context.js";
 

@@ -162,7 +162,8 @@ export const coreConfigSchema = z.object({
   // Namespace for the two things neither the Redis DB number nor the port
   // split can separate:
   //   1. Redis PUB/SUB CHANNELS — the Hocuspocus document-sync family and the
-  //      `project:*` control family (membership changes + Space CRUD).
+  //      `project:*` control family (activity signals + connection closes
+  //      after a duplicate / archive / restore).
   //   2. The SESSION COOKIE NAME (`sessionCookieName()`), because cookies are
   //      not scoped by port (RFC 6265 §8.5).
   // Nothing else. Resolved by the transform below: unset or blank means `ENV`.
@@ -180,16 +181,16 @@ export const coreConfigSchema = z.object({
   //     replicas, a rolling update has
   //     old and new instances live at once, and an old publisher's
   //     `project:…` never reaches a new subscriber's `{ENV}:project:*` — pub/sub
-  //     drops unmatched publishes with no error. For that window, membership
-  //     revocations do not reach collab: a removed member keeps their open
-  //     session until the rollout finishes.
+  //     drops unmatched publishes with no error. For that window, activity
+  //     signals and the connection closes after a duplicate / archive /
+  //     restore do not reach collab.
   //
   // It exists because pub/sub is the one thing the `REDIS_*_URL` DB split cannot
   // isolate: SUBSCRIBE is instance-wide and ignores the selected DB. Ordinary
   // keys (sessions, locks, BullMQ, streams) are already separated by DB number;
   // channels are not. Two deployments sharing a Redis instance therefore need
   // distinct prefixes here, or each hears the other's document updates and
-  // membership writes whenever both hold the same UUID (#1831).
+  // project control events whenever both hold the same UUID (#1831).
   //
   // Deliberately NOT used for anything Redis keys the DB number already covers:
   //   - cross-service STREAM keys (`taskEventsStreamKey()` etc.) — server,
