@@ -224,6 +224,41 @@ describe('MarkCanvasController', () => {
   });
 
   // A click gives the pencil one sample, drawn as `M` and `L` around it.
+  // A hollow object is hit on its stroke, as a shape with no fill is elsewhere:
+  // a click inside it reaches what lies under it (A4).
+  describe('hit testing', () => {
+    /**
+     * The markup object under a press.
+     * @param x - Across, in drawn pixels.
+     * @param y - Down, in drawn pixels.
+     * @returns Its id, if any.
+     */
+    const under = (x: number, y: number): string | undefined =>
+      (controller.canvas.findTarget({ clientX: x, clientY: y, button: 0 } as unknown as MouseEvent).target as
+        | { markId?: string }
+        | undefined)?.markId;
+
+    beforeEach(() => {
+      store.getState().commitMark([
+        { id: 'r', kind: 'rect', color: INK[0], size: 5, x: 0.45, y: 0.45, w: 0.1, h: 0.1 },
+        { id: 'e', kind: 'ellipse', color: INK[1], size: 5, x: 0.2, y: 0.2, w: 0.6, h: 0.6 },
+      ]);
+      controller.sync();
+    });
+
+    it('finds an object inside a later hollow ellipse', () => {
+      expect(under(180, 150)).toBe('r');
+    });
+
+    it('finds nothing in the empty inside of a hollow ellipse', () => {
+      expect(under(120, 150)).toBeUndefined();
+    });
+
+    it('finds the hollow ellipse on its stroke', () => {
+      expect(under(80, 150)).toBe('e');
+    });
+  });
+
   it('keeps a click as a dot', () => {
     store.getState().setMarkTool('pen');
     controller.sync();
