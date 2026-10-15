@@ -228,10 +228,10 @@ function OpenMiniToolPanel({
   const expandDraft = draft?.expand ?? null;
   // The panel hangs under the expand frame, which reaches past the node. Read
   // from the draft and the node's size, which the canvas keeps while the node
-  // is off screen; only while the frame shows, so a zoom re-renders nothing else.
-  const nodeHeight = useStore((s) => (expandDraft === null ? 0 : (s.nodeLookup.get(nodeId)?.measured.height ?? 0)));
-  const zoom = useStore((s) => (expandDraft === null ? 1 : s.transform[2]));
-  const drop = expandDraft === null ? 0 : expandDrop(expandDraft, nodeHeight, zoom);
+  // is off screen; the panel re-renders only when the reach itself changes.
+  const drop = useStore((s) =>
+    expandDraft === null ? 0 : expandDrop(expandDraft, s.nodeLookup.get(nodeId)?.measured.height ?? 0, s.transform[2]),
+  );
   const sourceWidth = source.width;
   const sourceHeight = source.height;
   const heldSize = draft?.sourceSize;

@@ -162,10 +162,10 @@ describe('NodeExpandLayer', () => {
     drag(screen.getByTestId('mini-tool-expand-source'), [300, 200], [340, 200]);
     act(() => store().setExpand({ frame: { x: -0.25, y: 0, width: 1.5, height: 1 }, ratio: '16:9' }));
     // The frame wraps the picture where the node shows it: the picture's copy
-    // sits at the node's own picture, 0px from it.
+    // sits at the node's own picture, 0px from it (−100 + the 1px border + 99).
     const frame = screen.getByTestId('mini-tool-expand-frame');
     expect(frame.style.left).toBe('-100px');
-    expect(screen.getByTestId('mini-tool-expand-source').style.left).toBe('100px');
+    expect(screen.getByTestId('mini-tool-expand-source').style.left).toBe('99px');
   });
 
   // The node's own picture stays where it is while its copy moves in the
@@ -241,6 +241,29 @@ describe('NodeExpandLayer', () => {
     fireEvent.pointerMove(source, { clientX: 320, clientY: 200, pointerId: 1 });
     // Grabbed at canvas x 200; the pointer now sits at canvas x (320 - 100) / 2 = 110.
     expect(store().miniTool?.expand?.shift.x).toBeCloseTo(-90 / 400, 9);
+  });
+
+  // A drag the panel closed under (Esc while the button is held) ends with the
+  // opening; the next opening's handles answer.
+  it('drops a drag cut short by closing the panel, so the next opening drags', () => {
+    mount();
+    fireEvent.pointerDown(screen.getByTestId('mini-tool-expand-handle-e'), { clientX: 500, clientY: 200, button: 0, pointerId: 1 });
+    act(() => store().closeActivePanel());
+    act(() => {
+      store().openMiniTool('n1', 'image.expand', { sourceContent: NODE.src, params: {} });
+      store().setMiniToolSourceSize({ width: 1600, height: 1000 });
+      store().setExpandCap(12288);
+    });
+    drag(screen.getByTestId('mini-tool-expand-handle-w'), [100, 200], [0, 200]);
+    expect(store().miniTool?.expand?.frame.x).toBeCloseTo(-0.25, 9);
+  });
+
+  // §6.3: the copy sits at the picture's own place; the frame's border is
+  // drawn around it, not under its top-left corner.
+  it('draws the picture copy at the node picture’s place, inside the border', () => {
+    mount();
+    const source = screen.getByTestId('mini-tool-expand-source');
+    expect([source.style.left, source.style.top]).toEqual(['-1px', '-1px']);
   });
 
   // §6.2: a tool layer keeps the node's menu, as it does inside the node.
