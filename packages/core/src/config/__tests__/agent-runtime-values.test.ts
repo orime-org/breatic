@@ -23,7 +23,7 @@ import { parse } from "yaml";
 import { agentConfigSchemaForTests } from "@core/config/loader.js";
 
 /** The model every chat turn and every consolidation runs on. */
-const MODEL = "deepseek/deepseek-v4-pro";
+const MODEL = "anthropic/claude-opus-5.5";
 
 /**
  * The shipped `config/agent.yaml`, parsed.
@@ -47,7 +47,7 @@ function defaults(): Record<string, unknown> {
 }
 
 describe("the model this build talks to", () => {
-  it("is DeepSeek V4 Pro in the shipped config", () => {
+  it("is Claude Opus 5.5 in the shipped config", () => {
     const config = shippedConfig();
     expect(config.default_model).toBe(MODEL);
     // Consolidation summarises old turns. Leaving it on the previous model
@@ -60,6 +60,13 @@ describe("the model this build talks to", () => {
     const parsed = defaults();
     expect(parsed.default_model).toBe(MODEL);
     expect(parsed.consolidation_model).toBe(MODEL);
+  });
+});
+
+describe("how long a cached prompt prefix lives", () => {
+  it("is five minutes in the shipped config and by default", () => {
+    expect(shippedConfig().prompt_cache_ttl).toBe("5m");
+    expect(defaults().prompt_cache_ttl).toBe("5m");
   });
 });
 
