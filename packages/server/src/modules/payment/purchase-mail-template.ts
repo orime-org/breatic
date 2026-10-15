@@ -80,7 +80,7 @@ function asHtml(text: string): string {
  * @param locale - The buyer's locale.
  * @returns The formatted amount.
  */
-function formatMoney(cents: number, currency: string, locale: string): string {
+export function formatMoney(cents: number, currency: string, locale: string): string {
   return new Intl.NumberFormat(locale, {
     style: "currency",
     currency: currency.toUpperCase(),
@@ -94,7 +94,7 @@ function formatMoney(cents: number, currency: string, locale: string): string {
  * @param locale - The buyer's locale.
  * @returns Both readings on one line.
  */
-function bothZones(at: Date, timeZone: string, locale: string): string {
+export function bothZones(at: Date, timeZone: string, locale: string): string {
   const local = new Intl.DateTimeFormat(locale, {
     dateStyle: "medium",
     timeStyle: "short",

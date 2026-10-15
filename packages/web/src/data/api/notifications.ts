@@ -33,7 +33,10 @@ export type NotificationType =
   | 'project.join_rejected'
   | 'membership.ended'
   | 'membership.upgrade_incomplete'
-  | 'storage.quota_exceeded';
+  | 'storage.quota_exceeded'
+  | 'credit.refund_completed'
+  | 'credit.refund_rejected'
+  | 'credit.refund_restored';
 
 REQUEST_NOTIFICATION_TYPES satisfies readonly NotificationType[];
 

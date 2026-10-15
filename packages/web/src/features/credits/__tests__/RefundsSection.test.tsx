@@ -69,6 +69,7 @@ function refundableLot(): CreditLotView {
     lifecycle: 'active',
     refundAttempts: 0,
     everSpent: false,
+    everRestored: false,
     createdAt: new Date().toISOString(),
   };
 }
@@ -172,5 +173,29 @@ describe('asking for a refund', () => {
     });
     expect(confirm).not.toHaveAttribute('aria-disabled');
     expect(screen.getByRole('alertdialog')).toBeInTheDocument();
+  });
+});
+
+describe('a purchase whose credits were restored (inner#1410 v9 §5.3)', () => {
+  // The buyer took the credits back instead of the money after Stripe could
+  // not refund the card: the row says so and carries no ask, the same answer
+  // the server gives (409 server.credit.refund_restored).
+  const restoredNote = (en.credits.refundReason as Record<string, string>)['restored'];
+
+  it('the catalog has the sentence', () => {
+    expect(typeof restoredNote).toBe('string');
+    expect(restoredNote).not.toBe('');
+  });
+
+  it('shows credits.refundReason.restored in place of the ask button', async () => {
+    fetchCreditLots.mockResolvedValue({
+      items: [{ ...refundableLot(), id: 'lot-r', everRestored: true }],
+      nextCursor: null,
+    });
+    renderRefunds();
+
+    await screen.findByTestId('lot-remaining');
+    expect(screen.getByText(restoredNote!)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: en.credits.askRefund })).toBeNull();
   });
 });

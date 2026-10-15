@@ -21,6 +21,12 @@ export default defineConfig({
     // __tests__/ next to the module — run in neither config, committed and
     // green and never executed.
     include: ["src/**/*.integration.test.ts"],
+    // A case that reaches a real outside service carries a `@needs-<service>`
+    // tag at the end of its name (docs/TEST-MANDATE.md §2.2). The default run
+    // leaves every tagged case out; vitest reports each one as skipped, so the
+    // summary's skip count says what this green did not cover. A sub-gate is
+    // run on purpose with `-t @needs-<service>`, which replaces this pattern.
+    testNamePattern: /^(?!.*@needs-)/,
     // globalSetup lays down the payment configs only this package's suites
     // read — first, because it is cheap and a fixture that cannot be copied
     // fails the run before a minute goes into pulling images — then starts
