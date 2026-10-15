@@ -252,7 +252,7 @@ describe('HTML carrying media', () => {
     );
     await settled();
 
-    expect(shape(editor)).toContain('paragraph:hello');
+    expect(shape(editor)[0]).toBe('paragraph:leadhello');
     expect(sink.start).toHaveBeenCalledWith(expect.any(String), { kind: 'address', url: 'https://e.example/b.png' });
   });
 });
