@@ -141,6 +141,19 @@ describe('analytics runtime', () => {
     expect(document.cookie).not.toMatch(/_gcl_/);
   });
 
+  it('hands the backend the ads consent with GPC applied to a regional default', async () => {
+    const runtime = await startRuntime();
+    const implicit = { value: true, source: 'implicit' as const, decidedAt: '2026-10-12T00:00:00.000Z', revision: CONSENT_REVISION };
+    await choose({ analytics: implicit, ads: implicit });
+    expect(runtime.consentSnapshot()).toEqual({ analytics: true, ads: true });
+    Object.defineProperty(navigator, 'globalPrivacyControl', { configurable: true, get: () => true });
+    try {
+      expect(runtime.consentSnapshot()).toEqual({ analytics: true, ads: false });
+    } finally {
+      Object.defineProperty(navigator, 'globalPrivacyControl', { configurable: true, get: () => undefined });
+    }
+  });
+
   it('clears both vendors’ cookies and queued events when no choice is in force, even if this page never loaded them', async () => {
     document.cookie = 'AMP_test=1; Path=/';
     document.cookie = '_gcl_au=1; Path=/';

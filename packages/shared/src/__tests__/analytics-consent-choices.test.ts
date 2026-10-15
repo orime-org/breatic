@@ -6,6 +6,7 @@ import {
   CONSENT_DATA_FIELDS,
   parseConsentChoices,
   parseConsentCookie,
+  snapshotOf,
 } from "../analytics/consent-choices.js";
 import { CONSENT_MAX_AGE_DAYS, CONSENT_REVISION, NO_CONSENT } from "../analytics/consent.js";
 
@@ -103,24 +104,47 @@ describe("parseConsentChoices", () => {
   });
 });
 
+describe("snapshotOf", () => {
+  const choice = (value: boolean, source: "banner" | "implicit") => ({ value, source, decidedAt: iso(NOW), revision: CONSENT_REVISION });
+
+  it("counts an unanswered category as off", () => {
+    expect(snapshotOf({ analytics: null, ads: null }, false)).toEqual(NO_CONSENT);
+  });
+
+  it("lets GPC refuse a regional ads default, and leaves the visitor's own consent and analytics as they are", () => {
+    const implicit = { analytics: choice(true, "implicit"), ads: choice(true, "implicit") };
+    expect(snapshotOf(implicit, false)).toEqual({ analytics: true, ads: true });
+    expect(snapshotOf(implicit, true)).toEqual({ analytics: true, ads: false });
+    expect(snapshotOf({ analytics: choice(true, "banner"), ads: choice(true, "banner") }, true)).toEqual({
+      analytics: true,
+      ads: true,
+    });
+  });
+});
+
 describe("parseConsentCookie", () => {
   it("is the browser's own value per category, unset meaning off", () => {
-    expect(parseConsentCookie(cookie(["analytics", "ads"]), NOW)).toEqual({ analytics: true, ads: true });
-    expect(parseConsentCookie(cookie(["analytics"], { analytics: analyticsData() }), NOW)).toEqual({
+    expect(parseConsentCookie(cookie(["analytics", "ads"]), NOW, false)).toEqual({ analytics: true, ads: true });
+    expect(parseConsentCookie(cookie(["analytics"], { analytics: analyticsData() }), NOW, false)).toEqual({
       analytics: true,
       ads: false,
     });
-    expect(parseConsentCookie(undefined, NOW)).toEqual(NO_CONSENT);
+    expect(parseConsentCookie(undefined, NOW, false)).toEqual(NO_CONSENT);
+  });
+
+  it("applies GPC to a regional ads default", () => {
+    const implicit = { analytics: analyticsData({ source: "implicit" }), ads: adsData({ source: "implicit" }) };
+    expect(parseConsentCookie(cookie(["analytics", "ads"], implicit), NOW, true)).toEqual({ analytics: true, ads: false });
   });
 
   it("switches off a consent past 395 days", () => {
     const old = iso(NOW - (CONSENT_MAX_AGE_DAYS + 1) * DAY);
     const data = { analytics: analyticsData({ decidedAt: old }), ads: adsData({ decidedAt: old }) };
-    expect(parseConsentCookie(cookie(["analytics", "ads"], data), NOW)).toEqual(NO_CONSENT);
+    expect(parseConsentCookie(cookie(["analytics", "ads"], data), NOW, false)).toEqual(NO_CONSENT);
   });
 
   it("keeps a choice made under a newer revision, as the browser does", () => {
-    expect(parseConsentCookie(cookie(["analytics"], undefined, CONSENT_REVISION + 1), NOW)).toEqual({
+    expect(parseConsentCookie(cookie(["analytics"], undefined, CONSENT_REVISION + 1), NOW, false)).toEqual({
       analytics: true,
       ads: false,
     });

@@ -12,6 +12,7 @@ import type * as AmplitudeSdk from '@amplitude/analytics-browser';
 import {
   adClickFrom,
   sanitizeEventProperties,
+  snapshotOf,
   type AnalyticsEventName,
   type BrowserChoices,
   type ConsentSnapshot,
@@ -23,7 +24,6 @@ import {
   conversionLabels,
 } from '@web/lib/analytics/build-config';
 import {
-  consentRevision,
   followPage,
   openConsentSettings,
   setConsentLanguage,
@@ -343,11 +343,12 @@ function clearStorage(prefix: string): void {
 }
 
 /**
- * This browser's choice as the backend reads it.
+ * This browser's choice as the backend reads it, GPC applied as the server applies it.
  * @returns Both categories; off until a choice is in force.
  */
 export function consentSnapshot(): ConsentSnapshot {
-  return { analytics: choice?.analytics?.value === true, ads: choice?.ads?.value === true };
+  const gpc = (navigator as Navigator & { globalPrivacyControl?: boolean }).globalPrivacyControl === true;
+  return snapshotOf(choice ?? { analytics: null, ads: null }, gpc);
 }
 
 /**
@@ -461,4 +462,4 @@ export function conversion(
   });
 }
 
-export { consentRevision, followPage, openConsentSettings as openSettings };
+export { followPage, openConsentSettings as openSettings };

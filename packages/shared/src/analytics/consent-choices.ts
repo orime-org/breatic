@@ -8,6 +8,7 @@
  * contract test compares them.
  */
 
+import { browserAdsConsent } from "@shared/analytics/ads-consent.js";
 import { CONSENT_MAX_AGE_DAYS, revisionInForce, type ConsentSnapshot } from "@shared/analytics/consent.js";
 
 /** How a browser arrived at a choice it holds in its cookie. */
@@ -88,22 +89,26 @@ function readEntry(entry: unknown, value: boolean, revision: number): BrowserCho
 }
 
 /**
- * Each category's value in these choices, unset meaning off.
+ * The consent in force per category, unset meaning off, with GPC refusing a
+ * regional ads default (design §4.4.5). A request, an order or a task keeps
+ * this snapshot, and the account keeps it as its latest report (§4.4.6).
  * @param choices - The choices in force.
+ * @param gpc - Whether the browser sends GPC.
  * @returns The snapshot.
  */
-export function snapshotOf(choices: BrowserChoices): ConsentSnapshot {
-  return { analytics: choices.analytics?.value ?? false, ads: choices.ads?.value ?? false };
+export function snapshotOf(choices: BrowserChoices, gpc: boolean): ConsentSnapshot {
+  return { analytics: choices.analytics?.value === true, ads: browserAdsConsent(choices.ads, gpc) };
 }
 
 /**
- * This browser's own value per category, unset meaning off.
+ * The consent in force in a cookie, as {@link snapshotOf} reads it.
  * @param raw - The cookie value.
  * @param now - The current time, epoch ms.
+ * @param gpc - Whether the browser sends GPC.
  * @returns The snapshot.
  */
-export function parseConsentCookie(raw: string | undefined, now: number): ConsentSnapshot {
-  return snapshotOf(parseConsentChoices(raw, now));
+export function parseConsentCookie(raw: string | undefined, now: number, gpc: boolean): ConsentSnapshot {
+  return snapshotOf(parseConsentChoices(raw, now), gpc);
 }
 
 /**

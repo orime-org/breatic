@@ -13,20 +13,19 @@
 import type { MiddlewareHandler } from "hono";
 import { getCookie } from "hono/cookie";
 import { runWithConsent } from "@breatic/core";
-import { browserAdsConsent, CONSENT_COOKIE_NAME, parseConsentChoices, snapshotOf } from "@breatic/shared";
+import { CONSENT_COOKIE_NAME, parseConsentCookie } from "@breatic/shared";
 
 /**
  * Put the requesting browser's consent in scope for the rest of the request:
- * analytics as its cookie says, and for ads the cookie's value with this
- * request's GPC applied, which refuses a regional default but leaves the
- * visitor's own choice as it is (inner#1442 design §4.4.5). The cookie is read
- * once here; later steps take it from `currentConsent` and `currentAdsBrowser`.
+ * each category as its cookie says, with this request's GPC refusing a
+ * regional ads default and leaving the visitor's own choice as it is
+ * (inner#1442 design §4.4.5). The cookie is read once here; later steps take
+ * it from `currentConsent` and `currentAdsBrowser`.
  * @param c - The request context.
  * @param next - The rest of the chain.
  * @returns The chain's response.
  */
 export const analyticsConsentMiddleware: MiddlewareHandler = (c, next) => {
-  const choices = parseConsentChoices(getCookie(c, CONSENT_COOKIE_NAME), Date.now());
-  const browser = { ads: { consent: browserAdsConsent(choices.ads, c.req.header("Sec-GPC") === "1") } };
-  return runWithConsent(snapshotOf(choices), next, browser);
+  const consent = parseConsentCookie(getCookie(c, CONSENT_COOKIE_NAME), Date.now(), c.req.header("Sec-GPC") === "1");
+  return runWithConsent(consent, next, { ads: { consent: consent.ads } });
 };

@@ -11,7 +11,7 @@
 import { describe, it, expect } from "vitest";
 import { CONSENT_REVISION } from "../analytics/consent.js";
 import type { BrowserChoice } from "../analytics/consent-choices.js";
-import { adsAllowed, browserAdsConsent, reportedConsent } from "../analytics/ads-consent.js";
+import { adsAllowed, browserAdsConsent } from "../analytics/ads-consent.js";
 
 const choice = (value: boolean, source: BrowserChoice["source"]): BrowserChoice => ({
   value,
@@ -32,27 +32,6 @@ describe("browserAdsConsent", () => {
     expect(browserAdsConsent(null, true)).toBe(false);
     expect(browserAdsConsent(choice(true, "banner"), true)).toBe(true);
     expect(browserAdsConsent(choice(true, "settings"), true)).toBe(true);
-  });
-});
-
-describe("reportedConsent", () => {
-  it("reports an unanswered browser as not consenting", () => {
-    expect(reportedConsent({ analytics: null, ads: null }, false)).toEqual({ analytics: false, ads: false });
-  });
-
-  it("reports the regional default, and GPC only on ads the visitor never chose", () => {
-    expect(reportedConsent({ analytics: choice(true, "implicit"), ads: choice(true, "implicit") }, false)).toEqual({
-      analytics: true,
-      ads: true,
-    });
-    expect(reportedConsent({ analytics: choice(true, "implicit"), ads: choice(true, "implicit") }, true)).toEqual({
-      analytics: true,
-      ads: false,
-    });
-    expect(reportedConsent({ analytics: choice(true, "banner"), ads: choice(true, "banner") }, true)).toEqual({
-      analytics: true,
-      ads: true,
-    });
   });
 });
 

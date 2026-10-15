@@ -11,7 +11,6 @@ import { captureException } from '@sentry/react';
 import {
   getLocale,
   onLocaleChange,
-  reportedConsent,
   t,
   type AnalyticsEventName,
   type Attribution,
@@ -34,7 +33,7 @@ let runtime: Promise<Runtime> | null = null;
 let consent: ConsentSnapshot | undefined;
 /** The signed-in account; null when nobody is, undefined until the app knows. */
 let signedIn: string | null | undefined = undefined;
-// The last report sent, as account and body, so the same choice is not sent twice.
+// The last report sent in this sign-in, as account and consent, so the same choice is not sent twice.
 let lastReport: string | null = null;
 
 /**
@@ -139,14 +138,14 @@ function decideAds(module: Runtime): void {
 
 /**
  * Report this browser's choice to the signed-in account (design §4.4.6):
- * after sign-in and after each change. A failure leaves the choice in this
+ * after sign-in and after each change, as the snapshot the backend reads.
+ * Nothing is reported before this page has read the cookie. A failure leaves the choice in this
  * browser as it is; the next change or page load reports again.
  * @param module - The loaded runtime.
  */
 async function reportConsent(module: Runtime): Promise<void> {
-  const choices = module.browserChoices();
-  if (typeof signedIn !== 'string' || choices === undefined) return;
-  const body = reportedConsent(choices ?? { analytics: null, ads: null }, sendsGpc());
+  if (typeof signedIn !== 'string' || !module.browserChoices()) return;
+  const body = module.consentSnapshot();
   const key = `${signedIn}:${JSON.stringify(body)}`;
   if (key === lastReport) return;
   lastReport = key;
@@ -199,6 +198,7 @@ export function identifyUser(user: AnalyticsUser): void {
 /** Forget the account on sign-out, and when the app starts without a session. */
 export function resetUser(): void {
   signedIn = null;
+  lastReport = null;
   withRuntime((module) => module.reset());
 }
 

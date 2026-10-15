@@ -8,6 +8,7 @@ const runtime = vi.hoisted(() => ({
   listener: null as null | ((choice: { analytics: boolean; ads: boolean }) => void),
   started: Promise.resolve(),
   choices: null as null | undefined | Record<string, unknown>,
+  snapshot: { analytics: false, ads: false },
   setAds: vi.fn(),
 }));
 const api = vi.hoisted(() => ({ put: vi.fn(async (_path: string, _body: unknown): Promise<unknown> => undefined) }));
@@ -26,6 +27,7 @@ vi.mock('@web/lib/analytics/runtime', () => ({
   identify: () => undefined,
   reset: () => undefined,
   setAds: runtime.setAds,
+  consentSnapshot: () => runtime.snapshot,
 }));
 vi.mock('@web/data/api/request', () => ({ apiPut: api.put }));
 
@@ -57,8 +59,9 @@ async function load(): Promise<typeof AnalyticsModule> {
  * A choice change in this browser, as the runtime reports it.
  * @param next - The choices now in force.
  */
-function change(next: Record<string, unknown> | null): void {
+function change(next: Record<string, unknown> | null, snapshot = { analytics: next !== null, ads: next !== null }): void {
   runtime.choices = next;
+  runtime.snapshot = snapshot;
   runtime.listener?.({ analytics: next !== null, ads: next !== null });
 }
 
@@ -78,6 +81,7 @@ afterEach(() => {
   gpc(false);
   runtime.listener = null;
   runtime.choices = null;
+  runtime.snapshot = { analytics: false, ads: false };
   localStorage.clear();
   window.history.replaceState(null, '', '/');
 });
@@ -118,12 +122,14 @@ describe('whether ads run', () => {
 });
 
 describe('reporting this browser’s choice to the account (design §4.4.6)', () => {
-  it('sends it after sign-in, and again after each change while signed in', async () => {
+  it('reports the backend snapshot after sign-in, and again after each change while signed in', async () => {
     runtime.choices = choices(true);
+    runtime.snapshot = { analytics: true, ads: true };
     const analytics = await load();
     analytics.identifyUser({ id: 'u1' } as never);
-    await vi.waitFor(() => expect(api.put).toHaveBeenCalledWith('/users/me/consent', { analytics: true, ads: true }));
-    change(choices(false, 'settings'));
+    await vi.waitFor(() => expect(api.put).toHaveBeenCalledTimes(1));
+    expect(api.put).toHaveBeenLastCalledWith('/users/me/consent', { analytics: true, ads: true });
+    change(choices(false, 'settings'), { analytics: false, ads: false });
     await vi.waitFor(() => expect(api.put).toHaveBeenLastCalledWith('/users/me/consent', { analytics: false, ads: false }));
   });
 
@@ -136,18 +142,17 @@ describe('reporting this browser’s choice to the account (design §4.4.6)', ()
     expect(api.put).not.toHaveBeenCalled();
   });
 
-  it('reports a missing choice as refused, and a regional ads default under GPC as refused', async () => {
+  it('sends nothing when this page never read the cookie', async () => {
     runtime.choices = null;
     const analytics = await load();
     analytics.identifyUser({ id: 'u1' } as never);
-    await vi.waitFor(() => expect(api.put).toHaveBeenCalledWith('/users/me/consent', { analytics: false, ads: false }));
-    gpc(true);
-    change(choices(true, 'implicit'));
-    await vi.waitFor(() => expect(api.put).toHaveBeenLastCalledWith('/users/me/consent', { analytics: true, ads: false }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(api.put).not.toHaveBeenCalled();
   });
 
-  it('does not send the same choice twice for the same account, but does for another account', async () => {
+  it('does not send the same choice twice in one sign-in, but does for another account', async () => {
     runtime.choices = choices(true);
+    runtime.snapshot = { analytics: true, ads: true };
     const analytics = await load();
     analytics.identifyUser({ id: 'u1' } as never);
     await vi.waitFor(() => expect(api.put).toHaveBeenCalledTimes(1));
@@ -159,8 +164,20 @@ describe('reporting this browser’s choice to the account (design §4.4.6)', ()
     await vi.waitFor(() => expect(api.put).toHaveBeenCalledTimes(2));
   });
 
+  it('reports again when the same account signs in again after signing out', async () => {
+    runtime.choices = choices(true);
+    runtime.snapshot = { analytics: true, ads: true };
+    const analytics = await load();
+    analytics.identifyUser({ id: 'u1' } as never);
+    await vi.waitFor(() => expect(api.put).toHaveBeenCalledTimes(1));
+    analytics.resetUser();
+    analytics.identifyUser({ id: 'u1' } as never);
+    await vi.waitFor(() => expect(api.put).toHaveBeenCalledTimes(2));
+  });
+
   it('sends again after a failure, and does not report a session that ended', async () => {
     runtime.choices = choices(true);
+    runtime.snapshot = { analytics: true, ads: true };
     api.put.mockRejectedValueOnce(new Error('offline'));
     const analytics = await load();
     analytics.identifyUser({ id: 'u1' } as never);
@@ -170,7 +187,7 @@ describe('reporting this browser’s choice to the account (design §4.4.6)', ()
     // The class the freshly loaded module sees.
     const { ApiException } = await import('@web/data/api/types');
     api.put.mockRejectedValueOnce(new ApiException({ status: 401, message: 'unauthorized', fromServer: true }));
-    change(choices(false));
+    change(choices(false), { analytics: false, ads: false });
     await vi.waitFor(() => expect(api.put).toHaveBeenCalledTimes(3));
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(sentry.captureException).toHaveBeenCalledTimes(1);

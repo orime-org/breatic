@@ -12,7 +12,7 @@
 
 import { z } from "zod";
 import { revisionInForce } from "@shared/analytics/consent.js";
-import type { BrowserChoice, BrowserChoices } from "@shared/analytics/consent-choices.js";
+import type { BrowserChoice } from "@shared/analytics/consent-choices.js";
 
 /** This browser's ads consent with GPC applied, as stored on orders, tasks and upload jobs. */
 export const BrowserAdsSnapshotSchema = z.object({ consent: z.boolean() }).strict();
@@ -23,7 +23,7 @@ export type BrowserAdsSnapshot = z.infer<typeof BrowserAdsSnapshotSchema>;
 /** A browser with no ads consent. */
 export const NO_ADS_BROWSER: BrowserAdsSnapshot = Object.freeze({ consent: false });
 
-/** What a signed-in browser reports to its account (`PUT /users/me/consent`). */
+/** What a signed-in browser reports to its account (`PUT /users/me/consent`): its consent snapshot. */
 export const ReportedConsentSchema = z.object({ analytics: z.boolean(), ads: z.boolean() }).strict();
 
 /** What a signed-in browser reports to its account. */
@@ -52,17 +52,6 @@ export interface ConsentRecord {
 export function browserAdsConsent(ads: Pick<BrowserChoice, "value" | "source"> | null, gpc: boolean): boolean {
   if (ads === null || !ads.value) return false;
   return !(gpc && ads.source === "implicit");
-}
-
-/**
- * What a signed-in browser reports: each category's consent in force, an
- * unanswered or lapsed one counting as refused.
- * @param choices - This browser's choices in force.
- * @param gpc - Whether this browser sends GPC.
- * @returns The report.
- */
-export function reportedConsent(choices: BrowserChoices, gpc: boolean): ReportedConsent {
-  return { analytics: choices.analytics?.value === true, ads: browserAdsConsent(choices.ads, gpc) };
 }
 
 /**

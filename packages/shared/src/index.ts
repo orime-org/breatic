@@ -831,7 +831,6 @@ export {
   ReportedConsentSchema,
   adsAllowed,
   browserAdsConsent,
-  reportedConsent,
   type BrowserAdsSnapshot,
   type ConsentRecord,
   type ReportedConsent,

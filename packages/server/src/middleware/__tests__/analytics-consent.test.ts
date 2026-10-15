@@ -60,6 +60,13 @@ describe("analyticsConsentMiddleware", () => {
     expect(await without.json()).toEqual({ consent: true });
   });
 
+  it("hands handlers the same GPC-applied ads value in the consent snapshot", async () => {
+    const res = await appSeeingConsent().request("/probe", {
+      headers: { Cookie: cookieHeader(["necessary", "analytics", "ads"], CONSENT_REVISION, "implicit"), "Sec-GPC": "1" },
+    });
+    expect(await res.json()).toEqual({ analytics: true, ads: false });
+  });
+
   it("leaves analytics to the cookie under GPC", async () => {
     const res = await appSeeingConsent().request("/probe", {
       headers: { Cookie: cookieHeader(["necessary", "analytics"], CONSENT_REVISION, "implicit"), "Sec-GPC": "1" },

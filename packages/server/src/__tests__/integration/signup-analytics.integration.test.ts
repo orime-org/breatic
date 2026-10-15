@@ -88,12 +88,13 @@ const ATTRIBUTION = {
 };
 
 /**
- * A consent cookie as the banner writes it.
+ * A consent cookie as the banner, or the regional default, writes it.
  * @param categories - Accepted categories.
+ * @param source - Where both choices came from.
  * @returns A `Cookie` header value.
  */
-function consentCookie(categories: string[]): string {
-  const entry = { decidedAt: new Date().toISOString(), source: "banner" };
+function consentCookie(categories: string[], source = "banner"): string {
+  const entry = { decidedAt: new Date().toISOString(), source };
   const data = { analytics: entry, ads: entry };
   return `${CONSENT_COOKIE_NAME}=${encodeURIComponent(JSON.stringify({ categories, revision: CONSENT_REVISION, data }))}`;
 }
@@ -101,12 +102,17 @@ function consentCookie(categories: string[]): string {
 /**
  * Sign up by email through the app.
  * @param cookie - The browser's cookie header, if any.
+ * @param gpc - Whether the browser sends `Sec-GPC: 1`.
  * @returns The new account's id.
  */
-async function register(cookie?: string): Promise<string> {
+async function register(cookie?: string, gpc = false): Promise<string> {
   const res = await app.request("/api/v1/auth/register", {
     method: "POST",
-    headers: { "Content-Type": "application/json", ...(cookie ? { Cookie: cookie } : {}) },
+    headers: {
+      "Content-Type": "application/json",
+      ...(cookie ? { Cookie: cookie } : {}),
+      ...(gpc ? { "Sec-GPC": "1" } : {}),
+    },
     body: JSON.stringify({
       email: `signup-analytics-${crypto.randomUUID()}@example.test`,
       password: "password1234",
@@ -158,6 +164,26 @@ describe("sign-up analytics", () => {
       const id = await register(consentCookie(["necessary", "ads"]));
       expect(await storedAttribution(id)).not.toBeNull();
       expect(sent).toEqual([]);
+      expect(await getUploadStatus({ conversion: "signup", transactionId: `signup:${id}` })).toBe("queued");
+    } finally {
+      setAdsConversionConfigForTest(undefined);
+    }
+  });
+
+  it("queues no conversion for a regional ads default from a browser that sends GPC", async () => {
+    setAdsConversionConfigForTest(ADS_CONFIG);
+    try {
+      const id = await register(consentCookie(["necessary", "analytics", "ads"], "implicit"), true);
+      expect(await getUploadStatus({ conversion: "signup", transactionId: `signup:${id}` })).toBeNull();
+    } finally {
+      setAdsConversionConfigForTest(undefined);
+    }
+  });
+
+  it("queues the conversion for the visitor's own ads consent from a browser that sends GPC", async () => {
+    setAdsConversionConfigForTest(ADS_CONFIG);
+    try {
+      const id = await register(consentCookie(["necessary", "ads"]), true);
       expect(await getUploadStatus({ conversion: "signup", transactionId: `signup:${id}` })).toBe("queued");
     } finally {
       setAdsConversionConfigForTest(undefined);
