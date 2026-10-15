@@ -327,12 +327,12 @@ export function startWorker(): void {
   // Health probe - docker / LB / k8s healthcheck kills the
   // instance on N consecutive 503s so a worker whose Redis or
   // Postgres pool has drifted is replaced automatically. Per
-  // CLAUDE.md "industrial-grade server standards" mandate.
+  // AGENTS.md#health-checks.
   const health = startHealthServer({
     port: HEALTH_PORT,
     serviceName: "worker",
     // Forward health-server lifecycle events to our logger. Per
-    // CLAUDE.md "core and shared must not log" mandate, the library
+    // AGENTS.md#library-packages-do-not-log, the library
     // emits events; the application entry routes them.
     onEvent: (event) => {
       if (event.type === "listening") {
@@ -377,8 +377,8 @@ export function startWorker(): void {
     ],
   });
 
-  // Graceful shutdown - per CLAUDE.md "industrial-grade server standards"
-  // mandate any long-running process must drain in-flight work
+  // Graceful shutdown - per AGENTS.md#graceful-shutdown
+  // any long-running process must drain in-flight work
   // before exiting on SIGTERM. BullMQ's `worker.close(force?)`
   // (force=false, the default) stops accepting new jobs and
   // waits for the currently-running job's handler to resolve,

@@ -240,8 +240,8 @@ const refundLoop = startRefundLoop();
 // hono port and per-port failure semantics in the LB stay clean.
 // docker / k8s / LB healthcheck kills the instance on N consecutive
 // 503s so an api whose Redis or Postgres pool has drifted gets a
-// fresh process automatically. Per CLAUDE.md "industrial-grade server standards"
-// mandate; mirrors worker (port 9101) + collab (port 1235) shape so
+// fresh process automatically. Per AGENTS.md#health-checks;
+// mirrors worker (port 9101) + collab (port 1235) shape so
 // all three services expose `GET /healthz` on a `primary+1` style port.
 const health = startHealthServer({
   port: HEALTH_PORT,

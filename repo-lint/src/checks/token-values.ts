@@ -75,7 +75,7 @@ const DARKEST = 18;
  *
  * `content-link` is a link written in content, which has to be told apart
  * from the words around it while the chrome stays neutral
- * (`packages/web/CLAUDE.md`). Its light value is Primer's link blue, the one
+ * (`packages/web/AGENTS.md#links-in-content`). Its light value is Primer's link blue, the one
  * that reads at 4.5:1 on the page; nothing derives from it.
  */
 const COLOURFUL = /(palette|status|note|selection|comment|content-link)/i;

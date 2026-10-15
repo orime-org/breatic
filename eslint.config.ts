@@ -84,19 +84,19 @@ export default tseslint.config(
     plugins: { import: importPlugin },
     rules: {
       "@typescript-eslint/no-explicit-any": "error",
-      // Enforce CLAUDE.md Prohibition #12: no `var`. Block-scoped `let` /
+      // Enforce AGENTS.md#typescript-strictness: no `var`. Block-scoped `let` /
       // `const` only — `var` hoists function-wide and leaks past the block
       // it reads as scoped to, a classic source of subtle bugs. eslint:
       // recommended does NOT enable this (it's a suggestion-category rule),
       // so it must be opt-in here. Pairs with the existing
-      // @typescript-eslint/no-require-imports (Prohibition #12, require half) from the
+      // @typescript-eslint/no-require-imports (the `require()` half of that rule) from the
       // tseslint recommended preset.
       "no-var": "error",
       // Ban redundant type assertions — `x as T` where TS already knows
       // x is T. A cast that does nothing is noise and can mask a real
       // type problem if the underlying type later changes.
       "@typescript-eslint/no-unnecessary-type-assertion": "error",
-      // Enforce CLAUDE.md Prohibition #8 "bare catch" (machine-checkable half;
+      // Enforce AGENTS.md#application-layer-error-logging "no bare catch" (machine-checkable half;
       // CI maximal-strictness guard suite, ADR 2026-06-01). An empty
       // catch body silently swallows the error — at 3am the on-call cannot
       // trace the root cause. eslint:recommended already enables no-empty,
@@ -107,7 +107,7 @@ export default tseslint.config(
       // stays a human-review concern — see that ADR.
       "no-empty": ["error", { allowEmptyCatch: false }],
       // argsIgnorePattern / varsIgnorePattern: `_`-prefixed = intentionally
-      // unused. caughtErrors:"all" is the other half of Prohibition #8: a catch that
+      // unused. caughtErrors:"all" is the other half of the bare-catch rule: a catch that
       // BINDS the error (`catch (err)`) but never uses it has captured the
       // failure only to drop it — the closest machine signal for a real
       // swallow. Prefix the binding `_` (or omit it: `catch {`) when the
@@ -134,7 +134,7 @@ export default tseslint.config(
   },
   {
     // Function-definition format spec (docs/ARCHITECTURE.md → Coding standards;
-    // CLAUDE.md Prohibition #11 + its Coding-style section). Every named
+    // AGENTS.md#function-definition-format). Every named
     // function unit — function declaration,
     // class method, class, variable-assigned arrow / function expression —
     // must carry a TSDoc block AND an explicit return type. No public-only

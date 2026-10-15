@@ -80,8 +80,10 @@ describe("lifting the prompt out of the params bag (#1966)", () => {
     expect(rest).toEqual({ image: "http://x/y.png" });
   });
 
-  // CLAUDE.md：AIGC prompt 一律先经 extractPromptText 去 HTML、注释和不可见
-  // 字符。mini-tool 那条路此前没经过，两条路拉齐之后它也经过了。
+  // AGENTS.md#prompts-pass-through-extractprompttext: every AIGC prompt goes
+  // through extractPromptText first, which strips HTML, comments and invisible
+  // characters. The mini-tool path used to skip it; with the two paths aligned
+  // it goes through it too.
   it("strips markup the way every AIGC prompt is required to be stripped", () => {
     const [prompt] = lift({
       prompt: "<b>bold</b> plan<!-- hidden -->",

@@ -323,12 +323,12 @@ async function main(): Promise<void> {
   // touch the WS port. Probes every critical dependency; the list is
   // `buildCollabHealthChecks` in infra/health-checks.ts. LB / docker healthcheck kills
   // the instance on N consecutive 503s so a drifted connection pool
-  // gets a fresh process automatically - per CLAUDE.md "industrial-grade server standards" and memory `feedback_dev_collab_long_running_drift`.
+  // gets a fresh process automatically - per AGENTS.md#health-checks.
   const healthServer = startHealthServer({
     port: HEALTH_PORT,
     serviceName: "collab",
     // Forward health-server lifecycle events to our logger. Per
-    // CLAUDE.md "core and shared must not log" mandate, the library
+    // AGENTS.md#library-packages-do-not-log, the library
     // emits events; the application entry routes them.
     onEvent: (event) => {
       if (event.type === "listening") {
