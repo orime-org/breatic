@@ -219,6 +219,8 @@ describe('HTML carrying media', () => {
   it.each([
     ['widths, smallest first', 'https://e.example/s.png 320w, https://e.example/b.png 1280w, https://e.example/m.png 640w', 'https://e.example/b.png'],
     ['no descriptors', 'https://e.example/only.png', 'https://e.example/only.png'],
+    ['no space after a comma', 'https://e.example/s.png 1x,https://e.example/b.png 2x', 'https://e.example/b.png'],
+    ['three candidates and no spaces', 'https://e.example/s.png 1x,https://e.example/m.png 2x,https://e.example/b.png 3x', 'https://e.example/b.png'],
   ])('a picture given only by srcset with %s is fetched from its largest candidate', async (_what, srcset, url) => {
     const { editor, sink } = open([{ type: 'paragraph', content: 'lead' }]);
     caretIn(editor, 0);
@@ -271,6 +273,90 @@ function blockOrder(editor: Editor): string[] {
     ]);
   return walk(editor.document as Block[]);
 }
+
+describe('where a pasted picture stands and what it shows (inner#1351 A3, A5)', () => {
+  /**
+   * Pastes HTML or Markdown on the line `lead` and waits for it to settle.
+   * @param html - The clipboard's HTML, or '' for plain text.
+   * @param text - The clipboard's plain text.
+   * @returns The editor and its sink.
+   */
+  async function pasted(html: string, text: string): Promise<{ editor: Editor; sink: Sink }> {
+    const opened = open([{ type: 'paragraph', content: 'lead' }]);
+    caretIn(opened.editor, 0);
+    paste(opened.editor, html, text);
+    await settled();
+    return opened;
+  }
+
+  /**
+   * The addresses uploads started from.
+   * @param sink - The sink.
+   * @returns The addresses.
+   */
+  function started(sink: Sink): string[] {
+    return sink.start.mock.calls.map((call) => (call[1] as { url: string }).url);
+  }
+
+  it('a picture whose srcset holds the picture shown is fetched from it, not from a placeholder src', async () => {
+    const { sink } = await pasted(
+      '<p>a</p><img src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" srcset="https://e.example/real.jpg 1x"><p>b</p>',
+      'a b',
+    );
+
+    expect(started(sink)).toEqual(['https://e.example/real.jpg']);
+  });
+
+  it('a picture whose srcset holds only addresses that cannot be fetched is fetched from its src', async () => {
+    const { sink } = await pasted('<p>a</p><img src="https://e.example/c.png" srcset="/pic/a.png 1x, /pic/b.png 2x"><p>b</p>', 'a b');
+
+    expect(started(sink)).toEqual(['https://e.example/c.png']);
+  });
+
+  it.each([
+    ['two pictures in one figure', '<figure><img src="https://e.example/1.png"><img src="https://e.example/2.png"><figcaption>both</figcaption></figure>'],
+    [
+      'a gallery of figures',
+      '<figure class="wp-block-gallery"><figure><img src="https://e.example/1.png"></figure><figure><img src="https://e.example/2.png"><figcaption>two</figcaption></figure></figure>',
+    ],
+  ])('%s land as a picture each', async (_what, html) => {
+    const { sink } = await pasted(`<p>a</p>${html}<p>b</p>`, 'a b');
+
+    expect(started(sink)).toEqual(['https://e.example/1.png', 'https://e.example/2.png']);
+    expect(sink.onLeftOut).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['a sentence', '<p>see <img src="https://e.example/i.png"> here</p>', 'see here'],
+    ['a heading', '<h2>Title <img src="https://e.example/i.png"></h2>', 'Title'],
+    ['a sentence in Markdown', '', 'see ![x](https://e.example/i.png) here\n\nnext'],
+    ['a Markdown table cell', '', '| a | b |\n|---|---|\n| ![x](https://e.example/i.png) | y |'],
+  ])('a picture in %s lands where it stands', async (_what, html, text) => {
+    const { editor, sink } = await pasted(html, text);
+
+    expect(started(sink)).toEqual(['https://e.example/i.png']);
+    expect(blockOrder(editor)).toContain('image|');
+    expect(sink.onLeftOut).not.toHaveBeenCalled();
+  });
+
+  it('a picture in a sentence splits the sentence where it stands', async () => {
+    const { editor } = await pasted('<p>see <img src="https://e.example/i.png"> here</p><p>next</p>', 'see here next');
+
+    expect(shape(editor).map((label) => label.trim())).toEqual(['paragraph:leadsee', 'image[pending|]', 'paragraph:here', 'paragraph:next']);
+  });
+
+  it('a picture the parse still drops is told as left out, pasted or dropped', async () => {
+    const HTML = '<table><caption><img src="https://e.example/cap.png"></caption><tr><td>x</td></tr></table>';
+    const { sink } = await pasted(`<p>a</p>${HTML}`, 'a x');
+    const dropped = open([{ type: 'paragraph', content: 'lead' }]);
+
+    drop(dropped.editor, caretIn(dropped.editor, 0), `<p>a</p>${HTML}`, 'a x');
+    await settled();
+
+    expect(sink.onLeftOut.mock.calls).toEqual([[1]]);
+    expect(dropped.sink.onLeftOut.mock.calls).toEqual([[1]]);
+  });
+});
 
 describe('a web table whose cells hold media', () => {
   const WITH = '<p>a</p><table><tr><td><img src="https://elsewhere.example/a.png"> x</td><td>y</td></tr></table><p>b</p>';
