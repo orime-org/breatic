@@ -18,11 +18,8 @@ import {
   type ExpandRatio,
 } from '@web/spaces/canvas/mini-tool/expand-frame';
 
-/**
- * An in-progress drag, with the frame and ratio as they stood when it began
- * and the panel opening it belongs to.
- */
-type Gesture = { pointerId: number; opening: number; frame: ExpandFrame; ratio: ExpandRatio } & (
+/** An in-progress drag, with the frame and ratio as they stood when it began. */
+type Gesture = { pointerId: number; frame: ExpandFrame; ratio: ExpandRatio } & (
   | { type: 'resize'; handle: CropHandle }
   | { type: 'move'; start: { x: number; y: number } }
 );
@@ -54,7 +51,6 @@ interface ExpandFrameOverlayProps {
 export function ExpandFrameOverlay({ onNodeContextMenu }: ExpandFrameOverlayProps): React.JSX.Element | null {
   const store = useCanvasSessionStore();
   const hostId = useCanvasSession((s) => s.panelHostId);
-  const opening = useCanvasSession((s) => s.panelSession);
   const draft = useCanvasSession(miniToolOpenOn(hostId));
   const expand = draft?.expand ?? null;
   // Read only while the frame shows, so a zoom does not re-render it otherwise.
@@ -64,9 +60,6 @@ export function ExpandFrameOverlay({ onNodeContextMenu }: ExpandFrameOverlayProp
   const gesture = React.useRef<Gesture | null>(null);
   // A frame written by anyone but this drag ends the drag.
   const ours = React.useRef<{ frame: ExpandFrame; ratio: ExpandRatio } | null>(null);
-  // The frame outlives one opening of the panel; a drag the panel closed
-  // under (Esc while the button is held) ends with it.
-  if (gesture.current !== null && (expand === null || gesture.current.opening !== opening)) gesture.current = null;
   if (gesture.current !== null && expand !== null && ours.current !== null) {
     const same =
       expand.ratio === ours.current.ratio && JSON.stringify(expand.frame) === JSON.stringify(ours.current.frame);
@@ -131,7 +124,7 @@ export function ExpandFrameOverlay({ onNodeContextMenu }: ExpandFrameOverlayProp
     e.stopPropagation();
     e.currentTarget.setPointerCapture?.(e.pointerId);
     ours.current = { frame, ratio };
-    gesture.current = { pointerId: e.pointerId, opening, frame, ratio, ...start };
+    gesture.current = { pointerId: e.pointerId, frame, ratio, ...start };
   };
 
   /**
