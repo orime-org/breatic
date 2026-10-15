@@ -42,7 +42,7 @@ import { Fragment, Slice, type Node as PMNode } from '@tiptap/pm/model';
 import { Plugin, type EditorState, type Transaction } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 
-import { routeAddress } from '@web/spaces/document/document-media-address';
+import { addressLands } from '@web/spaces/document/document-media-address';
 import {
   inTableCell,
   insertAtGapTr,
@@ -96,9 +96,9 @@ function pended(
 ): Readonly<Record<string, unknown>> | null {
   if (pendingUploadId(attrs) !== null) return attrs;
   const url = attrs['url'];
-  if (typeof url !== 'string' || url === '') return null;
-  if (prefix !== null && url.startsWith(prefix)) return attrs;
-  if (queue === null || routeAddress(url) === 'skip') return null;
+  if (typeof url !== 'string' || !addressLands(url, prefix, queue !== null)) return null;
+  // Ours, which stays as it is; without a queue only ours lands.
+  if ((prefix !== null && url.startsWith(prefix)) || queue === null) return attrs;
   const uploadId = crypto.randomUUID();
   queue.push({ uploadId, url });
   return { ...attrs, url: '', uploadId };
@@ -206,27 +206,28 @@ function closedAtBlock(slice: Slice): Slice {
 }
 
 /**
- * Puts a slice opening on a block at the start of a line with words in it,
- * the line staying whole after it: ProseMirror splits the line at its start
- * and would leave the empty half above the block.
- * @param view - The editor view.
- * @param slice - The slice, as the paste reads it.
- * @returns Whether the paste was put in here.
+ * Where the line a slice opening on a block lands at the start of begins,
+ * when that line holds words: ProseMirror splits the line there and leaves
+ * its empty first half above the block.
+ * @param doc - The document before the slice lands.
+ * @param at - Where it lands.
+ * @param slice - The slice, as it lands.
+ * @returns The line's start, or null.
  */
-function pasteAtLineStart(view: EditorView, slice: Slice): boolean {
-  const { $from, empty } = view.state.selection;
-  const line = $from.depth > 0 ? $from.node($from.depth - 1) : null;
-  if (!empty || $from.parentOffset !== 0 || !$from.parent.isTextblock || $from.parent.content.size === 0) return false;
-  if (line?.type.name !== 'blockContainer' || line.childCount !== 1) return false;
-  if (slice.openStart !== 0 || !opensOnBlock(slice.content.firstChild)) return false;
-  const start = $from.before($from.depth - 1);
-  const tr = view.state.tr.replaceSelection(slice);
-  const left = tr.doc.nodeAt(start);
-  if (left?.type.name === 'blockContainer' && left.childCount === 1 && left.firstChild!.isTextblock && left.firstChild!.content.size === 0) {
-    tr.delete(start, start + left.nodeSize);
-  }
-  view.dispatch(tr.scrollIntoView().setMeta('paste', true).setMeta('uiEvent', 'paste'));
-  return true;
+function lineStartUnder(doc: PMNode, at: number, slice: Slice): number | null {
+  const $at = doc.resolve(at);
+  if (slice.openStart !== 0 || !opensOnBlock(slice.content.firstChild)) return null;
+  if ($at.parentOffset !== 0 || !$at.parent.isTextblock || $at.parent.content.size === 0 || $at.depth === 0) return null;
+  return $at.node($at.depth - 1).type.name === 'blockContainer' ? $at.before($at.depth - 1) : null;
+}
+
+/**
+ * Whether a block is a line with nothing in it and no lines nested under it.
+ * @param node - The block, or null.
+ * @returns True for an empty line.
+ */
+function isEmptyLine(node: PMNode | null): node is PMNode {
+  return node?.type.name === 'blockContainer' && node.childCount === 1 && node.firstChild!.isTextblock && node.firstChild!.content.size === 0;
 }
 
 /** HTML BlockNote wrote, as a paste hands it on after reading. */
@@ -274,6 +275,9 @@ export function documentPastedMediaExtension(
     let landing: CellLanding | null = null;
     // Where the HTML being read lands, for its slice.
     let into: number | null = null;
+    // The start of the line a block lands at the start of, to take the empty
+    // half the split leaves off in the same dispatch.
+    let edge: number | null = null;
 
     /**
      * Once the paste or the drop is done, starts the uploads whose blocks
@@ -301,6 +305,14 @@ export function documentPastedMediaExtension(
     };
 
     /**
+     * Whether a pasted medium at this address lands in the body.
+     * @param url - The address.
+     * @returns True when it lands.
+     */
+    const lands = (url: string): boolean =>
+      addressLands(url, options?.assetUrlPrefix() ?? null, options?.start !== undefined);
+
+    /**
      * Counts media judged out or lost in a read, told once the event is done.
      * @param count - How many.
      */
@@ -325,7 +337,7 @@ export function documentPastedMediaExtension(
      * they were; the media follow in the dispatch that puts the words in, or
      * by themselves once the event is done when that dispatch changes nothing.
      * @param html - The HTML ready to read, its media where a block stands.
-     * @param words - The same HTML with its lines as they were.
+     * @param words - The HTML as it came, for the words.
      * @param at - Where it lands.
      * @param view - The editor view.
      * @returns The HTML that goes on to the cell.
@@ -358,6 +370,7 @@ export function documentPastedMediaExtension(
     return {
       key: PASTED_MEDIA_KEY,
       leaveOut,
+      lands,
       prosemirrorPlugins: [
         new Plugin({
           props: {
@@ -375,22 +388,23 @@ export function documentPastedMediaExtension(
               // A drop's HTML reaches the read here; a paste's was made
               // ready and counted before BlockNote wrote it out again.
               const own = BLOCKNOTE_HTML.test(pasted);
-              const { html, media } = own ? { html: pasted, media: 0 } : preparePastedHTML(pasted);
+              const { html, media } = own ? { html: pasted, media: 0 } : preparePastedHTML(pasted, lands);
               expected = own ? null : media;
               const at = dropAt ?? view.state.selection.from;
               dropAt = null;
               landing = null;
               into = at;
               if (!inTableCell(view.state.doc.resolve(at))) return html;
-              return readForCell(html, own ? pasted : preparePastedHTML(pasted, 'keep').html, at, view);
+              return readForCell(html, pasted, at, view);
             },
             transformPasted: (slice, view) => {
               // A row moved or copied within the body is already ours.
               if (view.dragging !== null) return slice;
               // A slice landing in a table is fitted by the table's own paste
               // (cells over cells), which reads it as it came.
-              const fit = into !== null && inTableCell(view.state.doc.resolve(into)) ? (read: Slice): Slice => read : closedAtBlock;
+              const at = into;
               into = null;
+              const fit = at !== null && inTableCell(view.state.doc.resolve(at)) ? (read: Slice): Slice => read : closedAtBlock;
               if (expected !== null) {
                 let read = 0;
                 slice.content.descendants((node) => {
@@ -406,22 +420,33 @@ export function documentPastedMediaExtension(
               queued = [...queued, ...found];
               if (found.length > 0) settle();
               leaveOut(dropped);
-              if (fragment === slice.content) return fit(slice);
               // Opened as ProseMirror opens HTML it reads, up to an isolating
               // node, so a table's last cell does not take the line's tail.
-              return fragment.childCount === 0 ? Slice.empty : fit(Slice.maxOpen(fragment, false));
+              const landed =
+                fragment === slice.content ? fit(slice) : fragment.childCount === 0 ? Slice.empty : fit(Slice.maxOpen(fragment, false));
+              edge = at === null ? null : lineStartUnder(view.state.doc, at, landed);
+              return landed;
             },
-            handlePaste: (view, _event, slice) => pasteAtLineStart(view, slice),
           },
           // The rest went in the way it would have without the media; the
           // media follow in the same dispatch, mapped to the left of what went
           // in, so they stay under the table the reader aimed at.
+          // A block pasted or dropped at the start of a line with words takes
+          // the empty half the split leaves above it off, in the same dispatch.
           appendTransaction: (transactions, _old, state) => {
+            if (!transactions.some((tr) => tr.docChanged)) return null;
             const held = landing;
-            if (held === null || !transactions.some((tr) => tr.docChanged)) return null;
-            take();
-            const at = transactions.reduce((pos, tr) => tr.mapping.map(pos, -1), held.at);
-            return mediaUnderTable(state, at, held.media);
+            if (held !== null) {
+              take();
+              const at = transactions.reduce((pos, tr) => tr.mapping.map(pos, -1), held.at);
+              return mediaUnderTable(state, at, held.media);
+            }
+            const start = edge;
+            edge = null;
+            if (start === null || !transactions.some((tr) => ['paste', 'drop'].includes(tr.getMeta('uiEvent') as string))) return null;
+            const at = transactions.reduce((pos, tr) => tr.mapping.map(pos, -1), start);
+            const left = state.doc.nodeAt(at);
+            return isEmptyLine(left) ? state.tr.delete(at, at + left.nodeSize) : null;
           },
         }),
       ],

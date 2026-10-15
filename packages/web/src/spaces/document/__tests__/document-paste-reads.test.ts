@@ -368,3 +368,46 @@ describe('web content dropped at the end of the last table cell', () => {
     expect(shape(editor)).toEqual(rows);
   });
 });
+
+describe('what decides a medium lands, read before a line is split', () => {
+  it('a picture given only by srcset splits its sentence', async () => {
+    const { editor } = open([{ type: 'paragraph', content: 'lead' }]);
+    caretIn(editor, 0);
+
+    paste(editor, `<p>see <img srcset="${U}s.png 2x"> here</p>`, 'see here');
+    await settled();
+
+    expect(shape(editor).map((label) => label.trim())).toEqual(['paragraph:leadsee', 'image[pending|]', 'paragraph:here']);
+  });
+});
+
+describe('the words a table cell takes', () => {
+  it('keep the caption of a figure of several pictures', async () => {
+    const { editor } = open([TABLE]);
+    caretIn(editor, 0);
+
+    paste(editor, `<figure><img src="${U}1.png"><img src="${U}2.png"><figcaption>both</figcaption></figure>`, 'both');
+    await settled();
+
+    expect(firstCell(editor, 0)).toContain('both');
+    expect(shape(editor)).toEqual(['table', 'image[pending|]', 'image[pending|]']);
+  });
+
+  it('come from a table whose span runs past its rows as they do without the picture', async () => {
+    const TALL = '<table><tr><td rowspan="3">tall</td></tr></table>';
+    const plain = open([TABLE]);
+    caretIn(plain.editor, 0);
+    paste(plain.editor, `<p>w</p>${TALL}`, 'w tall');
+    await settled();
+    const { editor } = open([TABLE]);
+    caretIn(editor, 0);
+
+    paste(editor, `<p>w</p><img src="${U}a.png">${TALL}`, 'w tall');
+    await settled();
+
+    const expected = shape(plain.editor);
+    expected.splice(1, 0, 'image[pending|]');
+    expect(shape(editor)).toEqual(expected);
+    expect(firstCell(editor, 0)).toBe(firstCell(plain.editor, 0));
+  });
+});
