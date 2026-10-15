@@ -269,7 +269,8 @@ describe('runOnce', () => {
     const first = runOnce('project:create', spec);
     const second = runOnce('project:create', spec);
     answer.resolve('p1');
-    await expect(second).resolves.toEqual(await first);
+    expect(second).toBe(first);
+    await expect(first).resolves.toEqual({ kind: 'done', result: 'p1' });
   });
 
   it('stops asking before the server forgets the press, and says so', async () => {
