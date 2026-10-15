@@ -94,8 +94,9 @@ export function NodeAdjustLayer({ nodeId, wrapper }: NodeAdjustLayerProps): Reac
       const next = pending.current;
       const target = canvas.current;
       if (next === null || target === null) return;
-      // A backend that cannot draw (a lost context) leaves the layer hidden
-      // over the node's own picture; Run says what went wrong.
+      // A lost context is made again for the draw; graphics that still cannot
+      // draw leave the layer hidden over the node's own picture, and Run says
+      // what went wrong.
       void drawAdjusted(next.el, next.size, next.value, target).then(
         () => setDrawn(true),
         () => setDrawn(false),

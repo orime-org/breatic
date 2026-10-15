@@ -29,6 +29,7 @@ let runtime: Promise<AdjustRuntime> | undefined;
 /**
  * Load Fabric and the filters, once.
  * @returns Both modules.
+ * @throws {Error} When either chunk fails to load.
  */
 function loadRuntime(): Promise<AdjustRuntime> {
   runtime ??= Promise.all([import('fabric'), import('@web/spaces/canvas/mini-tool/adjust-filters')]);
@@ -55,20 +56,41 @@ export function exportBackendSide(longSide: number, sides: BackendSides): 'share
   return longSide > sides.shared ? longSide : 'shared';
 }
 
+/** A filter backend, WebGL or 2D. */
+type FilterBackend = ReturnType<typeof import('fabric')['getFilterBackend']>;
+
+/** Fabric's own calls for its shared filter backend. */
+type BackendRegistry = Pick<typeof import('fabric'), 'getFilterBackend' | 'initFilterBackend' | 'setFilterBackend'>;
+
 /**
- * The shared backend's square and the graphics' texture limit; both are
- * unbounded when Fabric filters without WebGL.
- * @returns The sides.
+ * Fabric's shared backend, made again when its WebGL context is gone. Fabric
+ * builds it once and hands the same one back (`FilterBackend.ts`
+ * `getFilterBackend`), and a lost context stays lost until the page makes a
+ * new one (Khronos wiki, HandlingContextLost), so the new one takes its place.
+ * @param fabric - Fabric's backend calls.
+ * @returns A backend that can draw.
+ * @throws {never} Never.
  */
-async function backendSides(): Promise<BackendSides> {
-  const [fabric] = await loadRuntime();
-  const backend = fabric.getFilterBackend();
-  if (!(backend instanceof fabric.WebGLFilterBackend)) return { shared: Infinity, max: Infinity };
-  const gl = document.createElement('canvas').getContext('webgl');
-  if (gl === null) return { shared: backend.tileSize, max: backend.tileSize };
-  const max = gl.getParameter(gl.MAX_TEXTURE_SIZE) as number;
-  gl.getExtension('WEBGL_lose_context')?.loseContext();
-  return { shared: backend.tileSize, max };
+export function liveSharedBackend(fabric: BackendRegistry): FilterBackend {
+  const current = fabric.getFilterBackend();
+  if (!('tileSize' in current) || (current.gl !== undefined && !current.gl.isContextLost())) return current;
+  const next = fabric.initFilterBackend();
+  fabric.setFilterBackend(next);
+  return next;
+}
+
+/**
+ * The shared backend's square and the graphics' texture limit, read off its
+ * own context; both are unbounded when Fabric filters without WebGL.
+ * @param backend - The shared backend.
+ * @returns The sides.
+ * @throws {never} Never.
+ */
+export function backendSides(backend: FilterBackend): BackendSides {
+  if (!('tileSize' in backend)) return { shared: Infinity, max: Infinity };
+  const gl = backend.gl;
+  if (gl === undefined) return { shared: backend.tileSize, max: backend.tileSize };
+  return { shared: backend.tileSize, max: gl.getParameter(gl.MAX_TEXTURE_SIZE) as number };
 }
 
 /** A picture's preview-sized copies, one per picture, kept for its last size. */
@@ -118,6 +140,7 @@ export function previewSourceOf(
  * @param value - The sliders.
  * @param target - The canvas, resized to the size drawn.
  * @param backend - The filter backend to draw through; Fabric's shared one by default.
+ * @throws {Error} When the backend has no WebGL context to draw with.
  */
 export async function drawAdjusted(
   el: CropSourceEl,
@@ -127,7 +150,7 @@ export async function drawAdjusted(
   backend?: ReturnType<typeof import('fabric')['getFilterBackend']>,
 ): Promise<void> {
   const [fabric, { adjustFilters, ADJUST_GRAIN_SEED }] = await loadRuntime();
-  const through = backend ?? fabric.getFilterBackend();
+  const through = backend ?? liveSharedBackend(fabric);
   const side = drawableSide(through);
   if (side === 0) throw new Error('The filter backend has no WebGL context to draw with');
   const size = fitWithin(asked, side);
@@ -146,9 +169,6 @@ export async function drawAdjusted(
     through.gl.deleteTexture(state.originalTexture);
   }
 }
-
-/** A filter backend, WebGL or 2D. */
-type FilterBackend = ReturnType<typeof import('fabric')['getFilterBackend']>;
 
 /**
  * The longest side a backend can draw. A WebGL backend draws its last pass on
@@ -171,10 +191,25 @@ export function drawableSide(backend: FilterBackend): number {
  * Fabric's dispose drops the canvas only, and the browser holds a few contexts
  * at a time.
  * @param backend - The backend.
+ * @throws {never} Never.
  */
 export function releaseBackend(backend: InstanceType<typeof import('fabric')['WebGLFilterBackend']>): void {
   backend.gl?.getExtension('WEBGL_lose_context')?.loseContext();
   backend.dispose();
+}
+
+/**
+ * Whether a backend can export a picture this long: a lost context is not a
+ * size problem, a drawing buffer shorter than the picture is.
+ * @param backend - The backend the export draws through.
+ * @param longSide - The picture's long side in pixels.
+ * @throws {ImageTooLargeError} When the backend's drawing buffer is shorter than the picture.
+ * @throws {Error} When the backend has no WebGL context to draw with.
+ */
+export function assertCanExport(backend: FilterBackend, longSide: number): void {
+  const side = drawableSide(backend);
+  if (side === 0) throw new Error('The filter backend has no WebGL context to draw with');
+  if (side < longSide) throw new ImageTooLargeError();
 }
 
 /**
@@ -198,20 +233,23 @@ function fitWithin(size: { width: number; height: number }, side: number): { wid
  * @param value - The sliders.
  * @returns The PNG.
  * @throws {ImageTooLargeError} When its long side is past what the graphics can filter.
- * @throws {Error} When the source fails to load CORS-clean, or the canvas cannot export.
+ * @throws {Error} When the source fails to load CORS-clean, the graphics have no context to draw with, or the canvas cannot export.
  */
 export async function exportAdjustedBlob(source: CropSource, value: AdjustValue): Promise<Blob> {
   const el = await prepareCropSource(source);
   const size = intrinsicSize(el);
-  const side = exportBackendSide(Math.max(size.width, size.height), await backendSides());
-  if (side === 'tooLarge') throw new ImageTooLargeError();
+  const longSide = Math.max(size.width, size.height);
   const [fabric] = await loadRuntime();
+  const shared = liveSharedBackend(fabric);
+  const side = exportBackendSide(longSide, backendSides(shared));
+  if (side === 'tooLarge') throw new ImageTooLargeError();
   // A backend of its own for a picture past the shared square, released at once.
   const own = side === 'shared' ? undefined : new fabric.WebGLFilterBackend({ tileSize: side });
   try {
-    if (drawableSide(own ?? fabric.getFilterBackend()) < Math.max(size.width, size.height)) throw new ImageTooLargeError();
+    const through = own ?? shared;
+    assertCanExport(through, longSide);
     const canvas = document.createElement('canvas');
-    await drawAdjusted(el, size, value, canvas, own);
+    await drawAdjusted(el, size, value, canvas, through);
     return await pngOf(canvas);
   } finally {
     if (own !== undefined) releaseBackend(own);

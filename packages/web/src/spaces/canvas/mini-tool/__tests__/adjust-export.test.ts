@@ -11,7 +11,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { defaultAdjustValue } from '@breatic/shared';
 
-import { drawAdjusted, drawableSide, exportBackendSide, previewSourceOf, releaseBackend } from '@web/spaces/canvas/mini-tool/adjust-export';
+import {
+  ImageTooLargeError,
+  assertCanExport,
+  backendSides,
+  drawAdjusted,
+  drawableSide,
+  exportBackendSide,
+  liveSharedBackend,
+  previewSourceOf,
+  releaseBackend,
+} from '@web/spaces/canvas/mini-tool/adjust-export';
 import { adjustFilters } from '@web/spaces/canvas/mini-tool/adjust-filters';
 
 vi.mock('@web/spaces/canvas/mini-tool/adjust-filters', async (importOriginal) => {
@@ -109,6 +119,78 @@ describe('drawableSide', () => {
 
   it('is unbounded without WebGL', () => {
     expect(drawableSide({ applyFilters: vi.fn() } as never)).toBe(Infinity);
+  });
+});
+
+// A lost context stays lost (Khronos, "HandlingContextLost"); Fabric builds
+// its shared backend once and hands the same one back, so a backend whose
+// context is gone is made again and registered in its place.
+describe('liveSharedBackend', () => {
+  /**
+   * Fabric's three backend calls over one held backend.
+   * @param held - The backend Fabric holds.
+   * @param made - What it would make next.
+   * @returns The calls and what they did.
+   */
+  const registry = (held: object, made: object) => {
+    let current = held;
+    return {
+      getFilterBackend: () => current as never,
+      initFilterBackend: vi.fn(() => made as never),
+      setFilterBackend: vi.fn((next: object) => {
+        current = next;
+      }),
+      current: () => current,
+    };
+  };
+
+  it('hands back the shared backend while its context is live', () => {
+    const held = { tileSize: 4096, gl: liveGl(4096) };
+    const fabric = registry(held, {});
+    expect(liveSharedBackend(fabric)).toBe(held);
+    expect(fabric.initFilterBackend).not.toHaveBeenCalled();
+  });
+
+  it('makes a new one, in Fabric’s place too, when the context is lost', () => {
+    const made = { tileSize: 4096, gl: liveGl(4096) };
+    const fabric = registry({ tileSize: 4096, gl: liveGl(4096, true) }, made);
+    expect(liveSharedBackend(fabric)).toBe(made);
+    expect(fabric.current()).toBe(made);
+  });
+
+  it('hands back a 2D backend as it is', () => {
+    const held = { applyFilters: vi.fn() };
+    expect(liveSharedBackend(registry(held, {}))).toBe(held);
+  });
+});
+
+// The graphics' limit is read off the shared backend's own context, which
+// answers the same as any other on this GPU.
+describe('backendSides', () => {
+  it('reads the texture limit off the shared backend', () => {
+    const gl = { ...liveGl(4096), MAX_TEXTURE_SIZE: 3379, getParameter: (name: number) => (name === 3379 ? 16384 : 0) };
+    expect(backendSides({ tileSize: 4096, gl } as never)).toEqual({ shared: 4096, max: 16384 });
+  });
+
+  it('is unbounded without WebGL', () => {
+    expect(backendSides({ applyFilters: vi.fn() } as never)).toEqual({ shared: Infinity, max: Infinity });
+  });
+});
+
+describe('assertCanExport', () => {
+  it('says the picture is too large for a drawing buffer shorter than it', () => {
+    expect(() => assertCanExport({ tileSize: 16384, gl: liveGl(8192) } as never, 9000)).toThrow(ImageTooLargeError);
+  });
+
+  // A lost context says nothing about the picture's size.
+  it('does not call a backend with no context to draw with a size problem', () => {
+    const lost = (): void => assertCanExport({ tileSize: 4096, gl: liveGl(4096, true) } as never, 100);
+    expect(lost).toThrow(Error);
+    expect(lost).not.toThrow(ImageTooLargeError);
+  });
+
+  it('lets a picture the backend can draw through', () => {
+    expect(() => assertCanExport({ tileSize: 4096, gl: liveGl(4096) } as never, 4096)).not.toThrow();
   });
 });
 
