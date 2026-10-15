@@ -10,8 +10,8 @@
  * what had already reached the reader.
  */
 
-import { convertToModelMessages } from "ai";
-import type { ModelMessage, ToolSet, UIMessage } from "ai";
+import { convertToModelMessages, isToolUIPart } from "ai";
+import type { DynamicToolUIPart, ModelMessage, ToolSet, ToolUIPart, UIMessage } from "ai";
 import type { ToolFailure } from "@breatic/shared";
 
 import { stripThinking } from "@server/agent/history-replay.js";
@@ -27,16 +27,6 @@ export interface SettledCalls {
 type Part = UIMessage["parts"][number];
 
 /**
- * Whether a part is a tool call.
- * @param part - A part of the reply.
- * @returns True for a tool part.
- * @throws {never} Never.
- */
-function isToolPart(part: Part): part is Part & { toolCallId: string } {
-  return (part.type.startsWith("tool-") || part.type === "dynamic-tool") && "toolCallId" in part;
-}
-
-/**
  * A tool part with the ending the turn recorded for it.
  *
  * What went out on the wire for a failed call is one generic line; what the
@@ -46,7 +36,7 @@ function isToolPart(part: Part): part is Part & { toolCallId: string } {
  * @returns The part as it ended, or as it stood when nothing ended it.
  * @throws {never} Never.
  */
-function settle(part: Part & { toolCallId: string }, settled: SettledCalls): Part {
+function settle(part: ToolUIPart | DynamicToolUIPart, settled: SettledCalls): Part {
   if (settled.answered.has(part.toolCallId)) {
     return { ...part, state: "output-available", output: settled.answered.get(part.toolCallId) } as Part;
   }
@@ -100,7 +90,7 @@ export async function inProgressStep(
   const at = parts.findIndex((part) => part.type === "step-start" && ++starts === stepsDone + 1);
   if (at === -1) return [];
 
-  const step = parts.slice(at + 1).map((part) => (isToolPart(part) ? settle(part, settled) : part));
+  const step = parts.slice(at + 1).map((part) => (isToolUIPart(part) ? settle(part, settled) : part));
   // Without thinking: what it had of its own is unfinished, and a provider
   // can hang signed thinking on the step's tool call as well.
   const messages = stripThinking(
