@@ -24,7 +24,6 @@
 import { asSchema } from "ai";
 import type { ModelMessage, Tool } from "ai";
 
-
 /**
  * The length of one content part, by what the model is shown of it.
  * @param part - A part of a message's content.
