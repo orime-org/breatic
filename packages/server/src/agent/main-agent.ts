@@ -382,7 +382,11 @@ export class MainAgent {
       // The studio whose material a proposal may name: the project's owner,
       // which is also where a saved picture is charged.
       const studioId = await assetService.resolveOwnerStudioId(projectId);
-      const watch = watchModelCalls(usage, { model: agentConfig.modelId, description: "Agent chat" });
+      const watch = watchModelCalls(usage, {
+        model: agentConfig.modelId,
+        description: "Agent chat",
+        cacheTtl: agentCfg.prompt_cache_ttl,
+      });
       calls = watch;
 
       const result = streamTextRetry({

@@ -17,9 +17,12 @@ import { MONOREPO_ROOT } from "@core/config/env.js";
 
 const price = z.number().nonnegative();
 
+// A model with no write prices has its cache writes priced as misses.
 const modelPriceSchema = z.object({
   input_cache_hit_per_mtok: price,
   input_cache_miss_per_mtok: price,
+  input_cache_write_5m_per_mtok: price.optional(),
+  input_cache_write_1h_per_mtok: price.optional(),
   output_per_mtok: price,
 });
 
