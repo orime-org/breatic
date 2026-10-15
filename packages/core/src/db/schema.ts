@@ -31,7 +31,7 @@ import {
 // A self-referencing FK needs its column type spelled out, since the table is
 // still being defined at the point the reference is written.
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
-import type { Attribution, ConsentSnapshot, MessagePart } from "@breatic/shared";
+import type { Attribution, ConsentSeen, ConsentSnapshot, MessagePart } from "@breatic/shared";
 import type { AdsConversionJob } from "@core/ads/ads-types.js";
 import { PROJECT_NAME_MAX_CHARS } from "@breatic/shared";
 
@@ -131,11 +131,15 @@ export const users = pgTable(
     // negotiated in, and changed only when the user switches the interface
     // language.
     locale: varchar("locale", { length: 10 }).default("en").notNull(),
-    // When a signed-in request last carried GPC (0094, inner#1442 §4.4.6):
-    // an ads opt-out for the whole account that never lapses.
-    analyticsGpcSeenAt: timestamp("analytics_gpc_seen_at", { withTimezone: true }),
+    // The account's ad switch (0095, inner#1442 §4.4.6): set when the account
+    // opted out of ad sharing and by what, null while it has not.
+    adsOptedOutAt: timestamp("ads_opted_out_at", { withTimezone: true }),
+    adsOptOutSource: varchar("ads_opt_out_source", { length: 16 }),
+    // The cookie choices last seen on a signed-in request (0095), read by
+    // events no browser is behind.
+    consentSeen: jsonb("consent_seen").$type<ConsentSeen>(),
     // First-touch and last-touch campaign source, written at sign-up from
-    // what the browser kept after consent (0094, inner#1442).
+    // what the browser kept after consent (0095, inner#1442).
     attribution: jsonb("attribution").$type<Attribution>(),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
     ...timestamps,
@@ -143,6 +147,11 @@ export const users = pgTable(
   (table) => [
     uniqueIndex("users_email_idx").on(table.email),
     uniqueIndex("users_google_id_idx").on(table.googleId),
+    check(
+      "users_ads_opt_out_source_check",
+      sql`(${table.adsOptedOutAt} IS NULL AND ${table.adsOptOutSource} IS NULL)
+        OR (${table.adsOptedOutAt} IS NOT NULL AND ${table.adsOptOutSource} IN ('settings', 'gpc', 'request'))`,
+    ),
   ],
 );
 
@@ -1134,7 +1143,7 @@ export const subscriptions = pgTable(
     // subscription object in the 2025-03-31 release; nullable because a
     // subscription whose first invoice never settled has no period.
     currentPeriodEnd: timestamp("current_period_end", { withTimezone: true }),
-    // When this subscription first came into force (0094, inner#1442).
+    // When this subscription first came into force (0095, inner#1442).
     // Written once in the same transaction that first lifts the account off
     // `base`; `subscription_started` is sent only on that write, so a lapsed
     // subscription that recovers does not count as a new start.
@@ -2601,7 +2610,7 @@ export const uploadGrants = pgTable(
     failureReason: text("failure_reason"),
     /**
      * The uploading browser's analytics consent when the ticket was issued
-     * (0094, inner#1442). Every finish path that writes `asset:uploaded`
+     * (0095, inner#1442). Every finish path that writes `asset:uploaded`
      * reads it here, since none of them has the browser's request.
      */
     analyticsConsent: jsonb("analytics_consent").$type<ConsentSnapshot>(),
@@ -2748,7 +2757,7 @@ export const storageReclaimQueue = pgTable(
   ],
 );
 
-// ── Ad conversion uploads (0094, inner#1442 §4.9) ───────────────────
+// ── Ad conversion uploads (0095, inner#1442 §4.9) ───────────────────
 
 /**
  * One row per conversion reported to the ad platform. The key makes a
@@ -2782,46 +2791,7 @@ export const adsConversionUploads = pgTable(
   ],
 );
 
-// ── Analytics consent receipts (0094, inner#1442 §4.4.6) ────────────
-
-/**
- * One receipt per consent choice a signed-in browser reported, keyed by the
- * choice's id from the cookie. A choice is recorded once, on the first account
- * that reports it; a repeat or another account's report changes nothing.
- */
-export const analyticsConsentEvents = pgTable(
-  "analytics_consent_events",
-  {
-    decisionId: uuid("decision_id").primaryKey(),
-    userId: uuid("user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "restrict" }),
-    category: varchar("category", { length: 16 }).notNull(),
-    value: boolean("value").notNull(),
-    source: varchar("source", { length: 16 }).notNull(),
-    /** `account` for a consent that lifts the account's opt-out; null otherwise. */
-    noticeShown: varchar("notice_shown", { length: 16 }),
-    /** Whether the reporting browser sent GPC when the choice was saved. */
-    gpcAtDecision: boolean("gpc_at_decision").default(false).notNull(),
-    decidedAt: timestamp("decided_at", { withTimezone: true }).notNull(),
-    revision: integer("revision").notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-  },
-  (table) => [
-    index("analytics_consent_events_user_idx").on(table.userId, table.category, table.decidedAt),
-    check("analytics_consent_events_category_check", sql`${table.category} IN ('analytics', 'ads')`),
-    check(
-      "analytics_consent_events_source_check",
-      sql`${table.source} IN ('banner', 'settings', 'gpc', 'request')`,
-    ),
-    check(
-      "analytics_consent_events_notice_check",
-      sql`${table.noticeShown} IS NULL OR ${table.noticeShown} = 'account'`,
-    ),
-  ],
-);
-
-// ── Analytics milestones (0094, inner#1442 §4.8) ────────────────────
+// ── Analytics milestones (0095, inner#1442 §4.8) ────────────────────
 
 /**
  * One row per product milestone that is reported once, keyed by what it is

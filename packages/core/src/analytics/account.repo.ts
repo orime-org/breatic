@@ -2,193 +2,145 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * The account's analytics record (inner#1442 design §4.4.6, §4.5): the consent
- * receipts its browsers reported, when a signed-in request last carried GPC,
- * and the campaign source kept at sign-up. Here because server, worker and
- * collab all read it.
+ * The account's analytics record (inner#1442 design §4.4.6, §4.5): its ad
+ * switch, the cookie choices last seen on a signed-in request, and the
+ * campaign source kept at sign-up. Here because server, worker and collab all
+ * read it.
  */
 
 import { and, eq, isNull, sql } from "drizzle-orm";
 import {
-  CONSENT_MAX_AGE_DAYS,
-  CONSENT_REVISION,
-  accountAnalyticsValue,
   adsAllowed,
-  choiceInForce,
-  NO_CONSENT,
-  type AccountAdsHistory,
-  type AccountAdsReceipt,
-  type AdsSource,
+  revisionInForce,
+  type AdsOptOutSource,
+  type AdsSharing,
   type Attribution,
   type BrowserAdsSnapshot,
-  type ConsentReport,
+  type ConsentSeen,
   type ConsentSnapshot,
-  type Ownership,
 } from "@breatic/shared";
 import { db, rawPg } from "@core/db/client.js";
-import { analyticsConsentEvents, users } from "@core/db/schema.js";
+import { users } from "@core/db/schema.js";
 
-// Time between two GPC writes for the same account, so a browser sending GPC on every request writes once an hour.
-const GPC_REFRESH = "1 hour";
-
-const DAY_MS = 86_400_000;
+/** The ad switch as the columns hold it. */
+const sharingColumns = { at: users.adsOptedOutAt, source: users.adsOptOutSource };
 
 /**
- * Record a signed-in browser's report, one receipt per decision. A decision
- * already on file, on this account or another, is left as it is; nothing is
- * recorded for a deleted account. The browser's clock is corrected by how far
- * it was off when it sent the report, and every receipt is dated between the
- * epoch and the time it was received. A report is recorded whole or not at all.
- * @param userId - The account.
- * @param report - The validated report.
- * @param receivedAt - When the server received it, epoch ms.
+ * The switch the two columns describe.
+ * @param row - The columns.
+ * @param row.at - When ads were switched off, or null.
+ * @param row.source - Who switched them off.
+ * @returns The switch.
  */
-export async function recordConsentReceipts(userId: string, report: ConsentReport, receivedAt: number): Promise<void> {
-  const skew = report.sentAt === undefined ? 0 : receivedAt - Date.parse(report.sentAt);
-  await db.transaction(async (tx) => {
-    for (const d of report.decisions) {
-      const decidedAt = new Date(Math.max(0, Math.min(Date.parse(d.decidedAt) + skew, receivedAt))).toISOString();
-      // An override seen under the GPC notice counts as a plain consent (§4.4.6), so only `account` is kept.
-      const notice = d.noticeShown === "account" ? "account" : null;
-      await tx.execute(sql`
-      INSERT INTO analytics_consent_events
-        (decision_id, user_id, category, value, source, notice_shown, gpc_at_decision, decided_at, revision)
-      SELECT ${d.decisionId}, ${userId}, ${d.category}, ${d.value}, ${d.source}, ${notice},
-             ${d.gpcAtDecision}, ${decidedAt}, ${report.revision}
-      WHERE EXISTS (SELECT 1 FROM users WHERE id = ${userId} AND deleted_at IS NULL)
-      ON CONFLICT (decision_id) DO NOTHING`);
-    }
-  });
+function sharingOf(row: { at: Date | null; source: string | null }): AdsSharing {
+  return row.at === null ? { optedOut: false, source: null } : { optedOut: true, source: row.source as AdsOptOutSource };
 }
 
 /**
- * Record an ads refusal an operator made on the person's behalf (`request`).
+ * The account's ad switch and the choices last seen.
  * @param userId - The account.
- * @param decisionId - A fresh id for the receipt.
- * @param revision - The policy revision in force.
- * @returns Whether it was recorded; false for a missing or deleted account.
+ * @returns Both, or null when the account is missing or deleted.
  */
-export async function recordOptOutRequest(userId: string, decisionId: string, revision: number): Promise<boolean> {
-  const rows = await db.execute(sql`
-    INSERT INTO analytics_consent_events (decision_id, user_id, category, value, source, decided_at, revision)
-    SELECT ${decisionId}, ${userId}, 'ads', false, 'request', now(), ${revision}
-    WHERE EXISTS (SELECT 1 FROM users WHERE id = ${userId} AND deleted_at IS NULL)
-    RETURNING decision_id`);
-  return rows.length > 0;
-}
-
-/**
- * The account's ads receipts still in force and its GPC signal.
- * @param userId - The account.
- * @param now - The current time, epoch ms.
- * @returns The history, or null when the account is missing or deleted; callers treat null as not allowed.
- */
-export async function getAccountAdsEvents(userId: string, now: number): Promise<AccountAdsHistory | null> {
-  const account = await db
-    .select({ gpcSeenAt: users.analyticsGpcSeenAt })
+async function readAccount(userId: string): Promise<{ sharing: AdsSharing; seen: ConsentSeen } | null> {
+  const rows = await db
+    .select({ ...sharingColumns, seen: users.consentSeen })
     .from(users)
     .where(and(eq(users.id, userId), isNull(users.deletedAt)))
     .limit(1);
-  if (account.length === 0) return null;
-  const rows = await db
-    .select()
-    .from(analyticsConsentEvents)
-    .where(and(eq(analyticsConsentEvents.userId, userId), eq(analyticsConsentEvents.category, "ads")));
-  const receipts = rows
-    .map(
-      (r): AccountAdsReceipt => ({
-        decisionId: r.decisionId,
-        value: r.value,
-        source: r.source as AdsSource,
-        noticeShown: r.noticeShown === "account" ? "account" : false,
-        decidedAt: r.decidedAt.toISOString(),
-        revision: r.revision,
-      }),
-    )
-    .filter((r) => choiceInForce(r, now));
-  return { receipts, gpcSeenAt: account[0]!.gpcSeenAt?.toISOString() ?? null };
+  const row = rows[0];
+  return row ? { sharing: sharingOf(row), seen: row.seen ?? {} } : null;
 }
 
 /**
- * The account's analytics value, for events no browser is behind.
+ * Read the account's ad switch.
  * @param userId - The account.
- * @param now - The current time, epoch ms.
- * @returns The value, or null when none is in force or the account is missing or deleted.
+ * @returns The switch, or null when the account is missing or deleted.
  */
-export async function getAccountAnalytics(userId: string, now: number): Promise<boolean | null> {
+export async function getAdsSharing(userId: string): Promise<AdsSharing | null> {
+  return (await readAccount(userId))?.sharing ?? null;
+}
+
+/**
+ * Open or close the account's ad switch. Closing keeps the time and source of
+ * a switch already closed; every time is the server's.
+ * @param userId - The account.
+ * @param change - `{ allowed: true }` to open it, or `{ allowed: false, source }` to close it.
+ * @returns The switch afterwards, or null when the account is missing or deleted.
+ */
+export async function setAdsSharing(
+  userId: string,
+  change: { allowed: true } | { allowed: false; source: AdsOptOutSource },
+): Promise<AdsSharing | null> {
+  const set = change.allowed
+    ? { adsOptedOutAt: null, adsOptOutSource: null }
+    : {
+        adsOptedOutAt: sql`coalesce(${users.adsOptedOutAt}, now())`,
+        adsOptOutSource: sql`coalesce(${users.adsOptOutSource}, ${change.source})`,
+      };
   const rows = await db
-    .select({ value: analyticsConsentEvents.value, decidedAt: analyticsConsentEvents.decidedAt, revision: analyticsConsentEvents.revision })
-    .from(analyticsConsentEvents)
-    .innerJoin(users, eq(users.id, analyticsConsentEvents.userId))
-    .where(
-      and(eq(analyticsConsentEvents.userId, userId), eq(analyticsConsentEvents.category, "analytics"), isNull(users.deletedAt)),
-    );
-  return accountAnalyticsValue(
-    rows.map((r) => ({ ...r, decidedAt: r.decidedAt.toISOString() })),
-    now,
-  );
+    .update(users)
+    .set(set)
+    .where(and(eq(users.id, userId), isNull(users.deletedAt)))
+    .returning(sharingColumns);
+  return rows[0] ? sharingOf(rows[0]) : null;
+}
+
+/**
+ * Record what a signed-in request says about the account, in one conditional
+ * write: GPC closes an open ad switch, and the cookie's choices replace the
+ * ones last seen when they differ. Nothing is written when neither applies.
+ * @param userId - The account.
+ * @param request - Whether the request carried GPC, and what it would record as seen (`consentSeenFrom`).
+ * @param request.gpc - Whether it carried `Sec-GPC: 1`.
+ * @param request.seen - The choices to record, or null for none.
+ */
+export async function recordSignedInRequest(
+  userId: string,
+  request: { gpc: boolean; seen: ConsentSeen | null },
+): Promise<void> {
+  const { gpc, seen } = request;
+  if (!gpc && seen === null) return;
+  const closes = sql`(${gpc} AND ${users.adsOptedOutAt} IS NULL)`;
+  const replaces =
+    seen === null ? sql`false` : sql`(${users.consentSeen} IS DISTINCT FROM ${JSON.stringify(seen)}::jsonb)`;
+  await db
+    .update(users)
+    .set({
+      adsOptedOutAt: sql`CASE WHEN ${closes} THEN now() ELSE ${users.adsOptedOutAt} END`,
+      adsOptOutSource: sql`CASE WHEN ${closes} THEN 'gpc' ELSE ${users.adsOptOutSource} END`,
+      consentSeen: sql`CASE WHEN ${replaces} THEN ${JSON.stringify(seen)}::jsonb ELSE ${users.consentSeen} END`,
+    })
+    .where(and(eq(users.id, userId), isNull(users.deletedAt), sql`(${closes} OR ${replaces})`));
+}
+
+/**
+ * Whether ads may run for an event credited to the account (design §4.4.6):
+ * the browser behind it with the account's current switch, or, with no
+ * browser, the ads choice last seen.
+ * @param userId - The account.
+ * @param browser - The browser behind the event as it stood then; null for an event with none.
+ * @returns Whether ads may run; never for a missing or deleted account.
+ */
+export async function adsAllowedFor(userId: string, browser: BrowserAdsSnapshot | null): Promise<boolean> {
+  const account = await readAccount(userId);
+  if (account === null) return adsAllowed({ browser, account: "deleted" });
+  return adsAllowed({ browser, account: account.sharing, seen: account.seen.ads ?? null });
 }
 
 /**
  * The account's consent for an event no browser is behind (a renewal, a
- * collaboration conversion): analytics from its receipts, ads from its events alone.
+ * collaboration conversion): the choices last seen while signed in.
  * @param userId - The account.
- * @param now - The current time, epoch ms.
  * @returns The snapshot; nothing for a missing or deleted account.
  */
-export async function accountOnlyConsent(userId: string, now: number): Promise<ConsentSnapshot> {
-  const history = await getAccountAdsEvents(userId, now);
-  if (history === null) return NO_CONSENT;
-  const ads = adsAllowed(history, null, "none", now).allowed;
-  return { analytics: (await getAccountAnalytics(userId, now)) ?? false, ads };
-}
-
-/**
- * Whether ads may run for an event credited to the account (inner#1442 design
- * §4.4.6): the account's events plus the browser behind it, if any.
- * @param userId - The account.
- * @param browser - The browser behind the event as it stood then; null for an event with none.
- * @param now - The current time, epoch ms.
- * @returns Whether ads may run; never for a missing or deleted account.
- */
-export async function adsAllowedFor(userId: string, browser: BrowserAdsSnapshot | null, now: number): Promise<boolean> {
-  const history = await getAccountAdsEvents(userId, now);
-  if (history === null) return false;
-  const ownership = browser === null ? "none" : await adsOwnership(userId, browser.choice?.decisionId);
-  return adsAllowed(history, browser, ownership, now).allowed;
-}
-
-/**
- * Whose receipt a browser's decision is.
- * @param userId - The signed-in account.
- * @param decisionId - The decision id in the browser's cookie, if any.
- * @returns `self`, `other`, or `none` when no account recorded it.
- */
-export async function adsOwnership(userId: string, decisionId: string | undefined): Promise<Ownership> {
-  if (decisionId === undefined) return "none";
-  const rows = await db
-    .select({ userId: analyticsConsentEvents.userId })
-    .from(analyticsConsentEvents)
-    .where(eq(analyticsConsentEvents.decisionId, decisionId))
-    .limit(1);
-  if (rows.length === 0) return "none";
-  return rows[0]!.userId === userId ? "self" : "other";
-}
-
-/**
- * Record that a signed-in request carried GPC. Written when nothing is on
- * record, when the last write is over an hour old, or when it predates the
- * account's latest ads consent, so a consent given after it is opted out again.
- * @param userId - The account.
- */
-export async function recordGpcSignal(userId: string): Promise<void> {
-  await db.execute(sql`
-    UPDATE users SET analytics_gpc_seen_at = now()
-    WHERE id = ${userId} AND deleted_at IS NULL
-      AND (analytics_gpc_seen_at IS NULL
-        OR analytics_gpc_seen_at < now() - ${GPC_REFRESH}::interval
-        OR analytics_gpc_seen_at < (SELECT max(decided_at) FROM analytics_consent_events
-                                    WHERE user_id = ${userId} AND category = 'ads' AND value))`);
+export async function accountOnlyConsent(userId: string): Promise<ConsentSnapshot> {
+  const account = await readAccount(userId);
+  const analytics = account?.seen.analytics;
+  return {
+    analytics: analytics?.value === true && revisionInForce(analytics.revision),
+    ads:
+      account !== null && adsAllowed({ browser: null, account: account.sharing, seen: account.seen.ads ?? null }),
+  };
 }
 
 /**
@@ -202,27 +154,10 @@ export async function getAccountAttribution(userId: string): Promise<Attribution
 }
 
 /**
- * Delete the receipts that no longer count: analytics receipts of either value
- * and ads consents past 395 days or from an older policy revision. Ads
- * refusals stay until the account is deleted.
- * @param now - The current time, epoch ms.
- * @returns How many receipts were deleted.
- */
-export async function pruneConsentReceipts(now: number): Promise<number> {
-  const cutoff = new Date(now - CONSENT_MAX_AGE_DAYS * DAY_MS).toISOString();
-  const rows = await rawPg`
-    DELETE FROM analytics_consent_events
-    WHERE (category = 'analytics' OR value)
-      AND (decided_at < ${cutoff} OR revision < ${CONSENT_REVISION})
-    RETURNING decision_id`;
-  return rows.length;
-}
-
-/**
- * Remove what deleted accounts' consent left behind: their receipts, their GPC
- * signal, and the consent snapshots on their orders, upload tickets and ad
- * uploads. Only accounts already soft-deleted are touched; when any id is not,
- * nothing changes.
+ * Remove what deleted accounts' consent left behind: their ad switch, the
+ * choices last seen, and the consent snapshots on their orders, upload tickets
+ * and ad uploads. Only accounts already soft-deleted are touched; when any id
+ * is not, nothing changes.
  * @param userIds - The accounts' `users.id`.
  * @returns The ids that are not soft-deleted (empty when the erase ran).
  */
@@ -233,8 +168,9 @@ export async function eraseAccountAnalytics(userIds: readonly string[]): Promise
     const found = new Set(deleted.map((r) => r.id));
     const notDeleted = ids.filter((id) => !found.has(id));
     if (notDeleted.length > 0) return { notDeleted };
-    await tx`DELETE FROM analytics_consent_events WHERE user_id = ANY(${ids}::uuid[])`;
-    await tx`UPDATE users SET analytics_gpc_seen_at = NULL WHERE id = ANY(${ids}::uuid[])`;
+    await tx`
+      UPDATE users SET ads_opted_out_at = NULL, ads_opt_out_source = NULL, consent_seen = NULL
+      WHERE id = ANY(${ids}::uuid[])`;
     await tx`
       UPDATE payments SET metadata = metadata - 'analyticsConsent' - 'adsBrowser'
       WHERE user_id = ANY(${ids}::uuid[]) AND metadata ?| array['analyticsConsent', 'adsBrowser']`;

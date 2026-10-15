@@ -820,6 +820,7 @@ export {
 export {
   CONSENT_DATA_FIELDS,
   CONSENT_SOURCES,
+  choiceInForce,
   consentSeenFrom,
   parseConsentChoices,
   parseConsentCookie,
@@ -829,31 +830,19 @@ export {
   type ConsentSource,
 } from "@shared/analytics/consent-choices.js";
 export {
-  accountAdsEvents,
-  adsAllowed,
-  adsConsentOverridesOptOut,
+  ADS_SHARING_FIELDS,
+  AdsSharingSchema,
   BrowserAdsSnapshotSchema,
-  adsDecision,
-  browserSuppressesOwnGpc,
-  choiceInForce,
-  normalizeBrowserAds,
-  type AccountAdsHistory,
-  type AccountAdsReceipt,
-  type AdsEvent,
-  type AdsOutcome,
-  type AdsSource,
-  type BrowserAds,
+  adsAllowed,
+  adsOptedOut,
+  adsStatus,
+  type AccountAdsView,
+  type AdsOptOutSource,
+  type AdsSharing,
+  type AdsStatus,
   type BrowserAdsSnapshot,
-  type NoticeShown,
-  type Ownership,
-} from "@shared/analytics/ads-decision.js";
-export {
-  CONSENT_REPORT_FIELDS,
-  ConsentDecisionSchema,
-  ConsentReportSchema,
-  type ConsentDecision,
-  type ConsentReport,
-} from "@shared/analytics/consent-report.js";
+  type SeenChoice,
+} from "@shared/analytics/ads-sharing.js";
 export {
   adClickFrom,
   CLICK_WINDOW_MS,

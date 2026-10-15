@@ -216,7 +216,13 @@ export type {
 
 // ── i18n (node-side adapter; engine lives in @breatic/shared) ──
 export { loadLocales, runWithLocale } from "@core/i18n/locale-loader.js";
-export { currentAdsBrowser, currentConsent, runWithConsent } from "@core/analytics/consent-context.js";
+export {
+  currentAdsBrowser,
+  currentConsent,
+  currentConsentSeen,
+  runWithConsent,
+  type RequestBrowser,
+} from "@core/analytics/consent-context.js";
 export {
   flushServerAnalytics,
   initServerAnalytics,
@@ -271,17 +277,12 @@ export {
   type CollaborationAction,
 } from "@core/analytics/collaboration.js";
 export { claimFirstMilestone, type FirstMilestone } from "@core/analytics/first-milestone.js";
-export { ANALYTICS_CONSENT_QUEUE, CONSENT_PRUNE_JOB, scheduleConsentPrune } from "@core/analytics/consent-retention.js";
 export {
   accountOnlyConsent,
   adsAllowedFor,
-  adsOwnership,
   eraseAccountAnalytics,
-  getAccountAdsEvents,
-  getAccountAnalytics,
   getAccountAttribution,
-  pruneConsentReceipts,
-  recordConsentReceipts,
-  recordGpcSignal,
-  recordOptOutRequest,
+  getAdsSharing,
+  recordSignedInRequest,
+  setAdsSharing,
 } from "@core/analytics/account.repo.js";

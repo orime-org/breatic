@@ -13,6 +13,7 @@ import { revisionInForce } from "@shared/analytics/consent.js";
 
 /** Who switched an account's ads off. */
 export const AdsOptOutSourceSchema = z.enum(["settings", "gpc", "request"]);
+export type AdsOptOutSource = z.infer<typeof AdsOptOutSourceSchema>;
 
 /** The answer of `GET`/`PUT /me/ads-sharing`. */
 export const AdsSharingSchema = z

@@ -145,7 +145,7 @@ export async function enqueueAdsConversion(
   if (adsConversionConfig()?.actions[input.conversion] === undefined) return false;
   const { click } = input;
   if (click === null || Date.now() - Date.parse(click.at) > CLICK_WINDOW_MS) return false;
-  if (!(await adsAllowedFor(input.userId, browser, Date.now()))) return false;
+  if (!(await adsAllowedFor(input.userId, browser))) return false;
   const job: AdsConversionJob = {
     kind: "conversion",
     userId: input.userId,
@@ -162,13 +162,13 @@ export async function enqueueAdsConversion(
 }
 
 /**
- * Whether ads still may run for an upload: the account's current events with
+ * Whether ads still may run for an upload: the account's current switch with
  * the browser as the job recorded it.
  * @param job - The upload.
  * @returns Whether it may go to the platform.
  */
 function stillAllowed(job: AdsConversionJob): Promise<boolean> {
-  return adsAllowedFor(job.userId, job.browser, Date.now());
+  return adsAllowedFor(job.userId, job.browser);
 }
 
 /**

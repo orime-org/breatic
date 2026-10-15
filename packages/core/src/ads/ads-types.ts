@@ -24,7 +24,7 @@ export type AdsUploadStatus = (typeof ADS_UPLOAD_STATUSES)[number];
 export interface AdsConversionJob {
   /** `conversion` uploads a new conversion; `restatement` sets its value to zero. */
   readonly kind: "conversion" | "restatement";
-  /** The account the conversion is credited to; its ads events are checked again before upload. */
+  /** The account the conversion is credited to; its ad switch is checked again before upload. */
   readonly userId: string;
   /** The browser behind the conversion, as it stood then; null when none was (inner#1442 §4.4.6). */
   readonly browser: BrowserAdsSnapshot | null;

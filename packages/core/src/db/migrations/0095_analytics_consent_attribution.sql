@@ -1,7 +1,8 @@
--- Product analytics (inner#1442). `analytics_consent_events` holds one
--- receipt per consent choice a signed-in browser reported, read by events no
--- browser is behind; `users.analytics_gpc_seen_at` marks when a signed-in
--- request last carried GPC; `users.attribution` holds the first-touch and last-touch campaign
+-- Product analytics (inner#1442). `users.ads_opted_out_at` and
+-- `users.ads_opt_out_source` are the account's ad switch, closed by a signed-in
+-- opt-out, a signed-in request carrying GPC or an operator, and opened only by
+-- the account holder; `users.consent_seen` is the choice last seen on a
+-- signed-in request, read by events no browser is behind; `users.attribution` holds the first-touch and last-touch campaign
 -- source written at sign-up; `upload_grants.analytics_consent` carries the
 -- uploading browser's consent to the finish paths; `subscriptions.first_active_at`
 -- marks the one write that counts as a subscription start. All nullable:
@@ -68,27 +69,12 @@ CREATE TABLE "ads_conversion_uploads" (
 ALTER TABLE "ads_conversion_uploads" ADD CONSTRAINT "ads_conversion_uploads_payment_id_payments_id_fk"
   FOREIGN KEY ("payment_id") REFERENCES "public"."payments"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "ads_conversion_uploads_payment_idx" ON "ads_conversion_uploads" USING btree ("payment_id");--> statement-breakpoint
--- One row per category per choice a signed-in browser reported (§4.4.6). The
--- id is global: a decision another account already holds is never taken over.
-CREATE TABLE "analytics_consent_events" (
-  "decision_id" uuid PRIMARY KEY NOT NULL,
-  "user_id" uuid NOT NULL,
-  "category" varchar(16) NOT NULL,
-  "value" boolean NOT NULL,
-  "source" varchar(16) NOT NULL,
-  "notice_shown" varchar(16),
-  "gpc_at_decision" boolean DEFAULT false NOT NULL,
-  "decided_at" timestamp with time zone NOT NULL,
-  "revision" integer NOT NULL,
-  "created_at" timestamp with time zone DEFAULT now() NOT NULL,
-  CONSTRAINT "analytics_consent_events_category_check" CHECK ("category" IN ('analytics', 'ads')),
-  CONSTRAINT "analytics_consent_events_source_check" CHECK ("source" IN ('banner', 'settings', 'gpc', 'request')),
-  CONSTRAINT "analytics_consent_events_notice_check" CHECK ("notice_shown" IS NULL OR "notice_shown" = 'account')
-);--> statement-breakpoint
-ALTER TABLE "analytics_consent_events" ADD CONSTRAINT "analytics_consent_events_user_id_users_id_fk"
-  FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
-CREATE INDEX "analytics_consent_events_user_idx" ON "analytics_consent_events" USING btree ("user_id", "category", "decided_at");--> statement-breakpoint
-ALTER TABLE "users" ADD COLUMN "analytics_gpc_seen_at" timestamp with time zone;--> statement-breakpoint
+ALTER TABLE "users" ADD COLUMN "ads_opted_out_at" timestamp with time zone;--> statement-breakpoint
+ALTER TABLE "users" ADD COLUMN "ads_opt_out_source" varchar(16);--> statement-breakpoint
+ALTER TABLE "users" ADD COLUMN "consent_seen" jsonb;--> statement-breakpoint
+ALTER TABLE "users" ADD CONSTRAINT "users_ads_opt_out_source_check"
+  CHECK (("ads_opted_out_at" IS NULL AND "ads_opt_out_source" IS NULL)
+         OR ("ads_opted_out_at" IS NOT NULL AND "ads_opt_out_source" IN ('settings', 'gpc', 'request')));--> statement-breakpoint
 ALTER TABLE "users" ADD COLUMN "attribution" jsonb;--> statement-breakpoint
 ALTER TABLE "upload_grants" ADD COLUMN "analytics_consent" jsonb;--> statement-breakpoint
 ALTER TABLE "subscriptions" ADD COLUMN "first_active_at" timestamp with time zone;
