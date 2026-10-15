@@ -132,6 +132,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:smoke": "pnpm -w db:check-watermark && node scripts/default-run.mjs smoke",
+    "test:consent": "pnpm -w db:check-watermark && playwright test -c playwright.consent.config.ts",
     "test:smoke:all": "pnpm -w db:check-watermark && playwright test --project=smoke --workers=1",
     "test:visual": "pnpm -w db:check-watermark && node scripts/default-run.mjs chromium",
     "test:visual:all": "pnpm -w db:check-watermark && playwright test --project=chromium --workers=1",
