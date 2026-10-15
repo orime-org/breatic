@@ -85,12 +85,14 @@ export function routeDeleteCommand(session: CanvasSessionState): 'mark' | 'canva
 }
 
 /**
- * Read `[` and `]` as a step down or up in brush size.
+ * Read `[` and `]` as a step down or up in brush size. The key names the
+ * character typed, so Option (a German Mac) or AltGr (Ctrl+Alt on Windows)
+ * typing it still counts.
  * @param event - The key event.
- * @returns −1, +1, or null for any other key or a key with a modifier.
+ * @returns −1, +1, or null for any other key or a Cmd or Ctrl shortcut.
  */
 export function brushSizeStep(event: Pick<KeyboardEvent, 'key' | 'metaKey' | 'ctrlKey' | 'altKey'>): -1 | 1 | null {
-  if (event.metaKey || event.ctrlKey || event.altKey) return null;
+  if (event.metaKey || (event.ctrlKey && !event.altKey)) return null;
   if (event.key === '[') return -1;
   if (event.key === ']') return 1;
   return null;

@@ -103,6 +103,12 @@ describe('brushSizeStep', () => {
     expect(brushSizeStep(key(']', { ctrlKey: true }))).toBeNull();
     expect(brushSizeStep(key('a'))).toBeNull();
   });
+
+  // A German Mac types [ with Option, and AltGr on Windows is Ctrl+Alt.
+  it('reads [ and ] typed with Option or AltGr', () => {
+    expect(brushSizeStep(key('[', { altKey: true }))).toBe(-1);
+    expect(brushSizeStep(key(']', { ctrlKey: true, altKey: true }))).toBe(1);
+  });
 });
 
 describe('the markup tool', () => {
