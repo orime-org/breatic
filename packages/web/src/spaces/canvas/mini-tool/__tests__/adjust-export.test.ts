@@ -97,14 +97,24 @@ describe('previewSourceOf', () => {
 });
 
 /**
- * A WebGL context stub with a drawing buffer of a given size.
+ * A WebGL context stub with a drawing buffer of a given size, on a canvas the
+ * same size unless told otherwise.
  * @param side - The buffer's width.
  * @param lost - Whether the context is lost.
  * @param height - The buffer's height, its width by default.
+ * @param canvas - The canvas's size, the buffer's by default.
+ * @param canvas.width - Its width.
+ * @param canvas.height - Its height.
  * @returns The stub.
  */
-function liveGl(side: number, lost = false, height = side) {
-  return { drawingBufferWidth: side, drawingBufferHeight: height, isContextLost: () => lost, deleteTexture: vi.fn() };
+function liveGl(side: number, lost = false, height = side, canvas = { width: side, height }) {
+  return {
+    drawingBufferWidth: side,
+    drawingBufferHeight: height,
+    canvas,
+    isContextLost: () => lost,
+    deleteTexture: vi.fn(),
+  };
 }
 
 // The browser may give a WebGL canvas a smaller drawing buffer than asked
@@ -115,9 +125,12 @@ describe('drawableSize', () => {
     expect(drawableSize({ tileSize: 12000, gl: liveGl(12000, false, 3000) } as never)).toEqual({ width: 12000, height: 3000 });
   });
 
+  // Fabric's dispose sets `gl` to null, and a context the browser refuses
+  // afterwards leaves it there.
   it('is nothing on a lost context, or a WebGL backend that got none', () => {
     expect(drawableSize({ tileSize: 4096, gl: liveGl(4096, true) } as never)).toEqual({ width: 0, height: 0 });
     expect(drawableSize({ tileSize: 4096 } as never)).toEqual({ width: 0, height: 0 });
+    expect(drawableSize({ tileSize: 4096, gl: null } as never)).toEqual({ width: 0, height: 0 });
   });
 
   it('is unbounded without WebGL', () => {
@@ -139,7 +152,8 @@ describe('ownExportBackend', () => {
       }
     }
     const made = ownExportBackend({ WebGLFilterBackend: Backend } as never, { width: 12000, height: 3000 });
-    expect((made as unknown as Backend).options.tileSize).toBe(12000);
+    // The square Fabric builds first is given back at once; it takes no room.
+    expect((made as unknown as Backend).options.tileSize).toBe(1);
     expect(loseContext).toHaveBeenCalledOnce();
     expect(setup).toHaveBeenCalledWith(12000, 3000);
   });
@@ -181,6 +195,12 @@ describe('liveSharedBackend', () => {
     expect(fabric.current()).toBe(made);
   });
 
+  it('makes a new one when Fabric dropped the context', () => {
+    const made = { tileSize: 4096, gl: liveGl(4096) };
+    const fabric = registry({ tileSize: 4096, gl: null }, made);
+    expect(liveSharedBackend(fabric)).toBe(made);
+  });
+
   it('hands back a 2D backend as it is', () => {
     const held = { applyFilters: vi.fn() };
     expect(liveSharedBackend(registry(held, {}))).toBe(held);
@@ -204,6 +224,7 @@ describe('backendSides', () => {
   it.each([
     ['no context', { tileSize: 4096 }],
     ['a lost one', { tileSize: 4096, gl: liveGl(4096, true) }],
+    ['one Fabric dropped', { tileSize: 4096, gl: null }],
   ])('refuses as a graphics failure for a backend with %s', (_name, backend) => {
     const sides = (): unknown => backendSides(backend as never);
     expect(sides).toThrow(Error);
@@ -293,5 +314,34 @@ describe('drawAdjusted', () => {
     await drawAdjusted(picture(1000, 500), { width: 400, height: 200 }, value, target, backend as never);
     expect([target.width, target.height]).toEqual([100, 50]);
     expect(backend.applyFilters).toHaveBeenCalledWith(expect.anything(), expect.anything(), 100, 50, target);
+  });
+
+  // A context can be lost at any moment, the draw included (Khronos,
+  // "HandlingContextLost"); Fabric then copies a blank canvas and returns.
+  it('fails as a graphics failure when the context is lost during the draw', async () => {
+    let lost = false;
+    const gl = { ...liveGl(4096), isContextLost: () => lost };
+    const backend = {
+      tileSize: 4096,
+      gl,
+      applyFilters: vi.fn(() => {
+        lost = true;
+      }),
+    };
+    const value = { ...defaultAdjustValue, sharpness: 50 };
+    const draw = drawAdjusted(picture(100, 50), { width: 100, height: 50 }, value, document.createElement('canvas'), backend as never);
+    await expect(draw).rejects.toThrow(Error);
+    await expect(draw).rejects.not.toBeInstanceOf(ImageTooLargeError);
+  });
+
+  // Fabric copies the last pass out in canvas coordinates
+  // (WebGLFilterBackend.copyGLTo2D); a buffer the browser made smaller than
+  // the canvas puts the pixels somewhere else.
+  it('does not draw through a buffer smaller than its canvas', async () => {
+    const backend = { tileSize: 4096, gl: liveGl(2048, false, 2048, { width: 4096, height: 4096 }), applyFilters: vi.fn() };
+    const value = { ...defaultAdjustValue, sharpness: 50 };
+    const draw = drawAdjusted(picture(100, 50), { width: 100, height: 50 }, value, document.createElement('canvas'), backend as never);
+    await expect(draw).rejects.toThrow(Error);
+    expect(backend.applyFilters).not.toHaveBeenCalled();
   });
 });
