@@ -113,14 +113,15 @@ const CODES_GLSL = `
   }`;
 
 /**
- * A pixel's channel read at a fractional position, clamped to the edges.
+ * A pixel read at a fractional position, clamped to the edges, with its three
+ * channels weighted by alpha before they are mixed, so a transparent
+ * neighbour adds no colour to a point between it and the subject.
  * @param pixels - The picture.
  * @param x - Its x.
  * @param y - Its y.
- * @param channel - Which channel.
- * @returns The value.
+ * @returns The three channels times alpha, then alpha, as shares of 255.
  */
-function sample(pixels: PixelState['imageData'], x: number, y: number, channel: number): number {
+function tap(pixels: PixelState['imageData'], x: number, y: number): [number, number, number, number] {
   const { data, width, height } = pixels;
   const cx = Math.min(width - 1, Math.max(0, x));
   const cy = Math.min(height - 1, Math.max(0, y));
@@ -130,16 +131,21 @@ function sample(pixels: PixelState['imageData'], x: number, y: number, channel: 
   const y1 = Math.min(height - 1, y0 + 1);
   const fx = cx - x0;
   const fy = cy - y0;
-  /**
-   * One whole pixel's channel.
-   * @param px - Its x.
-   * @param py - Its y.
-   * @returns The value.
-   */
-  const at = (px: number, py: number): number => data[(py * width + px) * 4 + channel] ?? 0;
-  return (
-    (at(x0, y0) * (1 - fx) + at(x1, y0) * fx) * (1 - fy) + (at(x0, y1) * (1 - fx) + at(x1, y1) * fx) * fy
-  );
+  const out: [number, number, number, number] = [0, 0, 0, 0];
+  for (const [px, py, w] of [
+    [x0, y0, (1 - fx) * (1 - fy)],
+    [x1, y0, fx * (1 - fy)],
+    [x0, y1, (1 - fx) * fy],
+    [x1, y1, fx * fy],
+  ] as const) {
+    const at = (py * width + px) * 4;
+    const alpha = (data[at + 3] ?? 0) / 255;
+    out[0] += w * alpha * (data[at] ?? 0);
+    out[1] += w * alpha * (data[at + 1] ?? 0);
+    out[2] += w * alpha * (data[at + 2] ?? 0);
+    out[3] += w * alpha;
+  }
+  return out;
 }
 
 /**
@@ -154,15 +160,23 @@ function hash(x: number, y: number, seed: number): number {
   return v - Math.floor(v);
 }
 
-/** The shader's bilinear read: Fabric's textures sample by nearest neighbour. */
+/**
+ * The shader's bilinear read, the same as {@link tap}: Fabric's textures
+ * sample by nearest neighbour, and the colour is weighted by alpha before it
+ * is mixed.
+ */
 const BETWEEN_GLSL = `
+  vec4 premultiplied(vec2 at) {
+    vec4 c = texture2D(uTexture, at);
+    return vec4(c.rgb * c.a, c.a);
+  }
   vec4 between(vec2 at) {
     vec2 step = vec2(uStepW, uStepH);
     vec2 texel = at / step - 0.5;
     vec2 part = fract(texel);
     vec2 base = (floor(texel) + 0.5) * step;
-    vec4 top = mix(texture2D(uTexture, base), texture2D(uTexture, base + vec2(step.x, 0.0)), part.x);
-    vec4 bottom = mix(texture2D(uTexture, base + vec2(0.0, step.y)), texture2D(uTexture, base + step), part.x);
+    vec4 top = mix(premultiplied(base), premultiplied(base + vec2(step.x, 0.0)), part.x);
+    vec4 bottom = mix(premultiplied(base + vec2(0.0, step.y)), premultiplied(base + step), part.x);
     return mix(top, bottom, part.y);
   }`;
 
@@ -217,13 +231,6 @@ class AdjustCodes extends filters.BaseFilter<'AdjustCodes', { way: CodesWay }> {
     }
   }
 
-  /**
-   * A conversion always changes the pixels.
-   * @returns False.
-   */
-  isNeutralState(): boolean {
-    return false;
-  }
 }
 
 /** One plane of ffmpeg's `eq` as its integer pass runs it: a gain in 1/4096 steps, then a lift in codes. */
@@ -238,16 +245,19 @@ type HueTurn = [cos: number, sin: number];
 /**
  * ffmpeg's `eq` for one plane, the integer pass it runs for a contrast under
  * 7.9 at gamma 1 (vf_eq.c `process_c` and `check_values`): the brightness
- * kept to hundredths, Y pivoting on code 128 and the chroma on 127. A plane
- * with contrast 1 and no brightness is left alone.
+ * kept to hundredths; at no brightness the lift is 127 − gain/32 on every
+ * plane, so code 128 lands on 127 on Y and the chroma alike. A plane with
+ * contrast 1 and no brightness is left alone.
  * @param contrast - The plane's contrast; the saturation for the chroma.
  * @param brightness - Its brightness; zero for the chroma.
  * @returns The plane's gain and lift.
  */
 function eqPlane(contrast: number, brightness: number): EqPlane {
   if (contrast === 1 && brightness === 0) return EQ_IDENTITY;
-  const gain = Math.trunc(contrast * 256 * 16);
-  return [gain, Math.trunc((Math.trunc(100 * brightness + 100) * 511) / 200) - 128 - Math.trunc(gain / 32)];
+  // ffmpeg keeps both as floats (`av_clipf`); the hundredths truncate from those.
+  const gain = Math.trunc(Math.fround(contrast) * 256 * 16);
+  const hundredths = Math.trunc(100 * Math.fround(brightness) + 100);
+  return [gain, Math.trunc((hundredths * 511) / 200) - 128 - Math.trunc(gain / 32)];
 }
 
 /**
@@ -333,13 +343,6 @@ class AdjustColor extends filters.BaseFilter<'AdjustColor', { luma: EqPlane; chr
     gl.uniform2fv(locations.uTurn ?? null, this.turn);
   }
 
-  /**
-   * Whether the pass changes nothing.
-   * @returns True with both planes left alone and no turn.
-   */
-  isNeutralState(): boolean {
-    return this.luma === EQ_IDENTITY && this.chroma === EQ_IDENTITY && this.turn[0] === 65536 && this.turn[1] === 0;
-  }
 }
 
 /** Source pixels a side one pass of the noise reduction reads: the chroma's weight is under 0.4% there at the strongest. */
@@ -395,12 +398,12 @@ class AdjustBlur extends filters.Blur {
         for (int t = -${BLUR_TAPS}; t <= ${BLUR_TAPS}; t++) {
           float at = abs(float(t));
           vec4 s = between(vTexCoord + uPixel * float(t));
-          float ky = pow(uFalloff, at) * s.a;
-          float kc = pow(uFalloff, at / 2.0) * s.a;
+          float ky = pow(uFalloff, at);
+          float kc = pow(uFalloff, at / 2.0);
           y += ky * s.r;
           c += kc * s.gb;
-          wy += ky;
-          wc += kc;
+          wy += ky * s.a;
+          wc += kc * s.a;
         }
         gl_FragColor = wy < ${NO_WEIGHT} ? own : vec4(y / wy, c / wc, own.a);
       }`;
@@ -434,14 +437,14 @@ class AdjustBlur extends filters.Blur {
         for (let t = -BLUR_TAPS; t <= BLUR_TAPS; t++) {
           const px = x + t * dx;
           const py = y + t * dy;
-          const alpha = sample(source, px, py, 3) / 255;
-          const ky = falloff ** Math.abs(t) * alpha;
-          const kc = falloff ** (Math.abs(t) / 2) * alpha;
-          sum[0] = (sum[0] ?? 0) + ky * sample(source, px, py, 0);
-          sum[1] = (sum[1] ?? 0) + kc * sample(source, px, py, 1);
-          sum[2] = (sum[2] ?? 0) + kc * sample(source, px, py, 2);
-          wy += ky;
-          wc += kc;
+          const [ty, tcb, tcr, alpha] = tap(source, px, py);
+          const ky = falloff ** Math.abs(t);
+          const kc = falloff ** (Math.abs(t) / 2);
+          sum[0] = (sum[0] ?? 0) + ky * ty;
+          sum[1] = (sum[1] ?? 0) + kc * tcb;
+          sum[2] = (sum[2] ?? 0) + kc * tcr;
+          wy += ky * alpha;
+          wc += kc * alpha;
         }
         if (wy < NO_WEIGHT) continue;
         const i = (y * pixels.width + x) * 4;
@@ -462,13 +465,6 @@ class AdjustBlur extends filters.Blur {
     gl.uniform1f(locations.uFalloff ?? null, blurFalloff(this.sigma));
   }
 
-  /**
-   * Whether the pass changes nothing.
-   * @returns True at no spread.
-   */
-  isNeutralState(): boolean {
-    return this.sigma === 0;
-  }
 }
 
 /**
@@ -507,7 +503,7 @@ class AdjustUnsharp extends filters.BaseFilter<'AdjustUnsharp', { amount: number
             float w = uRow[i] * uRow[j];
             if (w > 0.0) {
               vec4 s = between(vTexCoord + vec2(float(i - 3), float(j - 3)) * uPixel);
-              blur += w * s.a * s.r;
+              blur += w * s.r;
               weight += w * s.a;
             }
           }
@@ -536,9 +532,10 @@ class AdjustUnsharp extends filters.BaseFilter<'AdjustUnsharp', { amount: number
           for (let i = 0; i < this.row.length; i++) {
             const px = x + (i - reach) * dx;
             const py = y + (j - reach) * dy;
-            const w = ((this.row[i] ?? 0) * (this.row[j] ?? 0) * sample(source, px, py, 3)) / 255;
-            blur += w * sample(source, px, py, 0);
-            weight += w;
+            const w = (this.row[i] ?? 0) * (this.row[j] ?? 0);
+            const [ty, , , alpha] = tap(source, px, py);
+            blur += w * ty;
+            weight += w * alpha;
           }
         }
         if (weight < NO_WEIGHT) continue;
@@ -561,13 +558,6 @@ class AdjustUnsharp extends filters.BaseFilter<'AdjustUnsharp', { amount: number
     gl.uniform1fv(locations.uRow ?? null, [...Array<number>(pad).fill(0), ...this.row, ...Array<number>(pad).fill(0)]);
   }
 
-  /**
-   * Whether the pass changes nothing.
-   * @returns True at zero amount.
-   */
-  isNeutralState(): boolean {
-    return this.amount === 0;
-  }
 }
 
 /**
@@ -659,13 +649,6 @@ class AdjustGrain extends filters.BaseFilter<
     gl.uniform2fv(locations.uCells ?? null, this.cells);
   }
 
-  /**
-   * Whether the pass changes nothing.
-   * @returns True at zero strength.
-   */
-  isNeutralState(): boolean {
-    return this.strength === 0;
-  }
 }
 
 /**
@@ -745,13 +728,6 @@ class AdjustVignette extends filters.BaseFilter<'AdjustVignette', { angle: numbe
     gl.uniform3fv(locations.uCenter ?? null, this.centers());
   }
 
-  /**
-   * Whether the pass changes nothing.
-   * @returns True at zero angle.
-   */
-  isNeutralState(): boolean {
-    return this.angle === 0;
-  }
 }
 
 /** One filter in the chain: Fabric's own or one of ours. */
