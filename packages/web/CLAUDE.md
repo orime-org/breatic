@@ -55,7 +55,7 @@ Notion 灰 + 下划线 · NN/g 的通则)没有一家让链接跟正文同色。
 
 **三步,一步都不许跳(user 2026-08-18 定死)**:① **任何 UI 表现,先看组件库里有没有** —— 不分类别,浮层 / 表单 / 交互控件算,骨架屏 / 徽章 / 分隔线 / 头像 / 空态 / 进度条这些纯展示的一样算;② **有就用它**,别照着它再写一个(手写 `className='skeleton-shimmer'` 拿到的是同样的像素,但等于把 `Skeleton` 的实现复制了一份 —— 它以后换动画、改圆角、加分支,都跟这一处无关了);③ **确实没有才自己做,而且做出来必须跟仓里已有的视觉表现一致** —— 尺寸、间距、圆角、颜色一律去数仓里同类现在用的是什么,别自己挑一套。**理由是视觉一致性**:user 原话「不然的话,就没办法保证整个视觉效果的一致性了」。判定题:**我正要给这个新组件填一个尺寸 / 颜色 / 圆角吗?仓里同类现在用的是什么?数过了吗?**
 
-**严禁手写浮层** —— 尤其 `fixed inset-0` 遮罩:它在 ReactFlow 的 `transform` 容器里会相对被变换的祖先定位、不覆盖真视口,导致「点画布关不掉」这类诡异 bug;Radix primitive 走 Portal 逃 transform + 自带 outside-click / Escape / 碰撞翻转,是既定用法(语言 / 主题 / `GroupBackgroundPicker` 都用 `components/ui/popover`)。**这句里全站成立的只有「别手写、用 `components/ui/` 里的那个」** —— 「走 Portal 逃 transform」解决的是 ReactFlow 那个 `transform` 祖先,画布之外没有它,所以 Portal 在别处只是那几个 primitive 的默认实现、不是一条不许动的约束(`components/ui/tooltip` 的 `portal` 默认就关着,两种情况才传它:trigger 落在 CSS transform 祖先里,或者落在会裁剪的滚动容器里 —— 后者目前是 `SpaceDrawer` 的行操作按钮,它们在 `ScrollArea` 里,内联渲染的提示会被可视区上沿裁掉)。判定题:**我正要写一个 UI 组件吗?是 → 先 grep `components/ui/`,别手写**。**找到了就用它,别照着它再写一个** —— 复用的是那个组件,不是它的样式类名(手写 `className='skeleton-shimmer'` 等于把 `Skeleton` 的实现抄了一遍,它以后怎么改都跟这一处无关了)。确实需要**新建共享 primitive**(要进 `components/ui/`、design system 级,非一次性 feature 组件)→ **先跟用户确认再建**,不擅自造轮子;一次性 feature 组件(某个具体 chip / 面板)照常建、不用问。承接根 [CLAUDE.md](../../CLAUDE.md) 禁止清单外的 #5「已有同类模式必须对齐,不发明半套」,本条是其 web UI 层的具体化。
+**严禁手写浮层** —— 尤其 `fixed inset-0` 遮罩:它在 ReactFlow 的 `transform` 容器里会相对被变换的祖先定位、不覆盖真视口,导致「点画布关不掉」这类诡异 bug;Radix primitive 走 Portal 逃 transform + 自带 outside-click / Escape / 碰撞翻转,是既定用法(语言 / 主题 / `GroupBackgroundPicker` 都用 `components/ui/popover`)。**这句里全站成立的只有「别手写、用 `components/ui/` 里的那个」** —— 「走 Portal 逃 transform」解决的是 ReactFlow 那个 `transform` 祖先,画布之外没有它,所以 Portal 在别处只是那几个 primitive 的默认实现、不是一条不许动的约束(`components/ui/tooltip` 的 `portal` 默认就关着,两种情况才传它:trigger 落在 CSS transform 祖先里,或者落在会裁剪的滚动容器里 —— 后者目前是聊天输入卡片里的 `SpaceContextChip`,卡片会裁掉超出它的部分,内联渲染的提示会被卡片上沿裁掉)。判定题:**我正要写一个 UI 组件吗?是 → 先 grep `components/ui/`,别手写**。**找到了就用它,别照着它再写一个** —— 复用的是那个组件,不是它的样式类名(手写 `className='skeleton-shimmer'` 等于把 `Skeleton` 的实现抄了一遍,它以后怎么改都跟这一处无关了)。确实需要**新建共享 primitive**(要进 `components/ui/`、design system 级,非一次性 feature 组件)→ **先跟用户确认再建**,不擅自造轮子;一次性 feature 组件(某个具体 chip / 面板)照常建、不用问。承接根 [CLAUDE.md](../../CLAUDE.md) 禁止清单外的 #5「已有同类模式必须对齐,不发明半套」,本条是其 web UI 层的具体化。
 
 ## demo 表达功能逻辑,数值一律对齐产品既有 token(MANDATORY)
 
@@ -133,6 +133,8 @@ demo 里那些动画参数是随手写的示意,不是定稿 —— 完全实现
 **点下去要等服务器答复的按钮,一律用 `Button`(或 `AlertDialogAction`)的 `loading`**:按下之后到屏幕显示出结果之前,按钮按不出第二次,并显示转圈(user 2026-10-13 定,inner#1374)。新写的按钮和改动到的旧按钮都照此办,不许出现点了没有任何等待提示的按钮。行为约定见 [docs/ARCHITECTURE.md](../../docs/ARCHITECTURE.md#frontend) 的「等服务器答复的按钮一律走 `Button` 的 `loading`」。
 
 做法四条:**① 等待标志在请求发出前置上,成功和失败都清掉**;**② 等到显示这个结果的那次读取回来为止,只等那一次**(`onSuccess` 里 `await` 那次读取,参照 `use-studio-settings.ts` 的 `absorb`、`data/api/projects.ts` 的 `invalidateProjectListings`);**③ 同一列表里多个按钮按对象分开记**(`mutationKey` + `useMutationState`、`lib/use-pending-keys.ts`);**④ 确认弹窗开着等,成功关、失败留着**。图标按钮把图标交给 `icon`,转圈会替换它。
+
+**会产生东西或花钱的按下只执行一次**(inner#1490):生成、理解、mini-tool 运行、新建会话、会员结账或换档、新建项目、积分结账这七个按钮,等待记在 `stores/task-actions-in-flight.ts` 的 `runOnce` 里 —— 面板关掉再打开,按钮照样在等、再按不发请求;请求带 `Idempotency-Key`,没拿到最终答复就带同一个键重发,服务端的 `runOnce(scope)` 保证同一个键只执行一次。按钮读 `useRunning(intentId)`。
 
 判定题:**这个按钮点下去要等服务器答复吗?要 → `loading`,没有第二个选项。**
 

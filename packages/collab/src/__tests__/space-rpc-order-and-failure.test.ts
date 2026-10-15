@@ -872,6 +872,143 @@ describe("finishing steps cannot change the answer already decided", () => {
   // mock-level re-enactment here would only ever test the mock.
 });
 
+describe("no answer waits for the meta connection to be handed back", () => {
+  // `disconnect()` awaits the store hooks, and `@hocuspocus/extension-redis`
+  // holds its `afterStoreDocument` for `disconnectDelay` (1000ms) whenever a
+  // direct-connection disconnect reaches it, written or not. Awaited inside the delete lock, that
+  // second kept the lock held long after the Space had left every screen,
+  // so the next delete a person made was refused (inner#867).
+  const cases: ReadonlyArray<{
+    type: string;
+    role: "editor" | "owner";
+    request: Parameters<typeof handleSpaceRpc>[3];
+    arrange: () => void;
+  }> = [
+    {
+      type: "space:create",
+      role: "editor",
+      request: {
+        id: "r1",
+        type: "space:create",
+        payload: { type: "canvas", name: "Main", claimToken: TOKEN },
+      },
+      arrange: () => {},
+    },
+    {
+      type: "space:delete",
+      role: "editor",
+      request: { id: "r1", type: "space:delete", payload: { spaceId: SID } },
+      arrange: () => {
+        seedSpace(SID, { type: "canvas", name: "Main", order: 0, locked: false });
+        seedSpace(OTHER_SID, { type: "canvas", name: "Other", order: 1, locked: false });
+      },
+    },
+    {
+      type: "space:lock",
+      role: "editor",
+      request: { id: "r1", type: "space:lock", payload: { spaceId: SID, locked: true } },
+      arrange: () => {
+        seedSpace(SID, { type: "canvas", name: "Main", order: 0, locked: false });
+      },
+    },
+    {
+      type: "space:rename",
+      role: "editor",
+      request: { id: "r1", type: "space:rename", payload: { spaceId: SID, name: "Renamed" } },
+      arrange: () => {
+        seedSpace(SID, { type: "canvas", name: "Main", order: 0, locked: false });
+      },
+    },
+    {
+      type: "space:restore",
+      role: "owner",
+      request: { id: "r1", type: "space:restore", payload: { spaceId: SID } },
+      arrange: () => {
+        activityLatestUnrestoredMock.mockResolvedValue(DELETED_ROW);
+      },
+    },
+  ];
+
+  it.each(cases)("$type answers while the hand-back is still running", async ({ role, request, arrange }) => {
+    arrange();
+    let handBack: () => void = () => {};
+    const disconnect = vi.fn(
+      () => new Promise<void>((resolve) => {
+        handBack = resolve;
+      }),
+    );
+
+    const answer = handleSpaceRpc(
+      { hocuspocus: makeHocuspocus({ disconnect }) },
+      PID,
+      { userId: ACTOR, role },
+      request,
+    );
+    const first = await Promise.race([
+      answer,
+      new Promise<"still waiting">((resolve) => setTimeout(() => resolve("still waiting"), 50)),
+    ]);
+
+    expect(first).toMatchObject({ id: "r1", ok: true });
+    expect(disconnect).toHaveBeenCalledTimes(1);
+    handBack();
+  });
+
+  it("space:create answers a failed content-row seed while the hand-back is still running", async () => {
+    seedInitialStateMock.mockRejectedValue(new Error("write failed"));
+    let handBack: () => void = () => {};
+    const disconnect = vi.fn(
+      () => new Promise<void>((resolve) => {
+        handBack = resolve;
+      }),
+    );
+
+    const answer = handleSpaceRpc(
+      { hocuspocus: makeHocuspocus({ disconnect }) },
+      PID,
+      { userId: ACTOR, role: "editor" },
+      {
+        id: "r1",
+        type: "space:create",
+        payload: { type: "canvas", name: "Main", claimToken: TOKEN },
+      },
+    );
+    const first = await Promise.race([
+      answer,
+      new Promise<"still waiting">((resolve) => setTimeout(() => resolve("still waiting"), 50)),
+    ]);
+
+    expect(first).toMatchObject({ id: "r1", ok: false, error: { code: "INTERNAL" } });
+    expect(disconnect).toHaveBeenCalledTimes(1);
+    handBack();
+  });
+
+  it("logs a hand-back that fails after the answer has gone", async () => {
+    seedSpace(SID, { type: "canvas", name: "Main", order: 0, locked: false });
+    seedSpace(OTHER_SID, { type: "canvas", name: "Other", order: 1, locked: false });
+
+    const res = await handleSpaceRpc(
+      {
+        hocuspocus: makeHocuspocus({
+          disconnect: async () => {
+            throw new Error("store hook rejected");
+          },
+        }),
+      },
+      PID,
+      { userId: ACTOR, role: "editor" },
+      { id: "r1", type: "space:delete", payload: { spaceId: SID } },
+    );
+
+    expect(res.ok).toBe(true);
+    await vi.waitFor(() => {
+      expect(
+        loggedContexts().some((ctx) => ctx["projectId"] === PID && ctx["spaceId"] === SID),
+      ).toBe(true);
+    });
+  });
+});
+
 describe("space:rename re-checks all three conditions at the moment it writes", () => {
   it("answers NOT_FOUND when the Space is deleted between the check and the write", async () => {
     seedSpace(SID, { type: "canvas", name: "Foo", order: 0, locked: false });

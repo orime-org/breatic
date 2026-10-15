@@ -19,10 +19,12 @@
       "none": "积分不足，请先充值。",
       "granted_elsewhere": "你的积分是赠送的，只能用在你的个人 Studio 里。",
       "refund_already_asked": "这笔已经提交过退款。",
+      "refund_restored": "这笔退款失败后已恢复为积分，不能再申请退款。",
       "refund_not_purchased": "这笔积分是赠送的，没有付过款，所以不能退款。",
       "refund_still_designated": "这笔已指定给某个 Studio，请先解除指定。",
       "refund_already_spent": "这笔的积分已经用过，不能退款。",
-      "refund_window_closed": "这笔的退款期限已过。"
+      "refund_window_closed": "这笔的退款期限已过。",
+      "refund_state_changed": "这笔的退款状态已经变了，请刷新后再试。"
     },
     "text_tool": {
       "already_running": "另一个文本工具正在运行,请稍候。"
@@ -131,6 +133,7 @@
       "checkout_unconfirmed": "暂时无法确认你的会员。",
       "same_tier": "你已经在这一档会员。",
       "payment_overdue": "这个会员有一期款项未付。",
+      "upgrade_pending": "这个会员有一笔升级仍在等待付款。",
       "unavailable": "会员当前不可用。"
     },
     "storage": {
@@ -234,6 +237,48 @@
       "unavailable": "这个工具暂时不可用。",
       "invalidParam": "“{name}”的值这个工具不支持。",
       "foreignSource": "这个文件无法处理。"
+    },
+    "idempotency": {
+      "missing": "页面已更新，请刷新后重试。",
+      "mismatch": "这次请求与之前发出的不一致。",
+      "in_progress": "这次请求仍在处理中。"
+    },
+    "internal": {
+      "lot_not_found": "没有这个编号、经付款购买的积分包。",
+      "operation_not_found": "没有这个编号的退款处置。",
+      "lot_state_changed": "积分包不在这个操作要求的状态。",
+      "operation_in_progress": "这笔积分包还有一个退款处置在进行中。",
+      "request_in_progress": "使用这个 Idempotency-Key 的请求还在执行。",
+      "stripe_blocks": "Stripe 上这笔付款的现状或这笔积分包的退款处置记录不允许这个操作，原因见 reason。",
+      "mail_not_resendable": "只有以已退款、已驳回或积分已恢复做完的处置才有可重发的买家邮件。",
+      "idempotency_key_reused": "这个 Idempotency-Key 已经用于另一个不同的请求。",
+      "invalid_body": "请求体或路径不符合这个端点的要求。",
+      "invalid_idempotency_key": "Idempotency-Key 头缺失或格式不对。",
+      "unreadable_body": "请求体不是合法的 JSON。"
+    },
+    "refund_mail": {
+      "completed": {
+        "subject": "退款已完成",
+        "intro": "我们已把这笔购买的钱退回你的原付款方式，银行入账通常需要几个工作日。这笔购买的积分已从账号移除。"
+      },
+      "rejected": {
+        "subject": "退款申请未通过",
+        "intro": "这笔购买的退款申请没有通过。这笔积分已回到可用状态，可以继续指定给 Studio 使用。"
+      },
+      "restored": {
+        "subject": "积分已恢复",
+        "intro": "钱没能退回你的原付款方式。按和你的沟通，这笔购买的积分已恢复到账号，可以继续指定给 Studio 使用。"
+      },
+      "label": {
+        "amount": "退款金额",
+        "credits": "积分",
+        "purchased_at": "购买时间",
+        "refunded_at": "退款时间",
+        "requested_at": "申请退款时间",
+        "order_ref": "订单号"
+      },
+      "credits_amount": "{credits} 积分",
+      "fact_line": "{label}：{value}"
     }
   },
   "chat": {
@@ -312,6 +357,7 @@
       "searchingImages": "正在找「{query}」的图片",
       "checkingCanvas": "正在查画布能做什么",
       "proposingNodes": "正在拟一份提议",
+      "proposingDocumentEdit": "正在拟一份修改提议",
       "savingImage": "正在保存图片",
       "checkingModels": "正在查可用的模型",
       "readingGuide": "正在查产品怎么用",
@@ -366,6 +412,30 @@
       "needCanvas": "先打开一个画布。",
       "promptReady": "提示词已写好，右键节点选「生成」，在打开的生成面板里查看",
       "settingsReady": "设置已配好，右键节点选「生成」，在打开的生成面板里查看"
+    },
+    "documentProposal": {
+      "where": "Document「{name}」",
+      "whereInsert": "插入到 Document「{name}」",
+      "insertAfter": "插在这一段之后",
+      "headingBlock": "标题",
+      "mediaLeftOut": "{count} 个图片、视频或音频是外部链接，不会加进去。",
+      "gone": "这条改动已经不在这个 Document 里了。",
+      "end": "文末",
+      "addComment": "增加批注",
+      "apply": "直接修改",
+      "insert": "插入",
+      "appliedComment": "已增加批注",
+      "appliedRewrite": "已修改",
+      "appliedInsert": "已插入",
+      "view": "在 Document 中查看",
+      "changed": "这一段在提议之后改过了。",
+      "blockGone": "这一段已经删掉了。",
+      "readOnly": "这个 Document 现在只能查看。",
+      "spaceGone": "这个 Document 已经删掉了。",
+      "failedComment": "没能增加批注，再试一次。",
+      "failedRewrite": "没能修改，再试一次。",
+      "failedInsert": "没能插入，再试一次。",
+      "lossy": "这一段的格式和批注会被替换。"
     },
     "thinking": "思考了一会儿",
     "thinkingNow": "思考中",
@@ -1259,6 +1329,9 @@
     "pageUnavailable": {
       "message": "这个页面没能加载。",
       "action": "刷新"
+    },
+    "runOnce": {
+      "unknownResult": "无法确认刚才的操作是否完成，请查看结果。"
     }
   },
   "members": {
@@ -1309,13 +1382,14 @@
       "description": "{count, plural, other {# 个 · 点击切换或右侧操作}}",
       "empty": "暂无 Spaces",
       "openAria": "打开 {name}",
-      "rowActions": "查看、加锁或删除这个 Space",
+      "rowActions": "查看、重命名、加锁或删除这个 Space",
       "status": {
-        "editing": "编辑中",
-        "open": "已打开"
+        "editing": "编辑中"
       },
       "action": {
         "view": "查看",
+        "rename": "重命名",
+        "renameLocked": "锁住的 Spaces 无法重命名",
         "lock": "加锁",
         "unlock": "解锁",
         "delete": "删除",
@@ -1354,22 +1428,6 @@
       "locked": "已锁定 — 解锁后才能修改名称。",
       "error": {
         "failed": "重命名失败,请重试。"
-      }
-    },
-    "readonly": {
-      "label": "只读",
-      "description": "此 Space 未在标签栏打开;只读预览,可缩放与复制内容,不可编辑。",
-      "canvas": {
-        "title": "只读 Canvas",
-        "description": "真实 ReactFlow viewer 在 canvas-space 完整实现时接入; 此处展示节点与边的只读快照,支持缩放与复制。"
-      },
-      "document": {
-        "title": "只读 Document",
-        "description": "TipTap 只读 viewer 在 document-space 实施时接入; 此处展示富文本快照,支持复制段落。"
-      },
-      "timeline": {
-        "title": "只读 Timeline",
-        "description": "Timeline viewer 在 timeline-space 实施时接入; 此处展示轨道快照,支持复制片段。"
       }
     },
     "readOnlyNotice": "这个 Space 现在只能查看 —— 你做的改动不会被保存。",
@@ -1444,6 +1502,7 @@
         "nothingUnresolved": "没有未解决的批注。",
         "writeFailed": "这次改动没能保存。",
         "unknownAuthor": "未知",
+        "fromAgent": "来自 Agent",
         "folded": "还有 {count} 条",
         "reply": "回复…",
         "save": "保存",
@@ -1602,7 +1661,10 @@
       "membershipEnded": "{tier} 会员已结束",
       "membershipUpgradeIncomplete": "换到 {tier} {period} 的付款没有完成",
       "membershipUpgradeIncompleteNoPeriod": "换到 {tier} 的付款没有完成",
-      "storageQuotaExceeded": "存储已满"
+      "storageQuotaExceeded": "存储已满",
+      "creditRefundCompleted": "{credits} 积分的退款已完成",
+      "creditRefundRejected": "{credits} 积分的退款申请未通过",
+      "creditRefundRestored": "{credits} 积分已恢复到你的账号"
     },
     "actorFallback": "某人",
     "subtitle": {
@@ -2301,7 +2363,8 @@
     },
     "refundReason": {
       "spent": "已经用过",
-      "expired": "超过 30 天"
+      "expired": "超过 30 天",
+      "restored": "积分已恢复"
     },
     "refundHint": {
       "assigned": "解除指定后可以申请退款"

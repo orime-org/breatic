@@ -34,7 +34,7 @@ export interface CollabHealthProbes {
    * MUST probe it (server/worker already do — this closed that gap).
    */
   pingRedisGeneral: () => Promise<boolean>;
-  /** Resolves true when the members-sync control Redis answers PING. */
+  /** Resolves true when the project control-plane Redis (DB2) answers PING. */
   pingRedisStream: () => Promise<boolean>;
   /**
    * Resolves true when the collab coordination Redis (DB3,
@@ -63,6 +63,13 @@ export interface CollabHealthProbes {
    * or error so one stuck probe can't crash the health handler.
    */
   probeWsProcessing: () => Promise<boolean>;
+  /**
+   * Resolves true when this instance still hears `project_members` changes
+   * (inner#911): a nonce sent on the probe channel comes back over the listen
+   * connection. postgres.js does not report whether it is listening, and a
+   * re-listen it gives up on stays silent, so this is a real round trip.
+   */
+  probeMemberListen: () => Promise<boolean>;
 }
 
 /**
@@ -78,6 +85,7 @@ export function buildCollabHealthChecks(probes: CollabHealthProbes): HealthCheck
     { name: "redis_collab", check: probes.pingRedisCollab },
     { name: "postgres", check: probes.pingPostgres },
     { name: "postgres_yjs", check: probes.pingYjsPostgres },
+    { name: "postgres_member_listen", check: probes.probeMemberListen },
     { name: "hocuspocus_listening", check: async () => probes.isHocuspocusListening() },
     { name: "ws_processing", check: probes.probeWsProcessing },
   ];

@@ -259,10 +259,10 @@ export function useSocket({ name, doc }: UseSocketOptions): SocketState {
       if (isReauthCloseReason(data?.event?.reason)) return;
       // Keep an existing authFailed sticky across the close that follows it.
       // For everything else, surface a soft disconnect (the shared socket
-      // auto-reconnects and re-syncs every attached doc).
+      // auto-reconnects and re-syncs every attached doc). The shared socket
+      // reports the drop itself, once for the connection.
       setSynced(false);
       setStatus((prev) => (prev === 'authFailed' ? prev : 'disconnected'));
-      reportCollabFailure({ kind: 'disconnect', docName: name, code });
     };
 
     provider.on('synced', onSynced);

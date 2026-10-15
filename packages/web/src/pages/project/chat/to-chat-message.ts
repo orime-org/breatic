@@ -16,8 +16,9 @@
  */
 import { getToolName, isToolUIPart } from 'ai';
 import type { UIMessage } from 'ai';
-import { canvasProposalSchema, chipOfPart, isReaderLine, stripDsml, TURNED_AWAY } from '@breatic/shared';
-import type { CanvasProposal, ChatAttachedChip } from '@breatic/shared';
+import type { z } from 'zod';
+import { canvasProposalSchema, chipOfPart, documentProposalSchema, isReaderLine, stripDsml, TURNED_AWAY } from '@breatic/shared';
+import type { CanvasProposal, ChatAttachedChip, DocumentProposal } from '@breatic/shared';
 import type { ChatAsset, ChatMessage, ChatSource, ToolCall } from '@web/pages/project/chat/types';
 
 /** The part type carrying a turn that was stopped. */
@@ -44,24 +45,30 @@ const RESULTS_TOOL = 'search_images';
 /** The tool that proposes a group of canvas nodes for the reader to place. */
 const PROPOSE_TOOL = 'propose_canvas_action';
 
+/** The tool that proposes a comment, rewrite or insert for the open document. */
+const PROPOSE_DOCUMENT_TOOL = 'propose_document_edit';
+
 /**
- * The group one finished `propose_canvas_action` call proposed, if any.
+ * The proposal one finished `propose_canvas_action` or `propose_document_edit`
+ * call carries, if any.
  *
  * Read defensively, like the pictures above: a refused proposal answers with a
- * reason instead of a group, and a row stored before this tool existed carries
- * the model's own text -- neither is a proposal at all. One the tool accepted
- * is checked against the shape this build places (inner#1499): a group stored
- * before that shape changed would throw half way onto the canvas, so it is
- * told apart as expired rather than offered as a card.
+ * reason instead of a proposal, and a row stored before the tool existed
+ * carries the model's own text -- neither is a proposal at all. One the tool
+ * accepted is checked against the shape this build places or lands
+ * (inner#1499): a canvas group stored before that shape changed would throw
+ * half way onto the canvas, so it is told apart as expired rather than
+ * offered as a card.
  * @param output - Whatever the call answered with.
+ * @param schema - The shape this build reads that tool's proposal in.
  * @returns The proposal, `'expired'` for an accepted one this build cannot
- *   place, or null when the call carries none.
+ *   use, or null when the call carries none.
  */
-function proposalOf(output: unknown): CanvasProposal | 'expired' | null {
+function placedOf<T>(output: unknown, schema: z.ZodType<T>): T | 'expired' | null {
   // Null only, because indexing it is what throws.
   if (output === null || output === undefined) return null;
   if ((output as Record<string, unknown>)['placed'] !== true) return null;
-  const parsed = canvasProposalSchema.safeParse(output);
+  const parsed = schema.safeParse(output);
   return parsed.success ? parsed.data : 'expired';
 }
 
@@ -184,6 +191,7 @@ export function toChatMessage(
   const found: Array<[number, ChatSource]> = [];
   const assets: ChatAsset[] = [];
   const proposals: CanvasProposal[] = [];
+  const documentProposals: DocumentProposal[] = [];
   let hasExpiredProposal = false;
   const attachments: ChatAttachedChip[] = [];
   // The server writes it onto the stored message; a message this reader has
@@ -242,9 +250,14 @@ export function toChatMessage(
         assets.push(...assetsOf(part.output));
       }
       if (status === 'success' && getToolName(part) === PROPOSE_TOOL) {
-        const proposal = proposalOf(part.output);
+        const proposal = placedOf(part.output, canvasProposalSchema);
         if (proposal === 'expired') hasExpiredProposal = true;
         else if (proposal !== null) proposals.push(proposal);
+      }
+      if (status === 'success' && getToolName(part) === PROPOSE_DOCUMENT_TOOL) {
+        const proposal = placedOf(part.output, documentProposalSchema);
+        if (proposal === 'expired') hasExpiredProposal = true;
+        else if (proposal !== null) documentProposals.push(proposal);
       }
       if (status === 'success' && getToolName(part) === SEARCH_TOOL) {
         found.push(...sourcesOf(part.output));
@@ -312,6 +325,7 @@ export function toChatMessage(
     ...(sources.length > 0 ? { sources, citations } : {}),
     ...(assets.length > 0 ? { assets } : {}),
     ...(proposals.length > 0 ? { proposals } : {}),
+    ...(documentProposals.length > 0 ? { documentProposals } : {}),
     ...(hasExpiredProposal ? { hasExpiredProposal: true as const } : {}),
     ...(attachments.length > 0 ? { attachments } : {}),
     ...(options.failedJustNow === true ? { failedJustNow: true as const } : {}),

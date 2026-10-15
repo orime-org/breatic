@@ -77,6 +77,10 @@ function noteOf(
       ? t('credits.lifecycle.depleted')
       : t('credits.refundReason.spent');
   }
+  if (refusal === 'restored') {
+    // The buyer took the credits instead of the money after a refund failed.
+    return t('credits.refundReason.restored');
+  }
   if (refusal === 'window_closed') {
     return t('credits.refundReason.expired');
   }

@@ -27,6 +27,7 @@ import { canvasRootOf, useCanvasContext, useCanvasSession, useCanvasSessionStore
 import { controlsForKeys } from '@web/spaces/canvas/generate/model-controls';
 import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
 import { useCreditText } from '@web/spaces/canvas/generate/use-credit-estimate';
+import { useMiniToolRunning } from '@web/spaces/canvas/mini-tool/start-mini-tool-run';
 import { MiniToolPanel } from '@web/spaces/canvas/mini-tool/MiniToolPanel';
 import {
   creditMode,
@@ -68,7 +69,7 @@ export interface MiniToolPanelContainerProps {
     snapshot: MiniToolSnapshot,
     capture: MiniToolCapture | undefined,
     sourceSize: { width: number; height: number } | undefined,
-  ) => Promise<void>;
+  ) => Promise<unknown>;
 }
 
 /**
@@ -193,7 +194,6 @@ function OpenMiniToolPanel({
     closeActivePanel();
   }, [modelMissing, closeActivePanel, t]);
 
-  const exporting = draft?.exporting ?? false;
   const view = asContentView(node.data);
   const content = view !== undefined && 'content' in view ? (view.content ?? '') : '';
   // A crop is converted with the size the node's crop box read off the shown
@@ -201,6 +201,10 @@ function OpenMiniToolPanel({
   const crops = !isModelTool(spec) && spec.params.some((param) => param.kind === 'rect');
   const measured = draft?.sourceSize ?? null;
   const { spaceId } = useCanvasContext();
+  // A press of this tool on this node still waiting (inner#1490) holds the
+  // button the way an export does: it outlives the panel it was made in.
+  const running = useMiniToolRunning(spaceId, nodeId, spec.id);
+  const exporting = (draft?.exporting ?? false) || running;
   const dataWidth = view !== undefined && 'width' in view ? view.width : undefined;
   const dataHeight = view !== undefined && 'height' in view ? view.height : undefined;
   // The picture is read off the node only when its data does not carry the size.

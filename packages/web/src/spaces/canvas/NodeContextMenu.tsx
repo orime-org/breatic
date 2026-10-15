@@ -8,6 +8,7 @@ import {
   Download,
   History,
   ImagePlus,
+  Loader2,
   Lock,
   MessageSquarePlus,
   Pencil,
@@ -133,6 +134,8 @@ interface NodeContextMenuProps {
   onDownload?: () => void;
   /** Read what this node is showing into a text node downstream; absent disables the item rather than hiding it. */
   onUnderstand?: () => void;
+  /** A press of Understand on this node is still waiting (inner#1490): the item shows it and takes no press. */
+  understanding?: boolean;
   /**
    * Whether this node's kind has mini-tools at all (inner#888 §7.1). A kind
    * with none leaves the Tools row out.
@@ -197,6 +200,7 @@ interface NodeContextMenuProps {
  * @param root0.assetActionsOffered - Whether this node holds an asset, which Download / Understand act on (text nodes hold words).
  * @param root0.onDownload - Download what this node is showing; absent disables the item rather than hiding it.
  * @param root0.onUnderstand - Read what this node is showing into a text node downstream; absent disables the item rather than hiding it.
+ * @param root0.understanding - A press of Understand on this node is still waiting.
  * @param root0.toolsOffered - Whether this node's kind has mini-tools; absent leaves the Tools row out.
  * @param root0.tools - The tools this node can run now; absent or empty greys the Tools row.
  * @param root0.onTool - Open the chosen tool's panel.
@@ -226,6 +230,7 @@ export const NodeContextMenu = React.memo(function NodeContextMenu({
   onSnapshot,
   onDownload,
   onUnderstand,
+  understanding = false,
   toolsOffered = false,
   tools,
   onTool,
@@ -336,12 +341,17 @@ export const NodeContextMenu = React.memo(function NodeContextMenu({
                 {/* What it produces lands on a new text node of its own,
                     which is why this is not an edit of the node it reads. */}
                 <DropdownMenuItem
-                  disabled={!onUnderstand}
+                  disabled={!onUnderstand || understanding}
+                  aria-busy={understanding || undefined}
                   data-testid='node-menu-understand'
                   className='data-[disabled]:pointer-events-auto data-[disabled]:cursor-not-allowed'
                   onSelect={onUnderstand}
                 >
-                  <ScanText className='mr-2 h-4 w-4' aria-hidden='true' />
+                  {understanding ? (
+                    <Loader2 className='mr-2 h-4 w-4 animate-spin' aria-hidden='true' />
+                  ) : (
+                    <ScanText className='mr-2 h-4 w-4' aria-hidden='true' />
+                  )}
                   {t('canvas.nodeMenu.understand')}
                 </DropdownMenuItem>
               </>

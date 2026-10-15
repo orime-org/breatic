@@ -19,6 +19,7 @@ import { ApiException } from '@web/data/api/types';
 import { addEdge, addNode, runCanvasUndoBatch } from '@web/data/yjs/canvas-space';
 import { formatBytes } from '@web/lib/format-bytes';
 import { toast } from '@web/lib/toast';
+import { runOnce, useRunning, type RunOnceOutcome } from '@web/stores/task-actions-in-flight';
 import { refusalClause } from '@web/spaces/canvas/failure-sentence';
 import { createEmptyNode } from '@web/spaces/canvas/node-factory';
 import {
@@ -77,6 +78,26 @@ export interface UnderstandRun {
 const UNDERSTAND_PREFIX = 'UNDERSTAND-';
 
 /**
+ * The run-once intent of an Understand press on one node (inner#1490).
+ * @param spaceId - The Space the node lives in.
+ * @param nodeId - The node being read.
+ * @returns The intent id.
+ */
+function understandIntent(spaceId: string, nodeId: string): string {
+  return `understand:${spaceId}:${nodeId}`;
+}
+
+/**
+ * Whether an Understand press on this node is still waiting; the menu item reads it.
+ * @param spaceId - The Space the node lives in.
+ * @param nodeId - The node being read.
+ * @returns True while it waits.
+ */
+export function useUnderstanding(spaceId: string, nodeId: string): boolean {
+  return useRunning(understandIntent(spaceId, nodeId)) !== undefined;
+}
+
+/**
  * Build the text node this run writes to, wire it, and ask for the run.
  *
  * Refuses in the browser what the browser can settle — a format the endpoint
@@ -84,12 +105,43 @@ const UNDERSTAND_PREFIX = 'UNDERSTAND-';
  * built nothing. Everything past that belongs to the run: its row sits on the
  * new node and carries whatever the server decides, so this waits for nothing
  * and reports only a request that never arrived.
+ *
+ * One press per node runs at a time (inner#1490): a press while one waits
+ * builds nothing and sends nothing, and an unanswered request is re-sent with
+ * the same key without building a second node.
  * @param run - The press: where it happens, who pressed, and what is read.
- * @returns Nothing; what happens next is on the new node's task list.
+ * @returns The press's whole run; what happens next is on the new node's task list.
  */
-export async function startUnderstandRun(run: UnderstandRun): Promise<void> {
+export function startUnderstandRun(run: UnderstandRun): Promise<RunOnceOutcome<unknown>> {
   const { projectId, spaceId, userId, source, onBuilt } = run;
+  return runOnce(understandIntent(spaceId, source.id), {
+    scope: 'understand',
+    prepare: () => buildUnderstandRun(projectId, spaceId, userId, source, onBuilt),
+    send: (key, body: UnderstandBody) => canvasApi.understand(body, key),
+    onFailure: reportUnderstandFailure,
+  });
+}
 
+/** The request body of one Understand run. */
+type UnderstandBody = Parameters<typeof canvasApi.understand>[0];
+
+/**
+ * The browser's half of a press: refuse what it can settle, build and wire
+ * the text node, and fix the request body.
+ * @param projectId - The project.
+ * @param spaceId - The Space.
+ * @param userId - Who pressed.
+ * @param source - The node being read.
+ * @param onBuilt - Told about the node this press built.
+ * @returns The request body, or null when the press was refused here.
+ */
+function buildUnderstandRun(
+  projectId: string,
+  spaceId: string,
+  userId: string,
+  source: UnderstandSource,
+  onBuilt: UnderstandRun['onBuilt'],
+): UnderstandBody | null {
   // The ceiling rides on the knobs the canvas warms on mount, read here
   // without waiting. It is allowed to be absent: the refusal judges format
   // without it and skips only the size question, which the run then answers
@@ -120,7 +172,7 @@ export async function startUnderstandRun(run: UnderstandRun): Promise<void> {
           limit: formatBytes(refusal.limitBytes),
         }),
     );
-    return;
+    return null;
   }
 
   const position = understandNodePosition(source.position, source.groupOrigin);
@@ -155,46 +207,44 @@ export async function startUnderstandRun(run: UnderstandRun): Promise<void> {
   if (!wired) toast.warning(t('canvas.understand.sourceGone'));
   onBuilt({ id: node.id, position });
 
-  try {
-    await canvasApi.understand({
-      project_id: projectId,
-      space_id: spaceId,
-      source_type: source.kind,
-      source_url: source.url,
-      node_ids: [node.id],
-      // The same judgement the gate above used, so the run cannot refuse a
-      // file this end just let through.
-      ...(source.mimeType !== undefined && { source_mime_type: source.mimeType }),
-      // The answer becomes this node's body, and this is the only end that
-      // knows which language the reader set. It travels as the code; the
-      // sentence is the model's to write, four processes from here.
-      reader_locale: getLocale(),
-    });
-  } catch (err) {
-    // A rejection means no row was opened. The endpoint answers 201 with the
-    // row's own state once one exists — a refused run's row holds the cause
-    // and the node shows it — so anything that rejects left the node with
-    // nothing on it and nothing coming, and the press is the only place the
-    // reason can be said. The node stays either way; nothing here deletes one.
-    //
-    // A sentence our server wrote is the reader's own, and which layer put it
-    // in their language depends on the branch: `error-handler.ts` calls `t()`
-    // itself for an `HTTPException` and for the catch-all, and hands an
-    // `AppError`'s message on untouched because that message is the thrower's
-    // — so the thrower is where `t()` is, held there by
-    // `breatic/no-untranslated-error-message`. Three gates can refuse this
-    // press, and each says its own sentence in the reader's language: the
-    // rate limiter answers 429 directly with `t("server.error.rate_limited")`
-    // without passing through the handler at all, `validate` raises
-    // `ValidationError(t("server.error.validation"))`, and the access check
-    // builds its own through `t()`. `fromServer` is true only when the answer
-    // carried a sentence at all; the short line below is for the rejections
-    // that carried none — a request that never arrived, an answer that was
-    // not ours.
-    const said =
-      err instanceof ApiException && err.fromServer && err.message
-        ? err.message
-        : t('canvas.understand.couldNotStart');
-    toast.error(said);
-  }
+  return {
+    project_id: projectId,
+    space_id: spaceId,
+    source_type: source.kind,
+    source_url: source.url,
+    node_ids: [node.id],
+    // The same judgement the gate above used, so the run cannot refuse a
+    // file this end just let through.
+    ...(source.mimeType !== undefined && { source_mime_type: source.mimeType }),
+    // The answer becomes this node's body, and this is the only end that
+    // knows which language the reader set. It travels as the code; the
+    // sentence is the model's to write, four processes from here.
+    reader_locale: getLocale(),
+  };
+}
+
+/**
+ * Say why a press got no run.
+ *
+ * A rejection means no row was opened. The endpoint answers 201 with the
+ * row's own state once one exists — a refused run's row holds the cause and
+ * the node shows it — so anything that rejects left the node with nothing on
+ * it and nothing coming, and the press is the only place the reason can be
+ * said. The node stays either way; nothing here deletes one.
+ *
+ * A sentence our server wrote is the reader's own, and which layer put it in
+ * their language depends on the branch: `error-handler.ts` calls `t()` itself
+ * for an `HTTPException` and for the catch-all, and hands an `AppError`'s
+ * message on untouched because that message is the thrower's — so the thrower
+ * is where `t()` is, held there by `breatic/no-untranslated-error-message`.
+ * `fromServer` is true only when the answer carried a sentence at all; the
+ * short line below is for the rejections that carried none.
+ * @param err - The final failure.
+ */
+function reportUnderstandFailure(err: unknown): void {
+  const said =
+    err instanceof ApiException && err.fromServer && err.message
+      ? err.message
+      : t('canvas.understand.couldNotStart');
+  toast.error(said);
 }

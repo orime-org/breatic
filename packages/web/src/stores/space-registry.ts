@@ -10,6 +10,12 @@ export interface SpaceRegistry<T> {
    */
   of: (spaceId: string) => T;
   /**
+   * The Space's value if its tab is open, without creating one.
+   * @param spaceId - The Space.
+   * @returns Its value, or undefined.
+   */
+  peek: (spaceId: string) => T | undefined;
+  /**
    * Forget a Space's value, when its tab is closed.
    * @param spaceId - The Space.
    */
@@ -35,6 +41,7 @@ export function createSpaceRegistry<T>(create: () => T): SpaceRegistry<T> {
       }
       return value;
     },
+    peek: (spaceId) => values.get(spaceId),
     drop: (spaceId) => {
       values.delete(spaceId);
     },

@@ -11,17 +11,26 @@
  * an IP key is too coarse (shared NAT) or too easy to rotate.
  */
 
-import type { MiddlewareHandler } from "hono";
+import type { Context, MiddlewareHandler } from "hono";
+import { getConnInfo } from "@hono/node-server/conninfo";
 import { getRedis, checkRateLimit, logger } from "@breatic/core";
 import { t } from "@breatic/shared";
 import { getRateLimit } from "@server/config/rate-limits.js";
 
 /**
- * A request's rate-limit key dimension: the client's address, the signed-in
- * user, or the signed-in user and one route param (one bucket per thing that
- * param names, such as one upload).
+ * A request's rate-limit key dimension: the client's address as forwarded,
+ * the socket's own address, the signed-in user, or the signed-in user and one
+ * route param (one bucket per thing that param names, such as one upload).
  */
-type KeyBy = "ip" | "user" | { readonly userAndParam: string };
+type KeyBy = "ip" | "socket" | "user" | { readonly userAndParam: string };
+
+/** How a limiter answers a refused request and an unreachable counter. */
+export interface RateLimitAnswers {
+  /** The 429 body; the public envelope when absent. `Retry-After` is set either way. */
+  onLimited?: (c: Context, retryAfterSeconds: number) => Response;
+  /** Answer this when the counter cannot be read, instead of letting the request through. */
+  failClosed?: (c: Context) => Response;
+}
 
 /**
  * Resolve the rate-limit key for a request under the given dimension.
@@ -29,12 +38,14 @@ type KeyBy = "ip" | "user" | { readonly userAndParam: string };
  * `'user'` reads the authenticated user's id (the middleware must run AFTER
  * `requireAuth`); it falls back to `"anonymous"` if no user is present so a
  * misconfigured chain degrades to a single shared bucket rather than throwing.
- * `'ip'` reads the first `x-forwarded-for` hop.
+ * `'ip'` reads the first `x-forwarded-for` hop. `'socket'` reads the
+ * connection's own address, for a listener no proxy stands in front of.
  * @param c - The Hono context for the current request
  * @param keyBy - The key dimension
  * @returns The bucket key (without the action prefix)
  */
 function resolveKey(c: Parameters<MiddlewareHandler>[0], keyBy: KeyBy): string {
+  if (keyBy === "socket") return getConnInfo(c).remote.address ?? "unknown";
   if (keyBy !== "ip") {
     const user = c.get("user") as { id: string } | undefined;
     const id = user?.id ?? "anonymous";
@@ -49,30 +60,39 @@ function resolveKey(c: Parameters<MiddlewareHandler>[0], keyBy: KeyBy): string {
  * @param opts.prefix - Redis key prefix identifying the limited action (e.g. `login`, `studio-create`).
  * @param opts.max - Maximum allowed requests per window.
  * @param opts.windowSeconds - Sliding window length in seconds.
- * @param opts.keyBy - Bucket dimension: `'ip'` (default), `'user'`, or the user and one route param (both need `requireAuth` upstream).
+ * @param opts.keyBy - Bucket dimension: `'ip'` (default), `'socket'`, `'user'`, or the user and one route param (the last two need `requireAuth` upstream).
+ * @param opts.onLimited - The 429 body; the public envelope when absent.
+ * @param opts.failClosed - The answer when Redis cannot count; absent lets the request through.
  * @returns A Hono middleware that returns `429` with a `Retry-After` header when the limit is exceeded.
  */
-export function rateLimit(opts: {
-  prefix: string;
-  max: number;
-  windowSeconds: number;
-  keyBy?: KeyBy;
-}): MiddlewareHandler {
+export function rateLimit(
+  opts: {
+    prefix: string;
+    max: number;
+    windowSeconds: number;
+    keyBy?: KeyBy;
+  } & RateLimitAnswers,
+): MiddlewareHandler {
   return async (c, next) => {
     const key = resolveKey(c, opts.keyBy ?? "ip");
-    const redis = getRedis();
-    const allowed = await checkRateLimit(
-      redis,
-      `${opts.prefix}:${key}`,
-      opts.max,
-      opts.windowSeconds,
-    );
+    const bucket = `${opts.prefix}:${key}`;
+    let allowed: boolean;
+    try {
+      allowed = await checkRateLimit(getRedis(), bucket, opts.max, opts.windowSeconds, {
+        strict: opts.failClosed !== undefined,
+      });
+    } catch (err) {
+      if (!opts.failClosed) throw err;
+      logger.error({ err, action: opts.prefix }, "rate_limit_unavailable");
+      return opts.failClosed(c);
+    }
     if (!allowed) {
       logger.warn({ action: opts.prefix, key }, "rate_limit_hit");
+      c.header("Retry-After", String(opts.windowSeconds));
+      if (opts.onLimited) return opts.onLimited(c, opts.windowSeconds);
       return c.json(
         { error: { code: 429, message: t("server.error.rate_limited") } },
         429,
-        { "Retry-After": String(opts.windowSeconds) },
       );
     }
     await next();
@@ -86,12 +106,14 @@ export function rateLimit(opts: {
  * throttle number lives in code. The `action` doubles as the yaml key
  * and the Redis prefix.
  * @param action - Throttle action (yaml key + Redis prefix, e.g. `login`).
- * @param keyBy - Bucket dimension: `'ip'` (default), `'user'`, or the user and one route param (both need `requireAuth` upstream).
+ * @param keyBy - Bucket dimension: `'ip'` (default), `'socket'`, `'user'`, or the user and one route param (the last two need `requireAuth` upstream).
+ * @param answers - The 429 body and the fail-closed answer, when not the public ones.
  * @returns The configured rate-limit middleware.
  */
 export function rateLimitFor(
   action: string,
   keyBy?: KeyBy,
+  answers: RateLimitAnswers = {},
 ): MiddlewareHandler {
   // Config is read + the inner middleware built on the FIRST request,
   // not at import — route registration must stay side-effect-free so a
@@ -100,7 +122,7 @@ export function rateLimitFor(
   return async (c, next) => {
     if (!inner) {
       const { max, windowSeconds } = getRateLimit(action);
-      inner = rateLimit({ prefix: action, max, windowSeconds, keyBy });
+      inner = rateLimit({ prefix: action, max, windowSeconds, keyBy, ...answers });
     }
     return inner(c, next);
   };

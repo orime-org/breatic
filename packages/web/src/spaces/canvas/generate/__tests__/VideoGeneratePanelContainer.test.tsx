@@ -808,6 +808,34 @@ describe('VideoGeneratePanelContainer', () => {
       expect(canvasSessions.of('s').getState().panelHostId).toBe('target');
     });
 
+    // inner#1490: the press is held outside the panel, so a reopened panel
+    // shows it still waiting and a second press sends nothing.
+    it('keeps the press waiting across closing and reopening the panel', async () => {
+      let finish: (() => void) | undefined;
+      const create = vi.spyOn(canvasApi, 'createTask').mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            finish = () => resolve({ id: 't1' } as Awaited<ReturnType<typeof canvasApi.createTask>>);
+          }),
+      );
+      fireEvent.click(await openReadyPanel());
+      await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
+      act(() => {
+        canvasSessions.of('s').getState().closeActivePanel();
+      });
+      act(() => {
+        canvasSessions.of('s').getState().openGeneratePanel('target', 'video');
+      });
+      const reopened = await screen.findByTestId('generate-video-execute');
+      await waitFor(() => expect(reopened).toHaveAttribute('aria-busy', 'true'));
+      fireEvent.click(reopened);
+      expect(create).toHaveBeenCalledTimes(1);
+      await act(async () => {
+        finish?.();
+      });
+      expect(canvasSessions.of('s').getState().panelHostId).toBeNull();
+    });
+
     it('explains a rejected submit and lets the user try again', async () => {
       // A refused task (no credits, node already busy, upstream down) must
       // both say so and release the latch — otherwise the arrow stays dead

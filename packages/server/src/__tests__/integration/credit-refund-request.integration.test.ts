@@ -4,9 +4,10 @@
 /**
  * Asking for a refund, on real Postgres (task #14).
  *
- * This repository writes one transition of the refund flow: a buyer asks,
- * and the lot moves from `active` to `refund_pending`. Deciding what happens
- * next belongs to the back office.
+ * This suite covers the buyer's transition of the refund flow: a buyer asks,
+ * and the lot moves from `active` to `refund_pending`. The back office
+ * decides what happens next; the edges that carry it out are covered in
+ * credit-lot-refund-transitions.integration.test.ts.
  *
  * Four conditions gate the ask. Three are checked here on their own, so that
  * removing any of them turns a test red; the fourth — already in the refund
@@ -40,6 +41,7 @@ vi.mock("ai", () => ({
 import postgres from "postgres";
 import { initCore, loadLocales } from "@breatic/core";
 import { creditLotService, creditLotRepo } from "@breatic/domain";
+import { t } from "@breatic/shared";
 
 const PG_DRIVER_LOCAL = "credit-refund-request-test-driver";
 
@@ -201,9 +203,9 @@ describe("a lot that meets every condition", () => {
   });
 
   it("keeps its balance and its ledger untouched", async () => {
-    // The credits leave the account when the money actually goes back, and
-    // that step is the back office's. Asking only freezes the lot, so there
-    // is nothing to undo if the ask is turned down.
+    // The credits leave the account when the money actually goes back
+    // (settleRefund). Asking only freezes the lot, so there is nothing to
+    // undo if the ask is turned down.
     const fx = await seedFixture();
     const lotId = await seedLot(fx, 100);
     const rowsBefore = await ledgerRows(lotId);
@@ -333,6 +335,43 @@ describe("a lot past the refund window", () => {
     await ask(fx, lotId);
 
     expect((await readLot(lotId)).lifecycle).toBe("refund_pending");
+  });
+});
+
+describe("a lot whose credits were restored (v9 §5.3, §6.3 L1)", () => {
+  /**
+   * A lot as restore_credits leaves it: active, undesignated, with a
+   * `refund_reversed` row in its ledger.
+   */
+  async function restoredLot(fx: Fixture): Promise<string> {
+    const lotId = await seedLot(fx, 100);
+    await sql`
+      INSERT INTO credit_ledger (payer_user_id, lot_id, entry_type, amount, reference_id)
+      VALUES (${fx.userId}, ${lotId}, 'refund_reversed', 0, ${`op-${seq}`})
+    `;
+    return lotId;
+  }
+
+  it("refuses the ask with 409 and the refund_restored sentence, and leaves the lot active", async () => {
+    const fx = await seedFixture();
+    const lotId = await restoredLot(fx);
+
+    await expect(ask(fx, lotId)).rejects.toMatchObject({ statusCode: 409, message: t("server.credit.refund_restored") });
+
+    expect(await readLot(lotId)).toMatchObject({ lifecycle: "active", attempts: 0 });
+  });
+
+  it("answers refund_restored before a designation or a closed window would (the refusal comes right after already_asked)", async () => {
+    const fx = await seedFixture();
+    const lotId = await restoredLot(fx);
+    await sql`UPDATE credit_lots SET designated_studio_id = ${fx.studioId} WHERE id = ${lotId}`;
+    await ageLot(lotId, 400);
+
+    await expect(ask(fx, lotId)).rejects.toMatchObject({ statusCode: 409, message: t("server.credit.refund_restored") });
+  });
+
+  it("the sentence is a translated one, not the bare key", () => {
+    expect(t("server.credit.refund_restored")).not.toBe("server.credit.refund_restored");
   });
 });
 

@@ -143,6 +143,40 @@ describe("createRoleUpgradeApproved / Rejected", () => {
   });
 });
 
+describe("createCreditRefundRestored (inner#1410 v9 §8)", () => {
+  it("tells the buyer, in the caller's transaction, with the lot and its credits and no expiry", async () => {
+    const tx = { tx: "the disposition's transaction" };
+    vi.mocked(notificationRepo.create).mockResolvedValueOnce({
+      id: NID,
+      userId: REQUESTER,
+      type: "credit.refund_restored",
+      payload: { lotId: "lot-1", credits: "880.000000" },
+      projectId: null,
+      readAt: null,
+      expiresAt: null,
+      deletedAt: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    const out = await notificationService.createCreditRefundRestored({
+      userId: REQUESTER,
+      payload: { lotId: "lot-1", credits: "880.000000" },
+      tx: tx as never,
+    });
+
+    expect(out.id).toBe(NID);
+    expect(notificationRepo.create).toHaveBeenCalledTimes(1);
+    const [args, passedTx] = vi.mocked(notificationRepo.create).mock.calls[0]!;
+    expect(args).toEqual({
+      userId: REQUESTER,
+      type: "credit.refund_restored",
+      payload: { lotId: "lot-1", credits: "880.000000" },
+    });
+    expect(passedTx).toBe(tx);
+  });
+});
+
 describe("markRead", () => {
   it("delegates to repo + does not throw when repo returns true", async () => {
     vi.mocked(notificationRepo.markRead).mockResolvedValueOnce(true);

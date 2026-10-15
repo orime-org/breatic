@@ -10,7 +10,7 @@
  * applies follows from the subscription state the panel was given.
  */
 
-import { apiPost } from '@web/data/api/request';
+import { apiPost, runOnceRequest } from '@web/data/api/request';
 import type { AccountMembership, MembershipOffer } from '@breatic/shared';
 
 /** Where Stripe's hosted checkout page is. */
@@ -31,31 +31,36 @@ export interface PlanChange {
  * Starts paying for a membership, for an account that holds none.
  * @param offer - The tier and the billing period being bought.
  * @param returnUrl - Where Stripe sends the browser back to, paid or not.
+ * @param key - The press's `Idempotency-Key`; a re-send with it opens no second checkout.
  * @returns Stripe's hosted checkout page.
  */
 export async function startSubscriptionCheckout(
   offer: MembershipOffer,
   returnUrl: string,
+  key: string,
 ): Promise<CheckoutStart> {
-  return apiPost<CheckoutStart>('/account/subscription/checkout', {
-    tier: offer.tier,
-    period: offer.period,
-    return_url: returnUrl,
-  });
+  return apiPost<CheckoutStart>(
+    '/account/subscription/checkout',
+    { tier: offer.tier, period: offer.period, return_url: returnUrl },
+    runOnceRequest(key),
+  );
 }
 
 /**
  * Moves an existing membership to another offer.
  * @param offer - The tier and the billing period to move to.
+ * @param key - The press's `Idempotency-Key`; a re-send with it moves nothing twice.
  * @returns Whether the new offer is in force, and where to pay if not.
  */
 export async function changeSubscriptionPlan(
   offer: MembershipOffer,
+  key: string,
 ): Promise<PlanChange> {
-  return apiPost<PlanChange>('/account/subscription/change', {
-    tier: offer.tier,
-    period: offer.period,
-  });
+  return apiPost<PlanChange>(
+    '/account/subscription/change',
+    { tier: offer.tier, period: offer.period },
+    runOnceRequest(key),
+  );
 }
 
 /** Stops the membership renewing at the end of the paid period. */

@@ -344,6 +344,34 @@ describe('MembershipPanel', () => {
     expect(pro).toHaveAttribute('aria-disabled', 'true');
   });
 
+  it('reopens on the period of the press still waiting, with its card spinning', async () => {
+    const subscriptionApi = await import('@web/data/api/subscription');
+    vi.spyOn(subscriptionApi, 'startSubscriptionCheckout').mockReturnValue(
+      new Promise(() => undefined) as never,
+    );
+    membershipMock.mockResolvedValue(
+      answer({
+        tier: 'base',
+        subscription: subscription({
+          state: 'none',
+          tier: 'base',
+          period: 'year',
+          currentPeriodEnd: null,
+        }),
+      }),
+    );
+    const user = userEvent.setup();
+    const first = setup();
+    await user.click(await screen.findByTestId('membership-period-month'));
+    await user.click(screen.getByTestId('membership-choose-pro'));
+    first.unmount();
+
+    setup();
+    const pro = await screen.findByTestId('membership-choose-pro');
+    expect(screen.getByTestId('membership-period-month')).toHaveAttribute('aria-pressed', 'true');
+    expect(pro).toHaveAttribute('aria-busy', 'true');
+  });
+
   it('drops the spin and frees every card when starting the checkout fails', async () => {
     const subscriptionApi = await import('@web/data/api/subscription');
     let fail: (reason: Error) => void = () => undefined;

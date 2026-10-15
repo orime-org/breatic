@@ -70,11 +70,6 @@ interface UIState {
    */
   spaceOpInProgress: null | 'creating' | 'deleting';
   /**
-   * Space id currently being previewed in the read-only sheet (drawer
-   * "View" action). `null` = sheet closed.
-   */
-  readOnlyViewSpaceId: string | null;
-  /**
    * Currently visible Sheet / Dialog id. There may only be one open
    * at a time per the design rule "Sheet/Dialog default to non-modal +
    * globally exclusive" (2026-05-25). Switching to a new overlay automatically
@@ -112,7 +107,6 @@ interface UIState {
   setShareOpen: (open: boolean) => void;
   // setMembersModalOpen removed - use setActiveOverlayId('members-modal')
   setSpaceOpInProgress: (op: UIState['spaceOpInProgress']) => void;
-  setReadOnlyViewSpaceId: (id: string | null) => void;
   setActiveOverlayId: (id: string | null) => void;
   setActiveRegion: (region: ActiveRegion) => void;
   /** Reset per-project chrome session state (overlays / modals / share / drawer); keeps layout prefs (#1771). */
@@ -139,7 +133,6 @@ export const useUIStore = create<UIState>()(
     shareOpen: false,
     // (membersModalOpen field removed - see activeOverlayId)
     spaceOpInProgress: null,
-    readOnlyViewSpaceId: null,
     activeOverlayId: null,
     activeRegion: 'space',
     restoreAgentPanel: (userId, projectId) =>
@@ -195,10 +188,6 @@ export const useUIStore = create<UIState>()(
       set((s) => {
         s.spaceOpInProgress = op;
       }),
-    setReadOnlyViewSpaceId: (id) =>
-      set((s) => {
-        s.readOnlyViewSpaceId = id;
-      }),
     setActiveOverlayId: (id) =>
       set((s) => {
         s.activeOverlayId = id;
@@ -213,7 +202,6 @@ export const useUIStore = create<UIState>()(
         s.modalStack = [];
         s.shareOpen = false;
         s.spaceOpInProgress = null;
-        s.readOnlyViewSpaceId = null;
         s.activeOverlayId = null;
         // A fresh project opens with the space region in charge (2026-08-26).
         s.activeRegion = 'space';

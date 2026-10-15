@@ -8,7 +8,7 @@
  * the reader's content; what the run does then lands on their task rows.
  */
 
-import { newId } from '@breatic/shared';
+import { newId, t } from '@breatic/shared';
 import {
   outputTemplateOf,
   type MiniToolRequest,
@@ -23,6 +23,8 @@ import { ApiException } from '@web/data/api/types';
 import type { MiniToolUploadTag } from '@web/data/upload/ingest-upload';
 import { UploadFailedError } from '@web/data/upload/media-upload';
 import { addEdge, addNode, runCanvasUndoBatch } from '@web/data/yjs/canvas-space';
+import { toast } from '@web/lib/toast';
+import { runOnce, useRunning, type RunOnceOutcome } from '@web/stores/task-actions-in-flight';
 import { NODE_STEP } from '@web/spaces/canvas/drop-layout';
 import { ImageTooLargeError } from '@web/spaces/canvas/mini-tool/adjust-export';
 import { DrawingEmptyError, type DrawingExport } from '@web/spaces/canvas/mini-tool/export-drawing';
@@ -328,6 +330,44 @@ function groupResults(
 }
 
 /**
+ * The run-once intent of a press of one tool on one node (inner#1490).
+ * @param spaceId - The Space the node lives in.
+ * @param nodeId - The node the tool runs on.
+ * @param toolId - The tool.
+ * @returns The intent id.
+ */
+export function miniToolIntent(spaceId: string, nodeId: string, toolId: string): string {
+  return `mini-tool:${spaceId}:${nodeId}:${toolId}`;
+}
+
+/**
+ * Whether a press of this tool on this node is still waiting; the Run button reads it.
+ * @param spaceId - The Space the node lives in.
+ * @param nodeId - The node the tool runs on.
+ * @param toolId - The tool.
+ * @returns True while it waits.
+ */
+export function useMiniToolRunning(spaceId: string, nodeId: string, toolId: string): boolean {
+  return useRunning(miniToolIntent(spaceId, nodeId, toolId)) !== undefined;
+}
+
+/** Ends a press's marks on its nodes: answered, or failed with a message. */
+type Settle = (message?: UploadMarkMessage) => void;
+
+/**
+ * What a refused or unreached request says on the nodes: the server's
+ * sentence when it gave one, already in the reader's language; a request that
+ * never arrived has none.
+ * @param err - What the send rejected with.
+ * @returns The message.
+ */
+function refusalOf(err: unknown): UploadMarkMessage {
+  return err instanceof ApiException && err.fromServer && err.message
+    ? { text: err.message }
+    : { key: 'canvas.miniTool.panel.couldNotStart' };
+}
+
+/**
  * Build the result nodes, wire them to the source, and start the run.
  *
  * The nodes and their group are built at the press, laid out from the sizes
@@ -335,10 +375,49 @@ function groupResults(
  * The browser's own work follows: a browser tool's file, or a drawing tool's
  * images and their upload. A failure there, a source deleted meanwhile, or a
  * server tool's refused request is said on the nodes, which stay.
+ *
+ * One press per tool and node runs at a time (inner#1490): a press while one
+ * waits builds nothing, and an unanswered request is re-sent with the same key
+ * without building a second set of nodes. The nodes wait until that request
+ * has its final answer, or until the press is let go without one.
  * @param run - The press.
- * @returns Nothing; what happens next is on the new nodes' task rows.
+ * @returns The press's whole run; what happens next is on the new nodes' task rows.
  */
-export async function startMiniToolRun(run: MiniToolRun): Promise<void> {
+export function startMiniToolRun(run: MiniToolRun): Promise<RunOnceOutcome<unknown>> {
+  let settle: Settle | null = null;
+  return runOnce(miniToolIntent(run.spaceId, run.source.id, run.spec.id), {
+    scope: 'mini-tool',
+    prepare: () =>
+      buildMiniToolRun(run, (built) => {
+        settle = built;
+      }),
+    send: (key, body: MiniToolRequest) => miniToolsApi.run(body, key),
+    onDone: () => {
+      settle?.();
+      return undefined;
+    },
+    onFailure: (err) => {
+      if (settle === null) toast.error(t('canvas.miniTool.panel.couldNotStart'));
+      else settle(refusalOf(err));
+    },
+  }).then((outcome) => {
+    // Let go after the request went out, with no final answer: the nodes stop
+    // waiting, and their task icons say whatever ran.
+    if (outcome.kind === 'released') settle?.();
+    return outcome;
+  });
+}
+
+/**
+ * The browser's half of a press: build and wire the result nodes, make what
+ * the tool needs, and fix the request body. A browser tool hands its file to
+ * the upload and sends nothing; a failure is said on the nodes and sends
+ * nothing.
+ * @param run - The press.
+ * @param onSent - Receives how to end the nodes' marks once a request is to be sent.
+ * @returns The request body, or null when nothing is to be sent.
+ */
+async function buildMiniToolRun(run: MiniToolRun, onSent: (settle: Settle) => void): Promise<MiniToolRequest | null> {
   const { projectId, spaceId, userId, spec, source } = run;
 
   const base = {
@@ -380,7 +459,7 @@ export async function startMiniToolRun(run: MiniToolRun): Promise<void> {
    * End this press's marks: answered, or failed with a message.
    * @param message - Why it stopped, or undefined when the server answered.
    */
-  const settle = (message?: UploadMarkMessage): void => {
+  const settle: Settle = (message) => {
     const now = useUploadMarksStore.getState();
     nodes.forEach((node, index) => {
       const op = ops[index]!;
@@ -410,7 +489,7 @@ export async function startMiniToolRun(run: MiniToolRun): Promise<void> {
   }
   if ('failed' in prepared) {
     settle(prepared.failed);
-    return;
+    return null;
   }
   const { files, uploads } = prepared;
 
@@ -443,19 +522,9 @@ export async function startMiniToolRun(run: MiniToolRun): Promise<void> {
     nodes.forEach((node, index) => {
       if (!handed.has(index)) now.answer(spaceId, node.id, ops[index]!);
     });
-    return;
+    return null;
   }
 
-  try {
-    await miniToolsApi.run(requestOf(run, nodes.map((node) => node.id), uploads));
-    settle();
-  } catch (err) {
-    // The server's sentence when it gave one, already in the reader's
-    // language; a request that never arrived has none.
-    settle(
-      err instanceof ApiException && err.fromServer && err.message
-        ? { text: err.message }
-        : { key: 'canvas.miniTool.panel.couldNotStart' },
-    );
-  }
+  onSent(settle);
+  return requestOf(run, nodes.map((node) => node.id), uploads);
 }

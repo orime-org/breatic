@@ -109,6 +109,12 @@ export interface UnloadGateDeps {
   /** Turn a live document into the bytes to store or rescue. */
   encode(document: Y.Doc): Uint8Array;
   /**
+   * Whether the library will keep this document once the hook returns: it
+   * re-checks `shouldUnloadDocument`, and a connection or a pending store that
+   * arrived meanwhile cancels the unload.
+   */
+  staysLoaded(documentName: string): boolean;
+  /**
    * Ask hocuspocus to store this document immediately.
    * @returns Whether the document was still loaded. False means the library
    *   unloaded it before we got there, so nothing was written and nothing
@@ -357,6 +363,10 @@ export function createUnloadGate(deps: UnloadGateDeps): UnloadGate {
     // whether there is anything left to rescue. A write can land AND leave the
     // document dirty, when an edit arrived while it was in flight.
     if (!hasUnsavedContent(documentName)) return;
+    // That edit came from a connection or a server write, and either one keeps
+    // the document in memory, where a later store takes the content. The
+    // document's next departure is settled on its own.
+    if (deps.staysLoaded(documentName)) return;
 
     const state = deps.encode(document);
     const path = await rescue(documentName, state);

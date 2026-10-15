@@ -46,7 +46,8 @@ describe('createNodeTask', () => {
       seen = mark();
       return Promise.resolve({} as never);
     });
-    await createNodeTask(SPACE, NODE, PAYLOAD);
+    await createNodeTask(SPACE, NODE, PAYLOAD, 'key-1');
+    expect(canvasApi.createTask).toHaveBeenCalledWith(PAYLOAD, 'key-1');
     expect(seen!).toMatchObject({ state: 'failed', action: 'upload' });
     expect(mark()).toBeUndefined();
   });
@@ -55,7 +56,7 @@ describe('createNodeTask', () => {
     failUpload();
     const refused = new Error('402');
     vi.spyOn(canvasApi, 'createTask').mockRejectedValue(refused);
-    await expect(createNodeTask(SPACE, NODE, PAYLOAD)).rejects.toBe(refused);
+    await expect(createNodeTask(SPACE, NODE, PAYLOAD, 'key-1')).rejects.toBe(refused);
     expect(mark()).toMatchObject({ state: 'failed', action: 'upload' });
   });
 
@@ -63,7 +64,7 @@ describe('createNodeTask', () => {
     const marks = useUploadMarksStore.getState();
     const op = marks.begin(SPACE, NODE, 'upload');
     vi.spyOn(canvasApi, 'createTask').mockResolvedValue({} as never);
-    await createNodeTask(SPACE, NODE, PAYLOAD);
+    await createNodeTask(SPACE, NODE, PAYLOAD, 'key-1');
     expect(mark()).toMatchObject({ op, state: 'waiting', action: 'upload' });
     marks.fail(SPACE, NODE, op, { key: 'canvas.upload.failed' });
     expect(mark()).toMatchObject({ op, state: 'failed' });

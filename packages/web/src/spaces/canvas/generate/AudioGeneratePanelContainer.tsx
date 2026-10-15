@@ -18,8 +18,6 @@ import * as React from 'react';
 
 import type { Voice } from '@breatic/shared';
 
-import { createNodeTask } from '@web/spaces/canvas/generate/create-node-task';
-import { ApiException } from '@web/data/api/types';
 import { voicesApi } from '@web/data/api/voices';
 import { firstVoiceKey, firstVoiceQuery } from '@web/spaces/canvas/generate/first-voice-query';
 import {
@@ -59,7 +57,6 @@ import { AudioGeneratePanel } from '@web/spaces/canvas/generate/AudioGeneratePan
 import { useCanvasContext } from '@web/spaces/canvas/canvas-context';
 import { deriveReferences } from '@web/spaces/canvas/generate/derive-references';
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
-import { executeErrorMessage } from '@web/spaces/canvas/generate/execute-error-message';
 import {
   evaluateExecute,
   extractPromptText,
@@ -82,6 +79,11 @@ import { removeReferenceRow } from '@web/spaces/canvas/generate/remove-reference
 import { clearSlot } from '@web/spaces/canvas/generate/slot-write';
 import { useContentStable } from '@web/spaces/canvas/generate/use-content-stable';
 import { useGenerateSubmitState } from '@web/spaces/canvas/generate/use-generate-submit-state';
+import {
+  isGenerating,
+  submitGeneration,
+  useGenerating,
+} from '@web/spaces/canvas/generate/submit-generation';
 import { useVoiceList } from '@web/spaces/canvas/generate/use-voice-list';
 import { voiceParamName } from '@web/spaces/canvas/generate/voice-param';
 import { useApplyTemplate } from '@web/spaces/canvas/generate/use-apply-template';
@@ -197,10 +199,10 @@ function AudioGeneratePanelBody({
     promptTextRef,
     onPromptChange,
     promptEditorRef,
-    isSubmitting,
-    setIsSubmitting,
-    submittingRef,
   } = useGenerateSubmitState();
+  // The press lives in the run-once registry, so a reopened panel still
+  // shows it waiting (inner#1490).
+  const isSubmitting = useGenerating(spaceId, nodeId);
 
   // Read during render: `getPromptFragment` is a synchronous document read with
   // no side effect, and null means the node has no seeded prompt for this mode — the panel
@@ -455,10 +457,10 @@ function AudioGeneratePanelBody({
     [promptEditorRef, lyricsEditorRef],
   );
 
-  const onExecute = React.useCallback(async () => {
+  const onExecute = React.useCallback((): void => {
     // Every execute-critical value is read synchronously here, never from a
     // render closure that batching and live collaboration make stale.
-    if (submittingRef.current) return;
+    if (isGenerating(spaceId, nodeId)) return;
     const gateBlock = evaluateNodeGate({
       locked: isNodeLocked(projectId, spaceId, nodeId),
     });
@@ -481,8 +483,8 @@ function AudioGeneratePanelBody({
       promptText: freshPrompt,
       model: fresh.model,
       nodeExists: fresh.nodeExists,
-      // The synchronous latch above already answered this, and earlier than a
-      // state flag can.
+      // The synchronous registry read above already answered this, and earlier
+      // than a state flag can.
       isSubmitting: false,
       promptRequired: fresh.promptRequired,
       maxInputChars,
@@ -506,46 +508,35 @@ function AudioGeneratePanelBody({
     }
     // Unreachable past the gate above — `no-model` covers it — and stated so
     // the payload builder gets an entry rather than undefined.
-    if (!fresh.modelEntry) return;
+    const modelEntry = fresh.modelEntry;
+    if (!modelEntry) return;
 
-    submittingRef.current = true;
-    // Which opening of the panel this submit came from: the answer may land
-    // after the reader closed or replaced this panel, and then it closes
-    // nothing they opened since.
-    const session = sessionStore.getState().panelSession;
-    setIsSubmitting(true);
-    try {
-      const payload = buildAudioTaskPayload({
-        nodeId,
-        projectId,
-        spaceId,
-        model: fresh.modelEntry,
-        params: fresh.params,
-        // The same mode the view model above was built for.
-        generation: { mode, declared: fresh.modelEntry.params },
-        promptText: freshPrompt,
-        // Read off the same fresh view model the gate judged, so the payload
-        // can only ever carry the pick that passed it.
-        slotUrls: fresh.slotUrls,
-        // The mode's own slots, so a pick made for the other mode cannot ride
-        // this submit: a pick survives a mode switch by design.
-        slots,
-        // Only on a mode that collects them; absent leaves the field out of
-        // the request rather than sending it empty.
-        ...(freshLyrics !== undefined ? { lyricsText: freshLyrics } : {}),
-      });
-      await createNodeTask(spaceId, nodeId, payload);
-      sessionStore.getState().closePanelOfSession(session);
-    } catch (err) {
-      // Unconditional: a submit that failed after the user closed the panel
-      // still explains itself.
-      toast.error(
-        executeErrorMessage(err instanceof ApiException ? err.status : undefined, t),
-      );
-      submittingRef.current = false;
-      setIsSubmitting(false);
-    }
-  }, [sessionStore,
+    submitGeneration({
+      spaceId,
+      nodeId,
+      panelKind: 'generateAudio',
+      buildPayload: () =>
+        buildAudioTaskPayload({
+          nodeId,
+          projectId,
+          spaceId,
+          model: modelEntry,
+          params: fresh.params,
+          // The same mode the view model above was built for.
+          generation: { mode, declared: modelEntry.params },
+          promptText: freshPrompt,
+          // Read off the same fresh view model the gate judged, so the payload
+          // can only ever carry the pick that passed it.
+          slotUrls: fresh.slotUrls,
+          // The mode's own slots, so a pick made for the other mode cannot ride
+          // this submit: a pick survives a mode switch by design.
+          slots,
+          // Only on a mode that collects them; absent leaves the field out of
+          // the request rather than sending it empty.
+          ...(freshLyrics !== undefined ? { lyricsText: freshLyrics } : {}),
+        }),
+    });
+  }, [
     nodeId,
     projectId,
     spaceId,
@@ -560,8 +551,6 @@ function AudioGeneratePanelBody({
     lyricsTextRef,
     promptEditorRef,
     promptTextRef,
-    setIsSubmitting,
-    submittingRef,
   ]);
 
   // Depended on BY VALUE, not via `t`: `t` is a stable module-level function

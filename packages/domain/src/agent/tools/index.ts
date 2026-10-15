@@ -16,6 +16,7 @@ import {
   JUDGE_LIKELIHOOD,
   LIST_GENERATION_MODELS,
   PROPOSE_CANVAS_ACTION,
+  PROPOSE_DOCUMENT_EDIT,
   SAVE_IMAGE,
 } from "@domain/agent/tools/tool-names.js";
 import { imageSearch } from "@domain/agent/tools/image-search.js";
@@ -25,7 +26,11 @@ import { canvasCapabilities } from "@domain/agent/tools/canvas-capabilities.js";
 import { generationModels } from "@domain/agent/tools/generation-models.js";
 import { productGuide } from "@domain/agent/tools/product-guide.js";
 import { makeProposeCanvasAction } from "@domain/agent/tools/propose-canvas-action.js";
+import { makeProposeDocumentEdit } from "@domain/agent/tools/propose-document-edit.js";
 import { judgeLikelihood } from "@domain/agent/tools/judge-likelihood.js";
+
+/** The document proposal tool; it holds nothing between calls. */
+const proposeDocumentEdit = makeProposeDocumentEdit();
 
 /**
  * Complete mapping of tool name to tool instance.
@@ -59,6 +64,8 @@ export const TOOL_MAP: Readonly<Record<string, () => Tool>> = {
   // Built per turn: its description quotes the template prompts in the
   // reader's language.
   [PROPOSE_CANVAS_ACTION]: () => makeProposeCanvasAction(),
+  // Holds nothing between calls, so one object serves every turn.
+  [PROPOSE_DOCUMENT_EDIT]: () => proposeDocumentEdit,
   // Built per turn: it holds whether a save is running, so one turn saves one
   // picture at a time.
   [SAVE_IMAGE]: () => makeSaveImageTool(),
@@ -92,6 +99,7 @@ export const CANVAS_TOOLS: readonly string[] = [
   LIST_GENERATION_MODELS,
   GET_PRODUCT_GUIDE,
   PROPOSE_CANVAS_ACTION,
+  PROPOSE_DOCUMENT_EDIT,
   SAVE_IMAGE,
 ];
 
@@ -102,6 +110,7 @@ export {
   JUDGE_LIKELIHOOD,
   LIST_GENERATION_MODELS,
   PROPOSE_CANVAS_ACTION,
+  PROPOSE_DOCUMENT_EDIT,
   SAVE_IMAGE,
 } from "@domain/agent/tools/tool-names.js";
 
@@ -176,6 +185,7 @@ export {
   canvasCapabilities,
   generationModels,
   makeProposeCanvasAction,
+  makeProposeDocumentEdit,
 };
 
 // The proposal's own shape is not re-exported here: it lives in

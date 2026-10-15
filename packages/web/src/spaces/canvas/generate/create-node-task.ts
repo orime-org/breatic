@@ -14,9 +14,15 @@ import { useUploadMarksStore } from '@web/stores/upload-marks';
  * @param spaceId - The canvas space.
  * @param nodeId - The node the result goes to.
  * @param payload - The task.
+ * @param idempotencyKey - The press's key, the same on every re-send (inner#1490).
  * @throws {Error} The server's refusal, or a failure to reach it.
  */
-export async function createNodeTask(spaceId: string, nodeId: string, payload: TaskCreateInput): Promise<void> {
-  await canvasApi.createTask(payload);
+export async function createNodeTask(
+  spaceId: string,
+  nodeId: string,
+  payload: TaskCreateInput,
+  idempotencyKey: string,
+): Promise<void> {
+  await canvasApi.createTask(payload, idempotencyKey);
   useUploadMarksStore.getState().clearFailed(spaceId, nodeId);
 }

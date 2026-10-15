@@ -52,6 +52,8 @@ export interface CommentEntryView {
   readonly body: string;
   /** When it was written. */
   readonly createdAt: Date;
+  /** Whether it landed from a proposal the Agent made (inner#1509). */
+  readonly fromAgent: boolean;
 }
 
 /** One card, with everything drawn on it. */
@@ -119,6 +121,7 @@ function entryOf(
     avatarUrl: source.userStore.getUser(comment.userId)?.avatarUrl || null,
     body: bodyText(comment.body),
     createdAt: comment.createdAt,
+    fromAgent: (comment.metadata as { fromAgent?: unknown } | undefined)?.fromAgent === true,
   };
 }
 
@@ -168,7 +171,8 @@ function sameCard(a: CommentCardView, b: CommentCardView): boolean {
         entry.id === other.id &&
         entry.author === other.author &&
         entry.avatarUrl === other.avatarUrl &&
-        entry.body === other.body
+        entry.body === other.body &&
+        entry.fromAgent === other.fromAgent
       );
     })
   );

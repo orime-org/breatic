@@ -26,6 +26,8 @@ import { toast } from '@web/lib/toast';
 import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
 import { MiniToolPanelContainer } from '@web/spaces/canvas/mini-tool/MiniToolPanelContainer';
 import { hasInk } from '@web/spaces/canvas/mini-tool/paint-drawing';
+import { runOnce } from '@web/stores/task-actions-in-flight';
+import { miniToolIntent } from '@web/spaces/canvas/mini-tool/start-mini-tool-run';
 import { canvasSessions } from '@web/stores/canvas-session';
 import type { DrawOp } from '@web/stores/drawing-draft';
 
@@ -125,6 +127,27 @@ describe('MiniToolPanelContainer', () => {
     const run = screen.getByTestId('mini-tool-run');
     expect(run).toHaveAttribute('aria-busy', 'true');
     expect(run).toHaveAttribute('aria-disabled', 'true');
+  });
+
+  // inner#1490: the press lives in the run-once registry, so a panel opened
+  // while it waits shows it under way and takes no press.
+  it('shows a press under way while the registry holds one for this tool and node', () => {
+    const onRun = vi.fn(() => Promise.resolve());
+    let release: (() => void) | undefined;
+    void runOnce(miniToolIntent('', 'src', 'image.rotate'), {
+      scope: 'mini-tool',
+      prepare: () =>
+        new Promise<null>((resolve) => {
+          release = () => resolve(null);
+        }),
+      send: vi.fn(),
+    });
+    render(tree(source('a.png'), onRun));
+    const run = screen.getByTestId('mini-tool-run');
+    expect(run).toHaveAttribute('aria-busy', 'true');
+    fireEvent.click(run);
+    expect(onRun).not.toHaveBeenCalled();
+    release?.();
   });
 
   it('stops waiting once the export is over, whichever way it went', () => {

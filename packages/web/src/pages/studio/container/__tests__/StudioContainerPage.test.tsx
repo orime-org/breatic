@@ -286,7 +286,7 @@ describe('StudioContainerPage', () => {
       slug: 'fresh-proj',
       spaceType: 'canvas',
       description: undefined,
-    });
+    }, expect.any(String));
   });
 
   it('has no a11y violations', async () => {

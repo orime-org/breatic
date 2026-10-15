@@ -27,4 +27,38 @@ describe("corsMiddleware", () => {
     expect(res.status).toBe(429);
     expect(res.headers.get("Access-Control-Expose-Headers")).toContain("Retry-After");
   });
+
+  it("lets a page on another origin send Idempotency-Key", async () => {
+    const app = new Hono();
+    app.use("*", corsMiddleware);
+    app.post("/run", (c) => c.text("ok"));
+
+    const res = await app.request("/run", {
+      method: "OPTIONS",
+      headers: {
+        Origin: "https://app.example.com",
+        "Access-Control-Request-Method": "POST",
+        "Access-Control-Request-Headers": "content-type, idempotency-key",
+      },
+    });
+
+    expect(res.headers.get("Access-Control-Allow-Headers")?.toLowerCase()).toContain(
+      "idempotency-key",
+    );
+  });
+
+  it("lets a page on another origin read whether a run-once answer is final", async () => {
+    const app = new Hono();
+    app.use("*", corsMiddleware);
+    app.post("/run", (c) => c.text("ok", 200, { "Idempotency-Status": "done" }));
+
+    const res = await app.request("/run", {
+      method: "POST",
+      headers: { Origin: "https://app.example.com" },
+    });
+
+    const exposed = res.headers.get("Access-Control-Expose-Headers") ?? "";
+    expect(exposed).toContain("Idempotency-Status");
+    expect(exposed).toContain("Idempotent-Replayed");
+  });
 });

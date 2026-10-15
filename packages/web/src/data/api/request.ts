@@ -87,13 +87,47 @@ function normalizeError(err: unknown): ApiError {
       message: written ?? err.message,
       code: data?.error?.code,
       fromServer: written !== undefined,
-      retryAfterSeconds: data?.error?.retryAfterSeconds,
+      retryAfterSeconds: data?.error?.retryAfterSeconds ?? headerSeconds(err, 'retry-after'),
+      idempotencyStatus: idempotencyStatusOf(err),
+      network: err.response === undefined,
     };
   }
   if (err instanceof Error) {
     return { status: 0, message: err.message, fromServer: false };
   }
   return { status: 0, message: 'Unknown error', fromServer: false };
+}
+
+/**
+ * A whole-seconds response header, when the answer carried one.
+ * @param err - The failed request.
+ * @param name - The header, lower case.
+ * @returns The seconds, or undefined when absent or not a number.
+ */
+function headerSeconds(err: AxiosError, name: string): number | undefined {
+  const raw: unknown = err.response?.headers[name];
+  const seconds = typeof raw === 'string' ? Number(raw) : Number.NaN;
+  return Number.isFinite(seconds) && seconds >= 0 ? seconds : undefined;
+}
+
+/**
+ * The run-once status a route set on its answer (inner#1490).
+ * @param err - The failed request.
+ * @returns `done` or `in_progress`, or undefined when the answer had neither.
+ */
+function idempotencyStatusOf(err: AxiosError): 'done' | 'in_progress' | undefined {
+  const raw: unknown = err.response?.headers['idempotency-status'];
+  return raw === 'done' || raw === 'in_progress' ? raw : undefined;
+}
+
+/**
+ * The request options a run-once press sends with: its key, and no client
+ * timeout — the server's own answer, or the browser's, decides when it ends.
+ * @param key - The press's `Idempotency-Key`.
+ * @returns Axios options for the request.
+ */
+export function runOnceRequest(key: string): AxiosRequestConfig {
+  return { headers: { 'Idempotency-Key': key }, timeout: 0 };
 }
 
 export const request = createClient();

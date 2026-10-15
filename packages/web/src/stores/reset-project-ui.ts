@@ -5,6 +5,7 @@ import { useCanvasStore } from '@web/stores/canvas';
 import { canvasGraphs } from '@web/stores/canvas-graph';
 import { canvasSessions } from '@web/stores/canvas-session';
 import { conversationRuntime } from '@web/stores/conversation-runtime';
+import { useDocumentProposals } from '@web/stores/document-proposals';
 import { useUIStore } from '@web/stores/ui';
 
 /**
@@ -38,4 +39,5 @@ export function resetProjectUiStores(projectId: string): void {
   canvasSessions.clear();
   canvasGraphs.clear();
   useUIStore.getState().reset();
+  useDocumentProposals.getState().reset();
 }

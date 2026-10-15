@@ -162,7 +162,8 @@ export const coreConfigSchema = z.object({
   // Namespace for the two things neither the Redis DB number nor the port
   // split can separate:
   //   1. Redis PUB/SUB CHANNELS — the Hocuspocus document-sync family and the
-  //      `project:*` control family (membership changes + Space CRUD).
+  //      `project:*` control family (activity signals + connection closes
+  //      after a duplicate / archive / restore).
   //   2. The SESSION COOKIE NAME (`sessionCookieName()`), because cookies are
   //      not scoped by port (RFC 6265 §8.5).
   // Nothing else. Resolved by the transform below: unset or blank means `ENV`.
@@ -180,16 +181,16 @@ export const coreConfigSchema = z.object({
   //     replicas, a rolling update has
   //     old and new instances live at once, and an old publisher's
   //     `project:…` never reaches a new subscriber's `{ENV}:project:*` — pub/sub
-  //     drops unmatched publishes with no error. For that window, membership
-  //     revocations do not reach collab: a removed member keeps their open
-  //     session until the rollout finishes.
+  //     drops unmatched publishes with no error. For that window, activity
+  //     signals and the connection closes after a duplicate / archive /
+  //     restore do not reach collab.
   //
   // It exists because pub/sub is the one thing the `REDIS_*_URL` DB split cannot
   // isolate: SUBSCRIBE is instance-wide and ignores the selected DB. Ordinary
   // keys (sessions, locks, BullMQ, streams) are already separated by DB number;
   // channels are not. Two deployments sharing a Redis instance therefore need
   // distinct prefixes here, or each hears the other's document updates and
-  // membership writes whenever both hold the same UUID (#1831).
+  // project control events whenever both hold the same UUID (#1831).
   //
   // Deliberately NOT used for anything Redis keys the DB number already covers:
   //   - cross-service STREAM keys (`taskEventsStreamKey()` etc.) — server,
@@ -259,6 +260,22 @@ export const coreConfigSchema = z.object({
   STRIPE_SECRET_KEY: z.string().default(""),
   STRIPE_WEBHOOK_SECRET: z.string().default(""),
   CREDIT_MULTIPLIER: numeric(z.coerce.number().positive().default(1.0)),
+
+  // ── Internal API (back office) ───────────────────
+  // A second listener in the server process that only the back office
+  // calls; every request carries an HMAC signature keyed with the secret below.
+  // The host defaults to loopback; a container binds 0.0.0.0 and the
+  // deployment's port publishing and security group decide who reaches it.
+  INTERNAL_API_ENABLED: z
+    .string()
+    .default("false")
+    .transform((v) => v === "true"),
+  INTERNAL_API_HOST: z.string().default("127.0.0.1"),
+  INTERNAL_API_PORT: numeric(z.coerce.number().int().positive().default(3002)),
+  INTERNAL_API_SECRET: z.string().default(""),
+  // The key being rotated out; requests signed with it are still accepted
+  // until it is blanked.
+  INTERNAL_API_SECRET_PREVIOUS: z.string().default(""),
 
   // ── Storage ──────────────────────────────────────
   // UPLOAD_BASE_URL is the public read base. On R2 it is the r2.dev
@@ -352,7 +369,8 @@ export type CoreConfig = z.infer<typeof coreConfigSchema>;
  *   function only processes the map it is handed).
  * @returns The validated, typed, default-applied configuration.
  * @throws {z.ZodError} if a required variable is missing / malformed.
- * @throws {Error} if payments are enabled without Stripe secrets.
+ * @throws {Error} if payments are enabled without Stripe secrets, or the
+ *   internal API is enabled without its secret.
  */
 export function parseConfig(rawEnv: Record<string, string | undefined>): CoreConfig {
   const config = coreConfigSchema.parse(rawEnv);
@@ -375,6 +393,26 @@ export function parseConfig(rawEnv: Record<string, string | undefined>): CoreCon
         "(non-empty, non-whitespace). Refusing to start.",
       );
     }
+  }
+
+  // An internal API with no secret would accept a signature anyone can
+  // compute, and it moves money; the previous key alone does not count.
+  if (config.INTERNAL_API_ENABLED && !config.INTERNAL_API_SECRET.trim()) {
+    throw new Error(
+      "FATAL: INTERNAL_API_ENABLED=true requires INTERNAL_API_SECRET to be set " +
+      "(non-empty, non-whitespace). Refusing to start.",
+    );
+  }
+  // Empty means "no previous key"; whitespace alone would still sign.
+  if (
+    config.INTERNAL_API_ENABLED &&
+    config.INTERNAL_API_SECRET_PREVIOUS !== "" &&
+    !config.INTERNAL_API_SECRET_PREVIOUS.trim()
+  ) {
+    throw new Error(
+      "FATAL: INTERNAL_API_SECRET_PREVIOUS is only whitespace; leave it empty " +
+      "when there is no previous key. Refusing to start.",
+    );
   }
 
   // The yjs binary store must be a DIFFERENT database than the business

@@ -64,7 +64,11 @@ import {
 import { createPongHandler } from "@collab/services/socket-liveness.js";
 import { publishDocumentSchema } from "@collab/services/document-schema-publisher.js";
 import { isMetaWriteAttempt } from "@collab/hooks/meta-write-attempt-log.js";
-import { createPersistenceExtension, storeDocumentNow } from "@collab/services/persistence.js";
+import {
+  createPersistenceExtension,
+  staysLoaded,
+  storeDocumentNow,
+} from "@collab/services/persistence.js";
 import { createUnloadGate, type UnloadGate } from "@collab/hooks/unload-gate.js";
 import { createStoreLoop, type StoreLoop } from "@collab/services/store-loop.js";
 import { createStoreAlerter } from "@collab/services/store-alert.js";
@@ -618,6 +622,7 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
   storeGate.current = createUnloadGate({
     instanceId,
     encode: (document: Y.Doc): Uint8Array => Y.encodeStateAsUpdate(document),
+    staysLoaded: (name) => staysLoaded(wsServer.hocuspocus, name),
     storeNow: ({ name }) => storeDocumentNow(wsServer.hocuspocus, name),
     writeRescue: ({ documentName, state }) =>
       writeRescueFile({

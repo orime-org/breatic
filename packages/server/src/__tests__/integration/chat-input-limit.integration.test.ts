@@ -440,3 +440,61 @@ describe("what one turn may carry of the reader's Spaces (inner#1413)", () => {
     expect(body.error.message).toContain(String(getAgentConfig().space_list_max_items + 1));
   });
 });
+
+describe("what one turn may carry of an open document's blocks (inner#1509)", () => {
+  /**
+   * An open document whose blocks hold a given length of plain text.
+   * @param textLength - How long the blocks' text is, all told.
+   * @returns The fields to put on the request.
+   */
+  function documentFields(textLength: number) {
+    const space = { id: "d0", name: "Storyboard", kind: "document" };
+    return {
+      spaces: [space],
+      spaces_total: 1,
+      current_space: {
+        ...space,
+        state: "loaded",
+        content: "<!-- b:1 -->\nx",
+        total_chars: 14,
+        blocks: [{ id: "b1", type: "paragraph", text: "x".repeat(textLength), lossy: false, partial: false }],
+      },
+    };
+  }
+
+  it("admits blocks whose text lands exactly on the open Space's limit", async () => {
+    const { projectId, conversationId, cookie } = await seedOwner();
+
+    const res = await post(
+      "/api/v1/chat/message",
+      {
+        message: "comment on this",
+        project_id: projectId,
+        conversation_id: conversationId,
+        ...documentFields(getAgentConfig().current_space_max_chars),
+      },
+      cookie,
+    );
+
+    expect(res.status).toBe(200);
+  });
+
+  it("refuses blocks whose text is past the open Space's limit", async () => {
+    const { projectId, conversationId, cookie } = await seedOwner();
+
+    const res = await post(
+      "/api/v1/chat/message",
+      {
+        message: "comment on this",
+        project_id: projectId,
+        conversation_id: conversationId,
+        ...documentFields(getAgentConfig().current_space_max_chars + 1),
+      },
+      cookie,
+    );
+
+    expect(res.status).toBe(422);
+    const body = (await res.json()) as { error: { message: string } };
+    expect(body.error.message).toContain(new Intl.NumberFormat("en").format(getAgentConfig().current_space_max_chars + 1));
+  });
+});

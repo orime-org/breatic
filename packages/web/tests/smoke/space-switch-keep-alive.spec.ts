@@ -924,6 +924,25 @@ test('a closed tab leaves the page, and opens again on the camera it was closed 
   await expect.poll(() => camera(page)).toEqual(aimed);
 });
 
+test('View on a Space not on the strip opens it as the active tab', async ({ page }) => {
+  await openFreshProject(page);
+  await addSpaces(page, 1);
+  const [first, second] = (await stripIds(page)) as [string, string];
+  await showSpace(page, second);
+  await page.locator(`[data-testid="space-tab-${first}"]`).hover();
+  await page.locator(`[data-testid="space-tab-close-${first}"]`).click();
+  await expect.poll(() => stripIds(page)).not.toContain(first);
+
+  await page.getByTestId('space-drawer-trigger').click();
+  await page.getByTestId(`space-drawer-menu-${first}`).click();
+  await page.getByTestId(`space-drawer-view-${first}`).click();
+
+  await expect.poll(() => stripIds(page)).toContain(first);
+  await expect.poll(() => activeId(page)).toBe(first);
+  await expect(page.getByTestId('space-drawer')).toBeHidden();
+  await expect(visibleSpace(page).locator('.react-flow')).toBeVisible({ timeout: 20_000 });
+});
+
 test('a hidden document shows no floating bar, no caret to others, and takes in their writes', async ({
   page,
 }) => {
@@ -1376,9 +1395,15 @@ test('a generation answered while its Space was hidden leaves the panel ready', 
   await prompt.click();
   await page.keyboard.type('a quiet harbour at dawn');
   // The answer comes back after the switch, and is a refusal: nothing is spent.
+  // A refusal the server finished carries `Idempotency-Status: done`; without
+  // it the press would keep asking (inner#1490).
   await page.route('**/canvas/tasks', async (route) => {
     await new Promise((resolve) => setTimeout(resolve, 3_000));
-    await route.fulfill({ status: 500, json: { success: false, error: 'held' } });
+    await route.fulfill({
+      status: 500,
+      headers: { 'Idempotency-Status': 'done' },
+      json: { success: false, error: 'held' },
+    });
   });
   await visibleSpace(page).getByTestId('generate-execute').click();
   await expect(visibleSpace(page).getByTestId('generate-execute')).toHaveAttribute('aria-busy', 'true');

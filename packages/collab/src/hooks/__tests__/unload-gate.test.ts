@@ -54,6 +54,7 @@ function harness(
     retry?: { windowMs: number; intervalMs: number; rescueReserveMs: number };
     shutdownDeadline?: () => number | undefined;
     notReachedTimes?: number;
+    staysLoaded?: boolean;
   } = {},
 ) {
   let notReachedLeft = options.notReachedTimes ?? 0;
@@ -64,6 +65,7 @@ function harness(
 
   const gate = createUnloadGate({
     instanceId: "inst-a",
+    staysLoaded: () => options.staysLoaded ?? false,
     encode: (document: Y.Doc) => Y.encodeStateAsUpdate(document),
     storeNow: async ({ name }) => {
       storeCalls.push(name);
@@ -209,6 +211,7 @@ describe("the unload gate — a document with outstanding content", () => {
     const alerted: Array<{ rescuePath: string; reason: string }> = [];
     const gate = createUnloadGate({
       instanceId: "inst-a",
+      staysLoaded: () => false,
       encode: (document: Y.Doc) => Y.encodeStateAsUpdate(document),
       storeNow: async () => true,
       writeRescue: async () => {
@@ -243,6 +246,7 @@ describe("the unload gate — when the library unloaded the document first", () 
     const alerted: StoreFailureAlert[] = [];
     const gate = createUnloadGate({
       instanceId: "inst-a",
+      staysLoaded: () => false,
       encode: (d: Y.Doc) => Y.encodeStateAsUpdate(d),
       // Exactly what the real `storeDocumentNow` returns once the library has
       // taken the document out of `instance.documents`.
@@ -353,6 +357,7 @@ describe("what the gate leaves behind for whoever has to sort it out", () => {
     const notes: Array<{ rescuePath: string; note: { reason: string } }> = [];
     const gate = createUnloadGate({
       instanceId: "inst-a",
+      staysLoaded: () => false,
       encode: (document: Y.Doc) => Y.encodeStateAsUpdate(document),
       storeNow: async ({ name }) => {
         if (consumeTimedStoreArm(name)) noteStoreOutcome(name, "refused");
@@ -393,6 +398,7 @@ describe("what the gate leaves behind for whoever has to sort it out", () => {
   it("logs under a stable name when even the rescue file could not be written", async () => {
     const gate = createUnloadGate({
       instanceId: "inst-a",
+      staysLoaded: () => false,
       encode: (document: Y.Doc) => Y.encodeStateAsUpdate(document),
       storeNow: async ({ name }) => {
         if (consumeTimedStoreArm(name)) noteStoreOutcome(name, "refused");
@@ -419,6 +425,7 @@ describe("what the gate leaves behind for whoever has to sort it out", () => {
   it("logs under a stable name when the attempt itself threw", async () => {
     const gate = createUnloadGate({
       instanceId: "inst-a",
+      staysLoaded: () => false,
       encode: (document: Y.Doc) => Y.encodeStateAsUpdate(document),
       storeNow: async () => {
         throw new Error("the connection went away");
@@ -490,6 +497,7 @@ describe("what the operator is told when there is no answer", () => {
     // superseding attempt may well have stored the document.
     const gate = createUnloadGate({
       instanceId: "inst-a",
+      staysLoaded: () => false,
       encode: (document: Y.Doc) => Y.encodeStateAsUpdate(document),
       storeNow: async ({ name }) => {
         // Somebody else's round arms over ours and stores it.
@@ -527,6 +535,7 @@ describe("a write that landed while new content was arriving", () => {
     const alerted: StoreFailureAlert[] = [];
     const gate = createUnloadGate({
       instanceId: "inst-a",
+      staysLoaded: () => false,
       encode: (d: Y.Doc) => Y.encodeStateAsUpdate(d),
       storeNow: async ({ name }) => {
         if (!consumeTimedStoreArm(name)) return true;
@@ -632,5 +641,54 @@ describe("the unload gate — when another instance holds the store lock (inner#
 
     expect(storeCalls).toHaveLength(1);
     expect(rescued).toHaveLength(1);
+  });
+});
+
+// inner#1471: the library re-checks after this hook and keeps a document that
+// gained a connection or a pending store meanwhile, storing it later. Content
+// in a document that stays is not lost, so there is nothing to rescue yet.
+describe("a document the library is keeping", () => {
+  it("rescues nothing and tells nobody when an edit arrived during the write", async () => {
+    const rescued: string[] = [];
+    const alerted: StoreFailureAlert[] = [];
+    const gate = createUnloadGate({
+      instanceId: "inst-a",
+      staysLoaded: () => true,
+      encode: (d: Y.Doc) => Y.encodeStateAsUpdate(d),
+      storeNow: async ({ name }) => {
+        if (!consumeTimedStoreArm(name)) return true;
+        const ticket = beginStore(name);
+        noteDocumentChange(name);
+        commitStore(name, ticket);
+        noteStoreOutcome(name, "stored");
+        return true;
+      },
+      writeRescue: async ({ documentName }) => {
+        rescued.push(documentName);
+        return "/rescue/1.yjs";
+      },
+      writeRescueNote: async () => {},
+      alert: async (failure) => void alerted.push(failure),
+      retry: { windowMs: 0, intervalMs: 10, rescueReserveMs: 0 },
+      shutdownDeadline: () => undefined,
+    });
+    noteDocumentChange(DOC);
+
+    await gate.beforeUnloadDocument({ documentName: DOC, document: documentWithText("x") });
+
+    expect(hasUnsavedContent(DOC)).toBe(true);
+    expect(rescued).toHaveLength(0);
+    expect(alerted).toHaveLength(0);
+    expect(mockLogger.error).not.toHaveBeenCalled();
+  });
+
+  it("rescues nothing when the write failed, since the document is still here to retry", async () => {
+    const { gate, rescued, alerted } = harness("fails", { staysLoaded: true });
+    noteDocumentChange(DOC);
+
+    await gate.beforeUnloadDocument({ documentName: DOC, document: documentWithText("x") });
+
+    expect(rescued).toHaveLength(0);
+    expect(alerted).toHaveLength(0);
   });
 });

@@ -46,17 +46,14 @@ function setup(overrides: Partial<Parameters<typeof SpaceTabBar>[0]> = {}) {
   const onActivate = vi.fn();
   const onCreate = vi.fn();
   const onClose = vi.fn();
-  const onViewSpace = vi.fn();
   const props = {
     spaces: SPACES,
     allSpaces: SPACES,
-    openTabIds: SPACES.map((s) => s.id),
     activeSpaceId: 's1',
     projectId: 'p1',
     onActivate,
     onCreate,
     onClose,
-    onViewSpace,
     ...overrides,
   };
   const view = render(<SpaceTabBar {...props} />);
@@ -64,7 +61,7 @@ function setup(overrides: Partial<Parameters<typeof SpaceTabBar>[0]> = {}) {
   const setActiveSpace = (id: string): void => {
     view.rerender(<SpaceTabBar {...props} activeSpaceId={id} />);
   };
-  return { onActivate, onCreate, onClose, onViewSpace, setActiveSpace };
+  return { onActivate, onCreate, onClose, setActiveSpace };
 }
 
 describe('SpaceTabBar', () => {
@@ -619,7 +616,6 @@ describe('SpaceTabBar', () => {
     const withLongName = {
       spaces: [{ id: 's1', name: LONG, type: 'canvas' as const }],
       allSpaces: [{ id: 's1', name: LONG, type: 'canvas' as const }],
-      openTabIds: ['s1'],
     };
 
     it('caps the tab and clips the name that overflows it', () => {

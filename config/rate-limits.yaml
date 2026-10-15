@@ -75,6 +75,11 @@ canvas-paste:   { max: 60,  window_seconds: 60 }
 # 30/60s, which is where the two neighbouring write routes sit.
 understand:     { max: 30,  window_seconds: 60 }
 
+# Generating (POST /canvas/tasks, post-auth, user-keyed). Same shape as
+# Understand: one call opens a task row per node it names and puts a model
+# call behind it, and its run-once record (inner#1490) is kept for a day.
+generate:       { max: 30,  window_seconds: 60 }
+
 # Running a mini-tool (inner#888, post-auth, user-keyed). Same shape as
 # Understand: one call opens a task row per result node and puts a model call
 # or a container run behind it.
@@ -113,8 +118,22 @@ credits-refund: { max: 20, window_seconds: 60 }
 # our Stripe rate limit, and Stripe's limit is shared by every account we have.
 subscription-write: { max: 10, window_seconds: 60 }
 
+# Starting a conversation and creating a project (inner#1490, post-auth,
+# user-keyed). Each call writes a row, and its run-once record is kept in
+# Redis DB0 for a day, so a loop with a fresh key each time would grow that
+# database. A person starts a handful of conversations a minute and creates
+# far fewer projects.
+conversation-create: { max: 30, window_seconds: 60 }
+project-create: { max: 10, window_seconds: 60 }
+
 # Asking a project's owner to let you in (#96, post-auth, user-keyed). The
 # one-pending index stops repeats on one project; this caps one account ringing
 # the owners of many projects. Each call writes a request row, a bell entry
 # and an email.
 project-join-request: { max: 20, window_seconds: 3600 }
+
+# The back office's internal API (inner#1410, keyed by connection address:
+# nothing proxies the internal port, so the peer address is the caller).
+# Applied before the signature check, so a flood of unsigned requests is cut
+# off before it spends HMAC work or Redis nonce writes.
+internal-api: { max: 120, window_seconds: 60 }

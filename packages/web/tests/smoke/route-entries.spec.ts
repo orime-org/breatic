@@ -65,10 +65,11 @@ interface Entry {
   /**
    * Set when the entry redirects, which makes a second navigation.
    *
-   * Everywhere else the screen appears exactly once: `ProtectedRoute`'s wait
-   * and the Suspense fallback are the same component and React hands over
-   * between them without a gap, which is the continuity A4 asks for. Across a
-   * redirect that count is not pinned — see the assertion.
+   * Everywhere else the screen appears exactly once, and it is one element
+   * from start to finish: every wait on the way (`ProtectedRoute`'s, the
+   * Suspense fallback, the project page's own) shares the one screen mounted
+   * at the app root, which is the continuity A4 asks for. Across a redirect
+   * those counts are not pinned — see the assertion.
    */
   redirects?: true;
 }
@@ -76,6 +77,12 @@ interface Entry {
 interface Watched {
   /** How many times the loading screen appeared. */
   seen: number;
+  /**
+   * How many different loading-screen elements were on screen. A second one
+   * means a wait drew its own screen, and its spinner started again from the
+   * top (inner#1373).
+   */
+  instances: number;
   /** Whether it covered the viewport the first time it did. */
   fullScreen: boolean | null;
 }
@@ -160,16 +167,16 @@ const ENTRIES: Entry[] = [
  */
 async function watchLoadingScreen(page: Page): Promise<void> {
   await page.addInitScript(() => {
-    const record: { seen: number; fullScreen: boolean | null } = {
+    const record: { seen: number; instances: number; fullScreen: boolean | null } = {
       seen: 0,
+      instances: 0,
       fullScreen: null,
     };
     Object.defineProperty(window, '__loadingScreen', { value: record });
     let onScreen = false;
+    const drawn = new WeakSet<Element>();
     const check = (): void => {
-      // React keeps suspended content mounted and hides it, so ProtectedRoute's
-      // own screen sits in the DOM as `display: none` next to the fallback.
-      // Only the one the reader can see counts, and what separates the two here
+      // Only a screen the reader can see counts, and what tells it apart here
       // is the box: a `display: none` node has none. That is narrower than the
       // `:visible` locator the assertions use, which also rules out
       // `visibility: hidden` — nothing in this path uses it, and an observer
@@ -183,6 +190,10 @@ async function watchLoadingScreen(page: Page): Promise<void> {
       if (el === undefined) {
         onScreen = false;
         return;
+      }
+      if (!drawn.has(el)) {
+        drawn.add(el);
+        record.instances += 1;
       }
       if (onScreen) {
         return;
@@ -315,6 +326,10 @@ for (const entry of ENTRIES) {
         expect(
           record.seen,
           `${address} showed the loading screen ${record.seen} times`,
+        ).toBe(1);
+        expect(
+          record.instances,
+          `${address} drew ${record.instances} different loading screens`,
         ).toBe(1);
       }
       expect(pageErrors, `${address} threw:\n${pageErrors.join('\n')}`).toEqual([]);

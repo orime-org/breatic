@@ -29,7 +29,13 @@ import { ImageTooLargeError } from '@web/spaces/canvas/mini-tool/adjust-export';
 import { NODE_STEP } from '@web/spaces/canvas/drop-layout';
 import { EMPTY_NODE_SIZE, mediaNodeHeight } from '@web/spaces/canvas/group-geometry';
 import { outputPlacementOf } from '@web/spaces/canvas/mini-tool/output-placement';
-import { startMiniToolRun, type ExportedFile, type MiniToolRun } from '@web/spaces/canvas/mini-tool/start-mini-tool-run';
+import {
+  miniToolIntent,
+  startMiniToolRun,
+  type ExportedFile,
+  type MiniToolRun,
+} from '@web/spaces/canvas/mini-tool/start-mini-tool-run';
+import { getRunning, resetRunOnceForTests } from '@web/stores/task-actions-in-flight';
 import { useUploadMarksStore, type UploadMark } from '@web/stores/upload-marks';
 
 const SPACE = '22222222-2222-4222-8222-222222222222';
@@ -111,6 +117,29 @@ beforeEach(() => {
 });
 
 describe('startMiniToolRun', () => {
+  // inner#1490: the press waits outside the panel, so pressing again from a
+  // reopened panel builds no second set of nodes and sends nothing.
+  it('builds one set of nodes and sends one run for a press made while the first waits', async () => {
+    let finish: (() => void) | undefined;
+    api.run.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = () => resolve({ task_id: 't', status: 'pending' });
+        }),
+    );
+    const first = startMiniToolRun(press());
+    const again = startMiniToolRun(press());
+    await vi.waitFor(() => expect(api.run).toHaveBeenCalledTimes(1));
+    expect(getRunning(miniToolIntent('22222222-2222-4222-8222-222222222222', 'src', 'audio.separate')) !== undefined).toBe(true);
+    finish?.();
+    await Promise.all([first, again]);
+
+    expect(canvas.addNode).toHaveBeenCalledTimes(2);
+    expect(api.run).toHaveBeenCalledTimes(1);
+    expect(api.run.mock.calls[0]?.[1]).toEqual(expect.any(String));
+    expect(getRunning(miniToolIntent('22222222-2222-4222-8222-222222222222', 'src', 'audio.separate')) !== undefined).toBe(false);
+  });
+
   // A6: one node per declared output, named after the source, stacked to its right.
   it('builds one node per output to the right of the source, in one undo entry', async () => {
     const run = press();
@@ -176,7 +205,7 @@ describe('startMiniToolRun', () => {
       source: { url: 'https://cdn/a.mp3', mime_type: 'audio/mpeg', duration: 12 },
       params: {},
       slots: {},
-    });
+    }, expect.any(String));
   });
 
   // A8, A13: a refused request opened no row, so the nodes it built say so; they stay.
@@ -186,6 +215,20 @@ describe('startMiniToolRun', () => {
     expect(toast.error).not.toHaveBeenCalled();
     expect(canvas.addNode).toHaveBeenCalledTimes(2);
     expectAllFailed({ key: 'canvas.miniTool.panel.couldNotStart' });
+  });
+
+  // inner#1490: a press let go with its request out and no final answer (the
+  // account changed, the server would no longer remember it) stops the wait.
+  it('ends the wait on the nodes when the press is let go without an answer', async () => {
+    let drop: (err: unknown) => void = () => undefined;
+    api.run.mockReturnValue(new Promise((_, reject) => (drop = reject)));
+    const work = startMiniToolRun(press());
+    await vi.waitFor(() => expect(api.run).toHaveBeenCalled());
+    expect(marksOfBuilt().every((mark) => mark?.state === 'waiting')).toBe(true);
+    resetRunOnceForTests();
+    drop(new Error('network'));
+    await expect(work).resolves.toEqual({ kind: 'released' });
+    expect(marksOfBuilt()).toEqual([undefined, undefined]);
   });
 
   // A13: the server's answer is what ends the wait.
@@ -417,6 +460,7 @@ describe('startMiniToolRun', () => {
           tool: 'image.expand',
           expand: { image: 'https://cdn/EXPAND-image.png', mask: 'https://cdn/EXPAND-mask.png' },
         }),
+        expect.any(String),
       );
       expect(vi.mocked(run.setExporting).mock.calls).toEqual([[true], [false]]);
     });
@@ -475,6 +519,7 @@ describe('startMiniToolRun', () => {
           prompt: 'a cat',
           drawing: { mask: 'https://cdn/INPAINT-mask.png' },
         }),
+        expect.any(String),
       );
     });
 
@@ -482,6 +527,7 @@ describe('startMiniToolRun', () => {
       await startMiniToolRun(drawingPress('image.sketch', 'sketch'));
       expect(api.run).toHaveBeenCalledWith(
         expect.objectContaining({ drawing: { image: 'https://cdn/SKETCH-sketch.png' } }),
+        expect.any(String),
       );
     });
 

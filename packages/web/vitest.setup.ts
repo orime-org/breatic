@@ -271,3 +271,12 @@ if (
 afterAll(() => {
   vi.unstubAllGlobals();
 });
+
+// Run-once presses live in a module-level registry, outside any component.
+// Imported here, after the case, so a file that mocks `sonner` has already
+// put its mock in place: a static import from this file would load the toast
+// wrapper first, bound to the real one.
+afterEach(async () => {
+  const { resetRunOnceForTests } = await import('@web/stores/task-actions-in-flight');
+  resetRunOnceForTests();
+});

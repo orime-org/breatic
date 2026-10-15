@@ -225,16 +225,39 @@ const chatCanvasDetailSchema = z
     message: "selected_attached + selected_whole exceeds selected_total",
   });
 
+/**
+ * One top-level block of an open document, in the order its `<!-- b:N -->`
+ * marker numbers it (inner#1509). `text` is what the block's words read as
+ * without Markdown, the text a proposal quotes and is checked against; a block
+ * cut at the limit sends none, since it cannot be proposed on.
+ */
+const chatDocumentBlockSchema = z
+  .object({
+    id: z.string().min(1),
+    /** The BlockNote block type, so the nearest heading above a block can be found. */
+    type: z.string().min(1),
+    text: z.string(),
+    /** Whether the block holds something Markdown cannot carry, such as colours, alignment, underlining, column widths, merged cells or comments. */
+    lossy: z.boolean(),
+    partial: z.boolean(),
+  })
+  .refine((b) => !b.partial || b.text === "", { message: "a partial block carries no text", path: ["text"] });
+
 const chatLoadedSpaceSchema = chatSpaceSchema
   .extend({
     state: z.literal("loaded"),
     content: z.string(),
     total_chars: count,
     detail: chatCanvasDetailSchema.optional(),
+    blocks: z.array(chatDocumentBlockSchema).optional(),
   })
   .refine((s) => (s.kind === "canvas") === (s.detail !== undefined), {
     message: "a loaded canvas carries detail and nothing else does",
     path: ["detail"],
+  })
+  .refine((s) => (s.kind === "document") === (s.blocks !== undefined), {
+    message: "a loaded document carries blocks and nothing else does",
+    path: ["blocks"],
   });
 
 /**
@@ -293,6 +316,7 @@ export type ChatMessageInput = z.infer<typeof chatMessageSchema>;
 export type ChatSpace = z.infer<typeof chatSpaceSchema>;
 export type ChatCurrentSpace = z.infer<typeof chatCurrentSpaceSchema>;
 export type ChatCanvasDetail = z.infer<typeof chatCanvasDetailSchema>;
+export type ChatDocumentBlock = z.infer<typeof chatDocumentBlockSchema>;
 /**
  * The reader's Spaces as one message carries them (inner#1413): the project's
  * Spaces, and the open one when the reader has it on. Read when they pressed

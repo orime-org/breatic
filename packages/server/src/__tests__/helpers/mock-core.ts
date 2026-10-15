@@ -22,6 +22,7 @@ import { vi } from "vitest";
 import {
   ASK_USER as REAL_ASK_USER,
   PROPOSE_CANVAS_ACTION as REAL_PROPOSE_CANVAS_ACTION,
+  PROPOSE_DOCUMENT_EDIT as REAL_PROPOSE_DOCUMENT_EDIT,
   SAVE_IMAGE as REAL_SAVE_IMAGE,
 } from "../../../../domain/src/agent/tools/tool-names.js";
 import { STOPPED_BY_USER as REAL_STOPPED_BY_USER } from "../../../../domain/src/agent/tools/failure.js";
@@ -68,6 +69,9 @@ const mockRedis = {
   incr: () => Promise.resolve(1),
   expire: () => Promise.resolve(1),
   pipeline: () => mockPipeline,
+  // `runOnce`'s scripts: the claim (the one that sets with 'PX') answers
+  // "nothing here yet", so the route runs; renew and finish answer success.
+  eval: (script: string) => Promise.resolve(script.includes("'PX'") ? null : 1),
 };
 
 /** Shared `queue.add` mock — reused across all `createQueue()` calls so tests can
@@ -488,7 +492,6 @@ export const coreMock = async (importOriginal: () => Promise<Record<string, unkn
     logger: { ...mocks.logger, child: () => mocks.logger },
     // Infra-adjacent services that STAY in @breatic/core.
     uploadService: mocks.uploadService,
-    publishMembersChanged: vi.fn().mockResolvedValue(undefined),
     // Shared authentication kernel (project_members repo + loadProjectRole
     // primitive — collab + server share these). AIGC business (credit /
     // task / node-history / agent / model-catalog) moved to
@@ -612,6 +615,8 @@ export const domainMock = () => ({
   ASK_USER: REAL_ASK_USER,
   // Read by the turn when it hands the tools their context.
   PROPOSE_CANVAS_ACTION: REAL_PROPOSE_CANVAS_ACTION,
+  // Read by the turn when it hands the document proposal the open document (inner#1509).
+  PROPOSE_DOCUMENT_EDIT: REAL_PROPOSE_DOCUMENT_EDIT,
   // Read by the turn when it hands the save its context (inner#1315).
   SAVE_IMAGE: REAL_SAVE_IMAGE,
   extFromUrl: REAL_EXT_FROM_URL,
