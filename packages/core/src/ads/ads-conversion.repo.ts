@@ -3,10 +3,10 @@
 
 /** Data access for `ads_conversion_uploads`. */
 
-import { and, eq, inArray, lt } from "drizzle-orm";
+import { and, eq, inArray, isNull, lt } from "drizzle-orm";
 import type { AdsConversionJob, AdsConversionName, AdsFailureReason, AdsUploadStatus } from "@core/ads/ads-types.js";
 import { db } from "@core/db/client.js";
-import { adsConversionUploads } from "@core/db/schema.js";
+import { adsConversionUploads, creditLots } from "@core/db/schema.js";
 
 /**
  * Record a conversion as queued, once.
@@ -119,4 +119,26 @@ export async function findStaleUploads(statuses: readonly AdsUploadStatus[], bef
     .from(adsConversionUploads)
     .where(and(inArray(adsConversionUploads.status, [...statuses]), lt(adsConversionUploads.updatedAt, before)));
   return rows.map((row) => ({ ...row, status: row.status as AdsUploadStatus }));
+}
+
+/**
+ * Orders whose credits were refunded while their conversion still stands at
+ * full value: no restatement was asked for and none was found not allowed.
+ * @param before - Rows last moved before this time.
+ * @returns The orders' ids.
+ */
+export async function findRefundedUnrestated(before: Date): Promise<string[]> {
+  const rows = await db
+    .select({ paymentId: adsConversionUploads.paymentId })
+    .from(adsConversionUploads)
+    .innerJoin(creditLots, eq(creditLots.sourceId, adsConversionUploads.paymentId))
+    .where(
+      and(
+        inArray(adsConversionUploads.status, ["queued", "uploaded"]),
+        isNull(adsConversionUploads.failureReason),
+        eq(creditLots.lifecycle, "refunded"),
+        lt(adsConversionUploads.updatedAt, before),
+      ),
+    );
+  return rows.flatMap((row) => (row.paymentId === null ? [] : [row.paymentId]));
 }

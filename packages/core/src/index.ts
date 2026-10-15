@@ -257,6 +257,7 @@ export {
   ADS_CONVERSION_QUEUE,
   adsConversionConfig,
   adsConversionState,
+  cancelPendingAdsRestatement,
   enqueueAdsConversion,
   enqueueAdsRestatement,
   requeueStaleAdsUploads,

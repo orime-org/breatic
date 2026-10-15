@@ -20,7 +20,14 @@ import { CLICK_WINDOW_MS, type AdClick, type BrowserAdsSnapshot } from "@breatic
 import { adsAllowedFor } from "@core/analytics/account.repo.js";
 import { currentAdsBrowser } from "@core/analytics/consent-context.js";
 import { createHash } from "node:crypto";
-import { claimUpload, findStaleUploads, findUploadByPayment, getUploadStatus, moveUpload } from "@core/ads/ads-conversion.repo.js";
+import {
+  claimUpload,
+  findRefundedUnrestated,
+  findStaleUploads,
+  findUploadByPayment,
+  getUploadStatus,
+  moveUpload,
+} from "@core/ads/ads-conversion.repo.js";
 import { ADS_CONVERSIONS, ADS_SWEEP_JOB, type AdsConversionJob, type AdsConversionName } from "@core/ads/ads-types.js";
 import { env } from "@core/config/env.js";
 import { createQueue, defaultJobOpts } from "@core/infra/queue.js";
@@ -193,10 +200,35 @@ export async function enqueueAdsRestatement(
   if (await moveUpload(key, ["queued"], "restate_pending")) return "after_upload";
   // Read again: the upload may have landed since the first read.
   if ((await getUploadStatus(key)) !== "uploaded") return "none";
-  if (!(await stillAllowed(upload.job))) return "consent_withdrawn";
+  if (!(await stillAllowed(upload.job))) {
+    // Recorded on the row, so the sweep's refund check does not ask again.
+    await moveUpload(key, ["uploaded"], "uploaded", { failureReason: "consent_withdrawn" });
+    return "consent_withdrawn";
+  }
   if (!(await moveUpload(key, ["uploaded"], "restating"))) return "none";
   await addJob(restatementOf(upload.job, upload.requestId));
   return "queued";
+}
+
+/**
+ * Take back a restatement that never went out, when a refunded order's
+ * credits are restored: one still waiting on its upload is dropped, and the
+ * conversion stands at full value. One already queued or sent cannot be
+ * taken back (the platform cannot undo a restatement to zero).
+ * @param paymentId - The order.
+ * @returns `cancelled`, the state of a restatement already on its way
+ *   (`restating`) or sent (`restated`), or `none` when none was asked for.
+ * @throws {unknown} When the database cannot be reached.
+ */
+export async function cancelPendingAdsRestatement(
+  paymentId: string,
+): Promise<"cancelled" | "restating" | "restated" | "none"> {
+  const upload = await findUploadByPayment(paymentId);
+  if (!upload) return "none";
+  const key = { conversion: upload.job.conversion, transactionId: upload.job.transactionId };
+  if (await moveUpload(key, ["restate_pending"], "queued")) return "cancelled";
+  const status = await getUploadStatus(key);
+  return status === "restating" || status === "restated" ? status : "none";
 }
 
 /**
@@ -237,7 +269,9 @@ export async function settleAdsUpload(job: AdsConversionJob, uploaded: boolean, 
   }
   if (await moveUpload(key, ["queued"], "uploaded", { requestId })) return false;
   // A refund waits on this upload; it is forwarded only while ads are still allowed.
-  if (!(await stillAllowed(job))) return moveUpload(key, ["restate_pending"], "uploaded", { requestId });
+  if (!(await stillAllowed(job))) {
+    return moveUpload(key, ["restate_pending"], "uploaded", { requestId, failureReason: "consent_withdrawn" });
+  }
   if (await moveUpload(key, ["restate_pending"], "restating", { requestId })) {
     await addJob(restatementOf(job, requestId ?? null));
   }
@@ -267,14 +301,19 @@ const STALE_AFTER_MS = 10 * 60_000;
  * Queue again every upload still waiting whose job was lost: the add failed
  * after the row was claimed, or the process died in between. Jobs still in
  * the queue keep their id, so re-adding them does nothing; a job the queue
- * gave up on while its outcome could not be recorded is replaced.
+ * gave up on while its outcome could not be recorded is replaced. Also asks
+ * for the restatement of every refunded order whose conversion still stands
+ * at full value: the refund's own request runs after the reply and is not
+ * retried.
  * @param staleAfterMs - How long a row may wait before it counts as lost.
  * @returns How many uploads were looked at.
  * @throws {unknown} When the database or the queue cannot be reached.
  */
 export async function requeueStaleAdsUploads(staleAfterMs: number = STALE_AFTER_MS): Promise<number> {
+  const staleBefore = new Date(Date.now() - staleAfterMs);
+  for (const paymentId of await findRefundedUnrestated(staleBefore)) await enqueueAdsRestatement(paymentId);
   // `restate_pending` waits on its conversion's upload, so the conversion is what goes back on the queue.
-  const rows = await findStaleUploads(["queued", "restate_pending", "restating"], new Date(Date.now() - staleAfterMs));
+  const rows = await findStaleUploads(["queued", "restate_pending", "restating"], staleBefore);
   for (const row of rows) {
     const job = row.status === "restating" ? restatementOf(row.job, row.requestId) : row.job;
     const existing = await adsQueue().getJob(jobIdOf(job));

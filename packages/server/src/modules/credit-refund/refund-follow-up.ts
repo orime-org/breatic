@@ -4,29 +4,20 @@
 /**
  * What a committed disposition reports beyond the buyer's mails (inner#1442
  * design §4.8, §4.9). A disposition that booked the refund, the only ones that
- * record `settled_succeeded_cents`, sends `refund_completed` under the
- * account's last seen choice and restates the ad conversion to zero. Credits
- * restored after such a restatement are only logged: the platform cannot undo
- * a restatement to zero.
+ * record `settled_succeeded_cents`, restates the ad conversion to zero and
+ * sends `refund_completed` under the account's last seen choice, each on its
+ * own; the ads sweep asks again for a restatement this misses. Credits
+ * restored take back a restatement that never went out; one already queued or
+ * sent is only logged, since the platform cannot undo a restatement to zero.
  */
 
-import {
-  accountOnlyConsent,
-  enqueueAdsRestatement,
-  findUploadByPayment,
-  logger,
-  trackServerEvent,
-  type AdsUploadStatus,
-} from "@breatic/core";
+import { accountOnlyConsent, cancelPendingAdsRestatement, enqueueAdsRestatement, logger, trackServerEvent } from "@breatic/core";
 import { creditLotRepo } from "@breatic/domain";
 import * as operationRepo from "@server/modules/credit-refund/operation.repo.js";
 import * as paymentRepo from "@server/modules/payment/payment.repo.js";
 import type { CreditRefundOperation } from "@server/modules/credit-refund/operation.repo.js";
 import { sendOperationMailsLater } from "@server/modules/credit-refund/refund-mail.js";
 import { runAfterReply } from "@server/utils/after-reply.js";
-
-/** Upload states in which a restatement to zero was sent or will be. */
-const RESTATED: ReadonlySet<AdsUploadStatus> = new Set(["restate_pending", "restating", "restated"]);
 
 /**
  * Report what a committed disposition did.
@@ -40,37 +31,53 @@ export async function reportRefundOutcome(operationId: string): Promise<void> {
 }
 
 /**
- * Send `refund_completed` and restate the order's ad conversion to zero.
+ * Restate the order's ad conversion to zero and send `refund_completed`. A
+ * failure of one does not stop the other.
  * @param op - The disposition that booked the refund.
  * @param amountCents - What it settled.
  */
 async function reportRefunded(op: CreditRefundOperation, amountCents: number): Promise<void> {
-  const [lot, paid] = await Promise.all([creditLotRepo.findLotById(op.lotId), paymentRepo.readPaidAmount(op.paymentId)]);
-  if (lot !== null && paid !== null) {
-    trackServerEvent(
-      "refund_completed",
-      {
-        userId: lot.userId,
-        insertId: `refund:${lot.id}`,
-        properties: { credits: Number(lot.purchasedCredits), amount_cents: amountCents, currency: paid.currency },
-      },
-      await accountOnlyConsent(lot.userId),
-    );
+  try {
+    if ((await enqueueAdsRestatement(op.paymentId)) === "consent_withdrawn") {
+      logger.info({ paymentId: op.paymentId }, "ads_restatement_skipped_consent_withdrawn");
+    }
+  } catch (err) {
+    logger.error({ err, paymentId: op.paymentId }, "ads_restatement_enqueue_failed");
   }
-  if ((await enqueueAdsRestatement(op.paymentId)) === "consent_withdrawn") {
-    logger.info({ paymentId: op.paymentId }, "ads_restatement_skipped_consent_withdrawn");
+  try {
+    await sendRefundCompleted(op, amountCents);
+  } catch (err) {
+    logger.error({ err, operationId: op.id }, "refund_completed_failed");
   }
 }
 
 /**
- * Log credits restored on an order whose conversion was restated to zero.
+ * Send `refund_completed` under the account's last seen choice.
+ * @param op - The disposition that booked the refund.
+ * @param amountCents - What it settled.
+ */
+async function sendRefundCompleted(op: CreditRefundOperation, amountCents: number): Promise<void> {
+  const [lot, paid] = await Promise.all([creditLotRepo.findLotById(op.lotId), paymentRepo.readPaidAmount(op.paymentId)]);
+  if (lot === null || paid === null) return;
+  trackServerEvent(
+    "refund_completed",
+    {
+      userId: lot.userId,
+      insertId: `refund:${lot.id}`,
+      properties: { credits: Number(lot.purchasedCredits), amount_cents: amountCents, currency: paid.currency },
+    },
+    await accountOnlyConsent(lot.userId),
+  );
+}
+
+/**
+ * Take back a restatement that never went out for an order whose credits were
+ * restored, and log one that cannot be.
  * @param paymentId - The order.
  */
 async function noteRestored(paymentId: string): Promise<void> {
-  const upload = await findUploadByPayment(paymentId);
-  if (upload !== null && RESTATED.has(upload.status)) {
-    logger.warn({ paymentId, status: upload.status }, "ads_restatement_irreversible");
-  }
+  const status = await cancelPendingAdsRestatement(paymentId);
+  if (status === "restating" || status === "restated") logger.warn({ paymentId, status }, "ads_restatement_irreversible");
 }
 
 /**

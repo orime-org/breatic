@@ -14,8 +14,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
 const core = vi.hoisted(() => ({
   accountOnlyConsent: vi.fn(),
+  cancelPendingAdsRestatement: vi.fn(),
   enqueueAdsRestatement: vi.fn(),
-  findUploadByPayment: vi.fn(),
   trackServerEvent: vi.fn(),
 }));
 vi.mock("@breatic/core", () => ({ ...core, logger }));
@@ -65,6 +65,22 @@ describe("a disposition that booked the refund", () => {
     },
   );
 
+  it("restates the conversion even when the event cannot be sent", async () => {
+    findById.mockResolvedValue(OP);
+    core.accountOnlyConsent.mockRejectedValue(new Error("db down"));
+    await reportRefundOutcome("op-1");
+    expect(core.enqueueAdsRestatement).toHaveBeenCalledWith("pay-1");
+    expect(logger.error).toHaveBeenCalledWith(expect.objectContaining({ operationId: "op-1" }), "refund_completed_failed");
+  });
+
+  it("sends the event even when the restatement cannot be queued", async () => {
+    findById.mockResolvedValue(OP);
+    core.enqueueAdsRestatement.mockRejectedValue(new Error("redis down"));
+    await reportRefundOutcome("op-1");
+    expect(core.trackServerEvent).toHaveBeenCalledWith("refund_completed", expect.anything(), SEEN);
+    expect(logger.error).toHaveBeenCalledWith(expect.objectContaining({ paymentId: "pay-1" }), "ads_restatement_enqueue_failed");
+  });
+
   it("logs a restatement the account's ad choice no longer allows", async () => {
     findById.mockResolvedValue(OP);
     core.enqueueAdsRestatement.mockResolvedValue("consent_withdrawn");
@@ -98,21 +114,19 @@ describe("a disposition that did not book the refund", () => {
 describe("restoring credits", () => {
   const RESTORE = { ...OP, kind: "restore_credits", settledSucceededCents: null };
 
-  it.each(["restate_pending", "restating", "restated"])(
-    "logs that a restatement to zero cannot be undone (%s)",
-    async (status) => {
-      findById.mockResolvedValue(RESTORE);
-      core.findUploadByPayment.mockResolvedValue({ status });
-      await reportRefundOutcome("op-1");
-      expect(logger.warn).toHaveBeenCalledWith({ paymentId: "pay-1", status }, "ads_restatement_irreversible");
-      expect(core.trackServerEvent).not.toHaveBeenCalled();
-      expect(core.enqueueAdsRestatement).not.toHaveBeenCalled();
-    },
-  );
-
-  it.each([["uploaded"], ["failed"], [null]])("logs nothing when no restatement was sent (%s)", async (status) => {
+  it.each(["restating", "restated"])("logs that a restatement to zero cannot be undone (%s)", async (status) => {
     findById.mockResolvedValue(RESTORE);
-    core.findUploadByPayment.mockResolvedValue(status === null ? null : { status });
+    core.cancelPendingAdsRestatement.mockResolvedValue(status);
+    await reportRefundOutcome("op-1");
+    expect(core.cancelPendingAdsRestatement).toHaveBeenCalledWith("pay-1");
+    expect(logger.warn).toHaveBeenCalledWith({ paymentId: "pay-1", status }, "ads_restatement_irreversible");
+    expect(core.trackServerEvent).not.toHaveBeenCalled();
+    expect(core.enqueueAdsRestatement).not.toHaveBeenCalled();
+  });
+
+  it.each(["cancelled", "none"])("logs nothing when no restatement went out (%s)", async (outcome) => {
+    findById.mockResolvedValue(RESTORE);
+    core.cancelPendingAdsRestatement.mockResolvedValue(outcome);
     await reportRefundOutcome("op-1");
     expect(logger.warn).not.toHaveBeenCalled();
   });
