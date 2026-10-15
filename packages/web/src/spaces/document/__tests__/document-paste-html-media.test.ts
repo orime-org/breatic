@@ -197,7 +197,7 @@ describe('HTML carrying media', () => {
   it.each([
     ['a line', [{ type: 'paragraph', content: 'lead' }], ['paragraph:leada', 'image[pending|]', 'paragraph:b']],
     ['a table cell', [TABLE], ['table', 'image[pending|]']],
-  ])('a picture given only by srcset, pasted on %s, is fetched from its first candidate', async (_where, blocks, expected) => {
+  ])('a picture given only by srcset, pasted on %s, is fetched from its densest candidate', async (_where, blocks, expected) => {
     const { editor, sink } = open(blocks);
     caretIn(editor, 0);
 
@@ -211,9 +211,49 @@ describe('HTML carrying media', () => {
     expect(shape(editor)).toEqual(expected);
     expect(sink.start).toHaveBeenCalledExactlyOnceWith(expect.any(String), {
       kind: 'address',
-      url: 'https://elsewhere.example/i.png',
+      url: 'https://elsewhere.example/i2.png',
     });
     expect(sink.onLeftOut).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['widths, smallest first', 'https://e.example/s.png 320w, https://e.example/b.png 1280w, https://e.example/m.png 640w', 'https://e.example/b.png'],
+    ['no descriptors', 'https://e.example/only.png', 'https://e.example/only.png'],
+  ])('a picture given only by srcset with %s is fetched from its largest candidate', async (_what, srcset, url) => {
+    const { editor, sink } = open([{ type: 'paragraph', content: 'lead' }]);
+    caretIn(editor, 0);
+
+    paste(editor, `<p>a</p><img srcset="${srcset}"><p>b</p>`, 'a b');
+    await settled();
+
+    expect(sink.start).toHaveBeenCalledExactlyOnceWith(expect.any(String), { kind: 'address', url });
+  });
+
+  it('a video does not take the address of a picture inside it', () => {
+    const { editor } = open([{ type: 'paragraph' }]);
+
+    const blocks = editor.tryParseHTMLToBlocks('<video><img srcset="https://e.example/poster.png 1x"></video>') as {
+      type: string;
+      props: Record<string, unknown>;
+    }[];
+
+    expect(blocks.filter((block) => block.props['url'] === 'https://e.example/poster.png')).toEqual([]);
+  });
+
+  it('HTML holding a td inside an SVG still pastes its words and pictures', async () => {
+    const { editor, sink } = open([{ type: 'paragraph', content: 'lead' }]);
+    caretIn(editor, 0);
+
+    paste(
+      editor,
+      '<p>hello</p><img src="https://e.example/b.png">' +
+        '<svg><td><foreignObject><img src="https://e.example/a.png"></foreignObject></td></svg>',
+      'hello',
+    );
+    await settled();
+
+    expect(shape(editor)).toContain('paragraph:hello');
+    expect(sink.start).toHaveBeenCalledWith(expect.any(String), { kind: 'address', url: 'https://e.example/b.png' });
   });
 });
 
