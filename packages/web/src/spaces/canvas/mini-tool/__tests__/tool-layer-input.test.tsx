@@ -33,6 +33,12 @@ function Canvas({ active }: { active: boolean }): React.JSX.Element {
       <div className='react-flow__node selected'>
         <button type='button' data-testid='control'>tile</button>
         <textarea data-testid='typing' />
+        {/* A player's seek bar and a tile checkbox carry `nokey`; a list box and editable text too are xyflow's to skip. */}
+        <div className='nokey'>
+          <div role='slider' tabIndex={0} aria-valuenow={0} data-testid='nokey' />
+        </div>
+        <select data-testid='choice' />
+        <div contentEditable suppressContentEditableWarning data-testid='editable' />
       </div>
       {/* Another node, not selected: an audio node's seek bar, say. */}
       <div className='react-flow__node'>
@@ -111,6 +117,16 @@ describe('useToolLayerArrows', () => {
     document.addEventListener('keydown', reached);
     render(<Canvas active />);
     expect(fireEvent.keyDown(screen.getByTestId('slider'), { key: 'ArrowRight' })).toBe(true);
+    expect(reached).toHaveBeenCalledOnce();
+  });
+
+  // xyflow skips the arrows pressed on an input, a select, a textarea,
+  // editable content or anything under `.nokey` (`@xyflow/system`
+  // isInputDOMNode, which `@xyflow/react` index.mjs:2297 asks first).
+  it.each(['nokey', 'choice', 'editable'])('lets the arrows pressed on %s in a selected node through', (id) => {
+    document.addEventListener('keydown', reached);
+    render(<Canvas active />);
+    expect(fireEvent.keyDown(screen.getByTestId(id), { key: 'ArrowRight' })).toBe(true);
     expect(reached).toHaveBeenCalledOnce();
   });
 
