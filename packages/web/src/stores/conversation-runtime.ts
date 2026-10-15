@@ -19,6 +19,7 @@
 import { create } from 'zustand';
 
 import { chatApi } from '@web/data/api/chat';
+import { getRunning, runOnce, useRunning } from '@web/stores/task-actions-in-flight';
 import { ApiException } from '@web/data/api/types';
 import type { ConversationOnTheWire, OpenChatResult } from '@web/data/api/chat';
 import {
@@ -1045,6 +1046,41 @@ async function switchTo(projectId: string, conversationId: string): Promise<void
 }
 
 /**
+ * The run-once intent of the new-conversation button in one project (inner#1490).
+ * @param projectId - The project.
+ * @returns The intent id.
+ */
+function newConversationIntent(projectId: string): string {
+  return `conversation:new:${projectId}`;
+}
+
+/**
+ * Whether a new-conversation press in this project is still out; the button reads it.
+ * @param projectId - The project.
+ * @returns True while it waits.
+ */
+export function useStartingNew(projectId: string): boolean {
+  return useRunning(newConversationIntent(projectId)) !== undefined;
+}
+
+/**
+ * Make a conversation once per press: re-sent with the same key until the
+ * server answers for good.
+ * @param projectId - The project.
+ * @returns The conversation made, or null when the press was let go unanswered.
+ * @throws {unknown} The final failure, when the server refused.
+ */
+async function createConversationOnce(projectId: string): Promise<ConversationOnTheWire | null> {
+  const outcome = await runOnce(newConversationIntent(projectId), {
+    scope: 'conversation',
+    prepare: () => projectId,
+    send: (key, id: string) => chatApi.createConversation(id, key),
+  });
+  if (outcome.kind === 'failed') throw outcome.error;
+  return outcome.kind === 'done' ? outcome.result : null;
+}
+
+/**
  * Start another conversation in this project and go to it.
  *
  * Nothing on screen moves until the server has made it. The alternative --
@@ -1054,12 +1090,18 @@ async function switchTo(projectId: string, conversationId: string): Promise<void
  * @param projectId - The project to start one in.
  */
 async function startNew(projectId: string): Promise<void> {
+  // A press while one is out makes nothing more (inner#1490); its button
+  // shows the first still waiting.
+  if (getRunning(newConversationIntent(projectId)) !== undefined) return;
   const nav = intendToNavigate(projectId);
   let landed = false;
   try {
     const visit = currentVisit(projectId);
     try {
-      const created = await chatApi.createConversation(projectId);
+      const created = await createConversationOnce(projectId);
+      // The registry let the press go without an answer (the account changed,
+      // or it could no longer be confirmed and said so): nothing to land on.
+      if (created === null) return;
       if (visit.signal.aborted) return;
       // A switch started before this press may still be out. It was asked for
       // first and will answer whenever it answers, but this is what the reader

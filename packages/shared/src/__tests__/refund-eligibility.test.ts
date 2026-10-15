@@ -23,6 +23,7 @@ function lot(over: Partial<RefundCandidate> = {}): RefundCandidate {
     purchased: true,
     designated: false,
     everSpent: false,
+    everRestored: false,
     refundAttempts: 0,
     createdAt: "2026-01-01T00:00:00.000Z",
     ...over,
@@ -63,6 +64,36 @@ describe("refundRefusal", () => {
       expect(refundRefusal(lot({ lifecycle }), NOW)).toBe("already_asked");
     },
   );
+
+  it("refuses one whose credits were restored after a failed refund (inner#1410 v9 §5.3)", () => {
+    // The buyer agreed to keep the credits instead of the money, and Stripe
+    // no longer takes a refund of that card's charge.
+    expect(refundRefusal(lot({ everRestored: true }), NOW)).toBe("restored");
+  });
+
+  it("answers the restore before the spending, the closed window and the designation", () => {
+    expect(
+      refundRefusal(
+        lot({ everRestored: true, everSpent: true, designated: true, refundAttempts: 0 }),
+        LATE,
+      ),
+    ).toBe("restored");
+    expect(refundRefusal(lot({ everRestored: true, everSpent: true }), NOW)).toBe("restored");
+    expect(refundRefusal(lot({ everRestored: true }), LATE)).toBe("restored");
+    expect(refundRefusal(lot({ everRestored: true, designated: true }), NOW)).toBe("restored");
+  });
+
+  it("answers already_asked before the restore", () => {
+    expect(
+      refundRefusal(lot({ everRestored: true, lifecycle: "refund_pending" }), NOW),
+    ).toBe("already_asked");
+  });
+
+  it("answers not_purchased before the restore", () => {
+    expect(refundRefusal(lot({ everRestored: true, purchased: false }), NOW)).toBe(
+      "not_purchased",
+    );
+  });
 
   it("refuses one still pointed at a studio", () => {
     expect(refundRefusal(lot({ designated: true }), NOW)).toBe(

@@ -27,9 +27,15 @@ import {
   changeSubscriptionPlan,
   resumeSubscription,
   startSubscriptionCheckout,
+  type CheckoutStart,
+  type PlanChange,
 } from '@web/data/api/subscription';
+import { runOnce, useRunning } from '@web/stores/task-actions-in-flight';
 import { ApiException } from '@web/data/api/types';
 import { MEMBERSHIP_QUERY_ROOT } from '@web/features/membership/membership-query';
+
+/** The run-once intent of a checkout or a plan change; one per page at a time. */
+const MEMBERSHIP_INTENT = 'membership';
 
 /** Which of the panel's actions is running. */
 export type PendingSubscriptionAction =
@@ -71,9 +77,15 @@ export function useSubscriptionActions(
 ): SubscriptionActions {
   const t = useTranslation();
   const queryClient = useQueryClient();
-  const [pending, setPending] = React.useState<PendingSubscriptionAction | null>(
+  // Cancel and resume are this panel's own; a checkout or a plan change is
+  // one press of the account, held in the run-once registry so a reopened
+  // panel finds it still waiting (inner#1490).
+  const [ownPending, setPending] = React.useState<PendingSubscriptionAction | null>(
     null,
   );
+  const choosing = useRunning(MEMBERSHIP_INTENT) as MembershipOffer | undefined;
+  const pending: PendingSubscriptionAction | null =
+    ownPending ?? (choosing === undefined ? null : { kind: 'choose', offer: choosing });
 
   // Re-reads the panel's own data and leaves the page alone.
   //
@@ -87,34 +99,20 @@ export function useSubscriptionActions(
     await queryClient.invalidateQueries({ queryKey: MEMBERSHIP_QUERY_ROOT });
   }, [queryClient]);
 
-  // `work` answers 'leaving' once it has sent the browser to another page.
-  // The action stays pending from then on: the page is going, and a button
-  // that comes back to life during that moment is one a second tap can reach.
-  const run = React.useCallback(
-    async (
-      action: PendingSubscriptionAction,
-      work: () => Promise<'leaving' | void>,
-    ) => {
-      setPending(action);
-      let leaving = false;
-      try {
-        leaving = (await work()) === 'leaving';
-      } catch (err) {
-        // Every one of these can fail without anything being broken: two tabs
-        // open on this panel and one of them subscribes first makes the other
-        // one's click a 409. Without this the click did nothing at all — no
-        // message, no explanation, the button simply came back — and the
-        // reader had no way to tell a refusal from a dead app.
-        toast.error(serverMessage(err, t('membership.actionFailed')));
-        // A conflict means the account is not in the state this panel showed.
-        // Before refusing a checkout the server may have asked Stripe and
-        // stored a subscription it found still live, so the panel and the
-        // avatar menu re-read rather than keep offering what it refused.
-        if (err instanceof ApiException && err.status === 409) {
-          await Promise.all([refreshPanel(), refreshCurrentUser()]);
-        }
-      } finally {
-        if (!leaving) setPending(null);
+  // Every one of these can fail without anything being broken: two tabs open
+  // on this panel and one of them subscribes first makes the other one's
+  // click a 409. Without a message the click did nothing at all — the button
+  // simply came back — and the reader had no way to tell a refusal from a
+  // dead app.
+  const refused = React.useCallback(
+    async (err: unknown): Promise<void> => {
+      toast.error(serverMessage(err, t('membership.actionFailed')));
+      // A conflict means the account is not in the state this panel showed.
+      // Before refusing a checkout the server may have asked Stripe and
+      // stored a subscription it found still live, so the panel and the
+      // avatar menu re-read rather than keep offering what it refused.
+      if (err instanceof ApiException && err.status === 409) {
+        await Promise.all([refreshPanel(), refreshCurrentUser()]);
       }
     },
     [t, refreshPanel],
@@ -122,43 +120,72 @@ export function useSubscriptionActions(
 
   const choose = React.useCallback(
     (offer: MembershipOffer) => {
-      void run({ kind: 'choose', offer }, async () => {
-        if (subscription && holdsActionableSubscription(subscription.state)) {
-          const result = await changeSubscriptionPlan(offer);
+      if (ownPending !== null) return;
+      const changing = subscription !== null && holdsActionableSubscription(subscription.state);
+      // `leaving` once it has sent the browser to another page: the press
+      // stays waiting from then on, since a button that comes back to life
+      // while the page goes is one a second tap can reach.
+      void runOnce(MEMBERSHIP_INTENT, {
+        scope: 'membership',
+        meta: offer,
+        prepare: () => ({ offer, returnUrl: window.location.href }),
+        send: (key, body: { offer: MembershipOffer; returnUrl: string }) =>
+          changing
+            ? changeSubscriptionPlan(body.offer, key)
+            : startSubscriptionCheckout(body.offer, body.returnUrl, key),
+        onDone: (answer: PlanChange | CheckoutStart) => {
+          if ('url' in answer) {
+            window.location.assign(answer.url);
+            return 'leaving';
+          }
           // The difference was not charged, so Stripe is holding the change
           // until it is. Sending them straight to the invoice is the whole of
           // "there is a way to finish paying".
-          if (result.payableInvoiceUrl) {
-            window.location.assign(result.payableInvoiceUrl);
+          if (answer.payableInvoiceUrl) {
+            window.location.assign(answer.payableInvoiceUrl);
             return 'leaving';
           }
           window.location.reload();
           return 'leaving';
-        }
-        const start = await startSubscriptionCheckout(
-          offer,
-          window.location.href,
-        );
-        window.location.assign(start.url);
-        return 'leaving';
+        },
+        onFailure: (err) => {
+          void refused(err);
+        },
       });
     },
-    [run, subscription],
+    [ownPending, subscription, refused],
+  );
+
+  // Cancel and resume run here; they wait while a checkout is out, which is
+  // what `busy` says to their buttons.
+  const runOwn = React.useCallback(
+    async (action: PendingSubscriptionAction, work: () => Promise<void>) => {
+      if (choosing !== undefined) return;
+      setPending(action);
+      try {
+        await work();
+      } catch (err) {
+        await refused(err);
+      } finally {
+        setPending(null);
+      }
+    },
+    [choosing, refused],
   );
 
   const cancel = React.useCallback(() => {
-    void run({ kind: 'cancel' }, async () => {
+    void runOwn({ kind: 'cancel' }, async () => {
       await cancelSubscription();
       await refreshPanel();
     });
-  }, [run, refreshPanel]);
+  }, [runOwn, refreshPanel]);
 
   const resume = React.useCallback(() => {
-    void run({ kind: 'resume' }, async () => {
+    void runOwn({ kind: 'resume' }, async () => {
       await resumeSubscription();
       await refreshPanel();
     });
-  }, [run, refreshPanel]);
+  }, [runOwn, refreshPanel]);
 
   return { choose, cancel, resume, busy: pending !== null, pending };
 }

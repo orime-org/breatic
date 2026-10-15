@@ -5,8 +5,8 @@
  * #1960 — the state every Generate panel reads at click time.
  *
  * Three containers kept a byte-identical copy of this. The behaviour it has to
- * keep: the prompt is readable synchronously, and a second click cannot get
- * past the latch before state catches up.
+ * keep: the prompt is readable synchronously. Whether a press is still
+ * waiting is the run-once registry's (`submit-generation.ts`).
  */
 
 import { describe, it, expect } from 'vitest';
@@ -15,13 +15,11 @@ import { renderHook, act } from '@testing-library/react';
 import { useGenerateSubmitState } from '@web/spaces/canvas/generate/use-generate-submit-state';
 
 describe('useGenerateSubmitState', () => {
-  it('starts with an empty prompt and not submitting', () => {
+  it('starts with an empty prompt', () => {
     const { result } = renderHook(() => useGenerateSubmitState());
 
     expect(result.current.promptText).toBe('');
     expect(result.current.promptTextRef.current).toBe('');
-    expect(result.current.isSubmitting).toBe(false);
-    expect(result.current.submittingRef.current).toBe(false);
     expect(result.current.promptEditorRef.current).toBeNull();
   });
 

@@ -198,7 +198,7 @@ import {
 import { warnNodeGate } from '@web/spaces/canvas/node-gate-toast';
 import { downloadableAsset } from '@web/spaces/canvas/node-download';
 import { keepSnapshot } from '@web/spaces/canvas/keep-snapshot';
-import { startUnderstandRun } from '@web/spaces/canvas/start-understand-run';
+import { startUnderstandRun, useUnderstanding } from '@web/spaces/canvas/start-understand-run';
 import { downloadAsset } from '@web/lib/download';
 import { pickSessionUi } from '@web/spaces/canvas/pick-purpose-ui';
 import { exportMiniToolFile } from '@web/spaces/canvas/mini-tool/export-mini-tool-file';
@@ -3918,6 +3918,8 @@ function CanvasSpaceInner({
   // the node's body is showing — so it reads the same answer. What happens
   // after the press is `startUnderstandRun`'s: it settles what the browser
   // can settle, builds the text node and its edge, and asks for the run.
+  // A press still waiting shows on the menu item (inner#1490).
+  const understandingMenuNode = useUnderstanding(spaceId, nodeMenu.nodeId ?? '');
   const understandFromMenu = React.useCallback((): void => {
     const host = nodes.find((n) => n.id === nodeMenu.nodeId);
     if (
@@ -3979,7 +3981,7 @@ function CanvasSpaceInner({
       spec: MiniToolSpec,
       snapshot: MiniToolSnapshot,
       drawing: MiniToolDrawingSnapshot | undefined,
-    ): Promise<void> => {
+    ): Promise<unknown> => {
       const host = nodes.find((n) => n.id === nodeId);
       const view = asContentView(host?.data);
       if (host === undefined || view === undefined) return Promise.resolve();
@@ -4957,6 +4959,7 @@ function CanvasSpaceInner({
           onUnderstand={
             menuDownloadUrl === null ? undefined : understandFromMenu
           }
+          understanding={understandingMenuNode}
           toolsOffered={miniToolsFor(nodeMenu.type).length > 0}
           tools={menuTools}
           onTool={openToolFromMenu}

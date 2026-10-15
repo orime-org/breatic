@@ -486,6 +486,10 @@ export type CreditLotLifecycle =
  * paying it down. Both carry a negative amount: `debt_incurred` says credits
  * were consumed that no lot supplied, `debt_repayment` says a lot supplied
  * them after the fact.
+ *
+ * `refund_reversed` puts back what a `refund` row took out, when the buyer
+ * takes the credits instead of money after a refund failed (0 when the lot
+ * was never booked).
  */
 export type CreditLedgerEntryType =
   | "topup"
@@ -493,7 +497,8 @@ export type CreditLedgerEntryType =
   | "refund"
   | "refund_rejected"
   | "debt_incurred"
-  | "debt_repayment";
+  | "debt_repayment"
+  | "refund_reversed";
 
 /**
  * One top-up, tracked for the rest of its life.

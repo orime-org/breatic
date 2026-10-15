@@ -19,10 +19,12 @@
       "none": "點數不足，請先儲值。",
       "granted_elsewhere": "你的點數是贈送的，只能用在你的個人 Studio 裡。",
       "refund_already_asked": "這筆已經提交過退款。",
+      "refund_restored": "這筆退款失敗後已恢復為點數，不能再申請退款。",
       "refund_not_purchased": "這筆點數是贈送的，沒有付過款，所以不能退款。",
       "refund_still_designated": "這筆已指定給某個 Studio，請先解除指定。",
       "refund_already_spent": "這筆的點數已經用過，不能退款。",
-      "refund_window_closed": "這筆的退款期限已過。"
+      "refund_window_closed": "這筆的退款期限已過。",
+      "refund_state_changed": "這筆的退款狀態已經變了，請重新整理後再試。"
     },
     "auth": {
       "invalid_credentials": "電子郵件或密碼錯誤",
@@ -131,6 +133,7 @@
       "checkout_unconfirmed": "暫時無法確認你的會員。",
       "same_tier": "你已經在這一檔會員。",
       "payment_overdue": "這個會員有一期款項未付。",
+      "upgrade_pending": "這個會員有一筆升級仍在等待付款。",
       "unavailable": "會員目前無法使用。"
     },
     "storage": {
@@ -234,6 +237,48 @@
       "unavailable": "這個工具暫時無法使用。",
       "invalidParam": "「{name}」的值這個工具不支援。",
       "foreignSource": "這個檔案無法處理。"
+    },
+    "idempotency": {
+      "missing": "頁面已更新，請重新整理後再試。",
+      "mismatch": "這次請求與之前送出的不一致。",
+      "in_progress": "這次請求仍在處理中。"
+    },
+    "internal": {
+      "lot_not_found": "沒有這個編號、經付款購買的點數包。",
+      "operation_not_found": "沒有這個編號的退款處置。",
+      "lot_state_changed": "點數包不在這個操作要求的狀態。",
+      "operation_in_progress": "這筆點數包還有一個退款處置在進行中。",
+      "request_in_progress": "使用這個 Idempotency-Key 的請求還在執行。",
+      "stripe_blocks": "Stripe 上這筆付款的現狀或這筆點數包的退款處置紀錄不允許這個操作，原因見 reason。",
+      "mail_not_resendable": "只有以已退款、已駁回或點數已恢復完成的處置才有可重寄的買家郵件。",
+      "idempotency_key_reused": "這個 Idempotency-Key 已經用於另一個不同的請求。",
+      "invalid_body": "請求內容或路徑不符合這個端點的要求。",
+      "invalid_idempotency_key": "Idempotency-Key 標頭缺少或格式不對。",
+      "unreadable_body": "請求內容不是有效的 JSON。"
+    },
+    "refund_mail": {
+      "completed": {
+        "subject": "退款已完成",
+        "intro": "我們已把這筆購買的款項退回你的原付款方式，銀行入帳通常需要幾個工作天。這筆購買的點數已從帳號移除。"
+      },
+      "rejected": {
+        "subject": "退款申請未通過",
+        "intro": "這筆購買的退款申請沒有通過。這筆點數已回到可用狀態，可以繼續指定給 Studio 使用。"
+      },
+      "restored": {
+        "subject": "點數已恢復",
+        "intro": "款項沒能退回你的原付款方式。依照和你的溝通，這筆購買的點數已恢復到帳號，可以繼續指定給 Studio 使用。"
+      },
+      "label": {
+        "amount": "退款金額",
+        "credits": "點數",
+        "purchased_at": "購買時間",
+        "refunded_at": "退款時間",
+        "requested_at": "申請退款時間",
+        "order_ref": "訂單編號"
+      },
+      "credits_amount": "{credits} 點",
+      "fact_line": "{label}：{value}"
     }
   },
   "chat": {
@@ -1242,6 +1287,9 @@
     "pageUnavailable": {
       "message": "這個頁面未能載入。",
       "action": "重新整理"
+    },
+    "runOnce": {
+      "unknownResult": "無法確認剛才的操作是否完成，請查看結果。"
     }
   },
   "members": {
@@ -1571,7 +1619,10 @@
       "membershipEnded": "{tier} 會員已結束",
       "membershipUpgradeIncomplete": "換到 {tier} {period} 的付款沒有完成",
       "membershipUpgradeIncompleteNoPeriod": "換到 {tier} 的付款沒有完成",
-      "storageQuotaExceeded": "儲存空間已滿"
+      "storageQuotaExceeded": "儲存空間已滿",
+      "creditRefundCompleted": "{credits} 點的退款已完成",
+      "creditRefundRejected": "{credits} 點的退款申請未通過",
+      "creditRefundRestored": "{credits} 點已恢復到你的帳號"
     },
     "actorFallback": "某人",
     "subtitle": {
@@ -2270,7 +2321,8 @@
     },
     "refundReason": {
       "spent": "已經用過",
-      "expired": "超過 30 天"
+      "expired": "超過 30 天",
+      "restored": "點數已恢復"
     },
     "refundHint": {
       "assigned": "解除指定後可以申請退款"

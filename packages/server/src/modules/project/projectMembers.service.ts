@@ -12,39 +12,15 @@
  * invariants intrinsic to the member graph (no double-owner, owner
  * cannot be removed, cannot demote owner without transfer).
  *
- * v10 §7.2.5 mandates that every member-state change publish a Redis
- * pub/sub event so collab can broadcast invalidation to connected
- * clients. The Redis bus is wired in PR-C; for V1 we expose the
- * publish-call site (commented as TODO) so PR-C is a single
- * line-replacement, and we never silently drop a notification.
+ * collab learns of every change these writes make from the trigger on
+ * `project_members` (core `listenProjectMemberChanges`), not from this file.
  */
 
-import { db, logger, projectMembersRepo } from "@breatic/core";
-import { publishMembersChanged } from "@breatic/core";
+import { db, projectMembersRepo } from "@breatic/core";
 import { recordProjectActivity } from "@server/modules/activity/projectActivity.service.js";
 import { ConflictError, NotFoundError } from "@breatic/core";
 import { t } from "@breatic/shared";
 import type { ProjectMember, ProjectRole } from "@breatic/shared";
-
-/**
- * Tell collab a member's standing changed, once the change has committed.
- *
- * The write is already in the database when this runs; a failed announcement
- * is logged and the request still succeeds, or the caller would be told the
- * change did not happen when it did.
- * @param projectId - Project UUID
- * @param detail - Which member changed and how
- */
-async function announceMembersChanged(
-  projectId: string,
-  detail: Parameters<typeof publishMembersChanged>[1],
-): Promise<void> {
-  try {
-    await publishMembersChanged(projectId, detail);
-  } catch (err) {
-    logger.error({ err, projectId, detail }, "project_members_changed_publish_failed");
-  }
-}
 
 /**
  * List active members of a project (caller has already checked access).
@@ -125,11 +101,6 @@ export async function changeRole(
     }
     return role;
   });
-  await announceMembersChanged(projectId, {
-    affectedUserId: targetUserId,
-    action: "update",
-    newRole,
-  });
   await recordProjectActivity({
     projectId,
     actorUserId: actorUserId ?? null,
@@ -182,10 +153,6 @@ export async function remove(
       throw new NotFoundError(t("server.error.not_found"));
     }
     return role;
-  });
-  await announceMembersChanged(projectId, {
-    affectedUserId: targetUserId,
-    action: "remove",
   });
   await recordProjectActivity({
     projectId,

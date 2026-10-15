@@ -27,7 +27,7 @@ import type {
   CreditSourceKind,
   PurchaseRow,
 } from "@breatic/shared";
-import { t, getActiveLocale } from "@breatic/shared";
+import { t, getActiveLocale, IDEMPOTENCY_RETENTION_SECONDS } from "@breatic/shared";
 import {
   AppError,
   NotFoundError,
@@ -443,7 +443,9 @@ async function startConfirmationMail(paymentId: string): Promise<void> {
 }
 
 /**
- * How long a checkout session stays open, in seconds.
+ * How long a checkout session stays open, in seconds — the run-once
+ * retention of a credits checkout, so a press the browser is still re-sending
+ * is replayed a session that is still open (inner#1490).
  *
  * Stripe's own example uses two hours; the parameter takes thirty minutes to
  * twenty-four, and defaults to twenty-four. This is a backstop for the buyer
@@ -453,7 +455,7 @@ async function startConfirmationMail(paymentId: string): Promise<void> {
  * taking it here would trade a real buyer's second card attempt for showing
  * an abandoned checkout as expired a little sooner.
  */
-const SESSION_LIFETIME_SECONDS = 2 * 60 * 60;
+const SESSION_LIFETIME_SECONDS = IDEMPOTENCY_RETENTION_SECONDS["credits-checkout"];
 
 /** What Stripe's Checkout page can be rendered in, by our locale. */
 const STRIPE_LOCALES: Record<string, string> = {

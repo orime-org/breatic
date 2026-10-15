@@ -80,6 +80,19 @@ describe('useCreateProject — navigates INTO the new project (decision B)', () 
     );
     expect(projectsApi.create).toHaveBeenCalledWith(
       expect.objectContaining({ studioId: 's-1', slug: 'my-proj' }),
+      expect.any(String),
     );
+  });
+
+  // inner#1490: one press, one project, however often it is pressed while
+  // the first is out.
+  it('creates one project for presses made while the first is out', async () => {
+    vi.mocked(projectsApi.create).mockReturnValue(new Promise(() => {}));
+    setup();
+    screen.getByRole('button', { name: 'go' }).click();
+    await waitFor(() => expect(projectsApi.create).toHaveBeenCalledTimes(1));
+    screen.getByRole('button', { name: 'go' }).click();
+    await new Promise((r) => setTimeout(r, 20));
+    expect(projectsApi.create).toHaveBeenCalledTimes(1);
   });
 });

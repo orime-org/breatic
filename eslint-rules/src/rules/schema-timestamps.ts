@@ -63,6 +63,26 @@ const NO_SOFT_DELETE: ReadonlyMap<string, string> = new Map([
     "the record of whether one purchase's confirmation email went out (0066): it lives and dies with that payment and has no delete of its own, and the resend control reads its status, so a row that could vanish would leave a buyer with no way to ask for the letter again",
   ],
   [
+    "creditRefundOperations",
+    "one disposition of a credit pack's refund request (0094, inner#1410): the record of who decided to move a buyer's money and what came of it. It lives as long as the payment it disposes of, and a disposition that could vanish would let the same refund be approved, and paid out, a second time",
+  ],
+  [
+    "creditRefundOperationEvents",
+    "append-only step log of a refund disposition (0094): each row is something that already happened to a buyer's money, the same carve-out as creditLedger",
+  ],
+  [
+    "creditRefunds",
+    "the product's copy of what Stripe says about one refund (0094): it mirrors a record Stripe never deletes, and the lot's booking and every later decision read it, so a row that could vanish would hide money that left",
+  ],
+  [
+    "refundMailOutbox",
+    "the record of each refund email to a buyer (0094): the same carve-out as purchaseMailOutbox — it lives with its disposition, and the resend control reads its status",
+  ],
+  [
+    "creditRefundReconcileStatus",
+    "one row of the daily refund reconcile's progress (0094): an internal progress marker with nothing a user could delete",
+  ],
+  [
     "stripeWebhookEvents",
     "append-only record of which Stripe events have been processed; the primary key is the idempotency guard, so deleting a row is exactly what would let that event be replayed",
   ],

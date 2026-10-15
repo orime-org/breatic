@@ -242,6 +242,8 @@ export interface CreditLotView {
    * repay a studio's debt counts as much as a generation does.
    */
   everSpent: boolean;
+  /** Whether credits were restored to it after a refund failed; it is never asked about again. */
+  everRestored: boolean;
   createdAt: string;
 }
 

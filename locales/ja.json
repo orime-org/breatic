@@ -19,10 +19,12 @@
       "none": "クレジットが不足しています。チャージしてください。",
       "granted_elsewhere": "お持ちのクレジットは付与されたもので、個人 Studio でのみ使用できます。",
       "refund_already_asked": "この購入はすでに返金を申請済みです。",
+      "refund_restored": "この購入は返金に失敗した後クレジットに戻されたため、返金を申請できません。",
       "refund_not_purchased": "このクレジットは付与されたもので、お支払いがないため返金できません。",
       "refund_still_designated": "この購入は Studio に割り当てられています。先に割り当てを解除してください。",
       "refund_already_spent": "この購入のクレジットは使用済みのため、返金できません。",
-      "refund_window_closed": "この購入の返金期限は終了しました。"
+      "refund_window_closed": "この購入の返金期限は終了しました。",
+      "refund_state_changed": "この購入の返金状況が変わりました。再読み込みしてからもう一度お試しください。"
     },
     "auth": {
       "invalid_credentials": "メールアドレスまたはパスワードが正しくありません",
@@ -131,6 +133,7 @@
       "checkout_unconfirmed": "メンバーシップをまだ確認できません。",
       "same_tier": "すでにこのメンバーシップです。",
       "payment_overdue": "このメンバーシップの支払いが遅延しています。",
+      "upgrade_pending": "このメンバーシップのアップグレードはまだ支払い待ちです。",
       "unavailable": "メンバーシップは利用できません。"
     },
     "storage": {
@@ -234,6 +237,48 @@
       "unavailable": "このツールは現在利用できません。",
       "invalidParam": "「{name}」の値はこのツールでは使えません。",
       "foreignSource": "このファイルは処理できません。"
+    },
+    "idempotency": {
+      "missing": "ページが更新されました。再読み込みしてからもう一度お試しください。",
+      "mismatch": "このリクエストは前に送信したものと一致しません。",
+      "in_progress": "このリクエストはまだ処理中です。"
+    },
+    "internal": {
+      "lot_not_found": "この ID の、支払いで購入されたクレジットパックはありません。",
+      "operation_not_found": "この ID の返金処理はありません。",
+      "lot_state_changed": "クレジットパックがこの操作の開始条件の状態にありません。",
+      "operation_in_progress": "このクレジットパックの別の返金処理がまだ進行中です。",
+      "request_in_progress": "この Idempotency-Key のリクエストはまだ実行中です。",
+      "stripe_blocks": "この支払いの Stripe 上の現在の状態、またはこのクレジットパックの返金処理の履歴により、この操作はできません。理由は reason を参照してください。",
+      "mail_not_resendable": "返金済み・却下、またはクレジットに戻して完了した処理だけが、購入者へのメールを再送できます。",
+      "idempotency_key_reused": "この Idempotency-Key は別のリクエストですでに使われています。",
+      "invalid_body": "リクエスト本文またはパスがこのエンドポイントの要件に合いません。",
+      "invalid_idempotency_key": "Idempotency-Key ヘッダーがないか、形式が正しくありません。",
+      "unreadable_body": "リクエスト本文が有効な JSON ではありません。"
+    },
+    "refund_mail": {
+      "completed": {
+        "subject": "返金が完了しました",
+        "intro": "このご購入の代金を元のお支払い方法に返金しました。銀行での反映には通常数営業日かかります。このご購入のクレジットはアカウントから削除されました。"
+      },
+      "rejected": {
+        "subject": "返金リクエストは承認されませんでした",
+        "intro": "このご購入の返金リクエストは承認されませんでした。クレジットは再び利用可能になり、引き続き Studio に割り当てて使えます。"
+      },
+      "restored": {
+        "subject": "クレジットを元に戻しました",
+        "intro": "元のお支払い方法へ返金できませんでした。お客様とのご相談に基づき、このご購入のクレジットをアカウントに戻しました。引き続き Studio に割り当てて使えます。"
+      },
+      "label": {
+        "amount": "返金額",
+        "credits": "クレジット",
+        "purchased_at": "購入日時",
+        "refunded_at": "返金日時",
+        "requested_at": "返金リクエスト日時",
+        "order_ref": "注文番号"
+      },
+      "credits_amount": "{credits} クレジット",
+      "fact_line": "{label}：{value}"
     }
   },
   "chat": {
@@ -1242,6 +1287,9 @@
     "pageUnavailable": {
       "message": "このページを読み込めませんでした。",
       "action": "再読み込み"
+    },
+    "runOnce": {
+      "unknownResult": "先ほどの操作が完了したか確認できませんでした。結果を確認してください。"
     }
   },
   "members": {
@@ -1571,7 +1619,10 @@
       "membershipEnded": "{tier} メンバーシップが終了しました",
       "membershipUpgradeIncomplete": "{tier} {period} への変更のお支払いが完了しませんでした",
       "membershipUpgradeIncompleteNoPeriod": "{tier} への変更のお支払いが完了しませんでした",
-      "storageQuotaExceeded": "ストレージがいっぱいです"
+      "storageQuotaExceeded": "ストレージがいっぱいです",
+      "creditRefundCompleted": "{credits} クレジットの返金が完了しました",
+      "creditRefundRejected": "{credits} クレジットの返金リクエストは承認されませんでした",
+      "creditRefundRestored": "{credits} クレジットがアカウントに戻りました"
     },
     "actorFallback": "誰か",
     "subtitle": {
@@ -2270,7 +2321,8 @@
     },
     "refundReason": {
       "spent": "使用済み",
-      "expired": "30 日超過"
+      "expired": "30 日超過",
+      "restored": "クレジットに戻しました"
     },
     "refundHint": {
       "assigned": "割り当てを解除すると返金を申請できます"

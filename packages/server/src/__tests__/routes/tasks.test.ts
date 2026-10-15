@@ -35,7 +35,13 @@ import { UNDERSTAND_PINS } from "../../../../domain/src/understand/types.js";
 import * as domain from "@breatic/domain";
 import { mocks, mockQueueAdd } from "../helpers/mock-core.js";
 
-const AUTH = { Cookie: "breatic_session=valid-token", "Content-Type": "application/json" };
+// The run-once routes need a key per press; the Redis double in mock-core
+// answers every claim as a first press, so one key serves the whole file.
+const AUTH = {
+  Cookie: "breatic_session=valid-token",
+  "Content-Type": "application/json",
+  "Idempotency-Key": "test-press",
+};
 
 describe("Tasks routes", () => {
   beforeEach(() => {
@@ -562,6 +568,7 @@ describe("Tasks routes", () => {
       expect.stringContaining("understand:"),
       expect.any(Number),
       expect.any(Number),
+      { strict: false },
     );
   });
 

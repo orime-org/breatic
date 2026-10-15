@@ -327,6 +327,7 @@ async function createProject(
 ): Promise<string> {
   const slug = `${MADE_BY_SMOKE}-${Date.now()}-${ordinal}`;
   const made = await api.post('/api/v1/projects', {
+    headers: { 'Idempotency-Key': crypto.randomUUID() },
     data: { studioId, name: `Smoke run ${ordinal}`, slug, spaceType: 'canvas' },
   });
   if (!made.ok()) {

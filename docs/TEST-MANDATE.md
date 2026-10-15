@@ -94,6 +94,13 @@
 
 默认档的运行会印出它排除了什么(`覆盖 N 条,共 M 条;排除 K 条:@needs-… `)。**被排除的用例在报告里连一行都没有**,所以那行是唯一能让人知道这个绿盖了多少的地方。
 
+**server 的集成测试层用同一套标签**:`packages/server/vitest.integration.config.ts` 的 `testNamePattern` 默认把名字里带 `@needs-` 的用例排除在外,vitest 把每一条记成 skipped,汇总里的 skip 数就是这个绿没盖到的部分。子门有意去跑,加 `-t @needs-<标签>`,它替换掉默认那条排除。现有一个 `@needs-payments` 子门:`credit-refund-real-stripe.integration.test.ts` 对着真实 Stripe 测试模式跑积分包退款处置,`STRIPE_SECRET_KEY` 不是 `sk_test_` 开头就在第一次调用之前拒跑:
+
+```bash
+STRIPE_SECRET_KEY=sk_test_… pnpm --filter @breatic/server test:integration \
+  -t @needs-payments src/__tests__/integration/credit-refund-real-stripe.integration.test.ts
+```
+
 ### 2.3 写一条 smoke 的规则(MANDATORY)
 
 | 条 | 规则 | 守卫 |

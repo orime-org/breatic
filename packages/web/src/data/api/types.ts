@@ -38,6 +38,14 @@ export interface ApiError {
   fromServer?: boolean;
   /** Seconds the server said to wait before trying again (a 429 with a known wait). */
   retryAfterSeconds?: number;
+  /**
+   * The `Idempotency-Status` a run-once route set (inner#1490): `done` is the
+   * server's final answer to that press, `in_progress` means it is still
+   * running. Absent when something other than `runOnce` answered.
+   */
+  idempotencyStatus?: 'done' | 'in_progress';
+  /** No answer arrived at all: the request never reached a server, or the reply was lost. */
+  network?: boolean;
 }
 
 /**
@@ -51,6 +59,10 @@ export class ApiException extends Error {
   readonly fromServer: boolean;
   /** Seconds to wait before the same request will be accepted, when the server said. */
   readonly retryAfterSeconds?: number;
+  /** The run-once status the server set, when one did. */
+  readonly idempotencyStatus?: 'done' | 'in_progress';
+  /** No answer arrived at all. */
+  readonly network: boolean;
 
   /**
    * Build an `ApiException` from a normalized API error.
@@ -63,6 +75,8 @@ export class ApiException extends Error {
     this.code = error.code;
     this.fromServer = error.fromServer === true;
     this.retryAfterSeconds = error.retryAfterSeconds;
+    this.idempotencyStatus = error.idempotencyStatus;
+    this.network = error.network === true;
   }
 }
 

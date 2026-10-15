@@ -134,6 +134,8 @@ demo 里那些动画参数是随手写的示意,不是定稿 —— 完全实现
 
 做法四条:**① 等待标志在请求发出前置上,成功和失败都清掉**;**② 等到显示这个结果的那次读取回来为止,只等那一次**(`onSuccess` 里 `await` 那次读取,参照 `use-studio-settings.ts` 的 `absorb`、`data/api/projects.ts` 的 `invalidateProjectListings`);**③ 同一列表里多个按钮按对象分开记**(`mutationKey` + `useMutationState`、`lib/use-pending-keys.ts`);**④ 确认弹窗开着等,成功关、失败留着**。图标按钮把图标交给 `icon`,转圈会替换它。
 
+**会产生东西或花钱的按下只执行一次**(inner#1490):生成、理解、mini-tool 运行、新建会话、会员结账或换档、新建项目、积分结账这七个按钮,等待记在 `stores/task-actions-in-flight.ts` 的 `runOnce` 里 —— 面板关掉再打开,按钮照样在等、再按不发请求;请求带 `Idempotency-Key`,没拿到最终答复就带同一个键重发,服务端的 `runOnce(scope)` 保证同一个键只执行一次。按钮读 `useRunning(intentId)`。
+
 判定题:**这个按钮点下去要等服务器答复吗?要 → `loading`,没有第二个选项。**
 
 **不上「按钮必须有 loading」的 CI 守卫**:一个按钮点下去等不等服务器,写在它的回调和它调用的 hook 里,ESLint 一次只读一个文件看不出来,硬判就只能拿别的属性去代理这个前提。机器能判的那一半已经在 CI 里:按钮里手写转圈图标由 `breatic/no-hand-written-button-spinner` 拦下。

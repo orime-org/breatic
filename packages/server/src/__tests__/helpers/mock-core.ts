@@ -69,6 +69,9 @@ const mockRedis = {
   incr: () => Promise.resolve(1),
   expire: () => Promise.resolve(1),
   pipeline: () => mockPipeline,
+  // `runOnce`'s scripts: the claim (the one that sets with 'PX') answers
+  // "nothing here yet", so the route runs; renew and finish answer success.
+  eval: (script: string) => Promise.resolve(script.includes("'PX'") ? null : 1),
 };
 
 /** Shared `queue.add` mock — reused across all `createQueue()` calls so tests can
@@ -489,7 +492,6 @@ export const coreMock = async (importOriginal: () => Promise<Record<string, unkn
     logger: { ...mocks.logger, child: () => mocks.logger },
     // Infra-adjacent services that STAY in @breatic/core.
     uploadService: mocks.uploadService,
-    publishMembersChanged: vi.fn().mockResolvedValue(undefined),
     // Shared authentication kernel (project_members repo + loadProjectRole
     // primitive — collab + server share these). AIGC business (credit /
     // task / node-history / agent / model-catalog) moved to

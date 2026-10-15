@@ -10,6 +10,7 @@ import type {
   NotificationResolved,
 } from '@web/data/api/notifications';
 import type { useTranslation } from '@web/i18n/use-translation';
+import { formatCreditAmount } from '@web/lib/format-credit-amount';
 import { renderSlottedText, slotMarker } from '@web/lib/slotted-text';
 
 /**
@@ -30,6 +31,17 @@ import { renderSlottedText, slotMarker } from '@web/lib/slotted-text';
  */
 function str(payload: Record<string, unknown>, key: string): string {
   return typeof payload[key] === 'string' ? (payload[key] as string) : '';
+}
+
+/**
+ * A refund notification's credits, formatted for the active locale.
+ * @param payload - The notification payload; `credits` is a numeric string.
+ * @returns The amount, or '' when the payload carries no number.
+ */
+function creditsOf(payload: Record<string, unknown>): string {
+  const raw = str(payload, 'credits');
+  const value = Number(raw);
+  return raw.trim() !== '' && Number.isFinite(value) ? formatCreditAmount(value) : '';
 }
 
 /**
@@ -270,6 +282,17 @@ export function notificationHeadline(
   resolved: NotificationResolved,
   t: ReturnType<typeof useTranslation>,
 ): React.ReactNode {
+  // A refund outcome (inner#1410 §8): nobody to name, nothing to open; the
+  // credits tell one refunded purchase from another.
+  if (n.type === 'credit.refund_completed') {
+    return t('notifications.headline.creditRefundCompleted', { credits: creditsOf(n.payload) });
+  }
+  if (n.type === 'credit.refund_rejected') {
+    return t('notifications.headline.creditRefundRejected', { credits: creditsOf(n.payload) });
+  }
+  if (n.type === 'credit.refund_restored') {
+    return t('notifications.headline.creditRefundRestored', { credits: creditsOf(n.payload) });
+  }
   // A membership that ended has neither an actor nor an entity: nobody did it
   // to you, a subscription ran out, and there is nothing to open. It is one
   // localized sentence, so it skips the frame below entirely.

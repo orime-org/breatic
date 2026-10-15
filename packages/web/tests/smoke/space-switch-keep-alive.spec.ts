@@ -1395,9 +1395,15 @@ test('a generation answered while its Space was hidden leaves the panel ready', 
   await prompt.click();
   await page.keyboard.type('a quiet harbour at dawn');
   // The answer comes back after the switch, and is a refusal: nothing is spent.
+  // A refusal the server finished carries `Idempotency-Status: done`; without
+  // it the press would keep asking (inner#1490).
   await page.route('**/canvas/tasks', async (route) => {
     await new Promise((resolve) => setTimeout(resolve, 3_000));
-    await route.fulfill({ status: 500, json: { success: false, error: 'held' } });
+    await route.fulfill({
+      status: 500,
+      headers: { 'Idempotency-Status': 'done' },
+      json: { success: false, error: 'held' },
+    });
   });
   await visibleSpace(page).getByTestId('generate-execute').click();
   await expect(visibleSpace(page).getByTestId('generate-execute')).toHaveAttribute('aria-busy', 'true');

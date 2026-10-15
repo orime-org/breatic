@@ -197,7 +197,8 @@ export function slotLengthCap(
  * @param input.sourceShown - Whether the source node is showing its media.
  * @param input.source - The source as the panel knows it.
  * @param input.tiers - The size tiers as they fall on the source.
- * @param input.exporting - Whether a press is still making its file or images in the browser.
+ * @param input.exporting - Whether a press of this tool is still under way: making its file or
+ *   images in the browser, or waiting for the server's answer.
  * @param input.inked - Whether a drawing tool's drawing leaves any ink.
  * @returns The first reason in the order the reader would fix them, or null.
  */

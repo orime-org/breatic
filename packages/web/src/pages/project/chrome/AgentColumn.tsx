@@ -6,7 +6,11 @@ import * as React from 'react';
 import { Button } from '@web/components/ui/button';
 import { useTranslation } from '@web/i18n/use-translation';
 import { useExclusiveOverlay } from '@web/features/exclusive-overlay/use-exclusive-overlay';
-import { conversationRuntime, useConversationRuntime } from '@web/stores/conversation-runtime';
+import {
+  conversationRuntime,
+  useConversationRuntime,
+  useStartingNew,
+} from '@web/stores/conversation-runtime';
 
 import type { ProjectSpace } from '@web/data/yjs/project-meta';
 import { ChatPanel } from '@web/pages/project/chat/ChatPanel';
@@ -79,17 +83,14 @@ export function AgentColumn({ projectId, activeSpace, spaces }: AgentColumnProps
     [historyOpen, setHistoryOpen],
   );
 
-  // Held here rather than read from the runtime: only this button waits on
-  // it, and `startNew` settles every outcome itself (it never rejects).
-  const [creating, setCreating] = React.useState(false);
-  const startNew = React.useCallback(async (): Promise<void> => {
-    setCreating(true);
-    try {
-      await conversationRuntime.startNew(projectId);
-    } finally {
-      setCreating(false);
-    }
-  }, [projectId]);
+  // The press lives in the run-once registry, so collapsing and reopening
+  // the column finds it still waiting (inner#1490). `startNew` settles every
+  // outcome itself (it never rejects).
+  const creating = useStartingNew(projectId);
+  const startNew = React.useCallback(
+    (): Promise<void> => conversationRuntime.startNew(projectId),
+    [projectId],
+  );
 
   const renameCurrent = React.useCallback(
     (next: string): Promise<void> | undefined =>

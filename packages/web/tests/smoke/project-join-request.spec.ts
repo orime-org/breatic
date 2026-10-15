@@ -15,21 +15,11 @@
  *
  *   pnpm --filter @breatic/web test:smoke -- project-join-request
  */
-import { expect, type APIRequestContext, type Browser, type BrowserContext, type Page } from 'playwright/test';
+import { expect, type Browser, type BrowserContext, type Page } from 'playwright/test';
 import { test, stateFile } from '../helpers/slot';
 
 import { credentialsFor } from '../helpers/credentials';
-
-/**
- * Read a `{ data }` envelope, failing with the server's words when the call did.
- * @param res - The response.
- * @param label - What the call was, for the failure message.
- * @returns The data.
- */
-async function dataOf<T>(res: Awaited<ReturnType<APIRequestContext['get']>>, label: string): Promise<T> {
-  expect(res.ok(), `${label}: ${res.status()} ${await res.text()}`).toBe(true);
-  return ((await res.json()) as { data: T }).data;
-}
+import { dataOf } from '../helpers/api';
 
 /** A team studio run by A with B in it, and projects A owns that B is not on. */
 interface Scene {
@@ -76,6 +66,7 @@ async function buildScene(browser: Browser, count: number): Promise<Scene> {
     const slug = `join-target-${stamp}-${n}`;
     const created = await dataOf<{ id: string; name: string }>(
       await a.request.post('/api/v1/projects', {
+        headers: { 'Idempotency-Key': crypto.randomUUID() },
         data: { studioId: studio.id, name: `Join target ${stamp} ${n}`, slug, spaceType: 'canvas' },
       }),
       `create project ${n}`,

@@ -512,24 +512,19 @@ describe('a new conversation that could not be created', () => {
   });
 
   it('lists both when two are asked for in a row', async () => {
-    // 两次按下就是两次创建,服务端也确实建了两条。「别落在第一条上」和
-    // 「别列出第一条」是两件事,提前返回把它们合成了一件。
+    // A press after the first one's answer is a new one (inner#1490 A10), and
+    // the server makes a second conversation; both are listed. A press while
+    // the first is still out makes nothing (conversation-management.test.ts).
     opens([{ id: 'c-1', title: 'one' }]);
     await conversationRuntime.ensureLoaded(P);
 
-    const made: Array<() => void> = [];
-    vi.mocked(chatApi.createConversation).mockImplementation(
-      (_p) =>
-        new Promise((resolve) => {
-          const n = made.length + 1;
-          made.push(() => resolve({ id: `c-new-${n}`, title: null } as never));
-        }),
-    );
-    const first = conversationRuntime.startNew(P);
-    const second = conversationRuntime.startNew(P);
-    made[0]?.();
-    made[1]?.();
-    await Promise.all([first, second]);
+    let n = 0;
+    vi.mocked(chatApi.createConversation).mockImplementation(() => {
+      n += 1;
+      return Promise.resolve({ id: `c-new-${n}`, title: null } as never);
+    });
+    await conversationRuntime.startNew(P);
+    await conversationRuntime.startNew(P);
 
     const ids = (useConversationRuntime.getState().listByProject[P] ?? []).map((c) => c.id);
     expect(ids).toContain('c-new-1');

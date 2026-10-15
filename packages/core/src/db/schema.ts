@@ -1281,6 +1281,12 @@ export const creditLots = pgTable(
     // `refunded`. CHECK in 0061.
     lifecycle: varchar("lifecycle", { length: 16 }).notNull(),
     refundAttempts: integer("refund_attempts").default(0).notNull(),
+    /**
+     * When the buyer asked for the refund (0094). Written only by the
+     * request (`markRefundPending`); `updated_at` moves on every change and
+     * cannot answer that question.
+     */
+    refundRequestedAt: timestamp("refund_requested_at", { withTimezone: true }),
     ...timestamps,
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
   },
@@ -1364,8 +1370,9 @@ export const creditLedger = pgTable(
     projectId: uuid("project_id").references(() => projects.id, {
       onDelete: "restrict",
     }),
-    // One of `topup` / `spend` / `refund` / `refund_rejected` (0061) or
-    // `debt_incurred` / `debt_repayment` (0063). CHECK in 0063.
+    // One of `topup` / `spend` / `refund` / `refund_rejected` (0061),
+    // `debt_incurred` / `debt_repayment` (0063) or `refund_reversed` (0094).
+    // CHECK in 0094.
     entryType: varchar("entry_type", { length: 24 }).notNull(),
     // Positive in, negative out.
     amount: numeric("amount", { precision: 20, scale: 6 }).notNull(),
@@ -1403,6 +1410,188 @@ export const creditLedger = pgTable(
       .where(sql`${table.studioId} IS NOT NULL`),
   ],
 );
+
+// ── 8d. Credit-pack refund disposition (0094, inner#1410) ────────────
+
+/**
+ * One disposition of a credit pack's refund request: an approval, a
+ * rejection, or one of the operator's ways of finishing an approval that did
+ * not complete on its own.
+ *
+ * `status` is the disposition's own state machine (inner#1410 §6.2);
+ * `result` is set exactly when it is `succeeded`. The CHECKs and the partial
+ * unique index `credit_refund_operations_one_in_flight` — at most one
+ * `started` or `awaiting_stripe` row per lot — live in 0094. The id also
+ * derives the Stripe idempotency key `credit-refund-<id>` and the refund's
+ * `metadata.refund_operation_id`.
+ */
+export const creditRefundOperations = pgTable(
+  "credit_refund_operations",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    lotId: uuid("lot_id")
+      .notNull()
+      .references(() => creditLots.id, { onDelete: "restrict" }),
+    paymentId: uuid("payment_id")
+      .notNull()
+      .references(() => payments.id, { onDelete: "restrict" }),
+    kind: varchar("kind", { length: 20 }).notNull(),
+    status: varchar("status", { length: 20 }).notNull(),
+    result: varchar("result", { length: 20 }),
+    attentionReason: varchar("attention_reason", { length: 40 }),
+    attentionDetail: text("attention_detail"),
+    attentionClosedAt: timestamp("attention_closed_at", { withTimezone: true }),
+    attentionClosedBy: uuid("attention_closed_by").references(
+      (): AnyPgColumn => creditRefundOperations.id,
+      { onDelete: "restrict" },
+    ),
+    idempotencyKey: varchar("idempotency_key", { length: 255 }).notNull().unique(),
+    requestHash: varchar("request_hash", { length: 64 }).notNull(),
+    requestedBy: varchar("requested_by", { length: 64 }).notNull(),
+    reason: text("reason").notNull(),
+    notify: boolean("notify").notNull(),
+    // The ask this disposition answered, copied from the lot at insert: the
+    // buyer may ask again after a rejection, which rewrites the lot's column.
+    refundRequestedAt: timestamp("refund_requested_at", { withTimezone: true }),
+    confirmedRefundIds: text("confirmed_refund_ids").array().default(sql`'{}'`).notNull(),
+    confirmedSucceededCents: bigint("confirmed_succeeded_cents", { mode: "number" }),
+    // resolve_outside and restore_credits: the failed refunds the operator
+    // answered for, as the confirmation page showed them.
+    failedRefundIds: text("failed_refund_ids").array().default(sql`'{}'`).notNull(),
+    settledSucceededCents: bigint("settled_succeeded_cents", { mode: "number" }),
+    stripeRefundId: varchar("stripe_refund_id", { length: 255 }),
+    firstCalledAt: timestamp("first_called_at", { withTimezone: true }),
+    attemptCount: integer("attempt_count").default(0).notNull(),
+    nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true }),
+    lastError: text("last_error"),
+    leaseToken: uuid("lease_token"),
+    lockedUntil: timestamp("locked_until", { withTimezone: true }),
+    ...timestamps,
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
+  },
+  (table) => [
+    uniqueIndex("credit_refund_operations_one_in_flight")
+      .on(table.lotId)
+      .where(sql`${table.status} IN ('started', 'awaiting_stripe')`),
+    index("credit_refund_operations_lot_idx").on(table.lotId, table.createdAt),
+    index("credit_refund_operations_due_idx")
+      .on(table.status, table.nextAttemptAt)
+      .where(sql`${table.status} IN ('started', 'awaiting_stripe')`),
+  ],
+);
+
+/**
+ * Every step of every disposition, appended in the same transaction as the
+ * step itself. `from_status` is NULL for the step that created the row.
+ */
+export const creditRefundOperationEvents = pgTable(
+  "credit_refund_operation_events",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    operationId: uuid("operation_id")
+      .notNull()
+      .references(() => creditRefundOperations.id, { onDelete: "restrict" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    event: varchar("event", { length: 40 }).notNull(),
+    fromStatus: varchar("from_status", { length: 20 }),
+    toStatus: varchar("to_status", { length: 20 }).notNull(),
+    detail: jsonb("detail").$type<Record<string, unknown>>().default({}).notNull(),
+  },
+  (table) => [
+    index("credit_refund_operation_events_operation_idx").on(
+      table.operationId,
+      table.createdAt,
+    ),
+  ],
+);
+
+/**
+ * What Stripe says about one refund of a credit pack's payment.
+ *
+ * A copy, written by every read of Stripe (`applyRefundSnapshot`). Stripe's
+ * refund object keeps no memory of having succeeded, so `ever_succeeded`
+ * does, and only ever turns from false to true. `operation_id` is NULL for a
+ * refund made outside the product; `resolved_by_operation_id` is the
+ * disposition that answered for a refund which failed after the lot was
+ * booked as refunded.
+ */
+export const creditRefunds = pgTable(
+  "credit_refunds",
+  {
+    stripeRefundId: varchar("stripe_refund_id", { length: 255 }).primaryKey(),
+    paymentId: uuid("payment_id")
+      .notNull()
+      .references(() => payments.id, { onDelete: "restrict" }),
+    lotId: uuid("lot_id")
+      .notNull()
+      .references(() => creditLots.id, { onDelete: "restrict" }),
+    operationId: uuid("operation_id").references(() => creditRefundOperations.id, {
+      onDelete: "restrict",
+    }),
+    amountCents: bigint("amount_cents", { mode: "number" }).notNull(),
+    currency: varchar("currency", { length: 3 }).notNull(),
+    status: varchar("status", { length: 20 }).notNull(),
+    failureReason: varchar("failure_reason", { length: 64 }),
+    // Stripe's reason while the refund is pending; NULL in every other status.
+    pendingReason: varchar("pending_reason", { length: 20 }),
+    everSucceeded: boolean("ever_succeeded").default(false).notNull(),
+    resolvedByOperationId: uuid("resolved_by_operation_id").references(
+      () => creditRefundOperations.id,
+      { onDelete: "restrict" },
+    ),
+    ...timestamps,
+  },
+  (table) => [
+    index("credit_refunds_payment_idx").on(table.paymentId),
+    index("credit_refunds_lot_idx").on(table.lotId),
+  ],
+);
+
+/**
+ * One email to a buyer about a disposition. `auto` rows are written when the
+ * disposition finishes, at most one per disposition (the partial unique
+ * index `refund_mail_outbox_one_auto` in 0094); `resend` rows are written by
+ * the operator's resend and carry who asked and why.
+ */
+export const refundMailOutbox = pgTable(
+  "refund_mail_outbox",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    operationId: uuid("operation_id")
+      .notNull()
+      .references(() => creditRefundOperations.id, { onDelete: "restrict" }),
+    kind: varchar("kind", { length: 20 }).notNull(),
+    origin: varchar("origin", { length: 10 }).notNull(),
+    requestedBy: varchar("requested_by", { length: 64 }),
+    reason: text("reason"),
+    idempotencyKey: varchar("idempotency_key", { length: 255 }).unique(),
+    requestHash: varchar("request_hash", { length: 64 }),
+    status: varchar("status", { length: 20 }).default("pending").notNull(),
+    lastError: text("last_error"),
+    sentAt: timestamp("sent_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("refund_mail_outbox_one_auto")
+      .on(table.operationId)
+      .where(sql`${table.origin} = 'auto'`),
+    index("refund_mail_outbox_status_idx")
+      .on(table.status, table.createdAt)
+      .where(sql`${table.status} IN ('pending', 'sending')`),
+  ],
+);
+
+/** The daily reconcile's progress: one row, keyed by `name` (`daily`). */
+export const creditRefundReconcileStatus = pgTable("credit_refund_reconcile_status", {
+  name: varchar("name", { length: 32 }).primaryKey(),
+  lastStartedAt: timestamp("last_started_at", { withTimezone: true }),
+  lastFinishedAt: timestamp("last_finished_at", { withTimezone: true }),
+  lastOkAt: timestamp("last_ok_at", { withTimezone: true }),
+  lastError: text("last_error"),
+  failingPaymentIds: uuid("failing_payment_ids").array().default(sql`'{}'`).notNull(),
+  nextRetryAt: timestamp("next_retry_at", { withTimezone: true }),
+  ...timestamps,
+});
 
 /**
  * One paid call the agent made (#296): a model call, a search, a media read,
@@ -1691,6 +1880,8 @@ export const notifications = pgTable(
      * - 'membership.upgrade_incomplete' - an upgrade's invoice went unpaid (0056)
      * - 'storage.quota_exceeded' - a write was refused because the admin's
      *   account is out of storage (0060)
+     * - 'credit.refund_completed' / 'credit.refund_rejected' / 'credit.refund_restored' -
+     *   a credit-pack refund's outcome for the buyer (0094)
      */
     type: varchar("type", { length: 64 }).notNull(),
     /**

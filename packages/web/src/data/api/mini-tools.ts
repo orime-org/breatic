@@ -3,7 +3,7 @@
 
 import type { MiniToolRequest } from '@breatic/shared/mini-tools';
 
-import { apiPost } from '@web/data/api/request';
+import { apiPost, runOnceRequest } from '@web/data/api/request';
 
 /** What the server answers a run with: the task it opened. */
 export interface MiniToolRunAnswer {
@@ -16,10 +16,11 @@ export const miniToolsApi = {
    * Run a model or container mini-tool into nodes that already exist
    * (inner#888 §6.1).
    * @param body - The run, as the shared request schema reads it.
+   * @param key - The press's `Idempotency-Key`; a re-send with it runs nothing new.
    * @returns The task the server opened.
    * @throws {import('@web/data/api/types').ApiException} When no task was opened.
    */
-  run(body: MiniToolRequest): Promise<MiniToolRunAnswer> {
-    return apiPost<MiniToolRunAnswer>('/mini-tools', body);
+  run(body: MiniToolRequest, key: string): Promise<MiniToolRunAnswer> {
+    return apiPost<MiniToolRunAnswer>('/mini-tools', body, runOnceRequest(key));
   },
 };

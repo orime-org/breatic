@@ -4,8 +4,6 @@
 import { useQuery } from '@tanstack/react-query';
 import * as React from 'react';
 
-import { canvasApi } from '@web/data/api/canvas';
-import { ApiException } from '@web/data/api/types';
 import {
   getPromptFragment,
   isNodeLocked,
@@ -50,7 +48,6 @@ import {
   focusToRailItem,
   type ReferenceRailItem,
 } from '@web/spaces/canvas/generate/derive-references';
-import { executeErrorMessage } from '@web/spaces/canvas/generate/execute-error-message';
 import { removeReferenceRow } from '@web/spaces/canvas/generate/remove-reference-row';
 import {
   resolveModelSwitch,
@@ -101,6 +98,11 @@ import { warnNodeGate } from '@web/spaces/canvas/node-gate-toast';
 import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
 import { useContentStable } from '@web/spaces/canvas/generate/use-content-stable';
 import { useGenerateSubmitState } from '@web/spaces/canvas/generate/use-generate-submit-state';
+import {
+  isGenerating,
+  submitGeneration,
+  useGenerating,
+} from '@web/spaces/canvas/generate/submit-generation';
 import { PromptNotUsedNotice } from '@web/spaces/canvas/generate/PromptNotUsedNotice';
 import { useApplyTemplate } from '@web/spaces/canvas/generate/use-apply-template';
 
@@ -200,10 +202,10 @@ function VideoGeneratePanelBody({
     promptTextRef,
     onPromptChange,
     promptEditorRef,
-    isSubmitting,
-    setIsSubmitting,
-    submittingRef,
   } = useGenerateSubmitState();
+  // The press lives in the run-once registry, so a reopened panel still
+  // shows it waiting (inner#1490).
+  const isSubmitting = useGenerating(spaceId, nodeId);
 
   // The ids the prompt `@`-mentions right now. Kept in a ref rather than in
   // state because the only reader is the click handler: re-rendering the panel
@@ -647,10 +649,10 @@ function VideoGeneratePanelBody({
     [projectId, spaceId, nodeId],
   );
 
-  const onExecute = React.useCallback(async () => {
+  const onExecute = React.useCallback((): void => {
     // Every execute-critical value is read SYNCHRONOUSLY here, never from a
     // render closure that React batching and live collaboration make stale.
-    if (submittingRef.current) return;
+    if (isGenerating(spaceId, nodeId)) return;
     // A node a collaborator deleted since the panel opened is refused by the
     // execute gate below: it derives from a fresh graph read, so a vanished
     // node has no status and `evaluateExecute` answers `node-gone`. There is no
@@ -712,7 +714,7 @@ function VideoGeneratePanelBody({
     // different value here (the editor re-serializes so a text chip carries
     // its source node's CURRENT words).
     //
-    // `isSubmitting: false` because the synchronous latch above already
+    // `isSubmitting: false` because the synchronous registry read above already
     // answered that question, and it answers it earlier than a state flag can
     // (a rapid second click would slip past a re-render). So `'submitting'`
     // never reaches the check below — it exists for the button.
@@ -763,45 +765,28 @@ function VideoGeneratePanelBody({
       }
       return;
     }
-    submittingRef.current = true;
-    // Which opening of the panel this submit came from: the answer may land
-    // after the reader closed or replaced this panel, and then it closes
-    // nothing they opened since.
-    const session = sessionStore.getState().panelSession;
-    setIsSubmitting(true);
-    try {
-      // Inside the try: if the payload build or the lease read throws, the
-      // catch resets the latch — otherwise the panel sticks disabled forever.
-      const payload = buildVideoTaskPayload({
-        nodeId,
-        projectId,
-        spaceId,
-        model: fresh.model,
-        params: fresh.params,
-        generation: { mode: fresh.mode, declared: fresh.modelEntry?.params ?? {} },
-        promptText: run.sendsPrompt || run.writtenPrompt !== undefined ? freshPrompt : undefined,
-        storyboardParams: run.params,
-        // The payload's source fields are built FROM the drawn slots, so a
-        // pick left behind by a mode or model switch has no way in.
-        slots: fresh.slots,
-        slotUrls: fresh.slotUrls,
-        poolParams: poolParams(fresh.pool, fresh.referenceUrls),
-      });
-      await canvasApi.createTask(payload);
-      sessionStore.getState().closePanelOfSession(session);
-    } catch (err) {
-      // Unconditional (silent-fail mandate): a submit that failed after the
-      // user closed the panel still explains itself.
-      toast.error(
-        executeErrorMessage(
-          err instanceof ApiException ? err.status : undefined,
-          t,
-        ),
-      );
-      submittingRef.current = false;
-      setIsSubmitting(false);
-    }
-  }, [sessionStore,
+    submitGeneration({
+      spaceId,
+      nodeId,
+      panelKind: 'generateVideo',
+      buildPayload: () =>
+        buildVideoTaskPayload({
+          nodeId,
+          projectId,
+          spaceId,
+          model: fresh.model,
+          params: fresh.params,
+          generation: { mode: fresh.mode, declared: fresh.modelEntry?.params ?? {} },
+          promptText: run.sendsPrompt || run.writtenPrompt !== undefined ? freshPrompt : undefined,
+          storyboardParams: run.params,
+          // The payload's source fields are built FROM the drawn slots, so a
+          // pick left behind by a mode or model switch has no way in.
+          slots: fresh.slots,
+          slotUrls: fresh.slotUrls,
+          poolParams: poolParams(fresh.pool, fresh.referenceUrls),
+        }),
+    });
+  }, [
     nodeId,
     projectId,
     spaceId,
@@ -811,8 +796,6 @@ function VideoGeneratePanelBody({
     // where the linter cannot see that for itself.
     promptEditorRef,
     promptTextRef,
-    setIsSubmitting,
-    submittingRef,
   ]);
 
   // EVERY localized string below is depended on BY VALUE, not via `t`: `t` is a
