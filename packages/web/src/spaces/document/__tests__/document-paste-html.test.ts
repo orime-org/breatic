@@ -53,4 +53,25 @@ describe('srcset candidates', () => {
       { url: 'https://e/c.png', density: 2 },
     ]);
   });
+
+  it.each([
+    ['a zero width', 'https://e/a.png 0w'],
+    ['a height without a width', 'https://e/a.png 100h'],
+    ['a height beside a density', 'https://e/a.png 2x 100h'],
+    ['a density after a height', 'https://e/a.png 100h 2x'],
+    ['a negative density', 'https://e/a.png -1x'],
+    ['an upper-case descriptor', 'https://e/a.png 2X'],
+  ])('drops a candidate with %s', (_what, srcset) => {
+    expect(srcsetCandidates(`${srcset}, https://e/c.png 2x`)).toEqual([{ url: 'https://e/c.png', density: 2 }]);
+  });
+
+  it('keeps a width given with a height', () => {
+    expect(srcsetCandidates('https://e/a.png 100w 50h')).toEqual([{ url: 'https://e/a.png', width: 100 }]);
+  });
+
+  it('reads a descriptor of many digits in time linear in its length', () => {
+    const started = performance.now();
+    srcsetCandidates(`https://e/a.png ${'1'.repeat(200_000)}!x`);
+    expect(performance.now() - started).toBeLessThan(1000);
+  });
 });
