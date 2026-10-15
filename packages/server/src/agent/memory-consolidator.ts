@@ -16,8 +16,8 @@
  * failed calls, an answer that is not the JSON it asked for, a write that
  * cannot land. The watermark moves, nothing is written, the error is logged
  * and the reply goes out. Holding the window instead would send the same
- * input on the next turn and every turn after it, since the call is
- * `temperature: 0` and the history only grows.
+ * input on the next turn and every turn after it, since the history only
+ * grows and the call asks for `temperature: 0` wherever the model takes it.
  *
  * The one ending that keeps the window is the reader leaving: they come back
  * to a conversation that folds it again, and the charge is already keyed so
@@ -337,11 +337,11 @@ export async function consolidateWindow(
       model,
       messages: [{ role: "user" as const, content: prompt }],
       stopWhen: stepCountIs(1),
-      temperature: 0,
       // Folding a transcript into a summary has no reasoning step in it, and
-      // the model this runs on turns thinking on by id unless told otherwise
-      // -- which would also drop the `temperature: 0` above.
-      ...callOptionsFor(config.consolidation_model, { thinking: false, cache: false }),
+      // asks for a fixed temperature of 0. Which of the two each model takes,
+      // and how, is settled in the routing table: Claude, for one, accepts
+      // neither and is sent neither.
+      ...callOptionsFor(config.consolidation_model, { thinking: false, cache: false, temperature: 0 }),
       // Conversation memory is rewritten whole by this call, so an answer
       // with no ceiling is a segment with no ceiling in every later prompt.
       maxOutputTokens: config.max_output_tokens,

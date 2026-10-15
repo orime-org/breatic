@@ -248,26 +248,21 @@ describe("a consolidation that works", () => {
     expect(call.maxOutputTokens).toBe(OUTPUT_CEILING);
   });
 
-  it("tells the provider outright that this call wants no reasoning", async () => {
-    // Folding a transcript into a summary has no reasoning step in it, and
-    // saying nothing is not the same as saying no: DeepSeek turns thinking
-    // on by model id unless told otherwise, and this call runs on a DeepSeek
-    // model. Leaving the field off spends reasoning tokens on every fold and
-    // drops the `temperature: 0` this function's own docstring depends on.
+  it("asks the consolidation model for no reasoning the way that model takes it", async () => {
+    // Folding a transcript into a summary has no reasoning step in it. The
+    // consolidation model is Claude Opus 5.5, reached through OpenRouter in
+    // this suite, and Opus 5.5 rejects a request that turns thinking off: the
+    // one spelling every Claude model accepts is no reasoning field at all.
     await consolidate();
 
     const call = generateTextRetry.mock.calls[0]?.[0] as {
       providerOptions?: Record<string, Record<string, unknown>>;
+      temperature?: number;
     };
-    // The whole object, because the direction is the point. Asserting that
-    // one provider is addressed and its object is non-empty is true of the
-    // on spelling as well, so it holds the call to no direction at all.
-    //
-    // `openrouter` because this suite's `getAgentConfig` double names no
-    // consolidation model, so the route falls back the way any unnamed one does.
-    expect(call.providerOptions).toEqual({
-      openrouter: { reasoning: { effort: "none" } },
-    });
+    expect(call.providerOptions).toEqual({ openrouter: {} });
+    // Opus 5.5 returns a 400 for any non-default temperature, so the fixed 0
+    // the fold asks for is not sent to it.
+    expect(call.temperature).toBeUndefined();
   });
 
   it("tells the model the ceiling its answer is read through", async () => {

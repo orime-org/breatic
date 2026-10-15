@@ -40,7 +40,7 @@ import type { CoreConfig } from "@breatic/core";
  * export this type by name, and a hand-written copy of it would be a second
  * answer that goes stale.
  */
-type CallOptions = Pick<Parameters<typeof streamText>[0], "providerOptions">;
+type CallOptions = Pick<Parameters<typeof streamText>[0], "providerOptions" | "temperature">;
 
 /** What one provider's slot in that object holds. */
 type ProviderOptionsFor = NonNullable<CallOptions["providerOptions"]>[string];
@@ -67,6 +67,8 @@ export interface CallWants {
   thinking: boolean;
   /** Whether, and for how long, to cache the prompt prefix. */
   cache: PromptCache;
+  /** A fixed sampling temperature, sent only where the model accepts one. */
+  temperature?: number;
 }
 
 /** One provider: how to reach it, and how it is spoken to. */
@@ -291,7 +293,8 @@ export function resolveProvider(modelString: string | undefined): string {
  * every provider and those defaults are theirs to change -- except for
  * Claude, where leaving it off is the one spelling every version accepts.
  * @param modelString - Model identifier, or undefined for the fallback.
- * @param wants - Whether the call wants reasoning, and how long to cache.
+ * @param wants - Whether the call wants reasoning, how long to cache, and
+ *   the temperature it would like where the model takes one.
  * @returns Provider options to spread into the model call.
  * @throws {never} Never.
  */
@@ -303,5 +306,9 @@ export function callOptionsFor(modelString: string | undefined, wants: CallWants
       ? {}
       : route.reasoning.off;
   const cache = wants.cache === false || modelString === undefined ? {} : route.cache(modelString, wants.cache);
-  return { providerOptions: { [route.name]: { ...reasoning, ...cache } } };
+  // Current Claude models return a 400 for any non-default temperature, and
+  // older ones for any temperature while thinking is on (Anthropic thinking
+  // docs, "Sampling parameters").
+  const temperature = wants.temperature === undefined || isClaude(modelString) ? {} : { temperature: wants.temperature };
+  return { providerOptions: { [route.name]: { ...reasoning, ...cache } }, ...temperature };
 }
