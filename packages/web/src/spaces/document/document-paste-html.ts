@@ -49,7 +49,7 @@ interface PastedMedia {
 }
 
 /** Whether a piece of HTML carries an image, a video or an audio. */
-const HTML_MEDIA = new RegExp(`<(${HTML_MEDIA_ELEMENTS.join('|')})\\b`, 'i');
+export const HTML_MEDIA = new RegExp(`<(${HTML_MEDIA_ELEMENTS.join('|')})\\b`, 'i');
 
 /** The blocks of text a medium can stand in the middle of. */
 const TEXT_BLOCKS = 'p, h1, h2, h3, h4, h5, h6';
@@ -67,6 +67,15 @@ export interface ReadBlock extends BlockSpec {
  */
 export function mediaIn(blocks: readonly ReadBlock[]): ReadBlock[] {
   return blocks.flatMap((block) => [...(isMediaBlockType(block.type) ? [block] : []), ...mediaIn(block.children)]);
+}
+
+/**
+ * Whether blocks hold a table, nested ones too: words a table cell cannot take.
+ * @param blocks - The blocks.
+ * @returns True when one of them is a table.
+ */
+export function holdsTable(blocks: readonly ReadBlock[]): boolean {
+  return blocks.some((block) => block.type === 'table' || holdsTable(block.children));
 }
 
 /** One image candidate of a `srcset`. */
@@ -226,7 +235,7 @@ function holdsNothing(block: Element): boolean {
  *   the part before it.
  */
 function trimBreaks(part: Element | DocumentFragment, end: 'start' | 'end'): void {
-  const walker = (part.ownerDocument ?? document).createTreeWalker(part, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT);
+  const walker = part.ownerDocument.createTreeWalker(part, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT);
   const nodes: Node[] = [];
   for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) nodes.push(node);
   if (end === 'end') nodes.reverse();
@@ -243,11 +252,64 @@ function trimBreaks(part: Element | DocumentFragment, end: 'start' | 'end'): voi
 }
 
 /**
+ * Takes the copy of a medium's ancestors a part was left with off it when
+ * that copy holds nothing: `Range.extractContents` copies every ancestor it
+ * cuts through into the part, and an empty heading or list item copied that
+ * way would be read as a line of its own. Only the outermost empty copy goes.
+ * @param part - The part.
+ * @param depth - How many ancestors the medium had inside the container.
+ * @param end - Which end of the part the copies run along.
+ */
+function dropEmptyCopy(part: DocumentFragment, depth: number, end: 'start' | 'end'): void {
+  /**
+   * The next copy in from a node, along the end the copies run along.
+   * @param node - The node.
+   * @returns The child element at that end.
+   */
+  const next = (node: ParentNode): Element | null => (end === 'end' ? node.lastElementChild : node.firstElementChild);
+  let copy = next(part);
+  for (let level = 0; copy !== null && level < depth; level += 1) {
+    if (holdsNothing(copy)) {
+      copy.remove();
+      return;
+    }
+    copy = next(copy);
+  }
+}
+
+/**
+ * What a container holds before and after a medium in it, taken out of it,
+ * the line breaks and white space that set the medium apart gone from both
+ * and no empty copy of the medium's ancestors left in either.
+ * @param container - The container.
+ * @param medium - The medium.
+ * @returns The part before it and the part after it.
+ */
+function cutAround(container: Element, medium: Element): [DocumentFragment, DocumentFragment] {
+  let depth = 0;
+  for (let ancestor = medium.parentElement; ancestor !== null && ancestor !== container; ancestor = ancestor.parentElement) depth += 1;
+  const range = container.ownerDocument.createRange();
+  range.setStart(container, 0);
+  range.setEndBefore(medium);
+  const before = range.extractContents();
+  range.setStartAfter(medium);
+  range.setEnd(container, container.childNodes.length);
+  const after = range.extractContents();
+  trimBreaks(before, 'end');
+  trimBreaks(after, 'start');
+  dropEmptyCopy(before, depth, 'end');
+  dropEmptyCopy(after, depth, 'start');
+  return [before, after];
+}
+
+/**
  * Leaves every figure holding only what BlockNote reads out of one, a medium
  * and the first caption in it (`parseFigureElement`), and puts the rest of it
  * beside it in its order, so nothing else in a figure is lost. A figure
- * holding more than one medium is taken apart, its media read each on its own
- * and its caption as words.
+ * holding more than one medium, or around a figure of the medium's own, is
+ * taken apart: its media are read each on its own, its caption as words. A
+ * figure around a table whose cell holds the medium is left to
+ * `liftCellMedia`, which puts the medium after that figure.
  * @param root - The HTML's body.
  * @returns Whether any figure changed.
  */
@@ -255,24 +317,18 @@ function readableFigures(root: Element): boolean {
   let changed = false;
   for (const figure of Array.from(root.querySelectorAll('figure'))) {
     const media = figure.querySelectorAll(HTML_MEDIA_SELECTOR);
-    if (media.length > 1) {
+    const medium = media[0];
+    if (medium === undefined) continue;
+    if (media.length > 1 || medium.closest('figure') !== figure) {
       figure.replaceWith(...Array.from(figure.childNodes));
       changed = true;
       continue;
     }
-    const medium = media[0];
-    if (medium === undefined) continue;
-    const range = figure.ownerDocument.createRange();
-    range.setStart(figure, 0);
-    range.setEndBefore(medium);
-    const before = range.extractContents();
-    range.setStartAfter(medium);
-    range.setEnd(figure, figure.childNodes.length);
-    const after = range.extractContents();
+    const cell = medium.closest('td, th');
+    if (cell !== null && figure.contains(cell)) continue;
+    const [before, after] = cutAround(figure, medium);
     const caption = before.querySelector('figcaption') ?? after.querySelector('figcaption');
     if (caption !== null) figure.append(caption);
-    trimBreaks(before, 'end');
-    trimBreaks(after, 'start');
     figure.before(before);
     figure.after(after);
     changed = true;
@@ -304,10 +360,7 @@ function takeOutUnlanded(root: Element, lands: (url: string) => boolean): boolea
 
 /**
  * Splits every line of text a medium stands in at the medium, so the medium
- * is read between the two halves. The medium stands on a line of its own
- * now, so the line breaks and the white space that set it apart go: the half
- * before it loses those it ends on, the half after it those it starts with; a
- * half with no words goes.
+ * is read between the two halves of the line; a half with no words goes.
  * @param root - The HTML's body.
  * @returns Whether any line was split.
  */
@@ -316,17 +369,12 @@ function splitTextAroundMedia(root: Element): boolean {
   for (const element of Array.from(root.querySelectorAll(HTML_MEDIA_SELECTOR))) {
     const block = element.parentElement?.closest(TEXT_BLOCKS);
     if (block === null || block === undefined) continue;
-    const picture = element.closest('picture');
-    const carried = picture !== null && block.contains(picture) ? picture : element;
-    const before = block.ownerDocument.createRange();
-    before.setStart(block, 0);
-    before.setEndBefore(carried);
+    const [before, after] = cutAround(block, element);
     const head = block.cloneNode(false) as Element;
-    head.append(before.extractContents());
-    block.before(head, carried);
-    trimBreaks(head, 'end');
-    trimBreaks(block, 'start');
-    for (const part of [head, block]) if (holdsNothing(part)) part.remove();
+    head.append(before);
+    const tail = block.cloneNode(false) as Element;
+    tail.append(after);
+    block.replaceWith(...[head, element, tail].filter((part) => part === element || !holdsNothing(part)));
     changed = true;
   }
   return changed;
@@ -350,18 +398,21 @@ function readPictureAddresses(root: Element): boolean {
   return changed;
 }
 
-/** Pasted HTML ready to read, with how many media it carries. */
+/**
+ * Pasted HTML ready to read, with how many media it carried before those
+ * that do not land were taken out.
+ */
 export interface PreparedHTML {
   readonly html: string;
   readonly media: number;
 }
 
 /**
- * Steps that put a pasted medium where BlockNote reads it, each in its own
- * place: tables evened, a medium in a table cell under the table, figures
- * holding only what BlockNote reads out of one.
+ * Steps that shape pasted HTML the way BlockNote reads it into blocks: tables
+ * evened, figures holding only what BlockNote reads out of one, a medium in a
+ * table cell put under the table.
  */
-const PLACE_MEDIA = [evenTables, liftCellMedia, readableFigures];
+const SHAPE_FOR_BLOCKNOTE = [evenTables, readableFigures, liftCellMedia];
 
 /**
  * Pasted HTML ready to read: its media where a block stands, each picture
@@ -375,7 +426,7 @@ const PLACE_MEDIA = [evenTables, liftCellMedia, readableFigures];
 export function preparePastedHTML(html: string, lands: (url: string) => boolean): PreparedHTML {
   if (!/<table\b/i.test(html) && !HTML_MEDIA.test(html)) return { html, media: 0 };
   const body = new DOMParser().parseFromString(html, 'text/html').body;
-  const placed = [...PLACE_MEDIA, readPictureAddresses].map((step) => step(body));
+  const placed = [...SHAPE_FOR_BLOCKNOTE, readPictureAddresses].map((step) => step(body));
   const media = body.querySelectorAll(HTML_MEDIA_SELECTOR).length;
   const changed = [...placed, takeOutUnlanded(body, lands), splitTextAroundMedia(body)].some(Boolean);
   return { html: changed ? body.innerHTML : html, media };
@@ -396,7 +447,7 @@ const OWN_MEDIA = MEDIA_BLOCK_TYPES.map((type) => `[data-content-type="${type}"]
  */
 export function withoutMedia(html: string): string {
   const body = new DOMParser().parseFromString(html, 'text/html').body;
-  PLACE_MEDIA.forEach((step) => step(body));
+  SHAPE_FOR_BLOCKNOTE.forEach((step) => step(body));
   for (const content of Array.from(body.querySelectorAll(OWN_MEDIA))) {
     const row = content.closest('[data-node-type="blockOuter"]') ?? content;
     const nested = row.querySelector(':scope > [data-node-type="blockContainer"] > [data-node-type="blockGroup"]');

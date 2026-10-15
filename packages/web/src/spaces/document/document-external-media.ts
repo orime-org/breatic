@@ -38,12 +38,18 @@
  * read out and judged as above, and the rest goes on as it was without them.
  * The media land under that table in the dispatch that puts the rest in, or
  * by themselves once the event is done when no dispatch changed the document
- * (design §5.4, A7).
+ * (design §5.4, A7). A drop whose words a cell cannot take — they hold a
+ * table — lands whole under the table it was dropped on, in its order.
+ *
+ * Outside HTML a drop carries with media is read the way a paste of it is
+ * (`documentPasteHandler`): made ready, read into blocks by BlockNote and
+ * written out again, so its blocks nest the way BlockNote nests them.
  */
 
 import { createExtension, type ExtensionFactoryInstance } from '@blocknote/core';
 import { Fragment, Slice, type Node as PMNode } from '@tiptap/pm/model';
 import { Plugin, type EditorState, type Transaction } from '@tiptap/pm/state';
+import { dropPoint } from '@tiptap/pm/transform';
 import type { EditorView } from '@tiptap/pm/view';
 
 import { newId } from '@breatic/shared';
@@ -58,7 +64,9 @@ import {
 } from '@web/spaces/document/document-file-input';
 import { isMediaBlockType, pendingUploadId } from '@web/spaces/document/document-media-types';
 import {
+  HTML_MEDIA,
   PASTED_MEDIA_KEY,
+  holdsTable,
   mediaIn,
   preparePastedHTML,
   withoutMedia,
@@ -341,6 +349,9 @@ export function documentPastedMediaExtension(
     // The start of the line a block lands at the start of, to take the empty
     // half the split leaves off in the same dispatch.
     let edge: number | null = null;
+    // A drop of outside HTML read the way a paste of it is: where it was
+    // dropped, and the gap under the table when a cell cannot take its words.
+    let heldDrop: { at: number; under: number | null } | null = null;
 
     /**
      * Once the paste or the drop is done, starts the uploads whose blocks
@@ -437,6 +448,20 @@ export function documentPastedMediaExtension(
       prosemirrorPlugins: [
         new Plugin({
           props: {
+            // A drop read the way a paste is lands under the table when a cell
+            // cannot take its words, and under the line it was dropped on when
+            // ProseMirror finds no place for it there.
+            handleDrop: (view, _event, slice, moved) => {
+              const held = heldDrop;
+              heldDrop = null;
+              if (held === null || moved) return false;
+              const gap =
+                held.under ?? (dropPoint(view.state.doc, held.at, slice) === null ? pasteTarget(view.state, view.state.doc.resolve(held.at)).gap : null);
+              if (gap === null) return false;
+              view.focus();
+              view.dispatch(view.state.tr.replaceRange(gap, gap, slice).setMeta('uiEvent', 'drop').scrollIntoView());
+              return true;
+            },
             handleDOMEvents: {
               // Where an outside drop lands, for the HTML it carries.
               drop: (view, event) => {
@@ -453,17 +478,18 @@ export function documentPastedMediaExtension(
               const own = BLOCKNOTE_HTML.test(pasted);
               const { html, media } = own ? { html: pasted, media: 0 } : preparePastedHTML(pasted, lands);
               expected = own ? null : media;
-              const dropped = dropAt !== null;
+              const isDrop = dropAt !== null;
               const at = dropAt ?? view.state.selection.from;
               dropAt = null;
               landing = null;
+              heldDrop = null;
               into = at;
-              if (!inTableCell(view.state.doc.resolve(at))) return html;
-              // A cell takes no table: ProseMirror fits a drop holding one
-              // around the table it was aimed at, its media in it where they
-              // stand, as a paste of the same content lands.
-              if (dropped && /<table\b/i.test(html)) return html;
-              return readForCell(html, pasted, at, view);
+              const read = own || !HTML_MEDIA.test(html) ? null : (editor.tryParseHTMLToBlocks(html) as unknown as ReadBlock[]);
+              const inCell = inTableCell(view.state.doc.resolve(at));
+              if (inCell && (read === null || !holdsTable(read))) return readForCell(html, pasted, at, view);
+              if (read === null) return html;
+              if (isDrop) heldDrop = { at, under: inCell ? pasteTarget(view.state, view.state.doc.resolve(at)).gap : null };
+              return editor.blocksToFullHTML(read as never);
             },
             transformPasted: (slice, view) => {
               // A row moved or copied within the body is already ours.
