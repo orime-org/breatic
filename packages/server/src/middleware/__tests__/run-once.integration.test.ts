@@ -347,14 +347,29 @@ describe("runOnce", () => {
 
   it("writes done with the retention even when a renewal was in flight", async () => {
     const key = crypto.randomUUID();
+    const redis = getRedis();
+    const real = redis.eval.bind(redis);
+    // The first renewal is held before it reaches Redis, so it is still in
+    // flight when the handler finishes.
+    const renewal = gate();
+    let renewals = 0;
+    vi.spyOn(redis, "eval").mockImplementation(((...args: Parameters<typeof redis.eval>) => {
+      if (String(args[0]).includes("pexpire")) {
+        renewals += 1;
+        if (renewals === 1) return renewal.promise.then(() => real(...args));
+      }
+      return real(...args);
+    }));
     const error = vi.spyOn(logger, "error");
     hold = gate();
     const first = post(app, { key });
-    // Open the gate right at a renewal tick (every 100 ms with a 300 ms lease).
-    await sleep(100);
+    while (renewals === 0) await sleep(10);
     hold.open();
-    await first;
-    await sleep(150);
+    await sleep(50);
+    renewal.open();
+    expect((await first).status).toBe(201);
+    // Let the held renewal reach Redis before reading what it left behind.
+    await sleep(100);
     const ttl = await getRedis().ttl(recordKey(key));
     expect(ttl).toBeGreaterThan(IDEMPOTENCY_RETENTION_SECONDS.generate - 5);
     expect(error).not.toHaveBeenCalled();
