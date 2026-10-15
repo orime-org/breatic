@@ -182,6 +182,15 @@ describe('NodeExpandLayer', () => {
     expect(store().miniTool?.expand?.frame).toEqual({ x: 0, y: 0, width: 1.5, height: 1 });
   });
 
+  // The handle stops at the long side the model's catalog entry gives (A5).
+  it('stops a handle at the long side the model’s catalog entry gives', () => {
+    const capped = { ...CATALOG, image: [{ ...CATALOG.image[0]!, max_output_side: 2000 }] } as ModelCatalog;
+    client.setQueryData(modelCatalogQuery().queryKey, capped);
+    mount();
+    drag(screen.getByTestId('mini-tool-expand-handle-e'), [500, 200], [900, 200]);
+    expect(store().miniTool?.expand?.frame.width).toBeCloseTo(2000 / 1600, 9);
+  });
+
   it('moves the picture inside a grown frame and keeps the frame’s size', () => {
     mount();
     act(() => store().setExpand({ frame: { x: -0.5, y: 0, width: 2, height: 1 }, ratio: 'free' }));
