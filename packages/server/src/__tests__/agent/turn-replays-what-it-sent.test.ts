@@ -32,8 +32,11 @@ const modelSays = vi.hoisted(() => ({
   prompts: [] as unknown[],
   history: [] as Array<MessageData & { forModel: unknown }>,
   tools: {},
-  /** Leave the model's stream open until the turn is stopped. */
-  openUntilStopped: false,
+  /** From this call on, counted across the case, a call's stream stays open until the turn is stopped. */
+  openFrom: Number.POSITIVE_INFINITY,
+  /** Stopped as the call with this index, counted across the case, goes out. */
+  stopAtCall: Number.POSITIVE_INFINITY,
+  stopper: undefined as AbortController | undefined,
 }));
 
 vi.mock("@server/agent/turn-context.js", () => ({
@@ -67,8 +70,11 @@ vi.mock("@breatic/domain", async (importOriginal) => {
       modelProducing(
         // Called once the call's prompt is pushed, so the call is the last one.
         () => (modelSays.byCall[modelSays.prompts.length - 1] ?? modelSays.parts) as ModelStreamPart[],
-        (asked) => modelSays.prompts.push(asked.prompt),
-        modelSays.openUntilStopped,
+        (asked) => {
+          modelSays.prompts.push(asked.prompt);
+          if (modelSays.prompts.length - 1 === modelSays.stopAtCall) modelSays.stopper?.abort();
+        },
+        () => modelSays.prompts.length - 1 >= modelSays.openFrom,
       ),
   };
 });
@@ -156,7 +162,9 @@ beforeEach(() => {
   modelSays.history = [];
   modelSays.byCall = [];
   modelSays.tools = {};
-  modelSays.openUntilStopped = false;
+  modelSays.openFrom = Number.POSITIVE_INFINITY;
+  modelSays.stopAtCall = Number.POSITIVE_INFINITY;
+  modelSays.stopper = undefined;
 });
 
 describe("a turn replays the history as it was sent", () => {
@@ -364,6 +372,10 @@ interface Ending {
   toolStops?: boolean;
   /** Stop the turn when a chunk of this type comes out of it. */
   stopOnChunk?: string;
+  /** Stop the turn as the call with this index goes out, before it says anything. */
+  stopAtCall?: number;
+  /** The first call left open until the stop, when the turn is stopped; 0 when not given. */
+  openFrom?: number;
   /** What the earlier reply sends again, after the earlier turn's last request. */
   carries: string;
 }
@@ -421,6 +433,20 @@ const ENDINGS: Ending[] = [
     carries: "partly there",
   },
   {
+    name: "a provider error after the tool call, then a stop inside the next step",
+    calls: [[...ASKS_FOR_LOOKUP.slice(0, -1), { type: "error", error: new Error("overloaded") }, finishing("error", 1)], [{ type: "text-start", id: "t1" }, { type: "text-delta", id: "t1", delta: "half of next" }]],
+    stopOnChunk: "text-delta",
+    openFrom: 1,
+    carries: "half of next",
+  },
+  {
+    name: "a provider error after the tool call, then a stop as the next step goes out",
+    calls: [[...ASKS_FOR_LOOKUP.slice(0, -1), { type: "error", error: new Error("overloaded") }, finishing("error", 1)], []],
+    stopAtCall: 1,
+    openFrom: 1,
+    carries: "did not finish",
+  },
+  {
     name: "a provider error in the middle of thinking",
     calls: [
       [
@@ -466,14 +492,18 @@ describe("the turn after one that ended", () => {
     const stopper = new AbortController();
     modelSays.tools = lookupTool(ending.toolStops === true ? stopper : undefined);
     modelSays.byCall = ending.calls;
-    modelSays.openUntilStopped = ending.stopOnChunk !== undefined;
+    const stopped = ending.stopOnChunk !== undefined || ending.stopAtCall !== undefined;
+    modelSays.openFrom = stopped ? (ending.openFrom ?? 0) : Number.POSITIVE_INFINITY;
+    modelSays.stopAtCall = ending.stopAtCall ?? Number.POSITIVE_INFINITY;
+    modelSays.stopper = stopper;
 
     await runWithContext({ userId: "u1", conversationId: "c1", projectId: "p1" }, async () => {
       const turn = await new MainAgent().chat("first question", stopper.signal, [], "UTC");
       for await (const chunk of turn) if (chunk.type === ending.stopOnChunk) stopper.abort();
     });
     const lastOfFirst = modelSays.prompts.at(-1) as unknown[];
-    modelSays.openUntilStopped = false;
+    modelSays.openFrom = Number.POSITIVE_INFINITY;
+    modelSays.stopAtCall = Number.POSITIVE_INFINITY;
     modelSays.parts = saying("second reply");
     await runWithContext({ userId: "u1", conversationId: "c1", projectId: "p1" }, async () => {
       const turn = await new MainAgent().chat("second question", undefined, [], "UTC");
@@ -493,8 +523,8 @@ describe("the turn after one that ended", () => {
     // Each step goes back once.
     const replayedTexts = JSON.stringify(second.slice(lastOfFirst.length, -1));
     expect(replayedTexts.split(ending.carries).length - 1).toBe(1);
-    // Thinking goes back only from a step that finished.
-    if (ending.stopOnChunk !== undefined || ending.calls.some((call) => call.some((part) => part.type === "error"))) {
+    // Thinking goes back only from a step the SDK sent on.
+    if (stopped || ending.calls.at(-1)?.some((part) => part.type === "error") === true) {
       expect(JSON.stringify(second.slice(lastOfFirst.length, -1))).not.toContain('"reasoning"');
     }
   });
