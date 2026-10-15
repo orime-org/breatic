@@ -168,7 +168,7 @@ describe("a turn cut short by the client", () => {
           usage: { inputTokens: number; outputTokens: number };
           providerMetadata: undefined;
         }) => void;
-        onStepFinish?: (e: { content: unknown[] }) => void;
+        onStepFinish?: (e: { content: unknown[]; response: { messages: unknown[] } }) => void;
       }) => ({
         toUIMessageStream: () =>
           new ReadableStream({
