@@ -32,8 +32,15 @@ const sdk = vi.hoisted(() => ({
     localStorage.setItem('AMP_unsent_test', '[]');
     return { promise: Promise.resolve() };
   }),
+  // Records each property it is given, in order: [operation, name, value].
   Identify: class {
-    set(): this {
+    readonly calls: Array<[string, string, unknown]> = [];
+    set(name: string, value: unknown): this {
+      this.calls.push(['set', name, value]);
+      return this;
+    }
+    setOnce(name: string, value: unknown): this {
+      this.calls.push(['setOnce', name, value]);
       return this;
     }
   },
@@ -202,6 +209,32 @@ describe('analytics runtime', () => {
     expect(sdk.setUserId).not.toHaveBeenCalled();
     await choose(accepted);
     expect(sdk.setUserId).toHaveBeenCalledWith('user-1');
+  });
+
+  it('names the account with its first and latest source, medium, campaign and landing page', async () => {
+    const at = new Date().toISOString();
+    localStorage.setItem(
+      'breatic.attribution',
+      JSON.stringify({
+        first: { at, utm_source: 'google', utm_medium: 'cpc', utm_campaign: 'launch', landing_page: '/pricing', gclid: 'CLICK' },
+        last: { at, utm_source: 'newsletter', landing_page: '/' },
+      }),
+    );
+    const runtime = await startRuntime();
+    await choose(accepted);
+    runtime.identify({ id: 'user-1', membershipTier: 'free', language: 'en' });
+    await vi.waitFor(() => expect(sdk.identify).toHaveBeenCalled());
+    const sent = (sdk.identify.mock.calls.at(-1)?.[0] as { calls: Array<[string, string, unknown]> }).calls;
+    expect(sent).toEqual([
+      ['set', 'membership_tier', 'free'],
+      ['set', 'language', 'en'],
+      ['setOnce', 'initial_utm_source', 'google'],
+      ['setOnce', 'initial_utm_medium', 'cpc'],
+      ['setOnce', 'initial_utm_campaign', 'launch'],
+      ['setOnce', 'initial_landing_page', '/pricing'],
+      ['set', 'utm_source', 'newsletter'],
+      ['set', 'landing_page', '/'],
+    ]);
   });
 
   it('leaves the SDK alone on sign-out once analytics is withdrawn', async () => {

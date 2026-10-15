@@ -405,14 +405,29 @@ export function identify(next: AnalyticsUser): void {
   accountChanged(true);
 }
 
+/** The source fields kept on the account in Amplitude, under the names its own web attribution uses (design §4.5). */
+const SOURCE_PROPERTIES = ['utm_source', 'utm_medium', 'utm_campaign', 'landing_page'] as const;
+
 /**
  * Put the account on the SDK; runs again once the SDK loads after sign-in.
+ * Its first source is set once as `initial_*`, its latest overwrites the
+ * plain names.
  * @param sdk - The loaded SDK.
  * @param account - The signed-in account.
  */
 function nameUser(sdk: Amplitude, account: AnalyticsUser): void {
   sdk.setUserId(account.id);
-  sdk.identify(new sdk.Identify().set('membership_tier', account.membershipTier).set('language', account.language));
+  const identity = new sdk.Identify().set('membership_tier', account.membershipTier).set('language', account.language);
+  const attribution = readAttribution();
+  for (const field of SOURCE_PROPERTIES) {
+    const first = attribution?.first[field];
+    if (first !== undefined) identity.setOnce(`initial_${field}`, first);
+  }
+  for (const field of SOURCE_PROPERTIES) {
+    const last = attribution?.last[field];
+    if (last !== undefined) identity.set(field, last);
+  }
+  sdk.identify(identity);
 }
 
 /**
