@@ -2367,7 +2367,7 @@
         "browser": "Applies to this browser only. Sign in and choose here to record it with your account."
       },
       "confirm": {
-        "body": "Once on, we share sign-up and purchase events with our ad platform to measure our ads.",
+        "body": "Once on, we share sign-ups, first Projects, a collaborator's first action in your Project, purchases and subscriptions with our ad platform to measure our ads.",
         "yes": "Turn on ad sharing",
         "no": "Cancel"
       },
