@@ -61,7 +61,7 @@ export class MarkCanvasController {
   /** The canvas page's zoom, which the node is drawn at on screen. */
   private zoom: number;
 
-  private readonly session: () => CanvasSessionState;
+  private readonly read: () => CanvasSessionState;
 
   /** The opening of the panel this canvas draws for; a later one has its own draft. */
   private readonly opening: number;
@@ -98,7 +98,7 @@ export class MarkCanvasController {
   constructor(el: HTMLCanvasElement, box: DrawBox, session: () => CanvasSessionState, zoom: number) {
     this.box = box;
     this.zoom = zoom;
-    this.session = session;
+    this.read = session;
     this.opening = session().panelSession;
     this.canvas = new Canvas(el, {
       width: box.width,
@@ -115,10 +115,21 @@ export class MarkCanvasController {
       discardSelection: () => {
         this.canvas.discardActiveObject();
         this.canvas.requestRenderAll();
-        if (this.draft()?.selectedId != null) this.session().selectMark(null);
+        if (this.draft()?.selectedId != null) this.live()?.selectMark(null);
       },
     };
     this.wire();
+  }
+
+  /**
+   * The canvas session, while the panel is still on the opening this canvas
+   * was built for. Every read of the draft and every write goes through it, so
+   * a canvas outliving its opening touches no later one.
+   * @returns The session, or null once the panel was closed or opened again.
+   */
+  private live(): CanvasSessionState | null {
+    const session = this.read();
+    return session.panelSession === this.opening ? session : null;
   }
 
   /**
@@ -126,8 +137,7 @@ export class MarkCanvasController {
    * @returns It, or null when markup is not open or the panel was opened again since.
    */
   private draft(): MarkDraft | null {
-    const session = this.session();
-    return session.panelSession === this.opening ? (session.miniTool?.mark ?? null) : null;
+    return this.live()?.miniTool?.mark ?? null;
   }
 
   /**
@@ -136,7 +146,7 @@ export class MarkCanvasController {
    */
   private commit(objects: readonly MarkObject[]): void {
     this.lastWritten = JSON.stringify(objects);
-    this.session().commitMark(objects);
+    this.live()?.commitMark(objects);
   }
 
   /**
@@ -226,7 +236,7 @@ export class MarkCanvasController {
       }
       // A new text is on the canvas only; the rebuild takes it off.
       this.shown = '';
-      if (draft.editingText !== null) this.session().setMarkEditingText(null);
+      if (draft.editingText !== null) this.live()?.setMarkEditingText(null);
     }
   }
 
@@ -249,7 +259,7 @@ export class MarkCanvasController {
    * @param draft - The draft.
    */
   private applyTool(draft: MarkDraft): void {
-    const exporting = this.session().miniTool?.exporting ?? false;
+    const exporting = this.live()?.miniTool?.exporting ?? false;
     this.canvas.isDrawingMode = draft.tool === 'pen' && !exporting;
     this.canvas.skipTargetFind = draft.tool !== 'select' || exporting;
     const brush = this.canvas.freeDrawingBrush;
@@ -265,7 +275,7 @@ export class MarkCanvasController {
    */
   private restyleEdit(): void {
     const active = this.canvas.getActiveObject() as (IText & Partial<MarkFabricObject>) | undefined;
-    const style = this.session().markEditStyle();
+    const style = this.live()?.markEditStyle() ?? null;
     if (this.edit === null || style === null || !(active instanceof IText)) return;
     if (active.markColor === style.color && active.markSize === style.size) return;
     active.set({ fill: style.color, fontSize: markFontPx(style.size, this.box) });
@@ -289,14 +299,14 @@ export class MarkCanvasController {
     canvas.on('path:created', ({ path }) => this.onPath(path));
     canvas.on('text:editing:entered', ({ target }) => this.onEditEntered(target));
     canvas.on('text:changed', ({ target }) => {
-      if (this.edit !== null && !this.suppressed && idOf(target) === this.edit.id) this.session().setMarkEditingText(target.text);
+      if (this.edit !== null && !this.suppressed && idOf(target) === this.edit.id) this.live()?.setMarkEditingText(target.text);
     });
     canvas.on('text:editing:exited', ({ target }) => this.onEditExited(target));
     canvas.on('object:modified', ({ target }) => this.onModified(target));
     canvas.on('selection:created', ({ selected }) => this.onSelected(selected));
     canvas.on('selection:updated', ({ selected }) => this.onSelected(selected));
     canvas.on('selection:cleared', () => {
-      if (!this.suppressed && this.draft()?.selectedId != null) this.session().selectMark(null);
+      if (!this.suppressed && this.draft()?.selectedId != null) this.live()?.selectMark(null);
     });
     canvas.on('before:transform', ({ transform }) => {
       // A text scales from its corners and always evenly; its scale becomes
@@ -314,7 +324,8 @@ export class MarkCanvasController {
    * @returns True for the left button while nothing is exporting.
    */
   private usable(opt: PointerInfo): boolean {
-    return !this.suppressed && (opt.e.button ?? 0) === 0 && !(this.session().miniTool?.exporting ?? false);
+    const session = this.live();
+    return session !== null && !this.suppressed && (opt.e.button ?? 0) === 0 && !(session.miniTool?.exporting ?? false);
   }
 
   /**
@@ -401,9 +412,9 @@ export class MarkCanvasController {
     const object = this.shapeOf(draft, id, pending.start, end);
     if (object === null) return;
     this.commit([...draft.objects, object]);
-    const session = this.session();
-    session.setMarkTool('select');
-    session.selectMark(id);
+    const session = this.live();
+    session?.setMarkTool('select');
+    session?.selectMark(id);
     // The sync selects it, as the draft now says.
     this.sync();
   }
@@ -424,10 +435,10 @@ export class MarkCanvasController {
     this.canvas.add(text);
     this.canvas.setActiveObject(text);
     this.suppressed = false;
-    const session = this.session();
-    session.setMarkTool('select');
-    session.selectMark(id);
-    session.setMarkEditingText('');
+    const session = this.live();
+    session?.setMarkTool('select');
+    session?.selectMark(id);
+    session?.setMarkEditingText('');
     text.enterEditing();
     this.canvas.requestRenderAll();
   }
@@ -463,8 +474,8 @@ export class MarkCanvasController {
     if (this.edit === null) {
       this.edit = { id, isNew: false, textAtEntry: target.text };
       // The text being edited is the selected one, so the controls show its style.
-      this.session().selectMark(id);
-      this.session().setMarkEditingText(target.text);
+      this.live()?.selectMark(id);
+      this.live()?.setMarkEditingText(target.text);
     }
   }
 
@@ -482,7 +493,7 @@ export class MarkCanvasController {
     // exit already writes back; an unchanged one sends none.
     if (target.text !== edit.textAtEntry) this.justLeft = target;
     const draft = this.draft();
-    const session = this.session();
+    const session = this.live();
     if (draft !== null) {
       if (target.text.trim() === '') {
         if (edit.isNew) {
@@ -494,7 +505,7 @@ export class MarkCanvasController {
           // stays on the canvas until the next sync takes it off.
           this.commit(draft.objects.filter((object) => object.id !== edit.id));
         }
-        session.selectMark(null);
+        session?.selectMark(null);
       } else {
         const written = fromFabric(target, this.box);
         this.commit(
@@ -502,7 +513,7 @@ export class MarkCanvasController {
         );
       }
     }
-    session.setMarkEditingText(null);
+    session?.setMarkEditingText(null);
   }
 
   /**
@@ -531,7 +542,7 @@ export class MarkCanvasController {
    */
   private onSelected(selected: FabricObject[] | undefined): void {
     if (this.suppressed) return;
-    this.session().selectMark(idOf(selected?.[0]) ?? null);
+    this.live()?.selectMark(idOf(selected?.[0]) ?? null);
   }
 
   /**
@@ -540,11 +551,9 @@ export class MarkCanvasController {
    */
   dispose(): void {
     if (this.disposed) return;
-    // The panel opened again before this canvas went: the edit is that opening's to drop.
-    if (this.draft() === null) this.suppressed = true;
     if (this.edit !== null) this.exitEditing();
     this.pending = null;
-    if (this.draft()?.selectedId != null) this.session().selectMark(null);
+    if (this.draft()?.selectedId != null) this.live()?.selectMark(null);
     this.disposed = true;
     void this.canvas.dispose();
   }

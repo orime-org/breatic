@@ -461,6 +461,21 @@ describe('MarkCanvasController', () => {
     expect(mark()).toMatchObject({ objects: [], undo: [], editingText: null, selectedId: null });
   });
 
+  // Every write a canvas makes goes to the opening it was built for: what
+  // Fabric still sends it after the panel moved on reaches no other draft.
+  it('writes none of Fabric’s later events into another opening’s draft', () => {
+    store.getState().commitMark([RECT, TEXT]);
+    controller.sync();
+    const text = controller.canvas.getObjects().find((shape) => (shape as { markId?: string }).markId === 't') as IText;
+    store.getState().openMiniTool('n2', 'image.mark', { sourceContent: 'b.png', params: {} });
+    controller.canvas.fire('selection:created', { selected: [text] } as never);
+    controller.canvas.fire('text:editing:entered', { target: text } as never);
+    controller.canvas.fire('text:changed', { target: text } as never);
+    pointer('mouse:down', 10, 10);
+    pointer('mouse:up', 10, 10);
+    expect(mark()).toMatchObject({ objects: [], undo: [], editingText: null, selectedId: null });
+  });
+
   it('writes nothing back when the source changes during an edit', () => {
     store.getState().setMarkTool('text');
     controller.sync();
