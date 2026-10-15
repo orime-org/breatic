@@ -32,11 +32,6 @@ describe('NodePlaceholder', () => {
     expect(ph.textContent).not.toMatch(/or generate/i);
   });
 
-  it('renders custom hint when provided', () => {
-    render(<NodePlaceholder modality='audio' hint='Recording…' />);
-    expect(screen.getByText('Recording…')).toBeInTheDocument();
-  });
-
   it('DOUBLE-click calls onActivate; a single click does NOT (single click selects the node)', async () => {
     const user = userEvent.setup();
     const onActivate = vi.fn();

@@ -22,11 +22,6 @@ import type { Modality } from '@web/data/yjs/node-view';
 interface NodePlaceholderProps {
   modality: Modality;
   /**
-   * Optional override (e.g. "Generating cover…" while AI runs). Shown as a
-   * single line, replacing the default two-line hint.
-   */
-  hint?: string;
-  /**
    * Fires the call-to-action (upload a file / write): double-click, or Enter /
    * Space while the button has focus.
    */
@@ -64,9 +59,11 @@ function usePeerLine(): string | null {
  * lines: the modality's primary double-click action (upload / write), then a
  * shared, smaller hint pointing at the right-click menu (generate & more). Both
  * lines are i18n keys. A single click selects the node; a **double**-click, or
- * Enter / Space on the focused button, fires `onActivate`. An explicit `hint`
- * (e.g. an in-progress status) overrides both lines with one line. While
- * someone else fills the node, the first line says who and what instead.
+ * Enter / Space on the focused button, fires `onActivate`. What it shows
+ * goes in this order (inner#1303 §6.8): the viewer's own upload still awaited
+ * shows a skeleton; else someone else filling the node puts who and what on
+ * the first line; else the viewer's own failed upload shows why; else the two
+ * lines.
  *
  * The keyboard half is not a bonus feature — `Button` renders a real
  * `<button>`, so it is
@@ -79,14 +76,12 @@ function usePeerLine(): string | null {
  * only selects the node.
  * @param root0 - Node placeholder props.
  * @param root0.modality - Node modality, selecting the icon and the primary-line copy.
- * @param root0.hint - Optional single-line override (status text).
  * @param root0.onActivate - Called on double-click, or on Enter / Space while
  *   the button has focus, to upload a file / enter edit.
  * @returns The empty-state call-to-action button.
  */
 export function NodePlaceholder({
   modality,
-  hint,
   onActivate,
 }: NodePlaceholderProps): React.JSX.Element {
   const t = useTranslation();
@@ -131,8 +126,6 @@ export function NodePlaceholder({
         <span data-testid='node-upload-error' className='text-xs'>
           {'text' in failed ? failed.text : t(failed.key, failed.params)}
         </span>
-      ) : hint ? (
-        <span className='text-xs'>{hint}</span>
       ) : (
         <span className='flex flex-col gap-0.5'>
           <span
