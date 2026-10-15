@@ -139,6 +139,7 @@ describe('MiniToolPanelContainer', () => {
         new Promise<null>((resolve) => {
           release = () => resolve(null);
         }),
+      send: vi.fn(),
     });
     render(tree(source('a.png'), onRun));
     const run = screen.getByTestId('mini-tool-run');

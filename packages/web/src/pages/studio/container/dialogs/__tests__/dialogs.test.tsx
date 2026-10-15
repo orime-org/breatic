@@ -158,6 +158,7 @@ describe('NewItemDialog (spec §3.12)', () => {
     void runOnce(PROJECT_CREATE_INTENT, {
       scope: 'project',
       prepare: () => new Promise<null>(() => {}),
+      send: vi.fn(),
     });
     render(<NewItemDialog kind='project' open onOpenChange={vi.fn()} onCreate={vi.fn()} />);
     const button = screen.getByRole('button', { name: 'Create' });

@@ -102,9 +102,9 @@ export interface RunOnceSpec<B, R> {
    * creates before sending (a result node). Null ends the press without a
    * request.
    */
-  prepare?: () => B | null | Promise<B | null>;
+  prepare: () => B | null | Promise<B | null>;
   /** Sends the request; the only part that is re-sent. */
-  send?: (key: string, body: B) => Promise<R>;
+  send: (key: string, body: B) => Promise<R>;
   /** The final success; `leaving` keeps the button waiting while the page navigates away. */
   onDone?: (result: R) => 'leaving' | undefined;
   /** The final failure, for the press to tell the reader. */
@@ -270,7 +270,7 @@ async function drive<B, R>(
   const current = (): boolean => presses.get(intentId) === press;
   let body: B | null;
   try {
-    body = spec.prepare ? await spec.prepare() : null;
+    body = await spec.prepare();
   } catch (err) {
     if (!current()) return RELEASED;
     release(intentId, press);
@@ -278,7 +278,7 @@ async function drive<B, R>(
     return { kind: 'failed', error: err };
   }
   if (!current()) return RELEASED;
-  if (body === null || spec.send === undefined) {
+  if (body === null) {
     release(intentId, press);
     return RELEASED;
   }
