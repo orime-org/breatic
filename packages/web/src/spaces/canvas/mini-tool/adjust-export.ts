@@ -59,6 +59,9 @@ export function exportBackendSide(longSide: number, sides: BackendSides): 'share
 /** A filter backend, WebGL or 2D. */
 type FilterBackend = ReturnType<typeof import('fabric')['getFilterBackend']>;
 
+/** Why a backend cannot draw: no WebGL context. */
+const NO_CONTEXT = 'The filter backend has no WebGL context to draw with';
+
 /** Fabric's own calls for its shared filter backend. */
 type BackendRegistry = Pick<typeof import('fabric'), 'getFilterBackend' | 'initFilterBackend' | 'setFilterBackend'>;
 
@@ -81,15 +84,17 @@ export function liveSharedBackend(fabric: BackendRegistry): FilterBackend {
 
 /**
  * The shared backend's square and the graphics' texture limit, read off its
- * own context; both are unbounded when Fabric filters without WebGL.
+ * own context; both are unbounded when Fabric filters without WebGL. A WebGL
+ * backend with no context to draw with (Fabric leaves `gl` unset when the
+ * browser refuses one) is a graphics failure, not a size.
  * @param backend - The shared backend.
  * @returns The sides.
- * @throws {never} Never.
+ * @throws {Error} When the backend has no WebGL context to draw with.
  */
 export function backendSides(backend: FilterBackend): BackendSides {
   if (!('tileSize' in backend)) return { shared: Infinity, max: Infinity };
   const gl = backend.gl;
-  if (gl === undefined) return { shared: backend.tileSize, max: backend.tileSize };
+  if (gl === undefined || gl.isContextLost()) throw new Error(NO_CONTEXT);
   return { shared: backend.tileSize, max: gl.getParameter(gl.MAX_TEXTURE_SIZE) as number };
 }
 
@@ -147,12 +152,12 @@ export async function drawAdjusted(
   asked: { width: number; height: number },
   value: AdjustValue,
   target: HTMLCanvasElement,
-  backend?: ReturnType<typeof import('fabric')['getFilterBackend']>,
+  backend?: FilterBackend,
 ): Promise<void> {
   const [fabric, { adjustFilters, ADJUST_GRAIN_SEED }] = await loadRuntime();
   const through = backend ?? liveSharedBackend(fabric);
   const side = drawableSide(through);
-  if (side === 0) throw new Error('The filter backend has no WebGL context to draw with');
+  if (side === 0) throw new Error(NO_CONTEXT);
   const size = fitWithin(asked, side);
   target.width = size.width;
   target.height = size.height;
@@ -208,7 +213,7 @@ export function releaseBackend(backend: InstanceType<typeof import('fabric')['We
  */
 export function assertCanExport(backend: FilterBackend, longSide: number): void {
   const side = drawableSide(backend);
-  if (side === 0) throw new Error('The filter backend has no WebGL context to draw with');
+  if (side === 0) throw new Error(NO_CONTEXT);
   if (side < longSide) throw new ImageTooLargeError();
 }
 

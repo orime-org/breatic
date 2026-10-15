@@ -175,6 +175,17 @@ describe('backendSides', () => {
   it('is unbounded without WebGL', () => {
     expect(backendSides({ applyFilters: vi.fn() } as never)).toEqual({ shared: Infinity, max: Infinity });
   });
+
+  // A WebGL backend with no context to draw with says nothing about the
+  // picture's size; Fabric leaves `gl` unset when the browser refuses one.
+  it.each([
+    ['no context', { tileSize: 4096 }],
+    ['a lost one', { tileSize: 4096, gl: liveGl(4096, true) }],
+  ])('refuses as a graphics failure for a backend with %s', (_name, backend) => {
+    const sides = (): unknown => backendSides(backend as never);
+    expect(sides).toThrow(Error);
+    expect(sides).not.toThrow(ImageTooLargeError);
+  });
 });
 
 describe('assertCanExport', () => {
