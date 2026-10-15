@@ -40,17 +40,23 @@ export function routeAddress(url: string): AddressRoute {
 }
 
 /**
- * Whether a pasted medium at this address lands in the body: an address of
- * ours stays, and an outside one lands when it can reach storage and the
- * body can start uploads.
+ * How a pasted medium lands: as an address of ours, as a pending block whose
+ * upload brings it into storage, or not at all.
+ */
+export type Landing = 'ours' | 'upload' | null;
+
+/**
+ * How a pasted medium at this address lands in the body: an address of ours
+ * stays, and an outside one becomes pending when it can reach storage and
+ * the body can start uploads.
  * @param url - The medium's address.
  * @param prefix - What every address of ours starts with, or null while it
  *   is not known.
  * @param canUpload - Whether the body starts uploads.
- * @returns True when the medium lands.
+ * @returns How it lands, or null when it does not.
  */
-export function addressLands(url: string, prefix: string | null, canUpload: boolean): boolean {
-  if (url === '') return false;
-  if (prefix !== null && url.startsWith(prefix)) return true;
-  return canUpload && routeAddress(url) !== 'skip';
+export function addressLanding(url: string, prefix: string | null, canUpload: boolean): Landing {
+  if (url === '') return null;
+  if (prefix !== null && url.startsWith(prefix)) return 'ours';
+  return canUpload && routeAddress(url) !== 'skip' ? 'upload' : null;
 }

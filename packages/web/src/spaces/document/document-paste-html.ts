@@ -8,13 +8,16 @@
  *
  * BlockNote reads a medium into a block only where a block can stand, and
  * reads a picture's address from its `src` alone (`parseImageElement.ts`);
- * a figure is read as one medium, its first. So before the HTML is read, its
- * media are put where a block stands, each in its own place: one in a table
- * cell under the table (A7), one that lands in a line of text between the two
- * halves of that line, the media of a figure holding several each on its own. A
- * picture's address is the largest candidate of its `srcset` that can be
- * fetched. Whatever a read still loses is counted with what the paste left
- * out, so no medium goes without the reader being told.
+ * a figure is read as its first medium and its first caption, and nothing
+ * else in it (`parseFigureElement`). So before the HTML is read, its media
+ * are put where a block stands, each in its own place: one in a table cell
+ * under the table (A7), one in a line of text between the two halves of that
+ * line, the media of a figure holding several each on its own, and what else
+ * a figure holds beside it. A picture's address is the largest candidate of
+ * its `srcset` that can be fetched. A medium that does not land is taken out
+ * before the read, so its line reads whole. What was taken out and whatever
+ * a read still loses are counted with what the paste left out, so no medium
+ * goes without the reader being told.
  *
  * A paste BlockNote's own paste (`pasteExtension.ts`) would read as Markdown,
  * or as HTML carrying media, is read here: made ready, read once, counted
@@ -206,21 +209,6 @@ function liftCellMedia(root: Element): boolean {
 }
 
 /**
- * Takes apart every figure holding more than one medium, so each medium is
- * read on its own, with the figure around it when it has one. Taking a
- * figure apart leaves the figures inside it as they were.
- * @param root - The HTML's body.
- * @returns Whether any figure was taken apart.
- */
-function unwrapCrowdedFigures(root: Element): boolean {
-  const crowded = Array.from(root.querySelectorAll('figure')).filter(
-    (figure) => figure.querySelectorAll(HTML_MEDIA_SELECTOR).length > 1,
-  );
-  for (const figure of crowded) figure.replaceWith(...Array.from(figure.childNodes));
-  return crowded.length > 0;
-}
-
-/**
  * Whether a block left by a split holds nothing to read.
  * @param block - The block.
  * @returns True when it has no words and no medium.
@@ -230,40 +218,102 @@ function holdsNothing(block: Element): boolean {
 }
 
 /**
- * Takes the line breaks and the white space off the end of a split half the
- * medium took, wherever they sit inside it, up to the first words or medium.
- * @param half - The half.
- * @param end - Which end: the start of the half after the medium, the end of
- *   the half before it.
+ * Takes the line breaks and the white space off one end of a part a medium
+ * was split from, wherever they sit inside it, up to the first words or
+ * medium; the white space at the edge of those words goes too.
+ * @param part - The part.
+ * @param end - Which end: the start of the part after the medium, the end of
+ *   the part before it.
  */
-function trimBreaks(half: Element, end: 'start' | 'end'): void {
-  const walker = half.ownerDocument.createTreeWalker(half, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT);
+function trimBreaks(part: Element | DocumentFragment, end: 'start' | 'end'): void {
+  const walker = (part.ownerDocument ?? document).createTreeWalker(part, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT);
   const nodes: Node[] = [];
   for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) nodes.push(node);
   if (end === 'end') nodes.reverse();
   for (const node of nodes) {
     if (node.nodeName === 'BR' || (node.nodeType === Node.TEXT_NODE && (node.textContent ?? '').trim() === '')) {
       node.parentNode?.removeChild(node);
-    } else if (node.nodeType === Node.TEXT_NODE || (node instanceof Element && node.matches(HTML_MEDIA_SELECTOR))) {
+    } else if (node.nodeType === Node.TEXT_NODE) {
+      node.textContent = (node.textContent ?? '').replace(end === 'end' ? /\s+$/ : /^\s+/, '');
+      return;
+    } else if (node instanceof Element && node.matches(HTML_MEDIA_SELECTOR)) {
       return;
     }
   }
 }
 
 /**
- * Splits every line of text a medium that lands stands in at the medium, so
- * the medium is read between the two halves. The medium stands on a line of
- * its own now, so the line breaks that set it apart go: the half before it
- * loses those it ends on, the half after it those it starts with; a half with
- * no words goes. A medium that does not land leaves its line whole.
+ * Leaves every figure holding only what BlockNote reads out of one, a medium
+ * and the first caption in it (`parseFigureElement`), and puts the rest of it
+ * beside it in its order, so nothing else in a figure is lost. A figure
+ * holding more than one medium is taken apart, its media read each on its own
+ * and its caption as words.
+ * @param root - The HTML's body.
+ * @returns Whether any figure changed.
+ */
+function readableFigures(root: Element): boolean {
+  let changed = false;
+  for (const figure of Array.from(root.querySelectorAll('figure'))) {
+    const media = figure.querySelectorAll(HTML_MEDIA_SELECTOR);
+    if (media.length > 1) {
+      figure.replaceWith(...Array.from(figure.childNodes));
+      changed = true;
+      continue;
+    }
+    const medium = media[0];
+    if (medium === undefined) continue;
+    const range = figure.ownerDocument.createRange();
+    range.setStart(figure, 0);
+    range.setEndBefore(medium);
+    const before = range.extractContents();
+    range.setStartAfter(medium);
+    range.setEnd(figure, figure.childNodes.length);
+    const after = range.extractContents();
+    const caption = before.querySelector('figcaption') ?? after.querySelector('figcaption');
+    if (caption !== null) figure.append(caption);
+    trimBreaks(before, 'end');
+    trimBreaks(after, 'start');
+    figure.before(before);
+    figure.after(after);
+    changed = true;
+  }
+  return changed;
+}
+
+/**
+ * Takes a medium out of the HTML with the figure around it, which holds the
+ * medium and its caption alone by now (`readableFigures`).
+ * @param medium - The medium.
+ */
+function takeOut(medium: Element): void {
+  (medium.closest('figure') ?? medium).remove();
+}
+
+/**
+ * Takes out every medium that does not land, before the HTML is read, so
+ * the line it stands in is read whole, as without it.
  * @param root - The HTML's body.
  * @param lands - Whether a medium at an address lands.
+ * @returns Whether any medium was taken out.
+ */
+function takeOutUnlanded(root: Element, lands: (url: string) => boolean): boolean {
+  const out = Array.from(root.querySelectorAll(HTML_MEDIA_SELECTOR)).filter((medium) => !lands(medium.getAttribute('src') ?? ''));
+  out.forEach(takeOut);
+  return out.length > 0;
+}
+
+/**
+ * Splits every line of text a medium stands in at the medium, so the medium
+ * is read between the two halves. The medium stands on a line of its own
+ * now, so the line breaks and the white space that set it apart go: the half
+ * before it loses those it ends on, the half after it those it starts with; a
+ * half with no words goes.
+ * @param root - The HTML's body.
  * @returns Whether any line was split.
  */
-function splitTextAroundMedia(root: Element, lands: (url: string) => boolean): boolean {
+function splitTextAroundMedia(root: Element): boolean {
   let changed = false;
   for (const element of Array.from(root.querySelectorAll(HTML_MEDIA_SELECTOR))) {
-    if (!lands(element.getAttribute('src') ?? '')) continue;
     const block = element.parentElement?.closest(TEXT_BLOCKS);
     if (block === null || block === undefined) continue;
     const picture = element.closest('picture');
@@ -307,44 +357,46 @@ export interface PreparedHTML {
 }
 
 /**
- * Pasted HTML ready to read: its tables evened and its media where a block
- * stands, each picture with the address of its largest fetchable candidate.
+ * Steps that put a pasted medium where BlockNote reads it, each in its own
+ * place: tables evened, a medium in a table cell under the table, figures
+ * holding only what BlockNote reads out of one.
+ */
+const PLACE_MEDIA = [evenTables, liftCellMedia, readableFigures];
+
+/**
+ * Pasted HTML ready to read: its media where a block stands, each picture
+ * with the address of its largest fetchable candidate, a medium that does
+ * not land taken out and every line split at a medium that does.
  * @param html - The HTML.
  * @param lands - Whether a medium at an address lands in the body.
  * @returns The same HTML when nothing needed doing, the ready HTML otherwise,
- *   and how many media it carries.
+ *   and how many media it carried before those that do not land went.
  */
 export function preparePastedHTML(html: string, lands: (url: string) => boolean): PreparedHTML {
   if (!/<table\b/i.test(html) && !HTML_MEDIA.test(html)) return { html, media: 0 };
   const body = new DOMParser().parseFromString(html, 'text/html').body;
-  const steps = [
-    evenTables,
-    liftCellMedia,
-    unwrapCrowdedFigures,
-    readPictureAddresses,
-    (root: Element): boolean => splitTextAroundMedia(root, lands),
-  ];
-  const changed = steps.map((step) => step(body)).some(Boolean);
-  return { html: changed ? body.innerHTML : html, media: body.querySelectorAll(HTML_MEDIA_SELECTOR).length };
+  const placed = [...PLACE_MEDIA, readPictureAddresses].map((step) => step(body));
+  const media = body.querySelectorAll(HTML_MEDIA_SELECTOR).length;
+  const changed = [...placed, takeOutUnlanded(body, lands), splitTextAroundMedia(body)].some(Boolean);
+  return { html: changed ? body.innerHTML : html, media };
 }
 
 /** BlockNote's own HTML for a media block, as its export writes it. */
 const OWN_MEDIA = MEDIA_BLOCK_TYPES.map((type) => `[data-content-type="${type}"]`).join(', ');
 
 /**
- * Pasted HTML with its media taken out and the rest as it was, its tables
- * evened, so the rest lands the way it would have without them. A media block of BlockNote's own
- * HTML goes with its row, the rows nested under it taking its place; an
- * outside picture, video or audio goes with the figure around it.
+ * Pasted HTML with its media taken out and the rest as it reads with them,
+ * so the rest lands the way it would have without them. A media block of
+ * BlockNote's own HTML goes with its row, the rows nested under it taking
+ * its place; an outside picture, video or audio goes with the figure around
+ * it, once it stands where BlockNote reads it.
  * @param html - The HTML.
  * @returns The HTML without its media; an empty paragraph when nothing else
  *   was in it, since no HTML at all would have the plain text read instead.
  */
 export function withoutMedia(html: string): string {
   const body = new DOMParser().parseFromString(html, 'text/html').body;
-  evenTables(body);
-  // A figure of several media keeps its caption as words.
-  unwrapCrowdedFigures(body);
+  PLACE_MEDIA.forEach((step) => step(body));
   for (const content of Array.from(body.querySelectorAll(OWN_MEDIA))) {
     const row = content.closest('[data-node-type="blockOuter"]') ?? content;
     const nested = row.querySelector(':scope > [data-node-type="blockContainer"] > [data-node-type="blockGroup"]');
@@ -354,9 +406,7 @@ export function withoutMedia(html: string): string {
     // would come back holding a blank line.
     if (group?.matches('[data-node-type="blockGroup"]') === true && group.childElementCount === 0) group.remove();
   }
-  for (const element of Array.from(body.querySelectorAll(HTML_MEDIA_SELECTOR))) {
-    (element.closest('figure') ?? element).remove();
-  }
+  Array.from(body.querySelectorAll(HTML_MEDIA_SELECTOR)).forEach(takeOut);
   return body.innerHTML.trim() === '' ? '<p></p>' : body.innerHTML;
 }
 
@@ -419,10 +469,6 @@ export const documentPasteHandler: PasteHandler = ({ event, editor, defaultPaste
   if ($from.parent.type.spec.code === true && $to.parent.type.spec.code === true) return defaultPasteHandler();
   if (data.types.includes('vscode-editor-data') || data.types.includes('blocknote/html')) return defaultPasteHandler();
   const pasted = editor.getExtension(PASTED_MEDIA_KEY) as PastedMedia | undefined;
-  /**
-   *
-   * @param url
-   */
   /**
    * Whether a medium at an address lands in the body.
    * @param url - The address.

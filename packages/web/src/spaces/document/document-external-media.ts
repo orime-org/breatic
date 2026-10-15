@@ -16,8 +16,9 @@
  * `blob:` one the browser can read, becomes a pending block whose upload
  * brings it into storage; anything else is left out and the reader is told
  * how many were. A pending block copied from a body keeps its upload id.
- * While our prefix is not known yet, every medium with an address becomes
- * pending, and its upload sorts ours from outside once the prefix is in.
+ * While our prefix is not known yet, every medium whose address can reach
+ * storage becomes pending, and its upload sorts ours from outside once the
+ * prefix is in.
  *
  * `transformPasted` sees every paste and every drop; a row moved or copied
  * within the body is already in the shared document and is passed over. The
@@ -42,7 +43,7 @@ import { Fragment, Slice, type Node as PMNode } from '@tiptap/pm/model';
 import { Plugin, type EditorState, type Transaction } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 
-import { addressLands } from '@web/spaces/document/document-media-address';
+import { addressLanding } from '@web/spaces/document/document-media-address';
 import {
   inTableCell,
   insertAtGapTr,
@@ -96,9 +97,11 @@ function pended(
 ): Readonly<Record<string, unknown>> | null {
   if (pendingUploadId(attrs) !== null) return attrs;
   const url = attrs['url'];
-  if (typeof url !== 'string' || !addressLands(url, prefix, queue !== null)) return null;
-  // Ours, which stays as it is; without a queue only ours lands.
-  if ((prefix !== null && url.startsWith(prefix)) || queue === null) return attrs;
+  if (typeof url !== 'string') return null;
+  const how = addressLanding(url, prefix, queue !== null);
+  if (how === null) return null;
+  // Ours stays as it is; a medium to upload lands only with a queue.
+  if (how === 'ours' || queue === null) return attrs;
   const uploadId = crypto.randomUUID();
   queue.push({ uploadId, url });
   return { ...attrs, url: '', uploadId };
@@ -310,7 +313,7 @@ export function documentPastedMediaExtension(
      * @returns True when it lands.
      */
     const lands = (url: string): boolean =>
-      addressLands(url, options?.assetUrlPrefix() ?? null, options?.start !== undefined);
+      addressLanding(url, options?.assetUrlPrefix() ?? null, options?.start !== undefined) !== null;
 
     /**
      * Counts media judged out or lost in a read, told once the event is done.
@@ -390,11 +393,16 @@ export function documentPastedMediaExtension(
               const own = BLOCKNOTE_HTML.test(pasted);
               const { html, media } = own ? { html: pasted, media: 0 } : preparePastedHTML(pasted, lands);
               expected = own ? null : media;
+              const dropped = dropAt !== null;
               const at = dropAt ?? view.state.selection.from;
               dropAt = null;
               landing = null;
               into = at;
               if (!inTableCell(view.state.doc.resolve(at))) return html;
+              // A cell takes no table: ProseMirror fits a drop holding one
+              // around the table it was aimed at, its media in it where they
+              // stand, as a paste of the same content lands.
+              if (dropped && /<table\b/i.test(html)) return html;
               return readForCell(html, pasted, at, view);
             },
             transformPasted: (slice, view) => {
