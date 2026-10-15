@@ -31,7 +31,7 @@ import * as yjsRepo from "@collab/services/yjs-documents.repo.js";
 import { insertOutboxEvent } from "@server/modules/project/lifecycle-outbox.repo.js";
 import { startLifecycleRelay } from "@server/modules/project/lifecycle-relay.js";
 import { startLifecycleListener } from "@collab/services/lifecycle-listener.js";
-import { startMembersSync } from "@collab/services/members-sync.js";
+import { startProjectControlSync } from "@collab/services/project-control-sync.js";
 import type { GroupConsumer } from "@collab/services/stream-group-consumer.js";
 
 initCore(process.env);
@@ -57,7 +57,7 @@ const fakeHocuspocus = { documents: new Map([[META, { connections: liveConnectio
 
 let stopRelay: { stop(): void };
 let consumer: GroupConsumer;
-let stopMembersSync: () => Promise<void>;
+let stopProjectControlSync: () => Promise<void>;
 let streamRedis: Redis;
 let coordination: Redis;
 
@@ -83,7 +83,7 @@ async function waitFor(
 beforeAll(() => {
   streamRedis = createRedisClient(inject("REDIS_STREAM_URL"), { name: "itest-chain-stream" });
   coordination = createRedisClient(inject("REDIS_COLLAB_URL"), { name: "itest-chain-coord" });
-  stopMembersSync = startMembersSync(fakeHocuspocus, streamRedis);
+  stopProjectControlSync = startProjectControlSync(fakeHocuspocus, streamRedis);
   stopRelay = startLifecycleRelay();
   consumer = startLifecycleListener({
     streamUrl: inject("REDIS_STREAM_URL"),
@@ -111,7 +111,7 @@ beforeAll(() => {
 afterAll(async () => {
   stopRelay.stop();
   await consumer.stop();
-  await stopMembersSync();
+  await stopProjectControlSync();
   await streamRedis.quit();
   await coordination.quit();
   await coreDb

@@ -27,7 +27,7 @@
  *   our bytes on the next debounce flush. Do NOT reuse this pattern
  *   for "edit a Space on a live project" scenarios — those must go
  *   through `Hocuspocus.openDirectConnection` (see
- *   `collab/members-sync.ts`).
+ *   `collab/services/space-rpc.ts`).
  */
 
 import * as Y from "yjs";

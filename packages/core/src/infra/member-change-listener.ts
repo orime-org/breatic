@@ -134,7 +134,7 @@ export async function probeMemberListen(timeoutMs: number): Promise<boolean> {
     timer = setTimeout(resolve, timeoutMs);
   });
   try {
-    await rawPg`select pg_notify(${PROBE_CHANNEL}, ${nonce})`;
+    await rawPg.notify(PROBE_CHANNEL, nonce);
     await Promise.race([arrived, timedOut]);
   } catch {
     return false;
