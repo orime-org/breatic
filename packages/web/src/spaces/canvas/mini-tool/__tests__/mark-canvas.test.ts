@@ -216,10 +216,26 @@ describe('MarkCanvasController', () => {
   it('takes a pen stroke as one step', () => {
     store.getState().setMarkTool('pen');
     controller.sync();
-    controller.canvas.fire('path:created', { path: new Path('M 40 30 L 80 60 L 120 30') });
-    expect(mark().objects).toEqual([expect.objectContaining({ kind: 'pen', points: [[0.1, 0.1], [0.2, 0.2], [0.3, 0.1]] })]);
+    const samples = [new Point(40, 30), new Point(80, 60), new Point(120, 30)];
+    controller.canvas.fire('path:created', { path: new Path(util.getSmoothPathFromPoints(samples, 0.004)) });
+    expect(mark().objects).toEqual([expect.objectContaining({ kind: 'pen' })]);
     expect(mark().undo).toHaveLength(1);
     expect(mark().tool).toBe('pen');
+  });
+
+  // A click gives the pencil one sample, drawn as `M` and `L` around it.
+  it('keeps a click as a dot', () => {
+    store.getState().setMarkTool('pen');
+    controller.sync();
+    controller.canvas.fire('path:created', { path: new Path(util.getSmoothPathFromPoints([new Point(40, 30)], 0.004)) });
+    const [dot] = mark().objects;
+    expect(dot).toMatchObject({ kind: 'pen' });
+    const points = dot?.kind === 'pen' ? dot.points : [];
+    expect(points).toHaveLength(2);
+    for (const [x, y] of points) {
+      expect(x).toBeCloseTo(0.1, 4);
+      expect(y).toBeCloseTo(0.1, 4);
+    }
   });
 
   // Fabric's pencil smooths the samples into curves whose end points are the

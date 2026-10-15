@@ -224,8 +224,9 @@ export function toFabric(object: MarkObject, box: DrawBox): MarkFabricObject {
     }
     case 'pen': {
       const points = object.points.map(([x, y]) => px(x, y));
-      const [first, ...rest] = points;
-      const data = first === undefined ? '' : `M ${first[0]} ${first[1]} ${rest.map((p) => `L ${p[0]} ${p[1]}`).join(' ')}`;
+      // Fabric's pencil smoothing, so the committed stroke is the one drawn.
+      const samples = points.map(([x, y]) => new Point(x, y));
+      const data = samples.length === 0 ? '' : util.getSmoothPathFromPoints(samples.length === 1 ? [samples[0]!, samples[0]!] : samples, stroke / 1000);
       const path = new Path(data, { fill: '', stroke: object.color, strokeWidth: stroke, strokeLineCap: 'round', strokeLineJoin: 'round' });
       return tagged(path, { ...base, markPoints: points });
     }

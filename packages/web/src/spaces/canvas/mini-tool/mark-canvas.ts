@@ -480,7 +480,9 @@ export class MarkCanvasController {
   }
 
   /**
-   * Take a pen stroke as one object.
+   * Take a pen stroke as one object, kept as the points the pencil sampled.
+   * Fabric's pencil curves through them with one `Q` per sample, its control
+   * point being the sample itself, and ends on an `L`; a click is `M`, `L`.
    * @param path - The stroke Fabric drew.
    */
   private onPath(path: FabricObject): void {
@@ -490,9 +492,11 @@ export class MarkCanvasController {
     this.suppressed = false;
     if (draft === null) return;
     const commands = (path as unknown as { path: (string | number)[][] }).path;
-    const points = commands.map((command) => {
-      const x = Number(command[command.length - 2]);
-      const y = Number(command[command.length - 1]);
+    const curves = commands.filter((command) => command[0] === 'Q');
+    const samples = [...(curves.length === 0 ? commands.slice(0, 1) : curves), ...commands.slice(-1)];
+    const points = samples.map((command) => {
+      const x = Number(command[1]);
+      const y = Number(command[2]);
       return [x / this.box.width, y / this.box.height] as [number, number];
     });
     this.commit([...draft.objects, { id: newId(), kind: 'pen', color: draft.color, size: draft.size, points }]);
