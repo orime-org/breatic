@@ -367,6 +367,9 @@ const agentConfigSchema = z.object({
 /** Validated agent configuration type. */
 export type AgentConfig = z.infer<typeof agentConfigSchema>;
 
+/** How long a cached prompt prefix lives. */
+export type PromptCacheTtl = AgentConfig["prompt_cache_ttl"];
+
 /**
  * The keep line a consolidation pass actually runs to.
  *

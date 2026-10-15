@@ -9,7 +9,7 @@
  * One credit is one US cent.
  */
 
-import type { UsagePricing } from "@breatic/core";
+import type { PromptCacheTtl, UsagePricing } from "@breatic/core";
 
 /** Where a recorded cost came from. */
 /** `computed` is a cost we price ourselves from a measured usage, such as a container run's seconds. */
@@ -43,7 +43,7 @@ export interface ModelCall {
   usage: ModelCallUsage;
   providerMetadata: Record<string, unknown> | undefined;
   /** How long the call asked the provider to cache; writes are priced at it. Anthropic's default is five minutes. */
-  cacheTtl?: "5m" | "1h";
+  cacheTtl?: PromptCacheTtl;
 }
 
 /** What one model call cost. */

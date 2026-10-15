@@ -11,6 +11,7 @@
  * which the SDK passes to `onChunk` only when asked for.
  */
 
+import type { PromptCacheTtl } from "@breatic/core";
 import {
   handOffLookups,
   isGenerationId,
@@ -51,7 +52,7 @@ export interface ModelCallWatch {
  */
 export function watchModelCalls(
   usage: UsageRecorder,
-  call: { model: string; description: string; cacheTtl?: "5m" | "1h" },
+  call: { model: string; description: string; cacheTtl?: PromptCacheTtl },
 ): ModelCallWatch {
   const provider = resolveProvider(call.model);
   const open = trackOpenGeneration();

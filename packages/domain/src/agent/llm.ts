@@ -31,7 +31,7 @@ import { createDeepSeek } from "@ai-sdk/deepseek";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import type { LanguageModel, streamText } from "ai";
 import { env } from "@breatic/core";
-import type { CoreConfig } from "@breatic/core";
+import type { CoreConfig, PromptCacheTtl } from "@breatic/core";
 
 /**
  * What a model call carries to ask for reasoning, if it asks at all.
@@ -58,15 +58,12 @@ type ProviderOptionsFor = NonNullable<CallOptions["providerOptions"]>[string];
  */
 type ProviderKeyName = Extract<keyof CoreConfig, `${string}_API_KEY`>;
 
-/** How long a cached prompt prefix lives, or false for no caching. */
-export type PromptCache = false | "5m" | "1h";
-
 /** What a call asks of its provider beyond the prompt. */
 export interface CallWants {
   /** Whether this call wants the model's working. */
   thinking: boolean;
   /** Whether, and for how long, to cache the prompt prefix. */
-  cache: PromptCache;
+  cache: PromptCacheTtl | false;
   /** A fixed sampling temperature, sent only where the model accepts one. */
   temperature?: number;
   /**
@@ -99,7 +96,7 @@ interface Route {
    * How this provider is told to cache the prompt prefix for a model, or
    * nothing when it caches a repeated prefix on its own.
    */
-  cache: (modelString: string, ttl: Exclude<PromptCache, false>) => ProviderOptionsFor;
+  cache: (modelString: string, ttl: PromptCacheTtl) => ProviderOptionsFor;
 }
 
 /** A route a model id reaches by carrying its prefix. */
@@ -137,7 +134,7 @@ function isClaude(modelString: string | undefined): boolean {
  * @param ttl - How long the prefix should live.
  * @returns The value to send.
  */
-function cacheControl(ttl: Exclude<PromptCache, false>): { type: "ephemeral"; ttl?: "1h" } {
+function cacheControl(ttl: PromptCacheTtl): { type: "ephemeral"; ttl?: "1h" } {
   return ttl === "1h" ? { type: "ephemeral", ttl: "1h" } : { type: "ephemeral" };
 }
 

@@ -99,7 +99,7 @@ export type {
 
 // ── Agent (AIGC execution kernel: model / tools / prompt extraction) ──
 export { getModel, resolveProvider, callOptionsFor } from "@domain/agent/llm.js";
-export type { CallWants, PromptCache } from "@domain/agent/llm.js";
+export type { CallWants } from "@domain/agent/llm.js";
 export { generateTextRetry, streamTextRetry } from "@domain/agent/model-call.js";
 export {
   buildToolSet,

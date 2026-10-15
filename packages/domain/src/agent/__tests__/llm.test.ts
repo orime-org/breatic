@@ -393,7 +393,7 @@ describe("prompt caching", () => {
    * @param session - The conversation the call belongs to, if any.
    * @returns The intercepted request.
    */
-  async function sendCached(model: string, cache: false | "5m" | "1h", session?: string): Promise<Seen> {
+  async function sendCached(model: string, cache: LlmModule.CallWants["cache"], session?: string): Promise<Seen> {
     const { getModel, callOptionsFor } = await freshLlm();
     const { generateText } = await import("ai");
     seen = undefined;
