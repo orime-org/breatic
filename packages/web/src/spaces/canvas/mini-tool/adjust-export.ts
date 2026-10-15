@@ -156,9 +156,9 @@ export async function drawAdjusted(
 ): Promise<void> {
   const [fabric, { adjustFilters, ADJUST_GRAIN_SEED }] = await loadRuntime();
   const through = backend ?? liveSharedBackend(fabric);
-  const side = drawableSide(through);
-  if (side === 0) throw new Error(NO_CONTEXT);
-  const size = fitWithin(asked, side);
+  const drawable = drawableSize(through);
+  if (drawable.width === 0) throw new Error(NO_CONTEXT);
+  const size = fitWithin(asked, drawable);
   target.width = size.width;
   target.height = size.height;
   const chain = adjustFilters(value, ADJUST_GRAIN_SEED, intrinsicSize(el), size);
@@ -175,20 +175,47 @@ export async function drawAdjusted(
   }
 }
 
+/** A size in pixels. */
+interface Size {
+  width: number;
+  height: number;
+}
+
 /**
- * The longest side a backend can draw. A WebGL backend draws its last pass on
- * a square of its tile size, in the drawing buffer the browser gave that
- * canvas, which may be smaller than asked (Chrome gave 8192 for 16384 here);
- * a lost context, or none, draws nothing. A 2D backend has no such bound.
+ * The size a backend can draw. A WebGL backend draws its last pass on its
+ * canvas, in the drawing buffer the browser gave it, which may be smaller
+ * than asked (Chrome gave 8192² for 16384² here, and 6000² for 12000²); a
+ * lost context, or none, draws nothing. A 2D backend has no such bound.
  * @param backend - The backend.
- * @returns The side in pixels, 0 when it cannot draw.
+ * @returns The width and height in pixels, both 0 when it cannot draw.
  * @throws {never} Never.
  */
-export function drawableSide(backend: FilterBackend): number {
-  if (!('tileSize' in backend)) return Infinity;
+export function drawableSize(backend: FilterBackend): Size {
+  if (!('tileSize' in backend)) return { width: Infinity, height: Infinity };
   const gl = backend.gl;
-  if (gl === undefined || gl.isContextLost()) return 0;
-  return Math.min(backend.tileSize, gl.drawingBufferWidth, gl.drawingBufferHeight);
+  if (gl === undefined || gl.isContextLost()) return { width: 0, height: 0 };
+  return { width: gl.drawingBufferWidth, height: gl.drawingBufferHeight };
+}
+
+/**
+ * A backend for one export, drawing on a canvas of the picture's own shape:
+ * the browser grants a buffer as long as a panorama that it refuses as a
+ * square. Fabric builds its first context as a square of `tileSize`; that one
+ * is given back before the shaped one is made.
+ * @param fabric - Fabric.
+ * @param fabric.WebGLFilterBackend - Its WebGL filter backend.
+ * @param size - The picture's size.
+ * @returns The backend.
+ * @throws {never} Never.
+ */
+export function ownExportBackend(
+  fabric: Pick<typeof import('fabric'), 'WebGLFilterBackend'>,
+  size: Size,
+): InstanceType<typeof import('fabric')['WebGLFilterBackend']> {
+  const backend = new fabric.WebGLFilterBackend({ tileSize: Math.max(size.width, size.height) });
+  backend.gl?.getExtension('WEBGL_lose_context')?.loseContext();
+  backend.setupGLContext(size.width, size.height);
+  return backend;
 }
 
 /**
@@ -204,30 +231,28 @@ export function releaseBackend(backend: InstanceType<typeof import('fabric')['We
 }
 
 /**
- * Whether a backend can export a picture this long: a lost context is not a
- * size problem, a drawing buffer shorter than the picture is.
+ * Whether a backend can export a picture this size: a lost context is not a
+ * size problem, a drawing buffer narrower or shorter than the picture is.
  * @param backend - The backend the export draws through.
- * @param longSide - The picture's long side in pixels.
- * @throws {ImageTooLargeError} When the backend's drawing buffer is shorter than the picture.
+ * @param size - The picture's size in pixels.
+ * @throws {ImageTooLargeError} When the backend's drawing buffer is smaller than the picture on either side.
  * @throws {Error} When the backend has no WebGL context to draw with.
  */
-export function assertCanExport(backend: FilterBackend, longSide: number): void {
-  const side = drawableSide(backend);
-  if (side === 0) throw new Error(NO_CONTEXT);
-  if (side < longSide) throw new ImageTooLargeError();
+export function assertCanExport(backend: FilterBackend, size: Size): void {
+  const drawable = drawableSize(backend);
+  if (drawable.width === 0) throw new Error(NO_CONTEXT);
+  if (drawable.width < size.width || drawable.height < size.height) throw new ImageTooLargeError();
 }
 
 /**
- * A size scaled down, keeping its shape, so neither side passes a length.
+ * A size scaled down, keeping its shape, so it fits inside a box.
  * @param size - The size.
- * @param size.width - Its width.
- * @param size.height - Its height.
- * @param side - The longest a side may be.
+ * @param box - The box.
  * @returns The size, unchanged when it fits.
  * @throws {never} Never.
  */
-function fitWithin(size: { width: number; height: number }, side: number): { width: number; height: number } {
-  const scale = side / Math.max(size.width, size.height);
+function fitWithin(size: Size, box: Size): Size {
+  const scale = Math.min(box.width / size.width, box.height / size.height);
   if (scale >= 1) return size;
   return { width: Math.max(1, Math.round(size.width * scale)), height: Math.max(1, Math.round(size.height * scale)) };
 }
@@ -249,10 +274,10 @@ export async function exportAdjustedBlob(source: CropSource, value: AdjustValue)
   const side = exportBackendSide(longSide, backendSides(shared));
   if (side === 'tooLarge') throw new ImageTooLargeError();
   // A backend of its own for a picture past the shared square, released at once.
-  const own = side === 'shared' ? undefined : new fabric.WebGLFilterBackend({ tileSize: side });
+  const own = side === 'shared' ? undefined : ownExportBackend(fabric, size);
   try {
     const through = own ?? shared;
-    assertCanExport(through, longSide);
+    assertCanExport(through, size);
     const canvas = document.createElement('canvas');
     await drawAdjusted(el, size, value, canvas, through);
     return await pngOf(canvas);
