@@ -100,8 +100,8 @@ export function decideClientIdentity(
  *
  * An ISP hands one subscriber at least a /64, so an IPv6 address is counted by
  * its /64; counting each address would let one subscriber rotate through 2^64
- * identities. An IPv4-mapped address is the IPv4 address. Anything else is
- * kept as it is.
+ * identities. An IPv4-mapped address in dotted form (`::ffff:a.b.c.d`, the
+ * form nginx writes) is the IPv4 address. An IPv4 address is kept as it is.
  * @param address - The client address our proxy wrote.
  * @returns The identity.
  */

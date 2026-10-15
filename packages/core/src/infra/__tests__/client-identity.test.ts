@@ -127,7 +127,7 @@ describe("IPv6 sources are counted by their /64", () => {
     expect(decide("2001:db8::5")).toEqual({ kind: "identify", identity: "2001:db8::/64" });
   });
 
-  it("counts an IPv4-mapped address as the IPv4 address", () => {
+  it("counts a dotted IPv4-mapped address as the IPv4 address", () => {
     expect(decide("::ffff:203.0.113.9")).toEqual({ kind: "identify", identity: "203.0.113.9" });
   });
 

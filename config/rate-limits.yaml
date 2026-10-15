@@ -13,8 +13,8 @@
 # Auth (pre-auth). Keyed by the client address our proxy wrote; the three
 # `*-ip` actions pair with an action keyed by that address and the email, so
 # people behind one egress address do not use up each other's attempts
-# (inner#1478). Numbers follow Auth0 brute-force protection (10 per address and
-# account), Supabase Auth (30 per 5 minutes per address for sign-up, recovery
+# (inner#1478). Numbers follow Auth0 brute-force protection (10 failed attempts
+# per address and account), Supabase Auth (30 per 5 minutes per address for sign-up, recovery
 # and verification; 150 per 5 minutes for token grants) and Firebase Auth (100
 # new accounts an hour per address).
 login-ip:       { max: 150, window_seconds: 300 }
