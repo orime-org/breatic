@@ -443,6 +443,47 @@ describe('MarkCanvasController', () => {
     expect(controller.canvas.getObjects()).toHaveLength(typed === '' ? 1 : 2);
   });
 
+  // Fabric changes a text in place while it is typed; an undo in the same
+  // tick as leaving the edit puts back the draft the canvas was drawn from.
+  it('draws the undone text when undo follows leaving an edit at once', () => {
+    store.getState().commitMark([TEXT]);
+    controller.sync();
+    const text = controller.canvas.getObjects()[0] as IText;
+    controller.canvas.setActiveObject(text);
+    text.enterEditing();
+    text.set({ text: 'eyes' });
+    controller.canvas.fire('text:changed', { target: text });
+    controller.channel.exitEditing();
+    store.getState().undoMark();
+    controller.sync();
+    expect(controller.canvas.getObjects().map((shape) => (shape as IText).text)).toEqual(['eye']);
+  });
+
+  // An undo while an object is held ends Fabric's drag of it under the
+  // canvas's own changes, which write nothing back.
+  it.each(['undo', 'redo'] as const)('draws a held object where the draft has it after %s', (step) => {
+    const other: MarkObject = { ...RECT, id: 'r2', x: 0.6, y: 0.6 };
+    store.getState().commitMark([RECT]);
+    store.getState().commitMark([RECT, other]);
+    if (step === 'redo') store.getState().undoMark();
+    controller.sync();
+    const held = controller.canvas.getObjects()[0]!;
+    const press = new MouseEvent('mousedown', { clientX: 60, clientY: 40, button: 0 });
+    const canvas = controller.canvas as unknown as {
+      _setupCurrentTransform: (e: MouseEvent, target: unknown, alreadySelected: boolean) => void;
+      _currentTransform: { actionPerformed: boolean } | null;
+    };
+    controller.canvas.setActiveObject(held, press);
+    canvas._setupCurrentTransform(press, held, false);
+    held.set({ left: (held.left ?? 0) + 80 });
+    canvas._currentTransform!.actionPerformed = true;
+    if (step === 'undo') store.getState().undoMark();
+    else store.getState().redoMark();
+    controller.sync();
+    const drawn = controller.canvas.getObjects().find((shape) => (shape as { markId?: string }).markId === RECT.id);
+    expect(drawn?.left).toBeCloseTo(RECT.x * BOX.width, 0);
+  });
+
   it('drops the selection when undo changes the objects', () => {
     store.getState().commitMark([RECT]);
     store.getState().commitMark([RECT, TEXT]);
