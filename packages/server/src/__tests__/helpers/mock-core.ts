@@ -602,7 +602,7 @@ export const domainMock = () => ({
   // same key it would in production. A bare `{}` would spread to nothing,
   // which reads as "this turn sent no provider options" -- the one thing
   // the real function never does.
-  reasoningFor: vi.fn().mockReturnValue({ providerOptions: {} }),
+  callOptionsFor: vi.fn().mockReturnValue({ providerOptions: {} }),
   buildToolSet: vi.fn().mockReturnValue({}),
   BASELINE_TOOLS: [],
   // Not a placeholder and not written out by hand. What the turn does with

@@ -58,6 +58,13 @@ const agentConfigSchema = z.object({
   default_model: z.string().regex(/[^/]$/).default("deepseek/deepseek-v4-pro"),
   consolidation_model: z.string().regex(/[^/]$/).default("deepseek/deepseek-v4-pro"),
   /**
+   * How long a cached prompt prefix lives, for the providers that cache only
+   * when asked (Claude). Writes cost 1.25x the input price at 5m and 2x at 1h;
+   * reads cost a fraction of it, so the longer lifetime pays off when readers
+   * come back between five minutes and an hour later.
+   */
+  prompt_cache_ttl: z.enum(["5m", "1h"]).default("5m"),
+  /**
    * How much of the first message a conversation keeps as its name.
    *
    * A conversation is named after the first thing said in it, and people open

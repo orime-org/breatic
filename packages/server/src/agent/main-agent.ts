@@ -12,7 +12,7 @@ import { createUIMessageStream, stepCountIs } from "ai";
 import { streamTextRetry } from "@breatic/domain";
 import type { StopCondition, Tool, ToolSet, UIMessageChunk, UIMessageStreamWriter } from "ai";
 
-import { getModel, reasoningFor, resolveProvider } from "@breatic/domain";
+import { callOptionsFor, getModel, resolveProvider } from "@breatic/domain";
 import {
   buildAgentConfig,
   finalizeTurn,
@@ -388,10 +388,10 @@ export class MainAgent {
       const result = streamTextRetry({
         model: getModel(agentConfig.modelId),
         // Chat is the one call site that asks for reasoning: it plans,
-        // searches and decides between tools, and shows its working. Said
-        // outright in both directions, because leaving the field off means a
-        // different thing to every provider.
-        ...reasoningFor(agentConfig.modelId, true),
+        // searches and decides between tools, and shows its working. It is
+        // also the one whose prefix repeats -- every step of a turn and every
+        // later turn resends it -- so it is the one that asks for caching.
+        ...callOptionsFor(agentConfig.modelId, { thinking: true, cache: agentCfg.prompt_cache_ttl }),
         system: agentConfig.instructions,
         messages,
         tools: agentConfig.tools,

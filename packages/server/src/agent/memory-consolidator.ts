@@ -29,7 +29,7 @@ import type { ModelMessage } from "ai";
 import {
   generateTextRetry,
   getModel,
-  reasoningFor,
+  callOptionsFor,
   creditLotService,
   createUsageRecorder,
   handOffLookups,
@@ -341,7 +341,7 @@ export async function consolidateWindow(
       // Folding a transcript into a summary has no reasoning step in it, and
       // the model this runs on turns thinking on by id unless told otherwise
       // -- which would also drop the `temperature: 0` above.
-      ...reasoningFor(config.consolidation_model, false),
+      ...callOptionsFor(config.consolidation_model, { thinking: false, cache: false }),
       // Conversation memory is rewritten whole by this call, so an answer
       // with no ceiling is a segment with no ceiling in every later prompt.
       maxOutputTokens: config.max_output_tokens,

@@ -83,7 +83,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
     // leave the question unasked.
     resolveProvider: actual.resolveProvider,
     // Real as well: what it returns is the thing under assertion.
-    reasoningFor: actual.reasoningFor,
+    callOptionsFor: actual.callOptionsFor,
     buildAgentConfig: () => ({
       modelId: runningOn.modelId,
       instructions: "system",

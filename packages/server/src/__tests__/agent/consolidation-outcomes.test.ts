@@ -65,7 +65,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
     resolveProvider: () => "test",
     // The real one. What it puts on the call is the thing being asserted,
     // and a stub would be answering the question with its own return value.
-    reasoningFor: actual.reasoningFor,
+    callOptionsFor: actual.callOptionsFor,
     creditLotService: { chargeOnceForGeneration },
   };
 });

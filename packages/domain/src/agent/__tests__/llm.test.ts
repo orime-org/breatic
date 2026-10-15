@@ -279,7 +279,7 @@ describe("the DeepSeek direct route", () => {
  * Three separate facts per row, and the whole chain has to be walked because
  * each one can be right while the next is wrong:
  *
- *   `on` / `off`         what `reasoningFor` hands back
+ *   `on` / `off`         what `callOptionsFor` hands back
  *   `onWire` / `offWire` what the vendor's SDK turns that into
  *   `authHeader`         which key the provider authenticates with
  *
@@ -449,7 +449,8 @@ describe("a Claude call that does not ask for thinking", () => {
       prompt: "hi",
       ...callOptionsFor("anthropic/claude-opus-5.5", { thinking: false, cache: false }),
     });
-    expect(seen?.body.thinking).toBeUndefined();
+    if (!seen) throw new Error("no request was made");
+    expect((seen as Seen).body.thinking).toBeUndefined();
   });
 
   it("leaves the reasoning field out when reaching Claude through OpenRouter", async () => {
@@ -462,7 +463,8 @@ describe("a Claude call that does not ask for thinking", () => {
       prompt: "hi",
       ...callOptionsFor("anthropic/claude-opus-5.5", { thinking: false, cache: false }),
     });
-    expect(seen?.body.reasoning).toBeUndefined();
+    if (!seen) throw new Error("no request was made");
+    expect((seen as Seen).body.reasoning).toBeUndefined();
   });
 });
 

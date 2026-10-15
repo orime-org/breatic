@@ -40,10 +40,10 @@ import type { CoreConfig } from "@breatic/core";
  * export this type by name, and a hand-written copy of it would be a second
  * answer that goes stale.
  */
-type ReasoningOptions = Pick<Parameters<typeof streamText>[0], "providerOptions">;
+type CallOptions = Pick<Parameters<typeof streamText>[0], "providerOptions">;
 
 /** What one provider's slot in that object holds. */
-type ProviderOptionsFor = NonNullable<ReasoningOptions["providerOptions"]>[string];
+type ProviderOptionsFor = NonNullable<CallOptions["providerOptions"]>[string];
 
 /**
  * The name of an env var this deployment can hold a provider key in.
@@ -57,6 +57,17 @@ type ProviderOptionsFor = NonNullable<ReasoningOptions["providerOptions"]>[strin
  * schema said `KLINGAI_ACCESS_KEY`.
  */
 type ProviderKeyName = Extract<keyof CoreConfig, `${string}_API_KEY`>;
+
+/** How long a cached prompt prefix lives, or false for no caching. */
+export type PromptCache = false | "5m" | "1h";
+
+/** What a call asks of its provider beyond the prompt. */
+export interface CallWants {
+  /** Whether this call wants the model's working. */
+  thinking: boolean;
+  /** Whether, and for how long, to cache the prompt prefix. */
+  cache: PromptCache;
+}
 
 /** One provider: how to reach it, and how it is spoken to. */
 interface Route {
@@ -75,13 +86,50 @@ interface Route {
   provider: () => (modelId: string) => LanguageModel;
   /** How this provider is told to reason, and how it is told not to. */
   reasoning: { on: ProviderOptionsFor; off: ProviderOptionsFor };
+  /**
+   * How this provider is told to cache the prompt prefix for a model, or
+   * nothing when it caches a repeated prefix on its own.
+   */
+  cache: (modelString: string, ttl: Exclude<PromptCache, false>) => ProviderOptionsFor;
 }
 
 /** A route a model id reaches by carrying its prefix. */
 interface DirectRoute extends Route {
   /** The model-id prefix that names this provider. */
   prefix: string;
+  /** The id this vendor serves the model under, from what follows the prefix. */
+  vendorId: (modelId: string) => string;
 }
+
+/** The id as written, for vendors that serve the model under it. */
+const asWritten = (modelId: string): string => modelId;
+
+/**
+ * Whether a model id names a Claude model.
+ *
+ * Claude is reached directly or through OpenRouter, and both routes treat it
+ * apart from the others: it caches only when asked to, and some versions
+ * reject the request that turns thinking off.
+ * @param modelString - Model identifier.
+ * @returns True for an `anthropic/` id.
+ */
+function isClaude(modelString: string | undefined): boolean {
+  return modelString?.startsWith("anthropic/") ?? false;
+}
+
+/**
+ * The cache-control value Anthropic takes, for a lifetime.
+ *
+ * Five minutes is the default and is written without a `ttl`.
+ * @param ttl - How long the prefix should live.
+ * @returns The value to send.
+ */
+function cacheControl(ttl: Exclude<PromptCache, false>): { type: "ephemeral"; ttl?: "1h" } {
+  return ttl === "1h" ? { type: "ephemeral", ttl: "1h" } : { type: "ephemeral" };
+}
+
+/** Routes whose provider caches a repeated prefix without being asked. */
+const cachesOnItsOwn = (): ProviderOptionsFor => ({});
 
 /**
  * Builds the value on first call and hands back the same one after.
@@ -115,10 +163,18 @@ export const DIRECT_ROUTES: readonly DirectRoute[] = [
     keyName: "ANTHROPIC_API_KEY",
     name: "anthropic",
     provider: memo(() => createAnthropic({ apiKey: env.ANTHROPIC_API_KEY || undefined })),
+    // Configured ids are written the way OpenRouter names Claude
+    // (`claude-opus-5.5`); Anthropic serves the same model as `claude-opus-5-5`.
+    vendorId: (modelId) => modelId.replace(/(\d)\.(\d)/g, "$1-$2"),
     reasoning: {
       on: { thinking: { type: "adaptive", display: "summarized" } },
-      off: { thinking: { type: "disabled" } },
+      // No `thinking` field: the 4.x models then do not think, and Opus 5.5,
+      // which rejects `{ type: "disabled" }` with a 400, falls to the adaptive
+      // thinking it cannot leave (Anthropic thinking docs, "Configuring
+      // thinking").
+      off: {},
     },
+    cache: (_modelString, ttl) => ({ cacheControl: cacheControl(ttl) }),
   },
   {
     prefix: "google/",
@@ -132,6 +188,8 @@ export const DIRECT_ROUTES: readonly DirectRoute[] = [
       on: { thinkingConfig: { thinkingBudget: -1, includeThoughts: true } },
       off: { thinkingConfig: { thinkingBudget: 0 } },
     },
+    vendorId: asWritten,
+    cache: cachesOnItsOwn,
   },
   {
     prefix: "openai/",
@@ -139,6 +197,8 @@ export const DIRECT_ROUTES: readonly DirectRoute[] = [
     name: "openai",
     provider: memo(() => createOpenAI({ apiKey: env.OPENAI_API_KEY || undefined })),
     reasoning: { on: { reasoningEffort: "high" }, off: { reasoningEffort: "none" } },
+    vendorId: asWritten,
+    cache: cachesOnItsOwn,
   },
   {
     prefix: "deepseek/",
@@ -149,6 +209,8 @@ export const DIRECT_ROUTES: readonly DirectRoute[] = [
       on: { thinking: { type: "enabled" }, reasoningEffort: "high" },
       off: { thinking: { type: "disabled" } },
     },
+    vendorId: asWritten,
+    cache: cachesOnItsOwn,
   },
 ] as const;
 
@@ -163,6 +225,10 @@ export const FALLBACK_ROUTE: Route = {
     on: { reasoning: { effort: "high" } },
     off: { reasoning: { effort: "none" } },
   },
+  // OpenRouter turns a request-level `cache_control` into Anthropic's
+  // automatic caching; the other models it reaches cache a repeated prefix on
+  // their own.
+  cache: (modelString, ttl) => (isClaude(modelString) ? { cacheControl: cacheControl(ttl) } : {}),
 };
 
 /**
@@ -197,7 +263,7 @@ function directRouteFor(modelString: string | undefined): DirectRoute | undefine
 export function getModel(modelString: string): LanguageModel {
   const direct = directRouteFor(modelString);
   return direct
-    ? direct.provider()(modelString.slice(direct.prefix.length))
+    ? direct.provider()(direct.vendorId(modelString.slice(direct.prefix.length)))
     : FALLBACK_ROUTE.provider()(modelString);
 }
 
@@ -216,20 +282,26 @@ export function resolveProvider(modelString: string | undefined): string {
 }
 
 /**
- * What to send so this model's provider does, or does not, show its working.
+ * What to send so this model's provider reasons, or does not, and caches the
+ * prompt prefix, or does not.
  *
- * The caller says whether it wants reasoning; which vendor is being called
- * and how that vendor takes the request are settled here. Both directions
- * are stated outright, because leaving the field off means something
- * different to every provider and those defaults are theirs to change.
+ * The caller says what it wants; which vendor is being called and how that
+ * vendor takes each request are settled here. Reasoning is stated in both
+ * directions, because leaving the field off means something different to
+ * every provider and those defaults are theirs to change -- except for
+ * Claude, where leaving it off is the one spelling every version accepts.
  * @param modelString - Model identifier, or undefined for the fallback.
- * @param thinking - Whether this call wants the model's working.
+ * @param wants - Whether the call wants reasoning, and how long to cache.
  * @returns Provider options to spread into the model call.
+ * @throws {never} Never.
  */
-export function reasoningFor(
-  modelString: string | undefined,
-  thinking: boolean,
-): ReasoningOptions {
+export function callOptionsFor(modelString: string | undefined, wants: CallWants): CallOptions {
   const route = directRouteFor(modelString) ?? FALLBACK_ROUTE;
-  return { providerOptions: { [route.name]: thinking ? route.reasoning.on : route.reasoning.off } };
+  const reasoning = wants.thinking
+    ? route.reasoning.on
+    : isClaude(modelString)
+      ? {}
+      : route.reasoning.off;
+  const cache = wants.cache === false || modelString === undefined ? {} : route.cache(modelString, wants.cache);
+  return { providerOptions: { [route.name]: { ...reasoning, ...cache } } };
 }
