@@ -31,11 +31,12 @@ export function NodeExpandLayer({ nodeId, wrapper }: NodeExpandLayerProps): Reac
   const geometry = useMediaGeometry(wrapper, expand !== null);
 
   // Where the node shows the picture, for the frame drawn outside the node.
+  // The store skips a view equal to the one it holds. The held view is a
+  // dependency so a source reset, which clears it, writes it again.
   const heldView = expand?.view ?? null;
   React.useLayoutEffect(() => {
     if (geometry === null || expand === null) return;
-    const view = { at: geometry.at, box: geometry.box, src: geometry.src };
-    if (JSON.stringify(view) !== JSON.stringify(heldView)) store.getState().setExpandView(view);
+    store.getState().setExpandView({ at: geometry.at, box: geometry.box, src: geometry.src });
   }, [geometry, expand, heldView, store]);
 
   if (expand === null || geometry === null) return null;
