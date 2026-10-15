@@ -11,6 +11,7 @@
  * the marks store stays the one place that decides it.
  */
 
+import { readUserId } from '@web/spaces/canvas/awareness-user';
 import type { UploadMark, UploadMarkAction } from '@web/stores/upload-marks';
 
 /** One node this client is working on, as it goes on the wire. */
@@ -90,9 +91,9 @@ export function collectPeerActivity(
   const table = new Map<string, PeerAct>();
   for (const [clientId, state] of states) {
     if (clientId === selfClientId) continue;
-    const userId = (state.user as { id?: unknown } | undefined)?.id;
+    const userId = readUserId(state);
     const activity = state.activity;
-    if (typeof userId !== 'string' || !Array.isArray(activity)) continue;
+    if (userId === null || !Array.isArray(activity)) continue;
     for (const entry of activity) {
       if (!isActivity(entry)) continue;
       const shown = table.get(entry.nodeId);
