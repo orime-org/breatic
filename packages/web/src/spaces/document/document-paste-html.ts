@@ -49,7 +49,7 @@ interface PastedMedia {
 }
 
 /** Whether a piece of HTML carries an image, a video or an audio. */
-export const HTML_MEDIA = new RegExp(`<(${HTML_MEDIA_ELEMENTS.join('|')})\\b`, 'i');
+const HTML_MEDIA = new RegExp(`<(${HTML_MEDIA_ELEMENTS.join('|')})\\b`, 'i');
 
 /** The blocks of text a medium can stand in the middle of. */
 const TEXT_BLOCKS = 'p, h1, h2, h3, h4, h5, h6';
@@ -220,10 +220,10 @@ function liftCellMedia(root: Element): boolean {
 /**
  * Whether a block left by a split holds nothing to read.
  * @param block - The block.
- * @returns True when it has no words and no medium.
+ * @returns True when it has no words, no medium, no rule and no table.
  */
 function holdsNothing(block: Element): boolean {
-  return (block.textContent ?? '').trim() === '' && block.querySelector(HTML_MEDIA_SELECTOR) === null;
+  return (block.textContent ?? '').trim() === '' && block.querySelector(`${HTML_MEDIA_SELECTOR}, hr, table`) === null;
 }
 
 /**
@@ -432,6 +432,26 @@ export function preparePastedHTML(html: string, lands: (url: string) => boolean)
   return { html: changed ? body.innerHTML : html, media };
 }
 
+/** Prepared HTML read into blocks, with how many of its media were lost. */
+export interface PreparedRead {
+  readonly blocks: readonly ReadBlock[];
+  /** Media taken out as not landing, and media the read lost. */
+  readonly lost: number;
+}
+
+/**
+ * Reads prepared HTML into blocks and counts the media that will not land:
+ * those taken out before the read and those the read lost. A paste and a
+ * drop both read outside HTML this way.
+ * @param prepared - The prepared HTML.
+ * @param read - Reads HTML into blocks, as BlockNote does.
+ * @returns The blocks and the count.
+ */
+export function readPrepared(prepared: PreparedHTML, read: (html: string) => readonly ReadBlock[]): PreparedRead {
+  const blocks = read(prepared.html);
+  return { blocks, lost: prepared.media - mediaIn(blocks).length };
+}
+
 /** BlockNote's own HTML for a media block, as its export writes it. */
 const OWN_MEDIA = MEDIA_BLOCK_TYPES.map((type) => `[data-content-type="${type}"]`).join(', ');
 
@@ -533,10 +553,9 @@ export const documentPasteHandler: PasteHandler = ({ event, editor, defaultPaste
     if (prepared !== html) Object.defineProperty(event, 'clipboardData', { value: withHTML(data, prepared) });
     return defaultPasteHandler();
   }
-  const prepared = preparePastedHTML(source, lands);
-  const blocks = editor.tryParseHTMLToBlocks(prepared.html);
-  const media = mediaIn(blocks as unknown as ReadBlock[]);
-  pasted?.leaveOut(prepared.media - media.length);
+  const { blocks, lost } = readPrepared(preparePastedHTML(source, lands), (html) => editor.tryParseHTMLToBlocks(html) as unknown as ReadBlock[]);
+  const media = mediaIn(blocks);
+  pasted?.leaveOut(lost);
   const landing = inTableCell($from)
     ? [...editor.tryParseHTMLToBlocks(withoutMedia(source)), ...media.map(({ type, props }) => ({ type, props, children: [] }))]
     : blocks;
