@@ -4,7 +4,6 @@
 import { describe, expect, it } from "vitest";
 import {
   CONSENT_DATA_FIELDS,
-  consentSeenFrom,
   parseConsentChoices,
   parseConsentCookie,
 } from "../analytics/consent-choices.js";
@@ -128,34 +127,3 @@ describe("parseConsentCookie", () => {
   });
 });
 
-describe("consentSeenFrom — what a signed-in request records (design §4.4.6)", () => {
-  it("takes each category's own choice with its revision", () => {
-    const choices = parseConsentChoices(cookie(["analytics"]), NOW);
-    expect(consentSeenFrom(choices)).toEqual({
-      analytics: { value: true, revision: CONSENT_REVISION },
-      ads: { value: false, revision: CONSENT_REVISION },
-    });
-  });
-
-  it("leaves out a regional default and a category without a choice", () => {
-    const choices = parseConsentChoices(
-      cookie(["analytics", "ads"], { analytics: analyticsData({ source: "implicit" }), ads: adsData({ source: "settings" }) }),
-      NOW,
-    );
-    expect(consentSeenFrom(choices)).toEqual({ ads: { value: true, revision: CONSENT_REVISION } });
-  });
-
-  it("records a GPC refusal as a choice", () => {
-    const choices = parseConsentChoices(cookie([], { ads: adsData({ source: "gpc" }) }), NOW);
-    expect(consentSeenFrom(choices)).toEqual({ ads: { value: false, revision: CONSENT_REVISION } });
-  });
-
-  it("is null when nothing is left to record", () => {
-    expect(consentSeenFrom({ analytics: null, ads: null })).toBeNull();
-    const implicit = parseConsentChoices(
-      cookie(["analytics", "ads"], { analytics: analyticsData({ source: "implicit" }), ads: adsData({ source: "implicit" }) }),
-      NOW,
-    );
-    expect(consentSeenFrom(implicit)).toBeNull();
-  });
-});

@@ -9,7 +9,6 @@
  */
 
 import { CONSENT_MAX_AGE_DAYS, revisionInForce, type ConsentSnapshot } from "@shared/analytics/consent.js";
-import type { SeenChoice } from "@shared/analytics/ads-sharing.js";
 
 /** How a browser arrived at a choice it holds in its cookie. */
 export const CONSENT_SOURCES = ["banner", "settings", "implicit", "gpc"] as const;
@@ -105,32 +104,6 @@ export function snapshotOf(choices: BrowserChoices): ConsentSnapshot {
  */
 export function parseConsentCookie(raw: string | undefined, now: number): ConsentSnapshot {
   return snapshotOf(parseConsentChoices(raw, now));
-}
-
-/** The choices a signed-in request records on the account (`users.consent_seen`). */
-export interface ConsentSeen {
-  readonly analytics?: SeenChoice;
-  readonly ads?: SeenChoice;
-}
-
-/**
- * What a signed-in request records of this browser's choices: each category
- * the visitor chose, leaving out a regional default.
- * @param choices - This browser's choices in force.
- * @returns The record, or null when there is nothing to record.
- */
-export function consentSeenFrom(choices: BrowserChoices): ConsentSeen | null {
-  /**
-   * One category's choice as the account records it.
-   * @param c - The choice in force, or null.
-   * @returns The record, or undefined for none or a regional default.
-   */
-  const pick = (c: BrowserChoice | null): SeenChoice | undefined =>
-    c === null || c.source === "implicit" ? undefined : { value: c.value, revision: c.revision };
-  const analytics = pick(choices.analytics);
-  const ads = pick(choices.ads);
-  if (analytics === undefined && ads === undefined) return null;
-  return { ...(analytics && { analytics }), ...(ads && { ads }) };
 }
 
 /**

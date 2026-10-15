@@ -818,28 +818,23 @@ export {
 export {
   CONSENT_DATA_FIELDS,
   CONSENT_SOURCES,
-  consentSeenFrom,
   parseConsentChoices,
   parseConsentCookie,
   snapshotOf,
   type BrowserChoice,
   type BrowserChoices,
-  type ConsentSeen,
   type ConsentSource,
 } from "@shared/analytics/consent-choices.js";
 export {
-  ADS_SHARING_FIELDS,
-  AdsSharingSchema,
   BrowserAdsSnapshotSchema,
   NO_ADS_BROWSER,
+  ReportedConsentSchema,
   adsAllowed,
-  adsOptedOut,
-  adsStatus,
-  type AccountAdsView,
-  type AdsOptOutSource,
-  type AdsSharing,
-  type AdsStatus,
+  browserAdsConsent,
+  reportedConsent,
   type BrowserAdsSnapshot,
+  type ConsentRecord,
+  type ReportedConsent,
   type SeenChoice,
 } from "@shared/analytics/ads-sharing.js";
 export {
