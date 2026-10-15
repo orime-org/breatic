@@ -547,7 +547,7 @@ describe("a turn that measured over the budget", () => {
     // The fold moved the watermark, so the window is gone from the history
     // whichever way it ended. Failing the turn here spends that window and
     // gives nothing back — and the reply is what was promised. The assembly
-    // already in hand is the pre-fold one: over the character budget, inside
+    // already in hand is the pre-fold one: over the token budget, inside
     // the model's real window, and the only thing left to send.
     contexts.queue = [context([...turn(1, 6000), ...turn(2, 6000), ...turn(3, 6000)])];
     contexts.later = () => {

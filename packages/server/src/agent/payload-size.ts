@@ -11,9 +11,12 @@
  * only the two strings is short by the whole tool set, and short in a way
  * that grows every time a tool is added.
  *
- * Characters, not tokens: a character is never more than a token in the
- * tokenizers this build meets, so a character budget can only fire early.
- * There is no library that counts tokens for a model reached through
+ * Characters are the fallback: the fold is decided by the provider's own
+ * token counts, and these measure only what no count covers -- a turn whose
+ * calls reported nothing, what came after the newest counted reply, and this
+ * turn's question. A character is never more than a token in the tokenizers
+ * this build meets, so counting one as a token can only make a fold come
+ * early. There is no library that counts tokens for a model reached through
  * OpenRouter — see the design's DD section.
  */
 

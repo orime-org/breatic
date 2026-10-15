@@ -443,7 +443,7 @@ export class MainAgent {
           // The fold moved the watermark, so the window is out of the history
           // whichever way it ended. Failing here would spend it and give the
           // reader nothing, and the reply is what was promised. What is still
-          // in hand is the pre-fold assembly, over the character budget by
+          // in hand is the pre-fold assembly, over the token budget by
           // however much this conversation had grown: sending it is the one
           // move left that answers at all, and the provider is what decides
           // whether it fits.
