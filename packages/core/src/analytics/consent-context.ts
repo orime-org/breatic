@@ -12,14 +12,12 @@
  */
 
 import { AsyncLocalStorage } from "node:async_hooks";
-import { NO_ADS_BROWSER, NO_CONSENT, type BrowserAdsSnapshot, type ConsentSeen, type ConsentSnapshot } from "@breatic/shared";
+import { NO_ADS_BROWSER, NO_CONSENT, type BrowserAdsSnapshot, type ConsentSnapshot } from "@breatic/shared";
 
 /** What a request's browser says beyond its consent snapshot. */
 export interface RequestBrowser {
-  /** Its ads consent and whether this request carried GPC. */
+  /** Its ads consent, with this request's GPC applied. */
   readonly ads: BrowserAdsSnapshot;
-  /** The choices a signed-in request records on the account (`consentSeenFrom`). */
-  readonly seen: ConsentSeen | null;
 }
 
 const store = new AsyncLocalStorage<{ consent: ConsentSnapshot; browser: RequestBrowser | null }>();
@@ -28,9 +26,8 @@ const store = new AsyncLocalStorage<{ consent: ConsentSnapshot; browser: Request
  * Run a request with the given consent in scope.
  * @param consent - The browser's choice, already parsed.
  * @param fn - The request handler.
- * @param browser - The rest of what the browser says, for ad conversions and
- *   the account record (inner#1442 design §4.4.5); absent where the caller
- *   has no cookie to read.
+ * @param browser - The rest of what the browser says, for ad conversions
+ *   (inner#1442 design §4.4.5); absent where the caller has no cookie to read.
  * @returns Whatever the handler returns.
  */
 export function runWithConsent<T>(consent: ConsentSnapshot, fn: () => T, browser: RequestBrowser | null = null): T {
@@ -52,12 +49,4 @@ export function currentConsent(): ConsentSnapshot {
  */
 export function currentAdsBrowser(): BrowserAdsSnapshot {
   return store.getStore()?.browser?.ads ?? NO_ADS_BROWSER;
-}
-
-/**
- * The choices the requesting browser's cookie would record on the account.
- * @returns They, or null outside a request or with nothing to record.
- */
-export function currentConsentSeen(): ConsentSeen | null {
-  return store.getStore()?.browser?.seen ?? null;
 }

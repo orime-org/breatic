@@ -31,7 +31,7 @@ import {
 // A self-referencing FK needs its column type spelled out, since the table is
 // still being defined at the point the reference is written.
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
-import type { Attribution, ConsentSeen, ConsentSnapshot, MessagePart } from "@breatic/shared";
+import type { Attribution, ConsentRecord, ConsentSnapshot, MessagePart } from "@breatic/shared";
 import type { AdsConversionJob } from "@core/ads/ads-types.js";
 import { PROJECT_NAME_MAX_CHARS } from "@breatic/shared";
 
@@ -131,13 +131,9 @@ export const users = pgTable(
     // negotiated in, and changed only when the user switches the interface
     // language.
     locale: varchar("locale", { length: 10 }).default("en").notNull(),
-    // The account's ad switch (0096, inner#1442 §4.4.6): set when the account
-    // opted out of ad sharing and by what, null while it has not.
-    adsOptedOutAt: timestamp("ads_opted_out_at", { withTimezone: true }),
-    adsOptOutSource: varchar("ads_opt_out_source", { length: 16 }),
-    // The cookie choices last seen on a signed-in request (0096), read by
-    // events no browser is behind.
-    consentSeen: jsonb("consent_seen").$type<ConsentSeen>(),
+    // The consent a signed-in browser last reported (0096, inner#1442 §4.4.6),
+    // read by events no browser is behind.
+    consentSeen: jsonb("consent_seen").$type<ConsentRecord>(),
     // First-touch and last-touch campaign source, written at sign-up from
     // what the browser kept after consent (0096, inner#1442).
     attribution: jsonb("attribution").$type<Attribution>(),
@@ -147,11 +143,6 @@ export const users = pgTable(
   (table) => [
     uniqueIndex("users_email_idx").on(table.email),
     uniqueIndex("users_google_id_idx").on(table.googleId),
-    check(
-      "users_ads_opt_out_source_check",
-      sql`(${table.adsOptedOutAt} IS NULL AND ${table.adsOptOutSource} IS NULL)
-        OR (${table.adsOptedOutAt} IS NOT NULL AND ${table.adsOptOutSource} IN ('settings', 'gpc', 'request'))`,
-    ),
   ],
 );
 
@@ -2761,21 +2752,19 @@ export const storageReclaimQueue = pgTable(
 
 /**
  * One row per conversion reported to the ad platform. The key makes a
- * conversion queue once however many paths report it; the status lets a
- * refund restate only a conversion the platform actually received, since a
- * restatement whose transaction id it has not seen counts as a new one.
+ * conversion queue once however many paths report it.
  */
 export const adsConversionUploads = pgTable(
   "ads_conversion_uploads",
   {
     conversion: varchar("conversion", { length: 32 }).notNull(),
     transactionId: varchar("transaction_id", { length: 255 }).notNull(),
-    /** The credit order this conversion is for; refunds look it up by this. */
+    /** The credit order this conversion is for. */
     paymentId: uuid("payment_id").references(() => payments.id, { onDelete: "restrict" }),
     status: varchar("status", { length: 16 }).notNull(),
-    /** The uploaded job, so a restatement repeats its click and conversion action. */
+    /** The job to upload. */
     job: jsonb("job").$type<AdsConversionJob>().notNull(),
-    /** The platform's id for the accepted upload; its processing status decides whether a restatement may follow. */
+    /** The platform's id for the accepted upload. */
     requestId: varchar("request_id", { length: 128 }),
     /** Why the row stopped short of the platform, e.g. `consent_withdrawn`. */
     failureReason: varchar("failure_reason", { length: 32 }),
@@ -2786,7 +2775,7 @@ export const adsConversionUploads = pgTable(
     index("ads_conversion_uploads_payment_idx").on(table.paymentId),
     check(
       "ads_conversion_uploads_status_check",
-      sql`${table.status} IN ('queued', 'uploaded', 'failed', 'restate_pending', 'restating', 'restated', 'restate_failed')`,
+      sql`${table.status} IN ('queued', 'uploaded', 'failed')`,
     ),
   ],
 );

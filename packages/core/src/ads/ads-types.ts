@@ -9,22 +9,12 @@ export const ADS_CONVERSIONS = ["signup", "first_project", "collaboration", "cre
 export type AdsConversionName = (typeof ADS_CONVERSIONS)[number];
 
 /** Where an upload stands (inner#1442 design §4.9 state table). */
-export const ADS_UPLOAD_STATUSES = [
-  "queued",
-  "uploaded",
-  "failed",
-  "restate_pending",
-  "restating",
-  "restated",
-  "restate_failed",
-] as const;
+export const ADS_UPLOAD_STATUSES = ["queued", "uploaded", "failed"] as const;
 export type AdsUploadStatus = (typeof ADS_UPLOAD_STATUSES)[number];
 
 /** One upload, as the worker receives it. */
 export interface AdsConversionJob {
-  /** `conversion` uploads a new conversion; `restatement` sets its value to zero. */
-  readonly kind: "conversion" | "restatement";
-  /** The account the conversion is credited to; its ad switch is checked again before upload. */
+  /** The account the conversion is credited to; its consent is checked again before upload. */
   readonly userId: string;
   /** The browser behind the conversion, as it stood then; null when none was (inner#1442 §4.4.6). */
   readonly browser: BrowserAdsSnapshot | null;
@@ -34,10 +24,6 @@ export interface AdsConversionJob {
   readonly occurredAt: string;
   readonly click: AdClick;
   readonly value?: { readonly amountCents: number; readonly currency: string };
-  /** On a restatement: the platform's id for the original upload, checked before restating. */
-  readonly originalRequestId?: string;
-  /** On a restatement: how many times the original was found still processing. */
-  readonly statusChecks?: number;
 }
 
 /** Name of the recurring job that queues again uploads whose job was lost. */
@@ -52,7 +38,6 @@ const isoTime = z.string().datetime({ offset: true });
 /** A queued or stored job, checked before the worker uploads it. */
 export const AdsConversionJobSchema: z.ZodType<AdsConversionJob> = z
   .object({
-    kind: z.enum(["conversion", "restatement"]),
     userId: z.string().uuid(),
     browser: BrowserAdsSnapshotSchema.nullable(),
     conversion: z.enum(ADS_CONVERSIONS),
@@ -62,7 +47,5 @@ export const AdsConversionJobSchema: z.ZodType<AdsConversionJob> = z
       .object({ gclid: z.string().optional(), gbraid: z.string().optional(), wbraid: z.string().optional(), at: isoTime })
       .strict(),
     value: z.object({ amountCents: z.number().int(), currency: z.string().min(3) }).strict().optional(),
-    originalRequestId: z.string().optional(),
-    statusChecks: z.number().int().optional(),
   })
   .strict();

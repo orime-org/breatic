@@ -6,7 +6,6 @@ import { NO_CONSENT } from "@breatic/shared";
 import {
   currentAdsBrowser,
   currentConsent,
-  currentConsentSeen,
   runWithConsent,
 } from "@core/analytics/consent-context.js";
 
@@ -40,16 +39,15 @@ describe("request consent context", () => {
     expect(currentConsent()).toEqual(NO_CONSENT);
   });
 
-  it("reads a browser with no ads choice and nothing seen when no browser was read", async () => {
-    expect(currentAdsBrowser()).toEqual({ consent: false, gpc: false });
-    expect(currentConsentSeen()).toBeNull();
-    const inside = await runWithConsent({ analytics: true, ads: true }, async () => [currentAdsBrowser(), currentConsentSeen()]);
-    expect(inside).toEqual([{ consent: false, gpc: false }, null]);
+  it("reads a browser with no ads choice when no browser was read", async () => {
+    expect(currentAdsBrowser()).toEqual({ consent: false });
+    const inside = await runWithConsent({ analytics: true, ads: true }, async () => currentAdsBrowser());
+    expect(inside).toEqual({ consent: false });
   });
 
-  it("exposes the browser's ads snapshot and the choices it would record", async () => {
-    const browser = { ads: { consent: true, gpc: true }, seen: { ads: { value: true, revision: 1 } } };
-    const inside = await runWithConsent({ analytics: false, ads: true }, async () => [currentAdsBrowser(), currentConsentSeen()], browser);
-    expect(inside).toEqual([browser.ads, browser.seen]);
+  it("exposes the browser's ads snapshot", async () => {
+    const browser = { ads: { consent: true } };
+    const inside = await runWithConsent({ analytics: false, ads: true }, async () => currentAdsBrowser(), browser);
+    expect(inside).toEqual(browser.ads);
   });
 });

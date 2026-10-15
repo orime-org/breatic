@@ -225,7 +225,6 @@ export { loadLocales, runWithLocale } from "@core/i18n/locale-loader.js";
 export {
   currentAdsBrowser,
   currentConsent,
-  currentConsentSeen,
   runWithConsent,
   type RequestBrowser,
 } from "@core/analytics/consent-context.js";
@@ -257,9 +256,7 @@ export {
   ADS_CONVERSION_QUEUE,
   adsConversionConfig,
   adsConversionState,
-  cancelPendingAdsRestatement,
   enqueueAdsConversion,
-  enqueueAdsRestatement,
   requeueStaleAdsUploads,
   unscheduleAdsUploadSweep,
   scheduleAdsUploadSweep,
@@ -268,7 +265,7 @@ export {
   setAdsConversionConfigForTest,
   type AdsConversionConfig,
 } from "@core/ads/ads-conversion.js";
-export { findUploadByPayment, getUploadStatus, moveUpload } from "@core/ads/ads-conversion.repo.js";
+export { getUploadStatus, moveUpload } from "@core/ads/ads-conversion.repo.js";
 export {
   ADS_CONVERSIONS,
   ADS_SWEEP_JOB,
@@ -289,7 +286,5 @@ export {
   adsAllowedFor,
   eraseAccountAnalytics,
   getAccountAttribution,
-  getAdsSharing,
-  recordSignedInRequest,
-  setAdsSharing,
+  recordReportedConsent,
 } from "@core/analytics/account.repo.js";
