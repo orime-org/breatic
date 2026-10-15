@@ -19,6 +19,24 @@ describe('NodeContent', () => {
     expect(screen.getByTestId('node-content-empty').className).toContain('h-48');
   });
 
+  // inner#1303 §6.7: a node built for a result whose size is known holds that
+  // place empty, as tall as the picture will draw at the node's width.
+  it('holds the planned picture’s shape, inset like a picture, when the node knows its size', () => {
+    render(
+      <NodeContent
+        hasContent={false}
+        emptySize={{ width: 1600, height: 400 }}
+        placeholder={<div data-testid='ph'>P</div>}
+        content={<div>C</div>}
+      />,
+    );
+    const empty = screen.getByTestId('node-content-empty');
+    expect(empty.className).not.toContain('h-48');
+    expect(empty.closest('[data-testid="node-media-inset"]')).not.toBeNull();
+    expect(empty.style.aspectRatio).toBe('1600 / 400');
+    expect(screen.getByTestId('ph')).toBeInTheDocument();
+  });
+
   it('renders the content when the node holds something', () => {
     render(
       <NodeContent

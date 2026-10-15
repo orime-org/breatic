@@ -211,11 +211,16 @@ describe('viewportToInspect', () => {
 describe('freshNodesBox', () => {
   // A press that builds two results stacked down the column (a vocal split)
   // frames both, not the first one alone.
-  it('covers every node a press built, each at the fresh-node size', () => {
-    expect(freshNodesBox([{ x: 400, y: 100 }, { x: 400, y: 316 }])).toEqual({ x: 400, y: 100, width: 288, height: 408 });
+  it('covers every node a press built, each at its own footprint', () => {
+    const built = [
+      { x: 400, y: 100, width: 288, height: 192 },
+      { x: 400, y: 316, width: 288, height: 400 },
+    ] as const;
+    expect(freshNodesBox(built)).toEqual({ x: 400, y: 100, width: 288, height: 616 });
   });
 
-  it('is the one fresh node for a press that built one', () => {
-    expect(freshNodesBox([{ x: 10, y: 20 }])).toEqual({ x: 10, y: 20, width: 288, height: 192 });
+  // A result planned taller than a fresh node is framed whole (inner#1303 §6.7).
+  it('is the one node for a press that built one, as tall as it was planned', () => {
+    expect(freshNodesBox([{ x: 10, y: 20, width: 288, height: 700 }])).toEqual({ x: 10, y: 20, width: 288, height: 700 });
   });
 });

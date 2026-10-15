@@ -184,3 +184,22 @@ describe('outputPlacementOf for picked tiles', () => {
   });
 });
 
+
+// §6.7: a tool that redraws the picture over itself at its own size plans its
+// result at the source's size, so its node is laid out and framed as tall as
+// it will be.
+describe('plannedOutputSizes for a result the size of its source', () => {
+  const SOURCE = { width: 1600, height: 1000 };
+
+  it.each(['image.adjust', 'image.mark'])('plans %s at the source’s size', (id) => {
+    expect(plannedOutputSizes(miniToolById(id)!, {}, SOURCE)).toEqual([SOURCE]);
+  });
+
+  it.each(['image.crop', 'image.expand', 'image.upscale'])('plans nothing for %s, whose result size is not the source’s', (id) => {
+    expect(plannedOutputSizes(miniToolById(id)!, {}, SOURCE)).toEqual([]);
+  });
+
+  it('plans nothing while the source’s size is not known', () => {
+    expect(plannedOutputSizes(miniToolById('image.adjust')!, {}, {})).toEqual([]);
+  });
+});

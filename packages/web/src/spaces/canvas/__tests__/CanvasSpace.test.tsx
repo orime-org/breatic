@@ -4646,7 +4646,7 @@ describe('what an Understand press leaves on screen', () => {
     // The call, not the name: a dependency array mentions it too, and a
     // press that only lists it moves nothing.
     expect(press).toContain('setSelectAfterCreate([id])');
-    expect(press).toContain('frameBuilt(freshNodesBox([position]), host.id)');
+    expect(press).toContain('frameBuilt(freshNodesBox([{ ...position, ...EMPTY_NODE_SIZE }]), host.id)');
   });
 
   // The pan keeps the reader's zoom, so it slides in a straight line; the

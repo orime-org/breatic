@@ -10,6 +10,7 @@
 
 import {
   gridShapeOf,
+  isModelTool,
   outputsOf,
   pickedCellsOf,
   type MiniToolOutput,
@@ -35,6 +36,8 @@ export interface PlacedOutput {
   y: number;
   width: number;
   height: number;
+  /** The result's pixel size, when the run plans it; its node is built with it. */
+  size?: OutputSize;
 }
 
 /**
@@ -48,25 +51,38 @@ function nodeHeight(size: OutputSize | undefined): number {
 }
 
 /**
+ * Whether a tool's result is its source redrawn at its own size: the adjust
+ * redraws it through its filters, the markup draws over it.
+ * @param spec - The tool.
+ * @returns True for those tools.
+ */
+function keepsSourceSize(spec: MiniToolSpec): boolean {
+  if (spec.markup === true) return true;
+  return !isModelTool(spec) && spec.params.some((param) => param.kind === 'adjust');
+}
+
+/**
  * The pixel sizes a run's results will have, as far as they are known before
  * the browser makes them, so the nodes can be built at the press (inner#1303
  * §6.7): a grid's come from the source's size by the export's own cut, one per
- * cell of the whole grid; every other tool's layout does not depend on its
- * results' sizes.
+ * cell of the whole grid; an adjust's and a markup's are the source's own; no
+ * other tool's are known before its result exists.
  * @param spec - The tool.
  * @param params - The run's params.
  * @param source - The source's pixel size, where its node knows it.
  * @param source.width - Its width.
  * @param source.height - Its height.
- * @returns One size per grid cell, or none when they are not known yet.
+ * @returns One size per grid cell, the source's size for a result as large, or none.
  */
 export function plannedOutputSizes(
   spec: MiniToolSpec,
   params: Record<string, unknown>,
   source: { width?: number | undefined; height?: number | undefined },
 ): OutputSize[] {
+  if (source.width === undefined || source.height === undefined) return [];
+  if (keepsSourceSize(spec)) return [{ width: source.width, height: source.height }];
   const shape = gridShapeOf(spec, params);
-  if (shape === null || source.width === undefined || source.height === undefined) return [];
+  if (shape === null) return [];
   return gridTileRects(source.width, source.height, shape.rows, shape.cols).map(({ width, height }) => ({ width, height }));
 }
 
@@ -96,22 +112,29 @@ export function outputPlacementOf(
    * @param label - What goes between the prefix and the source name.
    * @param x - Its left, from the batch's.
    * @param y - Its top, from the batch's.
-   * @param height - Its node's height.
+   * @param size - Its pixel size, when planned.
    * @returns The placement.
    */
-  const placed = (output: MiniToolOutput, label: string, x: number, y: number, height: number): PlacedOutput => ({
+  const placed = (
+    output: MiniToolOutput,
+    label: string,
+    x: number,
+    y: number,
+    size: OutputSize | undefined,
+  ): PlacedOutput => ({
     output,
     name: `${output.namePrefix}-${label}${sourceName ?? MODALITY_LABEL[output.modality]}`,
     x,
     y,
     width: EMPTY_NODE_SIZE.width,
-    height,
+    height: nodeHeight(size),
+    ...(size !== undefined && size.width > 0 && size.height > 0 && { size }),
   });
 
   const shape = gridShapeOf(spec, params);
   if (shape === null) {
     return outputs.map((output, index) =>
-      placed(output, spec.output ? `${index + 1}-` : '', 0, index * NODE_STEP.y, nodeHeight(sizes[index])),
+      placed(output, spec.output ? `${index + 1}-` : '', 0, index * NODE_STEP.y, sizes[index]),
     );
   }
 
@@ -135,7 +158,7 @@ export function outputPlacementOf(
       `r${row + 1}c${col + 1}-`,
       (col - firstCol) * NODE_STEP.x,
       tops[row]!,
-      nodeHeight(sizes[cell]),
+      sizes[cell],
     );
   });
 }

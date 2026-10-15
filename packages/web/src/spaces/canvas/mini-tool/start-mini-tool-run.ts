@@ -123,11 +123,14 @@ export interface MiniToolRun {
   /** Whether the panel is still the opening the press was made in. */
   stillOpen: () => boolean;
   /**
-   * Called with the nodes the press built, and the group they went into when
-   * the tool groups its results, the moment they exist, while the panel is the
-   * same opening.
+   * Called with the nodes the press built, each with the footprint it was laid
+   * out at, and the group they went into when the tool groups its results, the
+   * moment they exist, while the panel is the same opening.
    */
-  onBuilt: (built: { id: string; position: { x: number; y: number } }[], group?: BuiltGroup) => void;
+  onBuilt: (
+    built: { id: string; position: { x: number; y: number }; width: number; height: number }[],
+    group?: BuiltGroup,
+  ) => void;
 }
 
 /**
@@ -348,9 +351,13 @@ export async function startMiniToolRun(run: MiniToolRun): Promise<void> {
     plannedOutputSizes(spec, run.snapshot.params, source),
     source.name,
   );
+  // A result whose size is planned is built with it, so it holds its place at
+  // the size it will have, for everyone (inner#1303 §6.7); the result's own
+  // media fields replace it when it lands (`writeNodeMedia`).
   const nodes = placements.map((placed) => {
     const built = createEmptyNode(placed.output.modality, { x: base.x + placed.x, y: base.y + placed.y }, userId);
-    return { ...built, data: { ...built.data, name: placed.name } };
+    const size = placed.size === undefined ? {} : { mediaWidth: placed.size.width, mediaHeight: placed.size.height };
+    return { ...built, data: { ...built.data, name: placed.name, ...size } };
   });
   let group: BuiltGroup | undefined;
   runCanvasUndoBatch(projectId, spaceId, () => {
@@ -381,7 +388,17 @@ export async function startMiniToolRun(run: MiniToolRun): Promise<void> {
       else now.fail(spaceId, node.id, op, message);
     });
   };
-  if (run.stillOpen()) run.onBuilt(nodes.map((node) => ({ id: node.id, position: node.position })), group);
+  if (run.stillOpen()) {
+    run.onBuilt(
+      nodes.map((node, index) => ({
+        id: node.id,
+        position: node.position,
+        width: placements[index]!.width,
+        height: placements[index]!.height,
+      })),
+      group,
+    );
+  }
 
   const exports = exportsBeforeRun(spec);
   if (exports) run.setExporting(true);

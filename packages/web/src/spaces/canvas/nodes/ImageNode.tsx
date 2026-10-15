@@ -87,10 +87,12 @@ export const ImageNode = React.memo(function ImageNode({
       locked={locked}
       onRename={onRename}
       testId='image-node'
-      resolution={resolution}
+      // A planned size describes a picture still to come.
+      resolution={hasContent ? resolution : undefined}
     >
       <NodeContent
         hasContent={hasContent}
+        emptySize={knowsSize ? { width: data.width!, height: data.height! } : undefined}
         placeholder={
           <NodePlaceholder modality='image' onActivate={onActivate} />
         }

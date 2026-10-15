@@ -17,7 +17,6 @@ import type { Viewport } from '@xyflow/react';
 import { frameProposal } from '@web/spaces/canvas/lib/place-flow';
 import {
   centerOf,
-  EMPTY_NODE_SIZE,
   groupRectForMembers,
   type Point,
   type Rect,
@@ -98,21 +97,21 @@ export function framedBox(copies: readonly Rect[], viewport: Rect): Rect | null 
 }
 
 /**
- * The box of the nodes a press just wrote, each at the fresh-node size: a node
- * written this instant is not in ReactFlow's store yet to be measured, and a
- * node holding nothing is that size until something lands in it.
- * @param positions - Where the nodes were written.
+ * The box of the nodes a press just wrote, each at the footprint it was laid
+ * out at: a node written this instant is not in ReactFlow's store yet to be
+ * measured, and it holds that footprint until something lands in it.
+ * @param built - Where the nodes were written and how large each is.
  * @returns The box around them.
  * @throws {never} Never.
  */
-export function freshNodesBox(positions: readonly [Point, ...Point[]]): Rect {
-  const x = Math.min(...positions.map((at) => at.x));
-  const y = Math.min(...positions.map((at) => at.y));
+export function freshNodesBox(built: readonly [Rect, ...Rect[]]): Rect {
+  const x = Math.min(...built.map((at) => at.x));
+  const y = Math.min(...built.map((at) => at.y));
   return {
     x,
     y,
-    width: Math.max(...positions.map((at) => at.x)) - x + EMPTY_NODE_SIZE.width,
-    height: Math.max(...positions.map((at) => at.y)) - y + EMPTY_NODE_SIZE.height,
+    width: Math.max(...built.map((at) => at.x + at.width)) - x,
+    height: Math.max(...built.map((at) => at.y + at.height)) - y,
   };
 }
 

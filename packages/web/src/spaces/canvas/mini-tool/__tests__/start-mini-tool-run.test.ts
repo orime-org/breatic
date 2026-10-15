@@ -27,6 +27,7 @@ import { toast } from '@web/lib/toast';
 import { DrawingEmptyError } from '@web/spaces/canvas/mini-tool/export-drawing';
 import { ImageTooLargeError } from '@web/spaces/canvas/mini-tool/adjust-export';
 import { NODE_STEP } from '@web/spaces/canvas/drop-layout';
+import { EMPTY_NODE_SIZE, mediaNodeHeight } from '@web/spaces/canvas/group-geometry';
 import { outputPlacementOf } from '@web/spaces/canvas/mini-tool/output-placement';
 import { startMiniToolRun, type ExportedFile, type MiniToolRun } from '@web/spaces/canvas/mini-tool/start-mini-tool-run';
 import { useUploadMarksStore, type UploadMark } from '@web/stores/upload-marks';
@@ -122,10 +123,46 @@ describe('startMiniToolRun', () => {
     ]);
     const edges = canvas.addEdge.mock.calls.map((call) => call[2]);
     expect(edges.every((edge) => edge.source === 'src' && edge.toolId === 'audio.separate')).toBe(true);
+    // Each node's footprint, which the camera frames.
     expect(run.onBuilt).toHaveBeenCalledWith(
-      nodes.map((node) => ({ id: node.id, position: node.position })),
+      nodes.map((node) => ({ id: node.id, position: node.position, ...EMPTY_NODE_SIZE })),
       undefined,
     );
+  });
+
+  // §6.7: a result the size of its source is built at that size, so the node
+  // reads and lays out as tall as it will be, for everyone, and the camera
+  // frames all of it.
+  it('builds a result the size of its source at that size', async () => {
+    const run = press({
+      spec: tool('image.adjust'),
+      snapshot: { ...SNAPSHOT, params: {} },
+      source: { id: 'src', name: 'IMG', position: { x: 0, y: 0 }, groupOrigin: null, mimeType: 'image/png', width: 1600, height: 400 },
+      exportFile: vi.fn(() => Promise.resolve([{ file: new File(['x'], 'a.png', { type: 'image/png' }) }])),
+    });
+    await startMiniToolRun(run);
+    const [node] = canvas.addNode.mock.calls.map((call) => call[2]);
+    // A picture's own size lives in `mediaWidth` / `mediaHeight`; `width` /
+    // `height` are a Group's footprint, which a result's write never touches.
+    expect(node.data).toMatchObject({ mediaWidth: 1600, mediaHeight: 400 });
+    expect(node.data).not.toHaveProperty('width');
+    expect(run.onBuilt).toHaveBeenCalledWith(
+      [{ id: node.id, position: node.position, width: EMPTY_NODE_SIZE.width, height: mediaNodeHeight(1600, 400) }],
+      undefined,
+    );
+  });
+
+  it('builds each grid tile at its own cut size', async () => {
+    const files = [0, 1].map((i) => new File(['x'], `t${i}.png`, { type: 'image/png' }));
+    const run = press({
+      spec: tool('image.grid'),
+      snapshot: { ...SNAPSHOT, params: { rows: 1, cols: 2 } },
+      source: { id: 'src', name: 'IMG', position: { x: 0, y: 0 }, groupOrigin: null, mimeType: 'image/png', width: 1001, height: 100 },
+      exportFile: vi.fn(() => Promise.resolve(files.map((file) => ({ file })))),
+    });
+    await startMiniToolRun(run);
+    const nodes = canvas.addNode.mock.calls.map((call) => call[2]);
+    expect(nodes.map((node) => [node.data.mediaWidth, node.data.mediaHeight])).toEqual([[501, 100], [500, 100]]);
   });
 
   it('sends the snapshot with the new nodes for a server tool', async () => {
@@ -274,7 +311,7 @@ describe('startMiniToolRun', () => {
     expect(group.data.name).toBe('GRID-IMG');
     expect(members.map((member: { id: string }) => member.id)).toEqual(nodes.map((node) => node.id));
     expect(run.onBuilt).toHaveBeenCalledWith(
-      nodes.map((node) => ({ id: node.id, position: node.position })),
+      nodes.map((node) => expect.objectContaining({ id: node.id, position: node.position })),
       { id: group.id, position: group.position, width: group.data.width, height: group.data.height },
     );
   });

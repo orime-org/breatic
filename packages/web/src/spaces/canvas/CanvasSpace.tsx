@@ -4030,7 +4030,7 @@ function CanvasSpaceInner({
       // reader — a selection flag moves nothing.
       onBuilt: ({ id, position }) => {
         setSelectAfterCreate([id]);
-        frameBuilt(freshNodesBox([position]), host.id);
+        frameBuilt(freshNodesBox([{ ...position, ...EMPTY_NODE_SIZE }]), host.id);
       },
     });
   }, [
@@ -4101,8 +4101,8 @@ function CanvasSpaceInner({
             return;
           }
           setSelectAfterCreate(built.map((node) => node.id));
-          const [first, ...rest] = built;
-          if (first !== undefined) frameBuilt(freshNodesBox([first.position, ...rest.map((node) => node.position)]), nodeId);
+          const [first, ...rest] = built.map((node) => ({ ...node.position, width: node.width, height: node.height }));
+          if (first !== undefined) frameBuilt(freshNodesBox([first, ...rest]), nodeId);
         },
       });
       if (exportsBeforeRun(spec)) trackOperation(newId(), work);
