@@ -230,7 +230,6 @@ class AdjustCodes extends filters.BaseFilter<'AdjustCodes', { way: CodesWay }> {
       data[i + 2] = c;
     }
   }
-
 }
 
 /** One plane of ffmpeg's `eq` as its integer pass runs it: a gain in 1/4096 steps, then a lift in codes. */
@@ -342,7 +341,6 @@ class AdjustColor extends filters.BaseFilter<'AdjustColor', { luma: EqPlane; chr
     gl.uniform2fv(locations.uChroma ?? null, this.chroma);
     gl.uniform2fv(locations.uTurn ?? null, this.turn);
   }
-
 }
 
 /** Source pixels a side one pass of the noise reduction reads: the chroma's weight is under 0.4% there at the strongest. */
@@ -465,6 +463,15 @@ class AdjustBlur extends filters.Blur {
     gl.uniform1f(locations.uFalloff ?? null, blurFalloff(this.sigma));
   }
 
+  /**
+   * Whether the pass changes nothing. FabricImage.applyFilters drops a pass
+   * that says so before it runs the rest, and Blur's own answer reads its
+   * `blur` field, which this pass leaves at 0.
+   * @returns True at no spread.
+   */
+  isNeutralState(): boolean {
+    return this.sigma === 0;
+  }
 }
 
 /**
@@ -557,7 +564,6 @@ class AdjustUnsharp extends filters.BaseFilter<'AdjustUnsharp', { amount: number
     gl.uniform2fv(locations.uPixel ?? null, this.pixel);
     gl.uniform1fv(locations.uRow ?? null, [...Array<number>(pad).fill(0), ...this.row, ...Array<number>(pad).fill(0)]);
   }
-
 }
 
 /**
@@ -648,7 +654,6 @@ class AdjustGrain extends filters.BaseFilter<
     gl.uniform1f(locations.uSeed ?? null, this.seed);
     gl.uniform2fv(locations.uCells ?? null, this.cells);
   }
-
 }
 
 /**
@@ -727,7 +732,6 @@ class AdjustVignette extends filters.BaseFilter<'AdjustVignette', { angle: numbe
     gl.uniform1f(locations.uAspect ?? null, this.aspect);
     gl.uniform3fv(locations.uCenter ?? null, this.centers());
   }
-
 }
 
 /** One filter in the chain: Fabric's own or one of ours. */
