@@ -15,7 +15,7 @@ import type { ModelMessage } from "ai";
 import type * as CoreModule from "@breatic/core";
 import type { MessageData } from "@breatic/shared";
 import { prefixHash, type RequestPrefix } from "@server/agent/history-replay.js";
-import { FAILED_NOTE } from "@server/agent/model-messages.js";
+import { endingNote } from "@server/agent/model-messages.js";
 import { UNCHANGED_SPACE_NOTE, openSpaceKey } from "@server/agent/user-turn.js";
 import { measureMessages } from "@server/agent/payload-size.js";
 import { saying } from "../helpers/model-double.js";
@@ -244,7 +244,7 @@ describe("a turn keeps its reply as it was sent", () => {
       for await (const _chunk of turn) void _chunk;
     });
 
-    expect(keptReply().messages.at(-1)).toEqual({ role: "assistant", content: FAILED_NOTE });
+    expect(keptReply().messages.at(-1)).toEqual({ role: "assistant", content: endingNote([{ type: "failed" }]) });
   });
 });
 

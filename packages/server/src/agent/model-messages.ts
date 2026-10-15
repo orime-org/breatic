@@ -111,7 +111,7 @@ function toolOutput(part: ToolPart): ToolResultPart["output"] {
  * for something the user never did. Telling the two apart needs the browser
  * to say which it was, which is task #149.
  */
-export const STOP_NOTE = "[This turn did not finish: the connection to the user closed.]";
+const STOP_NOTE = "[This turn did not finish: the connection to the user closed.]";
 
 /**
  * The note that says a turn broke off on its own.
@@ -121,7 +121,7 @@ export const STOP_NOTE = "[This turn did not finish: the connection to the user 
  * the second as the first would have the model wait to be asked again for
  * something it should offer to finish.
  */
-export const FAILED_NOTE = "[This turn could not be finished; it broke off partway.]";
+const FAILED_NOTE = "[This turn could not be finished; it broke off partway.]";
 
 /**
  * The note that says a turn ran out of room rather than out of things to say.
@@ -130,7 +130,24 @@ export const FAILED_NOTE = "[This turn could not be finished; it broke off partw
  * model was saying is still wanted and nothing about it went wrong, so the
  * turn to make of this is to carry on from where the sentence stops.
  */
-export const TRUNCATED_NOTE = "[This turn was cut off at the output limit, mid-sentence.]";
+const TRUNCATED_NOTE = "[This turn was cut off at the output limit, mid-sentence.]";
+
+/**
+ * The note a reply ends on when its turn did not end on its own.
+ *
+ * Read off the reply's stored parts, which record how the turn ended, so a
+ * row stored before its copy as sent was kept and a row with one end the
+ * same way.
+ * @param parts - The reply's stored parts.
+ * @returns The note, or undefined for a turn that ended on its own.
+ * @throws {never} Never.
+ */
+export function endingNote(parts: readonly MessagePart[]): string | undefined {
+  if (parts.some((p) => p.type === "interrupted")) return STOP_NOTE;
+  if (parts.some((p) => p.type === "failed")) return FAILED_NOTE;
+  if (parts.some((p) => p.type === "truncated")) return TRUNCATED_NOTE;
+  return undefined;
+}
 
 /**
  * Turn stored messages into the messages the model is sent.
@@ -167,9 +184,7 @@ export function toModelMessages(history: readonly MessageData[]): ModelMessage[]
     // some providers reject, and a `user` one would be words the user never
     // said. Bracketed so the model reads it as a note about the turn rather
     // than as something it wrote.
-    const stopped = message.parts.some((p) => p.type === "interrupted");
-    const brokeOff = message.parts.some((p) => p.type === "failed");
-    const cutOff = message.parts.some((p) => p.type === "truncated");
+    const note = endingNote(message.parts);
 
     for (const part of message.parts) {
       if (part.type === "text") {
@@ -202,9 +217,7 @@ export function toModelMessages(history: readonly MessageData[]): ModelMessage[]
         ],
       });
     }
-    if (stopped) out.push({ role: "assistant", content: STOP_NOTE });
-    else if (brokeOff) out.push({ role: "assistant", content: FAILED_NOTE });
-    else if (cutOff) out.push({ role: "assistant", content: TRUNCATED_NOTE });
+    if (note !== undefined) out.push({ role: "assistant", content: note });
   }
 
   return out;

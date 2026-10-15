@@ -10,7 +10,7 @@
 
 import { createUIMessageStream, stepCountIs } from "ai";
 import { streamTextRetry } from "@breatic/domain";
-import type { ModelMessage, StopCondition, Tool, ToolSet, UIMessageChunk, UIMessageStreamWriter } from "ai";
+import type { ModelMessage, StopCondition, Tool, ToolSet, UIMessage, UIMessageChunk, UIMessageStreamWriter } from "ai";
 
 import { callOptionsFor, getModel, resolveProvider } from "@breatic/domain";
 import {
@@ -41,8 +41,8 @@ import { getContext } from "@breatic/core";
 import { logger } from "@breatic/core";
 import { historyForModel, lastFullSnapshotKey, prefixHash } from "@server/agent/history-replay.js";
 import type { ReplyForModel, UserForModel } from "@server/agent/history-replay.js";
-import { FAILED_NOTE, STOP_NOTE, TRUNCATED_NOTE } from "@server/agent/model-messages.js";
-import { inProgressStep, replyTokens, type ReportedUsage } from "@server/agent/reply-for-model.js";
+import { endingNote } from "@server/agent/model-messages.js";
+import { inProgressStep, replyTokens, type ReportedUsage, type SettledCalls } from "@server/agent/reply-for-model.js";
 import { measureMessages, measurePayload } from "@server/agent/payload-size.js";
 import { withModelOutputs } from "@server/agent/stored-model-output.js";
 import { endingOf, endingWithNothingRun } from "@server/agent/tool-ending.js";
@@ -313,7 +313,8 @@ export class MainAgent {
      * the turn ended inside, and a note when it did not end on its own.
      * @param ended - How the turn ended and what it left behind.
      * @param ended.exit - How the turn ended.
-     * @param ended.truncated - Whether it ran out of room mid-answer.
+     * @param ended.stored - The reply's parts as they are stored, which say how
+     *   the turn ended.
      * @param ended.parts - The reply's parts, as the reader received them.
      * @param ended.tools - The turn's tools.
      * @param ended.settled - How the turn's calls ended.
@@ -322,10 +323,10 @@ export class MainAgent {
      */
     const keptOfReply = async (ended: {
       exit: "aborted" | "failed" | "blocked" | "completed";
-      truncated: boolean;
-      parts: Parameters<typeof inProgressStep>[0];
+      stored: readonly MessagePart[];
+      parts: UIMessage["parts"];
       tools: ToolSet;
-      settled: Parameters<typeof inProgressStep>[3];
+      settled: SettledCalls;
     }): Promise<ReplyForModel | undefined> => {
       if (sentPrefixHash === undefined || userKept === undefined) return undefined;
       let unfinished: ModelMessage[] = [];
@@ -337,14 +338,7 @@ export class MainAgent {
           logger.error({ err, userId, conversationId, projectId, turnIndex }, "turn_unfinished_step_unconvertible");
         }
       }
-      const note =
-        ended.exit === "aborted"
-          ? STOP_NOTE
-          : ended.exit === "failed"
-            ? FAILED_NOTE
-            : ended.truncated
-              ? TRUNCATED_NOTE
-              : undefined;
+      const note = endingNote(ended.stored);
       const messages: ModelMessage[] = [
         ...stepMessages,
         ...unfinished,
@@ -766,7 +760,7 @@ export class MainAgent {
 
         const replyForModel = await keptOfReply({
           exit,
-          truncated: storedParts.some((p) => p.type === "truncated"),
+          stored: storedParts,
           parts: responseMessage.parts,
           tools: turnTools,
           settled: { answered: whatToolAnswered, ended: howToolEnded },
