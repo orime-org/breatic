@@ -87,9 +87,10 @@ export function AgentColumn({ projectId, activeSpace, spaces }: AgentColumnProps
   // the column finds it still waiting (inner#1490). `startNew` settles every
   // outcome itself (it never rejects).
   const creating = useStartingNew(projectId);
-  const startNew = React.useCallback(async (): Promise<void> => {
-    await conversationRuntime.startNew(projectId);
-  }, [projectId]);
+  const startNew = React.useCallback(
+    (): Promise<void> => conversationRuntime.startNew(projectId),
+    [projectId],
+  );
 
   const renameCurrent = React.useCallback(
     (next: string): Promise<void> | undefined =>

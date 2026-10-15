@@ -13,8 +13,7 @@
 
 import { t } from '@breatic/shared';
 
-import { paymentApi, type CheckoutRequest } from '@web/data/api/payment';
-import type { CreditPack } from '@web/data/api/payment';
+import { paymentApi, type CheckoutRequest, type CreditPack } from '@web/data/api/payment';
 import { toast } from '@web/lib/toast';
 import { runOnce, useRunning } from '@web/stores/task-actions-in-flight';
 

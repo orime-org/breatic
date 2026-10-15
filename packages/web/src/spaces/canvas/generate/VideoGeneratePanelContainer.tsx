@@ -649,7 +649,7 @@ function VideoGeneratePanelBody({
     [projectId, spaceId, nodeId],
   );
 
-  const onExecute = React.useCallback(async () => {
+  const onExecute = React.useCallback((): void => {
     // Every execute-critical value is read SYNCHRONOUSLY here, never from a
     // render closure that React batching and live collaboration make stale.
     if (isGenerating(spaceId, nodeId)) return;

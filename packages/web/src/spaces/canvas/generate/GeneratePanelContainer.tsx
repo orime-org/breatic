@@ -530,7 +530,7 @@ function GeneratePanelBody({
     [projectId, spaceId, nodeId],
   );
 
-  const onExecute = React.useCallback(async () => {
+  const onExecute = React.useCallback((): void => {
     // Every execute-critical value is read SYNCHRONOUSLY here — never trusting a
     // render-time closure, which React batching + live collab make stale:
     //   - isGenerating: the run-once registry, read synchronously (state lags

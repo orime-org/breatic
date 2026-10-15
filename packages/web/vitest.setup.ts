@@ -74,7 +74,6 @@ afterEach(() => {
   // end any way it likes, including throwing mid-way.
   vi.useRealTimers();
   cleanup();
-
   // `cleanup()` only takes back what testing-library rendered. A test that
   // attaches an element itself — mounting an editor needs one — leaves it
   // behind, and with one process per package every later FILE shares this
