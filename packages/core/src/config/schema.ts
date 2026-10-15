@@ -181,9 +181,9 @@ export const coreConfigSchema = z.object({
   //     replicas, a rolling update has
   //     old and new instances live at once, and an old publisher's
   //     `project:…` never reaches a new subscriber's `{ENV}:project:*` — pub/sub
-  //     drops unmatched publishes with no error. For that window, membership
-  //     revocations do not reach collab: a removed member keeps their open
-  //     session until the rollout finishes.
+  //     drops unmatched publishes with no error. For that window, activity
+  //     signals and the connection closes after a duplicate / archive /
+  //     restore do not reach collab.
   //
   // It exists because pub/sub is the one thing the `REDIS_*_URL` DB split cannot
   // isolate: SUBSCRIBE is instance-wide and ignores the selected DB. Ordinary

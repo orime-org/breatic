@@ -320,10 +320,8 @@ async function main(): Promise<void> {
   const stopProjectControlSync = startProjectControlSync(hocuspocus, controlRedis);
 
   // Health probe server - separate port so probe traffic doesn't
-  // touch the WS port. Probes every critical dependency: the
-  // general Redis (DB0 - sessions + auth), the project control-plane
-  // Redis (DB2 stream), both Postgres DBs (Yjs doc store + auth), the
-  // project_members listen connection, and the Hocuspocus WS listen socket. LB / docker healthcheck kills
+  // touch the WS port. Probes every critical dependency; the list is
+  // `buildCollabHealthChecks` in infra/health-checks.ts. LB / docker healthcheck kills
   // the instance on N consecutive 503s so a drifted connection pool
   // gets a fresh process automatically - per CLAUDE.md "industrial-grade server standards" and memory `feedback_dev_collab_long_running_drift`.
   const healthServer = startHealthServer({

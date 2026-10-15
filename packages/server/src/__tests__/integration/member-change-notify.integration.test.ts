@@ -7,8 +7,8 @@
  *
  * The notification comes from a trigger on the table, so it does not depend on
  * which code path wrote the row. These cases write the table directly, through
- * a rolled-back transaction, and through the studio and project services whose
- * writes used to go unannounced.
+ * a rolled-back transaction, and through the studio and project services that
+ * write it.
  *
  * @see packages/core/src/infra/member-change-listener.ts
  */
@@ -228,7 +228,7 @@ describe("the trigger on project_members", () => {
   });
 });
 
-describe("the write paths that used to go unannounced", () => {
+describe("the service write paths", () => {
   it("announces every project of a member removed from the studio, and the admin who takes over", async () => {
     const before = changes.length;
     await studioMemberService.removeMember(TEAM_SLUG, MEMBER);
@@ -251,7 +251,7 @@ describe("the write paths that used to go unannounced", () => {
     });
   });
 
-  it("announces a role changed inside a project", async () => {
+  it("still announces a role changed inside a project", async () => {
     const before = changes.length;
     await projectMembersService.changeRole(P_HANDOVER, HEIR, "viewer", ADMIN);
     await projectMembersService.changeRole(P_HANDOVER, HEIR, "editor", ADMIN);
