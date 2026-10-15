@@ -143,7 +143,7 @@ async function expandPrice(): Promise<number> {
 async function runExpand(projectId: string, cookie: string): Promise<{ taskId: string; status: string }> {
   const res = await app.request("/api/v1/mini-tools", {
     method: "POST",
-    headers: { Cookie: cookie, "Content-Type": "application/json" },
+    headers: { Cookie: cookie, "Content-Type": "application/json", "Idempotency-Key": crypto.randomUUID() },
     body: JSON.stringify({ ...EXPAND, project_id: projectId, space_id: crypto.randomUUID(), node_ids: [crypto.randomUUID()] }),
   });
   expect(res.status, await res.clone().text()).toBe(201);
