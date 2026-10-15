@@ -21,7 +21,7 @@ const {
   restoreByNameMock,
   seedInitialStateMock,
   countLiveSpaceDocsMock,
-  withSpaceDeleteLockMock,
+  withSpaceCountLockMock,
   FakeLockBusyError,
   activityInsertMock,
   activityInsertIgnoreMock,
@@ -33,7 +33,7 @@ const {
   restoreByNameMock: vi.fn(),
   seedInitialStateMock: vi.fn(),
   countLiveSpaceDocsMock: vi.fn(),
-  withSpaceDeleteLockMock: vi.fn(),
+  withSpaceCountLockMock: vi.fn(),
   FakeLockBusyError: class FakeLockBusyError extends Error {},
   activityInsertMock: vi.fn(),
   activityInsertIgnoreMock: vi.fn(),
@@ -56,14 +56,14 @@ vi.mock("@collab/services/project-edit-recorder.js", () => ({
   recordProjectEdit: recordEditMock,
 }));
 
-// The cross-instance delete lock is unit-tested in space-delete-lock.test.ts.
+// The cross-instance delete lock is unit-tested in space-count-lock.test.ts.
 // Here we bypass it so the delete guard logic (PG authoritative count +
 // type-correct content-doc naming) is tested in isolation: the default just
 // runs the critical section directly (lock always acquired). The lock-busy
 // path is its own test that overrides this to reject.
-vi.mock("@collab/services/space-delete-lock.js", () => ({
-  withSpaceDeleteLock: withSpaceDeleteLockMock,
-  SpaceDeleteLockBusyError: FakeLockBusyError,
+vi.mock("@collab/services/space-count-lock.js", () => ({
+  withSpaceCountLock: withSpaceCountLockMock,
+  SpaceCountLockBusyError: FakeLockBusyError,
 }));
 
 // Spread the real core barrel (encodeInitialSpaceContent /
@@ -155,8 +155,8 @@ beforeEach(() => {
   seedInitialStateMock.mockReset();
   countLiveSpaceDocsMock.mockReset();
   countLiveSpaceDocsMock.mockResolvedValue(2);
-  withSpaceDeleteLockMock.mockReset();
-  withSpaceDeleteLockMock.mockImplementation(
+  withSpaceCountLockMock.mockReset();
+  withSpaceCountLockMock.mockImplementation(
     async (_projectId: string, fn: () => Promise<unknown>) => fn(),
   );
   activityInsertMock.mockReset();
@@ -487,7 +487,7 @@ describe("handleSpaceRpc — happy paths write PG activity rows", () => {
   });
 
   it("space:delete maps a busy cross-instance lock to CONFLICT", async () => {
-    withSpaceDeleteLockMock.mockRejectedValue(new FakeLockBusyError("busy"));
+    withSpaceCountLockMock.mockRejectedValue(new FakeLockBusyError("busy"));
     seedSpace(SID, { type: "canvas", name: "Main" });
     seedSpace("sp-sib", { type: "canvas" });
 
@@ -689,7 +689,7 @@ describe("handleSpaceRpc — restore sources from the PG activity row", () => {
 
   it("maps a busy cross-instance lock to CONFLICT (restore serializes under the delete lock)", async () => {
     activityLatestUnrestoredMock.mockResolvedValue(DELETED_ROW);
-    withSpaceDeleteLockMock.mockRejectedValue(new FakeLockBusyError("busy"));
+    withSpaceCountLockMock.mockRejectedValue(new FakeLockBusyError("busy"));
 
     const res = await handleSpaceRpc(
       { hocuspocus: makeHocuspocus() },

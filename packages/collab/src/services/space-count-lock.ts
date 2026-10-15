@@ -38,7 +38,7 @@
 import { randomUUID } from "node:crypto";
 import { createLogger, getCollabRedis, env } from "@breatic/core";
 
-const logger = createLogger("space-delete-lock");
+const logger = createLogger("space-count-lock");
 
 /**
  * Lock time-to-live (seconds) — crash safety net so a holder that dies
@@ -67,14 +67,14 @@ const DEFAULT_RETRY_DELAY_MS = 100;
  * the retry budget — another delete is in flight. The caller maps this
  * to a CONFLICT so the client can retry.
  */
-export class SpaceDeleteLockBusyError extends Error {
+export class SpaceCountLockBusyError extends Error {
   /**
    * Build the busy error for a project whose delete lock is held.
    * @param projectId - Project whose delete lock was contended.
    */
   constructor(projectId: string) {
     super(`space-delete lock busy for project ${projectId}`);
-    this.name = "SpaceDeleteLockBusyError";
+    this.name = "SpaceCountLockBusyError";
   }
 }
 
@@ -112,9 +112,9 @@ function delay(ms: number): Promise<void> {
  * @param opts.retryAttempts - Acquire attempts before giving up.
  * @param opts.retryDelayMs - Delay between acquire attempts.
  * @returns Whatever `fn` resolves to.
- * @throws {SpaceDeleteLockBusyError} When the lock cannot be acquired within the retry budget.
+ * @throws {SpaceCountLockBusyError} When the lock cannot be acquired within the retry budget.
  */
-export async function withSpaceDeleteLock<T>(
+export async function withSpaceCountLock<T>(
   projectId: string,
   fn: () => Promise<T>,
   opts?: { ttlSeconds?: number; retryAttempts?: number; retryDelayMs?: number },
@@ -138,7 +138,7 @@ export async function withSpaceDeleteLock<T>(
     }
   }
   if (!acquired) {
-    throw new SpaceDeleteLockBusyError(projectId);
+    throw new SpaceCountLockBusyError(projectId);
   }
 
   try {

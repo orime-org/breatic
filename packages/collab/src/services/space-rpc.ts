@@ -61,9 +61,9 @@ import {
 import { recordProjectEdit } from "@collab/services/project-edit-recorder.js";
 import * as yjsDocumentsRepo from "@collab/services/yjs-documents.repo.js";
 import {
-  withSpaceDeleteLock,
-  SpaceDeleteLockBusyError,
-} from "@collab/services/space-delete-lock.js";
+  withSpaceCountLock,
+  SpaceCountLockBusyError,
+} from "@collab/services/space-count-lock.js";
 import {
   spaceContentDocName,
   projectMetaDocName,
@@ -763,14 +763,14 @@ async function handleDelete(
     // project to zero Spaces (see the DD 2026-07-01).
     //
     // Once the critical section has answered, that answer is what
-    // happened. The lock guards its own release (space-delete-lock.ts
+    // happened. The lock guards its own release (space-count-lock.ts
     // swallows + logs a failing eval), so the only rejection that can
     // reach here after acquisition is one thrown by runDelete itself.
-    return await withSpaceDeleteLock(projectId, () =>
+    return await withSpaceCountLock(projectId, () =>
       runDelete(ctx, projectId, caller, req, spaceId),
     );
   } catch (e) {
-    if (e instanceof SpaceDeleteLockBusyError) {
+    if (e instanceof SpaceCountLockBusyError) {
       return err(
         req.id,
         "CONFLICT",
@@ -830,7 +830,7 @@ async function runDelete(
     // instances delete near-simultaneously: the lock serializes them and
     // each reads the count left by the previous holder's soft-delete.
     // INVARIANT: any future RPC that can REDUCE a project's live Space
-    // count must run under withSpaceDeleteLock + this PG-count guard too,
+    // count must run under withSpaceCountLock + this PG-count guard too,
     // or the cross-instance protection is defeated.
     if (liveCount <= 1) {
       return err(
@@ -1097,11 +1097,11 @@ async function handleRestore(
   // restore-vs-restore; the repo CAS below is the airtight backstop for
   // the residual lock-TTL window.
   try {
-    return await withSpaceDeleteLock(projectId, () =>
+    return await withSpaceCountLock(projectId, () =>
       runRestore(ctx, projectId, caller, req, spaceId),
     );
   } catch (e) {
-    if (e instanceof SpaceDeleteLockBusyError) {
+    if (e instanceof SpaceCountLockBusyError) {
       return err(
         req.id,
         "CONFLICT",

@@ -132,7 +132,7 @@ export async function softDeleteByName(name: string): Promise<boolean> {
  * a non-authenticated call site is ever added, assert UUID shape here.
  *
  * Used by the `space:delete` guard (under the cross-instance lock in
- * `space-delete-lock.ts`) to enforce "a project always keeps >=1 Space"
+ * `space-count-lock.ts`) to enforce "a project always keeps >=1 Space"
  * against PG rather than a possibly-stale in-memory doc.
  * @param projectId - Project whose live Spaces are counted.
  * @returns The number of live content docs (Spaces) for the project.

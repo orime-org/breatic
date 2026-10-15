@@ -45,7 +45,7 @@ const {
   restoreByNameMock,
   seedInitialStateMock,
   countLiveSpaceDocsMock,
-  withSpaceDeleteLockMock,
+  withSpaceCountLockMock,
   FakeLockBusyError,
   activityInsertMock,
   activityInsertIgnoreMock,
@@ -60,7 +60,7 @@ const {
   restoreByNameMock: vi.fn(),
   seedInitialStateMock: vi.fn(),
   countLiveSpaceDocsMock: vi.fn(),
-  withSpaceDeleteLockMock: vi.fn(),
+  withSpaceCountLockMock: vi.fn(),
   FakeLockBusyError: class FakeLockBusyError extends Error {},
   activityInsertMock: vi.fn(),
   activityInsertIgnoreMock: vi.fn(),
@@ -86,9 +86,9 @@ vi.mock("@collab/services/yjs-documents.repo.js", () => ({
 // pass-through by default so the critical section is exercised directly;
 // one test replaces it with a version that throws while releasing, which
 // is the shape the real `finally { await redis.eval(...) }` has.
-vi.mock("@collab/services/space-delete-lock.js", () => ({
-  withSpaceDeleteLock: withSpaceDeleteLockMock,
-  SpaceDeleteLockBusyError: FakeLockBusyError,
+vi.mock("@collab/services/space-count-lock.js", () => ({
+  withSpaceCountLock: withSpaceCountLockMock,
+  SpaceCountLockBusyError: FakeLockBusyError,
 }));
 
 // Spread the real core barrel (writeSpaceEntry / encodeInitialSpaceContent
@@ -400,8 +400,8 @@ beforeEach(() => {
   seedInitialStateMock.mockResolvedValue(true);
   countLiveSpaceDocsMock.mockReset();
   countLiveSpaceDocsMock.mockResolvedValue(2);
-  withSpaceDeleteLockMock.mockReset();
-  withSpaceDeleteLockMock.mockImplementation(
+  withSpaceCountLockMock.mockReset();
+  withSpaceCountLockMock.mockImplementation(
     async (_projectId: string, fn: () => Promise<unknown>) => fn(),
   );
   activityInsertMock.mockReset();
@@ -867,8 +867,8 @@ describe("finishing steps cannot change the answer already decided", () => {
   });
 
   // The release throwing lives in the LOCK, and so does the protection: the
-  // real `withSpaceDeleteLock` swallows + logs a failing release
-  // (space-delete-lock.test.ts pins that against the real module). A
+  // real `withSpaceCountLock` swallows + logs a failing release
+  // (space-count-lock.test.ts pins that against the real module). A
   // mock-level re-enactment here would only ever test the mock.
 });
 
