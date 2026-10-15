@@ -138,6 +138,20 @@ describe("conversation_messages — one row per message", () => {
     expect(rows[0]?.is_nullable).toBe("NO");
     expect(rows[0]?.column_default ?? "").toContain("[]");
   });
+
+  // What was sent to the model is replayed byte for byte so the provider's
+  // cached prefix still matches. jsonb reorders an object's keys, which would
+  // change a tool call's arguments as sent; json keeps the text as written.
+  it("keeps what was sent to the model as json, and nullable", async () => {
+    const rows = await sql<{ data_type: string; is_nullable: string }[]>`
+      SELECT data_type, is_nullable FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = 'conversation_messages'
+        AND column_name = 'for_model'
+    `;
+    expect(rows[0]?.data_type).toBe("json");
+    expect(rows[0]?.is_nullable).toBe("YES");
+  });
 });
 
 describe("the old JSONB column is gone", () => {
