@@ -388,9 +388,10 @@ export function renderProductGuide(): string {
       "upload to the node again, or once a generation they run from the node's panel is accepted. After that " +
       "the upload is a task, shown with the node's task icons. Meanwhile everyone else in the project sees, on an " +
       "empty node someone is filling, that person's name followed by what they are doing in place of the first " +
-      "line: uploading, reading the file, or running the tool by its name. The line goes when they finish, close " +
-      "that Space's tab or leave the page; it stays while they look at another Space. While it shows, it takes " +
-      "the place of the viewer's own red line on that node, which comes back once the other person is done.",
+      "line: uploading, reading the file, or running the tool by its name. The line goes once our server has " +
+      "taken the work in (the node then shows its task icons) or the file is read, if it fails, or when they " +
+      "close that Space's tab or leave the page; it stays while they look at another Space. While it shows, it " +
+      "takes the place of the viewer's own red line on that node, which comes back once that line goes.",
     "Apart from that placeholder, a running, failed or expired task changes nothing on the node, which keeps " +
       "showing what it holds, or its empty look; what its tasks did is in the column of task icons described under Generating. A picture or " +
       "video node shows its width × " +
