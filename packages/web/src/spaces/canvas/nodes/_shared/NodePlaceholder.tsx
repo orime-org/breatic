@@ -95,9 +95,10 @@ export function NodePlaceholder({
   // answer is awaited, a line saying why when it ended before that.
   const mark = useUploadMark();
   const waiting = mark?.state === 'waiting';
-  const failed = mark?.state === 'failed' ? mark.message : undefined;
-  // Someone else's activity; the viewer's own mark above wins over it.
+  // Someone else filling the node is shown over the viewer's own failure
+  // line, an operation that ended; the viewer's own skeleton wins over both.
   const peerLine = usePeerLine();
+  const failed = mark?.state === 'failed' && peerLine === null ? mark.message : undefined;
   return (
     <Button
       type='button'

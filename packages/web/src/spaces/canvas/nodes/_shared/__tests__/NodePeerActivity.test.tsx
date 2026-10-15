@@ -4,8 +4,8 @@
 /**
  * What an empty node shows other people while someone fills it (inner#1303
  * §6.8, A14): "{name} is {doing}" in place of the call to action, for the
- * person who started last, only on a node with no tasks, and never over the
- * viewer's own mark.
+ * person who started last, only on a node with no tasks, never over the
+ * viewer's own waiting skeleton, and over the viewer's own failure line.
  */
 
 import { act, render, screen } from '@testing-library/react';
@@ -92,6 +92,22 @@ describe('an empty node someone else is filling', () => {
     renderAmong(new Map([['n1', { userId: 'bob', action: 'upload', at: 1 }]]));
     expect(screen.getByTestId('node-upload-skeleton')).toBeInTheDocument();
     expect(screen.queryByText('Bob is uploading')).toBeNull();
+  });
+
+  // The viewer's failure line is about an operation that ended; someone
+  // filling the node now is what the viewer needs to know before trying again.
+  it('says who is filling the node over the viewer’s own failure line, which comes back after', () => {
+    let id = '';
+    act(() => {
+      id = useUploadMarksStore.getState().begin('', 'n1', 'upload');
+      useUploadMarksStore.getState().fail('', 'n1', id, { key: 'canvas.upload.failed' });
+    });
+    const rendered = renderAmong(new Map([['n1', { userId: 'bob', action: 'upload', at: 1 }]]));
+    expect(screen.getByText('Bob is uploading')).toBeInTheDocument();
+    expect(screen.queryByTestId('node-upload-error')).toBeNull();
+    rendered.unmount();
+    renderAmong(new Map());
+    expect(screen.getByTestId('node-upload-error')).toBeInTheDocument();
   });
 
   it('keeps the double-click working while it shows', () => {
