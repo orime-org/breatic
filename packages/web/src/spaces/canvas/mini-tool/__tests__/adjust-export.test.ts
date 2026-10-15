@@ -16,7 +16,8 @@ import {
   assertCanExport,
   backendSides,
   drawAdjusted,
-  drawableSide,
+  drawableSize,
+  ownExportBackend,
   exportBackendSide,
   liveSharedBackend,
   previewSourceOf,
@@ -96,29 +97,51 @@ describe('previewSourceOf', () => {
 });
 
 /**
- * A WebGL context stub with a drawing buffer of a given side.
- * @param side - The buffer's side.
+ * A WebGL context stub with a drawing buffer of a given size.
+ * @param side - The buffer's width.
  * @param lost - Whether the context is lost.
+ * @param height - The buffer's height, its width by default.
  * @returns The stub.
  */
-function liveGl(side: number, lost = false) {
-  return { drawingBufferWidth: side, drawingBufferHeight: side, isContextLost: () => lost, deleteTexture: vi.fn() };
+function liveGl(side: number, lost = false, height = side) {
+  return { drawingBufferWidth: side, drawingBufferHeight: height, isContextLost: () => lost, deleteTexture: vi.fn() };
 }
 
 // The browser may give a WebGL canvas a smaller drawing buffer than asked
 // (Chrome on this Mac: 8192 for 16384), and the last pass is cut to it.
-describe('drawableSide', () => {
-  it('is the drawing buffer when it is smaller than the backend square', () => {
-    expect(drawableSide({ tileSize: 16384, gl: liveGl(8192) } as never)).toBe(8192);
+describe('drawableSize', () => {
+  it('is the drawing buffer the browser gave, each side on its own', () => {
+    expect(drawableSize({ tileSize: 16384, gl: liveGl(8192) } as never)).toEqual({ width: 8192, height: 8192 });
+    expect(drawableSize({ tileSize: 12000, gl: liveGl(12000, false, 3000) } as never)).toEqual({ width: 12000, height: 3000 });
   });
 
   it('is nothing on a lost context, or a WebGL backend that got none', () => {
-    expect(drawableSide({ tileSize: 4096, gl: liveGl(4096, true) } as never)).toBe(0);
-    expect(drawableSide({ tileSize: 4096 } as never)).toBe(0);
+    expect(drawableSize({ tileSize: 4096, gl: liveGl(4096, true) } as never)).toEqual({ width: 0, height: 0 });
+    expect(drawableSize({ tileSize: 4096 } as never)).toEqual({ width: 0, height: 0 });
   });
 
   it('is unbounded without WebGL', () => {
-    expect(drawableSide({ applyFilters: vi.fn() } as never)).toBe(Infinity);
+    expect(drawableSize({ applyFilters: vi.fn() } as never)).toEqual({ width: Infinity, height: Infinity });
+  });
+});
+
+// A square buffer as long as a panorama is more than the browser grants
+// (Chrome: 6000² for 12000²), while one of the panorama's own shape is not.
+describe('ownExportBackend', () => {
+  it('draws on a canvas shaped like the picture, its first context given back', () => {
+    const loseContext = vi.fn();
+    const setup = vi.fn();
+    class Backend {
+      gl = { getExtension: () => ({ loseContext }) };
+      constructor(readonly options: { tileSize: number }) {}
+      setupGLContext(width: number, height: number): void {
+        setup(width, height);
+      }
+    }
+    const made = ownExportBackend({ WebGLFilterBackend: Backend } as never, { width: 12000, height: 3000 });
+    expect((made as unknown as Backend).options.tileSize).toBe(12000);
+    expect(loseContext).toHaveBeenCalledOnce();
+    expect(setup).toHaveBeenCalledWith(12000, 3000);
   });
 });
 
@@ -189,19 +212,30 @@ describe('backendSides', () => {
 });
 
 describe('assertCanExport', () => {
-  it('says the picture is too large for a drawing buffer shorter than it', () => {
-    expect(() => assertCanExport({ tileSize: 16384, gl: liveGl(8192) } as never, 9000)).toThrow(ImageTooLargeError);
+  it('says the picture is too large for a drawing buffer shorter than it on either side', () => {
+    expect(() => assertCanExport({ tileSize: 16384, gl: liveGl(8192) } as never, { width: 9000, height: 100 })).toThrow(
+      ImageTooLargeError,
+    );
+    expect(() =>
+      assertCanExport({ tileSize: 12000, gl: liveGl(12000, false, 3000) } as never, { width: 12000, height: 3001 }),
+    ).toThrow(ImageTooLargeError);
+  });
+
+  it('lets a wide picture through a buffer of its own shape', () => {
+    expect(() =>
+      assertCanExport({ tileSize: 12000, gl: liveGl(12000, false, 3000) } as never, { width: 12000, height: 3000 }),
+    ).not.toThrow();
   });
 
   // A lost context says nothing about the picture's size.
   it('does not call a backend with no context to draw with a size problem', () => {
-    const lost = (): void => assertCanExport({ tileSize: 4096, gl: liveGl(4096, true) } as never, 100);
+    const lost = (): void => assertCanExport({ tileSize: 4096, gl: liveGl(4096, true) } as never, { width: 100, height: 100 });
     expect(lost).toThrow(Error);
     expect(lost).not.toThrow(ImageTooLargeError);
   });
 
   it('lets a picture the backend can draw through', () => {
-    expect(() => assertCanExport({ tileSize: 4096, gl: liveGl(4096) } as never, 4096)).not.toThrow();
+    expect(() => assertCanExport({ tileSize: 4096, gl: liveGl(4096) } as never, { width: 4096, height: 4096 })).not.toThrow();
   });
 });
 
