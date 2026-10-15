@@ -69,6 +69,12 @@ describe('srcset candidates', () => {
     expect(srcsetCandidates('https://e/a.png 100w 50h')).toEqual([{ url: 'https://e/a.png', width: 100 }]);
   });
 
+  it('reads an address ending in many commas in time linear in its length', () => {
+    const started = performance.now();
+    srcsetCandidates(`a${','.repeat(200_000)}b,`);
+    expect(performance.now() - started).toBeLessThan(1000);
+  });
+
   it('reads a descriptor of many digits in time linear in its length', () => {
     const started = performance.now();
     srcsetCandidates(`https://e/a.png ${'1'.repeat(200_000)}!x`);
