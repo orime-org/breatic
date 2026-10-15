@@ -9,7 +9,7 @@ const runtime = vi.hoisted(() => ({
   listener: null as null | ((choice: { analytics: boolean; ads: boolean }) => void),
   host: null as null | ConsentHost,
   started: Promise.resolve(),
-  choices: null as null | Record<string, unknown>,
+  choices: null as null | undefined | Record<string, unknown>,
   setAds: vi.fn(),
 }));
 const OPEN = { optedOut: false, source: null };
@@ -91,6 +91,14 @@ describe('whether ads run', () => {
     await load();
     runtime.listener?.({ analytics: true, ads: true });
     expect(lastAds()).toEqual({ allowed: false, known: false, status: null, optedOut: false, adsOn: true });
+  });
+
+  it('decides nothing before the page has read this browser’s choice, so an early answer keeps the stored ad click', async () => {
+    runtime.choices = undefined;
+    const analytics = await load();
+    analytics.resetUser();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(runtime.setAds).not.toHaveBeenCalled();
   });
 
   it('follows the browser alone when nobody is signed in, and reads nothing from the server', async () => {

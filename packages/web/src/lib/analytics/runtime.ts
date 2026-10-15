@@ -52,7 +52,8 @@ let sdkImport: Promise<Amplitude> | null = null;
 let amplitude: Amplitude | null = null;
 // Settles once the SDK has started; calls made before then are queued by the SDK and replayed later.
 let sdkStarted: Promise<void> | null = null;
-let choice: BrowserChoices | null = null;
+// Undefined until this page has read the cookie; null once read with no choice in it.
+let choice: BrowserChoices | null | undefined = undefined;
 // Whether `adsAllowed` lets ads run in this browser; the page decides it, with the account's switch when signed in.
 let adsAllowed = false;
 /** The signed-in account; null when nobody is, undefined until the app knows. */
@@ -363,9 +364,9 @@ export function consentSnapshot(): ConsentSnapshot {
 
 /**
  * Each category's choice in force, for the ads decision.
- * @returns The choices, or null while none was read.
+ * @returns The choices, null when the cookie holds none, or undefined before it was read.
  */
-export function browserChoices(): BrowserChoices | null {
+export function browserChoices(): BrowserChoices | null | undefined {
   return choice;
 }
 

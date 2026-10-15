@@ -155,8 +155,11 @@ function accountView(): AccountAdsView {
  * @param module - The loaded runtime.
  */
 function decideAds(module: Runtime): void {
+  const choices = module.browserChoices();
+  // Before the cookie is read nothing is known: an account answer arriving first must not count as a refusal.
+  if (choices === undefined) return;
   const gpc = (navigator as Navigator & { globalPrivacyControl?: boolean }).globalPrivacyControl === true;
-  module.setAds(adsViewFor({ browserAds: module.browserChoices()?.ads?.value ?? null, gpc, account: accountView() }));
+  module.setAds(adsViewFor({ browserAds: choices?.ads?.value ?? null, gpc, account: accountView() }));
 }
 
 /** Release whoever waits for the account's switch to be known or to fail. */
