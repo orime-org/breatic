@@ -21,7 +21,7 @@
 
 | 档 | 判据 | 住哪 |
 |---|---|---|
-| **smoke** | 走一条用户要办成的事,且跨至少两个部件或一次真实往返 | `packages/web/tests/smoke/` |
+| **smoke** | 走一条用户要办成的事,且跨至少两个部件或一次真实往返 | `packages/web/tests/smoke/`;同意窗口和发往分析、广告服务的请求在 `packages/web/tests/consent/`,它们要按厂商变量分别构建的两份前端 |
 | **visual** | 钉一个部件自己的行为 / 位置 / 尺寸 / 颜色 / 时序 | `packages/web/tests/visual/` |
 | **unit** | 不需要真浏览器 | 被测对象同级的 `__tests__/` |
 | **integration**(只测一个包) | 要真依赖(PG / Redis / 回环 socket),被测代码都在一个包里 | 那个包自己的 `src/` 下(server 统一放 `src/__tests__/integration/`) |
@@ -73,6 +73,7 @@
 | `pnpm test:smoke` / `pnpm test:visual` | 默认档:不带标签的那些。任何一台干净机器上都要全绿 |
 | `pnpm test:smoke:all` / `pnpm test:visual:all` | 全部,含带标签的，用 1 个 worker |
 | `playwright test --project=smoke --workers=1 --grep "@needs-<标签>"` | 单个子门 |
+| `pnpm --filter @breatic/web test:consent` | `tests/consent/`:`playwright.consent.config.ts` 把前端按不带和带厂商变量各构建一份、用 `vite preview` 起服务，带 `@no-vendors` 标签的用例跑前一份、其余跑后一份;后端用本地已起的 server,CI 的 `consent-network-audit` 作业由它自己起 |
 
 子门用 1 个 worker 跑，全部落在槽位 0:生成类用例要花积分，买过积分包的是槽位 0 的账号，其余槽位的新账号只有试用积分(`config/pricing.yaml` 的 `trial_grant`)。
 
