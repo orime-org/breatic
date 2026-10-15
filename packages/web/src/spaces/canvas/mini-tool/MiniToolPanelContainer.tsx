@@ -37,6 +37,7 @@ import {
   slotLengthCap,
   type MiniToolSourceInfo,
 } from '@web/spaces/canvas/mini-tool/mini-tool-view';
+import { keepsSourceSize } from '@web/spaces/canvas/mini-tool/output-placement';
 import { hasInk } from '@web/spaces/canvas/mini-tool/paint-drawing';
 import { expandDrop, frameForRatio, ratioFits, type ExpandRatio } from '@web/spaces/canvas/mini-tool/expand-frame';
 import type { MiniToolCapture } from '@web/spaces/canvas/mini-tool/start-mini-tool-run';
@@ -206,7 +207,10 @@ function OpenMiniToolPanel({
     spaceId,
     nodeId,
     content,
-    (tieredParamKeys(spec).length > 0 || spec.drawing !== undefined || laysOutInSourcePixels(spec)) &&
+    (tieredParamKeys(spec).length > 0 ||
+      spec.drawing !== undefined ||
+      laysOutInSourcePixels(spec) ||
+      keepsSourceSize(spec)) &&
       (dataWidth === undefined || dataHeight === undefined),
   );
   const source = React.useMemo<MiniToolSourceInfo>(

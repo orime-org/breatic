@@ -18,7 +18,7 @@ vi.mock('@web/lib/toast', () => ({
 // jsdom has no 2D rasteriser; the pixel check runs in Playwright.
 vi.mock('@web/spaces/canvas/mini-tool/paint-drawing', () => ({ hasInk: vi.fn() }));
 
-import type { ModelCatalog, ModelEntry } from '@breatic/shared';
+import { defaultAdjustValue, type ModelCatalog, type ModelEntry } from '@breatic/shared';
 
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import type { CanvasNodeView } from '@web/data/yjs/canvas-space';
@@ -210,6 +210,35 @@ describe('MiniToolPanelContainer', () => {
     fireEvent.click(screen.getByTestId('mini-tool-run'));
     expect(onRun).toHaveBeenCalledWith('src', expect.objectContaining({ id: 'image.grid' }), expect.anything(), undefined, {
       width: 1200,
+      height: 800,
+    });
+    shown.remove();
+  });
+
+  // inner#1303 §6.7: an adjust's result is the source's size, which its node
+  // is built at; a node that does not record it has it read off the picture.
+  it('runs an adjust with the size read off the shown picture when the node records none', () => {
+    const shown = document.createElement('div');
+    shown.className = 'react-flow__node';
+    shown.dataset.id = 'src';
+    const img = document.createElement('img');
+    img.dataset.testid = 'image-node-img';
+    Object.defineProperty(img, 'naturalWidth', { value: 300 });
+    Object.defineProperty(img, 'naturalHeight', { value: 800 });
+    shown.append(img);
+    document.body.append(shown);
+    canvasSessions.of('').getState().openMiniTool('src', 'image.adjust', {
+      sourceContent: 'a.png',
+      params: { value: { ...defaultAdjustValue, exposure: 20 } },
+    });
+    const onRun = vi.fn(() => Promise.resolve());
+    const sizeless: CanvasNodeView[] = [
+      { id: 'src', type: 'image', position: { x: 0, y: 0 }, data: { handling: false, content: 'a.png' } },
+    ];
+    render(tree(sizeless, onRun));
+    fireEvent.click(screen.getByTestId('mini-tool-run'));
+    expect(onRun).toHaveBeenCalledWith('src', expect.objectContaining({ id: 'image.adjust' }), expect.anything(), undefined, {
+      width: 300,
       height: 800,
     });
     shown.remove();

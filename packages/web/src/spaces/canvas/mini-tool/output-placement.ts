@@ -52,11 +52,12 @@ function nodeHeight(size: OutputSize | undefined): number {
 
 /**
  * Whether a tool's result is its source redrawn at its own size: the adjust
- * redraws it through its filters, the markup draws over it.
+ * redraws it through its filters, the markup draws over it. Its node is built
+ * at that size, so the panel reads the size before the run.
  * @param spec - The tool.
  * @returns True for those tools.
  */
-function keepsSourceSize(spec: MiniToolSpec): boolean {
+export function keepsSourceSize(spec: MiniToolSpec): boolean {
   if (spec.markup === true) return true;
   return !isModelTool(spec) && spec.params.some((param) => param.kind === 'adjust');
 }
