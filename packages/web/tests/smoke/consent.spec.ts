@@ -6,10 +6,11 @@
  * Needs a dev build with the analytics variables set; the region lookup, the
  * account's consent record and the vendors' scripts are answered here.
  */
-import { test, expect, type BrowserContext, type Page, type Route } from 'playwright/test';
+import { expect, type BrowserContext, type Page, type Route } from 'playwright/test';
 
-const ACCOUNT_PATH = '/users/me/analytics-consent';
-const ADS_ID = '22222222-2222-4222-8222-222222222222';
+import { test } from '../helpers/slot';
+
+const ACCOUNT_PATH = '/users/me/ads-sharing';
 
 /**
  * A stored consent cookie with both categories accepted in the banner.
@@ -22,10 +23,7 @@ function storedConsent(): string {
     JSON.stringify({
       categories: ['necessary', 'analytics', 'ads'],
       revision: 1,
-      data: {
-        analytics: { decisionId: '11111111-1111-4111-8111-111111111111', decidedAt, source: 'banner' },
-        ads: { decisionId: ADS_ID, decidedAt, source: 'banner', noticeShown: false, gpcAtDecision: false },
-      },
+      data: { analytics: { decidedAt, source: 'banner' }, ads: { decidedAt, source: 'banner' } },
       consentTimestamp: decidedAt,
       consentId: '44444444-4444-4444-8444-444444444444',
       services: { necessary: [], analytics: [], ads: [] },
@@ -37,17 +35,12 @@ function storedConsent(): string {
 }
 
 /**
- * The account record with another device's ads opt-out on it.
- * @returns The record.
+ * The account's ad switch as the server answers it.
+ * @param optedOut - Whether the account has opted out.
+ * @returns The response body.
  */
-function optedOutAccount(): Record<string, unknown> {
-  const decidedAt = new Date().toISOString();
-  return {
-    receipts: [{ decisionId: '33333333-3333-4333-8333-333333333333', value: false, source: 'settings', noticeShown: false, decidedAt, revision: 1 }],
-    gpcSeenAt: null,
-    ownership: 'none',
-    serverTime: decidedAt,
-  };
+function sharing(optedOut: boolean): string {
+  return JSON.stringify({ data: { optedOut, source: optedOut ? 'settings' : null } });
 }
 
 /**
@@ -114,44 +107,74 @@ test.describe('signed out', () => {
   });
 });
 
+/** The settings window. */
+const settings = (page: Page) => page.locator('#cc-main .pm');
+
 test.describe('signed in', () => {
-  test('an opt-out that arrives while Cookie settings is open moves a switch the visitor changed before it', async ({ page, context, baseURL }) => {
-    let release = (): void => undefined;
-    const answer = new Promise<void>((resolve) => (release = resolve));
+  test('an account opted out on another device shows so, and turning ads back on asks first and then records it', async ({ page, context, baseURL }) => {
+    const puts: unknown[] = [];
     await context.addCookies([{ name: 'breatic_consent', value: storedConsent(), url: baseURL }]);
     await prepare(context, {
       country: 'US',
       account: async (route) => {
-        await answer;
-        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: optedOutAccount() }) });
+        if (route.request().method() === 'PUT') {
+          const body = route.request().postDataJSON() as { allowed: boolean };
+          puts.push(body);
+          return route.fulfill({ status: 200, contentType: 'application/json', body: sharing(!body.allowed) });
+        }
+        return route.fulfill({ status: 200, contentType: 'application/json', body: sharing(true) });
       },
     });
     await page.goto('/studio');
     await openCookieSettings(page);
-    await expect(adsSwitch(page)).toBeChecked();
-    await adsSwitch(page).click();
-    await adsSwitch(page).click();
-    await expect(adsSwitch(page)).toBeChecked();
-    release();
+    await expect(settings(page).locator('.breatic-consent-notice')).toHaveText('Your account has opted out of ad sharing');
     await expect(adsSwitch(page)).not.toBeChecked();
-    await expect(page.locator('#cc-main .pm .breatic-consent-notice')).toBeVisible();
-    await page.locator('#cc-main .pm [data-role="save"]').click();
-    await expect.poll(async () => (await consentCookie(context))?.categories).not.toContain('ads');
+    await adsSwitch(page).click();
+    await settings(page).locator('[data-role="save"]').click();
+    await expect(settings(page).locator('.breatic-consent-confirm')).toBeVisible();
+    expect(puts).toEqual([]);
+    await settings(page).locator('[data-breatic-confirm="yes"]').click();
+    await expect.poll(() => puts).toEqual([{ allowed: true }]);
+    await expect.poll(async () => (await consentCookie(context))?.categories).toContain('ads');
   });
 
-  test('an account answer that is not the account record leaves a later withdrawal working', async ({ page, context, baseURL }) => {
-    const errors: string[] = [];
-    page.on('pageerror', (err) => errors.push(err.message));
+  test('a refusal that cannot reach the account keeps the window open and the cookie as it was', async ({ page, context, baseURL }) => {
     await context.addCookies([{ name: 'breatic_consent', value: storedConsent(), url: baseURL }]);
     await prepare(context, {
       country: 'US',
       account: (route) =>
-        route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { ownership: 'self' } }) }),
+        route.request().method() === 'PUT'
+          ? route.fulfill({ status: 500, contentType: 'application/json', body: '{}' })
+          : route.fulfill({ status: 200, contentType: 'application/json', body: sharing(false) }),
     });
     await page.goto('/studio');
     await openCookieSettings(page);
-    await page.locator('#cc-main .pm [data-role="necessary"]').click();
-    await expect.poll(async () => (await consentCookie(context))?.categories).toEqual(['necessary']);
-    expect(errors).toEqual([]);
+    await expect(adsSwitch(page)).toBeChecked();
+    await settings(page).locator('[data-role="necessary"]').click();
+    await expect(settings(page).locator('.breatic-consent-error')).toBeVisible();
+    await expect(settings(page)).toBeVisible();
+    expect((await consentCookie(context))?.categories).toContain('ads');
+  });
+
+  test('a GPC browser shows the switch off and locked, and a save sends nothing to the account', async ({ page, context, baseURL }) => {
+    const puts: unknown[] = [];
+    await context.addCookies([{ name: 'breatic_consent', value: storedConsent(), url: baseURL }]);
+    await prepare(context, {
+      country: 'US',
+      gpc: true,
+      account: (route) => {
+        if (route.request().method() === 'PUT') puts.push(route.request().postDataJSON());
+        return route.fulfill({ status: 200, contentType: 'application/json', body: sharing(true) });
+      },
+    });
+    await page.goto('/studio');
+    await openCookieSettings(page);
+    await expect(settings(page).locator('.breatic-consent-notice')).toHaveText('Opted out via Global Privacy Control (GPC)');
+    await expect(adsSwitch(page)).toBeDisabled();
+    await expect(adsSwitch(page)).not.toBeChecked();
+    await settings(page).locator('[data-role="save"]').click();
+    await expect(settings(page)).toBeHidden();
+    expect((await consentCookie(context))?.categories).toContain('analytics');
+    expect(puts).toEqual([]);
   });
 });
