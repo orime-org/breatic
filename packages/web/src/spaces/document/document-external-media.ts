@@ -42,7 +42,7 @@ import { Fragment, Slice, type Node as PMNode } from '@tiptap/pm/model';
 import { Plugin, type EditorState, type Transaction } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 
-import { routeAddress } from '@web/spaces/document/document-canvas-paste';
+import { routeAddress } from '@web/spaces/document/document-media-address';
 import {
   inTableCell,
   insertAtGapTr,

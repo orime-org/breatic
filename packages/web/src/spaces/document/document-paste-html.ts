@@ -19,7 +19,7 @@
 
 import { markdownToHTML } from '@blocknote/core';
 
-import { routeAddress } from '@web/spaces/document/document-canvas-paste';
+import { routeAddress } from '@web/spaces/document/document-media-address';
 import type { BlockSpec, PasteHandler } from '@web/spaces/document/document-file-input';
 import { HTML_MEDIA_ELEMENTS, HTML_MEDIA_SELECTOR, isMediaBlockType } from '@web/spaces/document/document-media-types';
 import { evenTables } from '@web/spaces/document/document-table-paste';

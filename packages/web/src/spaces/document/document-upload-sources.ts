@@ -26,7 +26,7 @@ import { STORAGE_FULL_STATUS } from '@web/data/upload/upload-retry';
 import { refusedFormatParams } from '@web/spaces/canvas/canvas-upload';
 import { failureMessage } from '@web/spaces/canvas/failure-sentence';
 import { uploadFailureMessageKey, uploadRetryCanChange } from '@web/spaces/canvas/upload-failure';
-import { routeAddress } from '@web/spaces/document/document-canvas-paste';
+import { routeAddress } from '@web/spaces/document/document-media-address';
 import { isMediaBlockType } from '@web/spaces/document/document-media-types';
 import type {
   UploadControllerDeps,

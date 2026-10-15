@@ -10,7 +10,8 @@
 import { describe, it, expect } from 'vitest';
 
 import type { ClipboardNode, ClipboardPayload } from '@web/spaces/canvas/node-clipboard';
-import { planCanvasPaste, routeAddress } from '@web/spaces/document/document-canvas-paste';
+import { planCanvasPaste } from '@web/spaces/document/document-canvas-paste';
+import { routeAddress } from '@web/spaces/document/document-media-address';
 
 const OURS = 'https://cdn.example/2026-10-14/a.png';
 
