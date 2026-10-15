@@ -142,7 +142,7 @@ describe('reporting this browser’s choice to the account (design §4.4.6)', ()
     expect(api.put).not.toHaveBeenCalled();
   });
 
-  it('sends nothing when this page never read the cookie', async () => {
+  it('sends nothing from a page that collects no consent, as for a bot where the banner never runs', async () => {
     runtime.choices = null;
     const analytics = await load();
     analytics.identifyUser({ id: 'u1' } as never);

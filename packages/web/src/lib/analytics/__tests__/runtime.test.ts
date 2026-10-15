@@ -154,6 +154,12 @@ describe('analytics runtime', () => {
     }
   });
 
+  it('hands the backend both categories off while this browser has not answered', async () => {
+    const runtime = await startRuntime();
+    await choose({ analytics: null, ads: null });
+    expect(runtime.consentSnapshot()).toEqual({ analytics: false, ads: false });
+  });
+
   it('clears both vendors’ cookies and queued events when no choice is in force, even if this page never loaded them', async () => {
     document.cookie = 'AMP_test=1; Path=/';
     document.cookie = '_gcl_au=1; Path=/';
