@@ -20,14 +20,7 @@ import { StillRunning } from "@worker/providers/still-running.js";
 import { taskDeadline } from "@worker/handlers/task-deadline.js";
 import { withUnderstandSlot } from "@worker/handlers/understand-slots.js";
 import { getStreamRedis, getWorkerConfig, projectActivitiesRepo, publishActivityNew } from "@breatic/core";
-import {
-  claimFirstMilestone,
-  projectsRepo,
-  reportCollaboratorFirstAction,
-  runWithConsent,
-  serverAnalyticsWanted,
-  trackServerEvent,
-} from "@breatic/core";
+import { reportCollaboratorFirstAction, runWithConsent } from "@breatic/core";
 import { getStorageAdapter, getRawEnvVar, getUnderstandConfig } from "@breatic/core";
 import { failureOutcome, taskService, upstreamStepRepo } from "@breatic/domain";
 import { creditLotService, creditsForUsd, resolveActiveProvider } from "@breatic/domain";
@@ -61,6 +54,7 @@ import { env } from "@breatic/core";
 import { logger } from "@breatic/core";
 import { takePromptAndValidate } from "@worker/handlers/prompt-params.js";
 import { understandQuestion } from "@worker/handlers/understand-question.js";
+import { reportFirstGeneration } from "@worker/handlers/first-generation.js";
 
 /**
  * What a provider's figure is worth in credits, by the same conversion every
@@ -284,36 +278,6 @@ function resolveCanvasDocName(
  * @param job - BullMQ job with TaskJobData payload
  * @returns Result dict on success, or a failure status marker
  */
-/**
- * Send `first_generation_completed` when this is the account's first
- * completed task (inner#1442 design §4.8). Called by the run that won the
- * billing CAS, so a task counts once however often it is delivered.
- * @param task - The task that just completed.
- * @param task.taskId - Its id.
- * @param task.taskType - What kind of generation it was.
- * @param task.userId - Who ran it.
- * @param task.projectId - Where it ran, when it is canvas-bound.
- */
-async function reportFirstGeneration(task: {
-  taskId: string;
-  taskType: string;
-  userId: string;
-  projectId?: string;
-}): Promise<void> {
-  try {
-    if (!(await claimFirstMilestone("first-generation", task.userId))) return;
-    if (!serverAnalyticsWanted()) return;
-    const studioId = task.projectId ? await projectsRepo.findOwnerStudioId(task.projectId) : undefined;
-    trackServerEvent("first_generation_completed", {
-      userId: task.userId,
-      insertId: `first-generation:${task.userId}`,
-      properties: { studio_id: studioId, project_id: task.projectId, kind: task.taskType },
-    });
-  } catch (err) {
-    logger.warn({ err, taskId: task.taskId }, "first_generation_report_failed");
-  }
-}
-
 /**
  * Public entry called by the BullMQ worker.
  *

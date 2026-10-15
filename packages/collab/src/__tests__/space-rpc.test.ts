@@ -28,6 +28,7 @@ const {
   activityLatestUnrestoredMock,
   activityConsumeRestoreMock,
   recordEditMock,
+  reportSpaceCreatedMock,
 } = vi.hoisted(() => ({
   softDeleteByNameMock: vi.fn(),
   restoreByNameMock: vi.fn(),
@@ -40,6 +41,7 @@ const {
   activityLatestUnrestoredMock: vi.fn(),
   activityConsumeRestoreMock: vi.fn(),
   recordEditMock: vi.fn(),
+  reportSpaceCreatedMock: vi.fn(),
 }));
 
 // The yjs-store repo moved to collab; space-rpc imports it locally.
@@ -54,6 +56,13 @@ vi.mock("@collab/services/yjs-documents.repo.js", () => ({
 // it is asked to is observed.
 vi.mock("@collab/services/project-edit-recorder.js", () => ({
   recordProjectEdit: recordEditMock,
+}));
+
+// The event's own contents are tested in space-analytics.test.ts; here only
+// whether a create asks for it.
+vi.mock("@collab/services/space-analytics.js", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  reportSpaceCreated: reportSpaceCreatedMock,
 }));
 
 // The cross-instance delete lock is unit-tested in space-delete-lock.test.ts.
@@ -166,6 +175,7 @@ beforeEach(() => {
   activityLatestUnrestoredMock.mockResolvedValue(null);
   activityConsumeRestoreMock.mockReset();
   recordEditMock.mockReset();
+  reportSpaceCreatedMock.mockReset();
   // Default: this instance wins the consume CAS (returns true).
   activityConsumeRestoreMock.mockResolvedValue(true);
 });
@@ -263,6 +273,23 @@ describe("handleSpaceRpc — happy paths write PG activity rows", () => {
     expect(fakeMetaDoc.broadcastStateless).toHaveBeenCalledWith(
       JSON.stringify({ t: ACTIVITY_NEW_SIGNAL, projectId: PID }),
     );
+  });
+
+  it("space:create reports the Space as created by the caller", async () => {
+    const res = await handleSpaceRpc(
+      { hocuspocus: makeHocuspocus() },
+      PID,
+      { userId: "u-1", role: "editor" },
+      { id: "r1", type: "space:create", payload: { type: "canvas", name: "Main", claimToken: TOKEN } },
+    );
+    const newId = res.ok && res.result && "spaceId" in res.result ? res.result.spaceId : undefined;
+    expect(reportSpaceCreatedMock).toHaveBeenCalledWith({
+      projectId: PID,
+      spaceId: newId,
+      spaceType: "canvas",
+      userId: "u-1",
+      via: "manual",
+    });
   });
 
   // The assertion above only says bytes were passed. Which bytes matters: a

@@ -92,6 +92,7 @@ import {
   ConflictError,
   ValidationError,
   logger,
+  trackServerEvent,
 } from "@breatic/core";
 import * as userRepo from "@server/modules/auth/user.repo.js";
 import * as service from "@server/modules/subscription/subscription.service.js";
@@ -908,6 +909,18 @@ describe("cancel and resume (#106 §7.5)", () => {
     expect(stripe.subscriptions.update).toHaveBeenCalledWith("sub_1", {
       cancel_at_period_end: true,
       expand: ["latest_invoice"],
+    });
+  });
+
+  it("reports the cancellation with the tier and the day it ends", async () => {
+    situationIs("active", { stripeSubscriptionId: "sub_1", tier: "pro" });
+
+    await service.cancel(USER);
+
+    expect(trackServerEvent).toHaveBeenCalledWith("subscription_cancelled", {
+      userId: USER,
+      insertId: expect.stringMatching(/^cancel:sub_1:/),
+      properties: { tier: "pro", ends_at: new Date(1_789_000_000 * 1000).toISOString() },
     });
   });
 
