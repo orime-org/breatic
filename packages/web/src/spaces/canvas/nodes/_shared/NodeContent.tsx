@@ -54,6 +54,9 @@ export function NodeContent({
       <NodeMediaInset>
         <div
           data-testid='node-content-empty'
+          // The width is the node's: with an auto width the minimum height
+          // would widen the box through the ratio instead of heightening it.
+          className='w-full'
           style={{ aspectRatio: `${emptySize.width} / ${emptySize.height}`, minHeight: PLANNED_BODY_MIN_PX }}
         >
           {placeholder}

@@ -38,6 +38,8 @@ describe('NodeContent', () => {
     // Never shorter than what the placeholder needs, which layout reserves too.
     expect(empty.style.minHeight).toBe(`${PLANNED_BODY_MIN_PX}px`);
     expect(empty).not.toHaveClass('overflow-hidden');
+    // An auto width would take the minimum height through the ratio and widen.
+    expect(empty).toHaveClass('w-full');
     expect(screen.getByTestId('ph')).toBeInTheDocument();
   });
 
