@@ -4,32 +4,27 @@
 /**
  * What a page does with consent (inner#1442 design §4.4.2, §4.4.4, §4.4.6):
  * on load, on a press in the banner or the settings window, and what it
- * reports to the account; kept apart from the banner library so the rules can
- * be tested.
+ * reads of the account's ad switch; kept apart from the banner library so the
+ * rules can be tested. The website keeps verbatim copies, which its contract
+ * test compares.
  */
 
 import {
-  adsConsentOverridesOptOut,
-  browserSuppressesOwnGpc,
+  adsAllowed,
+  adsOptedOut,
+  adsStatus,
   httpRequest,
-  type AccountAdsHistory,
-  type AdsOutcome,
-  type BrowserAds,
+  type AccountAdsView,
+  type AdsSharing,
+  type AdsStatus,
   type BrowserChoices,
-  type ConsentReport,
   type ConsentSource,
-  type NoticeShown,
-  type Ownership,
 } from '@breatic/shared';
 
-/** What to write for one category; the writer adds the id and the time. */
+/** What to write for one category; the writer adds the time. */
 export interface CategoryWrite {
   readonly value: boolean;
   readonly source: ConsentSource;
-  /** Ads only: which opt-out notice the settings window showed. */
-  readonly noticeShown?: NoticeShown;
-  /** Ads only: whether this browser sent GPC when the choice was saved. */
-  readonly gpcAtDecision?: boolean;
 }
 
 /** The categories to write; a category left out keeps what the cookie holds. */
@@ -46,7 +41,7 @@ export interface LoadDecision {
 }
 
 /**
- * Decide on load, category by category (design §4.4.4).
+ * Decide on load, category by category (design §4.4.4, events that are not presses).
  * @param input - What the page knows.
  * @param input.stored - Each category's choice in force.
  * @param input.optIn - Whether the visitor's region asks before anything loads.
@@ -55,114 +50,106 @@ export interface LoadDecision {
  */
 export function decideOnLoad(input: { stored: BrowserChoices; optIn: boolean; gpc: boolean }): LoadDecision {
   const { stored, optIn, gpc } = input;
-  const gpcRefusal: CategoryWrite = { value: false, source: 'gpc', gpcAtDecision: true };
+  const gpcRefusal: CategoryWrite = { value: false, source: 'gpc' };
   let ads: CategoryWrite | null = null;
-  if (stored.ads !== null) {
-    // GPC withdraws an ads consent, except an override the visitor saved while this browser already sent GPC.
-    if (gpc && stored.ads.value && !browserSuppressesOwnGpc(stored.ads, 'none')) ads = gpcRefusal;
-  } else if (!optIn) {
-    ads = gpc ? gpcRefusal : { value: true, source: 'implicit' };
-  }
+  // GPC withdraws an ads consent; a refusal stays as it is.
+  if (stored.ads !== null) ads = gpc && stored.ads.value ? gpcRefusal : null;
+  else if (!optIn) ads = gpc ? gpcRefusal : { value: true, source: 'implicit' };
   const analytics: CategoryWrite | null = stored.analytics === null && !optIn ? { value: true, source: 'implicit' } : null;
   return { analytics, ads, showBanner: optIn && (stored.analytics === null || stored.ads === null) };
 }
 
+/** Where ads stand when a button is pressed: a row of the click table (design §4.4.4). */
+export type AdsSituation = 'open' | 'gpc' | 'browserRefused' | 'accountOptedOut' | 'accountUnknown';
+
 /**
- * What a press in the banner or the settings window writes (design §4.4.4).
+ * The click table's row for this browser.
+ * @param input - What the page knows.
+ * @param input.browserAds - This browser's ads choice in force, or null without one.
+ * @param input.gpc - Whether the browser sends GPC.
+ * @param input.account - The account's view.
+ * @returns The row.
+ */
+export function adsSituation(input: { browserAds: boolean | null; gpc: boolean; account: AccountAdsView }): AdsSituation {
+  const { browserAds, gpc, account } = input;
+  if (gpc) return 'gpc';
+  if (browserAds === false) return 'browserRefused';
+  if (typeof account === 'object') return account.optedOut ? 'accountOptedOut' : 'open';
+  return account === 'unknown' ? 'accountUnknown' : 'open';
+}
+
+/** What a press does: write (sending the account switch first when `put` is set), ask first, or wait for the account. */
+export type PressOutcome =
+  | { readonly kind: 'write'; readonly writes: ConsentWrites; readonly put: boolean | null }
+  | { readonly kind: 'confirm' }
+  | { readonly kind: 'wait' };
+
+/**
+ * What a press in the banner or the settings window does (design §4.4.4
+ * click table). Signed in, a press that writes ads off closes the account
+ * switch first, and a confirmed press that turns ads on opens it first.
  * @param input - The press.
- * @param input.stored - This browser's ads choice before the press; an override in force stays when ads stay on.
- * @param input.role - `all` (accept all), `necessary` (reject all) or `save`.
+ * @param input.press - `all` (accept all), `necessary` (reject all) or `save`.
  * @param input.window - Where it was pressed.
  * @param input.toggles - The settings switches, for `save`.
- * @param input.notice - The opt-out notice showing, if any.
- * @param input.gpc - Whether the browser sends GPC.
- * @returns The categories to write.
+ * @param input.situation - Where ads stand ({@link adsSituation}).
+ * @param input.browserAds - This browser's ads choice in force, or null without one.
+ * @param input.signedIn - Whether an account is signed in.
+ * @param input.confirmed - The answer to the confirmation, once asked.
+ * @returns The outcome.
  */
 export function writesForClick(input: {
-  stored: BrowserAds | null;
-  role: 'all' | 'necessary' | 'save';
+  press: 'all' | 'necessary' | 'save';
   window: 'banner' | 'settings';
   toggles: { analytics: boolean; ads: boolean } | null;
-  notice: NoticeShown;
-  gpc: boolean;
-}): ConsentWrites {
-  const { stored, role, window, toggles, notice, gpc } = input;
-  // With no notice showing, an override still in force needs no rewrite to keep ads on.
-  const keepOverride = notice === false && stored !== null && adsConsentOverridesOptOut(stored);
-  const source = window;
-  // Only the settings window shows the notice, and only there does switching ads on override an opt-out.
-  const shown: NoticeShown = window === 'settings' ? notice : false;
-  if (role === 'all') {
-    const analytics = { value: true, source };
-    if (notice === 'account') return { analytics };
-    if (notice === 'gpc') return { analytics, ads: { value: false, source: 'gpc', noticeShown: false, gpcAtDecision: true } };
-    if (keepOverride) return { analytics };
-    return { analytics, ads: { value: true, source, noticeShown: false, gpcAtDecision: gpc } };
-  }
-  const on = role === 'save' && toggles !== null ? toggles : { analytics: false, ads: false };
-  if (on.ads && keepOverride) return { analytics: { value: on.analytics, source } };
-  return {
-    analytics: { value: on.analytics, source },
-    ads: { value: on.ads, source, noticeShown: shown, gpcAtDecision: gpc },
-  };
-}
-
-/**
- * The report a signed-in browser sends (design §4.4.6): each category the
- * visitor chose and that carries an id.
- * @param choices - The choices in force.
- * @param revision - The revision the library writes under.
- * @param sentAt - The browser's clock now.
- * @returns The body, or null when there is nothing to report.
- */
-export function reportBody(choices: BrowserChoices, revision: number, sentAt: string): ConsentReport | null {
-  const decisions: ConsentReport['decisions'][number][] = [];
-  for (const category of ['analytics', 'ads'] as const) {
-    const choice = choices[category];
-    // A regional default is no choice of the person's, and only an operator records a request.
-    if (choice === null || choice.decisionId === undefined || choice.source === 'implicit' || choice.source === 'request') {
-      continue;
-    }
-    const ads = category === 'ads' ? (choice as BrowserAds) : null;
-    decisions.push({
-      decisionId: choice.decisionId,
-      category,
-      value: choice.value,
-      source: choice.source,
-      noticeShown: ads?.noticeShown ?? false,
-      gpcAtDecision: ads?.gpcAtDecision ?? false,
-      decidedAt: choice.decidedAt,
-    });
-  }
-  return decisions.length === 0 ? null : { decisions, revision, sentAt };
-}
-
-/**
- * Which opt-out notice the settings window shows above the ads switch.
- * @param input - What the page knows.
- * @param input.signedIn - Whether an account is signed in.
- * @param input.outcome - `adsDecision` for this browser.
- * @param input.gpc - Whether the browser sends GPC.
- * @param input.ads - This browser's ads choice.
- * @returns `account` while a signed-in account's ads are stopped by an opt-out,
- *   `gpc` for a signed-out browser whose GPC counts, false otherwise.
- */
-export function adsNotice(input: {
+  situation: AdsSituation;
+  browserAds: boolean | null;
   signedIn: boolean;
-  outcome: AdsOutcome;
-  gpc: boolean;
-  ads: BrowserAds | null;
-}): NoticeShown {
-  if (input.signedIn) return input.outcome.notice === null ? false : 'account';
-  return input.gpc && !browserSuppressesOwnGpc(input.ads, 'none') ? 'gpc' : false;
+  confirmed?: boolean;
+}): PressOutcome {
+  const { press, window: source, toggles, situation, browserAds, signedIn, confirmed } = input;
+  const on =
+    press === 'all' ? { analytics: true, ads: true } : press === 'save' && toggles !== null ? toggles : { analytics: false, ads: false };
+  const analytics: CategoryWrite = { value: on.analytics, source };
+  /**
+   * Write analytics as pressed, and ads when given.
+   * @param ads - The ads write, or undefined to leave ads as they are.
+   * @param put - The account switch to send first, or null.
+   * @returns The outcome.
+   */
+  const write = (ads: CategoryWrite | undefined, put: boolean | null = null): PressOutcome => ({
+    kind: 'write',
+    writes: ads === undefined ? { analytics } : { analytics, ads },
+    put,
+  });
+  /**
+   * Write ads off, closing the account switch first when signed in.
+   * @returns The outcome.
+   */
+  const refuse = (): PressOutcome => write({ value: false, source }, signedIn ? false : null);
+  // Under GPC the ads switch cannot be moved, so a save only says what analytics should be.
+  if (situation === 'gpc' && press === 'save') return write(undefined);
+  if (!on.ads) return refuse();
+  if (situation === 'open') return write({ value: true, source });
+  if (situation === 'gpc') return write(source === 'banner' ? { value: false, source: 'gpc' } : undefined);
+  if (source === 'banner') {
+    // The banner never turns ads on while they are opted out; a browser without a choice records the refusal.
+    return situation === 'accountOptedOut' && browserAds === null ? refuse() : write(undefined);
+  }
+  if (situation === 'accountUnknown') return { kind: 'wait' };
+  if (confirmed === undefined) return { kind: 'confirm' };
+  return confirmed ? write({ value: true, source }, signedIn ? true : null) : write(undefined);
 }
 
-/** What the page does with ads, and what the settings window starts with. */
+/** What the page does with ads, and what the windows show. */
 export interface AdsView {
   readonly allowed: boolean;
   /** False while the account's answer is awaited for a browser that consents: nothing is refused yet. */
   readonly known: boolean;
-  readonly notice: NoticeShown;
+  /** The settings window's status line. */
+  readonly status: AdsStatus;
+  /** Whether ads are opted out here: the banner then offers no ads and says so. */
+  readonly optedOut: boolean;
   /** Whether the settings window's ads switch starts on. */
   readonly adsOn: boolean;
 }
@@ -171,36 +158,33 @@ export interface AdsView {
  * The page's ads view (design §4.4.4, §4.4.6). While the account's answer is
  * unknown ads stay off, and the switch shows this browser's own choice.
  * @param input - What the page knows.
- * @param input.signedIn - Whether an account is signed in.
- * @param input.outcome - `adsAllowed` for this browser, or null while the account's answer is unknown.
+ * @param input.browserAds - This browser's ads choice in force, or null without one.
  * @param input.gpc - Whether the browser sends GPC.
- * @param input.ads - This browser's ads choice.
+ * @param input.account - The account's view.
  * @returns The view.
  */
-export function adsViewFor(input: {
-  signedIn: boolean;
-  outcome: AdsOutcome | null;
-  gpc: boolean;
-  ads: BrowserAds | null;
-}): AdsView {
-  const { signedIn, outcome, gpc, ads } = input;
-  // Until the account answers, the notice is the one this browser decides alone: GPC.
-  const notice = adsNotice({ signedIn: signedIn && outcome !== null, outcome: outcome ?? { allowed: false, notice: null }, gpc, ads });
-  if (outcome !== null) return { allowed: outcome.allowed, known: true, notice, adsOn: outcome.allowed };
-  // This browser's own GPC refuses at once; only a consent with no notice waits for the account.
-  const consents = ads?.value === true && notice === false;
-  return { allowed: false, known: !consents, notice, adsOn: consents };
+export function adsViewFor(input: { browserAds: boolean | null; gpc: boolean; account: AccountAdsView }): AdsView {
+  const { browserAds, gpc, account } = input;
+  const allowed = adsAllowed({ browser: { consent: browserAds === true, gpc }, account });
+  // Only a consent here waits for the account; this browser's own refusal, missing choice or GPC decide at once.
+  const known = account !== 'unknown' || browserAds !== true || gpc;
+  return {
+    allowed,
+    known,
+    status: adsStatus({ gpc, account }),
+    optedOut: adsOptedOut({ browserAds, gpc, account }),
+    adsOn: known ? allowed : true,
+  };
 }
 
 /**
  * The cookie's data and accepted categories after a write (design §4.4.4
- * `setConsent()`): each category written gets a new id and the same time; a
- * category left out keeps the choice in force before the press.
+ * `setConsent()`): each category written gets the same time; a category left
+ * out keeps the choice in force before the press.
  * @param writes - The categories to write.
  * @param prior - The choices in force before this write.
  * @param stored - The cookie's data entries as stored.
  * @param decidedAt - The time of this write.
- * @param newId - Makes a decision id.
  * @returns The data to store and the categories to accept.
  */
 export function cookieAfterWrites(
@@ -208,7 +192,6 @@ export function cookieAfterWrites(
   prior: BrowserChoices | null,
   stored: Record<string, unknown>,
   decidedAt: string,
-  newId: () => string,
 ): { data: Record<string, unknown>; accepted: ('analytics' | 'ads')[] } {
   const data: Record<string, unknown> = {
     analytics: prior?.analytics ? stored.analytics : undefined,
@@ -218,46 +201,25 @@ export function cookieAfterWrites(
   for (const category of ['analytics', 'ads'] as const) {
     const write = writes[category];
     if (write === undefined) continue;
-    const entry = { decisionId: newId(), decidedAt, source: write.source };
-    data[category] =
-      category === 'ads'
-        ? { ...entry, noticeShown: write.noticeShown ?? false, gpcAtDecision: write.gpcAtDecision ?? false }
-        : entry;
+    data[category] = { decidedAt, source: write.source };
     if (write.value) accepted.add(category);
     else accepted.delete(category);
   }
   return { data, accepted: (['analytics', 'ads'] as const).filter((c) => accepted.has(c)) };
 }
 
-/** The account's ads record as `/users/me/analytics-consent` returns it. */
-export interface AccountConsentView extends AccountAdsHistory {
-  /** Whose receipt the ads decision in this browser's cookie is. */
-  readonly ownership: Ownership;
-  /** The server's clock when the record was read. */
-  readonly serverTime: string;
-}
-
 /**
- * The account's record from an answer's `data`, checked before the page
+ * The account's ad switch from an answer's `data`, checked before the page
  * trusts it.
  * @param data - The answer's `data`.
- * @returns The record, or null when it is not one; the page then treats the answer as unknown.
+ * @returns The switch, or null when it is not one; the page then treats the answer as unknown.
  */
-export function readConsentView(data: unknown): AccountConsentView | null {
+export function readAdsSharing(data: unknown): AdsSharing | null {
   if (typeof data !== 'object' || data === null) return null;
-  const { receipts, gpcSeenAt, ownership, serverTime } = data as Record<string, unknown>;
-  if (!Array.isArray(receipts)) return null;
-  if (ownership !== 'self' && ownership !== 'other' && ownership !== 'none') return null;
-  const times: unknown[] = [serverTime, ...(gpcSeenAt === null ? [] : [gpcSeenAt])];
-  for (const receipt of receipts as unknown[]) {
-    if (typeof receipt !== 'object' || receipt === null) return null;
-    const { decisionId, value, source, noticeShown, decidedAt, revision } = receipt as Record<string, unknown>;
-    const sources = ['banner', 'settings', 'implicit', 'gpc', 'request'];
-    if (typeof decisionId !== 'string' || typeof value !== 'boolean' || !sources.includes(source as string)) return null;
-    if ((noticeShown !== 'account' && noticeShown !== false) || !Number.isInteger(revision)) return null;
-    times.push(decidedAt);
-  }
-  return times.every((t) => typeof t === 'string' && !Number.isNaN(Date.parse(t))) ? (data as AccountConsentView) : null;
+  const { optedOut, source } = data as Record<string, unknown>;
+  if (optedOut === false && source === null) return { optedOut, source };
+  if (optedOut === true && (source === 'settings' || source === 'gpc' || source === 'request')) return { optedOut, source };
+  return null;
 }
 
 /**
