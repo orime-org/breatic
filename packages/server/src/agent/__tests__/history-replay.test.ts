@@ -8,6 +8,7 @@ import { z } from "zod";
 
 import {
   historyForModel,
+  lastFullSnapshotKey,
   prefixHash,
   stripThinking,
   type ReplayRow,
@@ -261,5 +262,41 @@ describe("the hash of a request's prefix", () => {
     };
 
     expect(prefixHash(PREFIX, [reordered])).not.toBe(prefixHash(PREFIX, [original]));
+  });
+});
+
+describe("the most recent full copy of an open Space", () => {
+  /**
+   * A user row that sent a Space.
+   * @param turnIndex - Its turn.
+   * @param spaceId - The Space.
+   * @param key - What it sent of it.
+   * @param full - Whether it sent it in full.
+   * @returns The row.
+   */
+  function sentSpace(turnIndex: number, spaceId: string, key: string, full: boolean): ReplayRow {
+    return userRow(turnIndex, { messages: [ASKED], snapshot: { spaceId, key, full } });
+  }
+
+  it("is the last one sent in full, past the ones that said it was unchanged", () => {
+    const rows = [sentSpace(1, "s1", "A", true), replyRow(1), sentSpace(2, "s1", "A", false)];
+
+    expect(lastFullSnapshotKey(rows, "s1")).toBe("A");
+  });
+
+  it("is the latest full one, so A then B then A again is sent in full", () => {
+    const rows = [sentSpace(1, "s1", "A", true), sentSpace(2, "s1", "B", true)];
+
+    expect(lastFullSnapshotKey(rows, "s1")).toBe("B");
+  });
+
+  it("is of that Space only", () => {
+    const rows = [sentSpace(1, "s1", "A", true), sentSpace(2, "s2", "C", true)];
+
+    expect(lastFullSnapshotKey(rows, "s1")).toBe("A");
+  });
+
+  it("is none when no row in the history sent it", () => {
+    expect(lastFullSnapshotKey([userRow(1), replyRow(1)], "s1")).toBeUndefined();
   });
 });

@@ -16,6 +16,7 @@ import type * as CoreModule from "@breatic/core";
 import type { MessageData } from "@breatic/shared";
 import { prefixHash, type RequestPrefix } from "@server/agent/history-replay.js";
 import { FAILED_NOTE } from "@server/agent/model-messages.js";
+import { UNCHANGED_SPACE_NOTE, openSpaceKey } from "@server/agent/user-turn.js";
 import { measureMessages } from "@server/agent/payload-size.js";
 import { saying } from "../helpers/model-double.js";
 import type { ModelStreamPart } from "../helpers/model-double.js";
@@ -242,5 +243,63 @@ describe("a turn keeps its reply as it was sent", () => {
     });
 
     expect(keptReply().messages.at(-1)).toEqual({ role: "assistant", content: FAILED_NOTE });
+  });
+});
+
+describe("a turn sends the open Space once while it stays the same", () => {
+  const canvas = { id: "s1", name: "Shots", kind: "canvas" as const };
+  const content = '{"edges":[],"nodes":[{"id":"n1","name":"Hero"}]}';
+  const open = { ...canvas, state: "loaded" as const, content, total_chars: content.length };
+
+  /**
+   * Run one turn with the Space open.
+   * @param current - The Space as the reader has it.
+   */
+  async function runWithSpaceOpen(current: typeof open): Promise<void> {
+    modelSays.parts = saying("the reply");
+    await runWithContext({ userId: "u1", conversationId: "c1", projectId: "p1" }, async () => {
+      const turn = await new MainAgent().chat("next question", undefined, [], "UTC", {
+        spaces: [canvas],
+        spaces_total: 1,
+        current_space: current,
+      });
+      for await (const _chunk of turn) void _chunk;
+    });
+  }
+
+  /** An earlier turn that sent this Space in full. */
+  function sentBefore(): Array<MessageData & { forModel: unknown }> {
+    return [
+      {
+        role: "user",
+        content: "earlier",
+        parts: [{ type: "text", text: "earlier" }],
+        ts: "",
+        turnIndex: 6,
+        forModel: { messages: [ASKED], snapshot: { spaceId: "s1", key: openSpaceKey(open), full: true } },
+      },
+    ];
+  }
+
+  it("says it is unchanged when it is what was last sent in full", async () => {
+    modelSays.history = sentBefore();
+
+    await runWithSpaceOpen(open);
+
+    const kept = setUserForModel.mock.calls[0]?.[2] as { messages: Array<{ content: string }>; snapshot: unknown };
+    expect(kept.messages[0]?.content).toContain(UNCHANGED_SPACE_NOTE);
+    expect(kept.messages[0]?.content).not.toContain(content);
+    expect(kept.snapshot).toEqual({ spaceId: "s1", key: openSpaceKey(open), full: false });
+  });
+
+  it("sends it in full when it changed", async () => {
+    modelSays.history = sentBefore();
+    const changed = { ...open, content: content.replace("Hero", "Villain") };
+
+    await runWithSpaceOpen(changed);
+
+    const kept = setUserForModel.mock.calls[0]?.[2] as { messages: Array<{ content: string }>; snapshot: unknown };
+    expect(kept.messages[0]?.content).toContain("Villain");
+    expect(kept.snapshot).toEqual({ spaceId: "s1", key: openSpaceKey(changed), full: true });
   });
 });

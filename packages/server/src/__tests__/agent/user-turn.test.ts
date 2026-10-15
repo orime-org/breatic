@@ -10,7 +10,7 @@ import { describe, it, expect } from "vitest";
 
 import { attachmentMarker, attachmentSection } from "@breatic/shared";
 import type { ChatAttachedChip } from "@breatic/shared";
-import { userMessageForModel, userTurnForModel } from "@server/agent/user-turn.js";
+import { UNCHANGED_SPACE_NOTE, openSpaceKey, userMessageForModel, userTurnForModel } from "@server/agent/user-turn.js";
 
 const image: ChatAttachedChip = {
   id: "a1",
@@ -331,5 +331,40 @@ describe("userMessageForModel", () => {
   it("keeps the message body between the clock and the reminder", () => {
     const message = userMessageForModel("clock", { chips: [image], message: "what is in this?" });
     expect(message).toContain(userTurnForModel({ chips: [image], message: "what is in this?" }));
+  });
+});
+
+describe("an open Space unchanged since it was last sent in full", () => {
+  const cast = { id: "s2", name: "Cast", kind: "canvas" as const };
+  const content = '{"edges":[],"nodes":[{"id":"n1"}]}';
+  const open = { ...cast, state: "loaded" as const, content, total_chars: content.length };
+
+  it("is one line under its heading", () => {
+    const turn = userTurnForModel(
+      { chips: [], message: "hi", spaces: [cast], spaces_total: 1, current_space: open },
+      { spaceUnchanged: true },
+    );
+
+    expect(turn).toContain(`## The Space the reader has open: "Cast" (canvas)\n\n${UNCHANGED_SPACE_NOTE}\n\n## User message`);
+    expect(turn).not.toContain(content);
+  });
+
+  it("is sent in full when it is not unchanged", () => {
+    const turn = userTurnForModel({ chips: [], message: "hi", spaces: [cast], spaces_total: 1, current_space: open });
+
+    expect(turn).toContain(content);
+  });
+
+  it("is known by the section it would be sent as, heading included", () => {
+    expect(openSpaceKey({ ...open })).toBe(openSpaceKey(open));
+    expect(openSpaceKey({ ...open, content: `${content} ` })).not.toBe(openSpaceKey(open));
+    expect(openSpaceKey({ ...open, name: "Renamed" })).not.toBe(openSpaceKey(open));
+  });
+
+  it("has nothing to be known by when it holds nothing to stand in for", () => {
+    expect(openSpaceKey(undefined)).toBeUndefined();
+    expect(openSpaceKey({ ...cast, state: "loading" })).toBeUndefined();
+    expect(openSpaceKey({ ...cast, state: "unreadable" })).toBeUndefined();
+    expect(openSpaceKey({ ...open, content: "", total_chars: 0 })).toBeUndefined();
   });
 });
