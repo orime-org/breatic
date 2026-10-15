@@ -45,6 +45,16 @@ describe('an empty node with an upload mark', () => {
     expect(screen.getByTestId('node-upload-error')).toHaveTextContent('Upload failed.');
   });
 
+  // A failure names the file, and a long name has no space to break at.
+  it('breaks a long unspaced name in the failure line anywhere', () => {
+    act(() => {
+      const op = marks().begin('', 'n1', 'upload');
+      marks().fail('', 'n1', op, { text: `${'a'.repeat(80)}.png is not a picture we take.` });
+    });
+    render(<NodePlaceholder modality='image' />);
+    expect(screen.getByTestId('node-upload-error')).toHaveClass('wrap-anywhere');
+  });
+
   it('goes back to the call to action once answered', () => {
     let op = '';
     act(() => {
@@ -99,6 +109,15 @@ describe('NodeContent with an upload mark', () => {
     });
     renderFramed(<p>held content</p>);
     expect(screen.getByTestId('node-upload-error')).toHaveClass('pointer-events-none');
+  });
+
+  it('breaks a long unspaced name in the line over what the node shows anywhere', () => {
+    act(() => {
+      const op = marks().begin('', 'n1', 'upload');
+      marks().fail('', 'n1', op, { text: `${'a'.repeat(80)}.png is not a picture we take.` });
+    });
+    renderFramed(<p>held content</p>);
+    expect(screen.getByTestId('node-upload-error')).toHaveClass('wrap-anywhere');
   });
 
   it('shows one skeleton on an empty node, in place of its call to action', () => {
