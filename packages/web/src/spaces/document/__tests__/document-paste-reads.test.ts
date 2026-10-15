@@ -222,6 +222,20 @@ describe('a line split around a picture', () => {
       expect(shape(editor)).toEqual(['paragraph:leadsee', 'image[pending|]', 'paragraph:here']);
     }
   });
+
+  it('leaves no empty heading behind a picture ending a heading, pasted or dropped', async () => {
+    for (const how of ['paste', 'drop'] as const) {
+      const { editor } = open([{ type: 'paragraph', content: 'lead' }]);
+      const at = caretIn(editor, 0);
+
+      if (how === 'paste') paste(editor, `<h2>Title<img src="${U}i.png"></h2>`, 'Title');
+      else drop(editor, at, `<h2>Title<img src="${U}i.png"></h2>`, 'Title');
+      await settled();
+
+      expect(shape(editor)).toEqual(['paragraph:leadTitle', 'image[pending|]']);
+    }
+  });
+
 });
 
 describe('web content with a picture in a sentence, landing in a table cell', () => {
@@ -324,7 +338,7 @@ describe('a block landing at the start of a line with words', () => {
   });
 
   it.each([
-    ['a picture and words', `<img src="${U}x.png"><p>after</p>`, ['image[pending|]', 'paragraph:afterlead']],
+    ['a picture and words', `<img src="${U}x.png"><p>after</p>`, ['image[pending|]', 'paragraph:after', 'paragraph:lead']],
     ['a table and words', '<table><tr><td>t</td></tr></table><p>after</p>', ['table', 'paragraph:afterlead']],
     ['a rule and words', '<hr><p>after</p>', ['divider:', 'paragraph:afterlead']],
   ])('%s dropped at the start of a line leaves no blank line above it', async (_what, html, expected) => {
