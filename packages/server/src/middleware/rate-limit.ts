@@ -20,7 +20,14 @@
 import { createHash } from "node:crypto";
 import type { Context, MiddlewareHandler } from "hono";
 import { getConnInfo } from "@hono/node-server/conninfo";
-import { getRedis, checkRateLimit, decideClientIdentity, logger, type RateLimitQuota } from "@breatic/core";
+import {
+  getRedis,
+  checkRateLimit,
+  decideClientIdentity,
+  logger,
+  type ClientIdentityDecision,
+  type RateLimitQuota,
+} from "@breatic/core";
 import { t } from "@breatic/shared";
 import { getRateLimit } from "@server/config/rate-limits.js";
 
@@ -43,26 +50,8 @@ export interface Quota {
 export interface RateLimitAnswers {
   /** The 429 body; the public envelope when absent. `Retry-After` is set either way. */
   onLimited?: (c: Context, retryAfterSeconds: number) => Response;
-  /** Answer this when the counter cannot be read, instead of letting the request through. */
+  /** Answer this when the counter cannot be read; absent, the error goes to the app's error handler. */
   failClosed?: (c: Context) => Response;
-}
-
-/** Where a request's client-address keys come from. */
-type ClientAddress = { kind: "counted"; address: string } | { kind: "exempt" } | { kind: "refused"; reason: string };
-
-/**
- * The client address of a request, by the rule collab uses.
- * @param c - The request context; must run on `@hono/node-server` bindings.
- * @returns The address to count under, an exemption, or a refusal.
- */
-function clientAddress(c: Context): ClientAddress {
-  const decision = decideClientIdentity({
-    peerAddress: getConnInfo(c).remote.address,
-    realIpHeader: c.req.header("x-real-ip"),
-  });
-  if (decision.kind === "exempt") return { kind: "exempt" };
-  if (decision.kind === "refuse") return { kind: "refused", reason: decision.reason };
-  return { kind: "counted", address: decision.identity };
 }
 
 /**
@@ -81,15 +70,21 @@ function emailHash(c: Context): string {
  * The key of one quota for a request.
  * @param c - The request context.
  * @param keyBy - The quota's dimension.
+ * @param peer - The address of the connection the request arrived on, read once.
  * @param client - The request's client address, resolved once.
  * @returns The key without the action prefix, or null when the quota does not count this request.
  */
-function quotaKey(c: Context, keyBy: KeyBy, client: () => ClientAddress): string | null {
+function quotaKey(
+  c: Context,
+  keyBy: KeyBy,
+  peer: () => string | undefined,
+  client: () => ClientIdentityDecision,
+): string | null {
   if (keyBy === "user") return (c.get("user") as { id: string } | undefined)?.id ?? "anonymous";
-  if (keyBy === "socket") return getConnInfo(c).remote.address ?? "unknown";
+  if (keyBy === "socket") return peer() ?? "unknown";
   const resolved = client();
-  if (resolved.kind !== "counted") return null;
-  return keyBy === "ip" ? resolved.address : `${resolved.address}:${emailHash(c)}`;
+  if (resolved.kind !== "identify") return null;
+  return keyBy === "ip" ? resolved.identity : `${resolved.identity}:${emailHash(c)}`;
 }
 
 /**
@@ -97,26 +92,33 @@ function quotaKey(c: Context, keyBy: KeyBy, client: () => ClientAddress): string
  * @param opts - The quotas and the answers.
  * @param opts.quotas - The quotas the route is limited by, judged together.
  * @param opts.onLimited - The 429 body; the public envelope when absent.
- * @param opts.failClosed - The answer when Redis cannot count; absent lets the error through.
+ * @param opts.failClosed - The answer when Redis cannot count; absent, the error goes to the app's error handler.
  * @returns A Hono middleware that answers `403` for a request that did not come
  *   through our proxy, and `429` with `Retry-After` when any quota is full.
  */
 export function rateLimit(opts: { quotas: readonly Quota[] } & RateLimitAnswers): MiddlewareHandler {
   return async (c, next) => {
-    let resolved: ClientAddress | undefined;
+    let peerAddress: { value: string | undefined } | undefined;
     /**
-     * The request's client address, resolved on first use.
-     * @returns The address, exemption or refusal.
+     * The address of the connection the request arrived on, read on first use.
+     * @returns The peer address.
      */
-    const client = (): ClientAddress => (resolved ??= clientAddress(c));
+    const peer = (): string | undefined => (peerAddress ??= { value: getConnInfo(c).remote.address }).value;
+    let resolved: ClientIdentityDecision | undefined;
+    /**
+     * The request's client address by the rule collab uses, resolved on first use.
+     * @returns The address to count under, an exemption, or a refusal.
+     */
+    const client = (): ClientIdentityDecision =>
+      (resolved ??= decideClientIdentity({ peerAddress: peer(), realIpHeader: c.req.header("x-real-ip") }));
     const judged: RateLimitQuota[] = [];
     for (const quota of opts.quotas) {
-      const key = quotaKey(c, quota.keyBy ?? "ip", client);
+      const key = quotaKey(c, quota.keyBy ?? "ip", peer, client);
       if (key !== null) judged.push({ key: `${quota.prefix}:${key}`, max: quota.max, windowSeconds: quota.windowSeconds });
     }
     const actions = opts.quotas.map((q) => q.prefix);
-    if (resolved?.kind === "refused") {
-      logger.error({ actions, reason: resolved.reason }, "rate_limit_client_unidentified");
+    if (resolved?.kind === "refuse") {
+      logger.error({ actions, reason: resolved.reason, peerAddress: peer() }, "rate_limit_client_unidentified");
       return c.json({ error: { code: 403, message: t("server.error.forbidden") } }, 403);
     }
     if (judged.length === 0) return next();

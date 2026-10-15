@@ -16,13 +16,14 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { z } from "zod";
 
 const checkRateLimit = vi.fn();
+const logger = vi.hoisted(() => ({ warn: vi.fn(), error: vi.fn() }));
 vi.mock("@breatic/core", async (importOriginal) => {
   const actual = await importOriginal<typeof CoreModule>();
   return {
     getRedis: () => ({}),
     checkRateLimit: (...args: unknown[]) => checkRateLimit(...args),
     decideClientIdentity: actual.decideClientIdentity,
-    logger: { warn: vi.fn(), error: vi.fn() },
+    logger,
   };
 });
 vi.mock("@breatic/shared", async (importOriginal) => ({
@@ -38,6 +39,8 @@ import { validate } from "@server/middleware/validate.js";
 const PROXIED = { incoming: { socket: { remoteAddress: "172.18.0.4" } } };
 /** A request from this machine (local dev through the Vite proxy). */
 const LOOPBACK = { incoming: { socket: { remoteAddress: "127.0.0.1" } } };
+/** A request that reached us without our nginx: no `x-real-ip` and not from this machine. */
+const DIRECT = { incoming: { socket: { remoteAddress: "203.0.113.9" } } };
 
 /**
  * An app with one limited GET route.
@@ -52,6 +55,7 @@ function appWith(quotas: Parameters<typeof rateLimit>[0]["quotas"]): Hono {
 
 beforeEach(() => {
   checkRateLimit.mockReset();
+  logger.error.mockReset();
   checkRateLimit.mockResolvedValue({ allowed: true });
 });
 
@@ -76,11 +80,15 @@ describe("rateLimit middleware", () => {
     expect(checkRateLimit).not.toHaveBeenCalled();
   });
 
-  it("refuses a request that did not come through our proxy", async () => {
+  it("refuses a request that did not come through our proxy, and logs the reason and the peer", async () => {
     const app = appWith([{ prefix: "x", max: 5, windowSeconds: 60 }]);
-    const res = await app.request("/", {}, { incoming: { socket: { remoteAddress: "203.0.113.9" } } });
+    const res = await app.request("/", {}, DIRECT);
     expect(res.status).toBe(403);
     expect(checkRateLimit).not.toHaveBeenCalled();
+    expect(logger.error).toHaveBeenCalledWith(
+      { actions: ["x"], reason: "missing-real-ip", peerAddress: "203.0.113.9" },
+      "rate_limit_client_unidentified",
+    );
   });
 
   it("answers 429 with the wait core reports", async () => {
@@ -122,15 +130,28 @@ describe("rateLimit middleware", () => {
     expect(checkRateLimit).toHaveBeenCalledWith(expect.anything(), [{ key: `login:203.0.113.9:${hash}`, max: 10, windowSeconds: 900 }]);
   });
 
-  it("keys by user id when keyBy='user', wherever the request came from", async () => {
+  it("keys by user id when keyBy='user', without asking where the request came from", async () => {
     const app = new Hono<{ Variables: { user: { id: string } } }>();
     app.use("*", async (c, next) => {
       c.set("user", { id: "user-9" });
       await next();
     });
     app.get("/", rateLimit({ quotas: [{ prefix: "sc", max: 10, windowSeconds: 3600, keyBy: "user" }] }), (c) => c.text("ok"));
-    const res = await app.request("/", {}, LOOPBACK);
+    const res = await app.request("/", {}, DIRECT);
     expect(res.status).toBe(200);
     expect(checkRateLimit).toHaveBeenCalledWith(expect.anything(), [{ key: "sc:user-9", max: 10, windowSeconds: 3600 }]);
+  });
+
+  it("keys by 'anonymous' when keyBy='user' and no user is set", async () => {
+    const app = appWith([{ prefix: "sc", max: 10, windowSeconds: 3600, keyBy: "user" }]);
+    await app.request("/", {}, DIRECT);
+    expect(checkRateLimit).toHaveBeenCalledWith(expect.anything(), [{ key: "sc:anonymous", max: 10, windowSeconds: 3600 }]);
+  });
+
+  it("keys by the connection's own address when keyBy='socket', without asking where the request came from", async () => {
+    const app = appWith([{ prefix: "internal-api", max: 120, windowSeconds: 60, keyBy: "socket" }]);
+    const res = await app.request("/", {}, DIRECT);
+    expect(res.status).toBe(200);
+    expect(checkRateLimit).toHaveBeenCalledWith(expect.anything(), [{ key: "internal-api:203.0.113.9", max: 120, windowSeconds: 60 }]);
   });
 });
