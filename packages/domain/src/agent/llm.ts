@@ -67,10 +67,11 @@ export interface CallWants {
   /** A fixed sampling temperature, sent only where the model accepts one. */
   temperature?: number;
   /**
-   * The conversation the call belongs to. Through OpenRouter it pins every
-   * call of the conversation to one provider from the first request, so a
-   * prefix cached on one provider is read on the next call (OpenRouter prompt
-   * caching, "Using session_id for sticky sessions").
+   * The conversation the call belongs to. Through OpenRouter it keeps the
+   * conversation's calls on one provider from the first request while they
+   * come less than 10 minutes apart, so a prefix cached on that provider is
+   * read on the next call (OpenRouter prompt caching, "Using session_id for
+   * sticky sessions": sticky sessions expire after 10 minutes of inactivity).
    */
   session?: string;
 }

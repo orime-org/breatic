@@ -19,7 +19,9 @@ consolidation_model: anthropic/claude-opus-5.5
 # only when asked (Claude). A write costs 1.25x the input price at 5m and 2x at
 # 1h; a read costs a small fraction of it. The lifetime counts from the start
 # of the last request that read or wrote it, and a reader often takes longer
-# than five minutes to answer, so chat keeps it for an hour.
+# than five minutes to answer, so chat keeps it for an hour. Through
+# OpenRouter, a gap over 10 minutes also needs the request to land on the same
+# provider again: its sticky session expires after 10 minutes without calls.
 prompt_cache_ttl: 1h
 
 # ── Memory System ─────────────────────────────────────────
