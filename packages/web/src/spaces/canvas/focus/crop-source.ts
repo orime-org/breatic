@@ -72,6 +72,21 @@ export function intrinsicSize(el: CropSourceEl): { width: number; height: number
 }
 
 /**
+ * Run a step once a picture still decoding has decoded: decoding ends when
+ * the browser has the bitmap, not after a count of frames. A picture that
+ * cannot decode never runs it.
+ * @param el - The node's picture, or what stands in its place.
+ * @param then - The step.
+ * @returns True when it waits on the decode; false when there is none to wait on.
+ * @throws {never} Never.
+ */
+export function whenDecoded(el: Element | null, then: () => void): boolean {
+  if (!(el instanceof HTMLImageElement) || el.naturalWidth > 0) return false;
+  el.decode().then(then, () => undefined);
+  return true;
+}
+
+/**
  * The address of the original the element shows, with any preview suffix
  * removed: a preview falling back to its original is the same picture.
  * @param el - The crop source.

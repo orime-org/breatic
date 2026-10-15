@@ -88,7 +88,7 @@ import {
   viewportToInspect,
 } from '@web/spaces/canvas/frame-built-node';
 import { exportCropBlob } from '@web/spaces/canvas/focus/crop-export';
-import { cropSourceSelector, intrinsicSize, isCropSource } from '@web/spaces/canvas/focus/crop-source';
+import { cropSourceSelector, intrinsicSize, isCropSource, whenDecoded } from '@web/spaces/canvas/focus/crop-source';
 import { exportDrawing } from '@web/spaces/canvas/mini-tool/export-drawing';
 import { ExpandFrameOverlay } from '@web/spaces/canvas/mini-tool/ExpandFrameOverlay';
 import { exportExpand } from '@web/spaces/canvas/mini-tool/expand-export';
@@ -3939,6 +3939,7 @@ function CanvasSpaceInner({
   const inspectNode = React.useCallback(
     (nodeId: string): void => {
       let tries = 0;
+      let decoding = false;
       /** One frame of waiting for the node and the panel to be laid out. */
       const step = (): void => {
         const container = containerRef.current;
@@ -3946,6 +3947,11 @@ function CanvasSpaceInner({
         const panel = container?.querySelector<HTMLElement>('[data-canvas-panel]') ?? null;
         const shell = container?.querySelector<HTMLElement>(`.react-flow__node[data-id="${CSS.escape(nodeId)}"]`) ?? null;
         const picture = container?.querySelector(cropSourceSelector(nodeId)) ?? null;
+        // A picture still decoding is waited for until it has, however long.
+        if (!decoding && whenDecoded(picture, step)) {
+          decoding = true;
+          return;
+        }
         const own = isCropSource(picture) ? intrinsicSize(picture).width : 0;
         const media = (node?.width ?? 0) - MEDIA_FRAME_PX;
         if (node === undefined || panel === null || shell === null || own === 0 || media <= 0) {

@@ -4615,6 +4615,12 @@ describe('what opening a tool on a node does to the camera and its layers', () =
     expect(inspect).toContain('duration: PROPOSAL_FRAME_MS');
   });
 
+  // §6.1: a picture still decoding is waited for until it has decoded, not
+  // for a count of frames.
+  it('waits for the picture to decode before it zooms', () => {
+    expect(inspect).toContain('whenDecoded(picture, step)');
+  });
+
   // §6.3: the expand frame reaches past its node and is drawn over every node.
   it('draws the expand frame in the viewport, over every node', () => {
     const portal = src.slice(src.lastIndexOf('<ViewportPortal>', src.indexOf('<ExpandFrameOverlay ')), src.indexOf('<ExpandFrameOverlay '));
