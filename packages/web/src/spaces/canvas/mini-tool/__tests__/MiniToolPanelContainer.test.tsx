@@ -401,20 +401,18 @@ describe('MiniToolPanelContainer', () => {
   });
 
   describe('expand', () => {
-    const GENFILL = { ...ERASER, name: 'bria-genfill', mode: ['expand'], max_output_side: 4000 } as unknown as ModelEntry;
+    // A 1600×1000 source: 1:1 wraps it at 1600×1600, 16:9 at 1778×1000.
+    const GENFILL = { ...ERASER, name: 'bria-genfill', mode: ['expand'], max_output_side: 1700 } as unknown as ModelEntry;
 
     beforeEach(() => {
       client.setQueryData(modelCatalogQuery().queryKey, { ...CATALOG, image: [GENFILL] });
       canvasSessions.of('').getState().openMiniTool('src', 'image.expand', { sourceContent: 'a.png', params: {} });
     });
 
-    it('gives the frame the model\'s cap once the catalog is read', () => {
-      client.removeQueries({ queryKey: modelCatalogQuery().queryKey });
-      const view = render(tree(source('a.png'), () => Promise.resolve()));
-      expect(canvasSessions.of('').getState().miniTool?.expand?.cap).toBeNull();
-      act(() => client.setQueryData(modelCatalogQuery().queryKey, { ...CATALOG, image: [GENFILL] }));
-      view.rerender(tree(source('a.png'), () => Promise.resolve()));
-      expect(canvasSessions.of('').getState().miniTool?.expand?.cap).toBe(4000);
+    it('holds the ratios to the model\'s longest side', () => {
+      render(tree(source('a.png'), () => Promise.resolve()));
+      expect(screen.getByTestId('mini-tool-expand-ratio-1:1')).not.toHaveAttribute('aria-disabled', 'true');
+      expect(screen.getByTestId('mini-tool-expand-ratio-16:9')).toHaveAttribute('aria-disabled', 'true');
     });
   });
 });

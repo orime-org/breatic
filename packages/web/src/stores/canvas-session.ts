@@ -376,8 +376,6 @@ export interface CanvasSessionState {
   setExpand: (next: Pick<ExpandDraft, 'frame' | 'ratio'> & { shift?: ExpandDraft['shift'] }) => void;
   /** Record where the node shows the picture, for the expand frame drawn outside it. */
   setExpandView: (view: ExpandView) => void;
-  /** Record the longest side the expand tool's model takes. */
-  setExpandCap: (cap: number) => void;
   /** Pick what a press on the node does in markup. */
   setMarkTool: (tool: MarkTool) => void;
   /** Set the markup colour; the selected object takes it too. */
@@ -744,7 +742,7 @@ export function createCanvasSessionStore(): CanvasSessionStore {
               params: { ...s.miniTool.params, ...params },
               sourceSize: null,
               drawing,
-              expand: s.miniTool.expand === null ? null : castDraft({ ...EMPTY_EXPAND, cap: s.miniTool.expand.cap }),
+              expand: s.miniTool.expand === null ? null : castDraft(EMPTY_EXPAND),
               // The pen stays as the reader set it; what was drawn goes.
               mark:
                 s.miniTool.mark === null
@@ -784,12 +782,6 @@ export function createCanvasSessionStore(): CanvasSessionStore {
         set((s) => updateMark(s, (m) => ({ ...withObjects(m, []), selectedId: null }))),
       selectMark: (id) => set((s) => updateMark(s, (m) => selectedMark(m, id))),
       setMarkEditingText: (text) => set((s) => updateMark(s, (m) => withEditingText(m, text))),
-      setExpandCap: (cap) =>
-        set((s) => {
-          if (s.miniTool?.expand && s.miniTool.expand.cap !== cap) {
-            s.miniTool = { ...s.miniTool, expand: castDraft({ ...s.miniTool.expand, cap }) };
-          }
-        }),
       setMiniToolSourceSize: (size) =>
         set((s) => {
           if (s.miniTool) s.miniTool = { ...s.miniTool, sourceSize: { width: size.width, height: size.height } };

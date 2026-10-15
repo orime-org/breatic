@@ -13,7 +13,7 @@ describe('the expand draft', () => {
   it('opens the expand tool with the frame at the source and the ratio free', () => {
     const store = createCanvasSessionStore();
     store.getState().openMiniTool('node-a', 'image.expand', OPEN);
-    expect(store.getState().miniTool?.expand).toEqual({ frame: UNIT_FRAME, ratio: 'free', cap: null, shift: { x: 0, y: 0 }, view: null });
+    expect(store.getState().miniTool?.expand).toEqual({ frame: UNIT_FRAME, ratio: 'free', shift: { x: 0, y: 0 }, view: null });
   });
 
   it('holds no frame on another tool', () => {
@@ -32,10 +32,9 @@ describe('the expand draft', () => {
   it('puts the frame back at the source and the ratio back to free when the source changes', () => {
     const store = createCanvasSessionStore();
     store.getState().openMiniTool('node-a', 'image.expand', OPEN);
-    store.getState().setExpandCap(12288);
     store.getState().setExpand({ frame: GROWN, ratio: '16:9' });
     store.getState().resetMiniToolSource('https://cdn.example.com/b.png', {});
-    expect(store.getState().miniTool?.expand).toEqual({ frame: UNIT_FRAME, ratio: 'free', cap: 12288, shift: { x: 0, y: 0 }, view: null });
+    expect(store.getState().miniTool?.expand).toEqual({ frame: UNIT_FRAME, ratio: 'free', shift: { x: 0, y: 0 }, view: null });
   });
 
   // The picture's move lives with the frame, so a node drawn again (panned off

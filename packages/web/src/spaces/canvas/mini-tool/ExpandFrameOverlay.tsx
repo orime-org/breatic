@@ -1,11 +1,16 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
+import { useQuery } from '@tanstack/react-query';
 import { useInternalNode, useReactFlow, useStore, type Node } from '@xyflow/react';
 import * as React from 'react';
 
+import { catalogEntryOf, isModelTool, miniToolById } from '@breatic/shared/mini-tools';
+
 import type { CropHandle } from '@web/lib/crop-math';
 import { useCanvasSession, useCanvasSessionStore } from '@web/spaces/canvas/canvas-context';
+import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
+import { expandCapOf } from '@web/spaces/canvas/mini-tool/mini-tool-view';
 import { miniToolOpenOn } from '@web/stores/canvas-session';
 import { handleScale } from '@web/spaces/canvas/crop/crop-geometry';
 import { CROP_HANDLES } from '@web/spaces/canvas/focus/crop-source';
@@ -63,7 +68,12 @@ export function ExpandFrameOverlay({ onNodeContextMenu }: ExpandFrameOverlayProp
   const gesture = React.useRef<Gesture | null>(null);
   const sourceSize = draft?.sourceSize ?? null;
   const view = expand?.view ?? null;
-  const cap = expand?.cap ?? null;
+  // The handles stop at the pinned model's longest side, read off its catalog.
+  const { data: catalog } = useQuery(modelCatalogQuery());
+  const spec = draft === null ? undefined : miniToolById(draft.toolId);
+  const entry =
+    catalog !== undefined && spec !== undefined && isModelTool(spec) ? catalogEntryOf(catalog, spec.run.model) : undefined;
+  const cap = entry === undefined ? null : expandCapOf(entry);
   const drawn =
     expand !== null && view !== null && sourceSize !== null && cap !== null && draft !== null && node !== undefined;
   // A frame not drawn holds no handle to release a drag on: a panel closed

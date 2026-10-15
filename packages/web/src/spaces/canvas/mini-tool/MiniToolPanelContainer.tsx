@@ -180,7 +180,6 @@ function OpenMiniToolPanel({
   const startMiniToolSlotPick = useCanvasSession((s) => s.startMiniToolSlotPick);
   const endPick = useCanvasSession((s) => s.endPick);
   const setExpand = useCanvasSession((s) => s.setExpand);
-  const setExpandCap = useCanvasSession((s) => s.setExpandCap);
   const setMiniToolSourceSize = useCanvasSession((s) => s.setMiniToolSourceSize);
   const sessionStore = useCanvasSessionStore();
 
@@ -229,8 +228,8 @@ function OpenMiniToolPanel({
     [crops, measured, dataWidth, dataHeight, view, shown, content],
   );
 
-  // An expand frame is measured in the source's pixels and held to the pinned
-  // model's longest side; both go into the draft the node's frame reads.
+  // An expand frame is measured in the source's pixels, which go into the
+  // draft the node's frame reads; the frame reads the model's cap itself.
   const expandDraft = draft?.expand ?? null;
   // The panel hangs under the expand frame, which reaches past the node. Read
   // from the draft and the node's size, which the canvas keeps while the node
@@ -246,12 +245,6 @@ function OpenMiniToolPanel({
     if (heldSize?.width === sourceWidth && heldSize.height === sourceHeight) return;
     setMiniToolSourceSize({ width: sourceWidth, height: sourceHeight });
   }, [spec, sourceWidth, sourceHeight, heldSize, setMiniToolSourceSize]);
-  // Null in the draft means the catalog is not read yet; the frame waits for it.
-  // Only a new opening resets it, and that opening mounts this panel afresh.
-  const cap = entry === undefined ? undefined : expandCapOf(entry);
-  React.useEffect(() => {
-    if (spec.expand !== undefined && cap !== undefined) setExpandCap(cap);
-  }, [spec, cap, setExpandCap]);
   // Built from the ratio alone, so dragging the frame does not re-render the
   // panel; a ratio reads the frame as it stands when picked.
   const expandRatio = expandDraft?.ratio;
@@ -260,14 +253,14 @@ function OpenMiniToolPanel({
     const size = { width: sourceWidth, height: sourceHeight };
     return {
       ratio: expandRatio,
-      fits: (ratio: ExpandRatio): boolean => ratioFits(ratio, size, cap ?? Infinity),
+      fits: (ratio: ExpandRatio): boolean => ratioFits(ratio, size, expandCapOf(entry)),
       exporting: draftExporting,
       onRatio: (ratio: ExpandRatio): void => {
         const frame = sessionStore.getState().miniTool?.expand?.frame;
         if (frame !== undefined) setExpand({ frame: frameForRatio(ratio, size, frame), ratio });
       },
     };
-  }, [expandRatio, sourceWidth, sourceHeight, cap, draftExporting, setExpand, sessionStore]);
+  }, [expandRatio, sourceWidth, sourceHeight, entry, draftExporting, setExpand, sessionStore]);
 
   // The source took new content while the panel was open: whatever was
   // measured on the old one is reset, and the reader is told (§7.2).

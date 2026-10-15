@@ -9,12 +9,16 @@
  * canvas's viewport, the cover in the node.
  */
 
+import type { ModelCatalog, ModelEntry } from '@breatic/shared';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { ViewportPortal, useReactFlow, type Node, type ReactFlowInstance } from '@xyflow/react';
 import * as React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { modelsApi } from '@web/data/api';
 import { cropCanvas, installLayout } from '@web/spaces/canvas/crop/__tests__/crop-harness';
+import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
 import { ExpandFrameOverlay } from '@web/spaces/canvas/mini-tool/ExpandFrameOverlay';
 import { canvasSessions } from '@web/stores/canvas-session';
 import { UNIT_FRAME } from '@web/stores/expand-draft';
@@ -24,9 +28,22 @@ const NODE = { id: 'n1', kind: 'img' as const, src: 'https://cdn/a.png' };
 /** The session store the canvas under test reads. */
 const store = () => canvasSessions.of('').getState();
 
+/** The catalog with the expand tool's model, whose longest side is 12288. */
+const CATALOG = {
+  image: [{ name: 'bria-genfill', mode: ['expand'], max_output_side: 12288, params: {} } as unknown as ModelEntry],
+  video: [], audio: [], tts: [], three_d: [], total: 1, credit_multiplier: 1,
+} as unknown as ModelCatalog;
+
+/** The query cache the frame reads the model's cap from; seeded with {@link CATALOG}. */
+let client: QueryClient;
+
 beforeEach(() => {
   installLayout();
   canvasSessions.clear();
+  // The catalog arrives only when a test puts it in the cache.
+  vi.spyOn(modelsApi, 'list').mockReturnValue(new Promise(() => {}));
+  client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+  client.setQueryData(modelCatalogQuery().queryKey, CATALOG);
 });
 
 afterEach(() => {
@@ -55,19 +72,22 @@ const nodeMenu = vi.fn<(event: React.MouseEvent, node: Node) => void>();
  * @param snapToGrid - Whether the canvas snaps nodes to its grid.
  * @returns The tree.
  */
-const canvas = (zoom = 1, snapToGrid = false) =>
-  cropCanvas(
-    [NODE],
-    <>
-      <ViewportPortal>
-        <ExpandFrameOverlay onNodeContextMenu={nodeMenu} />
-      </ViewportPortal>
-      <GrabFlow />
-    </>,
-    zoom,
-    { x: 100, y: 50 },
-    { snapToGrid, snapGrid: [24, 24] },
-  );
+const canvas = (zoom = 1, snapToGrid = false) => (
+  <QueryClientProvider client={client}>
+    {cropCanvas(
+      [NODE],
+      <>
+        <ViewportPortal>
+          <ExpandFrameOverlay onNodeContextMenu={nodeMenu} />
+        </ViewportPortal>
+        <GrabFlow />
+      </>,
+      zoom,
+      { x: 100, y: 50 },
+      { snapToGrid, snapGrid: [24, 24] },
+    )}
+  </QueryClientProvider>
+);
 
 /**
  * Render the node and open the expand tool on it.
@@ -80,7 +100,6 @@ function mount(toolId = 'image.expand', zoom = 1, snapToGrid = false): ReturnTyp
   act(() => {
     store().openMiniTool('n1', toolId, { sourceContent: NODE.src, params: {} });
     store().setMiniToolSourceSize({ width: 1600, height: 1000 });
-    store().setExpandCap(12288);
   });
   return view;
 }
@@ -104,7 +123,6 @@ describe('NodeExpandLayer', () => {
     act(() => {
       store().openMiniTool('n1', 'image.expand', { sourceContent: NODE.src, params: {} });
       store().setMiniToolSourceSize({ width: 1600, height: 1000 });
-      store().setExpandCap(12288);
     });
     const frame = screen.getByTestId('mini-tool-expand-frame');
     expect(frame.style.left).toBe('0px');
@@ -113,15 +131,16 @@ describe('NodeExpandLayer', () => {
 
   // The handles stop at the long-side cap (A5), so there is no frame to drag
   // until the model's catalog entry has said what the cap is.
-  it('draws no frame until the cap is known', () => {
+  it('draws no frame until the cap is known', async () => {
+    client.removeQueries({ queryKey: modelCatalogQuery().queryKey });
     render(canvas(1, false));
     act(() => {
       store().openMiniTool('n1', 'image.expand', { sourceContent: NODE.src, params: {} });
       store().setMiniToolSourceSize({ width: 1600, height: 1000 });
     });
     expect(screen.queryByTestId('mini-tool-expand-frame')).toBeNull();
-    act(() => store().setExpandCap(12288));
-    expect(screen.getByTestId('mini-tool-expand-frame')).toBeTruthy();
+    act(() => client.setQueryData(modelCatalogQuery().queryKey, CATALOG));
+    expect(await screen.findByTestId('mini-tool-expand-frame')).toBeTruthy();
   });
 
   // The canvas unmounts a node whose own box is off screen, while the frame
@@ -216,7 +235,6 @@ describe('NodeExpandLayer', () => {
       store().closeActivePanel();
       store().openMiniTool('n1', 'image.expand', { sourceContent: NODE.src, params: {} });
       store().setMiniToolSourceSize({ width: 1600, height: 1000 });
-      store().setExpandCap(12288);
     });
     expect(screen.getByTestId('mini-tool-expand-frame').style.left).toBe('0px');
   });
@@ -267,7 +285,6 @@ describe('NodeExpandLayer', () => {
     act(() => {
       store().openMiniTool('n1', 'image.expand', { sourceContent: NODE.src, params: {} });
       store().setMiniToolSourceSize({ width: 1600, height: 1000 });
-      store().setExpandCap(12288);
     });
     drag(screen.getByTestId('mini-tool-expand-handle-w'), [100, 200], [0, 200]);
     expect(store().miniTool?.expand?.frame.x).toBeCloseTo(-0.25, 9);
@@ -282,7 +299,6 @@ describe('NodeExpandLayer', () => {
     act(() => store().resetMiniToolSource(NODE.src, {}));
     act(() => {
       store().setMiniToolSourceSize({ width: 1600, height: 1000 });
-      store().setExpandCap(12288);
     });
     const before = store().miniTool?.expand?.frame;
     fireEvent.pointerMove(screen.getByTestId('mini-tool-expand-handle-w'), { clientX: 700, clientY: 200, pointerId: 1, buttons: 0 });
