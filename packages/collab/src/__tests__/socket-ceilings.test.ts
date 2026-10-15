@@ -12,8 +12,9 @@
  * library's per-socket ceilings are calibrated for one document per socket,
  * which is the opposite. Raise one of them and the next one down still fires,
  * with the same close code 4205 and the same symptom — a socket that dies and
- * reconnects into the identical wall. So they are set from ONE declared
- * number and tested together; a ceiling raised alone is not a fix.
+ * reconnects into the identical wall. So they are set from ONE number — a
+ * project's Space cap plus its meta doc — and tested together; a ceiling
+ * raised alone is not a fix.
  *
  * The library terminates a socket in four places (hocuspocus-server.esm.js:
  * 819, 886 twice, 958). Measured against a 1000-document socket carrying the
@@ -24,7 +25,7 @@
  *   queued frame bytes     default 5 MB   ~390 KB used, 13x of headroom
  *   idle timeout           default 60 s   client heartbeats every 15 s
  *
- * The first two are derived from the declared number; the last two are left
+ * The first two are derived from the document count; the last two are left
  * at their defaults, and the cases below pin the measurements that justify
  * leaving them.
  *
@@ -44,7 +45,7 @@ import {
   outdatedTimeout,
 } from "y-protocols/awareness";
 import { Server, defaultConfiguration } from "@hocuspocus/server";
-import { getCollabConfig } from "@collab/config.js";
+import { MAX_SPACES_PER_PROJECT } from "@breatic/shared";
 import {
   socketCeilings,
   QUEUED_FRAMES_PER_DOCUMENT,
@@ -204,9 +205,15 @@ async function openDocuments(
   return closeCode;
 }
 
-/** The ceilings production runs with, derived from the declared number. */
+/** Documents one socket carries at most: a full project's Spaces plus its meta doc. */
+const FULL_PROJECT = MAX_SPACES_PER_PROJECT + 1;
+
+/** The library's own queued-frame ceiling, used when nothing is configured. */
+const LIBRARY_QUEUE_FRAME_CEILING = 1000;
+
+/** The ceilings production runs with. */
 function productionCeilings(): ReturnType<typeof socketCeilings> {
-  return socketCeilings(getCollabConfig().max_documents_per_socket);
+  return socketCeilings();
 }
 
 describe("the ceilings that close a whole socket", () => {
@@ -216,9 +223,7 @@ describe("the ceilings that close a whole socket", () => {
     // that ceiling stayed hidden while the one above it was raised.
     const port = await serverHoldingAuth(productionCeilings());
 
-    expect(
-      await openDocuments(port, getCollabConfig().max_documents_per_socket, true),
-    ).toBeNull();
+    expect(await openDocuments(port, FULL_PROJECT, true)).toBeNull();
   });
 
   it("is capped by the library below a full project even when only auth frames go out", async () => {
@@ -227,15 +232,14 @@ describe("the ceilings that close a whole socket", () => {
     expect(await openDocuments(port, 150, false)).toBe(RESET_CONNECTION_CODE);
   });
 
-  it("has room left when a client queues more frames than the measurement", async () => {
-    // What the headroom factor is FOR, and the only case that can see it. A
-    // client replaying buffered work sends more than the two frames the
-    // derivation counts on; without headroom the ceiling sits exactly on the
-    // measured figure and the first extra frame closes the socket.
+  it("has room left when a reconnecting client replays an offline backlog", async () => {
+    // A client back from being offline replays the edits it buffered while
+    // every document is still waiting for authentication. Two extra frames per
+    // document for a full project is 402 frames of backlog on top of the two
+    // the documents need, which a ceiling of 804 would not hold.
     const port = await serverHoldingAuth(productionCeilings());
-    const documents = getCollabConfig().max_documents_per_socket;
 
-    expect(await openDocuments(port, documents, true, 1)).toBeNull();
+    expect(await openDocuments(port, FULL_PROJECT, true, 2)).toBeNull();
   });
 
   it("is capped by the library at half that once the sync and awareness frames ride along", async () => {
@@ -244,27 +248,23 @@ describe("the ceilings that close a whole socket", () => {
     // still dies, because each document queues two frames against a separate
     // count of 1000.
     const port = await serverHoldingAuth({
-      maxPendingDocuments: getCollabConfig().max_documents_per_socket,
-      maxUnauthenticatedQueueMessages: 1000,
+      maxPendingDocuments: 1000,
+      maxUnauthenticatedQueueMessages: LIBRARY_QUEUE_FRAME_CEILING,
     });
 
     expect(await openDocuments(port, 520, true)).toBe(RESET_CONNECTION_CODE);
   });
 });
 
-describe("deriving the ceilings from one declared number", () => {
-  it("moves both ceilings together", () => {
-    const small = socketCeilings(10);
-    const large = socketCeilings(1000);
-
-    expect(large.maxPendingDocuments).toBeGreaterThan(small.maxPendingDocuments);
-    expect(large.maxUnauthenticatedQueueMessages).toBeGreaterThan(
-      small.maxUnauthenticatedQueueMessages,
+describe("deriving the ceilings from a project's Space cap", () => {
+  it("never sets the queued-frame ceiling below the library's own", () => {
+    expect(socketCeilings().maxUnauthenticatedQueueMessages).toBeGreaterThanOrEqual(
+      LIBRARY_QUEUE_FRAME_CEILING,
     );
   });
 
-  it("sets the pending-document ceiling to the declared number itself", () => {
-    expect(socketCeilings(1000).maxPendingDocuments).toBe(1000);
+  it("sets the pending-document ceiling to a full project's documents", () => {
+    expect(socketCeilings().maxPendingDocuments).toBe(FULL_PROJECT);
   });
 
   it("keeps the frame count from outgrowing the byte ceiling it does not control", () => {
@@ -272,8 +272,7 @@ describe("deriving the ceilings from one declared number", () => {
     // bytes are what actually bound memory, so the frame count must never be
     // the looser of the two. The byte figure is ENCODED here rather than
     // written down, so a frame that grows really does move this assertion.
-    const documents = getCollabConfig().max_documents_per_socket;
-    const ceilings = socketCeilings(documents);
+    const ceilings = socketCeilings();
     const bytesPerFrame = measuredQueuedBytesPerDocument() / QUEUED_FRAMES_PER_DOCUMENT;
     const worstCaseBytes = ceilings.maxUnauthenticatedQueueMessages * bytesPerFrame;
 
