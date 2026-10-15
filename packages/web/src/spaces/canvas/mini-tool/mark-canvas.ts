@@ -72,8 +72,8 @@ export class MarkCanvasController {
   /** Each draft object on the canvas, by id, as it stood when it was drawn; Fabric changing one in place forgets it. */
   private readonly drawn = new Map<string, string>();
 
-  /** The object list this canvas last wrote, to tell its own writes from others'. */
-  private lastWritten = '[]';
+  /** The object list the canvas last drew or wrote; a draft that differs from it changed under a text edit. */
+  private lastSeen = '[]';
 
   /** The shape being dragged out, with where the press began. */
   private pending: { start: Point; startOnScreen: Point; shape: MarkFabricObject | null } | null = null;
@@ -151,7 +151,7 @@ export class MarkCanvasController {
    * @param objects - The list.
    */
   private commit(objects: readonly MarkObject[]): void {
-    this.lastWritten = JSON.stringify(objects);
+    this.lastSeen = JSON.stringify(objects);
     this.live()?.commitMark(objects);
   }
 
@@ -216,7 +216,7 @@ export class MarkCanvasController {
         this.canvas.discardActiveObject();
       }
       this.reconcile(draft.objects);
-      this.lastWritten = json;
+      this.lastSeen = json;
       this.alignSelection(draft);
     } finally {
       this.suppressed = false;
@@ -263,7 +263,7 @@ export class MarkCanvasController {
   private settleEdit(draft: MarkDraft): void {
     if (this.edit === null) return;
     const json = JSON.stringify(draft.objects);
-    if (draft.editingText === null || json !== this.lastWritten) {
+    if (draft.editingText === null || json !== this.lastSeen) {
       // What was typed is dropped: the text is drawn again from the draft.
       this.drawn.delete(this.edit.id);
       this.edit = null;
@@ -279,17 +279,15 @@ export class MarkCanvasController {
   }
 
   /**
-   * Make the canvas's selection the draft's, unless a text is being edited.
+   * Select the draft's selected object again once it is redrawn. `sync` has
+   * already dropped a selection the draft no longer holds, so this only adds
+   * one, and not while a text is being edited.
    * @param draft - The draft.
    */
   private alignSelection(draft: MarkDraft): void {
-    if (this.edit !== null) return;
-    const active = this.canvas.getActiveObject();
-    if (idOf(active) === (draft.selectedId ?? undefined)) return;
-    const wanted =
-      draft.selectedId === null ? undefined : this.canvas.getObjects().find((shape) => idOf(shape) === draft.selectedId);
-    if (wanted === undefined) this.canvas.discardActiveObject();
-    else this.canvas.setActiveObject(wanted);
+    if (this.edit !== null || draft.selectedId === null || this.canvas.getActiveObject() !== undefined) return;
+    const wanted = this.canvas.getObjects().find((shape) => idOf(shape) === draft.selectedId);
+    if (wanted !== undefined) this.canvas.setActiveObject(wanted);
   }
 
   /**
