@@ -300,12 +300,12 @@ export class MainAgent {
     const whatToolAnswered = new Map<string, unknown>();
 
     // What the reply row keeps of what was sent (`for_model`). Each finished
-    // step, in order, with whether a provider error cut it off: the SDK sends
-    // a step on with the next request unless it is the turn's last, so every
-    // step but an errored last one went out as it is here. The hash is of the
-    // request the turn's first call sent; the provider's counts size the turn
-    // for the fold.
+    // step, in order, with whether a provider error cut it off, and how many
+    // requests the SDK has started: a step went out as it is once a later
+    // request carried it. The hash is of the request the turn's first call
+    // sent; the provider's counts size the turn for the fold.
     const steps: Array<{ messages: ModelMessage[]; erred: boolean }> = [];
+    let requested = 0;
     let reported: ReportedUsage = {};
     // The assembly the turn's first call sent, once the model has been asked.
     let sent: Assembly | undefined;
@@ -331,9 +331,9 @@ export class MainAgent {
       settled: SettledCalls;
     }): Promise<ReplyForModel | undefined> => {
       if (sent === undefined) return undefined;
-      // An errored last step was never sent on: it is unfinished, and is
+      // An errored step is partial. When no later request carried it, it is
       // rebuilt from what reached the reader.
-      const sentOn = steps.at(-1)?.erred === true ? steps.slice(0, -1) : steps;
+      const sentOn = steps.at(-1)?.erred === true && requested <= steps.length ? steps.slice(0, -1) : steps;
       const collected = sentOn.flatMap((step) => step.messages);
       let unfinished: ModelMessage[] = [];
       if (ended.exit === "aborted" || ended.exit === "failed") {
@@ -554,6 +554,10 @@ export class MainAgent {
         onLanguageModelCallEnd: (event) => {
           watch.callEnded(event);
           reported = noteUsage(reported, event.usage);
+        },
+        // Fires as each request is about to go out, once per attempt.
+        onStepStart: ({ stepNumber }) => {
+          requested = Math.max(requested, stepNumber + 1);
         },
         onStepFinish: (step) => {
           steps.push({ messages: step.response.messages, erred: step.finishReason === "error" });
