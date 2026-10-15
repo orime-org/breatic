@@ -19,9 +19,10 @@ import {
 } from '@web/spaces/canvas/mini-tool/expand-frame';
 
 /**
- * An in-progress drag, with the frame and ratio as they stood when it began.
+ * An in-progress drag, with the frame and ratio as they stood when it began
+ * and the frame it last wrote: a frame written by anyone else ends the drag.
  */
-type Gesture = { pointerId: number; frame: ExpandFrame; ratio: ExpandRatio } & (
+type Gesture = { pointerId: number; frame: ExpandFrame; ratio: ExpandRatio; last: ExpandFrame } & (
   | { type: 'resize'; handle: CropHandle }
   | { type: 'move'; start: { x: number; y: number } }
 );
@@ -60,19 +61,19 @@ export function ExpandFrameOverlay({ onNodeContextMenu }: ExpandFrameOverlayProp
   const node = useInternalNode(hostId ?? '');
   const { screenToFlowPosition } = useReactFlow();
   const gesture = React.useRef<Gesture | null>(null);
-  // A frame written by anyone but this drag ends the drag.
-  const ours = React.useRef<{ frame: ExpandFrame; ratio: ExpandRatio } | null>(null);
   const sourceSize = draft?.sourceSize ?? null;
   const view = expand?.view ?? null;
   const drawn = expand !== null && view !== null && sourceSize !== null && draft !== null && node !== undefined;
   // A frame not drawn holds no handle to release a drag on: a panel closed
   // under it, a host gone, a source reset. A new opening starts with no view
   // and no source size, so it ends a drag begun in the one before.
-  if (gesture.current !== null && !drawn) gesture.current = null;
-  if (gesture.current !== null && expand !== null && ours.current !== null) {
-    const same =
-      expand.ratio === ours.current.ratio && JSON.stringify(expand.frame) === JSON.stringify(ours.current.frame);
-    if (!same) gesture.current = null;
+  if (
+    gesture.current !== null &&
+    (!drawn ||
+      expand.ratio !== gesture.current.ratio ||
+      JSON.stringify(expand.frame) !== JSON.stringify(gesture.current.last))
+  ) {
+    gesture.current = null;
   }
   if (!drawn) return null;
   const { frame, ratio, shift } = expand;
@@ -113,7 +114,7 @@ export function ExpandFrameOverlay({ onNodeContextMenu }: ExpandFrameOverlayProp
    * @param nextShift.y - Down, as a share of it.
    */
   const write = (next: ExpandFrame, nextShift: { x: number; y: number }): void => {
-    ours.current = { frame: next, ratio };
+    if (gesture.current !== null) gesture.current.last = next;
     store.getState().setExpand({ frame: next, ratio, shift: nextShift });
   };
 
@@ -129,8 +130,7 @@ export function ExpandFrameOverlay({ onNodeContextMenu }: ExpandFrameOverlayProp
     if (e.button !== 0 || gesture.current !== null || exporting) return;
     e.stopPropagation();
     e.currentTarget.setPointerCapture?.(e.pointerId);
-    ours.current = { frame, ratio };
-    gesture.current = { pointerId: e.pointerId, frame, ratio, ...start };
+    gesture.current = { pointerId: e.pointerId, frame, ratio, last: frame, ...start };
   };
 
   /**
