@@ -345,8 +345,32 @@ describe('where a pasted picture stands and what it shows (inner#1351 A3, A5)', 
     expect(shape(editor).map((label) => label.trim())).toEqual(['paragraph:leadsee', 'image[pending|]', 'paragraph:here', 'paragraph:next']);
   });
 
+  it('Markdown carrying a picture pasted into code goes in as its words, with nothing left out', async () => {
+    const { editor, sink } = open([{ type: 'codeBlock', content: 'x' }]);
+    caretIn(editor, 0);
+
+    paste(editor, '', '![x](https://e.example/i.png)');
+    await settled();
+
+    expect(sink.start).not.toHaveBeenCalled();
+    expect(sink.onLeftOut).not.toHaveBeenCalled();
+    expect(editor.prosemirrorView!.state.doc.textContent).toContain('![x](https://e.example/i.png)');
+  });
+
+  it('web content pasted into code goes in as its words, with nothing told left out', async () => {
+    const { editor, sink } = open([{ type: 'codeBlock', content: 'x' }]);
+    caretIn(editor, 0);
+
+    paste(editor, '<p>words</p><object data="https://e.example/x.swf"><img src="https://e.example/f.png"></object>', 'words');
+    await settled();
+
+    expect(sink.onLeftOut).not.toHaveBeenCalled();
+    expect(editor.prosemirrorView!.state.doc.textContent).toContain('words');
+  });
+
   it('a picture the parse still drops is told as left out, pasted or dropped', async () => {
-    const HTML = '<table><caption><img src="https://e.example/cap.png"></caption><tr><td>x</td></tr></table>';
+    // An object's fallback content, which the read leaves out.
+    const HTML = '<object data="https://e.example/x.swf"><img src="https://e.example/fallback.png"></object>';
     const { sink } = await pasted(`<p>a</p>${HTML}`, 'a x');
     const dropped = open([{ type: 'paragraph', content: 'lead' }]);
 
