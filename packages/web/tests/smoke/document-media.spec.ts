@@ -1018,6 +1018,33 @@ test('a table pasted into a cell with the keyboard is undone apart from the word
   await expect(cells).toHaveText(['typed', '']);
 });
 
+// The browser's own copy keeps a cell's picture and a picture given by
+// srcset alone; both are read in the reader's browser and come in pending.
+test('a web table with a picture in a cell and a srcset picture paste in with both pictures pending (inner#1351 A5, A7)', async () => {
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+  await openFreshDocument(page);
+  await holdFetches(page);
+  await page.keyboard.type('Lead');
+  await page.keyboard.press('Enter');
+  await page.evaluate((url) => {
+    const html = `<table><tr><td><img src="${url}"> words</td></tr></table><img srcset="${url}?set 1x">`;
+    return navigator.clipboard.write([
+      new ClipboardItem({
+        'text/html': new Blob([html], { type: 'text/html' }),
+        'text/plain': new Blob(['words'], { type: 'text/plain' }),
+      }),
+    ]);
+  }, OUTSIDE_PICTURE);
+
+  await page.keyboard.press('ControlOrMeta+v');
+
+  await expect(page.locator(PENDING)).toHaveCount(2);
+  await expect(page.locator(`${EDITOR} table td`).first()).toHaveText('words');
+  const kinds = await types(page);
+  expect(kinds[kinds.indexOf('table') + 1]).toBe('image');
+  expect(kinds.filter((kind) => kind === 'image')).toHaveLength(2);
+});
+
 test('Shift+click on a picture while the body is let go selects the picture and leaves the old words out (A20)', async () => {
   await openFreshDocument(page);
   await page.keyboard.type('hello world');
