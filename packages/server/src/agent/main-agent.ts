@@ -551,6 +551,10 @@ export class MainAgent {
           reported = noteUsage(reported, event.usage);
         },
         onStepFinish: (step) => {
+          // A step cut off by a provider error is unfinished: its calls never
+          // ran and its thinking is partial. It is rebuilt with the rest of an
+          // unfinished turn, from what reached the reader.
+          if (step.finishReason === "error") return;
           stepMessages.push(...step.response.messages);
           stepsDone += 1;
           for (const part of step.content) {

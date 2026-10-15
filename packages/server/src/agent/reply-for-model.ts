@@ -5,9 +5,9 @@
  * What a reply row keeps of what was sent (inner#1549).
  *
  * A finished step's messages are what the SDK sent on with the next request,
- * and they are collected as each step ends. A turn stopped or broken off
- * inside a step never finishes it, so that step is put together here from
- * what had already reached the reader.
+ * and they are collected as each step ends. A turn stopped inside a step, or
+ * cut off there by a provider error, leaves that step unfinished, so it is put
+ * together here from what had already reached the reader.
  */
 
 import { convertToModelMessages, isToolUIPart } from "ai";
