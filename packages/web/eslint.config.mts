@@ -675,6 +675,6 @@ export default [
   {
     // Build output and Playwright artefacts are not ours to lint. Without
     // this the package-wide scope above would try to parse minified bundles.
-    ignores: ['dist/**', 'test-results/**', 'coverage/**', 'playwright-report/**'],
+    ignores: ['dist/**', 'test-results/**', 'coverage/**', 'playwright-report/**', 'playwright/.consent/**'],
   },
 ];
