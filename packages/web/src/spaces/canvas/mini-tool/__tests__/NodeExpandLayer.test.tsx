@@ -104,10 +104,24 @@ describe('NodeExpandLayer', () => {
     act(() => {
       store().openMiniTool('n1', 'image.expand', { sourceContent: NODE.src, params: {} });
       store().setMiniToolSourceSize({ width: 1600, height: 1000 });
+      store().setExpandCap(12288);
     });
     const frame = screen.getByTestId('mini-tool-expand-frame');
     expect(frame.style.left).toBe('0px');
     expect(frame.style.width).toBe('400px');
+  });
+
+  // The handles stop at the long-side cap (A5), so there is no frame to drag
+  // until the model's catalog entry has said what the cap is.
+  it('draws no frame until the cap is known', () => {
+    render(canvas(1, false));
+    act(() => {
+      store().openMiniTool('n1', 'image.expand', { sourceContent: NODE.src, params: {} });
+      store().setMiniToolSourceSize({ width: 1600, height: 1000 });
+    });
+    expect(screen.queryByTestId('mini-tool-expand-frame')).toBeNull();
+    act(() => store().setExpandCap(12288));
+    expect(screen.getByTestId('mini-tool-expand-frame')).toBeTruthy();
   });
 
   // The canvas unmounts a node whose own box is off screen, while the frame
