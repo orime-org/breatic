@@ -135,14 +135,14 @@ describe("the two memory lines", () => {
     // empty, and folding never happens again — with nothing said anywhere.
     expect(
       agentConfigSchemaForTests.safeParse({
-        memory_budget_chars: 500_000,
-        memory_keep_chars: 500_000,
+        memory_budget_tokens: 500_000,
+        memory_keep_tokens: 500_000,
       }).success,
     ).toBe(false);
     expect(
       agentConfigSchemaForTests.safeParse({
-        memory_budget_chars: 400_000,
-        memory_keep_chars: 500_000,
+        memory_budget_tokens: 400_000,
+        memory_keep_tokens: 500_000,
       }).success,
     ).toBe(false);
   });
@@ -153,12 +153,12 @@ describe("the two memory lines", () => {
     // answers. Their presence is asserted first: absent, the schema hands
     // back its own defaults and the pair being checked would be one nobody
     // ships.
-    expect(typeof config.memory_budget_chars).toBe("number");
-    expect(typeof config.memory_keep_chars).toBe("number");
+    expect(typeof config.memory_budget_tokens).toBe("number");
+    expect(typeof config.memory_keep_tokens).toBe("number");
     expect(
       agentConfigSchemaForTests.safeParse({
-        memory_budget_chars: config.memory_budget_chars,
-        memory_keep_chars: config.memory_keep_chars,
+        memory_budget_tokens: config.memory_budget_tokens,
+        memory_keep_tokens: config.memory_keep_tokens,
       }).success,
     ).toBe(true);
   });
@@ -170,8 +170,8 @@ describe("the two memory lines", () => {
     // turn there is. Doubled, because the reserve is counted in code units.
     expect(
       agentConfigSchemaForTests.safeParse({
-        memory_budget_chars: 850_000,
-        memory_keep_chars: 500_000,
+        memory_budget_tokens: 850_000,
+        memory_keep_tokens: 500_000,
         memory_conversation_max_size: 125_000,
         memory_project_max_size: 125_000,
       }).success,
@@ -180,8 +180,8 @@ describe("the two memory lines", () => {
     // boundary rather than a range.
     expect(
       agentConfigSchemaForTests.safeParse({
-        memory_budget_chars: 850_000,
-        memory_keep_chars: 500_000,
+        memory_budget_tokens: 850_000,
+        memory_keep_tokens: 500_000,
         memory_conversation_max_size: 125_000,
         memory_project_max_size: 124_999,
       }).success,
@@ -195,16 +195,16 @@ describe("the two memory lines", () => {
     // and the line goes negative, which the loop reads as "never stop".
     expect(
       agentConfigSchemaForTests.safeParse({
-        memory_budget_chars: 850_000,
-        memory_keep_chars: 500_000,
+        memory_budget_tokens: 850_000,
+        memory_keep_tokens: 500_000,
         memory_conversation_max_size: 250_000,
         memory_project_max_size: 250_000,
       }).success,
     ).toBe(false);
     expect(
       agentConfigSchemaForTests.safeParse({
-        memory_budget_chars: 850_000,
-        memory_keep_chars: 500_000,
+        memory_budget_tokens: 850_000,
+        memory_keep_tokens: 500_000,
         memory_conversation_max_size: 400_000,
         memory_project_max_size: 200_000,
       }).success,

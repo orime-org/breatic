@@ -18,8 +18,8 @@ vi.mock("@breatic/core", async (importOriginal) => {
   return {
     ...actual,
     // Any request is over budget, so the fold runs.
-    getAgentConfig: () => ({ ...actual.getAgentConfig(), memory_budget_chars: 1, memory_keep_chars: 1 }),
-    effectiveKeepChars: () => 1,
+    getAgentConfig: () => ({ ...actual.getAgentConfig(), memory_budget_tokens: 1, memory_keep_tokens: 1 }),
+    effectiveKeepTokens: () => 1,
   };
 });
 

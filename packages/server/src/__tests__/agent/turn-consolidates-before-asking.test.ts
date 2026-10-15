@@ -70,8 +70,8 @@ vi.mock("@breatic/core", async (importOriginal) => {
     getContext: actual.getContext,
     getAgentConfig: () => ({
       ...(base.getAgentConfig as () => Record<string, unknown>)(),
-      memory_budget_chars: limits.budget,
-      memory_keep_chars: limits.keep,
+      memory_budget_tokens: limits.budget,
+      memory_keep_tokens: limits.keep,
     }),
   };
 });
