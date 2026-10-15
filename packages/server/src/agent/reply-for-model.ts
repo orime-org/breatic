@@ -86,9 +86,8 @@ export async function inProgressStep(
   settled: SettledCalls,
   collected: readonly ModelMessage[],
 ): Promise<ModelMessage[]> {
-  let starts = 0;
-  const at = parts.findIndex((part) => part.type === "step-start" && ++starts === stepsDone + 1);
-  if (at === -1) return [];
+  const at = parts.flatMap((part, i) => (part.type === "step-start" ? [i] : []))[stepsDone];
+  if (at === undefined) return [];
 
   const step = parts.slice(at + 1).map((part) => (isToolUIPart(part) ? settle(part, settled) : part));
   // Without thinking: what it had of its own is unfinished, and a provider
