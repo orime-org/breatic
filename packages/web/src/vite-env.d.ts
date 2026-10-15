@@ -31,6 +31,6 @@ interface ImportMetaEnv {
   readonly VITE_GOOGLE_ADS_TAG_ID?: string;
   /** JSON object: conversion name to Google Ads conversion label. */
   readonly VITE_GOOGLE_ADS_CONVERSION_LABELS?: string;
-  /** Parent domain for the consent cookie, shared with the API's cookie domain. */
+  /** Parent domain the consent cookie is written on, so the API reads it; empty means this host. */
   readonly VITE_CONSENT_COOKIE_DOMAIN?: string;
 }

@@ -69,7 +69,7 @@ What leaves when it is on:
 
 To turn it off again, empty the variables, restart the backend and rebuild the frontend.
 
-When an account is deleted on request, delete its events from Amplitude too: run `AMPLITUDE_SECRET_KEY=<project secret key> pnpm analytics:delete-users <users.id> …` from the repository root. The secret key is in the Amplitude project's settings and is passed only for that run; Amplitude schedules the deletion within 30 days and the command prints the scheduled day. How long Amplitude keeps events is set in its organization settings (Time to Live).
+When you delete an account on request, soft-delete it first (set `users.deleted_at`), then run `pnpm analytics:delete-users <users.id> …` from the repository root. The command refuses any account that is not soft-deleted and lists those ids. It clears the account's ad switch, the choices last seen on it and the consent kept on its orders, upload tickets and ad uploads. When `AMPLITUDE_API_KEY` is set, pass `AMPLITUDE_SECRET_KEY=<project secret key>` for that run and the command also asks Amplitude to delete the account's events; the secret key is in the Amplitude project's settings, Amplitude schedules the deletion within 30 days and the command prints the scheduled day. Without `AMPLITUDE_API_KEY` it says there is nothing to delete at Amplitude and stops. How long Amplitude keeps events is set in its organization settings (Time to Live).
 
 ## Back office internal API
 
