@@ -986,6 +986,38 @@ test('words typed just before a paste stay when the paste is undone (inner#1351 
   expect(await rows(page)).toEqual(['Lead typed']);
 });
 
+// A paste the table hook takes is a step of its own, apart from the words
+// typed on either side, with the reader's own Cmd+V: a browser runs
+// microtasks between the listeners of an event the reader caused.
+test('a table pasted into a cell with the keyboard is undone apart from the words typed around it (inner#1351 A6)', async () => {
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+  await openFreshDocument(page);
+  await page.keyboard.type('Lead');
+  await tableWithCaret(page);
+  await page.evaluate(() =>
+    navigator.clipboard.write([
+      new ClipboardItem({
+        'text/html': new Blob(['<table><tr><td>a</td><td>b</td></tr></table>'], { type: 'text/html' }),
+        'text/plain': new Blob(['a\tb'], { type: 'text/plain' }),
+      }),
+    ]),
+  );
+  const cells = page.locator(`${EDITOR} table td`);
+
+  await page.keyboard.type('typed');
+  await page.keyboard.press('ControlOrMeta+v');
+  await expect(cells).toHaveText(['a', 'b']);
+  await cells.last().click();
+  await page.keyboard.press('End');
+  await page.keyboard.type('Z');
+  await expect(cells).toHaveText(['a', 'bZ']);
+
+  await page.keyboard.press('ControlOrMeta+z');
+  await expect(cells).toHaveText(['a', 'b']);
+  await page.keyboard.press('ControlOrMeta+z');
+  await expect(cells).toHaveText(['typed', '']);
+});
+
 test('Shift+click on a picture while the body is let go selects the picture and leaves the old words out (A20)', async () => {
   await openFreshDocument(page);
   await page.keyboard.type('hello world');
