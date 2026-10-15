@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Who is on the other end of a collab WebSocket connection.
+ * Who is on the other end of a request: a server HTTP request or a collab
+ * WebSocket connection.
  *
- * Rate limiting only means something if connections can be attributed to a
+ * Rate limiting only means something if requests can be attributed to a
  * client, and a client can only be identified two ways: by the address the
  * connection actually came from, or by a header a proxy we trust put there.
  * Which of the two applies is decided by ONE fact — whether the connection's
@@ -12,19 +13,20 @@
  *
  *   loopback peer      the browser reached us through the local dev proxy, so
  *                      this is a developer's own machine. Exempt.
- *   any other peer     the only thing that can reach collab is our own nginx
- *                      (its port is not published — see docker-compose.yml),
- *                      and nginx OVERWRITES `x-real-ip` with the real client
- *                      address. So the header is the client, and its absence
- *                      means the connection did not come through nginx.
+ *   any other peer     the only thing that can reach server or collab is our
+ *                      own nginx (their ports are not published — see
+ *                      docker-compose.yml), and nginx OVERWRITES `x-real-ip`
+ *                      with the real client address. So the header is the
+ *                      client, and its absence means the request did not come
+ *                      through nginx.
  *
- * `x-forwarded-for` is deliberately never consulted. nginx APPENDS to it
+ * `x-forwarded-for` is never consulted. nginx APPENDS to it
  * (`$proxy_add_x_forwarded_for`), so its first hop is whatever the client
  * chose to send — reading it would hand every client a way to pick its own
  * rate-limit bucket.
  *
- * This module is pure on purpose: the hook that owns the socket lives in
- * `connection-gate.ts`, so the rule itself can be exercised without one.
+ * This module is pure: the server middleware and the collab connection gate
+ * own the sockets, so the rule itself can be exercised without one.
  */
 
 import { isIPv6 } from "node:net";
@@ -32,7 +34,6 @@ import { isIPv6 } from "node:net";
 /** Loopback addresses that are not covered by a prefix test. */
 const LOOPBACK_EXACT = new Set(["::1", "::ffff:127.0.0.1", "localhost"]);
 
-/** What to do with a connection, once its client has been identified. */
 /**
  * Why a connection could not be attributed. Named rather than inlined so the
  * caller that logs it and the rule that produces it share one list: a new

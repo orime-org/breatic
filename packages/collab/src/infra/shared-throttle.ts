@@ -4,11 +4,13 @@
 /**
  * The connection throttle every collab instance shares (inner#1497 §6.6).
  *
- * Counts and bans live in Redis, so an IP gets the same limit however many
- * instances its connections land on. The verdicts match the in-memory
+ * Connections are counted per client address — an IPv4 address or an IPv6
+ * /64, as core's `decideClientIdentity` names it. Counts and bans live in
+ * Redis, so an address gets the same limit however many instances its
+ * connections land on. The verdicts match the in-memory
  * `@hocuspocus/extension-throttle` this replaces: within a 60-second window a
  * limit of N allows N connections and denies from the next one on, which then
- * bans the IP for the configured minutes. The window is core's
+ * bans the address for the configured minutes. The window is core's
  * `checkRateLimit`, the sliding window every other rate limit uses.
  *
  * When Redis cannot answer, the connection is let through and the error is

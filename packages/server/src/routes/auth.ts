@@ -459,9 +459,10 @@ const resetWithRecoveryCodeSchema = z.object({
  *
  * Returns a fresh recovery code on success - frontend (PR-b) MUST
  * re-display it with the same "save this now" modal as registration.
- * Rate limited 5/hour per IP to slow online code-guessing attacks
- * (80 bits of entropy makes offline infeasible already, but rate
- * limit hardens the online surface).
+ * Rate limited per client address and per address-and-email
+ * (`reset-recovery-ip` / `reset-recovery` in `config/rate-limits.yaml`) to
+ * slow online code-guessing attacks (80 bits of entropy makes offline
+ * infeasible already, but rate limit hardens the online surface).
  * @returns `200` with `{ data: { newRecoveryCode } }`
  * @throws {AppError} `401` on any failure (uniform: email-not-found / code-used /
  *   code-mismatch all surface as "Invalid email or recovery code"
