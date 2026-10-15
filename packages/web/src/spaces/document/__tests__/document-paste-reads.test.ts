@@ -623,3 +623,83 @@ describe('the words a table cell takes', () => {
     expect(firstCell(editor, 0)).toBe(firstCell(plain.editor, 0));
   });
 });
+
+describe('a drop put under a table or under a line by the body', () => {
+  it.each([
+    ['under the table it was dropped on', [TABLE, { type: 'paragraph', content: 'next' }], (editor: Editor): number => positionOf(editor, 'cell ', 5), `<p>first</p><img src="${U}a.png"><table><tr><td>t</td></tr></table>`, 'first'],
+    ['under the line it was dropped below', [{ type: 'paragraph', content: 'lead' }], (editor: Editor): number => editor.prosemirrorView!.state.doc.content.size - 2, `<p>dropped</p><img src="${U}a.png">`, 'dropped'],
+  ])('%s selects what it put in', async (_where, blocks, at, html, words) => {
+    const { editor } = open([{ type: 'paragraph', content: 'caret' }, ...blocks]);
+    select(editor, 2);
+
+    drop(editor, at(editor), html, 'x');
+    await settled();
+
+    const { from, to } = editor.prosemirrorView!.state.selection;
+    expect(editor.prosemirrorView!.state.doc.textBetween(from, to, ' ')).toContain(words);
+  });
+
+  it('outside every line is left to ProseMirror, as the same drop without media is', async () => {
+    const land = async (html: string): Promise<string[]> => {
+      const { editor } = open([{ type: 'paragraph', content: 'one' }, { type: 'paragraph', content: 'two' }]);
+      drop(editor, 0, html, 'x');
+      await settled();
+      return shape(editor);
+    };
+
+    expect(await land(`<p>a <img src="${U}a.png"> b</p>`)).toEqual(await land('<p>a  b</p>'));
+  });
+});
+
+describe('a drop whose media all fail to land', () => {
+  const OUT = '<img src="http://e.example/a.png">';
+  const IN = `<img src="${U}a.png">`;
+
+  it.each([
+    ['words in a cell', [TABLE, { type: 'paragraph', content: 'next' }], 'cell ', 2, `<p>w</p>${OUT}`],
+    ['words and a table in a cell', [TABLE, { type: 'paragraph', content: 'next' }], 'cell ', 2, `<p>w</p>${OUT}<table><tr><td>t</td></tr></table>`],
+    ['a quote after a split line', [{ type: 'paragraph', content: 'lead' }, { type: 'paragraph', content: 'tail' }], 'lead', 4, `<div><p>x ${OUT} y</p><blockquote><p>q</p></blockquote></div>`],
+  ])('with %s lands as the same drop with a medium that lands, without that medium, and is told once', async (_what, blocks, words, offset, html) => {
+    const land = async (dropped: string): Promise<{ blocks: unknown[]; told: unknown[] }> => {
+      const { editor, sink } = open(blocks as unknown[]);
+      drop(editor, positionOf(editor, words, offset), dropped, 'x');
+      await settled();
+      return { blocks: blocksAndCells(editor), told: sink.onLeftOut.mock.calls };
+    };
+
+    const out = await land(html);
+    const landed = await land(html.replace(OUT, IN));
+
+    expect(out.blocks).toEqual(landed.blocks.filter((block) => block !== 'image[pending|]'));
+    expect(out.told).toEqual([[1]]);
+  });
+});
+
+describe('a figure whose medium sits in a wrapper beside a rule', () => {
+  it('keeps the rule', async () => {
+    const { editor } = open([{ type: 'paragraph', content: 'lead' }]);
+    caretIn(editor, 0);
+
+    paste(editor, `<figure><div><hr><img src="${U}a.png"></div><figcaption>c</figcaption></figure>`, 'x');
+    await settled();
+
+    expect(shape(editor)).toEqual(['paragraph:lead', 'divider:', 'image[pending|c]']);
+  });
+});
+
+describe('content of another body a cell cannot take, dropped on a table cell', () => {
+  it('lands whole under that table, in its order', async () => {
+    const source = open([
+      { type: 'paragraph', content: 'first' },
+      { type: 'image', props: { url: `${OURS}a.png` } },
+      { type: 'table', content: { type: 'tableContent', rows: [{ cells: [['t']] }] } },
+    ]);
+    const html = source.editor.blocksToFullHTML(source.editor.document as never);
+    const { editor } = open([TABLE, { type: 'paragraph', content: 'next' }]);
+
+    drop(editor, positionOf(editor, 'cell ', 5), html, 'x');
+    await settled();
+
+    expect(blocksAndCells(editor)).toEqual([[['cell ']], 'paragraph:first', `image[${OURS}a.png|]`, [['t']], 'paragraph:next']);
+  });
+});
