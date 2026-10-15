@@ -17,7 +17,7 @@ import {
 import { toModelMessages } from "@server/agent/model-messages.js";
 
 const PREFIX: RequestPrefix = {
-  system: "You are the AI core of Breatic.",
+  instructions: "You are the AI core of Breatic.",
   tools: {
     web_search: tool({ description: "Search the web.", inputSchema: z.object({ query: z.string() }) }),
   },
@@ -148,7 +148,7 @@ describe("replaying the history as it was sent", () => {
   });
 
   it.each([
-    ["the system prompt", { ...PREFIX, system: "Memory changed." }],
+    ["the system prompt", { ...PREFIX, instructions: "Memory changed." }],
     ["the model", { ...PREFIX, modelId: "deepseek/deepseek-v4-pro" }],
     ["the tool set", { ...PREFIX, tools: {} }],
   ])("takes a reply's thinking out when %s is no longer what its turn sent", (_, now) => {
@@ -278,7 +278,7 @@ describe("the hash of a request's prefix", () => {
 
     expect(prefixHash(PREFIX, [ASKED])).toBe(base);
     expect(prefixHash(PREFIX, [ASKED, ...ANSWERED])).not.toBe(base);
-    expect(prefixHash({ ...PREFIX, system: "x" }, [ASKED])).not.toBe(base);
+    expect(prefixHash({ ...PREFIX, instructions: "x" }, [ASKED])).not.toBe(base);
     expect(prefixHash(PREFIX, [{ role: "user", content: "time note\n\nfind me references" }])).not.toBe(base);
   });
 

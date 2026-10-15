@@ -78,7 +78,7 @@ const { MainAgent } = await import("@server/agent/main-agent.js");
 const { runWithContext, logger } = await import("@breatic/core");
 
 /** What the mocked factory resolves every turn to. */
-const PREFIX: RequestPrefix = { system: "system", tools: {}, modelId: "test" };
+const PREFIX: RequestPrefix = { instructions: "system", tools: {}, modelId: "test" };
 
 const ASKED: ModelMessage = { role: "user", content: "earlier question, as sent" };
 const ANSWERED: ModelMessage[] = [
@@ -165,7 +165,7 @@ describe("a turn replays the history as it was sent", () => {
   });
 
   it("leaves an earlier reply's thinking out once what came before it changed", async () => {
-    modelSays.history = earlierTurn({ ...PREFIX, system: "an older system prompt" });
+    modelSays.history = earlierTurn({ ...PREFIX, instructions: "an older system prompt" });
 
     await runOneTurn("next question");
 

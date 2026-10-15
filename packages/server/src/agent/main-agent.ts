@@ -40,7 +40,7 @@ import { requestTokens } from "@server/agent/request-size.js";
 import type { Assembly } from "@server/agent/turn-budget.js";
 import { getContext } from "@breatic/core";
 import { logger } from "@breatic/core";
-import { historyForModel, lastFullSnapshotKey, prefixHash, requestPrefixOf } from "@server/agent/history-replay.js";
+import { historyForModel, lastFullSnapshotKey, prefixHash } from "@server/agent/history-replay.js";
 import type { ReplyForModel, UserForModel } from "@server/agent/history-replay.js";
 import { endingNote } from "@server/agent/model-messages.js";
 import { inProgressStep, noteUsage, replyTokens, type ReportedUsage, type SettledCalls } from "@server/agent/reply-for-model.js";
@@ -397,7 +397,7 @@ export class MainAgent {
         content: userMessageForModel(ask.clockNote, ask.turn, { spaceUnchanged: unchanged }),
       };
       const messages = [
-        ...historyForModel(history, requestPrefixOf(agentConfig)),
+        ...historyForModel(history, agentConfig),
         userMessage,
       ];
       userKept = {
@@ -457,7 +457,7 @@ export class MainAgent {
 
       const { agentConfig, messages } = assembly;
       modelId = agentConfig.modelId;
-      sentPrefixHash = prefixHash(requestPrefixOf(agentConfig), messages);
+      sentPrefixHash = prefixHash(agentConfig, messages);
       requestSize = requestTokens(assembly);
 
       // Kept as it is about to go out, after any fold, so later turns send it

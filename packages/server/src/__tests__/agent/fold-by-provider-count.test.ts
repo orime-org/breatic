@@ -38,8 +38,7 @@ const { foldIfOverBudget } = await import("@server/agent/turn-budget.js");
 const { requestTokens } = await import("@server/agent/request-size.js");
 const { historyForModel, prefixHash } = await import("@server/agent/history-replay.js");
 
-const PREFIX: RequestPrefix = { system: "s", tools: {}, modelId: "test" };
-const AGENT = { modelId: PREFIX.modelId, instructions: PREFIX.system, tools: {} };
+const AGENT: RequestPrefix = { instructions: "s", tools: {}, modelId: "test" };
 const QUESTION: ModelMessage = { role: "user", content: "and now?" };
 
 /** A long answer, so measuring characters would say something else. */
@@ -59,7 +58,7 @@ function keptTurn(
   turnIndex: number,
   before: ModelMessage[],
   sizes: { turnTokens: number; endTokens: number },
-  prefix: RequestPrefix = PREFIX,
+  prefix: RequestPrefix = AGENT,
 ): ReplayRow[] {
   const asked: ModelMessage = { role: "user", content: `question ${String(turnIndex)}` };
   return [
@@ -86,7 +85,7 @@ function keptTurn(
  */
 async function check(history: ReplayRow[]): Promise<boolean> {
   return foldIfOverBudget(
-    { agentConfig: AGENT, history, watermark: 0, messages: [...historyForModel(history, PREFIX), QUESTION] },
+    { agentConfig: AGENT, history, watermark: 0, messages: [...historyForModel(history, AGENT), QUESTION] },
     { userId: "u", conversationId: "c", projectId: "p" },
   );
 }
@@ -119,7 +118,7 @@ describe("deciding to fold", () => {
     // Folded since: the system prompt now carries the memory, so this reply's
     // end size counted turns that are gone. What it added is still what it
     // added.
-    const history = keptTurn(3, [], { turnTokens: 300, endTokens: 50_000 }, { ...PREFIX, system: "before the fold" });
+    const history = keptTurn(3, [], { turnTokens: 300, endTokens: 50_000 }, { ...AGENT, instructions: "before the fold" });
 
     expect(await check(history)).toBe(false);
   });
@@ -132,7 +131,7 @@ describe("sizing a fold", () => {
     // the budget is lowered to 800. Taking turn 1 leaves about 600, turn 2
     // about 300, under the keep line of 400.
     LINES.budget = 800;
-    const old = { ...PREFIX, system: "older" };
+    const old = { ...AGENT, instructions: "older" };
     const history = [
       ...keptTurn(1, [], { turnTokens: 300, endTokens: 300 }, old),
       ...keptTurn(2, [], { turnTokens: 300, endTokens: 600 }, old),
@@ -150,14 +149,14 @@ describe("sizing a fold", () => {
 describe("how big a request is", () => {
   it("is the newest reply sent as it was, by the provider's count, plus what came after it", () => {
     const history = keptTurn(1, [], { turnTokens: 900, endTokens: 900 });
-    const messages = [...historyForModel(history, PREFIX), QUESTION];
+    const messages = [...historyForModel(history, AGENT), QUESTION];
 
     expect(requestTokens({ agentConfig: AGENT, history, watermark: 0, messages })).toBe(900 + "and now?".length);
   });
 
   it("adds up what each turn added when no reply goes out as it was sent", () => {
-    const history = keptTurn(1, [], { turnTokens: 300, endTokens: 50_000 }, { ...PREFIX, system: "older" });
-    const messages = [...historyForModel(history, PREFIX), QUESTION];
+    const history = keptTurn(1, [], { turnTokens: 300, endTokens: 50_000 }, { ...AGENT, instructions: "older" });
+    const messages = [...historyForModel(history, AGENT), QUESTION];
 
     // The system prompt and the empty tool set, then the turn and the question.
     expect(requestTokens({ agentConfig: AGENT, history, watermark: 0, messages })).toBe(1 + 300 + "and now?".length);

@@ -16,7 +16,7 @@ import { effectiveKeepTokens, getAgentConfig } from "@breatic/core";
 import type { ResolvedAgentConfig } from "@breatic/domain";
 import { planConsolidation } from "@server/agent/consolidation-window.js";
 import { consolidateWindow } from "@server/agent/memory-consolidator.js";
-import { replayRows, requestPrefixOf, stripThinking } from "@server/agent/history-replay.js";
+import { replayRows, stripThinking } from "@server/agent/history-replay.js";
 import type { ReplayRow } from "@server/agent/history-replay.js";
 import { costPerTurn, requestTokens } from "@server/agent/request-size.js";
 
@@ -59,7 +59,7 @@ export async function foldIfOverBudget(
   who: TurnIdentity,
 ): Promise<boolean> {
   const config = getAgentConfig();
-  const replayed = replayRows(assembly.history, requestPrefixOf(assembly.agentConfig));
+  const replayed = replayRows(assembly.history, assembly.agentConfig);
   const turns = costPerTurn(replayed);
   const assembled = requestTokens(assembly, replayed, turns);
   // The planner asks this again and is the authority on it.

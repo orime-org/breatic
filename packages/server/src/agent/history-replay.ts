@@ -23,7 +23,8 @@
 
 import { createHash } from "node:crypto";
 import { asSchema } from "ai";
-import type { ModelMessage, Tool } from "ai";
+import type { ModelMessage } from "ai";
+import type { ResolvedAgentConfig } from "@breatic/domain";
 import { z } from "zod";
 import type { MessageData } from "@breatic/shared";
 
@@ -35,32 +36,8 @@ export type ReplayRow = MessageData & {
   forModel: unknown;
 };
 
-/** Everything in a request besides its messages. */
-export interface RequestPrefix {
-  /** The system prompt, persona through memory. */
-  system: string;
-  /** The tools as the factory resolved them, keyed by name. */
-  tools: Readonly<Record<string, Tool>>;
-  /** The model id the request went to, as configured. */
-  modelId: string;
-}
-
-/**
- * The prefix of a request a turn assembles from its agent config.
- * @param config - Model, instructions and tools, as the factory resolved them.
- * @param config.instructions - The system prompt.
- * @param config.tools - The tools, keyed by name.
- * @param config.modelId - The model id.
- * @returns What the request carries besides its messages.
- * @throws {never} Never.
- */
-export function requestPrefixOf(config: {
-  instructions: string;
-  tools: Readonly<Record<string, Tool>>;
-  modelId: string;
-}): RequestPrefix {
-  return { system: config.instructions, tools: config.tools, modelId: config.modelId };
-}
+/** Everything in a request besides its messages: the agent config it ran with. */
+export type RequestPrefix = Pick<ResolvedAgentConfig, "instructions" | "tools" | "modelId">;
 
 const ROLES = new Set(["system", "user", "assistant", "tool"]);
 
@@ -144,7 +121,7 @@ function seedHash(prefix: RequestPrefix): string {
     definition.description ?? null,
     asSchema(definition.inputSchema).jsonSchema,
   ]);
-  return sha256(JSON.stringify([prefix.modelId, prefix.system, tools]));
+  return sha256(JSON.stringify([prefix.modelId, prefix.instructions, tools]));
 }
 
 /**

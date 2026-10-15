@@ -8,7 +8,7 @@
 
 import { measureMessages, measurePayload } from "@server/agent/payload-size.js";
 import type { TurnCost } from "@server/agent/consolidation-window.js";
-import { replayRows, requestPrefixOf } from "@server/agent/history-replay.js";
+import { replayRows } from "@server/agent/history-replay.js";
 import type { ReplayedRow } from "@server/agent/history-replay.js";
 import type { Assembly } from "@server/agent/turn-budget.js";
 
@@ -55,7 +55,7 @@ export function costPerTurn(replayed: readonly ReplayedRow[]): TurnCost[] {
  */
 export function requestTokens(
   assembly: Assembly,
-  replayed: readonly ReplayedRow[] = replayRows(assembly.history, requestPrefixOf(assembly.agentConfig)),
+  replayed: readonly ReplayedRow[] = replayRows(assembly.history, assembly.agentConfig),
   turns: readonly TurnCost[] = costPerTurn(replayed),
 ): number {
   const question = measureMessages(assembly.messages.slice(-1));

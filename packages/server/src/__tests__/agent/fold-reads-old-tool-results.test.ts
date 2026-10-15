@@ -112,7 +112,7 @@ describe("folding a history kept as it was sent", () => {
         turnIndex: 1,
         forModel: {
           messages: answered,
-          prefixHash: prefixHash({ system: "system", tools: {}, modelId: "test" }, [asked]),
+          prefixHash: prefixHash({ instructions: "system", tools: {}, modelId: "test" }, [asked]),
           turnTokens: 1,
           endTokens: 2,
         },
