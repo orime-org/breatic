@@ -59,8 +59,8 @@ export const MEDIA_FRAME_PX = 2 * 1 + 2 * 4;
 /**
  * The least height of an empty node's body when the node already knows its
  * picture's size (inner#1303 §6.7): what `NodePlaceholder` draws in it, its
- * `p-4` top and bottom (32), the 20px icon, `gap-2` (8) and two 16px text-xs
- * lines 2px apart (34). Layout reserves at least this much too.
+ * `p-4` top and bottom (32), the 20px icon, `gap-2` (8), and a text-xs line and a
+ * text-2xs line, both 16px tall, 2px apart (34). Layout reserves at least this much too.
  */
 export const PLANNED_BODY_MIN_PX = 94;
 
