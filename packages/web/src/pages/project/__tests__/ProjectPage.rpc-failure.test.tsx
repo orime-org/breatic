@@ -334,9 +334,10 @@ describe('ProjectPage — a failed Space RPC always says so', () => {
     await createSpace();
 
     await waitFor(() => {
-      expect(toast.error).toHaveBeenCalledTimes(1);
+      expect(toast.warning).toHaveBeenCalledTimes(1);
     });
-    const [, opts] = vi.mocked(toast.error).mock.calls[0] ?? [];
+    expect(toast.error).not.toHaveBeenCalled();
+    const [, opts] = vi.mocked(toast.warning).mock.calls[0] ?? [];
     expect((opts as { description?: string } | undefined)?.description).toBe(
       'Another member is changing Spaces. Try again in a moment',
     );

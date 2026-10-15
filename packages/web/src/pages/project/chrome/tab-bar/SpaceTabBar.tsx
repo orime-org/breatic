@@ -633,8 +633,12 @@ export function SpaceTabBar({
             dialog stays mounted, so one already open is not yanked away when
             a collaborator's create fills the project; submitting it then gets
             the server's refusal as a toast. */}
+        {/* disableHoverableContent: below the cap there is no content, and
+            only the content closes a hoverable tooltip when the pointer
+            leaves; without it the open state outlives the hover and the
+            reason pops up by itself the moment the project fills. */}
         {currentUserRole === 'viewer' ? null : (
-          <Tooltip>
+          <Tooltip disableHoverableContent>
             <NewSpaceDialog
               onCreate={onCreate}
               trigger={

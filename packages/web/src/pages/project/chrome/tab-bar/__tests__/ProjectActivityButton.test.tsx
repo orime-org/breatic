@@ -12,6 +12,7 @@ import {
   render as rtlRender,
   screen,
   waitFor,
+  fireEvent,
   type RenderOptions,
 } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -179,6 +180,41 @@ describe('ProjectActivityButton (activity feed)', () => {
     expect(btn).toBeDisabled();
     await user.click(btn);
     expect(onRestore).not.toHaveBeenCalled();
+    fireEvent.pointerMove(btn, { pointerType: 'mouse' });
+    expect(await screen.findByRole('tooltip', {}, { timeout: 2000 })).toHaveTextContent(
+      'Reached the limit of 200 Spaces',
+    );
+  });
+
+  it('does not show the cap reason by itself when the project fills after Restore was hovered', async () => {
+    listMock.mockResolvedValue({
+      items: [
+        entry({
+          id: 'del-hover',
+          type: 'space:deleted',
+          spaceId: 'sp-9',
+          payload: { spaceName: 'Doomed', spaceSnapshot: { id: 'sp-9' } },
+        }),
+      ],
+      nextCursor: null,
+    });
+    const user = userEvent.setup();
+    const view = render(
+      <ProjectActivityButton projectId={PID} currentUserRole='owner' onRestore={vi.fn()} />,
+    );
+    await user.click(screen.getByTestId('project-activity-trigger'));
+    const btn = await screen.findByTestId('project-activity-restore-del-hover');
+    fireEvent.pointerMove(btn, { pointerType: 'mouse' });
+    // Past the provider's default 700ms open delay, so the hover really opens it.
+    await new Promise((resolve) => setTimeout(resolve, 800));
+    fireEvent.pointerLeave(btn, { pointerType: 'mouse' });
+
+    view.rerender(
+      <ProjectActivityButton projectId={PID} currentUserRole='owner' onRestore={vi.fn()} spaceLimitReached />,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 150));
+
+    expect(screen.queryByRole('tooltip')).toBeNull();
   });
 
   it('reads the Restore button busy while the restore is in flight, and settles after it lands', async () => {

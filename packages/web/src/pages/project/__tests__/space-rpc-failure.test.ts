@@ -14,10 +14,10 @@ describe('spaceRpcFailureNotice', () => {
     }
   });
 
-  it('asks to try again when another member holds the Space lock', () => {
+  it('warns and asks to try again when another member holds the Space lock', () => {
     for (const type of ['space:create', 'space:delete', 'space:restore'] as const) {
       expect(spaceRpcFailureNotice(type, 'BUSY')).toEqual({
-        level: 'error',
+        level: 'warning',
         descriptionKey: 'project.space.error.busy',
       });
     }
@@ -30,11 +30,13 @@ describe('spaceRpcFailureNotice', () => {
     });
   });
 
-  it('says the Space is already back when a restore is refused for it', () => {
-    expect(spaceRpcFailureNotice('space:restore', 'CONFLICT')).toEqual({
-      level: 'error',
-      descriptionKey: 'project.space.error.alreadyRestored',
-    });
+  it('says the Space is already back when a restore finds its deletion consumed or the Space listed', () => {
+    for (const code of ['NOT_FOUND', 'CONFLICT'] as const) {
+      expect(spaceRpcFailureNotice('space:restore', code)).toEqual({
+        level: 'error',
+        descriptionKey: 'project.space.error.alreadyRestored',
+      });
+    }
   });
 
   it('says the Space is gone when a delete, lock or rename finds nothing', () => {
@@ -50,6 +52,5 @@ describe('spaceRpcFailureNotice', () => {
     expect(spaceRpcFailureNotice('space:create', 'FORBIDDEN')).toEqual({ level: 'error' });
     expect(spaceRpcFailureNotice('space:rename', 'INVALID_INPUT')).toEqual({ level: 'error' });
     expect(spaceRpcFailureNotice('space:lock', 'INTERNAL')).toEqual({ level: 'error' });
-    expect(spaceRpcFailureNotice('space:restore', 'NOT_FOUND')).toEqual({ level: 'error' });
   });
 });

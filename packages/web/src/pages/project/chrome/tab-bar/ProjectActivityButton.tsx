@@ -538,7 +538,9 @@ export function ProjectActivityButton({
                       </div>
                     </div>
                     {canRestore ? (
-                      <Tooltip>
+                      // No content below the cap, so leaving the trigger has to
+                      // close it (see SpaceTabBar's new-Space tooltip).
+                      <Tooltip disableHoverableContent>
                         <TooltipTrigger asChild>
                           <Button
                             variant={null}
