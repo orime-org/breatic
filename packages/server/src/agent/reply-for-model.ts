@@ -14,6 +14,8 @@ import { convertToModelMessages } from "ai";
 import type { ModelMessage, ToolSet, UIMessage } from "ai";
 import type { ToolFailure } from "@breatic/shared";
 
+import { stripThinking } from "@server/agent/history-replay.js";
+
 /** How the calls of the turn ended, as the turn recorded them. */
 export interface SettledCalls {
   /** What a call answered, by call id. */
@@ -98,14 +100,15 @@ export async function inProgressStep(
   const at = parts.findIndex((part) => part.type === "step-start" && ++starts === stepsDone + 1);
   if (at === -1) return [];
 
-  const step = parts
-    .slice(at + 1)
-    .filter((part) => part.type !== "reasoning")
-    .map((part) => (isToolPart(part) ? settle(part, settled) : part));
-  const messages = await convertToModelMessages([{ role: "assistant", parts: step }], {
-    tools,
-    ignoreIncompleteToolCalls: true,
-  });
+  const step = parts.slice(at + 1).map((part) => (isToolPart(part) ? settle(part, settled) : part));
+  // Without thinking: what it had of its own is unfinished, and a provider
+  // can hang signed thinking on the step's tool call as well.
+  const messages = stripThinking(
+    await convertToModelMessages([{ role: "assistant", parts: step }], {
+      tools,
+      ignoreIncompleteToolCalls: true,
+    }),
+  );
 
   // A call already among the collected steps means the step count and the
   // parts disagree; sending the call twice is a request the provider refuses.

@@ -11,10 +11,11 @@
  *
  * A reply's thinking can go back only while everything sent before it is what
  * its turn sent: Anthropic's preserved thinking holds "everything you sent
- * before it is unchanged", system and tools included, and once a block is
- * removed it stays out. Each reply row keeps the hash of its turn's prefix;
- * a row whose hash no longer matches, and every row after it, goes back
- * without its thinking.
+ * before it is unchanged", system and tools included. Each reply row keeps
+ * the hash of its turn's prefix, and a row whose hash no longer matches goes
+ * back without its thinking. Taking a block out changes every byte after it,
+ * so the replies made while it was there stop matching too, and the ones made
+ * after it was gone still match: the blocks kept stay an unbroken run.
  *
  * A row written before any of this was kept is rendered from its parts the
  * way it always was.
@@ -177,7 +178,6 @@ export interface ReplayedRow {
 export function replayRows(rows: readonly ReplayRow[], prefix: RequestPrefix): ReplayedRow[] {
   const out: ReplayedRow[] = [];
   let hash = seedHash(prefix);
-  let thinkingOut = false;
 
   for (const row of rows) {
     let replayed: ReplayedRow;
@@ -187,10 +187,9 @@ export function replayRows(rows: readonly ReplayRow[], prefix: RequestPrefix): R
     } else {
       const kept = replyForModel.safeParse(row.forModel);
       if (!kept.success) replayed = { row, messages: toModelMessages([row]), asSent: false };
-      else if (!thinkingOut && kept.data.prefixHash === hash) {
+      else if (kept.data.prefixHash === hash) {
         replayed = { row, messages: kept.data.messages, reply: kept.data, asSent: true };
       } else {
-        thinkingOut = true;
         replayed = { row, messages: stripThinking(kept.data.messages), reply: kept.data, asSent: false };
       }
     }
@@ -212,10 +211,16 @@ export function historyForModel(rows: readonly ReplayRow[], prefix: RequestPrefi
 }
 
 /**
- * What the history last sent in full of a Space.
+ * What the history last sent in full of a Space, when the newest Space sent
+ * in full is that one.
+ *
+ * The line that stands in for an unchanged Space points at "the most recent
+ * message above that shows its content", and two Spaces can share a name, so
+ * a Space sent in full after it takes that place.
  * @param rows - Stored messages, oldest first, as they are replayed.
  * @param spaceId - The Space.
- * @returns The hash of that copy, or undefined when none is in the history.
+ * @returns The hash of that copy, or undefined when the newest copy sent in
+ *   full is another Space's or there is none.
  * @throws {never} Never.
  */
 export function lastFullSnapshotKey(rows: readonly ReplayRow[], spaceId: string): string | undefined {
@@ -224,7 +229,7 @@ export function lastFullSnapshotKey(rows: readonly ReplayRow[], spaceId: string)
     if (row?.role !== "user") continue;
     const kept = userForModel.safeParse(row.forModel);
     const snapshot = kept.success ? kept.data.snapshot : undefined;
-    if (snapshot?.spaceId === spaceId && snapshot.full) return snapshot.key;
+    if (snapshot?.full) return snapshot.spaceId === spaceId ? snapshot.key : undefined;
   }
   return undefined;
 }
