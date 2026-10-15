@@ -109,7 +109,11 @@ export class MarkCanvasController {
       preserveObjectStacking: true,
     });
     this.fitToScreen();
-    this.canvas.freeDrawingBrush = new PencilBrush(this.canvas);
+    const brush = new PencilBrush(this.canvas);
+    // Fabric's decimation always drops the sample before the last
+    // (`PencilBrush.decimatePoints`), so the stroke would change on release.
+    brush.decimate = 0;
+    this.canvas.freeDrawingBrush = brush;
     this.channel = {
       exitEditing: () => this.exitEditing(),
       discardSelection: () => {

@@ -246,9 +246,9 @@ describe('MarkCanvasController', () => {
     const brush = controller.canvas.freeDrawingBrush as PencilBrush;
     const e = { isPrimary: true } as unknown as PointerEvent;
     const at = [[60, 210], [120, 90], [180, 210], [240, 90], [300, 210]];
-    brush.onMouseDown(new Point(at[0]![0]!, at[0]![1]!), { e, pointer: new Point(0, 0) });
-    for (const [x, y] of at.slice(1)) brush.onMouseMove(new Point(x!, y!), { e, pointer: new Point(0, 0) });
-    brush.onMouseUp({ e, pointer: new Point(0, 0) });
+    brush.onMouseDown(new Point(at[0]![0]!, at[0]![1]!), { e });
+    for (const [x, y] of at.slice(1)) brush.onMouseMove(new Point(x!, y!), { e });
+    brush.onMouseUp({ e });
     const [stroke] = mark().objects;
     const points = stroke?.kind === 'pen' ? stroke.points : [];
     expect(points.map(([x, y]) => [Math.round(x * 400), Math.round(y * 300)])).toEqual(at);
