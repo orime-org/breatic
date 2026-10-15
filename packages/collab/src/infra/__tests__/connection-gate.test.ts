@@ -23,7 +23,8 @@ import type { IncomingMessage } from "node:http";
 
 const { loggerWarnMock } = vi.hoisted(() => ({ loggerWarnMock: vi.fn() }));
 
-vi.mock("@breatic/core", () => ({
+vi.mock("@breatic/core", async (importOriginal) => ({
+  decideClientIdentity: (await importOriginal<typeof import("@breatic/core")>()).decideClientIdentity,
   createLogger: () => ({
     info: vi.fn(),
     warn: loggerWarnMock,
