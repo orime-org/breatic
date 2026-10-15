@@ -85,7 +85,8 @@ describe('the picture adjust against ffmpeg', () => {
   describe.each(fixture.colors)('colour with $filter', ({ value, pixels }) => {
     it.each(Object.entries(pixels))('turns %s into what ffmpeg makes of it', (hex, expected) => {
       const out = adjust(solid(rgbOf(hex), 16, 16), value);
-      expect(gap(at(out, 8, 8), expected)).toBeLessThanOrEqual(10);
+      // A colour's trip through 4:2:0 alone moves it by up to 3 levels.
+      expect(gap(at(out, 8, 8), expected)).toBeLessThanOrEqual(5);
     });
   });
 

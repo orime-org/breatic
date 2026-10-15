@@ -142,14 +142,16 @@ describe('adjustPixels', () => {
     }
   });
 
-  it.each([{ noiseReduction: 100 }, { sharpness: 100 }, { clarity: 100 }])(
-    'keeps a cut-out edge its own colour with %o',
-    (value) => {
+  // Drawn smaller than the source, a tap lands between a subject pixel and a
+  // transparent one; the transparent one must add nothing there either.
+  it.each([1, 4].flatMap((shrink) => [{ noiseReduction: 100 }, { sharpness: 100 }, { clarity: 100 }].map((value) => ({ shrink, value }))))(
+    'keeps a cut-out edge its own colour drawn at 1/$shrink with $value',
+    ({ shrink, value }) => {
       const width = 40;
       const data = new Uint8ClampedArray(width * 8 * 4);
       for (let y = 0; y < 8; y++) for (let x = 20; x < width; x++) data.set([200, 60, 40, 255], (y * width + x) * 4);
       const out = { data, width, height: 8 };
-      adjustPixels(out, { ...defaultAdjustValue, ...value }, 7);
+      adjustPixels(out, { ...defaultAdjustValue, ...value }, 7, { width: width * shrink, height: 8 * shrink });
       // An inside pixel, out of every kernel's reach of the edge, is what the whole subject turns into.
       const inside = (4 * width + 32) * 4;
       for (let x = 20; x < width; x++) {
