@@ -22,11 +22,16 @@
  * carries none goes to BlockNote with its tables evened.
  */
 
-import { markdownToHTML } from '@blocknote/core';
+import { isMarkdown, markdownToHTML } from '@blocknote/core';
 
 import { routeAddress } from '@web/spaces/document/document-media-address';
-import type { BlockSpec, PasteHandler } from '@web/spaces/document/document-file-input';
-import { HTML_MEDIA_ELEMENTS, HTML_MEDIA_SELECTOR, isMediaBlockType } from '@web/spaces/document/document-media-types';
+import { inTableCell, type BlockSpec, type PasteHandler } from '@web/spaces/document/document-file-input';
+import {
+  HTML_MEDIA_ELEMENTS,
+  HTML_MEDIA_SELECTOR,
+  MEDIA_BLOCK_TYPES,
+  isMediaBlockType,
+} from '@web/spaces/document/document-media-types';
 import { evenTables } from '@web/spaces/document/document-table-paste';
 
 /** The key the pasted-media extension registers under. */
@@ -85,8 +90,8 @@ export function srcsetCandidates(srcset: string): Candidate[] {
     while (at < srcset.length && !/\s/.test(srcset[at]!)) at += 1;
     let url = srcset.slice(start, at);
     const descriptors: string[] = [];
-    if (/,$/.test(url)) {
-      url = url.replace(/,+$/, '');
+    if (url.endsWith(',')) {
+      while (url.endsWith(',')) url = url.slice(0, -1);
     } else {
       let token = '';
       let inParens = false;
@@ -223,23 +228,32 @@ function holdsNothing(block: Element): boolean {
 }
 
 /**
- * Takes the line breaks and the white space off the start of a block.
- * @param block - The block.
+ * Takes the line breaks and the white space off the end of a split half the
+ * medium took, wherever they sit inside it, up to the first words or medium.
+ * @param half - The half.
+ * @param end - Which end: the start of the half after the medium, the end of
+ *   the half before it.
  */
-function trimBreaks(block: Element): void {
-  let node = block.firstChild;
-  while (node !== null && (node.nodeName === 'BR' || (node.nodeType === Node.TEXT_NODE && (node.textContent ?? '').trim() === ''))) {
-    node.remove();
-    node = block.firstChild;
+function trimBreaks(half: Element, end: 'start' | 'end'): void {
+  const walker = half.ownerDocument.createTreeWalker(half, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT);
+  const nodes: Node[] = [];
+  for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) nodes.push(node);
+  if (end === 'end') nodes.reverse();
+  for (const node of nodes) {
+    if (node.nodeName === 'BR' || (node.nodeType === Node.TEXT_NODE && (node.textContent ?? '').trim() === '')) {
+      node.parentNode?.removeChild(node);
+    } else if (node.nodeType === Node.TEXT_NODE || (node instanceof Element && node.matches(HTML_MEDIA_SELECTOR))) {
+      return;
+    }
   }
 }
 
 /**
  * Splits every line of text a medium stands in at the medium, so the medium
- * is read between the two halves. A line break right after the medium ended
- * the line at it, so the second half loses the breaks it starts with (a
- * break the first half ends on is dropped by the read); a half with no words
- * goes.
+ * is read between the two halves. The medium stands on a line of its own
+ * now, so the line breaks that set it apart go: the half before it loses
+ * those it ends on, the half after it those it starts with; a half with no
+ * words goes.
  * @param root - The HTML's body.
  * @returns Whether any line was split.
  */
@@ -256,7 +270,8 @@ function splitTextAroundMedia(root: Element): boolean {
     const head = block.cloneNode(false) as Element;
     head.append(before.extractContents());
     block.before(head, carried);
-    trimBreaks(block);
+    trimBreaks(head, 'end');
+    trimBreaks(block, 'start');
     for (const part of [head, block]) if (holdsNothing(part)) part.remove();
     changed = true;
   }
@@ -291,44 +306,68 @@ export interface PreparedHTML {
  * Pasted HTML ready to read: its tables evened and its media where a block
  * stands, each picture with the address of its largest fetchable candidate.
  * @param html - The HTML.
+ * @param lines - Whether a line holding a medium is split at it; the words
+ *   landing in a table cell stay as they were, their media going under the
+ *   table (A7).
  * @returns The same HTML when nothing needed doing, the ready HTML otherwise,
  *   and how many media it carries.
  */
-export function preparePastedHTML(html: string): PreparedHTML {
+export function preparePastedHTML(html: string, lines: 'split' | 'keep' = 'split'): PreparedHTML {
   if (!/<table\b/i.test(html) && !HTML_MEDIA.test(html)) return { html, media: 0 };
   const body = new DOMParser().parseFromString(html, 'text/html').body;
-  const steps = [evenTables, liftCellMedia, unwrapCrowdedFigures, splitTextAroundMedia, readPictureAddresses];
+  const steps = [evenTables, liftCellMedia, unwrapCrowdedFigures, ...(lines === 'split' ? [splitTextAroundMedia] : []), readPictureAddresses];
   const changed = steps.map((step) => step(body)).some(Boolean);
   return { html: changed ? body.innerHTML : html, media: body.querySelectorAll(HTML_MEDIA_SELECTOR).length };
 }
 
+/** BlockNote's own HTML for a media block, as its export writes it. */
+const OWN_MEDIA = MEDIA_BLOCK_TYPES.map((type) => `[data-content-type="${type}"]`).join(', ');
+
 /**
- * HTML holding media, or null.
+ * Pasted HTML with its media taken out and the rest as it was, so the rest
+ * lands the way it would have without them. A media block of BlockNote's own
+ * HTML goes with its row, the rows nested under it taking its place; an
+ * outside picture, video or audio goes with the figure around it.
  * @param html - The HTML.
- * @returns It, when it carries an image, a video or an audio.
+ * @returns The HTML without its media; an empty paragraph when nothing else
+ *   was in it, since no HTML at all would have the plain text read instead.
  */
-function withMedia(html: string): string | null {
-  return HTML_MEDIA.test(html) ? html : null;
+export function withoutMedia(html: string): string {
+  const body = new DOMParser().parseFromString(html, 'text/html').body;
+  for (const content of Array.from(body.querySelectorAll(OWN_MEDIA))) {
+    const row = content.closest('[data-node-type="blockOuter"]') ?? content;
+    const nested = row.querySelector(':scope > [data-node-type="blockContainer"] > [data-node-type="blockGroup"]');
+    const group = row.parentElement;
+    row.replaceWith(...Array.from(nested?.children ?? []));
+    // A group may not be empty (`blockGroupChild+`): read back, an emptied one
+    // would come back holding a blank line.
+    if (group?.matches('[data-node-type="blockGroup"]') === true && group.childElementCount === 0) group.remove();
+  }
+  for (const element of Array.from(body.querySelectorAll(HTML_MEDIA_SELECTOR))) {
+    (element.closest('figure') ?? element).remove();
+  }
+  return body.innerHTML.trim() === '' ? '<p></p>' : body.innerHTML;
 }
 
 /**
- * The HTML a paste is read from when that read carries media, taking the
- * format BlockNote's own paste would (`pasteExtension.ts`): Markdown the
- * clipboard names, then HTML, then plain text read as Markdown. HTML carrying
- * media is read as HTML even when its plain text looks like Markdown, which
- * would drop every picture (design §5.1); HTML carrying none gives way to
- * plain text whose Markdown carries some.
+ * The HTML a paste is read from, when BlockNote's own paste
+ * (`pasteExtension.ts`) would read Markdown or HTML carrying media: Markdown
+ * the clipboard names; HTML carrying media, read as HTML even when its plain
+ * text looks like Markdown, which would drop every picture (design §5.1);
+ * plain text that looks like Markdown (`isMarkdown`) over HTML carrying none;
+ * plain text alone, read as Markdown.
  * @param data - The clipboard.
- * @returns The HTML, or null when the read carries no media or is the
- *   body's own clipboard or an editor's code.
+ * @returns The HTML, or null when BlockNote reads the body's own clipboard,
+ *   an editor's code, or HTML carrying no media.
  */
-function mediaSource(data: DataTransfer): string | null {
+function readSource(data: DataTransfer): string | null {
   if (data.types.includes('vscode-editor-data') || data.types.includes('blocknote/html')) return null;
-  if (data.types.includes('text/markdown')) return withMedia(markdownToHTML(data.getData('text/markdown')));
+  if (data.types.includes('text/markdown')) return markdownToHTML(data.getData('text/markdown'));
   const html = data.getData('text/html');
   if (HTML_MEDIA.test(html)) return html;
   const plain = data.getData('text/plain');
-  return plain === '' ? null : withMedia(markdownToHTML(plain));
+  if (data.types.includes('text/html')) return isMarkdown(plain) ? markdownToHTML(plain) : null;
+  return plain === '' ? null : markdownToHTML(plain);
 }
 
 /**
@@ -347,10 +386,13 @@ function withHTML(data: DataTransfer, html: string): Pick<DataTransfer, 'types' 
 }
 
 /**
- * Reads a paste whose read carries media: its HTML made ready, read once, the
- * media that read loses counted as left out, and the blocks put in. Otherwise
- * BlockNote's own paste, given the clipboard's HTML with its tables evened. A
- * paste with the whole selection in code is read by BlockNote as plain text.
+ * Reads a paste BlockNote would read as Markdown or as HTML carrying media:
+ * the HTML made ready, read once, the media that read loses counted as left
+ * out, and the blocks put in. In a table cell the words are read from the
+ * HTML with its media taken out and its lines kept, as they read without the
+ * media, and the media follow them to land under the table. Every other
+ * paste is BlockNote's own, and when it reads the clipboard's HTML, that HTML
+ * has its tables evened.
  * @param context - What BlockNote hands the paste hook.
  * @param context.event - The paste.
  * @param context.editor - The editor.
@@ -362,8 +404,9 @@ export const documentPasteHandler: PasteHandler = ({ event, editor, defaultPaste
   const view = editor.prosemirrorView;
   if (data === null || view === undefined || view === null) return defaultPasteHandler();
   const { $from, $to } = view.state.selection;
-  const inCode = $from.parent.type.spec.code === true && $to.parent.type.spec.code === true;
-  const source = inCode ? null : mediaSource(data);
+  // BlockNote pastes plain text into code.
+  if ($from.parent.type.spec.code === true && $to.parent.type.spec.code === true) return defaultPasteHandler();
+  const source = readSource(data);
   if (source === null) {
     const html = data.getData('text/html');
     const prepared = preparePastedHTML(html).html;
@@ -372,8 +415,14 @@ export const documentPasteHandler: PasteHandler = ({ event, editor, defaultPaste
   }
   const prepared = preparePastedHTML(source);
   const blocks = editor.tryParseHTMLToBlocks(prepared.html);
-  const read = mediaIn(blocks as unknown as ReadBlock[]).length;
-  (editor.getExtension(PASTED_MEDIA_KEY) as PasteLossSink | undefined)?.leaveOut(prepared.media - read);
-  editor.pasteHTML(editor.blocksToFullHTML(blocks), true);
+  const media = mediaIn(blocks as unknown as ReadBlock[]);
+  (editor.getExtension(PASTED_MEDIA_KEY) as PasteLossSink | undefined)?.leaveOut(prepared.media - media.length);
+  const landing = inTableCell($from)
+    ? [
+      ...editor.tryParseHTMLToBlocks(withoutMedia(preparePastedHTML(source, 'keep').html)),
+      ...media.map(({ type, props }) => ({ type, props, children: [] })),
+    ]
+    : blocks;
+  editor.pasteHTML(editor.blocksToFullHTML(landing as never), true);
   return true;
 };

@@ -49,13 +49,14 @@ import {
   pasteTarget,
   type BlockSpec,
 } from '@web/spaces/document/document-file-input';
+import { isMediaBlockType, pendingUploadId } from '@web/spaces/document/document-media-types';
 import {
-  HTML_MEDIA_SELECTOR,
-  MEDIA_BLOCK_TYPES,
-  isMediaBlockType,
-  pendingUploadId,
-} from '@web/spaces/document/document-media-types';
-import { PASTED_MEDIA_KEY, mediaIn, preparePastedHTML, type ReadBlock } from '@web/spaces/document/document-paste-html';
+  PASTED_MEDIA_KEY,
+  mediaIn,
+  preparePastedHTML,
+  withoutMedia,
+  type ReadBlock,
+} from '@web/spaces/document/document-paste-html';
 import type { UploadSource } from '@web/spaces/document/document-upload-controller';
 import { markOwnUndoStep } from '@web/spaces/document/document-undo-step';
 
@@ -174,67 +175,62 @@ function pendingIds(doc: PMNode): Set<string> {
 }
 
 /**
- * Whether a block is a medium.
+ * Whether a block holds no text to join a line: a medium, a table.
  * @param node - The block, or null.
- * @returns True for a block container holding a picture, a video or an audio.
+ * @returns True for a block container whose own content is not a text block.
  */
-function mediumAt(node: PMNode | null): boolean {
+function opensOnBlock(node: PMNode | null): boolean {
   const own = node?.type.name === 'blockContainer' ? node.firstChild : null;
-  return own !== null && isMediaBlockType(own.type.name);
+  return own !== null && !own.isTextblock;
 }
 
 /**
- * A slice opening on a medium, closed there, so the medium lands beside the
- * line it is put into and the line splits around it, as a file or a canvas
- * paste puts one. A slice read out of HTML holds its blocks in one open
- * group, which ProseMirror fits into the line as that line's nested group
- * when the group opens on a block with no text to join the line; the blocks
- * come out of it first. A slice opening on text joins the line and is left
- * as it is.
+ * A slice opening on a block with no text to join the line, closed there, so
+ * that block lands beside the line it is put into and the line splits around
+ * it, as a file or a canvas paste puts one. A slice read out of HTML holds
+ * its blocks in one open group, which ProseMirror fits into the line as that
+ * line's nested group when the group opens on such a block; the blocks come
+ * out of it first. A slice opening on text joins the line and is left as it
+ * is.
  * @param slice - The slice.
- * @returns It, or its blocks closed at the media on their edges.
+ * @returns It, or its blocks with the start closed.
  */
-function closedAtMedia(slice: Slice): Slice {
+function closedAtBlock(slice: Slice): Slice {
   let { content, openStart, openEnd } = slice;
   while (content.childCount === 1 && content.firstChild!.type.name === 'blockGroup' && openStart > 0 && openEnd > 0) {
     content = content.firstChild!.content;
     openStart -= 1;
     openEnd -= 1;
   }
-  return mediumAt(content.firstChild) ? new Slice(content, 0, openEnd) : slice;
+  return opensOnBlock(content.firstChild) ? new Slice(content, 0, openEnd) : slice;
+}
+
+/**
+ * Puts a slice opening on a block at the start of a line with words in it,
+ * the line staying whole after it: ProseMirror splits the line at its start
+ * and would leave the empty half above the block.
+ * @param view - The editor view.
+ * @param slice - The slice, as the paste reads it.
+ * @returns Whether the paste was put in here.
+ */
+function pasteAtLineStart(view: EditorView, slice: Slice): boolean {
+  const { $from, empty } = view.state.selection;
+  const line = $from.depth > 0 ? $from.node($from.depth - 1) : null;
+  if (!empty || $from.parentOffset !== 0 || !$from.parent.isTextblock || $from.parent.content.size === 0) return false;
+  if (line?.type.name !== 'blockContainer' || line.childCount !== 1) return false;
+  if (slice.openStart !== 0 || !opensOnBlock(slice.content.firstChild)) return false;
+  const start = $from.before($from.depth - 1);
+  const tr = view.state.tr.replaceSelection(slice);
+  const left = tr.doc.nodeAt(start);
+  if (left?.type.name === 'blockContainer' && left.childCount === 1 && left.firstChild!.isTextblock && left.firstChild!.content.size === 0) {
+    tr.delete(start, start + left.nodeSize);
+  }
+  view.dispatch(tr.scrollIntoView().setMeta('paste', true).setMeta('uiEvent', 'paste'));
+  return true;
 }
 
 /** HTML BlockNote wrote, as a paste hands it on after reading. */
 const BLOCKNOTE_HTML = /data-node-type="blockContainer"/;
-
-/** BlockNote's own HTML for a media block, as its export writes it. */
-const OWN_MEDIA = MEDIA_BLOCK_TYPES.map((type) => `[data-content-type="${type}"]`).join(', ');
-
-/**
- * Pasted HTML with its media taken out and the rest as it was, so the rest
- * lands the way it would have without them. A media block of BlockNote's own
- * HTML goes with its row, the rows nested under it taking its place; an
- * outside picture, video or audio goes with the figure around it.
- * @param html - The HTML.
- * @returns The HTML without its media; an empty paragraph when nothing else
- *   was in it, since no HTML at all would have the plain text read instead.
- */
-function withoutMedia(html: string): string {
-  const body = new DOMParser().parseFromString(html, 'text/html').body;
-  for (const content of Array.from(body.querySelectorAll(OWN_MEDIA))) {
-    const row = content.closest('[data-node-type="blockOuter"]') ?? content;
-    const nested = row.querySelector(':scope > [data-node-type="blockContainer"] > [data-node-type="blockGroup"]');
-    const group = row.parentElement;
-    row.replaceWith(...Array.from(nested?.children ?? []));
-    // A group may not be empty (`blockGroupChild+`): read back, an emptied one
-    // would come back holding a blank line.
-    if (group?.matches('[data-node-type="blockGroup"]') === true && group.childElementCount === 0) group.remove();
-  }
-  for (const element of Array.from(body.querySelectorAll(HTML_MEDIA_SELECTOR))) {
-    (element.closest('figure') ?? element).remove();
-  }
-  return body.innerHTML.trim() === '' ? '<p></p>' : body.innerHTML;
-}
 
 /** HTML landing in a table cell, its media taken out and judged. */
 interface CellLanding {
@@ -276,6 +272,8 @@ export function documentPastedMediaExtension(
     // which a paste's own read already counted.
     let expected: number | null = null;
     let landing: CellLanding | null = null;
+    // Where the HTML being read lands, for its slice.
+    let into: number | null = null;
 
     /**
      * Once the paste or the drop is done, starts the uploads whose blocks
@@ -323,19 +321,20 @@ export function documentPastedMediaExtension(
 
     /**
      * Takes the media out of HTML landing in a table cell and judges them.
-     * The rest goes on the way it would have without them; the media follow
-     * in the dispatch that puts it in, or by themselves once the event is
-     * done when that dispatch changes nothing.
-     * @param html - The HTML.
+     * The words go on the way they would have without them, their lines as
+     * they were; the media follow in the dispatch that puts the words in, or
+     * by themselves once the event is done when that dispatch changes nothing.
+     * @param html - The HTML ready to read, its media where a block stands.
+     * @param words - The same HTML with its lines as they were.
      * @param at - Where it lands.
      * @param view - The editor view.
      * @returns The HTML that goes on to the cell.
      */
-    const readForCell = (html: string, at: number, view: EditorView): string => {
+    const readForCell = (html: string, words: string, at: number, view: EditorView): string => {
       const found = mediaIn(editor.tryParseHTMLToBlocks(html) as unknown as ReadBlock[]);
       leaveOut((expected ?? found.length) - found.length);
       expected = null;
-      if (found.length === 0) return html;
+      if (found.length === 0) return words;
       const prefix = options?.assetUrlPrefix() ?? null;
       const waiting: Queued[] = [];
       const media: BlockSpec[] = [];
@@ -353,7 +352,7 @@ export function documentPastedMediaExtension(
           view.dispatch(markOwnUndoStep(mediaUnderTable(view.state, held.at, held.media)).scrollIntoView());
         });
       }
-      return withoutMedia(html);
+      return withoutMedia(words);
     };
 
     return {
@@ -381,11 +380,17 @@ export function documentPastedMediaExtension(
               const at = dropAt ?? view.state.selection.from;
               dropAt = null;
               landing = null;
-              return inTableCell(view.state.doc.resolve(at)) ? readForCell(html, at, view) : html;
+              into = at;
+              if (!inTableCell(view.state.doc.resolve(at))) return html;
+              return readForCell(html, own ? pasted : preparePastedHTML(pasted, 'keep').html, at, view);
             },
             transformPasted: (slice, view) => {
               // A row moved or copied within the body is already ours.
               if (view.dragging !== null) return slice;
+              // A slice landing in a table is fitted by the table's own paste
+              // (cells over cells), which reads it as it came.
+              const fit = into !== null && inTableCell(view.state.doc.resolve(into)) ? (read: Slice): Slice => read : closedAtBlock;
+              into = null;
               if (expected !== null) {
                 let read = 0;
                 slice.content.descendants((node) => {
@@ -401,11 +406,12 @@ export function documentPastedMediaExtension(
               queued = [...queued, ...found];
               if (found.length > 0) settle();
               leaveOut(dropped);
-              if (fragment === slice.content) return closedAtMedia(slice);
+              if (fragment === slice.content) return fit(slice);
               // Opened as ProseMirror opens HTML it reads, up to an isolating
               // node, so a table's last cell does not take the line's tail.
-              return fragment.childCount === 0 ? Slice.empty : closedAtMedia(Slice.maxOpen(fragment, false));
+              return fragment.childCount === 0 ? Slice.empty : fit(Slice.maxOpen(fragment, false));
             },
+            handlePaste: (view, _event, slice) => pasteAtLineStart(view, slice),
           },
           // The rest went in the way it would have without the media; the
           // media follow in the same dispatch, mapped to the left of what went
