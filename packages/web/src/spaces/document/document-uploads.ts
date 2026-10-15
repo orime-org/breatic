@@ -18,6 +18,8 @@ import {
   refusedFormatParams,
   type FileRejection,
 } from '@web/spaces/canvas/canvas-upload';
+import { newId } from '@breatic/shared';
+
 import type { MediaBlockType } from '@web/spaces/document/document-media-types';
 import type { UploadSource } from '@web/spaces/document/document-upload-controller';
 
@@ -111,7 +113,7 @@ export function createFileUploads(deps: FileUploadsDeps): FileUploads {
           continue;
         }
         const type = fileToNodeSpec(file).nodeType as MediaBlockType;
-        admitted.push({ file, block: pendingBlock(type, crypto.randomUUID(), file.name, '') });
+        admitted.push({ file, block: pendingBlock(type, newId(), file.name, '') });
       }
       if (admitted.length === 0) return null;
       return {

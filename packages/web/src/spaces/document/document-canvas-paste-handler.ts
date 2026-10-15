@@ -12,6 +12,8 @@
 import { blockToNode } from '@blocknote/core';
 import { Fragment, Slice, type ResolvedPos } from '@tiptap/pm/model';
 
+import { newId } from '@breatic/shared';
+
 import { parseClipboard } from '@web/spaces/canvas/node-clipboard';
 import { planCanvasPaste } from '@web/spaces/document/document-canvas-paste';
 import {
@@ -54,7 +56,7 @@ function textSlice($at: ResolvedPos, lines: readonly string[]): Slice {
     return new Slice(Fragment.from(inline), 0, 0);
   }
   const nodes = lines.map((line) =>
-    blockToNode({ id: crypto.randomUUID(), type: 'paragraph', content: line } as never, schema),
+    blockToNode({ id: newId(), type: 'paragraph', content: line } as never, schema),
   );
   return new Slice(Fragment.from(nodes), 2, 2);
 }
@@ -81,7 +83,7 @@ export function canvasPasteHandler(sink: CanvasPasteSink, next: PasteHandler): P
         const started: { uploadId: string; source: UploadSource }[] = [];
         const blocks = items.flatMap((item): BlockSpec[] => {
           if (item.kind === 'text') return item.lines.map((line) => ({ type: 'paragraph', content: line }));
-          const uploadId = crypto.randomUUID();
+          const uploadId = newId();
           started.push({ uploadId, source: item.source });
           return [
             pendingBlock(item.type, uploadId, item.name, item.caption, {

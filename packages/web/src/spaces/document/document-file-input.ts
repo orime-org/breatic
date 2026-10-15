@@ -14,6 +14,8 @@
  * option this editor does not have (`fileDropExtension.ts:27-45`).
  */
 
+import { newId } from '@breatic/shared';
+
 import { carriesFiles } from '@web/lib/stray-file-drop';
 import {
   blockToNode,
@@ -196,7 +198,7 @@ export function insertAtGapTr(
   blocks: readonly BlockSpec[],
 ): Transaction {
   const nodes = quotedAs(blocks, quotedBeside(state.doc, gap, aimed)).map((block) =>
-    blockToNode({ id: crypto.randomUUID(), ...block } as never, state.schema),
+    blockToNode({ id: newId(), ...block } as never, state.schema),
   );
   return state.tr.insert(gap, Fragment.from(nodes));
 }

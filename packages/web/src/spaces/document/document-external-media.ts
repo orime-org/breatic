@@ -46,6 +46,8 @@ import { Fragment, Slice, type Node as PMNode } from '@tiptap/pm/model';
 import { Plugin, type EditorState, type Transaction } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 
+import { newId } from '@breatic/shared';
+
 import { assetsApi } from '@web/data/api/assets';
 import { addressLanding } from '@web/spaces/document/document-media-address';
 import {
@@ -160,7 +162,7 @@ function pended(
   if (how === null) return null;
   // Ours stays as it is; a medium to upload lands only with a queue.
   if (how === 'ours' || queue === null) return attrs;
-  const uploadId = crypto.randomUUID();
+  const uploadId = newId();
   queue.push({ uploadId, url });
   return { ...attrs, url: '', uploadId };
 }
