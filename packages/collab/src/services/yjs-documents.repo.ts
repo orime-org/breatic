@@ -25,8 +25,8 @@
 
 import { and, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import * as Y from "yjs";
-import { yjsDb, yjsDocuments } from "@breatic/core";
-import { projectMetaDocName, spaceContentDocName } from "@breatic/shared";
+import { listedContentDocNames, yjsDb, yjsDocuments } from "@breatic/core";
+import { projectMetaDocName, spaceContentRowPattern } from "@breatic/shared";
 
 /**
  * Fetch the latest binary state of a live (non-soft-deleted) Yjs doc.
@@ -146,8 +146,7 @@ export async function countLiveSpaceDocs(projectId: string): Promise<number> {
     .from(yjsDocuments)
     .where(
       and(
-        sql`${yjsDocuments.name} LIKE ${`project-${projectId}/%`}`,
-        sql`${yjsDocuments.name} <> ${projectMetaDocName(projectId)}`,
+        sql`${yjsDocuments.name} ~ ${spaceContentRowPattern(projectId)}`,
         isNull(yjsDocuments.deletedAt),
       ),
     );
@@ -178,28 +177,17 @@ export async function restoreByName(name: string): Promise<boolean> {
   return rows.length > 0;
 }
 
-/** The Space kinds a meta entry can name, each with its own content doc. */
-const SPACE_KINDS = new Set(["canvas", "document", "timeline"] as const);
-
 /**
- * The content docs a stored meta doc lists: one per Space entry.
+ * The content docs a stored meta doc lists.
  * @param projectId - Project the meta doc belongs to.
  * @param metaData - The stored meta doc state.
  * @returns The content doc names, one per listed Space.
  */
-function listedContentDocNames(projectId: string, metaData: Uint8Array): string[] {
+function listedInStoredMeta(projectId: string, metaData: Uint8Array): string[] {
   const doc = new Y.Doc();
   try {
     Y.applyUpdate(doc, metaData);
-    const names: string[] = [];
-    doc.getMap("spaces").forEach((entry, spaceId) => {
-      if (!(entry instanceof Y.Map)) return;
-      const kind: unknown = entry.get("type");
-      if (typeof kind === "string" && SPACE_KINDS.has(kind as "canvas")) {
-        names.push(spaceContentDocName(projectId, spaceId, kind as "canvas" | "document" | "timeline"));
-      }
-    });
-    return names;
+    return [...listedContentDocNames(projectId, doc.getMap("spaces"))];
   } finally {
     doc.destroy();
   }
@@ -211,8 +199,9 @@ function listedContentDocNames(projectId: string, metaData: Uint8Array): string[
  * `project-{newId}/`. The whole copy runs in one yjs-DB transaction, meta doc
  * LAST so a Space never becomes visible before its canvas doc exists.
  *
- * The content rows copied are exactly the ones the copied meta lists, read
- * from that meta in this transaction, and they arrive live whatever state the
+ * The source meta is read once, and that one read is both what is copied as
+ * the new meta and what decides the content rows: the rows copied are exactly
+ * the ones the copied meta lists, and they arrive live whatever state the
  * source row is in. The stored meta lags the live one by up to one store
  * interval, so a source row's `deleted_at` can disagree with it: a Space
  * deleted moments ago is soft-deleted but still listed, one created moments
@@ -264,7 +253,8 @@ export async function duplicateByProjectPrefix(
       .from(yjsDocuments)
       .where(eq(yjsDocuments.name, metaName))
       .limit(1);
-    const listed = meta ? listedContentDocNames(sourceId, meta.data) : [];
+    if (!meta) return;
+    const listed = listedInStoredMeta(sourceId, meta.data);
     // Content docs first — idempotent on redelivery.
     if (listed.length > 0) {
       await tx.execute(sql`
@@ -275,13 +265,11 @@ export async function duplicateByProjectPrefix(
         ON CONFLICT (name) DO NOTHING
       `);
     }
-    // Meta doc last, and it WINS over a racing lazy-seed default so the
-    // copy reflects the source's Spaces.
+    // Meta doc last, from the bytes read above, and it WINS over a racing
+    // lazy-seed default so the copy reflects the source's Spaces.
     await tx.execute(sql`
       INSERT INTO yjs_documents (name, data, updated_at)
-      SELECT ${newPrefix} || substring(name from ${cut}), data, NOW()
-      FROM yjs_documents
-      WHERE name = ${metaName}
+      VALUES (${projectMetaDocName(newId)}, ${meta.data}, NOW())
       ON CONFLICT (name) DO UPDATE SET data = EXCLUDED.data, updated_at = NOW(), deleted_at = NULL
     `);
   });

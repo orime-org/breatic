@@ -362,6 +362,7 @@ export {
   spaceContentDocName,
   parseDocName,
   isProjectScopedDocName,
+  spaceContentRowPattern,
 } from "@shared/yjs-doc-names.js";
 export type { DocKind, ParsedDocName } from "@shared/yjs-doc-names.js";
 

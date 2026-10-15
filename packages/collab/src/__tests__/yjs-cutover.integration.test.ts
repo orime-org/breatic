@@ -139,6 +139,15 @@ describe("yjs repo against the separate yjs DB", () => {
     expect((await rawRow(CANVAS))!.updatedAt!.getTime()).toBeGreaterThanOrEqual(before - 1000);
   });
 
+  it("counts only live Space content docs, not other rows under the project", async () => {
+    await yjsRepo.upsertDocData(META, new Uint8Array([1]));
+    await yjsRepo.upsertDocData(CANVAS, new Uint8Array([2]));
+    await yjsRepo.upsertDocData(`project-${TEST_PID}/canvas`, new Uint8Array([3]));
+    await yjsRepo.upsertDocData(`project-${TEST_PID}/node/n1`, new Uint8Array([4]));
+
+    expect(await yjsRepo.countLiveSpaceDocs(TEST_PID)).toBe(1);
+  });
+
   it("seedInitialState inserts once and is idempotent under a race (DO NOTHING)", async () => {
     const bytes = encodeInitialMetaState({
       spaceId: SID,
@@ -234,6 +243,38 @@ describe("duplicate integrity", () => {
     await yjsRepo.duplicateByProjectPrefix(TEST_PID, TEST_DUP_PID);
 
     expect(Array.from((await yjsRepo.fetchDocData(DUP_CANVAS))!)).toEqual([2, 2]);
+  });
+
+  it("copies the meta it chose the content from, even when a store lands in between", async () => {
+    // A store of the source meta committing while the copy runs: the trigger
+    // rewrites the source meta the moment the first content row is copied,
+    // which is the window between reading the meta and writing the copy.
+    const meta = metaListing([SID]);
+    const later = metaListing([SID, UNSTORED]);
+    await yjsRepo.upsertDocData(META, meta);
+    await yjsRepo.upsertDocData(CANVAS, new Uint8Array([2, 2]));
+    await pgClient.unsafe(`
+      CREATE FUNCTION test_store_meta_mid_copy() RETURNS trigger AS $$
+      BEGIN
+        UPDATE yjs_documents SET data = decode('${Buffer.from(later).toString("hex")}', 'hex')
+        WHERE name = '${META}';
+        RETURN NEW;
+      END $$ LANGUAGE plpgsql;
+      CREATE TRIGGER test_store_meta_mid_copy AFTER INSERT ON yjs_documents
+      FOR EACH ROW WHEN (NEW.name = '${DUP_CANVAS}')
+      EXECUTE FUNCTION test_store_meta_mid_copy();
+    `);
+    try {
+      await yjsRepo.duplicateByProjectPrefix(TEST_PID, TEST_DUP_PID);
+    } finally {
+      await pgClient.unsafe(`
+        DROP TRIGGER test_store_meta_mid_copy ON yjs_documents;
+        DROP FUNCTION test_store_meta_mid_copy();
+      `);
+    }
+
+    expect(Array.from((await yjsRepo.fetchDocData(DUP_META))!)).toEqual(Array.from(meta));
+    expect(await liveDuplicateContent()).toEqual([DUP_CANVAS]);
   });
 
   it("meta DO UPDATE wins over a racing lazy-seed; redelivery is idempotent", async () => {
