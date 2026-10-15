@@ -5,7 +5,10 @@
  * The image, video and audio blocks, as this Space draws them (inner#1127).
  *
  * The library's own blocks keep their props, parse rules and HTML export;
- * only the node view is ours. Three things it does that the library's does not:
+ * the node view is ours, and a picture given only by `srcset` is read from
+ * its first candidate, where the library reads `src` alone
+ * (`parseImageElement.ts`). Three things the view does that the library's
+ * does not:
  *
  * - **`update`.** The library's block node views have none
  *   (`createSpec.ts:286-290`), so every prop change rebuilds the view — a
@@ -283,9 +286,22 @@ function mediaNodeView(
  * @returns The same spec, carrying a node that draws with the view above.
  */
 export function withMediaView<T extends MediaSpec>(spec: T): T {
+  // The node's parse rules are made from the implementation it is built with.
+  const parse = spec.implementation['parse'] as Parse | undefined;
+  const implementation = {
+    ...spec.implementation,
+    ...(parse !== undefined && {
+      parse(this: unknown, element: HTMLElement) {
+        const props = parse.call(this, element);
+        if (props === undefined || (typeof props['url'] === 'string' && props['url'] !== '')) return props;
+        const url = firstSrcsetCandidate(element);
+        return url === null ? props : { ...props, url };
+      },
+    }),
+  };
   const built = addNodeAndExtensionsToSpec(
     spec.config as never,
-    spec.implementation as never,
+    implementation as never,
     spec.extensions as never,
   ) as unknown as {
     implementation: { node: { extend: (config: Record<string, unknown>) => unknown } };
@@ -302,7 +318,7 @@ export function withMediaView<T extends MediaSpec>(spec: T): T {
   return {
     ...spec,
     implementation: {
-      ...spec.implementation,
+      ...implementation,
       node,
       // The node view above draws the block, so the library's render is
       // reached only to serialize (pasted HTML goes to blocks and back to
@@ -319,6 +335,22 @@ export function withMediaView<T extends MediaSpec>(spec: T): T {
       },
     },
   };
+}
+
+/** The library's parse of one element into a block's props. */
+type Parse = (this: unknown, element: HTMLElement) => Record<string, unknown> | undefined;
+
+/**
+ * The address of the first image candidate in a picture's `srcset`.
+ * @param element - The picture, or the figure around it.
+ * @returns The address, or null when there is no `srcset`.
+ */
+function firstSrcsetCandidate(element: HTMLElement): string | null {
+  const image = element.matches('img') ? element : element.querySelector('img');
+  // A candidate's address runs to the first space; one written without a
+  // descriptor ends at its comma (HTML, "parse a srcset attribute").
+  const url = image?.getAttribute('srcset')?.trim().split(/\s+/)[0]?.replace(/,+$/, '') ?? '';
+  return url === '' ? null : url;
 }
 
 /** The library's render of one block. */

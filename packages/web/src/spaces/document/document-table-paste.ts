@@ -18,6 +18,10 @@
  * Here every rowspan is cut to the rows below it and every row is filled at
  * its end to the widest row, the shape the reader saw on the page. The HTML
  * is then read as HTML whenever it carries media (inner#1351 design §5.1).
+ *
+ * A cell holds words only, so the media in a pasted table's cells would be
+ * gone once the HTML is read; they are moved out first, to land under the
+ * table the way media pasted into a cell do (inner#1351 design §5.4, A7).
  */
 
 import type { PasteHandler } from '@web/spaces/document/document-file-input';
@@ -76,8 +80,42 @@ export function evenPastedTables(html: string): string {
   return changed ? doc.body.innerHTML : html;
 }
 
+/** The media elements inside table cells. */
+const CELL_MEDIA = HTML_MEDIA_ELEMENTS.flatMap((name) => [`td ${name}`, `th ${name}`]).join(', ');
+
 /**
- * BlockNote's own paste, given the clipboard's HTML with its tables evened.
+ * Pasted HTML with the media its table cells hold moved out, right after the
+ * outermost table around them — after the figure around that table, when
+ * there is one, which would otherwise be read as a captioned picture — in the
+ * order they came in. A medium moves with the figure around it when that
+ * figure is inside the cell too.
+ * @param html - The HTML.
+ * @returns The same HTML when no cell holds a medium, the moved HTML otherwise.
+ */
+export function liftCellMedia(html: string): string {
+  if (!/<t[dh]\b/i.test(html) || !HTML_MEDIA.test(html)) return html;
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  const last = new Map<Element, Element>();
+  for (const element of Array.from(doc.body.querySelectorAll(CELL_MEDIA))) {
+    // Gone from its cell with a figure moved before it.
+    const cell = element.closest('td, th');
+    if (cell === null) continue;
+    let table = cell.closest('table')!;
+    for (let outer = table.parentElement?.closest('table'); outer; outer = outer.parentElement?.closest('table')) {
+      table = outer;
+    }
+    const anchor = table.closest('figure') ?? table;
+    const figure = element.closest('figure');
+    const carried = figure !== null && cell.contains(figure) ? figure : element;
+    (last.get(anchor) ?? anchor).after(carried);
+    last.set(anchor, carried);
+  }
+  return last.size === 0 ? html : doc.body.innerHTML;
+}
+
+/**
+ * BlockNote's own paste, given the clipboard's HTML with its tables evened
+ * and the media in their cells moved out.
  * The clipboard is the event's, and BlockNote's handler reads it from there.
  * @param context - What BlockNote hands the paste hook.
  * @param context.event - The paste.
@@ -87,7 +125,7 @@ export function evenPastedTables(html: string): string {
 export const documentPasteHandler: PasteHandler = ({ event, defaultPasteHandler }) => {
   const data = event.clipboardData;
   const html = data?.getData('text/html') ?? '';
-  const even = evenPastedTables(html);
+  const even = liftCellMedia(evenPastedTables(html));
   if (data !== null && even !== html) {
     const evened: Pick<DataTransfer, 'types' | 'files' | 'items' | 'getData'> = {
       types: data.types,

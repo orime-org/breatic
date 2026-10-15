@@ -54,6 +54,7 @@ import {
   isMediaBlockType,
   pendingUploadId,
 } from '@web/spaces/document/document-media-types';
+import { liftCellMedia } from '@web/spaces/document/document-table-paste';
 import type { UploadSource } from '@web/spaces/document/document-upload-controller';
 import { markOwnUndoStep } from '@web/spaces/document/document-undo-step';
 
@@ -345,7 +346,10 @@ export function documentPastedMediaExtension(
                 return false;
               },
             },
-            transformPastedHTML: (html, view) => {
+            transformPastedHTML: (pasted, view) => {
+              // A drop's HTML reaches the parse here; a paste's had its
+              // cells' media moved out before BlockNote read it.
+              const html = liftCellMedia(pasted);
               const at = dropAt ?? view.state.selection.from;
               dropAt = null;
               landing = null;
