@@ -131,15 +131,15 @@ export const users = pgTable(
     // negotiated in, and changed only when the user switches the interface
     // language.
     locale: varchar("locale", { length: 10 }).default("en").notNull(),
-    // The account's ad switch (0095, inner#1442 §4.4.6): set when the account
+    // The account's ad switch (0096, inner#1442 §4.4.6): set when the account
     // opted out of ad sharing and by what, null while it has not.
     adsOptedOutAt: timestamp("ads_opted_out_at", { withTimezone: true }),
     adsOptOutSource: varchar("ads_opt_out_source", { length: 16 }),
-    // The cookie choices last seen on a signed-in request (0095), read by
+    // The cookie choices last seen on a signed-in request (0096), read by
     // events no browser is behind.
     consentSeen: jsonb("consent_seen").$type<ConsentSeen>(),
     // First-touch and last-touch campaign source, written at sign-up from
-    // what the browser kept after consent (0095, inner#1442).
+    // what the browser kept after consent (0096, inner#1442).
     attribution: jsonb("attribution").$type<Attribution>(),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
     ...timestamps,
@@ -1143,7 +1143,7 @@ export const subscriptions = pgTable(
     // subscription object in the 2025-03-31 release; nullable because a
     // subscription whose first invoice never settled has no period.
     currentPeriodEnd: timestamp("current_period_end", { withTimezone: true }),
-    // When this subscription first came into force (0095, inner#1442).
+    // When this subscription first came into force (0096, inner#1442).
     // Written once in the same transaction that first lifts the account off
     // `base`; `subscription_started` is sent only on that write, so a lapsed
     // subscription that recovers does not count as a new start.
@@ -2610,7 +2610,7 @@ export const uploadGrants = pgTable(
     failureReason: text("failure_reason"),
     /**
      * The uploading browser's analytics consent when the ticket was issued
-     * (0095, inner#1442). Every finish path that writes `asset:uploaded`
+     * (0096, inner#1442). Every finish path that writes `asset:uploaded`
      * reads it here, since none of them has the browser's request.
      */
     analyticsConsent: jsonb("analytics_consent").$type<ConsentSnapshot>(),
@@ -2757,7 +2757,7 @@ export const storageReclaimQueue = pgTable(
   ],
 );
 
-// ── Ad conversion uploads (0095, inner#1442 §4.9) ───────────────────
+// ── Ad conversion uploads (0096, inner#1442 §4.9) ───────────────────
 
 /**
  * One row per conversion reported to the ad platform. The key makes a
@@ -2791,7 +2791,7 @@ export const adsConversionUploads = pgTable(
   ],
 );
 
-// ── Analytics milestones (0095, inner#1442 §4.8) ────────────────────
+// ── Analytics milestones (0096, inner#1442 §4.8) ────────────────────
 
 /**
  * One row per product milestone that is reported once, keyed by what it is

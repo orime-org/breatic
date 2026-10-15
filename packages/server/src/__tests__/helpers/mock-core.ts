@@ -492,7 +492,6 @@ export const coreMock = async (importOriginal: () => Promise<Record<string, unkn
     logger: { ...mocks.logger, child: () => mocks.logger },
     // Infra-adjacent services that STAY in @breatic/core.
     uploadService: mocks.uploadService,
-    publishMembersChanged: vi.fn().mockResolvedValue(undefined),
     // Shared authentication kernel (project_members repo + loadProjectRole
     // primitive — collab + server share these). AIGC business (credit /
     // task / node-history / agent / model-catalog) moved to

@@ -670,8 +670,15 @@
     {
       "idx": 95,
       "version": "7",
+      "when": 1792032940584,
+      "tag": "0095_project_member_change_notify",
+      "breakpoints": true
+    },
+    {
+      "idx": 96,
+      "version": "7",
       "when": 1792045758567,
-      "tag": "0095_analytics_consent_attribution",
+      "tag": "0096_analytics_consent_attribution",
       "breakpoints": true
     }
   ]

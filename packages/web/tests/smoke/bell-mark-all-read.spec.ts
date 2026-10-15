@@ -15,21 +15,11 @@
  *
  *   pnpm --filter @breatic/web test:smoke -- bell-mark-all-read
  */
-import { expect, type APIRequestContext } from 'playwright/test';
+import { expect } from 'playwright/test';
 import { test, stateFile } from '../helpers/slot';
 
 import { credentialsFor } from '../helpers/credentials';
-
-/**
- * Read a `{ data }` envelope, failing with the server's words when the call did.
- * @param res - The response.
- * @param label - What the call was, for the failure message.
- * @returns The data.
- */
-async function dataOf<T>(res: Awaited<ReturnType<APIRequestContext['get']>>, label: string): Promise<T> {
-  expect(res.ok(), `${label}: ${res.status()} ${await res.text()}`).toBe(true);
-  return ((await res.json()) as { data: T }).data;
-}
+import { dataOf } from '../helpers/api';
 
 test('mark all read clears the news and keeps the request waiting on A', async ({ browser }) => {
   const a = await browser.newContext();

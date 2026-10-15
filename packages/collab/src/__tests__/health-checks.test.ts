@@ -30,6 +30,7 @@ function makeProbes(overrides: Partial<CollabHealthProbes> = {}): CollabHealthPr
     pingYjsPostgres: vi.fn(async () => true),
     isHocuspocusListening: vi.fn(() => true),
     probeWsProcessing: vi.fn(async () => true),
+    probeMemberListen: vi.fn(async () => true),
     ...overrides,
   };
 }
@@ -45,11 +46,12 @@ describe("buildCollabHealthChecks", () => {
     expect(checks.map((c) => c.name)).toContain("redis_general");
   });
 
-  it("probes exactly the seven critical dependencies (three Redis DBs + both PG + ws socket + end-to-end processing)", () => {
+  it("probes exactly the eight critical dependencies (three Redis DBs + both PG + the member-change listen + ws socket + end-to-end processing)", () => {
     const checks = buildCollabHealthChecks(makeProbes());
     expect(checks.map((c) => c.name).sort()).toEqual([
       "hocuspocus_listening",
       "postgres",
+      "postgres_member_listen",
       "postgres_yjs",
       "redis_collab",
       "redis_general",
@@ -68,6 +70,13 @@ describe("buildCollabHealthChecks", () => {
     const r = buildCollabHealthChecks(probes).find((c) => c.name === "redis_collab")!;
     expect(await r.check()).toBe(false);
     expect(probes.pingRedisCollab).toHaveBeenCalledOnce();
+  });
+
+  it("the postgres_member_listen check reports whether membership changes are still heard (inner#911)", async () => {
+    const probes = makeProbes({ probeMemberListen: vi.fn(async () => false) });
+    const check = buildCollabHealthChecks(probes).find((c) => c.name === "postgres_member_listen");
+    expect(await check?.check()).toBe(false);
+    expect(probes.probeMemberListen).toHaveBeenCalledOnce();
   });
 
   it("probes ws_processing — alive-but-not-serving (throttle ban / doc wedge) MUST flip healthz red", async () => {

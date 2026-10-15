@@ -6,7 +6,7 @@
  * reported once (inner#1442 design §4.8). The claim is an insert into
  * `analytics_milestones`, whose primary key lets exactly one of any number of
  * concurrent claims through; accounts that reached a milestone before this
- * shipped were claimed by migration 0095.
+ * shipped were claimed by migration 0096.
  */
 
 import { claimMilestone } from "@core/analytics/milestone.repo.js";

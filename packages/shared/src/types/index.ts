@@ -257,13 +257,11 @@ export type {
 } from "@shared/types/space-rpc.js";
 
 export {
-  membersChangedChannel,
   activityNewChannel,
   projectConnectionsCloseChannel,
   allProjectChannelsPattern,
 } from "@shared/types/redis-events.js";
 export type {
-  MembersChangedEvent,
   ActivityNewControlEvent,
   ProjectConnectionsCloseEvent,
   ProjectConnectionsCloseReason,
