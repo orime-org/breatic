@@ -820,7 +820,6 @@ export {
 export {
   CONSENT_DATA_FIELDS,
   CONSENT_SOURCES,
-  choiceInForce,
   consentSeenFrom,
   parseConsentChoices,
   parseConsentCookie,

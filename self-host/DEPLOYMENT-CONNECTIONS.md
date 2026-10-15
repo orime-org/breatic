@@ -62,7 +62,8 @@ The consent choice lives in a cookie the banner library writes from script, so b
 
 What leaves when it is on:
 
-- Only after consent. Visitors in the EEA, the UK, Switzerland and mainland China are asked first; elsewhere both categories start on and can be turned off. A browser sending Global Privacy Control starts with advertising off. Backend events follow the choice of the browser that caused them; events without a browser (renewals) use the account's latest choice and are not sent for an account that never chose.
+- Only after consent. Visitors in the EEA, the UK, Switzerland and mainland China are asked first; elsewhere both categories start on and can be turned off. A browser sending Global Privacy Control starts with advertising off. Backend events follow the choice of the browser that caused them; events without a browser (renewals, completed refunds) use the choice last seen on a signed-in request and are not sent for an account never seen with one.
+- Advertising also follows the account. When a signed-in visitor switches advertising off in Cookie settings, or a signed-in request carries Global Privacy Control, the account's ad switch closes: no conversion is uploaded for that account from any browser until its holder turns advertising back on in Cookie settings and confirms. To close it for someone who asked by email or support, run `pnpm analytics:opt-out-user <users.id>` from the repository root.
 - Only listed properties. Every event passes a per-event allowlist in `@breatic/shared`; prompts, document text, file names, email addresses and session ids never leave. URLs are reduced to their path. Session Replay is not installed.
 - Only to the accounts you configure. Events go to your Amplitude project in its US data centre and conversions to your Google Ads customer.
 
