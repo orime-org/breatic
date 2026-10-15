@@ -7,7 +7,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { IText, Path, Point, util } from 'fabric';
+import { IText, Path, PencilBrush, Point, util } from 'fabric';
 
 import { MarkCanvasController } from '@web/spaces/canvas/mini-tool/mark-canvas';
 import { markFontPx } from '@web/spaces/canvas/mini-tool/mark-fabric';
@@ -236,6 +236,22 @@ describe('MarkCanvasController', () => {
       expect(x).toBeCloseTo(0.1, 4);
       expect(y).toBeCloseTo(0.1, 4);
     }
+  });
+
+  // Every sample the pointer gave reaches the stroke; Fabric's decimation
+  // would drop the one before the last (PencilBrush.decimatePoints).
+  it('keeps every sample the pencil took, the one before the last too', () => {
+    store.getState().setMarkTool('pen');
+    controller.sync();
+    const brush = controller.canvas.freeDrawingBrush as PencilBrush;
+    const e = { isPrimary: true } as unknown as PointerEvent;
+    const at = [[60, 210], [120, 90], [180, 210], [240, 90], [300, 210]];
+    brush.onMouseDown(new Point(at[0]![0]!, at[0]![1]!), { e, pointer: new Point(0, 0) });
+    for (const [x, y] of at.slice(1)) brush.onMouseMove(new Point(x!, y!), { e, pointer: new Point(0, 0) });
+    brush.onMouseUp({ e, pointer: new Point(0, 0) });
+    const [stroke] = mark().objects;
+    const points = stroke?.kind === 'pen' ? stroke.points : [];
+    expect(points.map(([x, y]) => [Math.round(x * 400), Math.round(y * 300)])).toEqual(at);
   });
 
   // Fabric's pencil smooths the samples into curves whose end points are the
