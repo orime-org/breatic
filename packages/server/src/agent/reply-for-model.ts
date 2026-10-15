@@ -4,10 +4,10 @@
 /**
  * What a reply row keeps of what was sent (inner#1549).
  *
- * A finished step's messages are what the SDK sent on with the next request,
- * and they are collected as each step ends. A turn stopped inside a step, or
- * cut off there by a provider error, leaves that step unfinished, so it is put
- * together here from what had already reached the reader.
+ * Each step is collected as the SDK has it when it ends; a later request
+ * carries it as it is. The step a turn ended inside -- stopped there, or cut
+ * off by a provider error that no later request carried -- is partial, so it
+ * is put together here from what had already reached the reader.
  */
 
 import { convertToModelMessages, isToolUIPart } from "ai";
@@ -66,13 +66,13 @@ function callIdsIn(messages: readonly ModelMessage[]): Set<string> {
  * The step a turn ended inside, as the model would have been sent it.
  *
  * The reply's parts open each step with a `step-start`; what follows the one
- * after the collected steps is the step in progress. Its thinking is left
+ * after the kept steps is the step in progress. Its thinking is left
  * out, being unfinished, and so is a call that never got an answer. When no
  * such `step-start` exists the turn stopped between steps, or the next
  * step's request failed before anything came back, and there is nothing to
  * add.
  * @param parts - The reply's parts, as the reader received them.
- * @param stepsDone - How many steps finished and were collected.
+ * @param stepsKept - How many steps are kept as the SDK has them.
  * @param tools - The turn's tools, whose own conversion renders a result.
  * @param settled - How the turn's calls ended.
  * @param collected - The messages of the steps already collected.
@@ -81,12 +81,12 @@ function callIdsIn(messages: readonly ModelMessage[]): Set<string> {
  */
 export async function inProgressStep(
   parts: UIMessage["parts"],
-  stepsDone: number,
+  stepsKept: number,
   tools: ToolSet,
   settled: SettledCalls,
   collected: readonly ModelMessage[],
 ): Promise<ModelMessage[]> {
-  const at = parts.flatMap((part, i) => (part.type === "step-start" ? [i] : []))[stepsDone];
+  const at = parts.flatMap((part, i) => (part.type === "step-start" ? [i] : []))[stepsKept];
   if (at === undefined) return [];
 
   const step = parts.slice(at + 1).map((part) => (isToolUIPart(part) ? settle(part, settled) : part));
