@@ -69,10 +69,7 @@ export class MarkCanvasController {
   /** Set while this canvas changes itself to match the draft; no event is written back then. */
   private suppressed = false;
 
-  /** The object list the canvas shows. */
-  private shown = '[]';
-
-  /** Each draft object on the canvas, by id, as it stood when it was drawn. */
+  /** Each draft object on the canvas, by id, as it stood when it was drawn; Fabric changing one in place forgets it. */
   private readonly drawn = new Map<string, string>();
 
   /** The object list this canvas last wrote, to tell its own writes from others'. */
@@ -200,6 +197,9 @@ export class MarkCanvasController {
    * the objects and the selection. The draft alone says what is selected: undo,
    * redo, clear and a new source drop it there, a restyle keeps it. Objects the
    * draft did not change stay as they are, with any drag Fabric has of them.
+   * A selection the draft no longer holds goes first: ending it ends Fabric's
+   * drag of the object, which then reports the object changed and is drawn
+   * again from the draft.
    */
   sync(): void {
     const before = this.draft();
@@ -212,11 +212,11 @@ export class MarkCanvasController {
     const json = JSON.stringify(draft.objects);
     this.suppressed = true;
     try {
-      this.reconcile(draft.objects);
-      if (json !== this.shown) {
-        this.shown = json;
-        this.lastWritten = json;
+      if (this.edit === null && idOf(this.canvas.getActiveObject()) !== (draft.selectedId ?? undefined)) {
+        this.canvas.discardActiveObject();
       }
+      this.reconcile(draft.objects);
+      this.lastWritten = json;
       this.alignSelection(draft);
     } finally {
       this.suppressed = false;
@@ -263,7 +263,7 @@ export class MarkCanvasController {
   private settleEdit(draft: MarkDraft): void {
     if (this.edit === null) return;
     const json = JSON.stringify(draft.objects);
-    if (draft.editingText === null || (json !== this.shown && json !== this.lastWritten)) {
+    if (draft.editingText === null || json !== this.lastWritten) {
       // What was typed is dropped: the text is drawn again from the draft.
       this.drawn.delete(this.edit.id);
       this.edit = null;
@@ -506,9 +506,11 @@ export class MarkCanvasController {
    * @param target - The text.
    */
   private onEditEntered(target: IText): void {
-    if (this.suppressed) return;
     const id = idOf(target);
-    if (id === undefined) return;
+    // Typing and restyling change the text in place, and Fabric reports a
+    // modification on leaving only for a changed text: draw it again from the draft.
+    if (id !== undefined) this.drawn.delete(id);
+    if (this.suppressed || id === undefined) return;
     if (this.edit === null) {
       this.edit = { id, isNew: false, textAtEntry: target.text };
       // The text being edited is the selected one, so the controls show its style.
@@ -554,6 +556,9 @@ export class MarkCanvasController {
    * @param target - The object.
    */
   private onModified(target: FabricObject | undefined): void {
+    const id = idOf(target);
+    // Fabric has changed the object in place, written back or not.
+    if (id !== undefined) this.drawn.delete(id);
     if (this.heldUniScaleKey !== undefined) {
       this.canvas.uniScaleKey = this.heldUniScaleKey;
       this.heldUniScaleKey = undefined;
@@ -563,7 +568,6 @@ export class MarkCanvasController {
       return;
     }
     const draft = this.draft();
-    const id = idOf(target);
     if (this.suppressed || draft === null || target === undefined || id === undefined) return;
     const written = fromFabric(target, this.box);
     this.commit(draft.objects.map((object) => (object.id === id ? written : object)));

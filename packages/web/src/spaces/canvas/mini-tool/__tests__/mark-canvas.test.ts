@@ -459,6 +459,23 @@ describe('MarkCanvasController', () => {
     expect(controller.canvas.getObjects().map((shape) => (shape as IText).text)).toEqual(['eye']);
   });
 
+  // A restyle alone changes the text in place too, and Fabric reports no
+  // modification for it on leaving.
+  it('draws the undone colour when undo follows leaving a restyled edit at once', () => {
+    store.getState().commitMark([TEXT]);
+    controller.sync();
+    const text = controller.canvas.getObjects()[0] as IText;
+    controller.canvas.setActiveObject(text);
+    text.enterEditing();
+    store.getState().setMarkColor(INK[3]);
+    controller.sync();
+    expect(text.fill).toBe(INK[3]);
+    controller.channel.exitEditing();
+    store.getState().undoMark();
+    controller.sync();
+    expect(controller.canvas.getObjects().map((shape) => shape.fill)).toEqual([TEXT.color]);
+  });
+
   // An undo while an object is held ends Fabric's drag of it under the
   // canvas's own changes, which write nothing back.
   it.each(['undo', 'redo'] as const)('draws a held object where the draft has it after %s', (step) => {
