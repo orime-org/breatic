@@ -42,7 +42,7 @@ import * as Y from "yjs";
 import { initCore, createRedisClient } from "@breatic/core";
 import * as yjsRepo from "@collab/services/yjs-documents.repo.js";
 import { createPersistenceExtension } from "@collab/services/persistence.js";
-import { readProjectSpaceIds } from "@collab/services/project-space-list.js";
+import { readListedContentDocNames } from "@collab/services/project-space-list.js";
 import { createChangeTrackingExtension } from "@collab/services/change-tracking.js";
 
 const PID = "44444444-4444-4444-8444-444444444444";
@@ -113,26 +113,27 @@ async function seedStoredMeta(ids: string[]): Promise<void> {
     const entry = new Y.Map<unknown>();
     spaces.set(id, entry);
     entry.set("id", id);
+    entry.set("type", "canvas");
   }
   await yjsRepo.seedInitialState(META_DOC, Y.encodeStateAsUpdate(doc));
 }
 
 /**
  * What the Space-existence check answers on this instance. Calls the real
- * `readProjectSpaceIds` rather than restating it, so the two tests below cover
+ * `readListedContentDocNames` rather than restating it, so the two tests below cover
  * both of its branches: the instance that holds the meta doc, and the one that
  * has to load it.
  * @param instance - The collab instance to ask.
- * @returns The ids it answers with.
+ * @returns The ids of the canvas Spaces it answers with.
  */
 async function spaceIdsSeenBy(instance: Hocuspocus): Promise<string[]> {
-  const ids = await readProjectSpaceIds(
+  const names = await readListedContentDocNames(
     PID,
     instance,
     new Request("http://localhost"),
     "space-existence-check",
   );
-  return [...ids];
+  return [...names].map((name) => name.slice(name.indexOf("/canvas-") + "/canvas-".length));
 }
 
 beforeAll(async () => {
@@ -165,6 +166,7 @@ describe("Space existence across two collab instances", () => {
       const entry = new Y.Map<unknown>();
       live.getMap("spaces").set(MEMORY_ONLY_SPACE, entry);
       entry.set("id", MEMORY_ONLY_SPACE);
+      entry.set("type", "canvas");
     });
 
     // Instance B holds nothing for this project — the reconnect shape. If it
@@ -175,7 +177,7 @@ describe("Space existence across two collab instances", () => {
     expect(seenOnB).toContain(STORED_SPACE);
     expect(seenOnB).toContain(MEMORY_ONLY_SPACE);
 
-    // `readProjectSpaceIds` unloads what it loaded, scheduled rather than
+    // `readListedContentDocNames` unloads what it loaded, scheduled rather than
     // awaited. Waiting for it here keeps the next test from starting against a
     // half-unloaded document.
     await vi.waitFor(
@@ -202,6 +204,7 @@ describe("Space existence across two collab instances", () => {
       const entry = new Y.Map<unknown>();
       live.getMap("spaces").set(MEMORY_ONLY_SPACE, entry);
       entry.set("id", MEMORY_ONLY_SPACE);
+      entry.set("type", "canvas");
     });
     expect(instanceA.documents.has(META_DOC)).toBe(true);
 

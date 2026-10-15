@@ -24,8 +24,7 @@
  */
 
 import { and, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
-import * as Y from "yjs";
-import { listedContentDocNames, yjsDb, yjsDocuments } from "@breatic/core";
+import { listedContentDocNamesInState, yjsDb, yjsDocuments } from "@breatic/core";
 import { projectMetaDocName, spaceContentRowPattern } from "@breatic/shared";
 
 /**
@@ -178,22 +177,6 @@ export async function restoreByName(name: string): Promise<boolean> {
 }
 
 /**
- * The content docs a stored meta doc lists.
- * @param projectId - Project the meta doc belongs to.
- * @param metaData - The stored meta doc state.
- * @returns The content doc names, one per listed Space.
- */
-function listedInStoredMeta(projectId: string, metaData: Uint8Array): string[] {
-  const doc = new Y.Doc();
-  try {
-    Y.applyUpdate(doc, metaData);
-    return [...listedContentDocNames(projectId, doc.getMap("spaces"))];
-  } finally {
-    doc.destroy();
-  }
-}
-
-/**
  * Copy a source project's meta doc and the content of the Spaces it lists to
  * a new project id, rewriting the `project-{sourceId}/` name prefix to
  * `project-{newId}/`. The whole copy runs in one yjs-DB transaction, meta doc
@@ -254,7 +237,7 @@ export async function duplicateByProjectPrefix(
       .where(eq(yjsDocuments.name, metaName))
       .limit(1);
     if (!meta) return;
-    const listed = listedInStoredMeta(sourceId, meta.data);
+    const listed = [...listedContentDocNamesInState(sourceId, meta.data)];
     // Content docs first — idempotent on redelivery.
     if (listed.length > 0) {
       await tx.execute(sql`

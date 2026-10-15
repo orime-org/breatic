@@ -19,6 +19,7 @@ import {
   defaultSpaceName,
   encodeInitialMetaState,
   listedContentDocNames,
+  listedContentDocNamesInState,
   writeSpaceEntry,
 } from "../yjs-bootstrap.js";
 
@@ -272,5 +273,18 @@ describe("listedContentDocNames", () => {
     spaces.set(DOC, "not-a-map");
 
     expect(listedContentDocNames(PID, spaces)).toEqual(new Set());
+  });
+});
+
+describe("listedContentDocNamesInState", () => {
+  it("reads the listed content doc names straight from stored meta bytes", () => {
+    const PID = "11111111-1111-4111-8111-111111111111";
+    const SID = "22222222-2222-4222-9222-222222222222";
+    const doc = new Y.Doc();
+    writeSpaceEntry(doc.getMap("spaces"), { spaceId: SID, type: "timeline", name: "T", order: 0, createdAt: 1, createdBy: "u" });
+
+    expect(listedContentDocNamesInState(PID, Y.encodeStateAsUpdate(doc))).toEqual(
+      new Set([`project-${PID}/timeline-${SID}`]),
+    );
   });
 });

@@ -130,6 +130,27 @@ export function listedContentDocNames(
 }
 
 /**
+ * {@link listedContentDocNames} for a stored meta doc state. The bytes are
+ * decoded with this package's own Yjs, so a caller that loads Yjs some other
+ * way (a script) still gets entries this module recognizes.
+ * @param projectId - Project the meta doc belongs to.
+ * @param state - The stored meta doc state.
+ * @returns The content doc names the stored list names.
+ */
+export function listedContentDocNamesInState(
+  projectId: string,
+  state: Uint8Array,
+): Set<string> {
+  const doc = new Y.Doc();
+  try {
+    Y.applyUpdate(doc, state);
+    return listedContentDocNames(projectId, doc.getMap("spaces"));
+  } finally {
+    doc.destroy();
+  }
+}
+
+/**
  * Encode an initial Yjs update for `project-{pid}/meta` containing
  * exactly one Space entry.
  *

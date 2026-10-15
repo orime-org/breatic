@@ -3,7 +3,8 @@
 
 /**
  * The decisions the Space content-row repair makes, apart from the database so
- * they run under `node --test` (inner#1140).
+ * they run under `node --test` (inner#1140). The apply statement itself runs
+ * against a real database in collab's space-row-repair integration test.
  */
 
 /**
@@ -15,33 +16,51 @@
 export const STALE_AFTER_MS = 60 * 60 * 1000;
 
 /**
- * Soft-deletes one row, rechecking in the same statement that it is still live
- * and still untouched for an hour, so a row restored or edited between the
- * report and the apply is left as it is. The interval is `STALE_AFTER_MS`.
+ * Soft-deletes one row (`$1`), rechecking in the same statement that it is
+ * still live and still untouched for `$2` milliseconds, so a row restored or
+ * edited between the report and the apply is left as it is. Called with
+ * `[name, STALE_AFTER_MS]`.
  */
 export const APPLY_SQL =
   "UPDATE yjs_documents SET deleted_at = now() " +
-  "WHERE name = $1 AND deleted_at IS NULL AND updated_at < now() - interval '1 hour'";
-
-/** A Space content doc name: `project-{projectId}/{kind}-{spaceId}`. */
-const CONTENT_DOC_NAME = /^project-[^/]+\/(?:canvas|document|timeline)-(.+)$/;
+  "WHERE name = $1 AND deleted_at IS NULL AND updated_at < now() - $2::bigint * interval '1 millisecond'";
 
 /**
  * The live content rows of one project that its meta doc does not list and
- * nobody has touched for an hour. These are the rows that make the project's
- * live row count, which the Space cap reads, larger than its Spaces.
- * @param {{ metaSpaceIds: Set<string>, rows: { name: string, updatedAt: Date, deletedAt: Date | null }[], now: number }} input -
- *   The Space ids the project's meta lists, the project's rows, and the time to measure from.
+ * nobody has touched for {@link STALE_AFTER_MS}. These are the rows that make
+ * the project's live row count, which the Space cap reads, larger than its
+ * Spaces — including a row of another kind under a listed Space's id.
+ * @param {{ listedNames: Set<string>, rows: { name: string, updatedAt: Date, deletedAt: Date | null }[], now: number }} input -
+ *   The content doc names the project's meta lists, the project's content rows, and the time to measure from.
  * @returns {string[]} The names of the rows to soft-delete.
  */
-export function staleContentRows({ metaSpaceIds, rows, now }) {
+export function staleContentRows({ listedNames, rows, now }) {
   return rows
-    .filter((row) => {
-      if (row.deletedAt !== null) return false;
-      const match = CONTENT_DOC_NAME.exec(row.name);
-      if (!match) return false;
-      if (metaSpaceIds.has(match[1])) return false;
-      return now - row.updatedAt.getTime() > STALE_AFTER_MS;
-    })
+    .filter(
+      (row) =>
+        row.deletedAt === null &&
+        !listedNames.has(row.name) &&
+        now - row.updatedAt.getTime() > STALE_AFTER_MS,
+    )
     .map((row) => row.name);
+}
+
+/**
+ * Report one project's stale rows and, with `apply`, soft-delete them one by
+ * one through `softDelete`, which answers how many rows it changed.
+ * @param {{ listedNames: Set<string>, rows: { name: string, updatedAt: Date, deletedAt: Date | null }[], now: number, apply: boolean, softDelete: (name: string) => Promise<number> }} input -
+ *   The project's listed names and content rows, the time to measure from, whether to write, and the writer.
+ * @returns {Promise<{ stale: string[], softDeleted: string[], leftAlone: string[] }>}
+ *   The stale rows; of those, the ones soft-deleted and the ones that changed since the report.
+ */
+export async function repairProject({ listedNames, rows, now, apply, softDelete }) {
+  const stale = staleContentRows({ listedNames, rows, now });
+  const softDeleted = [];
+  const leftAlone = [];
+  if (apply) {
+    for (const name of stale) {
+      ((await softDelete(name)) === 1 ? softDeleted : leftAlone).push(name);
+    }
+  }
+  return { stale, softDeleted, leftAlone };
 }

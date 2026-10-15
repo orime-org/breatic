@@ -12,19 +12,19 @@
  * project read fuller than it is. The code paths are fixed; this clears what
  * they left behind.
  *
- * For each project with a live meta doc it lists the live content rows the
- * meta does not list and nobody touched for an hour. A project without a live
- * meta doc is skipped: with no Space list there is nothing to compare against.
+ * For each project with a live meta doc it lists the live Space content rows
+ * the meta does not list — by full name, so a row of another kind under a
+ * listed Space's id counts as unlisted — and nobody touched for an hour. A
+ * project without a live meta doc is skipped: with no Space list there is
+ * nothing to compare against.
  *
  * Usage, from the repository root, once per environment:
  *   pnpm db:repair-space-rows            report only
  *   pnpm db:repair-space-rows --apply    soft-delete what the report lists
  */
 
-import { createRequire } from "node:module";
-import { pathToFileURL } from "node:url";
 import { findRoot, loadEnv } from "./load-env.js";
-import { APPLY_SQL, staleContentRows } from "./repair-space-rows-plan.mjs";
+import { APPLY_SQL, STALE_AFTER_MS, repairProject } from "./repair-space-rows-plan.mjs";
 
 const ROOT = findRoot();
 loadEnv(ROOT);
@@ -37,12 +37,13 @@ interface UnsafeSql {
 const core = (await import("../packages/core/dist/index.js")) as {
   initCore: (env: NodeJS.ProcessEnv) => void;
   yjsRawPg: UnsafeSql;
+  listedContentDocNamesInState: (projectId: string, state: Uint8Array) => Set<string>;
 };
 core.initCore(process.env);
-
-// The root has no yjs of its own; core's copy decodes a meta doc as well as any.
-const yjsEntry = createRequire(new URL("../packages/core/package.json", import.meta.url)).resolve("yjs");
-const Y = (await import(pathToFileURL(yjsEntry).href)) as typeof import("yjs");
+const shared = (await import("../packages/shared/dist/index.js")) as {
+  parseDocName: (docName: string) => { projectId: string } | null;
+  spaceContentRowPattern: (projectId: string) => string;
+};
 
 /** A yjs row as the repair reads it. */
 interface DocRow {
@@ -50,21 +51,6 @@ interface DocRow {
   data: Uint8Array;
   updatedAt: Date;
   deletedAt: Date | null;
-}
-
-/**
- * The Space ids a stored meta doc lists.
- * @param data - The meta doc state.
- * @returns The Space ids.
- */
-function listedSpaceIds(data: Uint8Array): Set<string> {
-  const doc = new Y.Doc();
-  try {
-    Y.applyUpdate(doc, data);
-    return new Set(doc.getMap("spaces").keys());
-  } finally {
-    doc.destroy();
-  }
 }
 
 const apply = process.argv.includes("--apply");
@@ -77,22 +63,23 @@ const now = Date.now();
 let reported = 0;
 let deleted = 0;
 for (const meta of metas) {
-  const prefix = meta.name.slice(0, -"meta".length);
+  const projectId = shared.parseDocName(meta.name)?.projectId;
+  if (!projectId) continue;
   const rows = (await core.yjsRawPg`
     SELECT name, updated_at AS "updatedAt", deleted_at AS "deletedAt" FROM yjs_documents
-    WHERE starts_with(name, ${prefix}) AND name <> ${meta.name}
+    WHERE name ~ ${shared.spaceContentRowPattern(projectId)}
   `) as Omit<DocRow, "data">[];
-  const stale = staleContentRows({ metaSpaceIds: listedSpaceIds(meta.data), rows, now });
-  for (const name of stale) {
-    reported += 1;
-    if (!apply) {
-      console.log("stale", name);
-      continue;
-    }
-    const result = await core.yjsRawPg.unsafe(APPLY_SQL, [name]);
-    deleted += result.count;
-    console.log(result.count === 1 ? "soft-deleted" : "changed since the report, left alone", name);
-  }
+  const result = await repairProject({
+    listedNames: core.listedContentDocNamesInState(projectId, meta.data),
+    rows,
+    now,
+    apply,
+    softDelete: async (name: string) => (await core.yjsRawPg.unsafe(APPLY_SQL, [name, STALE_AFTER_MS])).count,
+  });
+  reported += result.stale.length;
+  deleted += result.softDeleted.length;
+  for (const name of apply ? result.softDeleted : result.stale) console.log(apply ? "soft-deleted" : "stale", name);
+  for (const name of result.leftAlone) console.log("changed since the report, left alone", name);
 }
 
 console.log(
