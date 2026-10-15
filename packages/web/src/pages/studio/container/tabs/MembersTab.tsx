@@ -71,7 +71,7 @@ type Confirm = { kind: 'remove'; member: StudioMember } | null;
  * members query (`['studio', slug, 'members']`, the same key
  * `StudioContainerPage` reads) on success, so the table refetches the
  * authoritative server state — no optimistic cache writes, which avoids the
- * microtask-race trap (memory `feedback_react_query_optimistic_microtask_race`)
+ * microtask-race trap (.claude/skills/react-state-traps/SKILL.md#optimistic-updates-and-local-drafts)
  * entirely. Destructive actions (remove, transfer-admin) route through a
  * confirm dialog; errors surface as a `sonner` toast, except the invite dialog
  * which shows server errors inline.
