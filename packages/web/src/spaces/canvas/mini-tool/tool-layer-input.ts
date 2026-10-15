@@ -14,6 +14,7 @@ import * as React from 'react';
 
 import { gridShapeOf, isModelTool, miniToolById } from '@breatic/shared/mini-tools';
 
+import { isEditableTarget } from '@web/lib/is-editable-target';
 import { miniToolOpenOn, type CanvasSessionState } from '@web/stores/canvas-session';
 
 /** The classes a tool layer's root carries: no node drag, no canvas pan, no Shift marquee. */
@@ -53,19 +54,6 @@ export function stopNodeClick(event: React.MouseEvent): void {
 }
 
 /**
- * Whether a key goes to a text box, which keeps its own keys.
- * @param target - What the key was pressed on.
- * @returns True for a text input, a text area or editable content.
- */
-function typesText(target: EventTarget | null): boolean {
-  return (
-    target instanceof HTMLTextAreaElement ||
-    target instanceof HTMLInputElement ||
-    (target instanceof HTMLElement && target.isContentEditable)
-  );
-}
-
-/**
  * Keep the arrows pressed in a selected node while a tool layer is open:
  * xyflow would move the node under the tool, whichever region holds the
  * keyboard. Text boxes keep theirs, and so does every control xyflow moves
@@ -83,8 +71,9 @@ export function useToolLayerArrows(active: boolean): void {
      * @param event - The key.
      */
     const onKeyDown = (event: KeyboardEvent): void => {
-      if (!ARROWS.has(event.key) || typesText(event.target)) return;
-      if (!(event.target instanceof Element) || event.target.closest(MOVED_BY_ARROWS) === null) return;
+      const target = event.target;
+      if (!ARROWS.has(event.key) || !(target instanceof Element) || isEditableTarget(target)) return;
+      if (target.closest(MOVED_BY_ARROWS) === null) return;
       event.preventDefault();
       event.stopPropagation();
     };
