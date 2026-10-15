@@ -64,9 +64,9 @@ describe("the model this build talks to", () => {
 });
 
 describe("how long a cached prompt prefix lives", () => {
-  it("is five minutes in the shipped config and by default", () => {
-    expect(shippedConfig().prompt_cache_ttl).toBe("5m");
-    expect(defaults().prompt_cache_ttl).toBe("5m");
+  it("is an hour in the shipped config and by default", () => {
+    expect(shippedConfig().prompt_cache_ttl).toBe("1h");
+    expect(defaults().prompt_cache_ttl).toBe("1h");
   });
 });
 

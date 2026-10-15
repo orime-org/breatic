@@ -7,7 +7,7 @@ import type { ModelMessage, UIMessage } from "ai";
 import { z } from "zod";
 import type { ToolFailure } from "@breatic/shared";
 
-import { inProgressStep, replyTokens } from "@server/agent/reply-for-model.js";
+import { inProgressStep, noteUsage, replyTokens } from "@server/agent/reply-for-model.js";
 
 const tools = {
   web_search: tool({
@@ -128,5 +128,19 @@ describe("how much a turn added and where the conversation ended up", () => {
     const tokens = replyTokens({}, { user: 30, reply: 400, request: 5000 });
 
     expect(tokens).toEqual({ turnTokens: 430, endTokens: 5400 });
+  });
+});
+
+describe("what the provider reported over a turn", () => {
+  it("keeps the first call's input and the last call's input and output", () => {
+    const after = noteUsage(noteUsage({}, { inputTokens: 1000, outputTokens: 20 }), { inputTokens: 1500, outputTokens: 200 });
+
+    expect(after).toEqual({ firstInput: 1000, lastInput: 1500, lastOutput: 200 });
+  });
+
+  it("keeps the counts it has when a later call reports none", () => {
+    const counted = noteUsage({}, { inputTokens: 900_000, outputTokens: 300 });
+
+    expect(noteUsage(counted, { inputTokens: undefined, outputTokens: undefined })).toEqual(counted);
   });
 });

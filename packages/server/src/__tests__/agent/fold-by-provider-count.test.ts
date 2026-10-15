@@ -34,7 +34,7 @@ vi.mock("@breatic/core", async (importOriginal) => {
 const consolidateWindow = vi.fn(async (_request: { newWatermark: number }) => "written");
 vi.mock("@server/agent/memory-consolidator.js", () => ({ consolidateWindow }));
 
-const { foldIfOverBudget } = await import("@server/agent/turn-budget.js");
+const { foldIfOverBudget, requestTokens } = await import("@server/agent/turn-budget.js");
 const { historyForModel, prefixHash } = await import("@server/agent/history-replay.js");
 
 const PREFIX: RequestPrefix = { system: "s", tools: {}, modelId: "test" };
@@ -143,5 +143,22 @@ describe("sizing a fold", () => {
 
     expect(consolidateWindow).toHaveBeenCalledTimes(1);
     expect(consolidateWindow.mock.calls[0]?.[0].newWatermark).toBe(2);
+  });
+});
+
+describe("how big a request is", () => {
+  it("is the newest reply sent as it was, by the provider's count, plus what came after it", () => {
+    const history = keptTurn(1, [], { turnTokens: 900, endTokens: 900 });
+    const messages = [...historyForModel(history, PREFIX), QUESTION];
+
+    expect(requestTokens({ agentConfig: AGENT, history, watermark: 0, messages })).toBe(900 + "and now?".length);
+  });
+
+  it("adds up what each turn added when no reply goes out as it was sent", () => {
+    const history = keptTurn(1, [], { turnTokens: 300, endTokens: 50_000 }, { ...PREFIX, system: "older" });
+    const messages = [...historyForModel(history, PREFIX), QUESTION];
+
+    // The system prompt and the empty tool set, then the turn and the question.
+    expect(requestTokens({ agentConfig: AGENT, history, watermark: 0, messages })).toBe(1 + 300 + "and now?".length);
   });
 });

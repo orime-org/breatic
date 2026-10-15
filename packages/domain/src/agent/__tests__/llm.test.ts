@@ -390,13 +390,18 @@ describe("prompt caching", () => {
    * Runs one call with the options `callOptionsFor` hands back.
    * @param model - The model id to route.
    * @param cache - The cache lifetime asked for, or false for none.
+   * @param session - The conversation the call belongs to, if any.
    * @returns The intercepted request.
    */
-  async function sendCached(model: string, cache: false | "5m" | "1h"): Promise<Seen> {
+  async function sendCached(model: string, cache: false | "5m" | "1h", session?: string): Promise<Seen> {
     const { getModel, callOptionsFor } = await freshLlm();
     const { generateText } = await import("ai");
     seen = undefined;
-    await generateText({ model: getModel(model), prompt: "hi", ...callOptionsFor(model, { thinking: true, cache }) });
+    await generateText({
+      model: getModel(model),
+      prompt: "hi",
+      ...callOptionsFor(model, { thinking: true, cache, ...(session === undefined ? {} : { session }) }),
+    });
     if (!seen) throw new Error("no request was made");
     return seen;
   }
@@ -422,6 +427,19 @@ describe("prompt caching", () => {
   it("sends nothing about caching for a model that caches a prefix on its own", async () => {
     keys.current = { OPENROUTER_API_KEY: "sk-or-test" };
     expect((await sendCached("deepseek/deepseek-v4-pro", "5m")).body.cache_control).toBeUndefined();
+  });
+
+  it.each(["anthropic/claude-opus-5.5", "deepseek/deepseek-v4-pro"])(
+    "pins every call of a conversation through OpenRouter to one provider, %s",
+    async (model) => {
+      keys.current = { OPENROUTER_API_KEY: "sk-or-test" };
+      expect((await sendCached(model, "1h", "conv-1")).body.session_id).toBe("conv-1");
+    },
+  );
+
+  it("sends no session id to a provider reached directly", async () => {
+    keys.current = { ANTHROPIC_API_KEY: "k" };
+    expect((await sendCached("anthropic/claude-opus-5.5", "1h", "conv-1")).body.session_id).toBeUndefined();
   });
 
   it("sends nothing about caching when the caller does not ask", async () => {
