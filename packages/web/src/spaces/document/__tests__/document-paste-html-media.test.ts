@@ -217,6 +217,21 @@ describe('HTML carrying media', () => {
   });
 });
 
+/**
+ * Every block's type in document order, nested ones too; media carry their caption.
+ * @param editor - The editor.
+ * @returns The labels.
+ */
+function blockOrder(editor: Editor): string[] {
+  type Block = { type: string; props: Record<string, unknown>; children?: Block[] };
+  const walk = (blocks: Block[]): string[] =>
+    blocks.flatMap((block) => [
+      ['image', 'video', 'audio'].includes(block.type) ? `${block.type}|${String(block.props['caption'])}` : block.type,
+      ...walk(block.children ?? []),
+    ]);
+  return walk(editor.document as Block[]);
+}
+
 describe('a web table whose cells hold media', () => {
   const WITH = '<p>a</p><table><tr><td><img src="https://elsewhere.example/a.png"> x</td><td>y</td></tr></table><p>b</p>';
   const WITHOUT = '<p>a</p><table><tr><td> x</td><td>y</td></tr></table><p>b</p>';
@@ -259,6 +274,36 @@ describe('a web table whose cells hold media', () => {
     await settled();
 
     expect(shape(editor)).toEqual(underTable(plain.editor));
+    expect(sink.start).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    [
+      'a figure in a cell, with its caption',
+      '<table><tr><td><figure><img src="https://elsewhere.example/a.png"><figcaption>Cap</figcaption></figure></td></tr></table>',
+      '<table><tr><td></td></tr></table>',
+      'Cap',
+    ],
+    [
+      'a figure around the whole table',
+      '<figure><table><tr><td><img src="https://elsewhere.example/a.png"> x</td></tr></table><figcaption>T</figcaption></figure>',
+      '<figure><table><tr><td> x</td></tr></table><figcaption>T</figcaption></figure>',
+      '',
+    ],
+  ])('with %s, lands as it does without the medium, the medium after the table', async (_what, html, plainHtml, caption) => {
+    const plain = open([{ type: 'paragraph', content: 'lead' }]);
+    caretIn(plain.editor, 0);
+    paste(plain.editor, plainHtml, 'x');
+    await settled();
+    const { editor, sink } = open([{ type: 'paragraph', content: 'lead' }]);
+    caretIn(editor, 0);
+
+    paste(editor, html, 'x');
+    await settled();
+
+    expect(withoutMediaBlocks(editor)).toBe(withoutMediaBlocks(plain.editor));
+    const order = blockOrder(editor);
+    expect(order.indexOf(`image|${caption}`)).toBeGreaterThan(order.indexOf('table'));
     expect(sink.start).toHaveBeenCalledOnce();
   });
 
