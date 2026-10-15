@@ -9,7 +9,7 @@
  */
 
 import { act, fireEvent, screen } from '@testing-library/react';
-import { ReactFlow, type Node, type NodeProps } from '@xyflow/react';
+import { ReactFlow, type Node, type NodeProps, type ReactFlowProps } from '@xyflow/react';
 import * as React from 'react';
 import { vi } from 'vitest';
 
@@ -67,6 +67,7 @@ const NODE_TYPES = { media: MediaNode };
  * @param children - Rendered inside the ReactFlow, where canvas chrome lives.
  * @param zoom - The canvas zoom.
  * @param pan - Where the canvas's origin sits on screen.
+ * @param flow - Grid snapping, as the canvas sets it.
  * @returns The tree.
  */
 export function cropCanvas(
@@ -74,6 +75,7 @@ export function cropCanvas(
   children: React.ReactNode,
   zoom = 1,
   pan = { x: 0, y: 0 },
+  flow: Pick<ReactFlowProps, 'snapToGrid' | 'snapGrid'> = {},
 ): React.JSX.Element {
   return (
     <div data-region='space'>
@@ -84,6 +86,7 @@ export function cropCanvas(
         defaultViewport={{ ...pan, zoom }}
         minZoom={CANVAS_MIN_ZOOM}
         maxZoom={CANVAS_MAX_ZOOM}
+        {...flow}
       >
         {children}
       </ReactFlow>

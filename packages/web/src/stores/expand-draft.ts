@@ -37,8 +37,6 @@ export interface ExpandDraft {
   readonly ratio: ExpandRatio;
   /** The longest side the pinned model takes, in source pixels; null until the catalog is read. */
   readonly cap: number | null;
-  /** How far the frame reaches below the node, in screen pixels, so the panel can hang under it. */
-  readonly drop: number;
   /**
    * How far the picture has been moved inside the frame since the frame last
    * wrapped it, as shares of it: the frame keeps its place on the canvas and
@@ -59,7 +57,6 @@ export const EMPTY_EXPAND: Readonly<ExpandDraft> = Object.freeze({
   frame: UNIT_FRAME,
   ratio: 'free',
   cap: null,
-  drop: 0,
   shift: Object.freeze({ x: 0, y: 0 }),
   view: null,
 });

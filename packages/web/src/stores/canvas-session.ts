@@ -379,8 +379,6 @@ export interface CanvasSessionState {
   setExpandView: (view: ExpandView) => void;
   /** Record the longest side the expand tool's model takes. */
   setExpandCap: (cap: number) => void;
-  /** Record how far the expand frame reaches below the node. */
-  setExpandDrop: (drop: number) => void;
   /** Pick what a press on the node does in markup. */
   setMarkTool: (tool: MarkTool) => void;
   /** Set the markup colour; the selected object takes it too. */
@@ -783,12 +781,6 @@ export function createCanvasSessionStore(): CanvasSessionStore {
         set((s) => updateMark(s, (m) => ({ ...withObjects(m, []), selectedId: null }))),
       selectMark: (id) => set((s) => updateMark(s, (m) => selectedMark(m, id))),
       setMarkEditingText: (text) => set((s) => updateMark(s, (m) => withEditingText(m, text))),
-      setExpandDrop: (drop) =>
-        set((s) => {
-          if (s.miniTool?.expand && s.miniTool.expand.drop !== drop) {
-            s.miniTool = { ...s.miniTool, expand: castDraft({ ...s.miniTool.expand, drop }) };
-          }
-        }),
       setExpandCap: (cap) =>
         set((s) => {
           if (s.miniTool?.expand && s.miniTool.expand.cap !== cap) {

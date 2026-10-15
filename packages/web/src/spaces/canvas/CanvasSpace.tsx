@@ -4736,7 +4736,7 @@ function CanvasSpaceInner({
               node like the new-note box, it stays while any part is visible. */}
             <ViewportPortal>
               <div className='absolute top-0 left-0' style={{ zIndex: ANNOTATION_COMPOSER_Z }}>
-                <ExpandFrameOverlay />
+                <ExpandFrameOverlay onNodeContextMenu={onNodeContextMenu} />
               </div>
             </ViewportPortal>
             {composerAt === null ? null : (

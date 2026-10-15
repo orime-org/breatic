@@ -11,6 +11,7 @@ import { describe, it, expect } from 'vitest';
 
 import {
   UNIT_FRAME,
+  expandDrop,
   expandLayout,
   frameForRatio,
   isExpanded,
@@ -35,6 +36,27 @@ const CAP = 12288;
 function pixels(frame: ExpandFrame, source: { width: number; height: number }): { width: number; height: number } {
   return { width: frame.width * source.width, height: frame.height * source.height };
 }
+
+// The panel hangs under the frame wherever the node is, drawn or not, so its
+// offset comes from the draft and the node's size alone.
+describe('expandDrop', () => {
+  const view = { at: { x: 0, y: 20 }, box: { width: 400, height: 300 }, src: null };
+  const still = { x: 0, y: 0 };
+
+  it('is nothing while the frame ends inside the node', () => {
+    expect(expandDrop({ frame: UNIT_FRAME, shift: still, view }, 340, 2)).toBe(0);
+  });
+
+  it('is how far the frame reaches below the node, in screen pixels', () => {
+    const frame = { x: 0, y: 0, width: 1, height: 1.5 };
+    expect(expandDrop({ frame, shift: still, view }, 340, 2)).toBeCloseTo(260, 9);
+    expect(expandDrop({ frame, shift: { x: 0, y: 0.1 }, view }, 340, 2)).toBeCloseTo(320, 9);
+  });
+
+  it('is nothing until the node has shown the picture', () => {
+    expect(expandDrop({ frame: { x: 0, y: 0, width: 1, height: 3 }, shift: still, view: null }, 340, 1)).toBe(0);
+  });
+});
 
 describe('isExpanded', () => {
   it('reads the source-sized frame as not expanded, and any edge past it as expanded', () => {

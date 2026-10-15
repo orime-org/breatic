@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { useQuery } from '@tanstack/react-query';
+import { useStore } from '@xyflow/react';
 import * as React from 'react';
 
 import {
@@ -37,7 +38,7 @@ import {
   type MiniToolSourceInfo,
 } from '@web/spaces/canvas/mini-tool/mini-tool-view';
 import { hasInk } from '@web/spaces/canvas/mini-tool/paint-drawing';
-import { frameForRatio, ratioFits, type ExpandRatio } from '@web/spaces/canvas/mini-tool/expand-frame';
+import { expandDrop, frameForRatio, ratioFits, type ExpandRatio } from '@web/spaces/canvas/mini-tool/expand-frame';
 import type { MiniToolCapture } from '@web/spaces/canvas/mini-tool/start-mini-tool-run';
 import { useEscapeInSpace } from '@web/spaces/canvas/use-escape-in-space';
 import { visibleOps } from '@web/stores/drawing-draft';
@@ -220,7 +221,13 @@ function OpenMiniToolPanel({
 
   // An expand frame is measured in the source's pixels and held to the pinned
   // model's longest side; both go into the draft the node's frame reads.
-  const expandDraft = spec.expand === undefined ? null : (draft?.expand ?? null);
+  const expandDraft = draft?.expand ?? null;
+  // The panel hangs under the expand frame, which reaches past the node. Read
+  // from the draft and the node's size, which the canvas keeps while the node
+  // is off screen; only while the frame shows, so a zoom re-renders nothing else.
+  const nodeHeight = useStore((s) => (expandDraft === null ? 0 : (s.nodeLookup.get(nodeId)?.measured.height ?? 0)));
+  const zoom = useStore((s) => (expandDraft === null ? 1 : s.transform[2]));
+  const drop = expandDraft === null ? 0 : expandDrop(expandDraft, nodeHeight, zoom);
   const sourceWidth = source.width;
   const sourceHeight = source.height;
   const heldSize = draft?.sourceSize;
@@ -396,7 +403,7 @@ function OpenMiniToolPanel({
 
   if (isModelTool(spec) && entry === undefined) return null;
   return (
-    <NodePanelMount nodeId={nodeId} drop={expandDraft?.drop ?? 0}>
+    <NodePanelMount nodeId={nodeId} drop={drop}>
       <MiniToolPanel
         spec={spec}
         modelControls={modelControls}

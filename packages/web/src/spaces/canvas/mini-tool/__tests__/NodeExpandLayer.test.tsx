@@ -10,7 +10,8 @@
  */
 
 import { act, fireEvent, render, screen } from '@testing-library/react';
-import { ViewportPortal } from '@xyflow/react';
+import { ViewportPortal, useReactFlow, type Node, type ReactFlowInstance } from '@xyflow/react';
+import * as React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { cropCanvas, installLayout } from '@web/spaces/canvas/crop/__tests__/crop-harness';
@@ -30,21 +31,42 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  nodeMenu.mockClear();
 });
+
+/** The canvas instance, for a test that pans or zooms mid-drag. */
+let flowApi: ReactFlowInstance | null = null;
+
+/**
+ * Hands the test the canvas instance.
+ * @returns Nothing.
+ */
+function GrabFlow(): null {
+  flowApi = useReactFlow();
+  return null;
+}
+
+/** What a right-click on the frame hands the canvas's node menu. */
+const nodeMenu = vi.fn<(event: React.MouseEvent, node: Node) => void>();
 
 /**
  * The canvas with the node and the frame drawn in its viewport.
  * @param zoom - The canvas zoom.
+ * @param snapToGrid - Whether the canvas snaps nodes to its grid.
  * @returns The tree.
  */
-const canvas = (zoom = 1) =>
+const canvas = (zoom = 1, snapToGrid = false) =>
   cropCanvas(
     [NODE],
-    <ViewportPortal>
-      <ExpandFrameOverlay />
-    </ViewportPortal>,
+    <>
+      <ViewportPortal>
+        <ExpandFrameOverlay onNodeContextMenu={nodeMenu} />
+      </ViewportPortal>
+      <GrabFlow />
+    </>,
     zoom,
     { x: 100, y: 50 },
+    { snapToGrid, snapGrid: [24, 24] },
   );
 
 /**
@@ -53,8 +75,8 @@ const canvas = (zoom = 1) =>
  * @param zoom - The canvas zoom.
  * @returns What render gives.
  */
-function mount(toolId = 'image.expand', zoom = 1): ReturnType<typeof render> {
-  const view = render(canvas(zoom));
+function mount(toolId = 'image.expand', zoom = 1, snapToGrid = false): ReturnType<typeof render> {
+  const view = render(canvas(zoom, snapToGrid));
   act(() => {
     store().openMiniTool('n1', toolId, { sourceContent: NODE.src, params: {} });
     store().setMiniToolSourceSize({ width: 1600, height: 1000 });
@@ -199,22 +221,39 @@ describe('NodeExpandLayer', () => {
     expect(store().miniTool?.expand).toMatchObject({ frame: UNIT_FRAME, ratio: '1:1' });
   });
 
-  it('says how far the frame reaches below the node, so the panel can sit under it', () => {
-    mount();
-    const flush = store().miniTool?.expand?.drop ?? 0;
-    act(() => store().setExpand({ frame: { x: 0, y: 0, width: 1, height: 1.5 }, ratio: 'free' }));
-    expect((store().miniTool?.expand?.drop ?? 0) - flush).toBeCloseTo(150, 6);
-    act(() => store().setExpand({ frame: { x: 0, y: -0.5, width: 1, height: 1.5 }, ratio: 'free' }));
-    expect(store().miniTool?.expand?.drop ?? 0).toBeCloseTo(flush, 6);
+  // The handles follow the pointer, not the grid nodes snap to.
+  it('grows the frame by exactly the pointer’s move with grid snapping on', () => {
+    mount('image.expand', 1, true);
+    drag(screen.getByTestId('mini-tool-expand-handle-e'), [500, 200], [510, 200]);
+    expect(store().miniTool?.expand?.frame.width).toBeCloseTo(1.025, 9);
   });
 
-  // The panel's offset is in screen pixels, so the reach is scaled by the zoom.
-  it('says that reach in screen pixels at the canvas zoom', () => {
-    mount('image.expand', 0.5);
-    const flush = store().miniTool?.expand?.drop ?? 0;
-    act(() => store().setExpand({ frame: { x: 0, y: 0, width: 1, height: 1.5 }, ratio: 'free' }));
-    expect((store().miniTool?.expand?.drop ?? 0) - flush).toBeCloseTo(75, 6);
+  // The picture point the pointer took keeps under it when the canvas zooms
+  // mid-drag: the move is measured on the canvas, not on the screen.
+  it('keeps the grabbed picture point under the pointer when the canvas zooms mid-drag', () => {
+    mount();
+    act(() => store().setExpand({ frame: { x: -0.5, y: 0, width: 2, height: 1 }, ratio: 'free' }));
+    const source = screen.getByTestId('mini-tool-expand-source');
+    fireEvent.pointerDown(source, { clientX: 300, clientY: 200, button: 0, pointerId: 1 });
+    act(() => {
+      void flowApi?.setViewport({ x: 100, y: 50, zoom: 2 });
+    });
+    fireEvent.pointerMove(source, { clientX: 320, clientY: 200, pointerId: 1 });
+    // Grabbed at canvas x 200; the pointer now sits at canvas x (320 - 100) / 2 = 110.
+    expect(store().miniTool?.expand?.shift.x).toBeCloseTo(-90 / 400, 9);
   });
+
+  // §6.2: a tool layer keeps the node's menu, as it does inside the node.
+  it.each(['mini-tool-expand-frame', 'mini-tool-expand-handle-e'])(
+    'opens the host node’s menu on a right-click on %s',
+    (testId) => {
+      mount();
+      fireEvent.contextMenu(screen.getByTestId(testId));
+      // The menu handler decides the browser's own menu, as it does on the node.
+      expect(nodeMenu).toHaveBeenCalledOnce();
+      expect(nodeMenu.mock.calls[0]?.[1]).toMatchObject({ id: 'n1' });
+    },
+  );
 
   it('keeps presses inside the frame off the canvas', () => {
     mount();

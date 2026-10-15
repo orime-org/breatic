@@ -11,7 +11,7 @@
  */
 
 import type { CropHandle } from '@web/lib/crop-math';
-import { UNIT_FRAME, type ExpandFrame, type ExpandRatio } from '@web/stores/expand-draft';
+import { UNIT_FRAME, type ExpandDraft, type ExpandFrame, type ExpandRatio } from '@web/stores/expand-draft';
 
 export { EXPAND_RATIOS, UNIT_FRAME, type ExpandFrame, type ExpandRatio } from '@web/stores/expand-draft';
 
@@ -262,4 +262,24 @@ export function moveSource(frame: ExpandFrame, delta: { x: number; y: number }):
     width: frame.width,
     height: frame.height,
   };
+}
+
+/**
+ * How far the frame reaches below its node, for the panel hung under it. Read
+ * from the draft and the node's size, which the canvas keeps while the node
+ * itself is off screen and not drawn.
+ * @param expand - The frame, how far the picture moved in it, and where the node shows the picture.
+ * @param nodeHeight - The node's height, in canvas pixels.
+ * @param zoom - The canvas zoom.
+ * @returns The reach in screen pixels, 0 when the frame ends inside the node.
+ */
+export function expandDrop(
+  expand: Pick<ExpandDraft, 'frame' | 'shift' | 'view'>,
+  nodeHeight: number,
+  zoom: number,
+): number {
+  const { frame, shift, view } = expand;
+  if (view === null) return 0;
+  const bottom = view.at.y + (frame.y + shift.y + frame.height) * view.box.height;
+  return Math.max(0, bottom - nodeHeight) * zoom;
 }
