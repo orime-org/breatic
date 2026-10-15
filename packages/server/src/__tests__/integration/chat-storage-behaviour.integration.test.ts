@@ -383,6 +383,69 @@ describe("a message survives the round trip through parts", () => {
   });
 });
 
+describe("what was sent to the model", () => {
+  // Kept as sent so a later turn replays it byte for byte. A tool call's
+  // arguments are an object whose key order is part of those bytes.
+  const SENT = {
+    messages: [
+      {
+        role: "assistant",
+        content: [
+          { type: "tool-call", toolCallId: "tc-1", toolName: "propose", input: { prompt: "p", name: "n", aspect: "16:9" } },
+        ],
+      },
+    ],
+    prefixHash: "h",
+    turnTokens: 3,
+    endTokens: 9,
+  };
+
+  it("keeps a user message's copy as written, keys in their order", async () => {
+    const { userId, projectId } = await seedProject();
+    const conv = await seedConversation(userId, projectId);
+    const turn = await messageRepo.addMessage(conv.id, { role: "user", parts: [{ type: "text", text: "q" }] });
+    const sent = { messages: [{ role: "user", content: "note\n\nq\n\n(reminder)" }], snapshot: { b: 1, a: 2 } };
+
+    await messageRepo.setUserForModel(conv.id, turn, sent);
+
+    const [row] = await messageRepo.getMessagesForLlm(conv.id, 0);
+    expect(JSON.stringify(row?.forModel)).toBe(JSON.stringify(sent));
+  });
+
+  it("keeps a reply's copy, written with the reply", async () => {
+    const { userId, projectId } = await seedProject();
+    const conv = await seedConversation(userId, projectId);
+    const turn = await messageRepo.addMessage(conv.id, { role: "user", parts: [{ type: "text", text: "q" }] });
+
+    await messageRepo.addMessage(conv.id, { role: "assistant", turnIndex: turn, parts: [{ type: "text", text: "a" }] }, SENT);
+
+    const rows = await messageRepo.getMessagesForLlm(conv.id, 0);
+    expect(JSON.stringify(rows[1]?.forModel)).toBe(JSON.stringify(SENT));
+  });
+
+  it("reads a message written without a copy as having none", async () => {
+    const { userId, projectId } = await seedProject();
+    const conv = await seedConversation(userId, projectId);
+    await messageRepo.addMessage(conv.id, { role: "user", parts: [{ type: "text", text: "q" }] });
+
+    const [row] = await messageRepo.getMessagesForLlm(conv.id, 0);
+    expect(row?.forModel).toBeNull();
+  });
+
+  it("writes a user message's copy onto that turn's user message alone", async () => {
+    const { userId, projectId } = await seedProject();
+    const conv = await seedConversation(userId, projectId);
+    const first = await messageRepo.addMessage(conv.id, { role: "user", parts: [{ type: "text", text: "1" }] });
+    await messageRepo.addMessage(conv.id, { role: "assistant", turnIndex: first, parts: [{ type: "text", text: "a" }] });
+    const second = await messageRepo.addMessage(conv.id, { role: "user", parts: [{ type: "text", text: "2" }] });
+
+    await messageRepo.setUserForModel(conv.id, second, { messages: [] });
+
+    const rows = await messageRepo.getMessagesForLlm(conv.id, 0);
+    expect(rows.map((r) => r.forModel)).toEqual([null, null, { messages: [] }]);
+  });
+});
+
 describe("reading a conversation longer than one page", () => {
   it("hands out every message exactly once as the reader walks back", async () => {
     const { userId, projectId } = await seedProject();
