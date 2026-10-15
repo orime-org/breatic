@@ -5,7 +5,7 @@ description: Use when building an HTML demo or mock for a packages/web UI change
 
 # From demo to implementation (packages/web)
 
-The package rule is in `packages/web/AGENTS.md`: the demo decides function and geometric structure, concrete values come from our existing tokens, and a change with a demo is checked against it in the real app. This skill is how.
+The package rule is in `packages/web/AGENTS.md#demo-decides-structure-tokens-decide-values`: the demo decides function and geometric structure, concrete values come from our existing tokens, and a change with a demo is checked against it in the real app. This skill is how.
 
 ## Building a demo
 

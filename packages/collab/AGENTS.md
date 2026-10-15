@@ -18,9 +18,9 @@ Read [Canvas collaboration in docs/ARCHITECTURE.md](../../docs/ARCHITECTURE.md#c
 
 **`yjs_documents` queries use core's `yjsDb`, never the business `db`.** The yjs table lives in its own database; lint keeps the queries in `services/yjs-documents.repo.ts` but does not check which handle they use.
 
-**Pick the Redis handle by job: `getRedis()` (DB0) for session reads, `getCollabRedis()` (DB3) for coordination between collab instances, and `createRedisClient` for subscribe, blocking-stream and Hocuspocus pub/sub connections.** Those last roles hold their socket exclusively, so they cannot share a pooled client.
+**Pick the Redis handle by job: `getRedis()` (DB0) for session reads, `getCollabRedis()` (DB3) for coordination between collab instances, and `createRedisClient` for subscribe, blocking-stream and Hocuspocus pub/sub connections.** Why those stay separate: [packages/core/AGENTS.md#dedicated-redis-connections-stay-separate](../core/AGENTS.md#dedicated-redis-connections-stay-separate).
 
-**Build cross-service stream keys with core's constructors (`taskEventsStreamKey()`, `lifecycleStreamKey()`), never by hand.** The worker publishes on the same key, and a hand-built key that drifts fails silently.
+Cross-service stream keys: [packages/core/AGENTS.md#stream-keys](../core/AGENTS.md#stream-keys).
 
 `pnpm dev` runs collab under `tsx watch`, which restarts on edits to its sources and to a rebuilt `core/dist`; there is no need to kill it by hand.
 

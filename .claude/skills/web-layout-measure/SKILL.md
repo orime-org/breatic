@@ -5,7 +5,7 @@ description: Use before writing flex, truncation or scroll layouts in packages/w
 
 # Layout, scrolling and measurement (packages/web)
 
-The package rules (every visible scroller is `ScrollArea`, scroll a container with `scrollTo`, dialog height has two layers) are in `packages/web/AGENTS.md`. This skill holds the traps behind them.
+The package rules (every visible scroller is `ScrollArea`, scroll a container with `scrollTo`, dialog height has two layers) are in `packages/web/AGENTS.md#every-scroller-is-a-scrollarea`. This skill holds the traps behind them.
 
 ## Scroll containers
 
@@ -40,4 +40,4 @@ The package rules (every visible scroller is `ScrollArea`, scroll a container wi
 - **The measurement and the signal that triggers re-measurement must use the same coordinate semantics.** `getBoundingClientRect` includes transforms; `ResizeObserver` and `offsetWidth/Height/Left/Top` are layout-only. Overlay open animations (`zoom-in-95`) make a rect read during the animation about 5% small, and `ResizeObserver` never fires when the animation ends. Measure with `offset*` (as `ImageCropDialog.tsx` does), and when the box changes, rescale any existing selection proportionally. Converting pointer `clientX/Y` into element coordinates is the exception: use the rect there, because client coordinates already include the transform.
 - **A value derived from a threshold and then multiplied and divided can land one ulp below that threshold, so compare it with a relative tolerance: `>= MIN * (1 - 1e-9)`.** `src/lib/crop-math.ts` (`NATURAL_CROP_REL_TOL`) does this; `1e-9` is the default `rel_tol` of Python's `math.isclose` ([PEP 485](https://peps.python.org/pep-0485/), read it when picking a different tolerance).
   Check: is this input something I reverse-solved from the same threshold and then passed through a multiply/divide?
-- **Wait for an overlay's open animation before measuring it in a browser probe.** See the smoke-test skill (invoke `/smoke-e2e`, [SKILL.md](../smoke-e2e/SKILL.md)) for the `waitForFunction` that waits for the identity transform.
+- **Wait for an overlay's open animation before measuring it in a browser probe.** The `waitForFunction` that waits for the identity transform is in the smoke-test skill's [browser traps](../smoke-e2e/browser-traps.md#timing) (invoke `/smoke-e2e`).

@@ -21,7 +21,7 @@ Rules for coding agents live only in `AGENTS.md` files and project skills. Every
 - **One rule lives in one place.** Root and package files never repeat each other; a package file links the root heading instead.
 - **Project rule files hold what is specific to this project: product rules (trust boundaries, business behaviour), architecture, conventions, languages, frameworks, commands and traps.** General working method that holds for any project (how to investigate, decide, design, review, test first or open PRs) is not written here.
 - **A new trap goes into the matching package `AGENTS.md`, or the skill for that kind of work, as "when it breaks" plus "the correct way"; how it was found goes into the PR.**
-- Check: would this hold for an external contributor on their first day? Yes → `AGENTS.md` or a skill. It concerns maintainers' work in the private design repository but names nothing in it → [root AGENTS.md#maintainer-workflow](../../../AGENTS.md#maintainer-workflow). It is personal or names private paths → `CLAUDE.local.md`.
+- Check: would this hold for an external contributor on their first day? Yes → `AGENTS.md` or a skill. It concerns only maintainers' workflow, is personal or names private paths → the worktree's `CLAUDE.local.md` or the shared private file, never a tracked file.
 - Check: is this a constraint that must hold, or a description of how something works? Constraint → `AGENTS.md` (the rule, its red line and a `Check:`). How it works → `docs/ARCHITECTURE.md`, linked from the rule, never copied into it.
 
 ## What to write
@@ -34,8 +34,8 @@ Rules for coding agents live only in `AGENTS.md` files and project skills. Every
 | Link | every link says when to read it |
 | Decision question | a single `Check:` line |
 
-- **A rule that code or docs cite gets its own heading with a short, stable English title.** Citations outside rule files are written `<repo-root path>#<anchor>`; a bare `AGENTS.md#x` is the root file and package files are written in full (`packages/web/AGENTS.md#x`). The anchor is the heading lower-cased, punctuation dropped, spaces turned into hyphens.
-- **Renaming or deleting a cited heading updates every citation in the same PR.** Find them with `git grep -n "AGENTS.md#<old-anchor>"` before you rename; repo-lint `agent-rule-files` fails on any citation whose heading is gone.
+- **A rule that code or docs cite gets its own heading with a short, stable English title.** Every citation, in skills too, is written `<repo-root path>#<anchor>` or as a relative markdown link with an anchor; a bare root path means the root file (`AGENTS.md#rule-files`) and package files are written in full (`packages/web/AGENTS.md#every-scroller-is-a-scrollarea`). The anchor is the heading lower-cased, punctuation dropped, spaces turned into hyphens.
+- **Renaming or deleting a cited heading updates every citation in the same PR.** Find them by searching the repository for the old anchor before you rename; repo-lint `agent-rule-files` fails on any citation whose heading is gone.
 - **Link to another rule file by relative path, and to a skill as "invoke `/<name>`" plus a relative link to its `SKILL.md`.**
 
 ## What not to write

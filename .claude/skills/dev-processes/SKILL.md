@@ -29,7 +29,7 @@ Check: am I about to type `pnpm dev`? Run the lookup first.
 
 ### Start it detached
 
-**Never start the stack, or any process that must outlive the command, with the Bash tool's `run_in_background`.** When that background task is stopped, the signal goes to its whole process group and takes turbo, vite and every `tsx watch` with it.
+The Bash tool's `run_in_background` does not detach: when that background task is stopped, the signal goes to its whole process group and takes turbo, vite and every `tsx watch` with it.
 
 macOS has no `setsid` command; start a new session through Python instead:
 
@@ -37,7 +37,7 @@ macOS has no `setsid` command; start a new session through Python instead:
 python3 -c "import subprocess; subprocess.Popen(['pnpm','dev'], cwd='<worktree>', stdout=open('<log>','w'), stderr=subprocess.STDOUT, start_new_session=True)"
 ```
 
-**Then confirm it detached: its process group must differ from the shell's.** A port answering is not proof.
+A detached process has a process group different from the shell's:
 
 ```sh
 ps -o pgid= -p <service-pid>
@@ -59,7 +59,7 @@ A process whose command line holds another worktree's path is not yours: do not 
 
 ## Stopping processes
 
-**Kill only the PIDs you recorded when you started them; never `pkill -f`.** A name pattern also matches every other worktree's identical command line.
+A `pkill -f` name pattern also matches every other worktree's identical command line.
 
 **Kill several PIDs with `xargs`, one per call, and keep stderr visible.**
 
@@ -85,7 +85,7 @@ Check: before blaming a stale process, does its age show it predates the edit?
 
 ## Generating load
 
-**Generate load only with commands that end by themselves, and clean up a long-lived process in a separate command.**
+Load commands that end by themselves:
 
 ```sh
 node -e "const t=Date.now();while(Date.now()-t<40000);" &   # exits after 40 s
@@ -94,8 +94,6 @@ timeout 60 yes > /dev/null &                                 # needs GNU coreuti
 ```
 
 Only a command timeout signals the whole group; when the shell ends any other way, a child of `&` is adopted by init (PPID 1) and keeps a core busy, which also makes unrelated timing tests fail.
-
-Check: if nobody kills it, does it stop?
 
 ## Commands held in variables (zsh)
 

@@ -5,7 +5,7 @@ description: Use before writing or reviewing SQL, Drizzle queries, row locks or 
 
 # PostgreSQL and Drizzle
 
-The rules for where schema, migrations and repos live are in [packages/core/AGENTS.md](../../../packages/core/AGENTS.md); read it before touching `schema.ts` or a migration. This skill holds the query, locking and migration traps.
+The rules for where schema, migrations and repos live are in [packages/core/AGENTS.md#database](../../../packages/core/AGENTS.md#database); read it before touching `schema.ts` or a migration. This skill holds the query, locking and migration traps.
 
 ## Row locks
 

@@ -15,7 +15,7 @@ Driving the canvas, timing assertions and measuring geometry have their own trap
 
 | Check | How |
 |---|---|
-| The listener is yours | `lsof -nP -iTCP:<port> -sTCP:LISTEN -t`, then `ps -o pid,etime,command -p <pid>`: the command line must hold your worktree's path; for starting and reusing the stack, invoke `/dev-processes` ([SKILL.md](../dev-processes/SKILL.md)) |
+| The listener is yours | `lsof -nP -iTCP:<port> -sTCP:LISTEN -t`, then `ps -o pid,etime,command -p <pid>`: the command line must hold your worktree's path; for starting and reusing the stack, invoke `/dev-processes` ([SKILL.md](../dev-processes/SKILL.md#starting-the-stack)) |
 | A library change is built | After editing `shared`, `core` or `domain` without root `pnpm dev` running, `pnpm build --filter=@breatic/<pkg>...`; then the listener's start time must be later than the build. An empty PID means it is restarting: wait for the new one |
 | The browser loaded new code | A long-running dev server can serve `504 (Outdated Optimize Dep)` for modules after a merge, or render perfectly from code built before your change; restart `pnpm dev` before judging red or green |
 
@@ -51,7 +51,7 @@ Check: which step of this spec reaches the line I changed, and what does that st
 
 **The suite makes its own accounts, studios and Projects (docs §2.1); never register an account for a spec or point a spec at a personal one.**
 
-**For checks you drive by hand, take a login from `tasks/test_account` (gitignored, one per machine).** Multi-member flows (invites, transfers, members joining and leaving) need several: register a batch at once and write each email, password and handle back into that file. Leave these accounts in the local dev database; they exist to be reused.
+**For hand-driven checks, register accounts through the UI and reuse them.** Multi-member flows (invites, transfers, members joining and leaving) need several: register a batch at once. Leave these accounts in the local dev database; they exist to be reused.
 
 **Remove every Space you create outside the suite.** The suite's own are checked by teardown (docs §3), but a probe or one-off script does not run a spec's `afterEach`: call `deleteSpace` from `tests/helpers/space.ts` itself. Spaces made by hand are at least closed with the tab's close button (`space-tab-close-<id>`), which releases the document; deleting through the drawer also keeps the Project's Space count down. Collab caps writable connections per document (`packages/collab/src/services/connection-registry.ts`) and downgrades the excess to read-only, so leftovers make later cases fail on the read-only notice.
 

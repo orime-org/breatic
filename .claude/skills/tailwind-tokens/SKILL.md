@@ -34,8 +34,8 @@ Tokens live in `packages/web/src/theme/tokens.css`. `:root` holds the neutral ra
 ## What contrast rules apply to
 
 - **The 3:1 non-text contrast rule (WCAG 1.4.11) applies to input boundaries, focus indicators and selected states, not to decorative container, card or panel hairlines.** Do not darken or thicken container borders to reach 3:1; hairlines around 1.1–1.5:1 are intended.
-- **Contrast math applies only to semantic colours that carry text; identity colours (group backgrounds, tags) are hand-tuned per theme with no formula.** The text-carrying values are already fixed, so do not recompute them. The locked error red is a package rule in `packages/web/AGENTS.md`.
+- **Contrast math applies only to semantic colours that carry text; identity colours (group backgrounds, tags) are hand-tuned per theme with no formula.** The text-carrying values are already fixed, so do not recompute them. The locked error red is a package rule in `packages/web/AGENTS.md#locked-colours-and-motion`.
 
 ## Scoped rules in index.css
 
-- **Once a scope rule sits in `@layer`, any property that both the scope and its elements' utilities set belongs on the element.** A utility always beats the layered scope for that property: `.chat-markdown` keeps its line height in `MarkdownMessage`'s `SIZE_CLASS` (`chat-markdown text-sm leading-[1.65]`) because `text-sm` carries a line height of its own. The rule that scope rules must be layered at all is in `packages/web/AGENTS.md`.
+- **Once a scope rule sits in `@layer`, any property that both the scope and its elements' utilities set belongs on the element.** A utility always beats the layered scope for that property: `.chat-markdown` keeps its line height in `MarkdownMessage`'s `SIZE_CLASS` (`chat-markdown text-sm leading-[1.65]`) because `text-sm` carries a line height of its own. The rule that scope rules must be layered at all is in `packages/web/AGENTS.md#scope-rules-sit-in-a-layer`.

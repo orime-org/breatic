@@ -75,7 +75,7 @@ Check: does this node type carry a cover at runtime (only video does)? A comment
 
 ### Releasing a document's resources
 
-Memory-only state tied to a canvas document (its `Y.UndoManager`, for example) is cached per document with `createDocScopedCache`, which evicts on `destroyDoc`. The rule and its reasons are in invoke `/react-state-traps` ([Bind memory-only state to its document](../react-state-traps/SKILL.md#bind-memory-only-state-to-its-document)); read it before adding any cache keyed by document name.
+Memory-only state tied to a canvas document (its `Y.UndoManager`, for example) is cached with `createDocScopedCache`; before adding one, invoke `/react-state-traps` ([Bind memory-only state to its document](../react-state-traps/SKILL.md#bind-memory-only-state-to-its-document)).
 
 ### Mini-tool runs create new nodes
 

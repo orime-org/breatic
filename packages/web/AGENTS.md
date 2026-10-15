@@ -94,7 +94,7 @@ ESLint `breatic/no-raw-button` scans `src/**/*.{ts,tsx}` and exempts only `compo
 **A link inside content uses `color: var(--color-content-link)` plus an underline.** Rich text also has an underline mark, so colour separates links from text and the underline keeps colour from being the only signal. `src/theme/__tests__/content-link-contrast.test.ts` measures its contrast. Chrome links (navigation, breadcrumbs, button-like links) stay neutral. Check: is this link inside running text and must it read as clickable? → content-link plus underline.
 
 ## Locked colours and motion
-**`--color-palette-red` and every `--color-status-error*` token are locked.** Only this red is locked; every other colour may be tuned.
+**`--color-palette-red` and every `--color-status-error*` token are locked.** Only this red is locked; every other colour may be tuned. It is below AA on menu surfaces by decision; a contrast finding on it is answered by citing this rule.
 
 **No component adds a `prefers-reduced-motion` fallback.** Motion is part of the product; keyboard, semantics and contrast still apply.
 

@@ -5,7 +5,7 @@ description: Use before building or changing anything in `packages/web/src/compo
 
 # Radix and shadcn primitives (packages/web)
 
-`components/ui/` is vendored shadcn code built on Radix and styled with Tailwind. The package rules (only one `TooltipProvider`, overlays on the canvas follow the viewport, one hover overlay per element, `Button` only) are in `packages/web/AGENTS.md`.
+`components/ui/` is vendored shadcn code built on Radix and styled with Tailwind. The package rules are in `packages/web/AGENTS.md#one-tooltipprovider`, `packages/web/AGENTS.md#canvas-overlays-follow-the-viewport`, `packages/web/AGENTS.md#overlays` (one hover overlay per element) and `packages/web/AGENTS.md#every-button-is-button`.
 
 ## Vendor defaults
 
@@ -41,7 +41,7 @@ description: Use before building or changing anything in `packages/web/src/compo
 
 ## Evaluating a third-party UI library
 
-A library can be adopted only if every visible part of it can be restyled into ours and it coexists with Radix and shadcn (the admission rule is in `packages/web/AGENTS.md`). Our UI has three layers, and each is checked on its own:
+A library can be adopted only if every visible part of it can be restyled into ours and it coexists with Radix and shadcn (the admission rule is in `packages/web/AGENTS.md#vendor-primitives`). Our UI has three layers, and each is checked on its own:
 
 | Layer | Ours | The library must | How to check |
 |---|---|---|---|
