@@ -7,6 +7,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { Point, util } from 'fabric';
 
 import { fromFabric, markBackground, markStrokePx, toFabric } from '@web/spaces/canvas/mini-tool/mark-fabric';
 import type { MarkObject } from '@web/stores/mark-draft';
@@ -36,6 +37,15 @@ function rounded(object: MarkObject): unknown {
 describe('toFabric and fromFabric', () => {
   it.each(OBJECTS.map((object) => [object.kind, object] as const))('round-trips a %s', (_kind, object) => {
     expect(rounded(fromFabric(toFabric(object, BOX), BOX))).toEqual(rounded(object));
+  });
+
+  // The same smoothing the pencil drew the stroke with, so it does not change shape when committed.
+  it('draws a pen stroke through Fabric’s pencil smoothing of its points', () => {
+    const pen = OBJECTS[4]!;
+    if (pen.kind !== 'pen') throw new Error('not a pen');
+    const points = pen.points.map(([x, y]) => new Point(x * BOX.width, y * BOX.height));
+    const expected = util.getSmoothPathFromPoints(points, markStrokePx(pen.size, BOX) / 1000);
+    expect((toFabric(pen, BOX) as unknown as { path: unknown }).path).toEqual(expected);
   });
 
   it('reads a moved rectangle back at its new place', () => {

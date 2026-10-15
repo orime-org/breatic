@@ -7,7 +7,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { IText, Path, Point } from 'fabric';
+import { IText, Path, Point, util } from 'fabric';
 
 import { MarkCanvasController } from '@web/spaces/canvas/mini-tool/mark-canvas';
 import { markFontPx } from '@web/spaces/canvas/mini-tool/mark-fabric';
@@ -220,6 +220,16 @@ describe('MarkCanvasController', () => {
     expect(mark().objects).toEqual([expect.objectContaining({ kind: 'pen', points: [[0.1, 0.1], [0.2, 0.2], [0.3, 0.1]] })]);
     expect(mark().undo).toHaveLength(1);
     expect(mark().tool).toBe('pen');
+  });
+
+  // Fabric's pencil smooths the samples into curves whose end points are the
+  // midpoints between them; the stroke keeps the samples the curves go through.
+  it('keeps the points the pencil sampled, not the curves’ end points', () => {
+    store.getState().setMarkTool('pen');
+    controller.sync();
+    const samples = [new Point(40, 30), new Point(80, 60), new Point(120, 30)];
+    controller.canvas.fire('path:created', { path: new Path(util.getSmoothPathFromPoints(samples, 0)) });
+    expect(mark().objects).toEqual([expect.objectContaining({ kind: 'pen', points: [[0.1, 0.1], [0.2, 0.2], [0.3, 0.1]] })]);
   });
 
   it('starts a text where the text tool is released and writes it back as one step', () => {
