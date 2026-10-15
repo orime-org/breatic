@@ -94,8 +94,12 @@ describe('which pastes are files (A3)', () => {
     expect(pastedFiles(clipboard([PNG]))).toEqual([PNG]);
   });
 
-  it('takes the file when the HTML beside it is just that one image', () => {
-    const data = clipboard([PNG], { 'text/html': '<meta charset="utf-8"><img src="https://x.example/a.png">' });
+  it.each([
+    ['image', '<img src="https://x.example/a.png">'],
+    ['video', '<video src="https://x.example/a.mp4"></video>'],
+    ['audio', '<audio src="https://x.example/a.mp3"></audio>'],
+  ])('takes the file when the HTML beside it is just that one %s', (_kind, element) => {
+    const data = clipboard([PNG], { 'text/html': `<meta charset="utf-8">${element}` });
     expect(pastedFiles(data)).toEqual([PNG]);
   });
 
