@@ -21,7 +21,7 @@ import {
   type OperationEventBody,
   type StripeFailure,
 } from "@server/modules/credit-refund/operation-transitions.js";
-import { sendOperationMailsLater } from "@server/modules/credit-refund/refund-mail.js";
+import { followUpOperationLater } from "@server/modules/credit-refund/refund-follow-up.js";
 import { applyRefundSnapshot, judgeOwnRefund } from "@server/modules/credit-refund/refund-snapshot.js";
 import { classifyCreateAnswer } from "@server/modules/credit-refund/stripe-answer.js";
 import {
@@ -170,7 +170,7 @@ async function commit(
     if (cell) await transitionOperation(tx, { id: attempt.op.id }, eventOf(attempt, await cell(tx)));
     return ids;
   });
-  for (const id of new Set([attempt.op.id, ...judged])) sendOperationMailsLater(id);
+  for (const id of new Set([attempt.op.id, ...judged])) followUpOperationLater(id);
 }
 
 /**

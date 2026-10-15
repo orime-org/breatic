@@ -114,14 +114,14 @@ export async function findIdByPaymentIntent(paymentIntent: string): Promise<stri
 /**
  * What the buyer paid, tax included: `coalesce(total_cents, amount_cents)`.
  * @param id - Payment UUID
- * @param tx - The caller's transaction
+ * @param tx - The caller's transaction, if any
  * @returns The paid amount and its currency, or null if not found
  */
 export async function readPaidAmount(
   id: string,
-  tx: DbTx,
+  tx?: DbTx,
 ): Promise<{ paidCents: number; currency: string } | null> {
-  const rows = await tx
+  const rows = await (tx ?? db)
     .select({
       paidCents: sql<string>`coalesce(${payments.totalCents}, ${payments.amountCents})`,
       currency: payments.currency,

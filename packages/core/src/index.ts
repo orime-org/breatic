@@ -261,7 +261,7 @@ export {
   setAdsConversionConfigForTest,
   type AdsConversionConfig,
 } from "@core/ads/ads-conversion.js";
-export { getUploadStatus, moveUpload } from "@core/ads/ads-conversion.repo.js";
+export { findUploadByPayment, getUploadStatus, moveUpload } from "@core/ads/ads-conversion.repo.js";
 export {
   ADS_CONVERSIONS,
   ADS_SWEEP_JOB,
