@@ -118,7 +118,49 @@ describe('adjustPixels', () => {
     expect(maxDiff(adjusted(source, { grain: 80 }, 11).data, adjusted(source, { grain: 80 }, 11).data)).toBe(0);
   });
 
-  it.each(['sharpness', 'clarity', 'grain'] as const)('looks the same at two resolutions with %s', (field) => {
+  // The result is shown at the preview's size by the browser averaging its
+  // pixels, which thins independent grain by the side it shrinks by.
+  it.each([2, 4])('lays grain as strong in a preview drawn 1/%i of the source as in the export shown at that size', (k) => {
+    const side = 128;
+    const grey = (size: number): Pixels => {
+      const data = new Uint8ClampedArray(size * size * 4).fill(128);
+      for (let i = 3; i < data.length; i += 4) data[i] = 255;
+      return { data, width: size, height: size };
+    };
+    let shown = adjusted(grey(side), { grain: 100 });
+    for (let s = k; s > 1; s /= 2) shown = half(shown);
+    const preview = adjusted(grey(side / k), { grain: 100 }, 7, side);
+    const spread = (pixels: Pixels, channel: number): number => {
+      const values = Array.from({ length: pixels.width * pixels.height }, (_, i) => pixels.data[i * 4 + channel] ?? 0);
+      const mean = values.reduce((sum, v) => sum + v, 0) / values.length;
+      return Math.sqrt(values.reduce((sum, v) => sum + (v - mean) ** 2, 0) / values.length);
+    };
+    for (let channel = 0; channel < 3; channel++) {
+      const ratio = spread(preview, channel) / spread(shown, channel);
+      expect(ratio, `channel ${channel}`).toBeGreaterThan(0.8);
+      expect(ratio, `channel ${channel}`).toBeLessThan(1.25);
+    }
+  });
+
+  it.each([{ noiseReduction: 100 }, { sharpness: 100 }, { clarity: 100 }])(
+    'keeps a cut-out edge its own colour with %o',
+    (value) => {
+      const width = 40;
+      const data = new Uint8ClampedArray(width * 8 * 4);
+      for (let y = 0; y < 8; y++) for (let x = 20; x < width; x++) data.set([200, 60, 40, 255], (y * width + x) * 4);
+      const out = { data, width, height: 8 };
+      adjustPixels(out, { ...defaultAdjustValue, ...value }, 7);
+      for (let x = 20; x < width; x++) {
+        const i = (4 * width + x) * 4;
+        const gap = Math.max(...[200, 60, 40].map((v, k) => Math.abs((out.data[i + k] ?? 0) - v)));
+        expect(gap, `x=${x}`).toBeLessThanOrEqual(4);
+        expect(out.data[i + 3]).toBe(255);
+      }
+      expect(out.data[(4 * width + 10) * 4 + 3]).toBe(0);
+    },
+  );
+
+  it.each(['sharpness', 'clarity'] as const)('looks the same at two resolutions with %s', (field) => {
     // The small one is a preview of the large: it draws the large picture's effect.
     const small = adjusted(picture(64), { [field]: 80 }, 7, 128);
     const large = half(adjusted(picture(128), { [field]: 80 }));
