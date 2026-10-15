@@ -395,6 +395,22 @@ const ENDINGS: Ending[] = [
     carries: "half an ans",
   },
   { name: "stopped while the tool ran", calls: [ASKS_FOR_LOOKUP], toolStops: true, carries: '"toolCallId":"tc-1"' },
+  {
+    name: "a provider error after the tool call",
+    calls: [[...ASKS_FOR_LOOKUP.slice(0, -1), { type: "error", error: new Error("overloaded") }]],
+    carries: "could not be finished",
+  },
+  {
+    name: "a provider error in the middle of thinking",
+    calls: [
+      [
+        { type: "reasoning-start", id: "r1" },
+        { type: "reasoning-delta", id: "r1", delta: "half a thou" },
+        { type: "error", error: new Error("overloaded") },
+      ],
+    ],
+    carries: "could not be finished",
+  },
 ];
 
 /**
@@ -454,5 +470,9 @@ describe("the turn after one that ended", () => {
     // Every call sent has its result beside it, or the provider refuses it.
     const { asked, answered } = callsIn(second);
     expect(answered.sort()).toEqual(asked.sort());
+    // Thinking goes back only from a step that finished.
+    if (ending.stopOnChunk !== undefined || ending.calls.some((call) => call.some((part) => part.type === "error"))) {
+      expect(JSON.stringify(second.slice(lastOfFirst.length, -1))).not.toContain('"reasoning"');
+    }
   });
 });
