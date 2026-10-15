@@ -30,7 +30,8 @@ import { buildTurnContext } from "@server/agent/turn-context.js";
 import { watchModelCalls, type ModelCallWatch } from "@server/agent/model-call-watch.js";
 import type { ChatAttachedChip, ChatSpaceContext, MessagePart, ToolFailure } from "@breatic/shared";
 import { toolFailureOf, wireLineOf, wordsForTitle } from "@breatic/shared";
-import { userMessageForModel } from "@server/agent/user-turn.js";
+import { openSpaceKey, userMessageForModel } from "@server/agent/user-turn.js";
+import type { UserTurn } from "@server/agent/user-turn.js";
 import * as messageRepo from "@server/modules/conversation/conversation-message.repo.js";
 import { toStoredParts } from "@server/modules/conversation/message-part-mapping.js";
 import * as conversationService from "@server/modules/conversation/conversation.service.js";
@@ -38,8 +39,8 @@ import { foldIfOverBudget } from "@server/agent/turn-budget.js";
 import type { Assembly } from "@server/agent/turn-budget.js";
 import { getContext } from "@breatic/core";
 import { logger } from "@breatic/core";
-import { historyForModel, prefixHash } from "@server/agent/history-replay.js";
-import type { ReplyForModel } from "@server/agent/history-replay.js";
+import { historyForModel, lastFullSnapshotKey, prefixHash } from "@server/agent/history-replay.js";
+import type { ReplyForModel, UserForModel } from "@server/agent/history-replay.js";
 import { FAILED_NOTE, STOP_NOTE, TRUNCATED_NOTE } from "@server/agent/model-messages.js";
 import { inProgressStep, replyTokens, type ReportedUsage } from "@server/agent/reply-for-model.js";
 import { measureMessages, measurePayload } from "@server/agent/payload-size.js";
@@ -148,8 +149,8 @@ export class MainAgent {
     // follow it, read fresh with each message. The message is kept as it was
     // sent and later turns send it again as it is, so a provider's prefix
     // cache matches everything up to the new message.
-    const forModel = userMessageForModel(readerClockNote(new Date(), timeZone), { ...space, chips: attached, message: said });
-    return this.runStream(forModel, turnIndex, title, openDocumentOf(space), signal);
+    const ask = { clockNote: readerClockNote(new Date(), timeZone), turn: { ...space, chips: attached, message: said } };
+    return this.runStream(ask, turnIndex, title, openDocumentOf(space), signal);
   }
 
   /**
@@ -174,9 +175,12 @@ export class MainAgent {
    * the conversation and its history -- is time the
    * reader spends in front of a screen where nothing has happened, and a
    * stream that exists already has somewhere to put the name in the meantime.
-   * @param forModel - This turn's user message as the model is sent it: the
-   *   reader's clock, the attachments, then the typed words. Put in front of
-   *   the model on its own.
+   * @param ask - This turn's user message before it is laid out: the
+   *   reader's clock, and the Spaces, attachments and typed words. Laid out
+   *   with each assembly, which knows whether the history already holds the
+   *   open Space, and put in front of the model on its own.
+   * @param ask.clockNote - The line saying what time it is for the reader.
+   * @param ask.turn - What the message is made of.
    * @param turnIndex - The turn this run answers. A parameter and not a
    *   context field: it is known one line before the call, both the reply and
    *   the charge are filed under it, and neither has anything sensible to do
@@ -193,7 +197,7 @@ export class MainAgent {
    * @returns The turn's chunks, in the SDK's own protocol.
    */
   private runStream(
-    forModel: string,
+    ask: { clockNote: string; turn: UserTurn },
     turnIndex: number,
     title: string | null,
     openDocument: OpenDocument | null,
@@ -313,7 +317,6 @@ export class MainAgent {
      * @param ended.parts - The reply's parts, as the reader received them.
      * @param ended.tools - The turn's tools.
      * @param ended.settled - How the turn's calls ended.
-     * @param ended.userMessage - This turn's user message as it was sent.
      * @returns The copy, or undefined when the model was never asked.
      * @throws {never} Never; a step that cannot be rebuilt is left out.
      */
@@ -323,9 +326,8 @@ export class MainAgent {
       parts: Parameters<typeof inProgressStep>[0];
       tools: ToolSet;
       settled: Parameters<typeof inProgressStep>[3];
-      userMessage: ModelMessage;
     }): Promise<ReplyForModel | undefined> => {
-      if (sentPrefixHash === undefined) return undefined;
+      if (sentPrefixHash === undefined || userKept === undefined) return undefined;
       let unfinished: ModelMessage[] = [];
       if (ended.exit === "aborted" || ended.exit === "failed") {
         try {
@@ -352,16 +354,16 @@ export class MainAgent {
         messages,
         prefixHash: sentPrefixHash,
         ...replyTokens(reported, {
-          user: measureMessages([ended.userMessage]),
+          user: measureMessages(userKept.messages),
           reply: measureMessages(messages),
           request: requestChars,
         }),
       };
     };
 
-    // One object for every assembly and for the copy kept of it, so what is
-    // stored is what went out.
-    const userMessage: ModelMessage = { role: "user", content: forModel };
+    // This turn's message as the latest assembly laid it out, kept as it is
+    // so what is stored is what went out.
+    let userKept: UserForModel | undefined;
 
     /**
      * Read everything the model is given, and lay it out as it will be sent.
@@ -390,19 +392,28 @@ export class MainAgent {
         memoryContext,
       });
 
-      return {
-        agentConfig,
-        history,
-        watermark,
-        messages: [
-          ...historyForModel(history, {
-            system: agentConfig.instructions,
-            tools: agentConfig.tools,
-            modelId: agentConfig.modelId,
-          }),
-          userMessage,
-        ],
+      // The open Space goes as one line while it is what the history,
+      // folded as it is now, last sent of it in full.
+      const current = ask.turn.current_space;
+      const key = openSpaceKey(current);
+      const unchanged = key !== undefined && current !== undefined && lastFullSnapshotKey(history, current.id) === key;
+      const userMessage: ModelMessage = {
+        role: "user",
+        content: userMessageForModel(ask.clockNote, ask.turn, { spaceUnchanged: unchanged }),
       };
+      const messages = [
+        ...historyForModel(history, {
+          system: agentConfig.instructions,
+          tools: agentConfig.tools,
+          modelId: agentConfig.modelId,
+        }),
+        userMessage,
+      ];
+      userKept = {
+        messages: [userMessage],
+        ...(key === undefined || current === undefined ? {} : { snapshot: { spaceId: current.id, key, full: !unchanged } }),
+      };
+      return { agentConfig, history, watermark, messages };
     };
 
     /**
@@ -466,7 +477,7 @@ export class MainAgent {
       // render the message from its parts the way they always did, and only
       // the cache match past it is lost.
       try {
-        await messageRepo.setUserForModel(conversationId, turnIndex, { messages: [userMessage] });
+        await messageRepo.setUserForModel(conversationId, turnIndex, userKept);
       } catch (err) {
         logger.error({ err, userId, conversationId, projectId, turnIndex }, "turn_user_for_model_write_failed");
       }
@@ -759,7 +770,6 @@ export class MainAgent {
           parts: responseMessage.parts,
           tools: turnTools,
           settled: { answered: whatToolAnswered, ended: howToolEnded },
-          userMessage,
         });
 
         let creditsUsed = 0;

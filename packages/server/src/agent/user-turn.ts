@@ -9,6 +9,7 @@
  * the whole turn.
  */
 
+import { createHash } from "node:crypto";
 import type { ChatAttachedChip, ChatCanvasDetail, ChatCurrentSpace, ChatSpace, ChatSpaceContext } from "@breatic/shared";
 import { attachmentSection, attachmentTitle, writeReferences } from "@breatic/shared";
 
@@ -38,19 +39,28 @@ function spaceListSection(spaces: readonly ChatSpace[], total: number, openId: s
 }
 
 /**
+ * What stands in for an open Space whose content is what the history last
+ * sent of it in full (inner#1549): the content once, then this line for as
+ * long as it stays the same, so every turn does not carry it again.
+ */
+export const UNCHANGED_SPACE_NOTE = "Unchanged since the most recent message above that shows its content.";
+
+/**
  * What the open Space holds, or why it holds nothing the model can read.
  *
  * A document's text is quoted, so a heading in it is not read as a heading of
  * the turn; a canvas's text is JSON on one line and goes in as it is.
  * @param current - The Space the reader has open.
+ * @param unchanged - Its content is what the history last sent of it in full.
  * @returns The section.
  * @throws {never} Never.
  */
-function openSpaceSection(current: ChatCurrentSpace): string {
+function openSpaceSection(current: ChatCurrentSpace, unchanged = false): string {
   const heading = `## The Space the reader has open: ${JSON.stringify(current.name)} (${current.kind})`;
   if (current.state === "loading") return `${heading}\n\nIts content has not loaded yet.`;
   if (current.state === "unreadable") return `${heading}\n\nThe content of a ${current.kind} Space cannot be read.`;
   if (current.content === "") return `${heading}\n\nThis Space is empty.`;
+  if (unchanged) return `${heading}\n\n${UNCHANGED_SPACE_NOTE}`;
   const isDocument = current.kind === "document";
   const body = isDocument ? JSON.stringify(current.content) : current.content;
   const shown = `${String(current.content.length)} of ${String(current.total_chars)} characters`;
@@ -61,6 +71,21 @@ function openSpaceSection(current: ChatCurrentSpace): string {
         ? `\n(Showing the first ${shown}.)`
         : `\n${canvasNote(shown, current.detail)}`;
   return `${heading}\n\n${body}${cut}`;
+}
+
+/**
+ * What the open Space would be sent as, hashed, to tell whether it is what
+ * the history last sent of it in full.
+ *
+ * Taken over the whole section, heading and note on what was cut included:
+ * a renamed Space or a different cut is not the copy above.
+ * @param current - The Space the reader has open, if any.
+ * @returns The hash, or undefined when its section is already one line.
+ * @throws {never} Never.
+ */
+export function openSpaceKey(current: ChatCurrentSpace | undefined): string | undefined {
+  if (current?.state !== "loaded" || current.content === "") return undefined;
+  return createHash("sha256").update(openSpaceSection(current)).digest("hex");
 }
 
 /**
@@ -105,14 +130,17 @@ function canvasNote(shown: string, detail: ChatCanvasDetail): string {
  * One user message as the model is sent it: the Spaces, the attachments, then
  * the words under their own heading.
  * @param turn - What the message is made of.
+ * @param sent - What the history already holds.
+ * @param sent.spaceUnchanged - The open Space is what the history last sent
+ *   of it in full, so it goes as one line.
  * @returns The typed words alone when there is no Space and nothing attached.
  * @throws {never} Never.
  */
-export function userTurnForModel(turn: UserTurn): string {
+export function userTurnForModel(turn: UserTurn, sent: { spaceUnchanged?: boolean } = {}): string {
   const { chips, message, spaces = [], spaces_total: spacesTotal = spaces.length, current_space: current } = turn;
   const sections: string[] = [];
   if (spaces.length > 0) sections.push(spaceListSection(spaces, spacesTotal, current?.id));
-  if (current) sections.push(openSpaceSection(current));
+  if (current) sections.push(openSpaceSection(current, sent.spaceUnchanged === true));
   if (chips.length > 0) sections.push(attachmentSection(chips));
   if (sections.length === 0) return message;
   const words = writeReferences(chips, message, (chip, n) => `[Attachment ${String(n)}: ${attachmentTitle(chip)}]`);
@@ -138,9 +166,15 @@ export const READER_LANGUAGE_REMINDER =
  * message itself, then the reminder of the reader's language.
  * @param clockNote - The line that says what time it is for the reader.
  * @param turn - What the message is made of.
+ * @param sent - What the history already holds.
+ * @param sent.spaceUnchanged - The open Space goes as one line.
  * @returns The message text.
  * @throws {never} Never.
  */
-export function userMessageForModel(clockNote: string, turn: UserTurn): string {
-  return `${clockNote}\n\n${userTurnForModel(turn)}\n\n${READER_LANGUAGE_REMINDER}`;
+export function userMessageForModel(
+  clockNote: string,
+  turn: UserTurn,
+  sent: { spaceUnchanged?: boolean } = {},
+): string {
+  return `${clockNote}\n\n${userTurnForModel(turn, sent)}\n\n${READER_LANGUAGE_REMINDER}`;
 }
