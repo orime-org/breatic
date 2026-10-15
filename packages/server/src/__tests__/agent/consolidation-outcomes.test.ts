@@ -314,6 +314,50 @@ describe("a consolidation that works", () => {
     expect(prompt).toContain("my regex is $`abc$& and $' too");
   });
 
+  it("reads a reply as its words, the tools it called and what they answered, nothing else", async () => {
+    const window = [
+      {
+        role: "assistant" as const,
+        content: [
+          { type: "reasoning" as const, text: "private working", providerOptions: { anthropic: { signature: "s" } } },
+          { type: "text" as const, text: "Let me look." },
+          {
+            type: "tool-call" as const,
+            toolCallId: "tc-1",
+            toolName: "web_search",
+            input: { query: "lighthouse" },
+            providerOptions: { openrouter: { reasoning_details: [] } },
+          },
+        ],
+      },
+      {
+        role: "tool" as const,
+        content: [
+          {
+            type: "tool-result" as const,
+            toolCallId: "tc-1",
+            toolName: "web_search",
+            output: { type: "text" as const, value: "three pages about lighthouses" },
+          },
+        ],
+      },
+    ];
+
+    await consolidate({ transcript: window });
+
+    const prompt = String(
+      (generateTextRetry.mock.calls[0]?.[0] as { messages: { content: string }[] })
+        .messages[0]?.content,
+    );
+    expect(prompt).toContain("Let me look.");
+    expect(prompt).toContain("web_search");
+    expect(prompt).toContain('{"query":"lighthouse"}');
+    expect(prompt).toContain("three pages about lighthouses");
+    expect(prompt).not.toContain("private working");
+    expect(prompt).not.toContain("providerOptions");
+    expect(prompt).not.toContain("toolCallId");
+  });
+
   it("bills the studio once for the window it consumed", async () => {
     // T3: the key is the conversation and the watermark it started from, so
     // two tabs that computed the same window pay for it once.

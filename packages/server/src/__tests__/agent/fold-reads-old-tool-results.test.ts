@@ -30,6 +30,7 @@ vi.mock("@server/agent/consolidation-window.js", () => ({
 }));
 
 const { foldIfOverBudget } = await import("@server/agent/turn-budget.js");
+const { prefixHash } = await import("@server/agent/history-replay.js");
 const { EARLIER_RESULT_NOTE } = await import("@server/agent/stored-model-output.js");
 
 /** A turn whose model listing was written before the listing carried `needs`. */
@@ -85,5 +86,53 @@ describe("folding a history that holds an old tool result", () => {
       | { content: Array<{ output: unknown }> }
       | undefined;
     expect(toolMessage?.content[0]?.output).toEqual({ type: "text", value: EARLIER_RESULT_NOTE });
+  });
+});
+
+describe("folding a history kept as it was sent", () => {
+  it("hands the fold the reply as it was sent, without its thinking", async () => {
+    consolidateWindow.mockClear();
+    const asked = { role: "user" as const, content: "what was sent" };
+    const answered = [
+      {
+        role: "assistant" as const,
+        content: [
+          { type: "reasoning" as const, text: "private working", providerOptions: { anthropic: { signature: "s" } } },
+          { type: "text" as const, text: "the answer" },
+        ],
+      },
+    ];
+    const kept: ReplayRow[] = [
+      { role: "user", content: "q", parts: [{ type: "text", text: "q" }], ts: "", turnIndex: 1, forModel: { messages: [asked] } },
+      {
+        role: "assistant",
+        content: "the answer",
+        parts: [{ type: "text", text: "the answer" }],
+        ts: "",
+        turnIndex: 1,
+        forModel: {
+          messages: answered,
+          prefixHash: prefixHash({ system: "system", tools: {}, modelId: "test" }, [asked]),
+          turnTokens: 1,
+          endTokens: 2,
+        },
+      },
+    ];
+
+    await foldIfOverBudget(
+      {
+        agentConfig: { modelId: "test", instructions: "system", tools: {} },
+        history: kept,
+        watermark: 0,
+        messages: [{ role: "user", content: "and now?" }],
+      },
+      { userId: "u", conversationId: "c", projectId: "p" },
+    );
+
+    const transcript = JSON.stringify(consolidateWindow.mock.calls[0]?.[0].transcript);
+    expect(transcript).toContain("what was sent");
+    expect(transcript).toContain("the answer");
+    expect(transcript).not.toContain("private working");
+    expect(transcript).not.toContain("signature");
   });
 });
