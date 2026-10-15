@@ -962,8 +962,8 @@ export function renderProductGuide(): string {
       "taken out struck through in red and the new words in green, and two buttons: " +
       `${quoted(t("chat.documentProposal.addComment"))} puts the rewritten words on the passage as a comment, and ` +
       `${quoted(t("chat.documentProposal.apply"))} replaces the passage with them; a passage with no words, such ` +
-      "as an empty code block, an image, a video or an audio block, has only the second. When the passage holds colours, " +
-      `an alignment, column widths, merged cells or comments, a rewrite card adds ${quoted(t("chat.documentProposal.lossy"))} ` +
+      "as an empty code block, an image, a video or an audio block, has only the second. When the passage holds something " +
+      `Markdown cannot write, such as colours, an alignment, underlining, column widths, merged cells or comments, a rewrite card adds ${quoted(t("chat.documentProposal.lossy"))} ` +
       "An insert card that goes after a passage first shows that passage under " +
       `${quoted(t("chat.documentProposal.insertAfter"))}, naming a passage with no words by its kind, such as ` +
       `${quoted(t("spaces.document.media.image"))} or ${quoted(t("chat.documentProposal.headingBlock"))}; it ` +

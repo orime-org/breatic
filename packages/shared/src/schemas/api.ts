@@ -237,7 +237,7 @@ const chatDocumentBlockSchema = z
     /** The BlockNote block type, so the nearest heading above a block can be found. */
     type: z.string().min(1),
     text: z.string(),
-    /** Whether the block holds something Markdown cannot carry: colours, alignment, column widths, merged cells, comments. */
+    /** Whether the block holds something Markdown cannot carry, such as colours, alignment, underlining, column widths, merged cells or comments. */
     lossy: z.boolean(),
     partial: z.boolean(),
   })
