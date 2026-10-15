@@ -13,6 +13,7 @@ import { describe, it, expect, afterEach } from 'vitest';
 import {
   OURS,
   TABLE,
+  TWO_CELLS,
   blockOrder,
   caretIn,
   drop,
@@ -398,6 +399,21 @@ describe('a figure holding a medium and more than its caption', () => {
     ],
     ['a table beside it', `<figure><img src="${U}a.png"><table><tr><td>t</td></tr></table></figure>`, ['paragraph:lead', 'image[pending|]', 'table']],
     [
+      'its medium inside a heading',
+      `<figure><h2>T<img src="${U}a.png"></h2><figcaption>c</figcaption></figure>`,
+      ['paragraph:leadT', 'image[pending|c]'],
+    ],
+    [
+      'its medium inside a list',
+      `<figure><ul><li>a</li><li><img src="${U}a.png"></li><li>b</li></ul></figure>`,
+      ['paragraph:leada', 'image[pending|]', 'bulletListItem:b'],
+    ],
+    [
+      'a figure of its own around the medium',
+      `<figure><figure><img src="${U}a.png"><figcaption>in</figcaption></figure><figcaption>out</figcaption></figure>`,
+      ['paragraph:lead', 'image[pending|in]', 'paragraph:out'],
+    ],
+    [
       'words in its line and a caption',
       `<figure><p>before <img src="${U}a.png"> after</p><figcaption>cap</figcaption></figure>`,
       ['paragraph:leadbefore', 'image[pending|cap]', 'paragraph:after'],
@@ -433,25 +449,106 @@ describe('a figure holding a medium and more than its caption', () => {
     expect(landed.cells).toBe(plain.cells);
     expect(landed.rows).toEqual([...plain.rows.slice(0, 1), 'image[pending|]', ...plain.rows.slice(1)]);
   });
+
+  it.each([
+    ['a picture that lands', `${U}a.png`, ['paragraph:lead', [['credit words', 'y']], 'image[pending|cap]']],
+    ['a picture that does not land', 'http://e.example/a.png', ['paragraph:lead', [['credit words', 'y']]]],
+  ])('in a web table cell, with %s, leaves its other words in the cell, pasted or dropped', async (_what, src, expected) => {
+    const html = `<table><tr><td><figure><img src="${src}"><p>credit words</p><figcaption>cap</figcaption></figure></td><td>y</td></tr></table>`;
+    for (const how of ['paste', 'drop'] as const) {
+      const { editor } = open([{ type: 'paragraph', content: 'lead' }]);
+      const at = caretIn(editor, 0);
+
+      if (how === 'paste') paste(editor, html, 'x');
+      else drop(editor, at, html, 'x');
+      await settled();
+
+      expect(blocksAndCells(editor)).toEqual(expected);
+    }
+  });
+
+  it('with a figure of its own around a medium that does not land, takes that caption out with it', async () => {
+    const { editor, sink } = open([{ type: 'paragraph', content: 'lead' }, { type: 'paragraph', content: 'tail' }]);
+    select(editor, positionOf(editor, 'lead', 4));
+
+    paste(editor, '<figure><figure><img src="http://e.example/a.png"><figcaption>in</figcaption></figure><figcaption>out</figcaption></figure>', 'x');
+    await settled();
+
+    expect(shape(editor)).toEqual(['paragraph:leadout', 'paragraph:tail']);
+    expect(sink.onLeftOut.mock.calls).toEqual([[1]]);
+  });
 });
 
-describe('web content holding a table, dropped on a table cell', () => {
-  it('lands as the same content pasted there does, the picture between the words and the table', async () => {
-    const html = `<p>first</p><img src="${U}a.png"><table><tr><td>t</td></tr></table>`;
-    const land = async (how: 'paste' | 'drop'): Promise<string[]> => {
-      const { editor } = open([TABLE, { type: 'paragraph', content: 'next' }]);
-      const at = positionOf(editor, 'cell ', 5);
+/**
+ * The top-level blocks, each table as the words of its cells.
+ * @param editor - The editor.
+ * @returns Labels, tables as rows of cell words.
+ */
+function blocksAndCells(editor: Editor): unknown[] {
+  type Row = { cells: { content: { text?: string }[] }[] };
+  return (editor.document as { type: string; content?: { rows?: Row[] } }[]).map((block, index) =>
+    block.type === 'table'
+      ? block.content!.rows!.map((row) => row.cells.map((cell) => cell.content.map((c) => c.text ?? '').join('')))
+      : shape(editor)[index],
+  );
+}
+
+describe('web content a cell cannot take, dropped on a table cell', () => {
+  it.each([
+    [
+      'words, a picture and a table',
+      `<p>first</p><img src="${U}a.png"><table><tr><td>t</td></tr></table>`,
+      [[['cell ']], 'paragraph:first', 'image[pending|]', [['t']], 'paragraph:next'],
+    ],
+    [
+      'a sentence split at a picture, then a table',
+      `<p>see <img src="${U}a.png"> here</p><table><tr><td>t</td></tr></table>`,
+      [[['cell ']], 'paragraph:see', 'image[pending|]', 'paragraph:here', [['t']], 'paragraph:next'],
+    ],
+    [
+      'a table with a picture in a cell',
+      `<table><tr><td>A <img src="${U}a.png"></td><td>B</td></tr></table>`,
+      [[['cell ']], [['A', 'B']], 'image[pending|]', 'paragraph:next'],
+    ],
+  ])('%s lands whole under that table, in its order', async (_what, html, expected) => {
+    const { editor } = open([TABLE, { type: 'paragraph', content: 'next' }]);
+
+    drop(editor, positionOf(editor, 'cell ', 5), html, 'x');
+    await settled();
+
+    expect(blocksAndCells(editor)).toEqual(expected);
+  });
+
+  it('leaves the table it was dropped in the middle of whole', async () => {
+    const { editor } = open([TWO_CELLS, { type: 'paragraph', content: 'next' }]);
+
+    drop(editor, positionOf(editor, 'c1', 1), `<table><tr><td>A <img src="${U}a.png"></td><td>B</td></tr></table>`, 'A B');
+    await settled();
+
+    expect(blocksAndCells(editor)).toEqual([[['c1', 'c2']], [['A', 'B']], 'image[pending|]', 'paragraph:next']);
+  });
+});
+
+describe('web content dropped with a list holding pictures', () => {
+  it.each([
+    ['icons in list items', `<ul><li><span><img src="${U}fr.png"></span>&nbsp;<a>France</a></li><li><span><img src="${U}de.png"></span>&nbsp;<a>Germany</a></li></ul>`],
+    ['a list between paragraphs', `<p>intro</p><ul><li>a <img src="${U}a.png"></li><li>b</li></ul><p>outro</p>`],
+    ['a picture opening a list item', `<ul><li><img src="${U}a.png"> one</li><li>two</li></ul>`],
+  ])('with %s lands as the same paste does', async (_what, html) => {
+    const land = async (how: 'paste' | 'drop'): Promise<{ order: string[]; text: string; started: number }> => {
+      const { editor, sink } = open([{ type: 'paragraph', content: 'lead' }, { type: 'paragraph', content: 'tail' }]);
+      const at = positionOf(editor, 'lead', 4);
       select(editor, at);
-      if (how === 'paste') paste(editor, html, 'first t');
-      else drop(editor, at, html, 'first t');
+      if (how === 'paste') paste(editor, html, 'x');
+      else drop(editor, at, html, 'x');
       await settled();
-      return [firstCell(editor, 0), ...shape(editor)];
+      return { order: blockOrder(editor), text: editor.prosemirrorView!.state.doc.textContent, started: sink.start.mock.calls.length };
     };
 
     const dropped = await land('drop');
 
     expect(dropped).toEqual(await land('paste'));
-    expect(dropped).toEqual(['cell first', 'table', 'image[pending|]', 'table', 'paragraph:next']);
+    expect(dropped.started).toBeGreaterThan(0);
   });
 });
 
