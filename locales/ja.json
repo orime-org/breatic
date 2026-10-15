@@ -1252,7 +1252,11 @@
         "create": "Space の作成に失敗しました",
         "restore": "Space の復元に失敗しました",
         "unreachable": "サーバーから応答がありません。接続を確認して再試行してください",
-        "notSynced": "Project を同期中です。しばらくしてから再試行してください"
+        "notSynced": "Project を同期中です。しばらくしてから再試行してください",
+        "limit": "Space は {max} 個までです",
+        "busy": "他のメンバーが操作中です。しばらくしてから再試行してください",
+        "alreadyRestored": "この Space はすでに復元されています",
+        "gone": "この Space は削除されています"
       },
       "loading": {
         "create": "Space を作成中…"
@@ -1357,7 +1361,6 @@
         "deleteConfirmDescription": "この Space と内容はソフト削除されます。Owner は Project メッセージチャンネルから復元できます。",
         "lockFail": "ロックに失敗しました",
         "unlockFail": "解除に失敗しました",
-        "operationFail": "操作に失敗しました",
         "deleteFail": "削除に失敗しました"
       }
     },

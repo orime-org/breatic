@@ -11,6 +11,7 @@ import type { HocuspocusProvider } from '@hocuspocus/provider';
 
 import {
   ActivityNewSignalSchema,
+  MAX_SPACES_PER_PROJECT,
   t as translate,
   type ProjectActivityEntry,
   type ProjectActivityType,
@@ -29,6 +30,7 @@ import {
   SheetTrigger,
 } from '@web/components/ui/sheet';
 import { Button } from '@web/components/ui/button';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tooltip';
 import { cn } from '@web/lib/utils';
 import { usePendingKeys } from '@web/lib/use-pending-keys';
 import { formatCredits } from '@web/lib/format-credits';
@@ -61,6 +63,8 @@ export interface ProjectActivityButtonProps {
   currentUserRole?: ProjectRole;
   /** Owner restore handler. Promise lets us show transient progress. */
   onRestore?: (spaceId: string) => Promise<void> | void;
+  /** The project already holds the Space cap, so a restore would be refused. */
+  spaceLimitReached?: boolean;
 }
 
 /**
@@ -279,6 +283,7 @@ function entryActivityCredits(entry: ProjectActivityEntry): number | undefined {
  * @param root0.provider - Live meta-doc provider carrying the activity:new signal.
  * @param root0.currentUserRole - Caller's role, driving owner-only affordances.
  * @param root0.onRestore - Owner restore handler invoked with the deleted space's id.
+ * @param root0.spaceLimitReached - The project holds the Space cap; Restore is off and says why.
  * @returns The history trigger button and its activity feed sheet.
  */
 export function ProjectActivityButton({
@@ -286,6 +291,7 @@ export function ProjectActivityButton({
   provider,
   currentUserRole,
   onRestore,
+  spaceLimitReached = false,
 }: ProjectActivityButtonProps): JSX.Element {
   const t = useTranslation();
   const [open, setOpen] = useExclusiveOverlay('project-activity');
@@ -532,18 +538,28 @@ export function ProjectActivityButton({
                       </div>
                     </div>
                     {canRestore ? (
-                      <Button
-                        variant={null}
-                        size={null}
-                        type='button'
-                        onClick={() => m.spaceId && onClickRestore(m.spaceId)}
-                        loading={restoring.isPending(m.spaceId ?? '')}
-                        icon={<RotateCcw className='h-3 w-3' aria-hidden />}
-                        data-testid={`project-activity-restore-${m.id}`}
-                        className='mt-0.5 inline-flex items-center gap-1 rounded-md border border-border bg-background px-2 py-1 text-2xs text-foreground hover-enabled:bg-accent disabled:opacity-50'
-                      >
-                        {t('activity.action.restore')}
-                      </Button>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant={null}
+                            size={null}
+                            type='button'
+                            onClick={() => m.spaceId && onClickRestore(m.spaceId)}
+                            loading={restoring.isPending(m.spaceId ?? '')}
+                            disabled={spaceLimitReached}
+                            icon={<RotateCcw className='h-3 w-3' aria-hidden />}
+                            data-testid={`project-activity-restore-${m.id}`}
+                            className='mt-0.5 inline-flex items-center gap-1 rounded-md border border-border bg-background px-2 py-1 text-2xs text-foreground hover-enabled:bg-accent disabled:opacity-50'
+                          >
+                            {t('activity.action.restore')}
+                          </Button>
+                        </TooltipTrigger>
+                        {spaceLimitReached ? (
+                          <TooltipContent>
+                            {t('project.space.error.limit', { max: MAX_SPACES_PER_PROJECT })}
+                          </TooltipContent>
+                        ) : null}
+                      </Tooltip>
                     ) : showRestoredBadge ? (
                       <Button
                         variant={null}

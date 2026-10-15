@@ -26,7 +26,7 @@ describe('spaceRpcFailureNotice', () => {
   it('says the last Space has to stay when a delete is refused for it', () => {
     expect(spaceRpcFailureNotice('space:delete', 'CONFLICT')).toEqual({
       level: 'error',
-      descriptionKey: 'project.space.error.lastSpace',
+      descriptionKey: 'spaces.drawer.action.deleteLastSpace',
     });
   });
 

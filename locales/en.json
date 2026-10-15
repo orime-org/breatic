@@ -1252,7 +1252,11 @@
         "create": "Failed to create space",
         "restore": "Failed to restore space",
         "unreachable": "No answer from the server — check your connection and try again",
-        "notSynced": "Project is still syncing — try again in a moment"
+        "notSynced": "Project is still syncing — try again in a moment",
+        "limit": "Reached the limit of {max} Spaces",
+        "busy": "Another member is changing Spaces. Try again in a moment",
+        "alreadyRestored": "This Space is already restored",
+        "gone": "This Space has been deleted"
       },
       "loading": {
         "create": "Creating Space…"
@@ -1357,7 +1361,6 @@
         "deleteConfirmDescription": "This space and its content will be soft-deleted. Owners can restore it from the project messages channel.",
         "lockFail": "Failed to lock",
         "unlockFail": "Failed to unlock",
-        "operationFail": "Operation failed",
         "deleteFail": "Failed to delete"
       }
     },
