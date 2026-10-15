@@ -8,7 +8,6 @@
 
 import { measureMessages, measurePayload } from "@server/agent/payload-size.js";
 import type { TurnCost } from "@server/agent/consolidation-window.js";
-import { replayRows } from "@server/agent/history-replay.js";
 import type { ReplayedRow } from "@server/agent/history-replay.js";
 import type { Assembly } from "@server/agent/turn-budget.js";
 
@@ -48,16 +47,15 @@ export function costPerTurn(replayed: readonly ReplayedRow[]): TurnCost[] {
  * kept -- it is the system prompt and tools, what each turn added, and this
  * turn's question.
  * @param assembly - What this turn would send.
- * @param replayed - Its history, row by row, as it is replayed.
- * @param turns - What each turn of that history added.
+ * @param turns - What each turn of its history added.
  * @returns The size, a character counted as a token where there is no count.
  * @throws {never} Never.
  */
 export function requestTokens(
   assembly: Assembly,
-  replayed: readonly ReplayedRow[] = replayRows(assembly.history, assembly.agentConfig),
-  turns: readonly TurnCost[] = costPerTurn(replayed),
+  turns: readonly TurnCost[] = costPerTurn(assembly.replayed),
 ): number {
+  const { replayed } = assembly;
   const question = measureMessages(assembly.messages.slice(-1));
   const newestAsSent = replayed.findLastIndex((one) => one.asSent);
   const sized = replayed[newestAsSent]?.reply;

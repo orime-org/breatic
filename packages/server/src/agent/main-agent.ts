@@ -40,7 +40,7 @@ import { requestTokens } from "@server/agent/request-size.js";
 import type { Assembly } from "@server/agent/turn-budget.js";
 import { getContext } from "@breatic/core";
 import { logger } from "@breatic/core";
-import { historyForModel, lastFullSnapshotKey, prefixHash } from "@server/agent/history-replay.js";
+import { lastFullSnapshotKey, prefixHash, replayRows } from "@server/agent/history-replay.js";
 import type { ReplyForModel, UserForModel } from "@server/agent/history-replay.js";
 import { endingNote } from "@server/agent/model-messages.js";
 import { inProgressStep, noteUsage, replyTokens, type ReportedUsage, type SettledCalls } from "@server/agent/reply-for-model.js";
@@ -306,8 +306,8 @@ export class MainAgent {
     const stepMessages: ModelMessage[] = [];
     let stepsDone = 0;
     let reported: ReportedUsage = {};
-    let sentPrefixHash: string | undefined;
-    let requestSize = 0;
+    // The assembly the turn's first call sent, once the model has been asked.
+    let sent: Assembly | undefined;
 
     /**
      * What the reply row keeps of what was sent: the finished steps, the step
@@ -329,7 +329,7 @@ export class MainAgent {
       tools: ToolSet;
       settled: SettledCalls;
     }): Promise<ReplyForModel | undefined> => {
-      if (sentPrefixHash === undefined || userKept === undefined) return undefined;
+      if (sent === undefined) return undefined;
       let unfinished: ModelMessage[] = [];
       if (ended.exit === "aborted" || ended.exit === "failed") {
         try {
@@ -347,18 +347,14 @@ export class MainAgent {
       ];
       return {
         messages,
-        prefixHash: sentPrefixHash,
+        prefixHash: prefixHash(sent.agentConfig, sent.messages),
         ...replyTokens(reported, {
-          user: measureMessages(userKept.messages),
+          user: measureMessages(sent.userKept.messages),
           reply: measureMessages(messages),
-          request: requestSize,
+          request: requestTokens(sent),
         }),
       };
     };
-
-    // This turn's message as the latest assembly laid it out, kept as it is
-    // so what is stored is what went out.
-    let userKept: UserForModel | undefined;
 
     /**
      * Read everything the model is given, and lay it out as it will be sent.
@@ -396,15 +392,19 @@ export class MainAgent {
         role: "user",
         content: userMessageForModel(ask.clockNote, ask.turn, { spaceUnchanged: unchanged }),
       };
-      const messages = [
-        ...historyForModel(history, agentConfig),
-        userMessage,
-      ];
-      userKept = {
+      const replayed = replayRows(history, agentConfig);
+      // Kept as it is so what is stored is what went out.
+      const userKept: UserForModel = {
         messages: [userMessage],
         ...(key === undefined || current === undefined ? {} : { snapshot: { spaceId: current.id, key, full: !unchanged } }),
       };
-      return { agentConfig, history, watermark, messages };
+      return {
+        agentConfig,
+        replayed,
+        watermark,
+        userKept,
+        messages: [...replayed.flatMap((one) => one.messages), userMessage],
+      };
     };
 
     /**
@@ -457,15 +457,14 @@ export class MainAgent {
 
       const { agentConfig, messages } = assembly;
       modelId = agentConfig.modelId;
-      sentPrefixHash = prefixHash(agentConfig, messages);
-      requestSize = requestTokens(assembly);
+      sent = assembly;
 
       // Kept as it is about to go out, after any fold, so later turns send it
       // again as it is. Losing the copy costs this turn nothing: later turns
       // render the message from its parts the way they always did, and only
       // the cache match past it is lost.
       try {
-        await messageRepo.setUserForModel(conversationId, turnIndex, userKept);
+        await messageRepo.setUserForModel(conversationId, turnIndex, assembly.userKept);
       } catch (err) {
         logger.error({ err, userId, conversationId, projectId, turnIndex }, "turn_user_for_model_write_failed");
       }

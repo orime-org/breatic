@@ -12,6 +12,26 @@
 import { describe, it, expect, vi } from "vitest";
 import type * as CoreModule from "@breatic/core";
 import type { ReplayRow } from "@server/agent/history-replay.js";
+import type { Assembly } from "@server/agent/turn-budget.js";
+
+const AGENT = { modelId: "test", instructions: "system", tools: {} };
+const QUESTION = { role: "user" as const, content: "and now?" };
+
+/**
+ * A history assembled the way a turn assembles it.
+ * @param history - The rows since the watermark.
+ * @returns The assembly.
+ */
+function assembled(history: ReplayRow[]): Assembly {
+  const replayed = replayRows(history, AGENT);
+  return {
+    agentConfig: AGENT,
+    replayed,
+    watermark: 0,
+    userKept: { messages: [QUESTION] },
+    messages: [...replayed.flatMap((one) => one.messages), QUESTION],
+  };
+}
 
 vi.mock("@breatic/core", async (importOriginal) => {
   const actual = await importOriginal<typeof CoreModule>();
@@ -30,7 +50,7 @@ vi.mock("@server/agent/consolidation-window.js", () => ({
 }));
 
 const { foldIfOverBudget } = await import("@server/agent/turn-budget.js");
-const { prefixHash } = await import("@server/agent/history-replay.js");
+const { prefixHash, replayRows } = await import("@server/agent/history-replay.js");
 const { EARLIER_RESULT_NOTE } = await import("@server/agent/stored-model-output.js");
 
 /** A turn whose model listing was written before the listing carried `needs`. */
@@ -71,12 +91,7 @@ const HISTORY: ReplayRow[] = [
 describe("folding a history that holds an old tool result", () => {
   it("runs, and hands the fold the note in place of the old result", async () => {
     await foldIfOverBudget(
-      {
-        agentConfig: { modelId: "test", instructions: "system", tools: {} },
-        history: HISTORY,
-        watermark: 0,
-        messages: [{ role: "user", content: "and now?" }],
-      },
+      assembled(HISTORY),
       { userId: "u", conversationId: "c", projectId: "p" },
     );
 
@@ -120,12 +135,7 @@ describe("folding a history kept as it was sent", () => {
     ];
 
     await foldIfOverBudget(
-      {
-        agentConfig: { modelId: "test", instructions: "system", tools: {} },
-        history: kept,
-        watermark: 0,
-        messages: [{ role: "user", content: "and now?" }],
-      },
+      assembled(kept),
       { userId: "u", conversationId: "c", projectId: "p" },
     );
 

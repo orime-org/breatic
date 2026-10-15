@@ -15,6 +15,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ModelMessage } from "ai";
 import type * as CoreModule from "@breatic/core";
 import type { ReplayRow, RequestPrefix } from "@server/agent/history-replay.js";
+import type { Assembly } from "@server/agent/turn-budget.js";
 
 const LINES = vi.hoisted(() => ({ budget: 1000, keep: 400 }));
 
@@ -36,7 +37,7 @@ vi.mock("@server/agent/memory-consolidator.js", () => ({ consolidateWindow }));
 
 const { foldIfOverBudget } = await import("@server/agent/turn-budget.js");
 const { requestTokens } = await import("@server/agent/request-size.js");
-const { historyForModel, prefixHash } = await import("@server/agent/history-replay.js");
+const { prefixHash, replayRows } = await import("@server/agent/history-replay.js");
 
 const AGENT: RequestPrefix = { instructions: "s", tools: {}, modelId: "test" };
 const QUESTION: ModelMessage = { role: "user", content: "and now?" };
@@ -79,13 +80,29 @@ function keptTurn(
 }
 
 /**
+ * A history assembled the way a turn assembles it, with this turn's question.
+ * @param history - The rows since the watermark.
+ * @returns The assembly.
+ */
+function assembled(history: ReplayRow[]): Assembly {
+  const replayed = replayRows(history, AGENT);
+  return {
+    agentConfig: AGENT,
+    replayed,
+    watermark: 0,
+    userKept: { messages: [QUESTION] },
+    messages: [...replayed.flatMap((one) => one.messages), QUESTION],
+  };
+}
+
+/**
  * Run the fold check on a history, assembled the way a turn assembles it.
  * @param history - The rows since the watermark.
  * @returns Whether the turn must assemble again.
  */
 async function check(history: ReplayRow[]): Promise<boolean> {
   return foldIfOverBudget(
-    { agentConfig: AGENT, history, watermark: 0, messages: [...historyForModel(history, AGENT), QUESTION] },
+    assembled(history),
     { userId: "u", conversationId: "c", projectId: "p" },
   );
 }
@@ -149,16 +166,14 @@ describe("sizing a fold", () => {
 describe("how big a request is", () => {
   it("is the newest reply sent as it was, by the provider's count, plus what came after it", () => {
     const history = keptTurn(1, [], { turnTokens: 900, endTokens: 900 });
-    const messages = [...historyForModel(history, AGENT), QUESTION];
 
-    expect(requestTokens({ agentConfig: AGENT, history, watermark: 0, messages })).toBe(900 + "and now?".length);
+    expect(requestTokens(assembled(history))).toBe(900 + "and now?".length);
   });
 
   it("adds up what each turn added when no reply goes out as it was sent", () => {
     const history = keptTurn(1, [], { turnTokens: 300, endTokens: 50_000 }, { ...AGENT, instructions: "older" });
-    const messages = [...historyForModel(history, AGENT), QUESTION];
 
     // The system prompt and the empty tool set, then the turn and the question.
-    expect(requestTokens({ agentConfig: AGENT, history, watermark: 0, messages })).toBe(1 + 300 + "and now?".length);
+    expect(requestTokens(assembled(history))).toBe(1 + 300 + "and now?".length);
   });
 });

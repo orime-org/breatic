@@ -7,9 +7,9 @@ import type { ModelMessage } from "ai";
 import { z } from "zod";
 
 import {
-  historyForModel,
   lastFullSnapshotKey,
   prefixHash,
+  replayRows,
   stripThinking,
   type ReplayRow,
   type RequestPrefix,
@@ -23,6 +23,16 @@ const PREFIX: RequestPrefix = {
   },
   modelId: "anthropic/claude-opus-5.5",
 };
+
+/**
+ * The history the model is sent, oldest first.
+ * @param rows - Stored messages, oldest first.
+ * @param prefix - What the request carries besides its messages.
+ * @returns The messages to send.
+ */
+function historyForModel(rows: readonly ReplayRow[], prefix: RequestPrefix): ModelMessage[] {
+  return replayRows(rows, prefix).flatMap((one) => one.messages);
+}
 
 const SIGNED = { anthropic: { signature: "sig-1" } };
 

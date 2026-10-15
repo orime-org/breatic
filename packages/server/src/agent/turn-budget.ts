@@ -16,18 +16,20 @@ import { effectiveKeepTokens, getAgentConfig } from "@breatic/core";
 import type { ResolvedAgentConfig } from "@breatic/domain";
 import { planConsolidation } from "@server/agent/consolidation-window.js";
 import { consolidateWindow } from "@server/agent/memory-consolidator.js";
-import { replayRows, stripThinking } from "@server/agent/history-replay.js";
-import type { ReplayRow } from "@server/agent/history-replay.js";
+import { stripThinking } from "@server/agent/history-replay.js";
+import type { ReplayedRow, UserForModel } from "@server/agent/history-replay.js";
 import { costPerTurn, requestTokens } from "@server/agent/request-size.js";
 
 /** One reading of everything a turn sends, and what it was built from. */
 export interface Assembly {
   /** Model, instructions and tools, as the factory resolved them. */
   agentConfig: ResolvedAgentConfig;
-  /** The unconsolidated history this assembly read. */
-  history: ReplayRow[];
+  /** The unconsolidated history this assembly read, row by row as it is replayed. */
+  replayed: ReplayedRow[];
   /** How far the conversation was folded when this was read. */
   watermark: number;
+  /** This turn's message as it is sent, and the Space it sent in full. */
+  userKept: UserForModel;
   /** The history and this turn's question, as they will be sent. */
   messages: ModelMessage[];
 }
@@ -59,9 +61,8 @@ export async function foldIfOverBudget(
   who: TurnIdentity,
 ): Promise<boolean> {
   const config = getAgentConfig();
-  const replayed = replayRows(assembly.history, assembly.agentConfig);
-  const turns = costPerTurn(replayed);
-  const assembled = requestTokens(assembly, replayed, turns);
+  const turns = costPerTurn(assembly.replayed);
+  const assembled = requestTokens(assembly, turns);
   // The planner asks this again and is the authority on it.
   if (assembled <= config.memory_budget_tokens) return false;
 
@@ -84,7 +85,7 @@ export async function foldIfOverBudget(
     projectId: who.projectId,
     // The window as the model was sent it, less the model's own working.
     transcript: stripThinking(
-      replayed.filter((one) => one.row.turnIndex <= newWatermark).flatMap((one) => one.messages),
+      assembly.replayed.filter((one) => one.row.turnIndex <= newWatermark).flatMap((one) => one.messages),
     ),
     watermarkBefore: assembly.watermark,
     newWatermark,

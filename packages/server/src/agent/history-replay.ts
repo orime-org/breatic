@@ -194,17 +194,6 @@ export function replayRows(rows: readonly ReplayRow[], prefix: RequestPrefix): R
 }
 
 /**
- * The history the model is sent, oldest first.
- * @param rows - Stored messages, oldest first.
- * @param prefix - What the request carries besides its messages.
- * @returns The messages to send.
- * @throws {never} Never.
- */
-export function historyForModel(rows: readonly ReplayRow[], prefix: RequestPrefix): ModelMessage[] {
-  return replayRows(rows, prefix).flatMap((replayed) => replayed.messages);
-}
-
-/**
  * What the history last sent in full of a Space, when the newest Space sent
  * in full is that one.
  *
