@@ -150,6 +150,13 @@ export {
   type MemberChangeHandlers,
   type MemberChangeListener,
 } from "@core/infra/member-change-listener.js";
+export {
+  decideClientIdentity,
+  isLoopbackIp,
+  type ClientIdentityDecision,
+  type ClientIdentityInput,
+  type RefusalReason,
+} from "@core/infra/client-identity.js";
 export { setSession, getSession, deleteSession, deleteAllSessions, sessionCookieName } from "@core/infra/session-store.js";
 export { runWithContext, tryGetContext, getContext } from "@core/infra/request-context.js";
 
