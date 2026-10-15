@@ -193,6 +193,86 @@ describe('HTML carrying media', () => {
     expect(shape(editor)).toContain('image[pending|]');
     expect(sink.start).toHaveBeenCalledOnce();
   });
+
+  it.each([
+    ['a line', [{ type: 'paragraph', content: 'lead' }], ['paragraph:leada', 'image[pending|]', 'paragraph:b']],
+    ['a table cell', [TABLE], ['table', 'image[pending|]']],
+  ])('a picture given only by srcset, pasted on %s, is fetched from its first candidate', async (_where, blocks, expected) => {
+    const { editor, sink } = open(blocks);
+    caretIn(editor, 0);
+
+    paste(
+      editor,
+      '<p>a</p><img srcset="https://elsewhere.example/i.png 1x, https://elsewhere.example/i2.png 2x"><p>b</p>',
+      'a b',
+    );
+    await settled();
+
+    expect(shape(editor)).toEqual(expected);
+    expect(sink.start).toHaveBeenCalledExactlyOnceWith(expect.any(String), {
+      kind: 'address',
+      url: 'https://elsewhere.example/i.png',
+    });
+    expect(sink.onLeftOut).not.toHaveBeenCalled();
+  });
+});
+
+describe('a web table whose cells hold media', () => {
+  const WITH = '<p>a</p><table><tr><td><img src="https://elsewhere.example/a.png"> x</td><td>y</td></tr></table><p>b</p>';
+  const WITHOUT = '<p>a</p><table><tr><td> x</td><td>y</td></tr></table><p>b</p>';
+
+  /**
+   * The labels a paste without the media gives, with the media pending right
+   * after the table.
+   * @param plain - The editor the media-less HTML went into.
+   * @returns The labels.
+   */
+  function underTable(plain: Editor): string[] {
+    const labels = shape(plain);
+    labels.splice(labels.indexOf('table') + 1, 0, 'image[pending|]');
+    return labels;
+  }
+
+  it('pasted on a line, lands as it does without them, the media under the table', async () => {
+    const plain = open([{ type: 'paragraph', content: 'lead' }]);
+    caretIn(plain.editor, 0);
+    paste(plain.editor, WITHOUT, 'a x y b');
+    await settled();
+    const { editor, sink } = open([{ type: 'paragraph', content: 'lead' }]);
+    caretIn(editor, 0);
+
+    paste(editor, WITH, 'a x y b');
+    await settled();
+
+    expect(shape(editor)).toEqual(underTable(plain.editor));
+    expect(sink.start).toHaveBeenCalledOnce();
+    expect(sink.onLeftOut).not.toHaveBeenCalled();
+  });
+
+  it('dropped on a line, lands as it does without them, the media under the table', async () => {
+    const plain = open([{ type: 'paragraph', content: 'lead' }]);
+    drop(plain.editor, caretIn(plain.editor, 0), WITHOUT, 'a x y b');
+    await settled();
+    const { editor, sink } = open([{ type: 'paragraph', content: 'lead' }]);
+
+    drop(editor, caretIn(editor, 0), WITH, 'a x y b');
+    await settled();
+
+    expect(shape(editor)).toEqual(underTable(plain.editor));
+    expect(sink.start).toHaveBeenCalledOnce();
+  });
+
+  it('pasted into a table cell, puts its media under the table the caret is in', async () => {
+    const { editor, sink } = open([TABLE]);
+    caretIn(editor, 0);
+
+    paste(editor, WITH, 'a x y b');
+    await settled();
+
+    expect(shape(editor)[1]).toBe('image[pending|]');
+    expect(sink.start).toHaveBeenCalledOnce();
+    expect(sink.onLeftOut).not.toHaveBeenCalled();
+  });
 });
 
 describe('with the caret in a table cell (A7)', () => {
