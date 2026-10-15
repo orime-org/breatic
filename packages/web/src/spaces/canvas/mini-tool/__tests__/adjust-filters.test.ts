@@ -113,6 +113,19 @@ describe('adjustPixels', () => {
     },
   );
 
+  // ffmpeg lays one cell per source pixel; `x / width * width` comes out a
+  // hair under x for some x, which would hand a column its left neighbour's cell.
+  it('lays every column of the source its own grain', () => {
+    const width = 3000;
+    const data = new Uint8ClampedArray(width * 2 * 4).fill(128);
+    for (let i = 3; i < data.length; i += 4) data[i] = 255;
+    adjustPixels({ data, width, height: 2 }, { ...defaultAdjustValue, grain: 100 }, 7);
+    const column = (x: number): string =>
+      [0, 1].map((y) => Array.from(data.slice((y * width + x) * 4, (y * width + x) * 4 + 3)).join()).join('|');
+    const repeated = Array.from({ length: width - 1 }, (_, x) => x + 1).filter((x) => column(x) === column(x - 1));
+    expect(repeated).toEqual([]);
+  });
+
   it('lays the same grain twice for the same seed', () => {
     const source = picture(32);
     expect(maxDiff(adjusted(source, { grain: 80 }, 11).data, adjusted(source, { grain: 80 }, 11).data)).toBe(0);
