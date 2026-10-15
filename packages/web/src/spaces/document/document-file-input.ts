@@ -28,7 +28,7 @@ import type { EditorView } from '@tiptap/pm/view';
 
 import { landingFor } from '@web/spaces/document/document-drag-move';
 import { QUOTED } from '@web/spaces/document/document-list-block';
-import { markOwnUndoStep } from '@web/spaces/document/document-undo-step';
+import { HTML_MEDIA_ELEMENTS } from '@web/spaces/document/document-media-types';
 
 /** A position between two blocks, where inserted blocks go. */
 export type UploadGap = number;
@@ -49,9 +49,6 @@ export interface FilesArrival {
 /** Where arriving files are handed over. */
 export type FilesSink = (arrival: FilesArrival) => void;
 
-/** The elements a browser's "copy image" puts in the HTML beside the file. */
-const MEDIA_ELEMENTS = new Set(['IMG', 'VIDEO', 'AUDIO']);
-
 /**
  * The files a paste carries, when the paste is the files.
  *
@@ -71,7 +68,7 @@ export function pastedFiles(data: DataTransfer): File[] | null {
   const elements = Array.from(body.children);
   const onlyMedia =
     elements.length === 1 &&
-    MEDIA_ELEMENTS.has(elements[0]!.tagName) &&
+    elements[0]!.matches(HTML_MEDIA_ELEMENTS.join(', ')) &&
     body.textContent?.trim() === '';
   return onlyMedia ? files : null;
 }
@@ -206,15 +203,16 @@ export function insertAtGapTr(
 }
 
 /**
- * Inserts blocks at a gap in one transaction, quoted as the line beside it,
- * as an undo step of its own.
+ * Inserts blocks at a gap in one transaction, quoted as the line beside it.
+ * Its callers run inside a paste or a drop, whose event closes the undo step
+ * around it.
  * @param view - The editor view.
  * @param gap - Where they go.
  * @param aimed - Whether the reader aimed at the line right after the gap.
  * @param blocks - The blocks, in order.
  */
 export function insertAtGap(view: EditorView, gap: UploadGap, aimed: boolean, blocks: readonly BlockSpec[]): void {
-  view.dispatch(markOwnUndoStep(insertAtGapTr(view.state, gap, aimed, blocks)));
+  view.dispatch(insertAtGapTr(view.state, gap, aimed, blocks));
 }
 
 /**

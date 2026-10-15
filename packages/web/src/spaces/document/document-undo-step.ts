@@ -7,10 +7,11 @@
  * files, a canvas clipboard, the insert menu's media. Typing next to them,
  * however soon, is a step apart.
  *
- * A paste or a drop is one by its event, whichever hook writes it; the undo
- * extension closes the step around the event. An insert made outside one —
- * the insert menu, files read after their event, media landing once a paste
- * is done — is marked with {@link markOwnUndoStep}.
+ * A paste or a drop is one by its event, whichever hook writes it — files,
+ * a canvas clipboard and web content alike; the undo extension closes the
+ * step around the event. An insert made outside one is marked with
+ * {@link markOwnUndoStep}: the insert menu's media, and the media a paste in
+ * a table cell lands under the table once its event is done.
  */
 
 import type { Transaction } from '@tiptap/pm/state';

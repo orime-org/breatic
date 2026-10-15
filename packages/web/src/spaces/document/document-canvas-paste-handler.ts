@@ -21,7 +21,6 @@ import {
   type BlockSpec,
   type PasteHandler,
 } from '@web/spaces/document/document-file-input';
-import { markOwnUndoStep } from '@web/spaces/document/document-undo-step';
 import { pendingBlock } from '@web/spaces/document/document-uploads';
 import type { UploadSource } from '@web/spaces/document/document-upload-controller';
 
@@ -76,7 +75,7 @@ export function canvasPasteHandler(sink: CanvasPasteSink, next: PasteHandler): P
     if (view !== undefined && view !== null && items.length > 0) {
       if (items.every((item) => item.kind === 'text')) {
         const lines = items.flatMap((item) => (item.kind === 'text' ? item.lines : []));
-        view.dispatch(markOwnUndoStep(view.state.tr.replaceSelection(textSlice(view.state.selection.$from, lines))));
+        view.dispatch(view.state.tr.replaceSelection(textSlice(view.state.selection.$from, lines)));
       } else {
         const { gap, aimed } = pasteTarget(view.state);
         const started: { uploadId: string; source: UploadSource }[] = [];
