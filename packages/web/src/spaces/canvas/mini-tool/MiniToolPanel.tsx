@@ -82,10 +82,15 @@ export interface MiniToolPanelProps {
   refusal: MiniToolRefusal;
   onRun: () => void;
   onClose: () => void;
-  /** An expand tool's ratio presets: the one in use, which fit under the model's cap, and the setter. */
+  /**
+   * An expand tool's ratio presets: the one in use, which fit under the
+   * model's cap, whether the panel's own press is exporting (as the frame
+   * reads it), and the setter.
+   */
   expand?: {
     ratio: ExpandRatio;
     fits: (ratio: ExpandRatio) => boolean;
+    exporting: boolean;
     onRatio: (ratio: ExpandRatio) => void;
   };
 }
@@ -97,17 +102,15 @@ export interface MiniToolPanelProps {
  * say so.
  * @param props - Component props.
  * @param props.expand - The presets.
- * @param props.exporting - Whether the press is exporting, when no preset is taken.
  * @returns The group.
  */
 const ExpandRatioGroup = React.memo(function ExpandRatioGroup({
   expand,
-  exporting,
 }: {
   expand: NonNullable<MiniToolPanelProps['expand']>;
-  exporting: boolean;
 }): React.JSX.Element {
   const t = useTranslation();
+  const { exporting } = expand;
   return (
     <div>
       <p className='mb-1.5 text-xs font-medium text-muted-foreground'>{t('canvas.miniTool.param.aspect.label')}</p>
@@ -279,7 +282,7 @@ export const MiniToolPanel = React.memo(function MiniToolPanel(props: MiniToolPa
         {spec.drawing !== undefined ? <DrawingControls kind={spec.drawing.kind} /> : null}
         {spec.markup === true ? <MarkControls /> : null}
         {props.expand !== undefined ? (
-          <ExpandRatioGroup expand={props.expand} exporting={refusal === 'exporting'} />
+          <ExpandRatioGroup expand={props.expand} />
         ) : null}
         {spec.slots.length > 0 ? (
           <div className='flex flex-wrap gap-1.5'>

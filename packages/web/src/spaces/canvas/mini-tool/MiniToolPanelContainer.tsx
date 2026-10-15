@@ -204,7 +204,8 @@ function OpenMiniToolPanel({
   // A press of this tool on this node still waiting (inner#1490) holds the
   // button the way an export does: it outlives the panel it was made in.
   const running = useMiniToolRunning(spaceId, nodeId, spec.id);
-  const exporting = (draft?.exporting ?? false) || running;
+  const draftExporting = draft?.exporting ?? false;
+  const exporting = draftExporting || running;
   const dataWidth = view !== undefined && 'width' in view ? view.width : undefined;
   const dataHeight = view !== undefined && 'height' in view ? view.height : undefined;
   // The picture is read off the node only when its data does not carry the size.
@@ -260,12 +261,13 @@ function OpenMiniToolPanel({
     return {
       ratio: expandRatio,
       fits: (ratio: ExpandRatio): boolean => ratioFits(ratio, size, cap ?? Infinity),
+      exporting: draftExporting,
       onRatio: (ratio: ExpandRatio): void => {
         const frame = sessionStore.getState().miniTool?.expand?.frame;
         if (frame !== undefined) setExpand({ frame: frameForRatio(ratio, size, frame), ratio });
       },
     };
-  }, [expandRatio, sourceWidth, sourceHeight, cap, setExpand, sessionStore]);
+  }, [expandRatio, sourceWidth, sourceHeight, cap, draftExporting, setExpand, sessionStore]);
 
   // The source took new content while the panel was open: whatever was
   // measured on the old one is reset, and the reader is told (§7.2).
