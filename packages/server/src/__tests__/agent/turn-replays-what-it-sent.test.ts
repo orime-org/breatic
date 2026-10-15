@@ -30,9 +30,10 @@ const modelSays = vi.hoisted(() => ({
 }));
 
 vi.mock("@server/agent/turn-context.js", () => ({
-  buildTurnContext: vi.fn(async () => ({
+  // The running turn is not its own history, as the real read leaves it out.
+  buildTurnContext: vi.fn(async (_u: string, _c: string, _p: string, runningTurn: number) => ({
     memoryContext: { projectMemory: "", conversationMemory: "" },
-    history: modelSays.history,
+    history: modelSays.history.filter((row) => row.turnIndex < runningTurn),
     watermark: 0,
   })),
 }));
@@ -137,7 +138,8 @@ function firstPromptText(): string {
 }
 
 beforeEach(() => {
-  addMessage.mockClear();
+  addMessage.mockReset();
+  addMessage.mockImplementation(async () => 7);
   setUserForModel.mockReset();
   setUserForModel.mockImplementation(async () => undefined);
   vi.mocked(logger.error).mockClear();
@@ -301,5 +303,38 @@ describe("a turn sends the open Space once while it stays the same", () => {
     const kept = setUserForModel.mock.calls[0]?.[2] as { messages: Array<{ content: string }>; snapshot: unknown };
     expect(kept.messages[0]?.content).toContain("Villain");
     expect(kept.snapshot).toEqual({ spaceId: "s1", key: openSpaceKey(changed), full: true });
+  });
+});
+
+describe("two turns in a row", () => {
+  it("send the second request as the first one with the reply and the new question after it", async () => {
+    // A store in memory, written and read the way the repository is.
+    const store: Array<MessageData & { forModel: unknown }> = [];
+    let nextTurn = 1;
+    addMessage.mockImplementation(async (_id, message, forModel) => {
+      const turnIndex = message.role === "user" ? nextTurn++ : (message.turnIndex as number);
+      store.push({ role: message.role as "user" | "assistant", content: "", parts: message.parts as never, ts: "", turnIndex, forModel: forModel ?? null });
+      return turnIndex;
+    });
+    setUserForModel.mockImplementation(async (_id, turnIndex, forModel) => {
+      const row = store.find((r) => r.role === "user" && r.turnIndex === turnIndex);
+      if (row) row.forModel = forModel;
+    });
+    modelSays.history = store;
+
+    await runOneTurn("first question");
+    modelSays.parts = saying("second reply");
+    await runWithContext({ userId: "u1", conversationId: "c1", projectId: "p1" }, async () => {
+      const turn = await new MainAgent().chat("second question", undefined, [], "UTC");
+      for await (const _chunk of turn) void _chunk;
+    });
+
+    const first = modelSays.prompts[0] as unknown[];
+    const second = modelSays.prompts[1] as Array<{ role: string; content: unknown }>;
+    expect(JSON.stringify(second.slice(0, first.length))).toBe(JSON.stringify(first));
+    expect(second[first.length]?.role).toBe("assistant");
+    expect(JSON.stringify(second[first.length])).toContain("the reply");
+    expect(second.at(-1)?.role).toBe("user");
+    expect(JSON.stringify(second.at(-1))).toContain("second question");
   });
 });
