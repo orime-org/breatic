@@ -203,8 +203,7 @@ function OpenMiniToolPanel({
   // A press of this tool on this node still waiting (inner#1490) holds the
   // button the way an export does: it outlives the panel it was made in.
   const running = useMiniToolRunning(spaceId, nodeId, spec.id);
-  const draftExporting = draft?.exporting ?? false;
-  const exporting = draftExporting || running;
+  const exporting = (draft?.exporting ?? false) || running;
   const dataWidth = view !== undefined && 'width' in view ? view.width : undefined;
   const dataHeight = view !== undefined && 'height' in view ? view.height : undefined;
   // The picture is read off the node only when its data does not carry the size.

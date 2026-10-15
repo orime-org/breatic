@@ -223,7 +223,8 @@ describe('MarkCanvasController', () => {
     expect(mark().tool).toBe('pen');
   });
 
-  // A click gives the pencil one sample, drawn as `M` and `L` around it.
+  // A click gives the pencil the press point twice, drawn as an `M` and an
+  // `L` a thousandth of the stroke either side of it.
   // A hollow object is hit on its stroke, as a shape with no fill is elsewhere:
   // a click inside it reaches what lies under it (A4).
   describe('hit testing', () => {

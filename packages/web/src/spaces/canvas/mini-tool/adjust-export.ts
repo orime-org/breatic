@@ -223,12 +223,12 @@ interface Size {
 }
 
 /**
- * The size a backend can draw. A WebGL backend draws its last pass on its
- * canvas, in the drawing buffer the browser gave it, which may be smaller
- * than asked (Chrome gave 8192² for 16384² here, and 6000² for 12000²); a
- * lost context, or none, draws nothing. A 2D backend has no such bound.
+ * The drawing buffer the browser gave a WebGL backend, which may be smaller
+ * than its canvas (Chrome gave 8192² for 16384² here, and 6000² for 12000²);
+ * a buffer smaller than the canvas draws nothing (`bufferShort`). A lost
+ * context, or none, gives 0; a 2D backend has no such bound.
  * @param backend - The backend.
- * @returns The width and height in pixels, both 0 when it cannot draw.
+ * @returns The width and height in pixels, both 0 when it has no live context.
  * @throws {never} Never.
  */
 export function drawableSize(backend: FilterBackend): Size {
