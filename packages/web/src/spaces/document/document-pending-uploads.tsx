@@ -42,7 +42,7 @@ export const PendingUploadsContext = React.createContext<PendingUploadsStore>(NO
  * @param uploadId - The block's upload id.
  * @returns Its status.
  */
-export function usePendingStatus(uploadId: string): PendingStatus {
+function usePendingStatus(uploadId: string): PendingStatus {
   const store = React.useContext(PendingUploadsContext);
   const snapshot = React.useCallback(
     (): string => JSON.stringify(pendingStatus(store.factsOf(uploadId))),

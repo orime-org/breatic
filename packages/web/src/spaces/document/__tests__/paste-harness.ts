@@ -12,7 +12,7 @@ import { TextSelection } from '@tiptap/pm/state';
 
 import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared';
 
-import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
+import { buildDocumentEditor, type DocumentEditorOptions } from '@web/spaces/document/build-document-editor';
 import { createDocumentUndo } from '@web/spaces/document/document-undo-blocknote';
 
 /** The editor these cases open. */
@@ -46,9 +46,13 @@ export function unmountAll(): void {
 /**
  * Opens a body holding these blocks, with an undo manager.
  * @param blocks - The document.
+ * @param options - Editor options beyond the pasted-media sink the cases read.
  * @returns The editor, its undo manager and its sink.
  */
-export function open(blocks: unknown[]): { editor: Editor; manager: Y.UndoManager; sink: Sink } {
+export function open(
+  blocks: unknown[],
+  options: Omit<Partial<DocumentEditorOptions>, 'fragment'> = {},
+): { editor: Editor; manager: Y.UndoManager; sink: Sink } {
   const doc = new Y.Doc();
   Y.applyUpdate(doc, encodeInitialSpaceContent('document'));
   const { manager, extension } = createDocumentUndo(doc);
@@ -57,6 +61,7 @@ export function open(blocks: unknown[]): { editor: Editor; manager: Y.UndoManage
     fragment: documentBodyFragment(doc),
     extensions: [extension],
     media: { assetUrlPrefix: () => OURS, onLeftOut: sink.onLeftOut, start: sink.start },
+    ...options,
   });
   const root = document.createElement('div');
   document.body.appendChild(root);

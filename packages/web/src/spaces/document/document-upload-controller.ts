@@ -122,7 +122,7 @@ export interface UploadController {
 }
 
 /** The origin of the address write; no UndoManager tracks it. */
-export const UPLOAD_WRITE_ORIGIN: Readonly<{ name: string }> = Object.freeze({
+const UPLOAD_WRITE_ORIGIN: Readonly<{ name: string }> = Object.freeze({
   name: 'document-upload-write',
 });
 

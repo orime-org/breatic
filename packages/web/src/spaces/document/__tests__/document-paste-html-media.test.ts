@@ -10,7 +10,6 @@
  */
 
 import { describe, it, expect, afterEach } from 'vitest';
-import { TextSelection } from '@tiptap/pm/state';
 import { CellSelection } from '@tiptap/pm/tables';
 
 import {
@@ -23,6 +22,7 @@ import {
   firstCell,
   open,
   paste,
+  select,
   settled,
   shape,
   type,
@@ -542,9 +542,7 @@ describe('a paste or a drop is an undo step of its own (A6)', () => {
 
   it('a paste that puts back the very words it replaces leaves the typing after it one step', async () => {
     const { editor, manager } = open([{ type: 'paragraph', content: 'lead word' }]);
-    const view = editor.prosemirrorView!;
-    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 8, 12)));
-    view.focus();
+    select(editor, 8, 12);
 
     paste(editor, '', 'word');
     await settled();
@@ -584,8 +582,7 @@ describe('a paste or a drop is an undo step of its own (A6)', () => {
     const { editor, manager } = open([{ type: 'paragraph', content: 'lead word' }]);
     caretIn(editor, 0);
     type(editor, ' typed');
-    const view = editor.prosemirrorView!;
-    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 13, 18)));
+    select(editor, 13, 18);
 
     paste(editor, '', 'https://x.example/');
     await settled();
@@ -618,9 +615,7 @@ describe('a paste or a drop is an undo step of its own (A6)', () => {
 describe('a paste the editor does not put in', () => {
   it('counts its media as left out when another hook takes the paste instead', async () => {
     const { editor, sink } = open([{ type: 'paragraph', content: 'lead word' }]);
-    const view = editor.prosemirrorView!;
-    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 8, 12)));
-    view.focus();
+    select(editor, 8, 12);
 
     // The link hook takes a paste whose words are one address, over a selection.
     paste(editor, '<p><a href="https://x.example/">https://x.example/</a></p><img src="https://elsewhere.example/a.png">', 'https://x.example/');
@@ -633,9 +628,7 @@ describe('a paste the editor does not put in', () => {
 
   it('tells how many were left out once, counting those it could not fetch with those the hook kept out', async () => {
     const { editor, sink } = open([{ type: 'paragraph', content: 'lead word' }]);
-    const view = editor.prosemirrorView!;
-    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 8, 12)));
-    view.focus();
+    select(editor, 8, 12);
 
     paste(
       editor,
@@ -670,15 +663,11 @@ describe('pasted in the middle of a line', () => {
   ])('web content ending in a table, with %s, leaves the rest of the line as it does with a picture of ours', async (_what, src, starts) => {
     const html = (url: string): string => `<p>words</p><img src="${url}"><table><tr><td>a</td></tr></table>`;
     const ours = open([{ type: 'paragraph', content: 'lead tail' }]);
-    const view = ours.editor.prosemirrorView!;
-    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 8)));
-    view.focus();
+    select(ours.editor, 8);
     paste(ours.editor, html(`${OURS}a.png`), 'words a');
     await settled();
     const other = open([{ type: 'paragraph', content: 'lead tail' }]);
-    const otherView = other.editor.prosemirrorView!;
-    otherView.dispatch(otherView.state.tr.setSelection(TextSelection.create(otherView.state.doc, 8)));
-    otherView.focus();
+    select(other.editor, 8);
 
     paste(other.editor, html(src), 'words a');
     await settled();

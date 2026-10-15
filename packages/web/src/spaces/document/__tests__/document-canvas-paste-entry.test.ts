@@ -8,27 +8,15 @@
  */
 
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import * as Y from 'yjs';
-import { TextSelection } from '@tiptap/pm/state';
-
-import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared';
+import type * as Y from 'yjs';
 
 import { serializeClipboard, type ClipboardNode, type ClipboardPayload } from '@web/spaces/canvas/node-clipboard';
-import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
-import { createDocumentUndo } from '@web/spaces/document/document-undo-blocknote';
 
-type Editor = ReturnType<typeof buildDocumentEditor>;
+import { caretIn, open as openBody, pasteFormats, unmountAll, type Editor } from './paste-harness';
 
 const OURS = 'https://cdn.example/2026-10-14/a.png';
 
-const mounted: Editor[] = [];
-
-afterEach(() => {
-  mounted.splice(0).forEach((editor) => {
-    editor.unmount();
-  });
-  document.body.innerHTML = '';
-});
+afterEach(unmountAll);
 
 /** What the body hands an upload to. */
 interface Sink {
@@ -37,41 +25,16 @@ interface Sink {
 }
 
 /**
- * Opens a body holding these blocks with the caret at the end of the block
- * at `caretIn`.
+ * Opens a body holding these blocks with the caret at the end of the first
+ * text block of the block at `at`: the line, or a table's first cell.
  * @param blocks - The document.
- * @param caretIn - Which top-level block holds the caret.
+ * @param at - Which top-level block holds the caret.
  * @returns The editor, its undo manager, and the sink.
  */
-function open(blocks: unknown[], caretIn: number): { editor: Editor; manager: Y.UndoManager; sink: Sink } {
-  const doc = new Y.Doc();
-  Y.applyUpdate(doc, encodeInitialSpaceContent('document'));
-  const { manager, extension } = createDocumentUndo(doc);
+function open(blocks: unknown[], at: number): { editor: Editor; manager: Y.UndoManager; sink: Sink } {
   const sink: Sink = { start: vi.fn(), notPasted: vi.fn() };
-  const editor = buildDocumentEditor({
-    fragment: documentBodyFragment(doc),
-    extensions: [extension],
-    onCanvasPaste: sink,
-  });
-  const host = document.createElement('div');
-  document.body.appendChild(host);
-  editor.mount(host);
-  mounted.push(editor);
-  editor.replaceBlocks(editor.document, blocks as never);
-  manager.clear();
-  const view = editor.prosemirrorView!;
-  const group = view.state.doc.firstChild!;
-  let end = -1;
-  group.forEach((container, offset, index) => {
-    if (index !== caretIn) return;
-    // The end of the first text block inside it: the line, or a table's first cell.
-    container.descendants((child, at) => {
-      if (end < 0 && child.isTextblock) end = 1 + offset + 1 + at + 1 + child.content.size;
-      return end < 0;
-    });
-  });
-  view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, end)));
-  view.focus();
+  const { editor, manager } = openBody(blocks, { onCanvasPaste: sink });
+  caretIn(editor, at);
   return { editor, manager, sink };
 }
 
@@ -81,12 +44,7 @@ function open(blocks: unknown[], caretIn: number): { editor: Editor; manager: Y.
  * @param text - The clipboard's plain text.
  */
 function paste(editor: Editor, text: string): void {
-  const event = new Event('paste', { bubbles: true, cancelable: true });
-  Object.defineProperty(event, 'clipboardData', {
-    configurable: true,
-    value: { types: ['text/plain'], getData: (type: string): string => (type === 'text/plain' ? text : ''), files: [], items: [] },
-  });
-  editor.prosemirrorView!.dom.dispatchEvent(event);
+  pasteFormats(editor, { 'text/plain': text });
 }
 
 /**
