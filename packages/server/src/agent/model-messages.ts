@@ -111,7 +111,7 @@ function toolOutput(part: ToolPart): ToolResultPart["output"] {
  * for something the user never did. Telling the two apart needs the browser
  * to say which it was, which is task #149.
  */
-const STOP_NOTE = "[This turn did not finish: the connection to the user closed.]";
+export const STOP_NOTE = "[This turn did not finish: the connection to the user closed.]";
 
 /**
  * The note that says a turn broke off on its own.
@@ -121,7 +121,7 @@ const STOP_NOTE = "[This turn did not finish: the connection to the user closed.
  * the second as the first would have the model wait to be asked again for
  * something it should offer to finish.
  */
-const FAILED_NOTE = "[This turn could not be finished; it broke off partway.]";
+export const FAILED_NOTE = "[This turn could not be finished; it broke off partway.]";
 
 /**
  * The note that says a turn ran out of room rather than out of things to say.
@@ -130,7 +130,7 @@ const FAILED_NOTE = "[This turn could not be finished; it broke off partway.]";
  * model was saying is still wanted and nothing about it went wrong, so the
  * turn to make of this is to carry on from where the sentence stops.
  */
-const TRUNCATED_NOTE = "[This turn was cut off at the output limit, mid-sentence.]";
+export const TRUNCATED_NOTE = "[This turn was cut off at the output limit, mid-sentence.]";
 
 /**
  * Turn stored messages into the messages the model is sent.

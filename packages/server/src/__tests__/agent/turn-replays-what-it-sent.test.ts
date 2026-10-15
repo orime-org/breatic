@@ -52,7 +52,8 @@ vi.mock("@breatic/domain", async (importOriginal) => {
     ...base,
     streamTextRetry: actual.streamTextRetry,
     buildAgentConfig: () => ({ modelId: "test", instructions: "system", tools: {} }),
-    finalizeTurn: async () => [],
+    // The real one, so the reply is written down.
+    finalizeTurn: actual.finalizeTurn,
     getModel: () =>
       modelProducing(
         () => modelSays.parts as ModelStreamPart[],

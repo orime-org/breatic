@@ -183,7 +183,7 @@ describe("a turn cut short by the client", () => {
                 usage: { inputTokens: 0, outputTokens: 900 },
                 providerMetadata: undefined,
               });
-              opts.onStepFinish?.({ content: [] });
+              opts.onStepFinish?.({ content: [], response: { messages: [] } });
               controller.enqueue({ type: "text-delta", id: "t1", delta: "world" });
               controller.enqueue({ type: "text-end", id: "t1" });
               // Left open on purpose: the consumer walking away is what ends

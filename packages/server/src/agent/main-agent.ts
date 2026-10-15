@@ -38,7 +38,11 @@ import { foldIfOverBudget } from "@server/agent/turn-budget.js";
 import type { Assembly } from "@server/agent/turn-budget.js";
 import { getContext } from "@breatic/core";
 import { logger } from "@breatic/core";
-import { historyForModel } from "@server/agent/history-replay.js";
+import { historyForModel, prefixHash } from "@server/agent/history-replay.js";
+import type { ReplyForModel } from "@server/agent/history-replay.js";
+import { FAILED_NOTE, STOP_NOTE, TRUNCATED_NOTE } from "@server/agent/model-messages.js";
+import { inProgressStep, replyTokens, type ReportedUsage } from "@server/agent/reply-for-model.js";
+import { measureMessages, measurePayload } from "@server/agent/payload-size.js";
 import { withModelOutputs } from "@server/agent/stored-model-output.js";
 import { endingOf, endingWithNothingRun } from "@server/agent/tool-ending.js";
 import { writeAskUserText } from "@server/agent/ask-user-text.js";
@@ -290,6 +294,71 @@ export class MainAgent {
     /** What a tool answered, for calls whose result chunk never got read. */
     const whatToolAnswered = new Map<string, unknown>();
 
+    // What the reply row keeps of what was sent (`for_model`). Each finished
+    // step's messages are what the SDK sent on with the next request; the
+    // hash is of the request the turn's first call sent; the provider's
+    // counts size the turn for the fold.
+    const stepMessages: ModelMessage[] = [];
+    let stepsDone = 0;
+    const reported: ReportedUsage = {};
+    let sentPrefixHash: string | undefined;
+    let requestChars = 0;
+
+    /**
+     * What the reply row keeps of what was sent: the finished steps, the step
+     * the turn ended inside, and a note when it did not end on its own.
+     * @param ended - How the turn ended and what it left behind.
+     * @param ended.exit - How the turn ended.
+     * @param ended.truncated - Whether it ran out of room mid-answer.
+     * @param ended.parts - The reply's parts, as the reader received them.
+     * @param ended.tools - The turn's tools.
+     * @param ended.settled - How the turn's calls ended.
+     * @param ended.userMessage - This turn's user message as it was sent.
+     * @returns The copy, or undefined when the model was never asked.
+     * @throws {never} Never; a step that cannot be rebuilt is left out.
+     */
+    const keptOfReply = async (ended: {
+      exit: "aborted" | "failed" | "blocked" | "completed";
+      truncated: boolean;
+      parts: Parameters<typeof inProgressStep>[0];
+      tools: ToolSet;
+      settled: Parameters<typeof inProgressStep>[3];
+      userMessage: ModelMessage;
+    }): Promise<ReplyForModel | undefined> => {
+      if (sentPrefixHash === undefined) return undefined;
+      let unfinished: ModelMessage[] = [];
+      if (ended.exit === "aborted" || ended.exit === "failed") {
+        try {
+          unfinished = await inProgressStep(ended.parts, stepsDone, ended.tools, ended.settled, stepMessages);
+        } catch (err) {
+          // Left out, the step reaches later turns only as the note below.
+          logger.error({ err, userId, conversationId, projectId, turnIndex }, "turn_unfinished_step_unconvertible");
+        }
+      }
+      const note =
+        ended.exit === "aborted"
+          ? STOP_NOTE
+          : ended.exit === "failed"
+            ? FAILED_NOTE
+            : ended.truncated
+              ? TRUNCATED_NOTE
+              : undefined;
+      const messages: ModelMessage[] = [
+        ...stepMessages,
+        ...unfinished,
+        ...(note === undefined ? [] : [{ role: "assistant" as const, content: note }]),
+      ];
+      return {
+        messages,
+        prefixHash: sentPrefixHash,
+        ...replyTokens(reported, {
+          user: measureMessages([ended.userMessage]),
+          reply: measureMessages(messages),
+          request: requestChars,
+        }),
+      };
+    };
+
     // One object for every assembly and for the copy kept of it, so what is
     // stored is what went out.
     const userMessage: ModelMessage = { role: "user", content: forModel };
@@ -386,6 +455,11 @@ export class MainAgent {
 
       const { agentConfig, messages } = assembly;
       modelId = agentConfig.modelId;
+      sentPrefixHash = prefixHash(
+        { system: agentConfig.instructions, tools: agentConfig.tools, modelId: agentConfig.modelId },
+        messages,
+      );
+      requestChars = measurePayload({ instructions: agentConfig.instructions, tools: agentConfig.tools, messages });
 
       // Kept as it is about to go out, after any fold, so later turns send it
       // again as it is. Losing the copy costs this turn nothing: later turns
@@ -471,9 +545,16 @@ export class MainAgent {
         // Fires when a model response is parsed, before the tools it asked
         // for run: a turn stopped while a tool is running has still paid for
         // the call that asked for it.
-        onLanguageModelCallEnd: (event) => watch.callEnded(event),
-        onStepFinish: ({ content }) => {
-          for (const part of content) {
+        onLanguageModelCallEnd: (event) => {
+          watch.callEnded(event);
+          reported.firstInput ??= event.usage.inputTokens;
+          reported.lastInput = event.usage.inputTokens;
+          reported.lastOutput = event.usage.outputTokens;
+        },
+        onStepFinish: (step) => {
+          stepMessages.push(...step.response.messages);
+          stepsDone += 1;
+          for (const part of step.content) {
             // A question, reaching the reader as words rather than as a payload
             // on a tool part, and written here rather than inside the tool
             // because the stream is on this side of it. A turn asks one
@@ -672,6 +753,15 @@ export class MainAgent {
         // is where what the model was given gets written down beside each.
         const storedParts = await withModelOutputs(replyParts, turnTools, { conversationId });
 
+        const replyForModel = await keptOfReply({
+          exit,
+          truncated: storedParts.some((p) => p.type === "truncated"),
+          parts: responseMessage.parts,
+          tools: turnTools,
+          settled: { answered: whatToolAnswered, ended: howToolEnded },
+          userMessage,
+        });
+
         let creditsUsed = 0;
         const failures = await finalizeTurn({
           steps: {
@@ -680,11 +770,11 @@ export class MainAgent {
             // reply with nothing in it, which is what draws "No reply this
             // turn" when the conversation is opened again.
             persist: async () => {
-              await messageRepo.addMessage(conversationId, {
-                role: "assistant",
-                parts: storedParts,
-                turnIndex,
-              });
+              await messageRepo.addMessage(
+                conversationId,
+                { role: "assistant", parts: storedParts, turnIndex },
+                replyForModel,
+              );
             },
             bill: async () => {
               // An OpenRouter call whose cost is not in hand is looked up and
