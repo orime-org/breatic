@@ -25,22 +25,28 @@ import { describe, it, expect, beforeAll, afterAll, inject } from "vitest";
 import postgres from "postgres";
 import { randomUUID } from "node:crypto";
 import { sql as drizzleSql } from "drizzle-orm";
-import { db, initCore, loadLocales, projectMembersRepo, type DbTx } from "@breatic/core";
+import { db, closeDb, initCore, loadLocales, migrateDatabase, projectMembersRepo, type DbTx } from "@breatic/core";
 import { studioMembersRepo } from "@breatic/domain";
 import { cascadeDeleteConversations } from "@server/modules/conversation/conversation.repo.js";
 import { waitUntilBlockedOn } from "@server/__tests__/integration/lock-probe.js";
 
-try {
-  initCore(process.env);
-} catch {
-  // already initialised by a sibling suite in this worker — fine.
-}
-loadLocales();
-
 let sql: ReturnType<typeof postgres>;
+let admin: ReturnType<typeof postgres>;
+const databaseName = `lock_order_${randomUUID().replaceAll("-", "")}`;
+const databaseUrl = new URL(inject("DATABASE_URL"));
+databaseUrl.pathname = `/${databaseName}`;
 
-beforeAll(() => {
-  sql = postgres(inject("DATABASE_URL"), {
+beforeAll(async () => {
+  // Reverse insertion is a fixture only on fresh heaps. Other suites delete
+  // rows from the shared database; PostgreSQL can reuse those holes instead
+  // of appending, so ORDER BY ctid need not match insertion order. Keep the
+  // shared container, but migrate an empty database for this layout probe.
+  admin = postgres(inject("DATABASE_URL"), { max: 1, prepare: false });
+  await admin`CREATE DATABASE ${admin(databaseName)}`;
+  await migrateDatabase(databaseUrl.toString());
+  initCore({ ...process.env, DATABASE_URL: databaseUrl.toString() });
+  loadLocales();
+  sql = postgres(databaseUrl.toString(), {
     max: 4,
     prepare: false,
     connection: { application_name: "multi-row-lock-order-test" },
@@ -48,7 +54,13 @@ beforeAll(() => {
 });
 
 afterAll(async () => {
-  await sql?.end({ timeout: 1 });
+  try {
+    await closeDb();
+    await sql?.end({ timeout: 1 });
+    if (admin) await admin`DROP DATABASE IF EXISTS ${admin(databaseName)} WITH (FORCE)`;
+  } finally {
+    await admin?.end({ timeout: 1 });
+  }
 });
 
 let seq = 0;
@@ -104,7 +116,7 @@ async function largestHeldWhileParked(
   lock: (tx: DbTx) => Promise<unknown>,
   parkedOn: readonly string[],
 ): Promise<boolean> {
-  const holder = postgres(inject("DATABASE_URL"), { max: 1, prepare: false });
+  const holder = postgres(databaseUrl.toString(), { max: 1, prepare: false });
   let locker: Promise<unknown> = Promise.resolve();
   let held = false;
   try {
@@ -133,7 +145,7 @@ async function largestHeldWhileParked(
 async function rowIsLocked(
   probe: (p: postgres.TransactionSql) => Promise<unknown>,
 ): Promise<boolean> {
-  const conn = postgres(inject("DATABASE_URL"), { max: 1, prepare: false });
+  const conn = postgres(databaseUrl.toString(), { max: 1, prepare: false });
   try {
     await conn.begin(async (p) => {
       await probe(p);
