@@ -10,7 +10,12 @@
 import { act, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const drawing = vi.hoisted(() => ({ drawAdjusted: vi.fn(() => Promise.resolve()) }));
+const drawing = vi.hoisted(() => ({
+  drawAdjusted: vi.fn(
+    (): ReturnType<typeof import('@web/spaces/canvas/mini-tool/adjust-export').drawAdjusted> =>
+      Promise.resolve({ size: { width: 400, height: 300 }, frame: { width: 400, height: 300 } }),
+  ),
+}));
 vi.mock('@web/spaces/canvas/mini-tool/adjust-export', () => drawing);
 // The node's own picture is not CORS-loaded; the preview draws from a copy that is.
 const loaded = vi.hoisted(() => ({ el: { tagName: 'IMG', copy: true } as unknown as HTMLImageElement }));
@@ -155,6 +160,22 @@ describe('NodeAdjustLayer', () => {
     flushFrames();
     const [, size] = drawing.drawAdjusted.mock.calls.at(-1) as unknown as [unknown, { width: number }];
     expect(size.width).toBe(600);
+  });
+
+  // A canvas that spans source pixels past the picture's edge is stretched by
+  // as much, so the picture's own pixels fill the node and the rest is cut off.
+  it('stretches the canvas over the source pixels it spans', async () => {
+    vi.spyOn(HTMLImageElement.prototype, 'naturalWidth', 'get').mockReturnValue(1001);
+    vi.spyOn(HTMLImageElement.prototype, 'naturalHeight', 'get').mockReturnValue(751);
+    drawing.drawAdjusted.mockResolvedValueOnce({ size: { width: 501, height: 376 }, frame: { width: 1002, height: 752 } });
+    mount('image.adjust', { value: { ...defaultAdjustValue, sharpness: 50 } });
+    await pictureLoaded();
+    flushFrames();
+    await pictureLoaded();
+    const layer = screen.getByTestId('mini-tool-adjust-layer');
+    expect(parseFloat(layer.style.width)).toBeCloseTo((400 * 1002) / 1001, 6);
+    expect(parseFloat(layer.style.height)).toBeCloseTo((300 * 752) / 751, 6);
+    expect(layer.parentElement).toHaveClass('overflow-hidden');
   });
 
   it('draws nothing for another tool', () => {

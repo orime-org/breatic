@@ -25,8 +25,8 @@ interface NodeAdjustLayerProps {
 /**
  * The picture adjust's result, drawn over the node's picture while that tool's
  * panel is open on it (inner#1303 §6.1). It redraws at most once a frame as
- * the sliders move, at the size the picture is shown and never past its own
- * pixels.
+ * the sliders move, at the source shrunk by the power of two `previewFrame`
+ * picks for the size the picture is shown, and is stretched over the picture.
  * @param root0 - Component props.
  * @param root0.nodeId - The node.
  * @param root0.wrapper - The node's outer wrapper.
@@ -57,6 +57,9 @@ export function NodeAdjustLayer({ nodeId, wrapper }: NodeAdjustLayerProps): Reac
   // The layer stays invisible until a frame is drawn on it, so the node's
   // picture shows while the copy loads, and for good if it never does.
   const [drawn, setDrawn] = React.useState(false);
+  // The source pixels the last draw spans; past the picture's own when the
+  // preview is drawn at a power of two that does not divide it.
+  const [spans, setSpans] = React.useState<{ width: number; height: number } | null>(null);
   React.useEffect(() => {
     if (param === undefined || src === null) return undefined;
     let live = true;
@@ -98,7 +101,10 @@ export function NodeAdjustLayer({ nodeId, wrapper }: NodeAdjustLayerProps): Reac
       // draw leave the layer hidden over the node's own picture, and Run says
       // what went wrong.
       void drawAdjusted(next.el, next.size, next.value, target).then(
-        () => setDrawn(true),
+        ({ frame }) => {
+          setSpans((was) => (was?.width === frame.width && was.height === frame.height ? was : frame));
+          setDrawn(true);
+        },
         () => setDrawn(false),
       );
     });
@@ -112,12 +118,19 @@ export function NodeAdjustLayer({ nodeId, wrapper }: NodeAdjustLayerProps): Reac
   );
 
   if (param === undefined || geometry === null) return null;
+  const across = spans === null || natural === null ? 1 : spans.width / natural.width;
+  const down = spans === null || natural === null ? 1 : spans.height / natural.height;
   return (
-    <canvas
-      ref={canvas}
-      data-testid='mini-tool-adjust-layer'
-      className={cn('pointer-events-none absolute bg-card', drawn ? undefined : 'invisible')}
+    <div
+      className='pointer-events-none absolute overflow-hidden'
       style={{ left: geometry.at.x, top: geometry.at.y, width: geometry.box.width, height: geometry.box.height }}
-    />
+    >
+      <canvas
+        ref={canvas}
+        data-testid='mini-tool-adjust-layer'
+        className={cn('absolute top-0 left-0 bg-card', drawn ? undefined : 'invisible')}
+        style={{ width: geometry.box.width * across, height: geometry.box.height * down }}
+      />
+    </div>
   );
 }

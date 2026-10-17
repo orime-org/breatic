@@ -121,25 +121,22 @@ export function backendSides(backend: FilterBackend): BackendSides {
 const previewCopies = new WeakMap<CropSourceEl, { width: number; height: number; canvas: HTMLCanvasElement }>();
 
 /**
- * What the filters draw from at a given size: the picture itself when it is no
- * larger, otherwise a copy scaled to that size with smoothing. The filters
- * sample by nearest neighbour, so a larger source drawn straight into the size
- * keeps one pixel in every few and the preview stops matching the export. A
- * picture's copy is kept for its size; a video's frame moves, so its copy is
- * drawn each time.
+ * What the filters draw from: the picture itself when the preview draws it at
+ * its own size, otherwise a copy scaled by the frame's power of two with
+ * smoothing, the picture's last column and row standing in for the pixels
+ * past its edge. The filters sample by nearest neighbour, so a larger source
+ * drawn straight into the size keeps one pixel in every few and the preview
+ * stops matching the export. A picture's copy is kept for its size; a video's
+ * frame moves, so its copy is drawn each time.
  * @param el - The picture.
- * @param size - The size the filters draw at.
- * @param size.width - Its width.
- * @param size.height - Its height.
+ * @param preview - Where the preview draws.
  * @returns The source to filter.
  * @throws {never} Never.
  */
-export function previewSourceOf(
-  el: CropSourceEl,
-  size: { width: number; height: number },
-): CropSourceEl | HTMLCanvasElement {
+export function previewSourceOf(el: CropSourceEl, preview: PreviewFrame): CropSourceEl | HTMLCanvasElement {
+  const { size, frame } = preview;
   const own = intrinsicSize(el);
-  if (own.width <= size.width && own.height <= size.height) return el;
+  if (own.width === size.width && own.height === size.height) return el;
   const kept = el instanceof HTMLVideoElement ? undefined : previewCopies.get(el);
   if (kept !== undefined && kept.width === size.width && kept.height === size.height) return kept.canvas;
   const canvas = document.createElement('canvas');
@@ -149,7 +146,18 @@ export function previewSourceOf(
   if (context === null) return el;
   context.imageSmoothingEnabled = true;
   context.imageSmoothingQuality = 'high';
-  context.drawImage(el, 0, 0, size.width, size.height);
+  const right = (own.width * size.width) / frame.width;
+  const bottom = (own.height * size.height) / frame.height;
+  const fromX = Math.floor(right);
+  const fromY = Math.floor(bottom);
+  // The edge strips go down first, from whole pixels, and the picture over
+  // them, so a pixel the picture half covers mixes the two by coverage.
+  if (fromX < size.width && fromY < size.height) {
+    context.drawImage(el, own.width - 1, own.height - 1, 1, 1, fromX, fromY, size.width - fromX, size.height - fromY);
+  }
+  if (fromX < size.width) context.drawImage(el, own.width - 1, 0, 1, own.height, fromX, 0, size.width - fromX, bottom);
+  if (fromY < size.height) context.drawImage(el, 0, own.height - 1, own.width, 1, 0, fromY, right, size.height - fromY);
+  context.drawImage(el, 0, 0, right, bottom);
   if (!(el instanceof HTMLVideoElement)) previewCopies.set(el, { ...size, canvas });
   return canvas;
 }
@@ -158,12 +166,13 @@ export function previewSourceOf(
  * Draw a picture through the adjust onto a canvas at the size drawn. The
  * picture must be CORS-loaded: WebGL refuses a cross-origin image outright.
  * @param el - The picture.
- * @param asked - The size to draw it at, held to what the backend can draw.
+ * @param asked - The size it is shown at; see {@link previewFrame}.
  * @param asked.width - Its width.
  * @param asked.height - Its height.
  * @param value - The sliders.
  * @param target - The canvas, resized to the size drawn.
  * @param backend - The filter backend to draw through; Fabric's shared one by default.
+ * @returns Where it drew: the canvas's size and the source pixels it spans.
  * @throws {Error} When the backend has no live WebGL context, loses it during the draw, or was given a drawing buffer smaller than its canvas.
  */
 export async function drawAdjusted(
@@ -172,24 +181,25 @@ export async function drawAdjusted(
   value: AdjustValue,
   target: HTMLCanvasElement,
   backend?: FilterBackend,
-): Promise<void> {
+): Promise<PreviewFrame> {
   const [fabric, { adjustFilters, ADJUST_GRAIN_SEED }] = await loadRuntime();
   const through = backend ?? liveSharedBackend(fabric);
   const drawable = drawableSize(through);
   if (drawable.width === 0) throw new Error(NO_CONTEXT);
   if (bufferShort(through)) throw new Error(SHORT_BUFFER);
   const own = intrinsicSize(el);
-  const { size, frame } = previewFrame(own, asked, drawable);
+  const preview = previewFrame(own, asked, drawable);
+  const { size, frame } = preview;
   target.width = size.width;
   target.height = size.height;
   const chain = adjustFilters(value, ADJUST_GRAIN_SEED, own, size, frame);
-  const source = previewSourceOf(el, size);
+  const source = previewSourceOf(el, preview);
   if (chain.length === 0) {
     target.getContext('2d')?.drawImage(source, 0, 0, size.width, size.height);
-    return;
+    return preview;
   }
   const state = through.applyFilters(chain, source, size.width, size.height, target);
-  if (!('tileSize' in through)) return;
+  if (!('tileSize' in through)) return preview;
   // A context lost during the draw makes Fabric throw on a shader it still has
   // to compile or, with every program cached, copy a blank canvas out without
   // a word; the second is caught here.
@@ -198,6 +208,7 @@ export async function drawAdjusted(
   // Without a cache key Fabric uploads the source as a texture of its own and
   // hands it back undeleted.
   if (state !== undefined && 'originalTexture' in state) gl.deleteTexture(state.originalTexture);
+  return preview;
 }
 
 /**
@@ -295,7 +306,12 @@ export interface PreviewFrame {
 }
 
 /**
- * The size a preview draws a picture at, held to what the backend can draw.
+ * The size a preview draws a picture at: the source shrunk by the largest
+ * power of two that still gives the pixels it is shown at, or more when the
+ * backend cannot draw that, the canvas rounded up to whole pixels. ffmpeg
+ * blurs the chroma per 2x2 block, and a drawn pixel that covers whole blocks
+ * carries their chroma unmixed, so the preview's noise reduction is the
+ * export's shrunk to its size.
  * @param natural - The picture's own size.
  * @param asked - The size it is shown at.
  * @param drawable - The largest canvas the backend draws.
@@ -303,20 +319,11 @@ export interface PreviewFrame {
  * @throws {never} Never.
  */
 export function previewFrame(natural: Size, asked: Size, drawable: Size): PreviewFrame {
-  return { size: fitWithin(asked, drawable), frame: natural };
-}
-
-/**
- * A size scaled down, keeping its shape, so it fits inside a box.
- * @param size - The size.
- * @param box - The box.
- * @returns The size, unchanged when it fits.
- * @throws {never} Never.
- */
-function fitWithin(size: Size, box: Size): Size {
-  const scale = Math.min(box.width / size.width, box.height / size.height);
-  if (scale >= 1) return size;
-  return { width: Math.max(1, Math.round(size.width * scale)), height: Math.max(1, Math.round(size.height * scale)) };
+  let factor = 1;
+  while (natural.width / (2 * factor) >= asked.width && natural.height / (2 * factor) >= asked.height) factor *= 2;
+  while (Math.ceil(natural.width / factor) > drawable.width || Math.ceil(natural.height / factor) > drawable.height) factor *= 2;
+  const size = { width: Math.ceil(natural.width / factor), height: Math.ceil(natural.height / factor) };
+  return { size, frame: { width: size.width * factor, height: size.height * factor } };
 }
 
 /**

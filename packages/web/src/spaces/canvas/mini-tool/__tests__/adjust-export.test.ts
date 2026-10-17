@@ -20,6 +20,7 @@ import {
   ownExportBackend,
   exportBackendSide,
   liveSharedBackend,
+  previewFrame,
   previewSourceOf,
   releaseBackend,
 } from '@web/spaces/canvas/mini-tool/adjust-export';
@@ -61,6 +62,42 @@ function picture(width: number, height: number): HTMLImageElement {
   return el;
 }
 
+// A preview draws the source shrunk by a power of two, so each drawn pixel
+// covers whole 2x2 chroma blocks (§6.1).
+describe('previewFrame', () => {
+  const open = { width: Infinity, height: Infinity };
+
+  it.each([
+    [{ width: 4000, height: 3000 }, { width: 576, height: 432 }, { width: 1000, height: 750 }],
+    [{ width: 800, height: 600 }, { width: 576, height: 432 }, { width: 800, height: 600 }],
+    [{ width: 800, height: 600 }, { width: 400, height: 300 }, { width: 400, height: 300 }],
+    [{ width: 600, height: 450 }, { width: 800, height: 600 }, { width: 600, height: 450 }],
+  ] as const)('draws %o shown at %o at %o', (natural, asked, size) => {
+    expect(previewFrame(natural, asked, open)).toEqual({ size, frame: natural });
+  });
+
+  it('rounds the canvas up and spans the source pixels it covers', () => {
+    expect(previewFrame({ width: 1001, height: 751 }, { width: 300, height: 225 }, open)).toEqual({
+      size: { width: 501, height: 376 },
+      frame: { width: 1002, height: 752 },
+    });
+  });
+
+  it('shrinks by a further power of two until the backend can draw it', () => {
+    expect(previewFrame({ width: 1000, height: 500 }, { width: 400, height: 200 }, { width: 100, height: 100 })).toEqual({
+      size: { width: 63, height: 32 },
+      frame: { width: 1008, height: 512 },
+    });
+  });
+
+  it('draws an export at the source’s own size', () => {
+    expect(previewFrame({ width: 4000, height: 3000 }, { width: 4000, height: 3000 }, { width: 8192, height: 8192 })).toEqual({
+      size: { width: 4000, height: 3000 },
+      frame: { width: 4000, height: 3000 },
+    });
+  });
+});
+
 // The preview filters a copy at its own size, scaled with smoothing: the
 // filters sample by nearest neighbour, so a full-size source drawn into a
 // small viewport keeps every Nth pixel and loses the rest (round 2, R5).
@@ -74,7 +111,7 @@ describe('previewSourceOf', () => {
     const context = { drawImage, imageSmoothingEnabled: false, imageSmoothingQuality: 'low' };
     vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(context as never);
     const el = picture(2048, 64);
-    const copy = previewSourceOf(el, { width: 512, height: 16 }) as HTMLCanvasElement;
+    const copy = previewSourceOf(el, { size: { width: 512, height: 16 }, frame: { width: 2048, height: 64 } }) as HTMLCanvasElement;
     expect([copy.width, copy.height]).toEqual([512, 16]);
     expect(drawImage).toHaveBeenCalledWith(el, 0, 0, 512, 16);
     expect(context).toMatchObject({ imageSmoothingEnabled: true, imageSmoothingQuality: 'high' });
@@ -84,15 +121,29 @@ describe('previewSourceOf', () => {
     const drawImage = vi.fn();
     vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({ drawImage } as never);
     const el = picture(2048, 64);
-    const first = previewSourceOf(el, { width: 512, height: 16 });
-    expect(previewSourceOf(el, { width: 512, height: 16 })).toBe(first);
-    expect(previewSourceOf(el, { width: 256, height: 8 })).not.toBe(first);
+    const quarter = { size: { width: 512, height: 16 }, frame: { width: 2048, height: 64 } };
+    const first = previewSourceOf(el, quarter);
+    expect(previewSourceOf(el, quarter)).toBe(first);
+    expect(previewSourceOf(el, { size: { width: 256, height: 8 }, frame: { width: 2048, height: 64 } })).not.toBe(first);
     expect(drawImage).toHaveBeenCalledTimes(2);
   });
 
   it('uses a picture no larger than the preview as it is', () => {
     const el = picture(400, 300);
-    expect(previewSourceOf(el, { width: 400, height: 300 })).toBe(el);
+    expect(previewSourceOf(el, { size: { width: 400, height: 300 }, frame: { width: 400, height: 300 } })).toBe(el);
+  });
+
+  // A frame past the picture's edge is filled with its last column, drawn
+  // first, so the pixel the picture half covers mixes the two by coverage.
+  it('fills the frame past the picture with its last column under the picture', () => {
+    const drawImage = vi.fn();
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({ drawImage } as never);
+    const el = picture(2049, 64);
+    previewSourceOf(el, { size: { width: 513, height: 16 }, frame: { width: 2052, height: 64 } });
+    expect(drawImage.mock.calls).toEqual([
+      [el, 2048, 0, 1, 64, 512, 0, 1, 16],
+      [el, 0, 0, (2049 * 513) / 2052, 16],
+    ]);
   });
 });
 
@@ -313,8 +364,8 @@ describe('drawAdjusted', () => {
     const target = document.createElement('canvas');
     const value = { ...defaultAdjustValue, sharpness: 50 };
     await drawAdjusted(picture(1000, 500), { width: 400, height: 200 }, value, target, backend as never);
-    expect([target.width, target.height]).toEqual([100, 50]);
-    expect(backend.applyFilters).toHaveBeenCalledWith(expect.anything(), expect.anything(), 100, 50, target);
+    expect([target.width, target.height]).toEqual([63, 32]);
+    expect(backend.applyFilters).toHaveBeenCalledWith(expect.anything(), expect.anything(), 63, 32, target);
   });
 
   // A context can be lost at any moment, the draw included (Khronos,

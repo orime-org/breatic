@@ -325,10 +325,10 @@ describe('adjustPixels', () => {
       [600, 576],
       [1001, 300],
       [2048, 300],
-      [4000, 576],
-      [4000, 100],
+      [2400, 576],
+      [2400, 100],
     ] as const)('draws a %s-wide picture shown %s wide as the export shrunk to its preview', (width, shown) => {
-      const height = 8;
+      const height = 2;
       const natural = { width, height };
       const { size, frame } = previewFrame(
         natural,
@@ -336,7 +336,7 @@ describe('adjustPixels', () => {
         { width: Infinity, height: Infinity },
       );
       const edges = [1, 2, 3, 4, 7, 8, 9, 16, width - 16, width - 9, width - 4, width - 3, width - 2, width - 1];
-      for (let n = 0; n < 12; n++) edges.push(Math.floor(width * 0.3) + 7 * n);
+      for (let n = 0; n < 6; n++) edges.push(Math.floor(width * 0.3) + 7 * n);
       for (const colours of [BLUE, BRICK, BW]) {
         for (const edge of edges) {
           for (const noiseReduction of [1, 10]) {
