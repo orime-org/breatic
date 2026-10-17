@@ -86,7 +86,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
     callOptionsFor: actual.callOptionsFor,
     buildAgentConfig: () => ({
       modelId: runningOn.modelId,
-      instructions: "system",
+      instructions: { base: "system" },
       tools: {},
     }),
     finalizeTurn: async () => [],

@@ -14,6 +14,7 @@ import { beforeAll, describe, expect, it, vi } from "vitest";
 import { getAgentConfig, initCore } from "@breatic/core";
 import type * as CoreModule from "@breatic/core";
 import { buildAgentConfig } from "@domain/agent/agent-config.js";
+import { instructionsText } from "@domain/agent/instructions.js";
 
 vi.mock("@breatic/core", async (importOriginal) => {
   const actual = await importOriginal<typeof CoreModule>();
@@ -78,18 +79,32 @@ describe("buildAgentConfig", () => {
       ...getAgentConfig(),
       default_model: sentinel,
     });
-    expect(buildAgentConfig({}).modelId).toBe(sentinel);
+    expect(buildAgentConfig({ basePrompt: "base" }).modelId).toBe(sentinel);
   });
 
-  it("puts the base prompt first and the memory layers after it", () => {
+  it("keeps the base prompt, the project's memory and the conversation's memory as three parts", () => {
     const config = buildAgentConfig({
       basePrompt: "base",
       memoryContext: { projectMemory: "p", conversationMemory: "c" },
     });
-    expect(config.instructions).toBe("base\n\n## Project Context\np\n\n## Conversation Memory\nc");
+    expect(config.instructions).toEqual({
+      base: "base",
+      project: "## Project Context\np",
+      conversation: "## Conversation Memory\nc",
+    });
   });
 
   it("is the base prompt alone when there is no memory", () => {
-    expect(buildAgentConfig({ basePrompt: "base" }).instructions).toBe("base");
+    expect(buildAgentConfig({ basePrompt: "base" }).instructions).toEqual({ base: "base" });
+  });
+
+  it("reads as the same text as one prompt joined in order", () => {
+    const config = buildAgentConfig({
+      basePrompt: "base",
+      memoryContext: { projectMemory: "p", conversationMemory: "c" },
+    });
+    expect(instructionsText(config.instructions)).toBe(
+      "base\n\n## Project Context\np\n\n## Conversation Memory\nc",
+    );
   });
 });

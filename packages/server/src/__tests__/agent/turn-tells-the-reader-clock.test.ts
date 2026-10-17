@@ -49,7 +49,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
     streamTextRetry: actual.streamTextRetry,
     buildAgentConfig: (request: { basePrompt?: string }) => {
       modelSays.basePrompts.push(request.basePrompt);
-      return { modelId: "test", instructions: "system", tools: {} };
+      return { modelId: "test", instructions: { base: "system" }, tools: {} };
     },
     finalizeTurn: async () => [],
     getModel: () =>

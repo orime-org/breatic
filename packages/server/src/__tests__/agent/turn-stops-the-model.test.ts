@@ -105,7 +105,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
     resolveProvider: () => "test",
     buildAgentConfig: () => ({
       modelId: "test/model",
-      instructions: "system",
+      instructions: { base: "system" },
       tools: turnTools,
     }),
     creditLotService: { chargeOnceForGeneration },

@@ -12,7 +12,7 @@ import { createUIMessageStream, stepCountIs } from "ai";
 import { streamTextRetry } from "@breatic/domain";
 import type { ModelMessage, StopCondition, Tool, ToolSet, UIMessage, UIMessageChunk, UIMessageStreamWriter } from "ai";
 
-import { callOptionsFor, getModel, resolveProvider } from "@breatic/domain";
+import { callOptionsFor, getModel, resolveProvider, systemFor } from "@breatic/domain";
 import {
   buildAgentConfig,
   finalizeTurn,
@@ -500,7 +500,7 @@ export class MainAgent {
           cache: agentCfg.prompt_cache_ttl,
           session: conversationId,
         }),
-        system: agentConfig.instructions,
+        system: systemFor(agentConfig.modelId, agentConfig.instructions, agentCfg.prompt_cache_ttl),
         messages,
         tools: agentConfig.tools,
         // The paying tools record their calls on this turn's recorder, the
