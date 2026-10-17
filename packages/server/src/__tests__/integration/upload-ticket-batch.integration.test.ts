@@ -38,6 +38,7 @@ import {
 } from "@breatic/core";
 import { assetRepo } from "@breatic/domain";
 import { signSessionToken } from "@breatic/shared";
+import { getRateLimit } from "@server/config/rate-limits.js";
 import type { Hono } from "hono";
 
 try {
@@ -312,8 +313,25 @@ describe("finishing a batch's uploads", () => {
     for (let i = 0; i < 30; i++) statuses.push((await finish(a.cookie, uploadId)).status);
 
     expect(statuses).toContain(429);
-    // Both quotas are judged in one step: a refused finish takes room in neither.
-    expect(await getRedis().zcard(`${env.ENV}:ratelimit:upload-complete-user:${a.userId}`)).toBe(10);
+    // A finish the upload's own quota refuses takes no room in the person's.
+    expect(await getRedis().zcard(`${env.ENV}:ratelimit:upload-complete-user:${a.userId}`)).toBe(
+      getRateLimit("upload-complete").max,
+    );
+  });
+
+  // Both quotas are judged in one step: a finish the person's quota refuses
+  // takes no room in the upload's either.
+  it("refuses a finish once the person's quota is full without counting it for the upload", async () => {
+    const a = await account();
+    const key = `${env.ENV}:ratelimit:upload-complete-user:${a.userId}`;
+    const now = Date.now();
+    const seeds = Array.from({ length: getRateLimit("upload-complete-user").max }, (_, i) => [now, `seed-${i}`]).flat();
+    await getRedis().zadd(key, ...seeds);
+    await getRedis().pexpire(key, 60_000);
+    const uploadId = crypto.randomUUID();
+
+    expect((await finish(a.cookie, uploadId)).status).toBe(429);
+    expect(await getRedis().exists(`${env.ENV}:ratelimit:upload-complete:${a.userId}:${uploadId}`)).toBe(0);
   });
 
   // One ticket opens any number of uploads at the Worker, so a person's
