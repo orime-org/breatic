@@ -32,6 +32,20 @@ describe("the system prompt", () => {
     expect(wording()).toContain("an AI operating system for content creators");
   });
 
+  it("names every product term that stays English in any language", () => {
+    // The same vocabulary the interface keeps in English
+    // (packages/web/AGENTS.md#product-terms-are-never-translated): a reply
+    // that calls a Space a translated word describes a screen the reader
+    // cannot find.
+    const terms = [
+      "Studio", "Project", "Collection", "Space", "Work", "Canvas", "Document", "Timeline",
+      "Agent", "Slug", "Owner", "Editor", "Viewer", "Admin", "Maintainer", "Guest",
+    ];
+    const text = wording();
+    expect(text).toMatch(/stay in English in every language/i);
+    for (const term of terms) expect(text).toContain(term);
+  });
+
   it("tells the model to call tools rather than write out calls", () => {
     expect(wording()).toMatch(/do not write out what a call would look like/i);
   });
