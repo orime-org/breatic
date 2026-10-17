@@ -126,8 +126,7 @@ const previewCopies = new WeakMap<CropSourceEl, { width: number; height: number;
  * smoothing, the picture's last column and row standing in for the pixels
  * past its edge. The filters sample by nearest neighbour, so a larger source
  * drawn straight into the size keeps one pixel in every few and the preview
- * stops matching the export. A picture's copy is kept for its size; a video's
- * frame moves, so its copy is drawn each time.
+ * stops matching the export. A picture's copy is kept for its size.
  * @param el - The picture.
  * @param preview - Where the preview draws.
  * @returns The source to filter.
@@ -137,7 +136,7 @@ export function previewSourceOf(el: CropSourceEl, preview: PreviewFrame): CropSo
   const { size, frame } = preview;
   const own = intrinsicSize(el);
   if (own.width === size.width && own.height === size.height) return el;
-  const kept = el instanceof HTMLVideoElement ? undefined : previewCopies.get(el);
+  const kept = previewCopies.get(el);
   if (kept !== undefined && kept.width === size.width && kept.height === size.height) return kept.canvas;
   const canvas = document.createElement('canvas');
   canvas.width = size.width;
@@ -158,7 +157,7 @@ export function previewSourceOf(el: CropSourceEl, preview: PreviewFrame): CropSo
   if (fromX < size.width) context.drawImage(el, own.width - 1, 0, 1, own.height, fromX, 0, size.width - fromX, bottom);
   if (fromY < size.height) context.drawImage(el, 0, own.height - 1, own.width, 1, 0, fromY, right, size.height - fromY);
   context.drawImage(el, 0, 0, right, bottom);
-  if (!(el instanceof HTMLVideoElement)) previewCopies.set(el, { ...size, canvas });
+  previewCopies.set(el, { ...size, canvas });
   return canvas;
 }
 
