@@ -257,26 +257,41 @@ describe('MarkCanvasController', () => {
       expect(under(80, 150)).toBe('e');
     });
 
-    // The ellipse's stroke spans x 78.1 to 81.9 on the row through its centre;
-    // a press within 6 screen pixels of it on either side hits it (§6.2).
-    it('finds the hollow ellipse a few pixels inside its stroke', () => {
-      expect(under(86, 150)).toBe('e');
-    });
+    // The ellipse's stroke is drawn inside its frame, x 80 to 83.75 on the row
+    // through its centre; a press within 6 screen pixels of it on either side
+    // hits it (§6.2), whatever the page's zoom.
+    describe.each([0.5, 1, 2])('at zoom %s', (zoom) => {
+      /**
+       * The markup object under a press at the page's zoom.
+       * @param x - Across, in drawn pixels.
+       * @param y - Down, in drawn pixels.
+       * @returns Its id, if any.
+       */
+      const onScreen = (x: number, y: number): string | undefined => under(x * zoom, y * zoom);
 
-    it('finds the hollow ellipse a few pixels outside its stroke', () => {
-      expect(under(75, 150)).toBe('e');
-    });
+      beforeEach(() => {
+        controller.setZoom(zoom);
+      });
 
-    it('finds a selected hollow object anywhere inside its frame', () => {
-      controller.canvas.setActiveObject(controller.canvas.getObjects().find((o) => (o as { markId?: string }).markId === 'e')!);
-      expect(under(120, 150)).toBe('e');
-    });
+      it('finds the hollow ellipse 5 screen pixels inside its stroke', () => {
+        expect(onScreen(83.75 + 5 / zoom, 150)).toBe('e');
+      });
 
-    it('finds a thin straight line a few pixels off it', () => {
-      store.getState().commitMark([{ id: 'l', kind: 'line', color: INK[2], size: 1, x1: 0.1, y1: 0.1, x2: 0.9, y2: 0.1 }]);
-      controller.sync();
-      expect(under(200, 27)).toBe('l');
-      expect(under(200, 33)).toBe('l');
+      it('finds the hollow ellipse 5 screen pixels outside its stroke', () => {
+        expect(onScreen(80 - 5 / zoom, 150)).toBe('e');
+      });
+
+      it('finds a selected hollow object anywhere inside its frame', () => {
+        controller.canvas.setActiveObject(controller.canvas.getObjects().find((o) => (o as { markId?: string }).markId === 'e')!);
+        expect(onScreen(120, 150)).toBe('e');
+      });
+
+      it('finds a thin straight line 4 screen pixels off it', () => {
+        store.getState().commitMark([{ id: 'l', kind: 'line', color: INK[2], size: 1, x1: 0.1, y1: 0.1, x2: 0.9, y2: 0.1 }]);
+        controller.sync();
+        expect(onScreen(200, 30 - 4 / zoom)).toBe('l');
+        expect(onScreen(200, 30 + 4 / zoom)).toBe('l');
+      });
     });
   });
 
