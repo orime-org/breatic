@@ -280,6 +280,75 @@ describe("agent-rule-files", () => {
       expect(run(files)).toEqual([]);
     });
 
+    it.each([
+      ["LF", "\n"],
+      ["CRLF", "\r\n"],
+    ])("checks front matter as prose and keeps the body's line numbers (%s)", (_name, eol) => {
+      const text = ["---", "name: x", "description: see packages/web/AGENTS.md#nope", "---", "", "See packages/web/AGENTS.md#gone.", ""].join(eol);
+      expect(run({ ...cleanRepo(), "docs/fm.md": text })).toEqual([
+        expect.objectContaining({ file: "docs/fm.md", line: 3 }),
+        expect.objectContaining({ file: "docs/fm.md", line: 6 }),
+      ]);
+    });
+
+    it("reads a leading thematic break as markdown, not front matter", () => {
+      const files = {
+        ...cleanRepo(),
+        "docs/rule.md": "---\n\nSee packages/web/AGENTS.md#nope.\n\n---\n",
+        "docs/empty.md": "---\n---\n# H\n\nSee packages/web/AGENTS.md#gone.\n",
+      };
+      expect(run(files)).toEqual([
+        expect.objectContaining({ file: "docs/rule.md", line: 3 }),
+        expect.objectContaining({ file: "docs/empty.md", line: 5 }),
+      ]);
+    });
+
+    it("checks links and text in raw HTML", () => {
+      const files = {
+        ...cleanRepo(),
+        "docs/ok.md": '<a href="../packages/web/AGENTS.md#scroll-areas">rule</a>\n',
+        "docs/bad.md": '<p>\n<a href="../packages/web/AGENTS.md#nope">rule</a>\n</p>\n\n<!-- see packages/web/AGENTS.md#gone -->\n',
+      };
+      expect(run(files)).toEqual([
+        expect.objectContaining({ file: "docs/bad.md", line: 2, message: expect.stringMatching(/#nope/) }),
+        expect.objectContaining({ file: "docs/bad.md", line: 5, message: expect.stringMatching(/#gone/) }),
+      ]);
+    });
+
+    it("reads a link target past its query string", () => {
+      const files = { ...cleanRepo(), "docs/q.md": "See [it](../packages/web/AGENTS.md?plain=1#nope).\n" };
+      expect(run(files)).toEqual([expect.objectContaining({ file: "docs/q.md", message: expect.stringMatching(/#nope/) })]);
+    });
+
+    it("counts lines inside a multi-line paragraph and checks inline code", () => {
+      const files = { ...cleanRepo(), "docs/m.md": "First line\nsecond packages/web/AGENTS.md#nope\n\nThen `packages/web/AGENTS.md#gone`.\n" };
+      expect(run(files)).toEqual([
+        expect.objectContaining({ file: "docs/m.md", line: 2 }),
+        expect.objectContaining({ file: "docs/m.md", line: 4 }),
+      ]);
+    });
+
+    it("leaves URLs alone, in text and as link targets", () => {
+      const files = {
+        ...cleanRepo(),
+        "packages/core/src/u.ts": "// https://example.com/x?path=packages/web/AGENTS.md#nope\nexport const u = 1;\n",
+        "docs/u2.md": "See [upstream](https://example.com/AGENTS.md#nope).\n",
+      };
+      expect(run(files)).toEqual([]);
+    });
+
+    it("resolves a link target starting with / from the repository root", () => {
+      const files = { ...cleanRepo(), "docs/root.md": "See [it](/packages/web/AGENTS.md#scroll-areas).\n" };
+      expect(run(files)).toEqual([]);
+    });
+
+    it("resolves ./ and ../ paths in prose against the file that holds them", () => {
+      const files = { ...cleanRepo(), "packages/web/src/rel.ts": "// See ../AGENTS.md#nope.\nexport const r = 1;\n" };
+      expect(run(files)).toEqual([
+        expect.objectContaining({ file: "packages/web/src/rel.ts", message: expect.stringMatching(/^packages\/web\/AGENTS\.md has no heading/) }),
+      ]);
+    });
+
     it("accepts an anchored link whose visible text is the file path", () => {
       const files = { ...cleanRepo(), "docs/p.md": "See [packages/web/AGENTS.md](../packages/web/AGENTS.md#scroll-areas).\n" };
       expect(run(files)).toEqual([]);
@@ -353,6 +422,14 @@ describe("headingSlugs", () => {
 
   it("slugs the visible text of a heading, not its markup", () => {
     expect([...headingSlugs("## See [ports](x.md) here\n")]).toEqual(["see-ports-here"]);
+  });
+
+  it("takes no heading from front matter", () => {
+    expect([...headingSlugs("---\nname: x\n---\n\n# Real\n")]).toEqual(["real"]);
+  });
+
+  it("reads headings between leading thematic breaks that hold no YAML mapping", () => {
+    expect([...headingSlugs("---\n\n## Rule\n\n---\n")]).toEqual(["rule"]);
   });
 
   it("reads setext headings and ignores headings inside HTML comments", () => {

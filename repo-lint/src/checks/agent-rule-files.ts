@@ -4,12 +4,16 @@ import { posix } from "node:path";
 import GithubSlugger from "github-slugger";
 import { fromMarkdown } from "mdast-util-from-markdown";
 import { toString } from "mdast-util-to-string";
+import { parse as parseYaml } from "yaml";
 import type { Check, CheckContext, Finding } from "#repo-lint/check";
 import { assertAllowlistIsLive } from "#repo-lint/allowlist";
 import { TEST_FILE } from "#repo-lint/file-kinds";
 
 /** The rules themselves: one per directory that has any. */
 const RULES_FILE = "AGENTS.md";
+
+/** A project skill, which rules point into as well. */
+const SKILL_FILE = "SKILL.md";
 
 /**
  * The file Claude Code actually reads. It only imports the rules beside it,
@@ -50,10 +54,13 @@ const POINTER_MENTION_ALLOWED: ReadonlyMap<string, string> = new Map([
 const PATH_REFERENCE = /(?<![\w./-])((?:\.{1,2}\/|[\w.-]+\/)*(?:AGENTS|SKILL)\.md)(#[\p{L}\p{N}\p{M}_%-]*)?/gu;
 
 /** Absolute URLs point outside this checkout. */
-const URL = /\b[a-z][a-z\d+.-]*:\/\/\S+/gi;
+const ABSOLUTE_URL = /\b[a-z][a-z\d+.-]*:\/\/\S+/gi;
 
 /** A link target with a scheme (`https:`, `mailto:`) leaves this checkout. */
 const HAS_SCHEME = /^[a-z][a-z\d+.-]*:/i;
+
+/** An `href` attribute in raw HTML, which GitHub renders as a link. */
+const HREF = /\bhref\s*=\s*(["'])(.*?)\1/gis;
 
 /** The slice of an mdast node this check reads. */
 interface MarkdownNode {
@@ -73,16 +80,47 @@ interface Reference {
   anchor: string;
 }
 
+/** A markdown file split the way GitHub renders it. */
+interface ParsedMarkdown {
+  /** The YAML front matter, delimiters included; empty when there is none. */
+  frontMatter: string;
+  /** The body, parsed with the front matter's lines blanked so line numbers hold. */
+  root: MarkdownNode;
+}
+
 /**
- * Parses markdown as GitHub renders it, with YAML front matter (which GitHub
- * shows as a table) blanked so its lines keep their numbers.
- * @param markdown File contents.
- * @returns The mdast root.
+ * Whether text is a YAML mapping, the only front matter GitHub renders as such.
+ * @param text The lines between the delimiters.
+ * @returns True for a mapping.
  */
-function parseMarkdown(markdown: string): MarkdownNode {
-  const frontMatter = /^---\n[\s\S]*?\n---(?=\n|$)/.exec(markdown);
-  const body = frontMatter ? markdown.replace(frontMatter[0], frontMatter[0].replace(/[^\n]/g, "")) : markdown;
-  return fromMarkdown(body);
+function isYamlMapping(text: string): boolean {
+  try {
+    const value: unknown = parseYaml(text);
+    return typeof value === "object" && value !== null && !Array.isArray(value);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Parses markdown as GitHub renders it: a leading `---` block is front
+ * matter only when it holds a YAML mapping, otherwise it is a thematic break.
+ * @param markdown File contents.
+ * @returns The front matter and the parsed body.
+ */
+function parseMarkdown(markdown: string): ParsedMarkdown {
+  const lines = markdown.split("\n");
+  if (lines[0]?.trimEnd() === "---") {
+    const end = lines.findIndex((line, index) => index > 0 && line.trimEnd() === "---");
+    if (end !== -1 && isYamlMapping(lines.slice(1, end).join("\n"))) {
+      const frontMatter = lines.slice(0, end + 1).join("\n");
+      return {
+        frontMatter,
+        root: fromMarkdown(frontMatter.replace(/[^\n]/g, "") + markdown.slice(frontMatter.length)),
+      };
+    }
+  }
+  return { frontMatter: "", root: fromMarkdown(markdown) };
 }
 
 /**
@@ -121,7 +159,7 @@ export function headingSlugs(markdown: string): Set<string> {
     }
     node.children?.forEach(visit);
   };
-  visit(parseMarkdown(markdown));
+  visit(parseMarkdown(markdown).root);
   return slugs;
 }
 
@@ -135,7 +173,7 @@ export function headingSlugs(markdown: string): Set<string> {
  */
 function textReferences(file: string, text: string, firstLine: number): Reference[] {
   const references: Reference[] = [];
-  const scan = text.replace(URL, (url) => " ".repeat(url.length));
+  const scan = text.replace(ABSOLUTE_URL, (url) => " ".repeat(url.length));
   for (const match of scan.matchAll(PATH_REFERENCE)) {
     const [, path = "", anchor = ""] = match;
     if (!anchor && !path.includes("/")) continue;
@@ -150,15 +188,55 @@ function textReferences(file: string, text: string, firstLine: number): Referenc
 }
 
 /**
- * References in a markdown file: link and definition targets, resolved the
- * way GitHub resolves them, and path references in prose and inline code.
- * Fenced code holds samples, not citations.
+ * The reference a link target makes, resolved the way GitHub resolves it:
+ * against the linking file, or the repository root for a leading `/`.
+ * @param file The file holding the link.
+ * @param url The link target as written.
+ * @param line The line the link is on.
+ * @returns The reference, or null when the target is not a rules file or skill.
+ */
+function linkReference(file: string, url: string, line: number): Reference | null {
+  if (HAS_SCHEME.test(url)) return null;
+  const hash = url.indexOf("#");
+  const path = decode((hash === -1 ? url : url.slice(0, hash)).replace(/\?.*$/, ""));
+  const name = posix.basename(path);
+  if (name !== RULES_FILE && name !== SKILL_FILE) return null;
+  return {
+    line,
+    target: path.startsWith("/") ? path.slice(1) : posix.normalize(posix.join(posix.dirname(file), path)),
+    anchor: hash === -1 ? "" : decode(url.slice(hash + 1)),
+  };
+}
+
+/**
+ * References in raw HTML: each `href` as a link target, the rest as prose.
+ * @param file The file holding the HTML.
+ * @param html The HTML as written.
+ * @param firstLine The line the HTML starts on.
+ * @returns The references found.
+ */
+function htmlReferences(file: string, html: string, firstLine: number): Reference[] {
+  const references: Reference[] = [];
+  for (const match of html.matchAll(HREF)) {
+    const line = firstLine + (html.slice(0, match.index).match(/\n/g)?.length ?? 0);
+    const reference = linkReference(file, match[2] ?? "", line);
+    if (reference) references.push(reference);
+  }
+  const rest = html.replace(HREF, (attribute) => attribute.replace(/[^\n]/g, " "));
+  return [...references, ...textReferences(file, rest, firstLine)];
+}
+
+/**
+ * References in a markdown file: link, definition and `href` targets, and
+ * path references in prose, inline code and front matter. Fenced code holds
+ * samples, not citations.
  * @param file The markdown file.
  * @param markdown Its contents.
  * @returns The references found.
  */
 function markdownReferences(file: string, markdown: string): Reference[] {
-  const references: Reference[] = [];
+  const { frontMatter, root } = parseMarkdown(markdown);
+  const references = textReferences(file, frontMatter, 1);
   /**
    * Collects the references under a node, not descending into links.
    * @param node The node to walk.
@@ -166,25 +244,21 @@ function markdownReferences(file: string, markdown: string): Reference[] {
   const visit = (node: MarkdownNode): void => {
     const line = node.position?.start.line ?? 1;
     if ((node.type === "link" || node.type === "definition") && node.url !== undefined) {
-      const hash = node.url.indexOf("#");
-      const path = decode(hash === -1 ? node.url : node.url.slice(0, hash));
-      const name = posix.basename(path);
-      if (!HAS_SCHEME.test(node.url) && (name === RULES_FILE || name === "SKILL.md")) {
-        references.push({
-          line,
-          target: path.startsWith("/") ? path.slice(1) : posix.normalize(posix.join(posix.dirname(file), path)),
-          anchor: hash === -1 ? "" : decode(node.url.slice(hash + 1)),
-        });
-      }
+      const reference = linkReference(file, node.url, line);
+      if (reference) references.push(reference);
       return;
     }
     if (node.type === "text" || node.type === "inlineCode") {
       references.push(...textReferences(file, node.value ?? "", line));
       return;
     }
+    if (node.type === "html") {
+      references.push(...htmlReferences(file, node.value ?? "", line));
+      return;
+    }
     node.children?.forEach(visit);
   };
-  visit(parseMarkdown(markdown));
+  visit(root);
   return references;
 }
 
