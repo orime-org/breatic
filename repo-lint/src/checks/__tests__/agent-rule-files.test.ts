@@ -337,6 +337,27 @@ describe("agent-rule-files", () => {
       expect(run(files)).toEqual([]);
     });
 
+    it("leaves URLs written without a scheme alone", () => {
+      const files = {
+        ...cleanRepo(),
+        "packages/core/src/s.ts": "// www.example.com/AGENTS.md#x and github.com/o/r/blob/main/AGENTS.md#y\nexport const s = 1;\n",
+      };
+      expect(run(files)).toEqual([]);
+    });
+
+    it("does not read a longer file name as a rules file", () => {
+      const files = { ...cleanRepo(), "packages/core/src/bak.ts": "// Copied to packages/web/AGENTS.md.bak first.\nexport const b = 1;\n" };
+      expect(run(files)).toEqual([]);
+    });
+
+    it("reports a reference that leaves the repository without looking on disk", () => {
+      const files = { ...cleanRepo(), "docs/out.md": "See [it](../../AGENTS.md#key-conventions).\n" };
+      const context: CheckContext = { ...fakeContext(files), exists: (path) => path.startsWith("../") || fakeContext(files).exists(path) };
+      expect(agentRuleFiles.run(context)).toEqual([
+        expect.objectContaining({ file: "docs/out.md", message: expect.stringMatching(/outside the repository/) }),
+      ]);
+    });
+
     it("resolves a link target starting with / from the repository root", () => {
       const files = { ...cleanRepo(), "docs/root.md": "See [it](/packages/web/AGENTS.md#scroll-areas).\n" };
       expect(run(files)).toEqual([]);

@@ -48,13 +48,17 @@ const POINTER_MENTION_ALLOWED: ReadonlyMap<string, string> = new Map([
  *
  * Groups: 1 the path, 2 the anchor. The path must not continue a longer
  * token, so a placeholder such as `packages/<pkg>/AGENTS.md` is not read as
- * a path. The anchor class stops at `.` so a sentence's full stop is not
- * read as part of it.
+ * a path, and must end at the file name, so `AGENTS.md.bak` is not one. The
+ * anchor class stops at `.` so a sentence's full stop is not read as part
+ * of it.
  */
-const PATH_REFERENCE = /(?<![\w./-])((?:\.{1,2}\/|[\w.-]+\/)*(?:AGENTS|SKILL)\.md)(#[\p{L}\p{N}\p{M}_%-]*)?/gu;
+const PATH_REFERENCE = /(?<![\w./-])((?:\.{1,2}\/|[\w.-]+\/)*(?:AGENTS|SKILL)\.md)(?!\.?\w)(#[\p{L}\p{N}\p{M}_%-]*)?/gu;
 
-/** Absolute URLs point outside this checkout. */
-const ABSOLUTE_URL = /\b[a-z][a-z\d+.-]*:\/\/\S+/gi;
+/**
+ * URLs point outside this checkout: with a scheme, or starting with a host
+ * name (`www.example.com/`, `github.com/`) the way prose often writes them.
+ */
+const URL_TEXT = /\b[a-z][a-z\d+.-]*:\/\/\S+|(?<![\w./-])[\w-]+(?:\.[\w-]+)*\.[a-z]{2,}\/\S*/gi;
 
 /** A link target with a scheme (`https:`, `mailto:`) leaves this checkout. */
 const HAS_SCHEME = /^[a-z][a-z\d+.-]*:/i;
@@ -173,7 +177,7 @@ export function headingSlugs(markdown: string): Set<string> {
  */
 function textReferences(file: string, text: string, firstLine: number): Reference[] {
   const references: Reference[] = [];
-  const scan = text.replace(ABSOLUTE_URL, (url) => " ".repeat(url.length));
+  const scan = text.replace(URL_TEXT, (url) => " ".repeat(url.length));
   for (const match of scan.matchAll(PATH_REFERENCE)) {
     const [, path = "", anchor = ""] = match;
     if (!anchor && !path.includes("/")) continue;
@@ -281,6 +285,17 @@ function isPointerFile(path: string): boolean {
 }
 
 /**
+ * Whether a file is about the rule files themselves and so names them by
+ * necessity: the rule and pointer files, the skill on editing them, and this
+ * check.
+ * @param file Repo-relative path.
+ * @returns True when rules 4 and 5 do not apply.
+ */
+function isAboutRuleFiles(file: string): boolean {
+  return isRulesFile(file) || isPointerFile(file) || file.startsWith(EDITING_SKILL) || THIS_CHECK.test(file);
+}
+
+/**
  * Rules 1–3: each pointer imports only its rules, each rules file has a
  * pointer, and no rules file outgrows what a model reliably follows.
  * @param context The check context.
@@ -326,15 +341,7 @@ function checkLayout(context: CheckContext, rulesFiles: readonly string[]): Find
  * @returns A finding per line that names the pointer file.
  */
 function checkPointerMentions(file: string, lines: readonly string[]): Finding[] {
-  if (
-    isRulesFile(file) ||
-    isPointerFile(file) ||
-    file.startsWith(EDITING_SKILL) ||
-    THIS_CHECK.test(file) ||
-    POINTER_MENTION_ALLOWED.has(file)
-  ) {
-    return [];
-  }
+  if (isAboutRuleFiles(file) || POINTER_MENTION_ALLOWED.has(file)) return [];
   const findings: Finding[] = [];
   lines.forEach((text, index) => {
     if (!text.includes(POINTER_FILE)) return;
@@ -356,11 +363,8 @@ function checkPointerMentions(file: string, lines: readonly string[]): Finding[]
  */
 function checkReferences(context: CheckContext, file: string): Finding[] {
   if (
-    isRulesFile(file) ||
-    isPointerFile(file) ||
-    file.startsWith(EDITING_SKILL) ||
+    isAboutRuleFiles(file) ||
     (file.startsWith("repo-lint/") && TEST_FILE.test(file)) ||
-    THIS_CHECK.test(file) ||
     /(^|\/)\.(docker|git)ignore$/.test(file)
   ) {
     return [];
@@ -370,7 +374,9 @@ function checkReferences(context: CheckContext, file: string): Finding[] {
   const findings: Finding[] = [];
   for (const { line, target, anchor } of references) {
     let message: string | null = null;
-    if (!context.exists(target)) {
+    if (target === ".." || target.startsWith("../")) {
+      message = `References ${target}, which is outside the repository.`;
+    } else if (!context.exists(target)) {
       message = `References ${target}, which does not exist.`;
     } else if (!anchor) {
       message = `References ${target} without a #anchor. Name the heading of the rule it means, e.g. ${target}#<heading>.`;
