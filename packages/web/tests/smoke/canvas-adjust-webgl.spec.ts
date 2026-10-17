@@ -34,6 +34,7 @@ interface Report {
   grains: { spread: number[]; corr: number[] }[];
   cutout: { worst: number; alpha: [number, number] }[];
   previewGrain: number[];
+  previewNoise: number[];
 }
 
 test('the picture adjust draws through WebGL as ffmpeg does', async ({ page }) => {
@@ -183,6 +184,63 @@ test('the picture adjust draws through WebGL as ffmpeg does', async ({ page }) =
     }
     const small = await run(32, 32, () => [128, 128, 128], { grain: 100 }, { width: 128, height: 128 });
     const previewGrain = [0, 1, 2].map((k) => sdOf(small, k) / sdOf(avg, k));
+    // Noise reduction drawn smaller than its source against the export shrunk
+    // to that size by area: a colour edge carries no fringe the export lacks.
+    const drawFrom = async (width: number, height: number, edge: number, colours: string[], value: object, w: number, h: number): Promise<ImageData> => {
+      const el = document.createElement('canvas');
+      el.width = width;
+      el.height = height;
+      const ctx = el.getContext('2d')!;
+      ctx.fillStyle = `#${colours[0]}`;
+      ctx.fillRect(0, 0, edge, height);
+      ctx.fillStyle = `#${colours[1]}`;
+      ctx.fillRect(edge, 0, width - edge, height);
+      const blob: Blob = await new Promise((done) => el.toBlob((b) => done(b!), 'image/png'));
+      const picture = new Image();
+      picture.src = URL.createObjectURL(blob);
+      await picture.decode();
+      const out = document.createElement('canvas');
+      await exporter.drawAdjusted(picture, { width: w, height: h }, { ...defaults, ...value }, out);
+      return out.getContext('2d')!.getImageData(0, 0, w, h);
+    };
+    const shrink = (d: ImageData, w: number, h: number): number[][] => {
+      const cover = (p: number, scale: number, n: number): [number, number][] => {
+        const out: [number, number][] = [];
+        for (let i = Math.floor(p * scale); i < (p + 1) * scale && i < n; i++) {
+          const c = Math.min((p + 1) * scale, i + 1) - Math.max(p * scale, i);
+          if (c > 1e-9) out.push([i, c]);
+        }
+        return out;
+      };
+      return Array.from({ length: w * h }, (_, n) => {
+        const x = n % w;
+        const y = Math.floor(n / w);
+        let area = 0;
+        const sum = [0, 0, 0];
+        for (const [j, cy] of cover(y, d.height / h, d.height)) {
+          for (const [i, cx] of cover(x, d.width / w, d.width)) {
+            for (let k = 0; k < 3; k++) sum[k] = (sum[k] ?? 0) + cx * cy * (d.data[(j * d.width + i) * 4 + k] ?? 0);
+            area += cx * cy;
+          }
+        }
+        return sum.map((v) => v / area);
+      });
+    };
+    const previewNoise: number[] = [];
+    for (const [width, w, edge, colours] of [
+      [128, 64, 63, ['0000FF', 'FFFF00']],
+      [128, 64, 64, ['0000FF', 'FFFF00']],
+      [1024, 576, 307, ['B2664C', '3366CC']],
+    ] as const) {
+      for (const noiseReduction of [10, 30, 100]) {
+        const height = 16;
+        const h = Math.round((height * w) / width);
+        const value = { noiseReduction };
+        const theirs = shrink(await drawFrom(width, height, edge, [...colours], value, width, height), w, h);
+        const ours = await drawFrom(width, height, edge, [...colours], value, w, h);
+        previewNoise.push(Math.max(...theirs.map((rgb, n) => gap(Array.from(ours.data.slice(n * 4, n * 4 + 3)), rgb))));
+      }
+    }
     return {
       webgl: 'tileSize' in fabric.getFilterBackend(),
       colors,
@@ -193,6 +251,7 @@ test('the picture adjust draws through WebGL as ffmpeg does', async ({ page }) =
       grains,
       cutout,
       previewGrain,
+      previewNoise,
     };
   }, fixture);
 
@@ -213,6 +272,7 @@ test('the picture adjust draws through WebGL as ffmpeg does', async ({ page }) =
     expect(worst).toBeLessThanOrEqual(2);
     expect(alpha).toEqual([255, 0]);
   }
+  for (const worst of report.previewNoise) expect(worst).toBeLessThanOrEqual(10);
   for (const ratio of report.previewGrain) {
     expect(ratio).toBeGreaterThan(0.8);
     expect(ratio).toBeLessThan(1.25);
