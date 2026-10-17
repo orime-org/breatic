@@ -308,11 +308,13 @@
     "empty": {
       "greetingWithName": "嗨,{name}!",
       "greetingDefault": "嗨!",
-      "hintDirect": "在下方輸入對話 ↓",
+      "capabilities": "我可以幫你找素材、寫文章和劇本、在畫布上搭生成流程、修改 Document",
       "quick": {
         "findReference": "幫我找賽博龐克風格的參考圖",
-        "writePrompt": "幫我寫一個生成插畫的提示詞",
-        "refinePrompt": "幫我把這段提示詞改得更具體"
+        "writeScript": "幫我寫一個三分鐘短片的劇本",
+        "buildWorkflow": "幫我在畫布上搭一個生成角色三視圖的流程",
+        "annotateDocument": "幫我給這個 Document 加批註，指出能改進的地方",
+        "writePrompt": "幫我寫一個生成插畫的提示詞"
       }
     },
     "history": {

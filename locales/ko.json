@@ -308,11 +308,13 @@
     "empty": {
       "greetingWithName": "안녕하세요, {name}님!",
       "greetingDefault": "안녕하세요!",
-      "hintDirect": "아래에 입력해 보세요 ↓",
+      "capabilities": "소재 찾기, 글과 대본 쓰기, 캔버스에 생성 흐름 만들기, Document 수정을 도와드려요",
       "quick": {
         "findReference": "사이버펑크 스타일 참고 이미지를 찾아줘",
-        "writePrompt": "일러스트 생성 프롬프트를 써줘",
-        "refinePrompt": "이 프롬프트를 더 구체적으로 다듬어줘"
+        "writeScript": "3분짜리 단편 영화 대본을 써줘",
+        "buildWorkflow": "캔버스에 캐릭터 삼면도를 생성하는 흐름을 만들어줘",
+        "annotateDocument": "이 Document에 코멘트를 달고 개선할 점을 짚어줘",
+        "writePrompt": "일러스트 생성 프롬프트를 써줘"
       }
     },
     "history": {

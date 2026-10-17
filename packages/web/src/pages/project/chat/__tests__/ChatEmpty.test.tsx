@@ -32,13 +32,25 @@ describe('ChatEmpty', () => {
     );
   });
 
-  it('offers the three things the agent is actually for', () => {
+  it('says in one line what the agent can do', () => {
     render(<ChatEmpty />);
-    // Gathering material, and writing the prompts that use it. Generating
-    // the image is not one of them: that happens on the canvas.
-    expect(screen.getByTestId('chat-empty-qa-find-reference')).toBeInTheDocument();
-    expect(screen.getByTestId('chat-empty-qa-write-prompt')).toBeInTheDocument();
-    expect(screen.getByTestId('chat-empty-qa-refine-prompt')).toBeInTheDocument();
+    expect(screen.getByTestId('chat-empty')).toHaveTextContent(
+      'I can find material, write articles and scripts, build generation flows on the canvas, and edit Documents',
+    );
+  });
+
+  it('offers one suggestion for each thing the agent can do', () => {
+    render(<ChatEmpty />);
+    const offered = screen
+      .getAllByTestId(/^chat-empty-qa-/)
+      .map((button) => [button.dataset.testid, button.textContent]);
+    expect(offered).toEqual([
+      ['chat-empty-qa-find-reference', 'Find cyberpunk-style reference images'],
+      ['chat-empty-qa-write-script', 'Write a script for a three-minute short film'],
+      ['chat-empty-qa-build-workflow', 'Build a flow on the canvas that makes a character turnaround'],
+      ['chat-empty-qa-annotate-document', 'Comment on this Document and point out what could be better'],
+      ['chat-empty-qa-write-prompt', 'Write a prompt for an illustration'],
+    ]);
   });
 
   it('clicking a quick action fires onQuickAction with the label', async () => {
