@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 import type { Check } from "#repo-lint/check";
+import { agentRuleFiles } from "#repo-lint/checks/agent-rule-files";
 import { aiSdkWarningsBridged } from "#repo-lint/checks/ai-sdk-warnings-bridged";
 import { dependenciesDeclareWhatShips } from "#repo-lint/checks/dependencies-declare-what-ships";
 import { eofNewline } from "#repo-lint/checks/eof-newline";
@@ -40,6 +41,7 @@ import { tokenValues } from "#repo-lint/checks/token-values";
  * repository itself rather than any one file's contents.
  */
 export const CHECKS: readonly Check[] = [
+  agentRuleFiles,
   aiSdkWarningsBridged,
   dependenciesDeclareWhatShips,
   eofNewline,

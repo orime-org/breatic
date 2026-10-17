@@ -12,23 +12,24 @@
  */
 
 import type { ModelMessage } from "ai";
-import { effectiveKeepChars, getAgentConfig } from "@breatic/core";
-import type { MessageData } from "@breatic/shared";
+import { effectiveKeepTokens, getAgentConfig } from "@breatic/core";
 import type { ResolvedAgentConfig } from "@breatic/domain";
-import { measureMessages, measurePayload } from "@server/agent/payload-size.js";
 import { planConsolidation } from "@server/agent/consolidation-window.js";
-import type { TurnCost } from "@server/agent/consolidation-window.js";
-import { toModelMessages } from "@server/agent/model-messages.js";
 import { consolidateWindow } from "@server/agent/memory-consolidator.js";
+import { stripThinking } from "@server/agent/history-replay.js";
+import type { ReplayedRow, UserForModel } from "@server/agent/history-replay.js";
+import { costPerTurn, requestTokens } from "@server/agent/request-size.js";
 
 /** One reading of everything a turn sends, and what it was built from. */
 export interface Assembly {
   /** Model, instructions and tools, as the factory resolved them. */
   agentConfig: ResolvedAgentConfig;
-  /** The unconsolidated history this assembly read. */
-  history: MessageData[];
+  /** The unconsolidated history this assembly read, row by row as it is replayed. */
+  replayed: ReplayedRow[];
   /** How far the conversation was folded when this was read. */
   watermark: number;
+  /** This turn's message as it is sent, and the Space it sent in full. */
+  userKept: UserForModel;
   /** The history and this turn's question, as they will be sent. */
   messages: ModelMessage[];
 }
@@ -50,31 +51,6 @@ export interface TurnIdentity {
 }
 
 /**
- * What each turn in the history costs the assembled request.
- *
- * Priced one turn at a time with the same function the whole is priced with:
- * a consolidation takes whole turns, and what it needs to know about each of
- * them is how much taking it saves.
- * @param history - The unconsolidated history, oldest first.
- * @returns Each turn and its cost, oldest first.
- */
-function costPerTurn(history: readonly MessageData[]): TurnCost[] {
-  const byTurn = new Map<number, MessageData[]>();
-  for (const message of history) {
-    const found = byTurn.get(message.turnIndex);
-    if (found) found.push(message);
-    else byTurn.set(message.turnIndex, [message]);
-  }
-
-  return [...byTurn.entries()]
-    .sort(([a], [b]) => a - b)
-    .map(([turnIndex, messages]) => ({
-      turnIndex,
-      chars: measureMessages(toModelMessages(messages)),
-    }));
-}
-
-/**
  * Fold the oldest part of the conversation when the request is over budget.
  * @param assembly - What this turn would send as it stands.
  * @param who - Who is asking, and whether they are still there.
@@ -85,23 +61,18 @@ export async function foldIfOverBudget(
   who: TurnIdentity,
 ): Promise<boolean> {
   const config = getAgentConfig();
-  const assembled = measurePayload({
-    instructions: assembly.agentConfig.instructions,
-    tools: assembly.agentConfig.tools,
-    messages: assembly.messages,
-  });
-  // The planner asks this again and is the authority on it. Asked here first
-  // because the answer is no on almost every turn, and the pricing below
-  // renders every turn of the history to find out what it costs.
-  if (assembled <= config.memory_budget_chars) return false;
+  const turns = costPerTurn(assembly.replayed);
+  const assembled = requestTokens(assembly, turns);
+  // The planner asks this again and is the authority on it.
+  if (assembled <= config.memory_budget_tokens) return false;
 
   const plan = planConsolidation({
     assembled,
-    turns: costPerTurn(assembly.history),
-    budget: config.memory_budget_chars,
+    turns,
+    budget: config.memory_budget_tokens,
     // The keep line a pass runs to: the configured line less the room the
     // fold is about to add, from the one place that arithmetic lives.
-    keep: effectiveKeepChars(config),
+    keep: effectiveKeepTokens(config),
   });
   const newWatermark = plan.newWatermark;
   if (newWatermark === null) return false;
@@ -112,9 +83,9 @@ export async function foldIfOverBudget(
     userId: who.userId,
     conversationId: who.conversationId,
     projectId: who.projectId,
-    // The window as the model would have been sent it, placeholders and all.
-    transcript: toModelMessages(
-      assembly.history.filter((m) => m.turnIndex <= newWatermark),
+    // The window as the model was sent it, less the model's own working.
+    transcript: stripThinking(
+      assembly.replayed.filter((one) => one.row.turnIndex <= newWatermark).flatMap((one) => one.messages),
     ),
     watermarkBefore: assembly.watermark,
     newWatermark,

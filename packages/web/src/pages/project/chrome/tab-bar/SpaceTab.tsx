@@ -295,7 +295,7 @@ export function SpaceTab({
       {onClose ? (
         // Span (not button) because the outer SpaceTab is itself a
         // <button>, and button-in-button is invalid HTML — browsers
-        // silently reparent it (see [[feedback_html_validity_check]]).
+        // silently reparent it.
         // The span manually replicates button semantics via role +
         // tabIndex + onClick + onKeyDown so keyboard users can still
         // close the tab.

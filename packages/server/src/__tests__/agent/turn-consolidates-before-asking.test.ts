@@ -53,8 +53,8 @@ const contexts = vi.hoisted(() => ({
   later: null as null | (() => unknown),
 }));
 const buildTurnContext = vi.fn(async () => {
-  const next = (contexts.queue.shift() ?? contexts.later?.()) as { compressedHistory: never[] };
-  contexts.lastHistory = next.compressedHistory;
+  const next = (contexts.queue.shift() ?? contexts.later?.()) as { history: never[] };
+  contexts.lastHistory = next.history;
   return next;
 });
 
@@ -70,8 +70,8 @@ vi.mock("@breatic/core", async (importOriginal) => {
     getContext: actual.getContext,
     getAgentConfig: () => ({
       ...(base.getAgentConfig as () => Record<string, unknown>)(),
-      memory_budget_chars: limits.budget,
-      memory_keep_chars: limits.keep,
+      memory_budget_tokens: limits.budget,
+      memory_keep_tokens: limits.keep,
     }),
   };
 });
@@ -181,7 +181,7 @@ function toolTurn(turnIndex: number, size: number): MessageData[] {
 function context(history: MessageData[], conversationMemory = "", projectMemory = "") {
   return {
     memoryContext: { projectMemory, conversationMemory },
-    compressedHistory: history,
+    history: history,
     // Nothing folded yet, which is what a history starting at turn 1 means.
     watermark: 0,
   };
@@ -256,7 +256,7 @@ afterAll(() => {
  * @returns The assembled length in characters.
  */
 async function lastAssembledLength(): Promise<number> {
-  const { measurePayload } = await import("@server/agent/payload-size.js");
+  const { measureInstructionsAndTools, measureMessages } = await import("@server/agent/payload-size.js");
   const call = buildAgentConfig.mock.calls.at(-1)?.[0] as Parameters<
     typeof DomainModule.buildAgentConfig
   >[0];
@@ -267,11 +267,11 @@ async function lastAssembledLength(): Promise<number> {
     await import("@server/agent/model-messages.js")
   ).toModelMessages(contexts.lastHistory);
   const { readerClockNote } = await import("@server/agent/reader-clock.js");
-  return measurePayload({
-    instructions: resolved.instructions,
-    tools: resolved.tools,
-    messages: [...sent, { role: "user", content: `${readerClockNote(new Date(), undefined)}\n\nhi` }],
-  });
+  const { userMessageForModel } = await import("@server/agent/user-turn.js");
+  return (
+    measureInstructionsAndTools(resolved) +
+    measureMessages([...sent, { role: "user", content: userMessageForModel(readerClockNote(new Date(), undefined), { chips: [], message: "hi" }) }])
+  );
 }
 
 /**
@@ -300,11 +300,9 @@ async function sentLength(): Promise<number> {
 }
 
 describe("an ordinary turn", () => {
-  it("compresses but does not fold, and pays for nothing extra", async () => {
-    // C3: an everyday conversation is nowhere near the budget. The pass that
-    // shortens tool results still runs — that is `buildTurnContext`'s job on
-    // every turn — but no consolidating model call happens and no second
-    // charge appears.
+  it("does not fold, and pays for nothing extra", async () => {
+    // C3: an everyday conversation is nowhere near the budget, so no
+    // consolidating model call happens and no second charge appears.
     contexts.queue = [context([...turn(1, 2000), ...turn(2, 2000)])];
 
     await runTurn();
@@ -548,7 +546,7 @@ describe("a turn that measured over the budget", () => {
     // The fold moved the watermark, so the window is gone from the history
     // whichever way it ended. Failing the turn here spends that window and
     // gives nothing back — and the reply is what was promised. The assembly
-    // already in hand is the pre-fold one: over the character budget, inside
+    // already in hand is the pre-fold one: over the token budget, inside
     // the model's real window, and the only thing left to send.
     contexts.queue = [context([...turn(1, 6000), ...turn(2, 6000), ...turn(3, 6000)])];
     contexts.later = () => {

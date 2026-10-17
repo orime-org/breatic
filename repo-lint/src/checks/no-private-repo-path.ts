@@ -158,7 +158,7 @@ const PRIVATE_REFERENCE = new RegExp(
  * it is on whoever writes the reference.
  *
  * Scanning every tracked file whose bytes are text, rather than a list of
- * source extensions: the root README and CLAUDE.md are public artifacts, and
+ * source extensions: the root README and AGENTS.md are public artifacts, and
  * so are the Dockerfiles, the env templates and the commit hooks, none of
  * which carry an extension a list would have named.
  */

@@ -11,17 +11,16 @@
  * be a turn behaving differently depending on which entrance it came through.
  */
 
-import { getAgentConfig } from "@breatic/core";
 import { conversationService, memoryService } from "@server/modules";
-import { compressForContext } from "@server/agent/message-compressor.js";
-import type { MemoryContext, MessageData } from "@breatic/shared";
+import type { MemoryContext } from "@breatic/shared";
+import type { ReplayRow } from "@server/agent/history-replay.js";
 
 /** Everything a turn reads before its first token. */
 export interface TurnContext {
   /** Both memory layers, loaded once for this turn. */
   memoryContext: MemoryContext;
-  /** What has been said since the watermark, with old tool results dropped. */
-  compressedHistory: MessageData[];
+  /** What has been said since the watermark, as stored. */
+  history: ReplayRow[];
   /**
    * How far the conversation is already folded into memory.
    *
@@ -46,8 +45,6 @@ export async function buildTurnContext(
   projectId: string,
   runningTurn: number,
 ): Promise<TurnContext> {
-  const agentCfg = getAgentConfig();
-
   // The watermark first, and the memory after it, so the memory is always at
   // least as new as the watermark it is paired with. A fold running in
   // another tab commits between these two reads: taking the memory first
@@ -66,7 +63,7 @@ export async function buildTurnContext(
   // Turns already folded into memory are not read again: the watermark is
   // where that folding got to, and everything under it is represented by the
   // memory loaded above.
-  const rawHistory = await conversationService.getMessagesForLlm(
+  const history = await conversationService.getMessagesForLlm(
     conversationId,
     conversation?.lastConsolidatedTurn ?? 0,
     runningTurn,
@@ -74,7 +71,7 @@ export async function buildTurnContext(
 
   return {
     memoryContext,
-    compressedHistory: compressForContext(rawHistory, agentCfg.tool_result_keep),
+    history,
     watermark: conversation?.lastConsolidatedTurn ?? 0,
   };
 }

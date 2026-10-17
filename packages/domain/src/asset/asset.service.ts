@@ -168,7 +168,7 @@ export async function register(input: {
   // would make callers treat a fully successful upload / generation as failed
   // (422 to the browser, markFailed + no charge in the worker) over a row no
   // user ever sees. This library layer must not log (that is the application's
-  // job, @domain/CLAUDE.md), so the failure surfaces as a flag the caller can
+  // job, AGENTS.md#library-packages-do-not-log), so the failure surfaces as a flag the caller can
   // warn on; worst case the redundant object waits for the offline sweep that
   // already has to handle orphans from crashes.
   try {

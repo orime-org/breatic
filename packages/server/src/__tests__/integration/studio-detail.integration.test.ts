@@ -6,8 +6,8 @@
  * `studioService.getStudioDetail` + `studioService.listUserStudios`
  * against a real Postgres (slice 1).
  *
- * The studio shell is the public front door (鉴权 — a CLAUDE.md critical
- * path). Two guarantees are SQL-level and can only be verified against real
+ * The studio shell is the public front door (auth — a critical path,
+ * AGENTS.md#critical-paths). Two guarantees are SQL-level and can only be verified against real
  * Postgres (a mocked query builder returns whatever the test stages,
  * regardless of the JOIN / soft-delete / grouped-count clauses):
  *

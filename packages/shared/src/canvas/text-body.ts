@@ -13,7 +13,7 @@
  * an export the browser calls from it on any page is emitted in the chunk every
  * page downloads — and all three reach Yjs values, two by building them and
  * `bodyToPlainText` through `blockText`, so reaching them from there dragged
- * Yjs and lib0 along. `packages/shared/CLAUDE.md` holds the measurements and
+ * Yjs and lib0 along. `packages/shared/AGENTS.md#barrel-or-subpath` holds
  * the rule for where a module like this belongs.
  *
  * The body is a `Y.XmlFragment` the editor binds to, but three write paths

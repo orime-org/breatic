@@ -28,7 +28,7 @@ const KEEP = 500_000;
  * @returns The turns.
  */
 function turns(sizes: readonly number[], firstTurn = 1) {
-  return sizes.map((chars, i) => ({ turnIndex: firstTurn + i, chars }));
+  return sizes.map((tokens, i) => ({ turnIndex: firstTurn + i, tokens }));
 }
 
 /**
@@ -40,7 +40,7 @@ function turns(sizes: readonly number[], firstTurn = 1) {
  */
 function request(fixedCost: number, turnList: ReturnType<typeof turns>) {
   return {
-    assembled: fixedCost + turnList.reduce((sum, t) => sum + t.chars, 0),
+    assembled: fixedCost + turnList.reduce((sum, t) => sum + t.tokens, 0),
     turns: turnList,
     budget: BUDGET,
     keep: KEEP,
@@ -68,9 +68,9 @@ describe("planning how much a consolidation takes", () => {
     const plan = planConsolidation(request(20_000, turns(Array.from({ length: 30 }, () => 30_000))));
 
     expect(plan.newWatermark).not.toBeNull();
-    expect(plan.remainingChars).toBeLessThanOrEqual(KEEP);
+    expect(plan.remaining).toBeLessThanOrEqual(KEEP);
     // It stops as soon as the line is met: one turn fewer would still be over.
-    const oneFewer = plan.remainingChars + 30_000;
+    const oneFewer = plan.remaining + 30_000;
     expect(oneFewer).toBeGreaterThan(KEEP);
   });
 
@@ -82,7 +82,7 @@ describe("planning how much a consolidation takes", () => {
     );
 
     expect(plan.newWatermark).not.toBeNull();
-    const taken = 870_000 - plan.remainingChars;
+    const taken = 870_000 - plan.remaining;
     expect(taken).toBeGreaterThanOrEqual(340_000);
     expect(taken).toBeLessThanOrEqual(370_000);
   });
@@ -94,7 +94,7 @@ describe("planning how much a consolidation takes", () => {
     expect(plan.newWatermark).not.toBeNull();
     // A fixed 350,000 would stop after the small turns and leave the payload
     // above the budget; this one keeps going.
-    expect(plan.remainingChars).toBeLessThanOrEqual(KEEP);
+    expect(plan.remaining).toBeLessThanOrEqual(KEEP);
   });
 
   it("marks the boundary by turn, and takes whole turns only", () => {
@@ -114,7 +114,7 @@ describe("planning how much a consolidation takes", () => {
     const plan = planConsolidation(request(600_000, turns([100_000, 100_000, 100_000, 100_000])));
 
     expect(plan.newWatermark).toBe(4);
-    expect(plan.remainingChars).toBe(600_000);
+    expect(plan.remaining).toBe(600_000);
   });
 
   it("takes nothing when there is no history to take", () => {

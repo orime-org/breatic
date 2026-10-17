@@ -39,7 +39,8 @@ function signIn(): void {
 // Shared language switcher (features/preferences) — rendered identically by
 // the project and studio top bars and the page header of every page framed by
 // AuthCardShell. The i18n engine is the single source of
-// truth (no Zustand mirror — see `feedback_double_source_state_mirror_trap`).
+// truth (no Zustand mirror; see
+// .claude/skills/react-state-traps/SKILL.md#do-not-mirror-engine-state-in-zustand).
 describe('LangSwitcher', () => {
   beforeEach(() => {
     changeLocale('en');

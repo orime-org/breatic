@@ -301,10 +301,12 @@ test('tells the user an image format it cannot read is one to convert @needs-int
 
 test('tells the user when the address holds nothing it can look at @needs-internet @needs-model', async () => {
 
+  // Put as a picture: asked about a plain web page, the model may search for
+  // it rather than look at it, and this case is about the look.
   const { reply, call } = await askInFreshConversation(
     page,
-    '看看 https://example.com/ 这个地址，说说里面是什么。',
-    'https://example.com/',
+    '这是一张图片的地址：https://example.com/?image=cover.png ，看看画的是什么。',
+    'https://example.com/?image=cover.png',
   );
 
   // The address answers text/html, which is none of the three kinds: the call

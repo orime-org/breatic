@@ -25,6 +25,7 @@ import crypto from "node:crypto";
 import postgres from "postgres";
 import { env, getRedis, initCore, loadLocales } from "@breatic/core";
 import type { Hono } from "hono";
+import { withPeer } from "../helpers/peer.js";
 
 loadLocales();
 
@@ -36,7 +37,7 @@ beforeAll(async () => {
   initCore({ ...process.env, EMAIL_BACKEND: "disabled" });
   sql = postgres(inject("DATABASE_URL"), { max: 3, prepare: false });
   const { createApp } = await import("@server/app.js");
-  app = createApp();
+  app = withPeer(createApp());
 });
 
 afterEach(async () => {

@@ -18,7 +18,7 @@
  *              + nodemailer never invoked (legacy fallback preserved as
  *              a result discriminant rather than a logger.warn line)
  *
- * Per CLAUDE.md "core 和 shared 不写任何日志" mandate (2026-05-27 PR
+ * Per `AGENTS.md#library-packages-do-not-log` (2026-05-27 PR
  * `feat/2026-05-27-collab-infra-resilience`), the library no longer
  * calls `logger.*` — the application caller logs based on the result.
  */

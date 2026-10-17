@@ -526,7 +526,7 @@ describe("Tasks routes", () => {
   // A throttle that never refuses in a test is a throttle nobody has watched
   // work: this is the refusal itself, and what it leaves behind — nothing.
   it("opens no row for a press the throttle refused", async () => {
-    mocks.checkRateLimit.mockResolvedValueOnce(false);
+    mocks.checkRateLimit.mockResolvedValueOnce({ allowed: false, retryAfterSeconds: 60 });
     const app = createApp();
     const res = await app.request("/api/v1/canvas/understand", {
       method: "POST",
@@ -563,13 +563,9 @@ describe("Tasks routes", () => {
       }),
     });
 
-    expect(mocks.checkRateLimit).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.stringContaining("understand:"),
-      expect.any(Number),
-      expect.any(Number),
-      { strict: false },
-    );
+    expect(mocks.checkRateLimit).toHaveBeenCalledWith(expect.anything(), [
+      { key: expect.stringContaining("understand:"), max: expect.any(Number), windowSeconds: expect.any(Number) },
+    ]);
   });
 
   // What one press leaves on the new node while the reading runs: a single

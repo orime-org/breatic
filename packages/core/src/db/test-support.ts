@@ -4,9 +4,9 @@
 /**
  * Integration-test database support.
  *
- * `@breatic/core` is the single home of Drizzle ORM (CLAUDE.md
- * `@shared` vs `@core` ownership): no other package depends on
- * `drizzle-orm` directly. These helpers let downstream integration
+ * `@breatic/core` is the single home of the Drizzle schema, migrations
+ * and clients (`packages/core/AGENTS.md#database-code-lives-in-core`).
+ * These helpers let downstream integration
  * tests (e.g. `@breatic/server`) build a Drizzle client and run
  * migrations against an arbitrary connection URL - typically a fresh
  * testcontainer Postgres whose URL is only known at runtime - WITHOUT

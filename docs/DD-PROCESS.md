@@ -1,6 +1,6 @@
 # Due Diligence (DD) — 完整流程文档
 
-> **本文是 DD 流程的完整参考**(详细模板 + 反例 + 衔接图)。 CLAUDE.md 中的 DD 章节是项目级 mandate(必读),本文是 dev 实际执行 DD 时的操作手册。
+> **本文是 DD 流程的完整参考**(详细模板 + 反例 + 衔接图)。 [AGENTS.md](../AGENTS.md#due-diligence) 中的 DD 章节是项目级 mandate(必读),本文是 dev 实际执行 DD 时的操作手册。
 
 ## 1. 什么算"重大决策"(任一即触发 DD)
 
@@ -22,7 +22,7 @@
 |---|---|
 | AIGC provider 选型(image / video / audio / 3d / tts / understand 模型路由) | 架构/长期维护 + 跨界 |
 | Agent 定义变更(system prompt / tools 列表 / 生成模板) | 安全模型(prompt injection)+ 架构/长期维护 |
-| 核心架构变更(两层记忆 / Turn 压缩 / Yjs 结构 / Redis Streams) | 架构/长期维护 + 跨界 |
+| 核心架构变更(两层记忆 / 历史回放 / Yjs 结构 / Redis Streams) | 架构/长期维护 + 跨界 |
 | 积分 / 计费机制(pricing / Stripe webhook / 扣费幂等) | 安全模型 + 已扩散 |
 | 部署形态变更(Docker / nginx / CI 流水线) | 架构/长期维护 + 已扩散 |
 | 全前端重写 / 长 living branch | 架构/长期维护 + 跨界 + 已扩散 |
@@ -93,7 +93,7 @@
 
 - DD 报告 commit 入仓库前,**必须经过用户(maintainer)review + 显式拍板**
 - 用户拍板时间 + 依据写入 DD 报告"用户决定"段
-- 锁定到 CLAUDE.md / 其他相关 docs(如适用)
+- 锁定到相关的 AGENTS.md / 其他相关 docs(如适用)
 
 ## 4. 事实验证 DD(针对"假设"而非"选型")
 
@@ -118,7 +118,7 @@
 | **hearsay 升格** | 把 AI 对话(含 ChatGPT / Claude share)当 ground truth |
 | **假对比** | 跳过候选枚举只列 2-3 个 |
 | **单点论据** | 推荐时引用单一证据(如"它 stateless 所以好") |
-| **治标补丁** | 提议"先用 X 后续再换"(违反 CLAUDE.md #5) |
+| **治标补丁** | 提议"先用 X 后续再换"(压住症状,没解决根因) |
 
 ## 6. DD 文档要求
 
@@ -301,7 +301,7 @@ DD 的本质**不是流程仪式感**,而是**强迫看见自己没看见的可�
 
 ## 11. DD → TDD 衔接
 
-DD 锁定方案后,实施时走 TDD 节奏(详见 [CLAUDE.md "Test-Driven Development" 章节](../CLAUDE.md#test-driven-development-tdd--ai-coding-时代版))。本节描述 DD 与 TDD 的边界、衔接、AI 时代的反闭环约束。
+DD 锁定方案后,实施时走 TDD 节奏(详见 [AGENTS.md 的 TDD 章节](../AGENTS.md#test-driven-development))。本节描述 DD 与 TDD 的边界、衔接、AI 时代的反闭环约束。
 
 ### 衔接图
 

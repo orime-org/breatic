@@ -9,7 +9,7 @@
  * One credit is one US cent.
  */
 
-import type { UsagePricing } from "@breatic/core";
+import type { PromptCacheTtl, UsagePricing } from "@breatic/core";
 
 /** Where a recorded cost came from. */
 /** `computed` is a cost we price ourselves from a measured usage, such as a container run's seconds. */
@@ -26,7 +26,12 @@ export interface TokenBuckets {
 /** The AI SDK usage fields this module reads. */
 export interface ModelCallUsage {
   inputTokens: number | undefined;
-  inputTokenDetails: { noCacheTokens: number | undefined; cacheReadTokens: number | undefined };
+  inputTokenDetails: {
+    noCacheTokens: number | undefined;
+    cacheReadTokens: number | undefined;
+    /** Counted in `inputTokens` as well, as the AI SDK's Anthropic provider counts them. */
+    cacheWriteTokens?: number | undefined;
+  };
   outputTokens: number | undefined;
   outputTokenDetails: { reasoningTokens: number | undefined };
 }
@@ -37,6 +42,8 @@ export interface ModelCall {
   provider: string;
   usage: ModelCallUsage;
   providerMetadata: Record<string, unknown> | undefined;
+  /** How long the call asked the provider to cache; writes are priced at it. Anthropic's default is five minutes. */
+  cacheTtl?: PromptCacheTtl;
 }
 
 /** What one model call cost. */
@@ -94,10 +101,15 @@ export function costOfModelCall(call: ModelCall, pricing: UsagePricing): ModelCa
       `No price for ${call.model} in config/usage-pricing.yaml, and ${call.provider} reports no cost`,
     );
   }
-  const uncached = tokens.input - tokens.cachedInput;
+  const written = call.usage.inputTokenDetails.cacheWriteTokens ?? 0;
+  const writePrice =
+    (call.cacheTtl === "1h" ? price.input_cache_write_1h_per_mtok : price.input_cache_write_5m_per_mtok) ??
+    price.input_cache_miss_per_mtok;
+  const uncached = tokens.input - tokens.cachedInput - written;
   const costUsd =
     (uncached * price.input_cache_miss_per_mtok +
       tokens.cachedInput * price.input_cache_hit_per_mtok +
+      written * writePrice +
       tokens.output * price.output_per_mtok) /
     1_000_000;
   return { costUsd, costSource: "price_table", tokens };

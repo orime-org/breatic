@@ -56,7 +56,7 @@ const NotFoundPage = lazyRoute(routeImports.notFoundPage);
  * on cold reload because the store had not yet been hydrated).
  *
  * Space is a type / template inside a Project, NOT a route segment
- * (per `[[feedback_space_type_vs_route]]` user decision). Which Spaces
+ * (a product decision). Which Spaces
  * are open and which one is showing are runtime state of one browser
  * tab and nothing stores them (task #2144), so there is nothing here for
  * the address to carry: opening a project starts from the newest Space.

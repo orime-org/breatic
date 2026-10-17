@@ -72,8 +72,9 @@ export interface GesturePublisher {
   publishGestureNow: (geometry: GestureBatch) => void;
   /**
    * Take the whole field back down, written on the spot rather than scheduled.
-   * A withdrawal has to land (`packages/web/CLAUDE.md`), and the moment it is
-   * called can be the moment the page stops getting animation frames.
+   * A withdrawal has to land
+   * (`packages/web/AGENTS.md#writes-that-must-land-skip-frame-scheduling`),
+   * and the moment it is called can be the moment the page stops getting animation frames.
    */
   clearGesture: () => void;
 }

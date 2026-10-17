@@ -8,7 +8,7 @@
  * import time and validated via `@t3-oss/env-core`. That made
  * `@breatic/core` read environment variables - a library making an
  * application decision, violating the same principle that bans
- * `logger.*` / `process.exit()` in library code (CLAUDE.md "core/shared must not read env vars" mandate, 2026-05-30).
+ * `logger.*` / `process.exit()` in library code (`AGENTS.md#library-packages-do-not-read-env`).
  *
  * The read now lives in the application layer: each service entry
  * (server / worker / collab) reads `process.env` once at startup and

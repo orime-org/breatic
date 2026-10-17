@@ -4,8 +4,8 @@
 /**
  * Invariant tests for the `startHealthServer` utility.
  *
- * Pins the load-balancer contract that the CLAUDE.md
- * "服务器端工业级标准" mandate relies on:
+ * Pins the load-balancer contract that `AGENTS.md#health-checks`
+ * relies on:
  *
  * - all-checks-ok → 200 + `{status:'ok', checks:{...ok:true}}`
  * - any-check-fail → 503 + `{status:'fail', checks:{...}}` (the

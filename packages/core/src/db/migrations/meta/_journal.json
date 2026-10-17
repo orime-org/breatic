@@ -673,6 +673,13 @@
       "when": 1792032940584,
       "tag": "0095_project_member_change_notify",
       "breakpoints": true
+    },
+    {
+      "idx": 96,
+      "version": "7",
+      "when": 1792053972250,
+      "tag": "0096_conversation_messages_for_model",
+      "breakpoints": true
     }
   ]
 }

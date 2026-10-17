@@ -15,8 +15,9 @@
  * go through it.
  *
  * The tests below pin the factory's defaults so a future refactor
- * cannot silently drop a knob — every bullet in the CLAUDE.md
- * "服务器端工业级标准" Connection-健康 row must remain present.
+ * cannot silently drop a knob — every setting that
+ * `packages/core/AGENTS.md#connection-lifetimes-are-explicit` requires
+ * must remain present.
  * If you intentionally relax one (e.g. queue workers needing
  * unbounded commandTimeout), override it explicitly and update
  * the corresponding singleton test below.
@@ -85,8 +86,8 @@ describe("createRedisClient — production-safety invariants", () => {
     expect(handler(new Error("Connection is closed."))).toBe(false);
   });
 
-  it("attaches a no-op `error` listener so an emitted error doesn't crash the process (library 不写日志 mandate)", () => {
-    // Per CLAUDE.md "进程生命周期(library 层禁)" mandate, the
+  it("attaches a no-op `error` listener so an emitted error doesn't crash the process (library-no-log rule)", () => {
+    // Per `AGENTS.md#library-packages-do-not-log`, the
     // factory must NOT write logs. But ioredis inherits Node's
     // EventEmitter behaviour where an unhandled `error` event is
     // fatal, so the factory must still attach SOMETHING — a no-op.

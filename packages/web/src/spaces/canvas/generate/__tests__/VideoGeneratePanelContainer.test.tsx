@@ -458,6 +458,12 @@ function typePromptMentioning(text: string, sourceIds: string[]): void {
 
 describe('VideoGeneratePanelContainer', () => {
   beforeEach(() => {
+    // Panel cases observe the request, not the HTTP client. A bare spy calls
+    // through; network failure then legitimately re-sends the same press and
+    // makes a one-submit assertion depend on the jittered retry timing.
+    vi.spyOn(canvasApi, 'createTask').mockResolvedValue({ id: 't1' } as Awaited<
+      ReturnType<typeof canvasApi.createTask>
+    >);
     vi.mocked(toast.error).mockClear();
     vi.mocked(toast.warning).mockClear();
     _resetForTests();
@@ -738,7 +744,8 @@ describe('VideoGeneratePanelContainer', () => {
       const execute = await screen.findByTestId('generate-video-execute');
       await waitFor(() => expect(execute).not.toBeDisabled());
       fireEvent.click(execute);
-      await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
+      await waitFor(() => expect(canvasSessions.of('s').getState().panelHostId).toBeNull());
+      expect(create).toHaveBeenCalledTimes(1);
       expect(toast.warning).not.toHaveBeenCalled();
     });
 

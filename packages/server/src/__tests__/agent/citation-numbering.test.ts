@@ -18,7 +18,6 @@
 import { describe, it, expect } from "vitest";
 import type { MessageData, MessagePart } from "@breatic/shared";
 import { makeSearchTools } from "@domain/agent/tools/web-search.js";
-import { DROPPED_TOOL_RESULT } from "@server/agent/message-compressor.js";
 import { toModelMessages } from "@server/agent/model-messages.js";
 import { withModelOutputs } from "@server/agent/stored-model-output.js";
 
@@ -30,10 +29,9 @@ const tools = { web_search: makeSearchTools().web_search };
  * was kept, so it is stored as it is.
  * @param id - The tool call id.
  * @param output - What the call answered with.
- * @param compressed - The copy compaction left in place of the model's own.
  * @returns The stored message.
  */
-async function searchTurn(id: string, output: unknown, compressed?: unknown): Promise<MessageData> {
+async function searchTurn(id: string, output: unknown): Promise<MessageData> {
   const call: MessagePart = {
     type: "tool",
     toolCallId: id,
@@ -43,8 +41,7 @@ async function searchTurn(id: string, output: unknown, compressed?: unknown): Pr
     status: "success",
   };
   const [written] = typeof output === "string" ? [call] : await withModelOutputs([call], tools, { conversationId: "c" });
-  const part = compressed === undefined ? written : { ...written, forModel: compressed };
-  return { id: `m-${id}`, role: "assistant", content: "", parts: [part] } as unknown as MessageData;
+  return { id: `m-${id}`, role: "assistant", content: "", parts: [written] } as unknown as MessageData;
 }
 
 /**
@@ -112,14 +109,6 @@ describe("numbering across several searches", () => {
 });
 
 describe("what the string arms are for", () => {
-  it("passes the compression placeholder through untouched", async () => {
-    // Compaction writes the placeholder over the model's copy and leaves the
-    // answer itself alone.
-    const placeholder = { type: "text", value: DROPPED_TOOL_RESULT };
-    const texts = toolTexts([await searchTurn("a", answerWith(2, "a"), placeholder)]);
-
-    expect(texts).toEqual([DROPPED_TOOL_RESULT]);
-  });
 
   it("passes a row written before the structured output through untouched", async () => {
     const older = "Results for: q\n<source index=\"1\">\nurl: https://a.example\n</source>";
@@ -129,14 +118,4 @@ describe("what the string arms are for", () => {
     expect(texts).toEqual([older]);
   });
 
-  it("leaves a real search beside a placeholder untouched", async () => {
-    const placeholder = { type: "text", value: DROPPED_TOOL_RESULT };
-    const texts = toolTexts([
-      await searchTurn("a", answerWith(1, "a"), placeholder),
-      await searchTurn("b", answerWith(1, "b", 4)),
-    ]);
-
-    expect(texts[0]).toBe(DROPPED_TOOL_RESULT);
-    expect(texts[1]).toContain('<source index="4">');
-  });
 });

@@ -6,12 +6,19 @@ import { describe, it, expect } from "vitest";
 import { getUsagePricing, parseUsagePricing } from "@core/config/usage-pricing.js";
 
 describe("usage pricing", () => {
-  it("reads the deployed table: DeepSeek at its peak price, Brave per request", () => {
+  it("reads the deployed table: DeepSeek at its peak price, Claude Opus 5.5 with its cache writes, Brave per request", () => {
     const pricing = getUsagePricing();
     expect(pricing.models["deepseek/deepseek-v4-pro"]).toEqual({
       input_cache_hit_per_mtok: 0.044,
       input_cache_miss_per_mtok: 1.32,
       output_per_mtok: 3.96,
+    });
+    expect(pricing.models["anthropic/claude-opus-5.5"]).toEqual({
+      input_cache_hit_per_mtok: 0.2,
+      input_cache_miss_per_mtok: 4,
+      input_cache_write_5m_per_mtok: 5,
+      input_cache_write_1h_per_mtok: 8,
+      output_per_mtok: 20,
     });
     expect(pricing.services.brave_web_search.per_request).toBe(0.005);
     expect(pricing.services.brave_image_search.per_request).toBe(0.005);

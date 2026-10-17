@@ -20,7 +20,7 @@ import { MONOREPO_ROOT } from "@core/config/env.js";
 /**
  * Run all pending database migrations.
  *
- * Per CLAUDE.md "core and shared must not log" mandate, this library
+ * Per `AGENTS.md#library-packages-do-not-log`, this library
  * function does NOT log progress/completion. The application
  * caller (`scripts/db-migrate.ts` CLI) wraps the call and emits
  * its own console output around it.

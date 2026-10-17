@@ -66,8 +66,8 @@ payment.post(
       returnUrl: body.return_url,
       timeZone: body.time_zone,
     });
-    // Audit log moved from payment.service.ts per CLAUDE.md
-    // "core and shared must not log" mandate (2026-05-27 PR
+    // Audit log moved from payment.service.ts per
+    // AGENTS.md#library-packages-do-not-log (2026-05-27 PR
     // `feat/2026-05-27-collab-infra-resilience`).
     logger.info(
       { userId: user.id, priceCents: body.price_cents, paymentId: result.paymentId },

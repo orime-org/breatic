@@ -20,6 +20,7 @@ import {
   integer,
   bigint,
   timestamp,
+  json,
   jsonb,
   uniqueIndex,
   index,
@@ -412,7 +413,7 @@ export const projectEdits = pgTable("project_edits", {
 // admin row (no inviter). All FKs are `onDelete: restrict` — the project
 // is soft-delete only (rows never physically vanish, so a reference can
 // never dangle; hard delete goes through a dedicated GDPR flow). See
-// the "soft delete" rule in CLAUDE.md.
+// packages/core/AGENTS.md#soft-delete-only.
 
 export const studioMembers = pgTable(
   "studio_members",
@@ -500,6 +501,13 @@ export const conversationMessages = pgTable(
     /** Position within its turn. */
     seq: integer("seq").notNull(),
     parts: jsonb("parts").$type<MessagePart[]>().default([]).notNull(),
+    /**
+     * The message as it was sent to the model, replayed as it is on later
+     * turns so the provider's cached prefix still matches. `json`, because
+     * `jsonb` reorders object keys. Null on rows written before it existed;
+     * the server validates what it reads back.
+     */
+    forModel: json("for_model"),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
     ...timestamps,
   },
@@ -728,7 +736,7 @@ export const nodeHistory = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
-    // Soft-delete, per the project-wide "soft delete only" rule (CLAUDE.md).
+    // Soft-delete, per packages/core/AGENTS.md#soft-delete-only.
     // Only data migrations stamp it today (duplicate cleanup).
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
   },

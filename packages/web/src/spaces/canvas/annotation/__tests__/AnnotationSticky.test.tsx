@@ -1215,7 +1215,7 @@ describe('the replies scroller', () => {
    * Assert something scrolls inside a `ScrollArea` of ours, not by itself.
    *
    * Every visible scroller in this app belongs to `ScrollArea`
-   * (packages/web/CLAUDE.md): a browser draws its own a different shape in
+   * (packages/web/AGENTS.md#every-scroller-is-a-scrollarea): a browser draws its own a different shape in
    * every engine. Looking outwards from the inner element would not settle it
    * inside a sticky — the thread is itself a `ScrollArea`, so an entry being
    * rewritten in it would find the thread's viewport and look handled while

@@ -24,7 +24,7 @@ const addMessage = vi.fn(async (_id: string, _msg: Record<string, unknown>) => 1
 vi.mock("@server/agent/turn-context.js", () => ({
   buildTurnContext: vi.fn(async () => ({
     memoryContext: { projectMemory: "", conversationMemory: "" },
-    compressedHistory: [],
+    history: [],
     watermark: 0,
   })),
 }));

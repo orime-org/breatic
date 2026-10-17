@@ -592,7 +592,8 @@ describe('SpaceTabBar', () => {
     it('scrolls through the shared component, not a native bar', () => {
       setup();
       // Every visible scroller in the app is the ScrollArea component
-      // (web/CLAUDE.md), which draws its own bar: appears while scrolling,
+      // (packages/web/AGENTS.md#every-scroller-is-a-scrollarea), which draws
+      // its own bar: appears while scrolling,
       // takes no layout room, and hover changes colour without changing
       // shape. A native bar delivers none of that -- the interaction states
       // are UA-private and differ between browser builds.

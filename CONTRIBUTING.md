@@ -145,7 +145,7 @@ genuinely need hard delete, open an issue for discussion first.
   same-directory ones. Relative paths are a CI error
   (`breatic/no-relative-import`, autofixable with `pnpm lint:fix`).
 
-See [CLAUDE.md](./CLAUDE.md) for the full project specification.
+See [AGENTS.md](./AGENTS.md#rule-files) for the full project specification.
 
 ---
 

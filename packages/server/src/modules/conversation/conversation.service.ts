@@ -420,15 +420,15 @@ export async function getConversation(
  * @param lastConsolidatedTurn - Turn index up to which messages are consolidated
  * @param beforeTurn - Stop short of this turn. The turn being run is not its
  *   own history: its message goes in front of the model separately, so a copy
- *   here would ask the same question twice — and would be a candidate for
- *   compression, which could shorten the very thing being asked.
- * @returns Messages from turns after the consolidated boundary
+ *   here would ask the same question twice.
+ * @returns Messages from turns after the consolidated boundary, each with
+ *   what was sent of it
  */
 export async function getMessagesForLlm(
   id: string,
   lastConsolidatedTurn = 0,
   beforeTurn?: number,
-): Promise<MessageData[]> {
+): Promise<Array<MessageData & { forModel: unknown }>> {
   return messageRepo.getMessagesForLlm(id, lastConsolidatedTurn, beforeTurn);
 }
 

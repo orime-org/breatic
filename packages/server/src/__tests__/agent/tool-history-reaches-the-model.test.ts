@@ -22,7 +22,7 @@ vi.mock("@server/agent/turn-context.js", () => ({
     // The history is what this case is about: a turn now reads it itself,
     // after storing the message and answering the browser, so this is where
     // it comes from.
-    compressedHistory: HISTORY,
+    history: HISTORY,
   })),
 }));
 // The real `createUIMessageStream` and its helpers stay: they are what the

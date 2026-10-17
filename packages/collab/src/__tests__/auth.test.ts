@@ -830,8 +830,8 @@ describe("createAuthHook", () => {
     // `concurrent_editors: 0` used to mean "unlimited" here — auth.ts
     // guarded the whole block behind `maxConnectionsPerDoc > 0`. That
     // contradicts the repo-wide rule that a quota of zero is a real zero
-    // (root CLAUDE.md: "there is no 'unlimited' sentinel ... so zero is a
-    // real zero"), which every other ceiling already follows —
+    // (packages/core/AGENTS.md#membership-limits: there is no "unlimited"
+    // value, so zero means zero), which every other ceiling already follows —
     // `base.team_studios: 0` in the same file means exactly zero.
     //
     // Failing the other way is the dangerous direction: someone lowering a
@@ -1290,7 +1290,7 @@ describe("createAuthHook", () => {
     expect(getSessionMock).toHaveBeenCalledWith(mockRedis, "real-token");
   });
 
-  // ── Server-side log trail (CLAUDE.md 服务器端工业级标准 mandate) ──
+  // ── Server-side log trail (AGENTS.md#application-layer-error-logging) ──
   //
   // Every onAuthenticate rejection must leave a structured warn line
   // tagged `auth_rejected` with a machine-grep-able `reason`, so a

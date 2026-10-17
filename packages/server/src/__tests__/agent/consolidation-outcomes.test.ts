@@ -65,7 +65,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
     resolveProvider: () => "test",
     // The real one. What it puts on the call is the thing being asserted,
     // and a stub would be answering the question with its own return value.
-    reasoningFor: actual.reasoningFor,
+    callOptionsFor: actual.callOptionsFor,
     creditLotService: { chargeOnceForGeneration },
   };
 });
@@ -91,16 +91,10 @@ const CONVERSATION = "22222222-2222-4222-8222-222222222222";
 const PROJECT = "33333333-3333-4333-8333-333333333333";
 
 /**
- * The window as the caller hands it over: compressed, then converted.
- *
- * Run through the real compressor rather than written out with a placeholder
- * already in it. N10 is the claim that a consolidation reads what compression
- * left behind, and a fixture carrying its own placeholder proves only that a
- * string put in comes back out.
+ * The window as the caller hands it over, converted.
  * @returns The window, in the shape `foldIfOverBudget` builds it.
  */
-async function compressedWindow(): Promise<ModelMessage[]> {
-  const { compressForContext } = await import("@server/agent/message-compressor.js");
+async function handedWindow(): Promise<ModelMessage[]> {
   const { toModelMessages } = await import("@server/agent/model-messages.js");
   const history = [1, 2, 3, 4].flatMap((n) => [
     {
@@ -128,11 +122,10 @@ async function compressedWindow(): Promise<ModelMessage[]> {
       turnIndex: n,
     },
   ]);
-  // One use more than the keep window, so the oldest loses its body.
-  return toModelMessages(compressForContext(history, 3));
+  return toModelMessages(history);
 }
 
-const TRANSCRIPT: ModelMessage[] = await compressedWindow();
+const TRANSCRIPT: ModelMessage[] = await handedWindow();
 
 /**
  * Ask for one consolidation, with everything the caller would have worked out.
@@ -224,18 +217,16 @@ describe("a consolidation that works", () => {
     expect(said).not.toContain("memory_consolidation_written");
   });
 
-  it("reads the window it was handed, placeholders and all", async () => {
+  it("reads the window it was handed", async () => {
     // N10: the input is the assembled messages the budget was measured
-    // against, not the stored rows. A consolidation reading storage would see
-    // the whole of every tool result, which is the thing compression just
-    // took out.
+    // against, not the stored rows.
     await consolidate();
 
     const prompt = String(
       (generateTextRetry.mock.calls[0]?.[0] as { messages: { content: string }[] })
         .messages[0]?.content,
     );
-    expect(prompt).toContain("[earlier tool result omitted from context]");
+    expect(prompt).toContain("the whole of page 1");
     expect(prompt).toContain("they all describe the same technique");
   });
 
@@ -248,26 +239,21 @@ describe("a consolidation that works", () => {
     expect(call.maxOutputTokens).toBe(OUTPUT_CEILING);
   });
 
-  it("tells the provider outright that this call wants no reasoning", async () => {
-    // Folding a transcript into a summary has no reasoning step in it, and
-    // saying nothing is not the same as saying no: DeepSeek turns thinking
-    // on by model id unless told otherwise, and this call runs on a DeepSeek
-    // model. Leaving the field off spends reasoning tokens on every fold and
-    // drops the `temperature: 0` this function's own docstring depends on.
+  it("asks the consolidation model for no reasoning the way that model takes it", async () => {
+    // Folding a transcript into a summary has no reasoning step in it. The
+    // consolidation model is Claude Opus 5.5, reached through OpenRouter in
+    // this suite, and Opus 5.5 rejects a request that turns thinking off: the
+    // one spelling every Claude model accepts is no reasoning field at all.
     await consolidate();
 
     const call = generateTextRetry.mock.calls[0]?.[0] as {
       providerOptions?: Record<string, Record<string, unknown>>;
+      temperature?: number;
     };
-    // The whole object, because the direction is the point. Asserting that
-    // one provider is addressed and its object is non-empty is true of the
-    // on spelling as well, so it holds the call to no direction at all.
-    //
-    // `openrouter` because this suite's `getAgentConfig` double names no
-    // consolidation model, so the route falls back the way any unnamed one does.
-    expect(call.providerOptions).toEqual({
-      openrouter: { reasoning: { effort: "none" } },
-    });
+    expect(call.providerOptions).toEqual({ openrouter: {} });
+    // Opus 5.5 returns a 400 for any non-default temperature, so the fixed 0
+    // the fold asks for is not sent to it.
+    expect(call.temperature).toBeUndefined();
   });
 
   it("tells the model the ceiling its answer is read through", async () => {
@@ -326,6 +312,50 @@ describe("a consolidation that works", () => {
         .messages[0]?.content,
     );
     expect(prompt).toContain("my regex is $`abc$& and $' too");
+  });
+
+  it("reads a reply as its words, the tools it called and what they answered, nothing else", async () => {
+    const window = [
+      {
+        role: "assistant" as const,
+        content: [
+          { type: "reasoning" as const, text: "private working", providerOptions: { anthropic: { signature: "s" } } },
+          { type: "text" as const, text: "Let me look." },
+          {
+            type: "tool-call" as const,
+            toolCallId: "tc-1",
+            toolName: "web_search",
+            input: { query: "lighthouse" },
+            providerOptions: { openrouter: { reasoning_details: [] } },
+          },
+        ],
+      },
+      {
+        role: "tool" as const,
+        content: [
+          {
+            type: "tool-result" as const,
+            toolCallId: "tc-1",
+            toolName: "web_search",
+            output: { type: "text" as const, value: "three pages about lighthouses" },
+          },
+        ],
+      },
+    ];
+
+    await consolidate({ transcript: window });
+
+    const prompt = String(
+      (generateTextRetry.mock.calls[0]?.[0] as { messages: { content: string }[] })
+        .messages[0]?.content,
+    );
+    expect(prompt).toContain("Let me look.");
+    expect(prompt).toContain("web_search");
+    expect(prompt).toContain('{"query":"lighthouse"}');
+    expect(prompt).toContain("three pages about lighthouses");
+    expect(prompt).not.toContain("private working");
+    expect(prompt).not.toContain("providerOptions");
+    expect(prompt).not.toContain("toolCallId");
   });
 
   it("bills the studio once for the window it consumed", async () => {

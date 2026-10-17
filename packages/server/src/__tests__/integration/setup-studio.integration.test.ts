@@ -6,7 +6,7 @@
  * (`studioService.createPersonalStudio` + the `studios` partial unique
  * indexes), against a real Postgres.
  *
- * Auth + data integrity are CLAUDE.md critical paths. The guarantees here
+ * Auth + data integrity are critical paths (AGENTS.md#critical-paths). The guarantees here
  * are SQL-level and can only be verified against real Postgres (a mocked
  * query builder returns whatever the test stages regardless of the
  * partial-unique / transaction semantics):

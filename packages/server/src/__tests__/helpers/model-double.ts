@@ -87,22 +87,24 @@ export function finishedSpending(outputTotal: number): ModelStreamPart {
  *   when its request is aborted. A case that stops the turn on seeing a named
  *   chunk come out of it then reaches an exact moment: the SDK runs queued
  *   tool calls only when the model call ends, and the stop is the only way
- *   this one ends.
+ *   this one ends. A function is asked at each call, after `onCalled`, so a
+ *   case can leave only some of a turn's calls open.
  * @returns A model the turn can be run against.
  */
 export function modelProducing(
   parts: () => ModelStreamPart[],
   onCalled?: (asked: { prompt: unknown }) => void,
-  openUntilStopped = false,
+  openUntilStopped: boolean | (() => boolean) = false,
 ): MockLanguageModelV4 {
   return new MockLanguageModelV4({
     doStream: async (asked) => {
       onCalled?.(asked);
+      const open = typeof openUntilStopped === "function" ? openUntilStopped() : openUntilStopped;
       return {
         stream: new ReadableStream<ModelStreamPart>({
           start(controller) {
             for (const part of parts()) controller.enqueue(part);
-            if (!openUntilStopped) controller.close();
+            if (!open || asked.abortSignal?.aborted === true) controller.close();
             else asked.abortSignal?.addEventListener("abort", () => controller.close());
           },
         }),

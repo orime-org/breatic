@@ -60,7 +60,7 @@ const COLOUR_CELL =
  *
  * A neutral ring outside the cell's own border, which is the two rules this
  * mark answers to at once. `active-border` is the single source for a border
- * that says "selected" in a neutral colour (`packages/web/CLAUDE.md`), and a
+ * that says "selected" in a neutral colour (`packages/web/AGENTS.md#neutral-active-borders`), and a
  * ring leaves the cell's own outline in place — so the marked cell has the
  * same structure as every other one, with a second line around it. The canvas
  * colour picker marks its own cell the same way (`GroupBackgroundPicker:91`).

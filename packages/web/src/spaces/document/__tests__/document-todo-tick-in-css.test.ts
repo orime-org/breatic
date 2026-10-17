@@ -7,7 +7,8 @@
  * BlockNote renders a bare `<input type="checkbox">` and styles only its
  * geometry, so left alone the box is whatever the browser draws — measured,
  * `appearance: auto`, 12 by 24, square corners, ticked in the operating
- * system's accent colour. `packages/web/CLAUDE.md` rules a control whose look
+ * system's accent colour. `packages/web/AGENTS.md#no-native-rendered-controls`
+ * rules a control whose look
  * the browser or the OS paints out of this product.
  *
  * Two things are read off the stylesheet here rather than off a browser.

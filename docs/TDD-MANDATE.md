@@ -1,6 +1,6 @@
 # Test-Driven Development (TDD) — AI coding 时代完整 mandate
 
-> **CLAUDE.md** 的 "Test-Driven Development" 章节是项目级 TDD 硬约束。本文档是**完整参考**:详细 anti-pattern / property-based 工具 / 衔接 DD / 衔接 audit / 业界印证。
+> **[AGENTS.md](../AGENTS.md#test-driven-development)** 的 TDD 章节是项目级 TDD 硬约束。本文档是**完整参考**:详细 anti-pattern / property-based 工具 / 衔接 DD / 衔接 audit / 业界印证。
 >
 > DD → TDD 衔接图详见 [docs/DD-PROCESS.md](./DD-PROCESS.md) 第 11 节。
 >
@@ -25,7 +25,7 @@
 
 **实操**:
 - bug → 写 failing test 复现 → 修代码到 test green → commit
-- 没有"先看到 fail 再修" 直接给 fix = 违反 CLAUDE.md #5(治标补丁)
+- 没有"先看到 fail 再修" 直接给 fix = 治标补丁(没看到 fail,就证明不了修的是根因)
 
 ### 约束 2 — spec 由 audit / 人写,test 代码由 dev 写
 
@@ -221,7 +221,7 @@ it('deductOnce is idempotent', () => {
 
 DD 锁定方案后走 TDD。完整衔接见 [docs/DD-PROCESS.md](./DD-PROCESS.md) 第 11 节。
 
-**关键约束**:TDD 中发现 DD 假设错(test 无论如何写不通)→ **停下重做 DD**,不在错假设上打补丁(违反 CLAUDE.md #5)。
+**关键约束**:TDD 中发现 DD 假设错(test 无论如何写不通)→ **停下重做 DD**,不在错假设上打补丁。
 
 ## 衔接 audit 角色
 

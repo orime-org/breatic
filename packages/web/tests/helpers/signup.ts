@@ -113,8 +113,7 @@ export async function registerAccount(
   const expected = withCode ? 202 : 201;
   expect(
     registered.status(),
-    `register answered ${registered.status()}: ${(await registered.text()).slice(0, 200)}. ` +
-      'A 429 is the ten-an-hour ceiling in config/rate-limits.yaml.',
+    `register answered ${registered.status()}: ${(await registered.text()).slice(0, 200)}`,
   ).toBe(expected);
   if (!withCode) return;
 

@@ -68,7 +68,8 @@ function switchLocale(code: Locale): void {
 /**
  * Shared locale-switch hook used by every language switcher (project +
  * studio). The i18n engine is the single source of truth — there is no
- * Zustand mirror (see `feedback_double_source_state_mirror_trap`).
+ * Zustand mirror (see
+ * `.claude/skills/react-state-traps/SKILL.md#do-not-mirror-engine-state-in-zustand`).
  * Subscribes via `useTranslation()` so the caller re-renders when the
  * locale changes through any code path.
  * @returns the active locale, a setter, and the selectable locale list.

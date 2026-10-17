@@ -4,7 +4,7 @@
 /**
  * Typed errors that cross the library / application boundary.
  *
- * Per CLAUDE.md "industrial-grade server standards" mandate row "process lifecycle (forbidden in the library layer)": library packages don't decide when the process
+ * Per `AGENTS.md#library-packages-do-not-exit-the-process`: library packages don't decide when the process
  * should die. When a library function needs the application to
  * abort (a failed startup connectivity check, a missing env
  * var, etc.), it throws one of the typed errors below; each

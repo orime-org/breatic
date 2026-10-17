@@ -14,14 +14,14 @@
  * through or refused, logs one `internal_api_request` line (acceptance #14).
  *
  * Redis outages are injected at the one client the server shares
- * (`getRedis`), in the two shapes ioredis really produces: a pipeline whose
- * `exec()` resolves with per-command errors, and a command that rejects.
+ * (`getRedis`), one step at a time: the rate limiter's `EVAL` rejects, or
+ * every other command (the nonce step's `SET`) rejects.
  */
 
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type * as BreaticCore from "@breatic/core";
 
-type RedisFaultMode = "none" | "pipeline_error_results" | "pipeline_rejects" | "commands_reject";
+type RedisFaultMode = "none" | "limiter_rejects" | "commands_reject";
 const redisFault = vi.hoisted((): { mode: RedisFaultMode } => ({ mode: "none" }));
 const logged = vi.hoisted(() => ({ info: vi.fn(), warn: vi.fn() }));
 
@@ -29,8 +29,8 @@ vi.mock("@breatic/core", async (importOriginal) => {
   const actual = await importOriginal<typeof BreaticCore>();
   /**
    * Wrap the real client so the current fault mode decides how it answers.
-   * Pipelines are what the rate limiter sends; plain commands are what the
-   * nonce step sends.
+   * `eval` is what the rate limiter sends; every other command is the nonce
+   * step's.
    * @param real - The real ioredis client.
    * @returns The wrapped client.
    */
@@ -39,38 +39,8 @@ vi.mock("@breatic/core", async (importOriginal) => {
       get(target, prop, receiver) {
         const value = Reflect.get(target, prop, receiver) as unknown;
         if (typeof value !== "function") return value;
-        if (prop === "pipeline" || prop === "multi") {
-          return (...args: unknown[]) => {
-            const pipe = (value as (...a: unknown[]) => object).apply(target, args);
-            const wrapped: object = new Proxy(pipe, {
-              get(p, name, r) {
-                const member = Reflect.get(p, name, r) as unknown;
-                if (name === "exec") {
-                  if (redisFault.mode === "pipeline_error_results") {
-                    return async () => [
-                      [new Error("WRONGTYPE synthetic"), null],
-                      [new Error("WRONGTYPE synthetic"), null],
-                      [new Error("WRONGTYPE synthetic"), null],
-                      [new Error("WRONGTYPE synthetic"), null],
-                    ];
-                  }
-                  if (redisFault.mode === "pipeline_rejects") {
-                    return async () => {
-                      throw new Error("Connection is closed.");
-                    };
-                  }
-                }
-                if (typeof member !== "function") return member;
-                return (...a: unknown[]) => {
-                  const out = (member as (...x: unknown[]) => unknown).apply(p, a);
-                  return out === p ? wrapped : out;
-                };
-              },
-            });
-            return wrapped;
-          };
-        }
-        if (redisFault.mode === "commands_reject") {
+        const isLimiter = prop === "eval";
+        if ((redisFault.mode === "limiter_rejects" && isLimiter) || (redisFault.mode === "commands_reject" && !isLimiter)) {
           return async () => {
             throw new Error("Connection is closed.");
           };
@@ -297,10 +267,10 @@ describe("signature (§4.2): each failed step is 401 and writes nothing", () => 
 });
 
 describe("Redis unavailable is 503, never let through (§4.2, §4.4)", () => {
-  it("the rate-limit step answers 503 unavailable when the pipeline resolves with per-command errors — before the signature is even read", async () => {
+  it("the rate-limit step answers 503 unavailable when Redis cannot count — before the signature is even read", async () => {
     const lot = await pendingLot();
     const before = await worldOf(sql, lot);
-    redisFault.mode = "pipeline_error_results";
+    redisFault.mode = "limiter_rejects";
 
     const signed = await call(running.baseUrl, paths.reject(lot.lotId), {
       body: REJECT_BODY,
@@ -312,22 +282,6 @@ describe("Redis unavailable is 503, never let through (§4.2, §4.4)", () => {
     expect(signed.json).toEqual({ code: "unavailable" });
     expect(unsigned.status).toBe(503);
     expect(unsigned.json).toEqual({ code: "unavailable" });
-    expect(await worldOf(sql, lot)).toEqual(before);
-    expect(fakeStripe.listCalls).toEqual([]);
-  });
-
-  it("the rate-limit step answers 503 unavailable when the connection itself throws", async () => {
-    const lot = await pendingLot();
-    const before = await worldOf(sql, lot);
-    redisFault.mode = "pipeline_rejects";
-
-    const res = await call(running.baseUrl, paths.reject(lot.lotId), {
-      body: REJECT_BODY,
-      idempotencyKey: freshKey("reject"),
-    });
-
-    expect(res.status).toBe(503);
-    expect(res.json).toEqual({ code: "unavailable" });
     expect(await worldOf(sql, lot)).toEqual(before);
     expect(fakeStripe.listCalls).toEqual([]);
   });

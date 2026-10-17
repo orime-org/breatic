@@ -48,6 +48,7 @@ import {
 } from "@breatic/core";
 import { hashPassword } from "@server/modules/auth/auth.service.js";
 import type { Hono } from "hono";
+import { withPeer } from "../helpers/peer.js";
 
 try {
   initCore(process.env);
@@ -69,7 +70,7 @@ beforeAll(async () => {
   // Imported after initCore ran: `@server/app.js` pulls cors.ts, which reads
   // `env.ALLOWED_ORIGINS` while the module evaluates.
   const { createApp } = await import("@server/app.js");
-  app = createApp();
+  app = withPeer(createApp());
 });
 
 afterAll(async () => {

@@ -14,8 +14,7 @@
  * their board and their moves from `tests/helpers/annotation-board.ts`.
  *
  * The second connection is a second page on the same account, because nothing
- * here depends on who wrote a line and a second sign-in draws on a rate limit
- * the whole suite shares. The halves that DO depend on the author — A6's
+ * here depends on who wrote a line. The halves that DO depend on the author — A6's
  * missing Edit on somebody else's note, A11's name — are answered by the unit
  * tests, which can hand the component any author.
  *

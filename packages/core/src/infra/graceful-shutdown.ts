@@ -20,9 +20,8 @@ export interface GracefulShutdownDeps {
  * worker / collab): release the main listen socket FIRST, then drain the rest
  * concurrently under an overall deadline.
  *
- * Why this shape (2026-06-16, ADR `2026-06-16-service-listen-error-graceful-shutdown`
- * + memory `feedback_dev_collab_long_running_drift`): the services used to
- * hand-roll inconsistent shutdowns — server didn't await its main close (so it
+ * Why this shape (ADR `2026-06-16-service-listen-error-graceful-shutdown`):
+ * the services used to hand-roll inconsistent shutdowns — server didn't await its main close (so it
  * never drained in-flight HTTP), worker drained, and collab awaited 6 teardowns
  * sequentially with the WS server closed LAST. On a dev `tsx watch` restart the
  * latter held collab's port (:1234) past the 5s grace window → the new process

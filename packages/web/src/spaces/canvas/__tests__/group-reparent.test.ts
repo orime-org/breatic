@@ -182,8 +182,9 @@ describe('planGroupDragStop when a Group cannot take a node in', () => {
   });
 
   it('keeps a member of a locked Group in it even when dragged clear', () => {
-    // A locked Group's structure is frozen both ways (packages/web/CLAUDE.md:
-    // the lock freezes membership — reparent-in, paste-into, ungroup, removal).
+    // A locked Group's structure is frozen both ways
+    // (packages/web/AGENTS.md#group-lock-scope: the lock freezes membership —
+    // reparent-in, paste-into, ungroup, removal).
     const decisions = planGroupDragStop(
       [{ id: 'm', parentId: 'g', rect: { x: 900, y: 900, width: 40, height: 40 } }],
       [{ id: 'g', rect: { x: 0, y: 0, width: 200, height: 200 }, locked: true }],

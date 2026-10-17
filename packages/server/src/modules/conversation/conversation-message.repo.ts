@@ -98,6 +98,10 @@ function toMessageData(row: StoredRow): MessageData {
  * @param message - The message. A question opens a turn and is numbered here;
  *   a reply says which turn it answers, because nothing readable off the table
  *   can tell one turn's answer from a later turn's
+ * @param forModel - The reply as it was sent to the model, kept so later
+ *   turns replay it as it is. Absent on a user message, whose copy
+ *   `setUserForModel` writes once the turn has assembled its request, and on
+ *   a reply whose turn never asked the model
  * @returns The turn index this message went into — callers billing by turn
  *   need this exact number and recomputing it later would race
  * @throws {NotFoundError} if the conversation does not exist or is soft-deleted.
@@ -107,7 +111,7 @@ function toMessageData(row: StoredRow): MessageData {
  *   billing: a failure there is recorded and the turn still settles, having
  *   already spent whatever its finished steps spent.
  */
-export async function addMessage(id: string, message: MessageInput): Promise<number> {
+export async function addMessage(id: string, message: MessageInput, forModel?: unknown): Promise<number> {
   return db.transaction(async (tx) => {
     const owner = await tx
       .select({ userId: conversations.userId })
@@ -159,6 +163,7 @@ export async function addMessage(id: string, message: MessageInput): Promise<num
       turnIndex,
       seq,
       parts: message.parts,
+      ...(forModel === undefined ? {} : { forModel }),
     });
 
     await tx
@@ -168,6 +173,30 @@ export async function addMessage(id: string, message: MessageInput): Promise<num
 
     return turnIndex;
   });
+}
+
+/**
+ * Keep what a turn's user message was sent to the model as.
+ *
+ * Written after the message itself: the message is stored first to number
+ * the turn, and what it is sent as is known only once the turn has assembled
+ * its request.
+ * @param id - Conversation UUID
+ * @param turnIndex - The turn the message opened
+ * @param forModel - The message as it was sent
+ */
+export async function setUserForModel(id: string, turnIndex: number, forModel: unknown): Promise<void> {
+  await db
+    .update(conversationMessages)
+    .set({ forModel })
+    .where(
+      and(
+        eq(conversationMessages.conversationId, id),
+        eq(conversationMessages.turnIndex, turnIndex),
+        eq(conversationMessages.role, "user"),
+        isNull(conversationMessages.deletedAt),
+      ),
+    );
 }
 
 /**
@@ -251,29 +280,31 @@ export async function getMessages(
  *
  * Skips already-consolidated turns and drops the flat `thinking` field. That
  * field is a view read off the reasoning parts, and the parts themselves stay
- * -- what does or does not reach the model is decided one field at a time in
- * `toModelMessages`, not here.
+ * -- what does or does not reach the model is decided by the replay
+ * (`replayRows`), not here.
  *
  * It used to drop the creation time and the turn index as well, on the
  * grounds that the model is not shown them. But the model is not shown these
- * objects at all — `toModelMessages` names the fields it sends, one at a
- * time — so withholding them here reached nobody, and it cost a cast that
+ * objects at all — the replay sends each row's kept copy, or renders the
+ * fields it names — so withholding them here reached nobody, and it cost a cast that
  * told the compiler a message with no timestamp was a whole one.
  *
  * What it did reach is the budget, which prices the history one turn at a
- * time (`turn-budget.ts`, `costPerTurn`) and hands a fold the turns it took.
+ * time (`request-size.ts`, `costPerTurn`) and hands a fold the turns it took.
  * Both key on this field, and a consolidation that cannot tell one turn from
  * another takes nothing at all.
  * @param id - Conversation UUID
  * @param lastConsolidatedTurn - Turn index up to which messages are consolidated
  * @param beforeTurn - Stop short of this turn, leaving the running turn out
- * @returns Unconsolidated messages, without the model's reasoning
+ * @returns Unconsolidated messages, without the flat mirror of the model's
+ *   reasoning, each with what was sent of it (`forModel`, null when nothing
+ *   was kept)
  */
 export async function getMessagesForLlm(
   id: string,
   lastConsolidatedTurn = 0,
   beforeTurn?: number,
-): Promise<MessageData[]> {
+): Promise<Array<MessageData & { forModel: unknown }>> {
   const rows = await db
     .select({
       id: conversationMessages.id,
@@ -281,6 +312,7 @@ export async function getMessagesForLlm(
       turnIndex: conversationMessages.turnIndex,
       parts: conversationMessages.parts,
       createdAt: conversationMessages.createdAt,
+      forModel: conversationMessages.forModel,
     })
     .from(conversationMessages)
     .innerJoin(conversations, eq(conversations.id, conversationMessages.conversationId))
@@ -290,8 +322,7 @@ export async function getMessagesForLlm(
         gt(conversationMessages.turnIndex, lastConsolidatedTurn),
         // The turn being run is not history: its own message is put in front
         // of the model separately, and a copy here would be the model reading
-        // the same question twice -- and a candidate for compression, which
-        // could shorten the very thing being asked.
+        // the same question twice.
         ...(beforeTurn === undefined
           ? []
           : [lt(conversationMessages.turnIndex, beforeTurn)]),
@@ -303,7 +334,7 @@ export async function getMessagesForLlm(
 
   return rows.map((row) => {
     const { thinking: _th, ...rest } = toMessageData(row);
-    return rest;
+    return { ...rest, forModel: row.forModel };
   });
 }
 

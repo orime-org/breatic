@@ -5,8 +5,8 @@
  * A turn that fails before the model is even asked still says so.
  *
  * The work a turn does before it starts talking -- storing the message,
- * handing back the conversation, reading the three memories, compressing the
- * history, assembling the agent -- all of it can fail: a database round trip,
+ * handing back the conversation, reading the three memories and the history,
+ * assembling the agent -- all of it can fail: a database round trip,
  * a config that will not load. It happens inside the stream, and a stream that
  * simply ends looks to the browser exactly like a turn that finished: the
  * reply slot stops being written to and nothing says why.
@@ -54,7 +54,7 @@ vi.mock("@server/agent/main-agent.js", () => {
    *
    * Thrown from the call itself rather than from the stream it would have
    * returned: the work that can fail this way -- storing the message, reading
-   * the memories, compressing the history -- all runs before there is a
+   * the memories and the history -- all runs before there is a
    * stream to fail on.
    * @throws {Error} Always, which is the case.
    */

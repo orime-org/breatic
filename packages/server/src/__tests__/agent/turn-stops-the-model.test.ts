@@ -32,7 +32,7 @@ import type * as DomainModule from "@breatic/domain";
 vi.mock("@server/agent/turn-context.js", () => ({
   buildTurnContext: vi.fn(async () => ({
     memoryContext: { projectMemory: "", conversationMemory: "" },
-    compressedHistory: [],
+    history: [],
   })),
 }));
 /** How many times the provider was asked to produce a step. */
@@ -55,7 +55,6 @@ vi.mock("@breatic/core", async (importOriginal) => {
     getAgentConfig: () => ({
       max_tool_iterations: 5,
       llm_max_retries: 0,
-      tool_result_keep: 3,
       web_search_timeout_ms: 10_000,
       web_search_max_tokens: 8_192,
     }),

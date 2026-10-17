@@ -40,7 +40,7 @@ const renders = vi.hoisted(() => ({
 vi.mock("@server/agent/turn-context.js", () => ({
   buildTurnContext: vi.fn(async () => ({
     memoryContext: { projectMemory: "", conversationMemory: "" },
-    compressedHistory: [],
+    history: [],
   })),
 }));
 

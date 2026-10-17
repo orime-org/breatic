@@ -16,8 +16,8 @@
  * failed calls, an answer that is not the JSON it asked for, a write that
  * cannot land. The watermark moves, nothing is written, the error is logged
  * and the reply goes out. Holding the window instead would send the same
- * input on the next turn and every turn after it, since the call is
- * `temperature: 0` and the history only grows.
+ * input on the next turn and every turn after it, since the history only
+ * grows and the call asks for `temperature: 0` wherever the model takes it.
  *
  * The one ending that keeps the window is the reader leaving: they come back
  * to a conversation that folds it again, and the charge is already keyed so
@@ -29,7 +29,7 @@ import type { ModelMessage } from "ai";
 import {
   generateTextRetry,
   getModel,
-  reasoningFor,
+  callOptionsFor,
   creditLotService,
   createUsageRecorder,
   handOffLookups,
@@ -75,9 +75,9 @@ export interface ConsolidationWindow {
   /**
    * The window, as the model would have been sent it.
    *
-   * The assembled messages rather than the stored rows: compression has
-   * already replaced the body of every old tool result, and reading storage
-   * would put all of it back — the very bulk this exists to be rid of.
+   * The assembled messages rather than the stored rows: the summary covers
+   * what the model was given, in the form it was given it, less the model's
+   * own working.
    */
   transcript: readonly ModelMessage[];
   /** Where the watermark stood before this window was taken. */
@@ -117,6 +117,30 @@ interface ConsolidationAnswer {
 }
 
 /**
+ * One part of a message, as the prompt reads it: the words, a tool's name and
+ * arguments, or what it answered. Anything else is left out -- the model's
+ * working, and a provider's private metadata.
+ * @param part - A part of a message's content.
+ * @returns Its text, or null when it is left out.
+ */
+function partText(part: unknown): string | null {
+  const p = part as { type?: string; text?: string; toolName?: string; input?: unknown; output?: unknown };
+  switch (p.type) {
+    case "text":
+      return p.text ?? "";
+    case "tool-call":
+      return `[called ${p.toolName ?? ""}] ${JSON.stringify(p.input ?? null)}`;
+    case "tool-result": {
+      const output = p.output as { value?: unknown } | undefined;
+      const value = output?.value;
+      return `[${p.toolName ?? ""} answered] ${typeof value === "string" ? value : JSON.stringify(value ?? output ?? null)}`;
+    }
+    default:
+      return null;
+  }
+}
+
+/**
  * Render the window the way the prompt reads it.
  * @param transcript - The window, as assembled messages.
  * @returns One block of text, speaker by speaker.
@@ -127,7 +151,7 @@ function transcribe(transcript: readonly ModelMessage[]): string {
       const said =
         typeof message.content === "string"
           ? message.content
-          : JSON.stringify(message.content);
+          : message.content.flatMap((part) => partText(part) ?? []).join("\n");
       return `[${message.role}]: ${said}`;
     })
     .join("\n\n");
@@ -337,11 +361,11 @@ export async function consolidateWindow(
       model,
       messages: [{ role: "user" as const, content: prompt }],
       stopWhen: stepCountIs(1),
-      temperature: 0,
       // Folding a transcript into a summary has no reasoning step in it, and
-      // the model this runs on turns thinking on by id unless told otherwise
-      // -- which would also drop the `temperature: 0` above.
-      ...reasoningFor(config.consolidation_model, false),
+      // asks for a fixed temperature of 0. Which of the two each model takes,
+      // and how, is settled in the routing table: Claude, for one, accepts
+      // neither and is sent neither.
+      ...callOptionsFor(config.consolidation_model, { thinking: false, cache: false, temperature: 0 }),
       // Conversation memory is rewritten whole by this call, so an answer
       // with no ceiling is a segment with no ceiling in every later prompt.
       maxOutputTokens: config.max_output_tokens,

@@ -21,8 +21,8 @@
  * a future generatable modality inherits the gate by routing its mutating
  * entry points through this function. Enforcement points (the CanvasSpace
  * delete guard, upload activation, TextNode edit entry, the Generate panel)
- * call this and act on the verdict; see the node-state gating section in
- * web/CLAUDE.md.
+ * call this and act on the verdict; see
+ * `packages/web/AGENTS.md#node-state-gating`.
  */
 
 /**

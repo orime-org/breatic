@@ -86,14 +86,14 @@ max_document_bytes: 10485760     # 10 MB
 max_documents_per_socket: 1000
 
 # ── Throttle ──────────────────────────────────────
-# Coarse per-IP DoS backstop. Loopback peers are exempt — see
-# infra/connection-gate.ts, which decides from the raw peer address during the
+# Coarse per-address DoS backstop, counted per IPv4 address or IPv6 /64.
+# Loopback peers are exempt — see infra/connection-gate.ts, which decides from the raw peer address during the
 # WebSocket upgrade.
 # One user opens many doc-connections (meta + every Space, x2 under dev StrictMode),
 # so keep the threshold generous to avoid false-banning legitimate users; fine-grained
 # abuse control belongs at the authenticated-user layer, not per-IP.
 throttle_enabled: true
-throttle_max_attempts: 200       # max connections per IP within the 60s window before a ban
+throttle_max_attempts: 200       # max connections per address within the 60s window before a ban
 throttle_ban_time: 1             # ban duration in MINUTES (shared-throttle.ts sets the ban key with EX minutes*60 — NOT ms)
 
 # ── Persistence ───────────────────────────────────

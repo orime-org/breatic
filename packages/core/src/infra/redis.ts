@@ -36,7 +36,7 @@ import { env } from "@core/config/env.js";
  * without notifying the client, leading to multi-minute query
  * stalls or sticky `Unauthorized` errors on Hocuspocus auth).
  *
- * Per the CLAUDE.md "industrial-grade server standards" mandate and the
+ * Per `packages/core/AGENTS.md#connection-lifetimes-are-explicit` and the
  * 2026-05-27 long-running drift investigation:
  *
  * - `keepAlive: 30000` - TCP keepalive every 30s so a dropped
@@ -52,8 +52,8 @@ import { env } from "@core/config/env.js";
  *   failover sends `READONLY` on the old master; reconnect to
  *   land on the new master without a manual restart.
  *
- * Per the "core and shared must not log" mandate (CLAUDE.md
- * "process lifecycle (forbidden in the library layer)") this factory does NOT attach an
+ * Per `AGENTS.md#library-packages-do-not-log` and
+ * `AGENTS.md#library-packages-do-not-exit-the-process` this factory does NOT attach an
  * error logger. A no-op `error` listener is installed so an emitted
  * error doesn't crash the process (ioredis inherits Node's
  * EventEmitter behaviour where an unhandled `error` event is fatal),

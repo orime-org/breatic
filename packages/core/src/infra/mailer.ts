@@ -69,8 +69,8 @@ export interface SendMailOptions {
 }
 
 /**
- * Discriminated result of {@link sendMail}. Per CLAUDE.md
- * "core and shared must not log" mandate, the library returns
+ * Discriminated result of {@link sendMail}. Per
+ * `AGENTS.md#library-packages-do-not-log`, the library returns
  * status instead of logging - the application caller (server
  * route handler) decides what to log (e.g. info on `sent`,
  * warn on `smtp_not_configured`, dev-only console dump on
@@ -88,7 +88,7 @@ export type SendMailResult =
  * @returns A {@link SendMailResult} describing what happened
  *   (sent / console-only / skipped). The application caller is
  *   responsible for logging audit / warning lines based on the
- *   status - see CLAUDE.md "core and shared must not log".
+ *   status - see `AGENTS.md#library-packages-do-not-log`.
  */
 export async function sendMail(options: SendMailOptions): Promise<SendMailResult> {
   if (env.EMAIL_BACKEND === "disabled") {

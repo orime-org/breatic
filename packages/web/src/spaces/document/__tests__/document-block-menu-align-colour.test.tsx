@@ -44,7 +44,8 @@ import type {
  * What the colour panel was handed, render by render.
  *
  * The panel is memoised, so the menu owes it props that keep their identity
- * while nothing they say has moved — `packages/web/CLAUDE.md` calls a memo
+ * while nothing they say has moved —
+ * `packages/web/AGENTS.md#memoize-what-children-receive` calls a memo
  * that can never bail a defect of its own. This records them from inside.
  */
 const panelProps = vi.hoisted(

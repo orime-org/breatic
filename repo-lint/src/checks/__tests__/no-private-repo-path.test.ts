@@ -58,10 +58,10 @@ describe("no-private-repo-path", () => {
 
   it("covers the repository root, which the old scan list did not", () => {
     // The shell version scanned packages, docs, scripts, config and
-    // .github. The root README and CLAUDE.md are public artifacts too.
+    // .github. The root README and AGENTS.md are public artifacts too.
     const context = fakeContext({
       "README.md": `see ${dir("engineering", "plans")}x.md`,
-      "CLAUDE.md": `see ${PRIVATE_REPO}`,
+      "AGENTS.md": `see ${PRIVATE_REPO}`,
     });
     expect(noPrivateRepoPath.run(context)).toHaveLength(2);
   });

@@ -198,7 +198,7 @@ function facesFor(editor: HandleEditor, blockId: string): StyleFaces {
  *
  * It is rebuilt on every render, and the colour panel is memoised — so a fresh
  * object each time would leave that memo unable to bail, which
- * `packages/web/CLAUDE.md` names as a defect of its own. The previous reading
+ * `packages/web/AGENTS.md#memoize-what-children-receive` names as a defect of its own. The previous reading
  * is kept while it says the same thing. Written during render because that is
  * when the comparison happens, the way `useEditorSnapshot` keeps its own.
  * @param editor - The editor to read from.

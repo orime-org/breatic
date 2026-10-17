@@ -5,7 +5,7 @@
  * Fail-fast connectivity check for infrastructure dependencies.
  *
  * Called at service startup (server / worker / collab) before any
- * business logic. Per CLAUDE.md "process lifecycle" mandate, library
+ * business logic. Per `AGENTS.md#library-packages-do-not-exit-the-process`, library
  * code doesn't decide when the process dies: if a dependency probe
  * fails this throws `InfraNotReadyError` and the application entry's
  * top-level catch logs the context + exits.

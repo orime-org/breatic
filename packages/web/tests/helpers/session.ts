@@ -11,45 +11,32 @@
  * — and that cannot be answered by building a second context, because the
  * storage under test belongs to the first one.
  *
- * Every spec used to fill this form itself, and logging in is rate limited to
- * five a minute keyed on the caller's address, so a suite of twenty-seven
- * specs ran permanently against that ceiling and whichever one landed in a
- * crowded minute was answered "Too many requests" at its login form. The
- * few cases that still sign in through the form submit it through here.
+ * The few cases that sign in through the form submit it through here.
  */
 import { expect, type Page, type Response } from 'playwright/test';
 
-import { whileRateLimited } from './rate-limit';
-
 /**
  * Fill the login form and submit it, the way a person does, and hand back the
- * server's answer to the sign-in.
- *
- * Signing in is limited per address and every worker shares this machine's,
- * so a 429 is waited out and the form submitted again. Any other answer is
- * the caller's to judge.
+ * server's answer to the sign-in, for the caller to judge.
  * @param page - A page on the login route.
  * @param email - The address to type, as typed.
  * @param password - The password to type.
- * @returns The answer to the last submission.
- * @throws {Error} When the server keeps answering 429.
+ * @returns The answer to the submission.
  */
 export async function submitSignIn(page: Page, email: string, password: string): Promise<Response> {
-  return whileRateLimited(async () => {
-    await expect(page.locator('#login-email')).toBeVisible({ timeout: 20_000 });
-    await page.locator('#login-email').fill(email);
-    await page.locator('#login-password').fill(password);
-    // Read the answer to the sign-in itself. A refusal arrives as a status code,
-    // and waiting on the URL alone turns it into a navigation timeout that says
-    // nothing about why the page stayed put.
-    const [answer] = await Promise.all([
-      page.waitForResponse((r) => r.url().includes('/auth/login'), {
-        timeout: 20_000,
-      }),
-      page.locator('form button[type="submit"]').click(),
-    ]);
-    return answer;
-  });
+  await expect(page.locator('#login-email')).toBeVisible({ timeout: 20_000 });
+  await page.locator('#login-email').fill(email);
+  await page.locator('#login-password').fill(password);
+  // Read the answer to the sign-in itself. A refusal arrives as a status code,
+  // and waiting on the URL alone turns it into a navigation timeout that says
+  // nothing about why the page stayed put.
+  const [answer] = await Promise.all([
+    page.waitForResponse((r) => r.url().includes('/auth/login'), {
+      timeout: 20_000,
+    }),
+    page.locator('form button[type="submit"]').click(),
+  ]);
+  return answer;
 }
 
 /**

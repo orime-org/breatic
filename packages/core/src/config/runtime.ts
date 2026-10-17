@@ -4,7 +4,7 @@
 /**
  * Core runtime configuration holder + injection boundary.
  *
- * `@breatic/core` does NOT read `process.env` (CLAUDE.md "core/shared must not read env vars" mandate). Instead, each application entry
+ * `@breatic/core` does NOT read `process.env` (`AGENTS.md#library-packages-do-not-read-env`). Instead, each application entry
  * (server / worker / collab = the composition root) reads
  * `process.env` once at startup and injects it via {@link initCore}.
  * Library code then reads the validated config through:

@@ -38,7 +38,6 @@ import {
   PROJECTS_FILE,
   type Account,
 } from '../helpers/project';
-import { whileRateLimited } from '../helpers/rate-limit';
 import { stateFile } from '../helpers/slot';
 import { REMOVALS_FILE } from '../helpers/space';
 
@@ -114,12 +113,8 @@ async function preflight(browser: Browser, baseURL: string): Promise<void> {
 /**
  * Opens a request context on the session the last run left, when there is one.
  *
- * Signing in is rate limited to five a minute (`config/rate-limits.yaml`) and
- * the limiter keys on the caller's address, so a developer running the suite
- * while fixing something spends that budget in a couple of minutes, and each
- * sign-in past it waits out a whole window. The
- * server is the one that knows whether the old session is still its own, so it
- * is the one asked.
+ * The server is the one that knows whether the old session is still its own,
+ * so it is the one asked.
  * @param baseURL - Where the app is being served.
  * @param at - Which worker slot.
  * @param account - Which account of that slot.
@@ -152,11 +147,9 @@ async function reuseSession(
  * was reset, a record that was deleted — is replaced by a new one, which is
  * what makes a first run and a wiped run the same path.
  *
- * Only a refusal of the credentials themselves means that. Signing in is
- * limited to five a minute (`config/rate-limits.yaml`), so a 429 is waited
- * out rather than taken for a dead account, which would abandon a working
- * account and its Projects. A server that is having trouble says so with a
- * 5xx, which is not an answer about this account either.
+ * Only a refusal of the credentials themselves means that. A server that is
+ * having trouble says so with a 5xx, which is not an answer about this
+ * account.
  *
  * A new account is created by `seedAccount` and then signed in like any other.
  * @param api - A request context with no cookies yet.
@@ -173,7 +166,7 @@ async function signInOrRegister(
 ): Promise<void> {
   const held = readAccounts()[String(at)]?.[account];
   if (held !== undefined) {
-    const signedIn = await whileRateLimited(() => api.post('/api/v1/auth/login', { data: held }));
+    const signedIn = await api.post('/api/v1/auth/login', { data: held });
     if (signedIn.ok()) return;
     if (signedIn.status() !== 401) {
       throw new Error(
@@ -185,7 +178,7 @@ async function signInOrRegister(
   const made = newCredentials(account, at);
   seedAccount(made);
   rememberAccount(at, account, made);
-  const signedIn = await whileRateLimited(() => api.post('/api/v1/auth/login', { data: made }));
+  const signedIn = await api.post('/api/v1/auth/login', { data: made });
   if (!signedIn.ok()) {
     throw new Error(
       `Account ${account} of slot ${String(at)} was created but could not sign in (${signedIn.status()}: ${(await signedIn.text()).slice(0, 160)}).`,

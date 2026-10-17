@@ -5,7 +5,7 @@
  * "Recent" landing critical-path invariants — `recentService.recordOpen` +
  * `recentService.listRecent` against a real Postgres.
  *
- * The recent feed is a CLAUDE.md critical path (auth + data integrity): it must
+ * The recent feed is a critical path (AGENTS.md#critical-paths: auth + data integrity): it must
  * NEVER surface a project the viewer cannot enter (kicked from it, never a
  * member of it, or project soft-deleted). Those guarantees are
  * SQL-level — the access-filter WHERE clause, the composite-PK upsert revive,

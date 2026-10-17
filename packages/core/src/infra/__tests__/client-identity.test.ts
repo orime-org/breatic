@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Red tests for the client-identity rule (design §6.2).
+ * The client-identity rule collab and the server share (inner#1478).
  *
  * The rule is a single question — is the connection's peer our own reverse
  * proxy, or the client itself? — and it has exactly three outcomes. There is
@@ -15,7 +15,7 @@ import { describe, it, expect } from "vitest";
 import {
   isLoopbackIp,
   decideClientIdentity,
-} from "@collab/infra/client-identity.js";
+} from "@core/infra/client-identity.js";
 
 describe("isLoopbackIp", () => {
   it("treats every loopback form as loopback", () => {
@@ -99,5 +99,39 @@ describe("decideClientIdentity", () => {
     expect(
       decideClientIdentity({ peerAddress: "172.18.0.4", realIpHeader: " 203.0.113.9 " }),
     ).toEqual({ kind: "identify", identity: "203.0.113.9" });
+  });
+});
+
+describe("IPv6 sources are counted by their /64", () => {
+  // An ISP hands one subscriber at least a /64, so counting each address
+  // separately lets one subscriber rotate through 2^64 identities.
+  const decide = (ip: string): ReturnType<typeof decideClientIdentity> =>
+    decideClientIdentity({ peerAddress: "172.18.0.4", realIpHeader: ip });
+
+  it("puts two addresses in one /64 under the same identity", () => {
+    expect(decide("2001:db8:1:2::a")).toEqual(decide("2001:db8:1:2:ffff:1:2:3"));
+    expect(decide("2001:db8:1:2::a")).toEqual({ kind: "identify", identity: "2001:db8:1:2::/64" });
+  });
+
+  it("keeps addresses in different /64s apart", () => {
+    expect(decide("2001:db8:1:2::a")).not.toEqual(decide("2001:db8:1:3::a"));
+  });
+
+  it("reads compressed, expanded and uppercase forms as the same /64", () => {
+    const expected = { kind: "identify", identity: "2001:db8:1:2::/64" };
+    expect(decide("2001:0DB8:0001:0002:0000:0000:0000:000A")).toEqual(expected);
+    expect(decide("2001:db8:1:2:0:0:0:a")).toEqual(expected);
+  });
+
+  it("groups a /64 whose upper half has zeros", () => {
+    expect(decide("2001:db8::5")).toEqual({ kind: "identify", identity: "2001:db8::/64" });
+  });
+
+  it("counts a dotted IPv4-mapped address as the IPv4 address", () => {
+    expect(decide("::ffff:203.0.113.9")).toEqual({ kind: "identify", identity: "203.0.113.9" });
+  });
+
+  it("keeps an IPv4 address whole", () => {
+    expect(decide("203.0.113.9")).toEqual({ kind: "identify", identity: "203.0.113.9" });
   });
 });

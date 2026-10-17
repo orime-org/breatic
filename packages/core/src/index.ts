@@ -89,7 +89,8 @@ export type {
   SubscriptionPlans,
 } from "@core/config/subscription.js";
 export { jitterBackoffStrategy } from "@core/infra/retry.js";
-export { getAgentConfig, effectiveKeepChars } from "@core/config/loader.js";
+export { getAgentConfig, effectiveKeepTokens } from "@core/config/loader.js";
+export type { PromptCacheTtl } from "@core/config/loader.js";
 
 // ── Infrastructure ───────────────────────────────────────────────
 export {
@@ -108,7 +109,7 @@ export {
 // clients) type their client refs without taking a
 // direct `ioredis` dependency — the driver lives only in core.
 export type { Redis } from "ioredis";
-export { checkRateLimit } from "@core/infra/rate-limiter.js";
+export { checkRateLimit, type RateLimitQuota, type RateLimitVerdict } from "@core/infra/rate-limiter.js";
 export {
   startHealthServer,
   type HealthCheck,
@@ -150,6 +151,13 @@ export {
   type MemberChangeHandlers,
   type MemberChangeListener,
 } from "@core/infra/member-change-listener.js";
+export {
+  decideClientIdentity,
+  isLoopbackIp,
+  type ClientIdentityDecision,
+  type ClientIdentityInput,
+  type RefusalReason,
+} from "@core/infra/client-identity.js";
 export { setSession, getSession, deleteSession, deleteAllSessions, sessionCookieName } from "@core/infra/session-store.js";
 export { runWithContext, tryGetContext, getContext } from "@core/infra/request-context.js";
 

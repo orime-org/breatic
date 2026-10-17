@@ -18,12 +18,14 @@
  * assertions below exist to stop that from ever being written.
  */
 
+import type * as CoreModule from "@breatic/core";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { IncomingMessage } from "node:http";
 
 const { loggerWarnMock } = vi.hoisted(() => ({ loggerWarnMock: vi.fn() }));
 
-vi.mock("@breatic/core", () => ({
+vi.mock("@breatic/core", async (importOriginal) => ({
+  decideClientIdentity: (await importOriginal<typeof CoreModule>()).decideClientIdentity,
   createLogger: () => ({
     info: vi.fn(),
     warn: loggerWarnMock,

@@ -78,7 +78,7 @@ module.exports = {
     {
       name: "routes-no-data-layer",
       comment:
-        "Prohibition #1 (route layer must not reach the data layer): a server route handler must call " +
+        "Route layer must not reach the data layer (AGENTS.md#backend-package-boundaries): a server route handler must call " +
         "a *.service, never a *.repo directly. The repo is the data-access " +
         "layer; the service owns the business logic. A route reaching a repo " +
         "skips the service layer. Route a read/write through the owning " +
@@ -90,10 +90,10 @@ module.exports = {
     {
       name: "server-no-sync-aigc",
       comment:
-        "Prohibition #14 (no synchronous AIGC path; PROXY rule): heavy AIGC generation must " +
+        "No synchronous AIGC path (AGENTS.md#aigc-generation-runs-in-the-worker; PROXY rule): heavy AIGC generation must " +
         "run async in the worker, never synchronously in a server request. " +
         "The only server modules allowed to import the AI SDK are the three " +
-        "streaming entry points CLAUDE.md permits (Agent chat + memory " +
+        "streaming entry points that rule permits (Agent chat + memory " +
         "consolidation + Text mini-tool SSE). Any OTHER server file importing " +
         "ai / @ai-sdk / openai / @anthropic-ai is a new synchronous AIGC " +
         "surface — move it to the worker. This is a path proxy (allowlist of " +
@@ -137,8 +137,8 @@ module.exports = {
     {
       name: "library-no-app-import",
       comment:
-        "Modular-monolith dependency direction (ADR 2026-05-31 + root " +
-        "CLAUDE.md): library packages (@breatic/core, @breatic/shared, " +
+        "Modular-monolith dependency direction (ADR 2026-05-31 + " +
+        "AGENTS.md#backend-package-boundaries): library packages (@breatic/core, @breatic/shared, " +
         "@breatic/domain) must NOT import an application package " +
         "(@server / @worker / @collab / @web / @ingest). The direction is " +
         "app → domain → core/shared, never the reverse. Migrated from " +
@@ -162,7 +162,7 @@ module.exports = {
     {
       name: "service-no-hono",
       comment:
-        "Prohibition #2 (Service import hono): a domain service layer file " +
+        "Services never import hono (AGENTS.md#backend-package-boundaries): a domain service layer file " +
         "(*.service.ts) translates protocol-agnostic business logic and must " +
         "NOT import hono / @hono/* — the route layer owns the HTTP transport. " +
         "Migrated from lint-no-service-import-hono.sh.",

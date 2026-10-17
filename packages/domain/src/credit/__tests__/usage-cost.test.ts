@@ -12,6 +12,13 @@ const PRICING = {
       input_cache_miss_per_mtok: 1.32,
       output_per_mtok: 3.96,
     },
+    "anthropic/claude-opus-5.5": {
+      input_cache_hit_per_mtok: 0.2,
+      input_cache_miss_per_mtok: 4,
+      input_cache_write_5m_per_mtok: 5,
+      input_cache_write_1h_per_mtok: 8,
+      output_per_mtok: 20,
+    },
   },
   services: {
     brave_web_search: { per_request: 0.005 },
@@ -25,15 +32,16 @@ const PRICING = {
  * @param cacheRead - Input tokens read from cache.
  * @param output - Output tokens, reasoning included.
  * @param reasoning - The reasoning share of the output.
+ * @param cacheWrite - Input tokens written to cache, counted in the input total as the AI SDK's Anthropic provider counts them.
  * @returns The usage shape `onLanguageModelCallEnd` hands over.
  */
-function usage(noCache: number, cacheRead: number, output: number, reasoning = 0) {
+function usage(noCache: number, cacheRead: number, output: number, reasoning = 0, cacheWrite = 0) {
   return {
-    inputTokens: noCache + cacheRead,
-    inputTokenDetails: { noCacheTokens: noCache, cacheReadTokens: cacheRead, cacheWriteTokens: undefined },
+    inputTokens: noCache + cacheRead + cacheWrite,
+    inputTokenDetails: { noCacheTokens: noCache, cacheReadTokens: cacheRead, cacheWriteTokens: cacheWrite },
     outputTokens: output,
     outputTokenDetails: { textTokens: output - reasoning, reasoningTokens: reasoning },
-    totalTokens: noCache + cacheRead + output,
+    totalTokens: noCache + cacheRead + cacheWrite + output,
   };
 }
 
@@ -66,6 +74,61 @@ describe("the cost of one model call", () => {
     expect(cost.costUsd).toBeCloseTo(1.32 + 0.044 + 3.96, 10);
     expect(cost.costSource).toBe("price_table");
     expect(cost.tokens).toEqual({ input: 2_000_000, cachedInput: 1_000_000, output: 1_000_000, reasoning: 200_000 });
+  });
+
+  it("prices a direct Claude call's cache writes at the five-minute write price", () => {
+    const cost = costOfModelCall(
+      {
+        model: "anthropic/claude-opus-5.5",
+        provider: "anthropic",
+        usage: usage(1_000_000, 1_000_000, 1_000_000, 0, 1_000_000),
+        providerMetadata: undefined,
+        cacheTtl: "5m",
+      },
+      PRICING,
+    );
+    expect(cost.costUsd).toBeCloseTo(4 + 0.2 + 5 + 20, 10);
+    expect(cost.tokens).toEqual({ input: 3_000_000, cachedInput: 1_000_000, output: 1_000_000, reasoning: 0 });
+  });
+
+  it("prices cache writes at the one-hour write price when the call cached for an hour", () => {
+    const cost = costOfModelCall(
+      {
+        model: "anthropic/claude-opus-5.5",
+        provider: "anthropic",
+        usage: usage(0, 0, 0, 0, 1_000_000),
+        providerMetadata: undefined,
+        cacheTtl: "1h",
+      },
+      PRICING,
+    );
+    expect(cost.costUsd).toBeCloseTo(8, 10);
+  });
+
+  it("prices cache writes at the five-minute price when the call names no duration", () => {
+    const cost = costOfModelCall(
+      {
+        model: "anthropic/claude-opus-5.5",
+        provider: "anthropic",
+        usage: usage(0, 0, 0, 0, 1_000_000),
+        providerMetadata: undefined,
+      },
+      PRICING,
+    );
+    expect(cost.costUsd).toBeCloseTo(5, 10);
+  });
+
+  it("prices cache writes at the miss price for a model the table gives no write price", () => {
+    const cost = costOfModelCall(
+      {
+        model: "deepseek/deepseek-v4-pro",
+        provider: "deepseek",
+        usage: usage(0, 0, 0, 0, 1_000_000),
+        providerMetadata: undefined,
+      },
+      PRICING,
+    );
+    expect(cost.costUsd).toBeCloseTo(1.32, 10);
   });
 
   it("refuses to price a direct model the table does not list", () => {

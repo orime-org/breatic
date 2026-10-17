@@ -12,7 +12,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type * as CoreModule from "@breatic/core";
 import { attachmentMarker } from "@breatic/shared";
-import { userTurnForModel } from "@server/agent/user-turn.js";
+import { READER_LANGUAGE_REMINDER, userTurnForModel } from "@server/agent/user-turn.js";
 import type { ChatAttachedChip } from "@breatic/shared";
 import { saying } from "../helpers/model-double.js";
 import type { ModelStreamPart } from "../helpers/model-double.js";
@@ -24,7 +24,7 @@ const modelSays = vi.hoisted(() => ({ parts: [] as unknown[], prompts: [] as unk
 vi.mock("@server/agent/turn-context.js", () => ({
   buildTurnContext: vi.fn(async () => ({
     memoryContext: { projectMemory: "", conversationMemory: "" },
-    compressedHistory: [],
+    history: [],
   })),
 }));
 
@@ -149,7 +149,7 @@ describe("a turn opened by a message with attachments", () => {
     await runOneTurn("what is in this?", [image]);
 
     expect(lastUserTextSent()).toBe(
-      `${readerClockNote(new Date(), undefined)}\n\n${userTurnForModel({ chips: [image], message: "what is in this?" })}`,
+      `${readerClockNote(new Date(), undefined)}\n\n${userTurnForModel({ chips: [image], message: "what is in this?" })}\n\n${READER_LANGUAGE_REMINDER}`,
     );
   });
 
@@ -160,6 +160,6 @@ describe("a turn opened by a message with attachments", () => {
       role: "user",
       parts: [{ type: "text", text: "hello" }],
     });
-    expect(lastUserTextSent()).toBe(`${readerClockNote(new Date(), undefined)}\n\nhello`);
+    expect(lastUserTextSent()).toBe(`${readerClockNote(new Date(), undefined)}\n\nhello\n\n${READER_LANGUAGE_REMINDER}`);
   });
 });

@@ -4,8 +4,8 @@
 /**
  * Request-scoped context using AsyncLocalStorage.
  *
- * Stores user identity, conversation info, memory context, and compressed
- * conversation history. Set once per request at the route layer, then
+ * Stores who is speaking, in which conversation and which project. Set once
+ * per request at the route layer, then
  * accessible anywhere in the async call chain.
  * @module
  */

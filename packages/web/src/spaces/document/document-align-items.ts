@@ -8,7 +8,7 @@
  * block handle's menu — and the rows are the same rows: one list, one order,
  * one set of labels and icons. Written out twice they drift, and the repo's
  * own rule is to reach for what is already there rather than draw a near copy
- * (`packages/web/CLAUDE.md`).
+ * (`packages/web/AGENTS.md#reuse-components-ui-first`).
  */
 
 import {
