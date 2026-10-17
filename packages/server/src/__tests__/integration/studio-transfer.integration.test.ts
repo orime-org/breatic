@@ -173,6 +173,20 @@ async function countByType(userId: string, type: string): Promise<number> {
 }
 
 /** Force a notification's expiry into the past (simulate the 7-day timeout). */
+/**
+ * Read a transfer's status and why it failed, if it did.
+ * @param transferId - The transfer.
+ * @returns Its status and failure reason.
+ */
+async function outcomeOf(
+  transferId: string,
+): Promise<{ status: string; failed_reason: string | null }> {
+  const [row] = await sql<{ status: string; failed_reason: string | null }[]>`
+    SELECT status, failed_reason FROM studio_transfers WHERE id = ${transferId}
+  `;
+  return row!;
+}
+
 async function expireTransfer(transferId: string): Promise<void> {
   // Both projections move together, exactly as the create path writes them:
   // the decision gate reads the ROW, the bell reads the entry, and a test that
@@ -339,6 +353,7 @@ describe("confirmTransfer", () => {
     await expect(
       studioTransferService.confirmTransfer(req!.transfer_id, memberId),
     ).rejects.toMatchObject({ statusCode: 409 });
+    expect(await outcomeOf(req!.transfer_id)).toEqual({ status: "failed", failed_reason: "expired" });
 
     // The whole transaction rolled back — roles are unchanged.
     expect(await studioMembersRepo.getRole(studioId, adminId)).toBe("admin");
@@ -383,6 +398,7 @@ describe("confirmTransfer — TOCTOU eligibility re-check", () => {
     await expect(
       studioTransferService.confirmTransfer(req!.transfer_id, memberId),
     ).rejects.toMatchObject({ statusCode: 409 });
+    expect(await outcomeOf(req!.transfer_id)).toEqual({ status: "failed", failed_reason: "invalidated" });
 
     // The swap did NOT happen: the admin stays admin, the recipient stays guest.
     const roles = await sql<{ user_id: string; role: string }[]>`
@@ -414,6 +430,7 @@ describe("confirmTransfer — TOCTOU eligibility re-check", () => {
     await expect(
       studioTransferService.confirmTransfer(stale!.transfer_id, memberId),
     ).rejects.toMatchObject({ statusCode: 409 });
+    expect(await outcomeOf(stale!.transfer_id)).toEqual({ status: "failed", failed_reason: "invalidated" });
 
     const roles = await sql<{ user_id: string; role: string }[]>`
       SELECT user_id, role FROM studio_members
@@ -446,6 +463,7 @@ describe("confirmTransfer — TOCTOU eligibility re-check", () => {
     await expect(
       studioTransferService.confirmTransfer(stale!.transfer_id, memberId),
     ).rejects.toMatchObject({ statusCode: 409 });
+    expect(await outcomeOf(stale!.transfer_id)).toEqual({ status: "failed", failed_reason: "invalidated" });
 
     const roles = await sql<{ user_id: string; role: string }[]>`
       SELECT user_id, role FROM studio_members
@@ -457,6 +475,18 @@ describe("confirmTransfer — TOCTOU eligibility re-check", () => {
     // Still a guest — the stale request did not hand them a promotion.
     expect(roleOf(adminId)).toBe("guest");
     expect(roleOf(bystanderId)).toBe("guest");
+  });
+
+  it("fails an offer on a studio that was soft-deleted as invalidated", async () => {
+    const { studioId, slug, adminId, memberId } = await seedStudio();
+    await studioTransferService.requestTransfer(slug, adminId, memberId);
+    const [req] = await transferRequestsFor(memberId);
+    await sql`UPDATE studios SET deleted_at = now() WHERE id = ${studioId}`;
+
+    await expect(
+      studioTransferService.confirmTransfer(req!.transfer_id, memberId),
+    ).rejects.toMatchObject({ statusCode: 409 });
+    expect(await outcomeOf(req!.transfer_id)).toEqual({ status: "failed", failed_reason: "invalidated" });
   });
 });
 

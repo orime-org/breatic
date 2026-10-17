@@ -158,6 +158,7 @@ describe('the dead ends each say their own thing', () => {
     ['accepted', /already accepted/i],
     ['declined', /already declined/i],
     ['expired', /request has ended/i],
+    ['invalidated', /no longer valid/i],
     ['revoked', /was withdrawn/i],
     ['gone', /no longer here/i],
     ['already_member', /already in/i],
@@ -185,6 +186,18 @@ describe('the dead ends each say their own thing', () => {
     expect(
       await screen.findByText(/this request could be answered within 7 days/i),
     ).toBeInTheDocument();
+  });
+
+  it('the invalidated card says what changed and states no window', async () => {
+    vi.mocked(decisionsApi.view).mockResolvedValueOnce(
+      makeView({ state: 'invalidated', windowDays: 7 }),
+    );
+    setup();
+    expect(
+      await screen.findByText(/what it was about has changed/i),
+    ).toBeInTheDocument();
+    // The window did not run out, so how long it was answers nothing here.
+    expect(screen.queryByText(/could be answered within/i)).toBeNull();
   });
 
   it('already-a-member offers the way in, since there is one', async () => {

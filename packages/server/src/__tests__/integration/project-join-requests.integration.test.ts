@@ -30,6 +30,24 @@ vi.mock("ai", () => ({
   tool: (config: Record<string, unknown>) => config,
 }));
 
+// `addUnlessActive` writes nothing only when another route added the
+// requester between the decision's membership check and its insert. That
+// window cannot be opened from outside, so this switch stands in for it.
+const race = vi.hoisted(() => ({ addedElsewhere: false }));
+vi.mock("@breatic/core", async (importOriginal) => {
+  const core = await importOriginal<typeof import("@breatic/core")>();
+  return {
+    ...core,
+    projectMembersRepo: {
+      ...core.projectMembersRepo,
+      addUnlessActive: async (
+        ...args: Parameters<typeof core.projectMembersRepo.addUnlessActive>
+      ): ReturnType<typeof core.projectMembersRepo.addUnlessActive> =>
+        race.addedElsewhere ? false : core.projectMembersRepo.addUnlessActive(...args),
+    },
+  };
+});
+
 import postgres from "postgres";
 import {
   ConflictError,
@@ -199,11 +217,25 @@ async function activeRole(projectId: string, userId: string): Promise<string | n
 async function latestRequest(
   projectId: string,
   userId: string,
-): Promise<{ id: string; status: string; share_token: string; notification_id: string | null; granted_role: string | null }> {
+): Promise<{
+  id: string;
+  status: string;
+  failed_reason: string | null;
+  share_token: string;
+  notification_id: string | null;
+  granted_role: string | null;
+}> {
   const rows = await sql<
-    { id: string; status: string; share_token: string; notification_id: string | null; granted_role: string | null }[]
+    {
+      id: string;
+      status: string;
+      failed_reason: string | null;
+      share_token: string;
+      notification_id: string | null;
+      granted_role: string | null;
+    }[]
   >`
-    SELECT id, status, share_token, notification_id, granted_role
+    SELECT id, status, failed_reason, share_token, notification_id, granted_role
     FROM project_join_requests
     WHERE project_id = ${projectId} AND requester_user_id = ${userId}
     ORDER BY created_at DESC LIMIT 1
@@ -411,7 +443,7 @@ describe("answering through the decision page (A6 A7 A8)", () => {
     expect((await latestRequest(project.id, requester.id)).status).toBe("pending");
   });
 
-  it("a requester who left the studio meanwhile makes the request expire with 409", async () => {
+  it("a requester who left the studio meanwhile makes the request fail as invalidated with 409", async () => {
     const { fx, owner, requester, project } = await scene();
     await joinService.request({ projectId: project.id, requesterUserId: requester.id });
     const row = await latestRequest(project.id, requester.id);
@@ -420,8 +452,46 @@ describe("answering through the decision page (A6 A7 A8)", () => {
     await expect(
       decisionService.respond(row.share_token, owner.id, "confirm"),
     ).rejects.toBeInstanceOf(ConflictError);
-    expect((await latestRequest(project.id, requester.id)).status).toBe("expired");
+    expect(await latestRequest(project.id, requester.id)).toMatchObject({
+      status: "failed",
+      failed_reason: "invalidated",
+    });
     expect(await activeRole(project.id, requester.id)).toBeNull();
+  });
+
+  it("an approval that finds the requester already added fails the request as invalidated", async () => {
+    const { owner, requester, project } = await scene();
+    await joinService.request({ projectId: project.id, requesterUserId: requester.id });
+    const row = await latestRequest(project.id, requester.id);
+
+    race.addedElsewhere = true;
+    try {
+      await expect(
+        decisionService.respond(row.share_token, owner.id, "confirm"),
+      ).rejects.toBeInstanceOf(ConflictError);
+    } finally {
+      race.addedElsewhere = false;
+    }
+    expect(await latestRequest(project.id, requester.id)).toMatchObject({
+      status: "failed",
+      failed_reason: "invalidated",
+    });
+  });
+
+  it("a request answered after its deadline fails as expired with 409", async () => {
+    const { owner, requester, project } = await scene();
+    await joinService.request({ projectId: project.id, requesterUserId: requester.id });
+    const row = await latestRequest(project.id, requester.id);
+    await sql`UPDATE project_join_requests SET expires_at = now() - interval '1 second' WHERE id = ${row.id}`;
+
+    await expect(
+      decisionService.respond(row.share_token, owner.id, "confirm"),
+    ).rejects.toBeInstanceOf(ConflictError);
+    expect(await latestRequest(project.id, requester.id)).toMatchObject({
+      status: "failed",
+      failed_reason: "expired",
+    });
+    expect((await bell(row.notification_id!)).retired).toBe(true);
   });
 });
 
@@ -454,7 +524,9 @@ describe("withdrawing and timing out (A9)", () => {
 
     expect((await joinService.getMine(project.id, requester.id)).pendingRequest).toBeNull();
     await joinService.request({ projectId: project.id, requesterUserId: requester.id });
-    expect((await sql`SELECT status FROM project_join_requests WHERE id = ${row.id}`)[0]!.status).toBe("expired");
+    expect(
+      (await sql`SELECT status, failed_reason FROM project_join_requests WHERE id = ${row.id}`)[0],
+    ).toEqual({ status: "failed", failed_reason: "expired" });
     expect((await bell(row.notification_id!)).retired).toBe(true);
   });
 });
@@ -498,7 +570,7 @@ describe("the collaborator ceiling (A10)", () => {
 });
 
 describe("becoming a member by another route settles the request", () => {
-  it("accepting an invite expires the pending request and retires the owner's bell", async () => {
+  it("accepting an invite fails the pending request as invalidated and retires the owner's bell", async () => {
     const { owner, requester, project } = await scene();
     await joinService.request({ projectId: project.id, requesterUserId: requester.id });
     const row = await latestRequest(project.id, requester.id);
@@ -510,8 +582,31 @@ describe("becoming a member by another route settles the request", () => {
 
     await projectInviteService.confirmInvite(inv!.id, requester.id);
 
-    expect((await latestRequest(project.id, requester.id)).status).toBe("expired");
+    expect(await latestRequest(project.id, requester.id)).toMatchObject({
+      status: "failed",
+      failed_reason: "invalidated",
+    });
     expect((await bell(row.notification_id!)).retired).toBe(true);
+  });
+
+  it("accepting an invite after the request's deadline records the request as expired", async () => {
+    // Nobody reaped it, so it is still `pending`; the deadline came first.
+    const { owner, requester, project } = await scene();
+    await joinService.request({ projectId: project.id, requesterUserId: requester.id });
+    const row = await latestRequest(project.id, requester.id);
+    await sql`UPDATE project_join_requests SET expires_at = now() - interval '1 second' WHERE id = ${row.id}`;
+    await projectInviteService.createInvite(project.id, owner.id, requester.email, "editor");
+    const [inv] = await sql<{ id: string }[]>`
+      SELECT id FROM project_invitations
+      WHERE project_id = ${project.id} AND invited_user_id = ${requester.id}
+    `;
+
+    await projectInviteService.confirmInvite(inv!.id, requester.id);
+
+    expect(await latestRequest(project.id, requester.id)).toMatchObject({
+      status: "failed",
+      failed_reason: "expired",
+    });
   });
 
   it("an admin whose request is pending and who inherits the project does not get their own request re-addressed to them", async () => {
@@ -522,7 +617,10 @@ describe("becoming a member by another route settles the request", () => {
     await studioMemberService.leaveStudio(fx.studioSlug, owner.id);
 
     expect(await activeRole(project.id, fx.admin.id)).toBe("owner");
-    expect((await latestRequest(project.id, fx.admin.id)).status).toBe("expired");
+    expect(await latestRequest(project.id, fx.admin.id)).toMatchObject({
+      status: "failed",
+      failed_reason: "invalidated",
+    });
     expect((await bell(row.notification_id!)).retired).toBe(true);
     expect(await unreadCount(fx.admin.id, "project.join_request", project.id)).toBe(0);
   });

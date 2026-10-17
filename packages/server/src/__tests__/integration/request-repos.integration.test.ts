@@ -148,6 +148,22 @@ async function statusOf(table: string, id: string): Promise<string> {
 }
 
 /**
+ * Read one request row's terminal outcome straight from the table.
+ * @param table - Table name.
+ * @param id - Request id.
+ * @returns Its status and, for a failed one, why it failed.
+ */
+async function outcomeOf(
+  table: string,
+  id: string,
+): Promise<{ status: string; failedReason: string | null }> {
+  const rows = await sql<{ status: string; failed_reason: string | null }[]>`
+    SELECT status, failed_reason FROM ${sql(table)} WHERE id = ${id}
+  `;
+  return { status: rows[0]!.status, failedReason: rows[0]!.failed_reason };
+}
+
+/**
  * Read one request row's `decided_at` straight from the table.
  * @param table - Table name.
  * @param id - Request id.
@@ -180,7 +196,7 @@ describe("role-upgrade requests repo", () => {
     })).id;
 
     expect(fresh).not.toBe(stale);
-    expect(await statusOf("role_upgrade_requests", stale)).toBe("expired");
+    expect(await outcomeOf("role_upgrade_requests", stale)).toEqual({ status: "failed", failedReason: "expired" });
     expect(await statusOf("role_upgrade_requests", fresh)).toBe("pending");
   });
 
@@ -402,7 +418,7 @@ describe("role-upgrade requests repo", () => {
       expiresAt: nextWeek(),
     });
 
-    expect(await statusOf("role_upgrade_requests", reaped)).toBe("expired");
+    expect(await outcomeOf("role_upgrade_requests", reaped)).toEqual({ status: "failed", failedReason: "expired" });
     expect(await decidedAtOf("role_upgrade_requests", reaped)).toBeNull();
 
     // The decision path meeting a request whose deadline already passed: it
@@ -416,29 +432,17 @@ describe("role-upgrade requests repo", () => {
     const settled = await db.transaction(async (tx) => {
       const locked = await roleUpgradeRequestsRepo.lockRequest(timedOut, tx);
       expect(locked?.expired).toBe(true);
-      return roleUpgradeRequestsRepo.settleIfPending(
-        timedOut,
-        "expired",
-        null,
-        tx,
-      );
+      return roleUpgradeRequestsRepo.failIfPending(timedOut, "expired", tx);
     });
 
     expect(settled).toBe(true);
     expect(await decidedAtOf("role_upgrade_requests", timedOut)).toBeNull();
   });
 
-  it("pulls a future deadline back when the request ends before it", async () => {
-    // `expired` covers two arrivals: nobody answered in time, and the premise
-    // walked away — the requester stopped being a viewer, so the request is
-    // settled on the spot, days before its deadline.
-    //
-    // The landing page tells the recipient how long the window was, read off
-    // the row. Leaving a future deadline on a settled request makes those two
-    // sentences contradict each other: "this request has ended" over "it could
-    // be answered within 7 days", read on day two by someone who can count.
-    // The deadline is what the row says about when answering stopped being
-    // possible, so ending it early moves it.
+  it("keeps the deadline of a request that failed before it", async () => {
+    // The premise walked away — the requester stopped being a viewer — so the
+    // request fails on the spot, days before its deadline. The reason says
+    // why it ended; the deadline stays the one the request was filed with.
     const { otherId, projectId } = await seedScene();
     const premiseGone = (await roleUpgradeRequestsRepo.createPending({
       projectId,
@@ -446,36 +450,26 @@ describe("role-upgrade requests repo", () => {
       requestedRole: "editor",
       expiresAt: nextWeek(),
     })).id;
+    const original = (
+      await sql<{ expires_at: Date }[]>`
+        SELECT expires_at FROM role_upgrade_requests WHERE id = ${premiseGone}
+      `
+    )[0]!.expires_at.getTime();
 
     await db.transaction(async (tx) =>
-      roleUpgradeRequestsRepo.settleIfPending(premiseGone, "expired", null, tx),
+      roleUpgradeRequestsRepo.failIfPending(premiseGone, "invalidated", tx),
     );
 
-    // Both questions are asked of the database, because the deadline is a
-    // database clock reading: the repo writes `LEAST(expires_at, now())`. An
-    // earlier version compared it against this process's `Date.now()`, which
-    // made the test fail whenever the container's clock sat a millisecond
-    // ahead of the runner's — a real intermittent failure with nothing wrong
-    // in the code under test. Nothing below reaches for this process's clock,
-    // so that failure mode is gone rather than narrowed.
-    const [row] = await sql<{ ended: boolean; recent: boolean }[]>`
-      SELECT expires_at <= now()                      AS ended,
-             expires_at >  now() - interval '1 minute' AS recent
-        FROM role_upgrade_requests
-       WHERE id = ${premiseGone}
-    `;
-    // Not in the future any more — the window is closed. The row was created
-    // a week out, so this alone says the deadline moved; a third assertion
-    // spelling out "it is earlier than a week from now" cannot fail once this
-    // one passes, and would only be one more clock to disagree with.
-    expect(row!.ended).toBe(true);
-    // …and closed just now rather than at some stale value: a pull-back to a
-    // long-past instant would satisfy `ended` on its own. A minute, because
-    // the gap being measured is one statement round trip. The hour this
-    // started out as was picked when the question first moved into SQL and was
-    // simply too loose — it let the deadline be 59 minutes wrong about "just
-    // now" without anything noticing.
-    expect(row!.recent).toBe(true);
+    expect(await outcomeOf("role_upgrade_requests", premiseGone)).toEqual({
+      status: "failed",
+      failedReason: "invalidated",
+    });
+    const after = (
+      await sql<{ expires_at: Date }[]>`
+        SELECT expires_at FROM role_upgrade_requests WHERE id = ${premiseGone}
+      `
+    )[0]!.expires_at.getTime();
+    expect(after).toBe(original);
   });
 
   it("leaves a deadline that already passed exactly where it was", async () => {
@@ -495,7 +489,7 @@ describe("role-upgrade requests repo", () => {
     )[0]!.expires_at.getTime();
 
     await db.transaction(async (tx) =>
-      roleUpgradeRequestsRepo.settleIfPending(timedOut, "expired", null, tx),
+      roleUpgradeRequestsRepo.failIfPending(timedOut, "expired", tx),
     );
 
     const after = (
@@ -557,7 +551,7 @@ describe("project transfers repo", () => {
       expiresAt: nextWeek(),
     })).id;
 
-    expect(await statusOf("project_transfers", stale)).toBe("expired");
+    expect(await outcomeOf("project_transfers", stale)).toEqual({ status: "failed", failedReason: "expired" });
     expect(await statusOf("project_transfers", fresh)).toBe("pending");
     // Nobody ended this one — the clock did.
     expect(await decidedAtOf("project_transfers", stale)).toBeNull();
@@ -723,7 +717,7 @@ describe("studio transfers repo", () => {
       expiresAt: nextWeek(),
     })).id;
 
-    expect(await statusOf("studio_transfers", stale)).toBe("expired");
+    expect(await outcomeOf("studio_transfers", stale)).toEqual({ status: "failed", failedReason: "expired" });
     expect(await statusOf("studio_transfers", fresh)).toBe("pending");
   });
 
@@ -835,7 +829,7 @@ describe("studio transfers repo", () => {
     });
 
     expect(await decidedAtOf("studio_transfers", accepted)).toBeInstanceOf(Date);
-    expect(await statusOf("studio_transfers", reaped)).toBe("expired");
+    expect(await outcomeOf("studio_transfers", reaped)).toEqual({ status: "failed", failedReason: "expired" });
     expect(await decidedAtOf("studio_transfers", reaped)).toBeNull();
 
     // The other way an offer dies unattended: the decision path finds it past
@@ -848,7 +842,7 @@ describe("studio transfers repo", () => {
       expiresAt: yesterday(),
     })).id;
     const settled = await db.transaction(async (tx) =>
-      studioTransfersRepo.settleIfPending(timedOut, "expired", tx),
+      studioTransfersRepo.failIfPending(timedOut, "expired", tx),
     );
 
     expect(settled).toBe(true);

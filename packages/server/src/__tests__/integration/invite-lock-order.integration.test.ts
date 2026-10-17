@@ -247,7 +247,7 @@ describe("project invite — lock order against archiving the project", () => {
         // invite holding the stale row's lock this would close the cycle.
         try {
           await c`
-            UPDATE project_invitations SET status = 'expired', expires_at = LEAST(expires_at, now())
+            UPDATE project_invitations SET status = 'failed', failed_reason = CASE WHEN expires_at <= now() THEN 'expired' ELSE 'invalidated' END
             WHERE project_id = ${projectId} AND status = 'pending' AND deleted_at IS NULL
           `;
           await c`UPDATE projects SET archived_at = now(), archived_by_user_id = ${adminId} WHERE id = ${projectId}`;
