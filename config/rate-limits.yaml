@@ -2,9 +2,10 @@
 # Redis sliding-window counters. Tunable without a redeploy.
 #   max            = requests allowed inside the window
 #   window_seconds = window length in seconds
-# The key DIMENSION (IP, or IP plus email, for pre-auth endpoints; user id,
-# or user id plus one route param, for post-auth) is fixed in code per action
-# for security; only the counts live here.
+# The key DIMENSION (IP, or IP plus email, for pre-auth endpoints; the
+# connection address for the internal API; user id, or user id plus one route
+# param, for post-auth) is fixed in code per action for security; only the
+# counts live here.
 #
 # Every action a route throttles MUST have an entry. A missing one is read
 # when that route is first requested, and the request answers 500 — the
