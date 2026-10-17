@@ -6,7 +6,7 @@
  * it is told to.
  *
  * The base prompt, which every conversation shares, and the project's memory,
- * which every conversation of the project shares, each end in a cache mark of
+ * which one user's conversations in the project share, each end in a cache mark of
  * their own, so a new conversation's first call reads them; this
  * conversation's memory follows unmarked.
  */

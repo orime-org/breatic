@@ -360,8 +360,8 @@ export function callOptionsFor(modelString: string | undefined, wants: CallWants
  * even though everything before that message is the same as in other
  * conversations (Anthropic prompt caching, "The system does not write entries
  * for any earlier position"). The mark after the base prompt writes an entry
- * every conversation reads, the one after the project's memory an entry every
- * conversation of that project reads. Where nothing is marked, the prompt
+ * every conversation reads, the one after the project's memory an entry the
+ * same user's other conversations in that project read. Where nothing is marked, the prompt
  * goes whole, as one message.
  * @param modelString - Model identifier, or undefined for the fallback.
  * @param parts - The base prompt, the project's memory and this

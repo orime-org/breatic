@@ -3,9 +3,9 @@
 
 /**
  * The system prompt in the parts that end where another conversation stops
- * reading the same text: every conversation shares the base prompt, every
- * conversation of a project shares its memory too, and the conversation's own
- * memory is its alone.
+ * reading the same text: every conversation shares the base prompt, one
+ * user's conversations in a project share that project's memory too, and the
+ * conversation's own memory is its alone.
  */
 export interface Instructions {
   /** The base prompt. */
