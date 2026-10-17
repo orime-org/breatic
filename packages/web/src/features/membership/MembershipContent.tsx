@@ -14,7 +14,7 @@ import {
   type MembershipTier,
 } from '@breatic/shared';
 
-import { SectionSkeleton } from '@web/components/section-skeleton';
+import { SectionSkeleton } from '@web/components/SectionSkeleton';
 import { Button } from '@web/components/ui/button';
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { Skeleton } from '@web/components/ui/skeleton';

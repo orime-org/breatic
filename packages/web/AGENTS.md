@@ -9,7 +9,7 @@
 
 **Configuration comes from `import.meta.env` (typed by `src/vite-env.d.ts`).** There is no `process.env` in the browser.
 
-**`components/ui/` holds the shadcn vendor files; our own shared components live in the root of `components/` (e.g. `loading-screen.tsx`).** Vendor files carry no Orime header and `no-cjk` skips them. Components are PascalCase, hook files `use-foo-bar.ts` exporting `useFooBar`, every other file and directory kebab-case; tests sit in a sibling `__tests__/`. Read [docs/ARCHITECTURE.md#naming-conventions](../../docs/ARCHITECTURE.md#naming-conventions) when you create a file.
+**`components/ui/` holds the shadcn vendor files; our own shared components live in the root of `components/` (e.g. `LoadingScreen.tsx`).** Vendor files carry no Orime header and `no-cjk` skips them. A file whose main export is a React component is named after it in PascalCase, hook files `use-foo-bar.ts` export `useFooBar`, every other file (a set of parts, a context, an editor node) and directory is kebab-case; tests sit in a sibling `__tests__/`. Read [docs/ARCHITECTURE.md#naming-conventions](../../docs/ARCHITECTURE.md#naming-conventions) when you create a file.
 
 **A Space is a type (a template), not a route: one Project page hosts many Space instances.** Spaces open inside `/project/:projectId/*`; a Space type never gets a route of its own.
 

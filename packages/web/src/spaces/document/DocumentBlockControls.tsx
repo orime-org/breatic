@@ -23,7 +23,7 @@ import {
 import * as React from 'react';
 
 import { DocumentBlockHandle } from '@web/spaces/document/DocumentBlockHandle';
-import { DocumentTableHandle } from '@web/spaces/document/DocumentTableHandles';
+import { DocumentTableHandle } from '@web/spaces/document/DocumentTableHandle';
 import type { HandleEditor } from '@web/spaces/document/document-handle-commands';
 import { stripPlacement } from '@web/spaces/document/document-strip-alignment';
 

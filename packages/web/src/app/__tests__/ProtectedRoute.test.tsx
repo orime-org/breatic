@@ -7,7 +7,7 @@ import { render, screen } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 
 import ProtectedRoute from '@web/app/ProtectedRoute';
-import { LoadingScreenHost } from '@web/components/loading-screen';
+import { LoadingScreenHost } from '@web/components/LoadingScreen';
 import type { PersonalStudioRef } from '@breatic/shared';
 import { useCurrentUserStore } from '@web/stores';
 

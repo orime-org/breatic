@@ -5,7 +5,7 @@ import * as React from 'react';
 import { Outlet, type RouteObject } from 'react-router-dom';
 
 import { RouteErrorPage } from '@web/app/RouteErrorPage';
-import { LoadingScreen } from '@web/components/loading-screen';
+import { LoadingScreen } from '@web/components/LoadingScreen';
 
 /**
  * The one screen every entry waits behind.

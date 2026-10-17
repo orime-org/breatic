@@ -13,7 +13,7 @@ import {
 } from '@web/components/ui/select';
 import { Badge } from '@web/components/ui/badge';
 import { fetchCreditLedger } from '@web/data/api/credits';
-import { SectionSkeleton } from '@web/components/section-skeleton';
+import { SectionSkeleton } from '@web/components/SectionSkeleton';
 import {
   ScrollCard,
   ListEnd,

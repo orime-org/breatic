@@ -51,7 +51,7 @@ import { useTranslation } from '@web/i18n/use-translation';
 import { itemWithin } from '@web/spaces/document/document-block-menu-parts';
 import { BLOCK_MENU_ROWS } from '@web/spaces/document/document-block-menu-rows';
 import type { HandleEditor } from '@web/spaces/document/document-handle-commands';
-import { MenuTick } from '@web/spaces/document/document-menu-tick';
+import { MenuTick } from '@web/spaces/document/MenuTick';
 import {
   cellAt,
   cellPosOf,

@@ -27,7 +27,7 @@ import type { Node as PMNode } from '@tiptap/pm/model';
 import { flushSync } from 'react-dom';
 import { createRoot, type Root } from 'react-dom/client';
 
-import { DocumentTableScroller } from '@web/spaces/document/document-table-scroller';
+import { DocumentTableScroller } from '@web/spaces/document/DocumentTableScroller';
 
 /** The DOM attribute `quoted` renders as, the same name its propSchema gives it. */
 const QUOTED_ATTRIBUTE = 'data-quoted';

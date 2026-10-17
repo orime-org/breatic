@@ -18,7 +18,7 @@ import {
 } from '@breatic/shared';
 import { getNodeIcon } from '@web/spaces/canvas/lib/node-icon';
 import { HoverPreview } from '@web/spaces/canvas/nodes/_shared/HoverPreview';
-import { PreviewImg } from '@web/components/preview-img';
+import { PreviewImg } from '@web/components/PreviewImg';
 
 /**
  * Maps a row's modality to the preview form that can show it. Text previews

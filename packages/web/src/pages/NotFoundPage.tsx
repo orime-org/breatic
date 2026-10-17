@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import type * as React from 'react';
-import { NotFoundScreen } from '@web/components/not-found-screen';
+import { NotFoundScreen } from '@web/components/NotFoundScreen';
 
 /**
  * Serve unknown application routes without rewriting the requested address.

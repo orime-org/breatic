@@ -13,8 +13,8 @@ import { MAX_SPACES_PER_PROJECT, newId, type SpaceRpcResponse } from '@breatic/s
 import { projectsApi } from '@web/data/api';
 import { ApiException } from '@web/data/api/types';
 import type { ProjectDetail } from '@web/data/api/projects';
-import { NotFoundScreen } from '@web/components/not-found-screen';
-import { ResourceLoadError } from '@web/components/resource-load-error';
+import { NotFoundScreen } from '@web/components/NotFoundScreen';
+import { ResourceLoadError } from '@web/components/ResourceLoadError';
 import {
   useProjectMembers,
   useRosterRefreshOnJoin,
@@ -48,7 +48,7 @@ import type { SpaceType } from '@breatic/shared';
 
 import { AgentColumn } from '@web/pages/project/chrome/AgentColumn';
 import { LoadingOverlay } from '@web/pages/project/chrome/LoadingOverlay';
-import { LoadingScreen } from '@web/components/loading-screen';
+import { LoadingScreen } from '@web/components/LoadingScreen';
 import { ArchivedBanner } from '@web/pages/project/chrome/ArchivedBanner';
 import { ConnectionBanner } from '@web/pages/project/chrome/ConnectionBanner';
 import {

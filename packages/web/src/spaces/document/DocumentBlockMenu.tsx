@@ -48,8 +48,8 @@ import {
   ALIGN_ITEMS,
   alignFaceIcon,
 } from '@web/spaces/document/document-align-items';
-import { DocumentColourPanel } from '@web/spaces/document/document-colour-panel';
-import { MenuTick } from '@web/spaces/document/document-menu-tick';
+import { DocumentColourPanel } from '@web/spaces/document/DocumentColourPanel';
+import { MenuTick } from '@web/spaces/document/MenuTick';
 import {
   TYPE_MENU_WIDTH,
   itemWithin,
@@ -102,7 +102,7 @@ import { useRowNow } from '@web/spaces/document/use-row-now';
  * inside the panel's own 4px padding and 1px border. Those 5px come out of the
  * gap — measured with no offset at all, the submenu stood 4.67px INSIDE the
  * panel — so 9 puts the visible gap at 4. The bubble bar reaches its own 4px
- * the same way (`document-bubble-menu.tsx`).
+ * the same way (`DocumentBubbleMenu.tsx`).
  */
 const SUBMENU_SIDE_OFFSET = 4 + 5;
 

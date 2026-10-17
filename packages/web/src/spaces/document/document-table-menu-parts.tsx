@@ -21,14 +21,14 @@ import { ALIGN_ITEMS } from '@web/spaces/document/document-align-items';
 import {
   DocumentColourPanel,
   type CellFillRow,
-} from '@web/spaces/document/document-colour-panel';
+} from '@web/spaces/document/DocumentColourPanel';
 import {
   NO_COLOUR,
   type ColourFace,
   type ColourHue,
 } from '@web/spaces/document/document-colour-run';
 import type { HandleEditor } from '@web/spaces/document/document-handle-commands';
-import { MenuTick } from '@web/spaces/document/document-menu-tick';
+import { MenuTick } from '@web/spaces/document/MenuTick';
 import {
   setCellsAttr,
   sharedCellAttr,

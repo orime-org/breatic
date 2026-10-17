@@ -14,7 +14,7 @@ import { AssetRow } from '@web/pages/project/chat/AssetRow';
 import { AttachmentChip } from '@web/pages/project/chat/AttachmentChip';
 import { ToolRunLine } from '@web/pages/project/chat/ToolRunLine';
 import { TurnActions } from '@web/pages/project/chat/TurnActions';
-import { UserWords } from '@web/pages/project/chat/user-words';
+import { UserWords } from '@web/pages/project/chat/UserWords';
 import { wordsWithLabels } from '@web/pages/project/chat/attachment-label';
 import { FailedSteps, TurnEnding } from '@web/pages/project/chat/TurnEnding';
 import { WaitingDot } from '@web/pages/project/chat/WaitingDot';
