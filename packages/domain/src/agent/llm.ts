@@ -30,7 +30,7 @@ import { createAnthropic } from "@ai-sdk/anthropic";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createDeepSeek } from "@ai-sdk/deepseek";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
-import type { LanguageModel, streamText } from "ai";
+import type { LanguageModel, SystemModelMessage, streamText } from "ai";
 import { env } from "@breatic/core";
 import type { CoreConfig, PromptCacheTtl } from "@breatic/core";
 
@@ -330,4 +330,36 @@ export function callOptionsFor(modelString: string | undefined, wants: CallWants
   const temperature = wants.temperature === undefined || isClaude(modelString) ? {} : { temperature: wants.temperature };
   const session = wants.session !== undefined && route === FALLBACK_ROUTE ? { session_id: wants.session } : {};
   return { providerOptions: { [route.name]: { ...reasoning, ...cache, ...session } }, ...temperature };
+}
+
+/**
+ * The system prompt as the messages a model call sends, with the part every
+ * conversation shares marked as a cache breakpoint of its own.
+ *
+ * Request-level caching writes one entry, for the prefix ending at the last
+ * block, so a new conversation, whose first message is new, finds nothing to
+ * read even though everything before that message is the same as in every
+ * other conversation (Anthropic prompt caching, "The system does not write
+ * entries for any earlier position"). The mark on the shared part writes an
+ * entry ending there, which the next conversation's first call reads.
+ * @param modelString - Model identifier, or undefined for the fallback.
+ * @param parts - What every conversation of this project shares, and what
+ *   belongs to this one conversation, if anything.
+ * @param cache - How long to cache, or false when the call does not cache.
+ * @returns The system messages, the shared one first.
+ * @throws {never} Never.
+ */
+export function systemFor(
+  modelString: string | undefined,
+  parts: { shared: string; conversation?: string },
+  cache: PromptCacheTtl | false,
+): SystemModelMessage[] {
+  const route = directRouteFor(modelString) ?? FALLBACK_ROUTE;
+  const mark = cache === false || modelString === undefined ? {} : route.cache(modelString, cache);
+  const shared: SystemModelMessage = {
+    role: "system",
+    content: parts.shared,
+    ...(Object.keys(mark).length === 0 ? {} : { providerOptions: { [route.name]: mark } }),
+  };
+  return parts.conversation === undefined ? [shared] : [shared, { role: "system", content: parts.conversation }];
 }

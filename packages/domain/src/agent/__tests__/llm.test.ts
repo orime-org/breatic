@@ -448,6 +448,82 @@ describe("prompt caching", () => {
   });
 });
 
+describe("the part of the system prompt every conversation shares", () => {
+  /**
+   * Runs one call whose instructions come from `systemFor`.
+   * @param model - The model id to route.
+   * @param parts - The shared part and, if any, this conversation's own.
+   * @param cache - The cache lifetime asked for, or false for none.
+   * @returns The intercepted request.
+   */
+  async function sendSystem(
+    model: string,
+    parts: { shared: string; conversation?: string },
+    cache: LlmModule.CallWants["cache"],
+  ): Promise<Seen> {
+    const { getModel, callOptionsFor, systemFor } = await freshLlm();
+    const { generateText } = await import("ai");
+    seen = undefined;
+    await generateText({
+      model: getModel(model),
+      system: systemFor(model, parts, cache),
+      prompt: "hi",
+      ...callOptionsFor(model, { thinking: true, cache }),
+    });
+    if (!seen) throw new Error("no request was made");
+    return seen;
+  }
+
+  const PARTS = { shared: "persona and project memory", conversation: "this conversation's memory" };
+  const ONE_HOUR = { type: "ephemeral", ttl: "1h" };
+
+  /**
+   * The system messages of an OpenAI-shaped request body.
+   * @param body - The request body.
+   * @returns Its system messages, in order.
+   */
+  function systemMessages(body: Record<string, unknown>): Array<{ content: unknown }> {
+    return (body.messages as Array<{ role: string; content: unknown }>).filter((m) => m.role === "system");
+  }
+
+  it("marks the shared part, and only it, when calling Anthropic directly", async () => {
+    keys.current = { ANTHROPIC_API_KEY: "k" };
+    expect((await sendSystem("anthropic/claude-opus-5.5", PARTS, "1h")).body.system).toEqual([
+      { type: "text", text: PARTS.shared, cache_control: ONE_HOUR },
+      { type: "text", text: PARTS.conversation },
+    ]);
+  });
+
+  it("marks the shared part, and only it, when reaching Claude through OpenRouter", async () => {
+    keys.current = { OPENROUTER_API_KEY: "sk-or-test" };
+    expect(systemMessages((await sendSystem("anthropic/claude-opus-5.5", PARTS, "1h")).body)).toEqual([
+      { role: "system", content: [{ type: "text", text: PARTS.shared, cache_control: ONE_HOUR }] },
+      { role: "system", content: [{ type: "text", text: PARTS.conversation }] },
+    ]);
+  });
+
+  it("sends one marked block when the conversation has no memory of its own", async () => {
+    keys.current = { ANTHROPIC_API_KEY: "k" };
+    expect((await sendSystem("anthropic/claude-opus-5.5", { shared: PARTS.shared }, "1h")).body.system).toEqual([
+      { type: "text", text: PARTS.shared, cache_control: ONE_HOUR },
+    ]);
+  });
+
+  it("marks nothing for a model that caches a prefix on its own", async () => {
+    keys.current = { OPENROUTER_API_KEY: "sk-or-test" };
+    expect(JSON.stringify(systemMessages((await sendSystem("deepseek/deepseek-v4-pro", PARTS, "1h")).body))).not.toContain(
+      "cache_control",
+    );
+  });
+
+  it("marks nothing when the caller does not ask for caching", async () => {
+    keys.current = { ANTHROPIC_API_KEY: "k" };
+    expect(JSON.stringify((await sendSystem("anthropic/claude-opus-5.5", PARTS, false)).body.system)).not.toContain(
+      "cache_control",
+    );
+  });
+});
+
 /**
  * Not asking for thinking on a Claude model.
  *
