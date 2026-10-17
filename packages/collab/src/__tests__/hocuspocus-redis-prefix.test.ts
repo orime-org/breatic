@@ -111,6 +111,15 @@ vi.mock("@breatic/core", () => ({
   // the export at module scope, so it has to exist.
   getProjectConcurrentEditorLimit: vi.fn(async () => 100),
   projectAuthService: { loadProjectRole: loadProjectRoleStub },
+  runWithConsent: <T>(_consent: unknown, fn: () => T): T => fn(),
+}));
+
+vi.mock("@collab/services/space-rpc.js", () => ({
+  handleSpaceRpc: vi.fn(async (_deps: unknown, _projectId: string, _caller: unknown, req: { id: string }) => ({
+    id: req.id,
+    ok: true,
+    result: {},
+  })),
 }));
 
 vi.mock("@collab/infra/connection-gate.js", async () => {
@@ -588,5 +597,69 @@ describe("createCollabServer — a connection re-reads its role once registered"
     });
     expect(loadProjectRoleStub).toHaveBeenCalledWith("u-1", "11111111-1111-4111-8111-111111111111");
     expect(close).toHaveBeenCalledWith({ code: 4403, reason: "Permission changed, please reconnect" });
+  });
+});
+
+describe("createCollabServer — a Space RPC answer goes to its sender", () => {
+  const META = "project-11111111-1111-4111-8111-111111111111/meta";
+  const REQUEST = JSON.stringify({
+    id: "r1",
+    type: "space:delete",
+    payload: { spaceId: "22222222-2222-4222-9222-222222222222" },
+  });
+
+  beforeEach(() => {
+    serverSpy.mockClear();
+  });
+
+  /**
+   * The `onStateless` hook handed to Hocuspocus.
+   * @returns The hook.
+   */
+  async function onStateless(): Promise<(payload: unknown) => Promise<void>> {
+    await createCollabServer({
+      collabRedisUrl: "redis://localhost:6379/3",
+      port: 1234,
+      redisKeyPrefix: "dev",
+      shutdownDeadline: () => undefined,
+    });
+    const config = serverSpy.mock.calls[0]?.[0] as {
+      onStateless: (payload: unknown) => Promise<void>;
+    };
+    return config.onStateless;
+  }
+
+  it("sends the reply on the requesting connection only", async () => {
+    const hook = await onStateless();
+    const broadcastStateless = vi.fn();
+    const sendStateless = vi.fn();
+
+    await hook({
+      documentName: META,
+      document: { broadcastStateless },
+      payload: REQUEST,
+      connection: { context: { user: { id: "u-1", role: "owner" } }, sendStateless },
+    });
+
+    expect(sendStateless).toHaveBeenCalledWith(JSON.stringify({ id: "r1", ok: true, result: {} }));
+    expect(broadcastStateless).not.toHaveBeenCalled();
+  });
+
+  it("refuses an anonymous request on its own connection only", async () => {
+    const hook = await onStateless();
+    const broadcastStateless = vi.fn();
+    const sendStateless = vi.fn();
+
+    await hook({
+      documentName: META,
+      document: { broadcastStateless },
+      payload: REQUEST,
+      connection: { context: {}, sendStateless },
+    });
+
+    expect(sendStateless).toHaveBeenCalledWith(
+      JSON.stringify({ id: "r1", ok: false, error: { code: "FORBIDDEN", message: "Anonymous caller" } }),
+    );
+    expect(broadcastStateless).not.toHaveBeenCalled();
   });
 });

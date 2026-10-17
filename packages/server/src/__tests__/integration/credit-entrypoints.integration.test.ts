@@ -69,6 +69,7 @@ import { creditLotService } from "@breatic/domain";
 import * as paymentService from "@server/modules/payment/payment.service.js";
 import * as authService from "@server/modules/auth/auth.service.js";
 import { precheckCredits } from "@server/modules/payment/credit-precheck.service.js";
+import { openPaymentSource } from "./payment-source.js";
 
 const PG_DRIVER_LOCAL = "credit-entrypoints-test-driver";
 
@@ -147,15 +148,10 @@ async function seedPendingPayment(
   credits: number,
 ): Promise<{ paymentId: string; sessionId: string }> {
   const sessionId = `cs_test_${seq++}_${Date.now()}`;
-  // A payment shares its source row's primary key, so the receipt is opened
-  // first and the payment is written under its id (0079, #259).
-  const [source] = await sql<{ id: string }[]>`
-    INSERT INTO credit_sources (id, kind)
-    VALUES (gen_random_uuid(), 'payment') RETURNING id
-  `;
+  const sourceId = await openPaymentSource(sql);
   const [payment] = await sql<{ id: string }[]>`
     INSERT INTO payments (id, user_id, stripe_session_id, amount_cents, status, credits_granted)
-    VALUES (${source!.id}, ${userId}, ${sessionId}, 1000, 'pending', ${credits}) RETURNING id
+    VALUES (${sourceId}, ${userId}, ${sessionId}, 1000, 'pending', ${credits}) RETURNING id
   `;
   return { paymentId: payment!.id, sessionId };
 }

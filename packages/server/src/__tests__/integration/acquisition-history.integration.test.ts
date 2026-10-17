@@ -54,6 +54,7 @@ import postgres from "postgres";
 import { initCore } from "@breatic/core";
 import type { PurchaseRow } from "@breatic/shared";
 import * as paymentService from "@server/modules/payment/payment.service.js";
+import { openPaymentSource } from "./payment-source.js";
 
 const PG_DRIVER_LOCAL = "acquisition-history-test-driver";
 
@@ -104,11 +105,7 @@ async function seedLandedPurchase(
   at: string,
   lotAt?: string,
 ): Promise<string> {
-  const source = await sql<{ id: string }[]>`
-    INSERT INTO credit_sources (id, kind, created_at)
-    VALUES (gen_random_uuid(), 'payment', ${at}) RETURNING id
-  `;
-  const id = source[0]!.id;
+  const id = await openPaymentSource(sql, at);
   await sql`
     INSERT INTO payments
       (id, user_id, amount_cents, total_cents, status, credits_granted, created_at)
@@ -135,11 +132,7 @@ async function seedUnlandedPayment(
   at: string,
   status: string,
 ): Promise<string> {
-  const source = await sql<{ id: string }[]>`
-    INSERT INTO credit_sources (id, kind, created_at)
-    VALUES (gen_random_uuid(), 'payment', ${at}) RETURNING id
-  `;
-  const id = source[0]!.id;
+  const id = await openPaymentSource(sql, at);
   await sql`
     INSERT INTO payments
       (id, user_id, amount_cents, status, credits_granted, created_at)

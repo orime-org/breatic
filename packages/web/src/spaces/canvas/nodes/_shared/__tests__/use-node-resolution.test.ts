@@ -17,7 +17,7 @@
 import { renderHook, act } from '@testing-library/react';
 import { describe, it, expect } from 'vitest';
 
-import { useNodeResolution } from '@web/spaces/canvas/nodes/_shared/useNodeResolution';
+import { useNodeResolution } from '@web/spaces/canvas/nodes/_shared/use-node-resolution';
 
 describe('a node whose ledger row measured it', () => {
   it('shows those numbers, before anything has decoded', () => {

@@ -53,7 +53,8 @@ describe('markdown pipeline — what is installed (R4)', () => {
     });
     expect(declared).not.toContain('rehype-raw');
     // Any fork or wrapper of it would arrive under the same prefix. Matching
-    // 'raw' anywhere is too wide: @excalidraw/excalidraw contains it.
+    // 'raw' anywhere is too wide: it matches any name that merely contains
+    // those letters, such as a drawing library's.
     expect(declared.filter((name) => name.startsWith('rehype-raw'))).toEqual([]);
   });
 });

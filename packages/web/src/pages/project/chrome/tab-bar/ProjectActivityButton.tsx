@@ -33,7 +33,7 @@ import { Button } from '@web/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tooltip';
 import { cn } from '@web/lib/utils';
 import { usePendingKeys } from '@web/lib/use-pending-keys';
-import { formatCredits } from '@web/lib/format-credits';
+import { asFiniteCredits } from '@web/lib/as-finite-credits';
 import { useExclusiveOverlay } from '@web/features/exclusive-overlay/use-exclusive-overlay';
 import { HoverPreview } from '@web/spaces/canvas/nodes/_shared/HoverPreview';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -264,14 +264,14 @@ export function entryMedia(entry: ProjectActivityEntry): ActivityMedia | null {
  * the credits went is the studio's credits page. Uploads, failures, space and
  * member events and frontend mini-tools carry none.
  *
- * Gates through the shared {@link formatCredits} so it matches the
+ * Gates through the shared {@link asFiniteCredits} so it matches the
  * node-history row (spec §6.4 / INV-8).
  * @param entry - The feed entry.
  * @returns The credit cost, or undefined.
  */
 function entryActivityCredits(entry: ProjectActivityEntry): number | undefined {
   if (entry.type !== 'generation:succeeded') return undefined;
-  return formatCredits(entry.payload['credits']);
+  return asFiniteCredits(entry.payload['credits']);
 }
 
 /**

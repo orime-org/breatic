@@ -66,6 +66,7 @@ vi.mock("ai", () => ({
 }));
 
 import postgres from "postgres";
+import { openPaymentSource } from "./payment-source.js";
 
 const PG_DRIVER_LOCAL = "credits-schema-test-driver";
 
@@ -132,11 +133,7 @@ async function seedUserWithPayment(): Promise<{
     VALUES (${`lots-${seq++}@example.test`}, true) RETURNING id
   `;
   const userId = users[0]!.id;
-  const sources = await sql<{ id: string }[]>`
-    INSERT INTO credit_sources (id, kind)
-    VALUES (gen_random_uuid(), 'payment') RETURNING id
-  `;
-  const paymentId = sources[0]!.id;
+  const paymentId = await openPaymentSource(sql);
   await sql`
     INSERT INTO payments (id, user_id, amount_cents, status, credits_granted)
     VALUES (${paymentId}, ${userId}, 1000, 'completed', 880)

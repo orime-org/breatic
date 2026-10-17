@@ -23,6 +23,7 @@ import type { DbTx } from "@breatic/core";
 import { creditLotService } from "@breatic/domain";
 import type { StripePendingReason } from "@server/modules/credit-refund/types.js";
 import type { FakeRefundInput, FakeStripeRefunds } from "./fake-stripe-refunds.js";
+import { openPaymentSource } from "./payment-source.js";
 
 export type Sql = ReturnType<typeof postgres>;
 
@@ -113,25 +114,23 @@ export async function seedRefundLot(sql: Sql, state: LotState): Promise<SeededLo
     INSERT INTO users (email, email_verified)
     VALUES (${`refund-op-${tag}@example.test`}, true) RETURNING id
   `;
-  const [source] = await sql<{ id: string }[]>`
-    INSERT INTO credit_sources (id, kind) VALUES (gen_random_uuid(), 'payment') RETURNING id
-  `;
+  const sourceId = await openPaymentSource(sql);
   const paymentIntentId = `pi_${tag}`;
   await sql`
     INSERT INTO payments
       (id, user_id, amount_cents, total_cents, currency, status, credits_granted,
        stripe_payment_intent_id)
-    VALUES (${source!.id}, ${user!.id}, 1000, ${PAID_CENTS}, 'usd', 'completed', ${CREDITS},
+    VALUES (${sourceId}, ${user!.id}, 1000, ${PAID_CENTS}, 'usd', 'completed', ${CREDITS},
             ${paymentIntentId})
   `;
   const lot = await creditLotService.grantFromPayment({
-    paymentId: source!.id,
+    paymentId: sourceId,
     userId: user!.id,
     purchasedCredits: CREDITS,
   });
   const seeded = {
     userId: user!.id,
-    paymentId: source!.id,
+    paymentId: sourceId,
     paymentIntentId,
     lotId: lot.id,
   };

@@ -121,6 +121,17 @@ import { runMediaRead } from "@worker/handlers/media-read.js";
 import { runUploadFinish } from "@worker/handlers/upload-finish.js";
 import { runMail } from "@worker/handlers/mail.js";
 
+/** Every BullMQ queue this process runs a worker for. */
+const WORKER_QUEUES: readonly string[] = [
+  "tasks",
+  "url-ingest",
+  UPLOAD_FINISH_QUEUE,
+  USAGE_LOOKUP_QUEUE,
+  MEDIA_READ_QUEUE,
+  MAIL_QUEUE,
+  ADS_CONVERSION_QUEUE,
+];
+
 /** Cap graceful shutdown so a stuck drain can't hold the process. */
 const SHUTDOWN_DEADLINE_MS = 4000;
 import type { TaskJobData } from "@worker/handlers/dispatch.js";
@@ -169,15 +180,7 @@ export function startWorker(): void {
 
   // A per-queue figure for a queue this process does not run is a typo that
   // would leave the queue it meant at the default.
-  assertKnownQueues([
-    "tasks",
-    "url-ingest",
-    UPLOAD_FINISH_QUEUE,
-    USAGE_LOOKUP_QUEUE,
-    MEDIA_READ_QUEUE,
-    MAIL_QUEUE,
-    ADS_CONVERSION_QUEUE,
-  ]);
+  assertKnownQueues(WORKER_QUEUES);
 
   const worker = createWorker<TaskJobData>("tasks", runTask);
 
@@ -355,15 +358,7 @@ export function startWorker(): void {
 
   logger.info(
     {
-      queues: [
-        "tasks",
-        "url-ingest",
-        UPLOAD_FINISH_QUEUE,
-        USAGE_LOOKUP_QUEUE,
-        MEDIA_READ_QUEUE,
-        MAIL_QUEUE,
-        ADS_CONVERSION_QUEUE,
-      ],
+      queues: WORKER_QUEUES,
     },
     "BullMQ workers started",
   );

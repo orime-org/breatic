@@ -688,7 +688,7 @@ function ProjectWorkspace({
     // Pin the token BEFORE the RPC await - Yjs sync from collab can race
     // ahead of the RPC ack (collab broadcasts the meta-doc mutation as
     // soon as space-rpc transact runs, which often beats the
-    // broadcastStateless response by a few ms). If we only set the ref
+    // RPC response by a few ms). If we only set the ref
     // after `await callRpc`, the spaces-watching effect re-runs on the
     // Yjs update with the ref still null, misses the match, and the
     // safety timeout (SPACE_OP_TIMEOUT_MS) fires even though everything

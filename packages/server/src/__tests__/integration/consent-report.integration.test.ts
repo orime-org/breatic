@@ -39,6 +39,7 @@ import {
 } from "@breatic/core";
 import { CONSENT_REVISION } from "@breatic/shared";
 import type { Hono } from "hono";
+import { openPaymentSource } from "./payment-source.js";
 
 try {
   initCore(process.env);
@@ -219,12 +220,10 @@ describe("eraseAccountAnalytics", () => {
   async function accountWithConsent(): Promise<string> {
     const id = await insertUser();
     await recordReportedConsent(id, { analytics: true, ads: true });
-    const [source] = await sql<{ id: string }[]>`
-      INSERT INTO credit_sources (id, kind) VALUES (gen_random_uuid(), 'payment') RETURNING id
-    `;
+    const sourceId = await openPaymentSource(sql);
     await sql`
       INSERT INTO payments (id, user_id, amount_cents, status, credits_granted, metadata)
-      VALUES (${source!.id}, ${id}, 1000, 'completed', 1000,
+      VALUES (${sourceId}, ${id}, 1000, 'completed', 1000,
               ${sql.json({ locale: "en", analyticsConsent: { analytics: true, ads: true } })})
     `;
     const [studio] = await sql<{ id: string }[]>`

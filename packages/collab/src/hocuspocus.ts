@@ -18,7 +18,7 @@ import { NO_CONSENT } from "@breatic/shared";
 import { hostname } from "node:os";
 import { randomUUID } from "node:crypto";
 import { Server } from "@hocuspocus/server";
-import type { Hocuspocus } from "@hocuspocus/server";
+import type { Extension, Hocuspocus } from "@hocuspocus/server";
 import { Redis as RedisExtension } from "@hocuspocus/extension-redis";
 import { resolve } from "node:path";
 import {
@@ -189,8 +189,7 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
   const authRedis = getRedis();
 
   // Build extensions list
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const extensions: any[] = [
+  const extensions: Extension[] = [
     // First of every chain (#40). It watches the Yjs document directly rather
     // than through `onChange`, so no other extension's failure can hide an
     // edit from the store tracker, and it owns dropping a document's
@@ -313,9 +312,7 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
       ? recordingFailedAuth(authenticate, connectionGate)
       : authenticate,
 
-    // Extensions
-    // Cast: pnpm hoisting causes duplicate @hocuspocus/server types
-    extensions: extensions as never[],
+    extensions,
 
     // The last chance to get a document's content out before it is
     // destroyed. Measured: without it, a failed store plus the last client
@@ -530,11 +527,10 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     },
 
     // Stateless RPC dispatcher — Space lifecycle (space:* / messages:*).
-    // Client sends a JSON-encoded `SpaceRpcRequest` on the meta doc;
-    // we parse, route to the handler, and broadcast the response back
-    // to all connected clients of this meta doc (caller filters by
-    // request `id`).
-    onStateless: async ({ documentName, document, payload, connection }) => {
+    // Client sends a JSON-encoded `SpaceRpcRequest` on the meta doc; we
+    // parse, route to the handler, and send the response on the requesting
+    // connection, which matches it by request `id`.
+    onStateless: async ({ documentName, payload, connection }) => {
       const parsed = parseDocName(documentName);
       if (!parsed || parsed.kind !== "meta") return;
 
@@ -555,7 +551,7 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
       const callerId = ctx.user?.id;
       const callerRole = ctx.user?.role;
       if (!callerId || !callerRole) {
-        document.broadcastStateless(
+        connection.sendStateless(
           JSON.stringify({
             id: req.id,
             ok: false,
@@ -574,7 +570,7 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
           req,
         ),
       );
-      document.broadcastStateless(JSON.stringify(response));
+      connection.sendStateless(JSON.stringify(response));
     },
 
     // Document size limit — reject updates that would exceed max.

@@ -27,6 +27,7 @@ import { useTranslation } from '@web/i18n/use-translation';
 import { formatCreditAmount } from '@web/lib/format-credit-amount';
 import { formatLocalDay } from '@web/lib/format-day';
 import { toast } from '@web/lib/toast';
+import { paymentHistoryKey } from '@web/features/credits/account-reads';
 
 /** Whose purchases, and whether billing is on at all. */
 interface PurchasesSectionProps {
@@ -61,7 +62,7 @@ export function PurchasesSection({
     // Its own key. The assign and refund screens read the lots and act on lot
     // ids; a page of payments in their cache would give them rows with no lot
     // and ids the refund action cannot use.
-    queryKey: ['payment', 'history', userId],
+    queryKey: paymentHistoryKey(userId),
     read,
     enabled: billing && userId !== null,
   });
@@ -180,7 +181,7 @@ const PurchaseLine = React.memo(function PurchaseLine({
       // row just moved. Left as it was, the next tap would be refused by the
       // server and the buyer would be told a letter that did go out did not —
       // so the button keeps waiting until the re-read row is in (inner#1374).
-      await client.invalidateQueries({ queryKey: ['payment', 'history', userId] });
+      await client.invalidateQueries({ queryKey: paymentHistoryKey(userId) });
       setSending(false);
     }
   }, [client, purchase.paymentId, t, userId]);

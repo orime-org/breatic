@@ -27,6 +27,7 @@ import { useCreditsPaging } from '@web/features/credits/use-credits-paging';
 import { useTranslation } from '@web/i18n/use-translation';
 import { formatCreditAmount } from '@web/lib/format-credit-amount';
 import { formatLocalDay } from '@web/lib/format-day';
+import { creditLedgerKey } from '@web/features/credits/account-reads';
 
 /** Whose spending, and which studios there are to narrow to. */
 interface LedgerSectionProps {
@@ -70,7 +71,7 @@ export function LedgerSection({
     [studioId],
   );
   const paging = useCreditsPaging<CreditLedgerView>({
-    queryKey: ['credits', 'ledger', userId, studioId],
+    queryKey: creditLedgerKey(userId, studioId),
     read,
     enabled: userId !== null,
   });

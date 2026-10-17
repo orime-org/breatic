@@ -75,6 +75,7 @@ import {
 } from "@breatic/core";
 import { creditLotService } from "@breatic/domain";
 import type { Hono } from "hono";
+import { openPaymentSource } from "./payment-source.js";
 
 let sql: ReturnType<typeof postgres>;
 let app: Hono;
@@ -146,12 +147,10 @@ async function seed(credits: number): Promise<{
     VALUES (${project!.id}, ${user!.id}, 'owner', null)
   `;
   if (credits > 0) {
-    const [source] = await sql<{ id: string }[]>`
-      INSERT INTO credit_sources (id, kind) VALUES (gen_random_uuid(), 'payment') RETURNING id
-    `;
+    const sourceId = await openPaymentSource(sql);
     const [payment] = await sql<{ id: string }[]>`
       INSERT INTO payments (id, user_id, amount_cents, status, credits_granted)
-      VALUES (${source!.id}, ${user!.id}, 1000, 'completed', ${credits}) RETURNING id
+      VALUES (${sourceId}, ${user!.id}, 1000, 'completed', ${credits}) RETURNING id
     `;
     const lot = await creditLotService.grantFromPayment({
       paymentId: payment!.id,

@@ -30,6 +30,7 @@ import {
   formatMoney,
 } from '@web/features/credits/section-chrome';
 import {
+  creditLotsKey,
   invalidateAccountReads,
   invalidateAfterLedgerWrite,
 } from '@web/features/credits/account-reads';
@@ -76,7 +77,7 @@ export function AssignSection({
     [],
   );
   const paging = useCreditsPaging<CreditLotView>({
-    queryKey: ['credits', 'lots', userId, 'active'],
+    queryKey: creditLotsKey(userId, 'active'),
     read,
     enabled: billing && userId !== null,
   });

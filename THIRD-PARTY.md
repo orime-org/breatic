@@ -153,20 +153,6 @@ still — it carries the same terms over a network. The
 lockfile for that prefix, so one arriving through a dependency of something
 else is reported as well.
 
-### DOMPurify
-
-| | |
-|---|---|
-| Version | `3.4.13` |
-| Reached through | `@excalidraw/excalidraw` → `@excalidraw/mermaid-to-excalidraw` → `mermaid` |
-| Offered under | MPL-2.0 **or** Apache-2.0, at the recipient's option |
-| **Our election** | **Apache-2.0** |
-| Source | https://github.com/cure53/DOMPurify |
-
-The package is dual-licensed and we take it under Apache-2.0. Recording the
-election here fixes it: nothing in Breatic is subject to MPL-2.0 on account of
-this package.
-
 ### @fontsource/inter
 
 | | |
@@ -203,10 +189,7 @@ it.
 
 | Package | Version | Reached through | Licence | Source |
 |---|---|---|---|---|
-| `fractional-indexing` | `3.2.0` | `@excalidraw/excalidraw` | **CC0-1.0**, a dedication to the public domain, which asks nothing of us | https://github.com/rocicorp/fractional-indexing |
-| `khroma` | `2.1.0` | `@excalidraw/excalidraw` → `@excalidraw/mermaid-to-excalidraw` → `mermaid` | Reported as **Unknown**, because its `package.json` carries no `license` field at all. The published tarball carries a `license` file, and that file is the MIT licence | https://github.com/fabiospampinato/khroma |
-| `pako` | `2.0.3`, `1.0.11` | `@excalidraw/excalidraw` (2.0.3); `mammoth` → `jszip` (1.0.11) | **MIT AND Zlib** — its own code under MIT, the parts ported from zlib under Zlib. Both ask only that the notice travel along | https://github.com/nodeca/pako |
-| `robust-predicates` | `3.0.3` | `@excalidraw/excalidraw` → `@excalidraw/mermaid-to-excalidraw` → `mermaid` → `d3` → `d3-delaunay` → `delaunator` | **Unlicense**, a dedication to the public domain | https://github.com/mourner/robust-predicates |
+| `pako` | `1.0.11` | `mammoth` → `jszip` | **MIT AND Zlib** — its own code under MIT, the parts ported from zlib under Zlib. Both ask only that the notice travel along | https://github.com/nodeca/pako |
 
 ## Reported as production, not distributed
 
