@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * A project at the Space cap, end to end (inner#1140).
+ * A project at the Space cap, end to end (inner#1158).
  *
  * At 200 Spaces the new-Space button and the activity panel's Restore stay
  * reachable by keyboard but do nothing except say why: hovering shows the

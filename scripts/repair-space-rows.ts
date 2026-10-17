@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Soft-deletes the Space content rows no Space owns any more (inner#1140).
+ * Soft-deletes the Space content rows no Space owns any more (inner#1158).
  *
  * A project holds at most 200 live Spaces, and collab checks that against the
  * number of live content rows in the yjs database. Several paths can leave a

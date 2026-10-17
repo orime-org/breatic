@@ -3,7 +3,7 @@
 
 /**
  * The decisions the Space content-row repair makes, apart from the database so
- * they run under `node --test` (inner#1140). The apply statement itself runs
+ * they run under `node --test` (inner#1158). The apply statement itself runs
  * against a real database in collab's space-row-repair integration test.
  */
 

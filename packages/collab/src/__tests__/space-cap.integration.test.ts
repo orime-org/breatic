@@ -3,7 +3,7 @@
 
 /**
  * The Space cap across two collab instances on a real Postgres and a real
- * Redis (inner#1140). A project holds at most MAX_SPACES_PER_PROJECT live
+ * Redis (inner#1158). A project holds at most MAX_SPACES_PER_PROJECT live
  * Spaces: the last place can be taken and the next create is refused without
  * writing anything, two creates racing for the last place on different
  * instances leave exactly one through, creates far below the cap all go

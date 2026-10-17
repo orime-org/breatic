@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * The tab bar at the Space cap (inner#1140): the new-Space button and the
+ * The tab bar at the Space cap (inner#1158): the new-Space button and the
  * activity panel's Restore are unavailable at 200 Spaces but stay reachable by
  * keyboard; pressing one says why in a warning toast, hovering one says why in
  * a tooltip, and the reason never appears when nobody is hovering.

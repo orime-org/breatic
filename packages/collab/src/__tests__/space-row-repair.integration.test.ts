@@ -3,7 +3,7 @@
 
 /**
  * The Space-row repair's apply statement against a real yjs database
- * (inner#1140). The script under `scripts/` is plain JavaScript run by tsx
+ * (inner#1158). The script under `scripts/` is plain JavaScript run by tsx
  * outside any package, so this suite imports its plan module by path and runs
  * the very statement the script sends.
  */
