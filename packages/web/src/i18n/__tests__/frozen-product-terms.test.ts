@@ -200,6 +200,12 @@ describe('frozen product terms (#1336)', () => {
    */
   const SPACE_FORMS = ['工作面', '作業面', 'スペース', '스페이스', '작업면'];
 
+  /**
+   * The Traditional Chinese form of Document is the Simplified word for
+   * "file", so the lint guard cannot ban it; the Document keys are pinned here.
+   */
+  const DOCUMENT_FORMS = ['文档', '文件', 'ドキュメント', '문서'];
+
   /** Each collision key paired with its English term + the localized forms that must be absent. */
   const COLLISION_FROZEN: ReadonlyArray<
     readonly [key: string, term: string, forbidden: readonly string[]]
@@ -208,6 +214,13 @@ describe('frozen product terms (#1336)', () => {
     ['chrome.tooltip.allSpaces', 'Space', SPACE_FORMS],
     ['project.space.noActive', 'Space', SPACE_FORMS],
     ['spaces.create.title', 'Space', SPACE_FORMS],
+    ['spaces.document.unavailable.text', 'Document', DOCUMENT_FORMS],
+    ['spaces.document.refusedNotice', 'Document', DOCUMENT_FORMS],
+    ['spaces.document.comment.empty', 'Document', DOCUMENT_FORMS],
+    ['spaces.document.schemaOutdated.headline', 'Document', DOCUMENT_FORMS],
+    ['spaces.document.docMenu.label', 'Document', DOCUMENT_FORMS],
+    ['membership.quota.concurrentEditors', 'Document', DOCUMENT_FORMS],
+    ['membership.card.connections', 'Document', DOCUMENT_FORMS],
   ];
 
   // The freeze applies to the four non-English locales; en is the source and
