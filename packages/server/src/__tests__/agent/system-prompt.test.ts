@@ -19,6 +19,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { buildSystemPrompt } from "@server/agent/context.js";
+import { READER_LANGUAGE_REMINDER } from "@server/agent/user-turn.js";
 import { TOOL_MAP } from "@breatic/domain";
 
 describe("the system prompt", () => {
@@ -44,6 +45,14 @@ describe("the system prompt", () => {
     const text = wording();
     expect(text).toMatch(/stay in English in every language/i);
     for (const term of terms) expect(text).toContain(term);
+  });
+
+  it("repeats the product-term rule under every user message", () => {
+    // From the system prompt alone the model still echoed the translated word
+    // a reader had just typed (a Chinese question about a Space got its
+    // translation back in the first clause); the line under the reader's own
+    // words is what it reads last.
+    expect(READER_LANGUAGE_REMINDER).toMatch(/product terms .*English/i);
   });
 
   it("tells the model to call tools rather than write out calls", () => {

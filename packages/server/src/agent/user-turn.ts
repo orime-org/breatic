@@ -155,11 +155,14 @@ export function userTurnForModel(turn: UserTurn, spaceUnchanged = false): string
  * under the reader's own words (before the exceptions clause was added), Claude
  * Opus 5.5 did in 27 of 27 (inner#1447). Written into the message, it is
  * stored and replayed with it, so it never changes a prefix the provider has
- * cached.
+ * cached. The product terms ride along for the same reason: from the system
+ * prompt alone, the model echoed a translated term the reader had just typed
+ * (inner#1600).
  */
 export const READER_LANGUAGE_REMINDER =
   "(Reply and write every text the user will read or edit in the language this message is written in, " +
-  "unless the user has asked for a specific language or the work itself sets one.)";
+  "unless the user has asked for a specific language or the work itself sets one. " +
+  "Keep the product terms the system prompt lists in English, even where this message translates them.)";
 
 /**
  * One user message exactly as the turn sends it: the reader's clock, the

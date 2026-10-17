@@ -324,7 +324,8 @@ describe("userMessageForModel", () => {
     expect(userMessageForModel("The reader's clock reads 09:00.", { chips: [], message: "画一只猫" })).toBe(
       "The reader's clock reads 09:00.\n\n画一只猫\n\n" +
         "(Reply and write every text the user will read or edit in the language this message is written in, " +
-        "unless the user has asked for a specific language or the work itself sets one.)",
+        "unless the user has asked for a specific language or the work itself sets one. " +
+        "Keep the product terms the system prompt lists in English, even where this message translates them.)",
     );
   });
 
