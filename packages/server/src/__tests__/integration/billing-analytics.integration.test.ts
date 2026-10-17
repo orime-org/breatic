@@ -47,6 +47,7 @@ import {
   type OutgoingEvent,
 } from "@breatic/core";
 import { CONSENT_REVISION } from "@breatic/shared";
+import { openPaymentSource } from "./payment-source.js";
 
 try {
   initCore(process.env);
@@ -111,12 +112,10 @@ async function account(): Promise<{ userId: string; customerId: string }> {
 async function pendingOrder(metadata: Record<string, unknown>): Promise<{ userId: string; paymentId: string; sessionId: string }> {
   const { userId } = await account();
   const sessionId = `cs_billing_${Date.now()}_${seq}`;
-  const [source] = await sql<{ id: string }[]>`
-    INSERT INTO credit_sources (id, kind) VALUES (gen_random_uuid(), 'payment') RETURNING id
-  `;
+  const sourceId = await openPaymentSource(sql);
   await sql`
     INSERT INTO payments (id, user_id, stripe_session_id, amount_cents, credits_granted, currency, status, metadata)
-    VALUES (${source!.id}, ${userId}, ${sessionId}, 2000, 1700, 'usd', 'pending',
+    VALUES (${sourceId}, ${userId}, ${sessionId}, 2000, 1700, 'usd', 'pending',
             ${sql.json({ locale: "en", consentedAt: new Date().toISOString(), ...metadata })})
   `;
   stripe.checkout.sessions.retrieve.mockResolvedValue({
@@ -131,7 +130,7 @@ async function pendingOrder(metadata: Record<string, unknown>): Promise<{ userId
     payment_intent: `pi_${sessionId}`,
     metadata: {},
   });
-  return { userId, paymentId: source!.id, sessionId };
+  return { userId, paymentId: sourceId, sessionId };
 }
 
 describe("credit purchases", () => {
