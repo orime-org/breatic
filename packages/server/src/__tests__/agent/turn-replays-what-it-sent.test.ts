@@ -184,6 +184,19 @@ describe("a turn replays the history as it was sent", () => {
     expect(firstPromptText()).toContain("Working it out.");
   });
 
+  it("goes on from a conversation stored before anything was kept, and keeps this turn as it was sent", async () => {
+    modelSays.history = earlierTurn().map((row) => ({ ...row, forModel: null }));
+
+    await runOneTurn("next question");
+
+    // The old rows are rendered from their parts, and this turn's copies are written.
+    expect(firstPromptText()).toContain("earlier question");
+    expect(firstPromptText()).toContain("Earlier answer.");
+    expect(firstPromptText()).not.toContain("earlier question, as sent");
+    expect(setUserForModel).toHaveBeenCalledTimes(1);
+    expect(keptReply().messages).toEqual([{ role: "assistant", content: [{ type: "text", text: "the reply" }] }]);
+  });
+
   it("leaves an earlier reply's thinking out once what came before it changed", async () => {
     modelSays.history = earlierTurn({ ...PREFIX, instructions: "an older system prompt" });
 
