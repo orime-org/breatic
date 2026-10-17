@@ -35,7 +35,7 @@
  * consolidation was down would trade one missing thing for a worse one.
  * Failures come back to the caller, which is the layer that knows the
  * userId, the conversation, and whether anyone should be paged. This
- * package does not log (see the package's CLAUDE.md).
+ * package does not log (see `AGENTS.md#library-packages-do-not-log`).
  */
 
 /** One obligation. Absent means this caller does not have that obligation. */

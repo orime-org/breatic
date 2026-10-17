@@ -13,7 +13,7 @@ import { isStudioProjectsListKey, projectsApi } from '@web/data/api/projects';
  *
  * StrictMode-safe: a ref keyed by project id guards React's
  * mount → cleanup → remount double-invoke, so exactly ONE POST fires per
- * project (the resource-hook discipline, [[feedback_strictmode_resource_hook]]).
+ * project (.claude/skills/react-state-traps/SKILL.md#resource-hooks-create-and-clean-up-in-one-effect).
  * Best-effort — recording an open must never disrupt the page, so a failure is
  * swallowed (and the guard reset so a genuine later remount can retry). On
  * success the Recent feed and every studio projects list are invalidated, so

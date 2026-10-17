@@ -2,7 +2,7 @@
 -- orphan studio. The NoAccount login mode was removed in PR-a (#147) and
 -- PR-b (#150); this migration cleans up the residual seed row.
 --
--- Exception to the soft-delete mandate in CLAUDE.md: dev-mode mock data is
+-- Exception to packages/core/AGENTS.md#soft-delete-only: dev-mode mock data is
 -- exempt per spec § 4.4 (private engineering record).
 --
 -- Audit (pre-migration, 2026-05-28):

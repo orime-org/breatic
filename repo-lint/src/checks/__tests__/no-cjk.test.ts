@@ -136,12 +136,27 @@ describe("no-cjk", () => {
     expect(noCjk.run(context)).toEqual([]);
   });
 
-  it("does not scan documentation — specs are allowed to be Chinese", () => {
+  it("does not scan documentation, which has localized editions", () => {
     const context = withAllowlisted({
-      "CLAUDE.md": "# 项目简介",
+      "docs/guide.md": "# 项目简介",
+      "README.zh-CN.md": "# 简介",
       "packages/core/src/ok.ts": "// fine\n",
     });
     expect(noCjk.run(context)).toEqual([]);
+  });
+
+  it("scans agent rules and project skills, which every contributor's agent reads", () => {
+    const context = withAllowlisted({
+      "AGENTS.md": "# Rules\n\n用 pnpm\n",
+      "packages/web/AGENTS.md": "# Web\n",
+      ".claude/skills/build-tooling/SKILL.md": "# Build\n\n构建\n",
+      ".claude/skills/build-tooling/reference.md": "# Notes\n\n说明\n",
+    });
+    expect(noCjk.run(context)).toEqual([
+      expect.objectContaining({ file: "AGENTS.md", line: 3 }),
+      expect.objectContaining({ file: ".claude/skills/build-tooling/SKILL.md", line: 3 }),
+      expect.objectContaining({ file: ".claude/skills/build-tooling/reference.md", line: 3 }),
+    ]);
   });
 
   it("fails rather than reports clean when it selects no files", () => {

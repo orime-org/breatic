@@ -40,7 +40,6 @@ import { initCore } from "@breatic/core";
 import { waitUntilBlockedOn } from "@server/__tests__/integration/lock-probe.js";
 import * as conversationRepo from "@server/modules/conversation/conversation.repo.js";
 import * as messageRepo from "@server/modules/conversation/conversation-message.repo.js";
-import { compressForContext } from "@server/agent/message-compressor.js";
 
 try {
   initCore(process.env);
@@ -384,6 +383,69 @@ describe("a message survives the round trip through parts", () => {
   });
 });
 
+describe("what was sent to the model", () => {
+  // Kept as sent so a later turn replays it byte for byte. A tool call's
+  // arguments are an object whose key order is part of those bytes.
+  const SENT = {
+    messages: [
+      {
+        role: "assistant",
+        content: [
+          { type: "tool-call", toolCallId: "tc-1", toolName: "propose", input: { prompt: "p", name: "n", aspect: "16:9" } },
+        ],
+      },
+    ],
+    prefixHash: "h",
+    turnTokens: 3,
+    endTokens: 9,
+  };
+
+  it("keeps a user message's copy as written, keys in their order", async () => {
+    const { userId, projectId } = await seedProject();
+    const conv = await seedConversation(userId, projectId);
+    const turn = await messageRepo.addMessage(conv.id, { role: "user", parts: [{ type: "text", text: "q" }] });
+    const sent = { messages: [{ role: "user", content: "note\n\nq\n\n(reminder)" }], snapshot: { b: 1, a: 2 } };
+
+    await messageRepo.setUserForModel(conv.id, turn, sent);
+
+    const [row] = await messageRepo.getMessagesForLlm(conv.id, 0);
+    expect(JSON.stringify(row?.forModel)).toBe(JSON.stringify(sent));
+  });
+
+  it("keeps a reply's copy, written with the reply", async () => {
+    const { userId, projectId } = await seedProject();
+    const conv = await seedConversation(userId, projectId);
+    const turn = await messageRepo.addMessage(conv.id, { role: "user", parts: [{ type: "text", text: "q" }] });
+
+    await messageRepo.addMessage(conv.id, { role: "assistant", turnIndex: turn, parts: [{ type: "text", text: "a" }] }, SENT);
+
+    const rows = await messageRepo.getMessagesForLlm(conv.id, 0);
+    expect(JSON.stringify(rows[1]?.forModel)).toBe(JSON.stringify(SENT));
+  });
+
+  it("reads a message written without a copy as having none", async () => {
+    const { userId, projectId } = await seedProject();
+    const conv = await seedConversation(userId, projectId);
+    await messageRepo.addMessage(conv.id, { role: "user", parts: [{ type: "text", text: "q" }] });
+
+    const [row] = await messageRepo.getMessagesForLlm(conv.id, 0);
+    expect(row?.forModel).toBeNull();
+  });
+
+  it("writes a user message's copy onto that turn's user message alone", async () => {
+    const { userId, projectId } = await seedProject();
+    const conv = await seedConversation(userId, projectId);
+    const first = await messageRepo.addMessage(conv.id, { role: "user", parts: [{ type: "text", text: "1" }] });
+    await messageRepo.addMessage(conv.id, { role: "assistant", turnIndex: first, parts: [{ type: "text", text: "a" }] });
+    const second = await messageRepo.addMessage(conv.id, { role: "user", parts: [{ type: "text", text: "2" }] });
+
+    await messageRepo.setUserForModel(conv.id, second, { messages: [] });
+
+    const rows = await messageRepo.getMessagesForLlm(conv.id, 0);
+    expect(rows.map((r) => r.forModel)).toEqual([null, null, { messages: [] }]);
+  });
+});
+
 describe("reading a conversation longer than one page", () => {
   it("hands out every message exactly once as the reader walks back", async () => {
     const { userId, projectId } = await seedProject();
@@ -484,7 +546,7 @@ describe("the memory chain still sees the same messages", () => {
     expect(forLlm[1]?.turnIndex).toBe(turn);
   });
 
-  it("drops the results of tool uses past the window, read the way the route reads them", async () => {
+  it("hands back every tool result as it was stored, read the way the route reads them", async () => {
     const { userId, projectId } = await seedProject();
     const conv = await seedConversation(userId, projectId);
 
@@ -511,27 +573,12 @@ describe("the memory chain still sees the same messages", () => {
       });
     }
 
-    // Both chat routes build the model's context in exactly these two steps,
-    // so the test takes them together: whether compression runs is a property
-    // of the pair, not of either half.
     const forLlm = await messageRepo.getMessagesForLlm(conv.id, 0);
-    // What the model was given comes back out of storage as it went in.
-    const firstCall = forLlm[1]?.parts.find((p) => p.type === "tool");
-    expect(firstCall).toMatchObject({ forModel: { type: "text", value: "page text" } });
-    const context = compressForContext(forLlm, 3);
-
-    // Every call is still on the record: what the assistant did is small, and
-    // a result with no call in front of it is a page the model cannot place.
-    const called = context.filter((m) => m.parts.some((p) => p.type === "tool"));
-    expect(called.map((m) => m.content)).toEqual(["a1", "a2", "a3", "a4", "a5"]);
-
-    // Five uses, the last three keeping what the model was given. The first
-    // two are past the window, and their copies are what the compression saves.
-    const keptResult = context.filter((m) =>
-      m.parts.some(
-        (p) => p.type === "tool" && p.forModel?.type === "text" && p.forModel.value === "page text",
-      ),
+    // What the model was given comes back out of storage as it went in, the
+    // oldest use as whole as the newest.
+    const given = forLlm.flatMap((m) =>
+      m.parts.flatMap((p) => (p.type === "tool" && p.forModel?.type === "text" ? [p.forModel.value] : [])),
     );
-    expect(keptResult.map((m) => m.content)).toEqual(["a3", "a4", "a5"]);
+    expect(given).toEqual(["page text", "page text", "page text", "page text", "page text"]);
   });
 });

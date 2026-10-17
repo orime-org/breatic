@@ -11,15 +11,35 @@
  */
 import { describe, it, expect, vi } from "vitest";
 import type * as CoreModule from "@breatic/core";
-import type { MessageData } from "@breatic/shared";
+import type { ReplayRow } from "@server/agent/history-replay.js";
+import type { Assembly } from "@server/agent/turn-budget.js";
+
+const AGENT = { modelId: "test", instructions: "system", tools: {} };
+const QUESTION = { role: "user" as const, content: "and now?" };
+
+/**
+ * A history assembled the way a turn assembles it.
+ * @param history - The rows since the watermark.
+ * @returns The assembly.
+ */
+function assembled(history: ReplayRow[]): Assembly {
+  const replayed = replayRows(history, AGENT);
+  return {
+    agentConfig: AGENT,
+    replayed,
+    watermark: 0,
+    userKept: { messages: [QUESTION] },
+    messages: [...replayed.flatMap((one) => one.messages), QUESTION],
+  };
+}
 
 vi.mock("@breatic/core", async (importOriginal) => {
   const actual = await importOriginal<typeof CoreModule>();
   return {
     ...actual,
     // Any request is over budget, so the fold runs.
-    getAgentConfig: () => ({ ...actual.getAgentConfig(), memory_budget_chars: 1, memory_keep_chars: 1 }),
-    effectiveKeepChars: () => 1,
+    getAgentConfig: () => ({ ...actual.getAgentConfig(), memory_budget_tokens: 1, memory_keep_tokens: 1 }),
+    effectiveKeepTokens: () => 1,
   };
 });
 
@@ -30,10 +50,11 @@ vi.mock("@server/agent/consolidation-window.js", () => ({
 }));
 
 const { foldIfOverBudget } = await import("@server/agent/turn-budget.js");
+const { prefixHash, replayRows } = await import("@server/agent/history-replay.js");
 const { EARLIER_RESULT_NOTE } = await import("@server/agent/stored-model-output.js");
 
 /** A turn whose model listing was written before the listing carried `needs`. */
-const HISTORY: MessageData[] = [
+const HISTORY: ReplayRow[] = [
   {
     id: "u1",
     role: "user",
@@ -41,6 +62,7 @@ const HISTORY: MessageData[] = [
     content: "which models make pictures?",
     ts: "2026-10-07T06:23:00Z",
     turnIndex: 1,
+    forModel: null,
   },
   {
     id: "a1",
@@ -62,18 +84,14 @@ const HISTORY: MessageData[] = [
     content: "these ones",
     ts: "2026-10-07T06:23:16Z",
     turnIndex: 1,
+    forModel: null,
   },
 ];
 
 describe("folding a history that holds an old tool result", () => {
   it("runs, and hands the fold the note in place of the old result", async () => {
     await foldIfOverBudget(
-      {
-        agentConfig: { modelId: "test", instructions: "system", tools: {} },
-        history: HISTORY,
-        watermark: 0,
-        messages: [{ role: "user", content: "and now?" }],
-      },
+      assembled(HISTORY),
       { userId: "u", conversationId: "c", projectId: "p" },
     );
 
@@ -83,5 +101,48 @@ describe("folding a history that holds an old tool result", () => {
       | { content: Array<{ output: unknown }> }
       | undefined;
     expect(toolMessage?.content[0]?.output).toEqual({ type: "text", value: EARLIER_RESULT_NOTE });
+  });
+});
+
+describe("folding a history kept as it was sent", () => {
+  it("hands the fold the reply as it was sent, without its thinking", async () => {
+    consolidateWindow.mockClear();
+    const asked = { role: "user" as const, content: "what was sent" };
+    const answered = [
+      {
+        role: "assistant" as const,
+        content: [
+          { type: "reasoning" as const, text: "private working", providerOptions: { anthropic: { signature: "s" } } },
+          { type: "text" as const, text: "the answer" },
+        ],
+      },
+    ];
+    const kept: ReplayRow[] = [
+      { role: "user", content: "q", parts: [{ type: "text", text: "q" }], ts: "", turnIndex: 1, forModel: { messages: [asked] } },
+      {
+        role: "assistant",
+        content: "the answer",
+        parts: [{ type: "text", text: "the answer" }],
+        ts: "",
+        turnIndex: 1,
+        forModel: {
+          messages: answered,
+          prefixHash: prefixHash({ instructions: "system", tools: {}, modelId: "test" }, [asked]),
+          turnTokens: 1,
+          endTokens: 2,
+        },
+      },
+    ];
+
+    await foldIfOverBudget(
+      assembled(kept),
+      { userId: "u", conversationId: "c", projectId: "p" },
+    );
+
+    const transcript = JSON.stringify(consolidateWindow.mock.calls[0]?.[0].transcript);
+    expect(transcript).toContain("what was sent");
+    expect(transcript).toContain("the answer");
+    expect(transcript).not.toContain("private working");
+    expect(transcript).not.toContain("signature");
   });
 });

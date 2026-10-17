@@ -13,7 +13,7 @@
  * domain may only import `@breatic/core` + `@breatic/shared`, never any
  * application package (`@server` / `@worker` / `@collab` / `@web`), and
  * collab never depends on domain. Both directions are enforced by CI
- * guards. See the root CLAUDE.md + docs/ARCHITECTURE.md for the
+ * guards. See `AGENTS.md#backend-package-boundaries` + docs/ARCHITECTURE.md for the
  * package-placement decision tree and the three-layer boundary.
  */
 
@@ -98,7 +98,8 @@ export type {
 } from "@domain/asset/upload-grant.repo.js";
 
 // ── Agent (AIGC execution kernel: model / tools / prompt extraction) ──
-export { getModel, resolveProvider, reasoningFor } from "@domain/agent/llm.js";
+export { getModel, resolveProvider, callOptionsFor } from "@domain/agent/llm.js";
+export type { CallWants } from "@domain/agent/llm.js";
 export { generateTextRetry, streamTextRetry } from "@domain/agent/model-call.js";
 export {
   buildToolSet,

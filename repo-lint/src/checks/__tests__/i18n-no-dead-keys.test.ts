@@ -285,7 +285,7 @@ describe("i18n-no-dead-keys", () => {
       repo(
         { project: { toolbar: { uploadFile: "Upload" } } },
         {
-          "packages/web/CLAUDE.md": "例:上传文件的 project.toolbar.uploadFile",
+          "packages/web/AGENTS.md": "例:上传文件的 project.toolbar.uploadFile",
           "packages/web/src/app.tsx": "export const App = () => null;",
         },
       ),

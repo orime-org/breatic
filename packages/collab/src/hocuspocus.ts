@@ -343,8 +343,7 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     // Uses the DIRECT document reference the hook
     // hands us — NEVER openDirectConnection from a load hook: that same-doc
     // re-entry provably deadlocks
-    // (feedback_hocuspocus_after_load_no_await_same_doc; #1567 verified the
-    // onDisconnect variant safe, load hooks are not).
+    // (#1567 verified the onDisconnect variant safe; load hooks are not).
     afterLoadDocument: async ({ documentName, document }) => {
       const parsed = parseDocName(documentName);
 

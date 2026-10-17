@@ -19,8 +19,9 @@
  * persists every Yjs document to Postgres (see `persistence.ts`) and
  * authenticates against it (`auth.ts`); a healthz that omits Postgres
  * reports "ok" while document load/store is dead - the worst possible
- * state for a load balancer to see. This is required by the CLAUDE.md
- * "industrial-grade server standards" mandate (healthz must ping PG + Redis + queue).
+ * state for a load balancer to see. This is required by
+ * AGENTS.md#health-checks (healthz probes every Postgres and Redis
+ * connection the service uses).
  */
 
 import type { HealthCheck } from "@breatic/core";

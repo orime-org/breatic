@@ -76,7 +76,7 @@ export function extractNested(
  *     find convenient.
  *
  * Those first two are the deliberate collapse of two config knobs that had
- * drifted into meaning different things; see `packages/shared/CLAUDE.md`.
+ * drifted into meaning different things; see `packages/shared/AGENTS.md#the-transport-does-eight-things`.
  *
  * `replaySafe: false` for every call, which is a statement about the vendor
  * rather than a preference: a submit spends money a second time, and the

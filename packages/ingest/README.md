@@ -1,7 +1,8 @@
 # @breatic/ingest
 
 The Worker the browser sends its file bytes to. It writes them into R2, hashes
-what actually landed, and reports the outcome to our server.
+what actually landed, and answers with what it measured in the response to the
+finish request our services send.
 
 It holds no database and asks us nothing. Everything it is allowed to do comes
 from a ticket our server signed: the storage key, the studio, the part layout
@@ -39,12 +40,13 @@ media numbers and no cover.
 
 **The image builds from the repository root**, which is what puts
 `THIRD-PARTY.md` inside the context. The template carries
-`image_build_context = "../.."` in both of its `[[containers]]` blocks — the
-top-level one `wrangler dev` uses, and `[[env.production.containers]]` that
-`deploy:worker` uses. A `wrangler.toml` copied before 2026-09-13 has neither:
-add both lines. `containers` does not inherit into an environment, so the
-production block needs its own; with only the top-level one, `wrangler dev`
-works and the deploy fails on the first `COPY`.
+`image_build_context = "../.."` in all six `[[containers]]` blocks — the three
+top-level ones `wrangler dev` uses (`MediaContainer`, `MiniToolContainerStd1`,
+`MiniToolContainerStd4`), and the three `[[env.production.containers]]` blocks
+that `deploy:worker` uses. A `wrangler.toml` copied before 2026-09-13 lacks the
+line: add it to every block. `containers` does not inherit into an environment,
+so each production block needs its own; with only the top-level ones,
+`wrangler dev` works and the deploy fails on the first `COPY`.
 
 **A `wrangler.toml` copied before error reporting was added needs
 `compatibility_flags = ["nodejs_compat"]`** at the top level, next to
@@ -126,7 +128,10 @@ with it and this Worker verifies them, so a mismatch rejects every upload with
 
 The deployed Worker gets the same value through
 `wrangler secret put INGEST_SHARED_SECRET --env production`, which stores it on
-Cloudflare rather than in any file.
+Cloudflare rather than in any file. The binding table a deploy prints lists
+only vars and bindings, so the secret never appears there; to tell "set" from
+"never set", run `wrangler secret list --env production`, which lists it by
+name. Without it every request except a CORS preflight answers 500.
 
 ### If a setting is missing
 
@@ -142,7 +147,7 @@ preflight alone does not validate the secret or storage bindings.
 |---|---|
 | Locally | `pnpm dev` from the repo root, or `npx wrangler dev` here — listens on the `[dev] port` |
 | Tests | `pnpm test` from the repo root |
-| Deploy | `pnpm deploy:worker` (it passes `--env production`) |
+| Deploy | `pnpm deploy:worker` here, or `pnpm --filter @breatic/ingest deploy:worker` from the repo root (it passes `--env production`) |
 
 Point the repo-root `.env`'s `INGEST_BASE_URL` at whichever one the browser
 should talk to, and restart the server so it reads the new value — `.env` is not
@@ -163,17 +168,22 @@ finishes the upload there. It reaches nobody in return — what it measured over
 the stored object is the answer to the finish, not a call it places — so it
 holds no address of ours at all.
 
-The only Durable Object this Worker binds is the media container (`MEDIA`),
-which is how a container is reached at all. The upload path itself keeps
-nothing between requests: an upload's id and its part receipts travel with the
+This Worker binds three Durable Object classes, and all three are containers,
+because a container is reached only through one: the media container
+(`MEDIA`, one instance per storage key) and the two mini-tool containers
+(`MINI_TOOL_STD1`, `MINI_TOOL_STD4`, one instance per job, one class per
+instance size). The upload path itself keeps nothing between requests: an upload's id and its part receipts travel with the
 browser and come back to finish it.
 
 ## Tests
 
-They run inside workerd, the runtime this Worker deploys to. The things worth
+Most of them run inside workerd, the runtime this Worker deploys to. The things worth
 testing here have no Node equivalent to stand in for them: R2 multipart uploads
 and `crypto.DigestStream`. A mock of either would be a mock of what we believe
 the platform does.
+Tests that touch neither, and every test that asserts on elapsed time, run on
+Node instead; their files end in `.node.test.ts`, and `vitest.config.ts` splits
+the two by that suffix.
 
 The test configuration declares its own bindings and compatibility date in
 `vitest.config.ts`, so the suite runs on a checkout that has no `wrangler.toml`.
