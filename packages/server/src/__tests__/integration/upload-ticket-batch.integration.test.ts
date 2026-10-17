@@ -271,14 +271,15 @@ describe("the batch form of the upload ticket", () => {
  * Ask to finish one upload, holding a token the Worker would have given it.
  * The key has no grant, so a request the limit lets through answers 404.
  * @param cookie - The caller's session.
- * @param uploadId - The upload.
+ * @param uploadId - The upload in the path.
+ * @param signedFor - The upload the token was signed for.
  * @returns The response.
  */
-async function finish(cookie: string, uploadId: string): Promise<Response> {
+async function finish(cookie: string, uploadId: string, signedFor = uploadId): Promise<Response> {
   const token = await signSessionToken(
     {
-      storageKey: `image/2026-10-12/${uploadId}.png`,
-      uploadId,
+      storageKey: `image/2026-10-12/${signedFor}.png`,
+      uploadId: signedFor,
       contentType: "image/png",
       expiresAt: Date.now() + 900_000,
       partSize: 8 * 1024 * 1024,
@@ -311,5 +312,17 @@ describe("finishing a batch's uploads", () => {
     for (let i = 0; i < 30; i++) statuses.push((await finish(a.cookie, uploadId)).status);
 
     expect(statuses).toContain(429);
+  });
+
+  // The limit is per upload, keyed by the id in the path: an id no token was
+  // signed for is refused before it gets a bucket of its own.
+  it("refuses an upload id its token was not signed for without counting it", async () => {
+    const a = await account();
+    const made = crypto.randomUUID();
+
+    const res = await finish(a.cookie, made, crypto.randomUUID());
+
+    expect(res.status).toBe(401);
+    expect(await getRedis().exists(`${env.ENV}:ratelimit:upload-complete:${a.userId}:${made}`)).toBe(0);
   });
 });
