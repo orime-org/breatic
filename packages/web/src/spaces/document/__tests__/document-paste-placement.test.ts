@@ -11,7 +11,7 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { NodeSelection } from '@tiptap/pm/state';
 
-import { serializeClipboard, type ClipboardNode, type ClipboardPayload } from '@web/spaces/canvas/node-clipboard';
+import { serializeClipboard, type ClipboardNode } from '@web/spaces/canvas/node-clipboard';
 
 import { OURS, caretIn, open as openBody, paste, pasteFormats, positionOf, select, settled, unmountAll, type Editor } from './paste-harness';
 
@@ -49,7 +49,7 @@ function lines(editor: Editor): string[] {
   };
   const walk = (blocks: Block[], depth: number): string[] =>
     blocks.flatMap((block) => [`${'  '.repeat(depth)}${label(block)}`, ...walk(block.children ?? [], depth + 1)]);
-  return walk(editor.document as Block[], 0);
+  return walk(editor.document, 0);
 }
 
 /**
@@ -58,7 +58,7 @@ function lines(editor: Editor): string[] {
  * @returns `words@offset`.
  */
 function caret(editor: Editor): string {
-  const { selection } = editor.prosemirrorView!.state;
+  const { selection } = editor.prosemirrorView.state;
   return `${selection.empty ? '' : 'RANGE '}${selection.$head.parent.textContent}@${selection.$head.parentOffset}`;
 }
 
@@ -69,7 +69,7 @@ function caret(editor: Editor): string {
  */
 function ids(editor: Editor): string[] {
   const walk = (blocks: Block[]): string[] => blocks.flatMap((b) => [b.id, ...walk(b.children ?? [])]);
-  return walk(editor.document as Block[]);
+  return walk(editor.document);
 }
 
 /** A piece of content: a line of words, or a picture. */
@@ -119,10 +119,10 @@ function canvasClipboard(pieces: readonly Piece[]): string {
           position: { x: 0, y: index * 300 },
           height: 100,
           data: { body: { $y: 'xml', children: [{ el: 'paragraph', attrs: {}, children: [{ text: [{ insert: p.words }] }] }] } },
-        } as ClipboardNode)
-        : ({ id: `n${index}`, type: 'image', position: { x: 0, y: index * 300 }, height: 100, data: { content: p.picture } } as ClipboardNode),
+        })
+        : ({ id: `n${index}`, type: 'image', position: { x: 0, y: index * 300 }, height: 100, data: { content: p.picture } }),
   );
-  return serializeClipboard({ version: 2, picked: nodes.map((n) => n.id), nodes, edges: [] } as ClipboardPayload);
+  return serializeClipboard({ version: 2, picked: nodes.map((n) => n.id), nodes, edges: [] });
 }
 
 /** The three sources one paste rule set covers, and how each labels a picture it puts. */
@@ -249,7 +249,7 @@ describe.each(SOURCES)('%s with media, a picture selected', (_source, put, img) 
     ['above another picture', ['SELECTED', { type: 'image', props: { url: OTHER } }], ['paragraph:w', 'NEW', 'paragraph:', `image(${OTHER})`]],
   ])('%s is replaced in place, its neighbours taking none of the words', async (_name, blocks, expected) => {
     const editor = open(blocks.map((b) => (b === 'SELECTED' ? { type: 'image', props: { url: OLD } } : b)));
-    const view = editor.prosemirrorView!;
+    const view = editor.prosemirrorView;
     let at = -1;
     view.state.doc.descendants((node, pos) => {
       if (at < 0 && node.type.name === 'image' && node.attrs['url'] === OLD) at = pos;
@@ -396,7 +396,7 @@ describe('canvas words pasted with a picture', () => {
       { id: 't', type: 'text', position: { x: 0, y: 0 }, height: 100, data: { body: words } },
       { id: 'i', type: 'image', position: { x: 0, y: 300 }, height: 100, data: { content: PIC } },
     ] as ClipboardNode[];
-    pasteFormats(editor, { 'text/plain': serializeClipboard({ version: 2, picked: ['t', 'i'], nodes, edges: [] } as ClipboardPayload) });
+    pasteFormats(editor, { 'text/plain': serializeClipboard({ version: 2, picked: ['t', 'i'], nodes, edges: [] }) });
     await settled();
     expect(lines(editor)).toEqual(['paragraph:lead', 'paragraph:a   b', 'paragraph:  ind\tT ', 'image(pending)', 'paragraph:']);
   });
@@ -421,5 +421,34 @@ describe.each(SOURCES)('%s with words then a picture, over the whole of a line t
     put(editor, [W, P]);
     await settled();
     expect(lines(editor)).toEqual(['paragraph:lead', 'bulletListItem:w', img(PIC), 'paragraph:tail']);
+  });
+});
+
+describe('a picture put at the end of a nested last line', () => {
+  it('leaves the caret at the start of the line that follows, opening none', async () => {
+    const editor = open([
+      { type: 'bulletListItem', content: 'parent', children: [{ type: 'bulletListItem', content: 'kid' }] },
+      { type: 'paragraph', content: 'next' },
+    ]);
+    select(editor, positionOf(editor, 'kid', 3));
+    pasteFormats(editor, { 'text/html': `<img src="${PIC}">`, 'text/plain': '' });
+    await settled();
+    expect({ lines: lines(editor), caret: caret(editor) }).toEqual({
+      lines: ['bulletListItem:parent', '  bulletListItem:kid', `  image(${PIC})`, 'paragraph:next'],
+      caret: 'next@0',
+    });
+  });
+});
+
+describe('the line opened for the caret, in a quote', () => {
+  it('is quoted as the line the content went into', async () => {
+    const editor = open([
+      { type: 'paragraph', content: 'a', props: { quoted: true } },
+      { type: 'image', props: { url: `${OURS}q.png`, quoted: true } },
+    ]);
+    select(editor, positionOf(editor, 'a', 1));
+    pasteFormats(editor, { 'text/html': `<img src="${PIC}">`, 'text/plain': '' });
+    await settled();
+    expect(lines(editor)).toEqual(['paragraph[q]:a', `image(${PIC})[q]`, 'paragraph[q]:', `image(${OURS}q.png)[q]`]);
   });
 });

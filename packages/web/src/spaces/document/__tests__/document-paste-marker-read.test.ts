@@ -55,7 +55,7 @@ function tree(editor: Editor): string[] {
   };
   const walk = (blocks: Block[], depth: number): string[] =>
     blocks.flatMap((block) => [`${'  '.repeat(depth)}${label(block)}`, ...walk(block.children ?? [], depth + 1)]);
-  return walk(editor.document as Block[], 0);
+  return walk(editor.document, 0);
 }
 
 /**
@@ -133,8 +133,8 @@ describe('a medium inside a table', () => {
     ['two of them, the space before the first', `a <img src="${A}"><img src="${A}">b`, 'a b'],
   ])('%s leaves the cell its words as they read without it', async (_where, cell, words) => {
     const { editor } = await read(`<table><tr><td>${cell}</td></tr></table>`);
-    const table = (editor.document as { content: { rows: { cells: { content: { text?: string }[] }[] }[] } }[])[0]!;
-    expect(table.content.rows[0]!.cells[0]!.content.map((c) => c.text ?? '').join('')).toBe(words);
+    const table = (editor.document as { content: { rows: { cells: { content: { text?: string }[] }[] }[] } }[])[0];
+    expect(table.content.rows[0].cells[0].content.map((c) => c.text ?? '').join('')).toBe(words);
   });
 
   it('in the caption lands under that table', async () => {
@@ -217,11 +217,22 @@ describe('every medium a paste carries', () => {
       ].join(''),
     );
     let blocks = 0;
-    editor.prosemirrorView!.state.doc.descendants((node) => {
+    editor.prosemirrorView.state.doc.descendants((node) => {
       if (['image', 'video', 'audio'].includes(node.type.name)) blocks += 1;
       return true;
     });
     expect(blocks).toBe(3);
     expect(told(sink)).toBe(2);
+  });
+});
+
+describe('a medium ending a line with nested lines', () => {
+  it('leaves the nested lines under the front half', async () => {
+    const { editor: source } = open([{ type: 'paragraph' }]);
+    const html = source
+      .blocksToFullHTML([{ type: 'paragraph', content: 'front', children: [{ type: 'paragraph', content: 'kid' }] }] as never)
+      .replace('front', `front <img src="${A}">`);
+    const { editor } = await read(html);
+    expect(tree(editor)).toEqual(['paragraph:front', '  paragraph:kid', `image(${A}||)`, 'paragraph:end']);
   });
 });

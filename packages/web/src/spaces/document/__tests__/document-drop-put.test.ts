@@ -10,8 +10,9 @@
 
 import { describe, it, expect, afterEach } from 'vitest';
 import { NodeSelection, TextSelection } from '@tiptap/pm/state';
+import { CellSelection } from '@tiptap/pm/tables';
 
-import { OURS, TABLE, caretIn, firstCell, open, paste, positionOf, select, settled, unmountAll, type Editor } from './paste-harness';
+import { OURS, TABLE, TWO_CELLS, caretIn, firstCell, open, paste, positionOf, select, settled, unmountAll, type Editor } from './paste-harness';
 
 afterEach(unmountAll);
 
@@ -26,7 +27,7 @@ const PIC = `${OURS}p.png`;
  * @param formats - Each format the drag carries, with its data.
  */
 function dropFormats(editor: Editor, at: number, formats: Readonly<Record<string, string>>): void {
-  const view = editor.prosemirrorView!;
+  const view = editor.prosemirrorView;
   view.posAtCoords = (): { pos: number; inside: number } => ({ pos: at, inside: -1 });
   const event = new Event('drop', { bubbles: true, cancelable: true });
   Object.assign(event, { clientX: 1, clientY: 1 });
@@ -56,10 +57,10 @@ function lines(editor: Editor): string[] {
  * @returns A short description.
  */
 function selected(editor: Editor): string {
-  const { selection } = editor.prosemirrorView!.state;
+  const { selection } = editor.prosemirrorView.state;
   if (selection instanceof NodeSelection) return `node:${selection.node.type.name}`;
   if (selection.empty) return `caret:${selection.$head.parent.textContent}@${selection.$head.parentOffset}`;
-  return `text:${editor.prosemirrorView!.state.doc.textBetween(selection.from, selection.to, '|')}`;
+  return `text:${editor.prosemirrorView.state.doc.textBetween(selection.from, selection.to, '|')}`;
 }
 
 describe('content dropped into a line lands as the same content pasted there', () => {
@@ -130,7 +131,7 @@ describe('a drop as an undo step', () => {
 
   it('with words selected, undo puts the caret where the selection began', async () => {
     const { editor, manager } = open([{ type: 'paragraph', content: 'lead' }, { type: 'paragraph', content: 'abcd' }]);
-    const view = editor.prosemirrorView!;
+    const view = editor.prosemirrorView;
     view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, positionOf(editor, 'lead', 1), positionOf(editor, 'lead', 3))));
     view.focus();
     dropFormats(editor, positionOf(editor, 'abcd', 2), { 'text/html': `<p>w</p><img src="${PIC}">`, 'text/plain': 'w' });
@@ -187,5 +188,59 @@ describe('a drop between two blocks', () => {
     dropFormats(editor, positionOf(editor, 'lead', 4) + 2, { 'text/html': `<img src="${PIC}">`, 'text/plain': '' });
     await settled();
     expect(lines(editor)).toEqual(['paragraph:lead', `image(${PIC})`, 'paragraph:tail']);
+  });
+});
+
+describe('a drop into a code block', () => {
+  it.each([
+    ['plain text that reads as Markdown goes in as it is', { 'text/plain': '# Title\n- item' }, 'codeBlock:x# Title\n- item'],
+    ['web content of words goes in one line each', { 'text/html': '<p>hello</p><p>world</p>', 'text/plain': 'hello\n\nworld' }, 'codeBlock:xhello\nworld'],
+  ])('%s, the code block kept whole', async (_name, formats, code) => {
+    const { editor } = open([{ type: 'codeBlock', content: 'x' }, { type: 'paragraph', content: 'tail' }]);
+    dropFormats(editor, caretIn(editor, 0), formats);
+    await settled();
+    expect(lines(editor)).toEqual([code, 'paragraph:tail']);
+  });
+});
+
+describe('a drop into a table cell, what it selects', () => {
+  it('a picture alone: the picture under the table', async () => {
+    const { editor } = open([TABLE, { type: 'paragraph', content: 'tail' }]);
+    dropFormats(editor, positionOf(editor, 'cell', 2), { 'text/html': `<img src="${PIC}">`, 'text/plain': '' });
+    await settled();
+    expect(selected(editor)).toBe('node:image');
+  });
+
+  it('a table that fills cells and a picture: the cells it filled', async () => {
+    const { editor } = open([TWO_CELLS, { type: 'paragraph', content: 'tail' }]);
+    dropFormats(editor, positionOf(editor, 'c1', 2), { 'text/html': `<table><tr><td>x</td><td>y</td></tr></table><img src="${PIC}">`, 'text/plain': 'x y' });
+    await settled();
+    expect(editor.prosemirrorView.state.selection).toBeInstanceOf(CellSelection);
+  });
+});
+
+describe('a drop that puts nothing in', () => {
+  it('leaves the next edit its own undo step, back to its own caret', async () => {
+    const { editor, manager } = open([{ type: 'paragraph', content: 'lead' }, { type: 'paragraph', content: 'abcd' }]);
+    select(editor, positionOf(editor, 'lead', 1));
+    dropFormats(editor, positionOf(editor, 'abcd', 2), { 'text/plain': ' ' });
+    await settled();
+    select(editor, positionOf(editor, 'abcd', 4));
+    editor.prosemirrorView.dispatch(editor.prosemirrorView.state.tr.insertText('Z'));
+    manager.undo();
+    expect(selected(editor)).toBe('caret:abcd@4');
+  });
+});
+
+describe('the line a drop opens between two quoted blocks', () => {
+  it('is quoted as they are', async () => {
+    const { editor } = open([
+      { type: 'paragraph', content: 'a', props: { quoted: true } },
+      { type: 'image', props: { url: `${OURS}q.png`, quoted: true } },
+      { type: 'paragraph', content: 'b', props: { quoted: true } },
+    ]);
+    dropFormats(editor, positionOf(editor, 'a', 1) + 2, { 'text/html': '<p>w</p>', 'text/plain': 'w' });
+    await settled();
+    expect((editor.document as Block[]).map((block) => block.props['quoted'])).toEqual([true, true, true, true]);
   });
 });

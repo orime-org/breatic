@@ -11,7 +11,7 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { CellSelection } from '@tiptap/pm/tables';
 
-import { serializeClipboard, type ClipboardNode, type ClipboardPayload } from '@web/spaces/canvas/node-clipboard';
+import { serializeClipboard, type ClipboardNode } from '@web/spaces/canvas/node-clipboard';
 
 import { OURS, caretIn, firstCell, open as openBody, paste, pasteFormats, positionOf, select, settled, unmountAll, type Editor } from './paste-harness';
 
@@ -49,7 +49,7 @@ function lines(editor: Editor): string[] {
   };
   const walk = (blocks: Block[], depth: number): string[] =>
     blocks.flatMap((block) => [`${'  '.repeat(depth)}${label(block)}`, ...walk(block.children ?? [], depth + 1)]);
-  return walk(editor.document as Block[], 0);
+  return walk(editor.document, 0);
 }
 
 /**
@@ -58,7 +58,7 @@ function lines(editor: Editor): string[] {
  * @returns `words@offset`.
  */
 function caret(editor: Editor): string {
-  const { $head } = editor.prosemirrorView!.state.selection;
+  const { $head } = editor.prosemirrorView.state.selection;
   return `${$head.parent.textContent}@${$head.parentOffset}`;
 }
 
@@ -68,7 +68,7 @@ function caret(editor: Editor): string {
  */
 function canvasPicture(): string {
   const nodes = [{ id: 'i', type: 'image', position: { x: 0, y: 0 }, height: 100, data: { content: PIC } }] as ClipboardNode[];
-  return serializeClipboard({ version: 2, picked: ['i'], nodes, edges: [] } as ClipboardPayload);
+  return serializeClipboard({ version: 2, picked: ['i'], nodes, edges: [] });
 }
 
 describe('content with words and a picture, the caret in a table cell', () => {
@@ -133,13 +133,13 @@ describe('the table the media land beside', () => {
 
   it('with several cells selected: the media land under it, none lost', async () => {
     const { editor } = open([TABLE('x'), { type: 'paragraph', content: 'tail' }]);
-    const view = editor.prosemirrorView!;
+    const view = editor.prosemirrorView;
     const cells: number[] = [];
     view.state.doc.descendants((node, pos) => {
       if (node.type.name === 'tableCell') cells.push(pos);
       return true;
     });
-    view.dispatch(view.state.tr.setSelection(CellSelection.create(view.state.doc, cells[0]!, cells[1]!)));
+    view.dispatch(view.state.tr.setSelection(CellSelection.create(view.state.doc, cells[0], cells[1])));
     view.focus();
     paste(editor, `<p>w</p><img src="${PIC}"><img src="${OURS}q.png">`, 'w');
     await settled();
@@ -191,7 +191,7 @@ describe('content with a picture, in a code block', () => {
     pasteFormats(editor, { 'text/plain': canvasPicture() });
     await settled();
     expect(lines(editor)).toEqual(['paragraph:lead', 'image(pending)', 'codeBlock:']);
-    expect(editor.prosemirrorView!.state.selection.$head.parent.type.name).toBe('codeBlock');
+    expect(editor.prosemirrorView.state.selection.$head.parent.type.name).toBe('codeBlock');
   });
 
   it('a selection running from the code into the next line is judged after it is deleted', async () => {
@@ -200,6 +200,44 @@ describe('content with a picture, in a code block', () => {
     paste(editor, `<p><b>w</b></p><img src="${PIC}">`, 'w');
     await settled();
     expect(lines(editor)).toEqual(['codeBlock:cowra text', `image(${PIC})`, 'paragraph:']);
+  });
+});
+
+describe('only words, or media that do not land, pasted in a code block', () => {
+  it('web content whose picture does not land puts its words in the code, one line each, and tells the picture left out', async () => {
+    const { editor, sink } = open([{ type: 'codeBlock', content: 'x' }, { type: 'paragraph', content: 'tail' }]);
+    caretIn(editor, 0);
+    paste(editor, '<p>a</p><img src="http://e.example/a.png"><p>b</p>', 'a b');
+    await settled();
+    expect(lines(editor)).toEqual(['codeBlock:xa\nb', 'paragraph:tail']);
+    expect(sink.onLeftOut.mock.calls).toEqual([[1]]);
+  });
+
+  it('plain text with a Markdown picture that does not land goes in as it is, nothing told left out', async () => {
+    const { editor, sink } = open([{ type: 'codeBlock', content: 'x' }, { type: 'paragraph', content: 'tail' }]);
+    caretIn(editor, 0);
+    paste(editor, '', '# T\n![a](http://e.example/a.png)');
+    await settled();
+    expect(lines(editor)).toEqual(['codeBlock:x# T\n![a](http://e.example/a.png)', 'paragraph:tail']);
+    expect(sink.onLeftOut).not.toHaveBeenCalled();
+  });
+
+  it('a table puts its words in the code, a tab between cells', async () => {
+    const { editor } = open([{ type: 'codeBlock', content: 'x' }, { type: 'paragraph', content: 'tail' }]);
+    caretIn(editor, 0);
+    paste(editor, '<table><tr><td>a1</td><td>b1</td></tr><tr><td>a2</td><td>b2</td></tr></table>', 'a1\tb1\na2\tb2');
+    await settled();
+    expect(lines(editor)).toEqual(['codeBlock:xa1\tb1\na2\tb2', 'paragraph:tail']);
+  });
+});
+
+describe('code from an editor, pasted', () => {
+  it('is one code block, its tags kept', async () => {
+    const { editor } = open([{ type: 'paragraph' }]);
+    caretIn(editor, 0);
+    pasteFormats(editor, { 'text/plain': 'const el = <div>hi</div>;\nif (a<b) x();', 'vscode-editor-data': '{"mode":"typescript"}' });
+    await settled();
+    expect(lines(editor)).toContain('codeBlock:const el = <div>hi</div>;\nif (a<b) x();');
   });
 });
 
