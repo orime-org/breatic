@@ -15,7 +15,7 @@ The product nouns that never translate (the do-not-translate table), the rule th
 
 ### Locale edits need a dev restart
 
-**After editing the root `locales/*.json`, restart the Vite dev server before checking the page.** The web package imports the catalogs through the `@locales` alias (`packages/web/src/i18n/locale-bootstrap.ts`) from outside its own directory, which Vite's watcher does not cover: unit tests read the new text from disk and pass while the running page still shows the old sentence. Check: the page disagrees with the locale file? See whether dev was started before the edit.
+**After editing the root `locales/*.json`, restart the Vite dev server before checking the page.** The web package imports the catalogs through the `@locales` alias (`packages/web/src/i18n/locale-bootstrap.ts`) from outside its Vite root, and a running dev server has kept showing the old sentence after such edits while unit tests, which read the files from disk, pass. Check: the page disagrees with the locale file? See whether dev was started before the edit.
 
 ## The language switcher
 

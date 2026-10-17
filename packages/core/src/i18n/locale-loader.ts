@@ -9,7 +9,7 @@
  * the web bundle never imports `@breatic/core`, so these `node:fs` /
  * `node:async_hooks` imports can never leak into the browser bundle
  * (the reason this used to live on a `@breatic/shared/i18n-node`
- * subpath, see packages/shared/AGENTS.md#barrel-or-subpath; moving it
+ * subpath, see packages/shared/AGENTS.md#browser-safe-dependencies-only; moving it
  * into core lets `@breatic/shared` stay 100% browser-safe and drop its
  * tsc-only build).
  *

@@ -238,9 +238,9 @@ const refundLoop = startRefundLoop();
 
 // Health probe - separate port so probe traffic stays off the main
 // hono port and per-port failure semantics in the LB stay clean.
-// docker / k8s / LB healthcheck kills the instance on N consecutive
-// 503s so an api whose Redis or Postgres pool has drifted gets a
-// fresh process automatically. Per AGENTS.md#health-checks;
+// A load balancer or orchestrator replaces the instance after N
+// consecutive 503s when its Redis or Postgres pool has drifted;
+// single-host docker compose does not (AGENTS.md#health-checks);
 // mirrors worker (port 9101) + collab (port 1235) shape so
 // all three services expose `GET /healthz` on a `primary+1` style port.
 const health = startHealthServer({

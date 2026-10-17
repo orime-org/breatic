@@ -33,7 +33,7 @@
 **Before writing any UI, of any kind (overlays, form controls, skeletons, badges, separators, avatars, empty states), grep `src/components/ui/` and use what is there.** Reuse the component itself, not its class names: copying `skeleton-shimmer` forks `Skeleton`'s implementation. When nothing exists, build it with the sizes, spacing, radii and colours the repo's siblings already use; count them first. Never hand-write an overlay or a `fixed inset-0` backdrop (inside the ReactFlow transform it positions against the transformed ancestor). Ask before adding a new shared primitive to `components/ui/`; one-off feature components need no approval.
 
 ## Vendor primitives
-**When a vendor primitive's default styling conflicts with the design mock, change the vendor file in `components/ui/`; token naming follows ADR 14.** Do not run `shadcn init`: `components.json` and the token bridge are hand-written and `shadcn init` would overwrite them. Invoke `/radix-shadcn` ([skill](../../.claude/skills/radix-shadcn/SKILL.md)) before changing a primitive or an overlay.
+**When a vendor primitive's default styling conflicts with the design mock, change the vendor file in `components/ui/`; token names come from `src/theme/tokens.css`.** Do not run `shadcn init`: `components.json` and the token bridge are hand-written and `shadcn init` would overwrite them. Invoke `/radix-shadcn` ([skill](../../.claude/skills/radix-shadcn/SKILL.md)) before changing a primitive or an overlay.
 
 **A third-party UI library is a candidate only if every visible part of it can take our styles and it composes with Radix and shadcn.** A library whose look we cannot fully replace does not enter the comparison at all.
 
@@ -145,7 +145,7 @@ ICU placeholders (`{studio}`) and URLs never change. repo-lint `no-translated-pr
 **Withdrawals, cleanup and leave notices are written immediately (`awareness.setLocalState`, `sendBeacon`, `fetch` with `keepalive`), never through `requestAnimationFrame`.** Hidden documents get no frames, and a throttler's "already scheduled" gate then swallows every later write. `spaces/canvas/use-publish-presence.ts` writes directly on `blur` and unmount, and `publish-throttle.ts` carries only droppable writes; `blur` alone covers app, window and tab switches. Check: must this write arrive? → write it now.
 
 ## Node state gating
-**Every mutation entry of a canvas node (delete, upload, generate, edit content, move, rename) goes through `evaluateNodeGate` in `spaces/canvas/node-gate.ts`, keyed on state, never on node type.** A new modality inherits the gate by routing its entries through it.
+**Every mutation entry of a canvas node (delete, upload, generate, edit content, move, rename) goes through `evaluateNodeGate` in `spaces/canvas/node-gate.ts` for the lock, keyed on state, never on node type; the delete block for a node with a task in flight, and for an annotation someone else wrote, is decided in `spaces/canvas/group-membership.ts`.** A new modality inherits the gate by routing its entries through it.
 
 | Operation | Node locked (`data.locked`) | Task in flight |
 |---|---|---|

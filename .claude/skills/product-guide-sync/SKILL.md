@@ -19,7 +19,7 @@ Only three kinds of change reach the guide without editing it:
 |---|---|
 | The text of a catalog key the guide quotes | The guide renders that key |
 | `canGenerate` / `canConnect` in `@breatic/shared` | The guide reads them at runtime |
-| `CHAT_MESSAGE_MAX_CHARS` and the attachment limit in `config/agent.yaml` | Read at runtime as well |
+| `CHAT_MESSAGE_MAX_CHARS` (`packages/shared/src/schemas/api.ts`) and `attachment_max_items` in `config/agent.yaml` | Read at runtime as well |
 
 ## What the tests catch
 

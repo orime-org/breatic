@@ -64,7 +64,7 @@ Cross-service stream keys: [packages/core/AGENTS.md#stream-keys](../core/AGENTS.
 
 ### Liveness rides the pong
 
-**Online is asserted by the socket's pong, offline is only inferred by the sweep, and nothing writes offline when a socket closes.** One user may hold other sockets, some on other instances, so a close proves nothing. The same signal drives seats: a seat's score moves only when its own socket answers a ping, and nothing else writes it. Keep presence off browser timers (`presence-wiring.ts` exports only `refreshPresenceForSocket`): a tab hidden for over five minutes has its timers throttled to about once a minute, and the awareness heartbeat drops to about 60 s, so any "silent for N means gone" threshold built on browser timing must exceed that. Pongs come from the browser's network stack and are not throttled.
+**Online is asserted by the socket's pong, offline is only inferred by the sweep, and nothing writes offline when a socket closes.** One user may hold other sockets, some on other instances, so a close proves nothing. The same signal drives seats: a seat's score moves only when its own socket answers a ping, and nothing else writes it. Keep presence off browser timers (`refreshPresenceForSocket` is the only refresh entry in `presence-wiring.ts`): a tab hidden for over five minutes has its timers throttled to about once a minute, and the awareness heartbeat drops to about 60 s, so any "silent for N means gone" threshold built on browser timing must exceed that. Pongs come from the browser's network stack and are not throttled.
 
 ### One pong handler
 

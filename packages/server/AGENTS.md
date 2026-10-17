@@ -72,7 +72,7 @@ Check: am I asserting a call certainly ran, or certainly did not? First establis
 
 **Conversation ids come from the client, so every endpoint that writes into a conversation first checks that it belongs to this user, belongs to this project and is not soft-deleted, and answers 404 for each failure.** A user may have several tabs on different conversations, so the server cannot hold a "current" one.
 
-**A conversation is created automatically in one place only, the open-chat endpoint; every other endpoint writes and never creates.** A second creation point turns a stale id into a silent new conversation while the user thinks they are still in the old one.
+**A conversation is created automatically in one place only, the open-chat endpoint; every other endpoint that takes a conversation id writes to it and never creates one.** `POST /chat/conversations` creates one only when the user asks for a new conversation. A second creation point turns a stale id into a silent new conversation while the user thinks they are still in the old one.
 
 Check: am I writing to a conversation id the client gave me? Were all three checked? Details: [docs/ARCHITECTURE.md](../../docs/ARCHITECTURE.md#chat-conversation-ownership).
 

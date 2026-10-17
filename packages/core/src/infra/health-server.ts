@@ -5,8 +5,8 @@
  * Health check HTTP server for long-lived services (collab, worker).
  *
  * Every long-lived service in the codebase must expose a `/healthz`
- * endpoint per `AGENTS.md#health-checks` - a
- * docker / k8s / LB health probe with N-fail kill semantics is the
+ * endpoint per `AGENTS.md#health-checks` - a load balancer or
+ * orchestrator probe that replaces the instance after N failures is the
  * only mechanism that actually self-heals a process whose
  * downstream dependencies (PG pool, Redis connection) have drifted
  * silently. The 2026-05-27 long-running dev:collab investigation

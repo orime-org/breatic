@@ -24,7 +24,7 @@ The ingest Worker on Cloudflare. The browser sends file bytes straight to it; it
 
 **A finish with `deferMediaRead: true` skips the media read, except for still images with EXIF orientation 2 to 8, which still go through the container to be turned upright.**
 
-**Every refusal on the four upload-path endpoints has a definite status: ticket or token fails 401, bad part length or unfinished part 400, manifest missing parts 409, R2 write or hash failure 502.** Finish, `/fetch`, `/media` and both `/jobs` endpoints require the shared secret (401 otherwise); the browser never holds it, so only our services can call them. `/fetch` answers 400 for a non-https source; `/media` answers 400 for a bad body and 404 when the key has no object.
+**Every refusal on the four upload-path endpoints has a definite status: ticket or token fails 401, bad part length or unfinished part 400, manifest missing parts 409, stored or source type refused 415, `/fetch` source over the ticket cap 413, R2 write or hash failure 502.** Finish, `/fetch`, `/media` and both `/jobs` endpoints require the shared secret (401 otherwise); the browser never holds it, so only our services can call them. `/fetch` answers 400 for a non-https source; `/media` answers 400 for a bad body and 404 when the key has no object.
 
 ## The only outbound request
 
@@ -36,7 +36,7 @@ The ingest Worker on Cloudflare. The browser sends file bytes straight to it; it
 
 **It binds three Durable Object classes, all containers: `MediaContainer` (one per storage key, idles after answering) and `MiniToolContainerStd1` / `MiniToolContainerStd4` (`src/jobs/mini-tool-container.ts`, same image, one class per instance size, one instance per job id, destroyed at the job deadline).** `config/mini-tools.yaml` names the class each operation runs in.
 
-**A container cannot reach the internet; downloading the source, writing results back and reporting all go through the Worker's outbound handler, which only allows the keys the job names (`container/mini-tool-run.ts`).**
+**A container cannot reach the internet; downloading the source, writing results back and reporting all go through the Worker's outbound handler, which only allows the keys the job names (`src/jobs/mini-tool-container.ts`).**
 
 ## Bytes and R2
 

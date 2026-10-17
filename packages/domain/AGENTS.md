@@ -26,7 +26,7 @@ The business core shared by server and worker. These rules apply when you change
 
 ### Losing admin releases credit designations
 
-**The moment someone stops being a studio's admin, every credit lot they designated to that studio is released with `releaseDesignations` (`credit/creditLot.service.ts`), in the same transaction as the role change.** A designation is what lets a studio spend, so lots left designated would keep funding a studio its former admin no longer governs. Why only a transfer can remove an admin: [docs/ARCHITECTURE.md](../../docs/ARCHITECTURE.md#studio-admin-and-credit-designations).
+**The moment someone stops being a studio's admin, every credit lot they designated to that studio is released with `releaseDesignations` (`credit/creditLot.service.ts`), in the same transaction as the role change.** A designation is what lets a studio spend, so lots left designated would keep funding a studio its former admin no longer governs. How an admin is lost (only through a transfer): [docs/ARCHITECTURE.md](../../docs/ARCHITECTURE.md#studio-admin-and-credit-designations).
 
 ## Agent
 

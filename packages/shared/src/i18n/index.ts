@@ -18,7 +18,7 @@
  *     `@breatic/core` (the node-side shared lib, which the web bundle
  *     never imports) so this module stays free of `node:fs` imports
  *     and never drags Node builtins into the web bundle
- *     (see packages/shared/AGENTS.md#barrel-or-subpath).
+ *     (see packages/shared/AGENTS.md#browser-safe-dependencies-only).
  *
  * **External API stays compatible** with the previous helper:
  *   - `t(key, params)` accepts the same call shape, so existing

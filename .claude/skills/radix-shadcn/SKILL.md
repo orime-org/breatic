@@ -9,7 +9,7 @@ description: Use before building or changing anything in `packages/web/src/compo
 
 ## Vendor defaults
 
-- **When a vendor primitive's default style conflicts with the approved design mock, edit the vendor file in `components/ui/`; token naming follows ADR 14.** A shadcn default (`rounded-md`, `hover:bg-X/90`, a bare `border`) is a starter-template convention, not the design system; changing it at the primitive fixes every caller at once.
+- **When a vendor primitive's default style conflicts with the approved design mock, edit the vendor file in `components/ui/`; token names come from `packages/web/src/theme/tokens.css`.** A shadcn default (`rounded-md`, `hover:bg-X/90`, a bare `border`) is a starter-template convention, not the design system; changing it at the primitive fixes every caller at once.
 - **A default changed on one primitive must not be copied to a sibling without checking the sibling's semantics.** `Sheet` is non-modal by default (side panel, chrome stays clickable) while `Dialog` is modal (backdrop, scroll lock, focus trap); copying the Sheet default onto Dialog breaks every real dialog.
 - **Interaction rings use `focus-visible:`, never `focus:`.** `focus:` also shows the ring after a mouse click.
 

@@ -321,9 +321,10 @@ async function main(): Promise<void> {
 
   // Health probe server - separate port so probe traffic doesn't
   // touch the WS port. Probes every critical dependency; the list is
-  // `buildCollabHealthChecks` in infra/health-checks.ts. LB / docker healthcheck kills
-  // the instance on N consecutive 503s so a drifted connection pool
-  // gets a fresh process automatically - per AGENTS.md#health-checks.
+  // `buildCollabHealthChecks` in infra/health-checks.ts. A load balancer or
+  // orchestrator replaces the instance after N consecutive 503s; single-host
+  // docker compose does not, so there recovery relies on alerts
+  // (AGENTS.md#health-checks).
   const healthServer = startHealthServer({
     port: HEALTH_PORT,
     serviceName: "collab",

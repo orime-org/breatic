@@ -60,7 +60,7 @@ Check: can the mocked module be imported on its own?
 vi.mock('@core/x', async (importOriginal) => ({ ...(await importOriginal<typeof import('@core/x')>()), fn: vi.fn() }));
 ```
 
-**Each package runs all its test files in one process (`singleFork: true`), and `isolate` resets only module caches and mocks.** Within a package these survive from file to file:
+**Each package except `@breatic/ingest` runs all its test files in one process (`singleFork: true`), and `isolate` resets only module caches and mocks.** Within a package these survive from file to file:
 
 | Shared state | Example |
 |---|---|

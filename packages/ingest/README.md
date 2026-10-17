@@ -2,7 +2,7 @@
 
 The Worker the browser sends its file bytes to. It writes them into R2, hashes
 what actually landed, and answers with what it measured in the response to the
-finish request our server sends.
+finish request our services send.
 
 It holds no database and asks us nothing. Everything it is allowed to do comes
 from a ticket our server signed: the storage key, the studio, the part layout
@@ -131,7 +131,7 @@ The deployed Worker gets the same value through
 Cloudflare rather than in any file. The binding table a deploy prints lists
 only vars and bindings, so the secret never appears there; to tell "set" from
 "never set", run `wrangler secret list --env production`, which lists it by
-name. Without it every request answers 500.
+name. Without it every request except a CORS preflight answers 500.
 
 ### If a setting is missing
 

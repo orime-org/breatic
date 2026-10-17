@@ -1,6 +1,6 @@
 # Architecture
 
-breatic monorepo 的完整工程参考,合三份文档于一处:**Backend** 架构(8 package + 3 服务)、**Frontend**(`packages/web`)、以及全栈**函数定义编码规范**。行为 mandate(DD / TDD / 红线 / 判定题)在仓库根 [`AGENTS.md`](../AGENTS.md#project-overview);本文写"怎么做的细节"(技术栈 / 包依赖 / 数据流 / 命名 / 节点模型 / token / 函数注释格式),mandate 指向这里。
+breatic monorepo 的完整工程参考,合三份文档于一处:**Backend** 架构(9 package + 3 服务)、**Frontend**(`packages/web`)、以及全栈**函数定义编码规范**。行为 mandate(DD / TDD / 红线 / 判定题)在仓库根 [`AGENTS.md`](../AGENTS.md#rule-files);本文写"怎么做的细节"(技术栈 / 包依赖 / 数据流 / 命名 / 节点模型 / token / 函数注释格式),mandate 指向这里。
 
 - [Backend](#backend) — 技术栈 / 8 package / 3 服务 / 画布协作 / 两层记忆 / Worker / Mini-Tool / 生成模板 / Agent tools / 配置 / 日志
 - [Frontend](#frontend) — `packages/web` 技术栈 / 7 层 layered / 节点模型 / 命名规范 / 路由 / 源码布局
@@ -180,7 +180,7 @@ config/ locales/ (git-tracked)
 
 ### Studio admin and credit designations
 
-**积分指定跟着 admin 身份走**:失去 admin 的三条路里只有转让可达 —— admin 退出、被移除、被直接改角色都会被拒(`leave_last_admin` / `remove_last_admin` / `cannot_change_admin_role`),部分唯一索引 `studio_members_one_admin_per_studio` 保证每个 studio 只有一个未删除的 admin;`confirmTransfer`(`packages/server/src/modules/studio/studioTransfer.service.ts`)在同一个事务里先把旧 admin 降级、释放他指定给这个 studio 的积分批(`releaseDesignations`)、再把接收人升为 admin。
+**积分指定跟着 admin 身份走**:失去 admin 只有转让一条路可走 —— admin 退出、被移除、被直接改角色都会被拒(`leave_last_admin` / `remove_last_admin` / `cannot_change_admin_role`),部分唯一索引 `studio_members_one_admin_per_studio` 保证每个 studio 只有一个未删除的 admin;`confirmTransfer`(`packages/server/src/modules/studio/studioTransfer.service.ts`)在同一个事务里先把旧 admin 降级、释放他指定给这个 studio 的积分批(`releaseDesignations`)、再把接收人升为 admin。
 
 ### Mini-Tool (two modes)
 
@@ -394,7 +394,7 @@ pnpm test / typecheck / lint
 
 `packages/web/` — breatic 的 React 前端 app,跑在浏览器里(后端架构见上面的 [Backend](#backend) 部分)。
 
-> **约束 vs. 细节**:`web` 要满足的约束(TS strict / 零 `any`、`app → pages → spaces → features → stores → data → ui` 单向分层、关键路径 + invariant 测试、a11y、i18n〔ICU〕、设计 token 严格)是 [web 的规则](../packages/web/AGENTS.md#production-standards) 里的 mandate;本部分写这些约束**怎么落地**(命名 / 节点模型 / token 桥接 / shadcn vendor 边界 / 各类 trap)。
+> **约束 vs. 细节**:`web` 要满足的约束(TS strict / 零 `any` 在[仓库根规则](../AGENTS.md#typescript-strictness),`app → pages → spaces → features → stores → data → ui` 单向分层在 [web 的规则](../packages/web/AGENTS.md#package-boundary),关键路径 + invariant 测试、a11y、i18n〔ICU〕、设计 token 严格在 [web 的规则](../packages/web/AGENTS.md#production-standards))是 mandate;本部分写这些约束**怎么落地**(命名 / 节点模型 / token 桥接 / shadcn vendor 边界 / 各类 trap)。
 
 ### Status
 

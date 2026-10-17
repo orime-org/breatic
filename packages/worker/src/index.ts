@@ -324,10 +324,10 @@ export function startWorker(): void {
     "BullMQ workers started",
   );
 
-  // Health probe - docker / LB / k8s healthcheck kills the
-  // instance on N consecutive 503s so a worker whose Redis or
-  // Postgres pool has drifted is replaced automatically. Per
-  // AGENTS.md#health-checks.
+  // Health probe - a load balancer or orchestrator replaces the
+  // instance after N consecutive 503s when its Redis or Postgres pool
+  // has drifted; single-host docker compose does not
+  // (AGENTS.md#health-checks).
   const health = startHealthServer({
     port: HEALTH_PORT,
     serviceName: "worker",
