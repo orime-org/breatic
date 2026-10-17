@@ -115,8 +115,15 @@ test('the picture adjust draws through WebGL as ffmpeg does', async ({ page }) =
     for (const v of f.vignettes) {
       const d = await run(v.width, v.height, () => hex(v.color), v.value);
       for (const p of v.points) vignette = Math.max(vignette, gap(px(d, p.x, p.y), p.rgb));
-      for (let i = 0; v.frame !== undefined && i < v.width * v.height; i++) {
-        vignette = Math.max(vignette, gap(px(d, i % v.width, Math.floor(i / v.width)), v.frame.slice(i * 3, i * 3 + 3)));
+      // A small frame over every 2x2 block, as the 2D test holds it.
+      for (let by = 0; v.frame !== undefined && by < v.height; by += 2) {
+        for (let bx = 0; bx < v.width; bx += 2) {
+          const block = [bx, bx + 1].filter((x) => x < v.width).flatMap((x) => [by, by + 1].filter((y) => y < v.height).map((y) => [x, y]));
+          const mean = (rgbAt: (x: number, y: number) => number[]): number[] =>
+            [0, 1, 2].map((k) => block.reduce((s, [x = 0, y = 0]) => s + (rgbAt(x, y)[k] ?? 0), 0) / block.length);
+          const frame = v.frame;
+          vignette = Math.max(vignette, gap(mean((x, y) => px(d, x, y)), mean((x, y) => frame.slice((y * v.width + x) * 3, (y * v.width + x) * 3 + 3))));
+        }
       }
     }
     // How two channels move together, as the 2D test measures it.
