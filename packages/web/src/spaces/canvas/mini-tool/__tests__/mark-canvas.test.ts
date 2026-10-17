@@ -245,18 +245,6 @@ describe('MarkCanvasController', () => {
       controller.sync();
     });
 
-    it('finds an object inside a later hollow ellipse', () => {
-      expect(under(180, 150)).toBe('r');
-    });
-
-    it('finds nothing in the empty inside of a hollow ellipse', () => {
-      expect(under(120, 150)).toBeUndefined();
-    });
-
-    it('finds the hollow ellipse on its stroke', () => {
-      expect(under(80, 150)).toBe('e');
-    });
-
     // The ellipse's stroke is drawn inside its frame, x 80 to 83.75 on the row
     // through its centre; a press within 6 screen pixels of it on either side
     // hits it (§6.2), whatever the page's zoom.
@@ -273,6 +261,18 @@ describe('MarkCanvasController', () => {
         controller.setZoom(zoom);
       });
 
+      it('finds an object inside a later hollow ellipse', () => {
+        expect(onScreen(180, 150)).toBe('r');
+      });
+
+      it('finds nothing in the empty inside of a hollow ellipse', () => {
+        expect(onScreen(120, 150)).toBeUndefined();
+      });
+
+      it('finds the hollow ellipse on its stroke', () => {
+        expect(onScreen(80, 150)).toBe('e');
+      });
+
       it('finds the hollow ellipse 5 screen pixels inside its stroke', () => {
         expect(onScreen(83.75 + 5 / zoom, 150)).toBe('e');
       });
@@ -281,9 +281,29 @@ describe('MarkCanvasController', () => {
         expect(onScreen(80 - 5 / zoom, 150)).toBe('e');
       });
 
+      /**
+       * Select a markup object on the canvas.
+       * @param id - Its draft id.
+       */
+      const select = (id: string): void => {
+        controller.canvas.setActiveObject(controller.canvas.getObjects().find((o) => (o as { markId?: string }).markId === id)!);
+      };
+
       it('finds a selected hollow object anywhere inside its frame', () => {
-        controller.canvas.setActiveObject(controller.canvas.getObjects().find((o) => (o as { markId?: string }).markId === 'e')!);
+        select('e');
         expect(onScreen(120, 150)).toBe('e');
+      });
+
+      it('finds what is drawn above a selected object rather than the selection', () => {
+        store.getState().commitMark([...mark().objects].reverse());
+        controller.sync();
+        select('e');
+        expect(onScreen(180, 150)).toBe('r');
+      });
+
+      it('finds nothing outside a selected object’s frame where nothing else is drawn', () => {
+        select('r');
+        expect(onScreen(120, 150)).toBeUndefined();
       });
 
       it('finds a thin straight line 4 screen pixels off it', () => {
