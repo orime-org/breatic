@@ -54,15 +54,9 @@ describe('ChatComposer', () => {
     expect(screen.getByTestId('chat-composer-sending')).toBeInTheDocument();
   });
 
-  it('hands the keyboard to the box when the press is made', () => {
-    // Whoever sent this with the keyboard is standing on the send button, and
-    // that button is about to be a stop button: same slot, same element, a
-    // different thing to press. Leaving them there means their next keypress
-    // stops the answer they just asked for. Letting the element go instead
-    // drops them on the body, and their next Tab starts from the top of the
-    // page. So the press hands the keyboard somewhere that is neither -- the
-    // box they were typing in, which is where they act next anyway and which
-    // does not change meaning underneath them.
+  it('lets go of the keyboard when the send button is pressed', () => {
+    // The message has gone and the box is about to be empty, so nothing is
+    // left to type into: no caret blinks in it.
     const props = {
       draft: 'hello',
       onChange: vi.fn(),
@@ -76,7 +70,20 @@ describe('ChatComposer', () => {
     fireEvent.click(send);
     rerender(<ChatComposer {...props} turnPhase='sending' />);
 
-    expect(document.activeElement).toBe(screen.getByTestId('chat-composer-box'));
+    expect(screen.getByTestId('chat-composer').contains(document.activeElement)).toBe(false);
+  });
+
+  it('lets go of the keyboard when Enter sends', async () => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn();
+    render(<ChatComposer draft='hello' onChange={vi.fn()} onSubmit={onSubmit} onAbort={vi.fn()} />);
+    const box = screen.getByTestId('chat-composer-box');
+    box.focus();
+
+    await user.keyboard('{Enter}');
+
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId('chat-composer').contains(document.activeElement)).toBe(false);
   });
 
   it('does not leave the keyboard on the button that becomes stop', () => {
@@ -95,10 +102,7 @@ describe('ChatComposer', () => {
     expect(document.activeElement).not.toBe(screen.getByTestId('chat-composer-abort'));
   });
 
-  it('still has the keyboard somewhere once the turn is over', () => {
-    // The turn ends, the box is empty, and the send button goes back to being
-    // disabled -- which takes it out of the tab order, so a browser blurs it.
-    // That is the same loss one step later, and it happens on every send.
+  it('does not take the keyboard back when the turn is over', () => {
     const props = { draft: 'hello', onChange: vi.fn(), onSubmit: vi.fn(), onAbort: vi.fn() };
     const { rerender } = render(<ChatComposer {...props} turnPhase='idle' />);
     const send = screen.getByTestId('chat-composer-send');
@@ -108,8 +112,7 @@ describe('ChatComposer', () => {
     rerender(<ChatComposer {...props} draft='' turnPhase='running' />);
     rerender(<ChatComposer {...props} draft='' turnPhase='idle' />);
 
-    expect(document.activeElement).toBe(screen.getByTestId('chat-composer-box'));
-    expect(document.activeElement).not.toBe(document.body);
+    expect(screen.getByTestId('chat-composer').contains(document.activeElement)).toBe(false);
   });
 
   it('takes nothing typed between the press and the server answering', () => {

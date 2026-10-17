@@ -129,6 +129,7 @@ function ChatComposerInner({
   const ready = draft.trim().length > 0 && turnPhase === 'idle' && !navigating && allReady;
   const picker = React.useRef<HTMLInputElement>(null);
   const tray = React.useRef<HTMLDivElement>(null);
+  const root = React.useRef<HTMLDivElement>(null);
 
   const atLimit = useAtLimitNotice(messageLength(attachments, draft), CHAT_MESSAGE_MAX_CHARS);
   // Read through a ref: the editor is built once, and Enter reaches it there.
@@ -150,29 +151,33 @@ function ChatComposerInner({
   /**
    * Submit the draft message when the composer is in a ready state.
    *
-   * Hands the keyboard to the box on the way out. Whoever pressed this with
-   * the keyboard is standing on a button that is about to be a different
-   * one -- the same element serves send, the wait and stop, which is what
-   * keeps the focus from falling to the body when the phase changes. Left
-   * standing there, their next keypress reaches stop: they would be ending
-   * the answer they just asked for, having aimed at nothing of the sort.
-   * The box is where they act next anyway, and it is the one thing here that
-   * does not change meaning underneath them.
+   * Lets go of the keyboard on the way out: the message has gone and the box
+   * is about to be empty, so no caret is left blinking in it. Letting go also
+   * keeps the keyboard off the send button, which is about to become stop.
    */
   const submit = (): void => {
     if (!ready) return;
     onSubmit();
-    handOverTheKeyboard();
+    letGoOfTheKeyboard();
   };
   submitRef.current = submit;
 
   /**
-   * Stop the turn, and hand the keyboard over on the way out.
+   * Blur whatever inside the composer holds the keyboard: the box after Enter,
+   * the send button after a click.
+   */
+  const letGoOfTheKeyboard = (): void => {
+    const held = document.activeElement;
+    if (held instanceof HTMLElement && root.current?.contains(held)) held.blur();
+  };
+
+  /**
+   * Stop the turn, and hand the keyboard to the box on the way out.
    *
-   * The same rule as {@link submit} and the same reason: this element is
-   * about to be a different button. Stopping turns it back into Send, and a
-   * reader who wrote their next message while waiting would send it with the
-   * very next keypress, having aimed at stop.
+   * This element is about to be a different button: stopping turns it back
+   * into Send, and a reader who wrote their next message while waiting would
+   * send it with the very next keypress, having aimed at stop. The box is
+   * where they act next, and it does not change meaning underneath them.
    */
   const abort = (): void => {
     onAbort?.();
@@ -180,12 +185,7 @@ function ChatComposerInner({
   };
 
   /**
-   * Put the keyboard where nothing changes meaning underneath it.
-   *
-   * The one slot in this row serves send, the wait and stop in turn, which is
-   * what keeps focus from falling to the body when the phase changes -- and
-   * what makes standing there dangerous. The box is where the reader acts
-   * next anyway.
+   * Put the keyboard in the box, where nothing changes meaning underneath it.
    */
   const handOverTheKeyboard = (): void => {
     // The editor's own focus puts the caret back where the reader left it; a
@@ -213,6 +213,7 @@ function ChatComposerInner({
 
   return (
     <div
+      ref={root}
       data-testid='chat-composer'
       className='m-[var(--space-5)] flex flex-col overflow-hidden rounded-md border border-border bg-card transition-colors focus-within:border-active-border'
     >
