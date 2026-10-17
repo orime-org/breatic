@@ -31,8 +31,9 @@
  *   1. Validate the caller's role, then run every remaining check —
  *      read-only, changing nothing.
  *   2. Move the content rows (the PG rows holding the user's actual
- *      writing) — delete soft-deletes them, restore un-deletes them,
- *      create seeds the new one — BEFORE anything becomes visible.
+ *      writing) — delete soft-deletes all three kinds, restore un-deletes
+ *      the one of its own type, create seeds the new one — BEFORE anything
+ *      becomes visible.
  *   3. Publish the meta-doc change through {@link publishMetaChange},
  *      over a DirectConnection (never read-only; the `system` user marker
  *      rides along for logging). Publishing IS the broadcast, and the
@@ -234,7 +235,7 @@ const SPACE_CONTENT_KINDS: readonly Exclude<DocKind, "meta">[] = [
 type TouchedKinds = readonly Exclude<DocKind, "meta">[];
 
 /**
- * What moving a Space's content rows left behind: the kinds THIS call
+ * What soft-deleting a Space's content rows left behind: the kinds THIS call
  * changed, and the first failure if any kind's write rejected.
  *
  * Both fields survive a partial failure on purpose. The three UPDATEs run

@@ -465,7 +465,7 @@ describe("step order — content rows, then the broadcast, then the activity row
     expect(broadcast).toBeLessThan(activityRow);
   });
 
-  it("space:restore un-deletes the content rows before the broadcast and writes the activity row after it", async () => {
+  it("space:restore un-deletes its content row before the broadcast and writes the activity row after it", async () => {
     activityLatestUnrestoredMock.mockResolvedValue(DELETED_ROW);
 
     const res = await handleSpaceRpc(
@@ -654,7 +654,7 @@ describe("re-reading the target fails — the content rows are rolled back", () 
     );
   });
 
-  it("space:restore soft-deletes the content rows again when the Space is already back by the time it writes", async () => {
+  it("space:restore soft-deletes its content row again when the Space is already back by the time it writes", async () => {
     activityLatestUnrestoredMock.mockResolvedValue(DELETED_ROW);
     const hocuspocus = makeHocuspocus({
       beforeFirstTransact: () => {
@@ -1517,7 +1517,7 @@ describe("a refused pre-check is a pure read — a broken publish cannot reach i
     }
   });
 
-  it("space:restore re-deletes its content rows when the transact rejects without running the callback", async () => {
+  it("space:restore re-deletes its content row when the transact rejects without running the callback", async () => {
     activityLatestUnrestoredMock.mockResolvedValue(DELETED_ROW);
     metaDoc.getMap("spaces").delete(SID);
     const res = await handleSpaceRpc(
