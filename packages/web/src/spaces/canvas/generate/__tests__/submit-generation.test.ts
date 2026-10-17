@@ -105,11 +105,28 @@ describe('submitGeneration', () => {
 
   it('takes away the node\'s failure line once the server accepts the press', async () => {
     failUpload();
+    let whileAsking: ReturnType<ReturnType<typeof useUploadMarksStore.getState>['markOf']>;
+    vi.mocked(canvasApi.createTask).mockImplementationOnce(() => {
+      whileAsking = useUploadMarksStore.getState().markOf('s', 'n');
+      return Promise.resolve({} as never);
+    });
+    press();
+    await flush();
+
+    expect(whileAsking).toMatchObject({ state: 'failed', action: 'upload' });
+    expect(useUploadMarksStore.getState().markOf('s', 'n')).toBeUndefined();
+  });
+
+  it('leaves an upload waiting on the node its own, so its failure still shows', async () => {
+    const marks = useUploadMarksStore.getState();
+    const op = marks.begin('s', 'n', 'upload');
     vi.mocked(canvasApi.createTask).mockResolvedValueOnce({} as never);
     press();
     await flush();
 
-    expect(useUploadMarksStore.getState().markOf('s', 'n')).toBeUndefined();
+    expect(useUploadMarksStore.getState().markOf('s', 'n')).toMatchObject({ op, state: 'waiting', action: 'upload' });
+    marks.fail('s', 'n', op, { key: 'canvas.upload.failed' });
+    expect(useUploadMarksStore.getState().markOf('s', 'n')).toMatchObject({ op, state: 'failed' });
   });
 
   it('leaves the node\'s failure line when the server refuses the press', async () => {
