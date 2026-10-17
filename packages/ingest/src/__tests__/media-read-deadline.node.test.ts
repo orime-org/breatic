@@ -10,16 +10,14 @@
  * be written when the deadline actually decided the outcome, and not when a
  * run answered first.
  *
- * Runs on Node, which is what the `.node.test.ts` in the name says. What is
- * asserted here is a race between a stub that never answers and a timer, and
- * both are read off the same clock the assertion is written against. Under the
- * Workers pool this file was measured at 95ms, 5850ms and 35788ms on three
- * green CI runs of main, because what it spent was however long an isolate
- * took to be scheduled; a budget written against a 20ms timer cannot be sized
- * against that.
+ * Runs on Node with an explicitly advanced clock: these cases judge which
+ * answer wins, not how soon the runner schedules the test. Even on Node a
+ * real 20ms deadline can expire before an immediate stub is reached under CI
+ * load. Fake Date and deadline timers together; leave the I/O scheduling used
+ * to read the response body on its real clock.
  */
 
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { readMediaAtEdge, type MediaEnv } from "@ingest/media-read.js";
 import { buildProbeAnswer } from "@ingest/probe-answer.js";
 import { NOTHING_FOUND, type ProbeReport } from "@ingest/media-metadata.js";
@@ -62,7 +60,12 @@ function containerThat(answer: () => Promise<Response>): MediaEnv {
   };
 }
 
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
+});
+
 afterEach(() => {
+  vi.useRealTimers();
   vi.restoreAllMocks();
 });
 
@@ -72,10 +75,12 @@ describe("a container run that outlasts the deadline", () => {
     const noted = vi.spyOn(console, "error").mockImplementation(() => {});
     const deadlineAt = Date.now() + 20;
 
-    const read = await readMediaAtEdge(
+    const reading = readMediaAtEdge(
       containerThat(() => new Promise<Response>(() => {})),
       { storageKey: KEY, contentType: "video/mp4", wantCover: false, deadlineAt },
     );
+    await vi.advanceTimersByTimeAsync(20);
+    const read = await reading;
 
     expect(read).toEqual({
       report: NOTHING_FOUND,
@@ -120,7 +125,7 @@ describe("a container run that answers first", () => {
       { storageKey: KEY, contentType: "video/mp4", wantCover: false, deadlineAt: Date.now() + 20 },
     );
     // Past the deadline the run beat, which is when the timer would fire.
-    await new Promise((resolve) => setTimeout(resolve, 60));
+    await vi.advanceTimersByTimeAsync(60);
 
     expect(read.report.streams[0]).toMatchObject({ width: 640, height: 360 });
     expect(noted).not.toHaveBeenCalledWith(
