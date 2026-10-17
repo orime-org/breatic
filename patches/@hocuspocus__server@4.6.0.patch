@@ -1,0 +1,26 @@
+diff --git a/dist/hocuspocus-server.cjs b/dist/hocuspocus-server.cjs
+index 39719e3862b1ff097c49f2673dafc445f90bd218..d53476af1edee235ac8a948e6d2f0ede5260f35d 100644
+--- a/dist/hocuspocus-server.cjs
++++ b/dist/hocuspocus-server.cjs
+@@ -925,7 +925,7 @@ var ClientConnection = class {
+ 						this.terminate(_hocuspocus_common.ResetConnection);
+ 						return;
+ 					}
+-					this.incomingMessageQueue[rawKey].push(data);
++					this.incomingMessageQueue[rawKey].push(new Uint8Array(data));
+ 					this.incomingMessageQueueBytes[rawKey] = (this.incomingMessageQueueBytes[rawKey] ?? 0) + data.byteLength;
+ 					return;
+ 				}
+diff --git a/dist/hocuspocus-server.esm.js b/dist/hocuspocus-server.esm.js
+index 0fce8e277d9cb44197070c7e52c43586b65b306d..16ea49ce82b288898cc9241f3767856586ebb3b8 100644
+--- a/dist/hocuspocus-server.esm.js
++++ b/dist/hocuspocus-server.esm.js
+@@ -895,7 +895,7 @@ var ClientConnection = class {
+ 						this.terminate(ResetConnection);
+ 						return;
+ 					}
+-					this.incomingMessageQueue[rawKey].push(data);
++					this.incomingMessageQueue[rawKey].push(new Uint8Array(data));
+ 					this.incomingMessageQueueBytes[rawKey] = (this.incomingMessageQueueBytes[rawKey] ?? 0) + data.byteLength;
+ 					return;
+ 				}

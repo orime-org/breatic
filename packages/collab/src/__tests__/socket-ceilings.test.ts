@@ -16,9 +16,8 @@
  * project's Space cap plus its meta doc — and tested together; a ceiling
  * raised alone is not a fix.
  *
- * The library terminates a socket in four places (hocuspocus-server.esm.js:
- * 819, 886 twice, 958). Measured against a 1000-document socket carrying the
- * frames a real client sends:
+ * `@hocuspocus/server` 4.6.0 closes a socket at four limits. Measured against a
+ * 1000-document socket carrying the frames a real client sends:
  *
  *   pending documents      default 100    fires first without config
  *   queued frame count     default 1000   fires at ~500 documents
@@ -39,7 +38,7 @@ import { describe, it, expect, afterEach } from "vitest";
 import WebSocket from "ws";
 import * as encoding from "lib0/encoding";
 import { outdatedTimeout } from "y-protocols/awareness";
-import { Server, defaultConfiguration } from "@hocuspocus/server";
+import { Hocuspocus, Server, defaultConfiguration } from "@hocuspocus/server";
 import {
   SOCKET_CEILINGS,
   DOCUMENTS_PER_SOCKET,
@@ -206,8 +205,8 @@ describe("deriving the ceilings from a project's Space cap", () => {
   });
 
   it("keeps the client's heartbeat well inside the server's silence timeout", () => {
-    // The fourth termination site (hocuspocus-server.esm.js:819) closes a
-    // socket that has sent nothing for `timeout`. Since hocuspocus 4 the
+    // The silence timeout closes a socket that has sent nothing for
+    // `timeout`. Since hocuspocus 4 the
     // server no longer pings, so the only thing holding a socket open while
     // nobody types is the awareness heartbeat: y-protocols re-announces local
     // state every `outdatedTimeout / 2`. Both numbers belong to libraries, so
@@ -216,5 +215,40 @@ describe("deriving the ceilings from a project's Space cap", () => {
     const heartbeatPeriodMs = outdatedTimeout / 2;
 
     expect(heartbeatPeriodMs * 2).toBeLessThan(defaultConfiguration.timeout);
+  });
+});
+
+describe("a frame queued before authentication", () => {
+  it("keeps only its own bytes, not the read buffer it arrived in", () => {
+    // ws hands each frame over as a view into the socket read chunk (up to
+    // 64 KB). Queued as that view, one 51-byte frame keeps the whole chunk
+    // alive, and a client padding every read with ping frames turns the
+    // queued-frame ceiling into a gigabyte. The patch in
+    // `patches/@hocuspocus__server@4.6.0.patch` copies the frame on the way
+    // into the queue.
+    const hocuspocus = new Hocuspocus({
+      quiet: true,
+      onAuthenticate: () => new Promise<never>(() => {}),
+    });
+    const socket = { readyState: 1, close: () => {}, send: () => {} };
+    const connection = hocuspocus.handleConnection(
+      socket as never,
+      { headers: {}, url: "/" } as never,
+    ) as unknown as {
+      handleMessage: (data: Uint8Array) => void;
+      incomingMessageQueue: Record<string, Uint8Array[]>;
+      handleClose: (event?: unknown) => void;
+    };
+    const payload = frame("project-q/meta", WIRE_SYNC, 0);
+    const readChunk = new Uint8Array(64 * 1024);
+    readChunk.set(payload, 1000);
+    const view = readChunk.subarray(1000, 1000 + payload.byteLength);
+
+    connection.handleMessage(view);
+    const queued = connection.incomingMessageQueue["project-q/meta"]?.[0];
+    connection.handleClose();
+
+    expect(queued).toEqual(payload);
+    expect(queued?.buffer.byteLength).toBe(payload.byteLength);
   });
 });
