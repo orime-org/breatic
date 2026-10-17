@@ -30,7 +30,7 @@ interface Report {
   greyEdges: number;
   colourEdges: number;
   vignette: number;
-  grains: number[][];
+  grains: { spread: number[]; corr: number[] }[];
   cutout: { worst: number; alpha: [number, number] }[];
   previewGrain: number[];
 }
@@ -51,8 +51,8 @@ test('the picture adjust draws through WebGL as ffmpeg does', async ({ page }) =
     const f = fx as {
       colors: { value: object; pixels: Record<string, number[]> }[];
       edges: { value: object; left: string; right: string; row: number[][] }[];
-      vignettes: { value: object; color: string; width?: number; height?: number; points: { x: number; y: number; rgb: number[] }[] }[];
-      grains: { value: object; std: number[] }[];
+      vignettes: { value: object; color: string; width: number; height: number; points: { x: number; y: number; rgb: number[] }[]; frame?: number[] }[];
+      grains: { value: object; std: number[]; corr: { rg: number; rb: number; gb: number } }[];
     };
     const hex = (c: string): number[] => [0, 2, 4].map((i) => parseInt(c.slice(i, i + 2), 16));
     // A picture painted at the source's size, drawn at w×h.
@@ -113,13 +113,32 @@ test('the picture adjust draws through WebGL as ffmpeg does', async ({ page }) =
     }
     let vignette = 0;
     for (const v of f.vignettes) {
-      const d = await run(v.width ?? 320, v.height ?? 180, () => hex(v.color), v.value);
+      const d = await run(v.width, v.height, () => hex(v.color), v.value);
       for (const p of v.points) vignette = Math.max(vignette, gap(px(d, p.x, p.y), p.rgb));
+      for (let i = 0; v.frame !== undefined && i < v.width * v.height; i++) {
+        vignette = Math.max(vignette, gap(px(d, i % v.width, Math.floor(i / v.width)), v.frame.slice(i * 3, i * 3 + 3)));
+      }
     }
-    const grains: number[][] = [];
+    // How two channels move together, as the 2D test measures it.
+    const together = (d: ImageData, a: number, b: number): number => {
+      const n = d.width * d.height;
+      const ch = (k: number): number[] => Array.from({ length: n }, (_, i) => d.data[i * 4 + k] ?? 0);
+      const [x, y] = [ch(a), ch(b)];
+      const mx = x.reduce((s, v) => s + v, 0) / n;
+      const my = y.reduce((s, v) => s + v, 0) / n;
+      return x.reduce((s, v, i) => s + (v - mx) * ((y[i] ?? 0) - my), 0) / n / (sdOf(d, a) * sdOf(d, b));
+    };
+    const grains: { spread: number[]; corr: number[] }[] = [];
     for (const g of f.grains) {
       const d = await run(64, 64, () => [128, 128, 128], g.value);
-      grains.push([0, 1, 2].map((k) => sdOf(d, k) / (g.std[k] ?? 1)));
+      grains.push({
+        spread: [0, 1, 2].map((k) => sdOf(d, k) / (g.std[k] ?? 1)),
+        corr: [
+          together(d, 0, 1) - g.corr.rg,
+          together(d, 0, 2) - g.corr.rb,
+          together(d, 1, 2) - g.corr.gb,
+        ],
+      });
     }
     // A cut-out: transparent left half, opaque right half, at 1:1 and drawn at 1/4.
     const cutout: { worst: number; alpha: [number, number] }[] = [];
@@ -164,11 +183,12 @@ test('the picture adjust draws through WebGL as ffmpeg does', async ({ page }) =
   expect(report.greyEdges).toBeLessThanOrEqual(8);
   expect(report.colourEdges).toBeLessThanOrEqual(10);
   expect(report.vignette).toBeLessThanOrEqual(6);
-  for (const ratios of report.grains) {
-    for (const ratio of ratios) {
+  for (const { spread, corr } of report.grains) {
+    for (const ratio of spread) {
       expect(ratio).toBeGreaterThan(0.85);
       expect(ratio).toBeLessThan(1.15);
     }
+    for (const off of corr) expect(Math.abs(off)).toBeLessThan(0.15);
   }
   for (const { worst, alpha } of report.cutout) {
     expect(worst).toBeLessThanOrEqual(2);

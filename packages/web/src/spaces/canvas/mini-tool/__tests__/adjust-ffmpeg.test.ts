@@ -106,9 +106,13 @@ describe('the picture adjust against ffmpeg', () => {
     expect(worst).toBeLessThanOrEqual(left === '404040' ? 8 : 10);
   });
 
-  it.each(fixture.vignettes)('darkens $color at $width×$height as ffmpeg does with $filter', ({ value, color, points, width, height }) => {
-    const out = adjust(solid(rgbOf(color), width ?? 320, height ?? 180), value);
+  it.each(fixture.vignettes)('darkens $color at $width×$height as ffmpeg does with $filter', ({ value, color, points, width, height, frame }) => {
+    const out = adjust(solid(rgbOf(color), width, height), value);
     for (const { x, y, rgb } of points) expect(gap(at(out, x, y), rgb), `${x},${y}`).toBeLessThanOrEqual(6);
+    // A small frame is held at every pixel.
+    for (let i = 0; frame !== undefined && i < width * height; i++) {
+      expect(gap(at(out, i % width, Math.floor(i / width)), frame.slice(i * 3, i * 3 + 3)), `${i % width},${Math.floor(i / width)}`).toBeLessThanOrEqual(6);
+    }
   });
 
   it.each(fixture.grains)('lays grain like ffmpeg with $filter', ({ value, std, corr }) => {
