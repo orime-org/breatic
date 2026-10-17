@@ -71,8 +71,12 @@ const WINDOWS = `<div id="cc-main">
   <div class="cm"><div class="cm__desc"></div>
     <button data-role="all"></button><button data-role="necessary"></button><button data-role="show"></button></div>
   <div class="pm">
-    <div class="pm__section--toggle"><input type="checkbox" value="analytics"><div class="pm__section-desc-wrapper"></div></div>
-    <div class="pm__section--toggle"><input type="checkbox" value="ads"><div class="pm__section-desc-wrapper"></div></div>
+    <div class="pm__section--toggle pm__section--expandable">
+      <div class="pm__section-title-wrapper"><button class="pm__section-title" aria-expanded="false" aria-controls="analytics-desc">Product analytics</button><label class="section__toggle-wrapper"><input type="checkbox" value="analytics"></label></div>
+      <div class="pm__section-desc-wrapper" aria-hidden="true" id="analytics-desc"></div></div>
+    <div class="pm__section--toggle pm__section--expandable">
+      <div class="pm__section-title-wrapper"><button class="pm__section-title" aria-expanded="false" aria-controls="ads-desc">Advertising</button><label class="section__toggle-wrapper"><input type="checkbox" value="ads"></label></div>
+      <div class="pm__section-desc-wrapper" aria-hidden="true" id="ads-desc"></div></div>
     <div class="pm__footer">
       <div class="pm__btn-group"><button data-role="all"></button><button data-role="necessary"></button></div>
       <div class="pm__btn-group"><button data-role="save"></button></div>
@@ -344,6 +348,39 @@ describe('the GPC line', () => {
     drawWindows();
     library.config?.onModalShow?.({ modalName: 'preferencesModal' });
     expect(document.querySelector('.breatic-consent-notice')).toBeNull();
+  });
+});
+
+describe('the category titles', () => {
+  /** The settings window's category titles. */
+  const titles = (): Element[] => [...document.querySelectorAll('.pm__section--toggle .pm__section-title')];
+
+  /** Each title is a heading a keyboard passes over, and each description is read out. */
+  function expectPlainTitles(): void {
+    expect(titles().map((title) => [title.tagName, title.getAttribute('role'), title.getAttribute('aria-level'), title.textContent])).toEqual([
+      ['DIV', 'heading', '3', 'Product analytics'],
+      ['DIV', 'heading', '3', 'Advertising'],
+    ]);
+    expect(titles().some((title) => title.hasAttribute('aria-expanded'))).toBe(false);
+    expect(document.querySelectorAll('.pm__section-desc-wrapper[aria-hidden]')).toHaveLength(0);
+  }
+
+  it('are headings, not buttons that claim to expand a description the window always shows', async () => {
+    await startBanner('DE');
+    drawWindows();
+    library.config?.onModalShow?.({ modalName: 'preferencesModal' });
+    expectPlainTitles();
+  });
+
+  it('stay headings after a language change rebuilds the windows', async () => {
+    const banner = await startBanner('DE');
+    drawWindows();
+    library.setLanguage.mockImplementationOnce(async () => {
+      drawWindows();
+      return true;
+    });
+    await banner.setConsentLanguage('ja');
+    expectPlainTitles();
   });
 });
 

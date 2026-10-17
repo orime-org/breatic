@@ -169,6 +169,33 @@ test.describe('signed in', () => {
     await expect.poll(async () => (await consentCookie(context))?.categories.toSorted()).toEqual(['analytics', 'necessary']);
   });
 
+  test('the settings window’s category titles are headings a keyboard passes over, and their descriptions are read out', async ({ page, context }) => {
+    await prepare(context, { country: 'US' });
+    await page.goto('/studio');
+    await openCookieSettings(page);
+    await expect(settings(page)).toBeVisible();
+    // The library moves focus into the window once its opening transition ends.
+    await page.waitForTimeout(700);
+    const titles = settings(page).locator('.pm__section--toggle .pm__section-title');
+    expect(await titles.evaluateAll((all) => all.map((title) => [title.tagName, title.getAttribute('role'), title.hasAttribute('aria-expanded')]))).toEqual([
+      ['DIV', 'heading', false],
+      ['DIV', 'heading', false],
+      ['DIV', 'heading', false],
+    ]);
+    await expect(settings(page).locator('.pm__section-desc-wrapper[aria-hidden]')).toHaveCount(0);
+    const stops: string[] = [];
+    for (let i = 0; i < 6; i++) {
+      await page.keyboard.press('Tab');
+      stops.push(
+        await page.evaluate(() => {
+          const el = document.activeElement;
+          return el?.getAttribute('data-role') ?? el?.getAttribute('value') ?? el?.className ?? '';
+        }),
+      );
+    }
+    expect(stops).toEqual(['pm__close-btn', 'analytics', 'ads', 'all', 'necessary', 'save']);
+  });
+
   test('a GPC browser shows the GPC line under a switch that can be turned on, and turning it on loads the ad tag', async ({ page, context }) => {
     const outside = await prepare(context, { country: 'US', gpc: true, gpcHeader: true });
     const first = nextReport(page);

@@ -173,6 +173,27 @@ function renderConsentWindows(): void {
   // Inside the ads card, under its description.
   const body = section?.querySelector('.pm__section-desc-wrapper') ?? section;
   showLine(body, 'breatic-consent-notice', gpc ? text.settings.status.gpc : null);
+  plainCategoryTitles();
+}
+
+/**
+ * Show each category title as a heading. The library makes it a button that
+ * expands the description and hides that description from screen readers,
+ * while this window always shows it; the heading is how the library marks
+ * a title it does not make expandable.
+ */
+function plainCategoryTitles(): void {
+  for (const title of document.querySelectorAll('#cc-main .pm__section--toggle button.pm__section-title')) {
+    const heading = document.createElement('div');
+    heading.className = title.className;
+    heading.setAttribute('role', 'heading');
+    heading.setAttribute('aria-level', '3');
+    heading.append(...title.childNodes);
+    title.replaceWith(heading);
+  }
+  for (const description of document.querySelectorAll('#cc-main .pm__section--toggle .pm__section-desc-wrapper')) {
+    description.removeAttribute('aria-hidden');
+  }
 }
 
 /**
