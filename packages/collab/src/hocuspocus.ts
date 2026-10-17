@@ -18,7 +18,7 @@ import { NO_CONSENT } from "@breatic/shared";
 import { hostname } from "node:os";
 import { randomUUID } from "node:crypto";
 import { Server } from "@hocuspocus/server";
-import type { Hocuspocus } from "@hocuspocus/server";
+import type { Extension, Hocuspocus } from "@hocuspocus/server";
 import { Redis as RedisExtension } from "@hocuspocus/extension-redis";
 import { resolve } from "node:path";
 import {
@@ -189,8 +189,7 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
   const authRedis = getRedis();
 
   // Build extensions list
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const extensions: any[] = [
+  const extensions: Extension[] = [
     // First of every chain (#40). It watches the Yjs document directly rather
     // than through `onChange`, so no other extension's failure can hide an
     // edit from the store tracker, and it owns dropping a document's
@@ -313,9 +312,7 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
       ? recordingFailedAuth(authenticate, connectionGate)
       : authenticate,
 
-    // Extensions
-    // Cast: pnpm hoisting causes duplicate @hocuspocus/server types
-    extensions: extensions as never[],
+    extensions,
 
     // The last chance to get a document's content out before it is
     // destroyed. Measured: without it, a failed store plus the last client
