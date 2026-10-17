@@ -194,6 +194,16 @@ describe('a drop with nothing that can land', () => {
   });
 });
 
+describe('a drop carrying neither words nor HTML', () => {
+  it('on a code block changes nothing in the body or the caret', async () => {
+    const { editor } = open([{ type: 'paragraph', content: 'lead' }, { type: 'codeBlock', content: 'x = 1' }]);
+    select(editor, positionOf(editor, 'lead', 2));
+    dropFormats(editor, positionOf(editor, 'x = 1', 2), { 'text/uri-list': 'https://a.example/' });
+    await settled();
+    expect({ lines: lines(editor), selected: selected(editor) }).toEqual({ lines: ['paragraph:lead', 'codeBlock:x = 1'], selected: 'caret:lead@2' });
+  });
+});
+
 describe('a paste with nothing that can land', () => {
   it.each([
     ['a picture alone', (): Record<string, string> => ({ 'text/html': '<img src="http://e.example/a.png">', 'text/plain': '' })],

@@ -9,6 +9,7 @@
 
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import type * as Y from 'yjs';
+import { TextSelection } from '@tiptap/pm/state';
 import { CellSelection } from '@tiptap/pm/tables';
 
 import { serializeClipboard, type ClipboardNode, type ClipboardPayload } from '@web/spaces/canvas/node-clipboard';
@@ -139,6 +140,27 @@ describe('text only, in a table cell', () => {
     const table = (editor.document as { content: { rows: { cells: { content: { text?: string }[] }[] }[] } }[])[0]!;
     expect(table.content.rows[0]!.cells.map((cell) => cell.content.map((c) => c.text ?? '\n').join(''))).toEqual(['_one_\ntwo', '_one_\ntwo']);
     expect(view.state.selection).toBeInstanceOf(CellSelection);
+  });
+});
+
+describe('text only, at the caret', () => {
+  it('an address alone, over selected words, replaces them as words', () => {
+    const { editor } = open([{ type: 'paragraph', content: 'say hello there' }], 0);
+    const view = editor.prosemirrorView;
+    let at = -1;
+    view.state.doc.descendants((node, pos) => {
+      if (at < 0 && node.isText) at = pos + node.text!.indexOf('hello');
+      return at < 0;
+    });
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, at, at + 5)));
+    paste(editor, clipboard({ id: 't', type: 'text', position: { x: 0, y: 0 }, data: { body: body('https://example.com') } }));
+    expect(editor.document[0]!.content).toEqual([{ type: 'text', text: 'say https://example.com there', styles: {} }]);
+  });
+
+  it.each(['bulletListItem', 'heading', 'checkListItem'])('on an empty %s, the first line takes its type', (type) => {
+    const { editor } = open([{ type: 'paragraph', content: 'lead' }, { type }, { type: 'paragraph', content: 'tail' }], 1);
+    paste(editor, clipboard({ id: 't', type: 'text', position: { x: 0, y: 0 }, data: { body: body('one', 'two') } }));
+    expect(shape(editor)).toEqual(['paragraph:lead', `${type}:one`, 'paragraph:two', 'paragraph:tail']);
   });
 });
 
