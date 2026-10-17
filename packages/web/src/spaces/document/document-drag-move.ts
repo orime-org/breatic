@@ -43,7 +43,9 @@ import {
  * `dropPoint` is what ProseMirror uses for the same question
  * (`input.ts:802`): it walks outwards from the position until the slice fits,
  * which is what turns a position inside a paragraph into the gap between two
- * blocks.
+ * blocks. It only walks outwards, so the document's two edges (0 and its
+ * size), outside the one group that holds every row, find no gap; they are
+ * the gap before the first row and after the last.
  * @param doc - The document to land in.
  * @param at - The position the pointer is over.
  * @param node - The row being carried.
@@ -51,7 +53,8 @@ import {
  */
 export function landingFor(doc: PMNode, at: number, node: PMNode): number {
   const carried = new Slice(Fragment.from(node), 0, 0);
-  return dropPoint(doc, at, carried) ?? at;
+  const inGroup = Math.min(Math.max(at, 1), doc.content.size - 1);
+  return dropPoint(doc, inGroup, carried) ?? inGroup;
 }
 
 /**
