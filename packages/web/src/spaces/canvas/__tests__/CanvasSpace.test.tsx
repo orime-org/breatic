@@ -4624,7 +4624,7 @@ describe('what opening a tool on a node does to the camera and its layers', () =
   // §6.3: the expand frame reaches past its node and is drawn over every node.
   it('draws the expand frame in the viewport, over every node', () => {
     const portal = src.slice(src.lastIndexOf('<ViewportPortal>', src.indexOf('<ExpandFrameOverlay ')), src.indexOf('<ExpandFrameOverlay '));
-    expect(portal).toContain('zIndex: ANNOTATION_COMPOSER_Z');
+    expect(portal).toContain('zIndex: VIEWPORT_TOP_Z');
   });
 });
 
