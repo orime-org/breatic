@@ -13,8 +13,7 @@
  *
  * Two pages in ONE context, not two accounts. Presence keys on the connection,
  * not the person (`collectNodeOccupants` skips its own client id and no other),
- * so a second tab of the same account is a peer in every way that matters here
- * and costs no second sign-in against a rate limit the whole suite shares.
+ * so a second tab of the same account is a peer in every way that matters here.
  *
  * Needs a running dev stack (`pnpm dev`). Setup signs the accounts in and
  * builds the Projects, so a case here opens one it was given:

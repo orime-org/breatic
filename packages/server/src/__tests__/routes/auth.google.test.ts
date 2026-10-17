@@ -36,6 +36,7 @@ vi.mock("@server/modules", async (importOriginal) => {
 
 import { createApp } from "../../app.js";
 import { mocks } from "../helpers/mock-core.js";
+import { withPeer } from "../helpers/peer.js";
 
 describe("POST /auth/google", () => {
   beforeEach(() => {
@@ -48,7 +49,7 @@ describe("POST /auth/google", () => {
 
   it("rejects a forged unsigned JWT", async () => {
     verifyIdTokenMock.mockRejectedValue(new Error("Invalid token"));
-    const app = createApp();
+    const app = withPeer(createApp());
     const payload = Buffer.from(JSON.stringify({ sub: "x", email: "v@g.com" })).toString("base64url");
     const res = await app.request("/api/v1/auth/google", {
       method: "POST",
@@ -62,7 +63,7 @@ describe("POST /auth/google", () => {
     verifyIdTokenMock.mockResolvedValue({
       getPayload: () => ({ iss: "https://evil.com", sub: "x", email: "a@x.com", email_verified: true }),
     });
-    const app = createApp();
+    const app = withPeer(createApp());
     const res = await app.request("/api/v1/auth/google", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -75,7 +76,7 @@ describe("POST /auth/google", () => {
     verifyIdTokenMock.mockResolvedValue({
       getPayload: () => ({ iss: "https://accounts.google.com", sub: "x", email: "a@x.com", email_verified: false }),
     });
-    const app = createApp();
+    const app = withPeer(createApp());
     const res = await app.request("/api/v1/auth/google", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -88,7 +89,7 @@ describe("POST /auth/google", () => {
     verifyIdTokenMock.mockResolvedValue({
       getPayload: () => ({ iss: "https://accounts.google.com", sub: "g-123", email: "a@x.com", email_verified: true, name: "A", picture: "https://x/a.png" }),
     });
-    const app = createApp();
+    const app = withPeer(createApp());
     const res = await app.request("/api/v1/auth/google", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -116,7 +117,7 @@ describe("POST /auth/google", () => {
     ['owner@gmail.com.evil.example', undefined, false],
   ])('passes Google email authority for %s', async (email, hd, authority) => {
     verifyIdTokenMock.mockResolvedValue({ getPayload: () => ({ iss: 'accounts.google.com', sub: 'subject', email, hd, email_verified: true }) });
-    const response = await createApp().request('/api/v1/auth/google', {
+    const response = await withPeer(createApp()).request('/api/v1/auth/google', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ credential: 'signed-token' }),
     });
@@ -141,7 +142,7 @@ describe("POST /auth/google", () => {
 
   it('normalizes the token email before judging Gmail authority', async () => {
     verifyIdTokenMock.mockResolvedValue({ getPayload: () => ({ iss: 'accounts.google.com', sub: 'subject', email: ' Owner@GMAIL.COM', email_verified: true }) });
-    const response = await createApp().request('/api/v1/auth/google', {
+    const response = await withPeer(createApp()).request('/api/v1/auth/google', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ credential: 'signed-token' }),
     });
@@ -154,7 +155,7 @@ describe("POST /auth/google", () => {
     verifyIdTokenMock.mockResolvedValue({
       getPayload: () => ({ iss: "https://accounts.google.com", sub: "g-123", email: "a@x.com", email_verified: true }),
     });
-    const res = await createApp().request("/api/v1/auth/google", {
+    const res = await withPeer(createApp()).request("/api/v1/auth/google", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ credential: "v.p.s" }),

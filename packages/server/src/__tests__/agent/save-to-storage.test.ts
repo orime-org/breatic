@@ -63,7 +63,7 @@ const STORED = {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  checkRateLimit.mockResolvedValue(true);
+  checkRateLimit.mockResolvedValue({ allowed: true });
   assertAccess.mockResolvedValue(undefined);
   assertStorageAllowance.mockResolvedValue(undefined);
   transferReaderUrlToStorage.mockResolvedValue(STORED);
@@ -91,7 +91,7 @@ describe("saveToStorageFor", () => {
 
     const saved = await save(LINK, stop.signal);
 
-    expect(checkRateLimit).toHaveBeenCalledWith(expect.anything(), "ingest-url:u1", 30, 60);
+    expect(checkRateLimit).toHaveBeenCalledWith(expect.anything(), [{ key: "ingest-url:u1", max: 30, windowSeconds: 60 }]);
     expect(assertAccess).toHaveBeenCalledWith("p1", "u1", "editor");
     expect(assertStorageAllowance).toHaveBeenCalledWith("p1", "upload");
     expect(transferReaderUrlToStorage).toHaveBeenCalledWith(LINK, { projectId: "p1", actingUserId: "u1" }, stop.signal);
@@ -112,7 +112,7 @@ describe("saveToStorageFor", () => {
   });
 
   it("refuses over the canvas paste's rate, logged as a hit", async () => {
-    checkRateLimit.mockResolvedValue(false);
+    checkRateLimit.mockResolvedValue({ allowed: false, retryAfterSeconds: 60 });
 
     const err = await refusalOf(save(LINK));
 

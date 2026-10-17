@@ -31,6 +31,7 @@ vi.mock("@server/modules", async (importOriginal) => {
 
 import { createApp } from "../../app.js";
 import { mocks } from "../helpers/mock-core.js";
+import { withPeer } from "../helpers/peer.js";
 
 const JSON_HEADERS = { "Content-Type": "application/json" };
 
@@ -45,7 +46,7 @@ describe("POST /auth/reset-password-with-recovery-code", () => {
       userId: "user-1",
     });
 
-    const app = createApp();
+    const app = withPeer(createApp());
     const res = await app.request("/api/v1/auth/reset-password-with-recovery-code", {
       method: "POST",
       headers: JSON_HEADERS,
@@ -67,7 +68,7 @@ describe("POST /auth/reset-password-with-recovery-code", () => {
   });
 
   it("rejects invalid email format with 422", async () => {
-    const app = createApp();
+    const app = withPeer(createApp());
     const res = await app.request("/api/v1/auth/reset-password-with-recovery-code", {
       method: "POST",
       headers: JSON_HEADERS,
@@ -82,7 +83,7 @@ describe("POST /auth/reset-password-with-recovery-code", () => {
   });
 
   it("rejects password shorter than 8 chars with 422", async () => {
-    const app = createApp();
+    const app = withPeer(createApp());
     const res = await app.request("/api/v1/auth/reset-password-with-recovery-code", {
       method: "POST",
       headers: JSON_HEADERS,
@@ -101,7 +102,7 @@ describe("POST /auth/reset-password-with-recovery-code", () => {
       Object.assign(new Error("Invalid email or recovery code"), { status: 401 }),
     );
 
-    const app = createApp();
+    const app = withPeer(createApp());
     const res = await app.request("/api/v1/auth/reset-password-with-recovery-code", {
       method: "POST",
       headers: JSON_HEADERS,
