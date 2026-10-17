@@ -649,24 +649,23 @@ class AdjustGrain extends filters.BaseFilter<
 
 /**
  * ffmpeg's `vignette`: each value scaled by the fourth power of the cosine of
- * its angle off centre, the distance a circle in pixels over the half
- * diagonal. ffmpeg measures from a pixel's integer index to half the frame
- * (`x - w/2`), half a source pixel short of the pixel's centre. On codes, Y
- * scales toward 0 and the chroma toward 127; on RGB, which ffmpeg's frame is
- * once `colorchannelmixer` ran, every channel toward 0.
+ * its angle off centre, the distance a circle in source pixels over the half
+ * diagonal. ffmpeg measures from a pixel's integer index to half the frame and
+ * truncates that offset toward zero (`vf_vignette.c`: `const int xx = (x -
+ * s->x0) * s->xscale`), so an odd side has two middle pixels at distance 0.
+ * On codes, Y scales toward 0 and the chroma toward 127, a 4:2:0 chroma sample
+ * by the factor of its 2x2 block's top-left pixel (`fmap[x << hsub]`); on RGB,
+ * which ffmpeg's frame is once `colorchannelmixer` ran, every channel toward 0
+ * by its own pixel's factor.
  */
-class AdjustVignette extends filters.BaseFilter<
-  'AdjustVignette',
-  { angle: number; aspect: number; onCodes: boolean; pixel: [number, number] }
-> {
+class AdjustVignette extends filters.BaseFilter<'AdjustVignette', { angle: number; onCodes: boolean; size: [number, number] }> {
   declare angle: number;
-  declare aspect: number;
   declare onCodes: boolean;
-  /** One source pixel, as shares of the source's width and height. */
-  declare pixel: [number, number];
+  /** The source's width and height in pixels. */
+  declare size: [number, number];
   static type = 'AdjustVignette';
-  static defaults = { angle: 0, aspect: 1, onCodes: true, pixel: [0, 0] as [number, number] };
-  static uniformLocations = ['uAngle', 'uAspect', 'uCenter', 'uPixel'];
+  static defaults = { angle: 0, onCodes: true, size: [1, 1] as [number, number] };
+  static uniformLocations = ['uAngle', 'uCenter', 'uSize', 'uBlock'];
 
   /**
    * The shader.
@@ -677,15 +676,20 @@ class AdjustVignette extends filters.BaseFilter<
       precision highp float;
       uniform sampler2D uTexture;
       uniform float uAngle;
-      uniform float uAspect;
       uniform vec3 uCenter;
-      uniform vec2 uPixel;
+      uniform vec2 uSize;
+      uniform float uBlock;
       varying vec2 vTexCoord;
+      float factor(vec2 index) {
+        vec2 off = index - 0.5 * uSize;
+        return pow(cos(uAngle * length(sign(off) * floor(abs(off))) / length(0.5 * uSize)), 4.0);
+      }
       void main() {
         vec4 c = texture2D(uTexture, vTexCoord);
-        vec2 off = (vTexCoord - 0.5 * uPixel - 0.5) * vec2(uAspect, 1.0);
-        float d = length(off) / length(vec2(uAspect, 1.0) * 0.5);
-        float f = pow(cos(uAngle * d), 4.0);
+        vec2 index = floor(vTexCoord * uSize);
+        float luma = factor(index);
+        float chroma = factor(uBlock * floor(index / uBlock));
+        vec3 f = vec3(luma, chroma, chroma);
         gl_FragColor = vec4((c.rgb - uCenter) * f + uCenter, c.a);
       }`;
   }
@@ -700,40 +704,57 @@ class AdjustVignette extends filters.BaseFilter<
   }
 
   /**
+   * The source pixels a chroma sample covers along each side: a 4:2:0 block on codes, one pixel on RGB.
+   * @returns The block's side.
+   */
+  private block(): number {
+    return this.onCodes ? 2 : 1;
+  }
+
+  /**
    * The same vignette on a pixel array.
    * @param options - The pipeline state.
    */
   applyTo2d(options: PixelState): void {
     if (this.angle === 0) return;
     const { data, width, height } = options.imageData;
-    const reach = Math.hypot(this.aspect, 1) / 2;
+    const [sourceW, sourceH] = this.size;
+    const reach = Math.hypot(sourceW / 2, sourceH / 2);
+    const block = this.block();
     const centers = this.centers().map((share) => 255 * share);
-    const [shiftX, shiftY] = this.pixel.map((share) => share / 2);
+    /**
+     * ffmpeg's factor for one source pixel.
+     * @param ix - Its column.
+     * @param iy - Its row.
+     * @returns The factor.
+     */
+    const factor = (ix: number, iy: number): number =>
+      Math.cos((this.angle * Math.hypot(Math.trunc(ix - sourceW / 2), Math.trunc(iy - sourceH / 2))) / reach) ** 4;
     for (let y = 0; y < height; y++) {
+      const iy = Math.floor(((y + 0.5) / height) * sourceH);
       for (let x = 0; x < width; x++) {
-        const across = (x + 0.5) / width - (shiftX ?? 0) - 0.5;
-        const down = (y + 0.5) / height - (shiftY ?? 0) - 0.5;
-        const d = Math.hypot(across * this.aspect, down) / reach;
-        const f = Math.cos(this.angle * d) ** 4;
+        const ix = Math.floor(((x + 0.5) / width) * sourceW);
+        const luma = factor(ix, iy);
+        const chroma = factor(block * Math.floor(ix / block), block * Math.floor(iy / block));
         const at = (y * width + x) * 4;
         for (let ch = 0; ch < 3; ch++) {
           const center = centers[ch] ?? 0;
-          data[at + ch] = ((data[at + ch] ?? 0) - center) * f + center;
+          data[at + ch] = ((data[at + ch] ?? 0) - center) * (ch === 0 ? luma : chroma) + center;
         }
       }
     }
   }
 
   /**
-   * Hand the angle, the source's shape, the centres and the source pixel to the shader.
+   * Hand the angle, the centres, the source's size and the chroma block to the shader.
    * @param gl - The context.
    * @param locations - The uniforms.
    */
   sendUniformData(gl: WebGLRenderingContext, locations: Record<string, WebGLUniformLocation | null>): void {
     gl.uniform1f(locations.uAngle ?? null, this.angle);
-    gl.uniform1f(locations.uAspect ?? null, this.aspect);
     gl.uniform3fv(locations.uCenter ?? null, this.centers());
-    gl.uniform2fv(locations.uPixel ?? null, this.pixel);
+    gl.uniform2fv(locations.uSize ?? null, this.size);
+    gl.uniform1f(locations.uBlock ?? null, this.block());
   }
 }
 
@@ -774,7 +795,7 @@ export function adjustFilters(value: AdjustValue, seed: number, source: Size, dr
   if (terms.clarity > 0) codes.push(new AdjustUnsharp({ amount: terms.clarity, row: CLARITY_ROW, pixel }));
   const vignette =
     terms.vignetteAngle > 0
-      ? new AdjustVignette({ angle: terms.vignetteAngle, aspect: width / height, onCodes: terms.channels === null, pixel })
+      ? new AdjustVignette({ angle: terms.vignetteAngle, onCodes: terms.channels === null, size: [width, height] })
       : null;
   if (terms.channels === null) {
     if (vignette !== null) codes.push(vignette);
