@@ -48,7 +48,7 @@ import {
 import { noteIngestSideEffects } from "@server/modules/asset/ingest-side-effects.js";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
-import { rateLimitFor } from "@server/middleware/rate-limit.js";
+import { rateLimitFor, rateLimitForAll } from "@server/middleware/rate-limit.js";
 import {
   assertStudioStorageAllowance,
   projectService,
@@ -381,6 +381,23 @@ assets.post(
 
 // ── Finishing an upload (#206) ──────────────────────────────────────
 
+/** The upload a token was signed for, as the Worker signed it. */
+type UploadSession = NonNullable<Awaited<ReturnType<typeof verifySessionToken>>>;
+
+/**
+ * Admit a request whose upload token was signed for the upload in its path,
+ * and hand the signed session on. It runs before the limiter, which keeps one
+ * bucket per user and upload id and one per user: only an id the Worker
+ * signed is counted.
+ */
+const requireUploadSession = createMiddleware<{ Variables: { uploadSession: UploadSession } }>(async (c, next) => {
+  const session = await verifySessionToken(c.req.header("x-upload-token") ?? "", env.INGEST_SHARED_SECRET, Date.now());
+  if (session === null || session.uploadId !== c.req.param("uploadId")) {
+    return c.json({ error: { code: 401, message: t("server.auth.not_authenticated") } }, 401);
+  }
+  c.set("uploadSession", session);
+  await next();
+});
 
 /**
  * `POST /assets/uploads/{uploadId}/complete` — the browser handing back what
@@ -396,28 +413,11 @@ assets.post(
  * and decides consequences off the grant row rather than off who is asking, so
  * it is read out of the signature the Worker put on that token.
  */
-/** The upload a token was signed for, as the Worker signed it. */
-type UploadSession = NonNullable<Awaited<ReturnType<typeof verifySessionToken>>>;
-
-/**
- * Admit a request whose upload token was signed for the upload in its path,
- * and hand the signed session on. It runs before the limiter, which keeps one
- * bucket per user and upload id: only an id the Worker signed gets one.
- */
-const requireUploadSession = createMiddleware<{ Variables: { uploadSession: UploadSession } }>(async (c, next) => {
-  const session = await verifySessionToken(c.req.header("x-upload-token") ?? "", env.INGEST_SHARED_SECRET, Date.now());
-  if (session === null || session.uploadId !== c.req.param("uploadId")) {
-    return c.json({ error: { code: 401, message: t("server.auth.not_authenticated") } }, 401);
-  }
-  c.set("uploadSession", session);
-  await next();
-});
-
 assets.post(
   "/uploads/:uploadId/complete",
   requireAuth,
   requireUploadSession,
-  rateLimitFor("upload-complete", { userAndParam: "uploadId" }),
+  rateLimitForAll([{ action: "upload-complete", keyBy: { userAndParam: "uploadId" } }, { action: "upload-complete-user", keyBy: "user" }]),
   validate(
     "json",
     z.object({
