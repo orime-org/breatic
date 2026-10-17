@@ -30,6 +30,7 @@ interface Report {
   greyEdges: number;
   colourEdges: number;
   vignette: number;
+  previewVignette: number;
   grains: { spread: number[]; corr: number[] }[];
   cutout: { worst: number; alpha: [number, number] }[];
   previewGrain: number[];
@@ -115,15 +116,24 @@ test('the picture adjust draws through WebGL as ffmpeg does', async ({ page }) =
     for (const v of f.vignettes) {
       const d = await run(v.width, v.height, () => hex(v.color), v.value);
       for (const p of v.points) vignette = Math.max(vignette, gap(px(d, p.x, p.y), p.rgb));
-      // A small frame over every 2x2 block, as the 2D test holds it.
-      for (let by = 0; v.frame !== undefined && by < v.height; by += 2) {
-        for (let bx = 0; bx < v.width; bx += 2) {
-          const block = [bx, bx + 1].filter((x) => x < v.width).flatMap((x) => [by, by + 1].filter((y) => y < v.height).map((y) => [x, y]));
-          const mean = (rgbAt: (x: number, y: number) => number[]): number[] =>
-            [0, 1, 2].map((k) => block.reduce((s, [x = 0, y = 0]) => s + (rgbAt(x, y)[k] ?? 0), 0) / block.length);
-          const frame = v.frame;
-          vignette = Math.max(vignette, gap(mean((x, y) => px(d, x, y)), mean((x, y) => frame.slice((y * v.width + x) * 3, (y * v.width + x) * 3 + 3))));
+      // A small frame at every pixel, as the 2D test holds it.
+      for (let y = 0; v.frame !== undefined && y < v.height; y++) {
+        for (let x = 0; x < v.width; x++) {
+          vignette = Math.max(vignette, gap(px(d, x, y), v.frame.slice((y * v.width + x) * 3, (y * v.width + x) * 3 + 3)));
         }
+      }
+    }
+    // The vignette drawn at half of a 128 source against the 1:1 result averaged 2×2.
+    const fullVignette = await run(128, 128, () => [255, 255, 255], { vignette: 100 });
+    const halfVignette = await run(64, 64, () => [255, 255, 255], { vignette: 100 }, { width: 128, height: 128 });
+    let previewVignette = 0;
+    for (let y = 0; y < 64; y++) {
+      for (let x = 0; x < 64; x++) {
+        const mean = [0, 1, 2].map(
+          (k) =>
+            [0, 1].reduce((s, j) => s + [0, 1].reduce((t, i) => t + (fullVignette.data[((y * 2 + j) * 128 + x * 2 + i) * 4 + k] ?? 0), 0), 0) / 4,
+        );
+        previewVignette = Math.max(previewVignette, gap(px(halfVignette, x, y), mean));
       }
     }
     // How two channels move together, as the 2D test measures it.
@@ -179,6 +189,7 @@ test('the picture adjust draws through WebGL as ffmpeg does', async ({ page }) =
       greyEdges,
       colourEdges,
       vignette,
+      previewVignette,
       grains,
       cutout,
       previewGrain,
@@ -190,6 +201,7 @@ test('the picture adjust draws through WebGL as ffmpeg does', async ({ page }) =
   expect(report.greyEdges).toBeLessThanOrEqual(8);
   expect(report.colourEdges).toBeLessThanOrEqual(10);
   expect(report.vignette).toBeLessThanOrEqual(6);
+  expect(report.previewVignette).toBeLessThanOrEqual(6);
   for (const { spread, corr } of report.grains) {
     for (const ratio of spread) {
       expect(ratio).toBeGreaterThan(0.85);
