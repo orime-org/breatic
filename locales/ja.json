@@ -284,7 +284,7 @@
   "chat": {
     "composer": {
       "chipsAria": "選択された chips",
-      "placeholder": "質問するか、キャンバス上のものを渡してください…",
+      "placeholder": "質問するか、Canvas 上のものを渡してください…",
       "inputAria": "Chat 入力",
       "send": "送信",
       "sending": "送信中",
@@ -308,11 +308,11 @@
     "empty": {
       "greetingWithName": "やあ、{name} さん!",
       "greetingDefault": "やあ!",
-      "capabilities": "素材探し、記事や脚本の執筆、キャンバスでの生成フロー作成、Document の修正をお手伝いします",
+      "capabilities": "素材探し、記事や脚本の執筆、Canvas での生成フロー作成、Document の修正をお手伝いします",
       "quick": {
         "findReference": "サイバーパンク風の参考画像を探して",
         "writeScript": "3分の短編映画の脚本を書いて",
-        "buildWorkflow": "キャラ三面図のフローをキャンバスに組んで",
+        "buildWorkflow": "キャラ三面図のフローを Canvas に組んで",
         "annotateDocument": "Document の修正案を出して",
         "writePrompt": "イラスト生成のプロンプトを書いて"
       }
@@ -357,7 +357,7 @@
       "failureTimes": "{line} ×{count}",
       "searching": "「{query}」を検索中",
       "searchingImages": "「{query}」の画像を検索中",
-      "checkingCanvas": "キャンバスでできることを確認中",
+      "checkingCanvas": "Canvas でできることを確認中",
       "proposingNodes": "提案をまとめています",
       "proposingDocumentEdit": "修正案をまとめています",
       "savingImage": "画像を保存中",
@@ -411,7 +411,7 @@
       "building": "作成中…",
       "failed": "作成できませんでした。",
       "expired": "この提案は期限切れです。Agent に新しく提案してもらってください。",
-      "needCanvas": "先にキャンバスを開いてください。",
+      "needCanvas": "先に Canvas を開いてください。",
       "promptReady": "プロンプトは作成済みです。ノードを右クリックして「生成」を選ぶと、開いた生成パネルで確認できます。",
       "settingsReady": "設定は完了しています。ノードを右クリックして「生成」を選ぶと、開いた生成パネルで確認できます。"
     },
@@ -443,7 +443,7 @@
     "thinkingNow": "考え中",
     "thinkingFor": "{m, plural, =0 {} other {# 分}}{s, number} 秒 考えました",
     "attachment": {
-      "kind": "{kind, select, canvas {キャンバス} image {画像} video {動画} audio {音声} text {テキスト} other {項目}}",
+      "kind": "{kind, select, canvas {Canvas} image {画像} video {動画} audio {音声} text {テキスト} other {項目}}",
       "nodes": "{count} 個のノード",
       "more": "ほか {count} 件"
     }
@@ -471,8 +471,8 @@
       "nodeAudio": "オーディオ"
     },
     "emptyState": {
-      "title": "キャンバスは空です",
-      "hint": "素材をキャンバスにドラッグするか、左メニューからノードタイプを選んで作成してください。"
+      "title": "Canvas は空です",
+      "hint": "素材を Canvas にドラッグするか、左メニューからノードタイプを選んで作成してください。"
     },
     "nodePlaceholder": {
       "text": "ダブルクリックで入力",
@@ -524,8 +524,8 @@
       "focus": "フォーカス",
       "reference": "参照",
       "focusTip": "ノードの一部の領域を参照にします",
-      "referenceTip": "キャンバスから画像を選んで参照にします",
-      "referenceTipAudio": "キャンバスから文字を選んで参照にします",
+      "referenceTip": "Canvas から画像を選んで参照にします",
+      "referenceTipAudio": "Canvas から文字を選んで参照にします",
       "emptyImageReference": "まだ生成・アップロードされていません",
       "emptyTextReference": "内容がありません",
       "refuseInsertModeOff": "このモードは参照素材を使いません",
@@ -554,12 +554,12 @@
       "voiceVolume": "音量",
       "sfxDuration": "長さ",
       "sfxDurationSeconds": "{n}秒",
-      "selectFromCanvas": "キャンバスから参照を選択",
-      "selectFirstFrameFromCanvas": "キャンバスで最初のフレームにする画像を選択",
-      "selectEndFrameFromCanvas": "キャンバスで最後のフレームにする画像を選択",
-      "selectCharacterImageFromCanvas": "キャンバスでキャラクターにする画像を選択",
-      "selectDrivingVideoFromCanvas": "キャンバスで動きの元にする動画を選択",
-      "selectDrivingAudioFromCanvas": "キャンバスで口の動きに合わせる音声を選択",
+      "selectFromCanvas": "Canvas から参照を選択",
+      "selectFirstFrameFromCanvas": "Canvas で最初のフレームにする画像を選択",
+      "selectEndFrameFromCanvas": "Canvas で最後のフレームにする画像を選択",
+      "selectCharacterImageFromCanvas": "Canvas でキャラクターにする画像を選択",
+      "selectDrivingVideoFromCanvas": "Canvas で動きの元にする動画を選択",
+      "selectDrivingAudioFromCanvas": "Canvas で口の動きに合わせる音声を選択",
       "exitSelect": "終了",
       "locateSource": "ソースノードに移動",
       "camera": "カメラ",
@@ -630,17 +630,17 @@
       "sourceVideoTip": "動画を選ぶ",
       "removeSourceVideo": "動画を削除",
       "errorNoSourceVideo": "動画を選んでください",
-      "selectSourceVideoFromCanvas": "キャンバスで動画を選択",
+      "selectSourceVideoFromCanvas": "Canvas で動画を選択",
       "leftAudio": "左側の音声",
       "leftAudioTip": "左の話者の音声を選ぶ",
       "removeLeftAudio": "左側の音声を削除",
       "errorNoLeftAudio": "左側の音声を選んでください",
-      "selectLeftAudioFromCanvas": "キャンバスで左の話者の音声を選択",
+      "selectLeftAudioFromCanvas": "Canvas で左の話者の音声を選択",
       "rightAudio": "右側の音声",
       "rightAudioTip": "右の話者の音声を選ぶ",
       "removeRightAudio": "右側の音声を削除",
       "errorNoRightAudio": "右側の音声を選んでください",
-      "selectRightAudioFromCanvas": "キャンバスで右の話者の音声を選択",
+      "selectRightAudioFromCanvas": "Canvas で右の話者の音声を選択",
       "drivingAudio": "口の動きの元の音声",
       "drivingVideoTip": "動きをコピーする動画を選ぶ",
       "drivingAudioTip": "口の動きに合わせる音声を選ぶ",
@@ -754,7 +754,7 @@
       "refuseStoryboardDurationMismatch": "ショットの合計は{shots, number}秒、動画は{total, number}秒です",
       "style": "スタイル",
       "styleTip": "画像を最大3枚選んでスタイル参照にします",
-      "selectStyleFromCanvas": "キャンバスからスタイル参照を選択",
+      "selectStyleFromCanvas": "Canvas からスタイル参照を選択",
       "removeStyle": "スタイル参照を削除",
       "errorNoStyleImage": "先にスタイル画像を選んでください",
       "cameraCommands": "カメラワーク",
@@ -811,7 +811,7 @@
       "failed": "貼り付けに失敗しました。"
     },
     "minimap": {
-      "label": "キャンバスのミニマップ"
+      "label": "Canvas のミニマップ"
     },
     "connection": {
       "rejected": "{source}は{target}に接続できません",
@@ -1368,7 +1368,7 @@
     },
     "kind": {
       "canvas": "Canvas",
-      "canvasSub": "無限キャンバス + ノード",
+      "canvasSub": "無限 Canvas + ノード",
       "document": "Document",
       "documentSub": "リッチテキスト + 共同編集",
       "timeline": "Timeline",
@@ -1398,10 +1398,10 @@
     "document": {
       "loading": "エディターを読み込み中…",
       "unavailable": {
-        "text": "このドキュメントを開けませんでした。削除されたか、アクセス権がなくなった可能性があります。",
+        "text": "この Document を開けませんでした。削除されたか、アクセス権がなくなった可能性があります。",
         "action": "再試行"
       },
-      "refusedNotice": "このドキュメントへの接続が拒否されました。表示中の内容は最新ではない可能性があり、変更も保存されません。",
+      "refusedNotice": "この Document への接続が拒否されました。表示中の内容は最新ではない可能性があり、変更も保存されません。",
       "placeholder": "書き始めましょう…",
       "clearConfirm": {
         "title": "すべての内容を削除しますか？",
@@ -1461,7 +1461,7 @@
         "filterOpen": "未解決",
         "filterAll": "すべて",
         "closeRail": "コメント欄を閉じる",
-        "empty": "このドキュメントにはまだコメントがありません。本文を選択するか、行の左からコメントを追加できます。",
+        "empty": "この Document にはまだコメントがありません。本文を選択するか、行の左からコメントを追加できます。",
         "nothingUnresolved": "未解決のコメントはありません。",
         "writeFailed": "この変更を保存できませんでした。",
         "unknownAuthor": "不明",
@@ -1476,7 +1476,7 @@
         "deleteReply": "この返信を削除"
       },
       "schemaOutdated": {
-        "headline": "ドキュメントエディターが更新されました",
+        "headline": "Document エディターが更新されました",
         "body": "このページは古いバージョンで動作しており、ここで編集すると他の人が書いた内容を壊してしまいます。",
         "published": "新しいバージョンは{when}に公開されました。",
         "risksLead": "再読み込みの前にご注意ください：",
@@ -1484,7 +1484,7 @@
         "action": "ページを再読み込み"
       },
       "docMenu": {
-        "label": "ドキュメント全体の操作",
+        "label": "Document 全体の操作",
         "saveSnapshot": "スナップショットを保存",
         "restoreSnapshot": "スナップショットを復元",
         "notOpenYet": "未提供",
@@ -1553,7 +1553,7 @@
     "item": {
       "nodes": "ノードライブラリ",
       "upload": "素材をアップロード(混在ファイル可)",
-      "comment": "キャンバスに注釈を追加",
+      "comment": "Canvas に注釈を追加",
       "collection": "Collection(近日対応)",
       "help": "ヘルプ(近日対応)",
       "feedback": "フィードバック / サポート(近日対応)"
@@ -1762,7 +1762,7 @@
         "new": "Project を新規作成",
         "createError": "Project を作成できませんでした",
         "emptyTitle": "Projects がまだありません",
-        "emptyHint": "Project は無限キャンバスで創作する場所です。最初の Project を作成して始めましょう。"
+        "emptyHint": "Project は無限 Canvas で創作する場所です。最初の Project を作成して始めましょう。"
       },
       "collections": {
         "new": "Collection を新規作成",
@@ -1992,8 +1992,8 @@
       "notifications": "通知",
       "newSpace": "新規 Space",
       "revealActiveTab": "現在の Space を表示",
-      "agentHide": "エージェントパネルを隠す",
-      "agentShow": "エージェントパネルを表示",
+      "agentHide": "Agent パネルを隠す",
+      "agentShow": "Agent パネルを表示",
       "openHistory": "会話履歴",
       "newConversation": "新規会話"
     },
@@ -2005,7 +2005,7 @@
       "scrollTabsRight": "タブを右へスクロール",
       "spacesToolbar": "Spaces",
       "openSpaces": "開いている Space",
-      "agentColumnWidth": "エージェントパネルの幅を調整",
+      "agentColumnWidth": "Agent パネルの幅を調整",
       "language": "言語：{name}",
       "theme": "テーマ：{theme}"
     },
@@ -2137,7 +2137,7 @@
       "projectsPerStudio": "Studio ごとの Project 上限",
       "studioMembers": "Studio ごとのメンバー上限",
       "projectMembers": "Project ごとのメンバー上限",
-      "concurrentEditors": "1 ドキュメントの同時編集数"
+      "concurrentEditors": "1 Document の同時編集数"
     },
     "quotaValue": "{used} / {limit}",
     "countItems": "{count} 件",
@@ -2191,7 +2191,7 @@
     "card": {
       "storage": "ストレージ {value}",
       "teamStudios": "{count, plural, =0 {チーム Studio なし} other {チーム Studio # 個}}",
-      "connections": "{count, plural, other {1 ドキュメントあたり # 接続}}",
+      "connections": "{count, plural, other {1 Document あたり # 接続}}",
       "enterpriseScale": "容量は個別契約",
       "enterpriseGovernance": "SSO・監査・知的財産補償"
     },
