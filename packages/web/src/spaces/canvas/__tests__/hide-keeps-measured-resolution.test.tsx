@@ -11,7 +11,7 @@ import { describe, it, expect } from 'vitest';
 import { act, render, screen } from '@testing-library/react';
 import * as React from 'react';
 
-import { useNodeResolution } from '@web/spaces/canvas/nodes/_shared/useNodeResolution';
+import { useNodeResolution } from '@web/spaces/canvas/nodes/_shared/use-node-resolution';
 
 /**
  * Shows the resolution a node would badge.

@@ -6,7 +6,7 @@ import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
 import { render, screen, act, renderHook } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-import { useMediaPlayer } from '@web/spaces/canvas/nodes/_shared/useMediaPlayer';
+import { useMediaPlayer } from '@web/spaces/canvas/nodes/_shared/use-media-player';
 
 // jsdom does not implement HTMLMediaElement.play()/pause(); stub them so the
 // hook's transport calls don't throw "Not implemented".
