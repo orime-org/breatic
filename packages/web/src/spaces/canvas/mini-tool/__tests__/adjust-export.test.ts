@@ -147,6 +147,19 @@ describe('previewSourceOf', () => {
       [el, 0, 0, (2049 * 513) / 2052, 16],
     ]);
   });
+
+  it('fills the corner, then the last column, then the last row, then the picture', () => {
+    const drawImage = vi.fn();
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({ drawImage } as never);
+    const el = picture(2049, 65);
+    previewSourceOf(el, { size: { width: 513, height: 17 }, frame: { width: 2052, height: 68 } });
+    expect(drawImage.mock.calls).toEqual([
+      [el, 2048, 64, 1, 1, 512, 16, 1, 1],
+      [el, 2048, 0, 1, 65, 512, 0, 1, 16.25],
+      [el, 0, 64, 2049, 1, 0, 16, 512.25, 1],
+      [el, 0, 0, 512.25, 16.25],
+    ]);
+  });
 });
 
 /**
@@ -405,6 +418,21 @@ describe('drawAdjusted', () => {
       { width: 1000, height: 500 },
       { width: 250, height: 125 },
       { width: 1000, height: 500 },
+    );
+  });
+
+  // A frame past the picture's edge maps the filters' pixels by the frame,
+  // not by the picture's own size.
+  it('sets the filters for the frame a shrink that does not divide the picture spans', async () => {
+    const backend = { tileSize: 4096, gl: liveGl(4096), applyFilters: vi.fn() };
+    const value = { ...defaultAdjustValue, sharpness: 50 };
+    await drawAdjusted(picture(1001, 751), { width: 300, height: 225 }, value, document.createElement('canvas'), backend as never);
+    expect(vi.mocked(adjustFilters)).toHaveBeenCalledWith(
+      value,
+      expect.any(Number),
+      { width: 1001, height: 751 },
+      { width: 501, height: 376 },
+      { width: 1002, height: 752 },
     );
   });
 
