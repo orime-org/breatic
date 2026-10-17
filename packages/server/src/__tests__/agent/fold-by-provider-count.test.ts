@@ -161,6 +161,21 @@ describe("sizing a fold", () => {
     expect(consolidateWindow).toHaveBeenCalledTimes(1);
     expect(consolidateWindow.mock.calls[0]?.[0].newWatermark).toBe(2);
   });
+
+  it("folds again after an earlier fold by what each remaining turn added, and stops once under the keep line", async () => {
+    // Turns 1 and 2 were folded before: every reply left was made with them
+    // there, so none goes out as it was sent and its end count is stale. The
+    // size is 1 + 4 x 300 + the question, about 1,209. Taking turn 3 leaves
+    // about 909, turn 4 about 609, turn 5 about 309, under the keep line of
+    // 400; turn 6 stays.
+    const folded: ModelMessage[] = [{ role: "user", content: "question 1" }, { role: "user", content: "question 2" }];
+    const history = [3, 4, 5, 6].flatMap((turn) => keptTurn(turn, folded, { turnTokens: 300, endTokens: 300 * turn }));
+
+    await check(history);
+
+    expect(consolidateWindow).toHaveBeenCalledTimes(1);
+    expect(consolidateWindow.mock.calls[0]?.[0].newWatermark).toBe(5);
+  });
 });
 
 describe("how big a request is", () => {

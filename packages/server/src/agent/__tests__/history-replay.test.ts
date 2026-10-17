@@ -236,6 +236,40 @@ describe("replaying the history as it was sent", () => {
     expect(JSON.stringify(out.slice(0, lastRequest.length))).toBe(JSON.stringify(lastRequest));
   });
 
+  it("takes the thinking out of every reply left after a fold that wrote nothing took the turns before them", () => {
+    // A discarded fold moves the watermark and leaves memory as it was: turn
+    // one is no longer read, and both replies were made with it there.
+    const q1: ModelMessage = { role: "user", content: "one" };
+    const q2: ModelMessage = { role: "user", content: "two" };
+    const q3: ModelMessage = { role: "user", content: "three" };
+    const left = [
+      userRow(2, { messages: [q2] }),
+      replyAfter(2, [q1, ...ANSWERED, q2], ANSWERED),
+      userRow(3, { messages: [q3] }),
+      replyAfter(3, [q1, ...ANSWERED, q2, ...ANSWERED, q3], ANSWERED),
+    ];
+
+    const out = historyForModel(left, PREFIX);
+
+    expect(carriesThinking(out)).toBe(false);
+    expect(out).toEqual([q2, ...stripThinking(ANSWERED), q3, ...stripThinking(ANSWERED)]);
+  });
+
+  it("keeps the first reply's thinking and takes the second's out when two tabs asked before either reply was stored", () => {
+    // Tab B asked turn two while turn one's reply was still being written, so
+    // its request held turn one's question and nothing after it.
+    const q1: ModelMessage = { role: "user", content: "from tab A" };
+    const q2: ModelMessage = { role: "user", content: "from tab B" };
+    const rows = [
+      userRow(1, { messages: [q1] }),
+      replyAfter(1, [q1], ANSWERED),
+      userRow(2, { messages: [q2] }),
+      replyAfter(2, [q1, q2], ANSWERED),
+    ];
+
+    expect(historyForModel(rows, PREFIX)).toEqual([q1, ...ANSWERED, q2, ...stripThinking(ANSWERED)]);
+  });
+
   it("takes the thinking out of a reply that follows a row stored before anything was kept", () => {
     const rows = [userRow(1), replyAfter(1, [ASKED], ANSWERED)];
 
