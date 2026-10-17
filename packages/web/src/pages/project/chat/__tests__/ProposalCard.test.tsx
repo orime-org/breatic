@@ -19,6 +19,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { CanvasProposal, ModelCatalog, ProposalNode } from '@breatic/shared';
 
 import { ProposalCard } from '@web/pages/project/chat/ProposalCard';
+import { ProposalAction, ProposalActions } from '@web/pages/project/chat/ProposalActions';
 import { useCanvasStore } from '@web/stores/canvas';
 
 const listModels = vi.fn();
@@ -437,5 +438,20 @@ describe('pressing it', () => {
     expect(warn).toHaveBeenCalledTimes(1);
     expect(useCanvasStore.getState().pendingNodeCreate).toBeNull();
     expect(screen.getByTestId<HTMLButtonElement>('proposal-use').disabled).toBe(false);
+  });
+});
+
+describe('the Use button', () => {
+  it('is the land button a Document proposal card uses, in the same row', () => {
+    renderCard();
+    const use = screen.getByTestId('proposal-use');
+    render(
+      <ProposalActions>
+        <ProposalAction>shared</ProposalAction>
+      </ProposalActions>,
+    );
+    const shared = screen.getByText('shared').closest('button')!;
+    expect(use.className).toBe(shared.className);
+    expect(use.parentElement!.className).toBe(shared.parentElement!.className);
   });
 });
