@@ -342,7 +342,8 @@ test('a pasted picture lands under the caret\'s line (A3)', async () => {
   await pasteFile(page, await pngBytes(page, 200, 120), 'pasted.png', 'image/png');
 
   await expect(page.locator(IMAGE)).toBeVisible({ timeout: UPLOAD_TIMEOUT });
-  expect(await types(page)).toEqual(['paragraph', 'image']);
+  // Last in the body, a line opens after it for the caret.
+  expect(await types(page)).toEqual(['paragraph', 'image', 'paragraph']);
 });
 
 test('a format we do not take is refused with a toast and leaves nothing (A5)', async () => {
@@ -840,10 +841,12 @@ test('nodes copied on the canvas paste in as their words and pictures, named in 
 
   await expect(page.locator(IMAGE)).toHaveCount(2);
   await expect(page.locator(`${IMAGE} img`)).toHaveCount(2, { timeout: UPLOAD_TIMEOUT });
-  expect(await rows(page)).toEqual(['Lead', 'One', '_two_', 'image[Hero]', 'image[]']);
+  // At the end of a line its leading words join it; a line for the caret
+  // opens between two pictures.
+  expect(await rows(page)).toEqual(['LeadOne', '_two_', 'image[Hero]', '', 'image[]', '']);
 
   await page.keyboard.press(process.platform === 'darwin' ? 'Meta+z' : 'Control+z');
-  await expect.poll(() => rows(page)).toEqual(['Lead', 'image[]']);
+  await expect.poll(() => rows(page)).toEqual(['Lead', 'image[]', '']);
 });
 
 test('a picture copied in the chat pastes in and is fetched into storage, named in its caption (inner#1351 A4) @needs-internet @needs-ingest @needs-storage', async () => {
@@ -1101,6 +1104,12 @@ test('a code sample pastes as its words and plain Markdown text as formatted wor
   await openFreshDocument(page);
   await page.keyboard.type('Lead');
   await page.keyboard.press('Enter');
+  await page.evaluate(() => navigator.clipboard.writeText('**bold** words'));
+  await page.keyboard.press('ControlOrMeta+v');
+
+  await expect(page.locator(`${EDITOR} strong`, { hasText: 'bold' })).toHaveCount(1);
+
+  await page.keyboard.press('Enter');
   await page.evaluate(() =>
     navigator.clipboard.write([
       new ClipboardItem({
@@ -1114,12 +1123,6 @@ test('a code sample pastes as its words and plain Markdown text as formatted wor
 
   await expect(page.locator(EDITOR)).toContainText('![logo](./logo.png)');
   await expect(page.locator(`${EDITOR} [data-content-type="image"]`)).toHaveCount(0);
-
-  await page.keyboard.press('Enter');
-  await page.evaluate(() => navigator.clipboard.writeText('**bold** words'));
-  await page.keyboard.press('ControlOrMeta+v');
-
-  await expect(page.locator(`${EDITOR} strong`, { hasText: 'bold' })).toHaveCount(1);
 });
 
 test('Shift+click on a picture while the body is let go selects the picture and leaves the old words out (A20)', async () => {
