@@ -206,8 +206,8 @@ export function renderProductGuide(): string {
       `${quoted(t("spaces.create.submit"))}, which stays greyed until there is a name, or ` +
       `${quoted(t("spaces.create.cancel"))}. While it is made the page shows ` +
       `${quoted(t("project.space.loading.create"))}; the new space then opens as a tab. A project holds at most ` +
-      `${MAX_SPACES_PER_PROJECT} spaces; at that many the plus sign is greyed and hovering it says the limit is ` +
-      "reached. Deleting a space makes room again.",
+      `${MAX_SPACES_PER_PROJECT} spaces; at that many the plus sign is greyed, and hovering or pressing it says the ` +
+      "limit is reached. Deleting a space makes room again.",
     "The second, three lines with the number of spaces beside them, opens " +
       `${quoted(t("spaces.drawer.title"))}: every space in the project, newest first, each with its type icon, ` +
       `name and when it was made; the space whose tab is showing now is marked ` +
@@ -233,7 +233,7 @@ export function renderProductGuide(): string {
       `${quoted(t("activity.action.restore"))} on a deleted space's entry, which brings the space back into ` +
       `${quoted(t("spaces.drawer.title"))}, not as a tab: open it from there. Afterwards that entry shows ` +
       `${quoted(t("activity.action.restored"))}. When the project already holds ${MAX_SPACES_PER_PROJECT} spaces, ` +
-      `${quoted(t("activity.action.restore"))} is greyed and hovering it says so.`,
+      `${quoted(t("activity.action.restore"))} is greyed, and hovering or pressing it says so.`,
     `With every tab closed, the space area shows ${quoted(t("project.space.noActive"))}`,
     "",
     "## The chat panel",
