@@ -232,7 +232,7 @@ describe("a frame queued before authentication", () => {
     });
     const socket = { readyState: 1, close: () => {}, send: () => {} };
     const connection = hocuspocus.handleConnection(
-      socket as never,
+      socket,
       { headers: {}, url: "/" } as never,
     ) as unknown as {
       handleMessage: (data: Uint8Array) => void;
