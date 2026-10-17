@@ -94,7 +94,7 @@ ESLint `breatic/no-raw-button` scans `src/**/*.{ts,tsx}` and exempts only `compo
 **A link inside content uses `color: var(--color-content-link)` plus an underline.** Rich text also has an underline mark, so colour separates links from text and the underline keeps colour from being the only signal. `src/theme/__tests__/content-link-contrast.test.ts` measures its contrast. Chrome links (navigation, breadcrumbs, button-like links) stay neutral. Check: is this link inside running text and must it read as clickable? → content-link plus underline.
 
 ## Locked colours and motion
-**`--color-palette-red` and every `--color-status-error*` token are locked.** Only this red is locked; every other colour may be tuned. It is below AA on menu surfaces by decision; a contrast finding on it is answered by citing this rule.
+**`--color-palette-red` and every `--color-status-error*` token are locked.** Only this red is locked; every other colour may be tuned. It measures 4.00:1 (light) and 3.87:1 (dark) on menu surfaces, below AA, because raising it to 4.5:1 turns the dark-theme red pink. A review that reports its contrast lists the finding in the review table and cites this rule.
 
 **No component adds a `prefers-reduced-motion` fallback.** Motion is part of the product; keyboard, semantics and contrast still apply.
 
@@ -176,7 +176,7 @@ ICU placeholders (`{studio}`) and URLs never change. repo-lint `no-translated-pr
 **A change to how users operate the canvas, document space, project page or chat panel updates `packages/domain/src/agent/tools/product-guide.ts` in the same PR.** The Agent answers "how do I…" from that guide alone. Check: which sentence in the guide becomes false? Is each quoted name shown on screen as text? Invoke `/product-guide-sync` ([skill](../../.claude/skills/product-guide-sync/SKILL.md)) for what the guide may quote and which tests cover it.
 
 ## Tests and smoke
-**`test:smoke` exists only in `packages/web`: run `pnpm --filter @breatic/web test:smoke`.** From the repo root it fails with exit code 254 ("command not found"), which is not a test failure.
+**`test:smoke` and `test:visual` exist only in `packages/web`: run `pnpm --filter @breatic/web test:smoke` (or `test:visual`).** From the repo root either fails with exit code 254 ("command not found"), which is not a test failure.
 
 **E2E specs import from `playwright/test` (no `@`).** `@playwright/test` is not installed and fails with `Cannot find module`.
 

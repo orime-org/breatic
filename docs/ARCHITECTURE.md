@@ -178,6 +178,8 @@ config/ locales/ (git-tracked)
 
 判定题:**这次失败落在第 4 步的哪一边?** 之前 → 厂商没收钱,重跑是安全的;之后 → 厂商已收钱,不能重跑,也不向用户收费。
 
+### Studio admin and credit designations
+
 **积分指定跟着 admin 身份走**:失去 admin 的三条路里只有转让可达 —— admin 退出、被移除、被直接改角色都会被拒(`leave_last_admin` / `remove_last_admin` / `cannot_change_admin_role`),部分唯一索引 `studio_members_one_admin_per_studio` 保证每个 studio 只有一个未删除的 admin;`confirmTransfer`(`packages/server/src/modules/studio/studioTransfer.service.ts`)在同一个事务里先把旧 admin 降级、释放他指定给这个 studio 的积分批(`releaseDesignations`)、再把接收人升为 admin。
 
 ### Mini-Tool (two modes)
