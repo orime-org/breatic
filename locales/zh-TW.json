@@ -306,7 +306,7 @@
       "atEmpty": "沒有可引用的附件"
     },
     "empty": {
-      "greetingWithName": "嗨,{name}!",
+      "greetingWithName": "嗨, {name}!",
       "greetingDefault": "嗨!",
       "capabilities": "我可以幫你找素材、寫文章和劇本、在畫布上搭生成流程、修改 Document",
       "quick": {
