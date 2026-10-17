@@ -314,6 +314,16 @@ describe("finishing a batch's uploads", () => {
     expect(statuses).toContain(429);
   });
 
+  // One ticket opens any number of uploads at the Worker, so a person's
+  // finishes are also counted together, at the most the ticket limit can sign.
+  it("counts every upload a person finishes in one bucket for that person", async () => {
+    const a = await account();
+
+    for (let i = 0; i < 3; i++) await finish(a.cookie, crypto.randomUUID());
+
+    expect(await getRedis().zcard(`${env.ENV}:ratelimit:upload-complete-user:${a.userId}`)).toBe(3);
+  });
+
   // The limit is per upload, keyed by the id in the path: an id no token was
   // signed for is refused before it gets a bucket of its own.
   it("refuses an upload id its token was not signed for without counting it", async () => {
