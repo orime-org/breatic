@@ -65,7 +65,7 @@ describe("buildCollabHealthChecks", () => {
     expect(checks.map((c) => c.name)).toContain("redis_collab");
   });
 
-  it("the redis_collab check is wired to the pingRedisCollab probe (DB3 pub/sub + delete lock)", async () => {
+  it("the redis_collab check is wired to the pingRedisCollab probe (DB3 pub/sub + Space count lock)", async () => {
     const probes = makeProbes({ pingRedisCollab: vi.fn(async () => false) });
     const r = buildCollabHealthChecks(probes).find((c) => c.name === "redis_collab")!;
     expect(await r.check()).toBe(false);

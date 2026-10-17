@@ -1252,7 +1252,11 @@
         "create": "Space 创建失败",
         "restore": "Space 恢复失败",
         "unreachable": "服务器没有响应,请检查网络后重试",
-        "notSynced": "Project 正在同步,请稍后再试"
+        "notSynced": "Project 正在同步,请稍后再试",
+        "limit": "已达 {max} 个 Space 上限",
+        "busy": "其他成员正在操作，请稍后再试",
+        "alreadyRestored": "这个 Space 已经恢复了",
+        "gone": "这个 Space 已被删除"
       },
       "loading": {
         "create": "正在创建 Space…"
@@ -1357,7 +1361,6 @@
         "deleteConfirmDescription": "此 Space 及其内容将被软删除。Owner 可从 Project 消息频道恢复。",
         "lockFail": "加锁失败",
         "unlockFail": "解锁失败",
-        "operationFail": "操作失败",
         "deleteFail": "删除失败"
       }
     },

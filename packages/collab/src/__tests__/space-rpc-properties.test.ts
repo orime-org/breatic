@@ -36,13 +36,13 @@ import type { Hocuspocus } from "@hocuspocus/server";
 
 const {
   countLiveSpaceDocsMock,
-  withSpaceDeleteLockMock,
+  withSpaceCountLockMock,
   FakeLockBusyError,
   activityInsertMock,
   activityLatestUnrestoredMock,
 } = vi.hoisted(() => ({
   countLiveSpaceDocsMock: vi.fn(),
-  withSpaceDeleteLockMock: vi.fn(),
+  withSpaceCountLockMock: vi.fn(),
   FakeLockBusyError: class FakeLockBusyError extends Error {},
   activityInsertMock: vi.fn(),
   activityLatestUnrestoredMock: vi.fn(),
@@ -66,9 +66,9 @@ vi.mock("@collab/services/yjs-documents.repo.js", () => ({
 
 // Bypass the cross-instance lock: it has its own unit tests, and here it
 // would just be a no-op wrapper around the critical section.
-vi.mock("@collab/services/space-delete-lock.js", () => ({
-  withSpaceDeleteLock: withSpaceDeleteLockMock,
-  SpaceDeleteLockBusyError: FakeLockBusyError,
+vi.mock("@collab/services/space-count-lock.js", () => ({
+  withSpaceCountLock: withSpaceCountLockMock,
+  SpaceCountLockBusyError: FakeLockBusyError,
 }));
 
 // `createLogger` now comes from `@breatic/core` (the unified logger), which
@@ -124,8 +124,8 @@ beforeEach(() => {
   // Two live Spaces, so the "a project keeps at least one" guard lets the
   // delete through. The guard itself is covered in space-rpc.test.ts.
   countLiveSpaceDocsMock.mockResolvedValue(2);
-  withSpaceDeleteLockMock.mockReset();
-  withSpaceDeleteLockMock.mockImplementation(
+  withSpaceCountLockMock.mockReset();
+  withSpaceCountLockMock.mockImplementation(
     async (_projectId: string, fn: () => Promise<unknown>) => fn(),
   );
   // The activity feed is where a deleted Space's snapshot lives, and

@@ -150,6 +150,7 @@ export {
   allProjectChannelsPattern,
   SpaceTypeSchema,
   SPACE_NAME_MAX_LEN,
+  MAX_SPACES_PER_PROJECT,
   SpaceRpcRequestSchema,
   SpaceRpcResponseSchema,
   SpaceRpcErrorCodeSchema,
@@ -361,6 +362,7 @@ export {
   spaceContentDocName,
   parseDocName,
   isProjectScopedDocName,
+  spaceContentRowPattern,
 } from "@shared/yjs-doc-names.js";
 export type { DocKind, ParsedDocName } from "@shared/yjs-doc-names.js";
 

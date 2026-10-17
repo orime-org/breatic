@@ -23,9 +23,9 @@
  * run here idempotently; create is handled by lazy-seed on first load.
  */
 
-import { and, eq, isNotNull, isNull, sql } from "drizzle-orm";
-import { yjsDb, yjsDocuments } from "@breatic/core";
-import { projectMetaDocName } from "@breatic/shared";
+import { and, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
+import { listedContentDocNamesInState, yjsDb, yjsDocuments } from "@breatic/core";
+import { projectMetaDocName, spaceContentRowPattern } from "@breatic/shared";
 
 /**
  * Fetch the latest binary state of a live (non-soft-deleted) Yjs doc.
@@ -48,11 +48,12 @@ export async function fetchDocData(name: string): Promise<Uint8Array | null> {
 /**
  * Upsert the binary state of a Yjs doc (Hocuspocus persistence `store`).
  *
- * On conflict the row's `deleted_at` is cleared, so a `store` after a
- * soft-delete resurrects the doc. In practice this cannot happen — a
- * soft-deleted project refuses WebSocket auth before Hocuspocus ever
- * calls `store` — but the explicit clear keeps the upsert semantics
- * simple and self-consistent (defense in depth).
+ * On conflict only the content and `updated_at` change; `deleted_at` is left
+ * as it is. A Space deleted while its document is still loaded gets one more
+ * store when the document unloads, and that store must not bring the row
+ * back: the Space count the cap and the delete floor read would then exceed
+ * the Spaces in meta. The late content lands in the deleted row, so a restore
+ * brings back the latest edits.
  * @param name - Full doc name (e.g. `project-{pid}/canvas-{sid}`)
  * @param data - Encoded Yjs update bytes to persist
  */
@@ -66,7 +67,7 @@ export async function upsertDocData(
     .values({ name, data: buf })
     .onConflictDoUpdate({
       target: yjsDocuments.name,
-      set: { data: buf, updatedAt: sql`now()`, deletedAt: null },
+      set: { data: buf, updatedAt: sql`now()` },
     });
 }
 
@@ -121,19 +122,21 @@ export async function softDeleteByName(name: string): Promise<boolean> {
  * every collab instance — unlike the eventually-consistent in-memory
  * `meta.spaces` CRDT, which lags behind cross-instance deletes by the
  * pub/sub propagation window. The project's meta doc (`project-{id}/meta`)
- * is excluded — it is not a Space. The `project-{id}/` prefix is
- * unambiguous (project ids are fixed-length UUIDs anchored by the `/`).
+ * is excluded — it is not a Space. Rows are matched with
+ * `spaceContentRowPattern` (`^project-{id}/(canvas|document|timeline)-[^/]+$`),
+ * which leaves out the meta doc and any other name under the project.
  *
- * LIKE-injection safety relies on an IMPLICIT upstream guarantee: a
+ * Pattern safety relies on an IMPLICIT upstream guarantee: a
  * caller only reaches here after `onAuthenticate` resolved the project
  * role, which queries the `uuid`-typed `project_members.project_id`
- * column — a `projectId` carrying LIKE wildcards (`%` / `_`) fails PG's
+ * column — a `projectId` carrying regex metacharacters fails PG's
  * uuid parse and the connection is refused before any RPC dispatches. If
  * a non-authenticated call site is ever added, assert UUID shape here.
  *
- * Used by the `space:delete` guard (under the cross-instance lock in
- * `space-delete-lock.ts`) to enforce "a project always keeps >=1 Space"
- * against PG rather than a possibly-stale in-memory doc.
+ * Read under the Space count lock (`space-count-lock.ts`) by the delete floor
+ * ("a project always keeps >=1 Space") and by the create / restore cap
+ * (`MAX_SPACES_PER_PROJECT`), against PG rather than a possibly-stale
+ * in-memory doc.
  * @param projectId - Project whose live Spaces are counted.
  * @returns The number of live content docs (Spaces) for the project.
  */
@@ -143,8 +146,7 @@ export async function countLiveSpaceDocs(projectId: string): Promise<number> {
     .from(yjsDocuments)
     .where(
       and(
-        sql`${yjsDocuments.name} LIKE ${`project-${projectId}/%`}`,
-        sql`${yjsDocuments.name} <> ${projectMetaDocName(projectId)}`,
+        sql`${yjsDocuments.name} ~ ${spaceContentRowPattern(projectId)}`,
         isNull(yjsDocuments.deletedAt),
       ),
     );
@@ -152,29 +154,45 @@ export async function countLiveSpaceDocs(projectId: string): Promise<number> {
 }
 
 /**
- * Restore (clear `deleted_at` on) the row backing a named Yjs doc.
+ * Restore (clear `deleted_at` on) the row backing a named Yjs doc, and mark it
+ * touched now.
  *
  * The mirror image of {@link softDeleteByName}, down to the return value:
  * idempotent, and it reports whether THIS call is the one that brought the
  * row back. A restore that fails partway has to put back only what it
  * actually changed, and it can only know that if each step says so.
+ *
+ * `updated_at` moves so the repair script, which only touches rows nobody
+ * changed for an hour, never soft-deletes a Space restored moments ago whose
+ * meta entry has not been stored yet.
  * @param name - Full doc name (e.g. `project-{pid}/canvas-{sid}`)
  * @returns `true` if a row was newly restored, `false` otherwise
  */
 export async function restoreByName(name: string): Promise<boolean> {
   const rows = await yjsDb
     .update(yjsDocuments)
-    .set({ deletedAt: null })
+    .set({ deletedAt: null, updatedAt: sql`now()` })
     .where(and(eq(yjsDocuments.name, name), isNotNull(yjsDocuments.deletedAt)))
     .returning({ name: yjsDocuments.name });
   return rows.length > 0;
 }
 
 /**
- * Copy every Yjs doc of a source project to a new project id, rewriting
- * the `project-{sourceId}/` name prefix to `project-{newId}/`. The whole
- * copy runs in one yjs-DB transaction, meta doc LAST so a Space never
- * becomes visible before its canvas doc exists.
+ * Copy a source project's meta doc and the content of the Spaces it lists to
+ * a new project id, rewriting the `project-{sourceId}/` name prefix to
+ * `project-{newId}/`. The whole copy runs in one yjs-DB transaction, meta doc
+ * LAST so a Space never becomes visible before its canvas doc exists.
+ *
+ * The source meta is read once, and that one read is both what is copied as
+ * the new meta and what decides the content rows: the rows copied are exactly
+ * the ones the copied meta lists, and they arrive live whatever state the
+ * source row is in. The stored meta lags the live one by up to one store
+ * interval, so a source row's `deleted_at` can disagree with it: a Space
+ * deleted moments ago is soft-deleted but still listed, one created moments
+ * ago is live but not yet listed. Following the copied meta keeps the
+ * duplicate's live content rows equal to its Spaces; rows of Spaces the
+ * copied meta does not list (the source's trash, once its deletion is
+ * stored) are not copied.
  *
  * Driven by the lifecycle stream consumer on a `project:duplicated`
  * command. Conflict handling is asymmetric so the result is correct even
@@ -183,8 +201,9 @@ export async function restoreByName(name: string): Promise<boolean> {
  *     the first Space's content-doc row, but under the deterministic
  *     `deriveId(newId)` spaceId — never a SOURCE spaceId the copy carries
  *     over — so a conflict here is still only a redelivery; skipping it is
- *     the idempotent no-op. (A racing lazy-seed leaves a harmless orphaned
- *     content doc the meta `DO UPDATE` below never references.)
+ *     the idempotent no-op. (A racing lazy-seed leaves an orphaned content
+ *     doc the meta `DO UPDATE` below never references; it holds one place
+ *     under the Space cap until the repair script clears it, inner#1557.)
  *   - the meta doc uses `DO UPDATE` — it MUST win over a lazy-seeded
  *     default meta so the duplicate reflects the SOURCE's Spaces, not a
  *     fresh default one. The consumer kicks the new project's live
@@ -214,21 +233,28 @@ export async function duplicateByProjectPrefix(
   // `substring(text FROM int)` position overload (strip the old prefix).
   const cut = sql`${oldPrefix.length + 1}::int`;
   await yjsDb.transaction(async (tx) => {
-    // Canvas (and any non-meta) docs first — idempotent on redelivery.
+    const [meta] = await tx
+      .select({ data: yjsDocuments.data })
+      .from(yjsDocuments)
+      .where(eq(yjsDocuments.name, metaName))
+      .limit(1);
+    if (!meta) return;
+    const listed = [...listedContentDocNamesInState(sourceId, meta.data)];
+    // Content docs first — idempotent on redelivery.
+    if (listed.length > 0) {
+      await tx.execute(sql`
+        INSERT INTO yjs_documents (name, data, updated_at)
+        SELECT ${newPrefix} || substring(name from ${cut}), data, NOW()
+        FROM yjs_documents
+        WHERE ${inArray(yjsDocuments.name, listed)}
+        ON CONFLICT (name) DO NOTHING
+      `);
+    }
+    // Meta doc last, from the bytes read above, and it WINS over a racing
+    // lazy-seed default so the copy reflects the source's Spaces.
     await tx.execute(sql`
       INSERT INTO yjs_documents (name, data, updated_at)
-      SELECT ${newPrefix} || substring(name from ${cut}), data, NOW()
-      FROM yjs_documents
-      WHERE name LIKE ${oldPrefix + "%"} AND name <> ${metaName}
-      ON CONFLICT (name) DO NOTHING
-    `);
-    // Meta doc last, and it WINS over a racing lazy-seed default so the
-    // copy reflects the source's Spaces.
-    await tx.execute(sql`
-      INSERT INTO yjs_documents (name, data, updated_at)
-      SELECT ${newPrefix} || substring(name from ${cut}), data, NOW()
-      FROM yjs_documents
-      WHERE name = ${metaName}
+      VALUES (${projectMetaDocName(newId)}, ${meta.data}, NOW())
       ON CONFLICT (name) DO UPDATE SET data = EXCLUDED.data, updated_at = NOW(), deleted_at = NULL
     `);
   });

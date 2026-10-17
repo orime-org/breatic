@@ -14,7 +14,7 @@ The backend shared kernel. These rules apply when you change anything under `pac
 
 ### Migrations are hand-written
 
-**Since `0018` every migration is a hand-written `NNNN_name.sql`; never run `db:generate`.** drizzle-kit's snapshot is frozen at `0017`, so generating diffs `schema.ts` against it and emits every later change again as new.
+**Since `0018` every migration is a hand-written `NNNN_name.sql`; never run `drizzle-kit generate`.** drizzle-kit's snapshot is frozen at `0017`, so generating diffs `schema.ts` against it and emits every later change again as new.
 
 To add a table or index: write the `.sql` (a partial unique index is written out in full, `CREATE UNIQUE INDEX ... WHERE ...`), run `pnpm db:journal-add <tag>`, then add the `pgTable` definition to `schema.ts`. Index declarations in `schema.ts` are documentation only; the `.sql` is what runs.
 
@@ -41,11 +41,11 @@ Check: about to add a table to `NO_SOFT_DELETE`? Ask whether its rows go away wi
 
 **A partial unique index predicate must be immutable, so it cannot reference `now()`; uniqueness that depends on time ("one live pending invite") is enforced in code before the insert.** An expired row keeps its slot in the index until something moves it to a terminal state, as `expireStalePending` does for studio invites.
 
-### Keep schema.ts imports from shared type-only
+### Runtime imports in schema.ts must load under require
 
-**`schema.ts` imports from `@breatic/shared` with `import type` only.** drizzle-kit (`db:generate`, `db:studio`) loads the schema as CommonJS and `@breatic/shared`'s `exports` has no `require` or `main`, so a value import fails with `ERR_PACKAGE_PATH_NOT_EXPORTED` and the error names shared, not `schema.ts`.
+**Every package `schema.ts` imports at runtime must expose an `exports` condition that `require` matches.** drizzle-kit (`db:studio`) loads the schema as CommonJS; a package without such a condition fails with `ERR_PACKAGE_PATH_NOT_EXPORTED`, and the error names that package, not `schema.ts`. `@breatic/shared` has a `default` condition on every entry for this, and `src/db/__tests__/drizzle-kit-loads-schema.test.ts` runs drizzle-kit against the schema.
 
-Check: am I adding a runtime import to `schema.ts`? Then confirm drizzle-kit still loads it.
+Check: am I adding a runtime import to `schema.ts` from a new package? Then run that test.
 
 ### DDL in sql templates needs sql.raw
 

@@ -148,6 +148,23 @@ export function parseDocName(docName: string): ParsedDocName | null {
 }
 
 /**
+ * A POSIX regular expression matching every Space content doc name of one
+ * project — `project-{pid}/{canvas|document|timeline}-{spaceId}`, the shapes
+ * {@link spaceContentDocName} builds — and nothing else under it: not the meta
+ * doc, not the obsolete `project-{pid}/canvas` or `node/{id}` paths.
+ *
+ * It is the one definition of "a Space content row" in SQL: the Space count
+ * the cap reads and the Space-row repair both match rows with it. Usable with
+ * PostgreSQL's `~` and with JavaScript's `RegExp`. The project id is expected
+ * to be a UUID, which carries no pattern metacharacters.
+ * @param projectId - Project whose content docs to match.
+ * @returns The pattern.
+ */
+export function spaceContentRowPattern(projectId: string): string {
+  return `^project-${projectId}/(canvas|document|timeline)-[^/]+$`;
+}
+
+/**
  * Whether a doc name is any valid project-scoped doc.
  *
  * Convenience for hocuspocus auth gates and stream consumers that just

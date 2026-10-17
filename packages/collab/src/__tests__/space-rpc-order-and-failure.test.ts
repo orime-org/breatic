@@ -45,7 +45,7 @@ const {
   restoreByNameMock,
   seedInitialStateMock,
   countLiveSpaceDocsMock,
-  withSpaceDeleteLockMock,
+  withSpaceCountLockMock,
   FakeLockBusyError,
   activityInsertMock,
   activityInsertIgnoreMock,
@@ -60,7 +60,7 @@ const {
   restoreByNameMock: vi.fn(),
   seedInitialStateMock: vi.fn(),
   countLiveSpaceDocsMock: vi.fn(),
-  withSpaceDeleteLockMock: vi.fn(),
+  withSpaceCountLockMock: vi.fn(),
   FakeLockBusyError: class FakeLockBusyError extends Error {},
   activityInsertMock: vi.fn(),
   activityInsertIgnoreMock: vi.fn(),
@@ -82,13 +82,13 @@ vi.mock("@collab/services/yjs-documents.repo.js", () => ({
   countLiveSpaceDocs: countLiveSpaceDocsMock,
 }));
 
-// The cross-instance delete lock has its own unit tests. Here it is a
+// The cross-instance Space count lock has its own unit tests. Here it is a
 // pass-through by default so the critical section is exercised directly;
 // one test replaces it with a version that throws while releasing, which
 // is the shape the real `finally { await redis.eval(...) }` has.
-vi.mock("@collab/services/space-delete-lock.js", () => ({
-  withSpaceDeleteLock: withSpaceDeleteLockMock,
-  SpaceDeleteLockBusyError: FakeLockBusyError,
+vi.mock("@collab/services/space-count-lock.js", () => ({
+  withSpaceCountLock: withSpaceCountLockMock,
+  SpaceCountLockBusyError: FakeLockBusyError,
 }));
 
 // Spread the real core barrel (writeSpaceEntry / encodeInitialSpaceContent
@@ -400,8 +400,8 @@ beforeEach(() => {
   seedInitialStateMock.mockResolvedValue(true);
   countLiveSpaceDocsMock.mockReset();
   countLiveSpaceDocsMock.mockResolvedValue(2);
-  withSpaceDeleteLockMock.mockReset();
-  withSpaceDeleteLockMock.mockImplementation(
+  withSpaceCountLockMock.mockReset();
+  withSpaceCountLockMock.mockImplementation(
     async (_projectId: string, fn: () => Promise<unknown>) => fn(),
   );
   activityInsertMock.mockReset();
@@ -465,7 +465,7 @@ describe("step order — content rows, then the broadcast, then the activity row
     expect(broadcast).toBeLessThan(activityRow);
   });
 
-  it("space:restore un-deletes the content rows before the broadcast and writes the activity row after it", async () => {
+  it("space:restore un-deletes its content row before the broadcast and writes the activity row after it", async () => {
     activityLatestUnrestoredMock.mockResolvedValue(DELETED_ROW);
 
     const res = await handleSpaceRpc(
@@ -654,7 +654,7 @@ describe("re-reading the target fails — the content rows are rolled back", () 
     );
   });
 
-  it("space:restore soft-deletes the content rows again when the Space is already back by the time it writes", async () => {
+  it("space:restore soft-deletes its content row again when the Space is already back by the time it writes", async () => {
     activityLatestUnrestoredMock.mockResolvedValue(DELETED_ROW);
     const hocuspocus = makeHocuspocus({
       beforeFirstTransact: () => {
@@ -684,6 +684,36 @@ describe("re-reading the target fails — the content rows are rolled back", () 
     expect(softDeleteByNameMock).toHaveBeenCalledWith(
       spaceContentDocName(PID, SID, "canvas"),
     );
+  });
+
+  it("space:restore leaves the content row live when this call did not bring it back", async () => {
+    activityLatestUnrestoredMock.mockResolvedValue(DELETED_ROW);
+    // The other owner's restore already un-deleted the row, so this call
+    // changed nothing and has nothing to undo.
+    restoreByNameMock.mockResolvedValue(false);
+    const hocuspocus = makeHocuspocus({
+      beforeFirstTransact: () => {
+        seedSpace(SID, {
+          type: "canvas",
+          name: "Main",
+          order: 0,
+          locked: false,
+        });
+        armBroadcastMarker();
+      },
+    });
+
+    const res = await handleSpaceRpc(
+      { hocuspocus },
+      PID,
+      { userId: ACTOR, role: "owner" },
+      { id: "r1", type: "space:restore", payload: { spaceId: SID } },
+    );
+
+    expect(res.ok).toBe(false);
+    if (res.ok) return;
+    expect(res.error.code).toBe("CONFLICT");
+    expect(softDeleteByNameMock).not.toHaveBeenCalled();
   });
 });
 
@@ -867,15 +897,15 @@ describe("finishing steps cannot change the answer already decided", () => {
   });
 
   // The release throwing lives in the LOCK, and so does the protection: the
-  // real `withSpaceDeleteLock` swallows + logs a failing release
-  // (space-delete-lock.test.ts pins that against the real module). A
+  // real `withSpaceCountLock` swallows + logs a failing release
+  // (space-count-lock.test.ts pins that against the real module). A
   // mock-level re-enactment here would only ever test the mock.
 });
 
 describe("no answer waits for the meta connection to be handed back", () => {
   // `disconnect()` awaits the store hooks, and `@hocuspocus/extension-redis`
   // holds its `afterStoreDocument` for `disconnectDelay` (1000ms) whenever a
-  // direct-connection disconnect reaches it, written or not. Awaited inside the delete lock, that
+  // direct-connection disconnect reaches it, written or not. Awaited inside the Space count lock, that
   // second kept the lock held long after the Space had left every screen,
   // so the next delete a person made was refused (inner#867).
   const cases: ReadonlyArray<{
@@ -1217,15 +1247,12 @@ describe("a partial content-row failure undoes exactly what succeeded", () => {
       ].sort(),
     );
   });
+});
 
-  it("space:restore re-deletes the kinds whose un-delete won", async () => {
+describe("space:restore when its content row cannot come back", () => {
+  it("answers INTERNAL and lists nothing when its content row cannot come back", async () => {
     activityLatestUnrestoredMock.mockResolvedValue(DELETED_ROW);
-    restoreByNameMock.mockImplementation(async (name: string) => {
-      if (name.includes("/document-")) {
-        throw new Error('relation "yjs_documents" is unreachable');
-      }
-      return true;
-    });
+    restoreByNameMock.mockRejectedValue(new Error('relation "yjs_documents" is unreachable'));
     armBroadcastMarker();
 
     const res = await handleSpaceRpc(
@@ -1241,13 +1268,7 @@ describe("a partial content-row failure undoes exactly what succeeded", () => {
     expectNoDatabaseWording(res.error.message);
     expect(metaDoc.getMap("spaces").has(SID)).toBe(false);
     expect(metaBroadcastMock).not.toHaveBeenCalled();
-    const undone = softDeleteByNameMock.mock.calls.map((c) => c[0] as string);
-    expect(undone.sort()).toEqual(
-      [
-        spaceContentDocName(PID, SID, "canvas"),
-        spaceContentDocName(PID, SID, "timeline"),
-      ].sort(),
-    );
+    expect(softDeleteByNameMock).not.toHaveBeenCalled();
   });
 });
 
@@ -1496,7 +1517,7 @@ describe("a refused pre-check is a pure read — a broken publish cannot reach i
     }
   });
 
-  it("space:restore re-deletes its content rows when the transact rejects without running the callback", async () => {
+  it("space:restore re-deletes its content row when the transact rejects without running the callback", async () => {
     activityLatestUnrestoredMock.mockResolvedValue(DELETED_ROW);
     metaDoc.getMap("spaces").delete(SID);
     const res = await handleSpaceRpc(

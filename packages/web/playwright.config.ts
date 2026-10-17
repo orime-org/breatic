@@ -8,8 +8,8 @@
  *
  * The port comes from `dev-ports.mts` — the same module `vite.config.mts`
  * uses, so the target cannot drift from the server it is aimed at.
- * That module stays free of `@breatic/shared` on purpose: playwright loads
- * configs through CJS `require()` and shared is ESM-only.
+ * That module stays free of `@breatic/shared`, so loading this config never
+ * depends on shared having been built.
  * That matters once more than one worktree runs `pnpm dev` at a time
  * (#1831): a hard-coded 8000 would silently test a different worktree's
  * frontend.

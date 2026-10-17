@@ -1252,7 +1252,11 @@
         "create": "Space 생성에 실패했습니다",
         "restore": "Space 복원에 실패했습니다",
         "unreachable": "서버가 응답하지 않습니다 — 연결을 확인한 후 다시 시도하세요",
-        "notSynced": "Project를 아직 동기화 중입니다 — 잠시 후 다시 시도하세요"
+        "notSynced": "Project를 아직 동기화 중입니다 — 잠시 후 다시 시도하세요",
+        "limit": "Space는 최대 {max}개까지입니다",
+        "busy": "다른 멤버가 작업 중입니다 — 잠시 후 다시 시도하세요",
+        "alreadyRestored": "이 Space는 이미 복원되었습니다",
+        "gone": "이 Space는 삭제되었습니다"
       },
       "loading": {
         "create": "Space를 생성하는 중…"
@@ -1357,7 +1361,6 @@
         "deleteConfirmDescription": "이 Space와 콘텐츠는 소프트 삭제됩니다. Owner는 Project 메시지 채널에서 복원할 수 있습니다.",
         "lockFail": "잠금에 실패했습니다",
         "unlockFail": "잠금 해제에 실패했습니다",
-        "operationFail": "작업에 실패했습니다",
         "deleteFail": "삭제에 실패했습니다"
       }
     },

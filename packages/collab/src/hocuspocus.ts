@@ -31,9 +31,9 @@ import {
   sendMail,
   MONOREPO_ROOT,
 } from "@breatic/core";
-import { createConnectionGate } from "@collab/infra/connection-gate.js";
+import { createConnectionGate, recordingFailedAuth } from "@collab/infra/connection-gate.js";
 import { createSharedThrottle } from "@collab/infra/shared-throttle.js";
-import { socketCeilings } from "@collab/infra/socket-ceilings.js";
+import { SOCKET_CEILINGS } from "@collab/infra/socket-ceilings.js";
 import {
   createConnectionRegistry,
   type SeatClaim,
@@ -88,7 +88,7 @@ const logger = createLogger("hocuspocus");
 
 /** External infra config (env-based, not in YAML). */
 export interface CollabServerInfra {
-  /** Collab Redis (DB 3) — Hocuspocus cross-instance pub/sub + space-delete lock. */
+  /** Collab Redis (DB 3) — Hocuspocus cross-instance pub/sub + Space count lock. */
   collabRedisUrl: string;
   /**
    * WebSocket listen port (`COLLAB_PORT`). Passed in rather than read here so
@@ -124,7 +124,7 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
 
   // Cross-instance connection registry (#1421). Records each connection
   // in Redis DB3 (the collab-coordination singleton — same connection
-  // family as the Hocuspocus pub/sub + the space-delete lock) so the
+  // family as the Hocuspocus pub/sub + the Space count lock) so the
   // per-document connection cap counts across instances, not just this
   // process's local connections. `instanceId` namespaces this process's
   // members cluster-wide: hostname + pid for log correlation, plus a
@@ -215,21 +215,53 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
 
   // Connection gate (optional) — identifies every incoming connection by its
   // peer address during the upgrade, then either exempts a developer's own
-  // machine or hands a real client to the throttle to be counted. See
+  // machine or counts a real client's WebSocket against its address. See
   // `infra/connection-gate.ts` for why the verdict has to be decided that
-  // early and why it travels as a header.
-  if (cfg.throttle_enabled) {
-    extensions.push(
-      createConnectionGate(
+  // early, why it travels as a header, and why the count is per WebSocket.
+  const connectionGate = cfg.throttle_enabled
+    ? createConnectionGate(
         createSharedThrottle({
           redis: getRedis(),
           maxAttempts: cfg.throttle_max_attempts,
           banMinutes: cfg.throttle_ban_time,
           onError: (err, identity) => logger.warn({ err, identity }, "connection_throttle_unavailable"),
         }),
-      ),
-    );
-  }
+      )
+    : null;
+  if (connectionGate) extensions.push(connectionGate);
+
+  // Authentication — verifies session token AND per-project
+  // ownership. See packages/collab/src/auth.ts.
+  const authenticate = createAuthHook({
+    redis: authRedis,
+    // The ceiling belongs to the studio that owns this project, read from
+    // its current admin's membership tier (#88). It is looked up per
+    // handshake and deliberately not cached: a stale ceiling would outlive
+    // a tier change or a studio transfer with nothing to invalidate it.
+    //
+    // A handshake is per DOCUMENT, not per socket — one socket carries the
+    // meta doc plus every open Space, and `onAuthenticate` fires for each
+    // (@hocuspocus/server 4.6.0 keys its hook payloads by document). Meta
+    // and viewers skip the ceiling entirely (`auth.ts`), so the real cost
+    // is one lookup per Space document opened.
+    resolveConnectionLimit: getProjectConcurrentEditorLimit,
+    // Cluster-wide count via the cross-instance registry (#1421), NOT
+    // the local `getConnectionsCount()` (which only sees this process).
+    // The count excludes this connection: registration happens later, in
+    // the `connected` hook (below), so a connection never counts against
+    // its own cap check.
+    countConnections: (documentName: string): Promise<number> =>
+      connectionRegistry.count(documentName),
+
+    // At capacity, the handshake takes one of the arriving person's own
+    // seats rather than settling for read-only, so nobody is kept out by
+    // themselves. Acting on what it took is the `connected` hook's job.
+    claimSeatFrom: (
+      documentName: string,
+      userId: string,
+    ): Promise<SeatClaim> =>
+      connectionRegistry.claimSeatFrom(documentName, userId),
+  });
 
   // Assembled after the server exists, because the gate's final store
   // attempt goes through the instance. The hooks below run long after that,
@@ -255,13 +287,9 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     debounce: cfg.debounce,
     maxDebounce: cfg.max_debounce,
 
-    // How many documents one socket may have awaiting authentication. The
-    // framework defaults this to 100 and closes the WHOLE socket past it,
-    // which assumes one document per socket. Ours carries a project: the meta
-    // doc plus one per open Space tab, and nothing stops a member opening
-    // every Space there is. See config/collab.yaml for the ceiling and for
-    // what actually bounds abuse here.
-    ...socketCeilings(cfg.max_documents_per_socket),
+    // Library ceilings that close a whole socket, derived from the project's
+    // Space cap: infra/socket-ceilings.ts.
+    ...SOCKET_CEILINGS,
 
     // Broadcast every change the moment it is applied, which is what the
     // framework did before it grew a batching window. The window (default
@@ -277,38 +305,13 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     // to inherit from a default.
     flushDelay: false,
 
-    // Authentication — verifies session token AND per-project
-    // ownership. See packages/collab/src/auth.ts.
-    onAuthenticate: createAuthHook({
-      redis: authRedis,
-      // The ceiling belongs to the studio that owns this project, read from
-      // its current admin's membership tier (#88). It is looked up per
-      // handshake and deliberately not cached: a stale ceiling would outlive
-      // a tier change or a studio transfer with nothing to invalidate it.
-      //
-      // A handshake is per DOCUMENT, not per socket — one socket carries the
-      // meta doc plus every open Space, and `onAuthenticate` fires for each
-      // (@hocuspocus/server 4.6.0 keys its hook payloads by document). Meta
-      // and viewers skip the ceiling entirely (`auth.ts`), so the real cost
-      // is one lookup per Space document opened.
-      resolveConnectionLimit: getProjectConcurrentEditorLimit,
-      // Cluster-wide count via the cross-instance registry (#1421), NOT
-      // the local `getConnectionsCount()` (which only sees this process).
-      // The count excludes this connection: registration happens later, in
-      // the `connected` hook (below), so a connection never counts against
-      // its own cap check.
-      countConnections: (documentName: string): Promise<number> =>
-        connectionRegistry.count(documentName),
-
-      // At capacity, the handshake takes one of the arriving person's own
-      // seats rather than settling for read-only, so nobody is kept out by
-      // themselves. Acting on what it took is the `connected` hook's job.
-      claimSeatFrom: (
-        documentName: string,
-        userId: string,
-      ): Promise<SeatClaim> =>
-        connectionRegistry.claimSeatFrom(documentName, userId),
-    }),
+    // Authentication — verifies session token AND per-project ownership.
+    // A rejection is counted against the connection's address by the gate:
+    // once for a WebSocket's documents failing together, and again for every
+    // failure past a full project's documents (see infra/connection-gate.ts).
+    onAuthenticate: connectionGate
+      ? recordingFailedAuth(authenticate, connectionGate)
+      : authenticate,
 
     // Extensions
     // Cast: pnpm hoisting causes duplicate @hocuspocus/server types
@@ -606,11 +609,10 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     // this banner needs to know where to look, and a stale key name would
     // send them to a file that no longer has it.
     concurrentEditorsFrom: "config/membership.yaml: tiers.*.concurrent_editors",
-    // Belongs in the banner for the same reason: it is a ceiling whose only
+    // Belongs in the banner for the same reason: they are ceilings whose only
     // symptom, once crossed, is connections dropping. An operator has to be
-    // able to read what this process is enforcing without guessing which copy
-    // of the config it loaded.
-    maxDocumentsPerSocket: cfg.max_documents_per_socket,
+    // able to read what this process is enforcing.
+    ...SOCKET_CEILINGS,
   }, "Hocuspocus server configured");
 
   // Timed store (#40). Storing is driven from here rather than from "somebody

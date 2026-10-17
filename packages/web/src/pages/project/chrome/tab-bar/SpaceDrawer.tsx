@@ -14,7 +14,6 @@ import {
   Unlock,
 } from 'lucide-react';
 import * as React from 'react';
-import { toast } from '@web/lib/toast';
 
 import {
   AlertDialog,
@@ -322,26 +321,14 @@ function SpaceDrawerRow({
       ? 'spaces.drawer.action.deleteLastSpace'
       : null;
 
-  /**
-   * Toggles the space's locked state via `onSetSpaceLocked`, surfacing a
-   * toast on failure.
-   */
+  /** Toggles the space's locked state via `onSetSpaceLocked`. */
   const onToggleLock = async (): Promise<void> => {
     if (lockBusy || !onSetSpaceLocked) return;
     setLockBusy(true);
     try {
       await onSetSpaceLocked(space.id, !space.locked);
-    } catch (err) {
-      const message =
-        err instanceof Error ? err.message : t('spaces.drawer.action.operationFail');
-      toast.error(
-        space.locked
-          ? t('spaces.drawer.action.unlockFail')
-          : t('spaces.drawer.action.lockFail'),
-        {
-          description: message,
-        },
-      );
+    } catch {
+      // A refused lock has already raised its toast in ProjectPage's callRpc.
     } finally {
       setLockBusy(false);
     }

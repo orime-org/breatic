@@ -51,9 +51,11 @@ const RpcIdSchema = z.string().min(1).max(64);
 export const SpaceRpcErrorCodeSchema = z.enum([
   "FORBIDDEN", // caller role insufficient
   "NOT_FOUND", // spaceId not present in meta.spaces
-  "CONFLICT", // create with spaceId that already exists
+  "CONFLICT", // the last Space cannot go, or the Space is already restored
   "INVALID_INPUT", // Zod parse failed at the collab end
   "INTERNAL", // unexpected error
+  "SPACE_LIMIT", // the project already holds MAX_SPACES_PER_PROJECT live Spaces
+  "BUSY", // another create, restore or delete holds the project's Space lock
 ]);
 export type SpaceRpcErrorCode = z.infer<typeof SpaceRpcErrorCodeSchema>;
 
@@ -63,6 +65,13 @@ export type SpaceRpcErrorCode = z.infer<typeof SpaceRpcErrorCodeSchema>;
 // TitleEditable primitive). 80 matches the project-title cap so users
 // have a single mental model for "how long can I make a name".
 export const SPACE_NAME_MAX_LEN = 80;
+
+/**
+ * Live Spaces one project can hold, the meta doc not counted. Collab refuses a
+ * create or restore past it, and one collab socket carries at most this many
+ * Space documents plus the meta doc.
+ */
+export const MAX_SPACES_PER_PROJECT = 200;
 
 /**
  * Create a new Space. **The server mints the id** — the caller does not

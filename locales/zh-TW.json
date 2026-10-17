@@ -1252,7 +1252,11 @@
         "create": "Space 建立失敗",
         "restore": "Space 還原失敗",
         "unreachable": "伺服器沒有回應,請檢查網路後重試",
-        "notSynced": "Project 正在同步,請稍後再試"
+        "notSynced": "Project 正在同步,請稍後再試",
+        "limit": "已達 {max} 個 Space 上限",
+        "busy": "其他成員正在操作，請稍後再試",
+        "alreadyRestored": "這個 Space 已經還原了",
+        "gone": "這個 Space 已被刪除"
       },
       "loading": {
         "create": "正在建立 Space…"
@@ -1357,7 +1361,6 @@
         "deleteConfirmDescription": "此 Space 及其內容將被軟刪除。Owner 可從 Project 訊息頻道還原。",
         "lockFail": "鎖定失敗",
         "unlockFail": "解鎖失敗",
-        "operationFail": "操作失敗",
         "deleteFail": "刪除失敗"
       }
     },

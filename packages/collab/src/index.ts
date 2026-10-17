@@ -383,7 +383,7 @@ async function main(): Promise<void> {
       pingRedisGeneral: () => pingRedis(getRedis()),
       pingRedisStream: () => pingRedis(controlRedis),
       // DB3: collab cross-instance coordination (Hocuspocus pub/sub +
-      // space-delete lock). A drifted connection silently breaks
+      // Space count lock). A drifted connection silently breaks
       // cross-instance sync while everything else looks healthy —
       // healthz must catch it (same class as the DB0-drift gap).
       pingRedisCollab: () => pingRedis(getCollabRedis()),

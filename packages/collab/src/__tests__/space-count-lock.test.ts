@@ -2,13 +2,14 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Unit tests for the collab space-delete distributed lock.
+ * Unit tests for the collab Space count distributed lock.
  *
- * The lock serializes `space:delete` per project ACROSS collab instances
- * (production runs multiple instances synced via Redis pub/sub). Without
- * it, two collaborators on different instances can each pass the
- * "keep >=1 space" guard against their own not-yet-synced in-memory doc
- * and race the project's space count to zero. The lock lives on
+ * The lock serializes every Space RPC that changes the Space count
+ * (`space:create`, `space:restore`, `space:delete`) per project ACROSS
+ * collab instances (production runs multiple instances synced via Redis
+ * pub/sub). Without it, two collaborators on different instances can each
+ * pass the "keep >=1 Space" or the MAX_SPACES_PER_PROJECT guard against
+ * their own not-yet-synced in-memory doc. The lock lives on
  * `REDIS_COLLAB_URL` (DB3, collab cross-instance coordination).
  *
  * The lock is FENCED: each acquire writes a unique token and releases via
@@ -36,9 +37,9 @@ vi.mock("@breatic/core", () => ({
 }));
 
 import {
-  withSpaceDeleteLock,
-  SpaceDeleteLockBusyError,
-} from "../services/space-delete-lock.js";
+  withSpaceCountLock,
+  SpaceCountLockBusyError,
+} from "../services/space-count-lock.js";
 
 const PID = "11111111-1111-4111-8111-111111111111";
 
@@ -72,13 +73,13 @@ beforeEach(() => {
   getCollabRedisMock.mockReset();
 });
 
-describe("withSpaceDeleteLock", () => {
+describe("withSpaceCountLock", () => {
   it("acquires with SET NX EX (unique token), runs fn, then releases via check-and-del", async () => {
     const redis = makeFakeRedis();
     getCollabRedisMock.mockReturnValue(redis);
     const fn = vi.fn(async () => "done");
 
-    const result = await withSpaceDeleteLock(PID, fn);
+    const result = await withSpaceCountLock(PID, fn);
 
     expect(result).toBe("done");
     expect(fn).toHaveBeenCalledOnce();
@@ -109,7 +110,7 @@ describe("withSpaceDeleteLock", () => {
     const boom = new Error("boom");
 
     await expect(
-      withSpaceDeleteLock(PID, async () => {
+      withSpaceCountLock(PID, async () => {
         throw boom;
       }),
     ).rejects.toBe(boom);
@@ -118,14 +119,14 @@ describe("withSpaceDeleteLock", () => {
     expect(redis.store.size).toBe(0);
   });
 
-  it("throws SpaceDeleteLockBusyError without running fn when the lock stays held", async () => {
+  it("throws SpaceCountLockBusyError without running fn when the lock stays held", async () => {
     const redis = makeFakeRedis({ busy: true });
     getCollabRedisMock.mockReturnValue(redis);
     const fn = vi.fn(async () => "should not run");
 
     await expect(
-      withSpaceDeleteLock(PID, fn, { retryAttempts: 3, retryDelayMs: 0 }),
-    ).rejects.toBeInstanceOf(SpaceDeleteLockBusyError);
+      withSpaceCountLock(PID, fn, { retryAttempts: 3, retryDelayMs: 0 }),
+    ).rejects.toBeInstanceOf(SpaceCountLockBusyError);
 
     expect(fn).not.toHaveBeenCalled();
     expect(redis.set).toHaveBeenCalledTimes(3);
@@ -133,11 +134,31 @@ describe("withSpaceDeleteLock", () => {
     expect(redis.eval).not.toHaveBeenCalled();
   });
 
+  it("by default waits about five seconds for a held lock before giving up", async () => {
+    // Collaborators changing Spaces at the same moment queue up behind each
+    // other; only a lock held through the whole wait answers BUSY.
+    vi.useFakeTimers();
+    try {
+      const redis = makeFakeRedis({ busy: true });
+      getCollabRedisMock.mockReturnValue(redis);
+      const settled = withSpaceCountLock(PID, async () => "ran").catch((e: unknown) => e);
+
+      await vi.advanceTimersByTimeAsync(4_800);
+      expect(redis.set.mock.calls.length).toBeLessThan(50);
+      await vi.advanceTimersByTimeAsync(1_000);
+
+      expect(await settled).toBeInstanceOf(SpaceCountLockBusyError);
+      expect(redis.set).toHaveBeenCalledTimes(50);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("does NOT release a lock it no longer owns (fencing — another instance's token survives)", async () => {
     const redis = makeFakeRedis();
     getCollabRedisMock.mockReturnValue(redis);
 
-    await withSpaceDeleteLock(PID, async () => {
+    await withSpaceCountLock(PID, async () => {
       // Simulate our lock expiring mid-fn and another instance re-acquiring
       // it: overwrite the stored value with a DIFFERENT token.
       const key = [...redis.store.keys()][0];
@@ -159,11 +180,11 @@ describe("withSpaceDeleteLock", () => {
     // short wait, not correctness.
     const redis = makeFakeRedis();
     redis.eval.mockRejectedValue(
-      new Error("ECONNREFUSED releasing space-delete lock"),
+      new Error("ECONNREFUSED releasing Space count lock"),
     );
     getCollabRedisMock.mockReturnValue(redis);
 
-    const answer = await withSpaceDeleteLock(PID, async () => "the-answer");
+    const answer = await withSpaceCountLock(PID, async () => "the-answer");
 
     expect(answer).toBe("the-answer");
     expect(redis.eval).toHaveBeenCalledTimes(1);
@@ -173,8 +194,8 @@ describe("withSpaceDeleteLock", () => {
     const redis = makeFakeRedis();
     getCollabRedisMock.mockReturnValue(redis);
 
-    await withSpaceDeleteLock("proj-A", async () => undefined);
-    await withSpaceDeleteLock("proj-B", async () => undefined);
+    await withSpaceCountLock("proj-A", async () => undefined);
+    await withSpaceCountLock("proj-B", async () => undefined);
 
     const keys = redis.set.mock.calls.map((c) => c[0]);
     expect(keys[0]).toContain("proj-A");

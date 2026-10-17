@@ -40,7 +40,7 @@ export interface CollabHealthProbes {
   /**
    * Resolves true when the collab coordination Redis (DB3,
    * `REDIS_COLLAB_URL`) answers PING. Houses the Hocuspocus cross-instance
-   * pub/sub + the space-delete serialization lock; a drifted connection
+   * pub/sub + the Space count lock; a drifted connection
    * silently breaks cross-instance sync while everything else looks
    * healthy, so healthz MUST probe it (same class of gap that once let a
    * drifted DB0 reject every auth with a green healthz).

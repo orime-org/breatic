@@ -12,6 +12,7 @@ import {
   render as rtlRender,
   screen,
   waitFor,
+  fireEvent,
   type RenderOptions,
 } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -39,10 +40,17 @@ import { TooltipProvider } from '@web/components/ui/tooltip';
 import { useUIStore } from '@web/stores/ui';
 import { resetPreviewRecords } from '@web/lib/preview-src';
 
-const { listMock } = vi.hoisted(() => ({ listMock: vi.fn() }));
+const { listMock, toastWarningMock } = vi.hoisted(() => ({
+  listMock: vi.fn(),
+  toastWarningMock: vi.fn(),
+}));
 vi.mock('@web/data/api/activities', () => ({
   activitiesApi: { list: listMock },
 }));
+vi.mock('@web/lib/toast', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@web/lib/toast')>();
+  return { ...actual, toast: { ...actual.toast, warning: toastWarningMock } };
+});
 
 const PID = '11111111-1111-4111-8111-111111111111';
 
@@ -66,6 +74,7 @@ function render(ui: React.ReactElement, options?: RenderOptions): ReturnType<typ
 }
 
 beforeEach(() => {
+  toastWarningMock.mockReset();
   useUIStore.setState({ activeOverlayId: null });
   listMock.mockReset();
   listMock.mockResolvedValue({ items: [], nextCursor: null });
@@ -150,6 +159,72 @@ describe('ProjectActivityButton (activity feed)', () => {
     const btn = await screen.findByTestId('project-activity-restore-del-1');
     await user.click(btn);
     expect(onRestore).toHaveBeenCalledWith('sp-9');
+  });
+
+  it('keeps the Restore button reachable at the Space cap and says why when pressed', async () => {
+    const onRestore = vi.fn();
+    listMock.mockResolvedValue({
+      items: [
+        entry({
+          id: 'del-cap',
+          type: 'space:deleted',
+          spaceId: 'sp-9',
+          payload: { spaceName: 'Doomed', spaceSnapshot: { id: 'sp-9' } },
+        }),
+      ],
+      nextCursor: null,
+    });
+    const user = userEvent.setup();
+    render(
+      <ProjectActivityButton
+        projectId={PID}
+        currentUserRole='owner'
+        onRestore={onRestore}
+        spaceLimitReached
+      />,
+    );
+    await user.click(screen.getByTestId('project-activity-trigger'));
+    const btn = await screen.findByTestId('project-activity-restore-del-cap');
+    expect(btn).not.toBeDisabled();
+    expect(btn).toHaveAttribute('aria-disabled', 'true');
+    fireEvent.pointerMove(btn, { pointerType: 'mouse' });
+    expect(await screen.findByRole('tooltip', {}, { timeout: 2000 })).toHaveTextContent(
+      'Reached the limit of 200 Spaces',
+    );
+    await user.click(btn);
+    expect(onRestore).not.toHaveBeenCalled();
+    expect(toastWarningMock).toHaveBeenCalledWith('Reached the limit of 200 Spaces');
+  });
+
+  it('does not show the cap reason by itself when the project fills after Restore was hovered', async () => {
+    listMock.mockResolvedValue({
+      items: [
+        entry({
+          id: 'del-hover',
+          type: 'space:deleted',
+          spaceId: 'sp-9',
+          payload: { spaceName: 'Doomed', spaceSnapshot: { id: 'sp-9' } },
+        }),
+      ],
+      nextCursor: null,
+    });
+    const user = userEvent.setup();
+    const view = render(
+      <ProjectActivityButton projectId={PID} currentUserRole='owner' onRestore={vi.fn()} />,
+    );
+    await user.click(screen.getByTestId('project-activity-trigger'));
+    const btn = await screen.findByTestId('project-activity-restore-del-hover');
+    fireEvent.pointerMove(btn, { pointerType: 'mouse' });
+    // Past the provider's default 700ms open delay, so the hover really opens it.
+    await new Promise((resolve) => setTimeout(resolve, 800));
+    fireEvent.pointerLeave(btn, { pointerType: 'mouse' });
+
+    view.rerender(
+      <ProjectActivityButton projectId={PID} currentUserRole='owner' onRestore={vi.fn()} spaceLimitReached />,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 150));
+
+    expect(screen.queryByRole('tooltip')).toBeNull();
   });
 
   it('reads the Restore button busy while the restore is in flight, and settles after it lands', async () => {

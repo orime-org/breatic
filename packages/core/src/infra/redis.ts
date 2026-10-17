@@ -11,7 +11,7 @@
  * | getRedis()       | REDIS_URL          | /0  | Session, lock, rate-limit, health    |
  * | getQueueRedis()  | REDIS_QUEUE_URL    | /1  | BullMQ task queue                    |
  * | getStreamRedis() | REDIS_STREAM_URL   | /2  | Redis Streams (cross-service)        |
- * | getCollabRedis() | REDIS_COLLAB_URL   | /3  | Collab pub/sub + space-delete lock   |
+ * | getCollabRedis() | REDIS_COLLAB_URL   | /3  | Collab pub/sub + Space count lock   |
  *
  * Early stage: all three can point to the same Redis instance (different DBs).
  * At scale: swap URLs to independent Redis instances without code changes.
@@ -204,8 +204,8 @@ let _collabRedis: Redis | null = null;
  * Get the collab cross-instance coordination Redis client.
  *
  * Backs collab-cluster coordination: the Hocuspocus extension-redis
- * pub/sub pair (cross-instance Yjs sync) and the space-delete
- * serialization lock. Split from {@link getStreamRedis} (cross-service
+ * pub/sub pair (cross-instance Yjs sync) and the Space count lock that
+ * serializes Space create / restore / delete. Split from {@link getStreamRedis} (cross-service
  * Streams) so collab-cluster coordination can move to its own Redis
  * instance later by changing only `REDIS_COLLAB_URL` — no code change
  * (same seam pattern as the other `REDIS_*_URL` connections).
