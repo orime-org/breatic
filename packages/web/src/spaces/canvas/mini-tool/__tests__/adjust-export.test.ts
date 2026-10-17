@@ -291,6 +291,7 @@ describe('drawAdjusted', () => {
       expect.any(Number),
       { width: 1000, height: 500 },
       { width: 250, height: 125 },
+      { width: 1000, height: 500 },
     );
   });
 

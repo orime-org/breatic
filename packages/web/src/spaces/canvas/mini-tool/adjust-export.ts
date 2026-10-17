@@ -178,10 +178,11 @@ export async function drawAdjusted(
   const drawable = drawableSize(through);
   if (drawable.width === 0) throw new Error(NO_CONTEXT);
   if (bufferShort(through)) throw new Error(SHORT_BUFFER);
-  const size = fitWithin(asked, drawable);
+  const own = intrinsicSize(el);
+  const { size, frame } = previewFrame(own, asked, drawable);
   target.width = size.width;
   target.height = size.height;
-  const chain = adjustFilters(value, ADJUST_GRAIN_SEED, intrinsicSize(el), size);
+  const chain = adjustFilters(value, ADJUST_GRAIN_SEED, own, size, frame);
   const source = previewSourceOf(el, size);
   if (chain.length === 0) {
     target.getContext('2d')?.drawImage(source, 0, 0, size.width, size.height);
@@ -283,6 +284,26 @@ export function assertCanExport(backend: FilterBackend, size: Size): void {
   const drawable = drawableSize(backend);
   if (drawable.width === 0) throw new Error(NO_CONTEXT);
   if (drawable.width < size.width || drawable.height < size.height) throw new ImageTooLargeError();
+}
+
+/** Where a preview draws: the canvas's size and the source pixels it spans. */
+export interface PreviewFrame {
+  /** The canvas's size. */
+  size: Size;
+  /** The source pixels the canvas spans. */
+  frame: Size;
+}
+
+/**
+ * The size a preview draws a picture at, held to what the backend can draw.
+ * @param natural - The picture's own size.
+ * @param asked - The size it is shown at.
+ * @param drawable - The largest canvas the backend draws.
+ * @returns The canvas's size and the source pixels it spans.
+ * @throws {never} Never.
+ */
+export function previewFrame(natural: Size, asked: Size, drawable: Size): PreviewFrame {
+  return { size: fitWithin(asked, drawable), frame: natural };
 }
 
 /**
