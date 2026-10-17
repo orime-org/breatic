@@ -59,7 +59,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
     streamTextRetry: actual.streamTextRetry,
     buildAgentConfig: () => ({
       modelId: "test",
-      instructions: { shared: "system" },
+      instructions: { base: "system" },
       tools: {
         web_search: tool({
           description: "取一个网页",

@@ -44,7 +44,7 @@ export interface ResolvedAgentConfig {
    * one place.
    */
   modelId: string;
-  /** The system prompt, in the two parts a call sends as separate blocks. */
+  /** The system prompt, in the parts a call sends as separate blocks. */
   instructions: Instructions;
   /** Tools, ready for the AI SDK's `tools` option. */
   tools: Record<string, Tool>;
@@ -63,16 +63,11 @@ export function buildAgentConfig(
 
   const toolNames = [...BASELINE_TOOLS, ...CANVAS_TOOLS];
 
-  const shared: string[] = [];
-  if (basePrompt) shared.push(basePrompt);
-  if (memoryContext?.projectMemory) {
-    shared.push(`## Project Context\n${memoryContext.projectMemory}`);
-  }
-
   return {
     modelId: getAgentConfig().default_model,
     instructions: {
-      shared: shared.join("\n\n"),
+      base: basePrompt ?? "",
+      ...(memoryContext?.projectMemory ? { project: `## Project Context\n${memoryContext.projectMemory}` } : {}),
       ...(memoryContext?.conversationMemory
         ? { conversation: `## Conversation Memory\n${memoryContext.conversationMemory}` }
         : {}),

@@ -74,7 +74,7 @@ vi.mock("@breatic/domain", async () => {
     ...base,
     finalizeTurn: actual.finalizeTurn,
     streamTextRetry: actual.streamTextRetry,
-    buildAgentConfig: () => ({ modelId: "m", instructions: { shared: "s" }, tools: {} }),
+    buildAgentConfig: () => ({ modelId: "m", instructions: { base: "s" }, tools: {} }),
     creditLotService: { chargeOnceForGeneration },
     resolveProvider: () => "test",
     getModel: () => modelProducing(() => modelSays.parts as ModelStreamPart[]),

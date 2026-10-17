@@ -49,7 +49,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
   return {
     ...base,
     streamTextRetry: actual.streamTextRetry,
-    buildAgentConfig: () => ({ modelId: "test", instructions: { shared: "system" }, tools: {} }),
+    buildAgentConfig: () => ({ modelId: "test", instructions: { base: "system" }, tools: {} }),
     finalizeTurn: async () => [],
     getModel: () => modelProducing(() => modelSays.parts as ModelStreamPart[]),
   };

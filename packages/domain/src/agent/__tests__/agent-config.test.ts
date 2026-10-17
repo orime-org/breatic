@@ -82,19 +82,20 @@ describe("buildAgentConfig", () => {
     expect(buildAgentConfig({}).modelId).toBe(sentinel);
   });
 
-  it("shares the base prompt and project memory, and keeps the conversation's memory apart", () => {
+  it("keeps the base prompt, the project's memory and the conversation's memory as three parts", () => {
     const config = buildAgentConfig({
       basePrompt: "base",
       memoryContext: { projectMemory: "p", conversationMemory: "c" },
     });
     expect(config.instructions).toEqual({
-      shared: "base\n\n## Project Context\np",
+      base: "base",
+      project: "## Project Context\np",
       conversation: "## Conversation Memory\nc",
     });
   });
 
   it("is the base prompt alone when there is no memory", () => {
-    expect(buildAgentConfig({ basePrompt: "base" }).instructions).toEqual({ shared: "base" });
+    expect(buildAgentConfig({ basePrompt: "base" }).instructions).toEqual({ base: "base" });
   });
 
   it("reads as the same text as one prompt joined in order", () => {

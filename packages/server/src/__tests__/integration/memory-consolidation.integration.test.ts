@@ -124,10 +124,9 @@ describe("a consolidation that lands", () => {
       basePrompt: "system",
       memoryContext: context,
     });
-    // The conversation's own memory rides apart from the shared part, which
-    // carries the project's.
+    // Each memory rides in its own part of the system prompt.
     expect(instructions.conversation).toContain("noir look");
-    expect(instructions.shared).toContain("noir short");
+    expect(instructions.project).toContain("noir short");
   });
 
   it("hands the injection only as much memory as the ceiling allows", async () => {

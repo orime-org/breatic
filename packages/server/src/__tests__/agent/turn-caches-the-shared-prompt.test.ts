@@ -5,9 +5,10 @@
  * What a turn sends as its system prompt, for a model that caches only where
  * it is told to.
  *
- * The part every conversation of a project shares carries a cache mark of
- * its own, so a new conversation's first call reads it; this conversation's
- * memory follows unmarked.
+ * The base prompt, which every conversation shares, and the project's memory,
+ * which every conversation of the project shares, each end in a cache mark of
+ * their own, so a new conversation's first call reads them; this
+ * conversation's memory follows unmarked.
  */
 import { describe, expect, it, vi } from "vitest";
 import type * as CoreModule from "@breatic/core";
@@ -42,7 +43,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
     instructionsText: actual.instructionsText,
     buildAgentConfig: () => ({
       modelId: "anthropic/claude-opus-5.5",
-      instructions: { shared: "persona and project memory", conversation: "## Conversation Memory\nc" },
+      instructions: { base: "persona", project: "## Project Context\np", conversation: "## Conversation Memory\nc" },
       tools: {},
     }),
     finalizeTurn: async () => [],
@@ -67,7 +68,7 @@ const { MainAgent } = await import("@server/agent/main-agent.js");
 const { runWithContext } = await import("@breatic/core");
 
 describe("the system prompt a turn sends", () => {
-  it("marks the part every conversation shares and leaves this conversation's memory unmarked", async () => {
+  it("marks the base prompt and the project's memory and leaves this conversation's memory unmarked", async () => {
     modelSays.parts = saying("the reply");
     await runWithContext({ userId: "u1", conversationId: "c1", projectId: "p1" }, async () => {
       const turn = await new MainAgent().chat("hello", undefined, [], "UTC");
@@ -76,8 +77,9 @@ describe("the system prompt a turn sends", () => {
 
     const prompt = modelSays.prompts.at(-1) as Array<{ role: string; content: unknown; providerOptions?: unknown }>;
     const system = prompt.filter((m) => m.role === "system");
-    expect(system.map((m) => m.content)).toEqual(["persona and project memory", "## Conversation Memory\nc"]);
+    expect(system.map((m) => m.content)).toEqual(["persona", "## Project Context\np", "## Conversation Memory\nc"]);
     expect(system[0]!.providerOptions).toMatchObject({ openrouter: { cacheControl: { type: "ephemeral" } } });
-    expect(system[1]!.providerOptions).toBeUndefined();
+    expect(system[1]!.providerOptions).toMatchObject({ openrouter: { cacheControl: { type: "ephemeral" } } });
+    expect(system[2]!.providerOptions).toBeUndefined();
   });
 });

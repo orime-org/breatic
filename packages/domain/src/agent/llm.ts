@@ -334,20 +334,21 @@ export function callOptionsFor(modelString: string | undefined, wants: CallWants
 }
 
 /**
- * The system prompt as the messages a model call sends, with the part every
- * conversation shares marked as a cache breakpoint of its own.
+ * The system prompt as the messages a model call sends, each part another
+ * conversation also sends ending in a cache breakpoint of its own.
  *
  * Request-level caching writes one entry, for the prefix ending at the last
  * block, so a new conversation, whose first message is new, finds nothing to
- * read even though everything before that message is the same as in every
- * other conversation (Anthropic prompt caching, "The system does not write
- * entries for any earlier position"). The mark on the shared part writes an
- * entry ending there, which the next conversation's first call reads.
+ * read even though everything before that message is the same as in other
+ * conversations (Anthropic prompt caching, "The system does not write entries
+ * for any earlier position"). The mark after the base prompt writes an entry
+ * every conversation reads, the one after the project's memory an entry every
+ * conversation of that project reads.
  * @param modelString - Model identifier, or undefined for the fallback.
- * @param parts - What every conversation of this project shares, and what
- *   belongs to this one conversation, if anything.
+ * @param parts - The base prompt, the project's memory and this
+ *   conversation's memory, the last two when there are any.
  * @param cache - How long to cache, or false when the call does not cache.
- * @returns The system messages, the shared one first.
+ * @returns The system messages, in that order.
  * @throws {never} Never.
  */
 export function systemFor(
@@ -357,10 +358,19 @@ export function systemFor(
 ): SystemModelMessage[] {
   const route = directRouteFor(modelString) ?? FALLBACK_ROUTE;
   const mark = cache === false || modelString === undefined ? {} : route.cache(modelString, cache);
-  const shared: SystemModelMessage = {
+  /**
+   * One part, carrying the cache mark when this call caches.
+   * @param content - The part's text.
+   * @returns The system message.
+   */
+  const marked = (content: string): SystemModelMessage => ({
     role: "system",
-    content: parts.shared,
+    content,
     ...(Object.keys(mark).length === 0 ? {} : { providerOptions: { [route.name]: mark } }),
-  };
-  return parts.conversation === undefined ? [shared] : [shared, { role: "system", content: parts.conversation }];
+  });
+  return [
+    marked(parts.base),
+    ...(parts.project === undefined ? [] : [marked(parts.project)]),
+    ...(parts.conversation === undefined ? [] : [{ role: "system" as const, content: parts.conversation }]),
+  ];
 }

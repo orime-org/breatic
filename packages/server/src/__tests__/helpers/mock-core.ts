@@ -606,15 +606,12 @@ export const domainMock = () => ({
   // which reads as "this turn sent no provider options" -- the one thing
   // the real function never does.
   callOptionsFor: vi.fn().mockReturnValue({ providerOptions: {} }),
-  // The real return's shape, unmarked like `callOptionsFor` above: the
-  // shared part first, this conversation's memory after it when there is any.
-  systemFor: vi.fn((_model: string, parts: { shared: string; conversation?: string }) =>
-    parts.conversation === undefined
-      ? [{ role: "system", content: parts.shared }]
-      : [
-          { role: "system", content: parts.shared },
-          { role: "system", content: parts.conversation },
-        ],
+  // The real return's shape, unmarked like `callOptionsFor` above: one
+  // system message per part there is, in order.
+  systemFor: vi.fn((_model: string, parts: { base: string; project?: string; conversation?: string }) =>
+    [parts.base, parts.project, parts.conversation]
+      .filter((part): part is string => part !== undefined)
+      .map((content) => ({ role: "system", content })),
   ),
   instructionsText: REAL_INSTRUCTIONS_TEXT,
   buildToolSet: vi.fn().mockReturnValue({}),

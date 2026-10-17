@@ -448,17 +448,18 @@ describe("prompt caching", () => {
   });
 });
 
-describe("the part of the system prompt every conversation shares", () => {
+describe("the parts of the system prompt other conversations share", () => {
   /**
    * Runs one call whose instructions come from `systemFor`.
    * @param model - The model id to route.
-   * @param parts - The shared part and, if any, this conversation's own.
+   * @param parts - The base prompt, the project's memory and this
+   *   conversation's memory, the last two when there are any.
    * @param cache - The cache lifetime asked for, or false for none.
    * @returns The intercepted request.
    */
   async function sendSystem(
     model: string,
-    parts: { shared: string; conversation?: string },
+    parts: { base: string; project?: string; conversation?: string },
     cache: LlmModule.CallWants["cache"],
   ): Promise<Seen> {
     const { getModel, callOptionsFor, systemFor } = await freshLlm();
@@ -474,7 +475,7 @@ describe("the part of the system prompt every conversation shares", () => {
     return seen;
   }
 
-  const PARTS = { shared: "persona and project memory", conversation: "this conversation's memory" };
+  const PARTS = { base: "persona", project: "project memory", conversation: "this conversation's memory" };
   const ONE_HOUR = { type: "ephemeral", ttl: "1h" };
 
   /**
@@ -486,26 +487,37 @@ describe("the part of the system prompt every conversation shares", () => {
     return (body.messages as Array<{ role: string; content: unknown }>).filter((m) => m.role === "system");
   }
 
-  it("marks the shared part, and only it, when calling Anthropic directly", async () => {
+  it("marks the end of the base prompt and of the project's memory when calling Anthropic directly", async () => {
     keys.current = { ANTHROPIC_API_KEY: "k" };
     expect((await sendSystem("anthropic/claude-opus-5.5", PARTS, "1h")).body.system).toEqual([
-      { type: "text", text: PARTS.shared, cache_control: ONE_HOUR },
+      { type: "text", text: PARTS.base, cache_control: ONE_HOUR },
+      { type: "text", text: PARTS.project, cache_control: ONE_HOUR },
       { type: "text", text: PARTS.conversation },
     ]);
   });
 
-  it("marks the shared part, and only it, when reaching Claude through OpenRouter", async () => {
+  it("marks the same two ends when reaching Claude through OpenRouter", async () => {
     keys.current = { OPENROUTER_API_KEY: "sk-or-test" };
     expect(systemMessages((await sendSystem("anthropic/claude-opus-5.5", PARTS, "1h")).body)).toEqual([
-      { role: "system", content: [{ type: "text", text: PARTS.shared, cache_control: ONE_HOUR }] },
+      { role: "system", content: [{ type: "text", text: PARTS.base, cache_control: ONE_HOUR }] },
+      { role: "system", content: [{ type: "text", text: PARTS.project, cache_control: ONE_HOUR }] },
       { role: "system", content: [{ type: "text", text: PARTS.conversation }] },
     ]);
   });
 
-  it("sends one marked block when the conversation has no memory of its own", async () => {
+  it("sends only the base prompt, marked, when there is no memory", async () => {
     keys.current = { ANTHROPIC_API_KEY: "k" };
-    expect((await sendSystem("anthropic/claude-opus-5.5", { shared: PARTS.shared }, "1h")).body.system).toEqual([
-      { type: "text", text: PARTS.shared, cache_control: ONE_HOUR },
+    expect((await sendSystem("anthropic/claude-opus-5.5", { base: PARTS.base }, "1h")).body.system).toEqual([
+      { type: "text", text: PARTS.base, cache_control: ONE_HOUR },
+    ]);
+  });
+
+  it("goes from the marked base prompt straight to the conversation's memory when the project has none", async () => {
+    keys.current = { ANTHROPIC_API_KEY: "k" };
+    const parts = { base: PARTS.base, conversation: PARTS.conversation };
+    expect((await sendSystem("anthropic/claude-opus-5.5", parts, "1h")).body.system).toEqual([
+      { type: "text", text: PARTS.base, cache_control: ONE_HOUR },
+      { type: "text", text: PARTS.conversation },
     ]);
   });
 

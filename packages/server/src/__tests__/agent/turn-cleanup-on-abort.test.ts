@@ -92,7 +92,7 @@ vi.mock("@breatic/domain", async () => {
     streamTextRetry,
     buildAgentConfig: () => ({
       modelId: "test/model",
-      instructions: { shared: "sys" },
+      instructions: { base: "sys" },
       tools: {},
     }),
     creditLotService: { chargeOnceForGeneration },
