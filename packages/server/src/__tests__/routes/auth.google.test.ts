@@ -129,7 +129,7 @@ describe("POST /auth/google", () => {
   it('hands the browser\'s campaign source to the sign-in, reduced as the sign-up stores it', async () => {
     verifyIdTokenMock.mockResolvedValue({ getPayload: () => ({ iss: 'accounts.google.com', sub: 'subject', email: 'owner@gmail.com', email_verified: true }) });
     const at = new Date().toISOString();
-    const response = await createApp().request('/api/v1/auth/google', {
+    const response = await withPeer(createApp()).request('/api/v1/auth/google', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ credential: 'signed-token', attribution: { first: { utm_source: 'google', landing_page: '/pricing?x=1', at }, last: { utm_source: 'google', at } } }),
     });
