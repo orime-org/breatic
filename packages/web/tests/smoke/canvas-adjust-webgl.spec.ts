@@ -184,47 +184,56 @@ test('the picture adjust draws through WebGL as ffmpeg does', async ({ page }) =
     }
     const small = await run(32, 32, () => [128, 128, 128], { grain: 100 }, { width: 128, height: 128 });
     const previewGrain = [0, 1, 2].map((k) => sdOf(small, k) / sdOf(avg, k));
-    // Noise reduction drawn smaller than its source: the shader weighs the
-    // chroma as the 2D path does, on the same shrunk picture (the 2D path is
-    // held to the export shrunk by area in adjust-filters.test.ts).
+    // Noise reduction drawn smaller than its source, at the size the preview
+    // picks: the shader weighs the chroma as the 2D path does, on the same
+    // copy (the 2D path is held to the export shrunk to that size in
+    // adjust-filters.test.ts). Each edge runs across and then down, so both
+    // passes are weighed.
     const filtersModule = '/spaces/canvas/mini-tool/adjust-filters.ts';
     const filters2d = await import(filtersModule);
     const previewNoise: number[] = [];
-    for (const [width, w, edge, colours] of [
+    for (const [length, shown, edge, colours] of [
+      [128, 100, 63, ['0000FF', 'FFFF00']],
       [128, 64, 63, ['0000FF', 'FFFF00']],
-      [128, 64, 64, ['0000FF', 'FFFF00']],
-      [1024, 576, 307, ['B2664C', '3366CC']],
-      [1000, 600, 301, ['0000FF', 'FFFF00']],
+      [256, 64, 77, ['0000FF', 'FFFF00']],
+      [1000, 120, 301, ['B2664C', '3366CC']],
+      [4000, 400, 1987, ['0000FF', 'FFFF00']],
+      [1001, 300, 301, ['0000FF', 'FFFF00']],
     ] as const) {
-      const height = 16;
-      const h = Math.round((height * w) / width);
-      const el = document.createElement('canvas');
-      el.width = width;
-      el.height = height;
-      const paint = el.getContext('2d')!;
-      paint.fillStyle = `#${colours[0]}`;
-      paint.fillRect(0, 0, edge, height);
-      paint.fillStyle = `#${colours[1]}`;
-      paint.fillRect(edge, 0, width - edge, height);
-      const blob: Blob = await new Promise((done) => el.toBlob((b) => done(b!), 'image/png'));
-      const picture = new Image();
-      picture.src = URL.createObjectURL(blob);
-      await picture.decode();
-      const small = document.createElement('canvas');
-      small.width = w;
-      small.height = h;
-      const ctx = small.getContext('2d')!;
-      ctx.imageSmoothingEnabled = true;
-      ctx.imageSmoothingQuality = 'high';
-      ctx.drawImage(picture, 0, 0, w, h);
-      for (const noiseReduction of [10, 30, 100]) {
-        const value = { ...defaults, noiseReduction };
-        const theirs = ctx.getImageData(0, 0, w, h);
-        filters2d.adjustPixels(theirs, value, 1, { width, height });
-        const out = document.createElement('canvas');
-        await exporter.drawAdjusted(picture, { width: w, height: h }, value, out);
-        const ours = out.getContext('2d')!.getImageData(0, 0, w, h);
-        previewNoise.push(Math.max(...Array.from({ length: w * h }, (_, n) => gap(px(ours, n % w, Math.floor(n / w)), px(theirs, n % w, Math.floor(n / w))))));
+      for (const across of [true, false]) {
+        const side = 16;
+        const width = across ? length : side;
+        const height = across ? side : length;
+        const el = document.createElement('canvas');
+        el.width = width;
+        el.height = height;
+        const paint = el.getContext('2d')!;
+        paint.fillStyle = `#${colours[0]}`;
+        paint.fillRect(0, 0, across ? edge : width, across ? height : edge);
+        paint.fillStyle = `#${colours[1]}`;
+        if (across) paint.fillRect(edge, 0, width - edge, height);
+        else paint.fillRect(0, edge, width, height - edge);
+        const blob: Blob = await new Promise((done) => el.toBlob((b) => done(b!), 'image/png'));
+        const picture = new Image();
+        picture.src = URL.createObjectURL(blob);
+        await picture.decode();
+        const thin = Math.max(1, Math.round((side * shown) / length));
+        const asked = across ? { width: shown, height: thin } : { width: thin, height: shown };
+        for (const noiseReduction of [10, 30, 100]) {
+          const value = { ...defaults, noiseReduction };
+          const out = document.createElement('canvas');
+          const preview = await exporter.drawAdjusted(picture, asked, value, out);
+          const { width: w, height: h } = preview.size;
+          const copy = document.createElement('canvas');
+          copy.width = w;
+          copy.height = h;
+          const ctx = copy.getContext('2d')!;
+          ctx.drawImage(exporter.previewSourceOf(picture, preview), 0, 0);
+          const theirs = ctx.getImageData(0, 0, w, h);
+          filters2d.adjustPixels(theirs, value, 1, { width, height }, preview.frame);
+          const ours = out.getContext('2d')!.getImageData(0, 0, w, h);
+          previewNoise.push(Math.max(...Array.from({ length: w * h }, (_, n) => gap(px(ours, n % w, Math.floor(n / w)), px(theirs, n % w, Math.floor(n / w))))));
+        }
       }
     }
     return {
