@@ -295,11 +295,11 @@ async function finish(cookie: string, uploadId: string, signedFor = uploadId): P
 }
 
 describe("finishing a batch's uploads", () => {
-  it("finishes 64 uploads in a minute without meeting the limit", async () => {
+  it("finishes three 8x8 grids in a minute without meeting either limit", async () => {
     const a = await account();
 
     const statuses: number[] = [];
-    for (let i = 0; i < 64; i++) statuses.push((await finish(a.cookie, crypto.randomUUID())).status);
+    for (let i = 0; i < 3 * 64; i++) statuses.push((await finish(a.cookie, crypto.randomUUID())).status);
 
     expect(statuses.filter((status) => status === 429)).toEqual([]);
   });
@@ -312,6 +312,8 @@ describe("finishing a batch's uploads", () => {
     for (let i = 0; i < 30; i++) statuses.push((await finish(a.cookie, uploadId)).status);
 
     expect(statuses).toContain(429);
+    // Both quotas are judged in one step: a refused finish takes room in neither.
+    expect(await getRedis().zcard(`${env.ENV}:ratelimit:upload-complete-user:${a.userId}`)).toBe(10);
   });
 
   // One ticket opens any number of uploads at the Worker, so a person's
