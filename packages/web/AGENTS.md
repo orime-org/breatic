@@ -102,18 +102,16 @@ ESLint `breatic/no-raw-button` scans `src/**/*.{ts,tsx}` and exempts only `compo
 **Every scope rule in `index.css` (`.scope el { … }`) is inside an `@layer`.** Unlayered rules beat every layered rule, including all Tailwind utilities, so utilities on elements inside the scope silently stop working. A property both the scope and its elements' utilities set belongs on the element. `chat-markdown-css.test.ts` guards only `.chat-markdown` and `document-body-layer-css.test.ts` only `.doc-body`'s layering; any other scope is unguarded. Check: is it in `@layer`? Does any property overlap with element utilities?
 
 ## Sizes follow content
-**Widths and heights follow their content (`whitespace-nowrap` items in a content-sized container); a fixed value is used only when it is a product spec, such as the 288px canvas node.** A size fixed at the widest locale leaves gaps in the others. Verify in all five locales and both themes. Check: is this number a spec, or one case I measured?
+**Widths and heights follow their content (`whitespace-nowrap` items in a content-sized container); a fixed value is used only when it is a product spec, such as the 288px canvas node.** A size fixed at the widest locale leaves gaps in the others. Verify in all five locales and both themes.
 
 ## Demo decides structure, tokens decide values
-**An approved demo decides function and geometry; every concrete value comes from our existing tokens.** Demo pixels were never calibrated against the token system.
+**An approved demo decides function and geometry; every concrete value comes from our existing tokens.**
 
 | Decided by the demo | Decided by the product |
 |---|---|
 | logic, structure, which element sits on which row, which cell is empty, which states exist and how each looks | colours, semantic tokens, type steps, spacing scale, radii, control sizes |
 
-**Existing values are a reference, not a ceiling: use what exists, and size what does not exist to the real need.** A value conflict is settled by the tokens without asking; a gap in the demo's logic (a missing state, an interaction that does not add up) is fixed in the demo and shown before code changes. Invoke `/ui-demo-fidelity` ([skill](../../.claude/skills/ui-demo-fidelity/SKILL.md)) when implementing from a demo.
-
-**When a change has a demo, smoke includes checking structure and states against it item by item in the real app, and walking each animation with real use.** Code that is written can still not render (e.g. `border-radius` on cells under `border-collapse`). Check: does this change have a demo? Yes → this step is in smoke.
+Invoke `/ui-demo-fidelity` ([skill](../../.claude/skills/ui-demo-fidelity/SKILL.md)) when implementing from a demo and when checking a change against its demo in the real app.
 
 ## UI copy informs
 **Interface text tells the user the current situation, briefly, with a clear action; it does not explain why.** "Currently unavailable" is short enough; reasons go in code comments, never in locale files. Existing long strings do not comply, so never copy them as a template. Check: does this sentence state what is happening, or explain why? Explaining → delete.

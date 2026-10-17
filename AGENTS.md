@@ -121,7 +121,7 @@ Upload and generation paths only insert objects, never delete them (dedup losers
 **New or changed behaviour follows [docs/TDD-MANDATE.md](docs/TDD-MANDATE.md); read it before writing tests.** It holds the anti-patterns, invariant tooling and how TDD follows DD.
 
 ### Due diligence
-**A design that hits a trigger in section 1 of [docs/DD-PROCESS.md](docs/DD-PROCESS.md) (security model, cross-package, already shipped, architecture, state machine) runs the DD there before design work, starting with candidate enumeration.** A design's selection section carries a candidate table and a comparison matrix; one candidate is not an enumeration. Check: does one fact have two or more states and two or more write paths? Fill the section 9 transition table for every place it is stored before writing code.
+**A design that hits a trigger in section 1 of [docs/DD-PROCESS.md](docs/DD-PROCESS.md) (security model, cross-package, already shipped, architecture, state machine) runs the DD there before design work, starting with candidate enumeration.** A design's selection section carries a candidate table and a comparison matrix; one candidate is not an enumeration. A state-transition table is the one in section 9, filled for every place the fact is stored.
 
 ## Product scope
 

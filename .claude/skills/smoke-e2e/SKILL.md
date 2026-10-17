@@ -37,13 +37,11 @@ Check: did what I observed come from a process I started, running the code I cha
 
 **When the change sits after the model's answer (where a proposal lands, how a card renders), verify the flow with a spec that intercepts `**/chat/message`.** Several specs do this with `page.route('**/chat/message', …)`; a real-model case is related only when the change is on the path to that external service.
 
-Check: which step of this spec reaches the line I changed, and what does that step see differently before and after?
-
 ## Reading results
 
 **Judge a run by the `N passed`, `N failed` and `N skipped` counts and by the coverage line the default run prints, never by the exit code or the last lines.** A run whose cases were skipped or excluded exits 0 and ends like a green one.
 
-**Playwright prints the failure detail in the middle of its output, so `tail` cuts it off.** Save the whole output to a file and search it, then open `test-results/<case>/error-context.md`, which holds the page snapshot at the moment of failure.
+**Playwright prints the failure detail in the middle of its output, so `tail` cuts it off;** `test-results/<case>/error-context.md` holds the page snapshot at the moment of failure.
 
 **For a red case with no matching record yet, search the open issues by the spec file name and again by words from the case title.** Issue titles often paraphrase the case, so a file-name search alone misses them. It counts as already filed only when both the case and the failure text match.
 

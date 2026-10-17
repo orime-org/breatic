@@ -25,10 +25,8 @@ Unit tests run in jsdom (`jsdom` 29, `vitest` 3), not a browser. Where jsdom dif
 
 ## Is this test really protecting the code?
 
-When a test and the code disagree, decide which one is wrong before editing either. The test for that is cheap: break the line the test claims to protect and run it.
+Breaking the line a web test claims to protect has two traps here:
 
-- **Break the protected line on purpose: red means the test works and the code is wrong; still green means the test protects nothing and the test is what needs fixing.** Four shapes come up: the test claims to check A but checks B (fix the test); there is no test (add one); the test is red because the agreed spec changed (fix the test); the test is red because the code is wrong (fix the code; editing the test here is cheating).
-  Check: have I verified that the test I am about to edit really protects what it claims?
 - **Confirm the mutation reached the code that runs.** Tests that import `@breatic/shared`, `@breatic/core` or `@breatic/domain` from another package run their built `dist`, so mutating their `src` changes nothing until you build (the cross-package rule is in `AGENTS.md#testing`). If no test at all goes red, suspect the mutation first, then the test.
 - **Break one branch at a time.** Rewriting a whole function to return a constant only proves the function is used; every `if/else` arm and every step of a fallback chain needs its own mutation.
   Check: did this mutation break exactly the branch I meant to check?
