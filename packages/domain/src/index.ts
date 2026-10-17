@@ -98,7 +98,8 @@ export type {
 } from "@domain/asset/upload-grant.repo.js";
 
 // ── Agent (AIGC execution kernel: model / tools / prompt extraction) ──
-export { getModel, resolveProvider, reasoningFor } from "@domain/agent/llm.js";
+export { getModel, resolveProvider, callOptionsFor } from "@domain/agent/llm.js";
+export type { CallWants } from "@domain/agent/llm.js";
 export { generateTextRetry, streamTextRetry } from "@domain/agent/model-call.js";
 export {
   buildToolSet,

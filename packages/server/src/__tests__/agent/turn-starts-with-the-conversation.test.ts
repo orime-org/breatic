@@ -29,7 +29,7 @@ const modelSays = vi.hoisted(() => ({ parts: [] as unknown[] }));
 
 const buildTurnContext = vi.fn(async () => ({
   memoryContext: { projectMemory: "", conversationMemory: "" },
-  compressedHistory: [],
+  history: [],
 }));
 
 vi.mock("@server/agent/turn-context.js", () => ({ buildTurnContext }));
@@ -120,9 +120,9 @@ describe("the name a turn gives its conversation", () => {
     modelSays.parts = saying("the reply");
 
     // Held open, so that anything waiting on it waits forever. Three round
-    // trips -- the memories, the conversation and its history -- and then the
-    // compression, and every one of them is time the reader spends in front
-    // of a screen where nothing has happened.
+    // trips -- the memories, the conversation and its history -- and every
+    // one of them is time the reader spends in front of a screen where
+    // nothing has happened.
     let releaseTheSlowWork = (): void => undefined;
     buildTurnContext.mockImplementationOnce(
       () =>
@@ -130,7 +130,7 @@ describe("the name a turn gives its conversation", () => {
           releaseTheSlowWork = (): void => {
             resolve({
               memoryContext: { projectMemory: "", conversationMemory: "" },
-              compressedHistory: [],
+              history: [],
             });
           };
         }),

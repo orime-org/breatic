@@ -20,6 +20,7 @@ import {
   integer,
   bigint,
   timestamp,
+  json,
   jsonb,
   uniqueIndex,
   index,
@@ -500,6 +501,13 @@ export const conversationMessages = pgTable(
     /** Position within its turn. */
     seq: integer("seq").notNull(),
     parts: jsonb("parts").$type<MessagePart[]>().default([]).notNull(),
+    /**
+     * The message as it was sent to the model, replayed as it is on later
+     * turns so the provider's cached prefix still matches. `json`, because
+     * `jsonb` reorders object keys. Null on rows written before it existed;
+     * the server validates what it reads back.
+     */
+    forModel: json("for_model"),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
     ...timestamps,
   },
