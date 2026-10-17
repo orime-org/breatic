@@ -156,14 +156,6 @@ describe("agent-rule-files", () => {
       ]);
     });
 
-    it("reports a quoted section name without an anchor", () => {
-      const files = {
-        ...cleanRepo(),
-        "packages/core/src/e.ts": '// AGENTS.md "Key conventions" applies.\nexport const e = 1;\n',
-      };
-      expect(run(files)).toEqual([expect.objectContaining({ file: "packages/core/src/e.ts" })]);
-    });
-
     it("reports an anchor that names no heading in the target", () => {
       const files = {
         ...cleanRepo(),
@@ -251,14 +243,41 @@ describe("agent-rule-files", () => {
     });
 
     it.each([
-      ['AGENTS.md: "Key conventions" applies.'],
-      ["root AGENTS.md's \"Key conventions\" rule."],
-      ["AGENTS.md, \"Key conventions\"."],
-      ["AGENTS.md 'Key conventions'."],
-      ["AGENTS.md `Key conventions`."],
-    ])("reports a quoted section name written as %s", (comment) => {
-      const files = { ...cleanRepo(), "packages/core/src/q.ts": `// ${comment}\nexport const q = 1;\n` };
-      expect(run(files)).toEqual([expect.objectContaining({ file: "packages/core/src/q.ts" })]);
+      ["Edit `AGENTS.md` or `SKILL.md` files."],
+      ["Rule files: `AGENTS.md`, `CLAUDE.local.md`."],
+      ['const names = ["AGENTS.md", "SKILL.md"];'],
+      ["file === 'AGENTS.md' || file === 'x'"],
+    ])("leaves quoted text beside a bare file name alone: %s", (line) => {
+      const files = { ...cleanRepo(), "packages/core/src/q.ts": `// ${line}\nexport const q = 1;\n` };
+      expect(run(files)).toEqual([]);
+    });
+
+    it("reports an anchor-less path in markdown prose but not in a fenced code sample", () => {
+      const files = {
+        ...cleanRepo(),
+        "docs/prose.md": "The rule is in packages/web/AGENTS.md.\n",
+        "docs/sample.md": "```sh\ncat packages/web/AGENTS.md\n```\n",
+      };
+      expect(run(files)).toEqual([expect.objectContaining({ file: "docs/prose.md", line: 1 })]);
+    });
+
+    it("resolves reference-style definitions relative to the file that holds them", () => {
+      const files = {
+        ...cleanRepo(),
+        "docs/ok.md": "See [the rule][r].\n\n[r]: ../AGENTS.md#key-conventions\n",
+        "docs/bad.md": "See [the rule][r].\n\n[r]: ../AGENTS.md#gone\n",
+      };
+      expect(run(files)).toEqual([expect.objectContaining({ file: "docs/bad.md", line: 3 })]);
+    });
+
+    it("reads angle-bracket and percent-encoded link targets", () => {
+      const files = {
+        ...cleanRepo(),
+        "packages/web/AGENTS.md": "# Web\n\n## Scroll areas\n\n## \u6eda\u52a8\n",
+        "docs/a.md": "See [it](<../packages/web/AGENTS.md#scroll-areas>).\n",
+        "docs/b.md": "See [it](../packages/web/AGENTS.md#%E6%BB%9A%E5%8A%A8).\n",
+      };
+      expect(run(files)).toEqual([]);
     });
 
     it("accepts an anchored link whose visible text is the file path", () => {
@@ -322,5 +341,21 @@ describe("headingSlugs", () => {
 
   it("closes a fence only with a fence at least as long as the one that opened it", () => {
     expect([...headingSlugs("````md\n```\n## inside\n````\n## after\n")]).toEqual(["after"]);
+  });
+
+  it("keeps the hyphen GitHub leaves where leading or trailing symbols were dropped", () => {
+    expect([...headingSlugs("## \u2705 In scope\n\n## Ports \u2192\n")]).toEqual(["-in-scope", "ports-"]);
+  });
+
+  it("skips a number already taken by a heading that ends in it", () => {
+    expect([...headingSlugs("## Foo\n\n## Foo-1\n\n## Foo\n")]).toEqual(["foo", "foo-1", "foo-2"]);
+  });
+
+  it("slugs the visible text of a heading, not its markup", () => {
+    expect([...headingSlugs("## See [ports](x.md) here\n")]).toEqual(["see-ports-here"]);
+  });
+
+  it("reads setext headings and ignores headings inside HTML comments", () => {
+    expect([...headingSlugs("Title\n=====\n\n<!--\n## hidden\n-->\n")]).toEqual(["title"]);
   });
 });

@@ -1,6 +1,9 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 import { posix } from "node:path";
+import GithubSlugger from "github-slugger";
+import { fromMarkdown } from "mdast-util-from-markdown";
+import { toString } from "mdast-util-to-string";
 import type { Check, CheckContext, Finding } from "#repo-lint/check";
 import { assertAllowlistIsLive } from "#repo-lint/allowlist";
 import { TEST_FILE } from "#repo-lint/file-kinds";
@@ -37,22 +40,153 @@ const POINTER_MENTION_ALLOWED: ReadonlyMap<string, string> = new Map([
 ]);
 
 /**
- * A mention of a rules file in running text, with what follows it.
+ * A path to a rules file written as text, with its anchor.
  *
- * Groups: 1 the `](` of a markdown link, 2 the path, 3 the anchor, 4 a quoted
- * section name, which may follow a `:`, `,` or `'s` the way citations in
- * this repository are written. The anchor class stops at `.` so a
- * sentence's full stop is not read as part of it.
+ * Groups: 1 the path, 2 the anchor. The path must not continue a longer
+ * token, so a placeholder such as `packages/<pkg>/AGENTS.md` is not read as
+ * a path. The anchor class stops at `.` so a sentence's full stop is not
+ * read as part of it.
  */
-const REFERENCE =
-  /(\]\(\s*)?((?:\.{1,2}\/|[\w.-]+\/)*(?:AGENTS|SKILL)\.md)(#[\p{L}\p{N}_-]*)?(\s*(?:'s|:|,)?\s*["'`\u201C\u300C][^"'`\u201D\u300D]+["'`\u201D\u300D])?/gu;
+const PATH_REFERENCE = /(?<![\w./-])((?:\.{1,2}\/|[\w.-]+\/)*(?:AGENTS|SKILL)\.md)(#[\p{L}\p{N}\p{M}_%-]*)?/gu;
+
+/** Absolute URLs point outside this checkout. */
+const URL = /\b[a-z][a-z\d+.-]*:\/\/\S+/gi;
+
+/** A link target with a scheme (`https:`, `mailto:`) leaves this checkout. */
+const HAS_SCHEME = /^[a-z][a-z\d+.-]*:/i;
+
+/** The slice of an mdast node this check reads. */
+interface MarkdownNode {
+  type: string;
+  url?: string;
+  value?: string;
+  children?: MarkdownNode[];
+  position?: { start: { line: number } };
+}
+
+/** One place a file points into a rules file or skill. */
+interface Reference {
+  line: number;
+  /** Repo-relative target path. */
+  target: string;
+  /** Without the `#`; empty when the reference has none. */
+  anchor: string;
+}
 
 /**
- * Text that looks like a reference but is not one: the visible text of a
- * markdown link (its target is checked instead) and absolute URLs, which
- * point outside this checkout.
+ * Parses markdown as GitHub renders it, with YAML front matter (which GitHub
+ * shows as a table) blanked so its lines keep their numbers.
+ * @param markdown File contents.
+ * @returns The mdast root.
  */
-const NOT_A_REFERENCE = /\[[^\]]*\](?=\()|\bhttps?:\/\/\S+/g;
+function parseMarkdown(markdown: string): MarkdownNode {
+  const frontMatter = /^---\n[\s\S]*?\n---(?=\n|$)/.exec(markdown);
+  const body = frontMatter ? markdown.replace(frontMatter[0], frontMatter[0].replace(/[^\n]/g, "")) : markdown;
+  return fromMarkdown(body);
+}
+
+/**
+ * Decodes a percent-encoded link part, keeping it as written when it is not
+ * valid encoding.
+ * @param text The path or anchor as written.
+ * @returns The decoded text.
+ */
+function decode(text: string): string {
+  try {
+    return decodeURIComponent(text);
+  } catch {
+    return text;
+  }
+}
+
+/**
+ * The GitHub anchor slugs of every heading in a markdown file.
+ *
+ * Headings are found by a CommonMark parser and slugged from their visible
+ * text with `github-slugger`, which numbers repeats the way GitHub does.
+ * @param markdown File contents.
+ * @returns The slugs, in document order.
+ */
+export function headingSlugs(markdown: string): Set<string> {
+  const slugger = new GithubSlugger();
+  const slugs = new Set<string>();
+  /**
+   * Collects the slug of each heading under a node.
+   * @param node The node to walk.
+   */
+  const visit = (node: MarkdownNode): void => {
+    if (node.type === "heading") {
+      slugs.add(slugger.slug(toString(node, { includeHtml: false })));
+      return;
+    }
+    node.children?.forEach(visit);
+  };
+  visit(parseMarkdown(markdown));
+  return slugs;
+}
+
+/**
+ * Path references written as text: a path containing `/`, or any path with
+ * an anchor. A bare file name in prose names the kind of file, not a rule.
+ * @param file The file the text is in.
+ * @param text The text to scan.
+ * @param firstLine The line number of the text's first line.
+ * @returns The references found.
+ */
+function textReferences(file: string, text: string, firstLine: number): Reference[] {
+  const references: Reference[] = [];
+  const scan = text.replace(URL, (url) => " ".repeat(url.length));
+  for (const match of scan.matchAll(PATH_REFERENCE)) {
+    const [, path = "", anchor = ""] = match;
+    if (!anchor && !path.includes("/")) continue;
+    const relative = path.startsWith("./") || path.startsWith("../");
+    references.push({
+      line: firstLine + (scan.slice(0, match.index).match(/\n/g)?.length ?? 0),
+      target: relative ? posix.normalize(posix.join(posix.dirname(file), path)) : path,
+      anchor: decode(anchor.slice(1)),
+    });
+  }
+  return references;
+}
+
+/**
+ * References in a markdown file: link and definition targets, resolved the
+ * way GitHub resolves them, and path references in prose and inline code.
+ * Fenced code holds samples, not citations.
+ * @param file The markdown file.
+ * @param markdown Its contents.
+ * @returns The references found.
+ */
+function markdownReferences(file: string, markdown: string): Reference[] {
+  const references: Reference[] = [];
+  /**
+   * Collects the references under a node, not descending into links.
+   * @param node The node to walk.
+   */
+  const visit = (node: MarkdownNode): void => {
+    const line = node.position?.start.line ?? 1;
+    if ((node.type === "link" || node.type === "definition") && node.url !== undefined) {
+      const hash = node.url.indexOf("#");
+      const path = decode(hash === -1 ? node.url : node.url.slice(0, hash));
+      const name = posix.basename(path);
+      if (!HAS_SCHEME.test(node.url) && (name === RULES_FILE || name === "SKILL.md")) {
+        references.push({
+          line,
+          target: path.startsWith("/") ? path.slice(1) : posix.normalize(posix.join(posix.dirname(file), path)),
+          anchor: hash === -1 ? "" : decode(node.url.slice(hash + 1)),
+        });
+      }
+      return;
+    }
+    if (node.type === "text" || node.type === "inlineCode") {
+      references.push(...textReferences(file, node.value ?? "", line));
+      return;
+    }
+    node.children?.forEach(visit);
+  };
+  visit(parseMarkdown(markdown));
+  return references;
+}
 
 /**
  * Whether a path is a rules file.
@@ -70,50 +204,6 @@ function isRulesFile(path: string): boolean {
  */
 function isPointerFile(path: string): boolean {
   return posix.basename(path) === POINTER_FILE;
-}
-
-/**
- * The GitHub anchor slugs of every heading in a markdown file.
- *
- * GitHub lower-cases the heading text, drops everything that is not a
- * letter, digit, space, hyphen or underscore, turns spaces into hyphens, and
- * numbers repeats `-1`, `-2` in order. Lines inside fenced code are not
- * headings.
- * @param markdown File contents.
- * @returns The slugs, in document order.
- */
-export function headingSlugs(markdown: string): Set<string> {
-  const slugs = new Set<string>();
-  const seen = new Map<string, number>();
-  // CommonMark: a fence closes only on a bare run of the same character at
-  // least as long as the run that opened it.
-  let fence: string | null = null;
-  for (const line of markdown.split("\n")) {
-    const fenceMatch = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line);
-    if (fenceMatch) {
-      const run = fenceMatch[1]!;
-      if (fence === null) {
-        fence = run;
-        continue;
-      }
-      if (run.startsWith(fence) && run.charAt(0) === fence.charAt(0) && fenceMatch[2]!.trim() === "") {
-        fence = null;
-      }
-      continue;
-    }
-    if (fence !== null) continue;
-    const heading = /^#{1,6}\s+(.*?)\s*#*\s*$/.exec(line);
-    if (!heading) continue;
-    const base = heading[1]!
-      .toLowerCase()
-      .replace(/[^\p{L}\p{N}\p{M}\s_-]/gu, "")
-      .trim()
-      .replace(/\s/g, "-");
-    const count = seen.get(base) ?? 0;
-    seen.set(base, count + 1);
-    slugs.add(count === 0 ? base : `${base}-${count}`);
-  }
-  return slugs;
 }
 
 /**
@@ -188,10 +278,9 @@ function checkPointerMentions(file: string, lines: readonly string[]): Finding[]
  * there, so moving or deleting a rule breaks the build instead of the link.
  * @param context The check context.
  * @param file Repo-relative path.
- * @param lines The file's lines.
  * @returns A finding per unresolvable reference.
  */
-function checkReferences(context: CheckContext, file: string, lines: readonly string[]): Finding[] {
+function checkReferences(context: CheckContext, file: string): Finding[] {
   if (
     isRulesFile(file) ||
     isPointerFile(file) ||
@@ -202,26 +291,20 @@ function checkReferences(context: CheckContext, file: string, lines: readonly st
   ) {
     return [];
   }
+  const text = context.read(file);
+  const references = file.endsWith(".md") ? markdownReferences(file, text) : textReferences(file, text, 1);
   const findings: Finding[] = [];
-  lines.forEach((text, index) => {
-    const scan = text.replace(NOT_A_REFERENCE, (m) => (m.startsWith("[") ? `${" ".repeat(m.length - 1)}]` : ""));
-    for (const match of scan.matchAll(REFERENCE)) {
-      const [, link, path = "", anchor, quoted] = match;
-      // A bare word in prose ("each package's AGENTS.md") is not a reference.
-      if (!link && !anchor && !quoted && !path.includes("/")) continue;
-      const relative = link !== undefined || path.startsWith("./") || path.startsWith("../");
-      const target = relative ? posix.normalize(posix.join(posix.dirname(file), path)) : path;
-      let message: string | null = null;
-      if (!context.exists(target)) {
-        message = `References ${target}, which does not exist.`;
-      } else if (!anchor || anchor === "#") {
-        message = `References ${target} without a #anchor. Name the heading of the rule it means, e.g. ${target}#<heading>.`;
-      } else if (!headingSlugs(context.read(target)).has(anchor.slice(1))) {
-        message = `${target} has no heading for ${anchor}. The rule moved or was renamed; point at where it is now.`;
-      }
-      if (message !== null) findings.push({ file, line: index + 1, message });
+  for (const { line, target, anchor } of references) {
+    let message: string | null = null;
+    if (!context.exists(target)) {
+      message = `References ${target}, which does not exist.`;
+    } else if (!anchor) {
+      message = `References ${target} without a #anchor. Name the heading of the rule it means, e.g. ${target}#<heading>.`;
+    } else if (!headingSlugs(context.read(target)).has(anchor)) {
+      message = `${target} has no heading for #${anchor}. The rule moved or was renamed; point at where it is now.`;
     }
-  });
+    if (message !== null) findings.push({ file, line, message });
+  }
   return findings;
 }
 
@@ -232,8 +315,8 @@ function checkReferences(context: CheckContext, file: string, lines: readonly st
  * Rules live in one `AGENTS.md` per directory; the `CLAUDE.md` beside each is
  * the single import line that makes Claude Code read it. Code comments and
  * docs that cite a rule do so by path and heading anchor, which this resolves
- * — a citation by quoted section name or by "see the package's rules" goes
- * stale the moment the rule moves, with nothing to notice.
+ * the way GitHub does, so a rule that moves breaks the build instead of the
+ * citation.
  */
 export const agentRuleFiles = {
   name: "agent-rule-files",
@@ -243,8 +326,7 @@ export const agentRuleFiles = {
     assertAllowlistIsLive(context, POINTER_MENTION_ALLOWED);
     const findings = checkLayout(context, rulesFiles);
     for (const file of context.textFiles(() => true, "tracked text files")) {
-      const lines = context.read(file).split("\n");
-      findings.push(...checkPointerMentions(file, lines), ...checkReferences(context, file, lines));
+      findings.push(...checkPointerMentions(file, context.read(file).split("\n")), ...checkReferences(context, file));
     }
     return findings;
   },

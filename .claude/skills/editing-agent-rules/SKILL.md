@@ -34,7 +34,7 @@ Rules for coding agents live only in `AGENTS.md` files and project skills. Every
 | Link | every link says when to read it |
 | Decision question | a single `Check:` line |
 
-- **A rule that code or docs cite gets its own heading with a short, stable English title.** Every citation, in skills too, is written `<repo-root path>#<anchor>` or as a relative markdown link with an anchor; a bare root path means the root file (`AGENTS.md#rule-files`) and package files are written in full (`packages/web/AGENTS.md#every-scroller-is-a-scrollarea`). The anchor is the heading lower-cased, punctuation dropped, spaces turned into hyphens.
+- **A rule that code or docs cite gets its own heading with a short, stable English title.** Every citation, in skills too, is written `<repo-root path>#<anchor>` or as a relative markdown link with an anchor; a bare root path means the root file (`AGENTS.md#rule-files`) and package files are written in full (`packages/web/AGENTS.md#every-scroller-is-a-scrollarea`). The anchor is the heading lower-cased, punctuation dropped, spaces turned into hyphens. repo-lint resolves paths and anchors only; a citation by section name (`the "Storage" rule in AGENTS.md`) passes it and goes stale unnoticed, so never write one.
 - **Renaming or deleting a cited heading updates every citation in the same PR.** Find them by searching the repository for the old anchor before you rename; repo-lint `agent-rule-files` fails on any citation whose heading is gone.
 - **Link to another rule file by relative path, and to a skill as "invoke `/<name>`" plus a relative link to its `SKILL.md`.**
 
