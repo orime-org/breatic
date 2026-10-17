@@ -93,7 +93,7 @@ export function GroupBackgroundPicker({
                 // swatches and `status-selected` is that same violet: on that
                 // dot the mark and the value were one colour. `active-border`
                 // is the single source for a neutral mark that says "selected"
-                // (`packages/web/CLAUDE.md`), and the document colour panel
+                // (`packages/web/AGENTS.md#neutral-active-borders`), and the document colour panel
                 // marks its own cell with it.
                 opt.value === normalized ? 'ring-1 ring-active-border' : '',
               )}

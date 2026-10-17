@@ -134,8 +134,8 @@ auth.post("/register", rateLimitFor("register"), validate("json", registerSchema
   const { user, recoveryCode } = await authService.register(email, password);
   const { token } = await authService.loginEmail(email, password);
   setSessionCookie(c, token);
-  // Audit log moved here from auth.service.ts per CLAUDE.md
-  // "core and shared must not log" mandate. The route handler is
+  // Audit log moved here from auth.service.ts per
+  // AGENTS.md#library-packages-do-not-log. The route handler is
   // the application boundary that owns request context.
   logger.info({ userId: user.id, email }, "user_registered");
   logger.info({ userId: user.id, method: "email" }, "user_logged_in");

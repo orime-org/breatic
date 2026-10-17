@@ -106,7 +106,7 @@ services:
   # So the probe is a signal to read — `docker compose ps` and alerting —
   # not a self-heal loop. The 2026-05-27 collab long-running drift is caught
   # here in the sense that it becomes VISIBLE, not that it is auto-repaired
-  # (see CLAUDE.md "server-side industrial-grade standards" mandate).
+  # (see AGENTS.md#health-checks).
   server:
     image: ghcr.io/orime-org/breatic:v0.0.13
     command: ["node", "packages/server/dist/index.js"]

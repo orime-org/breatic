@@ -9,8 +9,8 @@
  *     project, composite-PK UPSERT so re-opening floats it to the top.
  *   - {@link listRecentForUser} returns the viewer's recently-opened projects,
  *     newest-first, ACCESS-FILTERED in SQL so a project the viewer can no
- *     longer reach is never returned (a CLAUDE.md critical path: auth + data
- *     integrity).
+ *     longer reach is never returned (a critical path, AGENTS.md#critical-paths:
+ *     auth + data integrity).
  *
  * Access is re-checked at read time (not trusted from the open row): a stale
  * open row for a project the viewer was kicked from, or another user's private

@@ -72,7 +72,7 @@ const Toaster = ({ ...props }: ToasterProps) => {
         // (0,1,0), and cascade order is irrelevant. Prior PR #142
         // attempt used `bg-popover`/`min-h-0`/`py-2 px-3` classNames
         // and they were silently dropped (2026-05-25 user smoke caught
-        // it). See memory `feedback_sonner_inline_style_not_class_for_vendor_override`.
+        // it). See `.claude/skills/radix-shadcn/SKILL.md#sonner-toasts`.
         //
         // Token references:
         //   --color-popover           — same surface bg as Popover/Sheet/Tooltip

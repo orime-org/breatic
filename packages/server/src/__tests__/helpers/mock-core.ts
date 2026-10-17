@@ -340,7 +340,7 @@ export const mocks = {
   },
   // Application-layer logger. Exposed on `mocks` (rather than inlined in the
   // core mock) so route tests can assert that a best-effort failure the library
-  // layer reported as a SENTINEL — it may not log itself (@domain/CLAUDE.md) —
+  // layer reported as a SENTINEL — it may not log itself (AGENTS.md#library-packages-do-not-log) —
   // actually gets logged here. A swallowed sentinel is a silent failure.
   logger: {
     info: vi.fn(),

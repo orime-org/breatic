@@ -6,7 +6,7 @@
  * the "one admin per studio" partial unique index, against a real
  * Postgres (slice 1, migration 0023).
  *
- * Studio-level auth (鉴权 — a CLAUDE.md critical path) lives in two
+ * Studio-level auth (a critical path, AGENTS.md#critical-paths) lives in two
  * guarantees whose correctness is SQL-level and can only be verified
  * against real Postgres (a mocked query builder would return whatever the
  * test stages regardless of the WHERE/JOIN/partial-index clauses):

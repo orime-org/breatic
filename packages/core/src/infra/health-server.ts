@@ -5,8 +5,8 @@
  * Health check HTTP server for long-lived services (collab, worker).
  *
  * Every long-lived service in the codebase must expose a `/healthz`
- * endpoint per the CLAUDE.md "industrial-grade server standards" mandate - a
- * docker / k8s / LB health probe with N-fail kill semantics is the
+ * endpoint per `AGENTS.md#health-checks` - a load balancer or
+ * orchestrator probe that replaces the instance after N failures is the
  * only mechanism that actually self-heals a process whose
  * downstream dependencies (PG pool, Redis connection) have drifted
  * silently. The 2026-05-27 long-running dev:collab investigation
@@ -71,7 +71,7 @@ export interface HealthServerOptions {
    * Optional observer for lifecycle events (listening, check
    * failures, unexpected handler errors).
    *
-   * Per CLAUDE.md "core and shared must not log" mandate, this
+   * Per `AGENTS.md#library-packages-do-not-log`, this
    * library does NOT log directly - the application entry that
    * starts the server is responsible for routing observed events
    * to its own logger. If omitted, events are dropped silently

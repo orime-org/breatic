@@ -65,7 +65,7 @@ interface ChatPanelProps {
 
 /**
  * Project ChatPanel — private per-user agent chat. Does NOT participate
- * in Yjs (memory `project_chat_private_no_yjs`).
+ * in Yjs: the conversation belongs to one user.
  *
  * The messages, and sending and stopping, all come from one hook so that the
  * history and the reply being streamed are never two different lists.
