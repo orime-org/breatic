@@ -1,0 +1,204 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+
+/**
+ * Content holding media pasted into a block that takes only text, a table
+ * cell or a code block (inner#1351 + inner#1390 design §5.4.3, A7): the words
+ * go in first, the media beside the target block afterwards, found again by
+ * its id; a code block takes plain text raw.
+ */
+
+import { describe, it, expect, afterEach, vi } from 'vitest';
+import { CellSelection } from '@tiptap/pm/tables';
+
+import { serializeClipboard, type ClipboardNode, type ClipboardPayload } from '@web/spaces/canvas/node-clipboard';
+
+import { OURS, caretIn, firstCell, open as openBody, paste, pasteFormats, positionOf, select, settled, unmountAll, type Editor } from './paste-harness';
+
+afterEach(unmountAll);
+
+type Block = { id: string; type: string; props: Record<string, unknown>; content?: unknown; children?: Block[] };
+
+const PIC = `${OURS}p.png`;
+const TABLE = (words: string): unknown => ({ type: 'table', content: { type: 'tableContent', rows: [{ cells: [[words], ['y']] }] } });
+
+/**
+ * Opens a body that also takes canvas pastes.
+ * @param blocks - The document.
+ * @returns The editor and its undo manager.
+ */
+function open(blocks: unknown[]): ReturnType<typeof openBody> {
+  return openBody(blocks, { onCanvasPaste: { start: vi.fn(), notPasted: vi.fn() } });
+}
+
+/**
+ * Every top-level block as a label, children indented.
+ * @param editor - The editor.
+ * @returns `type[q]:words`, `image(url)[q]`, `table[q]`.
+ */
+function lines(editor: Editor): string[] {
+  const label = (block: Block): string => {
+    const quoted = block.props['quoted'] === true ? '[q]' : '';
+    if (block.type === 'image') {
+      const pending = block.props['uploadId'] !== '' && block.props['uploadId'] !== undefined;
+      return `image(${pending ? 'pending' : String(block.props['url'])})${quoted}`;
+    }
+    if (block.type === 'table') return `table${quoted}`;
+    const words = Array.isArray(block.content) ? (block.content as { text?: string }[]).map((c) => c.text ?? '').join('') : '';
+    return `${block.type}${quoted}:${words}`;
+  };
+  const walk = (blocks: Block[], depth: number): string[] =>
+    blocks.flatMap((block) => [`${'  '.repeat(depth)}${label(block)}`, ...walk(block.children ?? [], depth + 1)]);
+  return walk(editor.document as Block[], 0);
+}
+
+/**
+ * Where the caret is: the words of its line and its offset in them.
+ * @param editor - The editor.
+ * @returns `words@offset`.
+ */
+function caret(editor: Editor): string {
+  const { $head } = editor.prosemirrorView!.state.selection;
+  return `${$head.parent.textContent}@${$head.parentOffset}`;
+}
+
+/**
+ * A canvas clipboard holding one picture node.
+ * @returns Its plain text.
+ */
+function canvasPicture(): string {
+  const nodes = [{ id: 'i', type: 'image', position: { x: 0, y: 0 }, height: 100, data: { content: PIC } }] as ClipboardNode[];
+  return serializeClipboard({ version: 2, picked: ['i'], nodes, edges: [] } as ClipboardPayload);
+}
+
+describe('content with words and a picture, the caret in a table cell', () => {
+  it.each([
+    ['web content', (editor: Editor): void => paste(editor, `<p>w</p><img src="${PIC}">`, 'w')],
+    [
+      'the body\'s own content',
+      (editor: Editor): void => {
+        const html = editor.blocksToFullHTML([{ type: 'paragraph', content: 'w' }, { type: 'image', props: { url: PIC } }] as never);
+        pasteFormats(editor, { 'blocknote/html': html, 'text/html': html, 'text/plain': 'w' });
+      },
+    ],
+  ])('from %s: the words go into the cell, the picture under the table, the caret after it', async (_name, put) => {
+    const { editor, manager } = open([TABLE('x'), { type: 'paragraph', content: 'tail' }]);
+    caretIn(editor, 0);
+    put(editor);
+    await settled();
+    expect(firstCell(editor, 0)).toBe('xw');
+    expect(lines(editor)).toEqual(['table', `image(${PIC})`, 'paragraph:tail']);
+    expect(caret(editor)).toBe('tail@0');
+    manager.undo();
+    expect(lines(editor)).toEqual(['table', 'paragraph:tail']);
+    expect(firstCell(editor, 0)).toBe('x');
+    expect(caret(editor)).toBe('x@1');
+  });
+});
+
+describe('a picture alone, the caret in a table cell', () => {
+  it.each([
+    ['web content', (editor: Editor): void => paste(editor, `<img src="${PIC}">`, '')],
+    ['a canvas node', (editor: Editor): void => pasteFormats(editor, { 'text/plain': canvasPicture() })],
+  ])('from %s lands under the table, the cell as it was', async (_name, put) => {
+    const { editor } = open([TABLE('x'), { type: 'paragraph', content: 'tail' }]);
+    caretIn(editor, 0);
+    put(editor);
+    await settled();
+    expect(firstCell(editor, 0)).toBe('x');
+    expect(lines(editor).slice(0, 1)).toEqual(['table']);
+    expect(lines(editor)[1]).toMatch(/^image\(/);
+  });
+});
+
+describe('the table the media land beside', () => {
+  it('holding children: the media land after them', async () => {
+    const { editor } = open([
+      { ...(TABLE('x') as object), children: [{ type: 'paragraph', content: 'kid' }] },
+      { type: 'paragraph', content: 'tail' },
+    ]);
+    caretIn(editor, 0);
+    paste(editor, `<p>w</p><img src="${PIC}">`, 'w');
+    await settled();
+    expect(lines(editor)).toEqual(['table', '  paragraph:kid', `image(${PIC})`, 'paragraph:tail']);
+  });
+
+  it('quoted: the media land quoted', async () => {
+    const { editor } = open([{ ...(TABLE('x') as object), props: { quoted: true } }, { type: 'paragraph', content: 'tail' }]);
+    caretIn(editor, 0);
+    paste(editor, `<p>w</p><img src="${PIC}">`, 'w');
+    await settled();
+    expect(lines(editor)).toEqual(['table[q]', `image(${PIC})[q]`, 'paragraph:tail']);
+  });
+
+  it('with several cells selected: the media land under it, none lost', async () => {
+    const { editor } = open([TABLE('x'), { type: 'paragraph', content: 'tail' }]);
+    const view = editor.prosemirrorView!;
+    const cells: number[] = [];
+    view.state.doc.descendants((node, pos) => {
+      if (node.type.name === 'tableCell') cells.push(pos);
+      return true;
+    });
+    view.dispatch(view.state.tr.setSelection(CellSelection.create(view.state.doc, cells[0]!, cells[1]!)));
+    view.focus();
+    paste(editor, `<p>w</p><img src="${PIC}"><img src="${OURS}q.png">`, 'w');
+    await settled();
+    expect(lines(editor).filter((l) => l.startsWith('image'))).toEqual([`image(${PIC})`, `image(${OURS}q.png)`]);
+    expect(lines(editor)[0]).toBe('table');
+  });
+
+  it('across two tables: the media land beside the table the caret is left in', async () => {
+    const { editor } = open([TABLE('ab'), TABLE('cd'), { type: 'paragraph', content: 'tail' }]);
+    select(editor, positionOf(editor, 'ab', 1), positionOf(editor, 'cd', 1));
+    paste(editor, `<p>w</p><img src="${PIC}">`, 'w');
+    await settled();
+    const shown = lines(editor);
+    const at = shown.indexOf(`image(${PIC})`);
+    expect(shown.filter((l) => l.startsWith('image'))).toEqual([`image(${PIC})`]);
+    expect(shown[at - 1]).toBe('table');
+  });
+});
+
+describe('content with a picture, in a code block', () => {
+  it('from web content: the words go into the code, the picture under the code block', async () => {
+    const { editor } = open([{ type: 'codeBlock', content: 'x = 1' }, { type: 'paragraph', content: 'tail' }]);
+    caretIn(editor, 0);
+    paste(editor, `<p>w</p><img src="${PIC}">`, 'w');
+    await settled();
+    expect(lines(editor)).toEqual(['codeBlock:x = 1w', `image(${PIC})`, 'paragraph:tail']);
+  });
+
+  it('from the body\'s own content: the picture shows once, never as Markdown in the code', async () => {
+    const { editor } = open([{ type: 'codeBlock', content: 'x = 1' }, { type: 'paragraph', content: 'tail' }]);
+    caretIn(editor, 0);
+    const html = editor.blocksToFullHTML([{ type: 'paragraph', content: 'lead' }, { type: 'image', props: { url: PIC, name: 'pic' } }] as never);
+    pasteFormats(editor, { 'blocknote/html': html, 'text/html': html, 'text/plain': `lead\n\n![pic](${PIC})\n` });
+    await settled();
+    expect(lines(editor)).toEqual(['codeBlock:x = 1lead', `image(${PIC})`, 'paragraph:tail']);
+  });
+
+  it('from plain text that reads as Markdown: the text goes in as it is, no picture', async () => {
+    const { editor } = open([{ type: 'codeBlock', content: '' }, { type: 'paragraph', content: 'tail' }]);
+    caretIn(editor, 0);
+    paste(editor, '', `# Title\n![x](${PIC})`);
+    await settled();
+    expect(lines(editor)).toEqual([`codeBlock:# Title\n![x](${PIC})`, 'paragraph:tail']);
+  });
+
+  it('empty, a picture alone lands above it and the caret stays in it', async () => {
+    const { editor } = open([{ type: 'paragraph', content: 'lead' }, { type: 'codeBlock', content: '' }]);
+    caretIn(editor, 1);
+    pasteFormats(editor, { 'text/plain': canvasPicture() });
+    await settled();
+    expect(lines(editor)).toEqual(['paragraph:lead', 'image(pending)', 'codeBlock:']);
+    expect(editor.prosemirrorView!.state.selection.$head.parent.type.name).toBe('codeBlock');
+  });
+
+  it('a selection running from the code into the next line is judged after it is deleted', async () => {
+    const { editor } = open([{ type: 'codeBlock', content: 'code line' }, { type: 'paragraph', content: 'para text' }]);
+    select(editor, positionOf(editor, 'code line', 2), positionOf(editor, 'para text', 2));
+    paste(editor, `<p><b>w</b></p><img src="${PIC}">`, 'w');
+    await settled();
+    expect(lines(editor)).toEqual(['codeBlock:cowra text', `image(${PIC})`, 'paragraph:']);
+  });
+});
