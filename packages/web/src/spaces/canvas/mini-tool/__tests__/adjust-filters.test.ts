@@ -207,6 +207,13 @@ describe('adjustPixels', () => {
     },
   );
 
+  // The vignette is found from each drawn pixel's place in the source.
+  it('draws the vignette in a preview as the export shown at that size', () => {
+    const small = adjusted(picture(64), { vignette: 100 }, 7, 128);
+    const large = half(adjusted(picture(128), { vignette: 100 }));
+    expect(maxDiff(small.data, large.data)).toBeLessThanOrEqual(6);
+  });
+
   it.each(['sharpness', 'clarity'] as const)('looks the same at two resolutions with %s', (field) => {
     // The small one is a preview of the large: it draws the large picture's effect.
     const small = adjusted(picture(64), { [field]: 80 }, 7, 128);

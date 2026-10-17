@@ -109,15 +109,10 @@ describe('the picture adjust against ffmpeg', () => {
   it.each(fixture.vignettes)('darkens $color at $width×$height as ffmpeg does with $filter', ({ value, color, points, width, height, frame }) => {
     const out = adjust(solid(rgbOf(color), width, height), value);
     for (const { x, y, rgb } of points) expect(gap(at(out, x, y), rgb), `${x},${y}`).toBeLessThanOrEqual(6);
-    // A small frame is held over every 2x2 block, ffmpeg's 4:2:0 chroma block,
-    // whose samples ffmpeg also dithers by up to one code (`vf_vignette.c`).
-    for (let by = 0; frame !== undefined && by < height; by += 2) {
-      for (let bx = 0; bx < width; bx += 2) {
-        const block = [bx, bx + 1].filter((x) => x < width).flatMap((x) => [by, by + 1].filter((y) => y < height).map((y) => [x, y]));
-        const mean = (rgbAt: (x: number, y: number) => readonly number[]): number[] =>
-          [0, 1, 2].map((k) => block.reduce((s, [x = 0, y = 0]) => s + (rgbAt(x, y)[k] ?? 0), 0) / block.length);
-        const theirs = mean((x, y) => frame.slice((y * width + x) * 3, (y * width + x) * 3 + 3));
-        expect(gap(mean((x, y) => at(out, x, y)), theirs), `${bx},${by}`).toBeLessThanOrEqual(6);
+    // A small frame is held at every pixel.
+    for (let y = 0; frame !== undefined && y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        expect(gap(at(out, x, y), frame.slice((y * width + x) * 3, (y * width + x) * 3 + 3)), `${x},${y}`).toBeLessThanOrEqual(6);
       }
     }
   });
