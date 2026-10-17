@@ -392,8 +392,9 @@ export function renderProductGuide(): string {
       "the upload is a task, shown with the node's task icons. Meanwhile everyone else in the project sees, on an " +
       "empty node someone is filling, that person's name followed by what they are doing in place of the first " +
       "line: uploading, reading the file, or running the tool by its name. The line goes once our server has " +
-      "taken the work in (the node then shows its task icons) or the file is read, if it fails, or when they " +
-      "close that Space's tab or leave the page; it stays while they look at another Space. While it shows, it " +
+      "taken the work in (the node then shows its task icons) or the file is read, if it fails, if their page " +
+      "gives up waiting for an answer, when they close that Space's tab or leave the page, or when their connection " +
+      "drops; it stays while they look at another Space. While it shows, it " +
       "takes the place of the viewer's own red line on that node, which comes back once that line goes.",
     "Apart from that placeholder, a running, failed or expired task changes nothing on the node, which keeps " +
       "showing what it holds, or its empty look; what its tasks did is in the column of task icons described under Generating. A picture or " +
@@ -831,7 +832,9 @@ export function renderProductGuide(): string {
       `${quoted(t("canvas.miniTool.mark.text"))}, then undo, redo and clear, with the same size slider and colour ` +
       "dots below. A shape or text drawn goes back to selecting; until the arrow is pressed, anything drawn can be " +
       "selected, moved, resized, restyled or deleted with Delete or Backspace, which then deletes that object and " +
-      "not the node. While the panel is open, Cmd+Z or Ctrl+Z and the view bar's undo and redo step through the " +
+      "not the node. Shapes, lines and pen strokes are picked by pressing on or right beside their line, and a " +
+      "press inside an outlined shape reaches what is under it, except that the selected one can be dragged from " +
+      "anywhere inside its frame; a text is picked anywhere in its box. While the panel is open, Cmd+Z or Ctrl+Z and the view bar's undo and redo step through the " +
       "markup as a whole, and the [ and ] keys step the size of the selected object, or of the next one drawn when " +
       "none is selected; while a text is being typed, these keys act on the text itself. " +
       "The arrow stays greyed out until something is drawn or written, and the result is a plain " +
