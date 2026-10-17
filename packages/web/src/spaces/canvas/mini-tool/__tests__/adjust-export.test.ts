@@ -20,9 +20,11 @@ import {
   ownExportBackend,
   exportBackendSide,
   liveSharedBackend,
+  previewBackend,
   previewFrame,
   previewSourceOf,
   releaseBackend,
+  releasePreviewBackend,
 } from '@web/spaces/canvas/mini-tool/adjust-export';
 import { adjustFilters } from '@web/spaces/canvas/mini-tool/adjust-filters';
 
@@ -207,6 +209,66 @@ describe('ownExportBackend', () => {
     expect((made as unknown as Backend).options.tileSize).toBe(1);
     expect(loseContext).toHaveBeenCalledOnce();
     expect(setup).toHaveBeenCalledWith(12000, 3000);
+  });
+});
+
+// A preview past the shared square draws through a backend of its own shape,
+// as an export does, so a large picture zoomed in to 1:1 is not halved.
+describe('previewBackend', () => {
+  afterEach(() => releasePreviewBackend());
+
+  /**
+   * Fabric's backend calls over a live shared square of 4096, on graphics
+   * that take 16384, making shaped backends on demand.
+   * @returns The calls, the shared backend and the shaped ones made.
+   */
+  const graphics = () => {
+    const shared = { tileSize: 4096, gl: { ...liveGl(4096), MAX_TEXTURE_SIZE: 0x0d33, getParameter: () => 16384 } };
+    const made: { size: [number, number]; released: boolean }[] = [];
+    class Backend {
+      record = { size: [0, 0] as [number, number], released: false };
+      gl = {
+        getExtension: () => ({ loseContext: () => undefined }),
+        isContextLost: () => this.record.released,
+      };
+      constructor(readonly options: { tileSize: number }) {
+        made.push(this.record);
+      }
+      setupGLContext(width: number, height: number): void {
+        this.record.size = [width, height];
+      }
+      dispose(): void {
+        this.record.released = true;
+      }
+    }
+    const fabric = {
+      getFilterBackend: () => shared as never,
+      initFilterBackend: vi.fn(),
+      setFilterBackend: vi.fn(),
+      WebGLFilterBackend: Backend,
+    };
+    return { fabric: fabric as never, shared, made };
+  };
+
+  it('draws a picture past the shared square at 1:1 through a backend of its size', () => {
+    const { fabric, shared, made } = graphics();
+    const through = previewBackend(fabric, { width: 4100, height: 2700 }, { width: 4100, height: 2700 });
+    expect(through).not.toBe(shared);
+    expect(made.map((m) => m.size)).toEqual([[4100, 2700]]);
+  });
+
+  it('keeps that backend for the next draw at the same size', () => {
+    const { fabric, made } = graphics();
+    const first = previewBackend(fabric, { width: 4100, height: 2700 }, { width: 4100, height: 2700 });
+    expect(previewBackend(fabric, { width: 4100, height: 2700 }, { width: 4000, height: 2634 })).toBe(first);
+    expect(made).toHaveLength(1);
+  });
+
+  it('draws through the shared square once the preview fits it, letting its own backend go', () => {
+    const { fabric, shared, made } = graphics();
+    previewBackend(fabric, { width: 4100, height: 2700 }, { width: 4100, height: 2700 });
+    expect(previewBackend(fabric, { width: 4100, height: 2700 }, { width: 1000, height: 659 })).toBe(shared);
+    expect(made[0]?.released).toBe(true);
   });
 });
 
