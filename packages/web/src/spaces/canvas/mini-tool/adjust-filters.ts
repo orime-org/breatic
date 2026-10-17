@@ -414,7 +414,7 @@ function powers(falloff: number, count: number): number {
 export function chromaWeight(from: number, to: number, step: number, falloff: number): number {
   const a = blockRun(from, step);
   if (from === to) {
-    if (a.whole === 0 && a.first === a.last) return a.head * a.head;
+    if (a.first === a.last) return a.head * a.head;
     const k = a.whole;
     const inner = 4 * (k + (2 * falloff * (k * (1 - falloff) - 1 + falloff ** k)) / (1 - falloff) ** 2);
     const ends = a.head * a.head + a.tail * a.tail + 2 * a.head * a.tail * falloff ** (k + 1);
