@@ -43,9 +43,11 @@ const {
   registryFactorySpy,
   collabRedisStub,
   loadProjectRoleStub,
+  connectionGateSpy,
   failedAuthWrapperSpy,
   loggerInfoSpy,
 } = vi.hoisted(() => ({
+  connectionGateSpy: vi.fn(),
   failedAuthWrapperSpy: vi.fn(),
   loggerInfoSpy: vi.fn(),
   redisExtensionSpy: vi.fn(),
@@ -117,6 +119,11 @@ vi.mock("@collab/infra/connection-gate.js", async () => {
   );
   return {
     ...real,
+    createConnectionGate: ((...args: Parameters<typeof real.createConnectionGate>) => {
+      const gate = real.createConnectionGate(...args);
+      connectionGateSpy(gate);
+      return gate;
+    }) as typeof real.createConnectionGate,
     recordingFailedAuth: ((...args: Parameters<typeof real.recordingFailedAuth>) => {
       const wrapped = real.recordingFailedAuth(...args);
       failedAuthWrapperSpy(wrapped);
@@ -258,6 +265,23 @@ describe("createCollabServer — Redis channel prefix", () => {
     const config = serverSpy.mock.calls[0]?.[0] as { onAuthenticate: unknown };
     expect(failedAuthWrapperSpy).toHaveBeenCalledTimes(1);
     expect(config.onAuthenticate).toBe(failedAuthWrapperSpy.mock.calls[0]?.[0]);
+  });
+
+  it("registers the connection gate it built as an extension", async () => {
+    // The per-WebSocket count and the ban check run only as this extension's
+    // onUpgrade and onConnect, so a gate that is built but not registered
+    // leaves production unthrottled while every gate test stays green.
+    connectionGateSpy.mockClear();
+    await createCollabServer({
+      collabRedisUrl: "redis://localhost:6379/3",
+      port: 1234,
+      redisKeyPrefix: "dev",
+      shutdownDeadline: () => undefined,
+    });
+
+    const config = serverSpy.mock.calls.at(-1)?.[0] as { extensions: unknown[] };
+    expect(connectionGateSpy).toHaveBeenCalledTimes(1);
+    expect(config.extensions).toContain(connectionGateSpy.mock.calls[0]?.[0]);
   });
 
   it("never uses the Redis URL as the prefix", async () => {
