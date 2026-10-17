@@ -186,8 +186,8 @@ test('the picture adjust draws through WebGL as ffmpeg does', async ({ page }) =
     const previewGrain = [0, 1, 2].map((k) => sdOf(small, k) / sdOf(avg, k));
     // Noise reduction drawn smaller than its source, at the size the preview
     // picks: the shader weighs the chroma as the 2D path does, on the same
-    // copy (the 2D path is held to the export shrunk to that size in
-    // adjust-filters.test.ts). Each edge runs across and then down, so both
+    // copy (the 2D path is held to the export shrunk to that size at low noise
+    // reduction in adjust-filters.test.ts). Each edge runs across and then down, so both
     // passes are weighed.
     const filtersModule = '/spaces/canvas/mini-tool/adjust-filters.ts';
     const filters2d = await import(filtersModule);

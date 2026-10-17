@@ -379,7 +379,8 @@ export function cloneForPaste(
 /**
  * A node's data without its state and running work.
  * @param data - The stored data snapshot.
- * @returns A copy without the fields in {@link NOT_COPIED}.
+ * @returns A copy without the fields in {@link NOT_COPIED}, and without
+ *   `NODE_MEDIA_KEYS` when the node has no content.
  */
 function contentOf(data: Record<string, unknown>): Record<string, unknown> {
   const out = { ...data };

@@ -165,7 +165,7 @@ export function previewSourceOf(el: CropSourceEl, preview: PreviewFrame): CropSo
  * Draw a picture through the adjust onto a canvas at the size drawn. The
  * picture must be CORS-loaded: WebGL refuses a cross-origin image outright.
  * @param el - The picture.
- * @param asked - The size it is shown at; see {@link previewFrame}.
+ * @param asked - The size it is shown at, or the picture's own for an export; see {@link previewFrame}.
  * @param asked.width - Its width.
  * @param asked.height - Its height.
  * @param value - The sliders.
@@ -371,9 +371,11 @@ export interface PreviewFrame {
  * The size a preview draws a picture at: the source shrunk by the largest
  * power of two that still gives the pixels it is shown at, or more when the
  * backend cannot draw that, the canvas rounded up to whole pixels. ffmpeg
- * blurs the chroma per 2x2 block, and a drawn pixel that covers whole blocks
- * carries their chroma unmixed, so the preview's noise reduction is the
- * export's shrunk to its size.
+ * blurs the chroma per 2x2 block: drawn at its own size the preview is the
+ * export, and shrunk by 2 each drawn pixel is one block, so away from the
+ * picture's border its chroma is the export's shrunk to that size. Shrunk
+ * further, a drawn pixel holds blocks that weigh differently, and its chroma
+ * comes close to the export's without matching it, as the luma does.
  * @param natural - The picture's own size.
  * @param asked - The size it is shown at.
  * @param drawable - The largest canvas the backend draws.

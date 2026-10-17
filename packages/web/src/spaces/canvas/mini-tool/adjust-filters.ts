@@ -468,9 +468,10 @@ const CHROMA_WEIGHT_GLSL = `
  * factor a source pixel, the chroma's by the same factor for each 2x2 block
  * between a pixel's and the neighbour's, the block the chroma plane holds one
  * sample for. The chroma is read at drawn pixels and weighed by
- * {@link chromaWeight}; a preview's drawn pixel covers whole blocks
- * (`previewFrame`), so away from the picture's border its chroma is the
- * export's shrunk to its size. Each neighbour weighs as much as it is opaque, so a
+ * {@link chromaWeight}; a preview at its own size is the export, and one
+ * shrunk by 2 (`previewFrame`) draws one block per pixel, so away from the
+ * picture's border its chroma is the export's shrunk to that size; shrunk
+ * further it comes close. Each neighbour weighs as much as it is opaque, so a
  * cut-out's transparent surround adds nothing; a pixel keeps its own alpha.
  * Fabric's two passes, across then down, carry it.
  */

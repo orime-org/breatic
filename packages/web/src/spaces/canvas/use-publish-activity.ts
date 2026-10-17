@@ -44,11 +44,12 @@ function writeActivity(awareness: Awareness, activity: readonly NodeActivity[] |
  * Publish this client's waiting operations on a Space as `activity`
  * (inner#1303 §6.8), the one writer of that field. Mounted with the Space's
  * tab: an operation runs on while the reader looks at another Space, so its
- * line stays on the peers' screens until it is answered or fails or the tab
+ * line stays on the peers' screens until it is answered, fails, is replaced
+ * by the next start or has its server tool's press released, or the tab
  * closes. When the page goes, Hocuspocus drops the removal the provider sends
  * on `pagehide`; peers lose the line at once when the server registered this
- * client on that connection, otherwise within the 30 seconds awareness keeps
- * a silent peer.
+ * client on that connection, otherwise about 30 seconds after its last
+ * renewal (awareness checks every 3 seconds).
  *
  * Written in the same task a mark starts or ends: the changes one task makes
  * (a press beginning a mark per tile, a batch answering them) are gathered
