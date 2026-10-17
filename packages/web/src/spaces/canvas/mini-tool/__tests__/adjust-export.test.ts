@@ -17,13 +17,13 @@ import {
   backendSides,
   drawAdjusted,
   drawableSize,
-  ownExportBackend,
   exportBackendSide,
   liveSharedBackend,
   previewBackend,
   previewFrame,
   previewSourceOf,
   releaseBackend,
+  shapedBackend,
   releasePreviewBackend,
 } from '@web/spaces/canvas/mini-tool/adjust-export';
 import { adjustFilters } from '@web/spaces/canvas/mini-tool/adjust-filters';
@@ -130,7 +130,7 @@ describe('previewSourceOf', () => {
     expect(drawImage).toHaveBeenCalledTimes(2);
   });
 
-  it('uses a picture no larger than the preview as it is', () => {
+  it('uses the picture itself when the preview draws it at its own size', () => {
     const el = picture(400, 300);
     expect(previewSourceOf(el, { size: { width: 400, height: 300 }, frame: { width: 400, height: 300 } })).toBe(el);
   });
@@ -193,7 +193,7 @@ describe('drawableSize', () => {
 
 // A square buffer as long as a panorama is more than the browser grants
 // (Chrome: 6000² for 12000²), while one of the panorama's own shape is not.
-describe('ownExportBackend', () => {
+describe('shapedBackend', () => {
   it('draws on a canvas shaped like the picture, its first context given back', () => {
     const loseContext = vi.fn();
     const setup = vi.fn();
@@ -204,7 +204,7 @@ describe('ownExportBackend', () => {
         setup(width, height);
       }
     }
-    const made = ownExportBackend({ WebGLFilterBackend: Backend } as never, { width: 12000, height: 3000 });
+    const made = shapedBackend({ WebGLFilterBackend: Backend } as never, { width: 12000, height: 3000 });
     // The square Fabric builds first is given back at once; it takes no room.
     expect((made as unknown as Backend).options.tileSize).toBe(1);
     expect(loseContext).toHaveBeenCalledOnce();

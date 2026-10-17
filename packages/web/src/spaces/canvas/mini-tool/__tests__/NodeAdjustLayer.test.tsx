@@ -11,10 +11,11 @@ import { act, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const drawing = vi.hoisted(() => ({
-  drawAdjusted: vi.fn(
-    (): ReturnType<typeof import('@web/spaces/canvas/mini-tool/adjust-export').drawAdjusted> =>
+  drawAdjustedPreview: vi.fn(
+    (): ReturnType<typeof import('@web/spaces/canvas/mini-tool/adjust-export').drawAdjustedPreview> =>
       Promise.resolve({ size: { width: 400, height: 300 }, frame: { width: 400, height: 300 } }),
   ),
+  releasePreviewBackend: vi.fn((): void => undefined),
 }));
 vi.mock('@web/spaces/canvas/mini-tool/adjust-export', () => drawing);
 // The node's own picture is not CORS-loaded; the preview draws from a copy that is.
@@ -38,7 +39,7 @@ let frames: FrameRequestCallback[] = [];
 beforeEach(() => {
   installLayout();
   canvasSessions.clear();
-  drawing.drawAdjusted.mockClear();
+  drawing.drawAdjustedPreview.mockClear();
   frames = [];
   vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => frames.push(cb));
   vi.stubGlobal('cancelAnimationFrame', () => undefined);
@@ -80,7 +81,7 @@ describe('NodeAdjustLayer', () => {
     await pictureLoaded();
     flushFrames();
     expect(screen.getByTestId('mini-tool-adjust-layer')).toBeInTheDocument();
-    expect(drawing.drawAdjusted).toHaveBeenLastCalledWith(
+    expect(drawing.drawAdjustedPreview).toHaveBeenLastCalledWith(
       expect.anything(),
       expect.anything(),
       expect.objectContaining({ exposure: 20 }),
@@ -93,21 +94,21 @@ describe('NodeAdjustLayer', () => {
     await pictureLoaded();
     flushFrames();
     expect(loader.prepareCropSource).toHaveBeenCalledWith({ url: NODE.src, timeSeconds: null });
-    expect(drawing.drawAdjusted).toHaveBeenLastCalledWith(loaded.el, expect.anything(), expect.anything(), expect.anything());
+    expect(drawing.drawAdjustedPreview).toHaveBeenLastCalledWith(loaded.el, expect.anything(), expect.anything(), expect.anything());
   });
 
   it('redraws once a frame however many times the sliders move', async () => {
     mount('image.adjust', { value: defaultAdjustValue });
     await pictureLoaded();
     flushFrames();
-    drawing.drawAdjusted.mockClear();
+    drawing.drawAdjustedPreview.mockClear();
     // Two renders before the frame runs: the second finds a frame already asked
     // for and leaves its value for it.
     act(() => store().setMiniToolParam('value', { ...defaultAdjustValue, contrast: 10 }));
     act(() => store().setMiniToolParam('value', { ...defaultAdjustValue, contrast: 30 }));
     flushFrames();
-    expect(drawing.drawAdjusted).toHaveBeenCalledTimes(1);
-    expect(drawing.drawAdjusted).toHaveBeenLastCalledWith(
+    expect(drawing.drawAdjustedPreview).toHaveBeenCalledTimes(1);
+    expect(drawing.drawAdjustedPreview).toHaveBeenLastCalledWith(
       expect.anything(),
       expect.anything(),
       expect.objectContaining({ contrast: 30 }),
@@ -143,22 +144,22 @@ describe('NodeAdjustLayer', () => {
 
   // The preview is drawn at the pixels the node takes on screen, so zooming
   // in shows what the export will do to fine detail.
-  it('draws at the size the node shows on screen', async () => {
+  it('asks for the size the node shows on screen', async () => {
     mount('image.adjust', { value: { ...defaultAdjustValue, sharpness: 50 } }, 2);
     await pictureLoaded();
     flushFrames();
-    const [, size] = drawing.drawAdjusted.mock.calls.at(-1) as unknown as [unknown, { width: number }];
+    const [, size] = drawing.drawAdjustedPreview.mock.calls.at(-1) as unknown as [unknown, { width: number }];
     expect(size.width).toBe(800);
   });
 
   // Past the picture's own pixels a bigger preview shows nothing more (§6.1).
-  it('draws no wider than the picture’s own pixels', async () => {
+  it('asks for no more than the picture’s own pixels', async () => {
     vi.spyOn(HTMLImageElement.prototype, 'naturalWidth', 'get').mockReturnValue(600);
     vi.spyOn(HTMLImageElement.prototype, 'naturalHeight', 'get').mockReturnValue(450);
     mount('image.adjust', { value: { ...defaultAdjustValue, sharpness: 50 } }, 2);
     await pictureLoaded();
     flushFrames();
-    const [, size] = drawing.drawAdjusted.mock.calls.at(-1) as unknown as [unknown, { width: number }];
+    const [, size] = drawing.drawAdjustedPreview.mock.calls.at(-1) as unknown as [unknown, { width: number }];
     expect(size.width).toBe(600);
   });
 
@@ -167,7 +168,7 @@ describe('NodeAdjustLayer', () => {
   it('stretches the canvas over the source pixels it spans', async () => {
     vi.spyOn(HTMLImageElement.prototype, 'naturalWidth', 'get').mockReturnValue(1001);
     vi.spyOn(HTMLImageElement.prototype, 'naturalHeight', 'get').mockReturnValue(751);
-    drawing.drawAdjusted.mockResolvedValueOnce({ size: { width: 501, height: 376 }, frame: { width: 1002, height: 752 } });
+    drawing.drawAdjustedPreview.mockResolvedValueOnce({ size: { width: 501, height: 376 }, frame: { width: 1002, height: 752 } });
     mount('image.adjust', { value: { ...defaultAdjustValue, sharpness: 50 } });
     await pictureLoaded();
     flushFrames();
@@ -176,12 +177,25 @@ describe('NodeAdjustLayer', () => {
     expect(parseFloat(layer.style.width)).toBeCloseTo((400 * 1002) / 1001, 6);
     expect(parseFloat(layer.style.height)).toBeCloseTo((300 * 752) / 751, 6);
     expect(layer.parentElement).toHaveClass('overflow-hidden');
+    expect(layer.parentElement).toHaveStyle({ width: '400px', height: '300px' });
+  });
+
+  // A preview past the shared square holds a WebGL backend of its own; the
+  // browser grants only a few contexts, so it goes with the layer.
+  it('lets the preview’s own backend go when the layer goes', async () => {
+    const { unmount } = render(cropCanvas([NODE], null, 1));
+    act(() => store().openMiniTool('n1', 'image.adjust', { sourceContent: NODE.src, params: { value: defaultAdjustValue } }));
+    await pictureLoaded();
+    flushFrames();
+    drawing.releasePreviewBackend.mockClear();
+    unmount();
+    expect(drawing.releasePreviewBackend).toHaveBeenCalled();
   });
 
   it('draws nothing for another tool', () => {
     mount('image.crop', {});
     flushFrames();
     expect(screen.queryByTestId('mini-tool-adjust-layer')).toBeNull();
-    expect(drawing.drawAdjusted).not.toHaveBeenCalled();
+    expect(drawing.drawAdjustedPreview).not.toHaveBeenCalled();
   });
 });

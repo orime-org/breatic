@@ -251,17 +251,17 @@ export function drawableSize(backend: FilterBackend): Size {
 }
 
 /**
- * A backend for one export, drawing on a canvas of the picture's own shape:
- * the browser grants a buffer as long as a panorama that it refuses as a
- * square. Fabric builds a first context as a square of `tileSize`, which is
- * made 1×1 and given back before the shaped one is made.
+ * A backend drawing on a canvas of a given shape, for an export or a preview
+ * past the shared square: the browser grants a buffer as long as a panorama
+ * that it refuses as a square. Fabric builds a first context as a square of
+ * `tileSize`, which is made 1×1 and given back before the shaped one is made.
  * @param fabric - Fabric.
  * @param fabric.WebGLFilterBackend - Its WebGL filter backend.
- * @param size - The picture's size.
+ * @param size - The canvas's size.
  * @returns The backend.
  * @throws {never} Never.
  */
-export function ownExportBackend(
+export function shapedBackend(
   fabric: Pick<typeof import('fabric'), 'WebGLFilterBackend'>,
   size: Size,
 ): InstanceType<typeof import('fabric')['WebGLFilterBackend']> {
@@ -272,7 +272,7 @@ export function ownExportBackend(
 }
 
 /**
- * Let a backend made for one export go, giving its WebGL context back first:
+ * Let a shaped backend go, giving its WebGL context back first:
  * Fabric's dispose drops the canvas only, and the browser holds a few contexts
  * at a time.
  * @param backend - The backend.
@@ -281,6 +281,69 @@ export function ownExportBackend(
 export function releaseBackend(backend: InstanceType<typeof import('fabric')['WebGLFilterBackend']>): void {
   backend.gl?.getExtension('WEBGL_lose_context')?.loseContext();
   backend.dispose();
+}
+
+/** The shaped backend a preview past the shared square draws through, and its canvas's size. */
+let heldPreview: { backend: InstanceType<typeof import('fabric')['WebGLFilterBackend']>; size: Size } | null = null;
+
+/**
+ * The backend a preview draws through: the shared one while the preview's
+ * canvas fits it, otherwise a backend shaped to the canvas, up to what the
+ * graphics take, so a picture past the shared square zoomed in to 1:1 is
+ * drawn at its own pixels. The shaped backend is kept while draws keep its
+ * size.
+ * @param fabric - Fabric's backend calls.
+ * @param natural - The picture's own size.
+ * @param asked - The size it is shown at.
+ * @returns The backend.
+ * @throws {Error} When the shared backend has no WebGL context to draw with.
+ */
+export function previewBackend(
+  fabric: BackendRegistry & Pick<typeof import('fabric'), 'WebGLFilterBackend'>,
+  natural: Size,
+  asked: Size,
+): FilterBackend {
+  const shared = liveSharedBackend(fabric);
+  const { max } = backendSides(shared);
+  const { size } = previewFrame(natural, asked, { width: max, height: max });
+  const room = drawableSize(shared);
+  if (size.width <= room.width && size.height <= room.height) {
+    releasePreviewBackend();
+    return shared;
+  }
+  const held = heldPreview;
+  if (held !== null && held.size.width === size.width && held.size.height === size.height && liveContext(held.backend) !== null) {
+    return held.backend;
+  }
+  releasePreviewBackend();
+  const backend = shapedBackend(fabric, size);
+  heldPreview = { backend, size };
+  return backend;
+}
+
+/**
+ * Let the preview's shaped backend go, if it has one.
+ * @throws {never} Never.
+ */
+export function releasePreviewBackend(): void {
+  if (heldPreview === null) return;
+  releaseBackend(heldPreview.backend);
+  heldPreview = null;
+}
+
+/**
+ * Draw a picture's preview through the adjust, through the backend
+ * {@link previewBackend} picks.
+ * @param el - The picture.
+ * @param asked - The size it is shown at.
+ * @param value - The sliders.
+ * @param target - The canvas, resized to the size drawn.
+ * @returns Where it drew: the canvas's size and the source pixels it spans.
+ * @throws {Error} When the backend has no live WebGL context, loses it during the draw, or was given a drawing buffer smaller than its canvas.
+ */
+export async function drawAdjustedPreview(el: CropSourceEl, asked: Size, value: AdjustValue, target: HTMLCanvasElement): Promise<PreviewFrame> {
+  const [fabric] = await loadRuntime();
+  return drawAdjusted(el, asked, value, target, previewBackend(fabric, intrinsicSize(el), asked));
 }
 
 /**
@@ -343,7 +406,7 @@ export async function exportAdjustedBlob(source: CropSource, value: AdjustValue)
   const side = exportBackendSide(longSide, backendSides(shared));
   if (side === 'tooLarge') throw new ImageTooLargeError();
   // A backend of its own for a picture past the shared square, released at once.
-  const own = side === 'shared' ? undefined : ownExportBackend(fabric, size);
+  const own = side === 'shared' ? undefined : shapedBackend(fabric, size);
   try {
     const through = own ?? shared;
     assertCanExport(through, size);

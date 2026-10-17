@@ -13,7 +13,7 @@ import { useMediaGeometry } from '@web/spaces/canvas/crop/media-geometry';
 import { prepareCropSource } from '@web/spaces/canvas/focus/crop-export';
 import type { CropSourceEl } from '@web/spaces/canvas/focus/crop-source';
 import { cn } from '@web/lib/utils';
-import { drawAdjusted } from '@web/spaces/canvas/mini-tool/adjust-export';
+import { drawAdjustedPreview, releasePreviewBackend } from '@web/spaces/canvas/mini-tool/adjust-export';
 
 interface NodeAdjustLayerProps {
   /** The node this layer belongs to. */
@@ -79,9 +79,10 @@ export function NodeAdjustLayer({ nodeId, wrapper }: NodeAdjustLayerProps): Reac
     };
   }, [param, src]);
   const dpr = typeof window === 'undefined' ? 1 : window.devicePixelRatio || 1;
-  // Drawn at the pixels the node takes on screen, so zooming in shows what the
-  // export does to fine detail, as an editor's 1:1 view does; never past the
-  // source's own pixels.
+  // Asked at the pixels the node takes on screen, never past the source's own;
+  // previewFrame draws the source shrunk by the largest power of two that
+  // still gives them, so zooming in to 1:1 shows what the export does to fine
+  // detail, as an editor's 1:1 view does.
   // Read only while the layer shows, so a zoom does not re-render it on every node.
   const zoom = useStore((s) => (param === undefined ? 1 : s.transform[2]));
   const width =
@@ -100,9 +101,9 @@ export function NodeAdjustLayer({ nodeId, wrapper }: NodeAdjustLayerProps): Reac
       // A lost context is made again for the draw; graphics that still cannot
       // draw leave the layer hidden over the node's own picture, and Run says
       // what went wrong.
-      void drawAdjusted(next.el, next.size, next.value, target).then(
-        ({ frame }) => {
-          setSpans((was) => (was?.width === frame.width && was.height === frame.height ? was : frame));
+      void drawAdjustedPreview(next.el, next.size, next.value, target).then(
+        (drew) => {
+          setSpans((was) => (was?.width === drew.frame.width && was.height === drew.frame.height ? was : drew.frame));
           setDrawn(true);
         },
         () => setDrawn(false),
@@ -113,6 +114,7 @@ export function NodeAdjustLayer({ nodeId, wrapper }: NodeAdjustLayerProps): Reac
   React.useEffect(
     () => () => {
       if (frame.current !== null) cancelAnimationFrame(frame.current);
+      releasePreviewBackend();
     },
     [],
   );
