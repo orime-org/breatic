@@ -58,9 +58,10 @@ describe('the quick actions while the panel is on its way elsewhere', () => {
   });
 
   it('do nothing, because the composer they write into is frozen', async () => {
-    // 它们是除输入框之外唯一往输入框里写字的路径。切换途中输入框是静止的,
-    // 而这三个按钮照旧能按 —— 按下去那段文案会落进正在离开的那条会话,新会话
-    // 一到手就从眼前消失。
+    // Besides typing, these are the only way words get into the composer. The
+    // composer is held still during a switch, so a click here would put its
+    // sentence into the conversation being left, which vanishes when the new
+    // one lands.
     const picked = vi.fn();
     render(<ChatEmpty onQuickAction={picked} frozen />);
 
