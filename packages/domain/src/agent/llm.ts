@@ -358,11 +358,14 @@ export function callOptionsFor(modelString: string | undefined, wants: CallWants
  * level caching writes one entry, for the prefix ending at the last block, so
  * a new conversation, whose first message is new, would find nothing to read
  * even though everything before that message is the same as in other
- * conversations (Anthropic prompt caching, "The system does not write entries
- * for any earlier position"). The mark after the base prompt writes an entry
- * every conversation reads, the one after the project's memory an entry the
- * same user's other conversations in that project read. Where nothing is marked, the prompt
- * goes whole, as one message.
+ * conversations in its request locale (Anthropic prompt caching, "The system
+ * does not write entries for any earlier position"). The entry a mark writes
+ * covers the tools before the system prompt, and the proposal tool's
+ * description is in the request locale, so the mark after the base prompt
+ * writes an entry every conversation in that locale reads, the one after the
+ * project's memory an entry the same user's other conversations in that
+ * project read. Where nothing is marked, the prompt goes whole, as one
+ * message.
  * @param modelString - Model identifier, or undefined for the fallback.
  * @param parts - The base prompt, the project's memory and this
  *   conversation's memory, the last two when there are any.

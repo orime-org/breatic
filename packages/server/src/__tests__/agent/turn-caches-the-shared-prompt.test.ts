@@ -7,8 +7,9 @@
  *
  * The base prompt, which every conversation shares, and the project's memory,
  * which one user's conversations in the project share, each end in a cache mark of
- * their own, so a new conversation's first call reads them; this
- * conversation's memory follows unmarked.
+ * their own, so a new conversation's first call reads what an earlier
+ * conversation in the same request locale wrote; this conversation's memory
+ * follows unmarked.
  */
 import { describe, expect, it, vi } from "vitest";
 import type * as CoreModule from "@breatic/core";

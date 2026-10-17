@@ -44,7 +44,7 @@ export interface ResolvedAgentConfig {
    * one place.
    */
   modelId: string;
-  /** The system prompt, in the parts a call sends as separate blocks. */
+  /** The system prompt in its parts; `systemFor` decides whether they go as separate blocks. */
   instructions: Instructions;
   /** Tools, ready for the AI SDK's `tools` option. */
   tools: Record<string, Tool>;
