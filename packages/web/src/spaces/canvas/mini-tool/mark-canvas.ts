@@ -23,8 +23,39 @@ import type { MarkChannel, MarkDraft, MarkObject } from '@web/stores/mark-draft'
 /** Below this drag, in screen pixels, a shape tool's press is a click and draws nothing. */
 export const MARK_MIN_DRAG_PX = 4;
 
-/** How far, in canvas pixels, from a hollow object's stroke a press still hits it. */
+/** How far, in screen pixels, from a hollow object's stroke a press still hits it. */
 const MARK_HIT_TOLERANCE_PX = 6;
+
+/**
+ * The markup's Fabric canvas. An object hit where it is drawn
+ * (`perPixelTargetFind`) is hit within `targetFindTolerance` screen pixels of
+ * its stroke on either side: Fabric itself tests the pixels only inside the
+ * object's box, which hugs the stroke. The selected object is hit anywhere
+ * inside its frame, which Fabric draws around it.
+ */
+class MarkCanvas extends Canvas {
+  /**
+   * Whether a press hits an object.
+   * @param obj - The object.
+   * @param pointer - The press, in scene pixels.
+   * @returns Whether it hits.
+   */
+  override _checkTarget(obj: FabricObject, pointer: Point): boolean {
+    if (!obj.perPixelTargetFind) return super._checkTarget(obj, pointer);
+    if (!obj.visible || !obj.evented) return false;
+    if (obj === this.getActiveObject() && obj.containsPoint(pointer)) return true;
+    const reach = this.targetFindTolerance / this.getZoom();
+    const box = obj.getBoundingRect();
+    const near =
+      pointer.x >= box.left - reach &&
+      pointer.x <= box.left + box.width + reach &&
+      pointer.y >= box.top - reach &&
+      pointer.y <= box.top + box.height + reach;
+    if (!near) return false;
+    const at = pointer.transform(this.viewportTransform);
+    return !this.isTargetTransparent(obj, at.x, at.y);
+  }
+}
 
 /** What a pointer event from Fabric carries that this canvas reads. */
 interface PointerInfo {
@@ -103,14 +134,13 @@ export class MarkCanvasController {
     this.zoom = zoom;
     this.read = session;
     this.opening = session().panelSession;
-    this.canvas = new Canvas(el, {
+    this.canvas = new MarkCanvas(el, {
       width: box.width,
       height: box.height,
       selection: false,
       stopContextMenu: false,
       fireRightClick: false,
       preserveObjectStacking: true,
-      // How far from a hollow object's stroke a press still hits it.
       targetFindTolerance: MARK_HIT_TOLERANCE_PX,
     });
     this.fitToScreen();
