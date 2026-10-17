@@ -38,7 +38,7 @@ export function spaceRpcFailureNotice(
   if (type === 'space:restore' && (code === 'NOT_FOUND' || code === 'CONFLICT')) {
     return { level: 'error', descriptionKey: 'project.space.error.alreadyRestored' };
   }
-  if (code === 'NOT_FOUND' && type !== 'space:restore' && type !== 'space:create') {
+  if (code === 'NOT_FOUND') {
     return { level: 'error', descriptionKey: 'project.space.error.gone' };
   }
   return { level: 'error' };
