@@ -15,6 +15,7 @@
  */
 
 import { Hono } from "hono";
+import { createMiddleware } from "hono/factory";
 import { validate } from "@server/middleware/validate.js";
 import { z } from "zod";
 import {
@@ -395,9 +396,27 @@ assets.post(
  * and decides consequences off the grant row rather than off who is asking, so
  * it is read out of the signature the Worker put on that token.
  */
+/** The upload a token was signed for, as the Worker signed it. */
+type UploadSession = NonNullable<Awaited<ReturnType<typeof verifySessionToken>>>;
+
+/**
+ * Admit a request whose upload token was signed for the upload in its path,
+ * and hand the signed session on. It runs before the limiter, which keeps one
+ * bucket per user and upload id: only an id the Worker signed gets one.
+ */
+const requireUploadSession = createMiddleware<{ Variables: { uploadSession: UploadSession } }>(async (c, next) => {
+  const session = await verifySessionToken(c.req.header("x-upload-token") ?? "", env.INGEST_SHARED_SECRET, Date.now());
+  if (session === null || session.uploadId !== c.req.param("uploadId")) {
+    return c.json({ error: { code: 401, message: t("server.auth.not_authenticated") } }, 401);
+  }
+  c.set("uploadSession", session);
+  await next();
+});
+
 assets.post(
   "/uploads/:uploadId/complete",
   requireAuth,
+  requireUploadSession,
   rateLimitFor("upload-complete", { userAndParam: "uploadId" }),
   validate(
     "json",
@@ -413,19 +432,8 @@ assets.post(
     }),
   ),
   async (c) => {
-    const uploadId = c.req.param("uploadId");
-    const session = await verifySessionToken(
-      c.req.header("x-upload-token") ?? "",
-      env.INGEST_SHARED_SECRET,
-      Date.now(),
-    );
-    if (session === null || session.uploadId !== uploadId) {
-      return c.json(
-        { error: { code: 401, message: t("server.auth.not_authenticated") } },
-        401,
-      );
-    }
-    const { storageKey } = session;
+    const session = c.get("uploadSession");
+    const { storageKey, uploadId } = session;
 
     // How many parts this upload has is signed into the token, so a list of
     // the wrong length is answered here rather than after a round trip. The
