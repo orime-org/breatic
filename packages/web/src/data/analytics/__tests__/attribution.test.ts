@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { describe, expect, it } from 'vitest';
-import { mergeTouch, touchFrom } from '@web/lib/analytics/attribution';
+import { mergeTouch, touchFrom } from '@web/data/analytics/attribution';
 
 const NOW = '2026-10-12T01:00:00.000Z';
 

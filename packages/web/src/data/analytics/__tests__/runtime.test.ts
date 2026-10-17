@@ -3,7 +3,7 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { CONSENT_REVISION, type BrowserChoices } from '@breatic/shared';
-import type * as RuntimeModule from '@web/lib/analytics/runtime';
+import type * as RuntimeModule from '@web/data/analytics/runtime';
 
 const held = vi.hoisted(() => ({ userId: undefined as string | undefined, ready: Promise.resolve() }));
 const sdk = vi.hoisted(() => ({
@@ -52,14 +52,14 @@ vi.mock('@amplitude/analytics-browser', async () => {
   await sdkGate.wait;
   return sdk;
 });
-vi.mock('@web/lib/analytics/build-config', async (importOriginal: () => Promise<Record<string, unknown>>) => ({
+vi.mock('@web/data/analytics/build-config', async (importOriginal: () => Promise<Record<string, unknown>>) => ({
   ...(await importOriginal()),
   AMPLITUDE_API_KEY: 'test-key',
   GOOGLE_ADS_TAG_ID: 'AW-1',
   CONSENT_COOKIE_DOMAIN: '',
   conversionLabels: () => ({ signup: 'label' }),
 }));
-vi.mock('@web/lib/analytics/consent-banner', () => ({
+vi.mock('@web/data/analytics/consent-banner', () => ({
   startConsentBanner: async (options: { onChoice: (choice: BrowserChoices | null) => void }): Promise<void> => {
     banner.onChoice = options.onChoice;
   },
@@ -67,7 +67,7 @@ vi.mock('@web/lib/analytics/consent-banner', () => ({
   openConsentSettings: (): void => undefined,
   followPage: (): void => undefined,
 }));
-vi.mock('@web/lib/analytics/consent-decision', () => ({ fetchCountry: async () => 'US' }));
+vi.mock('@web/data/analytics/consent-decision', () => ({ fetchCountry: async () => 'US' }));
 
 /**
  * Both categories set the same way in the banner.
@@ -87,7 +87,7 @@ const rejected = both(false);
  */
 async function startRuntime(): Promise<typeof RuntimeModule> {
   vi.resetModules();
-  const runtime = await import('@web/lib/analytics/runtime');
+  const runtime = await import('@web/data/analytics/runtime');
   await runtime.start({ language: 'en', languages: ['en'], appVersion: '1', text: () => ({}) as never, privacyUrl: '/p', onError: () => undefined });
   return runtime;
 }

@@ -4,7 +4,7 @@
 import * as React from 'react';
 
 import { authApi, type AuthUser, type SignupCodeSent } from '@web/data/api/auth';
-import { attributionBody } from '@web/lib/analytics';
+import { attributionBody } from '@web/data/analytics';
 import { ApiException } from '@web/data/api/types';
 import { Button } from '@web/components/ui/button';
 import { InputOTP, InputOTPGroup, InputOTPSlot } from '@web/components/ui/input-otp';

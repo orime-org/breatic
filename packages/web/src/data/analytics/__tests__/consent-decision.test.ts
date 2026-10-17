@@ -10,7 +10,7 @@ import {
   decideOnLoad,
   fetchCountry,
   writesForClick,
-} from '@web/lib/analytics/consent-decision';
+} from '@web/data/analytics/consent-decision';
 
 const NOW = '2026-10-12T01:00:00.000Z';
 

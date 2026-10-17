@@ -16,7 +16,7 @@ import '@fontsource/inter/800.css';
 import '@web/index.css';
 import { bootstrapLocale } from '@web/i18n/locale-bootstrap';
 import { errorMonitoringInit } from '@web/lib/error-monitoring';
-import { followPage, startProductAnalytics } from '@web/lib/analytics';
+import { followPage, startProductAnalytics } from '@web/data/analytics';
 import { router } from '@web/app/routes';
 import { removeRetiredStorageKeys } from '@web/lib/storage-keys';
 import { guardStrayFileDrops } from '@web/lib/stray-file-drop';

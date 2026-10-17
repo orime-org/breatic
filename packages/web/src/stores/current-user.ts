@@ -8,7 +8,7 @@ import { immer } from 'zustand/middleware/immer';
 import { getLocale, type MembershipTier, type PersonalStudioRef } from '@breatic/shared';
 
 import { authApi, deriveDisplayName, type AuthUser } from '@web/data/api/auth';
-import { identifyUser, resetUser } from '@web/lib/analytics';
+import { identifyUser, resetUser } from '@web/data/analytics';
 import { rememberSession } from '@web/lib/session-seen';
 
 /**

@@ -7,7 +7,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { invalidateProjectListings, projectsApi } from '@web/data/api';
 import { useTranslation } from '@web/i18n/use-translation';
 import { toastFailure } from '@web/features/project-manage/toast-failure';
-import { reportConversion } from '@web/lib/analytics';
+import { reportConversion } from '@web/data/analytics';
 import { toast } from '@web/lib/toast';
 
 /** A project's server-side management actions, each settling with a toast. */

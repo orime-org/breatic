@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type * as BannerModule from '@web/lib/analytics/consent-banner';
+import type * as BannerModule from '@web/data/analytics/consent-banner';
 
 /**
  * A stored cookie as the library holds it, each category's latest choice in its data.
@@ -51,7 +51,7 @@ const library = vi.hoisted(() => ({
 
 vi.mock('vanilla-cookieconsent', () => library);
 vi.mock('vanilla-cookieconsent/dist/cookieconsent.css', () => ({}));
-vi.mock('@web/lib/analytics/consent-banner.css', () => ({}));
+vi.mock('@web/data/analytics/consent-banner.css', () => ({}));
 
 const TEXT = {
   banner: { text: 't', privacy: 'p', acceptAll: 'a', rejectAll: 'r', settings: 's', gpc: 'g' },
@@ -105,7 +105,7 @@ async function startBanner(
   options: { onChoice?: (choice: unknown) => void } = {},
 ): Promise<typeof BannerModule> {
   vi.resetModules();
-  const banner = await import('@web/lib/analytics/consent-banner');
+  const banner = await import('@web/data/analytics/consent-banner');
   await banner.startConsentBanner({
     cookieDomain: '',
     language: 'en',
@@ -446,7 +446,7 @@ describe('the country lookup', () => {
       answer = resolve;
     });
     vi.resetModules();
-    const banner = await import('@web/lib/analytics/consent-banner');
+    const banner = await import('@web/data/analytics/consent-banner');
     const seen: unknown[] = [];
     const started = banner.startConsentBanner({
       cookieDomain: '',

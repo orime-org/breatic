@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type * as AnalyticsModule from '@web/lib/analytics';
+import type * as AnalyticsModule from '@web/data/analytics';
 
 const runtime = vi.hoisted(() => ({
   listener: null as null | ((choice: { analytics: boolean; ads: boolean }) => void),
@@ -15,8 +15,8 @@ const api = vi.hoisted(() => ({ put: vi.fn(async (_path: string, _body: unknown)
 const sentry = vi.hoisted(() => ({ captureException: vi.fn() }));
 
 vi.mock('@sentry/react', () => sentry);
-vi.mock('@web/lib/analytics/build-config', () => ({ ANALYTICS_CONFIGURED: true }));
-vi.mock('@web/lib/analytics/runtime', () => ({
+vi.mock('@web/data/analytics/build-config', () => ({ ANALYTICS_CONFIGURED: true }));
+vi.mock('@web/data/analytics/runtime', () => ({
   onConsentChange: (listener: typeof runtime.listener) => {
     runtime.listener = listener;
   },
@@ -48,7 +48,7 @@ function choices(value: boolean, source = 'banner'): Record<string, unknown> {
  */
 async function load(): Promise<typeof AnalyticsModule> {
   vi.resetModules();
-  const analytics = await import('@web/lib/analytics');
+  const analytics = await import('@web/data/analytics');
   analytics.startProductAnalytics();
   await vi.waitFor(() => expect(runtime.listener).not.toBeNull());
   await new Promise((resolve) => setTimeout(resolve, 0));
@@ -89,7 +89,7 @@ afterEach(() => {
 describe('the landing a sign-up is credited to', () => {
   it('is the address the visitor arrived on, though the app redirected before consent applied', async () => {
     window.history.replaceState(null, '', '/?utm_source=google&gclid=abc');
-    const analytics = await import('@web/lib/analytics');
+    const analytics = await import('@web/data/analytics');
     analytics.startProductAnalytics();
     // The router replaces `/` with /studio, then sends a signed-out visitor to /login.
     window.history.replaceState(null, '', '/login?next=%2Fstudio');

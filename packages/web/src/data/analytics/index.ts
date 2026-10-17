@@ -19,12 +19,12 @@ import {
 import { apiPut } from '@web/data/api/request';
 import { ApiException } from '@web/data/api/types';
 import { getSupportedLocales } from '@web/i18n/locale-bootstrap';
-import { captureAttribution, clearAttribution, readAttribution } from '@web/lib/analytics/attribution';
-import { ANALYTICS_CONFIGURED } from '@web/lib/analytics/build-config';
-import { adsViewFor } from '@web/lib/analytics/consent-decision';
-import type { ConsentText } from '@web/lib/analytics/consent-banner';
-import type { AnalyticsUser } from '@web/lib/analytics/runtime';
-import type * as RuntimeModule from '@web/lib/analytics/runtime';
+import { captureAttribution, clearAttribution, readAttribution } from '@web/data/analytics/attribution';
+import { ANALYTICS_CONFIGURED } from '@web/data/analytics/build-config';
+import { adsViewFor } from '@web/data/analytics/consent-decision';
+import type { ConsentText } from '@web/data/analytics/consent-banner';
+import type { AnalyticsUser } from '@web/data/analytics/runtime';
+import type * as RuntimeModule from '@web/data/analytics/runtime';
 import { PRIVACY_URL } from '@web/lib/official-home';
 
 type Runtime = typeof RuntimeModule;
@@ -83,7 +83,7 @@ export function startProductAnalytics(): void {
   // long before consent applies. Held in memory only, so it needs no consent.
   const landing = new URL(window.location.href);
   const referrer = document.referrer;
-  runtime = import('@web/lib/analytics/runtime').then(async (module) => {
+  runtime = import('@web/data/analytics/runtime').then(async (module) => {
     module.onConsentChange((next) => {
       consent = next;
       if (next.analytics || next.ads) {

@@ -4,7 +4,7 @@
 import { useQuery } from '@tanstack/react-query';
 import * as React from 'react';
 import { X } from 'lucide-react';
-import { trackEvent } from '@web/lib/analytics';
+import { trackEvent } from '@web/data/analytics';
 import { isComparableMembershipTier } from '@breatic/shared';
 
 import {

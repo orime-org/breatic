@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import * as React from 'react';
-import { trackEvent } from '@web/lib/analytics';
+import { trackEvent } from '@web/data/analytics';
 import { accountTotal } from '@breatic/shared';
 import type { CreditOverview } from '@breatic/shared';
 

@@ -8,7 +8,7 @@ import { LangSwitcher } from '@web/features/preferences/LangSwitcher';
 import { ThemeToggle } from '@web/features/preferences/ThemeToggle';
 import { useTranslation } from '@web/i18n/use-translation';
 import { Button } from '@web/components/ui/button';
-import { COOKIE_SETTINGS_AVAILABLE, openCookieSettings } from '@web/lib/analytics';
+import { COOKIE_SETTINGS_AVAILABLE, openCookieSettings } from '@web/data/analytics';
 import { PRIVACY_URL, TERMS_URL } from '@web/lib/official-home';
 import { BrandHomeLink } from '@web/ui/BrandHomeLink';
 import { TopBar } from '@web/ui/TopBar';

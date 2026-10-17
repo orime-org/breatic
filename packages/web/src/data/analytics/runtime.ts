@@ -22,16 +22,16 @@ import {
   CONSENT_COOKIE_DOMAIN,
   GOOGLE_ADS_TAG_ID,
   conversionLabels,
-} from '@web/lib/analytics/build-config';
+} from '@web/data/analytics/build-config';
 import {
   followPage,
   openConsentSettings,
   setConsentLanguage,
   startConsentBanner,
   type ConsentText,
-} from '@web/lib/analytics/consent-banner';
-import { readAttribution } from '@web/lib/analytics/attribution';
-import { fetchCountry, type AdsView } from '@web/lib/analytics/consent-decision';
+} from '@web/data/analytics/consent-banner';
+import { readAttribution } from '@web/data/analytics/attribution';
+import { fetchCountry, type AdsView } from '@web/data/analytics/consent-decision';
 
 type Amplitude = typeof AmplitudeSdk;
 type EventStorage = NonNullable<NonNullable<Parameters<Amplitude['init']>[2]>['storageProvider']>;

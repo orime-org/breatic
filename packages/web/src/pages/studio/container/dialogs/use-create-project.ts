@@ -7,7 +7,7 @@ import { useNavigate } from 'react-router-dom';
 import { toast } from '@web/lib/toast';
 
 import { projectsApi, type CreatedProject } from '@web/data/api/projects';
-import { reportConversion } from '@web/lib/analytics';
+import { reportConversion } from '@web/data/analytics';
 import { useTranslation } from '@web/i18n/use-translation';
 import type { NewItemValues } from '@web/pages/studio/container/dialogs/NewItemDialog';
 import { defaultCreateStudioId } from '@web/pages/studio/container/dialogs/studio-create';

@@ -23,7 +23,7 @@ import { holdsActionableSubscription } from '@breatic/shared';
 import { confirmMembershipCheckout } from '@web/data/api/subscription';
 import { membershipQueryKey } from '@web/features/membership/membership-query';
 import { useTranslation } from '@web/i18n/use-translation';
-import { reportConversion } from '@web/lib/analytics';
+import { reportConversion } from '@web/data/analytics';
 import { toast } from '@web/lib/toast';
 import { refreshCurrentUser, useCurrentUserStore } from '@web/stores/current-user';
 

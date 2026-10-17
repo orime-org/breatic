@@ -60,7 +60,7 @@ export const STORAGE_KEYS = {
   /**
    * The campaign source of this browser's first and latest visit, kept only
    * while a consent category is accepted; the website writes the same key
-   * (inner#1442 §4.5). See `lib/analytics/attribution`.
+   * (inner#1442 §4.5). See `data/analytics/attribution`.
    */
   attribution: 'breatic.attribution',
 } as const;

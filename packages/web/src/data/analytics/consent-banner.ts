@@ -14,7 +14,7 @@
 
 import * as CookieConsent from 'vanilla-cookieconsent';
 import 'vanilla-cookieconsent/dist/cookieconsent.css';
-import '@web/lib/analytics/consent-banner.css';
+import '@web/data/analytics/consent-banner.css';
 import {
   CONSENT_COOKIE_NAME,
   CONSENT_MAX_AGE_DAYS,
@@ -24,7 +24,7 @@ import {
   revisionInForce,
   type BrowserChoices,
 } from '@breatic/shared';
-import { cookieAfterWrites, decideOnLoad, writesForClick, type ConsentWrites } from '@web/lib/analytics/consent-decision';
+import { cookieAfterWrites, decideOnLoad, writesForClick, type ConsentWrites } from '@web/data/analytics/consent-decision';
 
 /** Interface text, already translated. */
 export interface ConsentText {

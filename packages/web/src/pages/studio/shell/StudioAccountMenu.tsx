@@ -4,7 +4,7 @@
 import * as React from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Cookie, LogOut, Settings, Sparkles, Star } from 'lucide-react';
-import { COOKIE_SETTINGS_AVAILABLE, openCookieSettings } from '@web/lib/analytics';
+import { COOKIE_SETTINGS_AVAILABLE, openCookieSettings } from '@web/data/analytics';
 
 import { Button } from '@web/components/ui/button';
 import { Skeleton } from '@web/components/ui/skeleton';

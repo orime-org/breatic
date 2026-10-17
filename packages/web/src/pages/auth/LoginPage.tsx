@@ -9,7 +9,7 @@ import { GoogleSignIn } from '@web/pages/auth/GoogleSignIn';
 import { authApi } from '@web/data/api/auth';
 import { toCurrentUser, useCurrentUserStore } from '@web/stores/current-user';
 import { ApiException } from '@web/data/api/types';
-import { attributionBody, reportConversion, trackEvent } from '@web/lib/analytics';
+import { attributionBody, reportConversion, trackEvent } from '@web/data/analytics';
 import { Button } from '@web/components/ui/button';
 import { Input } from '@web/components/ui/input';
 import { PasswordInput } from '@web/components/ui/password-input';
