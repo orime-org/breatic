@@ -685,6 +685,36 @@ describe("re-reading the target fails — the content rows are rolled back", () 
       spaceContentDocName(PID, SID, "canvas"),
     );
   });
+
+  it("space:restore leaves the content row live when this call did not bring it back", async () => {
+    activityLatestUnrestoredMock.mockResolvedValue(DELETED_ROW);
+    // The other owner's restore already un-deleted the row, so this call
+    // changed nothing and has nothing to undo.
+    restoreByNameMock.mockResolvedValue(false);
+    const hocuspocus = makeHocuspocus({
+      beforeFirstTransact: () => {
+        seedSpace(SID, {
+          type: "canvas",
+          name: "Main",
+          order: 0,
+          locked: false,
+        });
+        armBroadcastMarker();
+      },
+    });
+
+    const res = await handleSpaceRpc(
+      { hocuspocus },
+      PID,
+      { userId: ACTOR, role: "owner" },
+      { id: "r1", type: "space:restore", payload: { spaceId: SID } },
+    );
+
+    expect(res.ok).toBe(false);
+    if (res.ok) return;
+    expect(res.error.code).toBe("CONFLICT");
+    expect(softDeleteByNameMock).not.toHaveBeenCalled();
+  });
 });
 
 describe("the rollback itself fails", () => {
