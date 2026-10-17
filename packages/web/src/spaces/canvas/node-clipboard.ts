@@ -294,14 +294,16 @@ export interface CloneOptions {
 
 /**
  * Clone a payload into fresh nodes and edges for the canvas (design 5.2–5.6).
- * Content is carried whole; a node's state and running work are not (lock,
- * task counts, failure message), and its creation stamp is new. Members of a
- * copied Group follow the fresh Group; a lone member rejoins an existing Group
- * when one is given, else becomes top-level. Stickies are not pasted onto the
- * canvas. Edges between copies are rebuilt, and an upstream edge is kept when
- * `keepUpstream` says so; their `createdAt` keeps the original order. Mentions
- * of copied nodes point at the copies, kept upstream and focus mentions stay,
- * any other mention becomes the text "@name".
+ * Content is carried whole; a node's state and running work are not (the
+ * fields in `NOT_COPIED`, and on a node with no content the media fields of
+ * the run planned for it, `NODE_MEDIA_KEYS`), and its creation stamp is new.
+ * Members of a copied Group follow the fresh Group; a lone member rejoins an
+ * existing Group when one is given, else becomes top-level. Stickies are not
+ * pasted onto the canvas. Edges between copies are rebuilt, and an upstream
+ * edge is kept when `keepUpstream` says so; their `createdAt` keeps the
+ * original order. Mentions of copied nodes point at the copies, kept
+ * upstream and focus mentions stay, any other mention becomes the text
+ * "@name".
  * @param payload - The clipboard payload.
  * @param createdBy - User id minted onto every clone.
  * @param offset - Per-axis shift applied to each absolute position.

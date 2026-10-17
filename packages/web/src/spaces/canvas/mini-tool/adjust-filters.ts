@@ -17,9 +17,13 @@
  * filter string.
  *
  * Distances are in source pixels, as ffmpeg's are: the blur and unsharp
- * filters take one source pixel as a share of the picture, and the grain and
- * the vignette take the source's size and find each drawn pixel's place in it,
- * so the preview drawn at the node's size shows the export's effect scaled.
+ * filters take one source pixel as a share of the frame the drawn picture
+ * spans, and the grain and the vignette find each drawn pixel's place in that
+ * frame, so the preview drawn at the node's size shows the export's effect
+ * scaled. Where an effect reads neighbours, a preview smaller than its source
+ * comes close to the export shrunk to its size without matching it: a drawn
+ * pixel cannot keep where an edge falls inside it, and past the picture's
+ * border it repeats a drawn pixel where the export repeats a source one.
  * Each custom filter carries a WebGL shader and the same work on a pixel
  * array, which Fabric runs where there is no WebGL.
  *
@@ -464,8 +468,9 @@ const CHROMA_WEIGHT_GLSL = `
  * factor a source pixel, the chroma's by the same factor for each 2x2 block
  * between a pixel's and the neighbour's, the block the chroma plane holds one
  * sample for. The chroma is read at drawn pixels and weighed by
- * {@link chromaWeight}, so a preview drawn smaller than its source shows the
- * export shrunk to its size. Each neighbour weighs as much as it is opaque, so a
+ * {@link chromaWeight}; a preview's drawn pixel covers whole blocks
+ * (`previewFrame`), so away from the picture's border its chroma is the
+ * export's shrunk to its size. Each neighbour weighs as much as it is opaque, so a
  * cut-out's transparent surround adds nothing; a pixel keeps its own alpha.
  * Fabric's two passes, across then down, carry it.
  */

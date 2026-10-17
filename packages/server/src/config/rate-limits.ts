@@ -4,9 +4,9 @@
 /**
  * Rate-limit configuration loader.
  *
- * Loads per-action abuse throttles from `config/rate-limits.yaml`:
- * every route that throttles (auth, studio, assets) reads its
- * `{ max, windowSeconds }` from here instead of hardcoding the numbers.
+ * Loads per-action abuse throttles from `config/rate-limits.yaml`: every
+ * route that throttles reads its `{ max, windowSeconds }` from here instead
+ * of hardcoding the numbers.
  * The key DIMENSION (see the yaml file's header) stays in code per action;
  * only the counts are tuned in yaml.
  *
