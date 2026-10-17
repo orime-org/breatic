@@ -7,8 +7,9 @@
  *
  * The model has no clock of its own, and the server runs on UTC, so the
  * reader's zone comes from their browser with each message. The note opens
- * that turn's user message only; see `MainAgent.runTurn` for why it stays out of
- * the system prompt and the stored history.
+ * that turn's user message, which is stored as it was sent and replayed as it
+ * is on later turns, so each message kept that way still tells the model when
+ * it was sent. It stays out of the system prompt; see `MainAgent.runTurn`.
  */
 
 import { isKnownTimeZone } from "@server/utils/time-zone.js";
