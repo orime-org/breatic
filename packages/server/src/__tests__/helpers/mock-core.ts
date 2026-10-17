@@ -482,7 +482,7 @@ export const coreMock = async (importOriginal: () => Promise<Record<string, unkn
     MONOREPO_ROOT: "/tmp",
     // The real config underneath, so every field the code reads exists; only
     // the values these suites depend on are set here.
-    getAgentConfig: () => ({ ...(actual.getAgentConfig as () => Record<string, unknown>)(), default_model: "test", max_tool_iterations: 5, tool_result_keep: 3, memory_project_max_size: 1000, memory_conversation_max_size: 1000, max_output_tokens: 16384, memory_budget_chars: 850000, memory_keep_chars: 500000, user_message_max_chars: 15000, user_message_max_references: 100, attachment_max_chars: 200000, attachment_max_items: 10, conversation_page_size: 30, image_search_timeout_ms: 10000 }),
+    getAgentConfig: () => ({ ...(actual.getAgentConfig as () => Record<string, unknown>)(), default_model: "test", max_tool_iterations: 5, memory_project_max_size: 1000, memory_conversation_max_size: 1000, max_output_tokens: 16384, memory_budget_tokens: 850000, memory_keep_tokens: 500000, user_message_max_chars: 15000, user_message_max_references: 100, attachment_max_chars: 200000, attachment_max_items: 10, conversation_page_size: 30, image_search_timeout_ms: 10000 }),
     // Values intentionally differ from config/storage.yaml so route tests
     // prove the endpoint reads config instead of hardcoding.
     getStorageConfig: () => ({
@@ -604,7 +604,7 @@ export const domainMock = () => ({
   // same key it would in production. A bare `{}` would spread to nothing,
   // which reads as "this turn sent no provider options" -- the one thing
   // the real function never does.
-  reasoningFor: vi.fn().mockReturnValue({ providerOptions: {} }),
+  callOptionsFor: vi.fn().mockReturnValue({ providerOptions: {} }),
   buildToolSet: vi.fn().mockReturnValue({}),
   BASELINE_TOOLS: [],
   // Not a placeholder and not written out by hand. What the turn does with

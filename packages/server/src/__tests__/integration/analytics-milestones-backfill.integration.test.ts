@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * The 0096 backfill that claims the milestones accounts reached before
+ * The 0097 backfill that claims the milestones accounts reached before
  * product analytics shipped (inner#1442 design §4.8, §4.16), so an existing
  * account's next project, Agent turn or generation is not reported as its
  * first, and a collaborator who already acted is not reported again.
@@ -18,7 +18,7 @@ import crypto from "node:crypto";
 import postgres from "postgres";
 
 const MIGRATION_PATH = new URL(
-  "../../../../core/src/db/migrations/0096_analytics_consent_attribution.sql",
+  "../../../../core/src/db/migrations/0097_analytics_consent_attribution.sql",
   import.meta.url,
 );
 
@@ -31,7 +31,7 @@ function readBackfillStatements(): string[] {
   const text = readFileSync(MIGRATION_PATH, "utf8");
   const start = text.indexOf("-- >>> milestones backfill");
   const end = text.indexOf("-- <<< milestones backfill");
-  if (start === -1 || end === -1) throw new Error("backfill markers missing from 0096 — nothing to verify");
+  if (start === -1 || end === -1) throw new Error("backfill markers missing from 0097 — nothing to verify");
   return text
     .slice(start, end)
     .split("--> statement-breakpoint")
@@ -51,7 +51,7 @@ afterAll(async () => {
 /** Thrown to roll the reconstruction back; never escapes the test. */
 const ROLLBACK = new Error("rollback");
 
-describe("the 0096 milestones backfill", () => {
+describe("the 0097 milestones backfill", () => {
   it("claims the firsts and collaborations reached before it ran, and nothing else", async () => {
     const statements = readBackfillStatements();
     expect(statements).toHaveLength(2);

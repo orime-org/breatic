@@ -10,10 +10,9 @@
  * wants the same history split differently: a tool call belongs to the
  * assistant, its result arrives as a message of its own.
  *
- * The conversion is one function because both chat entry points need it and a
- * second copy would drift; it is here rather than in the repository because
- * the repository answers to every reader, and only this one wants the
- * protocol's shape.
+ * A row kept as it was sent (`for_model`) goes back as kept; this renders
+ * the rows stored before that copy was kept, and is the replay's only way to
+ * send them (`history-replay.ts`).
  */
 
 import type { ModelMessage } from "ai";
@@ -35,13 +34,10 @@ type ToolPart = Extract<MessagePart, { type: "tool" }>;
  * never finished arriving is left out along with its own half: what was
  * stored is a partial parse, and replaying it puts words in the model's
  * mouth.
- *
- * Exported because compaction counts in the same unit. Counting the ones the
- * model never sees would spend the configured window on them.
  * @param part - The tool part to judge.
  * @returns True when it reaches the model.
  */
-export function reachesTheModel(part: ToolPart): boolean {
+function reachesTheModel(part: ToolPart): boolean {
   // A question the model asked is in the reply as words, written there by the
   // turn from this call's own payload. Sending the call and its result too
   // would put the same question in the context twice, on this turn and every
@@ -133,12 +129,28 @@ const FAILED_NOTE = "[This turn could not be finished; it broke off partway.]";
 const TRUNCATED_NOTE = "[This turn was cut off at the output limit, mid-sentence.]";
 
 /**
- * Turn stored messages into the messages the model is sent.
+ * The note a reply ends on when its turn did not end on its own.
  *
- * Reasoning never goes back: it is the model's own working, and returning it
- * teaches nothing while costing every turn. A call still in flight is left out
- * along with its own half — a call with no answer puts the exchange in a state
- * the protocol has no move for.
+ * Read off the reply's stored parts, which record how the turn ended, so a
+ * row stored before its copy as sent was kept and a row with one end the
+ * same way.
+ * @param parts - The reply's stored parts.
+ * @returns The note, or undefined for a turn that ended on its own.
+ * @throws {never} Never.
+ */
+export function endingNote(parts: readonly MessagePart[]): string | undefined {
+  if (parts.some((p) => p.type === "interrupted")) return STOP_NOTE;
+  if (parts.some((p) => p.type === "failed")) return FAILED_NOTE;
+  if (parts.some((p) => p.type === "truncated")) return TRUNCATED_NOTE;
+  return undefined;
+}
+
+/**
+ * Turn rows stored without a kept copy into the messages the model is sent.
+ *
+ * Such rows kept no signed thinking, so none goes back. A call still in flight
+ * is left out along with its own half — a call with no answer puts the
+ * exchange in a state the protocol has no move for.
  *
  * A call the user stopped does go back, saying so. It used to be dropped whole,
  * which left the next turn reading as one the model had finished answering: it
@@ -167,9 +179,7 @@ export function toModelMessages(history: readonly MessageData[]): ModelMessage[]
     // some providers reject, and a `user` one would be words the user never
     // said. Bracketed so the model reads it as a note about the turn rather
     // than as something it wrote.
-    const stopped = message.parts.some((p) => p.type === "interrupted");
-    const brokeOff = message.parts.some((p) => p.type === "failed");
-    const cutOff = message.parts.some((p) => p.type === "truncated");
+    const note = endingNote(message.parts);
 
     for (const part of message.parts) {
       if (part.type === "text") {
@@ -202,9 +212,7 @@ export function toModelMessages(history: readonly MessageData[]): ModelMessage[]
         ],
       });
     }
-    if (stopped) out.push({ role: "assistant", content: STOP_NOTE });
-    else if (brokeOff) out.push({ role: "assistant", content: FAILED_NOTE });
-    else if (cutOff) out.push({ role: "assistant", content: TRUNCATED_NOTE });
+    if (note !== undefined) out.push({ role: "assistant", content: note });
   }
 
   return out;

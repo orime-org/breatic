@@ -89,7 +89,8 @@ export type {
   SubscriptionPlans,
 } from "@core/config/subscription.js";
 export { jitterBackoffStrategy } from "@core/infra/retry.js";
-export { getAgentConfig, effectiveKeepChars } from "@core/config/loader.js";
+export { getAgentConfig, effectiveKeepTokens } from "@core/config/loader.js";
+export type { PromptCacheTtl } from "@core/config/loader.js";
 
 // ── Infrastructure ───────────────────────────────────────────────
 export {

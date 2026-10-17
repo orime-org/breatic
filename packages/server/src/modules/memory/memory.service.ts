@@ -136,8 +136,9 @@ export async function commitConsolidation(
  * Move the watermark past a window whose summary never arrived.
  *
  * The turns it covered are lost. Leaving the watermark where it is would be
- * worse: the consolidating call is `temperature: 0`, so the next turn sends a
- * strictly larger version of an input that already failed, and does so on
+ * worse: the next turn sends a strictly larger version of an input that
+ * already failed, to a call that asks for `temperature: 0` wherever the model
+ * takes it, and does so on
  * every turn from then on. Nothing the reader can do — refreshing, relogging,
  * another tab — changes any of the inputs.
  * @param conversationId - The conversation whose window was discarded.

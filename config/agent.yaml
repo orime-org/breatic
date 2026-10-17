@@ -8,12 +8,21 @@ max_tool_iterations: 40
 
 # ── Models ────────────────────────────────────────────────
 # Default model for MainAgent chat.
-default_model: deepseek/deepseek-v4-pro
+default_model: anthropic/claude-opus-5.5
 
 # Model used for memory consolidation (summarizing old turns). The same model
 # that writes a conversation reads it back: two would put the summary in one
 # voice and the reply in another, and name two providers on one bill.
-consolidation_model: deepseek/deepseek-v4-pro
+consolidation_model: anthropic/claude-opus-5.5
+
+# How long a cached prompt prefix lives (5m or 1h), for the models that cache
+# only when asked (Claude). A write costs 1.25x the input price at 5m and 2x at
+# 1h; a read costs a small fraction of it. The lifetime counts from the start
+# of the last request that read or wrote it, and a reader often takes longer
+# than five minutes to answer, so chat keeps it for an hour. Through
+# OpenRouter, a gap over 10 minutes also needs the request to land on the same
+# provider again: its sticky session expires after 10 minutes without calls.
+prompt_cache_ttl: 1h
 
 # ── Memory System ─────────────────────────────────────────
 # How much of a conversation's first message is kept as its title. The rest is
@@ -36,16 +45,6 @@ message_page_size: 30
 # in code and not here, because the server garbage collects and two misses in
 # a row happen to a stream that is doing fine.
 sse_heartbeat_interval_ms: 5000
-
-# How many of the most recent tool uses keep their result when building LLM
-# context. Older tool results are replaced by a placeholder; the call record
-# — name and arguments — stays, as does every user message and reply.
-#
-# Counted in tool use/result pairs, not turns: one turn can run forty model
-# calls and all of them land in a single stored row, so a turn-shaped window
-# would be three orders of magnitude coarser than what actually fills the
-# context. Three is the figure Anthropic's clear_tool_uses_20250919 keeps.
-tool_result_keep: 3
 
 # Maximum character length for project memory injected into AI calls. The
 # conversation layer below carries the same ceiling.
@@ -91,20 +90,18 @@ current_space_max_chars: 100000
 space_list_max_items: 200
 
 # How long an assembled request may be before a consolidation runs, in
-# characters. Measured against everything about to go to the model: system
-# prompt, memory, tool definitions, history and this turn's
-# question.
-#
-# Characters rather than tokens because no library counts tokens for a model
-# reached through OpenRouter, and a character is never more than a token in
-# the tokenizers this build meets — so this can only fire early.
-memory_budget_chars: 850000
+# tokens: 85% of the smallest context window among the providers that serve
+# the model. Measured against everything about to go to the model: system
+# prompt, memory, tool definitions, history and this turn's question. The
+# size comes from the provider's own count on the last turn; where there is
+# none, a character is counted as a token, which can only fire early.
+memory_budget_tokens: 850000
 
-# What one consolidation leaves behind, in characters. A pass takes whole
-# turns from the oldest end until what remains is under this, less the room
-# the fold may add to memory — the two memory ceilings, doubled, since they
-# are counted in code points and the payload is measured in code units.
-memory_keep_chars: 500000
+# What one consolidation leaves behind, in tokens. A pass takes whole turns
+# from the oldest end until what remains is under this, less the room the
+# fold may add to memory -- the two memory ceilings, doubled, counted as
+# tokens at a character each.
+memory_keep_tokens: 500000
 
 # ── Tools ─────────────────────────────────────────────────
 # How much page text one web_search asks for, in tokens. The service refuses
@@ -191,7 +188,7 @@ understand_media_max_output_tokens: 8192
 # would have to be wrong for one of the two.
 #
 # A call that has a preference states it where it makes the call, by passing
-# a boolean to `reasoningFor` in `@breatic/domain`, which turns that into
+# `thinking` to `callOptionsFor` in `@breatic/domain`, which turns that into
 # whatever the provider on the other end takes. Chat and memory consolidation
 # do that today; the rest take whatever their provider does by default.
 
