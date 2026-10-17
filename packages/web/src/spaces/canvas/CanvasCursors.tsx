@@ -9,11 +9,11 @@ import { useNamed } from '@web/features/collab-editor/collaborator-names-context
 import { userPaletteColor } from '@web/lib/user-color';
 import { collectPointers, samePointers, type RemotePointer } from '@web/spaces/canvas/canvas-pointers';
 import { useAwarenessSlice } from '@web/spaces/canvas/use-awareness-slice';
+import { overlayCounterScale } from '@web/spaces/canvas/overlay-scale';
+import { VIEWPORT_TOP_Z } from '@web/spaces/canvas/viewport-layers';
 
 /** What the layer reads while nobody else is pointing at anything. */
 const NO_POINTERS: readonly RemotePointer[] = [];
-import { overlayCounterScale } from '@web/spaces/canvas/overlay-scale';
-import { VIEWPORT_TOP_Z } from '@web/spaces/canvas/viewport-layers';
 
 /**
  * Stacking order for the cursor layer: one above everything the canvas draws
