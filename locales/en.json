@@ -2371,7 +2371,7 @@
       },
       "ads": {
         "title": "Advertising",
-        "description": "Measures which ads lead to sign-ups and purchases."
+        "description": "Measures which ads lead to sign-ups, purchases and other key steps."
       }
     }
   }
