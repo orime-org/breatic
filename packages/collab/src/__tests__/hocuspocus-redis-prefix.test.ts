@@ -30,6 +30,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 import type * as ConnectionRegistryModuleShape from "@collab/services/connection-registry.js";
+import type * as HocuspocusServerModule from "@hocuspocus/server";
 import type * as ConnectionGateModuleShape from "@collab/infra/connection-gate.js";
 
 /** The real module, so the mock can keep everything it does not replace. */
@@ -72,7 +73,8 @@ vi.mock("@hocuspocus/extension-redis", () => ({
   },
 }));
 
-vi.mock("@hocuspocus/server", () => ({
+vi.mock("@hocuspocus/server", async (importOriginal) => ({
+  ...(await importOriginal<typeof HocuspocusServerModule>()),
   Server: class {
     hocuspocus = { documents: new Map() };
     constructor(config: unknown) {
@@ -143,7 +145,7 @@ import * as Y from "yjs";
 import { createCollabServer } from "../hocuspocus.js";
 import { getConnectionTimings } from "../config.js";
 import { readPresence } from "../hooks/presence.js";
-import { socketCeilings } from "../infra/socket-ceilings.js";
+import { SOCKET_CEILINGS } from "../infra/socket-ceilings.js";
 
 /**
  * Read the `prefix` the Redis extension was constructed with.
@@ -216,8 +218,8 @@ describe("createCollabServer — Redis channel prefix", () => {
 
     const config = serverSpy.mock.calls[0]?.[0] as Record<string, unknown>;
     expect(config).toMatchObject({
-      // Both ceilings that close a whole socket, derived from the Space cap.
-      ...socketCeilings(),
+      // Both ceilings that close a whole socket.
+      ...SOCKET_CEILINGS,
       // Broadcast on apply rather than coalescing per event-loop turn. The
       // library's own default is `0`, which batches; the Space RPC commit
       // boundary is built on the broadcast being the synchronous, observable

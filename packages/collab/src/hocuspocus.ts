@@ -31,7 +31,7 @@ import {
 } from "@breatic/core";
 import { createConnectionGate, recordingFailedAuth } from "@collab/infra/connection-gate.js";
 import { createSharedThrottle } from "@collab/infra/shared-throttle.js";
-import { socketCeilings } from "@collab/infra/socket-ceilings.js";
+import { SOCKET_CEILINGS } from "@collab/infra/socket-ceilings.js";
 import {
   createConnectionRegistry,
   type SeatClaim,
@@ -290,7 +290,7 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     // which assumes one document per socket. Ours carries a project: the meta
     // doc plus one per open Space tab, up to the project's Space cap. See
     // infra/socket-ceilings.ts.
-    ...socketCeilings(),
+    ...SOCKET_CEILINGS,
 
     // Broadcast every change the moment it is applied, which is what the
     // framework did before it grew a batching window. The window (default
@@ -610,7 +610,7 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     // Belongs in the banner for the same reason: they are ceilings whose only
     // symptom, once crossed, is connections dropping. An operator has to be
     // able to read what this process is enforcing.
-    ...socketCeilings(),
+    ...SOCKET_CEILINGS,
   }, "Hocuspocus server configured");
 
   // Timed store (#40). Storing is driven from here rather than from "somebody

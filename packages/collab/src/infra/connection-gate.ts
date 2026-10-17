@@ -53,7 +53,7 @@
 
 import type { IncomingMessage } from "node:http";
 import { createLogger, decideClientIdentity, type RefusalReason } from "@breatic/core";
-import { MAX_SPACES_PER_PROJECT } from "@breatic/shared";
+import { DOCUMENTS_PER_SOCKET } from "@collab/infra/socket-ceilings.js";
 
 const logger = createLogger("connection-gate");
 
@@ -118,9 +118,6 @@ const FORWARDED_FOR_HEADER = "x-forwarded-for";
 
 /** What a client with no trustworthy identity is told before the socket goes away. */
 const REFUSAL_RESPONSE = "HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n";
-
-/** Documents one WebSocket carries at most: a full project's Spaces plus its meta doc. */
-const FULL_PROJECT_DOCUMENTS = MAX_SPACES_PER_PROJECT + 1;
 
 /** What a client over the attempt limit is told before the socket goes away. */
 const THROTTLED_RESPONSE = "HTTP/1.1 429 Too Many Requests\r\nConnection: close\r\n\r\n";
@@ -287,7 +284,7 @@ export function createConnectionGate(throttle: Throttle): ConnectionGate {
       if (identity === null) return;
       const failed = (failures.get(data.request) ?? 0) + 1;
       failures.set(data.request, failed);
-      if (failed !== 1 && failed <= FULL_PROJECT_DOCUMENTS) return;
+      if (failed !== 1 && failed <= DOCUMENTS_PER_SOCKET) return;
       if (!(await throttle.count(identity))) {
         logger.warn({ identity }, "collab_failed_auth_throttled");
       }
