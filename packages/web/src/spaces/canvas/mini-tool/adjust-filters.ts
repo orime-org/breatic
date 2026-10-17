@@ -361,6 +361,105 @@ function blurFalloff(sigma: number): number {
 }
 
 /**
+ * The 2x2 blocks a drawn pixel covers along a pass, in source pixels: the
+ * first and last block, how much of each end block it covers, and how many
+ * whole blocks lie between them.
+ */
+interface BlockRun {
+  first: number;
+  last: number;
+  head: number;
+  tail: number;
+  whole: number;
+}
+
+/**
+ * The blocks one drawn pixel covers along a pass.
+ * @param at - The drawn pixel.
+ * @param step - Drawn pixels per source pixel, at most 1.
+ * @returns Its blocks.
+ */
+function blockRun(at: number, step: number): BlockRun {
+  const start = at / step;
+  const end = (at + 1) / step;
+  const first = Math.floor(start / 2);
+  const last = Math.ceil(end / 2) - 1;
+  if (first === last) return { first, last, head: end - start, tail: 0, whole: 0 };
+  return { first, last, head: 2 * (first + 1) - start, tail: end - 2 * last, whole: last - first - 1 };
+}
+
+/**
+ * The sum of `falloff` to the powers 1 to `count`.
+ * @param falloff - The factor, in (0, 1).
+ * @param count - How many powers.
+ * @returns The sum.
+ */
+function powers(falloff: number, count: number): number {
+  return (falloff * (1 - falloff ** count)) / (1 - falloff);
+}
+
+/**
+ * How much one drawn pixel's chroma weighs in another's, under ffmpeg's 4:2:0
+ * blur: the export blurs each source pixel by the blocks between it and its
+ * neighbours, and a drawn pixel shows the export's pixels it covers averaged,
+ * so the weight is the sum over every pair of source pixels the two cover of
+ * that pair's block weight times how much of each they cover. One drawn pixel
+ * per source pixel gives the export's own weight.
+ * @param from - The drawn pixel being blurred.
+ * @param to - The drawn pixel it takes from.
+ * @param step - Drawn pixels per source pixel, at most 1.
+ * @param falloff - The kernel's factor per block.
+ * @returns The weight.
+ */
+function chromaWeight(from: number, to: number, step: number, falloff: number): number {
+  const a = blockRun(from, step);
+  if (from === to) {
+    if (a.whole === 0 && a.first === a.last) return a.head * a.head;
+    const k = a.whole;
+    const inner = 4 * (k + (2 * falloff * (k * (1 - falloff) - 1 + falloff ** k)) / (1 - falloff) ** 2);
+    const ends = a.head * a.head + a.tail * a.tail + 2 * a.head * a.tail * falloff ** (k + 1);
+    return inner + ends + 4 * (a.head + a.tail) * powers(falloff, k);
+  }
+  const [near, far] = to > from ? [a, blockRun(to, step)] : [blockRun(to, step), a];
+  // Seen from the facing ends: the near pixel's last block, the far one's first.
+  const fromNear = near.first === near.last ? near.head : near.tail + 2 * powers(falloff, near.whole) + near.head * falloff ** (near.whole + 1);
+  const fromFar = far.first === far.last ? far.head : far.head + 2 * powers(falloff, far.whole) + far.tail * falloff ** (far.whole + 1);
+  return fromNear * fromFar * falloff ** (far.first - near.last);
+}
+
+/** {@link chromaWeight} for the shader, the same sums. */
+const CHROMA_WEIGHT_GLSL = `
+  float powers(float f, float count) {
+    return f * (1.0 - pow(f, count)) / (1.0 - f);
+  }
+  // The first and last block a drawn pixel covers, and how much of each end.
+  vec4 blockRun(float at, float step) {
+    float start = at / step;
+    float end = (at + 1.0) / step;
+    float first = floor(start / 2.0);
+    float last = ceil(end / 2.0) - 1.0;
+    if (first == last) return vec4(first, last, end - start, 0.0);
+    return vec4(first, last, 2.0 * (first + 1.0) - start, end - 2.0 * last);
+  }
+  float chromaWeight(float from, float to, float step, float f) {
+    vec4 a = blockRun(from, step);
+    if (from == to) {
+      if (a.x == a.y) return a.z * a.z;
+      float k = a.y - a.x - 1.0;
+      float inner = 4.0 * (k + 2.0 * f * (k * (1.0 - f) - 1.0 + pow(f, k)) / ((1.0 - f) * (1.0 - f)));
+      float ends = a.z * a.z + a.w * a.w + 2.0 * a.z * a.w * pow(f, k + 1.0);
+      return inner + ends + 4.0 * (a.z + a.w) * powers(f, k);
+    }
+    vec4 near = to > from ? a : blockRun(to, step);
+    vec4 far = to > from ? blockRun(to, step) : a;
+    float nearK = near.y - near.x - 1.0;
+    float farK = far.y - far.x - 1.0;
+    float fromNear = near.x == near.y ? near.z : near.w + 2.0 * powers(f, nearK) + near.z * pow(f, nearK + 1.0);
+    float fromFar = far.x == far.y ? far.z : far.z + 2.0 * powers(f, farK) + far.w * pow(f, farK + 1.0);
+    return fromNear * fromFar * pow(f, far.x - near.y);
+  }`;
+
+/**
  * ffmpeg's `gblur` on every plane of a 4:2:0 frame: Y's kernel falls by the
  * factor a source pixel, the chroma's by the same factor for each 2x2 block
  * between a pixel's and the neighbour's, the block the chroma plane holds one
@@ -389,23 +488,30 @@ class AdjustBlur extends filters.Blur {
       uniform float uStepH;
       varying vec2 vTexCoord;
       ${BETWEEN_GLSL}
+      ${CHROMA_WEIGHT_GLSL}
       void main() {
         vec4 own = texture2D(uTexture, vTexCoord);
-        // The source pixel this one stands for, along the pass.
-        float index = floor(dot(vTexCoord, uPixel) / dot(uPixel, uPixel));
+        // One drawn pixel along the pass, and drawn pixels per source pixel.
+        vec2 drawn = uPixel.x > 0.0 ? vec2(uStepW, 0.0) : vec2(0.0, uStepH);
+        float step = min(1.0, dot(uPixel, uPixel) / dot(uPixel, drawn));
+        float at = floor(dot(vTexCoord, drawn) / dot(drawn, drawn));
+        float reach = ceil(${BLUR_TAPS}.0 * step);
         float y = 0.0;
         vec2 c = vec2(0.0);
         float wy = 0.0;
         float wc = 0.0;
         for (int t = -${BLUR_TAPS}; t <= ${BLUR_TAPS}; t++) {
-          float at = abs(float(t));
           vec4 s = between(vTexCoord + uPixel * float(t));
-          float ky = pow(uFalloff, at);
-          float kc = pow(uFalloff, abs(floor((index + float(t)) / 2.0) - floor(index / 2.0)));
+          float ky = pow(uFalloff, abs(float(t)));
           y += ky * s.r;
-          c += kc * s.gb;
           wy += ky * s.a;
-          wc += kc * s.a;
+          // The chroma is read at drawn pixels, each weighed by the source pixels the two cover.
+          if (abs(float(t)) <= reach) {
+            vec4 d = between(vTexCoord + drawn * float(t));
+            float kc = chromaWeight(at, at + float(t), step, uFalloff);
+            c += kc * d.gb;
+            wc += kc * d.a;
+          }
         }
         gl_FragColor = wy < ${NO_WEIGHT} ? own : vec4(y / wy, c / wc, own.a);
       }`;
@@ -431,24 +537,26 @@ class AdjustBlur extends filters.Blur {
   private pass2d(pixels: PixelState['imageData'], dx: number, dy: number): void {
     const source = { data: new Uint8ClampedArray(pixels.data), width: pixels.width, height: pixels.height };
     const falloff = blurFalloff(this.sigma);
-    const step = dx !== 0 ? dx : dy;
+    const step = Math.min(1, dx !== 0 ? dx : dy);
+    const reach = Math.ceil(BLUR_TAPS * step);
     for (let y = 0; y < pixels.height; y++) {
       for (let x = 0; x < pixels.width; x++) {
-        // The source pixel this one stands for, along the pass.
-        const index = Math.floor(((dx !== 0 ? x : y) + 0.5) / step);
+        const at = dx !== 0 ? x : y;
         const sum = [0, 0, 0];
         let wy = 0;
         let wc = 0;
         for (let t = -BLUR_TAPS; t <= BLUR_TAPS; t++) {
-          const px = x + t * dx;
-          const py = y + t * dy;
-          const [ty, tcb, tcr, alpha] = tap(source, px, py);
+          const [ty, , , alpha] = tap(source, x + t * dx, y + t * dy);
           const ky = falloff ** Math.abs(t);
-          const kc = falloff ** Math.abs(Math.floor((index + t) / 2) - Math.floor(index / 2));
           sum[0] = (sum[0] ?? 0) + ky * ty;
+          wy += ky * alpha;
+        }
+        // The chroma is read at drawn pixels, each weighed by the source pixels the two cover.
+        for (let t = -reach; t <= reach; t++) {
+          const [, tcb, tcr, alpha] = tap(source, dx !== 0 ? x + t : x, dx !== 0 ? y : y + t);
+          const kc = chromaWeight(at, at + t, step, falloff);
           sum[1] = (sum[1] ?? 0) + kc * tcb;
           sum[2] = (sum[2] ?? 0) + kc * tcr;
-          wy += ky * alpha;
           wc += kc * alpha;
         }
         if (wy < NO_WEIGHT) continue;
