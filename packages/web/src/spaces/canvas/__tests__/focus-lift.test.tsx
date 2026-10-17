@@ -97,7 +97,8 @@ describe('聚焦目标的抬升（#2000）', () => {
   });
 
   // A note stays visible over what it points at while that is being worked
-  // on: above a member of a selected group, the tallest a node reaches.
+  // on: above a member of a selected group, the tallest a node other than a
+  // pin or the focus target reaches.
   it('paints a pin above a member of a selected group', () => {
     mockUseCanvasSpace.mockReturnValue(
       mockSpace([
@@ -117,6 +118,28 @@ describe('聚焦目标的抬升（#2000）', () => {
     expect(Number(zOf('pin'))).toBeGreaterThan(Number(zOf('member')));
   });
 
+  // The crop owns the screen while it runs, so its target covers a note too.
+  it('A2: puts the focus target above a pin', () => {
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace([
+        image('host', 0),
+        image('src', 300),
+        {
+          id: 'pin',
+          type: 'annotation',
+          position: { x: 320, y: 20 },
+          data: { content: 'look here', createdBy: 'u-1', createdAt: 1, replies: [] },
+        } as Nodes[number],
+      ]),
+    );
+    renderSpace();
+
+    act(() => canvasSessions.of('s').getState().startFocusPick('host'));
+    clickNode('src');
+
+    expect(Number(zOf('src'))).toBeGreaterThan(Number(zOf('pin')));
+  });
+
   it('A2: puts the focus target above a member of a selected group (its parent chain lifts it to 1001)', () => {
     mockUseCanvasSpace.mockReturnValue(
       mockSpace([
@@ -128,8 +151,9 @@ describe('聚焦目标的抬升（#2000）', () => {
     );
     renderSpace();
     // A selected group is 1000; calculateChildXYZ then gives its member
-    // parentZ + 1. That 1001 is the tallest a node reaches, since groups
-    // cannot nest — it is one of the ceilings the focus target is set against.
+    // parentZ + 1. That 1001 is the tallest a node other than a pin or the
+    // focus target reaches, since groups cannot nest — it is one of the
+    // ceilings the focus target is set against.
     clickNode('g');
     expect(zOf('g')).toBe('1000');
     expect(zOf('member')).toBe('1001');
