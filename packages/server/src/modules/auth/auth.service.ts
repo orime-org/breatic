@@ -138,8 +138,8 @@ export async function register(
   await userRepo.setRecoveryCode(user.id, recoveryCodeHash);
 
   // NO personal studio here — that is the user's explicit second step
-  // (setup-studio), where they choose their slug. Per CLAUDE.md
-  // "core and shared must not log", the caller logs the `user_registered`
+  // (setup-studio), where they choose their slug. Per
+  // AGENTS.md#library-packages-do-not-log, the caller logs the `user_registered`
   // audit line after this resolves.
   return { user, recoveryCode };
 }
@@ -338,8 +338,8 @@ export async function logoutAll(userId: string): Promise<void> {
 const RESET_TOKEN_TTL = 3600;
 
 /**
- * Discriminated outcome of {@link forgotPassword}. Per CLAUDE.md
- * "core and shared must not log" mandate, the service returns the
+ * Discriminated outcome of {@link forgotPassword}. Per
+ * AGENTS.md#library-packages-do-not-log, the service returns the
  * branch it took (anti-enumeration: caller still responds to the
  * client with the same generic body) and the route handler logs
  * the appropriate audit line.

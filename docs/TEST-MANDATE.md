@@ -1,6 +1,6 @@
 # Test Mandate — smoke / E2E 验证规范(MANDATORY)
 
-> CLAUDE.md 头号原则「每次完成任务必须测试」的操作细则。
+> 仓库根 [AGENTS.md](../AGENTS.md#testing) 测试段里 smoke / E2E 要求的操作细则。
 > TDD(单测 / 集成的红绿蓝节奏 + anti-pattern 防御)见 [TDD-MANDATE.md](./TDD-MANDATE.md);
 > **本文管 ship 前的端到端验证(smoke / E2E)** —— 即「真的能跑吗」这一关。
 
@@ -139,7 +139,7 @@ STRIPE_SECRET_KEY=sk_test_… pnpm --filter @breatic/server test:integration \
 
 用浏览器 / 真客户端跑完整用户旅程,**不 mock 关键路径**。
 
-- **关键路径 6 类**(CLAUDE.md):支付 / 鉴权 / 数据完整性 / AI tool call / 积分扣减 / Yjs 协作 —— 改动碰到必跑对应 E2E
+- **关键路径 6 类**([AGENTS.md](../AGENTS.md#critical-paths)):支付 / 鉴权 / 数据完整性 / AI tool call / 积分扣减 / Yjs 协作 —— 改动碰到必跑对应 E2E
 - **核心用户流**:注册 → 登录 → 建 project → canvas 节点 create → mini-tool apply → 邀请
 - **工具**:web Playwright(`pnpm --filter @breatic/web test:smoke`)/ chrome-devtools MCP(交互式驱动)/ Yjs 协作类场景需两个会话验证多端 sync
 - **视觉改动**:必真浏览器 verify(看实际渲染,不靠文字描述),小批 ship + ground truth 对照(详见 [ARCHITECTURE.md#frontend](./ARCHITECTURE.md#frontend))
@@ -150,4 +150,4 @@ STRIPE_SECRET_KEY=sk_test_… pnpm --filter @breatic/server test:integration \
 
 - **TDD vs smoke/E2E**:TDD(红绿蓝)= 写代码时的单测 / 集成,防回归;smoke/E2E = ship 前端到端确认 + **spec-gap 探测**(production / E2E / 用户反馈才是 spec gap 的真正 detector,不是 unit test —— 见 [TDD-MANDATE.md](./TDD-MANDATE.md))
 - **不 mock 关键路径**:integration / E2E 把 DB / API / Stripe 等关键路径 mock 掉 = 假测,违规(见 [TDD-MANDATE.md](./TDD-MANDATE.md))
-- **做不了必 explicit 说明**:环境 / 工具限制跑不了 smoke / E2E,必须明说理由,**不许默默跳过**(CLAUDE.md 头号原则测试表)
+- **做不了必 explicit 说明**:环境 / 工具限制跑不了 smoke / E2E,必须明说理由,**不许默默跳过**

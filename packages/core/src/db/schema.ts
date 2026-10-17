@@ -420,7 +420,7 @@ export const projectEdits = pgTable("project_edits", {
 // admin row (no inviter). All FKs are `onDelete: restrict` — the project
 // is soft-delete only (rows never physically vanish, so a reference can
 // never dangle; hard delete goes through a dedicated GDPR flow). See
-// the "soft delete" rule in CLAUDE.md.
+// packages/core/AGENTS.md#soft-delete-only.
 
 export const studioMembers = pgTable(
   "studio_members",
@@ -743,7 +743,7 @@ export const nodeHistory = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
-    // Soft-delete, per the project-wide "soft delete only" rule (CLAUDE.md).
+    // Soft-delete, per packages/core/AGENTS.md#soft-delete-only.
     // Only data migrations stamp it today (duplicate cleanup).
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
   },

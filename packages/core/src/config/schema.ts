@@ -14,7 +14,7 @@
  * reads the validated result through the accessors in
  * `@core/config/runtime` (the `env` Proxy / `getConfig()`).
  *
- * See CLAUDE.md "core/shared must not read env vars" mandate - the same
+ * See `AGENTS.md#library-packages-do-not-read-env` - the same
  * "library doesn't make application decisions" principle that bans
  * `logger.*` and `process.exit()` in library code. Plain Zod is
  * used (not `@t3-oss/env-core`) precisely because that library's

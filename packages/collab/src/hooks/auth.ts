@@ -60,7 +60,7 @@ import type { ProjectRole } from "@breatic/shared";
 /**
  * Auth hook logger - every onAuthenticate decision (success or
  * failure) lands here with structured context. Per the
- * CLAUDE.md "industrial-grade server standards" mandate: every server-side error
+ * AGENTS.md#application-layer-error-logging rule: every server-side error
  * path must leave a server-side log trail so a 3am oncall can
  * trace from "user sees banner stuck" back to the root cause
  * (e.g. stale Redis client, dropped Postgres connection,
@@ -230,7 +230,7 @@ export function createAuthHook({
     // surfaced the banner, but `oncall` had no server-side trail
     // to confirm whether the rejection came from a missing cookie,
     // expired Redis session, dropped Postgres connection, or
-    // membership lookup miss. Per the CLAUDE.md "industrial-grade server standards" mandate and memory `feedback_dev_collab_long_running_drift`,
+    // membership lookup miss. Per AGENTS.md#application-layer-error-logging,
     // every rejection logs first then throws, and the outer
     // try/catch surfaces unexpected infrastructure errors
     // (Redis/Postgres connection-level failures) with the same

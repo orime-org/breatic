@@ -86,9 +86,9 @@ export default [
         },
       ],
 
-      // Variables — error level, matching the backend (root CLAUDE.md
-      // frontend industrial-grade standard "TS strict, zero any"; rules
-      // are binary 0/1, not split per package).
+      // Variables — error level, matching the backend
+      // (AGENTS.md#typescript-strictness: the same lint level applies to
+      // every package; rules are binary 0/1, not split per package).
       'no-unused-vars': 'off', // superseded by the TypeScript ESLint rule below
       '@typescript-eslint/no-unused-vars': [
         'error',
