@@ -17,6 +17,6 @@
  * @param value - A candidate credit cost (number, null, undefined, or anything).
  * @returns The finite number, or undefined.
  */
-export function formatCredits(value: unknown): number | undefined {
+export function asFiniteCredits(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 }
