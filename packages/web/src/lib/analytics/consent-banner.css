@@ -52,11 +52,6 @@
   border-top: 1px solid var(--color-border);
 }
 
-/* The three choices side by side; the bar would push Settings to the far end. */
-#cc-main .cm--bar .cm__btns {
-  justify-content: flex-start;
-}
-
 /* Body text on the product's type scale, the size of a dialog's description. */
 #cc-main .cm__desc,
 #cc-main .pm__section-desc-wrapper,
