@@ -207,7 +207,110 @@ describe('adjustPixels', () => {
     },
   );
 
-  // The vignette is found from each drawn pixel's place in the source.
+  describe('noise reduction', () => {
+    /**
+     * A picture of two colours side by side.
+     * @param width - Its width.
+     * @param height - Its height.
+     * @param edge - The first column of the right colour.
+     * @param colours - The left and right colours.
+     * @returns Its pixels.
+     */
+    const halves = (width: number, height: number, edge: number, colours: readonly [number[], number[]]): Pixels => {
+      const data = new Uint8ClampedArray(width * height * 4);
+      for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) data.set([...(x < edge ? colours[0] : colours[1]), 255], (y * width + x) * 4);
+      return { data, width, height };
+    };
+
+    /**
+     * A picture shrunk by averaging the area each new pixel covers.
+     * @param source - The picture.
+     * @param width - The new width.
+     * @param height - The new height.
+     * @returns The shrunk picture.
+     */
+    const shrunk = (source: Pixels, width: number, height: number): Pixels => {
+      const cover = (p: number, scale: number): [number, number][] => {
+        const out: [number, number][] = [];
+        for (let i = Math.floor(p * scale); i < (p + 1) * scale; i++) {
+          const c = Math.min((p + 1) * scale, i + 1) - Math.max(p * scale, i);
+          if (c > 1e-9) out.push([i, c]);
+        }
+        return out;
+      };
+      const data = new Uint8ClampedArray(width * height * 4);
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          for (let k = 0; k < 4; k++) {
+            let sum = 0;
+            let area = 0;
+            for (const [j, cy] of cover(y, source.height / height)) {
+              for (const [i, cx] of cover(x, source.width / width)) {
+                sum += cx * cy * (source.data[(j * source.width + i) * 4 + k] ?? 0);
+                area += cx * cy;
+              }
+            }
+            data[(y * width + x) * 4 + k] = sum / area;
+          }
+        }
+      }
+      return { data, width, height };
+    };
+
+    /**
+     * A picture with its rows and columns swapped.
+     * @param source - The picture.
+     * @returns The swapped picture.
+     */
+    const transposed = (source: Pixels): Pixels => {
+      const data = new Uint8ClampedArray(source.data.length);
+      for (let y = 0; y < source.height; y++) {
+        for (let x = 0; x < source.width; x++) data.set(source.data.slice((y * source.width + x) * 4, (y * source.width + x) * 4 + 4), (x * source.height + y) * 4);
+      }
+      return { data, width: source.height, height: source.width };
+    };
+
+    const BLUE: [number[], number[]] = [[0, 0, 255], [255, 255, 0]];
+    const BRICK: [number[], number[]] = [[0xb2, 0x66, 0x4c], [0x33, 0x66, 0xcc]];
+
+    // The preview, drawn smaller than the source, shows the export shrunk to
+    // its size: a colour edge carries no fringe the result does not have.
+    it.each([
+      [128, 64, 63, BLUE],
+      [128, 64, 64, BLUE],
+      [256, 64, 77, BLUE],
+      [1024, 576, 307, BRICK],
+      [1000, 600, 301, BRICK],
+    ] as const)('draws a %s-wide picture at %s as the export shrunk to it (edge at %s)', (width, drawn, edge, colours) => {
+      const height = 16;
+      const drawnHeight = Math.round((height * drawn) / width);
+      for (const noiseReduction of [10, 30, 100]) {
+        const value = { ...defaultAdjustValue, noiseReduction };
+        const source = halves(width, height, edge, colours);
+        const preview = shrunk(source, drawn, drawnHeight);
+        adjustPixels(preview, value, 7, { width, height });
+        const exported = { ...source, data: new Uint8ClampedArray(source.data) };
+        adjustPixels(exported, value, 7, exported);
+        expect(maxDiff(preview.data, shrunk(exported, drawn, drawnHeight).data), `noise reduction ${noiseReduction}`).toBeLessThanOrEqual(10);
+      }
+    });
+
+    // The down pass weighs the chroma as the across pass does.
+    it.each([[1], [0.5]] as const)('adjusts a picture turned on its side as it adjusts the picture, drawn at %s', (scale) => {
+      for (const edge of [31, 32]) {
+        const source = halves(64, 16, edge, BLUE);
+        const drawn = scale === 1 ? source : shrunk(source, 64 * scale, 16 * scale);
+        const value = { ...defaultAdjustValue, noiseReduction: 10 };
+        const across = { ...drawn, data: new Uint8ClampedArray(drawn.data) };
+        adjustPixels(across, value, 7, { width: 64, height: 16 });
+        const down = transposed(drawn);
+        adjustPixels(down, value, 7, { width: 16, height: 64 });
+        expect(maxDiff(transposed(down).data, across.data), `edge ${edge}`).toBeLessThanOrEqual(1);
+      }
+    });
+  });
+
+  // A preview draws the vignette the export shows at that size.
   it('draws the vignette in a preview as the export shown at that size', () => {
     const small = adjusted(picture(64), { vignette: 100 }, 7, 128);
     const large = half(adjusted(picture(128), { vignette: 100 }));
