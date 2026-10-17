@@ -132,7 +132,7 @@ function rpc(instance: Hocuspocus, projectId: string, ownerId: string, body: Rpc
  * @returns The request body.
  */
 function create(name: string): RpcBody {
-  return { type: "space:create", payload: { type: "canvas", name, claimToken: crypto.randomUUID() } } as RpcBody;
+  return { type: "space:create", payload: { type: "canvas", name, claimToken: crypto.randomUUID() } };
 }
 
 /**
@@ -169,6 +169,25 @@ afterEach(async () => {
 afterAll(async () => {
   for (const s of servers) await s.destroy();
 }, 60_000);
+
+describe("restoring a Space on real Postgres", () => {
+  it("brings back only the content row of the Space's own type", async () => {
+    const { projectId, ownerId, firstSpaceId } = await projectWith(3);
+    // A row of another kind under the Space's id, as the repair leaves one.
+    const otherKind = spaceContentDocName(projectId, firstSpaceId, "document");
+    await yjsRepo.upsertDocData(otherKind, Y.encodeStateAsUpdate(new Y.Doc()));
+    await yjsRepo.softDeleteByName(otherKind);
+
+    const body = (type: "space:delete" | "space:restore"): RpcBody =>
+      ({ type, payload: { spaceId: firstSpaceId } });
+    expect(outcome(await rpc(instanceA, projectId, ownerId, body("space:delete")))).toBe("ok");
+    expect(outcome(await rpc(instanceA, projectId, ownerId, body("space:restore")))).toBe("ok");
+
+    expect(await yjsRepo.fetchDocData(spaceContentDocName(projectId, firstSpaceId, "canvas"))).not.toBeNull();
+    expect(await yjsRepo.fetchDocData(otherKind)).toBeNull();
+    expect(await yjsRepo.countLiveSpaceDocs(projectId)).toBe(3);
+  });
+});
 
 describe("the Space cap on real Postgres and Redis", () => {
   it("creates the last Space and refuses the next one without writing anything", async () => {
@@ -219,8 +238,8 @@ describe("the Space cap on real Postgres and Redis", () => {
 
   it("refuses a restore at the cap and lets it through once a place is free", async () => {
     const { projectId, ownerId, firstSpaceId } = await projectWith(MAX_SPACES_PER_PROJECT - 1);
-    const deleteBody = (spaceId: string): RpcBody => ({ type: "space:delete", payload: { spaceId } }) as RpcBody;
-    const restoreBody: RpcBody = { type: "space:restore", payload: { spaceId: firstSpaceId } } as RpcBody;
+    const deleteBody = (spaceId: string): RpcBody => ({ type: "space:delete", payload: { spaceId } });
+    const restoreBody: RpcBody = { type: "space:restore", payload: { spaceId: firstSpaceId } };
 
     expect(outcome(await rpc(instanceA, projectId, ownerId, deleteBody(firstSpaceId)))).toBe("ok");
     const filled = await rpc(instanceA, projectId, ownerId, create("fill 1"));

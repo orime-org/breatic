@@ -641,7 +641,7 @@ describe("handleSpaceRpc — restore sources from the PG activity row", () => {
     expect(activityConsumeRestoreMock).not.toHaveBeenCalled();
   });
 
-  it("rebuilds the meta entry from the row snapshot, un-deletes ALL content variants, consumes the row + appends space:restored", async () => {
+  it("rebuilds the meta entry from the row snapshot, un-deletes the content row of its own type, consumes the row + appends space:restored", async () => {
     activityLatestUnrestoredMock.mockResolvedValue(DELETED_ROW);
 
     const res = await handleSpaceRpc(
@@ -654,11 +654,9 @@ describe("handleSpaceRpc — restore sources from the PG activity row", () => {
     const rebuilt = fakeMetaDoc.doc.getMap("spaces").get(SID) as Y.Map<unknown>;
     expect(rebuilt.get("name")).toBe("Main");
     expect(rebuilt.get("type")).toBe("canvas");
-    for (const kind of ["canvas", "document", "timeline"] as const) {
-      expect(restoreByNameMock).toHaveBeenCalledWith(
-        spaceContentDocName(PID, SID, kind),
-      );
-    }
+    expect(restoreByNameMock.mock.calls).toEqual([
+      [spaceContentDocName(PID, SID, "canvas")],
+    ]);
     expect(activityConsumeRestoreMock).toHaveBeenCalledWith("act-del-1", {
       projectId: PID,
       actorUserId: "owner-1",
@@ -670,6 +668,30 @@ describe("handleSpaceRpc — restore sources from the PG activity row", () => {
     expect(fakeMetaDoc.broadcastStateless).toHaveBeenCalledWith(
       JSON.stringify({ t: ACTIVITY_NEW_SIGNAL, projectId: PID }),
     );
+  });
+
+  it("answers INTERNAL and changes nothing when the snapshot carries no valid type", async () => {
+    activityLatestUnrestoredMock.mockResolvedValue({
+      ...DELETED_ROW,
+      payload: {
+        ...DELETED_ROW.payload,
+        spaceSnapshot: { ...DELETED_ROW.payload.spaceSnapshot, type: "slides" },
+      },
+    });
+
+    const res = await handleSpaceRpc(
+      { hocuspocus: makeHocuspocus() },
+      PID,
+      { userId: "owner-1", role: "owner" },
+      { id: "r1", type: "space:restore", payload: { spaceId: SID } },
+    );
+
+    expect(res.ok).toBe(false);
+    if (res.ok) return;
+    expect(res.error.code).toBe("INTERNAL");
+    expect(restoreByNameMock).not.toHaveBeenCalled();
+    expect(fakeMetaDoc.doc.getMap("spaces").has(SID)).toBe(false);
+    expect(activityConsumeRestoreMock).not.toHaveBeenCalled();
   });
 
   it("does NOT broadcast when the consume CAS is lost (a concurrent cross-instance restore already consumed the row)", async () => {

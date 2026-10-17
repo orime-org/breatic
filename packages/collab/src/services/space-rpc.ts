@@ -69,6 +69,7 @@ import {
   projectMetaDocName,
   encodeInitialSpaceContent,
   MAX_SPACES_PER_PROJECT,
+  SpaceTypeSchema,
   type DocKind,
   type ProjectRole,
   type SpaceRpcErrorCode,
@@ -219,10 +220,9 @@ function snapshotMap(m: Y.Map<unknown>): Record<string, unknown> {
 }
 
 /**
- * All Space content-doc kinds. A Space is exactly ONE of these, but its
- * content doc is uniquely identified by (projectId, spaceId) — the kind is
- * only part of the NAME. delete / restore act on every variant so a
- * missing / corrupted meta `type` can never leave the real row untouched.
+ * All Space content-doc kinds. A Space is exactly ONE of these. Delete acts on
+ * every variant, so no live row is left under a deleted Space's id whatever
+ * its kind; restore brings back only the variant of the Space's own type.
  */
 const SPACE_CONTENT_KINDS: readonly Exclude<DocKind, "meta">[] = [
   "canvas",
@@ -251,13 +251,15 @@ interface ContentRowsOutcome {
  * Run one content-row write per kind variant and keep BOTH halves of the
  * answer: what changed, and what failed.
  * @param write - The per-kind repo write; resolves true when it changed the row.
+ * @param kinds - The variants to write.
  * @returns The kinds that changed + the first rejection (null when none).
  */
 async function moveContentRows(
   write: (kind: Exclude<DocKind, "meta">) => Promise<boolean>,
+  kinds: TouchedKinds,
 ): Promise<ContentRowsOutcome> {
   const settled = await Promise.allSettled(
-    SPACE_CONTENT_KINDS.map(async (kind) => ({
+    kinds.map(async (kind) => ({
       kind,
       changed: await write(kind),
     })),
@@ -289,29 +291,33 @@ async function softDeleteSpaceContentRows(
   projectId: string,
   spaceId: string,
 ): Promise<ContentRowsOutcome> {
-  return moveContentRows((kind) =>
-    yjsDocumentsRepo.softDeleteByName(
-      spaceContentDocName(projectId, spaceId, kind),
-    ),
+  return moveContentRows(
+    (kind) =>
+      yjsDocumentsRepo.softDeleteByName(
+        spaceContentDocName(projectId, spaceId, kind),
+      ),
+    SPACE_CONTENT_KINDS,
   );
 }
 
 /**
- * Restore (clear deleted_at on) a Space's content-doc rows, mirroring
- * {@link softDeleteSpaceContentRows} — every kind variant, so a delete /
- * restore cycle round-trips the real row regardless of the meta `type`.
+ * Restore (clear deleted_at on) the content-doc row of a Space's own type —
+ * the one row the meta entry lists, by the same definition the handshake and
+ * the Space count use.
  * @param projectId - Project the content doc belongs to.
  * @param spaceId - Space whose content-doc row has its `deleted_at` cleared.
+ * @param kind - The Space's type, from its deletion snapshot.
  * @returns The kinds this call restored + the first failure, if any.
  */
-async function restoreSpaceContentRows(
+async function restoreSpaceContentRow(
   projectId: string,
   spaceId: string,
+  kind: Exclude<DocKind, "meta">,
 ): Promise<ContentRowsOutcome> {
-  return moveContentRows((kind) =>
-    yjsDocumentsRepo.restoreByName(
-      spaceContentDocName(projectId, spaceId, kind),
-    ),
+  return moveContentRows(
+    (k) =>
+      yjsDocumentsRepo.restoreByName(spaceContentDocName(projectId, spaceId, k)),
+    [kind],
   );
 }
 
@@ -1194,6 +1200,16 @@ async function runRestore(
     );
   }
   const snapshotRecord = snapshot as Record<string, unknown>;
+  // Meta entries are written only by `runCreate`, which validates the type,
+  // so a snapshot without a valid one is a corrupted record.
+  const kind = SpaceTypeSchema.safeParse(snapshotRecord["type"]);
+  if (!kind.success) {
+    logger.error(
+      { projectId, spaceId, callerId: caller.userId, type: snapshotRecord["type"] },
+      "space_rpc_restore_snapshot_type_invalid",
+    );
+    return err(req.id, "INTERNAL", `Deletion record for Space ${spaceId} has no valid type`);
+  }
   const docName = projectMetaDocName(projectId);
   const conn = await ctx.hocuspocus.openDirectConnection(docName, {
     context: { user: { id: SYSTEM_USER_ID }, source: SYSTEM_SOURCE },
@@ -1211,7 +1227,7 @@ async function runRestore(
     if (metaDocOf(conn).getMap("spaces").has(spaceId)) {
       return err(req.id, "CONFLICT", `Space ${spaceId} is not deleted`);
     }
-    // The Space's own rows are still soft-deleted, so the count does not
+    // The Space's own row is still soft-deleted, so the count does not
     // include it: at the cap, bringing it back would make one too many.
     const atCap = await refuseAtCap(projectId, req.id);
     if (atCap) return atCap;
@@ -1220,7 +1236,7 @@ async function runRestore(
     // A Space must never be visible without its content, so the rows come
     // back first; nobody has seen anything yet if this fails — put back
     // what DID come back, and stop.
-    const restored = await restoreSpaceContentRows(projectId, spaceId);
+    const restored = await restoreSpaceContentRow(projectId, spaceId, kind.data);
     if (restored.failure !== null) {
       logger.error(
         { err: restored.failure, ...logCtx },

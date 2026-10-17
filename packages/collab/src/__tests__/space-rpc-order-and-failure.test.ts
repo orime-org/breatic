@@ -1218,14 +1218,9 @@ describe("a partial content-row failure undoes exactly what succeeded", () => {
     );
   });
 
-  it("space:restore re-deletes the kinds whose un-delete won", async () => {
+  it("space:restore answers INTERNAL and lists nothing when its content row cannot come back", async () => {
     activityLatestUnrestoredMock.mockResolvedValue(DELETED_ROW);
-    restoreByNameMock.mockImplementation(async (name: string) => {
-      if (name.includes("/document-")) {
-        throw new Error('relation "yjs_documents" is unreachable');
-      }
-      return true;
-    });
+    restoreByNameMock.mockRejectedValue(new Error('relation "yjs_documents" is unreachable'));
     armBroadcastMarker();
 
     const res = await handleSpaceRpc(
@@ -1241,13 +1236,7 @@ describe("a partial content-row failure undoes exactly what succeeded", () => {
     expectNoDatabaseWording(res.error.message);
     expect(metaDoc.getMap("spaces").has(SID)).toBe(false);
     expect(metaBroadcastMock).not.toHaveBeenCalled();
-    const undone = softDeleteByNameMock.mock.calls.map((c) => c[0] as string);
-    expect(undone.sort()).toEqual(
-      [
-        spaceContentDocName(PID, SID, "canvas"),
-        spaceContentDocName(PID, SID, "timeline"),
-      ].sort(),
-    );
+    expect(softDeleteByNameMock).not.toHaveBeenCalled();
   });
 });
 
