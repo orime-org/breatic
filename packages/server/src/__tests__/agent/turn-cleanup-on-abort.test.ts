@@ -48,7 +48,7 @@ const usageRead = vi.fn();
 vi.mock("@server/agent/turn-context.js", () => ({
   buildTurnContext: vi.fn(async () => ({
     memoryContext: { projectMemory: "", conversationMemory: "" },
-    compressedHistory: [],
+    history: [],
   })),
 }));
 // The real `createUIMessageStream` and its helpers stay: they are what the
@@ -168,7 +168,7 @@ describe("a turn cut short by the client", () => {
           usage: { inputTokens: number; outputTokens: number };
           providerMetadata: undefined;
         }) => void;
-        onStepFinish?: (e: { content: unknown[] }) => void;
+        onStepFinish?: (e: { content: unknown[]; response: { messages: unknown[] } }) => void;
       }) => ({
         toUIMessageStream: () =>
           new ReadableStream({
@@ -183,7 +183,7 @@ describe("a turn cut short by the client", () => {
                 usage: { inputTokens: 0, outputTokens: 900 },
                 providerMetadata: undefined,
               });
-              opts.onStepFinish?.({ content: [] });
+              opts.onStepFinish?.({ content: [], response: { messages: [] } });
               controller.enqueue({ type: "text-delta", id: "t1", delta: "world" });
               controller.enqueue({ type: "text-end", id: "t1" });
               // Left open on purpose: the consumer walking away is what ends

@@ -70,6 +70,15 @@ describe("watching a stream's model calls", () => {
     });
   });
 
+  it("records a call with how long it asked the provider to cache, so its writes are priced at that duration", () => {
+    provider.name = "anthropic";
+    const usage = recorder();
+    const watch = watchModelCalls(usage, { ...CALL, cacheTtl: "1h" });
+    watch.callEnded({ responseId: "msg_1", usage: USAGE, providerMetadata: undefined });
+
+    expect(usage.recordModelCall).toHaveBeenCalledWith(expect.objectContaining({ cacheTtl: "1h" }));
+  });
+
   // A stream whose first chunk is an in-band error never passes the id on to
   // the SDK, so the end event carries the SDK's own id.
   it("records a call under the id its chunks carried when the end carries the SDK's own", () => {

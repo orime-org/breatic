@@ -5,13 +5,14 @@
  * Where a turn tells the model the reader's local time.
  *
  * The note opens this turn's user message and nothing else: the system prompt
- * stays word for word what it was, and the history the model is sent, which is
- * what was stored, never carries a note. So the request is the same prefix up
- * to this turn's message, which is what a provider's prefix cache matches on.
+ * stays word for word what it was. The words are stored without it; the copy
+ * of the message as it was sent keeps it, and later turns send that copy, so
+ * the request is the same prefix up to this turn's message, which is what a
+ * provider's prefix cache matches on.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type * as CoreModule from "@breatic/core";
-import { userTurnForModel } from "@server/agent/user-turn.js";
+import { READER_LANGUAGE_REMINDER, userTurnForModel } from "@server/agent/user-turn.js";
 import type { ChatAttachedChip, MessageData } from "@breatic/shared";
 import { saying } from "../helpers/model-double.js";
 import type { ModelStreamPart } from "../helpers/model-double.js";
@@ -27,7 +28,7 @@ const modelSays = vi.hoisted(() => ({
 vi.mock("@server/agent/turn-context.js", () => ({
   buildTurnContext: vi.fn(async () => ({
     memoryContext: { projectMemory: "", conversationMemory: "" },
-    compressedHistory: modelSays.history,
+    history: modelSays.history,
   })),
 }));
 
@@ -134,21 +135,21 @@ describe("a turn tells the model the reader's local time", () => {
   it("opens the user message with the note, then a blank line, then the words", async () => {
     await runOneTurn("what time is it?", [], "Asia/Shanghai");
 
-    expect(userTextsSent().at(-1)).toBe(`${SHANGHAI_NOTE}\n\nwhat time is it?`);
+    expect(userTextsSent().at(-1)).toBe(`${SHANGHAI_NOTE}\n\nwhat time is it?\n\n${READER_LANGUAGE_REMINDER}`);
   });
 
   it("puts the note ahead of the attached content when something is attached", async () => {
     await runOneTurn("what is in this?", [image], "Asia/Shanghai");
 
     expect(userTextsSent().at(-1)).toBe(
-      `${SHANGHAI_NOTE}\n\n${userTurnForModel({ chips: [image], message: "what is in this?" })}`,
+      `${SHANGHAI_NOTE}\n\n${userTurnForModel({ chips: [image], message: "what is in this?" })}\n\n${READER_LANGUAGE_REMINDER}`,
     );
   });
 
   it("gives UTC and says the zone is unknown when none came with the message", async () => {
     await runOneTurn("what time is it?", [], undefined);
 
-    expect(userTextsSent().at(-1)).toBe(`${UNKNOWN_ZONE_NOTE}\n\nwhat time is it?`);
+    expect(userTextsSent().at(-1)).toBe(`${UNKNOWN_ZONE_NOTE}\n\nwhat time is it?\n\n${READER_LANGUAGE_REMINDER}`);
   });
 
   it("stores the words without the note", async () => {
@@ -160,7 +161,7 @@ describe("a turn tells the model the reader's local time", () => {
     });
   });
 
-  it("sends earlier user messages as they were stored, with no note", async () => {
+  it("renders an earlier message stored before its copy was kept from its words, with no note", async () => {
     modelSays.history = [
       { role: "user", content: "earlier question", parts: [{ type: "text", text: "earlier question" }] },
       { role: "assistant", content: "earlier answer", parts: [{ type: "text", text: "earlier answer" }] },
@@ -168,7 +169,7 @@ describe("a turn tells the model the reader's local time", () => {
 
     await runOneTurn("and now?", [], "Asia/Shanghai");
 
-    expect(userTextsSent()).toEqual(["earlier question", `${SHANGHAI_NOTE}\n\nand now?`]);
+    expect(userTextsSent()).toEqual(["earlier question", `${SHANGHAI_NOTE}\n\nand now?\n\n${READER_LANGUAGE_REMINDER}`]);
   });
 
   it("reads the clock again on every turn", async () => {
@@ -177,7 +178,7 @@ describe("a turn tells the model the reader's local time", () => {
     await runOneTurn("second", [], "Asia/Shanghai");
 
     expect(userTextsSent().at(-1)).toBe(
-      "[The reader's local time when they sent this message: Friday, 2026-10-02 09:00 (Asia/Shanghai, GMT+08:00).]\n\nsecond",
+      `[The reader's local time when they sent this message: Friday, 2026-10-02 09:00 (Asia/Shanghai, GMT+08:00).]\n\nsecond\n\n${READER_LANGUAGE_REMINDER}`,
     );
   });
 

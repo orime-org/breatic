@@ -102,6 +102,20 @@ describe("what the prompt says the model can do", () => {
 describe("how the prompt says to write a reply", () => {
   const wording = (): string => buildSystemPrompt().replace(/\s+/g, " ");
 
+  it("asks for the language of the user's latest message in everything the user reads or edits", () => {
+    expect(wording()).toMatch(/Use the language of the user's latest message for everything the user will read or edit/);
+    expect(wording()).toMatch(/every piece of text you hand a tool that ends up on the user's screen, such as a prompt/);
+  });
+
+  it("names the two exceptions to the reader's language", () => {
+    expect(wording()).toMatch(/text whose language the work itself sets/);
+    expect(wording()).toMatch(/a language the user asks for/);
+  });
+
+  it("leaves the language of the model's own working to the model", () => {
+    expect(wording()).not.toMatch(/your reasoning/i);
+  });
+
   it("says HTML is not rendered and goes in an html fence", () => {
     expect(wording()).toMatch(/HTML is not rendered/i);
     expect(wording()).toContain("```html");
