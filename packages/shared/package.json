@@ -7,19 +7,23 @@
   "exports": {
     ".": {
       "import": "./dist/index.js",
-      "types": "./src/index.ts"
+      "types": "./src/index.ts",
+      "default": "./dist/index.js"
     },
     "./canvas/text-body": {
       "import": "./dist/canvas/text-body.js",
-      "types": "./src/canvas/text-body.ts"
+      "types": "./src/canvas/text-body.ts",
+      "default": "./dist/canvas/text-body.js"
     },
     "./mini-tools": {
       "import": "./dist/mini-tools/index.js",
-      "types": "./src/mini-tools/index.ts"
+      "types": "./src/mini-tools/index.ts",
+      "default": "./dist/mini-tools/index.js"
     },
     "./pricing": {
       "import": "./dist/pricing/index.js",
-      "types": "./src/pricing/index.ts"
+      "types": "./src/pricing/index.ts",
+      "default": "./dist/pricing/index.js"
     }
   },
   "scripts": {
