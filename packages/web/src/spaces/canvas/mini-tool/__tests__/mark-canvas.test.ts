@@ -223,8 +223,6 @@ describe('MarkCanvasController', () => {
     expect(mark().tool).toBe('pen');
   });
 
-  // A click gives the pencil the press point twice, drawn as an `M` and an
-  // `L` a thousandth of the stroke either side of it.
   // A hollow object is hit on its stroke, as a shape with no fill is elsewhere:
   // a click inside it reaches what lies under it (A4).
   describe('hit testing', () => {
@@ -258,8 +256,32 @@ describe('MarkCanvasController', () => {
     it('finds the hollow ellipse on its stroke', () => {
       expect(under(80, 150)).toBe('e');
     });
+
+    // The ellipse's stroke spans x 78.1 to 81.9 on the row through its centre;
+    // a press within 6 screen pixels of it on either side hits it (§6.2).
+    it('finds the hollow ellipse a few pixels inside its stroke', () => {
+      expect(under(86, 150)).toBe('e');
+    });
+
+    it('finds the hollow ellipse a few pixels outside its stroke', () => {
+      expect(under(75, 150)).toBe('e');
+    });
+
+    it('finds a selected hollow object anywhere inside its frame', () => {
+      controller.canvas.setActiveObject(controller.canvas.getObjects().find((o) => (o as { markId?: string }).markId === 'e')!);
+      expect(under(120, 150)).toBe('e');
+    });
+
+    it('finds a thin straight line a few pixels off it', () => {
+      store.getState().commitMark([{ id: 'l', kind: 'line', color: INK[2], size: 1, x1: 0.1, y1: 0.1, x2: 0.9, y2: 0.1 }]);
+      controller.sync();
+      expect(under(200, 27)).toBe('l');
+      expect(under(200, 33)).toBe('l');
+    });
   });
 
+  // A click gives the pencil the press point twice, drawn as an `M` and an
+  // `L` a thousandth of the stroke either side of it.
   it('keeps a click as a dot', () => {
     store.getState().setMarkTool('pen');
     controller.sync();
