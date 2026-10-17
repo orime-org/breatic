@@ -17,8 +17,8 @@
  * `(c, next)` signature, keys on ip-or-user rather than "this studio's admin",
  * and answers with a 429 that would displace the 507. The `checkRateLimit`
  * underneath it (`core/src/infra/rate-limiter.ts`) is callable from here, but
- * it is several commands in a `pipeline()` — batched round trips, not one
- * step — so a claim through it would not be atomic.
+ * the entry it records carries a random member the caller never sees, so a
+ * claim through it could not be given back.
  *
  * The window can also be given back, because the key means "an account has
  * been told" rather than "somebody tried": a claim whose notice never landed

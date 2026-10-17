@@ -2,112 +2,155 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Shared rate-limit middleware (auth + studio routes).
+ * Shared rate-limit middleware (auth, studio and post-auth routes).
  *
- * Extracted from the auth route's private limiter so studio routes can reuse it
- * without a second implementation. Adds a `keyBy` dimension: `'ip'` (the
- * original behaviour, keyed by `x-forwarded-for`) for pre-auth endpoints, and
- * `'user'` (keyed by the authenticated user's id) for post-auth endpoints where
- * an IP key is too coarse (shared NAT) or too easy to rotate.
+ * A route is limited by one or more quotas, each keyed by a dimension:
+ * `'ip'` — the client address (pre-auth routes); `'ip+email'` — that address
+ * paired with the validated email, so people behind one egress address do not
+ * use up each other's attempts (inner#1478); `'user'` — the authenticated
+ * user; `'socket'` — the connection's own address, for a listener no proxy
+ * stands in front of. All quotas of a request are judged in one call to core,
+ * so a refused request takes up room in none of them.
+ *
+ * The client address follows the rule collab uses (`decideClientIdentity`):
+ * a request from this machine is not counted, one that did not come through
+ * our nginx is refused, and otherwise it is the `x-real-ip` our nginx wrote.
  */
 
+import { createHash } from "node:crypto";
 import type { Context, MiddlewareHandler } from "hono";
 import { getConnInfo } from "@hono/node-server/conninfo";
-import { getRedis, checkRateLimit, logger } from "@breatic/core";
+import {
+  getRedis,
+  checkRateLimit,
+  decideClientIdentity,
+  logger,
+  type ClientIdentityDecision,
+  type RateLimitQuota,
+} from "@breatic/core";
 import { t } from "@breatic/shared";
 import { getRateLimit } from "@server/config/rate-limits.js";
 
-/** A request's rate-limit key dimension. */
-type KeyBy = "ip" | "user" | "socket";
+/** A quota's key dimension. */
+export type KeyBy = "ip" | "ip+email" | "user" | "socket";
+
+/** One quota a route is limited by. */
+export interface Quota {
+  /** Redis key prefix naming the limited action (e.g. `login`). */
+  prefix: string;
+  /** Requests admitted within the window. */
+  max: number;
+  /** Window length in seconds. */
+  windowSeconds: number;
+  /** Key dimension; `'ip'` when absent. */
+  keyBy?: KeyBy;
+}
 
 /** How a limiter answers a refused request and an unreachable counter. */
 export interface RateLimitAnswers {
   /** The 429 body; the public envelope when absent. `Retry-After` is set either way. */
   onLimited?: (c: Context, retryAfterSeconds: number) => Response;
-  /** Answer this when the counter cannot be read, instead of letting the request through. */
+  /** Answer this when the counter cannot be read; absent, the error goes to the app's error handler. */
   failClosed?: (c: Context) => Response;
 }
 
 /**
- * Resolve the rate-limit key for a request under the given dimension.
- *
- * `'user'` reads the authenticated user's id (the middleware must run AFTER
- * `requireAuth`); it falls back to `"anonymous"` if no user is present so a
- * misconfigured chain degrades to a single shared bucket rather than throwing.
- * `'ip'` reads the first `x-forwarded-for` hop. `'socket'` reads the
- * connection's own address, for a listener no proxy stands in front of.
- * @param c - The Hono context for the current request
- * @param keyBy - The key dimension
- * @returns The bucket key (without the action prefix)
+ * The validated email of a request, hashed so no address is stored in Redis.
+ * @param c - The request context; `validate("json", …)` with an `email` must run first.
+ * @returns The hex sha256 of the email.
+ * @throws {Error} When the route did not validate an email before the limiter.
  */
-function resolveKey(c: Parameters<MiddlewareHandler>[0], keyBy: KeyBy): string {
-  if (keyBy === "user") {
-    const user = c.get("user") as { id: string } | undefined;
-    return user?.id ?? "anonymous";
-  }
-  if (keyBy === "socket") return getConnInfo(c).remote.address ?? "unknown";
-  return c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+function emailHash(c: Context): string {
+  const body = (c.req.valid as (target: "json") => unknown)("json") as { email?: unknown } | undefined;
+  if (typeof body?.email !== "string") throw new Error("rate limit keyed by email runs before an email was validated");
+  return createHash("sha256").update(body.email).digest("hex");
 }
 
 /**
- * Rate-limit middleware factory (sliding window via Redis).
- * @param opts - Limiter configuration.
- * @param opts.prefix - Redis key prefix identifying the limited action (e.g. `login`, `studio-create`).
- * @param opts.max - Maximum allowed requests per window.
- * @param opts.windowSeconds - Sliding window length in seconds.
- * @param opts.keyBy - Bucket dimension: `'ip'` (default), `'user'` (requires `requireAuth` upstream) or `'socket'`.
- * @param opts.onLimited - The 429 body; the public envelope when absent.
- * @param opts.failClosed - The answer when Redis cannot count; absent lets the request through.
- * @returns A Hono middleware that returns `429` with a `Retry-After` header when the limit is exceeded.
+ * The key of one quota for a request.
+ * @param c - The request context.
+ * @param keyBy - The quota's dimension.
+ * @param peer - The address of the connection the request arrived on, read once.
+ * @param client - The request's client address, resolved once.
+ * @returns The key without the action prefix, or null when the quota does not count this request.
  */
-export function rateLimit(
-  opts: {
-    prefix: string;
-    max: number;
-    windowSeconds: number;
-    keyBy?: KeyBy;
-  } & RateLimitAnswers,
-): MiddlewareHandler {
+function quotaKey(
+  c: Context,
+  keyBy: KeyBy,
+  peer: () => string | undefined,
+  client: () => ClientIdentityDecision,
+): string | null {
+  if (keyBy === "user") return (c.get("user") as { id: string } | undefined)?.id ?? "anonymous";
+  if (keyBy === "socket") return peer() ?? "unknown";
+  const resolved = client();
+  if (resolved.kind !== "identify") return null;
+  return keyBy === "ip" ? resolved.identity : `${resolved.identity}:${emailHash(c)}`;
+}
+
+/**
+ * Rate-limit middleware over one or more quotas (sliding windows in Redis).
+ * @param opts - The quotas and the answers.
+ * @param opts.quotas - The quotas the route is limited by, judged together.
+ * @param opts.onLimited - The 429 body; the public envelope when absent.
+ * @param opts.failClosed - The answer when Redis cannot count; absent, the error goes to the app's error handler.
+ * @returns A Hono middleware that answers `403` for a request that did not come
+ *   through our proxy, and `429` with `Retry-After` when any quota is full.
+ */
+export function rateLimit(opts: { quotas: readonly Quota[] } & RateLimitAnswers): MiddlewareHandler {
   return async (c, next) => {
-    const key = resolveKey(c, opts.keyBy ?? "ip");
-    const bucket = `${opts.prefix}:${key}`;
-    let allowed: boolean;
+    let peerAddress: { value: string | undefined } | undefined;
+    /**
+     * The address of the connection the request arrived on, read on first use.
+     * @returns The peer address.
+     */
+    const peer = (): string | undefined => (peerAddress ??= { value: getConnInfo(c).remote.address }).value;
+    let resolved: ClientIdentityDecision | undefined;
+    /**
+     * The request's client address by the rule collab uses, resolved on first use.
+     * @returns The address to count under, an exemption, or a refusal.
+     */
+    const client = (): ClientIdentityDecision =>
+      (resolved ??= decideClientIdentity({ peerAddress: peer(), realIpHeader: c.req.header("x-real-ip") }));
+    const judged: RateLimitQuota[] = [];
+    for (const quota of opts.quotas) {
+      const key = quotaKey(c, quota.keyBy ?? "ip", peer, client);
+      if (key !== null) judged.push({ key: `${quota.prefix}:${key}`, max: quota.max, windowSeconds: quota.windowSeconds });
+    }
+    const actions = opts.quotas.map((q) => q.prefix);
+    if (resolved?.kind === "refuse") {
+      logger.error({ actions, reason: resolved.reason, peerAddress: peer() }, "rate_limit_client_unidentified");
+      return c.json({ error: { code: 403, message: t("server.error.forbidden") } }, 403);
+    }
+    if (judged.length === 0) return next();
+    let verdict: Awaited<ReturnType<typeof checkRateLimit>>;
     try {
-      allowed = await checkRateLimit(getRedis(), bucket, opts.max, opts.windowSeconds, {
-        strict: opts.failClosed !== undefined,
-      });
+      verdict = await checkRateLimit(getRedis(), judged);
     } catch (err) {
       if (!opts.failClosed) throw err;
-      logger.error({ err, action: opts.prefix }, "rate_limit_unavailable");
+      logger.error({ err, actions }, "rate_limit_unavailable");
       return opts.failClosed(c);
     }
-    if (!allowed) {
-      logger.warn({ action: opts.prefix, key }, "rate_limit_hit");
-      c.header("Retry-After", String(opts.windowSeconds));
-      if (opts.onLimited) return opts.onLimited(c, opts.windowSeconds);
-      return c.json(
-        { error: { code: 429, message: t("server.error.rate_limited") } },
-        429,
-      );
+    if (!verdict.allowed) {
+      logger.warn({ actions, keys: judged.map((q) => q.key) }, "rate_limit_hit");
+      c.header("Retry-After", String(verdict.retryAfterSeconds));
+      if (opts.onLimited) return opts.onLimited(c, verdict.retryAfterSeconds);
+      return c.json({ error: { code: 429, message: t("server.error.rate_limited") } }, 429);
     }
     await next();
   };
 }
 
 /**
- * Build a rate-limit middleware whose `max` / `windowSeconds` come from
- * `config/rate-limits.yaml` (via {@link getRateLimit}) instead of
- * hardcoded literals — the single way routes should throttle, so no
- * throttle number lives in code. The `action` doubles as the yaml key
- * and the Redis prefix.
- * @param action - Throttle action (yaml key + Redis prefix, e.g. `login`).
- * @param keyBy - Bucket dimension: `'ip'` (default), `'user'` (needs `requireAuth` upstream) or `'socket'`.
+ * Rate limit a route by quotas whose `max` / `windowSeconds` come from
+ * `config/rate-limits.yaml` (via {@link getRateLimit}) — the single way routes
+ * throttle, so no throttle number lives in code. Each action doubles as the
+ * yaml key and the Redis prefix.
+ * @param specs - The actions the route is limited by and each one's dimension.
  * @param answers - The 429 body and the fail-closed answer, when not the public ones.
  * @returns The configured rate-limit middleware.
  */
-export function rateLimitFor(
-  action: string,
-  keyBy?: KeyBy,
+export function rateLimitForAll(
+  specs: readonly { action: string; keyBy?: KeyBy }[],
   answers: RateLimitAnswers = {},
 ): MiddlewareHandler {
   // Config is read + the inner middleware built on the FIRST request,
@@ -115,10 +158,21 @@ export function rateLimitFor(
   // route file can be imported without a config file present (tests).
   let inner: MiddlewareHandler | null = null;
   return async (c, next) => {
-    if (!inner) {
-      const { max, windowSeconds } = getRateLimit(action);
-      inner = rateLimit({ prefix: action, max, windowSeconds, keyBy, ...answers });
-    }
+    inner ??= rateLimit({
+      quotas: specs.map(({ action, keyBy }) => ({ prefix: action, ...getRateLimit(action), keyBy })),
+      ...answers,
+    });
     return inner(c, next);
   };
+}
+
+/**
+ * Rate limit a route by one quota from `config/rate-limits.yaml`.
+ * @param action - Throttle action (yaml key + Redis prefix, e.g. `register`).
+ * @param keyBy - The quota's dimension; `'ip'` when absent.
+ * @param answers - The 429 body and the fail-closed answer, when not the public ones.
+ * @returns The configured rate-limit middleware.
+ */
+export function rateLimitFor(action: string, keyBy?: KeyBy, answers: RateLimitAnswers = {}): MiddlewareHandler {
+  return rateLimitForAll([{ action, keyBy }], answers);
 }

@@ -55,7 +55,8 @@ function asRefusal(err: unknown): unknown {
 export function saveToStorageFor({ projectId, userId }: { projectId: string; userId: string }): SaveToStorage {
   return async (url, signal) => {
     const { max, windowSeconds } = getRateLimit(THROTTLE);
-    if (!(await checkRateLimit(getRedis(), `${THROTTLE}:${userId}`, max, windowSeconds))) {
+    const verdict = await checkRateLimit(getRedis(), [{ key: `${THROTTLE}:${userId}`, max, windowSeconds }]);
+    if (!verdict.allowed) {
       logger.warn({ action: THROTTLE, key: userId }, "rate_limit_hit");
       throw new SaveRefused("rate_limited");
     }

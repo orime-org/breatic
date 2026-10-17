@@ -30,7 +30,7 @@ import WebSocket from "ws";
 import * as encoding from "lib0/encoding";
 import { Server } from "@hocuspocus/server";
 import { createConnectionGate } from "@collab/infra/connection-gate.js";
-import { isLoopbackIp } from "@collab/infra/client-identity.js";
+import { isLoopbackIp } from "@breatic/core";
 
 /** Outer message type of an auth frame, as it appears on the wire. */
 const WIRE_AUTH = 2;

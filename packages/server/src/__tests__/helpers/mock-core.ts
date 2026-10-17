@@ -292,7 +292,7 @@ export const mocks = {
   // The sliding window behind every throttled route. Shared ref so a route
   // test can read which action was counted — a route that carries no
   // throttle counts nothing, and nothing else in a test says so.
-  checkRateLimit: vi.fn().mockResolvedValue(true),
+  checkRateLimit: vi.fn().mockResolvedValue({ allowed: true }),
   // The R2 storage adapter. Exposed on `mocks` so route tests can configure
   // publicUrl() per-test (e.g. the #1824 cover wire); default unconfigured
   // (resolves undefined) — only happy-path upload tests set it.
