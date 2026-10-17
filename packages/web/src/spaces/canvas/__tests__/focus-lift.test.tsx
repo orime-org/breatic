@@ -95,6 +95,27 @@ describe('聚焦目标的抬升（#2000）', () => {
     expect(Number(zOf('src'))).toBeGreaterThan(Number(zOf('member')));
   });
 
+  // A note stays visible over what it points at while that is being worked
+  // on: above a member of a selected group, the tallest a node reaches.
+  it('paints a pin above a member of a selected group', () => {
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace([
+        {
+          id: 'pin',
+          type: 'annotation',
+          position: { x: 320, y: 20 },
+          data: { content: 'look here', createdBy: 'u-1', createdAt: 1, replies: [] },
+        } as Nodes[number],
+        group('g', 300),
+        { ...image('member', 20), parentId: 'g' } as Nodes[number],
+      ]),
+    );
+    renderSpace();
+    clickNode('g');
+    expect(zOf('member')).toBe('1001');
+    expect(Number(zOf('pin'))).toBeGreaterThan(Number(zOf('member')));
+  });
+
   it('A2：1002 高于一个被选中的组的成员（父链把它推到 1001）', () => {
     mockUseCanvasSpace.mockReturnValue(
       mockSpace([
