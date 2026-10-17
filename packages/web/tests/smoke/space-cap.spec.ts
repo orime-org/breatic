@@ -146,7 +146,12 @@ test('a project at the Space cap says why it cannot take another one', async ({ 
       await expect(restore).toHaveAttribute('aria-disabled', 'true');
       await restore.hover();
       await expect(page.getByRole('tooltip')).toHaveText(LIMIT_TEXT);
-      await restore.click();
+      // Playwright's click waits for an enabled element and reads aria-disabled
+      // as disabled, so the press goes through the keyboard, as a keyboard
+      // user would make it.
+      await restore.focus();
+      await expect(restore).toBeFocused();
+      await page.keyboard.press('Enter');
       expect(await warningToastText(page)).toBe(LIMIT_TEXT);
       expect(await spaceCount(page)).toBe(CAP);
       await page.keyboard.press('Escape');
