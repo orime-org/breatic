@@ -285,11 +285,8 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     debounce: cfg.debounce,
     maxDebounce: cfg.max_debounce,
 
-    // How many documents one socket may have awaiting authentication. The
-    // framework defaults this to 100 and closes the WHOLE socket past it,
-    // which assumes one document per socket. Ours carries a project: the meta
-    // doc plus one per open Space tab, up to the project's Space cap. See
-    // infra/socket-ceilings.ts.
+    // Library ceilings that close a whole socket, derived from the project's
+    // Space cap: infra/socket-ceilings.ts.
     ...SOCKET_CEILINGS,
 
     // Broadcast every change the moment it is applied, which is what the

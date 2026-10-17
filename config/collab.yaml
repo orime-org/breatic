@@ -65,7 +65,8 @@ max_document_bytes: 10485760     # 10 MB
 # Loopback peers are exempt — see infra/connection-gate.ts, which decides from the raw peer address during the
 # WebSocket upgrade.
 # An attempt is one new WebSocket, or one WebSocket whose authentication failed
-# (counted once however many of its documents fail). One WebSocket carries a
+# (its documents failing together count once; past a full project's documents,
+# every further failure on it counts). One WebSocket carries a
 # whole project, so opening every Space is one attempt; the threshold stays
 # generous because many members can share one address (an office NAT), and
 # fine-grained abuse control belongs at the authenticated-user layer, not per-IP.

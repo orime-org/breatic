@@ -19,15 +19,17 @@
  * the frames a real client sends to see it. Deriving both
  * together here is what stops them drifting apart again.
  *
- * Every queued frame keeps its bytes plus up to 270 bytes of its own (the copy
- * `patches/@hocuspocus__server@4.6.0.patch` makes and its slot in the queue),
- * so the byte ceiling alone does not bound what the queue holds: frames of the
- * shortest name would hold several times their payload. The frame count is
- * therefore set so that the shortest frames reach it at the byte ceiling's
- * worth of memory. With both in force the queue of one unauthenticated socket
- * holds about 9.3 MB at most, peaking at frames of about 320 bytes, where the
- * two ceilings meet. A client back from being offline replays one frame per
- * edit and can meet either ceiling first.
+ * Every queued frame keeps its bytes plus some of its own (the copy
+ * `patches/@hocuspocus__server@4.6.0.patch` makes and its slot in the queue):
+ * up to 270 bytes for frames of 64 bytes or less, which V8 keeps on its heap,
+ * and about 385 for longer ones, whose bytes sit outside it. So the byte
+ * ceiling alone does not bound what the queue holds: frames of the shortest
+ * name would hold several times their payload. The frame count is therefore
+ * set so that the shortest frames reach it at the byte ceiling's worth of
+ * memory. With both in force one unauthenticated socket's queue peaks at
+ * frames of about 320 bytes, where the two ceilings meet: about 15 MB
+ * resident per socket, measured. A client back from being offline replays
+ * one frame per edit and can meet either ceiling first.
  *
  *   pending documents    default 100    set to a full project's documents
  *   queued frame count   default 1000   byte ceiling / (shortest frame + its overhead)
@@ -55,9 +57,10 @@ function shortestProjectFrameBytes(): number {
 }
 
 /**
- * Bytes a queued frame keeps on top of its payload: the most measured with the
- * patched `@hocuspocus/server` 4.6.0 on Node 24 (inner#1140), for frames of 64
- * bytes or less, which V8 keeps on the heap. Measure again when either changes.
+ * Bytes the shortest queued frame keeps on top of its payload: the most
+ * measured with the patched `@hocuspocus/server` 4.6.0 on Node 24 (inner#1140)
+ * for frames of 64 bytes or less, which V8 keeps on its heap. Measure again
+ * when either changes.
  */
 const QUEUED_FRAME_OVERHEAD_BYTES = 270;
 
