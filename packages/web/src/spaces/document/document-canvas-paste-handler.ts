@@ -86,7 +86,7 @@ export function canvasPasteHandler(sink: CanvasPasteSink, next: PasteHandler): P
             }),
           ];
         });
-        putContent(editor, blocks, { caller: 'canvas', judge: (props) => props });
+        putContent(editor, { blocks, lost: 0, plain: null, paste: null }, { wordsIntoTarget: false, judge: (props) => props });
         for (const { uploadId, source } of started) sink.start(uploadId, source);
       }
     }

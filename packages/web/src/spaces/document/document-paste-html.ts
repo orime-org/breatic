@@ -4,34 +4,33 @@
 /**
  * The paste of anything that is not files or a canvas clipboard (inner#1351 +
  * inner#1390 design §5.1, §5.4): read first (`document-paste-read.ts`), then
- * put at the selection (`document-put.ts`). Words alone are BlockNote's own
- * paste, as on main.
+ * put at the selection (`document-put.ts`), lines of words alone by the
+ * paste of their format, as BlockNote pastes them.
  */
 
 import type { PasteHandler } from '@web/spaces/document/document-file-input';
-import { PASTED_MEDIA_KEY, type PastedMedia } from '@web/spaces/document/document-external-media';
+import { PASTED_MEDIA_KEY, type PastedMediaJudge } from '@web/spaces/document/document-external-media';
 import { readTransfer } from '@web/spaces/document/document-paste-read';
 import { putContent } from '@web/spaces/document/document-put';
 
 /**
- * Reads a paste and puts what it carries: content holding a medium or a
- * table, or whose media were left out, by the body's placement; words alone
- * by BlockNote's own paste.
+ * Reads a paste and puts what it carries at the selection.
  * @param context - What BlockNote hands the paste hook.
  * @param context.event - The paste.
  * @param context.editor - The editor.
- * @param context.defaultPasteHandler - BlockNote's own paste.
+ * @param context.defaultPasteHandler - BlockNote's own paste, for a body without the pasted-media extension.
  * @returns Whether the paste was handled.
  */
 export const documentPasteHandler: PasteHandler = ({ event, editor, defaultPasteHandler }) => {
   const data = event.clipboardData;
-  const pasted = editor.getExtension(PASTED_MEDIA_KEY) as PastedMedia | undefined;
+  const pasted = editor.getExtension(PASTED_MEDIA_KEY) as PastedMediaJudge | undefined;
   if (data === null || pasted === undefined || editor.prosemirrorView === undefined || editor.prosemirrorView === null) {
     return defaultPasteHandler();
   }
-  const read = readTransfer(editor as never, data, pasted.lands);
-  if (read.kind === 'words') return defaultPasteHandler();
-  pasted.leaveOut(read.lost);
-  if (read.kind === 'blocks') putContent(editor as never, read.blocks, { caller: 'putIn', judge: pasted.judge, plain: read.plain });
+  putContent(editor as never, readTransfer(editor as never, data, pasted.lands), {
+    wordsIntoTarget: true,
+    judge: pasted.judge,
+    leaveOut: pasted.leaveOut,
+  });
   return true;
 };

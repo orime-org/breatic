@@ -119,18 +119,23 @@ export interface BlockSpec {
   readonly type: string;
   readonly props?: Readonly<Record<string, unknown>>;
   readonly content?: unknown;
+  readonly children?: readonly BlockSpec[];
 }
 
 /**
  * Blocks quoted as the line they go beside: the schema's default is
  * `quoted: false` (`document-schema-blocknote.ts:53`), and a block made
- * inside a quote stays in it, the way Enter's does.
+ * inside a quote stays in it, the way Enter's does. Nested blocks go with them.
  * @param blocks - The blocks.
  * @param quoted - Whether that line is quoted.
  * @returns The blocks, quoted as it.
  */
-export function quotedAs(blocks: readonly BlockSpec[], quoted: boolean): BlockSpec[] {
-  return blocks.map((block) => ({ ...block, props: { ...block.props, [QUOTED]: quoted } }));
+export function quotedAs<T extends BlockSpec>(blocks: readonly T[], quoted: boolean): T[] {
+  return blocks.map((block) => ({
+    ...block,
+    props: { ...block.props, [QUOTED]: quoted },
+    ...(block.children === undefined ? {} : { children: quotedAs(block.children, quoted) }),
+  }));
 }
 
 /**
@@ -141,7 +146,7 @@ export function quotedAs(blocks: readonly BlockSpec[], quoted: boolean): BlockSp
  * @param gap - The gap.
  * @returns True when that line is quoted.
  */
-function quotedBeside(doc: PMNode, gap: UploadGap): boolean {
+export function quotedBeside(doc: PMNode, gap: UploadGap): boolean {
   const $gap = doc.resolve(gap);
   const beside: PMNode | null = $gap.nodeBefore ?? $gap.nodeAfter;
   return beside?.firstChild?.attrs[QUOTED] === true;

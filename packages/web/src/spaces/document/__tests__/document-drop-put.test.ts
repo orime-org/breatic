@@ -239,8 +239,14 @@ describe('the line a drop opens between two quoted blocks', () => {
       { type: 'image', props: { url: `${OURS}q.png`, quoted: true } },
       { type: 'paragraph', content: 'b', props: { quoted: true } },
     ]);
-    dropFormats(editor, positionOf(editor, 'a', 1) + 2, { 'text/html': '<p>w</p>', 'text/plain': 'w' });
+    dropFormats(editor, positionOf(editor, 'a', 1) + 2, { 'text/html': `<img src="${PIC}">`, 'text/plain': '' });
     await settled();
-    expect((editor.document as Block[]).map((block) => block.props['quoted'])).toEqual([true, true, true, true]);
+    expect((editor.document as Block[]).map((block) => `${block.type}:${String(block.props['quoted'])}`)).toEqual([
+      'paragraph:true',
+      'image:true',
+      'paragraph:true',
+      'image:true',
+      'paragraph:true',
+    ]);
   });
 });

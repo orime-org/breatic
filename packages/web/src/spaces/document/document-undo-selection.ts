@@ -229,9 +229,11 @@ interface PreEditState {
 }
 
 /**
- * The meta a caret move carries when the edit that follows it in the same
- * event is to undo back to where the caret was before the move: a drop puts
- * the caret at the drop point and then pastes there (inner#1351 design §5.4.1).
+ * The meta a caret move carries (`true`) when the edit that follows it in the
+ * same event is to undo back to where the caret was before the move: a drop
+ * puts the caret at the drop point and then pastes there (inner#1351 design
+ * §5.4.1). The event lets it go (`false`) when it ends, whether or not it
+ * changed the document.
  */
 export const HOLD_PRE_EDIT_SELECTION = 'documentHoldPreEditSelection';
 
@@ -260,8 +262,9 @@ export function documentUndoSelectionPlugin(): Plugin<PreEditState> {
        * Copies the undo plugin's freshly computed selection, but only off the
        * transaction that carries the user's own edit — the appended follow-ups
        * of the same dispatch would replace "before the edit" with "after it".
-       * A caret move marked {@link HOLD_PRE_EDIT_SELECTION} keeps the
-       * selection from before it for the next edit instead.
+       * A caret move marked {@link HOLD_PRE_EDIT_SELECTION} `true` keeps the
+       * selection from before it for the next edit instead, until a
+       * transaction marked `false` lets it go.
        * @param tr - The transaction being applied.
        * @param value - The previous state.
        * @param _oldState - The state before the transaction.
@@ -273,9 +276,9 @@ export function documentUndoSelectionPlugin(): Plugin<PreEditState> {
           | { prevSel?: unknown }
           | undefined;
         // The undo plugin's selection for this transaction is the one before it.
-        if (tr.getMeta(HOLD_PRE_EDIT_SELECTION) === true) {
-          return { preEditSel: undo?.prevSel ?? value.preEditSel, held: true };
-        }
+        const hold = tr.getMeta(HOLD_PRE_EDIT_SELECTION) as boolean | undefined;
+        if (hold === true) return { preEditSel: undo?.prevSel ?? value.preEditSel, held: true };
+        if (hold === false) return { preEditSel: value.preEditSel };
         if (!tr.docChanged || tr.getMeta('appendedTransaction') !== undefined) {
           return value;
         }

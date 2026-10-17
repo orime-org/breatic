@@ -34,7 +34,8 @@ import { newId } from '@breatic/shared';
 
 import { assetsApi } from '@web/data/api/assets';
 import { addressLanding } from '@web/spaces/document/document-media-address';
-import { gapAtDrop } from '@web/spaces/document/document-file-input';
+import { gapAtDrop, quotedBeside } from '@web/spaces/document/document-file-input';
+import { QUOTED } from '@web/spaces/document/document-list-block';
 import { isMediaBlockType, pendingUploadId } from '@web/spaces/document/document-media-types';
 import { readTransfer } from '@web/spaces/document/document-paste-read';
 import { putContent, selectPlaced } from '@web/spaces/document/document-put';
@@ -45,7 +46,7 @@ import { HOLD_PRE_EDIT_SELECTION } from '@web/spaces/document/document-undo-sele
 export const PASTED_MEDIA_KEY = 'documentPastedMedia';
 
 /** What a paste asks of the pasted-media extension. */
-export interface PastedMedia {
+export interface PastedMediaJudge {
   /** Whether a medium at an address lands in the body. */
   lands(url: string): boolean;
   /**
@@ -185,7 +186,7 @@ export function documentPastedMediaExtension(
       });
     };
 
-    const media: PastedMedia = {
+    const media: PastedMediaJudge = {
       lands: (url) => addressLanding(url, options?.assetUrlPrefix() ?? null, options?.start !== undefined) !== null,
       judge: (props) => {
         if (pendingUploadId(props) !== null) return props;
@@ -222,31 +223,25 @@ export function documentPastedMediaExtension(
                 if (view.dragging !== null || !view.editable || data === null || Array.from(data.types).includes('Files')) return false;
                 const read = readTransfer(editor, data, media.lands);
                 event.preventDefault();
-                if (read.kind === 'nothing') {
+                const at = view.posAtCoords({ left: event.clientX, top: event.clientY })?.pos;
+                const $at = at === undefined ? null : view.state.doc.resolve(at);
+                // Nothing to put, unless a code block takes the plain text as it is.
+                if ($at === null || (read.blocks.length === 0 && !(read.plain !== null && $at.parent.type.spec.code === true))) {
                   media.leaveOut(read.lost);
                   return true;
                 }
-                const at = view.posAtCoords({ left: event.clientX, top: event.clientY })?.pos;
-                if (at === undefined) return true;
-                const $at = view.state.doc.resolve(at);
                 const opened = !$at.parent.isTextblock;
                 if (opened) {
-                  const gap = gapAtDrop(view.state.doc, at);
-                  const tr = view.state.tr.insert(gap, blockToNode({ id: newId(), type: 'paragraph' } as never, view.state.schema));
+                  const gap = gapAtDrop(view.state.doc, $at.pos);
+                  const line = blockToNode({ id: newId(), type: 'paragraph', props: { [QUOTED]: quotedBeside(view.state.doc, gap) } } as never, view.state.schema);
+                  const tr = view.state.tr.insert(gap, line);
                   view.dispatch(tr.setSelection(TextSelection.create(tr.doc, gap + 2)));
                 } else {
-                  const tr = view.state.tr.setSelection(TextSelection.create(view.state.doc, at));
-                  view.dispatch(tr.setMeta(HOLD_PRE_EDIT_SELECTION, true));
+                  view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, $at.pos)).setMeta(HOLD_PRE_EDIT_SELECTION, true));
                 }
                 view.focus();
-                if (read.kind === 'words') {
-                  const from = view.state.selection.from;
-                  read.paste(editor);
-                  selectPlaced(view, { kind: 'range', from, to: view.state.selection.head });
-                  return true;
-                }
-                media.leaveOut(read.lost);
-                const placed = putContent(editor, read.blocks, { caller: 'putIn', judge: media.judge, plain: read.plain, openedLine: opened });
+                const placed = putContent(editor, read, { wordsIntoTarget: true, judge: media.judge, leaveOut: media.leaveOut, openedLine: opened });
+                view.dispatch(view.state.tr.setMeta(HOLD_PRE_EDIT_SELECTION, false));
                 if (placed !== null) selectPlaced(view, placed);
                 return true;
               },

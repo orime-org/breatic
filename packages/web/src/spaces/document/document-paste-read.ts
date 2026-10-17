@@ -35,22 +35,16 @@ export interface BlockReader {
 }
 
 /** What a paste or a drop carries. */
-export type Read =
-  /** Nothing that lands; `lost` media were left out. */
-  | { readonly kind: 'nothing'; readonly lost: number }
-  /**
-   * Blocks the body puts in (§5.4.3): content holding a block that is not a
-   * line of words, or content whose media were taken out on the way.
-   */
-  | {
-      readonly kind: 'blocks';
-      readonly blocks: readonly ReadBlock[];
-      readonly lost: number;
-      /** The plain text, when the clipboard holds no HTML: what a code block takes as it is. */
-      readonly plain: string | null;
-    }
-  /** Content of words alone, pasted the way BlockNote pastes it. */
-  | { readonly kind: 'words'; readonly paste: (reader: BlockReader) => void };
+export interface Read {
+  /** The blocks read, none when nothing lands. */
+  readonly blocks: readonly ReadBlock[];
+  /** Media left out on the way. */
+  readonly lost: number;
+  /** The plain text, when the clipboard holds no HTML: what a code block takes as it is. */
+  readonly plain: string | null;
+  /** How the content goes into a line when it is lines of words alone: the way BlockNote pastes this format. */
+  readonly paste: (reader: BlockReader) => void;
+}
 
 /** Whether a piece of HTML carries an image, a video or an audio. */
 const HTML_MEDIA = new RegExp(`<(${HTML_MEDIA_ELEMENTS.join('|')})\\b`, 'i');
@@ -269,7 +263,7 @@ function markMedia(root: Element, lands: (url: string) => boolean): { media: Mar
 }
 
 /** Inline content as BlockNote's JSON writes it. */
-type Inline = { type: string; text?: string; content?: Inline[]; [key: string]: unknown };
+export type Inline = { type: string; text?: string; content?: Inline[]; [key: string]: unknown };
 
 /** A run of inline content, or a medium's number. */
 type Piece = { readonly words: Inline[] } | { readonly medium: number };
@@ -323,7 +317,7 @@ function splitAtMarkers(content: readonly Inline[]): Piece[] {
  * @param content - The content.
  * @returns Its words.
  */
-function textOf(content: readonly Inline[]): string {
+export function textOf(content: readonly Inline[]): string {
   return content.map((item) => (typeof item.text === 'string' ? item.text : textOf(item.content ?? []))).join('');
 }
 
@@ -453,13 +447,10 @@ function placeMarkers(blocks: readonly ReadBlock[], media: readonly MarkedMedium
       if ('medium' in piece) out.push(...mediaBlocks([piece.medium], media, found));
       else if (hasWords(piece)) out.push({ ...block, content: piece.words, children: [] });
     }
-    const lastHalf = [...out].reverse().find((b) => !isMediaBlockType(b.type));
     if (children.length > 0) {
-      if (lastHalf !== undefined && out.indexOf(lastHalf) === out.length - 1) {
-        out[out.length - 1] = { ...lastHalf, children };
-      } else {
-        out.push(...children);
-      }
+      const kept = out.findLastIndex((b) => !isMediaBlockType(b.type));
+      if (kept >= 0) out[kept] = { ...out[kept]!, children };
+      else out.push(...children);
     }
     return out;
   });
@@ -601,9 +592,7 @@ export function readTransfer(reader: BlockReader, data: Transfer, lands: (url: s
    * @returns The read.
    */
   const settle = (blocks: readonly ReadBlock[], lost: number, words: (r: BlockReader) => void): Read => {
-    if (blocks.length === 0) return { kind: 'nothing', lost };
-    if (lost === 0 && !holdsBlocks(blocks)) return { kind: 'words', paste: words };
-    return { kind: 'blocks', blocks, lost, plain: plainOnly };
+    return { blocks, lost, plain: plainOnly, paste: words };
   };
   if (data.types.includes('blocknote/html')) {
     const own = data.getData('blocknote/html');
@@ -612,7 +601,7 @@ export function readTransfer(reader: BlockReader, data: Transfer, lands: (url: s
   const mode = data.types.includes('vscode-editor-data') ? (JSON.parse(data.getData('vscode-editor-data') || '{}') as { mode?: string }).mode : undefined;
   if (mode !== undefined && plain !== '') {
     const code = `<pre><code class="language-${escapeHTML(mode)}">${escapeHTML(plain.replace(/\r\n?/g, '\n'))}</code></pre>`;
-    return { kind: 'words', paste: (r) => r.pasteHTML(code) };
+    return settle(reader.tryParseHTMLToBlocks(code) as ReadBlock[], 0, (r) => r.pasteHTML(code));
   }
   const source = data.types.includes('text/markdown')
     ? markdownToHTML(data.getData('text/markdown'))
@@ -624,7 +613,7 @@ export function readTransfer(reader: BlockReader, data: Transfer, lands: (url: s
           ? null
           : markdownToHTML(plain);
   if (source === null) {
-    if (html === '') return { kind: 'nothing', lost: 0 };
+    if (html === '') return settle([], 0, () => undefined);
     const even = evened(html);
     return settle(reader.tryParseHTMLToBlocks(even) as ReadBlock[], 0, (r) => r.pasteHTML(even));
   }

@@ -226,7 +226,7 @@ function createDocumentEditor(
         const view = viewOf(editor);
         const prepared = view === null ? null : files.prepare(arrival.files);
         if (view === null || prepared === null) return;
-        if (arrival.gap === null) putContent(editor, prepared.blocks, { caller: 'files', judge: (props) => props });
+        if (arrival.gap === null) putContent(editor, { blocks: prepared.blocks, lost: 0, plain: null, paste: null }, { wordsIntoTarget: false, judge: (props) => props });
         else view.dispatch(insertAtGapTr(view.state, arrival.gap, prepared.blocks));
         prepared.start();
       },
