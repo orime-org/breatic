@@ -19,8 +19,8 @@
  * Groups stay one level deep, which four separate places enforce:
  * `group-toolbar.ts`'s `allLoose` (a group cannot be put inside a new
  * group), `group-drag.ts`'s `draggedMembers` filter (a group dragged over
- * another never reparents), the loose-node filter inside
- * `commitGroupResize` below (a grown group swallows loose nodes only), and
+ * another never reparents), the loose-node filter inside `CanvasSpace.tsx`'s
+ * `commitGroupResize` (a grown group swallows loose nodes only), and
  * `node-clipboard.ts`'s group branch, which drops the parentId it just
  * resolved (a pasted group is always a root — and that payload is parsed
  * out of the clipboard, so it is the one path an outside shape can enter).
@@ -37,6 +37,14 @@
  * node, and the viewport inside that pane is its own stacking context.
  */
 export const FOCUS_TARGET_Z = 1002;
+
+/**
+ * Where a pin paints, above every content node and above the +1000 xyflow adds
+ * to a selected one. A note points at something, so it stays visible while the
+ * thing it points at is being worked on; the focus-crop target still comes out
+ * on top of it, since that gesture owns the screen while it runs.
+ */
+export const ANNOTATION_PIN_Z = 1001;
 
 /**
  * What xyflow adds to a selected node's z: `SELECTED_NODE_Z`
@@ -62,4 +70,4 @@ export const XYFLOW_SELECTED_NODE_Z = 1000;
  * is where the ViewportPortal puts this. Measured: the node wrapper carries
  * `z-index: 1001` inline and the viewport carries 2.
  */
-export const VIEWPORT_TOP_Z = FOCUS_TARGET_Z + XYFLOW_SELECTED_NODE_Z + 1;
+export const VIEWPORT_TOP_Z = Math.max(FOCUS_TARGET_Z, ANNOTATION_PIN_Z) + XYFLOW_SELECTED_NODE_Z + 1;

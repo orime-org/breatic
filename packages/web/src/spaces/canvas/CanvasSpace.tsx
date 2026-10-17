@@ -91,7 +91,7 @@ import { exportCropBlob } from '@web/spaces/canvas/focus/crop-export';
 import { cropSourceSelector, intrinsicSize, isCropSource, whenDecoded } from '@web/spaces/canvas/focus/crop-source';
 import { exportDrawing } from '@web/spaces/canvas/mini-tool/export-drawing';
 import { ExpandFrameOverlay } from '@web/spaces/canvas/mini-tool/ExpandFrameOverlay';
-import { FOCUS_TARGET_Z, VIEWPORT_TOP_Z } from '@web/spaces/canvas/viewport-layers';
+import { ANNOTATION_PIN_Z, FOCUS_TARGET_Z, VIEWPORT_TOP_Z } from '@web/spaces/canvas/viewport-layers';
 import { exportExpand } from '@web/spaces/canvas/mini-tool/expand-export';
 import { focusFailureMessageKey, runFocusCrop } from '@web/spaces/canvas/focus/run-focus-crop';
 import {
@@ -332,14 +332,6 @@ import { miniToolOpenOn, type CanvasSessionStore } from '@web/stores/canvas-sess
 
 /** Node types a focus pick can crop (#1782 images, #1987 video frames). */
 const FOCUS_SOURCE_TYPES: ReadonlySet<string> = new Set(['image', 'video']);
-
-/**
- * Where a pin paints, above every content node and above the +1000 xyflow adds
- * to a selected one. A note points at something, so it stays visible while the
- * thing it points at is being worked on; the focus-crop target still comes out
- * on top of it, since that gesture owns the screen while it runs.
- */
-const ANNOTATION_PIN_Z = 1001;
 
 /** What became of the node a focus crop is open on (#2000). */
 type FocusTargetVerdict = 'ok' | 'gone' | 'replaced' | 'busy';
