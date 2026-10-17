@@ -775,14 +775,19 @@ class AdjustGrain extends filters.BaseFilter<
  * which ffmpeg's frame is once `colorchannelmixer` ran, every channel toward 0
  * by its own pixel's factor.
  */
-class AdjustVignette extends filters.BaseFilter<'AdjustVignette', { angle: number; onCodes: boolean; size: [number, number] }> {
+class AdjustVignette extends filters.BaseFilter<
+  'AdjustVignette',
+  { angle: number; onCodes: boolean; size: [number, number]; frame: [number, number] }
+> {
   declare angle: number;
   declare onCodes: boolean;
   /** The source's width and height in pixels. */
   declare size: [number, number];
+  /** The source pixels the drawn picture spans, which a preview pads past the source's own. */
+  declare frame: [number, number];
   static type = 'AdjustVignette';
-  static defaults = { angle: 0, onCodes: true, size: [1, 1] as [number, number] };
-  static uniformLocations = ['uAngle', 'uCenter', 'uSize', 'uBlock'];
+  static defaults = { angle: 0, onCodes: true, size: [1, 1] as [number, number], frame: [1, 1] as [number, number] };
+  static uniformLocations = ['uAngle', 'uCenter', 'uSize', 'uFrame', 'uBlock'];
 
   /**
    * The shader.
@@ -795,6 +800,7 @@ class AdjustVignette extends filters.BaseFilter<'AdjustVignette', { angle: numbe
       uniform float uAngle;
       uniform vec3 uCenter;
       uniform vec2 uSize;
+      uniform vec2 uFrame;
       uniform float uBlock;
       varying vec2 vTexCoord;
       float factor(vec2 index) {
@@ -803,7 +809,7 @@ class AdjustVignette extends filters.BaseFilter<'AdjustVignette', { angle: numbe
       }
       void main() {
         vec4 c = texture2D(uTexture, vTexCoord);
-        vec2 index = floor(vTexCoord * uSize);
+        vec2 index = floor(vTexCoord * uFrame);
         float luma = factor(index);
         float chroma = factor(uBlock * floor(index / uBlock));
         vec3 f = vec3(luma, chroma, chroma);
@@ -836,6 +842,7 @@ class AdjustVignette extends filters.BaseFilter<'AdjustVignette', { angle: numbe
     if (this.angle === 0) return;
     const { data, width, height } = options.imageData;
     const [sourceW, sourceH] = this.size;
+    const [frameW, frameH] = this.frame;
     const reach = Math.hypot(sourceW / 2, sourceH / 2);
     const block = this.block();
     const centers = this.centers().map((share) => 255 * share);
@@ -848,9 +855,9 @@ class AdjustVignette extends filters.BaseFilter<'AdjustVignette', { angle: numbe
     const factor = (ix: number, iy: number): number =>
       Math.cos((this.angle * Math.hypot(Math.trunc(ix - sourceW / 2), Math.trunc(iy - sourceH / 2))) / reach) ** 4;
     for (let y = 0; y < height; y++) {
-      const iy = Math.floor(((y + 0.5) / height) * sourceH);
+      const iy = Math.floor(((y + 0.5) / height) * frameH);
       for (let x = 0; x < width; x++) {
-        const ix = Math.floor(((x + 0.5) / width) * sourceW);
+        const ix = Math.floor(((x + 0.5) / width) * frameW);
         const luma = factor(ix, iy);
         const chroma = factor(block * Math.floor(ix / block), block * Math.floor(iy / block));
         const at = (y * width + x) * 4;
@@ -863,7 +870,7 @@ class AdjustVignette extends filters.BaseFilter<'AdjustVignette', { angle: numbe
   }
 
   /**
-   * Hand the angle, the centres, the source's size and the chroma block to the shader.
+   * Hand the angle, the centres, the source's size, the frame and the chroma block to the shader.
    * @param gl - The context.
    * @param locations - The uniforms.
    */
@@ -871,6 +878,7 @@ class AdjustVignette extends filters.BaseFilter<'AdjustVignette', { angle: numbe
     gl.uniform1f(locations.uAngle ?? null, this.angle);
     gl.uniform3fv(locations.uCenter ?? null, this.centers());
     gl.uniform2fv(locations.uSize ?? null, this.size);
+    gl.uniform2fv(locations.uFrame ?? null, this.frame);
     gl.uniform1f(locations.uBlock ?? null, this.block());
   }
 }
@@ -885,12 +893,13 @@ type AdjustFilter = InstanceType<typeof filters.BaseFilter>;
  * @param seed - The grain's seed, fixed for one panel so the preview and the export match.
  * @param source - The source's size in pixels.
  * @param drawn - The size the chain draws at, the source's own by default.
+ * @param frame - The source pixels the drawn picture spans, the source's own by default.
  * @returns The chain.
  */
-export function adjustFilters(value: AdjustValue, seed: number, source: Size, drawn: Size = source): AdjustFilter[] {
+export function adjustFilters(value: AdjustValue, seed: number, source: Size, drawn: Size = source, frame: Size = source): AdjustFilter[] {
   const terms = adjustTerms(value);
-  const width = Math.max(1, source.width);
-  const height = Math.max(1, source.height);
+  const width = Math.max(1, frame.width);
+  const height = Math.max(1, frame.height);
   const pixel: [number, number] = [1 / width, 1 / height];
   const share = Math.sqrt((Math.max(1, drawn.width) * Math.max(1, drawn.height)) / (width * height));
   const codes: AdjustFilter[] = [];
@@ -912,7 +921,12 @@ export function adjustFilters(value: AdjustValue, seed: number, source: Size, dr
   if (terms.clarity > 0) codes.push(new AdjustUnsharp({ amount: terms.clarity, row: CLARITY_ROW, pixel }));
   const vignette =
     terms.vignetteAngle > 0
-      ? new AdjustVignette({ angle: terms.vignetteAngle, onCodes: terms.channels === null, size: [width, height] })
+      ? new AdjustVignette({
+        angle: terms.vignetteAngle,
+        onCodes: terms.channels === null,
+        size: [Math.max(1, source.width), Math.max(1, source.height)],
+        frame: [width, height],
+      })
       : null;
   if (terms.channels === null) {
     if (vignette !== null) codes.push(vignette);
@@ -934,7 +948,14 @@ export function adjustFilters(value: AdjustValue, seed: number, source: Size, dr
  * @param value - The sliders.
  * @param seed - The grain's seed.
  * @param source - The size of the source these pixels draw, when they are a smaller draw of it.
+ * @param frame - The source pixels these pixels span, the source's own by default.
  */
-export function adjustPixels(pixels: PixelState['imageData'], value: AdjustValue, seed: number, source: Size = pixels): void {
-  for (const filter of adjustFilters(value, seed, source, pixels)) filter.applyTo({ imageData: pixels } as never);
+export function adjustPixels(
+  pixels: PixelState['imageData'],
+  value: AdjustValue,
+  seed: number,
+  source: Size = pixels,
+  frame: Size = source,
+): void {
+  for (const filter of adjustFilters(value, seed, source, pixels, frame)) filter.applyTo({ imageData: pixels } as never);
 }
