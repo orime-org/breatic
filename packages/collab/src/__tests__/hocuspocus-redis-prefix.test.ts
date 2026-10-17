@@ -243,10 +243,7 @@ describe("createCollabServer — Redis channel prefix", () => {
     const banner = loggerInfoSpy.mock.calls.find(
       ([, message]) => message === "Hocuspocus server configured",
     );
-    expect(banner?.[0]).toMatchObject({
-      maxPendingDocuments: 201,
-      maxUnauthenticatedQueueMessages: 26750,
-    });
+    expect(banner?.[0]).toMatchObject(SOCKET_CEILINGS);
   });
 
   it("counts a rejected authentication with the connection gate", async () => {

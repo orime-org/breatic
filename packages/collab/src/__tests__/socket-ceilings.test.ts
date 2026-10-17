@@ -195,12 +195,12 @@ describe("deriving the ceilings from a project's Space cap", () => {
     expect(SOCKET_CEILINGS.maxPendingDocuments).toBe(DOCUMENTS_PER_SOCKET);
   });
 
-  it("runs with 201 pending documents and 26750 queued frames", () => {
+  it("runs with 201 pending documents and 16333 queued frames", () => {
     // Pinned as values: the derivation can move either one without any
     // relation between them breaking, and the startup log prints these two.
     expect(SOCKET_CEILINGS).toEqual({
       maxPendingDocuments: 201,
-      maxUnauthenticatedQueueMessages: 26750,
+      maxUnauthenticatedQueueMessages: 16333,
     });
   });
 
