@@ -36,6 +36,7 @@ vi.mock("@breatic/core", async (importOriginal) => ({
 }));
 
 import { createConnectionGate, recordingFailedAuth } from "@collab/infra/connection-gate.js";
+import { DOCUMENTS_PER_SOCKET } from "@collab/infra/socket-ceilings.js";
 
 beforeEach(() => {
   loggerWarnMock.mockClear();
@@ -389,20 +390,20 @@ describe("connection gate — failed authentication", () => {
     const gate = createConnectionGate(throttle);
     const request = { headers: new Headers({ "x-real-ip": "203.0.113.9" }) };
 
-    for (let i = 0; i < 201; i += 1) await gate.recordFailedAuth({ request });
+    for (let i = 0; i < DOCUMENTS_PER_SOCKET; i += 1) await gate.recordFailedAuth({ request });
 
     expect(throttle.count).toHaveBeenCalledExactlyOnceWith("203.0.113.9");
   });
 
   it("keeps counting a WebSocket that goes on failing past a full project", async () => {
-    // One socket carries at most a full project (MAX_SPACES_PER_PROJECT + 1
-    // documents), so failures beyond that are repeated attempts, and each one
-    // counts toward the ban.
+    // One socket carries at most a full project (DOCUMENTS_PER_SOCKET), so
+    // failures beyond that are repeated attempts, and each one counts toward
+    // the ban.
     const throttle = fakeThrottle();
     const gate = createConnectionGate(throttle);
     const request = { headers: new Headers({ "x-real-ip": "203.0.113.9" }) };
 
-    for (let i = 0; i < 210; i += 1) await gate.recordFailedAuth({ request });
+    for (let i = 0; i < DOCUMENTS_PER_SOCKET + 9; i += 1) await gate.recordFailedAuth({ request });
 
     expect(throttle.count).toHaveBeenCalledTimes(1 + 9);
   });
