@@ -22,7 +22,7 @@ import { newId } from '@breatic/shared';
 import { gapAtDrop, quotedAs, quotedBeside } from '@web/spaces/document/document-file-input';
 import { QUOTED } from '@web/spaces/document/document-list-block';
 import { isMediaBlockType } from '@web/spaces/document/document-media-types';
-import { cellInline, holdsBlocks, textOf, wordsIn, type Read, type ReadBlock } from '@web/spaces/document/document-paste-read';
+import { cellInline, textOf, wordsIn, type Read, type ReadBlock } from '@web/spaces/document/document-paste-read';
 import { HOLD_PRE_EDIT_SELECTION } from '@web/spaces/document/document-undo-selection';
 
 /** How a medium lands: its props as they go in, or null when it is left out. */
@@ -35,8 +35,8 @@ export type Content = Pick<Read, 'blocks' | 'lost' | 'plain'> & { readonly paste
 export interface PutOptions {
   /**
    * Whether a table cell or a code block takes the words while the media go
-   * beside it (a paste or a drop); otherwise the whole content goes beside
-   * it (a canvas paste, files).
+   * beside it (a paste, a drop, canvas words alone); otherwise the whole
+   * content goes beside it (canvas content with media, files).
    */
   readonly wordsIntoTarget: boolean;
   /** Judges every medium put in; one left out is counted by whoever judged it. */
@@ -167,6 +167,18 @@ function takeMedia(blocks: readonly ReadBlock[]): { beside: ReadBlock[]; inside:
 function contentWords(content: unknown): string {
   const rows = (content as { rows?: { cells: unknown[] }[] } | undefined)?.rows ?? [];
   return wordsIn(content) ?? rows.map((row) => row.cells.map((cell) => textOf(cellInline(cell))).join('\t')).join('\n');
+}
+
+/**
+ * Whether blocks hold one that is not a line of words (a medium, a table, a
+ * rule), nested ones too: only content made of lines of words goes in by the
+ * default paste, which puts any other block at a line's start under an empty
+ * line of its own.
+ * @param blocks - The blocks.
+ * @returns True when the body puts them in itself.
+ */
+function holdsBlocks(blocks: readonly ReadBlock[]): boolean {
+  return blocks.some((block) => wordsIn(block.content) === null || holdsBlocks(block.children ?? []));
 }
 
 /**
@@ -316,8 +328,7 @@ function putInTextOnly(editor: Editor, content: Content, target: { node: PMNode;
   const from = view.state.selection.from;
   if (inside.length > 0) {
     if (code) editor.pasteText(wordsOf(inside));
-    else if (content.paste !== null) content.paste(editor as never);
-    else editor.pasteHTML(editor.blocksToFullHTML(inside as never), true);
+    else pasteWordsOf(editor, content, inside);
   }
   const after = view.state.selection;
   const cells = after instanceof CellSelection ? after : null;
@@ -356,9 +367,20 @@ function cellsOf(selection: CellSelection): Placed {
 function pasteWords(editor: Editor, content: Content): Placed {
   const view = editor.prosemirrorView!;
   const from = view.state.selection.from;
-  if (content.paste !== null) content.paste(editor as never);
-  else editor.pasteHTML(editor.blocksToFullHTML(content.blocks as never), true);
+  pasteWordsOf(editor, content, content.blocks);
   return { kind: 'range', from, to: view.state.selection.head };
+}
+
+/**
+ * Pastes lines of words at the selection: by the content's own paste when it
+ * has one, else as the blocks' HTML.
+ * @param editor - The editor.
+ * @param content - The content.
+ * @param blocks - The lines, the content's or the words taken out of it.
+ */
+function pasteWordsOf(editor: Editor, content: Content, blocks: readonly ReadBlock[]): void {
+  if (content.paste !== null) content.paste(editor as never);
+  else editor.pasteHTML(editor.blocksToFullHTML(blocks as never), true);
 }
 
 /**
@@ -401,19 +423,33 @@ export function putContent(editor: Editor, content: Content, options: PutOptions
   const $drop = options.dropAt === undefined ? null : doc.resolve(options.dropAt);
   const opened = $drop !== null && !$drop.parent.isTextblock;
   const $at = $drop ?? (selection instanceof CellSelection ? null : selection instanceof NodeSelection ? null : selection.$from);
-  if (!opened && $at !== null && textOnlyAt($at)?.node.firstChild?.type.name === 'codeBlock' && content.plain !== null) {
-    if ($drop !== null) aim(view, $drop, false);
-    const from = view.state.selection.from;
-    editor.pasteText(content.plain);
-    return { kind: 'range', from, to: view.state.selection.head };
+  /**
+   * Places content, a drop's point aimed first and its hold on the selection
+   * from before the drop let go once the content is in.
+   * @param place - Puts the content at the selection.
+   * @returns Where it landed.
+   */
+  const atDrop = (place: () => Placed | null): Placed | null => {
+    if ($drop === null) return place();
+    aim(view, $drop, opened);
+    const placed = place();
+    view.dispatch(view.state.tr.setMeta(HOLD_PRE_EDIT_SELECTION, false));
+    return placed;
+  };
+  const plain = content.plain;
+  if (!opened && $at !== null && textOnlyAt($at)?.node.firstChild?.type.name === 'codeBlock' && plain !== null) {
+    return atDrop(() => {
+      const from = view.state.selection.from;
+      editor.pasteText(plain);
+      return { kind: 'range', from, to: view.state.selection.head };
+    });
   }
   options.leaveOut?.(content.lost);
   const blocks = judged(content.blocks, options.judge);
   if (!holdsContent(blocks)) return null;
-  if ($drop !== null) aim(view, $drop, opened);
-  // The read's own paste puts its words alone only when judging took nothing out.
+  // The read's own paste carries the media too, so it puts content holding none.
   const put: Content = { ...content, blocks, paste: takeMedia(content.blocks).beside.length === 0 ? content.paste : null };
-  return putAtSelection(editor, put, options.wordsIntoTarget, opened);
+  return atDrop(() => putAtSelection(editor, put, options.wordsIntoTarget, opened));
 }
 
 /**

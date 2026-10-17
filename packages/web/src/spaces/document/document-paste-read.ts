@@ -536,25 +536,13 @@ function cleanTable(content: unknown, indices: number[]): unknown {
 }
 
 /**
- * Whether blocks hold one that is not a line of words (a medium, a table, a
- * rule), nested ones too: only content made of lines of words goes in by the
- * default paste, which puts any other block at a line's start under an empty
- * line of its own.
- * @param blocks - The blocks.
- * @returns True when the body puts them in itself.
- */
-export function holdsBlocks(blocks: readonly ReadBlock[]): boolean {
-  return blocks.some((block) => wordsIn(block.content) === null || holdsBlocks(block.children ?? []));
-}
-
-/**
  * Outside HTML read into blocks by markers (§5.4.2).
  * @param reader - The editor.
  * @param html - The HTML.
  * @param lands - Whether a medium at an address lands.
  * @returns The blocks and how many media were left out.
  */
-export function readByMarkers(reader: BlockReader, html: string, lands: (url: string) => boolean): { blocks: ReadBlock[]; lost: number } {
+function readByMarkers(reader: BlockReader, html: string, lands: (url: string) => boolean): { blocks: ReadBlock[]; lost: number } {
   const body = new DOMParser().parseFromString(html, 'text/html').body;
   evenTables(body);
   fillAddresses(body, lands);
@@ -604,7 +592,7 @@ export function readTransfer(reader: BlockReader, data: Transfer, lands: (url: s
     const own = data.getData('blocknote/html');
     return { blocks: reader.tryParseHTMLToBlocks(own) as ReadBlock[], lost: 0, plain: null, paste: (r) => r.pasteHTML(own, true) };
   }
-  const plainOnly = html === '' ? plain : null;
+  const plainOnly = html === '' && plain !== '' ? plain : null;
   const mode = data.types.includes('vscode-editor-data') ? (JSON.parse(data.getData('vscode-editor-data') || '{}') as { mode?: string }).mode : undefined;
   if (mode !== undefined && plain !== '') {
     const code = `<pre><code class="language-${escapeHTML(mode)}">${escapeHTML(plain.replace(/\r\n?/g, '\n'))}</code></pre>`;

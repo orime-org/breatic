@@ -154,7 +154,7 @@ describe('text only, at the caret', () => {
     });
     view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, at, at + 5)));
     paste(editor, clipboard({ id: 't', type: 'text', position: { x: 0, y: 0 }, data: { body: body('https://example.com') } }));
-    expect(editor.document[0]!.content).toEqual([{ type: 'text', text: 'say https://example.com there', styles: {} }]);
+    expect((editor.document as { content?: unknown }[])[0]!.content).toEqual([{ type: 'text', text: 'say https://example.com there', styles: {} }]);
   });
 
   it.each(['bulletListItem', 'heading', 'checkListItem'])('on an empty %s, the first line takes its type', (type) => {

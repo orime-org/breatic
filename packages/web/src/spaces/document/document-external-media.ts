@@ -38,7 +38,6 @@ import { isMediaBlockType, pendingUploadId } from '@web/spaces/document/document
 import { readTransfer } from '@web/spaces/document/document-paste-read';
 import { putContent, selectPlaced, type JudgeMedium } from '@web/spaces/document/document-put';
 import type { UploadSource } from '@web/spaces/document/document-upload-controller';
-import { HOLD_PRE_EDIT_SELECTION } from '@web/spaces/document/document-undo-selection';
 
 /** The key the pasted-media extension registers under. */
 export const PASTED_MEDIA_KEY = 'documentPastedMedia';
@@ -184,12 +183,20 @@ export function documentPastedMediaExtension(
       });
     };
 
+    /**
+     * How a medium at an address lands in this body.
+     * @param url - The address.
+     * @returns How, or null when it does not.
+     */
+    const landing = (url: string): ReturnType<typeof addressLanding> =>
+      addressLanding(url, options?.assetUrlPrefix() ?? null, options?.start !== undefined);
+
     const media: PastedMediaJudge = {
-      lands: (url) => addressLanding(url, options?.assetUrlPrefix() ?? null, options?.start !== undefined) !== null,
+      lands: (url) => landing(url) !== null,
       judge: (props) => {
         if (pendingUploadId(props) !== null) return props;
         const url = props['url'];
-        const how = typeof url === 'string' ? addressLanding(url, options?.assetUrlPrefix() ?? null, options?.start !== undefined) : null;
+        const how = typeof url === 'string' ? landing(url) : null;
         if (how === null) {
           media.leaveOut(1);
           return null;
@@ -227,7 +234,6 @@ export function documentPastedMediaExtension(
                   return true;
                 }
                 const placed = putContent(editor, read, { wordsIntoTarget: true, judge: media.judge, leaveOut: media.leaveOut, dropAt: at });
-                view.dispatch(view.state.tr.setMeta(HOLD_PRE_EDIT_SELECTION, false));
                 if (placed !== null) selectPlaced(view, placed);
                 return true;
               },

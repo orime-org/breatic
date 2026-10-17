@@ -12,7 +12,7 @@
 import { blockToNode } from '@blocknote/core';
 import { Fragment, Slice } from '@tiptap/pm/model';
 import type { Selection } from '@tiptap/pm/state';
-import { CellSelection } from '@tiptap/pm/tables';
+import { CellSelection, handlePaste as tablePaste } from '@tiptap/pm/tables';
 
 import { newId } from '@breatic/shared';
 
@@ -35,9 +35,10 @@ export interface CanvasPasteSink {
  * Lines of a text node as the selection takes them, the words as they are,
  * never read as markdown. Text in a table cell, or over selected cells,
  * holds no paragraphs, so the lines are joined by line breaks; anywhere else
- * each line is a paragraph, opened at both ends so the first line joins the
- * words before the caret and the last the words after it, as a plain text
- * paste does.
+ * each line is a paragraph in a group, opened at both ends so the first line
+ * joins the words before the caret and the last the words after it, as a
+ * slice of the body's own lines is: the shape BlockNote's `transformPasted`
+ * takes, which gives the first line the type of an empty line it lands on.
  * @param selection - The selection they replace.
  * @param lines - The lines.
  * @returns The slice.
@@ -54,7 +55,7 @@ function textSlice(selection: Selection, lines: readonly string[]): Slice {
   const nodes = lines.map((line) =>
     blockToNode({ id: newId(), type: 'paragraph', content: line } as never, schema),
   );
-  return new Slice(Fragment.from(nodes), 2, 2);
+  return new Slice(Fragment.from(schema.nodes['blockGroup']!.create(null, nodes)), 3, 3);
 }
 
 /**
@@ -73,10 +74,17 @@ export function canvasPasteHandler(sink: CanvasPasteSink, next: PasteHandler): P
     if (view !== undefined && view !== null && items.length > 0) {
       if (items.every((item) => item.kind === 'text')) {
         const lines = items.flatMap((item) => (item.kind === 'text' ? item.lines : []));
-        /** Pastes the lines as ProseMirror pastes a slice, so the table's paste fills selected cells. */
+        /**
+         * Pastes the lines as ProseMirror pastes a slice, its `transformPasted`
+         * first; of the paste handlers only the table's, which fills selected
+         * cells, takes them (design §5.4.3: no link made of an address).
+         */
         const paste = (): void => {
-          const slice = textSlice(view.state.selection, lines);
-          if (view.someProp('handlePaste', (handle) => handle(view, context.event, slice)) !== true) view.dispatch(view.state.tr.replaceSelection(slice));
+          let slice = textSlice(view.state.selection, lines);
+          view.someProp('transformPasted', (transform) => {
+            slice = transform(slice, view, true);
+          });
+          if (!tablePaste(view, context.event, slice)) view.dispatch(view.state.tr.replaceSelection(slice));
         };
         const blocks = lines.map((line) => ({ type: 'paragraph', content: line }));
         putContent(editor, { blocks, lost: 0, plain: lines.join('\n'), paste }, { wordsIntoTarget: true, judge: (props) => props });
