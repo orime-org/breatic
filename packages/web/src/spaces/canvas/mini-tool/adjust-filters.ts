@@ -361,8 +361,9 @@ function blurFalloff(sigma: number): number {
 
 /**
  * ffmpeg's `gblur` on every plane of a 4:2:0 frame: Y's kernel falls by the
- * factor a source pixel, the chroma's by the same factor a chroma pixel, which
- * is two source pixels. Each neighbour weighs as much as it is opaque, so a
+ * factor a source pixel, the chroma's by the same factor for each 2x2 block
+ * between a pixel's and the neighbour's, the block the chroma plane holds one
+ * sample for. Each neighbour weighs as much as it is opaque, so a
  * cut-out's transparent surround adds nothing; a pixel keeps its own alpha.
  * Fabric's two passes, across then down, carry it.
  */
@@ -389,6 +390,8 @@ class AdjustBlur extends filters.Blur {
       ${BETWEEN_GLSL}
       void main() {
         vec4 own = texture2D(uTexture, vTexCoord);
+        // The source pixel this one stands for, along the pass.
+        float index = floor(dot(vTexCoord, uPixel) / dot(uPixel, uPixel));
         float y = 0.0;
         vec2 c = vec2(0.0);
         float wy = 0.0;
@@ -397,7 +400,7 @@ class AdjustBlur extends filters.Blur {
           float at = abs(float(t));
           vec4 s = between(vTexCoord + uPixel * float(t));
           float ky = pow(uFalloff, at);
-          float kc = pow(uFalloff, at / 2.0);
+          float kc = pow(uFalloff, abs(floor((index + float(t)) / 2.0) - floor(index / 2.0)));
           y += ky * s.r;
           c += kc * s.gb;
           wy += ky * s.a;
@@ -427,8 +430,11 @@ class AdjustBlur extends filters.Blur {
   private pass2d(pixels: PixelState['imageData'], dx: number, dy: number): void {
     const source = { data: new Uint8ClampedArray(pixels.data), width: pixels.width, height: pixels.height };
     const falloff = blurFalloff(this.sigma);
+    const step = dx !== 0 ? dx : dy;
     for (let y = 0; y < pixels.height; y++) {
       for (let x = 0; x < pixels.width; x++) {
+        // The source pixel this one stands for, along the pass.
+        const index = Math.floor(((dx !== 0 ? x : y) + 0.5) / step);
         const sum = [0, 0, 0];
         let wy = 0;
         let wc = 0;
@@ -437,7 +443,7 @@ class AdjustBlur extends filters.Blur {
           const py = y + t * dy;
           const [ty, tcb, tcr, alpha] = tap(source, px, py);
           const ky = falloff ** Math.abs(t);
-          const kc = falloff ** (Math.abs(t) / 2);
+          const kc = falloff ** Math.abs(Math.floor((index + t) / 2) - Math.floor(index / 2));
           sum[0] = (sum[0] ?? 0) + ky * ty;
           sum[1] = (sum[1] ?? 0) + kc * tcb;
           sum[2] = (sum[2] ?? 0) + kc * tcr;
