@@ -4,8 +4,9 @@
 /**
  * Files arriving in a document body by drop or paste (inner#1127 A2, A3).
  *
- * Neither entry inserts anything. Each works out the gap the files go into and
- * hands both to `onFiles`, which the editor is built with; the page behind it
+ * Neither entry inserts anything. Both hand the files to `onFiles`, which the
+ * editor is built with: a drop with the gap it lands in, a paste with none,
+ * to be put at the selection (inner#1351 design §5.4.3). The page behind it
  * admits and uploads them (`document-uploads.ts`). A read-only body hands
  * nothing over (A11).
  *

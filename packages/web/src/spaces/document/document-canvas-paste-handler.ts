@@ -10,14 +10,16 @@
  */
 
 import { blockToNode } from '@blocknote/core';
-import { Fragment, Slice, type ResolvedPos } from '@tiptap/pm/model';
+import { Fragment, Slice } from '@tiptap/pm/model';
+import type { Selection } from '@tiptap/pm/state';
+import { CellSelection } from '@tiptap/pm/tables';
 
 import { newId } from '@breatic/shared';
 
 import { parseClipboard } from '@web/spaces/canvas/node-clipboard';
 import { planCanvasPaste } from '@web/spaces/document/document-canvas-paste';
 import { inTableCell, type BlockSpec, type PasteHandler } from '@web/spaces/document/document-file-input';
-import { putContent } from '@web/spaces/document/document-put';
+import { putBlocks, putContent } from '@web/spaces/document/document-put';
 import { pendingBlock } from '@web/spaces/document/document-uploads';
 import type { UploadSource } from '@web/spaces/document/document-upload-controller';
 
@@ -30,20 +32,19 @@ export interface CanvasPasteSink {
 }
 
 /**
- * Lines of a text node as the place they land takes them, the words as they
- * are, never read as markdown. A paragraph takes one paragraph per line,
- * opened at both ends so the first line joins the words before the caret and
- * the last the words after it, as a plain text paste does; a table cell holds
- * no paragraphs, so its lines are joined by line breaks; a code block holds
- * only text, so they are joined by newlines.
- * @param $at - Where they land.
+ * Lines of a text node as the selection takes them, the words as they are,
+ * never read as markdown. Text in a table cell, or over selected cells,
+ * holds no paragraphs, so the lines are joined by line breaks; anywhere else
+ * each line is a paragraph, opened at both ends so the first line joins the
+ * words before the caret and the last the words after it, as a plain text
+ * paste does.
+ * @param selection - The selection they replace.
  * @param lines - The lines.
  * @returns The slice.
  */
-function textSlice($at: ResolvedPos, lines: readonly string[]): Slice {
-  const { schema } = $at.doc.type;
-  if ($at.parent.type.spec.code === true) return new Slice(Fragment.from(schema.text(lines.join('\n'))), 0, 0);
-  if (inTableCell($at)) {
+function textSlice(selection: Selection, lines: readonly string[]): Slice {
+  const { schema } = selection.$from.doc.type;
+  if (selection instanceof CellSelection || inTableCell(selection.$from)) {
     const inline = lines.flatMap((line, index) => [
       ...(index > 0 ? [schema.nodes['hardBreak']!.create()] : []),
       ...(line === '' ? [] : [schema.text(line)]),
@@ -72,7 +73,13 @@ export function canvasPasteHandler(sink: CanvasPasteSink, next: PasteHandler): P
     if (view !== undefined && view !== null && items.length > 0) {
       if (items.every((item) => item.kind === 'text')) {
         const lines = items.flatMap((item) => (item.kind === 'text' ? item.lines : []));
-        view.dispatch(view.state.tr.replaceSelection(textSlice(view.state.selection.$from, lines)));
+        /** Pastes the lines as ProseMirror pastes a slice, so the table's paste fills selected cells. */
+        const paste = (): void => {
+          const slice = textSlice(view.state.selection, lines);
+          if (view.someProp('handlePaste', (handle) => handle(view, context.event, slice)) !== true) view.dispatch(view.state.tr.replaceSelection(slice));
+        };
+        const blocks = lines.map((line) => ({ type: 'paragraph', content: line }));
+        putContent(editor, { blocks, lost: 0, plain: lines.join('\n'), paste }, { wordsIntoTarget: true, judge: (props) => props });
       } else {
         const started: { uploadId: string; source: UploadSource }[] = [];
         const blocks = items.flatMap((item): BlockSpec[] => {
@@ -86,7 +93,7 @@ export function canvasPasteHandler(sink: CanvasPasteSink, next: PasteHandler): P
             }),
           ];
         });
-        putContent(editor, { blocks, lost: 0, plain: null, paste: null }, { wordsIntoTarget: false, judge: (props) => props });
+        putBlocks(editor, blocks);
         for (const { uploadId, source } of started) sink.start(uploadId, source);
       }
     }

@@ -26,19 +26,17 @@
  * through {@link ownMediaOnly}.
  */
 
-import { blockToNode, createExtension, type ExtensionFactoryInstance } from '@blocknote/core';
+import { createExtension, type ExtensionFactoryInstance } from '@blocknote/core';
 import type { Node as PMNode } from '@tiptap/pm/model';
-import { Plugin, TextSelection } from '@tiptap/pm/state';
+import { Plugin } from '@tiptap/pm/state';
 
 import { newId } from '@breatic/shared';
 
 import { assetsApi } from '@web/data/api/assets';
 import { addressLanding } from '@web/spaces/document/document-media-address';
-import { gapAtDrop, quotedBeside } from '@web/spaces/document/document-file-input';
-import { QUOTED } from '@web/spaces/document/document-list-block';
 import { isMediaBlockType, pendingUploadId } from '@web/spaces/document/document-media-types';
 import { readTransfer } from '@web/spaces/document/document-paste-read';
-import { putContent, selectPlaced } from '@web/spaces/document/document-put';
+import { putContent, selectPlaced, type JudgeMedium } from '@web/spaces/document/document-put';
 import type { UploadSource } from '@web/spaces/document/document-upload-controller';
 import { HOLD_PRE_EDIT_SELECTION } from '@web/spaces/document/document-undo-selection';
 
@@ -53,7 +51,7 @@ export interface PastedMediaJudge {
    * How a medium lands: as it is, pending with its upload queued, or null
    * when it is left out (and counted).
    */
-  judge(props: Readonly<Record<string, unknown>>): Readonly<Record<string, unknown>> | null;
+  judge: JudgeMedium;
   /** Counts media left out, told once the event is done. */
   leaveOut(count: number): void;
 }
@@ -224,23 +222,11 @@ export function documentPastedMediaExtension(
                 const read = readTransfer(editor, data, media.lands);
                 event.preventDefault();
                 const at = view.posAtCoords({ left: event.clientX, top: event.clientY })?.pos;
-                const $at = at === undefined ? null : view.state.doc.resolve(at);
-                // Nothing to put, unless a code block takes the plain text as it is.
-                if ($at === null || (read.blocks.length === 0 && !(read.plain !== null && $at.parent.type.spec.code === true))) {
+                if (at === undefined) {
                   media.leaveOut(read.lost);
                   return true;
                 }
-                const opened = !$at.parent.isTextblock;
-                if (opened) {
-                  const gap = gapAtDrop(view.state.doc, $at.pos);
-                  const line = blockToNode({ id: newId(), type: 'paragraph', props: { [QUOTED]: quotedBeside(view.state.doc, gap) } } as never, view.state.schema);
-                  const tr = view.state.tr.insert(gap, line);
-                  view.dispatch(tr.setSelection(TextSelection.create(tr.doc, gap + 2)));
-                } else {
-                  view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, $at.pos)).setMeta(HOLD_PRE_EDIT_SELECTION, true));
-                }
-                view.focus();
-                const placed = putContent(editor, read, { wordsIntoTarget: true, judge: media.judge, leaveOut: media.leaveOut, openedLine: opened });
+                const placed = putContent(editor, read, { wordsIntoTarget: true, judge: media.judge, leaveOut: media.leaveOut, dropAt: at });
                 view.dispatch(view.state.tr.setMeta(HOLD_PRE_EDIT_SELECTION, false));
                 if (placed !== null) selectPlaced(view, placed);
                 return true;
