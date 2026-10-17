@@ -283,7 +283,7 @@ Agent 里没有选模板的控件,它按读者的需求自己调用。**提示�
 
 **有偏好的调用自己说,怎么说由表决定**。调用方把想要的东西交给 `callOptionsFor(modelId, { thinking, cache, session?, temperature? })`,拿回一份可以直接摊进模型调用的选项。五家的写法各不相同 —— 一家要 `thinking: { type }`、一家要努力档位、一家要 token 预算 —— 让调用方知道自己在跟谁说话,等于把这张表抄第五遍。`cache` 是提示词缓存的时长(`config/agent.yaml` 的 `prompt_cache_ttl`,聊天用 `1h`)或 `false`;`session` 只在走 OpenRouter 时作为 `session_id` 发出,两次请求间隔不到 10 分钟时让同一会话的请求落回同一家 provider、读得到上一轮写下的缓存(OpenRouter 的粘性会话 10 分钟没有调用即失效);Claude 不接受非默认 `temperature`,表里直接丢掉。
 
-**说了就把开和关都明写,不靠「不表态」**:字段留空对每家的含义不同,而那是各家自己的默认值、它们随时可以改。**唯一的例外是 Claude 关思考**:Opus 5.5 对 `{ type: "disabled" }` 答 400,所以关的时候不发思考字段,4.x 由此不思考,5.5 落回它关不掉的自适应思考。**当前有两处在说** —— 聊天要 reasoning、记忆归纳不要;其余各处(text mini-tool · nano-banana · understand)拿它们各自 provider 的默认值。
+**说了就把开和关都明写,不靠「不表态」**:字段留空对每家的含义不同,而那是各家自己的默认值、它们随时可以改。**唯一的例外是 Claude 关思考**:Opus 5.5 对 `{ type: "disabled" }` 答 400,所以关的时候不发思考字段,4.x 由此不思考,5.5 落回它关不掉的自适应思考。**Claude 开思考时两条路由要的是同一档 `high`**:经 OpenRouter 发 `reasoning.effort`,它原样转给 Claude;直连发 `effort`,`@ai-sdk/anthropic` 写成 `output_config.effort`。不带 effort 时 Opus 5.5 按自己的默认档 medium 思考。**当前有两处在说** —— 聊天要 reasoning、记忆归纳不要;其余各处(text mini-tool · nano-banana · understand)拿它们各自 provider 的默认值。
 
 **这里没有全局开关** —— 一个跨所有调用点的设置必然对其中一处是错的。
 

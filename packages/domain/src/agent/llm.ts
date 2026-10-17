@@ -183,7 +183,9 @@ export const DIRECT_ROUTES: readonly DirectRoute[] = [
     // (`claude-opus-5.5`); Anthropic serves the same model as `claude-opus-5-5`.
     vendorId: (modelId) => modelId.replace(/(\d)\.(\d)/g, "$1-$2"),
     reasoning: {
-      on: { thinking: { type: "adaptive", display: "summarized" } },
+      // The same depth as the fallback asks for: Opus 5.5 left without an
+      // effort thinks at its own default, medium.
+      on: { thinking: { type: "adaptive", display: "summarized" }, effort: "high" },
       // Not read: `callOptionsFor` sends Claude nothing when thinking is off.
       off: {},
     },

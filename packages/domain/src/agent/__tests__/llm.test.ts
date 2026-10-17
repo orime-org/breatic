@@ -314,9 +314,9 @@ const SPELLINGS = [
     name: "anthropic",
     authHeader: "x-api-key",
     authPrefix: "",
-    on: { thinking: { type: "adaptive", display: "summarized" } },
+    on: { thinking: { type: "adaptive", display: "summarized" }, effort: "high" },
     off: {},
-    onWire: { thinking: { type: "adaptive", display: "summarized" } },
+    onWire: { thinking: { type: "adaptive", display: "summarized" }, output_config: { effort: "high" } },
     offWire: {},
   },
   {
