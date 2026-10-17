@@ -248,33 +248,6 @@ interface ContentRowsOutcome {
 }
 
 /**
- * Run one content-row write per kind variant and keep BOTH halves of the
- * answer: what changed, and what failed.
- * @param write - The per-kind repo write; resolves true when it changed the row.
- * @returns The kinds that changed + the first rejection (null when none).
- */
-async function moveContentRows(
-  write: (kind: Exclude<DocKind, "meta">) => Promise<boolean>,
-): Promise<ContentRowsOutcome> {
-  const settled = await Promise.allSettled(
-    SPACE_CONTENT_KINDS.map(async (kind) => ({
-      kind,
-      changed: await write(kind),
-    })),
-  );
-  const touched: Exclude<DocKind, "meta">[] = [];
-  let failure: unknown = null;
-  for (const result of settled) {
-    if (result.status === "fulfilled") {
-      if (result.value.changed) touched.push(result.value.kind);
-    } else if (failure === null) {
-      failure = result.reason;
-    }
-  }
-  return { touched, failure };
-}
-
-/**
  * Soft-delete a Space's content-doc `yjs_documents` rows via the shared core
  * repo. Covers EVERY kind variant of the (projectId, spaceId) content doc
  * (idempotent no-op for the ones that don't exist), so the real row is
@@ -289,12 +262,24 @@ async function softDeleteSpaceContentRows(
   projectId: string,
   spaceId: string,
 ): Promise<ContentRowsOutcome> {
-  return moveContentRows(
-    (kind) =>
-      yjsDocumentsRepo.softDeleteByName(
+  const settled = await Promise.allSettled(
+    SPACE_CONTENT_KINDS.map(async (kind) => ({
+      kind,
+      changed: await yjsDocumentsRepo.softDeleteByName(
         spaceContentDocName(projectId, spaceId, kind),
       ),
+    })),
   );
+  const touched: Exclude<DocKind, "meta">[] = [];
+  let failure: unknown = null;
+  for (const result of settled) {
+    if (result.status === "fulfilled") {
+      if (result.value.changed) touched.push(result.value.kind);
+    } else if (failure === null) {
+      failure = result.reason;
+    }
+  }
+  return { touched, failure };
 }
 
 /**
@@ -1094,10 +1079,11 @@ async function handleRename(
  * Step order is §6.3's, and it is load-bearing:
  *   1. PG: read the latest unconsumed space:deleted activity row.
  *   2. Meta read: refuse CONFLICT if the space already exists.
- *   3. Content rows un-delete, BEFORE anything is visible — a Space must
- *      never be visible without its content. A failure here re-deletes
- *      exactly the rows this call brought back and reports a controlled
- *      error; nobody saw anything.
+ *   3. The content row of the snapshot's own type is un-deleted, BEFORE
+ *      anything is visible — a Space must never be visible without its
+ *      content. A failure here reports a controlled error; nobody saw
+ *      anything. If step 4 then fails, the row is deleted again only when
+ *      this call is what brought it back.
  *   4. Meta transact: rebuild the directory entry + sweep stale tab
  *      records, one broadcast. The "already back" re-check here is the
  *      guard that makes a retry after a partial failure safe.
@@ -1211,7 +1197,7 @@ async function runRestore(
     if (atCap) return atCap;
 
     // ── Content rows, BEFORE the broadcast ──────────────────────────
-    // A Space must never be visible without its content, so the rows come
+    // A Space must never be visible without its content, so its row comes
     // back first; nobody has seen anything yet if this fails.
     let restored: boolean;
     try {
@@ -1229,7 +1215,7 @@ async function runRestore(
     // ── The broadcast ───────────────────────────────────────────────
     const outcome = await publishMetaChange(conn, projectId, logCtx, (doc, mark) => {
       const spaces = doc.getMap("spaces");
-      // Someone else restored it while the content rows were coming back.
+      // Someone else restored it while the content row was coming back.
       if (spaces.has(spaceId)) {
         return err(req.id, "CONFLICT", `Space ${spaceId} is not deleted`);
       }
